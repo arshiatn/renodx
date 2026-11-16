@@ -543,7 +543,7 @@ struct Shared {
   float rt_lights_more[RT_ALL_LIGHTS - RT_MAX_LIGHTS][4] = {};
   float rt_light_colours_more[RT_ALL_LIGHTS - RT_MAX_LIGHTS][4] = {};
   uint32_t rt_light_tile_row = 0;
-  // The addon's (in v31's padding; an older v31 addon leaves it 0: none): Grass Ray Tracing Range, placed grass whose
+  // The addon's (in v31's padding; an older v31 addon leaves it 0: none): Grass Ray Tracing Range, grass (placed or drawn) whose
   // instance lies farther along the view (metres) out of the scene, its still and swaying copies alike.
   float rt_grass_range = 0.f;
 };

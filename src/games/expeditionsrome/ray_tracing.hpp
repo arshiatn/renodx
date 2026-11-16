@@ -43,7 +43,10 @@
 // 0x7C21DA11, FDeferredLightUniformStruct at ps b1, View at ps b0, both read from the game's uploads:
 // constant_mirror.hpp): the G-buffer guides (0x7A1E0D44), the trace (the scene depth at t1, the sun's direction), then
 // the traced sun into the light attenuation (t8, 0x7A1E0D45: the darker of the game's and the traced) and the traced
-// ambient into the screen-space AO (t7, 0x7A1E0D46: in its place, never on top of it, ATN 2026-11-16). The reflections replace the screen-space reflections'
+// ambient into the screen-space AO (t7, 0x7A1E0D46: in its place, never on top of it, ATN 2026-11-16). With the rays' AO
+// the trace comes earlier, at Unreal's AO passes (OnGameAo: the last sun draw's G-buffer and sun, this frame's View),
+// which it leaves out, and the traced ambient goes into the AO at the base pass AO (192686A0), its first reader: the
+// baked light takes ours too, one AO method (ATN 2026-11-16). The reflections replace the screen-space reflections'
 // draw (0x7A1E0D47 into its target; the reflection captures and the sky fill the rest, which Specular Occlusion keeps only
 // where the lobe is open, also over the game's own reflections), their light from the scene
 // colour the temporal pass receives (KeepColor). The light bounce (path traced when on) right after the sun's draw: the
@@ -81,10 +84,21 @@ constexpr uint32_t LIGHT_DIRECTION = 5;
 constexpr UINT MIN_LIGHT_BYTES = 144;
 constexpr UINT MAX_LIGHT_BYTES = 256;
 constexpr uint32_t LIGHT_RECTANGLE_SHADER = 0x7C21DA11;
+// The base pass AO (BasePassAO, ps 192686A0: the scene colour so far, emissive and the baked light, x lerp(1, AO, the
+// static fraction)), the first reader of the AO; Unreal's AO passes before it: the setups 73FDC01C / FB43A251, the levels
+// 2491478D / A45907DE, the final pass ao00 31A1C68C / ao01 BD381E21 (run_epic_173834: 0.97 ms at 4K DLAA with the rays).
+constexpr uint32_t BASE_PASS_AO_SHADER = 0x192686A0;
+constexpr std::array<uint32_t, 6> GAME_AO_SHADERS = {0x73FDC01C, 0xFB43A251, 0x2491478D, 0xA45907DE, 0x31A1C68C, 0xBD381E21};
 constexpr double CENTIMETRES = 100.0;
 // The light bounce: the most frames its resolve averages (its texels: Ray-Traced Light Bounce Resolution's 1, 2 or 4
 // render pixels each way).
 constexpr float BOUNCE_FRAMES = 24.f;
+
+// The sun for the helper: toward it (world, unit length) and its light on a diffuse surface (WriteSun's texel 2).
+struct Sun {
+  std::array<float, 3> toward = {};
+  std::array<float, 4> light = {};
+};
 
 struct State {
   std::mutex mutex;
@@ -130,6 +144,14 @@ struct State {
   ComPtr<ID3D11ShaderResourceView> path_ambient_switch;
   std::array<float, 16> view_projection = {};
   std::array<float, 16> previous_view_projection = {};
+  // The trace at Unreal's AO passes (OnGameAo): the last sun draw's scene depth and G-buffer A - C (their views), sun and
+  // frame; the frame it was tried there, the frame it traced there, the frame the traced ambient went into the AO.
+  std::array<ComPtr<ID3D11ShaderResourceView>, 4> kept_inputs;
+  Sun kept_sun;
+  uint64_t kept_frame = UINT64_MAX;
+  uint64_t early_tried_frame = UINT64_MAX;
+  uint64_t early_frame = UINT64_MAX;
+  uint64_t ambient_frame = UINT64_MAX;
 };
 static State state;
 
@@ -288,6 +310,82 @@ inline bool MakeBounceTexture(ID3D11Device* device, DXGI_FORMAT format, twattila
                             : SUCCEEDED(device->CreateUnorderedAccessView(texture->texture.Get(), nullptr, texture->uav.GetAddressOf())));
 }
 
+// The View's rows as last uploaded (`buffer` bound from constant `first`, `count` of them): to the sky light's where the
+// range holds them, else to the light output scale's; 0: fewer, or not read.
+inline UINT ReadView(ID3D11Buffer* buffer, UINT first, UINT count, std::array<std::array<float, 4>, VIEW_ROWS>* view) {
+  if (count <= VIEW_LIGHT_OUTPUT_SCALE) return 0;
+  const UINT rows = std::min(VIEW_ROWS, count);
+  talesofarise::dlss::constants::Watch(buffer, (first + rows) * 16);
+  return talesofarise::dlss::constants::Read(buffer, uint64_t{first} * 16, std::as_writable_bytes(std::span(*view).first(rows))) ? rows : 0;
+}
+
+// The trace: the camera (the View's rows `view`), `sun` and Path-Traced Ambient's sky to the helper, the guides from
+// G-buffer A - C, the trace from the scene depth (`inputs`: the depth, then A - C); false: not traced.
+inline bool TraceScene(ID3D11DeviceContext1* context, std::span<const std::array<float, 4>> view, const Sun& sun,
+                       const std::array<ID3D11ShaderResourceView*, 4>& inputs, const twattila::rt_scene::Settings& settings, uint64_t frame) {
+  // Unreal's WorldToClip (row vectors, centimetres) as rows acting on metres.
+  std::array<float, 16> view_projection = {};
+  for (size_t row = 0; row < 4; ++row) {
+    for (size_t column = 0; column < 4; ++column) {
+      view_projection[(row * 4) + column] = static_cast<float>(view[VIEW_WORLD_TO_CLIP + column][row] * (column < 3 ? CENTIMETRES : 1.0));
+    }
+  }
+  const auto& origin = view[VIEW_WORLD_CAMERA_ORIGIN];
+  const twattila::rt_scene::Camera camera = {
+      .view_projection = view_projection,
+      .inverse_view_projection = talesofarise::frame_generation::Inverse(view_projection),
+      .position = {static_cast<float>(origin[0] / CENTIMETRES), static_cast<float>(origin[1] / CENTIMETRES),
+                   static_cast<float>(origin[2] / CENTIMETRES)},
+  };
+  twattila::rt_scene::WriteSun(context, sun.toward, sun.light);
+  auto& bridge = twattila::dlaa_bridge::bridge;
+  // Path-Traced Ambient's sky (dlaa_helper/rt_path.hlsli SkyLight, OpenSky): Unreal's sky light toward +x, -x, +y, -y,
+  // +z, -z (GetSkySHDiffuse x SkyLightColor x View 129.y, as skylight00-02 light the diffuse colour) into the sun
+  // texture's texels 3-8, w 1 (texel 4's: the sky's scale, the game's units), texel 6's w 0 (Unreal's up is z: no
+  // stretch of y, which Attila's sun light shaders have). Without it, or without the View's sky rows: zeros (no sky).
+  std::array<std::array<float, 4>, 6> sky = {};
+  if (settings.path_ambient && view.size() == VIEW_ROWS && bridge.rt_sun.texture) {
+    for (size_t side = 0; side < sky.size(); ++side) {
+      std::array<float, 3> normal = {};
+      normal[side / 2] = (side % 2 == 0) ? 1.f : -1.f;
+      const std::array<float, 4> linear = {normal[0], normal[1], normal[2], 1.f};
+      const std::array<float, 4> quadratic = {normal[0] * normal[1], normal[1] * normal[2], normal[2] * normal[2], normal[2] * normal[0]};
+      const float band = (normal[0] * normal[0]) - (normal[1] * normal[1]);
+      for (size_t channel = 0; channel < 3; ++channel) {
+        float irradiance = view[VIEW_SKY_IRRADIANCE + 6][channel] * band;
+        for (size_t component = 0; component < 4; ++component) {
+          irradiance += (view[VIEW_SKY_IRRADIANCE + channel][component] * linear[component])
+                        + (view[VIEW_SKY_IRRADIANCE + 3 + channel][component] * quadratic[component]);
+        }
+        sky[side][channel] = std::max(irradiance, 0.f) * view[VIEW_SKY_LIGHT_COLOR][channel] * view[VIEW_LIGHT_OUTPUT_SCALE][1];
+      }
+      sky[side][3] = (side == 3) ? 0.f : 1.f;
+    }
+  }
+  if (bridge.rt_sun.texture) {
+    const D3D11_BOX sky_texels = {.left = 3, .top = 0, .front = 0, .right = 9, .bottom = 1, .back = 1};
+    context->UpdateSubresource(bridge.rt_sun.texture.Get(), 0, &sky_texels, sky.data(), static_cast<UINT>(sizeof(sky)), 0);
+  }
+  // The guides for the reflections, the paths and Ray Reconstruction.
+  if (talesofarise::upscaling::Guides() && bridge.guides) {
+    const talesofarise::dlss::ContextStateScope scope(context, state.private_state.Get());
+    const std::array<UINT, 4> size = {state.render_size[0], state.render_size[1], 0, 0};
+    context->UpdateSubresource(state.guides_constants.Get(), 0, nullptr, size.data(), 0, 0);
+    const std::array<ID3D11UnorderedAccessView*, 4> outputs = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
+                                                               bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
+    context->CSSetShader(state.guides.Get(), nullptr, 0);
+    context->CSSetShaderResources(0, 3, inputs.data() + 1);
+    context->CSSetUnorderedAccessViews(0, static_cast<UINT>(outputs.size()), outputs.data(), nullptr);
+    context->CSSetConstantBuffers(0, 1, state.guides_constants.GetAddressOf());
+    context->Dispatch((size[0] + 7) / 8, (size[1] + 7) / 8, 1);
+    const std::unique_lock lock(state.mutex);
+    state.guides_frame = frame;
+  }
+  if (!twattila::rt_scene::Trace(context, inputs[0], camera)) return false;
+  state.view_projection = view_projection;
+  return true;
+}
+
 // Right after the sun's deferred light draw: the light bounce from its scene colour (the draw's target), traced,
 // resolved and added to it.
 template <typename Context>
@@ -408,8 +506,9 @@ void OnSunLit(Context& command, const void*) {
   }
 }
 
-// The sun's deferred light draw: its camera and sun to the helper, the guides, the trace; then the traced sun into the
-// light attenuation and the traced ambient into the AO; the light bounce after it (OnSunLit).
+// The sun's deferred light draw: its camera and sun to the helper, the guides, the trace (unless traced at Unreal's AO
+// passes: OnGameAo); then the traced sun into the light attenuation and the traced ambient into the AO (unless the base
+// pass AO took it: OnBasePassAo); the light bounce after it (OnSunLit).
 constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   contact_shadows::ray_traced.store(false, std::memory_order_relaxed);
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
@@ -433,16 +532,12 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   buffers[1]->GetDesc(&light_desc);
   const UINT light_first = std::min(first_constants[1] * 16, light_desc.ByteWidth);
   const UINT light_bytes = std::min(light_desc.ByteWidth - light_first, constant_counts[1] * 16);
-  if (light_bytes < MIN_LIGHT_BYTES || light_bytes > MAX_LIGHT_BYTES || constant_counts[0] <= VIEW_LIGHT_OUTPUT_SCALE) return {};
-  // The View's rows up to the sky light's where its range holds them (Path-Traced Ambient's sky below), else to 129.
-  const UINT view_rows = std::min(VIEW_ROWS, constant_counts[0]);
+  if (light_bytes < MIN_LIGHT_BYTES || light_bytes > MAX_LIGHT_BYTES) return {};
   std::array<std::array<float, 4>, VIEW_ROWS> view = {};
+  const UINT view_rows = ReadView(buffers[0].Get(), first_constants[0], constant_counts[0], &view);
   std::array<std::array<float, 4>, LIGHT_DIRECTION + 1> light = {};
-  talesofarise::dlss::constants::Watch(buffers[0].Get(), (first_constants[0] + view_rows) * 16);
   talesofarise::dlss::constants::Watch(buffers[1].Get(), light_first + static_cast<uint32_t>(sizeof(light)));
-  if (!talesofarise::dlss::constants::Read(buffers[0].Get(), uint64_t{first_constants[0]} * 16,
-                                           std::as_writable_bytes(std::span(view).first(view_rows)))
-      || !talesofarise::dlss::constants::Read(buffers[1].Get(), light_first, std::as_writable_bytes(std::span(light)))) {
+  if (view_rows == 0 || !talesofarise::dlss::constants::Read(buffers[1].Get(), light_first, std::as_writable_bytes(std::span(light)))) {
     return {};
   }
   uint32_t shadowed_bits = 0;
@@ -450,6 +545,15 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   const auto& direction = light[LIGHT_DIRECTION];
   const float direction_length = std::sqrt((direction[0] * direction[0]) + (direction[1] * direction[1]) + (direction[2] * direction[2]));
   if (shadowed_bits == 0 || !(direction_length > 0.f)) return {};
+  // The sun's diffuse light with its direction (WriteSun's texel 2, w 1), the paths' sun as twattila/rt_sun.cs_5_0.hlsl
+  // writes it for the Total War games: the light lights the G-buffer's diffuse colour (the guides' base x (1 - metallic)) by
+  // the colour times N.L times the shadow. C38C91CD's default lit: DiffuseColor x 0.318309873 (1 / pi) x LightColor (c4) x
+  // its shadow and N.L, x View 129.y at its output.
+  constexpr float INVERSE_PI = 0.318309873f;
+  const float scale = INVERSE_PI * view[VIEW_LIGHT_OUTPUT_SCALE][1];
+  const auto& color = light[LIGHT_COLOR];
+  const Sun sun_now = {.toward = {direction[0] / direction_length, direction[1] / direction_length, direction[2] / direction_length},
+                       .light = {color[0] * scale, color[1] * scale, color[2] * scale, 1.f}};
 
   // The scene depth (t1) and the G-buffer the light reads, the render size (the draw's viewport).
   std::array<ComPtr<ID3D11ShaderResourceView>, 9> inputs;
@@ -475,14 +579,15 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   }
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
-  // The bridge as the upscaler and frame generation ask for it (upscaling.hpp: the swap chain's size); the guides for the
-  // reflections, the paths and Ray Reconstruction.
-  const bool guides = talesofarise::upscaling::Guides();
+  // The bridge as the upscaler and frame generation ask for it (upscaling.hpp: the swap chain's size).
   if (!PrepareDevice(device.Get()) || !talesofarise::upscaling::PrepareBridge(device.Get())) return {};
   uint64_t frame = 0;
-  // The scene colour's views of the last render size: each holds its texture, which Unreal makes again at a new size
-  // (let go after the lock: the game's texture may go with its last view).
+  bool traced_early = false;
+  bool ambient_written = false;
+  // The scene colour's views of the last render size, the last kept inputs: each holds its texture, which Unreal makes
+  // again at a new size (let go after the lock: the game's texture may go with its last view).
   std::unordered_map<ID3D11Resource*, ComPtr<ID3D11ShaderResourceView>> dropped_scene_views;
+  std::array<ComPtr<ID3D11ShaderResourceView>, 4> kept_inputs = {inputs[DEPTH], inputs[GBUFFER_A], inputs[GBUFFER_B], inputs[GBUFFER_C]};
   {
     const std::unique_lock lock(state.mutex);
     state.scene_depth = depth_resource.Get();
@@ -492,76 +597,18 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
       dropped_scene_views.swap(state.scene_views);
     }
     frame = state.frame;
+    // For the next frame's trace at Unreal's AO passes (OnGameAo); traced there this frame: not again.
+    kept_inputs.swap(state.kept_inputs);
+    state.kept_sun = sun_now;
+    state.kept_frame = frame;
+    traced_early = state.early_frame == frame;
+    ambient_written = state.ambient_frame == frame;
   }
-
-  // Unreal's WorldToClip (row vectors, centimetres) as rows acting on metres.
-  std::array<float, 16> view_projection = {};
-  for (size_t row = 0; row < 4; ++row) {
-    for (size_t column = 0; column < 4; ++column) {
-      view_projection[(row * 4) + column] = static_cast<float>(view[VIEW_WORLD_TO_CLIP + column][row] * (column < 3 ? CENTIMETRES : 1.0));
-    }
+  if (!traced_early
+      && !TraceScene(context1.Get(), std::span(view).first(view_rows), sun_now,
+                     {inputs[DEPTH].Get(), inputs[GBUFFER_A].Get(), inputs[GBUFFER_B].Get(), inputs[GBUFFER_C].Get()}, settings, frame)) {
+    return {};
   }
-  const auto& origin = view[VIEW_WORLD_CAMERA_ORIGIN];
-  const twattila::rt_scene::Camera camera = {
-      .view_projection = view_projection,
-      .inverse_view_projection = talesofarise::frame_generation::Inverse(view_projection),
-      .position = {static_cast<float>(origin[0] / CENTIMETRES), static_cast<float>(origin[1] / CENTIMETRES),
-                   static_cast<float>(origin[2] / CENTIMETRES)},
-  };
-  // The sun's diffuse light with its direction (WriteSun's texel 2, w 1), the paths' sun as twattila/rt_sun.cs_5_0.hlsl
-  // writes it for the Total War games: the light lights the G-buffer's diffuse colour (the guides' base x (1 - metallic)) by
-  // the colour times N.L times the shadow. C38C91CD's default lit: DiffuseColor x 0.318309873 (1 / pi) x LightColor (c4) x
-  // its shadow and N.L, x View 129.y at its output.
-  constexpr float INVERSE_PI = 0.318309873f;
-  const float scale = INVERSE_PI * view[VIEW_LIGHT_OUTPUT_SCALE][1];
-  const auto& color = light[LIGHT_COLOR];
-  twattila::rt_scene::WriteSun(context, {direction[0] / direction_length, direction[1] / direction_length, direction[2] / direction_length},
-                               {color[0] * scale, color[1] * scale, color[2] * scale, 1.f});
-  auto& bridge = twattila::dlaa_bridge::bridge;
-  // Path-Traced Ambient's sky (dlaa_helper/rt_path.hlsli SkyLight, OpenSky): Unreal's sky light toward +x, -x, +y, -y,
-  // +z, -z (GetSkySHDiffuse x SkyLightColor x View 129.y, as skylight00-02 light the diffuse colour) into the sun
-  // texture's texels 3-8, w 1 (texel 4's: the sky's scale, the game's units), texel 6's w 0 (Unreal's up is z: no
-  // stretch of y, which Attila's sun light shaders have). Without it, or without the View's sky rows: zeros (no sky).
-  std::array<std::array<float, 4>, 6> sky = {};
-  if (settings.path_ambient && view_rows == VIEW_ROWS && bridge.rt_sun.texture) {
-    for (size_t side = 0; side < sky.size(); ++side) {
-      std::array<float, 3> normal = {};
-      normal[side / 2] = (side % 2 == 0) ? 1.f : -1.f;
-      const std::array<float, 4> linear = {normal[0], normal[1], normal[2], 1.f};
-      const std::array<float, 4> quadratic = {normal[0] * normal[1], normal[1] * normal[2], normal[2] * normal[2], normal[2] * normal[0]};
-      const float band = (normal[0] * normal[0]) - (normal[1] * normal[1]);
-      for (size_t channel = 0; channel < 3; ++channel) {
-        float irradiance = view[VIEW_SKY_IRRADIANCE + 6][channel] * band;
-        for (size_t component = 0; component < 4; ++component) {
-          irradiance += (view[VIEW_SKY_IRRADIANCE + channel][component] * linear[component])
-                        + (view[VIEW_SKY_IRRADIANCE + 3 + channel][component] * quadratic[component]);
-        }
-        sky[side][channel] = std::max(irradiance, 0.f) * view[VIEW_SKY_LIGHT_COLOR][channel] * view[VIEW_LIGHT_OUTPUT_SCALE][1];
-      }
-      sky[side][3] = (side == 3) ? 0.f : 1.f;
-    }
-  }
-  if (bridge.rt_sun.texture) {
-    const D3D11_BOX sky_texels = {.left = 3, .top = 0, .front = 0, .right = 9, .bottom = 1, .back = 1};
-    context->UpdateSubresource(bridge.rt_sun.texture.Get(), 0, &sky_texels, sky.data(), static_cast<UINT>(sizeof(sky)), 0);
-  }
-  if (guides && bridge.guides) {
-    const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
-    const std::array<UINT, 4> size = {render_size[0], render_size[1], 0, 0};
-    context->UpdateSubresource(state.guides_constants.Get(), 0, nullptr, size.data(), 0, 0);
-    const std::array<ID3D11ShaderResourceView*, 3> gbuffer = {inputs[GBUFFER_A].Get(), inputs[GBUFFER_B].Get(), inputs[GBUFFER_C].Get()};
-    const std::array<ID3D11UnorderedAccessView*, 4> outputs = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
-                                                               bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
-    context->CSSetShader(state.guides.Get(), nullptr, 0);
-    context->CSSetShaderResources(0, static_cast<UINT>(gbuffer.size()), gbuffer.data());
-    context->CSSetUnorderedAccessViews(0, static_cast<UINT>(outputs.size()), outputs.data(), nullptr);
-    context->CSSetConstantBuffers(0, 1, state.guides_constants.GetAddressOf());
-    context->Dispatch((render_size[0] + 7) / 8, (render_size[1] + 7) / 8, 1);
-    const std::unique_lock lock(state.mutex);
-    state.guides_frame = frame;
-  }
-  if (!twattila::rt_scene::Trace(context, inputs[DEPTH].Get(), camera)) return {};
-  state.view_projection = view_projection;
 
   const auto [sun, ambient] = twattila::rt_scene::Visibilities();
   // The traced sun: the light attenuation copied (its shader reads the game's), then scaled.
@@ -603,8 +650,9 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
       state.shadowed_frame = frame;
     }
   }
-  // The traced ambient: in place of the AO where the game made one (not its 1 x 1 default; R8, its one channel the AO).
-  if (settings.ambient_occlusion && ambient != nullptr && inputs[AMBIENT]) {
+  // The traced ambient: in place of the AO where the game made one (not its 1 x 1 default; R8, its one channel the AO),
+  // unless the base pass AO took it this frame (OnBasePassAo).
+  if (settings.ambient_occlusion && !ambient_written && ambient != nullptr && inputs[AMBIENT]) {
     ComPtr<ID3D11Resource> occlusion;
     inputs[AMBIENT]->GetResource(occlusion.GetAddressOf());
     ComPtr<ID3D11Texture2D> occlusion_texture;
@@ -619,6 +667,94 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   }
   if (!settings.light_bounce) return {};
   return {.post_callback = OnSunLit<Context>};
+};
+
+// Unreal's AO passes (GAME_AO_SHADERS) under the rays' AO: the trace at the first of them this frame, from the last
+// frame's sun draw's scene depth and G-buffer when this pass reads the same depth and G-buffer A (t0, t1; Unreal 4.23
+// draws its decals before its AO: the G-buffer is complete), its sun and this frame's View (ps b1). Traced: these passes
+// left out, the base pass AO takes ours (OnBasePassAo). Not: the game's AO, the trace at the sun draw as before.
+constexpr auto OnGameAo = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  twattila::rt_scene::Settings settings;
+  uint64_t frame = 0;
+  std::array<ComPtr<ID3D11ShaderResourceView>, 4> kept;
+  Sun sun;
+  {
+    const std::unique_lock lock(state.mutex);
+    if (!state.settings.ambient_occlusion) return {};
+    if (state.early_frame == state.frame) return {.bypass = true};
+    if (state.early_tried_frame == state.frame || state.kept_frame + 1 != state.frame || !state.kept_inputs[0]) return {};
+    state.early_tried_frame = state.frame;
+    settings = state.settings;
+    frame = state.frame;
+    kept = state.kept_inputs;
+    sun = state.kept_sun;
+  }
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
+  ComPtr<ID3D11DeviceContext1> context1;
+  if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return {};
+  for (UINT slot = 0; slot < 2; ++slot) {
+    ComPtr<ID3D11ShaderResourceView> bound;
+    context->PSGetShaderResources(slot, 1, bound.GetAddressOf());
+    ComPtr<ID3D11Resource> bound_resource;
+    ComPtr<ID3D11Resource> kept_resource;
+    if (bound) bound->GetResource(bound_resource.GetAddressOf());
+    kept[slot]->GetResource(kept_resource.GetAddressOf());
+    if (!bound_resource || bound_resource != kept_resource) return {};
+  }
+  ComPtr<ID3D11Buffer> view_buffer;
+  UINT first_constant = 0;
+  UINT constant_count = 0;
+  context1->PSGetConstantBuffers1(1, 1, view_buffer.GetAddressOf(), &first_constant, &constant_count);
+  std::array<std::array<float, 4>, VIEW_ROWS> view = {};
+  const UINT view_rows = view_buffer ? ReadView(view_buffer.Get(), first_constant, constant_count, &view) : 0;
+  ComPtr<ID3D11Device> device;
+  context->GetDevice(device.GetAddressOf());
+  if (view_rows == 0 || !PrepareDevice(device.Get()) || !talesofarise::upscaling::PrepareBridge(device.Get())
+      || !TraceScene(context1.Get(), std::span(view).first(view_rows), sun, {kept[0].Get(), kept[1].Get(), kept[2].Get(), kept[3].Get()},
+                     settings, frame)) {
+    return {};
+  }
+  const std::unique_lock lock(state.mutex);
+  state.early_frame = frame;
+  return {.bypass = true};
+};
+
+// The base pass AO (BASE_PASS_AO_SHADER) after the trace at Unreal's AO passes (OnGameAo, which left them out): the traced
+// ambient into its AO (t1, R8) first; white without it.
+constexpr auto OnBasePassAo = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  uint64_t frame = 0;
+  {
+    const std::unique_lock lock(state.mutex);
+    if (state.early_frame != state.frame) return {};
+    frame = state.frame;
+  }
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
+  ComPtr<ID3D11DeviceContext1> context1;
+  if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return {};
+  ComPtr<ID3D11ShaderResourceView> occlusion_view;
+  context->PSGetShaderResources(1, 1, occlusion_view.GetAddressOf());
+  if (!occlusion_view) return {};
+  ComPtr<ID3D11Resource> occlusion;
+  occlusion_view->GetResource(occlusion.GetAddressOf());
+  ComPtr<ID3D11Texture2D> occlusion_texture;
+  D3D11_TEXTURE2D_DESC desc = {};
+  if (SUCCEEDED(occlusion.As(&occlusion_texture))) occlusion_texture->GetDesc(&desc);
+  if (desc.Format != DXGI_FORMAT_R8_UNORM || desc.Width < state.render_size[0] || desc.Height < state.render_size[1]) return {};
+  ComPtr<ID3D11Device> device;
+  context->GetDevice(device.GetAddressOf());
+  auto* target = Target(device.Get(), occlusion.Get(), DXGI_FORMAT_R8_UNORM);
+  if (target == nullptr) return {};
+  if (auto* ambient = twattila::rt_scene::Visibilities()[1]; ambient != nullptr) {
+    FullScreen(context1.Get(), target, nullptr, state.ambient.Get(), std::span(&ambient, 1));
+  } else {
+    constexpr std::array<float, 4> WHITE = {1.f, 1.f, 1.f, 1.f};
+    context->ClearRenderTargetView(target, WHITE.data());
+  }
+  const std::unique_lock lock(state.mutex);
+  state.ambient_frame = frame;
+  return {};
 };
 
 // Specular Occlusion without the ray-traced reflections, right after the game's screen-space reflections' draw: their
@@ -752,6 +888,12 @@ inline void Install() {
   twattila::rt_scene::InstallScene({}, HOST);
   renodx::utils::command_action::Register(internal::OnLightRectangle, {.shader_hash = internal::LIGHT_RECTANGLE_SHADER,
                                                                        .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  renodx::utils::command_action::Register(internal::OnBasePassAo, {.shader_hash = internal::BASE_PASS_AO_SHADER,
+                                                                   .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  for (const uint32_t game_ao_shader : internal::GAME_AO_SHADERS) {
+    renodx::utils::command_action::Register(internal::OnGameAo, {.shader_hash = game_ao_shader,
+                                                                 .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   renodx::utils::command_action::Register(internal::OnReflection, {.shader_hash = REFLECTION_SHADER,
                                                                    .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   for (const uint32_t sky_light_shader : internal::SKY_LIGHT_SHADERS) {
@@ -762,6 +904,8 @@ inline void Install() {
 
 inline void Uninstall() {
   renodx::utils::command_action::Unregister(internal::OnLightRectangle);
+  renodx::utils::command_action::Unregister(internal::OnBasePassAo);
+  renodx::utils::command_action::Unregister(internal::OnGameAo);
   renodx::utils::command_action::Unregister(internal::OnReflection);
   renodx::utils::command_action::Unregister(internal::OnSkyLight);
   twattila::rt_scene::UninstallScene();
@@ -770,9 +914,12 @@ inline void Uninstall() {
 // The game's device is going away: the addon's objects on it with it.
 inline void Release(reshade::api::device* device) {
   auto& state = internal::state;
+  // The kept views let go after the lock (the game's texture may go with its last view).
+  std::array<ComPtr<ID3D11ShaderResourceView>, 4> dropped_inputs;
   {
     const std::unique_lock lock(state.mutex);
     state.scene_depth = nullptr;
+    dropped_inputs.swap(state.kept_inputs);
   }
   if (state.device.Get() == reinterpret_cast<ID3D11Device*>(device->get_native())) {
     state.device.Reset();

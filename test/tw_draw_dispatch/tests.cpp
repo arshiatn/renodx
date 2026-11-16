@@ -21,12 +21,15 @@
 //    calls fast::Invalidate(), then the same callbacks again.
 // 10. Gates full: every gate taken, one more SetGate is refused with a warning and its callback stays ungated (gated as
 //     never active while it acts, it would show a difference were the gate kept).
+// 11. Module slots full: the opt-in is refused with a warning and its registration undone; the module, attached to
+//     command_action without the opt-in, sends every command to RunCallbacks until a slot is free.
 // CONTROL: a gate that says "inactive" while its callback acts must show a difference.
 // The fast dispatch must have taken the commands it should (counted), else the comparison proves nothing.
 #include <windows.h>
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <format>
@@ -548,6 +551,47 @@ int main() {
   [&]<size_t... N>(std::index_sequence<N...>) { (fast::ClearGate(FILLER_COMMAND<N>), ...); }(fillers);
   action::Unregister(OVERFLOW_COMMAND);
   CHECK(fast::internal::shared.data->gate_count == fast::internal::MAX_GATES - free_gates);
+
+  // 11. Module slots full: this module detaches its opt-in, fillers take every slot left, the opt-in is refused with one
+  // warning, its registration in the fast dispatch's block undone, the fast dispatch hooks left out; every command
+  // declined (this module is attached to command_action without the opt-in). A free slot: the opt-in again, taken again.
+  fast::Use(DLL_PROCESS_DETACH);
+  auto* fast_data = fast::internal::shared.data;
+  CHECK(fast_data != nullptr);
+  const size_t modules_before = fast_data->module_count;
+  static std::array<uint8_t, fast::internal::MAX_MODULES> filler_modules = {};
+  for (size_t slot = modules_before; slot < fast::internal::MAX_MODULES; ++slot) {
+    fast_data->modules[slot] = reinterpret_cast<renodx::utils::cross_addon::internal::ModuleToken>(&filler_modules[slot]);
+  }
+  fast_data->module_count = fast::internal::MAX_MODULES;
+  const auto slot_warnings = [] {
+    return std::ranges::count_if(warnings, [](const std::string& line) { return line.find("module slots") != std::string::npos; });
+  };
+  const auto slot_warnings_before = slot_warnings();
+  fast::Use(DLL_PROCESS_ATTACH);
+  const bool hooks_left_out = (action::internal::fast_run_callbacks<action::DrawArguments> == nullptr);
+  // This module's record in the fast dispatch's control block (as fast::Use reads command_action's): inactive again.
+  auto fast_slot = renodx::utils::platform::OpenProcessSharedSlot<renodx::utils::cross_addon::internal::ControlBlock<fast::internal::SharedData>>(
+      __uuidof(fast::internal::SharedData), [](auto*&) {});
+  CHECK(fast_slot.value != nullptr && *fast_slot.value != nullptr);
+  const auto* fast_module = renodx::utils::cross_addon::internal::FindModule(**fast_slot.value, renodx::utils::cross_addon::internal::GetModuleToken());
+  const bool registration_undone = (fast_module != nullptr && !fast_module->active && fast_module->registration_count == 0u);
+  ::UnmapViewOfFile(fast_slot.view);
+  ::CloseHandle(fast_slot.handle);
+  const size_t declined_full = fast_declined;
+  for (int i = 0; i < 6; ++i) Command(list, static_cast<Kind>(i % 3));
+  const size_t full_declined = fast_declined - declined_full;
+  fast_data->module_count = modules_before;
+  Hooks(false);
+  fast::Use(DLL_PROCESS_ATTACH);
+  const bool opted_in_again = (fast_data->module_count == modules_before + 1u);
+  const size_t taken_free = fast_taken;
+  for (int i = 0; i < 6; ++i) Command(list, static_cast<Kind>(i % 3));
+  std::printf("11. module slots full: %lld warning, hooks left out %d, registration undone %d, declined %zu of 6; a slot free: opted in %d, taken %zu of 6, differences %zu\n",
+              static_cast<long long>(slot_warnings() - slot_warnings_before), hooks_left_out, registration_undone, full_declined,
+              opted_in_again, fast_taken - taken_free, differences);
+  CHECK(slot_warnings() == slot_warnings_before + 1 && hooks_left_out && registration_undone && full_declined == 6u && opted_in_again
+        && fast_taken - taken_free == 6u && differences == 0u);
 
   std::printf("all:%zu commands, %zu callback lines, fast taken %zu (basic %zu), declined %zu, differences %zu\n", commands, callbacks_seen,
               fast_taken, taken_basic, fast_declined, differences);

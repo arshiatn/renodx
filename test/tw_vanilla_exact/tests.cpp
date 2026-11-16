@@ -15,6 +15,8 @@
 //   full:  bloom textures varied, bright passes at a quarter of their source.
 // Binds (a manifest's ninth field, MakeBinds): the add-on's own inputs bound (a switch, or a texture read in place of one
 // of the game's, which the game then reads at its slot); their check: they change the add-on's output.
+// Inputs (the tenth field, VertexShaderFor): a pixel shader's interpolants given their own values ("TEXCOORD2=0.5,0.5,0,1;
+// ..."), where the generated ones would discard nearly every pixel (a particle's depth behind the scene's).
 // Each shader: EXACT (the full set within TOLERANCE of the game's output or of its 8-bit target's clamp), accepted (R6:
 // the exact set within, the full set not, a shader that adds or makes bloom: the bloom smoothing, accepted by ATN as
 // intended 2026-11-16, its size reported), FAIL.
@@ -727,8 +729,9 @@ static UINT Layers(ID3D11ShaderReflection* pixel) {
 // A vertex shader whose outputs are `pixel`'s inputs (same order, so the same registers): the full-screen triangle's
 // position, the instance as the target's slice, every other input a linear function of the screen's uv (integers
 // constant). `screen_uv` (the manifest's screen_uv=1: a full-screen pass whose texcoord addresses the screen, as its
-// game's vertex shader gives it at 100%): the first float input the screen's uv itself.
-static ComPtr<ID3D11VertexShader> VertexShaderFor(ID3D11ShaderReflection* pixel, bool screen_uv) {
+// game's vertex shader gives it at 100%): the first float input the screen's uv itself. `inputs` (the manifest's
+// "<semantic><index>=x,y,z,w;..."): those float inputs constant at those values.
+static ComPtr<ID3D11VertexShader> VertexShaderFor(ID3D11ShaderReflection* pixel, bool screen_uv, const std::string& inputs) {
   auto elements = Signature(pixel, false);
   std::sort(elements.begin(), elements.end(), [](const auto& a, const auto& b) {
     return std::pair(a.Register, std::countr_zero(static_cast<unsigned>(a.Mask))) < std::pair(b.Register, std::countr_zero(static_cast<unsigned>(b.Mask)));
@@ -762,8 +765,13 @@ static ComPtr<ID3D11VertexShader> VertexShaderFor(ID3D11ShaderReflection* pixel,
                                                                                         : "float";
     const std::string type = base + (width > 1 ? std::to_string(width) : "");
     const std::string swizzle = std::string(".xyzw").substr(0, width + 1);
-    fields += type + " " + field + " : " + element.SemanticName + std::to_string(element.SemanticIndex) + "; ";
-    if (base == "float" && screen_uv) {
+    const std::string semantic = element.SemanticName + std::to_string(element.SemanticIndex);
+    fields += type + " " + field + " : " + semantic + "; ";
+    const size_t given = (";" + inputs).find(";" + semantic + "=");
+    if (base == "float" && given != std::string::npos) {
+      const size_t start = given + semantic.size() + 1;
+      writes += "o." + field + " = float4(" + inputs.substr(start, inputs.find(';', start) - start) + ")" + swizzle + "; ";
+    } else if (base == "float" && screen_uv) {
       writes += "o." + field + " = float4(uv, 0, 1)" + swizzle + "; ";
       screen_uv = false;
     } else if (base == "float") {
@@ -992,6 +1000,7 @@ struct Case {
   float frame_gamma = 0.f;   // the frame's gamma without Gamma Correction: the Gamma Correction check (0: none)
   std::vector<float> modes = {0.f, 1.f, 2.f, 3.f};  // its Rendering Modes, PsychoV35 last
   std::string binds;         // MakeBinds' (none: the add-on's own inputs unbound)
+  std::string inputs;        // VertexShaderFor's given interpolants (none: every one generated)
 };
 
 static std::vector<Case> ReadManifest(const std::filesystem::path& path) {
@@ -1024,6 +1033,7 @@ static std::vector<Case> ReadManifest(const std::filesystem::path& path) {
       while (std::getline(modes, mode, ',')) entry.modes.push_back(std::stof(mode));
     }
     if (fields.size() >= 9) entry.binds = fields[8];
+    if (fields.size() >= 10) entry.inputs = fields[9];
     cases.push_back(entry);
   }
   return cases;
@@ -1093,7 +1103,7 @@ int main(int argc, char** argv) {
     }
     const bool bright_pass = Lower(entry.shader).starts_with("bloom");
     const ComPtr<ID3D11VertexShader> vertex =
-        game.vertex ? ComPtr<ID3D11VertexShader>() : VertexShaderFor(game.reflection.Get(), ScreenUv(entry.settings));
+        game.vertex ? ComPtr<ID3D11VertexShader>() : VertexShaderFor(game.reflection.Get(), ScreenUv(entry.settings), entry.inputs);
     const auto run = [&](const std::vector<uint8_t>& code, const Setup& setup) {
       if (game.vertex) return DrawVertex(code, game, setup);
       return vertex ? DrawPixel(code, game.reflection.Get(), vertex.Get(), setup) : Output{};

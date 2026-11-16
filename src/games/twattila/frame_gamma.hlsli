@@ -5,7 +5,11 @@
 // includes this after SI, HDR and HDR_PEAK), the swap chain proxy's decode: Gamma Correction on, 2.2, the game's gamma
 // 2.0 picture as a 2.2 display shows it (x^1.1), in every Rendering Mode; off, 2.0. Rendering Mode SDR on an SDR display
 // the other way round: off hands the game's picture to the display as it is.
+// C++ includes this file after its shared.h too (SI the addon's shader_injection, HDR its Rendering Mode): the add-on's
+// own passes that decode or encode the frame (an upscaler's prepare and finish) take the same gamma in their constants.
 #define TW_FRAME_GAMMA (((SI.gamma_correction != 0.f) != (SI.swap_chain_encoding == 2.f && HDR < 0.5f)) ? 2.2f : 2.f)
+
+#ifndef __cplusplus
 // The HDR tone mappers' Peak, pre-corrected for the frame's 2.2 decode of their gamma 2.0 output: their top still lands
 // on Peak.
 #define TW_TONE_MAP_PEAK ((TW_FRAME_GAMMA == 2.f) ? HDR_PEAK : pow(HDR_PEAK, 2.f / TW_FRAME_GAMMA))
@@ -52,5 +56,6 @@ float3 HdrToFrame(float3 color, float paper_white) {
   }
   return EncodeFrame(color * paper_white);
 }
+#endif  // __cplusplus
 
 #endif  // SRC_TWATTILA_FRAME_GAMMA_HLSLI_

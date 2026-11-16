@@ -18,6 +18,17 @@ Upscaling must be on below 100%. The Temporal Upscaling-off path is not enabled.
   reader (the sky light and reflections) gets the rays' AO alone. Picking the rays still turns GT-VBAO off (no gate in the
   shaders' constants yet).
 - In game: Ray-Traced AO: corners lighter than before where the game's SSAO was darker than the rays'.
+- **The trace at Unreal's AO passes** (ATN 2026-11-16 23:0x: the base pass AO takes ours, the game's AO skipped): with
+  Ray-Traced AO the trace runs at the first of Unreal's AO passes (setups 73FDC01C / FB43A251, levels 2491478D /
+  A45907DE, final ao00 31A1C68C / ao01 BD381E21) when it reads the last sun draw's scene depth and G-buffer A (t0, t1),
+  from that draw's G-buffer and sun (one frame old: the sun barely moves) and this frame's View (ps b1); those passes are
+  then left out (0.97 ms at 4K DLAA with the rays, run_epic_173834) and the traced ambient goes into the AO right
+  before the base pass AO 192686A0 (the scene colour so far x lerp(1, AO, the static fraction)), its first reader, so
+  the baked light takes ours too (before: the game's SSAO there, ours only from the sun draw on). The G-buffer is
+  complete there (Unreal 4.23 draws its decals before its AO; nothing writes the G-buffer from the AO passes to the sun
+  draw), so no deferred multiply. Not traced there (other AO setting, no sun draw last frame, other textures): the game's
+  AO and the trace at the sun draw as before. tests/base_pass_ao (WARP): the game's 192686A0 after 0x7A1E0D46 gives the
+  scene colour x lerp(1, ours, 0.8) exactly; the control (192686A0 on the game's AO) is caught.
 
 ## Install (release)
 
@@ -999,3 +1010,7 @@ pass ao01 BD381E21 has the same GT-VBAO as ao00). New **No Distance Field AO Und
 r.AOQuality 0 under GT-VBAO, the rays' AO or Path-Traced Ambient (DFAO 0.30 ms; skylight01 / 02 are the sky light
 passes without it). The 8-bit targets before the tone mapper carry no HDR colour (SSAO levels, the screen shadow
 mask, HZB): nothing to unclamp.
+
+ATN 2026-11-16 23:0x ("Let's not stack the game's on top of ours"): the distance field AO is off whenever GT-VBAO,
+the rays' AO or Path-Traced Ambient runs, always (the Experimental row is gone; r.AOQuality the game's value back
+after).

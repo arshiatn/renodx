@@ -18,6 +18,9 @@ void main(uint3 id : SV_DispatchThreadID) {
   ReflectReservoirTexel(id.xy);
 #elif defined(REUSE)
   ReuseTexel(id.xy);
+#elif defined(PATH_PROBE)
+  PathTraceTexel(id.xy);
+  ProbeTexel(id.xy);
 #else
   PathTraceTexel(id.xy);
 #endif
