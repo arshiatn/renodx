@@ -1987,7 +1987,9 @@ void BuildRuntimeData() {
         .label = "Recommended",
         .section = "Presets",
         .group = "preset-line-2",
-        .tooltip = "HDR (PsychoV31), Video AutoHDR 0.20 and Bloom 0.25, the rest at its default.\nPeak, Paper White, UI brightness, Settings Mode and output settings are kept.",
+        .tooltip = "HDR (PsychoV35), Video AutoHDR 0.20, Bloom 0.25 and Sky Debanding Medium; PsychoV30's Highlights 0.85\n"
+                   "and Hue Shift 2. The rest at its default.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output settings are kept.",
         .on_change = []() {
           ApplyPsychoRecommended2500();
         },
@@ -3001,12 +3003,12 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                      "and shadows. The rest at its default.",
     .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), GT-VBAO and GT-VBGI at their Recommended settings.\n"
                        "The rest of this page at its default.",
-    .rays_tooltip = "Ray-traced shadows, reflections and ambient occlusion, path-traced Global Illumination. The rest of this\n"
-                    "page at its default. Needs an upscaler (Anti-Aliasing above).\n"
+    .rays_tooltip = "Ray-traced shadows and reflections, path-traced ambient occlusion and Global Illumination. The rest of\n"
+                    "this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
-                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays in place of the game's and Bend's.\n"
                       "Needs an upscaler.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep the in-game ambient occlusion on.\n"
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
