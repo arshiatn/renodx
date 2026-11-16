@@ -319,7 +319,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction): C:/Users/arshi/.cla ... | coordinator
 - ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart batt ... | coordinator, then a CPU / memory round
 - STRESS REPLAY stress_test_log2 (ATN 00:3x: "Maybe do a cpu/gpu recording there t ... | coordinator (plan phase 1)
-- SSR PATH-TRACED OCCLUSION (ATN 00:1x "if it is more correct, add it as on defaul ... | tw1_ (Attila / Thrones), per-game rounds for the twins
+- (Attila / Thrones DONE tw1_ 6b49f7d47: "Path-Traced Reflection Occlusion" slider ... | tw1_ (Attila / Thrones), per-game rounds for the twins
 - X64 ENGINE MEMORY (ATN 00:1x: end of the week or next week if usage is left): th ... | coordinator, end of week 47 / week 48
 - TW2 / R.U.S.E. NEXT (00:0x): Sharp Ray-Traced Reflections for Rome II (its ssr00 ... | per-game rounds, next shared round
 - RESTIR UPGRADE (ATN 23:1x: debug43 chats + 4 NVIDIA papers): own implementations ... | gpu3_ after the torch row + paths split
@@ -2062,7 +2062,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] STRESS REPLAY stress_test_log2 (ATN 00:3x: "Maybe do a cpu/gpu recording there too Nsight too ... more cpu/gpu
         peformance out of the game's own function?"): bench + WPR (ATN's tasks) + Nsight at 40-50k soldiers, then engine
         patches for the game's hot functions as the earlier CPU rounds. Owner: coordinator (plan phase 1)
-      - [ ] SSR PATH-TRACED OCCLUSION (ATN 00:1x "if it is more correct, add it as on default but an extra slider please"):
+      - [ ] (Attila / Thrones DONE tw1_ 6b49f7d47: "Path-Traced Reflection Occlusion" slider 0..1 default 1: under PT ambient the reflections take the rays' specular-occlusion lobe (t46, 10 m) once (precise, part I: 1 = x t46 exactly, slider 0 = today's bytes, control 0.5); no other game has this shader family; LEFT: the look + cost run (Constantinople courtyard, slider 1 vs 0, Time Each Pass), per-game checks of WH1 ssr00 6B80E35B, WH2 ssr00 7E1CDD0A, WH3 reflection00 89AF6FF5, Shogun 2 ssrresolve00 F87ECE85, README lines (shs2_)) SSR PATH-TRACED OCCLUSION (ATN 00:1x "if it is more correct, add it as on default but an extra slider please"):
         under Path-Traced Ambient the game's reflections (ssr00 / 01 / 06 / 07 family) take the paths' sky occlusion, on by
         default + a strength slider (0..1, default 1); WARP: slider 0 = today's bytes, control; every game with that
         family. Owner: tw1_ (Attila / Thrones), per-game rounds for the twins
