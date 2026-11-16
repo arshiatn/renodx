@@ -26,14 +26,21 @@ Set-Location $out
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REFLECT_RESERVOIR -D OPACITY_MICROMAPS -Fh "$out\rt_reflect_reservoir_omm.h" -Vn RT_REFLECT_RESERVOIR_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 # Builds used only with their switches (the builds above stay as without them): Torch and Fire Light in the Light Bounce
 # (TORCHES_IN_BOUNCE: the reuse with a local light's sample a bounce texel, the local lights' trace that leaves them to it)
-# Lean Reuse (REUSE_LEAN: the reuse's neighbours with fewer fetches), Near Reuse (REUSE_NEAR: fewer, nearer neighbours) and
-# the reflections of one sample a pixel (REFLECT_ONE_SAMPLE: the same picture in fewer registers).
+# Lean Reuse (REUSE_LEAN: the reuse's neighbours with fewer fetches), Near Reuse (REUSE_NEAR: fewer, nearer neighbours),
+# the reflections of one sample a pixel (REFLECT_ONE_SAMPLE) and the paths of one ray a texel (PATH_ONE_SAMPLE): the same
+# picture in fewer registers.
 foreach ($variant in @(@('rt_path', 'TORCHES_IN_BOUNCE REUSE', 'rt_reuse_lights', 'RT_REUSE_LIGHTS'), @('rt_lights', 'TORCHES_IN_BOUNCE', 'rt_lights_bounce', 'RT_LIGHTS_BOUNCE'),
                        @('rt_path', 'REUSE_LEAN REUSE', 'rt_reuse_lean', 'RT_REUSE_LEAN'), @('rt_path', 'REUSE_NEAR REUSE', 'rt_reuse_near', 'RT_REUSE_NEAR'),
-                       @('rt_path', 'REFLECT_ONE_SAMPLE REFLECT', 'rt_reflect_one', 'RT_REFLECT_ONE'))) {
+                       @('rt_path', 'REFLECT_ONE_SAMPLE REFLECT', 'rt_reflect_one', 'RT_REFLECT_ONE'), @('rt_path', 'PATH_ONE_SAMPLE', 'rt_path_one', 'RT_PATH_ONE'))) {
   $defines = $variant[1].Split(' ') | ForEach-Object { '-D', $_ }
   & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 @defines -Fh "$out\$($variant[2]).h" -Vn $variant[3] "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
   & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 @defines -D OPACITY_MICROMAPS -Fh "$out\$($variant[2])_omm.h" -Vn "$($variant[3])_OMM" "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
+}
+# RENODX_TW_PATH_PROBE_BUILD set: the paths' probe build too (rt_path.hlsli ProbeTexel, tests only; a player's helper has none).
+Remove-Item "$out\rt_path_probe.h", "$out\rt_path_probe_omm.h" -ErrorAction SilentlyContinue
+if ($env:RENODX_TW_PATH_PROBE_BUILD) {
+  & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D PATH_PROBE -Fh "$out\rt_path_probe.h" -Vn RT_PATH_PROBE "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+  & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D PATH_PROBE -D OPACITY_MICROMAPS -Fh "$out\rt_path_probe_omm.h" -Vn RT_PATH_PROBE_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 }
 & "$root\bin\dxc.exe" -nologo -T cs_6_0 -E main -O3 -Fh "$out\fg_ui.h" -Vn FG_UI "$PSScriptRoot\fg_ui.cs_6_0.hlsl"
 & "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -Fh "$out\rt_path_ser.h" -Vn RT_PATH_SER "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"

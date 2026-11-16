@@ -144,7 +144,7 @@ struct Settings {
   bool sway_off_screen = true;
   // Fast Leaf Shadows (Experimental, with Leaf Micromaps): micromapped leaves without alpha tests (2-state); Grass Shadow
   // Range (Experimental): pixels farther than these metres trace without grass (0: every pixel with it); Grass Ray Tracing
-  // Range (Experimental): placed grass farther than these metres is out of the scene (0: all of it in).
+  // Range (Experimental): grass farther than these metres is out of the scene (0: all of it in).
   bool fast_leaves = false;
   float grass_shadow_range = 0.f;
   float grass_range = 0.f;
@@ -900,6 +900,9 @@ struct Runtime {
   uint64_t new_static_time = 0;
   // The helper's status logged this long after the settings changed (each effect's GPU time as they are tried).
   uint64_t status_log_time = 0;
+  // A trace point asked for a trace this session: the status line's reason while the helper has written no status yet
+  // (R.U.S.E.'s line ended at ": " when its trace point never ran, 2026-11-16).
+  bool trace_asked = false;
   std::unordered_map<uint32_t, std::vector<std::string>> new_static_examples;  // the last three each
   std::unordered_map<uint32_t, uint32_t> dynamic_buffers;  // draws captured every frame for their dynamic vertex buffers
   // The placed draws logged per vertex shader (their instancing and vertex buffers, the first two each; ATN 2026-10-28:
@@ -927,6 +930,9 @@ struct Runtime {
   uint32_t helper_left_out = 0;
   std::unordered_map<uint64_t, uint32_t> key_shaders;
   std::unordered_map<uint32_t, uint32_t> left_out_shaders;
+  // Without Debug Log the first 10 s with garbage are still said once a start: a scene in other units than metres
+  // (R.U.S.E.'s centimetres) went out whole without a sign.
+  bool left_out_said = false;
   // Under Ray-Traced Shadows Only, one frame every 10 s: the pixel shaders reading the game's sun shadow map that are
   // not the patched sun draws (forward-lit grass and the like: lit everywhere, the map has no casters).
   uint64_t readers_frame = UINT64_MAX;
@@ -1507,8 +1513,8 @@ inline void FlushBatch(ID3D11DeviceContext* native) {
 }
 
 // After a scene draw of the main view: a draw not yet in the scene is drawn once more into the stream-output buffer.
-// A cascade's draw before it (OnSceneDraw): it needs nothing the draw does, and a later callback's skip of that draw
-// would drop a post callback.
+// A cascade's draw before it (OnSceneDraw), and a host's (host.scene_draw: OnAnyDraw): it needs nothing the draw does, and
+// a later callback's skip of that draw would drop a post callback.
 template <typename Context>
 void Capture(Context& command, const SceneShader& shader) {
   if (frame_trace::Tracing()) {
@@ -2930,6 +2936,7 @@ inline void NotTraced(const std::string& reason) {
 inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, const Camera& camera) {
   auto& objects = runtime.objects;
   if (!Enabled() || runtime.traced_frame == runtime.frame) return false;
+  runtime.trace_asked = true;
   const CpuTime timed(runtime.timed ? &runtime.costs.trace_ticks : nullptr);
   if (!dlaa_bridge::bridge.ray_tracing || !objects.constants) {
     NotTraced(dlaa_bridge::bridge.ray_tracing ? "its objects were not made" : "DLAA's bridge has no ray tracing textures");
@@ -3358,6 +3365,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
 // The same with the camera in `camera_buffer` (host.camera); false: not the main view's.
 inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, ID3D11Buffer* camera_buffer) {
   if (!Enabled() || runtime.traced_frame == runtime.frame) return false;
+  runtime.trace_asked = true;
   Camera camera;
   if (depth == nullptr || camera_buffer == nullptr || !host.camera(camera_buffer, &camera)) {
     NotTraced(depth == nullptr ? "no depth bound at its pass" : "no main camera in its pass's camera buffer");
@@ -4054,6 +4062,13 @@ inline void Update(const Settings& settings) {
     }
     constexpr std::array<const char*, 5> TESTS = {"", " (scene test: the terrain alone)", " (scene test: objects and trees alone)",
                                                   " (scene test: no leaves)", " (scene test: none kept off-screen)"};
+    // Before the helper's first status, why there is none (a missing status line is a finding: no trace point, or every
+    // request refused).
+    std::string status = dlaa_bridge::TraceStatus();
+    if (status.empty()) {
+      status = (runtime.trace_asked ? "no status from the helper yet (see the \"no trace this frame\" lines)"
+                                    : "no trace asked yet (the pass that asks for it has not run)");
+    }
     // The Light Bounce's rays and bounces too: its GPU time follows them (ATN's 2026-11-13 log: 19-40 ms for a minute
     // between two settings changes, 5-7 ms around them, the rays not in the log).
     renodx::utils::log::i("[Total War] Ray tracing with ", (effects.empty() ? std::string("nothing") : effects),
@@ -4061,11 +4076,11 @@ inline void Update(const Settings& settings) {
                           settings.light_bounce ? std::format(" (Light Bounce {} rays, {} bounces)", settings.light_bounce_rays,
                                                               settings.path_tracing ? settings.path_bounces : 0u)
                                                 : std::string(),
-                          ": ", dlaa_bridge::TraceStatus());
+                          ": ", status);
   }
   if (const uint64_t now = GetTickCount64(); now >= runtime.new_static_time + 10000) {
     if (!settings.debug_log) {
-      runtime.left_out_shaders.clear();
+      if (runtime.left_out_said) runtime.left_out_shaders.clear();
       runtime.shadow_readers.clear();
     }
     if (!runtime.new_static.empty()) {
@@ -4082,10 +4097,20 @@ inline void Update(const Settings& settings) {
       runtime.new_static.clear();
       runtime.new_static_examples.clear();
     }
-    for (const auto& [hash, triangles] : runtime.left_out_shaders) {
-      renodx::utils::log::w(std::format("[Total War] Ray tracing: {} garbage triangles (far off or stretched) left out in 10 s, the last in "
-                                        "a capture of vertex shader {:08X}.",
-                                        triangles, hash));
+    if (!runtime.left_out_shaders.empty()) {
+      uint32_t total = 0;
+      std::string shaders;
+      for (const auto& [hash, triangles] : runtime.left_out_shaders) {
+        total += triangles;
+        shaders += std::format("{}{:08X} ({})", (shaders.empty() ? "" : ", "), hash, triangles);
+      }
+      // The limits: dlaa_helper/rt_scene_data.hlsli MAX_COORDINATE, MAX_PART, MAX_EDGE.
+      renodx::utils::log::w(std::format("[Total War] Ray tracing: {} garbage triangles left out in 10 s (a coordinate past 200,000 m, a part's "
+                                        "edge past 200 m, another's past 5,000 m: a scene in other units?), by the vertex shader of each "
+                                        "trace's last: {}{}",
+                                        total, shaders,
+                                        settings.debug_log ? "." : "; said once without Debug Log, an example in renodx-tw-dlaa64.log."));
+      runtime.left_out_said = true;
     }
     runtime.left_out_shaders.clear();
     runtime.key_shaders.clear();
@@ -4408,16 +4433,19 @@ inline bool SkinnedVertexShader(uint32_t hash) {
   return found != internal::skinned_code.end() && found->second;
 }
 
-// Any draw (host.scene_draw tells the scene's apart).
-constexpr auto OnAnyDraw = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+// Any draw (host.scene_draw tells the scene's apart), captured before it as a cascade's draw is (OnSceneDraw): a post
+// callback has command_action draw it again itself, every draw of a traced frame, and such a draw reaches the GPU before
+// the draw events after command_action's run (a host's skip of it, a fix of its targets: Ryse's back_buffer_fix) and
+// whatever they return.
+constexpr auto OnAnyDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
-  if constexpr (!std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
-                && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
-    return {};
-  } else {
-    if (!internal::active.load(std::memory_order_relaxed)) return {};
-    return {.post_callback = internal::CaptureAnyDraw<Context>};
+  if constexpr (std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
+                || std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
+    if (internal::active.load(std::memory_order_relaxed)) {
+      internal::CaptureAnyDraw<Context>(command, nullptr);
+    }
   }
+  return {};
 };
 
 // A host replaying another API's draws on its own D3D11 device (R.U.S.E.'s D3D9 scene): no ReShade draw events, so no
