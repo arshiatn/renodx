@@ -1531,7 +1531,7 @@ bool graphics_hooks_installed = false;
 // pass (whose replacement is the game's code only).
 constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
     {.shader_hash = 0x1ED22F9C, .bitmask = __ao_bitmask01, .upsample = __ao_upsample01, .resolve = __ao_resolve01,
-     .denoise = __ao_denoise01},  // ssao01
+     .denoise = __ao_denoise01, .blurs = {0x41894C1F, 0x7DDD84A3}},  // ssao01, its blurs (the shared round's census)
 }};
 
 // Its camera constants at their places in Attila's camera_VS_PS (frame_history::AttilaCamera) for the
