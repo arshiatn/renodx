@@ -77,7 +77,7 @@ creates every shader of a loaded shader map at load.
 - LUT builders: 5 CombineLUTs (all added). `0x74466640` is a different 3D-LUT builder (`cb0[11]`, output-device
   switches), probably UE's HDR display-mapping LUT for UE's own HDR output (off in this game).
 - Videos: 25 CriWare shaders (4 opaque added, see above; 1 CS).
-- Post process / game passes, stock: the motion blur filters above (added in v14), Gaussian blur chain (~150), Catmull-Rom resamples (44; TAA / upscale), SMAA (edges `0xCF6F0A2A`, weights
+- Post process / game passes, stock: the motion blur filters above (added in v14), Gaussian blur chain (~150), Catmull-Rom resamples (44; TAA / upscale), SMAA (edges `0xCF6F0A2A`: in the G1 / G2 traces it draws the half-size translucency's edge mask before `0xC7A2979E`'s composite, not the AA; weights
   `0xAD8DD538`, blending `0xE462919A`), radial blur `0xA5AFEAB4` (light shafts?), bloom/glare threshold with temporal
   accumulation `0x2EBD060B`, `0xDD57C93A` (samples a frame and decodes gamma 2.2: menu background capture?),
   stencil-tagged outlines `0x77D287B7`, contact shadows `0x95802ADA`, depth-aware blurs `0x66DC643D` /

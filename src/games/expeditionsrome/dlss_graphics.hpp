@@ -410,8 +410,14 @@ constexpr size_t SUN_SHADOW_RESOLUTION = SettingIndex(L"r.Shadow.MaxCSMResolutio
 constexpr size_t VOLUMETRIC_FOG = SettingIndex(L"r.VolumetricFog");
 // Unreal's own screen-space GI: 0 while ours replaces it (one GI method, ATN 2026-11-16).
 constexpr size_t SSGI_QUALITY = SettingIndex(L"r.SSGI.Quality");
+// Unreal's AO levels: 1 under GT-VBAO (the lower levels, 0.57 ms at 4K, feed only the levels' result GT-VBAO
+// replaces; the one-level pass ao01 has the same GT-VBAO as ao00).
+constexpr size_t AO_LEVELS = SettingIndex(L"r.AmbientOcclusionLevels");
+// Unreal's distance field AO (the sky light's large-scale occlusion, 0.30 ms at 4K): 0 under ours with its row.
+constexpr size_t AO_QUALITY = SettingIndex(L"r.AOQuality");
 static_assert(SUN_SHADOW_CASCADES < SUN_SHADOW_RESOLUTION && SUN_SHADOW_RESOLUTION < GRAPHICS_SETTINGS.size());
-static_assert(VOLUMETRIC_FOG < GRAPHICS_SETTINGS.size() && SSGI_QUALITY < GRAPHICS_SETTINGS.size());
+static_assert(VOLUMETRIC_FOG < GRAPHICS_SETTINGS.size() && SSGI_QUALITY < GRAPHICS_SETTINGS.size() && AO_LEVELS < GRAPHICS_SETTINGS.size()
+              && AO_QUALITY < GRAPHICS_SETTINGS.size());
 // "Effects at output resolution" (on by default, as Tales): while DLSS renders below 100%, settings sized in render
 // pixels follow the render scale s (render / output), so these effects keep the detail they have at 100%: cell sizes
 // and resolution divisors x s (nearest, at least 1), shadow texels per pixel / s (Unreal sizes object, spot, point and
@@ -457,10 +463,14 @@ static twattila::rt_scene::Sliders rt_sliders;
 static twattila::feature_settings::SssSliders screen_space_shadows_rows;
 static talesofarise::ue_light_bounce::Rows gi_rows;
 static const float* ao_thickness_row = nullptr;
+// GT-VBAO's row (the HDR part's Ambient Occlusion) and the shader constant it reaches (OnPresent: one AO method).
+static const float* ao_method_row = nullptr;
+static float* ao_method_constant = nullptr;
 static float live_scale_row = 1.f;
 static float replace_taa_row = 1.f;
 static float contact_shadows_row = 0.f;  // percent of the screen
 static float shadow_cascades_row = 0.f;  // Two Shadow Cascades Under Rays
+static float distance_field_ao_row = 0.f;  // No Distance Field AO Under Ours
 
 // UE 4.23's View rows the upscalers and frame generation read (Tales' 4.21 rows + 4: ClipToWorld came before them):
 // TranslatedWorldToView, ViewToClipNoAA, the camera's axes, TranslatedWorldCameraOrigin, PreViewTranslation.
@@ -1271,6 +1281,19 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
       }
     }
     ray_tracing_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, gi_rows.light_bounce_strength);
+    // Path-Traced Ambient (SettingsOf's needs a Total War ambient cube): with the paths, Unreal's sky light into their sky
+    // (ray_tracing.hpp OnLightRectangle), its diffuse part out of the sky light passes once they bring it (OnSkyLight);
+    // the ray-traced AO off (one AO method: the paths' blocked rays are the occlusion).
+    ray_tracing_settings.path_ambient = rt_sliders.path_ambient != 0.f && ray_tracing_settings.path_tracing;
+    if (ray_tracing_settings.path_ambient) {
+      ray_tracing_settings.ambient_occlusion = false;
+    }
+    // One AO method: no GT-VBAO under the rays' AO or Path-Traced Ambient (the RT/PT preset's own ssao_mode 0, kept
+    // when the rows are set by hand).
+    if (ao_method_row != nullptr && ao_method_constant != nullptr) {
+      const bool rays_ambient = ray_tracing_installed && (ray_tracing_settings.ambient_occlusion || ray_tracing_settings.path_ambient);
+      *ao_method_constant = rays_ambient ? 0.f : *ao_method_row;
+    }
     ray_traced_bounce_strength = gi_rows.light_bounce_strength;
     // What the bridge serves this frame (upscaling.hpp); Ray Reconstruction with a ray-traced effect only.
     const auto& rays = ray_tracing_settings;
@@ -1521,6 +1544,9 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
   // the last half second (the rays shadow the rest; the game's count back after).
   const bool two_cascades = shadow_cascades_row != 0.f && ray_tracing_installed && ray_tracing_settings.sun_shadows
                             && expeditionsrome::dlss::ray_tracing::TracedRecently(expeditionsrome::dlss::ray_tracing::Traced::SUN_SHADOWS);
+  // Our AO (GT-VBAO's constant as OnPresent set it above, the rays' AO or Path-Traced Ambient) in place of Unreal's.
+  const bool gtvbao = ao_method_constant != nullptr && *ao_method_constant >= 1.f;
+  const bool our_ao = gtvbao || (ray_tracing_installed && (ray_tracing_settings.ambient_occlusion || ray_tracing_settings.path_ambient));
   bool wrote = false;
   const bool upscaling = live.controlling && render_percentage > 0.f && render_percentage < 100.f;
   const float render_scale = (upscaling ? render_percentage / 100.f : 1.f);
@@ -1531,7 +1557,8 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     const float preset_value = (entry.choice == 0 ? KEEP : entry.choices[entry.choice - 1]);
     const OutputScaling scaling = ((effects_at_output && upscaling) ? OUTPUT_SCALING[index] : OutputScaling::NONE);
     const float current = entry.cvar.Get();
-    const bool replaced = (index == SSGI_QUALITY && our_gi) || (index == SUN_SHADOW_CASCADES && two_cascades);
+    const bool replaced = (index == SSGI_QUALITY && our_gi) || (index == SUN_SHADOW_CASCADES && two_cascades)
+                          || (index == AO_LEVELS && gtvbao) || (index == AO_QUALITY && distance_field_ao_row != 0.f && our_ao);
     if (std::isnan(preset_value) && scaling == OutputScaling::NONE && !replaced) {
       if (entry.controlling) {
         entry.cvar.Set(entry.game_value);
@@ -1545,8 +1572,12 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     float desired = (std::isnan(preset_value) ? entry.game_value : preset_value);
     if (setting.better == Better::HIGHER) desired = std::max(entry.game_value, desired);
     if (setting.better == Better::LOWER) desired = std::min(entry.game_value, desired);
-    if (replaced) {
-      desired = (index == SUN_SHADOW_CASCADES ? std::min(desired, 2.f) : 0.f);
+    if (index == SUN_SHADOW_CASCADES && replaced) {
+      desired = std::min(desired, 2.f);
+    } else if (index == AO_LEVELS && replaced) {
+      desired = std::min(desired, 1.f);
+    } else if (replaced) {
+      desired = 0.f;
     }
     switch (scaling) {
       case OutputScaling::CELL_OR_DIVISOR:
@@ -1749,7 +1780,9 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game ambient occlusion on.\n"
                   "Game's SSAO: the original. GT-VBAO: contact shading that lets light pass behind thin things (grass,\n"
                   "poles, characters) instead of dark halos.\n"
-                  "RTAO: from rays through the scene, with the game's. Needs an upscaler. Restart the game after turning it on.",
+                  "RTAO: from rays through the scene, in place of the game's. Path-Traced: with Path Tracing Global\n"
+                  "Illumination, the sky's light from the paths in place of the game's. Needs an upscaler. Restart the game\n"
+                  "after turning it on.",
     .gi_tooltip_end = "\nRestart the game after turning the last two on.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, volumetric fog, light shafts, skin and the shadows of characters,\n"
                                  "objects and lamps keep the detail they have at 100%. Looks better, can cost some performance.",
@@ -1779,9 +1812,10 @@ inline std::vector<std::string> EngineSections() {
 
 // The page's rows (HDR part's ConfigureAddon, after its own rows): Graphics 1 of 2 (graphics_page.hpp with
 // feature_settings::AppendAa's and rt_scene::AppendSettings' rows, then TOOLS_SECTION), Graphics 2 of 2
-// (GRAPHICS_SETTINGS, EngineSections); `ssao_mode` and `ssao_thickness` GT-VBAO's (the HDR part's). After
-// feature_settings::SetTints.
-inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings, float* ssao_mode, const float* ssao_thickness) {
+// (GRAPHICS_SETTINGS, EngineSections); `ssao_mode` and `ssao_thickness` GT-VBAO's rows (the HDR part's), `ssao_mode_constant`
+// the shader constant OnPresent sets from the first. After feature_settings::SetTints.
+inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings, float* ssao_mode, const float* ssao_thickness,
+                       float* ssao_mode_constant) {
   using renodx::utils::settings::Setting;
   using renodx::utils::settings::SettingValueType;
   const auto upscaling = [] { return twattila::feature_settings::Upscaling(aa_sliders); };
@@ -1820,6 +1854,18 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
                  "the rest. Fewer shadow draws; shadows of things off screen reach less far.",
       .labels = {"Off", "On"},
   });
+  // Unreal's distance field AO off while ours runs (one AO method; a look change: Experimental).
+  settings->push_back(new Setting{
+      .key = "NoDistanceFieldAO",
+      .binding = &distance_field_ao_row,
+      .value_type = SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "No Distance Field AO Under Ours (Experimental)",
+      .section = "Graphics (Experimental)",
+      .tooltip = "With GT-VBAO, ray-traced AO or Path-Traced Ambient: the game's large-scale ambient occlusion (distance\n"
+                 "fields) off, ours alone. Lighter under large overhangs; a little faster.",
+      .labels = {"Off", "On"},
+  });
   // One frame's GPU time of every pass (twattila/pass_timing.hpp, the add-on's first draw hooks).
   settings->push_back(new Setting{
       .value_type = SettingValueType::BUTTON,
@@ -1831,6 +1877,8 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
   // GT-VBGI's rows (Global Illumination; its Strength also the rays' bounce light's), the screen-space search's off
   // under the rays; Bend's rows without those of the Total War games' own sun shaders.
   ao_thickness_row = ssao_thickness;
+  ao_method_row = ssao_mode;
+  ao_method_constant = ssao_mode_constant;
   talesofarise::ue_light_bounce::AppendRows(settings, &gi_rows, [] { return rt_sliders.light_bounce != 0.f; });
   twattila::feature_settings::AppendSss(settings, &screen_space_shadows_rows);
   erase({"ScreenSpaceShadowsDistanceSoftness", "ScreenSpaceShadowsDebugView"});
@@ -1853,7 +1901,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
                                             .aa_methods = AA_METHODS,
                                             .upscaler_status = &UpscalerStatus,
                                             .has_foliage_light = false,
-                                            .has_path_ambient = false,
+                                            .path_ambient_tested = false,
                                             .rays_replace_ao = false,
                                             .rays_multiply_maps = true,
                                             .rays_tested = false,

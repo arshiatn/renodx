@@ -29,7 +29,8 @@ if (-not $Fxc) {
 # Vanilla ones; ShaderSettings (by shader name): more of them for those shaders; Registers (by shader name): constants
 # where the game's bytes carry no names (tests.cpp, GameConstants); FrameGamma: the frame's gamma whose 2.2 decode Gamma
 # Correction gives in every Rendering Mode (tests.cpp's Gamma Correction check), none for NoGamma's shaders; Modes: those
-# Rendering Modes where not 0 - 3.
+# Rendering Modes where not 0 - 3; Binds: the add-on's own inputs bound (tests.cpp MakeBinds: t<slot>=<value> a switch,
+# t<add-on slot>>t<game slot> read in place of the game's input, which the game then reads).
 # Attila and Thrones (the same table): every replaced shader the generic inputs exercise; ssr02-07 have tw_thrones_ssr,
 # vfx and battlefog tw_attila_builds, dof tw_dof_blurs. Left out: pointlight00-39 (their light's place and reach are vertex
 # inputs, so no texel is lit here: the control is never caught; their WARP proof is tools/tw/testbin/g4_point_shadows),
@@ -128,7 +129,24 @@ $table = [ordered]@{
   # floor (these inputs' AO stays above 0.3: the floor itself is not exercised here).
   'TalesGIOpenSky' = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^lighting\d+_'
                         Settings = 'filter_scale=1,sun_shadow_distance=1,shadow_edge_color=1,sun_haze=1,gtvbgi=2' }
+  # The rays' AO and Path-Traced Ambient (t41: one texture read in place of Bandai's AO, t5) against the game's bytes
+  # reading that texture as its AO: Bandai's AO input replaced, nothing else.
+  'TalesLightingRays' = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^lighting\d+_'; Binds = 't41>t5'
+                           Settings = 'filter_scale=1,sun_shadow_distance=1,shadow_edge_color=1,sun_haze=1' }
+  # Bandai's ten toon lighting passes (toon00-09): our GI off and our AO unbound, the game's bytes; with t41 in place of
+  # Bandai's AO (t6), the game's bytes reading that texture as its AO.
+  'TalesToon'   = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^toon\d+_' }
+  'TalesToonRays' = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^toon\d+_'; Binds = 't41>t6' }
   'Expeditions' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^(t|lut)\d+_' }
+  # Expeditions' sky light passes (skylight00-02): Path-Traced Ambient's switch (t120) unbound, the game's bytes. The View's
+  # BufferSizeAndInvSize (cb1[127]) the test's frame: skylight00's distance field AO upsample divides by its half (noise: NaN).
+  'ExpeditionsSky' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^skylight\d+_'
+                        Registers = @{ '^skylight\d+_' = 'cb1[127]=64,48,0.015625,0.020833334' } }
+  # The switch bound: against the game's bytes with its diffuse sky light at 0 (SkyIrradianceEnvironmentMap c163-c169 and
+  # the occlusion tint cb0[1].xyz 0 in both): everything else (specular, subsurface sky) the game's. Binds' check: with
+  # the game's own sky the switch changes the output (the diffuse sky light goes).
+  'ExpeditionsSkyPaths' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^skylight\d+_'; Binds = 't120=1'
+                             Registers = @{ '^skylight\d+_' = 'cb1[163]=0,0,0,0;cb1[164]=0,0,0,0;cb1[165]=0,0,0,0;cb1[166]=0,0,0,0;cb1[167]=0,0,0,0;cb1[168]=0,0,0,0;cb1[169]=0,0,0,0;cb0[1]=0,0,0,0.5;cb1[127]=64,48,0.015625,0.020833334' } }
 }
 
 # The build's flags (CMakeLists.txt): fxc with the target's major / minor, NDEBUG, /Gec, /O3.
@@ -167,7 +185,7 @@ foreach ($game in $table.Keys) {
     $registers = if ($entry.Registers) { ($entry.Registers.Keys | Where-Object { $file.Name -match $_ } | ForEach-Object { $entry.Registers[$_] }) -join ';' } else { '' }
     $settings = @($entry.Settings) + @(if ($entry.ShaderSettings) { $entry.ShaderSettings.Keys | Where-Object { $file.Name -match $_ } | ForEach-Object { $entry.ShaderSettings[$_] } })
     $frameGamma = if ($entry.NoGamma -and $file.Name -match $entry.NoGamma) { '' } else { $entry.FrameGamma }
-    $manifest += "$game`t$($file.BaseName -replace '\.\w+_\d_\d$', '')`t$gameCso`t$addonCso`t$(($settings | Where-Object { $_ }) -join ',')`t$registers`t$frameGamma`t$($entry.Modes)"
+    $manifest += "$game`t$($file.BaseName -replace '\.\w+_\d_\d$', '')`t$gameCso`t$addonCso`t$(($settings | Where-Object { $_ }) -join ',')`t$registers`t$frameGamma`t$($entry.Modes)`t$($entry.Binds)"
   }
 }
 $manifestPath = Join-Path $testBuild 'manifest.tsv'

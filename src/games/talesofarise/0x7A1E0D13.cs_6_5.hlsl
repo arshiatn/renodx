@@ -85,14 +85,19 @@ void main(uint3 id : SV_DispatchThreadID) {
 
   float ambient_visibility = 1.f;
   if ((flags & AMBIENT_OCCLUSION) != 0u && ambient_rays != 0u) {
-    uint escaped = 0u;
+    // Each ray's share: 1, or with Path-Traced Ambient the game's sky light toward it (SkyLight): the share of the sky's
+    // light that escapes, the game's ambient at the pixel taken by it in place of its AO.
+    float escaped = 0.f;
+    float weights = 0.f;
     [loop]
     for (uint ray = 0; ray < ambient_rays; ++ray) {
       const float3 direction = CosineDirection(normal, Random(uint3(id.xy, frame * 16u + ray * 2u)),
                                                Random(uint3(id.xy, frame * 16u + ray * 2u + 1u)));
-      if (!Occluded(origin, direction, ambient_range, EVERYTHING)) ++escaped;
+      const float weight = ((flags & SKY_WEIGHTED) != 0u) ? SkyLight(direction) : 1.f;
+      weights += weight;
+      if (!Occluded(origin, direction, ambient_range, EVERYTHING)) escaped += weight;
     }
-    ambient_visibility = (float)escaped / ambient_rays;
+    ambient_visibility = (weights > 0.f) ? escaped / weights : 1.f;
   }
   ambient[id.xy] = ambient_visibility;
 

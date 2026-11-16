@@ -13,6 +13,8 @@
 //   exact: bloom textures flat, bright passes (bloom*) at their source's size: the bloom smoothing (audit R6) is exact
 //          by construction there;
 //   full:  bloom textures varied, bright passes at a quarter of their source.
+// Binds (a manifest's ninth field, MakeBinds): the add-on's own inputs bound (a switch, or a texture read in place of one
+// of the game's, which the game then reads at its slot); their check: they change the add-on's output.
 // Each shader: EXACT (the full set within TOLERANCE of the game's output or of its 8-bit target's clamp), accepted (R6:
 // the exact set within, the full set not, a shader that adds or makes bloom: the bloom smoothing, accepted by ATN as
 // intended 2026-11-16, its size reported), FAIL.
@@ -637,6 +639,60 @@ static Setup MakeSetup(const Shader& game, const Shader& addon, const Settings& 
   return setup;
 }
 
+// The manifest's binds ("t120=1;t41>t5"), for an add-on input the game has none of: `t<slot>=<value>` a WIDTH x HEIGHT
+// float texture of that value at the add-on's slot (a switch); `t<addon>>t<game>` one of BIND_VALUE at the add-on's slot
+// and in the game's slot's place, so the add-on's read in place of the game's input is checked against the game reading
+// the same. Uniform: the interpolants here are not texel centres (VertexShaderFor), so a varied texture would compare
+// an add-on's Load with the game's filtered Sample; the scene's own input there is varied, so the bind still acts.
+constexpr float BIND_VALUE = 0.37f;
+struct Binds {
+  std::vector<std::pair<UINT, ComPtr<ID3D11ShaderResourceView>>> addon;  // added to the add-on's bindings
+  std::vector<std::pair<UINT, ComPtr<ID3D11ShaderResourceView>>> game;   // in place of the game's at these slots
+};
+
+static ComPtr<ID3D11ShaderResourceView> FloatTexture(float value) {
+  const std::vector<float> texels(size_t{WIDTH} * HEIGHT * 4, value);
+  const D3D11_TEXTURE2D_DESC desc = {WIDTH, HEIGHT, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0};
+  const D3D11_SUBRESOURCE_DATA init = {texels.data(), WIDTH * 16, 0};
+  ComPtr<ID3D11Texture2D> texture;
+  REQUIRE(SUCCEEDED(device->CreateTexture2D(&desc, &init, &texture)));
+  ComPtr<ID3D11ShaderResourceView> view;
+  REQUIRE(SUCCEEDED(device->CreateShaderResourceView(texture.Get(), nullptr, &view)));
+  return view;
+}
+
+static Binds MakeBinds(const std::string& text) {
+  Binds binds;
+  std::stringstream entries(text);
+  for (std::string entry; std::getline(entries, entry, ';');) {
+    if (entry.size() < 3 || entry[0] != 't') continue;
+    const size_t alias = entry.find(">t");
+    const size_t equals = entry.find('=');
+    if (alias != std::string::npos) {
+      const auto view = FloatTexture(BIND_VALUE);
+      binds.addon.emplace_back(static_cast<UINT>(std::stoul(entry.substr(1, alias - 1))), view);
+      binds.game.emplace_back(static_cast<UINT>(std::stoul(entry.substr(alias + 2))), view);
+    } else if (equals != std::string::npos) {
+      binds.addon.emplace_back(static_cast<UINT>(std::stoul(entry.substr(1, equals - 1))), FloatTexture(std::stof(entry.substr(equals + 1))));
+    }
+  }
+  return binds;
+}
+
+// `setup` with the binds' textures: the add-on's added, the game's in place of its own at those slots.
+static Setup WithBinds(Setup setup, const Binds& binds, bool for_game) {
+  if (for_game) {
+    for (const auto& [slot, view] : binds.game) {
+      for (auto& [bound_slot, bound] : setup.views) {
+        if (bound_slot == slot) bound = view;
+      }
+    }
+  } else {
+    setup.views.insert(setup.views.end(), binds.addon.begin(), binds.addon.end());
+  }
+  return setup;
+}
+
 static void Bind(const Setup& setup, bool vertex_stage) {
   for (const auto& [slot, view] : setup.views) {
     if (vertex_stage) {
@@ -935,6 +991,7 @@ struct Case {
   std::string registers;     // GameConstants' registers
   float frame_gamma = 0.f;   // the frame's gamma without Gamma Correction: the Gamma Correction check (0: none)
   std::vector<float> modes = {0.f, 1.f, 2.f, 3.f};  // its Rendering Modes, PsychoV35 last
+  std::string binds;         // MakeBinds' (none: the add-on's own inputs unbound)
 };
 
 static std::vector<Case> ReadManifest(const std::filesystem::path& path) {
@@ -966,6 +1023,7 @@ static std::vector<Case> ReadManifest(const std::filesystem::path& path) {
       std::string mode;
       while (std::getline(modes, mode, ',')) entry.modes.push_back(std::stof(mode));
     }
+    if (fields.size() >= 9) entry.binds = fields[8];
     cases.push_back(entry);
   }
   return cases;
@@ -1040,10 +1098,17 @@ int main(int argc, char** argv) {
       if (game.vertex) return DrawVertex(code, game, setup);
       return vertex ? DrawPixel(code, game.reflection.Get(), vertex.Get(), setup) : Output{};
     };
-    const Setup exact_setup = MakeSetup(game, addon, entry.settings, entry.registers, false, bright_pass);
+    const Binds binds = MakeBinds(entry.binds);
+    const Setup exact_setup = WithBinds(MakeSetup(game, addon, entry.settings, entry.registers, false, bright_pass), binds, true);
     const Output reference = run(game.code, exact_setup);
-    const Output exact_output = run(addon.code, exact_setup);
+    const Output exact_output = run(addon.code, WithBinds(MakeSetup(game, addon, entry.settings, entry.registers, false, bright_pass), binds, false));
     const Difference exact_difference = Compare(reference, exact_output);
+    // The binds' check: on the game's own constants (no registers) the add-on with its binds differs from it without them.
+    bool binds_acted = true;
+    if (!binds.addon.empty()) {
+      const Setup plain = MakeSetup(game, addon, entry.settings, "", false, bright_pass);
+      binds_acted = !Exact(Compare(run(addon.code, plain), run(addon.code, WithBinds(plain, binds, false))));
+    }
     bool dumping = false;
     std::stringstream parts(dump);
     for (std::string part; std::getline(parts, part, ',');) dumping = dumping || (!part.empty() && Has(entry.game + " " + entry.shader, part));
@@ -1090,10 +1155,11 @@ int main(int argc, char** argv) {
     if (std::string_view(result) == "EXACT*") note += " (" + std::to_string(full_difference.outliers) + " of " + std::to_string(full_difference.texels) + " texels past the tolerance)";
     if (std::string_view(result) == "accepted") note += " (R6: the bloom smoothing, as intended)";
     if (!caught) note += " CONTROL NOT CAUGHT";
+    if (!binds.addon.empty()) note += binds_acted ? " (binds acted)" : " BINDS DID NOTHING";
     if (std::string_view(result).starts_with("EXACT")) ++exact;
     if (std::string_view(result) == "accepted") ++r6;
     if (std::string_view(result) == "FAIL") ++failed;
-    if (!caught) ++blind;
+    if (!caught || !binds_acted) ++blind;
     std::printf("%-12s %-34s %-8s %-9s %-9s %-9s %-9s%s\n", entry.game.c_str(), entry.shader.c_str(), result,
                 Number(exact_difference.worst).c_str(), Number(full_difference.worst).c_str(), caught ? Number(control.worst).c_str() : (swapped.empty() ? "NONE" : ("MISSED" + Number(control.worst)).c_str()),
                 mutant_text.c_str(), note.c_str());

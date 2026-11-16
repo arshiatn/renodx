@@ -1,6 +1,7 @@
 // Ray-traced effects: per pixel the world position and scene depth (as Bandai's sun shadow mask 0x2084C889 finds them;
 // w 0 for the sky), and in sun[0] the direction toward the sun, in sun[1] the camera, in sun[2-7] the camera's
-// projection for the next frame's bounce light, for D3D12's ray queries.
+// projection for the next frame's bounce light, in sun[8-15] the game's sky light (rt_surface.hlsli SkyLight), for
+// D3D12's ray queries.
 #include "./sun_direction.hlsli"
 
 Texture2D<float> depth : register(t0);
@@ -14,9 +15,9 @@ cbuffer Shadow : register(b0) {
 
 // UE 4.21's View uniform buffer (its b1): TranslatedWorldToClip c0-c3, ScreenToWorld c44-c47,
 // InvDeviceZToWorldZTransform c57, ScreenPositionScaleBias c58, PreViewTranslation c62, ViewSizeAndInvSize c122,
-// BufferSizeAndInvSize c123.
+// BufferSizeAndInvSize c123, SkyLightColor c155, SkyIrradianceEnvironmentMap c156-c162 (the base pass's, 0x90B576A7).
 cbuffer View : register(b1) {
-  float4 view[124];
+  float4 view[163];
 };
 
 [numthreads(8, 8, 1)]
@@ -32,6 +33,10 @@ void main(uint3 id : SV_DispatchThreadID) {
     }
     sun[uint2(6, 0)] = float4(view[62].xyz, 0.f);
     sun[uint2(7, 0)] = view[122];
+    [unroll]
+    for (uint sky = 0; sky < 8; ++sky) {
+      sun[uint2(8 + sky, 0)] = view[155 + sky];
+    }
   }
   uint2 size;
   positions.GetDimensions(size.x, size.y);
