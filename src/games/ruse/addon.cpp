@@ -1167,6 +1167,7 @@ void ConfigureAddon() {
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = static_cast<int>(setting->GetValue()),
         .first_start_without_hdr = []() { ApplyDefaultLook(0.f); },
+        .first_start_key = "rendering_mode",
         .recommended_preset = &ApplyPsychoRecommended,
         .log_name = "[R.U.S.E.]",
     });
@@ -1707,7 +1708,6 @@ void ConfigureAddon() {
 }
 
 // The game's DX9 swap chain, before the swapchain mod's create_swapchain (registered after this) and its DX11 proxy.
-// output_encoding hands an SDR target to the swapchain mod alone (shared step S2): the proxy takes it from here.
 bool OnCreateSwapchain(reshade::api::device_api api, reshade::api::swapchain_desc& desc, void* hwnd) {
   if (api != reshade::api::device_api::d3d9) return false;
   back_buffer_width = desc.back_buffer.texture.width;
@@ -1719,8 +1719,6 @@ bool OnCreateSwapchain(reshade::api::device_api api, reshade::api::swapchain_des
   shader_injection.rays_half_texel_x = 0.5f * shader_injection.rays_texel_x;
   shader_injection.rays_half_texel_y = 0.5f * shader_injection.rays_texel_y;
   twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
-  renodx::utils::device_proxy::SetTargetFormat(renodx::mods::swapchain::target_format);
-  renodx::utils::device_proxy::SetTargetColorSpace(renodx::mods::swapchain::target_color_space);
   // Graphics 2 of 2 at each start, for the next one (the game read Option.ini before making its device).
   static bool game_options_written = false;
   if (!game_options_written) {
