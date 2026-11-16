@@ -756,3 +756,11 @@ size; then:
   linear): whole frame -16.8%, lit open ground -32.6%, cliffs -26.3%; open lit ground faces the sun (no fill there), so
   it stays -33% with the row off; with it on the frame is the game's where the AO is 0.3 or more, plus ours.
   test/tw_vanilla_exact: TalesLighting, TalesGI, TalesGIOpenSky (lighting00-05 against the game's bytes).
+- Path-Traced Ambient round 2026-11-16 (tpa_, untested in game): **Path-Traced Ambient** (with Path Tracing): Bandai
+  bakes the sky's diffuse light into the base pass's colour (0x90B576A7: SH x the base colour, t4 / t7 of the
+  lighting passes), so the paths' ambient enters where its occlusion does: the AO rays (0x7A1E0D13 / 33) weight each
+  direction by the sky's light there (View SkyLightColor c155 x the SH c156-c162, copied into sun texels 8-15 by
+  0x7A1E0D12; rt_surface.hlsli SkyLight) and their visibility replaces Bandai's AO (t41) at every reader: the share of
+  the sky's light that reaches a spot. The rays' AO row is on under it (one AO method), GT-VBAO off while either runs
+  (post_filters ao_method 0). Experimental and off (graphics_page path_ambient_tested = false). test/tw_vanilla_exact:
+  TalesLightingRays (lighting00-05 reading t41 in t5's place against the game reading the same).

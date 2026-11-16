@@ -2271,12 +2271,16 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       }
     }
     // The rays (rt_shadows.hpp) with an upscaler on (rt_scene::SettingsOf; none without the helper); path tracing replaces the
-    // bounce light. An effect turned on tries again after a failed start.
+    // bounce light. An effect turned on tries again after a failed start. Path-Traced Ambient (SettingsOf's needs a Total
+    // War ambient cube): with the paths, the ambient rays weighted by the game's sky light in place of Bandai's AO under its
+    // ambient (Bandai's sky light comes from its base pass inside the scene colour the lighting passes read: no input to
+    // zero there, so the paths' share of it enters where its AO does), the paths' bounce at t42 as before.
     const auto rays = upscaling ? twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, gi_rows.light_bounce_strength) : twattila::rt_scene::Settings{};
+    const bool path_ambient = rays.path_tracing && rt_sliders.path_ambient != 0.f;
     bool turned_on = false;
     for (const auto& [effect, on] : std::to_array<std::pair<std::atomic_bool*, bool>>({
              {&talesofarise::rt_shadows::enabled, rays.sun_shadows},
-             {&talesofarise::rt_shadows::ambient_occlusion, rays.ambient_occlusion},
+             {&talesofarise::rt_shadows::ambient_occlusion, rays.ambient_occlusion || path_ambient},
              {&talesofarise::rt_shadows::bounce_light, rays.light_bounce && !rays.path_tracing},
              {&talesofarise::rt_shadows::reflections, rays.reflections},
              {&talesofarise::rt_shadows::specular_occlusion, rays.specular_occlusion},
@@ -2289,6 +2293,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     talesofarise::rt_shadows::character_shadows.store(character_shadows_row != 0.f);
     talesofarise::rt_shadows::ambient_range.store(std::clamp(rays.ambient_range, 0.5f, 10.001733f) * 100.f);
     talesofarise::rt_shadows::ambient_rays.store(std::clamp(rays.ambient_rays, 1u, 8u));
+    talesofarise::rt_shadows::sky_weighted_ambient.store(path_ambient);
     talesofarise::rt_shadows::bounce_strength.store(std::clamp(gi_rows.light_bounce_strength, 0.f, 4.f));
     talesofarise::rt_shadows::bounce_range.store(std::clamp(rays.light_bounce_range, 1.f, 50.012573f) * 100.f);
     talesofarise::rt_shadows::bounce_rays.store(std::clamp(rays.light_bounce_rays, 1u, 8u));
@@ -2717,7 +2722,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       .sharpening = ((mode != AAMode::OFF && !keep_game_sharpening) ? 0.f : 1.f),
       .ambient_occlusion = static_cast<float>(ambient_occlusion),
       .sun_shadow_distance = sun_distance_ratio,
-      .ao_method = static_cast<float>(ao_method),
+      // One AO method (ao-gi.md rule 6): GT-VBAO off while the rays' AO or Path-Traced Ambient takes the AO's place.
+      .ao_method = (talesofarise::rt_shadows::ambient_occlusion.load(std::memory_order_relaxed) ? 0.f : static_cast<float>(ao_method)),
       .ao_radius = ao_radius,
       .ao_strength = ao_strength,
       .ao_thickness = ao_thickness,
@@ -2883,8 +2889,10 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game ambient occlusion on.\n"
                   "Game's SSAO: the original. GT-VBAO: contact shading that lets light pass behind thin things (grass,\n"
                   "poles, characters) instead of dark halos.\n"
-                  "RTAO: large-scale shading from buildings, terrain and rocks, with the game's. Heavy. Needs an upscaler and a\n"
-                  "DXR GPU.",
+                  "RTAO: large-scale shading from buildings, terrain and rocks, in place of the game's. Heavy.\n"
+                  "Path-Traced: with Path Tracing Global Illumination, the share of the sky's light that reaches each spot.\n"
+                  "Needs an upscaler and a DXR GPU.",
+    .ao_paths_label = "Path-Traced",
     .gi_tooltip_end = "\nGT-VBGI takes the place of the game's own Global Illumination.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, fog, light shafts, reflections, clouds, effects, skin and shadows\n"
                                  "keep their 100% detail. Looks better, can cost some performance.",
@@ -2989,7 +2997,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                             .aa_methods = AA_METHODS,
                                             .upscaler_status = &UpscalerStatus,
                                             .has_foliage_light = false,
-                                            .has_path_ambient = false,
+                                            .path_ambient_tested = false,
                                             .rays_replace_ao = false,
                                             .rays_multiply_maps = true,
                                             .rays_tested = false,

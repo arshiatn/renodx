@@ -193,8 +193,9 @@ constexpr std::array<MaskedShader, 89> MASKED_SHADERS = {{
 constexpr uint32_t SUN_SHADOW_SHADER = 0x2084C889;
 // Where the HDR addon's sun shadow mask reads the visibility.
 constexpr UINT VISIBILITY_SLOT = 40;
-// The sun texture (0x7A1E0D12): toward the sun, the camera, TranslatedWorldToClip (4), PreViewTranslation, view size.
-constexpr UINT SUN_TEXELS = 8;
+// The sun texture (0x7A1E0D12): toward the sun, the camera, TranslatedWorldToClip (4), PreViewTranslation, view size,
+// the game's sky light (SkyLightColor, the 7 rows of SkyIrradianceEnvironmentMap: rt_surface.hlsli SkyLight).
+constexpr UINT SUN_TEXELS = 16;
 
 // Ray-traced sun shadows (Experimental): the HDR addon's sun shadow mask keeps the darker of its shadow map and these
 // (t40). Soft: the sun's disk angular radius (degrees; 0 hard): penumbras from each ray's blocker distance.
@@ -207,6 +208,9 @@ static std::atomic_bool character_shadows = true;
 static std::atomic_bool ambient_occlusion = false;
 static std::atomic<float> ambient_range = 200.f;
 static std::atomic<uint32_t> ambient_rays = 2;
+// Path-Traced Ambient (with path tracing): those rays weighted by the game's sky light toward each (SkyLight): the share
+// of the sky's light that escapes, in place of the game's AO under its ambient (the bounce light the paths').
+static std::atomic_bool sky_weighted_ambient = false;
 // Ray-traced bounce light (Experimental): rays around each pixel's normal find the nearest surface within the range
 // (UE centimetres), whose light is last frame's scene colour there (CaptureSceneColor); accumulated over frames and
 // filtered, the HDR addon's lighting pass adds it times the base colour (t42).
@@ -2236,6 +2240,7 @@ inline bool Trace(ID3D11DeviceContext* context) {
       static_cast<uint32_t>(state.frame),
       (sun_shadows ? 1u : 0u) | (ambient_occlusion.load(std::memory_order_relaxed) ? 2u : 0u) | (bounce ? 4u : 0u)
           | (history_valid ? 8u : 0u) | (reflect ? 16u : 0u) | (cache_valid ? 32u : 0u) | (bounce_history ? 64u : 0u)
+          | (sky_weighted_ambient.load(std::memory_order_relaxed) ? 128u : 0u)
           | (character_shadows.load(std::memory_order_relaxed) ? 256u : 0u) | (pt ? 512u : 0u)
           | (specular_occlusion.load(std::memory_order_relaxed) ? 2048u : 0u)
           | (reconstructing.load(std::memory_order_relaxed) ? 8192u : 0u),
@@ -2623,8 +2628,8 @@ inline void OnPresent(ID3D11DeviceContext* context) {
       D3D11_MAPPED_SUBRESOURCE mapped = {};
       if (SUCCEEDED(context->Map(gpu.sun_readback.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
         const auto* sun = static_cast<const float*>(mapped.pData);
-        state.trace += std::format("toward the sun {:.3f} {:.3f} {:.3f} (valid {:.0f}), camera {:.0f} {:.0f} {:.0f}\n",
-                                   sun[0], sun[1], sun[2], sun[3], sun[4], sun[5], sun[6]);
+        state.trace += std::format("toward the sun {:.3f} {:.3f} {:.3f} (valid {:.0f}), camera {:.0f} {:.0f} {:.0f}, sky light colour {:.4f} {:.4f} {:.4f}\n",
+                                   sun[0], sun[1], sun[2], sun[3], sun[4], sun[5], sun[6], sun[32], sun[33], sun[34]);
         context->Unmap(gpu.sun_readback.Get(), 0);
       }
     }
