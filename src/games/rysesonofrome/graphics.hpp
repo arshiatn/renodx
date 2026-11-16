@@ -61,6 +61,7 @@
 #include "../twattila/dlaa_bridge.hpp"
 #include "../twattila/frame_generation.hpp"
 #include "../twattila/reflex.hpp"
+#include "../twattila/texture_lod_bias.hpp"
 
 // The anti-aliasing (DLAA / DLSS, FSR or XeSS in place of the game's TAA), frame generation and the game's settings
 // above its High, once the separate DLSS add-on (rysesonofrome_dlss): addon.cpp calls Install after its own attach and
@@ -350,6 +351,10 @@ std::atomic<uint32_t> preset = NVSDK_NGX_DLSS_Hint_Render_Preset_M;  // L looks 
 std::atomic<int> upscaler = twattila::dlaa_bridge::UPSCALER_DLSS;     // UPSCALERS' item
 std::atomic<int> ray_reconstruction = 0;                              // RAY_RECONSTRUCTION_CHOICES' item
 std::atomic<int> upscaling_debug_view = 0;                            // 1: the motion the upscaler gets (upscale_output)
+// [Ryse AA] DlssSquareRoot (Experimental, off; the maintainer decides): DLSS presets L and M (always auto-exposed) get the
+// colour's square root, squared back after, as Ray Reconstruction does here and the Total War games' L / M always
+// (twattila anti_aliasing.hpp, c243f7c4: given linear colour they flattened dark tones there).
+std::atomic<int> dlss_square_root = 0;
 // Frame generation (Experimental; the helper presents: twattila/frame_generation.hpp) with Tales' keys: FrameGeneration,
 // FrameGenerationMultiplier (2-6; 0 Dynamic; 1 off, Reflex only), FrameGenerationFrameLimit (Reflex's or Xe Low
 // Latency's; ReflexBoost, before the Reflex row, read once as its On + Boost).
@@ -379,7 +384,10 @@ std::atomic<uint64_t> last_dlss_frame = UINT64_MAX;
 // The game's own Rendering Resolution while the addon sets it (ReShade.ini; 0: not set), restored on the next start
 // if the game ended with the addon's.
 std::array<int, 2> saved_game_size = {};
+// The last frame (+ 1; 0: never) the page drew Advanced's diagnostics (the GPU timers, the particle counts), and the AA
+// section at all (the jitter's warnings: its pattern measured while they show).
 std::atomic<uint64_t> overlay_frame = 0;
+std::atomic<uint64_t> aa_page_frame = 0;
 std::string saved_image;  // debug: where the game's image was saved (overlay only)
 std::string saved_particle_names;  // debug: where the particle effects' names were saved (overlay only)
 // Debug: save the enemy attack patterns when the game next starts (attack_patterns.hpp; ReShade.ini, cleared once saved).
@@ -1093,23 +1101,20 @@ const char* ChoiceName(const QualityOption& option, int choice) {
   return name;
 }
 
-// Texture LOD bias below 100% (DLSS section): the game picks texture levels for its render resolution. Its anisotropic
-// samplers (its material textures; post passes filter linear or point, shadow maps compare) are bound again right after
-// it binds them, as clones with MipLODBias + log2(render / display width), minus 1 (Sharper) or 2 (Sharpest). ReShade
-// raises push_descriptors after PSSetSamplers, so the clones replace them.
-struct BiasedSampler {
-  reshade::api::sampler_desc desc;  // the game's
-  reshade::api::sampler clone = {0};
-  float clone_bias = 0.f;
-  bool trilinear = false;  // a wrapping trilinear sampler: biased with lod_bias_all_textures only
-};
-renodx::utils::data::ParallelFlatHashMap<uint64_t, BiasedSampler, std::shared_mutex> biased_samplers;
-std::atomic<float> texture_lod_bias = 0.f;  // 0: none
-// Texture LOD Bias on All Textures (Experimental; the page's AntiAliasingTextureLodBiasTrilinear row, as Attila's): the
+// Texture LOD bias below 100% (DLSS section; twattila/texture_lod_bias.hpp, as the Total War games' and Shogun 2's): the
+// game picks texture levels for the size it renders at. Its anisotropic samplers (its material textures; post passes
+// filter linear or point, shadow maps compare) are bound as clones with MipLODBias + log2(render / display width), minus
+// 1 (Sharper) or 2 (Sharpest), in the main view only: the shadow maps keep the game's levels (their alpha-tested leaves
+// would cut sharper holes, Shogun 2 v7-v9). The render size: the AA mode's Rendering Resolution or, with AA mode Off,
+// the game's own below the display (Native Upscaling, fullscreen).
+// Texture LOD Bias on All Textures (the page's AntiAliasingTextureLodBiasTrilinear row, on by default as Attila's): the
 // game's wrapping trilinear samplers biased too. 1: on.
-float lod_bias_all_textures = 0.f;
+float lod_bias_all_textures = 1.f;
 int texture_lod_bias_choice = 2;  // Present thread (the overlay runs in it): 0 off, 1 matched, 2 sharper, 3 sharpest
-thread_local bool creating_clone = false;  // the clone's own init_sampler
+// While biased: the main view's size (width << 32 | height; 0: no bias) and whether the immediate context's viewport is
+// the main view's now (OnBindViewports).
+std::atomic<uint64_t> main_view_size = 0;
+std::atomic_bool main_view_bound = false;
 // While DLSS / DLAA runs (AA mode not Off), renderer statics written directly (FindIntCvar; the game's values come
 // back with Off and at unload). r_TexNoAnisoAlphaTest 0: anisotropic filtering also on alpha-tested textures (foliage,
 // fences, cloth; read while drawing, +0x18338EB; its ICVar refuses sets, flags 0x800100). r_DeferredShadingFilterGBuffer
@@ -1134,11 +1139,10 @@ std::array<RendererPin, 2> renderer_pins = {{
 }};  // Present thread
 bool attached = false;
 
-// The game's projection jitter (r_PostAAMode): latest value in pixels, pattern length (frames until the
-// first offset repeats; NVIDIA wants at least 8 * (output / input)^2), first frames logged.
+// The game's projection jitter (r_PostAAMode): whether it was found, pattern length (frames until the first offset
+// repeats; NVIDIA wants at least 8 * (output / input)^2), first frames logged. The pattern and the uploads are
+// measured only while Advanced shows them.
 struct Diagnostics {
-  std::atomic<float> jitter_x = 0.f;
-  std::atomic<float> jitter_y = 0.f;
   std::atomic_bool jitter_found = false;
   std::array<float, 2> first_jitter = {};
   uint32_t jitter_frames = 0;
@@ -1149,11 +1153,9 @@ struct Diagnostics {
   std::atomic<uint32_t> camera_uploads = 0;
   std::atomic<uint32_t> jittered_uploads = 0;
   std::atomic_bool from_upload = false;
-  // Any TAA seen (also measured while DLSS is off); jitter on at the last one (logged when it changes);
-  // TAA frames (a summary every 600).
+  // Any TAA measured (also while the AA mode is Off); jitter on at the last one (logged when it changes).
   std::atomic_bool measured = false;
   bool jittering = false;
-  uint64_t taa_frames = 0;
   std::atomic<uint64_t> restarts = 0;
   std::atomic<uint64_t> skipped_frames = 0;
 } diagnostics;
@@ -1370,81 +1372,19 @@ bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, u
   return false;
 }
 
-// Texture LOD bias (biased_samplers): the game's anisotropic samplers and its wrapping trilinear ones.
-void OnInitSampler(reshade::api::device* device, const reshade::api::sampler_desc& desc, reshade::api::sampler sampler) {
-  if (creating_clone || device->get_api() != reshade::api::device_api::d3d11) return;
-  const bool trilinear = desc.filter == reshade::api::filter_mode::min_mag_mip_linear && desc.address_u == reshade::api::texture_address_mode::wrap
-                         && desc.address_v == reshade::api::texture_address_mode::wrap;
-  if (!trilinear && desc.filter != reshade::api::filter_mode::anisotropic
-      && desc.filter != reshade::api::filter_mode::min_mag_anisotropic_mip_point) {
+// Texture LOD bias (twattila::texture_lod_bias, after this): whether the viewport the immediate context binds now is the
+// main view's (the whole render size at 0, 0; the shadow maps, the light pool's tiles, the probes and the reduced passes
+// draw at other sizes).
+void OnBindViewports(reshade::api::command_list* cmd_list, uint32_t first, uint32_t count, const reshade::api::viewport* viewports) {
+  const uint64_t size = main_view_size.load(std::memory_order_relaxed);
+  if (size == 0u || first != 0u || count == 0u || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11
+      || reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native())->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) {
     return;
   }
-  biased_samplers.insert_or_assign(sampler.handle, BiasedSampler{.desc = desc, .trilinear = trilinear});
-}
-
-void OnDestroySampler(reshade::api::device* device, reshade::api::sampler sampler) {
-  reshade::api::sampler clone = {0};
-  biased_samplers.erase_if(sampler.handle, [&](const auto& entry) {
-    clone = entry.second.clone;
-    return true;
-  });
-  if (clone.handle != 0u) {
-    device->destroy_sampler(clone);
-  }
-}
-
-// After the game's PSSetSamplers: its anisotropic samplers bound again as clones at the current bias.
-void OnPushDescriptors(reshade::api::command_list* cmd_list, reshade::api::shader_stage stages, reshade::api::pipeline_layout,
-                       uint32_t, const reshade::api::descriptor_table_update& update) {
-  const float bias = texture_lod_bias.load(std::memory_order_relaxed);
-  if (bias == 0.f || stages != reshade::api::shader_stage::pixel || update.type != reshade::api::descriptor_type::sampler
-      || update.count == 0 || update.binding + update.count > D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT) {
-    return;
-  }
-  auto* device = cmd_list->get_device();
-  if (device->get_api() != reshade::api::device_api::d3d11) return;
-  const auto* samplers = static_cast<const reshade::api::sampler*>(update.descriptors);
-  std::array<ID3D11SamplerState*, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT> bound = {};
-  bool replaced = false;
-  for (uint32_t index = 0; index < update.count; ++index) {
-    bound[index] = reinterpret_cast<ID3D11SamplerState*>(samplers[index].handle);
-    reshade::api::sampler_desc desc = {};
-    reshade::api::sampler clone = {0};
-    bool trilinear = false;
-    const bool biased = biased_samplers.if_contains(samplers[index].handle, [&](const auto& entry) {
-      desc = entry.second.desc;
-      trilinear = entry.second.trilinear;
-      if (entry.second.clone_bias == bias) {
-        clone = entry.second.clone;
-      }
-    });
-    if (!biased || (trilinear && lod_bias_all_textures == 0.f)) continue;
-    if (clone.handle == 0u) {
-      desc.mip_lod_bias += bias;
-      creating_clone = true;
-      const bool created = device->create_sampler(desc, &clone);
-      creating_clone = false;
-      if (!created) continue;
-      reshade::api::sampler previous = {0};
-      const bool kept = biased_samplers.modify_if(samplers[index].handle, [&](auto& entry) {
-        previous = entry.second.clone;
-        entry.second.clone = clone;
-        entry.second.clone_bias = bias;
-      });
-      if (previous.handle != 0u) {
-        device->destroy_sampler(previous);
-      }
-      if (!kept) {
-        device->destroy_sampler(clone);
-        continue;
-      }
-    }
-    bound[index] = reinterpret_cast<ID3D11SamplerState*>(clone.handle);
-    replaced = true;
-  }
-  if (replaced) {
-    reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native())->PSSetSamplers(update.binding, update.count, bound.data());
-  }
+  const auto& viewport = viewports[0];
+  main_view_bound.store(viewport.x == 0.f && viewport.y == 0.f && viewport.width == static_cast<float>(size >> 32)
+                            && viewport.height == static_cast<float>(size & 0xFFFFFFFFu),
+                        std::memory_order_relaxed);
 }
 
 // A copy of the traced frame.
@@ -1740,11 +1680,11 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
       frame = state.frame;
     }
     taa_frame.store(frame, std::memory_order_relaxed);
-    // Off: the game's jitter measured only while Advanced shows it (the overlay drew within 120 frames); else no work and
-    // no log lines a frame.
-    if (const uint64_t overlay = overlay_frame.load(std::memory_order_relaxed); !active && !(overlay != 0 && frame + 1 - overlay < 120)) {
-      return {};
-    }
+    // The jitter's diagnostics (its positions, the camera uploads, their log line) only while the page shows them (it drew
+    // the AA section within 120 frames). Off: then no work at all a frame.
+    const uint64_t page = aa_page_frame.load(std::memory_order_relaxed);
+    const bool diagnostics_shown = page != 0 && frame + 1 - page < 120;
+    if (!active && !diagnostics_shown) return {};
     const auto fail = [active](std::string_view message) -> command_action::CallbackResult<Context> {
       if (active) SetStatus(message);
       return {};
@@ -1863,51 +1803,47 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
         jitter_ndc_x = 0.f;
         jitter_ndc_y = 0.f;
       }
-      diagnostics.camera_uploads.store(uploads);
-      diagnostics.jittered_uploads.store(jittered);
-      diagnostics.from_upload.store(use_upload);
+      if (diagnostics_shown) {
+        diagnostics.camera_uploads.store(uploads);
+        diagnostics.jittered_uploads.store(jittered);
+        diagnostics.from_upload.store(use_upload);
+      }
     }
     // NDC up, pixels down. DLSS: the sample offset in render pixels.
     const float jitter_x = jitter_ndc_x * 0.5f * width;
     const float jitter_y = -jitter_ndc_y * 0.5f * height;
-    diagnostics.jitter_x.store(jitter_x);
-    diagnostics.jitter_y.store(jitter_y);
     diagnostics.jitter_found.store(jitter_found);
-    // Positions until the first one repeats; more than 1024: no repeat (random). Below 1/200 pixel (float
-    // noise of an unjittered matrix): not jittering.
-    diagnostics.measured.store(true);
-    const bool jittering = std::abs(jitter_x) > .005f || std::abs(jitter_y) > .005f;
-    if (!jittering) {
-      diagnostics.jitter_phases.store(1);
-      diagnostics.jitter_frames = 0;
-    } else if (diagnostics.jitter_frames != 0 && std::abs(jitter_x - diagnostics.first_jitter[0]) < .01f
-               && std::abs(jitter_y - diagnostics.first_jitter[1]) < .01f) {
-      diagnostics.jitter_phases.store(diagnostics.jitter_frames);
-      diagnostics.jitter_frames = 1;
-    } else if (diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 1024) {
-      if (diagnostics.jitter_frames > 1024) diagnostics.jitter_phases.store(diagnostics.jitter_frames);
-      diagnostics.first_jitter = {jitter_x, jitter_y};
-      diagnostics.jitter_frames = 1;
-    } else {
-      ++diagnostics.jitter_frames;
+    if (diagnostics_shown) {
+      // Positions until the first one repeats; more than 1024: no repeat (random). Below 1/200 pixel (float
+      // noise of an unjittered matrix): not jittering.
+      diagnostics.measured.store(true);
+      const bool jittering = std::abs(jitter_x) > .005f || std::abs(jitter_y) > .005f;
+      if (!jittering) {
+        diagnostics.jitter_phases.store(1);
+        diagnostics.jitter_frames = 0;
+      } else if (diagnostics.jitter_frames != 0 && std::abs(jitter_x - diagnostics.first_jitter[0]) < .01f
+                 && std::abs(jitter_y - diagnostics.first_jitter[1]) < .01f) {
+        diagnostics.jitter_phases.store(diagnostics.jitter_frames);
+        diagnostics.jitter_frames = 1;
+      } else if (diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 1024) {
+        if (diagnostics.jitter_frames > 1024) diagnostics.jitter_phases.store(diagnostics.jitter_frames);
+        diagnostics.first_jitter = {jitter_x, jitter_y};
+        diagnostics.jitter_frames = 1;
+      } else {
+        ++diagnostics.jitter_frames;
+      }
+      if (jittering != diagnostics.jittering) {
+        diagnostics.jittering = jittering;
+        renodx::utils::log::i("[Ryse DLSS] frame ", frame, ": the game's jitter ", (jittering ? "started" : "stopped"), " (r_PostAAMode ",
+                              postaamode.load(), ", DLAA ", (active ? "on" : "off"), ", camera uploads ", diagnostics.camera_uploads.load(),
+                              ", jittered main camera ", diagnostics.jittered_uploads.load(), ")");
+      }
     }
-    if (jittering != diagnostics.jittering) {
-      diagnostics.jittering = jittering;
-      renodx::utils::log::i("[Ryse DLSS] frame ", frame, ": the game's jitter ", (jittering ? "started" : "stopped"), " (r_PostAAMode ",
-                            postaamode.load(), ", DLAA ", (active ? "on" : "off"), ", camera uploads ", diagnostics.camera_uploads.load(),
-                            ", jittered main camera ", diagnostics.jittered_uploads.load(), ")");
-    }
-    if (++diagnostics.taa_frames % 600 == 0) {
-      renodx::utils::log::i("[Ryse DLSS] frame ", frame, ": jitter (", jitter_x, ", ", jitter_y, ") pixels, ",
-                            diagnostics.jitter_phases.load(), " positions, r_PostAAMode ", postaamode.load(), ", DLAA ",
-                            (active ? "on" : "off"));
-    }
+    // The first frames' jitter, once a session (the log's proof that it was found).
     if (diagnostics.logged < 32) {
       ++diagnostics.logged;
       renodx::utils::log::i("[Ryse DLSS] frame ", frame, " jitter ", (jitter_found ? "" : "(not found) "), "ndc (", jitter_ndc_x,
-                            ", ", jitter_ndc_y, ") pixels (", jitter_x, ", ", jitter_y, "); camera uploads ",
-                            diagnostics.camera_uploads.load(), ", jittered main camera ", diagnostics.jittered_uploads.load(),
-                            (diagnostics.from_upload.load() ? ", from an earlier upload" : ""));
+                            ", ", jitter_ndc_y, ") pixels (", jitter_x, ", ", jitter_y, ")");
     }
     if (!active) return {};
 
@@ -2123,13 +2059,18 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
     if (skipped) ++diagnostics.skipped_frames;
     const bool reset = restart || skipped;
     // Ray Reconstruction with this frame's guides (the ray tracing's, while a ray-traced effect is on) and the camera.
-    // Its denoiser takes the colour's square root (upscale_output squares it back); DLSS, FSR and XeSS the light as it is.
+    // Its denoiser takes the colour's square root (upscale_output squares it back), as DLSS presets L and M with
+    // dlss_square_root on; DLSS otherwise, FSR and XeSS the light as it is.
     const auto use = upscaling::CurrentUse();
     const bool reconstruct = nvidia_model && use.ray_reconstruction != 0 && current_camera && bridge.guides
                              && rysesonofrome::ray_tracing::HOST.guides_written();
-    bridge.color_square_root = reconstruct;
+    const uint32_t chosen_preset = preset.load();
+    const bool square_root = reconstruct
+                             || (nvidia_model && dlss_square_root.load() != 0
+                                 && (chosen_preset == NVSDK_NGX_DLSS_Hint_Render_Preset_L || chosen_preset == NVSDK_NGX_DLSS_Hint_Render_Preset_M));
+    bridge.color_square_root = square_root;
     const UpscaleSettings settings = {
-        .square_root = reconstruct ? 1.f : 0.f,
+        .square_root = square_root ? 1.f : 0.f,
         .render_size = {width, height},
         .debug_view = static_cast<uint32_t>(std::clamp(upscaling_debug_view.load(), 0, 1)),
     };
@@ -2156,7 +2097,7 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
       context->CSSetConstantBuffers(0, 1, &upscale_settings);
       context->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
       context->ClearState();
-      evaluated = twattila::dlaa_bridge::Evaluate(context.Get(), width, height, jitter_x, jitter_y, reset, preset.load(),
+      evaluated = twattila::dlaa_bridge::Evaluate(context.Get(), width, height, jitter_x, jitter_y, reset, chosen_preset,
                                                   reconstruct ? &reconstruction : nullptr,
                                                   nvidia_model ? nullptr : &reconstruction.view_to_clip);
       if (evaluated) {
@@ -2707,13 +2648,8 @@ void OnDestroyDevice(reshade::api::device* device) {
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   rysesonofrome::pixel_trace::OnPresent(queue);
-  // Debug: renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt and
-  // the traced shaders; checked each second, the file removed).
-  if (static uint32_t presents = 0; ++presents % 60 == 0) {
-    if (DeleteFileW((talesofarise::frame_trace::internal::ExecutableFolder() / L"renodx_trace_now").c_str()) != 0) {
-      talesofarise::frame_trace::Request();
-    }
-  }
+  // The one-frame trace (Tales' frame_trace.hpp: ryse_frame_trace.txt): its button, or in a scripted run renodx_trace_now
+  // next to the exe (looked for there only when the exe's folder changes).
   talesofarise::frame_trace::OnPresent("ryse");
   const auto mode = requested_mode.load();
   bool changed;
@@ -3173,7 +3109,10 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       rendering.writes = 0;
     }
     const bool saved = saved_game_size[0] > 0 && saved_game_size[1] > 0;
-    if (!rendering.searched && (mode != AAMode::OFF || saved)) {
+    // AA mode Off: the game's own Rendering Resolution for the texture LOD bias, while the helper's rows show it (the
+    // HDR-only download keeps the game's levels).
+    const bool off_bias = mode == AAMode::OFF && texture_lod_bias_choice != 0 && twattila::dlaa_bridge::HelperInstalled();
+    if (!rendering.searched && (mode != AAMode::OFF || saved || off_bias)) {
       rendering.searched = true;
       std::string details;
       if (const uint8_t* scene = rysesonofrome::engine_memory::FindPattern(RENDER_SCENE, &details); scene != nullptr) {
@@ -3262,7 +3201,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         // (of the smaller back buffer) shrank it again, down to the minimum. The game's own size there, as chosen in
         // its menu.
         const bool windowed = GetCvar(rendering.fullscreen) == 0 && GetCvar(rendering.fullscreen_window) == 0;
-        if (windowed != rendering.windowed) {
+        const bool switched = windowed != rendering.windowed;
+        if (switched) {
           rendering.windowed = windowed;
           renodx::utils::log::i("[Ryse DLSS] ",
                                 (windowed ? "Windowed: the game's own Rendering Resolution" : "Fullscreen: the mode's Rendering Resolution"));
@@ -3271,7 +3211,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         const std::array<int, 2> desired = ((windowed || rendering.native_off) ? rendering.game_size : mode_size);
         if (desired != rendering.pending) {
           rendering.pending = desired;
-          rendering.pending_presents = 0;
+          // Into or out of windowed: at once (the new window took the Rendering Resolution as it was: waiting showed the
+          // window at the mode's size for SETTLE_PRESENTS presents). The Custom slider's sizes settle first.
+          rendering.pending_presents = (switched ? SETTLE_PRESENTS : 0);
         } else {
           ++rendering.pending_presents;
         }
@@ -3308,14 +3250,26 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     // Vegetation detail at the display width while rendering below it (VEGETATION_SCREEN_RES).
     auto& pin = screen_res_pin;
     const bool below = rendering.controlling && rendering.target[0] > 0 && rendering.target[0] < static_cast<int>(display_width);
-    // Texture LOD bias (biased_samplers): below the display width, log2(render / display width), minus 1 (Sharper) or
-    // 2 (Sharpest).
+    // Texture LOD bias below the display width: log2(render / display width), minus 1 (Sharper) or 2 (Sharpest), in the
+    // main view. The render size: the addon's Rendering Resolution, or with AA mode Off the game's own while it upscales
+    // natively (Native Upscaling on, fullscreen or borderless: windowed it renders at the window's size).
+    std::array<int, 2> render_size = {};
+    if (below) {
+      render_size = rendering.target;
+    } else if (off_bias && rendering.width != nullptr && rendering.problem.empty() && GetCvar(rendering.native_res) != 0
+               && (GetCvar(rendering.fullscreen) != 0 || GetCvar(rendering.fullscreen_window) != 0)) {
+      render_size = {GetCvar(rendering.width), GetCvar(rendering.height)};
+    }
     float bias = 0.f;
-    if (below && texture_lod_bias_choice != 0) {
-      bias = std::log2(static_cast<float>(rendering.target[0]) / static_cast<float>(display_width))
+    if (texture_lod_bias_choice != 0 && render_size[0] > 0 && render_size[1] > 0 && render_size[0] < static_cast<int>(display_width)) {
+      bias = std::log2(static_cast<float>(render_size[0]) / static_cast<float>(display_width))
              - static_cast<float>(texture_lod_bias_choice - 1);
     }
-    texture_lod_bias.store(bias, std::memory_order_relaxed);
+    main_view_size.store((bias != 0.f ? (uint64_t{static_cast<uint32_t>(render_size[0])} << 32) | static_cast<uint32_t>(render_size[1]) : 0u),
+                         std::memory_order_relaxed);
+    twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_all_textures != 0.f);
+    twattila::texture_lod_bias::SetTracking(queue, bias != 0.f);
+    twattila::texture_lod_bias::SetBias(bias);
     if (uint8_t* cvars = (rendering.width != nullptr ? EngineCvars() : nullptr); cvars != nullptr) {
       const std::atomic_ref<int> value(*reinterpret_cast<int*>(cvars + SCREEN_RES_CVAR));
       const int current = value.load(std::memory_order_relaxed);
@@ -3392,11 +3346,12 @@ inline void UpdateHelper(reshade::api::swapchain* swapchain, upscaling::BridgeUs
 // Settings mode now the page's): the upscaler, frame generation and their status; with Advanced the diagnostics and
 // the debug buttons. Without the helper only these (its download note above).
 inline void DrawAntiAliasing(bool advanced) {
-  if (advanced) {
+  {
     const std::shared_lock lock(state.mutex);
-    overlay_frame.store(state.frame + 1);
-    rysesonofrome::particle_counts::KeepCounting();
+    aa_page_frame.store(state.frame + 1);
+    if (advanced) overlay_frame.store(state.frame + 1);
   }
+  if (advanced) rysesonofrome::particle_counts::KeepCounting();
   const bool helper = twattila::dlaa_bridge::HelperInstalled();
   auto mode = requested_mode.load();
   // A choice of `items` saved as `key` ([Ryse AA]).
@@ -3446,6 +3401,13 @@ inline void DrawAntiAliasing(bool advanced) {
         }
       }
       ImGui::EndCombo();
+    }
+    if (const uint32_t chosen_preset = preset.load();
+        nvidia_model && (chosen_preset == NVSDK_NGX_DLSS_Hint_Render_Preset_L || chosen_preset == NVSDK_NGX_DLSS_Hint_Render_Preset_M)) {
+      constexpr std::array<const char*, 2> OFF_ON = {"Off", "On"};
+      combo("Dark tones for L / M (Experimental)", "DlssSquareRoot", &dlss_square_root, OFF_ON,
+            "Presets L and M can flatten dark tones into one grey. On: they get the colour's square root,\n"
+            "squared back after (as the Total War games' L and M).");
     }
     if (nvidia_model) {
       combo("Ray Reconstruction (Experimental)", "RayReconstruction", &ray_reconstruction, RAY_RECONSTRUCTION_CHOICES,
@@ -3513,10 +3475,10 @@ inline void DrawAntiAliasing(bool advanced) {
                               "Sharpest {:.1f}.",
                               std::round(scale * 100.f), matched, matched - 1.f, matched - 2.f);
       }
-      ImGui::SetTooltip("How sharp textures are while the upscaler renders below 100%%.\n"
+      ImGui::SetTooltip("How sharp textures are while the game renders below 100%%: an AA mode's scale, or with Off\n"
+                        "the game's own Rendering Resolution. Shadows keep the game's.\n"
                         "Matched: as sharp as at your output resolution.\n"
-                        "Sharper / Sharpest: one / two steps sharper (more detail, can shimmer).\n"
-                        "Native AA and Off are not affected.%s",
+                        "Sharper / Sharpest: one / two steps sharper (more detail, can shimmer).%s",
                         example.c_str());
     }
     if (int filter = (gbuffer_filter.load() ? 1 : 0);
@@ -3658,8 +3620,7 @@ inline void DrawAntiAliasing(bool advanced) {
                 (diagnostics.from_upload.load() ? "an earlier upload (the bound camera is not jittered)" : "the bound camera"),
                 diagnostics.camera_uploads.load(), diagnostics.jittered_uploads.load());
   }
-  ImGui::Text("Texture LOD bias now: %.2f (game samplers seen: %zu)", texture_lod_bias.load(std::memory_order_relaxed),
-              biased_samplers.size());
+  ImGui::TextWrapped("%s", twattila::texture_lod_bias::Report().c_str());
   for (const auto& pin : renderer_pins) {
     if (pin.address != nullptr) {
       ImGui::Text("%s: %d%s", pin.name, *pin.address, (pin.set ? std::format(" (the game's: {})", pin.game_value).c_str() : ""));
@@ -3699,6 +3660,12 @@ inline void DrawAntiAliasing(bool advanced) {
   ImGui::Separator();
   if (ImGui::Button("Log one frame's passes after the TAA (debug, ReShade.log)")) {
     trace_requested.store(true);
+  }
+  if (ImGui::Button("Trace one frame (debug, ryse_frame_trace.txt next to the exe)")) {
+    talesofarise::frame_trace::Request();
+  }
+  if (const std::string status = talesofarise::frame_trace::Status(); !status.empty()) {
+    ImGui::TextWrapped("%s", status.c_str());
   }
   if (ImGui::Button("Save two upscaled frames' stages (debug, PNGs next to the exe)")) {
     capture_requested.store(true);
@@ -4088,6 +4055,7 @@ inline void Install(std::span<const uint8_t> vertex_code, std::span<const uint8_
   load_choice("Upscaler", &upscaler, UPSCALERS.size());
   load_choice("RayReconstruction", &ray_reconstruction, RAY_RECONSTRUCTION_CHOICES.size());
   load_choice("UpscalingDebugView", &upscaling_debug_view, 2);
+  load_choice("DlssSquareRoot", &dlss_square_root, 2);
   load_choice("FrameGenerationMethod", &frame_method, FRAME_METHODS.size());
   load_choice("FrameGenerationHudRecomposition", &hud_recomposition, 2);
   load_choice("FrameGenerationPreset", &frame_preset, 4);
@@ -4116,9 +4084,14 @@ inline void Install(std::span<const uint8_t> vertex_code, std::span<const uint8_
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
-  reshade::register_event<reshade::addon_event::init_sampler>(OnInitSampler);
-  reshade::register_event<reshade::addon_event::destroy_sampler>(OnDestroySampler);
-  reshade::register_event<reshade::addon_event::push_descriptors>(OnPushDescriptors);
+  // The texture LOD bias: the main view learned first, then the shared module's binding.
+  twattila::texture_lod_bias::SetMainView([] { return main_view_bound.load(std::memory_order_relaxed); });
+  reshade::register_event<reshade::addon_event::bind_viewports>(OnBindViewports);
+  reshade::register_event<reshade::addon_event::bind_viewports>(twattila::texture_lod_bias::OnBindViewports);
+  reshade::register_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
+  reshade::register_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
+  reshade::register_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::texture_lod_bias::OnDestroyDevice);
   command_action::Register(OnTaaDraw, {.shader_hash = TAA_SHADER, .command_types = command_action::COMMAND_TYPE_DIRECT_DRAW});
   for (const uint32_t shader_hash : {SMAA_EDGES_SHADER, SMAA_WEIGHTS_SHADER, SMAA_BLEND_SHADER}) {
     command_action::Register(OnSmaaDraw, {.shader_hash = shader_hash, .command_types = command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -4156,9 +4129,13 @@ inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexed);
   reshade::unregister_event<reshade::addon_event::copy_resource>(OnTraceCopy);
   reshade::unregister_event<reshade::addon_event::copy_texture_region>(OnTraceCopyRegion);
-  reshade::unregister_event<reshade::addon_event::init_sampler>(OnInitSampler);
-  reshade::unregister_event<reshade::addon_event::destroy_sampler>(OnDestroySampler);
-  reshade::unregister_event<reshade::addon_event::push_descriptors>(OnPushDescriptors);
+  reshade::unregister_event<reshade::addon_event::bind_viewports>(OnBindViewports);
+  reshade::unregister_event<reshade::addon_event::bind_viewports>(twattila::texture_lod_bias::OnBindViewports);
+  reshade::unregister_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
+  reshade::unregister_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
+  reshade::unregister_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::texture_lod_bias::OnDestroyDevice);
+  twattila::texture_lod_bias::Shutdown();
   for (auto& pin : renderer_pins) {
     if (!pin.set) continue;
     std::atomic_ref<int>(*pin.address).store(pin.game_value, std::memory_order_relaxed);

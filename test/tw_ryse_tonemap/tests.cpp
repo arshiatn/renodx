@@ -1,8 +1,9 @@
 // Ryse's tonemap00 (HDRFinalPass, 0xB9B672AA) on WARP: Rendering Mode SDR (the add-on's built shader, hdr 0) against the
 // game's own bytes over an exposure ramp of grey and coloured rows, with the same constants and textures: the SDR encode
 // (Hable, sRGB, the sun shafts' screen, the 16^3 colour chart) must be the game's. Control: HDR (Extended) on the same
-// inputs must differ (else the test could not see a change). Arguments: the repository (its build's embedded csos) and the
-// game's dumped 0xB9B672AA.ps_5_0.cso; both only read.
+// inputs must differ (else the test could not see a change). Then PsychoV35 against the game below white (grey, chroma)
+// and a minimax fit of its sliders, reported (Extended must match the game there). Arguments: the repository (its
+// build's embedded csos) and the game's dumped 0xB9B672AA.ps_5_0.cso; both only read.
 #include <windows.h>
 
 #include <d3d11.h>
@@ -173,7 +174,7 @@ int main(int argc, char** argv) {
   const std::array<float, 4> alpha = {0.f, 0.f, 1.f, 1.f};
   const std::array<float, 4> vignette = {0.9f, 0.9f, 0.9f, 1.f};
   const std::array<float, 4> shafts = {0.2f, 0.18f, 0.12f, 1.f};
-  const std::array<ComPtr<ID3D11ShaderResourceView>, 10> views = {
+  std::array<ComPtr<ID3D11ShaderResourceView>, 10> views = {
       Texture(device.Get(), WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, scene.data(), WIDTH * 16),
       Texture(device.Get(), 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, luminance.data(), 16),
       Texture(device.Get(), 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, bloom.data(), 16),
@@ -293,6 +294,125 @@ int main(int argc, char** argv) {
     const float worst = max_difference(draw(built_shader.Get(), injection), &level);
     std::printf("Control, HDR (Extended), Output scRGB: largest difference %.3g (scene %.4g): must be large\n", worst, level);
     CHECK(worst > 1e-2f);
+  }
+  // PsychoV35 against the game (hdr-review-rules.md "PsychoV calls": V35 fitted to the game's chain; report, the defaults
+  // are the maintainer's): Rendering Mode PsychoV35, Output scRGB, 1000 / 203, Hue Clip off, both outputs decoded with
+  // 2.2 (the game's SDR white at Paper White). Grey (row 0): the largest |V35 / game - 1| where the game puts it at 0.05 - 1
+  // and 1 - 15 nits; colour (rows 1-3): the mean |OkLab chroma ratio - 1| where the game's luminance is 1 - 30 nits. Then a
+  // minimax grid of Contrast / Shadows / Saturation (Highlight Contrast 1: these ranges sit below Hable's mid grey).
+  // The curve alone: no bloom and no sun shafts here (their adds lift the game's black to ~5 nits with this test's
+  // values). Level B: the constants are this test's, not traced ones.
+  {
+    const std::array<float, 4> nothing = {0.f, 0.f, 0.f, 1.f};
+    views[2] = Texture(device.Get(), 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, nothing.data(), 16);
+    views[9] = Texture(device.Get(), 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, nothing.data(), 16);
+    const auto game_curve = draw(game_shader.Get(), injection);
+    const auto decode = [](float value) { return std::pow(std::max(value, 0.f), 2.2f); };
+    const auto oklab = [](float r, float g, float b) {
+      const float l = std::cbrt((0.4122214708f * r) + (0.5363325363f * g) + (0.0514459929f * b));
+      const float m = std::cbrt((0.2119034982f * r) + (0.6806995451f * g) + (0.1073969566f * b));
+      const float s = std::cbrt((0.0883024619f * r) + (0.2817188376f * g) + (0.6299787005f * b));
+      return std::array<float, 3>{(0.2104542553f * l) + (0.7936177850f * m) - (0.0040720468f * s),
+                                  (1.9779984951f * l) - (2.4285922050f * m) + (0.4505937099f * s),
+                                  (0.0259040371f * l) + (0.7827717662f * m) - (0.8086757660f * s)};
+    };
+    // {shadows (grey 0.05 - 1 nits), mid tones (grey 1 - 15 nits), colour (mean over rows 1-3)} of `pixels` against the game.
+    const auto errors = [&](const std::vector<float>& pixels) {
+      std::array<double, 3> worst = {};
+      double chroma_sum = 0.0;
+      int chroma_count = 0;
+      for (UINT y = 0; y < HEIGHT; ++y) {
+        for (UINT x = 0; x < WIDTH; ++x) {
+          const size_t index = ((y * WIDTH) + x) * 4;
+          const std::array<float, 3> game = {decode(game_curve[index]), decode(game_curve[index + 1]), decode(game_curve[index + 2])};
+          const std::array<float, 3> ours = {decode(pixels[index]), decode(pixels[index + 1]), decode(pixels[index + 2])};
+          const float game_nits = 203.f * ((0.2126f * game[0]) + (0.7152f * game[1]) + (0.0722f * game[2]));
+          const float ours_nits = 203.f * ((0.2126f * ours[0]) + (0.7152f * ours[1]) + (0.0722f * ours[2]));
+          if (y == 0 && game_nits >= 0.05f && game_nits <= 15.f) {
+            const size_t range = (game_nits < 1.f) ? 0u : 1u;
+            worst[range] = std::max(worst[range], std::abs((static_cast<double>(ours_nits) / game_nits) - 1.0));
+          } else if (y != 0 && game_nits >= 1.f && game_nits <= 30.f) {
+            const auto game_lab = oklab(game[0], game[1], game[2]);
+            const auto ours_lab = oklab(ours[0], ours[1], ours[2]);
+            const double game_chroma = std::hypot(game_lab[1], game_lab[2]);
+            if (game_chroma > 0.01) {
+              chroma_sum += std::abs((std::hypot(ours_lab[1], ours_lab[2]) / game_chroma) - 1.0);
+              ++chroma_count;
+            }
+          }
+        }
+      }
+      worst[2] = (chroma_count != 0) ? chroma_sum / chroma_count : 0.0;
+      return worst;
+    };
+    ShaderInjectData v35 = injection;
+    v35.hdr = 3.f;
+    v35.swap_chain_encoding = 1.f;
+    v35.hue_clip = 0.f;
+    v35.v35_exposure = 1.f;
+    v35.v35_highlights = 1.f;
+    v35.v35_shadows = 1.f;
+    v35.v35_contrast = 1.f;
+    v35.v35_highlight_contrast = 1.f;
+    v35.v35_shadow_contrast = 1.f;
+    v35.v35_flare = 0.f;
+    v35.v35_saturation = 1.f;
+    v35.v35_dechroma = 0.f;
+    v35.v35_highlight_saturation = 1.f;
+    v35.v35_roll_off = 1.f;
+    v35.v35_gamut_compression = 1.f;
+    const auto shipped = errors(draw(built_shader.Get(), v35));
+    std::printf("PsychoV35 at the shipped defaults against the game: grey %.1f %% (0.05 - 1 nits), %.1f %% (1 - 15 nits) worst; "
+                "colour chroma %.1f %% mean (1 - 30 nits)\n",
+                100.0 * shipped[0], 100.0 * shipped[1], 100.0 * shipped[2]);
+    CHECK(std::isfinite(shipped[0]) && std::isfinite(shipped[1]) && std::isfinite(shipped[2]));
+    double best_score = std::max({shipped[0], shipped[1], shipped[2]});
+    std::array<float, 3> best = {1.f, 1.f, 1.f};
+    for (int contrast = 0; contrast <= 12; ++contrast) {
+      for (int shadows = 0; shadows <= 20; ++shadows) {
+        for (int saturation = 0; saturation <= 12; ++saturation) {
+          ShaderInjectData fitted = v35;
+          fitted.v35_contrast = 0.7f + (0.05f * contrast);
+          fitted.v35_shadows = 0.5f + (0.05f * shadows);
+          fitted.v35_saturation = 0.8f + (0.05f * saturation);
+          const auto fit = errors(draw(built_shader.Get(), fitted));
+          if (const double score = std::max({fit[0], fit[1], fit[2]}); score < best_score) {
+            best_score = score;
+            best = {fitted.v35_contrast, fitted.v35_shadows, fitted.v35_saturation};
+          }
+        }
+      }
+    }
+    std::printf("  minimax fit (Contrast 0.7 - 1.3, Shadows 0.5 - 1.5, Saturation 0.8 - 1.4, steps 0.05): Contrast %.2f, Shadows "
+                "%.2f, Saturation %.2f, worst %.1f %% (the shipped defaults: %.1f %%)\n",
+                best[0], best[1], best[2], 100.0 * best_score, 100.0 * std::max({shipped[0], shipped[1], shipped[2]}));
+    // V35 / game on the grey row where the game first reaches 0.1, 1, 5 and 15 nits (above 1: V35 brighter).
+    ShaderInjectData fitted = v35;
+    fitted.v35_contrast = best[0];
+    fitted.v35_shadows = best[1];
+    fitted.v35_saturation = best[2];
+    for (const auto& [name, pixels] : {std::pair{"shipped", draw(built_shader.Get(), v35)}, std::pair{"fitted", draw(built_shader.Get(), fitted)}}) {
+      std::printf("  grey V35 / game, %s:", name);
+      for (const float nits : {0.1f, 1.f, 5.f, 15.f}) {
+        for (UINT x = 0; x < WIDTH; ++x) {
+          const float game_nits = 203.f * decode(game_curve[(x * 4) + 1]);
+          if (game_nits >= nits) {
+            std::printf(" %.3g at %.3g nits", decode(pixels[(x * 4) + 1]) * 203.f / game_nits, game_nits);
+            break;
+          }
+        }
+      }
+      std::printf("\n");
+    }
+    // The measure's own check: Extended (below white the game's SDR, its grading skipped at 1) must sit within the 5 % the
+    // rule asks of the grey; a wrong decode or white would put it off.
+    ShaderInjectData extended = injection;
+    extended.hdr = 1.f;
+    extended.swap_chain_encoding = 1.f;
+    const auto extended_errors = errors(draw(built_shader.Get(), extended));
+    std::printf("  Extended (the game's SDR below white) by the same measure: grey %.1f %% / %.1f %%, colour %.1f %%\n",
+                100.0 * extended_errors[0], 100.0 * extended_errors[1], 100.0 * extended_errors[2]);
+    CHECK(extended_errors[0] < 0.05 && extended_errors[1] < 0.05);
   }
   // A few of the game's values, for the record (grey row: encoded sRGB after the chart).
   for (const UINT x : {0u, 64u, 128u, 192u, 255u}) {

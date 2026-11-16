@@ -140,6 +140,7 @@ struct ShaderInjectData {
   float v35_highlight_saturation;
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
+  float rays_sharp_reflections;    // ssr00 / ssr01: 1 the reflections blur's roughness step 0 where the rays reflect (Experimental)
 };
 
 #define SI shader_injection

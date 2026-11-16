@@ -143,6 +143,7 @@ struct ShaderInjectData {
   float vfxbasebrightness;         // vfx00 / vfx01 (Attila's): the lit particles x this, but the snow / weather slices (1: the game's)
   float auto_exposure_highlight_protection;     // autoexposure00 (5E597EBC): 0 stock, 1 the metered maximum limited (Attila's)
   float auto_exposure_highlight_headroom_stops; // that limit, stops above the frame's average
+  float rays_sharp_reflections;    // ssr00 / ssr01: 1 the reflections blur's roughness step 0 where the rays reflect (Experimental)
 };
 
 #define SI shader_injection

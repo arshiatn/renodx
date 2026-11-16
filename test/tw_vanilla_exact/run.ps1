@@ -115,7 +115,13 @@ $table = [ordered]@{
                                     '^bloom01_' = 'cb0[0]=0.35,1,8,0;cb0[1]=0.015625,0.0208333,0,0'; '^lensflare00_' = 'cb7[4]=1,0.05,0,0' } }
   # Rome Remastered's other replaced pixel shaders (cutscene, distortion, FXAA, SMAA's last pass).
   'RomeRPS'     = @{ Folder = 'twromeremastered'; Dump = 'dump_shader_twromeremastered_pack\cso'; Shaders = '^(cutscene|distortion|fxaa|smaa)\d+_' }
-  'Ryse'        = @{ Folder = 'rysesonofrome'; Dump = 'dump_shader_ryse'; Shaders = '^tonemap\d+_' }
+  # Ryse (rys2_ 11-16): every replaced shader exact here with its control caught. Left out: post00 / 01 / 03, upscale00
+  # and taa00 (0.29 - 0.63 off: the game read their inputs through sRGB views, which the upgrade makes FP16 clones, and
+  # ours decode by hand; these inputs give both the same bytes, so the game's shader sees no decode: an sRGB-view input
+  # for the game's side is the missing piece); sunshadow00 / 02 / 04 (exact, the control not caught with these inputs:
+  # test/tw_ryse_shadow_skip has them against the game's bytes with casters).
+  'Ryse'        = @{ Folder = 'rysesonofrome'; Dump = 'dump_shader_ryse'
+                     Shaders = '^(tonemap|shafts|smaa|mb|dof|video|ssdo)\d+_|^post02_|^sunshadow0[13]_' }
   # Divinity 1: the tone map (tw_divinity1's), bloom, god rays, UI, FXAA, SMAA, vignette.
   'Divinity1'   = @{ Folder = 'divinityoriginalsinenhanced'; Dump = $Divinity1
                      Shaders = '^(bloom|godsrays\d+|ui\d+)_|^0x(30A1D40D|35F39F1D|6AF33A9B|B7FC46C3|FB839D33|DDBCD866)\.' }

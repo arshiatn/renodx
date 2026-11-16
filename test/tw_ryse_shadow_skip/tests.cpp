@@ -2,8 +2,9 @@
 // Shadow Maps, rysesonofrome/shadow_skip.hpp): the game's own bytes and the add-on's built replacements (Sun Shadow
 // Softness off and on: PCSS) must write no shadow (mask 0) into a map cleared to 1 as the game clears it, D16 like the
 // game's (R16_TYPELESS). Control: the same map with a caster nearer than the receivers must write full shadow (1), and
-// the built shaders must match the game's in both. Arguments: the repository (its build's embedded csos) and the folder of
-// the game's dumped csos (bin\cmd_Decompiler-1.3.16\dump_shader_ryse); both only read.
+// the built shaders must match the game's in both. Part 2: under PCSS the near passes ignore the edge mask (ps
+// 0x292F2865's, left out then). Arguments: the repository (its build's embedded csos) and the folder of the game's dumped
+// csos (bin\cmd_Decompiler-1.3.16\dump_shader_ryse); both only read.
 #include <windows.h>
 
 #include <d3d11.h>
@@ -20,6 +21,7 @@
 #include <format>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <vector>
 
 #include "src/games/rysesonofrome/shared.h"
@@ -304,6 +306,101 @@ int main(int argc, char** argv) {
       }
     }
   }
+  // Part 2: the edge mask (ps 0x292F2865's output at t5, left out under Sun Shadow Softness: addon.cpp). With PCSS the
+  // near passes' mask must not depend on it: every texel the same, bit for bit, for an edge mask of 0, 1 and NaN over a
+  // map of mixed depths. Control: Softness off (the game's kernel, widened by the edge mask) must differ between 0 and 1.
+  {
+    std::vector<uint16_t> mixed(size_t{MAP_SIZE} * MAP_SIZE);
+    for (size_t index = 0; index < mixed.size(); ++index) {
+      const uint32_t hash = static_cast<uint32_t>(index) * 2654435761u;
+      mixed[index] = static_cast<uint16_t>((hash >> 16) % 2 == 0 ? 0x3333 : 0xFFFF);  // casters at 0.2 or none
+    }
+    const D3D11_TEXTURE2D_DESC mixed_desc = {.Width = MAP_SIZE,
+                                             .Height = MAP_SIZE,
+                                             .MipLevels = 1,
+                                             .ArraySize = 1,
+                                             .Format = DXGI_FORMAT_R16_TYPELESS,
+                                             .SampleDesc = {.Count = 1},
+                                             .Usage = D3D11_USAGE_IMMUTABLE,
+                                             .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    const D3D11_SUBRESOURCE_DATA mixed_data = {.pSysMem = mixed.data(), .SysMemPitch = MAP_SIZE * 2};
+    ComPtr<ID3D11Texture2D> mixed_map;
+    ComPtr<ID3D11ShaderResourceView> mixed_view;
+    if (FAILED(device->CreateTexture2D(&mixed_desc, &mixed_data, mixed_map.GetAddressOf()))
+        || FAILED(device->CreateShaderResourceView(mixed_map.Get(), &view_desc, mixed_view.GetAddressOf()))) {
+      std::printf("the mixed map could not be made\n");
+      return 2;
+    }
+    const auto edge_texture = [&](float value) {
+      const std::vector<float> values(WIDTH * HEIGHT, value);
+      return Texture(device.Get(), WIDTH, HEIGHT, DXGI_FORMAT_R32_FLOAT, values.data(), WIDTH * 4);
+    };
+    const auto edge_zero = edge_texture(0.f);
+    const auto edge_one = edge_texture(1.f);
+    const auto edge_nan = edge_texture(std::numeric_limits<float>::quiet_NaN());
+    // Every texel's mask (x) of one pass with that edge mask and Softness.
+    const auto mask = [&](ID3D11PixelShader* shader, ID3D11ShaderResourceView* edge, float softness) {
+      ShaderInjectData injection = {};
+      injection.sun_shadow_softness = softness;
+      const auto injection_buffer = Constants(device.Get(), &injection, sizeof(injection));
+      context->ClearState();
+      std::array<ID3D11ShaderResourceView*, 6> views = {scene_view.Get(), rotation_view.Get(), mixed_view.Get(), nullptr, nullptr, edge};
+      std::array<ID3D11SamplerState*, 6> samplers = {point_sampler.Get(), comparison_sampler.Get(), point_sampler.Get(),
+                                                     point_sampler.Get(), point_sampler.Get(), point_sampler.Get()};
+      context->VSSetShader(vertex_shader.Get(), nullptr, 0);
+      context->PSSetShader(shader, nullptr, 0);
+      context->PSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+      context->PSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+      ID3D11Buffer* batch = batch_buffer.Get();
+      ID3D11Buffer* settings = injection_buffer.Get();
+      context->PSSetConstantBuffers(0, 1, &batch);
+      context->PSSetConstantBuffers(13, 1, &settings);
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(WIDTH), .Height = static_cast<float>(HEIGHT), .MaxDepth = 1.f};
+      context->RSSetViewports(1, &viewport);
+      ID3D11RenderTargetView* targets[] = {target_view.Get()};
+      context->OMSetRenderTargets(1, targets, nullptr);
+      context->Draw(3, 0);
+      context->CopyResource(staging.Get(), target.Get());
+      std::vector<uint32_t> bits(WIDTH * HEIGHT);
+      D3D11_MAPPED_SUBRESOURCE mapped = {};
+      if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+        for (UINT y = 0; y < HEIGHT; ++y) {
+          const auto* row = reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(mapped.pData) + (y * mapped.RowPitch));
+          for (UINT x = 0; x < WIDTH; ++x) bits[(y * WIDTH) + x] = row[x * 4];
+        }
+        context->Unmap(staging.Get(), 0);
+      }
+      return bits;
+    };
+    const auto differing = [](const std::vector<uint32_t>& a, const std::vector<uint32_t>& b) {
+      size_t count = 0;
+      for (size_t index = 0; index < a.size(); ++index) count += (a[index] != b[index]) ? 1u : 0u;
+      return count;
+    };
+    for (const uint32_t hash : {0xE9264ADEu, 0xB5DC6E36u}) {
+      const auto built = ReadFile(repository / std::format("build/rysesonofrome.include/embed/0x{:08X}.cso", hash));
+      ComPtr<ID3D11PixelShader> built_shader;
+      if (built.empty() || FAILED(device->CreatePixelShader(built.data(), built.size(), nullptr, built_shader.GetAddressOf()))) {
+        std::printf("0x%08X: missing or not made\n", hash);
+        ++failures;
+        continue;
+      }
+      const auto soft_zero = mask(built_shader.Get(), edge_zero.Get(), 1.5f);
+      const auto soft_one = mask(built_shader.Get(), edge_one.Get(), 1.5f);
+      const auto soft_nan = mask(built_shader.Get(), edge_nan.Get(), 1.5f);
+      const auto game_zero = mask(built_shader.Get(), edge_zero.Get(), 0.f);
+      const auto game_one = mask(built_shader.Get(), edge_one.Get(), 0.f);
+      const size_t soft_one_apart = differing(soft_zero, soft_one);
+      const size_t soft_nan_apart = differing(soft_zero, soft_nan);
+      const size_t control_apart = differing(game_zero, game_one);
+      std::printf("0x%08X edge mask under PCSS: 1 vs 0 %zu of %u texels apart, NaN vs 0 %zu; CONTROL Softness off, 1 vs 0: %zu apart\n",
+                  hash, soft_one_apart, WIDTH * HEIGHT, soft_nan_apart, control_apart);
+      CHECK(soft_one_apart == 0 && soft_nan_apart == 0);
+      CHECK(control_apart != 0);
+    }
+  }
+
   std::printf("%s (%d failures)\n", failures == 0 ? "PASS" : "FAIL", failures);
   return failures == 0 ? 0 : 1;
 }
