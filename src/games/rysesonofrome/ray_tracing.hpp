@@ -10,6 +10,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <span>
 
@@ -378,7 +379,10 @@ inline void BindLightingInputs(ID3D11DeviceContext* context) {
   ID3D11ShaderResourceView* bound = traced[0];
   const auto& bridge = twattila::dlaa_bridge::bridge;
   if (occluding) {
-    if (!internal::EnsureTexture(state.device.Get(), state.render_size, &state.merged, &state.merged_uav, &state.merged_srv)) return;
+    if (!internal::EnsureTexture(state.device.Get(), state.render_size, std::addressof(state.merged), std::addressof(state.merged_uav),
+                                 std::addressof(state.merged_srv))) {
+      return;
+    }
     {
       const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
       ID3D11ShaderResourceView* inputs[] = {game.Get(), traced[1]};
@@ -395,7 +399,8 @@ inline void BindLightingInputs(ID3D11DeviceContext* context) {
     // A bridge bigger than the render (the helper upscales): its top-left alone.
     ComPtr<ID3D11Resource> resource;
     bound->GetResource(resource.GetAddressOf());
-    if (!internal::EnsureTexture(state.device.Get(), state.render_size, &state.reflections_copy, nullptr, &state.reflections_copy_srv)) {
+    if (!internal::EnsureTexture(state.device.Get(), state.render_size, std::addressof(state.reflections_copy), nullptr,
+                                 std::addressof(state.reflections_copy_srv))) {
       state.reflecting = false;
       return;
     }
@@ -455,7 +460,7 @@ inline void KeepColor(ID3D11DeviceContext* context) {
   if (FAILED(target_resource.As(&target_texture))) return;
   target_texture->GetDesc(&desc);
   if (desc.Format != DXGI_FORMAT_R11G11B10_FLOAT || desc.Width != size[0] || desc.Height != size[1]
-      || !internal::EnsureTexture(state.device.Get(), size, &state.kept_color, &state.kept_color_uav, nullptr)) {
+      || !internal::EnsureTexture(state.device.Get(), size, std::addressof(state.kept_color), std::addressof(state.kept_color_uav), nullptr)) {
     return;
   }
   const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
