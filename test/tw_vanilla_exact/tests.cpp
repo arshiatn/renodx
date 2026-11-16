@@ -13,10 +13,18 @@
 //   exact: bloom textures flat, bright passes (bloom*) at their source's size: the bloom smoothing (audit R6) is exact
 //          by construction there;
 //   full:  bloom textures varied, bright passes at a quarter of their source.
-// Each shader: EXACT (the full set within TOLERANCE of the game's output or of its 8-bit target's clamp), R6 (the exact
-// set within, the full set not, a shader that adds or makes bloom: the smoothing's size reported, not a failure), FAIL.
+// Each shader: EXACT (the full set within TOLERANCE of the game's output or of its 8-bit target's clamp), accepted (R6:
+// the exact set within, the full set not, a shader that adds or makes bloom: the bloom smoothing, accepted by ATN as
+// intended 2026-11-16, its size reported), FAIL.
 // Control (must fail): the game's bytes with each write to an output reading other components (x <-> y, or the next
 // component) against the game's own. Report: the game's float constants (arithmetic only) x 1.02 one at a time, how many the exact set sees.
+// Gamma Correction (games whose manifest line names their frame's gamma: Attila, Thrones of Britannia): the add-on's
+// shader alone, in Rendering Modes 0 - 3 at Paper White = UI and at twice UI, Gamma Correction off at the Peak the tone
+// mappers then take (Peak^(1 / 1.1) of Paper White) and on at Peak. Where it acts, on decoded at 2.2 must be
+// Paper White x (off decoded at the frame's gamma / Paper White)^1.1 at every texel (GAMMA_TOLERANCE of its brightest
+// channel): a 2.2 display's decode of the game's gamma 2.0 picture, Peak landing on Peak; where that is past Peak in
+// BT.2020 (a saturated highlight the power lifted), within Peak at its luminance. Control (must fail): on = off (no 2.2
+// decode) at the scene's grey.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -62,8 +70,9 @@ constexpr double TOLERANCE = 2.4e-4;
 constexpr uint32_t SENTINEL = 0xC0DEDBADu;  // a target texel no draw wrote (discard)
 
 // The add-on's settings for its Vanilla path where it has them: Rendering Mode SDR (Divinity 2: Off), every multiplier at
-// the game's 1, Paper White = UI (no scale), Gamma Correction off (on, it re-encodes the in-game gamma for the display
-// on purpose: 2.0 to 2.2 in Rome II, Warhammer I / II, Troy, Pharaoh).
+// the game's 1, Paper White = UI (no scale), Gamma Correction off: it is a display emulation, on purpose not the game's
+// bytes (Rome II, Warhammer I / II, Troy, Pharaoh re-encode the in-game gamma 2.0 to 2.2 in Rendering Mode SDR; Attila
+// and Thrones of Britannia decode their gamma 2.0 frame as a 2.2 display in every mode: the Gamma Correction check).
 constexpr std::pair<std::string_view, float> BASE_SETTINGS[] = {
     {"hdr", 0.f}, {"tonemap_type", 0.f}, {"peak_white_nits", 1000.f}, {"diffuse_white_nits", 203.f},
     {"graphics_white_nits", 203.f}, {"gamma_correction", 0.f}, {"swap_chain_encoding", 0.f}, {"bloom", 1.f},
@@ -74,6 +83,18 @@ constexpr std::pair<std::string_view, float> BASE_SETTINGS[] = {
     {"someindicators", 1.f}, {"cone_response_exponent", 1.f}, {"highlight_expansion", 1.f}, {"motion_blur", 1.f},
     {"motion_blur_camera", 1.f}, {"motion_blur_object", 1.f},
 };
+
+// The Gamma Correction check's HDR modes on top: PsychoV30 / V31 / V35 at their defaults (twattila/psycho35_settings.hpp,
+// Attila's ApplyHDRPreset).
+constexpr std::pair<std::string_view, float> HDR_SETTINGS[] = {
+    {"purity_scale", 1.f}, {"hue_shift", 0.f}, {"v31_exposure", 1.f}, {"v31_highlights", 1.f}, {"v31_shadows", 1.f},
+    {"v31_contrast", 1.f}, {"v31_highlight_contrast", 1.f}, {"v31_shadow_contrast", 1.f}, {"v31_saturation", 1.f},
+    {"v31_highlight_saturation", 0.7f}, {"v31_roll_off", 1.f}, {"v31_gamut_compression", 1.f},
+    {"v31_gamut_compression_mode", 1.f}, {"v31_highlight_hue_shift", 0.04f}, {"v35_exposure", 1.f}, {"v35_highlights", 1.f},
+    {"v35_shadows", 1.f}, {"v35_contrast", 1.f}, {"v35_highlight_contrast", 1.f}, {"v35_shadow_contrast", 1.f},
+    {"v35_saturation", 1.f}, {"v35_roll_off", 1.f}, {"v35_gamut_compression", 1.f}, {"v35_highlight_saturation", 1.f},
+};
+constexpr double GAMMA_TOLERANCE = 1e-4;  // relative: the decodes' float rounding, the Peaks' last bit
 
 static ComPtr<ID3D11Device> device;
 static ComPtr<ID3D11DeviceContext> context;
@@ -893,7 +914,8 @@ static Difference Compare(const Output& reference, const Output& test) {
 struct Case {
   std::string game, shader, game_path, addon_path;
   Settings settings;
-  std::string registers;  // GameConstants' registers
+  std::string registers;     // GameConstants' registers
+  float frame_gamma = 0.f;   // the frame's gamma without Gamma Correction: the Gamma Correction check (0: none)
 };
 
 static std::vector<Case> ReadManifest(const std::filesystem::path& path) {
@@ -918,6 +940,7 @@ static std::vector<Case> ReadManifest(const std::filesystem::path& path) {
       }
     }
     if (fields.size() >= 6) entry.registers = fields[5];
+    if (fields.size() >= 7 && !fields[6].empty()) entry.frame_gamma = std::stof(fields[6]);
     cases.push_back(entry);
   }
   return cases;
@@ -974,8 +997,9 @@ int main(int argc, char** argv) {
     if (std::string_view(argv[a]) == "--no-mutants") run_mutants = false;
     if (std::string_view(argv[a]) == "--dump" && a + 1 < argc) dump = argv[++a];
   }
-  int exact = 0, r6 = 0, failed = 0, blind = 0;
-  std::printf("%-12s %-34s %-6s %-9s %-9s %-9s %-9s %s\n", "game", "shader", "result", "exact", "full", "control", "mutants", "notes");
+  int exact = 0, r6 = 0, failed = 0, blind = 0, gamma_checked = 0, gamma_failed = 0;
+  std::vector<std::string> gamma_lines;
+  std::printf("%-12s %-34s %-8s %-9s %-9s %-9s %-9s %s\n", "game", "shader", "result", "exact", "full", "control", "mutants", "notes");
   for (const Case& entry : ReadManifest(argv[1])) {
     const Shader game = LoadShader(entry.game_path);
     const Shader addon = LoadShader(entry.addon_path);
@@ -1032,21 +1056,122 @@ int main(int argc, char** argv) {
     } else if (Exact(full_difference)) {
       result = (full_difference.worst <= TOLERANCE) ? "EXACT" : "EXACT*";
     } else if (Exact(exact_difference) && (exact_setup.bloom || bright_pass)) {
-      result = "R6";
+      result = "accepted";
     }
     std::string note = exact_setup.note;
     if (!exact_difference.valid) note += " (no comparable output: the add-on's shader or its signature)";
     if (exact_difference.valid && !Exact(exact_difference) && exact_difference.clamped <= TOLERANCE) note += " (equal within 0-1: apart above 1 only)";
     if (std::string_view(result) == "EXACT*") note += " (" + std::to_string(full_difference.outliers) + " of " + std::to_string(full_difference.texels) + " texels past the tolerance)";
+    if (std::string_view(result) == "accepted") note += " (R6: the bloom smoothing, as intended)";
     if (!caught) note += " CONTROL NOT CAUGHT";
     if (std::string_view(result).starts_with("EXACT")) ++exact;
-    if (std::string_view(result) == "R6") ++r6;
+    if (std::string_view(result) == "accepted") ++r6;
     if (std::string_view(result) == "FAIL") ++failed;
     if (!caught) ++blind;
-    std::printf("%-12s %-34s %-6s %-9s %-9s %-9s %-9s%s\n", entry.game.c_str(), entry.shader.c_str(), result,
+    std::printf("%-12s %-34s %-8s %-9s %-9s %-9s %-9s%s\n", entry.game.c_str(), entry.shader.c_str(), result,
                 Number(exact_difference.worst).c_str(), Number(full_difference.worst).c_str(), caught ? Number(control.worst).c_str() : (swapped.empty() ? "NONE" : ("MISSED" + Number(control.worst)).c_str()),
                 mutant_text.c_str(), note.c_str());
+
+    // Gamma Correction (the header): only where it changes the add-on's output.
+    if (entry.frame_gamma > 0.f && !game.vertex) {
+      constexpr float PEAK = 1000.f;
+      constexpr float DIFFUSE = 203.f;
+      const float corrected_peak = DIFFUSE * std::pow(std::max(PEAK / DIFFUSE, 1.f), entry.frame_gamma / 2.2f);
+      const auto sign_pow = [](double value, double exponent) { return std::copysign(std::pow(std::abs(value), exponent), value); };
+      bool acted = false;
+      bool control_caught = true;
+      double worst = 0.0;
+      size_t limited = 0;  // texels past Peak in BT.2020 after the power: checked within Peak at their luminance
+      char worst_at[192] = "";
+      std::array<double, 3> grey = {};  // Rendering Mode 3, Paper White = UI: off, on, the 2.2 decode of off's value (nits)
+      for (const float mode : {0.f, 1.f, 2.f, 3.f}) {
+        for (const float graphics : {DIFFUSE, DIFFUSE / 2.f}) {
+          const double paper_white = DIFFUSE / graphics;
+          const auto draw = [&](float correction) {
+            Settings settings = entry.settings;
+            for (const auto& [key, value] : HDR_SETTINGS) settings.emplace_back(std::string(key), value);
+            settings.emplace_back("hdr", mode);
+            settings.emplace_back("gamma_correction", correction);
+            settings.emplace_back("graphics_white_nits", graphics);
+            settings.emplace_back("peak_white_nits", (correction != 0.f) ? PEAK : corrected_peak);
+            return run(addon.code, MakeSetup(game, addon, settings, entry.registers, false, bright_pass));
+          };
+          const Output off = draw(0.f);
+          const Output on = draw(1.f);
+          if (off.words.empty() || on.words.size() != off.words.size() || on.words[0] == off.words[0]) continue;
+          acted = true;
+          const auto& off_words = off.words[0];
+          const auto& on_words = on.words[0];
+          // Each texel's colour against its brightest channel: a gamut-compressed highlight's smallest channel moves with
+          // the Peaks' last bit.
+          for (size_t texel = 0; texel + 3 < off_words.size(); texel += 4) {
+            std::array<double, 3> off_linear = {};
+            std::array<double, 3> on_linear = {};
+            std::array<double, 3> expected = {};
+            bool usable = true;
+            double brightest = 1e-6;
+            for (size_t c = 0; c < 3; ++c) {
+              usable = usable && off_words[texel + c] != SENTINEL && on_words[texel + c] != SENTINEL;
+              off_linear[c] = sign_pow(std::bit_cast<float>(off_words[texel + c]), entry.frame_gamma);
+              on_linear[c] = sign_pow(std::bit_cast<float>(on_words[texel + c]), 2.2);
+              expected[c] = paper_white * sign_pow(off_linear[c] / paper_white, 2.2 / entry.frame_gamma);
+              usable = usable && std::isfinite(off_linear[c]) && std::isfinite(on_linear[c]);
+              brightest = std::max(brightest, std::abs(expected[c]));
+            }
+            if (!usable) continue;
+            // Past Peak in BT.2020 (a saturated highlight the power lifted): within Peak at its luminance instead.
+            const auto bt2020_max = [](const std::array<double, 3>& c) {
+              return std::max({0.6274040 * c[0] + 0.3292820 * c[1] + 0.0433136 * c[2], 0.0690970 * c[0] + 0.9195400 * c[1] + 0.0113612 * c[2],
+                               0.0163916 * c[0] + 0.0880132 * c[1] + 0.8955950 * c[2]});
+            };
+            const auto luminance = [](const std::array<double, 3>& c) { return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+            const double peak_frame = std::max(PEAK, DIFFUSE) / graphics;
+            if (bt2020_max(expected) > peak_frame) {
+              const double error = std::max(bt2020_max(on_linear) / peak_frame - 1.0,
+                                            std::abs(luminance(on_linear) - std::min(luminance(expected), peak_frame)) / peak_frame);
+              if (error > worst) {
+                worst = error;
+                std::snprintf(worst_at, sizeof(worst_at), " (worst: mode %.0f, Paper White %.0fx, texel %zu past Peak: BT.2020 %.6g, Y %.6g of %.6g)",
+                              mode, paper_white, texel / 4, bt2020_max(on_linear), luminance(on_linear), luminance(expected));
+              }
+              ++limited;
+              continue;
+            }
+            for (size_t c = 0; c < 3; ++c) {
+              const double error = std::abs(on_linear[c] - expected[c]) / brightest;
+              if (error <= worst) continue;
+              worst = error;
+              std::snprintf(worst_at, sizeof(worst_at), " (worst: mode %.0f, Paper White %.0fx, texel %zu.%c: off %.6g, on %.6g, expected %.6g)", mode,
+                            paper_white, texel / 4, "xyz"[c], off_linear[c], on_linear[c], expected[c]);
+            }
+          }
+          // The scene's grey (column 0, GREY_ROW), its green.
+          const size_t at = 4 * size_t{GREY_ROW} * WIDTH + 1;
+          const double off_grey = sign_pow(std::bit_cast<float>(off_words[at]), entry.frame_gamma);
+          const double on_grey = sign_pow(std::bit_cast<float>(on_words[at]), 2.2);
+          control_caught = control_caught && std::abs(on_grey - off_grey) > GAMMA_TOLERANCE * std::abs(off_grey);
+          if (mode == 3.f && graphics == DIFFUSE) {
+            grey = {off_grey * graphics, on_grey * graphics, paper_white * sign_pow(off_grey / paper_white, 2.2 / entry.frame_gamma) * graphics};
+          }
+        }
+      }
+      if (acted) {
+        const bool passed = worst <= GAMMA_TOLERANCE && control_caught;
+        ++gamma_checked;
+        if (!passed) ++gamma_failed;
+        char line[768];
+        std::snprintf(line, sizeof(line), "%-12s %-34s %-4s worst %-8s grey (Rendering Mode 3, %.0f nits): off %.3f, on %.3f nits = 2.2 decode of off's value %.3f; %zu texels limited to Peak%s%s",
+                      entry.game.c_str(), entry.shader.c_str(), passed ? "ok" : "FAIL", Number(worst).c_str(), DIFFUSE, grey[0], grey[1], grey[2],
+                      limited, control_caught ? "" : " CONTROL NOT CAUGHT", passed ? "" : worst_at);
+        gamma_lines.emplace_back(line);
+      }
+    }
   }
-  std::printf("EXACT %d, R6 (bloom smoothing, known) %d, FAIL %d, control missed %d\n", exact, r6, failed, blind);
-  return (failed == 0 && blind == 0) ? 0 : 1;
+  if (!gamma_lines.empty()) {
+    std::printf("Gamma Correction: on decoded at 2.2 = Paper White x (off / Paper White)^1.1, Rendering Modes 0 - 3, Paper White 1x and 2x UI\n");
+    for (const auto& line : gamma_lines) std::printf("%s\n", line.c_str());
+  }
+  std::printf("EXACT %d, accepted (R6: the bloom smoothing) %d, FAIL %d, control missed %d; Gamma Correction %d checked, %d failed\n", exact, r6,
+              failed, blind, gamma_checked, gamma_failed);
+  return (failed == 0 && blind == 0 && gamma_failed == 0) ? 0 : 1;
 }

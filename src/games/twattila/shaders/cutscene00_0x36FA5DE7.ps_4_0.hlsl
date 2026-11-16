@@ -44,7 +44,7 @@ void main(
   }
   float3 video = AutoHdrHighlights(renodx::color::gamma::DecodeSafe(o0.xyz), SI.video_autohdr);
 
-  // Video is mastered for a 2.2 screen; the frame is 2.0. Scene paper white.
-  o0.xyz = renodx::color::gamma::EncodeSafe(video * ATTILA_PAPER_WHITE, 2.0f);
+  // Video is mastered for a 2.2 screen, encoded with the frame's gamma (shared.h). Scene paper white.
+  o0.xyz = EncodeFrame(video * ATTILA_PAPER_WHITE);
   return;
 }

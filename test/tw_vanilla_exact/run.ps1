@@ -26,12 +26,14 @@ if (-not $Fxc) {
 
 # Each game: its add-on folder, the dump with the game's csos (0x<CRC32>.<target>.cso), the shaders (by file name);
 # Settings: shader_injection members on top of the test's Vanilla ones; Registers (by shader name): constants where the
-# game's bytes carry no names (tests.cpp, GameConstants).
+# game's bytes carry no names (tests.cpp, GameConstants); FrameGamma: the frame's gamma whose 2.2 decode Gamma Correction
+# gives in every Rendering Mode (tests.cpp's Gamma Correction check).
 $table = [ordered]@{
   'Shogun2'     = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'; Shaders = '^(tonemap|flare|hdrflare)\d+_' }
-  'Attila'      = @{ Folder = 'twattila'; Dump = 'dump_shader_twattila_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_' }
+  'Attila'      = @{ Folder = 'twattila'; Dump = 'dump_shader_twattila_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'; FrameGamma = '2' }
   'RomeII'      = @{ Folder = 'twrome2'; Dump = 'dump_shader_twrome2_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_' }
-  'Thrones'     = @{ Folder = 'twthronesofbritannia'; Dump = 'dump_shader_twthronesofbritannia_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_' }
+  'Thrones'     = @{ Folder = 'twthronesofbritannia'; Dump = 'dump_shader_twthronesofbritannia_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'
+                     FrameGamma = '2' }
   'WH1'         = @{ Folder = 'twwarhammer'; Dump = 'dump_shader_twwarhammer_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_' }
   'WH2'         = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_' }
   'WH3'         = @{ Folder = 'twwarhammer3'; Dump = 'dump_shader_twwarhammer3_pack\cso'; Shaders = '^(t|bloom|lensflare|lensblood)\d+_' }
@@ -86,7 +88,7 @@ foreach ($game in $table.Keys) {
     $addonCso = Join-Path $out ($file.BaseName + '.cso')
     if (-not (Compile-Shader $file.FullName $target $addonCso)) { Remove-Item -LiteralPath $addonCso -ErrorAction SilentlyContinue }
     $registers = if ($entry.Registers) { ($entry.Registers.Keys | Where-Object { $file.Name -match $_ } | ForEach-Object { $entry.Registers[$_] }) -join ';' } else { '' }
-    $manifest += "$game`t$($file.BaseName -replace '\.\w+_\d_\d$', '')`t$gameCso`t$addonCso`t$($entry.Settings)`t$registers"
+    $manifest += "$game`t$($file.BaseName -replace '\.\w+_\d_\d$', '')`t$gameCso`t$addonCso`t$($entry.Settings)`t$registers`t$($entry.FrameGamma)"
   }
 }
 $manifestPath = Join-Path $testBuild 'manifest.tsv'

@@ -34,7 +34,7 @@ void main(
   o0.xyzw = saturate(o0.xyzw);
 
   // Vertex colour goes out unencoded (ignores in-game gamma), so it was made for a
-  // 2.2 screen. The frame is 2.0.
-  o0.xyz = renodx::color::gamma::EncodeSafe(renodx::color::gamma::DecodeSafe(o0.xyz), 2.0f);
+  // 2.2 screen: encoded with the frame's gamma (shared.h).
+  o0.xyz = EncodeFrame(renodx::color::gamma::DecodeSafe(o0.xyz));
   return;
 }

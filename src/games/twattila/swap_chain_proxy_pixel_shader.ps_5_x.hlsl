@@ -13,16 +13,15 @@ float4 main(float4 vpos: SV_POSITION, float2 uv: TEXCOORD0)
     : SV_TARGET {
   float3 x = t0.Sample(s0, uv).xyz;
 
-  // Rendering Mode SDR: Gamma Correction takes the game's gamma 2.0 picture to 2.2 (ATN 2026-11-01).
-  const bool gamma_corrected = HDR < 0.5f && SI.gamma_correction != 0.f;
-
-  // Rendering Mode SDR on an SDR display: the game's picture as it is (decoded at its gamma 2.0 and encoded at 2.2 below, its
-  // darks came out brighter than the game's, ATN 2026-11-01).
-  if (ATTILA_SDR_OUTPUT && HDR < 0.5f && !gamma_corrected) return float4(saturate(x), 1.f);
+  // Decoded with the frame's gamma (shared.h): Gamma Correction shows the game's gamma 2.0 picture as a 2.2 display does,
+  // in every Rendering Mode (ATN 2026-11-16; Rendering Mode SDR since 2026-11-01). An SDR display decodes a 2.2 frame
+  // itself: Rendering Mode SDR without Gamma Correction, the game's picture as it is (at gamma 2.0 and encoded at 2.2
+  // below, its darks came out brighter than the game's, ATN 2026-11-01), and the HDR modes with it.
+  if (ATTILA_SDR_OUTPUT && TW_FRAME_GAMMA == 2.2f) return float4(saturate(x), 1.f);
 
   // intermediate encode inv
   //  x = max(0, x); // Do not clamp here: PsychoV uses signed BT.709 to represent BT.2020.
-  x = renodx::color::gamma::DecodeSafe(x, (gamma_corrected && !ATTILA_SDR_OUTPUT) ? 2.2f : 2.0f);  // in-game gamma 20
+  x = DecodeFrame(x);
 
   // SDR output: gamma 2.2, white = the display's.
   if (ATTILA_SDR_OUTPUT) return float4(renodx::color::gamma::EncodeSafe(saturate(x)), 1.f);
