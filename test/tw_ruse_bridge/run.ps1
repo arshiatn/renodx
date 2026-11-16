@@ -12,12 +12,14 @@ param(
   [string]$Ngx = 'C:\Users\arshi\Documents\Nvidia(myself)\streamline-sdk-v2.14.16\bin\x64',
   [ValidateSet('dlss', 'fsr', 'xess')][string]$Upscaler = 'dlss',
   [switch]$Replay,
-  [switch]$CompileOnly
+  [switch]$CompileOnly,
+  # Test exes go to the folder Bitdefender leaves alone (tools\tw\testbin).
+  [string]$Build = 'C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\testbin\tw_ruse_bridge'
 )
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_ruse_bridge'
-$testBuild = Join-Path $repairRoot 'build\tw_ruse_bridge_test'
+$testBuild = $Build
 $scripts = 'C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\nontw\ruse\scripts'
 if ($Helper -eq '') { $Helper = Join-Path $repairRoot 'build\tw_dlaa_helper' }
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null

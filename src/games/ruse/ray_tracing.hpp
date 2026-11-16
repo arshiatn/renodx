@@ -41,15 +41,17 @@
 // and multiply into the sun's colour alone. After that copy, before the main pass draws (with the game's AA off at its
 // clear of the pre-pass's depth, which it draws into too; else at its first draw): the pre-pass's depth
 // (INTZ) into the bridge's shared depth, the last frame's draws into the scene in this frame's camera (CaptureScene), the
-// trace, and the traced visibility into the mask's red in place of the game's shadow-map term (the pre-pass writes only
-// that term there; a frame without a trace keeps the game's).
+// trace, and the traced visibility into the mask's red with the game's shadow-map term, the darker of the two (Rays
+// Replace Shadow Maps: in place of it; the pre-pass writes only that term there; a frame without a trace keeps the game's).
 // Objects (O1) shade with the game's shadow maps alone: their pixels have no depth before the main pass, so last frame's
 // main depth (kept at the bloom) goes into this frame's view over the ground's and the rays start from both; the object
 // shaders (patched_shaders.h) read the traced visibility at s15 by screen position in place of their shadow-map factor
-// (its alpha 1), an alpha-0 texel (the game's factor) when untraced. The ground's ambient occlusion (AO) comes from the
-// same trace: the terrain shaders read it at s14 into their ambient.
-// Screen-space ground shadows (G2): Bend Studio's march (Attila's sss_setup / sss_bend) over the same depth, into the
-// mask by minimum with the game's shadow maps (off under the rays: one method a shadow). The ground's ambient occlusion
+// where its alpha is 1 (where the rays found the sun blocked; everywhere with Rays Replace Shadow Maps), an alpha-0 texel
+// (the game's factor) when untraced. The ground's ambient occlusion (AO) comes from the same trace: the terrain shaders
+// read it at s14 into their ambient.
+// Screen-space ground shadows (G2): Bend Studio's march (Attila's sss_setup / sss_bend) over O1's start depth (the
+// units, trees and buildings in it: the pre-pass draws the terrain alone), into the mask by minimum with the game's
+// shadow maps (off under the rays: one method a shadow). The ground's ambient occlusion
 // without rays: GT-VBAO
 // (ground_vbao.cs_5_0) over the same depth into the same occlusion texture, without the helper too (the bridge's
 // shared textures alone: MakeObjects). The ground's bounced light: GT-VBGI (ground_bounce.cs_5_0, the same march) with
@@ -65,9 +67,13 @@
 // light becomes the s14 texel; its reflections (a mirror on the water) the s13 texel.
 namespace ruse::ray_tracing {
 
-// The rays' ambient range in world units: 2 m if a unit is a centimetre (eye heights near 67,000 on the B0 trace; the
-// T-run checks).
-constexpr float AMBIENT_RANGE = 200.f;
+// A world unit is a centimetre (the terrain's box 2,621,440 units square and 84,421 high: a 26 km map with 844 m of
+// relief; the haze's eye height capped at 750,000); the helper's scene, rays and ranges are in metres (its scene data
+// drops a vertex past 200 km as garbage, its ray offsets and reaches are metres). Its camera and ranges take world units
+// times this: R.U.S.E.'s centimetres near 2e6 left every captured triangle out (run_rn3_rt_093315: no shadow traced).
+constexpr double HELPER_METRES = 0.01;
+// The rays' ambient range, metres.
+constexpr float AMBIENT_RANGE = 2.f;
 // GT-VBAO's radius and its samples' thickness, world units (the hollows and slopes of terrain: ten times the rays'; the
 // T-run checks).
 constexpr float VBAO_RADIUS = 2000.f;
@@ -79,13 +85,16 @@ constexpr float BOUNCE_STRENGTH = 1.f;
 constexpr float REFLECTION_REACH = 100000.f;
 constexpr float REFLECTION_THICKNESS = 500.f;
 // The rays' Light Bounce: a texel each BOUNCE_SCALE x BOUNCE_SCALE pixels, paths a texel, their reach past the first
-// surface in world units (10 m if a unit is a centimetre; the T-run checks).
+// surface in metres.
 constexpr UINT BOUNCE_SCALE = 2;
 constexpr uint32_t BOUNCE_RAYS = 2;
-constexpr float BOUNCE_RANGE = 1000.f;
+constexpr float BOUNCE_RANGE = 10.f;
 // After a frame without rays (the helper didn't trace, or no trace point) the next try this many frames on: the replay
 // records the frame before a try and the try's own, not every frame.
 constexpr uint32_t RAYS_RETRY_FRAMES = 60;
+// Without Rays Replace Shadow Maps the object shaders take the rays only where they found the sun blocked (below this
+// visibility: their umbra), the game's shadow-map factor elsewhere.
+constexpr float OBJECT_BLOCKED = 1.f / 16.f;
 
 using Microsoft::WRL::ComPtr;
 
@@ -100,6 +109,11 @@ struct State {
   uint32_t traced_bounce = 0;  // the Ground Light Bounce row's rays (restart; with the ground's): 1 rays, 2 path tracing
   bool traced_reflections = false;  // the Water Reflections row's rays (restart; with the ground's)
   float units_range = 0.f;  // the Units Ray Tracing Range row (live), metres; 0: every unit
+  // The Ground Debug View row (live): 0 off, 1 the ground mask's red, 2 our sun visibility, 3 the ground's occlusion.
+  float debug_view = 0.f;
+  // The Rays Replace Shadow Maps row (live): the rays in place of the game's shadow-map term; off, the darker of the two
+  // on the ground and the rays' umbra over the game's factor on objects (until a run proves the rays hold the maps' casters).
+  float replace_maps = 0.f;
   bool guides = false;  // either: the guide targets and the helper's guides
   bool failed = false;
   bool tracing = false;  // the last trace's answer, and its changes logged this start (a few: never a line a frame)
@@ -119,7 +133,27 @@ struct State {
   ComPtr<IDirect3DPixelShader9> depth_copy;
   ComPtr<IDirect3DPixelShader9> shadows;
   bridge::SharedTexture visibility;  // R32F: the traced sun visibility for the D3D9 pass
-  uint32_t visibility_frame = UINT32_MAX;  // the frame whose rays it holds (in place of the game's shadow maps then)
+  // The frame whose rays (or Bend's march: never with the objects' rays) it holds, with or in place of the game's maps.
+  uint32_t visibility_frame = UINT32_MAX;
+  // The object shaders' s15 (RGBA16F: the visibility, alpha 1 where they take it) and its pass (rt_object_visibility).
+  bridge::SharedTexture object_visibility;
+  ComPtr<ID3D11ComputeShader> object_copy;
+  ComPtr<ID3D11Buffer> object_settings;
+  // Record Ray Tracing Profile (rt_core's; RENODX_TW_PROFILE): the CPU's QueryPerformanceCounter ticks in R.U.S.E.'s steps
+  // summed while it records (rt_core's CSV has its capture, trace and the helper's answers), one line when it ends.
+  struct Steps {
+    uint32_t frames = 0;
+    int64_t frame = 0;  // present to present
+    int64_t replay = 0;  // the replay's placements at the present
+    int64_t ground = 0;  // ShadeGround, with the next four
+    int64_t host_wait = 0;  // the D3D9 queue drained after the depth's copy
+    int64_t capture = 0;  // CaptureScene (rt_core's capture in it)
+    int64_t trace = 0;  // rt_core's Trace (the request)
+    int64_t proxy_wait = 0;  // the D3D11 queue (and the helper's trace it waits for) drained before the mask's pass
+    int64_t evaluate = 0;  // the anti-aliasing at the bloom (its own two waits)
+  } steps;
+  int64_t steps_present = 0;  // the last present's ticks while timed
+  bool steps_timed = false;
   ComPtr<ID3D11ShaderResourceView> depth_view;  // the bridge's shared depth
   ComPtr<ID3D11ComputeShader> copy;
   // O1: last frame's main depth with its camera (the inverse view-projection) and jitter (NDC), the rays' start depth
@@ -229,9 +263,22 @@ struct BendSettings {
   std::array<float, 3> padding = {};
 };
 
+// `ticks` while rt_core's profile records (its CpuTime adds a scope's time to them), else null (nothing timed).
+inline int64_t* Timed(int64_t* ticks) {
+  return twattila::rt_scene::internal::runtime.timed ? ticks : nullptr;
+}
+
 // Any row that shades the ground or the water from the main pass's first draw (ShadeGround).
 inline bool Shading() {
   return state.ground || state.bend || state.vbao || state.bounce || state.reflections;
+}
+
+// The rows whose passes start from last frame's main depth over the ground's (O1, kept at the bloom): the objects' rays,
+// the water's march and guides, and the screen-space rows. On the pre-pass's depth alone (the terrain: no unit, tree or
+// building draws depth before the main pass) Bend and GT-VBAO found only the terrain's own relief, which the shadow maps
+// already shade (run_rn3: no visible change at +1.1 / +2.5 ms of GPU time).
+inline bool StartsFromMainDepth() {
+  return state.objects || state.reflections || state.guides || state.bend || state.vbao || state.bounce;
 }
 
 // Path-Traced Light Bounce once the helper replaces the game's ambient with the paths' (their frames of history): the
@@ -306,6 +353,8 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   // nothing below runs (the depth's copy and its wait included).
   const bool rays = state.ground && bridge.frame >= state.rays_frame;
   if (!rays && !state.bend && !state.vbao && !state.bounce && !state.reflections) return false;
+  using twattila::rt_scene::internal::CpuTime;
+  const CpuTime ground_timed(Timed(&state.steps.ground));
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
   // The anti-aliasing's bridge once it runs; without it (GT-VBAO alone) its shared textures and passes only, tried once.
   if (!bridge.ready) {
@@ -460,7 +509,11 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
       made = bridge::MakeShared(proxy, host_ex.Get(), D3DFMT_R32F, &state.occlusion, true)
              && (!state.bounce || SUCCEEDED(proxy->CreateShaderResourceView(state.occlusion.work.Get(), nullptr, state.occlusion_view.ReleaseAndGetAddressOf())));
     }
-    if (made && (state.objects || state.reflections || state.guides)) {
+    if (made && state.objects) {
+      made = bridge::MakeShared(proxy, host_ex.Get(), D3DFMT_A16B16G16R16F, &state.object_visibility, true)
+             && compute(__rt_object_visibility, &state.object_copy) && constants(16, &state.object_settings);
+    }
+    if (made && StartsFromMainDepth()) {
       D3D11_TEXTURE2D_DESC desc = {
           .Width = bridge.width,
           .Height = bridge.height,
@@ -492,6 +545,19 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
       return false;
     }
     state.failed = false;
+    // Once a start (and after a Reset): the ground's passes that run (Bend's row had no line of its own).
+    std::string passes;
+    for (const auto& [on, name] : {std::pair{state.ground, "ray-traced sun shadows"}, std::pair{state.bend, "Bend's screen-space shadows"},
+                                   std::pair{state.vbao, "GT-VBAO"}, std::pair{state.bounce && state.traced_bounce == 0, "GT-VBGI"},
+                                   std::pair{state.reflections && !state.traced_reflections, "the water march"}}) {
+      if (on) {
+        passes += std::format("{}{}", (passes.empty() ? "" : ", "), name);
+      }
+    }
+    reshade::log::message(reshade::log::level::info,
+                          std::format("[R.U.S.E.] Ground passes ready at {}x{}: {} ({})", bridge.width, bridge.height, passes,
+                                      (StartsFromMainDepth() ? "from last frame's main depth over the ground's" : "the ground's depth"))
+                              .c_str());
   }
   ComPtr<IDirect3DTexture9> prepass_depth;
   ComPtr<IDirect3DSurface9> mask_surface;
@@ -502,23 +568,42 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   const std::array<IDirect3DSurface9*, 1> depth_target = {bridge.depth.host_surface.Get()};
   const std::array<IDirect3DBaseTexture9*, 1> depth_source = {prepass_depth.Get()};
   bridge::DrawQuad(host, depth_target, state.depth_copy.Get(), depth_source, {});
-  bridge::WaitHost(host);
+  {
+    const CpuTime waited(Timed(&state.steps.host_wait));
+    bridge::HandToProxy(host, context.Get());
+  }
 
-  // The camera: the camera pass's inverse view-projection (rows acting on column vectors) and its inverse.
+  // The camera: the camera pass's inverse view-projection (rows acting on column vectors) and its inverse. The helper's
+  // in metres (HELPER_METRES): the view-projection takes them (its x, y, z columns / the scale), the inverse gives them
+  // (its x, y, z rows x the scale), and so do Host::clip_relative's rows: a clip position's offset from the eye (the
+  // inverse's row less its w row x the eye), the eye below them. The water march's offset rows are the same in world units.
+  // The helper's two matrices are the depth's as drawn (its positions from the depth's texel centres, its projections
+  // onto the screen): clip x and y moved by `shift` x w, the scene draws' jitter (OnDraw) and D3D9's pixel centres, half
+  // a texel left of and above D3D11's (unshifted, every ray started up to 0.69 m under the ground at 200 m at 256 x 144:
+  // all blocked, tw_ruse_bridge 12). The captures' rows keep the game's clip (CaptureScene's, unjittered).
   const float* inverse = bridge.camera.data() + 16;
   std::array<double, 16> view_projection = {};
   std::array<double, 3> eye = {};
   if (!bridge::CurrentCamera(&view_projection, &eye)) return false;
+  const std::array<float, 2> drawn_jitter = (bridge.ready ? bridge.jitter : std::array<float, 2>{});
+  const std::array<double, 2> shift = {(2.0 * drawn_jitter[0] + 1.0) / bridge.width, -(2.0 * drawn_jitter[1] + 1.0) / bridge.height};
   twattila::rt_scene::Camera camera = {};
-  for (size_t index = 0; index < 16; ++index) {
-    camera.view_projection[index] = static_cast<float>(view_projection[index]);
-    camera.inverse_view_projection[index] = inverse[index];
+  for (size_t row = 0; row < 4; ++row) {
+    for (size_t column = 0; column < 4; ++column) {
+      const size_t index = (row * 4) + column;
+      const double moved = view_projection[index] + (row < 2 ? shift[row] * view_projection[12 + column] : 0.0);
+      const double unmoved = inverse[index] - (column == 3 ? (shift[0] * inverse[row * 4]) + (shift[1] * inverse[(row * 4) + 1]) : 0.0);
+      camera.view_projection[index] = static_cast<float>(moved / (column < 3 ? HELPER_METRES : 1.0));
+      camera.inverse_view_projection[index] = static_cast<float>(unmoved * (row < 3 ? HELPER_METRES : 1.0));
+    }
   }
-  // Host::clip_relative's rows: a clip position's offset from the eye (the inverse's row less its w row x the eye).
+  std::array<float, 12> offset_rows = {};
   for (size_t axis = 0; axis < 3; ++axis) {
-    camera.position[axis] = static_cast<float>(eye[axis]);
+    camera.position[axis] = static_cast<float>(eye[axis] * HELPER_METRES);
     for (size_t k = 0; k < 4; ++k) {
-      camera.relative_inverse[(axis * 4) + k] = static_cast<float>(inverse[(axis * 4) + k] - (inverse[12 + k] * eye[axis]));
+      const double offset = inverse[(axis * 4) + k] - (inverse[12 + k] * eye[axis]);
+      offset_rows[(axis * 4) + k] = static_cast<float>(offset);
+      camera.relative_inverse[(axis * 4) + k] = static_cast<float>(offset * HELPER_METRES);
     }
     camera.relative_inverse[12 + axis] = camera.position[axis];
   }
@@ -549,11 +634,11 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   const std::array<float, 4> size = {static_cast<float>(bridge.width), static_cast<float>(bridge.height), 1.f / static_cast<float>(bridge.width),
                                      1.f / static_cast<float>(bridge.height)};
 
-  // O1 (and the water reflections: the water's surface; the guides): last frame's depth (clip -> clip by this frame's
-  // view-projection x its inverse, in doubles) over the ground's. Moved units are a frame behind; where nothing lands,
-  // the ground's depth.
+  // O1 (and the water reflections: the water's surface; the guides; the screen-space rows: the units, trees and
+  // buildings): last frame's depth (clip -> clip by this frame's view-projection x its inverse, in doubles) over the
+  // ground's. Moved units are a frame behind; where nothing lands, the ground's depth.
   ID3D11ShaderResourceView* start_depth = state.depth_view.Get();
-  if ((state.objects || state.reflections || state.guides) && state.kept_frame + 1 == bridge.frame) {
+  if (StartsFromMainDepth() && state.kept_frame != UINT32_MAX && state.kept_frame + 1 == bridge.frame) {
     std::array<float, 24> reprojection = {};
     for (int row = 0; row < 4; ++row) {
       for (int column = 0; column < 4; ++column) {
@@ -623,8 +708,14 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   bool traced = false;
   if (rays) {
     twattila::rt_scene::WriteSun(context.Get(), state.toward_sun);
-    replay::CaptureScene(state.proxy_queue->get_immediate_command_list(), view_projection);
-    const bool answered = twattila::rt_scene::Trace(context.Get(), start_depth, camera);
+    {
+      const CpuTime captured(Timed(&state.steps.capture));
+      replay::CaptureScene(state.proxy_queue->get_immediate_command_list(), view_projection);
+    }
+    const bool answered = [&] {
+      const CpuTime requested(Timed(&state.steps.trace));
+      return twattila::rt_scene::Trace(context.Get(), start_depth, camera);
+    }();
     state.tried_frame = bridge.frame;
     state.rays_frame = bridge.frame + (answered ? 1u : RAYS_RETRY_FRAMES);
     if (answered) {
@@ -654,6 +745,13 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   if (visibility != nullptr) {
     run(state.copy.Get(), visibility, state.visibility.work_uav.Get());
     state.visibility_frame = bridge.frame;
+    if (state.objects) {
+      const std::array<float, 4> blocked = {(state.replace_maps != 0.f ? 2.f : OBJECT_BLOCKED), 0.f, 0.f, 0.f};
+      context->UpdateSubresource(state.object_settings.Get(), 0, nullptr, blocked.data(), 0, 0);
+      context->CSSetConstantBuffers(0, 1, state.object_settings.GetAddressOf());
+      run(state.object_copy.Get(), visibility, state.object_visibility.work_uav.Get());
+      context->CSSetConstantBuffers(0, 1, NO_CONSTANTS.data());
+    }
   } else {
     constexpr std::array<FLOAT, 4> LIT = {1.f, 1.f, 1.f, 1.f};
     context->ClearUnorderedAccessViewFloat(state.visibility.work_uav.Get(), LIT.data());
@@ -761,7 +859,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   // frame's (the view-projections with the eye's translation folded in, in doubles).
   if (state.reflections && light_kept && !reflected) {
     std::array<float, 60> settings = {};
-    std::copy_n(camera.relative_inverse.begin(), 12, settings.begin());
+    std::ranges::copy(offset_rows, settings.begin());
     std::copy_n(inverse + 12, 4, settings.begin() + 12);
     std::ranges::copy(to_clip, settings.begin() + 16);
     std::ranges::copy(to_previous_clip, settings.begin() + 32);
@@ -814,6 +912,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     }
     context->CSSetShaderResources(0, 2, NO_VIEWS.data());
     run(bend.combine.Get(), bend.occlusion_srv.Get(), state.visibility.work_uav.Get());
+    state.visibility_frame = bridge.frame;
     ID3D11SamplerState* no_sampler = nullptr;
     context->CSSetSamplers(0, 1, &no_sampler);
     context->CSSetConstantBuffers(0, 4, NO_CONSTANTS.data());
@@ -822,6 +921,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   context->CSSetUnorderedAccessViews(0, 1, NO_OUTPUTS.data(), nullptr);
   context->CSSetShader(nullptr, nullptr, 0);
   for (const auto& [shared, written] : {std::pair{&state.visibility, visibility != nullptr || state.bend},
+                                        std::pair{&state.object_visibility, visibility != nullptr && state.objects},
                                         std::pair{&state.occlusion, state.occlusion_frame == bridge.frame},
                                         std::pair{&state.ground_light, state.bounce_frame == bridge.frame},
                                         std::pair{&state.reflection, state.reflection_frame == bridge.frame}}) {
@@ -829,16 +929,20 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
       context->CopyResource(shared->proxy.Get(), shared->work.Get());
     }
   }
-  bridge::WaitProxy(proxy, context.Get());
+  {
+    const CpuTime waited(Timed(&state.steps.proxy_wait));
+    bridge::HandToHost(proxy, context.Get(), host);
+  }
 
   const std::array<IDirect3DSurface9*, 1> mask_target = {mask_surface.Get()};
   const std::array<IDirect3DBaseTexture9*, 1> shaded = {state.visibility.host.Get()};
-  if (visibility != nullptr) {
+  if (visibility != nullptr && state.replace_maps != 0.f) {
     // The rays in place of the game's shadow maps: the pre-pass (0x8588D239) writes only their term into the mask's red.
     // A frame without a trace keeps the game's.
     bridge::DrawQuad(host, mask_target, state.shadows.Get(), shaded, {}, {{D3DRS_COLORWRITEENABLE, D3DCOLORWRITEENABLE_RED}});
-  } else if (state.bend) {
-    // Bend with the game's shadow maps (the contact shadows they miss): the darker of the two.
+  } else if (visibility != nullptr || state.bend) {
+    // The rays or Bend with the game's shadow maps (the shadows they miss): the darker of the two. The rays keep the
+    // maps' term until a run proves they hold the maps' casters (the sprite-drawn imposters, off-screen casters).
     bridge::DrawQuad(host, mask_target, state.shadows.Get(), shaded, {},
                      {{D3DRS_ALPHABLENDENABLE, TRUE}, {D3DRS_SEPARATEALPHABLENDENABLE, FALSE}, {D3DRS_BLENDOP, D3DBLENDOP_MIN},
                       {D3DRS_SRCBLEND, D3DBLEND_ONE}, {D3DRS_DESTBLEND, D3DBLEND_ONE}, {D3DRS_COLORWRITEENABLE, D3DCOLORWRITEENABLE_RED}});
@@ -847,7 +951,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
 }
 
 // The patched shaders' textures, read by VPOS (point, clamped: one texel a pixel): s15 the sun visibility (the object
-// shaders' shadow: the rays' where its alpha is 1, the R32F texture's), s14 the ambient
+// shaders' shadow: the rays' where its alpha is 1, rt_object_visibility's), s14 the ambient
 // occlusion (the terrain's; with the bounce x it, yzw the light), s13 the reflection (the water's); white or
 // (1, 0, 0, 0) (the game's shading: alpha 0 keeps its shadow maps) unless `traced` this frame.
 inline void BindTraced(IDirect3DDevice9* host, bool traced) {
@@ -864,7 +968,7 @@ inline void BindTraced(IDirect3DDevice9* host, bool traced) {
   // shadow maps there without O1).
   if (state.objects || state.traced_bounce != 0) {
     const bool shadowed = state.objects && traced && state.visibility_frame == bridge::state.frame;
-    bind(15, shadowed ? state.visibility.host.Get() : state.unlit.Get());
+    bind(15, shadowed ? state.object_visibility.host.Get() : state.unlit.Get());
   }
   if (state.bounce) {
     bind(14, (traced && state.bounce_frame == bridge::state.frame) ? state.ground_light.host.Get() : state.unlit.Get());
@@ -899,13 +1003,54 @@ inline void OnBloomStart(reshade::api::command_list* cmd_list) {
 }
 
 // At the bloom: the patched shaders' textures white again (the sprite atlas draws with the object shaders before the
-// next main pass). O1: the bridge's prepare pass has just written this frame's main depth into its shared depth: kept
-// for the next frame's trace, since the shadow-map, sprite and ground passes reuse the game's depth before then.
+// next main pass); the Ground Debug View over the scene. O1: the bridge's prepare pass has just written this frame's main
+// depth into its shared depth: kept for the next frame's trace, since the shadow-map, sprite and ground passes reuse the
+// game's depth before then.
 inline void OnBloom(reshade::api::command_list* cmd_list) {
   auto& bridge = bridge::state;
   auto* proxy_reshade = renodx::utils::device_proxy::proxy_device_reshade;
-  BindTraced(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()), false);
-  if (!(state.objects || state.reflections || state.guides) || state.kept_depth == nullptr || proxy_reshade == nullptr
+  auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
+  BindTraced(host, false);
+  // The Ground Debug View (the bloom and the post still over it): the ground mask's red (the game's shadow term with the
+  // rays' or Bend's, as the terrain and water read it), our sun visibility (the rays' or Bend's alone), the ground's
+  // occlusion (the rays' or GT-VBAO's; with the bounce its texel's x); black shadowed or occluded, magenta where this
+  // frame made none. ground_shadows' pass writes a texture's red into every channel.
+  if (state.debug_view != 0.f && state.shadows != nullptr && bridge.pixel_texture_0 != 0) {
+    const uint32_t frame = bridge.frame;
+    IDirect3DBaseTexture9* shown = nullptr;
+    switch (static_cast<int>(state.debug_view)) {
+      case 1:
+        if (state.mask_frame == frame) {
+          shown = reinterpret_cast<IDirect3DTexture9*>(state.ground_mask);
+        }
+        break;
+      case 2:
+        if (state.visibility_frame == frame) {
+          shown = state.visibility.host.Get();
+        }
+        break;
+      case 3:
+        if (state.bounce_frame == frame) {
+          shown = state.ground_light.host.Get();
+        } else if (state.occlusion_frame == frame) {
+          shown = state.occlusion.host.Get();
+        }
+        break;
+      default:
+        break;
+    }
+    ComPtr<IDirect3DSurface9> scene;
+    if (SUCCEEDED(reinterpret_cast<IDirect3DTexture9*>(bridge.pixel_texture_0)->GetSurfaceLevel(0, scene.GetAddressOf()))) {
+      if (shown != nullptr) {
+        const std::array<IDirect3DSurface9*, 1> target = {scene.Get()};
+        const std::array<IDirect3DBaseTexture9*, 1> source = {shown};
+        bridge::DrawQuad(host, target, state.shadows.Get(), source, {});
+      } else {
+        host->ColorFill(scene.Get(), nullptr, D3DCOLOR_ARGB(255, 153, 0, 153));
+      }
+    }
+  }
+  if (!StartsFromMainDepth() || state.kept_depth == nullptr || proxy_reshade == nullptr
       || bridge.depth_frame != bridge.frame) {
     return;
   }
@@ -948,6 +1093,7 @@ inline void OnGuideDraw(reshade::api::command_list* cmd_list) {
 inline void ShadeBeforeMainPass(reshade::api::command_list* cmd_list) {
   state.traced_frame = bridge::state.frame;
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
+  bridge::StampPass(host, bridge::TRACE_START);
   if (state.guides_bound) {
     BindGuides(host, false);
   }
@@ -963,6 +1109,7 @@ inline void ShadeBeforeMainPass(reshade::api::command_list* cmd_list) {
     state.guides_frame = bridge::state.frame;
     state.guides_closed = false;
   }
+  bridge::StampPass(host, bridge::TRACE_END);
 }
 
 // The game's AA off (MainRTAA 1x, the bridge's case): the main pass draws into the pre-pass's own depth and clears it
@@ -1049,13 +1196,36 @@ inline void OnPresent() {
       .path_tracing = state.traced_bounce == 2,
       .path_ambient = state.traced_bounce == 2,
       .reflections = state.traced_reflections,
-      // Metres to world units (a unit a centimetre, as the ranges above; the T-run checks).
-      .units_range = state.units_range * 100.f,
+      .units_range = state.units_range,
       // Lean and Near ReSTIR Reuse with path tracing: faster, the same look in tests (Lean on by default: ATN 11-16; Near
       // as Ryse's and Shogun 2's defaults, reuse -46 %).
       .reuse_lean = state.traced_bounce == 2,
       .reuse_near = state.traced_bounce == 2,
   });
+  // The profile's steps: present to present while it records; at its end one line, each step's milliseconds a frame.
+  LARGE_INTEGER now;
+  QueryPerformanceCounter(&now);
+  const bool timed = twattila::rt_scene::internal::runtime.timed;
+  if (timed && state.steps_timed) {
+    state.steps.frame += now.QuadPart - state.steps_present;
+    ++state.steps.frames;
+  } else if (!timed && state.steps_timed) {
+    LARGE_INTEGER frequency;
+    QueryPerformanceFrequency(&frequency);
+    const auto ms = [&](int64_t ticks) {
+      return 1000.0 * static_cast<double>(ticks) / static_cast<double>(frequency.QuadPart) / static_cast<double>(std::max(state.steps.frames, 1u));
+    };
+    const State::Steps& steps = state.steps;
+    reshade::log::message(reshade::log::level::info,
+                          std::format("[R.U.S.E.] Ray tracing profile: {} frames, CPU ms a frame: frame {:.2f}, replay {:.2f}, ground passes {:.2f} "
+                                      "(D3D9 wait {:.2f}, capture {:.2f}, trace request {:.2f}, D3D11 and helper wait {:.2f}), anti-aliasing {:.2f}",
+                                      steps.frames, ms(steps.frame), ms(steps.replay), ms(steps.ground), ms(steps.host_wait), ms(steps.capture),
+                                      ms(steps.trace), ms(steps.proxy_wait), ms(steps.evaluate))
+                              .c_str());
+    state.steps = {};
+  }
+  state.steps_present = now.QuadPart;
+  state.steps_timed = timed;
 }
 
 // The game's device's objects (its shaders, the mask, the shared textures, the white texels) with its device and at its
@@ -1069,6 +1239,7 @@ inline void ReleaseHost() {
   state.bound_frame = UINT32_MAX;
   state.kept_frame = UINT32_MAX;
   state.visibility = {};
+  state.object_visibility = {};
   state.occlusion = {};
   state.ground_light = {};
   state.reflection = {};
@@ -1092,6 +1263,9 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   if (proxy) {
     twattila::rt_scene::OnDestroyDevice(device);
     state.visibility = {};
+    state.object_visibility = {};
+    state.object_copy.Reset();
+    state.object_settings.Reset();
     state.depth_view.Reset();
     state.copy.Reset();
     state.shadows.Reset();
