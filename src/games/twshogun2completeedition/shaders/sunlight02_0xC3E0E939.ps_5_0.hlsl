@@ -235,7 +235,7 @@ void main(
     r4.x = r1.w * -2 + 3;
     r1.w = r1.w * r1.w;
     r1.w = r4.x * r1.w;
-    r0.x = RtDarker(t_rt_ambient, g_render_target_dimensions.xy * r0.xy, t_ssao.SampleLevel(s_ssao_s, r0.xy, 0).x);
+    r0.x = RtInPlace(t_rt_ambient, g_render_target_dimensions.xy * r0.xy, t_ssao.SampleLevel(s_ssao_s, r0.xy, 0).x);
     r0.x = max(g_SSAO_low_clamp, r0.x);
     r0.x = min(1, r0.x);
     r0.y = min(r1.w, r0.w);
