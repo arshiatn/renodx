@@ -2840,7 +2840,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
   for (Setting* setting : *settings) {
     for (const std::string_view key : {"RayTracingOutputResolution", "RayTracingRaysShadows", "RayTracingRaysAmbient", "RayTracingRaysReflections",
                                        "RayTracingRaysPaths", "RayTracedColouredShadows", "RayTracedLeafLight", "RayTracedAOQuarter",
-                                       "RayTracedPathSer", "RayTracedSharc", "RayTracedReuseLean", "RayTracedReflectionSamples",
+                                       "RayTracedPathSer", "RayTracedSharc", "RayTracedReuseLean", "RayTracedReuseNear", "RayTracedReflectionSamples",
                                        "RayTracedReflectionReuse", "RayTracingDenoiser", "RayTracedAoReblur", "RayTracedLeafMicromaps",
                                        "RayTracedGpuMicromaps", "RayTracedFastLeafShadows", "RayTracedDebugView", "RayTracedSceneTest",
                                        "RayTracedDebugLog"}) {

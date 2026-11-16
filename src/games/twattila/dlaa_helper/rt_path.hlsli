@@ -29,8 +29,6 @@
 
 Texture2D<float3> light : register(t9);               // the prepared light (bounce texels; PATH_LIGHT_FINAL: the light buffer, render pixels)
 Texture2D<float4> previous_color : register(t10);     // last frame's scene colour (render pixels)
-// Last frame's world positions at slice previous_positions_slice; the other slice takes this frame's for the next.
-Texture2DArray<float4> previous_positions : register(t11);
 Texture2D<float4> guide_normals : register(t12);      // world normals (x 0: none)
 Texture2D<float4> guide_albedo : register(t13);       // diffuse albedo
 Texture2D<float> guide_roughness : register(t14);
@@ -115,8 +113,15 @@ static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // W at most (kajiya's RESTIR_RESERVOIR_W_CLAMP)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
+#if defined(REUSE_NEAR)
+// Near ReSTIR Reuse (only its rt_reuse_near build): three neighbours within half the reach (Lean Reuse's test with these
+// scored better, its pass about half the cost).
+static const uint REUSE_NEIGHBOURS = 3u;
+static const float REUSE_RADIUS = 6.f;        // bounce texels
+#else
 static const uint REUSE_NEIGHBOURS = 5u;
 static const float REUSE_RADIUS = 12.f;       // bounce texels
+#endif
 
 static const uint CACHE_ENTRIES = 1u << 20;
 static const uint CACHE_PROBES = 8u;
@@ -183,7 +188,10 @@ void CacheCell(float3 world, float3 normal, out uint slot, out uint key) {
   const float size = CacheCellSize(world);
   const float3 magnitude = abs(normal);
   const uint axis = (magnitude.x >= max(magnitude.y, magnitude.z)) ? 0u : ((magnitude.y >= magnitude.z) ? 1u : 2u);
-  const uint face = axis * 2u + ((normal[axis] < 0.f) ? 1u : 0u);
+  // The axis's component by selects: indexed by a variable (normal[axis]) the normal went to a local array, a stack store
+  // and load in every cache lookup (DXIL alloca; NVIDIA's local memory).
+  const float along = (axis == 0u) ? normal.x : ((axis == 1u) ? normal.y : normal.z);
+  const uint face = axis * 2u + ((along < 0.f) ? 1u : 0u);
   // The size is a power of two: its low mantissa bits are free for the face.
   const uint4 value = uint4(asuint(int3(floor(world / size))), asuint(size) | face);
   slot = CacheHash(value) & (CACHE_ENTRIES - 1u);
@@ -254,7 +262,18 @@ void CacheSetAlbedo(float3 world, float3 normal, float3 albedo) {
   cache_albedo[entry] = uint2(bytes.r | (bytes.g << 8) | (bytes.b << 16) | (255u << 24), frame + 1u);
 }
 
-// The pixel's normal: the G-buffer's when the guides hold it, else from the positions.
+// The pixel's normal: the G-buffer's (`guide`, read when the guides hold it) when it holds one, else from the positions.
+float3 PixelNormalOf(uint2 pixel, float4 position, float3 guide, Neighbours neighbours) {
+  if ((path_flags & PATH_GUIDES) != 0u && dot(guide, guide) > 0.5f) return normalize(guide);
+  return SurfaceNormalOf(int2(pixel), position, neighbours);
+}
+
+// The G-buffer's normal at a pixel when the guides hold this frame's (else none).
+float3 GuideNormal(uint2 pixel) {
+  return ((path_flags & PATH_GUIDES) != 0u) ? guide_normals[pixel].xyz : 0.f;
+}
+
+// PixelNormalOf's with its loads where needed: the neighbours only without a guide normal.
 float3 PixelNormal(uint2 pixel, float4 position) {
   if ((path_flags & PATH_GUIDES) != 0u) {
     const float3 guide = guide_normals[pixel].xyz;
@@ -700,12 +719,15 @@ float ReuseJacobian(Reservoir other, float3 other_origin, float3 origin) {
 // The surface a bounce texel shows: its render pixel, world position (w: depth; 0: the sky), normal, rays' origin.
 float4 TexelSurface(uint2 id, out float3 normal, out float3 origin) {
   const uint2 pixel = min(id * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u);
+  // Its screen loads at once (LoadNeighbours).
   const float4 position = positions[pixel];
+  const float3 guide = GuideNormal(pixel);
+  const Neighbours neighbours = LoadNeighbours(int2(pixel));
   normal = 0.f;
   origin = position.xyz;
   if (position.w <= 0.f) return position;
-  normal = PixelNormal(pixel, position);
-  origin = StartPast(RayOrigin(position, normal, Planar(int2(pixel), position, normal)), position);
+  normal = PixelNormalOf(pixel, position, guide, neighbours);
+  origin = StartPast(RayOrigin(position, normal, PlanarOf(position, normal, neighbours)), position);
   return position;
 }
 
@@ -1050,7 +1072,11 @@ void ReflectReservoirTexel(uint2 id) {
 // Reflections and specular occlusion of a render pixel (accumulated by world position).
 void ReflectPixel(uint2 id) {
   if (id.x >= width || id.y >= height) return;
+  // Its screen loads at once (LoadNeighbours).
   const float4 position = positions[id];
+  const float3 guide = GuideNormal(id);
+  const float raw_roughness = ((path_flags & PATH_GUIDES) != 0u) ? guide_roughness[id] : 0.f;
+  const Neighbours neighbours = LoadNeighbours(int2(id));
   if (position.w <= 0.f || (path_flags & PATH_GUIDES) == 0u) {
     specular_accumulated[id] = 0.f;
     specular_meta[id] = float2(1.f, 0.f);
@@ -1058,12 +1084,12 @@ void ReflectPixel(uint2 id) {
     if ((path_flags & PATH_NRD) != 0u) nrd_reflection[id] = float4(0.f, 0.f, 0.f, SKY_HIT_DISTANCE);
     return;
   }
-  const float3 normal = PixelNormal(id, position);
-  const float3 surface_normal = SurfaceNormal(int2(id), position);
+  const float3 normal = PixelNormalOf(id, position, guide, neighbours);
+  const float3 surface_normal = SurfaceNormalOf(int2(id), position, neighbours);
   const float3 view = normalize(Camera() - position.xyz);
   const float n_dot_v = max(dot(normal, view), 1e-3f);
-  const float3 origin = RayOrigin(position, normal, Planar(int2(id), position, normal));
-  const float roughness = saturate(guide_roughness[id]);
+  const float3 origin = RayOrigin(position, normal, PlanarOf(position, normal, neighbours));
+  const float roughness = saturate(raw_roughness);
   const float alpha = ReflectAlpha(roughness);
   const bool mirror = roughness < 0.05f;
   const bool traced = (path_flags & PATH_REFLECTIONS) != 0u && roughness <= ROUGH_LIMIT;

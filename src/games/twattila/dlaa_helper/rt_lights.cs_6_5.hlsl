@@ -149,7 +149,7 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
     if (bounce_slots != 0u && (lights_in_bounce & LIGHTS_RATIO_VALID) != 0u && (path_flags & PATH_AMBIENT_HISTORY) != 0u && bounce_scale != 0u
         && SeenByLastTrace(position.xyz, seen_pixel)) {
       const uint read_set = ((lights_in_bounce & LIGHTS_RATIO_SET) != 0u) ? 1u : 0u;
-      const float seen_depth = ambient_positions[seen_pixel].w;
+      const float seen_depth = LastTracePosition(seen_pixel).w;
       const int2 center = int2(seen_pixel / bounce_scale);
       float2 sum = 0.f;
       [unroll]
