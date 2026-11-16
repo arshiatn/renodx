@@ -1082,6 +1082,7 @@ inline void OnGuideDraw(reshade::api::command_list* cmd_list) {
 inline void ShadeBeforeMainPass(reshade::api::command_list* cmd_list) {
   state.traced_frame = bridge::state.frame;
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
+  bridge::StampPass(host, bridge::TRACE_START);
   if (state.guides_bound) {
     BindGuides(host, false);
   }
@@ -1097,6 +1098,7 @@ inline void ShadeBeforeMainPass(reshade::api::command_list* cmd_list) {
     state.guides_frame = bridge::state.frame;
     state.guides_closed = false;
   }
+  bridge::StampPass(host, bridge::TRACE_END);
 }
 
 // The game's AA off (MainRTAA 1x, the bridge's case): the main pass draws into the pre-pass's own depth and clears it

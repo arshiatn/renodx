@@ -77,6 +77,7 @@ dropped every triangle as garbage (past 200 km) and nothing cast a shadow. Ours 
 | Water Reflections | Screen-Space: a march over the start depth, its hits in last frame's scene; Ray-Traced: the helper's reflections; the 120 water shaders blend it over their cube by its share (s13). |
 | Rays Replace Shadow Maps (live, Experimental, off) | On: the rays alone, in place of the game's shadow-map term (ground) and factor (objects). Off: the rays keep the maps until a run proves they hold the maps' casters (ours replaces the game's where proven). |
 | Units Ray Tracing Range (live) | Moving units (the replay's compact draws) farther than this out of the scene; 0 m: all. |
+| Time Each Pass (One Frame) | The next frame's D3D9 timestamps at its bounds (start, camera pass, trace point and its end, bloom, after the anti-aliasing, final post, present) into ReShade.log. The add-on's CPU waits for the D3D11 queue and the helper show as D3D9 time between the trace point and its end. With rt_core's Record Ray Tracing Profile (`RENODX_TW_PROFILE`) the CPU's steps (replay, ground passes: D3D9 wait, capture, trace request, D3D11 and helper wait; anti-aliasing) log one line at its end. |
 | Ground Debug View (live) | Over the scene at the bloom: the ground mask's red (the game's term with ours), our sun visibility (rays or Bend), the ground's occlusion (rays or GT-VBAO); black shadowed, magenta where that frame made none. |
 
 Not covered: 2 object shaders whose shadow select writes an output, 60 lit object shaders the guides can't patch, 12

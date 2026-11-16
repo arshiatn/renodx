@@ -1413,11 +1413,14 @@ void ConfigureAddon() {
         custom_shaders[bloom] = {.crc32 = bloom, .on_draw = [](reshade::api::command_list* cmd_list) {
                                    ChooseUpscaler();
                                    ruse::ray_tracing::OnBloomStart(cmd_list);
+                                   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
+                                   ruse::bridge::StampPass(host, ruse::bridge::BLOOM);
                                    {
                                      const twattila::rt_scene::internal::CpuTime timed(
                                          ruse::ray_tracing::Timed(&ruse::ray_tracing::state.steps.evaluate));
                                      ruse::bridge::Evaluate(cmd_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
                                    }
+                                   ruse::bridge::StampPass(host, ruse::bridge::ANTI_ALIASED);
                                    ruse::ray_tracing::OnBloom(cmd_list);
                                    return true;
                                  }};
@@ -1598,6 +1601,14 @@ void ConfigureAddon() {
                  "Off: both, the darker of the two (no shadow of the game's is lost).",
       .is_enabled = [] { return ruse::ray_tracing::state.ground; },
   });
+  // One frame's passes on the game's D3D9 queue, into ReShade.log.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+      .label = "Time Each Pass (One Frame)",
+      .section = SHADOWS_SECTION,
+      .tooltip = "The GPU's time of the next frame's passes (the game's and the add-on's), written to ReShade.log.",
+      .on_change = [] { ruse::bridge::state.pass_timing.requested = true; },
+  });
   // What the ground's passes made this frame, over the scene (live).
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RuseGroundDebugView",
@@ -1773,7 +1784,9 @@ void ConfigureAddon() {
   }
   if (ruse::bridge::state.enabled || ruse::replay::state.enabled || ruse::ray_tracing::state.vbao) {
     // The camera pass: its matrices (c0-c8) as it drew (the bridge's motion, the replay's placements).
-    custom_shaders[0x88292FC6] = {.crc32 = 0x88292FC6, .on_draw = [](reshade::api::command_list*) {
+    custom_shaders[0x88292FC6] = {.crc32 = 0x88292FC6, .on_draw = [](reshade::api::command_list* cmd_list) {
+                                    ruse::bridge::StampPass(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()),
+                                                            ruse::bridge::CAMERA_PASS);
                                     std::memcpy(ruse::bridge::state.camera.data(), ruse::bridge::state.pixel_registers.data(),
                                                 sizeof(ruse::bridge::state.camera));
                                     ruse::bridge::state.camera_valid = true;

@@ -56,6 +56,25 @@ struct SharedTexture {
   ComPtr<ID3D11UnorderedAccessView> work_uav;
 };
 
+// Time Each Pass (One Frame) (its button): the D3D9 queue's timestamps at the frame's bounds, in this order, read back
+// over the next presents without a wait; one line. The add-on's stalls (the CPU waiting for the D3D11 queue and the
+// helper) show as D3D9 time between two bounds: that queue idles meanwhile.
+enum PassBound : uint8_t { FRAME_START, CAMERA_PASS, TRACE_START, TRACE_END, BLOOM, ANTI_ALIASED, FINAL_POST, FRAME_END, PASS_BOUNDS };
+constexpr std::array<const char*, PASS_BOUNDS> PASS_BOUND_NAMES = {
+    "frame start", "camera pass", "trace point", "trace point's end", "bloom", "anti-aliased", "final post", "present"};
+constexpr uint32_t PASS_TIMING_PRESENTS = 120;  // presents to wait for the stamps before giving up
+
+struct PassTiming {
+  bool requested = false;
+  uint32_t frame = UINT32_MAX;  // the stamped frame
+  uint32_t presents_waited = 0;
+  ComPtr<IDirect3DQuery9> disjoint;
+  ComPtr<IDirect3DQuery9> frequency;
+  std::array<ComPtr<IDirect3DQuery9>, PASS_BOUNDS> stamps;  // null: the frame didn't reach that bound
+  std::array<double, PASS_BOUNDS> ms = {};  // the last answer: ms after the frame's start, -1 not reached
+  bool answered = false;
+};
+
 struct State {
   bool enabled = false;  // the Anti-Aliasing row (restart)
   uint32_t upscaler = twattila::dlaa_bridge::UPSCALER_DLSS;
@@ -113,8 +132,18 @@ struct State {
   // GPU Sync: D3D9 signals, D3D11 waits (`host_fence`, a KMT fence of the game's D3D9Ex device), and back (`proxy_fence`).
   std::unique_ptr<renodx::utils::gpu_fence::Fence> host_fence;
   std::unique_ptr<renodx::utils::gpu_fence::Fence> proxy_fence;
+  PassTiming pass_timing;
 };
 inline State state;
+
+// Time Each Pass: `bound`'s stamp in the stamped frame, once.
+inline void StampPass(IDirect3DDevice9* host, PassBound bound) {
+  auto& timing = state.pass_timing;
+  if (timing.frame != state.frame || timing.stamps[bound] != nullptr) return;
+  if (SUCCEEDED(host->CreateQuery(D3DQUERYTYPE_TIMESTAMP, timing.stamps[bound].GetAddressOf()))) {
+    timing.stamps[bound]->Issue(D3DISSUE_END);
+  }
+}
 
 inline float Halton(uint32_t index, uint32_t base) {
   float result = 0.f;
@@ -591,6 +620,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 // The final post's draw: its depth (unless the scene's own); with frame generation its target, the back buffer's clone
 // the swap chain mod binds in the game's back buffer's place, as the device holds it.
 inline void OnFinalPost(reshade::api::command_list* cmd_list) {
+  StampPass(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()), FINAL_POST);
   if (state.depth_stencil != state.scene_depth) {
     state.post_depth = state.depth_stencil;
   }
@@ -634,13 +664,57 @@ inline void KeepFrame(ID3D11DeviceContext* context) {
   twattila::frame_generation::KeepFrame(context, state.hudless.proxy.Get(), state.generation_inputs);
 }
 
-// The game's present, before the proxy's: a HUD-less image still waiting is the whole frame (no UI drawn).
+// The game's present, before the proxy's: a HUD-less image still waiting is the whole frame (no UI drawn). Time Each
+// Pass: the stamped frame's end, its answer once the GPU has it (no wait), a requested one's start.
 inline void OnPresent(IDirect3DDevice9* host) {
   KeepHudless(host);
   state.generation_ready = state.hudless_frame == state.frame && state.generation_frame == state.frame;
   state.scene_closed = false;
   state.scene_depth = 0;  // this frame's: the next Evaluate takes the next frame's scene draws' (none in a menu)
+  auto& timing = state.pass_timing;
+  if (timing.frame == state.frame) {
+    StampPass(host, FRAME_END);
+    timing.frequency->Issue(D3DISSUE_END);
+    timing.disjoint->Issue(D3DISSUE_END);
+  } else if (timing.frame != UINT32_MAX) {
+    BOOL disjoint = TRUE;
+    UINT64 frequency = 0;
+    std::array<UINT64, PASS_BOUNDS> stamps = {};
+    bool ready = timing.disjoint->GetData(&disjoint, sizeof(disjoint), 0) == S_OK && timing.frequency->GetData(&frequency, sizeof(frequency), 0) == S_OK;
+    for (size_t bound = 0; ready && bound < PASS_BOUNDS; ++bound) {
+      ready = timing.stamps[bound] == nullptr || timing.stamps[bound]->GetData(&stamps[bound], sizeof(UINT64), 0) == S_OK;
+    }
+    if (ready || ++timing.presents_waited >= PASS_TIMING_PRESENTS) {
+      std::string line;
+      if (!ready || disjoint != FALSE || frequency == 0) {
+        line = (ready ? "the GPU's clock changed in that frame (disjoint): press again" : "no answer from the GPU");
+      } else {
+        for (size_t bound = 0; bound < PASS_BOUNDS; ++bound) {
+          timing.ms[bound] = (timing.stamps[bound] != nullptr)
+                                 ? (1000.0 * static_cast<double>(stamps[bound] - stamps[FRAME_START]) / static_cast<double>(frequency))
+                                 : -1.0;
+          line += (timing.ms[bound] < 0.0) ? std::format("{}{} -", (line.empty() ? "" : ", "), PASS_BOUND_NAMES[bound])
+                                           : std::format("{}{} {:.3f}", (line.empty() ? "" : ", "), PASS_BOUND_NAMES[bound], timing.ms[bound]);
+        }
+        timing.answered = true;
+      }
+      reshade::log::message(reshade::log::level::info,
+                            std::format("[R.U.S.E.] Time Each Pass (the game's D3D9 queue, ms after the frame's start; - not reached): {}", line).c_str());
+      timing.frame = UINT32_MAX;
+    }
+  }
   ++state.frame;
+  if (timing.requested && timing.frame == UINT32_MAX) {
+    timing = {};
+    if (SUCCEEDED(host->CreateQuery(D3DQUERYTYPE_TIMESTAMPDISJOINT, timing.disjoint.GetAddressOf()))
+        && SUCCEEDED(host->CreateQuery(D3DQUERYTYPE_TIMESTAMPFREQ, timing.frequency.GetAddressOf()))) {
+      timing.disjoint->Issue(D3DISSUE_BEGIN);
+      timing.frame = state.frame;
+      StampPass(host, FRAME_START);
+    } else {
+      reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] Time Each Pass: the game's device has no timestamp queries");
+    }
+  }
   // After a reset the next frame draws unjittered (OnDraw): Evaluate, the rays and the motion take 0 then.
   state.jitter = (state.reset ? std::array<float, 2>{}
                               : std::array<float, 2>{Halton((state.frame % 8) + 1, 2) - 0.5f, Halton((state.frame % 8) + 1, 3) - 0.5f});

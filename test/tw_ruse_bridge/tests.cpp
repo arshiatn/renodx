@@ -75,6 +75,9 @@
 //    recorded as the replay records them and traced each frame with object shadows, rt_core's profile on (ray_tracing.hpp's
 //    steps time with it); 60 frames after 40 to settle (the still ones kept after 16). Printed, every frame traced checked.
 //    No game GPU work here: the D3D9 wait is the harness's own pre-pass, the rest the add-on's and the helper's.
+// 13. Time Each Pass (bridge.hpp, no helper): a requested frame stamped at its start, the camera pass, the bloom, the
+//    final post and its present, the bounds it didn't reach (the trace point, the anti-aliasing) -1, in order, answered
+//    a few presents on, nothing stamped after.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d9.h>
@@ -1449,6 +1452,41 @@ int main(int argc, char** argv) {
     rays.guide_albedo = {};
     rays.guide_normal = {};
     rays.guide_water = {};
+  }
+
+  // 13. Time Each Pass (bridge.hpp): a requested frame's stamps at its present, the camera pass, the bloom, the final
+  // post and its present (no trace point, no anti-aliasing: not reached), the answer a few presents on.
+  {
+    state = bridge::State{};
+    state.pass_timing.requested = true;
+    bridge::OnPresent(host);
+    const uint32_t stamped = state.pass_timing.frame;
+    const auto stamp_after = [&](bridge::PassBound bound) {
+      host->SetRenderTarget(0, scratch_surface.Get());
+      host->SetDepthStencilSurface(depth_surface.Get());
+      REQUIRE(SUCCEEDED(host->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, 0, 1.f, 0)));
+      DrawGround(host, ground_draw, flat_ps.Get(), ground, &VIEW_PROJECTION, VIEW_PROJECTION);
+      host->SetDepthStencilSurface(nullptr);
+      bridge::StampPass(host, bound);
+    };
+    stamp_after(bridge::CAMERA_PASS);
+    stamp_after(bridge::BLOOM);
+    bridge::OnFinalPost(&command_list);
+    int presents = 0;
+    while (!state.pass_timing.answered && presents < 200) {
+      bridge::WaitHost(host);  // the frame's work submitted, as a present would
+      bridge::OnPresent(host);
+      ++presents;
+    }
+    const std::array<double, bridge::PASS_BOUNDS>& ms = state.pass_timing.ms;
+    std::printf("Time Each Pass: frame %u answered %d after %d presents; camera pass %.3f, trace point %.0f, bloom %.3f, final post %.3f, present %.3f ms\n",
+                stamped, state.pass_timing.answered ? 1 : 0, presents, ms[bridge::CAMERA_PASS], ms[bridge::TRACE_START], ms[bridge::BLOOM],
+                ms[bridge::FINAL_POST], ms[bridge::FRAME_END]);
+    CHECK(stamped != UINT32_MAX && state.pass_timing.answered && ms[bridge::FRAME_START] == 0.0);
+    CHECK(ms[bridge::CAMERA_PASS] >= 0.0 && ms[bridge::BLOOM] >= ms[bridge::CAMERA_PASS] && ms[bridge::FINAL_POST] >= ms[bridge::BLOOM]);
+    CHECK(ms[bridge::FRAME_END] >= ms[bridge::FINAL_POST] && ms[bridge::TRACE_START] == -1.0 && ms[bridge::ANTI_ALIASED] == -1.0);
+    // Nothing stamped after it.
+    CHECK(state.pass_timing.frame == UINT32_MAX);
   }
 
   // 7. H2: the helper's anti-aliasing on an aliased frame drawn with each frame's jitter.
