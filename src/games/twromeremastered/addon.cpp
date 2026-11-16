@@ -1993,8 +1993,13 @@ void ConfigureAddon() {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
-                   "PsychoV31 and PsychoV35. Uncharted 2 extended: Musa and DabVeed.\n"
-                   "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0.",
+                   "PsychoV31 and PsychoV35. Uncharted 2 extended: Musa and DabVeed. Light Bounce: the Visibility Bitmask "
+                   "method of Therrien, Levesque and Gilet (2023) on GTAO (Jimenez et al. 2016), as GT-VBGI by Mirko Salm "
+                   "(2024).\n"
+                   "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0.\n"
+                   "SMAA: Jimenez, Echevarria, Masia, Navarro and Gutierrez (2013), MIT License. CMAA2: Filip Strugar, "
+                   "Copyright (c) 2018 Intel Corporation, Apache License 2.0. Reflections' ray march: AMD FidelityFX "
+                   "SSSR, Copyright (c) 2021 Advanced Micro Devices, MIT License. Hooks: Microsoft Detours (MIT).",
           .section = "About",
       },
       new renodx::utils::settings::Setting{
