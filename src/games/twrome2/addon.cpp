@@ -199,6 +199,13 @@ void ApplySdrPreset() {
 #define UpgradeRTVReplaceShader(value)                                                              \
   {                                                                                                   \
       value,                                                                                          \
+// Recommended (ATN 2026-11-12: every recommended preset in PsychoV35): Reset in PsychoV35, Video AutoHDR 0.20 (WH1's). Also
+// Output Auto's preset when it turns HDR on (output_encoding's recommended_preset).
+void ApplyRecommendedPreset() {
+  ApplyResetPreset(3.f);
+  renodx::utils::settings::UpdateSettings({{"video_autohdr", 0.2f}});
+}
+
       {                                                                                               \
           .crc32 = value,                                                                             \
           .code = __##value,                                                                          \
@@ -678,6 +685,15 @@ void BuildRuntimeData() {
         .on_change = []() {
           ApplyHDRPreset(
               3.f, 0.2f,  // rendering mode, video AutoHDR
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "Recommended",
+        .section = "Presets",
+        .group = "preset-line-1",
+        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20, the rest at its default.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output encoding are kept.",
+        .on_change = []() { ApplyRecommendedPreset(); },
               1.0f,  // exposure
               1.0f,  // highlights
               1.0f,  // shadows
@@ -2346,7 +2362,7 @@ void ConfigureAddon() {
           return frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
         .first_start_without_hdr = &ApplySdrPreset,
-        .recommended_preset = [] { ApplyResetPreset(3.f); },
+        .recommended_preset = &ApplyRecommendedPreset,
     });
     settings.push_back(setting);
   }
