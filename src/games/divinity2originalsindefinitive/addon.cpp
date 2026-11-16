@@ -830,7 +830,7 @@ void AppendConstants(reshade::api::command_list* cmd_list, bool compute, UINT sl
 // The frame trace's frame (Time Each Pass has its own present event).
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
                uint32_t, const reshade::api::rect*) {
-  talesofarise::frame_trace::OnPresent();
+  talesofarise::frame_trace::OnPresent("divinity2");
 }
 
 }  // namespace

@@ -2692,7 +2692,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       talesofarise::frame_trace::Request();
     }
   }
-  talesofarise::frame_trace::OnPresent();
+  talesofarise::frame_trace::OnPresent("ryse");
   const auto mode = requested_mode.load();
   bool changed;
   bool missed;

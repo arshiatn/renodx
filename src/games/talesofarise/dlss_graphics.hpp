@@ -2242,7 +2242,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   talesofarise::pixel_trace::OnPresent(queue);
   talesofarise::engine_hooks::UpdateSun();
-  talesofarise::frame_trace::OnPresent();
+  talesofarise::frame_trace::OnPresent("tales");
   // Before any row is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS on
   // Intel's, else FSR (as Attila's).
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
