@@ -2931,6 +2931,7 @@ void DetachAddon() {
 
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::map_buffer_region>(twshogun2::vfx_effects::OnMapBufferRegion);
+    twshogun2::terrain_detail::Apply(false);
   reshade::unregister_event<reshade::addon_event::unmap_buffer_region>(twshogun2::vfx_effects::OnUnmapBufferRegion);
   reshade::unregister_event<reshade::addon_event::update_buffer_region>(twshogun2::vfx_effects::OnUpdateBufferRegion);
   reshade::unregister_event<reshade::addon_event::update_buffer_region_command>(

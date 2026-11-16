@@ -14,6 +14,7 @@
 //    matches its executable sections exactly once, where FindPattern points. CONTROL: each with its first fixed byte
 //    changed matches nowhere and FindPattern gives null.
 // 5. The game's DLSS release (game_dlss RELEASE_FEATURE, R21) frees the DLSS pass's own holder and its parameters.
+// 6. Terrain detail off gives the image's own values back (detach calls it too).
 // tests.exe <empire.retail.x64.dll> <s2_tweaks_1114.txt>
 #include <windows.h>
 
@@ -237,6 +238,24 @@ int main(int argc, char** argv) {
                 "CONTROL one byte off: another address\n",
                 static_cast<size_t>(release - image_base), static_cast<size_t>(holder - image_base),
                 static_cast<size_t>(released_parameters - image_base));
+  }
+
+  // 6. Terrain detail gives the game's values back (off, and at detach): its two values as the image holds them, the
+  //    finest level written, then off. CONTROL: on alone leaves them changed.
+  {
+    twshogun2::terrain_detail::Install();
+    auto* enable = twshogun2::terrain_detail::internal::enable_force_lod;
+    auto* level = twshogun2::terrain_detail::internal::force_lod;
+    CHECK(enable != nullptr && level != nullptr);
+    const uint8_t game_enable = *enable;
+    const int32_t game_level = *level;
+    twshogun2::terrain_detail::Apply(true);
+    CHECK(*enable == 1 && *level == 0);
+    CHECK(game_enable != 1);  // CONTROL: on differs from the game's
+    twshogun2::terrain_detail::Apply(false);
+    CHECK(*enable == game_enable && *level == game_level);
+    std::printf("6. terrain detail: the game's enable_force_lod %u / force_lod %d, on 1 / 0, off back to the game's; "
+                "CONTROL on differs\n", game_enable, game_level);
   }
   FreeLibrary(image);
   FreeLibrary(mapped);
