@@ -231,7 +231,7 @@ void main(
   r1.w = max(0, r1.w);
   r4.w = cmp(r1.w < 0.00999999978);
   if (r4.w != 0) {
-    r6.x = cmp(!TOA_GAME_GI);  // GT-VBGI: Bandai's GI off (shared.h)
+    r6.x = cmp(cb0[76].w == 0.000000);
     if (r6.x != 0) {
       r6.yzw = float3(0.00100000005,0.00100000005,0.00100000005);
       r7.xyzw = float4(0,0,0,0);
@@ -276,7 +276,7 @@ void main(
     r4.w = min(1, r4.w);
     r6.x = -5000 + r2.x;
     r7.w = saturate(0.000199999995 * r6.x);
-    r6.x = cmp(!TOA_GAME_GI);  // GT-VBGI: Bandai's GI off (shared.h)
+    r6.x = cmp(cb0[76].w == 0.000000);
     if (r6.x != 0) {
       r6.yzw = float3(0.00100000005,0.00100000005,0.00100000005);
     }
@@ -415,6 +415,8 @@ void main(
   r1.w = cb0[69].x * r1.w;
   r1.w = exp2(r1.w);
   r3.w = max(0.300000012, r8.y);
+  // Our GI (GT-VBGI, the rays' bounce light or path tracing: t42 below) in place of Bandai's add (shared.h).
+  r3.w = TOA_GAME_GI_SHARE(r3.w, r8.y);
   r9.xyz = r3.www * r9.xyz;
   r7.xyz = r7.xyz * r1.www;
   r7.xyz = r9.xyz * r1.xyz + r7.xyz;

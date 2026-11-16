@@ -98,6 +98,19 @@ $table = [ordered]@{
                      Shaders = '^(bloom|godsrays\d+|ui\d+)_|^0x(30A1D40D|35F39F1D|6AF33A9B|B7FC46C3|FB839D33|DDBCD866)\.' }
   'Divinity2'   = @{ Folder = 'divinity2originalsindefinitive'; Dump = $Divinity2; Shaders = '^(t01|bloom00|ui00)_' }
   'Tales'       = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^(tonemap|lut)\d+_' }
+  # Tales' deferred sun lighting (lighting00-05) with its Extra rows at the game's 1 (filter scale, sun shadow distance,
+  # shadow edge colour, sun haze), Smooth Volumetric Light off, the rays unbound, our GI off.
+  'TalesLighting' = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^lighting\d+_'
+                       Settings = 'filter_scale=1,sun_shadow_distance=1,shadow_edge_color=1,sun_haze=1' }
+  # The same under our GI (SI.gtvbgi 1: GT-VBGI, the rays' bounce light or path tracing, t42 unbound here) against the
+  # game's bytes with Bandai's GI strength (cb0[69].y) 0: only Bandai's GI add goes, its colour on the fill light stays.
+  'TalesGI'     = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^lighting\d+_'
+                     Settings = 'filter_scale=1,sun_shadow_distance=1,shadow_edge_color=1,sun_haze=1,gtvbgi=1'
+                     Registers = @{ '^lighting\d+_' = 'cb0[69]=0.55,0,0.65,0.45' } }
+  # With Game's GI Under the Open Sky (SI.gtvbgi 2): the game's bytes as they are, Bandai's add x the AO without its 0.3
+  # floor (these inputs' AO stays above 0.3: the floor itself is not exercised here).
+  'TalesGIOpenSky' = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^lighting\d+_'
+                        Settings = 'filter_scale=1,sun_shadow_distance=1,shadow_edge_color=1,sun_haze=1,gtvbgi=2' }
   'Expeditions' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^(t|lut)\d+_' }
 }
 

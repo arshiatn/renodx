@@ -742,3 +742,17 @@ size; then:
   About credits GT-VBAO / GT-VBGI, Bend, SMAA / CMAA2 / FidelityFX SSSR and Detours; tooltips name Graphics 1 / 2 of 2.
   Then: page 1's first line "Use this in-game setting: Brightness 50." (the option's default, 0-100 into Bandai's
   curve for r.ScreenGammaScaleTO14, default 1); test/tw_ue_patterns runs every byte pattern on tales_image.bin.
+- GI round 2026-11-16 (tgi_, untested in game): Bandai's SSGI chain runs again under every GI method. The agent run
+  run_080739's traces (they log every declared slot now) show ten stock toon lighting permutations (characters, foliage:
+  0A9D482A, DF1B494D, F6334BA2, 1C8D11B6, 36E08F9A traced; 1FE8B2B6, 4E695056, 4E8218FE, 8CCA5153, 90EF2450 in two
+  older traces) reading its first 10 x 6 output at t25-t30 behind their own GI switch (cb0[59].w); with the chain
+  skipped (0.000 ms in ue_gi) they read a pooled texture nothing wrote that frame (ue_game's far-GI texture), and the
+  character / bush boxes came out 6.0 / 14.3% darker (linear). Cost back: about 0.07 ms.
+  Under our GI lighting00-05 no longer take the menu's GI-off path: only Bandai's GI add goes (shared.h
+  TOA_GAME_GI_SHARE); its colour still tints the fill light on faces turned from the sun (the off path's 0.001 stand-in
+  gave that fill 0.5 per channel, ^ cb0[61].w). New **Game's GI Under the Open Sky (Experimental)** (Global
+  Illumination's More Options, `GlobalIlluminationGameOpenSky`, off): Bandai's add stays x the AO without its 0.3 floor
+  (open directions Bandai's screen average, covered ones ours). run_080739 (GT-VBGI against the game, PQ-decoded
+  linear): whole frame -16.8%, lit open ground -32.6%, cliffs -26.3%; open lit ground faces the sun (no fill there), so
+  it stays -33% with the row off; with it on the frame is the game's where the AO is 0.3 or more, plus ours.
+  test/tw_vanilla_exact: TalesLighting, TalesGI, TalesGIOpenSky (lighting00-05 against the game's bytes).

@@ -179,6 +179,8 @@ twattila::rt_scene::Sliders rt_sliders;
 // the rays' bounce light's.
 twattila::feature_settings::SssSliders screen_space_shadows_rows;
 talesofarise::ue_light_bounce::Rows gi_rows;
+// Under our GI, Bandai's GI add keeps its share through the open sky (shared.h TOA_GAME_GI_SHARE, SI.gtvbgi 2).
+float game_gi_open_sky_row = 0.f;
 float live_scale_row = 1.f;
 float camera_jitter_row = 1.f;
 float replace_taa_row = 1.f;
@@ -296,7 +298,7 @@ struct GBufferCopy {
 
 // Bend's and GT-VBGI's settings from the page's rows (each present) for the sun shadow mask and the lighting pass, and
 // this frame's GT-VBGI (it runs at the frame's first lighting draw, the others reuse it); the last frame the rays' bounce
-// light or path tracing reached the lighting pass (Bandai's GI stays off while it did recently).
+// light or path tracing reached the lighting pass (Bandai's GI add stays out while it did recently).
 struct UeEffects {
   std::shared_mutex mutex;
   twattila::screen_space_shadows::Settings shadows;
@@ -307,19 +309,6 @@ struct UeEffects {
   ID3D11ShaderResourceView* bounce_view = nullptr;
   uint64_t rays_bounce_frame = UINT64_MAX;
 } ue_effects;
-
-// Bandai's screen-space GI chain (17CE7BCD from last frame's light, 13BDD599, 86CBF00A down to 20 x 12, 746654CA x 2: the
-// R11G11B10F textures lighting00-05 read at t11-t13 / t8-t10 behind their GI switch; in the 20 G1 / G2 traces their only
-// readers that declare the slots, tools/nontw/tales/census/t16_ssgi_readers.txt) is skipped while ours replaces Bandai's GI
-// (game_gi_replaced, each present). Readers the census could not read bind its textures too: six single-target lighting
-// permutations of the dump's New_1 (never traced) and two translucency PS (not dumped). One drawn (game_gi_reader_drawn)
-// runs the chain again for the next half second (the textures' last content is read in that first frame).
-constexpr std::array<uint32_t, 4> GAME_GI_SHADERS = {0x17CE7BCDu, 0x13BDD599u, 0x86CBF00Au, 0x746654CAu};
-constexpr std::array<uint32_t, 8> GAME_GI_UNREAD_READERS = {0x0E8ACF10u, 0x198E7382u, 0x2022424Eu, 0x62A8AE0Cu,
-                                                            0x71953DD2u, 0xCFA29C59u, 0xC1747FE1u, 0x58A0BC60u};
-std::atomic<bool> game_gi_replaced = false;
-std::atomic<bool> game_gi_reader_drawn = false;
-uint64_t game_gi_reader_frame = UINT64_MAX;  // the present thread's
 
 // Frame generation's inputs from this frame's upscaling (KeepFrame after the tone mapper), around the camera (UE's
 // translated world); the last frame's view-projection and translation (its camera's step moves it).
@@ -1976,16 +1965,6 @@ void DrawSparkMotion(Command& command, const void*) {
   context->VSSetShader(game_vertex_shader.Get(), nullptr, 0);
 }
 
-constexpr auto OnGameGi = []<typename Command>(Command&) -> renodx::utils::command_action::CallbackResult<Command> {
-  if (!game_gi_replaced.load(std::memory_order_relaxed)) return {};
-  return {.bypass = true};
-};
-
-constexpr auto OnGameGiReader = []<typename Command>(Command&) -> renodx::utils::command_action::CallbackResult<Command> {
-  game_gi_reader_drawn.store(true, std::memory_order_relaxed);
-  return {};
-};
-
 constexpr auto OnSpriteDraw = []<DrawCommand Command>(Command&) -> renodx::utils::command_action::CallbackResult<Command> {
   if (!spark_fix.load() || requested_mode.load() == AAMode::OFF) return {};
   return {.post_callback = DrawSparkMotion<Command>};
@@ -2716,9 +2695,12 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (rt_sliders.light_bounce != 0.f) {
     bounce.strength = 0.f;
   }
-  // One GI method (ATN 2026-11-16): lighting00-05 take Bandai's GI-off path while GT-VBGI runs, or while the rays' bounce
+  // One GI method (ATN 2026-11-16): lighting00-05 leave out Bandai's GI add while GT-VBGI runs, or while the rays' bounce
   // light or path tracing reached the lighting pass within the last half second (their light in place of Bandai's, never
-  // added to it; a frame the rays miss stays on that path).
+  // added to it; a frame the rays miss stays so); Bandai's GI still colours their fill light (shared.h TOA_GAME_GI_SHARE:
+  // the menu's GI-off path also halved that fill). Bandai's SSGI chain (17CE7BCD, 13BDD599, 86CBF00A, 746654CA)
+  // still runs: ten stock toon lighting permutations (characters, foliage; 0A9D482A and its siblings, behind their own
+  // switch cb0[59].w) read its 10 x 6 texture at t25-t30, and a skipped chain left them a stale pooled texture.
   constexpr uint64_t RECENT_FRAMES = 30;
   const uint64_t frame = CurrentFrame();
   bool rays_gi = false;
@@ -2730,11 +2712,6 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     ue_effects.render_share = render_scale;
     rays_gi = rt_sliders.light_bounce != 0.f && ue_effects.rays_bounce_frame != UINT64_MAX && ue_effects.rays_bounce_frame + RECENT_FRAMES >= frame;
   }
-  if (game_gi_reader_drawn.exchange(false, std::memory_order_relaxed)) {
-    game_gi_reader_frame = frame;
-  }
-  game_gi_replaced.store((bounce.strength > 0.f || rays_gi) && (game_gi_reader_frame == UINT64_MAX || game_gi_reader_frame + RECENT_FRAMES < frame),
-                         std::memory_order_relaxed);
   talesofarise::post_filters::Store({
       .scale = render_scale,
       .sharpening = ((mode != AAMode::OFF && !keep_game_sharpening) ? 0.f : 1.f),
@@ -2749,7 +2726,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       .ao_frame = static_cast<float>(ao_frame),
       .ao_auto_thickness = ao_auto_thickness,
       .screen_space_shadows = (shadows.enabled ? 1.f : 0.f),
-      .gtvbgi = ((bounce.strength > 0.f || rays_gi) ? 1.f : 0.f),
+      .gtvbgi = ((bounce.strength > 0.f || rays_gi) ? ((game_gi_open_sky_row != 0.f) ? 2.f : 1.f) : 0.f),
   });
   talesofarise::engine_hooks::Update();
 }
@@ -3076,6 +3053,15 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                          .format = "%d",
                                          .is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders) && rt_sliders.light_bounce == 2.f; },
                                      });
+  insert_after("light_bounce_multi_bounce", new Setting{
+                                                .key = "GlobalIlluminationGameOpenSky",
+                                                .binding = &game_gi_open_sky_row,
+                                                .value_type = SettingValueType::BOOLEAN,
+                                                .default_value = 0.f,
+                                                .label = "Game's GI Under the Open Sky (Experimental)",
+                                                .tooltip = "Keeps the game's own Global Illumination where the sky is open (open ground, cliffs);\n"
+                                                           "ours lights what nearby surfaces cover. Off: ours alone, darker in open areas.",
+                                            });
   renodx::utils::settings::section_tints.emplace_back(TOOLS_SECTION, twattila::graphics_page::TITLE_TINT);
 
   // Graphics 1 of 2's own section.
@@ -3524,18 +3510,6 @@ inline bool Install(HMODULE module) {
                                                                 .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
                                                             });
   }
-  for (const uint32_t game_gi_shader : GAME_GI_SHADERS) {
-    renodx::utils::command_action::Register(OnGameGi, {
-                                                          .shader_hash = game_gi_shader,
-                                                          .command_types = renodx::utils::command_action::COMMAND_TYPE_DISPATCH,
-                                                      });
-  }
-  for (const uint32_t reader_shader : GAME_GI_UNREAD_READERS) {
-    renodx::utils::command_action::Register(OnGameGiReader, {
-                                                                .shader_hash = reader_shader,
-                                                                .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
-                                                            });
-  }
   for (const auto& [sprite_shader, motion_shader] : SPRITE_SHADERS) {
     renodx::utils::command_action::Register(OnSpriteDraw, {
                                                               .shader_hash = sprite_shader,
@@ -3594,8 +3568,6 @@ inline void Uninstall() {
     renodx::utils::command_action::Unregister(OnUpscale);
     renodx::utils::command_action::Unregister(OnTranslucencyComposite);
     renodx::utils::command_action::Unregister(OnSpriteDraw);
-    renodx::utils::command_action::Unregister(OnGameGi);
-    renodx::utils::command_action::Unregister(OnGameGiReader);
     renodx::utils::command_action::Unregister(OnLightingDraw);
     renodx::utils::command_action::Unregister(OnDepthPrepass);
     renodx::utils::command_action::Unregister(OnSunShadowMask);
