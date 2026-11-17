@@ -391,6 +391,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
 - EJOB-FORK CHECKS (ATN 23:3x: ATN's other session finished: local branch ejob-for ... | coordinator
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
+- M1 SHARED WRITER-TOKEN HELPER (apr_ review): APIPE's pipeline.hpp writer-token p ... | High implementer (utils)
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2781,7 +2782,15 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] GPU PLAN (gpr_ xHigh, plan_1117/gpu_plan.md): queue fix1_ (merged) -> G1 -> SHaRC 1.8.3 -> PT DI -> vMF -> G2 ->
         X -> faster RT freeze rebuild -> helper screenshot key. G1 = A1 (trace: one ray for ShownNormal + the banner
         sheet test, bit-identical; -0.2 day1 / -0.25 night1 / -0.4 sea1 / -0.25 stress) + A2 (rt_lights' tile list by all
-        64 threads; -0.15..0.25 with torches) + tools K1-K3 + the CPU2 review low fixes: g1_ High STARTED 20:5x.
+        64 threads; -0.15..0.25 with torches) + tools K1-K3 + the CPU2 review low fixes: g1_ DONE 00:2x, merged
+        7b23b24fc (g1_notes.md; scripts tools/tw/reference/g1_scripts): A1 5e52aef12 (19 -> 18 TraceRayInline, cs_6_5 +
+        cs_6_9), A2 a0f745534 (64 threads, InterlockedAnd slots; same content / order / size on 400,000 random sets),
+        520d9f7df / e49281c48 / 8c51454aa (CPU2 low 3 / low 4 / S1); HARNESS_DUMP 0 changed over 47 modes, recorder day1 +
+        night1 60 / 60 same, NaN / Inf 0; Nsight (one trace a side) day1 trace 3.040 -> 2.471, lights 1.022 -> 0.649,
+        FRAME 12.904 -> 11.908; night1 3.783 -> 3.079, 1.040 -> 0.662, 13.526 -> 12.531 (-1.0 ms each; A1 beat its
+        estimate: both rays' hot lines went); tools K1 "player inputs" row, K2 --by-stem, K3 reference/rec_scan.py.
+        Left: T3 retraces (sea1, stress, day1_low, WH3 high) twice + rec_compare / rec_scan over all 18 recordings
+        (Low runner).
         Traces T1 / T2 / T4 (grass micromap level 6 variant) / T5 / T6 (clusters): gtr_ Low DONE 21:2x
         (plan_1117/gtr_traces.md; runs tools/tw/nsight/runs/gtr_*, profiles gtr_profiles; worktree's 5 links removed
         alone, worktree + branch removed): T1 WH3 unit base 3.80 ms = a slow run (3.088 / 3.081 at frames 400 / 800, same
@@ -2962,7 +2971,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         Thrones row builder +0x197d2d0 (region +0x197d841..+0x197db12, same layout). STOPPED AGAIN 00:1x: the WORKTREE
         GUARD (not the safety classifier) refused one compound awk / sed / diff command over scratchpad files ("too
         complex to verify that it stays inside the worktree ... split it into plain, separate commands"). Asked ATN
-        whether to finish with plain single commands and files inside the worktree; (2) then a
+        whether to finish with plain single commands and files inside the worktree; ATN "Yes, finish it"; STOPPED FOR
+        GOOD 00:3x on a third refusal (worktree guard: `git -C D:/Dev/renodx submodule status`; ehr_ asked the
+        coordinator to run it instead: refused, that is permission laundering). Review file written by the
+        coordinator: plan_1117/ehalf_review.md: NO DEFECT that changes results (Thrones = Attila masked, 483 / 483;
+        dead state after the region in both; 0 branches / pointers into site+1..+4; stub offsets / placeholders /
+        MXCSR / no x87; heapfix untouched); 7 low notes for ATN's other session (README counts, "all 2^32 through
+        20 lanes" wrong, removed rvas bound guard, constants != nullptr, style, commit the stub's asm source, gain
+        68.1 -> 51.6 ns vs today); builds + full suite not done here: at merge time by the coordinator; (2) then a
         Low EJOB build + tests only (no analysis); (3) UPDATE 00:0x: ATN's other session added E3P site 0x1890b90 on
         ejob-fork as "Faster Effect Prefetch" (Experimental off; prefetches the child after next inside the live list;
         exact on Attila + Thrones incl. random getter trees; harness cold children: plain getter 7.9 -> 8.5 ns SLOWER,
@@ -2978,6 +2994,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         windows-subsystem player with Start-Process -Wait (a bare & returns at once and outlives gpu_job.lock); (c) the
         55 GB commit guard trips while builds run: wait for < 32 GB committed before a trace. Put (b) + (c) in
         testing.md. Owner: next tools touch
+      - [ ] M1 SHARED WRITER-TOKEN HELPER (apr_ review): APIPE's pipeline.hpp writer-token protocol (~90 lines) is a near
+        copy of B3's in resource.hpp and has drifted once already: one shared cross_addon helper (same frozen fields, no
+        ABI change), now that g1_'s resource.hpp fix is merged. Owner: High implementer (utils)
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
