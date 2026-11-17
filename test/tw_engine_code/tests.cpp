@@ -22,8 +22,16 @@
 //    byte, the list's other bytes, the item, every register): the registers, esp and every byte of the list, its
 //    vectors and their items equal; on and off 200 times while 4 threads push to one list: every item in its place,
 //    every return the game's; timing with 4 threads pushing to 16 lists (the byte cleared each round, as the merge does).
+// 9. The ready check (+0x18635a0, Faster Game CPU Code; thiscall, no arguments): every child count 0 to 64 x every
+//    position of the first child not ready (or none) x 7 values of [this + 4] x the last child with and without a
+//    control block x the count's 3 bits above the 29 that x 8 keeps; every [this + 4] with 0 and 1 child; 2 M random
+//    vectors (up to 4096 children; uses from 1 to 0xFFFFFFFF, the carry edges among them; objects no code reads at random
+//    addresses): eax ecx edx ebx esi edi ebp, the arithmetic flags, esp, the 64 bytes of the call's stack, every count
+//    and [this] equal, the game's results as derived from its bytes (engine_code.hpp), no dispose or destroy run;
+//    CONTROL: a child with uses 0 (the game disposes it) must differ; on and off 200 times while 4 threads call both
+//    copies on vectors sharing control blocks: every al the game's, every count back; timing, 1 and 4 threads.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
-// their RVAs, their CRT's state, their truncation's stack slots.
+// their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
 #include <windows.h>
 #include <xmmintrin.h>
@@ -37,12 +45,14 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include "src/games/twattila/engine_code.hpp"
@@ -90,13 +100,14 @@ struct TestBuild {
   uint32_t float_slot;
   uint32_t integer_slot;
   uint32_t list_push_function_rva;  // 0: none in this build
+  uint32_t ready_check_rva;         // 0: none in this build
 };
 constexpr TestBuild ATTILA = {"Attila", &twattila::engine_code::internal::ATTILA_BUILD, 0x169a220, 0x17f6515, 0x17f6539, 0x1a05cc0,
-                              0x1dae4f4, 0x2a8b504, 0x2a8b4cc, 0x1c, 0x28, 0x176ced0};
+                              0x1dae4f4, 0x2a8b504, 0x2a8b4cc, 0x1c, 0x28, 0x176ced0, 0x18635a0};
 constexpr TestBuild THRONES = {"Thrones of Britannia", &twattila::engine_code::internal::THRONES_BUILD, 0x1707eb0, 0x186aa48, 0x186aa6c,
-                               0x1b0a030, 0x1eec634, 0x25fde74, 0x25fde3c, 0x20, 0x18, 0x17defc0};
+                               0x1b0a030, 0x1eec634, 0x25fde74, 0x25fde3c, 0x20, 0x18, 0x17defc0, 0x18d8400};
 constexpr TestBuild ROME2 = {"Rome II", &twattila::engine_code::internal::ROME2_BUILD, 0x1368030, 0x14b434a, 0x14b436e, 0x169ca30,
-                             0x19ebd74, 0x21263cc, 0x2126394, 0x1c, 0x20, 0};
+                             0x19ebd74, 0x21263cc, 0x2126394, 0x1c, 0x20, 0, 0};
 
 uint32_t Read32(const uint8_t* at) {
   uint32_t value;
@@ -378,6 +389,71 @@ struct PushWorld {
 
 uint32_t Address(const void* pointer) { return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(pointer)); }
 
+// The ready check (thiscall, no arguments) on a stack of its own inside the call: esp at stack + 48 at the call (the
+// return address at stack + 44, the routine's pushes below it), every register and the arithmetic flags set; after it
+// every register, the arithmetic flags and esp, and the stack's bytes as the routine left them. One thread at a time.
+struct ReadyCall {
+  uint32_t in[7];      // 0: eax ecx edx ebx esi edi ebp
+  uint32_t flags_in;   // 28
+  uint32_t out[7];     // 32
+  uint32_t flags_out;  // 60: lahf's SF ZF AF PF CF in bits 8-15, OF in bit 0
+  uint32_t saved_esp;  // 64
+  uint32_t esp_after;  // 68
+  uint8_t stack[64];   // 72
+};
+constexpr uint32_t READY_CALL_ESP = 72 + 48;
+ReadyCall* ready_call = nullptr;
+uint32_t ready_function = 0;
+uint32_t ready_eax = 0;
+uint32_t ready_flags = 0;
+
+__declspec(naked) void __cdecl CallReady(ReadyCall*) {
+  __asm {
+    pushad
+    mov ebp, [esp + 36]
+    mov ready_call, ebp
+    mov [ebp + 64], esp
+    push dword ptr [ebp + 28]
+    popfd
+    lea esp, [ebp + 120]  // READY_CALL_ESP
+    mov eax, [ebp + 0]
+    mov ecx, [ebp + 4]
+    mov edx, [ebp + 8]
+    mov ebx, [ebp + 12]
+    mov esi, [ebp + 16]
+    mov edi, [ebp + 20]
+    mov ebp, [ebp + 24]
+    call dword ptr [ready_function]
+    mov ready_eax, eax
+    lahf
+    seto al
+    movzx eax, ax
+    mov ready_flags, eax
+    mov eax, ready_call
+    mov [eax + 36], ecx
+    mov [eax + 40], edx
+    mov [eax + 44], ebx
+    mov [eax + 48], esi
+    mov [eax + 52], edi
+    mov [eax + 56], ebp
+    mov [eax + 68], esp
+    mov ecx, ready_eax
+    mov [eax + 32], ecx
+    mov ecx, ready_flags
+    mov [eax + 60], ecx
+    mov esp, [eax + 64]
+    popad
+    ret
+  }
+}
+
+// A control block's vtable for the ready check's children (MSVC's _Ref_count_base: vtable, uses +4, weaks +8): dispose
+// and destroy (thiscall) only counted, the game's release runs them when a count reaches 0.
+std::atomic<uint32_t> disposed = 0;
+void __fastcall Dispose(void*, void*) { disposed.fetch_add(1); }
+void __fastcall Destroy(void*, void*) { disposed.fetch_add(0x10000); }
+const std::array<uint32_t, 2> BLOCK_VTABLE = {Address(reinterpret_cast<const void*>(&Dispose)), Address(reinterpret_cast<const void*>(&Destroy))};
+
 // An 80-bit value from sign, exponent (15 bits) and 64-bit mantissa.
 void Extended(uint8_t* out, bool sign, uint32_t exponent, uint64_t mantissa) {
   std::memcpy(out, &mantissa, 8);
@@ -432,6 +508,8 @@ int main(int argc, char** argv) {
   }
   CHECK(Matches(game + text_rva, text_size, build.code->fmod_matherr) >= 1);
   CHECK(Matches(game + text_rva, text_size, ec::LIST_PUSH) == (build.list_push_function_rva != 0 ? 1u : 0u));
+  CHECK(Matches(game + text_rva, text_size, ec::READY_CHECK) == (build.ready_check_rva != 0 ? 1u : 0u));
+  CHECK(build.code->ready_check_rva == build.ready_check_rva);
   // B's own code as mapped (A's differs in every relocated address).
   const std::vector<uint8_t> unpatched(patched + text_rva, patched + text_rva + text_size);
   ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
@@ -439,9 +517,11 @@ int main(int argc, char** argv) {
   CHECK(ec::sites[1].at == patched + build.half_rva);
   CHECK(ec::sites[2].at == patched + build.fmod_rva);
   CHECK(ec::sites[3].at == (build.list_push_function_rva != 0 ? patched + build.code->list_push_rva + ec::LIST_PUSH_SITE : nullptr));
+  CHECK(ec::sites[4].at == (build.ready_check_rva != 0 ? patched + build.ready_check_rva : nullptr));
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
-  CHECK(ec::written == ec::found && ec::found == (build.list_push_function_rva != 0 ? 0b1111u : 0b0111u));
+  CHECK(ec::written == ec::found
+        && ec::found == (0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.ready_check_rva != 0 ? 0b10000u : 0u)));
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
     if (unpatched[at - text_rva] == patched[at]) continue;
@@ -741,7 +821,7 @@ int main(int argc, char** argv) {
   // 6. Timing (one thread, warm).
   {
     if (ec::written == 0) twattila::engine_code::Update(true);
-    CHECK(ec::written == ec::CPU_CODE_SITES);
+    CHECK(ec::written == (ec::CPU_CODE_SITES & ec::found));
     using Half = uint16_t(__cdecl*)(const float*);
     std::vector<float> rows(20 * 4096);
     Random random = {.state = 5};
@@ -978,6 +1058,251 @@ int main(int argc, char** argv) {
     std::printf("8. render list push: none in this build\n");
   }
 
+  // 9. The ready check.
+  if (build.ready_check_rva != 0) {
+    twattila::engine_code::Update(true);
+    CHECK(ec::written == (ec::CPU_CODE_SITES & ec::found) && (ec::written >> 4 & 1) != 0);
+    const uint32_t game_ready = Address(game + build.ready_check_rva);
+    const uint32_t patched_ready = Address(patched + build.ready_check_rva);
+    const auto start = std::chrono::steady_clock::now();
+    // The object ([+4] its flag, [+0x40] the count, [+0x44] the children), the children ({object, control block}), the
+    // objects (the ready byte at +0x6e), the control blocks ({vtable, uses, weaks}).
+    constexpr uint32_t MAX_CHILDREN = 4096;
+    std::array<uint8_t, 0x48> self = {};
+    std::vector<uint32_t> children(2 * MAX_CHILDREN);
+    std::vector<std::array<uint8_t, 0x70>> objects(MAX_CHILDREN);
+    std::vector<std::array<uint32_t, 3>> blocks(MAX_CHILDREN);
+    std::vector<std::array<uint32_t, 3>> blocks_before(MAX_CHILDREN);
+    const auto uses_of = [](Random* random) -> uint32_t {
+      constexpr std::array<uint32_t, 12> EDGES = {1, 2, 0xFF, 0x100, 0xFFFF, 0x10000, 0xFFFFFF, 0x1000000, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFE, 0xFFFFFFFF};
+      switch (random->Next() % 3) {
+        case 0:  return EDGES[random->Next() % EDGES.size()];
+        case 1:  return 1 + random->Next() % 300;
+        default: return std::max(1u, random->Next());
+      }
+    };
+    std::array<uint64_t, 4> kinds = {};  // no child, the flag 0, every child ready, a child not ready
+    // One vector of `count` children (the routine's lea keeps count x 8: its low 29 bits), the first `not_ready` of them
+    // ready (not_ready >= that: all), the last one with a control block or not, the others at random; a child neither
+    // code may read (after the first not ready, or all with the flag 0) half the time at a random object address. `dead`:
+    // that child's uses 0 (CONTROL). Both copies called with the same registers, flags and stack bytes.
+    const auto check = [&](uint32_t count, uint32_t not_ready, uint8_t flag, bool last_block, Random* random, uint32_t dead = ~0u) {
+      const uint32_t n = count & 0x1FFFFFFF;
+      for (uint8_t& byte : self) byte = static_cast<uint8_t>(random->Next());
+      self[4] = flag;
+      Write32(self.data() + 0x40, count);
+      Write32(self.data() + 0x44, (n == 0 && (random->Next() & 1) != 0) ? random->Next() : Address(children.data()));
+      for (uint32_t index = 0; index < n; ++index) {
+        objects[index][0x6e] = static_cast<uint8_t>(index < not_ready ? 1 + random->Next() % 255 : (index == not_ready ? 0 : random->Next()));
+        const bool read = (flag != 0 && index <= not_ready);
+        children[2 * index] = ((read || (random->Next() & 1) == 0) ? Address(objects[index].data()) : random->Next());
+        const bool has_block = (index + 1 == n ? last_block : (random->Next() & 1) != 0) || index == dead;
+        blocks[index] = {Address(BLOCK_VTABLE.data()), (index == dead ? 0u : uses_of(random)), (index == dead ? 1u : 1 + random->Next() % 1000)};
+        children[2 * index + 1] = (has_block ? Address(blocks[index].data()) : 0u);
+      }
+      std::copy_n(blocks.begin(), n, blocks_before.begin());
+      const std::array<uint8_t, 0x48> self_before = self;
+      ReadyCall call = {.in = {random->Next(), Address(self.data()), random->Next(), random->Next(), random->Next(), random->Next(), random->Next()},
+                        .flags_in = 0x202 | (random->Next() & 0x8D5)};
+      for (uint8_t& byte : call.stack) byte = static_cast<uint8_t>(random->Next());
+      const auto world_kept = [&] { return std::equal(blocks.begin(), blocks.begin() + n, blocks_before.begin()) && self == self_before; };
+      ReadyCall a = call;
+      ready_function = game_ready;
+      CallReady(&a);
+      const bool game_kept = world_kept();
+      ReadyCall b = call;
+      ready_function = patched_ready;
+      CallReady(&b);
+      const bool ours_kept = world_kept();
+      // The game's results as engine_code.hpp derives them from its bytes.
+      const uint8_t result = (n == 0 ? flag : static_cast<uint8_t>(flag != 0 && not_ready >= n ? 1 : 0));
+      uint32_t high = count;
+      if (n != 0) high = (children[2 * n - 1] != 0 ? blocks_before[n - 1][1] + 1 : children[2 * n - 2]);
+      const uint32_t ecx = (Address(self.data()) & 0x00FFFFFFu) | (static_cast<uint32_t>(result) << 24);
+      const bool derived = a.out[0] == ((high & 0xFFFFFF00u) | result) && a.out[1] == ecx
+                           && std::memcmp(a.out + 2, call.in + 2, 5 * sizeof(uint32_t)) == 0 && a.flags_out == 0x4600
+                           && a.esp_after == Address(&a) + READY_CALL_ESP && std::memcmp(a.stack, call.stack, 28) == 0
+                           && Read32(a.stack + 28) == call.in[5] && Read32(a.stack + 32) == call.in[4] && Read32(a.stack + 36) == call.in[3]
+                           && Read32(a.stack + 40) == ecx && std::memcmp(a.stack + 48, call.stack + 48, 16) == 0;
+      const bool same = std::memcmp(a.out, b.out, sizeof(a.out)) == 0 && a.flags_out == b.flags_out
+                        && b.esp_after == Address(&b) + READY_CALL_ESP && std::memcmp(a.stack, b.stack, sizeof(a.stack)) == 0;
+      const bool good = derived && same && game_kept && ours_kept && disposed.load() == 0;
+      if (!good) {
+        Report("  ready check: count %08X, first not ready %u, flag %02X, last block %d: derived %d same %d kept %d %d; eax %08X / %08X "
+               "ecx %08X / %08X flags %04X / %04X\n", count, not_ready, flag, last_block ? 1 : 0, derived ? 1 : 0, same ? 1 : 0,
+               game_kept ? 1 : 0, ours_kept ? 1 : 0, a.out[0], b.out[0], a.out[1], b.out[1], a.flags_out, b.flags_out);
+      }
+      ++kinds[n == 0 ? 0 : (flag == 0 ? 1 : (not_ready >= n ? 2 : 3))];
+      return good;
+    };
+    Random random = {.state = 0xC0FFEE};
+    uint64_t cases = 0;
+    constexpr std::array<uint8_t, 6> FLAGS = {0, 1, 2, 0x7F, 0x80, 0xFF};
+    for (uint32_t n = 0; n <= 64; ++n) {
+      for (uint32_t not_ready = 0; not_ready <= n; ++not_ready) {
+        for (size_t flag_index = 0; flag_index <= FLAGS.size(); ++flag_index) {
+          const uint8_t flag = (flag_index < FLAGS.size() ? FLAGS[flag_index] : static_cast<uint8_t>(random.Next()));
+          for (const bool last_block : {false, true}) {
+            for (uint32_t high = 0; high < 8; ++high) {
+              CHECK(check(n | (high << 29), not_ready, flag, last_block, &random));
+              ++cases;
+            }
+          }
+        }
+      }
+    }
+    for (uint32_t flag = 0; flag < 256; ++flag) {
+      for (uint32_t high = 0; high < 8; ++high) {
+        CHECK(check(high << 29, 0, static_cast<uint8_t>(flag), false, &random));
+        ++cases;
+      }
+      for (const uint32_t not_ready : {0u, 1u}) {
+        for (const bool last_block : {false, true}) {
+          CHECK(check(1, not_ready, static_cast<uint8_t>(flag), last_block, &random));
+          ++cases;
+        }
+      }
+    }
+    constexpr int RANDOM_VECTORS = 2'000'000;
+    for (int run = 0; run < RANDOM_VECTORS; ++run) {
+      const uint32_t n = ((run & 255) == 0 ? random.Next() % (MAX_CHILDREN + 1) : random.Next() % 65);
+      const uint32_t not_ready = ((random.Next() & 3) == 0 ? n : random.Next() % (n + 1));
+      CHECK(check(n | (random.Next() << 29), not_ready, static_cast<uint8_t>(random.Next()), (random.Next() & 1) != 0, &random));
+      ++cases;
+    }
+    std::printf("9. ready check: %llu vectors (%llu without a child, %llu with the flag 0, %llu all ready, %llu with one not ready): "
+                "every register, the flags, esp, the stack, every count equal and the game's as derived (%.1f s)\n",
+                cases, kinds[0], kinds[1], kinds[2], kinds[3], std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+    // CONTROL: a dead child (uses 0, never in the game's vectors): the game's release disposes and destroys it, the stub
+    // never touches it; the compare must see it.
+    std::printf("   CONTROL, a child with uses 0 (must differ):\n");
+    CHECK(!check(3, 3, 1, true, &random, 1));
+    CHECK(disposed.load() == 0x10001);
+    disposed = 0;
+
+    // On and off while 4 threads call both copies on 8 vectors sharing 16 control blocks (the game's copies and releases
+    // move the counts the stub reads: eax's bits from the last child's uses may then differ, so al alone, the caller's).
+    using ReadyCheck = uint8_t(__fastcall*)(const void* self, void* unused_edx);
+    {
+      struct Vector {
+        std::array<uint8_t, 0x48> self;
+        std::array<uint32_t, 2 * 64> children;
+        uint8_t result;
+      };
+      std::vector<Vector> vectors(8);
+      std::array<std::array<uint32_t, 3>, 16> shared_blocks = {};
+      for (auto& block : shared_blocks) block = {Address(BLOCK_VTABLE.data()), 1 + random.Next() % 4, 1};
+      const auto blocks_start = shared_blocks;
+      std::array<std::array<uint8_t, 0x70>, 64> shared_objects = {};
+      for (size_t index = 1; index < shared_objects.size(); ++index) shared_objects[index][0x6e] = static_cast<uint8_t>(1 + index);
+      for (uint32_t index = 0; index < vectors.size(); ++index) {
+        Vector& vector = vectors[index];
+        const uint32_t n = 8 * index;
+        vector.self = {};
+        vector.self[4] = (index == 5 ? 0 : 1);
+        Write32(vector.self.data() + 0x40, n);
+        Write32(vector.self.data() + 0x44, Address(vector.children.data()));
+        // Odd vectors hold object 0 (not ready) somewhere.
+        const uint32_t not_ready = ((index & 1) != 0 ? random.Next() % n : n);
+        for (uint32_t child = 0; child < n; ++child) {
+          vector.children[2 * child] = Address(shared_objects[child == not_ready ? 0 : 1 + random.Next() % 63].data());
+          vector.children[2 * child + 1] = ((random.Next() & 3) != 0 ? Address(shared_blocks[random.Next() % 16].data()) : 0u);
+        }
+        vector.result = (n == 0 ? vector.self[4] : static_cast<uint8_t>(vector.self[4] != 0 && not_ready >= n ? 1 : 0));
+      }
+      const auto game_check = reinterpret_cast<ReadyCheck>(game + build.ready_check_rva);
+      const auto patched_check = reinterpret_cast<ReadyCheck>(patched + build.ready_check_rva);
+      std::atomic<bool> stop = false;
+      std::atomic<uint64_t> wrong = 0;
+      std::atomic<uint64_t> calls = 0;
+      std::vector<std::thread> threads;
+      for (int worker = 0; worker < 4; ++worker) {
+        threads.emplace_back([&, worker] {
+          Random thread_random = {.state = 2000u + static_cast<uint64_t>(worker)};
+          uint64_t local = 0;
+          while (!stop.load(std::memory_order_relaxed)) {
+            const Vector& vector = vectors[thread_random.Next() % vectors.size()];
+            if (patched_check(vector.self.data(), nullptr) != vector.result) wrong.fetch_add(1);
+            if (game_check(vector.self.data(), nullptr) != vector.result) wrong.fetch_add(1);
+            ++local;
+          }
+          calls += local;
+        });
+      }
+      constexpr int SWITCHES = 200;
+      int toggles = 0;
+      int busy = 0;
+      for (int round = 0; round < SWITCHES; ++round) {
+        const bool on = (round % 2) != 0;  // on at the start: off first
+        int tries = 0;
+        do {
+          twattila::engine_code::Update(on);
+          ++tries;
+        } while ((ec::written != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
+        busy += tries - 1;
+        toggles += ((ec::written != 0) == on) ? 1 : 0;
+      }
+      stop = true;
+      for (auto& thread : threads) thread.join();
+      CHECK(wrong == 0);
+      CHECK(toggles == SWITCHES);
+      CHECK(shared_blocks == blocks_start);
+      CHECK(disposed.load() == 0);
+      std::printf("   %d switches while 4 threads made %llu calls of each copy on 8 vectors sharing 16 control blocks: every "
+                  "result the game's, every count back (%d writes waited for a thread inside a site)\n",
+                  SWITCHES, calls.load(), busy);
+    }
+
+    // Timing: one thread on 16 and 64 children, all ready (every child with its own control block), and 16 with the first
+    // not ready; 4 threads on the same 16 (the game's copies and releases share the control blocks' lines).
+    {
+      CHECK(ec::written == (ec::CPU_CODE_SITES & ec::found));
+      const auto make = [&](uint32_t n, uint32_t not_ready, std::array<uint8_t, 0x48>* object) {
+        *object = {};
+        (*object)[4] = 1;
+        Write32(object->data() + 0x40, n);
+        Write32(object->data() + 0x44, Address(children.data()));
+        for (uint32_t index = 0; index < n; ++index) {
+          objects[index][0x6e] = (index == not_ready ? 0 : 1);
+          blocks[index] = {Address(BLOCK_VTABLE.data()), 1, 1};
+          children[2 * index] = Address(objects[index].data());
+          children[2 * index + 1] = Address(blocks[index].data());
+        }
+      };
+      const auto time = [&](uint32_t function, const std::array<uint8_t, 0x48>& object, int thread_count) {
+        const auto ready_check = reinterpret_cast<ReadyCheck>(function);
+        constexpr int CALLS = 400'000;
+        std::atomic<int> waiting = thread_count;
+        std::vector<std::thread> threads;
+        std::vector<double> seconds(thread_count);
+        for (int worker = 0; worker < thread_count; ++worker) {
+          threads.emplace_back([&, worker] {
+            --waiting;
+            while (waiting.load() > 0) {}
+            volatile uint32_t sink = 0;
+            const auto thread_start = std::chrono::steady_clock::now();
+            for (int index = 0; index < CALLS; ++index) sink = sink + ready_check(object.data(), nullptr);
+            seconds[worker] = std::chrono::duration<double>(std::chrono::steady_clock::now() - thread_start).count();
+          });
+        }
+        for (auto& thread : threads) thread.join();
+        return *std::max_element(seconds.begin(), seconds.end()) * 1e9 / CALLS;
+      };
+      std::array<uint8_t, 0x48> object = {};
+      std::string line;
+      for (const auto& [n, not_ready, thread_count] : {std::tuple{16u, 16u, 1}, std::tuple{64u, 64u, 1}, std::tuple{16u, 0u, 1}, std::tuple{16u, 16u, 4}}) {
+        make(n, not_ready, &object);
+        const double game_ns = time(game_ready, object, thread_count);
+        const double ours_ns = time(patched_ready, object, thread_count);
+        line += std::format("{}{} children{}{}: {:.1f} / {:.1f}", line.empty() ? "" : ", ", n, not_ready < n ? " (the first not ready)" : "",
+                            thread_count > 1 ? std::format(", {} threads", thread_count) : "", game_ns, ours_ns);
+      }
+      std::printf("   ns a call, game / ours: %s\n", line.c_str());
+    }
+  } else {
+    std::printf("9. ready check: none in this build\n");
+  }
+
   // Off: the game's bytes back (the harness's jumps removed first).
   std::memcpy(game + build.truncation_resume_rva, file.data() + (build.truncation_resume_rva - text_rva + text_header->PointerToRawData), 5);
   std::memcpy(patched + build.truncation_resume_rva, unpatched.data() + (build.truncation_resume_rva - text_rva), 5);
@@ -989,7 +1314,7 @@ int main(int argc, char** argv) {
 
   // 7. With the Attila CPU Performance Fix's x87 fix the truncation block holds fisttp and nops for both fldcw (bytes
   // 23..26, 28 and 31..34 of the block, ATN's heapfix.log: 1277 of 1277 blocks, 165 by fisttp): that site is left
-  // alone, the others still found.
+  // alone, the others still found. Then one byte of the ready check changed (as another mod's patch would): left alone.
   uint8_t* block = patched + build.truncation_block_rva;
   for (const size_t at : {23, 31}) std::memcpy(block + at, "\x0F\x1F\x40\x00", 4);
   block[28] = 0x4C;
@@ -998,8 +1323,20 @@ int main(int argc, char** argv) {
   ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
   CHECK(ec::sites[0].at == nullptr && ec::sites[1].at != nullptr && ec::sites[2].at != nullptr);
   CHECK((ec::sites[3].at != nullptr) == (build.list_push_function_rva != 0));
+  CHECK((ec::sites[4].at != nullptr) == (build.ready_check_rva != 0));
   CHECK(log_lines.back().find("left alone") != std::string::npos && log_lines.back().find("soldier draw rounding") != std::string::npos);
-  std::printf("7. a block another mod changed: left alone, the other two found\nPASS\n");
+  if (build.ready_check_rva != 0) {
+    patched[build.ready_check_rva + 0x1F] = 0x90;  // the copy's lock prefix
+    for (ec::Site& site : ec::sites) site.at = nullptr;
+    ec::prepared = false;
+    ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
+    CHECK(ec::sites[4].at == nullptr && ec::sites[1].at != nullptr);
+    CHECK(log_lines.back().find("left alone") != std::string::npos && log_lines.back().find("ready checks") != std::string::npos);
+  } else {
+    CHECK(log_lines.back().find("ready checks") == std::string::npos);
+  }
+  std::printf("7. a block another mod changed: left alone, the others found%s\nPASS\n",
+              (build.ready_check_rva != 0 ? "; a changed ready check left alone" : ""));
   return 0;
 }
 

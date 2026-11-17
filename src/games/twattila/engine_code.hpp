@@ -23,14 +23,15 @@
 #include "../../utils/log.hpp"
 #include "../twrome2/engine_tweaks.hpp"
 
-// Faster Game CPU Code: three of Attila's hot routines in empire.retail.dll, each replaced by code with the same results
-// (test/tw_engine_code runs the game's code and this one side by side: every register, the stack, the x87 state); Faster
-// Render Lists (its own row): a fourth site the same way.
+// Faster Game CPU Code: four of Attila's hot routines in empire.retail.dll, each replaced by code with the same results
+// (test/tw_engine_code runs the game's code and this one side by side: every register, the flags, the stack, the x87
+// state); Faster Render Lists (its own row): a fifth site the same way.
 // Each is found by its exact bytes: code another mod changed (the Attila CPU Performance Fix patches 1277 x87 blocks,
 // the first one below among them) or another build is left alone. A jump into the addon's own code page replaces the
 // first instruction(s) of each; the page is never freed (a thread can still be in it after the game's bytes are back).
 // RVAs are the Steam build's (1.6.0): there they are tried first, then the code section is searched.
-// Thrones of Britannia and Rome II (Game::THRONES, Game::ROME2): the same three routines, their builds' (internal::BUILDS).
+// Thrones of Britannia and Rome II (Game::THRONES, Game::ROME2): the same routines, their builds' (internal::BUILDS);
+// Rome II has no ready check.
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
@@ -229,10 +230,69 @@ constexpr std::array<uint8_t, 19> LIST_PUSH_STUB = {
     0xE9, 0x00, 0x00, 0x00, 0x00,  // jmp back
 };
 
-// Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half and fmod the
-// same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots (control word 0x20,
-// float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the same steps; the CRT's
-// _matherr check compiled otherwise (eax decoded, not edx: the stub only calls it and tests al, eax ecx edx saved).
+// 5. The pending list's ready check (+0x18635a0; its one caller, the render thread's per-frame sweep +0x1893290, tests al
+// alone; 2.1 ms a frame in the stress battle): a thiscall returning in al whether [this + 4] is set and every child (the
+// shared_ptrs {object, control block} at [this + 0x44], [this + 0x40] of them) has its ready byte (+0x6e) set. The game
+// copies each child (lock inc) and releases it (lock xadd) only to read that byte, and goes on to the end after a child
+// that isn't ready. The vector's own references keep every count at 1 or more through the call, so the copy and release
+// leave each count where it was and the release's dispose and destroy never run; the stub reads the same bytes without
+// them (a subset of the game's addresses) and stops at the first child not ready. It leaves what the game's leaves: al
+// [this + 4] as it is with no child, 1 after a full loop of ready children, else 0; eax's other bits the count's with
+// no child, else the last child's control block's uses + 1 (the release's old value) or, without one, its object; ecx
+// this with al in its top byte and the same 16 bytes below esp (the game's frame: the result kept in the pushed ecx's top
+// byte); the flags of an equal compare, the game's last. Only eax's bits from the last child's uses can differ, while
+// another thread changes them during the call (the game's value then depends on the timing too); without the game's
+// locked instructions (full fences) a ready byte another thread sets can only be seen sooner (x86 keeps loads in order).
+constexpr uint32_t READY_CHECK_RVA = 0x18635a0;
+constexpr std::string_view READY_CHECK =
+    "51 8A 41 04 53 56 57 8B 79 44 88 44 24 0F 8B 41 40 8D 1C C7 3B FB 74 55 8B 77 04 85 F6 74 07 F0 FF 46 04 8B 77 04 "
+    "80 7C 24 0F 00 8B 07 74 0A 80 78 6E 00 74 04 B0 01 EB 02 32 C0 88 44 24 0F 85 F6 74 23 B8 FF FF FF FF F0 0F C1 46 "
+    "04 75 17 8B 06 8B CE FF 10 83 C8 FF F0 0F C1 46 08 75 07 8B 06 8B CE FF 50 04 83 C7 08 3B FB 75 AB 8A 44 24 0F 5F "
+    "5E 5B 59 C3";
+constexpr std::array<uint8_t, 85> READY_CHECK_STUB = {
+    0x51,                          // push ecx                          the game's frame: the result in the pushed
+    0x8A, 0x41, 0x04,              // mov al, byte ptr [ecx + 4]          ecx's top byte
+    0x53,                          // push ebx
+    0x56,                          // push esi
+    0x57,                          // push edi
+    0x8B, 0x79, 0x44,              // mov edi, dword ptr [ecx + 0x44]   the children
+    0x88, 0x44, 0x24, 0x0F,        // mov byte ptr [esp + 0xf], al
+    0x8B, 0x41, 0x40,              // mov eax, dword ptr [ecx + 0x40]   the count
+    0x8D, 0x1C, 0xC7,              // lea ebx, [edi + eax*8]            the end
+    0x3B, 0xFB,                    // cmp edi, ebx
+    0x74, 0x34,                    // je done                           no child: [this + 4], eax the count's
+    0x80, 0x7C, 0x24, 0x0F, 0x00,  // cmp byte ptr [esp + 0xf], 0
+    0x74, 0x1B,                    // je last                           not set: 0, no child read
+    0x8B, 0x07,                    // next: mov eax, dword ptr [edi]
+    0x80, 0x78, 0x6E, 0x00,        // cmp byte ptr [eax + 0x6e], 0
+    0x74, 0x0E,                    // je not_ready
+    0x83, 0xC7, 0x08,              // add edi, 8
+    0x3B, 0xFB,                    // cmp edi, ebx
+    0x75, 0xF1,                    // jne next
+    0xC6, 0x44, 0x24, 0x0F, 0x01,  // mov byte ptr [esp + 0xf], 1       every child ready: 1
+    0xEB, 0x05,                    // jmp last
+    0xC6, 0x44, 0x24, 0x0F, 0x00,  // not_ready: mov byte ptr [esp + 0xf], 0
+    0x8B, 0x43, 0xFC,              // last: mov eax, dword ptr [ebx - 4]  the last child's control block
+    0x85, 0xC0,                    // test eax, eax
+    0x74, 0x06,                    // je object
+    0x8B, 0x40, 0x04,              // mov eax, dword ptr [eax + 4]
+    0x40,                          // inc eax                           its uses + 1
+    0xEB, 0x03,                    // jmp equal
+    0x8B, 0x43, 0xF8,              // object: mov eax, dword ptr [ebx - 8]
+    0x3B, 0xDB,                    // equal: cmp ebx, ebx
+    0x8A, 0x44, 0x24, 0x0F,        // done: mov al, byte ptr [esp + 0xf]
+    0x5F,                          // pop edi
+    0x5E,                          // pop esi
+    0x5B,                          // pop ebx
+    0x59,                          // pop ecx
+    0xC3,                          // ret
+};
+
+// Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half, fmod and the
+// ready check the same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots
+// (control word 0x20, float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the
+// same steps; the CRT's _matherr check compiled otherwise (eax decoded, not edx: the stub only calls it and tests al, eax
+// ecx edx saved).
 constexpr uint32_t THRONES_TRUNCATION_RVA = 0x186aa3a;
 constexpr std::string_view THRONES_TRUNCATION =
     "8B 84 24 7C 01 00 00 89 84 24 84 00 00 00 50 D9 44 24 24 9B D9 7C 24 20 8B 44 24 20 0D 00 0C 00 00 89 44 24 28 "
@@ -248,8 +308,8 @@ constexpr std::string_view ROME2_TRUNCATION =
     "D9 6C 24 28 DB 5C 24 24 D9 6C 24 18 58 0F B7 44 24 20 66 0F 6E C0 0F 5B C0 F3 0F 11 84 24";
 constexpr std::array<uint8_t, 44> ROME2_TRUNCATION_STUB = TruncationStub(0x18, 0x28, 0x20, 0x24);
 
-// What differs between the games' builds. Thrones' render list push the same bytes; Rome II has no such function
-// (list_push_rva 0: not looked for).
+// What differs between the games' builds. Thrones' render list push and ready check the same bytes; Rome II has neither
+// (rva 0: not looked for).
 struct Build {
   uint32_t truncation_rva;
   std::string_view truncation;
@@ -258,10 +318,11 @@ struct Build {
   uint32_t fmod_rva;
   std::string_view fmod_matherr;
   uint32_t list_push_rva;
+  uint32_t ready_check_rva;
 };
-constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA};
-constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9};
-constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0};
+constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA};
+constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9, 0x18d8400};
+constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0};
 constexpr std::array<Build, 3> BUILDS = {ATTILA_BUILD, THRONES_BUILD, ROME2_BUILD};  // by Game
 
 // Where each stub sits in the page.
@@ -269,14 +330,15 @@ constexpr size_t TRUNCATION_PAGE = 0x000;
 constexpr size_t HALF_PAGE = 0x040;
 constexpr size_t FMOD_PAGE = 0x180;
 constexpr size_t LIST_PUSH_PAGE = 0x240;
+constexpr size_t READY_CHECK_PAGE = 0x280;
 constexpr size_t PAGE_SIZE = 0x1000;
 
 // Which sites each row writes (bits by `sites` index).
-constexpr uint32_t CPU_CODE_SITES = 0b0111;  // Faster Game CPU Code
-constexpr uint32_t LIST_SITES = 0b1000;      // Faster Render Lists
+constexpr uint32_t CPU_CODE_SITES = 0b10111;  // Faster Game CPU Code
+constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 
-// The first instruction (or two, whole) of each site: 5 bytes that become a jump into the page (the render list push's:
-// a 4-byte instruction and the first byte of the next, both run by its stub).
+// The first instruction (or two or three, whole) of each site: 5 bytes that become a jump into the page (the render list
+// push's: a 4-byte instruction and the first byte of the next, both run by its stub).
 constexpr size_t SITE_SIZE = 5;
 
 struct Site {
@@ -286,8 +348,11 @@ struct Site {
   std::array<uint8_t, SITE_SIZE> jump = {};
 };
 
-static std::array<Site, 4> sites = {
-    {{.name = "soldier draw rounding"}, {.name = "half floats"}, {.name = "fmod"}, {.name = "render list pushes"}}};
+static std::array<Site, 5> sites = {{{.name = "soldier draw rounding"},
+                                     {.name = "half floats"},
+                                     {.name = "fmod"},
+                                     {.name = "render list pushes"},
+                                     {.name = "ready checks"}}};
 static uint8_t* page = nullptr;
 static bool prepared = false;
 static uint32_t found = 0;    // the sites found (bits by index)
@@ -392,7 +457,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   };
 
   page = static_cast<uint8_t*>(VirtualAlloc(nullptr, PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-  std::array<uint8_t*, 4> stubs = {};
+  std::array<uint8_t*, 5> stubs = {};
   if (page != nullptr) {
     if (uint8_t* match = find(build.truncation, build.truncation_rva); match != nullptr) {
       uint8_t* stub = page + TRUNCATION_PAGE;
@@ -447,15 +512,23 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       sites[3].at = match + LIST_PUSH_SITE;
       stubs[3] = stub;
     }
+    // Found by the whole routine's bytes: the stub stands in for all of it and returns to the caller itself.
+    if (uint8_t* match = (build.ready_check_rva != 0 ? find(READY_CHECK, build.ready_check_rva) : nullptr); match != nullptr) {
+      std::memcpy(page + READY_CHECK_PAGE, READY_CHECK_STUB.data(), READY_CHECK_STUB.size());
+      sites[4].at = match;
+      stubs[4] = page + READY_CHECK_PAGE;
+    }
     DWORD protection;
     VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
     FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
   }
   std::string faster;
   std::string left;
+  // A site the build doesn't have (rva 0) isn't named.
+  const std::array<uint32_t, 5> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva};
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
-    if ((LIST_SITES >> index & 1) != 0 && build.list_push_rva == 0) continue;
+    if (rvas[index] == 0) continue;
     std::string& names = (site.at != nullptr ? faster : left);
     names += std::format("{}{}", names.empty() ? "" : ", ", site.name);
     if (site.at == nullptr) continue;
