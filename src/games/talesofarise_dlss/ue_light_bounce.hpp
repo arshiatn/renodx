@@ -167,6 +167,7 @@ struct Objects {
   ComPtr<ID3D11RasterizerState> rasterizer;
   ComPtr<ID3D11Buffer> constants;
   LightBounceConstants uploaded = {};
+  float texel_centre = 0.f;  // the last trace's LightBounceConstants::texel_centre (its history's)
   // The render size and scale the prepared textures and histories (1 / scale of it) are made for.
   std::array<UINT, 2> render_size = {};
   UINT scale = 0;
@@ -309,10 +310,15 @@ inline ID3D11ShaderResourceView* Apply(ID3D11DeviceContext* context, const Input
       objects.irradiance_size = {depth_desc.Width, depth_desc.Height};
     }
   }
-  if (std::memcmp(&objects.uploaded, &constants, sizeof(LightBounceConstants)) != 0) {
-    context->UpdateSubresource(objects.constants.Get(), 0, nullptr, &constants, 0, 0);
-    objects.uploaded = constants;
-  }
+  LightBounceConstants settings = constants;
+  settings.texel_centre = objects.texel_centre;
+  const auto upload = [&]() {
+    if (std::memcmp(&objects.uploaded, &settings, sizeof(LightBounceConstants)) != 0) {
+      context->UpdateSubresource(objects.constants.Get(), 0, nullptr, &settings, 0, 0);
+      objects.uploaded = settings;
+    }
+  };
+  upload();
 
   const dlss::ContextStateScope scope(context1.Get(), objects.private_state.Get());
   std::array<ID3D11ShaderResourceView*, internal::VIEW_COUNT> views = {};
@@ -353,6 +359,12 @@ inline ID3D11ShaderResourceView* Apply(ID3D11DeviceContext* context, const Input
   const bool rays = ray_traced != nullptr
                     && ray_traced(context1.Get(), objects.prepared_light.texture.Get(), static_cast<UINT>(trace_viewport.Width),
                                   static_cast<UINT>(trace_viewport.Height), scale, objects.traced.texture.Get());
+  // The apply weighs the texels where this trace took them: the rays' at their block's centre pixel (rt_path.hlsli
+  // TexelSurface), the screen-space trace's at its top-left (twattila/light_bounce.hpp's rule: weighed at the top-left
+  // the rays' bounce came out 0.6 px toward the top-left at Half, 0.8 at Quarter).
+  objects.texel_centre = rays ? static_cast<float>(scale / 2) : 0.f;
+  settings.texel_centre = objects.texel_centre;
+  upload();
   D3D11_TEXTURE2D_DESC prepared_desc = {};
   objects.prepared_light.texture->GetDesc(&prepared_desc);
   context1->PSSetShader(objects.levels.Get(), nullptr, 0);
