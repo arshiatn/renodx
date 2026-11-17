@@ -381,6 +381,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARC BUGS (gpr_, for the SHaRC 1.8.3 job): (S1) rt_d3d12.hpp:2659 GrowBuffer(&. ... | ssr_
 - SER VERDICT (gpr_ vs NVIDIA RTXPT): placement right, hint WRONG (InstanceID & 7 ... | ssr_
 - CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still tryi ... | ATN
+- SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | sol_
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2798,6 +2799,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         then review ATN's patches (EJOB / EHALF / E3P / EVEC from ATN's other session or ChatGPT) when ATN hands them over
         (xHigh review, build32, tw_engine_code parts x86), then one combined bench (my pick: after the GPU rounds, ~25 runs
         incl. heapfix for the author). Owner: ATN
+      - [ ] SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62-for-Claude.zip: "Sol 6.2
+        did everything ... I am not sure if everything is correct"; unpacked to tools/tw/sol62/unpacked, untrusted): two
+        real diffs on engine_code.hpp (0001 patch-writer rework + transaction tests; 0002 one E3P prefetch site behind
+        RENODX_ATTILA_EXPERIMENTAL_RENDER_PREFETCH) + prototypes not integrated (EHALF 4 of 20 conversions, EVEC capped
+        capacity, EJOB delegated wake + model / 32-thread tests). sol_ xHigh review STARTED 21:1x (apply, build x86,
+        tw_engine_code all parts, verdict per item) -> plan_1117/sol62_review.md. Owner: sol_
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
