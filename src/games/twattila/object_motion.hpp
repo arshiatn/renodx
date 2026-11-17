@@ -284,6 +284,9 @@ inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) 
 // the camera) it draws with; the units' placement tables (this frame's and last frame's, in turn).
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
+  // The immediate context DrawObjectMotion last prepared `device` for (no reference: `device` holds it, so a context at
+  // this address is that device's).
+  ID3D11DeviceContext* context = nullptr;
   bool made = false;
   std::vector<ComPtr<ID3D11VertexShader>> motion_shaders;  // as Shaders::shaders
   ComPtr<ID3D11PixelShader> wind_pixel_shader;
@@ -382,7 +385,6 @@ struct UavOverlap {
 struct State {
   std::shared_mutex mutex;
   Shaders shaders;              // the addon's (Install), kept while installed
-  MakeView make_view = nullptr;  // the host's
   uint64_t frame = 0;           // the last view's
   DeviceObjects objects;
   InDraw in_draw;  // the in-draw draw in progress
@@ -390,6 +392,8 @@ struct State {
 };
 
 static State state;
+// The host's view (Install, before its draws are registered; Uninstall clears it), read by every moving draw.
+static std::atomic<MakeView> make_view = nullptr;
 
 // In-draw: the vertex shaders' outputs (as Shaders::shaders) and the game's pixel shaders that can follow one (by their
 // pipeline handle: the shader). Their own lock, never held across a D3D11 call or a release: the pipeline callbacks
@@ -559,13 +563,9 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return false;
   ComPtr<ID3D11Buffer> camera;
   native->VSGetConstantBuffers(0, 1, camera.GetAddressOf());
-  MakeView make_view = nullptr;
-  {
-    const std::shared_lock lock(state.mutex);
-    make_view = state.make_view;
-  }
+  const MakeView host_view = make_view.load(std::memory_order_relaxed);
   View view;
-  if (!camera || make_view == nullptr || !make_view(camera.Get(), &view)) return false;
+  if (!camera || host_view == nullptr || !host_view(camera.Get(), &view)) return false;
   const std::unique_lock lock(state.mutex);
   auto& objects = state.objects;
   if (&shader < state.shaders.shaders.data() || &shader >= state.shaders.shaders.data() + state.shaders.shaders.size()) return false;
@@ -582,9 +582,15 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
     vertex_count = arguments.vertex_count;
     first_vertex = arguments.first_vertex;
   }
-  ComPtr<ID3D11Device> device;
-  native->GetDevice(device.GetAddressOf());
-  if (!PrepareDevice(device.Get())) return false;
+  // The device: the objects' while they were prepared for this context.
+  if (objects.context != native) {
+    ComPtr<ID3D11Device> context_device;
+    native->GetDevice(context_device.GetAddressOf());
+    PrepareDevice(context_device.Get());
+    objects.context = native;
+  }
+  if (!objects.made) return false;
+  ID3D11Device* const device = objects.device.Get();
   if (in_draw && !objects.draw_shaders[index]) {
     *draw_again = true;
     return false;
@@ -1772,8 +1778,8 @@ inline void Install(const Shaders& shaders, MakeView make_view) {
   {
     const std::unique_lock lock(internal::state.mutex);
     internal::state.shaders = shaders;
-    internal::state.make_view = make_view;
   }
+  internal::make_view.store(make_view, std::memory_order_relaxed);
   {
     const std::unique_lock lock(internal::pixel_shaders.mutex);
     internal::pixel_shaders.draw_signatures = std::move(signatures);
@@ -1823,8 +1829,8 @@ inline void Uninstall() {
     released_shaders.swap(internal::pixel_shaders.shaders);
   }
   const std::unique_lock lock(internal::state.mutex);
+  internal::make_view.store(nullptr, std::memory_order_relaxed);
   internal::state.shaders = {};
-  internal::state.make_view = nullptr;
   internal::state.objects = {};
   internal::state.in_draw = {};
 }
