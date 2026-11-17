@@ -142,7 +142,6 @@ static const float SEEN_FACE = 0.25f;  // SeenNow: a hit's normal within 75 degr
 static const float ROUGH_LIMIT = 0.75f;  // rougher surfaces keep the game's reflection: only their occlusion is traced
 static const float MAX_SPECULAR_FRAMES = 12.f;
 static const float SKY_HIT_DISTANCE = 65504.f;  // NVIDIA's for the sky (FP16's most)
-static const uint SKY_DIRECTIONS = 16u;  // SkyCalibration's fixed rays
 
 #if defined(PATH_REORDER)
 // Shader execution reordering (DXR 1.2, rt_path_ser.lib_6_9.hlsl): threads regroup by what a ray met (none, or its
@@ -453,15 +452,19 @@ float3 SkyLight(float3 direction, float3 shade) {
 
 // Path-Traced Ambient: the camera rays' sky scaled so an open surface gets the game's own ambient at its normal, in the
 // game's colour and brightness (ATN's debug29-30: the learned scale's sky came out darker and warmer): OpenSky over the
-// sky's light a cosine-weighted ray brings there on average (SKY_DIRECTIONS fixed rays). 1 without.
+// sky's light a cosine-weighted ray brings there on average. 1 without. SkyLight is the cube's faces by the direction's
+// squared components (every branch), whose cosine means over the hemisphere around `normal` are (1 + n_a^2) / 8 + n_a / 4
+// for face a+ and (1 + n_a^2) / 8 - n_a / 4 for a- (16 fixed directions left open walls 1.6% dark under the harness's
+// cube, colours shifted up to 1.7%: reference suite I4, test/tw_rt_open_sky).
 float3 SkyCalibration(float3 normal) {
   if ((path_flags & PATH_AMBIENT) == 0u || sun[uint2(3, 0)].w == 0.f) return 1.f;
-  float3 open = 0.f;
-  [unroll]
-  for (uint ray = 0u; ray < SKY_DIRECTIONS; ++ray) {
-    open += SkyLight(CosineDirection(normal, (ray + 0.5f) / SKY_DIRECTIONS, frac(ray * 0.618034f)), light_kept[0].rgb);
-  }
-  return OpenSky(normal) / max(open / SKY_DIRECTIONS, 1.0001094e-4f);
+  const float3 shade = light_kept[0].rgb;
+  const float3 base = (1.f + normal * normal) * 0.125f;
+  const float3 side = normal * 0.25f;
+  const float3 open = SkyLight(float3(1.f, 0.f, 0.f), shade) * (base.x + side.x) + SkyLight(float3(-1.f, 0.f, 0.f), shade) * (base.x - side.x)
+                      + SkyLight(float3(0.f, 1.f, 0.f), shade) * (base.y + side.y) + SkyLight(float3(0.f, -1.f, 0.f), shade) * (base.y - side.y)
+                      + SkyLight(float3(0.f, 0.f, 1.f), shade) * (base.z + side.z) + SkyLight(float3(0.f, 0.f, -1.f), shade) * (base.z - side.z);
+  return OpenSky(normal) / max(open, 1.0001094e-4f);
 }
 
 // Path-Traced Ambient's sky arriving at a surface the screen shows (`world`, facing `normal`): the last paths' own there
