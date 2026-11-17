@@ -6,8 +6,8 @@
 // The helper's radiance cache, filled (rt_path.hlsli; before the paths). With the frame's prepared light (PATH_LIGHT):
 // one bounce texel of every 2 x 2 (another each frame) adds it (with Path-Traced Ambient and the game's sun light its
 // light of no view: SeenDiffuseLight) to its world cell at the face its normal turns to (rt_path.hlsli CacheCell); with
-// the G-buffer guides the lowest texel that added to a cell writes its base colour there (`fill_pass` 1), and (without
-// the game's sun light) one in eight adds to the learned lighting's sums: y = the light / the base colour, x = the
+// the G-buffer guides the lowest texel that added to a cell becomes its owner (rt_cache_resolve writes the owner's base
+// colour there), and (without the game's sun light) one in eight adds to the learned lighting's sums: y = the light / the base colour, x = the
 // sun's visibility (the ray-traced one when traced) x N.L, and the base colour. A reflections request's light buffer
 // (PATH_LIGHT_FINAL) with no prepared light this frame comes as bounce texels of one render pixel. Without any (reflections
 // only, a game that passes no light buffer): one render pixel of every 2 x 2 adds last frame's scene colour where last
@@ -17,13 +17,10 @@
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_cache_fill.h -Vn RT_CACHE_FILL.
 #include "./rt_path.hlsli"
 
-// The fill (0), then its cells' base colours (1): each written by the lowest texel that added to it, its owner (written by
-// every one of them, the last one's stayed: another texel's colour each run, and two plays of one recording differed in
-// the bounce, the reflections, the cache and ReSTIR GI's reservoirs).
-cbuffer Fill : register(b1) {
-  uint fill_pass;
-};
-RWByteAddressBuffer cache_owners : register(u0, space1);  // a cell's owner, ~texel (0: none; rt_cache_resolve clears them)
+// A cell's owner, ~texel (0: none; rt_cache_resolve writes its base colour and clears it). Every texel that added to a
+// cell wrote its colour there before, the last one's stayed: another texel's colour each run, and two plays of one
+// recording differed in the bounce, the reflections, the cache and ReSTIR GI's reservoirs.
+RWByteAddressBuffer cache_owners : register(u0, space1);
 
 // CacheAdd's (rt_path.hlsli), the lanes of a wave that claimed the same entry by one add of their sums: its last lane's, after
 // the sum of the lanes before it. No loop over the entries: a loop on WaveReadLaneFirst's value is the same value to the
@@ -51,7 +48,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const uint2 cell = id.xy * 2u + uint2(frame & 1u, (frame >> 1u) & 1u);
   uint entry;
   if ((path_flags & PATH_LIGHT) == 0u) {
-    if (fill_pass != 0u || cell.x >= width || cell.y >= height || (path_flags & PATH_HISTORY_VALID) == 0u) return;
+    if (cell.x >= width || cell.y >= height || (path_flags & PATH_HISTORY_VALID) == 0u) return;
     const float4 seen = previous_positions[uint3(cell, previous_positions_slice)];
     if (seen.w <= 0.f) return;
     // Its cell's face by the normal across last frame's positions there (toward the camera).
@@ -71,13 +68,6 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float3 guide = GuideNormal(pixel);
   if (position.w <= 0.f) return;
   const float3 normal = (dot(guide, guide) > 0.5f) ? normalize(guide) : SurfaceNormal(int2(pixel), position);
-  const uint texel = cell.x + cell.y * bounce_width;
-  if (fill_pass != 0u) {
-    if ((path_flags & PATH_GUIDES) == 0u || !CacheFind(position.xyz, normal, entry) || cache_owners.Load(entry * 4u) != ~texel) return;
-    const uint3 bytes = (uint3)(saturate(base) * 255.f + 0.5f);
-    cache_albedo[entry] = uint2(bytes.r | (bytes.g << 8) | (bytes.b << 16) | (255u << 24), frame + 1u);
-    return;
-  }
   // Path-Traced Ambient took the game's ambient away from the screen's light: with the game's sun light its light of no
   // view (rt_path.hlsli SeenDiffuseLight) as the paths' hits take it, else the base colour x the kept shade in the
   // ambient's place.
@@ -90,7 +80,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   }
   const bool claimed = CacheAddInWave(position.xyz, normal, cell_light, entry);
   if ((path_flags & PATH_GUIDES) == 0u) return;
-  if (claimed) cache_owners.InterlockedMax(entry * 4u, ~texel);
+  if (claimed) cache_owners.InterlockedMax(entry * 4u, ~(cell.x + cell.y * bounce_width));
 
   // With the game's sun light the learned lighting stays as learned (rt_cache_resolve.cs_6_5.hlsl).
   if (sun_light_given) return;

@@ -4,13 +4,14 @@
  */
 
 // The helper's radiance cache, resolved (rt_path.hlsli; after the fill, before the paths): each cell seen this frame
-// moves CACHE_BLEND of the way toward this frame's mean (a new one takes it), its sums cleared; cells whose light and
+// moves CACHE_BLEND of the way toward this frame's mean (a new one takes it), its sums cleared, with the guides its
+// owner's base colour written (rt_cache_fill: the lowest texel that added to it); cells whose light and
 // base colour went unseen for CACHE_LIFETIME frames are dropped. The first thread solves the learned lighting from this
 // frame's sums (the line through them), blends it into the kept one and clears the sums.
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_cache_resolve.h -Vn RT_CACHE_RESOLVE.
 #include "./rt_path.hlsli"
 
-RWByteAddressBuffer cache_owners : register(u0, space1);  // rt_cache_fill's, cleared for the next fill (a cell it added to has sums)
+RWByteAddressBuffer cache_owners : register(u0, space1);  // rt_cache_fill's (~texel; a cell with one has sums), cleared here
 
 void SolveLightFit() {
   // With Path-Traced Ambient the screen's light holds no ambient but the game's sun and sky specular toward the camera:
@@ -69,7 +70,14 @@ void main(uint3 id : SV_DispatchThreadID) {
     cache_sums[entry * 4u + 1u] = 0u;
     cache_sums[entry * 4u + 2u] = 0u;
     cache_sums[entry * 4u + 3u] = 0u;
-    cache_owners.Store(entry * 4u, 0u);
+    // Its base colour from its owner's pixel (the guides' at the fill's bounce texel).
+    const uint owner = cache_owners.Load(entry * 4u);
+    if (owner != 0u) {
+      const uint2 cell = uint2(~owner % bounce_width, ~owner / bounce_width);
+      const uint3 bytes = (uint3)(saturate(guide_albedo[min(cell * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u)].rgb) * 255.f + 0.5f);
+      cache_albedo[entry] = uint2(bytes.r | (bytes.g << 8) | (bytes.b << 16) | (255u << 24), frame + 1u);
+      cache_owners.Store(entry * 4u, 0u);
+    }
   } else if ((float)frame + 1.f - max(kept.w, (float)cache_albedo[entry].y) > CACHE_LIFETIME) {
     cache_keys[entry] = 0u;
     cache_radiance[entry] = 0.f;

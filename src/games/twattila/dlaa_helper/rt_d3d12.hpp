@@ -2571,8 +2571,8 @@ class RtScene12 {
 #endif
         std::memcpy(slot.paths_data, &constants, sizeof(constants));
         list->SetComputeRootConstantBufferView(ROOT_PATHS, slot.paths->GetGPUVirtualAddress());
-        // The radiance cache once a frame: filled (from the prepared light, else last frame's colour), its cells' base
-        // colours by their owners (rt_cache_fill's second pass, with the guides), resolved.
+        // The radiance cache once a frame: filled (from the prepared light, else last frame's colour; with the guides each
+        // cell's owner), resolved (the owners' base colours).
         if (cache_frame_ != frame) {
           const bool from_light = (flags & PATH_LIGHT) != 0;
           const uint32_t fill_width = (from_light ? constants.bounce_width : width) / 2 + 1;
@@ -2580,12 +2580,8 @@ class RtScene12 {
           Mark(list, L"radiance cache");
           list->SetPipelineState(cache_fill_pipeline_.Get());
           list->SetComputeRootUnorderedAccessView(ROOT_SCRATCH, cache_owners_->GetGPUVirtualAddress());
-          const uint32_t fill_passes = (from_light && (flags & PATH_GUIDES) != 0) ? 2u : 1u;
-          for (uint32_t fill_pass = 0; fill_pass < fill_passes; ++fill_pass) {
-            list->SetComputeRoot32BitConstants(ROOT_DISPATCH, 1, &fill_pass, 0);
-            list->Dispatch((fill_width + 7) / 8, (fill_height + 7) / 8, 1);
-            list->ResourceBarrier(1, &uav_barrier);
-          }
+          list->Dispatch((fill_width + 7) / 8, (fill_height + 7) / 8, 1);
+          list->ResourceBarrier(1, &uav_barrier);
           list->SetPipelineState(cache_resolve_pipeline_.Get());
           list->Dispatch(CACHE_ENTRIES / 64, 1, 1);
           list->ResourceBarrier(1, &uav_barrier);
