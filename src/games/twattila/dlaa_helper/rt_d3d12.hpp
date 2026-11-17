@@ -128,6 +128,7 @@
 #if __has_include("rt_recorder_build.h")
 #include <cstdio>
 #include <functional>
+#include <optional>
 #include <tuple>
 
 #include "./rt_recording.h"
@@ -1240,6 +1241,7 @@ class RtScene12 {
   // trace) or never (`*refused` too).
   bool SaveRecordingState(const std::filesystem::path& folder, uint32_t frame, std::string* why, bool* refused) {
     *refused = true;
+    snapshot_waited_ = 0;
     if (!device_ || !visibility_ || Lost()) {
       *why = "no ray tracing scene";
       return false;
@@ -1266,7 +1268,8 @@ class RtScene12 {
     const bool growing = placed_growing_.valid();
 #endif
     if (bakes != 0 || row_reads != 0 || growing) {
-      *why = std::format("waiting for {} micromap bakes, {} slots' instanced rows{}", bakes, row_reads, growing ? ", a room growing" : "");
+      snapshot_waited_ = std::max<uint64_t>(own_value_, 1);
+      *why = std::format("waiting for {} micromap bakes, {} slots' instanced rows{} (no new bakes meanwhile)", bakes, row_reads, growing ? ", a room growing" : "");
       return false;
     }
     *refused = true;
@@ -1276,16 +1279,16 @@ class RtScene12 {
         *why = std::format("mesh {:016X} has no journal (captured before RENODX_TW_RECORD was set?)", key);
         return false;
       }
-      if (const auto baked = micromap_journal_.find(key); baked != micromap_journal_.end() && baked->second.build == mesh.build && baked->second.gpu_bake) {
-        *why = "GPU Micromap Baking's micromaps are not recorded (turn it off for recordings)";
+      if (const auto baked = micromap_journal_.find(key); baked != micromap_journal_.end() && baked->second.build == mesh.build && baked->second.unread) {
+        *why = std::format("mesh {:016X}'s GPU micromap bake was not read back for the journal", key);
         return false;
       }
     }
     for (const auto& [key, set] : sets_) {
       const auto baked = set_journal_.find(key);
       const bool journaled = baked != set_journal_.end() && baked->second.build == set.generation;
-      if ((set.micromaps && !journaled) || (journaled && baked->second.gpu_bake)) {
-        *why = std::format("cluster set {:016X}'s micromaps have no CPU bake in the journal", key);
+      if ((set.micromaps && !journaled) || (journaled && baked->second.unread)) {
+        *why = std::format("cluster set {:016X}'s micromaps have no bake in the journal", key);
         return false;
       }
     }
@@ -1353,7 +1356,23 @@ class RtScene12 {
     for (const RecordedResource& resource : RecordedResources()) {
       if (*resource.member) CopyToReadback(list, resource.name, resource.member->Get(), resource.state, &readbacks, resource.offset, resource.bytes);
     }
-    *why = std::format("state: {} meshes, {} cluster sets, {} GPU resources", meshes_.size(), sets_.size(), readbacks.size());
+    size_t denoisers = 0;
+#if defined(RENODX_NRD)
+    // NRD's denoisers: each one's textures' size and last frame's fields ("nrd<signal>"), its history ("nrd<signal>_<n>").
+    for (size_t signal = 0; signal < NrdSignals().size(); ++signal) {
+      const NrdSignal& nrd = *NrdSignals()[signal];
+      if (!nrd.denoiser) continue;
+      const Nrd12::Kept kept = nrd.denoiser->Saved();
+      AddChunk(&chunks, recording::CHUNK_FIELD, std::format("nrd{}", signal),
+               JoinBytes({std::as_bytes(std::span(nrd.size)), std::as_bytes(std::span(&kept, 1))}, nullptr));
+      const auto history = nrd.denoiser->History();
+      for (size_t index = 0; index < history.size(); ++index) {
+        CopyToReadback(list, std::format("nrd{}_{}", signal, index).c_str(), history[index].first, history[index].second, &readbacks);
+      }
+      ++denoisers;
+    }
+#endif
+    *why = std::format("state: {} meshes, {} cluster sets, {} GPU resources, {} NRD denoisers", meshes_.size(), sets_.size(), readbacks.size(), denoisers);
     std::error_code ignored;
     std::filesystem::create_directories(folder, ignored);
     const uint64_t value = SubmitRecorderList(list);
@@ -1537,6 +1556,21 @@ class RtScene12 {
     // The units' BLAS (without Mega Geometry) is built at the first trace (the live one refitted its own).
     units_layout_.clear();
     units_refits_ = 0;
+#if defined(RENODX_NRD)
+    // NRD's denoisers as recorded, kept until EnsureNrd makes each one here.
+    for (size_t signal = 0; signal < recorded_nrd_.size(); ++signal) {
+      recorded_nrd_[signal].reset();
+      const auto found = fields.find(std::format("nrd{}", signal));
+      if (found == fields.end() || found->second.size() != sizeof(RecordedNrd::size) + sizeof(Nrd12::Kept)) continue;
+      RecordedNrd& nrd = recorded_nrd_[signal].emplace();
+      std::memcpy(nrd.size.data(), found->second.data(), sizeof(nrd.size));
+      std::memcpy(&nrd.kept, found->second.data() + sizeof(nrd.size), sizeof(nrd.kept));
+      for (auto texture = resources.find(std::format("nrd{}_0", signal)); texture != resources.end();
+           texture = resources.find(std::format("nrd{}_{}", signal, nrd.history.size()))) {
+        nrd.history.emplace_back(texture->second.begin(), texture->second.end());
+      }
+    }
+#endif
     why->clear();
     ID3D12GraphicsCommandList4* list = RecorderList();
     if (list == nullptr) {
@@ -1775,6 +1809,7 @@ class RtScene12 {
   // digest into `dump` as the recorder writes them. False: `report` says why.
   bool PlayRecording(const std::filesystem::path& recording, const std::filesystem::path& dump, const std::function<void()>& before_trace,
                      std::string* report) {
+    player_ = true;
     std::error_code error;
     std::vector<std::tuple<uint32_t, uint32_t, std::filesystem::path>> requests;
     for (const auto& entry : std::filesystem::directory_iterator(recording, error)) {
@@ -2017,6 +2052,11 @@ class RtScene12 {
     slot_traced_[slot_index] = true;
     slot_clustered_[slot_index] = false;
     ExpireHistory(shared.rt_frame);
+#if defined(RENODX_RECORDER)
+    // The recorder's lock step (a recording's requests, a play-back): every earlier request finished, so what the GPU's
+    // progress gives back, reads and bakes below goes by the requests alone.
+    if (Lockstep()) WaitFor(own_value_);
+#endif
     const uint64_t completed = own_fence_->GetCompletedValue();
     std::erase_if(releases_, [&](const Release& release) {
       if (release.value > completed) return false;
@@ -3311,6 +3351,13 @@ class RtScene12 {
     ComPtr<ID3D12Resource> gpu_readback;
     uint64_t histogram_offset = 0;
     uint32_t histogram_bytes = 0;
+#if defined(RENODX_RECORDER)
+    // The recorder's journal of a GPU bake: its outputs read back too, their places there (post-dispatch info, data,
+    // descs, indices) and the data's and descs' room.
+    ComPtr<ID3D12Resource> journal_readback;
+    std::array<uint64_t, 4> journal_offsets = {};
+    std::array<uint64_t, 2> journal_limits = {};
+#endif
     std::vector<uint32_t> uv_data;
     std::vector<uint8_t> mask_data;
     // The bake's: the micromaps' data, descs, an index a triangle (32-bit; the special ones negative), their histogram.
@@ -4346,6 +4393,29 @@ class RtScene12 {
       if (resource == nullptr) return fail("no memory");
       if (texture.descriptor != 0) Written(resource, texture.format, texture.descriptor);
     }
+#if defined(RENODX_RECORDER)
+    // The recorder's: NRD's frame time fixed in a recording helper's scene and a play-back; a play-back's denoiser of a
+    // recorded signal takes the recording's history and last frame (once, at the recorded size).
+    if (journal_on_ || player_) made->fixed_frame_ms = 16.66f;
+    const std::array<NrdSignal*, 4> signals = NrdSignals();
+    if (std::optional<RecordedNrd>& recorded = recorded_nrd_[std::ranges::find(signals, signal) - signals.begin()]; recorded) {
+      const auto history = made->History();
+      const bool fits = recorded->size == std::array<uint32_t, 2>{width, height} && history.size() == recorded->history.size();
+      ID3D12GraphicsCommandList4* list = fits ? RecorderList() : nullptr;
+      std::vector<ComPtr<ID3D12Resource>> uploads;
+      std::string why = fits ? std::string()
+                             : std::format("recorded {} textures at {} x {}, made {} at {} x {}", recorded->history.size(), recorded->size[0],
+                                           recorded->size[1], history.size(), width, height);
+      bool restored = list != nullptr;
+      for (size_t index = 0; restored && index < history.size(); ++index) {
+        restored = UploadRecorded(list, name, history[index].first, history[index].second, recorded->history[index], &uploads, &why);
+      }
+      restored = list != nullptr && WaitFor(SubmitRecorderList(list)) && restored;
+      if (restored) made->Restore(recorded->kept);
+      slow_report_ += std::format("{}[TW player] {}: the recording's history {}.", slow_report_.empty() ? "" : "\n", name, restored ? "taken" : "NOT taken: " + why);
+      recorded.reset();
+    }
+#endif
     slow_report_ += std::format("{}[TW ray tracing] {}: {} MB at {} x {}.", slow_report_.empty() ? "" : "\n", name, made->Bytes() >> 20, width, height);
     signal->denoiser = std::move(made);
     signal->size = {width, height};
@@ -4594,6 +4664,9 @@ class RtScene12 {
     // The last trace's placed instances past 3/4 of their room: twice it or more, up to the GPU's limit, made on a worker and
     // put in at the first request after, with the kept descs and the counters (the last trace is done; paths requests on
     // their way hold the old TLAS until the release's fence value). No memory for it: a limit half as high (the room stays).
+#if defined(RENODX_RECORDER)
+    if (Lockstep() && placed_growing_.valid()) placed_growing_.wait();
+#endif
     if (placed_growing_.valid() && placed_growing_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
       if (const std::unique_ptr<PlacedRoom> made = placed_growing_.get(); made) {
         ID3D12Resource* carried = made->instances[placed_last_].Get();
@@ -4838,6 +4911,9 @@ class RtScene12 {
       room_note_ = std::format("No memory: {} clusters at most | ", cluster_limit_);
       slow_report_ += std::format("{}[TW ray tracing] {}.", (slow_report_.empty() ? "" : "\n"), room_note_.substr(0, room_note_.size() - 3));
     };
+#if defined(RENODX_RECORDER)
+    if (Lockstep() && cluster_growing_.valid()) cluster_growing_.wait();
+#endif
     if (cluster_growing_.valid() && cluster_growing_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
       if (const std::unique_ptr<ClusterRoom> made = cluster_growing_.get(); made) {
         UseClusterRoom(made.get());
@@ -4954,6 +5030,10 @@ class RtScene12 {
                                                       MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
                                                                                                     + MicromapsBaking() + micromaps_baked_.size()))
                                    : 0u;
+#if defined(RENODX_RECORDER)
+    // A snapshot waiting for the bakes in flight: no new ones meanwhile.
+    if (SnapshotWaiting()) set_micromap_room = 0;
+#endif
 #if defined(RENODX_NVAPI_CLUSTERS)
     auto* template_args =
         reinterpret_cast<NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_TEMPLATE_ARGS*>(slot->compact_data + COMPACT_TEMPLATE_ARGS_OFFSET);
@@ -5355,7 +5435,7 @@ class RtScene12 {
               ++micromap_tally_[3];
 #if defined(RENODX_RECORDER)
               if (journal_on_) {
-                set_journal_[baked->key] = {.build = set->generation, .gpu_bake = baked->gpu, .data = baked->data, .descs = baked->descs,
+                set_journal_[baked->key] = {.build = set->generation, .unread = baked->gpu && baked->indices.empty(), .data = baked->data, .descs = baked->descs,
                                             .indices = baked->indices, .histogram = baked->histogram};
               }
 #endif
@@ -5424,6 +5504,9 @@ class RtScene12 {
                                  ? MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
                                                                                  + MicromapsBaking() + micromaps_baked_.size())
                                  : 0u;
+#if defined(RENODX_RECORDER)
+      if (SnapshotWaiting()) micromap_room = 0;
+#endif
       // Instanced captures' rows to read back (their first texel in the vertex buffer).
       std::vector<Slot::RowRead> row_copies;
       std::vector<uint32_t> row_sources;
@@ -5538,7 +5621,7 @@ class RtScene12 {
         slot->compactions.emplace_back(made.bake->key, mesh.build);
 #if defined(RENODX_RECORDER)
         if (journal_on_) {
-          micromap_journal_[made.bake->key] = {.build = mesh.build, .gpu_bake = made.bake->gpu, .data = made.bake->data, .descs = made.bake->descs,
+          micromap_journal_[made.bake->key] = {.build = mesh.build, .unread = made.bake->gpu && made.bake->indices.empty(), .data = made.bake->data, .descs = made.bake->descs,
                                                .indices = made.bake->indices, .histogram = made.bake->histogram};
         }
 #endif
@@ -6885,6 +6968,24 @@ class RtScene12 {
           const D3D12_RANGE none = {};
           read->gpu_readback->Unmap(0, &none);
           read->gpu_readback.Reset();
+#if defined(RENODX_RECORDER)
+          // The recorder's journal: the bake's data, descs and indices as a CPU bake's (their sizes the post-dispatch
+          // info's; none when they do not fit their room: the snapshot refuses its scene).
+          const uint8_t* journal = nullptr;
+          if (read->journal_readback && SUCCEEDED(read->journal_readback->Map(0, nullptr, reinterpret_cast<void**>(const_cast<uint8_t**>(&journal))))) {
+            ommGpuPostDispatchInfo info = {};
+            std::memcpy(&info, journal + read->journal_offsets[0], sizeof(info));
+            if (info.outOmmArraySizeInBytes <= read->journal_limits[0] && info.outOmmDescSizeInBytes <= read->journal_limits[1]) {
+              read->data.assign(journal + read->journal_offsets[1], journal + read->journal_offsets[1] + info.outOmmArraySizeInBytes);
+              const auto* descs = reinterpret_cast<const D3D12_RAYTRACING_OPACITY_MICROMAP_DESC*>(journal + read->journal_offsets[2]);
+              read->descs.assign(descs, descs + (info.outOmmDescSizeInBytes / sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC)));
+              const auto* indices = reinterpret_cast<const uint32_t*>(journal + read->journal_offsets[3]);
+              read->indices.assign(indices, indices + read->triangles);
+            }
+            read->journal_readback->Unmap(0, &none);
+          }
+          read->journal_readback.Reset();
+#endif
           ++micromap_tally_[0];
           micromaps_baked_.push_back(std::move(read));
         } else {
@@ -6920,6 +7021,9 @@ class RtScene12 {
     // theirs: without, dense grass met MAX_CANDIDATES and stayed dark, ATN 2026-10-29); grass sets first.
     for (size_t worker = 0; worker < MICROMAP_WORKERS; ++worker) {
       auto& baking = micromap_baking_[worker];
+#if defined(RENODX_RECORDER)
+      if (Lockstep() && baking.valid()) baking.wait();
+#endif
       if (baking.valid() && baking.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         std::unique_ptr<MicromapBake> baked = baking.get();
         ++micromap_tally_[baked->indices.empty() ? 2 : 0];
@@ -7470,6 +7574,42 @@ class RtScene12 {
       bake.histogram_offset = plan.offsets[3];
       bake.histogram_bytes = static_cast<uint32_t>(plan.sizes[3]);
     }
+#if defined(RENODX_RECORDER)
+    // The recorder's journal (RENODX_TW_RECORD): the post-dispatch infos (the data's and descs' real sizes), data, descs
+    // and indices read back as well (AdvanceMicromaps keeps them as a CPU bake's); the builds' ones readable again after.
+    if (journal_on_) {
+      static constexpr std::array<size_t, 4> JOURNALED = {5, 0, 1, 3};
+      std::array<uint64_t, 4> bases = {};
+      uint64_t journal_bytes = 0;
+      for (size_t part = 0; part < JOURNALED.size(); ++part) {
+        bases[part] = journal_bytes;
+        journal_bytes += totals[JOURNALED[part] + 1];
+      }
+      if (ComPtr<ID3D12Resource> journal = Buffer(journal_bytes, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST)) {
+        barriers.clear();
+        for (const size_t kind : JOURNALED) {
+          const D3D12_RESOURCE_STATES state = (kind == 5) ? states[outputs[kind].Get()] : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+          if (state != D3D12_RESOURCE_STATE_COPY_SOURCE) barriers.push_back(Transition(outputs[kind].Get(), state, D3D12_RESOURCE_STATE_COPY_SOURCE));
+        }
+        list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+        for (size_t part = 0; part < JOURNALED.size(); ++part) {
+          list->CopyBufferRegion(journal.Get(), bases[part], outputs[JOURNALED[part]].Get(), 0, totals[JOURNALED[part] + 1]);
+        }
+        barriers.clear();
+        for (const size_t kind : {0u, 1u, 3u}) {
+          barriers.push_back(Transition(outputs[kind].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+        }
+        list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+        for (const Planned& plan : planned) {
+          if (plan.bake->gpu_failed) continue;
+          plan.bake->journal_readback = journal;
+          plan.bake->journal_offsets = {bases[0] + plan.offsets[6], bases[1] + plan.offsets[1], bases[2] + plan.offsets[2], bases[3] + plan.offsets[4]};
+          plan.bake->journal_limits = {plan.sizes[1], plan.sizes[2]};
+        }
+        releases_.push_back({.value = own_value_ + 1, .resource = std::move(journal)});
+      }
+    }
+#endif
     // Every output (the histograms and the post-dispatch info too), the read-back and the constants kept until the GPU is
     // past this request.
     globals->Unmap(0, nullptr);
@@ -7626,7 +7766,7 @@ class RtScene12 {
   struct Journal {
     uint64_t build = 0;
     std::vector<std::array<float, 4>> vertices;
-    bool gpu_bake = false;  // GPU Micromap Baking's (its data stayed on the GPU: not recorded)
+    bool unread = false;  // a GPU bake whose outputs were not read back (not recorded)
     std::vector<uint8_t> data;
     std::vector<D3D12_RAYTRACING_OPACITY_MICROMAP_DESC> descs;
     std::vector<uint32_t> indices;
@@ -8122,6 +8262,15 @@ class RtScene12 {
     recording_.bytes += written + sizeof(end);
   }
 
+  // The lock step: while a recording's requests run and in a play-back, what the GPU's progress, the bake threads and the
+  // rooms' growth give a request is the requests' alone (Trace waits for every earlier request and for them).
+  [[nodiscard]] bool Lockstep() const { return recording_.on || player_; }
+  // A snapshot waiting for the bakes in flight (its last try a few requests ago at most): no new bakes meanwhile.
+  [[nodiscard]] bool SnapshotWaiting() const { return snapshot_waited_ != 0 && own_value_ < snapshot_waited_ + 8; }
+#if defined(RENODX_NRD)
+  std::array<NrdSignal*, 4> NrdSignals() { return {&nrd_sun_, &nrd_ambient_, &nrd_bounce_, &nrd_reflections_}; }
+#endif
+
   // A recorded frame's request (RecordFrames; Trace, Paths): its block and new sets' data, the inputs it read (the vertex
   // texture's rows it copied), its kind's shared outputs and at the last recorded frame its kind's histories, copied on the
   // queue after its list and before its fence value (the addon's next writes wait for that); a trace's scene digest: its
@@ -8583,8 +8732,20 @@ class RtScene12 {
   std::string profile_counts_;
 #if defined(RENODX_RECORDER)
   // The recorder's (last: destroyed first, its writer waited for in the destructor). The journal while RENODX_TW_RECORD was
-  // set at Initialize: the static meshes' vertices, their CPU bakes and the cluster sets', by key.
+  // set at Initialize: the static meshes' vertices, their micromap bakes and the cluster sets', by key.
   bool journal_on_ = false;
+  bool player_ = false;            // a play-back's scene (PlayRecording)
+  uint64_t snapshot_waited_ = 0;   // own_value_ when a snapshot last waited for the bakes in flight (0: none)
+#if defined(RENODX_NRD)
+  // A play-back's NRD denoisers as recorded (NrdSignals' order; EnsureNrd's denoiser takes its one): their textures' size,
+  // last frame, history (the permanent pool's textures' chunks).
+  struct RecordedNrd {
+    std::array<uint32_t, 2> size = {};
+    Nrd12::Kept kept;
+    std::vector<std::vector<uint8_t>> history;
+  };
+  std::array<std::optional<RecordedNrd>, 4> recorded_nrd_;
+#endif
   std::unordered_map<uint64_t, Journal> journal_;
   std::unordered_map<uint64_t, Journal> micromap_journal_;
   std::unordered_map<uint64_t, Journal> set_journal_;
