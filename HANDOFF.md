@@ -187,6 +187,7 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [x] ANSWERED 05:xx (ATN: "They should be on by default, no? Bug fixes => more correct. Why should we leave bugs.": every proven bug fix on by default, numbers listed for ATN; memory feedback_experimental_rows) C: Reference-suite bug fixes that change our effects' look (once proven): specular occlusion brighter at grazing views on open ground (I5), Path-Traced AO ~1.6 % brighter on open walls with an exact sky calibration (I4), bounce / torch light / torch shadow ratio moved by half a low-resolution texel (I3, the crack-line lead), AO's sun-dependent normal: on by default as bug fixes (coordinator's recommendation: they are more correct; numbers listed for you), or Experimental rows first? (from: ref_ v2 05:xx)
 - [x] ANSWERED 05:xx (ATN: "to pbrt, yeah why not. It is apache 2.0": fetched 05:xx into tools/refcode/pbrt-v4, 20e41fd8 2026-11-15, 34 MB, no submodules) C: Download pbrt-v4 (Apache-2.0, github.com/mmp/pbrt-v4, not NVIDIA) for the reference suite's xcheck test (our samplers vs pbrt-v4 on the CPU)? Without it the check reads pbrt-v4 online / uses Falcor (NVIDIA, fetched). (from: ref_ v2 05:xx)
 - [x] C: (ANSWERED ATN ~09:10: benches yes (cpb_ running), replay = day1, SHaRC update + fix as default, shared-utils memo yes, own screenshot key yes, RT freeze: coordinator's suggestion, heapfix: always from our best version, Small Soldiers as Sprites: performance only; boxes ATN 09:10 ANSWERS) CPU round runs (cpu1_ 09:xx, plan_1117/cpu_round_plan.md): OK to run the bench / data runs on night1, sea1, stress_test_log2 (heapfix A / P / your v6.10.6 copy as control, add-on trim, engine patches; the data run's sampler pauses game threads for microseconds)? [ANSWERED 08:5x: ATN put it in for good, named day1: day1.replay copied (aa107f05), the bench knows it] Your WPR tasks set to run hidden (they take the game's focus)? The 2.7-s RT freeze at battle start / after alt-tab: draw a few frames without rays, and / or a longer release timer? Our own screenshot key in the helper (ReShade's 4K shots each take 30-95 MB of the game's 32-bit space)? Shared-utils change for the resource-info lookups (cpu3_ D3: a memo in src/utils used by every RenoDX mod, exact only if every writer bumps an epoch; est. -0.2..-0.4 ms night1; needs an audit + a measured write rate first)? Small Soldiers as Sprites after its run? heapfix: a package for its author (P = prefetched sort), or move to the official 7.0? (from: cpu1_ 09:xx)
+- [ ] C: PT DI (full RTXDI, des1_ Revision 1): VRAM ~430 MB at 4K with DLSS Quality, ~970 MB at a native 4K render (DLAA); RTXDI's checkerboard mode halves the reservoirs (~300 MB native): OK, and checkerboard at native? Visibility reuse stays off unless the references pass it: OK? The row does nothing without Ray Reconstruction: OK? NVIDIA bug reports: we draft, you file? (from: des1_ 10:1x)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -344,9 +345,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - D2 EXACT LUT ON (ATN 09:4x): Divinity 2 "Exact Colour LUT" on by default (out of ... | next Divinity round
 - UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like th ... | next helper implementer
 - RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed ... | next Ryse round
-- PT DI REVISION (rv1_ review "build after these changes", designs/pt_di_rtxdi_rev ... | des1_ (revision), then the helper queue
 - GPU CAPTURE ROUND 2 (ATN 09:5x): after the new features (SHaRC update, PT DI / R ... | coordinator (after plan step 6 + reviews)
 - CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best c ... | cpb_
+- O1 NIGHT1 TRACE (des1_ step 0): one night1 frame trace for the O1 census (which ... | coordinator
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -2273,7 +2274,13 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like the screen route's (-3 %, sky median
         0.79), on by default; the seen-vs-unseen probe proves it. Owner: next helper implementer
       - [ ] RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed (c243f7c4). Owner: next Ryse round
-      - [ ] PT DI REVISION (rv1_ review "build after these changes", designs/pt_di_rtxdi_review.md + ATN "Full RTXDI now"):
+      - [x] DONE PT DI REVISION 10:1x (des1_ "Revision 1" in designs/pt_di_rtxdi.md; RTXDI names checked vs b67f61cd):
+        steps 0 gates (A3 bisection, O1 / O2 night1 census, R1 / E4, slots), 1 L1 + bridge v32 shared with vMF (8 h), 2 ReSTIR
+        GI fixes + Basic / Raytraced bias correction + RTXDI boiling filter + the RTXDI GI contest (16 h), 3 RTXDI plumbing +
+        ReGIR, T1 + T2 together (13 h), 4 full RTXDI DI (the game's point-light formula bit-exact on WARP, G-buffer at the AO
+        hook, initial / temporal / spatial with ray-traced bias correction + final shadow ray, <= 4 lights exact, RR only,
+        Experimental off; 40 h), 5 gates (22 h); ~99 h + 10 h reviews, ~22 GPU-h; visibility reuse off unless the penumbra
+        masks pass. Was: PT DI REVISION (rv1_ review "build after these changes", designs/pt_di_rtxdi_review.md + ATN "Full RTXDI now"):
         B1 pack the G-buffer at the AO-pass hook (rt_scene.hpp:445, the trace is requested before the sun draw); B2 per-pixel
         stratified picks (8x8-block shared numbers flip whole blocks under RR); B3 without RR: Steady's exact bits, trace
         exactly at <= 4 lights; B4 seen = unseen: T1 + T2 ship together; B5 ReSTIR GI -7 % on open flat ground without Own
@@ -2301,6 +2308,8 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best combination (heapfix P + trim add-on,
         ATN's maxed Graphics 2 of 2) on stress + night1 once each: the remaining hot spots as "next CPU candidates" in
         cpu_bench_results.md. Owner: cpb_
+      - [ ] O1 NIGHT1 TRACE (des1_ step 0): one night1 frame trace for the O1 census (which point-light shaders / lights a
+        frame draws, how many per tile) after cpb_'s benches (one game at a time). Owner: coordinator
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
