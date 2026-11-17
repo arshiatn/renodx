@@ -2181,9 +2181,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         (4) route B recorder + harness player, then a second capture pass on night1 / sea1 / stress; (5) Opus review of all
         shared code. Owner: coordinator (one implementer at a time in the helper)
       - [ ] NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. Do them too"): survey (nvsdk_,
-        running) -> tools/tw/round_notes/plan_1117/nvidia_sdks.md: licence, use vs compare, already in tree, size; then
-        ATN's OK of the exact download list (file, source, size) before any download; then each into the plan step it
-        serves. Owner: coordinator
+        running) -> tools/tw/round_notes/plan_1117/nvidia_sdks.md: licence, use vs compare, already in tree, size; ATN
+        02:xx: "You are allowed to download those. Or any SDKs that is 100% from Nvidia": official NVIDIA sources only,
+        each into tools/nvsdk/<name>; then each into the plan step it serves. Owner: coordinator
       - [ ] SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix our skill sets again"): the
         lessons of the bug fixes + reference suite into .agents/skills + the zip. Owner: coordinator after REF1
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
