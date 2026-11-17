@@ -2217,7 +2217,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         patch), a new patch kind (136 water rows apart in WARP); (b) helper (after bug2_): fog sky texels march the camera ray
         so sky and far hills glow alike (the horizon stays lighter than the sky until then); (c) lead: 10 WH1 / WH2
         slm_highdef sun shaders differ from 100 % at 33 % outside the overlay under the test's camera (Attila / Thrones
-        exact): check with a 50 % trace; (d) run_game.ps1 -Ini for Attila; (e) WH2 / Troy / Pharaoh rigid ropes still held
+        exact): check with a 50 % trace; (d) run_game.ps1 -Ini for Attila (DONE 08:xx: ini_set.py for non-WH3 games); (e) WH2 / Troy / Pharaoh rigid ropes still held
         (not proven drawn); (f) READMEs still call Smooth Banner Shadows "Experimental, off". Owner: next render-scale /
         helper / per-game rounds, (d) coordinator
       - [ ] BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Reset / No RT/PT / RT/PT (Shogun 2 /
