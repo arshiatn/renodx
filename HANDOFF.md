@@ -377,6 +377,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU2 REVIEW LOW FIXES: (3) resource.hpp:1851-1866 vs 1946: attach adds the modul ... | next High fixer round (with the GPU plan's first round)
 - RT / PT SETTINGS SWEEP (ATN 20:0x: "we are testing every RT and PT setting ... o ... | gpr_, coordinator
 - REC_COMPARE SIZE: rec_compare.py counts differing words only; add the size of a ... | next recorder touch (tools)
+- GPU PLAN (gpr_ xHigh, plan_1117/gpu_plan.md): queue fix1_ (merged) -> G1 -> SHaR ... | coordinator
+- SHARC BUGS (gpr_, for the SHaRC 1.8.3 job): (S1) rt_d3d12.hpp:2659 GrowBuffer(&. ... | SHaRC 1
+- SER VERDICT (gpr_ vs NVIDIA RTXPT): placement right, hint WRONG (InstanceID & 7 ... | G2
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2735,7 +2738,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         10.02 / 9.41 / 10.37, high 8.61 / 8.84 / 9.22, edge 7.53 / 7.72 / 7.98; SER folds reflections into path tracing
         (path + reflections ~flat on high / edge, unit -0.6 mostly trace 3.80 -> 3.09: base outlier?); SHaRC path tracing
         +0.34..0.58; Attila base / SER at frame 6 not proven steady (spans 60-120 ms, no "ran out")). xHigh read gpr_
-        STARTED 00:xx -> plan_1117/gpu_plan.md. Then an xHigh read (GPU plan: the reflections'
+        DONE 20:4x -> plan_1117/gpu_plan.md (scripts kept in tools/tw/nsight/gpr_scripts). Then an xHigh read (GPU plan: the reflections'
         453 MB spills, path tracing's register limit + 897 MB I$ misses, line 1503, SER / SHaRC per scene), then High
         implementers, then an xHigh review. Owner: nsr_, coordinator
       - [x] CPU PLAN 2 REVIEW (cr2_ xHigh, read only at 2eea52948): site 8 c5da4079f, B2 a0e98fd94, B3 ae73a0b54, B4
@@ -2764,6 +2767,27 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] REC_COMPARE SIZE: rec_compare.py counts differing words only; add the size of a change per chunk (mean /
         max relative difference of float outputs, mean luminance shift) so fixes like fix1_'s brightening are measured,
         not just counted. Owner: next recorder touch (tools)
+      - [ ] GPU PLAN (gpr_ xHigh, plan_1117/gpu_plan.md): queue fix1_ (merged) -> G1 -> SHaRC 1.8.3 -> PT DI -> vMF -> G2 ->
+        X -> faster RT freeze rebuild -> helper screenshot key. G1 = A1 (trace: one ray for ShownNormal + the banner
+        sheet test, bit-identical; -0.2 day1 / -0.25 night1 / -0.4 sea1 / -0.25 stress) + A2 (rt_lights' tile list by all
+        64 threads; -0.15..0.25 with torches) + tools K1-K3 + the CPU2 review low fixes: g1_ High STARTED 20:5x.
+        Traces T1 / T2 / T4 (grass micromap level 6 variant) / T5 / T6 (clusters): gtr_ Low STARTED 20:5x. Later: A3
+        reflections in two kernels, R1 SER fair + real hint, R2 path registers < 128, R3 reflection spills (G2); X1-X4
+        Experimental (quarter-rate rough specular occlusion, grass ray caps, leaf copies as layers, ReSTIR visibility
+        culls non-opaque); L1 clusters 1-2.7 ms read after T6; settings sweep T7 (~75 traces; player needs P1 numeric
+        overrides, P2 recorded upscale requests for DLSS / RR / FG / FSR / XeSS; NRD toggles today). Owner: coordinator
+      - [ ] SHARC BUGS (gpr_, for the SHaRC 1.8.3 job): (S1) rt_d3d12.hpp:2659 GrowBuffer(&...) recreates all three
+        SHaRC buffers EVERY frame: the cache never keeps a frame and old buffers are freed while the GPU may still use
+        them (a likely cause of the depth-4 hang); fix std::addressof (queued lifetime fix); (S2) rt_sharc_update.hlsl:25
+        / :42 gate and colour the sky on a value the sun-light mode never solves (WH3 high / edge: almost no update rays,
+        paths pay +0.41..0.58 ms for lookups that cannot hit; T5 confirms); 1.8.3: sqrt(3) segment rule, a one-sample
+        query build, SHARC_QUERY. SHaRC on today +0.17..1.06 ms; target <= +0.3 or a net win with more bounces; row stays
+        Experimental until then. Owner: SHaRC 1.8.3 implementer (after G1)
+      - [ ] SER VERDICT (gpr_ vs NVIDIA RTXPT): placement right, hint WRONG (InstanceID & 7 = a record offset = noise); RTXPT
+        uses a 1-bit "path goes on" hint, no reorder on misses, small live state; our SER A/B compares the general
+        build vs the one-sample builds. Fair cost today +0.09..0.31 ms on all 7 scenes: NOT on by default. Forge's forest
+        gain = his material / any-hit divergence, which our inline single-shader paths do not have (ours sits in inline
+        alpha-tested shadow loops SER cannot reorder). Fix = R1 in G2. Owner: G2
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
