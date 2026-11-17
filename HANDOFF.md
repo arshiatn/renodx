@@ -363,7 +363,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | hb6_, coordinator
 - B4G THRESHOLD (hb6_ 20:1x): B4 already threaded only lists >= 32768, so B4G diff ... | coordinator (next run batch)
 - HEAPFIX NOTES 2 (hb6_ 20:1x, for the author zip): heapfix's x87 watch turned its ... | coordinator (author_notes_3)
-- CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ejd3_
+- CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ATN
 - CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V ... | coordinator
 - C: B3 / CLASSIFIER (21:3x: ATN "Then do it. You are allowed to": the coordinator ... | ?
 - C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GP ... | ?
@@ -2605,7 +2605,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         it runs the game's own WakeAll loop; semaphore functions byte-exact; a pool-destructor drain against
         use-after-free; est. -1.9..-2.3 ms); a 2-worker model check passed with two failing controls. ATN 00:xx: never
         agreed to "stop = drop" (my wrong "as agreed"); "You are allowed to work on ALL of them": ONE unchanged retry
-        ejd3_ xHigh STARTED 00:xx (design only); a second stop is final. Owner: ejd3_
+        ejd3_ xHigh 19:5x STOPPED 20:1x by the safety classifier (second stop of B7, "Do not produce that content again,
+        even reworded"): FINAL for us; its 3 model runs stopped. Design file unchanged (cut in 4.2 at line 381, 4.3-7
+        missing). New facts: one pool only (global rva 0x1ef9554, made lazily by 0x16b1400 / 0x169d350, destroyed once by
+        0x16afe60 from the engine destructor 0x16239a0; the pool destructor 0x1689d70 drops queued tasks unrun, then
+        destroys workers one by one); the worker constructor 0x1687270 sets all 0x54 bytes (no spare field); both events
+        auto-reset re-checked; caller counts match. Finished model runs passed (orig 12 configs, design 3, d2 = one loop
+        per delegate + delegate as fallback 3, d2 + toggle 2), controls failed as they should. ATN takes B7 / B5 / E3P /
+        EVEC to ChatGPT (folder in Downloads). Owner: ATN
       - [ ] CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V0-V4 stress / night1 x3, day1 x2,
         sea1 x2, WPR stress / night1 / a new day1 (no sea1 WPR: GPU-bound). Owner: coordinator
       - [x] ANSWERED 19:0x (ATN: "Sure but don't forget plannings and the reviews") C: EJOB: may we change the game's job-semaphore protocol (spin-then-sleep, SetEvent only when a worker
