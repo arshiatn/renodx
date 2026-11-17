@@ -1241,7 +1241,7 @@ class RtScene12 {
   // trace) or never (`*refused` too).
   bool SaveRecordingState(const std::filesystem::path& folder, uint32_t frame, std::string* why, bool* refused) {
     *refused = true;
-    snapshot_waiting_ = false;
+    snapshot_waited_ = 0;
     if (!device_ || !visibility_ || Lost()) {
       *why = "no ray tracing scene";
       return false;
@@ -1267,8 +1267,8 @@ class RtScene12 {
 #else
     const bool growing = placed_growing_.valid();
 #endif
-    snapshot_waiting_ = bakes != 0 || row_reads != 0 || growing;
-    if (snapshot_waiting_) {
+    if (bakes != 0 || row_reads != 0 || growing) {
+      snapshot_waited_ = std::max<uint64_t>(own_value_, 1);
       *why = std::format("waiting for {} micromap bakes, {} slots' instanced rows{} (no new bakes meanwhile)", bakes, row_reads, growing ? ", a room growing" : "");
       return false;
     }
@@ -5032,7 +5032,7 @@ class RtScene12 {
                                    : 0u;
 #if defined(RENODX_RECORDER)
     // A snapshot waiting for the bakes in flight: no new ones meanwhile.
-    if (snapshot_waiting_) set_micromap_room = 0;
+    if (SnapshotWaiting()) set_micromap_room = 0;
 #endif
 #if defined(RENODX_NVAPI_CLUSTERS)
     auto* template_args =
@@ -5505,7 +5505,7 @@ class RtScene12 {
                                                                                  + MicromapsBaking() + micromaps_baked_.size())
                                  : 0u;
 #if defined(RENODX_RECORDER)
-      if (snapshot_waiting_) micromap_room = 0;
+      if (SnapshotWaiting()) micromap_room = 0;
 #endif
       // Instanced captures' rows to read back (their first texel in the vertex buffer).
       std::vector<Slot::RowRead> row_copies;
@@ -8265,6 +8265,8 @@ class RtScene12 {
   // The lock step: while a recording's requests run and in a play-back, what the GPU's progress, the bake threads and the
   // rooms' growth give a request is the requests' alone (Trace waits for every earlier request and for them).
   [[nodiscard]] bool Lockstep() const { return recording_.on || player_; }
+  // A snapshot waiting for the bakes in flight (its last try a few requests ago at most): no new bakes meanwhile.
+  [[nodiscard]] bool SnapshotWaiting() const { return snapshot_waited_ != 0 && own_value_ < snapshot_waited_ + 8; }
 #if defined(RENODX_NRD)
   std::array<NrdSignal*, 4> NrdSignals() { return {&nrd_sun_, &nrd_ambient_, &nrd_bounce_, &nrd_reflections_}; }
 #endif
@@ -8733,7 +8735,7 @@ class RtScene12 {
   // set at Initialize: the static meshes' vertices, their micromap bakes and the cluster sets', by key.
   bool journal_on_ = false;
   bool player_ = false;            // a play-back's scene (PlayRecording)
-  bool snapshot_waiting_ = false;  // a snapshot waits for the bakes in flight (no new ones meanwhile)
+  uint64_t snapshot_waited_ = 0;   // own_value_ when a snapshot last waited for the bakes in flight (0: none)
 #if defined(RENODX_NRD)
   // A play-back's NRD denoisers as recorded (NrdSignals' order; EnsureNrd's denoiser takes its one): their textures' size,
   // last frame, history (the permanent pool's textures' chunks).

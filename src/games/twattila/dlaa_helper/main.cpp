@@ -473,6 +473,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     bool refused = false;
     const std::filesystem::path into = record_folder / std::format("frame_{}", frame);
     const bool saved = scene->SaveRecordingState(into, frame, &why, &refused);
+    // Still waiting after ~30 s (a scene that keeps capturing): given up, logged.
+    if (!saved && !refused && recorder.waits >= 1800) {
+      refused = true;
+      why = std::format("still {} after {} traces", why, recorder.waits);
+    }
     if (saved || refused) {
       std::error_code ignored;
       std::filesystem::remove(record_marker, ignored);
@@ -480,6 +485,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     if (!saved) {
       if (refused) {
         recorder.at = UINT32_MAX;
+        recorder.waits = 0;
         say(std::format("[TW recorder] Not recorded at frame {}: {}.", frame, why));
       } else if (recorder.waits++ % 60 == 0) {
         say(std::format("[TW recorder] Frame {}: {}; tried again at the next trace.", frame, why));
