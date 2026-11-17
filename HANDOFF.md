@@ -355,6 +355,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - MEMO M1 RESULT (jdg1_, judge_m1_o1.md): GO for the filter alone (F14, 2 KB, no m ... | next CPU / utils round
 - LIGHT READBACK CAP (jdg1_): rt_lights' readback caps at 16,384 records while nig ... | PT DI step 0
 - BENCH CLOSE RACE BY STACK (jdg1_): the stress M1 run's close AV was the known sh ... | coordinator (tools)
+- CACHE ALBEDO DETERMINISM (rec_ 17:4x, rt_cache_fill.cs_6_5.hlsl:80: last writer ... | fix1_
 - RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | fix1_ (STARTED 16:xx)
 - CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of ... | cpp_
 - CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
@@ -2402,7 +2403,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         order-dependent on the GPU (the harness atn mode was 58 / 58); Alt+Enter gave a normal recording (resize maybe
         outside the 2 frames); no Nsight, no capture pass. rec_ DIAGNOSING (recorder-side fixes only; production
         nondeterminism -> a plan + a noise-floor mode in rec_compare, fix1_ owns rt_path / rt_place now). Also: 6 zombie
-        Attila processes (0 handles) until a reboot; recordings/live_proof (~20 GB) kept. Was: LEFT (1) live proof (run2_ low runner 14:xx: stress paused + moving, GPU-baking refusal, Alt+Enter ->
+        Attila processes (0 handles) until a reboot; recordings/live_proof (~20 GB) kept. DIAGNOSED 17:4x rec_ (merged
+        d1b045d2b, build rec_det4 E6EB54F99070): production, not recorder: (1) rt_cache_fill.cs_6_5.hlsl:80 cache_albedo
+        last writer wins (typed RWBuffer), the paths read it at hits -> bounce / reflections / cache / reservoirs differ
+        (write off: frame_637 plays twice identically); (2) rt_place first-come dedupe (<= 16 bytes a chunk in 3761). Both
+        -> fix1_ (min-index owner, ~0.03 + ~0.05 ms). New rec_compare.py --floor <base play 2>: all 4 live_proof2
+        recordings live vs play 0 ABOVE the floor (20-21 within); Alt+Enter presses fell outside the ~50 ms window, a resize
+        inside marks INCOMPLETE (harness); DLSS Quality 67 % normal. LEFT: the Nsight steady-frame check (offline), the
+        12-recording capture pass (a game run, ~1 h of the screen: ATN's timing). Was: LEFT (1) live proof (run2_ low runner 14:xx: stress paused + moving, GPU-baking refusal, Alt+Enter ->
         INCOMPLETE, 67 %, offline play + compare + one Nsight trace); (2) GPU Micromap Baking journal (rec_ again: ATN plays
         with RayTracedGpuMicromaps=1, recordings should match); (3) the 12-recording capture pass (night1 / sea1 / stress /
         day1 x 3 views, ~55 GB at 4K, C: 206 GB free) with ATN's settings; NRD's own history not recorded (first played
@@ -2433,6 +2441,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         f9471e81 + .v119 kept; ATN closed the 6 zombie Attila processes) C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 MB, 10-31 .. today, the newest
         = the M1 build 2f70715f) in ATN's Attila folder (ReShade ignores them): delete by exact name (keeping the installed
         add-on and .v119)? Owner: ATN
+      - [ ] CACHE ALBEDO DETERMINISM (rec_ 17:4x, rt_cache_fill.cs_6_5.hlsl:80: last writer wins per cache cell; plan:
+        InterlockedMin of the texel index, then the winner writes, ~4 MB / ~0.03 ms, same picture, on by default). Owner: fix1_
       - [ ] RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a different order between two
         identical plays (trace outputs stayed equal): make the dedupe order-independent (a stable key) so recordings and
         A/B tests repeat exactly; same picture. Owner: fix1_ (STARTED 16:xx)
