@@ -2959,9 +2959,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         2^32 (11a draws the edges). Open: thread at match+4 (cpu2_review.md: PausedWrite refuses +1..+4), Thrones
         +0x197d841, branch scan into match+1..+4, docs, style, builds, full runs. Waiting for ATN's go to finish it
         without the refused read; (2) then a
-        Low EJOB build + tests only (no analysis); (3) then one xHigh E3P design check (never stopped itself; Sol + the
-        other session rejected it on merit: fault risk, heapfix area); EVEC skipped (-0.1..-0.3, exactness not
-        provable statically by two analyses). A stop = final for that item only. Owner: coordinator
+        Low EJOB build + tests only (no analysis); (3) UPDATE 00:0x: ATN's other session added E3P site 0x1890b90 on
+        ejob-fork as "Faster Effect Prefetch" (Experimental off; prefetches the child after next inside the live list;
+        exact on Attila + Thrones incl. random getter trees; harness cold children: plain getter 7.9 -> 8.5 ns SLOWER,
+        40-cycle work 43.6 -> 30.2, 150-cycle 101 -> 54: gain unknown in game); its other E3P sites and EVEC need a
+        one-frame trace. So (3) = one xHigh review of that site (replaces the E3P design check), (4) merge ejob-fork,
+        (5) the combined bench flips the EJOB / EHALF / Effect Prefetch rows on / off in stress + night1 (one build, no
+        extra setup) + the WPR one-frame trace EVEC needs. The other session does NOT stamp / install / bench (one
+        installer only: two would overwrite builds and backups in ATN's Attila folder). EVEC skipped. A stop = final for
+        that item only. Owner: coordinator
       - [ ] TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started as `powershell -File ...
         -Env $array` (rbk_'s first batch, renamed nsight\runs\rbkpre_*, was level 5 only): accept one ;-separated
         string or fail loudly on more than one entry; check other agents' multi-Env runs; (b) runners must start the
