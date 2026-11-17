@@ -679,9 +679,9 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     if (vertex == 0u) first_normal = normal;
 #if defined(SHARC)
     // SHaRC Radiance Cache: what the screen does not know from SHaRC (by the surface's normal; not for a ray shorter than
-    // its voxel).
+    // its voxel's diagonal, SHaRC 1.8.3's rule; false: responsive lighting not skipped, it is off).
     const SharcHitData sharc_hit = {position, normal};
-    if (query.CommittedRayT() >= SharcVoxelSize(position) && SharcGetCachedRadiance(Sharc(), sharc_hit, light_there, false)) {
+    if (query.CommittedRayT() > SharcVoxelSize(position) * 1.7320508f && SharcGetCachedRadiance(Sharc(), sharc_hit, light_there, false)) {
       radiance += throughput * light_there;
       break;
     }

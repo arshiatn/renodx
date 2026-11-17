@@ -3,15 +3,16 @@
  * SPDX-License-Identifier: MIT
  */
 
-// SHaRC Radiance Cache's update (rt_sharc.hlsli; this software contains source code provided by NVIDIA Corporation):
+// SHaRC Radiance Cache's update (rt_sharc.hlsli: compiled with NVIDIA's SHaRC 1.8.3 headers, not part of this file):
 // one bounce texel of each SHARC_BLOCK x SHARC_BLOCK block (another each frame) traces a path of up to SHARC_BOUNCES
 // rays. Each surface it meets adds its light to its voxel: where the screen knows the surface its light (the path ends
 // there), else the sun's and the local lights' (as rt_path's unseen surfaces) and the path goes on (or SHaRC ends it on
 // the cache's own light); a ray that escapes brings the sky's (PathRadiance's: SkyLight of KeptShade, calibrated at the
 // surface it left). It runs once the sun's light is known (light_kept[1], as PathRadiance's cache adds: with the game's
 // sun light the learned shade light_kept[0] is never solved). SHaRC carries each voxel's light back to the surface before
-// it (SHARC_PROPAGATION_DEPTH 2: SHaRC's 4 with its cache resampling hung the GPU in the harness, the 5090; 2 or no
-// resampling did not), the cache's resampling the bounces past it over frames.
+// it (SHARC_PROPAGATION_DEPTH 2, 1.8.3's default with resampling: 4 with resampling hung the GPU in the harness, the
+// 5090, when the cache was new every frame; never 4), the cache's resampling the bounces past it over frames. Every light
+// handed in through SharcInput (finite, capped). SHaRC stops a path whose voxel it cannot insert (a full bucket).
 // Build (build.ps1, with SHaRC): dxc -T cs_6_9 -D OPACITY_MICROMAPS -D SHARC -D SHARC_UPDATE=1
 // -D SHARC_PROPAGATION_DEPTH=2 -enable-16bit-types -Fh rt_sharc_update.h -Vn RT_SHARC_UPDATE.
 #include "./rt_path.hlsli"
@@ -43,7 +44,7 @@ void main(uint3 block : SV_DispatchThreadID) {
     ray.TMax = bounce_range;
     TRACE_SURFACE(query, ray)
     if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) {
-      SharcUpdateMiss(sharc, state, SkyLight(direction, shade.rgb) * SkyCalibration(leaving_normal));
+      SharcUpdateMiss(sharc, state, SharcInput(SkyLight(direction, shade.rgb) * SkyCalibration(leaving_normal)));
       break;
     }
     const float3 position = origin + direction * query.CommittedRayT();
@@ -53,7 +54,7 @@ void main(uint3 block : SV_DispatchThreadID) {
     const uint light_seed = frame * 64u + vertex * 2u + 41000u;
     float3 known;
     if (HitLight(position, hit_normal, known)) {
-      SharcUpdateHit(sharc, state, sharc_hit, known, Random(uint3(id, light_seed + 1u)));
+      SharcUpdateHit(sharc, state, sharc_hit, SharcInput(known), Random(uint3(id, light_seed + 1u)));
       break;
     }
     const float3 albedo = HitAlbedo(position, hit_normal);
@@ -62,7 +63,7 @@ void main(uint3 block : SV_DispatchThreadID) {
     const float transmittance = ((record_flags & (RECORD_MASKED | RECORD_GRASS)) == RECORD_MASKED) ? LEAF_TRANSMITTANCE : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f);
     const float3 surface = position + hit_normal * offset;
     const float3 direct = UnseenLight(surface, position - hit_normal * offset, hit_normal, albedo, transmittance, id, light_seed);
-    if (!SharcUpdateHit(sharc, state, sharc_hit, direct, Random(uint3(id, light_seed + 1u)))) break;
+    if (!SharcUpdateHit(sharc, state, sharc_hit, SharcInput(direct), Random(uint3(id, light_seed + 1u)))) break;
     SharcSetThroughput(state, albedo);
     origin = surface;
     leaving_normal = hit_normal;

@@ -102,6 +102,7 @@
 // them): SHaRC Radiance Cache.
 #if __has_include("rt_path_sharc.h")
 #include "rt_path_sharc.h"
+#include "rt_path_sharc_one.h"
 #include "rt_sharc_resolve.h"
 #include "rt_sharc_update.h"
 #define RENODX_SHARC 1
@@ -798,8 +799,9 @@ class RtScene12 {
     // SHaRC Radiance Cache (shader model 6.9 here: 64-bit atomics, 16-bit types): its pipelines, or none (the status says
     // which failed).
     if (dxr12_) {
-      const std::array<std::tuple<const void*, size_t, ComPtr<ID3D12PipelineState>*, const char*>, 3> sharc_pipelines = {{
+      const std::array<std::tuple<const void*, size_t, ComPtr<ID3D12PipelineState>*, const char*>, 4> sharc_pipelines = {{
           {RT_PATH_SHARC, sizeof(RT_PATH_SHARC), &sharc_path_pipeline_, "paths"},
+          {RT_PATH_SHARC_ONE, sizeof(RT_PATH_SHARC_ONE), &sharc_path_one_pipeline_, "paths of one ray"},
           {RT_SHARC_UPDATE, sizeof(RT_SHARC_UPDATE), &sharc_update_pipeline_, "update"},
           {RT_SHARC_RESOLVE, sizeof(RT_SHARC_RESOLVE), &sharc_resolve_pipeline_, "resolve"},
       }};
@@ -2704,7 +2706,8 @@ class RtScene12 {
         } else
 #endif
         if (path_traced && sharc) {
-          list->SetPipelineState(sharc_path_pipeline_.Get());
+          // One ray a texel: its own build, as without SHaRC.
+          list->SetPipelineState(((constants.samples == 1) ? sharc_path_one_pipeline_ : sharc_path_pipeline_).Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
         } else if (path_traced && ser) {
           dispatch_rays(0, shared.rt_bounce_width, shared.rt_bounce_height);
@@ -8725,10 +8728,12 @@ class RtScene12 {
   ComPtr<ID3D12StateObject> path_ser_;
   ComPtr<ID3D12Resource> path_ser_table_;
   static constexpr uint64_t PATH_SER_RECORD = D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
-  // SHaRC Radiance Cache (rt_sharc.hlsli; null pipelines: unavailable): the paths' SHaRC variant, its update and resolve,
+  // SHaRC Radiance Cache (rt_sharc.hlsli; null pipelines: unavailable): the paths' SHaRC variants (the general one and
+  // the one of one ray a texel, PATH_ONE_SAMPLE), its update and resolve,
   // its buffers (SHARC_ENTRIES each of SHARC_STRIDES: the keys, a frame's sums, the resolved light; made at first use,
   // zeroed as committed buffers are, kept while the paths use it) and the frame its update last ran.
   ComPtr<ID3D12PipelineState> sharc_path_pipeline_;
+  ComPtr<ID3D12PipelineState> sharc_path_one_pipeline_;
   ComPtr<ID3D12PipelineState> sharc_update_pipeline_;
   ComPtr<ID3D12PipelineState> sharc_resolve_pipeline_;
   std::array<ComPtr<ID3D12Resource>, 3> sharc_buffers_;
