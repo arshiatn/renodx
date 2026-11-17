@@ -30,16 +30,21 @@ void main(float4 v0 : SV_Position0,
   const int2 texel = int2(v0.xy);
   const float distance = length(BounceViewPosition(texel));
   const int scale = (int)LB.scale;
-  const int2 center = int2(uint2(texel) / (uint)scale);
+  // The texels whose pixel (where the trace took it: the block's top-left, the rays' its centre) lies within 1.5 texels
+  // each way of this one: 3 a side, 4 where it falls halfway. The 3 x 3 around this pixel's texel, each at its top-left,
+  // moved the rays' bounce 0.6 px toward the top-left at Half (0.8 at Quarter), the screen-space trace's 0.4 (1.2) the
+  // other way (reference_suite_review I3, tools\tw\reference\census\i3_shift.py).
+  const float2 at = (float2(texel) - LB.texel_centre) / scale;
+  const int2 first = int2(ceil(at - 1.5f));
+  const int2 last = int2(floor(at + 1.5f));
   float4 sum = 0.f;
-  [unroll]
-  for (int y = -1; y <= 1; ++y) {
-    [unroll]
-    for (int x = -1; x <= 1; ++x) {
-      const int2 neighbour = center + int2(x, y);
+  [loop]
+  for (int y = first.y; y <= last.y; ++y) {
+    [loop]
+    for (int x = first.x; x <= last.x; ++x) {
+      const int2 neighbour = int2(x, y);
+      const float2 offset = float2(neighbour) - at;
       const float4 bounce = t_bounce.Load(int3(neighbour, 0));
-      // Its pixel (the block's top-left) from this one, in trace texels.
-      const float2 offset = float2(neighbour * scale - texel) / scale;
       const float near = exp2(-0.25f * dot(offset, offset));
       const float similar = saturate(1.f - abs(bounce.a - distance) / (0.030001808f * distance));
       const float weight = (bounce.a > 0.f) ? (near * similar) : 0.f;

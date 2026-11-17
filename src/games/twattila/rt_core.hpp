@@ -3440,7 +3440,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .grass_shadow_range = runtime.settings.grass_shadow_range,
       .grass_range = runtime.settings.grass_range,
       .units_range = runtime.settings.units_range,
-      .scene_flags = (runtime.settings.smoke_fast_build ? dlaa_bridge::RT_SCENE_SMOKE_FAST_BUILD : 0u),
+      // RT_SCENE_LIGHT_BITS: every host's light shaders read the mask through rt_local_lights.hlsli.
+      .scene_flags = (runtime.settings.smoke_fast_build ? dlaa_bridge::RT_SCENE_SMOKE_FAST_BUILD : 0u) | dlaa_bridge::RT_SCENE_LIGHT_BITS,
       .leaf_cutoff = leaf_cutoff,
   };
   part_done(3);

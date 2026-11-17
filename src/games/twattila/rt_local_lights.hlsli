@@ -67,8 +67,9 @@ bool RtLocalLightTraced(int2 render_pixel, float3 light_position, out float visi
   if (nearest >= 32u) return false;
   const uint pixel_word = t_rt_light_mask.Load(int3(render_pixel, 0));
   // b9's w 1 (Torch and Fire Shadows from the Light Bounce, bridge RT_LIGHT_RATIO): the word is the pixel's shadow ratio
-  // (a float, the same for all its lights), else its bits.
-  visibility = (rt_light_count.w != 0u) ? saturate(asfloat(pixel_word)) : (float)((pixel_word >> nearest) & 1u);
+  // (a float 0-1, the same for all its lights), or with its top bit set its own bits (RT_SCENE_LIGHT_BITS: a corner, crack
+  // or edge the ratio can't serve, traced; the list's light 31 reads that bit, lit); else its bits.
+  visibility = (rt_light_count.w != 0u && pixel_word < 0x80000000u) ? saturate(asfloat(pixel_word)) : (float)((pixel_word >> nearest) & 1u);
   return true;
 }
 

@@ -2163,6 +2163,7 @@ class RtScene12 {
   static constexpr uint32_t PATH_SUN_LIGHT = 2097152;   // rt_path.hlsli (the trace's PATH_TINT_GUIDES)
   static constexpr uint32_t PATH_START_PAST = 2147483648;  // rt_camera.hlsli
   static constexpr uint32_t LIGHTS_IN_PATHS = 128;  // rt_camera.hlsli (PathConstants::lights_in_bounce)
+  static constexpr uint32_t LIGHTS_RATIO_BITS = 256;  // rt_camera.hlsli: a trace's, the addon reads flagged bits (RT_SCENE_LIGHT_BITS)
   static constexpr UINT LIGHT_KEPT_TEXELS = 5;  // rt_path.hlsli light_kept
   static constexpr UINT CACHE_ENTRIES = 1u << 20;
   // rt_path.hlsli's b3.
@@ -4922,6 +4923,8 @@ class RtScene12 {
     const bool lights_in_bounce = light_ratio || (lights_asked && reuse_lights_mode_ != 0 && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 >= frame);
     const uint32_t lights_mode = light_ratio ? 3u : (lights_in_bounce ? 1u : 0u);
     const bool ratio_kept = light_ratio && light_ratio_[0] && EnsureHistory(HISTORY_RATIO, frame) && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame;
+    // Its pixels the ratio can't serve traced, their own bits (the addon's light shaders read them: RT_SCENE_LIGHT_BITS).
+    const bool ratio_bits = light_ratio && ((shared.rt_scene_flags & dlaa_bridge::RT_SCENE_LIGHT_BITS) != 0 || LightsInBounceTest() == 3u);
     // v18: rays a pixel toward the sun and each light, the lights' radius for soft shadows (rt_lights: under RR).
     const std::array<uint32_t, 12> settings = {
         frame,
@@ -4966,7 +4969,7 @@ class RtScene12 {
                                           | (tint_guides ? PATH_TINT_GUIDES : 0u) | (history_kept ? PATH_AMBIENT_KEPT : 0u),
                                  .previous_positions_slice = history_kept ? trace_positions_slice_ : 0u,
                                  // The last bounce's shadow ratio: its texels, the set it wrote.
-                                 .lights_in_bounce = light_ratio ? (3u | ((ratio_parity_ == 0) ? 16u : 0u) | (ratio_kept ? 32u : 0u)) : 0u};
+                                 .lights_in_bounce = light_ratio ? (3u | ((ratio_parity_ == 0) ? 16u : 0u) | (ratio_kept ? 32u : 0u) | (ratio_bits ? LIGHTS_RATIO_BITS : 0u)) : 0u};
       if (light_ratio) {
         constants.bounce_width = ratio_size_[0];
         constants.bounce_height = ratio_size_[1];

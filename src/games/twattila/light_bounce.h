@@ -26,6 +26,12 @@ struct LightBounceConstants {
   float region_height;
   float level0_width;
   float diffuse_rule;  // SunDraw::diffuse_rule: which rule the draw's G-buffer follows (only games with more than one read it)
+  // Where in its scale x scale block the bounce's texel was taken, in pixels from the block's top-left (the apply weighs it
+  // there): 0 the screen-space trace's (its geometry's top-left pixel), scale / 2 the rays' (rt_path.hlsli TexelSurface).
+  float texel_centre;
+  float padding_0;  // to a multiple of 16 bytes (a constant buffer's size)
+  float padding_1;
+  float padding_2;
 };
 
 

@@ -33,6 +33,12 @@ static const uint LIGHT_RAYS_TURNS = 4u;   // and the others' a frame
 static const uint LIGHT_IMPORTANCE_RAYS = 2u;
 static const uint TILE_LIGHTS = 32u;  // a tile's list: the mask's bits
 static const uint NO_LIGHT = 0xFFu;
+// Torch and Fire Shadows from the Light Bounce: a pixel's texels' ratios further apart than this hold a shadow's edge or a
+// shadow narrower than a texel (a crack's): their blend lit the shadowed side; it gets its own bits (LIGHTS_RATIO_BITS).
+static const float RATIO_SPREAD = 0.1f;
+// The spread's rays at most this many a pixel (the bits' with Importance: 2 a pixel and their kept bits; 4 lights at every
+// pixel cost 2.6 ms at 4K against the bits' 1.9).
+static const uint RATIO_SPREAD_LIGHTS = 3u;
 
 groupshared uint tile_reach[4];  // the lights any of the tile's pixels reaches (128 bits)
 groupshared uint tile_list[8];   // the tile's lights, a byte each
@@ -58,6 +64,17 @@ uint ListLight(uint slot) {
 // Word `word` of tile `tile`'s list in the mask and the history.
 uint2 TileWord(uint2 tile, uint word) {
   return uint2((tile.x * 4u) + (word & 3u), light_tile_row + (tile.y * 2u) + (word >> 2u));
+}
+
+// Whether a ray from `from` reaches local light `light`, stopping LIGHT_CLEARANCE short of its lamp; `soft`: to a point of
+// its disk (light_size), picked by `pixel` and `seed`.
+bool LightRayReaches(uint light, float3 from, bool soft, uint2 pixel, uint seed) {
+  float3 to_light = lights[light].xyz - from;
+  if (soft) {
+    to_light += DiskPoint(normalize(to_light), light_size, float2(Random(uint3(pixel, seed)), Random(uint3(pixel, seed + 1u))));
+  }
+  const float light_distance = length(to_light);
+  return !Occluded(from, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), NO_GRASS_SMOKE);
 }
 
 [numthreads(8, 8, 1)]
@@ -128,6 +145,9 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
   for (uint slot = 0u; slot < size; ++slot) {
     if (SetBit(reached, ListLight(slot)) != 0u) reached_slots |= 1u << slot;
   }
+  const bool steady = (flags & LIGHT_STEADY) != 0u;
+  const bool reconstructed = (flags & RECONSTRUCTED) != 0u;
+  const bool soft = reconstructed && light_size > 0.f && !steady;
 #if defined(TORCHES_IN_BOUNCE)
   // Torch and Fire Light in the Light Bounce (only this TORCHES_IN_BOUNCE build: the other is helper110's to the byte):
   // the paths' lights dark for the game's light shaders, untraced (their light, shadowed, comes with the bounce); their
@@ -140,33 +160,70 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
     }
     reached_slots &= ~bounce_slots;
   }
-  // Torch and Fire Shadows from the Light Bounce: no rays; the word is the last bounce's shadow ratio at this surface (its
-  // texels around where the last trace saw it, by the bounce apply's weights: near, and alike in depth), 1 where nothing
-  // was seen (the game's light unshadowed for that frame).
+  // Torch and Fire Shadows from the Light Bounce: the word is the last bounce's shadow ratio at this surface, from its
+  // texels around where the last trace saw it (by the bounce apply's weights: near, and alike in depth) whose surface
+  // lies on this pixel's plane: across a corner or an edge the other face's texels, lit by a light this one's are blocked
+  // from, made bright lines (the brighter face's sums outweigh), moved by every frame's jitter (ATN's debug44; the
+  // harness's concave corners 12.3% of their pixel-frames over the exact light by a quarter of it, the rays' bits 0.4%).
+  // Where the addon's light shaders read them (LIGHTS_RATIO_BITS), a pixel no texel serves (a corner, crack or edge, not
+  // seen by the last trace, none on its plane with light, or its texels' ratios RATIO_SPREAD apart: a shadow's edge or one
+  // narrower than a texel) gets its own bits instead, each reached light traced, the word's top bit set
+  // (rt_local_lights.hlsli; its list's light 31 reads that bit: lit): one ratio for all its lights from rays weighted by
+  // the normal from the depth went dark there. The rays stay near the bits' (the row is the faster choice; Nsight at 4K,
+  // the harness with 8 lights at every pixel: 6.1 ms against the bits' 2.7): the spread's only with at most
+  // RATIO_SPREAD_LIGHTS of the pixel's lights in the bounce, the others' with at most LIGHT_RAYS_ALWAYS +
+  // LIGHT_RAYS_TURNS; more keep the texels' ratio as before (all faces counted). Else 1: the game's light unshadowed.
   if ((flags & (LIGHTS_IN_BOUNCE | LIGHT_RATIO)) == (LIGHTS_IN_BOUNCE | LIGHT_RATIO)) {
-    float ratio = 1.f;
+    const uint bounce_count = countbits(bounce_slots);
+    const bool own_bits = (lights_in_bounce & LIGHTS_RATIO_BITS) != 0u && bounce_count <= LIGHT_RAYS_ALWAYS + LIGHT_RAYS_TURNS;
+    const float spread_most = (bounce_count <= RATIO_SPREAD_LIGHTS) ? RATIO_SPREAD : 1.f;
+    float2 sum = 0.f;
+    float2 spread = float2(1.f, 0.f);  // the lowest and highest ratio of the texels counted
     uint2 seen_pixel;
-    if (bounce_slots != 0u && (lights_in_bounce & LIGHTS_RATIO_VALID) != 0u && (path_flags & PATH_AMBIENT_HISTORY) != 0u && bounce_scale != 0u
-        && SeenByLastTrace(position.xyz, seen_pixel)) {
+    if ((planar || !own_bits) && bounce_slots != 0u && (lights_in_bounce & LIGHTS_RATIO_VALID) != 0u && (path_flags & PATH_AMBIENT_HISTORY) != 0u
+        && bounce_scale != 0u && SeenByLastTrace(position.xyz, seen_pixel)) {
       const uint read_set = ((lights_in_bounce & LIGHTS_RATIO_SET) != 0u) ? 1u : 0u;
       const float seen_depth = LastTracePosition(seen_pixel).w;
-      const int2 center = int2(seen_pixel / bounce_scale);
-      float2 sum = 0.f;
-      [unroll]
-      for (int y = -1; y <= 1; ++y) {
-        [unroll]
-        for (int x = -1; x <= 1; ++x) {
-          const int2 texel = center + int2(x, y);
-          if (any(texel < 0) || texel.x >= (int)bounce_width || texel.y >= (int)bounce_height) continue;
+      // The texels whose surface (rt_path.hlsli TexelSurface: their block's centre pixel) lies within 1.5 texels each way
+      // of the pixel: 3 a side, 4 where it falls halfway (the bounce apply's rule; the 3 x 3 around its texel, each at its
+      // top-left, read the ratio 0.6 px off at Half).
+      const float2 at = (float2(seen_pixel) - (float)(bounce_scale / 2u)) / (float)bounce_scale;
+      const int2 first = max(int2(ceil(at - 1.5f)), 0);
+      const int2 last = min(int2(floor(at + 1.5f)), int2(bounce_width, bounce_height) - 1);
+      [loop]
+      for (int y = first.y; y <= last.y; ++y) {
+        [loop]
+        for (int x = first.x; x <= last.x; ++x) {
+          const int2 texel = int2(x, y);
+          const float2 offset = float2(texel) - at;
           const float4 kept = light_ratio[read_set][texel];
-          const float2 offset = float2((texel * (int)bounce_scale) - int2(seen_pixel)) / (float)bounce_scale;
           const float similar = saturate(1.f - abs(kept.w - seen_depth) / (0.030001808f * seen_depth));
-          sum += kept.xy * ((kept.w > 0.f) ? exp2(-0.25f * dot(offset, offset)) * similar : 0.f);
+          // Its surface as the last trace saw it, on this plane as PlanarOf takes it.
+          bool on_plane = true;
+          if (own_bits) {
+            const float3 to_texel = LastTracePosition(min(uint2(texel) * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u)).xyz - position.xyz;
+            on_plane = abs(dot(to_texel, normal)) <= 0.2f * length(to_texel);
+          }
+          const float weight = (kept.w > 0.f && on_plane) ? exp2(-0.25f * dot(offset, offset)) * similar : 0.f;
+          sum += kept.xy * weight;
+          if (weight > 0.f && kept.y > 0.f) spread = float2(min(spread.x, kept.x / kept.y), max(spread.y, kept.x / kept.y));
         }
       }
-      if (sum.y > 1e-8f) ratio = saturate(sum.x / sum.y);
     }
-    light_mask[id.xy] = asuint(ratio);
+    uint word = asuint(1.f);
+    if (sum.y > 1e-8f && (!own_bits || spread.y - spread.x <= spread_most)) {
+      word = asuint(saturate(sum.x / sum.y));
+    } else if (own_bits && bounce_slots != 0u) {
+      word = 0xFFFFFFFFu;
+      [loop]
+      for (uint slot = 0u; slot < size; ++slot) {
+        if (((bounce_slots >> slot) & 1u) != 0u && !LightRayReaches(ListLight(slot), light_origin, soft, id.xy, ((frame * 128u) + ListLight(slot)) * 16u)) {
+          word &= ~(1u << slot);
+        }
+      }
+      word |= 0x80000000u;
+    }
+    light_mask[id.xy] = word;
     light_history[parity_written][id.xy] = 0xFFFFFFFFu;
     return;
   }
@@ -176,7 +233,6 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
   uint2 seen_pixel;
   const uint reached_count = countbits(reached_slots);
   const bool importance = (flags & LIGHT_IMPORTANCE) != 0u;
-  const bool steady = (flags & LIGHT_STEADY) != 0u;
   if (!steady && reached_count > (importance ? LIGHT_IMPORTANCE_RAYS : LIGHT_RAYS_ALWAYS + LIGHT_RAYS_TURNS)
       && (path_flags & PATH_LIGHT_HISTORY) != 0u && SeenByLastTrace(position.xyz, seen_pixel)) {
     // The list's first LIGHT_RAYS_ALWAYS every frame, the others in turns by their place, each 8 x 8 block its own phase
@@ -250,8 +306,6 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
   // share of rays that reached it beats noise moved each frame, which RR averages into the share (hard: half). Several
   // rays a pixel (Ray Tracing at Output Resolution) each from its own spot of a planar pixel.
   // Steady: each ray to the light's centre, most of a pixel's rays decide.
-  const bool reconstructed = (flags & RECONSTRUCTED) != 0u;
-  const bool soft = reconstructed && light_size > 0.f && !steady;
   const uint rays = clamp(shadow_rays, 1u, 8u);
   const float threshold = (reconstructed && !steady && (soft || rays > 1u)) ? InterleavedGradientNoise(float2(id.xy)) : 0.5f;
   const float turn = InterleavedGradientNoise(float2(id.xy) + 37.f);
@@ -263,13 +317,7 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
     [loop]
     for (uint ray = 0u; ray < rays; ++ray) {
       const float3 from = light_origin + ((rays > 1u && planar) ? PixelSpot(int2(id.xy), SpotOf(ray, turn)) : 0.f);
-      float3 to_light = lights[light].xyz - from;
-      if (soft) {
-        const uint seed = ((frame * 128u) + light) * 16u + ray * 2u;
-        to_light += DiskPoint(normalize(to_light), light_size, float2(Random(uint3(id.xy, seed)), Random(uint3(id.xy, seed + 1u))));
-      }
-      const float light_distance = length(to_light);
-      if (!Occluded(from, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), NO_GRASS_SMOKE)) ++reached_rays;
+      if (LightRayReaches(light, from, soft, id.xy, ((frame * 128u) + light) * 16u + ray * 2u)) ++reached_rays;
     }
     if ((float)reached_rays <= threshold * (float)rays) lit &= ~(1u << slot);
   }
