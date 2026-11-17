@@ -1964,8 +1964,8 @@ void ConfigureAddon() {
           .default_value = 0.f,
           .label = "Faster Effect Prefetch (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "The game's effect update asks the memory for the next effect object while it works on the current one.\n"
-                     "Less waiting on the CPU in big battles. Same results.",
+          .tooltip = "The game's effect update asks the memory for an effect object two steps ahead while it works on the current one.\n"
+                     "May lower the CPU waiting in big battles. Same results.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

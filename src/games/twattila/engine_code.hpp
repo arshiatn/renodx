@@ -719,24 +719,28 @@ constexpr std::array<uint32_t, 40> HALF_ROWS_CONSTANTS = {
 // [this+0x68] of [this+0x64] pointers, the bounds read again after every call. The children are scattered heap objects, so
 // the loop waits for each one's first line. The stub at the loop's bottom (the `lea ecx, [ecx + edx*4]; cmp esi, ecx` that
 // the `jne` tests; esi is the next item's slot, ecx the vector's begin, edx its size) prefetches the child after the next
-// one: only when esi lies in [begin, end - 4), so the load of that slot is inside the vector as it is right now (a vector
-// the call reallocated puts the old esi outside it: no load); `prefetcht0` itself never faults. Same results: the flags the
-// `jne` sees are the game's `cmp esi, ecx`, ecx is the end as the game computes it, edx is not touched, and eax, which the
-// game has added to the sum and next overwrites (the loop's top, `mov eax, edi` at the exit), is the one register that
-// differs. No store, no new fault, so every register, the flags and the memory at the function's return are the game's.
+// one: only when that slot's 4 bytes [esi + 4, esi + 8) lie wholly inside [begin, end) as the vector is right now, with no
+// wrap of the address space (a vector the call reallocated puts the old esi outside it: no load; esi need not be 4 apart from
+// the begin); `prefetcht0` itself never faults. Same results: the flags the `jne` sees are the game's `cmp esi, ecx`, ecx is
+// the end as the game computes it, edx is not touched, and eax, which the game has added to the sum and next overwrites (the
+// loop's top, `mov eax, edi` at the exit), is the one register that differs. No store, and a load only inside the vector's
+// size * 4 bytes, which any vector keeps committed after a call returns (the one assumption): every register, the flags and
+// the memory at the function's return are the game's.
 constexpr std::string_view CHILD_SUM =
     "53 8B D9 56 57 33 FF 8B 73 68 8B 43 64 8D 04 86 3B F0 74 19 8B 0E 8B 01 FF 50 1C 8B 53 64 83 C6 04 8B 4B 68 03 F8 8D 0C 91 "
     "3B F1 75 E7 8B C7 5F 5E 5B C3";
 constexpr size_t CHILD_SUM_SITE = 38;    // lea ecx, [ecx + edx*4]; cmp esi, ecx
 constexpr size_t CHILD_SUM_RESUME = 43;  // jne to the loop's top
-constexpr std::array<uint8_t, 26> CHILD_SUM_STUB = {
+constexpr std::array<uint8_t, 31> CHILD_SUM_STUB = {
     0x39, 0xCE,              // cmp esi, ecx                (esi against the begin)
     0x8D, 0x0C, 0x91,        // lea ecx, [ecx + edx*4]      (the end; no flags)
-    0x72, 0x0C,              // jb skip                     (esi below the begin: stale, no load)
-    0x8D, 0x46, 0x04,        // lea eax, [esi + 4]
+    0x72, 0x11,              // jb skip                     (esi below the begin: stale, no load)
+    0x89, 0xF0,              // mov eax, esi
+    0x83, 0xC0, 0x08,        // add eax, 8
+    0x72, 0x0A,              // jc skip                     (esi + 8 past 2^32)
     0x39, 0xC8,              // cmp eax, ecx
-    0x73, 0x05,              // jae skip                    (no slot after the next one)
-    0x8B, 0x00,              // mov eax, dword ptr [eax]    (the child after the next one)
+    0x77, 0x06,              // ja skip                     (the slot after the next one is not wholly inside)
+    0x8B, 0x40, 0xFC,        // mov eax, dword ptr [eax - 4] (the child after the next one)
     0x0F, 0x18, 0x08,        // prefetcht0 byte ptr [eax]
     0x39, 0xCE,              // skip: cmp esi, ecx          (the flags the game's jne tests)
     0xE9, 0x00, 0x00, 0x00, 0x00,  // jmp the loop's jne (patched in Prepare)
@@ -794,12 +798,20 @@ constexpr size_t JOB_PAGE = 0x300;
 constexpr size_t HALF_ROWS_PAGE = 0x500;
 constexpr size_t CHILD_SUM_PAGE = 0xB00;
 constexpr size_t PAGE_SIZE = 0x1000;
+static_assert(JOB_PAGE + JOB_STUB.size() <= HALF_ROWS_PAGE
+              && HALF_ROWS_PAGE + HALF_ROWS_CONSTANTS_AT + sizeof(HALF_ROWS_CONSTANTS) <= CHILD_SUM_PAGE
+              && CHILD_SUM_PAGE + CHILD_SUM_STUB.size() <= PAGE_SIZE);
 
 // Which sites each row writes (bits by `sites` index).
 constexpr uint32_t CPU_CODE_SITES = 0b100010111;  // Faster Game CPU Code
 constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
 constexpr uint32_t PREFETCH_SITES = 0b1000000000;  // Faster Effect Prefetch: the effect tree's child sum
+// The rows by name, for the log lines.
+constexpr std::array<std::pair<uint32_t, std::string_view>, 4> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
+                                                                         {LIST_SITES, "Faster Render Lists"},
+                                                                         {JOB_SITES, "Faster Job Wake-Ups"},
+                                                                         {PREFETCH_SITES, "Faster Effect Prefetch"}}};
 
 // The first instruction (or two or three, whole) of each site: 5 bytes that become a jump into the page (the render list
 // push's: a 4-byte instruction and the first byte of the next, both run by its stub).
@@ -1108,15 +1120,16 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     const uint32_t changed = target ^ internal::written;
     internal::written = target;
     internal::failed_writes = 0;
-    for (const auto& [row_sites, name] : {std::pair{internal::CPU_CODE_SITES, "Faster Game CPU Code"},
-                                          std::pair{internal::LIST_SITES, "Faster Render Lists"},
-                                          std::pair{internal::JOB_SITES, "Faster Job Wake-Ups"},
-                                          std::pair{internal::PREFETCH_SITES, "Faster Effect Prefetch"}}) {
+    for (const auto& [row_sites, name] : internal::ROWS) {
       if ((changed & row_sites) == 0) continue;
       renodx::utils::log::i("[Total War] ", name, ": ", ((target & row_sites) != 0 ? "on" : "off, the game's own code back"));
     }
   } else if (++internal::failed_writes == internal::MAX_FAILED_WRITES) {
-    renodx::utils::log::w("[Total War] Faster Game CPU Code: not written, a game thread kept running the code");
+    for (const auto& [row_sites, name] : internal::ROWS) {
+      if (((target ^ internal::written) & row_sites) != 0) {
+        renodx::utils::log::w("[Total War] ", name, ": not written, a game thread kept running the code");
+      }
+    }
   }
 }
 

@@ -1752,8 +1752,9 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
       const uint32_t begin = Address(world->slots + moved);
       const uint32_t count = size - moved;
       const int place = static_cast<int>(random.Next() % (SUM_SLOTS + 10)) - 4;  // slots from the data's start
-      uint32_t esi = Address(world->slots) + 4 * place;  // the game's esi steps through dwords from the begin
-      if ((random.Next() & 15) == 0) esi = random.Next() & ~3u;
+      uint32_t esi = Address(world->slots) + 4 * place + (random.Next() & 3);  // any byte: the load must not depend on the alignment
+      if ((random.Next() & 15) == 0) esi = random.Next();
+      if ((random.Next() & 15) == 0) esi = 0xFFFFFFF8u + (random.Next() & 7);  // esi + 8 wraps
       std::memset(&a, 0, sizeof(a));
       for (uint32_t& value : a.in) value = random.Next();
       a.in[1] = begin;
@@ -1766,7 +1767,7 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
       sum_block_target = Address(patched_block);
       EnterSumBlock(&b);
       const uint32_t end = begin + 4 * count;
-      loads_possible += (esi >= begin && esi + 4 < end) ? 1 : 0;
+      loads_possible += (esi >= begin && esi + 8 > esi && esi + 8 <= end) ? 1 : 0;
       const bool same = std::memcmp(a.out + 1, b.out + 1, 6 * sizeof(uint32_t)) == 0 && a.flags_out == b.flags_out && a.esp_after == b.esp_after
                         && a.out[1] == end;
       if (!same) {
@@ -1778,6 +1779,43 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
     CHECK(wrong == 0 && loads_possible > static_cast<uint64_t>(runs) / 8);
     std::printf("   the loop's bottom alone: %d runs (%llu with a slot to prefetch from): every register but eax, the flags and esp equal; no load past the data\n", runs,
                 loads_possible);
+
+    // 12b2. esi at EVERY byte around a vector whose end is the no-access page, every begin (byte-granular) and size, and esi 0xFFFFFFF8 ..
+    // 0xFFFFFFFF (esi + 8 wraps) against a few vectors: a load past the vector (or from near address 0) crashes the test.
+    {
+      const uint32_t page_end = Address(world->slots) + SUM_SLOTS * 4;
+      uint64_t sweep_runs = 0;
+      uint64_t sweep_wrong = 0;
+      const auto run_one = [&](uint32_t begin, uint32_t count, uint32_t esi) {
+        std::memset(&a, 0, sizeof(a));
+        for (uint32_t index = 0; index < 7; ++index) a.in[index] = 0x1234567 * (index + 1);
+        a.in[1] = begin;
+        a.in[2] = count;
+        a.in[4] = esi;
+        a.flags_in = 0x42;
+        b = a;
+        sum_block_target = Address(game_block);
+        EnterSumBlock(&a);
+        sum_block_target = Address(patched_block);
+        EnterSumBlock(&b);
+        ++sweep_runs;
+        sweep_wrong += (std::memcmp(a.out + 1, b.out + 1, 6 * sizeof(uint32_t)) != 0 || a.flags_out != b.flags_out || a.esp_after != b.esp_after) ? 1 : 0;
+      };
+      for (uint32_t begin = page_end - SUM_SLOTS * 4; begin <= page_end; ++begin) {
+        for (uint32_t count = 0; begin + 4 * count <= page_end; ++count) {
+          for (uint32_t esi = begin - 8; esi < page_end + 8; ++esi) run_one(begin, count, esi);
+        }
+      }
+      for (uint32_t esi = 0xFFFFFFF8u; esi != 0; ++esi) {
+        for (const auto [begin, count] : {std::pair{0xFFFFFFF0u, 3u}, std::pair{esi & ~3u, 0u}, std::pair{Address(world->slots), static_cast<uint32_t>(SUM_SLOTS)},
+                                          std::pair{0x10000u, 4u}}) {
+          run_one(begin, count, esi);
+        }
+      }
+      CHECK(sweep_wrong == 0);
+      std::printf("   esi at every byte around a vector ending at a no-access page, and esi + 8 wrapping: %llu runs, no load past the vector, every register but eax, the flags and esp equal\n",
+                  sweep_runs);
+    }
     VirtualFree(blocks, 0, MEM_RELEASE);
   }
 
@@ -1880,6 +1918,45 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
     for (auto& thread : threads) thread.join();
     std::printf("   200 switches while 4 threads made %llu sums with each copy: %llu wrong (%d writes waited for a thread inside the site)\n", calls.load(), bad.load(), busy);
     CHECK(bad.load() == 0 && (ec::written >> 9 & 1) != 0);
+  }
+
+  // 12e. A parked thread whose saved Eip is each byte of the site (and the jne after it): the row switched, the site changes only
+  // with Eip at the site's first byte or outside it (the random switches above hardly ever meet a thread inside the 5 bytes).
+  {
+    std::atomic<bool> stop = false;
+    std::thread parked([&] {
+      while (!stop.load()) Sleep(1);
+    });
+    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
+    CHECK(thread != nullptr);
+    const uint8_t* site = patched + function_rva + ec::CHILD_SUM_SITE;
+    bool on = (ec::written >> 9 & 1) != 0;
+    CHECK(on);
+    int wrong = 0;
+    for (int offset = -1; offset <= 6; ++offset) {
+      CHECK(SuspendThread(thread) != static_cast<DWORD>(-1));
+      CONTEXT saved = {.ContextFlags = CONTEXT_CONTROL};
+      CHECK(GetThreadContext(thread, &saved) != FALSE);
+      CONTEXT moved = saved;
+      moved.Eip = Address(site + offset);
+      CHECK(SetThreadContext(thread, &moved) != FALSE);
+      const uint32_t before = ec::written;
+      twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, !on);
+      const bool changed = ((ec::written ^ before) >> 9 & 1) != 0;
+      wrong += (changed != !(offset > 0 && offset < 5)) ? 1 : 0;
+      if (changed) on = !on;
+      CHECK(SetThreadContext(thread, &saved) != FALSE);
+      ResumeThread(thread);
+    }
+    for (int tries = 0; !on && tries < static_cast<int>(ec::MAX_FAILED_WRITES); ++tries) {
+      twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+      on = (ec::written >> 9 & 1) != 0;
+    }
+    stop = true;
+    parked.join();
+    CloseHandle(thread);
+    CHECK(wrong == 0 && on);
+    std::printf("   a parked thread at site -1 .. +6: the site is refused at +1 .. +4 and written at the others\n");
   }
   return 0;
 }

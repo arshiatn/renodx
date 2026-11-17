@@ -2654,13 +2654,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         (Experimental, off)" = a 10th site (PREFETCH_SITES bit 9, key FasterEffectPrefetch, Update's 5th argument; Attila
         addon row only, Thrones has the same function at 0x1905ef0 but no row, Rome II none): in the effect tree's child sum
         (sum += child->vtable[7]() over [this+0x68], [this+0x64] items) the loop's bottom prefetches the child after the next
-        one, only when esi is inside [begin, end - 4) (the load is inside the live vector; a prefetch never faults). Exact:
-        only eax differs (dead), flags / ecx / edx / esp / memory equal. Test part 12: 400 k random trees with getters that
-        truncate / grow / shrink the list mid-loop (no-access page after the data), 1 M loop-bottom runs, 200 switches under
-        4 threads; Attila + Thrones quick PASS. Harness timing (cold children): plain getter 7.9 -> 8.5 ns a child (no gain, 0.5
-        ns cost: the core overlaps the misses), a getter busy 40 cycles 43.6 -> 30.2, busy 150 cycles 101 -> 54: it pays when the
-        getters have real work. NOT proven: the real getters' weight (the plan has this function at 1.57 ms stress, 0.22
-        night1). Bench: row on / off in stress. Owner: ATN (bench go)
+        one, only when that slot's 4 bytes [esi + 4, esi + 8) lie wholly inside [begin, end), no wrap (the load is inside the
+        live vector; a prefetch never faults; Opus review e3p_review2 hardened the first bound: any esi alignment, esi + 8
+        wrap). Exact: only eax differs (dead), flags / ecx / edx / esp / memory equal; the one assumption: size * 4 bytes of
+        the vector are committed after every call. Test part 12: 400 k random trees with getters that truncate / grow / shrink
+        the list mid-loop (no-access page after the data), 1 M loop-bottom runs, esi at every byte around a vector ending at a
+        no-access page (682 k) and esi + 8 wrapping, a parked thread at every byte of the site, 200 switches under 4 threads.
+        Harness timing (cold children): plain getter 9.4 -> 9.6 ns a child (no gain: the core overlaps the misses; the
+        reviewer measured a 2-10 % LOSS and thinks the profile points at plain getters), a getter busy 40 cycles 45.7 -> 33.3,
+        busy 150 cycles 102 -> 54: it pays only when the getters have real work. NOT proven: the real getters' weight (the plan
+        has this function at 1.57 ms stress, 0.22 night1). Bench: row on / off in stress; leave it off if there is no gain.
+        Owner: ATN (bench go)
       - [ ] E3P other sites / EVEC NOT DONE (designs only, designs/evec_e3p_design.md): 0x18960d0 / 0x1893470 / 0x1840520 /
         0x1829c50 are particle emitter code (RNG calls, x87 results) whose caller's emitter loop was not found statically
         (the prefetch must sit there, not in 0x1892960, whose loop is a time-step loop on one emitter); EVEC's vector (the loop
