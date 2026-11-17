@@ -9,7 +9,7 @@
 // - REF_CENSUS: one output's NaN, Inf, negative and above-FP16 counts (a run with any is INVALID);
 // - REF_DIGEST: a raw buffer range (t8) hashed into this frame's scene digest (an order-free sum of its elements' hashes);
 // - REF_STATE: one thread's bookkeeping (REF_OP_*);
-// - REF_PATHS: a slice of the paths' reference at the bounce texels (`full`, `same_start`, `furnace`, `lout`);
+// - REF_PATHS: a slice of the paths' reference at the bounce texels (rt_reference.hlsli's variants);
 // - REF_REFLECT: a slice of the reflections' share and specular occlusion at the render pixels (sums of the lobe's weights);
 // - REF_GROUP: a group's mean into the Welford sums over groups (and its own picture).
 #include "./rt_reference.hlsli"
@@ -266,11 +266,13 @@ void main(uint3 id : SV_DispatchThreadID) {
         // The light the screen's surface sends back under the screen route's cut: its base colour x the sun's (a point of
         // its disk) and every local light's, no bounce.
         float3 leaving = RefSunLight() * max(dot(normal, sun[uint2(0, 0)].xyz), 0.f) * RefSunVisibility(origin, normal, u, overflow);
-        if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) leaving += RefLights(origin, normal, overflow);
+        if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) leaving += RefLights(origin, normal, 128u, overflow);
         sum += float4(screen_albedo * leaving, 1.f);
+      } else if (variant == REF_SAME_ROUTE) {
+        sum += float4(RefRouteIncoming(origin, RefCosineDirection(normal, u), normal, first_range, id.xy, sample_index, overflow), 1.f);
       } else {
-        sum += float4(RefIncoming(origin, RefCosineDirection(normal, u), normal, first_range, furnace, variant == REF_CONTACT, id.xy, sample_index,
-                                  overflow, cut),
+        sum += float4(RefIncoming(origin, RefCosineDirection(normal, u), normal, first_range, furnace, variant == REF_CONTACT || variant == REF_CONTACT_SKY,
+                                  variant == REF_CONTACT_SKY, id.xy, sample_index, overflow, cut),
                       1.f);
       }
 #else

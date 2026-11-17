@@ -2899,7 +2899,8 @@ class RtScene12 {
   // request (a slice on a frame whose digest is not the freeze frame's is dropped and counted); then every sum, the frozen
   // inputs (their hashes) and the state into `folder`: meta.json, census.json, a .bin a texture (rows packed).
   // RENODX_TW_REF_SETTLE (S, 150), _FRAMES (K, 384, a multiple of 16), _GROUPS (G, 8), _SEED, _VARIANT (full, same_start,
-  // furnace, lout), _SCALE (the synthetic control: the reference x it), _FURNACE (<albedo>,<light>), _DUMP (the folder).
+  // furnace, lout, contact, same_route, contact_sky: rt_reference.hlsli REF_*), _SCALE (the synthetic control: the reference
+  // x it), _FURNACE (<albedo>,<light>), _DUMP (the folder).
   enum class ReferenceEffect : uint32_t { PATHS, REFLECT };
   enum class ReferencePhase : uint32_t { OFF, SETTLE, WINDOW, SLICES, DUMPING, DONE };
   enum class ReferenceKind : uint32_t { TRACE, BOUNCE, REFLECTIONS };
@@ -2916,7 +2917,7 @@ class RtScene12 {
   static constexpr uint32_t REF_SOURCE_BOUNCE = 0;
   static constexpr uint32_t REF_SOURCE_SPECULAR_OCCLUSION = 2;
   static constexpr uint64_t REF_GROUP_PICTURES_MAX = uint64_t{1920} * 1080;  // grids up to this keep each group's mean (G3)
-  static constexpr std::array<std::string_view, 5> REF_VARIANTS = {"full", "same_start", "furnace", "lout", "contact"};
+  static constexpr std::array<std::string_view, 7> REF_VARIANTS = {"full", "same_start", "furnace", "lout", "contact", "same_route", "contact_sky"};
   // REF_CENSUS's outputs (rt_reference.hlsli REF_OUT_*).
   static constexpr std::array<std::string_view, 12> REF_OUTPUTS = {"bounce", "reflection", "specular", "own_sky_0", "own_sky_1", "reuse_0", "reuse_1",
                                                                   "fog_lights", "ref_mean", "candidate_mean", "ref_m2", "candidate_m2"};

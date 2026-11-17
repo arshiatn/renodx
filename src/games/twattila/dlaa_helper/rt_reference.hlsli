@@ -108,12 +108,19 @@ static const uint REF_BATCH = 16u;
 // `same_start` (the effect's own start and normal: isolates everything after the start), `furnace` (every surface albedo
 // ref_parameters[0].x, lit by ref_parameters[0].y, no sun, sky or lights: G1), `lout` (the light leaving each texel's own
 // surface under the screen route's cut: G5), `contact` (`full` with the helper's ContactShade on the first ray: the model
-// variant that tells that named model delta from the estimator, I2).
+// variant that tells that named model delta from the estimator, I2), `same_route` (`contact` with the helper's route model:
+// a surface the screen or the cache knows sends their light, an unseen one its sun (one ray to the centre) and its first
+// 32 lights and goes on path_bounces surfaces, ending as its base colour x KeptShade; past the first vertex the sky is
+// SkyLight's; the design's 1.2: the candidate against it is the estimator alone, `contact` against it the routes' model),
+// `contact_sky` (`contact` with SkyLight's sky past the first vertex, uncalibrated there: the sky model alone, Kept Cube's
+// or the learned scale's).
 static const uint REF_FULL = 0u;
 static const uint REF_SAME_START = 1u;
 static const uint REF_FURNACE = 2u;
 static const uint REF_LOUT = 3u;
 static const uint REF_CONTACT = 4u;
+static const uint REF_SAME_ROUTE = 5u;
+static const uint REF_CONTACT_SKY = 6u;
 // Its synthetic control (the word's bit 8): the reference x ref_parameters[1].x.
 static const uint REF_SCALED = 256u;
 
@@ -376,12 +383,13 @@ float RefSunVisibility(float3 surface, float3 normal, float2 u, inout uint overf
   return RefSunTransmittance(surface, direction, 1.0e4f, overflow);
 }
 
-// Every local light's direct light at a surface (pbrt's sum over all lights, each with its own ray, all of b4's): the
-// game's falloff by LightArriving, the ray stopping LIGHT_CLEARANCE short; leaves block, grass and smoke pass.
-float3 RefLights(float3 surface, float3 normal, inout uint overflow) {
+// Every local light's direct light at a surface (pbrt's sum over all lights, each with its own ray; the first `most` of b4's:
+// all 128 in `full`, the paths' first 32 in `same_route`): the game's falloff by LightArriving, the ray stopping
+// LIGHT_CLEARANCE short; leaves block, grass and smoke pass.
+float3 RefLights(float3 surface, float3 normal, uint most, inout uint overflow) {
   float3 total = 0.f;
   [loop]
-  for (uint index = 0u; index < min(light_count, 128u); ++index) {
+  for (uint index = 0u; index < min(light_count, most); ++index) {
     float3 direction;
     float light_distance;
     const float3 arriving = LightArriving(index, surface, normal, direction, light_distance);
@@ -391,14 +399,19 @@ float3 RefLights(float3 surface, float3 normal, inout uint overflow) {
   return total;
 }
 
+// A record's share of light through it (the helper's model, 1.3): a leaf's, a sheet's, else none.
+float RefTransmittance(uint record_index) {
+  const uint record_flags = records[record_index].z >> 16;
+  if ((record_flags & (RECORD_MASKED | RECORD_GRASS)) == RECORD_MASKED) return LEAF_TRANSMITTANCE;
+  return ((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f;
+}
+
 // The light leaving a surface at `hit` (normal `normal` facing the ray that met it, `record_index`'s flags) by its own
 // emission, as the game's model gives it (`full`): its base colour (HitAlbedo, frozen) x the sun's light (from behind it
 // through a leaf or a sheet at their transmittance: the design's 1.3) and every local light's; the furnace's a x E.
 float3 RefEmitted(float3 hit, float3 normal, uint record_index, float3 albedo, bool furnace, float2 u, inout uint overflow) {
   if (furnace) return albedo * ref_parameters[0].y;
-  const uint record_flags = records[record_index].z >> 16;
-  const float transmittance = ((record_flags & (RECORD_MASKED | RECORD_GRASS)) == RECORD_MASKED) ? LEAF_TRANSMITTANCE
-                              : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f);
+  const float transmittance = RefTransmittance(record_index);
   const float3 toward_sun = sun[uint2(0, 0)].xyz;
   const float n_dot_l = dot(normal, toward_sun);
   float3 emitted = 0.f;
@@ -407,7 +420,7 @@ float3 RefEmitted(float3 hit, float3 normal, uint record_index, float3 albedo, b
   } else if (transmittance > 0.f) {
     emitted = RefSunLight() * (-n_dot_l * transmittance) * RefSunVisibility(RefOffset(hit, -normal), -normal, u, overflow);
   }
-  if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) emitted += RefLights(RefOffset(hit, normal), normal, overflow);
+  if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) emitted += RefLights(RefOffset(hit, normal), normal, 128u, overflow);
   return albedo * emitted;
 }
 
@@ -416,9 +429,10 @@ float3 RefEmitted(float3 hit, float3 normal, uint record_index, float3 albedo, b
 // an escape brings the game's sky at the surface it left (RefSky; none from the first ray without Path-Traced Ambient,
 // whose screen pixel the game's ambient lights then, or where grass within GRASS_AMBIENT_RANGE blocks it, as the AO's;
 // the furnace's box has no sky). The first ray reaches `first_range` (the integral's), the rest 10 km. `contact`: the
-// first ray's hit's light (and all beyond it) x ContactShade (the `contact` variant).
-float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float first_range, bool furnace, bool contact, uint2 texel,
-                   uint sample_index, inout uint overflow, inout uint cut) {
+// first ray's hit's light (and all beyond it) x ContactShade (the `contact` variant). `helper_sky`: past the first vertex
+// the sky as the helper's SkyLight (`contact_sky`).
+float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float first_range, bool furnace, bool contact, bool helper_sky,
+                   uint2 texel, uint sample_index, inout uint overflow, inout uint cut) {
   float3 radiance = 0.f;
   float3 throughput = 1.f;
   float3 leaving_normal = origin_normal;
@@ -431,7 +445,7 @@ float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float 
     if (!RefNearest(origin, direction, (vertex == 0u) ? first_range : 1.0e4f, NO_GRASS_SMOKE, hit_distance, record_index, normal, overflow)) {
       const bool sky_seen = !furnace && (vertex > 0u || ((path_flags & PATH_AMBIENT) != 0u
                                                           && !RefBlocked(origin, direction, min(first_range, GRASS_AMBIENT_RANGE), GRASS_STILL, overflow)));
-      if (sky_seen) radiance += throughput * RefSky(direction, leaving_normal);
+      if (sky_seen) radiance += throughput * ((helper_sky && vertex > 0u) ? SkyLight(direction, KeptShade()) : RefSky(direction, leaving_normal));
       break;
     }
     const float3 hit = origin + direction * hit_distance;
@@ -450,12 +464,61 @@ float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float 
       break;
     }
     // Through a leaf or a sheet at its transmittance (the helper's model, 1.3): the path goes on from behind it.
-    const uint record_flags = records[record_index].z >> 16;
-    const float transmittance = (furnace) ? 0.f
-                                : (((record_flags & (RECORD_MASKED | RECORD_GRASS)) == RECORD_MASKED) ? LEAF_TRANSMITTANCE
-                                                                                                      : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f));
+    const float transmittance = furnace ? 0.f : RefTransmittance(record_index);
     const bool through = transmittance > 0.f && RefRandom(texel, sample_index, dimension + 5u) < transmittance;
     leaving_normal = through ? -normal : normal;
+    origin = RefOffset(hit, leaving_normal);
+    direction = RefCosineDirection(leaving_normal, float2(RefRandom(texel, sample_index, dimension + 2u), RefRandom(texel, sample_index, dimension + 3u)));
+  }
+  return radiance;
+}
+
+// `same_route`'s light arriving at `origin` along `direction`: the helper's route model (rt_path.hlsli PathRadiance's, the
+// design's 1.2) with the reference's own numbers, starts and uncapped visibility. An escape: the sky as SkyLight (the
+// first ray's x SkyCalibration at `origin_normal`, blocked by grass within GRASS_AMBIENT_RANGE); a hit x ContactShade on
+// the first ray; a surface the screen shows (or the cache knows, but CACHE_RELEARN of them, from a cell's size away)
+// sends HitLight's; an unseen one SunLit's (its one ray to the sun's centre) and its first 32 lights (where UnseenLight
+// takes them: their exact sum, LocalLights' two picks' mean) and goes on path_bounces surfaces, the last x KeptShade.
+float3 RefRouteIncoming(float3 origin, float3 direction, float3 origin_normal, float first_range, uint2 texel, uint sample_index, inout uint overflow) {
+  float3 radiance = 0.f;
+  float3 throughput = 1.f;
+  const float3 shade = KeptShade();
+  const bool unseen_lights = (path_flags & PATH_LOCAL_LIGHTS) != 0u
+                             && !(SunLightGiven() && (path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == PATH_LIGHT && !TORCH_LIGHT_IN_PATHS);
+  [loop]
+  for (uint vertex = 0u; vertex <= path_bounces; ++vertex) {
+    const uint dimension = 8u + vertex * 8u;
+    float hit_distance;
+    uint record_index;
+    float3 normal;
+    if (!RefNearest(origin, direction, (vertex == 0u) ? first_range : bounce_range, NO_GRASS_SMOKE, hit_distance, record_index, normal, overflow)) {
+      if (vertex > 0u) {
+        radiance += throughput * SkyLight(direction, shade);
+      } else if ((path_flags & PATH_AMBIENT) != 0u && !RefBlocked(origin, direction, min(first_range, GRASS_AMBIENT_RANGE), GRASS_STILL, overflow)) {
+        radiance += SkyLight(direction, shade) * SkyCalibration(origin_normal);
+      }
+      break;
+    }
+    const float3 hit = origin + direction * hit_distance;
+    if (vertex == 0u) throughput *= ContactShade(hit_distance);
+    const bool relearn = RefRandom(texel, sample_index, dimension + 6u) < CACHE_RELEARN;
+    float3 light_there;
+    if (HitLight(hit, normal, light_there, !relearn && hit_distance >= CacheCellSize(hit))) {
+      radiance += throughput * light_there;
+      break;
+    }
+    const float3 albedo = HitAlbedo(hit, normal);
+    const float transmittance = RefTransmittance(record_index);
+    float3 emitted = SunLit(RefOffset(hit, normal), RefOffset(hit, -normal), normal, albedo, transmittance, -1.f);
+    if (unseen_lights) emitted += albedo * RefLights(RefOffset(hit, normal), normal, 32u, overflow);
+    if (vertex == path_bounces) {
+      radiance += throughput * (emitted + albedo * shade);
+      break;
+    }
+    radiance += throughput * emitted;
+    throughput *= albedo;
+    const bool through = transmittance > 0.f && RefRandom(texel, sample_index, dimension + 5u) < transmittance;
+    const float3 leaving_normal = through ? -normal : normal;
     origin = RefOffset(hit, leaving_normal);
     direction = RefCosineDirection(leaving_normal, float2(RefRandom(texel, sample_index, dimension + 2u), RefRandom(texel, sample_index, dimension + 3u)));
   }
