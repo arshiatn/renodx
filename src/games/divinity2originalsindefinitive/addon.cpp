@@ -1375,11 +1375,11 @@ void ConfigureAddon() {
                                              .every_row = false});
   const std::vector<std::string> page_sections = twattila::graphics_page::Sections();
   for (auto* setting : settings) {
-    // No RT/PT (Recommended) leaves Bend and GT-VBGI off here until a game run shows them (Attila's turns both on).
+    // No RT/PT (Recommended) as Attila's: GT-VBAO too, while its row's default stays the game's AO.
     if (setting->value_type == renodx::utils::settings::SettingValueType::BUTTON && setting->label == "No RT/PT (Recommended)") {
       setting->on_change = [apply = setting->on_change] {
         apply();
-        renodx::utils::settings::UpdateSettings({{"ScreenSpaceShadows", 0.f}, {"light_bounce_strength", 0.f}});
+        renodx::utils::settings::UpdateSettings({{"ssao_mode", 1.f}});
       };
     }
     if (std::ranges::find(page_sections, setting->section) == page_sections.end()) continue;

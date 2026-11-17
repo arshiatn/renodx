@@ -268,8 +268,7 @@ Without the helper (`screen_space.hpp`, Experimental, off until a game run):
   contact shadows over the game's maps. Under the rays' sun shadows the mask
   is theirs.
 
-No RT/PT (Recommended) leaves GT-VBGI and Bend off until a game run shows them
-here.
+No RT/PT (Recommended) turns GT-VBAO, GT-VBGI and Bend on, as Attila's does.
 
 Not yet: render scale below 100%, the game's settings above its maximum.
 
