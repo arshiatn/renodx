@@ -4398,12 +4398,14 @@ class RtScene12 {
     // recorded signal takes the recording's history and last frame (once, at the recorded size).
     if (journal_on_ || player_) made->fixed_frame_ms = 16.66f;
     const std::array<NrdSignal*, 4> signals = NrdSignals();
-    if (std::optional<RecordedNrd>& recorded = recorded_nrd_[std::ranges::find(signals, signal) - signals.begin()];
-        recorded && recorded->size == std::array<uint32_t, 2>{width, height}) {
+    if (std::optional<RecordedNrd>& recorded = recorded_nrd_[std::ranges::find(signals, signal) - signals.begin()]; recorded) {
       const auto history = made->History();
-      ID3D12GraphicsCommandList4* list = (history.size() == recorded->history.size()) ? RecorderList() : nullptr;
+      const bool fits = recorded->size == std::array<uint32_t, 2>{width, height} && history.size() == recorded->history.size();
+      ID3D12GraphicsCommandList4* list = fits ? RecorderList() : nullptr;
       std::vector<ComPtr<ID3D12Resource>> uploads;
-      std::string why = (list == nullptr) ? std::format("{} of {} textures", recorded->history.size(), history.size()) : std::string();
+      std::string why = fits ? std::string()
+                             : std::format("recorded {} textures at {} x {}, made {} at {} x {}", recorded->history.size(), recorded->size[0],
+                                           recorded->size[1], history.size(), width, height);
       bool restored = list != nullptr;
       for (size_t index = 0; restored && index < history.size(); ++index) {
         restored = UploadRecorded(list, name, history[index].first, history[index].second, recorded->history[index], &uploads, &why);
