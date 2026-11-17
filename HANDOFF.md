@@ -378,8 +378,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT / PT SETTINGS SWEEP (ATN 20:0x: "we are testing every RT and PT setting ... o ... | gpr_, coordinator
 - REC_COMPARE SIZE: rec_compare.py counts differing words only; add the size of a ... | next recorder touch (tools)
 - GPU PLAN (gpr_ xHigh, plan_1117/gpu_plan.md): queue fix1_ (merged) -> G1 -> SHaR ... | coordinator
-- SHARC BUGS (gpr_, for the SHaRC 1.8.3 job): (S1) rt_d3d12.hpp:2659 GrowBuffer(&. ... | SHaRC 1
-- SER VERDICT (gpr_ vs NVIDIA RTXPT): placement right, hint WRONG (InstanceID & 7 ... | G2
+- SHARC BUGS (gpr_, for the SHaRC 1.8.3 job): (S1) rt_d3d12.hpp:2659 GrowBuffer(&. ... | ssr_
+- SER VERDICT (gpr_ vs NVIDIA RTXPT): placement right, hint WRONG (InstanceID & 7 ... | ssr_
+- CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still tryi ... | ATN
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2782,12 +2783,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         / :42 gate and colour the sky on a value the sun-light mode never solves (WH3 high / edge: almost no update rays,
         paths pay +0.41..0.58 ms for lookups that cannot hit; T5 confirms); 1.8.3: sqrt(3) segment rule, a one-sample
         query build, SHARC_QUERY. SHaRC on today +0.17..1.06 ms; target <= +0.3 or a net win with more bounces; row stays
-        Experimental until then. Owner: SHaRC 1.8.3 implementer (after G1)
+        Experimental until then. ATN 21:0x: "If possible fix SER and SHaRC. After that, can you use the same recordings
+        for them?": ssr_ High STARTED 21:0x (S1-S5 + 1.8.3 + R1 SER, beside g1_: no shared files), proof on the step 4
+        recordings (rows off = 0 chunks, SER on = same picture, SHaRC cache persists, Nsight vs step4_traces.md, VRAM).
+        Owner: ssr_
       - [ ] SER VERDICT (gpr_ vs NVIDIA RTXPT): placement right, hint WRONG (InstanceID & 7 = a record offset = noise); RTXPT
         uses a 1-bit "path goes on" hint, no reorder on misses, small live state; our SER A/B compares the general
         build vs the one-sample builds. Fair cost today +0.09..0.31 ms on all 7 scenes: NOT on by default. Forge's forest
         gain = his material / any-hit divergence, which our inline single-shader paths do not have (ours sits in inline
-        alpha-tested shadow loops SER cannot reorder). Fix = R1 in G2. Owner: G2
+        alpha-tested shadow loops SER cannot reorder). Fix = R1, moved forward by ATN 21:0x into ssr_ (with SHaRC; to be
+        re-measured after PT DI / vMF). Owner: ssr_
+      - [ ] CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still trying to implement the stuffs that
+        got cockblocked with in another session here and on chatgpt"): no CPU end bench / heapfix B6 runs until ATN says;
+        then review ATN's patches (EJOB / EHALF / E3P / EVEC from ATN's other session or ChatGPT) when ATN hands them over
+        (xHigh review, build32, tw_engine_code parts x86), then one combined bench (my pick: after the GPU rounds, ~25 runs
+        incl. heapfix for the author). Owner: ATN
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
