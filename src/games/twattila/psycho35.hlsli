@@ -58,6 +58,13 @@ float3 AttilaEngineHueClip(float3 untonemapped, float normalized_luminance, floa
 // an SDR display (fitted into BT.709, else BT.2020). Highlight Roll-off: 0 latest, 1 Musa's compression (1.5), 2 soonest.
 // `mid_gray`: where the scene's 0.18 lands (a game's own curve's), `contrast_scale`: Contrast's (a game's own per map).
 float3 ApplyPsychoV35(float3 color, float peak, bool sdr_output, float mid_gray = 0.18f, float contrast_scale = 1.f) {
+#if __SHADER_TARGET_MAJOR >= 4
+  // A NaN in: black (the curve's min / max would turn it into a bright colour).
+  [branch]
+  if (any((asuint(color) & 0x7fffffffu) > 0x7f800000u)) return 0.f;
+#endif
+  // An infinity (a render target's overflow): FP16's largest, so the curve sees a finite pixel.
+  color = clamp(color, -65504.f, 65504.f);
   const float3 mapped = renodx::tonemap::psychov::custom_psychotm_test35(
       color, peak, SI.v35_exposure, SI.v35_highlights, SI.v35_shadows, max(SI.v35_contrast, 0.01f) * contrast_scale,
       SI.v35_flare, SI.v35_highlight_contrast, SI.v35_shadow_contrast, SI.v35_saturation, SI.v35_highlight_saturation,
