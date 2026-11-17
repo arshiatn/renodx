@@ -1933,31 +1933,73 @@ class RtScene12 {
     const uint32_t last_frame = std::get<0>(requests.back());
     RecordFrames(dump, first_frame, last_frame, false, true);
     std::vector<File> files(requests.size());
-    for (size_t index = 0; index < requests.size(); ++index) {
+    // Each request's inputs staged once in video memory (an upload's copy there), copied on the GPU into the shared textures
+    // before it: a played frame holds the helper's work and a copy (the inputs' uploads took ~200 ms a request at 4K, the
+    // GPU idle: Nsight's frames were long and its trace's events ran out).
+    std::vector<std::vector<std::pair<ID3D12Resource*, Staged>>> inputs(files.size());
+    for (size_t index = 0; index < files.size(); ++index) {
       if (!read(std::get<2>(requests[index]), &files[index])) return false;
+      ID3D12GraphicsCommandList4* list = RecorderList();
+      std::vector<ComPtr<ID3D12Resource>> uploads;
+      for (const auto& [name, bytes] : files[index].resources) {
+        const auto texture = textures.find(name);
+        if (texture == textures.end() || list == nullptr) continue;
+        Staged staged;
+        if (!StageRecorded(name, texture->second.Get(), bytes, &staged, report)) return false;
+        ComPtr<ID3D12Resource> kept = Buffer(staged.buffer->GetDesc().Width, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COMMON);
+        if (!kept) {
+          *report = std::format("{}: its {} has no room in video memory", std::get<2>(requests[index]).filename().string(), name);
+          return false;
+        }
+        list->CopyResource(kept.Get(), staged.buffer.Get());
+        uploads.push_back(std::exchange(staged.buffer, kept));
+        inputs[index].emplace_back(texture->second.Get(), std::move(staged));
+      }
+      if (list == nullptr || !WaitFor(SubmitRecorderList(list))) {
+        *report = std::format("{}: its inputs could not be uploaded", std::get<2>(requests[index]).filename().string());
+        return false;
+      }
     }
+    // RENODX_TW_PLAY_TRACE_FLAGS / RENODX_TW_PLAY_PATH_FLAGS=<set>[,<clear>] (tests; 0x for hex): every request's rt_flags /
+    // rt_path_flags with `clear`'s bits off, then `set`'s on, as the addon's settings would send them (the helper makes
+    // what they need as it does live).
+    const auto masks = [](const wchar_t* variable) {
+      std::array<wchar_t, 64> value = {};
+      if (GetEnvironmentVariableW(variable, value.data(), static_cast<DWORD>(value.size())) == 0) return std::pair{0u, 0u};
+      wchar_t* rest = nullptr;
+      const auto set = static_cast<uint32_t>(std::wcstoul(value.data(), &rest, 0));
+      return std::pair{set, (*rest == L',') ? static_cast<uint32_t>(std::wcstoul(rest + 1, nullptr, 0)) : 0u};
+    };
+    const std::pair<uint32_t, uint32_t> trace_masks = masks(L"RENODX_TW_PLAY_TRACE_FLAGS");
+    const std::pair<uint32_t, uint32_t> path_masks = masks(L"RENODX_TW_PLAY_PATH_FLAGS");
     // RENODX_TW_PLAY_LOOPS=<n> (Nsight Graphics' GPU trace): the requests n times over, each pass's frames after the last
     // pass's (the state loaded once: later passes are the same work, not the same pixels; only the first is dumped).
     std::array<wchar_t, 16> loops_value = {};
     const uint32_t loops = std::max<uint32_t>(
         (GetEnvironmentVariableW(L"RENODX_TW_PLAY_LOOPS", loops_value.data(), static_cast<DWORD>(loops_value.size())) != 0) ? _wtoi(loops_value.data()) : 1, 1);
     uint32_t played = 0;
+    std::string flags;  // the masked requests' flags as recorded and as played
     for (uint32_t loop = 0; loop < loops; ++loop) {
       for (size_t index = 0; index < files.size(); ++index) {
         const File& file = files[index];
         ID3D12GraphicsCommandList4* list = RecorderList();
-        std::vector<ComPtr<ID3D12Resource>> uploads;
-        for (const auto& [name, bytes] : file.resources) {
-          const auto texture = textures.find(name);
-          if (texture == textures.end() || list == nullptr) continue;
-          if (!UploadRecorded(list, name, texture->second.Get(), D3D12_RESOURCE_STATE_COMMON, bytes, &uploads, report)) return false;
+        if (list == nullptr) {
+          *report = std::format("{}: its inputs could not be copied", std::get<2>(requests[index]).filename().string());
+          return false;
         }
-        if (list == nullptr || !WaitFor(SubmitRecorderList(list))) {
-          *report = std::format("{}: its inputs could not be uploaded", std::get<2>(requests[index]).filename().string());
+        for (const auto& [texture, staged] : inputs[index]) CopyStaged(list, staged, texture, D3D12_RESOURCE_STATE_COMMON);
+        if (!WaitFor(SubmitRecorderList(list))) {
+          *report = std::format("{}: its inputs could not be copied", std::get<2>(requests[index]).filename().string());
           return false;
         }
         const std::unique_ptr<dlaa_bridge::Shared> block = block_of(file);
         block->rt_frame += loop * (last_frame - first_frame + 1);
+        const uint32_t recorded_flags = std::exchange(block->rt_flags, (block->rt_flags & ~trace_masks.second) | trace_masks.first);
+        const uint32_t recorded_path_flags = std::exchange(block->rt_path_flags, (block->rt_path_flags & ~path_masks.second) | path_masks.first);
+        if (loop == 0 && (trace_masks.first | trace_masks.second | path_masks.first | path_masks.second) != 0) {
+          flags += std::format("; {}: flags {} -> {}, path flags {} -> {}", std::get<2>(requests[index]).filename().string(), recorded_flags,
+                               block->rt_flags, recorded_path_flags, block->rt_path_flags);
+        }
         if (file.header.request == 1) {
           before_trace();
           Trace(*block, version, file.sets);
@@ -1971,7 +2013,7 @@ class RtScene12 {
         }
       }
     }
-    *report = std::format("{}; {} requests played ({} passes): {}", loaded_report, played, loops, FinishRecording());
+    *report = std::format("{}; {} requests played ({} passes){}: {}", loaded_report, played, loops, flags, FinishRecording());
     return true;
   }
 #endif
@@ -8023,31 +8065,47 @@ class RtScene12 {
     return true;
   }
 
-  // A recorded resource's bytes (a CHUNK_TEXTURE's or CHUNK_BUFFER's) copied on `list` into `target`, resting in `state`: a
-  // buffer's part at its offset (the recorded buffer's size this one's), a texture's subresources (or the top rows of its
-  // one: the vertex texture's) by their footprints here, its format, size and subresources the recorded ones; the upload
-  // kept in `uploads` until the list is done. False: `why` says what did not fit.
+  // A recorded resource's bytes as StageRecorded laid them out for their target: an upload buffer (the player's: a copy of
+  // it in video memory), a buffer's part (its offset and length there) or a texture's subresources' footprints.
+  struct Staged {
+    ComPtr<ID3D12Resource> buffer;
+    uint64_t offset = 0;
+    uint64_t length = 0;
+    std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints;
+  };
+
+  // A recorded resource's bytes (a CHUNK_TEXTURE's or CHUNK_BUFFER's) copied on `list` into `target`, resting in `state`
+  // (StageRecorded, CopyStaged); the upload kept in `uploads` until the list is done. False: `why` says what did not fit.
   bool UploadRecorded(ID3D12GraphicsCommandList* list, std::string_view name, ID3D12Resource* target, D3D12_RESOURCE_STATES state,
                       std::span<const uint8_t> bytes, std::vector<ComPtr<ID3D12Resource>>* uploads, std::string* why) {
+    Staged staged;
+    if (!StageRecorded(name, target, bytes, &staged, why)) return false;
+    CopyStaged(list, staged, target, state);
+    uploads->push_back(std::move(staged.buffer));
+    return true;
+  }
+
+  // A recorded resource's bytes in a new upload buffer laid out for `target`: a buffer's part at its offset (the recorded
+  // buffer's size this one's), a texture's subresources (or the top rows of its one: the vertex texture's) by their
+  // footprints here, its format, size and subresources the recorded ones. False: `why` says what did not fit.
+  bool StageRecorded(std::string_view name, ID3D12Resource* target, std::span<const uint8_t> bytes, Staged* staged, std::string* why) {
     D3D12_RESOURCE_DESC desc = target->GetDesc();
-    ComPtr<ID3D12Resource> upload;
     uint8_t* mapped = nullptr;
-    const auto staged = [&](uint64_t upload_bytes) {
-      upload = Buffer(std::max<uint64_t>(upload_bytes, 256), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
-      return upload && SUCCEEDED(upload->Map(0, nullptr, reinterpret_cast<void**>(&mapped)));
+    const auto staging = [&](uint64_t upload_bytes) {
+      staged->buffer = Buffer(std::max<uint64_t>(upload_bytes, 256), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+      return staged->buffer && SUCCEEDED(staged->buffer->Map(0, nullptr, reinterpret_cast<void**>(&mapped)));
     };
-    const auto to_copy = Transition(target, state, D3D12_RESOURCE_STATE_COPY_DEST);
     if (desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) {
       recording::BufferHeader part = {};
       if (bytes.size() >= sizeof(part)) std::memcpy(&part, bytes.data(), sizeof(part));
       const uint64_t length = (bytes.size() >= sizeof(part)) ? bytes.size() - sizeof(part) : 0u;
-      if (bytes.size() < sizeof(part) || part.bytes != desc.Width || part.offset + length > desc.Width || !staged(length)) {
+      if (bytes.size() < sizeof(part) || part.bytes != desc.Width || part.offset + length > desc.Width || !staging(length)) {
         *why = std::format("{}: {} bytes at {} of a {}-byte buffer recorded, {} bytes here", name, length, part.offset, part.bytes, desc.Width);
         return false;
       }
       std::memcpy(mapped, bytes.data() + sizeof(part), length);
-      list->ResourceBarrier(1, &to_copy);
-      list->CopyBufferRegion(target, part.offset, upload.Get(), 0, length);
+      staged->offset = part.offset;
+      staged->length = length;
     } else {
       recording::TextureHeader texture = {};
       if (bytes.size() >= sizeof(texture)) std::memcpy(&texture, bytes.data(), sizeof(texture));
@@ -8062,7 +8120,7 @@ class RtScene12 {
       uint64_t packed = 0;
       for (UINT subresource = 0; subresource < subresources; ++subresource) packed += uint64_t{rows[subresource]} * row_bytes[subresource];
       if (texture.format != desc.Format || texture.width != desc.Width || texture.height != height || texture.slices != subresources
-          || texture.rows != rows[0] || texture.row_bytes != row_bytes[0] || bytes.size() < sizeof(texture) + packed || !staged(total)) {
+          || texture.rows != rows[0] || texture.row_bytes != row_bytes[0] || bytes.size() < sizeof(texture) + packed || !staging(total)) {
         *why = std::format("{}: recorded {} x {} ({} subresources, format {}), here {} x {} ({}, format {})", name, texture.width, texture.height,
                            texture.slices, texture.format, desc.Width, height, subresources, static_cast<uint32_t>(desc.Format));
         return false;
@@ -8074,19 +8132,25 @@ class RtScene12 {
           from += row_bytes[subresource];
         }
       }
-      list->ResourceBarrier(1, &to_copy);
-      for (UINT subresource = 0; subresource < subresources; ++subresource) {
-        const D3D12_TEXTURE_COPY_LOCATION destination = {.pResource = target, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = subresource};
-        const D3D12_TEXTURE_COPY_LOCATION source = {.pResource = upload.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
-                                                    .PlacedFootprint = footprints[subresource]};
-        list->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
-      }
+      staged->footprints = std::move(footprints);
     }
-    upload->Unmap(0, nullptr);
+    staged->buffer->Unmap(0, nullptr);
+    return true;
+  }
+
+  // `staged` (StageRecorded's for `target`) copied on `list` into `target`, resting in `state`.
+  void CopyStaged(ID3D12GraphicsCommandList* list, const Staged& staged, ID3D12Resource* target, D3D12_RESOURCE_STATES state) {
+    const auto to_copy = Transition(target, state, D3D12_RESOURCE_STATE_COPY_DEST);
+    list->ResourceBarrier(1, &to_copy);
+    if (staged.footprints.empty()) list->CopyBufferRegion(target, staged.offset, staged.buffer.Get(), 0, staged.length);
+    for (UINT subresource = 0; subresource < staged.footprints.size(); ++subresource) {
+      const D3D12_TEXTURE_COPY_LOCATION destination = {.pResource = target, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = subresource};
+      const D3D12_TEXTURE_COPY_LOCATION source = {.pResource = staged.buffer.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+                                                  .PlacedFootprint = staged.footprints[subresource]};
+      list->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+    }
     const auto copied = Transition(target, D3D12_RESOURCE_STATE_COPY_DEST, state);
     list->ResourceBarrier(1, &copied);
-    uploads->push_back(std::move(upload));
-    return true;
   }
 
   // A slot's journal copies (its last trace's new static meshes' vertices, done) into the journal; the bakes of meshes and
