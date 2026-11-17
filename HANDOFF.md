@@ -332,7 +332,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before th ... | bug1_
 - BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows ... | bug2_
 - BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Res ... | coordinator
-- BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails ... | coordinator -> bug4_ after the captures
+- (STARTED 02:1x bug4_: causes + census + add-on-side fixes, helper side as a plan ... | coordinator -> bug4_ after the captures
 - (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
 - REF1 REVIEW (rev_ 04:xx, Opus xHigh: plan_1117/reference_suite_review.md, verdic ... | ref_ (v2), then one implementer at a time after bug2_ leaves
 - REVIEW LEADS = LIKELY BUGS (rev_ 04:xx, to verify then fix in the helper after b ... | bug2_ (I3), then a helper fix round (I4, I5)
@@ -342,7 +342,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
 - SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator after REF1
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
-- (STARTED 01:5x: tools/tw/captures_1117/captures_all.ps1, six starts: night1, sea ... | coordinator, after the current merges + install, ATN's go
+- (RAN 01:49-02:09, five starts clean, every file of ATN's restored / same (ReShad ... | coordinator, after the current merges + install, ATN's go
 - ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart batt ... | coordinator, then a CPU / memory round
 - STRESS REPLAY stress_test_log2 (ATN 00:3x: "Maybe do a cpu/gpu recording there t ... | coordinator (plan phase 1)
 - (row moved under the AO method row, ATN's placement, shs2_ 06b31199f: page dumps ... | tw1_ (Attila / Thrones), per-game rounds for the twins
@@ -2156,7 +2156,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         the row on by default + in the presets in every game that has it, README lines. Owner: bug3_
       - [ ] BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Reset / No RT/PT / RT/PT (Shogun 2 /
         Ryse: their ray buttons): the row comes back on, the level row keeps the player's value. Owner: coordinator
-      - [ ] BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails + missing ropes (sea1), (f)
+      - [ ] (STARTED 02:1x bug4_: causes + census + add-on-side fixes, helper side as a plan while bug2_ is in it) BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails + missing ropes (sea1), (f)
         render scale below 100 % at sea (sea1 traces + a static census of the shipped shaders). Owner: coordinator ->
         bug4_ after the captures
       - [ ] (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-force reference per effect in the
@@ -2203,7 +2203,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         each into tools/nvsdk/<name>; then each into the plan step it serves. Owner: coordinator
       - [ ] (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 lines; fetch script
         tools/nvsdk_fetch.ps1 runs after the captures: SHARC, RTXDI-Library, RTXDI, RTXPT (code, no 1.9 GB assets),
-        NRD-Sample + NRD master, Falcor, nvapi) NVIDIA SDK FOLLOW-UPS: (a) SHaRC 1.6.5 -> 1.8.3: NVIDIA fixed a dropped
+        NRD-Sample + NRD master, Falcor, nvapi; FETCHED 02:1x into tools/nvsdk: SHARC 4e21b585 (2026-08-02), RTXDI-Library
+        b67f61cd + RTXDI fdbd9b36 (2026-11-09), RTXPT 303b408a (2026-10-24, no assets), NRD-Sample 6fac9ccb, NRD 90dea8bd
+        (2026-11-12), Falcor 759aad03 (2026-09-21), nvapi 51e5aae4 (2026-11-10); log tools/nvsdk_fetch_log.txt) NVIDIA SDK FOLLOW-UPS: (a) SHaRC 1.6.5 -> 1.8.3: NVIDIA fixed a dropped
         last-vertex contribution (bias), an out-of-bounds read in the hash-grid recovery scan and an invalid cache index
         overflow (maybe our depth-4 / 4K hangs, unproven), + a responsive mode for torches / fire: an update round with
         HARNESS_DUMP + a depth-4 / 4K soak; (b) RTXDI-Library 3.2.0 = PT DI code + the ReSTIR upgrade's comparison (pairwise
@@ -2236,7 +2238,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         shader for screen-space reads (not only traced ones) + the sea1 traces, every TW game with sea battles; owner bug1_
         after the sea1 capture. (g) LOD BIAS: ATN "For every single game, the LOD bias for everything should be on": the
         Texture LOD bias on all textures row on by default in every game; owner bug1_.
-      - [ ] (STARTED 01:5x: tools/tw/captures_1117/captures_all.ps1, six starts: night1, sea1, sea1_perf (DLSS Performance
+      - [ ] (RAN 01:49-02:09, five starts clean, every file of ATN's restored / same (ReShade.ini rewritten by the game, restored): night1 / sea1 / stress with WPR ETLs (1.69 / 0.97 / 0.83 GB), pass timings x3, RT profiles, PresentMon, shots, va.csv; stress_noaddon: largest free block 1094 MB without RenoDX vs 823 MB with (~270 MB ours); LEFT: sea1_perf wrote no frame trace (bug4_ finds why), harness frame recordings = route B's second pass; analysis cap1_ (speed list) + bug4_ (d / e / f) running) (STARTED 01:5x: tools/tw/captures_1117/captures_all.ps1, six starts: night1, sea1, sea1_perf (DLSS Performance
         + Frame Trace), stress, stress_noaddon (address space without RenoDX); outputs tools/tw/captures_1117/<label>/; no
         harness frame recorder yet: route B of the reference suite, a second pass later) CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benches), sea1 (go back a bit,
         everything in view), stress_test_log2 (no camera move, it spawns where ATN wants)): per replay one scripted run on
