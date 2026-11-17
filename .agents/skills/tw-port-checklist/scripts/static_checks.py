@@ -27,10 +27,9 @@ GAMES = 'src/games/'
 SUFFIXES = ('.hpp', '.cpp', '.h')
 CLOSE = {'(': ')', '[': ']', '{': '}', '<': '>'}
 KEYWORDS = {'if', 'for', 'while', 'switch', 'return', 'sizeof', 'decltype', 'static_cast', 'reinterpret_cast', 'const_cast'}
-# Left on purpose (HANDOFF "CPU ROUND"): made new on purpose until the maintainer decides.
-KNOWN = {('src/games/twattila/dlaa_helper/rt_d3d12.hpp', '&sharc_buffers_[index]'): "SHaRC's cache never outlives a frame",
-         ('src/games/twattila/dlaa_helper/rt_d3d12.hpp', '&gpu.uvs'): 'GPU micromap bake, per bake',
-         ('src/games/twattila/dlaa_helper/rt_d3d12.hpp', '&gpu.transient[pool]'): 'GPU micromap bake, per bake'}
+# Left on purpose: (file, `&argument`) -> why (none left: the SHaRC cache and the GPU micromap bake's buffers are kept since
+# ssr_'s fix, 2026-11-17).
+KNOWN = {}
 UTILS_RESOURCE = 'src/utils/resource.hpp'
 # resource.hpp's functions and the view-map calls each may make (the filter's protocol covers these: section 3).
 VIEW_MAP_CALLS = {'GetResourceViewInfo': {'try_emplace_p', 'if_contains'}, 'GetResourceViewInfoUnsafe': {'try_emplace_p', 'if_contains_unsafe'},

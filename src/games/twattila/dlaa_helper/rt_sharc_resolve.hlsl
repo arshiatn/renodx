@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-// SHaRC Radiance Cache's resolve (rt_sharc.hlsli; this software contains source code provided by NVIDIA Corporation): a
+// SHaRC Radiance Cache's resolve (rt_sharc.hlsli: compiled with NVIDIA's SHaRC 1.8.3 headers, not part of this file): a
 // thread per entry merges this frame's update with the frames before it (at most SHARC_FRAMES), entries left without
 // samples for SHARC_STALE_FRAMES go. Last frame's camera (SHaRC blends a voxel's adjacent level after a move) from last
 // frame's view-projection: where its x, y and w are 0.
@@ -35,6 +35,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   SharcResolveParameters resolve;
   resolve.cameraPositionPrev = previous_camera;
   resolve.accumulationFrameNum = SHARC_FRAMES;
+  resolve.responsiveFrameNum = SHARC_FRAMES;  // read with responsive lighting only (off)
   resolve.staleFrameNumMax = SHARC_STALE_FRAMES;
   resolve.frameIndex = frame;
   SharcResolveEntry(id.x, Sharc(), resolve);

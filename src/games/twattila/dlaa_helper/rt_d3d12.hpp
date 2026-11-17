@@ -76,6 +76,7 @@
 #include "rt_path_one.h"          // dxc -Fh (build.ps1)
 #include "rt_path_one_omm.h"      // dxc -Fh (build.ps1)
 #include "rt_path_ser.h"          // dxc -Fh (build.ps1)
+#include "rt_path_ser_one.h"      // dxc -Fh (build.ps1)
 #include "rt_place.h"             // dxc -Fh (build.ps1)
 #include "rt_omm_uvs.h"           // dxc -Fh (build.ps1)
 #include "rt_reflect.h"           // dxc -Fh (build.ps1)
@@ -102,6 +103,7 @@
 // them): SHaRC Radiance Cache.
 #if __has_include("rt_path_sharc.h")
 #include "rt_path_sharc.h"
+#include "rt_path_sharc_one.h"
 #include "rt_sharc_resolve.h"
 #include "rt_sharc_update.h"
 #define RENODX_SHARC 1
@@ -152,8 +154,8 @@
 // cache and the learned lighting for what the screen never saw), and a third request traces reflections and specular
 // occlusion. All run as compute shaders (DXR 1.2's shader execution reordering made each pass slower in the harness at
 // 640 x 360 to 4K, with and without clutter in view: the paths' hits need lookups, not divergent shading); Path Tracing
-// SER (Experimental, v105) runs the paths and reflections as ray generation shaders that reorder (rt_path_ser) for
-// tests in the game's cities. With
+// SER (Experimental, v105) runs the paths as ray generation shaders that reorder at their first surface (rt_path_ser)
+// for tests in the game's cities. With
 // NVAPI's cluster operations (RTX Mega Geometry; set RENODX_TW_NO_CLUSTERS to turn them off) the units are built each
 // frame as clusters (CLAS) into one cluster BLAS instead of the refitted BLAS; compact draws (bridge v16: a draw's
 // vertices streamed once each, its cluster set sent once and kept in a pool) become clusters on the GPU
@@ -702,36 +704,44 @@ class RtScene12 {
       path_one_pipeline_.Reset();
     }
     clusters_ = clusters_ && pipeline(RT_COMPACT, sizeof(RT_COMPACT), &compact_pipeline_);
-    // DXR 1.2: the paths and reflections as ray generation shaders for Path Tracing SER (none: their compute shaders).
+    // DXR 1.2: the paths as ray generation shaders for Path Tracing SER (none: their compute shaders), the general build
+    // and the one of one ray a texel, each its state object and its record (the general at 0, the other at
+    // PATH_SER_RECORD).
     if (dxr12_) {
-      const std::array<D3D12_EXPORT_DESC, 2> exports = {{{.Name = L"PathTraceRayGen"}, {.Name = L"ReflectRayGen"}}};
-      const D3D12_DXIL_LIBRARY_DESC library = {.DXILLibrary = {.pShaderBytecode = RT_PATH_SER, .BytecodeLength = sizeof(RT_PATH_SER)},
-                                               .NumExports = static_cast<UINT>(exports.size()),
-                                               .pExports = const_cast<D3D12_EXPORT_DESC*>(exports.data())};
+      const D3D12_EXPORT_DESC ray_generation = {.Name = L"PathTraceRayGen"};
       const D3D12_RAYTRACING_SHADER_CONFIG shader_config = {.MaxPayloadSizeInBytes = 4, .MaxAttributeSizeInBytes = 8};
       const D3D12_RAYTRACING_PIPELINE_CONFIG1 pipeline_config = {.MaxTraceRecursionDepth = 1,
                                                                  .Flags = D3D12_RAYTRACING_PIPELINE_FLAG_ALLOW_OPACITY_MICROMAPS};
       const D3D12_GLOBAL_ROOT_SIGNATURE global = {.pGlobalRootSignature = root_signature_.Get()};
-      const std::array<D3D12_STATE_SUBOBJECT, 4> subobjects = {{
-          {.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, .pDesc = &library},
-          {.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG, .pDesc = &shader_config},
-          {.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG1, .pDesc = &pipeline_config},
-          {.Type = D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE, .pDesc = &global},
-      }};
-      const D3D12_STATE_OBJECT_DESC state_desc = {.Type = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE,
-                                                  .NumSubobjects = static_cast<UINT>(subobjects.size()),
-                                                  .pSubobjects = subobjects.data()};
-      ComPtr<ID3D12StateObjectProperties> properties;
       uint8_t* table = nullptr;
       path_ser_table_ = Buffer(PATH_SER_RECORD * 2, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
-      if (path_ser_table_ && SUCCEEDED(device_->CreateStateObject(&state_desc, IID_PPV_ARGS(path_ser_.GetAddressOf())))
-          && SUCCEEDED(path_ser_.As(&properties)) && properties->GetShaderIdentifier(L"PathTraceRayGen") != nullptr
-          && properties->GetShaderIdentifier(L"ReflectRayGen") != nullptr && SUCCEEDED(path_ser_table_->Map(0, nullptr, reinterpret_cast<void**>(&table)))) {
-        std::memcpy(table, properties->GetShaderIdentifier(L"PathTraceRayGen"), D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
-        std::memcpy(table + PATH_SER_RECORD, properties->GetShaderIdentifier(L"ReflectRayGen"), D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
-        path_ser_table_->Unmap(0, nullptr);
-      } else {
-        path_ser_.Reset();
+      if (path_ser_table_ && FAILED(path_ser_table_->Map(0, nullptr, reinterpret_cast<void**>(&table)))) table = nullptr;
+      const auto make_ser = [&](const void* code, size_t bytes, ComPtr<ID3D12StateObject>* state, uint64_t record) {
+        const D3D12_DXIL_LIBRARY_DESC library = {.DXILLibrary = {.pShaderBytecode = code, .BytecodeLength = bytes},
+                                                 .NumExports = 1,
+                                                 .pExports = const_cast<D3D12_EXPORT_DESC*>(&ray_generation)};
+        const std::array<D3D12_STATE_SUBOBJECT, 4> subobjects = {{
+            {.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, .pDesc = &library},
+            {.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG, .pDesc = &shader_config},
+            {.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG1, .pDesc = &pipeline_config},
+            {.Type = D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE, .pDesc = &global},
+        }};
+        const D3D12_STATE_OBJECT_DESC state_desc = {.Type = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE,
+                                                    .NumSubobjects = static_cast<UINT>(subobjects.size()),
+                                                    .pSubobjects = subobjects.data()};
+        ComPtr<ID3D12StateObjectProperties> properties;
+        if (table != nullptr && SUCCEEDED(device_->CreateStateObject(&state_desc, IID_PPV_ARGS(state->GetAddressOf())))
+            && SUCCEEDED(state->As(&properties)) && properties->GetShaderIdentifier(L"PathTraceRayGen") != nullptr) {
+          std::memcpy(table + record, properties->GetShaderIdentifier(L"PathTraceRayGen"), D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+        } else {
+          state->Reset();
+        }
+      };
+      make_ser(RT_PATH_SER, sizeof(RT_PATH_SER), std::addressof(path_ser_), 0);
+      make_ser(RT_PATH_SER_ONE, sizeof(RT_PATH_SER_ONE), std::addressof(path_ser_one_), PATH_SER_RECORD);
+      if (table != nullptr) path_ser_table_->Unmap(0, nullptr);
+      if (!path_ser_) {
+        path_ser_one_.Reset();
         path_ser_table_.Reset();
       }
     }
@@ -798,8 +808,9 @@ class RtScene12 {
     // SHaRC Radiance Cache (shader model 6.9 here: 64-bit atomics, 16-bit types): its pipelines, or none (the status says
     // which failed).
     if (dxr12_) {
-      const std::array<std::tuple<const void*, size_t, ComPtr<ID3D12PipelineState>*, const char*>, 3> sharc_pipelines = {{
+      const std::array<std::tuple<const void*, size_t, ComPtr<ID3D12PipelineState>*, const char*>, 4> sharc_pipelines = {{
           {RT_PATH_SHARC, sizeof(RT_PATH_SHARC), &sharc_path_pipeline_, "paths"},
+          {RT_PATH_SHARC_ONE, sizeof(RT_PATH_SHARC_ONE), &sharc_path_one_pipeline_, "paths of one ray"},
           {RT_SHARC_UPDATE, sizeof(RT_SHARC_UPDATE), &sharc_update_pipeline_, "update"},
           {RT_SHARC_RESOLVE, sizeof(RT_SHARC_RESOLVE), &sharc_resolve_pipeline_, "resolve"},
       }};
@@ -2943,8 +2954,15 @@ class RtScene12 {
         // SHARC_BLOCK x SHARC_BLOCK) and resolve, then the paths read it (their SHaRC variant). Not the reflections: their
         // SHaRC variant hung the GPU at 4K in the harness (the 5090).
         bool sharc = sharc_path_pipeline_ && path_traced && version >= 18 && (requested & dlaa_bridge::RT_PATH_SHARC) != 0;
+        // Its cache is kept from frame to frame (SHaRC's resolve blends and evicts it); paths without it give it back
+        // once the GPU is past this request, so the row on again starts from zeroed buffers (SHaRC's reset).
+        if (path_traced && !sharc && sharc_buffers_[0]) {
+          for (ComPtr<ID3D12Resource>& buffer : sharc_buffers_) {
+            if (buffer) releases_.push_back({.value = own_value_ + 1, .resource = std::move(buffer)});
+          }
+        }
         for (size_t index = 0; index < sharc_buffers_.size() && sharc; ++index) {
-          sharc = GrowBuffer(&sharc_buffers_[index], uint64_t{SHARC_ENTRIES} * SHARC_STRIDES[index], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+          sharc = GrowBuffer(std::addressof(sharc_buffers_[index]), uint64_t{SHARC_ENTRIES} * SHARC_STRIDES[index], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         }
         if (sharc) {
           list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, sharc_buffers_[0]->GetGPUVirtualAddress());
@@ -2965,19 +2983,8 @@ class RtScene12 {
         }
         ProfileStamp(list, slot_index, 0);
         Mark(list, L"path tracing");
-        // With Path Tracing SER (bridge v18) the ray generation shaders.
+        // With Path Tracing SER (bridge v18) the paths' ray generation shaders.
         const bool ser = path_ser_ && version >= 18 && (requested & dlaa_bridge::RT_PATH_SER) != 0;
-        const auto dispatch_rays = [&](uint64_t record, uint32_t ray_width, uint32_t ray_height) {
-          list->SetPipelineState1(path_ser_.Get());
-          const D3D12_DISPATCH_RAYS_DESC rays = {
-              .RayGenerationShaderRecord = {.StartAddress = path_ser_table_->GetGPUVirtualAddress() + record,
-                                            .SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES},
-              .Width = ray_width,
-              .Height = ray_height,
-              .Depth = 1,
-          };
-          list->DispatchRays(&rays);
-        };
 #if defined(RENODX_PATH_PROBE)
         if (path_traced && constants.probe_mode != 0) {
           list->SetPipelineState(path_probe_pipeline_.Get());
@@ -2985,10 +2992,21 @@ class RtScene12 {
         } else
 #endif
         if (path_traced && sharc) {
-          list->SetPipelineState(sharc_path_pipeline_.Get());
+          // One ray a texel: its own build, as without SHaRC.
+          list->SetPipelineState((constants.samples == 1) ? sharc_path_one_pipeline_.Get() : sharc_path_pipeline_.Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
         } else if (path_traced && ser) {
-          dispatch_rays(0, shared.rt_bounce_width, shared.rt_bounce_height);
+          // One ray a texel: its own build, as the compute paths'.
+          const bool one_sample = constants.samples == 1 && path_ser_one_;
+          list->SetPipelineState1(one_sample ? path_ser_one_.Get() : path_ser_.Get());
+          const D3D12_DISPATCH_RAYS_DESC rays = {
+              .RayGenerationShaderRecord = {.StartAddress = path_ser_table_->GetGPUVirtualAddress() + (one_sample ? PATH_SER_RECORD : 0),
+                                            .SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES},
+              .Width = shared.rt_bounce_width,
+              .Height = shared.rt_bounce_height,
+              .Depth = 1,
+          };
+          list->DispatchRays(&rays);
         } else if (path_traced) {
           // One ray a texel: its own build (the same picture in fewer registers).
           list->SetPipelineState(((constants.samples == 1 && path_one_pipeline_) ? path_one_pipeline_ : path_pipeline_).Get());
@@ -3041,13 +3059,10 @@ class RtScene12 {
         }
         if (reflections) {
           Mark(list, L"reflections");
-          if (ser) {
-            dispatch_rays(PATH_SER_RECORD, width, height);
-          } else {
-            // One sample a pixel: its own build (the same picture; the general one spilled registers at 4K).
-            list->SetPipelineState(((constants.samples == 1 && reflect_one_pipeline_) ? reflect_one_pipeline_ : reflect_pipeline_).Get());
-            list->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
-          }
+          // One sample a pixel: its own build (the same picture; the general one spilled registers at 4K). Not reordered
+          // under Path Tracing SER (a mirror or lobe ray a pixel: nothing to regroup).
+          list->SetPipelineState(((constants.samples == 1 && reflect_one_pipeline_) ? reflect_one_pipeline_ : reflect_pipeline_).Get());
+          list->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
           list->ResourceBarrier(1, &uav_barrier);
           list->SetPipelineState(reflect_filter_pipeline_.Get());
           list->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
@@ -7615,10 +7630,11 @@ class RtScene12 {
       for (Planned& plan : planned) plan.bake->gpu_failed = true;
     };
     if (planned.empty()) return;
-    // The clamped UVs and the scratch (kept, grown), the request's outputs and the histograms' read-back.
-    bool made = GrowBuffer(&gpu.uvs, totals[0], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    // The clamped UVs and the scratch (kept, grown: the SDK's transient pools "can be reused after baking", omm.h), the
+    // request's outputs and the histograms' read-back.
+    bool made = GrowBuffer(std::addressof(gpu.uvs), totals[0], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     for (size_t pool = 0; pool < transient_bytes.size() && made; ++pool) {
-      if (transient_bytes[pool] != 0) made = GrowBuffer(&gpu.transient[pool], transient_bytes[pool], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      if (transient_bytes[pool] != 0) made = GrowBuffer(std::addressof(gpu.transient[pool]), transient_bytes[pool], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     }
     std::array<ComPtr<ID3D12Resource>, 6> outputs;
     for (size_t kind = 0; kind < outputs.size() && made; ++kind) {
@@ -9005,15 +9021,18 @@ class RtScene12 {
 #endif
   ComPtr<ID3D12PipelineState> reflect_pipeline_;
   ComPtr<ID3D12PipelineState> reflect_one_pipeline_;  // its build for one sample a pixel (REFLECT_ONE_SAMPLE)
-  // Path Tracing SER (DXR 1.2; null: unavailable): the paths' and reflections' ray generation shaders, their records (the
-  // paths' at 0, the reflections' at PATH_SER_RECORD).
+  // Path Tracing SER (DXR 1.2; null: unavailable): the paths' ray generation shaders, the general build's and the one of
+  // one ray a texel's (PATH_ONE_SAMPLE), their records (at 0 and at PATH_SER_RECORD).
   ComPtr<ID3D12StateObject> path_ser_;
+  ComPtr<ID3D12StateObject> path_ser_one_;
   ComPtr<ID3D12Resource> path_ser_table_;
   static constexpr uint64_t PATH_SER_RECORD = D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
-  // SHaRC Radiance Cache (rt_sharc.hlsli; null pipelines: unavailable): the paths' SHaRC variant, its update and resolve,
-  // its buffers (SHARC_ENTRIES each of SHARC_STRIDES: the keys, a frame's sums, the resolved light;
-  // made at first use, zeroed as committed buffers are) and the frame its update last ran.
+  // SHaRC Radiance Cache (rt_sharc.hlsli; null pipelines: unavailable): the paths' SHaRC variants (the general one and
+  // the one of one ray a texel, PATH_ONE_SAMPLE), its update and resolve,
+  // its buffers (SHARC_ENTRIES each of SHARC_STRIDES: the keys, a frame's sums, the resolved light; made at first use,
+  // zeroed as committed buffers are, kept while the paths use it) and the frame its update last ran.
   ComPtr<ID3D12PipelineState> sharc_path_pipeline_;
+  ComPtr<ID3D12PipelineState> sharc_path_one_pipeline_;
   ComPtr<ID3D12PipelineState> sharc_update_pipeline_;
   ComPtr<ID3D12PipelineState> sharc_resolve_pipeline_;
   std::array<ComPtr<ID3D12Resource>, 3> sharc_buffers_;

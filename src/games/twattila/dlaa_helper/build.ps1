@@ -54,18 +54,39 @@ if ($env:RENODX_TW_REFERENCE_BUILD) {
 Remove-Item "$out\rt_recorder_build.h" -ErrorAction SilentlyContinue
 if ($env:RENODX_TW_RECORDER_BUILD) { Set-Content -Path "$out\rt_recorder_build.h" -Value '#pragma once' -Encoding ascii }
 & "$root\bin\dxc.exe" -nologo -T cs_6_0 -E main -O3 -Fh "$out\fg_ui.h" -Vn FG_UI "$PSScriptRoot\fg_ui.cs_6_0.hlsl"
+# Path Tracing SER's paths built as the compute ones: the general build and the one of one ray a texel.
 & "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -Fh "$out\rt_path_ser.h" -Vn RT_PATH_SER "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
-# NVIDIA's SHaRC (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/SHARC: its 1.6.5 release) for SHaRC Radiance Cache when
-# it sits in build\downloads\sharc\extracted: its headers compiled into the paths' SHaRC variants (else none: the
-# helper builds without it).
-$sharc = Get-ChildItem (Join-Path $root "build\downloads\sharc\extracted") -Directory -ErrorAction SilentlyContinue |
-  Where-Object { Test-Path "$($_.FullName)\include\SharcCommon.h" } | Select-Object -First 1
-Remove-Item "$out\rt_path_sharc.h", "$out\rt_sharc_update.h", "$out\rt_sharc_resolve.h" -ErrorAction SilentlyContinue
-if ($sharc) {
-  $sharc_flags = @('-nologo', '-T', 'cs_6_9', '-E', 'main', '-O3', '-D', 'OPACITY_MICROMAPS', '-D', 'SHARC', '-enable-16bit-types', '-I', "$($sharc.FullName)\include")
-  & "$root\bin\dxc.exe" @sharc_flags -Fh "$out\rt_path_sharc.h" -Vn RT_PATH_SHARC "$PSScriptRoot\rt_path.cs_6_5.hlsl"
-  & "$root\bin\dxc.exe" @sharc_flags -D SHARC_UPDATE=1 -D SHARC_PROPAGATION_DEPTH=2 -Fh "$out\rt_sharc_update.h" -Vn RT_SHARC_UPDATE "$PSScriptRoot\rt_sharc_update.hlsl"
-  & "$root\bin\dxc.exe" @sharc_flags -Fh "$out\rt_sharc_resolve.h" -Vn RT_SHARC_RESOLVE "$PSScriptRoot\rt_sharc_resolve.hlsl"
+& "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -D PATH_ONE_SAMPLE -Fh "$out\rt_path_ser_one.h" -Vn RT_PATH_SER_ONE "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
+# NVIDIA's SHaRC 1.8.3 (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/SHARC: its untagged main commit 4e21b585 "v1.8.3";
+# 1.6.5 was a release) for SHaRC Radiance Cache: fetched into build\downloads\sharc\extracted\NVIDIA-RTX-SHARC-4e21b585 when
+# missing, unmodified with NVIDIA's licence (never committed here), its headers compiled into the paths' SHaRC variants
+# (for one ray a texel too, PATH_ONE_SAMPLE), its update and resolve. Without it the helper builds without SHaRC; a SHaRC
+# shader that fails to compile fails the build. Older folders there (1.6.5's NVIDIA-RTX-SHARC-0b9f58b) stay for older trees.
+$sharc_commit = '4e21b585c33c83d723ca9a1e11bbb1090d145793'
+$sharc = Join-Path $root "build\downloads\sharc\extracted\NVIDIA-RTX-SHARC-$($sharc_commit.Substring(0, 8))"
+if (-not (Test-Path "$sharc\include\SharcCommon.h")) {
+  $sharc_zip = Join-Path $root "build\downloads\sharc\SHARC-$sharc_commit.zip"
+  try {
+    New-Item -ItemType Directory -Force (Join-Path $root "build\downloads\sharc\extracted") | Out-Null
+    Invoke-WebRequest -UseBasicParsing "https://github.com/NVIDIA-RTX/SHARC/archive/$sharc_commit.zip" -OutFile $sharc_zip
+    Expand-Archive $sharc_zip (Join-Path $root "build\downloads\sharc\extracted") -Force
+    Rename-Item (Join-Path $root "build\downloads\sharc\extracted\SHARC-$sharc_commit") $sharc
+  } catch {
+    "SHaRC 1.8.3 could not be fetched ($_): the helper builds without SHaRC"
+  }
+}
+Remove-Item "$out\rt_path_sharc.h", "$out\rt_path_sharc_one.h", "$out\rt_sharc_update.h", "$out\rt_sharc_resolve.h" -ErrorAction SilentlyContinue
+if (Test-Path "$sharc\include\SharcCommon.h") {
+  $sharc_version = (Select-String -Path "$sharc\include\SharcCommon.h" -Pattern '#define SHARC_VERSION_(MAJOR|MINOR|BUILD)\s+(\d+)' |
+                    ForEach-Object { $_.Matches[0].Groups[2].Value }) -join '.'
+  if ($sharc_version -ne '1.8.3') { throw "SHaRC in $sharc is $sharc_version, not 1.8.3" }
+  $sharc_flags = @('-nologo', '-T', 'cs_6_9', '-E', 'main', '-O3', '-D', 'OPACITY_MICROMAPS', '-D', 'SHARC', '-enable-16bit-types', '-I', "$sharc\include")
+  foreach ($sharc_shader in @(@('rt_path.cs_6_5', 'SHARC_QUERY=1', 'rt_path_sharc', 'RT_PATH_SHARC'), @('rt_path.cs_6_5', 'SHARC_QUERY=1 PATH_ONE_SAMPLE', 'rt_path_sharc_one', 'RT_PATH_SHARC_ONE'),
+                              @('rt_sharc_update', 'SHARC_UPDATE=1 SHARC_PROPAGATION_DEPTH=2', 'rt_sharc_update', 'RT_SHARC_UPDATE'), @('rt_sharc_resolve', '', 'rt_sharc_resolve', 'RT_SHARC_RESOLVE'))) {
+    $defines = $sharc_shader[1].Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { '-D', $_ }
+    & "$root\bin\dxc.exe" @sharc_flags @defines -Fh "$out\$($sharc_shader[2]).h" -Vn $sharc_shader[3] "$PSScriptRoot\$($sharc_shader[0]).hlsl"
+    if ($LASTEXITCODE -ne 0) { throw "SHaRC shader $($sharc_shader[2]) failed" }
+  }
 }
 foreach ($shader in @(@('rt_soft', 'RT_SOFT'), @('rt_scene_data', 'RT_SCENE_DATA'), @('rt_compact', 'RT_COMPACT'), @('rt_place', 'RT_PLACE'),
                       @('rt_cache_fill', 'RT_CACHE_FILL'), @('rt_cache_resolve', 'RT_CACHE_RESOLVE'), @('rt_reflect_filter', 'RT_REFLECT_FILTER'),

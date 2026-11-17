@@ -378,12 +378,17 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT / PT SETTINGS SWEEP (ATN 20:0x: "we are testing every RT and PT setting ... o ... | gpr_, coordinator
 - REC_COMPARE SIZE: rec_compare.py counts differing words only; add the size of a ... | next recorder touch (tools)
 - GPU PLAN (gpr_ xHigh, plan_1117/gpu_plan.md): queue fix1_ (merged) -> G1 -> SHaR ... | coordinator
-- SHARC BUGS (gpr_, for the SHaRC 1.8.3 job): (S1) rt_d3d12.hpp:2659 GrowBuffer(&. ... | ssr_
 - SER VERDICT (gpr_ vs NVIDIA RTXPT): placement right, hint WRONG (InstanceID & 7 ... | ssr_
 - CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still tryi ... | ATN
-- SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | sol_
+- SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | ATN (EJOB / EVEC / EHALF integration stay with ATN's ChatGPT
+- WRITER SMALL FIXES (from Sol's 0001 review): our engine_code.hpp writer: (a) a f ... | ATN's go (game-code file, theoretical today: no site crosses
 - L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; ... | after ssr_ / G1 (helper queue)
-- PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rcg_, rbk_
+- PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rbk_
+- APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-th ... | apr_, coordinator
+- CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's ren ... | the combined bench (ATN's go)
+- SER ON IN WH3 (ssr_: faster in all three forest views, same picture, repeats exa ... | coordinator after g1_
+- SHARC COST 2 (ssr_): the update pass 0.26-0.72 ms (latency-bound, 12-28 % occupa ... | next SHaRC round
+- BAKE POOL POISON TEST (ssr_ S1 kept the GPU micromap bake's transient pools acro ... | next helper round
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2791,7 +2796,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         Experimental (quarter-rate rough specular occlusion, grass ray caps, leaf copies as layers, ReSTIR visibility
         culls non-opaque); L1 clusters 1-2.7 ms read after T6; settings sweep T7 (~75 traces; player needs P1 numeric
         overrides, P2 recorded upscale requests for DLSS / RR / FG / FSR / XeSS; NRD toggles today). Owner: coordinator
-      - [ ] SHARC BUGS (gpr_, for the SHaRC 1.8.3 job): (S1) rt_d3d12.hpp:2659 GrowBuffer(&...) recreates all three
+      - [x] DONE 22:0x ssr_, merged 3bc663638 (helper 1CF03431E852; notes plan_1117/ssr_notes.md; builds kept in
+        build\ssr_base / ssr_sharc1 / ssr_ser1, scripts tools/tw/nsight/ssr_scripts; ~30 plays + 40 traces, no hang):
+        S1 8e8250ffa (SHaRC buffers + the GPU bake's &gpu.uvs / &gpu.transient[pool] via std::addressof; buffers given
+        back when a path request runs without SHaRC; static_checks no exceptions), S2 8029ff218 (update gated on
+        light_kept[1].w, sky SkyLight(KeptShade()) x SkyCalibration), 1.8.3 dd0d85585 (build.ps1 picks
+        build\downloads\sharc\extracted\NVIDIA-RTX-SHARC-4e21b585 by name, fetches NVIDIA's archive if missing; S3
+        sqrt(3) rule, S4 SHARC_QUERY one-ray build, SharcInput guard NaN / neg -> 0, inf -> 65504, luminance <= 1024),
+        R1 SER e0d941528 (one reorder at the first surface on hits, 1-bit off-screen hint, MaybeReorderThread(hint, 1),
+        general + one-sample ray-gen libraries). Rows off: 60 / 60 + 125 / 125 chunks equal. SER on vs off: tiny
+        (0.08 % of bounce texels day1 at 1e-7..1e-6 relative; reservoir pick flips later), mean luminance equal to 5
+        digits; SER total day1 -0.067 / sea1 +0.053 / WH3 unit -0.260 / high -0.211 / edge -0.153 ms (path pass 12-19 %
+        faster in WH3 forests). SHaRC: cache persists (wh3 unit 241,479 keys aged 1-8 frames vs 59,789 all 1 frame;
+        high 153,585 vs 0), 80 MiB once, no NaN / Inf, bounce -0.003..-0.023 %; cost day1 +0.256 / sea1 +0.845 / unit
+        +0.373 / high +0.701 / edge +0.592 (update + resolve 0.26-0.72): stays Experimental off. S5 (update beside
+        reuse) tried, no consistent gain, reverted. Was: SHARC BUGS (gpr_, for the SHaRC 1.8.3 job): (S1) rt_d3d12.hpp:2659 GrowBuffer(&...) recreates all three
         SHaRC buffers EVERY frame: the cache never keeps a frame and old buffers are freed while the GPU may still use
         them (a likely cause of the depth-4 hang); fix std::addressof (queued lifetime fix); (S2) rt_sharc_update.hlsl:25
         / :42 gate and colour the sky on a value the sun-light mode never solves (WH3 high / edge: almost no update rays,
@@ -2817,7 +2836,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         real diffs on engine_code.hpp (0001 patch-writer rework + transaction tests; 0002 one E3P prefetch site behind
         RENODX_ATTILA_EXPERIMENTAL_RENDER_PREFETCH) + prototypes not integrated (EHALF 4 of 20 conversions, EVEC capped
         capacity, EJOB delegated wake + model / 32-thread tests). sol_ xHigh review STARTED 21:1x (apply, build x86,
-        tw_engine_code all parts, verdict per item) -> plan_1117/sol62_review.md. Owner: sol_
+        tw_engine_code all parts, verdict per item) -> plan_1117/sol62_review.md. 22:0x: items 1-3 reviewed, then a
+        safety classifier withheld sol_'s response at the start of EJOB ("not again, even reworded"; third EJOB stop:
+        final); EJOB / EVEC not reviewed. Verdicts: 0001 writer NOT as is (theoretical fixes; adds all-or-nothing
+        batches, 5.43 s detach, partial 5-byte check, aborts on unopenable threads) -> take a small form ourselves (box
+        below); 0002 prefetch REJECT (exact but 0.00 ms site; suite fails with its define); EHALF math exact over all
+        2^32 x 4 lanes vs the game's routine, integration missing, ~-0.1 ms (4 of 20 calls). Branch sol62-review keeps
+        Sol's two commits; worktree removed (links removed alone first). tw_engine_code x86 full PASS with 0001.
+        Owner: ATN (EJOB / EVEC / EHALF integration stay with ATN's ChatGPT work)
+      - [ ] WRITER SMALL FIXES (from Sol's 0001 review): our engine_code.hpp writer: (a) a failed VirtualProtect must not
+        report the site as written; (b) a cross-page restore must restore each page's own protection; (c) the stub
+        page's VirtualProtect / FlushInstructionCache checked in Prepare; (d) a per-site expected-byte check that stands
+        down only that site. Our own code, no game analysis; tests in tw_engine_code. Owner: ATN's go (game-code
+        file, theoretical today: no site crosses a page)
       - [ ] L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; stress 2.73 ms): design
         skipping unmoved soldiers' cluster instantiation and / or cluster LODs for far units (xHigh design, then High).
         Owner: after ssr_ / G1 (helper queue)
@@ -2831,7 +2862,49 @@ heading text are in HANDOFF_ARCHIVE.md)
         better at the end? Then let's do that": rcg_ now records ONLY the BASE grass views (sliders max), no V1 run;
         rbk_ High STARTED 21:4x: RENODX_TW_PLAY_MICROMAP_LEVEL (play-only rebake from recorded inputs; unset = today;
         level 5 rebake must equal the recorded bytes; level 6 on day1_low / night1_low / stress_low / day1_battle +
-        the grass recordings, two traces a point). Owner: rcg_, rbk_
+        the grass recordings, two traces a point). rcg_ DONE 20:5x (one Attila run 20:53-20:57, no crash; all files
+        restored by hash; grass_recordings.md): grass sliders max via RENODX_TW_SET (GraphicsGrassDistance=4,
+        GraphicsGrassDensity=8, GrassHeightDistance=10), day1.replay; D:\Dev\tw_recordings\grass_ground\frame_1033
+        (4418 MB, view.png) + grass_unit\frame_1755 (4866 MB), both play 0 different; Nsight 2 traces each: grass_ground
+        trace 10.23 / path 4.71 / reuse 1.17 / all 24.2 ms, grass_unit 5.30 / 3.40-3.48 / 0.75-0.82 / 17.5-17.7
+        (day1_battle 12.9); grass hot lines rt_trace_omm 2988 ~35 %, rt_path_one_omm 2398 ~34 %. rbk_ told to use
+        both. Owner: rbk_
+      - [ ] APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-thread last-pipeline cache in
+        front of the pipeline map lock, invalidated by a destroy generation; shared utils, opt-in Attila only (B3's
+        pattern), check mode for the bench, new test/tw_pipeline_cache; night1 -0.1..-0.2. apipe_ High STARTED 22:1x
+        (notes plan_1117/apipe_notes.md); then an xHigh review (with the pre-bench review). DONE 22:4x apipe_ (branch
+        apipe_ from b477a143a: 780d5e090 pipeline.hpp / shader.hpp bind cache + test/tw_pipeline_cache 17 parts x86 +
+        amd64, 2b17596eb Attila opt-in use_bind_cache, eefd5f1f4 static_checks "pipelines"; check_logs.py rule "bind
+        cache (off|mismatch)"): caches the bind OUTCOME per thread (1,024 entries, 32 KB), process-wide generation
+        bumped under the lock on every pipeline_infos write / destroy / Use / callback change; B3-style tokens + writer
+        checks; RENODX_PIPELINE_MEMO=0/1, _CHECK=1; release self-check 1 / 256 a frame; 4 threads + churn 60-89 M binds
+        0 wrong; bind x86 31.2 -> 13.8 ns (4 threads 55.5 -> 13.9), amd64 17.4 -> 8.7 (42.7 -> 9.2); builds 15 x86 + 21
+        amd64 exit 0; suites pass; static_checks 0. Left: PopulateStageState writable pointers (read-only today), the
+        writer check is a near copy of B3's (one shared helper after g1_'s resource.hpp merge), in-game hit rate unknown
+        (bench with _CHECK=1 + A/B MEMO=0), x86 hit-path disassembly. xHigh review apr_ STARTED 22:4x BEFORE the merge
+        -> plan_1117/apipe_review.md. Owner: apr_, coordinator
+      - [ ] CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's render-thread time after
+        B2-B4 (WPR), bridge flushes step 2 (one FrameTrace frame), the alt-tab transient, view filter for the other TW
+        games after Attila's numbers, heapfix B4G numbers for the author; Sprites = ATN's look decision. Owner: the
+        combined bench (ATN's go)
+      - [x] DONE 22:5x (ATN: "I guess you can just force push, no?"): git push --force-with-lease=atn-mods:65ee50591
+        origin atn-mods -> origin e5cea876b (65ee50591 no longer on any remote branch; it stays on ATN's local branch
+        ejob-fork / D:\Dev\renodx-ejob, untouched; keep that folder: uncommitted EHALF work). Pushes resume.
+        Was: ORIGIN HAS ATN'S OTHER SESSION'S COMMIT (22:3x): 65ee50591 "[mod:twattila] Faster Job Wake-Ups ...
+        (Experimental, off)" (ArshiaTN 21:21, ATN's local Sonnet 5.5 session, branch ejob-fork) was pushed onto
+        origin/atn-mods on top of 3a8305fab; local atn-mods / the main checkout do NOT have it (behind 1, clean). ATN
+        22:3x told that session to keep it local and remove the push. Until ATN says it is removed: no pull / merge of
+        origin/atn-mods, my commits stay local, no pushes (never force). Then: if origin went back to 3a8305fab, push as
+        usual; if a revert commit was added, merge origin (net zero) and push. Owner: ATN, then coordinator
+      - [ ] SER ON IN WH3 (ssr_: faster in all three forest views, same picture, repeats exactly 117 / 117): make Path
+        Tracing SER on by default for WH3 (the default lives in rt_scene.hpp, g1_'s file: after g1_ merges); Attila
+        stays off (day1 -0.07, sea1 +0.05: ATN's call). Owner: coordinator after g1_
+      - [ ] SHARC COST 2 (ssr_): the update pass 0.26-0.72 ms (latency-bound, 12-28 % occupancy): skip update threads on
+        water / sky texels (rays mostly miss, write no voxel) or tie the update share to cache occupancy; judge "more
+        bounces through the cache" against the reference; SHaRC's picture reference check. Owner: next SHaRC round
+      - [ ] BAKE POOL POISON TEST (ssr_ S1 kept the GPU micromap bake's transient pools across requests, as omm.h says
+        they may be reused after baking): recordings refuse GPU baking, so that path is untested: a harness poison test
+        (fill pools between bakes, compare baked bytes). Owner: next helper round
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
