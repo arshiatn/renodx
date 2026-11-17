@@ -2705,7 +2705,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         (Forge's columns, i-cache misses, lmem spills, SASS hot spots): rec_ STARTED 20:5x (recorder-only code + tools).
         Owner: rec_
       - [ ] STEP 4 TRACES (nsr_ Low STARTED 22:2x): all 15 recordings BASE + SER on + SHaRC on (battle views + the 3 WH3
-        forest views) with Forge's columns -> plan_1117/step4_traces.md; then an xHigh read (GPU plan: the reflections'
+        forest views) with Forge's columns -> plan_1117/step4_traces.md. 29 / 29 traces done 23:xx (runs
+        tools/tw/nsight/runs/step4_*; SER = set mask 128, SHaRC = 256; Attila: SER +0.1..0.3 ms on every battle view (day1:
+        path tracing 1.92 -> 3.26 ms, reflections 1.63 -> 0.41 with RT 0 %: check what the SER flag does to reflections),
+        SHaRC +0.2..0.9 (sea1_battle worst 16.38 -> 17.28), day1_low 19.8 / night1_low 26.4 ms (trace 7.6 ms on day1_low);
+        no NRD / RR passes in plays). WH3 base + SER started at frame 6 (setup frames, 22-25 ms, "Hardware Event ran out
+        of resource"): RETRACE at frame 400 by nsr_ STARTED 23:xx. Then an xHigh read (GPU plan: the reflections'
         453 MB spills, path tracing's register limit + 897 MB I$ misses, line 1503, SER / SHaRC per scene), then High
         implementers, then an xHigh review. Owner: nsr_, coordinator
       - [ ] CPU PLAN 2 REVIEW (cr2_ xHigh STARTED 23:xx, read only): site 8 c5da4079f, B2 a0e98fd94, B3 ae73a0b54, B4
