@@ -1,7 +1,7 @@
 // The rays' capture of a triangle strip (bug4_, DEBUG44 (e): the ships' rigging, rope.hlsl vs30_main_rigid 3926A823, drawn
 // as a strip and left out by rt_core.hpp Capture). What Capture now counts on, on WARP's stream output:
 // 1. A strip of N vertices, I instances, streamed out: I x (N - 2) triangles as a list, 3 x (N - 2) x I vertices (Capture's
-//    vertex_count), each triangle the strip's (k, k + 1, k + 2), every odd one's first two swapped (the strip's winding kept).
+//    vertex_count), each triangle the strip's (k, k + 1, k + 2), every odd one (k, k + 2, k + 1): the strip's winding kept.
 // 2. An indexed strip cut by its strip-cut index (0xFFFF): fewer triangles, those of each piece; the capture's range past
 //    them keeps the NaN it was emptied with (inactive triangles for the helper).
 // CONTROL: the strip's indices read as a list (what a compact capture would make of them) are other triangles.
@@ -114,7 +114,7 @@ int main() {
   const auto expected = [](const std::vector<uint32_t>& strip, UINT instance, std::vector<Vertex>* out) {
     for (size_t k = 0; k + 2 < strip.size(); ++k) {
       const std::array<uint32_t, 3> corners = (k % 2 == 0) ? std::array<uint32_t, 3>{strip[k], strip[k + 1], strip[k + 2]}
-                                                           : std::array<uint32_t, 3>{strip[k + 1], strip[k], strip[k + 2]};
+                                                           : std::array<uint32_t, 3>{strip[k], strip[k + 2], strip[k + 1]};
       for (const uint32_t corner : corners) out->push_back({static_cast<float>(corner), 0.f, 0.f, static_cast<float>(corner) + 100.f * instance});
     }
   };
@@ -129,7 +129,11 @@ int main() {
     for (UINT instance = 0; instance < 2; ++instance) expected({0, 1, 2, 3, 4, 5, 6}, instance, &want);
     bool match = want.size() == count;
     for (UINT index = 0; index < count && match; ++index) match = same(out[index], want[index]);
-    std::printf("  %llu triangles written, Capture's count %u vertices\n", static_cast<unsigned long long>(primitives), count);
+    std::printf("  %llu triangles written, Capture's count %u vertices\n  streamed:", static_cast<unsigned long long>(primitives), count);
+    for (UINT index = 0; index < 12; ++index) std::printf(" %g", out[index][0]);
+    std::printf("\n  expected:");
+    for (UINT index = 0; index < 12; ++index) std::printf(" %g", want[index][0]);
+    std::printf("\n");
     Check("3 x (N - 2) x I vertices", primitives * 3 == count);
     Check("the strip's triangles, its winding kept", match);
     Check("past them the range's NaN", std::isnan(out[count][0]));

@@ -30,7 +30,7 @@ static ComPtr<ID3D11Device> device;
 static ComPtr<ID3D11DeviceContext> context;
 
 static const char* PROBE = R"(
-#include "../../src/games/twattila/rt_fog.hlsli"
+#include "rt_fog.hlsli"
 // The upsample before bug4_ (bilinear, no depth).
 float OldSun(float2 render_pixel) {
   uint width, height;
@@ -89,7 +89,8 @@ static ComPtr<ID3D11ShaderResourceView> Texture(const void* data, int width, int
 int main(int argc, char** argv) {
   if (argc < 2) return 2;
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context))) return 1;
-  const std::string source_name = std::string(argv[1]) + "/test/tw_fog_upsample/probe.hlsl";
+  // Named as if beside rt_fog.hlsli: the standard include handler resolves its own include from there.
+  const std::string source_name = std::string(argv[1]) + "/src/games/twattila/fog_probe.hlsl";
   ComPtr<ID3DBlob> ps_blob, vs_blob, errors;
   if (FAILED(D3DCompile(PROBE, std::strlen(PROBE), source_name.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "ps_5_0", 0, 0, &ps_blob, &errors))) {
     std::printf("probe: %s\nFAIL\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");

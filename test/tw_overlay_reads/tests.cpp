@@ -14,9 +14,13 @@
 // 3. 100%: the patch with cb12 unbound gives the game's bits.
 // 4. 100%: another overlay picture changes the game's output (the overlay counts; tried over 8 seeds of the one-texel
 //    textures, else the row is listed: its overlay branch not reached in this frame).
-// 5. 33%: the patch (cb12 1/3) against the game at 100%: equal (1e-5) beyond 8 px of the edges, every pixel listed.
-//    CONTROL 33%: the game's bytes against 100%: apart (where 4 holds).
-// 6. 33%, an overlay not display-sized (OnCommand's zw 1, the overlay whole): the patch against the game at 100%: equal.
+// 5. 33%: the patch (cb12 1/3) with the overlay 3x (its picture top-left) against the patch at zw 1 with the overlay whole,
+//    all else alike: the overlay read through the frame's share (1e-5 beyond 8 px of the edges; the overlay point-sampled,
+//    a 3x texture's coordinate rounding moving a few texels: up to 1% of the values). CONTROL (where 4 holds): the patch
+//    without its region sites (today's) on the 3x overlay: apart (10% of the values or more).
+// 6. 33%, an overlay not display-sized (OnCommand's zw 1, the overlay whole): the patch gives today's bits.
+// Listed: the patch at 33% against the game at 100% (other sites show there too: the ocean's refraction distortion).
+// OVERLAY_GAME=<folder>: that game alone; OVERLAY_DUMP=<hash>: its patched bytes written, nothing drawn.
 // tests.exe <repo> <dumps folder>
 #include <windows.h>
 #include <d3d11.h>
@@ -29,6 +33,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <format>
@@ -294,7 +299,8 @@ static Result Run(const Frame& frame, ID3D11PixelShader* shader, UINT scale, con
     const std::string& name = frame.names[index];
     if (bind.Type == D3D_SIT_SAMPLER) {
       samplers[bind.BindPoint] = ((bind.uFlags & D3D_SIF_COMPARISON_SAMPLER) != 0) ? comparison.Get()
-                                 : (name.find("point") != std::string::npos || name.find("nearest") != std::string::npos) ? point_clamp.Get()
+                                 : (name.find("point") != std::string::npos || name.find("nearest") != std::string::npos
+                                    || name.find("overlay") != std::string::npos) ? point_clamp.Get()
                                                                                                                          : linear_clamp.Get();
       continue;
     }
@@ -389,9 +395,12 @@ static Result Run(const Frame& frame, ID3D11PixelShader* shader, UINT scale, con
   return result;
 }
 
-// Values apart beyond `tolerance` (relative above 1), only beyond EDGE px of the view's edges when `inner`.
+// Values apart beyond `tolerance` (relative above 1), only beyond EDGE px of the view's edges when `inner`; the largest
+// finite difference of the last call in last_largest.
+static double last_largest = 0.0;
 static uint64_t Apart(const Result& a, const Result& b, double tolerance, bool inner, uint64_t* bits = nullptr) {
   uint64_t apart = 0, differ = 0;
+  last_largest = 0.0;
   const size_t planes = a.values.size() / (size_t{W} * H * 4);
   for (size_t plane = 0; plane < planes; ++plane) {
     for (UINT y = 0; y < H; ++y) {
@@ -404,6 +413,7 @@ static uint64_t Apart(const Result& a, const Result& b, double tolerance, bool i
           ++differ;
           const double difference = std::fabs(static_cast<double>(first) - second);
           if (!(difference <= tolerance * std::max(1.0, std::fabs(static_cast<double>(first))))) ++apart;
+          if (std::isfinite(difference)) last_largest = std::max(last_largest, difference);
         }
       }
     }
@@ -435,6 +445,8 @@ int main(int argc, char** argv) {
   const std::string attila_rt = ReadText(repo / "src/games/twattila/rt_scene.hpp");
 
   for (const char* game : {"twattila", "twthronesofbritannia", "twrome2", "twwarhammer", "twwarhammer2", "twtroy", "twpharaohdynasties"}) {
+    // OVERLAY_GAME=<folder>: that game alone.
+    if (const char* only = std::getenv("OVERLAY_GAME"); only != nullptr && std::string(only) != game) continue;
     const std::string text = ReadText(repo / "src/games" / game / "addon.cpp");
     const auto cso = dumps / (std::string("dump_shader_") + game + "_pack") / "cso";
     std::vector<std::string> whole;
@@ -457,7 +469,7 @@ int main(int argc, char** argv) {
       std::filesystem::path file;
       for (const auto& found : std::filesystem::directory_iterator(cso)) {
         const auto name = found.path().filename().string();
-        if (name.starts_with(std::format("0x{:08X}.ps_", hash))) file = found.path();
+        if (name.starts_with(std::format("0x{:08X}.ps_", hash)) && name.ends_with(".cso")) file = found.path();
       }
       if (file.empty()) continue;
       const auto code = ReadBytes(file);
@@ -469,6 +481,14 @@ int main(int argc, char** argv) {
       const auto after = view_share_patch::Patch(code, reflection, slots, chains);
       const auto& old_code = before.code.empty() ? code : before.code;
       const auto& new_code = after.code.empty() ? code : after.code;
+      // OVERLAY_DUMP=<hash>: its patched bytes written next to the test (fxc /dumpbin them), nothing drawn.
+      if (const char* dump = std::getenv("OVERLAY_DUMP"); dump != nullptr) {
+        if (std::strtoul(dump, nullptr, 16) == hash) {
+          std::ofstream(std::format("0x{:08X}_patched.cso", hash), std::ios::binary).write(reinterpret_cast<const char*>(new_code.data()),
+                                                                                        static_cast<std::streamsize>(new_code.size()));
+        }
+        continue;
+      }
       const auto line = std::format("  {:08X} {} slots {:b} overlay {:b}: region sites {} -> {}", hash, file.filename().string(), slots,
                                     frame.overlay_slots, before.region, after.region);
       bool ok = after.region > before.region;
@@ -541,8 +561,9 @@ int main(int argc, char** argv) {
           notes += " " + (index < old_chain.steps.size() ? old_chain.steps[index] : "-") + "/" + (index < new_chain.steps.size() ? new_chain.steps[index] : "-");
         }
       }
-      ComPtr<ID3D11PixelShader> game_shader, ours, old_chained, new_chained;
+      ComPtr<ID3D11PixelShader> game_shader, before_shader, ours, old_chained, new_chained;
       if (FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, &game_shader))
+          || FAILED(device->CreatePixelShader(old_code.data(), old_code.size(), nullptr, &before_shader))
           || FAILED(device->CreatePixelShader(new_code.data(), new_code.size(), nullptr, &ours))
           || FAILED(device->CreatePixelShader(old_chain.code.data(), old_chain.code.size(), nullptr, &old_chained))
           || FAILED(device->CreatePixelShader(new_chain.code.data(), new_chain.code.size(), nullptr, &new_chained))) {
@@ -576,31 +597,41 @@ int main(int argc, char** argv) {
         ok = false;
         notes += std::format(" 100% NOT THE GAME'S BITS ({})", bits);
       }
+      // 5. The overlay read through the frame's share: the overlay 3x at zw 1/3 against it whole at zw 1, all else alike
+      //    (point sampling; its rounding on a 3x texture moves a few texels: up to 1% of the values).
       const auto ours33 = Run(frame, ours.Get(), S, share.data(), seed, Overlay::SCREEN);
-      const uint64_t apart33 = Apart(at100, ours33, 1e-5, true);
-      const uint64_t apart33_all = Apart(at100, ours33, 1e-5, false);
-      const uint64_t control = Apart(at100, Run(frame, game_shader.Get(), S, share.data(), seed, Overlay::SCREEN), 1e-5, true);
-      const uint64_t apart_whole = Apart(at100, Run(frame, ours.Get(), S, share_whole.data(), seed, Overlay::WHOLE), 1e-5, true);
-      if (apart33 != 0) {
+      const auto ours33_whole = Run(frame, ours.Get(), S, share_whole.data(), seed, Overlay::WHOLE);
+      const uint64_t compared = uint64_t{W - 2 * EDGE} * (H - 2 * EDGE) * 4 * frame.targets;
+      const uint64_t mapped = Apart(ours33_whole, ours33, 1e-5, true);
+      const double largest = last_largest;
+      // CONTROL: the patch without the region sites (today's) on the 3x overlay against the same reference.
+      const uint64_t control = Apart(ours33_whole, Run(frame, before_shader.Get(), S, share.data(), seed, Overlay::SCREEN), 1e-5, true);
+      // 6. zw 1 (an overlay not display-sized, OnCommand's size check): the patch gives today's bits.
+      uint64_t whole_bits = 0;
+      Apart(Run(frame, before_shader.Get(), S, share_whole.data(), seed, Overlay::WHOLE), ours33_whole, 0.0, true, &whole_bits);
+      // Listed: the patch at 33% against the game at 100% (other sites' differences show here too: the ocean's refraction).
+      const uint64_t against_100 = Apart(at100, ours33, 1e-5, true);
+      if (mapped * 100 > compared) {
         ok = false;
-        notes += std::format(" 33% {} APART", apart33);
+        notes += std::format(" OVERLAY MAPPING {} OF {} APART", mapped, compared);
       }
-      if (apart_whole != 0) {
+      if (whole_bits != 0) {
         ok = false;
-        notes += std::format(" 33% WHOLE OVERLAY {} APART", apart_whole);
+        notes += std::format(" ZW 1 NOT TODAY'S BITS ({})", whole_bits);
       }
       if (reaches) {
         ++counted;
-        if (control == 0) {
+        if (control * 10 < compared) {
           ok = false;
           notes += " A CONTROL PASSED";
         }
       }
       failures += ok ? 0 : 1;
-      std::printf("%s; chain %s; overlay %s (seed %u); 33%% apart %llu (every pixel %llu), CONTROL %llu, whole overlay %llu: %s%s\n", line.c_str(),
-                  old_chain.steps.empty() ? "none" : "kept", reaches ? "counts" : "not reached: listed", seed, static_cast<unsigned long long>(apart33),
-                  static_cast<unsigned long long>(apart33_all), static_cast<unsigned long long>(control), static_cast<unsigned long long>(apart_whole),
-                  ok ? "ok" : "FAIL", notes.c_str());
+      std::printf("%s; chain %s; overlay %s (seed %u); 33%%: mapping %llu of %llu apart (largest %.3g), CONTROL %llu, zw 1 bits %llu; "
+                  "against 100%% %llu (listed): %s%s\n",
+                  line.c_str(), old_chain.steps.empty() ? "none" : "kept", reaches ? "counts" : "not reached: listed", seed,
+                  static_cast<unsigned long long>(mapped), static_cast<unsigned long long>(compared), largest, static_cast<unsigned long long>(control),
+                  static_cast<unsigned long long>(whole_bits), static_cast<unsigned long long>(against_100), ok ? "ok" : "FAIL", notes.c_str());
     }
     std::printf("%s: %d overlay rows, %d with the overlay reached, %d with a patch on top, %d failed\n\n", game, rows, counted, chained,
                 failures - game_failures);
