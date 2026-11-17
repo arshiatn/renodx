@@ -616,16 +616,17 @@ inline uint64_t ShareWithHelper(HANDLE handle) {
 
 // The last request's answer (once the helper read it and signalled its value; a steady one's usually long there),
 // waited for `timeout` ms at most; false: none (it stopped or did not answer: off; the watcher ends it and frees what
-// the game's GPU waits for from it).
+// the game's GPU waits for from it). A steady request's (`pending`) wait for the helper's next value is queued already: an
+// answer without that value (a helper whose fence went) would leave the game's GPU waiting for good, so it is none either.
 inline bool Answer(DWORD timeout = 5000) {
-  bridge.pending = false;
+  const bool steady = std::exchange(bridge.pending, false);
   const auto& shared = *bridge.shared;
   const std::array<HANDLE, 2> handles = {bridge.done, bridge.process};
   LARGE_INTEGER started;
   LARGE_INTEGER ended;
   QueryPerformanceCounter(&started);
   const bool answered = WaitForMultipleObjects(2, handles.data(), FALSE, timeout) == WAIT_OBJECT_0
-                        && shared.done_value >= bridge.value;
+                        && shared.done_value >= bridge.value + (steady ? 1u : 0u);
   QueryPerformanceCounter(&ended);
   bridge.answer_ticks += ended.QuadPart - started.QuadPart;
   if (!answered) {

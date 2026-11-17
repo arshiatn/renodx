@@ -58,6 +58,9 @@ constexpr uint32_t HEALTHY = 996;          // answers, then its GPU work arrives
 constexpr uint32_t EXITS_AFTER_ANSWER = 997;  // answers, then exits before any GPU work
 constexpr uint32_t STUCK_AFTER_ANSWER = 998;  // answers, stays alive, its GPU work never arrives
 constexpr uint32_t SILENT = 995;           // never answers
+// Answers with the request's own value and signals nothing, as a helper whose fence went (a GPU reset, not reopened):
+// from then on it reads the fence as all ones.
+constexpr uint32_t FENCELESS = 994;
 
 void Check(bool passed, const char* message) {
   if (passed) return;
@@ -176,11 +179,12 @@ int HelperStub(char** argv) {
   ComPtr<ID3D12CommandQueue> queue;
   ComPtr<ID3D12Fence> fence;
   uint32_t opened_generation = 0;
+  bool fenceless = false;
   for (;;) {
     const DWORD woken = WaitForSingleObject(request, 100);
     if (fence) {
       shared->fence_generation = opened_generation;
-      shared->fence_completed = fence->GetCompletedValue();
+      shared->fence_completed = (fenceless ? UINT64_MAX : fence->GetCompletedValue());
     }
     if (woken != WAIT_OBJECT_0) continue;
     if (shared->generation != 0 && shared->color == 0) {
@@ -191,7 +195,7 @@ int HelperStub(char** argv) {
       continue;
     }
     const uint32_t mode = shared->rt_request;
-    if (mode != HEALTHY && mode != EXITS_AFTER_ANSWER && mode != STUCK_AFTER_ANSWER && mode != SILENT) return 0;
+    if (mode != HEALTHY && mode != EXITS_AFTER_ANSWER && mode != STUCK_AFTER_ANSWER && mode != SILENT && mode != FENCELESS) return 0;
     if (shared->generation != opened_generation) {
       if (!device) {
         device = MakeHelperDevice();
@@ -206,6 +210,13 @@ int HelperStub(char** argv) {
     }
     if (mode == SILENT) continue;
     const uint64_t value = shared->value;
+    if (mode == FENCELESS) {
+      fenceless = true;
+      shared->evaluated = 0;
+      shared->done_value = value;
+      SetEvent(done);
+      continue;
+    }
     shared->evaluated = 1;
     shared->done_value = value + 1;
     SetEvent(done);  // The CPU answer comes before the GPU work, as the real helper's queued ray tracing.
@@ -567,6 +578,24 @@ int main(int argc, char** argv) {
   bridge_api::Shutdown();
   CheckClosed();
   std::puts("PASS: another device's end leaves the set and its recovery; the bridge's own device's end releases it");
+
+  // A helper whose fence went answers a steady request with its own value and signals nothing, while the game's GPU
+  // already waits for the next value: no answer, so the watcher ends the helper and the recovery frees the wait (the
+  // helper reads the fence as all ones, which the stuck test never counts).
+  StartReady(game, "start fence-less answer test");
+  {
+    Check(bridge_api::Prepare(device, 16, 16), "the set");
+    Check(RequestAs(game, bridge_api::EVALUATE, HEALTHY), "a request that makes the next one steady");
+    Check(RequestAs(game, bridge_api::EVALUATE, FENCELESS) && bridge.pending, "a steady request, its wait queued");
+    processes_created = 0;
+    Check(!RequestAs(game, bridge_api::EVALUATE, FENCELESS), "nothing evaluated by a fence-less helper");
+    game.QueueTail();
+    Check(game.TailWithin(8000), "the game's GPU gets past the steady request's wait");
+    Check(bridge.watchdog.failed.load() && bridge.failed && processes_created.load() == 1, "the fence-less answer is no answer: one recovery");
+  }
+  bridge_api::Shutdown();
+  CheckClosed();
+  std::puts("PASS: a fence-less answer to a steady request turns the bridge off and the recovery frees its wait");
 
   // Textures that could not be made: tried again at another size or after 30 s, three times a session, a line each. Last:
   // a 32-bit process may find no room afterwards for a later case's 512 MB ray tracing texture.
