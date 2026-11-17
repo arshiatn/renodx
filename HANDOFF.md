@@ -340,7 +340,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers f ... | coordinator -> CPU round (plan step 4)
 - (cap1_ 07:xx: also every ReShade 4K screenshot permanently takes 30-95 MB off th ... | next memory round
 - CAPTURE TOOLING (cap1_ 05:xx): run_game's memory.csv overwritten every start (fi ... | coordinator
-- BUG4 RUN LEFT (1) + (2) (specs in bugs_1117/bug4.md): (1) footprints at DLSS 0 v ... | coordinator (closer camera), ATN (selection)
+- BUG4 RUN LEFT (1) (specs in bugs_1117/bug4.md): footprints at DLSS 0 vs 4 need s ... | ATN
 - BUG4 NEW BOXES (bug4_ 08:xx): (a) foam: the ocean's refraction distortion double ... | next render-scale / helper / per-game rounds, (d) coordinato
 - BUG1 LEFT (bug1_ 08:xx): open for ATN / Musa: at Recommended a bright colour far ... | coordinator (run), ATN
 - BUG2 LEFT (bug2_ 09:xx): in-game Nsight of rt_lights + the bounce apply (9 -> ~1 ... | coordinator (run), ATN (decision)
