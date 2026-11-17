@@ -365,6 +365,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | High implementer (bfx_ merged
 - CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | coordinator
 - CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | hb6_, coordinator
+- B4G THRESHOLD (hb6_ 20:1x): B4 already threaded only lists >= 32768, so B4G diff ... | coordinator (next run batch)
+- HEAPFIX NOTES 2 (hb6_ 20:1x, for the author zip): heapfix's x87 watch turned its ... | coordinator (author_notes_3)
 - CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ejd2_, coordinator
 - CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V ... | coordinator
 - C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GP ... | ?
@@ -2514,8 +2516,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         merges: same engine_code.hpp). Owner: coordinator
       - [ ] CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, P without loopfetch, loopanim
         3 shuffled rounds; tools/tw/heapfix, never the repo) + author notes: hb6_ High STARTED 19:1x (builds + eqtest +
-        bench variants + notes draft tools/tw/heapfix/author_notes_3); then their bench in the next run batch; then ONE
+        bench variants + notes draft tools/tw/heapfix/author_notes_3) DONE 20:1x: B4G f7dcd23f.. (eqtest 468 lists x P / G /
+        GS / forced 2-8 threads = 3,744 sorts bit-identical, stress G2-G8 0 differ, uncommitted-page ends no fault; micro
+        2.0-2.8x vs P from 32768 items, same below), Pnolf 75959a6f.. (2 test checks fail by design: the 6 sites off; 2 KB
+        smaller = other code layout), variants bench/variants/heapfix_b6.json (P, B4G, Pnolf, loopanim, x87keep) +
+        heapfix_b6_lfini.json (P + render_loop_prefetch=0: the same A/B on P's exact bytes), both -DryRun exit 0; notes
+        README + 6 notes, gate patch applies LF + CRLF, privacy scan clean, game numbers [TO FILL]; then their bench in the next run batch; then ONE
         new author zip (zip 2 + the new notes) for ATN to send tomorrow; install the fastest for ATN. Owner: hb6_, coordinator
+      - [ ] B4G THRESHOLD (hb6_ 20:1x): B4 already threaded only lists >= 32768, so B4G differs from B4 only below that:
+        if Constantinople's lists reach 32768, B4G loses there like B4 (+1.3..1.9 ms): one-shot list-size histogram per
+        scene (a private log build) before picking the threshold; the bench decides. Owner: coordinator (next run batch)
+      - [ ] HEAPFIX NOTES 2 (hb6_ 20:1x, for the author zip): heapfix's x87 watch turned its own x87 fix off mid-battle in
+        3 of 200 bench starts (2 of 26 stress); the +0x138F VirtualQuery = memwatch walking the whole address space every
+        5 s. Owner: coordinator (author_notes_3)
       - [ ] CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design + counting plan, docs only,
         xHigh review; ~-2 ms both scenes; not byte-exact, a freeze if wrong): ATN 19:0x "Sure but don't forget plannings
         and the reviews": ejd_ xHigh design STARTED 19:1x (designs/job_wakeups.md), then an xHigh review, then a High
