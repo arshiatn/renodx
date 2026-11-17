@@ -9,6 +9,11 @@
 // 3. A's pose moves 0.2 m between frames 1 and 2 (B's does not), pack hook on: A's motion that move's (-2.56 px in x) in
 //    frame 2 and 0 in frame 3, B 0 px.
 // 4. 65 pages in one pack, a soldier at row 0 of each, each with its own pose: all 0 px (bone keys never shared).
+// 5. Case 4 with each soldier drawn 17 times a frame (1105 moving draws, each with other constants than the last: the
+//    motion constants' ring wraps once a frame).
+// 6. Cases 1a, 3 and 5 in-draw (the game's draw writes the motion: motion_draw_unit_sm3 and the game's pixel shader
+//    patched, the bindings left bound from one moving draw to the next).
+// With RENODX_TW_MOTION_DUMP=<file> every read frame's motion targets go into <file> byte for byte (old vs new builds).
 // Then the fix's cost timed: on the game's thread the texture write check and the pack hook, and a pack round's records on
 // 10 pages on the CPU and the GPU (timestamps: real numbers with `hardware` only).
 // Built with /DGAME_CALLS_ONLY the game's calls alone reach the addon (no write event, no pack hook), as before the fix.
@@ -22,6 +27,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -156,6 +162,10 @@ struct Page {
 };
 
 // The motion shaders the addon would install (Attila's 0x5F9CD405 entry and its unit shaders).
+static std::vector<uint8_t> motion_draw_unit_code;
+static std::vector<uint8_t> game_pixel_code;
+static bool in_draw_mode = false;
+static std::ofstream dump;
 static std::vector<uint8_t> motion_unit_code;
 static std::vector<uint8_t> unit_point_code;
 static std::vector<uint8_t> unit_recorded_code;
@@ -264,20 +274,36 @@ static void DrawSoldier(const Page& page, UINT instance) {
   context->VSSetConstantBuffers(0, 3, constants.data());
   ID3D11ShaderResourceView* bones = page.view.Get();
   context->VSSetShaderResources(0, 1, &bones);
-  ID3D11RenderTargetView* target = color_view.Get();
-  context->OMSetRenderTargets(1, &target, depth_view.Get());
+  // In-draw: the game's targets bound once a frame (BeginFrame), the motion targets left bound from draw to draw.
+  if (!in_draw_mode) {
+    ID3D11RenderTargetView* target = color_view.Get();
+    context->OMSetRenderTargets(1, &target, depth_view.Get());
+  }
   context->OMSetDepthStencilState(depth_less.Get(), 0);
   context->RSSetState(raster.Get());
   const D3D11_VIEWPORT viewport = {0.f, 0.f, static_cast<float>(VIEW_SIZE), static_cast<float>(VIEW_SIZE), 0.f, 1.f};
   context->RSSetViewports(1, &viewport);
-  context->DrawIndexedInstanced(6, 1, 0, 0, instance);
   renodx::utils::command_action::CommandContext<renodx::utils::command_action::DrawIndexedArguments> command = {
       .cmd_list = &cmd_list,
       .arguments = {.index_count = 6, .instance_count = 1, .first_index = 0, .vertex_offset = 0, .first_instance = instance},
       .callback_data = motion_shaders.data(),
   };
   const auto start = std::chrono::steady_clock::now();
-  om::internal::DrawObjectMotion(command, nullptr);
+  if (in_draw_mode) {
+    // object_motion's OnMovingDraw: the motion written by the draw itself, else drawn again after it.
+    bool draw_again = false;
+    const bool drawn = om::internal::DrawObjectMotion(command, &draw_again);
+    if (!drawn && (om::internal::targets_kept.load() || om::internal::bindings_kept.load())) {
+      om::internal::RestoreBindings(context.Get());
+    }
+    context->DrawIndexedInstanced(6, 1, 0, 0, instance);
+    if (!drawn && draw_again) {
+      om::internal::DrawObjectMotion(command, nullptr);
+    }
+  } else {
+    context->DrawIndexedInstanced(6, 1, 0, 0, instance);
+    om::internal::DrawObjectMotion(command, nullptr);
+  }
   if (timing) {
     draw_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     ++draws;
@@ -289,6 +315,38 @@ static void BeginFrame() {
   constexpr std::array<float, 4> CLEAR = {};
   context->ClearRenderTargetView(color_view.Get(), CLEAR.data());
   context->ClearDepthStencilView(depth_view.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+  if (in_draw_mode) {
+    // The game binding its targets: ReShade's bind_render_targets_and_depth_stencil (object_motion's OnBindRenderTargets).
+    ID3D11RenderTargetView* target = color_view.Get();
+    context->OMSetRenderTargets(1, &target, depth_view.Get());
+    const reshade::api::resource_view target_view = {reinterpret_cast<uint64_t>(target)};
+    om::internal::OnBindRenderTargets(&cmd_list, 1, &target_view, {reinterpret_cast<uint64_t>(depth_view.Get())});
+  }
+}
+
+// A motion target's texels (a row after another, `bytes` each).
+static std::vector<uint8_t> ReadTarget(ID3D11ShaderResourceView* view, UINT bytes) {
+  ComPtr<ID3D11Resource> resource;
+  view->GetResource(resource.GetAddressOf());
+  ComPtr<ID3D11Texture2D> texture;
+  resource.As(&texture);
+  D3D11_TEXTURE2D_DESC desc = {};
+  texture->GetDesc(&desc);
+  desc.Usage = D3D11_USAGE_STAGING;
+  desc.BindFlags = 0;
+  desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  ComPtr<ID3D11Texture2D> staging;
+  device->CreateTexture2D(&desc, nullptr, staging.GetAddressOf());
+  context->CopyResource(staging.Get(), texture.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  if (FAILED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) throw std::runtime_error("target map");
+  std::vector<uint8_t> texels(size_t{desc.Height} * desc.Width * bytes);
+  for (UINT y = 0; y < desc.Height; ++y) {
+    std::memcpy(&texels[size_t{y} * desc.Width * bytes], static_cast<const uint8_t*>(mapped.pData) + (size_t{y} * mapped.RowPitch),
+                size_t{desc.Width} * bytes);
+  }
+  context->Unmap(staging.Get(), 0);
+  return texels;
 }
 
 // The motion written this frame at the soldiers' centres (each instance's place moved by its pose): the largest of a 3 x 3
@@ -303,15 +361,19 @@ static std::vector<Motion> ReadMotion(const std::vector<std::pair<UINT, Pose>>& 
   std::vector<Motion> result(soldiers.size());
   const auto targets = om::Target(current_frame);
   if (!targets.redrawn) return result;
-  ComPtr<ID3D11Resource> resource;
-  targets.redrawn->GetResource(resource.GetAddressOf());
-  const D3D11_TEXTURE2D_DESC desc = {.Width = VIEW_SIZE, .Height = VIEW_SIZE, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32G32_UINT,
-                                     .SampleDesc = {1, 0}, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
-  ComPtr<ID3D11Texture2D> staging;
-  device->CreateTexture2D(&desc, nullptr, staging.GetAddressOf());
-  context->CopyResource(staging.Get(), resource.Get());
-  D3D11_MAPPED_SUBRESOURCE mapped = {};
-  if (FAILED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return result;
+  // Redrawn: R32G32_UINT (the motion's halves, the depth's bits); in-draw: R16G16_FLOAT motion, R32_FLOAT depth.
+  const std::vector<uint8_t> redrawn = ReadTarget(targets.redrawn.Get(), 8);
+  std::vector<uint8_t> drawn_motion;
+  std::vector<uint8_t> drawn_depth;
+  if (targets.drawn_motion) {
+    drawn_motion = ReadTarget(targets.drawn_motion.Get(), 4);
+    drawn_depth = ReadTarget(targets.drawn_depth.Get(), 4);
+  }
+  if (dump.is_open()) {
+    for (const std::vector<uint8_t>* texels : {&redrawn, &std::as_const(drawn_motion), &std::as_const(drawn_depth)}) {
+      dump.write(reinterpret_cast<const char*>(texels->data()), static_cast<std::streamsize>(texels->size()));
+    }
+  }
   for (size_t soldier = 0; soldier < soldiers.size(); ++soldier) {
     const auto& [instance, pose] = soldiers[soldier];
     const float world_x = placements[instance][0] + pose.x;
@@ -322,7 +384,14 @@ static std::vector<Motion> ReadMotion(const std::vector<std::pair<UINT, Pose>>& 
     Motion motion = {.written = true};
     for (int y = center_y - 1; y <= center_y + 1; ++y) {
       for (int x = center_x - 1; x <= center_x + 1; ++x) {
-        const auto* texel = reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(mapped.pData) + (y * mapped.RowPitch) + (x * 8));
+        const size_t at = (static_cast<size_t>(y) * VIEW_SIZE) + x;
+        std::array<uint32_t, 2> texel = {};
+        if (in_draw_mode) {
+          std::memcpy(&texel[0], &drawn_motion[at * 4], 4);
+          std::memcpy(&texel[1], &drawn_depth[at * 4], 4);
+        } else {
+          std::memcpy(texel.data(), &redrawn[at * 8], 8);
+        }
         motion.written = motion.written && texel[1] != 0u;
         const float motion_x = HalfToFloat(texel[0] & 0xFFFFu);
         const float motion_y = HalfToFloat(texel[0] >> 16);
@@ -332,15 +401,35 @@ static std::vector<Motion> ReadMotion(const std::vector<std::pair<UINT, Pose>>& 
     }
     result[soldier] = motion;
   }
-  context->Unmap(staging.Get(), 0);
   return result;
 }
 
-// A fresh start of the addon's motion objects (as at a new device), the pack hook as given.
-static void Restart(Hook pack_hook) {
+// A fresh start of the addon's motion objects (as at a new device), the pack hook as given; in-draw: the unit shader's
+// in-draw version and its outputs (object_motion's Install), the game's pixel shader as one that can follow it
+// (OnInitPipeline).
+static void Restart(Hook pack_hook, bool in_draw = false) {
+  om::internal::RestoreBindings(context.Get());
   om::internal::state.objects = {};
+  om::internal::state.in_draw = {};
   om::internal::state.uav_overlap = {.loaded = true};  // no NVIDIA UAV overlap on WARP
   hook = pack_hook;
+  in_draw_mode = in_draw;
+  motion_shaders[0].draw_shader = {};
+  om::internal::pixel_shaders.draw_signatures.assign(1, {});
+  om::internal::pixel_shaders.shaders.clear();
+  if (!in_draw) return;
+  motion_shaders[0].draw_shader = motion_draw_unit_code;
+  auto& signature = om::internal::pixel_shaders.draw_signatures[0];
+  const twattila::dxbc::Program program = twattila::dxbc::Read(motion_draw_unit_code);
+  twattila::dxbc::SignatureElement unused;
+  twattila::dxbc::FindSignatureElement(motion_draw_unit_code, program, "OSGN", [&](const twattila::dxbc::SignatureElement& element, uint32_t reg) {
+    if (element.name == "MOTION" && element.index == 0) {
+      signature.motion_register = reg;
+    }
+    signature.outputs.push_back({.name = std::string(element.name), .index = element.index, .reg = reg, .mask = element.mask});
+    return false;
+  }, &unused);
+  om::internal::pixel_shaders.shaders[reinterpret_cast<uint64_t>(game_pixel_shader.Get())] = {.code = game_pixel_code};
 }
 
 static bool Near(float value, float expected) {
@@ -355,8 +444,8 @@ static float MovedPixels(float metres, float depth) {
 // Cases 1-3: two packs on page 0 a frame, A (instance 0) then B (instance 1), both at row 0; A's pose `a_moved` from frame
 // 2, both soldiers' poses 0.1 m further in x in frame 4 (their bones were found: not 0 by a missed look-up). A keeps its
 // bones only with the pack hook on the draws' thread; else its records record no bones (this frame's pose: 0).
-static int TwoPacks(const char* name, Hook pack_hook, Pose a_moved) {
-  Restart(pack_hook);
+static int TwoPacks(const char* name, Hook pack_hook, Pose a_moved, bool in_draw = false) {
+  Restart(pack_hook, in_draw);
   const Page page = MakePage();
   const bool a_bones = (pack_hook == Hook::SAME_THREAD);
   constexpr Pose B_POSE = {.x = 0.f, .y = 0.5f};
@@ -397,8 +486,9 @@ static int TwoPacks(const char* name, Hook pack_hook, Pose a_moved) {
 
 // Case 4: 65 pages in one pack at the frame's start, soldier k (instance 2 + k) at row 0 of page k with its own pose: frames
 // 2 and 3 all 0; frame 4 every pose 0.1 m further in x: each soldier that move's motion (its own bones found, no other's).
-static int SixtyFivePages() {
-  Restart(Hook::SAME_THREAD);
+// Case 5: every soldier drawn `repeats` times, one after another round the pages.
+static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = false) {
+  Restart(Hook::SAME_THREAD, in_draw);
   constexpr UINT PAGES = 65;
   constexpr float STEP = 0.1f;
   std::vector<Page> pages;
@@ -415,8 +505,10 @@ static int SixtyFivePages() {
       WritePage(pages[index], {{0u, pose}});
       soldiers.emplace_back(2 + index, pose);
     }
-    for (UINT index = 0; index < PAGES; ++index) {
-      DrawSoldier(pages[index], 2 + index);
+    for (UINT repeat = 0; repeat < repeats; ++repeat) {
+      for (UINT index = 0; index < PAGES; ++index) {
+        DrawSoldier(pages[index], 2 + index);
+      }
     }
     om::Resolve(context.Get(), current_frame);
     const auto motion = ReadMotion(soldiers);
@@ -434,7 +526,7 @@ static int SixtyFivePages() {
       }
     }
     const bool good = written && worst < 0.02f;
-    std::printf("65 pages frame %d: largest error %.3f px (soldier %zu, motion %.3f), all written %d: %s\n", frame, worst, worst_soldier,
+    std::printf("%s frame %d: largest error %.3f px (soldier %zu, motion %.3f), all written %d: %s\n", name, frame, worst, worst_soldier,
                 motion[worst_soldier].x, written, good ? "OK" : "WRONG");
     failures += (good ? 0 : 1);
   }
@@ -455,12 +547,16 @@ int main(int argc, char** argv) {
                                     D3D11_SDK_VERSION, device.GetAddressOf(), nullptr, context.GetAddressOf())));
   std::printf("device: %s\n", (hardware ? "hardware" : "WARP"));
   cmd_list.native = context;
+  if (const char* dump_path = std::getenv("RENODX_TW_MOTION_DUMP"); dump_path != nullptr) {
+    dump.open(dump_path, std::ios::binary | std::ios::trunc);
+  }
+  motion_draw_unit_code = Load(built + "\\motion_draw_unit_sm3.cso");
   motion_unit_code = Load(built + "\\motion_unit_sm3.cso");
   unit_point_code = Load(built + "\\motion_unit_point.cso");
   unit_recorded_code = Load(built + "\\motion_unit_recorded.cso");
   unit_records_code = Load(built + "\\motion_unit_records.cso");
   const auto game_code = Load(game + "\\0x5F9CD405.vs_4_0.cso");
-  CHECK(!motion_unit_code.empty() && !unit_point_code.empty() && !unit_recorded_code.empty() && !unit_records_code.empty() && !game_code.empty());
+  CHECK(!motion_draw_unit_code.empty() && !motion_unit_code.empty() && !unit_point_code.empty() && !unit_recorded_code.empty() && !unit_records_code.empty() && !game_code.empty());
   motion_shaders[0] = {.hash = GAME_VS_HASH, .motion_shader = motion_unit_code, .kind = om::MotionKind::UNIT, .record_shader = unit_point_code};
   om::internal::state.shaders = {.shaders = motion_shaders, .unit_pixel_shader = unit_recorded_code, .unit_records_compute_shader = unit_records_code};
   om::internal::make_view.store(&MakeView);
@@ -471,6 +567,8 @@ int main(int argc, char** argv) {
     ComPtr<ID3DBlob> blob;
     CHECK(SUCCEEDED(D3DCompile(PIXEL, sizeof(PIXEL) - 1, nullptr, nullptr, nullptr, "main", "ps_4_0", 0, 0, blob.GetAddressOf(), nullptr)));
     CHECK(SUCCEEDED(device->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, game_pixel_shader.GetAddressOf())));
+    const auto* code = static_cast<const uint8_t*>(blob->GetBufferPointer());
+    game_pixel_code.assign(code, code + blob->GetBufferSize());
   }
   // The game's inputs: POSITION0-5 per vertex (slot 0), TEXCOORD0-7 per instance (slot 1), all four floats.
   ComPtr<ID3D11ShaderReflection> reflection;
@@ -577,9 +675,23 @@ int main(int argc, char** argv) {
   failures += TwoPacks("1b two packs, no pack hook", Hook::NONE, {});
   failures += TwoPacks("2  two packs, pack hook on another thread", Hook::OTHER_THREAD, {});
   failures += TwoPacks("3  two packs, A moves 0.2 m", Hook::SAME_THREAD, {.x = 0.2f, .y = 0.f});
-  failures += SixtyFivePages();
+  failures += SixtyFivePages("4  65 pages");
+  failures += SixtyFivePages("5  65 pages x 17", 17);
   std::printf("the addon's unit motion draw: %.2f us a draw (%u draws, the D3D runtime's calls included)\n", draw_seconds / std::max(draws, 1u) * 1e6,
               draws);
+  draw_seconds = 0.0;
+  draws = 0;
+  failures += TwoPacks("6a in-draw two packs, pack hook", Hook::SAME_THREAD, {}, true);
+  failures += TwoPacks("6b in-draw two packs, A moves 0.2 m", Hook::SAME_THREAD, {.x = 0.2f, .y = 0.f}, true);
+  failures += SixtyFivePages("6c in-draw 65 pages x 17", 17, true);
+  std::printf("the addon's in-draw unit motion draw: %.2f us a draw (%u draws)\n", draw_seconds / std::max(draws, 1u) * 1e6, draws);
+  Restart(Hook::NONE);
+  {
+    const std::unique_lock lock(log_mutex);
+    for (const auto& line : log_lines) {
+      if (line.find("Object motion") != std::string::npos) std::printf("log: %s\n", line.c_str());
+    }
+  }
 
 #ifndef GAME_CALLS_ONLY
   // The fix's cost on the game's thread: the pack hook when it records (its dispatches and the compute bindings put back),
