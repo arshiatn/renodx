@@ -17,6 +17,13 @@
 //    values; random frames of 16384 (two draws, repeats, the 8192 cap reached); a still camera (the places of the frame
 //    before: other colours, zeros as -0, then one light moved); a NaN coordinate. Cost (printed): v160's sort of a
 //    16384-light frame, the reading draw now (new places, the frame before's places), a draw that only copies.
+// 5. Capture's reads (rt_core.hpp: the vertex and index buffers read once for all its parts, the cached
+//    ID3D11DeviceContext1 and device) with RENODX_TW_STATE_CHECK=1: a static draw (three vertex buffers, an index buffer at
+//    an offset) gets v166's short key and key (their formulas below), its index buffer reaches Host::moving_indexed, and
+//    takes the short path the second time; a rows shader's draw from a dynamic vertex buffer (slot 0 read for the dynamic
+//    test, slots 1-3 after) and a placed one (slot 0 alone in its key, its other bound slots none) get theirs; a new draw
+//    into the main view's depth twice (the device prepared, then cached); no state check line; CONTROL: a binding changed
+//    between two reads logs one. Cost (printed): v166's reads for a static draw against now's.
 #include <windows.h>
 #include <d3d11_4.h>
 #include <d3dcompiler.h>
@@ -29,6 +36,7 @@
 #include <cstring>
 #include <limits>
 #include <random>
+#include <string>
 #include <vector>
 #include "src/games/twattila/rt_scene.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
@@ -40,7 +48,8 @@ namespace action = renodx::utils::command_action;
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (false)
 
 extern "C" __declspec(dllexport) const char* const NAME = "Native context test";
-extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char*) {}
+static std::vector<std::string> log_lines;
+extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) { log_lines.emplace_back(message); }
 
 // v157's (rt_core.hpp at 3325e7c5).
 static ID3D11DeviceContext* OldNativeContext(reshade::api::command_list* cmd_list) {
@@ -462,6 +471,235 @@ int main() {
   std::printf("4 a 16384-light frame: v160's sort + unique %.3f ms; the reading draw now (read, sort, add) %.3f ms, its places as the "
               "frame before %.3f ms; a draw reading nothing %.3f ms (medians)\n",
               median(old_ms), median(moved_ms), median(still_ms), median(copying_ms));
+
+  // 5.
+  {
+    SetEnvironmentVariableA("RENODX_TW_STATE_CHECK", "1");  // before the first capture: StateCheck reads it once
+    log_lines.clear();
+    const auto buffer_of = [&](UINT bytes, D3D11_USAGE usage, UINT bind) {
+      ComPtr<ID3D11Buffer> buffer;
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = bytes, .Usage = usage, .BindFlags = bind,
+                                      .CPUAccessFlags = (usage == D3D11_USAGE_DYNAMIC ? D3D11_CPU_ACCESS_WRITE : 0u)};
+      return SUCCEEDED(device->CreateBuffer(&desc, nullptr, buffer.GetAddressOf())) ? buffer : nullptr;
+    };
+    const auto vertices = buffer_of(4096, D3D11_USAGE_DEFAULT, D3D11_BIND_VERTEX_BUFFER);
+    const auto instances = buffer_of(4096, D3D11_USAGE_DEFAULT, D3D11_BIND_VERTEX_BUFFER);
+    const auto extra = buffer_of(4096, D3D11_USAGE_DEFAULT, D3D11_BIND_VERTEX_BUFFER);
+    const auto dynamic_vertices = buffer_of(4096, D3D11_USAGE_DYNAMIC, D3D11_BIND_VERTEX_BUFFER);
+    const auto indices = buffer_of(4096, D3D11_USAGE_DEFAULT, D3D11_BIND_INDEX_BUFFER);
+    const auto camera_constants = buffer_of(256, D3D11_USAGE_DEFAULT, D3D11_BIND_CONSTANT_BUFFER);
+    CHECK(vertices && instances && extra && dynamic_vertices && indices && camera_constants);
+    constexpr UINT INDEX_OFFSET = 12;
+    constexpr std::array<UINT, 4> STRIDES = {32, 16, 24, 0};
+    constexpr std::array<UINT, 4> OFFSETS = {64, 0, 48, 0};
+    const auto bind = [&](ID3D11Buffer* first) {
+      const std::array<ID3D11Buffer*, 4> bound = {first, instances.Get(), extra.Get(), nullptr};
+      immediate->IASetVertexBuffers(0, 4, bound.data(), STRIDES.data(), OFFSETS.data());
+      immediate->IASetIndexBuffer(indices.Get(), DXGI_FORMAT_R16_UINT, INDEX_OFFSET);
+      immediate->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    };
+    auto& bridge = twattila::dlaa_bridge::bridge;
+    bridge.ray_tracing = true;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.settings = {.sun_shadows = true};
+      runtime.frame = 500;
+      runtime.traced_frame = 0;
+    }
+    // The host's mesh-moving hook sees the bound index buffer (none moves).
+    static ID3D11Buffer* moving_buffer = nullptr;
+    static UINT moving_offset = 0;
+    core::internal::host = {.moving_indexed = [](ID3D11Buffer* index_buffer, UINT index_offset, const action::DrawIndexedArguments&) {
+      moving_buffer = index_buffer;
+      moving_offset = index_offset;
+      return false;
+    }};
+    const action::DrawIndexedArguments arguments = {.index_count = 36, .instance_count = 3, .first_index = 6, .vertex_offset = -2,
+                                                    .first_instance = 7};
+    action::CommandContext<action::DrawIndexedArguments> command = {.cmd_list = &cmd_list, .arguments = arguments};
+    const auto fnv = [](std::initializer_list<uint64_t> values) {
+      uint64_t key = 14695981039346656037ull;
+      for (const uint64_t value : values) key = (key ^ value) * 1099511628211ull;
+      return key;
+    };
+    const auto address = [](const void* pointer) { return uint64_t{reinterpret_cast<uintptr_t>(pointer)}; };
+    const uint64_t index_word = (uint64_t{DXGI_FORMAT_R16_UINT} << 32) | INDEX_OFFSET;
+    // v166's: the shader, the arguments, the first vertex buffer, its stride and offset, the index buffer, its format and offset.
+    const auto short_key = [&](uint32_t hash, ID3D11Buffer* first) {
+      return fnv({hash, arguments.index_count, arguments.instance_count, arguments.first_index, static_cast<uint32_t>(arguments.vertex_offset),
+                  arguments.first_instance, address(first), (uint64_t{STRIDES[0]} << 32) | OFFSETS[0], address(indices.Get()), index_word});
+    };
+    // v166's: the shader, the arguments (a placed draw's instances 0), VS b1-b4 and their first constants, VS t0-t3, the
+    // identity's vertex buffers with their strides and offsets (a placed draw's slot 0 alone), the index buffer, the mask.
+    const auto full_key = [&](uint32_t hash, ID3D11Buffer* first, bool placed) {
+      std::vector<uint64_t> values = {hash, arguments.index_count, placed ? 0u : arguments.instance_count, arguments.first_index,
+                                      static_cast<uint32_t>(arguments.vertex_offset), placed ? 0u : arguments.first_instance};
+      for (int value = 0; value < (4 * 2) + 4; ++value) values.push_back(0);
+      const std::array<ID3D11Buffer*, 4> bound = {first, instances.Get(), extra.Get(), nullptr};
+      for (size_t slot = 0; slot < bound.size(); ++slot) {
+        const bool identity = !placed || slot == 0;
+        values.push_back(identity ? address(bound[slot]) : 0u);
+        values.push_back(identity ? ((uint64_t{STRIDES[slot]} << 32) | OFFSETS[slot]) : 0u);
+      }
+      values.push_back(address(indices.Get()));
+      values.push_back(index_word);
+      values.push_back(0);
+      uint64_t key = 14695981039346656037ull;
+      for (const uint64_t value : values) key = (key ^ value) * 1099511628211ull;
+      return key;
+    };
+    const auto last_key = [&] {
+      const std::unique_lock lock(runtime.mutex);
+      return runtime.last_key;
+    };
+    // A static draw, known: its first capture marks it drawn by its key (the short key learnt), its second by the short key.
+    const core::SceneShader rigid = {.hash = 0xA1B2C3D4};
+    const uint64_t rigid_key = full_key(rigid.hash, vertices.Get(), false);
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.known[rigid_key] = {};
+      runtime.last_key = 0;
+    }
+    bind(vertices.Get());
+    core::internal::Capture(command, rigid);
+    const bool rigid_keyed = last_key() == rigid_key && moving_buffer == indices.Get() && moving_offset == INDEX_OFFSET;
+    bool short_learnt = false;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      const auto entry = runtime.short_keys.find(short_key(rigid.hash, vertices.Get()));
+      short_learnt = entry != runtime.short_keys.end() && entry->second.key == rigid_key && !entry->second.ambiguous;
+      runtime.last_key = 0;
+      runtime.drawn.clear();
+      runtime.known[rigid_key].frame = 0;
+    }
+    moving_buffer = nullptr;
+    core::internal::Capture(command, rigid);
+    bool short_taken = false;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      short_taken = runtime.last_key == rigid_key && std::ranges::count(runtime.drawn, rigid_key) == 1;
+    }
+    // A rows shader's draw from a dynamic vertex buffer (not placed: all four slots in its key) and a placed one (slot 0).
+    static constexpr std::array<uint8_t, 4> ROWS = {1, 2, 3, 4};
+    const core::SceneShader rows = {.hash = 0x5EED0001, .rows_shader = ROWS};
+    bind(dynamic_vertices.Get());
+    core::internal::Capture(command, rows);
+    const bool dynamic_keyed = last_key() == full_key(rows.hash, dynamic_vertices.Get(), false);
+    bind(vertices.Get());
+    core::internal::Capture(command, rows);
+    const bool placed_keyed = last_key() == full_key(rows.hash, vertices.Get(), true);
+    // A new static draw into the main view's depth (the bridge's size), its camera at b0: its capture prepares the device,
+    // the next takes the cached one; the frame's room full, both stop before drawing.
+    const auto depth = [&] {
+      ComPtr<ID3D11Texture2D> texture;
+      const D3D11_TEXTURE2D_DESC desc = {.Width = 64, .Height = 32, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_D32_FLOAT,
+                                         .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_DEPTH_STENCIL};
+      ComPtr<ID3D11DepthStencilView> view;
+      if (SUCCEEDED(device->CreateTexture2D(&desc, nullptr, texture.GetAddressOf()))) {
+        device->CreateDepthStencilView(texture.Get(), nullptr, view.GetAddressOf());
+      }
+      return view;
+    }();
+    CHECK(depth);
+    const auto kept_size = std::pair{bridge.width, bridge.height};
+    bridge.width = 64;
+    bridge.height = 32;
+    core::internal::host.camera = [](ID3D11Buffer*, core::Camera*) { return true; };
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.captured_vertices = core::internal::MAX_VERTICES;
+    }
+    const core::SceneShader fresh = {.hash = 0x0F0E0D0C};
+    bind(vertices.Get());
+    immediate->OMSetRenderTargets(0, nullptr, depth.Get());
+    immediate->VSSetConstantBuffers(0, 1, camera_constants.GetAddressOf());
+    const auto prepared_for = [&] {
+      const std::unique_lock lock(runtime.mutex);
+      return runtime.objects.context;
+    };
+    core::internal::Capture(command, fresh);
+    const bool prepared = prepared_for() == immediate.Get();
+    core::internal::Capture(command, fresh);
+    const bool still_prepared = prepared_for() == immediate.Get();
+    const size_t check_lines = std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("State check") != std::string::npos; });
+    // CONTROL: a vertex buffer bound between two reads of one draw.
+    log_lines.clear();
+    {
+      core::internal::BoundInput input(immediate.Get(), 0xC0117201);
+      input.ReadVertexBuffers(4);
+      bind(extra.Get());
+      input.ReadVertexBuffers(1);
+    }
+    const bool control_logged = std::ranges::count_if(log_lines, [](const std::string& line) {
+                                  return line.find("State check: a vertex buffer read once differs") != std::string::npos;
+                                }) == 1;
+    std::printf("5 Capture's reads: static draw key %d, short key learnt %d, short path taken %d, dynamic rows draw key %d, placed draw key %d, "
+                "device prepared %d then cached %d, state check lines %zu; CONTROL a binding changed between reads logged %d\n",
+                rigid_keyed, short_learnt, short_taken, dynamic_keyed, placed_keyed, prepared, still_prepared, check_lines, control_logged);
+    CHECK(rigid_keyed && short_learnt && short_taken && dynamic_keyed && placed_keyed && prepared && still_prepared);
+    CHECK(check_lines == 0);
+    CHECK(control_logged);
+    // Cost: a static draw's reads in v166 (the dynamic test's four slots with each buffer's desc, the topology, MeshKey's
+    // index buffer, the short key's first slot and index buffer, each released) against now's (the four slots and the index
+    // buffer once).
+    bind(vertices.Get());
+    constexpr int READS = 1000000;
+    const auto time_reads = [&](auto&& body) {
+      const auto start = std::chrono::steady_clock::now();
+      for (int call = 0; call < READS; ++call) body();
+      return std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / READS;
+    };
+    volatile uint64_t read_sink = 0;
+    const double old_reads = time_reads([&] {
+      std::array<ID3D11Buffer*, 4> buffers = {};
+      std::array<UINT, 4> strides = {};
+      std::array<UINT, 4> offsets = {};
+      immediate->IAGetVertexBuffers(0, 4, buffers.data(), strides.data(), offsets.data());
+      bool dynamic = false;
+      for (auto* buffer : buffers) {
+        if (buffer == nullptr) continue;
+        D3D11_BUFFER_DESC desc = {};
+        buffer->GetDesc(&desc);
+        dynamic = dynamic || desc.Usage == D3D11_USAGE_DYNAMIC;
+        buffer->Release();
+      }
+      D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+      immediate->IAGetPrimitiveTopology(&topology);
+      ComPtr<ID3D11Buffer> mesh_indices;
+      DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+      UINT offset = 0;
+      immediate->IAGetIndexBuffer(mesh_indices.GetAddressOf(), &format, &offset);
+      ID3D11Buffer* first = nullptr;
+      ID3D11Buffer* draw_indices = nullptr;
+      immediate->IAGetVertexBuffers(0, 1, &first, strides.data(), offsets.data());
+      immediate->IAGetIndexBuffer(&draw_indices, &format, &offset);
+      read_sink = address(first) ^ address(draw_indices) ^ address(mesh_indices.Get()) ^ (dynamic ? 1u : 0u) ^ topology;
+      if (first != nullptr) first->Release();
+      if (draw_indices != nullptr) draw_indices->Release();
+    });
+    const double new_reads = time_reads([&] {
+      core::internal::BoundInput input(immediate.Get(), 0);
+      input.ReadVertexBuffers(4);
+      bool dynamic = false;
+      for (auto* buffer : input.vertex_buffers) {
+        if (buffer == nullptr) continue;
+        D3D11_BUFFER_DESC desc = {};
+        buffer->GetDesc(&desc);
+        dynamic = dynamic || desc.Usage == D3D11_USAGE_DYNAMIC;
+      }
+      D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+      immediate->IAGetPrimitiveTopology(&topology);
+      input.ReadIndexBuffer();
+      read_sink = address(input.vertex_buffers[0]) ^ address(input.index_buffer) ^ (dynamic ? 1u : 0u) ^ topology;
+    });
+    std::printf("5 a static draw's reads: v166 %.1f ns, now %.1f ns (each identity read also skips part 2's QueryInterface + Release, "
+                "each capture GetDevice + Release)\n",
+                old_reads, new_reads);
+    bridge.width = kept_size.first;
+    bridge.height = kept_size.second;
+    bridge.ray_tracing = false;
+    immediate->ClearState();
+  }
   std::printf("PASS\n");
   return 0;
 }

@@ -122,14 +122,10 @@ struct View {
 // The host's view for a draw with the camera constants `camera`; false: no motion for it.
 using MakeView = bool (*)(ID3D11Buffer* camera, View* view);
 
-// A draw's mesh: its index buffer and range (a soldier's body, shield, horse... each its own).
+// A draw's mesh: its index buffer (as bound, with its offset) and range (a soldier's body, shield, horse... each its own).
 template <typename Arguments>
-uint32_t MeshKey(ID3D11DeviceContext* native, const Arguments& arguments) {
-  ComPtr<ID3D11Buffer> index_buffer;
-  DXGI_FORMAT index_format = DXGI_FORMAT_UNKNOWN;
-  UINT index_offset = 0;
-  native->IAGetIndexBuffer(index_buffer.GetAddressOf(), &index_format, &index_offset);
-  uint64_t hashed = reinterpret_cast<uintptr_t>(index_buffer.Get()) ^ (uint64_t{index_offset} << 32);
+uint32_t MeshKey(ID3D11Buffer* index_buffer, UINT index_offset, const Arguments& arguments) {
+  uint64_t hashed = reinterpret_cast<uintptr_t>(index_buffer) ^ (uint64_t{index_offset} << 32);
   uint32_t vertex_count = 0;
   if constexpr (std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
     hashed = hashed * 1099511628211ull ^ arguments.first_index;
@@ -595,7 +591,14 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
   }
   const bool tabled = (shader.kind == MotionKind::UNIT || shader.kind == MotionKind::RIGID || shader.kind == MotionKind::DEFORMED);
   // Units, rigid objects and deformed meshes: the mesh.
-  const uint32_t mesh_key = (tabled ? MeshKey(native, arguments) : 0u);
+  uint32_t mesh_key = 0;
+  if (tabled) {
+    ComPtr<ID3D11Buffer> index_buffer;
+    DXGI_FORMAT index_format = DXGI_FORMAT_UNKNOWN;
+    UINT index_offset = 0;
+    native->IAGetIndexBuffer(index_buffer.GetAddressOf(), &index_format, &index_offset);
+    mesh_key = MeshKey(index_buffer.Get(), index_offset, arguments);
+  }
   // Rigid objects: recorded while sampled (first seen, every RIGID_SAMPLE_PERIOD frames) or moving, drawn again while
   // moving.
   bool record = false;

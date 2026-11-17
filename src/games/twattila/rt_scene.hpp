@@ -280,11 +280,11 @@ inline const Host TW_HOST = {
     },
     .render_size = anti_aliasing::RenderSize,
     .guides_written = anti_aliasing::GuidesWritten,
-    .moving = [](ID3D11DeviceContext* native, const renodx::utils::command_action::DrawArguments& arguments) {
-      return object_motion::MovingMesh(object_motion::MeshKey(native, arguments));
+    .moving = [](ID3D11Buffer* index_buffer, UINT index_offset, const renodx::utils::command_action::DrawArguments& arguments) {
+      return object_motion::MovingMesh(object_motion::MeshKey(index_buffer, index_offset, arguments));
     },
-    .moving_indexed = [](ID3D11DeviceContext* native, const renodx::utils::command_action::DrawIndexedArguments& arguments) {
-      return object_motion::MovingMesh(object_motion::MeshKey(native, arguments));
+    .moving_indexed = [](ID3D11Buffer* index_buffer, UINT index_offset, const renodx::utils::command_action::DrawIndexedArguments& arguments) {
+      return object_motion::MovingMesh(object_motion::MeshKey(index_buffer, index_offset, arguments));
     },
     .main_view = frame_history::MainViewport,
     .rewrite_guides = anti_aliasing::RewriteGuides,
