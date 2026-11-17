@@ -1182,6 +1182,11 @@ static void OnDestroyDevice(reshade::api::device* device) {
 // protocol (its token in BindCacheData::modules); else the cache turns off, naming the module's file. Run at an
 // opting-in module's attach, at init_device (add-ons that attached after it, before any pipeline exists) and at every
 // present (a late add-on: unchecked for at most one frame).
+// Accepted window: within that frame a late add-on without the protocol can write without a bump. Unlike the view filter
+// (one frame of an original texture), a hit can then bind a replacement pipeline it destroyed right after (its
+// AddRuntimeReplacement / RemoveRuntimeReplacements: UpdatePipelineInfo, then destroy_pipeline). Reach: an old add-on
+// that changes replacements in its first frame (an old DevKit loaded late); ReShade loads add-ons before the device, and
+// a late add-on is never the pipeline or shader event handler, so its init / destroy events do not run.
 static void CheckBindCacheWriters() {
   auto* cache = internal::bind_cache.data;
   if (cache == nullptr || internal::bind_cache_writers == nullptr || (cache->control.load() & BIND_CACHE_OFF) != 0u) return;
