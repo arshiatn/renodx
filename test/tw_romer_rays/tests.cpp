@@ -42,6 +42,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -1184,6 +1185,11 @@ Output main(uint id : SV_VertexID) {
     CHECK(sun_texels[1][0] == camera.position[0] && sun_texels[1][1] == camera.position[1] && sun_texels[1][2] == camera.position[2]);
   }
 
+  // With RENODX_TW_STATE_CHECK=1 set: no binding Capture reused differed from D3D11's.
+  const auto mismatches = std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("State check") != std::string::npos && line.find("differs") != std::string::npos; });
+  std::printf("state check (RENODX_TW_STATE_CHECK %s): %zu differences logged\n", (std::getenv("RENODX_TW_STATE_CHECK") != nullptr ? "set" : "unset"),
+              static_cast<size_t>(mismatches));
+  CHECK(mismatches == 0);
   std::printf("%s (%d failures)\n", (failures == 0 ? "PASS" : "FAIL"), failures);
   return (failures == 0 ? 0 : 1);
 }

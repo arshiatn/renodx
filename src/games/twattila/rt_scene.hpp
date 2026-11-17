@@ -280,11 +280,11 @@ inline const Host TW_HOST = {
     },
     .render_size = anti_aliasing::RenderSize,
     .guides_written = anti_aliasing::GuidesWritten,
-    .moving = [](ID3D11DeviceContext* native, const renodx::utils::command_action::DrawArguments& arguments) {
-      return object_motion::MovingMesh(object_motion::MeshKey(native, arguments));
+    .moving = [](ID3D11Buffer* index_buffer, UINT index_offset, const renodx::utils::command_action::DrawArguments& arguments) {
+      return object_motion::MovingMesh(object_motion::MeshKey(index_buffer, index_offset, arguments));
     },
-    .moving_indexed = [](ID3D11DeviceContext* native, const renodx::utils::command_action::DrawIndexedArguments& arguments) {
-      return object_motion::MovingMesh(object_motion::MeshKey(native, arguments));
+    .moving_indexed = [](ID3D11Buffer* index_buffer, UINT index_offset, const renodx::utils::command_action::DrawIndexedArguments& arguments) {
+      return object_motion::MovingMesh(object_motion::MeshKey(index_buffer, index_offset, arguments));
     },
     .main_view = frame_history::MainViewport,
     .rewrite_guides = anti_aliasing::RewriteGuides,
@@ -978,6 +978,10 @@ struct PointLightReadback {
   // The last sorted frame's keys in read order, and the read places its sort and unique kept, in their order.
   std::vector<LightKey> keys;
   std::vector<uint32_t> order;
+  // The read frame's lights, their keys and their sorted copy: emptied each frame, their room kept.
+  std::vector<LocalLight> lights;
+  std::vector<LightKey> read_keys;
+  std::vector<LocalLight> sorted;
 };
 static PointLightReadback point_light_readback;
 
@@ -1143,13 +1147,9 @@ static LightInstances point_shadow_instances = {};
 constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   const auto& light_instances = command.template GetCallbackData<LightInstances>();
   if (light_instances.enabled != nullptr && *light_instances.enabled == 0.f) return {};
-  bool traced = internal::active.load(std::memory_order_relaxed);
-  uint64_t frame = 0;
-  if (traced) {
-    const std::unique_lock lock(internal::runtime.mutex);
-    traced = internal::runtime.settings.local_lights;
-    frame = internal::runtime.frame;
-  }
+  const uint64_t light_frame = internal::light_frame.load(std::memory_order_relaxed);
+  const bool traced = (light_frame & 1u) != 0u;
+  const uint64_t frame = light_frame >> 1;
   // The draw's one light in a pixel shader constant buffer (InstallPointLights' light_constants): its last upload (this
   // draw's) for the next trace, the buffer watched from now (its first light missed). Not traced: nothing watched, what
   // was kept stale.
@@ -1215,7 +1215,8 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
     auto& buffer = readback.staging[readback.current];
     auto& copies = readback.copies[readback.current];
     if (D3D11_MAPPED_SUBRESOURCE mapped = {}; !copies.empty() && SUCCEEDED(native->Map(buffer.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
-      std::vector<LocalLight> lights;
+      auto& lights = readback.lights;
+      lights.clear();
       for (const auto& copy : copies) {
         for (UINT index = 0; index < copy.count; ++index) {
           const auto* instance = static_cast<const std::byte*>(mapped.pData) + copy.offset + (index * copy.stride);
@@ -1246,8 +1247,8 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
           return ((bits & 0x80000000u) != 0u) ? ~bits : (bits | 0x80000000u);
         };
         const auto same_place = [](const internal::LightKey& a, const internal::LightKey& b) { return a.key == b.key; };
-        std::vector<internal::LightKey> keys;
-        keys.reserve(lights.size());
+        auto& keys = readback.read_keys;
+        keys.clear();
         for (const LocalLight& light : lights) {
           keys.push_back({.key = {ordered(light.light[0]), ordered(light.light[1]), ordered(light.light[2]), ordered(light.light[3])},
                           .index = static_cast<uint32_t>(keys.size())});
@@ -1272,10 +1273,10 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
           readback.order.clear();
           for (const internal::LightKey& key : keys) readback.order.push_back(key.index);
         }
-        std::vector<LocalLight> sorted;
-        sorted.reserve(readback.order.size());
+        auto& sorted = readback.sorted;
+        sorted.clear();
         for (const uint32_t index : readback.order) sorted.push_back(lights[index]);
-        lights = std::move(sorted);
+        std::swap(lights, sorted);
       }
       if (!lights.empty() && !std::exchange(internal::point_lights_read, true)) {
         renodx::utils::log::i(std::format("[Total War] Local lights: first {} read from the light draws.", lights.size()));
