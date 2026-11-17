@@ -170,20 +170,23 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   }
 #if defined(RENODX_RECORDER)
   // The player: a recording's requests on a scene of its own on the first adapter, no game (rt_d3d12.hpp PlayRecording; Nsight
-  // Graphics' frame boundary before each trace); its log renodx-tw-play.log next to the helper; its dump <recording>\play by
-  // default.
+  // Graphics' frame boundary before each trace); its dump <recording>\play by default, its log renodx-tw-play.log there.
   if (play) {
     if (log_file != nullptr) fclose(log_file);
     if (kept_log != INVALID_HANDLE_VALUE) CloseHandle(kept_log);
-    _wfopen_s(&log_file, (folder + L"\\renodx-tw-play.log").c_str(), L"w");
+    // Its log in its dump folder, beside its outputs.
     const std::filesystem::path recording = play_arguments[3];
+    const std::filesystem::path dump = (play_arguments.size() >= 5) ? std::filesystem::path(play_arguments[4]) : recording / L"play";
+    std::error_code made;
+    std::filesystem::create_directories(dump, made);
+    _wfopen_s(&log_file, (dump / L"renodx-tw-play.log").c_str(), L"w");
     ComPtr<IDXGIFactory4> play_factory;
     ComPtr<IDXGIAdapter1> play_adapter;
     auto player = std::make_unique<twattila::dlaa_helper::RtScene12>();
     std::string report;
     const bool played = SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(play_factory.GetAddressOf())))
                         && SUCCEEDED(play_factory->EnumAdapters1(0, play_adapter.GetAddressOf())) && player->Initialize(play_adapter.Get(), folder, false)
-                        && player->PlayRecording(recording, (play_arguments.size() >= 5) ? std::filesystem::path(play_arguments[4]) : recording / L"play",
+                        && player->PlayRecording(recording, dump,
                                                  [&] {
                                                    NGFX_FrameBoundary_D3D12_Params boundary = {.version = NGFX_FrameBoundary_D3D12_Params_VER,
                                                                                                .commandQueue = player->Queue()};
