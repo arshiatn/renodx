@@ -2284,7 +2284,7 @@ void BuildRuntimeData() {
                  [paths] { return paths() && rt_sliders.path_ambient != 0.f; }),
       ray_choice("RayTracedPathSer", &rt_sliders.path_ser, 0.f, "Path tracing SER (Experimental)", off_on,
                  "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series).\n"
-                 "Slower in every test so far: for tests only.",
+                 "Faster in forests, about the same elsewhere.",
                  paths_enabled),
       // With a ray-traced effect on.
       ray_choice("RayTracingDenoiser", &rt_sliders.denoiser, 0.f, "Ray tracing denoiser (Experimental)", {"Built-in", "NRD"},

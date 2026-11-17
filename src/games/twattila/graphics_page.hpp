@@ -1274,7 +1274,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "GlobalIlluminationGameSky", .section = section, .shown = more_on, .only_some_games = true});
     const auto more_paths = more(&more_gi, gi_is(GI_PATHS));
     page.Take({.match = "RayTracedPathSer", .section = section, .shown = more_paths, .label = "Shader Execution Reordering",
-               .tooltip = (b.has_reflections ? "" : "Shader execution reordering for Path Tracing (DXR 1.2, RTX 40 / 50 series). Slower in every test so far.")});
+               .tooltip = (b.has_reflections ? "" : "Shader execution reordering for Path Tracing (DXR 1.2, RTX 40 / 50 series). Faster in forests, about the same elsewhere.")});
     page.Take({.match = "RayTracedSharc", .section = section, .shown = more_paths, .label = "SHaRC Radiance Cache"});
     page.Take({.match = "RayTracedReuseLean", .section = section, .shown = more_paths});
     page.Take({.match = "RayTracedReuseNear", .section = section, .shown = more_paths});

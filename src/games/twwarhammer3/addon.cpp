@@ -4181,7 +4181,13 @@ void ConfigureAddon() {
       .on_change = [] { twattila::pass_timing::Request(); },
   });
   for (auto* setting : settings) {
-    if (setting->key == "RayTracedWaterReflections") setting->default_value = 0.f;
+    if (setting->key == "RayTracedWaterReflections") {
+      setting->default_value = 0.f;
+    }
+    // Reordering made the paths faster in every WH3 forest recording, with the same picture within rounding.
+    if (setting->key == "RayTracedPathSer") {
+      setting->default_value = 1.f;
+    }
   }
   // ATN's RT/PT preset (Attila's page, 2026-11-12) as the defaults of what the methods leave.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);

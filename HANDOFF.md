@@ -384,7 +384,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - WRITER SMALL FIXES (from Sol's 0001 review): our engine_code.hpp writer: (a) a f ... | ATN's go (game-code file, theoretical today: no site crosses
 - L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; ... | after ssr_ / G1 (helper queue)
 - CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's ren ... | the combined bench (ATN's go)
-- SER ON IN WH3 (ssr_: faster in all three forest views, same picture, repeats exa ... | coordinator after g1_
+- SER ON OLDER RTX: WH3's SER default runs on every NVIDIA GPU with DXR 1.2 + SM 6 ... | coordinator (next helper round)
 - SHARC COST 2 (ssr_): the update pass 0.26-0.72 ms (latency-bound, 12-28 % occupa ... | next SHaRC round
 - BAKE POOL POISON TEST (ssr_ S1 kept the GPU micromap bake's transient pools acro ... | next helper round
 - REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our ... | next helper round (measure first)
@@ -2792,7 +2792,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         Left: T3 retraces (sea1, stress, day1_low, WH3 high) twice + rec_compare / rec_scan over all 18 recordings
         (Low runner): t3_ Low STARTED 23:06 (recorder build t3_g1rec of HEAD; plays rbk_merged x2 vs t3_g1rec over
         all 17 recordings with a frame; 18 Nsight traces: T3 x2 + WH3 unit / high / edge base vs SER x2 for the SER-on-
-        in-WH3 decision; notes plan_1117/t3_notes.md, scripts nsight/t3_scripts).
+        in-WH3 decision; notes plan_1117/t3_notes.md, scripts nsight/t3_scripts). t3_ DONE 00:1x: ALL 17 recordings
+        byte-identical pre-G1 vs G1 (60 / 54 / 125 / 127 outputs, NaN / Inf 0); 18 traces (2 Nsight launch timeouts,
+        re-run once, fine); sea1 trace 4.337 -> 3.36, all 16.34 -> 15.5..15.7; stress / day1_low too noisy (a-b 1.06 /
+        2.50 ms: ATN's other session's adversarial test held the CPU at 100 % then); WH3 high trace -0.1, unit / edge flat.
         Traces T1 / T2 / T4 (grass micromap level 6 variant) / T5 / T6 (clusters): gtr_ Low DONE 21:2x
         (plan_1117/gtr_traces.md; runs tools/tw/nsight/runs/gtr_*, profiles gtr_profiles; worktree's 5 links removed
         alone, worktree + branch removed): T1 WH3 unit base 3.80 ms = a slow run (3.088 / 3.081 at frames 400 / 800, same
@@ -2930,11 +2933,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         22:3x told that session to keep it local and remove the push. Until ATN says it is removed: no pull / merge of
         origin/atn-mods, my commits stay local, no pushes (never force). Then: if origin went back to 3a8305fab, push as
         usual; if a revert commit was added, merge origin (net zero) and push. Owner: ATN, then coordinator
-      - [ ] SER ON IN WH3 (ssr_: faster in all three forest views, same picture, repeats exactly 117 / 117; rbk_: one of
+      - [x] SER ON IN WH3 DONE 00:2x (coordinator; t3_ retrace: the paths pass with SER unit -0.21 / -0.22, high -0.24 /
+        -0.21, edge +0.01 / -0.11 ms, never slower; frame totals unit -0.21 / -0.33, high -0.27 / -0.16, edge +0.28 / -0.31
+        (edge a's +0.28 came from the trace pass, which SER does not run: CPU-load noise); with ssr_'s quiet totals -0.26 /
+        -0.21 / -0.15: on): twwarhammer3 addon.cpp default 1 (braces on the touched loop); the stale "Slower in every test
+        so far" tooltips (rt_scene.hpp, graphics_page.hpp, Shogun 2) -> "Faster in forests, about the same elsewhere."
+        Builds WH3 + Shogun 2 amd64, Attila x86. Not run in game. (was: ssr_: faster in all three forest views, same
+        picture, repeats exactly 117 / 117; rbk_: one of
         its players may have overlapped ssr_'s trace ssr_wh3_forest_unit_base_ser at 21:11: retrace WH3 unit base + SER
         twice before switching): make Path
         Tracing SER on by default for WH3 (the default lives in rt_scene.hpp, g1_'s file: after g1_ merges); Attila
         stays off (day1 -0.07, sea1 +0.05: ATN's call). Owner: coordinator after g1_
+      - [ ] SER ON OLDER RTX: WH3's SER default runs on every NVIDIA GPU with DXR 1.2 + SM 6.9 (rt_d3d12.hpp dxr12_);
+        measured on RTX 50 only. On RTX 20 / 30 the reorder may be a no-op and the ray generation library path's speed
+        vs the compute path is unknown: if the Agility SDK the helper uses has a cap that says reordering really happens,
+        gate the SER path on it; else one A/B on an RTX 30 if ATN or a tester has one. Owner: coordinator (next helper round)
       - [ ] SHARC COST 2 (ssr_): the update pass 0.26-0.72 ms (latency-bound, 12-28 % occupancy): skip update threads on
         water / sky texels (rays mostly miss, write no voxel) or tie the update share to cache occupancy; judge "more
         bounces through the cache" against the reference; SHaRC's picture reference check. Owner: next SHaRC round
