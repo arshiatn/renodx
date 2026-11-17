@@ -334,6 +334,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Res ... | coordinator
 - BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails ... | coordinator -> bug4_ after the captures
 - (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
+- REF1 REVIEW (rev_ 04:xx, Opus xHigh: plan_1117/reference_suite_review.md, verdic ... | ref_ (v2), then one implementer at a time after bug2_ leaves
+- REVIEW LEADS = LIKELY BUGS (rev_ 04:xx, to verify then fix in the helper after b ... | bug2_ (I3), then a helper fix round (I4, I5)
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
@@ -2162,11 +2164,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         analytic checks (AO by a wall, edge penumbra, fog plate, point-light line, furnace), controls from known-buggy
         commits; build order R0a skeleton, R0b compare + analytic scenes, R1 torches (64 combinations), R2 sun shadows +
         coverage, R3 GI / PT Ambient + dark texels, R4 AO, R5 reflections, R6 fog, B bridge recorder + harness player for
-        real game frames; ~57-79 agent-hours, 3.5-4.5 h GPU; LEFT: the Opus xHigh design review (rev_, running), then
+        real game frames; ~57-79 agent-hours, 3.5-4.5 h GPU; review DONE 04:xx (REF1 REVIEW box); LEFT: v2 (ref_), then
         build one step at a time) REF1 (ref_, started 02:xx): reference suite step 3: first the design (tools/tw/round_notes/plan_1117/
         reference_suite.md: one brute-force reference per RT/PT effect, inputs, metrics, tolerances, controls, Nsight /
         GPU-lock rules), an Opus xHigh check of the design, then build it on the existing harness captures; ATN's new
         replays' captures added when they exist. Owner: ref_
+      - [ ] REF1 REVIEW (rev_ 04:xx, Opus xHigh: plan_1117/reference_suite_review.md, verdict "build after these changes";
+        ref_ revising into v2 now): blocking B1 statistics (>= 4 replicate runs, 16-frame batch means, the reference's own
+        variance from 8+ seed groups, K = 384), B2 frozen inputs (copy every reference input at the window's end), B3 route
+        B recording spec (no reset, scene snapshot + every frame's request block, playback = live dump + scene digest, rows
+        helper-only vs game-fed, zero-cost-off proof; 18-26 h); effort 80-100 agent-hours, GPU 4-5 h + 5-6 h recorded.
+        Order: (1) free checks I3 / I4 / I5 + a NaN / Inf / negative census, (2) R0a + R0b, (3) R1 torches + point-light
+        mask WARP, (4) H0 dark texels, (5) route B + second capture pass, (6) R2 + coverage, then the rest. Owner: ref_ (v2),
+        then one implementer at a time after bug2_ leaves the helper
+      - [ ] REVIEW LEADS = LIKELY BUGS (rev_ 04:xx, to verify then fix in the helper after bug2_): I3 the 3x3 bounce apply and
+        the path torch-shadow ratio place each low-resolution texel at its block's top-left pixel while the paths sample
+        its centre (light_bounce_apply.hlsli:42, rt_lights.cs_6_5.hlsl:162 vs rt_path.hlsli:839): a scale/2 px shift, lead
+        for DEBUG44 (c) (sent to bug2_); I4 SkyCalibration's fixed 16 directions: Path-Traced AO ~1.6 % dark on an open
+        wall; I5 specular occlusion counts directions below the horizon as blocked (rt_path.hlsli:1331-1332, 1464): an open
+        plane gets SO < 1 at grazing views, worst with Squared Lobe. Owner: bug2_ (I3), then a helper fix round (I4, I5)
       - [ ] REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures run tonight without the recorder
         (WPR / timings / shots / frame trace / address space need none); route B (bridge recorder + harness player) built
         next and a second, shorter capture pass records night1 / sea1 / stress frames for the references; the recorder
