@@ -188,6 +188,7 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [x] ANSWERED 05:xx (ATN: "to pbrt, yeah why not. It is apache 2.0": fetched 05:xx into tools/refcode/pbrt-v4, 20e41fd8 2026-11-15, 34 MB, no submodules) C: Download pbrt-v4 (Apache-2.0, github.com/mmp/pbrt-v4, not NVIDIA) for the reference suite's xcheck test (our samplers vs pbrt-v4 on the CPU)? Without it the check reads pbrt-v4 online / uses Falcor (NVIDIA, fetched). (from: ref_ v2 05:xx)
 - [x] C: (ANSWERED ATN ~09:10: benches yes (cpb_ running), replay = day1, SHaRC update + fix as default, shared-utils memo yes, own screenshot key yes, RT freeze: coordinator's suggestion, heapfix: always from our best version, Small Soldiers as Sprites: performance only; boxes ATN 09:10 ANSWERS) CPU round runs (cpu1_ 09:xx, plan_1117/cpu_round_plan.md): OK to run the bench / data runs on night1, sea1, stress_test_log2 (heapfix A / P / your v6.10.6 copy as control, add-on trim, engine patches; the data run's sampler pauses game threads for microseconds)? [ANSWERED 08:5x: ATN put it in for good, named day1: day1.replay copied (aa107f05), the bench knows it] Your WPR tasks set to run hidden (they take the game's focus)? The 2.7-s RT freeze at battle start / after alt-tab: draw a few frames without rays, and / or a longer release timer? Our own screenshot key in the helper (ReShade's 4K shots each take 30-95 MB of the game's 32-bit space)? Shared-utils change for the resource-info lookups (cpu3_ D3: a memo in src/utils used by every RenoDX mod, exact only if every writer bumps an epoch; est. -0.2..-0.4 ms night1; needs an audit + a measured write rate first)? Small Soldiers as Sprites after its run? heapfix: a package for its author (P = prefetched sort), or move to the official 7.0? (from: cpu1_ 09:xx)
 - [ ] C: PT DI (full RTXDI, des1_ Revision 1): VRAM ~430 MB at 4K with DLSS Quality, ~970 MB at a native 4K render (DLAA); RTXDI's checkerboard mode halves the reservoirs (~300 MB native): OK, and checkerboard at native? Visibility reuse stays off unless the references pass it: OK? The row does nothing without Ray Reconstruction: OK? NVIDIA bug reports: we draft, you file? (from: des1_ 10:1x)
+- [ ] C: vMF (Revision 1): only surfaces the camera sees get the vMF shape (ray hits, caches and reflections stay Lambert so seen = unseen holds): OK? WH3's sunlight row would replace the developers' own Oren-Nayar diffuse: build it (Experimental) or leave WH3's sun alone? (from: des2_ 10:2x)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -348,6 +349,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - GPU CAPTURE ROUND 2 (ATN 09:5x): after the new features (SHaRC update, PT DI / R ... | coordinator (after plan step 6 + reviews)
 - CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best c ... | cpb_
 - O1 NIGHT1 TRACE (des1_ step 0): one night1 frame trace for the O1 census (which ... | coordinator
+- WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffus ... | next WH3 helper round
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -371,7 +373,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
 - (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
 - DESIGN PT DI (des1_ DONE 09:0x, 559 lines; review rv1_ (Opus xHigh) STARTED -> d ... | des1_, coordinator (review)
-- DESIGN VMF (des2_ DONE 09:1x; review rv2_ DONE 09:5x: build after changes + step ... | des2_, coordinator (review)
+- DESIGN VMF (Revision 1 DONE 10:2x des2_: receivers only (path hits / caches / SH ... | des2_, coordinator (review)
 - DESIGN SDK AUDIT (des3_ DONE 08:4x, review rv3_ (Opus xHigh) STARTED 08:5x -> de ... | des3_, coordinator (review, verdict column)
 - VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT st ... | coordinator
 - SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
@@ -2310,6 +2312,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         cpu_bench_results.md. Owner: cpb_
       - [ ] O1 NIGHT1 TRACE (des1_ step 0): one night1 frame trace for the O1 census (which point-light shaders / lights a
         frame draws, how many per tile) after cpb_'s benches (one game at a time). Owner: coordinator
+      - [ ] WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffuse while the helper's paths /
+        bounce use Lambert: measure the seen-vs-unseen ratio on WH3 (path probe) and, if it differs, give the helper WH3's
+        diffuse at path hits (a consistency bug fix, on by default). Owner: next WH3 helper round
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
@@ -2572,7 +2577,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         RTXDI-Library's RAB_* bridge keeping the game's light formula, torches via one DI + GI reservoir, the ReSTIR GI
         upgrades (lin2026, junkins2026, pairwise MIS / duplication map / RR decorrelation, kajiya feedback check); then an
         Opus xHigh review, ATN's short summary. Owner: des1_, coordinator (review)
-      - [ ] DESIGN VMF (des2_ DONE 09:1x; review rv2_ DONE 09:5x: build after changes + step 0 (paper read: the design's
+      - [ ] DESIGN VMF (Revision 1 DONE 10:2x des2_: receivers only (path hits / caches / SHaRC / reflection hits stay
+        Lambert), step 0 = 19-item transcription list (x2 on the cosine terms; the printed series + the paper's albedo remap
+        = controls that must fail), AO saturate(1 - blocked lobe / N) once per pixel, per-channel lobe, rt_diffuse_roughness
+        in PT DI's v32, slider on the paper's r capped 0.40, median roughness for non-RT, far field documented, budgets RT/PT
+        <= 0.13 ms / non-RT <= 0.20 ms; S0-S6 after PT DI lands v32; 21-30 h Attila, 27-40 h all; NEXT: build queue after
+        PT DI step 1) DESIGN VMF (des2_ DONE 09:1x; review rv2_ DONE 09:5x: build after changes + step 0 (paper read: the design's
         Monte Carlo IS the paper's microsurface, kappa = 2 / alpha^2 = Eq. 1): B1 lobe on receivers only (path hits would
         break seen = unseen by +-13-25 %), B2 the paper's Fourier series needs x2 on its cosine terms + its albedo remap
         misses (dark colours 12-19 % dark): keep ours, B3 AO estimators 1 - sum(lobe blocked) / N; far field +84 / -54 % at
