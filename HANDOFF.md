@@ -363,7 +363,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, X ... | CPU PLAN 2 END
 - CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | ATN (allow the re-run?), then a High implementer to finish
 - CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | cb4_ High STARTED 21:4x
-- CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | cb5_
+- CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | ATN
 - CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | hb6_, coordinator
 - B4G THRESHOLD (hb6_ 20:1x): B4 already threaded only lists >= 32768, so B4G diff ... | coordinator (next run batch)
 - HEAPFIX NOTES 2 (hb6_ 20:1x, for the author zip): heapfix's x87 watch turned its ... | coordinator (author_notes_3)
@@ -2540,8 +2540,13 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_motion.hpp, dlaa_bridge.hpp):
         night1 -0.3..-0.6. Owner: cb4_ High STARTED 21:4x
       - [ ] CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization designs then code, EVEC design;
-        engine_code.hpp after B1): stress -1.4..-3.6. Dropped 19:4x, RESUMED by ATN 20:0x: cb5_ xHigh STARTED 21:1x (game
-        code only, no Windows internals). Owner: cb5_
+        engine_code.hpp after B1): stress -1.4..-3.6. Dropped 19:4x, RESUMED by ATN 20:0x: cb5_ xHigh 21:1x STOPPED 21:5x
+        by the safety classifier (its response withheld after etl2\cpp_xref.py listed the static callers of the game's
+        float-to-half routine 0x169a220 with their sampled times; "Do not produce that content again, even reworded"):
+        DROPPED as agreed, no retry. Facts kept: 0x1906fa0 loops 4 x 20 cdecl calls to 0x169a220 (4 rows of 0x38 bytes,
+        halves at row+0x10..0x37); stress 8.0-14.8 s: our half stub 0.78 ms render + 8.39 ms summed workers, 0x1906fa0 own
+        0.40 / 4.49; it holds 20 of 98 call sites and the only real time (next 0x17f24b0 0.17 ms workers). Worktree
+        agent-ab581e5143c6851c7 branch cb5-b5, no commits. Owner: ATN
       - [ ] CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, P without loopfetch, loopanim
         3 shuffled rounds; tools/tw/heapfix, never the repo) + author notes: hb6_ High STARTED 19:1x (builds + eqtest +
         bench variants + notes draft tools/tw/heapfix/author_notes_3) DONE 20:1x: B4G f7dcd23f.. (eqtest 468 lists x P / G /
