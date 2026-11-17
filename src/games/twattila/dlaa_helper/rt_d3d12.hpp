@@ -2655,8 +2655,15 @@ class RtScene12 {
         // SHARC_BLOCK x SHARC_BLOCK) and resolve, then the paths read it (their SHaRC variant). Not the reflections: their
         // SHaRC variant hung the GPU at 4K in the harness (the 5090).
         bool sharc = sharc_path_pipeline_ && path_traced && version >= 18 && (requested & dlaa_bridge::RT_PATH_SHARC) != 0;
+        // Its cache is kept from frame to frame (SHaRC's resolve blends and evicts it); paths without it give it back
+        // once the GPU is past this request, so the row on again starts from zeroed buffers (SHaRC's reset).
+        if (path_traced && !sharc && sharc_buffers_[0]) {
+          for (ComPtr<ID3D12Resource>& buffer : sharc_buffers_) {
+            if (buffer) releases_.push_back({.value = own_value_ + 1, .resource = std::move(buffer)});
+          }
+        }
         for (size_t index = 0; index < sharc_buffers_.size() && sharc; ++index) {
-          sharc = GrowBuffer(&sharc_buffers_[index], uint64_t{SHARC_ENTRIES} * SHARC_STRIDES[index], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+          sharc = GrowBuffer(std::addressof(sharc_buffers_[index]), uint64_t{SHARC_ENTRIES} * SHARC_STRIDES[index], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         }
         if (sharc) {
           list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, sharc_buffers_[0]->GetGPUVirtualAddress());
@@ -7327,10 +7334,11 @@ class RtScene12 {
       for (Planned& plan : planned) plan.bake->gpu_failed = true;
     };
     if (planned.empty()) return;
-    // The clamped UVs and the scratch (kept, grown), the request's outputs and the histograms' read-back.
-    bool made = GrowBuffer(&gpu.uvs, totals[0], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    // The clamped UVs and the scratch (kept, grown: the SDK's transient pools "can be reused after baking", omm.h), the
+    // request's outputs and the histograms' read-back.
+    bool made = GrowBuffer(std::addressof(gpu.uvs), totals[0], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     for (size_t pool = 0; pool < transient_bytes.size() && made; ++pool) {
-      if (transient_bytes[pool] != 0) made = GrowBuffer(&gpu.transient[pool], transient_bytes[pool], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      if (transient_bytes[pool] != 0) made = GrowBuffer(std::addressof(gpu.transient[pool]), transient_bytes[pool], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     }
     std::array<ComPtr<ID3D12Resource>, 6> outputs;
     for (size_t kind = 0; kind < outputs.size() && made; ++kind) {
@@ -8718,8 +8726,8 @@ class RtScene12 {
   ComPtr<ID3D12Resource> path_ser_table_;
   static constexpr uint64_t PATH_SER_RECORD = D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
   // SHaRC Radiance Cache (rt_sharc.hlsli; null pipelines: unavailable): the paths' SHaRC variant, its update and resolve,
-  // its buffers (SHARC_ENTRIES each of SHARC_STRIDES: the keys, a frame's sums, the resolved light;
-  // made at first use, zeroed as committed buffers are) and the frame its update last ran.
+  // its buffers (SHARC_ENTRIES each of SHARC_STRIDES: the keys, a frame's sums, the resolved light; made at first use,
+  // zeroed as committed buffers are, kept while the paths use it) and the frame its update last ran.
   ComPtr<ID3D12PipelineState> sharc_path_pipeline_;
   ComPtr<ID3D12PipelineState> sharc_update_pipeline_;
   ComPtr<ID3D12PipelineState> sharc_resolve_pipeline_;
