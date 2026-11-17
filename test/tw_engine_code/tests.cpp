@@ -37,6 +37,11 @@
 //    once, every WakeAll's postcondition: every worker looked at the queue after it), the same with the row switched on and
 //    off 200 times; 600 shutdown cycles (a delegate in its loop while the workers are destroyed: a use after free faults);
 //    33 workers (the game's loop); CONTROL: the request never recorded (must fail); the render thread's time in WakeAll.
+// 11. The sprite soldiers' row builder (Faster Game CPU Code; the 20 conversions of +0x1907511 .. +0x19077e2 done four at a
+//    time): the region entered with a fake frame in the game's copy and in ours, every register, esp, xmm0, the frame from F up,
+//    the row and the objects equal: 2 M random calls (the vector path taken exactly when all 20 floats are zeros, tiny values or
+//    normals), every offset of the row's and the objects' pointers around each overlap check's edge, all 2^32 bit patterns
+//    through 15 float lanes and the two product lanes, 200 switches while 4 threads run it, timing.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -48,6 +53,7 @@
 #include <array>
 #include <atomic>
 #include <bit>
+#include <cstddef>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -736,7 +742,7 @@ int RunJobTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
   CHECK(ec::job_table != nullptr && JobTableField(0) == 0);
   // No sentinel is left in the stub, and every call and jump in it lands in the page or on the game's functions.
   const uint8_t* stub = ec::page + ec::JOB_PAGE;
-  for (size_t at = 0; at + 4 <= ec::JOB_STUB.size(); ++at) CHECK(Read32(stub + at) - ec::JOB_FIELD_SENTINEL >= 0x20);
+  for (size_t at = 0; at + 4 <= ec::JOB_STUB.size(); ++at) CHECK(Read32(stub + at) - ec::STUB_FIELD_SENTINEL >= 0x20);
   const uint8_t* constructor = tw::engine_tweaks::FindPattern({std::string_view(reinterpret_cast<const char*>(game + text_rva), text_size)}, JOB_WORKER_CONSTRUCTOR);
   CHECK(constructor != nullptr);
   const uint8_t* semaphore_call = constructor + JOB_WORKER_CONSTRUCTOR_SEMAPHORE_CALL;
@@ -974,6 +980,429 @@ int RunJobTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
   return 0;
 }
 
+// ---- 11. The sprite row builder's 20 half floats (engine_code.hpp 7.): the region of +0x1907511, entered with a fake frame ----
+
+// The region entered with esp = F in the call's frame, eax ecx edx ebx esi edi set, xmm0 the first float, xmm1 to xmm7
+// random; its end (HALF_ROWS_END, jumped to by both copies) returns to the harness with the registers, esp and the xmm
+// registers saved. ebp is the call itself in both copies (the region leaves it alone).
+struct RowsCall {
+  uint32_t in[7];             // 0: eax ecx edx ebx esi edi (ebp: the call)
+  uint32_t block;             // 28
+  uint32_t saved_esp;         // 32
+  uint32_t esp_after;         // 36
+  uint32_t out[7];            // 40: eax ecx edx ebx esi edi ebp
+  uint32_t xmm0_in;           // 68
+  uint32_t xmm0_out;          // 72
+  uint32_t unused;            // 76
+  alignas(16) uint8_t xmm_in[112];   // 80: xmm1 to xmm7
+  alignas(16) uint8_t xmm_out[112];  // 192
+  alignas(16) uint8_t frame[0x200];  // 304: F = frame + 0x100
+};
+static_assert(offsetof(RowsCall, frame) == 304 && offsetof(RowsCall, xmm_out) == 192 && offsetof(RowsCall, out) == 40);
+
+__declspec(naked) void __cdecl EnterRows(RowsCall*) {
+  __asm {
+    pushad
+    mov ebp, [esp + 36]
+    mov [ebp + 32], esp
+    movups xmm1, [ebp + 80]
+    movups xmm2, [ebp + 96]
+    movups xmm3, [ebp + 112]
+    movups xmm4, [ebp + 128]
+    movups xmm5, [ebp + 144]
+    movups xmm6, [ebp + 160]
+    movups xmm7, [ebp + 176]
+    movss xmm0, [ebp + 68]
+    lea esp, [ebp + 560]  // F = 304 + 0x100
+    mov eax, [ebp + 0]
+    mov ecx, [ebp + 4]
+    mov edx, [ebp + 8]
+    mov ebx, [ebp + 12]
+    mov esi, [ebp + 16]
+    mov edi, [ebp + 20]
+    jmp dword ptr [ebp + 28]
+  }
+}
+
+// The region's end: esp is F - 0x10 there in both copies.
+__declspec(naked) void RowsReturn() {
+  __asm {
+    mov [esp - 8], eax
+    lea eax, [esp - 544]  // the call: esp = F - 0x10 = the call + 560 - 16
+    mov [eax + 44], ecx
+    mov [eax + 48], edx
+    mov [eax + 52], ebx
+    mov [eax + 56], esi
+    mov [eax + 60], edi
+    mov [eax + 64], ebp
+    mov ecx, [esp - 8]
+    mov [eax + 40], ecx
+    mov [eax + 36], esp
+    movss [eax + 72], xmm0
+    movups [eax + 192], xmm1
+    movups [eax + 208], xmm2
+    movups [eax + 224], xmm3
+    movups [eax + 240], xmm4
+    movups [eax + 256], xmm5
+    movups [eax + 272], xmm6
+    movups [eax + 288], xmm7
+    mov esp, [eax + 32]
+    popad
+    ret
+  }
+}
+
+// One thread's world: the call with its frame, and the arena the pointers lead to (the source object, the second object, the
+// row). It stays at one address: every run starts from a copy of the same inputs.
+struct RowsWorld {
+  RowsCall call;
+  alignas(16) std::array<uint8_t, 0x400> arena;
+};
+
+// What the game's region reads: the frame's float slots (and the int at +0x20), the source object's floats, the second
+// object's and xmm0.
+constexpr std::array<uint32_t, 8> ROWS_FRAME_FLOATS = {0x24, 0x44, 0x48, 0x4C, 0x50, 0x58, 0x70, 0x74};
+constexpr std::array<uint32_t, 8> ROWS_SOURCE_FLOATS = {0x1C, 0x28, 0x2C, 0x30, 0x34, 0x38, 0x3C, 0x40};
+
+// A float's bits: from the classes the conversion tells apart (normals, the rounding's ties, exact halves, zeros, tiny values
+// and the edges between the classes), or `special`: half denormals, overflow, infinities, NaNs, any bits.
+uint32_t RowsFloat(Random* random, bool special) {
+  const uint32_t sign = (random->Next() & 1) << 31;
+  const uint32_t mantissa = random->Next() & 0x7FFFFF;
+  if (special) {
+    switch (random->Next() % 4) {
+      case 0: return sign | (103 + random->Next() % 10) << 23 | mantissa;
+      case 1: return sign | (143 + random->Next() % 113) << 23 | mantissa;
+      case 2: return sign | std::array<uint32_t, 6>{0x7F800000, 0x7FC00000, 0x47800000, 0x33800000, 0x387FFFFF, 0x33800001}[random->Next() % 6];
+      default: return random->Next();
+    }
+  }
+  switch (random->Next() % 9) {
+    case 0: return sign | (113 + random->Next() % 30) << 23 | mantissa;
+    case 1: return sign | (113 + random->Next() % 30) << 23 | (mantissa & ~0x1FFFu) | std::array<uint32_t, 6>{0, 0x1000, 0x0FFF, 0x1001, 0x1FFF, 0x0800}[random->Next() % 6];
+    case 2: return sign;
+    case 3: return sign | (random->Next() % 103) << 23 | mantissa;
+    case 4: return sign | std::array<uint32_t, 8>{0x33000400, 0x33000401, 0x337FFFFF, 0x38800000, 0x477FFFFF, 0x33000000, 0x38800001, 0x477FE000}[random->Next() % 8];
+    case 5: return sign | (120 + random->Next() % 16) << 23 | mantissa;
+    case 6: return sign | (random->Next() % 4 == 0 ? 0u : 0x3F800000u);
+    case 7: return sign | (100 + random->Next() % 3) << 23 | mantissa;
+    default: return sign | (113 + random->Next() % 30) << 23 | (mantissa & 0x7FE000);
+  }
+}
+
+// The 20 floats' bits as the game's region converts them (the products as mulss, the int as cvtdq2ps).
+std::array<uint32_t, 20> RowsLanes(const RowsWorld& world) {
+  const uint8_t* frame = world.call.frame + 0x100;
+  const auto* source = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(world.call.in[4]));
+  const auto* second = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(Read32(frame + 0x5C)));
+  const auto mul = [](uint32_t a, uint32_t b) {
+    float x, y;
+    std::memcpy(&x, &a, 4);
+    std::memcpy(&y, &b, 4);
+    const float product = _mm_cvtss_f32(_mm_mul_ss(_mm_set_ss(x), _mm_set_ss(y)));
+    uint32_t bits;
+    std::memcpy(&bits, &product, 4);
+    return bits;
+  };
+  const float converted = _mm_cvtss_f32(_mm_cvtepi32_ps(_mm_cvtsi32_si128(static_cast<int>(Read32(frame + 0x20)))));
+  uint32_t from_int;
+  std::memcpy(&from_int, &converted, 4);
+  return {world.call.xmm0_in, Read32(frame + 0x24), Read32(source + 0x1C), from_int, Read32(frame + 0x70), Read32(frame + 0x58),
+          mul(Read32(frame + 0x50), Read32(frame + 0x74)), Read32(source + 0x40), mul(Read32(frame + 0x74), Read32(frame + 0x4C)),
+          Read32(frame + 0x48), 0, Read32(frame + 0x44), Read32(source + 0x28), Read32(source + 0x2C), Read32(source + 0x30),
+          Read32(source + 0x34), Read32(source + 0x38), Read32(source + 0x3C), Read32(second + 0x48), Read32(second + 0x4C)};
+}
+
+// Whether the stub's vector path takes these lanes: every one zero, tiny (below 0x33800000 without its sign) or normal.
+bool RowsFast(const std::array<uint32_t, 20>& lanes) {
+  for (const uint32_t bits : lanes) {
+    const uint32_t a = bits & 0x7FFFFFFF;
+    if (a >= 0x33800000 && !(a >= 0x38800000 && a < 0x47800000)) return false;
+  }
+  return true;
+}
+
+// A random world: random bytes everywhere, the floats the region reads from `RowsFloat` (one draw in `special_rate` special,
+// 0: none), the objects and the row apart in the arena.
+void RowsRandom(RowsWorld* world, Random* random, uint32_t special_rate) {
+  for (uint8_t& byte : world->arena) byte = static_cast<uint8_t>(random->Next());
+  RowsCall* call = &world->call;
+  for (uint8_t& byte : call->frame) byte = static_cast<uint8_t>(random->Next());
+  for (uint8_t& byte : call->xmm_in) byte = static_cast<uint8_t>(random->Next());
+  for (uint32_t& value : call->in) value = random->Next();
+  const auto draw = [&] { return RowsFloat(random, special_rate != 0 && random->Next() % special_rate == 0); };
+  uint8_t* frame = call->frame + 0x100;
+  uint8_t* source = world->arena.data();
+  uint8_t* second = world->arena.data() + 0x100;
+  call->xmm0_in = draw();
+  for (const uint32_t at : ROWS_FRAME_FLOATS) Write32(frame + at, draw());
+  Write32(frame + 0x20, static_cast<uint32_t>(special_rate != 0 && random->Next() % special_rate == 0 ? static_cast<int32_t>(random->Next()) : static_cast<int32_t>(random->Next() % 131071) - 65535));
+  for (const uint32_t at : ROWS_SOURCE_FLOATS) Write32(source + at, draw());
+  Write32(second + 0x48, draw());
+  Write32(second + 0x4C, draw());
+  call->in[4] = Address(source);
+  call->in[6] = 0;
+  Write32(frame + 0x5C, Address(second));
+  Write32(frame + 0x68, Address(world->arena.data() + 0x220));
+}
+
+// One run from `backup`: the world entered at `block`, then copied to `out` (the call and the arena as they are after).
+void RunRows(uint32_t block, RowsWorld* world, const RowsWorld& backup, RowsWorld* out) {
+  *world = backup;
+  world->call.block = block;
+  EnterRows(&world->call);
+  *out = *world;
+}
+
+// Equal after one run (A the game's code, B the patched one): every register, esp, xmm0, the frame from F up, the arena
+// (the row and the objects); A leaves xmm1 to xmm7 alone. `fast`: B took the vector path (the pushed argument slots below
+// F differ: the stub pushes only the last, the game's code all 4).
+thread_local const char* rows_difference = "";
+bool RowsEqual(const RowsWorld& world, const RowsWorld& backup, const RowsWorld& a, const RowsWorld& b, bool* fast) {
+  const uint32_t frame_top = Address(world.call.frame) + 0x100;
+  *fast = std::memcmp(a.call.frame + 0xF0, b.call.frame + 0xF0, 16) != 0;
+  rows_difference = "";
+  if (std::memcmp(a.call.out, b.call.out, sizeof(a.call.out)) != 0) rows_difference = "registers";
+  else if (a.call.esp_after != b.call.esp_after || a.call.esp_after != frame_top - 0x10) rows_difference = "esp";
+  else if (a.call.xmm0_out != b.call.xmm0_out) rows_difference = "xmm0";
+  else if (b.call.out[6] != Address(&world.call)) rows_difference = "ebp";
+  else if (std::memcmp(a.call.frame + 0x100, b.call.frame + 0x100, 0x100) != 0) rows_difference = "frame";
+  else if (a.arena != b.arena) {
+    rows_difference = "arena";
+    for (size_t at = 0; at < a.arena.size(); ++at) {
+      if (a.arena[at] != b.arena[at]) Report("    arena +0x%zX: game %02X ours %02X (before %02X)\n", at, a.arena[at], b.arena[at], backup.arena[at]);
+    }
+  }
+  else if (std::memcmp(a.call.xmm_out, backup.call.xmm_in, sizeof(a.call.xmm_out)) != 0) rows_difference = "the game's xmm registers";
+  return rows_difference[0] == 0;
+}
+
+int RunRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32_t text_rva, uint32_t text_size, bool quick) {
+  namespace ec = twattila::engine_code::internal;
+  const uint32_t region_rva = build.code->half_rows_rva;
+  const uint32_t end_rva = region_rva + ec::HALF_ROWS_END;
+  CHECK(ec::sites[8].at == patched + region_rva && (ec::written >> 8 & 1) != 0);
+  CHECK(Matches(game + text_rva, text_size, ec::HALF_ROWS) == 1);
+  // No sentinel is left in the stub, and its constants are where it expects them.
+  const uint8_t* stub = ec::page + ec::HALF_ROWS_PAGE;
+  for (size_t at = 0; at + 4 <= ec::HALF_ROWS_STUB.size(); ++at) {
+    CHECK(Read32(stub + at) - ec::STUB_CONSTANT_SENTINEL >= 0x100 && Read32(stub + at) - ec::STUB_CALL_SENTINEL >= 0x10);
+  }
+  CHECK(std::memcmp(stub + ec::HALF_ROWS_CONSTANTS_AT, ec::HALF_ROWS_CONSTANTS.data(), sizeof(ec::HALF_ROWS_CONSTANTS)) == 0);
+  std::array<uint8_t, 5> game_end, patched_end;
+  std::memcpy(game_end.data(), game + end_rva, 5);
+  std::memcpy(patched_end.data(), patched + end_rva, 5);
+  JumpTo(game + end_rva, reinterpret_cast<const void*>(&RowsReturn));
+  JumpTo(patched + end_rva, reinterpret_cast<const void*>(&RowsReturn));
+  const uint32_t game_block = Address(game + region_rva);
+  const uint32_t patched_block = Address(patched + region_rva);
+  auto world = std::make_unique<RowsWorld>();
+  auto backup = std::make_unique<RowsWorld>();
+  auto a = std::make_unique<RowsWorld>();
+  auto b = std::make_unique<RowsWorld>();
+
+  // 11a. Random calls: every other one with a special lane in 24 draws or so. The vector path must be taken exactly when every
+  // one of the 20 lanes is a zero, a tiny value or a normal.
+  {
+    Random random = {.state = 0xA11CE};
+    uint64_t fast = 0, slow = 0, wrong = 0;
+    for (int run = 0; run < 2'000'000; ++run) {
+      RowsRandom(world.get(), &random, (run & 1) != 0 ? 24 : 0);
+      *backup = *world;
+      const bool expect_fast = RowsFast(RowsLanes(*world));
+      RunRows(game_block, world.get(), *backup, a.get());
+      RunRows(patched_block, world.get(), *backup, b.get());
+      bool took_fast;
+      const bool same = RowsEqual(*world, *backup, *a, *b, &took_fast);
+      (took_fast ? fast : slow)++;
+      if (!same || took_fast != expect_fast) {
+        ++wrong;
+        Report("  rows: run %d, same %d (%s), took the vector path %d, expected %d\n", run, same ? 1 : 0, rows_difference, took_fast ? 1 : 0, expect_fast ? 1 : 0);
+      }
+    }
+    CHECK(wrong == 0 && fast > 200'000 && slow > 100'000);
+    std::printf("11. sprite row builder: 2 M random calls: registers, esp, frame, row and objects, xmm0 equal; vector path %llu, the game's code %llu (the calls with a special lane)\n", fast, slow);
+  }
+
+  // 11b. Pointers that overlap: the row against the source object, the second object and the frame, each object against the frame's
+  // temporaries, at every offset around the checks' edges: inside, the game's code; outside, the vector path; equal either way.
+  {
+    Random random = {.state = 0xA11A5};
+    uint64_t cases = 0, fast = 0;
+    for (int which = 0; which < 5; ++which) {
+      for (int offset = -0x90; offset <= 0x90; ++offset) {
+        // A row over the frame's two pointer slots (the second object's at F+0x5C, the row's at F+0x68) breaks the game's own code
+        // (it reads the pointers again after the halves' stores): not a case.
+        if (which == 2 && ((offset + 8 < 0x60 && offset + 0x30 > 0x5C) || (offset + 8 < 0x6C && offset + 0x30 > 0x68))) continue;
+        // An object whose floats lie below F is on the dead stack, where the game's pushed arguments and the callee's frames write:
+        // no live object is there (the row is covered either way, its check reaches 0x6F below F).
+        if ((which == 3 || which == 4) && offset < -0x1C) continue;
+        for (int round = 0; round < 40; ++round) {
+          RowsRandom(world.get(), &random, 0);
+          uint8_t* frame_top = world->call.frame + 0x100;
+          uint8_t* arena = world->arena.data();
+          uint32_t row = Address(arena + 0x220);
+          uint32_t source = Address(arena);
+          uint32_t second = Address(arena + 0x100);
+          switch (which) {
+            case 0: row = source + offset; break;
+            case 1: row = second + offset; break;
+            case 2: row = Address(frame_top) + offset; break;
+            case 3: source = Address(frame_top) + offset; break;
+            default: second = Address(frame_top) + offset; break;
+          }
+          // The floats the objects hold (they may be the frame's own bytes or the row's), then the pointers.
+          for (const uint32_t at : ROWS_SOURCE_FLOATS) Write32(reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(source)) + at, RowsFloat(&random, false));
+          Write32(reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(second)) + 0x48, RowsFloat(&random, false));
+          Write32(reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(second)) + 0x4C, RowsFloat(&random, false));
+          world->call.in[4] = source;
+          Write32(frame_top + 0x5C, second);
+          Write32(frame_top + 0x68, row);
+          *backup = *world;
+          RunRows(game_block, world.get(), *backup, a.get());
+          RunRows(patched_block, world.get(), *backup, b.get());
+          bool took_fast;
+          const bool same = RowsEqual(*world, *backup, *a, *b, &took_fast);
+          ++cases;
+          fast += took_fast ? 1 : 0;
+          if (!same) {
+            Report("  rows alias: kind %d offset %d (%d): NOT equal (%s; the vector path %d)\n", which, offset, round, rows_difference, took_fast ? 1 : 0);
+            CHECK(same);
+          }
+        }
+      }
+    }
+    CHECK(fast > cases / 20 && fast < cases);
+    std::printf("   %llu calls with overlapping pointers (5 kinds, every offset -0x90 .. 0x90 around the edges): equal, the vector path in %llu\n", cases, fast);
+  }
+
+  // 11c. Every bit pattern: 17 patterns a call (the 15 floats read as they are, the product lanes x * 1.0 and 1.0 * x, the rest
+  // fixed), consecutive patterns, 2^32 of them (2^28 quick): each call's 20 halves, registers and frame equal.
+  {
+    const uint64_t patterns = (quick ? (1ull << 28) : (1ull << 32));
+    const uint64_t blocks = (patterns + 16) / 17;
+    std::atomic<uint64_t> fast_blocks = 0;
+    const auto start = std::chrono::steady_clock::now();
+    const uint64_t wrong = Parallel(blocks, [&](uint64_t first, uint64_t last, unsigned worker) -> uint64_t {
+      auto in = std::make_unique<RowsWorld>();
+      auto saved = std::make_unique<RowsWorld>();
+      auto ra = std::make_unique<RowsWorld>();
+      auto rb = std::make_unique<RowsWorld>();
+      Random random = {.state = 0x9E3779B97F4A7C15ull ^ (first * 0x2545F4914F6CDD1Dull) ^ worker};
+      RowsRandom(in.get(), &random, 0);
+      uint8_t* frame = in->call.frame + 0x100;
+      uint8_t* source = in->arena.data();
+      uint8_t* second = in->arena.data() + 0x100;
+      Write32(frame + 0x50, 0x3F800000);  // the products: x * 1.0 and 1.0 * x
+      Write32(frame + 0x4C, 0x3F800000);
+      Write32(frame + 0x20, 1000);
+      uint64_t bad = 0;
+      uint64_t fast_here = 0;
+      for (uint64_t block = first; block < last; ++block) {
+        const auto pattern = [&](uint32_t lane) { return static_cast<uint32_t>(block * 17 + lane); };
+        in->call.xmm0_in = pattern(0);
+        Write32(frame + 0x24, pattern(1));
+        Write32(source + 0x1C, pattern(2));
+        Write32(frame + 0x70, pattern(3));
+        Write32(frame + 0x58, pattern(4));
+        Write32(frame + 0x74, pattern(5));
+        Write32(source + 0x40, pattern(6));
+        Write32(frame + 0x48, pattern(7));
+        Write32(frame + 0x44, pattern(8));
+        for (uint32_t index = 0; index < 5; ++index) Write32(source + 0x28 + 4 * index, pattern(9 + index));
+        Write32(source + 0x3C, pattern(14));
+        Write32(second + 0x48, pattern(15));
+        Write32(second + 0x4C, pattern(16));
+        *saved = *in;
+        RunRows(game_block, in.get(), *saved, ra.get());
+        RunRows(patched_block, in.get(), *saved, rb.get());
+        bool took_fast;
+        if (!RowsEqual(*in, *saved, *ra, *rb, &took_fast)) {
+          ++bad;
+          Report("  rows pattern block %llu: NOT equal (eax %08X / %08X)\n", block, ra->call.out[0], rb->call.out[0]);
+        }
+        fast_here += took_fast ? 1 : 0;
+      }
+      fast_blocks += fast_here;
+      return bad;
+    });
+    CHECK(wrong == 0);
+    std::printf("   every bit pattern, %llu in %llu calls of 17 (%llu on the vector path): the 20 halves, registers, frame equal (%.0f s)\n", patterns, blocks, fast_blocks.load(),
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+  }
+
+  // 11d. The sites switched off and on 200 times while 4 threads run both copies' regions.
+  {
+    std::atomic<bool> stop = false;
+    std::atomic<uint64_t> bad = 0;
+    std::atomic<uint64_t> calls = 0;
+    std::vector<std::thread> threads;
+    for (int worker = 0; worker < 4; ++worker) {
+      threads.emplace_back([&, worker] {
+        auto in = std::make_unique<RowsWorld>();
+        auto saved = std::make_unique<RowsWorld>();
+        auto ra = std::make_unique<RowsWorld>();
+        auto rb = std::make_unique<RowsWorld>();
+        Random random = {.state = 0xFEEDull ^ static_cast<uint64_t>(worker)};
+        while (!stop.load()) {
+          RowsRandom(in.get(), &random, (random.Next() & 3) == 0 ? 24 : 0);
+          *saved = *in;
+          RunRows(game_block, in.get(), *saved, ra.get());
+          RunRows(patched_block, in.get(), *saved, rb.get());
+          bool took_fast;
+          if (!RowsEqual(*in, *saved, *ra, *rb, &took_fast)) ++bad;
+          ++calls;
+        }
+      });
+    }
+    int busy = 0;
+    bool on = true;
+    for (int switches = 0; switches < 200; ++switches) {
+      on = !on;
+      int tries = 0;
+      do {
+        twattila::engine_code::Update(on);
+        ++tries;
+      } while ((ec::written != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
+      busy += tries > 1 ? 1 : 0;
+    }
+    twattila::engine_code::Update(true);
+    stop = true;
+    for (auto& thread : threads) thread.join();
+    std::printf("   200 switches while 4 threads made %llu calls of each copy: %llu not equal (%d writes waited for a thread inside a site)\n", calls.load(), bad.load(), busy);
+    CHECK(bad.load() == 0 && (ec::written >> 8 & 1) != 0);
+  }
+
+  // 11e. Timing, one thread, the same all-normal call: the game's region with its float to half, the patched copy with only the
+  // other sites (today: the half stub's 20 calls), and with this region too.
+  {
+    Random random = {.state = 0x71E};
+    RowsRandom(world.get(), &random, 0);
+    *backup = *world;
+    CHECK(RowsFast(RowsLanes(*world)));
+    const auto time = [&](uint32_t block) {
+      constexpr int CALLS = 2'000'000;
+      const auto begin = std::chrono::steady_clock::now();
+      for (int index = 0; index < CALLS; ++index) RunRows(block, world.get(), *backup, a.get());
+      return std::chrono::duration<double>(std::chrono::steady_clock::now() - begin).count() * 1e9 / CALLS;
+    };
+    const double game_ns = time(game_block);
+    const double both_ns = time(patched_block);
+    DWORD protection;
+    VirtualProtect(patched + region_rva, 5, PAGE_EXECUTE_READWRITE, &protection);
+    std::memcpy(patched + region_rva, ec::sites[8].game.data(), 5);
+    const double today_ns = time(patched_block);
+    std::memcpy(patched + region_rva, ec::sites[8].jump.data(), 5);
+    VirtualProtect(patched + region_rva, 5, protection, &protection);
+    FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+    std::printf("   ns a call (with the harness's entry and copies), the game's / half stub only (today) / half stub + this region: %.1f / %.1f / %.1f\n", game_ns, today_ns, both_ns);
+  }
+  std::memcpy(game + end_rva, game_end.data(), 5);
+  std::memcpy(patched + end_rva, patched_end.data(), 5);
+  FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1024,7 +1453,7 @@ int main(int argc, char** argv) {
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
   CHECK(ec::written == (ec::found & ~ec::JOB_SITES)
         && ec::found == (0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.ready_check_rva != 0 ? 0b10000u : 0u)
-                         | (build.code->job_wake_all_rva != 0 ? ec::JOB_SITES : 0u)));
+                         | (build.code->job_wake_all_rva != 0 ? ec::JOB_SITES : 0u) | (build.code->half_rows_rva != 0 ? 0b100000000u : 0u)));
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
     if (unpatched[at - text_rva] == patched[at]) continue;
@@ -1806,6 +2235,13 @@ int main(int argc, char** argv) {
     std::printf("9. ready check: none in this build\n");
   }
 
+  // The sprite row builder's part alone (tests.exe <dll> quick rows).
+  if (argc > 3 && std::string(argv[3]) == "rows") {
+    if (const int failed = RunRowsTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
+    std::printf("PASS (rows only)\n");
+    return 0;
+  }
+
   // 10. Faster Job Wake-Ups (the third row; its sites are off until here).
   if (build.code->job_wake_all_rva != 0) {
     twattila::engine_code::Update(true);
@@ -1813,6 +2249,15 @@ int main(int argc, char** argv) {
   } else {
     CHECK(ec::sites[5].at == nullptr && ec::sites[6].at == nullptr && ec::sites[7].at == nullptr);
     std::printf("10. job wake-ups: none in this build\n");
+  }
+
+  // 11. The sprite row builder's 20 half floats (a site of Faster Game CPU Code).
+  if (build.code->half_rows_rva != 0) {
+    twattila::engine_code::Update(true);
+    if (const int failed = RunRowsTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
+  } else {
+    CHECK(ec::sites[8].at == nullptr);
+    std::printf("11. sprite row builder: none in this build\n");
   }
 
   // Off: the game's bytes back (the harness's jumps removed first).

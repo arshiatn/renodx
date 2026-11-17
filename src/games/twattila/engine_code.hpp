@@ -32,7 +32,7 @@
 // RVAs are the Steam build's (1.6.0): there they are tried first, then the code section is searched.
 // Thrones of Britannia and Rome II (Game::THRONES, Game::ROME2): the same routines, their builds' (internal::BUILDS);
 // Rome II has no ready check. Faster Job Wake-Ups (its own row, Experimental): a sixth to eighth site, the job system's
-// worker wake-ups (6. below).
+// worker wake-ups (6. below). The sprite soldiers' row builder's 20 half floats at once (7. below) belong to Faster Game CPU Code.
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
@@ -325,10 +325,12 @@ constexpr std::string_view JOB_STOP =
 constexpr size_t JOB_WAKE_ALL_STUB = 0x00;
 constexpr size_t JOB_SLEEP_STUB = 0x73;
 constexpr size_t JOB_STOP_STUB = 0xED;
-// The stub's sentinels, replaced in Prepare: the side table's fields (absolute: key, pending, asleep, running, each one
-// cache line on) and the game's functions (relative: Wake, Acquire(INFINITE), WakeAll + 5, Stop).
-constexpr uint32_t JOB_FIELD_SENTINEL = 0x5A5A5A01;
-constexpr uint32_t JOB_CALL_SENTINEL = 0x5A5A5A11;
+// The stubs' sentinels, replaced in Prepare: absolute fields (the job stub's side table: key, pending, asleep, running, each one
+// cache line on), absolute constants (the half rows' table, +0 .. +0xff) and relative calls (the job stub: Wake,
+// Acquire(INFINITE), WakeAll + 5, Stop; the half rows': the float to half, the region's start + 5, its end).
+constexpr uint32_t STUB_FIELD_SENTINEL = 0x5A5A5A01;
+constexpr uint32_t STUB_CALL_SENTINEL = 0x5A5A5A11;
+constexpr uint32_t STUB_CONSTANT_SENTINEL = 0x5A5A5B00;
 constexpr size_t JOB_TABLE_SIZE = 256;
 constexpr size_t JOB_TABLE_LINE = 64;
 constexpr std::array<uint8_t, 280> JOB_STUB = {
@@ -417,6 +419,300 @@ constexpr std::array<uint8_t, 280> JOB_STUB = {
     0xE9, 0x14, 0x5A, 0x5A, 0x5A,                    // stop_game: jmp Stop
 };
 
+// 7. The sprite soldiers' row builder (+0x1906fa0; 4 rows of 0x38 bytes a call): between its row loop's maths it converts 20
+// floats to halves by 20 calls of the float to half above (the halves are the row's words +8 .. +0x2f), 8 ms of the workers a
+// frame at Unit Detail 8x. The stub for the region from the first of those calls to the one after the last (+0x1907511 ..
+// +0x19077e2; the first 5 bytes are the site) reads the 20 floats from the same places (the frame's slots, two objects,
+// xmm0, two products with their operands in the game's order), converts them four at a time with the same integer rounding
+// (zero and tiny values, normals; any infinity, NaN, overflow or half denormal among the 20 and the game's code runs, as it
+// does when a store of the row could reach an input: five range checks), stores the halves at once (all but the last, which
+// the game's code stores after the region from the real call's ax), leaves the frame's three temporaries (+0x38, +0x70,
+// +0x74) as the game does, and makes the last conversion by a real call of the game's float to half with its argument slot:
+// eax (its high half too) and ecx come out as that function leaves them; edx, which only that function writes, is kept in
+// xmm3 and put back before the call and before the fallback. What differs from the game's code, all dead after the region:
+// the 16 pushed argument slots below esp (the game's stack pointer ends 16 bytes down in both; no live object lies on the
+// stack below the frame), xmm1 to xmm7 (nothing in the loop or the way out reads them first), the flags, and the order of
+// the reads against the halves' stores (the checks) and of a fault: an invalid pointer faults in both.
+constexpr std::string_view HALF_ROWS =
+    "8D 44 24 38 50 F3 0F 11 44 24 3C E8 ?? ?? ?? ?? 8B 4C 24 6C F3 0F 10 44 24 28 F3 0F 11 44 24 3C 66 89 41 08 8D 44 24 "
+    "3C 50 E8 ?? ?? ?? ?? 8B 4C 24 70 66 89 41 0A 8D 44 24 40 F3 0F 10 46 1C 50 F3 0F 11 44 24 44 E8 ?? ?? ?? ?? 8B 4C 24 "
+    "74 66 0F 6E 44 24 2C 0F 5B C0 66 89 41 0C 8D 44 24 44 50 F3 0F 11 44 24 48 E8 ?? ?? ?? ?? 8B 4C 24 78 F3 0F 10 84 24 "
+    "80 00 00 00 F3 0F 11 84 24 80 00 00 00 66 89 41 0E 8D 84 24 80 00 00 00 50 E8 ?? ?? ?? ?? 8B 4C 24 7C F3 0F 10 44 24 "
+    "6C F3 0F 11 84 24 84 00 00 00 66 89 41 10 8D 84 24 84 00 00 00 50 E8 ?? ?? ?? ?? 8B 8C 24 80 00 00 00 F3 0F 10 44 24 "
+    "68 F3 0F 59 84 24 8C 00 00 00 66 89 41 12 8D 84 24 88 00 00 00 50 F3 0F 11 84 24 8C 00 00 00 E8 ?? ?? ?? ?? 8B 8C 24 "
+    "84 00 00 00 F3 0F 10 84 24 90 00 00 00 F3 0F 59 44 24 68 66 89 41 14 8D 84 24 90 00 00 00 50 F3 0F 11 84 24 94 00 00 "
+    "00 E8 ?? ?? ?? ?? 8B 8C 24 88 00 00 00 F3 0F 10 44 24 68 F3 0F 11 84 24 94 00 00 00 66 89 41 18 8D 84 24 94 00 00 00 "
+    "50 E8 ?? ?? ?? ?? 8B 8C 24 8C 00 00 00 C7 84 24 98 00 00 00 00 00 00 00 66 89 41 1A 8D 84 24 98 00 00 00 50 E8 ?? ?? "
+    "?? ?? 8B 8C 24 90 00 00 00 F3 0F 10 44 24 6C F3 0F 11 84 24 9C 00 00 00 66 89 41 1C 8D 84 24 9C 00 00 00 50 E8 ?? ?? "
+    "?? ?? 8B 8C 24 94 00 00 00 66 89 41 1E 8D 84 24 A0 00 00 00 F3 0F 10 46 28 50 F3 0F 11 84 24 A4 00 00 00 E8 ?? ?? ?? "
+    "?? 8B 8C 24 98 00 00 00 66 89 41 20 8D 84 24 A4 00 00 00 F3 0F 10 46 2C 50 F3 0F 11 84 24 A8 00 00 00 E8 ?? ?? ?? ?? "
+    "8B 8C 24 9C 00 00 00 66 89 41 22 8D 84 24 A8 00 00 00 F3 0F 10 46 30 50 F3 0F 11 84 24 AC 00 00 00 E8 ?? ?? ?? ?? 8B "
+    "8C 24 A0 00 00 00 66 89 41 24 8D 84 24 AC 00 00 00 F3 0F 10 46 34 50 F3 0F 11 84 24 B0 00 00 00 E8 ?? ?? ?? ?? 8B 8C "
+    "24 A4 00 00 00 66 89 41 26 8D 84 24 B0 00 00 00 F3 0F 10 46 38 50 F3 0F 11 84 24 B4 00 00 00 E8 ?? ?? ?? ?? 8B 8C 24 "
+    "A8 00 00 00 83 C4 40 66 89 41 28 8D 44 24 74 F3 0F 10 46 3C 50 F3 0F 11 44 24 78 E8 ?? ?? ?? ?? 8B 4C 24 6C 66 89 41 "
+    "2A 8D 44 24 78 F3 0F 10 46 40 50 F3 0F 11 44 24 7C E8 ?? ?? ?? ?? 8B 4C 24 70 66 89 41 16 8B 44 24 64 F3 0F 10 40 48 "
+    "8D 44 24 7C 50 F3 0F 11 84 24 80 00 00 00 E8 ?? ?? ?? ?? 8B 4C 24 74 66 89 41 2C 8B 44 24 68 F3 0F 10 40 4C 8D 84 24 "
+    "80 00 00 00 50 F3 0F 11 84 24 84 00 00 00 E8 ?? ?? ?? ?? 8B 4C 24 78 47";
+constexpr size_t HALF_ROWS_END = 721;  // mov ecx, dword ptr [esp + 0x78]: where the region ends
+constexpr std::array<uint16_t, 20> HALF_ROWS_CALLS = {11, 41, 70, 103, 142, 178, 226, 274, 313, 348, 387, 425, 463, 501, 539, 577, 612, 641, 677, 716};
+constexpr size_t HALF_ROWS_CONSTANTS_AT = 0x4D0;
+constexpr std::array<uint8_t, 1222> HALF_ROWS_STUB = {
+    0x66, 0x0F, 0x6E, 0xDA,                          // region: movd xmm3, edx
+    0x8B, 0x4C, 0x24, 0x68,                          // mov ecx, dword ptr [esp + 0x68]
+    0x8B, 0x54, 0x24, 0x5C,                          // mov edx, dword ptr [esp + 0x5c]
+    0x89, 0xC8,                                      // mov eax, ecx
+    0x29, 0xF0,                                      // sub eax, esi
+    0x83, 0xC0, 0x13,                                // add eax, 0x13
+    0x83, 0xF8, 0x4F,                                // cmp eax, 0x4f
+    0x0F, 0x82, 0x9C, 0x04, 0x00, 0x00,              // jb 0x4b8
+    0x89, 0xC8,                                      // mov eax, ecx
+    0x29, 0xD0,                                      // sub eax, edx
+    0x83, 0xE8, 0x19,                                // sub eax, 0x19
+    0x83, 0xF8, 0x2F,                                // cmp eax, 0x2f
+    0x0F, 0x82, 0x8C, 0x04, 0x00, 0x00,              // jb 0x4b8
+    0x8D, 0x41, 0x6F,                                // lea eax, [ecx + 0x6f]
+    0x29, 0xE0,                                      // sub eax, esp
+    0x3D, 0xDF, 0x00, 0x00, 0x00,                    // cmp eax, 0xdf
+    0x0F, 0x82, 0x7C, 0x04, 0x00, 0x00,              // jb 0x4b8
+    0x8D, 0x46, 0x0B,                                // lea eax, [esi + 0xb]
+    0x29, 0xE0,                                      // sub eax, esp
+    0x83, 0xF8, 0x67,                                // cmp eax, 0x67
+    0x0F, 0x82, 0x6E, 0x04, 0x00, 0x00,              // jb 0x4b8
+    0x8D, 0x42, 0x17,                                // lea eax, [edx + 0x17]
+    0x29, 0xE0,                                      // sub eax, esp
+    0x83, 0xF8, 0x47,                                // cmp eax, 0x47
+    0x0F, 0x82, 0x60, 0x04, 0x00, 0x00,              // jb 0x4b8
+    0xF3, 0x0F, 0x10, 0x6C, 0x24, 0x24,              // movss xmm5, dword ptr [esp + 0x24]
+    0x0F, 0x28, 0xE0,                                // movaps xmm4, xmm0
+    0x0F, 0x14, 0xE5,                                // unpcklps xmm4, xmm5
+    0xF3, 0x0F, 0x10, 0x6E, 0x1C,                    // movss xmm5, dword ptr [esi + 0x1c]
+    0x66, 0x0F, 0x6E, 0x74, 0x24, 0x20,              // movd xmm6, dword ptr [esp + 0x20]
+    0x0F, 0x5B, 0xF6,                                // cvtdq2ps xmm6, xmm6
+    0x0F, 0x14, 0xEE,                                // unpcklps xmm5, xmm6
+    0x0F, 0x16, 0xE5,                                // movlhps xmm4, xmm5
+    0x66, 0x0F, 0x6F, 0xEC,                          // movdqa xmm5, xmm4
+    0x66, 0x0F, 0xDB, 0x2D, 0x00, 0x5B, 0x5A, 0x5A,  // pand xmm5, xmmword ptr [table + 0x0]
+    0x66, 0x0F, 0x6F, 0xF5,                          // movdqa xmm6, xmm5
+    0x66, 0x0F, 0x66, 0x35, 0x60, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm6, xmmword ptr [table + 0x60]
+    0x66, 0x0F, 0xFA, 0x2D, 0x70, 0x5B, 0x5A, 0x5A,  // psubd xmm5, xmmword ptr [table + 0x70]
+    0x66, 0x0F, 0xEF, 0x2D, 0x80, 0x5B, 0x5A, 0x5A,  // pxor xmm5, xmmword ptr [table + 0x80]
+    0x66, 0x0F, 0x66, 0x2D, 0x90, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm5, xmmword ptr [table + 0x90]
+    0x66, 0x0F, 0xDF, 0xF5,                          // pandn xmm6, xmm5
+    0x0F, 0x50, 0xC6,                                // movmskps eax, xmm6
+    0x83, 0xF8, 0x0F,                                // cmp eax, 0xf
+    0x0F, 0x85, 0x00, 0x04, 0x00, 0x00,              // jne 0x4b8
+    0x66, 0x0F, 0x6F, 0xFC,                          // movdqa xmm7, xmm4
+    0x66, 0x0F, 0x72, 0xD7, 0x1F,                    // psrld xmm7, 0x1f
+    0x66, 0x0F, 0x72, 0xF7, 0x0F,                    // pslld xmm7, 0xf
+    0x66, 0x0F, 0xDB, 0x25, 0x00, 0x5B, 0x5A, 0x5A,  // pand xmm4, xmmword ptr [table + 0x0]
+    0x66, 0x0F, 0x6F, 0xEC,                          // movdqa xmm5, xmm4
+    0x66, 0x0F, 0x66, 0x2D, 0x20, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm5, xmmword ptr [table + 0x20]
+    0x66, 0x0F, 0x72, 0xD5, 0x1F,                    // psrld xmm5, 0x1f
+    0x66, 0x0F, 0x6F, 0xF4,                          // movdqa xmm6, xmm4
+    0x66, 0x0F, 0xFA, 0x35, 0x30, 0x5B, 0x5A, 0x5A,  // psubd xmm6, xmmword ptr [table + 0x30]
+    0x66, 0x0F, 0xDB, 0xF4,                          // pand xmm6, xmm4
+    0x66, 0x0F, 0xDB, 0x35, 0x40, 0x5B, 0x5A, 0x5A,  // pand xmm6, xmmword ptr [table + 0x40]
+    0x66, 0x0F, 0xFE, 0xF4,                          // paddd xmm6, xmm4
+    0x66, 0x0F, 0x72, 0xD6, 0x0D,                    // psrld xmm6, 0xd
+    0x66, 0x0F, 0xFE, 0x35, 0x50, 0x5B, 0x5A, 0x5A,  // paddd xmm6, xmmword ptr [table + 0x50]
+    0x66, 0x0F, 0x66, 0x25, 0x10, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm4, xmmword ptr [table + 0x10]
+    0x66, 0x0F, 0xDB, 0xF4,                          // pand xmm6, xmm4
+    0x66, 0x0F, 0xDF, 0xE5,                          // pandn xmm4, xmm5
+    0x66, 0x0F, 0xEB, 0xF4,                          // por xmm6, xmm4
+    0x66, 0x0F, 0xFE, 0xF7,                          // paddd xmm6, xmm7
+    0x66, 0x0F, 0x72, 0xF6, 0x10,                    // pslld xmm6, 0x10
+    0x66, 0x0F, 0x72, 0xE6, 0x10,                    // psrad xmm6, 0x10
+    0x66, 0x0F, 0x6F, 0xCE,                          // movdqa xmm1, xmm6
+    0xF3, 0x0F, 0x10, 0x64, 0x24, 0x70,              // movss xmm4, dword ptr [esp + 0x70]
+    0xF3, 0x0F, 0x10, 0x6C, 0x24, 0x58,              // movss xmm5, dword ptr [esp + 0x58]
+    0x0F, 0x14, 0xE5,                                // unpcklps xmm4, xmm5
+    0xF3, 0x0F, 0x10, 0x6C, 0x24, 0x50,              // movss xmm5, dword ptr [esp + 0x50]
+    0xF3, 0x0F, 0x59, 0x6C, 0x24, 0x74,              // mulss xmm5, dword ptr [esp + 0x74]
+    0xF3, 0x0F, 0x10, 0x76, 0x40,                    // movss xmm6, dword ptr [esi + 0x40]
+    0x0F, 0x14, 0xEE,                                // unpcklps xmm5, xmm6
+    0x0F, 0x16, 0xE5,                                // movlhps xmm4, xmm5
+    0x66, 0x0F, 0x6F, 0xEC,                          // movdqa xmm5, xmm4
+    0x66, 0x0F, 0xDB, 0x2D, 0x00, 0x5B, 0x5A, 0x5A,  // pand xmm5, xmmword ptr [table + 0x0]
+    0x66, 0x0F, 0x6F, 0xF5,                          // movdqa xmm6, xmm5
+    0x66, 0x0F, 0x66, 0x35, 0x60, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm6, xmmword ptr [table + 0x60]
+    0x66, 0x0F, 0xFA, 0x2D, 0x70, 0x5B, 0x5A, 0x5A,  // psubd xmm5, xmmword ptr [table + 0x70]
+    0x66, 0x0F, 0xEF, 0x2D, 0x80, 0x5B, 0x5A, 0x5A,  // pxor xmm5, xmmword ptr [table + 0x80]
+    0x66, 0x0F, 0x66, 0x2D, 0x90, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm5, xmmword ptr [table + 0x90]
+    0x66, 0x0F, 0xDF, 0xF5,                          // pandn xmm6, xmm5
+    0x0F, 0x50, 0xC6,                                // movmskps eax, xmm6
+    0x83, 0xF8, 0x0F,                                // cmp eax, 0xf
+    0x0F, 0x85, 0x24, 0x03, 0x00, 0x00,              // jne 0x4b8
+    0x66, 0x0F, 0x6F, 0xFC,                          // movdqa xmm7, xmm4
+    0x66, 0x0F, 0x72, 0xD7, 0x1F,                    // psrld xmm7, 0x1f
+    0x66, 0x0F, 0x72, 0xF7, 0x0F,                    // pslld xmm7, 0xf
+    0x66, 0x0F, 0xDB, 0x25, 0x00, 0x5B, 0x5A, 0x5A,  // pand xmm4, xmmword ptr [table + 0x0]
+    0x66, 0x0F, 0x6F, 0xEC,                          // movdqa xmm5, xmm4
+    0x66, 0x0F, 0x66, 0x2D, 0x20, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm5, xmmword ptr [table + 0x20]
+    0x66, 0x0F, 0x72, 0xD5, 0x1F,                    // psrld xmm5, 0x1f
+    0x66, 0x0F, 0x6F, 0xF4,                          // movdqa xmm6, xmm4
+    0x66, 0x0F, 0xFA, 0x35, 0x30, 0x5B, 0x5A, 0x5A,  // psubd xmm6, xmmword ptr [table + 0x30]
+    0x66, 0x0F, 0xDB, 0xF4,                          // pand xmm6, xmm4
+    0x66, 0x0F, 0xDB, 0x35, 0x40, 0x5B, 0x5A, 0x5A,  // pand xmm6, xmmword ptr [table + 0x40]
+    0x66, 0x0F, 0xFE, 0xF4,                          // paddd xmm6, xmm4
+    0x66, 0x0F, 0x72, 0xD6, 0x0D,                    // psrld xmm6, 0xd
+    0x66, 0x0F, 0xFE, 0x35, 0x50, 0x5B, 0x5A, 0x5A,  // paddd xmm6, xmmword ptr [table + 0x50]
+    0x66, 0x0F, 0x66, 0x25, 0x10, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm4, xmmword ptr [table + 0x10]
+    0x66, 0x0F, 0xDB, 0xF4,                          // pand xmm6, xmm4
+    0x66, 0x0F, 0xDF, 0xE5,                          // pandn xmm4, xmm5
+    0x66, 0x0F, 0xEB, 0xF4,                          // por xmm6, xmm4
+    0x66, 0x0F, 0xFE, 0xF7,                          // paddd xmm6, xmm7
+    0x66, 0x0F, 0x72, 0xF6, 0x10,                    // pslld xmm6, 0x10
+    0x66, 0x0F, 0x72, 0xE6, 0x10,                    // psrad xmm6, 0x10
+    0x66, 0x0F, 0x6B, 0xCE,                          // packssdw xmm1, xmm6
+    0xF3, 0x0F, 0x10, 0x64, 0x24, 0x74,              // movss xmm4, dword ptr [esp + 0x74]
+    0xF3, 0x0F, 0x59, 0x64, 0x24, 0x4C,              // mulss xmm4, dword ptr [esp + 0x4c]
+    0xF3, 0x0F, 0x10, 0x6C, 0x24, 0x48,              // movss xmm5, dword ptr [esp + 0x48]
+    0x0F, 0x14, 0xE5,                                // unpcklps xmm4, xmm5
+    0x0F, 0x57, 0xED,                                // xorps xmm5, xmm5
+    0xF3, 0x0F, 0x10, 0x74, 0x24, 0x44,              // movss xmm6, dword ptr [esp + 0x44]
+    0x0F, 0x14, 0xEE,                                // unpcklps xmm5, xmm6
+    0x0F, 0x16, 0xE5,                                // movlhps xmm4, xmm5
+    0x66, 0x0F, 0x6F, 0xEC,                          // movdqa xmm5, xmm4
+    0x66, 0x0F, 0xDB, 0x2D, 0x00, 0x5B, 0x5A, 0x5A,  // pand xmm5, xmmword ptr [table + 0x0]
+    0x66, 0x0F, 0x6F, 0xF5,                          // movdqa xmm6, xmm5
+    0x66, 0x0F, 0x66, 0x35, 0x60, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm6, xmmword ptr [table + 0x60]
+    0x66, 0x0F, 0xFA, 0x2D, 0x70, 0x5B, 0x5A, 0x5A,  // psubd xmm5, xmmword ptr [table + 0x70]
+    0x66, 0x0F, 0xEF, 0x2D, 0x80, 0x5B, 0x5A, 0x5A,  // pxor xmm5, xmmword ptr [table + 0x80]
+    0x66, 0x0F, 0x66, 0x2D, 0x90, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm5, xmmword ptr [table + 0x90]
+    0x66, 0x0F, 0xDF, 0xF5,                          // pandn xmm6, xmm5
+    0x0F, 0x50, 0xC6,                                // movmskps eax, xmm6
+    0x83, 0xF8, 0x0F,                                // cmp eax, 0xf
+    0x0F, 0x85, 0x4A, 0x02, 0x00, 0x00,              // jne 0x4b8
+    0x66, 0x0F, 0x6F, 0xFC,                          // movdqa xmm7, xmm4
+    0x66, 0x0F, 0x72, 0xD7, 0x1F,                    // psrld xmm7, 0x1f
+    0x66, 0x0F, 0x72, 0xF7, 0x0F,                    // pslld xmm7, 0xf
+    0x66, 0x0F, 0xDB, 0x25, 0x00, 0x5B, 0x5A, 0x5A,  // pand xmm4, xmmword ptr [table + 0x0]
+    0x66, 0x0F, 0x6F, 0xEC,                          // movdqa xmm5, xmm4
+    0x66, 0x0F, 0x66, 0x2D, 0x20, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm5, xmmword ptr [table + 0x20]
+    0x66, 0x0F, 0x72, 0xD5, 0x1F,                    // psrld xmm5, 0x1f
+    0x66, 0x0F, 0x6F, 0xF4,                          // movdqa xmm6, xmm4
+    0x66, 0x0F, 0xFA, 0x35, 0x30, 0x5B, 0x5A, 0x5A,  // psubd xmm6, xmmword ptr [table + 0x30]
+    0x66, 0x0F, 0xDB, 0xF4,                          // pand xmm6, xmm4
+    0x66, 0x0F, 0xDB, 0x35, 0x40, 0x5B, 0x5A, 0x5A,  // pand xmm6, xmmword ptr [table + 0x40]
+    0x66, 0x0F, 0xFE, 0xF4,                          // paddd xmm6, xmm4
+    0x66, 0x0F, 0x72, 0xD6, 0x0D,                    // psrld xmm6, 0xd
+    0x66, 0x0F, 0xFE, 0x35, 0x50, 0x5B, 0x5A, 0x5A,  // paddd xmm6, xmmword ptr [table + 0x50]
+    0x66, 0x0F, 0x66, 0x25, 0x10, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm4, xmmword ptr [table + 0x10]
+    0x66, 0x0F, 0xDB, 0xF4,                          // pand xmm6, xmm4
+    0x66, 0x0F, 0xDF, 0xE5,                          // pandn xmm4, xmm5
+    0x66, 0x0F, 0xEB, 0xF4,                          // por xmm6, xmm4
+    0x66, 0x0F, 0xFE, 0xF7,                          // paddd xmm6, xmm7
+    0x66, 0x0F, 0x72, 0xF6, 0x10,                    // pslld xmm6, 0x10
+    0x66, 0x0F, 0x72, 0xE6, 0x10,                    // psrad xmm6, 0x10
+    0x66, 0x0F, 0x6F, 0xD6,                          // movdqa xmm2, xmm6
+    0x0F, 0x10, 0x66, 0x28,                          // movups xmm4, xmmword ptr [esi + 0x28]
+    0x66, 0x0F, 0x6F, 0xEC,                          // movdqa xmm5, xmm4
+    0x66, 0x0F, 0xDB, 0x2D, 0x00, 0x5B, 0x5A, 0x5A,  // pand xmm5, xmmword ptr [table + 0x0]
+    0x66, 0x0F, 0x6F, 0xF5,                          // movdqa xmm6, xmm5
+    0x66, 0x0F, 0x66, 0x35, 0x60, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm6, xmmword ptr [table + 0x60]
+    0x66, 0x0F, 0xFA, 0x2D, 0x70, 0x5B, 0x5A, 0x5A,  // psubd xmm5, xmmword ptr [table + 0x70]
+    0x66, 0x0F, 0xEF, 0x2D, 0x80, 0x5B, 0x5A, 0x5A,  // pxor xmm5, xmmword ptr [table + 0x80]
+    0x66, 0x0F, 0x66, 0x2D, 0x90, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm5, xmmword ptr [table + 0x90]
+    0x66, 0x0F, 0xDF, 0xF5,                          // pandn xmm6, xmm5
+    0x0F, 0x50, 0xC6,                                // movmskps eax, xmm6
+    0x83, 0xF8, 0x0F,                                // cmp eax, 0xf
+    0x0F, 0x85, 0x90, 0x01, 0x00, 0x00,              // jne 0x4b8
+    0x66, 0x0F, 0x6F, 0xFC,                          // movdqa xmm7, xmm4
+    0x66, 0x0F, 0x72, 0xD7, 0x1F,                    // psrld xmm7, 0x1f
+    0x66, 0x0F, 0x72, 0xF7, 0x0F,                    // pslld xmm7, 0xf
+    0x66, 0x0F, 0xDB, 0x25, 0x00, 0x5B, 0x5A, 0x5A,  // pand xmm4, xmmword ptr [table + 0x0]
+    0x66, 0x0F, 0x6F, 0xEC,                          // movdqa xmm5, xmm4
+    0x66, 0x0F, 0x66, 0x2D, 0x20, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm5, xmmword ptr [table + 0x20]
+    0x66, 0x0F, 0x72, 0xD5, 0x1F,                    // psrld xmm5, 0x1f
+    0x66, 0x0F, 0x6F, 0xF4,                          // movdqa xmm6, xmm4
+    0x66, 0x0F, 0xFA, 0x35, 0x30, 0x5B, 0x5A, 0x5A,  // psubd xmm6, xmmword ptr [table + 0x30]
+    0x66, 0x0F, 0xDB, 0xF4,                          // pand xmm6, xmm4
+    0x66, 0x0F, 0xDB, 0x35, 0x40, 0x5B, 0x5A, 0x5A,  // pand xmm6, xmmword ptr [table + 0x40]
+    0x66, 0x0F, 0xFE, 0xF4,                          // paddd xmm6, xmm4
+    0x66, 0x0F, 0x72, 0xD6, 0x0D,                    // psrld xmm6, 0xd
+    0x66, 0x0F, 0xFE, 0x35, 0x50, 0x5B, 0x5A, 0x5A,  // paddd xmm6, xmmword ptr [table + 0x50]
+    0x66, 0x0F, 0x66, 0x25, 0x10, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm4, xmmword ptr [table + 0x10]
+    0x66, 0x0F, 0xDB, 0xF4,                          // pand xmm6, xmm4
+    0x66, 0x0F, 0xDF, 0xE5,                          // pandn xmm4, xmm5
+    0x66, 0x0F, 0xEB, 0xF4,                          // por xmm6, xmm4
+    0x66, 0x0F, 0xFE, 0xF7,                          // paddd xmm6, xmm7
+    0x66, 0x0F, 0x72, 0xF6, 0x10,                    // pslld xmm6, 0x10
+    0x66, 0x0F, 0x72, 0xE6, 0x10,                    // psrad xmm6, 0x10
+    0x66, 0x0F, 0x6B, 0xD6,                          // packssdw xmm2, xmm6
+    0x0F, 0x12, 0x66, 0x38,                          // movlps xmm4, qword ptr [esi + 0x38]
+    0x0F, 0x16, 0x62, 0x48,                          // movhps xmm4, qword ptr [edx + 0x48]
+    0x66, 0x0F, 0x6F, 0xEC,                          // movdqa xmm5, xmm4
+    0x66, 0x0F, 0xDB, 0x2D, 0x00, 0x5B, 0x5A, 0x5A,  // pand xmm5, xmmword ptr [table + 0x0]
+    0x66, 0x0F, 0x6F, 0xF5,                          // movdqa xmm6, xmm5
+    0x66, 0x0F, 0x66, 0x35, 0x60, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm6, xmmword ptr [table + 0x60]
+    0x66, 0x0F, 0xFA, 0x2D, 0x70, 0x5B, 0x5A, 0x5A,  // psubd xmm5, xmmword ptr [table + 0x70]
+    0x66, 0x0F, 0xEF, 0x2D, 0x80, 0x5B, 0x5A, 0x5A,  // pxor xmm5, xmmword ptr [table + 0x80]
+    0x66, 0x0F, 0x66, 0x2D, 0x90, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm5, xmmword ptr [table + 0x90]
+    0x66, 0x0F, 0xDF, 0xF5,                          // pandn xmm6, xmm5
+    0x0F, 0x50, 0xC6,                                // movmskps eax, xmm6
+    0x83, 0xF8, 0x0F,                                // cmp eax, 0xf
+    0x0F, 0x85, 0xD2, 0x00, 0x00, 0x00,              // jne 0x4b8
+    0x66, 0x0F, 0x6F, 0xFC,                          // movdqa xmm7, xmm4
+    0x66, 0x0F, 0x72, 0xD7, 0x1F,                    // psrld xmm7, 0x1f
+    0x66, 0x0F, 0x72, 0xF7, 0x0F,                    // pslld xmm7, 0xf
+    0x66, 0x0F, 0xDB, 0x25, 0x00, 0x5B, 0x5A, 0x5A,  // pand xmm4, xmmword ptr [table + 0x0]
+    0x66, 0x0F, 0x6F, 0xEC,                          // movdqa xmm5, xmm4
+    0x66, 0x0F, 0x66, 0x2D, 0x20, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm5, xmmword ptr [table + 0x20]
+    0x66, 0x0F, 0x72, 0xD5, 0x1F,                    // psrld xmm5, 0x1f
+    0x66, 0x0F, 0x6F, 0xF4,                          // movdqa xmm6, xmm4
+    0x66, 0x0F, 0xFA, 0x35, 0x30, 0x5B, 0x5A, 0x5A,  // psubd xmm6, xmmword ptr [table + 0x30]
+    0x66, 0x0F, 0xDB, 0xF4,                          // pand xmm6, xmm4
+    0x66, 0x0F, 0xDB, 0x35, 0x40, 0x5B, 0x5A, 0x5A,  // pand xmm6, xmmword ptr [table + 0x40]
+    0x66, 0x0F, 0xFE, 0xF4,                          // paddd xmm6, xmm4
+    0x66, 0x0F, 0x72, 0xD6, 0x0D,                    // psrld xmm6, 0xd
+    0x66, 0x0F, 0xFE, 0x35, 0x50, 0x5B, 0x5A, 0x5A,  // paddd xmm6, xmmword ptr [table + 0x50]
+    0x66, 0x0F, 0x66, 0x25, 0x10, 0x5B, 0x5A, 0x5A,  // pcmpgtd xmm4, xmmword ptr [table + 0x10]
+    0x66, 0x0F, 0xDB, 0xF4,                          // pand xmm6, xmm4
+    0x66, 0x0F, 0xDF, 0xE5,                          // pandn xmm4, xmm5
+    0x66, 0x0F, 0xEB, 0xF4,                          // por xmm6, xmm4
+    0x66, 0x0F, 0xFE, 0xF7,                          // paddd xmm6, xmm7
+    0x66, 0x0F, 0x72, 0xF6, 0x10,                    // pslld xmm6, 0x10
+    0x66, 0x0F, 0x72, 0xE6, 0x10,                    // psrad xmm6, 0x10
+    0x66, 0x0F, 0x6B, 0xF6,                          // packssdw xmm6, xmm6
+    0xF3, 0x0F, 0x7F, 0x49, 0x08,                    // movdqu xmmword ptr [ecx + 8], xmm1
+    0xF3, 0x0F, 0x7F, 0x51, 0x18,                    // movdqu xmmword ptr [ecx + 0x18], xmm2
+    0x66, 0x0F, 0x7E, 0x71, 0x28,                    // movd dword ptr [ecx + 0x28], xmm6
+    0x66, 0x0F, 0xC5, 0xC6, 0x02,                    // pextrw eax, xmm6, 2
+    0x66, 0x89, 0x41, 0x2C,                          // mov word ptr [ecx + 0x2c], ax
+    0x66, 0x0F, 0x6E, 0x7C, 0x24, 0x20,              // movd xmm7, dword ptr [esp + 0x20]
+    0x0F, 0x5B, 0xFF,                                // cvtdq2ps xmm7, xmm7
+    0xF3, 0x0F, 0x11, 0x7C, 0x24, 0x38,              // movss dword ptr [esp + 0x38], xmm7
+    0xF3, 0x0F, 0x10, 0x7C, 0x24, 0x50,              // movss xmm7, dword ptr [esp + 0x50]
+    0xF3, 0x0F, 0x59, 0x7C, 0x24, 0x74,              // mulss xmm7, dword ptr [esp + 0x74]
+    0xF3, 0x0F, 0x11, 0x7C, 0x24, 0x70,              // movss dword ptr [esp + 0x70], xmm7
+    0xF3, 0x0F, 0x10, 0x42, 0x4C,                    // movss xmm0, dword ptr [edx + 0x4c]
+    0xF3, 0x0F, 0x11, 0x44, 0x24, 0x74,              // movss dword ptr [esp + 0x74], xmm0
+    0x66, 0x0F, 0x7E, 0xDA,                          // movd edx, xmm3
+    0x8D, 0x44, 0x24, 0x74,                          // lea eax, [esp + 0x74]
+    0x83, 0xEC, 0x10,                                // sub esp, 0x10
+    0x89, 0x04, 0x24,                                // mov dword ptr [esp], eax
+    0xE8, 0x11, 0x5A, 0x5A, 0x5A,                    // call 0x5a5a5ec4
+    0xE9, 0x13, 0x5A, 0x5A, 0x5A,                    // jmp 0x5a5a5ecb
+    0x66, 0x0F, 0x7E, 0xDA,                          // fallback: movd edx, xmm3
+    0x8D, 0x44, 0x24, 0x38,                          // lea eax, [esp + 0x38]
+    0x50,                                            // push eax
+    0xE9, 0x12, 0x5A, 0x5A, 0x5A,                    // jmp 0x5a5a5ed8
+};
+// The stub's constants, 16-byte vectors: |f|, 0x387fffff, 0x33000400, 1, 0x1fff, 0x4000, 0x477fffff, 0x33800000, 0x80000000,
+// 0x84ffffff.
+constexpr std::array<uint32_t, 40> HALF_ROWS_CONSTANTS = {
+    0x7FFFFFFF, 0x7FFFFFFF, 0x7FFFFFFF, 0x7FFFFFFF,
+    0x387FFFFF, 0x387FFFFF, 0x387FFFFF, 0x387FFFFF,
+    0x33000400, 0x33000400, 0x33000400, 0x33000400,
+    0x00000001, 0x00000001, 0x00000001, 0x00000001,
+    0x00001FFF, 0x00001FFF, 0x00001FFF, 0x00001FFF,
+    0x00004000, 0x00004000, 0x00004000, 0x00004000,
+    0x477FFFFF, 0x477FFFFF, 0x477FFFFF, 0x477FFFFF,
+    0x33800000, 0x33800000, 0x33800000, 0x33800000,
+    0x80000000, 0x80000000, 0x80000000, 0x80000000,
+    0x84FFFFFF, 0x84FFFFFF, 0x84FFFFFF, 0x84FFFFFF,
+};
+
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half, fmod and the
 // ready check the same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots
 // (control word 0x20, float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the
@@ -451,10 +747,11 @@ struct Build {
   uint32_t job_wake_all_rva;
   uint32_t job_sleep_rva;
   uint32_t job_worker_destructor_rva;
+  uint32_t half_rows_rva;
 };
-constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA, 0x16b5550, 0x16b5520, 0x1689b90};
-constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9, 0x18d8400, 0x1722e60, 0x1722e30, 0x16f7460};
-constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0, 0, 0};
+constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA, 0x16b5550, 0x16b5520, 0x1689b90, 0x1907511};
+constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9, 0x18d8400, 0x1722e60, 0x1722e30, 0x16f7460, 0x197d841};
+constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0, 0, 0, 0};
 constexpr std::array<Build, 3> BUILDS = {ATTILA_BUILD, THRONES_BUILD, ROME2_BUILD};  // by Game
 
 // Where each stub sits in the page.
@@ -464,10 +761,11 @@ constexpr size_t FMOD_PAGE = 0x180;
 constexpr size_t LIST_PUSH_PAGE = 0x240;
 constexpr size_t READY_CHECK_PAGE = 0x280;
 constexpr size_t JOB_PAGE = 0x300;
+constexpr size_t HALF_ROWS_PAGE = 0x500;
 constexpr size_t PAGE_SIZE = 0x1000;
 
 // Which sites each row writes (bits by `sites` index).
-constexpr uint32_t CPU_CODE_SITES = 0b10111;  // Faster Game CPU Code
+constexpr uint32_t CPU_CODE_SITES = 0b100010111;  // Faster Game CPU Code
 constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
 
@@ -483,14 +781,15 @@ struct Site {
   uint8_t opcode = 0xE9;  // jmp; the worker destructor's call of Stop stays a call (E8)
 };
 
-static std::array<Site, 8> sites = {{{.name = "soldier draw rounding"},
+static std::array<Site, 9> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half floats"},
                                      {.name = "fmod"},
                                      {.name = "render list pushes"},
                                      {.name = "ready checks"},
                                      {.name = "job wake-ups"},
                                      {.name = "job sleeps"},
-                                     {.name = "job stops", .opcode = 0xE8}}};
+                                     {.name = "job stops", .opcode = 0xE8},
+                                     {.name = "half rows"}}};
 static uint8_t* job_table = nullptr;
 static uint8_t* page = nullptr;
 static bool prepared = false;
@@ -596,8 +895,24 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(to) - reinterpret_cast<uintptr_t>(from_end));
   };
 
+  // A stub's sentinels: STUB_FIELD_SENTINEL + i the fields[i] (absolute), STUB_CONSTANT_SENTINEL + n the constants' + n, STUB_CALL_SENTINEL + i
+  // the callees[i] (relative to the call's end).
+  const auto resolve = [&](uint8_t* stub, size_t size, std::span<const uint8_t* const> fields, const uint8_t* constants,
+                           std::span<const uint8_t* const> callees) {
+    for (size_t at = 0; at + sizeof(uint32_t) <= size; ++at) {
+      const uint32_t value = read32(stub + at);
+      if (value - STUB_FIELD_SENTINEL < fields.size()) {
+        write32(stub + at, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(fields[value - STUB_FIELD_SENTINEL])));
+      } else if (value - STUB_CONSTANT_SENTINEL < 0x100) {
+        write32(stub + at, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(constants)) + (value - STUB_CONSTANT_SENTINEL));
+      } else if (value - STUB_CALL_SENTINEL < callees.size()) {
+        write32(stub + at, relative(stub + at + sizeof(uint32_t), callees[value - STUB_CALL_SENTINEL]));
+      }
+    }
+  };
+
   page = static_cast<uint8_t*>(VirtualAlloc(nullptr, PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-  std::array<uint8_t*, 8> stubs = {};
+  std::array<uint8_t*, 9> stubs = {};
   if (page != nullptr) {
     if (uint8_t* match = find(build.truncation, build.truncation_rva); match != nullptr) {
       uint8_t* stub = page + TRUNCATION_PAGE;
@@ -669,21 +984,29 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       if (job_table != nullptr && worker_sleep != nullptr && wake != nullptr && stop != nullptr && holds(wake, JOB_WAKE) && holds(stop, JOB_STOP)) {
         uint8_t* stub = page + JOB_PAGE;
         std::memcpy(stub, JOB_STUB.data(), JOB_STUB.size());
+        const std::array<const uint8_t*, 4> fields = {job_table, job_table + JOB_TABLE_LINE, job_table + 2 * JOB_TABLE_LINE, job_table + 3 * JOB_TABLE_LINE};
         const std::array<const uint8_t*, 4> callees = {wake, target(worker_sleep + JOB_SLEEP_ACQUIRE_CALL), wake_all + SITE_SIZE, stop};
-        for (size_t at = 0; at + sizeof(uint32_t) <= JOB_STUB.size(); ++at) {
-          const uint32_t value = read32(stub + at);
-          if (value - JOB_FIELD_SENTINEL < 4) {
-            write32(stub + at, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(job_table + (value - JOB_FIELD_SENTINEL) * JOB_TABLE_LINE)));
-          } else if (value - JOB_CALL_SENTINEL < callees.size()) {
-            write32(stub + at, relative(stub + at + sizeof(uint32_t), callees[value - JOB_CALL_SENTINEL]));
-          }
-        }
+        resolve(stub, JOB_STUB.size(), fields, nullptr, callees);
         sites[5].at = wake_all;
         sites[6].at = worker_sleep;
         sites[7].at = destructor + JOB_WORKER_DESTRUCTOR_STOP_CALL;
         stubs[5] = stub + JOB_WAKE_ALL_STUB;
         stubs[6] = stub + JOB_SLEEP_STUB;
         stubs[7] = stub + JOB_STOP_STUB;
+      }
+    }
+    // The sprite row builder's 20 conversions, only with the game's float to half the target of every one of its calls.
+    if (uint8_t* match = (build.half_rows_rva != 0 ? find(HALF_ROWS, build.half_rows_rva) : nullptr); match != nullptr && sites[1].at != nullptr) {
+      bool conversions = true;
+      for (const uint16_t call : HALF_ROWS_CALLS) conversions = conversions && target(match + call) == sites[1].at;
+      if (conversions) {
+        uint8_t* stub = page + HALF_ROWS_PAGE;
+        std::memcpy(stub, HALF_ROWS_STUB.data(), HALF_ROWS_STUB.size());
+        std::memcpy(stub + HALF_ROWS_CONSTANTS_AT, HALF_ROWS_CONSTANTS.data(), sizeof(HALF_ROWS_CONSTANTS));
+        const std::array<const uint8_t*, 3> callees = {sites[1].at, match + SITE_SIZE, match + HALF_ROWS_END};
+        resolve(stub, HALF_ROWS_STUB.size(), {}, stub + HALF_ROWS_CONSTANTS_AT, callees);
+        sites[8].at = match;
+        stubs[8] = stub;
       }
     }
     DWORD protection;
@@ -693,11 +1016,12 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   std::string faster;
   std::string left;
   // A site the build doesn't have (rva 0) isn't named.
-  const std::array<uint32_t, 5> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva};
+  const std::array<uint32_t, 9> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
+                                        0, 0, 0, build.half_rows_rva};
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
     // The job sites aren't listed here: their row says when it turns them on.
-    if (index < rvas.size() && rvas[index] != 0) {
+    if (rvas[index] != 0) {
       std::string& names = (site.at != nullptr ? faster : left);
       names += std::format("{}{}", names.empty() ? "" : ", ", site.name);
     }
