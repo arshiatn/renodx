@@ -184,6 +184,8 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [ ] PARTLY ANSWERED 02:xx (ATN: "It should have the same/similar presets like Attila. No RT/PT should use GT-VBAO, GT-VBGI, SSS and SSSR (if that is implemented)": DONE 150e41174, No RT/PT turns GT-VBAO + GT-VBGI + Bend on; SSSR when implemented; probes question explained, coordinator recommends keep (GT-VBAO darkens the probes' light in corners, GT-VBGI adds the nearby bounce: the visibility-bitmask way; black probes = dark wherever the screen sees no light); defaults still open) C: Divinity 2: GT-VBGI (like the rays' bounce) adds on top of the light probes' IBL diffuse: keep, or black the probes' diffuse under GT-VBGI? After a run: No RT/PT (Recommended) turns Bend and GT-VBGI on, as Attila's? Defaults OK: GT-VBAO radius 1 m, Bend thickness 0.005? (from: div2_ 01:xx)
 - [x] ANSWERED 02:xx (ATN: "Maybe do one nsight capture first.": the paths kernel's in-game Nsight goes into the capture runs, then drop or do) C: Attila paths trace / shade split: measured ~0 net at your rows (trace-only 0.288 vs 0.366 ms, no occupancy win): drop it, or one in-game Nsight of the trace-only helper first? (from: gpu3_ 01:xx)
 - [ ] C: LOD bias presets: they now turn "on All Textures" on but leave the level row (Off / Matched / Sharper / Sharpest) alone: a player at Off still gets no bias after a preset. Should presets turn Off back to Sharper (the default) and keep any other level? (from: bug3_ 03:xx)
+- [x] ANSWERED 05:xx (ATN: "They should be on by default, no? Bug fixes => more correct. Why should we leave bugs.": every proven bug fix on by default, numbers listed for ATN; memory feedback_experimental_rows) C: Reference-suite bug fixes that change our effects' look (once proven): specular occlusion brighter at grazing views on open ground (I5), Path-Traced AO ~1.6 % brighter on open walls with an exact sky calibration (I4), bounce / torch light / torch shadow ratio moved by half a low-resolution texel (I3, the crack-line lead), AO's sun-dependent normal: on by default as bug fixes (coordinator's recommendation: they are more correct; numbers listed for you), or Experimental rows first? (from: ref_ v2 05:xx)
+- [x] ANSWERED 05:xx (ATN: "to pbrt, yeah why not. It is apache 2.0": fetched 05:xx into tools/refcode/pbrt-v4, 20e41fd8 2026-11-15, 34 MB, no submodules) C: Download pbrt-v4 (Apache-2.0, github.com/mmp/pbrt-v4, not NVIDIA) for the reference suite's xcheck test (our samplers vs pbrt-v4 on the CPU)? Without it the check reads pbrt-v4 online / uses Falcor (NVIDIA, fetched). (from: ref_ v2 05:xx)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -329,17 +331,25 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction): C:/Users/arshi/.cla ... | coordinator
 - (sk3_ 01:xx) Shared shaders rule (skills lesson 12): rysesonofrome/upscale_outpu ... | next shared round
 - CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila ... | coordinator
+- SPEED LIST v2 (cap1_ 07:xx on the redone captures, speed_list.md; supersedes the ... | coordinator -> a CPU round after the bug agents merge (plan 
+- SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers f ... | coordinator -> CPU round (plan step 4)
+- (cap1_ 07:xx: also every ReShade 4K screenshot permanently takes 30-95 MB off th ... | next memory round
+- CAPTURE TOOLING (cap1_ 05:xx): run_game's memory.csv overwritten every start (fi ... | coordinator
 - BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before th ... | bug1_
 - BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows ... | bug2_
 - BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Res ... | coordinator
 - (STARTED 02:1x bug4_: causes + census + add-on-side fixes, helper side as a plan ... | coordinator -> bug4_ after the captures
 - (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
 - REF1 REVIEW (rev_ 04:xx, Opus xHigh: plan_1117/reference_suite_review.md, verdic ... | ref_ (v2), then one implementer at a time after bug2_ leaves
-- REVIEW LEADS = LIKELY BUGS (rev_ 04:xx, to verify then fix in the helper after b ... | bug2_ (I3), then a helper fix round (I4, I5)
+- (PROVEN ref0_ 07:xx, test/tw_rt_open_sky merged 5b41d3b72 (WARP, the helper's ow ... | bug2_ (I3), then a helper fix round (I4, I5)
+- REF BUILD (v2 order; one implementer at a time in the helper): step 0 free check ... | coordinator
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
 - (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
+- VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT st ... | coordinator
+- SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
+- SKILLS UPDATE 5 (ATN 05:xx "Don't remember to add/fix skills after everything to ... | coordinator, last step of the plan
 - SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator after REF1
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
 - (RAN 01:49-02:09, five starts clean, every file of ATN's restored / same (ReShad ... | coordinator, after the current merges + install, ATN's go
@@ -2141,6 +2151,50 @@ heading text are in HANDOFF_ARCHIVE.md)
         run for days"): from the three captures' WPR + Nsight: every CPU / GPU hot spot of the game and of RenoDX with its
         expected gain, written to tools/tw/round_notes/plan_1117/speed_list.md, each a box here with an owner (a CPU / GPU
         round after the bug fixes, plan step 4). Owner: coordinator
+      - [ ] SPEED LIST v2 (cap1_ 07:xx on the redone captures, speed_list.md; supersedes the v1 top 10 below): rendered
+        frames 51.1 / 37.7 / 84.5 ms (night1 / sea1 / stress, WPR costs +4-6 %), all render-thread bound (GPU idle 21 / 11 /
+        47 ms; game + helper GPU 30.0 / 26.4 / 37.2, helper 10.9 / 8.8 / 9.8). Top 10: (1) HEAPFIX SORT A/B where the render
+        thread waits 12.6 / 6.2 / 2.6 ms for the one worker sorting the draw list: the private builds C (prefetch, 2.4-2.9x)
+        and B (4 threads, 6x) on stress + night1, est. +9-15 % / +7-11 % / +4-6 % fps (heapfix = third-party "Attila Engine
+        Performance Fix": private builds only, a release only through its author via ATN); (2) ADD-ON RENDER-THREAD TRIM
+        8.6 / 5.5 / 3.8 ms (per-draw callback walk 2.8, rt_scene::Capture 2.0, DrawObjectMotion 1.0, shared-mutex lookups
+        1.4, its D3D11 calls 2.2): per-pipeline callback mask, lock-free per-frame cache, batched Capture, est. -2..-4 ms;
+        (3) STRESS ENGINE STUDY: render-list execution 12.7 ms (0x18960d0 4.1, 0x18635a0 2.1, 0x1840520 2.0, 0x1890b90 1.8,
+        0x1893470 1.6), animation fill 0x182e080 5.0 (to a worker?), battle draw loop 3.2: est. 5-10 ms; (4) MEMSET call
+        sites 28.4 ms summed on workers in stress (only while rendering): a counting hook run, then skip / shrink; (5) small
+        engine patches (soldier-draw truncation block, TlsGetValue thunk, PickLod / OnDrawScrub detours) 0.3-1.5 ms; (6)
+        Small Soldiers as Sprites A/B at stress (soldiers 22.1 ms of the game's GPU, 67 M triangles; look: ATN); (7) address
+        space by region + screenshots; (8) RT resume stall 2.6-2.7 s at every battle start / after the 10-s release; (9)
+        capture method v3: the WPR stop also knocks the game out: RT profile + Time Each Pass inside the window, refocus
+        after the stop; (10) GPU round after the CPU cuts (sea1 GPU-bound after ~11 ms CPU cut: trace hand-off 7.1-7.9 ms,
+        scene build / clusters 4.0-4.5 / 2.5-2.8, RR + copies ~2.9). Symbol build of the installed add-on:
+        tools/tw/cap1_sym/build32_sym (sym_build.ps1). Owner: coordinator -> a CPU round after the bug agents merge
+        (plan step 4), runs one at a time
+      - [ ] SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers from the frames that rendered +
+        11-13 / 11-14 recordings): all four views bound by the render thread (night1 20.7 fps 48.4 ms, sea1 28.3 fps 35.3 ms,
+        stress 11.4 fps 87.4 ms; GPU idle 9-50 ms a frame; the game's GPU waits 4.3-7.7 ms for the helper inside that
+        slack). Top actions: (1) captures redone (captures_v2, running); (2) the render thread split by function on the
+        redo (a /Z7 build of the installed commit, addon_hot_match.py); (3) add-on per-pipeline mask so draws no feature
+        needs skip per-draw work (sea1 6.3-7.2k commands, 3.6-3.8k ship ropes): est. 1.5-3 ms, +4-9 % fps, same picture;
+        (4) soldier draw rounding at empire +0x17f6507: Faster Game CPU Code leaves it ("not the game's code as expected")
+        under heapfix 6.10.6, still the hottest spot (10.3 ms summed / frame in stress): read the live bytes, then our
+        variant (heapfix changes only through ATN to its author); (5) number_of_threads A/B 8 / 12 / 16; (6) Small
+        Soldiers as Sprites A/B at stress (look: ATN); (7) address space by region (restart crash): with / without,
+        1x / 8x, in / out of front, start + after a restart; (8) RT restart stall: the first RT frame waits 2.6-2.7 s for
+        the helper at every battle start and after the 10-s release; (9) TlsGetValue thunk at empire +0x16246d0 + the
+        calls in +0x17f7900 (6.75 ms summed in stress); (10) worker detours: add-on 0x47980 (OnDrawScrub / ScaleModelLods,
+        1.82 ms summed night1), 0x6f240 (PickLod, 1.1 ms stress). Owner: coordinator -> CPU round (plan step 4)
+      - [ ] (cap1_ 07:xx: also every ReShade 4K screenshot permanently takes 30-95 MB off the largest free block (v1 + v2):
+        players taking shots walk into the restart crash; find whose allocation (ReShade's screenshot path vs ours) and
+        free / reuse it) MEMORY GROWTH OUT OF FRONT (cap1_ 05:xx): committed grows 2.0-5.0 MB/s while Attila is out of front with
+        RenoDX (0.3-0.9 in front, 0.1 without RenoDX); in stress the largest free block lost 189 MB in 55 s: a likely cause
+        of the restart crash after alt-tabs. Find what grows (add-on / ReShade / driver) and stop it. Also heapfix 6.10.6
+        grows its pools in 64 KB pieces with nothing reserved: small blocks spread through the space a 42-49 MB malloc
+        needs (a suggestion for heapfix's author, through ATN only). Owner: next memory round
+      - [ ] CAPTURE TOOLING (cap1_ 05:xx): run_game's memory.csv overwritten every start (fixed in capture_1117.ps1);
+        stress_noaddon's helper log a stale copy; the quiet lock stops only builds (agents' claude.exe / git / grep took
+        ~1.4 cores in night1: agents asked to pause for captures_v2); the add-on's PDB has no function names (LTO object),
+        the helper has no PDB: a /Z7 build for symbols. Owner: coordinator
       - [ ] BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before the refrence runs?" -> the ones
         that need no capture now, in parallel): DEBUG44 (a) PsychoV35 red / NaN in darks: WARP repro with negative /
         near-black / Inf / NaN input, find the producer, fix V35 for every game, tw_psychov35 + tw_vanilla_exact still
@@ -2164,7 +2218,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         analytic checks (AO by a wall, edge penumbra, fog plate, point-light line, furnace), controls from known-buggy
         commits; build order R0a skeleton, R0b compare + analytic scenes, R1 torches (64 combinations), R2 sun shadows +
         coverage, R3 GI / PT Ambient + dark texels, R4 AO, R5 reflections, R6 fog, B bridge recorder + harness player for
-        real game frames; ~57-79 agent-hours, 3.5-4.5 h GPU; review DONE 04:xx (REF1 REVIEW box); LEFT: v2 (ref_), then
+        real game frames; ~57-79 agent-hours, 3.5-4.5 h GPU; review DONE 04:xx (REF1 REVIEW box); v2 DONE 05:xx (594 lines, v1 kept as reference_suite_v1.md, section 9 answers
+        the review, section 2.8 NVIDIA / free cross-checks per effect); LEFT: build steps 0-6 (REF BUILD box), then
         build one step at a time) REF1 (ref_, started 02:xx): reference suite step 3: first the design (tools/tw/round_notes/plan_1117/
         reference_suite.md: one brute-force reference per RT/PT effect, inputs, metrics, tolerances, controls, Nsight /
         GPU-lock rules), an Opus xHigh check of the design, then build it on the existing harness captures; ATN's new
@@ -2177,12 +2232,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         Order: (1) free checks I3 / I4 / I5 + a NaN / Inf / negative census, (2) R0a + R0b, (3) R1 torches + point-light
         mask WARP, (4) H0 dark texels, (5) route B + second capture pass, (6) R2 + coverage, then the rest. Owner: ref_ (v2),
         then one implementer at a time after bug2_ leaves the helper
-      - [ ] REVIEW LEADS = LIKELY BUGS (rev_ 04:xx, to verify then fix in the helper after bug2_): I3 the 3x3 bounce apply and
+      - [ ] (PROVEN ref0_ 07:xx, test/tw_rt_open_sky merged 5b41d3b72 (WARP, the helper's own rt_path shader, -Expect now
+        passes today / -Expect exact for the fix); report bugs_1117/ref0_free_checks.md, fix sketch bugs_1117/ref0/
+        fix_sketch.diff: I5 SO on an open plane = P(n.l > 0): 0.965-0.990 default lobe, down to 0.50 Squared Lobe; under
+        roofs 1 - P of the game's sky leaks (up to 3.5 % / 24 %); fix: weight samples by G2/G1, divide by the summed
+        weights, redraw below-horizon draws up to twice, else keep last frame: SO 1.0000 open, roof control 0; look: open
+        ground reflections +1.0..+3.7 % (x2 Squared Lobe), no sky leak under roofs. I4 closed form of the cube's cosine
+        mean, 6 SkyLight calls instead of 16: walls +1.6 %, 45 deg +0.7 %, floors same, coloured sky R -0.4 % B +1.3 %;
+        WARP 0.9980-1.0011 of OpenSky. I3 (bug2_ owns): offset alone leaves 0.39 px, offset + taps by distance = 0.00.
+        Census: 3,672 harness dumps + capture logs: 0 NaN / Inf / negative. LEFT: the helper fixes I5 + I4 (on by default,
+        ATN's rule) after bug2_ leaves the helper; tw_rt_open_sky into testing.md) REVIEW LEADS = LIKELY BUGS (rev_ 04:xx, to verify then fix in the helper after bug2_): I3 the 3x3 bounce apply and
         the path torch-shadow ratio place each low-resolution texel at its block's top-left pixel while the paths sample
         its centre (light_bounce_apply.hlsli:42, rt_lights.cs_6_5.hlsl:162 vs rt_path.hlsli:839): a scale/2 px shift, lead
         for DEBUG44 (c) (sent to bug2_); I4 SkyCalibration's fixed 16 directions: Path-Traced AO ~1.6 % dark on an open
         wall; I5 specular occlusion counts directions below the horizon as blocked (rt_path.hlsli:1331-1332, 1464): an open
         plane gets SO < 1 at grazing views, worst with Squared Lobe. Owner: bug2_ (I3), then a helper fix round (I4, I5)
+      - [ ] REF BUILD (v2 order; one implementer at a time in the helper): step 0 free checks I5 / I4 / I3 + census (ref0_,
+        started 05:xx, no helper change; I3 with bug2_); 1 R0a + R0b with B1 / B2 / APPROX / census / reference cache, the
+        gates, xcheck (22-28 h; after bug2_ leaves the helper); 2 R1 torches + point-light WARPs (7-10 h); 3 dark-texel
+        slice of R3 (3-5 h); 4 route B recorder + a short live proof in game + the second capture pass, 12 recordings
+        ~30-40 GB (18-26 h); 5 R2 + coverage on the recordings (8-11 h); 6 GI / AO / reflections / fog (25-33 h); optional
+        RTXPT reference mode + Falcor MinimalPathTracer as third / fourth opinions (6-10 h, coordinator: yes, ATN wants
+        NVIDIA comparisons); R2 adds the add-on Debug View of the game's sun shadow-map term (coordinator: yes). Owner:
+        coordinator
       - [ ] REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures run tonight without the recorder
         (WPR / timings / shots / frame trace / address space need none); route B (bridge recorder + harness player) built
         next and a second, shorter capture pass records night1 / sea1 / stress frames for the references; the recorder
@@ -2217,6 +2289,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         2026.3 are the newest already; Aftermath dev-only switch = audit A33 (ATN); (g) licence: RTX SDKs licence 4(e): NVIDIA
         files never under the repo's MIT header: keep fetching them at build time as NRD / SHaRC; library headers
         unchanged, single functions copied with NVIDIA's notice. Owner: coordinator, per plan step
+      - [ ] VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT stuffs. Any SDK for that?"): paper
+        "VMF Diffuse: A Unified Rough Diffuse BRDF" (d'Eon + Weidlich, NVIDIA Research, EGSR 2024, CC BY 4.0); no NVIDIA SDK
+        ships it (tools/nvsdk checked: Falcor has Oren-Nayar + vMF lobe helpers only, RTXPT none): own code from the paper.
+        One shared vmf_diffuse.hlsli: RT/PT our shading (path hits, bounce, PT ambient, PT DI, reflection hits); non-RT
+        GT-VBGI bounce + GT-VBAO visibility BRDF-weighted; the game's own diffuse only as a row (changes the game's look).
+        Tests: roughness 0 = Lambert bit-exact, furnace / energy vs a Monte Carlo of the paper's microsurface (reference
+        suite), Falcor Oren-Nayar + pbrt-v4 cross-checks; roughness per game from the G-buffer or a slider. Design first
+        (plan step 5), after PT DI, same batch (plan_1117/plan.md Phase 3 item 3). Owner: coordinator
+      - [ ] SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use original nvidia sdks files instead of
+        fixing our bugs, then go ahead. Just make sure to plan everything out"): in plan step 5 one table of every own
+        implementation that duplicates an NVIDIA SDK part (ReSTIR GI reuse / boiling filter vs RTXDI GI, light sampling + PT
+        DI vs RTXDI DI, SHaRC 1.6.5 vs 1.8.3, NRD integration vs NRD-Sample, OMM baking vs OMM SDK, path-tracer pieces vs
+        RTXPT, blue noise vs STBN): ours and NVIDIA's against the same reference + Nsight, licence path (fetched at build
+        time, notice kept), the game's own light formula kept, effort; "replace" or "fix ours" per row, planned before
+        code (plan_1117/plan.md "SDK REPLACE AUDIT"). Owner: coordinator after REF BUILD step 1
+      - [ ] SKILLS UPDATE 5 (ATN 05:xx "Don't remember to add/fix skills after everything too"): after plan steps 3-8 (references,
+        SDK replace audit, PT DI / RTXDI bridge, vMF, Opus review, captures incl. the WPR focus trap): the lessons into
+        .agents/skills + the zip (plan_1117/plan.md step 9). Owner: coordinator, last step of the plan
       - [ ] SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix our skill sets again"): the
         lessons of the bug fixes + reference suite into .agents/skills + the zip. Owner: coordinator after REF1
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
@@ -2238,7 +2328,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         shader for screen-space reads (not only traced ones) + the sea1 traces, every TW game with sea battles; owner bug1_
         after the sea1 capture. (g) LOD BIAS: ATN "For every single game, the LOD bias for everything should be on": the
         Texture LOD bias on all textures row on by default in every game; owner bug1_.
-      - [ ] (RAN 01:49-02:09, five starts clean, every file of ATN's restored / same (ReShade.ini rewritten by the game, restored): night1 / sea1 / stress with WPR ETLs (1.69 / 0.97 / 0.83 GB), pass timings x3, RT profiles, PresentMon, shots, va.csv; stress_noaddon: largest free block 1094 MB without RenoDX vs 823 MB with (~270 MB ours); LEFT: sea1_perf wrote no frame trace (bug4_ finds why), harness frame recordings = route B's second pass; analysis cap1_ (speed list) + bug4_ (d / e / f) running) (STARTED 01:5x: tools/tw/captures_1117/captures_all.ps1, six starts: night1, sea1, sea1_perf (DLSS Performance
+      - [ ] (RAN 01:49-02:09, five starts clean, every file of ATN's restored / same (ReShade.ini rewritten by the game, restored): night1 / sea1 / stress with WPR ETLs (1.69 / 0.97 / 0.83 GB), pass timings x3, RT profiles, PresentMon, shots, va.csv; BUT cap1_ 05:xx: ATN's RenoDX_WPR_Start task (wpr.exe's window) took the foreground 50-70 ms before each trace, Attila left exclusive fullscreen and drew no 3D: the three ETLs, the pass timings and RT profiles of night1 / sea1 / stress hold no rendered frame (only sea1_perf's timings are valid); redo captures_v2.ps1 RAN 02:52-03:02 (night1_v2 / sea1_v2 / stress_v2: the game back in fullscreen 0.4-2.4 s after each WPR start, ~22 of 25 s rendered; ETLs 1.45 / 1.54 / 0.99 GB; cap1_ re-analysing); memory: rendering, with vs without RenoDX: committed +209 MB, largest free block 962-1057 vs 1094 MB (the 823 MB was out of front); LEFT: sea1_perf wrote no frame trace (bug4_ finds why), harness frame recordings = route B's second pass; analysis cap1_ (speed list) + bug4_ (d / e / f) running) (STARTED 01:5x: tools/tw/captures_1117/captures_all.ps1, six starts: night1, sea1, sea1_perf (DLSS Performance
         + Frame Trace), stress, stress_noaddon (address space without RenoDX); outputs tools/tw/captures_1117/<label>/; no
         harness frame recorder yet: route B of the reference suite, a second pass later) CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benches), sea1 (go back a bit,
         everything in view), stress_test_log2 (no camera move, it spawns where ATN wants)): per replay one scripted run on
