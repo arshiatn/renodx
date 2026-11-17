@@ -2251,7 +2251,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         reviews; review rv4_ DONE 10:5x: build after changes: B1 a native-width epoch on x86 (no 'off on x86'), B2 the
         uuid'd block frozen at C1 (protocol change = new uuid; M1 picks the layout first), B3 M1 attribution by
         source_location / frame-pointer build; 9 missed failure places (tokens not counts, AddonInit attach, pinned modules,
-        destroy fan-out, late-loaded DLL TLS, ...); ut1_ REVISING) UTILS RESOURCE MEMO (ATN 09:10 "Sure"; cpu3_ D3, design cpu_steps_5_10.md 10a): a per-thread memo in front of
+        destroy fan-out, late-loaded DLL TLS, ...); Revision 1 DONE 11:1x ut1_ (native-width words + CAS bump that stops at
+        the top bit, frozen uuid block, source_location M1, INTEREST bit, tokens, per-mod opt-in, F28-F37); M1 build STARTED
+        ut2_ (throwaway branch ut1_m1 -> testbin/ut1_m1 + simulator tools/tw/ut1_m1); M1 run = one night1 (+ sea1 / stress)
+        bench start AFTER cpb_; go if >= 0.15 ms in moving frames) UTILS RESOURCE MEMO (ATN 09:10 "Sure"; cpu3_ D3, design cpu_steps_5_10.md 10a): a per-thread memo in front of
         src/utils' ResourceViewInfo lookups with an epoch every writer bumps; audit every writer + measured write rate first,
         a cross-check switch, then every RenoDX mod gets it (est. -0.2..-0.4 ms Attila night1). Owner: next CPU implementer
       - [ ] HELPER SCREENSHOT KEY (ATN 09:10 "Sure go ahead"): the helper (64-bit, own process) saves the 4K HDR screenshot
