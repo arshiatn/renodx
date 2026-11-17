@@ -383,7 +383,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still tryi ... | ATN
 - SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | sol_
 - L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; ... | after ssr_ / G1 (helper queue)
-- PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rcg_
+- PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rcg_, rbk_
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2826,7 +2826,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         "Cannot you do a new recording? Maybe max out the 3 grass sliders, zoom on the ground in Constantinople and
         record?" -> rcg_ Low STARTED 21:3x: recorder helpers BASE (level 5) + V1 (level 6), grass sliders max, two
         runs of the Constantinople replay, views grass_ground / grass_unit (+ _v1) in D:\Dev\tw_recordings, then plays +
-        Nsight BASE vs V1 -> plan_1117/grass_recordings.md. Owner: rcg_
+        Nsight BASE vs V1 -> plan_1117/grass_recordings.md. 21:4x: six Attila.exe entries = dead leftovers (0 threads /
+        0 MB, there during the 17:36 capture; a reboot clears them, only ATN reboots). ATN 21:4x: "player option is
+        better at the end? Then let's do that": rcg_ now records ONLY the BASE grass views (sliders max), no V1 run;
+        rbk_ High STARTED 21:4x: RENODX_TW_PLAY_MICROMAP_LEVEL (play-only rebake from recorded inputs; unset = today;
+        level 5 rebake must equal the recorded bytes; level 6 on day1_low / night1_low / stress_low / day1_battle +
+        the grass recordings, two traces a point). Owner: rcg_, rbk_
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
