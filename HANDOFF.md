@@ -346,6 +346,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
 - (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
+- VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT st ... | coordinator
 - SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
 - SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator after REF1
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
@@ -2256,6 +2257,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         2026.3 are the newest already; Aftermath dev-only switch = audit A33 (ATN); (g) licence: RTX SDKs licence 4(e): NVIDIA
         files never under the repo's MIT header: keep fetching them at build time as NRD / SHaRC; library headers
         unchanged, single functions copied with NVIDIA's notice. Owner: coordinator, per plan step
+      - [ ] VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT stuffs. Any SDK for that?"): paper
+        "VMF Diffuse: A Unified Rough Diffuse BRDF" (d'Eon + Weidlich, NVIDIA Research, EGSR 2024, CC BY 4.0); no NVIDIA SDK
+        ships it (tools/nvsdk checked: Falcor has Oren-Nayar + vMF lobe helpers only, RTXPT none): own code from the paper.
+        One shared vmf_diffuse.hlsli: RT/PT our shading (path hits, bounce, PT ambient, PT DI, reflection hits); non-RT
+        GT-VBGI bounce + GT-VBAO visibility BRDF-weighted; the game's own diffuse only as a row (changes the game's look).
+        Tests: roughness 0 = Lambert bit-exact, furnace / energy vs a Monte Carlo of the paper's microsurface (reference
+        suite), Falcor Oren-Nayar + pbrt-v4 cross-checks; roughness per game from the G-buffer or a slider. Design first
+        (plan step 5), after PT DI, same batch (plan_1117/plan.md Phase 3 item 3). Owner: coordinator
       - [ ] SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use original nvidia sdks files instead of
         fixing our bugs, then go ahead. Just make sure to plan everything out"): in plan step 5 one table of every own
         implementation that duplicates an NVIDIA SDK part (ReSTIR GI reuse / boiling filter vs RTXDI GI, light sampling + PT
