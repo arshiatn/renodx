@@ -340,11 +340,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers f ... | coordinator -> CPU round (plan step 4)
 - (cap1_ 07:xx: also every ReShade 4K screenshot permanently takes 30-95 MB off th ... | next memory round
 - CAPTURE TOOLING (cap1_ 05:xx): run_game's memory.csv overwritten every start (fi ... | coordinator
-- BUG4 RUNS (bug4_ NEEDS A RUN, specs in bugs_1117/bug4.md): (1) sea1 with ships s ... | coordinator (one game run)
+- BUG4 RUN LEFT (1) (specs in bugs_1117/bug4.md): footprints at DLSS 0 vs 4 need s ... | ATN
 - BUG4 NEW BOXES (bug4_ 08:xx): (a) foam: the ocean's refraction distortion double ... | next render-scale / helper / per-game rounds, (d) coordinato
-- BUG1 RUN + LEFT (bug1_ 08:xx): Attila night battle, V35 Recommended: dark ground ... | coordinator (run), ATN
-- BUG2 RUN + LEFT (bug2_ 09:xx): Attila at night, the debug44 views: Light from Pa ... | coordinator (run), ATN (decision)
-- HFIX RUN + LEFT (hfix_ 11:xx): Time Each Pass of the Light Bounce apply in a fol ... | coordinator (run), reference suite (R3), skills update 4 (te
+- BUG1 LEFT (bug1_ 08:xx): open for ATN / Musa: at Recommended a bright colour far ... | coordinator (run), ATN
+- BUG2 LEFT (bug2_ 09:xx): in-game Nsight of rt_lights + the bounce apply (9 -> ~1 ... | coordinator (run), ATN (decision)
+- HFIX LEFT (hfix_ 11:xx): SO with Squared Lobe (WH3 only: RayTracedReflectionLobe ... | coordinator (run), reference suite (R3), skills update 4 (te
 - BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Res ... | coordinator
 - (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
 - REF1 REVIEW (rev_ 04:xx, Opus xHigh: plan_1117/reference_suite_review.md, verdic ... | ref_ (v2), then one implementer at a time after bug2_ leaves
@@ -354,6 +354,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
 - (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
+- DESIGN PT DI (des1_ started 08:2x, plan step 5, docs only): plan_1117/designs/pt ... | des1_, coordinator (review)
+- DESIGN VMF (des2_ started 08:2x, docs only): plan_1117/designs/vmf_diffuse.md: m ... | des2_, coordinator (review)
+- DESIGN SDK AUDIT (des3_ started 08:2x, docs only): plan_1117/designs/sdk_replace ... | des3_, coordinator (review, verdict column)
 - VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT st ... | coordinator
 - SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
 - SKILLS UPDATE 5 (ATN 05:xx "Don't remember to add/fix skills after everything to ... | coordinator, last step of the plan
@@ -2290,10 +2293,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         3 preset buttons 0 -> 1 in 10 games; no row in Tales / Expeditions (UE's own mip bias), Rome Remastered (no LOD bias
         yet), Divinity 1 / 2, R.U.S.E. (no render scale) BUG3 (bug3_, started 02:xx): DEBUG44 (g) "For every single game, the LOD bias for everything should be on":
         the row on by default + in the presets in every game that has it, README lines. Owner: bug3_
-      - [ ] BUG4 RUNS (bug4_ NEEDS A RUN, specs in bugs_1117/bug4.md): (1) sea1 with ships selected, AntiAliasingDlssMode 0
-        vs 4 + a frame trace at 4 (run_game -Trace 45): footprints at both, no stripes; (2) sea1 close to a ship with
-        RayTracedDebugView: rigging in the scene, rope shadows on the sails, Smooth Banner Shadows 1 vs 0; (3) night1 with RT
-        and RayTracedLightGlow=1: no 4x4 rim around the cypresses against the sky. Owner: coordinator (one game run)
+      - [x] DONE BUG4 RUN (3) 07:25 (tools/tw/captures_1117/verify (verify_1117.ps1 + compare_verify.py, out/run3.txt; v167 + helper118 as installed)): no glow rim: night1a PASS (sky next to the edges -0.68 vs further out
+        -0.12 nits); night1b's metric reads FAIL only from a fireball crossing the sky between the 7-s-apart shots, by eye
+        no rim at the wall tops (out/verify_night1b/bug4d_rim.jpg). Owner: coordinator
+      - [x] DONE BUG4 RUN (2) 08:08 (verify_sea1_e3: W 2 s ladder, ships pass under the camera; crop
+        verify/out/verify_sea1_e3/e3_ship_close.jpg): by eye in Debug View 1, rope shadows drawn as thin lines (rigging in
+        the scene); the sail's shadow has stair steps with Smooth Banner Shadows 0 and smooth curved edges with 1 (each shot
+        a different ship: no pixel metric). Owner: coordinator
+      - [ ] BUG4 RUN LEFT (1) (specs in bugs_1117/bug4.md): footprints at DLSS 0 vs 4 need ships selected: Ctrl+A selects
+        nothing in a replay (sent to Attila in front; the frame trace has no indicator draw), so it needs ATN's play (select
+        ships, switch DLAA <-> Performance). Owner: ATN
       - [ ] BUG4 NEW BOXES (bug4_ 08:xx): (a) foam: the ocean's refraction distortion doubles at 50 % (view_share WHOLE
         patch), a new patch kind (136 water rows apart in WARP); (b) helper (after bug2_): fog sky texels march the camera ray
         so sky and far hills glow alike (the horizon stays lighter than the sky until then); (c) lead: 10 WH1 / WH2
@@ -2301,15 +2310,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         exact): check with a 50 % trace; (d) run_game.ps1 -Ini for Attila (DONE 08:xx: ini_set.py for non-WH3 games); (e) WH2 / Troy / Pharaoh rigid ropes still held
         (not proven drawn); (f) READMEs still call Smooth Banner Shadows "Experimental, off". Owner: next render-scale /
         helper / per-game rounds, (d) coordinator
-      - [ ] BUG1 RUN + LEFT (bug1_ 08:xx): Attila night battle, V35 Recommended: dark ground / shadows black, not red, also
-        with Contrast + Flare moved; a trace / cbuffer dump of hdr_to_screen_PS colour_matrix (t01) at night to confirm the
-        negative offset; open for ATN / Musa: at Recommended a bright colour far beyond the spectral locus (blue under 0 by
+      - [x] DONE BUG1 RUN 07:25 (tools/tw/captures_1117/verify (verify_1117.ps1 + compare_verify.py, out/run3.txt; v167 + helper118 as installed)): PASS on night1a + night1b: V35 red share of dark pixels 0.0003 (ATN's debug44
+        shot 0.94, V31 0.0003), dark ground black (R = B), no grey floor with Contrast 1.5 or Flare 0.1. The t01 cbuffer
+        dump can't be done: Attila's frame_trace Install has no value_hashes (output checked only). Owner: coordinator
+      - [ ] BUG1 LEFT (bug1_ 08:xx): open for ATN / Musa: at Recommended a bright colour far beyond the spectral locus (blue under 0 by
         ~1/6 of red, above ~50x Paper White) still comes out black (black on screen before too); flooring cones at 0 before
         V35's response would show it bright but changes every beyond-locus pixel; tell Musa about the same fit assumption in
         upstream src/shaders/tonemap/psychov/test35.hlsl (lines 557, 575; no game calls it). Owner: coordinator (run), ATN
-      - [ ] BUG2 RUN + LEFT (bug2_ 09:xx): Attila at night, the debug44 views: Light from Path alone, Shadows from Path alone,
-        + Follow, Torch Light in PT GI, Light + Torch Light in PT GI, rows off: no white walls, no crack lines changing every
-        frame; in-game Nsight of rt_lights + the bounce apply (9 -> ~12 taps); decision for ATN: Shadows from Path with
+      - [x] DONE BUG2 RUN 07:25 (tools/tw/captures_1117/verify (verify_1117.ps1 + compare_verify.py, out/run3.txt; v167 + helper118 as installed)): PASS on night1a + night1b: Light from Path / Torch Light in PT GI / both: warm-lit
+        mean x0.40-1.49 of rows off, blown pixels +0.0000 (no white walls); Shadows from Path / + Follow: frame-to-frame
+        change 0.04-0.08 (limits 0.10-0.12), no crack lines. Owner: coordinator
+      - [ ] BUG2 LEFT (bug2_ 09:xx): in-game Nsight of rt_lights + the bounce apply (9 -> ~12 taps); decision for ATN: Shadows from Path with
         4-8 lights at a pixel now costs about rows off (+0.0..+0.9 ms) for the sharp corners: keep, or trace corners only
         (1.30 / 1.66 ms, concave bright 5.6 %)? (coordinator: keep, it is the bug fix); the tooltip ("Softer shadows",
         "faster with many fires") still true. Owner: coordinator (run), ATN (decision)
@@ -2324,12 +2335,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         sky-march (bug4_ (d) plan), bug2_ leftovers: UE / Ryse hosts' texel_centre, ao_upsample.hlsli:28 top-left offset,
         mode A + PT bounce apply blending across faces at concave corners (A at Full 11.8 %, x1.025), rt_debug view 6 reads
         the mixed words. Owner: hfix_
-      - [ ] HFIX RUN + LEFT (hfix_ 11:xx): Time Each Pass of the Light Bounce apply in a foliage scene (worst ~+0.17 ms at
-        4K); sky fog by day (shafts in the sky's fog, no horizon seam); SO on open ground with Squared Lobe; the PT bounce
+      - [x] DONE HFIX RUN (Attila) 07:37 + 08:00 (tools/tw/captures_1117/verify (verify_1117.ps1 + compare_verify.py, out/run3.txt; v167 + helper118 as installed), verify_stress + verify_apply): SO on open ground PASS (Debug
+        View 5, default lobe: median 1.0000, 0.972 of the pixels >= 0.98); fog by day PASS (no horizon seam: sky / ground
+        at the skyline 1.0073; Fog Shadows 0 vs 1: sky band -12.4 %, ground -10.2 %); the apply's cost: the sun draw
+        C64DB947's command with Light Bounce on - off is +3.26..+3.47 ms at DLAA 4K stress, of which the helper's bounce
+        paths are 3.16 ms (RT profile gpu_paths_ms: the game's GPU waits for them at that draw), the apply ~0.1-0.3 ms
+        (bench 0.185 planes / 0.310 creases): as expected. Owner: coordinator
+      - [ ] HFIX LEFT (hfix_ 11:xx): SO with Squared Lobe (WH3 only: RayTracedReflectionLobe, a WH3 run); the PT bounce
         edges in Ryse / Tales / Expeditions / Divinity 2. New boxes: the concave residual bias (x1.08 at Half) comes from
         the bounce trace itself; no truth mode for the GI bounce yet (reference suite R3); normal maps tilted past ~20 deg
         drop same-face texels from the plane test (measured to 15 deg); tw_rt_open_sky / tw_ao_upsample / tw_rt_debug_view
         into testing.md's list. Owner: coordinator (run), reference suite (R3), skills update 4 (testing.md)
+      - [x] DONE VERIFY RUN 07:24-08:03 (ver_ wrote verify_1117.ps1 / verify_schedule.json / compare_verify.py; 5 starts +
+        verify_apply, one game at a time, ATN's files restored each time, ReShade.ini 77C85B27 all night): checker fixes
+        in compare_verify (shot files from ReShade's save lines, same-second overwrites, the PQ sky colour, black R = B);
+        README "After the first run": space a pair's shots 2 s apart. Owner: coordinator
       - [ ] BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Reset / No RT/PT / RT/PT (Shogun 2 /
         Ryse: their ray buttons): the row comes back on, the level row keeps the player's value. Owner: coordinator
       - [x] DONE bug4_ 6f3867fee (merged 5f03fd647; bugs_1117/bug4.md, causes written first; WARP tw_strip_capture,
@@ -2421,6 +2441,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         2026.3 are the newest already; Aftermath dev-only switch = audit A33 (ATN); (g) licence: RTX SDKs licence 4(e): NVIDIA
         files never under the repo's MIT header: keep fetching them at build time as NRD / SHaRC; library headers
         unchanged, single functions copied with NVIDIA's notice. Owner: coordinator, per plan step
+      - [ ] DESIGN PT DI (des1_ started 08:2x, plan step 5, docs only): plan_1117/designs/pt_di_rtxdi.md: PT DI through
+        RTXDI-Library's RAB_* bridge keeping the game's light formula, torches via one DI + GI reservoir, the ReSTIR GI
+        upgrades (lin2026, junkins2026, pairwise MIS / duplication map / RR decorrelation, kajiya feedback check); then an
+        Opus xHigh review, ATN's short summary. Owner: des1_, coordinator (review)
+      - [ ] DESIGN VMF (des2_ started 08:2x, docs only): plan_1117/designs/vmf_diffuse.md: math + shared vmf_diffuse.hlsli,
+        every place (RT / PT shading, GT-VBGI / GT-VBAO, the game's diffuse as a row), roughness per game, rows + look change
+        in numbers, tests (Lambert bit-exact at roughness 0, furnace, Falcor / pbrt-v4); then an Opus xHigh review. Owner:
+        des2_, coordinator (review)
+      - [ ] DESIGN SDK AUDIT (des3_ started 08:2x, docs only): plan_1117/designs/sdk_replace_audit.md: the SDK REPLACE AUDIT
+        table (ReSTIR GI, PT DI row, SHaRC 1.8.3, NRD vs NRD-Sample, OMM SDK, RTXPT pieces, STBN, NVAPI R620) with replace /
+        fix / keep per row + designs for the update rows; reference verdicts filled after the REF BUILD steps; then an Opus
+        xHigh review. Owner: des3_, coordinator (review, verdict column)
       - [ ] VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT stuffs. Any SDK for that?"): paper
         "VMF Diffuse: A Unified Rough Diffuse BRDF" (d'Eon + Weidlich, NVIDIA Research, EGSR 2024, CC BY 4.0); no NVIDIA SDK
         ships it (tools/nvsdk checked: Falcor has Oren-Nayar + vMF lobe helpers only, RTXPT none): own code from the paper.
