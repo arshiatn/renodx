@@ -1740,12 +1740,13 @@ class RtScene12 {
   }
 
   // The requests of frames `first` to `last` into `folder`: a request file each (its inputs only with `inputs`), its outputs,
-  // at `last` the histories its kind writes, and each trace's scene digest (RecordRequest).
-  // (The writer's fields, `bytes`, `failed` and `hashes`, stay until FinishRecording: a snapshot's file may still be on its
-  // way.)
-  void RecordFrames(const std::filesystem::path& folder, uint32_t first, uint32_t last, bool inputs) {
+  // with `histories` at `last` the histories its kind writes too (~2.5 GB at 4K), and each trace's scene digest
+  // (RecordRequest). (The writer's fields, `bytes`, `failed` and `hashes`, stay until FinishRecording: a snapshot's file may
+  // still be on its way.)
+  void RecordFrames(const std::filesystem::path& folder, uint32_t first, uint32_t last, bool inputs, bool histories) {
     recording_.on = true;
     recording_.inputs = inputs;
+    recording_.histories = histories;
     recording_.first = first;
     recording_.last = last;
     recording_.folder = folder;
@@ -1895,7 +1896,7 @@ class RtScene12 {
     }
     const std::string loaded_report = *report;
     const uint32_t last_frame = std::get<0>(requests.back());
-    RecordFrames(dump, first_frame, last_frame, false);
+    RecordFrames(dump, first_frame, last_frame, false, true);
     std::vector<File> files(requests.size());
     for (size_t index = 0; index < requests.size(); ++index) {
       if (!read(std::get<2>(requests[index]), &files[index])) return false;
@@ -7667,6 +7668,7 @@ class RtScene12 {
   struct Recording {
     bool on = false;
     bool inputs = false;
+    bool histories = false;
     uint32_t first = 0;
     uint32_t last = 0;
     std::filesystem::path folder;
@@ -8157,7 +8159,7 @@ class RtScene12 {
     }
     std::vector<Readback> outputs;
     for (const RecordedResource& resource : RecordedResources()) {
-      if ((resource.written_by & (1u << request)) != 0 && *resource.member && (resource.output || frame == recording_.last)) {
+      if ((resource.written_by & (1u << request)) != 0 && *resource.member && (resource.output || (recording_.histories && frame == recording_.last))) {
         CopyToReadback(list, resource.name, resource.member->Get(), resource.state, &outputs, resource.offset, resource.bytes);
       }
     }

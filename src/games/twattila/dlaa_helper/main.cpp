@@ -412,7 +412,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // The bridge recorder (the recorder build; rt_d3d12.hpp SaveRecordingState): with RENODX_TW_RECORD=<folder> (relative: the
   // helper's) set when the game starts, a recording starts at the trace of frame RENODX_TW_RECORD_AT (or the first after it)
   // or at the first after renodx_record_now appears next to the helper (looked for every 30 traces, then deleted): the
-  // snapshot, then the requests of RENODX_TW_RECORD_FRAMES frames (2) into <folder>\frame_<frame>.
+  // snapshot, then the requests of RENODX_TW_RECORD_FRAMES frames (2) into <folder>\frame_<frame> (with
+  // RENODX_TW_RECORD_HISTORIES=1 the last frame's histories too).
   const std::filesystem::path record_folder = [&] {
     std::array<wchar_t, MAX_PATH> value = {};
     if (GetEnvironmentVariableW(L"RENODX_TW_RECORD", value.data(), MAX_PATH) == 0) return std::filesystem::path();
@@ -465,7 +466,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       }
       return;
     }
-    scene->RecordFrames(into, frame, frame + recorder.frames - 1, true);
+    scene->RecordFrames(into, frame, frame + recorder.frames - 1, true, record_number(L"RENODX_TW_RECORD_HISTORIES", 0) != 0);
     recorder = {.frames = recorder.frames, .first = frame, .last = frame + recorder.frames - 1, .scene = scene.get(), .traces = recorder.traces};
     LogWithTime(std::format("[TW recorder] Recording frames {} to {} into {} ({}).", frame, recorder.last, into.string(), why).c_str());
   };
