@@ -354,6 +354,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
 - (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
+- DESIGN PT DI (des1_ started 08:2x, plan step 5, docs only): plan_1117/designs/pt ... | des1_, coordinator (review)
+- DESIGN VMF (des2_ started 08:2x, docs only): plan_1117/designs/vmf_diffuse.md: m ... | des2_, coordinator (review)
+- DESIGN SDK AUDIT (des3_ started 08:2x, docs only): plan_1117/designs/sdk_replace ... | des3_, coordinator (review, verdict column)
 - VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT st ... | coordinator
 - SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
 - SKILLS UPDATE 5 (ATN 05:xx "Don't remember to add/fix skills after everything to ... | coordinator, last step of the plan
@@ -2436,6 +2439,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         2026.3 are the newest already; Aftermath dev-only switch = audit A33 (ATN); (g) licence: RTX SDKs licence 4(e): NVIDIA
         files never under the repo's MIT header: keep fetching them at build time as NRD / SHaRC; library headers
         unchanged, single functions copied with NVIDIA's notice. Owner: coordinator, per plan step
+      - [ ] DESIGN PT DI (des1_ started 08:2x, plan step 5, docs only): plan_1117/designs/pt_di_rtxdi.md: PT DI through
+        RTXDI-Library's RAB_* bridge keeping the game's light formula, torches via one DI + GI reservoir, the ReSTIR GI
+        upgrades (lin2026, junkins2026, pairwise MIS / duplication map / RR decorrelation, kajiya feedback check); then an
+        Opus xHigh review, ATN's short summary. Owner: des1_, coordinator (review)
+      - [ ] DESIGN VMF (des2_ started 08:2x, docs only): plan_1117/designs/vmf_diffuse.md: math + shared vmf_diffuse.hlsli,
+        every place (RT / PT shading, GT-VBGI / GT-VBAO, the game's diffuse as a row), roughness per game, rows + look change
+        in numbers, tests (Lambert bit-exact at roughness 0, furnace, Falcor / pbrt-v4); then an Opus xHigh review. Owner:
+        des2_, coordinator (review)
+      - [ ] DESIGN SDK AUDIT (des3_ started 08:2x, docs only): plan_1117/designs/sdk_replace_audit.md: the SDK REPLACE AUDIT
+        table (ReSTIR GI, PT DI row, SHaRC 1.8.3, NRD vs NRD-Sample, OMM SDK, RTXPT pieces, STBN, NVAPI R620) with replace /
+        fix / keep per row + designs for the update rows; reference verdicts filled after the REF BUILD steps; then an Opus
+        xHigh review. Owner: des3_, coordinator (review, verdict column)
       - [ ] VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT stuffs. Any SDK for that?"): paper
         "VMF Diffuse: A Unified Rough Diffuse BRDF" (d'Eon + Weidlich, NVIDIA Research, EGSR 2024, CC BY 4.0); no NVIDIA SDK
         ships it (tools/nvsdk checked: Falcor has Oren-Nayar + vMF lobe helpers only, RTXPT none): own code from the paper.
