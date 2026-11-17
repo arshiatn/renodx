@@ -186,7 +186,7 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [ ] C: LOD bias presets: they now turn "on All Textures" on but leave the level row (Off / Matched / Sharper / Sharpest) alone: a player at Off still gets no bias after a preset. Should presets turn Off back to Sharper (the default) and keep any other level? (from: bug3_ 03:xx)
 - [x] ANSWERED 05:xx (ATN: "They should be on by default, no? Bug fixes => more correct. Why should we leave bugs.": every proven bug fix on by default, numbers listed for ATN; memory feedback_experimental_rows) C: Reference-suite bug fixes that change our effects' look (once proven): specular occlusion brighter at grazing views on open ground (I5), Path-Traced AO ~1.6 % brighter on open walls with an exact sky calibration (I4), bounce / torch light / torch shadow ratio moved by half a low-resolution texel (I3, the crack-line lead), AO's sun-dependent normal: on by default as bug fixes (coordinator's recommendation: they are more correct; numbers listed for you), or Experimental rows first? (from: ref_ v2 05:xx)
 - [x] ANSWERED 05:xx (ATN: "to pbrt, yeah why not. It is apache 2.0": fetched 05:xx into tools/refcode/pbrt-v4, 20e41fd8 2026-11-15, 34 MB, no submodules) C: Download pbrt-v4 (Apache-2.0, github.com/mmp/pbrt-v4, not NVIDIA) for the reference suite's xcheck test (our samplers vs pbrt-v4 on the CPU)? Without it the check reads pbrt-v4 online / uses Falcor (NVIDIA, fetched). (from: ref_ v2 05:xx)
-- [ ] C: CPU round runs (cpu1_ 09:xx, plan_1117/cpu_round_plan.md): OK to run the bench / data runs on night1, sea1, stress_test_log2 (heapfix A / P / your v6.10.6 copy as control, add-on trim, engine patches; the data run's sampler pauses game threads for microseconds)? A Constantinople replay copy (the old auto_save aa107f05) as its own file in your replays folder for the benches? Your WPR tasks set to run hidden (they take the game's focus)? The 2.7-s RT freeze at battle start / after alt-tab: draw a few frames without rays, and / or a longer release timer? Our own screenshot key in the helper (ReShade's 4K shots each take 30-95 MB of the game's 32-bit space)? Shared-utils change for the resource-info lookups? Small Soldiers as Sprites after its run? heapfix: a package for its author (P = prefetched sort), or move to the official 7.0? (from: cpu1_ 09:xx)
+- [ ] C: CPU round runs (cpu1_ 09:xx, plan_1117/cpu_round_plan.md): OK to run the bench / data runs on night1, sea1, stress_test_log2 (heapfix A / P / your v6.10.6 copy as control, add-on trim, engine patches; the data run's sampler pauses game threads for microseconds)? A Constantinople replay copy (the old auto_save aa107f05) as its own file in your replays folder for the benches? Your WPR tasks set to run hidden (they take the game's focus)? The 2.7-s RT freeze at battle start / after alt-tab: draw a few frames without rays, and / or a longer release timer? Our own screenshot key in the helper (ReShade's 4K shots each take 30-95 MB of the game's 32-bit space)? Shared-utils change for the resource-info lookups (cpu3_ D3: a memo in src/utils used by every RenoDX mod, exact only if every writer bumps an epoch; est. -0.2..-0.4 ms night1; needs an audit + a measured write rate first)? Small Soldiers as Sprites after its run? heapfix: a package for its author (P = prefetched sort), or move to the official 7.0? (from: cpu1_ 09:xx)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -333,6 +333,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (sk3_ 01:xx) Shared shaders rule (skills lesson 12): rysesonofrome/upscale_outpu ... | next shared round
 - CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila ... | coordinator
 - CPU ROUND PLAN (cpu1_ 09:xx, design: plan_1117/cpu_round_plan.md): corrections: ... | coordinator
+- CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
+- CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases ... | coordinator
+- CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
 - SPEED LIST v2 (cap1_ 07:xx on the redone captures, speed_list.md; supersedes the ... | coordinator -> a CPU round after the bug agents merge (plan 
 - SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers f ... | coordinator -> CPU round (plan step 4)
 - (cap1_ 07:xx: also every ReShade 4K screenshot permanently takes 30-95 MB off th ... | next memory round
@@ -2180,8 +2183,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (one game at a time): dry run; heapfix A / P / h6106 x3 on stress, then P / B4 / loopanim / x87keep x2; A / P x2 on
         night1; capture v3 WPR A vs P on stress; data run (sampler, va_probe2, a screenshot, 60 s out of front, a restart);
         add-on trim night1 + sea1 x2; engine patches stress + night1 x2; Small Soldiers as Sprites stress x2 + shots; the
-        batch's one Constantinople bench. Steps 5-10 STARTED 11:xx cpu3_ (host-side add-on code only; plan_1117/cpu_steps_5_10.md;
-        step 9 dropped; utils memo = ATN). Steps 1-4 DONE cpu2_ 10:xx (plan_1117/cpu_steps_1_4.md): bench -Replay required with
+        batch's one Constantinople bench. Steps 5-7 DONE cpu3_ (merged fc0b232fb; plan_1117/cpu_steps_5_10.md): 5 cf7c7e5b2
+        point-light draws without a lock (one atomic per frame, light vectors keep capacity); 6 4f709c514 Capture reads each
+        binding once + caches ID3D11DeviceContext1 and the prepared device (RENODX_TW_STATE_CHECK=1 cross-checks the reused
+        bindings against D3D11's; tw_romer_rays fails on any difference); 7 cf8e264ef DrawObjectMotion one lock per draw +
+        cached device; same picture (tw_native_context parts 4-5). Trim build for the A/B: testbin/cpu1_addons/trim
+        (addon32 dbb33645, = base 1cbaa46b7 + the three commits). Step 9 dropped; step 10: every command-wide callback is
+        already gated, nothing to add. D1 tracked D3D11 binds stay off, D2 dynamic memo dropped (both: coordinator agrees,
+        R.U.S.E.'s replayed buffers fire no destroy events). D3 the shared-utils ResourceViewInfo memo (est. -0.2..-0.4 ms
+        night1) = ATN, in the C: line. D4 step 8 + D5 site 8: boxes below. Steps 1-4 DONE cpu2_ 10:xx (plan_1117/cpu_steps_1_4.md): bench -Replay required with
         per-replay keys / rounds / seconds, auto_save refused, -ReplayCopy (adds our Constantinople copy
         tools/tw/bench/replays/constantinople_aa107f05.replay to ATN's replays folder per start and removes it by name +
         hash; only after ATN's OK), heapfix versions hash-checked + h6106 control, -Wpr mode (front again after start and
@@ -2197,6 +2207,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         exit: exact without the copy + an early exit, est. -1.5..-2 ms stress); memcpy call sites need the data run (933
         sites in 508 functions); draw-replay callback timing not done (needs a new replay mode). LEFT: steps 5-12 after
         hfix_ leaves shared code; runs after ATN's OK. Owner: coordinator
+      - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
+        (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
+        built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
+        coordinator
+      - [ ] CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases a shared_ptr per child to test
+        a flag): exact without the copy + an early exit, est. -1.5..-2 ms stress render thread; design + proof plan written,
+        no code. Same later CPU round; bench stress + night1 x2 after ATN's OK for the runs. Owner: coordinator
+      - [ ] CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 + sea1 x2 with the bench; after
+        ATN's OK for the CPU runs (C: line). Owner: coordinator
       - [ ] SPEED LIST v2 (cap1_ 07:xx on the redone captures, speed_list.md; supersedes the v1 top 10 below): rendered
         frames 51.1 / 37.7 / 84.5 ms (night1 / sea1 / stress, WPR costs +4-6 %), all render-thread bound (GPU idle 21 / 11 /
         47 ms; game + helper GPU 30.0 / 26.4 / 37.2, helper 10.9 / 8.8 / 9.8). Top 10: (1) HEAPFIX SORT A/B where the render
