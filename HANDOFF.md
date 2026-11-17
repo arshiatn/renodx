@@ -341,7 +341,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BUG4 NEW BOXES (bug4_ 08:xx): (a) foam: the ocean's refraction distortion double ... | next render-scale / helper / per-game rounds, (d) coordinato
 - BUG1 RUN + LEFT (bug1_ 08:xx): Attila night battle, V35 Recommended: dark ground ... | coordinator (run), ATN
 - BUG2 RUN + LEFT (bug2_ 09:xx): Attila at night, the debug44 views: Light from Pa ... | coordinator (run), ATN (decision)
-- HFIX (hfix_, started 09:xx, the only helper editor now): I5 + I4 fixes (tw_rt_op ... | hfix_
+- HFIX RUN + LEFT (hfix_ 11:xx): Time Each Pass of the Light Bounce apply in a fol ... | coordinator (run), reference suite (R3), skills update 4 (te
 - BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Res ... | coordinator
 - (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
 - REF1 REVIEW (rev_ 04:xx, Opus xHigh: plan_1117/reference_suite_review.md, verdic ... | ref_ (v2), then one implementer at a time after bug2_ leaves
@@ -2286,10 +2286,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         4-8 lights at a pixel now costs about rows off (+0.0..+0.9 ms) for the sharp corners: keep, or trace corners only
         (1.30 / 1.66 ms, concave bright 5.6 %)? (coordinator: keep, it is the bug fix); the tooltip ("Softer shadows",
         "faster with many fires") still true. Owner: coordinator (run), ATN (decision)
-      - [ ] HFIX (hfix_, started 09:xx, the only helper editor now): I5 + I4 fixes (tw_rt_open_sky -Expect exact), fog
+      - [x] DONE hfix_ (merged 53da7b6e8; bugs_1117/hfix.md): I5 f18fd4deb (SO weighted by GgxSampleWeight, redraw x2,
+        keep last frame: tw_rt_open_sky -Expect exact PASS, open ground 1.0000, roof 0.0000; look: 6.8 % of pixels
+        0.9027 -> 0.9337; reflections 0.949 -> 0.942 ms); I4 071cabacd (closed form, walls 0.9841 -> 0.9989, path tracing
+        0.448 -> 0.385 ms); fog sky march c2a4f5ffd (sky = a wall at 1000 m, 0 apart in 512 texel-frames; fog 0.294 ->
+        0.316 ms at ~17 % sky); 4a 354a8383e Ryse / UE hosts texel_centre; 4b cb2a4fa6c ao_upsample taps by distance
+        (tw_ao_upsample: 0.0000 px, old -0.39); 4c 9e9c4a786 plane test in the bounce apply (tolerance 0.35, corners first:
+        planes byte-identical, 0.144 -> 0.185 ms; Half concave 21.5 / 6.4 % -> 17.0 / 2.3 %); 4d 5831adb95 debug view 6
+        (tw_rt_debug_view 0 apart); all on, no rows HFIX (hfix_, started 09:xx, the only helper editor now): I5 + I4 fixes (tw_rt_open_sky -Expect exact), fog
         sky-march (bug4_ (d) plan), bug2_ leftovers: UE / Ryse hosts' texel_centre, ao_upsample.hlsli:28 top-left offset,
         mode A + PT bounce apply blending across faces at concave corners (A at Full 11.8 %, x1.025), rt_debug view 6 reads
         the mixed words. Owner: hfix_
+      - [ ] HFIX RUN + LEFT (hfix_ 11:xx): Time Each Pass of the Light Bounce apply in a foliage scene (worst ~+0.17 ms at
+        4K); sky fog by day (shafts in the sky's fog, no horizon seam); SO on open ground with Squared Lobe; the PT bounce
+        edges in Ryse / Tales / Expeditions / Divinity 2. New boxes: the concave residual bias (x1.08 at Half) comes from
+        the bounce trace itself; no truth mode for the GI bounce yet (reference suite R3); normal maps tilted past ~20 deg
+        drop same-face texels from the plane test (measured to 15 deg); tw_rt_open_sky / tw_ao_upsample / tw_rt_debug_view
+        into testing.md's list. Owner: coordinator (run), reference suite (R3), skills update 4 (testing.md)
       - [ ] BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Reset / No RT/PT / RT/PT (Shogun 2 /
         Ryse: their ray buttons): the row comes back on, the level row keeps the player's value. Owner: coordinator
       - [x] DONE bug4_ 6f3867fee (merged 5f03fd647; bugs_1117/bug4.md, causes written first; WARP tw_strip_capture,
