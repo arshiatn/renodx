@@ -335,6 +335,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails ... | coordinator -> bug4_ after the captures
 - (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
+- FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
+- NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
 - SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator after REF1
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
 - (STARTED 01:5x: tools/tw/captures_1117/captures_all.ps1, six starts: night1, sea ... | coordinator, after the current merges + install, ATN's go
@@ -2172,6 +2174,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         deltas (ContactShade, first-vertex sky calibration, 2-layer leaf cap, 32-light caps in paths / fog vs 100+ night
         lights, uniform fog weights, sky_range) reported with numbers, unchanged unless ATN picks a row; R2 adds a debug
         view of the game's own sun shadow-map term. Owner: coordinator
+      - [ ] FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead of us finding bugs/wrong stuff at
+        once" -> "Then let's do all those 5"): (1) reference suite R0a..R6 after the design review; (2) coverage check: the
+        rays' scene vs what the game draws, every object (sails, banners, ropes, cloth, LOD, animation), in R2; (3) free-code
+        comparisons per effect: pbrt-v4 formulas, RTXDI / RTXPT / NRD / SHaRC, Falcor, kajiya (same inputs, ours vs theirs);
+        (4) route B recorder + harness player, then a second capture pass on night1 / sea1 / stress; (5) Opus review of all
+        shared code. Owner: coordinator (one implementer at a time in the helper)
+      - [ ] NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. Do them too"): survey (nvsdk_,
+        running) -> tools/tw/round_notes/plan_1117/nvidia_sdks.md: licence, use vs compare, already in tree, size; then
+        ATN's OK of the exact download list (file, source, size) before any download; then each into the plan step it
+        serves. Owner: coordinator
       - [ ] SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix our skill sets again"): the
         lessons of the bug fixes + reference suite into .agents/skills + the zip. Owner: coordinator after REF1
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
