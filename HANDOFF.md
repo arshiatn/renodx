@@ -384,7 +384,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - WRITER SMALL FIXES (from Sol's 0001 review): our engine_code.hpp writer: (a) a f ... | ATN's go (game-code file, theoretical today: no site crosses
 - L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; ... | after ssr_ / G1 (helper queue)
 - PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rbk_
-- APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-th ... | apr_, coordinator
+- APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-th ... | apipe_, coordinator
 - CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's ren ... | the combined bench (ATN's go)
 - SER ON IN WH3 (ssr_: faster in all three forest views, same picture, repeats exa ... | coordinator after g1_
 - SHARC COST 2 (ssr_): the update pass 0.26-0.72 ms (latency-bound, 12-28 % occupa ... | next SHaRC round
@@ -2882,8 +2882,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         0 wrong; bind x86 31.2 -> 13.8 ns (4 threads 55.5 -> 13.9), amd64 17.4 -> 8.7 (42.7 -> 9.2); builds 15 x86 + 21
         amd64 exit 0; suites pass; static_checks 0. Left: PopulateStageState writable pointers (read-only today), the
         writer check is a near copy of B3's (one shared helper after g1_'s resource.hpp merge), in-game hit rate unknown
-        (bench with _CHECK=1 + A/B MEMO=0), x86 hit-path disassembly. xHigh review apr_ STARTED 22:4x BEFORE the merge
-        -> plan_1117/apipe_review.md. Owner: apr_, coordinator
+        (bench with _CHECK=1 + A/B MEMO=0), x86 hit-path disassembly. xHigh review apr_ DONE 23:0x
+        (plan_1117/apipe_review.md): MERGE (0 high / 0 medium; writers, ordering, outcome, x86, lifetime, cross-module,
+        opt-in all clean); fold in first: L1 token added before RegisterModule but removed only on successful unregister
+        (mirror g1_'s 520d9f7df), L3 checker count so checks don't stop when the last opted-in module detaches (free
+        before merge, a new uuid after), L2 comment (a late pre-protocol add-on unchecked one frame; a stale hit could
+        bind a destroyed replacement), L6 test gaps -> apipe_ resumed 23:0x. Later: M1 one shared writer-token helper
+        with B3 (after g1_ merges); L4 static check doesn't verify bumps are inside the lock, command_action.hpp:246
+        writable details pointer, new bind-info callbacks not flagged; L5 every D3D11 Create*State empties every thread's
+        cache (loading only; bench with _CHECK=1 shows the miss rate). Bench: Attila's log must say "utils::pipeline
+        bind cache on.". Owner: apipe_, coordinator
       - [ ] CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's render-thread time after
         B2-B4 (WPR), bridge flushes step 2 (one FrameTrace frame), the alt-tab transient, view filter for the other TW
         games after Attila's numbers, heapfix B4G numbers for the author; Sprites = ATN's look decision. Owner: the
