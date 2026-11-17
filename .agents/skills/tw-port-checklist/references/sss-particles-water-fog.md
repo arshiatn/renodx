@@ -69,6 +69,7 @@ Order: which pass reflects which surface (its gate and flags); water hashes and 
 | A compute hook has no render target to show MSAA [96486b63] | Read SampleDesc of the CS's multisampled view slots; with MSAA on leave the game's chain and log it once | Page dump / WARP with a 4x view |
 | Hits read an R16G16B16A16F light buffer rt_core didn't copy (WH3 had its own copy) [27cc31a8] | One shared light copy per format in rt_core's `Reflections` behind the Host span; the other games' path byte-identical | WARP copy 0 texels apart + a whole-buffer control; other games' page dumps date only |
 | Samples and Reuse rows act only on rough water: on the mirror they did nothing [a389c431] | Show and gate them only with Softer Water | Page dump states |
+| Under Path-Traced Ambient alone the game's AO target is white, so Attila's and Thrones' ssr00 / ssr01 multiplied the environment by nothing: bright sky in dark corners. The paths' sky visibility is AO-shaped, wrong for a glossy lobe [6b49f7d4] | Reflections under path-traced ambient take the rays' specular-occlusion lobe (t46: the GGX lobe's open share within 10 m), once (o1.y stays 1 where t46 is bound): Path-Traced Reflection Occlusion, on, a slider | `test/tw_thrones_ssr` part I: strength 1 = x t46 exactly, CONTROL 0.5. Every other game's reflection pass that reads the game's AO needs the same check (WH1 6B80E35B, WH2 7E1CDD0A, WH3 89AF6FF5, Shogun 2 F87ECE85) |
 
 ## 4. Fog
 

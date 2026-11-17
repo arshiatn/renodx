@@ -1,6 +1,6 @@
 ---
 name: handle-sdr-tonemap-lut
-description: "RenoDX HLSL/Slang shader workflow for proven shader-side SDR tonemap, hard clip, LUT, color grade, and HDR bridge changes. Use when editing game shaders for neutral-by-default ToneMapPass/RenoDRT, vanilla/0 ToneMapPass user grading, Preset Off vanilla reset, PsychoV17, vanilla midgray/slope or inflection matching, UpgradeToneMap delta, SDR LUT bridges, N2 max-channel reconstruction, gamut compression, hue/saturation clip emulation, internal/user LUTs, or shader-side tonemap/LUT replacements after upstream HDR/SDR signals are identified."
+description: "RenoDX HLSL/Slang shader workflow for proven shader-side SDR tonemap, hard clip, LUT, color grade, and HDR bridge changes. Use when editing game shaders for neutral-by-default ToneMapPass/RenoDRT, vanilla/0 ToneMapPass user grading, Preset Off vanilla reset, PsychoV17, vanilla midgray/slope or inflection matching, UpgradeToneMap delta, SDR LUT bridges, N2 max-channel reconstruction, gamut compression, hue/saturation clip emulation, internal/user LUTs, tonemapper edge inputs (negative, near-black, NaN, Inf), or shader-side tonemap/LUT replacements after upstream HDR/SDR signals are identified."
 argument-hint: "game shader, proven HDR/SDR signals, and goal, e.g. audit LUT bridge, add PsychoV17, fix hard-clip ToneMapPass, or verify Preset Off"
 ---
 
@@ -305,6 +305,7 @@ Use these as references, not as templates to copy blindly. A committed mod can b
 ## Shader validation checklist
 
 - Compare vanilla SDR and custom HDR around black, midgray, highlight rolloff, and saturated colors.
+- Before a tonemap mode becomes a default or a recommended preset, feed every mode edge inputs in an offline (WARP) test: negative, near-black, Inf and NaN channels, alone and mixed. Outputs stay finite and within peak, and near-black pixels keep their channel ratios (no tint). A mode that was fine on normal content once turned every dark night-time pixel deep red where the previous mode was fine on the same frame.
 - Verify user peak settings affect scene highlights intentionally and do not simply scale completed SDR pixels.
 - Check that perceptual/gamut handling preserves the intended look rather than overcoloring or oversaturating it.
 - Check that default settings match the original look as closely as practical, with creative contrast/saturation changes disabled unless explicitly requested, exposed through sliders, or selected through a named preset such as `HDR Look`.

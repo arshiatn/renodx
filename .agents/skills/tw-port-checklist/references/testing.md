@@ -9,6 +9,7 @@
 | Tool | Proves | Doesn't prove |
 |---|---|---|
 | `all_modes.sh` and `rt_harness` | The bridge, the helper, part of the D3D11 capture; stress per family (`far_cards_20`, `far_cards_48`, `leaf_storm`, `removal`, `switching_removal`, `release_*`, `bounces_*`); GI of no view (`pedestal_gi`; `HARNESS_PEDESTAL_TIMES` prints the bounce's GPU ms, slow frames named); a torch's bit near its own pole (`HARNESS_TORCH` with `HARNESS_LIGHT_FLICKER`: changed bits, isolated and steady dark spots); RR asked in a folder without nvngx_dlssd.dll (`HARNESS_RR_FOLLOW`: the trace's RT_RECONSTRUCTED from `bridge.reconstructing`). The harness's guard-wrapped copies (`all_modes_v64.sh`, `torch_v64.sh`) stop when a TW game starts | A game's own passes, real melee, burning houses, cloth; the helper's CPU cost at game scale |
+| The paths' probe (`RENODX_TW_PATH_PROBE=<mode>[,<rays a texel>]` in a helper built with `RENODX_TW_PATH_PROBE_BUILD`; `path_probe` scripts) | Path tracing's two routes on the same surfaces (seen against unseen: ratio 1 within its noise), the paths against a reference path tracer (6 bounces, no screen, no cache), a light estimator against every light with its own shadow ray ([ao-gi.md](ao-gi.md) section 2) | Moving views, the game's light buffer, the look |
 | `fg_child/fg_bridge_test` | FG per backend at 2x and 6x, colour-space changes, memory phases, the module list with a ReShade `dxgi.dll` beside the helper | The game's pacing |
 | `warp_tests/*` | A game shader's bytes against ours on WARP: patches, replacements, stream output, level chains, scale copies | GPU hangs (WARP never hangs), real scene content |
 | `page_dump` | An addon's settings as data with ImGui and ReShade faked: rows, what shows in every state, what buttons and method sliders write; `games_compare.py` puts two games' (or versions') rows, defaults and a button's result side by side | Whether the hook behind a row runs; rows behind install flags the dump doesn't set (`dump_w` sets only the scene table: sprite and far-tree rows and WH3's torch rows don't show); a new game needs its own `dump_x.cpp` |
@@ -39,6 +40,7 @@ Rules:
 
 - Compare `all_modes.sh` runs by mode name against the last log, not by count. Run it in the background beside compiling, not beside another GPU job, and don't copy a helper into its folder until it ends.
 - `game-port-method`'s run-counts rule; a second game once failed silently.
+- Rows that depend on each other: every combination a player can set gets a case (page-dump state, harness mode or scorer line), not only the defaults and presets ([shaders-ui.md](shaders-ui.md) section 3).
 - Every replaced shader gets a vanilla-exact test against the game's bytes ([hdr-review-rules.md](../../game-port-method/references/hdr-review-rules.md)'s Vanilla exact first). Give WARP tests the game's real ranges, and a control that must fail.
 - Scale a WARP formula check's tolerance with the largest summed term, not a fixed epsilon [f306ff2d].
 - A texture read checked against a game PS's pixel: bilinear weights have 8 bits an axis and the PS's inputs come interpolated (a constant 1-2 ulps off), so a smooth texture may differ by 2/256 of its largest texel step times the decode's slope. For a 4-ulp check give the texture plateaus where it is read [df95f06e].
@@ -81,6 +83,7 @@ The format is `game-port-method`'s. TW additions:
 - Each paused run freezes a random wind phase.
 - A unit or grass row's cost shows only with the units or the grass on screen: Unit Detail A/Bs in a replay whose camera held few soldiers changed nothing. Name the scene the maintainer measured (their heavy 8x battle), the camera on the units.
 - What the build reports itself: "applied" lines, Record Ray Tracing Profile (30 s), Frame Trace, Time Each Pass, a pixel trace; the maintainer sends `ReShade.log`, the helper log and the ini.
+- Shots with ReShade's overlay open on the rows under test, their values in the picture: the rows decode a bug faster than a description (three night-city shots told which row pair blew the walls out). FG is off while the overlay is open.
 - The page-dump dry-run also checks that the debug view is made (an AO view without the AO row is magenta); a helper once didn't log placed instances the plan relied on.
 
 ## 4. Reading the maintainer's evidence

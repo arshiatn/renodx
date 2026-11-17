@@ -68,7 +68,7 @@ Before any test round of a new game or a big change:
 | Room growth by `CreateCommittedResource` (up to 2.5 GB) stalled requests | On a worker at 3/4 [c12d17c7] | Harness |
 | Root UAVs have no bounds checks | `BUFFER_AT_OFFSET` clamps | Harness |
 | A 64-bit ReShade `dxgi.dll` beside the helper loaded our addons into it: a CRT fault each start, the DevKit crashed it, ReShade's banner on FSR FG's window | The helper loads `dxgi`, `d3d11`, `d3d12` from System32 first (delay-loaded) [3bd71292]; addons keep `DllMain` TRUE with `AddonInit` failing in a foreign host | `fg_bridge_test` module list with a ReShade in the helper's folder |
-| 32-bit: address space (peak 3158 of 4096 MB), mapped or dynamic textures (Animated Soldier Limit made soldiers invisible), `HeapAlloc` aligning to 8 [bc0ead39], ReShade's screenshot `bad_alloc` | Cast pointers via `uintptr_t`; don't take Attila's RAM caps as needed in a 64-bit game | `build32` and an x86 run of every `test/tw_*` |
+| 32-bit: address space (peak 3158 of 4096 MB), mapped or dynamic textures (Animated Soldier Limit made soldiers invisible), `HeapAlloc` aligning to 8 [bc0ead39], ReShade's screenshot `bad_alloc`. Fragmentation: Attila crashed after a battle restart (40-50k soldiers) when a 42-49 MB malloc failed with 418 MB free (largest free block 37 MB), then a garbage pointer in d3d11 | Cast pointers via `uintptr_t`; don't take Attila's RAM caps as needed in a 64-bit game. Keep big CPU-side allocations, mapped staging buffers and extra textures out of x86 games; measure the largest free block with and without the mod at battle start and after a restart | `build32` and an x86 run of every `test/tw_*`; `heapfix.log`'s failed mallocs (size, free, largest block) |
 
 ## 4. Frame generation
 
