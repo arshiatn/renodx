@@ -141,13 +141,13 @@ from (search its text). Tick here and on that line when ATN answers.
   Saturation, Div1 mode 1): which become Experimental rows? (from: "HDR AUDIT FINDINGS")
 Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [x] DONE 11-16: Ryse windowed fix (fix58, ryw_ d52aa32e merged 6e1c247b): you checked windowed, fine (04:2x) (from: "AFTER THE RESTART, in order")
-- [ ] C: Ryse helper DLSS presets L/M: the sqrt feed (Attila's dark-tone fix) or linear; the helper's AutoExposure where Ryse gave exposure 1? (from: "ATN DECIDES: Ryse's helper DLSS presets L/M get the sqrt feed ...")
+- [x] C: (ANSWERED ATN 09:4x: the sqrt feed as Attila's: box RYSE DLSS SQRT) Ryse helper DLSS presets L/M: the sqrt feed (Attila's dark-tone fix) or linear; the helper's AutoExposure where Ryse gave exposure 1? (from: "ATN DECIDES: Ryse's helper DLSS presets L/M get the sqrt feed ...")
 - [ ] C: Tales' rays need an upscaler on, Path Tracing Bounces capped at 2, RT/PT preset = Attila's values: OK by eye? (from: "ATN DECIDES: Tales' rays now need an upscaler on ...")
 - [ ] C: real GT-VBAO savings need per-sample math changes (a look change): try a visual A/B? (from: "Real GT-VBAO savings need per-sample math changes ...")
 - [x] ANSWERED 05:52 (mouse clicks allowed: the coordinator click-loads it at the next run): C: Expeditions save load by script: a foreground fix or a mouse click? (from: "Expeditions save load: the main menu takes no SendInput keys ...")
 - [ ] C: Divinity 1 Hue Clip 70 in Extended / V35, by eye? (from: "ATN by eye (Divinity 1): Hue Clip 70 in Extended / V35 ...")
 - [ ] C: Divinity 1 at the end: drop or keep the legacy V30 / Pragmap modes? (from: "ATN at the end (Divinity 1): drop or keep the legacy V30 / Pragmap modes ...")
-- [ ] C: Divinity 2 "Exact Colour LUT (Experimental)" (off): turn it on? (the game reads its LUT half a texel off; on brightens mid tones) (from: "ATN DECIDES (Divinity 2): "Exact Colour LUT (Experimental)" ...")
+- [x] C: (ANSWERED ATN 09:4x: on by default (a game bug fix): box D2 EXACT LUT ON) Divinity 2 "Exact Colour LUT (Experimental)" (off): turn it on? (the game reads its LUT half a texel off; on brightens mid tones) (from: "ATN DECIDES (Divinity 2): "Exact Colour LUT (Experimental)" ...")
 - [ ] C: Divinity 2 at the end: the mid grey row's default; old presets / V30 keep or drop? (from: "ATN at the end (Divinity 2): mid grey row's default ...")
 - [ ] C: R.U.S.E.: keep its own V31 rows or move to Attila's 15 v31_* rows (saved V31 looks change)? Hue Clip 100 by eye? (from: "ATN DECIDES (R.U.S.E.): keep R.U.S.E.'s own V31 rows ...")
 - [ ] C: R.U.S.E. at the end: Extended replacing V31 Native Tone or beside it? (from: "ATN at the end (R.U.S.E.): Extended replacing V31 Native Tone ...")
@@ -173,7 +173,7 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [x] ANSWERED 23:0x (ATN: "Good idea.": the cascade-caster capture, then the coverage run, then on; rys2_) C: Ryse Rays Replace Shadow Maps: off now (out-of-view casters lose their sun shadow); on after the coverage run if it looks right? (from: C3)
 - [x] ANSWERED 23:0x (ATN: "Torches have "lights" too which can light up surfaces. That is what path tracing should do ... let's add that as an extra row too": a row Torch Light in Path-Traced GI (torches for seen + unseen hits), checked against the reference path tracer with torches, cost measured; gpu3_. Sky calibration + fewer rays stay open, next C line) C: Attila PT GI: torches also bounce (torch light for on-screen hits too: warm bounce near fires, costs a light loop + shadow ray per hit; gpu3_ measures first)? Calibrate the unseen route's sky (-3 % left, median 0.79, a look change)? Fewer rays for trace / lights / fog (a look risk)? (from: gpu3_ 11-16)
 - [ ] C: Divinity 2 Skip the Game's Shadow Maps: on by default under RT shadows (your 22:3x every-game rule) once the coverage run passes (962 of 3,526 city draws skipped)? Path-Traced Ambient into the RT/PT preset once a run shows it? (from: div2_ 11-16)
-- [ ] C: Attila PT GI: calibrate the unseen route's sky (off-screen hits -3 % darker, sky median 0.79: a look change)? Fewer rays for trace / lights / fog (a look risk)? (from: gpu3_ 11-16)
+- [x] C: (ANSWERED ATN 09:4x: calibrate the unseen sky, on by default (consistency bug): box UNSEEN SKY FIX; fewer rays stays a look-risk row) Attila PT GI: calibrate the unseen route's sky (off-screen hits -3 % darker, sky median 0.79: a look change)? Fewer rays for trace / lights / fog (a look risk)? (from: gpu3_ 11-16)
 - [ ] C: Ryse "Recommended (with Deeper Shadows)": after the V35 fit it changes V31 only (V35 Shadows 0.75 would sit far below the game's). Keep the button or drop it? (from: rys2_ 23:xx)
 - [x] ANSWERED 23:5x (ATN: "add it": Experimental row, off; shs2_) C: GT-VBAO horizon loss on flat ground at grazing pitch (0.969 at 13.6 deg): sample the depth at the exact place (a look change, an Experimental row)? (from: shs2_ A15 91267bbf9)
 - [x] ANSWERED 23:5x (ATN: "yes please": 2.2 under Gamma Correction; shs2_) C: Attila / Thrones run DLAA / SMAA / CMAA2 in a gamma 2.0 frame while Gamma Correction makes it 2.2 (exact round trip, only the AA's working curve differs): move them to 2.2? (from: shs2_ 23:xx)
@@ -183,10 +183,10 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [x] ANSWERED 01:xx (ATN: "Row placement, that sounds good!"; the occlusion source asked, coordinator: keep the specular-occlusion lobe, more correct for reflections) C: Path-Traced Reflection Occlusion: lobe vs sky visibility, row next to Path-Traced Ambient (graphics_page, shs2_)
 - [ ] PARTLY ANSWERED 02:xx (ATN: "It should have the same/similar presets like Attila. No RT/PT should use GT-VBAO, GT-VBGI, SSS and SSSR (if that is implemented)": DONE 150e41174, No RT/PT turns GT-VBAO + GT-VBGI + Bend on; SSSR when implemented; probes question explained, coordinator recommends keep (GT-VBAO darkens the probes' light in corners, GT-VBGI adds the nearby bounce: the visibility-bitmask way; black probes = dark wherever the screen sees no light); defaults still open) C: Divinity 2: GT-VBGI (like the rays' bounce) adds on top of the light probes' IBL diffuse: keep, or black the probes' diffuse under GT-VBGI? After a run: No RT/PT (Recommended) turns Bend and GT-VBGI on, as Attila's? Defaults OK: GT-VBAO radius 1 m, Bend thickness 0.005? (from: div2_ 01:xx)
 - [x] ANSWERED 02:xx (ATN: "Maybe do one nsight capture first.": the paths kernel's in-game Nsight goes into the capture runs, then drop or do) C: Attila paths trace / shade split: measured ~0 net at your rows (trace-only 0.288 vs 0.366 ms, no occupancy win): drop it, or one in-game Nsight of the trace-only helper first? (from: gpu3_ 01:xx)
-- [ ] C: LOD bias presets: they now turn "on All Textures" on but leave the level row (Off / Matched / Sharper / Sharpest) alone: a player at Off still gets no bias after a preset. Should presets turn Off back to Sharper (the default) and keep any other level? (from: bug3_ 03:xx)
+- [x] C: (ANSWERED ATN 09:4x: leave the level row alone; nothing to change) LOD bias presets: they now turn "on All Textures" on but leave the level row (Off / Matched / Sharper / Sharpest) alone: a player at Off still gets no bias after a preset. Should presets turn Off back to Sharper (the default) and keep any other level? (from: bug3_ 03:xx)
 - [x] ANSWERED 05:xx (ATN: "They should be on by default, no? Bug fixes => more correct. Why should we leave bugs.": every proven bug fix on by default, numbers listed for ATN; memory feedback_experimental_rows) C: Reference-suite bug fixes that change our effects' look (once proven): specular occlusion brighter at grazing views on open ground (I5), Path-Traced AO ~1.6 % brighter on open walls with an exact sky calibration (I4), bounce / torch light / torch shadow ratio moved by half a low-resolution texel (I3, the crack-line lead), AO's sun-dependent normal: on by default as bug fixes (coordinator's recommendation: they are more correct; numbers listed for you), or Experimental rows first? (from: ref_ v2 05:xx)
 - [x] ANSWERED 05:xx (ATN: "to pbrt, yeah why not. It is apache 2.0": fetched 05:xx into tools/refcode/pbrt-v4, 20e41fd8 2026-11-15, 34 MB, no submodules) C: Download pbrt-v4 (Apache-2.0, github.com/mmp/pbrt-v4, not NVIDIA) for the reference suite's xcheck test (our samplers vs pbrt-v4 on the CPU)? Without it the check reads pbrt-v4 online / uses Falcor (NVIDIA, fetched). (from: ref_ v2 05:xx)
-- [ ] C: CPU round runs (cpu1_ 09:xx, plan_1117/cpu_round_plan.md): OK to run the bench / data runs on night1, sea1, stress_test_log2 (heapfix A / P / your v6.10.6 copy as control, add-on trim, engine patches; the data run's sampler pauses game threads for microseconds)? A Constantinople replay copy (the old auto_save aa107f05) as its own file in your replays folder for the benches? Your WPR tasks set to run hidden (they take the game's focus)? The 2.7-s RT freeze at battle start / after alt-tab: draw a few frames without rays, and / or a longer release timer? Our own screenshot key in the helper (ReShade's 4K shots each take 30-95 MB of the game's 32-bit space)? Shared-utils change for the resource-info lookups (cpu3_ D3: a memo in src/utils used by every RenoDX mod, exact only if every writer bumps an epoch; est. -0.2..-0.4 ms night1; needs an audit + a measured write rate first)? Small Soldiers as Sprites after its run? heapfix: a package for its author (P = prefetched sort), or move to the official 7.0? (from: cpu1_ 09:xx)
+- [x] C: (ANSWERED ATN ~09:10: benches yes (cpb_ running), replay = day1, SHaRC update + fix as default, shared-utils memo yes, own screenshot key yes, RT freeze: coordinator's suggestion, heapfix: always from our best version, Small Soldiers as Sprites: performance only; boxes ATN 09:10 ANSWERS) CPU round runs (cpu1_ 09:xx, plan_1117/cpu_round_plan.md): OK to run the bench / data runs on night1, sea1, stress_test_log2 (heapfix A / P / your v6.10.6 copy as control, add-on trim, engine patches; the data run's sampler pauses game threads for microseconds)? [ANSWERED 08:5x: ATN put it in for good, named day1: day1.replay copied (aa107f05), the bench knows it] Your WPR tasks set to run hidden (they take the game's focus)? The 2.7-s RT freeze at battle start / after alt-tab: draw a few frames without rays, and / or a longer release timer? Our own screenshot key in the helper (ReShade's 4K shots each take 30-95 MB of the game's 32-bit space)? Shared-utils change for the resource-info lookups (cpu3_ D3: a memo in src/utils used by every RenoDX mod, exact only if every writer bumps an epoch; est. -0.2..-0.4 ms night1; needs an audit + a measured write rate first)? Small Soldiers as Sprites after its run? heapfix: a package for its author (P = prefetched sort), or move to the official 7.0? (from: cpu1_ 09:xx)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -333,6 +333,19 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (sk3_ 01:xx) Shared shaders rule (skills lesson 12): rysesonofrome/upscale_outpu ... | next shared round
 - CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila ... | coordinator
 - CPU ROUND PLAN (cpu1_ 09:xx, design: plan_1117/cpu_round_plan.md): corrections: ... | coordinator
+- ATN 09:10 ANSWERS (each its own box below): CPU benches started (cpb_, plan_1117 ... | coordinator
+- CPU BENCH RUNS (cpb_ started 09:1x, ATN's OK): dry run; heapfix A / P / h6106 x3 ... | cpb_
+- SHARC UPDATE (ATN 09:10 "update to nvidia sdk's newer version and fix the bug .. ... | coordinator (next helper implementer after rv3_)
+- UTILS RESOURCE MEMO (ATN 09:10 "Sure"; cpu3_ D3, design cpu_steps_5_10.md 10a): ... | next CPU implementer
+- HELPER SCREENSHOT KEY (ATN 09:10 "Sure go ahead"): the helper (64-bit, own proce ... | next helper / add-on implementer
+- RT FREEZE 2.7 S (ATN 09:10 "What do you suggest?"): coordinator's suggestion: dr ... | next helper round
+- RENDER SCALE CENSUS, OTHER GAMES (ATN 09:10 asked whether every shader was check ... | next render-scale round
+- ATN 09:2x-09:4x ANSWERS (design questions; each its own box): GI core = whicheve ... | coordinator
+- D2 EXACT LUT ON (ATN 09:4x): Divinity 2 "Exact Colour LUT" on by default (out of ... | next Divinity round
+- UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like th ... | next helper implementer
+- RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed ... | next Ryse round
+- PT DI REVISION (rv1_ review "build after these changes", designs/pt_di_rtxdi_rev ... | des1_ (revision), then the helper queue
+- SHARC DESIGN REVISION (rv3_ review "build after these changes", designs/sdk_repl ... | des3_ (revision), then the helper queue
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -355,13 +368,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
 - (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
-- DESIGN PT DI (des1_ started 08:2x, plan step 5, docs only): plan_1117/designs/pt ... | des1_, coordinator (review)
-- DESIGN VMF (des2_ started 08:2x, docs only): plan_1117/designs/vmf_diffuse.md: m ... | des2_, coordinator (review)
-- DESIGN SDK AUDIT (des3_ started 08:2x, docs only): plan_1117/designs/sdk_replace ... | des3_, coordinator (review, verdict column)
+- DESIGN PT DI (des1_ DONE 09:0x, 559 lines; review rv1_ (Opus xHigh) STARTED -> d ... | des1_, coordinator (review)
+- DESIGN VMF (des2_ DONE 09:1x, 493 lines + designs/vmf_mc Monte Carlo; review rv2 ... | des2_, coordinator (review)
+- DESIGN SDK AUDIT (des3_ DONE 08:4x, review rv3_ (Opus xHigh) STARTED 08:5x -> de ... | des3_, coordinator (review, verdict column)
 - VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT st ... | coordinator
 - SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
 - SKILLS UPDATE 5 (ATN 05:xx "Don't remember to add/fix skills after everything to ... | coordinator, last step of the plan
-- SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | sk4_ (4a), coordinator (4b)
+- SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator (4b)
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
 - (RAN 01:49-02:09, five starts clean, every file of ATN's restored / same (ReShad ... | coordinator, after the current merges + install, ATN's go
 - ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart batt ... | coordinator, then a CPU / memory round
@@ -2211,6 +2224,68 @@ heading text are in HANDOFF_ARCHIVE.md)
         exit: exact without the copy + an early exit, est. -1.5..-2 ms stress); memcpy call sites need the data run (933
         sites in 508 functions); draw-replay callback timing not done (needs a new replay mode). LEFT: steps 5-12 after
         hfix_ leaves shared code; runs after ATN's OK. Owner: coordinator
+      - [ ] ATN 09:10 ANSWERS (each its own box below): CPU benches started (cpb_, plan_1117/cpu_bench_results.md);
+        SHaRC 1.8.3 + buffer lifetime fix on by default; shared-utils memo yes; helper screenshot key yes; RT freeze as
+        the coordinator suggests; heapfix improvements always from our best version (P + our fixes); Small Soldiers as
+        Sprites performance only. Owner: coordinator
+      - [ ] CPU BENCH RUNS (cpb_ started 09:1x, ATN's OK): dry run; heapfix A / P / h6106 x3 + P / B4 / loopanim / x87keep x2
+        on stress; A / P x2 night1; trim A/B night1 + sea1 x2; Small Soldiers as Sprites stress x2 (performance only); data
+        run (sampler, va_probe2, a screenshot, 60 s out of front, a restart); capture v3 WPR A vs P; day1 Constantinople
+        bench. Results plan_1117/cpu_bench_results.md. Owner: cpb_
+      - [ ] SHARC UPDATE (ATN 09:10 "update to nvidia sdk's newer version and fix the bug ... Bug fixes should become
+        default"): SHaRC 1.6.5 -> 1.8.3 + GrowBuffer(std::addressof(...)) for sharc_buffers_ (cache kept across frames),
+        build.ps1 picks 1.8.3 explicitly, our clamp + NaN guard (1.8.3 dropped the anti-firefly filter), entry-0 overflow
+        gone with 1.8.3; depth-4 / 4K soak before depth 4; on by default once HARNESS_DUMP / reference / soak pass (design
+        D1 in designs/sdk_replace_audit.md, after rv3_'s review). Same round: the OMM bake's per-bake buffers
+        (&gpu.uvs / &gpu.transient[pool]) after checking the OMM SDK's transient-pool contract. Owner: coordinator (next helper
+        implementer after rv3_)
+      - [ ] UTILS RESOURCE MEMO (ATN 09:10 "Sure"; cpu3_ D3, design cpu_steps_5_10.md 10a): a per-thread memo in front of
+        src/utils' ResourceViewInfo lookups with an epoch every writer bumps; audit every writer + measured write rate first,
+        a cross-check switch, then every RenoDX mod gets it (est. -0.2..-0.4 ms Attila night1). Owner: next CPU implementer
+      - [ ] HELPER SCREENSHOT KEY (ATN 09:10 "Sure go ahead"): the helper (64-bit, own process) saves the 4K HDR screenshot
+        from a copy of the swap chain so the 32-bit game's address space pays nothing (ReShade's 4K shot takes 30-95 MB
+        of it for good); a key + a row, PNG like ReShade's. Owner: next helper / add-on implementer
+      - [ ] RT FREEZE 2.7 S (ATN 09:10 "What do you suggest?"): coordinator's suggestion: draw the game's own effects
+        (shadows / AO) while the rays rebuild after a battle start / alt-tab instead of holding the frame, fade the rays in
+        over ~0.5 s once ready; first measure where the 2.6-2.7 s go (scene rebuild, BLAS, PSO, the release timer). Owner:
+        next helper round
+      - [ ] RENDER SCALE CENSUS, OTHER GAMES (ATN 09:10 asked whether every shader was checked): bug4_'s static census
+        covered every shader in the whole dumps of the 7 view_share games (Attila, Thrones, Rome II, WH1, WH2, Troy,
+        Pharaoh: 304 overlay readers fixed); not covered: WH3, Shogun 2, Rome Remastered and the non-TW games' render
+        scale paths; open from it: the foam distortion below 100 % (plan only) and the 10 WH1 / WH2 sun shaders at 33 %
+        (bug4 (c), a 50 % trace). Owner: next render-scale round
+      - [ ] ATN 09:2x-09:4x ANSWERS (design questions; each its own box): GI core = whichever proves better against the
+        reference (NVIDIA's wins ties; rv1_ + rv3_: fix ours, RTXDI GI as the measured compare, RTXDI's boiling filter on our
+        reservoirs); the SDK audit's 7 answers accepted; NVIDIA files: patch only proven bugs (a patch file applied at build
+        time after the download, NVIDIA's notice kept, the bug reported to NVIDIA, the patch dropped once fixed); SDK
+        versions: the coordinator checks for newer NVIDIA SDK versions at the start of every feature round (no need for ATN
+        to ask); PT DI: "Full RTXDI now" (ATN chose it over measure-first: the design moves to RTXDI's full DI pipeline with
+        the RAB bridge, still proven against the reference, Experimental row); PT DI's other answers accepted (shared torch
+        result = Forge's one-reservoir idea failed as U1 / U2, 260 MB VRAM, retire the old torch-shadow row after his test);
+        vMF Experimental, off, paper downloaded (tools/refcode/papers/vMF_diffuse_BRDF-2.pdf, 85 MB); kajiya fetched
+        (tools/refcode/kajiya-9fdec0f0: docs + rtdgi shaders, MIT OR Apache-2.0); SHaRC depth-4 soak capped at 2 hangs and
+        ATN told either way; utils memo: plan first with guards for every failure place, Opus xHigh reviewer; the "leak":
+        find out why (cpb_'s data run); RT freeze: make the rebuild faster and safe, NO fallback to the game's AO / shadows.
+        Owner: coordinator
+      - [ ] D2 EXACT LUT ON (ATN 09:4x): Divinity 2 "Exact Colour LUT" on by default (out of Experimental), README line.
+        Owner: next Divinity round
+      - [ ] UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like the screen route's (-3 %, sky median
+        0.79), on by default; the seen-vs-unseen probe proves it. Owner: next helper implementer
+      - [ ] RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed (c243f7c4). Owner: next Ryse round
+      - [ ] PT DI REVISION (rv1_ review "build after these changes", designs/pt_di_rtxdi_review.md + ATN "Full RTXDI now"):
+        B1 pack the G-buffer at the AO-pass hook (rt_scene.hpp:445, the trace is requested before the sun draw); B2 per-pixel
+        stratified picks (8x8-block shared numbers flip whole blocks under RR); B3 without RR: Steady's exact bits, trace
+        exactly at <= 4 lights; B4 seen = unseen: T1 + T2 ship together; B5 ReSTIR GI -7 % on open flat ground without Own
+        Sky Rays: bisect first (ref2_'s A3: kajiya clamps, history check, sky samples); L1 confirmed (20 linear-falloff
+        shaders; needs a bridge field, per-game tables for Rome II / WH1, 3 more places square the falloff); then the full
+        RTXDI DI pipeline (ReGIR / temporal / spatial with visibility reuse, RAB bridge with the game's formula). Owner:
+        des1_ (revision), then the helper queue
+      - [ ] SHARC DESIGN REVISION (rv3_ review "build after these changes", designs/sdk_replace_audit_review.md): B1 reset
+        only when the row comes back on / capacity change / scene reload (SHaRC AGENTS.md:259), free the buffers while off;
+        B2 depth-4 soak: a 1.6.5 control first, max 2 hangs (each keeps ~3.5 GB committed until a reboot), tell ATN either
+        way; B3 the audit's D2 not approved as written; the anti-firefly risk is moot (ours <= 1); keep build\downloads'
+        1.6.5 folder for older worktrees (S8); 11 should-fix + 6 minor in the review. Owner: des3_ (revision), then the helper
+        queue
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
@@ -2465,15 +2540,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         2026.3 are the newest already; Aftermath dev-only switch = audit A33 (ATN); (g) licence: RTX SDKs licence 4(e): NVIDIA
         files never under the repo's MIT header: keep fetching them at build time as NRD / SHaRC; library headers
         unchanged, single functions copied with NVIDIA's notice. Owner: coordinator, per plan step
-      - [ ] DESIGN PT DI (des1_ started 08:2x, plan step 5, docs only): plan_1117/designs/pt_di_rtxdi.md: PT DI through
+      - [ ] DESIGN PT DI (des1_ DONE 09:0x, 559 lines; review rv1_ (Opus xHigh) STARTED -> designs/pt_di_rtxdi_review.md;
+        decisions: a shadow ratio per pixel (K=2 picks by the game's own light weights) instead of DI reservoirs, torches in
+        the paths from the pixel's light mask, our ReSTIR GI core kept + bias correction (CONFLICT with the audit's RTXDI GI:
+        rv1_ settles it), bridge v32; lead L1: 20 of 40 Attila point-light shaders fall off linearly but LightArriving
+        squares it (sent to ref2_'s R1 gate); ~76 agent-h + 16 GPU-h; 8 questions in the file) plan_1117/designs/pt_di_rtxdi.md: PT DI through
         RTXDI-Library's RAB_* bridge keeping the game's light formula, torches via one DI + GI reservoir, the ReSTIR GI
         upgrades (lin2026, junkins2026, pairwise MIS / duplication map / RR decorrelation, kajiya feedback check); then an
         Opus xHigh review, ATN's short summary. Owner: des1_, coordinator (review)
-      - [ ] DESIGN VMF (des2_ started 08:2x, docs only): plan_1117/designs/vmf_diffuse.md: math + shared vmf_diffuse.hlsli,
+      - [ ] DESIGN VMF (des2_ DONE 09:1x, 493 lines + designs/vmf_mc Monte Carlo; review rv2_ (Opus xHigh) STARTED ->
+        designs/vmf_diffuse_review.md; the paper itself unread (403 / 81 MB PDF): its fits + r-to-kappa = step 0; brightness
+        kept, shape only; roughness from the gloss guide x a slider; 3 rows Experimental off; look +13 / -12 % at 45 deg,
+        up to +-41 % low sun; <= 0.30 ms; 23-32 h Attila) plan_1117/designs/vmf_diffuse.md: math + shared vmf_diffuse.hlsli,
         every place (RT / PT shading, GT-VBGI / GT-VBAO, the game's diffuse as a row), roughness per game, rows + look change
         in numbers, tests (Lambert bit-exact at roughness 0, furnace, Falcor / pbrt-v4); then an Opus xHigh review. Owner:
         des2_, coordinator (review)
-      - [ ] DESIGN SDK AUDIT (des3_ started 08:2x, docs only): plan_1117/designs/sdk_replace_audit.md: the SDK REPLACE AUDIT
+      - [ ] DESIGN SDK AUDIT (des3_ DONE 08:4x, review rv3_ (Opus xHigh) STARTED 08:5x -> designs/sdk_replace_audit_review.md):
+        verdicts: ReSTIR GI core -> RTXDI GI in stages behind an Experimental row; light picks / PT DI -> RTXDI DI (des1_);
+        SHaRC -> 1.8.3 + our buffer lifetime fixed in one change (GrowBuffer(&sharc_buffers_[index]) makes the cache new at
+        every request, known since helper109 / 02a05144c and left for ATN; fixing it alone would expose 1.6.5's entry-0
+        overflow; 1.8.3 dropped the anti-firefly filter we use: our clamp + NaN guard go in); own radiance cache kept until
+        R3; NRD v4.18.0 kept, integration checked with NRD's own review list; OMM SDK kept, per-bake buffers fixed; RTXPT
+        pieces / STBN / NVAPI R615 kept; build.ps1 would pick 1.6.5 over a 1.8.3 beside it (alphabetical). Effort 40-61
+        agent-h + 6-8 GPU-h, SHaRC first (10-14 h). 7 questions for ATN with recommendations in the file. plan_1117/designs/sdk_replace_audit.md: the SDK REPLACE AUDIT
         table (ReSTIR GI, PT DI row, SHaRC 1.8.3, NRD vs NRD-Sample, OMM SDK, RTXPT pieces, STBN, NVAPI R620) with replace /
         fix / keep per row + designs for the update rows; reference verdicts filled after the REF BUILD steps; then an Opus
         xHigh review. Owner: des3_, coordinator (review, verdict column)
@@ -2496,9 +2585,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         SDK replace audit, PT DI / RTXDI bridge, vMF, Opus review, captures incl. the WPR focus trap): the lessons into
         .agents/skills + the zip (plan_1117/plan.md step 9). Owner: coordinator, last step of the plan
       - [ ] SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix our skill sets again"): the
-        lessons of the bug fixes + reference suite into .agents/skills + the zip. 4a STARTED 08:3x sk4_ (tonight's lessons:
-        round_notes/skill_lessons_1117.md, bug1-4 / hfix / ref step 1 / captures / verification run); 4b after REF BUILD
-        steps 2-6. Owner: sk4_ (4a), coordinator (4b)
+        lessons of the bug fixes + reference suite into .agents/skills + the zip. 4a DONE sk4_ b032ea145 (32 lessons, 12 files:
+        ao-gi, game-facts, shaders-ui, sss-particles-water-fog, rt-scene, render-scale-dlss, testing, helper-fg-stability,
+        tw SKILL.md, handle-sdr-tonemap-lut, game-port-method, README; zip Downloads\RenoDX_skills_2026-11-17.zip, 48 files).
+        LEFT: 4b after REF BUILD steps 2-6 (+ the designs' lessons). Owner: coordinator (4b)
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
         (a) PsychoV35 RED: dark / shadowed pixels turn deep red under V35 (V31 fine, same frame): in Bend shots, path-torch
         shots and plain night ground: V35 mishandles near-black / negative / NaN input; fix V35 (shared, every game's
