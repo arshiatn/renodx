@@ -348,6 +348,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
 - VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT st ... | coordinator
 - SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
+- SKILLS UPDATE 5 (ATN 05:xx "Don't remember to add/fix skills after everything to ... | coordinator, last step of the plan
 - SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator after REF1
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
 - (RAN 01:49-02:09, five starts clean, every file of ATN's restored / same (ReShad ... | coordinator, after the current merges + install, ATN's go
@@ -2272,6 +2273,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         RTXPT, blue noise vs STBN): ours and NVIDIA's against the same reference + Nsight, licence path (fetched at build
         time, notice kept), the game's own light formula kept, effort; "replace" or "fix ours" per row, planned before
         code (plan_1117/plan.md "SDK REPLACE AUDIT"). Owner: coordinator after REF BUILD step 1
+      - [ ] SKILLS UPDATE 5 (ATN 05:xx "Don't remember to add/fix skills after everything too"): after plan steps 3-8 (references,
+        SDK replace audit, PT DI / RTXDI bridge, vMF, Opus review, captures incl. the WPR focus trap): the lessons into
+        .agents/skills + the zip (plan_1117/plan.md step 9). Owner: coordinator, last step of the plan
       - [ ] SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix our skill sets again"): the
         lessons of the bug fixes + reference suite into .agents/skills + the zip. Owner: coordinator after REF1
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
