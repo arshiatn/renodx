@@ -345,11 +345,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BUG1 LEFT (bug1_ 08:xx): open for ATN / Musa: at Recommended a bright colour far ... | coordinator (run), ATN
 - BUG2 LEFT (bug2_ 09:xx): in-game Nsight of rt_lights + the bounce apply (9 -> ~1 ... | coordinator (run), ATN (decision)
 - HFIX LEFT (hfix_ 11:xx): SO with Squared Lobe (WH3 only: RayTracedReflectionLobe ... | coordinator (run), reference suite (R3), skills update 4 (te
-- BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Res ... | coordinator
 - (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
 - REF1 REVIEW (rev_ 04:xx, Opus xHigh: plan_1117/reference_suite_review.md, verdic ... | ref_ (v2), then one implementer at a time after bug2_ leaves
 - (PROVEN ref0_ 07:xx, test/tw_rt_open_sky merged 5b41d3b72 (WARP, the helper's ow ... | bug2_ (I3), then a helper fix round (I4, I5)
 - (step 0 DONE ref0_ (5b41d3b72), I5 / I4 fixed by hfix_ (53da7b6e8); step 1 R0a + ... | coordinator
+- REF1 FINDINGS (ref1_, reproduced on a second set / scene): the raw estimator's c ... | ref2_
+- REF1 LEFT (ref1_ "Left"): the reflections' traced-lobe share output (G0 share ro ... | REF BUILD steps 2-6
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
@@ -360,7 +361,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT st ... | coordinator
 - SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
 - SKILLS UPDATE 5 (ATN 05:xx "Don't remember to add/fix skills after everything to ... | coordinator, last step of the plan
-- SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator after REF1
+- SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | sk4_ (4a), coordinator (4b)
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
 - (RAN 01:49-02:09, five starts clean, every file of ATN's restored / same (ReShad ... | coordinator, after the current merges + install, ATN's go
 - ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart batt ... | coordinator, then a CPU / memory round
@@ -2350,8 +2351,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         verify_apply, one game at a time, ATN's files restored each time, ReShade.ini 77C85B27 all night): checker fixes
         in compare_verify (shot files from ReShade's save lines, same-second overwrites, the PQ sky colour, black R = B);
         README "After the first run": space a pair's shots 2 s apart. Owner: coordinator
-      - [ ] BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Reset / No RT/PT / RT/PT (Shogun 2 /
-        Ryse: their ray buttons): the row comes back on, the level row keeps the player's value. Owner: coordinator
+      - [x] DONE BUG3 RUN 08:16 (verify_bug3, Attila sea1: Texture LOD Bias 0 + All Textures 0, then page-presets/RT/PT
+        pressed in game, logged; capture_1117 now keeps a run's changed files as <name>.after): the values themselves are
+        not visible from outside (the test hooks' setting writes don't reach ReShade.ini; only ImGui docking changed); the
+        proof stays bug3_'s page dumps, which run every preset button's code in 10 games (only the 3 buttons' All Textures
+        0 -> 1; the level row is in no preset: page.Defaults leaves the AA section out). Owner: coordinator
       - [x] DONE bug4_ 6f3867fee (merged 5f03fd647; bugs_1117/bug4.md, causes written first; WARP tw_strip_capture,
         tw_fog_upsample, tw_overlay_reads 304 rows, tw_attila_builds 17/17 + 17/17, static_checks 0): (f) the stripes =
         overlays (selection indicators, colour overlays) drawn into display-sized targets while their readers (ocean uv in
@@ -2398,8 +2402,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         for DEBUG44 (c) (sent to bug2_); I4 SkyCalibration's fixed 16 directions: Path-Traced AO ~1.6 % dark on an open
         wall; I5 specular occlusion counts directions below the horizon as blocked (rt_path.hlsli:1331-1332, 1464): an open
         plane gets SO < 1 at grazing views, worst with Squared Lobe. Owner: bug2_ (I3), then a helper fix round (I4, I5)
-      - [ ] (step 0 DONE ref0_ (5b41d3b72), I5 / I4 fixed by hfix_ (53da7b6e8); step 1 R0a + R0b STARTED 11:xx ref1_ (helper +
-        harness only; progress plan_1117/ref_step1.md)) REF BUILD (v2 order; one implementer at a time in the helper): step 0 free checks I5 / I4 / I3 + census (ref0_,
+      - [ ] (step 0 DONE ref0_ (5b41d3b72), I5 / I4 fixed by hfix_ (53da7b6e8); step 1 R0a + R0b DONE ref1_ (merged
+        3bd2ffaa2; plan_1117/ref_step1.md; tools/tw/reference: ref_compare.py, runs/, xcheck/); step 2 STARTED 08:3x ref2_
+        (the paths' box split first, then R1)) REF BUILD (v2 order; one implementer at a time in the helper): step 0 free checks I5 / I4 / I3 + census (ref0_,
         started 05:xx, no helper change; I3 with bug2_); 1 R0a + R0b with B1 / B2 / APPROX / census / reference cache, the
         gates, xcheck (22-28 h; after bug2_ leaves the helper); 2 R1 torches + point-light WARPs (7-10 h); 3 dark-texel
         slice of R3 (3-5 h); 4 route B recorder + a short live proof in game + the second capture pass, 12 recordings
@@ -2407,6 +2412,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         RTXPT reference mode + Falcor MinimalPathTracer as third / fourth opinions (6-10 h, coordinator: yes, ATN wants
         NVIDIA comparisons); R2 adds the add-on Debug View of the game's sun shadow-map term (coordinator: yes). Owner:
         coordinator
+      - [x] DONE REF STEP 1 (ref1_ b20395bb0 / 5d033f139 / 3d7557996, merged 3bd2ffaa2): reference build off by default
+        (RENODX_TW_REFERENCE_BUILD; RENODX_TW_REFERENCE=<paths|reflect>): batch means with shifted Welford sums (B1), census,
+        scene digest, frozen inputs in a second descriptor table (B2), seed-group slices; gates: G0 open sky 1.00000 (candidate
+        0.99966), G0 SO open plane 1.00000 both lobes (slab control 0.831), G1 furnace 0.99995 / 1.00000 of aE/(1-a), WARP
+        samplers vs closed forms (VNDF E[G2/G1] within 5.5e-4), xcheck vs pbrt-v4 / Falcor all pass, G3 groups 0.99-1.04,
+        G5 harness light 0.99988; synthetic controls x1.03 / 1-texel shift -> BIAS, frozen candidate -> NOISY (new rule);
+        zero cost off: shader headers byte-identical, HARNESS_DUMP 0 differences in 416 outputs over 46 modes, the same 13
+        passes in Nsight. Owner: ref1_
+      - [ ] REF1 FINDINGS (ref1_, reproduced on a second set / scene): the raw estimator's concave corners 0.879 / edges 0.975
+        of the reference = ContactShade (contact variant 0.996 / 0.996: a named model delta, APPROX); left after it: boxes
+        -0.6 % with r/g -0.8 % (wall scene's boxes r/g -1.6 %), open sky -0.034 % (not the helper's random numbers); ATN's
+        paths (ReSTIR GI, Own Sky Rays, Kept Cube, RR flag) vs contact: boxes 0.956 (~4 % darker than the raw estimator),
+        all 0.991: split between ReSTIR GI / Own Sky Rays / Kept Cube's sky = ref2_'s first task, then a fix plan per cause
+        (bug fixes on by default). Owner: ref2_
+      - [ ] REF1 LEFT (ref1_ "Left"): the reflections' traced-lobe share output (G0 share rows, RENODX_TW_REF_SOURCE); the
+        row / model / same_route / paths_cull / footprint variants; code-break controls (RENODX_TW_REF_BREAK); the offset
+        scan (AMBIGUOUS hook ready); historical controls (2.6.2); G1's all-lights sum (R1, step 2); G2 CPU model; route A in
+        a game + route B (step 4); the digest hashes no dynamic vertices yet; the lag-1 > 0.2 rule printed, not applied.
+        Owner: REF BUILD steps 2-6
       - [ ] REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures run tonight without the recorder
         (WPR / timings / shots / frame trace / address space need none); route B (bridge recorder + harness player) built
         next and a second, shorter capture pass records night1 / sea1 / stress frames for the references; the recorder
@@ -2472,7 +2496,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         SDK replace audit, PT DI / RTXDI bridge, vMF, Opus review, captures incl. the WPR focus trap): the lessons into
         .agents/skills + the zip (plan_1117/plan.md step 9). Owner: coordinator, last step of the plan
       - [ ] SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix our skill sets again"): the
-        lessons of the bug fixes + reference suite into .agents/skills + the zip. Owner: coordinator after REF1
+        lessons of the bug fixes + reference suite into .agents/skills + the zip. 4a STARTED 08:3x sk4_ (tonight's lessons:
+        round_notes/skill_lessons_1117.md, bug1-4 / hfix / ref step 1 / captures / verification run); 4b after REF BUILD
+        steps 2-6. Owner: sk4_ (4a), coordinator (4b)
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
         (a) PsychoV35 RED: dark / shadowed pixels turn deep red under V35 (V31 fine, same frame): in Bend shots, path-torch
         shots and plain night ground: V35 mishandles near-black / negative / NaN input; fix V35 (shared, every game's
