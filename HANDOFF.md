@@ -340,14 +340,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - UTILS RESOURCE MEMO (plan DONE 10:3x ut1_: designs/utils_view_memo.md: 16 writer ... | next CPU implementer
 - HELPER SCREENSHOT KEY (ATN 09:10 "Sure go ahead"): the helper (64-bit, own proce ... | next helper / add-on implementer
 - RT FREEZE 2.7 S (ATN 09:10 "What do you suggest?"): coordinator's suggestion: dr ... | next helper round
-- RENDER SCALE CENSUS, OTHER GAMES (ATN 09:10 asked whether every shader was check ... | next render-scale round
+- RENDER SCALE CENSUS, OTHER GAMES (ATN 09:10 asked whether every shader was check ... | coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after
 - ATN 09:2x-09:4x ANSWERS (design questions; each its own box): GI core = whicheve ... | coordinator
-- D2 EXACT LUT ON (ATN 09:4x): Divinity 2 "Exact Colour LUT" on by default (out of ... | next Divinity round
-- UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like th ... | next helper implementer
-- RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed ... | next Ryse round
+- D2 EXACT LUT ON (ATN 09:4x): Divinity 2 "Exact Colour LUT" on by default (out of ... | coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after
+- UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like th ... | fix1_ (STARTED 16:xx)
+- RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed ... | coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after
 - GPU CAPTURE ROUND 2 (ATN 09:5x): after the new features (SHaRC update, PT DI / R ... | coordinator (after plan step 6 + reviews)
 - CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best c ... | cpb_
-- WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffus ... | next WH3 helper round
+- WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffus ... | coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after
 - X86 64-BIT ATOMIC LOADS (rv4_ 10:5x): std::atomic<uint64_t> loads in the x86 add ... | next shared-utils round (with the memo)
 - RECORDER (built: rec_ merged 9e1a18027, ref_step4.md: x64 helper recorder-only b ... | coordinator
 - CPU NEXT (cpu_round_report.md): heapfix P + size-gated B4 (threads only for 3276 ... | next CPU round
@@ -355,7 +355,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - MEMO M1 RESULT (jdg1_, judge_m1_o1.md): GO for the filter alone (F14, 2 KB, no m ... | next CPU / utils round
 - LIGHT READBACK CAP (jdg1_): rt_lights' readback caps at 16,384 records while nig ... | PT DI step 0
 - BENCH CLOSE RACE BY STACK (jdg1_): the stress M1 run's close AV was the known sh ... | coordinator (tools)
-- C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 ... | ATN
+- RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | fix1_ (STARTED 16:xx)
+- CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of ... | cpp_
+- CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
+- BRIDGE CLAIMS (ATN 17:3x: another modder's ChatGPT review of HIS port of our bri ... | rvb_, coordinator
+- SER IN FORESTS (ATN 17:3x, Forge: SER made a huge difference in forests; his pat ... | plan step 6
+- NSIGHT 2026.4 MCP (Forge: Nsight Graphics 2026.4 has a headless MCP, "a bunch of ... | coordinator, ATN (install)
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b; hz2_ 13:3x: the 10b design's "all ready" ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -363,7 +368,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers f ... | coordinator -> CPU round (plan step 4)
 - (cap1_ 07:xx: also every ReShade 4K screenshot permanently takes 30-95 MB off th ... | next memory round
 - CAPTURE TOOLING (cap1_ 05:xx): run_game's memory.csv overwritten every start (fi ... | coordinator
-- BUG4 RUN LEFT (1) (specs in bugs_1117/bug4.md): footprints at DLSS 0 vs 4 need s ... | ATN
 - BUG4 NEW BOXES (bug4_ 08:xx): (a) foam: the ocean's refraction distortion double ... | next render-scale / helper / per-game rounds, (d) coordinato
 - BUG1 LEFT (bug1_ 08:xx): open for ATN / Musa: at Recommended a bright colour far ... | coordinator (run), ATN
 - BUG2 LEFT (bug2_ 09:xx): in-game Nsight of rt_lights + the bounce apply (9 -> ~1 ... | coordinator (run), ATN (decision)
@@ -374,7 +378,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (step 0 DONE ref0_ (5b41d3b72), I5 / I4 fixed by hfix_ (53da7b6e8); step 1 R0a + ... | coordinator
 - REF1 FINDINGS (ref1_, reproduced on a second set / scene): the raw estimator's c ... | ref2_
 - REF1 LEFT (ref1_ "Left"): the reflections' traced-lobe share output (G0 share ro ... | REF BUILD steps 2-6
-- RESTIR GI CLAMP FIX (ref2_ R-B, bug, on by default once proven): REUSE_W_CLAMP ( ... | next helper implementer after rec_ (with PT DI step 2)
+- RESTIR GI CLAMP FIX (ref2_ R-B, bug, on by default once proven): REUSE_W_CLAMP ( ... | fix1_ (STARTED 16:xx, brief plan_1117/fix1_brief
 - L1 FALLOFF FIX (ref2_ WARP: 20 of Attila's 40 point-light shaders fall off as (1 ... | PT DI step 1
 - REF STEP 2 LEFT (ref2_): rt_lights' shadow bits compared at the pixels; the rati ... | REF steps
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
@@ -2287,7 +2291,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         covered every shader in the whole dumps of the 7 view_share games (Attila, Thrones, Rome II, WH1, WH2, Troy,
         Pharaoh: 304 overlay readers fixed); not covered: WH3, Shogun 2, Rome Remastered and the non-TW games' render
         scale paths; open from it: the foam distortion below 100 % (plan only) and the 10 WH1 / WH2 sun shaders at 33 %
-        (bug4 (c), a 50 % trace). Owner: next render-scale round
+        (bug4 (c), a 50 % trace). Owner: coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after everything please", tokens)
       - [ ] ATN 09:2x-09:4x ANSWERS (design questions; each its own box): GI core = whichever proves better against the
         reference (NVIDIA's wins ties; rv1_ + rv3_: fix ours, RTXDI GI as the measured compare, RTXDI's boiling filter on our
         reservoirs); the SDK audit's 7 answers accepted; NVIDIA files: patch only proven bugs (a patch file applied at build
@@ -2302,10 +2306,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         find out why (cpb_'s data run); RT freeze: make the rebuild faster and safe, NO fallback to the game's AO / shadows.
         Owner: coordinator
       - [ ] D2 EXACT LUT ON (ATN 09:4x): Divinity 2 "Exact Colour LUT" on by default (out of Experimental), README line.
-        Owner: next Divinity round
+        Owner: coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after everything please", tokens)
       - [ ] UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like the screen route's (-3 %, sky median
-        0.79), on by default; the seen-vs-unseen probe proves it. Owner: next helper implementer
-      - [ ] RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed (c243f7c4). Owner: next Ryse round
+        0.79), on by default; the seen-vs-unseen probe proves it. Owner: fix1_ (STARTED 16:xx)
+      - [ ] RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed (c243f7c4). Owner: coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after everything please", tokens)
       - [x] DONE PT DI REVISION 10:1x (des1_ "Revision 1" in designs/pt_di_rtxdi.md; RTXDI names checked vs b67f61cd):
         steps 0 gates (A3 bisection, O1 / O2 night1 census, R1 / E4, slots), 1 L1 + bridge v32 shared with vMF (8 h), 2 ReSTIR
         GI fixes + Basic / Raytraced bias correction + RTXDI boiling filter + the RTXDI GI contest (16 h), 3 RTXDI plumbing +
@@ -2347,7 +2351,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         frame draws, how many per tile) after cpb_'s benches (one game at a time). Owner: coordinator
       - [ ] WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffuse while the helper's paths /
         bounce use Lambert: measure the seen-vs-unseen ratio on WH3 (path probe) and, if it differs, give the helper WH3's
-        diffuse at path hits (a consistency bug fix, on by default). Owner: next WH3 helper round
+        diffuse at path hits (a consistency bug fix, on by default). Owner: coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after everything please", tokens)
       - [ ] X86 64-BIT ATOMIC LOADS (rv4_ 10:5x): std::atomic<uint64_t> loads in the x86 add-ons (command_action_fast.hpp
         112 / 243 epoch, rt_core.hpp 1149 destroyed_devices) may compile to two 32-bit loads under clang (MSVC STL
         __iso_volatile_load64); benign today (small counters: the high word stays 0 below 2^32 events), so a safety fix:
@@ -2388,7 +2392,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         off): LIVE PROOF 14:3x FAILED (run2_; recordings kept in tools/tw/recordings/live_proof): play-backs differ (21-25
         of 54 outputs; the instances digest differs, records + scene match), no [TW recorder] log lines, GPU baking on
         recorded instead of refusing, Alt+Enter and 67 % markers consumed without a recording, Nsight loops not repeated;
-        sent to rec_ with the GPU-bake journal; helper + ReShade.ini restored. Was: LEFT (1) live proof (run2_ low runner 14:xx: stress paused + moving, GPU-baking refusal, Alt+Enter ->
+        sent to rec_ with the GPU-bake journal; helper + ReShade.ini restored; FIXED rec_ (merged 53835d58e: NRD histories +
+        fixed 16.66 ms NRD timing, GPU bakes journaled, snapshot gives up after ~30 s with a log line, recorder.log, Nsight
+        frame trigger; game-like round trip 58 / 58, play vs play 58 / 58; rt_place's first-come dedupe still differs
+        between two plays (trace outputs equal): a production-shader determinism box); LIVE PROOF 2 FAILED 16:xx (run2_, rec_det3
+        95706F83D95F, ATN's DLAA + RR so 0 NRD denoisers, GPU baking on; recordings/live_proof2, ~27 GB + dumps): 4
+        recordings complete (~6.7 GB each), but PLAY VS PLAY differs too (33 same / 21 different; the bounce + reflection
+        outputs, the bounce cache albedo / radiance / sums, reuse_data_0 / 1): something on at ATN's live settings is
+        order-dependent on the GPU (the harness atn mode was 58 / 58); Alt+Enter gave a normal recording (resize maybe
+        outside the 2 frames); no Nsight, no capture pass. rec_ DIAGNOSING (recorder-side fixes only; production
+        nondeterminism -> a plan + a noise-floor mode in rec_compare, fix1_ owns rt_path / rt_place now). Also: 6 zombie
+        Attila processes (0 handles) until a reboot; recordings/live_proof (~20 GB) kept. Was: LEFT (1) live proof (run2_ low runner 14:xx: stress paused + moving, GPU-baking refusal, Alt+Enter ->
         INCOMPLETE, 67 %, offline play + compare + one Nsight trace); (2) GPU Micromap Baking journal (rec_ again: ATN plays
         with RayTracedGpuMicromaps=1, recordings should match); (3) the 12-recording capture pass (night1 / sea1 / stress /
         day1 x 3 views, ~55 GB at 4K, C: 206 GB free) with ATN's settings; NRD's own history not recorded (first played
@@ -2415,9 +2429,47 @@ heading text are in HANDOFF_ARCHIVE.md)
         frame (an execute AV into heap ~0.2 s after CloseMainWindow, same stack below: +0x1A4B01 +0x31FEEB +0x32053D, no add-on
         frame; heapfix 7.0 writes a dump at first chance); $CLOSE_RACE in constantinople_bench.ps1 matches one address only:
         match the stack signature instead. Owner: coordinator (tools)
-      - [ ] C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 MB, 10-31 .. today, the newest
+      - [x] DONE 16:4x (ATN "sure go ahead"; 23 found, all 23 to the Recycle Bin by exact name; installed add-on
+        f9471e81 + .v119 kept; ATN closed the 6 zombie Attila processes) C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 MB, 10-31 .. today, the newest
         = the M1 build 2f70715f) in ATN's Attila folder (ReShade ignores them): delete by exact name (keeping the installed
         add-on and .v119)? Owner: ATN
+      - [ ] RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a different order between two
+        identical plays (trace outputs stayed equal): make the dedupe order-independent (a stable key) so recordings and
+        A/B tests repeat exactly; same picture. Owner: fix1_ (STARTED 16:xx)
+      - [x] DONE 17:0x (ATN: "The yellow indicators of the ships are fixed now"; both locks removed) BUG4F ATN CHECK (16:4x): ATN checks bug4 (f) now (sea battle, ships selected, DLAA vs DLSS Performance:
+        footprints under the ships, no yellow stripes); coordinator holds gpu_job.lock + quiet_run.lock (agents wait)
+        until ATN says done, then removes both. Owner: ATN, coordinator
+      - [ ] CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of CPU PLAN 2 below; ATN asked whether the sanity recording's 13-item list skipped things):
+        coordinator found unlisted: render-thread system time ~10 ms night1 / ~9 stress (wow64cpu, d3d11, ntdll, kernel,
+        driver) not split by caller; the "?" module 3.7 ms render stress; night1's game tail (22.7 ms in the game, listed
+        functions ~10); stress worker critical path (render waits 16.5 ms; ~13 worker functions 5-10 ms summed); no day1
+        / sea1 WPR. Existing ETLs only, result plan_1117/cpu_gaps.md. Owner: cpp_
+      - [ ] CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implement them with high. Maybe one
+        last review on them with xHigh"): (1) cpp_ xHigh STARTED 17:2x (brief plan_1117/cpu_plan2_brief.md): the gaps +
+        the whole ranked CPU plan with exactness proofs, owners, file sets, batches -> cpu_gaps.md + cpu_plan2.md; (2) High
+        implementers, one at a time per file set; (3) one xHigh review of the merged result; (4) one Low bench batch
+        (stress / night1 / day1, + day1 / sea1 WPR if the plan asks). Owner: coordinator
+      - [x] DONE 17:2x SKILLS (ATN "add this to the skills"): game-port-method "Effort by job" (runs low, optimization
+        analysis / plans / reviews xHigh, implementers high, the token finding) + "Read a profile to its end before
+        ranking"; tw-port-checklist testing.md: the frame recorder row (record / play / compare, play-to-play
+        differences) + the bench's no-underscore variant names. SKILLS UPDATE 4b / 5 stay as planned
+      - [ ] BRIDGE CLAIMS (ATN 17:3x: another modder's ChatGPT review of HIS port of our bridge design, 7 failure-path
+        gaps: request missed by the watcher, the rescue signal undone by the game's queued one, the watcher's unsynced
+        reads at a resolution change, shutdown order, a hung helper with no timeout, unchecked signal / wait / thread
+        start, a leaked copied fence handle; ATN: "Double check and fix the real bugs please before our 7th step"):
+        rvb_ xHigh STARTED 17:3x (brief plan_1117/bridge_claims_brief.md -> bridge_claims.md, verify only); then a High
+        fixer after fix1_ merges (one helper implementer at a time), failing test first; before plan step 7. Owner: rvb_,
+        coordinator
+      - [ ] SER IN FORESTS (ATN 17:3x, Forge: SER made a huge difference in forests; his path tracer's split: turning its
+        reorder off +19 ms, instruction misses +186 %, GCC->L2 +32 GB; the cost is L2 traffic + 6.1 GB local-memory
+        spills a pass, not math): ours is "Path Tracing SER (Experimental)", off, +0.86 ms in the test scene, hint = the
+        instance's group of eight (rt_path.hlsli REORDER). Plan step 6 item 4: record a forest battle view, SER off / on on
+        the recording with Nsight's L2 / spill / instruction-miss counters (Forge's table as the template), a hint by
+        hit kind (leaf / OMM vs solid vs sky miss) if the instance hint loses; on by default only where faster + same
+        picture. Owner: plan step 6
+      - [ ] NSIGHT 2026.4 MCP (Forge: Nsight Graphics 2026.4 has a headless MCP, "a bunch of features but not
+        everything"): read NVIDIA's docs for it (allowed, NVIDIA) before plan step 4's GPU work; installing needs ATN
+        (installer, UAC); never answer ngfx install prompts ourselves. Owner: coordinator, ATN (install)
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
@@ -2509,7 +2561,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         verify/out/verify_sea1_e3/e3_ship_close.jpg): by eye in Debug View 1, rope shadows drawn as thin lines (rigging in
         the scene); the sail's shadow has stair steps with Smooth Banner Shadows 0 and smooth curved edges with 1 (each shot
         a different ship: no pixel metric). Owner: coordinator
-      - [ ] BUG4 RUN LEFT (1) (specs in bugs_1117/bug4.md): footprints at DLSS 0 vs 4 need ships selected: Ctrl+A selects
+      - [x] DONE 17:0x (ATN played it: ship indicators fixed below 100 %) BUG4 RUN LEFT (1) (specs in bugs_1117/bug4.md): footprints at DLSS 0 vs 4 need ships selected: Ctrl+A selects
         nothing in a replay (sent to Attila in front; the frame trace has no indicator draw), so it needs ATN's play (select
         ships, switch DLAA <-> Performance). Owner: ATN
       - [ ] BUG4 NEW BOXES (bug4_ 08:xx): (a) foam: the ocean's refraction distortion doubles at 50 % (view_share WHOLE
@@ -2651,7 +2703,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         torch-lit boxes 0.9696 -> 0.9897 (ReSTIR GI keeps only 70 / 78 % of the torch bounce today, boxes turn bluer); with
         Own Sky Rays off it over-corrects (+3.9 % boxes, -1.5 % open) -> v2: clamp in the creating receiver's units, then
         re-test R-A (Validate overwriting the stored light, withdrawn as an interaction). Every TW game (shared helper).
-        Owner: next helper implementer after rec_ (with PT DI step 2)
+        Owner: fix1_ (STARTED 16:xx, brief plan_1117/fix1_brief.md, notes fix1_notes.md; with the 2 boxes below)
       - [ ] L1 FALLOFF FIX (ref2_ WARP: 20 of Attila's 40 point-light shaders fall off as (1 - d / r) to 1.9e-7, the
         helper's LightArriving squares it for every light: up to 49 % off; the 20 smooth shaders match the square to
         3.5e-7): a falloff kind per shader hash in b4's light_colours.w (add-on + helper), per-game tables (Rome II / WH1
