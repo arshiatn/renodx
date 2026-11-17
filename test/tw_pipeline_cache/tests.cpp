@@ -19,6 +19,11 @@
 //  memo0/memo1 RENODX_PIPELINE_MEMO=0: off (an info line: the A/B base), every bind looks up; =1: a module without the
 //              flag uses the cache. default: no flag, no switch: every bind looks up, nothing logged.
 //  full        every module slot taken: off.
+//  last_checker the last checking (opted-in) module detaches: USE clear, every bind looks up; a write meanwhile is seen
+//              when a checking module comes back. checker_count: one of two leaves: still on.
+//  policy      a second module turns use_replace_on_bind off: the cached replacement is not bound again.
+//  handler     the exe's shader / pipeline modules detach: the partner handles the binds; the exe's later write is seen.
+//  stages_all  stages == all binds: the bind point from the info on a miss and a hit.
 //  cost_*      ns a bind (OnBindPipeline with utils::shader's callback) and a GetPipelineInfo, 1 and 4 threads: _locked
 //              (RENODX_PIPELINE_MEMO=0) and _cached.
 #include <windows.h>
@@ -99,9 +104,8 @@ static void Present() {
 
 // What OnBindPipeline bound as the replacement (0: none), through the handler's registered event as ReShade calls it.
 static uint64_t Bind(test::CommandList* list, uint64_t handle, pipeline_stage stage = pipeline_stage::vertex_shader) {
-  static const auto callbacks = event_lists[static_cast<size_t>(api_event::bind_pipeline)];
   list->bound = 0u;
-  for (void* callback : callbacks) {
+  for (void* callback : event_lists[static_cast<size_t>(api_event::bind_pipeline)]) {
     reinterpret_cast<reshade::addon_event_traits<api_event::bind_pipeline>::decl>(callback)(list, stage, {handle});
   }
   return list->bound;
@@ -255,7 +259,7 @@ static int Threads(const char* part, bool checked) {
   Attach(true);
   HMODULE partner = LoadTestDll(L"pipeline_cache_partner");
   CHECK(partner != nullptr);
-  Export<void (*)()>(partner, "PartnerAttach")();
+  Export<void (*)(bool, bool)>(partner, "PartnerAttach")(false, true);
   test::Device device;
   test::ChurnControl control = {.device = &device};
   for (size_t index = 0u; index < test::CHURN_PIPELINES; ++index) {
@@ -458,7 +462,7 @@ static int Partner(const char* part) {
   const uint64_t handle = test::PipelineHandle(0u);
   test::Create(&device, handle, test::ReplacementHandle(0u, 1u));
   for (int round = 0; round < 50; ++round) {
-    Export<void (*)()>(partner, "PartnerAttach")();
+    Export<void (*)(bool, bool)>(partner, "PartnerAttach")(false, true);
     CHECK(pipe::internal::bind_cache.data->module_count == 2u);
     Present();
     CHECK(Bind(&list, handle) == test::ReplacementHandle(0u, 1u));
@@ -566,6 +570,169 @@ static int Cost(const char* part, bool cached) {
   return 0;
 }
 
+static HMODULE AttachPartner(bool use_cache, bool replace_on_bind) {
+  HMODULE partner = LoadTestDll(L"pipeline_cache_partner");
+  if (partner != nullptr) Export<void (*)(bool, bool)>(partner, "PartnerAttach")(use_cache, replace_on_bind);
+  return partner;
+}
+
+static size_t CheckingModules() {
+  const std::shared_lock lock(pipe::internal::bind_cache.data->mutex);
+  return pipe::internal::bind_cache.data->checking_modules;
+}
+
+// Whether `count` binds of `handle` answered `replacement` without a lookup (no bind-info callback call).
+static bool CachedBinds(test::CommandList* list, uint64_t handle, uint64_t replacement, int count = 10) {
+  const uint64_t calls = info_calls.load();
+  for (int index = 0; index < count; ++index) {
+    if (Bind(list, handle) != replacement) return false;
+  }
+  return info_calls.load() == calls;
+}
+
+// The exe uses the cache without opting in (its OnBindPipeline handles the binds), the partner is the checking module.
+static int LastChecker(const char* part) {
+  Attach(false);
+  CHECK((Control() & pipe::BIND_CACHE_USE) == 0u);
+  HMODULE partner = AttachPartner(true, true);
+  CHECK(partner != nullptr);
+  CHECK(CacheOn());
+  CHECK(CheckingModules() == 1u);
+  test::Device device;
+  test::CommandList list;
+  list.owner = &device;
+  const uint64_t handle = test::PipelineHandle(0u);
+  test::Create(&device, handle, test::ReplacementHandle(0u, 1u));
+  CHECK(Bind(&list, handle) == test::ReplacementHandle(0u, 1u));
+  CHECK(CachedBinds(&list, handle, test::ReplacementHandle(0u, 1u)));
+  // The last checking module leaves: USE clear (not off), every bind looks up.
+  Export<void (*)()>(partner, "PartnerDetach")();
+  CHECK(CheckingModules() == 0u);
+  CHECK((Control() & (pipe::BIND_CACHE_USE | pipe::BIND_CACHE_OFF)) == 0u);
+  CHECK(Uncached(part, &list, handle) == 0);
+  // A write while nobody checks; a checking module again: the write is seen (the exe's table entry is stale by its tag).
+  pipe::UpdatePipelineShaderDetails({handle}, [](pipe::PipelineShaderDetails& details) {
+    details.replacement_pipeline = {test::ReplacementHandle(0u, 2u)};
+  });
+  Export<void (*)(bool, bool)>(partner, "PartnerAttach")(true, true);
+  CHECK(CacheOn());
+  CHECK(CheckingModules() == 1u);
+  CHECK(Bind(&list, handle) == test::ReplacementHandle(0u, 2u));
+  CHECK(CachedBinds(&list, handle, test::ReplacementHandle(0u, 2u)));
+  CHECK(warnings.empty());
+  return 0;
+}
+
+// Two checking modules: one leaving keeps USE.
+static int CheckerCount(const char* part) {
+  Attach(true);
+  HMODULE partner = AttachPartner(true, true);
+  CHECK(partner != nullptr);
+  CHECK(CheckingModules() == 2u);
+  test::Device device;
+  test::CommandList list;
+  list.owner = &device;
+  const uint64_t handle = test::PipelineHandle(0u);
+  test::Create(&device, handle, test::ReplacementHandle(0u, 1u));
+  CHECK(Bind(&list, handle) == test::ReplacementHandle(0u, 1u));
+  Export<void (*)()>(partner, "PartnerDetach")();
+  CHECK(CheckingModules() == 1u);
+  CHECK(CacheOn());
+  CHECK(Bind(&list, handle) == test::ReplacementHandle(0u, 1u));
+  CHECK(CachedBinds(&list, handle, test::ReplacementHandle(0u, 1u)));
+  CHECK(warnings.empty());
+  return 0;
+}
+
+// A second module with on_replace shaders turns the shared use_replace_on_bind off: utils::shader's callback answers no
+// replacement from then on, and a cached replacement must not outlive the change.
+static int Policy(const char* part) {
+  Attach(true);
+  test::Device device;
+  test::CommandList list;
+  list.owner = &device;
+  const uint64_t handle = test::PipelineHandle(0u);
+  test::Create(&device, handle, test::ReplacementHandle(0u, 1u));
+  CHECK(Bind(&list, handle) == test::ReplacementHandle(0u, 1u));
+  CHECK(CachedBinds(&list, handle, test::ReplacementHandle(0u, 1u)));
+  CHECK(AttachPartner(false, false) != nullptr);
+  CHECK(renodx::utils::shader::GetReplaceOnBindPolicy() == false);
+  CHECK(Bind(&list, handle) == 0u);
+  CHECK(CachedBinds(&list, handle, 0u));
+  CHECK(CacheOn());
+  return 0;
+}
+
+// The event handlers move: the exe's utils::shader (and with it its pipeline module) detaches, the partner handles the
+// binds and its callback answers; a write from the detached exe's code still reaches the partner's tables.
+static int Handler(const char* part) {
+  Attach(true);
+  HMODULE partner = AttachPartner(true, true);
+  CHECK(partner != nullptr);
+  test::Device device;
+  test::CommandList list;
+  list.owner = &device;
+  const uint64_t handle = test::PipelineHandle(0u);
+  test::Create(&device, handle, test::ReplacementHandle(0u, 1u));
+  CHECK(Bind(&list, handle) == test::ReplacementHandle(0u, 1u));
+  const auto* exe_bind = event_lists[static_cast<size_t>(api_event::bind_pipeline)].front();
+  renodx::utils::shader::Use(DLL_PROCESS_DETACH);
+  CHECK(event_lists[static_cast<size_t>(api_event::bind_pipeline)].size() == 1u);
+  CHECK(event_lists[static_cast<size_t>(api_event::bind_pipeline)].front() != exe_bind);
+  CHECK(CheckingModules() == 1u);
+  CHECK(CacheOn());
+  CHECK(Bind(&list, handle) == test::ReplacementHandle(0u, 1u));
+  CHECK(CachedBinds(&list, handle, test::ReplacementHandle(0u, 1u)));
+  pipe::UpdatePipelineShaderDetails({handle}, [](pipe::PipelineShaderDetails& details) {
+    details.replacement_pipeline = {test::ReplacementHandle(0u, 2u)};
+  });
+  CHECK(Bind(&list, handle) == test::ReplacementHandle(0u, 2u));
+  CHECK(CachedBinds(&list, handle, test::ReplacementHandle(0u, 2u)));
+  CHECK(warnings.empty());
+  return 0;
+}
+
+// D3D12-style binds (stages == all): the bind point comes from the info, on a miss and on a hit.
+static pipe::PipelineBindPoint bound_point = pipe::PipelineBindPoint::UNKNOWN;
+static void RecordBindPoint(reshade::api::command_list*, pipeline_stage, reshade::api::pipeline, pipe::PipelineBindPoint bind_point) {
+  bound_point = bind_point;
+}
+
+static int StagesAll(const char* part) {
+  Attach(true);
+  pipe::RegisterOnBindCallback(RecordBindPoint);
+  test::Device device;
+  test::CommandList list;
+  list.owner = &device;
+  const uint64_t graphics = test::PipelineHandle(0u);
+  reshade::api::shader_desc vertex_shader = {};
+  const reshade::api::pipeline_subobject subobject = {
+      .type = reshade::api::pipeline_subobject_type::vertex_shader, .count = 1u, .data = &vertex_shader};
+  pipe::OnInitPipeline(&device, {0u}, 1u, &subobject, {graphics});
+  pipe::UpdatePipelineShaderDetails({graphics}, [](pipe::PipelineShaderDetails& details) {
+    details.initialized_replacement = true;
+    details.replacement_stages = pipeline_stage::vertex_shader;
+    details.replacement_pipeline = {test::ReplacementHandle(0u, 1u)};
+  });
+  const uint64_t calls = info_calls.load();
+  for (int index = 0; index < 10; ++index) {
+    bound_point = pipe::PipelineBindPoint::UNKNOWN;
+    CHECK(Bind(&list, graphics, pipeline_stage::all) == test::ReplacementHandle(0u, 1u));
+    CHECK(bound_point == pipe::PipelineBindPoint::GRAPHICS);
+  }
+  CHECK(info_calls.load() == calls + 1u);
+  // No shader subobject: an unknown bind point, no replacement (utils::shader's callback answers 0 for it).
+  const uint64_t unknown = test::PipelineHandle(1u);
+  test::Create(&device, unknown, test::ReplacementHandle(1u, 1u));
+  for (int index = 0; index < 10; ++index) {
+    bound_point = pipe::PipelineBindPoint::GRAPHICS;
+    CHECK(Bind(&list, unknown, pipeline_stage::all) == 0u);
+    CHECK(bound_point == pipe::PipelineBindPoint::UNKNOWN);
+  }
+  CHECK(warnings.empty());
+  return 0;
+}
+
 static int RunPart(const char* part) {
   try {
     const std::string name = part;
@@ -584,6 +751,11 @@ static int RunPart(const char* part) {
     if (name == "memo1") return Memo(part, false, '1');
     if (name == "default") return Memo(part, false, '\0');
     if (name == "full") return Full(part);
+    if (name == "last_checker") return LastChecker(part);
+    if (name == "checker_count") return CheckerCount(part);
+    if (name == "policy") return Policy(part);
+    if (name == "handler") return Handler(part);
+    if (name == "stages_all") return StagesAll(part);
     if (name == "cost_locked") return Cost(part, false);
     if (name == "cost_cached") return Cost(part, true);
   } catch (const std::exception& error) {
@@ -605,7 +777,7 @@ int main(int argc, char** argv) {
     const char* memo;
     const char* check;
   };
-  constexpr std::array<Part, 17> PARTS = {{
+  constexpr std::array<Part, 22> PARTS = {{
       {"hits", nullptr, nullptr},
       {"destroy", nullptr, nullptr},
       {"threads_fast", nullptr, nullptr},
@@ -621,6 +793,11 @@ int main(int argc, char** argv) {
       {"memo1", "1", nullptr},
       {"default", nullptr, nullptr},
       {"full", nullptr, nullptr},
+      {"last_checker", nullptr, nullptr},
+      {"checker_count", nullptr, nullptr},
+      {"policy", nullptr, nullptr},
+      {"handler", nullptr, nullptr},
+      {"stages_all", nullptr, nullptr},
       {"cost_locked", "0", nullptr},
       {"cost_cached", nullptr, nullptr},
   }};

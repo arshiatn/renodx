@@ -1,12 +1,16 @@
-// A second RenoDX module built with the bind cache (tests.cpp's threaded parts): its own utils::shader / pipeline over the
-// same process-shared pipeline map and bind cache block. The test exe attached first, so it handles the events and binds;
-// the partner's writes (destroy, init at the same handle, a new replacement) come from this module's code. Its ReShade
-// calls reach the test exe's mocked exports.
+// A second RenoDX module built with the bind cache (tests.cpp's threaded and module-set parts): its own utils::shader /
+// pipeline over the same process-shared pipeline map and bind cache block. The test exe usually attached first, so it
+// handles the events and binds; the partner's writes (destroy, init at the same handle, a new replacement) come from this
+// module's code. Its ReShade calls reach the test exe's mocked exports.
 #include "test/tw_pipeline_cache/common.hpp"
 
 namespace test = pipeline_cache_test;
 
-extern "C" __declspec(dllexport) void PartnerAttach() {
+// use_cache: opts in (a checking module). replace_on_bind false: a mod with on_replace / on_inject shaders (the shared
+// use_replace_on_bind policy turns false for every module).
+extern "C" __declspec(dllexport) void PartnerAttach(bool use_cache, bool replace_on_bind) {
+  renodx::utils::pipeline::use_bind_cache = use_cache;
+  renodx::utils::shader::use_replace_on_bind = replace_on_bind;
   renodx::utils::shader::Use(DLL_PROCESS_ATTACH);
 }
 

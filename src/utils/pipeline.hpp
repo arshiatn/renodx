@@ -194,13 +194,16 @@ constexpr uint32_t BIND_CACHE_INDEX_BITS = 10u;                                /
 constexpr uint32_t BIND_CACHE_SELF_CHECK_FRAMES = 256u;
 static_assert(std::atomic_size_t::is_always_lock_free);
 
+// USE is set while at least one checking module (an opted-in one: it runs the writer check and advances the self-check
+// phase at its present) is attached: the last one's detach clears it, so no module answers from its tables unchecked.
 struct __declspec(uuid("42143cab-fd3f-43e7-9bc8-0f94b99f7db2")) BindCacheData {
-  std::shared_mutex mutex;  // modules, module_count
+  std::shared_mutex mutex;  // modules, module_count, checking_modules; USE changes under it
   std::array<cross_addon::internal::ModuleToken, BIND_CACHE_MAX_MODULES> modules = {};
   size_t module_count = 0u;
   std::atomic_size_t control = 0u;
   std::atomic_size_t generation = 0u;
   std::atomic_size_t self_check_phase = 0u;
+  size_t checking_modules = 0u;
 };
 
 // A bind's locked outcome: pipeline and stages are the key, generation the tag.
@@ -1370,7 +1373,11 @@ static void Use(DWORD fdw_reason) {
       if (environment_switch("RENODX_PIPELINE_MEMO_CHECK") == '1') {
         cache->control.fetch_or(BIND_CACHE_CHECK);
       }
-      cache->control.fetch_or(BIND_CACHE_USE);
+      {
+        const std::unique_lock lock(cache->mutex);
+        ++cache->checking_modules;
+        cache->control.fetch_or(BIND_CACHE_USE);
+      }
       reshade::register_event<reshade::addon_event::init_device>(OnBindCacheInitDevice);
       reshade::register_event<reshade::addon_event::present>(OnBindCachePresent);
       internal::bind_cache_checking = true;
@@ -1396,6 +1403,13 @@ static void Use(DWORD fdw_reason) {
         reshade::unregister_event<reshade::addon_event::init_device>(OnBindCacheInitDevice);
         reshade::unregister_event<reshade::addon_event::present>(OnBindCachePresent);
         internal::bind_cache_checking = false;
+        // The last checking module: the binds take the lock again until a module opts in (its attach sets USE and checks
+        // the writers at once; the writes meanwhile bumped as ever, so the threads' tables stay exact).
+        auto* cache = internal::bind_cache.data;  // set before the checking flag
+        const std::unique_lock lock(cache->mutex);
+        if (--cache->checking_modules == 0u) {
+          cache->control.fetch_and(~BIND_CACHE_USE);
+        }
       }
       internal::shared.UnregisterEvent<reshade::addon_event::init_pipeline>(OnInitPipeline);
       internal::shared.UnregisterEvent<reshade::addon_event::create_pipeline>(OnCreatePipeline);
