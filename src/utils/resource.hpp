@@ -5,13 +5,22 @@
 
 #pragma once
 
+#include <windows.h>
+
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <mutex>
 #include <optional>
 #include <ranges>
 #include <shared_mutex>
+#include <span>
 #include <sstream>
+#include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -22,10 +31,15 @@
 #include "../utils/format.hpp"
 #include "../utils/hash.hpp"
 #include "../utils/log.hpp"
+#include "../utils/platform.hpp"
 
 namespace renodx::utils::resource {
 
 static bool use_resource_replace = false;
+// This module's resource_upgrade::GetResourceViewClone answers views that never had clone_enabled without the view map's
+// lock (ViewFilterData below). Set before the first Use. RENODX_RESOURCE_MEMO=0 turns the filter off in the process,
+// =1 turns it on in every module that attaches.
+static bool use_view_filter = false;
 
 #define ViewUpgrade(usage, source, destination) \
   {{reshade::api::resource_usage::usage, reshade::api::format::source}, reshade::api::format::destination}
@@ -381,6 +395,71 @@ struct __declspec(uuid("b5fdfd6a-cb13-4523-a499-e3b5e4759665")) SharedData {
 
 static cross_addon::Shared<SharedData> shared;
 
+// The view filter: one bit per view handle hash, set (never cleared) by every write of a ResourceViewInfo that leaves its
+// clone_enabled true, inside the write's exclusive submap lock, once a reading module is in the process (INTEREST). A
+// reading module sets INTEREST, then walks the map for the views enabled before it; from then on a clear bit proves the
+// view's clone_enabled was never true, so GetResourceViewClone with require_enabled and without activate returns no clone
+// without taking the lock. Every write goes through UpdateResourceViewInfo / UpsertResourceViewInfo (static_checks.py
+// "views"); the pointer forms turn the filter off for the process (a write through the pointer can come at any time), and
+// so does an attached module without the protocol (an add-on built before it): CheckViewFilterWriters.
+// Own uuid, frozen: any change to these fields or to the protocol takes a new uuid; modules of the two protocols then miss
+// each other's tokens and the filter stays off. Native-width words: one plain load on x86 and x64.
+constexpr size_t VIEW_FILTER_MAX_MODULES = 8u;
+constexpr uint32_t VIEW_FILTER_INDEX_BITS = 14u;  // 16,384 bits: 2 KB
+constexpr size_t VIEW_FILTER_WORD_BITS = sizeof(size_t) * 8u;
+constexpr size_t VIEW_FILTER_OFF = size_t{1u} << (VIEW_FILTER_WORD_BITS - 1u);  // sticky
+constexpr size_t VIEW_FILTER_INTEREST = size_t{1u} << (VIEW_FILTER_WORD_BITS - 2u);
+static_assert(std::atomic_size_t::is_always_lock_free);
+
+struct __declspec(uuid("b3adce9f-5cf3-4779-bf4d-ebbab4a046da")) ViewFilterData {
+  std::shared_mutex mutex;  // modules, module_count
+  std::array<cross_addon::internal::ModuleToken, VIEW_FILTER_MAX_MODULES> modules = {};
+  size_t module_count = 0u;
+  std::atomic_size_t control = 0u;
+  std::array<std::atomic_size_t, (size_t{1u} << VIEW_FILTER_INDEX_BITS) / VIEW_FILTER_WORD_BITS> enabled_bits = {};
+};
+
+static cross_addon::Shared<ViewFilterData> view_filter;
+// resource::shared's control block: the modules attached to the view map (CheckViewFilterWriters).
+static const cross_addon::internal::ControlBlock<SharedData>* view_filter_writers = nullptr;
+// Set (release) after this module's walk while the filter is on; GetResourceViewClone loads it (acquire).
+static std::atomic_bool view_filter_reading = false;
+// RENODX_RESOURCE_MEMO_CHECK=1: every filter answer is compared with the locked lookup (GetResourceViewClone).
+static std::atomic_bool view_filter_check = false;
+// GetResourceViewClone's self-check compares the answers for the filter indices of this frame's phase (advanced at this
+// module's present): every index once in VIEW_FILTER_SELF_CHECK_FRAMES frames.
+constexpr uint32_t VIEW_FILTER_SELF_CHECK_FRAMES = 256u;
+static std::atomic_uint32_t view_filter_phase = 0u;
+
+inline uint32_t ViewFilterIndex(uint64_t handle) {
+  // Fibonacci hashing of the 16-byte-aligned handle (as M1's simulation: 0.00 % false positives at 14 bits).
+  const auto folded = static_cast<uint32_t>((handle >> 4u) ^ (handle >> 36u));
+  return (folded * 0x9E3779B1u) >> (32u - VIEW_FILTER_INDEX_BITS);
+}
+
+// The writer side, inside the exclusive lock of the write that left `info` so.
+inline void MarkViewFilter(uint64_t handle, const ResourceViewInfo& info) {
+  if (!info.clone_enabled) return;
+  auto* filter = view_filter.data;
+  if (filter == nullptr || (filter->control.load() & VIEW_FILTER_INTEREST) == 0u) return;
+  const uint32_t index = ViewFilterIndex(handle);
+  auto& word = filter->enabled_bits[index / VIEW_FILTER_WORD_BITS];
+  const size_t bit = size_t{1u} << (index % VIEW_FILTER_WORD_BITS);
+  if ((word.load() & bit) == 0u) {
+    word.fetch_or(bit);
+  }
+}
+
+// Sticky for the process. Logged only once a reading module is in the process (other mods stay quiet); a reading module
+// that attaches later logs that it found the filter off.
+inline void TurnOffViewFilter(std::string_view reason) {
+  auto* filter = view_filter.data;
+  if (filter == nullptr || (filter->control.load() & VIEW_FILTER_OFF) != 0u) return;
+  const size_t control = filter->control.fetch_or(VIEW_FILTER_OFF);
+  if ((control & VIEW_FILTER_OFF) != 0u || (control & VIEW_FILTER_INTEREST) == 0u) return;
+  log::w("utils::resource view filter off: ", reason, " (every view lookup takes the lock again).");
+}
+
 template <typename Callback>
 inline void AddCallback(cross_addon::vector<Callback>& callbacks, Callback callback) {
   assert(callback != nullptr);
@@ -538,6 +617,7 @@ inline bool UpsertResourceInfo(const reshade::api::resource& resource, F&& f) {
 
 [[deprecated("Use GetResourceViewInfo<F>")]] [[nodiscard]]
 inline ResourceViewInfo* GetResourceViewInfo(const reshade::api::resource_view& view, const bool& create = false) {
+  TurnOffViewFilter("a ResourceViewInfo pointer left the map (GetResourceViewInfo(view, create))");
   if (create) {
     auto [pointer, inserted] = shared.data->resource_view_infos.try_emplace_p(view.handle, ResourceViewInfo({.view = view}));
     return &pointer->second;
@@ -556,6 +636,7 @@ inline ResourceViewInfo* GetResourceViewInfo(const reshade::api::resource_view& 
 
 [[deprecated("Use GetResourceViewInfo<F>")]] [[nodiscard]]
 inline ResourceViewInfo* GetResourceViewInfoUnsafe(const reshade::api::resource_view& view, const bool& create = false) {
+  TurnOffViewFilter("a ResourceViewInfo pointer left the map (GetResourceViewInfoUnsafe)");
   if (create) {
     auto [pointer, inserted] = shared.data->resource_view_infos.try_emplace_p(view.handle, ResourceViewInfo({.view = view}));
     return &pointer->second;
@@ -600,6 +681,7 @@ inline bool UpdateResourceViewInfo(const reshade::api::resource_view& view, F&& 
 
   return shared.data->resource_view_infos.modify_if(view.handle, [&f](std::pair<const uint64_t, ResourceViewInfo>& pair) {
     std::forward<F>(f)(&pair.second);
+    MarkViewFilter(pair.first, pair.second);
   });
 }
 
@@ -691,10 +773,12 @@ inline bool UpsertResourceViewInfo(const reshade::api::resource_view& view, F&& 
       view.handle,
       [&](std::pair<const uint64_t, ResourceViewInfo>& pair) {
         std::forward<F>(f)(&pair.second, false);
+        MarkViewFilter(pair.first, pair.second);
       },
       [&](const ResourceViewInfoMap::constructor& ctor) {
         ResourceViewInfo data = {.view = view};
         std::forward<F>(f)(&data, true);
+        MarkViewFilter(view.handle, data);
         ctor(view.handle, data);
       });
 }
@@ -720,6 +804,7 @@ inline std::pair<ResourceViewInfo*, bool> EmplaceResourceViewInfoOrReuse(
     const reshade::api::resource_view& view,
     const ResourceViewInfo& info,
     const bool require_destroyed) {
+  TurnOffViewFilter("a ResourceViewInfo written outside the lock (EmplaceResourceViewInfoOrReuse)");
   auto [it, inserted] = shared.data->resource_view_infos.try_emplace_p(view.handle, info);
   if (!inserted) {
     if (require_destroyed) {
@@ -1716,9 +1801,71 @@ inline bool AreCopyFormatsCompatible(
          || IsCompressible(source, destination);
 }
 
+// Every module attached to the view map (resource::shared's active module records) must write with the view filter's
+// protocol (its token in ViewFilterData::modules); else the filter turns off, naming the module's file. Left-over add-ons
+// built before the filter are the expected cause. Run at a reading module's attach, at init_device (add-ons that attached
+// after it, before any view exists) and at every present (a late add-on: unchecked for at most one frame).
+static void CheckViewFilterWriters() {
+  auto* filter = view_filter.data;
+  if (filter == nullptr || view_filter_writers == nullptr || (filter->control.load() & VIEW_FILTER_OFF) != 0u) return;
+  cross_addon::internal::ModuleToken missing = nullptr;
+  {
+    const std::shared_lock lock(filter->mutex);
+    const auto modules = std::span(filter->modules.data(), filter->module_count);
+    // Records are never freed: the walk is memory-safe while modules attach.
+    for (const auto* module = view_filter_writers->modules; module != nullptr && missing == nullptr; module = module->next) {
+      if (module->active && std::ranges::find(modules, module->token) == modules.end()) {
+        missing = module->token;
+      }
+    }
+  }
+  if (missing == nullptr) return;
+  std::array<char, MAX_PATH> file = {'?'};
+  if (HMODULE module = nullptr; ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                                       static_cast<const char*>(missing), &module)) {
+    ::GetModuleFileNameA(module, file.data(), static_cast<DWORD>(file.size()));
+  }
+  TurnOffViewFilter(std::string("a module writes the view map without its protocol: ") + file.data());
+}
+
+static void OnViewFilterInitDevice(reshade::api::device* device) {
+  CheckViewFilterWriters();
+}
+
+static void OnViewFilterPresent(
+    reshade::api::command_queue* queue,
+    reshade::api::swapchain* swapchain,
+    const reshade::api::rect* source_rect,
+    const reshade::api::rect* dest_rect,
+    uint32_t dirty_rect_count,
+    const reshade::api::rect* dirty_rects) {
+  view_filter_phase.store(view_filter_phase.load(std::memory_order_relaxed) + 1u, std::memory_order_relaxed);
+  CheckViewFilterWriters();
+}
+
 static void Use(DWORD fdw_reason) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH: {
+      // The view filter's token before the module's view-map record turns active: a module whose record is active always
+      // has its token (CheckViewFilterWriters never sees it half attached). A full table leaves it out: off for all.
+      view_filter.RegisterModule();
+      if (auto* filter = view_filter.data; filter != nullptr) {
+        const auto token = cross_addon::internal::GetModuleToken();
+        bool table_full = false;
+        {
+          const std::unique_lock lock(filter->mutex);
+          const auto modules = std::span(filter->modules.data(), filter->module_count);
+          if (std::ranges::find(modules, token) == modules.end()) {
+            table_full = (filter->module_count == VIEW_FILTER_MAX_MODULES);
+            if (!table_full) {
+              filter->modules[filter->module_count++] = token;
+            }
+          }
+        }
+        if (table_full) {
+          TurnOffViewFilter("all module slots taken");
+        }
+      }
       const bool registered = shared.RegisterModule([](SharedData& data) {
         data.use_resource_replace = data.use_resource_replace || use_resource_replace;
       });
@@ -1734,6 +1881,57 @@ static void Use(DWORD fdw_reason) {
       shared.RegisterEvent<reshade::addon_event::destroy_resource>(OnDestroyResource);
       shared.RegisterEvent<reshade::addon_event::init_resource_view>(OnInitResourceView);
       shared.RegisterEvent<reshade::addon_event::destroy_resource_view>(OnDestroyResourceView);
+
+      auto* filter = view_filter.data;
+      if (!registered || filter == nullptr || shared.data == nullptr) break;
+      // '0', '1' or 0 (unset).
+      const auto environment_switch = [](const char* name) {
+        std::array<char, 2> value = {};
+        return (::GetEnvironmentVariableA(name, value.data(), static_cast<DWORD>(value.size())) == 1u) ? value[0] : '\0';
+      };
+      const char memo = environment_switch("RENODX_RESOURCE_MEMO");
+      if (memo == '0') {
+        // The A/B base: said as information (check_logs.py fails a run on the filter's warnings).
+        TurnOffViewFilter("RENODX_RESOURCE_MEMO=0");
+        if (use_view_filter) {
+          reshade::log::message(reshade::log::level::info, "utils::resource view filter not used (RENODX_RESOURCE_MEMO=0).");
+        }
+        break;
+      }
+      if (!use_view_filter && memo != '1') break;
+
+      // Reading: INTEREST first, so every later write sets its bit; then the views enabled before it, by their keys.
+      filter->control.fetch_or(VIEW_FILTER_INTEREST);
+      shared.data->resource_view_infos.for_each([](const std::pair<const uint64_t, ResourceViewInfo>& pair) {
+        MarkViewFilter(pair.first, pair.second);
+      });
+      if (view_filter_writers == nullptr) {
+        // The slot's view closes again; the control block stays for the process.
+        auto slot = platform::OpenProcessSharedSlot<cross_addon::internal::ControlBlock<SharedData>>(__uuidof(SharedData), [](auto*&) {});
+        if (slot.value != nullptr) {
+          view_filter_writers = *slot.value;
+        }
+        if (slot.view != nullptr) {
+          ::UnmapViewOfFile(slot.view);
+        }
+        if (slot.handle != nullptr) {
+          ::CloseHandle(slot.handle);
+        }
+      }
+      reshade::register_event<reshade::addon_event::init_device>(OnViewFilterInitDevice);
+      reshade::register_event<reshade::addon_event::present>(OnViewFilterPresent);
+      CheckViewFilterWriters();
+      if (view_filter_writers == nullptr || (filter->control.load() & VIEW_FILTER_OFF) != 0u) {
+        reshade::log::message(reshade::log::level::warning,
+                              "utils::resource view filter off at attach (a pointer-form access, a module without its protocol "
+                              "or all module slots taken, logged before): every view lookup takes the lock.");
+        break;
+      }
+      view_filter_check.store(environment_switch("RENODX_RESOURCE_MEMO_CHECK") == '1', std::memory_order_relaxed);
+      view_filter_reading.store(true, std::memory_order_release);
+      reshade::log::message(reshade::log::level::info, view_filter_check.load(std::memory_order_relaxed)
+                                                           ? "utils::resource view filter on, every answer checked (RENODX_RESOURCE_MEMO_CHECK=1)."
+                                                           : "utils::resource view filter on.");
       break;
     }
 
@@ -1745,7 +1943,21 @@ static void Use(DWORD fdw_reason) {
       shared.UnregisterEvent<reshade::addon_event::destroy_resource>(OnDestroyResource);
       shared.UnregisterEvent<reshade::addon_event::init_resource_view>(OnInitResourceView);
       shared.UnregisterEvent<reshade::addon_event::destroy_resource_view>(OnDestroyResourceView);
-      shared.UnregisterModule();
+      if (!shared.UnregisterModule()) break;
+      // The record is inactive now; the token goes after it (the attach's order reversed). Bits and control stay: the
+      // module's later writes (after its detach) still follow the protocol, the block outlives every module.
+      view_filter_reading.store(false, std::memory_order_release);
+      reshade::unregister_event<reshade::addon_event::init_device>(OnViewFilterInitDevice);
+      reshade::unregister_event<reshade::addon_event::present>(OnViewFilterPresent);
+      if (auto* filter = view_filter.data; filter != nullptr) {
+        const std::unique_lock lock(filter->mutex);
+        const auto modules = std::span(filter->modules.data(), filter->module_count);
+        if (const auto mine = std::ranges::find(modules, cross_addon::internal::GetModuleToken()); mine != modules.end()) {
+          *mine = modules.back();
+          --filter->module_count;
+        }
+      }
+      view_filter.UnregisterModule();
       break;
   }
 }

@@ -688,15 +688,47 @@ inline reshade::api::resource_view CloneResourceView(
   return created_clone;
 }
 
+// RENODX_RESOURCE_MEMO_CHECK=1: the filter's answers in this module checked against the locked lookup (mismatches logged,
+// the map's answer returned). Plain loads and stores, no lock prefix (a check mode for tests and runs, not play).
+static std::atomic_uint32_t view_filter_checked = 0u;
+static std::atomic_uint32_t view_filter_races = 0u;
+static std::atomic_uint32_t view_filter_mismatches = 0u;
+
 inline reshade::api::resource_view GetResourceViewClone(
     const reshade::api::resource_view& view,
     const ResourceViewCloneOptions& options = {}) {
   if (view.handle == 0u) return {0u};
 
+  // A clear filter bit (resource.hpp ViewFilterData): this view's clone_enabled was never true, so the locked lookup
+  // below returns no clone. Debug builds, the check mode and the self-check take the lookup anyway and compare. The
+  // self-check: the views whose filter index matches this frame's phase (1 in VIEW_FILTER_SELF_CHECK_FRAMES, every view
+  // within that many frames), a mismatch turns the filter off; it reads the phase only (no write a call).
+  bool filter_answered = false;
+  uint32_t filter_index = 0u;
+  size_t filter_bit = 0u;
+  if (options.require_enabled && !options.activate && utils::resource::view_filter_reading.load(std::memory_order_acquire)) {
+    const auto* filter = utils::resource::view_filter.data;
+    filter_index = utils::resource::ViewFilterIndex(view.handle);
+    filter_bit = size_t{1u} << (filter_index % utils::resource::VIEW_FILTER_WORD_BITS);
+    const size_t word = filter->enabled_bits[filter_index / utils::resource::VIEW_FILTER_WORD_BITS].load();
+    if ((filter->control.load() & utils::resource::VIEW_FILTER_OFF) == 0u && (word & filter_bit) == 0u) {
+#ifdef NDEBUG
+      const uint32_t phase = utils::resource::view_filter_phase.load(std::memory_order_relaxed);
+      if (((filter_index ^ phase) % utils::resource::VIEW_FILTER_SELF_CHECK_FRAMES) != 0u
+          && !utils::resource::view_filter_check.load(std::memory_order_relaxed)) {
+        return {0u};
+      }
+#endif
+      filter_answered = true;
+    }
+  }
+
   reshade::api::resource_view clone = {0u};
   std::optional<utils::resource::ResourceViewInfo> view_info = std::nullopt;
+  bool clone_enabled = false;
   utils::resource::GetResourceViewInfo(view, [&](const utils::resource::ResourceViewInfo& info) {
     assert(!info.destroyed && "GetResourceViewClone called on destroyed resource view.");
+    clone_enabled = info.clone_enabled;
     if (info.destroyed || info.is_clone) return;
     if (info.original_resource.handle == 0u) return;
     if (!info.clone_enabled && options.require_enabled && !options.activate) return;
@@ -712,6 +744,37 @@ inline reshade::api::resource_view GetResourceViewClone(
     // Ask to create one
     view_info = info;
   });
+
+  if (filter_answered) {
+    // The filter said "never enabled". A writer sets the bit inside the lock in which it enables the view, so a locked
+    // read that saw clone_enabled sees the bit too: still clear, the filter answered wrong (a write without the
+    // protocol); set by now, the view was enabled between the bit's load and the lock (a race, the filter's answer was
+    // right when it was taken).
+    const auto* filter = utils::resource::view_filter.data;
+    const bool mismatch = clone_enabled
+                          && (filter->enabled_bits[filter_index / utils::resource::VIEW_FILTER_WORD_BITS].load() & filter_bit) == 0u;
+    if (utils::resource::view_filter_check.load(std::memory_order_relaxed)) {
+      const uint32_t checked = view_filter_checked.load(std::memory_order_relaxed) + 1u;
+      view_filter_checked.store(checked, std::memory_order_relaxed);
+      if (clone_enabled && !mismatch) {
+        view_filter_races.store(view_filter_races.load(std::memory_order_relaxed) + 1u, std::memory_order_relaxed);
+      }
+      uint32_t mismatches = view_filter_mismatches.load(std::memory_order_relaxed);
+      if (mismatch) {
+        view_filter_mismatches.store(++mismatches, std::memory_order_relaxed);
+        if (mismatches <= 16u || mismatches % 1024u == 0u) {
+          log::w("utils::resource view filter mismatch: view ", log::AsPtr(view.handle),
+                 " has clone_enabled but no filter bit (", mismatches, " so far).");
+        }
+      }
+      if (checked % 100000u == 0u) {
+        log::i("utils::resource view filter check: ", checked, " answers checked, ", mismatches, " mismatches, ",
+               view_filter_races.load(std::memory_order_relaxed), " races.");
+      }
+    } else if (mismatch) {
+      utils::resource::TurnOffViewFilter("self-check mismatch (a write without the protocol)");
+    }
+  }
 
   if (view_info.has_value()) {
     utils::resource::ResourceUpgradeInfo* clone_target = nullptr;

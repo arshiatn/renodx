@@ -1611,6 +1611,8 @@ void ConfigureAddon() {
 
   // Swapchain upgrade settings
   renodx::mods::swapchain::use_resource_cloning = true;
+  // GetResourceViewClone answers the views never cloned without the view map's lock (resource.hpp ViewFilterData).
+  renodx::utils::resource::use_view_filter = true;
   renodx::mods::swapchain::force_borderless = false;
   renodx::mods::swapchain::prevent_full_screen = true;
 
