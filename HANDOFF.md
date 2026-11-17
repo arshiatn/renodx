@@ -385,7 +385,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - WRITER SMALL FIXES (from Sol's 0001 review): our engine_code.hpp writer: (a) a f ... | ATN's go (game-code file, theoretical today: no site crosses
 - L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; ... | after ssr_ / G1 (helper queue)
 - PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rbk_
-- APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-th ... | apipe_
+- APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-th ... | apr_, coordinator
 - CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's ren ... | the combined bench (ATN's go)
 - ORIGIN HAS ATN'S OTHER SESSION'S COMMIT (22:3x): 65ee50591 "[mod:twattila] Faste ... | ATN, then coordinator
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
@@ -2857,7 +2857,17 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-thread last-pipeline cache in
         front of the pipeline map lock, invalidated by a destroy generation; shared utils, opt-in Attila only (B3's
         pattern), check mode for the bench, new test/tw_pipeline_cache; night1 -0.1..-0.2. apipe_ High STARTED 22:1x
-        (notes plan_1117/apipe_notes.md); then an xHigh review (with the pre-bench review). Owner: apipe_
+        (notes plan_1117/apipe_notes.md); then an xHigh review (with the pre-bench review). DONE 22:4x apipe_ (branch
+        apipe_ from b477a143a: 780d5e090 pipeline.hpp / shader.hpp bind cache + test/tw_pipeline_cache 17 parts x86 +
+        amd64, 2b17596eb Attila opt-in use_bind_cache, eefd5f1f4 static_checks "pipelines"; check_logs.py rule "bind
+        cache (off|mismatch)"): caches the bind OUTCOME per thread (1,024 entries, 32 KB), process-wide generation
+        bumped under the lock on every pipeline_infos write / destroy / Use / callback change; B3-style tokens + writer
+        checks; RENODX_PIPELINE_MEMO=0/1, _CHECK=1; release self-check 1 / 256 a frame; 4 threads + churn 60-89 M binds
+        0 wrong; bind x86 31.2 -> 13.8 ns (4 threads 55.5 -> 13.9), amd64 17.4 -> 8.7 (42.7 -> 9.2); builds 15 x86 + 21
+        amd64 exit 0; suites pass; static_checks 0. Left: PopulateStageState writable pointers (read-only today), the
+        writer check is a near copy of B3's (one shared helper after g1_'s resource.hpp merge), in-game hit rate unknown
+        (bench with _CHECK=1 + A/B MEMO=0), x86 hit-path disassembly. xHigh review apr_ STARTED 22:4x BEFORE the merge
+        -> plan_1117/apipe_review.md. Owner: apr_, coordinator
       - [ ] CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's render-thread time after
         B2-B4 (WPR), bridge flushes step 2 (one FrameTrace frame), the alt-tab transient, view filter for the other TW
         games after Attila's numbers, heapfix B4G numbers for the author; Sprites = ATN's look decision. Owner: the
