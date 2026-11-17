@@ -331,8 +331,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction): C:/Users/arshi/.cla ... | coordinator
 - (sk3_ 01:xx) Shared shaders rule (skills lesson 12): rysesonofrome/upscale_outpu ... | next shared round
 - CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila ... | coordinator
+- SPEED LIST v2 (cap1_ 07:xx on the redone captures, speed_list.md; supersedes the ... | coordinator -> a CPU round after the bug agents merge (plan 
 - SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers f ... | coordinator -> CPU round (plan step 4)
-- MEMORY GROWTH OUT OF FRONT (cap1_ 05:xx): committed grows 2.0-5.0 MB/s while Att ... | next memory round
+- (cap1_ 07:xx: also every ReShade 4K screenshot permanently takes 30-95 MB off th ... | next memory round
 - CAPTURE TOOLING (cap1_ 05:xx): run_game's memory.csv overwritten every start (fi ... | coordinator
 - BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before th ... | bug1_
 - BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows ... | bug2_
@@ -2150,6 +2151,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         run for days"): from the three captures' WPR + Nsight: every CPU / GPU hot spot of the game and of RenoDX with its
         expected gain, written to tools/tw/round_notes/plan_1117/speed_list.md, each a box here with an owner (a CPU / GPU
         round after the bug fixes, plan step 4). Owner: coordinator
+      - [ ] SPEED LIST v2 (cap1_ 07:xx on the redone captures, speed_list.md; supersedes the v1 top 10 below): rendered
+        frames 51.1 / 37.7 / 84.5 ms (night1 / sea1 / stress, WPR costs +4-6 %), all render-thread bound (GPU idle 21 / 11 /
+        47 ms; game + helper GPU 30.0 / 26.4 / 37.2, helper 10.9 / 8.8 / 9.8). Top 10: (1) HEAPFIX SORT A/B where the render
+        thread waits 12.6 / 6.2 / 2.6 ms for the one worker sorting the draw list: the private builds C (prefetch, 2.4-2.9x)
+        and B (4 threads, 6x) on stress + night1, est. +9-15 % / +7-11 % / +4-6 % fps (heapfix = third-party "Attila Engine
+        Performance Fix": private builds only, a release only through its author via ATN); (2) ADD-ON RENDER-THREAD TRIM
+        8.6 / 5.5 / 3.8 ms (per-draw callback walk 2.8, rt_scene::Capture 2.0, DrawObjectMotion 1.0, shared-mutex lookups
+        1.4, its D3D11 calls 2.2): per-pipeline callback mask, lock-free per-frame cache, batched Capture, est. -2..-4 ms;
+        (3) STRESS ENGINE STUDY: render-list execution 12.7 ms (0x18960d0 4.1, 0x18635a0 2.1, 0x1840520 2.0, 0x1890b90 1.8,
+        0x1893470 1.6), animation fill 0x182e080 5.0 (to a worker?), battle draw loop 3.2: est. 5-10 ms; (4) MEMSET call
+        sites 28.4 ms summed on workers in stress (only while rendering): a counting hook run, then skip / shrink; (5) small
+        engine patches (soldier-draw truncation block, TlsGetValue thunk, PickLod / OnDrawScrub detours) 0.3-1.5 ms; (6)
+        Small Soldiers as Sprites A/B at stress (soldiers 22.1 ms of the game's GPU, 67 M triangles; look: ATN); (7) address
+        space by region + screenshots; (8) RT resume stall 2.6-2.7 s at every battle start / after the 10-s release; (9)
+        capture method v3: the WPR stop also knocks the game out: RT profile + Time Each Pass inside the window, refocus
+        after the stop; (10) GPU round after the CPU cuts (sea1 GPU-bound after ~11 ms CPU cut: trace hand-off 7.1-7.9 ms,
+        scene build / clusters 4.0-4.5 / 2.5-2.8, RR + copies ~2.9). Symbol build of the installed add-on:
+        tools/tw/cap1_sym/build32_sym (sym_build.ps1). Owner: coordinator -> a CPU round after the bug agents merge
+        (plan step 4), runs one at a time
       - [ ] SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers from the frames that rendered +
         11-13 / 11-14 recordings): all four views bound by the render thread (night1 20.7 fps 48.4 ms, sea1 28.3 fps 35.3 ms,
         stress 11.4 fps 87.4 ms; GPU idle 9-50 ms a frame; the game's GPU waits 4.3-7.7 ms for the helper inside that
@@ -2164,7 +2184,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         the helper at every battle start and after the 10-s release; (9) TlsGetValue thunk at empire +0x16246d0 + the
         calls in +0x17f7900 (6.75 ms summed in stress); (10) worker detours: add-on 0x47980 (OnDrawScrub / ScaleModelLods,
         1.82 ms summed night1), 0x6f240 (PickLod, 1.1 ms stress). Owner: coordinator -> CPU round (plan step 4)
-      - [ ] MEMORY GROWTH OUT OF FRONT (cap1_ 05:xx): committed grows 2.0-5.0 MB/s while Attila is out of front with
+      - [ ] (cap1_ 07:xx: also every ReShade 4K screenshot permanently takes 30-95 MB off the largest free block (v1 + v2):
+        players taking shots walk into the restart crash; find whose allocation (ReShade's screenshot path vs ours) and
+        free / reuse it) MEMORY GROWTH OUT OF FRONT (cap1_ 05:xx): committed grows 2.0-5.0 MB/s while Attila is out of front with
         RenoDX (0.3-0.9 in front, 0.1 without RenoDX); in stress the largest free block lost 189 MB in 55 s: a likely cause
         of the restart crash after alt-tabs. Find what grows (add-on / ReShade / driver) and stop it. Also heapfix 6.10.6
         grows its pools in 64 KB pieces with nothing reserved: small blocks spread through the space a 42-49 MB malloc
