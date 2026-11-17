@@ -347,16 +347,17 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed ... | next Ryse round
 - GPU CAPTURE ROUND 2 (ATN 09:5x): after the new features (SHaRC update, PT DI / R ... | coordinator (after plan step 6 + reviews)
 - CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best c ... | cpb_
-- O1 NIGHT1 TRACE (des1_ step 0): one night1 frame trace for the O1 census (which ... | coordinator
 - WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffus ... | next WH3 helper round
 - X86 64-BIT ATOMIC LOADS (rv4_ 10:5x): std::atomic<uint64_t> loads in the x86 add ... | next shared-utils round (with the memo)
-- EFFORT A/B (ATN 10:3x "test low + your judgement and just medium effort for test ... | coordinator
-- HEAPFIX AUTHOR ZIP 2 (ATN 12:2x: the author liked the 11-15 zip; "make another z ... | coordinator after cpb_'s report
 - RECORDER FIRST (ATN 12:2x: "Wouldn't that be amazing for our RT/PT further optim ... | coordinator
 - CPU NEXT (cpu_round_report.md): heapfix P + size-gated B4 (threads only for 3276 ... | next CPU round
 - C-SPRITES (cpb_): Small Soldiers as Sprites is 3.5-3.9x the fps in stress (13-15 ... | ATN
+- MEMO M1 RESULT (jdg1_, judge_m1_o1.md): GO for the filter alone (F14, 2 KB, no m ... | next CPU / utils round
+- LIGHT READBACK CAP (jdg1_): rt_lights' readback caps at 16,384 records while nig ... | PT DI step 0
+- BENCH CLOSE RACE BY STACK (jdg1_): the stress M1 run's close AV was the known sh ... | coordinator (tools)
+- C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 ... | ATN
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
-- CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases ... | coordinator
+- CPU SITE 8 (D5, cpu_steps_5_10.md 10b; hz2_ 13:3x: the 10b design's "all ready" ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
 - SPEED LIST v2 (cap1_ 07:xx on the redone captures, speed_list.md; supersedes the ... | coordinator -> a CPU round after the bug agents merge (plan 
 - SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers f ... | coordinator -> CPU round (plan step 4)
@@ -373,6 +374,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (step 0 DONE ref0_ (5b41d3b72), I5 / I4 fixed by hfix_ (53da7b6e8); step 1 R0a + ... | coordinator
 - REF1 FINDINGS (ref1_, reproduced on a second set / scene): the raw estimator's c ... | ref2_
 - REF1 LEFT (ref1_ "Left"): the reflections' traced-lobe share output (G0 share ro ... | REF BUILD steps 2-6
+- RESTIR GI CLAMP FIX (ref2_ R-B, bug, on by default once proven): REUSE_W_CLAMP ( ... | next helper implementer after rec_ (with PT DI step 2)
+- L1 FALLOFF FIX (ref2_ WARP: 20 of Attila's 40 point-light shaders fall off as (1 ... | PT DI step 1
+- REF STEP 2 LEFT (ref2_): rt_lights' shadow bits compared at the pixels; the rati ... | REF steps
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
@@ -2336,7 +2340,10 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best combination (heapfix P + trim add-on,
         ATN's maxed Graphics 2 of 2) on stress + night1 once each: the remaining hot spots as "next CPU candidates" in
         cpu_bench_results.md. Owner: cpb_
-      - [ ] O1 NIGHT1 TRACE (des1_ step 0): one night1 frame trace for the O1 census (which point-light shaders / lights a
+      - [x] DONE O1 NIGHT1 TRACE 12:5x (run1_ + jdg1_, plan_1117/judge_m1_o1.md): 2 point-light draws (792 indices x 9,593
+        instances each): ps 6426B042 pointlight00 smooth slm (stencil 1) + 90981DA1 pointlight01 smooth skinlm (stencil 3);
+        0 of the 20 linear-falloff shaders drawn at ATN's settings (L1 changes nothing in night1); one G-buffer set; light
+        readback capped at 16,384 records (19,186 sent); lights per tile need rt_lights' tile histogram. Was: O1 NIGHT1 TRACE (des1_ step 0): one night1 frame trace for the O1 census (which point-light shaders / lights a
         frame draws, how many per tile) after cpb_'s benches (one game at a time). Owner: coordinator
       - [ ] WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffuse while the helper's paths /
         bounce use Lambert: measure the seen-vs-unseen ratio on WH3 (path probe) and, if it differs, give the helper WH3's
@@ -2346,7 +2353,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         __iso_volatile_load64); benign today (small counters: the high word stays 0 below 2^32 events), so a safety fix:
         check the x86 disassembly, then a native-width counter (uintptr_t / 32-bit with a wrap rule) or an interlocked load.
         Owner: next shared-utils round (with the memo)
-      - [ ] EFFORT A/B (ATN 10:3x "test low + your judgement and just medium effort for test and judgement"): A = cpb_
+      - [x] DONE 13:2x EFFORT A/B RESULT: A cpb_ (medium, runs + judges) 327k tokens for ~41 starts (the bench batches many
+        starts per command); B run1_ (low, 3 starts) 84k + jdg1_ (high judge) 241k = 325k for 3 starts. Per start B was far
+        dearer, but most of each agent's tokens are the fixed reading of plans / logs, not the effort level; the judge went
+        deeper (sim, census, crash stack, a leftover file); A had one rule slip (worked around an AMSI block). Rule now: one
+        LOW runner for a whole run batch (fixed cost spread), a HIGH judge once per batch only where the results need deep
+        analysis; plain benches: one medium agent that runs + judges. Was: EFFORT A/B (ATN 10:3x "test low + your judgement and just medium effort for test and judgement"): A = cpb_
         (medium, runs + judges, ~41 starts); B = the next run batch (memo M1 night1 / sea1 / stress + the O1 night1 trace)
         with a LOW run-only agent + a fresh HIGH-effort judge agent (ATN 10:4x: the coordinator's xHigh turns carry the whole
         session, a fresh judge reads only the results). Compare tokens per game start (runner + judge vs cpb_) and quality
@@ -2359,7 +2371,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         (8e8fa96a, the prefetched radix sort: -8..-13 ms stress, -4.5..-7 ms night1 vs 7.0; B4 faster only in huge battles,
         slower at Constantinople), check the hash and heapfix.log's sort line on the next start; ATN's heapfix.ini kept;
         own use only (heapfix's licence). Owner: coordinator
-      - [ ] HEAPFIX AUTHOR ZIP 2 (ATN 12:2x: the author liked the 11-15 zip; "make another zip file that he can give to
+      - [x] DONE 13:3x HEAPFIX AUTHOR ZIP 2 (hz2_): Downloads/AttilaCPUPerfFix_7.0_notes_2026-11-17.zip (62 KB, 23 files):
+        1 prefetched sort + 2 threaded-sort gate (patches pass git apply --check / patch --dry-run on his unmodified 7.0
+        4057eb8, LF + CRLF, and give the measured sortfix.c), 3 memfast-128 update, 4 out-of-front memory (runs were on
+        6.10.6), 5 loopanim / x87keep open, 6 engine candidates (exactness rules only), timing/ + bench_results/ (labels and
+        paths removed; coordinator scanned: no private names or paths). ATN passes it on. Was: HEAPFIX AUTHOR ZIP 2 (ATN 12:2x: the author liked the 11-15 zip; "make another zip file that he can give to
         his own opus"): like Downloads/AttilaCPUPerfFix_7.0_notes_2026-11-15.zip (README + one folder per proposal: NOTE.md,
         .patch, bench numbers), written for his AI agent: P (prefetched sort) and B4 (threaded sort for 32768+ items, scene
         dependent), loopanim / x87keep status, the render thread's wait for the one-worker sort (12.6 / 6.2 / 2.6 ms),
@@ -2376,11 +2392,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         site 8. Owner: next CPU round
       - [ ] C-SPRITES (cpb_): Small Soldiers as Sprites is 3.5-3.9x the fps in stress (13-15 -> 51 fps): a look decision for
         ATN (far soldiers drawn as sprites). Owner: ATN
+      - [ ] MEMO M1 RESULT (jdg1_, judge_m1_o1.md): GO for the filter alone (F14, 2 KB, no memo: battle frames have 0
+        writes / 0 bumps; 99.1 % of lookups are OnPushDescriptors' GetResourceViewClone): -0.156 ms moving frames night1,
+        -0.069 stress; conditional: the bucket reads 0.17 ms vs the 0.46 planned (per-call 39 ns in game vs 14.6 in the
+        harness): one base_fp WPR start first (the plan's rule), range -0.125..-0.44 ms. Then C1 = the filter only. Owner:
+        next CPU / utils round
+      - [ ] LIGHT READBACK CAP (jdg1_): rt_lights' readback caps at 16,384 records while night1 sends 19,186: check what is
+        dropped (likely duplicates / culled) before PT DI sizes its buffers; a tile histogram for the lights-per-tile
+        question. Owner: PT DI step 0
+      - [ ] BENCH CLOSE RACE BY STACK (jdg1_): the stress M1 run's close AV was the known shutdown race with a new top
+        frame (an execute AV into heap ~0.2 s after CloseMainWindow, same stack below: +0x1A4B01 +0x31FEEB +0x32053D, no add-on
+        frame; heapfix 7.0 writes a dump at first chance); $CLOSE_RACE in constantinople_bench.ps1 matches one address only:
+        match the stack signature instead. Owner: coordinator (tools)
+      - [ ] C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 MB, 10-31 .. today, the newest
+        = the M1 build 2f70715f) in ATN's Attila folder (ReShade ignores them): delete by exact name (keeping the installed
+        add-on and .v119)? Owner: ATN
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
         coordinator
-      - [ ] CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases a shared_ptr per child to test
+      - [ ] CPU SITE 8 (D5, cpu_steps_5_10.md 10b; hz2_ 13:3x: the 10b design's "all ready" result would NOT be exact as
+        written: re-derive the exactness rules from the game's bytes before building): engine site 0x18635a0 (copies + releases a shared_ptr per child to test
         a flag): exact without the copy + an early exit, est. -1.5..-2 ms stress render thread; design + proof plan written,
         no code. Same later CPU round; bench stress + night1 x2 after ATN's OK for the runs. Owner: coordinator
       - [ ] CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 + sea1 x2 with the bench; after
@@ -2568,8 +2600,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         wall; I5 specular occlusion counts directions below the horizon as blocked (rt_path.hlsli:1331-1332, 1464): an open
         plane gets SO < 1 at grazing views, worst with Squared Lobe. Owner: bug2_ (I3), then a helper fix round (I4, I5)
       - [ ] (step 0 DONE ref0_ (5b41d3b72), I5 / I4 fixed by hfix_ (53da7b6e8); step 1 R0a + R0b DONE ref1_ (merged
-        3bd2ffaa2; plan_1117/ref_step1.md; tools/tw/reference: ref_compare.py, runs/, xcheck/); step 2 STARTED 08:3x ref2_
-        (the paths' box split first, then R1)) REF BUILD (v2 order; one implementer at a time in the helper): step 0 free checks I5 / I4 / I3 + census (ref0_,
+        3bd2ffaa2; plan_1117/ref_step1.md; tools/tw/reference: ref_compare.py, runs/, xcheck/); step 2 DONE ref2_ (merged
+        5fb1eb5d5; ref_step2.md); step 4 (route B recorder, ATN's RECORDER FIRST) STARTED 13:0x rec_ (ref_step4.md); step 3
+        after it) REF BUILD (v2 order; one implementer at a time in the helper): step 0 free checks I5 / I4 / I3 + census (ref0_,
         started 05:xx, no helper change; I3 with bug2_); 1 R0a + R0b with B1 / B2 / APPROX / census / reference cache, the
         gates, xcheck (22-28 h; after bug2_ leaves the helper); 2 R1 torches + point-light WARPs (7-10 h); 3 dark-texel
         slice of R3 (3-5 h); 4 route B recorder + a short live proof in game + the second capture pass, 12 recordings
@@ -2596,6 +2629,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         scan (AMBIGUOUS hook ready); historical controls (2.6.2); G1's all-lights sum (R1, step 2); G2 CPU model; route A in
         a game + route B (step 4); the digest hashes no dynamic vertices yet; the lag-1 > 0.2 rule printed, not applied.
         Owner: REF BUILD steps 2-6
+      - [x] DONE REF STEP 2 (ref2_ 7a1f506f7 / 8a3079796, merged 5fb1eb5d5): variants same_route + contact_sky,
+        RENODX_TW_REF_DIRECT; ATN's boxes (0.956 vs contact) split: route model 0.9931 (MODEL), Kept Cube's model 0.9934
+        (MODEL; its uncalibrated sky alone -2.2 % = the UNSEEN SKY FIX box, rt_path.hlsli:640), ReSTIR GI 0.9698 +- 0.0007
+        (BIAS), raw estimator vs same_route 1.0008 (PASS); R1: G1 all-lights 0.99994-1.00001 (control 9.80), G-T1 all 40
+        point-light shaders bit for bit, Torch Light in PT GI 1.0000-1.0011 (the 0.004 scale right); zero cost off (50
+        headers identical, HARNESS_DUMP 0 differences over 384 outputs / 47 modes, the same 13 Nsight passes). Owner: ref2_
+      - [ ] RESTIR GI CLAMP FIX (ref2_ R-B, bug, on by default once proven): REUSE_W_CLAMP (rt_path.hlsli:113, used at 945)
+        cuts each candidate's own W of pi / cos: a cos-scaled clamp takes ATN's boxes 0.9698 -> 0.9943 (all 0.9996) and the
+        torch-lit boxes 0.9696 -> 0.9897 (ReSTIR GI keeps only 70 / 78 % of the torch bounce today, boxes turn bluer); with
+        Own Sky Rays off it over-corrects (+3.9 % boxes, -1.5 % open) -> v2: clamp in the creating receiver's units, then
+        re-test R-A (Validate overwriting the stored light, withdrawn as an interaction). Every TW game (shared helper).
+        Owner: next helper implementer after rec_ (with PT DI step 2)
+      - [ ] L1 FALLOFF FIX (ref2_ WARP: 20 of Attila's 40 point-light shaders fall off as (1 - d / r) to 1.9e-7, the
+        helper's LightArriving squares it for every light: up to 49 % off; the 20 smooth shaders match the square to
+        3.5e-7): a falloff kind per shader hash in b4's light_colours.w (add-on + helper), per-game tables (Rome II / WH1
+        own shaders), the 3 other squared-falloff places (fog lights, the add-on's torch glow in smoke); G-T0 with a game
+        capture's constants. Owner: PT DI step 1
+      - [ ] REF STEP 2 LEFT (ref2_): rt_lights' shadow bits compared at the pixels; the ratio mode (APPROX); the raw
+        estimator's open-sky -0.03 %; "Torch and Fire Light from PT" adds nothing without ReSTIR GI (by design: its tooltip
+        should say it needs ReSTIR GI); the 32-light cap -5.0 % with 40 lights (MODEL, an upper bound). Owner: REF steps
       - [ ] REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures run tonight without the recorder
         (WPR / timings / shots / frame trace / address space need none); route B (bridge recorder + harness player) built
         next and a second, shorter capture pass records night1 / sea1 / stress frames for the references; the recorder
