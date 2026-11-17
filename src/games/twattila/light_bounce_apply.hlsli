@@ -6,11 +6,10 @@
 // Light Bounce (Experimental), pass 3 of 3 (light_bounce.hpp): the bounce (light_bounce_trace) brought up to this pixel
 // from its nearest texels, by distance, by how close their depth is to the pixel's and by whether their surface lies on
 // the pixel's plane (smoothing the trace's per-texel noise without crossing edges or creases), x the pixel's diffuse
-// albedo and the Light Bounce strength, added to the
-// light buffer. Drawn with each sun light draw (its pixels; with the game's MSAA each sample, as its own MSAA sun light
-// does, or with LIGHT_BOUNCE_PIXEL once per pixel at sample 0, written to each of its samples the draw covers;
-// shades them: their G-buffer there, light_bounce_gbuffer.hlsli). Game-neutral: the includer defines first (its
-// light_bounce.hlsli):
+// albedo and the Light Bounce strength, added to the light buffer. Drawn with each sun light draw (its pixels; with the
+// game's MSAA each sample, as its own MSAA sun light does, or with LIGHT_BOUNCE_PIXEL once per pixel at sample 0, written
+// to each of its samples the draw covers; shades them: their G-buffer there, light_bounce_gbuffer.hlsli). Game-neutral:
+// the includer defines first (its light_bounce.hlsli):
 //   float3 BounceViewPosition(int2 texel)   the view-space position at that pixel
 //   float3 BounceViewNormal(int2 texel)     the view-space normal there
 //   float3 BounceDiffuseAlbedo(int2 texel)  its diffuse colour, as the game's ambient light takes it (0: none)
