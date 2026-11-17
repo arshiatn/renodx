@@ -7,11 +7,13 @@
 // pixels each way) the sun's visibility along the camera's ray to the texel's surface: FOG_SAMPLES points, closer
 // together near the camera (where shafts show; each weighted by the stretch it stands for), each one ray toward the
 // sun (dimmed by the smoke it meets). The games' fog pass (twattila/rt_fog.hlsli) dims the sun's share of its colour by
-// it: light shafts through gaps, the fog in shadow darker. Sky texels and frames without a sun: 1. Noise moves every
-// frame (DLAA / DLSS settle it). With FOG_LIGHTS (v18) the local lights' light at the same points into fog_lights (rgb):
-// torches and fires glowing in the fog, their shafts and shadows too (rt_fog.hlsli adds it to the fog's colour).
+// it: light shafts through gaps, the fog in shadow darker. A sky texel marches its camera ray FOG_RANGE far, as a
+// surface beyond it does. Frames without a sun: 1. Noise moves every frame (DLAA / DLSS settle it). With FOG_LIGHTS (v18)
+// the local lights' light at the same points into fog_lights (rgb): torches and fires glowing in the fog, their shafts
+// and shadows too (rt_fog.hlsli adds it to the fog's colour).
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_fog.h -Vn RT_FOG; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_FOG_OMM.
 #include "./rt_scene.hlsli"
+#include "./rt_camera.hlsli"
 
 RWTexture2D<unorm float> fog : register(u27);
 RWTexture2D<float4> fog_lights : register(u34);
@@ -59,18 +61,32 @@ static const float FOG_SUN_RANGE = 1000.f;  // metres toward the sun
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
   if (id.x >= (width + 3u) / 4u || id.y >= (height + 3u) / 4u) return;
-  const float4 position = positions[min(id.xy * 4u + 2u, uint2(width, height) - 1u)];
+  const uint2 pixel = min(id.xy * 4u + 2u, uint2(width, height) - 1u);
+  const float4 position = positions[pixel];
   const float4 toward_sun = sun[uint2(0, 0)];
-  const bool glowing = (flags & FOG_LIGHTS) != 0u && light_count != 0u && position.w > 0.f;
+  const float3 camera = sun[uint2(1, 0)].xyz;
+  float3 direction;
+  float range;
+  if (position.w > 0.f) {
+    const float surface_distance = distance(position.xyz, camera);
+    direction = (position.xyz - camera) / max(surface_distance, 1.0003276e-3f);
+    range = min(surface_distance, FOG_RANGE);
+  } else {
+    // The sky's camera ray through the texel's pixel: the line through the camera where its clip planes (x = ndc.x w,
+    // y = ndc.y w) meet, toward w > 0. Sky texels got no glow and no shafts while the hills a km away beside them got the
+    // first FOG_RANGE's (the horizon lighter than the sky, DEBUG44 (d)). No camera registers: the sky as before (sun 1).
+    const float2 ndc = (float2(pixel) + 0.5f) / float2(width, height) * float2(2.f, -2.f) + float2(-1.f, 1.f);
+    const float3 along = cross(view_projection[0].xyz - ndc.x * view_projection[3].xyz, view_projection[1].xyz - ndc.y * view_projection[3].xyz);
+    const float along_length = length(along);
+    direction = along / max(along_length, 1e-30f) * ((dot(along, view_projection[3].xyz) < 0.f) ? -1.f : 1.f);
+    range = (along_length > 0.f) ? FOG_RANGE : 0.f;
+  }
+  const bool glowing = (flags & FOG_LIGHTS) != 0u && light_count != 0u && range > 0.f;
   if (!glowing && (flags & FOG_LIGHTS) != 0u) fog_lights[id.xy] = 0.f;
-  if (position.w <= 0.f || (toward_sun.w == 0.f && !glowing)) {
+  if (range <= 0.f || (toward_sun.w == 0.f && !glowing)) {
     fog[id.xy] = 1.f;
     return;
   }
-  const float3 camera = sun[uint2(1, 0)].xyz;
-  const float surface_distance = distance(position.xyz, camera);
-  const float3 direction = (position.xyz - camera) / max(surface_distance, 1.0003276e-3f);
-  const float range = min(surface_distance, FOG_RANGE);
   const float jitter = Random(uint3(id.xy, frame));
   float lit = 0.f;
   float3 glow = 0.f;

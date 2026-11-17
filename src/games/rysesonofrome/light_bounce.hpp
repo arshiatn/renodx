@@ -74,6 +74,7 @@ struct Objects {
   ComPtr<ID3D11RasterizerState> rasterizer;
   ComPtr<ID3D11Buffer> constants;
   LightBounceConstants uploaded = {};
+  float texel_centre = 0.f;  // the last trace's LightBounceConstants::texel_centre (its history's)
   ComPtr<ID3D11Buffer> previous_camera;
   // The scene's copy and its target (its size and format); the prepared textures and histories (1 / scale of it).
   ComPtr<ID3D11Resource> scene;
@@ -251,10 +252,15 @@ inline void Apply(ID3D11DeviceContext* context, const LightBounceConstants& cons
       || !internal::CreateTextures(context, scene.Get(), scene_desc, scene_view_desc.Format, scale)) {
     return;
   }
-  if (std::memcmp(&objects.uploaded, &constants, sizeof(LightBounceConstants)) != 0) {
-    context->UpdateSubresource(objects.constants.Get(), 0, nullptr, &constants, 0, 0);
-    objects.uploaded = constants;
-  }
+  LightBounceConstants settings = constants;
+  settings.texel_centre = objects.texel_centre;
+  const auto upload = [&]() {
+    if (std::memcmp(&objects.uploaded, &settings, sizeof(LightBounceConstants)) != 0) {
+      context->UpdateSubresource(objects.constants.Get(), 0, nullptr, &settings, 0, 0);
+      objects.uploaded = settings;
+    }
+  };
+  upload();
   // The first frame: its own camera as the last one.
   if (!objects.previous_camera) twattila::frame_history::KeepCamera(device.Get(), context, camera.Get(), std::addressof(objects.previous_camera));
 
@@ -319,11 +325,16 @@ inline void Apply(ID3D11DeviceContext* context, const LightBounceConstants& cons
   inputs[internal::HISTORY_VIEW] = objects.history[previous_index].srv.Get();
   inputs[internal::PREPARED_VIEW] = objects.prepared_light.srv.Get();
   inputs[internal::PREPARED_VIEW + 1] = objects.prepared_geometry.srv.Get();
-  if (ray_traced_trace == nullptr
-      || !ray_traced_trace(context, objects.prepared_light.texture.Get(), static_cast<UINT>(trace_viewport.Width),
-                           static_cast<UINT>(trace_viewport.Height), scale, objects.traced.texture.Get())) {
-    pass(objects.traced, objects.trace.Get());
-  }
+  const bool rays = ray_traced_trace != nullptr
+                    && ray_traced_trace(context, objects.prepared_light.texture.Get(), static_cast<UINT>(trace_viewport.Width),
+                                        static_cast<UINT>(trace_viewport.Height), scale, objects.traced.texture.Get());
+  if (!rays) pass(objects.traced, objects.trace.Get());
+  // The apply weighs the texels where this trace took them: the rays' at their block's centre pixel (rt_path.hlsli
+  // TexelSurface), the screen-space trace's at its top-left (twattila/light_bounce.hpp's rule: weighed at the top-left
+  // the rays' bounce came out 0.6 px toward the top-left at Half, 0.8 at Quarter).
+  objects.texel_centre = rays ? static_cast<float>(scale / 2) : 0.f;
+  settings.texel_centre = objects.texel_centre;
+  upload();
   inputs[internal::LIGHT_VIEW] = objects.traced.srv.Get();
   inputs[internal::FRAMES_VIEW] = objects.history_frames[previous_index].srv.Get();
   pass(objects.history[objects.history_index], objects.resolve.Get(), &objects.history_frames[objects.history_index]);
