@@ -333,7 +333,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows ... | bug2_
 - BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Res ... | coordinator
 - BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails ... | coordinator -> bug4_ after the captures
-- REF1 (ref_, started 02:xx): reference suite step 3: first the design (tools/tw/r ... | ref_
+- (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
+- REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
 - SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator after REF1
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
 - CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benc ... | coordinator, after the current merges + install, ATN's go
@@ -2146,10 +2147,24 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails + missing ropes (sea1), (f)
         render scale below 100 % at sea (sea1 traces + a static census of the shipped shaders). Owner: coordinator ->
         bug4_ after the captures
-      - [ ] REF1 (ref_, started 02:xx): reference suite step 3: first the design (tools/tw/round_notes/plan_1117/
+      - [ ] (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-force reference per effect in the
+        helper on the same frame, findings = estimator bug / model delta / coverage gap, own seeds + offsets + no caps,
+        analytic checks (AO by a wall, edge penumbra, fog plate, point-light line, furnace), controls from known-buggy
+        commits; build order R0a skeleton, R0b compare + analytic scenes, R1 torches (64 combinations), R2 sun shadows +
+        coverage, R3 GI / PT Ambient + dark texels, R4 AO, R5 reflections, R6 fog, B bridge recorder + harness player for
+        real game frames; ~57-79 agent-hours, 3.5-4.5 h GPU; LEFT: the Opus xHigh design review (rev_, running), then
+        build one step at a time) REF1 (ref_, started 02:xx): reference suite step 3: first the design (tools/tw/round_notes/plan_1117/
         reference_suite.md: one brute-force reference per RT/PT effect, inputs, metrics, tolerances, controls, Nsight /
         GPU-lock rules), an Opus xHigh check of the design, then build it on the existing harness captures; ATN's new
         replays' captures added when they exist. Owner: ref_
+      - [ ] REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures run tonight without the recorder
+        (WPR / timings / shots / frame trace / address space need none); route B (bridge recorder + harness player) built
+        next and a second, shorter capture pass records night1 / sea1 / stress frames for the references; the recorder
+        lives in the helper behind an env switch, zero cost off (HARNESS_DUMP + Nsight proof), no second build swap;
+        recordings on C: (268 GB free; 10-20 GB expected); tolerance 1 % (0.5 % = 4x samples, only where needed); model
+        deltas (ContactShade, first-vertex sky calibration, 2-layer leaf cap, 32-light caps in paths / fog vs 100+ night
+        lights, uniform fog weights, sky_range) reported with numbers, unchanged unless ATN picks a row; R2 adds a debug
+        view of the game's own sun shadow-map term. Owner: coordinator
       - [ ] SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix our skill sets again"): the
         lessons of the bug fixes + reference suite into .agents/skills + the zip. Owner: coordinator after REF1
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
