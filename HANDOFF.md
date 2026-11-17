@@ -369,7 +369,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
 - (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
 - DESIGN PT DI (des1_ DONE 09:0x, 559 lines; review rv1_ (Opus xHigh) STARTED -> d ... | des1_, coordinator (review)
-- DESIGN VMF (des2_ DONE 09:1x, 493 lines + designs/vmf_mc Monte Carlo; review rv2 ... | des2_, coordinator (review)
+- DESIGN VMF (des2_ DONE 09:1x; review rv2_ DONE 09:5x: build after changes + step ... | des2_, coordinator (review)
 - DESIGN SDK AUDIT (des3_ DONE 08:4x, review rv3_ (Opus xHigh) STARTED 08:5x -> de ... | des3_, coordinator (review, verdict column)
 - VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT st ... | coordinator
 - SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
@@ -2548,7 +2548,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         RTXDI-Library's RAB_* bridge keeping the game's light formula, torches via one DI + GI reservoir, the ReSTIR GI
         upgrades (lin2026, junkins2026, pairwise MIS / duplication map / RR decorrelation, kajiya feedback check); then an
         Opus xHigh review, ATN's short summary. Owner: des1_, coordinator (review)
-      - [ ] DESIGN VMF (des2_ DONE 09:1x, 493 lines + designs/vmf_mc Monte Carlo; review rv2_ (Opus xHigh) STARTED ->
+      - [ ] DESIGN VMF (des2_ DONE 09:1x; review rv2_ DONE 09:5x: build after changes + step 0 (paper read: the design's
+        Monte Carlo IS the paper's microsurface, kappa = 2 / alpha^2 = Eq. 1): B1 lobe on receivers only (path hits would
+        break seen = unseen by +-13-25 %), B2 the paper's Fourier series needs x2 on its cosine terms + its albedo remap
+        misses (dark colours 12-19 % dark): keep ours, B3 AO estimators 1 - sum(lobe blocked) / N; far field +84 / -54 % at
+        70 deg, per-channel albedo, vMF field in PT DI's v32 bump, WH3 last; des2_ REVISING; was: review rv2_ (Opus xHigh) STARTED ->
         designs/vmf_diffuse_review.md; the paper itself unread (403 / 81 MB PDF): its fits + r-to-kappa = step 0; brightness
         kept, shape only; roughness from the gloss guide x a slider; 3 rows Experimental off; look +13 / -12 % at 45 deg,
         up to +-41 % low sun; <= 0.30 ms; 23-32 h Attila) plan_1117/designs/vmf_diffuse.md: math + shared vmf_diffuse.hlsli,
