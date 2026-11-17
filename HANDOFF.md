@@ -360,16 +360,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of ... | cpp_
 - CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
 - CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action u ... | cb1b_
-- CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, X ... | next High implementer (after bfx_ merges: build load)
-- CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | High implementer (ATN's C: AF14 scope)
-- CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | High implementer AFTER bfx_ (same dlaa_bridge
+- CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, X ... | cb2_ High STARTED 19:3x
+- CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | cb3_ High STARTED 19:3x
+- CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | High implementer (bfx_ merged
 - CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | High implementer after B1
 - CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | hb6_, coordinator
 - CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ejd_, coordinator
 - CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V ... | coordinator
 - C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GP ... | ?
 - OURS ON THE RENDER THREAD (cpp_): our add-on anywhere on the stack 8.3 ms of nig ... | coordinator (CPU PLAN 2 END)
-- BRIDGE CLAIMS (ATN 17:3x: another modder's ChatGPT review of HIS port of our bri ... | bfx_, coordinator (merge before plan step 7)
 - SER IN FORESTS (ATN 17:3x, Forge: SER made a huge difference in forests; his pat ... | plan step 6
 - NSIGHT XHIGH COUNTERS (ATN 17:5x: "let's use xhigh for it too on next nsight che ... | coordinator (plan steps 4 / 8)
 - PLAYER FLAG OVERRIDE (needed for SER / SHaRC / part A/Bs on recordings): the pla ... | next recorder touch (after fix1_)
@@ -2495,12 +2494,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         ("Run these with xHigh please": the game-code batches B1 / B5 / B7 implementers at xHigh): cb1b_ xHigh STARTED
         19:2x; a second stop = the game-code batches dropped, the exact denied action reported. Owner: cb1b_
       - [ ] CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, XAT rt_core part; rt_scene.hpp,
-        rt_core.hpp, tw_native_context; every rt_core consumer built): night1 -0.6..-1.0. Owner: next High implementer
-        (after bfx_ merges: build load)
+        rt_core.hpp, tw_native_context; every rt_core consumer built): night1 -0.6..-1.0. Owner: cb2_ High STARTED 19:3x
       - [ ] CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src/utils; the memo design's
-        guards + T1-T3, RENODX_RESOURCE_MEMO_CHECK): night1 -0.2..-0.6. Owner: High implementer (ATN's C: AF14 scope)
+        guards + T1-T3, RENODX_RESOURCE_MEMO_CHECK): night1 -0.2..-0.6. Attila first (ATN 19:2x). Owner: cb3_ High
+        STARTED 19:3x
       - [ ] CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_motion.hpp, dlaa_bridge.hpp):
-        night1 -0.3..-0.6. Owner: High implementer AFTER bfx_ (same dlaa_bridge.hpp)
+        night1 -0.3..-0.6. Owner: High implementer (bfx_ merged; start when a build slot frees: after cb2_ or cb3_)
       - [ ] CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization designs then code, EVEC design;
         engine_code.hpp after B1): stress -1.4..-3.6. Owner: High implementer after B1
       - [ ] CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, P without loopfetch, loopanim
@@ -2531,7 +2530,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         analysis / plans / reviews xHigh, implementers high, the token finding) + "Read a profile to its end before
         ranking"; tw-port-checklist testing.md: the frame recorder row (record / play / compare, play-to-play
         differences) + the bench's no-underscore variant names. SKILLS UPDATE 4b / 5 stay as planned
-      - [ ] BRIDGE CLAIMS (ATN 17:3x: another modder's ChatGPT review of HIS port of our bridge design, 7 failure-path
+      - [x] DONE 19:3x (bfx_ merged e85de8faa: F1 dlaa_bridge::OnDestroyDevice compares COM identities (proxies unwrapped)
+        at Shogun 2 / D1 / D2 / Rome Remastered / Ryse / Expeditions; F4 in Answer (done_value >= value + 1); F2
+        internal::Queued(HRESULT) on the 5 Signal / Wait; F3 refused set + rollback; F5 odd values; 5 new failing-first
+        cases in test/tw_helper_lifetime (FENCELESS stub mode, vtable hooks), suites pass x86 + amd64, 3 x86 + 13 amd64
+        add-ons built; helper untouched; not installed, not run in game; worktree agent-a1235b3edf6dd74c1 has junctions)
+        BRIDGE CLAIMS (ATN 17:3x: another modder's ChatGPT review of HIS port of our bridge design, 7 failure-path
         gaps: request missed by the watcher, the rescue signal undone by the game's queued one, the watcher's unsynced
         reads at a resolution change, shutdown order, a hung helper with no timeout, unchecked signal / wait / thread
         start, a leaked copied fence handle; ATN: "Double check and fix the real bugs please before our 7th step"):
