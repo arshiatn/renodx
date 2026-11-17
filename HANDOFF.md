@@ -359,7 +359,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | fix1_ (STARTED 16:xx)
 - CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of ... | cpp_
 - CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
-- CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action u ... | ATN (go / skip), then a High implementer
+- CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action u ... | cb1b_
 - CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, X ... | next High implementer (after bfx_ merges: build load)
 - CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | High implementer (ATN's C: AF14 scope)
 - CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | High implementer AFTER bfx_ (same dlaa_bridge
@@ -367,7 +367,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | hb6_, coordinator
 - CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ejd_, coordinator
 - CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V ... | coordinator
-- C: AF14 ships to Attila first (opt-in), other RenoDX mods only through upstream ... | ?
 - C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GP ... | ?
 - OURS ON THE RENDER THREAD (cpp_): our add-on anywhere on the stack 8.3 ms of nig ... | coordinator (CPU PLAN 2 END)
 - BRIDGE CLAIMS (ATN 17:3x: another modder's ChatGPT review of HIS port of our bri ... | bfx_, coordinator (merge before plan step 7)
@@ -2492,7 +2491,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         Rome II; the TlsGetValue thunk FF 31 FF 15 <slot> C3 at Attila 0x16246d0 / Thrones 0x1690320, Rome II inline (7
         call [slot] sites); kernel32 / kernelbase fast paths end alike (ecx = TEB, eax = slot, flags of cmp eax 0x40,
         [TEB+0x34] = 0, edx kept, ebp restored); heapfix touches neither site; the plan's site 8 corrections hold). ES8
-        + ETLS: engine_code.hpp + test/tw_engine_code; stress -1.8..-2.4. Owner: ATN (go / skip), then a High implementer
+        + ETLS: engine_code.hpp + test/tw_engine_code; stress -1.8..-2.4. ATN 19:2x: "let's retry it once more" at xHigh
+        ("Run these with xHigh please": the game-code batches B1 / B5 / B7 implementers at xHigh): cb1b_ xHigh STARTED
+        19:2x; a second stop = the game-code batches dropped, the exact denied action reported. Owner: cb1b_
       - [ ] CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, XAT rt_core part; rt_scene.hpp,
         rt_core.hpp, tw_native_context; every rt_core consumer built): night1 -0.6..-1.0. Owner: next High implementer
         (after bfx_ merges: build load)
@@ -2518,7 +2519,8 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [x] ANSWERED 19:0x (ATN: "Yeah put it in for me please ... maybe you find more stuff then I send him everything
         tomorrow": one combined zip; box CPU B6) C: heapfix notes to the author (B4G gate with numbers after B6, the loopfetch finding, memfast-128, the toolhelp
         snapshot cost, the serial merge before the sort); ATN plays B4G meanwhile (own build, own use)? (from: cpp_)
-      - [ ] C: AF14 ships to Attila first (opt-in), other RenoDX mods only through upstream with the frozen block? (from: cpp_)
+      - [x] ANSWERED 19:2x (ATN: "Do your suggestion then": Attila first, others only through upstream; B3 starts after
+        bfx_ merges) C: AF14 ships to Attila first (opt-in), other RenoDX mods only through upstream with the frozen block? (from: cpp_)
       - [ ] C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GPU events over an alt-tab),
         B4's motion constants ring removes one of the waits; waiting for ATN's go) the focus-return lockstep (~5 s of 94 ms frames after alt-tab in big battles): investigate in a helper /
         driver round, or accept? (from: cpp_)
