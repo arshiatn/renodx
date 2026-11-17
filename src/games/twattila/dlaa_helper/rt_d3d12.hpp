@@ -1923,6 +1923,9 @@ class RtScene12 {
     };
     uint32_t first_frame = 0;
     const bool opened_scene = Open(*block_of(first), version, true);
+    // The textures made: the first request's and the state's bytes let go (the player's memory: WH3's 8 frames are ~10 GB).
+    first = {};
+    state = {};
     const bool loaded = opened_scene && LoadRecordingState(recording, &first_frame, report);
     for (const HANDLE handle : opened) CloseHandle(handle);
     if (!loaded) {
@@ -1959,6 +1962,15 @@ class RtScene12 {
         *report = std::format("{}: its inputs could not be uploaded", std::get<2>(requests[index]).filename().string());
         return false;
       }
+      // Its inputs in video memory: the file keeps its block and cluster sets' bytes alone.
+      File& file = files[index];
+      const size_t block_bytes = file.block.size();
+      std::vector<uint8_t> kept(file.block.begin(), file.block.end());
+      kept.insert(kept.end(), file.sets.begin(), file.sets.end());
+      file.data = std::move(kept);
+      file.block = std::span<const uint8_t>(file.data).first(block_bytes);
+      file.sets = std::span<const uint8_t>(file.data).subspan(block_bytes);
+      file.resources.clear();
     }
     // RENODX_TW_PLAY_TRACE_FLAGS / RENODX_TW_PLAY_PATH_FLAGS=<set>[,<clear>] (tests; 0x for hex): every request's rt_flags /
     // rt_path_flags with `clear`'s bits off, then `set`'s on, as the addon's settings would send them (the helper makes
