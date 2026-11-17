@@ -1276,16 +1276,16 @@ class RtScene12 {
         *why = std::format("mesh {:016X} has no journal (captured before RENODX_TW_RECORD was set?)", key);
         return false;
       }
-      if (const auto baked = micromap_journal_.find(key); baked != micromap_journal_.end() && baked->second.build == mesh.build && baked->second.gpu_bake) {
-        *why = "GPU Micromap Baking's micromaps are not recorded (turn it off for recordings)";
+      if (const auto baked = micromap_journal_.find(key); baked != micromap_journal_.end() && baked->second.build == mesh.build && baked->second.unread) {
+        *why = std::format("mesh {:016X}'s GPU micromap bake was not read back for the journal", key);
         return false;
       }
     }
     for (const auto& [key, set] : sets_) {
       const auto baked = set_journal_.find(key);
       const bool journaled = baked != set_journal_.end() && baked->second.build == set.generation;
-      if ((set.micromaps && !journaled) || (journaled && baked->second.gpu_bake)) {
-        *why = std::format("cluster set {:016X}'s micromaps have no CPU bake in the journal", key);
+      if ((set.micromaps && !journaled) || (journaled && baked->second.unread)) {
+        *why = std::format("cluster set {:016X}'s micromaps have no bake in the journal", key);
         return false;
       }
     }
@@ -3311,6 +3311,13 @@ class RtScene12 {
     ComPtr<ID3D12Resource> gpu_readback;
     uint64_t histogram_offset = 0;
     uint32_t histogram_bytes = 0;
+#if defined(RENODX_RECORDER)
+    // The recorder's journal of a GPU bake: its outputs read back too, their places there (post-dispatch info, data,
+    // descs, indices) and the data's and descs' room.
+    ComPtr<ID3D12Resource> journal_readback;
+    std::array<uint64_t, 4> journal_offsets = {};
+    std::array<uint64_t, 2> journal_limits = {};
+#endif
     std::vector<uint32_t> uv_data;
     std::vector<uint8_t> mask_data;
     // The bake's: the micromaps' data, descs, an index a triangle (32-bit; the special ones negative), their histogram.
@@ -5355,7 +5362,7 @@ class RtScene12 {
               ++micromap_tally_[3];
 #if defined(RENODX_RECORDER)
               if (journal_on_) {
-                set_journal_[baked->key] = {.build = set->generation, .gpu_bake = baked->gpu, .data = baked->data, .descs = baked->descs,
+                set_journal_[baked->key] = {.build = set->generation, .unread = baked->gpu && baked->indices.empty(), .data = baked->data, .descs = baked->descs,
                                             .indices = baked->indices, .histogram = baked->histogram};
               }
 #endif
@@ -5538,7 +5545,7 @@ class RtScene12 {
         slot->compactions.emplace_back(made.bake->key, mesh.build);
 #if defined(RENODX_RECORDER)
         if (journal_on_) {
-          micromap_journal_[made.bake->key] = {.build = mesh.build, .gpu_bake = made.bake->gpu, .data = made.bake->data, .descs = made.bake->descs,
+          micromap_journal_[made.bake->key] = {.build = mesh.build, .unread = made.bake->gpu && made.bake->indices.empty(), .data = made.bake->data, .descs = made.bake->descs,
                                                .indices = made.bake->indices, .histogram = made.bake->histogram};
         }
 #endif
@@ -6885,6 +6892,24 @@ class RtScene12 {
           const D3D12_RANGE none = {};
           read->gpu_readback->Unmap(0, &none);
           read->gpu_readback.Reset();
+#if defined(RENODX_RECORDER)
+          // The recorder's journal: the bake's data, descs and indices as a CPU bake's (their sizes the post-dispatch
+          // info's; none when they do not fit their room: the snapshot refuses its scene).
+          const uint8_t* journal = nullptr;
+          if (read->journal_readback && SUCCEEDED(read->journal_readback->Map(0, nullptr, reinterpret_cast<void**>(const_cast<uint8_t**>(&journal))))) {
+            ommGpuPostDispatchInfo info = {};
+            std::memcpy(&info, journal + read->journal_offsets[0], sizeof(info));
+            if (info.outOmmArraySizeInBytes <= read->journal_limits[0] && info.outOmmDescSizeInBytes <= read->journal_limits[1]) {
+              read->data.assign(journal + read->journal_offsets[1], journal + read->journal_offsets[1] + info.outOmmArraySizeInBytes);
+              const auto* descs = reinterpret_cast<const D3D12_RAYTRACING_OPACITY_MICROMAP_DESC*>(journal + read->journal_offsets[2]);
+              read->descs.assign(descs, descs + (info.outOmmDescSizeInBytes / sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC)));
+              const auto* indices = reinterpret_cast<const uint32_t*>(journal + read->journal_offsets[3]);
+              read->indices.assign(indices, indices + read->triangles);
+            }
+            read->journal_readback->Unmap(0, &none);
+          }
+          read->journal_readback.Reset();
+#endif
           ++micromap_tally_[0];
           micromaps_baked_.push_back(std::move(read));
         } else {
@@ -7470,6 +7495,42 @@ class RtScene12 {
       bake.histogram_offset = plan.offsets[3];
       bake.histogram_bytes = static_cast<uint32_t>(plan.sizes[3]);
     }
+#if defined(RENODX_RECORDER)
+    // The recorder's journal (RENODX_TW_RECORD): the post-dispatch infos (the data's and descs' real sizes), data, descs
+    // and indices read back as well (AdvanceMicromaps keeps them as a CPU bake's); the builds' ones readable again after.
+    if (journal_on_) {
+      static constexpr std::array<size_t, 4> JOURNALED = {5, 0, 1, 3};
+      std::array<uint64_t, 4> bases = {};
+      uint64_t journal_bytes = 0;
+      for (size_t part = 0; part < JOURNALED.size(); ++part) {
+        bases[part] = journal_bytes;
+        journal_bytes += totals[JOURNALED[part] + 1];
+      }
+      if (ComPtr<ID3D12Resource> journal = Buffer(journal_bytes, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST)) {
+        barriers.clear();
+        for (const size_t kind : JOURNALED) {
+          const D3D12_RESOURCE_STATES state = (kind == 5) ? states[outputs[kind].Get()] : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+          if (state != D3D12_RESOURCE_STATE_COPY_SOURCE) barriers.push_back(Transition(outputs[kind].Get(), state, D3D12_RESOURCE_STATE_COPY_SOURCE));
+        }
+        list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+        for (size_t part = 0; part < JOURNALED.size(); ++part) {
+          list->CopyBufferRegion(journal.Get(), bases[part], outputs[JOURNALED[part]].Get(), 0, totals[JOURNALED[part] + 1]);
+        }
+        barriers.clear();
+        for (const size_t kind : {0u, 1u, 3u}) {
+          barriers.push_back(Transition(outputs[kind].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+        }
+        list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+        for (const Planned& plan : planned) {
+          if (plan.bake->gpu_failed) continue;
+          plan.bake->journal_readback = journal;
+          plan.bake->journal_offsets = {bases[0] + plan.offsets[6], bases[1] + plan.offsets[1], bases[2] + plan.offsets[2], bases[3] + plan.offsets[4]};
+          plan.bake->journal_limits = {plan.sizes[1], plan.sizes[2]};
+        }
+        releases_.push_back({.value = own_value_ + 1, .resource = std::move(journal)});
+      }
+    }
+#endif
     // Every output (the histograms and the post-dispatch info too), the read-back and the constants kept until the GPU is
     // past this request.
     globals->Unmap(0, nullptr);
@@ -7626,7 +7687,7 @@ class RtScene12 {
   struct Journal {
     uint64_t build = 0;
     std::vector<std::array<float, 4>> vertices;
-    bool gpu_bake = false;  // GPU Micromap Baking's (its data stayed on the GPU: not recorded)
+    bool unread = false;  // a GPU bake whose outputs were not read back (not recorded)
     std::vector<uint8_t> data;
     std::vector<D3D12_RAYTRACING_OPACITY_MICROMAP_DESC> descs;
     std::vector<uint32_t> indices;

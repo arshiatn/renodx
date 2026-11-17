@@ -135,8 +135,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     return freed ? 0 : 1;
   }
 #if defined(RENODX_RECORDER)
-  // The recorder build's player: "<any> play <recording folder> [<dump folder>]" (below, once Nsight Graphics' activity is up).
+  // The recorder build's player: "<any> play <recording folder> [<dump folder>]" (below, once Nsight Graphics' activity is up);
+  // the helper's own log held shut until then (its open below fails instead of emptying it: the player logs into its own).
   const std::vector<std::wstring> play_arguments(arguments, arguments + argument_count);
+  const bool play = play_arguments.size() >= 4 && play_arguments[2] == L"play";
+  const HANDLE kept_log = play ? CreateFileW(log_path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr) : INVALID_HANDLE_VALUE;
 #endif
   LocalFree(arguments);
   _wfopen_s(&log_file, log_path.c_str(), L"w");
@@ -169,8 +172,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // The player: a recording's requests on a scene of its own on the first adapter, no game (rt_d3d12.hpp PlayRecording; Nsight
   // Graphics' frame boundary before each trace); its log renodx-tw-play.log next to the helper; its dump <recording>\play by
   // default.
-  if (play_arguments.size() >= 4 && play_arguments[2] == L"play") {
+  if (play) {
     if (log_file != nullptr) fclose(log_file);
+    if (kept_log != INVALID_HANDLE_VALUE) CloseHandle(kept_log);
     _wfopen_s(&log_file, (folder + L"\\renodx-tw-play.log").c_str(), L"w");
     const std::filesystem::path recording = play_arguments[3];
     ComPtr<IDXGIFactory4> play_factory;
