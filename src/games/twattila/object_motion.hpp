@@ -6,6 +6,7 @@
 #pragma once
 
 #include <d3d11.h>
+#include <d3d11_1.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -141,6 +142,11 @@ uint32_t MeshKey(ID3D11Buffer* index_buffer, UINT index_offset, const Arguments&
 namespace internal {
 
 constexpr UINT MOTION_SLOT = 12;
+// The motion constants' ring (DeviceObjects::motion_ring): slots of 16 constants (D3D11.1's unit of offsets and counts).
+constexpr UINT MOTION_RING_SLOT_CONSTANTS = 16;
+constexpr UINT MOTION_RING_SLOT_BYTES = MOTION_RING_SLOT_CONSTANTS * 16;
+constexpr UINT MOTION_RING_SLOTS = 1024;
+static_assert(sizeof(MotionConstants) <= MOTION_RING_SLOT_BYTES);
 // motion.hlsli's placement table: cells (a power of two) x slots, each slot a key and four rows; and its bone pool
 // (BONE_SOLDIERS x BONE_TEXELS), found by bone key (BONE_SLOTS keys, then the pool's count; and their entries). Last
 // frame's bone keys, entries, pool, placement keys and rows at t11-t15 for the units' motion vertex shaders, this frame's
@@ -292,6 +298,16 @@ struct DeviceObjects {
   ComPtr<ID3D11PixelShader> wind_pixel_shader;
   ComPtr<ID3D11PixelShader> unit_pixel_shader;
   ComPtr<ID3D11Buffer> motion_constants;
+  // The motion constants of the draws that take none of the camera's on the GPU (a copy cannot write a dynamic buffer),
+  // a slot each in one dynamic buffer bound by its offset (D3D11.1), written with Map no-overwrite and discarded when
+  // full: no UpdateSubresource into a buffer the GPU may still read. Null where the device has no constant offsets or
+  // no-overwrite maps of constant buffers (motion_constants then). The next slot written, the last one's first constant
+  // (UINT_MAX: none yet) and its constants.
+  ComPtr<ID3D11Buffer> motion_ring;
+  ID3D11DeviceContext1* context1 = nullptr;  // `context`'s (the same object: no reference)
+  UINT ring_next = MOTION_RING_SLOTS;
+  UINT ring_first = UINT_MAX;
+  MotionConstants ring_uploaded = {};
   ComPtr<ID3D11Texture2D> motion;
   ComPtr<ID3D11RenderTargetView> motion_rtv;
   ComPtr<ID3D11ShaderResourceView> motion_srv;
@@ -480,8 +496,20 @@ inline bool PrepareDevice(ID3D11Device* device) {
     renodx::utils::log::w("[Total War] Object motion: could not create its shaders.");
     objects = {};
     objects.device = device;
+    return false;
   }
-  return objects.made;
+  D3D11_FEATURE_DATA_D3D11_OPTIONS options = {};
+  if (SUCCEEDED(device->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &options, sizeof(options)))
+      && options.ConstantBufferOffsetting && options.MapNoOverwriteOnDynamicConstantBuffer) {
+    const D3D11_BUFFER_DESC ring_desc = {.ByteWidth = MOTION_RING_SLOTS * MOTION_RING_SLOT_BYTES, .Usage = D3D11_USAGE_DYNAMIC,
+                                         .BindFlags = D3D11_BIND_CONSTANT_BUFFER, .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE};
+    if (FAILED(device->CreateBuffer(&ring_desc, nullptr, objects.motion_ring.GetAddressOf()))) {
+      objects.motion_ring.Reset();
+    }
+  }
+  renodx::utils::log::i("[Total War] Object motion: the moving draws' constants ",
+                        (objects.motion_ring ? "in a ring (D3D11.1 offsets)." : "in one buffer (no D3D11.1 constant offsets)."));
+  return true;
 }
 
 // The game's bindings back where in-draw motion draws left theirs bound (before any other draw, a redraw and the frame's
@@ -517,7 +545,7 @@ inline void RestoreBindings(ID3D11DeviceContext* native) {
   }
   ComPtr<ID3D11Buffer> constants;
   native->VSGetConstantBuffers(MOTION_SLOT, 1, constants.GetAddressOf());
-  if (constants && constants == state.objects.motion_constants) {
+  if (constants && (constants == state.objects.motion_constants || constants == state.objects.motion_ring)) {
     ID3D11Buffer* game_constants = kept.vs_constants.Get();
     native->VSSetConstantBuffers(MOTION_SLOT, 1, &game_constants);
   }
@@ -588,6 +616,12 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
     native->GetDevice(context_device.GetAddressOf());
     PrepareDevice(context_device.Get());
     objects.context = native;
+    ComPtr<ID3D11DeviceContext1> context1;  // none: no ring
+    native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf()));
+    objects.context1 = context1.Get();
+    if (objects.context1 == nullptr) {
+      objects.motion_ring.Reset();
+    }
   }
   if (!objects.made) return false;
   ID3D11Device* const device = objects.device.Get();
@@ -1046,7 +1080,33 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
   MotionConstants constants = view.constants;
   constants.unit = {mesh_key, (objects.previous_placements ? 1u : 0u), (frame_history::campaign_frames.load(std::memory_order_relaxed) != 0 ? 1u : 0u), draw_word};
   constants.draw = draw_range;
-  if (std::memcmp(&constants, &objects.motion_uploaded, sizeof(constants)) != 0 || !view.camera_copies.empty()) {
+  // The ring's slot of these constants (written unless the last one holds them), or the one buffer written in place for
+  // draws that take parts of the camera's.
+  const bool ring = objects.motion_ring && view.camera_copies.empty();
+  ID3D11Buffer* motion_constants = objects.motion_constants.Get();
+  if (ring) {
+    motion_constants = objects.motion_ring.Get();
+    if (objects.ring_first == UINT_MAX || std::memcmp(&constants, &objects.ring_uploaded, sizeof(constants)) != 0) {
+      // Slots after the last discard's are new to the GPU: written without a wait; a full ring discarded (a new one).
+      const bool full = (objects.ring_next == MOTION_RING_SLOTS);
+      D3D11_MAPPED_SUBRESOURCE mapped = {};
+      if (FAILED(native->Map(motion_constants, 0, (full ? D3D11_MAP_WRITE_DISCARD : D3D11_MAP_WRITE_NO_OVERWRITE), 0, &mapped))) {
+        release_targets();
+        return false;
+      }
+      if (full) {
+        objects.ring_next = 0;
+      }
+      // The slot's constants past MotionConstants 0, as past the one buffer's end.
+      auto* slot = static_cast<uint8_t*>(mapped.pData) + (size_t{objects.ring_next} * MOTION_RING_SLOT_BYTES);
+      std::memcpy(slot, &constants, sizeof(constants));
+      std::memset(slot + sizeof(constants), 0, MOTION_RING_SLOT_BYTES - sizeof(constants));
+      native->Unmap(motion_constants, 0);
+      objects.ring_first = objects.ring_next * MOTION_RING_SLOT_CONSTANTS;
+      objects.ring_uploaded = constants;
+      ++objects.ring_next;
+    }
+  } else if (std::memcmp(&constants, &objects.motion_uploaded, sizeof(constants)) != 0 || !view.camera_copies.empty()) {
     native->UpdateSubresource(objects.motion_constants.Get(), 0, nullptr, &constants, 0, 0);
     objects.motion_uploaded = constants;
     for (const auto& run : view.camera_copies) {
@@ -1110,8 +1170,16 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
   native->VSGetShader(bound_vertex_shader.GetAddressOf(), nullptr, nullptr);
   ID3D11VertexShader* const game_vertex_shader = GameBinding(bound_vertex_shader, kept.our_vertex_shader, kept.vertex_shader);
   ComPtr<ID3D11Buffer> bound_vs_constants;
-  native->VSGetConstantBuffers(MOTION_SLOT, 1, bound_vs_constants.GetAddressOf());
-  ID3D11Buffer* const game_vs_constants = GameBinding(bound_vs_constants, objects.motion_constants, kept.vs_constants);
+  UINT bound_vs_first = 0;
+  UINT bound_vs_count = 0;
+  if (ring) {
+    objects.context1->VSGetConstantBuffers1(MOTION_SLOT, 1, bound_vs_constants.GetAddressOf(), &bound_vs_first, &bound_vs_count);
+  } else {
+    native->VSGetConstantBuffers(MOTION_SLOT, 1, bound_vs_constants.GetAddressOf());
+  }
+  const bool vs_constants_ours = bound_vs_constants
+                                 && (bound_vs_constants == objects.motion_constants || bound_vs_constants == objects.motion_ring);
+  ID3D11Buffer* const game_vs_constants = (vs_constants_ours ? kept.vs_constants.Get() : bound_vs_constants.Get());
   ComPtr<ID3D11Buffer> game_ps_constants;
   if (pixel_constants) {
     native->PSGetConstantBuffers(MOTION_SLOT, 1, game_ps_constants.GetAddressOf());
@@ -1144,12 +1212,21 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
 
   const size_t last = objects.placement_index ^ 1;
   const size_t current = objects.placement_index;
-  ID3D11Buffer* motion_constants = objects.motion_constants.Get();
-  if (bound_vs_constants.Get() != motion_constants) {
-    native->VSSetConstantBuffers(MOTION_SLOT, 1, &motion_constants);
-  }
-  if (pixel_constants) {
-    native->PSSetConstantBuffers(MOTION_SLOT, 1, &motion_constants);
+  if (ring) {
+    if (bound_vs_constants.Get() != motion_constants || bound_vs_first != objects.ring_first
+        || bound_vs_count != MOTION_RING_SLOT_CONSTANTS) {
+      objects.context1->VSSetConstantBuffers1(MOTION_SLOT, 1, &motion_constants, &objects.ring_first, &MOTION_RING_SLOT_CONSTANTS);
+    }
+    if (pixel_constants) {
+      objects.context1->PSSetConstantBuffers1(MOTION_SLOT, 1, &motion_constants, &objects.ring_first, &MOTION_RING_SLOT_CONSTANTS);
+    }
+  } else {
+    if (bound_vs_constants.Get() != motion_constants) {
+      native->VSSetConstantBuffers(MOTION_SLOT, 1, &motion_constants);
+    }
+    if (pixel_constants) {
+      native->PSSetConstantBuffers(MOTION_SLOT, 1, &motion_constants);
+    }
   }
   // The deformed meshes' captures write the same tables draw after draw (and the units' records at the frame's end,
   // dispatch after dispatch): NVIDIA's UAV overlap (DLSS: an NVIDIA GPU) keeps the driver from waiting for the GPU to
