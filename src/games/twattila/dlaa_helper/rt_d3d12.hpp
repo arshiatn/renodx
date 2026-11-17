@@ -1544,16 +1544,16 @@ class RtScene12 {
       return false;
     }
     // The GPU resources' contents, then the meshes' BLASes (with their micromaps) and the sets' micromaps, in lists of up to
-    // ~512 MB of uploads and scratch each.
+    // ~512 MB of uploads and scratch each (`more`: a new list after; the last one left closed).
     std::vector<ComPtr<ID3D12Resource>> uploads;
     uint64_t batch_bytes = 0;
-    const auto flush = [&] {
+    const auto flush = [&](bool more = true) {
       const uint64_t value = SubmitRecorderList(list);
       const bool done = WaitFor(value);
       uploads.clear();
       batch_bytes = 0;
-      list = done ? RecorderList() : nullptr;
-      return list != nullptr;
+      list = (done && more) ? RecorderList() : nullptr;
+      return done && (!more || list != nullptr);
     };
     for (const RecordedResource& resource : RecordedResources()) {
       const auto found = resources.find(resource.name);
@@ -1603,7 +1603,7 @@ class RtScene12 {
       if ((record.flags & MESH_MICROMAPS) != 0) {
         ComPtr<ID3D12Resource> inputs;
         uint64_t indices_offset = 0;
-        if (!BuildRecordedMicromaps(list, chunk.subspan(sizeof(record) + transforms_bytes + vertices_bytes), &mesh.micromaps, &inputs, &indices_offset,
+        if (!BuildRecordedMicromaps(list, chunk.subspan(sizeof(record) + transforms_bytes + vertices_bytes), std::addressof(mesh.micromaps), std::addressof(inputs), &indices_offset,
                                     &uploads)) {
           *why = "a mesh's micromaps could not be built";
           break;
@@ -1658,7 +1658,7 @@ class RtScene12 {
       set.descs.resize(record.clusters);
       std::memcpy(set.descs.data(), chunk.data() + sizeof(record), uint64_t{record.clusters} * 16);
       if ((record.flags & SET_MICROMAPS) != 0
-          && !BuildRecordedMicromaps(list, chunk.subspan(sizeof(record) + (uint64_t{record.clusters} * 16)), &set.micromaps, &set.micromap_inputs,
+          && !BuildRecordedMicromaps(list, chunk.subspan(sizeof(record) + (uint64_t{record.clusters} * 16)), std::addressof(set.micromaps), std::addressof(set.micromap_inputs),
                                      &set.micromap_indices, &uploads)) {
         *why = "a cluster set's micromaps could not be built";
       }
@@ -1729,7 +1729,7 @@ class RtScene12 {
       if (template_builds != 0 && why->empty()) build_templates();
     }
 #endif
-    const bool loaded = why->empty() && list != nullptr && flush();
+    const bool loaded = why->empty() && list != nullptr && flush(false);
     if (!loaded) {
       if (why->empty()) *why = "the player's GPU work failed";
       return false;
@@ -1837,7 +1837,7 @@ class RtScene12 {
     uint32_t version = 0;
     std::memcpy(&version, first.block.data(), sizeof(version));
     // The block's handles by the shared textures' names (the recorded inputs' and outputs').
-    const std::array<std::pair<const char*, uint64_t dlaa_bridge::Shared::*>, 19> handles = {{
+    static constexpr std::array<std::pair<const char*, uint64_t dlaa_bridge::Shared::*>, 19> HANDLES = {{
         {"vertices", &dlaa_bridge::Shared::rt_vertices},     {"positions", &dlaa_bridge::Shared::rt_positions},
         {"sun", &dlaa_bridge::Shared::rt_sun},               {"visibility", &dlaa_bridge::Shared::rt_visibility},
         {"ambient", &dlaa_bridge::Shared::rt_ambient},       {"atlas", &dlaa_bridge::Shared::rt_atlas},
@@ -1851,12 +1851,12 @@ class RtScene12 {
     }};
     std::unordered_map<std::string, ComPtr<ID3D12Resource>> textures;
     std::vector<HANDLE> opened;
-    dlaa_bridge::Shared handle_block = {};
+    std::array<uint64_t, HANDLES.size()> handle_values = {};  // the player's, as `HANDLES` (the block is ~1 MB: off the stack)
     for (const auto* resources : {&first.resources, &state.resources}) {
       for (const auto& [name, bytes] : *resources) {
-        const auto handle = std::ranges::find(handles, std::string_view(name), [](const auto& entry) { return std::string_view(entry.first); });
+        const auto handle = std::ranges::find(HANDLES, std::string_view(name), [](const auto& entry) { return std::string_view(entry.first); });
         recording::TextureHeader texture = {};
-        if (handle == handles.end() || textures.contains(name) || bytes.size() < sizeof(texture)) continue;
+        if (handle == HANDLES.end() || textures.contains(name) || bytes.size() < sizeof(texture)) continue;
         std::memcpy(&texture, bytes.data(), sizeof(texture));
         const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
         const D3D12_RESOURCE_DESC desc = {.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D, .Width = texture.width, .Height = texture.height,
@@ -1871,14 +1871,14 @@ class RtScene12 {
           return false;
         }
         opened.push_back(shared_handle);
-        handle_block.*(handle->second) = reinterpret_cast<uint64_t>(shared_handle);
+        handle_values[handle - HANDLES.begin()] = reinterpret_cast<uint64_t>(shared_handle);
       }
     }
     // A request's block: as recorded, the player's handles in it.
     const auto block_of = [&](const File& file) {
       auto block = std::make_unique<dlaa_bridge::Shared>();
       std::memcpy(block.get(), file.block.data(), std::min(file.block.size(), sizeof(dlaa_bridge::Shared)));
-      for (const auto& handle : handles) block.get()->*handle.second = handle_block.*handle.second;
+      for (size_t index = 0; index < HANDLES.size(); ++index) block.get()->*HANDLES[index].second = handle_values[index];
       return block;
     };
     uint32_t first_frame = 0;
@@ -7691,59 +7691,59 @@ class RtScene12 {
       return RecordedResource{.name = name, .member = member, .state = WRITTEN, .made_by = MADE_BY_GROW, .written_by = BY_BOUNCE};
     };
     return {
-        {.name = "records", .member = &records_, .state = READ, .bytes = uint64_t{CLUSTER_RECORDS} * 16},
-        {.name = "uvs", .member = &uvs_, .state = READ, .bytes = uint64_t{STATIC_UVS} * 4},
-        {.name = "normals", .member = &normals_, .state = READ, .bytes = uint64_t{STATIC_TRIANGLES} * 4},
-        {.name = "build_rows", .member = &build_rows_, .state = WRITTEN},
-        {.name = "placed_instances_0", .member = &placed_instances_[0], .state = READ},
-        {.name = "placed_instances_1", .member = &placed_instances_[1], .state = READ},
-        {.name = "placed_state", .member = &placed_state_, .state = WRITTEN},
-        {.name = "set_pool", .member = &set_pool_, .state = READ},
-        {.name = "sun_rays", .member = &sun_rays_, .state = WRITTEN, .written_by = BY_TRACE},
-        history("ambient_history_0", &ambient_history_[0], HISTORY_AMBIENT, BY_TRACE),
-        history("ambient_history_1", &ambient_history_[1], HISTORY_AMBIENT, BY_TRACE),
-        history("ambient_positions", &ambient_positions_, HISTORY_AMBIENT, BY_TRACE | BY_REFLECTIONS, COMMON),
-        history("light_history_0", &light_history_[0], HISTORY_LIGHTS, BY_TRACE),
-        history("light_history_1", &light_history_[1], HISTORY_LIGHTS, BY_TRACE),
-        history("kept_positions", &kept_positions_, HISTORY_PATHS, BY_TRACE | BY_BOUNCE | BY_REFLECTIONS, COMMON),
-        history("water_positions", &water_positions_, HISTORY_WATER, BY_REFLECTIONS, COMMON),
-        history("specular_accumulated", &specular_accumulated_, HISTORY_SPECULAR, BY_REFLECTIONS),
-        history("specular_history", &specular_history_, HISTORY_SPECULAR, BY_REFLECTIONS),
-        history("specular_meta", &specular_meta_, HISTORY_SPECULAR, BY_REFLECTIONS),
-        history("specular_meta_history", &specular_meta_history_, HISTORY_SPECULAR, BY_REFLECTIONS),
-        history("reuse_samples_0", &reuse_samples_[0], HISTORY_REUSE, BY_BOUNCE),
-        history("reuse_samples_1", &reuse_samples_[1], HISTORY_REUSE, BY_BOUNCE),
-        history("reuse_data_0", &reuse_data_[0], HISTORY_REUSE, BY_BOUNCE),
-        history("reuse_data_1", &reuse_data_[1], HISTORY_REUSE, BY_BOUNCE),
-        history("reuse_surface_0", &reuse_surface_[0], HISTORY_REUSE, BY_BOUNCE),
-        history("reuse_surface_1", &reuse_surface_[1], HISTORY_REUSE, BY_BOUNCE),
-        history("own_sky_0", &own_sky_[0], HISTORY_SKY, BY_BOUNCE),
-        history("own_sky_1", &own_sky_[1], HISTORY_SKY, BY_BOUNCE),
-        history("light_ratio_0", &light_ratio_[0], HISTORY_RATIO, BY_BOUNCE),
-        history("light_ratio_1", &light_ratio_[1], HISTORY_RATIO, BY_BOUNCE),
-        history("reflect_samples_0", &reflect_samples_[0], HISTORY_REFLECT, BY_REFLECTIONS),
-        history("reflect_samples_1", &reflect_samples_[1], HISTORY_REFLECT, BY_REFLECTIONS),
-        history("reflect_data_0", &reflect_data_[0], HISTORY_REFLECT, BY_REFLECTIONS),
-        history("reflect_data_1", &reflect_data_[1], HISTORY_REFLECT, BY_REFLECTIONS),
-        cache("cache_keys", &cache_keys_),
-        cache("cache_radiance", &cache_radiance_),
-        cache("cache_sums", &cache_sums_),
-        cache("cache_albedo", &cache_albedo_),
-        cache("light_fit", &light_fit_),
-        cache("light_kept", &light_kept_),
-        sharc("sharc_0", &sharc_buffers_[0]),
-        sharc("sharc_1", &sharc_buffers_[1]),
-        sharc("sharc_2", &sharc_buffers_[2]),
-        output("visibility", &visibility_, BY_TRACE),
-        output("ambient", &ambient_, BY_TRACE),
-        output("light_mask", &light_mask_, BY_TRACE),
-        output("fog", &fog_, BY_TRACE),
-        output("fog_lights", &fog_lights_, BY_TRACE),
-        output("tint", &tint_, BY_TRACE),
-        output("bounce", &bounce_, BY_BOUNCE),
-        output("reflection", &reflection_, BY_REFLECTIONS),
-        output("specular", &specular_, BY_REFLECTIONS),
-        output("hit_distance", &hit_distance_, BY_REFLECTIONS),
+        {.name = "records", .member = std::addressof(records_), .state = READ, .bytes = uint64_t{CLUSTER_RECORDS} * 16},
+        {.name = "uvs", .member = std::addressof(uvs_), .state = READ, .bytes = uint64_t{STATIC_UVS} * 4},
+        {.name = "normals", .member = std::addressof(normals_), .state = READ, .bytes = uint64_t{STATIC_TRIANGLES} * 4},
+        {.name = "build_rows", .member = std::addressof(build_rows_), .state = WRITTEN},
+        {.name = "placed_instances_0", .member = std::addressof(placed_instances_[0]), .state = READ},
+        {.name = "placed_instances_1", .member = std::addressof(placed_instances_[1]), .state = READ},
+        {.name = "placed_state", .member = std::addressof(placed_state_), .state = WRITTEN},
+        {.name = "set_pool", .member = std::addressof(set_pool_), .state = READ},
+        {.name = "sun_rays", .member = std::addressof(sun_rays_), .state = WRITTEN, .written_by = BY_TRACE},
+        history("ambient_history_0", std::addressof(ambient_history_[0]), HISTORY_AMBIENT, BY_TRACE),
+        history("ambient_history_1", std::addressof(ambient_history_[1]), HISTORY_AMBIENT, BY_TRACE),
+        history("ambient_positions", std::addressof(ambient_positions_), HISTORY_AMBIENT, BY_TRACE | BY_REFLECTIONS, COMMON),
+        history("light_history_0", std::addressof(light_history_[0]), HISTORY_LIGHTS, BY_TRACE),
+        history("light_history_1", std::addressof(light_history_[1]), HISTORY_LIGHTS, BY_TRACE),
+        history("kept_positions", std::addressof(kept_positions_), HISTORY_PATHS, BY_TRACE | BY_BOUNCE | BY_REFLECTIONS, COMMON),
+        history("water_positions", std::addressof(water_positions_), HISTORY_WATER, BY_REFLECTIONS, COMMON),
+        history("specular_accumulated", std::addressof(specular_accumulated_), HISTORY_SPECULAR, BY_REFLECTIONS),
+        history("specular_history", std::addressof(specular_history_), HISTORY_SPECULAR, BY_REFLECTIONS),
+        history("specular_meta", std::addressof(specular_meta_), HISTORY_SPECULAR, BY_REFLECTIONS),
+        history("specular_meta_history", std::addressof(specular_meta_history_), HISTORY_SPECULAR, BY_REFLECTIONS),
+        history("reuse_samples_0", std::addressof(reuse_samples_[0]), HISTORY_REUSE, BY_BOUNCE),
+        history("reuse_samples_1", std::addressof(reuse_samples_[1]), HISTORY_REUSE, BY_BOUNCE),
+        history("reuse_data_0", std::addressof(reuse_data_[0]), HISTORY_REUSE, BY_BOUNCE),
+        history("reuse_data_1", std::addressof(reuse_data_[1]), HISTORY_REUSE, BY_BOUNCE),
+        history("reuse_surface_0", std::addressof(reuse_surface_[0]), HISTORY_REUSE, BY_BOUNCE),
+        history("reuse_surface_1", std::addressof(reuse_surface_[1]), HISTORY_REUSE, BY_BOUNCE),
+        history("own_sky_0", std::addressof(own_sky_[0]), HISTORY_SKY, BY_BOUNCE),
+        history("own_sky_1", std::addressof(own_sky_[1]), HISTORY_SKY, BY_BOUNCE),
+        history("light_ratio_0", std::addressof(light_ratio_[0]), HISTORY_RATIO, BY_BOUNCE),
+        history("light_ratio_1", std::addressof(light_ratio_[1]), HISTORY_RATIO, BY_BOUNCE),
+        history("reflect_samples_0", std::addressof(reflect_samples_[0]), HISTORY_REFLECT, BY_REFLECTIONS),
+        history("reflect_samples_1", std::addressof(reflect_samples_[1]), HISTORY_REFLECT, BY_REFLECTIONS),
+        history("reflect_data_0", std::addressof(reflect_data_[0]), HISTORY_REFLECT, BY_REFLECTIONS),
+        history("reflect_data_1", std::addressof(reflect_data_[1]), HISTORY_REFLECT, BY_REFLECTIONS),
+        cache("cache_keys", std::addressof(cache_keys_)),
+        cache("cache_radiance", std::addressof(cache_radiance_)),
+        cache("cache_sums", std::addressof(cache_sums_)),
+        cache("cache_albedo", std::addressof(cache_albedo_)),
+        cache("light_fit", std::addressof(light_fit_)),
+        cache("light_kept", std::addressof(light_kept_)),
+        sharc("sharc_0", std::addressof(sharc_buffers_[0])),
+        sharc("sharc_1", std::addressof(sharc_buffers_[1])),
+        sharc("sharc_2", std::addressof(sharc_buffers_[2])),
+        output("visibility", std::addressof(visibility_), BY_TRACE),
+        output("ambient", std::addressof(ambient_), BY_TRACE),
+        output("light_mask", std::addressof(light_mask_), BY_TRACE),
+        output("fog", std::addressof(fog_), BY_TRACE),
+        output("fog_lights", std::addressof(fog_lights_), BY_TRACE),
+        output("tint", std::addressof(tint_), BY_TRACE),
+        output("bounce", std::addressof(bounce_), BY_BOUNCE),
+        output("reflection", std::addressof(reflection_), BY_REFLECTIONS),
+        output("specular", std::addressof(specular_), BY_REFLECTIONS),
+        output("hit_distance", std::addressof(hit_distance_), BY_REFLECTIONS),
     };
   }
 
