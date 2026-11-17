@@ -37,7 +37,8 @@ cbuffer ReferenceParameters : register(b2) {
 
 // The candidate's statistics (B1): per texel the current 16-frame batch's sum, then Welford's mean and M2 over the batch
 // means shifted by the first batch's (no E[x^2] - E[x]^2 cancellation where a history flattens the series), the sum of
-// products of consecutive shifted batch means (their lag-1 correlation), the last batch's shifted mean, the last frame.
+// products of consecutive shifted batch means (their lag-1 correlation), the last batch's shifted mean, the last frame;
+// a colour's w its luminance (not the bounce's camera distance).
 RWTexture2D<float4> ref_candidate_batch : register(u60);
 RWTexture2D<float4> ref_candidate_shift : register(u61);
 RWTexture2D<float4> ref_candidate_mean : register(u62);

@@ -62,6 +62,8 @@ void main(uint3 id : SV_DispatchThreadID) {
       value = float4(ref_ambient_output[id.xy], 0.f, 0.f, 0.f);
       break;
   }
+  // A colour's w its luminance (the compare's luminance variance: the channels' covariance kept).
+  if (ref_word <= REF_SOURCE_REFLECTION) value.w = dot(value.rgb, float3(0.2126f, 0.7152f, 0.0722f));
   ref_candidate_last[id.xy] = value;
   const float4 batch = ((ref_a == 0u) ? 0.f : ref_candidate_batch[id.xy]) + value;
   ref_candidate_batch[id.xy] = batch;
@@ -239,13 +241,15 @@ void main(uint3 id : SV_DispatchThreadID) {
 #endif
 #if defined(REF_PATHS)
     const bool furnace = variant == REF_FURNACE;
-    const float first_range = ((path_flags & PATH_AMBIENT) != 0u) ? min(bounce_range, sky_range) : bounce_range;
+    // The furnace's box closed for every ray (no first-ray reach: G1).
+    const float first_range = furnace ? 1.0e4f : (((path_flags & PATH_AMBIENT) != 0u) ? min(bounce_range, sky_range) : bounce_range);
     const float3 screen_albedo = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : UNSEEN_ALBEDO;
 #else
     const float roughness = saturate(guide_roughness[pixel]);
     const float alpha = ReflectAlpha(roughness);
     const bool mirror = roughness < 0.05f;
-    const bool traced = roughness <= ROUGH_LIMIT;
+    // Traced as the helper traces it (rt_path.hlsli ReflectPixel): with reflections up to ROUGH_LIMIT; occlusion alone, every roughness.
+    const bool traced = (path_flags & PATH_REFLECTIONS) != 0u && roughness <= ROUGH_LIMIT;
     float3 tangent;
     float3 bitangent;
     RefBasis(normal, tangent, bitangent);
