@@ -327,6 +327,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R7 / TEST BOXES (shs2_ 23:xx): R7 clamps: Shogun 2 sea overlay writers C8375A74 ... | per-game rounds, next test round
 - PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction): C:/Users/arshi/.cla ... | coordinator
 - (sk3_ 01:xx) Shared shaders rule (skills lesson 12): rysesonofrome/upscale_outpu ... | next shared round
+- CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila ... | coordinator
 - BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before th ... | bug1_
 - BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows ... | bug2_
 - BUG3 (bug3_, started 02:xx): DEBUG44 (g) "For every single game, the LOD bias fo ... | bug3_
@@ -2115,6 +2116,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         2's upscale_output.cs_5_0.hlsl; Shogun 2's bend_sss_gpu.hlsli and pcss.hlsli are shared the same way: move into
         twattila as shared files. testing.md says 54 suites (2026-11-16), now 72 test/tw_* folders: refresh the list.
         Owner: next shared round
+      - [ ] CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila, if you find anything that can
+        speed cpu/gpu of the game, list them please or plan to do them please"; "Don't worry about sound or time. My pc can
+        run for days"): from the three captures' WPR + Nsight: every CPU / GPU hot spot of the game and of RenoDX with its
+        expected gain, written to tools/tw/round_notes/plan_1117/speed_list.md, each a box here with an owner (a CPU / GPU
+        round after the bug fixes, plan step 4). Owner: coordinator
       - [ ] BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before the refrence runs?" -> the ones
         that need no capture now, in parallel): DEBUG44 (a) PsychoV35 red / NaN in darks: WARP repro with negative /
         near-black / Inf / NaN input, find the producer, fix V35 for every game, tw_psychov35 + tw_vanilla_exact still
