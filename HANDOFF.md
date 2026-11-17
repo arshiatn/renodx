@@ -382,6 +382,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SER VERDICT (gpr_ vs NVIDIA RTXPT): placement right, hint WRONG (InstanceID & 7 ... | ssr_
 - CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still tryi ... | ATN
 - SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | sol_
+- L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; ... | after ssr_ / G1 (helper queue)
+- PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | next recorder touch
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2773,7 +2775,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         X -> faster RT freeze rebuild -> helper screenshot key. G1 = A1 (trace: one ray for ShownNormal + the banner
         sheet test, bit-identical; -0.2 day1 / -0.25 night1 / -0.4 sea1 / -0.25 stress) + A2 (rt_lights' tile list by all
         64 threads; -0.15..0.25 with torches) + tools K1-K3 + the CPU2 review low fixes: g1_ High STARTED 20:5x.
-        Traces T1 / T2 / T4 (grass micromap level 6 variant) / T5 / T6 (clusters): gtr_ Low STARTED 20:5x. Later: A3
+        Traces T1 / T2 / T4 (grass micromap level 6 variant) / T5 / T6 (clusters): gtr_ Low DONE 21:2x
+        (plan_1117/gtr_traces.md; runs tools/tw/nsight/runs/gtr_*, profiles gtr_profiles; worktree's 5 links removed
+        alone, worktree + branch removed): T1 WH3 unit base 3.80 ms = a slow run (3.088 / 3.081 at frames 400 / 800, same
+        rays and hot lines; RT 64.7 vs 79.6 %): take two traces a point; the fix1_ build has 0 MB reflection spills (step
+        4: 450-960 MB) -> R3 likely moot, recheck in G2; T2 SER at frame 400 still slower +0.05..0.83 (day1 +0.35, night1
+        +0.05, sea1 +0.14, stress +0.83; frame 6 = frame 400 within 0.1 a pass); T4 V1 NOT measurable in the player (it
+        rebuilds micromaps from the recorded bake bytes at the recorded level: needs a live recording or a player rebake
+        option; variant = rt_d3d12.hpp:3021 GRASS_MICROMAP_LEVEL 5 -> 6); T5 S2 CONFIRMED (light_kept[0].w = 0 in WH3 high /
+        edge / unit: SolveLightFit returns before writing [0] when the game's sun is given; update rays 0.003-0.008 M in
+        high / edge vs 0.26-0.30 M elsewhere); T6 units already instanced from templates, no steady template builds;
+        clusters stress 257,545 / sea1 201,465 / day1 105,202, ~11 us per 1,000 clusters (2.73 / 2.31 / 1.06 ms): the
+        lever is skipping unmoved soldiers' instantiation or cluster LODs for far units (L1 revised). Later: A3
         reflections in two kernels, R1 SER fair + real hint, R2 path registers < 128, R3 reflection spills (G2); X1-X4
         Experimental (quarter-rate rough specular occlusion, grass ray caps, leaf copies as layers, ReSTIR visibility
         culls non-opaque); L1 clusters 1-2.7 ms read after T6; settings sweep T7 (~75 traces; player needs P1 numeric
@@ -2805,6 +2818,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         RENODX_ATTILA_EXPERIMENTAL_RENDER_PREFETCH) + prototypes not integrated (EHALF 4 of 20 conversions, EVEC capped
         capacity, EJOB delegated wake + model / 32-thread tests). sol_ xHigh review STARTED 21:1x (apply, build x86,
         tw_engine_code all parts, verdict per item) -> plan_1117/sol62_review.md. Owner: sol_
+      - [ ] L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; stress 2.73 ms): design
+        skipping unmoved soldiers' cluster instantiation and / or cluster LODs for far units (xHigh design, then High).
+        Owner: after ssr_ / G1 (helper queue)
+      - [ ] PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake bytes): a player option to
+        rebake micromaps at another level, or a live recording, before V1 (grass level 6) can be judged. Owner: next
+        recorder touch
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
