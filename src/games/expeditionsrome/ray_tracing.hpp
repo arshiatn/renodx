@@ -938,7 +938,7 @@ inline void Release(reshade::api::device* device) {
     state.failed = false;
   }
   twattila::rt_scene::OnDestroyDevice(device);
-  twattila::dlaa_bridge::Release();
+  twattila::dlaa_bridge::OnDestroyDevice(reinterpret_cast<ID3D11Device*>(device->get_native()));
 }
 
 }  // namespace expeditionsrome::dlss::ray_tracing

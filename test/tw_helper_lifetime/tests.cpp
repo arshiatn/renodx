@@ -58,12 +58,70 @@ constexpr uint32_t HEALTHY = 996;          // answers, then its GPU work arrives
 constexpr uint32_t EXITS_AFTER_ANSWER = 997;  // answers, then exits before any GPU work
 constexpr uint32_t STUCK_AFTER_ANSWER = 998;  // answers, stays alive, its GPU work never arrives
 constexpr uint32_t SILENT = 995;           // never answers
+// Answers with the request's own value and signals nothing, as a helper whose fence went (a GPU reset, not reopened):
+// from then on it reads the fence as all ones.
+constexpr uint32_t FENCELESS = 994;
 
 void Check(bool passed, const char* message) {
   if (passed) return;
   std::fprintf(stderr, "FAIL: %s (Win32 %lu)\n", message, GetLastError());
   TerminateProcess(GetCurrentProcess(), 1);
   std::abort();
+}
+
+// The software context's ID3D11DeviceContext4::Signal / Wait (slots 147 / 148 of d3d11_3.h's ID3D11DeviceContext4Vtbl),
+// counted and failed on the bridge's fence when asked; everything else passes through.
+using FenceCall = HRESULT(STDMETHODCALLTYPE*)(ID3D11DeviceContext4*, ID3D11Fence*, UINT64);
+constexpr size_t SIGNAL_SLOT = 147;
+constexpr size_t WAIT_SLOT = 148;
+FenceCall original_signal = nullptr;
+FenceCall original_wait = nullptr;
+unsigned fence_signals = 0;  // the bridge's fence's
+unsigned fence_waits = 0;
+unsigned probe_calls = 0;    // any fence's
+bool fail_next_signal = false;
+bool fail_next_wait = false;
+HRESULT STDMETHODCALLTYPE TestSignal(ID3D11DeviceContext4* context, ID3D11Fence* fence, UINT64 value) {
+  ++probe_calls;
+  if (fence == bridge_api::bridge.fence.Get()) {
+    ++fence_signals;
+    if (std::exchange(fail_next_signal, false)) return E_FAIL;
+  }
+  return original_signal(context, fence, value);
+}
+HRESULT STDMETHODCALLTYPE TestWait(ID3D11DeviceContext4* context, ID3D11Fence* fence, UINT64 value) {
+  ++probe_calls;
+  if (fence == bridge_api::bridge.fence.Get()) {
+    ++fence_waits;
+    if (std::exchange(fail_next_wait, false)) return E_FAIL;
+  }
+  return original_wait(context, fence, value);
+}
+
+// The software fence's ID3D11Fence::CreateSharedHandle (slot 7 of d3d11_3.h's ID3D11FenceVtbl), counted, the
+// `fail_share_at`-th call failed (0: none).
+using ShareCall = HRESULT(STDMETHODCALLTYPE*)(ID3D11Fence*, const SECURITY_ATTRIBUTES*, DWORD, LPCWSTR, HANDLE*);
+constexpr size_t SHARE_SLOT = 7;
+ShareCall original_share = nullptr;
+unsigned fail_share_at = 0;
+unsigned share_calls = 0;
+HRESULT STDMETHODCALLTYPE TestCreateSharedHandle(ID3D11Fence* fence, const SECURITY_ATTRIBUTES* attributes, DWORD access, LPCWSTR name,
+                                                 HANDLE* handle) {
+  if (++share_calls == fail_share_at) {
+    *handle = nullptr;
+    return E_OUTOFMEMORY;
+  }
+  return original_share(fence, attributes, access, name, handle);
+}
+
+// `object`'s vtable entry `slot` replaced by `hook`; the entry it had.
+void* PatchSlot(void* object, size_t slot, void* hook) {
+  void** vtable = *static_cast<void***>(object);
+  DWORD protection = 0;
+  Check(VirtualProtect(&vtable[slot], sizeof(void*), PAGE_READWRITE, &protection) != FALSE, "vtable writable");
+  void* original = std::exchange(vtable[slot], hook);
+  VirtualProtect(&vtable[slot], sizeof(void*), protection, &protection);
+  return original;
 }
 
 BOOL WINAPI TestAssignProcessToJobObject(HANDLE job, HANDLE process) {
@@ -176,11 +234,12 @@ int HelperStub(char** argv) {
   ComPtr<ID3D12CommandQueue> queue;
   ComPtr<ID3D12Fence> fence;
   uint32_t opened_generation = 0;
+  bool fenceless = false;
   for (;;) {
     const DWORD woken = WaitForSingleObject(request, 100);
     if (fence) {
       shared->fence_generation = opened_generation;
-      shared->fence_completed = fence->GetCompletedValue();
+      shared->fence_completed = (fenceless ? UINT64_MAX : fence->GetCompletedValue());
     }
     if (woken != WAIT_OBJECT_0) continue;
     if (shared->generation != 0 && shared->color == 0) {
@@ -191,7 +250,7 @@ int HelperStub(char** argv) {
       continue;
     }
     const uint32_t mode = shared->rt_request;
-    if (mode != HEALTHY && mode != EXITS_AFTER_ANSWER && mode != STUCK_AFTER_ANSWER && mode != SILENT) return 0;
+    if (mode != HEALTHY && mode != EXITS_AFTER_ANSWER && mode != STUCK_AFTER_ANSWER && mode != SILENT && mode != FENCELESS) return 0;
     if (shared->generation != opened_generation) {
       if (!device) {
         device = MakeHelperDevice();
@@ -206,6 +265,13 @@ int HelperStub(char** argv) {
     }
     if (mode == SILENT) continue;
     const uint64_t value = shared->value;
+    if (mode == FENCELESS) {
+      fenceless = true;
+      shared->evaluated = 0;
+      shared->done_value = value;
+      SetEvent(done);
+      continue;
+    }
     shared->evaluated = 1;
     shared->done_value = value + 1;
     SetEvent(done);  // The CPU answer comes before the GPU work, as the real helper's queued ray tracing.
@@ -271,6 +337,26 @@ int main(int argc, char** argv) {
   Check(SUCCEEDED(game.device.As(&game.device5)) && SUCCEEDED(game.context.As(&game.context4)), "game shared fence support");
   Check(SUCCEEDED(game.device5->CreateFence(0, D3D11_FENCE_FLAG_NONE, IID_PPV_ARGS(&game.tail))), "tail fence");
   auto& bridge = bridge_api::bridge;
+  // The context's Signal and Wait through the test's: the interface's calls must reach them, and still do their work.
+  original_signal = reinterpret_cast<FenceCall>(PatchSlot(game.context4.Get(), SIGNAL_SLOT, reinterpret_cast<void*>(&TestSignal)));
+  original_wait = reinterpret_cast<FenceCall>(PatchSlot(game.context4.Get(), WAIT_SLOT, reinterpret_cast<void*>(&TestWait)));
+  {
+    ComPtr<ID3D11Fence> probe;
+    Check(SUCCEEDED(game.device5->CreateFence(0, D3D11_FENCE_FLAG_NONE, IID_PPV_ARGS(&probe))), "probe fence");
+    Check(SUCCEEDED(game.context4->Signal(probe.Get(), 1)) && SUCCEEDED(game.context4->Wait(probe.Get(), 1)) && probe_calls == 2,
+          "Signal and Wait reach slots 147 and 148");
+    game.context->Flush();
+    const ULONGLONG until = GetTickCount64() + 2000;
+    while (probe->GetCompletedValue() < 1 && GetTickCount64() < until) Sleep(1);
+    Check(probe->GetCompletedValue() == 1, "the patched Signal still signals");
+    ComPtr<ID3D11Fence> shared_probe;
+    Check(SUCCEEDED(game.device5->CreateFence(0, D3D11_FENCE_FLAG_SHARED, IID_PPV_ARGS(&shared_probe))), "shared probe fence");
+    original_share = reinterpret_cast<ShareCall>(PatchSlot(shared_probe.Get(), SHARE_SLOT, reinterpret_cast<void*>(&TestCreateSharedHandle)));
+    HANDLE probe_handle = nullptr;
+    Check(SUCCEEDED(shared_probe->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &probe_handle)) && probe_handle != nullptr
+          && share_calls == 1, "CreateSharedHandle reaches slot 7 and still shares");
+    CloseHandle(probe_handle);
+  }
 
   const std::wstring name = L"Local\\RenoDX_TW_DLAA_" + std::to_wstring(GetCurrentProcessId());
   HANDLE occupied = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(bridge_api::Shared), name.c_str());
@@ -534,6 +620,119 @@ int main(int argc, char** argv) {
     CheckClosed();
     std::printf("PASS: %s: both sets' waits freed by the recovery process, logged once\n", test.name);
   }
+
+  // Another D3D11 device of the process ends (a probe's, an overlay's) while the game's GPU waits on the helper: the set,
+  // its recovery and the wait stay, so a helper that stops later is still freed (Shogun 2, Divinity, Rome Remastered,
+  // Ryse and Expeditions released the set at any device's end, and the older set's wait was then nobody's).
+  StartReady(game, "start other-device test");
+  {
+    Check(bridge_api::Prepare(device, 16, 16), "the set");
+    Check(RequestAs(game, bridge_api::EVALUATE, STUCK_AFTER_ANSWER), "a request whose GPU work never arrives");
+    const ComPtr<ID3D11Fence> first_fence = bridge.fence;
+    const HANDLE recovery = bridge.watchdog.recovery;
+    const uint64_t waited = bridge.watchdog.waited.load();
+    {
+      ComPtr<ID3D11Device> other;
+      Check(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, other.GetAddressOf(),
+                                        nullptr, nullptr)), "another device");
+      bridge_api::OnDestroyDevice(other.Get());
+    }
+    Check(bridge.width == 16 && bridge.device && bridge.fence == first_fence && bridge.watchdog.recovery == recovery
+          && bridge.watchdog.waited.load() == waited && waited != 0, "another device's end leaves the set, its recovery and its wait");
+    Check(bridge_api::Prepare(device, 32, 32), "a second set");
+    Check(RequestAs(game, bridge_api::EVALUATE, STUCK_AFTER_ANSWER), "the helper closes the first set's fence");
+    processes_created = 0;
+    TerminateProcess(bridge.process, 1);
+    game.QueueTail();
+    Check(game.TailWithin(8000), "the game's GPU gets past the first set's wait");
+    Check(first_fence->GetCompletedValue() == 2 && processes_created.load() == 1, "freed by the recovery");
+    bridge_api::OnDestroyDevice(device);
+    Check(bridge.width == 0 && !bridge.device && !bridge.fence && bridge.watchdog.recovery == nullptr && bridge.watchdog.retired.empty(),
+          "the bridge's own device's end releases it");
+  }
+  bridge_api::Shutdown();
+  CheckClosed();
+  std::puts("PASS: another device's end leaves the set and its recovery; the bridge's own device's end releases it");
+
+  // A helper whose fence went answers a steady request with its own value and signals nothing, while the game's GPU
+  // already waits for the next value: no answer, so the watcher ends the helper and the recovery frees the wait (the
+  // helper reads the fence as all ones, which the stuck test never counts).
+  StartReady(game, "start fence-less answer test");
+  {
+    Check(bridge_api::Prepare(device, 16, 16), "the set");
+    Check(RequestAs(game, bridge_api::EVALUATE, HEALTHY), "a request that makes the next one steady");
+    Check(RequestAs(game, bridge_api::EVALUATE, FENCELESS) && bridge.pending, "a steady request, its wait queued");
+    processes_created = 0;
+    Check(!RequestAs(game, bridge_api::EVALUATE, FENCELESS), "nothing evaluated by a fence-less helper");
+    game.QueueTail();
+    Check(game.TailWithin(8000), "the game's GPU gets past the steady request's wait");
+    Check(bridge.watchdog.failed.load() && bridge.failed && processes_created.load() == 1, "the fence-less answer is no answer: one recovery");
+  }
+  bridge_api::Shutdown();
+  CheckClosed();
+  std::puts("PASS: a fence-less answer to a steady request turns the bridge off and the recovery frees its wait");
+
+  // The game's own Signal or Wait on the set's fence fails: off at once. A failed signal asks the helper nothing (it would
+  // wait for a value that never comes); after a failed wait (the deferred one in Request, BeforeSharedWrites') no signal
+  // of the game's follows, which could land before the helper's and be moved back by it.
+  for (int failure = 0; failure < 3; ++failure) {
+    StartReady(game, "start failed fence call test");
+    Check(bridge_api::Prepare(device, 16, 16), "the set");
+    Check(RequestAs(game, (failure == 0 ? bridge_api::EVALUATE : bridge_api::PRESENT_FRAME), HEALTHY), "a first request");
+    const uint64_t asked = bridge.shared->value;
+    const unsigned signals = fence_signals;
+    if (failure == 0) {
+      fail_next_signal = true;
+    } else {
+      fail_next_wait = true;
+    }
+    if (failure == 2) {
+      bridge_api::BeforeSharedWrites(game.context.Get());
+      Check(bridge.failed && !fail_next_wait, "a failed wait before the shared writes turns the bridge off");
+    }
+    Check(!RequestAs(game, bridge_api::EVALUATE, HEALTHY) && bridge.failed, "a failed signal or wait turns the bridge off");
+    Check(!fail_next_signal && !fail_next_wait, "the failure was injected");
+    Check(fence_signals == signals + (failure == 0 ? 1u : 0u) && bridge.shared->value == asked, "nothing signalled or asked after it");
+    game.QueueTail();
+    Check(game.TailWithin(3000), "nothing left waiting");
+    bridge_api::Shutdown();
+    CheckClosed();
+  }
+  std::puts("PASS: a failed Signal or Wait of the game's on the set's fence turns the bridge off, with no signal or request after it");
+
+  // The fence's second handle, the recovery's, can't be made: nothing would free the set's waits if the helper stopped, so
+  // Prepare fails, and what the helper got of the set (its fence too) is closed there again.
+  StartReady(game, "start recovery handle test");
+  {
+    DWORD helper_before = 0;
+    DWORD helper_after = 0;
+    Check(GetProcessHandleCount(bridge.process, &helper_before), "helper handles before the set");
+    share_calls = 0;
+    fail_share_at = 2;
+    Check(!bridge_api::Prepare(device, 16, 16, true, true, DXGI_FORMAT_R10G10B10A2_UNORM, true), "a fence without a recovery handle fails Prepare");
+    fail_share_at = 0;
+    Check(share_calls == 2, "the recovery's handle was the one refused");
+    Check(GetProcessHandleCount(bridge.process, &helper_after) && helper_before == helper_after, "the helper's handles closed again");
+    Check(bridge.failed && bridge.watchdog.recovery == nullptr && !bridge.fence && bridge.width == 0 && bridge.shared->fence == 0,
+          "off, nothing kept of the set");
+  }
+  bridge_api::Shutdown();
+  CheckClosed();
+  std::puts("PASS: a set whose fence has no recovery handle is refused and rolled back");
+
+  // A fence-less answer gives back the game's own (odd) value: the game's next value is odd still, the helper's even, as
+  // the recovery's SignalAbandoned expects.
+  StartReady(game, "start odd value test");
+  {
+    Check(bridge_api::Prepare(device, 16, 16), "the set");
+    Check(!RequestAs(game, bridge_api::EVALUATE, FENCELESS) && bridge.value == 1, "a fence-less answer: the game's own value back");
+    Check(RequestAs(game, bridge_api::EVALUATE, HEALTHY) && bridge.shared->value == 3 && bridge.value == 4, "the game's next value is odd");
+    game.QueueTail();
+    Check(game.TailWithin(3000), "the helper's even value reached");
+  }
+  bridge_api::Shutdown();
+  CheckClosed();
+  std::puts("PASS: the game's fence values stay odd after a fence-less answer");
 
   // Textures that could not be made: tried again at another size or after 30 s, three times a session, a line each. Last:
   // a 32-bit process may find no room afterwards for a later case's 512 MB ray tracing texture.

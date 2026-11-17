@@ -337,7 +337,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.evaluated_frame = 0;
   }
   if (objects.device.Get() == native) objects = {};
-  twattila::dlaa_bridge::Release();
+  twattila::dlaa_bridge::OnDestroyDevice(native);
 }
 
 // The immediate context of a D3D11 command list (null: another API or a deferred context).

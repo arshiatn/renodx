@@ -179,7 +179,7 @@ struct RetiredFence {
 // What the watcher thread and the game's thread share. The watcher reads no D3D object: the handles are the recovery's.
 struct Watchdog {
   std::shared_mutex mutex;  // `recovery` and `retired`
-  HANDLE recovery = nullptr;  // bridge.fence's shared handle (null: none could be made, nothing frees this set)
+  HANDLE recovery = nullptr;  // bridge.fence's shared handle (null: no set)
   std::vector<RetiredFence> retired;
   // The highest value the game's GPU was told to wait for on bridge.fence (0: none). Stored before the wait is queued and
   // `failed` read after it, the watcher the other way round: a wait is either not queued or in what the recovery frees.
@@ -353,6 +353,14 @@ inline bool Fail(const std::string& status) {
   bridge.status = status;
   renodx::utils::log::w("[Total War] ", status);
   return false;
+}
+
+// A Signal or Wait of the game's on the set's fence was queued; false: off. Past a failed wait the game's next signal
+// could land before the helper's, and past a failed signal the helper would wait for a value that never comes: either way
+// the helper's late signal moves the fence below the game's values, which the recovery can't free.
+inline bool Queued(HRESULT result) {
+  if (SUCCEEDED(result)) return true;
+  return Fail("DLAA: the game's GPU could not signal or wait for the helper's fence (off).");
 }
 
 // The watcher's verdict taken over on the game's thread (said once); false: the helper runs.
@@ -616,16 +624,17 @@ inline uint64_t ShareWithHelper(HANDLE handle) {
 
 // The last request's answer (once the helper read it and signalled its value; a steady one's usually long there),
 // waited for `timeout` ms at most; false: none (it stopped or did not answer: off; the watcher ends it and frees what
-// the game's GPU waits for from it).
+// the game's GPU waits for from it). A steady request's (`pending`) wait for the helper's next value is queued already: an
+// answer without that value (a helper whose fence went) would leave the game's GPU waiting for good, so it is none either.
 inline bool Answer(DWORD timeout = 5000) {
-  bridge.pending = false;
+  const bool steady = std::exchange(bridge.pending, false);
   const auto& shared = *bridge.shared;
   const std::array<HANDLE, 2> handles = {bridge.done, bridge.process};
   LARGE_INTEGER started;
   LARGE_INTEGER ended;
   QueryPerformanceCounter(&started);
   const bool answered = WaitForMultipleObjects(2, handles.data(), FALSE, timeout) == WAIT_OBJECT_0
-                        && shared.done_value >= bridge.value;
+                        && shared.done_value >= bridge.value + (steady ? 1u : 0u);
   QueryPerformanceCounter(&ended);
   bridge.answer_ticks += ended.QuadPart - started.QuadPart;
   if (!answered) {
@@ -987,10 +996,11 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   shared.rt_light_tile_row = bridge.rt_light_tile_row;
   shared.fence = transfer(fence_handle);
   if (shared.fence == 0) return fail("DLAA: could not transfer the shared fence.", false);
-  // A second handle of the fence stays here for the recovery (without one nothing frees this set if the helper stops).
+  // A second handle of the fence stays here for the recovery: without one nothing would free this set if the helper
+  // stopped, so none is a failure, as a watcher that could not start.
   HANDLE recovery = nullptr;
   if (FAILED(bridge.fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &recovery))) {
-    recovery = nullptr;
+    return fail("DLAA: no recovery handle for the shared fence.", false);
   }
   {
     const std::unique_lock lock(bridge.watchdog.mutex);
@@ -1038,9 +1048,11 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
     if (!Answer(20000)) return false;
     bridge.steady[last] = shared.evaluated != 0 && shared.done_value == shared.value + 1;
   }
-  if (bridge.deferred != 0) context4->Wait(bridge.fence.Get(), std::exchange(bridge.deferred, 0));
-  ++bridge.value;
-  context4->Signal(bridge.fence.Get(), bridge.value);
+  if (bridge.deferred != 0 && !Queued(context4->Wait(bridge.fence.Get(), std::exchange(bridge.deferred, 0)))) return false;
+  // The game's values odd, the helper's even (the recovery signals only a landed odd one's next), also after a fence-less
+  // answer that gave back the game's own value.
+  bridge.value = (bridge.value + 1) | 1u;
+  if (!Queued(context4->Signal(bridge.fence.Get(), bridge.value))) return false;
   context->Flush();
   shared.value = bridge.value;
   fill(&shared);
@@ -1058,8 +1070,7 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
     if (HelperLost()) return false;
     bridge.pending = true;
     bridge.pending_kind = kind;
-    context4->Wait(bridge.fence.Get(), bridge.value + 1);
-    return true;
+    return Queued(context4->Wait(bridge.fence.Get(), bridge.value + 1));
   }
   // Waited for: the first after new shared objects may start NVIDIA's features (Streamline and DLSS-G: seconds when cold).
   const int64_t answer_ticks_before = bridge.answer_ticks;
@@ -1074,8 +1085,7 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
     return shared.evaluated != 0;
   }
   if (HelperLost()) return false;
-  context4->Wait(bridge.fence.Get(), bridge.value);
-  return true;
+  return Queued(context4->Wait(bridge.fence.Get(), bridge.value));
 }
 
 }  // namespace internal
@@ -1091,7 +1101,8 @@ inline void BeforeSharedWrites(ID3D11DeviceContext* context) {
   }
   ComPtr<ID3D11DeviceContext4> context4;
   if (FAILED(context->QueryInterface(IID_PPV_ARGS(context4.GetAddressOf())))) return;
-  context4->Wait(bridge.fence.Get(), std::exchange(bridge.deferred, 0));
+  // Failed: off, so no later signal of the game's comes before the helper's.
+  internal::Queued(context4->Wait(bridge.fence.Get(), std::exchange(bridge.deferred, 0)));
 }
 
 // This frame's ray tracing (its inputs written on `context` before this: the vertex texture's captures, the positions,
@@ -1430,9 +1441,10 @@ inline std::string FrameGenerationStatus() {
   return (bridge.shared != nullptr) ? std::string(bridge.shared->fg_status) : std::string();
 }
 
-// The game's device is going away: the shared objects with it (the helper reopens the next ones). `tell_helper`: another
-// anti-aliasing took over: an empty set for the helper (its handles and DLSS's feature go at once, the rest with its idle
-// release); the device and the leaves' atlas stay for a quick return, its meshes still point there (rt_scene frees it).
+// The bridge's device is going away (OnDestroyDevice checks that it is): the shared objects with it (the helper reopens the
+// next ones). `tell_helper`: another anti-aliasing took over: an empty set for the helper (its handles and DLSS's feature go
+// at once, the rest with its idle release); the device and the leaves' atlas stay for a quick return, its meshes still point
+// there (rt_scene frees it).
 inline void Release(bool tell_helper = false) {
   if (tell_helper && bridge.pending) internal::Answer(20000);
   internal::RetireFence(!tell_helper);
@@ -1483,6 +1495,21 @@ inline void Release(bool tell_helper = false) {
     bridge.rt_atlas = {};
     bridge.device.Reset();
   }
+}
+
+// A D3D11 device of the game's process is going away (ReShade's proxy or not): the bridge's objects with it when it is
+// theirs. Another's end (a probe's, an overlay's) leaves the set alone: its recovery handles and the waits the game's GPU
+// has queued on its fence, which Release would drop.
+inline void OnDestroyDevice(ID3D11Device* device) {
+  if (device == nullptr || !bridge.device) return;
+  const auto identity = [](IUnknown* object) {
+    renodx::utils::directx::TryNativeFromReShadeProxy(&object);
+    ComPtr<IUnknown> unknown;
+    object->QueryInterface(IID_PPV_ARGS(unknown.GetAddressOf()));
+    return unknown;
+  };
+  if (identity(device) != identity(bridge.device.Get())) return;
+  Release();
 }
 
 // The addon's unload (AddonUninit, after its users of the bridge are unregistered; never DllMain: it waits for the
