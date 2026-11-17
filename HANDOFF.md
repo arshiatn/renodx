@@ -383,7 +383,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | ATN (EJOB / EVEC / EHALF integration stay with ATN's ChatGPT
 - WRITER SMALL FIXES (from Sol's 0001 review): our engine_code.hpp writer: (a) a f ... | ATN's go (game-code file, theoretical today: no site crosses
 - L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; ... | after ssr_ / G1 (helper queue)
-- PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rbk_
 - CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's ren ... | the combined bench (ATN's go)
 - SER ON IN WH3 (ssr_: faster in all three forest views, same picture, repeats exa ... | coordinator after g1_
 - SHARC COST 2 (ssr_): the update pass 0.26-0.72 ms (latency-bound, 12-28 % occupa ... | next SHaRC round
@@ -391,6 +390,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our ... | next helper round (measure first)
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
 - EJOB-FORK CHECKS (ATN 23:3x: ATN's other session finished: local branch ejob-for ... | coordinator
+- TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2854,7 +2854,14 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; stress 2.73 ms): design
         skipping unmoved soldiers' cluster instantiation and / or cluster LODs for far units (xHigh design, then High).
         Owner: after ssr_ / G1 (helper queue)
-      - [ ] PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake bytes): a player option to
+      - [x] DONE 23:4x rbk_, merged e9020b042 (rbk_notes.md): RENODX_TW_PLAY_MICROMAP_LEVEL (grass) /
+        _LEAF_MICROMAP_LEVEL (leaves, own level 6), play-only; recordings already hold every bake input (mesh UVs from
+        state.bin, cluster-set UVs from the first request's vertices texture, masks from its atlas); unset = 0
+        differing chunks; level 5 rebake = live bake (0 different trace outputs, same 13,648,656 data bytes; the OMM GPU
+        baker orders micromaps differently per run). GRASS LEVEL 6 NOT WORTH IT: <= ~0.04 ms anywhere (grass_ground trace
+        10.22 -> 10.22, day1_low 7.63 -> 7.59, night1_low 13.28 -> 13.24), hardware rays -5..10 %, grass OMM 3.8-3.9x
+        (0.55 -> 2.12 MiB), ~4x first bake, < 0.13 % of 4K pixels change: level stays 5. Finding: the grass hot loops are
+        NOT unknown micro-triangles. Was: PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake bytes): a player option to
         rebake micromaps at another level, or a live recording, before V1 (grass level 6) can be judged. ATN 21:3x:
         "Cannot you do a new recording? Maybe max out the 3 grass sliders, zoom on the ground in Constantinople and
         record?" -> rcg_ Low STARTED 21:3x: recorder helpers BASE (level 5) + V1 (level 6), grass sliders max, two
@@ -2912,7 +2919,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         22:3x told that session to keep it local and remove the push. Until ATN says it is removed: no pull / merge of
         origin/atn-mods, my commits stay local, no pushes (never force). Then: if origin went back to 3a8305fab, push as
         usual; if a revert commit was added, merge origin (net zero) and push. Owner: ATN, then coordinator
-      - [ ] SER ON IN WH3 (ssr_: faster in all three forest views, same picture, repeats exactly 117 / 117): make Path
+      - [ ] SER ON IN WH3 (ssr_: faster in all three forest views, same picture, repeats exactly 117 / 117; rbk_: one of
+        its players may have overlapped ssr_'s trace ssr_wh3_forest_unit_base_ser at 21:11: retrace WH3 unit base + SER
+        twice before switching): make Path
         Tracing SER on by default for WH3 (the default lives in rt_scene.hpp, g1_'s file: after g1_ merges); Attila
         stays off (day1 -0.07, sea1 +0.05: ATN's call). Owner: coordinator after g1_
       - [ ] SHARC COST 2 (ssr_): the update pass 0.26-0.72 ms (latency-bound, 12-28 % occupancy): skip update threads on
@@ -2944,6 +2953,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         Low EJOB build + tests only (no analysis); (3) then one xHigh E3P design check (never stopped itself; Sol + the
         other session rejected it on merit: fault risk, heapfix area); EVEC skipped (-0.1..-0.3, exactness not
         provable statically by two analyses). A stop = final for that item only. Owner: coordinator
+      - [ ] TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started as `powershell -File ...
+        -Env $array` (rbk_'s first batch, renamed nsight\runs\rbkpre_*, was level 5 only): accept one ;-separated
+        string or fail loudly on more than one entry; check other agents' multi-Env runs; (b) runners must start the
+        windows-subsystem player with Start-Process -Wait (a bare & returns at once and outlives gpu_job.lock); (c) the
+        55 GB commit guard trips while builds run: wait for < 32 GB committed before a trace. Put (b) + (c) in
+        testing.md. Owner: next tools touch
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
