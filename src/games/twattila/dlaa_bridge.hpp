@@ -179,7 +179,7 @@ struct RetiredFence {
 // What the watcher thread and the game's thread share. The watcher reads no D3D object: the handles are the recovery's.
 struct Watchdog {
   std::shared_mutex mutex;  // `recovery` and `retired`
-  HANDLE recovery = nullptr;  // bridge.fence's shared handle (null: none could be made, nothing frees this set)
+  HANDLE recovery = nullptr;  // bridge.fence's shared handle (null: no set)
   std::vector<RetiredFence> retired;
   // The highest value the game's GPU was told to wait for on bridge.fence (0: none). Stored before the wait is queued and
   // `failed` read after it, the watcher the other way round: a wait is either not queued or in what the recovery frees.
@@ -996,10 +996,11 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   shared.rt_light_tile_row = bridge.rt_light_tile_row;
   shared.fence = transfer(fence_handle);
   if (shared.fence == 0) return fail("DLAA: could not transfer the shared fence.", false);
-  // A second handle of the fence stays here for the recovery (without one nothing frees this set if the helper stops).
+  // A second handle of the fence stays here for the recovery: without one nothing would free this set if the helper
+  // stopped, so none is a failure, as a watcher that could not start.
   HANDLE recovery = nullptr;
   if (FAILED(bridge.fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &recovery))) {
-    recovery = nullptr;
+    return fail("DLAA: no recovery handle for the shared fence.", false);
   }
   {
     const std::unique_lock lock(bridge.watchdog.mutex);

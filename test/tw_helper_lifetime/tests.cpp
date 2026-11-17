@@ -98,6 +98,22 @@ HRESULT STDMETHODCALLTYPE TestWait(ID3D11DeviceContext4* context, ID3D11Fence* f
   return original_wait(context, fence, value);
 }
 
+// The software fence's ID3D11Fence::CreateSharedHandle (slot 7 of d3d11_3.h's ID3D11FenceVtbl), counted, the
+// `fail_share_at`-th call failed (0: none).
+using ShareCall = HRESULT(STDMETHODCALLTYPE*)(ID3D11Fence*, const SECURITY_ATTRIBUTES*, DWORD, LPCWSTR, HANDLE*);
+constexpr size_t SHARE_SLOT = 7;
+ShareCall original_share = nullptr;
+unsigned fail_share_at = 0;
+unsigned share_calls = 0;
+HRESULT STDMETHODCALLTYPE TestCreateSharedHandle(ID3D11Fence* fence, const SECURITY_ATTRIBUTES* attributes, DWORD access, LPCWSTR name,
+                                                 HANDLE* handle) {
+  if (++share_calls == fail_share_at) {
+    *handle = nullptr;
+    return E_OUTOFMEMORY;
+  }
+  return original_share(fence, attributes, access, name, handle);
+}
+
 // `object`'s vtable entry `slot` replaced by `hook`; the entry it had.
 void* PatchSlot(void* object, size_t slot, void* hook) {
   void** vtable = *static_cast<void***>(object);
@@ -333,6 +349,13 @@ int main(int argc, char** argv) {
     const ULONGLONG until = GetTickCount64() + 2000;
     while (probe->GetCompletedValue() < 1 && GetTickCount64() < until) Sleep(1);
     Check(probe->GetCompletedValue() == 1, "the patched Signal still signals");
+    ComPtr<ID3D11Fence> shared_probe;
+    Check(SUCCEEDED(game.device5->CreateFence(0, D3D11_FENCE_FLAG_SHARED, IID_PPV_ARGS(&shared_probe))), "shared probe fence");
+    original_share = reinterpret_cast<ShareCall>(PatchSlot(shared_probe.Get(), SHARE_SLOT, reinterpret_cast<void*>(&TestCreateSharedHandle)));
+    HANDLE probe_handle = nullptr;
+    Check(SUCCEEDED(shared_probe->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &probe_handle)) && probe_handle != nullptr
+          && share_calls == 1, "CreateSharedHandle reaches slot 7 and still shares");
+    CloseHandle(probe_handle);
   }
 
   const std::wstring name = L"Local\\RenoDX_TW_DLAA_" + std::to_wstring(GetCurrentProcessId());
@@ -676,6 +699,26 @@ int main(int argc, char** argv) {
     CheckClosed();
   }
   std::puts("PASS: a failed Signal or Wait of the game's on the set's fence turns the bridge off, with no signal or request after it");
+
+  // The fence's second handle, the recovery's, can't be made: nothing would free the set's waits if the helper stopped, so
+  // Prepare fails, and what the helper got of the set (its fence too) is closed there again.
+  StartReady(game, "start recovery handle test");
+  {
+    DWORD helper_before = 0;
+    DWORD helper_after = 0;
+    Check(GetProcessHandleCount(bridge.process, &helper_before), "helper handles before the set");
+    share_calls = 0;
+    fail_share_at = 2;
+    Check(!bridge_api::Prepare(device, 16, 16, true, true, DXGI_FORMAT_R10G10B10A2_UNORM, true), "a fence without a recovery handle fails Prepare");
+    fail_share_at = 0;
+    Check(share_calls == 2, "the recovery's handle was the one refused");
+    Check(GetProcessHandleCount(bridge.process, &helper_after) && helper_before == helper_after, "the helper's handles closed again");
+    Check(bridge.failed && bridge.watchdog.recovery == nullptr && !bridge.fence && bridge.width == 0 && bridge.shared->fence == 0,
+          "off, nothing kept of the set");
+  }
+  bridge_api::Shutdown();
+  CheckClosed();
+  std::puts("PASS: a set whose fence has no recovery handle is refused and rolled back");
 
   // Textures that could not be made: tried again at another size or after 30 s, three times a session, a line each. Last:
   // a 32-bit process may find no room afterwards for a later case's 512 MB ray tracing texture.
