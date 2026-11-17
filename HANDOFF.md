@@ -2526,8 +2526,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         ("Run these with xHigh please": the game-code batches B1 / B5 / B7 implementers at xHigh): cb1b_ xHigh STARTED
         19:2x; STOPPED AGAIN 19:4x: the safety classifier withheld its response (not a tool call) right after tls.py
         disassembled SysWOW64 kernel32 / KernelBase TlsGetValue; both stops came during the TlsGetValue (ETLS: re-doing a
-        Windows function from the TEB) work, so that is the likely trigger (not proven). As agreed with ATN: B1 / B5 / B7
-        DROPPED, no relaunch; ejd_ (B7 design) stopped 19:4x. Facts kept (cb1b_ re-check: Attila thunk 0x16246d0 + call
+        Windows function from the TEB) work, so that is the likely trigger (not proven). B1 / B5 / B7 not relaunched then (first
+        written here as "as agreed with ATN": WRONG, ATN never agreed that a stop drops a batch); ejd_ (B7 design) stopped 19:4x. Facts kept (cb1b_ re-check: Attila thunk 0x16246d0 + call
         [slot] 0x1a2c569 / 0x1a7dd21; Thrones 0x1690320 + 0x1b2f569 + a jmp [slot]; Rome II 7 calls + 1 jmp; kernel32
         RVA 0x23650 own code, KernelBase 0x15ac70; indexes >= 0x40 go to the game's thunk). Worktrees
         agent-a96c7280ab0ca669b / agent-a4280c04499a3ae83 clean. ATN 20:0x: "forget that [ETLS], let's do the rest that
