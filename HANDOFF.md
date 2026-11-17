@@ -375,6 +375,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CAPTURE PASS (run2_ Low STARTED 18:4x, rec_det4 E6EB54F99070, recordings to D:\D ... | run2_
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
+- GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b; hz2_ 13:3x: the 10b design's "all ready" ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -2592,6 +2593,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
       - [ ] MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings into plan step 4 (Nsight with
         Forge's columns) next to night1 / sea1 / stress / forest. Owner: plan step 4
+      - [ ] GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there any way to find the issue and
+        fix that?"): known: out of front committed memory grows ~1.1-1.2 MB/s with AND without RenoDX, all in heapfix's
+        64 KB dlmalloc pieces (the game's own allocations through heapfix), stops in front, never given back. Plan: (1) one
+        out-of-front run without heapfix (the game's allocator alone); (2) a private heapfix build that counts live bytes
+        by allocating call site (return address, size class), dumped every 10 s, out of front + a long campaign / battle
+        session; (3) xHigh analysis: which game routine allocates and never frees (a queue fed while not presenting?);
+        (4) the fix in our add-on if the cause is reachable from it (e.g. what the game queues while out of front), else
+        a note for the heapfix author or an engine-code fix = ATN's call (game-code batches dropped 11-17). Runs in the
+        next run batch (Low runner), analysis xHigh. Owner: coordinator
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
