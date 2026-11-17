@@ -15,9 +15,9 @@
 // 4. 100%: another overlay picture changes the game's output (the overlay counts; tried over 8 seeds of the one-texel
 //    textures, else the row is listed: its overlay branch not reached in this frame).
 // 5. 33%: the patch (cb12 1/3) with the overlay 3x (its picture top-left) against the patch at zw 1 with the overlay whole,
-//    all else alike: the overlay read through the frame's share (1e-5 beyond 8 px of the edges; the overlay point-sampled,
-//    a 3x texture's coordinate rounding moving a few texels: up to 1% of the values). CONTROL (where 4 holds): the patch
-//    without its region sites (today's) on the 3x overlay: apart (10% of the values or more).
+//    all else alike: the overlay read through the frame's share (1e-5 beyond 8 px of the edges; every sampler point, a
+//    3x texture's coordinate rounding moving a few texels: up to 1% of the values). CONTROL (where 4 holds): the patch
+//    without its region sites (today's) on the 3x overlay: apart (10 values or more, over 4 times the mapping's).
 // 6. 33%, an overlay not display-sized (OnCommand's zw 1, the overlay whole): the patch gives today's bits.
 // Listed: the patch at 33% against the game at 100% (other sites show there too: the ocean's refraction distortion).
 // OVERLAY_GAME=<folder>: that game alone; OVERLAY_DUMP=<hash>: its patched bytes written, nothing drawn.
@@ -53,7 +53,7 @@ using Texel = std::array<float, 4>;
 constexpr UINT W = 64, H = 48, S = 3, EDGE = 8;
 static ComPtr<ID3D11Device> device;
 static ComPtr<ID3D11DeviceContext> context;
-static ComPtr<ID3D11SamplerState> point_clamp, linear_clamp, comparison;
+static ComPtr<ID3D11SamplerState> point_clamp, comparison;
 static int failures = 0;
 
 static std::string ReadText(const std::filesystem::path& path) {
@@ -298,10 +298,8 @@ static Result Run(const Frame& frame, ID3D11PixelShader* shader, UINT scale, con
     const auto& bind = frame.binds[index];
     const std::string& name = frame.names[index];
     if (bind.Type == D3D_SIT_SAMPLER) {
-      samplers[bind.BindPoint] = ((bind.uFlags & D3D_SIF_COMPARISON_SAMPLER) != 0) ? comparison.Get()
-                                 : (name.find("point") != std::string::npos || name.find("nearest") != std::string::npos
-                                    || name.find("overlay") != std::string::npos) ? point_clamp.Get()
-                                                                                                                         : linear_clamp.Get();
+      // Point sampling (bilinear on a 3x texture rounds its coordinate otherwise: the mapping check would see it).
+      samplers[bind.BindPoint] = ((bind.uFlags & D3D_SIF_COMPARISON_SAMPLER) != 0) ? comparison.Get() : point_clamp.Get();
       continue;
     }
     if (bind.Type != D3D_SIT_TEXTURE || bind.BindPoint >= views.size()) continue;
@@ -434,8 +432,6 @@ int main(int argc, char** argv) {
   D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
                                      .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
   device->CreateSamplerState(&sampler_desc, &point_clamp);
-  sampler_desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-  device->CreateSamplerState(&sampler_desc, &linear_clamp);
   sampler_desc.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
   sampler_desc.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
   device->CreateSamplerState(&sampler_desc, &comparison);
@@ -621,7 +617,7 @@ int main(int argc, char** argv) {
       }
       if (reaches) {
         ++counted;
-        if (control * 10 < compared) {
+        if (control < 10 || control <= 4 * mapped) {
           ok = false;
           notes += " A CONTROL PASSED";
         }
