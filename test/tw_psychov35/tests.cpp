@@ -61,6 +61,7 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <numbers>
 #include <string>
@@ -787,13 +788,17 @@ struct HueClipCase {
   Float4 clip_scale;
 };
 
-static std::vector<Float4> RunHueClip(const std::filesystem::path& path, const std::vector<HueClipCase>& cases) {
+// A compute harness (hue_clip.hlsl, v35_edges.hlsl): one case per thread, a float4 out each; `injection`: the
+// shader_injection cbuffer's bytes (b13) for a harness that reads SI.
+template <typename Case>
+static std::vector<Float4> RunCompute(const std::filesystem::path& path, const std::vector<Case>& cases,
+                                      const std::vector<uint8_t>& injection = {}) {
   const auto code = ReadFile(path);
   REQUIRE(!code.empty());
   ComPtr<ID3D11ComputeShader> shader;
   REQUIRE(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, &shader)));
-  std::vector<HueClipCase> padded = cases;
-  padded.resize((cases.size() + 63) / 64 * 64, HueClipCase{});
+  std::vector<Case> padded = cases;
+  padded.resize((cases.size() + 63) / 64 * 64, Case{});
   const auto input = Structured(padded);
   const D3D11_BUFFER_DESC desc = {static_cast<UINT>(padded.size() * 16), D3D11_USAGE_DEFAULT, D3D11_BIND_UNORDERED_ACCESS, 0,
                                   D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, 16};
@@ -802,6 +807,15 @@ static std::vector<Float4> RunHueClip(const std::filesystem::path& path, const s
   ComPtr<ID3D11UnorderedAccessView> output_view;
   REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(output.Get(), nullptr, &output_view)));
   context->ClearState();
+  if (!injection.empty()) {
+    std::vector<uint8_t> data((injection.size() + 15u) & ~size_t{15}, 0);
+    std::memcpy(data.data(), injection.data(), injection.size());
+    const D3D11_BUFFER_DESC constants_desc = {static_cast<UINT>(data.size()), D3D11_USAGE_DEFAULT, D3D11_BIND_CONSTANT_BUFFER, 0, 0, 0};
+    const D3D11_SUBRESOURCE_DATA constants_init = {data.data(), 0, 0};
+    ComPtr<ID3D11Buffer> constants;
+    REQUIRE(SUCCEEDED(device->CreateBuffer(&constants_desc, &constants_init, &constants)));
+    context->CSSetConstantBuffers(13, 1, constants.GetAddressOf());
+  }
   context->CSSetShader(shader.Get(), nullptr, 0);
   context->CSSetShaderResources(0, 1, input.GetAddressOf());
   context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
@@ -855,7 +869,7 @@ static void TestHueClip(const std::filesystem::path& folder) {
   };
   std::vector<HueClipCase> cases;
   for (const auto& e : expects) cases.push_back({{e.color[0], e.color[1], e.color[2], e.strength}, {e.clip_scale, 0, 0, 0}});
-  const auto attila_results = RunHueClip(folder / "hue_clip_twattila.cso", cases);
+  const auto attila_results = RunCompute(folder / "hue_clip_twattila.cso", cases);
   for (size_t i = 0; i < expects.size(); ++i) {
     const auto& e = expects[i];
     const Float3 out = {attila_results[i][0], attila_results[i][1], attila_results[i][2]};
@@ -1786,6 +1800,351 @@ static void TestGammaCorrection(const std::vector<GammaGame>& games) {
   }
 }
 
+// 9. Edge inputs ///////////////////////////////////////////////////////////////////////////////////////////////////
+
+struct EdgeCase {
+  Float4 color_and_peak;
+  Float4 output;
+};
+
+// PsychoV35's cones of a linear BT.709 colour over white's (test35.hlsl: BT.709 -> XYZ -> its LMS). Their mean is the
+// target fit's, under 0 where the pixel is below black; a cone under 0 is beyond the spectral locus.
+static std::array<double, 3> Cones(const Float3& c) {
+  constexpr double TO_XYZ[3][3] = {{.4123907993, .3575843394, .1804807884}, {.2126390059, .7151686788, .0721923154},
+                                   {.0193308187, .1191947798, .9505321522}};
+  constexpr double TO_LMS[3][3] = {{.2670502842655792, .8471990148492798, -.03470416612462053},
+                                   {-.38706882411220156, 1.165429935890458, .10302286696614202},
+                                   {.026727793989083093, -.02729131667566509, .5333267257603284}};
+  std::array<double, 3> cones = {};
+  for (int cone = 0; cone < 3; ++cone) {
+    double lms = 0.0;
+    double white = 0.0;
+    for (int i = 0; i < 3; ++i) {
+      for (int j = 0; j < 3; ++j) {
+        lms += TO_LMS[cone][i] * TO_XYZ[i][j] * c[j];
+        white += TO_LMS[cone][i] * TO_XYZ[i][j];
+      }
+    }
+    cones[cone] = lms / white;
+  }
+  return cones;
+}
+
+static double ConeMean(const Float3& c) {
+  const auto cones = Cones(c);
+  return (cones[0] + cones[1] + cones[2]) / 3.0;
+}
+
+static float Spread(const Float3& c) { return std::max({c[0], c[1], c[2]}) - std::min({c[0], c[1], c[2]}); }
+static float Largest(const Float3& c) { return std::max({std::abs(c[0]), std::abs(c[1]), std::abs(c[2])}); }
+
+enum class Edge { GREY, BELOW_BLACK, DARK_COLOUR, NOT_A_NUMBER, INFINITE_INPUT, HUGE_INPUT };
+
+struct EdgeInput {
+  Edge kind;
+  Float3 color;
+};
+
+// Greys of either sign; colours below black (cone mean under 0: a grade's offset under 0, signed anti-aliasing) and dark
+// colours above it (1e-6 to 1e-2 of Paper White, some with a channel under 0); NaN, infinities and huge values per channel
+// and mixed.
+static std::vector<EdgeInput> EdgeInputs() {
+  std::vector<EdgeInput> inputs;
+  for (const float grey : {0.f, -0.f, 1e-7f, -1e-7f, 1e-6f, -1e-6f, 1e-5f, -1e-5f, 1e-4f, -1e-4f, 1e-3f, -1e-3f, 1e-2f, -1e-2f, -0.1f, -1.f,
+                           0.5f, 1.f}) {
+    inputs.push_back({Edge::GREY, {grey, grey, grey}});
+  }
+  for (const float k : {1e-6f, 1e-5f, 1e-4f, 1e-3f, 1e-2f}) {
+    for (int h = 0; h < 12; ++h) {
+      const Float3 tint = Hue(h * 30.f, 1.f);
+      // All channels under 0, the tint's own the least: a dark tinted pixel moved under black.
+      inputs.push_back({Edge::BELOW_BLACK, {-k * (1.f - 0.6f * tint[0]), -k * (1.f - 0.6f * tint[1]), -k * (1.f - 0.6f * tint[2])}});
+      // The tint's channel above 0, the others under it.
+      const Float3 mixed = {k * (1.3f * tint[0] - 1.f), k * (1.3f * tint[1] - 1.f), k * (1.3f * tint[2] - 1.f)};
+      if (ConeMean(mixed) < -0.01 * k) inputs.push_back({Edge::BELOW_BLACK, mixed});
+      for (const float saturation : {0.3f, 0.7f, 1.f}) {
+        const Float3 colour = Hue(h * 30.f, saturation);
+        inputs.push_back({Edge::DARK_COLOUR, {k * colour[0], k * colour[1], k * colour[2]}});
+      }
+      const Float3 signed_colour = {k * (tint[0] - 0.1f), k * (tint[1] - 0.1f), k * (tint[2] - 0.1f)};
+      if (ConeMean(signed_colour) > 0.01 * k) inputs.push_back({Edge::DARK_COLOUR, signed_colour});
+    }
+    // A bluish night grade's crushed black, -(offset^2) per channel (its offsets in its gamma 2.0).
+    inputs.push_back({Edge::BELOW_BLACK, {-1.6e-3f * k / 1e-3f, -9e-4f * k / 1e-3f, -1e-4f * k / 1e-3f}});
+  }
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float inf = std::numeric_limits<float>::infinity();
+  for (const Float3& c : {Float3{nan, 0.f, 0.f}, Float3{0.f, nan, 0.f}, Float3{0.f, 0.f, nan}, Float3{nan, nan, nan}, Float3{nan, 0.5f, 0.5f},
+                          Float3{1e-4f, nan, 1e-4f}, Float3{-1e-4f, -1e-4f, nan}}) {
+    inputs.push_back({Edge::NOT_A_NUMBER, c});
+  }
+  for (const Float3& c : {Float3{inf, 0.f, 0.f}, Float3{0.f, inf, 0.f}, Float3{0.f, 0.f, inf}, Float3{inf, inf, inf}, Float3{-inf, 0.f, 0.f},
+                          Float3{-inf, -inf, -inf}, Float3{inf, -inf, 0.f}, Float3{inf, 1e-4f, 1e-4f}}) {
+    inputs.push_back({Edge::INFINITE_INPUT, c});
+  }
+  for (const Float3& c : {Float3{1e30f, 1e30f, 1e30f}, Float3{1e30f, 0.f, 0.f}, Float3{3e38f, 3e38f, 3e38f}, Float3{-1e30f, -1e30f, -1e30f},
+                          Float3{1e30f, -1e30f, 1e30f}}) {
+    inputs.push_back({Edge::HUGE_INPUT, c});
+  }
+  return inputs;
+}
+
+// A night grade for t01's colour matrix (made up: no trace holds Attila's night one; the shader's dot with _m00_m10_m20_m30
+// takes the first four words as red's weights for r, g, b and its offset): bluish, offsets under 0, so the darkest pixels
+// land below black (stock SDR clips them: saturate after the matrix).
+static Words NightGradeMatrix() { return F({0.9f, 0.f, 0.f, -0.04f, 0.f, 0.95f, 0.f, -0.03f, 0.03f, 0.05f, 1.05f, -0.01f, 0, 0, 0, 1}); }
+
+// a. PsychoV35 alone (v35_edges.hlsl: ApplyPsychoV35, every game's) on EdgeInputs(), HDR (Peak 1000 / 203, BT.2020 fit)
+//    and SDR output, Recommended's sliders (Musa's defaults), Gamut Compression 0.5 and 0, and each of its own sliders
+//    moved: finite everywhere; a grey of either sign stays grey; below black one grey at or under 0, no larger than it
+//    came in (black: the stock picture clips it); NaN black; infinities and huge values within Peak (grey ones grey); at
+//    Recommended's sliders a dark colour's channels kept (within 1e-3 of the largest, positive ones; the others no more
+//    spread than they came in).
+//    CONTROL: -Before's (V35 before the fix) must fail these (a grey under 0 turned into a colour, a bluish pixel below
+//    black turned red, below black mid grey under Contrast or Flare, NaN Peak-bright). Every pixel of part 3's ramp (64
+//    colours x 48 steps, cone mean over 0): the same bits as -Before's at every slider set.
+// b. Attila's t01 (Rendering Mode 3) on a bluish night frame (blue the largest channel, then green, 2^-16 to 2^-2 of
+//    white) under NightGradeMatrix(): no pixel redder than blue (ours, V31 and SDR; -Before's V35 must show them), at
+//    HDR10, scRGB and SDR output.
+// c. The input side: Attila's t00 on a scene of negative, NaN, infinite and tiny pixels (the game's own S-curve path):
+//    its output never under 0 (the S-curve texture floors it); NaN / infinities counted; V35 after it finite.
+static void TestEdges(const std::filesystem::path& before, const std::filesystem::path& after, const Chain& chain) {
+  const auto inputs = EdgeInputs();
+  struct Sliders {
+    const char* name;
+    std::function<void(attila::ShaderInjectData*)> move;
+    bool recommended_shape;  // Recommended's response (only Gamut Compression differs)
+  };
+  const std::vector<Sliders> slider_sets = {
+      {"Recommended", [](attila::ShaderInjectData*) {}, true},
+      {"Gamut Compression 0.5", [](attila::ShaderInjectData* si) { si->v35_gamut_compression = 0.5f; }, true},
+      {"Gamut Compression 0", [](attila::ShaderInjectData* si) { si->v35_gamut_compression = 0.f; }, true},
+      {"Exposure 2", [](attila::ShaderInjectData* si) { si->v35_exposure = 2.f; }, false},
+      {"Highlights 2", [](attila::ShaderInjectData* si) { si->v35_highlights = 2.f; }, false},
+      {"Shadows 0.5", [](attila::ShaderInjectData* si) { si->v35_shadows = 0.5f; }, false},
+      {"Contrast 1.5", [](attila::ShaderInjectData* si) { si->v35_contrast = 1.5f; }, false},
+      {"Highlight Contrast 2", [](attila::ShaderInjectData* si) { si->v35_highlight_contrast = 2.f; }, false},
+      {"Shadow Contrast 0", [](attila::ShaderInjectData* si) { si->v35_shadow_contrast = 0.f; }, false},
+      {"Flare 0.1", [](attila::ShaderInjectData* si) { si->v35_flare = 0.1f; }, false},
+      {"Saturation 2", [](attila::ShaderInjectData* si) { si->v35_saturation = 2.f; }, false},
+      {"Saturation 0", [](attila::ShaderInjectData* si) { si->v35_saturation = 0.f; }, false},
+      {"Dechroma 1", [](attila::ShaderInjectData* si) { si->v35_dechroma = 1.f; }, false},
+      {"Highlight Saturation 2", [](attila::ShaderInjectData* si) { si->v35_highlight_saturation = 2.f; }, false},
+      {"Roll-off 2", [](attila::ShaderInjectData* si) { si->v35_roll_off = 2.f; }, false},
+  };
+  constexpr float HDR10_PEAK = 1000.f / 203.f;
+  const auto ramp = Scene(PatternColumns(), -8.f, 20.f / 47.f, 1.f);
+  int ours_failures = 0;
+  int control_failures = 0;
+  int ramp_differences = 0;
+  int ramp_beyond = 0;
+  for (const auto& sliders : slider_sets) {
+    auto si = AttilaInjection(3.f, 1.f);
+    sliders.move(&si);
+    const auto injection = Bytes(si);
+    const float gamut_compression = si.v35_gamut_compression;
+    for (const bool sdr : {false, true}) {
+      const float peak = (sdr ? 1.f : HDR10_PEAK);
+      std::vector<EdgeCase> cases;
+      for (const auto& input : inputs) cases.push_back({{input.color[0], input.color[1], input.color[2], peak}, {sdr ? 1.f : 0.f, 0, 0, 0}});
+      constexpr int KINDS = 6;
+      int failed[2][KINDS] = {};
+      std::string first[2][KINDS];
+      for (int side = 0; side < 2; ++side) {
+        const auto results = RunCompute((side == 0 ? after : before) / "v35_edges.cso", cases, injection);
+        for (size_t i = 0; i < inputs.size(); ++i) {
+          const Float3& in = inputs[i].color;
+          const Float3 out = {results[i][0], results[i][1], results[i][2]};
+          const bool finite = std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]);
+          const float spread = Spread(out);
+          const bool grey_out = spread <= 1e-6f * Largest(out);
+          const Float3 target = (sdr ? out : Bt709ToBt2020(out));
+          const bool within_peak = std::max({target[0], target[1], target[2]}) <= peak * 1.002f + 1e-3f;
+          bool ok = finite;
+          switch (inputs[i].kind) {
+            case Edge::GREY:
+              ok = ok && spread <= 1e-5f * Largest(out);
+              break;
+            case Edge::BELOW_BLACK:
+              ok = ok && grey_out && std::max({out[0], out[1], out[2]}) <= 0.f && Largest(out) <= Largest(in);
+              break;
+            case Edge::DARK_COLOUR:
+              if (sliders.recommended_shape) {
+                ok = ok && spread <= 1.001f * Spread(in) + 1e-6f * Largest(in);
+                if (!sdr && std::min({in[0], in[1], in[2]}) >= 0.f) {
+                  for (int c = 0; c < 3; ++c) ok = ok && std::abs(out[c] - in[c]) <= 1e-3f * Largest(in);
+                }
+              }
+              break;
+            case Edge::NOT_A_NUMBER:
+              ok = ok && out[0] == 0.f && out[1] == 0.f && out[2] == 0.f;
+              break;
+            case Edge::INFINITE_INPUT:
+            case Edge::HUGE_INPUT:
+              ok = ok && within_peak;
+              if (in[0] == in[1] && in[1] == in[2]) ok = ok && grey_out;
+              break;
+          }
+          if (!ok) {
+            const int kind = static_cast<int>(inputs[i].kind);
+            if (failed[side][kind] == 0) {
+              char line[200];
+              std::snprintf(line, sizeof(line), "(%.3g %.3g %.3g) -> (%.4g %.4g %.4g)", in[0], in[1], in[2], out[0], out[1], out[2]);
+              first[side][kind] = line;
+            }
+            ++failed[side][kind];
+          }
+        }
+      }
+      // Part 3's ramp: the same bits as -Before's where every cone is over 0; the colour beyond the locus (its S cone under
+      // 0: (1.2, 0.9, -0.2)) counted apart with its largest change.
+      std::vector<EdgeCase> ramp_cases;
+      for (const auto& texel : ramp) ramp_cases.push_back({{texel[0], texel[1], texel[2], peak}, {sdr ? 1.f : 0.f, 0, 0, 0}});
+      const auto ramp_after = RunCompute(after / "v35_edges.cso", ramp_cases, injection);
+      const auto ramp_before = RunCompute(before / "v35_edges.cso", ramp_cases, injection);
+      int different = 0;
+      int beyond = 0;
+      double worst_beyond = 0.0;
+      size_t worst_beyond_at = 0;
+      for (size_t i = 0; i < ramp_cases.size(); ++i) {
+        if (std::memcmp(&ramp_after[i], &ramp_before[i], 12) == 0) continue;
+        const Float3 in = {ramp_cases[i].color_and_peak[0], ramp_cases[i].color_and_peak[1], ramp_cases[i].color_and_peak[2]};
+        const auto cones = Cones(in);
+        if (std::min({cones[0], cones[1], cones[2]}) >= 0.0) {
+          ++different;
+          continue;
+        }
+        ++beyond;
+        const Float3 a = {ramp_after[i][0], ramp_after[i][1], ramp_after[i][2]};
+        const Float3 b = {ramp_before[i][0], ramp_before[i][1], ramp_before[i][2]};
+        for (int c = 0; c < 3; ++c) {
+          const double relative = std::abs(static_cast<double>(a[c]) - b[c]) / std::max({1e-30f, Largest(a), Largest(b)});
+          if (relative > worst_beyond) {
+            worst_beyond = relative;
+            worst_beyond_at = i;
+          }
+        }
+      }
+      // Failures by kind, ours / CONTROL, then the first of each kind.
+      constexpr const char* KIND_NAMES[KINDS] = {"grey", "below black", "dark colour", "NaN", "infinite", "huge"};
+      std::printf("9a. %-24s %s: failing (ours / CONTROL)", sliders.name, sdr ? "SDR" : "HDR");
+      for (int kind = 0; kind < KINDS; ++kind) std::printf(" %s %d / %d,", KIND_NAMES[kind], failed[0][kind], failed[1][kind]);
+      std::printf(" ramp: %d of %zu pixels differ, %d beyond the locus\n", different, ramp_cases.size(), beyond);
+      for (int side = 0; side < 2; ++side) {
+        for (int kind = 0; kind < KINDS; ++kind) {
+          if (failed[side][kind] != 0) std::printf("      %s %s: %s\n", side == 0 ? "ours" : "CONTROL", KIND_NAMES[kind], first[side][kind].c_str());
+        }
+      }
+      if (beyond != 0) {
+        const auto& in = ramp_cases[worst_beyond_at].color_and_peak;
+        const auto& a = ramp_after[worst_beyond_at];
+        const auto& b = ramp_before[worst_beyond_at];
+        std::printf("      ramp beyond the locus: largest change %.3g of the largest channel, (%.6g %.6g %.6g): %.6g %.6g %.6g (-Before's "
+                    "%.6g %.6g %.6g)\n",
+                    worst_beyond, in[0], in[1], in[2], a[0], a[1], a[2], b[0], b[1], b[2]);
+      }
+      for (int kind = 0; kind < KINDS; ++kind) {
+        ours_failures += failed[0][kind];
+        control_failures += failed[1][kind];
+      }
+      ramp_differences += different;
+      ramp_beyond += beyond;
+    }
+  }
+  std::printf("9a. Failures in all: ours %d, CONTROL %d (must be over 0); ramp pixels different from -Before's: %d, beyond the locus %d\n",
+              ours_failures, control_failures, ramp_differences, ramp_beyond);
+  CHECK(ours_failures == 0);
+  CHECK(control_failures > 0);
+  CHECK(ramp_differences == 0 && ramp_beyond == 0);
+
+  // b. The night frame through Attila's t01.
+  std::vector<Float3> palette;
+  for (const Float3& c : {Float3{1.f, 1.f, 1.f}, Float3{0.35f, 0.45f, 0.7f}, Float3{0.2f, 0.3f, 0.6f}, Float3{0.5f, 0.55f, 0.65f},
+                          Float3{0.1f, 0.15f, 0.4f}, Float3{0.3f, 0.32f, 0.36f}, Float3{0.6f, 0.7f, 1.f}, Float3{0.05f, 0.1f, 0.3f}}) {
+    palette.push_back(c);
+  }
+  const auto night = Scene(palette, -16.f, 14.f / 47.f, 1.f);
+  int control_red = 0;
+  for (const float encoding : {0.f, 1.f, 2.f}) {
+    const auto run = [&](const Shader& shader, float mode) {
+      Bindings bindings = AttilaHdrToScreen(night, true);
+      bindings.words["colour_matrix"] = NightGradeMatrix();
+      bindings.injection = Bytes(AttilaInjection(mode, encoding));
+      std::vector<Float3> linear;
+      for (const auto& o : Draw(shader, bindings)) linear.push_back(Decode(o, FrameGamma(mode, encoding, 1.f)));
+      return linear;
+    };
+    const auto count_red = [](const std::vector<Float3>& picture, Float3* reddest) {
+      int red = 0;
+      float worst = 0.f;
+      for (const auto& c : picture) {
+        const float excess = c[0] - c[2];
+        if (excess > 1e-7f + 1e-4f * Largest(c)) ++red;
+        if (excess > worst) {
+          worst = excess;
+          *reddest = c;
+        }
+      }
+      return red;
+    };
+    Float3 reddest = {};
+    Float3 control_reddest = {};
+    Float3 unused = {};
+    const int ours = count_red(run(chain.attila_hdr_to_screen->after, 3.f), &reddest);
+    const int control = count_red(run(chain.attila_hdr_to_screen->before, 3.f), &control_reddest);
+    const int v31 = count_red(run(chain.attila_hdr_to_screen->after, 2.f), &unused);
+    const int stock = count_red(run(chain.attila_hdr_to_screen->after, 0.f), &unused);
+    std::printf("9b. Attila t01, night grade, %s: pixels redder than blue: V35 %d, V31 %d, SDR %d; CONTROL V35 %d (reddest %.3g %.3g %.3g of "
+                "Paper White)\n",
+                encoding == 2.f ? "SDR" : (encoding == 0.f ? "HDR10" : "scRGB"), ours, v31, stock, control, control_reddest[0],
+                control_reddest[1], control_reddest[2]);
+    CHECK(ours == 0);
+    control_red += control;
+  }
+  CHECK(control_red > 0);
+
+  // c. The input side: t00 on a scene of edge pixels (columns), 2^-20 to 2^-4 of white down the rows.
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float inf = std::numeric_limits<float>::infinity();
+  const std::vector<Float3> edge_columns = {{-1.f, -1.f, -1.f}, {-1.f, 0.5f, 1.f}, {0.2f, -0.3f, 1.f},  {1.f, 1.f, -0.5f},
+                                            {nan, 1.f, 1.f},    {inf, 1.f, 1.f},   {-inf, 0.f, 0.f},   {1.f, 1.f, 1.f},
+                                            {0.3f, 0.5f, 1.f},  {0.f, 0.f, 0.f},   {1e-30f, 0.f, 0.f}, {-1e-30f, -1e-30f, -1e-30f}};
+  std::vector<Float4> scene(WIDTH * HEIGHT);
+  for (UINT y = 0; y < HEIGHT; ++y) {
+    const float brightness = std::exp2(-20.f + 16.f * y / (HEIGHT - 1));
+    for (UINT x = 0; x < WIDTH; ++x) {
+      const Float3& c = edge_columns[x % edge_columns.size()];
+      scene[y * WIDTH + x] = {c[0] * brightness, c[1] * brightness, c[2] * brightness, 1.f};
+    }
+  }
+  auto si = AttilaInjection(3.f, 1.f);
+  Bindings first_pass = AttilaToneMapper(scene, false);
+  first_pass.injection = Bytes(si);
+  const auto handoff = Draw(chain.attila_tone_mapper->after, first_pass);
+  int negative = 0;
+  int not_finite = 0;
+  for (const auto& texel : handoff) {
+    for (int c = 0; c < 3; ++c) {
+      if (!std::isfinite(texel[c])) {
+        ++not_finite;
+      } else if (texel[c] < 0.f) {
+        ++negative;
+      }
+    }
+  }
+  Bindings second_pass = AttilaHdrToScreen(handoff, true);
+  second_pass.injection = Bytes(si);
+  int output_not_finite = 0;
+  for (const auto& o : Draw(chain.attila_hdr_to_screen->after, second_pass)) {
+    output_not_finite += (std::isfinite(o[0]) && std::isfinite(o[1]) && std::isfinite(o[2])) ? 0 : 1;
+  }
+  std::printf("9c. Attila t00 on negative / NaN / infinite / tiny scene pixels: %d values under 0, %d not finite (of %u); V35 after "
+              "it: %d pixels not finite\n",
+              negative, not_finite, WIDTH * HEIGHT * 3, output_not_finite);
+  CHECK(negative == 0);
+  CHECK(output_not_finite == 0);
+}
+
 int main(int argc, char** argv) {
   REQUIRE(argc >= 3);
   const std::filesystem::path before = argv[1];
@@ -1827,6 +2186,7 @@ int main(int argc, char** argv) {
   const Chain chain = {&shaders["a_t00"], &shaders["a_t01"], &shaders["w_t00"], &curves, &shaders["r_t00"], &shaders["r_t01"], &ruse_post,
                        &shaders["th_t00"], &shaders["th_t01"]};
   if (!report_only) TestPsychoV35(chain);
+  if (!report_only) TestEdges(before, after, chain);
   ReportHue(chain);
   ReportToe(chain);
   if (!report_only) TestRuse(ruse_post);

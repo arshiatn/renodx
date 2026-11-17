@@ -1,8 +1,9 @@
 #ifndef PSYCHOV_CUSTOMTEST35_HLSLI_
 #define PSYCHOV_CUSTOMTEST35_HLSLI_
 
-// Total War: ATTILA and Warhammer III: copy of Musa's customtest35 (2026-11-12), only this include's path changed and
-// the SM3 forms below (RUSE's DX9 shaders: no bit casts, no bitwise operations on bools). SM4 and later: unchanged.
+// Total War: ATTILA and Warhammer III: copy of Musa's customtest35 (2026-11-12), only this include's path changed, the
+// SM3 forms below (RUSE's DX9 shaders: no bit casts, no bitwise operations on bools) and pixels at or under black: black
+// (custom_psychotm_test35; Musa's target fit assumes an interior mean).
 // Needs renodx.hlsl (shared.h).
 
 /*
@@ -212,7 +213,9 @@ float3 custom_psychotm_test35(
                                 ? anchor_in
                                 : mul(PSYCHO35_BT709_TO_LMS_MAT, current_background_state_bt709);
   float3 source_ratio = input_lms / anchor_in;
-  if (all(source_ratio == 0.f)) return 0.f;
+  // At or under black (the cones' mean: no light, as a grade's offset under 0 leaves it): black. The fit below has no
+  // room for its colour (a negative support turned it inside out), the grading would take the log of its cones.
+  if (!(psycho35_Mean(source_ratio) > 0.f)) return 0.f;
   if (purity_scale != 1.f || highlight_saturation != 1.f || dechroma != 0.f) {
     float effective_purity = purity_scale;
     if (highlight_saturation != 1.f || dechroma != 0.f) {
