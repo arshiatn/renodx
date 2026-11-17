@@ -2790,7 +2790,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         FRAME 12.904 -> 11.908; night1 3.783 -> 3.079, 1.040 -> 0.662, 13.526 -> 12.531 (-1.0 ms each; A1 beat its
         estimate: both rays' hot lines went); tools K1 "player inputs" row, K2 --by-stem, K3 reference/rec_scan.py.
         Left: T3 retraces (sea1, stress, day1_low, WH3 high) twice + rec_compare / rec_scan over all 18 recordings
-        (Low runner).
+        (Low runner): t3_ Low STARTED 23:06 (recorder build t3_g1rec of HEAD; plays rbk_merged x2 vs t3_g1rec over
+        all 17 recordings with a frame; 18 Nsight traces: T3 x2 + WH3 unit / high / edge base vs SER x2 for the SER-on-
+        in-WH3 decision; notes plan_1117/t3_notes.md, scripts nsight/t3_scripts).
         Traces T1 / T2 / T4 (grass micromap level 6 variant) / T5 / T6 (clusters): gtr_ Low DONE 21:2x
         (plan_1117/gtr_traces.md; runs tools/tw/nsight/runs/gtr_*, profiles gtr_profiles; worktree's 5 links removed
         alone, worktree + branch removed): T1 WH3 unit base 3.80 ms = a slow run (3.088 / 3.081 at frames 400 / 800, same
