@@ -2173,8 +2173,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         (one game at a time): dry run; heapfix A / P / h6106 x3 on stress, then P / B4 / loopanim / x87keep x2; A / P x2 on
         night1; capture v3 WPR A vs P on stress; data run (sampler, va_probe2, a screenshot, 60 s out of front, a restart);
         add-on trim night1 + sea1 x2; engine patches stress + night1 x2; Small Soldiers as Sprites stress x2 + shots; the
-        batch's one Constantinople bench. Steps 1-4 started (cpu2_, tools only); 5-10 after hfix_ leaves shared code.
-        Owner: coordinator
+        batch's one Constantinople bench. Steps 1-4 DONE cpu2_ 10:xx (plan_1117/cpu_steps_1_4.md): bench -Replay required with
+        per-replay keys / rounds / seconds, auto_save refused, -ReplayCopy (adds our Constantinople copy
+        tools/tw/bench/replays/constantinople_aa107f05.replay to ATN's replays folder per start and removes it by name +
+        hash; only after ATN's OK), heapfix versions hash-checked + h6106 control, -Wpr mode (front again after start and
+        stop, RT profile + Time Each Pass inside the window, validity gate); dry runs OK for runs 2a / 2b / 3 / 4 / 8 (6 needs
+        the trim build, 9 the replay copy); read-only tools leaf_sampler + va_probe2 (tools/tw/cpu2_tools, tested on a
+        32-bit dummy only); /Z7 baseline of HEAD 1cbaa46b7 testbin/cpu1_addons/base (+ base_fp /Oy- for WPR stacks).
+        Plan changes: the stress close race (heapfix's first-chance EXCEPTION at empire+0x1A5423 at window close, the
+        game's own shutdown race) tolerated only at / after the close request (coordinator accepted); add-on lock time is
+        call count, not contention (2.02 ms night1; biggest bucket the shared ResourceViewInfo map 0.46 ms: shared-utils
+        change = ATN's decision); drop the OnDrawScrub cache (memory latency on the game's records); PickLod at 1x saves
+        ATN nothing (Object Detail 8); A2.2 also caches the device, A2.1 keeps the light vector's capacity; new best engine
+        candidate 0x18635a0 (~2.1 ms stress render thread, copies + releases a shared_ptr per child to test a flag, no early
+        exit: exact without the copy + an early exit, est. -1.5..-2 ms stress); memcpy call sites need the data run (933
+        sites in 508 functions); draw-replay callback timing not done (needs a new replay mode). LEFT: steps 5-12 after
+        hfix_ leaves shared code; runs after ATN's OK. Owner: coordinator
       - [ ] SPEED LIST v2 (cap1_ 07:xx on the redone captures, speed_list.md; supersedes the v1 top 10 below): rendered
         frames 51.1 / 37.7 / 84.5 ms (night1 / sea1 / stress, WPR costs +4-6 %), all render-thread bound (GPU idle 21 / 11 /
         47 ms; game + helper GPU 30.0 / 26.4 / 37.2, helper 10.9 / 8.8 / 9.8). Top 10: (1) HEAPFIX SORT A/B where the render
