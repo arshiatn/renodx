@@ -355,8 +355,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - MEMO M1 RESULT (jdg1_, judge_m1_o1.md): GO for the filter alone (F14, 2 KB, no m ... | next CPU / utils round
 - LIGHT READBACK CAP (jdg1_): rt_lights' readback caps at 16,384 records while nig ... | PT DI step 0
 - BENCH CLOSE RACE BY STACK (jdg1_): the stress M1 run's close AV was the known sh ... | coordinator (tools)
-- C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 ... | ATN
 - RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | fix1_ (STARTED 16:xx)
+- BUG4F ATN CHECK (16:4x): ATN checks bug4 (f) now (sea battle, ships selected, DL ... | ATN, coordinator
+- CPU GAPS (cpg_ medium, STARTED 16:4x, ATN asked whether the sanity recording's 1 ... | cpg_
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b; hz2_ 13:3x: the 10b design's "all ready" ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -2426,12 +2427,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         frame (an execute AV into heap ~0.2 s after CloseMainWindow, same stack below: +0x1A4B01 +0x31FEEB +0x32053D, no add-on
         frame; heapfix 7.0 writes a dump at first chance); $CLOSE_RACE in constantinople_bench.ps1 matches one address only:
         match the stack signature instead. Owner: coordinator (tools)
-      - [ ] C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 MB, 10-31 .. today, the newest
+      - [x] DONE 16:4x (ATN "sure go ahead"; 23 found, all 23 to the Recycle Bin by exact name; installed add-on
+        f9471e81 + .v119 kept; ATN closed the 6 zombie Attila processes) C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 MB, 10-31 .. today, the newest
         = the M1 build 2f70715f) in ATN's Attila folder (ReShade ignores them): delete by exact name (keeping the installed
         add-on and .v119)? Owner: ATN
       - [ ] RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a different order between two
         identical plays (trace outputs stayed equal): make the dedupe order-independent (a stable key) so recordings and
         A/B tests repeat exactly; same picture. Owner: fix1_ (STARTED 16:xx)
+      - [ ] BUG4F ATN CHECK (16:4x): ATN checks bug4 (f) now (sea battle, ships selected, DLAA vs DLSS Performance:
+        footprints under the ships, no yellow stripes); coordinator holds gpu_job.lock + quiet_run.lock (agents wait)
+        until ATN says done, then removes both. Owner: ATN, coordinator
+      - [ ] CPU GAPS (cpg_ medium, STARTED 16:4x, ATN asked whether the sanity recording's 13-item list skipped things):
+        coordinator found unlisted: render-thread system time ~10 ms night1 / ~9 stress (wow64cpu, d3d11, ntdll, kernel,
+        driver) not split by caller; the "?" module 3.7 ms render stress; night1's game tail (22.7 ms in the game, listed
+        functions ~10); stress worker critical path (render waits 16.5 ms; ~13 worker functions 5-10 ms summed); no day1
+        / sea1 WPR. Existing ETLs only, result plan_1117/cpu_gaps.md. Owner: cpg_
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
