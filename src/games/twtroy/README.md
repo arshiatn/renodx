@@ -6,6 +6,9 @@
   place between pixels (where the four pixels around it lie on one plane), so open ground seen at a low angle no longer
   shades itself. Off: the nearest pixel's depth, as before. `tw_gtvbao_exact` (WARP, a flat view-space plane): off the
   build before's bits; on 0.9917 -> 1.0000 mean (4975 values). The half-size pass: CONTROL 9749.
+- Changed: the presets **Reset**, **No RT/PT** and **RT/PT** also turn **Texture LOD Bias on All Textures** on
+  (ATN: the LOD bias for everything on in every game; on by default already). The bias's level (Matched / Sharper /
+  Sharpest) stays yours; the row set off by hand stays off until a preset is pressed.
 
 ### One sun shadow method under the rays (2026-11-16 night; built only, not run in game)
 

@@ -6,6 +6,9 @@
   place between pixels (where the four pixels around it lie on one plane), so open ground seen at a low angle no longer
   shades itself. Off: the nearest pixel's depth, as before. `tw_gtvbao_exact` (WARP, a flat view-space plane): off the
   build before's bits; on 0.9865 -> 0.9994 mean (14251 values).
+- Changed: the Ray Tracing presets **RT/PT**, **No RT/PT** and **Reset** also turn **Texture LOD bias on all
+  textures** on (ATN: the LOD bias for everything on in every game; on by default already). The bias's level stays
+  yours; the row set off by hand stays off until a preset is pressed.
 
 ### Next round (2026-11-16 tw3_; built only, not run in game)
 

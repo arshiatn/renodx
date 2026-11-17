@@ -1705,7 +1705,20 @@ void Capture(Context& command, const SceneShader& shader) {
   } else if (geometry_capture) {
     drawn_topology = D3D11_PRIMITIVE_TOPOLOGY_POINTLIST;
   }
-  if (topology != drawn_topology || vertex_count == 0 || vertex_count > MAX_VERTICES || (geometry_capture && clip_captures)) {
+  // A dynamic draw's triangle strip (the ships' rigging, rope.hlsl vs30_main_rigid: DEBUG44's missing rope shadows): stream
+  // output writes its triangles as a list, 3 x (count - 2) vertices an instance; one cut by a strip-cut index writes fewer
+  // (its range emptied first, below). Never compact: its indices aren't a list's.
+  const bool strip = dynamic && !placed && topology == D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP && drawn_topology == D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+  if (strip) {
+    UINT strip_count = 0;
+    if constexpr (INDEXED) {
+      strip_count = arguments.index_count;
+    } else {
+      strip_count = arguments.vertex_count;
+    }
+    vertex_count = (strip_count < 3) ? 0u : (strip_count - 2) * 3 * std::max(arguments.instance_count, 1u);
+  }
+  if ((topology != drawn_topology && !strip) || vertex_count == 0 || vertex_count > MAX_VERTICES || (geometry_capture && clip_captures)) {
     if (vertex_count != 0) {
       const std::unique_lock lock(runtime.mutex);
       if (runtime.left_out_logged.insert(shader.hash).second) {
@@ -1858,7 +1871,8 @@ void Capture(Context& command, const SceneShader& shader) {
   const bool compactable = INDEXED
                            && (placed ? (shader.foliage && !shader.capture_shader.empty() && !shader.still && !(shader.grass && !runtime.settings.grass_sway))
                                       : dynamic)
-                           && !shader.sun_facing && !shader.tessellated && !cascade_draw && index_buffer != nullptr && dlaa_bridge::CompactState() != 0;
+                           && !strip && !shader.sun_facing && !shader.tessellated && !cascade_draw && index_buffer != nullptr
+                           && dlaa_bridge::CompactState() != 0;
   uint64_t set_key = 14695981039346656037ull;
   ComPtr<ID3D11Buffer> compact_indices;
   if constexpr (INDEXED) {
@@ -2356,6 +2370,26 @@ void Capture(Context& command, const SceneShader& shader) {
     const std::array<ID3D11Buffer*, 2> targets = {shader.tessellated ? objects.tessellated.Get() : objects.captured.Get(), objects.captured_uv.Get()};
     const std::array<UINT, 2> stream_offsets = {shader.tessellated ? (runtime.tessellated_draws == 0 ? 0u : UINT_MAX) : (next_vertex * 16),
                                                 next_vertex * 8};
+    // NaN vertices (inactive triangles) to empty a range of the capture with.
+    const auto empty_vertices = [&] {
+      if (!objects.tessellated_empty) {
+        const std::vector<uint32_t> empty(size_t{TERRAIN_EMPTY_VERTICES} * 4, 0x7FC00000u);
+        const D3D11_BUFFER_DESC empty_desc = {.ByteWidth = TERRAIN_EMPTY_VERTICES * 16, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+        const D3D11_SUBRESOURCE_DATA empty_data = {.pSysMem = empty.data()};
+        device->CreateBuffer(&empty_desc, &empty_data, objects.tessellated_empty.GetAddressOf());
+      }
+      return objects.tessellated_empty.Get();
+    };
+    // An indexed strip: a strip-cut index streams out fewer triangles than its range holds, the rest emptied.
+    if (INDEXED && strip) {
+      native->SOSetTargets(0, nullptr, nullptr);
+      if (auto* empty = empty_vertices(); empty != nullptr) {
+        for (UINT first = 0; first < vertex_count; first += TERRAIN_EMPTY_VERTICES) {
+          const D3D11_BOX emptied = {.left = 0, .top = 0, .front = 0, .right = std::min(TERRAIN_EMPTY_VERTICES, vertex_count - first) * 16, .bottom = 1, .back = 1};
+          native->CopySubresourceRegion(objects.captured.Get(), 0, (next_vertex + first) * 16, 0, 0, empty, 0, &emptied);
+        }
+      }
+    }
     if (!batched) {
       if (!clip_space || own_capture) native->VSSetShader(capture_vertex_shader, nullptr, 0);
       native->GSSetShader(stream_output, nullptr, 0);
@@ -2392,18 +2426,13 @@ void Capture(Context& command, const SceneShader& shader) {
                               && runtime.terrain_known_frame + TERRAIN_COUNT_FRAMES >= runtime.frame;
     }
     if (shader.tessellated && runtime.terrain_later && runtime.tessellated_draws == 0) {
-      if (!objects.tessellated_empty) {
-        const std::vector<uint32_t> empty(size_t{TERRAIN_EMPTY_VERTICES} * 4, 0x7FC00000u);
-        const D3D11_BUFFER_DESC empty_desc = {.ByteWidth = TERRAIN_EMPTY_VERTICES * 16, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_VERTEX_BUFFER};
-        const D3D11_SUBRESOURCE_DATA empty_data = {.pSysMem = empty.data()};
-        device->CreateBuffer(&empty_desc, &empty_data, objects.tessellated_empty.GetAddressOf());
-      }
+      auto* empty = empty_vertices();
       runtime.tessellated_expected =
-          objects.tessellated_empty ? static_cast<uint32_t>(std::min<uint64_t>(runtime.terrain_known_corners / 24 * 27, MAX_TESSELLATED_VERTICES)) : 0u;
+          (empty != nullptr) ? static_cast<uint32_t>(std::min<uint64_t>(runtime.terrain_known_corners / 24 * 27, MAX_TESSELLATED_VERTICES)) : 0u;
       native->SOSetTargets(0, nullptr, nullptr);
       for (UINT first = 0; first < runtime.tessellated_expected; first += TERRAIN_EMPTY_VERTICES) {
         const D3D11_BOX emptied = {.left = 0, .top = 0, .front = 0, .right = std::min(TERRAIN_EMPTY_VERTICES, runtime.tessellated_expected - first) * 16, .bottom = 1, .back = 1};
-        native->CopySubresourceRegion(objects.tessellated.Get(), 0, first * 16, 0, 0, objects.tessellated_empty.Get(), 0, &emptied);
+        native->CopySubresourceRegion(objects.tessellated.Get(), 0, first * 16, 0, 0, empty, 0, &emptied);
       }
       native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
       const auto free_count = std::ranges::find(objects.terrain_counts, 0u, &DeviceObjects::TerrainCount::draws);
@@ -4527,30 +4556,31 @@ inline bool BindLocalLights(ID3D11DeviceContext* native) {
   return true;
 }
 
-// For a fog draw (its pixel shader with rt_fog.hlsli): this frame's fog shadows at t43; false: not traced this frame
-// (nothing bound).
+// For a fog draw (its pixel shader with rt_fog.hlsli): this frame's fog shadows at t43, the positions they were traced
+// from at t45 (its upsample keeps to the pixel's kind of surface); false: not traced this frame (nothing bound).
 inline bool BindFogShadows(ID3D11DeviceContext* native) {
-  std::array<ID3D11ShaderResourceView*, 2> fog = {};
+  std::array<ID3D11ShaderResourceView*, 3> fog = {};
   ID3D11Buffer* lights = nullptr;
   {
     const std::unique_lock lock(internal::runtime.mutex);
     if (internal::runtime.traced_frame != internal::runtime.frame || !internal::runtime.settings.fog_shadows) return false;
     fog[0] = dlaa_bridge::bridge.rt_fog.srv.Get();
+    fog[2] = dlaa_bridge::bridge.rt_positions.srv.Get();
     // The local lights' light in the fog (t44) and its strength (b9's y) where they were traced with it.
     if (internal::runtime.lights_traced && internal::runtime.settings.light_glow > 0.f) {
       fog[1] = dlaa_bridge::bridge.rt_fog_lights.srv.Get();
       lights = internal::runtime.objects.light_constants.Get();
     }
   }
-  native->PSSetShaderResources(43, 2, fog.data());
+  native->PSSetShaderResources(43, 3, fog.data());
   native->PSSetConstantBuffers(9, 1, &lights);
   return fog[0] != nullptr;
 }
 
 inline void UnbindFogShadows(ID3D11DeviceContext* native) {
-  constexpr std::array<ID3D11ShaderResourceView*, 2> NO_FOG = {};
+  constexpr std::array<ID3D11ShaderResourceView*, 3> NO_FOG = {};
   ID3D11Buffer* no_lights = nullptr;
-  native->PSSetShaderResources(43, 2, NO_FOG.data());
+  native->PSSetShaderResources(43, 3, NO_FOG.data());
   native->PSSetConstantBuffers(9, 1, &no_lights);
 }
 

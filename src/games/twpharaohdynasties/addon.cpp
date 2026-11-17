@@ -2172,12 +2172,64 @@ constexpr std::array<twattila::water_effects::WaterShader, 84> WATER_SHADERS = {
 // says whether the share applies. The AO blurs (7F637259 / BFD285BD) are replaced (shaders/ssao_blur.hlsli): a region
 // read scaled their taps with their uv. The building pools (phar_building_water_01 ps_main_deferred_opaque_gbuffer, in no trace)
 // read t_ssao at the view's uv (SV_Position x c29.zw): WARP tools\tw\warp_tests\pharaoh\scale_v61.
-constexpr std::array<twattila::view_share::RegionRead, 5> RENDER_SCALE_READS = {{
+// The overlays' readers, as Attila's (twattila/addon.cpp RENDER_SCALE_READS): the overlays are drawn by the main camera into
+// display-sized targets, so below 100% into their render share; the ocean reads them at the uv its vertex shader projects,
+// the sun (slm) and the campaign's planes through g_overlay_view_projection: no camera chain view_share finds. Their share
+// only while the overlay is display-sized or a halving (else as at 100%). Census: tools/tw/round_notes/bugs_1117/bug4_census.py.
+constexpr std::array<twattila::view_share::RegionRead, 50> RENDER_SCALE_READS = {{
     {.shader_hash = 0x57E5140E, .slots = 0b111, .size_slot = 1},  // glow bright pass
     {.shader_hash = 0x03B9CEFE, .slots = uint64_t{1} << 12},     // building water, shadows (ps_4_1)
     {.shader_hash = 0x9D28319F, .slots = uint64_t{1} << 12},     // building water, shadows
     {.shader_hash = 0x40154AD7, .slots = uint64_t{1} << 9},      // building water
     {.shader_hash = 0xAC04E623, .slots = uint64_t{1} << 11},     // building water, baked shadows
+    // ocean: the colour overlays.
+    {.shader_hash = 0x522CD35E, .slots = 0b1100000000000},  // ocean ps40_main_high (gather_4_1)
+    {.shader_hash = 0x529C9815, .slots = 0b1100000000000},  // ocean ps40_main_high (fetch4)
+    {.shader_hash = 0x53D766F4, .slots = 0b1100000000},  // ocean ps40_main_high
+    {.shader_hash = 0xC3A6469B, .slots = 0b11000000},  // ocean ps40_main_low (baked shadows)
+    {.shader_hash = 0xDE763C21, .slots = 0b110000000000},  // ocean ps40_main_high (baked shadows)
+    {.shader_hash = 0xFA3B674B, .slots = 0b11000000},  // ocean ps40_main_low (gather_4_1)
+    // directionallight slm: the overlay.
+    {.shader_hash = 0x24FD1318, .slots = 0b100000000000000000000},  // directionallight ps41_slm_interior_ms (fetch4)
+    {.shader_hash = 0x40BE26E9, .slots = 0b100000000000000000},  // directionallight ps40_slm_highdef
+    {.shader_hash = 0x4CA2F7BA, .slots = 0b100000000000000000},  // directionallight ps41_slm_interior_ms
+    {.shader_hash = 0x5FF8081D, .slots = 0b10000000000000000000},  // directionallight ps40_slm_highdef (baked shadows)
+    {.shader_hash = 0x6AFC2ACA, .slots = 0b100000000000000000000},  // directionallight ps41_slm_edges_ms (gather_4_1)
+    {.shader_hash = 0x8213B16B, .slots = 0b10000000000000000000},  // directionallight ps41_slm_interior_ms (baked shadows)
+    {.shader_hash = 0xA3EA9117, .slots = 0b100000000000000000},  // directionallight ps41_slm_edges_ms
+    {.shader_hash = 0xC69A7EEB, .slots = 0b10000000000000000000},  // directionallight ps41_slm_edges_ms (baked shadows)
+    {.shader_hash = 0xC701CDD0, .slots = 0b100000000000000000000},  // directionallight ps41_slm_interior_ms (gather_4_1)
+    {.shader_hash = 0xE5A6A379, .slots = 0b100000000000000000000},  // directionallight ps41_slm_edges_ms (fetch4)
+    {.shader_hash = 0xF883F5B2, .slots = 0b100000000000000000000},  // directionallight ps40_slm_highdef (fetch4)
+    {.shader_hash = 0xFA856110, .slots = 0b100000000000000000000},  // directionallight ps40_slm_highdef (gather_4_1)
+    // the campaign's sea, shroud plane and map quad: the overlay.
+    {.shader_hash = 0x0D00CD39, .slots = 0b10000000000},  // shroud_plane troy_shroud_ps_ms2 (baked shadows)
+    {.shader_hash = 0x18794243, .slots = 0b10000},  // water ps_campaign_sea_medium
+    {.shader_hash = 0x1C948106, .slots = 0b10000000000},  // shroud_plane troy_shroud_ps_ms1 (baked shadows)
+    {.shader_hash = 0x1FA8BC8E, .slots = 0b1000000},  // phar_campaign_big_river ps_campaign_big_river (baked shadows)
+    {.shader_hash = 0x3CD00F55, .slots = 0b10000000},  // water ps_campaign_sea_medium (fetch4)
+    {.shader_hash = 0x3CD44028, .slots = 0b10000000},  // phar_campaign_big_river ps_campaign_big_river (fetch4)
+    {.shader_hash = 0x40084EFF, .slots = 0b10000000000},  // shroud_plane troy_shroud_ps_ms1 (gather_4_1)
+    {.shader_hash = 0x61417411, .slots = 0b10000},  // water ps_campaign_sea_ultra
+    {.shader_hash = 0x66E7C0C3, .slots = 0b10000000},  // water ps_campaign_sea_medium (gather_4_1)
+    {.shader_hash = 0x68C9F797, .slots = 0b1000000},  // water ps_campaign_sea_low (baked shadows)
+    {.shader_hash = 0x6DB6D751, .slots = 0b10000000},  // water ps_campaign_sea_high (fetch4)
+    {.shader_hash = 0x7513D88C, .slots = 0b1000000},  // campaignmapquadonly fragment_shader
+    {.shader_hash = 0x762EFE50, .slots = 0b10000000},  // water ps_campaign_sea_low (gather_4_1)
+    {.shader_hash = 0x7D5F9C47, .slots = 0b10000000000},  // shroud_plane troy_shroud_ps_ms2 (gather_4_1)
+    {.shader_hash = 0x87BEF758, .slots = 0b10000000},  // water ps_campaign_sea_high (gather_4_1)
+    {.shader_hash = 0x88927D58, .slots = 0b1000000},  // water ps_campaign_sea_ultra (baked shadows)
+    {.shader_hash = 0x89483668, .slots = 0b10000000000},  // shroud_plane troy_shroud_ps_ss (gather_4_1)
+    {.shader_hash = 0x9CDEAD46, .slots = 0b10000000},  // water ps_campaign_sea_ultra (fetch4)
+    {.shader_hash = 0x9DC3974A, .slots = 0b10000000},  // water ps_campaign_sea_ultra (gather_4_1)
+    {.shader_hash = 0xA27DB334, .slots = 0b10000000000},  // shroud_plane troy_shroud_ps_ss (baked shadows)
+    {.shader_hash = 0xBF868CB7, .slots = 0b10000},  // water ps_campaign_sea_high
+    {.shader_hash = 0xC0804990, .slots = 0b1000000},  // water ps_campaign_sea_medium (baked shadows)
+    {.shader_hash = 0xCF051012, .slots = 0b1000000},  // water ps_campaign_sea_high (baked shadows)
+    {.shader_hash = 0xD3909EC5, .slots = 0b10000000},  // phar_campaign_big_river ps_campaign_big_river (gather_4_1)
+    {.shader_hash = 0xD3E14854, .slots = 0b10000000},  // water ps_campaign_sea_low (fetch4)
+    {.shader_hash = 0xD5521C8E, .slots = 0b10000},  // phar_campaign_big_river ps_campaign_big_river
+    {.shader_hash = 0xF64DBB81, .slots = 0b10000},  // water ps_campaign_sea_low
 }};
 // The game's 3D sprites (sprite.hlsl vertex_3d_gamma: the unit markers) drawn at the display's size after the tone mapper
 // against the scene's depth (battle f07e0, siege 3aa60) and, in the battle, its copy (ec5e0): both stretched below 100%.

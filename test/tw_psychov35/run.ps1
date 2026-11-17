@@ -3,6 +3,7 @@
 # as -Before; Hue Clip and PsychoV35 are checked on their own (tests.cpp's header). -Before is 4b509903 (hdr audit R4:
 # BT.709 on Output SDR in V30 / V31, the newest change those modes were meant to take); against d3d6425b, the commit
 # before PsychoV35, only Output SDR in Attila's V30 and WH3's V30 / V31 differ (2026-11-16: 30604 pixels, all there).
+# Part 9's control is -Before's PsychoV35 (before its edge-input fix, 2026-11-17): keep -Before older than that fix.
 # -AllShaders also compiles every shader of both add-ons on both sides and lists the ones whose bytes changed; -ReportOnly
 # runs part 4 alone. R.U.S.E.'s post (parts 3, 4, 6) is compiled from this tree alone, as ps_5_0 /Gec; its 25 D3D9
 # replacements are compiled as ps_3_0 with their instruction slots listed.
@@ -136,6 +137,12 @@ foreach ($game in @('twattila')) {
   & $fxc (Join-Path $testRoot 'hue_clip.hlsl') /T cs_5_0 /D __SHADER_TARGET_MAJOR=5 /D __SHADER_TARGET_MINOR=0 /DNDEBUG /Gec /nologo /O3 /E main `
       /I (Join-Path $repairRoot "src\games\$game") /Fo (Join-Path $afterShaders "hue_clip_$game.cso") 2>$null | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "fxc failed: hue_clip.hlsl ($game)" }
+}
+# Part 9's PsychoV35 alone (v35_edges.hlsl), with this tree's Attila folder and -Before's (the control).
+foreach ($side in @(@{ Root = $repairRoot; Out = $afterShaders }, @{ Root = $beforeTree; Out = $beforeShaders })) {
+  & $fxc (Join-Path $testRoot 'v35_edges.hlsl') /T cs_5_0 /D __SHADER_TARGET_MAJOR=5 /D __SHADER_TARGET_MINOR=0 /DNDEBUG /Gec /nologo /O3 /E main `
+      /I (Join-Path $side.Root 'src\games\twattila') /Fo (Join-Path $side.Out 'v35_edges.cso') 2>$null | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "fxc failed: v35_edges.hlsl ($($side.Root))" }
 }
 # Part 5's curves (hue_curves.hlsl), with Attila's folder as the include path.
 & $fxc (Join-Path $testRoot 'hue_curves.hlsl') /T ps_5_0 /D __SHADER_TARGET_MAJOR=5 /D __SHADER_TARGET_MINOR=0 /DNDEBUG /Gec /nologo /O3 /E main `
