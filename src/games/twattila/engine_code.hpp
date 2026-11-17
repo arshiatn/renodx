@@ -31,7 +31,8 @@
 // first instruction(s) of each; the page is never freed (a thread can still be in it after the game's bytes are back).
 // RVAs are the Steam build's (1.6.0): there they are tried first, then the code section is searched.
 // Thrones of Britannia and Rome II (Game::THRONES, Game::ROME2): the same routines, their builds' (internal::BUILDS);
-// Rome II has no ready check.
+// Rome II has no ready check. Faster Job Wake-Ups (its own row, Experimental): a sixth to eighth site, the job system's
+// worker wake-ups (6. below).
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
@@ -288,6 +289,134 @@ constexpr std::array<uint8_t, 85> READY_CHECK_STUB = {
     0xC3,                          // ret
 };
 
+// 6. The job system's worker wake-ups (Faster Job Wake-Ups, its own row, Experimental: not byte for byte the game's
+// protocol). Every worker sleeps on its own semaphore; the render thread's WakeAll (+0x16b5550, 67 callers, 33 to 38 a
+// frame in a battle) readies all ~15 of them one after the other: 65 us a call, 2.5 to 2.8 ms of the render thread a
+// frame, most of it SetEvent system calls. Here WakeAll wakes one sleeping worker and that worker runs the game's own
+// WakeAll loop for the others, so the render thread goes on at once. The semaphore code, Wake and the worker loop stay the
+// game's: only which thread runs the Wakes, and a few microseconds later, changes (every worker still gets the game's Wake
+// after every request).
+// Three sites, all thiscall like the game's: WakeAll, Sleep (+0x16b5520, replaced whole: the worker's wait) and the call of
+// Stop (+0x1697490) in the worker's destructor. A side table in its own memory (never freed) holds the pool, `pending` (a
+// WakeAll asked for a loop), `asleep` (bit i: worker i is inside our Sleep) and `running` (loops in progress), each on its
+// own cache line; one pool of up to 32 workers, any other uses the game's code. Dekker pairs: WakeAll sets `pending` with a
+// locked instruction and then reads `asleep`; a worker sets its bit (locked) and reads `pending` before waiting, clears it
+// (locked) after and reads `pending` again: a request is either seen by the worker or sees its bit. Whoever finds `pending`
+// takes it (one locked exchange) and runs one loop, which starts after every request taken. Stop drops the pending request
+// and waits for the loops in progress before the worker's memory goes. Checked by test/tw_engine_code (the game's own
+// functions, 32 threads) and a model check (every interleaving of 2 to 4 workers: no lost wake-up, no deadlock, no use after
+// free). Thrones of Britannia: the same bytes at other addresses; Rome II has none of them.
+constexpr std::string_view JOB_WAKE_ALL =
+    "53 56 57 8B F9 33 F6 8B 5F 04 85 DB 74 12 66 90 8B 4F 08 8B 0C B1 E8 ?? ?? ?? ?? 46 3B F3 72 F0 5F 5E 5B C3";
+constexpr size_t JOB_WAKE_ALL_WAKE_CALL = 22;  // call the game's Wake
+constexpr std::string_view JOB_WAKE =
+    "56 8B F1 B8 01 00 00 00 F0 0F C1 46 50 40 83 E8 01 75 08 8D 4E 1C E8 ?? ?? ?? ?? 83 7E 18 03 74 07 C7 46 18 02 00 00 "
+    "00 5E C3";
+constexpr std::string_view JOB_SLEEP =
+    "56 8B F1 83 7E 18 03 74 16 8D 4E 1C C7 46 18 01 00 00 00 E8 ?? ?? ?? ?? 33 C9 8D 46 50 87 08 5E C3";
+constexpr size_t JOB_SLEEP_ACQUIRE_CALL = 19;  // call the semaphore's Acquire(INFINITE)
+constexpr std::string_view JOB_WORKER_DESTRUCTOR =
+    "56 8B F1 C7 06 ?? ?? ?? ?? E8 ?? ?? ?? ?? 8B CE E8 ?? ?? ?? ?? 8D 4E 1C E8 ?? ?? ?? ?? 8B 46 0C 5E 85 C0 74 07 50 FF "
+    "15 ?? ?? ?? ?? C3";
+constexpr size_t JOB_WORKER_DESTRUCTOR_STOP_CALL = 9;  // call the game's Stop
+constexpr std::string_view JOB_STOP =
+    "53 56 8B F1 8D 4E 1C C7 46 18 03 00 00 00 E8 ?? ?? ?? ?? 8D 5E 0C 53 E8 ?? ?? ?? ?? 8B 03 83 C4 04 85 C0 74 09 50 FF "
+    "15 ?? ?? ?? ?? 33 C0 C7 03 00 00 00 00 85 C0 74 07 50 FF 15 ?? ?? ?? ?? C7 46 14 00 00 00 00 5E 5B C3";
+constexpr size_t JOB_WAKE_ALL_STUB = 0x00;
+constexpr size_t JOB_SLEEP_STUB = 0x73;
+constexpr size_t JOB_STOP_STUB = 0xED;
+// The stub's sentinels, replaced in Prepare: the side table's fields (absolute: key, pending, asleep, running, each one
+// cache line on) and the game's functions (relative: Wake, Acquire(INFINITE), WakeAll + 5, Stop).
+constexpr uint32_t JOB_FIELD_SENTINEL = 0x5A5A5A01;
+constexpr uint32_t JOB_CALL_SENTINEL = 0x5A5A5A11;
+constexpr size_t JOB_TABLE_SIZE = 256;
+constexpr size_t JOB_TABLE_LINE = 64;
+constexpr std::array<uint8_t, 280> JOB_STUB = {
+    0xA1, 0x01, 0x5A, 0x5A, 0x5A,                    // wake_all: mov eax, dword ptr [key]
+    0x39, 0xC8,                                      // cmp eax, ecx
+    0x74, 0x10,                                      // je claimed
+    0x85, 0xC0,                                      // test eax, eax
+    0x75, 0x5C,                                      // jne game_loop
+    0x31, 0xC0,                                      // xor eax, eax
+    0xF0, 0x0F, 0xB1, 0x0D, 0x01, 0x5A, 0x5A, 0x5A,  // lock cmpxchg dword ptr [key], ecx  the first pool claims the table
+    0x75, 0x50,                                      // jne game_loop
+    0x83, 0x79, 0x04, 0x20,                          // claimed: cmp dword ptr [ecx + 4], 32  more workers than mask bits: the game's loop
+    0x77, 0x4A,                                      // ja game_loop
+    0xF0, 0x83, 0x0D, 0x02, 0x5A, 0x5A, 0x5A, 0x01,  // lock or dword ptr [pending], 1  locked: no later load passes it
+    0xA1, 0x03, 0x5A, 0x5A, 0x5A,                    // mov eax, dword ptr [asleep]
+    0x85, 0xC0,                                      // test eax, eax
+    0x74, 0x19,                                      // je delegate  nobody asleep in our Sleep: run the loop here, as the game does
+    0x0F, 0xBC, 0xD0,                                // bsf edx, eax  the lowest sleeping worker
+    0x8B, 0x41, 0x08,                                // mov eax, dword ptr [ecx + 8]
+    0x8B, 0x04, 0x90,                                // mov eax, dword ptr [eax + edx*4]
+    0x85, 0xC0,                                      // test eax, eax
+    0x74, 0x2C,                                      // je game_loop
+    0x39, 0x50, 0x08,                                // cmp dword ptr [eax + 8], edx  its index in the pool
+    0x75, 0x27,                                      // jne game_loop
+    0x89, 0xC1,                                      // mov ecx, eax
+    0xE9, 0x11, 0x5A, 0x5A, 0x5A,                    // jmp Wake  the sleeper runs the loop
+    0xF0, 0xFF, 0x05, 0x04, 0x5A, 0x5A, 0x5A,        // delegate: lock inc dword ptr [running]
+    0x31, 0xC0,                                      // xor eax, eax
+    0x87, 0x05, 0x02, 0x5A, 0x5A, 0x5A,              // xchg dword ptr [pending], eax
+    0x85, 0xC0,                                      // test eax, eax
+    0x74, 0x05,                                      // je delegate_done
+    0xE8, 0x08, 0x00, 0x00, 0x00,                    // call game_loop
+    0xF0, 0xFF, 0x0D, 0x04, 0x5A, 0x5A, 0x5A,        // delegate_done: lock dec dword ptr [running]
+    0xC3,                                            // ret
+    0x53,                                            // game_loop: push ebx
+    0x56,                                            // push esi
+    0x57,                                            // push edi
+    0x89, 0xCF,                                      // mov edi, ecx
+    0xE9, 0x13, 0x5A, 0x5A, 0x5A,                    // jmp WakeAll + 5
+    0x56,                                            // sleep: push esi
+    0x89, 0xCE,                                      // mov esi, ecx
+    0x83, 0x7E, 0x18, 0x03,                          // cmp dword ptr [esi + 0x18], 3
+    0x74, 0x65,                                      // je sleep_out
+    0xC7, 0x46, 0x18, 0x01, 0x00, 0x00, 0x00,        // mov dword ptr [esi + 0x18], 1
+    0x8B, 0x46, 0x04,                                // mov eax, dword ptr [esi + 4]  the pool
+    0x3B, 0x05, 0x01, 0x5A, 0x5A, 0x5A,              // cmp eax, dword ptr [key]
+    0x75, 0x55,                                      // jne sleep_game
+    0x8B, 0x4E, 0x08,                                // mov ecx, dword ptr [esi + 8]  index
+    0x83, 0xF9, 0x20,                                // cmp ecx, 32
+    0x73, 0x4D,                                      // jae sleep_game
+    0x8B, 0x50, 0x08,                                // mov edx, dword ptr [eax + 8]
+    0x39, 0x34, 0x8A,                                // cmp dword ptr [edx + ecx*4], esi
+    0x75, 0x45,                                      // jne sleep_game
+    0xF0, 0x0F, 0xAB, 0x0D, 0x03, 0x5A, 0x5A, 0x5A,  // lock bts dword ptr [asleep], ecx
+    0x83, 0x3D, 0x02, 0x5A, 0x5A, 0x5A, 0x00,        // cmp dword ptr [pending], 0  a request that missed the bit
+    0x74, 0x07,                                      // je acquire
+    0x89, 0xC1,                                      // mov ecx, eax
+    0xE8, 0x93, 0xFF, 0xFF, 0xFF,                    // call delegate
+    0x8D, 0x4E, 0x1C,                                // acquire: lea ecx, [esi + 0x1c]
+    0xE8, 0x12, 0x5A, 0x5A, 0x5A,                    // call AcquireInf
+    0x8B, 0x4E, 0x08,                                // mov ecx, dword ptr [esi + 8]
+    0xF0, 0x0F, 0xB3, 0x0D, 0x03, 0x5A, 0x5A, 0x5A,  // lock btr dword ptr [asleep], ecx
+    0x83, 0x3D, 0x02, 0x5A, 0x5A, 0x5A, 0x00,        // cmp dword ptr [pending], 0  the request that woke us
+    0x74, 0x08,                                      // je reset
+    0x8B, 0x4E, 0x04,                                // mov ecx, dword ptr [esi + 4]
+    0xE8, 0x6F, 0xFF, 0xFF, 0xFF,                    // call delegate
+    0x31, 0xC9,                                      // reset: xor ecx, ecx
+    0x8D, 0x46, 0x50,                                // lea eax, [esi + 0x50]
+    0x87, 0x08,                                      // xchg dword ptr [eax], ecx
+    0x5E,                                            // sleep_out: pop esi
+    0xC3,                                            // ret
+    0x8D, 0x4E, 0x1C,                                // sleep_game: lea ecx, [esi + 0x1c]
+    0xE8, 0x12, 0x5A, 0x5A, 0x5A,                    // call AcquireInf
+    0xEB, 0xED,                                      // jmp reset
+    0x8B, 0x41, 0x04,                                // stop: mov eax, dword ptr [ecx + 4]
+    0x3B, 0x05, 0x01, 0x5A, 0x5A, 0x5A,              // cmp eax, dword ptr [key]
+    0x75, 0x1B,                                      // jne stop_game
+    0x31, 0xC0,                                      // xor eax, eax
+    0x87, 0x05, 0x02, 0x5A, 0x5A, 0x5A,              // xchg dword ptr [pending], eax  a request that no worker will run any more is dropped
+    0xB8, 0x00, 0x09, 0x3D, 0x00,                    // mov eax, 4000000
+    0x83, 0x3D, 0x04, 0x5A, 0x5A, 0x5A, 0x00,        // drain: cmp dword ptr [running], 0
+    0x74, 0x05,                                      // je stop_game
+    0xF3, 0x90,                                      // pause
+    0x48,                                            // dec eax
+    0x75, 0xF2,                                      // jne drain
+    0xE9, 0x14, 0x5A, 0x5A, 0x5A,                    // stop_game: jmp Stop
+};
+
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half, fmod and the
 // ready check the same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots
 // (control word 0x20, float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the
@@ -319,10 +448,13 @@ struct Build {
   std::string_view fmod_matherr;
   uint32_t list_push_rva;
   uint32_t ready_check_rva;
+  uint32_t job_wake_all_rva;
+  uint32_t job_sleep_rva;
+  uint32_t job_worker_destructor_rva;
 };
-constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA};
-constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9, 0x18d8400};
-constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0};
+constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA, 0x16b5550, 0x16b5520, 0x1689b90};
+constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9, 0x18d8400, 0x1722e60, 0x1722e30, 0x16f7460};
+constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0, 0, 0};
 constexpr std::array<Build, 3> BUILDS = {ATTILA_BUILD, THRONES_BUILD, ROME2_BUILD};  // by Game
 
 // Where each stub sits in the page.
@@ -331,11 +463,13 @@ constexpr size_t HALF_PAGE = 0x040;
 constexpr size_t FMOD_PAGE = 0x180;
 constexpr size_t LIST_PUSH_PAGE = 0x240;
 constexpr size_t READY_CHECK_PAGE = 0x280;
+constexpr size_t JOB_PAGE = 0x300;
 constexpr size_t PAGE_SIZE = 0x1000;
 
 // Which sites each row writes (bits by `sites` index).
 constexpr uint32_t CPU_CODE_SITES = 0b10111;  // Faster Game CPU Code
 constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
+constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
 
 // The first instruction (or two or three, whole) of each site: 5 bytes that become a jump into the page (the render list
 // push's: a 4-byte instruction and the first byte of the next, both run by its stub).
@@ -346,19 +480,25 @@ struct Site {
   uint8_t* at = nullptr;  // null: not found, or not the game's code as expected
   std::array<uint8_t, SITE_SIZE> game = {};
   std::array<uint8_t, SITE_SIZE> jump = {};
+  uint8_t opcode = 0xE9;  // jmp; the worker destructor's call of Stop stays a call (E8)
 };
 
-static std::array<Site, 5> sites = {{{.name = "soldier draw rounding"},
+static std::array<Site, 8> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half floats"},
                                      {.name = "fmod"},
                                      {.name = "render list pushes"},
-                                     {.name = "ready checks"}}};
+                                     {.name = "ready checks"},
+                                     {.name = "job wake-ups"},
+                                     {.name = "job sleeps"},
+                                     {.name = "job stops", .opcode = 0xE8}}};
+static uint8_t* job_table = nullptr;
 static uint8_t* page = nullptr;
 static bool prepared = false;
 static uint32_t found = 0;    // the sites found (bits by index)
 static uint32_t written = 0;  // the sites holding their jump
 static uint32_t asked = 0;    // the sites the rows last asked for
 static uint32_t failed_writes = 0;
+static bool job_missing_logged = false;
 // Presents with a thread inside a site before giving up (until the row changes); each try snapshots the system's threads
 // (~0.1 s with some antivirus hooks; 3 of 200 writes waited once in the test, four threads running the sites nonstop).
 constexpr uint32_t MAX_FAILED_WRITES = 30;
@@ -457,7 +597,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   };
 
   page = static_cast<uint8_t*>(VirtualAlloc(nullptr, PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-  std::array<uint8_t*, 5> stubs = {};
+  std::array<uint8_t*, 8> stubs = {};
   if (page != nullptr) {
     if (uint8_t* match = find(build.truncation, build.truncation_rva); match != nullptr) {
       uint8_t* stub = page + TRUNCATION_PAGE;
@@ -518,6 +658,34 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       sites[4].at = match;
       stubs[4] = page + READY_CHECK_PAGE;
     }
+    // Faster Job Wake-Ups: all three sites, with the game's Wake and Stop as the stub expects, or none.
+    if (build.job_wake_all_rva != 0) {
+      uint8_t* wake_all = find(JOB_WAKE_ALL, build.job_wake_all_rva);
+      uint8_t* worker_sleep = find(JOB_SLEEP, build.job_sleep_rva);
+      uint8_t* destructor = find(JOB_WORKER_DESTRUCTOR, build.job_worker_destructor_rva);
+      const uint8_t* wake = (wake_all != nullptr ? target(wake_all + JOB_WAKE_ALL_WAKE_CALL) : nullptr);
+      const uint8_t* stop = (destructor != nullptr ? target(destructor + JOB_WORKER_DESTRUCTOR_STOP_CALL) : nullptr);
+      job_table = static_cast<uint8_t*>(VirtualAlloc(nullptr, JOB_TABLE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+      if (job_table != nullptr && worker_sleep != nullptr && wake != nullptr && stop != nullptr && holds(wake, JOB_WAKE) && holds(stop, JOB_STOP)) {
+        uint8_t* stub = page + JOB_PAGE;
+        std::memcpy(stub, JOB_STUB.data(), JOB_STUB.size());
+        const std::array<const uint8_t*, 4> callees = {wake, target(worker_sleep + JOB_SLEEP_ACQUIRE_CALL), wake_all + SITE_SIZE, stop};
+        for (size_t at = 0; at + sizeof(uint32_t) <= JOB_STUB.size(); ++at) {
+          const uint32_t value = read32(stub + at);
+          if (value - JOB_FIELD_SENTINEL < 4) {
+            write32(stub + at, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(job_table + (value - JOB_FIELD_SENTINEL) * JOB_TABLE_LINE)));
+          } else if (value - JOB_CALL_SENTINEL < callees.size()) {
+            write32(stub + at, relative(stub + at + sizeof(uint32_t), callees[value - JOB_CALL_SENTINEL]));
+          }
+        }
+        sites[5].at = wake_all;
+        sites[6].at = worker_sleep;
+        sites[7].at = destructor + JOB_WORKER_DESTRUCTOR_STOP_CALL;
+        stubs[5] = stub + JOB_WAKE_ALL_STUB;
+        stubs[6] = stub + JOB_SLEEP_STUB;
+        stubs[7] = stub + JOB_STOP_STUB;
+      }
+    }
     DWORD protection;
     VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
     FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
@@ -528,13 +696,15 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   const std::array<uint32_t, 5> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva};
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
-    if (rvas[index] == 0) continue;
-    std::string& names = (site.at != nullptr ? faster : left);
-    names += std::format("{}{}", names.empty() ? "" : ", ", site.name);
+    // The job sites aren't listed here: their row says when it turns them on.
+    if (index < rvas.size() && rvas[index] != 0) {
+      std::string& names = (site.at != nullptr ? faster : left);
+      names += std::format("{}{}", names.empty() ? "" : ", ", site.name);
+    }
     if (site.at == nullptr) continue;
     found |= 1u << index;
     std::memcpy(site.game.data(), site.at, SITE_SIZE);
-    site.jump[0] = 0xE9;
+    site.jump[0] = site.opcode;
     write32(site.jump.data() + 1, relative(site.at + SITE_SIZE, stubs[index]));
   }
   renodx::utils::log::i("[Total War] Faster Game CPU Code: ", (faster.empty() ? "nothing" : faster), " faster",
@@ -543,11 +713,11 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
 
 }  // namespace internal
 
-// Every present: `enabled` (Faster Game CPU Code) and `lists` (Faster Render Lists) once empire.retail.dll is loaded, the
-// first time either is on prepared (`game`'s build); then the jumps go in or the game's bytes back, while no thread
-// stands inside them.
-inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false) {
-  const uint32_t wanted = (enabled ? internal::CPU_CODE_SITES : 0u) | (lists ? internal::LIST_SITES : 0u);
+// Every present: `enabled` (Faster Game CPU Code), `lists` (Faster Render Lists) and `jobs` (Faster Job Wake-Ups) once
+// empire.retail.dll is loaded, the first time any is on prepared (`game`'s build); then the jumps go in or the game's
+// bytes back, while no thread stands inside them.
+inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, bool jobs = false) {
+  const uint32_t wanted = (enabled ? internal::CPU_CODE_SITES : 0u) | (lists ? internal::LIST_SITES : 0u) | (jobs ? internal::JOB_SITES : 0u);
   if (wanted != 0 && !internal::prepared) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;
@@ -557,6 +727,10 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false) {
     internal::asked = wanted;
     internal::failed_writes = 0;
   }
+  if (jobs && internal::prepared && (internal::found & internal::JOB_SITES) == 0 && !internal::job_missing_logged) {
+    internal::job_missing_logged = true;
+    renodx::utils::log::w("[Total War] Faster Job Wake-Ups: left alone (not the game's code as expected: another mod or build)");
+  }
   const uint32_t target = wanted & internal::found;
   if (target == internal::written || internal::failed_writes >= internal::MAX_FAILED_WRITES) return;
   if (internal::PausedWrite(target)) {
@@ -564,7 +738,8 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false) {
     internal::written = target;
     internal::failed_writes = 0;
     for (const auto& [row_sites, name] : {std::pair{internal::CPU_CODE_SITES, "Faster Game CPU Code"},
-                                          std::pair{internal::LIST_SITES, "Faster Render Lists"}}) {
+                                          std::pair{internal::LIST_SITES, "Faster Render Lists"},
+                                          std::pair{internal::JOB_SITES, "Faster Job Wake-Ups"}}) {
       if ((changed & row_sites) == 0) continue;
       renodx::utils::log::i("[Total War] ", name, ": ", ((target & row_sites) != 0 ? "on" : "off, the game's own code back"));
     }
@@ -588,7 +763,7 @@ inline void Uninstall() {
 
 #else
 
-inline void Update(bool, Game = Game::ATTILA, bool = false) {}
+inline void Update(bool, Game = Game::ATTILA, bool = false, bool = false) {}
 inline void Uninstall() {}
 
 #endif

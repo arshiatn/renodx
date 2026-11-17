@@ -1,5 +1,19 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Faster Job Wake-Ups (2026-11-17; built only, not stamped, not installed, not run in game)
+
+- New: **Faster Job Wake-Ups (Experimental, off)**, under Graphics (Experimental): when the game hands its helper threads
+  new work, one sleeping helper wakes the others instead of the main thread waking all ~15 one by one (65 us a call,
+  33-38 calls a frame in a battle, 2.5-2.8 ms of the main thread). Every helper still gets the game's own wake after
+  every request; the semaphores and the helpers' loop stay the game's code. Off: the game's bytes back at once.
+  Checked in `test/tw_engine_code` part 10 on the game's own functions (state equal after one thread's calls, registers kept,
+  24-helper soak with every item once and every wake's postcondition, the row switched 200 times during a soak, 600
+  shutdown cycles, 33 helpers, a broken stub caught) and a model check of the protocol.
+- Test (ATN): a big battle with the row on: ReShade.log "Faster Job Wake-Ups: on" (a warning "left alone" instead: another
+  mod changed those bytes); FPS and Time Each Pass against off; the battle plays as before, no freeze when the battle ends
+  or the game quits. Bench: stress, night1, Constantinople, one WPR each (`SetEvent` under the main thread should drop by
+  most of 2.5 ms).
+
 ## Dev, tw1_ and shared rounds (2026-11-17; built only, not stamped, not installed, not run in game)
 
 - New: **Path-Traced Reflection Occlusion** (on, slider 0..1): with Path-Traced Ambient, reflections darken where

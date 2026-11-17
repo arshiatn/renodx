@@ -1323,6 +1323,8 @@ float lod_bias_trilinear_row = 0.f;
 float engine_code_row = 1.f;
 // Faster Render Lists (on by default; graphics_page.hpp): engine_code.hpp's render list push site.
 float render_lists_row = 1.f;
+// Faster Job Wake-Ups (Experimental, off; graphics_page-style row below): engine_code.hpp's job system sites.
+float job_wakeups_row = 0.f;
 
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1564,7 +1566,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                 shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
-  twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f);
+  twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
+                                job_wakeups_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
   if (!shadow_size_locked) twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::graphics_hooks::Update(
@@ -1939,6 +1942,17 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           .tooltip = "The game's draw lists stop rewriting a flag every CPU core reads for each item they take:\n"
                      "less waiting between the cores in big battles. Same results.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FasterJobWakeUps",
+          .binding = &job_wakeups_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Faster Job Wake-Ups (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The game's main thread wakes its helper threads one by one; now one helper wakes the others.\n"
+                     "Less CPU time on the main thread in big battles. Same results.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

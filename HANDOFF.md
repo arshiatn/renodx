@@ -2624,6 +2624,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         auto-reset re-checked; caller counts match. Finished model runs passed (orig 12 configs, design 3, d2 = one loop
         per delegate + delegate as fallback 3, d2 + toggle 2), controls failed as they should. ATN takes B7 / B5 / E3P /
         EVEC to ChatGPT (folder in Downloads). Owner: ATN
+      - [x] EJOB IMPLEMENTED 21:xx (ATN gave Downloads\Attila_CPU_for_ChatGPT, "I think it was half done"; offline only: no
+        game run, not benched, not installed, no stamp): Faster Job Wake-Ups = a 4th engine_code row on Attila
+        (Experimental, off; Update's 4th argument, key FasterJobWakeUps), design d2 (designs/job_wakeups_final.md): WakeAll
+        wakes one sleeping worker and that worker runs the game's WakeAll loop; sites WakeAll (5 bytes), Sleep (whole) and the
+        worker destructor's call of Stop; 280-byte stub (asm source ejob.s) + a 256-byte side table; engine_code.hpp
+        section 6, test/tw_engine_code part 10 (the game's own functions: state equal after WakeAll / Sleep / the
+        destructor, registers kept, 24-worker soak x2 copies about 3 M items each, row toggled 200x during a soak, 600
+        shutdown cycles with decommitted worker pages, 33 workers, CONTROL caught, WakeAll 14 us -> 1 us with 15 asleep),
+        model check d2 passes (controls fail), Attila + Thrones DLLs. Builds: twattila x86 OK. Thrones / Rome II addons
+        still pass jobs = false (Thrones has the same bytes: add its row later). NOT proven: the in-game gain (-1.9..-2.2 ms
+        E; the head worker waking the others starts them 5-15 us later). Left: ATN's go for the bench (V1 + the row on:
+        stress, night1, day1, one WPR), then the default decision. Owner: ATN (go), coordinator (bench)
+      - [ ] EHALF / E3P / EVEC NOT DONE (assessed 21:xx, same session): EHALF's 20 conversions sit in 0x1906fa0's row loop
+        between the instance maths (corner offsets, scale, rotation, xmm temporaries and stack slots): an exact
+        replacement is a rewrite of the whole row builder for -0.1..-0.6 ms (workers 4-6 ms summed); F16C is not exact
+        (the game rounds half way down). E3P needs in-game stall data (heapfix's loopfetch moved the stall: 2.3 ms on one
+        prefetcht0), EVEC's reset site is not in 0x17b0000-0x17c0000 (the vector at +0x7c cap / +0x80 size / +0x84 data is
+        std::vector<T*>::push_back growing 1, 2, 4 ...; an owner / reset search over the whole code is still to do). Owner: ATN
       - [ ] CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V0-V4 stress / night1 x3, day1 x2,
         sea1 x2, WPR stress / night1 / a new day1 (no sea1 WPR: GPU-bound). Owner: coordinator
       - [x] ANSWERED 19:0x (ATN: "Sure but don't forget plannings and the reviews") C: EJOB: may we change the game's job-semaphore protocol (spin-then-sleep, SetEvent only when a worker

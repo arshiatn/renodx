@@ -30,10 +30,18 @@
 //    and [this] equal, the game's results as derived from its bytes (engine_code.hpp), no dispose or destroy run;
 //    CONTROL: a child with uses 0 (the game disposes it) must differ; on and off 200 times while 4 threads call both
 //    copies on vectors sharing control blocks: every al the game's, every count back; timing, 1 and 4 threads.
+// 10. Faster Job Wake-Ups (the job system's WakeAll, Sleep and the worker destructor's call of Stop, as the add-on's third row;
+//    the game's copy against ours on the game's own functions, the semaphores, workers and destructor included): one thread,
+//    no sleeper: every worker's state, wake counter, semaphore count and event equal after WakeAll twice, Sleep and the
+//    destructor; ebx esi edi ebp esp kept with random registers; a soak with 24 workers and 8 submitters (every item consumed
+//    once, every WakeAll's postcondition: every worker looked at the queue after it), the same with the row switched on and
+//    off 200 times; 600 shutdown cycles (a delegate in its loop while the workers are destroyed: a use after free faults);
+//    33 workers (the game's loop); CONTROL: the request never recorded (must fail); the render thread's time in WakeAll.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
 #include <windows.h>
+#include <emmintrin.h>
 #include <xmmintrin.h>
 
 #include <algorithm>
@@ -45,8 +53,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -472,6 +482,498 @@ void FromFloat(uint8_t* out, uint32_t bits) {
   }
 }
 
+// ---- 10. Faster Job Wake-Ups: the game's own job functions, the game's copy against the patched one ----
+
+// The worker constructor's pattern: its call of the semaphore constructor's wrapper (thiscall, 4 arguments) is at +69.
+constexpr std::string_view JOB_WORKER_CONSTRUCTOR =
+    "8B 44 24 04 56 8B F1 6A 00 68 ?? ?? ?? ?? 89 46 04 8D 4E 1C 8B 44 24 14 89 46 08 8B 44 24 18 40 C7 06 ?? ?? ?? ?? 50 6A "
+    "00 C7 46 0C 00 00 00 00 C7 46 10 FF FF FF FF C7 46 14 FF FF FF FF C7 46 18 00 00 00 00 E8 ?? ?? ?? ?? 8B CE C7 46 50 00 "
+    "00 00 00";
+constexpr size_t JOB_WORKER_CONSTRUCTOR_SEMAPHORE_CALL = 69;
+constexpr uint32_t WORKER_SEMAPHORE = 0x1C;  // the semaphore inside a worker; its count is at +0x24, so the worker's +0x40
+
+// The module's kernel32 imports (the test maps the DLL without its imports): the slots the semaphores' code calls through.
+void FillKernelImports(uint8_t* image) {
+  const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS32*>(image + reinterpret_cast<const IMAGE_DOS_HEADER*>(image)->e_lfanew);
+  const auto& directory = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+  for (const auto* descriptor = reinterpret_cast<const IMAGE_IMPORT_DESCRIPTOR*>(image + directory.VirtualAddress); descriptor->Name != 0; ++descriptor) {
+    if (_stricmp(reinterpret_cast<const char*>(image + descriptor->Name), "kernel32.dll") != 0) continue;
+    const auto* names = reinterpret_cast<const IMAGE_THUNK_DATA32*>(image + descriptor->OriginalFirstThunk);
+    auto* slots = reinterpret_cast<IMAGE_THUNK_DATA32*>(image + descriptor->FirstThunk);
+    for (size_t index = 0; names[index].u1.AddressOfData != 0; ++index) {
+      if ((names[index].u1.Ordinal & IMAGE_ORDINAL_FLAG32) != 0) continue;
+      const auto* name = reinterpret_cast<const IMAGE_IMPORT_BY_NAME*>(image + names[index].u1.AddressOfData);
+      slots[index].u1.Function = static_cast<DWORD>(reinterpret_cast<uintptr_t>(GetProcAddress(GetModuleHandleA("kernel32.dll"), name->Name)));
+    }
+  }
+}
+
+// One copy of the game's code with the job functions callable (thiscall as __fastcall with the second argument unused).
+struct JobCopy {
+  const char* name;
+  uint8_t* image;
+  void(__fastcall* wake_all)(void*, void*);
+  void(__fastcall* sleep)(void*, void*);
+  void(__fastcall* destroy)(void*, void*);  // the worker destructor: the call of Stop is the third site
+  void*(__fastcall* make_semaphore)(void*, void*, uint32_t, uint32_t, uint32_t, uint32_t);
+  uint8_t* pool;  // the same address in every run: engine_code's table keys the first pool it sees
+  const volatile uint32_t* asleep;  // the table's mask of workers asleep in our Sleep (null: the game's copy)
+};
+
+// The pool as the game lays it out (+4 the worker count, +8 the workers' array, +0x1c an object the worker destructor
+// notifies: none), the workers' pages (+4 pool, +8 index, +0xc thread handle, +0x14 -1, +0x18 state, +0x1c semaphore (0,
+// count + 1), +0x50 wake counter) and the threads that run them.
+uint8_t* NewWorker(const JobCopy& copy, uint32_t index, uint32_t count, HANDLE thread) {
+  auto* worker = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+  Write32(worker + 4, Address(copy.pool));
+  Write32(worker + 8, index);
+  Write32(worker + 0xC, Address(thread));
+  Write32(worker + 0x14, 0xFFFFFFFF);
+  copy.make_semaphore(worker + WORKER_SEMAPHORE, nullptr, 0, count + 1, 0, 0);
+  Write32(copy.pool + 4, count);
+  Write32(copy.pool + 8, Address(copy.pool + 0x100));
+  Write32(copy.pool + 0x20, count);
+  Write32(copy.pool + 0x100 + 4 * index, Address(worker));
+  return worker;
+}
+
+struct JobRun {
+  const JobCopy* copy = nullptr;
+  uint32_t count = 0;
+  std::vector<uint8_t*> workers;
+  std::mutex queue_lock;
+  std::deque<uint64_t> queue;
+  uint64_t capacity = 0;
+  std::unique_ptr<std::atomic<uint8_t>[]> consumed;
+  std::unique_ptr<std::atomic<uint64_t>[]> looks;  // each worker's looks at the queue
+  std::atomic<uint64_t> pushed = 0;
+  std::atomic<uint64_t> done = 0;
+  std::atomic<uint64_t> requests = 0;
+  std::atomic<uint64_t> sleeper_seen = 0;  // requests that found a worker asleep in our Sleep: the head is woken, not the loop run here
+  std::atomic<bool> stop_submitting = false;
+  std::atomic<bool> stop_checking = false;
+  struct Check {
+    std::chrono::steady_clock::time_point deadline;
+    std::vector<uint64_t> looks;
+  };
+  std::mutex check_lock;
+  std::deque<Check> checks;
+  std::mutex failure_lock;
+  std::string failure;
+
+  void Fail(const std::string& message) {
+    const std::unique_lock lock(failure_lock);
+    if (failure.empty()) failure = message;
+  }
+  bool Pop(uint64_t* item) {
+    const std::unique_lock lock(queue_lock);
+    if (queue.empty()) return false;
+    *item = queue.front();
+    queue.pop_front();
+    return true;
+  }
+  void Consume(uint64_t item, Random* random) {
+    if (consumed[item].fetch_add(1) != 0) Fail(std::format("item {} consumed twice", item));
+    for (uint32_t spin = random->Next() % 40; spin != 0; --spin) _mm_pause();
+    done.fetch_add(1);
+  }
+};
+
+// A worker as the game's loop runs it: the game's Sleep, a look at the queue, back to sleep; state 3 (Stop) ends it.
+struct WorkerContext {
+  JobRun* run;
+  uint32_t index;
+};
+DWORD WINAPI JobWorkerMain(void* parameter) {
+  const auto* context = static_cast<WorkerContext*>(parameter);
+  JobRun* run = context->run;
+  uint8_t* worker = run->workers[context->index];
+  Random random = {.state = 0xABCDEF ^ (context->index * 0x9E3779B97F4A7C15ull)};
+  for (;;) {
+    run->copy->sleep(worker, nullptr);
+    run->looks[context->index].fetch_add(1);
+    if (*reinterpret_cast<volatile uint32_t*>(worker + 0x18) == 3) return 0;
+    uint64_t item;
+    while (run->Pop(&item)) run->Consume(item, &random);
+  }
+}
+
+// Submitters push batches, call WakeAll when the queue was empty (the game's rule at its 67 call sites), and (half of
+// them) help; the rest leave the items to the workers.
+void JobSubmitterMain(JobRun* run, uint32_t seed, bool helps) {
+  Random random = {.state = 0x1234567ull * (seed + 1)};
+  while (!run->stop_submitting.load()) {
+    const uint32_t batch = 1 + random.Next() % 64;
+    bool was_empty;
+    {
+      const std::unique_lock lock(run->queue_lock);
+      was_empty = run->queue.empty();
+      if (run->pushed.load() + batch > run->capacity) return;
+      for (uint32_t index = 0; index < batch; ++index) run->queue.push_back(run->pushed.fetch_add(1));
+    }
+    if (was_empty) {
+      if ((run->requests.fetch_add(1) & 7) == 0) {
+        JobRun::Check check = {.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3), .looks = std::vector<uint64_t>(run->count)};
+        for (uint32_t worker = 0; worker < run->count; ++worker) check.looks[worker] = run->looks[worker].load();
+        const std::unique_lock lock(run->check_lock);
+        run->checks.push_back(std::move(check));
+      }
+      if (run->copy->asleep != nullptr && *run->copy->asleep != 0) run->sleeper_seen.fetch_add(1);
+      run->copy->wake_all(run->copy->pool, nullptr);
+    }
+    uint64_t item;
+    if (helps) {
+      while (run->Pop(&item)) run->Consume(item, &random);
+    }
+    // A gap, often long enough for the workers to fall asleep (their sleeps run 40 us to 1 ms in a battle).
+    LARGE_INTEGER start, now, frequency;
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&start);
+    const long long gap = frequency.QuadPart * (random.Next() % 600) / 1000000;
+    do {
+      _mm_pause();
+      QueryPerformanceCounter(&now);
+    } while (now.QuadPart - start.QuadPart < gap);
+  }
+}
+
+struct SoakResult {
+  uint64_t items = 0;
+  uint64_t requests = 0;
+  uint64_t sleeper_seen = 0;
+  std::string failure;
+};
+
+// workers + submitters threads for `seconds` (`during` runs every few ms on the calling thread and returns whether it wants
+// more time); then the queue must drain, every item must have been consumed once, every request's WakeAll postcondition
+// must hold (every worker looked at the queue after it within 3 s; `postcondition`), and the workers are destroyed by the
+// game's destructor (Stop).
+SoakResult Soak(const JobCopy& copy, uint32_t workers, uint32_t submitters, double seconds, const std::function<bool()>& during,
+                bool postcondition = true) {
+  JobRun run;
+  run.copy = &copy;
+  run.count = workers;
+  run.capacity = 200'000 + static_cast<uint64_t>(seconds * 3'000'000);
+  run.consumed = std::make_unique<std::atomic<uint8_t>[]>(run.capacity);
+  run.looks = std::make_unique<std::atomic<uint64_t>[]>(workers);
+  std::vector<WorkerContext> contexts(workers);
+  std::vector<HANDLE> threads(workers);
+  run.workers.resize(workers);
+  Write32(copy.pool + 4, workers);
+  for (uint32_t index = 0; index < workers; ++index) {
+    contexts[index] = {&run, index};
+    threads[index] = CreateThread(nullptr, 0, &JobWorkerMain, &contexts[index], CREATE_SUSPENDED, nullptr);
+    run.workers[index] = NewWorker(copy, index, workers, threads[index]);
+  }
+  for (const HANDLE thread : threads) ResumeThread(thread);
+  std::thread checker([&] {
+    while (!run.stop_checking.load()) {
+      Sleep(20);
+      const std::unique_lock lock(run.check_lock);
+      while (!run.checks.empty() && run.checks.front().deadline < std::chrono::steady_clock::now()) {
+        for (uint32_t worker = 0; worker < workers; ++worker) {
+          if (postcondition && run.looks[worker].load() <= run.checks.front().looks[worker]) {
+            run.Fail(std::format("worker {} never looked at the queue after a WakeAll (3 s)", worker));
+          }
+        }
+        run.checks.pop_front();
+      }
+    }
+  });
+  std::vector<std::thread> submitting;
+  for (uint32_t index = 0; index < submitters; ++index) submitting.emplace_back(JobSubmitterMain, &run, index, (index & 1) != 0);
+  const auto start = std::chrono::steady_clock::now();
+  while (run.failure.empty()) {
+    const bool more = (during && during());
+    if (!more && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() >= seconds) break;
+    Sleep(5);
+  }
+  run.stop_submitting = true;
+  for (auto& thread : submitting) thread.join();
+  // Nothing may be left queued: the last pushes may have been the workers' alone.
+  for (int wait = 0; wait < 6000 && run.done.load() < run.pushed.load(); ++wait) Sleep(1);
+  if (run.done.load() < run.pushed.load()) {
+    run.Fail(std::format("lost wake-up: {} of {} items never consumed, every worker asleep", run.pushed.load() - run.done.load(), run.pushed.load()));
+  }
+  // Every request's check must have come due and held.
+  for (int wait = 0; wait < 400 && postcondition; ++wait) {
+    {
+      const std::unique_lock lock(run.check_lock);
+      if (run.checks.empty()) break;
+    }
+    Sleep(10);
+  }
+  run.stop_checking = true;
+  checker.join();
+  for (uint64_t item = 0; item < run.pushed.load() && run.failure.empty(); ++item) {
+    if (run.consumed[item].load() != 1) run.Fail(std::format("item {} consumed {} times", item, run.consumed[item].load()));
+  }
+  for (uint32_t index = 0; index < workers; ++index) {
+    // The game's destructor: Stop (state 3, the semaphore released, the thread waited for and closed), then the semaphore.
+    copy.destroy(run.workers[index], nullptr);
+    VirtualFree(run.workers[index], 0x1000, MEM_DECOMMIT);  // a worker used afterwards faults
+  }
+  return {.items = run.pushed.load(), .requests = run.requests.load(), .sleeper_seen = run.sleeper_seen.load(), .failure = run.failure};
+}
+
+// engine_code's table (null while the copy is the game's).
+uint32_t JobTableField(uint32_t line) { return Read32(twattila::engine_code::internal::job_table + 64 * line); }
+
+int RunJobTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick) {
+  namespace ec = twattila::engine_code::internal;
+  const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS32*>(game + reinterpret_cast<const IMAGE_DOS_HEADER*>(game)->e_lfanew);
+  const auto* text_header = IMAGE_FIRST_SECTION(nt);
+  const uint32_t text_rva = text_header->VirtualAddress;
+  const uint32_t text_size = text_header->Misc.VirtualSize;
+  CHECK(Matches(game + text_rva, text_size, ec::JOB_WAKE_ALL) == 1 && Matches(game + text_rva, text_size, ec::JOB_WAKE) == 1);
+  CHECK(Matches(game + text_rva, text_size, ec::JOB_SLEEP) == 1 && Matches(game + text_rva, text_size, ec::JOB_STOP) == 1);
+  CHECK(Matches(game + text_rva, text_size, ec::JOB_WORKER_DESTRUCTOR) == 1 && Matches(game + text_rva, text_size, JOB_WORKER_CONSTRUCTOR) == 1);
+  const uint32_t wake_all_rva = build.code->job_wake_all_rva;
+  const uint32_t sleep_rva = build.code->job_sleep_rva;
+  const uint32_t destructor_rva = build.code->job_worker_destructor_rva;
+  CHECK(ec::sites[5].at == patched + wake_all_rva && ec::sites[6].at == patched + sleep_rva);
+  CHECK(ec::sites[7].at == patched + destructor_rva + ec::JOB_WORKER_DESTRUCTOR_STOP_CALL && ec::sites[7].opcode == 0xE8);
+  CHECK(ec::job_table != nullptr && JobTableField(0) == 0);
+  // No sentinel is left in the stub, and every call and jump in it lands in the page or on the game's functions.
+  const uint8_t* stub = ec::page + ec::JOB_PAGE;
+  for (size_t at = 0; at + 4 <= ec::JOB_STUB.size(); ++at) CHECK(Read32(stub + at) - ec::JOB_FIELD_SENTINEL >= 0x20);
+  const uint8_t* constructor = tw::engine_tweaks::FindPattern({std::string_view(reinterpret_cast<const char*>(game + text_rva), text_size)}, JOB_WORKER_CONSTRUCTOR);
+  CHECK(constructor != nullptr);
+  const uint8_t* semaphore_call = constructor + JOB_WORKER_CONSTRUCTOR_SEMAPHORE_CALL;
+  const uint32_t make_semaphore_rva = static_cast<uint32_t>(semaphore_call + 5 + static_cast<int32_t>(Read32(semaphore_call + 1)) - game);
+
+  FillKernelImports(game);
+  FillKernelImports(patched);
+  const auto copy_of = [&](const char* name, uint8_t* image) {
+    JobCopy copy = {
+        .name = name,
+        .image = image,
+        .wake_all = reinterpret_cast<void(__fastcall*)(void*, void*)>(image + wake_all_rva),
+        .sleep = reinterpret_cast<void(__fastcall*)(void*, void*)>(image + sleep_rva),
+        .destroy = reinterpret_cast<void(__fastcall*)(void*, void*)>(image + destructor_rva),
+        .make_semaphore = reinterpret_cast<void*(__fastcall*)(void*, void*, uint32_t, uint32_t, uint32_t, uint32_t)>(image + make_semaphore_rva),
+        .pool = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)),
+        .asleep = (image == patched ? reinterpret_cast<const volatile uint32_t*>(ec::job_table + 2 * 64) : nullptr),
+    };
+    return copy;
+  };
+  const JobCopy original = copy_of("the game's", game);
+  const JobCopy ours = copy_of("ours", patched);
+  CHECK(original.pool != nullptr && ours.pool != nullptr);
+  const auto stubs_on = [&](bool on) { twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, on); };
+  stubs_on(true);
+  CHECK(ec::written == ((ec::CPU_CODE_SITES & ec::found) | ec::JOB_SITES));
+
+  // 10a. One thread, no sleeper: the same state in the game's and in our copy after WakeAll (every worker's wake counter, state
+  // and semaphore count; the events' signals), after Sleep (a woken worker: state 1, counter 0, count 0; a stopped one
+  // untouched) and after the destructor (state 3, a pending request dropped).
+  {
+    constexpr uint32_t N = 7;
+    const auto world = [&](const JobCopy& copy) {
+      std::vector<uint8_t*> workers;
+      for (uint32_t index = 0; index < N; ++index) workers.push_back(NewWorker(copy, index, N, nullptr));
+      return workers;
+    };
+    const auto state_of = [&](const std::vector<uint8_t*>& workers) {
+      std::vector<uint32_t> state;
+      for (uint8_t* worker : workers) {
+        for (const uint32_t at : {0x18u, 0x1Cu, 0x40u, 0x44u, 0x50u}) state.push_back(Read32(worker + at));
+        const DWORD signaled = WaitForSingleObject(*reinterpret_cast<HANDLE*>(worker + 0x3C), 0);  // "not empty" (consumes it)
+        state.push_back(signaled);
+        if (signaled == WAIT_OBJECT_0) SetEvent(*reinterpret_cast<HANDLE*>(worker + 0x3C));
+      }
+      return state;
+    };
+    const std::vector<uint8_t*> a = world(original);
+    const std::vector<uint8_t*> b = world(ours);
+    const auto both = [&](auto&& call) {
+      call(original, a);
+      call(ours, b);
+    };
+    both([&](const JobCopy& copy, const std::vector<uint8_t*>&) { copy.wake_all(copy.pool, nullptr); });
+    CHECK(state_of(a) == state_of(b));
+    CHECK(Read32(a[3] + 0x50) == 1 && Read32(a[3] + 0x40) == 1 && Read32(a[3] + 0x18) == 2);
+    both([&](const JobCopy& copy, const std::vector<uint8_t*>&) { copy.wake_all(copy.pool, nullptr); });  // counters 2, counts 1
+    CHECK(state_of(a) == state_of(b) && Read32(a[3] + 0x50) == 2);
+    both([&](const JobCopy& copy, const std::vector<uint8_t*>& workers) {
+      for (uint8_t* worker : workers) copy.sleep(worker, nullptr);  // each takes its count
+    });
+    CHECK(state_of(a) == state_of(b) && Read32(a[3] + 0x50) == 0 && Read32(a[3] + 0x40) == 0 && Read32(a[3] + 0x18) == 1);
+    CHECK(JobTableField(0) == Address(ours.pool) && JobTableField(1) == 0 && JobTableField(2) == 0 && JobTableField(3) == 0);  // claimed; the request taken; no bit left; no loop
+    both([&](const JobCopy&, const std::vector<uint8_t*>& workers) { Write32(workers[2] + 0x18, 3); });
+    both([&](const JobCopy& copy, const std::vector<uint8_t*>& workers) { copy.sleep(workers[2], nullptr); });  // stopped: returns at once
+    CHECK(state_of(a) == state_of(b) && Read32(a[2] + 0x18) == 3);
+    Write32(ec::job_table + 64, 1);  // a request no worker will run any more
+    both([&](const JobCopy& copy, const std::vector<uint8_t*>& workers) {
+      for (uint8_t* worker : workers) copy.destroy(worker, nullptr);
+    });
+    CHECK(JobTableField(1) == 0 && JobTableField(2) == 0 && JobTableField(3) == 0);  // Stop dropped the pending request
+    for (const std::vector<uint8_t*>* workers : {&a, &b}) {
+      for (uint8_t* worker : *workers) VirtualFree(worker, 0x1000, MEM_DECOMMIT);
+    }
+    std::printf("10. job wake-ups: 7 workers, one thread: WakeAll twice, Sleep, the destructor: every worker's state, counter, count and event equal\n");
+  }
+
+  // 10b. The registers: ebx, esi, edi, ebp and esp come back as they went in, whatever eax, ecx, edx and the flags hold.
+  {
+    constexpr uint32_t N = 5;
+    Random random = {.state = 0x5EED5};
+    uint64_t calls = 0;
+    for (const JobCopy* copy : {&original, &ours}) {
+      for (int round = 0; round < 1000; ++round) {
+        std::vector<uint8_t*> workers;
+        for (uint32_t index = 0; index < N; ++index) workers.push_back(NewWorker(*copy, index, N, nullptr));
+        for (const auto& [function, argument] : {std::pair{copy->wake_all, copy->pool}, std::pair{copy->sleep, workers[round % N]}, std::pair{copy->destroy, workers[(round + 1) % N]}}) {
+          if (function == copy->sleep) Write32(argument + 0x40, 1);  // a count to take: no wait
+          RegisterCall call = {.function = Address(reinterpret_cast<const void*>(function)), .argument = 0};
+          for (uint32_t& in : call.in) in = random.Next();
+          call.in[1] = Address(argument);
+          CallWithRegisters(&call);
+          ++calls;
+          CHECK(call.esp_after == call.esp_before);
+          for (const size_t kept : {3, 4, 5, 6}) CHECK(call.out[kept] == call.in[kept]);
+          if (function == copy->destroy) {
+            for (uint32_t index = 0; index < N; ++index) {
+              if (workers[index] == argument) workers[index] = nullptr;
+            }
+          }
+        }
+        for (uint8_t* worker : workers) {
+          if (worker != nullptr) VirtualFree(worker, 0x1000, MEM_DECOMMIT);
+        }
+        // The destructor ran on one worker only; the others' semaphores stay (a test: the handles end with the process).
+      }
+    }
+    std::printf("   ebx esi edi ebp esp kept by WakeAll, Sleep and the destructor with random registers (%llu calls)\n", calls);
+  }
+
+  // 10c. The soak: 24 workers, 8 submitters, the game's own Wake, Sleep, semaphores and destructor.
+  const double seconds = (quick ? 4.0 : 15.0);
+  for (const JobCopy* copy : {&original, &ours}) {
+    const SoakResult result = Soak(*copy, 24, 8, seconds, nullptr);
+    std::printf("   soak, %s: %llu items, %llu WakeAll requests%s: %s\n", copy->name, result.items, result.requests,
+                (copy == &ours ? std::format(" ({} found a sleeper)", result.sleeper_seen).c_str() : ""),
+                result.failure.empty() ? "every item once, every request's postcondition held, workers destroyed" : result.failure.c_str());
+    CHECK(result.failure.empty());
+    if (copy == &ours) CHECK(result.sleeper_seen > result.requests / 10);
+    if (copy == &ours) CHECK(JobTableField(1) == 0 && JobTableField(2) == 0 && JobTableField(3) == 0);
+  }
+
+  // 10d. The row switched on and off while threads run (workers inside the game's Sleep when it turns on, inside ours when
+  // it turns off), 200 times (60 quick).
+  {
+    const int target_switches = (quick ? 60 : 200);
+    int switches = 0;
+    bool on = true;
+    const SoakResult result = Soak(ours, 24, 8, (quick ? 4.0 : 10.0), [&] {
+      if (switches >= target_switches) return false;
+      on = !on;
+      stubs_on(on);
+      ++switches;
+      return true;
+    });
+    std::printf("   soak with %d switches: %llu items, %llu WakeAll requests: %s\n", switches, result.items, result.requests,
+                result.failure.empty() ? "every item once, every postcondition held" : result.failure.c_str());
+    CHECK(result.failure.empty() && switches == target_switches);
+    stubs_on(true);
+  }
+
+  // 10e. Shutdown cycles: a few workers and submitters for 30 ms, then the destruction right behind the last WakeAll (a
+  // delegate may still be in its loop: the drain). A worker used after its page is decommitted faults and ends the test.
+  {
+    const int cycles = (quick ? 150 : 600);
+    uint64_t items = 0;
+    Random random = {.state = 0xD00D};
+    for (const JobCopy* copy : {&original, &ours}) {
+      for (int cycle = 0; cycle < cycles; ++cycle) {
+        const uint32_t workers = 2 + random.Next() % 23;
+        const SoakResult result = Soak(*copy, workers, 1 + random.Next() % 4, 0.03, nullptr, false);
+        items += result.items;
+        CHECK(result.failure.empty());
+        if (copy == &ours) CHECK(JobTableField(1) == 0 && JobTableField(2) == 0 && JobTableField(3) == 0);
+      }
+    }
+    std::printf("   %d shutdown cycles each (2 to 24 workers, 1 to 4 submitters), %llu items: no fault, table clean after each\n", cycles, items);
+  }
+
+  // 10f. More workers than the mask has bits: the game's own loop (the stub stands down), same soak.
+  {
+    const SoakResult result = Soak(ours, 33, 6, (quick ? 2.0 : 5.0), nullptr);
+    std::printf("   soak with 33 workers (the game's loop): %llu items: %s\n", result.items, result.failure.empty() ? "every item once" : result.failure.c_str());
+    CHECK(result.failure.empty());
+  }
+
+  // 10g. CONTROL: the `lock or [pending], 1` made a no-op: the delegated wake-up then wakes one worker that has nothing to
+  // run, so the soak must notice (a lost wake-up or a worker that never looked).
+  {
+    uint8_t* patched_stub = ec::page + ec::JOB_PAGE;
+    uint8_t* immediate = patched_stub + 0x1F + 7;  // lock or dword ptr [pending], 1
+    CHECK(*immediate == 1);
+    DWORD protection;
+    VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READWRITE, &protection);
+    *immediate = 0;
+    VirtualProtect(ec::page, ec::PAGE_SIZE, protection, &protection);
+    FlushInstructionCache(GetCurrentProcess(), ec::page, ec::PAGE_SIZE);
+    const SoakResult result = Soak(ours, 24, 8, 3.0, nullptr);
+    VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READWRITE, &protection);
+    *immediate = 1;
+    VirtualProtect(ec::page, ec::PAGE_SIZE, protection, &protection);
+    FlushInstructionCache(GetCurrentProcess(), ec::page, ec::PAGE_SIZE);
+    std::printf("   CONTROL, the request never recorded (must fail): %s\n", result.failure.empty() ? "NOT NOTICED" : result.failure.c_str());
+    CHECK(!result.failure.empty());
+    // The workers asleep, the queue left over: the table is reusable (pending cleared by the delegates).
+    CHECK(Soak(ours, 8, 2, 1.0, nullptr).failure.empty());
+  }
+
+  // 10h. What the render thread pays: WakeAll with 15 workers asleep (a gap between the calls long enough for them to go
+  // back to sleep), the game's against ours.
+  {
+    std::string line;
+    for (const JobCopy* copy : {&original, &ours}) {
+      JobRun run;
+      run.copy = copy;
+      run.count = 15;
+      run.capacity = 1;
+      run.consumed = std::make_unique<std::atomic<uint8_t>[]>(1);
+      run.looks = std::make_unique<std::atomic<uint64_t>[]>(15);
+      std::vector<WorkerContext> contexts(15);
+      run.workers.resize(15);
+      Write32(copy->pool + 4, 15);
+      for (uint32_t index = 0; index < 15; ++index) {
+        contexts[index] = {&run, index};
+        HANDLE thread = CreateThread(nullptr, 0, &JobWorkerMain, &contexts[index], CREATE_SUSPENDED, nullptr);
+        run.workers[index] = NewWorker(*copy, index, 15, thread);
+      }
+      for (uint32_t index = 0; index < 15; ++index) ResumeThread(*reinterpret_cast<HANDLE*>(run.workers[index] + 0xC));
+      LARGE_INTEGER frequency;
+      QueryPerformanceFrequency(&frequency);
+      std::vector<double> microseconds;
+      for (int call = 0; call < 3000; ++call) {
+        LARGE_INTEGER start, end;
+        QueryPerformanceCounter(&start);
+        do {
+          _mm_pause();
+          QueryPerformanceCounter(&end);
+        } while (end.QuadPart - start.QuadPart < frequency.QuadPart / 2500);  // 400 us
+        QueryPerformanceCounter(&start);
+        copy->wake_all(copy->pool, nullptr);
+        QueryPerformanceCounter(&end);
+        microseconds.push_back(1e6 * (end.QuadPart - start.QuadPart) / frequency.QuadPart);
+      }
+      std::sort(microseconds.begin(), microseconds.end());
+      line += std::format("{}{} {:.1f} us (p90 {:.1f})", line.empty() ? "" : ", ", copy->name, microseconds[microseconds.size() / 2], microseconds[microseconds.size() * 9 / 10]);
+      for (uint32_t index = 0; index < 15; ++index) {
+        copy->destroy(run.workers[index], nullptr);
+        VirtualFree(run.workers[index], 0x1000, MEM_DECOMMIT);
+      }
+    }
+    std::printf("   median call of WakeAll with 15 workers asleep: %s\n", line.c_str());
+  }
+  stubs_on(false);
+  twattila::engine_code::Update(true);
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -520,8 +1022,9 @@ int main(int argc, char** argv) {
   CHECK(ec::sites[4].at == (build.ready_check_rva != 0 ? patched + build.ready_check_rva : nullptr));
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
-  CHECK(ec::written == ec::found
-        && ec::found == (0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.ready_check_rva != 0 ? 0b10000u : 0u)));
+  CHECK(ec::written == (ec::found & ~ec::JOB_SITES)
+        && ec::found == (0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.ready_check_rva != 0 ? 0b10000u : 0u)
+                         | (build.code->job_wake_all_rva != 0 ? ec::JOB_SITES : 0u)));
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
     if (unpatched[at - text_rva] == patched[at]) continue;
@@ -530,7 +1033,7 @@ int main(int argc, char** argv) {
     for (const ec::Site& site : ec::sites) in_site |= (patched + at >= site.at && patched + at < site.at + ec::SITE_SIZE);
     CHECK(in_site);
   }
-  std::printf("1. patterns once each; %zu bytes differ, all in the %d sites\n", differing, std::popcount(ec::found));
+  std::printf("1. patterns once each; %zu bytes differ, all in the %d sites\n", differing, std::popcount(ec::written));
 
   // The truncation's end jumps back to the harness in both copies (after Prepare: its pattern reads these bytes).
   JumpTo(game + build.truncation_resume_rva, reinterpret_cast<const void*>(&BlockReturn));
@@ -879,7 +1382,7 @@ int main(int argc, char** argv) {
   // 8. The render lists' push.
   if (build.list_push_function_rva != 0) {
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
-    CHECK(ec::written == ec::found);
+    CHECK(ec::written == (ec::found & ~ec::JOB_SITES));
     const uint32_t game_push = Address(game + build.list_push_function_rva);
     const uint32_t patched_push = Address(patched + build.list_push_function_rva);
     const auto start = std::chrono::steady_clock::now();
@@ -1301,6 +1804,15 @@ int main(int argc, char** argv) {
     }
   } else {
     std::printf("9. ready check: none in this build\n");
+  }
+
+  // 10. Faster Job Wake-Ups (the third row; its sites are off until here).
+  if (build.code->job_wake_all_rva != 0) {
+    twattila::engine_code::Update(true);
+    if (const int failed = RunJobTests(build, game, patched, quick); failed != 0) return failed;
+  } else {
+    CHECK(ec::sites[5].at == nullptr && ec::sites[6].at == nullptr && ec::sites[7].at == nullptr);
+    std::printf("10. job wake-ups: none in this build\n");
   }
 
   // Off: the game's bytes back (the harness's jumps removed first).
