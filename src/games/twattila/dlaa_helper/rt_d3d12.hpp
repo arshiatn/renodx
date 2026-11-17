@@ -123,6 +123,16 @@
 #include "rt_reference_state.h"
 #define RENODX_REFERENCE 1
 #endif
+// The bridge recorder (tests only: build.ps1 writes rt_recorder_build.h with RENODX_TW_RECORDER_BUILD set): RENODX_TW_RECORD's
+// snapshot and recorded requests, the "play" command's player (main.cpp; rt_recording.h).
+#if __has_include("rt_recorder_build.h")
+#include <cstdio>
+#include <functional>
+#include <tuple>
+
+#include "./rt_recording.h"
+#define RENODX_RECORDER 1
+#endif
 
 // The DLAA helper's ray tracing (bridge v4-v6; the addon's rt_scene.hpp): DXR needs a 64-bit process, the Total War
 // games with the bridge are 32-bit. Its own D3D12 device keeps a BLAS per captured draw (its triangles in world space,
@@ -166,6 +176,9 @@ class RtScene12 {
     if (failed_) return false;
     if (device_) return true;
     folder_ = folder;
+#if defined(RENODX_RECORDER)
+    journal_on_ = GetEnvironmentVariableW(L"RENODX_TW_RECORD", nullptr, 0) != 0;
+#endif
     DXGI_ADAPTER_DESC1 adapter_identity = {};
     adapter->GetDesc1(&adapter_identity);
     if (std::array<char, 16> fake = {}; GetEnvironmentVariableA("RENODX_TW_FAKE_VENDOR", fake.data(), static_cast<DWORD>(fake.size())) != 0) {
@@ -858,6 +871,9 @@ class RtScene12 {
   // (main.cpp's RENODX_TW_REPLAYABLE): no shared fence, which Nsight Graphics' replayer cannot make; the caller waits for
   // the addon's value and signals its next, and each request's work is done when it returns.
   bool Open(const dlaa_bridge::Shared& shared, uint32_t version, bool replayable) {
+#if defined(RENODX_RECORDER)
+    if (recording_.on) recording_.notes += "the textures were opened again (a new size) during the recording; ";
+#endif
     Close();
     if (!device_) return false;
     const auto open = [&](uint64_t handle, ComPtr<ID3D12Resource>* resource) {
@@ -1138,6 +1154,776 @@ class RtScene12 {
   // The queue its requests go to (main.cpp's frame boundaries for Nsight Graphics).
   [[nodiscard]] ID3D12CommandQueue* Queue() const { return queue_.Get(); }
 
+#if defined(RENODX_RECORDER)
+  // The bridge recorder (tests: the recorder build's RENODX_TW_RECORD and "play" command, main.cpp; rt_recording.h;
+  // tools/tw/round_notes/plan_1117/ref_step4.md). With RENODX_TW_RECORD set when the scene starts (Initialize), each new
+  // static mesh's vertices as its BLAS build read them and each mesh's and cluster set's micromap bake are kept (the
+  // journal): a snapshot's BLASes and micromaps are built again from them.
+  //
+  // The snapshot's plain fields by their names (their names and sizes make FileHeader::layout; first: its deduced type
+  // is used below).
+  static constexpr auto RecordedFields() {
+    return std::tuple{
+        std::pair{"next_slot", &RtScene12::next_slot_},
+        std::pair{"builds", &RtScene12::builds_},
+        std::pair{"set_generation", &RtScene12::set_generation_},
+        std::pair{"placed_last", &RtScene12::placed_last_},
+        std::pair{"placed_capacity", &RtScene12::placed_capacity_},
+        std::pair{"placed_written", &RtScene12::placed_written_},
+        std::pair{"placed_rule", &RtScene12::placed_rule_},
+        std::pair{"placed_before_rule", &RtScene12::placed_before_rule_},
+        std::pair{"placed_rule_traces", &RtScene12::placed_rule_traces_},
+        std::pair{"units_record", &RtScene12::units_record_},
+        std::pair{"units_masked", &RtScene12::units_masked_},
+        std::pair{"clusters", &RtScene12::clusters_},
+        std::pair{"dxr12", &RtScene12::dxr12_},
+        std::pair{"cluster_room", &RtScene12::cluster_room_},
+        std::pair{"built_limit", &RtScene12::built_limit_},
+        std::pair{"cluster_limit", &RtScene12::cluster_limit_},
+        std::pair{"clusters_crowded", &RtScene12::clusters_crowded_},
+        std::pair{"templated_wanted", &RtScene12::templated_wanted_},
+        std::pair{"built_wanted", &RtScene12::built_wanted_},
+        std::pair{"set_drops", &RtScene12::set_drops_},
+        std::pair{"template_bytes", &RtScene12::template_bytes_},
+        std::pair{"dynamic_uvs", &RtScene12::dynamic_uvs_},
+        std::pair{"ambient_view_projection", &RtScene12::ambient_view_projection_},
+        std::pair{"ambient_frame", &RtScene12::ambient_frame_},
+        std::pair{"ambient_parity", &RtScene12::ambient_parity_},
+        std::pair{"lights_frame", &RtScene12::lights_frame_},
+        std::pair{"lights_mode_traced", &RtScene12::lights_mode_traced_},
+        std::pair{"previous_lights", &RtScene12::previous_lights_},
+        std::pair{"previous_light_count", &RtScene12::previous_light_count_},
+        std::pair{"copied_slice", &RtScene12::copied_slice_},
+        std::pair{"previous_positions_slice", &RtScene12::previous_positions_slice_},
+        std::pair{"trace_positions_slice", &RtScene12::trace_positions_slice_},
+        std::pair{"water_frame", &RtScene12::water_frame_},
+        std::pair{"path_ambient_frame", &RtScene12::path_ambient_frame_},
+        std::pair{"path_kept_cube", &RtScene12::path_kept_cube_},
+        std::pair{"path_sun_light", &RtScene12::path_sun_light_},
+        std::pair{"kept_copy_wanted", &RtScene12::kept_copy_wanted_},
+        std::pair{"kept_copy_frame", &RtScene12::kept_copy_frame_},
+        std::pair{"reuse_frame", &RtScene12::reuse_frame_},
+        std::pair{"reuse_lights_mode", &RtScene12::reuse_lights_mode_},
+        std::pair{"reuse_parity", &RtScene12::reuse_parity_},
+        std::pair{"reuse_size", &RtScene12::reuse_size_},
+        std::pair{"sky_frame", &RtScene12::sky_frame_},
+        std::pair{"sky_parity", &RtScene12::sky_parity_},
+        std::pair{"sky_size", &RtScene12::sky_size_},
+        std::pair{"ratio_parity", &RtScene12::ratio_parity_},
+        std::pair{"ratio_frame", &RtScene12::ratio_frame_},
+        std::pair{"ratio_size", &RtScene12::ratio_size_},
+        std::pair{"reflect_frame", &RtScene12::reflect_frame_},
+        std::pair{"reflect_parity", &RtScene12::reflect_parity_},
+        std::pair{"reflect_size", &RtScene12::reflect_size_},
+        std::pair{"sharc_frame", &RtScene12::sharc_frame_},
+        std::pair{"paths_age", &RtScene12::paths_age_},
+        std::pair{"current_view_projection", &RtScene12::current_view_projection_},
+        std::pair{"previous_view_projection", &RtScene12::previous_view_projection_},
+        std::pair{"paths_frame", &RtScene12::paths_frame_},
+        std::pair{"copied_frame", &RtScene12::copied_frame_},
+        std::pair{"paths_copied_frame", &RtScene12::paths_copied_frame_},
+        std::pair{"light_frame", &RtScene12::light_frame_},
+        std::pair{"cache_frame", &RtScene12::cache_frame_},
+        std::pair{"specular_frame", &RtScene12::specular_frame_},
+        std::pair{"sun_traced_frame", &RtScene12::sun_traced_frame_},
+        std::pair{"history_valid", &RtScene12::history_valid_},
+        std::pair{"cache_filled", &RtScene12::cache_filled_},
+        std::pair{"specular_history_valid", &RtScene12::specular_history_valid_},
+        std::pair{"traced", &RtScene12::traced_},
+        std::pair{"history_used", &RtScene12::history_used_},
+    };
+  }
+
+  // The scene between two frames (none of its work on its way) into `folder`/state.bin, `frame` the first recorded: its
+  // plain fields, the static meshes with their journal, the cluster sets, the pools' free ranges, every history, learned
+  // value and shared output. False: not now (`why`: micromap bakes, row reads or a room on their way; again at the next
+  // trace) or never (`*refused` too).
+  bool SaveRecordingState(const std::filesystem::path& folder, uint32_t frame, std::string* why, bool* refused) {
+    *refused = true;
+    if (!device_ || !visibility_ || Lost()) {
+      *why = "no ray tracing scene";
+      return false;
+    }
+    if (!journal_on_) {
+      *why = "the journal is off (RENODX_TW_RECORD was not set when this scene started)";
+      return false;
+    }
+    if (ptlas_ != nullptr) {
+      *why = "the partitioned TLAS (RENODX_TW_PTLAS) is not recorded";
+      return false;
+    }
+    if (!WaitFor(own_value_)) {
+      *why = "the GPU did not finish the last requests";
+      return false;
+    }
+    *refused = false;
+    for (Slot& slot : slots_) TakeJournalReads(&slot);
+    const size_t bakes = micromap_reads_.size() + micromap_queue_.size() + MicromapsBaking() + micromaps_baked_.size();
+    const auto row_reads = std::ranges::count_if(slots_, [](const Slot& slot) { return !slot.row_reads.empty(); });
+#if defined(RENODX_NVAPI_CLUSTERS)
+    const bool growing = placed_growing_.valid() || cluster_growing_.valid();
+#else
+    const bool growing = placed_growing_.valid();
+#endif
+    if (bakes != 0 || row_reads != 0 || growing) {
+      *why = std::format("waiting for {} micromap bakes, {} slots' instanced rows{}", bakes, row_reads, growing ? ", a room growing" : "");
+      return false;
+    }
+    *refused = true;
+    for (const auto& [key, mesh] : meshes_) {
+      const auto kept = journal_.find(key);
+      if (kept == journal_.end() || kept->second.vertices.size() != uint64_t{mesh.triangles} * 3) {
+        *why = std::format("mesh {:016X} has no journal (captured before RENODX_TW_RECORD was set?)", key);
+        return false;
+      }
+      if (const auto baked = micromap_journal_.find(key); baked != micromap_journal_.end() && baked->second.build == mesh.build && baked->second.gpu_bake) {
+        *why = "GPU Micromap Baking's micromaps are not recorded (turn it off for recordings)";
+        return false;
+      }
+    }
+    for (const auto& [key, set] : sets_) {
+      const auto baked = set_journal_.find(key);
+      const bool journaled = baked != set_journal_.end() && baked->second.build == set.generation;
+      if ((set.micromaps && !journaled) || (journaled && baked->second.gpu_bake)) {
+        *why = std::format("cluster set {:016X}'s micromaps have no CPU bake in the journal", key);
+        return false;
+      }
+    }
+    *refused = false;
+    if (placed_slot_ != SLOTS) {
+      placed_written_ = slots_[placed_slot_].left_out_data[LEFT_OUT_BYTES / 4];
+      placed_slot_ = SLOTS;
+    }
+    // The units' BLAS (without Mega Geometry) built anew at the next trace here as in the player (a refit's BVH is not
+    // the build's).
+    units_layout_.clear();
+    units_refits_ = 0;
+    std::vector<uint8_t> chunks;
+    std::apply([&](const auto&... field) { (AddChunk(&chunks, recording::CHUNK_FIELD, field.first, std::as_bytes(std::span(&(this->*field.second), 1))), ...); },
+               RecordedFields());
+    const auto add_ranges = [&](const char* name, const Ranges& ranges) {
+      std::vector<std::array<uint32_t, 2>> free;
+      for (const auto& [offset, count] : ranges.free) free.push_back({offset, count});
+      AddChunk(&chunks, recording::CHUNK_FIELD, name, std::as_bytes(std::span(free)));
+    };
+    add_ranges("free_triangles", free_triangles_);
+    add_ranges("free_uvs", free_uvs_);
+    add_ranges("free_instances", free_instances_);
+    add_ranges("free_set_units", free_set_units_);
+    add_ranges("free_templates", free_templates_);
+    AddChunk(&chunks, recording::CHUNK_FIELD, "free_records", std::as_bytes(std::span(free_records_)));
+    std::vector<std::array<uint32_t, 6>> frees;
+    for (const PendingFree& pending : pending_frees_) {
+      frees.push_back({pending.record, pending.normal_offset, pending.triangles, pending.uv_offset, pending.first_instance, pending.instances});
+    }
+    AddChunk(&chunks, recording::CHUNK_FIELD, "pending_frees", std::as_bytes(std::span(frees)));
+    std::vector<std::array<uint32_t, 4>> set_frees;
+    for (const PendingSetFree& pending : pending_set_frees_) set_frees.push_back({pending.offset, pending.units, pending.template_first, pending.templates});
+    AddChunk(&chunks, recording::CHUNK_FIELD, "pending_set_frees", std::as_bytes(std::span(set_frees)));
+    for (const auto& [key, mesh] : meshes_) {
+      const Journal& kept = journal_.at(key);
+      const auto baked = micromap_journal_.find(key);
+      const Journal* micromaps = (baked != micromap_journal_.end() && baked->second.build == mesh.build) ? &baked->second : nullptr;
+      const MeshRecord record = {
+          .key = key, .build = mesh.build, .drawn_frame = mesh.drawn_frame, .triangles = mesh.triangles, .record = mesh.record,
+          .normal_offset = mesh.normal_offset, .uv_offset = mesh.uv_offset, .first_instance = mesh.first_instance,
+          .flags = (mesh.terrain ? MESH_TERRAIN : 0u) | (mesh.foliage ? MESH_FOLIAGE : 0u) | (mesh.grass ? MESH_GRASS : 0u)
+                   | (mesh.solid_cut_out ? MESH_CUT_OUT : 0u) | (mesh.placed ? MESH_PLACED : 0u) | (mesh.moved ? MESH_MOVED : 0u)
+                   | (micromaps != nullptr ? MESH_MICROMAPS : 0u),
+          .transforms = static_cast<uint32_t>(mesh.transforms.size()),
+      };
+      AddChunk(&chunks, recording::CHUNK_MESH, "mesh",
+               JoinBytes({std::as_bytes(std::span(&record, 1)), std::as_bytes(std::span(mesh.transforms)), std::as_bytes(std::span(kept.vertices))}, micromaps));
+    }
+    for (const auto& [key, set] : sets_) {
+      const auto baked = set_journal_.find(key);
+      const Journal* micromaps = (set.micromaps && baked != set_journal_.end() && baked->second.build == set.generation) ? &baked->second : nullptr;
+      const SetRecord record = {.key = key, .generation = set.generation, .offset = set.offset, .units = set.units, .vertices = set.vertices,
+                                .clusters = set.clusters, .triangles = set.triangles, .template_first = set.template_first,
+                                .flags = (set.micromaps_tried ? SET_TRIED : 0u) | (micromaps != nullptr ? SET_MICROMAPS : 0u)
+                                         | (set.template_masked ? SET_TEMPLATE_MASKED : 0u)};
+      AddChunk(&chunks, recording::CHUNK_SET, "set", JoinBytes({std::as_bytes(std::span(&record, 1)), std::as_bytes(std::span(set.descs))}, micromaps));
+    }
+    ID3D12GraphicsCommandList4* list = RecorderList();
+    if (list == nullptr) {
+      *why = "no command list for the recorder";
+      return false;
+    }
+    std::vector<Readback> readbacks;
+    for (const RecordedResource& resource : RecordedResources()) {
+      if (*resource.member) CopyToReadback(list, resource.name, resource.member->Get(), resource.state, &readbacks, resource.offset, resource.bytes);
+    }
+    *why = std::format("state: {} meshes, {} cluster sets, {} GPU resources", meshes_.size(), sets_.size(), readbacks.size());
+    std::error_code ignored;
+    std::filesystem::create_directories(folder, ignored);
+    const uint64_t value = SubmitRecorderList(list);
+    QueueRecordingJob(value, [this, path = folder / L"state.bin", header = RecordingHeader(frame, 0), chunks = std::move(chunks),
+                              readbacks = std::move(readbacks)]() mutable { WriteRecordingFile(path, header, chunks, &readbacks, false); });
+    return true;
+  }
+
+  // `folder`/state.bin into this scene before its first request (a scene the harness's player opened at the recording's
+  // textures' size), `*first_frame` the recording's first frame. False: refused (`why`: another layout or bridge version,
+  // a truncated file, a device or texture size the recording does not fit); the scene stays as it was.
+  bool LoadRecordingState(const std::filesystem::path& folder, uint32_t* first_frame, std::string* why) {
+    if (!device_ || !visibility_ || meshes_.size() != 0) {
+      *why = "no new ray tracing scene to load it into";
+      return false;
+    }
+    std::error_code error;
+    const std::filesystem::path path = folder / L"state.bin";
+    const uint64_t size = std::filesystem::file_size(path, error);
+    std::vector<uint8_t> data(error ? 0u : size);
+    if (std::ifstream file(path, std::ios::binary); error || !file.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size()))) {
+      *why = std::format("{} could not be read", path.string());
+      return false;
+    }
+    recording::FileHeader header = {};
+    if (data.size() < sizeof(header)) {
+      *why = "state.bin is truncated (no header)";
+      return false;
+    }
+    std::memcpy(&header, data.data(), sizeof(header));
+    if (header.magic != recording::MAGIC || header.format != recording::FORMAT || header.bridge_version != dlaa_bridge::VERSION
+        || header.layout != RecordingLayout()) {
+      *why = std::format("state.bin is another build's (format {} bridge v{} layout {:016X}, written by {}; this helper: format {} bridge v{} layout {:016X})",
+                         header.format, header.bridge_version, header.layout, std::string_view(header.helper, strnlen(header.helper, sizeof(header.helper))),
+                         recording::FORMAT, dlaa_bridge::VERSION, RecordingLayout());
+      return false;
+    }
+    // Its chunks by name (fields, resources) and kind (meshes, sets).
+    std::unordered_map<std::string, std::span<const uint8_t>> fields;
+    std::unordered_map<std::string, std::span<const uint8_t>> resources;
+    std::vector<std::span<const uint8_t>> mesh_chunks;
+    std::vector<std::span<const uint8_t>> set_chunks;
+    bool ended = false;
+    for (uint64_t at = sizeof(header); !ended;) {
+      recording::ChunkHeader chunk = {};
+      if (at + sizeof(chunk) > data.size()) break;
+      std::memcpy(&chunk, data.data() + at, sizeof(chunk));
+      at += sizeof(chunk);
+      if (at + chunk.name_bytes + chunk.bytes > data.size()) break;
+      const std::string name(reinterpret_cast<const char*>(data.data() + at), chunk.name_bytes);
+      const std::span<const uint8_t> bytes(data.data() + at + chunk.name_bytes, chunk.bytes);
+      at += chunk.name_bytes + chunk.bytes;
+      switch (chunk.kind) {
+        case recording::CHUNK_END:
+          ended = true;
+          break;
+        case recording::CHUNK_FIELD:
+          fields[name] = bytes;
+          break;
+        case recording::CHUNK_TEXTURE:
+        case recording::CHUNK_BUFFER:
+          resources[name] = bytes;
+          break;
+        case recording::CHUNK_MESH:
+          mesh_chunks.push_back(bytes);
+          break;
+        case recording::CHUNK_SET:
+          set_chunks.push_back(bytes);
+          break;
+        default:
+          break;
+      }
+    }
+    if (!ended) {
+      *why = "state.bin is truncated (no end chunk)";
+      return false;
+    }
+    bool fitting = true;
+    std::apply([&](const auto&... field) { ((fitting = fitting && fields.contains(field.first) && fields[field.first].size() == sizeof(this->*field.second)), ...); },
+               RecordedFields());
+    if (!fitting) {
+      *why = "state.bin's fields do not fit this helper";
+      return false;
+    }
+    // The device's own choices must be the recording's (the pools' sizes and the passes depend on them).
+    const auto recorded = [&](const char* name, auto* value) { std::memcpy(value, fields[name].data(), sizeof(*value)); };
+    bool recorded_clusters = false;
+    bool recorded_dxr12 = false;
+    uint32_t recorded_template_bytes = 0;
+    uint32_t recorded_uvs = 0;
+    uint32_t recorded_capacity = 0;
+    uint32_t recorded_room = 0;
+    uint32_t recorded_built = 0;
+    recorded("clusters", &recorded_clusters);
+    recorded("dxr12", &recorded_dxr12);
+    recorded("template_bytes", &recorded_template_bytes);
+    recorded("dynamic_uvs", &recorded_uvs);
+    recorded("placed_capacity", &recorded_capacity);
+    recorded("cluster_room", &recorded_room);
+    recorded("built_limit", &recorded_built);
+    if (recorded_clusters != clusters_ || recorded_dxr12 != dxr12_ || recorded_template_bytes != template_bytes_ || recorded_uvs != dynamic_uvs_) {
+      *why = std::format("recorded on another device: Mega Geometry {} / {}, DXR 1.2 {} / {}, template bytes {} / {}, alpha-tested corners {} / {} (recording / here)",
+                         recorded_clusters, clusters_, recorded_dxr12, dxr12_, recorded_template_bytes, template_bytes_, recorded_uvs, dynamic_uvs_);
+      return false;
+    }
+    if (recorded_capacity > placed_limit_) {
+      *why = std::format("its {} placed instances' room is past this GPU's {}", recorded_capacity, placed_limit_);
+      return false;
+    }
+    if (PlacedRoom room; recorded_capacity != placed_capacity_) {
+      if (!MakePlacedRoom(recorded_capacity, &room)) {
+        *why = "no memory for the placed instances' room";
+        return false;
+      }
+      UsePlacedRoom(&room);
+    }
+#if defined(RENODX_NVAPI_CLUSTERS)
+    if (ClusterRoom room; clusters_ && (recorded_room != cluster_room_ || recorded_built != built_limit_)) {
+      if (!SizeClusterRoom(recorded_room, recorded_built, &room) || !MakeClusterRoom(&room)) {
+        *why = "no memory for the clusters' room";
+        return false;
+      }
+      UseClusterRoom(&room);
+    }
+#endif
+    // The histories the recording has, made as their first use makes them (then their fields as recorded).
+    for (const RecordedResource& resource : RecordedResources()) {
+      if (!resources.contains(resource.name) || *resource.member) continue;
+      bool made = false;
+      recording::BufferHeader grown = {};
+      switch (resource.made_by) {
+        case MADE_BY_HISTORY:
+          made = EnsureHistory(resource.history, 0);
+          break;
+        case MADE_BY_CACHE:
+          made = EnsureCache();
+          break;
+        case MADE_BY_GROW:
+          std::memcpy(&grown, resources[resource.name].data(), std::min(sizeof(grown), resources[resource.name].size()));
+          made = GrowBuffer(resource.member, grown.bytes, resource.state);
+          break;
+        default:
+          break;
+      }
+      if (!made) {
+        *why = std::format("{} could not be made here", resource.name);
+        return false;
+      }
+    }
+    std::apply([&](const auto&... field) { (std::memcpy(&(this->*field.second), fields[field.first].data(), sizeof(this->*field.second)), ...); }, RecordedFields());
+    const auto ranges = [&](const char* name, Ranges* into) {
+      const std::span<const uint8_t> bytes = fields[name];
+      into->free.clear();
+      for (size_t at = 0; at + 8 <= bytes.size(); at += 8) {
+        std::array<uint32_t, 2> range = {};
+        std::memcpy(range.data(), bytes.data() + at, 8);
+        into->free.emplace(range[0], range[1]);
+      }
+    };
+    ranges("free_triangles", &free_triangles_);
+    ranges("free_uvs", &free_uvs_);
+    ranges("free_instances", &free_instances_);
+    ranges("free_set_units", &free_set_units_);
+    ranges("free_templates", &free_templates_);
+    free_records_.resize(fields["free_records"].size() / 4);
+    std::memcpy(free_records_.data(), fields["free_records"].data(), free_records_.size() * 4);
+    // Given back at the first trace, as the live scene gives them back there (its GPU was past them).
+    pending_frees_.clear();
+    for (size_t at = 0; at + 24 <= fields["pending_frees"].size(); at += 24) {
+      std::array<uint32_t, 6> free = {};
+      std::memcpy(free.data(), fields["pending_frees"].data() + at, 24);
+      pending_frees_.push_back({.value = 0, .record = free[0], .normal_offset = free[1], .triangles = free[2], .uv_offset = free[3],
+                                .first_instance = free[4], .instances = free[5]});
+    }
+    pending_set_frees_.clear();
+    for (size_t at = 0; at + 16 <= fields["pending_set_frees"].size(); at += 16) {
+      std::array<uint32_t, 4> free = {};
+      std::memcpy(free.data(), fields["pending_set_frees"].data() + at, 16);
+      pending_set_frees_.push_back({.value = 0, .offset = free[0], .units = free[1], .template_first = free[2], .templates = free[3]});
+    }
+    // The units' BLAS (without Mega Geometry) is built at the first trace (the live one refitted its own).
+    units_layout_.clear();
+    units_refits_ = 0;
+    why->clear();
+    ID3D12GraphicsCommandList4* list = RecorderList();
+    if (list == nullptr) {
+      *why = "no command list for the player";
+      return false;
+    }
+    // The GPU resources' contents, then the meshes' BLASes (with their micromaps) and the sets' micromaps, in lists of up to
+    // ~512 MB of uploads and scratch each.
+    std::vector<ComPtr<ID3D12Resource>> uploads;
+    uint64_t batch_bytes = 0;
+    const auto flush = [&] {
+      const uint64_t value = SubmitRecorderList(list);
+      const bool done = WaitFor(value);
+      uploads.clear();
+      batch_bytes = 0;
+      list = done ? RecorderList() : nullptr;
+      return list != nullptr;
+    };
+    for (const RecordedResource& resource : RecordedResources()) {
+      const auto found = resources.find(resource.name);
+      if (found == resources.end() || !*resource.member || list == nullptr) continue;
+      if (!UploadRecorded(list, resource.name, resource.member->Get(), resource.state, found->second, &uploads, why)) break;
+      batch_bytes += found->second.size();
+      if (batch_bytes > (512ull << 20) && !flush()) break;
+    }
+    // A mesh's bytes: its record, its transforms, its vertices, then its micromaps' (MicromapBytes); its BLAS built as
+    // Record builds a static one (its geometry's flags, PREFER_FAST_TRACE, not compacted: the same hits).
+    const D3D12_RESOURCE_BARRIER uav_barrier = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
+    for (const std::span<const uint8_t> chunk : mesh_chunks) {
+      if (list == nullptr || !why->empty()) break;
+      MeshRecord record = {};
+      if (chunk.size() < sizeof(record)) continue;
+      std::memcpy(&record, chunk.data(), sizeof(record));
+      const uint64_t transforms_bytes = uint64_t{record.transforms} * 48;
+      const uint64_t vertices_bytes = uint64_t{record.triangles} * 48;
+      if (chunk.size() < sizeof(record) + transforms_bytes + vertices_bytes) {
+        *why = "state.bin is truncated (a mesh)";
+        break;
+      }
+      Mesh& mesh = meshes_[record.key];
+      mesh = {.build = record.build, .drawn_frame = record.drawn_frame, .triangles = record.triangles, .record = record.record,
+              .normal_offset = record.normal_offset, .uv_offset = record.uv_offset, .terrain = (record.flags & MESH_TERRAIN) != 0,
+              .foliage = (record.flags & MESH_FOLIAGE) != 0, .grass = (record.flags & MESH_GRASS) != 0, .solid_cut_out = (record.flags & MESH_CUT_OUT) != 0,
+              .first_instance = record.first_instance, .placed = (record.flags & MESH_PLACED) != 0, .moved = (record.flags & MESH_MOVED) != 0};
+      mesh.transforms.resize(record.transforms);
+      std::memcpy(mesh.transforms.data(), chunk.data() + sizeof(record), transforms_bytes);
+      ComPtr<ID3D12Resource> vertices = Buffer(vertices_bytes, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+      uint8_t* mapped = nullptr;
+      if (!vertices || FAILED(vertices->Map(0, nullptr, reinterpret_cast<void**>(&mapped)))) {
+        *why = "no memory for a mesh's vertices";
+        break;
+      }
+      std::memcpy(mapped, chunk.data() + sizeof(record) + transforms_bytes, vertices_bytes);
+      vertices->Unmap(0, nullptr);
+      D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC triangles = {.IndexFormat = DXGI_FORMAT_UNKNOWN, .VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT,
+                                                            .VertexCount = record.triangles * 3,
+                                                            .VertexBuffer = {.StartAddress = vertices->GetGPUVirtualAddress(), .StrideInBytes = 16}};
+      D3D12_RAYTRACING_GEOMETRY_DESC geometry = {
+          .Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
+          .Flags = mesh.foliage ? D3D12_RAYTRACING_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION : D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE,
+          .Triangles = triangles,
+      };
+      D3D12_RAYTRACING_GEOMETRY_OMM_LINKAGE_DESC linkage = {};
+      if ((record.flags & MESH_MICROMAPS) != 0) {
+        ComPtr<ID3D12Resource> inputs;
+        uint64_t indices_offset = 0;
+        if (!BuildRecordedMicromaps(list, chunk.subspan(sizeof(record) + transforms_bytes + vertices_bytes), &mesh.micromaps, &inputs, &indices_offset,
+                                    &uploads)) {
+          *why = "a mesh's micromaps could not be built";
+          break;
+        }
+        list->ResourceBarrier(1, &uav_barrier);
+        linkage = {.OpacityMicromapIndexBuffer = {.StartAddress = inputs->GetGPUVirtualAddress() + indices_offset, .StrideInBytes = 4},
+                   .OpacityMicromapIndexFormat = DXGI_FORMAT_R32_UINT, .OpacityMicromapBaseLocation = 0,
+                   .OpacityMicromapArray = mesh.micromaps ? mesh.micromaps->GetGPUVirtualAddress() : 0};
+        geometry = {.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_OMM_TRIANGLES, .Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION,
+                    .OmmTriangles = {.pTriangles = &triangles, .pOmmLinkage = &linkage}};
+        uploads.push_back(std::move(inputs));
+      }
+      const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {
+          .Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
+          .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_COMPACTION,
+          .NumDescs = 1,
+          .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
+          .pGeometryDescs = &geometry,
+      };
+      D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
+      device_->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
+      mesh.blas = PlaceBlas(info.ResultDataMaxSizeInBytes, KEPT_POOL);
+      mesh.bytes = info.ResultDataMaxSizeInBytes;
+      ComPtr<ID3D12Resource> scratch = Buffer(std::max<uint64_t>(info.ScratchDataSizeInBytes, 256), D3D12_HEAP_TYPE_DEFAULT,
+                                              D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      if (mesh.blas.address == 0 || !scratch) {
+        *why = "no memory for a mesh's BLAS";
+        break;
+      }
+      const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build = {.DestAccelerationStructureData = mesh.blas.address, .Inputs = inputs,
+                                                                         .ScratchAccelerationStructureData = scratch->GetGPUVirtualAddress()};
+      list->BuildRaytracingAccelerationStructure(&build, 0, nullptr);
+      uploads.push_back(std::move(vertices));
+      uploads.push_back(std::move(scratch));
+      batch_bytes += vertices_bytes + info.ScratchDataSizeInBytes;
+      if (batch_bytes > (512ull << 20) && !flush()) break;
+    }
+    // A set's bytes: its record, its clusters' descs, then its micromaps' (MicromapBytes).
+    for (const std::span<const uint8_t> chunk : set_chunks) {
+      if (list == nullptr || !why->empty()) break;
+      SetRecord record = {};
+      if (chunk.size() < sizeof(record)) continue;
+      std::memcpy(&record, chunk.data(), sizeof(record));
+      if (chunk.size() < sizeof(record) + (uint64_t{record.clusters} * 16)) {
+        *why = "state.bin is truncated (a cluster set)";
+        break;
+      }
+      ClusterSet& set = sets_[record.key];
+      set = {.offset = record.offset, .units = record.units, .vertices = record.vertices, .clusters = record.clusters, .triangles = record.triangles,
+             .template_first = record.template_first, .template_masked = (record.flags & SET_TEMPLATE_MASKED) != 0, .generation = record.generation,
+             .micromaps_tried = (record.flags & SET_TRIED) != 0};
+      set.descs.resize(record.clusters);
+      std::memcpy(set.descs.data(), chunk.data() + sizeof(record), uint64_t{record.clusters} * 16);
+      if ((record.flags & SET_MICROMAPS) != 0
+          && !BuildRecordedMicromaps(list, chunk.subspan(sizeof(record) + (uint64_t{record.clusters} * 16)), &set.micromaps, &set.micromap_inputs,
+                                     &set.micromap_indices, &uploads)) {
+        *why = "a cluster set's micromaps could not be built";
+      }
+    }
+#if defined(RENODX_NVAPI_CLUSTERS)
+    // The sets' templates at their recorded places, built as Record builds them (its arguments' fields; TEMPLATE_BUILDS
+    // a list, from the first slot's upload before any request), after their micromaps.
+    if (clusters_ && list != nullptr && why->empty()) {
+      list->ResourceBarrier(1, &uav_barrier);
+      Slot& upload_slot = slots_[0];
+      auto* template_args =
+          reinterpret_cast<NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_TEMPLATE_ARGS*>(upload_slot.compact_data + COMPACT_TEMPLATE_ARGS_OFFSET);
+      auto* template_destinations = reinterpret_cast<uint64_t*>(upload_slot.compact_data + COMPACT_TEMPLATE_DESTINATIONS_OFFSET);
+      uint32_t template_builds = 0;
+      const auto build_templates = [&] {
+        std::memcpy(upload_slot.compact_data + COMPACT_TEMPLATE_COUNT_OFFSET, &template_builds, sizeof(template_builds));
+        const auto to_copy = Transition(template_destinations_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
+        list->ResourceBarrier(1, &to_copy);
+        list->CopyBufferRegion(template_destinations_.Get(), 0, upload_slot.compact.Get(), COMPACT_TEMPLATE_DESTINATIONS_OFFSET, uint64_t{template_builds} * 8);
+        const auto copied = Transition(template_destinations_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        list->ResourceBarrier(1, &copied);
+        const uint64_t upload = upload_slot.compact->GetGPUVirtualAddress();
+        const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC templates_desc = {
+            .inputs = template_inputs_,
+            .addressResolutionFlags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE,
+            .batchResultData = 0,
+            .batchScratchData = cluster_scratch_->GetGPUVirtualAddress(),
+            .destinationAddressArray = {.StartAddress = template_destinations_->GetGPUVirtualAddress(), .StrideInBytes = 8},
+            .resultSizeArray = {},
+            .indirectArgArray = {.StartAddress = upload + COMPACT_TEMPLATE_ARGS_OFFSET,
+                                 .StrideInBytes = sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_TEMPLATE_ARGS)},
+            .indirectArgCount = upload + COMPACT_TEMPLATE_COUNT_OFFSET,
+        };
+        const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS templates_params = {
+            .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &templates_desc};
+        const bool built = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &templates_params) == NVAPI_OK;
+        list->ResourceBarrier(1, &uav_barrier);
+        template_builds = 0;
+        if (!built) *why = "the sets' templates could not be built";
+        return built && flush();
+      };
+      for (const auto& [key, set] : sets_) {
+        if (set.template_first == UINT32_MAX) continue;
+        if (template_builds + set.clusters > TEMPLATE_BUILDS && !build_templates()) break;
+        for (uint32_t cluster = 0; cluster < set.clusters; ++cluster) {
+          const auto& [desc_vertex, desc_vertices, desc_triangle, desc_triangles] = set.descs[cluster];
+          auto& arg = template_args[template_builds];
+          arg = {};
+          arg.triangleCount = desc_triangles;
+          arg.vertexCount = desc_vertices;
+          arg.indexFormat = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INDEX_FORMAT_8BIT;
+          arg.baseGeometryIndexAndFlags = set.template_masked ? NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION
+                                                              : NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_GEOMETRY_FLAG_OPAQUE;
+          arg.indexBufferStride = 1;
+          arg.geometryIndexAndFlagsBufferStride = 4;
+          arg.geometryIndexAndFlagsBuffer = template_geometry_->GetGPUVirtualAddress();
+          arg.indexBuffer = set_pool_->GetGPUVirtualAddress() + ((uint64_t{set.offset} + set.clusters) * 16) + (uint64_t{desc_triangle} * 3);
+          if (set.micromaps) {
+            arg.opacityMicromapIndexFormat = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INDEX_FORMAT_32BIT;
+            arg.opacityMicromapIndexBufferStride = 4;
+            arg.opacityMicromapArray = set.micromaps->GetGPUVirtualAddress();
+            arg.opacityMicromapIndexBuffer = set.micromap_inputs->GetGPUVirtualAddress() + set.micromap_indices + (uint64_t{desc_triangle} * 4);
+          }
+          template_destinations[template_builds] = templates_->GetGPUVirtualAddress() + (uint64_t{set.template_first + cluster} * template_bytes_);
+          ++template_builds;
+        }
+      }
+      if (template_builds != 0 && why->empty()) build_templates();
+    }
+#endif
+    const bool loaded = why->empty() && list != nullptr && flush();
+    if (!loaded) {
+      if (why->empty()) *why = "the player's GPU work failed";
+      return false;
+    }
+    *first_frame = header.frame;
+    *why = std::format("state of frame {} loaded: {} meshes, {} cluster sets, {} GPU resources", header.frame, meshes_.size(), sets_.size(), resources.size());
+    return true;
+  }
+
+  // The requests of frames `first` to `last` into `folder`: a request file each (its inputs only with `inputs`), its outputs,
+  // at `last` the histories its kind writes, and each trace's scene digest (RecordRequest).
+  // (The writer's fields, `bytes`, `failed` and `hashes`, stay until FinishRecording: a snapshot's file may still be on its
+  // way.)
+  void RecordFrames(const std::filesystem::path& folder, uint32_t first, uint32_t last, bool inputs) {
+    recording_.on = true;
+    recording_.inputs = inputs;
+    recording_.first = first;
+    recording_.last = last;
+    recording_.folder = folder;
+    recording_.frame = UINT32_MAX;
+    recording_.requests = 0;
+    std::error_code ignored;
+    std::filesystem::create_directories(folder, ignored);
+  }
+
+  // The recording's files all written (its writer waited for); its summary for the log (complete.txt beside them when no
+  // request was left out and the device stayed).
+  std::string FinishRecording() {
+    recording_.on = false;
+    if (recording_writer_.valid()) recording_writer_.wait();
+    const std::string failed = recording_.notes + recording_.failed;
+    const std::string summary = std::format("{} requests of frames {} to {} written to {}, {} MB{}", recording_.requests, recording_.first, recording_.last,
+                                            recording_.folder.string(), recording_.bytes >> 20, failed.empty() ? std::string() : "; INCOMPLETE: " + failed);
+    if (failed.empty() && recording_.requests != 0) std::ofstream(recording_.folder / L"complete.txt") << summary << "\n";
+    recording_ = {};
+    return summary;
+  }
+
+  // The player (tests: main.cpp's "play"): `recording`'s requests on this scene, just initialized: textures of its own as
+  // the recording's (shared handles opened as the addon's), its state loaded (LoadRecordingState), then each request
+  // (`before_trace` before each trace: Nsight's frame boundary) with its inputs as recorded, its outputs and each trace's
+  // digest into `dump` as the recorder writes them. False: `report` says why.
+  bool PlayRecording(const std::filesystem::path& recording, const std::filesystem::path& dump, const std::function<void()>& before_trace,
+                     std::string* report) {
+    std::error_code error;
+    std::vector<std::tuple<uint32_t, uint32_t, std::filesystem::path>> requests;
+    for (const auto& entry : std::filesystem::directory_iterator(recording, error)) {
+      const std::string name = entry.path().filename().string();
+      uint32_t frame = 0;
+      uint32_t index = 0;
+      if (name.starts_with("request_") && sscanf_s(name.c_str(), "request_%u_%u_", &frame, &index) == 2) requests.emplace_back(frame, index, entry.path());
+    }
+    std::ranges::sort(requests);
+    if (requests.empty()) {
+      *report = std::format("no requests in {}", recording.string());
+      return false;
+    }
+    // A file's chunks (its bytes kept in `data`): its header checked, its block, its sets' data and its resources by name.
+    struct File {
+      std::vector<uint8_t> data;
+      recording::FileHeader header;
+      std::span<const uint8_t> block;
+      std::span<const uint8_t> sets;
+      std::vector<std::pair<std::string, std::span<const uint8_t>>> resources;
+    };
+    const auto read = [&](const std::filesystem::path& path, File* file) {
+      const uint64_t size = std::filesystem::file_size(path, error);
+      file->data.resize(error ? 0u : size);
+      if (std::ifstream in(path, std::ios::binary); error || file->data.size() < sizeof(file->header)
+                                                     || !in.read(reinterpret_cast<char*>(file->data.data()), static_cast<std::streamsize>(file->data.size()))) {
+        *report = std::format("{} could not be read", path.string());
+        return false;
+      }
+      std::memcpy(&file->header, file->data.data(), sizeof(file->header));
+      if (file->header.magic != recording::MAGIC || file->header.format != recording::FORMAT || file->header.bridge_version != dlaa_bridge::VERSION) {
+        *report = std::format("{} is another build's (format {}, bridge v{}; this helper: {}, v{})", path.string(), file->header.format,
+                              file->header.bridge_version, recording::FORMAT, dlaa_bridge::VERSION);
+        return false;
+      }
+      for (uint64_t at = sizeof(file->header);;) {
+        recording::ChunkHeader chunk = {};
+        if (at + sizeof(chunk) > file->data.size()) break;
+        std::memcpy(&chunk, file->data.data() + at, sizeof(chunk));
+        at += sizeof(chunk);
+        if (chunk.kind == recording::CHUNK_END) return true;
+        if (at + chunk.name_bytes + chunk.bytes > file->data.size()) break;
+        std::string name(reinterpret_cast<const char*>(file->data.data() + at), chunk.name_bytes);
+        const std::span<const uint8_t> bytes(file->data.data() + at + chunk.name_bytes, chunk.bytes);
+        at += chunk.name_bytes + chunk.bytes;
+        if (chunk.kind == recording::CHUNK_BLOCK) file->block = bytes;
+        if (chunk.kind == recording::CHUNK_SETS) file->sets = bytes;
+        if (chunk.kind == recording::CHUNK_TEXTURE || chunk.kind == recording::CHUNK_BUFFER) file->resources.emplace_back(std::move(name), bytes);
+      }
+      *report = std::format("{} is truncated", path.string());
+      return false;
+    };
+    // The shared textures: the inputs as the first request has them (every input then), the outputs as the state has them.
+    File first;
+    File state;
+    if (!read(std::get<2>(requests.front()), &first) || !read(recording / L"state.bin", &state)) return false;
+    if (first.block.size() < offsetof(dlaa_bridge::Shared, generation)) {
+      *report = "the first request has no block";
+      return false;
+    }
+    uint32_t version = 0;
+    std::memcpy(&version, first.block.data(), sizeof(version));
+    // The block's handles by the shared textures' names (the recorded inputs' and outputs').
+    const std::array<std::pair<const char*, uint64_t dlaa_bridge::Shared::*>, 19> handles = {{
+        {"vertices", &dlaa_bridge::Shared::rt_vertices},     {"positions", &dlaa_bridge::Shared::rt_positions},
+        {"sun", &dlaa_bridge::Shared::rt_sun},               {"visibility", &dlaa_bridge::Shared::rt_visibility},
+        {"ambient", &dlaa_bridge::Shared::rt_ambient},       {"atlas", &dlaa_bridge::Shared::rt_atlas},
+        {"light", &dlaa_bridge::Shared::rt_light},           {"bounce", &dlaa_bridge::Shared::rt_bounce},
+        {"light_mask", &dlaa_bridge::Shared::rt_light_mask}, {"fog", &dlaa_bridge::Shared::rt_fog},
+        {"fog_lights", &dlaa_bridge::Shared::rt_fog_lights}, {"tint", &dlaa_bridge::Shared::rt_tint},
+        {"color", &dlaa_bridge::Shared::color},              {"normals", &dlaa_bridge::Shared::normals},
+        {"albedo", &dlaa_bridge::Shared::diffuse_albedo},    {"roughness", &dlaa_bridge::Shared::roughness},
+        {"reflection", &dlaa_bridge::Shared::rt_reflection}, {"specular", &dlaa_bridge::Shared::rt_specular},
+        {"hit_distance", &dlaa_bridge::Shared::rr_hit_distance},
+    }};
+    std::unordered_map<std::string, ComPtr<ID3D12Resource>> textures;
+    std::vector<HANDLE> opened;
+    dlaa_bridge::Shared handle_block = {};
+    for (const auto* resources : {&first.resources, &state.resources}) {
+      for (const auto& [name, bytes] : *resources) {
+        const auto handle = std::ranges::find(handles, std::string_view(name), [](const auto& entry) { return std::string_view(entry.first); });
+        recording::TextureHeader texture = {};
+        if (handle == handles.end() || textures.contains(name) || bytes.size() < sizeof(texture)) continue;
+        std::memcpy(&texture, bytes.data(), sizeof(texture));
+        const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
+        const D3D12_RESOURCE_DESC desc = {.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D, .Width = texture.width, .Height = texture.height,
+                                          .DepthOrArraySize = static_cast<UINT16>(texture.slices / std::max(texture.mips, 1u)),
+                                          .MipLevels = static_cast<UINT16>(std::max(texture.mips, 1u)), .Format = static_cast<DXGI_FORMAT>(texture.format),
+                                          .SampleDesc = {.Count = 1}, .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
+        HANDLE shared_handle = nullptr;
+        if (FAILED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_SHARED, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                                    IID_PPV_ARGS(textures[name].GetAddressOf())))
+            || FAILED(device_->CreateSharedHandle(textures[name].Get(), nullptr, GENERIC_ALL, nullptr, &shared_handle))) {
+          *report = std::format("the player's {} ({} x {}, format {}) could not be made", name, texture.width, texture.height, texture.format);
+          return false;
+        }
+        opened.push_back(shared_handle);
+        handle_block.*(handle->second) = reinterpret_cast<uint64_t>(shared_handle);
+      }
+    }
+    // A request's block: as recorded, the player's handles in it.
+    const auto block_of = [&](const File& file) {
+      auto block = std::make_unique<dlaa_bridge::Shared>();
+      std::memcpy(block.get(), file.block.data(), std::min(file.block.size(), sizeof(dlaa_bridge::Shared)));
+      for (const auto& handle : handles) block.get()->*handle.second = handle_block.*handle.second;
+      return block;
+    };
+    uint32_t first_frame = 0;
+    const bool opened_scene = Open(*block_of(first), version, true);
+    const bool loaded = opened_scene && LoadRecordingState(recording, &first_frame, report);
+    for (const HANDLE handle : opened) CloseHandle(handle);
+    if (!loaded) {
+      if (!opened_scene) *report = "the player's textures could not be opened";
+      return false;
+    }
+    const std::string loaded_report = *report;
+    RecordFrames(dump, first_frame, std::get<0>(requests.back()), false);
+    uint32_t played = 0;
+    for (const auto& [frame, index, path] : requests) {
+      File file;
+      if (!read(path, &file)) return false;
+      ID3D12GraphicsCommandList4* list = RecorderList();
+      std::vector<ComPtr<ID3D12Resource>> uploads;
+      for (const auto& [name, bytes] : file.resources) {
+        const auto texture = textures.find(name);
+        if (texture == textures.end() || list == nullptr) continue;
+        if (!UploadRecorded(list, name, texture->second.Get(), D3D12_RESOURCE_STATE_COMMON, bytes, &uploads, report)) return false;
+      }
+      if (list == nullptr || !WaitFor(SubmitRecorderList(list))) {
+        *report = std::format("{}: its inputs could not be uploaded", path.filename().string());
+        return false;
+      }
+      const std::unique_ptr<dlaa_bridge::Shared> block = block_of(file);
+      if (file.header.request == 1) {
+        before_trace();
+        Trace(*block, version, file.sets);
+      } else {
+        Paths(*block, version, file.header.request == 3);
+      }
+      ++played;
+      if (Lost()) {
+        *report = std::format("the device was lost at {}", path.filename().string());
+        return false;
+      }
+    }
+    *report = std::format("{}; {} requests played: {}", loaded_report, played, FinishRecording());
+    return true;
+  }
+#endif
+
   // One request: the frame's captures into BLASes, the TLAS of what it drew, the trace; the queue waits for the addon's
   // fence value and signals the next (also when nothing ran). `cluster_data`: its new cluster sets' data (v16, the
   // second mapping's start). False: nothing traced.
@@ -1169,6 +1955,11 @@ class RtScene12 {
     // The last trace done first: recorded over its run the GPU reset at its sway or micromap passes (ATN's debug36). Three
     // requests a frame bring that about (the same slot); with fewer the traces change slots (Light Bounce off).
     WaitFor(trace_value_);
+#if defined(RENODX_RECORDER)
+    TakeJournalReads(&slot);
+    recorded_vertex_end_ = 0;
+    recorded_scene_ = {};
+#endif
     LARGE_INTEGER cpu_waited;
     QueryPerformanceCounter(&cpu_waited);
     cpu_marks_.clear();
@@ -1282,6 +2073,9 @@ class RtScene12 {
       ID3D12CommandList* lists[] = {slot.list.Get()};
       queue_->ExecuteCommandLists(1, lists);
     }
+#if defined(RENODX_RECORDER)
+    RecordRequest(shared, version, cluster_data, 1);
+#endif
     if (fence_) {
       queue_->Signal(fence_.Get(), shared.value + 1);
     }
@@ -1916,6 +2710,9 @@ class RtScene12 {
       ID3D12CommandList* lists[] = {slot.list.Get()};
       queue_->ExecuteCommandLists(1, lists);
     }
+#if defined(RENODX_RECORDER)
+    RecordRequest(shared, version, {}, reflections ? 3u : 2u);
+#endif
     if (fence_) {
       queue_->Signal(fence_.Get(), shared.value + 1);
     }
@@ -1935,6 +2732,9 @@ class RtScene12 {
   }
 
   ~RtScene12() {
+#if defined(RENODX_RECORDER)
+    if (recording_writer_.valid()) recording_writer_.wait();
+#endif
     WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "ray tracing");
     if (event_ != nullptr) CloseHandle(event_);
     for (auto& baking : micromap_baking_) {
@@ -2403,6 +3203,18 @@ class RtScene12 {
     ComPtr<ID3D12Resource> ptlas_device;  // and their copy the build reads (device memory)
     uint8_t* ptlas_data = nullptr;
     uint64_t value = 0;  // own_fence_'s value after its last use
+#if defined(RENODX_RECORDER)
+    // The recorder's journal: its last trace's new static meshes' vertices copied for the CPU (TakeJournalReads), each
+    // mesh's key, build, place in the read-back and vertices.
+    struct JournalRead {
+      uint64_t key = 0;
+      uint64_t build = 0;
+      uint64_t offset = 0;
+      uint32_t vertices = 0;
+    };
+    std::vector<JournalRead> journal_reads;
+    ComPtr<ID3D12Resource> journal_readback;
+#endif
   };
   // A static BLAS's memory (suballocated as NVIDIA's RTXMU does: a committed buffer each cost 64 KB at least and a driver
   // allocation, hundreds of new meshes at once a hitch): a place in one of the pools' chunks (BLAS_CHUNK_BYTES buffers,
@@ -4256,6 +5068,9 @@ class RtScene12 {
     }
 #endif
     vertex_end = std::min(vertex_end, TRANSFER_VERTICES);
+#if defined(RENODX_RECORDER)
+    recorded_vertex_end_ = vertex_end;
+#endif
     if (vertex_end != 0) {
       const UINT rows = (vertex_end + dlaa_bridge::RT_TRANSFER_WIDTH - 1) / dlaa_bridge::RT_TRANSFER_WIDTH;
       const D3D12_TEXTURE_COPY_LOCATION destination = {
@@ -4521,6 +5336,12 @@ class RtScene12 {
               set->micromap_inputs = std::move(inputs);
               set->micromap_indices = indices_offset;
               ++micromap_tally_[3];
+#if defined(RENODX_RECORDER)
+              if (journal_on_) {
+                set_journal_[baked->key] = {.build = set->generation, .gpu_bake = baked->gpu, .data = baked->data, .descs = baked->descs,
+                                            .indices = baked->indices, .histogram = baked->histogram};
+              }
+#endif
             }
             set_bakes.push_back(std::move(baked));
             continue;
@@ -4590,6 +5411,9 @@ class RtScene12 {
       std::vector<Slot::RowRead> row_copies;
       std::vector<uint32_t> row_sources;
       uint32_t rows_used = 0;
+#if defined(RENODX_RECORDER)
+      std::vector<Slot::JournalRead> journal_copies;  // the journal's: the new static meshes (`offset`: their first vertex here)
+#endif
       for (uint32_t index = 0; index < capture_count; ++index) {
         const dlaa_bridge::RtCapture& capture = shared.rt_captures[index];
         const auto& placement = placements[index];
@@ -4649,6 +5473,9 @@ class RtScene12 {
           --micromap_room;
         }
         slot->compactions.emplace_back(capture.key, mesh.build);
+#if defined(RENODX_RECORDER)
+        if (journal_on_) journal_copies.push_back({.key = capture.key, .build = mesh.build, .offset = capture.first_vertex, .vertices = mesh.triangles * 3});
+#endif
         ++built;
       }
       // The leaves whose micromaps were baked: their BLAS built again with them from their kept positions (a new build,
@@ -4692,6 +5519,12 @@ class RtScene12 {
         mesh.build = ++builds_;
         mesh.micromaps = std::move(made.array);
         slot->compactions.emplace_back(made.bake->key, mesh.build);
+#if defined(RENODX_RECORDER)
+        if (journal_on_) {
+          micromap_journal_[made.bake->key] = {.build = mesh.build, .gpu_bake = made.bake->gpu, .data = made.bake->data, .descs = made.bake->descs,
+                                               .indices = made.bake->indices, .histogram = made.bake->histogram};
+        }
+#endif
         ++micromaps_built;
       }
       // What they did not keep (their positions and inputs; the arrays of leaves gone or without room) goes once the GPU
@@ -5169,6 +6002,31 @@ class RtScene12 {
         list->ResourceBarrier(static_cast<UINT>(to_source.size()), to_source.data());
         slot->row_reads = std::move(row_copies);
       }
+#if defined(RENODX_RECORDER)
+      // The journal (RENODX_TW_RECORD): the new static meshes' vertices as their builds read them, the CPU's once the slot
+      // comes round (TakeJournalReads); without memory for them a snapshot is refused.
+      if (!journal_copies.empty()) {
+        std::vector<uint32_t> first_vertices;
+        uint64_t journal_bytes = 0;
+        for (Slot::JournalRead& read : journal_copies) {
+          first_vertices.push_back(static_cast<uint32_t>(read.offset));
+          read.offset = journal_bytes;
+          journal_bytes += uint64_t{read.vertices} * 16;
+        }
+        slot->journal_readback = Buffer(journal_bytes, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+        if (slot->journal_readback) {
+          const auto to_source = Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
+          list->ResourceBarrier(1, &to_source);
+          for (size_t index = 0; index < journal_copies.size(); ++index) {
+            list->CopyBufferRegion(slot->journal_readback.Get(), journal_copies[index].offset, vertex_buffer_.Get(), uint64_t{first_vertices[index]} * 16,
+                                   uint64_t{journal_copies[index].vertices} * 16);
+          }
+          const auto copied = Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+          list->ResourceBarrier(1, &copied);
+          slot->journal_reads = std::move(journal_copies);
+        }
+      }
+#endif
       std::vector<D3D12_RESOURCE_BARRIER> after = {
           Transition(slot->sizes.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
       };
@@ -5441,6 +6299,10 @@ class RtScene12 {
         ptlas_built_ = true;
       }
     }
+#endif
+#if defined(RENODX_RECORDER)
+    recorded_scene_ = {.cpu_instances = instance_count, .tlas_instances = tlas_instances,
+                       .placed = instance_descs != slot->instances->GetGPUVirtualAddress(), .smoke = smoke_scene, .slot = slot_index};
 #endif
     if (ptlas_ == nullptr) {
       const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC top_build = {
@@ -6696,6 +7558,660 @@ class RtScene12 {
     }
   }
 
+#if defined(RENODX_RECORDER)
+  // The recorder's (SaveRecordingState and the rest above). A static mesh's chunk (then its transforms, its vertices and,
+  // with MESH_MICROMAPS, its bake: MicromapBytes) and a cluster set's (then its clusters' descs and, with SET_MICROMAPS,
+  // its bake).
+  struct MeshRecord {
+    uint64_t key = 0;
+    uint64_t build = 0;
+    uint32_t drawn_frame = 0;
+    uint32_t triangles = 0;
+    uint32_t record = 0;
+    uint32_t normal_offset = 0;
+    uint32_t uv_offset = 0;
+    uint32_t first_instance = 0;
+    uint32_t flags = 0;
+    uint32_t transforms = 0;
+  };
+  static constexpr uint32_t MESH_TERRAIN = 1;
+  static constexpr uint32_t MESH_FOLIAGE = 2;
+  static constexpr uint32_t MESH_GRASS = 4;
+  static constexpr uint32_t MESH_CUT_OUT = 8;
+  static constexpr uint32_t MESH_PLACED = 16;
+  static constexpr uint32_t MESH_MOVED = 32;
+  static constexpr uint32_t MESH_MICROMAPS = 64;  // its BLAS built with its micromaps' indices (an array or special ones only)
+  struct SetRecord {
+    uint64_t key = 0;
+    uint64_t generation = 0;
+    uint32_t offset = 0;
+    uint32_t units = 0;
+    uint32_t vertices = 0;
+    uint32_t clusters = 0;
+    uint32_t triangles = 0;
+    uint32_t template_first = UINT32_MAX;  // its templates' first place (UINT32_MAX: none)
+    uint32_t flags = 0;
+    uint32_t padding = 0;
+  };
+  static constexpr uint32_t SET_TRIED = 1;
+  static constexpr uint32_t SET_MICROMAPS = 2;
+  static constexpr uint32_t SET_TEMPLATE_MASKED = 4;
+  // A bake's sizes before its data, descs, indices and histogram in a mesh's or set's chunk.
+  struct MicromapBytes {
+    uint64_t data = 0;
+    uint32_t descs = 0;
+    uint32_t indices = 0;
+    uint32_t histogram = 0;
+    uint32_t padding = 0;
+  };
+  // The journal's: a mesh's vertices as its build read them (`build` its mesh's then), or a micromap bake as its mesh's or
+  // set's micromaps were built from it (`build` the mesh's build or the set's generation then).
+  struct Journal {
+    uint64_t build = 0;
+    std::vector<std::array<float, 4>> vertices;
+    bool gpu_bake = false;  // GPU Micromap Baking's (its data stayed on the GPU: not recorded)
+    std::vector<uint8_t> data;
+    std::vector<D3D12_RAYTRACING_OPACITY_MICROMAP_DESC> descs;
+    std::vector<uint32_t> indices;
+    std::vector<D3D12_RAYTRACING_OPACITY_MICROMAP_HISTOGRAM_ENTRY> histogram;
+  };
+  // A recorded GPU resource: its name in the files, its member, its resting state, its recorded part (a buffer's: 0 bytes
+  // all of it), how a player's scene makes it when it has none yet, the requests that write it (bits 1 << request: a
+  // shared output each of their recorded requests writes into its output file, a history only at the last recorded frame).
+  enum MadeBy : uint32_t { MADE_ALREADY, MADE_BY_HISTORY, MADE_BY_CACHE, MADE_BY_GROW };
+  struct RecordedResource {
+    const char* name = "";
+    ComPtr<ID3D12Resource>* member = nullptr;
+    D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
+    uint64_t offset = 0;
+    uint64_t bytes = 0;
+    MadeBy made_by = MADE_ALREADY;
+    History history = HISTORY_KINDS;
+    uint32_t written_by = 0;
+    bool output = false;
+  };
+  static constexpr uint32_t BY_TRACE = 2;
+  static constexpr uint32_t BY_BOUNCE = 4;
+  static constexpr uint32_t BY_REFLECTIONS = 8;
+  // A resource's bytes on their way to the CPU (CopyToReadback): a buffer's part, or a texture's rows from the top (each
+  // subresource's footprint in the read-back).
+  struct Readback {
+    std::string name;
+    ComPtr<ID3D12Resource> buffer;
+    D3D12_RESOURCE_DESC desc = {};
+    uint64_t offset = 0;
+    uint64_t bytes = 0;
+    std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints;
+    std::vector<UINT> rows;
+    std::vector<UINT64> row_bytes;
+  };
+  // RecordFrames' recording: its frames, folder, the request numbers' frame, what this thread noted; its writer's (read
+  // once it is waited for): the bytes written, what failed, the inputs' hashes as last written (an input unchanged since
+  // is left out).
+  struct Recording {
+    bool on = false;
+    bool inputs = false;
+    uint32_t first = 0;
+    uint32_t last = 0;
+    std::filesystem::path folder;
+    uint32_t frame = UINT32_MAX;
+    uint32_t index = 0;
+    uint32_t requests = 0;
+    std::string notes;
+    uint64_t bytes = 0;
+    std::string failed;
+    std::unordered_map<std::string, uint64_t> hashes;
+  };
+  // The last trace's scene for its digest (Record): its CPU's descs, all its TLAS's, whether rt_place wrote them, the
+  // smoke's desc, its slot.
+  struct RecordedScene {
+    uint32_t cpu_instances = 0;
+    uint32_t tlas_instances = 0;
+    bool placed = false;
+    bool smoke = false;
+    size_t slot = 0;
+  };
+
+  // The recorded GPU resources: the scene's (records, pools, the placed instances' state, the sets' pool), every history and
+  // learned value, the shared outputs.
+  std::vector<RecordedResource> RecordedResources() {
+    constexpr D3D12_RESOURCE_STATES WRITTEN = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    constexpr D3D12_RESOURCE_STATES READ = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    constexpr D3D12_RESOURCE_STATES COMMON = D3D12_RESOURCE_STATE_COMMON;
+    const auto history = [](const char* name, ComPtr<ID3D12Resource>* member, History kind, uint32_t written_by, D3D12_RESOURCE_STATES state = WRITTEN) {
+      return RecordedResource{.name = name, .member = member, .state = state, .made_by = MADE_BY_HISTORY, .history = kind, .written_by = written_by};
+    };
+    const auto cache = [](const char* name, ComPtr<ID3D12Resource>* member) {
+      return RecordedResource{.name = name, .member = member, .state = WRITTEN, .made_by = MADE_BY_CACHE, .written_by = BY_BOUNCE | BY_REFLECTIONS};
+    };
+    const auto output = [](const char* name, ComPtr<ID3D12Resource>* member, uint32_t written_by) {
+      return RecordedResource{.name = name, .member = member, .state = COMMON, .written_by = written_by, .output = true};
+    };
+    const auto sharc = [](const char* name, ComPtr<ID3D12Resource>* member) {
+      return RecordedResource{.name = name, .member = member, .state = WRITTEN, .made_by = MADE_BY_GROW, .written_by = BY_BOUNCE};
+    };
+    return {
+        {.name = "records", .member = &records_, .state = READ, .bytes = uint64_t{CLUSTER_RECORDS} * 16},
+        {.name = "uvs", .member = &uvs_, .state = READ, .bytes = uint64_t{STATIC_UVS} * 4},
+        {.name = "normals", .member = &normals_, .state = READ, .bytes = uint64_t{STATIC_TRIANGLES} * 4},
+        {.name = "build_rows", .member = &build_rows_, .state = WRITTEN},
+        {.name = "placed_instances_0", .member = &placed_instances_[0], .state = READ},
+        {.name = "placed_instances_1", .member = &placed_instances_[1], .state = READ},
+        {.name = "placed_state", .member = &placed_state_, .state = WRITTEN},
+        {.name = "set_pool", .member = &set_pool_, .state = READ},
+        {.name = "sun_rays", .member = &sun_rays_, .state = WRITTEN, .written_by = BY_TRACE},
+        history("ambient_history_0", &ambient_history_[0], HISTORY_AMBIENT, BY_TRACE),
+        history("ambient_history_1", &ambient_history_[1], HISTORY_AMBIENT, BY_TRACE),
+        history("ambient_positions", &ambient_positions_, HISTORY_AMBIENT, BY_TRACE | BY_REFLECTIONS, COMMON),
+        history("light_history_0", &light_history_[0], HISTORY_LIGHTS, BY_TRACE),
+        history("light_history_1", &light_history_[1], HISTORY_LIGHTS, BY_TRACE),
+        history("kept_positions", &kept_positions_, HISTORY_PATHS, BY_TRACE | BY_BOUNCE | BY_REFLECTIONS, COMMON),
+        history("water_positions", &water_positions_, HISTORY_WATER, BY_REFLECTIONS, COMMON),
+        history("specular_accumulated", &specular_accumulated_, HISTORY_SPECULAR, BY_REFLECTIONS),
+        history("specular_history", &specular_history_, HISTORY_SPECULAR, BY_REFLECTIONS),
+        history("specular_meta", &specular_meta_, HISTORY_SPECULAR, BY_REFLECTIONS),
+        history("specular_meta_history", &specular_meta_history_, HISTORY_SPECULAR, BY_REFLECTIONS),
+        history("reuse_samples_0", &reuse_samples_[0], HISTORY_REUSE, BY_BOUNCE),
+        history("reuse_samples_1", &reuse_samples_[1], HISTORY_REUSE, BY_BOUNCE),
+        history("reuse_data_0", &reuse_data_[0], HISTORY_REUSE, BY_BOUNCE),
+        history("reuse_data_1", &reuse_data_[1], HISTORY_REUSE, BY_BOUNCE),
+        history("reuse_surface_0", &reuse_surface_[0], HISTORY_REUSE, BY_BOUNCE),
+        history("reuse_surface_1", &reuse_surface_[1], HISTORY_REUSE, BY_BOUNCE),
+        history("own_sky_0", &own_sky_[0], HISTORY_SKY, BY_BOUNCE),
+        history("own_sky_1", &own_sky_[1], HISTORY_SKY, BY_BOUNCE),
+        history("light_ratio_0", &light_ratio_[0], HISTORY_RATIO, BY_BOUNCE),
+        history("light_ratio_1", &light_ratio_[1], HISTORY_RATIO, BY_BOUNCE),
+        history("reflect_samples_0", &reflect_samples_[0], HISTORY_REFLECT, BY_REFLECTIONS),
+        history("reflect_samples_1", &reflect_samples_[1], HISTORY_REFLECT, BY_REFLECTIONS),
+        history("reflect_data_0", &reflect_data_[0], HISTORY_REFLECT, BY_REFLECTIONS),
+        history("reflect_data_1", &reflect_data_[1], HISTORY_REFLECT, BY_REFLECTIONS),
+        cache("cache_keys", &cache_keys_),
+        cache("cache_radiance", &cache_radiance_),
+        cache("cache_sums", &cache_sums_),
+        cache("cache_albedo", &cache_albedo_),
+        cache("light_fit", &light_fit_),
+        cache("light_kept", &light_kept_),
+        sharc("sharc_0", &sharc_buffers_[0]),
+        sharc("sharc_1", &sharc_buffers_[1]),
+        sharc("sharc_2", &sharc_buffers_[2]),
+        output("visibility", &visibility_, BY_TRACE),
+        output("ambient", &ambient_, BY_TRACE),
+        output("light_mask", &light_mask_, BY_TRACE),
+        output("fog", &fog_, BY_TRACE),
+        output("fog_lights", &fog_lights_, BY_TRACE),
+        output("tint", &tint_, BY_TRACE),
+        output("bounce", &bounce_, BY_BOUNCE),
+        output("reflection", &reflection_, BY_REFLECTIONS),
+        output("specular", &specular_, BY_REFLECTIONS),
+        output("hit_distance", &hit_distance_, BY_REFLECTIONS),
+    };
+  }
+
+  // The snapshot's layout (FileHeader::layout): its fields' names and sizes, the resources' names, the chunks' structs.
+  uint64_t RecordingLayout() {
+    uint64_t hash = 0xCBF29CE484222325ull;
+    const auto mix = [&](std::string_view text, uint64_t size) {
+      for (const char character : text) hash = (hash ^ static_cast<uint8_t>(character)) * 0x100000001B3ull;
+      hash = (hash ^ size) * 0x100000001B3ull;
+    };
+    std::apply([&](const auto&... field) { (mix(field.first, sizeof(this->*field.second)), ...); }, RecordedFields());
+    for (const RecordedResource& resource : RecordedResources()) mix(resource.name, resource.bytes);
+    mix("chunks", sizeof(MeshRecord) + (sizeof(SetRecord) << 8) + (sizeof(MicromapBytes) << 16) + (sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC) << 24));
+    return hash;
+  }
+
+  // A recording file's header: this helper's bridge, layout and build (its exe's size and time).
+  recording::FileHeader RecordingHeader(uint32_t frame, uint32_t request) {
+    recording::FileHeader header = {.bridge_version = dlaa_bridge::VERSION, .shared_bytes = static_cast<uint32_t>(sizeof(dlaa_bridge::Shared)),
+                                    .layout = RecordingLayout(), .frame = frame, .request = request};
+    std::wstring exe(MAX_PATH, L'\0');
+    exe.resize(GetModuleFileNameW(nullptr, exe.data(), MAX_PATH));
+    std::error_code ignored;
+    std::format_to_n(header.helper, sizeof(header.helper) - 1, "{} bytes, {}", std::filesystem::file_size(exe, ignored),
+                     std::filesystem::last_write_time(exe, ignored).time_since_epoch().count());
+    return header;
+  }
+
+  // A 64-bit hash of `bytes` (eight at a time): the inputs' (WriteRecordingFile) and the digest's.
+  static uint64_t HashBytes(std::span<const std::byte> bytes) {
+    uint64_t hash = 0xCBF29CE484222325ull ^ bytes.size();
+    size_t at = 0;
+    for (; at + 8 <= bytes.size(); at += 8) {
+      uint64_t word = 0;
+      std::memcpy(&word, bytes.data() + at, 8);
+      hash = (hash ^ word) * 0x100000001B3ull;
+      hash ^= hash >> 29;
+    }
+    for (; at < bytes.size(); ++at) hash = (hash ^ static_cast<uint8_t>(bytes[at])) * 0x100000001B3ull;
+    return hash;
+  }
+
+  // A chunk (its header, name, bytes) at the end of `chunks`.
+  static void AddChunk(std::vector<uint8_t>* chunks, uint32_t kind, std::string_view name, std::span<const std::byte> bytes) {
+    const recording::ChunkHeader header = {.kind = kind, .name_bytes = static_cast<uint32_t>(name.size()), .bytes = bytes.size()};
+    const auto* header_bytes = reinterpret_cast<const uint8_t*>(&header);
+    chunks->insert(chunks->end(), header_bytes, header_bytes + sizeof(header));
+    chunks->insert(chunks->end(), name.begin(), name.end());
+    const auto* data = reinterpret_cast<const uint8_t*>(bytes.data());
+    chunks->insert(chunks->end(), data, data + bytes.size());
+  }
+
+  // `parts` one after the other, then a bake's (MicromapBytes and its arrays) when there is one.
+  static std::vector<std::byte> JoinBytes(std::initializer_list<std::span<const std::byte>> parts, const Journal* micromaps) {
+    std::vector<std::byte> joined;
+    const auto append = [&](std::span<const std::byte> part) { joined.insert(joined.end(), part.begin(), part.end()); };
+    for (const auto part : parts) append(part);
+    if (micromaps == nullptr) return joined;
+    const MicromapBytes sizes = {.data = micromaps->data.size(), .descs = static_cast<uint32_t>(micromaps->descs.size()),
+                                 .indices = static_cast<uint32_t>(micromaps->indices.size()), .histogram = static_cast<uint32_t>(micromaps->histogram.size())};
+    append(std::as_bytes(std::span(&sizes, 1)));
+    append(std::as_bytes(std::span(micromaps->data)));
+    append(std::as_bytes(std::span(micromaps->descs)));
+    append(std::as_bytes(std::span(micromaps->indices)));
+    append(std::as_bytes(std::span(micromaps->histogram)));
+    return joined;
+  }
+
+  // A bake's micromaps built again on `list` (LoadRecordingState): its inputs uploaded as Record uploads a CPU bake's (the
+  // data, descs, indices at 256-byte places), its array (none when every triangle has a special index); the scratch kept in
+  // `keep` until the list is done. False: a truncated bake or no memory.
+  bool BuildRecordedMicromaps(ID3D12GraphicsCommandList4* list, std::span<const uint8_t> bytes, ComPtr<ID3D12Resource>* array, ComPtr<ID3D12Resource>* inputs,
+                              uint64_t* indices_offset, std::vector<ComPtr<ID3D12Resource>>* keep) {
+    MicromapBytes sizes = {};
+    if (bytes.size() < sizeof(sizes)) return false;
+    std::memcpy(&sizes, bytes.data(), sizeof(sizes));
+    const uint64_t descs_bytes = uint64_t{sizes.descs} * sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC);
+    const uint64_t histogram_bytes = uint64_t{sizes.histogram} * sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_HISTOGRAM_ENTRY);
+    if (bytes.size() < sizeof(sizes) + sizes.data + descs_bytes + (uint64_t{sizes.indices} * 4) + histogram_bytes) return false;
+    const uint8_t* data = bytes.data() + sizeof(sizes);
+    const uint64_t descs_offset = Align(sizes.data, 256);
+    *indices_offset = Align(descs_offset + descs_bytes, 256);
+    *inputs = Buffer(*indices_offset + (uint64_t{sizes.indices} * 4), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+    uint8_t* mapped = nullptr;
+    if (!*inputs || FAILED((*inputs)->Map(0, nullptr, reinterpret_cast<void**>(&mapped)))) return false;
+    std::memcpy(mapped, data, sizes.data);
+    std::memcpy(mapped + descs_offset, data + sizes.data, descs_bytes);
+    std::memcpy(mapped + *indices_offset, data + sizes.data + descs_bytes, uint64_t{sizes.indices} * 4);
+    (*inputs)->Unmap(0, nullptr);
+    if (sizes.histogram == 0) return true;
+    const auto* histogram =
+        reinterpret_cast<const D3D12_RAYTRACING_OPACITY_MICROMAP_HISTOGRAM_ENTRY*>(data + sizes.data + descs_bytes + (uint64_t{sizes.indices} * 4));
+    const D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_DESC array_desc = {
+        .NumOmmHistogramEntries = sizes.histogram,
+        .pOmmHistogram = histogram,
+        .InputBuffer = (*inputs)->GetGPUVirtualAddress(),
+        .PerOmmDescs = {.StartAddress = (*inputs)->GetGPUVirtualAddress() + descs_offset, .StrideInBytes = sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC)},
+    };
+    const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS array_inputs = {
+        .Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_ARRAY,
+        .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE,
+        .NumDescs = 1,
+        .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
+        .pOpacityMicromapArrayDesc = &array_desc,
+    };
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
+    device_->GetRaytracingAccelerationStructurePrebuildInfo(&array_inputs, &info);
+    *array = Buffer(info.ResultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT,
+                    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE,
+                    D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+    ComPtr<ID3D12Resource> scratch = Buffer(std::max<uint64_t>(info.ScratchDataSizeInBytes, 256), D3D12_HEAP_TYPE_DEFAULT,
+                                            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    if (!*array || !scratch) return false;
+    const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build = {.DestAccelerationStructureData = (*array)->GetGPUVirtualAddress(),
+                                                                       .Inputs = array_inputs,
+                                                                       .ScratchAccelerationStructureData = scratch->GetGPUVirtualAddress()};
+    list->BuildRaytracingAccelerationStructure(&build, 0, nullptr);
+    keep->push_back(std::move(scratch));
+    return true;
+  }
+
+  // A recorded resource's bytes (a CHUNK_TEXTURE's or CHUNK_BUFFER's) copied on `list` into `target`, resting in `state`: a
+  // buffer's part at its offset (the recorded buffer's size this one's), a texture's subresources (or the top rows of its
+  // one: the vertex texture's) by their footprints here, its format, size and subresources the recorded ones; the upload
+  // kept in `uploads` until the list is done. False: `why` says what did not fit.
+  bool UploadRecorded(ID3D12GraphicsCommandList* list, std::string_view name, ID3D12Resource* target, D3D12_RESOURCE_STATES state,
+                      std::span<const uint8_t> bytes, std::vector<ComPtr<ID3D12Resource>>* uploads, std::string* why) {
+    D3D12_RESOURCE_DESC desc = target->GetDesc();
+    ComPtr<ID3D12Resource> upload;
+    uint8_t* mapped = nullptr;
+    const auto staged = [&](uint64_t upload_bytes) {
+      upload = Buffer(std::max<uint64_t>(upload_bytes, 256), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+      return upload && SUCCEEDED(upload->Map(0, nullptr, reinterpret_cast<void**>(&mapped)));
+    };
+    const auto to_copy = Transition(target, state, D3D12_RESOURCE_STATE_COPY_DEST);
+    if (desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) {
+      recording::BufferHeader part = {};
+      if (bytes.size() >= sizeof(part)) std::memcpy(&part, bytes.data(), sizeof(part));
+      const uint64_t length = (bytes.size() >= sizeof(part)) ? bytes.size() - sizeof(part) : 0u;
+      if (bytes.size() < sizeof(part) || part.bytes != desc.Width || part.offset + length > desc.Width || !staged(length)) {
+        *why = std::format("{}: {} bytes at {} of a {}-byte buffer recorded, {} bytes here", name, length, part.offset, part.bytes, desc.Width);
+        return false;
+      }
+      std::memcpy(mapped, bytes.data() + sizeof(part), length);
+      list->ResourceBarrier(1, &to_copy);
+      list->CopyBufferRegion(target, part.offset, upload.Get(), 0, length);
+    } else {
+      recording::TextureHeader texture = {};
+      if (bytes.size() >= sizeof(texture)) std::memcpy(&texture, bytes.data(), sizeof(texture));
+      const UINT height = desc.Height;
+      const UINT subresources = desc.DepthOrArraySize * desc.MipLevels;
+      if (subresources == 1 && texture.rows != 0 && texture.rows < desc.Height) desc.Height = texture.rows;
+      std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints(subresources);
+      std::vector<UINT> rows(subresources);
+      std::vector<UINT64> row_bytes(subresources);
+      uint64_t total = 0;
+      device_->GetCopyableFootprints(&desc, 0, subresources, 0, footprints.data(), rows.data(), row_bytes.data(), &total);
+      uint64_t packed = 0;
+      for (UINT subresource = 0; subresource < subresources; ++subresource) packed += uint64_t{rows[subresource]} * row_bytes[subresource];
+      if (texture.format != desc.Format || texture.width != desc.Width || texture.height != height || texture.slices != subresources
+          || texture.rows != rows[0] || texture.row_bytes != row_bytes[0] || bytes.size() < sizeof(texture) + packed || !staged(total)) {
+        *why = std::format("{}: recorded {} x {} ({} subresources, format {}), here {} x {} ({}, format {})", name, texture.width, texture.height,
+                           texture.slices, texture.format, desc.Width, height, subresources, static_cast<uint32_t>(desc.Format));
+        return false;
+      }
+      const uint8_t* from = bytes.data() + sizeof(texture);
+      for (UINT subresource = 0; subresource < subresources; ++subresource) {
+        for (UINT row = 0; row < rows[subresource]; ++row) {
+          std::memcpy(mapped + footprints[subresource].Offset + (uint64_t{row} * footprints[subresource].Footprint.RowPitch), from, row_bytes[subresource]);
+          from += row_bytes[subresource];
+        }
+      }
+      list->ResourceBarrier(1, &to_copy);
+      for (UINT subresource = 0; subresource < subresources; ++subresource) {
+        const D3D12_TEXTURE_COPY_LOCATION destination = {.pResource = target, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = subresource};
+        const D3D12_TEXTURE_COPY_LOCATION source = {.pResource = upload.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+                                                    .PlacedFootprint = footprints[subresource]};
+        list->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+      }
+    }
+    upload->Unmap(0, nullptr);
+    const auto copied = Transition(target, D3D12_RESOURCE_STATE_COPY_DEST, state);
+    list->ResourceBarrier(1, &copied);
+    uploads->push_back(std::move(upload));
+    return true;
+  }
+
+  // A slot's journal copies (its last trace's new static meshes' vertices, done) into the journal; the bakes of meshes and
+  // sets gone or built again since let go (a few thousand kept at most).
+  void TakeJournalReads(Slot* slot) {
+    if (!slot->journal_reads.empty()) {
+      uint8_t* mapped = nullptr;
+      if (SUCCEEDED(slot->journal_readback->Map(0, nullptr, reinterpret_cast<void**>(&mapped)))) {
+        for (const Slot::JournalRead& read : slot->journal_reads) {
+          Journal& kept = journal_[read.key];
+          kept = {.build = read.build};
+          kept.vertices.resize(read.vertices);
+          std::memcpy(kept.vertices.data(), mapped + read.offset, uint64_t{read.vertices} * 16);
+        }
+        const D3D12_RANGE written = {};
+        slot->journal_readback->Unmap(0, &written);
+      }
+      slot->journal_reads.clear();
+      slot->journal_readback.Reset();
+    }
+    if (journal_.size() > meshes_.size() + 4096) std::erase_if(journal_, [&](const auto& entry) { return !meshes_.contains(entry.first); });
+    if (micromap_journal_.size() > meshes_.size() + 4096) {
+      std::erase_if(micromap_journal_, [&](const auto& entry) {
+        const auto mesh = meshes_.find(entry.first);
+        return mesh == meshes_.end() || mesh->second.build != entry.second.build;
+      });
+    }
+    if (set_journal_.size() > sets_.size() + 4096) {
+      std::erase_if(set_journal_, [&](const auto& entry) {
+        const auto set = sets_.find(entry.first);
+        return set == sets_.end() || set->second.generation != entry.second.build;
+      });
+    }
+  }
+
+  // The recorder's command list, reset (its last list done); null: none.
+  ID3D12GraphicsCommandList4* RecorderList() {
+    if (!recorder_allocator_
+        && (FAILED(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(recorder_allocator_.GetAddressOf())))
+            || FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, recorder_allocator_.Get(), nullptr,
+                                                 IID_PPV_ARGS(recorder_list_.GetAddressOf())))
+            || FAILED(recorder_list_->Close()))) {
+      recorder_allocator_.Reset();
+      return nullptr;
+    }
+    if (!WaitFor(recorder_value_) || FAILED(recorder_allocator_->Reset()) || FAILED(recorder_list_->Reset(recorder_allocator_.Get(), nullptr))) return nullptr;
+    return recorder_list_.Get();
+  }
+
+  // The recorder's list run on the queue (after what is on it); its fence value.
+  uint64_t SubmitRecorderList(ID3D12GraphicsCommandList4* list) {
+    if (SUCCEEDED(list->Close())) {
+      ID3D12CommandList* lists[] = {list};
+      queue_->ExecuteCommandLists(1, lists);
+    }
+    queue_->Signal(own_fence_.Get(), ++own_value_);
+    recorder_value_ = own_value_;
+    return own_value_;
+  }
+
+  // `resource` (resting in `state`) copied on `list` into a new read-back: a buffer's `bytes` from `offset` (0: the rest), a
+  // texture's top `rows` (0: all) of each subresource. No memory: left out (the recording's notes say it).
+  void CopyToReadback(ID3D12GraphicsCommandList* list, const char* name, ID3D12Resource* resource, D3D12_RESOURCE_STATES state,
+                      std::vector<Readback>* readbacks, uint64_t offset = 0, uint64_t bytes = 0, uint32_t rows = 0) {
+    Readback readback = {.name = name, .desc = resource->GetDesc(), .offset = offset};
+    const bool buffer = readback.desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER;
+    uint64_t total = 0;
+    if (buffer) {
+      readback.bytes = (bytes != 0) ? std::min(bytes, readback.desc.Width - offset) : readback.desc.Width - offset;
+      total = readback.bytes;
+    } else {
+      D3D12_RESOURCE_DESC desc = readback.desc;
+      if (rows != 0) desc.Height = std::min<UINT>(rows, desc.Height);
+      const UINT subresources = desc.DepthOrArraySize * desc.MipLevels;
+      readback.footprints.resize(subresources);
+      readback.rows.resize(subresources);
+      readback.row_bytes.resize(subresources);
+      device_->GetCopyableFootprints(&desc, 0, subresources, 0, readback.footprints.data(), readback.rows.data(), readback.row_bytes.data(), &total);
+    }
+    readback.buffer = Buffer(std::max<uint64_t>(total, 256), D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+    if (!readback.buffer) {
+      recording_.notes += std::format("{} (no memory for {} MB); ", name, total >> 20);
+      return;
+    }
+    const auto to_copy = Transition(resource, state, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    list->ResourceBarrier(1, &to_copy);
+    if (buffer) {
+      list->CopyBufferRegion(readback.buffer.Get(), 0, resource, offset, readback.bytes);
+    } else {
+      for (UINT subresource = 0; subresource < readback.footprints.size(); ++subresource) {
+        const D3D12_TEXTURE_COPY_LOCATION destination = {.pResource = readback.buffer.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+                                                         .PlacedFootprint = readback.footprints[subresource]};
+        const D3D12_TEXTURE_COPY_LOCATION source = {.pResource = resource, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = subresource};
+        const D3D12_BOX box = {.left = 0, .top = 0, .front = 0, .right = readback.footprints[subresource].Footprint.Width,
+                               .bottom = readback.rows[subresource], .back = 1};
+        list->CopyTextureRegion(&destination, 0, 0, 0, &source, &box);
+      }
+    }
+    const auto copied = Transition(resource, D3D12_RESOURCE_STATE_COPY_SOURCE, state);
+    list->ResourceBarrier(1, &copied);
+    readbacks->push_back(std::move(readback));
+  }
+
+  // `job` on the recording's writer once the queue is past `value` (in order after the jobs before; a removed or hung
+  // device's recording is incomplete).
+  void QueueRecordingJob(uint64_t value, std::function<void()> job) {
+    recording_writer_ = std::async(std::launch::async, [this, value, job = std::move(job), previous = std::move(recording_writer_)]() mutable {
+      if (previous.valid()) previous.wait();
+      const HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+      const bool done = WaitForGpu(own_fence_.Get(), event, value, 60000) && own_fence_->GetCompletedValue() != UINT64_MAX;
+      if (event != nullptr) CloseHandle(event);
+      if (!done) {
+        recording_.failed += "the device was removed or hung during the recording; ";
+        return;
+      }
+      job();
+    });
+  }
+
+  // A recording's file: its header, the CPU's chunks, each read-back's chunk (with `skip_unchanged` one the same as the
+  // last written under its name left out: the inputs a request did not change), the end. Its read-backs let go.
+  void WriteRecordingFile(const std::filesystem::path& path, const recording::FileHeader& header, const std::vector<uint8_t>& chunks,
+                          std::vector<Readback>* readbacks, bool skip_unchanged) {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    file.write(reinterpret_cast<const char*>(&header), sizeof(header));
+    file.write(reinterpret_cast<const char*>(chunks.data()), static_cast<std::streamsize>(chunks.size()));
+    uint64_t written = sizeof(header) + chunks.size();
+    for (Readback& readback : *readbacks) {
+      uint8_t* mapped = nullptr;
+      if (FAILED(readback.buffer->Map(0, nullptr, reinterpret_cast<void**>(&mapped)))) {
+        recording_.failed += readback.name + " could not be read; ";
+        continue;
+      }
+      std::vector<uint8_t> payload;
+      const bool buffer = readback.desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER;
+      if (buffer) {
+        const recording::BufferHeader part = {.bytes = readback.desc.Width, .offset = readback.offset};
+        payload.resize(sizeof(part) + readback.bytes);
+        std::memcpy(payload.data(), &part, sizeof(part));
+        std::memcpy(payload.data() + sizeof(part), mapped, readback.bytes);
+      } else {
+        const recording::TextureHeader texture = {.format = static_cast<uint32_t>(readback.desc.Format), .width = static_cast<uint32_t>(readback.desc.Width),
+                                                  .height = readback.desc.Height, .slices = static_cast<uint32_t>(readback.footprints.size()),
+                                                  .row_bytes = static_cast<uint32_t>(readback.row_bytes[0]), .rows = readback.rows[0],
+                                                  .mips = readback.desc.MipLevels};
+        payload.resize(sizeof(texture));
+        std::memcpy(payload.data(), &texture, sizeof(texture));
+        for (size_t subresource = 0; subresource < readback.footprints.size(); ++subresource) {
+          for (UINT row = 0; row < readback.rows[subresource]; ++row) {
+            const uint8_t* from = mapped + readback.footprints[subresource].Offset + (uint64_t{row} * readback.footprints[subresource].Footprint.RowPitch);
+            payload.insert(payload.end(), from, from + readback.row_bytes[subresource]);
+          }
+        }
+      }
+      const D3D12_RANGE none = {};
+      readback.buffer->Unmap(0, &none);
+      readback.buffer.Reset();
+      if (skip_unchanged) {
+        const uint64_t hash = HashBytes(std::as_bytes(std::span(payload)));
+        if (const auto last = recording_.hashes.find(readback.name); last != recording_.hashes.end() && last->second == hash) continue;
+        recording_.hashes[readback.name] = hash;
+      }
+      const recording::ChunkHeader chunk = {.kind = buffer ? recording::CHUNK_BUFFER : recording::CHUNK_TEXTURE,
+                                            .name_bytes = static_cast<uint32_t>(readback.name.size()), .bytes = payload.size()};
+      file.write(reinterpret_cast<const char*>(&chunk), sizeof(chunk));
+      file.write(readback.name.data(), static_cast<std::streamsize>(readback.name.size()));
+      file.write(reinterpret_cast<const char*>(payload.data()), static_cast<std::streamsize>(payload.size()));
+      written += sizeof(chunk) + readback.name.size() + payload.size();
+    }
+    const recording::ChunkHeader end = {};
+    file.write(reinterpret_cast<const char*>(&end), sizeof(end));
+    if (!file) recording_.failed += path.filename().string() + " could not be written; ";
+    recording_.bytes += written + sizeof(end);
+  }
+
+  // A recorded frame's request (RecordFrames; Trace, Paths): its block and new sets' data, the inputs it read (the vertex
+  // texture's rows it copied), its kind's shared outputs and at the last recorded frame its kind's histories, copied on the
+  // queue after its list and before its fence value (the addon's next writes wait for that); a trace's scene digest: its
+  // TLAS's descs with each BLAS named (a mesh by its key) order-free, the static records, the meshes and sets.
+  void RecordRequest(const dlaa_bridge::Shared& shared, uint32_t version, std::span<const uint8_t> cluster_data, uint32_t request) {
+    const uint32_t frame = shared.rt_frame;
+    if (!recording_.on || frame < recording_.first || frame > recording_.last) return;
+    if (frame != recording_.frame) {
+      recording_.frame = frame;
+      recording_.index = 0;
+    }
+    const std::string stem = std::format("{}_{}_{}", frame, recording_.index++, (request == 1) ? "trace" : ((request == 2) ? "bounce" : "reflections"));
+    ++recording_.requests;
+    ID3D12GraphicsCommandList4* list = RecorderList();
+    if (list == nullptr) {
+      recording_.notes += stem + " (no command list); ";
+      return;
+    }
+    constexpr D3D12_RESOURCE_STATES COMMON = D3D12_RESOURCE_STATE_COMMON;
+    std::vector<uint8_t> chunks;
+    std::vector<Readback> inputs;
+    if (recording_.inputs) {
+      AddChunk(&chunks, recording::CHUNK_BLOCK, "block", std::as_bytes(std::span(&shared, 1)).first(dlaa_bridge::SharedBytes(version)));
+      if (!cluster_data.empty()) AddChunk(&chunks, recording::CHUNK_SETS, "sets", std::as_bytes(cluster_data));
+      if (request == 1 && recorded_vertex_end_ != 0) {
+        CopyToReadback(list, "vertices", vertices_.Get(), COMMON, &inputs, 0, 0,
+                       (recorded_vertex_end_ + dlaa_bridge::RT_TRANSFER_WIDTH - 1) / dlaa_bridge::RT_TRANSFER_WIDTH);
+      }
+      if (request == 1 && atlas_) CopyToReadback(list, "atlas", atlas_.Get(), COMMON, &inputs);
+      for (const auto& [name, input] : std::initializer_list<std::pair<const char*, ID3D12Resource*>>{
+               {"positions", positions_.Get()}, {"sun", sun_.Get()}, {"light", light_.Get()}, {"color", previous_color_.Get()},
+               {"normals", guide_normals_.Get()}, {"albedo", guide_albedo_.Get()}, {"roughness", guide_roughness_.Get()}}) {
+        if (input != nullptr) CopyToReadback(list, name, input, COMMON, &inputs);
+      }
+    }
+    std::vector<Readback> outputs;
+    for (const RecordedResource& resource : RecordedResources()) {
+      if ((resource.written_by & (1u << request)) != 0 && *resource.member && (resource.output || frame == recording_.last)) {
+        CopyToReadback(list, resource.name, resource.member->Get(), resource.state, &outputs, resource.offset, resource.bytes);
+      }
+    }
+    std::vector<Readback> digest_reads;
+    std::vector<D3D12_RAYTRACING_INSTANCE_DESC> descs;
+    std::unordered_map<uint64_t, uint64_t> blas_names;
+    std::vector<std::array<uint64_t, 4>> scene;
+    if (request == 1) {
+      const Slot& slot = slots_[recorded_scene_.slot];
+      descs.assign(slot.instance_data, slot.instance_data + recorded_scene_.cpu_instances);
+      if (recorded_scene_.smoke) descs.push_back(slot.instance_data[MAX_INSTANCES - 1]);
+      if (recorded_scene_.placed && recorded_scene_.tlas_instances > recorded_scene_.cpu_instances) {
+        CopyToReadback(list, "placed", placed_instances_[placed_last_].Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, &digest_reads,
+                       uint64_t{recorded_scene_.cpu_instances} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC),
+                       uint64_t{recorded_scene_.tlas_instances - recorded_scene_.cpu_instances} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
+      }
+      CopyToReadback(list, "records", records_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, &digest_reads, 0, uint64_t{STATIC_RECORDS} * 16);
+      for (const auto& [key, mesh] : meshes_) {
+        blas_names[mesh.blas.address] = key;
+        scene.push_back({key, (uint64_t{mesh.record} << 32) | mesh.triangles, (uint64_t{mesh.normal_offset} << 32) | mesh.uv_offset,
+                         (uint64_t{mesh.first_instance} << 32) | (uint64_t{mesh.transforms.size()} << 8) | (mesh.placed ? 1u : 0u) | (mesh.foliage ? 2u : 0u)
+                             | (mesh.micromaps ? 4u : 0u)});
+      }
+      for (const auto& [key, set] : sets_) {
+        scene.push_back({key ^ 0x5E75E75E75E75E7ull, (uint64_t{set.offset} << 32) | set.clusters, (uint64_t{set.triangles} << 32) | set.vertices,
+                         set.generation | (uint64_t{set.template_first} << 40) | (set.micromaps ? (1ull << 39) : 0ull)});
+      }
+      for (size_t blas = 0; blas < CLUSTER_BLASES; ++blas) {
+        if (cluster_blases_[blas]) blas_names[cluster_blases_[blas]->GetGPUVirtualAddress()] = 0xC1A5000000000000ull + blas;
+      }
+      if (units_blas_) blas_names[units_blas_->GetGPUVirtualAddress()] = 0x0417500000000000ull;
+      if (smoke_blas_) blas_names[smoke_blas_->GetGPUVirtualAddress()] = 0x5303E00000000000ull;
+    }
+    const uint64_t value = SubmitRecorderList(list);
+    QueueRecordingJob(value, [this, stem, frame, request, folder = recording_.folder, header = RecordingHeader(frame, request), chunks = std::move(chunks),
+                              inputs = std::move(inputs), outputs = std::move(outputs), digest_reads = std::move(digest_reads), descs = std::move(descs),
+                              blas_names = std::move(blas_names), scene = std::move(scene)]() mutable {
+      if (!chunks.empty() || !inputs.empty()) WriteRecordingFile(folder / ("request_" + stem + ".bin"), header, chunks, &inputs, true);
+      WriteRecordingFile(folder / ("output_" + stem + ".bin"), header, {}, &outputs, false);
+      if (request != 1) return;
+      uint64_t records_hash = 0;
+      for (Readback& read : digest_reads) {
+        uint8_t* mapped = nullptr;
+        if (FAILED(read.buffer->Map(0, nullptr, reinterpret_cast<void**>(&mapped)))) continue;
+        if (read.name == "records") {
+          records_hash = HashBytes(std::as_bytes(std::span(mapped, read.bytes)));
+        } else {
+          const auto* placed = reinterpret_cast<const D3D12_RAYTRACING_INSTANCE_DESC*>(mapped);
+          descs.insert(descs.end(), placed, placed + (read.bytes / sizeof(D3D12_RAYTRACING_INSTANCE_DESC)));
+        }
+        const D3D12_RANGE none = {};
+        read.buffer->Unmap(0, &none);
+        read.buffer.Reset();
+      }
+      // Each desc by its BLAS's name (an unknown address all ones), order-free.
+      std::vector<uint64_t> named;
+      for (D3D12_RAYTRACING_INSTANCE_DESC desc : descs) {
+        const auto name = blas_names.find(desc.AccelerationStructure);
+        desc.AccelerationStructure = (name != blas_names.end()) ? name->second : ((desc.AccelerationStructure == 0) ? 0u : UINT64_MAX);
+        named.push_back(HashBytes(std::as_bytes(std::span(&desc, 1))));
+      }
+      std::ranges::sort(named);
+      std::ranges::sort(scene);
+      std::ofstream(folder / std::format("digest_{}.txt", frame))
+          << std::format("frame {}\ninstances {} {:016X}\nrecords {:016X}\nscene {} {:016X}\n", frame, named.size(), HashBytes(std::as_bytes(std::span(named))),
+                         records_hash, scene.size(), HashBytes(std::as_bytes(std::span(scene))));
+    });
+  }
+#endif
+
   ComPtr<ID3D12Device5> device_;
   bool dxr12_ = false;
   std::string sdk_;
@@ -7047,6 +8563,21 @@ class RtScene12 {
   // A recording's trace being recorded: its passes' marks and when the CPU reached them.
   std::vector<std::pair<const wchar_t*, LARGE_INTEGER>> cpu_marks_;
   std::string profile_counts_;
+#if defined(RENODX_RECORDER)
+  // The recorder's (last: destroyed first, its writer waited for in the destructor). The journal while RENODX_TW_RECORD was
+  // set at Initialize: the static meshes' vertices, their CPU bakes and the cluster sets', by key.
+  bool journal_on_ = false;
+  std::unordered_map<uint64_t, Journal> journal_;
+  std::unordered_map<uint64_t, Journal> micromap_journal_;
+  std::unordered_map<uint64_t, Journal> set_journal_;
+  ComPtr<ID3D12CommandAllocator> recorder_allocator_;
+  ComPtr<ID3D12GraphicsCommandList4> recorder_list_;
+  uint64_t recorder_value_ = 0;  // own_fence_'s value after its last list
+  Recording recording_;
+  std::future<void> recording_writer_;  // its last job (each waits for the one before)
+  uint32_t recorded_vertex_end_ = 0;    // the last trace's vertices (Record)
+  RecordedScene recorded_scene_;
+#endif
 };
 
 }  // namespace twattila::dlaa_helper
