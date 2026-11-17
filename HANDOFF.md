@@ -2979,7 +2979,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         MXCSR / no x87; heapfix untouched); 7 low notes for ATN's other session (README counts, "all 2^32 through
         20 lanes" wrong, removed rvas bound guard, constants != nullptr, style, commit the stub's asm source, gain
         68.1 -> 51.6 ns vs today); builds + full suite not done here: at merge time by the coordinator; (2) then a
-        Low EJOB build + tests only (no analysis); (3) UPDATE 00:0x: ATN's other session added E3P site 0x1890b90 on
+        Low EJOB build + tests only (no analysis): ATN 23:0x (real clock) "No, run them now" (ATN's own Sonnet
+        5.5 review round in the other session is separate): ejb_ Low STARTED 23:0x at ejob-fork tip 4d90af155 (EJOB +
+        EHALF + E3P): gated x86 + amd64 all, tw_engine_code x86 full on Attila / Thrones / Rome II, no analysis;
+        (3) UPDATE 00:0x: ATN's other session added E3P site 0x1890b90 on
         ejob-fork as "Faster Effect Prefetch" (Experimental off; prefetches the child after next inside the live list;
         exact on Attila + Thrones incl. random getter trees; harness cold children: plain getter 7.9 -> 8.5 ns SLOWER,
         40-cycle work 43.6 -> 30.2, 150-cycle 101 -> 54: gain unknown in game); its other E3P sites and EVEC need a
