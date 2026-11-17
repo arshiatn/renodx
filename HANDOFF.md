@@ -359,7 +359,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | fix1_ (STARTED 16:xx)
 - CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of ... | cpp_
 - CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
-- CPU B1 (cb1_ High STARTED 18:4x): ES8 site 8 0x18635a0 (corrected: result byte 1 ... | cb1_
+- CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action u ... | ATN (go / skip), then a High implementer
 - CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, X ... | next High implementer (after bfx_ merges: build load)
 - CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | High implementer (ATN's C: AF14 scope)
 - CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | High implementer AFTER bfx_ (same dlaa_bridge
@@ -2487,8 +2487,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         the whole ranked CPU plan with exactness proofs, owners, file sets, batches -> cpu_gaps.md + cpu_plan2.md; (2) High
         implementers, one at a time per file set; (3) one xHigh review of the merged result; (4) one Low bench batch
         (stress / night1 / day1, + day1 / sea1 WPR if the plan asks). Owner: coordinator
-      - [ ] CPU B1 (cb1_ High STARTED 18:4x): ES8 site 8 0x18635a0 (corrected: result byte 1 after a full loop, ecx's top
-        byte) + ETLS site 7 (TlsGetValue thunk); engine_code.hpp + test/tw_engine_code; stress -1.8..-2.4. Owner: cb1_
+      - [ ] CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action unknown: its transcript is
+        empty); not relaunched (no working around a classifier denial): ATN decides. No code / tests / builds; worktree
+        agent-a96c7280ab0ca669b clean on 170241324. Facts from the DLL bytes (scratchpad cb1\*.py): site 8 is 118 bytes
+        (the plan's 117 leaves out the C3 at +0x75), found once in Attila (0x18635a0) and Thrones (0x18d8400), none in
+        Rome II; the TlsGetValue thunk FF 31 FF 15 <slot> C3 at Attila 0x16246d0 / Thrones 0x1690320, Rome II inline (7
+        call [slot] sites); kernel32 / kernelbase fast paths end alike (ecx = TEB, eax = slot, flags of cmp eax 0x40,
+        [TEB+0x34] = 0, edx kept, ebp restored); heapfix touches neither site; the plan's site 8 corrections hold). ES8
+        + ETLS: engine_code.hpp + test/tw_engine_code; stress -1.8..-2.4. Owner: ATN (go / skip), then a High implementer
       - [ ] CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, XAT rt_core part; rt_scene.hpp,
         rt_core.hpp, tw_native_context; every rt_core consumer built): night1 -0.6..-1.0. Owner: next High implementer
         (after bfx_ merges: build load)
