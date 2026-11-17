@@ -2645,9 +2645,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         the last float is converted by a real call of the game's function (eax / ecx exact, edx kept in xmm3 and put back); the
         game's own store of the last half after the region is kept. Not byte-exact in: the 16 pushed argument slots below esp,
         xmm1-7, the flags (all dead), and no live object may lie on the dead stack below the frame. engine_code.hpp section 7,
-        test part 11: 2 M random calls, all pointer overlaps around the check edges (5 kinds), all 2^32 bit patterns through
-        17 lanes, 200 switches under 4 threads; Attila full length + Thrones quick PASS. Harness region 73.5 -> 51.6 ns
-        (68.1 with today's single-call stub). NOT proven: the in-game gain (-0.4..-0.6 ms render, 4-6 ms workers). Owner: ATN
+        test part 11: 2 M random calls, all pointer overlaps around the check edges (5 kinds), every 2^32 bit pattern in all
+        18 float lanes at once (11c2) and 17 patterns a call (11c), 200 switches under 4 threads; Attila + Thrones full length
+        PASS (review ehr_ findings 2-7 fixed in the next commit). Harness region 68.1 -> 51.6 ns against today's single-call
+        stub (73.5 for the game's code; the harness's entry / copy cost is inside all three). NOT proven: the in-game gain
+        (-0.4..-0.6 ms render, 4-6 ms workers). Owner: ATN
       - [x] E3P site 0x1890b90 IMPLEMENTED 2026-11-17 23:xx (ejob-fork, local; offline only): "Faster Effect Prefetch
         (Experimental, off)" = a 10th site (PREFETCH_SITES bit 9, key FasterEffectPrefetch, Update's 5th argument; Attila
         addon row only, Thrones has the same function at 0x1905ef0 but no row, Rome II none): in the effect tree's child sum

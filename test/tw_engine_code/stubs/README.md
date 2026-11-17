@@ -1,0 +1,16 @@
+# Stub sources
+
+The byte arrays in `src/games/twattila/engine_code.hpp` (`JOB_STUB`, `HALF_ROWS_STUB`, `CHILD_SUM_STUB`) are the `.text` of these
+files, with the placeholders the header's `Prepare` replaces (`0x5A5A5Axx` sentinels, see `STUB_*_SENTINEL`). Rebuild one with
+
+```
+clang --target=i686-pc-windows-msvc -c half_rows.s -o half_rows.obj
+llvm-objcopy --dump-section .text=half_rows.bin half_rows.obj
+```
+
+and compare the bytes with the array (the arrays carry the disassembly as comments; `half_rows.s` ends its code at the
+`fallback:` jump, the 16-byte constants after `.balign 16` are `HALF_ROWS_CONSTANTS`).
+
+- `job_wakeups.s` - Faster Job Wake-Ups (WakeAll, Sleep and the destructor's call of Stop).
+- `half_rows.s` - the sprite row builder's 20 half floats four at a time (Faster Game CPU Code).
+- `child_sum.s` - the effect tree's child sum prefetch (Faster Effect Prefetch).

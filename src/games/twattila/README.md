@@ -11,12 +11,14 @@
 
 ## Dev, Faster Game CPU Code: sprite row builder (2026-11-17; offline only, not stamped, not installed, not run in game)
 
-- Faster: **Faster Game CPU Code** (on by default) has a fourth routine on Attila and Thrones of Britannia: the sprite soldiers'
+- Faster: **Faster Game CPU Code** (on by default) has one more routine on Attila and Thrones of Britannia: the sprite soldiers'
   row builder converts 20 floats to half floats with 20 calls; now four at a time with the game's own rounding, the
   same bytes in the rows. Special values (infinities, NaN, half denormals, overflow) and any overlap of the row with its
-  inputs run the game's code. Tested against the game's DLL in `test/tw_engine_code` part 11 (all 2^32 float bit patterns
-  through the 20 lanes, 2 M random calls, every pointer overlap around the checks' edges, 200 on / off switches under
-  4 threads): 73.5 -> 51.6 ns a call in the harness. Estimated: -0.4..-0.6 ms of the render thread in a big battle.
+  inputs run the game's code. Tested against the game's DLL in `test/tw_engine_code` part 11 (every one of the 2^32 float bit
+  patterns in all 18 float lanes at once, and 17 different patterns a call; 2 M random calls, every pointer overlap around
+  the checks' edges, 200 on / off switches under 4 threads): 68.1 -> 51.6 ns a call in the harness against today's
+  single-call stub (73.5 for the game's code; the harness's own entry and copy cost is inside all three). Estimated:
+  -0.4..-0.6 ms of the render thread in a big battle.
 
 ## Dev, Faster Job Wake-Ups (2026-11-17; built only, not stamped, not installed, not run in game)
 

@@ -1280,7 +1280,9 @@ int RunRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32
   }
 
   // 11c. Every bit pattern: 17 patterns a call (the 15 floats read as they are, the product lanes x * 1.0 and 1.0 * x, the rest
-  // fixed), consecutive patterns, 2^32 of them (2^28 quick): each call's 20 halves, registers and frame equal.
+  // fixed), 2^32 patterns in a multiplicative order (2^28 of them, spread over the range, when quick): each call's 20 halves,
+  // registers and frame equal. Each pattern is in
+  // one lane here (the lanes differ by the pattern's place in the call); 11c2 puts every pattern in all lanes.
   {
     const uint64_t patterns = (quick ? (1ull << 28) : (1ull << 32));
     const uint64_t blocks = (patterns + 16) / 17;
@@ -1302,7 +1304,8 @@ int RunRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32
       uint64_t bad = 0;
       uint64_t fast_here = 0;
       for (uint64_t block = first; block < last; ++block) {
-        const auto pattern = [&](uint32_t lane) { return static_cast<uint32_t>(block * 17 + lane); };
+        const auto pattern = [&](uint32_t lane) { return static_cast<uint32_t>((block * 17 + lane) * 0x9E3779B1ull); };
+        for (uint32_t slot = 0; slot < 4; ++slot) Write32(frame - 0x10 + 4 * slot, random.Next());  // see 11c2
         in->call.xmm0_in = pattern(0);
         Write32(frame + 0x24, pattern(1));
         Write32(source + 0x1C, pattern(2));
@@ -1331,6 +1334,53 @@ int RunRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32
     });
     CHECK(wrong == 0);
     std::printf("   every bit pattern, %llu in %llu calls of 17 (%llu on the vector path): the 20 halves, registers, frame equal (%.0f s)\n", patterns, blocks, fast_blocks.load(),
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+  }
+
+  // 11c2. Every bit pattern in every lane at once: one pattern a call in all 18 float lanes (the integer lane fixed at 1000, the
+  // zero lane at 0; the product lanes x * 1.0 and 1.0 * x give x), 2^32 calls (2^28 quick): the 20 halves, registers and frame equal.
+  {
+    const uint64_t patterns = (quick ? (1ull << 28) : (1ull << 32));
+    std::atomic<uint64_t> fast_calls = 0;
+    const auto start = std::chrono::steady_clock::now();
+    const uint64_t wrong = Parallel(patterns, [&](uint64_t first, uint64_t last, unsigned worker) -> uint64_t {
+      auto in = std::make_unique<RowsWorld>();
+      auto saved = std::make_unique<RowsWorld>();
+      auto ra = std::make_unique<RowsWorld>();
+      auto rb = std::make_unique<RowsWorld>();
+      Random random = {.state = 0x5A17ull ^ (first * 0x2545F4914F6CDD1Dull) ^ worker};
+      RowsRandom(in.get(), &random, 0);
+      uint8_t* frame = in->call.frame + 0x100;
+      uint8_t* source = in->arena.data();
+      uint8_t* second = in->arena.data() + 0x100;
+      Write32(frame + 0x20, 1000);
+      uint64_t bad = 0;
+      uint64_t fast_here = 0;
+      for (uint64_t index = first; index < last; ++index) {
+        const auto bits = static_cast<uint32_t>(index * 0x9E3779B1ull);  // every 32-bit pattern once over 2^32 calls, spread over the whole range when quick
+        in->call.xmm0_in = bits;
+        Write32(frame + 0x74, 0x3F800000);  // 1.0 (the region leaves its last float there): both products give the pattern
+        // The pushed argument slots as the previous run left them would hide which path a run took (RowsEqual compares them).
+        for (uint32_t slot = 0; slot < 4; ++slot) Write32(frame - 0x10 + 4 * slot, random.Next());
+        for (const uint32_t at : {0x24u, 0x70u, 0x58u, 0x50u, 0x4Cu, 0x48u, 0x44u}) Write32(frame + at, bits);
+        for (const uint32_t at : ROWS_SOURCE_FLOATS) Write32(source + at, bits);
+        Write32(second + 0x48, bits);
+        Write32(second + 0x4C, bits);
+        *saved = *in;
+        RunRows(game_block, in.get(), *saved, ra.get());
+        RunRows(patched_block, in.get(), *saved, rb.get());
+        bool took_fast;
+        if (!RowsEqual(*in, *saved, *ra, *rb, &took_fast)) {
+          ++bad;
+          Report("  rows all lanes %08X: NOT equal (eax %08X / %08X)\n", bits, ra->call.out[0], rb->call.out[0]);
+        }
+        fast_here += took_fast ? 1 : 0;
+      }
+      fast_calls += fast_here;
+      return bad;
+    });
+    CHECK(wrong == 0);
+    std::printf("   every bit pattern in all 18 float lanes at once, %llu calls (%llu on the vector path): the 20 halves, registers, frame equal (%.0f s)\n", patterns, fast_calls.load(),
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
   }
 

@@ -9,6 +9,7 @@
 
 #include <tlhelp32.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -32,7 +33,8 @@
 // RVAs are the Steam build's (1.6.0): there they are tried first, then the code section is searched.
 // Thrones of Britannia and Rome II (Game::THRONES, Game::ROME2): the same routines, their builds' (internal::BUILDS);
 // Rome II has no ready check. Faster Job Wake-Ups (its own row, Experimental): a sixth to eighth site, the job system's
-// worker wake-ups (6. below). The sprite soldiers' row builder's 20 half floats at once (7. below) belong to Faster Game CPU Code.
+// worker wake-ups (6. below). The sprite soldiers' row builder's 20 half floats at once (7. below) belong to Faster Game
+// CPU Code. Faster Effect Prefetch (its own row, Experimental): the effect tree's child sum (8. below), a tenth site.
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
@@ -325,8 +327,8 @@ constexpr std::string_view JOB_STOP =
 constexpr size_t JOB_WAKE_ALL_STUB = 0x00;
 constexpr size_t JOB_SLEEP_STUB = 0x73;
 constexpr size_t JOB_STOP_STUB = 0xED;
-// The stubs' sentinels, replaced in Prepare: absolute fields (the job stub's side table: key, pending, asleep, running, each one
-// cache line on), absolute constants (the half rows' table, +0 .. +0xff) and relative calls (the job stub: Wake,
+// The stubs' sentinels, replaced in Prepare: absolute fields (the job stub's side table: key, pending, asleep, running,
+// each one cache line on), absolute constants (the half rows' table, +0 .. +0xff) and relative calls (the job stub: Wake,
 // Acquire(INFINITE), WakeAll + 5, Stop; the half rows': the float to half, the region's start + 5, its end).
 constexpr uint32_t STUB_FIELD_SENTINEL = 0x5A5A5A01;
 constexpr uint32_t STUB_CALL_SENTINEL = 0x5A5A5A11;
@@ -728,15 +730,15 @@ constexpr std::string_view CHILD_SUM =
 constexpr size_t CHILD_SUM_SITE = 38;    // lea ecx, [ecx + edx*4]; cmp esi, ecx
 constexpr size_t CHILD_SUM_RESUME = 43;  // jne to the loop's top
 constexpr std::array<uint8_t, 26> CHILD_SUM_STUB = {
-    0x3B, 0xF1,              // cmp esi, ecx                (esi against the begin)
+    0x39, 0xCE,              // cmp esi, ecx                (esi against the begin)
     0x8D, 0x0C, 0x91,        // lea ecx, [ecx + edx*4]      (the end; no flags)
     0x72, 0x0C,              // jb skip                     (esi below the begin: stale, no load)
     0x8D, 0x46, 0x04,        // lea eax, [esi + 4]
-    0x3B, 0xC1,              // cmp eax, ecx
+    0x39, 0xC8,              // cmp eax, ecx
     0x73, 0x05,              // jae skip                    (no slot after the next one)
     0x8B, 0x00,              // mov eax, dword ptr [eax]    (the child after the next one)
     0x0F, 0x18, 0x08,        // prefetcht0 byte ptr [eax]
-    0x3B, 0xF1,              // skip: cmp esi, ecx          (the flags the game's jne tests)
+    0x39, 0xCE,              // skip: cmp esi, ecx          (the flags the game's jne tests)
     0xE9, 0x00, 0x00, 0x00, 0x00,  // jmp the loop's jne (patched in Prepare)
 };
 
@@ -935,7 +937,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       const uint32_t value = read32(stub + at);
       if (value - STUB_FIELD_SENTINEL < fields.size()) {
         write32(stub + at, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(fields[value - STUB_FIELD_SENTINEL])));
-      } else if (value - STUB_CONSTANT_SENTINEL < 0x100) {
+      } else if (constants != nullptr && value - STUB_CONSTANT_SENTINEL < 0x100) {
         write32(stub + at, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(constants)) + (value - STUB_CONSTANT_SENTINEL));
       } else if (value - STUB_CALL_SENTINEL < callees.size()) {
         write32(stub + at, relative(stub + at + sizeof(uint32_t), callees[value - STUB_CALL_SENTINEL]));
@@ -1029,9 +1031,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     }
     // The sprite row builder's 20 conversions, only with the game's float to half the target of every one of its calls.
     if (uint8_t* match = (build.half_rows_rva != 0 ? find(HALF_ROWS, build.half_rows_rva) : nullptr); match != nullptr && sites[1].at != nullptr) {
-      bool conversions = true;
-      for (const uint16_t call : HALF_ROWS_CALLS) conversions = conversions && target(match + call) == sites[1].at;
-      if (conversions) {
+      if (std::ranges::all_of(HALF_ROWS_CALLS, [&](uint16_t call) { return target(match + call) == sites[1].at; })) {
         uint8_t* stub = page + HALF_ROWS_PAGE;
         std::memcpy(stub, HALF_ROWS_STUB.data(), HALF_ROWS_STUB.size());
         std::memcpy(stub + HALF_ROWS_CONSTANTS_AT, HALF_ROWS_CONSTANTS.data(), sizeof(HALF_ROWS_CONSTANTS));
@@ -1059,6 +1059,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   // A site the build doesn't have (rva 0) isn't named.
   const std::array<uint32_t, 10> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
                                          0, 0, 0, build.half_rows_rva, 0};
+  static_assert(std::tuple_size_v<decltype(rvas)> == std::tuple_size_v<decltype(sites)>);
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
     // The job sites aren't listed here: their row says when it turns them on.
