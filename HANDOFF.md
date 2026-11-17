@@ -336,7 +336,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila ... | coordinator
 - CPU ROUND PLAN (cpu1_ 09:xx, design: plan_1117/cpu_round_plan.md): corrections: ... | coordinator
 - ATN 09:10 ANSWERS (each its own box below): CPU benches started (cpb_, plan_1117 ... | coordinator
-- CPU BENCH RUNS (cpb_ started 09:1x, ATN's OK): dry run; heapfix A / P / h6106 x3 ... | cpb_
 - SHARC UPDATE (ATN 09:10 "update to nvidia sdk's newer version and fix the bug .. ... | coordinator (next helper implementer after rv3_)
 - UTILS RESOURCE MEMO (plan DONE 10:3x ut1_: designs/utils_view_memo.md: 16 writer ... | next CPU implementer
 - HELPER SCREENSHOT KEY (ATN 09:10 "Sure go ahead"): the helper (64-bit, own proce ... | next helper / add-on implementer
@@ -352,9 +351,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffus ... | next WH3 helper round
 - X86 64-BIT ATOMIC LOADS (rv4_ 10:5x): std::atomic<uint64_t> loads in the x86 add ... | next shared-utils round (with the memo)
 - EFFORT A/B (ATN 10:3x "test low + your judgement and just medium effort for test ... | coordinator
-- HEAPFIX P INSTALL (ATN 12:2x "Install the fastest heapfix build for me please"): ... | coordinator
 - HEAPFIX AUTHOR ZIP 2 (ATN 12:2x: the author liked the 11-15 zip; "make another z ... | coordinator after cpb_'s report
 - RECORDER FIRST (ATN 12:2x: "Wouldn't that be amazing for our RT/PT further optim ... | coordinator
+- CPU NEXT (cpu_round_report.md): heapfix P + size-gated B4 (threads only for 3276 ... | next CPU round
+- C-SPRITES (cpb_): Small Soldiers as Sprites is 3.5-3.9x the fps in stress (13-15 ... | ATN
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -2237,7 +2237,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         SHaRC 1.8.3 + buffer lifetime fix on by default; shared-utils memo yes; helper screenshot key yes; RT freeze as
         the coordinator suggests; heapfix improvements always from our best version (P + our fixes); Small Soldiers as
         Sprites performance only. Owner: coordinator
-      - [ ] CPU BENCH RUNS (cpb_ started 09:1x, ATN's OK): dry run; heapfix A / P / h6106 x3 + P / B4 / loopanim / x87keep x2
+      - [x] DONE CPU BENCH RUNS 08:57-12:37 (cpb_; report plan_1117/cpu_round_report.md, details cpu_bench_results.md):
+        heapfix P proven faster (stress -8..-13 ms = +11..19 %, night1 -4.5..-7 ms, day1 -1.4..-1.9 ms vs ATN's 6.10.6);
+        B4 faster in stress only; loopanim / x87keep not proven; add-on trim below the noise; sprites -50..-57 ms (3.5-3.9x)
+        in stress; out-of-front growth ~1.1 MB/s with and without RenoDX = heapfix's dlmalloc pieces; a 4K shot ~150 MB for
+        ~6 s; next candidates memcpy 65-127 B gather loops, 0x182e080 / 0x18960d0 / draw loop / 0x18635a0, light sort 0.56 ms;
+        AMSI blocked one note-append PowerShell command (worked around with the file editor: reported to ATN). Was: CPU BENCH RUNS (cpb_ started 09:1x, ATN's OK): dry run; heapfix A / P / h6106 x3 + P / B4 / loopanim / x87keep x2
         on stress; A / P x2 night1; trim A/B night1 + sea1 x2; Small Soldiers as Sprites stress x2 (performance only); data
         run (sampler, va_probe2, a screenshot, 60 s out of front, a restart); capture v3 WPR A vs P; day1 Constantinople
         bench. Results plan_1117/cpu_bench_results.md. Owner: cpb_
@@ -2347,7 +2352,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         session, a fresh judge reads only the results). Compare tokens per game start (runner + judge vs cpb_) and quality
         (wrong steps, missed restore checks, wrong conclusions; the coordinator spot-checks both); report to
         ATN, then keep the winner as the rule (memory feedback-data-run). Owner: coordinator
-      - [ ] HEAPFIX P INSTALL (ATN 12:2x "Install the fastest heapfix build for me please"): after cpb_ ends (its restores
+      - [x] DONE 12:39 HEAPFIX P INSTALL: P_dinput8.dll 8e8fa96a in the Attila folder (hash checked), ATN's 6.10.6 e5b39df0 +
+        heapfix.ini backed up in tools/tw/install/backups/heapfix_20261117_123916; heapfix.log's sort line on the next start
+        still to check. Was: HEAPFIX P INSTALL (ATN 12:2x "Install the fastest heapfix build for me please"): after cpb_ ends (its restores
         would undo it): back up ATN's dinput8.dll (6.10.6, e5b39df0) to install/backups/<time>, copy bench heapfix P
         (8e8fa96a, the prefetched radix sort: -8..-13 ms stress, -4.5..-7 ms night1 vs 7.0; B4 faster only in huge battles,
         slower at Constantinople), check the hash and heapfix.log's sort line on the next start; ATN's heapfix.ini kept;
@@ -2362,6 +2369,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         (route B: the bridge recorder + harness player, 12 recordings of night1 / sea1 / stress / day1) moves up: the next
         helper implementer after ref2_, before SHaRC; then RT/PT optimization and SHaRC's G5 / G6 run in Nsight on recorded
         real frames without starting the game. Owner: coordinator
+      - [ ] CPU NEXT (cpu_round_report.md): heapfix P + size-gated B4 (threads only for 32768+ item lists) at stress + day1;
+        loopanim / x87keep 3+ rounds shuffled; one run WITHOUT heapfix (whose memory grows out of front); add-on: the point-
+        light sort (0.56 ms) + Capture's remaining D3D11 calls, judged by WPR; engine: memcpy gather sites +0x17dabaf /
+        +0x182c9b9 (a memfast-to-128 B note for the author), 0x182e080 animation texture fill (5.5 ms), 0x18960d0 (4.3 ms),
+        site 8. Owner: next CPU round
+      - [ ] C-SPRITES (cpb_): Small Soldiers as Sprites is 3.5-3.9x the fps in stress (13-15 -> 51 fps): a look decision for
+        ATN (far soldiers drawn as sprites). Owner: ATN
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
