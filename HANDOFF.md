@@ -2256,7 +2256,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         the top bit, frozen uuid block, source_location M1, INTEREST bit, tokens, per-mod opt-in, F28-F37); M1 build STARTED
         ut2_ (throwaway branch ut1_m1 3598604a8, NOT to merge; view_trace.hpp + test/tw_view_m1; two gated builds queued
         behind quiet_run.lock: tools/tw/ut1_m1/harness_x86.log + addon_build.log -> testbin/ut1_m1; coordinator: check the
-        logs, fix compile errors, test_sim.py, worktree clean by hand (junctions); run: constantinople_bench.ps1 -Variants
+        logs, fix compile errors, worktree clean by hand (junctions); test_sim.py ALL PASSED 11:0x after the coordinator
+        fixed its endless loop (the 33rd view looked for a free 5-bit slot after all 32 were taken; the harness x86 passed
+        too: costs locked 12.1 ns, filter answer 0.9, memo hit 1.7, M1's own clone 28.0 = never an A/B base); run: constantinople_bench.ps1 -Variants
         variants\ut1_m1.json -Replay night1.replay -Scenes atn -Rounds 1 -Label ut1_m1, then stress with -Keys; sim.py)
         simulator tools/tw/ut1_m1); M1 run = one night1 (+ sea1 / stress)
         bench start AFTER cpb_; go if >= 0.15 ms in moving frames) UTILS RESOURCE MEMO (ATN 09:10 "Sure"; cpu3_ D3, design cpu_steps_5_10.md 10a): a per-thread memo in front of
