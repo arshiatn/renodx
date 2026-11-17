@@ -378,7 +378,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT / PT SETTINGS SWEEP (ATN 20:0x: "we are testing every RT and PT setting ... o ... | gpr_, coordinator
 - REC_COMPARE SIZE: rec_compare.py counts differing words only; add the size of a ... | next recorder touch (tools)
 - GPU PLAN (gpr_ xHigh, plan_1117/gpu_plan.md): queue fix1_ (merged) -> G1 -> SHaR ... | coordinator
-- SHARC BUGS (gpr_, for the SHaRC 1.8.3 job): (S1) rt_d3d12.hpp:2659 GrowBuffer(&. ... | ssr_
 - SER VERDICT (gpr_ vs NVIDIA RTXPT): placement right, hint WRONG (InstanceID & 7 ... | ssr_
 - CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still tryi ... | ATN
 - SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | ATN (EJOB / EVEC / EHALF integration stay with ATN's ChatGPT
@@ -387,6 +386,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rbk_
 - APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-th ... | apr_, coordinator
 - CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's ren ... | the combined bench (ATN's go)
+- SER ON IN WH3 (ssr_: faster in all three forest views, same picture, repeats exa ... | coordinator after g1_
+- SHARC COST 2 (ssr_): the update pass 0.26-0.72 ms (latency-bound, 12-28 % occupa ... | next SHaRC round
+- BAKE POOL POISON TEST (ssr_ S1 kept the GPU micromap bake's transient pools acro ... | next helper round
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2794,7 +2796,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         Experimental (quarter-rate rough specular occlusion, grass ray caps, leaf copies as layers, ReSTIR visibility
         culls non-opaque); L1 clusters 1-2.7 ms read after T6; settings sweep T7 (~75 traces; player needs P1 numeric
         overrides, P2 recorded upscale requests for DLSS / RR / FG / FSR / XeSS; NRD toggles today). Owner: coordinator
-      - [ ] SHARC BUGS (gpr_, for the SHaRC 1.8.3 job): (S1) rt_d3d12.hpp:2659 GrowBuffer(&...) recreates all three
+      - [x] DONE 22:0x ssr_, merged 3bc663638 (helper 1CF03431E852; notes plan_1117/ssr_notes.md; builds kept in
+        build\ssr_base / ssr_sharc1 / ssr_ser1, scripts tools/tw/nsight/ssr_scripts; ~30 plays + 40 traces, no hang):
+        S1 8e8250ffa (SHaRC buffers + the GPU bake's &gpu.uvs / &gpu.transient[pool] via std::addressof; buffers given
+        back when a path request runs without SHaRC; static_checks no exceptions), S2 8029ff218 (update gated on
+        light_kept[1].w, sky SkyLight(KeptShade()) x SkyCalibration), 1.8.3 dd0d85585 (build.ps1 picks
+        build\downloads\sharc\extracted\NVIDIA-RTX-SHARC-4e21b585 by name, fetches NVIDIA's archive if missing; S3
+        sqrt(3) rule, S4 SHARC_QUERY one-ray build, SharcInput guard NaN / neg -> 0, inf -> 65504, luminance <= 1024),
+        R1 SER e0d941528 (one reorder at the first surface on hits, 1-bit off-screen hint, MaybeReorderThread(hint, 1),
+        general + one-sample ray-gen libraries). Rows off: 60 / 60 + 125 / 125 chunks equal. SER on vs off: tiny
+        (0.08 % of bounce texels day1 at 1e-7..1e-6 relative; reservoir pick flips later), mean luminance equal to 5
+        digits; SER total day1 -0.067 / sea1 +0.053 / WH3 unit -0.260 / high -0.211 / edge -0.153 ms (path pass 12-19 %
+        faster in WH3 forests). SHaRC: cache persists (wh3 unit 241,479 keys aged 1-8 frames vs 59,789 all 1 frame;
+        high 153,585 vs 0), 80 MiB once, no NaN / Inf, bounce -0.003..-0.023 %; cost day1 +0.256 / sea1 +0.845 / unit
+        +0.373 / high +0.701 / edge +0.592 (update + resolve 0.26-0.72): stays Experimental off. S5 (update beside
+        reuse) tried, no consistent gain, reverted. Was: SHARC BUGS (gpr_, for the SHaRC 1.8.3 job): (S1) rt_d3d12.hpp:2659 GrowBuffer(&...) recreates all three
         SHaRC buffers EVERY frame: the cache never keeps a frame and old buffers are freed while the GPU may still use
         them (a likely cause of the depth-4 hang); fix std::addressof (queued lifetime fix); (S2) rt_sharc_update.hlsl:25
         / :42 gate and colour the sky on a value the sun-light mode never solves (WH3 high / edge: almost no update rays,
@@ -2880,6 +2896,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         22:3x told that session to keep it local and remove the push. Until ATN says it is removed: no pull / merge of
         origin/atn-mods, my commits stay local, no pushes (never force). Then: if origin went back to 3a8305fab, push as
         usual; if a revert commit was added, merge origin (net zero) and push. Owner: ATN, then coordinator
+      - [ ] SER ON IN WH3 (ssr_: faster in all three forest views, same picture, repeats exactly 117 / 117): make Path
+        Tracing SER on by default for WH3 (the default lives in rt_scene.hpp, g1_'s file: after g1_ merges); Attila
+        stays off (day1 -0.07, sea1 +0.05: ATN's call). Owner: coordinator after g1_
+      - [ ] SHARC COST 2 (ssr_): the update pass 0.26-0.72 ms (latency-bound, 12-28 % occupancy): skip update threads on
+        water / sky texels (rays mostly miss, write no voxel) or tie the update share to cache occupancy; judge "more
+        bounces through the cache" against the reference; SHaRC's picture reference check. Owner: next SHaRC round
+      - [ ] BAKE POOL POISON TEST (ssr_ S1 kept the GPU micromap bake's transient pools across requests, as omm.h says
+        they may be reused after baking): recordings refuse GPU baking, so that path is untested: a harness poison test
+        (fill pools between bakes, compare baked bytes). Owner: next helper round
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
