@@ -372,6 +372,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GP ... | ?
 - OURS ON THE RENDER THREAD (cpp_): our add-on anywhere on the stack 8.3 ms of nig ... | coordinator (CPU PLAN 2 END)
 - SER IN FORESTS (ATN 17:3x, Forge: SER made a huge difference in forests; his pat ... | plan step 6
+- SHARC COST (ATN 20:2x, Forge: SHaRC is for multi-bounce; his +0.8 ms came from t ... | plan step 6 (SHaRC update)
 - NSIGHT XHIGH COUNTERS (ATN 17:5x: "let's use xhigh for it too on next nsight che ... | coordinator (plan steps 4 / 8)
 - PLAYER FLAG OVERRIDE (needed for SER / SHaRC / part A/Bs on recordings): the pla ... | next recorder touch (after fix1_)
 - CAPTURE PASS (run2_ Low STARTED 18:4x, rec_det4 E6EB54F99070, recordings to D:\D ... | run2_
@@ -2582,6 +2583,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         hit kind (leaf / OMM vs solid vs sky miss) if the instance hint loses; on by default only where faster + same
         picture. ATN 18:0x: test it in WH3 too (much fuller forests): a WH3 forest recording (the same x64 helper; check
         the recorder's hooks reach it in WH3's add-on first), Attila and WH3 decided apart if they differ. Owner: plan step 6
+      - [ ] SHARC COST (ATN 20:2x, Forge: SHaRC is for multi-bounce; his +0.8 ms came from tracing the bounce AND applying
+        SHaRC = double work; ATN saw ours add ~0.8 ms for no fps): ours is not that double work: the paths stop at a
+        cache hit (rt_path.hlsli:680-683, break after the cached light); our cost is the separate update pass
+        (rt_sharc_update.hlsl, propagation depth 2), and with ATN's 1-2 bounces a hit saves little. In the SHaRC 1.8.3
+        step: Nsight the update pass vs NVIDIA's sample (the share of pixels that update, its rate), and offer more bounces
+        through the cache (3-4 bounces' light at ~1 bounce's rays) judged by the reference + Nsight. Owner: plan step 6
+        (SHaRC update)
       - [x] DONE 17:5x NSIGHT 2026.4 MCP: we have it since 11-14 (tools\nsight\NsightGraphics_2026.4, extracted, no
         install; our stdio client tools\tw\nsight\ns_mcp.py drives ngfx-mcp.exe, used by gpu_trace_table.py /
         ns_metrics.py / ns_hotspots.py). ATN 17:5x allows a newer Nsight download: check NVIDIA's page for a build newer
@@ -2590,7 +2598,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         no local-memory spill, L2-by-unit or instruction-miss counters, Forge's table did): plan steps 4 and 8: a Low
         runner takes the traces (recordings, harness), an xHigh agent reads them to the end (per pass: L2 traffic,
         local-memory spills, instruction misses, occupancy limiter, RT core; a kernel's cost split by removing parts),
-        High implementers, an xHigh review; ns_metrics.py gets those counters first (ns_mcp metric catalog). ATN 18:1x
+        High implementers, an xHigh review; ns_metrics.py gets those counters first (ns_mcp metric catalog); per-shader
+        SASS hot spots from Nsight's own shader profiler (Forge reads SASS; never reverse-engineer NVIDIA's drivers:
+        their licence). ATN 18:1x
         "let's have his extra columns too": every table per part = ms, L1TEX->L2, GCC->L2, DRAM read, instruction
         misses (Forge's columns) + local-memory spills, occupancy limiter; on the recordings (SER on / off, SHaRC on /
         off, parts removed). SHaRC judged by ms AND VRAM (its cache's MB) AND traffic. Owner: coordinator (plan steps 4 / 8)
