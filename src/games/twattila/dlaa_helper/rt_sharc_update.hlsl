@@ -7,7 +7,9 @@
 // one bounce texel of each SHARC_BLOCK x SHARC_BLOCK block (another each frame) traces a path of up to SHARC_BOUNCES
 // rays. Each surface it meets adds its light to its voxel: where the screen knows the surface its light (the path ends
 // there), else the sun's and the local lights' (as rt_path's unseen surfaces) and the path goes on (or SHaRC ends it on
-// the cache's own light); a ray that escapes brings the sky's. SHaRC carries each voxel's light back to the surface before
+// the cache's own light); a ray that escapes brings the sky's (PathRadiance's: SkyLight of KeptShade, calibrated at the
+// surface it left). It runs once the sun's light is known (light_kept[1], as PathRadiance's cache adds: with the game's
+// sun light the learned shade light_kept[0] is never solved). SHaRC carries each voxel's light back to the surface before
 // it (SHARC_PROPAGATION_DEPTH 2: SHaRC's 4 with its cache resampling hung the GPU in the harness, the 5090; 2 or no
 // resampling did not), the cache's resampling the bounces past it over frames.
 // Build (build.ps1, with SHaRC): dxc -T cs_6_9 -D OPACITY_MICROMAPS -D SHARC -D SHARC_UPDATE=1
@@ -22,7 +24,8 @@ void main(uint3 block : SV_DispatchThreadID) {
   const uint2 pick = min(uint2(float2(Random(uint3(block.xy, frame * 16u + 40000u)), Random(uint3(block.xy, frame * 16u + 40001u))) * SHARC_BLOCK),
                          SHARC_BLOCK - 1u);
   const uint2 id = block.xy * SHARC_BLOCK + pick;
-  if (id.x >= bounce_width || id.y >= bounce_height || light_kept[0].w <= 0.f) return;
+  const float4 shade = float4(KeptShade(), light_kept[1].w);  // w: the sun's light known
+  if (id.x >= bounce_width || id.y >= bounce_height || shade.w <= 0.f) return;
   float3 normal;
   float3 origin;
   if (TexelSurface(id, normal, origin).w <= 0.f) return;
@@ -30,6 +33,7 @@ void main(uint3 block : SV_DispatchThreadID) {
   SharcState state;
   SharcInit(state);
   float3 direction = CosineDirection(normal, Random(uint3(id, frame * 16u + 40002u)), Random(uint3(id, frame * 16u + 40003u)));
+  float3 leaving_normal = normal;
   [loop]
   for (uint vertex = 0u; vertex < SHARC_BOUNCES; ++vertex) {
     RayDesc ray;
@@ -39,7 +43,7 @@ void main(uint3 block : SV_DispatchThreadID) {
     ray.TMax = bounce_range;
     TRACE_SURFACE(query, ray)
     if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) {
-      SharcUpdateMiss(sharc, state, SkyLight(direction, light_kept[0].rgb));
+      SharcUpdateMiss(sharc, state, SkyLight(direction, shade.rgb) * SkyCalibration(leaving_normal));
       break;
     }
     const float3 position = origin + direction * query.CommittedRayT();
@@ -61,6 +65,7 @@ void main(uint3 block : SV_DispatchThreadID) {
     if (!SharcUpdateHit(sharc, state, sharc_hit, direct, Random(uint3(id, light_seed + 1u)))) break;
     SharcSetThroughput(state, albedo);
     origin = surface;
+    leaving_normal = hit_normal;
     direction = CosineDirection(hit_normal, Random(uint3(id, light_seed + 2u)), Random(uint3(id, light_seed + 3u)));
   }
 }
