@@ -387,6 +387,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rbk_
 - APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-th ... | apipe_
 - CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's ren ... | the combined bench (ATN's go)
+- ORIGIN HAS ATN'S OTHER SESSION'S COMMIT (22:3x): 65ee50591 "[mod:twattila] Faste ... | ATN, then coordinator
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2861,6 +2862,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         B2-B4 (WPR), bridge flushes step 2 (one FrameTrace frame), the alt-tab transient, view filter for the other TW
         games after Attila's numbers, heapfix B4G numbers for the author; Sprites = ATN's look decision. Owner: the
         combined bench (ATN's go)
+      - [ ] ORIGIN HAS ATN'S OTHER SESSION'S COMMIT (22:3x): 65ee50591 "[mod:twattila] Faster Job Wake-Ups ...
+        (Experimental, off)" (ArshiaTN 21:21, ATN's local Sonnet 5.5 session, branch ejob-fork) was pushed onto
+        origin/atn-mods on top of 3a8305fab; local atn-mods / the main checkout do NOT have it (behind 1, clean). ATN
+        22:3x told that session to keep it local and remove the push. Until ATN says it is removed: no pull / merge of
+        origin/atn-mods, my commits stay local, no pushes (never force). Then: if origin went back to 3a8305fab, push as
+        usual; if a revert commit was added, merge origin (net zero) and push. Owner: ATN, then coordinator
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
