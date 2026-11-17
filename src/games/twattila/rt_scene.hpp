@@ -123,7 +123,7 @@ struct Sliders {
   float denoiser = 0.f;  // Ray Tracing Denoiser (Attila's page): Built-in, NRD
   float ao_reblur = 1.f;  // AO under Ray Reconstruction: Light History, REBLUR (games without graphics_page's row keep v34's REBLUR)
   float start_past = 0.f;  // Rays Start Past Hidden Shapes (Bindings::rays_start_past)
-  float sheets_unselfed = 0.f;  // Banners Without Self-Shadows (Bindings::rays_sheets_unselfed)
+  float sheets_unselfed = 1.f;  // Smooth Banner Shadows (Bindings::rays_sheets_unselfed): on (DEBUG44's steps on sails)
   float light_bounce = 0.f;  // the Light Bounce's tracer: 0 its own (screen space), 1 rays, 2 paths
   float light_bounce_rays = 4.f;
   float light_bounce_range = 10.f;

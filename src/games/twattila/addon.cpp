@@ -1110,13 +1110,66 @@ constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
 // skinlm, every shadow method, with the camera at b0 and the G-buffer at t0-t3.
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%, and the
 // half-size passes drawn whole (their readers: view_share::WHOLE_TEXTURES).
-constexpr std::array<twattila::view_share::RegionRead, 6> RENDER_SCALE_READS = {{
+// The overlays' readers: the selection indicators (indicator.hlsl main_to_overlay) and the colour overlays are drawn by
+// the main camera into display-sized targets, so below 100% into their render share; the ocean projects their uv in its
+// vertex shader, the sun (slm) through directional_light_PS.g_overlay_view_projection and the campaign's sea through its
+// vertex shader: no camera chain view_share finds. Their region reads take the share only while the overlay is
+// display-sized or a halving (the campaign's map-sized overlay, the battles' 1 x 1 stand-in: as at 100%). Whole-dump census:
+// tools/tw/round_notes/bugs_1117/bug4_census.py (DEBUG44 (f): ships' selection as stripes at DLSS Performance).
+constexpr std::array<twattila::view_share::RegionRead, 50> RENDER_SCALE_READS = {{
     {.shader_hash = 0x781681E4, .slots = 0b1},   // luma / bloom downsample
     {.shader_hash = 0xB386A8BC, .slots = 0b11},  // shadow depth analysis
     {.shader_hash = 0xB4026AF2, .slots = 0b11, .whole = true},  // AO blur_x
     {.shader_hash = 0x6203C824, .slots = 0b10, .whole = true},  // AO blur_y
     {.shader_hash = 0x820D451B, .slots = 0b11, .whole = true},  // water refraction (3 channels)
     {.shader_hash = 0x25944B2D, .slots = 0b1, .whole = true},   // water refraction (4 channels)
+    // ocean.hlsl: colour_overlay_texture and ui_colour_overlay_texture.
+    {.shader_hash = 0x108F6C71, .slots = 0b11000000},   // hardware_gather_5_0 ocean ps30_main_medium
+    {.shader_hash = 0x18FF7787, .slots = 0b11000000},   // hardware_gather_4_1 ocean ps30_main_high
+    {.shader_hash = 0x1F407A91, .slots = 0b110000000},  // hardware_pcf ocean ps30_main_high
+    {.shader_hash = 0x2BD79C89, .slots = 0b110000000},  // hardware_fetch4 ocean ps30_main_high
+    {.shader_hash = 0x2BD86A89, .slots = 0b11000000},   // hardware_gather_5_0 ocean ps30_main_high
+    {.shader_hash = 0x301DB1B5, .slots = 0b11000000},   // hardware_gather_5_0 ocean ps30_main_low
+    {.shader_hash = 0x333ECE21, .slots = 0b11000000},   // hardware_gather_4_1 ocean ps30_main_low
+    {.shader_hash = 0x33758F15, .slots = 0b11000000},   // hardware_fetch4 ocean ps30_main_low
+    {.shader_hash = 0x6583F5D8, .slots = 0b11000000},   // hardware_fetch4 ocean ps30_main_medium
+    {.shader_hash = 0xBEFDC3F9, .slots = 0b11000000},   // hardware_gather_4_1 ocean ps30_main_medium
+    {.shader_hash = 0xE31E1F10, .slots = 0b110000000},  // software ocean ps30_main_high
+    // directionallight.hlsl slm: s_overlay.
+    {.shader_hash = 0x32539E8C, .slots = 0b100},       // hardware_gather_5_0 ps41_slm_highdef_ms
+    {.shader_hash = 0x4816852C, .slots = 0b10000000},  // software ps30_slm_highdef
+    {.shader_hash = 0x54C48CB4, .slots = 0b1000},      // software ps41_slm_highdef_ms
+    {.shader_hash = 0x60D325D6, .slots = 0b100},       // hardware_gather_5_0 ps41_slm_lowdef_ms
+    {.shader_hash = 0x66A4E910, .slots = 0b100},       // ps41_slm_highdef_ms
+    {.shader_hash = 0x73310E1D, .slots = 0b10000000},  // hardware_fetch4 ps30_slm_lowdef
+    {.shader_hash = 0x7B036C94, .slots = 0b1000},      // hardware_pcf ps41_slm_lowdef_ms
+    {.shader_hash = 0x837C91EB, .slots = 0b1000000},   // ps30_slm_highdef
+    {.shader_hash = 0x95A706E4, .slots = 0b10000000},  // hardware_fetch4 ps30_slm_highdef
+    {.shader_hash = 0x9A79AB20, .slots = 0b10000000},  // hardware_pcf ps30_slm_lowdef
+    {.shader_hash = 0xB01BD600, .slots = 0b1000000},   // hardware_gather_4_1 ps30_slm_lowdef
+    {.shader_hash = 0xB3D8781B, .slots = 0b100},       // ps41_slm_lowdef_ms
+    {.shader_hash = 0xB6DA03C5, .slots = 0b1000000},   // hardware_gather_5_0 ps30_slm_lowdef
+    {.shader_hash = 0xC64DB947, .slots = 0b1000000},   // hardware_gather_5_0 ps30_slm_highdef
+    {.shader_hash = 0xC7E46DDE, .slots = 0b1000},      // hardware_pcf ps41_slm_highdef_ms
+    {.shader_hash = 0xCA3AAE00, .slots = 0b1000000},   // ps30_slm_lowdef
+    {.shader_hash = 0xCE8427DD, .slots = 0b1000},      // software ps41_slm_lowdef_ms
+    {.shader_hash = 0xCF85CE09, .slots = 0b1000},      // hardware_fetch4 ps41_slm_lowdef_ms
+    {.shader_hash = 0xDFCD4A25, .slots = 0b1000},      // hardware_fetch4 ps41_slm_highdef_ms
+    {.shader_hash = 0xE7BAB48E, .slots = 0b1000000},   // hardware_gather_4_1 ps30_slm_highdef
+    {.shader_hash = 0xE86B51A4, .slots = 0b100},       // hardware_gather_4_1 ps41_slm_lowdef_ms
+    {.shader_hash = 0xEBFFED86, .slots = 0b100},       // hardware_gather_4_1 ps41_slm_highdef_ms
+    {.shader_hash = 0xFAD02810, .slots = 0b10000000},  // software ps30_slm_lowdef
+    {.shader_hash = 0xFE8DFAA1, .slots = 0b10000000},  // hardware_pcf ps30_slm_highdef
+    // waterplane.hlsl campaign seas: s_overlay.
+    {.shader_hash = 0x05A111E1, .slots = 0b100000000},   // hardware_gather_5_0 ps30_campaign_high
+    {.shader_hash = 0x370647E9, .slots = 0b100000000},   // hardware_gather_4_1 ps30_campaign_low
+    {.shader_hash = 0x450F6992, .slots = 0b100000000},   // hardware_gather_5_0 ps30_campaign_low
+    {.shader_hash = 0x82C6EE8B, .slots = 0b100000000},   // hardware_gather_4_1 ps30_campaign_high
+    {.shader_hash = 0x875E02F2, .slots = 0b1000000000},  // software ps30_campaign_high
+    {.shader_hash = 0xA140EFBA, .slots = 0b100000000},   // hardware_fetch4 ps30_campaign_low
+    {.shader_hash = 0xA8168F0C, .slots = 0b1000000000},  // hardware_pcf ps30_campaign_high
+    {.shader_hash = 0xE928D4B8, .slots = 0b100000000},   // ps30_campaign_high
+    {.shader_hash = 0xF16834C6, .slots = 0b1000000000},  // hardware_fetch4 ps30_campaign_high
 }};
 // Particles at Half Resolution (twattila/particle_layer.hpp): the light buffer's readers after the particles, where their layer
 // goes in: the luma / bloom downsample (the first in the traced frame), else the tone mappers (BuildRuntimeData's replaced ones).
@@ -1329,10 +1382,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x902253FD, .capture_shader = __rt_capture_cloth_sm41, .dynamic = true, .thin = true},
     {.hash = 0xD11B5EC7, .capture_shader = __rt_capture_sail_sm3, .dynamic = true, .thin = true},
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
-    // Ropes (in no trace): ribbons the game turns to the camera, solid, captured every frame as drawn (Rome II's 4F90C2B5); the CPU's
-    // (8D0D26B9) and the placed ones (3926A823, turned in view space: back to the world through inv_view).
+    // Ropes: ribbons the game turns to the camera, solid, captured every frame as drawn (Rome II's 4F90C2B5); the CPU's (8D0D26B9, in no
+    // trace) and the placed ones (3926A823, turned in view space: back to the world through inv_view; the ships' rigging, a triangle
+    // strip, drawn in sea battles: DEBUG44's sea1, so not held).
     {.hash = 0x8D0D26B9, .capture_shader = __rt_capture_rope_sm3, .dynamic = true, .held_row = &rays_untraced_casters_row},
-    {.hash = 0x3926A823, .capture_shader = __rt_capture_rope_rigid_sm3, .dynamic = true, .held_row = &rays_untraced_casters_row},
+    {.hash = 0x3926A823, .capture_shader = __rt_capture_rope_rigid_sm3, .dynamic = true},
     // Sprite soldiers: cards facing the sun, cut out by their diffuse map's alpha.
     // Each with its Shader Model 4.1 / 5 builds (E42AE09F; 398BD3DF, B2585ABA): the same instructions, only the version
     // token and dcl_globalFlags differ (tools/tw/attila_gaps/atg_cards_bytes.txt; no trace drew them: level B).

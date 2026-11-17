@@ -1740,11 +1740,49 @@ constexpr std::array<twattila::rt_scene::SceneShader, 51> SCENE_SHADERS = {{
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.
-constexpr std::array<twattila::view_share::RegionRead, 2> RENDER_SCALE_READS = {{
+// The overlays' readers, as Attila's (twattila/addon.cpp RENDER_SCALE_READS): the overlays are drawn by the main camera into
+// display-sized targets, so below 100% into their render share; the ocean reads them at the uv its vertex shader projects,
+// the sun (slm) and the campaign's planes through g_overlay_view_projection: no camera chain view_share finds. Their share
+// only while the overlay is display-sized or a halving (else as at 100%). Census: tools/tw/round_notes/bugs_1117/bug4_census.py.
+constexpr std::array<twattila::view_share::RegionRead, 33> RENDER_SCALE_READS = {{
     {.shader_hash = 0x404B4343, .slots = 0b11},  // shadow depth analysis
     // environment_specular_light ps40_copy: the SSR resolve's output (display-size, the view in its share) added to the scene
     // at the render viewport (ATN's DLSS Performance / Ultra Performance traces, 2026-11-14 03:30).
     {.shader_hash = 0x69A57B14, .slots = 0b1},
+    // ocean: the colour overlays.
+    {.shader_hash = 0x3815AFD4, .slots = 0b110000000},  // ocean ps40_main_high
+    {.shader_hash = 0x3C063692, .slots = 0b1100000},  // ocean ps40_main_low (pcf)
+    {.shader_hash = 0x5D9D01CA, .slots = 0b1100000000},  // ocean ps40_main_high (pcf)
+    {.shader_hash = 0x8C4B1744, .slots = 0b1100000000},  // ocean ps40_main_high (gather_5_0)
+    {.shader_hash = 0x982BEDFA, .slots = 0b1100000000},  // ocean ps40_main_high (software)
+    {.shader_hash = 0xA8DC0EF6, .slots = 0b1100000},  // ocean ps40_main_low (gather_4_1)
+    {.shader_hash = 0xF650C2BA, .slots = 0b1100000},  // ocean ps40_main_low (gather_5_0)
+    {.shader_hash = 0xFC8D178A, .slots = 0b1100000000},  // ocean ps40_main_high (gather_4_1)
+    // directionallight slm: the overlay.
+    {.shader_hash = 0x230F2241, .slots = 0b10000000000},  // directionallight ps40_slm_highdef (software)
+    {.shader_hash = 0x27AF3D62, .slots = 0b10000000000},  // directionallight ps40_slm_highdef (gather_4_1)
+    {.shader_hash = 0x2B3F8DC8, .slots = 0b1000000000},  // directionallight ps40_slm_highdef
+    {.shader_hash = 0x41365626, .slots = 0b10000000000},  // directionallight ps41_slm_edges_ms (gather_5_0)
+    {.shader_hash = 0x42114392, .slots = 0b10000000000},  // directionallight ps41_slm_interior_ms (software)
+    {.shader_hash = 0x7BC58986, .slots = 0b10000000000},  // directionallight ps41_slm_edges_ms (gather_4_1)
+    {.shader_hash = 0x8A72EA4D, .slots = 0b10000000000},  // directionallight ps41_slm_interior_ms (gather_4_1)
+    {.shader_hash = 0xA8D2616A, .slots = 0b10000000000},  // directionallight ps41_slm_edges_ms (pcf)
+    {.shader_hash = 0xC601C862, .slots = 0b10000000000},  // directionallight ps40_slm_highdef (pcf)
+    {.shader_hash = 0xC65915B6, .slots = 0b1000000000},  // directionallight ps41_slm_interior_ms
+    {.shader_hash = 0xCF0C5118, .slots = 0b10000000000},  // directionallight ps40_slm_highdef (gather_5_0)
+    {.shader_hash = 0xD0F4F425, .slots = 0b10000000000},  // directionallight ps41_slm_interior_ms (pcf)
+    {.shader_hash = 0xD56D16EA, .slots = 0b10000000000},  // directionallight ps41_slm_edges_ms (software)
+    {.shader_hash = 0xD9DDB44A, .slots = 0b10000000000},  // directionallight ps41_slm_interior_ms (gather_5_0)
+    {.shader_hash = 0xDA9B8767, .slots = 0b1000000000},  // directionallight ps41_slm_edges_ms
+    // the campaign's sea, shroud plane and map quad: the overlay.
+    {.shader_hash = 0x1A3FE75F, .slots = 0b100000000},  // waterplane ps40_campaign_high (gather_5_0)
+    {.shader_hash = 0x25FBCCE4, .slots = 0b10000000},  // waterplane ps40_campaign_low (gather_4_1)
+    {.shader_hash = 0x4B7D8635, .slots = 0b10000000},  // waterplane ps40_campaign_low (pcf)
+    {.shader_hash = 0x7E0790C6, .slots = 0b100000000},  // waterplane ps40_campaign_high (gather_4_1)
+    {.shader_hash = 0x94FF8BC4, .slots = 0b100000000},  // waterplane ps40_campaign_high (software)
+    {.shader_hash = 0xC5925713, .slots = 0b10000000},  // waterplane ps40_campaign_high
+    {.shader_hash = 0xF8A1864D, .slots = 0b10000000},  // waterplane ps40_campaign_low (gather_5_0)
+    {.shader_hash = 0xFA8ED5D5, .slots = 0b100000000},  // waterplane ps40_campaign_high (pcf)
 }};
 
 // The 31 sun light shaders. Their diffuse ambient is the spherical harmonics (t_world_spherical_harmonics, if on
