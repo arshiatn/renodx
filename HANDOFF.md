@@ -337,7 +337,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
 - SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator after REF1
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
-- CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benc ... | coordinator, after the current merges + install, ATN's go
+- (STARTED 01:5x: tools/tw/captures_1117/captures_all.ps1, six starts: night1, sea ... | coordinator, after the current merges + install, ATN's go
 - ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart batt ... | coordinator, then a CPU / memory round
 - STRESS REPLAY stress_test_log2 (ATN 00:3x: "Maybe do a cpu/gpu recording there t ... | coordinator (plan phase 1)
 - (row moved under the AO method row, ATN's placement, shs2_ 06b31199f: page dumps ... | tw1_ (Attila / Thrones), per-game rounds for the twins
@@ -2124,6 +2124,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         here by its first words: every one of the 262 open boxes placed except 2 records). The boxes stay the to-do; the
         file is the per-game view. Stale lines fixed: Divinity 2 RT reflections (done 31770fe86), Divinity 1 grade
         shoulder (off, 9da00b28b)
+      - [x] DONE 01:48 (plan step 0; log tools/tw/round_notes/plan_1117/install_1117.txt, backups install/backups/
+        20261117_014824, final check ALREADY INSTALLED for every file): all 16 games stamped + installed on helper117, tree
+        da2b1ef7d: Attila v166, WH3 v65, Pharaoh v73, Rome II r9, Thrones r10, WH2 v56, Shogun 2 v79, Rome Remastered v17,
+        Troy v60, WH1 r11, Ryse fix60, Tales v78, Expeditions v35, Divinity 1 v4, Divinity 2 v4, R.U.S.E. u5. Checks: all 16
+        built, tw_vanilla_exact 416 EXACT / 0 FAIL + tw_psychov35 PASS (x86 + amd64). Next free tags: attila 167, wh3 66,
+        pharaoh 74, rome2 r10, thrones r11, wh2 57, shogun2 80, romer 18, troy 61, wh1 r12, ryse fix61, tales 79,
+        expeditions 36, divinity1 5, divinity2 5, ruse u6; helper 118
       - [ ] CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila, if you find anything that can
         speed cpu/gpu of the game, list them please or plan to do them please"; "Don't worry about sound or time. My pc can
         run for days"): from the three captures' WPR + Nsight: every CPU / GPU hot spot of the game and of RenoDX with its
@@ -2186,7 +2193,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         shader for screen-space reads (not only traced ones) + the sea1 traces, every TW game with sea battles; owner bug1_
         after the sea1 capture. (g) LOD BIAS: ATN "For every single game, the LOD bias for everything should be on": the
         Texture LOD bias on all textures row on by default in every game; owner bug1_.
-      - [ ] CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benches), sea1 (go back a bit,
+      - [ ] (STARTED 01:5x: tools/tw/captures_1117/captures_all.ps1, six starts: night1, sea1, sea1_perf (DLSS Performance
+        + Frame Trace), stress, stress_noaddon (address space without RenoDX); outputs tools/tw/captures_1117/<label>/; no
+        harness frame recorder yet: route B of the reference suite, a second pass later) CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benches), sea1 (go back a bit,
         everything in view), stress_test_log2 (no camera move, it spawns where ATN wants)): per replay one scripted run on
         the newest install: bench + WPR (ATN's tasks) + Nsight GPU trace + harness frame captures + Time Each Pass; stress
         also the address space with / without RenoDX (restart crash box); traces for DEBUG44 (d)-(f); night1 also the paths kernel's in-game Nsight (registers / occupancy / time, the split
