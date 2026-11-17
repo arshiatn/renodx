@@ -463,3 +463,9 @@ row 10 put every corner off, the uncollapsed stream fails the rule: 532 corners)
 AddonUninit now shuts down the shared helper bridge after unregistering its users. The watcher exits before module unload; child process and IPC ownership are released. Shutdown drains outstanding GPU fence generations, with ordered CPU fence recovery only after confirmed helper exit. Failed launches clean up partial ownership and existing IPC sessions are not overwritten.
 
 Offline checks: x86/x64 production-header tests cover process/thread cleanup, failure injection, 20 reloads with stable handle counts, and three interleaved D3D11/D3D12 WARP fence generations under normal completion and forced shutdown. No game was launched. Manually check helper-enabled unload/reload and device recreation, then repeat the reported battle. The original battle freeze is not proven fixed; unexpected mid-run helper failures remain audit F7.
+
+Exact Depth Samples (shared round 2, 2026-11-17; built only, not run in game): AO Exact Depth Samples (Experimental,
+off) under GT-VBAO: each sample takes the depth at its own place between pixels where the four around it lie on one
+plane (twattila/bitmask.hlsli BitmaskPlaneDepth), so open ground seen at a low angle no longer shades itself; off the
+nearest texel's depth as before. `tw_gtvbao_exact` (WARP): ssdo00-02 off the build before's bits; CONTROL on changes
+47532 / 47532 / 50953 values.

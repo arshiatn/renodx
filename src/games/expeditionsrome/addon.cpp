@@ -427,6 +427,7 @@ void BuildRuntimeData() {
       .quality = &shader_injection.ssao_quality,
       .directions = &shader_injection.ssao_directions,
       .auto_thickness = &shader_injection.ssao_auto_thickness,
+      .exact_depth = &shader_injection.ssao_exact_depth,
   });
   settings.insert(settings.end(), ambient_occlusion.begin(), ambient_occlusion.end());
 }

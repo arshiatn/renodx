@@ -381,3 +381,9 @@ lighting permutations (the sharp t16 / t17 and the blurry t17 / t18 in lighting0
 reflections too, at t13-t15: v70's note was wrong), where the rays met a surface (RayTracedReflection now takes their
 share: the rays sample the pixel's own roughness); ray-traced specular occlusion (t44, rt_ambient.hlsli
 RayTracedSpecularOcclusion) dims the cubemap sky tint (the cb0[75].w term) in covered places. Unbound: unchanged.
+
+Exact Depth Samples (shared round 2, 2026-11-17; built only, not run in game): Exact Depth Samples (Experimental, off)
+under GT-VBAO: each sample takes the depth at its own place between pixels where the four around it lie on one plane
+(twattila/bitmask.hlsli BitmaskPlaneDepth), so open ground seen at a low angle no longer shades itself; off the nearest
+texel's depth as before. `tw_gtvbao_exact` (WARP): ao00-ao11 off the build before's bits; CONTROL on changes 55-3129
+values each.

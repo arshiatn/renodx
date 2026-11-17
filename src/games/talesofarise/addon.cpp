@@ -170,6 +170,7 @@ bool LoadPostFilters(reshade::api::command_list*) {
   shader_injection.ssao_quality = filters.ao_quality;
   shader_injection.ssao_frame = filters.ao_frame;
   shader_injection.ssao_auto_thickness = filters.ao_auto_thickness;
+  shader_injection.ssao_exact_depth = filters.ao_exact_depth;
   shader_injection.screen_space_shadows = filters.screen_space_shadows;
   shader_injection.gtvbgi = filters.gtvbgi;
   return true;

@@ -1,5 +1,18 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, tw1_ and shared rounds (2026-11-17; built only, not stamped, not installed, not run in game)
+
+- New: **Path-Traced Reflection Occlusion** (on, slider 0..1): with Path-Traced Ambient, reflections darken where
+  something blocks the sky, so there's no bright sky in dark corners. 0: off. Part I: 1 = the reflection x the rays'
+  specular occlusion exactly; 0 = the build before.
+- Fixed: with **Gamma Correction** on, DLAA / DLSS and CMAA2 blend in the frame's own curve (2.2, as the output
+  decodes it) in place of 2.0: no lighter or darker edges in dark gradients. Off: 2.0 as before. `tw_aa_frame_gamma`:
+  0 / 2 the build before's bits, the 2.2 round trip back to float rounding; CONTROL 2.2 in, 2.0 out: 0.077 apart.
+- New: **Exact Depth Samples (Experimental, off)**, under GT-VBAO's More Options: each sample takes the depth at its own
+  place between pixels (where the four pixels around it lie on one plane), so open ground seen at a low angle no longer
+  shades itself. Off: the nearest pixel's depth, as before. `tw_gtvbao_exact` (WARP, a flat view-space plane): off the
+  build before's bits; on 0.9821 -> 0.9999 mean (36676 values).
+
 ## Dev, tw1_ and shared rounds (2026-11-16; built only, not stamped, not installed, not run in game)
 
 - New: **Sharp Ray-Traced Reflections** (Experimental, off): the game's blur stays on top of the rays' reflection,

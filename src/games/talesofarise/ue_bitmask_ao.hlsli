@@ -75,8 +75,22 @@ float UeBitmaskAmbientOcclusion(float2 screen_position, float3 normal, uint2 pix
       [unroll]
       for (int side = -1; side <= 1; side += 2) {
         const float2 sample_screen = screen_position + side * offset;
-        const float sample_depth = UeAoDepth(
-            depth_texture.SampleLevel(depth_sampler, sample_screen * depth_scale + depth_offset, 0).x, device_z_to_depth);
+        float stored = depth_texture.SampleLevel(depth_sampler, sample_screen * depth_scale + depth_offset, 0).x;
+        // Exact Depth Samples (SI.ssao_exact_depth): the stored depth between the four texels around the sample's
+        // place where they lie on one plane (twattila/bitmask.hlsli BitmaskPlaneDepth); else the sampler's, as before.
+        [branch]
+        if (SI.ssao_exact_depth != 0.f) {
+          const float2 place = (sample_screen * depth_scale + depth_offset) * depth_size - 0.5f;
+          const int2 base = int2(floor(place));
+          const int2 last = int2(depth_size) - 1;
+          const float4 depths = float4(depth_texture.Load(int3(clamp(base, 0, last), 0)).x,
+                                       depth_texture.Load(int3(clamp(base + int2(1, 0), 0, last), 0)).x,
+                                       depth_texture.Load(int3(clamp(base + int2(0, 1), 0, last), 0)).x,
+                                       depth_texture.Load(int3(clamp(base + 1, 0, last), 0)).x);
+          float plane_stored;
+          if (BitmaskPlaneDepth(depths, place - base, plane_stored)) stored = plane_stored;
+        }
+        const float sample_depth = UeAoDepth(stored, device_z_to_depth);
         const float3 sample_position = UeAoViewPosition(sample_screen, sample_depth, projection);
         float sample_thickness = thickness;
         BitmaskOccluder occluder = occluder_minus;

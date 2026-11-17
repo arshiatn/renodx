@@ -111,6 +111,7 @@ struct State {
   uint32_t traced_bounce = 0;  // the Ground Light Bounce row's rays (restart; with the ground's): 1 rays, 2 path tracing
   bool traced_reflections = false;  // the Water Reflections row's rays (restart; with the ground's)
   float units_range = 0.f;  // the Units Ray Tracing Range row (live), metres; 0: every unit
+  float vbao_exact = 0.f;  // the Exact Depth Samples row (live): 1 each GT-VBAO / GT-VBGI sample's depth at its own place
   // The Ground Debug View row (live): 0 off, 1 the ground mask's red, 2 our sun visibility, 3 the ground's occlusion.
   float debug_view = 0.f;
   // The Rays Replace Shadow Maps row (live): the rays in place of the game's shadow-map term; off, the darker of the two
@@ -874,6 +875,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     };
     std::ranges::copy(to_previous, settings.begin() + 12);
     settings[28] = (rays_occlusion ? 2.f : (state.vbao ? 1.f : 0.f));
+    settings[29] = state.vbao_exact;
     context->UpdateSubresource(state.vbao_settings.Get(), 0, nullptr, settings.data(), 0, 0);
     context->CSSetConstantBuffers(0, 1, state.vbao_settings.GetAddressOf());
     if (bouncing) {

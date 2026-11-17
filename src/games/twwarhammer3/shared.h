@@ -144,6 +144,7 @@ struct ShaderInjectData {
   float someindicators;  // fx_indicator: x the colour (1: the game's bytes run)
   float auto_exposure_highlight_protection;      // fx_autoexposurecs: 0 the game's bytes run, 1 each sample capped
   float auto_exposure_highlight_headroom_stops;  // the cap: stops over the average the last exposure was made for
+  float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
 };
 
 #define SI shader_injection

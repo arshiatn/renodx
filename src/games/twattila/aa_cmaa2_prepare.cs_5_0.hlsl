@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-// CMAA2's working copy (u0): the tone mapper's output (t0, 2.0 encoded signed BT.709; linear with TW_AA_FRAME_LINEAR) as
-// linear BT.2020, which CMAA2 expects (its colours stored without sign).
+// CMAA2's working copy (u0): the tone mapper's output (t0, 2.0 encoded signed BT.709, 2.2 with aa.hlsli AaFrameGamma22;
+// linear with TW_AA_FRAME_LINEAR) as linear BT.2020, which CMAA2 expects (its colours stored without sign).
 #include "./aa.hlsli"
 #include "./shared.h"
 
@@ -21,6 +21,6 @@ void main(uint2 pixel : SV_DispatchThreadID)
 {
   if (any(float2(pixel) >= g_aa_metrics.zw)) return;
   const float4 color = t_aa_color[pixel];
-  const float3 bt709 = (TW_AA_FRAME_LINEAR ? color.rgb : renodx::color::gamma::DecodeSafe(color.rgb, 2.f));
+  const float3 bt709 = (TW_AA_FRAME_LINEAR ? color.rgb : (AaFrameGamma22() ? AaDecodeFrame22(color.rgb) : renodx::color::gamma::DecodeSafe(color.rgb, 2.f)));
   t_rw_work[pixel] = float4(max(renodx::color::bt2020::from::BT709(bt709), 0.f), color.a);
 }

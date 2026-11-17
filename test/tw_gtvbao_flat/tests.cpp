@@ -13,6 +13,8 @@
 // front 0.3-0.9 across the hemisphere instead of 1) and, with the thickness, covers sectors: 87% of the first covering
 // samples are step 0 on the normal's side. Depth at the exact place on the line (bilinear where the four texels lie on
 // one plane) reads 1.0000 at 5-20 and 90 degrees, 0.999 at 30-75, plateau side 0.8431 (0.8365 before).
+// argv[2] (run.ps1 -ExactDepth): options.y, the shipped shader's Exact Depth Samples row (2026-11-17): 0 as above; 1 the
+// numbers of the exact place (flat 13.6: 1.0000, lowest 0.9922, none under 0.95).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -70,10 +72,11 @@ struct Result {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 2) {
-    std::fprintf(stderr, "usage: gtvbao_flat <ground GT-VBAO .hlsl>\n");
+  if (argc != 2 && argc != 3) {
+    std::fprintf(stderr, "usage: gtvbao_flat <ground GT-VBAO .hlsl> [options.y: 1 Exact Depth Samples]\n");
     return 2;
   }
+  const float exact_depth = argc == 3 ? std::strtof(argv[2], nullptr) : 0.f;
   const float p00 = static_cast<float>(RowLength(0));
   const float p11 = static_cast<float>(RowLength(1));
   const double a_double = RowLength(2) / RowLength(3);
@@ -166,6 +169,7 @@ int main(int argc, char** argv) {
     device->CreateTexture2D(&depth_desc, &data, depth_texture.GetAddressOf());
     device->CreateShaderResourceView(depth_texture.Get(), nullptr, depth_view.GetAddressOf());
     std::array<float, 32> settings = {p00, p11, a, b, WIDTH, HEIGHT, 1.f / WIDTH, 1.f / HEIGHT, radius, thickness, 0.f, 1.f};
+    settings[29] = exact_depth;
     context->UpdateSubresource(constants.Get(), 0, nullptr, settings.data(), 0, 0);
     context->CSSetShader(shader.Get(), nullptr, 0);
     context->CSSetConstantBuffers(0, 1, constants.GetAddressOf());

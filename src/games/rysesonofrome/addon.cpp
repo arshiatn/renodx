@@ -990,6 +990,18 @@ void BuildRuntimeData() {
           .labels = {"Off", "On"},
           .is_enabled = [] { return shader_injection.ao_method == 1.f; },
       },
+      new renodx::utils::settings::Setting{
+          .key = "ssao_exact_depth",
+          .binding = &shader_injection.ssao_exact_depth,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "AO Exact Depth Samples (Experimental)",
+          .section = "Ambient Occlusion",
+          .tooltip = "Each sample takes the depth at its own spot between pixels:\n"
+                     "open ground seen at a low angle no longer shades itself. Off: the nearest pixel's depth.",
+          .labels = {"Off", "On"},
+          .is_enabled = [] { return shader_injection.ao_method == 1.f; },
+      },
       // Contact Shadows (contact_shadows.hpp): short screen-space shadows toward the sun, into its shadow mask.
       new renodx::utils::settings::Setting{
           .key = "contact_shadows",

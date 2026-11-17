@@ -59,6 +59,7 @@ struct ShaderInjectData {
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
 
   float ssao_auto_thickness;  // GT-VBAO: 1 each occluder as thick as it is wide (ssao_thickness the least)
+  float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
 };
 
 #define SI  shader_injection

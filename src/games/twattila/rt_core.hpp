@@ -273,6 +273,9 @@ struct SmokeVertexShader {
   bool behaviours_at_cb3 = true;
 };
 
+// SceneShader::uv_scale_slot: none.
+constexpr UINT NO_UV_SCALE = UINT_MAX;
+
 struct SceneShader {
   uint32_t hash = 0;
   std::span<const uint8_t> capture_shader;
@@ -332,6 +335,11 @@ struct SceneShader {
   bool indirect = false;  // its indirect draws too (the game's GPU-culled grass): CaptureIndirect
   const char* uv_semantic = nullptr;
   UINT uv_semantic_index = 0;
+  // A mask read at the UV times a material register (SceneCoverage with Host::mask_uv_scales): that register's pixel shader
+  // constant buffer slot (NO_UV_SCALE: none), the register and its components for u and v (u's, v's << 2).
+  UINT uv_scale_slot = NO_UV_SCALE;
+  UINT uv_scale_register = 0;
+  UINT uv_scale_components = 0;
   UINT mask_slot = 0;
   std::span<const PixelMask> pixel_masks;
   std::span<const uint8_t> tessellated_keep;
@@ -397,6 +405,13 @@ struct Host {
   UINT camera_slot = 0;
   bool (*capture_camera)(ID3D11DeviceContext* native, Camera* camera) = nullptr;
   bool (*scene_draw)(ID3D11DeviceContext* native, SceneShader* shader) = nullptr;
+  // The alpha test's cut-off of the masked draws SceneCoverage finds (their SceneShader::alpha_cutoff, the bridge's
+  // rt_leaf_cutoff; Tales of Arise: 0.333). 0: the helper's 0.5.
+  float leaf_cutoff = 0.f;
+  // SceneCoverage also takes masks read at the UV times a material register (Tales' masked prepass): the register copied at
+  // each draw, its UVs scaled in rt_vertices (the add-on's rt_vertices built with RT_VERTICES_UV_SCALES). False: such draws
+  // stay out of the scene, as before.
+  bool mask_uv_scales = false;
   // Whether a vertex shader's code has bone inputs (null: BLENDINDICES in its input signature).
   bool (*skinned_code)(std::span<const uint8_t> code) = nullptr;
   // scene_draw marks only its characters' draws dynamic (skinned; Expeditions: Rome): the helper's RT_UNIT draws, which
@@ -471,6 +486,8 @@ constexpr UINT MAX_DYNAMIC_VERTICES = 29u << 20;
 constexpr UINT WORLD_TEXELS = 8u << 20;
 constexpr UINT WORLD_BASE = MAX_VERTICES - WORLD_TEXELS;
 constexpr UINT MAX_TREE_VERTICES = 3u << 20;
+// Host::mask_uv_scales: a frame's scaled masks at most (past them, such draws stay out of that frame's scene).
+constexpr UINT MAX_UV_SCALES = 16384;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
 constexpr uint64_t RELEASE_FRAMES = 3600;
 // Host::keep_placed. The kept meshes' room, oldest out first: the helper's STATIC_TRIANGLES and STATIC_RECORDS less a quarter for
@@ -587,6 +604,11 @@ struct DeviceObjects {
   ComPtr<ID3D11Buffer> tessellated_empty;
   ComPtr<ID3D11Buffer> indirect_probe;  // the indirect draws' numbers of an earlier frame (CaptureIndirect)
   ComPtr<ID3D11ShaderResourceView> captured_uv_srv;
+  // Host::mask_uv_scales: the frame's scaled masks (Runtime::uv_scales) and each one's material register, for rt_vertices.
+  ComPtr<ID3D11Buffer> uv_scale_ranges;
+  ComPtr<ID3D11ShaderResourceView> uv_scale_ranges_srv;
+  ComPtr<ID3D11Buffer> uv_scales;
+  ComPtr<ID3D11ShaderResourceView> uv_scales_srv;
   ComPtr<ID3D11ComputeShader> vertices_shader;
   ComPtr<ID3D11ComputeShader> skies_shader;
   ComPtr<ID3D11ComputeShader> debug_shader;  // the Debug View's, into its picture (the tone mapper's output's size)
@@ -781,6 +803,9 @@ struct Runtime {
   // keys in the scene (the frame they were last drawn).
   std::vector<dlaa_bridge::RtCapture> captures;
   std::unordered_set<uint64_t> captured_keys;
+  // Host::mask_uv_scales: this frame's scaled masks by first captured vertex (first vertex, vertices, the register's components for
+  // u and v), their registers in DeviceObjects::uv_scales in this order.
+  std::vector<std::array<uint32_t, 4>> uv_scales;
   std::array<float, 16> main_view_projection = {};  // from this frame's main-view captures, for the cascades' (they come later)
   uint64_t main_view_frame = 0;
   uint64_t cascade_camera_frame = 0;
@@ -1031,6 +1056,10 @@ struct PixelCoverage {
   Coverage coverage = Coverage::SOLID;
   std::string uv_semantic;
   UINT uv_index = 0;
+  // MASKED at the UV times a constant buffer register (SceneShader::uv_scale_slot's).
+  UINT uv_scale_slot = NO_UV_SCALE;
+  UINT uv_scale_register = 0;
+  UINT uv_scale_components = 0;
 };
 // Its own lock, never runtime.mutex: destroy_pipeline (OnDestroyPipeline) also fires inside the D3D11 calls CaptureDraw
 // makes under runtime.mutex (D3D11 deletes a released shader at a later draw), and a second lock of runtime.mutex on that
@@ -1039,7 +1068,8 @@ static std::shared_mutex pixel_coverage_mutex;
 static std::unordered_map<uint64_t, PixelCoverage> pixel_coverage;
 static bool clip_captures = false;  // the scene shaders stream out their SV_Position
 static bool world_captures = false;  // and some are placed (or SceneShader::cascade_world): those in world space (WORLD_BASE)
-static float leaf_cutoff = 0.f;  // the scene shaders' SceneShader::alpha_cutoff (0: none has one)
+// The bridge's rt_leaf_cutoff: Host::leaf_cutoff or the scene shaders' largest SceneShader::alpha_cutoff (0: the helper's).
+static float leaf_cutoff = 0.f;
 // Either effect on (else every callback returns at once).
 static std::atomic_bool active = false;
 // A cluster mesh holds one of the game's index buffers (runtime.index_buffer_sets not empty): else OnIndexWrite returns.
@@ -1200,6 +1230,19 @@ inline bool PrepareDevice(ID3D11Device* device) {
          && SUCCEEDED(device->CreateDepthStencilState(&depth_desc, objects.no_depth.GetAddressOf()))
          && SUCCEEDED(device->CreateBuffer(&constants_desc, nullptr, objects.constants.GetAddressOf()))
          && SUCCEEDED(device->CreateBuffer(&sun_desc, nullptr, objects.sun_constants.GetAddressOf()));
+  if (made && host.mask_uv_scales) {
+    const D3D11_BUFFER_DESC uv_scales_desc = {.ByteWidth = MAX_UV_SCALES * 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    D3D11_SHADER_RESOURCE_VIEW_DESC ranges_view = {.Format = DXGI_FORMAT_R32G32B32A32_UINT, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
+    ranges_view.Buffer.NumElements = MAX_UV_SCALES;
+    D3D11_SHADER_RESOURCE_VIEW_DESC registers_view = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
+    registers_view.Buffer.NumElements = MAX_UV_SCALES;
+    if (FAILED(device->CreateBuffer(&uv_scales_desc, nullptr, objects.uv_scale_ranges.GetAddressOf()))
+        || FAILED(device->CreateShaderResourceView(objects.uv_scale_ranges.Get(), &ranges_view, objects.uv_scale_ranges_srv.GetAddressOf()))
+        || FAILED(device->CreateBuffer(&uv_scales_desc, nullptr, objects.uv_scales.GetAddressOf()))
+        || FAILED(device->CreateShaderResourceView(objects.uv_scales.Get(), &registers_view, objects.uv_scales_srv.GetAddressOf()))) {
+      objects.uv_scales.Reset();  // the scaled masks then stay out of the scene
+    }
+  }
   if (std::ranges::any_of(scene_shaders, &SceneShader::tessellated)) {
     const D3D11_BUFFER_DESC tessellated_desc = {.ByteWidth = MAX_TESSELLATED_VERTICES * 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
     const D3D11_QUERY_DESC statistics_desc = {.Query = D3D11_QUERY_SO_STATISTICS};
@@ -2088,6 +2131,24 @@ void Capture(Context& command, const SceneShader& shader) {
   // (clip-space games take that path already).
   const bool clip_space = shader.capture_shader.empty() || ((clip_captures || (cascade_draw && shader.cascade_world)) && !placed);
   const bool clip_uv = clip_space && foliage && shader.uv_semantic != nullptr;
+  // SceneShader::uv_scale_slot: its material register (16 bytes of the bound buffer) copied beside its vertices for rt_vertices.
+  // Out of this frame's scene when that register isn't bound or the frame's room is full.
+  ComPtr<ID3D11Buffer> material;
+  D3D11_BOX material_register = {};
+  if (clip_uv && shader.uv_scale_slot != NO_UV_SCALE) {
+    UINT first_constant = 0;
+    UINT constant_count = 0;
+    if (ComPtr<ID3D11DeviceContext1> context1; SUCCEEDED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) {
+      context1->PSGetConstantBuffers1(shader.uv_scale_slot, 1, material.GetAddressOf(), &first_constant, &constant_count);
+    } else {
+      native->PSGetConstantBuffers(shader.uv_scale_slot, 1, material.GetAddressOf());
+    }
+    D3D11_BUFFER_DESC material_desc = {};
+    if (material) material->GetDesc(&material_desc);
+    const UINT at = (first_constant + shader.uv_scale_register) * 16;
+    if (!material || at + 16 > material_desc.ByteWidth || !objects.uv_scales || runtime.uv_scales.size() >= MAX_UV_SCALES) return;
+    material_register = {.left = at, .top = 0, .front = 0, .right = at + 16, .bottom = 1, .back = 1};
+  }
   // By its hash where CaptureDraw made a copy (a list of pixel shaders).
   const size_t listed_index = (shader.pixel_masks.empty() ? static_cast<size_t>(&shader - scene_shaders.data())
                                                          : static_cast<size_t>(std::ranges::find(scene_shaders, shader.hash, &SceneShader::hash) - scene_shaders.begin()));
@@ -2609,6 +2670,11 @@ void Capture(Context& command, const SceneShader& shader) {
     }
   }
   runtime.captured_keys.insert(key);
+  if (material) {
+    native->CopySubresourceRegion(objects.uv_scales.Get(), 0, static_cast<UINT>(runtime.uv_scales.size()) * 16, 0, 0, material.Get(), 0,
+                                  &material_register);
+    runtime.uv_scales.push_back({next_vertex, texels, shader.uv_scale_components & 3u, shader.uv_scale_components >> 2});
+  }
   next_vertex += texels + row_texels;
   if (dynamic) {
     runtime.dynamic_vertices += texels;
@@ -3098,12 +3164,27 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       const VertexConstants constants = {
           .counts = {runtime.captured_vertices, dlaa_bridge::RT_TRANSFER_WIDTH, clip_captures ? 1u : 0u, world_first},
           .inverse_view_projection = (host.clip_relative ? camera.relative_inverse : camera.inverse_view_projection),
-          .world_part = {WORLD_BASE, 0, 0, 0},
+          .world_part = {WORLD_BASE, static_cast<uint32_t>(runtime.uv_scales.size()), 0, 0},
       };
       const UINT vertex_groups = (runtime.captured_vertices + 255) / 256;
+      // Host::mask_uv_scales: the frame's scaled masks at t2 / t3 (the game's views there put back).
+      std::array<ID3D11ShaderResourceView*, 2> game_views = {};
+      if (!runtime.uv_scales.empty()) {
+        const D3D11_BOX ranges = {.left = 0, .top = 0, .front = 0, .right = static_cast<UINT>(runtime.uv_scales.size()) * 16, .bottom = 1, .back = 1};
+        native->UpdateSubresource(objects.uv_scale_ranges.Get(), 0, &ranges, runtime.uv_scales.data(), 0, 0);
+        native->CSGetShaderResources(2, 2, game_views.data());
+        const std::array<ID3D11ShaderResourceView*, 2> scale_views = {objects.uv_scale_ranges_srv.Get(), objects.uv_scales_srv.Get()};
+        native->CSSetShaderResources(2, 2, scale_views.data());
+      }
       Dispatch(native, objects.vertices_shader.Get(), {objects.captured_srv.Get(), objects.captured_uv_srv.Get()},
                {dlaa_bridge::bridge.rt_vertices.uav.Get(), nullptr}, &constants, sizeof(constants), std::min(vertex_groups, 65535u),
                (vertex_groups + 65534) / 65535);
+      if (!runtime.uv_scales.empty()) {
+        native->CSSetShaderResources(2, 2, game_views.data());
+        for (auto* view : game_views) {
+          if (view != nullptr) view->Release();
+        }
+      }
       // Skies (rt_skies): the new static captures that hold the camera and are larger than the view reaches (the farther
       // of its near and far planes' centres; unbounded with an infinite far plane) or centred on it (domes the game
       // keeps around the camera: placed ones followed it, a circle of shadow under the camera, ATN 2026-10-28) go empty.
@@ -3369,6 +3450,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   }
   runtime.captures.clear();
   runtime.captured_keys.clear();
+  runtime.uv_scales.clear();
   runtime.slices.clear();
   runtime.captured_vertices = 0;
   runtime.world_vertices = WORLD_BASE;
@@ -3454,10 +3536,13 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
   return true;
 }
 
-// A pixel shader's coverage: whether it discards, and where it samples t0.
+// A pixel shader's coverage: whether it discards, and where it samples t0: at an input (MASKED), at an input times a constant
+// buffer register (the instruction right before the sample `mul rN.xy, vM.xy, cbS[R].xy`, either order: MASKED with that
+// register; Tales' masked prepass), else left out.
 inline PixelCoverage ClassifyCoverage(std::span<const uint8_t> code) {
-  constexpr uint32_t OP_DISCARD = 13, OP_SAMPLE = 69, OP_SAMPLE_B = 74;
-  constexpr uint32_t OPERAND_INPUT = 1, OPERAND_RESOURCE = 7;
+  constexpr uint32_t OP_DISCARD = 13, OP_MUL = 56, OP_SAMPLE = 69, OP_SAMPLE_B = 74;
+  constexpr uint32_t OPERAND_TEMP = 0, OPERAND_INPUT = 1, OPERAND_RESOURCE = 7, OPERAND_CONSTANT_BUFFER = 8;
+  constexpr uint32_t SWIZZLE_MODE = 1;
   const dxbc::Program program = dxbc::Read(code);
   const auto& tokens = program.tokens;
   if (tokens.empty()) return {.coverage = Coverage::LEFT_OUT};
@@ -3473,9 +3558,47 @@ inline PixelCoverage ClassifyCoverage(std::span<const uint8_t> code) {
     }
     return length;
   };
+  const auto type = [&](size_t at) { return (tokens[at] >> 12) & 0xFF; };
+  const auto first_index = [&](size_t at) { return tokens[at + 1 + (tokens[at] >> 31)]; };
   bool discards = false;
   bool sampled_elsewhere = false;
   uint32_t uv_register = UINT32_MAX;
+  PixelCoverage scaled = {.coverage = Coverage::MASKED};
+  std::array<uint32_t, 2> uv_components = {0, 1};  // the input's components the UV's u and v are (a scaled one's)
+  // The mul at `mul` (an instruction's start) writes the temp the sample's `address` reads, its u and v components from an input
+  // times a constant buffer register (no saturate, no modifiers): that into `scaled`, the input's register and components.
+  const auto scaled_uv = [&](size_t mul, size_t address) -> bool {
+    if (mul == 0 || (tokens[mul] & 0x7FF) != OP_MUL || ((tokens[mul] >> 13) & 1) != 0 || (tokens[mul] >> 31) != 0) return false;
+    const size_t destination = mul + 1;
+    const size_t first = destination + operand_length(destination);
+    const size_t second = first + operand_length(first);
+    if (first == destination || second == first || second + operand_length(second) != mul + dxbc::Length(tokens, mul)) return false;
+    if (type(destination) != OPERAND_TEMP || ((tokens[destination] >> 2) & 3) != 0 || first_index(destination) != first_index(address)
+        || ((tokens[address] >> 2) & 3) != SWIZZLE_MODE) {
+      return false;
+    }
+    const size_t input = (type(first) == OPERAND_CONSTANT_BUFFER) ? second : first;
+    const size_t constants = (input == first) ? second : first;
+    if (type(input) != OPERAND_INPUT || type(constants) != OPERAND_CONSTANT_BUFFER || ((tokens[constants] >> 20) & 3) != 2
+        || ((tokens[input] | tokens[constants]) >> 31) != 0 || ((tokens[input] >> 2) & 3) != SWIZZLE_MODE
+        || ((tokens[constants] >> 2) & 3) != SWIZZLE_MODE) {
+      return false;
+    }
+    const uint32_t written = (tokens[destination] >> 4) & 0xF;
+    const uint32_t read = (tokens[address] >> 4) & 0xFF;
+    const uint32_t u = read & 3;
+    const uint32_t v = (read >> 2) & 3;
+    if (((written >> u) & 1) == 0 || ((written >> v) & 1) == 0) return false;
+    const uint32_t input_swizzle = (tokens[input] >> 4) & 0xFF;
+    const uint32_t constant_swizzle = (tokens[constants] >> 4) & 0xFF;
+    uv_register = first_index(input);
+    uv_components = {(input_swizzle >> (2 * u)) & 3, (input_swizzle >> (2 * v)) & 3};
+    scaled.uv_scale_slot = tokens[constants + 1];
+    scaled.uv_scale_register = tokens[constants + 2];
+    scaled.uv_scale_components = ((constant_swizzle >> (2 * u)) & 3) | (((constant_swizzle >> (2 * v)) & 3) << 2);
+    return true;
+  };
+  size_t previous = 0;
   for (size_t at = 2; at < tokens.size();) {
     const uint32_t opcode = tokens[at] & 0x7FF;
     const size_t length = dxbc::Length(tokens, at);
@@ -3487,26 +3610,33 @@ inline PixelCoverage ClassifyCoverage(std::span<const uint8_t> code) {
       for (bool extended = (tokens[at] >> 31) != 0; extended && operand < at + length; ++operand) extended = (tokens[operand] >> 31) != 0;
       const size_t address = operand + operand_length(operand);
       const size_t resource = address + operand_length(address);
-      if (address > operand && resource > address && resource + 1 < at + length && ((tokens[resource] >> 12) & 0xFF) == OPERAND_RESOURCE
+      if (address > operand && resource > address && resource + 1 < at + length && type(resource) == OPERAND_RESOURCE
           && tokens[resource + 1 + (tokens[resource] >> 31)] == 0) {
-        const bool input = ((tokens[address] >> 12) & 0xFF) == OPERAND_INPUT;
+        const bool input = type(address) == OPERAND_INPUT;
         if (input && uv_register == UINT32_MAX) {
-          uv_register = tokens[address + 1 + (tokens[address] >> 31)];
-        } else if (!input) {
+          uv_register = first_index(address);
+        } else if (!input && !(type(address) == OPERAND_TEMP && uv_register == UINT32_MAX && scaled_uv(previous, address))) {
           sampled_elsewhere = true;
         }
       }
     }
+    previous = at;
     at += length;
   }
   if (!discards || (uv_register == UINT32_MAX && !sampled_elsewhere)) return {};
+  // The UV's element: a scaled one's u and v its first two components (as its stream output takes them).
   dxbc::SignatureElement uv;
   if (sampled_elsewhere || uv_register == UINT32_MAX
-      || !dxbc::FindSignatureElement(code, program, "ISGN", [&](const dxbc::SignatureElement&, uint32_t found) { return found == uv_register; },
-                                     &uv)) {
+      || !dxbc::FindSignatureElement(code, program, "ISGN", [&](const dxbc::SignatureElement& element, uint32_t found) {
+           return found == uv_register && (scaled.uv_scale_slot == NO_UV_SCALE || ((element.mask >> uv_components[0]) & 1) != 0);
+         }, &uv)
+      || (scaled.uv_scale_slot != NO_UV_SCALE
+          && (uv_components[0] != static_cast<uint32_t>(std::countr_zero(uv.mask)) || uv_components[1] != uv_components[0] + 1))) {
     return {.coverage = Coverage::LEFT_OUT};
   }
-  return {.coverage = Coverage::MASKED, .uv_semantic = std::string(uv.name), .uv_index = uv.index};
+  scaled.uv_semantic = std::string(uv.name);
+  scaled.uv_index = uv.index;
+  return scaled;
 }
 
 // A pipeline going away: its pixel shader's coverage with it (its handle may come back).
@@ -4212,6 +4342,7 @@ inline void Update(const Settings& settings) {
   }
   runtime.captures.clear();
   runtime.captured_keys.clear();
+  runtime.uv_scales.clear();
   runtime.slices.clear();
   runtime.captured_vertices = 0;
   runtime.world_vertices = internal::WORLD_BASE;
@@ -4430,7 +4561,7 @@ inline void UnbindLocalLights(ID3D11DeviceContext* native) {
 }
 
 // A scene draw's pixel shader (the one bound; host.scene_draw's): its alpha test into `shader` (foliage: the UV's
-// input); false: left out of the scene (a mask read some other way).
+// input, Host::leaf_cutoff's cut-off); false: left out of the scene (a mask read some other way).
 inline bool SceneCoverage(ID3D11DeviceContext* native, SceneShader* shader) {
   ComPtr<ID3D11PixelShader> pixel_shader;
   native->PSGetShader(pixel_shader.GetAddressOf(), nullptr, nullptr);
@@ -4438,10 +4569,16 @@ inline bool SceneCoverage(ID3D11DeviceContext* native, SceneShader* shader) {
   const std::shared_lock lock(internal::pixel_coverage_mutex);
   const auto found = internal::pixel_coverage.find(reinterpret_cast<uint64_t>(pixel_shader.Get()));
   if (found == internal::pixel_coverage.end() || found->second.coverage == internal::Coverage::LEFT_OUT) return false;
+  // A mask at a scaled UV: in the scene only where the host scales its UVs.
+  if (found->second.uv_scale_slot != NO_UV_SCALE && !internal::host.mask_uv_scales) return false;
   if (found->second.coverage == internal::Coverage::MASKED) {
     shader->foliage = true;
     shader->uv_semantic = found->second.uv_semantic.c_str();
     shader->uv_semantic_index = found->second.uv_index;
+    shader->uv_scale_slot = found->second.uv_scale_slot;
+    shader->uv_scale_register = found->second.uv_scale_register;
+    shader->uv_scale_components = found->second.uv_scale_components;
+    if (internal::host.leaf_cutoff != 0.f) shader->alpha_cutoff = internal::host.leaf_cutoff;
   }
   return true;
 }
@@ -4477,7 +4614,7 @@ inline void InstallReplayedScene(const Host& host) {
   internal::host = host;
   internal::clip_captures = true;
   internal::world_captures = false;
-  internal::leaf_cutoff = 0.f;
+  internal::leaf_cutoff = host.leaf_cutoff;
 }
 
 // InstallReplayedScene's draws: the indexed draw the host bound on `cmd_list`'s immediate context, captured as
@@ -4527,7 +4664,7 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
   internal::world_captures = internal::clip_captures && std::ranges::any_of(shaders, [](const SceneShader& shader) {
                                return !shader.rows_shader.empty() || shader.cascade_world;
                              });
-  internal::leaf_cutoff = shaders.empty() ? 0.f : std::ranges::max(shaders, {}, &SceneShader::alpha_cutoff).alpha_cutoff;
+  internal::leaf_cutoff = std::max(host.leaf_cutoff, shaders.empty() ? 0.f : std::ranges::max(shaders, {}, &SceneShader::alpha_cutoff).alpha_cutoff);
   if (internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   if (host.scene_draw != nullptr) reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
   reshade::register_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateIndices);

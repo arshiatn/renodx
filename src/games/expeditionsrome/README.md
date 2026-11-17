@@ -143,3 +143,9 @@ clips signed HDR colours after the tonemapper as outline00 / 01 did before their
 viewport-clamped twin 0x1F128822: a luminance high-pass); 0x630E166D / 0xA7FF9EDD write a factor from depth and a mask
 (no scene read). Those five stay stock and log their first draw with the target's format (8-bit: after the tonemapper,
 they need outline00's treatment; 16-bit: before it, the clip is harmless).
+
+Exact Depth Samples (shared round 2, 2026-11-17; built only, not run in game): Exact Depth Samples (Experimental, off)
+under GT-VBAO: each sample takes the depth at its own place between pixels where the four around it lie on one plane
+(twattila/bitmask.hlsli BitmaskPlaneDepth), so open ground seen at a low angle no longer shades itself; off the nearest
+texel's depth as before. `tw_gtvbao_exact` (WARP, a flat view-space plane): ao00 / ao01 off the build before's bits; on
+0.9647 -> 1.0000 mean.

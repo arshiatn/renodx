@@ -144,7 +144,22 @@ float4 BitmaskAmbientOcclusion(float4 v0)
           float3 sample_position;
           [branch]
           if (level == 0u) {
-            sample_position = AoViewPosition(sample_uv, tan_half_fov);
+            // Exact Depth Samples (SI.ssao_exact_depth): the depth at the sample's own place where the four texels
+            // around it lie on one plane (bitmask.hlsli BitmaskPlaneDepth); else the sampler's, as before.
+            float plane_depth = 0.f;
+            bool exact = false;
+            [branch]
+            if (SI.ssao_exact_depth != 0.f) {
+              const float2 place = sample_uv * depth_size - 0.5f;
+              const int2 base = int2(floor(place));
+              const int2 last = int2(depth_size) - 1;
+              const float4 depths = float4(gbuffer_channel_4_sampler.Load(int3(clamp(base, 0, last), 0)).x,
+                                           gbuffer_channel_4_sampler.Load(int3(clamp(base + int2(1, 0), 0, last), 0)).x,
+                                           gbuffer_channel_4_sampler.Load(int3(clamp(base + int2(0, 1), 0, last), 0)).x,
+                                           gbuffer_channel_4_sampler.Load(int3(clamp(base + 1, 0, last), 0)).x);
+              exact = BitmaskPlaneDepth(depths, place - base, plane_depth);
+            }
+            sample_position = exact ? AoViewPositionOf(sample_uv, plane_depth, tan_half_fov) : AoViewPosition(sample_uv, tan_half_fov);
           } else {
             // Its depth texel's own position (on the surface, not moved to the sample's).
             float depth;

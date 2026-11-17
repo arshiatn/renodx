@@ -90,6 +90,7 @@ struct ShaderInjectData {
   // with Game's GI Under the Open Sky (Experimental) its share through the open sky stays.
   float screen_space_shadows;
   float gtvbgi;
+  float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
 };
 
 #define SI  shader_injection

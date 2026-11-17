@@ -1746,6 +1746,17 @@ void ConfigureAddon() {
       }
     }
   }
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RuseExactDepthSamples",
+      .binding = &ruse::ray_tracing::state.vbao_exact,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Exact Depth Samples (Experimental)",
+      .section = AO_SECTION,
+      .tooltip = "Each ground sample takes the depth at its own spot between pixels (also the screen-space light bounce):\n"
+                 "open ground seen at a low angle no longer shades itself. Off: the nearest pixel's depth.",
+      .is_enabled = [] { return ruse::ray_tracing::state.vbao || ruse::ray_tracing::state.bounce; },
+  });
   {
     auto* setting = new renodx::utils::settings::Setting{
         .key = "RuseGroundLightBounce",

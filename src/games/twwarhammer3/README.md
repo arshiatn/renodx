@@ -1,5 +1,12 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+### Shared round 2 (2026-11-17; built only, not run in game)
+
+- New: **Exact Depth Samples (Experimental, off)**, under GT-VBAO's More Options: each sample takes the depth at its own
+  place between pixels (where the four pixels around it lie on one plane), so open ground seen at a low angle no longer
+  shades itself. Off: the nearest pixel's depth, as before. `tw_gtvbao_exact` (WARP): off the build before's bits;
+  CONTROL on changes 304 values (both collect builds).
+
 ### One sun shadow method under the rays (2026-11-16 night; built only, not run in game)
 
 - **Rays Replace Shadow Maps is gone** (ATN: ours replaces the game's): under ray-traced sun shadows the rays always

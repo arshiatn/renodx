@@ -1,5 +1,12 @@
 # Total War: ROME II - Emperor Edition (RenoDX HDR, ATN)
 
+### Shared round 2 (2026-11-17; built only, not run in game)
+
+- New: **Exact Depth Samples (Experimental, off)**, under GT-VBAO's More Options: each sample takes the depth at its own
+  place between pixels (where the four pixels around it lie on one plane), so open ground seen at a low angle no longer
+  shades itself. Off: the nearest pixel's depth, as before. `tw_gtvbao_exact` (WARP, a flat view-space plane): off the
+  build before's bits; on 0.9821 -> 0.9999 mean (36676 values).
+
 ### Cut-outs in the rays (2026-11-16 next round; built only, not run in game)
 
 - New: **holes in ray-traced shadows**: soldiers' cloaks, plumes, hair and banners and the rigid objects' alpha-tested

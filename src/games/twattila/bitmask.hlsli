@@ -25,6 +25,20 @@ uint BitmaskSampleLevel(float distance, uint count) {
   return (uint)clamp((int)firstbithigh((uint)distance) - 3, 0, (int)count);
 }
 
+// Exact Depth Samples (each game's ssao_exact_depth row, Experimental): a sample's depth at its own place on the
+// slice's line, between the four depth texels around it (`depths`: top-left, top-right, bottom-left, bottom-right;
+// `blend`: its place between their centres), bilinear where the four lie on one plane (x + w = y + z within 5% of
+// their spread: the depth is affine on screen over a plane, or nearly so for a linear depth); false at an edge (no
+// depth between two surfaces: the includer's nearest texel then). The texel a ~1-pixel step rounds to lies up to ~26
+// degrees off the slice's line: on ground seen at a grazing angle it reads far above the horizon and, with the
+// thickness, covers sectors (test/tw_gtvbao_flat: open ground 0.964 at 13.6 degrees, 1.000 at the exact place).
+bool BitmaskPlaneDepth(float4 depths, float2 blend, out float depth) {
+  const float low = min(min(depths.x, depths.y), min(depths.z, depths.w));
+  const float high = max(max(depths.x, depths.y), max(depths.z, depths.w));
+  depth = lerp(lerp(depths.x, depths.y, blend.x), lerp(depths.z, depths.w, blend.x), blend.y);
+  return abs(depths.x + depths.w - depths.y - depths.z) <= 0.05f * (high - low) + 1e-7f;
+}
+
 // The pixel's place along a 64 x 64 Hilbert curve (the standard xy-to-index walk): neighbouring pixels get nearby places.
 uint BitmaskHilbertIndex(uint2 pixel) {
   uint index = 0u;

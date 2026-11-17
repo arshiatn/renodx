@@ -116,6 +116,9 @@ struct Settings {
   // DLAA / DLSS's Debug View: 0 off, 1 the motion NVIDIA gets, 2 the objects' own (aa_dlaa_finish), 3 no camera motion
   // (the objects' alone: aa_dlaa_prepare).
   uint32_t debug_view = 0;
+  // The frame's gamma (frame_gamma.hlsli TW_FRAME_GAMMA): 2.2, DLAA's and CMAA2's passes decode and encode at it (aa.hlsli
+  // AaFrameGamma22: the frame's own curve with Gamma Correction on); 2, their 2.0.
+  float frame_gamma = 2.f;
 };
 
 namespace internal {
@@ -130,7 +133,7 @@ struct ShaderSettings {
   float cmaa2_edge_threshold = 0.f;
   float cmaa2_local_contrast = 0.f;
   float cmaa2_simple_shape_blur = 0.f;
-  float padding = 0.f;
+  float frame_gamma = 2.f;  // Settings::frame_gamma
   std::array<float, 4> smaa_subsample_indices = {};
   std::array<float, 4> dlaa_debug = {};  // the view, the input size, the colour's encoding for NVIDIA
 };
@@ -1108,6 +1111,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
       .cmaa2_edge_threshold = CMAA2_THRESHOLDS[quality],
       .cmaa2_local_contrast = (sharp ? 0.15f : 0.1f),
       .cmaa2_simple_shape_blur = (sharp ? 0.07f : 0.1f),
+      .frame_gamma = runtime.settings.frame_gamma,
       .smaa_subsample_indices = subsample_indices,
       .dlaa_debug = {static_cast<float>(runtime.settings.debug_view), static_cast<float>(input_width),
                      static_cast<float>(input_height), (square_root ? 1.f : 0.f)},

@@ -61,6 +61,7 @@
 #include "./smoke_map.hpp"
 #include "./ssr_hiz.hpp"
 #include "./shared.h"
+#include "./frame_gamma.hlsli"
 
 constexpr char BUILD_DATE[] = __DATE__;
 constexpr char BUILD_TIME[] = __TIME__;
@@ -1499,6 +1500,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   shader_injection.rt_ambient_alone = twattila::rt_scene::AmbientReplaced() ? 1.f : 0.f;
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
+  aa_settings.frame_gamma = TW_FRAME_GAMMA;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   shader_injection.ssao_scale = twattila::ao_pass::ResolutionScale(shader_injection.ssao_resolution);

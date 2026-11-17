@@ -55,6 +55,7 @@ struct Rows {
   float ssao_directions = 0.f;
   float ssao_resolution = 0.f;
   float ssao_auto_thickness = 0.f;
+  float ssao_exact_depth = 0.f;  // Divinity 2's GT-VBAO (ao_vbao): 1 Exact Depth Samples
   float light_bounce_strength = 0.f;
   float light_bounce_radius = 20.f;
   float light_bounce_resolution = 2.f;

@@ -254,7 +254,10 @@ Without the helper (`screen_space.hpp`, Experimental, off until a game run):
   visibility bitmask on LinearizeDepth's depth in PerView's camera, GBuffer1's
   normal) in its pixel shader's place: the game's two blurs, PPApplyAO and
   ClusteredLightingWithSSAO read it as the game's AO. Ray-traced AO and
-  Path-Traced Ambient take the chain over: one method.
+  Path-Traced Ambient take the chain over: one method. Its Exact Depth Samples
+  (Experimental, off; shs2_ 2026-11-17): each sample's depth at its own place
+  between pixels where the four around it lie on one plane (twattila/bitmask.hlsli
+  BitmaskPlaneDepth), so open ground seen at a low angle no longer shades itself.
 - **GT-VBGI** (Global Illumination's method, Strength above 0 with the rays'
   bounce off): the Total War games' passes (`talesofarise_dlss/ue_light_bounce.hpp`;
   `bounce_gbuffer.hlsli` reads GBuffer1-3 and LinearizeDepth's depth through
