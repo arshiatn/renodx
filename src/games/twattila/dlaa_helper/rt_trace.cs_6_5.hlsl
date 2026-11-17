@@ -62,7 +62,7 @@ static const float GRASS_SHADOW_REACH = 40.f;   // metres
 static const float GRASS_SELF_SURFACE_OFFSETS = 4.f;
 static const float GRASS_SELF_REACH = 0.25f;    // metres
 // A surface this edge-on to the sun (the cosine; more with distance: the depth's normal gets worse) asks its triangle which
-// way it faces (ShownNormal).
+// way it faces (the shown surface's ray in main).
 static const float EDGE_ON = 0.1f;
 static const float EDGE_ON_PER_METRE = 0.002000572f;
 // The ambient visibility at a pixel kept over frames: the last trace's history where it saw the same surface. Also under
@@ -248,17 +248,20 @@ void main(uint3 id : SV_DispatchThreadID) {
   const bool near_grass = grass_shadow_range <= 0.f || position.w <= grass_shadow_range;
   const float4 toward_sun = sun[uint2(0, 0)];
   float3 normal = SurfaceNormal(int2(id.xy), position);
-  // By the depth's normal such a surface turned to the sun and away pixel by pixel, frame by frame: whole facets of round
-  // towers flickered between lit and shadowed, near and far (ATN's debug33-34).
-  const bool exact = (flags & SUN_SHADOWS) != 0u && toward_sun.w != 0.f
-                     && abs(dot(normal, toward_sun.xyz)) < EDGE_ON + (EDGE_ON_PER_METRE * position.w) && ShownNormal(position, normal);
-  const bool planar = Planar(int2(id.xy), position, normal);
-  const float3 origin = StartPast(RayOrigin(position, normal, planar), position);
   const float offset = SurfaceOffset(position.w);
-  // Banners Without Self-Shadows: the cloth or sail the pixel shows (the surface the camera's way meets at it, as ShownNormal), lit
-  // from either side as the game lights it: its rays toward the sun from the camera's side, through itself.
+  // By the depth's normal such a surface turned to the sun and away pixel by pixel, frame by frame: whole facets of round
+  // towers flickered between lit and shadowed, near and far (ATN's debug33-34). Exact where the depth's normal is noise:
+  // every frame's jitter and the depth's steps turn that by a degree or more.
+  const bool edge_on = (flags & SUN_SHADOWS) != 0u && toward_sun.w != 0.f
+                       && abs(dot(normal, toward_sun.xyz)) < EDGE_ON + (EDGE_ON_PER_METRE * position.w);
+  // Banners Without Self-Shadows: the cloth or sail the pixel shows, lit from either side as the game lights it: its rays
+  // toward the sun from the camera's side, through itself.
+  const bool sheets = (flags & SHEETS_UNSELFED) != 0u && (flags & SUN_SHADOWS) != 0u && (flags & PART_AMBIENT) == 0u && toward_sun.w != 0.f;
+  // Both ask the solid triangle the pixel shows (the surface the camera's way meets at it; none there: a leaf or a blade)
+  // with one ray: its normal, facing the camera, for an edge-on surface; its record for the sheet.
+  bool exact = false;
   uint sheet = NO_SHEET;
-  if ((flags & SHEETS_UNSELFED) != 0u && (flags & SUN_SHADOWS) != 0u && (flags & PART_AMBIENT) == 0u && toward_sun.w != 0.f) {
+  if (edge_on || sheets) {
     const float3 to_camera = normalize(sun[uint2(1, 0)].xyz - position.xyz);
     RayDesc shown;
     shown.Origin = position.xyz + to_camera * (2.f * offset);
@@ -268,9 +271,15 @@ void main(uint3 id : SV_DispatchThreadID) {
     TRACE_SURFACE(query, shown)
     if (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
       const uint record = query.CommittedInstanceID() + query.CommittedGeometryIndex();
-      if (((records[record].z >> 16) & (RECORD_GRASS | RECORD_MASKED | RECORD_THIN)) == RECORD_THIN) sheet = record;
+      if (edge_on) {
+        exact = true;
+        normal = HitNormal(record, query.CommittedPrimitiveIndex(), shown.Direction, query.CommittedObjectToWorld3x4());
+      }
+      if (sheets && ((records[record].z >> 16) & (RECORD_GRASS | RECORD_MASKED | RECORD_THIN)) == RECORD_THIN) sheet = record;
     }
   }
+  const bool planar = Planar(int2(id.xy), position, normal);
+  const float3 origin = StartPast(RayOrigin(position, normal, planar), position);
   const bool turned_to_sun = sheet != NO_SHEET || dot(normal, toward_sun.xyz) > 0.f;
   // A blade of grass: the game lights it by its G-buffer normal whichever way the blade's card is turned, so its pixels
   // take the sun's rays as those turned to the sun do (ShowsGrass).
