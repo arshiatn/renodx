@@ -366,7 +366,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | hb6_, coordinator
 - B4G THRESHOLD (hb6_ 20:1x): B4 already threaded only lists >= 32768, so B4G diff ... | coordinator (next run batch)
 - HEAPFIX NOTES 2 (hb6_ 20:1x, for the author zip): heapfix's x87 watch turned its ... | coordinator (author_notes_3)
-- CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ATN
+- CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ejd3_
 - CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V ... | coordinator
 - C: B3 / CLASSIFIER (21:3x: ATN "Then do it. You are allowed to": the coordinator ... | ?
 - C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GP ... | ?
@@ -377,7 +377,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PLAYER FLAG OVERRIDE (needed for SER / SHaRC / part A/Bs on recordings): the pla ... | next recorder touch (after fix1_)
 - MIRRORS OF MADNESS START (run2_ 20:4x): game_startup_mode battle_benchmark / ben ... | next run batch
 - STEP 4 TRACES (nsr_ Low STARTED 22:2x): all 15 recordings BASE + SER on + SHaRC ... | nsr_, coordinator
-- CPU PLAN 2 REVIEW (cr2_ xHigh STARTED 23:xx, read only): site 8 c5da4079f, B2 a0 ... | cr2_, coordinator
+- CPU2 REVIEW LOW FIXES: (3) resource.hpp:1851-1866 vs 1946: attach adds the modul ... | next High fixer round (with the GPU plan's first round)
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2564,7 +2564,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         DROPPED as agreed, no retry. Facts kept: 0x1906fa0 loops 4 x 20 cdecl calls to 0x169a220 (4 rows of 0x38 bytes,
         halves at row+0x10..0x37); stress 8.0-14.8 s: our half stub 0.78 ms render + 8.39 ms summed workers, 0x1906fa0 own
         0.40 / 4.49; it holds 20 of 98 call sites and the only real time (next 0x17f24b0 0.17 ms workers). Worktree
-        agent-ab581e5143c6851c7 branch cb5-b5, no commits. Owner: ATN
+        agent-ab581e5143c6851c7 branch cb5-b5, no commits. ATN 00:xx allowed all; NOT retried: the stop said not to
+        produce that content again, even reworded (not ATN's settings; no setting changes it). Owner: ATN
       - [ ] CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, P without loopfetch, loopanim
         3 shuffled rounds; tools/tw/heapfix, never the repo) + author notes: hb6_ High STARTED 19:1x (builds + eqtest +
         bench variants + notes draft tools/tw/heapfix/author_notes_3) DONE 20:1x: B4G f7dcd23f.. (eqtest 468 lists x P / G /
@@ -2592,7 +2593,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         render thread); workers sleep a median 201 / 216 us (a 30 us spin catches 3 %, 200 us ~50 %): spin-then-sleep
         rejected (max ~1.2 ms, costly spins); the design's idea instead: a delegated WakeAll (wake one sleeping worker,
         it runs the game's own WakeAll loop; semaphore functions byte-exact; a pool-destructor drain against
-        use-after-free; est. -1.9..-2.3 ms); a 2-worker model check passed with two failing controls. Owner: ATN
+        use-after-free; est. -1.9..-2.3 ms); a 2-worker model check passed with two failing controls. ATN 00:xx: never
+        agreed to "stop = drop" (my wrong "as agreed"); "You are allowed to work on ALL of them": ONE unchanged retry
+        ejd3_ xHigh STARTED 00:xx (design only); a second stop is final. Owner: ejd3_
       - [ ] CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V0-V4 stress / night1 x3, day1 x2,
         sea1 x2, WPR stress / night1 / a new day1 (no sea1 WPR: GPU-bound). Owner: coordinator
       - [x] ANSWERED 19:0x (ATN: "Sure but don't forget plannings and the reviews") C: EJOB: may we change the game's job-semaphore protocol (spin-then-sleep, SetEvent only when a worker
@@ -2717,9 +2720,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         STARTED 00:xx -> plan_1117/gpu_plan.md. Then an xHigh read (GPU plan: the reflections'
         453 MB spills, path tracing's register limit + 897 MB I$ misses, line 1503, SER / SHaRC per scene), then High
         implementers, then an xHigh review. Owner: nsr_, coordinator
-      - [ ] CPU PLAN 2 REVIEW (cr2_ xHigh STARTED 23:xx, read only): site 8 c5da4079f, B2 a0e98fd94, B3 ae73a0b54, B4
-        2dad9aceb -> plan_1117/cpu2_review.md; then High fixers for real findings, then the END bench (after nsr_ frees
-        the GPU). Owner: cr2_, coordinator
+      - [x] CPU PLAN 2 REVIEW (cr2_ xHigh, read only at 2eea52948): site 8 c5da4079f, B2 a0e98fd94, B3 ae73a0b54, B4
+        2dad9aceb -> plan_1117/cpu2_review.md. DONE 00:xx: 0 high / 0 medium, nothing changes a picture; site 8's 85 stub
+        bytes stepped by hand vs the 118-byte routine (all paths, flags match); static_checks views 0. For the bench:
+        Attila's log must say "utils::resource view filter on." ("off at attach" = an older add-on / DevKit: B3 = 0)
+      - [ ] CPU2 REVIEW LOW FIXES: (3) resource.hpp:1851-1866 vs 1946: attach adds the module token even when shared
+        registration fails, detach never removes it (a slot of 8 leaks after an allocation failure): add only on success;
+        (4) object_motion.hpp:510 vs 623: "in a ring" logged before the ring may be dropped for a context without
+        ID3D11DeviceContext1: log after the context check; style: rt_scene.hpp:1323 braces, lines past 120 columns.
+        Notes, no change: (1) a pre-B3 add-on loading after init_device: one frame unmarked (comment states it); (2)
+        writers check walks the module list unsynchronized (next present rechecks); (5) b12 restored without an offset
+        (older; no TW shader binds b12 with one). Owner: next High fixer round (with the GPU plan's first round)
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
