@@ -1320,7 +1320,9 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
           std::swap(readback.keys, keys);
           readback.ties.clear();
           for (size_t at = 0; at + 1 < sorted_keys.size(); ++at) {
-            if (same_place(sorted_keys[at], sorted_keys[at + 1])) readback.ties.push_back(tie_at(at));
+            if (same_place(sorted_keys[at], sorted_keys[at + 1])) {
+              readback.ties.push_back(tie_at(at));
+            }
           }
           const auto repeated = std::ranges::unique(sorted_keys, same_place);
           sorted_keys.erase(repeated.begin(), repeated.end());
