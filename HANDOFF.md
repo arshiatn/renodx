@@ -373,6 +373,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (step 0 DONE ref0_ (5b41d3b72), I5 / I4 fixed by hfix_ (53da7b6e8); step 1 R0a + ... | coordinator
 - REF1 FINDINGS (ref1_, reproduced on a second set / scene): the raw estimator's c ... | ref2_
 - REF1 LEFT (ref1_ "Left"): the reflections' traced-lobe share output (G0 share ro ... | REF BUILD steps 2-6
+- RESTIR GI CLAMP FIX (ref2_ R-B, bug, on by default once proven): REUSE_W_CLAMP ( ... | next helper implementer after rec_ (with PT DI step 2)
+- L1 FALLOFF FIX (ref2_ WARP: 20 of Attila's 40 point-light shaders fall off as (1 ... | PT DI step 1
+- REF STEP 2 LEFT (ref2_): rt_lights' shadow bits compared at the pixels; the rati ... | REF steps
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
@@ -2568,8 +2571,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         wall; I5 specular occlusion counts directions below the horizon as blocked (rt_path.hlsli:1331-1332, 1464): an open
         plane gets SO < 1 at grazing views, worst with Squared Lobe. Owner: bug2_ (I3), then a helper fix round (I4, I5)
       - [ ] (step 0 DONE ref0_ (5b41d3b72), I5 / I4 fixed by hfix_ (53da7b6e8); step 1 R0a + R0b DONE ref1_ (merged
-        3bd2ffaa2; plan_1117/ref_step1.md; tools/tw/reference: ref_compare.py, runs/, xcheck/); step 2 STARTED 08:3x ref2_
-        (the paths' box split first, then R1)) REF BUILD (v2 order; one implementer at a time in the helper): step 0 free checks I5 / I4 / I3 + census (ref0_,
+        3bd2ffaa2; plan_1117/ref_step1.md; tools/tw/reference: ref_compare.py, runs/, xcheck/); step 2 DONE ref2_ (merged
+        5fb1eb5d5; ref_step2.md); step 4 (route B recorder, ATN's RECORDER FIRST) STARTED 13:0x rec_ (ref_step4.md); step 3
+        after it) REF BUILD (v2 order; one implementer at a time in the helper): step 0 free checks I5 / I4 / I3 + census (ref0_,
         started 05:xx, no helper change; I3 with bug2_); 1 R0a + R0b with B1 / B2 / APPROX / census / reference cache, the
         gates, xcheck (22-28 h; after bug2_ leaves the helper); 2 R1 torches + point-light WARPs (7-10 h); 3 dark-texel
         slice of R3 (3-5 h); 4 route B recorder + a short live proof in game + the second capture pass, 12 recordings
@@ -2596,6 +2600,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         scan (AMBIGUOUS hook ready); historical controls (2.6.2); G1's all-lights sum (R1, step 2); G2 CPU model; route A in
         a game + route B (step 4); the digest hashes no dynamic vertices yet; the lag-1 > 0.2 rule printed, not applied.
         Owner: REF BUILD steps 2-6
+      - [x] DONE REF STEP 2 (ref2_ 7a1f506f7 / 8a3079796, merged 5fb1eb5d5): variants same_route + contact_sky,
+        RENODX_TW_REF_DIRECT; ATN's boxes (0.956 vs contact) split: route model 0.9931 (MODEL), Kept Cube's model 0.9934
+        (MODEL; its uncalibrated sky alone -2.2 % = the UNSEEN SKY FIX box, rt_path.hlsli:640), ReSTIR GI 0.9698 +- 0.0007
+        (BIAS), raw estimator vs same_route 1.0008 (PASS); R1: G1 all-lights 0.99994-1.00001 (control 9.80), G-T1 all 40
+        point-light shaders bit for bit, Torch Light in PT GI 1.0000-1.0011 (the 0.004 scale right); zero cost off (50
+        headers identical, HARNESS_DUMP 0 differences over 384 outputs / 47 modes, the same 13 Nsight passes). Owner: ref2_
+      - [ ] RESTIR GI CLAMP FIX (ref2_ R-B, bug, on by default once proven): REUSE_W_CLAMP (rt_path.hlsli:113, used at 945)
+        cuts each candidate's own W of pi / cos: a cos-scaled clamp takes ATN's boxes 0.9698 -> 0.9943 (all 0.9996) and the
+        torch-lit boxes 0.9696 -> 0.9897 (ReSTIR GI keeps only 70 / 78 % of the torch bounce today, boxes turn bluer); with
+        Own Sky Rays off it over-corrects (+3.9 % boxes, -1.5 % open) -> v2: clamp in the creating receiver's units, then
+        re-test R-A (Validate overwriting the stored light, withdrawn as an interaction). Every TW game (shared helper).
+        Owner: next helper implementer after rec_ (with PT DI step 2)
+      - [ ] L1 FALLOFF FIX (ref2_ WARP: 20 of Attila's 40 point-light shaders fall off as (1 - d / r) to 1.9e-7, the
+        helper's LightArriving squares it for every light: up to 49 % off; the 20 smooth shaders match the square to
+        3.5e-7): a falloff kind per shader hash in b4's light_colours.w (add-on + helper), per-game tables (Rome II / WH1
+        own shaders), the 3 other squared-falloff places (fog lights, the add-on's torch glow in smoke); G-T0 with a game
+        capture's constants. Owner: PT DI step 1
+      - [ ] REF STEP 2 LEFT (ref2_): rt_lights' shadow bits compared at the pixels; the ratio mode (APPROX); the raw
+        estimator's open-sky -0.03 %; "Torch and Fire Light from PT" adds nothing without ReSTIR GI (by design: its tooltip
+        should say it needs ReSTIR GI); the 32-light cap -5.0 % with 40 lights (MODEL, an upper bound). Owner: REF steps
       - [ ] REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures run tonight without the recorder
         (WPR / timings / shots / frame trace / address space need none); route B (bridge recorder + harness player) built
         next and a second, shorter capture pass records night1 / sea1 / stress frames for the references; the recorder
