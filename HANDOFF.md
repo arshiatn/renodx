@@ -343,7 +343,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RENDER SCALE CENSUS, OTHER GAMES (ATN 09:10 asked whether every shader was check ... | next render-scale round
 - ATN 09:2x-09:4x ANSWERS (design questions; each its own box): GI core = whicheve ... | coordinator
 - D2 EXACT LUT ON (ATN 09:4x): Divinity 2 "Exact Colour LUT" on by default (out of ... | next Divinity round
-- UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like th ... | next helper implementer
+- UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like th ... | fix1_ (STARTED 16:xx)
 - RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed ... | next Ryse round
 - GPU CAPTURE ROUND 2 (ATN 09:5x): after the new features (SHaRC update, PT DI / R ... | coordinator (after plan step 6 + reviews)
 - CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best c ... | cpb_
@@ -356,7 +356,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LIGHT READBACK CAP (jdg1_): rt_lights' readback caps at 16,384 records while nig ... | PT DI step 0
 - BENCH CLOSE RACE BY STACK (jdg1_): the stress M1 run's close AV was the known sh ... | coordinator (tools)
 - C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 ... | ATN
-- RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | next helper implementer
+- RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | fix1_ (STARTED 16:xx)
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b; hz2_ 13:3x: the 10b design's "all ready" ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -375,7 +375,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (step 0 DONE ref0_ (5b41d3b72), I5 / I4 fixed by hfix_ (53da7b6e8); step 1 R0a + ... | coordinator
 - REF1 FINDINGS (ref1_, reproduced on a second set / scene): the raw estimator's c ... | ref2_
 - REF1 LEFT (ref1_ "Left"): the reflections' traced-lobe share output (G0 share ro ... | REF BUILD steps 2-6
-- RESTIR GI CLAMP FIX (ref2_ R-B, bug, on by default once proven): REUSE_W_CLAMP ( ... | next helper implementer after rec_ (with PT DI step 2)
+- RESTIR GI CLAMP FIX (ref2_ R-B, bug, on by default once proven): REUSE_W_CLAMP ( ... | fix1_ (STARTED 16:xx, brief plan_1117/fix1_brief
 - L1 FALLOFF FIX (ref2_ WARP: 20 of Attila's 40 point-light shaders fall off as (1 ... | PT DI step 1
 - REF STEP 2 LEFT (ref2_): rt_lights' shadow bits compared at the pixels; the rati ... | REF steps
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
@@ -2305,7 +2305,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] D2 EXACT LUT ON (ATN 09:4x): Divinity 2 "Exact Colour LUT" on by default (out of Experimental), README line.
         Owner: next Divinity round
       - [ ] UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like the screen route's (-3 %, sky median
-        0.79), on by default; the seen-vs-unseen probe proves it. Owner: next helper implementer
+        0.79), on by default; the seen-vs-unseen probe proves it. Owner: fix1_ (STARTED 16:xx)
       - [ ] RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed (c243f7c4). Owner: next Ryse round
       - [x] DONE PT DI REVISION 10:1x (des1_ "Revision 1" in designs/pt_di_rtxdi.md; RTXDI names checked vs b67f61cd):
         steps 0 gates (A3 bisection, O1 / O2 night1 census, R1 / E4, slots), 1 L1 + bridge v32 shared with vMF (8 h), 2 ReSTIR
@@ -2425,7 +2425,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         add-on and .v119)? Owner: ATN
       - [ ] RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a different order between two
         identical plays (trace outputs stayed equal): make the dedupe order-independent (a stable key) so recordings and
-        A/B tests repeat exactly; same picture. Owner: next helper implementer
+        A/B tests repeat exactly; same picture. Owner: fix1_ (STARTED 16:xx)
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
@@ -2659,7 +2659,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         torch-lit boxes 0.9696 -> 0.9897 (ReSTIR GI keeps only 70 / 78 % of the torch bounce today, boxes turn bluer); with
         Own Sky Rays off it over-corrects (+3.9 % boxes, -1.5 % open) -> v2: clamp in the creating receiver's units, then
         re-test R-A (Validate overwriting the stored light, withdrawn as an interaction). Every TW game (shared helper).
-        Owner: next helper implementer after rec_ (with PT DI step 2)
+        Owner: fix1_ (STARTED 16:xx, brief plan_1117/fix1_brief.md, notes fix1_notes.md; with the 2 boxes below)
       - [ ] L1 FALLOFF FIX (ref2_ WARP: 20 of Attila's 40 point-light shaders fall off as (1 - d / r) to 1.9e-7, the
         helper's LightArriving squares it for every light: up to 49 % off; the 20 smooth shaders match the square to
         3.5e-7): a falloff kind per shader hash in b4's light_colours.w (add-on + helper), per-game tables (Rome II / WH1
