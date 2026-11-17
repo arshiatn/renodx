@@ -346,7 +346,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
 - REF1 REVIEW (rev_ 04:xx, Opus xHigh: plan_1117/reference_suite_review.md, verdic ... | ref_ (v2), then one implementer at a time after bug2_ leaves
 - (PROVEN ref0_ 07:xx, test/tw_rt_open_sky merged 5b41d3b72 (WARP, the helper's ow ... | bug2_ (I3), then a helper fix round (I4, I5)
-- REF BUILD (v2 order; one implementer at a time in the helper): step 0 free check ... | coordinator
+- (step 0 DONE ref0_ (5b41d3b72), I5 / I4 fixed by hfix_ (53da7b6e8); step 1 R0a + ... | coordinator
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
@@ -2173,7 +2173,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         (one game at a time): dry run; heapfix A / P / h6106 x3 on stress, then P / B4 / loopanim / x87keep x2; A / P x2 on
         night1; capture v3 WPR A vs P on stress; data run (sampler, va_probe2, a screenshot, 60 s out of front, a restart);
         add-on trim night1 + sea1 x2; engine patches stress + night1 x2; Small Soldiers as Sprites stress x2 + shots; the
-        batch's one Constantinople bench. Steps 1-4 DONE cpu2_ 10:xx (plan_1117/cpu_steps_1_4.md): bench -Replay required with
+        batch's one Constantinople bench. Steps 5-10 STARTED 11:xx cpu3_ (host-side add-on code only; plan_1117/cpu_steps_5_10.md;
+        step 9 dropped; utils memo = ATN). Steps 1-4 DONE cpu2_ 10:xx (plan_1117/cpu_steps_1_4.md): bench -Replay required with
         per-replay keys / rounds / seconds, auto_save refused, -ReplayCopy (adds our Constantinople copy
         tools/tw/bench/replays/constantinople_aa107f05.replay to ATN's replays folder per start and removes it by name +
         hash; only after ATN's OK), heapfix versions hash-checked + h6106 control, -Wpr mode (front again after start and
@@ -2351,7 +2352,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         for DEBUG44 (c) (sent to bug2_); I4 SkyCalibration's fixed 16 directions: Path-Traced AO ~1.6 % dark on an open
         wall; I5 specular occlusion counts directions below the horizon as blocked (rt_path.hlsli:1331-1332, 1464): an open
         plane gets SO < 1 at grazing views, worst with Squared Lobe. Owner: bug2_ (I3), then a helper fix round (I4, I5)
-      - [ ] REF BUILD (v2 order; one implementer at a time in the helper): step 0 free checks I5 / I4 / I3 + census (ref0_,
+      - [ ] (step 0 DONE ref0_ (5b41d3b72), I5 / I4 fixed by hfix_ (53da7b6e8); step 1 R0a + R0b STARTED 11:xx ref1_ (helper +
+        harness only; progress plan_1117/ref_step1.md)) REF BUILD (v2 order; one implementer at a time in the helper): step 0 free checks I5 / I4 / I3 + census (ref0_,
         started 05:xx, no helper change; I3 with bug2_); 1 R0a + R0b with B1 / B2 / APPROX / census / reference cache, the
         gates, xcheck (22-28 h; after bug2_ leaves the helper); 2 R1 torches + point-light WARPs (7-10 h); 3 dark-texel
         slice of R3 (3-5 h); 4 route B recorder + a short live proof in game + the second capture pass, 12 recordings
