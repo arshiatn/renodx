@@ -359,16 +359,17 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | fix1_ (STARTED 16:xx)
 - CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of ... | cpp_
 - CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
-- CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action u ... | ce8_
+- CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action u ... | CPU PLAN 2 END
 - CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, X ... | cb2_ High STARTED 19:3x
 - CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | ATN (allow the re-run?), then a High implementer to finish
 - CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | High implementer (bfx_ merged
-- CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | coordinator
+- CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | cb5_
 - CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | hb6_, coordinator
 - B4G THRESHOLD (hb6_ 20:1x): B4 already threaded only lists >= 32768, so B4G diff ... | coordinator (next run batch)
 - HEAPFIX NOTES 2 (hb6_ 20:1x, for the author zip): heapfix's x87 watch turned its ... | coordinator (author_notes_3)
 - CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ejd2_, coordinator
 - CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V ... | coordinator
+- C: B3 / CLASSIFIER (ATN 21:1x "why? ... This makes 0 sense": explained: the auto ... | ?
 - C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GP ... | ?
 - OURS ON THE RENDER THREAD (cpp_): our add-on anywhere on the stack 8.3 ms of nig ... | coordinator (CPU PLAN 2 END)
 - SER IN FORESTS (ATN 17:3x, Forge: SER made a huge difference in forests; his pat ... | plan step 6
@@ -2504,8 +2505,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         [slot] 0x1a2c569 / 0x1a7dd21; Thrones 0x1690320 + 0x1b2f569 + a jmp [slot]; Rome II 7 calls + 1 jmp; kernel32
         RVA 0x23650 own code, KernelBase 0x15ac70; indexes >= 0x40 go to the game's thunk). Worktrees
         agent-a96c7280ab0ca669b / agent-a4280c04499a3ae83 clean. ATN 20:0x: "forget that [ETLS], let's do the rest that
-        we dropped": ETLS dropped for good; ES8 alone = ce8_ xHigh STARTED 20:0x (no Windows-internals work; a stop =
-        report + drop). Owner: ce8_
+        we dropped": ETLS dropped for good; ES8 alone = ce8_ xHigh DONE 21:1x, merged c5da4079f (42ba5f30c:
+        engine_code.hpp READY_CHECK_STUB 85 bytes :252, sites[4] "ready checks" :518, CPU_CODE_SITES 0b10111; exact 118-byte
+        match only; Attila 0x18635a0 / Thrones 0x18d8400 / Rome II none; test part 9 :1061: counts 0..64 x every first
+        not-ready x 7 [this+4] x control block x the count's top bits + 2 M random vectors up to 4096, registers / flags
+        0x4600 / esp / 64 stack bytes / counts compared, CONTROL fails, 200 on / off switches x 4 threads; ns a call 16
+        children 55 -> 9, 64: 222 -> 24, 4 threads 690 -> 10; builds x86 OK; not benched, not installed). Owner: CPU PLAN 2 END
       - [ ] CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, XAT rt_core part; rt_scene.hpp,
         rt_core.hpp, tw_native_context; every rt_core consumer built): night1 -0.6..-1.0. Owner: cb2_ High STARTED 19:3x
       - [ ] CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src/utils; the memo design's
@@ -2525,8 +2530,8 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_motion.hpp, dlaa_bridge.hpp):
         night1 -0.3..-0.6. Owner: High implementer (bfx_ merged; start when a build slot frees: after cb2_ or cb3_)
       - [ ] CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization designs then code, EVEC design;
-        engine_code.hpp after B1): stress -1.4..-3.6. Dropped 19:4x, RESUMED by ATN 20:0x (xHigh implementer after ce8_
-        merges: same engine_code.hpp). Owner: coordinator
+        engine_code.hpp after B1): stress -1.4..-3.6. Dropped 19:4x, RESUMED by ATN 20:0x: cb5_ xHigh STARTED 21:1x (game
+        code only, no Windows internals). Owner: cb5_
       - [ ] CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, P without loopfetch, loopanim
         3 shuffled rounds; tools/tw/heapfix, never the repo) + author notes: hb6_ High STARTED 19:1x (builds + eqtest +
         bench variants + notes draft tools/tw/heapfix/author_notes_3) DONE 20:1x: B4G f7dcd23f.. (eqtest 468 lists x P / G /
@@ -2558,6 +2563,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         snapshot cost, the serial merge before the sort); ATN plays B4G meanwhile (own build, own use)? (from: cpp_)
       - [x] ANSWERED 19:2x (ATN: "Do your suggestion then": Attila first, others only through upstream; B3 starts after
         bfx_ merges) C: AF14 ships to Attila first (opt-in), other RenoDX mods only through upstream with the frozen block? (from: cpp_)
+      - [ ] C: B3 / CLASSIFIER (ATN 21:1x "why? ... This makes 0 sense": explained: the auto-mode reviewer sees single
+        commands; ATN's options: "Yes, finish it" (one agent re-runs the refused test) and / or an allow rule for our
+        test\tw_*\run.ps1 + gated_build.ps1 in the project's Claude Code settings, only on ATN's word). (from: cb3_ 21:0x)
       - [ ] C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GPU events over an alt-tab),
         B4's motion constants ring removes one of the waits; waiting for ATN's go) the focus-return lockstep (~5 s of 94 ms frames after alt-tab in big battles): investigate in a helper /
         driver round, or accept? (from: cpp_)
