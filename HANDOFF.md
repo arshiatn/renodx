@@ -385,6 +385,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - WRITER SMALL FIXES (from Sol's 0001 review): our engine_code.hpp writer: (a) a f ... | ATN's go (game-code file, theoretical today: no site crosses
 - L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; ... | after ssr_ / G1 (helper queue)
 - PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rcg_, rbk_
+- APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-th ... | apipe_
+- CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's ren ... | the combined bench (ATN's go)
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2845,6 +2847,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         rbk_ High STARTED 21:4x: RENODX_TW_PLAY_MICROMAP_LEVEL (play-only rebake from recorded inputs; unset = today;
         level 5 rebake must equal the recorded bytes; level 6 on day1_low / night1_low / stress_low / day1_battle +
         the grass recordings, two traces a point). Owner: rcg_, rbk_
+      - [ ] APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-thread last-pipeline cache in
+        front of the pipeline map lock, invalidated by a destroy generation; shared utils, opt-in Attila only (B3's
+        pattern), check mode for the bench, new test/tw_pipeline_cache; night1 -0.1..-0.2. apipe_ High STARTED 22:1x
+        (notes plan_1117/apipe_notes.md); then an xHigh review (with the pre-bench review). Owner: apipe_
+      - [ ] CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's render-thread time after
+        B2-B4 (WPR), bridge flushes step 2 (one FrameTrace frame), the alt-tab transient, view filter for the other TW
+        games after Attila's numbers, heapfix B4G numbers for the author; Sprites = ATN's look decision. Owner: the
+        combined bench (ATN's go)
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
