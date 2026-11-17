@@ -2648,11 +2648,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         test part 11: 2 M random calls, all pointer overlaps around the check edges (5 kinds), all 2^32 bit patterns through
         17 lanes, 200 switches under 4 threads; Attila full length + Thrones quick PASS. Harness region 73.5 -> 51.6 ns
         (68.1 with today's single-call stub). NOT proven: the in-game gain (-0.4..-0.6 ms render, 4-6 ms workers). Owner: ATN
-      - [ ] E3P / EVEC NOT DONE (designs only, 2026-11-17: designs/evec_e3p_design.md): E3P's four sites are particle emitter
-        code (RNG calls, x87 results) and need a stall attribution + the vtable slot targets of 0x1890b90's children from a data
-        run; EVEC's vector (the loop body at 0x17b84a0 of the function at 0x17b83a0, no direct reference to it) has no
-        located reset site; a keep-the-buffer patch is not exact in the allocator and needs a one-frame trace first.
-        Owner: ATN (go for one data run)
+      - [x] E3P site 0x1890b90 IMPLEMENTED 2026-11-17 23:xx (ejob-fork, local; offline only): "Faster Effect Prefetch
+        (Experimental, off)" = a 10th site (PREFETCH_SITES bit 9, key FasterEffectPrefetch, Update's 5th argument; Attila
+        addon row only, Thrones has the same function at 0x1905ef0 but no row, Rome II none): in the effect tree's child sum
+        (sum += child->vtable[7]() over [this+0x68], [this+0x64] items) the loop's bottom prefetches the child after the next
+        one, only when esi is inside [begin, end - 4) (the load is inside the live vector; a prefetch never faults). Exact:
+        only eax differs (dead), flags / ecx / edx / esp / memory equal. Test part 12: 400 k random trees with getters that
+        truncate / grow / shrink the list mid-loop (no-access page after the data), 1 M loop-bottom runs, 200 switches under
+        4 threads; Attila + Thrones quick PASS. Harness timing (cold children): plain getter 7.9 -> 8.5 ns a child (no gain, 0.5
+        ns cost: the core overlaps the misses), a getter busy 40 cycles 43.6 -> 30.2, busy 150 cycles 101 -> 54: it pays when the
+        getters have real work. NOT proven: the real getters' weight (the plan has this function at 1.57 ms stress, 0.22
+        night1). Bench: row on / off in stress. Owner: ATN (bench go)
+      - [ ] E3P other sites / EVEC NOT DONE (designs only, designs/evec_e3p_design.md): 0x18960d0 / 0x1893470 / 0x1840520 /
+        0x1829c50 are particle emitter code (RNG calls, x87 results) whose caller's emitter loop was not found statically
+        (the prefetch must sit there, not in 0x1892960, whose loop is a time-step loop on one emitter); EVEC's vector (the loop
+        body at 0x17b84a0 of the function at 0x17b83a0, no direct reference to it) has no located reset site and a
+        keep-the-buffer patch is not exact in the allocator: both need one data run (ETW stall attribution of the emitter
+        update, a one-frame trace of 0x17b83a0). Owner: ATN (go for one data run)
       - [ ] CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V0-V4 stress / night1 x3, day1 x2,
         sea1 x2, WPR stress / night1 / a new day1 (no sea1 WPR: GPU-bound). Owner: coordinator
       - [x] ANSWERED 19:0x (ATN: "Sure but don't forget plannings and the reviews") C: EJOB: may we change the game's job-semaphore protocol (spin-then-sleep, SetEvent only when a worker

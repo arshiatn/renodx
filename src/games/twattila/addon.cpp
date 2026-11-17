@@ -1325,6 +1325,8 @@ float engine_code_row = 1.f;
 float render_lists_row = 1.f;
 // Faster Job Wake-Ups (Experimental, off; graphics_page-style row below): engine_code.hpp's job system sites.
 float job_wakeups_row = 0.f;
+// Faster Effect Prefetch (Experimental, off): engine_code.hpp's effect tree child sum site.
+float effect_prefetch_row = 0.f;
 
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1567,7 +1569,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
-                                job_wakeups_row != 0.f);
+                                job_wakeups_row != 0.f, effect_prefetch_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
   if (!shadow_size_locked) twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::graphics_hooks::Update(
@@ -1953,6 +1955,17 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           .tooltip = "The game's main thread wakes its helper threads one by one; now one helper wakes the others.\n"
                      "Less CPU time on the main thread in big battles. Same results.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FasterEffectPrefetch",
+          .binding = &effect_prefetch_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Faster Effect Prefetch (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The game's effect update asks the memory for the next effect object while it works on the current one.\n"
+                     "Less waiting on the CPU in big battles. Same results.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

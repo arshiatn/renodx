@@ -42,6 +42,9 @@
 //    the row and the objects equal: 2 M random calls (the vector path taken exactly when all 20 floats are zeros, tiny values or
 //    normals), every offset of the row's and the objects' pointers around each overlap check's edge, all 2^32 bit patterns
 //    through 15 float lanes and the two product lanes, 200 switches while 4 threads run it, timing.
+// 12. The effect tree's child sum (+0x1890b90; Faster Effect Prefetch): the whole function on random trees with getters that
+//    change the size mid-loop, the loop's bottom alone at every place of esi around the vector (a no-access page follows the
+//    data: no load past it), cold-children timing, 200 switches under 4 threads.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -1403,6 +1406,434 @@ int RunRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32
   return 0;
 }
 
+// ---- 12. The effect tree's child sum (engine_code.hpp 8.): +0x1890b90, a prefetch of the child after the next one ----
+
+// The getters the children's vtable slot 7 (+0x1c) points to (thiscall: ecx the child, the values at +8 and +12). The first two count
+// their calls; the mutating one also sets its parent's size at the sum_trigger-th call (the game reads the bounds again after
+// every call); the timed one only returns the value.
+uint32_t sum_parent = 0;
+uint32_t sum_calls = 0;
+uint32_t sum_trigger = 0;
+uint32_t sum_new_size = 0;
+
+__declspec(naked) void SumGetPlain() {
+  __asm {
+    mov eax, [ecx + 8]
+    inc sum_calls
+    ret
+  }
+}
+
+__declspec(naked) void SumGetAdd() {
+  __asm {
+    mov eax, [ecx + 8]
+    add eax, [ecx + 12]
+    inc sum_calls
+    ret
+  }
+}
+
+__declspec(naked) void SumGetMutating() {
+  __asm {
+    mov eax, [ecx + 8]
+    mov edx, sum_calls
+    inc edx
+    mov sum_calls, edx
+    cmp edx, sum_trigger
+    jne done
+    mov ecx, sum_parent
+    mov edx, sum_new_size
+    mov [ecx + 0x64], edx
+  done:
+    ret
+  }
+}
+
+__declspec(naked) void SumGetTimed() {
+  __asm {
+    mov eax, [ecx + 8]
+    ret
+  }
+}
+
+// A getter that keeps the core busy for sum_busy cycles of dependent work after its load (a getter with real work in it).
+uint32_t sum_busy = 0;
+__declspec(naked) void SumGetBusy() {
+  __asm {
+    mov eax, [ecx + 8]
+    mov edx, sum_busy
+    test edx, edx
+    jz done
+  spin:
+    dec edx
+    jnz spin
+  done:
+    ret
+  }
+}
+
+constexpr size_t SUM_SLOTS = 48;
+
+// `this` (+0x64 the size, +0x68 the data), the children (+0 the vtable, +8 and +12 values), three vtables, and the data: 48
+// slots that end where the page's next one is no access (a load past them faults).
+struct SumWorld {
+  alignas(64) uint8_t parent[0x80];
+  alignas(64) uint8_t children[SUM_SLOTS][64];
+  alignas(64) uint32_t vtables[3][8];
+  uint32_t* slots;
+};
+
+struct SumSpec {
+  uint32_t size;
+  uint32_t kind[SUM_SLOTS];  // 0 plain, 1 add, 2 mutating
+  uint32_t first[SUM_SLOTS];
+  uint32_t second[SUM_SLOTS];
+  uint32_t garbage_from;  // the slots from here on hold invalid pointers
+  uint32_t trigger;       // the mutating getter's call that sets the size (0: never)
+  uint32_t new_size;
+};
+
+struct SumResult {
+  ReadyCall call;
+  uint32_t size_after;
+  uint32_t calls;
+};
+
+std::unique_ptr<SumWorld> MakeSumWorld() {
+  auto world = std::make_unique<SumWorld>();
+  std::memset(world.get(), 0, sizeof(SumWorld));
+  auto* memory = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x2000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+  DWORD protection;
+  VirtualProtect(memory + 0x1000, 0x1000, PAGE_NOACCESS, &protection);
+  world->slots = reinterpret_cast<uint32_t*>(memory + 0x1000 - SUM_SLOTS * sizeof(uint32_t));
+  world->vtables[0][7] = Address(reinterpret_cast<const void*>(&SumGetPlain));
+  world->vtables[1][7] = Address(reinterpret_cast<const void*>(&SumGetAdd));
+  world->vtables[2][7] = Address(reinterpret_cast<const void*>(&SumGetMutating));
+  return world;
+}
+
+void SumSetup(SumWorld* world, const SumSpec& spec) {
+  constexpr std::array<uint32_t, 3> GARBAGE = {0x10, 0xDEAD0000, 0xFFFFFFF0};
+  for (size_t index = 0; index < SUM_SLOTS; ++index) {
+    uint8_t* child = world->children[index];
+    Write32(child, Address(world->vtables[spec.kind[index]]));
+    Write32(child + 8, spec.first[index]);
+    Write32(child + 12, spec.second[index]);
+    world->slots[index] = (index >= spec.garbage_from ? GARBAGE[index % 3] : Address(child));
+  }
+  Write32(world->parent + 0x64, spec.size);
+  Write32(world->parent + 0x68, Address(world->slots));
+  sum_parent = Address(world->parent);
+  sum_calls = 0;
+  sum_trigger = spec.trigger;
+  sum_new_size = spec.new_size;
+}
+
+void SumRandom(SumSpec* spec, Random* random) {
+  const uint32_t mode = random->Next() % 4;
+  spec->size = random->Next() % 41;
+  for (size_t index = 0; index < SUM_SLOTS; ++index) {
+    spec->kind[index] = (mode == 0 ? random->Next() % 2 : 2);
+    spec->first[index] = random->Next() % 1000;
+    spec->second[index] = random->Next() % 1000;
+  }
+  spec->garbage_from = SUM_SLOTS;
+  spec->trigger = 0;
+  spec->new_size = spec->size;
+  if (mode == 0) {
+    spec->garbage_from = spec->size;  // the slots past the size are never read
+  } else if (mode == 1 && spec->size >= 1) {  // truncated at a call: the rest never read, whatever they hold
+    spec->trigger = 1 + random->Next() % spec->size;
+    spec->new_size = spec->trigger;
+    spec->garbage_from = spec->trigger;
+  } else if (mode == 2 && spec->size >= 1) {  // one to eight more children, within the 48 slots
+    spec->trigger = 1 + random->Next() % spec->size;
+    spec->new_size = std::min<uint32_t>(spec->size + 1 + random->Next() % 8, SUM_SLOTS);
+  } else if (mode == 3 && spec->size >= 2) {  // the last one removed
+    spec->trigger = 1 + random->Next() % (spec->size - 1);
+    spec->new_size = spec->size - 1;
+  }
+}
+
+// One run of the function at `function` on a world: every register random, the arithmetic flags random.
+void RunSum(SumWorld* world, const SumSpec& spec, uint32_t function, const std::array<uint32_t, 7>& in, uint32_t flags, SumResult* result) {
+  SumSetup(world, spec);
+  std::memset(&result->call, 0, sizeof(ReadyCall));
+  std::memcpy(result->call.in, in.data(), sizeof(result->call.in));
+  result->call.in[1] = Address(world->parent);
+  result->call.flags_in = (flags & 0x8D5) | 2;
+  ready_function = function;
+  CallReady(&result->call);
+  result->size_after = Read32(world->parent + 0x64);
+  result->calls = sum_calls;
+}
+
+bool SumEqual(const SumResult& a, const SumResult& b, const std::array<uint32_t, 7>& in) {
+  // esp as an offset into each run's own ReadyCall.
+  return std::memcmp(a.call.out, b.call.out, sizeof(a.call.out)) == 0 && a.call.flags_out == b.call.flags_out
+         && a.call.esp_after - Address(&a.call) == b.call.esp_after - Address(&b.call) && a.size_after == b.size_after && a.calls == b.calls && a.call.out[3] == in[3] && a.call.out[4] == in[4] && a.call.out[5] == in[5]
+         && a.call.out[6] == in[6];
+}
+
+// The loop's bottom entered by itself: the game's two instructions and the stub's copy (its jump to the loop's `jne` pointing
+// back at the harness), the registers, the flags and esp saved after; eax is not compared (the loop writes it before it reads it).
+struct SumBlockCall {
+  uint32_t in[7];      // 0: eax ecx edx ebx esi edi ebp
+  uint32_t flags_in;   // 28
+  uint32_t out[7];     // 32
+  uint32_t flags_out;  // 60
+  uint32_t saved_esp;  // 64
+  uint32_t esp_after;  // 68
+};
+uint32_t sum_block_target = 0;
+SumBlockCall* sum_block_call = nullptr;
+uint32_t sum_block_eax = 0;
+uint32_t sum_block_flags = 0;
+
+__declspec(naked) void __cdecl EnterSumBlock(SumBlockCall*) {
+  __asm {
+    pushad
+    mov ebp, [esp + 36]
+    mov sum_block_call, ebp
+    mov [ebp + 64], esp
+    push dword ptr [ebp + 28]
+    popfd
+    mov eax, [ebp + 0]
+    mov ecx, [ebp + 4]
+    mov edx, [ebp + 8]
+    mov ebx, [ebp + 12]
+    mov esi, [ebp + 16]
+    mov edi, [ebp + 20]
+    mov ebp, [ebp + 24]
+    jmp dword ptr [sum_block_target]
+  }
+}
+
+__declspec(naked) void SumBlockReturn() {
+  __asm {
+    mov sum_block_eax, eax
+    lahf
+    seto al
+    movzx eax, ax
+    mov sum_block_flags, eax
+    mov eax, sum_block_call
+    mov [eax + 36], ecx
+    mov [eax + 40], edx
+    mov [eax + 44], ebx
+    mov [eax + 48], esi
+    mov [eax + 52], edi
+    mov [eax + 56], ebp
+    mov [eax + 68], esp
+    mov ecx, sum_block_eax
+    mov [eax + 32], ecx
+    mov ecx, sum_block_flags
+    mov [eax + 60], ecx
+    mov esp, [eax + 64]
+    popad
+    ret
+  }
+}
+
+int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick) {
+  namespace ec = twattila::engine_code::internal;
+  const uint32_t function_rva = build.code->child_sum_rva;
+  CHECK(ec::sites[9].at == patched + function_rva + ec::CHILD_SUM_SITE && (ec::written >> 9 & 1) != 0);
+  CHECK(std::memcmp(ec::sites[9].game.data(), game + function_rva + ec::CHILD_SUM_SITE, 5) == 0);
+  const uint32_t game_function = Address(game + function_rva);
+  const uint32_t patched_function = Address(patched + function_rva);
+  auto world = MakeSumWorld();
+  auto result_a = std::make_unique<SumResult>();
+  auto result_b = std::make_unique<SumResult>();
+
+  // 12a. The whole function on random trees: sizes 0 to 40, plain and adding getters, and getters that set the size at one call
+  // (truncating, growing within the 48 slots, removing the last child); the slots the loop never reads hold invalid pointers.
+  // Every register, the flags, esp, the size and the number of getter calls equal; the data's page is followed by no access.
+  {
+    Random random = {.state = 0x5EED5};
+    SumSpec spec;
+    uint64_t wrong = 0;
+    uint64_t sizes_seen[3] = {};
+    const int runs = (quick ? 400'000 : 2'000'000);
+    for (int run = 0; run < runs; ++run) {
+      SumRandom(&spec, &random);
+      std::array<uint32_t, 7> in;
+      for (uint32_t& value : in) value = random.Next();
+      const uint32_t flags = random.Next();
+      RunSum(world.get(), spec, game_function, in, flags, result_a.get());
+      RunSum(world.get(), spec, patched_function, in, flags, result_b.get());
+      sizes_seen[spec.trigger == 0 ? 0 : (spec.new_size > spec.size ? 1 : 2)] += 1;
+      if (!SumEqual(*result_a, *result_b, in)) {
+        ++wrong;
+        Report("  sum: run %d: NOT equal (size %u, trigger %u -> %u; eax %08X / %08X, ecx %08X / %08X, edx %08X / %08X, flags %04X / %04X, calls %u / %u)\n", run,
+               spec.size, spec.trigger, spec.new_size, result_a->call.out[0], result_b->call.out[0], result_a->call.out[1], result_b->call.out[1],
+               result_a->call.out[2], result_b->call.out[2], result_a->call.flags_out, result_b->call.flags_out, result_a->calls, result_b->calls);
+      }
+      if (spec.trigger == 0) {  // no getter changes the size: the sum is the plain one
+        uint32_t expected = 0;
+        for (uint32_t index = 0; index < spec.size; ++index) expected += spec.first[index] + (spec.kind[index] == 1 ? spec.second[index] : 0);
+        CHECK(result_a->call.out[0] == expected && result_a->calls == spec.size);
+      }
+    }
+    CHECK(wrong == 0);
+    std::printf("12. effect tree child sum: %d random trees (%llu plain, %llu growing, %llu shrinking): every register, the flags, esp, the size and the call count equal\n",
+                runs, sizes_seen[0], sizes_seen[1], sizes_seen[2]);
+  }
+
+  // 12b. The loop's bottom by itself: esi at every place around the vector (below its begin, inside, at the end - 4, at its end, past
+  // it, or anywhere), the size 0 to 48, the begin moved; the slots hold random pointers. Every register but eax, the flags and esp equal.
+  {
+    uint8_t* blocks = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    uint8_t* game_block = blocks;
+    uint8_t* patched_block = blocks + 0x40;
+    const uint8_t bytes[5] = {0x8D, 0x0C, 0x91, 0x3B, 0xF1};
+    std::memcpy(game_block, bytes, 5);
+    JumpTo(game_block + 5, reinterpret_cast<const void*>(&SumBlockReturn));
+    std::memcpy(patched_block, ec::page + ec::CHILD_SUM_PAGE, ec::CHILD_SUM_STUB.size());
+    JumpTo(patched_block + ec::CHILD_SUM_STUB.size() - 5, reinterpret_cast<const void*>(&SumBlockReturn));
+    Random random = {.state = 0xB10C};
+    SumBlockCall a, b;
+    uint64_t loads_possible = 0;
+    uint64_t wrong = 0;
+    const int runs = (quick ? 1'000'000 : 5'000'000);
+    for (int run = 0; run < runs; ++run) {
+      for (size_t index = 0; index < SUM_SLOTS; ++index) world->slots[index] = random.Next();
+      const uint32_t size = random.Next() % (SUM_SLOTS + 1);
+      const uint32_t moved = (size > 0 ? random.Next() % std::min<uint32_t>(size + 1, 9) : 0);
+      const uint32_t begin = Address(world->slots + moved);
+      const uint32_t count = size - moved;
+      const int place = static_cast<int>(random.Next() % (SUM_SLOTS + 10)) - 4;  // slots from the data's start
+      uint32_t esi = Address(world->slots) + 4 * place;  // the game's esi steps through dwords from the begin
+      if ((random.Next() & 15) == 0) esi = random.Next() & ~3u;
+      std::memset(&a, 0, sizeof(a));
+      for (uint32_t& value : a.in) value = random.Next();
+      a.in[1] = begin;
+      a.in[2] = count;
+      a.in[4] = esi;
+      a.flags_in = (random.Next() & 0x8D5) | 2;
+      b = a;
+      sum_block_target = Address(game_block);
+      EnterSumBlock(&a);
+      sum_block_target = Address(patched_block);
+      EnterSumBlock(&b);
+      const uint32_t end = begin + 4 * count;
+      loads_possible += (esi >= begin && esi + 4 < end) ? 1 : 0;
+      const bool same = std::memcmp(a.out + 1, b.out + 1, 6 * sizeof(uint32_t)) == 0 && a.flags_out == b.flags_out && a.esp_after == b.esp_after
+                        && a.out[1] == end;
+      if (!same) {
+        ++wrong;
+        Report("  sum block: run %d: NOT equal (begin %08X count %u esi %08X: ecx %08X / %08X, flags %04X / %04X)\n", run, begin, count, esi, a.out[1], b.out[1],
+               a.flags_out, b.flags_out);
+      }
+    }
+    CHECK(wrong == 0 && loads_possible > static_cast<uint64_t>(runs) / 8);
+    std::printf("   the loop's bottom alone: %d runs (%llu with a slot to prefetch from): every register but eax, the flags and esp equal; no load past the data\n", runs,
+                loads_possible);
+    VirtualFree(blocks, 0, MEM_RELEASE);
+  }
+
+  // 12c. Timing: lists of 32 children scattered over 256 MB (each call new lists, the game's and ours alternating), one thread.
+  {
+    constexpr size_t CHILDREN = 1u << 21;
+    constexpr size_t LIST = 32;
+    constexpr size_t LISTS = 20'000;
+    auto* memory = static_cast<uint8_t*>(VirtualAlloc(nullptr, CHILDREN * 128, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    uint32_t vtable[8] = {};
+    vtable[7] = Address(reinterpret_cast<const void*>(&SumGetBusy));
+    for (size_t index = 0; index < CHILDREN; ++index) {
+      Write32(memory + index * 128, Address(vtable));
+      Write32(memory + index * 128 + 8, static_cast<uint32_t>(index & 0xFF));
+    }
+    std::vector<uint32_t> permutation(CHILDREN);
+    for (size_t index = 0; index < CHILDREN; ++index) permutation[index] = static_cast<uint32_t>(index);
+    std::vector<uint32_t> pointers(LISTS * LIST);
+    std::vector<std::array<uint8_t, 0x80>> parents(LISTS);
+    Random random = {.state = 0x71337};
+    using SumFn = uint32_t(__fastcall*)(void* self, void* unused_edx);
+    const auto game_sum = reinterpret_cast<SumFn>(game + function_rva);
+    const auto patched_sum = reinterpret_cast<SumFn>(patched + function_rva);
+    for (const uint32_t busy : {0u, 40u, 150u}) {
+    sum_busy = busy;
+    std::vector<double> game_ns, ours_ns;
+    for (int round = 0; round < 7; ++round) {
+      for (size_t index = 0; index < LISTS * LIST; ++index) {  // a partial shuffle: random children for every slot
+        const size_t other = index + random.Next() % (CHILDREN - index);
+        std::swap(permutation[index], permutation[other]);
+        pointers[index] = Address(memory + static_cast<size_t>(permutation[index]) * 128);
+      }
+      for (size_t list = 0; list < LISTS; ++list) {
+        Write32(parents[list].data() + 0x64, LIST);
+        Write32(parents[list].data() + 0x68, Address(pointers.data() + list * LIST));
+      }
+      for (const bool ours : {false, true}) {
+        const auto start = std::chrono::steady_clock::now();
+        uint32_t total = 0;
+        for (size_t list = (ours ? 1 : 0); list < LISTS; list += 2) total += (ours ? patched_sum : game_sum)(parents[list].data(), nullptr);
+        const double ns = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() * 1e9 / (LISTS / 2 * LIST);
+        (ours ? ours_ns : game_ns).push_back(ns + (total == 0xFFFFFFFFu ? 1 : 0));
+      }
+    }
+    std::sort(game_ns.begin(), game_ns.end());
+    std::sort(ours_ns.begin(), ours_ns.end());
+    std::printf("   ns a child (cold children, a getter busy for %u cycles), game / ours: %.1f / %.1f (median of 7)\n", busy, game_ns[3], ours_ns[3]);
+    }
+    VirtualFree(memory, 0, MEM_RELEASE);
+  }
+
+  // 12d. The prefetch site switched off and on 200 times while 4 threads sum their own lists with both copies of the function.
+  {
+    std::atomic<bool> stop = false;
+    std::atomic<uint64_t> bad = 0;
+    std::atomic<uint64_t> calls = 0;
+    using SumFn = uint32_t(__fastcall*)(void* self, void* unused_edx);
+    const auto game_sum = reinterpret_cast<SumFn>(game + function_rva);
+    const auto patched_sum = reinterpret_cast<SumFn>(patched + function_rva);
+    std::vector<std::thread> threads;
+    for (int worker = 0; worker < 4; ++worker) {
+      threads.emplace_back([&, worker] {
+        uint32_t vtable[8] = {};
+        vtable[7] = Address(reinterpret_cast<const void*>(&SumGetTimed));
+        std::array<std::array<uint8_t, 64>, 40> children = {};
+        std::array<uint32_t, 40> slots = {};
+        alignas(64) std::array<uint8_t, 0x80> parent = {};
+        Random thread_random = {.state = 0xAB00ull + static_cast<uint64_t>(worker)};
+        while (!stop.load()) {
+          const uint32_t size = thread_random.Next() % 41;
+          uint32_t expected = 0;
+          for (uint32_t index = 0; index < 40; ++index) {
+            const uint32_t value = thread_random.Next() % 100000;
+            Write32(children[index].data(), Address(vtable));
+            Write32(children[index].data() + 8, value);
+            slots[index] = Address(children[index].data());
+            expected += (index < size ? value : 0);
+          }
+          Write32(parent.data() + 0x64, size);
+          Write32(parent.data() + 0x68, Address(slots.data()));
+          if (game_sum(parent.data(), nullptr) != expected) ++bad;
+          if (patched_sum(parent.data(), nullptr) != expected) ++bad;
+          ++calls;
+        }
+      });
+    }
+    int busy = 0;
+    bool on = true;
+    for (int switches = 0; switches < 200; ++switches) {
+      on = !on;
+      int tries = 0;
+      do {
+        twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, on);
+        ++tries;
+      } while (((ec::written >> 9 & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
+      busy += tries > 1 ? 1 : 0;
+    }
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    stop = true;
+    for (auto& thread : threads) thread.join();
+    std::printf("   200 switches while 4 threads made %llu sums with each copy: %llu wrong (%d writes waited for a thread inside the site)\n", calls.load(), bad.load(), busy);
+    CHECK(bad.load() == 0 && (ec::written >> 9 & 1) != 0);
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1441,6 +1872,7 @@ int main(int argc, char** argv) {
   CHECK(Matches(game + text_rva, text_size, ec::LIST_PUSH) == (build.list_push_function_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::READY_CHECK) == (build.ready_check_rva != 0 ? 1u : 0u));
   CHECK(build.code->ready_check_rva == build.ready_check_rva);
+  CHECK(Matches(game + text_rva, text_size, ec::CHILD_SUM) == (build.code->child_sum_rva != 0 ? 1u : 0u));
   // B's own code as mapped (A's differs in every relocated address).
   const std::vector<uint8_t> unpatched(patched + text_rva, patched + text_rva + text_size);
   ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
@@ -1450,10 +1882,11 @@ int main(int argc, char** argv) {
   CHECK(ec::sites[3].at == (build.list_push_function_rva != 0 ? patched + build.code->list_push_rva + ec::LIST_PUSH_SITE : nullptr));
   CHECK(ec::sites[4].at == (build.ready_check_rva != 0 ? patched + build.ready_check_rva : nullptr));
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
-  twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
+  twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true);
   CHECK(ec::written == (ec::found & ~ec::JOB_SITES)
         && ec::found == (0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.ready_check_rva != 0 ? 0b10000u : 0u)
-                         | (build.code->job_wake_all_rva != 0 ? ec::JOB_SITES : 0u) | (build.code->half_rows_rva != 0 ? 0b100000000u : 0u)));
+                         | (build.code->job_wake_all_rva != 0 ? ec::JOB_SITES : 0u) | (build.code->half_rows_rva != 0 ? 0b100000000u : 0u)
+                         | (build.code->child_sum_rva != 0 ? ec::PREFETCH_SITES : 0u)));
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
     if (unpatched[at - text_rva] == patched[at]) continue;
@@ -1467,6 +1900,18 @@ int main(int argc, char** argv) {
   // The truncation's end jumps back to the harness in both copies (after Prepare: its pattern reads these bytes).
   JumpTo(game + build.truncation_resume_rva, reinterpret_cast<const void*>(&BlockReturn));
   JumpTo(patched + build.truncation_resume_rva, reinterpret_cast<const void*>(&BlockReturn));
+
+  // One part alone, right after part 1 (tests.exe <dll> quick rows | sum).
+  if (argc > 3 && std::string(argv[3]) == "rows" && build.code->half_rows_rva != 0) {
+    if (const int failed = RunRowsTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
+    std::printf("PASS (rows only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "sum" && build.code->child_sum_rva != 0) {
+    if (const int failed = RunSumTests(build, game, patched, quick); failed != 0) return failed;
+    std::printf("PASS (sum only)\n");
+    return 0;
+  }
 
   // 2. float to half.
   {
@@ -1811,7 +2256,7 @@ int main(int argc, char** argv) {
   // 8. The render lists' push.
   if (build.list_push_function_rva != 0) {
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
-    CHECK(ec::written == (ec::found & ~ec::JOB_SITES));
+    CHECK(ec::written == (ec::found & ~(ec::JOB_SITES | ec::PREFETCH_SITES)));
     const uint32_t game_push = Address(game + build.list_push_function_rva);
     const uint32_t patched_push = Address(patched + build.list_push_function_rva);
     const auto start = std::chrono::steady_clock::now();
@@ -2235,13 +2680,6 @@ int main(int argc, char** argv) {
     std::printf("9. ready check: none in this build\n");
   }
 
-  // The sprite row builder's part alone (tests.exe <dll> quick rows).
-  if (argc > 3 && std::string(argv[3]) == "rows") {
-    if (const int failed = RunRowsTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
-    std::printf("PASS (rows only)\n");
-    return 0;
-  }
-
   // 10. Faster Job Wake-Ups (the third row; its sites are off until here).
   if (build.code->job_wake_all_rva != 0) {
     twattila::engine_code::Update(true);
@@ -2258,6 +2696,15 @@ int main(int argc, char** argv) {
   } else {
     CHECK(ec::sites[8].at == nullptr);
     std::printf("11. sprite row builder: none in this build\n");
+  }
+
+  // 12. The effect tree's child sum (Faster Effect Prefetch, the fourth row).
+  if (build.code->child_sum_rva != 0) {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    if (const int failed = RunSumTests(build, game, patched, quick); failed != 0) return failed;
+  } else {
+    CHECK(ec::sites[9].at == nullptr);
+    std::printf("12. effect tree child sum: none in this build\n");
   }
 
   // Off: the game's bytes back (the harness's jumps removed first).

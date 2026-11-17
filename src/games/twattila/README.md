@@ -1,5 +1,14 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Faster Effect Prefetch (2026-11-17; offline only, not stamped, not installed, not run in game)
+
+- New: **Faster Effect Prefetch (Experimental, off)**, under Graphics (Experimental): while the game sums its effect tree
+  (the children of an effect, one call each), it asks the memory for the child after the next one. Only a prefetch of an
+  address inside the list as it is right then: no fault, nothing else changes, every result the game's. Gain only where the
+  per-child call has real work (harness, cold children: 43.6 -> 30.2 ns with 40 cycles of work, no gain with a plain getter);
+  the game's own getters are not known yet. Test (ATN): stress with the row on against off; ReShade.log "Faster Effect
+  Prefetch: on".
+
 ## Dev, Faster Game CPU Code: sprite row builder (2026-11-17; offline only, not stamped, not installed, not run in game)
 
 - Faster: **Faster Game CPU Code** (on by default) has a fourth routine on Attila and Thrones of Britannia: the sprite soldiers'
