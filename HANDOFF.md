@@ -361,7 +361,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT st ... | coordinator
 - SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
 - SKILLS UPDATE 5 (ATN 05:xx "Don't remember to add/fix skills after everything to ... | coordinator, last step of the plan
-- SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | sk4_ (4a), coordinator (4b)
+- SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator (4b)
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
 - (RAN 01:49-02:09, five starts clean, every file of ATN's restored / same (ReShad ... | coordinator, after the current merges + install, ATN's go
 - ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart batt ... | coordinator, then a CPU / memory round
@@ -2503,9 +2503,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         SDK replace audit, PT DI / RTXDI bridge, vMF, Opus review, captures incl. the WPR focus trap): the lessons into
         .agents/skills + the zip (plan_1117/plan.md step 9). Owner: coordinator, last step of the plan
       - [ ] SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix our skill sets again"): the
-        lessons of the bug fixes + reference suite into .agents/skills + the zip. 4a STARTED 08:3x sk4_ (tonight's lessons:
-        round_notes/skill_lessons_1117.md, bug1-4 / hfix / ref step 1 / captures / verification run); 4b after REF BUILD
-        steps 2-6. Owner: sk4_ (4a), coordinator (4b)
+        lessons of the bug fixes + reference suite into .agents/skills + the zip. 4a DONE sk4_ b032ea145 (32 lessons, 12 files:
+        ao-gi, game-facts, shaders-ui, sss-particles-water-fog, rt-scene, render-scale-dlss, testing, helper-fg-stability,
+        tw SKILL.md, handle-sdr-tonemap-lut, game-port-method, README; zip Downloads\RenoDX_skills_2026-11-17.zip, 48 files).
+        LEFT: 4b after REF BUILD steps 2-6 (+ the designs' lessons). Owner: coordinator (4b)
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
         (a) PsychoV35 RED: dark / shadowed pixels turn deep red under V35 (V31 fine, same frame): in Bend shots, path-torch
         shots and plain night ground: V35 mishandles near-black / negative / NaN input; fix V35 (shared, every game's
