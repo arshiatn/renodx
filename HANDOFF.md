@@ -369,7 +369,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - HEAPFIX NOTES 2 (hb6_ 20:1x, for the author zip): heapfix's x87 watch turned its ... | coordinator (author_notes_3)
 - CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ejd2_, coordinator
 - CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V ... | coordinator
-- C: B3 / CLASSIFIER (ATN 21:1x "why? ... This makes 0 sense": explained: the auto ... | ?
+- C: B3 / CLASSIFIER (21:3x: ATN "Then do it. You are allowed to": the coordinator ... | ?
 - C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GP ... | ?
 - OURS ON THE RENDER THREAD (cpp_): our add-on anywhere on the stack 8.3 ms of nig ... | coordinator (CPU PLAN 2 END)
 - SER IN FORESTS (ATN 17:3x, Forge: SER made a huge difference in forests; his pat ... | plan step 6
@@ -2563,7 +2563,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         snapshot cost, the serial merge before the sort); ATN plays B4G meanwhile (own build, own use)? (from: cpp_)
       - [x] ANSWERED 19:2x (ATN: "Do your suggestion then": Attila first, others only through upstream; B3 starts after
         bfx_ merges) C: AF14 ships to Attila first (opt-in), other RenoDX mods only through upstream with the frozen block? (from: cpp_)
-      - [ ] C: B3 / CLASSIFIER (ATN 21:1x "why? ... This makes 0 sense": explained: the auto-mode reviewer sees single
+      - [ ] C: B3 / CLASSIFIER (21:3x: ATN "Then do it. You are allowed to": the coordinator's write of
+        D:\Dev\renodx\.claude\settings.local.json (allow rules for test\tw_*\run.ps1 + gated_build.ps1) was REFUSED by
+        the classifier as "[Undermining Oversight]": not retried; only ATN can add such rules themself (the exact JSON
+        is in the 21:3x answer); cb3_ resumed on ATN's explicit OK to re-run the refused test once; a second refusal =
+        B3 parked for good) (ATN 21:1x "why? ... This makes 0 sense": explained: the auto-mode reviewer sees single
         commands; ATN's options: "Yes, finish it" (one agent re-runs the refused test) and / or an allow rule for our
         test\tw_*\run.ps1 + gated_build.ps1 in the project's Claude Code settings, only on ATN's word). (from: cb3_ 21:0x)
       - [ ] C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GPU events over an alt-tab),
