@@ -350,6 +350,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best c ... | cpb_
 - O1 NIGHT1 TRACE (des1_ step 0): one night1 frame trace for the O1 census (which ... | coordinator
 - WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffus ... | next WH3 helper round
+- X86 64-BIT ATOMIC LOADS (rv4_ 10:5x): std::atomic<uint64_t> loads in the x86 add ... | next shared-utils round (with the memo)
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -2247,7 +2248,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         GetResourceViewClone cached, values only; 27 failure places each with a guard + test; check mode
         RENODX_RESOURCE_MEMO_CHECK=1, kill switch RENODX_RESOURCE_MEMO=0; M1 measurement (one night1 start, throwaway trace
         build: epoch bumps per writer, lookups / views per thread) then go if >= 0.1 ms; ~4 agent-days, 2 game runs, 2
-        reviews; review rv4_ (Opus xHigh) STARTED -> designs/utils_view_memo_review.md) UTILS RESOURCE MEMO (ATN 09:10 "Sure"; cpu3_ D3, design cpu_steps_5_10.md 10a): a per-thread memo in front of
+        reviews; review rv4_ DONE 10:5x: build after changes: B1 a native-width epoch on x86 (no 'off on x86'), B2 the
+        uuid'd block frozen at C1 (protocol change = new uuid; M1 picks the layout first), B3 M1 attribution by
+        source_location / frame-pointer build; 9 missed failure places (tokens not counts, AddonInit attach, pinned modules,
+        destroy fan-out, late-loaded DLL TLS, ...); ut1_ REVISING) UTILS RESOURCE MEMO (ATN 09:10 "Sure"; cpu3_ D3, design cpu_steps_5_10.md 10a): a per-thread memo in front of
         src/utils' ResourceViewInfo lookups with an epoch every writer bumps; audit every writer + measured write rate first,
         a cross-check switch, then every RenoDX mod gets it (est. -0.2..-0.4 ms Attila night1). Owner: next CPU implementer
       - [ ] HELPER SCREENSHOT KEY (ATN 09:10 "Sure go ahead"): the helper (64-bit, own process) saves the 4K HDR screenshot
@@ -2319,6 +2323,11 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffuse while the helper's paths /
         bounce use Lambert: measure the seen-vs-unseen ratio on WH3 (path probe) and, if it differs, give the helper WH3's
         diffuse at path hits (a consistency bug fix, on by default). Owner: next WH3 helper round
+      - [ ] X86 64-BIT ATOMIC LOADS (rv4_ 10:5x): std::atomic<uint64_t> loads in the x86 add-ons (command_action_fast.hpp
+        112 / 243 epoch, rt_core.hpp 1149 destroyed_devices) may compile to two 32-bit loads under clang (MSVC STL
+        __iso_volatile_load64); benign today (small counters: the high word stays 0 below 2^32 events), so a safety fix:
+        check the x86 disassembly, then a native-width counter (uintptr_t / 32-bit with a wrap rule) or an interlocked load.
+        Owner: next shared-utils round (with the memo)
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
