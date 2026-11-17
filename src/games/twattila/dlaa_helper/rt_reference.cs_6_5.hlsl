@@ -244,6 +244,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     // The furnace's box closed for every ray (no first-ray reach: G1).
     const float first_range = furnace ? 1.0e4f : (((path_flags & PATH_AMBIENT) != 0u) ? min(bounce_range, sky_range) : bounce_range);
     const float3 screen_albedo = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : UNSEEN_ALBEDO;
+    const float3 direct = ((ref_word & REF_DIRECT) != 0u) ? RefLights(origin, normal, 32u, overflow) : 0.f;
 #else
     const float roughness = saturate(guide_roughness[pixel]);
     const float alpha = ReflectAlpha(roughness);
@@ -269,10 +270,10 @@ void main(uint3 id : SV_DispatchThreadID) {
         if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) leaving += RefLights(origin, normal, 128u, overflow);
         sum += float4(screen_albedo * leaving, 1.f);
       } else if (variant == REF_SAME_ROUTE) {
-        sum += float4(RefRouteIncoming(origin, RefCosineDirection(normal, u), normal, first_range, id.xy, sample_index, overflow), 1.f);
+        sum += float4(direct + RefRouteIncoming(origin, RefCosineDirection(normal, u), normal, first_range, id.xy, sample_index, overflow), 1.f);
       } else {
-        sum += float4(RefIncoming(origin, RefCosineDirection(normal, u), normal, first_range, furnace, variant == REF_CONTACT || variant == REF_CONTACT_SKY,
-                                  variant == REF_CONTACT_SKY, id.xy, sample_index, overflow, cut),
+        sum += float4(direct + RefIncoming(origin, RefCosineDirection(normal, u), normal, first_range, furnace, variant == REF_CONTACT || variant == REF_CONTACT_SKY,
+                                           variant == REF_CONTACT_SKY, id.xy, sample_index, overflow, cut),
                       1.f);
       }
 #else

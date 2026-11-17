@@ -123,6 +123,10 @@ static const uint REF_SAME_ROUTE = 5u;
 static const uint REF_CONTACT_SKY = 6u;
 // Its synthetic control (the word's bit 8): the reference x ref_parameters[1].x.
 static const uint REF_SCALED = 256u;
+// The word's bit 9 (RENODX_TW_REF_DIRECT): each sample also brings the texel's own direct light of the first BOUNCE_LIGHTS
+// local lights (rt_scene.hlsli BOUNCE_LIGHTS, 32: their exact sum, each with its own ray): what Torch and Fire Light from
+// Path Tracing adds to the bounce.
+static const uint REF_DIRECT = 512u;
 
 static const float REF_PI = 3.14159265f;
 static const uint REF_MAX_VERTICES = 32u;  // a path's vertex cap (its paths cut there are counted)
