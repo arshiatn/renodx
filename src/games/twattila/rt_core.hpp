@@ -4065,6 +4065,8 @@ inline void DrawDebugView(ID3D11DeviceContext* native, ID3D11Texture2D* target) 
                                     runtime.debug_ambient_frame == runtime.frame && objects.debug_ambient};
   uint32_t made_bits = 0;
   for (size_t index = 0; index < made.size(); ++index) made_bits |= made[index] ? (1u << index) : 0u;
+  // The light mask's words are shadow ratios this frame (Torch and Fire Shadows from Path Tracing: rt_debug's RATIO_WORDS).
+  if (runtime.lights_in_bounce == 3) made_bits |= 256u;
   struct DebugConstants {
     std::array<uint32_t, 4> view;
     std::array<float, 4> size;

@@ -7,8 +7,9 @@
 // (copied over the tone mapper's output); All (9) tiles the eight in a 3 x 3 grid, in their order. Sun Shadows (1),
 // Ambient Occlusion (2), Specular Occlusion (5), Fog Shadows (7) and Screen-Space AO (8: the game's AO pass, its or
 // GT-VBAO's): white open or lit, black blocked. Light Bounce (3) and Reflections (4): their light (x / (1 + x)), the
-// Light Bounce's sky dark blue. Point Light Shadows (6): redder the more of the traced lights are blocked. Magenta: the
-// effect made nothing this frame (off, or not traced).
+// Light Bounce's sky dark blue. Point Light Shadows (6): redder the more of the traced lights are blocked (with Torch
+// and Fire Shadows from Path Tracing a word below the top bit is the pixel's shadow ratio: redder the less of their
+// light it lets through). Magenta: the effect made nothing this frame (off, or not traced).
 Texture2D<float> sun_visibility : register(t0);
 Texture2D<float> ambient : register(t1);
 Texture2D<float4> bounce : register(t2);
@@ -21,7 +22,9 @@ RWTexture2D<float4> picture : register(u0);
 
 cbuffer rt_debug : register(b0)
 {
-  uint4 rt_debug;  // x the view, y bit v - 1: view v made this frame, z the traced lights, w the Light Bounce's texel (render pixels a side)
+  // x the view, y bit v - 1: view v made this frame (bit 8: the light mask's words are shadow ratios, rt_local_lights.hlsli),
+  // z the traced lights, w the Light Bounce's texel (render pixels a side)
+  uint4 rt_debug;
   float4 size;     // xy the render size, zw the picture's
 #ifdef RT_DEBUG_AO_MAPPING
   float4 ao_mapping;  // x how much further the sun draws read the AO texture than a pixel's share of the picture
@@ -30,6 +33,7 @@ cbuffer rt_debug : register(b0)
 
 static const uint VIEWS = 8u;
 static const uint ALL = 9u;
+static const uint RATIO_WORDS = 256u;  // rt_debug.y
 
 // A view's colour at a render pixel.
 float3 ViewColour(uint view, uint2 render)
@@ -48,8 +52,14 @@ float3 ViewColour(uint view, uint2 render)
     }
     case 5u: return 0.8f * specular.Load(int3(render, 0));
     case 6u: {
+      const uint word = light_mask.Load(int3(render, 0));
+      // A ratio word (its top bit clear; read as bits it came out red at every ratio). With the top bit the word is the
+      // pixel's own bits (its bit 31 lit, never a blocked light).
+      if ((rt_debug.y & RATIO_WORDS) != 0u && word < 0x80000000u) {
+        return lerp(float3(0.8f, 0.8f, 0.8f), float3(0.8f, 0.f, 0.f), 1.f - saturate(asfloat(word)));
+      }
       const uint traced = (rt_debug.z >= 32u) ? 0xFFFFFFFFu : ((1u << rt_debug.z) - 1u);
-      const float blocked = (float)countbits(~light_mask.Load(int3(render, 0)) & traced);
+      const float blocked = (float)countbits(~word & traced);
       return lerp(float3(0.8f, 0.8f, 0.8f), float3(0.8f, 0.f, 0.f), saturate(blocked / 3.f));
     }
     case 7u: return 0.8f * fog.Load(int3(render / 4u, 0));
