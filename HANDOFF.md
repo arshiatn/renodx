@@ -341,7 +341,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (STARTED 02:1x bug4_: causes + census + add-on-side fixes, helper side as a plan ... | coordinator -> bug4_ after the captures
 - (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
 - REF1 REVIEW (rev_ 04:xx, Opus xHigh: plan_1117/reference_suite_review.md, verdic ... | ref_ (v2), then one implementer at a time after bug2_ leaves
-- REVIEW LEADS = LIKELY BUGS (rev_ 04:xx, to verify then fix in the helper after b ... | bug2_ (I3), then a helper fix round (I4, I5)
+- (PROVEN ref0_ 07:xx, test/tw_rt_open_sky merged 5b41d3b72 (WARP, the helper's ow ... | bug2_ (I3), then a helper fix round (I4, I5)
 - REF BUILD (v2 order; one implementer at a time in the helper): step 0 free check ... | coordinator
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
@@ -2232,7 +2232,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         Order: (1) free checks I3 / I4 / I5 + a NaN / Inf / negative census, (2) R0a + R0b, (3) R1 torches + point-light
         mask WARP, (4) H0 dark texels, (5) route B + second capture pass, (6) R2 + coverage, then the rest. Owner: ref_ (v2),
         then one implementer at a time after bug2_ leaves the helper
-      - [ ] REVIEW LEADS = LIKELY BUGS (rev_ 04:xx, to verify then fix in the helper after bug2_): I3 the 3x3 bounce apply and
+      - [ ] (PROVEN ref0_ 07:xx, test/tw_rt_open_sky merged 5b41d3b72 (WARP, the helper's own rt_path shader, -Expect now
+        passes today / -Expect exact for the fix); report bugs_1117/ref0_free_checks.md, fix sketch bugs_1117/ref0/
+        fix_sketch.diff: I5 SO on an open plane = P(n.l > 0): 0.965-0.990 default lobe, down to 0.50 Squared Lobe; under
+        roofs 1 - P of the game's sky leaks (up to 3.5 % / 24 %); fix: weight samples by G2/G1, divide by the summed
+        weights, redraw below-horizon draws up to twice, else keep last frame: SO 1.0000 open, roof control 0; look: open
+        ground reflections +1.0..+3.7 % (x2 Squared Lobe), no sky leak under roofs. I4 closed form of the cube's cosine
+        mean, 6 SkyLight calls instead of 16: walls +1.6 %, 45 deg +0.7 %, floors same, coloured sky R -0.4 % B +1.3 %;
+        WARP 0.9980-1.0011 of OpenSky. I3 (bug2_ owns): offset alone leaves 0.39 px, offset + taps by distance = 0.00.
+        Census: 3,672 harness dumps + capture logs: 0 NaN / Inf / negative. LEFT: the helper fixes I5 + I4 (on by default,
+        ATN's rule) after bug2_ leaves the helper; tw_rt_open_sky into testing.md) REVIEW LEADS = LIKELY BUGS (rev_ 04:xx, to verify then fix in the helper after bug2_): I3 the 3x3 bounce apply and
         the path torch-shadow ratio place each low-resolution texel at its block's top-left pixel while the paths sample
         its centre (light_bounce_apply.hlsli:42, rt_lights.cs_6_5.hlsl:162 vs rt_path.hlsli:839): a scale/2 px shift, lead
         for DEBUG44 (c) (sent to bug2_); I4 SkyCalibration's fixed 16 directions: Path-Traced AO ~1.6 % dark on an open
