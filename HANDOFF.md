@@ -186,7 +186,7 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [ ] C: LOD bias presets: they now turn "on All Textures" on but leave the level row (Off / Matched / Sharper / Sharpest) alone: a player at Off still gets no bias after a preset. Should presets turn Off back to Sharper (the default) and keep any other level? (from: bug3_ 03:xx)
 - [x] ANSWERED 05:xx (ATN: "They should be on by default, no? Bug fixes => more correct. Why should we leave bugs.": every proven bug fix on by default, numbers listed for ATN; memory feedback_experimental_rows) C: Reference-suite bug fixes that change our effects' look (once proven): specular occlusion brighter at grazing views on open ground (I5), Path-Traced AO ~1.6 % brighter on open walls with an exact sky calibration (I4), bounce / torch light / torch shadow ratio moved by half a low-resolution texel (I3, the crack-line lead), AO's sun-dependent normal: on by default as bug fixes (coordinator's recommendation: they are more correct; numbers listed for you), or Experimental rows first? (from: ref_ v2 05:xx)
 - [x] ANSWERED 05:xx (ATN: "to pbrt, yeah why not. It is apache 2.0": fetched 05:xx into tools/refcode/pbrt-v4, 20e41fd8 2026-11-15, 34 MB, no submodules) C: Download pbrt-v4 (Apache-2.0, github.com/mmp/pbrt-v4, not NVIDIA) for the reference suite's xcheck test (our samplers vs pbrt-v4 on the CPU)? Without it the check reads pbrt-v4 online / uses Falcor (NVIDIA, fetched). (from: ref_ v2 05:xx)
-- [ ] C: CPU round runs (cpu1_ 09:xx, plan_1117/cpu_round_plan.md): OK to run the bench / data runs on night1, sea1, stress_test_log2 (heapfix A / P / your v6.10.6 copy as control, add-on trim, engine patches; the data run's sampler pauses game threads for microseconds)? [ANSWERED 08:5x: ATN put it in for good, named day1: day1.replay copied (aa107f05), the bench knows it] Your WPR tasks set to run hidden (they take the game's focus)? The 2.7-s RT freeze at battle start / after alt-tab: draw a few frames without rays, and / or a longer release timer? Our own screenshot key in the helper (ReShade's 4K shots each take 30-95 MB of the game's 32-bit space)? Shared-utils change for the resource-info lookups (cpu3_ D3: a memo in src/utils used by every RenoDX mod, exact only if every writer bumps an epoch; est. -0.2..-0.4 ms night1; needs an audit + a measured write rate first)? Small Soldiers as Sprites after its run? heapfix: a package for its author (P = prefetched sort), or move to the official 7.0? (from: cpu1_ 09:xx)
+- [x] C: (ANSWERED ATN ~09:10: benches yes (cpb_ running), replay = day1, SHaRC update + fix as default, shared-utils memo yes, own screenshot key yes, RT freeze: coordinator's suggestion, heapfix: always from our best version, Small Soldiers as Sprites: performance only; boxes ATN 09:10 ANSWERS) CPU round runs (cpu1_ 09:xx, plan_1117/cpu_round_plan.md): OK to run the bench / data runs on night1, sea1, stress_test_log2 (heapfix A / P / your v6.10.6 copy as control, add-on trim, engine patches; the data run's sampler pauses game threads for microseconds)? [ANSWERED 08:5x: ATN put it in for good, named day1: day1.replay copied (aa107f05), the bench knows it] Your WPR tasks set to run hidden (they take the game's focus)? The 2.7-s RT freeze at battle start / after alt-tab: draw a few frames without rays, and / or a longer release timer? Our own screenshot key in the helper (ReShade's 4K shots each take 30-95 MB of the game's 32-bit space)? Shared-utils change for the resource-info lookups (cpu3_ D3: a memo in src/utils used by every RenoDX mod, exact only if every writer bumps an epoch; est. -0.2..-0.4 ms night1; needs an audit + a measured write rate first)? Small Soldiers as Sprites after its run? heapfix: a package for its author (P = prefetched sort), or move to the official 7.0? (from: cpu1_ 09:xx)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -333,6 +333,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (sk3_ 01:xx) Shared shaders rule (skills lesson 12): rysesonofrome/upscale_outpu ... | next shared round
 - CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila ... | coordinator
 - CPU ROUND PLAN (cpu1_ 09:xx, design: plan_1117/cpu_round_plan.md): corrections: ... | coordinator
+- ATN 09:10 ANSWERS (each its own box below): CPU benches started (cpb_, plan_1117 ... | coordinator
+- CPU BENCH RUNS (cpb_ started 09:1x, ATN's OK): dry run; heapfix A / P / h6106 x3 ... | cpb_
+- SHARC UPDATE (ATN 09:10 "update to nvidia sdk's newer version and fix the bug .. ... | coordinator (next helper implementer after rv3_)
+- UTILS RESOURCE MEMO (ATN 09:10 "Sure"; cpu3_ D3, design cpu_steps_5_10.md 10a): ... | next CPU implementer
+- HELPER SCREENSHOT KEY (ATN 09:10 "Sure go ahead"): the helper (64-bit, own proce ... | next helper / add-on implementer
+- RT FREEZE 2.7 S (ATN 09:10 "What do you suggest?"): coordinator's suggestion: dr ... | next helper round
+- RENDER SCALE CENSUS, OTHER GAMES (ATN 09:10 asked whether every shader was check ... | next render-scale round
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -355,8 +362,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
 - (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
-- DESIGN PT DI (des1_ started 08:2x, plan step 5, docs only): plan_1117/designs/pt ... | des1_, coordinator (review)
-- DESIGN VMF (des2_ started 08:2x, docs only): plan_1117/designs/vmf_diffuse.md: m ... | des2_, coordinator (review)
+- DESIGN PT DI (des1_ DONE 09:0x, 559 lines; review rv1_ (Opus xHigh) STARTED -> d ... | des1_, coordinator (review)
+- DESIGN VMF (des2_ DONE 09:1x, 493 lines + designs/vmf_mc Monte Carlo; review rv2 ... | des2_, coordinator (review)
 - DESIGN SDK AUDIT (des3_ DONE 08:4x, review rv3_ (Opus xHigh) STARTED 08:5x -> de ... | des3_, coordinator (review, verdict column)
 - VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT st ... | coordinator
 - SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
@@ -2211,6 +2218,36 @@ heading text are in HANDOFF_ARCHIVE.md)
         exit: exact without the copy + an early exit, est. -1.5..-2 ms stress); memcpy call sites need the data run (933
         sites in 508 functions); draw-replay callback timing not done (needs a new replay mode). LEFT: steps 5-12 after
         hfix_ leaves shared code; runs after ATN's OK. Owner: coordinator
+      - [ ] ATN 09:10 ANSWERS (each its own box below): CPU benches started (cpb_, plan_1117/cpu_bench_results.md);
+        SHaRC 1.8.3 + buffer lifetime fix on by default; shared-utils memo yes; helper screenshot key yes; RT freeze as
+        the coordinator suggests; heapfix improvements always from our best version (P + our fixes); Small Soldiers as
+        Sprites performance only. Owner: coordinator
+      - [ ] CPU BENCH RUNS (cpb_ started 09:1x, ATN's OK): dry run; heapfix A / P / h6106 x3 + P / B4 / loopanim / x87keep x2
+        on stress; A / P x2 night1; trim A/B night1 + sea1 x2; Small Soldiers as Sprites stress x2 (performance only); data
+        run (sampler, va_probe2, a screenshot, 60 s out of front, a restart); capture v3 WPR A vs P; day1 Constantinople
+        bench. Results plan_1117/cpu_bench_results.md. Owner: cpb_
+      - [ ] SHARC UPDATE (ATN 09:10 "update to nvidia sdk's newer version and fix the bug ... Bug fixes should become
+        default"): SHaRC 1.6.5 -> 1.8.3 + GrowBuffer(std::addressof(...)) for sharc_buffers_ (cache kept across frames),
+        build.ps1 picks 1.8.3 explicitly, our clamp + NaN guard (1.8.3 dropped the anti-firefly filter), entry-0 overflow
+        gone with 1.8.3; depth-4 / 4K soak before depth 4; on by default once HARNESS_DUMP / reference / soak pass (design
+        D1 in designs/sdk_replace_audit.md, after rv3_'s review). Same round: the OMM bake's per-bake buffers
+        (&gpu.uvs / &gpu.transient[pool]) after checking the OMM SDK's transient-pool contract. Owner: coordinator (next helper
+        implementer after rv3_)
+      - [ ] UTILS RESOURCE MEMO (ATN 09:10 "Sure"; cpu3_ D3, design cpu_steps_5_10.md 10a): a per-thread memo in front of
+        src/utils' ResourceViewInfo lookups with an epoch every writer bumps; audit every writer + measured write rate first,
+        a cross-check switch, then every RenoDX mod gets it (est. -0.2..-0.4 ms Attila night1). Owner: next CPU implementer
+      - [ ] HELPER SCREENSHOT KEY (ATN 09:10 "Sure go ahead"): the helper (64-bit, own process) saves the 4K HDR screenshot
+        from a copy of the swap chain so the 32-bit game's address space pays nothing (ReShade's 4K shot takes 30-95 MB
+        of it for good); a key + a row, PNG like ReShade's. Owner: next helper / add-on implementer
+      - [ ] RT FREEZE 2.7 S (ATN 09:10 "What do you suggest?"): coordinator's suggestion: draw the game's own effects
+        (shadows / AO) while the rays rebuild after a battle start / alt-tab instead of holding the frame, fade the rays in
+        over ~0.5 s once ready; first measure where the 2.6-2.7 s go (scene rebuild, BLAS, PSO, the release timer). Owner:
+        next helper round
+      - [ ] RENDER SCALE CENSUS, OTHER GAMES (ATN 09:10 asked whether every shader was checked): bug4_'s static census
+        covered every shader in the whole dumps of the 7 view_share games (Attila, Thrones, Rome II, WH1, WH2, Troy,
+        Pharaoh: 304 overlay readers fixed); not covered: WH3, Shogun 2, Rome Remastered and the non-TW games' render
+        scale paths; open from it: the foam distortion below 100 % (plan only) and the 10 WH1 / WH2 sun shaders at 33 %
+        (bug4 (c), a 50 % trace). Owner: next render-scale round
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
@@ -2465,11 +2502,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         2026.3 are the newest already; Aftermath dev-only switch = audit A33 (ATN); (g) licence: RTX SDKs licence 4(e): NVIDIA
         files never under the repo's MIT header: keep fetching them at build time as NRD / SHaRC; library headers
         unchanged, single functions copied with NVIDIA's notice. Owner: coordinator, per plan step
-      - [ ] DESIGN PT DI (des1_ started 08:2x, plan step 5, docs only): plan_1117/designs/pt_di_rtxdi.md: PT DI through
+      - [ ] DESIGN PT DI (des1_ DONE 09:0x, 559 lines; review rv1_ (Opus xHigh) STARTED -> designs/pt_di_rtxdi_review.md;
+        decisions: a shadow ratio per pixel (K=2 picks by the game's own light weights) instead of DI reservoirs, torches in
+        the paths from the pixel's light mask, our ReSTIR GI core kept + bias correction (CONFLICT with the audit's RTXDI GI:
+        rv1_ settles it), bridge v32; lead L1: 20 of 40 Attila point-light shaders fall off linearly but LightArriving
+        squares it (sent to ref2_'s R1 gate); ~76 agent-h + 16 GPU-h; 8 questions in the file) plan_1117/designs/pt_di_rtxdi.md: PT DI through
         RTXDI-Library's RAB_* bridge keeping the game's light formula, torches via one DI + GI reservoir, the ReSTIR GI
         upgrades (lin2026, junkins2026, pairwise MIS / duplication map / RR decorrelation, kajiya feedback check); then an
         Opus xHigh review, ATN's short summary. Owner: des1_, coordinator (review)
-      - [ ] DESIGN VMF (des2_ started 08:2x, docs only): plan_1117/designs/vmf_diffuse.md: math + shared vmf_diffuse.hlsli,
+      - [ ] DESIGN VMF (des2_ DONE 09:1x, 493 lines + designs/vmf_mc Monte Carlo; review rv2_ (Opus xHigh) STARTED ->
+        designs/vmf_diffuse_review.md; the paper itself unread (403 / 81 MB PDF): its fits + r-to-kappa = step 0; brightness
+        kept, shape only; roughness from the gloss guide x a slider; 3 rows Experimental off; look +13 / -12 % at 45 deg,
+        up to +-41 % low sun; <= 0.30 ms; 23-32 h Attila) plan_1117/designs/vmf_diffuse.md: math + shared vmf_diffuse.hlsli,
         every place (RT / PT shading, GT-VBGI / GT-VBAO, the game's diffuse as a row), roughness per game, rows + look change
         in numbers, tests (Lambert bit-exact at roughness 0, furnace, Falcor / pbrt-v4); then an Opus xHigh review. Owner:
         des2_, coordinator (review)
