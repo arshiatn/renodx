@@ -2392,8 +2392,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         sent to rec_ with the GPU-bake journal; helper + ReShade.ini restored; FIXED rec_ (merged 53835d58e: NRD histories +
         fixed 16.66 ms NRD timing, GPU bakes journaled, snapshot gives up after ~30 s with a log line, recorder.log, Nsight
         frame trigger; game-like round trip 58 / 58, play vs play 58 / 58; rt_place's first-come dedupe still differs
-        between two plays (trace outputs equal): a production-shader determinism box); LIVE PROOF 2 + the capture pass
-        STARTED 16:xx (run2_, build rec_det3 95706F83D95F, GPU baking on). Was: LEFT (1) live proof (run2_ low runner 14:xx: stress paused + moving, GPU-baking refusal, Alt+Enter ->
+        between two plays (trace outputs equal): a production-shader determinism box); LIVE PROOF 2 FAILED 16:xx (run2_, rec_det3
+        95706F83D95F, ATN's DLAA + RR so 0 NRD denoisers, GPU baking on; recordings/live_proof2, ~27 GB + dumps): 4
+        recordings complete (~6.7 GB each), but PLAY VS PLAY differs too (33 same / 21 different; the bounce + reflection
+        outputs, the bounce cache albedo / radiance / sums, reuse_data_0 / 1): something on at ATN's live settings is
+        order-dependent on the GPU (the harness atn mode was 58 / 58); Alt+Enter gave a normal recording (resize maybe
+        outside the 2 frames); no Nsight, no capture pass. rec_ DIAGNOSING (recorder-side fixes only; production
+        nondeterminism -> a plan + a noise-floor mode in rec_compare, fix1_ owns rt_path / rt_place now). Also: 6 zombie
+        Attila processes (0 handles) until a reboot; recordings/live_proof (~20 GB) kept. Was: LEFT (1) live proof (run2_ low runner 14:xx: stress paused + moving, GPU-baking refusal, Alt+Enter ->
         INCOMPLETE, 67 %, offline play + compare + one Nsight trace); (2) GPU Micromap Baking journal (rec_ again: ATN plays
         with RayTracedGpuMicromaps=1, recordings should match); (3) the 12-recording capture pass (night1 / sea1 / stress /
         day1 x 3 views, ~55 GB at 4K, C: 206 GB free) with ATN's settings; NRD's own history not recorded (first played
