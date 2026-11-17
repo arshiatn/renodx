@@ -1797,8 +1797,56 @@ constexpr std::array<twattila::water_effects::WaterShader, 68> WATER_SHADERS = {
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.
-constexpr std::array<twattila::view_share::RegionRead, 1> RENDER_SCALE_READS = {{
+// The overlays' readers, as Attila's (twattila/addon.cpp RENDER_SCALE_READS): the overlays are drawn by the main camera into
+// display-sized targets, so below 100% into their render share; the ocean reads them at the uv its vertex shader projects,
+// the sun (slm) and the campaign's planes through g_overlay_view_projection: no camera chain view_share finds. Their share
+// only while the overlay is display-sized or a halving (else as at 100%). Census: tools/tw/round_notes/bugs_1117/bug4_census.py.
+constexpr std::array<twattila::view_share::RegionRead, 42> RENDER_SCALE_READS = {{
     {.shader_hash = 0x075C096D, .slots = 0b11},  // glow bright pass (after DLSS)
+    // ocean: the colour overlays.
+    {.shader_hash = 0x08F4ABBA, .slots = 0b110000000000},  // ocean ps40_main_high (gather_4_1)
+    {.shader_hash = 0x4AC49258, .slots = 0b1100000},  // ocean ps40_main_low (baked shadows)
+    {.shader_hash = 0x81A50766, .slots = 0b110000000},  // ocean ps40_main_high
+    {.shader_hash = 0xC142A785, .slots = 0b110000000000},  // ocean ps40_main_high (fetch4)
+    {.shader_hash = 0xE249DB49, .slots = 0b11000000000},  // ocean ps40_main_high (baked shadows)
+    {.shader_hash = 0xF2B8C7B5, .slots = 0b1100000},  // ocean ps40_main_low (gather_4_1)
+    // directionallight slm: the overlay.
+    {.shader_hash = 0x049C3CFB, .slots = 0b100000000000},  // directionallight ps40_slm_highdef (fetch4)
+    {.shader_hash = 0x0989C3CE, .slots = 0b100000000},  // directionallight ps40_slm_highdef
+    {.shader_hash = 0x0EFE48EB, .slots = 0b1000000000},  // directionallight ps41_slm_edges_ms
+    {.shader_hash = 0x2599D799, .slots = 0b100000000000},  // directionallight ps40_slm_highdef (gather_4_1)
+    {.shader_hash = 0x3E215AAC, .slots = 0b100000000000},  // directionallight ps41_slm_edges_ms (baked shadows)
+    {.shader_hash = 0x464036D6, .slots = 0b1000000000},  // directionallight ps41_slm_interior_ms
+    {.shader_hash = 0x5B17424A, .slots = 0b1000000000000},  // directionallight ps41_slm_interior_ms (fetch4)
+    {.shader_hash = 0x6D3D2B69, .slots = 0b1000000000000},  // directionallight ps41_slm_edges_ms (fetch4)
+    {.shader_hash = 0x707B069C, .slots = 0b1000000000000},  // directionallight ps41_slm_interior_ms (gather_4_1)
+    {.shader_hash = 0x76E178F0, .slots = 0b10000000000},  // directionallight ps40_slm_highdef (baked shadows)
+    {.shader_hash = 0xE616A792, .slots = 0b100000000000},  // directionallight ps41_slm_interior_ms (baked shadows)
+    {.shader_hash = 0xEB98DED2, .slots = 0b1000000000000},  // directionallight ps41_slm_edges_ms (gather_4_1)
+    // the campaign's sea, shroud plane and map quad: the overlay.
+    {.shader_hash = 0x14856F8D, .slots = 0b10000000000},  // shroud_plane troy_shroud_ps_ss (gather_4_1)
+    {.shader_hash = 0x2AD79ECA, .slots = 0b10000},  // water ps_campaign_sea_low (baked shadows)
+    {.shader_hash = 0x2C1F9FA0, .slots = 0b100},  // water ps_campaign_sea_ultra
+    {.shader_hash = 0x2E12E239, .slots = 0b100},  // water ps_campaign_sea_high
+    {.shader_hash = 0x2E660037, .slots = 0b100000},  // water ps_campaign_sea_low (gather_4_1)
+    {.shader_hash = 0x31AF02FE, .slots = 0b10000000000},  // shroud_plane troy_shroud_ps_ms2 (gather_4_1)
+    {.shader_hash = 0x3F289065, .slots = 0b10000},  // water ps_campaign_sea_medium (baked shadows)
+    {.shader_hash = 0x55CABB08, .slots = 0b100000},  // water ps_campaign_sea_high (fetch4)
+    {.shader_hash = 0x5D77B117, .slots = 0b100000},  // water ps_campaign_sea_low (fetch4)
+    {.shader_hash = 0x5E171391, .slots = 0b10000000000},  // shroud_plane troy_shroud_ps_ss (baked shadows)
+    {.shader_hash = 0x5F53DEE8, .slots = 0b100000},  // water ps_campaign_sea_ultra (gather_4_1)
+    {.shader_hash = 0x659D3BC7, .slots = 0b100000},  // water ps_campaign_sea_high (gather_4_1)
+    {.shader_hash = 0x6CD776CC, .slots = 0b10000000000},  // shroud_plane troy_shroud_ps_ms2 (baked shadows)
+    {.shader_hash = 0x9BEEA3C8, .slots = 0b10000000000},  // shroud_plane troy_shroud_ps_ms1 (gather_4_1)
+    {.shader_hash = 0x9DB8B110, .slots = 0b100},  // water ps_campaign_sea_low
+    {.shader_hash = 0xB17A0632, .slots = 0b100000},  // water ps_campaign_sea_medium (gather_4_1)
+    {.shader_hash = 0xCA6428C5, .slots = 0b100},  // water ps_campaign_sea_medium
+    {.shader_hash = 0xCF12BB0F, .slots = 0b10000},  // water ps_campaign_sea_high (baked shadows)
+    {.shader_hash = 0xD71305F1, .slots = 0b100000},  // water ps_campaign_sea_ultra (fetch4)
+    {.shader_hash = 0xDBCA18D4, .slots = 0b10000},  // water ps_campaign_sea_ultra (baked shadows)
+    {.shader_hash = 0xDD32A3BC, .slots = 0b100000},  // water ps_campaign_sea_medium (fetch4)
+    {.shader_hash = 0xDE096B5E, .slots = 0b10000000000},  // shroud_plane troy_shroud_ps_ms1 (baked shadows)
+    {.shader_hash = 0xEBE580AB, .slots = 0b10000},  // campaignmapquadonly fragment_shader
 }};
 
 constexpr std::array<twattila::light_bounce::SunDraw, 25> LIGHT_BOUNCE_DRAWS = {{
@@ -2286,11 +2334,11 @@ void ConfigureAddon() {
                                              .water_caustics_tested = false,
                                              .rays_preset_as_attila = true,
                                              .lights_own_row = true});
-  // Smooth Banner Shadows (Experimental, off; RT/PT turns it on, as Attila's): the sails are this game's thin cloth in the
+  // Smooth Banner Shadows (on, as Attila's): the sails are this game's thin cloth in the
   // rays (its unit banners are not in them), so the row names them.
   for (auto* setting : settings) {
     if (setting->key != "RayTracedSheetsUnselfed") continue;
-    setting->label = "Smooth Sail Shadows (Experimental)";
+    setting->label = "Smooth Sail Shadows";
     setting->tooltip = "Sails don't shade themselves: no blocky triangles on them. Shadows of other things stay.";
   }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());

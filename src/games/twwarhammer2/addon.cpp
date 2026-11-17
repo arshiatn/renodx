@@ -1896,8 +1896,59 @@ constexpr std::array<twattila::rt_scene::SceneShader, 49> SCENE_SHADERS = {{
 // The SSR's copy (environment_specular_light ps40_copy) samples the resolve's output (7E1CDD0A, its content at the render
 // share) at the quad's whole uv: ATN's 2026-11-14 traces 07-14 and 22-30 (vp 1920x1080 / 1280x720 reading t0 3840x2160).
 // The portraits' tone mapper 1C42B26B (sprite.hlsl, vp 214x214) reads a display-size chain: left.
-constexpr std::array<twattila::view_share::RegionRead, 1> RENDER_SCALE_READS = {{
+// The overlays' readers, as Attila's (twattila/addon.cpp RENDER_SCALE_READS): the overlays are drawn by the main camera into
+// display-sized targets, so below 100% into their render share; the ocean reads them at the uv its vertex shader projects,
+// the sun (slm) and the campaign's planes through g_overlay_view_projection: no camera chain view_share finds. Their share
+// only while the overlay is display-sized or a halving (else as at 100%). Census: tools/tw/round_notes/bugs_1117/bug4_census.py.
+constexpr std::array<twattila::view_share::RegionRead, 45> RENDER_SCALE_READS = {{
     {.shader_hash = 0x7F23C472, .slots = 0b1},
+    // ocean: the colour overlays.
+    {.shader_hash = 0x09D7F2DB, .slots = 0b1100000},  // ocean ps40_main_low (gather_5_0)
+    {.shader_hash = 0x2BEF4449, .slots = 0b1100000000},  // ocean ps40_main_high (gather_4_1)
+    {.shader_hash = 0x40A1BB77, .slots = 0b1100000000},  // ocean ps40_main_high (software)
+    {.shader_hash = 0xB63D52E2, .slots = 0b1100000},  // ocean ps40_main_low (gather_4_1)
+    {.shader_hash = 0xB9DD0B2E, .slots = 0b1100000000},  // ocean ps40_main_high (pcf)
+    {.shader_hash = 0xD9556480, .slots = 0b110000000},  // ocean ps40_main_high
+    {.shader_hash = 0xEE0E5EA6, .slots = 0b1100000000},  // ocean ps40_main_high (gather_5_0)
+    // directionallight slm: the overlay.
+    {.shader_hash = 0x060623DD, .slots = 0b10000000000},  // directionallight ps41_slm_interior_ms (gather_5_0)
+    {.shader_hash = 0x1AB80044, .slots = 0b10000000000},  // directionallight ps40_slm_highdef (gather_5_0)
+    {.shader_hash = 0x1ECDE63F, .slots = 0b10000000000},  // directionallight ps41_slm_edges_ms (software)
+    {.shader_hash = 0x2DCA8E30, .slots = 0b10000000000},  // directionallight ps40_slm_highdef (software)
+    {.shader_hash = 0x488C845F, .slots = 0b10000000000},  // directionallight ps41_slm_edges_ms (gather_4_1)
+    {.shader_hash = 0x53224BCB, .slots = 0b10000000000},  // directionallight ps41_slm_interior_ms (pcf)
+    {.shader_hash = 0x6257DF22, .slots = 0b10000000000},  // directionallight ps41_slm_interior_ms (gather_4_1)
+    {.shader_hash = 0xA03688A3, .slots = 0b10000000000},  // directionallight ps40_slm_highdef (gather_4_1)
+    {.shader_hash = 0xB699C6F8, .slots = 0b1000000000},  // directionallight ps41_slm_edges_ms
+    {.shader_hash = 0xC960A275, .slots = 0b10000000000},  // directionallight ps40_slm_highdef (pcf)
+    {.shader_hash = 0xD7990748, .slots = 0b10000000000},  // directionallight ps41_slm_edges_ms (gather_5_0)
+    {.shader_hash = 0xDE50CFAD, .slots = 0b10000000000},  // directionallight ps41_slm_edges_ms (pcf)
+    {.shader_hash = 0xE091B8C4, .slots = 0b1000000000},  // directionallight ps40_slm_highdef
+    {.shader_hash = 0xEB90E28A, .slots = 0b10000000000},  // directionallight ps41_slm_interior_ms (software)
+    {.shader_hash = 0xEDADD458, .slots = 0b1000000000},  // directionallight ps41_slm_interior_ms
+    // the campaign's sea, shroud plane and map quad: the overlay.
+    {.shader_hash = 0x0F278955, .slots = 0b10000000},  // shaders__battle_river.xml ps_main_deferred_opaque_gbuffer (gather_4_1)
+    {.shader_hash = 0x269974D7, .slots = 0b10000000},  // shaders__battle_river_noheight.xml ps_main_deferred_opaque_gbuffer (gather_4_1)
+    {.shader_hash = 0x2DD002D3, .slots = 0b10000000},  // waterplane ps40_campaign_low (gather_4_1)
+    {.shader_hash = 0x2E4F1A5A, .slots = 0b100000000},  // waterplane ps40_campaign_high (software)
+    {.shader_hash = 0x47339F81, .slots = 0b10000000},  // shaders__battle_river.xml ps_main_deferred_opaque_gbuffer (gather_5_0)
+    {.shader_hash = 0x4E1FE5EF, .slots = 0b100000000},  // waterplane ps40_campaign_high (gather_5_0)
+    {.shader_hash = 0x58CFB1DE, .slots = 0b10000000},  // waterplane ps40_campaign_high
+    {.shader_hash = 0x5C573301, .slots = 0b10000000},  // shaders__battle_river_noheight.xml ps_main_deferred_opaque_gbuffer (software)
+    {.shader_hash = 0x72803BB0, .slots = 0b100000000},  // waterplane ps40_campaign_high (pcf)
+    {.shader_hash = 0x73F2961B, .slots = 0b10000000},  // shaders__campaign_sea.xml ps_main_deferred_opaque_gbuffer (pcf)
+    {.shader_hash = 0x7AFB781C, .slots = 0b100000000},  // waterplane ps40_campaign_high (gather_4_1)
+    {.shader_hash = 0x8CD8CFD4, .slots = 0b10000000},  // shaders__battle_river_noheight.xml ps_main_deferred_opaque_gbuffer (pcf)
+    {.shader_hash = 0x9DC3DF7B, .slots = 0b10000000},  // waterplane ps40_campaign_low (gather_5_0)
+    {.shader_hash = 0xB4A129CC, .slots = 0b1000000},  // shaders__battle_river_noheight.xml ps_main_deferred_opaque_gbuffer
+    {.shader_hash = 0xB814FB8E, .slots = 0b10000000},  // shaders__campaign_sea.xml ps_main_deferred_opaque_gbuffer (software)
+    {.shader_hash = 0xC0D36651, .slots = 0b10000000},  // shaders__battle_river.xml ps_main_deferred_opaque_gbuffer (software)
+    {.shader_hash = 0xC82CEAAC, .slots = 0b1000000},  // shaders__campaign_sea.xml ps_main_deferred_opaque_gbuffer
+    {.shader_hash = 0xCA59ECC5, .slots = 0b1000000},  // shaders__battle_river.xml ps_main_deferred_opaque_gbuffer
+    {.shader_hash = 0xD6B772D2, .slots = 0b10000000},  // shaders__battle_river_noheight.xml ps_main_deferred_opaque_gbuffer (gather_5_0)
+    {.shader_hash = 0xDB511A83, .slots = 0b10000000},  // shaders__campaign_sea.xml ps_main_deferred_opaque_gbuffer (gather_5_0)
+    {.shader_hash = 0xEAEECE81, .slots = 0b10000000},  // shaders__campaign_sea.xml ps_main_deferred_opaque_gbuffer (gather_4_1)
+    {.shader_hash = 0xEEC75DE8, .slots = 0b10000000},  // shaders__battle_river.xml ps_main_deferred_opaque_gbuffer (pcf)
 }};
 
 // Path-Traced AO and the paths' sky (rt_sun.cs_5_0.hlsl): each one makes its diffuse ambient in its first if on c11.y

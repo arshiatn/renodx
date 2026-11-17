@@ -1732,12 +1732,114 @@ constexpr std::array<uint32_t, 14> AFTER_FOLIAGE_VERTEX_SHADERS = {0x59431BB2, 0
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%, and the
 // half-size passes drawn whole (their readers: view_share::WHOLE_TEXTURES).
-constexpr std::array<twattila::view_share::RegionRead, 5> RENDER_SCALE_READS = {{
+// The overlays' readers, as Attila's (twattila/addon.cpp RENDER_SCALE_READS): the overlays are drawn by the main camera into
+// display-sized targets, so below 100% into their render share; the ocean reads them at the uv its vertex shader projects,
+// the sun (slm) and the campaign's planes through g_overlay_view_projection: no camera chain view_share finds. Their share
+// only while the overlay is display-sized or a halving (else as at 100%). Census: tools/tw/round_notes/bugs_1117/bug4_census.py.
+constexpr std::array<twattila::view_share::RegionRead, 100> RENDER_SCALE_READS = {{
     {.shader_hash = 0xAD818F92, .slots = 0b1},                  // luma / bloom downsample
     {.shader_hash = 0x41894C1F, .slots = 0b11, .whole = true},  // AO blur_x
     {.shader_hash = 0x7DDD84A3, .slots = 0b10, .whole = true},  // AO blur_y
     {.shader_hash = 0x2A3297C6, .slots = 0b11, .whole = true},  // water refraction (3 channels)
     {.shader_hash = 0x024D3FCB, .slots = 0b1, .whole = true},   // water refraction (4 channels)
+    // ocean: the colour overlays.
+    {.shader_hash = 0x1528B328, .slots = 0b1010000000},  // ocean ps30_main_medium (fetch4)
+    {.shader_hash = 0x18919C68, .slots = 0b10001000},  // ocean ps30_main_high (gather_4_1)
+    {.shader_hash = 0x1E832D03, .slots = 0b101000000000},  // ocean ps30_main_high (software)
+    {.shader_hash = 0x24E2AC2F, .slots = 0b11000000},  // ocean ps30_main_low (gather_4_1)
+    {.shader_hash = 0x2A7DA7A9, .slots = 0b10001000},  // ocean ps30_main_high
+    {.shader_hash = 0x35D3ACA8, .slots = 0b10001000},  // ocean ps30_main_ultra (gather_5_0)
+    {.shader_hash = 0x3E664EA4, .slots = 0b101000000000},  // ocean ps30_main_high (fetch4)
+    {.shader_hash = 0x3FFD0874, .slots = 0b101000000000},  // ocean ps30_main_high (pcf)
+    {.shader_hash = 0x45D8E780, .slots = 0b1010000000},  // ocean ps30_main_ultra
+    {.shader_hash = 0x4A9C6781, .slots = 0b100001000},  // ocean ps30_main_high (software)
+    {.shader_hash = 0x54061602, .slots = 0b100001000},  // ocean ps30_main_ultra (pcf)
+    {.shader_hash = 0x5751935A, .slots = 0b10001000},  // ocean ps30_main_medium (gather_4_1)
+    {.shader_hash = 0x65304FA7, .slots = 0b10001000},  // ocean ps30_main_ultra
+    {.shader_hash = 0x6D6677C9, .slots = 0b100001000},  // ocean ps30_main_high (fetch4)
+    {.shader_hash = 0x7E4DBC55, .slots = 0b11000000},  // ocean ps30_main_low (gather_5_0)
+    {.shader_hash = 0x809D7997, .slots = 0b1010000000},  // ocean ps30_main_high (gather_5_0)
+    {.shader_hash = 0x881D8CD8, .slots = 0b11000000},  // ocean ps30_main_low (fetch4)
+    {.shader_hash = 0x90C61F32, .slots = 0b101000000000},  // ocean ps30_main_ultra (pcf)
+    {.shader_hash = 0xAA00264D, .slots = 0b101000000000},  // ocean ps30_main_ultra (fetch4)
+    {.shader_hash = 0xB1046E18, .slots = 0b100001000},  // ocean ps30_main_ultra (software)
+    {.shader_hash = 0xB4BAD934, .slots = 0b1010000000},  // ocean ps30_main_ultra (gather_5_0)
+    {.shader_hash = 0xB7ACFDC4, .slots = 0b10001000},  // ocean ps30_main_high (gather_5_0)
+    {.shader_hash = 0xCD908195, .slots = 0b1010000000},  // ocean ps30_main_medium (gather_5_0)
+    {.shader_hash = 0xCE562051, .slots = 0b10001000},  // ocean ps30_main_medium (gather_5_0)
+    {.shader_hash = 0xD2751155, .slots = 0b100001000},  // ocean ps30_main_high (pcf)
+    {.shader_hash = 0xD627B33B, .slots = 0b1010000000},  // ocean ps30_main_ultra (gather_4_1)
+    {.shader_hash = 0xDCB59029, .slots = 0b100001000},  // ocean ps30_main_ultra (fetch4)
+    {.shader_hash = 0xDEE97EE1, .slots = 0b10001000},  // ocean ps30_main_ultra (gather_4_1)
+    {.shader_hash = 0xE0C6CB72, .slots = 0b101000000000},  // ocean ps30_main_ultra (software)
+    {.shader_hash = 0xE9780AFA, .slots = 0b10001000},  // ocean ps30_main_low (gather_5_0)
+    {.shader_hash = 0xEC785ED4, .slots = 0b10001000},  // ocean ps30_main_low (gather_4_1)
+    {.shader_hash = 0xF0625437, .slots = 0b10001000},  // ocean ps30_main_medium (fetch4)
+    {.shader_hash = 0xF5A1526C, .slots = 0b1010000000},  // ocean ps30_main_high (gather_4_1)
+    {.shader_hash = 0xF6D2D15B, .slots = 0b10001000},  // ocean ps30_main_low (fetch4)
+    {.shader_hash = 0xF6E919BF, .slots = 0b1010000000},  // ocean ps30_main_medium (gather_4_1)
+    // directionallight slm: the overlay.
+    {.shader_hash = 0x006F587A, .slots = 0b1000},  // directionallight ps41_slm_highdef_ms (gather_5_0)
+    {.shader_hash = 0x0AF04E16, .slots = 0b10000000},  // directionallight ps30_slm_highdef (gather_4_1)
+    {.shader_hash = 0x0F2D401C, .slots = 0b10000000},  // directionallight ps30_slm_lowdef (software)
+    {.shader_hash = 0x340CBE9D, .slots = 0b10000000},  // directionallight ps30_slm_highdef (gather_5_0)
+    {.shader_hash = 0x362108F9, .slots = 0b1000},  // directionallight ps41_slm_highdef_ms (gather_4_1)
+    {.shader_hash = 0x3DF56E1E, .slots = 0b1000000},  // directionallight ps30_slm_highdef (gather_5_0)
+    {.shader_hash = 0x426E32B9, .slots = 0b10000000},  // directionallight ps30_slm_highdef (pcf)
+    {.shader_hash = 0x4315F62E, .slots = 0b1000000},  // directionallight ps30_slm_lowdef
+    {.shader_hash = 0x4C4B1D0F, .slots = 0b1000000000},  // directionallight ps30_slm_highdef (fetch4)
+    {.shader_hash = 0x4CA464D1, .slots = 0b1000000000},  // directionallight ps30_slm_highdef (software)
+    {.shader_hash = 0x5167CB92, .slots = 0b1000},  // directionallight ps41_slm_highdef_ms
+    {.shader_hash = 0x57E876C4, .slots = 0b10000000},  // directionallight ps30_slm_lowdef (gather_4_1)
+    {.shader_hash = 0x5EA76F88, .slots = 0b1000000},  // directionallight ps30_slm_highdef (gather_4_1)
+    {.shader_hash = 0x6605BBA7, .slots = 0b1000000},  // directionallight ps30_slm_lowdef (gather_5_0)
+    {.shader_hash = 0x6B22774C, .slots = 0b1000000000},  // directionallight ps30_slm_highdef (pcf)
+    {.shader_hash = 0x6B9FD3CD, .slots = 0b1000},  // directionallight ps41_slm_lowdef_ms
+    {.shader_hash = 0x6FC5ECEA, .slots = 0b10000000},  // directionallight ps30_slm_lowdef (gather_5_0)
+    {.shader_hash = 0x7358C058, .slots = 0b1000},  // directionallight ps41_slm_lowdef_ms (gather_5_0)
+    {.shader_hash = 0x75650CEB, .slots = 0b10000},  // directionallight ps41_slm_lowdef_ms (fetch4)
+    {.shader_hash = 0x7A216579, .slots = 0b10000000},  // directionallight ps30_slm_lowdef
+    {.shader_hash = 0x7B50CFB1, .slots = 0b10000},  // directionallight ps41_slm_lowdef_ms (software)
+    {.shader_hash = 0x802A199A, .slots = 0b1000000000},  // directionallight ps30_slm_lowdef (pcf)
+    {.shader_hash = 0x81058A1E, .slots = 0b1000000000},  // directionallight ps30_slm_lowdef (fetch4)
+    {.shader_hash = 0x82924134, .slots = 0b1000000},  // directionallight ps30_slm_lowdef (gather_4_1)
+    {.shader_hash = 0x84F99EA7, .slots = 0b10000},  // directionallight ps41_slm_highdef_ms (software)
+    {.shader_hash = 0x958EF5CE, .slots = 0b10000},  // directionallight ps41_slm_highdef_ms (pcf)
+    {.shader_hash = 0x99DEEE40, .slots = 0b1000},  // directionallight ps41_slm_lowdef_ms (gather_4_1)
+    {.shader_hash = 0x9DECD766, .slots = 0b10000000},  // directionallight ps30_slm_highdef
+    {.shader_hash = 0xA250EBA2, .slots = 0b10000},  // directionallight ps41_slm_lowdef_ms (pcf)
+    {.shader_hash = 0xB1322071, .slots = 0b10000000},  // directionallight ps30_slm_highdef (fetch4)
+    {.shader_hash = 0xBA46D003, .slots = 0b1000000000},  // directionallight ps30_slm_lowdef (software)
+    {.shader_hash = 0xC4DDDAC6, .slots = 0b10000000},  // directionallight ps30_slm_highdef (software)
+    {.shader_hash = 0xD0B83CA3, .slots = 0b10000000},  // directionallight ps30_slm_lowdef (pcf)
+    {.shader_hash = 0xD7F1931F, .slots = 0b10000000},  // directionallight ps30_slm_lowdef (fetch4)
+    {.shader_hash = 0xDB43997E, .slots = 0b1000000},  // directionallight ps30_slm_highdef
+    {.shader_hash = 0xFA91A41F, .slots = 0b10000},  // directionallight ps41_slm_highdef_ms (fetch4)
+    // the campaign's sea, shroud plane and map quad: the overlay.
+    {.shader_hash = 0x1077B1F5, .slots = 0b1000000000},  // waterplane ps30_campaign_high (gather_4_1)
+    {.shader_hash = 0x10DD05B1, .slots = 0b10000000000},  // waterplane ps30_campaign_medium (fetch4)
+    {.shader_hash = 0x18A21EB6, .slots = 0b1000},  // sm_3_lq_waterplane ps30lq_campaign (fetch4)
+    {.shader_hash = 0x1EBC2BF5, .slots = 0b100000000000},  // waterplane ps30_campaign_high (fetch4)
+    {.shader_hash = 0x2962631F, .slots = 0b100000000},  // waterplane ps30_campaign_medium (gather_4_1)
+    {.shader_hash = 0x2BDB22D7, .slots = 0b100000000},  // waterplane ps30_campaign_medium
+    {.shader_hash = 0x3DCC4AED, .slots = 0b1000000000},  // waterplane ps30_campaign_high (gather_5_0)
+    {.shader_hash = 0x3E20C8CA, .slots = 0b100000000},  // waterplane ps30_campaign_high (software)
+    {.shader_hash = 0x4AFF28FE, .slots = 0b1000},  // waterplane ps30lq_campaign (gather_4_1)
+    {.shader_hash = 0x57AB4436, .slots = 0b100000000},  // waterplane ps30_campaign_high (pcf)
+    {.shader_hash = 0x734401B0, .slots = 0b10000000},  // waterplane ps30_campaign_high
+    {.shader_hash = 0x83A30387, .slots = 0b1000000000},  // waterplane ps30_campaign_high
+    {.shader_hash = 0x95D83F67, .slots = 0b100000000000},  // waterplane ps30_campaign_high (software)
+    {.shader_hash = 0x9640B8EF, .slots = 0b100000000},  // waterplane ps30_campaign_high (fetch4)
+    {.shader_hash = 0x983C3F6C, .slots = 0b10000000000},  // waterplane ps30_campaign_medium (software)
+    {.shader_hash = 0x9BE628D8, .slots = 0b100000000000},  // waterplane ps30_campaign_high (pcf)
+    {.shader_hash = 0xB0F4EE0E, .slots = 0b10000000000},  // waterplane ps30_campaign_medium (pcf)
+    {.shader_hash = 0xB6E14CD7, .slots = 0b100000000},  // waterplane ps30_campaign_medium (gather_5_0)
+    {.shader_hash = 0xB7B0E27B, .slots = 0b1000},  // waterplane ps30lq_campaign (gather_5_0)
+    {.shader_hash = 0xCDADD14C, .slots = 0b10000000},  // waterplane ps30_campaign_high (gather_4_1)
+    {.shader_hash = 0xCEEE245C, .slots = 0b1000000},  // waterplane ps30_campaign_low (gather_5_0)
+    {.shader_hash = 0xD0E0E987, .slots = 0b1000000},  // waterplane ps30_campaign_low (fetch4)
+    {.shader_hash = 0xEC6218F6, .slots = 0b10000000},  // waterplane ps30_campaign_high (gather_5_0)
+    {.shader_hash = 0xF366DA89, .slots = 0b1000000},  // waterplane ps30_campaign_low (gather_4_1)
 }};
 
 // Water Clarity and Caustics (twattila/water_effects.hpp): every live battle water and river PS that uses lighting_VS_PS's

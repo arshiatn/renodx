@@ -300,7 +300,7 @@ struct RaySliders {
   float units_out_of_view = 0.f;
   float untraced_casters = 0.f;
   float replace_maps = 0.f;
-  float sheets_unselfed = 0.f;
+  float sheets_unselfed = 1.f;
   float smoke_shadows = 0.f;
   float smoke_quality = 1.f;  // Low to Maximum
   float smoke_fast_build = 0.f;
@@ -647,7 +647,7 @@ const Values RAYS_RESET = {
     {"RayTracedUnitsOutOfView", 0.f},
     {"RayTracedUntracedCasters", 0.f},
     {"RayTracedReplaceShadowMaps", 0.f},
-    {"RayTracedSheetsUnselfed", 0.f},
+    {"RayTracedSheetsUnselfed", 1.f},
     {"RayTracedGrassShadowRange", 0.f},
     {"RayTracedAoReblur", 0.f},
     {"RayTracedLightGlow", 0.f},
@@ -2167,7 +2167,7 @@ void BuildRuntimeData() {
                  "The sun's shadows from the rays alone, without the game's shadow maps and screen-space shadows.\n"
                  "Far soldiers and far trees need their shadow rows on; grass casts no contact shadows.",
                  sun),
-      ray_choice("RayTracedSheetsUnselfed", &rt_sliders.sheets_unselfed, 0.f, "Smooth banner shadows (Experimental)", off_on,
+      ray_choice("RayTracedSheetsUnselfed", &rt_sliders.sheets_unselfed, 1.f, "Smooth banner shadows", off_on,
                  "Banners, sails and other cloth don't shade themselves: no blocky triangles on them. Shadows of other things stay.", sun),
       ray_choice("RayTracedSmokeShadows", &rt_sliders.smoke_shadows, 0.f, "Ray-traced smoke shadows (Experimental)", off_on,
                  "Smoke and dust dim the ray-traced sunlight they drift through (restart the game).", sun),
