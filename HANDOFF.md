@@ -360,9 +360,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of ... | cpp_
 - CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
 - CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action u ... | CPU PLAN 2 END
-- CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, X ... | cb2_ High STARTED 19:3x
+- CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, X ... | CPU PLAN 2 END
 - CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | ATN (allow the re-run?), then a High implementer to finish
-- CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | High implementer (bfx_ merged
+- CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | cb4_ High STARTED 21:4x
 - CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | cb5_
 - CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | hb6_, coordinator
 - B4G THRESHOLD (hb6_ 20:1x): B4 already threaded only lists >= 32768, so B4G diff ... | coordinator (next run batch)
@@ -2512,7 +2512,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         0x4600 / esp / 64 stack bytes / counts compared, CONTROL fails, 200 on / off switches x 4 threads; ns a call 16
         children 55 -> 9, 64: 222 -> 24, 4 threads 690 -> 10; builds x86 OK; not benched, not installed). Owner: CPU PLAN 2 END
       - [ ] CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, XAT rt_core part; rt_scene.hpp,
-        rt_core.hpp, tw_native_context; every rt_core consumer built): night1 -0.6..-1.0. Owner: cb2_ High STARTED 19:3x
+        rt_core.hpp, tw_native_context; every rt_core consumer built): night1 -0.6..-1.0. DONE 21:4x cb2_, merged a0e98fd94:
+        ALIT 460b8a5e0 (rt_scene.hpp OnPointLightDraw ~1225-1340: a copy whose records equal an earlier copy's left out
+        before keys + sort; ties with different bytes = the full v160 read for 64 frames; 14 twin cases bit-identical to
+        v160 x86 + amd64; WARP twin frame 1.24-1.33 -> 0.59 ms, no-twin frames same; light_order may read 2 where v160
+        read 1; plan correction: only byte-differing ties fall back); ACAP 85c7d5269 (rt_core.hpp Capture: cut-out lookup
+        under the scene lock, the mask texture read once, the cluster mesh once, units skip an unused lookup; state check
+        0 lines; 192-199 -> 170-178 ns a placed cut-out draw: night1 only ~-0.05..-0.15, below the plan's -0.3..-0.6);
+        XAT rt_core: no change (one aligned movq); all suites pass, 3 x86 + 13 amd64 builds exit 0; not benched, not
+        installed. Left: ALIT's "the game's second draw has the same bytes" checked in game (the END bench's trace);
+        runtime.mutex -> shared_mutex NOT done (coordinator: a recursive lock would hang instead of throw, for a tiny
+        gain); last-key cache / flat maps not done (risk > gain). Owner: CPU PLAN 2 END
       - [ ] CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src/utils; the memo design's
         guards + T1-T3, RENODX_RESOURCE_MEMO_CHECK): night1 -0.2..-0.6. Attila first (ATN 19:2x). cb3_ STOPPED 21:0x
         PARTWAY: the auto-mode classifier refused a test re-run (powershell -ExecutionPolicy Bypass -File
@@ -2528,7 +2538,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         .agents/skills/tw-port-checklist/scripts; the outside writers need no edits (both wrappers); no TLS concern. NOT
         merged. Owner: ATN (allow the re-run?), then a High implementer to finish
       - [ ] CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_motion.hpp, dlaa_bridge.hpp):
-        night1 -0.3..-0.6. Owner: High implementer (bfx_ merged; start when a build slot frees: after cb2_ or cb3_)
+        night1 -0.3..-0.6. Owner: cb4_ High STARTED 21:4x
       - [ ] CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization designs then code, EVEC design;
         engine_code.hpp after B1): stress -1.4..-3.6. Dropped 19:4x, RESUMED by ATN 20:0x: cb5_ xHigh STARTED 21:1x (game
         code only, no Windows internals). Owner: cb5_
