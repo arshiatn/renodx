@@ -6,7 +6,7 @@ from (search its text). Tick here and on that line when ATN answers.
 - [ ] NEW 11-16 (from the AUDIT): B: RT AO in place of the game's AO (WH1-3, Troy, Pharaoh, Rome II, Rome Remastered,
   Shogun 2, Tales, Expeditions): look right?; B: after a window switch, still HDR in Attila / Thrones / WH1 / WH2 / Tales /
   Ryse / R.U.S.E.?; C: Rendering Mode SDR on an HDR display with Gamma Correction on is now the darker 2.2 picture (Rome
-  II / WH1 / WH2 / Troy / Pharaoh): OK?; C: Divinity 1's smoother grade shoulder (shipped as default in d1 v3): keep as
+  II / WH1 / WH2 / Troy / Pharaoh): OK?; C: Divinity 1's smoother grade shoulder (shipped as default in d1 v3; an Experimental row, off, since 9da00b28b): keep as
   default, or an Experimental row (div1_ prepares the row)?; C: Ryse No RT/PT as Attila's (GT-VBAO / GT-VBGI / Bend on)
   after the in-game checks?; C: Expeditions' ten TAA hooks proven only at level B but on: Experimental off, or a trace
   with sg.AA 3?; C: Rome Remastered Settings Mode Simple / Advanced vs the three pages, and its Gamma Correction row;
@@ -2116,6 +2116,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         2's upscale_output.cs_5_0.hlsl; Shogun 2's bend_sss_gpu.hlsli and pcss.hlsli are shared the same way: move into
         twattila as shared files. testing.md says 54 suites (2026-11-16), now 72 test/tw_* folders: refresh the list.
         Owner: next shared round
+      - [x] DONE 03:0x (plan step 1, ATN 01:xx "record our next plans for them in handsoff"): every game's next plan
+        in C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw/round_notes/next_plans_1117.md (344 lines, 300 bullets,
+        16 games + Shared + Runs; bugs, then parity, then your decisions, then runs; each bullet points at its open box
+        here by its first words: every one of the 262 open boxes placed except 2 records). The boxes stay the to-do; the
+        file is the per-game view. Stale lines fixed: Divinity 2 RT reflections (done 31770fe86), Divinity 1 grade
+        shoulder (off, 9da00b28b)
       - [ ] CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila, if you find anything that can
         speed cpu/gpu of the game, list them please or plan to do them please"; "Don't worry about sound or time. My pc can
         run for days"): from the three captures' WPR + Nsight: every CPU / GPU hot spot of the game and of RenoDX with its
@@ -2316,7 +2322,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         page label says "Graphics 1 of 2". Owner: next Divinity 1 round
       - [ ] (tpa_'s spec: rt_scene::WriteSky(context, float4[6]) + a host-sky flag in SettingsOf; today a non-TW host sets settings.path_ambient, writes 6 axis irradiances into rt_sun texels 3-8 (texel 3 w != 0 = sky, texel 4 = scale, texel 6 = 0 unless y-up), drops its own diffuse sky while runtime.path_ambient_on (under runtime.mutex), turns RT AO off) SHARED STEP: rt_core's path ambient works only for TW hosts (internal::ambient_cube): Path-Traced Ambient + RT /
         PT GI for non-TW hosts (Divinity 1 / 2, same gap as Tales / Expeditions, tpa_). Owner: shared round with tpa_'s result
-      - [ ] (div2_ 11-16 DONE: RT sun shadows + RT AO cb2aad103, GI (One Bounce / ReSTIR GI, Strength row) + Path-Traced Ambient replacing PPApplyAO + the IBL diffuse 77078392b (Experimental off, tpa_'s route, no rt_core change), KeepSun fix (tested t0 = the 1x1 Exposure: sun direction only at LinearizeDepth); WARP tw_d2_helper 1-9 PASS; LEFT: RT reflections (rt_guides CS + 7 IBL specular shaders vanilla exact + DeferredSSR off), runs) Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask, RT AO / PT ambient replacing
+      - [ ] (div2_ 11-16 DONE: RT sun shadows + RT AO cb2aad103, GI (One Bounce / ReSTIR GI, Strength row) + Path-Traced Ambient replacing PPApplyAO + the IBL diffuse 77078392b (Experimental off, tpa_'s route, no rt_core change), KeepSun fix (tested t0 = the 1x1 Exposure: sun direction only at LinearizeDepth); WARP tw_d2_helper 1-9 PASS; LEFT: runs; RT reflections DONE 31770fe86) Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask, RT AO / PT ambient replacing
         PPApplyAO, RT / PT GI replacing the IBL diffuse, RT reflections replacing IBL_Specular; the ledger's stacking lines)
         as Divinity 1's steps 9-10. Owner: next Divinity 2 round
       - [x] DONE 12:06 (eob_, 26 starts / 25 valid, ATN's files restored 0 mismatches; report
@@ -2522,7 +2528,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         then the HDR bug round
       - [ ] [P] ATN DECIDES R1 Div1 mode 1 "UC2 Extended / PsychoV30" = UpgradeToneMap then PsychoV30 (tonemappers.hlsli
         :141-143) + preset "PsychoV30 (earlier Recommended)": ATN said keep the old ones, decide at the end. Owner: ATN
-      - [ ] [P] (hca_: Divinity 1's smooth shoulder from 0.8 shipped as the default in a6762afab / d1 v3: div1_ moves it to an Experimental row, off, unless you keep it) ATN DECIDES R1 shoulders not identity below their start: Neutwo from 0 (grade below white moves with Peak:
+      - [ ] [P] (hca_: Divinity 1's smooth shoulder from 0.8 shipped as the default in a6762afab / d1 v3: div1_ moves it to an Experimental row, off, unless you keep it; DONE 9da00b28b, code default 0) ATN DECIDES R1 shoulders not identity below their start: Neutwo from 0 (grade below white moves with Peak:
         1000/203 -> 0.18 = 0.177, 0.5 = 0.45, 1 = 0.71) in Attila / Rome II / Thrones / WH1 / Troy / Pharaoh / Rome R /
         Div1 Pragmap (Troy t00:147 + Pharaoh t00:171 comment "SDR exactly below white" is false); hard max(m,1) knee
         (kink at white) in WH2 / WH3 / Ryse / Tales / Expeditions / Div1 GradeAfterCurve. Fix = an Experimental row.
