@@ -2957,8 +2957,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         temporaries match; overlap checks 1-2 exact, 3-5 wider (more fallbacks only); after the region nothing reads
         the arg slots / flags / xmm1-7 (Attila); heapfix touches none of it; test 11c covers each lane with ~1/17 of
         2^32 (11a draws the edges). Open: thread at match+4 (cpu2_review.md: PausedWrite refuses +1..+4), Thrones
-        +0x197d841, branch scan into match+1..+4, docs, style, builds, full runs. Waiting for ATN's go to finish it
-        without the refused read; (2) then a
+        +0x197d841, branch scan into match+1..+4, docs, style, builds, full runs. ATN 00:0x "Yes, finish it": resumed;
+        match+4 settled from cpu2_review.md (PausedWrite refuses +1..+4; EHALF's jump = lea eax,[esp+0x38] + push eax);
+        Thrones row builder +0x197d2d0 (region +0x197d841..+0x197db12, same layout). STOPPED AGAIN 00:1x: the WORKTREE
+        GUARD (not the safety classifier) refused one compound awk / sed / diff command over scratchpad files ("too
+        complex to verify that it stays inside the worktree ... split it into plain, separate commands"). Asked ATN
+        whether to finish with plain single commands and files inside the worktree; (2) then a
         Low EJOB build + tests only (no analysis); (3) UPDATE 00:0x: ATN's other session added E3P site 0x1890b90 on
         ejob-fork as "Faster Effect Prefetch" (Experimental off; prefetches the child after next inside the live list;
         exact on Attila + Thrones incl. random getter trees; harness cold children: plain getter 7.9 -> 8.5 ns SLOWER,
