@@ -364,13 +364,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | High implementer (ATN's C: AF14 scope)
 - CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | High implementer AFTER bfx_ (same dlaa_bridge
 - CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | High implementer after B1
-- CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | coordinator (ATN's C: heapfix notes)
-- CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ATN's C: EJOB first
+- CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | hb6_, coordinator
+- CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ejd_, coordinator
 - CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V ... | coordinator
-- C: EJOB: may we change the game's job-semaphore protocol (spin-then-sleep, SetEv ... | ?
-- C: heapfix notes to the author (B4G gate with numbers after B6, the loopfetch fi ... | ?
 - C: AF14 ships to Attila first (opt-in), other RenoDX mods only through upstream ... | ?
-- C: the focus-return lockstep (~5 s of 94 ms frames after alt-tab in big battles) ... | ?
+- C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GP ... | ?
 - OURS ON THE RENDER THREAD (cpp_): our add-on anywhere on the stack 8.3 ms of nig ... | coordinator (CPU PLAN 2 END)
 - BRIDGE CLAIMS (ATN 17:3x: another modder's ChatGPT review of HIS port of our bri ... | bfx_, coordinator (merge before plan step 7)
 - SER IN FORESTS (ATN 17:3x, Forge: SER made a huge difference in forests; his pat ... | plan step 6
@@ -2505,18 +2503,24 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization designs then code, EVEC design;
         engine_code.hpp after B1): stress -1.4..-3.6. Owner: High implementer after B1
       - [ ] CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, P without loopfetch, loopanim
-        3 shuffled rounds; tools/tw/heapfix, never the repo) + author notes. Owner: coordinator (ATN's C: heapfix notes)
+        3 shuffled rounds; tools/tw/heapfix, never the repo) + author notes: hb6_ High STARTED 19:1x (builds + eqtest +
+        bench variants + notes draft tools/tw/heapfix/author_notes_3); then their bench in the next run batch; then ONE
+        new author zip (zip 2 + the new notes) for ATN to send tomorrow; install the fastest for ATN. Owner: hb6_, coordinator
       - [ ] CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design + counting plan, docs only,
-        xHigh review; ~-2 ms both scenes; not byte-exact, a freeze if wrong). Owner: ATN's C: EJOB first
+        xHigh review; ~-2 ms both scenes; not byte-exact, a freeze if wrong): ATN 19:0x "Sure but don't forget plannings
+        and the reviews": ejd_ xHigh design STARTED 19:1x (designs/job_wakeups.md), then an xHigh review, then a High
+        implementer (model check + 32-thread soak first, Experimental row off). Owner: ejd_, coordinator
       - [ ] CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V0-V4 stress / night1 x3, day1 x2,
         sea1 x2, WPR stress / night1 / a new day1 (no sea1 WPR: GPU-bound). Owner: coordinator
-      - [ ] C: EJOB: may we change the game's job-semaphore protocol (spin-then-sleep, SetEvent only when a worker
+      - [x] ANSWERED 19:0x (ATN: "Sure but don't forget plannings and the reviews") C: EJOB: may we change the game's job-semaphore protocol (spin-then-sleep, SetEvent only when a worker
         sleeps)? Not byte-exact; a freeze is the failure mode (model check + 32-thread soak first, off by a row); ~2 ms a
         frame in every battle. (from: cpp_ 18:3x)
-      - [ ] C: heapfix notes to the author (B4G gate with numbers after B6, the loopfetch finding, memfast-128, the toolhelp
+      - [x] ANSWERED 19:0x (ATN: "Yeah put it in for me please ... maybe you find more stuff then I send him everything
+        tomorrow": one combined zip; box CPU B6) C: heapfix notes to the author (B4G gate with numbers after B6, the loopfetch finding, memfast-128, the toolhelp
         snapshot cost, the serial merge before the sort); ATN plays B4G meanwhile (own build, own use)? (from: cpp_)
       - [ ] C: AF14 ships to Attila first (opt-in), other RenoDX mods only through upstream with the frozen block? (from: cpp_)
-      - [ ] C: the focus-return lockstep (~5 s of 94 ms frames after alt-tab in big battles): investigate in a helper /
+      - [ ] C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GPU events over an alt-tab),
+        B4's motion constants ring removes one of the waits; waiting for ATN's go) the focus-return lockstep (~5 s of 94 ms frames after alt-tab in big battles): investigate in a helper /
         driver round, or accept? (from: cpp_)
       - [ ] OURS ON THE RENDER THREAD (cpp_): our add-on anywhere on the stack 8.3 ms of night1's render thread (3.8 stress);
         B2 + B4 + B3 cover ~1.1-2.2 of it: the rest needs its own split (which of ours: Capture, motion, bridge, page,
