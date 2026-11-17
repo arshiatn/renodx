@@ -35,6 +35,7 @@
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "./dlaa_bridge.h"
+#include "./frame_trace.hpp"
 
 // The addon's side of the DLAA bridge (dlaa_bridge.h): on first use the 64-bit helper (renodx-tw-dlaa64.exe next to
 // the addon) is started in a job that ends it with the game; the inputs (this frame linear, its depth and motion), the
@@ -1063,6 +1064,13 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
   const uint64_t now_ms = GetTickCount64();
   const bool recent = now_ms - std::exchange(bridge.requested_ms[kind], now_ms) < STEADY_GAP_MS;
   const bool steady = bridge.steady[kind] && kind != PRESENT_FRAME && recent;
+  // A traced frame: each request among the game's commands (requests with none between them would need one Flush only).
+  if (frame_trace::Tracing()) {
+    constexpr std::array<std::string_view, REQUEST_KINDS> KIND_NAMES = {"evaluate", "trace scene", "trace bounce",
+                                                                         "trace reflections", "present frame"};
+    frame_trace::Mark(std::format("bridge request: {} (value {}, {}), its Signal flushed", KIND_NAMES[kind], bridge.value,
+                                  (steady ? "steady: answer read at the next request" : "answer waited for")));
+  }
   if (steady) bridge.watchdog.waited.store(bridge.value + 1);
   SetEvent(bridge.request);
   bridge.published_read = true;
