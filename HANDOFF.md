@@ -345,7 +345,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like th ... | next helper implementer
 - RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed ... | next Ryse round
 - PT DI REVISION (rv1_ review "build after these changes", designs/pt_di_rtxdi_rev ... | des1_ (revision), then the helper queue
-- SHARC DESIGN REVISION (rv3_ review "build after these changes", designs/sdk_repl ... | des3_ (revision), then the helper queue
 - GPU CAPTURE ROUND 2 (ATN 09:5x): after the new features (SHaRC update, PT DI / R ... | coordinator (after plan step 6 + reviews)
 - CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best c ... | cpb_
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
@@ -2282,7 +2281,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         shaders; needs a bridge field, per-game tables for Rome II / WH1, 3 more places square the falloff); then the full
         RTXDI DI pipeline (ReGIR / temporal / spatial with visibility reuse, RAB bridge with the game's formula). Owner:
         des1_ (revision), then the helper queue
-      - [ ] SHARC DESIGN REVISION (rv3_ review "build after these changes", designs/sdk_replace_audit_review.md): B1 reset
+      - [x] DONE SHARC DESIGN REVISION 10:0x (des3_, "Revision 1" in designs/sdk_replace_audit.md): D1 steps A (1.6.5
+        control: std::addressof, clear only when the row comes back on, free after 600 frames off), A2 (OMM bake buffers +
+        pool-poison test), B (1.8.3 by exact folder name, API port, NaN / overflow guard), C (depth-4 test builds); gates G1
+        static, G2 test/tw_sharc (1.6.5 the failing control), G3 zero cost off + no 80 MiB churn, G4 reset / release, G5
+        picture (R3 / E4), G6 Nsight, G7 soak (max 2 hangs: 1.8.3 depth 2, 1.6.5 depth-4 control, 1.8.3 depth 4; run G7 when
+        ATN can reboot soon after); 10-14 agent-h + 3.5 GPU-h; NVIDIA patches would live in dlaa_helper/nvidia_patches/ with
+        a non-MIT header (D1 needs none). NEXT: the SHaRC implementer after ref2_ leaves the helper. Was: (rv3_ review "build after these changes", designs/sdk_replace_audit_review.md): B1 reset
         only when the row comes back on / capacity change / scene reload (SHaRC AGENTS.md:259), free the buffers while off;
         B2 depth-4 soak: a 1.6.5 control first, max 2 hangs (each keeps ~3.5 GB committed until a reboot), tell ATN either
         way; B3 the audit's D2 not approved as written; the anti-firefly risk is moot (ours <= 1); keep build\downloads'
