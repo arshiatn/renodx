@@ -375,7 +375,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARC COST (ATN 20:2x, Forge: SHaRC is for multi-bounce; his +0.8 ms came from t ... | plan step 6 (SHaRC update)
 - NSIGHT XHIGH COUNTERS (ATN 17:5x: "let's use xhigh for it too on next nsight che ... | coordinator (plan steps 4 / 8)
 - PLAYER FLAG OVERRIDE (needed for SER / SHaRC / part A/Bs on recordings): the pla ... | next recorder touch (after fix1_)
-- CAPTURE PASS (run2_ Low STARTED 18:4x, rec_det4 E6EB54F99070, recordings to D:\D ... | run2_
+- MIRRORS OF MADNESS START (run2_ 20:4x): game_startup_mode battle_benchmark / ben ... | next run batch
+- NSIGHT ON PLAYS (run2_ 20:4x: day1_battle frame_936, loops 300, start after 6, l ... | rec_
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2610,10 +2611,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         last pass). Owner: next recorder touch (after fix1_)
       - [x] DONE 18:3x WH3 FOREST (ATN: replay "2" = his forest battle; "Mirrors of Madness Benchmark" ~20 fps (17.6 mean
         in his 17:25 run): an RT/PT candidate; locks removed)
-      - [ ] CAPTURE PASS (run2_ Low STARTED 18:4x, rec_det4 E6EB54F99070, recordings to D:\Dev\tw_recordings (C: 62 GB
+      - [x] DONE 20:4x (run2_: 15 recordings in D:\Dev\tw_recordings\<scene>_<view>\frame_N, all complete.txt: day1 /
+        night1 / sea1 / stress_test_log2 x battle / low / wide (keys only, picked blind: battle = the replay camera paused,
+        low = Y 2.5 s, wide = X 6 s), 3.9-4.6 GB; WH3 wh3_forest_unit / high / edge, 8 frames, 8.3-9.7 GB; every --floor
+        compare 0 above the floor (day1 16 / 6, night1 18 / 4, sea1 17 / 5, stress 15 / 7, WH3 72 / 16); no menu chaining
+        (a fresh start per replay); RT rows: Attila Light Bounce 2, Reflections 1 (Reuse 2), Path Ambient 1, GPU + Leaf
+        Micromaps 1, Sun / Smoke / Fog / Sprite Shadows 1, Water Reflections 1, AO 0, SHaRC 0, DLSS mode 0, RR 4, Render
+        Scale 23; WH3 the same + Replace Shadow Maps, Point Light Shadows, Far Tree Shadows 1, Smoke Quality 3, Water Soft
+        / Steady 1; helpers + ReShade.ini restored (Attila's ini is now ATN's BABAE660..: ATN changed it); D: 175 GB free)
+        CAPTURE PASS (run2_ Low STARTED 18:4x, rec_det4 E6EB54F99070, recordings to D:\Dev\tw_recordings (C: 62 GB
         free, live_proof 27.6 + live_proof2 76.2 GB there), stop under 80 GB on D:): Attila A day1 -> night1 -> sea1 chained
         by the replay menu, B stress alone, WH3 C 2.replay forest FRAMES=8 (far tree shadow flicker), WH3 D Mirrors of
         Madness 3 moments; 3 views each; --floor compares; one offline Nsight steady-frame check. Owner: run2_
+      - [ ] MIRRORS OF MADNESS START (run2_ 20:4x): game_startup_mode battle_benchmark / benchmark with "benchmarks/mirrors
+        of madness benchmark.benchmark" crashed WH3 by itself ~60 s in, twice (crash_report D2026-11-17_T18-14-31 /
+        T18-16-14: stacks Warhammer3 + ntdll + KERNEL32 only, no RenoDX / ReShade frame: the game's own crash on that start
+        form); not recorded: start it from WH3's graphics options menu (a runner's clicks on game screens, or ATN starts
+        it with the recorder hooks in place). Owner: next run batch
+      - [ ] NSIGHT ON PLAYS (run2_ 20:4x: day1_battle frame_936, loops 300, start after 6, limit 4: only 1 frame traced,
+        2377 ms, copies / clusters / AS builds only, no RT passes) + PLAYER FLAG OVERRIDE + ns_metrics.py counters
+        (Forge's columns, i-cache misses, lmem spills, SASS hot spots): rec_ STARTED 20:5x (recorder-only code + tools).
+        Owner: rec_
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
