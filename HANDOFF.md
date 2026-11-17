@@ -357,7 +357,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
 - DESIGN PT DI (des1_ started 08:2x, plan step 5, docs only): plan_1117/designs/pt ... | des1_, coordinator (review)
 - DESIGN VMF (des2_ started 08:2x, docs only): plan_1117/designs/vmf_diffuse.md: m ... | des2_, coordinator (review)
-- DESIGN SDK AUDIT (des3_ started 08:2x, docs only): plan_1117/designs/sdk_replace ... | des3_, coordinator (review, verdict column)
+- DESIGN SDK AUDIT (des3_ DONE 08:4x, review rv3_ (Opus xHigh) STARTED 08:5x -> de ... | des3_, coordinator (review, verdict column)
 - VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT st ... | coordinator
 - SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
 - SKILLS UPDATE 5 (ATN 05:xx "Don't remember to add/fix skills after everything to ... | coordinator, last step of the plan
@@ -2473,7 +2473,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         every place (RT / PT shading, GT-VBGI / GT-VBAO, the game's diffuse as a row), roughness per game, rows + look change
         in numbers, tests (Lambert bit-exact at roughness 0, furnace, Falcor / pbrt-v4); then an Opus xHigh review. Owner:
         des2_, coordinator (review)
-      - [ ] DESIGN SDK AUDIT (des3_ started 08:2x, docs only): plan_1117/designs/sdk_replace_audit.md: the SDK REPLACE AUDIT
+      - [ ] DESIGN SDK AUDIT (des3_ DONE 08:4x, review rv3_ (Opus xHigh) STARTED 08:5x -> designs/sdk_replace_audit_review.md):
+        verdicts: ReSTIR GI core -> RTXDI GI in stages behind an Experimental row; light picks / PT DI -> RTXDI DI (des1_);
+        SHaRC -> 1.8.3 + our buffer lifetime fixed in one change (GrowBuffer(&sharc_buffers_[index]) makes the cache new at
+        every request, known since helper109 / 02a05144c and left for ATN; fixing it alone would expose 1.6.5's entry-0
+        overflow; 1.8.3 dropped the anti-firefly filter we use: our clamp + NaN guard go in); own radiance cache kept until
+        R3; NRD v4.18.0 kept, integration checked with NRD's own review list; OMM SDK kept, per-bake buffers fixed; RTXPT
+        pieces / STBN / NVAPI R615 kept; build.ps1 would pick 1.6.5 over a 1.8.3 beside it (alphabetical). Effort 40-61
+        agent-h + 6-8 GPU-h, SHaRC first (10-14 h). 7 questions for ATN with recommendations in the file. plan_1117/designs/sdk_replace_audit.md: the SDK REPLACE AUDIT
         table (ReSTIR GI, PT DI row, SHaRC 1.8.3, NRD vs NRD-Sample, OMM SDK, RTXPT pieces, STBN, NVAPI R620) with replace /
         fix / keep per row + designs for the update rows; reference verdicts filled after the REF BUILD steps; then an Opus
         xHigh review. Owner: des3_, coordinator (review, verdict column)
