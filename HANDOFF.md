@@ -331,6 +331,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction): C:/Users/arshi/.cla ... | coordinator
 - (sk3_ 01:xx) Shared shaders rule (skills lesson 12): rysesonofrome/upscale_outpu ... | next shared round
 - CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila ... | coordinator
+- SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers f ... | coordinator -> CPU round (plan step 4)
+- MEMORY GROWTH OUT OF FRONT (cap1_ 05:xx): committed grows 2.0-5.0 MB/s while Att ... | next memory round
+- CAPTURE TOOLING (cap1_ 05:xx): run_game's memory.csv overwritten every start (fi ... | coordinator
 - BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before th ... | bug1_
 - BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows ... | bug2_
 - BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Res ... | coordinator
@@ -2145,6 +2148,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         run for days"): from the three captures' WPR + Nsight: every CPU / GPU hot spot of the game and of RenoDX with its
         expected gain, written to tools/tw/round_notes/plan_1117/speed_list.md, each a box here with an owner (a CPU / GPU
         round after the bug fixes, plan step 4). Owner: coordinator
+      - [ ] SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers from the frames that rendered +
+        11-13 / 11-14 recordings): all four views bound by the render thread (night1 20.7 fps 48.4 ms, sea1 28.3 fps 35.3 ms,
+        stress 11.4 fps 87.4 ms; GPU idle 9-50 ms a frame; the game's GPU waits 4.3-7.7 ms for the helper inside that
+        slack). Top actions: (1) captures redone (captures_v2, running); (2) the render thread split by function on the
+        redo (a /Z7 build of the installed commit, addon_hot_match.py); (3) add-on per-pipeline mask so draws no feature
+        needs skip per-draw work (sea1 6.3-7.2k commands, 3.6-3.8k ship ropes): est. 1.5-3 ms, +4-9 % fps, same picture;
+        (4) soldier draw rounding at empire +0x17f6507: Faster Game CPU Code leaves it ("not the game's code as expected")
+        under heapfix 6.10.6, still the hottest spot (10.3 ms summed / frame in stress): read the live bytes, then our
+        variant (heapfix changes only through ATN to its author); (5) number_of_threads A/B 8 / 12 / 16; (6) Small
+        Soldiers as Sprites A/B at stress (look: ATN); (7) address space by region (restart crash): with / without,
+        1x / 8x, in / out of front, start + after a restart; (8) RT restart stall: the first RT frame waits 2.6-2.7 s for
+        the helper at every battle start and after the 10-s release; (9) TlsGetValue thunk at empire +0x16246d0 + the
+        calls in +0x17f7900 (6.75 ms summed in stress); (10) worker detours: add-on 0x47980 (OnDrawScrub / ScaleModelLods,
+        1.82 ms summed night1), 0x6f240 (PickLod, 1.1 ms stress). Owner: coordinator -> CPU round (plan step 4)
+      - [ ] MEMORY GROWTH OUT OF FRONT (cap1_ 05:xx): committed grows 2.0-5.0 MB/s while Attila is out of front with
+        RenoDX (0.3-0.9 in front, 0.1 without RenoDX); in stress the largest free block lost 189 MB in 55 s: a likely cause
+        of the restart crash after alt-tabs. Find what grows (add-on / ReShade / driver) and stop it. Also heapfix 6.10.6
+        grows its pools in 64 KB pieces with nothing reserved: small blocks spread through the space a 42-49 MB malloc
+        needs (a suggestion for heapfix's author, through ATN only). Owner: next memory round
+      - [ ] CAPTURE TOOLING (cap1_ 05:xx): run_game's memory.csv overwritten every start (fixed in capture_1117.ps1);
+        stress_noaddon's helper log a stale copy; the quiet lock stops only builds (agents' claude.exe / git / grep took
+        ~1.4 cores in night1: agents asked to pause for captures_v2); the add-on's PDB has no function names (LTO object),
+        the helper has no PDB: a /Z7 build for symbols. Owner: coordinator
       - [ ] BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before the refrence runs?" -> the ones
         that need no capture now, in parallel): DEBUG44 (a) PsychoV35 red / NaN in darks: WARP repro with negative /
         near-black / Inf / NaN input, find the producer, fix V35 for every game, tw_psychov35 + tw_vanilla_exact still
@@ -2258,7 +2284,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         shader for screen-space reads (not only traced ones) + the sea1 traces, every TW game with sea battles; owner bug1_
         after the sea1 capture. (g) LOD BIAS: ATN "For every single game, the LOD bias for everything should be on": the
         Texture LOD bias on all textures row on by default in every game; owner bug1_.
-      - [ ] (RAN 01:49-02:09, five starts clean, every file of ATN's restored / same (ReShade.ini rewritten by the game, restored): night1 / sea1 / stress with WPR ETLs (1.69 / 0.97 / 0.83 GB), pass timings x3, RT profiles, PresentMon, shots, va.csv; stress_noaddon: largest free block 1094 MB without RenoDX vs 823 MB with (~270 MB ours); LEFT: sea1_perf wrote no frame trace (bug4_ finds why), harness frame recordings = route B's second pass; analysis cap1_ (speed list) + bug4_ (d / e / f) running) (STARTED 01:5x: tools/tw/captures_1117/captures_all.ps1, six starts: night1, sea1, sea1_perf (DLSS Performance
+      - [ ] (RAN 01:49-02:09, five starts clean, every file of ATN's restored / same (ReShade.ini rewritten by the game, restored): night1 / sea1 / stress with WPR ETLs (1.69 / 0.97 / 0.83 GB), pass timings x3, RT profiles, PresentMon, shots, va.csv; BUT cap1_ 05:xx: ATN's RenoDX_WPR_Start task (wpr.exe's window) took the foreground 50-70 ms before each trace, Attila left exclusive fullscreen and drew no 3D: the three ETLs, the pass timings and RT profiles of night1 / sea1 / stress hold no rendered frame (only sea1_perf's timings are valid); redo captures_v2.ps1 started 05:xx (the game window brought back to the front ~2 s and ~4 s after the WPR start); memory: rendering, with vs without RenoDX: committed +209 MB, largest free block 962-1057 vs 1094 MB (the 823 MB was out of front); LEFT: sea1_perf wrote no frame trace (bug4_ finds why), harness frame recordings = route B's second pass; analysis cap1_ (speed list) + bug4_ (d / e / f) running) (STARTED 01:5x: tools/tw/captures_1117/captures_all.ps1, six starts: night1, sea1, sea1_perf (DLSS Performance
         + Frame Trace), stress, stress_noaddon (address space without RenoDX); outputs tools/tw/captures_1117/<label>/; no
         harness frame recorder yet: route B of the reference suite, a second pass later) CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benches), sea1 (go back a bit,
         everything in view), stress_test_log2 (no camera move, it spawns where ATN wants)): per replay one scripted run on
