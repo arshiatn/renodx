@@ -361,7 +361,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
 - CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action u ... | CPU PLAN 2 END
 - CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, X ... | CPU PLAN 2 END
-- CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | ATN (allow the re-run?), then a High implementer to finish
+- CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | CPU PLAN 2 END
 - CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | cb4_ High STARTED 21:4x
 - CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | ATN
 - CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | hb6_, coordinator
@@ -2536,7 +2536,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         re-run, Attila's opt-in in ConfigureAddon, check_logs.py rule, gated builds, T3 suites; XAT (clang-cl i686 makes the
         64-bit load one movq: maybe no change; check the real .addon32); APIPE. Plan corrections: static_checks.py is in
         .agents/skills/tw-port-checklist/scripts; the outside writers need no edits (both wrappers); no TLS concern. NOT
-        merged. Owner: ATN (allow the re-run?), then a High implementer to finish
+        merged. DONE 22:4x: cb3_ resumed on ATN's OK, the classifier allowed the re-run; merged ae73a0b54: AF14
+        3f19f310a (17 / 17 parts x86 + amd64; x86 4.1 vs 18.9 ns locked, 4 threads 4.5 vs 128 ns; amd64 2.6 vs 9.8 ns),
+        Attila opt-in dc1527f94 (ConfigureAddon, Attila only), check_logs.py rule "view filter (off|mismatch)" (tools),
+        T3: tw_sampler_lifetime / tw_draw_dispatch / tw_test_hooks / tw_device_loss x86 + amd64 PASS, tw_attila_builds
+        17 / 17; gated build all: 16 x86 + 21 amd64 + mcp_bridge exit 0; XAT no change (every epoch load one aligned movq,
+        bumps lock cmpxchg8b); APIPE skipped (~0 stress, -0.1..-0.2 night1, needs a destroy generation in pipeline.hpp).
+        LEFT: the CMake runtime suites (RENODX_BUILD_TESTS=ON configure outside gated_build); the END bench's night1 WPR
+        must show the gtl bucket gone. Owner: CPU PLAN 2 END
       - [ ] CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_motion.hpp, dlaa_bridge.hpp):
         night1 -0.3..-0.6. Owner: cb4_ High STARTED 21:4x
       - [ ] CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization designs then code, EVEC design;
