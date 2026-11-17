@@ -1,5 +1,6 @@
-# The helper's rays on open surfaces (tests.cpp): specular occlusion and the reflections' share on an open or roofed
-# ground, Path-Traced Ambient's sky on open surfaces; the helper's own rt_path.cs_6_5.hlsl on WARP. amd64.
+# The helper's rays on open surfaces and the sky (tests.cpp): specular occlusion and the reflections' share on an open or
+# roofed ground, Path-Traced Ambient's sky on open surfaces, the fog's sky texels; the helper's own rt_path.cs_6_5.hlsl and
+# rt_fog.cs_6_5.hlsl on WARP. amd64.
 # -Bin: the folder of dxcompiler.dll and dxil.dll (the repository's bin; a worktree without one: the main checkout's).
 # -Expect now (today's values hold, the exact ones fail: the bias seen) | exact (a fixed helper). Holds tools/tw's GPU job
 # lock while it runs when -Lock names it.

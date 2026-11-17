@@ -1,5 +1,6 @@
-// The helper's rays on surfaces nothing stands over (reference suite step 0, review I5 and I4), on WARP: its own shaders
-// (dlaa_helper/rt_path.cs_6_5.hlsl compiled as build.ps1 compiles them) over planes in a scene of their own.
+// The helper's rays on surfaces nothing stands over and on the sky (reference suite step 0, review I5 and I4; DEBUG44 (d)),
+// on WARP: its own shaders (dlaa_helper/rt_path.cs_6_5.hlsl and rt_fog.cs_6_5.hlsl compiled as build.ps1 compiles them)
+// over planes in a scene of their own.
 // 1. Specular occlusion (ReflectPixel, -D REFLECT, Specular Occlusion without reflections: every roughness) on an open
 //    ground plane, per roughness and view (n.v), with both lobes (ReflectAlpha; PATH_SQUARED_LOBE). Today: the share of
 //    the lobe's samples above the horizon, P(n.l > 0) under GGX visible normals (expected from Heitz 2018's sampler, as
@@ -13,6 +14,9 @@
 //    HARNESS_SKY's coloured cube and one brighter on +x (a sun side). Today: E_cos[cube] / Q16[cube], the cosine mean over
 //    SkyCalibration's 16 fixed directions; E_cos in closed form ((1 + n_a^2) / 8 +- n_a / 4 of each face, checked by a
 //    stratified integral). Exact: 1.
+// 4. The fog's sky texels (dlaa_helper/rt_fog.cs_6_5.hlsl with FOG_LIGHTS): the same view all sky, then all a wall 1000 m
+//    away (past FOG_RANGE), a roof shading part of each march from the sun and two lights. Today: a sky texel sun 1, no
+//    glow. Exact: the wall's values (the same march), within the storage's rounding.
 // Each check: |measured - expected| within 4 standard errors (texel-frames independent) + the storage's rounding.
 // tests.exe <repository> <folder of dxcompiler.dll and dxil.dll> [now | exact]
 // now (default): today's values must hold, and the exact ones must fail somewhere in each part (CONTROL: the bias is
@@ -292,8 +296,8 @@ int main(int argc, char** argv) {
     triangle_vertices->insert(triangle_vertices->end(), {corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, -1), corner(1, 1), corner(-1, 1)});
   };
 
-  // A pass of the helper's: rt_path.cs_6_5.hlsl with `defines`, its bindings from its reflection; the named ones bound to
-  // the given resources, the others null.
+  // A pass of the helper's: its shader `file` (dlaa_helper's) with `defines`, its bindings from its reflection; the named
+  // ones bound to the given resources, the others null.
   struct Pass {
     ComPtr<ID3D12ShaderReflection> reflection;
     ComPtr<ID3D12RootSignature> root;
@@ -302,8 +306,8 @@ int main(int argc, char** argv) {
     std::map<std::string, ComPtr<ID3D12Resource>> constants;  // by cbuffer name, persistently mapped upload buffers
     std::map<std::string, uint8_t*> mapped;
   };
-  const auto make_pass = [&](const std::vector<std::wstring>& defines, Pass* pass) {
-    const std::wstring path = std::wstring(repository.begin(), repository.end()) + L"\\src\\games\\twattila\\dlaa_helper\\rt_path.cs_6_5.hlsl";
+  const auto make_pass = [&](const wchar_t* file, const std::vector<std::wstring>& defines, Pass* pass) {
+    const std::wstring path = std::wstring(repository.begin(), repository.end()) + L"\\src\\games\\twattila\\dlaa_helper\\" + file;
     ComPtr<IDxcBlobEncoding> source;
     if (FAILED(utils->LoadFile(path.c_str(), nullptr, &source))) return false;
     std::vector<LPCWSTR> arguments = {path.c_str(), L"-T", L"cs_6_5", L"-E", L"main", L"-O3"};
@@ -601,7 +605,7 @@ int main(int argc, char** argv) {
     std::printf("expectations: Heitz 2018's sampler and the GGX quadrature agree within 5e-4 at every cell; densities 1 within 1e-3\n");
 
     Pass reflect;
-    CHECK(make_pass({L"REFLECT"}, &reflect));
+    CHECK(make_pass(L"rt_path.cs_6_5.hlsl", {L"REFLECT"}, &reflect));
     constexpr uint32_t PATH_REFLECTIONS = 2u;
     constexpr uint32_t PATH_SPECULAR_OCCLUSION = 4u;
     constexpr uint32_t PATH_GUIDES = 64u;
@@ -717,7 +721,7 @@ int main(int argc, char** argv) {
     CHECK(execute());
     const Scene scene = build_scene(quads);
     Pass paths;
-    CHECK(make_pass({}, &paths));
+    CHECK(make_pass(L"rt_path.cs_6_5.hlsl", {}, &paths));
     bind_pass(&paths, {{"scene", scene.tlas.Get()},
                        {"positions", positions_texture.Get()},
                        {"sun", sun_texture.Get()},
@@ -838,6 +842,131 @@ int main(int argc, char** argv) {
     }
     std::printf("sky: E_cos closed form within 1e-4 of the stratified integral at the five axis normals\n");
     conclude("3 Path-Traced Ambient's sky on open surfaces", sky_verdict, true);
+  }
+
+  // Part 4: the fog's sky texels (rt_fog.cs_6_5.hlsl: the sun's shafts and, with FOG_LIGHTS, the torches' light along each
+  // camera ray, FOG_RANGE 400 m). The same view twice: every pixel the sky, then every pixel a wall 1000 m away (past
+  // FOG_RANGE: the same march). A roof 30 m up over the first 300 m shades part of each march from the sun and the two
+  // lights. Today: a sky texel sun 1, no glow. Exact: the wall's values (the same rays), within the storage's rounding.
+  {
+    constexpr uint32_t WIDTH = 64;
+    constexpr uint32_t HEIGHT = 32;
+    constexpr uint32_t FOG_FRAMES = 4;
+    const uint32_t fog_width = (WIDTH + 3) / 4;
+    const uint32_t fog_height = (HEIGHT + 3) / 4;
+    // The camera 2 m up, turned 20 degrees left and 10 up, 60 degrees high, jittered 0.3 px; its registers as rows on
+    // column vectors (rt_camera.hlsli ClipOf), w the view depth.
+    const Vec3 camera = {0.0, 2.0, 0.0};
+    const double yaw = -20.0 * PI / 180.0;
+    const double pitch = 10.0 * PI / 180.0;
+    const Vec3 forward = {std::sin(yaw) * std::cos(pitch), std::sin(pitch), std::cos(yaw) * std::cos(pitch)};
+    const Vec3 right = Normalize(Cross({0.0, 1.0, 0.0}, forward));
+    const Vec3 up = Cross(forward, right);
+    const double focal = 1.0 / std::tan(30.0 * PI / 180.0);
+    const double aspect = double{WIDTH} / HEIGHT;
+    const double jitter_x = 0.3 * 2.0 / WIDTH;
+    const auto row = [&](const Vec3& axis, double scale) {
+      return std::array<float, 4>{static_cast<float>(axis.x * scale), static_cast<float>(axis.y * scale), static_cast<float>(axis.z * scale),
+                                  static_cast<float>(-Dot(axis, camera) * scale)};
+    };
+    std::array<std::array<float, 4>, 4> view_projection = {row(right, focal / aspect), row(up, focal), row(forward, 0.5), row(forward, 1.0)};
+    for (int component = 0; component < 4; ++component) view_projection[0][component] += static_cast<float>(jitter_x) * view_projection[3][component];
+    // The wall's positions: each pixel's ray (through its centre, as rt_positions unprojects) 1000 m out.
+    std::vector<std::array<float, 4>> wall(size_t{WIDTH} * HEIGHT);
+    for (uint32_t y = 0; y < HEIGHT; ++y) {
+      for (uint32_t x = 0; x < WIDTH; ++x) {
+        const double ndc_x = (x + 0.5) / WIDTH * 2.0 - 1.0;
+        const double ndc_y = 1.0 - (y + 0.5) / HEIGHT * 2.0;
+        const double view_x = (ndc_x - jitter_x) * aspect / focal;
+        const double view_y = ndc_y / focal;
+        const Vec3 direction = Normalize({right.x * view_x + up.x * view_y + forward.x, right.y * view_x + up.y * view_y + forward.y,
+                                          right.z * view_x + up.z * view_y + forward.z});
+        const std::array<float, 3> at = {static_cast<float>(camera.x + direction.x * 1000.0), static_cast<float>(camera.y + direction.y * 1000.0),
+                                         static_cast<float>(camera.z + direction.z * 1000.0)};
+        const float dx = at[0] - static_cast<float>(camera.x);
+        const float dy = at[1] - static_cast<float>(camera.y);
+        const float dz = at[2] - static_cast<float>(camera.z);
+        wall[size_t{y} * WIDTH + x] = {at[0], at[1], at[2], std::sqrt(dx * dx + dy * dy + dz * dz)};
+      }
+    }
+    const std::vector<std::array<float, 4>> sky(wall.size(), {0.f, 0.f, 0.f, 0.f});
+    ComPtr<ID3D12Resource> wall_texture = texture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT);
+    ComPtr<ID3D12Resource> sky_texture = texture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT);
+    ComPtr<ID3D12Resource> sun_texture = texture(16, 1, DXGI_FORMAT_R32G32B32A32_FLOAT);
+    ComPtr<ID3D12Resource> fog_texture = texture(fog_width, fog_height, DXGI_FORMAT_R8_UNORM);              // the helper's formats
+    ComPtr<ID3D12Resource> fog_lights_texture = texture(fog_width, fog_height, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    std::vector<std::array<float, 4>> sun(16, {0.f, 0.f, 0.f, 0.f});
+    const Vec3 toward_sun = Normalize({0.3, 1.0, 0.2});
+    sun[0] = {static_cast<float>(toward_sun.x), static_cast<float>(toward_sun.y), static_cast<float>(toward_sun.z), 1.f};
+    sun[1] = {static_cast<float>(camera.x), static_cast<float>(camera.y), static_cast<float>(camera.z), 1.f};
+    fill(wall_texture.Get(), wall.data(), 16);
+    fill(sky_texture.Get(), sky.data(), 16);
+    fill(sun_texture.Get(), sun.data(), 16);
+    CHECK(execute());
+    std::vector<std::array<float, 3>> roof;
+    quad(&roof, {0.0, 30.0, 150.0}, {40.0, 0.0, 0.0}, {0.0, 0.0, 150.0});
+    const Scene roof_scene = build_scene(roof);
+    Pass fog;
+    CHECK(make_pass(L"rt_fog.cs_6_5.hlsl", {}, &fog));
+    constexpr uint32_t FOG_LIGHTS = 512u;
+    const std::array<std::array<float, 4>, 2> lights = {{{0.f, 25.f, 80.f, 120.f}, {-20.f, 5.f, 200.f, 60.f}}};
+    const std::array<std::array<float, 4>, 2> light_colours = {{{8.f, 5.f, 2.f, 0.f}, {3.f, 3.f, 6.f, 0.f}}};
+    // One frame of the fog over `positions`: its sun share (0-1) and the glow's red, green, blue a texel.
+    const auto fog_frame = [&](ID3D12Resource* positions, uint32_t frame) {
+      bind_pass(&fog, {{"scene", roof_scene.tlas.Get()}, {"positions", positions}, {"sun", sun_texture.Get()}, {"fog", fog_texture.Get()},
+                       {"fog_lights", fog_lights_texture.Get()}});
+      set_uint(&fog, "Settings", "width", WIDTH);
+      set_uint(&fog, "Settings", "height", HEIGHT);
+      set_uint(&fog, "Settings", "frame", frame);
+      set_uint(&fog, "Settings", "flags", FOG_LIGHTS);
+      set_constant(&fog, "Lights", "lights", lights.data(), sizeof(lights));
+      set_uint(&fog, "Lights", "light_count", static_cast<uint32_t>(lights.size()));
+      set_constant(&fog, "Lights", "light_colours", light_colours.data(), sizeof(light_colours));
+      // (Today's fog has no camera registers: its sky needs none.)
+      if (fog.mapped.contains("Paths")) set_constant(&fog, "Paths", "view_projection", view_projection.data(), sizeof(view_projection));
+      std::vector<std::array<double, 4>> values(size_t{fog_width} * fog_height);
+      if (!dispatch(&fog, fog_width, fog_height)) return values;
+      const std::vector<uint8_t> shares = read(fog_texture.Get(), 1);
+      const std::vector<uint8_t> glow = read(fog_lights_texture.Get(), 8);
+      for (size_t texel = 0; texel < values.size(); ++texel) {
+        values[texel] = {shares[texel] / 255.0, half_at(glow, texel * 4), half_at(glow, texel * 4 + 1), half_at(glow, texel * 4 + 2)};
+      }
+      return values;
+    };
+    Verdict fog_verdict;
+    double darkest_wall = 1.0;
+    double brightest_wall = 0.0;
+    double sun_apart = 0.0;    // the sky texels' sun share from the wall's, at most
+    double glow_apart = 0.0;   // the glow's, relative to the wall's
+    size_t not_today = 0;
+    size_t not_exact = 0;
+    for (uint32_t frame = 1; frame <= FOG_FRAMES; ++frame) {
+      const auto at_wall = fog_frame(wall_texture.Get(), frame);
+      const auto at_sky = fog_frame(sky_texture.Get(), frame);
+      for (size_t texel = 0; texel < at_wall.size(); ++texel) {
+        darkest_wall = std::min(darkest_wall, at_wall[texel][0]);
+        brightest_wall = std::max(brightest_wall, at_wall[texel][1]);
+        // The share: a step of R8_UNORM; the glow: two of FP16's steps.
+        bool today = std::abs(at_sky[texel][0] - 1.0) <= 0.5 / 255.0;
+        bool exact = std::abs(at_sky[texel][0] - at_wall[texel][0]) <= 1.5 / 255.0;
+        sun_apart = std::max(sun_apart, std::abs(at_sky[texel][0] - at_wall[texel][0]));
+        for (int channel = 1; channel < 4; ++channel) {
+          today = today && at_sky[texel][channel] == 0.0;
+          exact = exact && std::abs(at_sky[texel][channel] - at_wall[texel][channel]) <= 2e-3 * at_wall[texel][channel] + 1e-5;
+          glow_apart = std::max(glow_apart, std::abs(at_sky[texel][channel] - at_wall[texel][channel]) / std::max(at_wall[texel][channel], 1e-5));
+        }
+        not_today += today ? 0 : 1;
+        not_exact += exact ? 0 : 1;
+      }
+    }
+    // The scene shades and lights the marches (else the parts' values would agree by nothing there).
+    CHECK(darkest_wall < 0.9 && brightest_wall > 0.01);
+    fog_verdict.now_holds = not_today == 0;
+    fog_verdict.exact_holds = not_exact == 0;
+    std::printf("fog: %u x %u texels x %u frames; the wall's sun share down to %.4f, its glow (red) up to %.4f; sky texels against the wall's: "
+                "sun share %.4f apart at most, glow %.5f (relative); %zu texel-frames not today's (sun 1, no glow), %zu not the wall's\n",
+                fog_width, fog_height, FOG_FRAMES, darkest_wall, brightest_wall, sun_apart, glow_apart, not_today, not_exact);
+    conclude("4 the fog's sky texels", fog_verdict, true);
   }
 
   std::printf("%s\n", (failures == 0) ? "ALL PASSED" : "SOME FAILED");

@@ -22,10 +22,11 @@ Texture2D<float4> t_rt_fog_positions : register(t45);
 #endif
 
 // The four fog texels around a render pixel (their centres at render pixel 4 x + 2) and their bilinear weights, each kept
-// only where its centre is the pixel's kind of surface (one within a factor of 2 of the pixel's distance): no torch glow or
-// shade across a silhouette (DEBUG44 (d): a light rim in whole fog texels around trees against the sky and the far hills).
-// None of its kind: all four. False: the pixel is the sky's (the helper's sky texels: sun 1, no glow).
-bool RtFogCorners(float2 render_pixel, uint width, uint height, out int2 corners[4], out float weights[4]) {
+// only where its centre is the pixel's kind (a surface within a factor of 2 of the pixel's distance, the sky with the sky):
+// no torch glow or shade across a silhouette (DEBUG44 (d): a light rim in whole fog texels around trees against the sky
+// and the far hills). None of its kind: all four. The helper's sky texels march their camera ray as far as a far
+// surface's (helpers before: sun 1, no glow, as the sky pixels took before).
+void RtFogCorners(float2 render_pixel, uint width, uint height, out int2 corners[4], out float weights[4]) {
   const float2 texel = render_pixel / 4.f - 0.625f;
   const int2 base = int2(floor(texel));
   const float2 blend = texel - base;
@@ -43,7 +44,9 @@ bool RtFogCorners(float2 render_pixel, uint width, uint height, out int2 corners
     weights[corner] = bilinear[corner];
     if (positions_width != 0u) {
       const float corner_distance = t_rt_fog_positions.Load(int3(min(corners[corner] * 4 + 2, last_position), 0)).w;
-      weights[corner] *= (corner_distance > 0.5f * pixel_distance && corner_distance < 2.f * pixel_distance) ? 1.f : 0.f;
+      const bool alike = (pixel_distance > 0.f) ? (corner_distance > 0.5f * pixel_distance && corner_distance < 2.f * pixel_distance)
+                                                : (corner_distance <= 0.f);
+      weights[corner] *= alike ? 1.f : 0.f;
     }
     kept += weights[corner];
   }
@@ -51,7 +54,6 @@ bool RtFogCorners(float2 render_pixel, uint width, uint height, out int2 corners
   for (uint corner = 0u; corner < 4u; ++corner) {
     weights[corner] = (kept > 0.f) ? weights[corner] / kept : bilinear[corner];
   }
-  return pixel_distance > 0.f;
 }
 
 // The factor for the fog's sun-lit colour at a render pixel (RtFogCorners' texels).
@@ -61,7 +63,7 @@ float RtFogSun(float2 render_pixel) {
   if (width == 0u) return 1.f;
   int2 corners[4];
   float weights[4];
-  if (!RtFogCorners(render_pixel, width, height, corners, weights)) return 1.f;
+  RtFogCorners(render_pixel, width, height, corners, weights);
   float visible = 0.f;
   [unroll]
   for (uint corner = 0u; corner < 4u; ++corner) {
@@ -77,7 +79,7 @@ float3 RtFogLights(float2 render_pixel) {
   if (width == 0u) return 0.f;
   int2 corners[4];
   float weights[4];
-  if (!RtFogCorners(render_pixel, width, height, corners, weights)) return 0.f;
+  RtFogCorners(render_pixel, width, height, corners, weights);
   float3 light = 0.f;
   [unroll]
   for (uint corner = 0u; corner < 4u; ++corner) {
