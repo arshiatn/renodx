@@ -69,6 +69,45 @@ void Check(bool passed, const char* message) {
   std::abort();
 }
 
+// The software context's ID3D11DeviceContext4::Signal / Wait (slots 147 / 148 of d3d11_3.h's ID3D11DeviceContext4Vtbl),
+// counted and failed on the bridge's fence when asked; everything else passes through.
+using FenceCall = HRESULT(STDMETHODCALLTYPE*)(ID3D11DeviceContext4*, ID3D11Fence*, UINT64);
+constexpr size_t SIGNAL_SLOT = 147;
+constexpr size_t WAIT_SLOT = 148;
+FenceCall original_signal = nullptr;
+FenceCall original_wait = nullptr;
+unsigned fence_signals = 0;  // the bridge's fence's
+unsigned fence_waits = 0;
+unsigned probe_calls = 0;    // any fence's
+bool fail_next_signal = false;
+bool fail_next_wait = false;
+HRESULT STDMETHODCALLTYPE TestSignal(ID3D11DeviceContext4* context, ID3D11Fence* fence, UINT64 value) {
+  ++probe_calls;
+  if (fence == bridge_api::bridge.fence.Get()) {
+    ++fence_signals;
+    if (std::exchange(fail_next_signal, false)) return E_FAIL;
+  }
+  return original_signal(context, fence, value);
+}
+HRESULT STDMETHODCALLTYPE TestWait(ID3D11DeviceContext4* context, ID3D11Fence* fence, UINT64 value) {
+  ++probe_calls;
+  if (fence == bridge_api::bridge.fence.Get()) {
+    ++fence_waits;
+    if (std::exchange(fail_next_wait, false)) return E_FAIL;
+  }
+  return original_wait(context, fence, value);
+}
+
+// `object`'s vtable entry `slot` replaced by `hook`; the entry it had.
+void* PatchSlot(void* object, size_t slot, void* hook) {
+  void** vtable = *static_cast<void***>(object);
+  DWORD protection = 0;
+  Check(VirtualProtect(&vtable[slot], sizeof(void*), PAGE_READWRITE, &protection) != FALSE, "vtable writable");
+  void* original = std::exchange(vtable[slot], hook);
+  VirtualProtect(&vtable[slot], sizeof(void*), protection, &protection);
+  return original;
+}
+
 BOOL WINAPI TestAssignProcessToJobObject(HANDLE job, HANDLE process) {
   Check(child_witness == nullptr, "previous child witness closed");
   Check(DuplicateHandle(GetCurrentProcess(), process, GetCurrentProcess(), &child_witness, SYNCHRONIZE, FALSE, 0),
@@ -282,6 +321,19 @@ int main(int argc, char** argv) {
   Check(SUCCEEDED(game.device.As(&game.device5)) && SUCCEEDED(game.context.As(&game.context4)), "game shared fence support");
   Check(SUCCEEDED(game.device5->CreateFence(0, D3D11_FENCE_FLAG_NONE, IID_PPV_ARGS(&game.tail))), "tail fence");
   auto& bridge = bridge_api::bridge;
+  // The context's Signal and Wait through the test's: the interface's calls must reach them, and still do their work.
+  original_signal = reinterpret_cast<FenceCall>(PatchSlot(game.context4.Get(), SIGNAL_SLOT, reinterpret_cast<void*>(&TestSignal)));
+  original_wait = reinterpret_cast<FenceCall>(PatchSlot(game.context4.Get(), WAIT_SLOT, reinterpret_cast<void*>(&TestWait)));
+  {
+    ComPtr<ID3D11Fence> probe;
+    Check(SUCCEEDED(game.device5->CreateFence(0, D3D11_FENCE_FLAG_NONE, IID_PPV_ARGS(&probe))), "probe fence");
+    Check(SUCCEEDED(game.context4->Signal(probe.Get(), 1)) && SUCCEEDED(game.context4->Wait(probe.Get(), 1)) && probe_calls == 2,
+          "Signal and Wait reach slots 147 and 148");
+    game.context->Flush();
+    const ULONGLONG until = GetTickCount64() + 2000;
+    while (probe->GetCompletedValue() < 1 && GetTickCount64() < until) Sleep(1);
+    Check(probe->GetCompletedValue() == 1, "the patched Signal still signals");
+  }
 
   const std::wstring name = L"Local\\RenoDX_TW_DLAA_" + std::to_wstring(GetCurrentProcessId());
   HANDLE occupied = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(bridge_api::Shared), name.c_str());
@@ -596,6 +648,34 @@ int main(int argc, char** argv) {
   bridge_api::Shutdown();
   CheckClosed();
   std::puts("PASS: a fence-less answer to a steady request turns the bridge off and the recovery frees its wait");
+
+  // The game's own Signal or Wait on the set's fence fails: off at once. A failed signal asks the helper nothing (it would
+  // wait for a value that never comes); after a failed wait (the deferred one in Request, BeforeSharedWrites') no signal
+  // of the game's follows, which could land before the helper's and be moved back by it.
+  for (int failure = 0; failure < 3; ++failure) {
+    StartReady(game, "start failed fence call test");
+    Check(bridge_api::Prepare(device, 16, 16), "the set");
+    Check(RequestAs(game, (failure == 0 ? bridge_api::EVALUATE : bridge_api::PRESENT_FRAME), HEALTHY), "a first request");
+    const uint64_t asked = bridge.shared->value;
+    const unsigned signals = fence_signals;
+    if (failure == 0) {
+      fail_next_signal = true;
+    } else {
+      fail_next_wait = true;
+    }
+    if (failure == 2) {
+      bridge_api::BeforeSharedWrites(game.context.Get());
+      Check(bridge.failed && !fail_next_wait, "a failed wait before the shared writes turns the bridge off");
+    }
+    Check(!RequestAs(game, bridge_api::EVALUATE, HEALTHY) && bridge.failed, "a failed signal or wait turns the bridge off");
+    Check(!fail_next_signal && !fail_next_wait, "the failure was injected");
+    Check(fence_signals == signals + (failure == 0 ? 1u : 0u) && bridge.shared->value == asked, "nothing signalled or asked after it");
+    game.QueueTail();
+    Check(game.TailWithin(3000), "nothing left waiting");
+    bridge_api::Shutdown();
+    CheckClosed();
+  }
+  std::puts("PASS: a failed Signal or Wait of the game's on the set's fence turns the bridge off, with no signal or request after it");
 
   // Textures that could not be made: tried again at another size or after 30 s, three times a session, a line each. Last:
   // a 32-bit process may find no room afterwards for a later case's 512 MB ray tracing texture.

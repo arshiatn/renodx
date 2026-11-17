@@ -355,6 +355,14 @@ inline bool Fail(const std::string& status) {
   return false;
 }
 
+// A Signal or Wait of the game's on the set's fence was queued; false: off. Past a failed wait the game's next signal
+// could land before the helper's, and past a failed signal the helper would wait for a value that never comes: either way
+// the helper's late signal moves the fence below the game's values, which the recovery can't free.
+inline bool Queued(HRESULT result) {
+  if (SUCCEEDED(result)) return true;
+  return Fail("DLAA: the game's GPU could not signal or wait for the helper's fence (off).");
+}
+
 // The watcher's verdict taken over on the game's thread (said once); false: the helper runs.
 inline bool HelperLost() {
   if (!bridge.watchdog.failed.load()) return false;
@@ -1039,9 +1047,9 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
     if (!Answer(20000)) return false;
     bridge.steady[last] = shared.evaluated != 0 && shared.done_value == shared.value + 1;
   }
-  if (bridge.deferred != 0) context4->Wait(bridge.fence.Get(), std::exchange(bridge.deferred, 0));
+  if (bridge.deferred != 0 && !Queued(context4->Wait(bridge.fence.Get(), std::exchange(bridge.deferred, 0)))) return false;
   ++bridge.value;
-  context4->Signal(bridge.fence.Get(), bridge.value);
+  if (!Queued(context4->Signal(bridge.fence.Get(), bridge.value))) return false;
   context->Flush();
   shared.value = bridge.value;
   fill(&shared);
@@ -1059,8 +1067,7 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
     if (HelperLost()) return false;
     bridge.pending = true;
     bridge.pending_kind = kind;
-    context4->Wait(bridge.fence.Get(), bridge.value + 1);
-    return true;
+    return Queued(context4->Wait(bridge.fence.Get(), bridge.value + 1));
   }
   // Waited for: the first after new shared objects may start NVIDIA's features (Streamline and DLSS-G: seconds when cold).
   const int64_t answer_ticks_before = bridge.answer_ticks;
@@ -1075,8 +1082,7 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
     return shared.evaluated != 0;
   }
   if (HelperLost()) return false;
-  context4->Wait(bridge.fence.Get(), bridge.value);
-  return true;
+  return Queued(context4->Wait(bridge.fence.Get(), bridge.value));
 }
 
 }  // namespace internal
@@ -1092,7 +1098,8 @@ inline void BeforeSharedWrites(ID3D11DeviceContext* context) {
   }
   ComPtr<ID3D11DeviceContext4> context4;
   if (FAILED(context->QueryInterface(IID_PPV_ARGS(context4.GetAddressOf())))) return;
-  context4->Wait(bridge.fence.Get(), std::exchange(bridge.deferred, 0));
+  // Failed: off, so no later signal of the game's comes before the helper's.
+  internal::Queued(context4->Wait(bridge.fence.Get(), std::exchange(bridge.deferred, 0)));
 }
 
 // This frame's ray tracing (its inputs written on `context` before this: the vertex texture's captures, the positions,
