@@ -349,7 +349,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best c ... | cpb_
 - WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffus ... | next WH3 helper round
 - X86 64-BIT ATOMIC LOADS (rv4_ 10:5x): std::atomic<uint64_t> loads in the x86 add ... | next shared-utils round (with the memo)
-- RECORDER FIRST (ATN 12:2x: "Wouldn't that be amazing for our RT/PT further optim ... | coordinator
+- RECORDER (built: rec_ merged 9e1a18027, ref_step4.md: x64 helper recorder-only b ... | coordinator
 - CPU NEXT (cpu_round_report.md): heapfix P + size-gated B4 (threads only for 3276 ... | next CPU round
 - C-SPRITES (cpb_): Small Soldiers as Sprites is 3.5-3.9x the fps in stress (13-15 ... | ATN
 - MEMO M1 RESULT (jdg1_, judge_m1_o1.md): GO for the filter alone (F14, 2 KB, no m ... | next CPU / utils round
@@ -2381,7 +2381,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         dependent), loopanim / x87keep status, the render thread's wait for the one-worker sort (12.6 / 6.2 / 2.6 ms),
         memcpy 0x1a280f0's share, the engine site 0x18635a0 design, the 7b recording's next candidates; our patches against
         his 7.0 source only, no RenoDX code; ATN passes it on. Owner: coordinator after cpb_'s report
-      - [ ] RECORDER FIRST (ATN 12:2x: "Wouldn't that be amazing for our RT/PT further optimizations"): REF BUILD step 4
+      - [ ] RECORDER (built: rec_ merged 9e1a18027, ref_step4.md: x64 helper recorder-only build, no bridge field,
+        nothing in the game; record = renodx_test_hooks.txt RENODX_TW_RECORD=<folder> + marker renodx_record_now, ~4.5 GB
+        a recording at 4K (~7 GB with histories); play = renodx-tw-dlaa64.exe 0 play <rec>\frame_<N> + rec_compare.py,
+        RENODX_TW_PLAY_LOOPS=n for Nsight / the reference; round trip 58 / 58 byte-identical in ATN's paths mode; zero cost
+        off): LIVE PROOF 14:3x FAILED (run2_; recordings kept in tools/tw/recordings/live_proof): play-backs differ (21-25
+        of 54 outputs; the instances digest differs, records + scene match), no [TW recorder] log lines, GPU baking on
+        recorded instead of refusing, Alt+Enter and 67 % markers consumed without a recording, Nsight loops not repeated;
+        sent to rec_ with the GPU-bake journal; helper + ReShade.ini restored. Was: LEFT (1) live proof (run2_ low runner 14:xx: stress paused + moving, GPU-baking refusal, Alt+Enter ->
+        INCOMPLETE, 67 %, offline play + compare + one Nsight trace); (2) GPU Micromap Baking journal (rec_ again: ATN plays
+        with RayTracedGpuMicromaps=1, recordings should match); (3) the 12-recording capture pass (night1 / sea1 / stress /
+        day1 x 3 views, ~55 GB at 4K, C: 206 GB free) with ATN's settings; NRD's own history not recorded (first played
+        frames differ with NRD); PTLAS refused. Owner: coordinator. Was: RECORDER FIRST (ATN 12:2x: "Wouldn't that be amazing for our RT/PT further optimizations"): REF BUILD step 4
         (route B: the bridge recorder + harness player, 12 recordings of night1 / sea1 / stress / day1) moves up: the next
         helper implementer after ref2_, before SHaRC; then RT/PT optimization and SHaRC's G5 / G6 run in Nsight on recorded
         real frames without starting the game. Owner: coordinator
