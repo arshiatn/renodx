@@ -347,14 +347,16 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed ... | next Ryse round
 - GPU CAPTURE ROUND 2 (ATN 09:5x): after the new features (SHaRC update, PT DI / R ... | coordinator (after plan step 6 + reviews)
 - CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best c ... | cpb_
-- O1 NIGHT1 TRACE (des1_ step 0): one night1 frame trace for the O1 census (which ... | coordinator
 - WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffus ... | next WH3 helper round
 - X86 64-BIT ATOMIC LOADS (rv4_ 10:5x): std::atomic<uint64_t> loads in the x86 add ... | next shared-utils round (with the memo)
-- EFFORT A/B (ATN 10:3x "test low + your judgement and just medium effort for test ... | coordinator
 - HEAPFIX AUTHOR ZIP 2 (ATN 12:2x: the author liked the 11-15 zip; "make another z ... | coordinator after cpb_'s report
 - RECORDER FIRST (ATN 12:2x: "Wouldn't that be amazing for our RT/PT further optim ... | coordinator
 - CPU NEXT (cpu_round_report.md): heapfix P + size-gated B4 (threads only for 3276 ... | next CPU round
 - C-SPRITES (cpb_): Small Soldiers as Sprites is 3.5-3.9x the fps in stress (13-15 ... | ATN
+- MEMO M1 RESULT (jdg1_, judge_m1_o1.md): GO for the filter alone (F14, 2 KB, no m ... | next CPU / utils round
+- LIGHT READBACK CAP (jdg1_): rt_lights' readback caps at 16,384 records while nig ... | PT DI step 0
+- BENCH CLOSE RACE BY STACK (jdg1_): the stress M1 run's close AV was the known sh ... | coordinator (tools)
+- C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 ... | ATN
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -2339,7 +2341,10 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best combination (heapfix P + trim add-on,
         ATN's maxed Graphics 2 of 2) on stress + night1 once each: the remaining hot spots as "next CPU candidates" in
         cpu_bench_results.md. Owner: cpb_
-      - [ ] O1 NIGHT1 TRACE (des1_ step 0): one night1 frame trace for the O1 census (which point-light shaders / lights a
+      - [x] DONE O1 NIGHT1 TRACE 12:5x (run1_ + jdg1_, plan_1117/judge_m1_o1.md): 2 point-light draws (792 indices x 9,593
+        instances each): ps 6426B042 pointlight00 smooth slm (stencil 1) + 90981DA1 pointlight01 smooth skinlm (stencil 3);
+        0 of the 20 linear-falloff shaders drawn at ATN's settings (L1 changes nothing in night1); one G-buffer set; light
+        readback capped at 16,384 records (19,186 sent); lights per tile need rt_lights' tile histogram. Was: O1 NIGHT1 TRACE (des1_ step 0): one night1 frame trace for the O1 census (which point-light shaders / lights a
         frame draws, how many per tile) after cpb_'s benches (one game at a time). Owner: coordinator
       - [ ] WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffuse while the helper's paths /
         bounce use Lambert: measure the seen-vs-unseen ratio on WH3 (path probe) and, if it differs, give the helper WH3's
@@ -2349,7 +2354,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         __iso_volatile_load64); benign today (small counters: the high word stays 0 below 2^32 events), so a safety fix:
         check the x86 disassembly, then a native-width counter (uintptr_t / 32-bit with a wrap rule) or an interlocked load.
         Owner: next shared-utils round (with the memo)
-      - [ ] EFFORT A/B (ATN 10:3x "test low + your judgement and just medium effort for test and judgement"): A = cpb_
+      - [x] DONE 13:2x EFFORT A/B RESULT: A cpb_ (medium, runs + judges) 327k tokens for ~41 starts (the bench batches many
+        starts per command); B run1_ (low, 3 starts) 84k + jdg1_ (high judge) 241k = 325k for 3 starts. Per start B was far
+        dearer, but most of each agent's tokens are the fixed reading of plans / logs, not the effort level; the judge went
+        deeper (sim, census, crash stack, a leftover file); A had one rule slip (worked around an AMSI block). Rule now: one
+        LOW runner for a whole run batch (fixed cost spread), a HIGH judge once per batch only where the results need deep
+        analysis; plain benches: one medium agent that runs + judges. Was: EFFORT A/B (ATN 10:3x "test low + your judgement and just medium effort for test and judgement"): A = cpb_
         (medium, runs + judges, ~41 starts); B = the next run batch (memo M1 night1 / sea1 / stress + the O1 night1 trace)
         with a LOW run-only agent + a fresh HIGH-effort judge agent (ATN 10:4x: the coordinator's xHigh turns carry the whole
         session, a fresh judge reads only the results). Compare tokens per game start (runner + judge vs cpb_) and quality
@@ -2379,6 +2389,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         site 8. Owner: next CPU round
       - [ ] C-SPRITES (cpb_): Small Soldiers as Sprites is 3.5-3.9x the fps in stress (13-15 -> 51 fps): a look decision for
         ATN (far soldiers drawn as sprites). Owner: ATN
+      - [ ] MEMO M1 RESULT (jdg1_, judge_m1_o1.md): GO for the filter alone (F14, 2 KB, no memo: battle frames have 0
+        writes / 0 bumps; 99.1 % of lookups are OnPushDescriptors' GetResourceViewClone): -0.156 ms moving frames night1,
+        -0.069 stress; conditional: the bucket reads 0.17 ms vs the 0.46 planned (per-call 39 ns in game vs 14.6 in the
+        harness): one base_fp WPR start first (the plan's rule), range -0.125..-0.44 ms. Then C1 = the filter only. Owner:
+        next CPU / utils round
+      - [ ] LIGHT READBACK CAP (jdg1_): rt_lights' readback caps at 16,384 records while night1 sends 19,186: check what is
+        dropped (likely duplicates / culled) before PT DI sizes its buffers; a tile histogram for the lights-per-tile
+        question. Owner: PT DI step 0
+      - [ ] BENCH CLOSE RACE BY STACK (jdg1_): the stress M1 run's close AV was the known shutdown race with a new top
+        frame (an execute AV into heap ~0.2 s after CloseMainWindow, same stack below: +0x1A4B01 +0x31FEEB +0x32053D, no add-on
+        frame; heapfix 7.0 writes a dump at first chance); $CLOSE_RACE in constantinople_bench.ps1 matches one address only:
+        match the stack signature instead. Owner: coordinator (tools)
+      - [ ] C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 MB, 10-31 .. today, the newest
+        = the M1 build 2f70715f) in ATN's Attila folder (ReShade ignores them): delete by exact name (keeping the installed
+        add-on and .v119)? Owner: ATN
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
