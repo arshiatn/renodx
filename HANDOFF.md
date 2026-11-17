@@ -356,6 +356,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LIGHT READBACK CAP (jdg1_): rt_lights' readback caps at 16,384 records while nig ... | PT DI step 0
 - BENCH CLOSE RACE BY STACK (jdg1_): the stress M1 run's close AV was the known sh ... | coordinator (tools)
 - C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 ... | ATN
+- RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | next helper implementer
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b; hz2_ 13:3x: the 10b design's "all ready" ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -2388,7 +2389,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         off): LIVE PROOF 14:3x FAILED (run2_; recordings kept in tools/tw/recordings/live_proof): play-backs differ (21-25
         of 54 outputs; the instances digest differs, records + scene match), no [TW recorder] log lines, GPU baking on
         recorded instead of refusing, Alt+Enter and 67 % markers consumed without a recording, Nsight loops not repeated;
-        sent to rec_ with the GPU-bake journal; helper + ReShade.ini restored. Was: LEFT (1) live proof (run2_ low runner 14:xx: stress paused + moving, GPU-baking refusal, Alt+Enter ->
+        sent to rec_ with the GPU-bake journal; helper + ReShade.ini restored; FIXED rec_ (merged 53835d58e: NRD histories +
+        fixed 16.66 ms NRD timing, GPU bakes journaled, snapshot gives up after ~30 s with a log line, recorder.log, Nsight
+        frame trigger; game-like round trip 58 / 58, play vs play 58 / 58; rt_place's first-come dedupe still differs
+        between two plays (trace outputs equal): a production-shader determinism box); LIVE PROOF 2 + the capture pass
+        STARTED 16:xx (run2_, build rec_det3 95706F83D95F, GPU baking on). Was: LEFT (1) live proof (run2_ low runner 14:xx: stress paused + moving, GPU-baking refusal, Alt+Enter ->
         INCOMPLETE, 67 %, offline play + compare + one Nsight trace); (2) GPU Micromap Baking journal (rec_ again: ATN plays
         with RayTracedGpuMicromaps=1, recordings should match); (3) the 12-recording capture pass (night1 / sea1 / stress /
         day1 x 3 views, ~55 GB at 4K, C: 206 GB free) with ATN's settings; NRD's own history not recorded (first played
@@ -2418,6 +2423,9 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 MB, 10-31 .. today, the newest
         = the M1 build 2f70715f) in ATN's Attila folder (ReShade ignores them): delete by exact name (keeping the installed
         add-on and .v119)? Owner: ATN
+      - [ ] RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a different order between two
+        identical plays (trace outputs stayed equal): make the dedupe order-independent (a stable key) so recordings and
+        A/B tests repeat exactly; same picture. Owner: next helper implementer
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
