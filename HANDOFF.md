@@ -2150,6 +2150,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         built, tw_vanilla_exact 416 EXACT / 0 FAIL + tw_psychov35 PASS (x86 + amd64). Next free tags: attila 167, wh3 66,
         pharaoh 74, rome2 r10, thrones r11, wh2 57, shogun2 80, romer 18, troy 61, wh1 r12, ryse fix61, tales 79,
         expeditions 36, divinity1 5, divinity2 5, ruse u6; helper 118
+      - [x] DONE 06:45 (log plan_1117/install_1117b.txt, backups install/backups/20261117_064540, final check ALREADY
+        INSTALLED x30): all 16 games stamped + installed on helper118, tree 534c12161 (bug1_ V35, bug2_ torch path, bug3_ LOD
+        bias, bug4_ sea / ropes / fog rim, hfix_): Attila v167, WH3 v66, Pharaoh v74, Rome II r10, Thrones r11, WH2 v57,
+        Shogun 2 v80, Rome Remastered v18, Troy v61, WH1 r12, Ryse fix61, Tales v79, Expeditions v36, Divinity 1 v5,
+        Divinity 2 v5, R.U.S.E. u6. Checks: all 16 built, vanilla exact 416 / 0 + PsychoV35 PASS (x86 + amd64). Next free
+        tags: attila 168, wh3 67, pharaoh 75, rome2 r11, thrones r12, wh2 58, shogun2 81, romer 19, troy 62, wh1 r13, ryse
+        fix62, tales 80, expeditions 37, divinity1 6, divinity2 6, ruse u7; helper 119
       - [ ] CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila, if you find anything that can
         speed cpu/gpu of the game, list them please or plan to do them please"; "Don't worry about sound or time. My pc can
         run for days"): from the three captures' WPR + Nsight: every CPU / GPU hot spot of the game and of RenoDX with its
