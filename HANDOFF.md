@@ -343,7 +343,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RENDER SCALE CENSUS, OTHER GAMES (ATN 09:10 asked whether every shader was check ... | coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after
 - ATN 09:2x-09:4x ANSWERS (design questions; each its own box): GI core = whicheve ... | coordinator
 - D2 EXACT LUT ON (ATN 09:4x): Divinity 2 "Exact Colour LUT" on by default (out of ... | coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after
-- UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like th ... | fix1_ (STARTED 16:xx)
 - RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed ... | coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after
 - GPU CAPTURE ROUND 2 (ATN 09:5x): after the new features (SHaRC update, PT DI / R ... | coordinator (after plan step 6 + reviews)
 - CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best c ... | cpb_
@@ -355,8 +354,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - MEMO M1 RESULT (jdg1_, judge_m1_o1.md): GO for the filter alone (F14, 2 KB, no m ... | next CPU / utils round
 - LIGHT READBACK CAP (jdg1_): rt_lights' readback caps at 16,384 records while nig ... | PT DI step 0
 - BENCH CLOSE RACE BY STACK (jdg1_): the stress M1 run's close AV was the known sh ... | coordinator (tools)
-- CACHE ALBEDO DETERMINISM (rec_ 17:4x, rt_cache_fill.cs_6_5.hlsl:80: last writer ... | fix1_
-- RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | fix1_ (STARTED 16:xx)
 - CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of ... | cpp_
 - CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
 - CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action u ... | CPU PLAN 2 END
@@ -398,7 +395,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (step 0 DONE ref0_ (5b41d3b72), I5 / I4 fixed by hfix_ (53da7b6e8); step 1 R0a + ... | coordinator
 - REF1 FINDINGS (ref1_, reproduced on a second set / scene): the raw estimator's c ... | ref2_
 - REF1 LEFT (ref1_ "Left"): the reflections' traced-lobe share output (G0 share ro ... | REF BUILD steps 2-6
-- RESTIR GI CLAMP FIX (ref2_ R-B, bug, on by default once proven): REUSE_W_CLAMP ( ... | fix1_ (STARTED 16:xx, brief plan_1117/fix1_brief
+- RESTIR GI CLAMP FIX (ref2_ R-B, bug, on by default once proven): REUSE_W_CLAMP ( ... | fix1_
+- FIX1 LEFT: (a) play the merged helper vs the capture-pass recordings (day1 / nig ... | fx1p_ (a), next ReSTIR round (b, c)
 - L1 FALLOFF FIX (ref2_ WARP: 20 of Attila's 40 point-light shaders fall off as (1 ... | PT DI step 1
 - REF STEP 2 LEFT (ref2_): rt_lights' shadow bits compared at the pixels; the rati ... | REF steps
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
@@ -2327,8 +2325,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner: coordinator
       - [ ] D2 EXACT LUT ON (ATN 09:4x): Divinity 2 "Exact Colour LUT" on by default (out of Experimental), README line.
         Owner: coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after everything please", tokens)
-      - [ ] UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like the screen route's (-3 %, sky median
-        0.79), on by default; the seen-vs-unseen probe proves it. Owner: fix1_ (STARTED 16:xx)
+      - [x] UNSEEN SKY FIX (ATN 09:4x): Attila PT GI off-screen hits' sky calibrated like the screen route's (-3 %, sky median
+        0.79), on by default; the seen-vs-unseen probe proves it. DONE fix1_ 015bca476, merged 3a318be12 (19:46): the sky
+        past the first vertex x SkyCalibration of the surface the ray left (rt_path.hlsli:643 / 726, reference variants
+        matched); contact_sky / contact 0.9779 -> 1.0000; helper vs contact: Kept Cube boxes 0.9875 -> 0.9928, ATN 0.9564
+        -> 0.9621, open same; raw-flags boxes -0.09 %; cost: reflections occupancy 42.5 -> 37 %, +0.04..0.05 ms at 4K
+        (three register-saving variants no help). Owner: fix1_
       - [ ] RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed (c243f7c4). Owner: coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after everything please", tokens)
       - [x] DONE PT DI REVISION 10:1x (des1_ "Revision 1" in designs/pt_di_rtxdi.md; RTXDI names checked vs b67f61cd):
         steps 0 gates (A3 bisection, O1 / O2 night1 census, R1 / E4, slots), 1 L1 + bridge v32 shared with vMF (8 h), 2 ReSTIR
@@ -2465,11 +2467,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         f9471e81 + .v119 kept; ATN closed the 6 zombie Attila processes) C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 MB, 10-31 .. today, the newest
         = the M1 build 2f70715f) in ATN's Attila folder (ReShade ignores them): delete by exact name (keeping the installed
         add-on and .v119)? Owner: ATN
-      - [ ] CACHE ALBEDO DETERMINISM (rec_ 17:4x, rt_cache_fill.cs_6_5.hlsl:80: last writer wins per cache cell; plan:
-        InterlockedMin of the texel index, then the winner writes, ~4 MB / ~0.03 ms, same picture, on by default). Owner: fix1_
-      - [ ] RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a different order between two
+      - [x] CACHE ALBEDO DETERMINISM (rec_ 17:4x, rt_cache_fill.cs_6_5.hlsl:80: last writer wins per cache cell; plan:
+        InterlockedMin of the texel index, then the winner writes, ~4 MB / ~0.03 ms, same picture, on by default). DONE
+        fix1_ 697fc374a + 91022ad52, merged 3a318be12: a cell's owner = its lowest texel (rt_cache_fill:83), the resolve
+        writes the owner's colour (rt_cache_resolve:74, no second fill pass), 4 MB, +0.010 ms. Owner: fix1_
+      - [x] RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a different order between two
         identical plays (trace outputs stayed equal): make the dedupe order-independent (a stable key) so recordings and
-        A/B tests repeat exactly; same picture. Owner: fix1_ (STARTED 16:xx)
+        A/B tests repeat exactly; same picture. DONE fix1_ 6f1cc6029, merged 3a318be12: the lowest item owns a place
+        (InterlockedMax(~item), rt_place.cs_6_5.hlsl:196), stable compaction, 9.4 MB scratch, +0.022 ms at 249k
+        instances; live_proof2 637 / 2529 / 3761 / 4693 two plays each 54 / 54 chunks equal, equal instance digests; vs
+        today's build 0 chunks above the floor on 3 frames (3761: 6 chunks <= 10 words = the base's own variation);
+        HARNESS_DUMP: fix 3 alone same bytes on 18 / 47 modes, the final build changes only bounce + reflections in path
+        modes. Owner: fix1_
       - [x] DONE 17:0x (ATN: "The yellow indicators of the ships are fixed now"; both locks removed) BUG4F ATN CHECK (16:4x): ATN checks bug4 (f) now (sea battle, ships selected, DLAA vs DLSS Performance:
         footprints under the ships, no yellow stripes); coordinator holds gpu_job.lock + quiet_run.lock (agents wait)
         until ATN says done, then removes both. Owner: ATN, coordinator
@@ -2731,6 +2740,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         Notes, no change: (1) a pre-B3 add-on loading after init_device: one frame unmarked (comment states it); (2)
         writers check walks the module list unsynchronized (next present rechecks); (5) b12 restored without an offset
         (older; no TW shader binds b12 with one). Owner: next High fixer round (with the GPU plan's first round)
+      - [x] CHATGPT HAND-OFF (ATN 19:5x: "I will fix the remaining cpu improvement stuff with chatgpt"): folder
+        C:\Users\arshi\Downloads\Attila_CPU_for_ChatGPT: a cover note (project, mechanism, items EJOB / E3P / EHALF /
+        EVEC, rules, what to send back) + copies of cpu_plan2.md, cpu_gaps.md, job_wakeups.md (partial), engine_code.hpp,
+        tw_engine_code tests.cpp, the B1 / B5 / B7 boxes, CXX_STYLE.md; no heapfix code, no private paths. Patches ATN
+        brings back: build32 + tw_engine_code parts x86 + the bench. NOTE: tonight's time labels 21:xx-00:xx in this
+        file were wrong (PC clock: these were 19:0x-19:5x; commit times are right). Owner: ATN
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
@@ -2978,7 +2993,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         torch-lit boxes 0.9696 -> 0.9897 (ReSTIR GI keeps only 70 / 78 % of the torch bounce today, boxes turn bluer); with
         Own Sky Rays off it over-corrects (+3.9 % boxes, -1.5 % open) -> v2: clamp in the creating receiver's units, then
         re-test R-A (Validate overwriting the stored light, withdrawn as an interaction). Every TW game (shared helper).
-        Owner: fix1_ (STARTED 16:xx, brief plan_1117/fix1_brief.md, notes fix1_notes.md; with the 2 boxes below)
+        DONE fix1_ dec7f2b9b, merged 3a318be12 (helper build BCECE48C4D9A, 19:47): rt_path.hlsli:113 / 952 clamp W in the
+        receiver's units after the merge (W cos / pi <= 10; pre-merge clamp same within 0.0005: left out; 0 bytes a
+        texel); day vs same_route R=4: ATN 36913 boxes 0.9703 -> 0.9949, all 0.9935 -> 0.9997, open 0.9995 (4145 same;
+        noise same, CI +-0.0006); night 3 lights lit boxes 0.9696 -> 0.9902 (inside 1 %). Fail 1 %: Own Sky Rays off (49):
+        open 0.926 -> 0.985, boxes 0.939 -> 1.038; 40 lights 0.9325 -> 0.9752 = ReSTIR GI's own brightening bias meeting
+        the clamp (clamp 40 overshoots everywhere; sky samples reused as points = a third of 49's error; no spatial reuse
+        +4.5 %). R-A not applied (boxes worse 0.9898). Tales: no ReSTIR GI, flat sky: not affected. Owner: fix1_
+      - [ ] FIX1 LEFT: (a) play the merged helper vs the capture-pass recordings (day1 / night1 / sea1 / stress battle +
+        wh3_forest_unit; base rec_play2 twice for the floor, fix1 twice = determinism) -> fx1p_ Low; (b) the 49 (Own Sky
+        Rays off) and 40-light residuals (ReSTIR GI bias); (c) cheaper calibration constants from the C++ side (the
+        reflections' +0.04..0.05 ms). fix1_'s 24 play dump folders (60 GB) deleted 19:5x. Owner: fx1p_ (a), next ReSTIR
+        round (b, c)
       - [ ] L1 FALLOFF FIX (ref2_ WARP: 20 of Attila's 40 point-light shaders fall off as (1 - d / r) to 1.9e-7, the
         helper's LightArriving squares it for every light: up to 49 % off; the 20 smooth shaders match the square to
         3.5e-7): a falloff kind per shader hash in b4's light_colours.w (add-on + helper), per-game tables (Rome II / WH1
