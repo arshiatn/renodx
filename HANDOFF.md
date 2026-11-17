@@ -2710,7 +2710,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         path tracing 1.92 -> 3.26 ms, reflections 1.63 -> 0.41 with RT 0 %: check what the SER flag does to reflections),
         SHaRC +0.2..0.9 (sea1_battle worst 16.38 -> 17.28), day1_low 19.8 / night1_low 26.4 ms (trace 7.6 ms on day1_low);
         no NRD / RR passes in plays). WH3 base + SER started at frame 6 (setup frames, 22-25 ms, "Hardware Event ran out
-        of resource"): RETRACE at frame 400 by nsr_ STARTED 23:xx. Then an xHigh read (GPU plan: the reflections'
+        of resource"): RETRACED at frame 400 by nsr_ (all 29 steady, no "ran out"; WH3 base / SER / SHaRC GPU ms: unit
+        10.02 / 9.41 / 10.37, high 8.61 / 8.84 / 9.22, edge 7.53 / 7.72 / 7.98; SER folds reflections into path tracing
+        (path + reflections ~flat on high / edge, unit -0.6 mostly trace 3.80 -> 3.09: base outlier?); SHaRC path tracing
+        +0.34..0.58; Attila base / SER at frame 6 not proven steady (spans 60-120 ms, no "ran out")). xHigh read gpr_
+        STARTED 00:xx -> plan_1117/gpu_plan.md. Then an xHigh read (GPU plan: the reflections'
         453 MB spills, path tracing's register limit + 897 MB I$ misses, line 1503, SER / SHaRC per scene), then High
         implementers, then an xHigh review. Owner: nsr_, coordinator
       - [ ] CPU PLAN 2 REVIEW (cr2_ xHigh STARTED 23:xx, read only): site 8 c5da4079f, B2 a0e98fd94, B3 ae73a0b54, B4
