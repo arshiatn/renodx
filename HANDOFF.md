@@ -2296,11 +2296,13 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [x] DONE BUG4 RUN (3) 07:25 (tools/tw/captures_1117/verify (verify_1117.ps1 + compare_verify.py, out/run3.txt; v167 + helper118 as installed)): no glow rim: night1a PASS (sky next to the edges -0.68 vs further out
         -0.12 nits); night1b's metric reads FAIL only from a fireball crossing the sky between the 7-s-apart shots, by eye
         no rim at the wall tops (out/verify_night1b/bug4d_rim.jpg). Owner: coordinator
-      - [ ] BUG4 RUN LEFT (1) + (2) (specs in bugs_1117/bug4.md): (1) footprints at DLSS 0 vs 4 need ships selected:
-        Ctrl+A selects nothing in a replay (sent to Attila in front; the frame trace has no indicator draw), so it needs
-        ATN's play or a battle (not a replay) with a click; (2) rigging / sail steps: both camera guesses stayed too far
-        (Smooth Banner Shadows 1 vs 0 within the 1-s floor; crops out/verify_sea1_e/bug4e_*.jpg): a closer camera on sea1,
-        or ATN's look. Owner: coordinator (closer camera), ATN (selection)
+      - [x] DONE BUG4 RUN (2) 08:08 (verify_sea1_e3: W 2 s ladder, ships pass under the camera; crop
+        verify/out/verify_sea1_e3/e3_ship_close.jpg): by eye in Debug View 1, rope shadows drawn as thin lines (rigging in
+        the scene); the sail's shadow has stair steps with Smooth Banner Shadows 0 and smooth curved edges with 1 (each shot
+        a different ship: no pixel metric). Owner: coordinator
+      - [ ] BUG4 RUN LEFT (1) (specs in bugs_1117/bug4.md): footprints at DLSS 0 vs 4 need ships selected: Ctrl+A selects
+        nothing in a replay (sent to Attila in front; the frame trace has no indicator draw), so it needs ATN's play (select
+        ships, switch DLAA <-> Performance). Owner: ATN
       - [ ] BUG4 NEW BOXES (bug4_ 08:xx): (a) foam: the ocean's refraction distortion doubles at 50 % (view_share WHOLE
         patch), a new patch kind (136 water rows apart in WARP); (b) helper (after bug2_): fog sky texels march the camera ray
         so sky and far hills glow alike (the horizon stays lighter than the sky until then); (c) lead: 10 WH1 / WH2
