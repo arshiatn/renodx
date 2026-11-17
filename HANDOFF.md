@@ -2385,7 +2385,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         nothing in the game; record = renodx_test_hooks.txt RENODX_TW_RECORD=<folder> + marker renodx_record_now, ~4.5 GB
         a recording at 4K (~7 GB with histories); play = renodx-tw-dlaa64.exe 0 play <rec>\frame_<N> + rec_compare.py,
         RENODX_TW_PLAY_LOOPS=n for Nsight / the reference; round trip 58 / 58 byte-identical in ATN's paths mode; zero cost
-        off): LEFT (1) live proof (run2_ low runner 14:xx: stress paused + moving, GPU-baking refusal, Alt+Enter ->
+        off): LIVE PROOF 14:3x FAILED (run2_; recordings kept in tools/tw/recordings/live_proof): play-backs differ (21-25
+        of 54 outputs; the instances digest differs, records + scene match), no [TW recorder] log lines, GPU baking on
+        recorded instead of refusing, Alt+Enter and 67 % markers consumed without a recording, Nsight loops not repeated;
+        sent to rec_ with the GPU-bake journal; helper + ReShade.ini restored. Was: LEFT (1) live proof (run2_ low runner 14:xx: stress paused + moving, GPU-baking refusal, Alt+Enter ->
         INCOMPLETE, 67 %, offline play + compare + one Nsight trace); (2) GPU Micromap Baking journal (rec_ again: ATN plays
         with RayTracedGpuMicromaps=1, recordings should match); (3) the 12-recording capture pass (night1 / sea1 / stress /
         day1 x 3 views, ~55 GB at 4K, C: 206 GB free) with ATN's settings; NRD's own history not recorded (first played
