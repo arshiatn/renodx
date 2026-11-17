@@ -361,7 +361,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
 - BRIDGE CLAIMS (ATN 17:3x: another modder's ChatGPT review of HIS port of our bri ... | rvb_, coordinator
 - SER IN FORESTS (ATN 17:3x, Forge: SER made a huge difference in forests; his pat ... | plan step 6
-- NSIGHT 2026.4 MCP (Forge: Nsight Graphics 2026.4 has a headless MCP, "a bunch of ... | coordinator, ATN (install)
+- NSIGHT XHIGH COUNTERS (ATN 17:5x: "let's use xhigh for it too on next nsight che ... | coordinator (plan steps 4 / 8)
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b; hz2_ 13:3x: the 10b design's "all ready" ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -2477,9 +2477,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         the recording with Nsight's L2 / spill / instruction-miss counters (Forge's table as the template), a hint by
         hit kind (leaf / OMM vs solid vs sky miss) if the instance hint loses; on by default only where faster + same
         picture. Owner: plan step 6
-      - [ ] NSIGHT 2026.4 MCP (Forge: Nsight Graphics 2026.4 has a headless MCP, "a bunch of features but not
-        everything"): read NVIDIA's docs for it (allowed, NVIDIA) before plan step 4's GPU work; installing needs ATN
-        (installer, UAC); never answer ngfx install prompts ourselves. Owner: coordinator, ATN (install)
+      - [x] DONE 17:5x NSIGHT 2026.4 MCP: we have it since 11-14 (tools\nsight\NsightGraphics_2026.4, extracted, no
+        install; our stdio client tools\tw\nsight\ns_mcp.py drives ngfx-mcp.exe, used by gpu_trace_table.py /
+        ns_metrics.py / ns_hotspots.py). ATN 17:5x allows a newer Nsight download: check NVIDIA's page for a build newer
+        than 2026.4.0 at the next SDK version check (feature round), side by side, never mid-round
+      - [ ] NSIGHT XHIGH COUNTERS (ATN 17:5x: "let's use xhigh for it too on next nsight checks"; our Nsight scripts read
+        no local-memory spill, L2-by-unit or instruction-miss counters, Forge's table did): plan steps 4 and 8: a Low
+        runner takes the traces (recordings, harness), an xHigh agent reads them to the end (per pass: L2 traffic,
+        local-memory spills, instruction misses, occupancy limiter, RT core; a kernel's cost split by removing parts),
+        High implementers, an xHigh review; ns_metrics.py gets those counters first (ns_mcp metric catalog). Owner:
+        coordinator (plan steps 4 / 8)
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
