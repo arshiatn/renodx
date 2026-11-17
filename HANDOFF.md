@@ -327,6 +327,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R7 / TEST BOXES (shs2_ 23:xx): R7 clamps: Shogun 2 sea overlay writers C8375A74 ... | per-game rounds, next test round
 - PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction): C:/Users/arshi/.cla ... | coordinator
 - (sk3_ 01:xx) Shared shaders rule (skills lesson 12): rysesonofrome/upscale_outpu ... | next shared round
+- BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before th ... | bug1_
+- BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows ... | bug2_
+- BUG3 (bug3_, started 02:xx): DEBUG44 (g) "For every single game, the LOD bias fo ... | bug3_
+- BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails ... | coordinator -> bug4_ after the captures
+- REF1 (ref_, started 02:xx): reference suite step 3: first the design (tools/tw/r ... | ref_
+- SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator after REF1
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
 - CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benc ... | coordinator, after the current merges + install, ATN's go
 - ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart batt ... | coordinator, then a CPU / memory round
@@ -2109,6 +2115,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         2's upscale_output.cs_5_0.hlsl; Shogun 2's bend_sss_gpu.hlsli and pcss.hlsli are shared the same way: move into
         twattila as shared files. testing.md says 54 suites (2026-11-16), now 72 test/tw_* folders: refresh the list.
         Owner: next shared round
+      - [ ] BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before the refrence runs?" -> the ones
+        that need no capture now, in parallel): DEBUG44 (a) PsychoV35 red / NaN in darks: WARP repro with negative /
+        near-black / Inf / NaN input, find the producer, fix V35 for every game, tw_psychov35 + tw_vanilla_exact still
+        PASS. Owner: bug1_
+      - [ ] BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows off blown out + (c) path
+        torch shadow crevice leaks; every combination of the torch rows (Light / Shadows from Path, Follow the Camera,
+        Torch Light in Path-Traced GI) proven against the path probe's reference. Owner: bug2_
+      - [ ] BUG3 (bug3_, started 02:xx): DEBUG44 (g) "For every single game, the LOD bias for everything should be on":
+        the row on by default + in the presets in every game that has it, README lines. Owner: bug3_
+      - [ ] BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails + missing ropes (sea1), (f)
+        render scale below 100 % at sea (sea1 traces + a static census of the shipped shaders). Owner: coordinator ->
+        bug4_ after the captures
+      - [ ] REF1 (ref_, started 02:xx): reference suite step 3: first the design (tools/tw/round_notes/plan_1117/
+        reference_suite.md: one brute-force reference per RT/PT effect, inputs, metrics, tolerances, controls, Nsight /
+        GPU-lock rules), an Opus xHigh check of the design, then build it on the existing harness captures; ATN's new
+        replays' captures added when they exist. Owner: ref_
+      - [ ] SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix our skill sets again"): the
+        lessons of the bug fixes + reference suite into .agents/skills + the zip. Owner: coordinator after REF1
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
         (a) PsychoV35 RED: dark / shadowed pixels turn deep red under V35 (V31 fine, same frame): in Bend shots, path-torch
         shots and plain night ground: V35 mishandles near-black / negative / NaN input; fix V35 (shared, every game's
