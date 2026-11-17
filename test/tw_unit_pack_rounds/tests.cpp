@@ -463,7 +463,7 @@ int main(int argc, char** argv) {
   CHECK(!motion_unit_code.empty() && !unit_point_code.empty() && !unit_recorded_code.empty() && !unit_records_code.empty() && !game_code.empty());
   motion_shaders[0] = {.hash = GAME_VS_HASH, .motion_shader = motion_unit_code, .kind = om::MotionKind::UNIT, .record_shader = unit_point_code};
   om::internal::state.shaders = {.shaders = motion_shaders, .unit_pixel_shader = unit_recorded_code, .unit_records_compute_shader = unit_records_code};
-  om::internal::state.make_view = &MakeView;
+  om::internal::make_view.store(&MakeView);
 
   CHECK(SUCCEEDED(device->CreateVertexShader(game_code.data(), game_code.size(), nullptr, game_vertex_shader.GetAddressOf())));
   {

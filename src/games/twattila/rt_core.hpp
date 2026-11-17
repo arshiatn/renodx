@@ -417,8 +417,9 @@ struct Host {
   // scene_draw marks only its characters' draws dynamic (skinned; Expeditions: Rome): the helper's RT_UNIT draws, which
   // Units Ray Tracing Range leaves out by distance. False: no such row (Rome Remastered marks every draw dynamic).
   bool characters_dynamic = false;
-  bool (*moving)(ID3D11DeviceContext* native, const renodx::utils::command_action::DrawArguments& arguments) = nullptr;
-  bool (*moving_indexed)(ID3D11DeviceContext* native, const renodx::utils::command_action::DrawIndexedArguments& arguments) = nullptr;
+  // Whether a rigid draw's mesh moves, by its bound index buffer and offset and its arguments.
+  bool (*moving)(ID3D11Buffer* index_buffer, UINT index_offset, const renodx::utils::command_action::DrawArguments& arguments) = nullptr;
+  bool (*moving_indexed)(ID3D11Buffer* index_buffer, UINT index_offset, const renodx::utils::command_action::DrawIndexedArguments& arguments) = nullptr;
   // Whether a draw is the main view's (null: every draw into its depth is).
   bool (*main_view)(ID3D11DeviceContext* native) = nullptr;
   // The G-buffer guides again from the reflection pass's G-buffer (null: none; the water's reflections need it).
@@ -571,6 +572,9 @@ constexpr std::array<const char*, 4> TRACE_PARTS = {"vertices", "smoke", "positi
 
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
+  // The immediate context Capture last prepared `device` for (no reference: `device` holds it, so a context at this address
+  // is that device's).
+  ID3D11DeviceContext* context = nullptr;
   std::vector<ComPtr<ID3D11VertexShader>> capture_shaders;  // as the scene shaders
   std::vector<ComPtr<ID3D11VertexShader>> rows_shaders;     // as the scene shaders (placed ones)
   std::vector<ComPtr<ID3D11VertexShader>> cut_out_shaders;  // as the scene shaders (SceneShader::cut_out_shader)
@@ -1072,6 +1076,9 @@ static bool world_captures = false;  // and some are placed (or SceneShader::cas
 static float leaf_cutoff = 0.f;
 // Either effect on (else every callback returns at once).
 static std::atomic_bool active = false;
+// The light draws' view of the frame, one value set by Update: (runtime.frame << 1) | whether the rays trace the local
+// lights (settings.local_lights; `active` with it). 0 before the first Update.
+static std::atomic_uint64_t light_frame = 0;
 // A cluster mesh holds one of the game's index buffers (runtime.index_buffer_sets not empty): else OnIndexWrite returns.
 static std::atomic_bool index_buffers_held = false;
 // Batched unit draws wait for their flush (runtime.batch_draws not empty): else FlushUnitCaptures and OnBatchTextureWritten return.
@@ -1118,6 +1125,115 @@ inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) 
   }
   return (native != nullptr && native->GetType() == D3D11_DEVICE_CONTEXT_IMMEDIATE) ? native : nullptr;
 }
+
+// RENODX_TW_STATE_CHECK=1 (a test hook, off): each binding Capture reads once and hands on, and each cached D3D11 answer,
+// compared with a fresh D3D11 call where it is used. Read at the first capture (renodx_test_hooks.txt sets it at the first
+// present).
+inline bool StateCheck() {
+  static const bool check = [] {
+    std::array<char, 2> value = {};
+    return GetEnvironmentVariableA("RENODX_TW_STATE_CHECK", value.data(), static_cast<DWORD>(value.size())) == 1 && value[0] == '1';
+  }();
+  return check;
+}
+
+// A StateCheck difference: the first 16 logged, then every 1024th.
+inline void StateMismatch(const char* what, uint32_t shader_hash) {
+  static std::atomic_uint32_t mismatches = 0;
+  const uint32_t count = mismatches.fetch_add(1, std::memory_order_relaxed) + 1;
+  if (count > 16 && count % 1024 != 0) return;
+  renodx::utils::log::w(std::format("[Total War] State check: {} differs from D3D11's (vs {:08X}; {} so far).", what, shader_hash, count));
+}
+
+// Devices destroyed so far (OnDestroyDevice): the per-thread context cache below is valid only while this stays.
+static std::atomic_uint64_t destroyed_devices = 0;
+
+// The immediate context's ID3D11DeviceContext1 (the same object: no reference kept), or null where it has none, cached per
+// thread for the last context asked while no device was destroyed (its context could not have been replaced at that
+// address).
+inline ID3D11DeviceContext1* Context1(ID3D11DeviceContext* native, uint32_t shader_hash) {
+  struct Cached {
+    ID3D11DeviceContext* native = nullptr;
+    ID3D11DeviceContext1* context1 = nullptr;
+    uint64_t devices = UINT64_MAX;
+  };
+  thread_local Cached cached;
+  const uint64_t devices = destroyed_devices.load(std::memory_order_relaxed);
+  if (cached.native == native && cached.devices == devices) {
+    if (StateCheck()) {
+      ComPtr<ID3D11DeviceContext1> queried;
+      native->QueryInterface(IID_PPV_ARGS(queried.GetAddressOf()));
+      if (queried.Get() != cached.context1) StateMismatch("the cached ID3D11DeviceContext1", shader_hash);
+    }
+    return cached.context1;
+  }
+  ComPtr<ID3D11DeviceContext1> queried;  // null where QueryInterface fails
+  native->QueryInterface(IID_PPV_ARGS(queried.GetAddressOf()));
+  cached = {.native = native, .context1 = queried.Get(), .devices = devices};
+  return cached.context1;
+}
+
+// A draw's vertex and index buffers, each read from the context once for all of Capture's parts (nothing between them binds
+// any: they only read the context), their references released when Capture returns. More vertex slots are read only when a
+// part needs them.
+class BoundInput {
+ public:
+  BoundInput(ID3D11DeviceContext* native, uint32_t shader_hash) : native_(native), shader_hash_(shader_hash) {}
+  BoundInput(const BoundInput&) = delete;
+  BoundInput& operator=(const BoundInput&) = delete;
+  ~BoundInput() {
+    for (auto* buffer : vertex_buffers) {
+      if (buffer != nullptr) buffer->Release();
+    }
+    if (index_buffer != nullptr) index_buffer->Release();
+  }
+
+  void ReadVertexBuffers(UINT slots) {
+    if (const UINT reused = std::min(slots, read_slots_); reused != 0 && StateCheck()) {
+      std::array<ID3D11Buffer*, 4> buffers = {};
+      std::array<UINT, 4> fresh_strides = {};
+      std::array<UINT, 4> fresh_offsets = {};
+      native_->IAGetVertexBuffers(0, reused, buffers.data(), fresh_strides.data(), fresh_offsets.data());
+      bool same = true;
+      for (UINT slot = 0; slot < reused; ++slot) {
+        same = same && buffers[slot] == vertex_buffers[slot] && fresh_strides[slot] == strides[slot] && fresh_offsets[slot] == offsets[slot];
+        if (buffers[slot] != nullptr) buffers[slot]->Release();
+      }
+      if (!same) StateMismatch("a vertex buffer read once", shader_hash_);
+    }
+    if (slots <= read_slots_) return;
+    native_->IAGetVertexBuffers(read_slots_, slots - read_slots_, vertex_buffers.data() + read_slots_, strides.data() + read_slots_,
+                                offsets.data() + read_slots_);
+    read_slots_ = slots;
+  }
+
+  void ReadIndexBuffer() {
+    if (!index_read_) {
+      native_->IAGetIndexBuffer(&index_buffer, &index_format, &index_offset);
+      index_read_ = true;
+      return;
+    }
+    if (!StateCheck()) return;
+    ComPtr<ID3D11Buffer> buffer;
+    DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+    UINT offset = 0;
+    native_->IAGetIndexBuffer(buffer.GetAddressOf(), &format, &offset);
+    if (buffer.Get() != index_buffer || format != index_format || offset != index_offset) StateMismatch("the index buffer read once", shader_hash_);
+  }
+
+  std::array<ID3D11Buffer*, 4> vertex_buffers = {};
+  std::array<UINT, 4> strides = {};
+  std::array<UINT, 4> offsets = {};
+  ID3D11Buffer* index_buffer = nullptr;
+  DXGI_FORMAT index_format = DXGI_FORMAT_UNKNOWN;
+  UINT index_offset = 0;
+
+ private:
+  ID3D11DeviceContext* native_;
+  uint32_t shader_hash_;
+  UINT read_slots_ = 0;
+  bool index_read_ = false;
+};
 
 // The device's shaders and buffers (once); false: not available.
 inline bool PrepareDevice(ID3D11Device* device) {
@@ -1625,18 +1741,21 @@ void Capture(Context& command, const SceneShader& shader) {
   // keyed by it, pieces of earlier views stayed in the scene, black bands, pulsing shadows, ATN 2026-10-28).
   bool dynamic = shader.dynamic || (shader.dynamic_row != nullptr && *shader.dynamic_row != 0.f)
                  || (host.placed_row != nullptr && *host.placed_row == 0.f && !shader.rows_shader.empty());
+  BoundInput input(native, shader.hash);
+  if (StateCheck()) {
+    static std::atomic_uint32_t checked = 0;
+    if (checked.fetch_add(1, std::memory_order_relaxed) + 1 == 100000) {
+      renodx::utils::log::i("[Total War] State check: 100000 captures checked (each difference is logged).");
+    }
+  }
   if (!dynamic) {
-    std::array<ID3D11Buffer*, 4> buffers = {};
-    std::array<UINT, 4> buffer_strides = {};
-    std::array<UINT, 4> buffer_offsets = {};
-    const UINT slots = (shader.rows_shader.empty() ? static_cast<UINT>(buffers.size()) : 1u);
-    native->IAGetVertexBuffers(0, slots, buffers.data(), buffer_strides.data(), buffer_offsets.data());
+    const UINT slots = (shader.rows_shader.empty() ? static_cast<UINT>(input.vertex_buffers.size()) : 1u);
+    input.ReadVertexBuffers(slots);
     for (UINT slot = 0; slot < slots; ++slot) {
-      if (buffers[slot] == nullptr) continue;
+      if (input.vertex_buffers[slot] == nullptr) continue;
       D3D11_BUFFER_DESC buffer_desc = {};
-      buffers[slot]->GetDesc(&buffer_desc);
+      input.vertex_buffers[slot]->GetDesc(&buffer_desc);
       dynamic = dynamic || buffer_desc.Usage == D3D11_USAGE_DYNAMIC;
-      buffers[slot]->Release();
     }
   }
   if (!thin && dynamic && !cascade_draw && shader.thin_sheets_row != nullptr && (*shader.thin_sheets_row != 0.f || runtime.settings.debug_log)) {
@@ -1729,11 +1848,17 @@ void Capture(Context& command, const SceneShader& shader) {
     return;
   }
   // Rigid objects seen moving stay out (a mesh's shadow where it stood); placed ones go where they are drawn, every frame.
-  bool moving = false;
-  if constexpr (INDEXED) {
-    moving = !shader.terrain && !dynamic && (shader.moving || (host.moving_indexed != nullptr && host.moving_indexed(native, arguments)));
-  } else {
-    moving = !shader.terrain && !dynamic && (shader.moving || (host.moving != nullptr && host.moving(native, arguments)));
+  bool moving = !shader.terrain && !dynamic && shader.moving;
+  if (!shader.terrain && !dynamic && !moving) {
+    if constexpr (INDEXED) {
+      if (host.moving_indexed != nullptr) {
+        input.ReadIndexBuffer();
+        moving = host.moving_indexed(input.index_buffer, input.index_offset, arguments);
+      }
+    } else if (host.moving != nullptr) {
+      input.ReadIndexBuffer();
+      moving = host.moving(input.index_buffer, input.index_offset, arguments);
+    }
   }
   if (moving && !placed) return;
   // The fast path (CPU): a static mesh drawn before, known by its short key while that stood for it alone, is only
@@ -1741,14 +1866,8 @@ void Capture(Context& command, const SceneShader& shader) {
   const bool short_path = !dynamic && !shader.foliage && !placed;
   uint64_t short_key = 14695981039346656037ull;
   if (short_path) {
-    ID3D11Buffer* first_vertices = nullptr;
-    UINT first_stride = 0;
-    UINT first_offset = 0;
-    ID3D11Buffer* draw_indices = nullptr;
-    DXGI_FORMAT draw_index_format = DXGI_FORMAT_UNKNOWN;
-    UINT draw_index_offset = 0;
-    native->IAGetVertexBuffers(0, 1, &first_vertices, &first_stride, &first_offset);
-    native->IAGetIndexBuffer(&draw_indices, &draw_index_format, &draw_index_offset);
+    input.ReadVertexBuffers(1);
+    input.ReadIndexBuffer();
     const auto mix_short = [&short_key](uint64_t value) { short_key = (short_key ^ value) * 1099511628211ull; };
     mix_short(shader.hash);
     if constexpr (INDEXED) {
@@ -1762,12 +1881,10 @@ void Capture(Context& command, const SceneShader& shader) {
         mix_short(value);
       }
     }
-    mix_short(reinterpret_cast<uintptr_t>(first_vertices));
-    mix_short((uint64_t{first_stride} << 32) | first_offset);
-    mix_short(reinterpret_cast<uintptr_t>(draw_indices));
-    mix_short((uint64_t{static_cast<uint32_t>(draw_index_format)} << 32) | draw_index_offset);
-    if (first_vertices != nullptr) first_vertices->Release();
-    if (draw_indices != nullptr) draw_indices->Release();
+    mix_short(reinterpret_cast<uintptr_t>(input.vertex_buffers[0]));
+    mix_short((uint64_t{input.strides[0]} << 32) | input.offsets[0]);
+    mix_short(reinterpret_cast<uintptr_t>(input.index_buffer));
+    mix_short((uint64_t{static_cast<uint32_t>(input.index_format)} << 32) | input.index_offset);
     const std::unique_lock lock(runtime.mutex);
     if (const auto entry = runtime.short_keys.find(short_key); entry != runtime.short_keys.end() && !entry->second.ambiguous) {
       if (const auto known = runtime.known.find(entry->second.key); known != runtime.known.end()) {
@@ -1819,17 +1936,11 @@ void Capture(Context& command, const SceneShader& shader) {
   // more than one: its BLAS's alpha test is its first capture's).
   std::array<ID3D11Buffer*, 4> constant_buffers = {};
   std::array<ID3D11ShaderResourceView*, 4> textures = {};
-  std::array<ID3D11Buffer*, 4> vertex_buffers = {};
-  std::array<UINT, 4> strides = {};
-  std::array<UINT, 4> offsets = {};
-  ID3D11Buffer* index_buffer = nullptr;
-  DXGI_FORMAT index_format = DXGI_FORMAT_UNKNOWN;
-  UINT index_offset = 0;
   // Their ranges too (D3D11.1: one buffer can hold many draws' constants).
   std::array<UINT, 4> first_constants = {};
   std::array<UINT, 4> constant_counts = {};
   if (!placed) {
-    if (ComPtr<ID3D11DeviceContext1> native1; SUCCEEDED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) {
+    if (auto* native1 = Context1(native, shader.hash); native1 != nullptr) {
       native1->VSGetConstantBuffers1(1, static_cast<UINT>(constant_buffers.size()), constant_buffers.data(), first_constants.data(),
                                      constant_counts.data());
     } else {
@@ -1837,8 +1948,12 @@ void Capture(Context& command, const SceneShader& shader) {
     }
     native->VSGetShaderResources(0, static_cast<UINT>(textures.size()), textures.data());
   }
-  native->IAGetVertexBuffers(0, (placed ? 1u : static_cast<UINT>(vertex_buffers.size())), vertex_buffers.data(), strides.data(), offsets.data());
-  native->IAGetIndexBuffer(&index_buffer, &index_format, &index_offset);
+  const UINT identity_slots = (placed ? 1u : static_cast<UINT>(input.vertex_buffers.size()));
+  input.ReadVertexBuffers(identity_slots);
+  input.ReadIndexBuffer();
+  ID3D11Buffer* const index_buffer = input.index_buffer;
+  const DXGI_FORMAT index_format = input.index_format;
+  const UINT index_offset = input.index_offset;
   uint64_t key = 14695981039346656037ull;
   const auto mix = [&key](uint64_t value) { key = (key ^ value) * 1099511628211ull; };
   mix(shader.key_family != 0u ? shader.key_family : shader.hash);
@@ -1858,9 +1973,11 @@ void Capture(Context& command, const SceneShader& shader) {
     mix(first_constants[slot]);
   }
   for (auto* texture : textures) mix(reinterpret_cast<uintptr_t>(texture));
-  for (size_t slot = 0; slot < vertex_buffers.size(); ++slot) {
-    mix(reinterpret_cast<uintptr_t>(vertex_buffers[slot]));
-    mix((uint64_t{strides[slot]} << 32) | offsets[slot]);
+  // Slots past the identity's: none.
+  for (UINT slot = 0; slot < input.vertex_buffers.size(); ++slot) {
+    const bool identity_slot = slot < identity_slots;
+    mix(identity_slot ? reinterpret_cast<uintptr_t>(input.vertex_buffers[slot]) : 0u);
+    mix(identity_slot ? ((uint64_t{input.strides[slot]} << 32) | input.offsets[slot]) : 0u);
   }
   mix(reinterpret_cast<uintptr_t>(index_buffer));
   mix((uint64_t{static_cast<uint32_t>(index_format)} << 32) | index_offset);
@@ -1888,8 +2005,6 @@ void Capture(Context& command, const SceneShader& shader) {
   };
   std::ranges::for_each(constant_buffers, release);
   std::ranges::for_each(textures, release);
-  std::ranges::for_each(vertex_buffers, release);
-  release(index_buffer);
 
   // A mesh in the scene is marked drawn; a placed one (also one captured earlier this frame) is placed where this draw's
   // instances are (their rows only: a placement; marked drawn once placed, so one left out is forgotten and captured
@@ -2047,9 +2162,22 @@ void Capture(Context& command, const SceneShader& shader) {
     runtime.costs.left_out_shaders[shader.hash][full_share] += texels;
     return;
   }
-  ComPtr<ID3D11Device> device;
-  native->GetDevice(device.GetAddressOf());
-  if (!PrepareDevice(device.Get())) return;
+  // The device: the objects' while they were prepared for this context (their device reference keeps it this context's).
+  if (runtime.objects.context == native) {
+    if (StateCheck()) {
+      ComPtr<ID3D11Device> context_device;
+      native->GetDevice(context_device.GetAddressOf());
+      if (context_device != runtime.objects.device) StateMismatch("the prepared device", shader.hash);
+    }
+    if (!runtime.objects.constants) return;
+  } else {
+    ComPtr<ID3D11Device> context_device;
+    native->GetDevice(context_device.GetAddressOf());
+    const bool prepared = PrepareDevice(context_device.Get());
+    runtime.objects.context = native;
+    if (!prepared) return;
+  }
+  ID3D11Device* const device = runtime.objects.device.Get();
   uint32_t slice = 0;
   // A unit stays solid (left out, it would lose its shadow) without room for its mask, or with Leaf Micromaps off (rays that
   // skip alpha tests would pass through it for good), and leaves a quarter of the atlas to leaves and rigid cut-outs (a slice
@@ -2152,7 +2280,7 @@ void Capture(Context& command, const SceneShader& shader) {
   if (clip_uv && shader.uv_scale_slot != NO_UV_SCALE) {
     UINT first_constant = 0;
     UINT constant_count = 0;
-    if (ComPtr<ID3D11DeviceContext1> context1; SUCCEEDED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) {
+    if (auto* context1 = Context1(native, shader.hash); context1 != nullptr) {
       context1->PSGetConstantBuffers1(shader.uv_scale_slot, 1, material.GetAddressOf(), &first_constant, &constant_count);
     } else {
       native->PSGetConstantBuffers(shader.uv_scale_slot, 1, material.GetAddressOf());
@@ -2309,9 +2437,10 @@ void Capture(Context& command, const SceneShader& shader) {
   }
 
   // Before anything of the game's is unbound: these returns leave its state alone.
-  ComPtr<ID3D11DeviceContext1> native1;
+  ID3D11DeviceContext1* native1 = nullptr;
   if (cascade_draw) {
-    if (FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
+    native1 = Context1(native, shader.hash);
+    if (native1 == nullptr) return;
     if (!objects.cascade_camera) {
       // To c35: the flags' time, 0 here (a still sheet casts).
       const D3D11_BUFFER_DESC desc = {.ByteWidth = 36 * 4 * sizeof(float), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
@@ -2733,8 +2862,8 @@ void Capture(Context& command, const SceneShader& shader) {
     auto& examples = runtime.new_static_examples[shader.hash];
     if (examples.size() == 3) examples.erase(examples.begin());
     examples.push_back(std::format("{} vertices at {} / {} x{} from {}, VB0 {:X} +{}, IB {:X} +{}", vertex_count, first, base,
-                                   arguments.instance_count, arguments.first_instance, reinterpret_cast<uintptr_t>(vertex_buffers[0]),
-                                   offsets[0], reinterpret_cast<uintptr_t>(index_buffer), index_offset));
+                                   arguments.instance_count, arguments.first_instance, reinterpret_cast<uintptr_t>(input.vertex_buffers[0]),
+                                   input.offsets[0], reinterpret_cast<uintptr_t>(index_buffer), index_offset));
   }
 }
 
@@ -2839,8 +2968,8 @@ void CaptureParticles(Context& command) {
   const UINT count = std::min(particle_count, capacity - runtime.particles);
   if (particle_output == nullptr || count == 0 || (INDIRECT && !stream.empty)) return;
   // The quad shader reads the vertex shader's constants with their ranges (D3D11.1).
-  ComPtr<ID3D11DeviceContext1> native1;
-  if (INDEXED && FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
+  ID3D11DeviceContext1* const native1 = (INDEXED ? Context1(native, vertex_shader->hash) : nullptr);
+  if (INDEXED && native1 == nullptr) return;
   if (first_draw && runtime.settings.stream_particles && vertex_shader->behaviours_at_cb3) {
     // cb_vfx_emitter_constants_common (the particle vertex shader's cb3): smoke_map_list tells the weather by it.
     ComPtr<ID3D11Buffer> behaviours;
@@ -4121,6 +4250,7 @@ inline void Update(const Settings& settings) {
   const uint64_t tick = GetTickCount64();
   if (runtime.traced_frame == runtime.frame) runtime.traced_tick = tick;
   ++runtime.frame;
+  internal::light_frame.store((runtime.frame << 1) | uint64_t{settings.local_lights}, std::memory_order_relaxed);
   // The helper started its ray tracing again (a GPU fault or hang removed its device, or a request failed) or released its
   // scene after 10 s without a trace (the rays off, a menu): every mesh captured again. Only the first is a warning.
   if (const uint32_t device = dlaa_bridge::RayTracingDevice(); device != runtime.helper_device) {
@@ -4744,6 +4874,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  internal::destroyed_devices.fetch_add(1, std::memory_order_relaxed);
   const std::unique_lock lock(internal::runtime.mutex);
   if (internal::runtime.particle_stream.device.Get() == native) internal::runtime.particle_stream = {};
   if (internal::runtime.objects.device.Get() == native) {
