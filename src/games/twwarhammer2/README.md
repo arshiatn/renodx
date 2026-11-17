@@ -6,6 +6,9 @@
   place between pixels (where the four pixels around it lie on one plane), so open ground seen at a low angle no longer
   shades itself. Off: the nearest pixel's depth, as before. `tw_gtvbao_exact` (WARP): off the build before's bits;
   CONTROL on changes 5426 values.
+- Changed: the presets **Reset**, **No RT/PT** and **RT/PT** also turn **Texture LOD Bias on All Textures** on
+  (ATN: the LOD bias for everything on in every game; on by default already). The bias's level (Matched / Sharper /
+  Sharpest) stays yours; the row set off by hand stays off until a preset is pressed.
 
 ### Replace round (2026-11-16, tw1_; built only, not run in game)
 
