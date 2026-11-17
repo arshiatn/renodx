@@ -384,7 +384,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | ATN (EJOB / EVEC / EHALF integration stay with ATN's ChatGPT
 - WRITER SMALL FIXES (from Sol's 0001 review): our engine_code.hpp writer: (a) a f ... | ATN's go (game-code file, theoretical today: no site crosses
 - L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; ... | after ssr_ / G1 (helper queue)
-- PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rcg_, rbk_
+- PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rbk_
 - APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-th ... | apipe_
 - CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's ren ... | the combined bench (ATN's go)
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
@@ -2846,7 +2846,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         better at the end? Then let's do that": rcg_ now records ONLY the BASE grass views (sliders max), no V1 run;
         rbk_ High STARTED 21:4x: RENODX_TW_PLAY_MICROMAP_LEVEL (play-only rebake from recorded inputs; unset = today;
         level 5 rebake must equal the recorded bytes; level 6 on day1_low / night1_low / stress_low / day1_battle +
-        the grass recordings, two traces a point). Owner: rcg_, rbk_
+        the grass recordings, two traces a point). rcg_ DONE 20:5x (one Attila run 20:53-20:57, no crash; all files
+        restored by hash; grass_recordings.md): grass sliders max via RENODX_TW_SET (GraphicsGrassDistance=4,
+        GraphicsGrassDensity=8, GrassHeightDistance=10), day1.replay; D:\Dev\tw_recordings\grass_ground\frame_1033
+        (4418 MB, view.png) + grass_unit\frame_1755 (4866 MB), both play 0 different; Nsight 2 traces each: grass_ground
+        trace 10.23 / path 4.71 / reuse 1.17 / all 24.2 ms, grass_unit 5.30 / 3.40-3.48 / 0.75-0.82 / 17.5-17.7
+        (day1_battle 12.9); grass hot lines rt_trace_omm 2988 ~35 %, rt_path_one_omm 2398 ~34 %. rbk_ told to use
+        both. Owner: rbk_
       - [ ] APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-thread last-pipeline cache in
         front of the pipeline map lock, invalidated by a destroy generation; shared utils, opt-in Attila only (B3's
         pattern), check mode for the bench, new test/tw_pipeline_cache; night1 -0.1..-0.2. apipe_ High STARTED 22:1x
