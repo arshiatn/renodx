@@ -187,6 +187,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                                                  },
                                                  &report);
     if (!played && report.empty()) report = player->Status();
+    if (const std::string reports = player->TakeReports(); !reports.empty()) ReShadeLogMessage(nullptr, 0, reports.c_str());
     LogWithTime(std::format("[TW player] {}: {}", played ? "Played" : "FAILED", report).c_str());
     return played ? 0 : 1;
   }

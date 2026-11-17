@@ -1787,6 +1787,10 @@ class RtScene12 {
       *report = std::format("no requests in {}", recording.string());
       return false;
     }
+    if (!std::filesystem::exists(recording / L"complete.txt", error)) {
+      *report = std::format("{} has no complete.txt: its recording did not finish (the helper's log says why)", recording.string());
+      return false;
+    }
     // A file's chunks (its bytes kept in `data`): its header checked, its block, its sets' data and its resources by name.
     struct File {
       std::vector<uint8_t> data;
@@ -1890,36 +1894,48 @@ class RtScene12 {
       return false;
     }
     const std::string loaded_report = *report;
-    RecordFrames(dump, first_frame, std::get<0>(requests.back()), false);
+    const uint32_t last_frame = std::get<0>(requests.back());
+    RecordFrames(dump, first_frame, last_frame, false);
+    std::vector<File> files(requests.size());
+    for (size_t index = 0; index < requests.size(); ++index) {
+      if (!read(std::get<2>(requests[index]), &files[index])) return false;
+    }
+    // RENODX_TW_PLAY_LOOPS=<n> (Nsight Graphics' GPU trace): the requests n times over, each pass's frames after the last
+    // pass's (the state loaded once: later passes are the same work, not the same pixels; only the first is dumped).
+    std::array<wchar_t, 16> loops_value = {};
+    const uint32_t loops = std::max<uint32_t>(
+        (GetEnvironmentVariableW(L"RENODX_TW_PLAY_LOOPS", loops_value.data(), static_cast<DWORD>(loops_value.size())) != 0) ? _wtoi(loops_value.data()) : 1, 1);
     uint32_t played = 0;
-    for (const auto& [frame, index, path] : requests) {
-      File file;
-      if (!read(path, &file)) return false;
-      ID3D12GraphicsCommandList4* list = RecorderList();
-      std::vector<ComPtr<ID3D12Resource>> uploads;
-      for (const auto& [name, bytes] : file.resources) {
-        const auto texture = textures.find(name);
-        if (texture == textures.end() || list == nullptr) continue;
-        if (!UploadRecorded(list, name, texture->second.Get(), D3D12_RESOURCE_STATE_COMMON, bytes, &uploads, report)) return false;
-      }
-      if (list == nullptr || !WaitFor(SubmitRecorderList(list))) {
-        *report = std::format("{}: its inputs could not be uploaded", path.filename().string());
-        return false;
-      }
-      const std::unique_ptr<dlaa_bridge::Shared> block = block_of(file);
-      if (file.header.request == 1) {
-        before_trace();
-        Trace(*block, version, file.sets);
-      } else {
-        Paths(*block, version, file.header.request == 3);
-      }
-      ++played;
-      if (Lost()) {
-        *report = std::format("the device was lost at {}", path.filename().string());
-        return false;
+    for (uint32_t loop = 0; loop < loops; ++loop) {
+      for (size_t index = 0; index < files.size(); ++index) {
+        const File& file = files[index];
+        ID3D12GraphicsCommandList4* list = RecorderList();
+        std::vector<ComPtr<ID3D12Resource>> uploads;
+        for (const auto& [name, bytes] : file.resources) {
+          const auto texture = textures.find(name);
+          if (texture == textures.end() || list == nullptr) continue;
+          if (!UploadRecorded(list, name, texture->second.Get(), D3D12_RESOURCE_STATE_COMMON, bytes, &uploads, report)) return false;
+        }
+        if (list == nullptr || !WaitFor(SubmitRecorderList(list))) {
+          *report = std::format("{}: its inputs could not be uploaded", std::get<2>(requests[index]).filename().string());
+          return false;
+        }
+        const std::unique_ptr<dlaa_bridge::Shared> block = block_of(file);
+        block->rt_frame += loop * (last_frame - first_frame + 1);
+        if (file.header.request == 1) {
+          before_trace();
+          Trace(*block, version, file.sets);
+        } else {
+          Paths(*block, version, file.header.request == 3);
+        }
+        ++played;
+        if (Lost()) {
+          *report = std::format("the device was lost at {} (pass {})", std::get<2>(requests[index]).filename().string(), loop + 1);
+          return false;
+        }
       }
     }
-    *report = std::format("{}; {} requests played: {}", loaded_report, played, FinishRecording());
+    *report = std::format("{}; {} requests played ({} passes): {}", loaded_report, played, loops, FinishRecording());
     return true;
   }
 #endif
