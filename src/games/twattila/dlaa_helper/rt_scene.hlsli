@@ -93,8 +93,15 @@ float Luminance(float3 color) {
   return dot(color, float3(0.2126f, 0.7152f, 0.0722f));
 }
 
-// What local light `index` gives a surface at `surface` facing `normal` (its colour, the games' smooth falloff (1 -
-// distance / reach)^2, its angle; 0 out of reach or behind), its direction and distance.
+// The sun texture's texel holding the game's sun colour at its diffuse scale (rt_sun.cs_5_0.hlsl, rt_core.hpp WriteSun; w 0:
+// none). Its w: the scale the game's light shaders give the local lights' colours in their diffuse light, where the addon
+// sends them unscaled (Attila's, Rome II's, Thrones': x 0.004 with g_hdr_on, as the sun's; 1 where its host scaled them,
+// rt_core.hpp Host::local_light_scale).
+static const uint SUN_LIGHT_TEXEL = 2u;
+
+// What local light `index` gives a surface at `surface` facing `normal` (its colour at the game's diffuse scale, the games'
+// smooth falloff (1 - distance / reach)^2, its angle; 0 out of reach or behind), its direction and distance. Unscaled, the
+// paths' torch light in Attila came out 250 times the game's (walls blown out white, ATN's debug44).
 float3 LightArriving(uint index, float3 surface, float3 normal, out float3 direction, out float light_distance) {
   const float3 to_light = lights[index].xyz - surface;
   light_distance = length(to_light);
@@ -103,7 +110,8 @@ float3 LightArriving(uint index, float3 surface, float3 normal, out float3 direc
   const float n_dot_l = dot(normal, direction);
   if (n_dot_l <= 0.f) return 0.f;
   const float falloff = 1.f - light_distance / lights[index].w;
-  return max(light_colours[index].rgb, 0.f) * (falloff * falloff * n_dot_l);
+  const float diffuse_scale = sun[uint2(SUN_LIGHT_TEXEL, 0)].w;
+  return max(light_colours[index].rgb, 0.f) * (falloff * falloff * n_dot_l) * ((diffuse_scale > 0.f) ? diffuse_scale : 1.f);
 }
 
 

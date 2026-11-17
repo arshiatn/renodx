@@ -168,6 +168,7 @@ struct DeviceObjects {
   size_t history_index = 0;  // the one the last resolve wrote
   frame_history::Target denoised;
   uint64_t traced_frame = UINT64_MAX;
+  float texel_centre = 0.f;  // the last trace's LightBounceConstants::texel_centre (its history's)
 };
 
 struct Runtime {
@@ -383,10 +384,14 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     auto& objects = runtime.objects;
     const auto& sun_draw = command.template GetCallbackData<T>();
     runtime.settings.diffuse_rule = sun_draw.diffuse_rule;
-    if (std::memcmp(&objects.uploaded, &runtime.settings, sizeof(LightBounceConstants)) != 0) {
-      native->UpdateSubresource(objects.constants.Get(), 0, nullptr, &runtime.settings, 0, 0);
-      objects.uploaded = runtime.settings;
-    }
+    runtime.settings.texel_centre = objects.texel_centre;
+    const auto upload = [&]() {
+      if (std::memcmp(&objects.uploaded, &runtime.settings, sizeof(LightBounceConstants)) != 0) {
+        native->UpdateSubresource(objects.constants.Get(), 0, nullptr, &runtime.settings, 0, 0);
+        objects.uploaded = runtime.settings;
+      }
+    };
+    upload();
 
     // The game's draw first.
     frame_history::DrawAgain(native, command.arguments);
@@ -457,10 +462,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       runtime.settings.region_width = trace_viewport.Width;
       runtime.settings.region_height = trace_viewport.Height;
       runtime.settings.level0_width = static_cast<float>(prepared_desc.Width);
-      if (std::memcmp(&objects.uploaded, &runtime.settings, sizeof(LightBounceConstants)) != 0) {
-        native->UpdateSubresource(objects.constants.Get(), 0, nullptr, &runtime.settings, 0, 0);
-        objects.uploaded = runtime.settings;
-      }
+      upload();
       native->OMSetBlendState(objects.replace_blend.Get(), nullptr, 0xFFFFFFFF);
       native->OMSetDepthStencilState(objects.no_depth.Get(), 0);
       native->RSSetState(objects.rasterizer.Get());
@@ -486,6 +488,12 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       const bool rays = ray_traced != nullptr
                         && ray_traced(native, objects.prepared_light.texture.Get(), static_cast<UINT>(trace_viewport.Width),
                                       static_cast<UINT>(trace_viewport.Height), scale, objects.traced.texture.Get());
+      // The apply weighs the texels where this trace took them: the rays' at their block's centre pixel (scale / 2 off the
+      // top-left the screen-space trace's sit at: weighed there, their light, torches' too, came out that far toward the
+      // top-left; at a crack, light from its lit side onto the dark one).
+      objects.texel_centre = rays ? static_cast<float>(scale / 2) : 0.f;
+      runtime.settings.texel_centre = objects.texel_centre;
+      upload();
       // Else the prepared light and geometry's levels, each from the one above (that level only, at t46-t47).
       if (!rays) {
         native->PSSetShader(objects.levels.Get(), nullptr, 0);

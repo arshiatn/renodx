@@ -38,8 +38,8 @@ void main(float4 v0 : SV_Position0,
     for (int x = -1; x <= 1; ++x) {
       const int2 neighbour = center + int2(x, y);
       const float4 bounce = t_bounce.Load(int3(neighbour, 0));
-      // Its pixel (the block's top-left) from this one, in trace texels.
-      const float2 offset = float2(neighbour * scale - texel) / scale;
+      // Its pixel (where the trace took it: the block's top-left, the rays' its centre) from this one, in trace texels.
+      const float2 offset = float2(neighbour * scale + (int)LB.texel_centre - texel) / scale;
       const float near = exp2(-0.25f * dot(offset, offset));
       const float similar = saturate(1.f - abs(bounce.a - distance) / (0.030001808f * distance));
       const float weight = (bounce.a > 0.f) ? (near * similar) : 0.f;

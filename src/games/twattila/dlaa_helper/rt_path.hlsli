@@ -106,7 +106,6 @@ static const uint PATH_REFLECT_STEADY = 32768u;         // Steadier Water Reflec
 static const uint PATH_SKY_HISTORY = 131072u;  // own_sky's other set the last paths' (the trace's PATH_LIGHT_HISTORY: another request's word)
 static const uint PATH_SKY_PARITY = 1048576u;  // the paths write own_sky's set 1, the other is read (else 0; the trace's PATH_TINT)
 static const uint PATH_SUN_LIGHT = 2097152u;   // with PATH_KEEP_LIGHT: RT_PATH_SUN_LIGHT, SUN_LIGHT_TEXEL holds the game's sun light (the trace's PATH_TINT_GUIDES)
-static const uint SUN_LIGHT_TEXEL = 2u;  // the sun texture's: the game's sun colour at its diffuse scale (rt_sun.cs_5_0.hlsl; w 0: none)
 static const uint REFLECT_NEIGHBOURS = 4u;
 static const float REFLECT_RADIUS = 12.f;  // half-resolution texels at roughness 1
 static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x its sample's distance away

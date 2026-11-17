@@ -301,6 +301,10 @@ constexpr uint32_t RT_PATH_TORCH_LIGHT = 1u << 27;
 // BLAS, built anew each request, built for a fast build, not fast rays (which particles a ray meets first, and so counts, can
 // change: Smoke Shadow Quality's count).
 constexpr uint32_t RT_SCENE_SMOKE_FAST_BUILD = 1;
+// The addon's light shaders read a light mask word with its top bit set as bits under RT_LIGHT_RATIO (rt_local_lights.hlsli;
+// older helpers ignore it): rt_lights gives a pixel the ratio's texels can't serve (a corner, crack or edge, not seen by the
+// last trace) its own lights' bits, the list's first 31, instead of 1.
+constexpr uint32_t RT_SCENE_LIGHT_BITS = 2;
 constexpr uint32_t RT_NRD_OFF_AMBIENT = 1;
 constexpr uint32_t RT_NRD_OFF_BOUNCE = 2;
 constexpr uint32_t RT_NRD_OFF_REFLECTIONS = 4;

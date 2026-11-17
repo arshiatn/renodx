@@ -36,12 +36,14 @@ static const uint LIGHTS_IN_PATHS = 128u;
 // a local light's sample a bounce texel, its light in the bounce; 2 the bounce only theirs, a measurement; 3 Torch and
 // Fire Shadows from the Light Bounce: their shadow ratio into light_ratio, the bounce without them), the light_ratio set
 // written (a bounce request's) or read (a trace's), last frame's set valid, the camera moved (RT_PATH_RATIO_FOLLOW: the
-// ratio's history RATIO_FRAMES_MOVING then).
+// ratio's history RATIO_FRAMES_MOVING then), the addon's light shaders read a word with its top bit set as bits (a
+// trace's: RT_SCENE_LIGHT_BITS, rt_lights).
 static const uint LIGHTS_MODE = 3u;
 static const uint LIGHTS_RATIO_MODE = 3u;
 static const uint LIGHTS_RATIO_SET = 16u;
 static const uint LIGHTS_RATIO_VALID = 32u;
 static const uint LIGHTS_RATIO_FOLLOW = 64u;
+static const uint LIGHTS_RATIO_BITS = 256u;
 static const float RATIO_FRAMES = 12.f;  // the shadow ratio's history (frames)
 static const float RATIO_FRAMES_MOVING = 4.f;  // at Full; half of it at Half and below (a texel spans more of a moving view)
 RWTexture2D<float4> light_ratio[2] : register(u56);  // at the bounce texels: shadowed, unshadowed torch light (luminance), frames, depth (0: none)
