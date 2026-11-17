@@ -54,7 +54,9 @@ if ($env:RENODX_TW_REFERENCE_BUILD) {
 Remove-Item "$out\rt_recorder_build.h" -ErrorAction SilentlyContinue
 if ($env:RENODX_TW_RECORDER_BUILD) { Set-Content -Path "$out\rt_recorder_build.h" -Value '#pragma once' -Encoding ascii }
 & "$root\bin\dxc.exe" -nologo -T cs_6_0 -E main -O3 -Fh "$out\fg_ui.h" -Vn FG_UI "$PSScriptRoot\fg_ui.cs_6_0.hlsl"
+# Path Tracing SER's paths built as the compute ones: the general build and the one of one ray a texel.
 & "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -Fh "$out\rt_path_ser.h" -Vn RT_PATH_SER "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
+& "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -D PATH_ONE_SAMPLE -Fh "$out\rt_path_ser_one.h" -Vn RT_PATH_SER_ONE "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
 # NVIDIA's SHaRC 1.8.3 (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/SHARC: its untagged main commit 4e21b585 "v1.8.3";
 # 1.6.5 was a release) for SHaRC Radiance Cache: fetched into build\downloads\sharc\extracted\NVIDIA-RTX-SHARC-4e21b585 when
 # missing, unmodified with NVIDIA's licence (never committed here), its headers compiled into the paths' SHaRC variants
