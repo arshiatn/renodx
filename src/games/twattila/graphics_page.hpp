@@ -1184,6 +1184,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                           [b, methods](int place) { ChooseAo(b, methods[place]); }));
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return AoMethodOf(b) >= AO_RAYS && !feature_settings::Upscaling(*b.aa); }));
+    // Right under Path-Traced Ambient (ATN 2026-11-17): its reflections' occlusion (Attila, Thrones: ssr00 / ssr01 by the
+    // rays' specular-occlusion lobe), its own conditions kept.
+    page.Take({.match = "PathTracedReflectionOcclusion", .section = section, .shown = ao_is(AO_PATHS), .only_some_games = true});
     page.Take({.match = "Darker shading behind trees and objects: raise Thickness. Lighter around spears: lower it.", .section = section, .shown = gtvbao,
                .label = "Darker shading behind trees and objects: raise Thickness (More Options). Lighter around spears: lower it."});
     page.Take({.match = "ao-presets", .section = section, .shown = gtvbao});
