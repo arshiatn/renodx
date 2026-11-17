@@ -361,7 +361,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
 - CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action u ... | ce8_
 - CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, X ... | cb2_ High STARTED 19:3x
-- CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | cb3_ High STARTED 19:3x
+- CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | ATN (allow the re-run?), then a High implementer to finish
 - CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | High implementer (bfx_ merged
 - CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | coordinator
 - CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | hb6_, coordinator
@@ -2509,8 +2509,19 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, XAT rt_core part; rt_scene.hpp,
         rt_core.hpp, tw_native_context; every rt_core consumer built): night1 -0.6..-1.0. Owner: cb2_ High STARTED 19:3x
       - [ ] CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src/utils; the memo design's
-        guards + T1-T3, RENODX_RESOURCE_MEMO_CHECK): night1 -0.2..-0.6. Attila first (ATN 19:2x). Owner: cb3_ High
-        STARTED 19:3x
+        guards + T1-T3, RENODX_RESOURCE_MEMO_CHECK): night1 -0.2..-0.6. Attila first (ATN 19:2x). cb3_ STOPPED 21:0x
+        PARTWAY: the auto-mode classifier refused a test re-run (powershell -ExecutionPolicy Bypass -File
+        test\tw_view_filter\run.ps1 -Architecture x86, "[Destructive or Unwanted Actions]"; the same command had passed
+        twice; coordinator read the script: compile + run the test exe, no deletes): not re-run, not worked around. Done:
+        98a32bdc3 on branch cb3_ (worktree agent-a9fec8374e49c8653): frozen ViewFilterData (uuid b3adce9f), set-only
+        16,384-bit filter, opt-in resource::use_view_filter, guards (pointer forms off for good, token order, module check
+        at attach / init_device / present, all slots taken = off, RENODX_RESOURCE_MEMO=0 / =1, _CHECK=1, 1-in-256 self-check),
+        test/tw_view_filter 17 parts passed x86 + amd64, static_checks.py "views" 0 findings (5 at the control); x86 one
+        thread 17.4 -> 4.1 ns, 4 threads 122.6 -> 4.6 ns; 2 small edits after the last test (untested). LEFT: the x86
+        re-run, Attila's opt-in in ConfigureAddon, check_logs.py rule, gated builds, T3 suites; XAT (clang-cl i686 makes the
+        64-bit load one movq: maybe no change; check the real .addon32); APIPE. Plan corrections: static_checks.py is in
+        .agents/skills/tw-port-checklist/scripts; the outside writers need no edits (both wrappers); no TLS concern. NOT
+        merged. Owner: ATN (allow the re-run?), then a High implementer to finish
       - [ ] CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_motion.hpp, dlaa_bridge.hpp):
         night1 -0.3..-0.6. Owner: High implementer (bfx_ merged; start when a build slot frees: after cb2_ or cb3_)
       - [ ] CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization designs then code, EVEC design;
