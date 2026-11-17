@@ -343,6 +343,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
 - (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
+- SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
 - SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator after REF1
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
 - (RAN 01:49-02:09, five starts clean, every file of ATN's restored / same (ReShad ... | coordinator, after the current merges + install, ATN's go
@@ -2229,6 +2230,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         2026.3 are the newest already; Aftermath dev-only switch = audit A33 (ATN); (g) licence: RTX SDKs licence 4(e): NVIDIA
         files never under the repo's MIT header: keep fetching them at build time as NRD / SHaRC; library headers
         unchanged, single functions copied with NVIDIA's notice. Owner: coordinator, per plan step
+      - [ ] SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use original nvidia sdks files instead of
+        fixing our bugs, then go ahead. Just make sure to plan everything out"): in plan step 5 one table of every own
+        implementation that duplicates an NVIDIA SDK part (ReSTIR GI reuse / boiling filter vs RTXDI GI, light sampling + PT
+        DI vs RTXDI DI, SHaRC 1.6.5 vs 1.8.3, NRD integration vs NRD-Sample, OMM baking vs OMM SDK, path-tracer pieces vs
+        RTXPT, blue noise vs STBN): ours and NVIDIA's against the same reference + Nsight, licence path (fetched at build
+        time, notice kept), the game's own light formula kept, effort; "replace" or "fix ours" per row, planned before
+        code (plan_1117/plan.md "SDK REPLACE AUDIT"). Owner: coordinator after REF BUILD step 1
       - [ ] SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix our skill sets again"): the
         lessons of the bug fixes + reference suite into .agents/skills + the zip. Owner: coordinator after REF1
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
