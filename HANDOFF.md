@@ -2338,8 +2338,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner: next shared-utils round (with the memo)
       - [ ] EFFORT A/B (ATN 10:3x "test low + your judgement and just medium effort for test and judgement"): A = cpb_
         (medium, runs + judges, ~41 starts); B = the next run batch (memo M1 night1 / sea1 / stress + the O1 night1 trace)
-        with a LOW run-only agent + the coordinator's judgement. Compare tokens per game start (agent + the coordinator's
-        judging turn, get_usage before / after) and quality (wrong steps, missed restore checks, wrong conclusions); report to
+        with a LOW run-only agent + a fresh HIGH-effort judge agent (ATN 10:4x: the coordinator's xHigh turns carry the whole
+        session, a fresh judge reads only the results). Compare tokens per game start (runner + judge vs cpb_) and quality
+        (wrong steps, missed restore checks, wrong conclusions; the coordinator spot-checks both); report to
         ATN, then keep the winner as the rule (memory feedback-data-run). Owner: coordinator
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
