@@ -338,7 +338,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN 09:10 ANSWERS (each its own box below): CPU benches started (cpb_, plan_1117 ... | coordinator
 - CPU BENCH RUNS (cpb_ started 09:1x, ATN's OK): dry run; heapfix A / P / h6106 x3 ... | cpb_
 - SHARC UPDATE (ATN 09:10 "update to nvidia sdk's newer version and fix the bug .. ... | coordinator (next helper implementer after rv3_)
-- UTILS RESOURCE MEMO (ATN 09:10 "Sure"; cpu3_ D3, design cpu_steps_5_10.md 10a): ... | next CPU implementer
+- UTILS RESOURCE MEMO (plan DONE 10:3x ut1_: designs/utils_view_memo.md: 16 writer ... | next CPU implementer
 - HELPER SCREENSHOT KEY (ATN 09:10 "Sure go ahead"): the helper (64-bit, own proce ... | next helper / add-on implementer
 - RT FREEZE 2.7 S (ATN 09:10 "What do you suggest?"): coordinator's suggestion: dr ... | next helper round
 - RENDER SCALE CENSUS, OTHER GAMES (ATN 09:10 asked whether every shader was check ... | next render-scale round
@@ -2243,7 +2243,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         D1 in designs/sdk_replace_audit.md, after rv3_'s review). Same round: the OMM bake's per-bake buffers
         (&gpu.uvs / &gpu.transient[pool]) after checking the OMM SDK's transient-pool contract. Owner: coordinator (next helper
         implementer after rv3_)
-      - [ ] UTILS RESOURCE MEMO (ATN 09:10 "Sure"; cpu3_ D3, design cpu_steps_5_10.md 10a): a per-thread memo in front of
+      - [ ] UTILS RESOURCE MEMO (plan DONE 10:3x ut1_: designs/utils_view_memo.md: 16 writers, ~50 readers, only
+        GetResourceViewClone cached, values only; 27 failure places each with a guard + test; check mode
+        RENODX_RESOURCE_MEMO_CHECK=1, kill switch RENODX_RESOURCE_MEMO=0; M1 measurement (one night1 start, throwaway trace
+        build: epoch bumps per writer, lookups / views per thread) then go if >= 0.1 ms; ~4 agent-days, 2 game runs, 2
+        reviews; review rv4_ (Opus xHigh) STARTED -> designs/utils_view_memo_review.md) UTILS RESOURCE MEMO (ATN 09:10 "Sure"; cpu3_ D3, design cpu_steps_5_10.md 10a): a per-thread memo in front of
         src/utils' ResourceViewInfo lookups with an epoch every writer bumps; audit every writer + measured write rate first,
         a cross-check switch, then every RenoDX mod gets it (est. -0.2..-0.4 ms Attila night1). Owner: next CPU implementer
       - [ ] HELPER SCREENSHOT KEY (ATN 09:10 "Sure go ahead"): the helper (64-bit, own process) saves the 4K HDR screenshot
