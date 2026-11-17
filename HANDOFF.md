@@ -181,8 +181,8 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [x] ANSWERED 00:3x (ATN: "If it is on by default, then get rid of that slider": it is on by default (5d9810cd1), row removed in WH1 / WH2; tw1_ after the SSR item) C: WH1 / WH2: remove the Rays Replace Shadow Maps row too (off = Multiply), as WH3 / Troy / Pharaoh now (one method; WH1's 12 SM 4.1 builds keep the game's maps until the shared Patch)? (from: tw2_ 00:0x)
 - [x] ANSWERED 00:4x (ATN: "Let's take your suggestion": the game's shadow map smaller while Replace is on, restart to take effect; rur2_) C: R.U.S.E. VRAM: a smaller ShadowRTSize while Replace is on frees memory (~72 MiB at 1024 vs ~290 MiB at 2048; coarser game shadows where they come back: above Rays Off Above, a failed trace, Replace off)? (from: rur2_ 00:0x)
 - [x] ANSWERED 01:xx (ATN: "Row placement, that sounds good!"; the occlusion source asked, coordinator: keep the specular-occlusion lobe, more correct for reflections) C: Path-Traced Reflection Occlusion: lobe vs sky visibility, row next to Path-Traced Ambient (graphics_page, shs2_)
-- [ ] C: Divinity 2: GT-VBGI (like the rays' bounce) adds on top of the light probes' IBL diffuse: keep, or black the probes' diffuse under GT-VBGI? After a run: No RT/PT (Recommended) turns Bend and GT-VBGI on, as Attila's? Defaults OK: GT-VBAO radius 1 m, Bend thickness 0.005? (from: div2_ 01:xx)
-- [ ] C: Attila paths trace / shade split: measured ~0 net at your rows (trace-only 0.288 vs 0.366 ms, no occupancy win): drop it, or one in-game Nsight of the trace-only helper first? (from: gpu3_ 01:xx)
+- [ ] PARTLY ANSWERED 02:xx (ATN: "It should have the same/similar presets like Attila. No RT/PT should use GT-VBAO, GT-VBGI, SSS and SSSR (if that is implemented)": DONE 150e41174, No RT/PT turns GT-VBAO + GT-VBGI + Bend on; SSSR when implemented; probes question explained, coordinator recommends keep (GT-VBAO darkens the probes' light in corners, GT-VBGI adds the nearby bounce: the visibility-bitmask way; black probes = dark wherever the screen sees no light); defaults still open) C: Divinity 2: GT-VBGI (like the rays' bounce) adds on top of the light probes' IBL diffuse: keep, or black the probes' diffuse under GT-VBGI? After a run: No RT/PT (Recommended) turns Bend and GT-VBGI on, as Attila's? Defaults OK: GT-VBAO radius 1 m, Bend thickness 0.005? (from: div2_ 01:xx)
+- [x] ANSWERED 02:xx (ATN: "Maybe do one nsight capture first.": the paths kernel's in-game Nsight goes into the capture runs, then drop or do) C: Attila paths trace / shade split: measured ~0 net at your rows (trace-only 0.288 vs 0.366 ms, no occupancy win): drop it, or one in-game Nsight of the trace-only helper first? (from: gpu3_ 01:xx)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -311,6 +311,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (Ryse level B DONE rys2_ f795f917c: Contrast 1.15 / Shadows 1.35 / Saturation 1 ... | rys2_ (Ryse), V35 fit round (the rest)
 - (+ div2_ 23:xx: RR on with the rays (helper log RR line); RT reflections on meta ... | coordinator (one game at a time)
 - (div2_ 23:xx DONE: rt_guides + Ray Reconstruction bd7332449 (diffuse / specular ... | next Divinity 2 round
+- Divinity 2 FidelityFX SSSR: into No RT/PT (Recommended) once implemented (ATN 02 ... | next Divinity rounds
 - DIVINITY 2 RUNS 3 (div2_ 01:xx NEEDS A RUN, city + an interior, Time Each Pass): ... | coordinator (one game at a time)
 - Divinity 2 render scale below 100 % (div2_ 01:xx not done: VPtoRTScaleBias in 98 ... | next Divinity 2 round
 - SHARED STEPS (div2_ 01:xx): graphics_page: an "untested method" flag so GT-VBAO ... | next shared round
@@ -323,7 +324,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARED STEPS NEXT (shs2_ 23:xx): every game: a census of its other SSAO readers ... | per-game rounds, gpu3_, next shared round
 - R7 / TEST BOXES (shs2_ 23:xx): R7 clamps: Shogun 2 sea overlay writers C8375A74 ... | per-game rounds, next test round
 - PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction): C:/Users/arshi/.cla ... | coordinator
-- SKILLS UPDATE 3 (ATN's order step 2, 01:xx): 16 lessons of 11-16 / 11-17 (tools/ ... | sk3_
+- (sk3_ 01:xx) Shared shaders rule (skills lesson 12): rysesonofrome/upscale_outpu ... | next shared round
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
 - CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benc ... | coordinator, after the current merges + install, ATN's go
 - ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart batt ... | coordinator, then a CPU / memory round
@@ -2017,6 +2018,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         our TAA / CMAA2; GT-VBAO / GT-VBGI / Bend as the no-RT methods; Modded Auto Exposure (meter takes log2 above 2,
         knee 4.3 stops over the 0.104 average: a run's numbers); vignette / fog / VFX half-resolution rows. Owner: next
         Divinity 2 round
+      - [ ] Divinity 2 FidelityFX SSSR: into No RT/PT (Recommended) once implemented (ATN 02:xx); Divinity 1: same check,
+        its No RT/PT = GT-VBAO + GT-VBGI + Bend (+ SSSR) as Attila's. Owner: next Divinity rounds
       - [ ] DIVINITY 2 RUNS 3 (div2_ 01:xx NEEDS A RUN, city + an interior, Time Each Pass): GT-VBAO vs the game's SSAO;
         GT-VBGI strength and radius (lighting_settings' 20 m); Bend Length / Thickness (fades 40-60 m, far plane 100 m).
         Owner: coordinator (one game at a time)
@@ -2071,15 +2074,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         install; 1 ATN's night / sea replays -> one capture run each; 2 reference suite; 3 one features batch (ReSTIR
         papers, PT DI with RTXDI code allowed + NVIDIA notice, torches via one DI + GI reservoir, vMF diffuse row after PT
         DI, SER / OMM / PTLAS re-measured); 4 Opus review (xHigh reviewers, High fixers); 5 install + ATN's short list.
-        ATN's order (01:xx, "What do you think?", coordinator agreed): (1) when the game agents are done, every game's next
-        plan into HANDOFF; (2) the skills updated with the lessons of 11-16 / 11-17; (3) RT/PT performance; (4) the new
-        features (papers, PT DI, vMF); (5) reference comparisons (should find bugs like DEBUG44's); (6) bug fixes + the
-        plan's fixes; (7) best helper; (8) finish Attila. Nsight in every step. Owner: coordinator
-      - [ ] SKILLS UPDATE 3 (ATN's order step 2, 01:xx): 16 lessons of 11-16 / 11-17
+        COMBINED ORDER 02:xx (ATN's 8 steps + the phases; plan.md "COMBINED ORDER" wins): 0 merge + install helper117; 1 every
+        game's next plan into HANDOFF + skills 3; 2 captures night1 / sea1 / stress_test_log2 (ATN allowed 02:xx); 3
+        reference suite + bug fixes (DEBUG44 a-g); 4 RT/PT performance; 5 designs before code (ATN: "plan everything ahead
+        so we avoid surprises and bugs"; Opus xHigh checks each design); 6 features batch; 7 Opus review; 8 best helper,
+        finish Attila, port. Owner: coordinator
+      - [x] DONE 47d31919a (sk3_, 11 files; zip rebuilt Downloads\RenoDX_skills_2026-11-15.zip, 48 files; 14 was already
+        there, 5 / 7 / 10 / 15 partly) SKILLS UPDATE 3 (ATN's order step 2, 01:xx): 16 lessons of 11-16 / 11-17
         (tools/tw/round_notes/skill_lessons_1117.md: seen-vs-unseen test, textbook estimator check, measure before a
         kernel split, every row combination, static census for render scale, thin / cloth RT casters, tonemap edge inputs,
         x86 address space, grace windows, AO reader census, reflection occlusion lobe, shared shaders folder, build target
         suffix, git -C, no heredoc patches, overlay screenshots) into .agents/skills + the skills zip. Owner: sk3_
+      - [ ] (sk3_ 01:xx) Shared shaders rule (skills lesson 12): rysesonofrome/upscale_output.cs_5_0.hlsl includes Shogun
+        2's upscale_output.cs_5_0.hlsl; Shogun 2's bend_sss_gpu.hlsli and pcss.hlsli are shared the same way: move into
+        twattila as shared files. testing.md says 54 suites (2026-11-16), now 72 test/tw_* folders: refresh the list.
+        Owner: next shared round
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
         (a) PsychoV35 RED: dark / shadowed pixels turn deep red under V35 (V31 fine, same frame): in Bend shots, path-torch
         shots and plain night ground: V35 mishandles near-black / negative / NaN input; fix V35 (shared, every game's
@@ -2102,7 +2111,8 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benches), sea1 (go back a bit,
         everything in view), stress_test_log2 (no camera move, it spawns where ATN wants)): per replay one scripted run on
         the newest install: bench + WPR (ATN's tasks) + Nsight GPU trace + harness frame captures + Time Each Pass; stress
-        also the address space with / without RenoDX (restart crash box); traces for DEBUG44 (d)-(f). Owner: coordinator,
+        also the address space with / without RenoDX (restart crash box); traces for DEBUG44 (d)-(f); night1 also the paths kernel's in-game Nsight (registers / occupancy / time, the split
+        question). ATN 02:xx: "You are allowed to start the Attila captures". Owner: coordinator,
         after the current merges + install, ATN's go
       - [ ] ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart battle): "Runtime Error! ...
         terminate it in an unusual way". heapfix.log 23:37:58: malloc of 41,998,788 / 48,846,319 bytes FAILED (418 MB free,
