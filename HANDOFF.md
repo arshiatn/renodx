@@ -377,6 +377,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PLAYER FLAG OVERRIDE (needed for SER / SHaRC / part A/Bs on recordings): the pla ... | next recorder touch (after fix1_)
 - MIRRORS OF MADNESS START (run2_ 20:4x): game_startup_mode battle_benchmark / ben ... | next run batch
 - STEP 4 TRACES (nsr_ Low STARTED 22:2x): all 15 recordings BASE + SER on + SHaRC ... | nsr_, coordinator
+- CPU PLAN 2 REVIEW (cr2_ xHigh STARTED 23:xx, read only): site 8 c5da4079f, B2 a0 ... | cr2_, coordinator
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2707,6 +2708,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         forest views) with Forge's columns -> plan_1117/step4_traces.md; then an xHigh read (GPU plan: the reflections'
         453 MB spills, path tracing's register limit + 897 MB I$ misses, line 1503, SER / SHaRC per scene), then High
         implementers, then an xHigh review. Owner: nsr_, coordinator
+      - [ ] CPU PLAN 2 REVIEW (cr2_ xHigh STARTED 23:xx, read only): site 8 c5da4079f, B2 a0e98fd94, B3 ae73a0b54, B4
+        2dad9aceb -> plan_1117/cpu2_review.md; then High fixers for real findings, then the END bench (after nsr_ frees
+        the GPU). Owner: cr2_, coordinator
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
