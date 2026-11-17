@@ -184,6 +184,8 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [ ] PARTLY ANSWERED 02:xx (ATN: "It should have the same/similar presets like Attila. No RT/PT should use GT-VBAO, GT-VBGI, SSS and SSSR (if that is implemented)": DONE 150e41174, No RT/PT turns GT-VBAO + GT-VBGI + Bend on; SSSR when implemented; probes question explained, coordinator recommends keep (GT-VBAO darkens the probes' light in corners, GT-VBGI adds the nearby bounce: the visibility-bitmask way; black probes = dark wherever the screen sees no light); defaults still open) C: Divinity 2: GT-VBGI (like the rays' bounce) adds on top of the light probes' IBL diffuse: keep, or black the probes' diffuse under GT-VBGI? After a run: No RT/PT (Recommended) turns Bend and GT-VBGI on, as Attila's? Defaults OK: GT-VBAO radius 1 m, Bend thickness 0.005? (from: div2_ 01:xx)
 - [x] ANSWERED 02:xx (ATN: "Maybe do one nsight capture first.": the paths kernel's in-game Nsight goes into the capture runs, then drop or do) C: Attila paths trace / shade split: measured ~0 net at your rows (trace-only 0.288 vs 0.366 ms, no occupancy win): drop it, or one in-game Nsight of the trace-only helper first? (from: gpu3_ 01:xx)
 - [ ] C: LOD bias presets: they now turn "on All Textures" on but leave the level row (Off / Matched / Sharper / Sharpest) alone: a player at Off still gets no bias after a preset. Should presets turn Off back to Sharper (the default) and keep any other level? (from: bug3_ 03:xx)
+- [ ] C: Reference-suite bug fixes that change our effects' look (once proven): specular occlusion brighter at grazing views on open ground (I5), Path-Traced AO ~1.6 % brighter on open walls with an exact sky calibration (I4), bounce / torch light / torch shadow ratio moved by half a low-resolution texel (I3, the crack-line lead), AO's sun-dependent normal: on by default as bug fixes (coordinator's recommendation: they are more correct; numbers listed for you), or Experimental rows first? (from: ref_ v2 05:xx)
+- [ ] C: Download pbrt-v4 (Apache-2.0, github.com/mmp/pbrt-v4, not NVIDIA) for the reference suite's xcheck test (our samplers vs pbrt-v4 on the CPU)? Without it the check reads pbrt-v4 online / uses Falcor (NVIDIA, fetched). (from: ref_ v2 05:xx)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -336,6 +338,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
 - REF1 REVIEW (rev_ 04:xx, Opus xHigh: plan_1117/reference_suite_review.md, verdic ... | ref_ (v2), then one implementer at a time after bug2_ leaves
 - REVIEW LEADS = LIKELY BUGS (rev_ 04:xx, to verify then fix in the helper after b ... | bug2_ (I3), then a helper fix round (I4, I5)
+- REF BUILD (v2 order; one implementer at a time in the helper): step 0 free check ... | coordinator
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
@@ -2164,7 +2167,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         analytic checks (AO by a wall, edge penumbra, fog plate, point-light line, furnace), controls from known-buggy
         commits; build order R0a skeleton, R0b compare + analytic scenes, R1 torches (64 combinations), R2 sun shadows +
         coverage, R3 GI / PT Ambient + dark texels, R4 AO, R5 reflections, R6 fog, B bridge recorder + harness player for
-        real game frames; ~57-79 agent-hours, 3.5-4.5 h GPU; review DONE 04:xx (REF1 REVIEW box); LEFT: v2 (ref_), then
+        real game frames; ~57-79 agent-hours, 3.5-4.5 h GPU; review DONE 04:xx (REF1 REVIEW box); v2 DONE 05:xx (594 lines, v1 kept as reference_suite_v1.md, section 9 answers
+        the review, section 2.8 NVIDIA / free cross-checks per effect); LEFT: build steps 0-6 (REF BUILD box), then
         build one step at a time) REF1 (ref_, started 02:xx): reference suite step 3: first the design (tools/tw/round_notes/plan_1117/
         reference_suite.md: one brute-force reference per RT/PT effect, inputs, metrics, tolerances, controls, Nsight /
         GPU-lock rules), an Opus xHigh check of the design, then build it on the existing harness captures; ATN's new
@@ -2183,6 +2187,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         for DEBUG44 (c) (sent to bug2_); I4 SkyCalibration's fixed 16 directions: Path-Traced AO ~1.6 % dark on an open
         wall; I5 specular occlusion counts directions below the horizon as blocked (rt_path.hlsli:1331-1332, 1464): an open
         plane gets SO < 1 at grazing views, worst with Squared Lobe. Owner: bug2_ (I3), then a helper fix round (I4, I5)
+      - [ ] REF BUILD (v2 order; one implementer at a time in the helper): step 0 free checks I5 / I4 / I3 + census (ref0_,
+        started 05:xx, no helper change; I3 with bug2_); 1 R0a + R0b with B1 / B2 / APPROX / census / reference cache, the
+        gates, xcheck (22-28 h; after bug2_ leaves the helper); 2 R1 torches + point-light WARPs (7-10 h); 3 dark-texel
+        slice of R3 (3-5 h); 4 route B recorder + a short live proof in game + the second capture pass, 12 recordings
+        ~30-40 GB (18-26 h); 5 R2 + coverage on the recordings (8-11 h); 6 GI / AO / reflections / fog (25-33 h); optional
+        RTXPT reference mode + Falcor MinimalPathTracer as third / fourth opinions (6-10 h, coordinator: yes, ATN wants
+        NVIDIA comparisons); R2 adds the add-on Debug View of the game's sun shadow-map term (coordinator: yes). Owner:
+        coordinator
       - [ ] REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures run tonight without the recorder
         (WPR / timings / shots / frame trace / address space need none); route B (bridge recorder + harness player) built
         next and a second, shorter capture pass records night1 / sea1 / stress frames for the references; the recorder
