@@ -351,6 +351,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - O1 NIGHT1 TRACE (des1_ step 0): one night1 frame trace for the O1 census (which ... | coordinator
 - WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffus ... | next WH3 helper round
 - X86 64-BIT ATOMIC LOADS (rv4_ 10:5x): std::atomic<uint64_t> loads in the x86 add ... | next shared-utils round (with the memo)
+- EFFORT A/B (ATN 10:3x "test low + your judgement and just medium effort for test ... | coordinator
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -2331,6 +2332,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         __iso_volatile_load64); benign today (small counters: the high word stays 0 below 2^32 events), so a safety fix:
         check the x86 disassembly, then a native-width counter (uintptr_t / 32-bit with a wrap rule) or an interlocked load.
         Owner: next shared-utils round (with the memo)
+      - [ ] EFFORT A/B (ATN 10:3x "test low + your judgement and just medium effort for test and judgement"): A = cpb_
+        (medium, runs + judges, ~41 starts); B = the next run batch (memo M1 night1 / sea1 / stress + the O1 night1 trace)
+        with a LOW run-only agent + the coordinator's judgement. Compare tokens per game start (agent + the coordinator's
+        judging turn, get_usage before / after) and quality (wrong steps, missed restore checks, wrong conclusions); report to
+        ATN, then keep the winner as the rule (memory feedback-data-run). Owner: coordinator
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
