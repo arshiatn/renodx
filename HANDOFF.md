@@ -337,6 +337,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
+- (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
 - SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator after REF1
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
 - (STARTED 01:5x: tools/tw/captures_1117/captures_all.ps1, six starts: night1, sea ... | coordinator, after the current merges + install, ATN's go
@@ -2184,6 +2185,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         running) -> tools/tw/round_notes/plan_1117/nvidia_sdks.md: licence, use vs compare, already in tree, size; ATN
         02:xx: "You are allowed to download those. Or any SDKs that is 100% from Nvidia": official NVIDIA sources only,
         each into tools/nvsdk/<name>; then each into the plan step it serves. Owner: coordinator
+      - [ ] (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 lines; fetch script
+        tools/nvsdk_fetch.ps1 runs after the captures: SHARC, RTXDI-Library, RTXDI, RTXPT (code, no 1.9 GB assets),
+        NRD-Sample + NRD master, Falcor, nvapi) NVIDIA SDK FOLLOW-UPS: (a) SHaRC 1.6.5 -> 1.8.3: NVIDIA fixed a dropped
+        last-vertex contribution (bias), an out-of-bounds read in the hash-grid recovery scan and an invalid cache index
+        overflow (maybe our depth-4 / 4K hangs, unproven), + a responsive mode for torches / fire: an update round with
+        HARNESS_DUMP + a depth-4 / 4K soak; (b) RTXDI-Library 3.2.0 = PT DI code + the ReSTIR upgrade's comparison (pairwise
+        MIS, duplication map, compatibility-guided neighbours, decorrelation for RR); credits.hpp RTXDI line once used; (c)
+        RTXPT 1.9.0 reference mode = the reference suite's MIS / pdf cross-check; (d) NRD-Sample (no licence file: read
+        only) + NRD's nrd-integration-review skill: compare our NRD integration; NRD v4.18.0 is the newest tag; (e) Falcor
+        9.0 (BSD-3 except its NVIDIA SDK parts): ReSTIR PT Enhanced + compatibility-guided neighbours code, a second
+        reference path tracer; (f) NVAPI R615 -> R620 with the SER / OMM / PTLAS re-measure; OMM SDK 1.10.0 + Aftermath
+        2026.3 are the newest already; Aftermath dev-only switch = audit A33 (ATN); (g) licence: RTX SDKs licence 4(e): NVIDIA
+        files never under the repo's MIT header: keep fetching them at build time as NRD / SHaRC; library headers
+        unchanged, single functions copied with NVIDIA's notice. Owner: coordinator, per plan step
       - [ ] SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix our skill sets again"): the
         lessons of the bug fixes + reference suite into .agents/skills + the zip. Owner: coordinator after REF1
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
