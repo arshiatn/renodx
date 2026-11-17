@@ -112,6 +112,17 @@
 #include "rt_path_probe_omm.h"
 #define RENODX_PATH_PROBE 1
 #endif
+// RENODX_TW_REFERENCE (tests only: build.ps1 compiles these with RENODX_TW_REFERENCE_BUILD set): rt_reference.hlsli's passes.
+#if __has_include("rt_reference_paths.h")
+#include "rt_reference_accumulate.h"
+#include "rt_reference_census.h"
+#include "rt_reference_digest.h"
+#include "rt_reference_group.h"
+#include "rt_reference_paths.h"
+#include "rt_reference_reflect.h"
+#include "rt_reference_state.h"
+#define RENODX_REFERENCE 1
+#endif
 
 // The DLAA helper's ray tracing (bridge v4-v6; the addon's rt_scene.hpp): DXR needs a 64-bit process, the Total War
 // games with the bridge are 32-bit. Its own D3D12 device keeps a BLAS per captured draw (its triangles in world space,
@@ -606,7 +617,7 @@ class RtScene12 {
         .pStaticSamplers = &sampler,
     };
     ComPtr<ID3DBlob> serialized;
-    const D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, .NumDescriptors = DESCRIPTOR_COUNT,
+    const D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, .NumDescriptors = DESCRIPTOR_COUNT * TABLES,
                                                   .Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE};
     if (FAILED(D3D12SerializeRootSignature(&root_desc, D3D_ROOT_SIGNATURE_VERSION_1, serialized.GetAddressOf(), nullptr))
         || FAILED(device_->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(),
@@ -716,6 +727,57 @@ class RtScene12 {
       path_probe_pipeline_.Reset();
     }
 #endif
+#if defined(RENODX_REFERENCE)
+    // RENODX_TW_REFERENCE=<paths | reflect>[,<samples a texel a frame>[,<samples a texel in all>]] (tests): the reference's run
+    // (Reference); unset, nothing is made.
+    if (std::array<char, 64> asked = {}; GetEnvironmentVariableA("RENODX_TW_REFERENCE", asked.data(), static_cast<DWORD>(asked.size())) != 0) {
+      const auto number = [](const char* name, double fallback) {
+        std::array<char, 32> value = {};
+        return (GetEnvironmentVariableA(name, value.data(), static_cast<DWORD>(value.size())) != 0) ? std::atof(value.data()) : fallback;
+      };
+      const std::string_view request = asked.data();
+      reference_.effect = request.starts_with("reflect") ? ReferenceEffect::REFLECT : ReferenceEffect::PATHS;
+      if (const size_t comma = request.find(','); comma != std::string_view::npos) {
+        char* rest = nullptr;
+        reference_.slice_samples = std::max<uint32_t>(static_cast<uint32_t>(std::strtoul(asked.data() + comma + 1, &rest, 10)), 1u);
+        if (*rest == ',') reference_.total_samples = std::max<uint32_t>(static_cast<uint32_t>(std::strtoul(rest + 1, nullptr, 10)), 1u);
+      }
+      reference_.settle = static_cast<uint32_t>(number("RENODX_TW_REF_SETTLE", 150));
+      reference_.frames = std::max(static_cast<uint32_t>(number("RENODX_TW_REF_FRAMES", 384)) / REF_BATCH * REF_BATCH, REF_BATCH * 2);
+      reference_.groups = std::clamp(static_cast<uint32_t>(number("RENODX_TW_REF_GROUPS", 8)), 2u, 64u);
+      reference_.seed = static_cast<uint32_t>(number("RENODX_TW_REF_SEED", 0));
+      reference_.scale = static_cast<float>(number("RENODX_TW_REF_SCALE", 1));
+      std::array<char, 32> variant = {};
+      GetEnvironmentVariableA("RENODX_TW_REF_VARIANT", variant.data(), static_cast<DWORD>(variant.size()));
+      const auto variant_found = std::ranges::find(REF_VARIANTS, std::string_view(variant.data()));
+      reference_.variant = (variant_found != REF_VARIANTS.end()) ? static_cast<uint32_t>(variant_found - REF_VARIANTS.begin()) : 0u;
+      std::array<char, 64> furnace = {};
+      if (GetEnvironmentVariableA("RENODX_TW_REF_FURNACE", furnace.data(), static_cast<DWORD>(furnace.size())) != 0) {
+        char* rest = nullptr;
+        reference_.furnace[0] = std::strtof(furnace.data(), &rest);
+        if (*rest == ',') reference_.furnace[1] = std::strtof(rest + 1, nullptr);
+      }
+      std::array<wchar_t, MAX_PATH> dump = {};
+      reference_.folder = (GetEnvironmentVariableW(L"RENODX_TW_REF_DUMP", dump.data(), static_cast<DWORD>(dump.size())) != 0)
+                              ? std::filesystem::path(dump.data())
+                              : (folder / L"tw_reference");
+      const std::array<std::pair<std::span<const uint8_t>, ComPtr<ID3D12PipelineState>*>, 7> passes = {{
+          {RT_REFERENCE_ACCUMULATE, &reference_.accumulate},
+          {RT_REFERENCE_CENSUS, &reference_.census},
+          {RT_REFERENCE_DIGEST, &reference_.digest},
+          {RT_REFERENCE_STATE, &reference_.state},
+          {RT_REFERENCE_GROUP, &reference_.group},
+          {RT_REFERENCE_PATHS, &reference_.paths},
+          {RT_REFERENCE_REFLECT, &reference_.reflect},
+      }};
+      const bool made = std::ranges::all_of(passes, [&](const auto& pass) { return pipeline(pass.first.data(), pass.first.size(), pass.second); });
+      reference_.phase = made ? ReferencePhase::SETTLE : ReferencePhase::OFF;
+      reference_.note = std::format("\n[TW reference] {} {} {} samples ({} a frame), settle {}, window {}, {} groups, seed {}{}", made ? "on:" : "its shaders failed:",
+                                  (reference_.effect == ReferenceEffect::REFLECT) ? "reflect" : "paths", REF_VARIANTS[reference_.variant],
+                                  reference_.total_samples, reference_.slice_samples, reference_.settle, reference_.frames, reference_.groups, reference_.seed,
+                                  (reference_.scale != 1.f) ? std::format(", x{:.3f}", reference_.scale) : std::string());
+    }
+#endif
 #if defined(RENODX_SHARC)
     // SHaRC Radiance Cache (shader model 6.9 here: 64-bit atomics, 16-bit types): its pipelines, or none (the status says
     // which failed).
@@ -785,6 +847,9 @@ class RtScene12 {
                       : (debug_result_ != S_FALSE) ? std::format(" (no D3D12 debug layer: 0x{:08X}).", static_cast<uint32_t>(debug_result_))
                                                    : std::string("."));
     sdk_ = sdk;
+#if defined(RENODX_REFERENCE)
+    slow_report_ += reference_.note;
+#endif
     return true;
   }
 
@@ -1798,6 +1863,13 @@ class RtScene12 {
             list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
           }
         }
+#if defined(RENODX_REFERENCE)
+        ReferenceRequest(list, {.kind = reflections ? ReferenceKind::REFLECTIONS : ReferenceKind::BOUNCE, .frame = frame, .render = {width, height},
+                                .bounce = {constants.bounce_width, constants.bounce_height}, .settings = &settings, .bounce_constants = &bounce,
+                                .paths = slot.paths->GetGPUVirtualAddress(), .lights = slot.lights->GetGPUVirtualAddress(),
+                                .capture_table = slot.table->GetGPUVirtualAddress(), .path_constants = &constants, .light_data = slot.light_data,
+                                .guides = guides});
+#endif
         std::swap(to_previous.Transition.StateBefore, to_previous.Transition.StateAfter);
         list->ResourceBarrier(1, &to_previous);
       }
@@ -2118,8 +2190,30 @@ class RtScene12 {
     LIGHT_RATIO = OWN_SKY + 2,  // u56-u57 (helpers 111 on): Torch and Fire Shadows from the Light Bounce's ratio, two sets
     SURFACE_ORIGIN = LIGHT_RATIO + 2,  // u58: ReSTIR GI's bounce texels' surfaces as this frame's paths found them
     SURFACE_NORMAL,                    // u59
+#if defined(RENODX_REFERENCE)
+    // The reference build's (rt_reference.hlsli u60-u72): the candidate's batch sums, the reference's group sums, the
+    // run's state; the table twice in the heap (the second, the frozen copies', for the reference's slices).
+    REF_CANDIDATE_BATCH,
+    REF_CANDIDATE_SHIFT,
+    REF_CANDIDATE_MEAN,
+    REF_CANDIDATE_M2,
+    REF_CANDIDATE_CROSS,
+    REF_CANDIDATE_PREVIOUS,
+    REF_CANDIDATE_LAST,
+    REF_GROUP_SUM,
+    REF_MEAN,
+    REF_M2,
+    REF_GROUPS,
+    REF_AUX,
+    REF_STATE,
+#endif
     DESCRIPTOR_COUNT,
   };
+#if defined(RENODX_REFERENCE)
+  static constexpr UINT TABLES = 2;  // the live table, the reference's frozen one
+#else
+  static constexpr UINT TABLES = 1;
+#endif
   static constexpr UINT SRV_COUNT = VISIBILITY;
   // rt_path.hlsli's path flags and cache size.
   static constexpr uint32_t PATH_TRACING = 1;
@@ -2795,6 +2889,554 @@ class RtScene12 {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &buffer_written, Descriptor(descriptor));
     }
   }
+
+#if defined(RENODX_REFERENCE)
+  // The reference build's run (RENODX_TW_REFERENCE; tests only; rt_reference.hlsli; tools/tw/round_notes/plan_1117/
+  // reference_suite.md 2.1-2.2): the effect's requests counted; after `settle` of them a window of `frames` in which its
+  // candidate output is accumulated by 16-frame batches (B1) with the census of its outputs and each trace's scene digest;
+  // at the window's end every input the reference reads copied into its own resources (B2), bound alone in a second
+  // descriptor table; then `groups` x (`total_samples` / `groups`) samples a texel in slices of `slice_samples`, one a
+  // request (a slice on a frame whose digest is not the freeze frame's is dropped and counted); then every sum, the frozen
+  // inputs (their hashes) and the state into `folder`: meta.json, census.json, a .bin a texture (rows packed).
+  // RENODX_TW_REF_SETTLE (S, 150), _FRAMES (K, 384, a multiple of 16), _GROUPS (G, 8), _SEED, _VARIANT (full, same_start,
+  // furnace, lout), _SCALE (the synthetic control: the reference x it), _FURNACE (<albedo>,<light>), _DUMP (the folder).
+  enum class ReferenceEffect : uint32_t { PATHS, REFLECT };
+  enum class ReferencePhase : uint32_t { OFF, SETTLE, WINDOW, SLICES, DUMPING, DONE };
+  enum class ReferenceKind : uint32_t { TRACE, BOUNCE, REFLECTIONS };
+  // rt_reference.hlsli's words.
+  static constexpr uint32_t REF_STATE_WORDS = 256;
+  static constexpr uint32_t REF_STATE_GROUP_SLICES = 144;
+  static constexpr uint32_t REF_OP_CLEAR = 0;
+  static constexpr uint32_t REF_OP_DIGEST_BEGIN = 1;
+  static constexpr uint32_t REF_OP_DIGEST_END = 2;
+  static constexpr uint32_t REF_OP_DIGEST_FREEZE = 3;
+  static constexpr uint32_t REF_OP_GROUP_DONE = 4;
+  static constexpr uint32_t REF_BATCH = 16;
+  static constexpr uint32_t REF_SCALED = 256;
+  static constexpr uint32_t REF_SOURCE_BOUNCE = 0;
+  static constexpr uint32_t REF_SOURCE_SPECULAR_OCCLUSION = 2;
+  static constexpr uint64_t REF_GROUP_PICTURES_MAX = uint64_t{1920} * 1080;  // grids up to this keep each group's mean (G3)
+  static constexpr std::array<std::string_view, 4> REF_VARIANTS = {"full", "same_start", "furnace", "lout"};
+  // REF_CENSUS's outputs (rt_reference.hlsli REF_OUT_*).
+  static constexpr std::array<std::string_view, 12> REF_OUTPUTS = {"bounce", "reflection", "specular", "own_sky_0", "own_sky_1", "reuse_0", "reuse_1",
+                                                                  "fog_lights", "ref_mean", "candidate_mean", "ref_m2", "candidate_m2"};
+  enum class ReferenceView : uint32_t { TEXTURE, ARRAY, TEXTURE_UAV, BUFFER_UAV };
+  // A frozen input: its source and the state its request holds it in (one subresource, or UINT32_MAX: all), its view in the
+  // frozen table, whether its file is written (else only hashed), its copy.
+  struct ReferenceFrozen {
+    const char* name = "";
+    ID3D12Resource* source = nullptr;
+    D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
+    UINT subresource = UINT32_MAX;
+    UINT descriptor = 0;
+    ReferenceView view = ReferenceView::TEXTURE;
+    DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+    UINT elements = 0;  // a buffer's
+    bool written = false;
+    ComPtr<ID3D12Resource> copy;
+  };
+  // A resource read back at the end: a footprint a subresource in the readback buffer (a buffer's: its bytes as one row).
+  struct ReferenceRead {
+    std::string name;
+    ID3D12Resource* resource = nullptr;
+    D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
+    bool written = false;
+    std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints;
+    std::vector<UINT> rows;
+    std::vector<UINT64> row_bytes;
+  };
+  struct Reference {
+    ReferenceEffect effect = ReferenceEffect::PATHS;
+    uint32_t slice_samples = 64;
+    uint32_t total_samples = 4096;
+    uint32_t settle = 150;
+    uint32_t frames = 384;
+    uint32_t groups = 8;
+    uint32_t seed = 0;
+    uint32_t variant = 0;
+    float scale = 1.f;
+    std::array<float, 2> furnace = {0.5f, 1.f};  // albedo, light
+    std::filesystem::path folder;
+    std::string note;  // its line for the log
+    ReferencePhase phase = ReferencePhase::OFF;
+    uint32_t effect_frames = 0;
+    uint32_t freeze_frame = 0;
+    std::array<uint32_t, 2> grid = {};
+    bool pictures = false;  // each group's mean kept
+    uint64_t dump_value = 0;
+    std::array<uint32_t, 12> trace_settings = {};   // the last trace's b0
+    std::array<uint32_t, 12> frozen_settings = {};  // at the freeze
+    std::array<uint32_t, 2> mesh_hash = {};          // the digest's CPU half (the meshes' keys, sizes, kinds, micromaps, builds)
+    std::array<uint32_t, 2> frozen_mesh_hash = {};
+    ComPtr<ID3D12PipelineState> accumulate;
+    ComPtr<ID3D12PipelineState> census;
+    ComPtr<ID3D12PipelineState> digest;
+    ComPtr<ID3D12PipelineState> state;
+    ComPtr<ID3D12PipelineState> group;
+    ComPtr<ID3D12PipelineState> paths;
+    ComPtr<ID3D12PipelineState> reflect;
+    std::array<ComPtr<ID3D12Resource>, REF_STATE - REF_CANDIDATE_BATCH + 1> outputs;
+    std::vector<ReferenceFrozen> frozen;
+    ComPtr<ID3D12Resource> constants;       // the frozen b3 (at 0) and b4 (at 256), an upload buffer
+    std::vector<uint8_t> frozen_constants;  // b0, b3 and b4's bytes at the freeze (the frame's number left out)
+    ComPtr<ID3D12Resource> readback;
+    std::vector<ReferenceRead> reads;
+  };
+  // A request's part (ReferenceRequest): its kind and frame, the sizes, what its list holds bound (put back after the
+  // reference's dispatches), a trace's TLAS inputs, which shared textures it holds in shader states.
+  struct ReferenceCall {
+    ReferenceKind kind = ReferenceKind::TRACE;
+    uint32_t frame = 0;
+    std::array<uint32_t, 2> render = {};
+    std::array<uint32_t, 2> bounce = {};
+    const std::array<uint32_t, 12>* settings = nullptr;  // b0
+    const std::array<uint32_t, 20>* bounce_constants = nullptr;  // b2 (a paths request's)
+    D3D12_GPU_VIRTUAL_ADDRESS paths = 0;  // b3
+    D3D12_GPU_VIRTUAL_ADDRESS lights = 0;  // b4
+    D3D12_GPU_VIRTUAL_ADDRESS capture_table = 0;  // t8
+    const PathConstants* path_constants = nullptr;
+    const uint8_t* light_data = nullptr;
+    D3D12_GPU_VIRTUAL_ADDRESS instance_descs = 0;  // a trace's
+    uint32_t instances = 0;
+    bool guides = false;  // the guides in NON_PIXEL_SHADER_RESOURCE
+  };
+  Reference reference_;
+
+  // The reference's part of a request (Trace's Record and Paths, after their passes, on their list's bindings).
+  void ReferenceRequest(ID3D12GraphicsCommandList4* list, const ReferenceCall& call) {
+    Reference& run = reference_;
+    if (run.phase == ReferencePhase::OFF || run.phase == ReferencePhase::DONE) return;
+    const D3D12_RESOURCE_BARRIER uav_barrier = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
+    // FNV-1a, 64 bits.
+    const auto hash_bytes = [](std::span<const uint8_t> bytes, uint64_t hash = 14695981039346656037ull) {
+      for (const uint8_t byte : bytes) hash = (hash ^ byte) * 1099511628211ull;
+      return hash;
+    };
+    const auto set_words = [&](const std::array<uint32_t, 8>& words) { list->SetComputeRoot32BitConstants(ROOT_DISPATCH, 8, words.data(), 0); };
+    const auto state_op = [&](uint32_t op, uint32_t a, uint32_t b) {
+      set_words({op, a, b, 0u, 0u, 0u, 0u, 0u});
+      list->SetPipelineState(run.state.Get());
+      list->Dispatch(1, 1, 1);
+      list->ResourceBarrier(1, &uav_barrier);
+    };
+    // A pass over a grid of words[6] x words[7].
+    const auto grid_pass = [&](ID3D12PipelineState* pass, const std::array<uint32_t, 8>& words) {
+      set_words(words);
+      list->SetPipelineState(pass);
+      list->Dispatch((words[6] + 7) / 8, (words[7] + 7) / 8, 1);
+      list->ResourceBarrier(1, &uav_barrier);
+    };
+    if (run.phase == ReferencePhase::DUMPING) {
+      // The last slice's request is done: the files from its readback.
+      run.phase = ReferencePhase::DONE;
+      void* mapped = nullptr;
+      std::error_code made;
+      std::filesystem::create_directories(run.folder, made);
+      if (!WaitFor(run.dump_value) || FAILED(run.readback->Map(0, nullptr, &mapped))) {
+        slow_report_ += "\n[TW reference] its readback failed";
+        return;
+      }
+      std::string files;
+      std::string hashes;
+      std::array<uint32_t, REF_STATE_WORDS> state = {};
+      for (const ReferenceRead& read : run.reads) {
+        std::vector<uint8_t> packed;
+        for (size_t sub = 0; sub < read.footprints.size(); ++sub) {
+          const auto* bytes = static_cast<const uint8_t*>(mapped) + read.footprints[sub].Offset;
+          for (UINT row = 0; row < read.rows[sub]; ++row) {
+            const uint8_t* line = bytes + (uint64_t{row} * read.footprints[sub].Footprint.RowPitch);
+            packed.insert(packed.end(), line, line + read.row_bytes[sub]);
+          }
+        }
+        if (read.name == "state") std::memcpy(state.data(), packed.data(), std::min(packed.size(), sizeof(state)));
+        const uint64_t hash = hash_bytes(packed);
+        const D3D12_RESOURCE_DESC desc = read.resource->GetDesc();
+        files += std::format("{}\n    \"{}\": {{\"format\": {}, \"width\": {}, \"height\": {}, \"slices\": {}, \"row_bytes\": {}, \"hash\": \"{:016x}\"}}",
+                             files.empty() ? "" : ",", read.name, static_cast<uint32_t>(desc.Format), desc.Width, desc.Height,
+                             (desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) ? 1u : desc.DepthOrArraySize, read.row_bytes[0], hash);
+        if (read.name.starts_with("frozen_")) hashes += std::format("{}\"{}\": \"{:016x}\"", hashes.empty() ? "" : ", ", read.name.substr(7), hash);
+        if (!read.written) continue;
+        std::ofstream file(run.folder / (read.name + ".bin"), std::ios::binary | std::ios::trunc);
+        file.write(reinterpret_cast<const char*>(packed.data()), static_cast<std::streamsize>(packed.size()));
+      }
+      const D3D12_RANGE written = {};
+      run.readback->Unmap(0, &written);
+      std::string census;
+      for (size_t output = 0; output < REF_OUTPUTS.size(); ++output) {
+        const uint32_t* counts = state.data() + (output * 4);
+        const uint32_t first = state[64 + output];
+        census += std::format("{}\n  \"{}\": {{\"nan\": {}, \"inf\": {}, \"negative\": {}, \"over_fp16\": {}, \"first\": [{}, {}]}}", census.empty() ? "" : ",",
+                              REF_OUTPUTS[output], counts[0], counts[1], counts[2], counts[3], (first != 0) ? static_cast<int>((first - 1) & 0xFFFFu) : -1,
+                              (first != 0) ? static_cast<int>((first - 1) >> 16) : -1);
+      }
+      std::ofstream(run.folder / "census.json", std::ios::trunc) << "{" << census << "\n}\n";
+      std::string group_slices;
+      for (uint32_t group = 0; group < run.groups; ++group) group_slices += std::format("{}{}", group == 0 ? "" : ", ", state[REF_STATE_GROUP_SLICES + group]);
+      std::string settings;
+      for (const uint32_t word : run.frozen_settings) settings += std::format("{}{}", settings.empty() ? "" : ", ", word);
+      PathConstants paths = {};
+      std::memcpy(&paths, run.frozen_constants.data() + sizeof(run.frozen_settings), sizeof(paths));
+      uint32_t light_count = 0;
+      std::memcpy(&light_count, run.frozen_constants.data() + sizeof(run.frozen_settings) + sizeof(PathConstants) + LIGHT_COUNT_OFFSET, sizeof(light_count));
+      std::ofstream(run.folder / "meta.json", std::ios::trunc) << std::format(
+          "{{\n  \"suite\": \"ref1\",\n  \"effect\": \"{}\",\n  \"variant\": \"{}\",\n  \"scale\": {},\n  \"furnace\": [{}, {}],\n"
+          "  \"samples\": {{\"slice\": {}, \"total\": {}, \"groups\": {}, \"per_group\": {}}},\n  \"settle\": {},\n  \"frames\": {},\n  \"batch\": {},\n"
+          "  \"seed\": {},\n  \"grid\": [{}, {}],\n  \"freeze_frame\": {},\n  \"settings\": [{}],\n"
+          "  \"paths\": {{\"flags\": {}, \"bounces\": {}, \"samples\": {}, \"bounce_range\": {}, \"reflection_range\": {}, \"sky_range\": {}, "
+          "\"bounce_size\": [{}, {}, {}]}},\n  \"lights\": {},\n"
+          "  \"digest\": {{\"frozen\": \"{:08x}{:08x}{:08x}{:08x}\", \"cpu\": \"{:08x}{:08x}\", \"changes_in_window\": {}, \"dropped_slices\": {}, "
+          "\"groups_done\": {}, \"group_slices\": [{}]}},\n  \"frozen\": {{{}, \"constants\": \"{:016x}\"}},\n  \"files\": {{{}\n  }}\n}}\n",
+          (run.effect == ReferenceEffect::REFLECT) ? "reflect" : "paths", REF_VARIANTS[run.variant], run.scale, run.furnace[0], run.furnace[1],
+          run.slice_samples, run.total_samples, run.groups, run.total_samples / run.groups, run.settle, run.frames, REF_BATCH, run.seed, run.grid[0],
+          run.grid[1], run.freeze_frame, settings, paths.flags, paths.bounces, paths.samples, paths.bounce_range, paths.reflection_range, paths.sky_range,
+          paths.bounce_width, paths.bounce_height, paths.bounce_scale, light_count, state[132], state[133], state[134], state[135],
+          run.frozen_mesh_hash[0], run.frozen_mesh_hash[1], state[141], state[143], state[208], group_slices, hashes, hash_bytes(run.frozen_constants),
+          files);
+      slow_report_ += std::format("\n[TW reference] done: {}", run.folder.string());
+      run.readback.Reset();
+      run.frozen.clear();
+      run.reads.clear();
+      run.outputs = {};
+      run.constants.Reset();
+      return;
+    }
+    if (call.kind == ReferenceKind::TRACE) {
+      run.trace_settings = *call.settings;
+      if (run.phase != ReferencePhase::WINDOW && run.phase != ReferencePhase::SLICES) return;
+      // The scene digest (B2): the TLAS's instance descs and the records (REF_DIGEST, on the GPU), the meshes on the CPU
+      // (order-free sums: unordered_map's order is no scene's).
+      uint32_t sum = 0;
+      uint32_t mixed = 0;
+      for (const auto& [key, mesh] : meshes_) {
+        const std::array<uint64_t, 4> fields = {key,
+                                                (uint64_t{mesh.triangles} << 32) | (mesh.foliage ? 1u : 0u) | (mesh.grass ? 2u : 0u) | (mesh.solid_cut_out ? 4u : 0u)
+                                                    | (mesh.placed ? 8u : 0u) | (mesh.micromaps ? 16u : 0u),
+                                                mesh.build, mesh.transforms.size()};
+        const uint64_t hash = hash_bytes({reinterpret_cast<const uint8_t*>(mesh.transforms.data()), mesh.transforms.size() * sizeof(mesh.transforms[0])},
+                                         hash_bytes({reinterpret_cast<const uint8_t*>(fields.data()), sizeof(fields)}));
+        sum += static_cast<uint32_t>(hash);
+        mixed ^= static_cast<uint32_t>(hash >> 32);
+      }
+      run.mesh_hash = {sum, mixed};
+      list->ResourceBarrier(1, &uav_barrier);
+      state_op(REF_OP_DIGEST_BEGIN, 0, 0);
+      list->SetPipelineState(run.digest.Get());
+      // Instance descs (64 bytes) one a thread; records four a thread.
+      const std::array<std::pair<D3D12_GPU_VIRTUAL_ADDRESS, uint32_t>, 2> lanes = {{{call.instance_descs, call.instances}, {records_->GetGPUVirtualAddress(), (CLUSTER_RECORDS + 3) / 4}}};
+      for (uint32_t lane = 0; lane < lanes.size(); ++lane) {
+        const auto& [address, elements] = lanes[lane];
+        if (elements == 0) continue;
+        list->SetComputeRootShaderResourceView(ROOT_CAPTURE_TABLE, address);
+        set_words({lane, elements, 0u, 0u, 0u, 0u, 0u, 0u});
+        list->Dispatch((elements + 63) / 64, 1, 1);
+      }
+      list->ResourceBarrier(1, &uav_barrier);
+      list->SetComputeRootShaderResourceView(ROOT_CAPTURE_TABLE, call.capture_table);
+      state_op(REF_OP_DIGEST_END, sum, mixed);
+      return;
+    }
+    if (call.kind != ((run.effect == ReferenceEffect::REFLECT) ? ReferenceKind::REFLECTIONS : ReferenceKind::BOUNCE)) return;
+    // After the request's passes (their outputs written).
+    list->ResourceBarrier(1, &uav_barrier);
+    const uint32_t seen = run.effect_frames++;
+    if (seen < run.settle) return;
+    const uint32_t index = seen - run.settle;
+    const std::array<uint32_t, 2> grid = (run.effect == ReferenceEffect::PATHS) ? call.bounce : call.render;
+    const D3D12_GPU_DESCRIPTOR_HANDLE live_table = descriptors_->GetGPUDescriptorHandleForHeapStart();
+    const D3D12_GPU_DESCRIPTOR_HANDLE frozen_table = {.ptr = live_table.ptr + (uint64_t{DESCRIPTOR_COUNT} * descriptor_size_)};
+    if (index == 0) {
+      // The run's own resources and their views in both tables (the frozen table's other views come at the freeze).
+      run.grid = grid;
+      run.pictures = uint64_t{grid[0]} * grid[1] <= REF_GROUP_PICTURES_MAX;
+      bool made = true;
+      for (UINT output = REF_CANDIDATE_BATCH; output <= REF_STATE; ++output) {
+        ComPtr<ID3D12Resource>& resource = run.outputs[output - REF_CANDIDATE_BATCH];
+        if (output == REF_STATE) {
+          resource = Buffer(uint64_t{REF_STATE_WORDS} * 4, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+          const D3D12_UNORDERED_ACCESS_VIEW_DESC view = {.Format = DXGI_FORMAT_R32_UINT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+                                                         .Buffer = {.NumElements = REF_STATE_WORDS}};
+          for (const UINT table : {0u, UINT{DESCRIPTOR_COUNT}}) device_->CreateUnorderedAccessView(resource.Get(), nullptr, &view, Descriptor(table + output));
+        } else if (output == REF_GROUPS) {
+          const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
+          const D3D12_RESOURCE_DESC desc = {.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D, .Width = run.pictures ? grid[0] : 1u,
+                                            .Height = run.pictures ? grid[1] : 1u, .DepthOrArraySize = static_cast<UINT16>(run.pictures ? run.groups : 1u),
+                                            .MipLevels = 1, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .SampleDesc = {.Count = 1},
+                                            .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
+          if (FAILED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+                                                      IID_PPV_ARGS(resource.GetAddressOf())))) {
+            resource.Reset();
+          }
+          const D3D12_UNORDERED_ACCESS_VIEW_DESC view = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY,
+                                                         .Texture2DArray = {.ArraySize = desc.DepthOrArraySize}};
+          for (const UINT table : {0u, UINT{DESCRIPTOR_COUNT}}) device_->CreateUnorderedAccessView(resource.Get(), nullptr, &view, Descriptor(table + output));
+        } else {
+          const DXGI_FORMAT format = (output == REF_AUX) ? DXGI_FORMAT_R32G32B32A32_UINT : DXGI_FORMAT_R32G32B32A32_FLOAT;
+          if (!Texture(format, &resource)) resource.Reset();
+          for (const UINT table : {0u, UINT{DESCRIPTOR_COUNT}}) Written(resource.Get(), format, table + output);
+        }
+        made = made && resource;
+      }
+      if (!made) {
+        run.phase = ReferencePhase::OFF;
+        run.outputs = {};
+        slow_report_ += "\n[TW reference] no memory for its sums: off";
+        return;
+      }
+      state_op(REF_OP_CLEAR, 0, REF_STATE_WORDS);
+      run.phase = ReferencePhase::WINDOW;
+    }
+    if (index < run.frames) {
+      // The candidate's output into its batch sums; the census of the request's outputs (B1, I10).
+      const bool paths_effect = run.effect == ReferenceEffect::PATHS;
+      grid_pass(run.accumulate.Get(), {paths_effect ? REF_SOURCE_BOUNCE : REF_SOURCE_SPECULAR_OCCLUSION, index % REF_BATCH, index / REF_BATCH, 0u, 0u, 0u,
+                                       grid[0], grid[1]});
+      // rt_reference.hlsli REF_OUT_*: a Light Bounce's bounce, own sky and reservoirs at its texels; reflections' at the pixels.
+      const std::array<uint32_t, 5> outputs = paths_effect ? std::array<uint32_t, 5>{0u, 3u, 4u, 5u, 6u} : std::array<uint32_t, 5>{1u, 2u, 1u, 2u, 2u};
+      for (const uint32_t output : outputs) grid_pass(run.census.Get(), {output, 0u, 0u, 0u, 0u, 0u, grid[0], grid[1]});
+      if (index + 1 < run.frames) return;
+      // The window's end: every input the reference reads copied (B2), the copies' views in the frozen table, the constants.
+      run.freeze_frame = call.frame;
+      run.frozen.clear();
+      const auto add = [&](ReferenceFrozen frozen) {
+        if (frozen.source != nullptr) run.frozen.push_back(std::move(frozen));
+      };
+      constexpr auto SHADER_READ = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+      constexpr auto WRITTEN = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+      const D3D12_RESOURCE_STATES guide_state = call.guides ? SHADER_READ : D3D12_RESOURCE_STATE_COMMON;
+      add({.name = "positions", .source = positions_.Get(), .state = SHADER_READ, .descriptor = POSITIONS, .format = DXGI_FORMAT_R32G32B32A32_FLOAT, .written = true});
+      add({.name = "sun", .source = sun_.Get(), .state = SHADER_READ, .descriptor = SUN, .format = DXGI_FORMAT_R32G32B32A32_FLOAT, .written = true});
+      add({.name = "light", .source = light_.Get(), .state = SHADER_READ, .descriptor = LIGHT, .format = DXGI_FORMAT_R11G11B10_FLOAT, .written = true});
+      add({.name = "previous_color", .source = previous_color_.Get(), .state = SHADER_READ, .descriptor = PREVIOUS_COLOR, .format = DXGI_FORMAT_R16G16B16A16_FLOAT});
+      add({.name = "previous_positions", .source = kept_positions_.Get(), .state = SHADER_READ, .subresource = previous_positions_slice_,
+           .descriptor = PREVIOUS_POSITIONS, .view = ReferenceView::ARRAY, .format = DXGI_FORMAT_R32G32B32A32_FLOAT});
+      add({.name = "guide_normals", .source = guide_normals_.Get(), .state = guide_state, .descriptor = GUIDE_NORMALS, .format = DXGI_FORMAT_R16G16B16A16_FLOAT,
+           .written = true});
+      add({.name = "guide_albedo", .source = guide_albedo_.Get(), .state = guide_state, .descriptor = GUIDE_ALBEDO, .format = DXGI_FORMAT_R8G8B8A8_UNORM, .written = true});
+      add({.name = "guide_roughness", .source = guide_roughness_.Get(), .state = guide_state, .descriptor = GUIDE_ROUGHNESS, .format = DXGI_FORMAT_R8_UNORM,
+           .written = true});
+      add({.name = "visibility", .source = visibility_.Get(), .state = WRITTEN, .descriptor = VISIBILITY, .view = ReferenceView::TEXTURE_UAV,
+           .format = DXGI_FORMAT_R8_UNORM, .written = true});
+      add({.name = "cache_keys", .source = cache_keys_.Get(), .state = WRITTEN, .descriptor = CACHE_KEYS, .view = ReferenceView::BUFFER_UAV,
+           .format = DXGI_FORMAT_R32_UINT, .elements = CACHE_ENTRIES});
+      add({.name = "cache_radiance", .source = cache_radiance_.Get(), .state = WRITTEN, .descriptor = CACHE_RADIANCE, .view = ReferenceView::BUFFER_UAV,
+           .format = DXGI_FORMAT_R32G32B32A32_FLOAT, .elements = CACHE_ENTRIES});
+      add({.name = "cache_albedo", .source = cache_albedo_.Get(), .state = WRITTEN, .descriptor = CACHE_ALBEDO, .view = ReferenceView::BUFFER_UAV,
+           .format = DXGI_FORMAT_R32G32_UINT, .elements = CACHE_ENTRIES});
+      add({.name = "light_fit", .source = light_fit_.Get(), .state = WRITTEN, .descriptor = LIGHT_FIT, .view = ReferenceView::BUFFER_UAV,
+           .format = DXGI_FORMAT_R32_UINT, .elements = 16});
+      add({.name = "light_kept", .source = light_kept_.Get(), .state = WRITTEN, .descriptor = LIGHT_KEPT, .view = ReferenceView::BUFFER_UAV,
+           .format = DXGI_FORMAT_R32G32B32A32_FLOAT, .elements = LIGHT_KEPT_TEXELS, .written = true});
+      for (UINT set = 0; set < 2; ++set) {
+        add({.name = (set == 0) ? "own_sky_0" : "own_sky_1", .source = own_sky_[set].Get(), .state = WRITTEN, .descriptor = OWN_SKY + set,
+             .view = ReferenceView::TEXTURE_UAV, .format = DXGI_FORMAT_R16G16B16A16_FLOAT});
+      }
+      // Every slot of the frozen table null of its kind first; the scene's own (it cannot be copied: the digest guards it).
+      const D3D12_SHADER_RESOURCE_VIEW_DESC null_texture = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+                                                            .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                                                            .Texture2D = {.MipLevels = 1}};
+      const D3D12_UNORDERED_ACCESS_VIEW_DESC null_written = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
+      for (UINT slot = 0; slot < REF_CANDIDATE_BATCH; ++slot) {
+        const bool written_slot = (slot >= SRV_COUNT && slot < LIGHT) || slot == BOUNCE || slot >= CACHE_KEYS;
+        if (written_slot) {
+          device_->CreateUnorderedAccessView(nullptr, nullptr, &null_written, Descriptor(DESCRIPTOR_COUNT + slot));
+        } else {
+          device_->CreateShaderResourceView(nullptr, &null_texture, Descriptor(DESCRIPTOR_COUNT + slot));
+        }
+      }
+      const auto buffer_view = [](DXGI_FORMAT format, UINT elements) {
+        return D3D12_SHADER_RESOURCE_VIEW_DESC{.Format = format, .ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
+                                               .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, .Buffer = {.NumElements = elements}};
+      };
+      const auto records_view = buffer_view(DXGI_FORMAT_R32G32B32A32_UINT, RECORD_COUNT);
+      const auto uvs_view = buffer_view(DXGI_FORMAT_R32_UINT, uv_pool_);
+      const auto normals_view = buffer_view(DXGI_FORMAT_R32_UINT, NORMAL_POOL);
+      const auto vertices_view = buffer_view(DXGI_FORMAT_R32G32B32A32_FLOAT, TRANSFER_VERTICES);
+      const D3D12_SHADER_RESOURCE_VIEW_DESC atlas_view = {.Format = DXGI_FORMAT_R8_UNORM, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY,
+                                                          .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                                                          .Texture2DArray = {.MipLevels = 1, .ArraySize = dlaa_bridge::RT_ATLAS_SLICES}};
+      device_->CreateShaderResourceView(records_.Get(), &records_view, Descriptor(DESCRIPTOR_COUNT + RECORDS));
+      device_->CreateShaderResourceView(uvs_.Get(), &uvs_view, Descriptor(DESCRIPTOR_COUNT + UVS));
+      device_->CreateShaderResourceView(normals_.Get(), &normals_view, Descriptor(DESCRIPTOR_COUNT + NORMALS));
+      device_->CreateShaderResourceView(vertex_buffer_.Get(), &vertices_view, Descriptor(DESCRIPTOR_COUNT + VERTICES));
+      device_->CreateShaderResourceView(atlas_.Get(), &atlas_view, Descriptor(DESCRIPTOR_COUNT + ATLAS));
+      std::vector<D3D12_RESOURCE_BARRIER> to_copy;
+      for (ReferenceFrozen& frozen : run.frozen) {
+        D3D12_RESOURCE_DESC desc = frozen.source->GetDesc();
+        desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        desc.Alignment = 0;
+        const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
+        if (FAILED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                                                    IID_PPV_ARGS(frozen.copy.GetAddressOf())))) {
+          run.phase = ReferencePhase::OFF;
+          slow_report_ += std::format("\n[TW reference] no memory for its frozen {}: off", frozen.name);
+          return;
+        }
+        D3D12_RESOURCE_BARRIER barrier = Transition(frozen.source, frozen.state, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        if (frozen.subresource != UINT32_MAX) barrier.Transition.Subresource = frozen.subresource;
+        if (frozen.state != D3D12_RESOURCE_STATE_COPY_SOURCE) to_copy.push_back(barrier);
+      }
+      list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
+      std::vector<D3D12_RESOURCE_BARRIER> after;
+      for (const ReferenceFrozen& frozen : run.frozen) {
+        if (frozen.subresource == UINT32_MAX) {
+          list->CopyResource(frozen.copy.Get(), frozen.source);
+        } else {
+          const D3D12_TEXTURE_COPY_LOCATION to = {.pResource = frozen.copy.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = frozen.subresource};
+          const D3D12_TEXTURE_COPY_LOCATION from = {.pResource = frozen.source, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = frozen.subresource};
+          list->CopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
+        }
+        const bool uav = frozen.view == ReferenceView::TEXTURE_UAV || frozen.view == ReferenceView::BUFFER_UAV;
+        after.push_back(Transition(frozen.copy.Get(), D3D12_RESOURCE_STATE_COPY_DEST, uav ? WRITTEN : SHADER_READ));
+        const D3D12_CPU_DESCRIPTOR_HANDLE slot = Descriptor(DESCRIPTOR_COUNT + frozen.descriptor);
+        switch (frozen.view) {
+          case ReferenceView::TEXTURE: {
+            const D3D12_SHADER_RESOURCE_VIEW_DESC view = {.Format = frozen.format, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+                                                          .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, .Texture2D = {.MipLevels = 1}};
+            device_->CreateShaderResourceView(frozen.copy.Get(), &view, slot);
+            break;
+          }
+          case ReferenceView::ARRAY: {
+            const D3D12_SHADER_RESOURCE_VIEW_DESC view = {.Format = frozen.format, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY,
+                                                          .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                                                          .Texture2DArray = {.MipLevels = 1, .ArraySize = frozen.copy->GetDesc().DepthOrArraySize}};
+            device_->CreateShaderResourceView(frozen.copy.Get(), &view, slot);
+            break;
+          }
+          case ReferenceView::TEXTURE_UAV:
+            Written(frozen.copy.Get(), frozen.format, DESCRIPTOR_COUNT + frozen.descriptor);
+            break;
+          case ReferenceView::BUFFER_UAV: {
+            const D3D12_UNORDERED_ACCESS_VIEW_DESC view = {.Format = frozen.format, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER, .Buffer = {.NumElements = frozen.elements}};
+            device_->CreateUnorderedAccessView(frozen.copy.Get(), nullptr, &view, slot);
+            break;
+          }
+        }
+      }
+      for (D3D12_RESOURCE_BARRIER& barrier : to_copy) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+      after.insert(after.end(), to_copy.begin(), to_copy.end());
+      list->ResourceBarrier(static_cast<UINT>(after.size()), after.data());
+      // b0 (the last trace's: its flags, the sun's cone), b3 and b4 as the request had them.
+      run.frozen_settings = run.trace_settings;
+      run.frozen_mesh_hash = run.mesh_hash;
+      run.constants = Buffer(256 + LIGHT_CONSTANT_BYTES, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+      uint8_t* constants = nullptr;
+      if (!run.constants || FAILED(run.constants->Map(0, nullptr, reinterpret_cast<void**>(&constants)))) {
+        run.phase = ReferencePhase::OFF;
+        slow_report_ += "\n[TW reference] no memory for its frozen constants: off";
+        return;
+      }
+      std::memcpy(constants, call.path_constants, sizeof(PathConstants));
+      std::memcpy(constants + 256, call.light_data, LIGHT_CONSTANT_BYTES);
+      run.constants->Unmap(0, nullptr);
+      std::array<uint32_t, 12> hashed_settings = run.frozen_settings;
+      hashed_settings[0] = 0;
+      run.frozen_constants.assign(reinterpret_cast<const uint8_t*>(hashed_settings.data()), reinterpret_cast<const uint8_t*>(hashed_settings.data() + 12));
+      run.frozen_constants.insert(run.frozen_constants.end(), reinterpret_cast<const uint8_t*>(call.path_constants),
+                                  reinterpret_cast<const uint8_t*>(call.path_constants + 1));
+      run.frozen_constants.insert(run.frozen_constants.end(), call.light_data, call.light_data + LIGHT_CONSTANT_BYTES);
+      state_op(REF_OP_DIGEST_FREEZE, 0, 0);
+      run.phase = ReferencePhase::SLICES;
+      return;
+    }
+    // A slice on the frozen inputs (their table, the frozen b0, b3, b4; b1 the slice's words, b2 the variant's parameters).
+    const uint32_t per_group = std::max(run.total_samples / run.groups, 1u);
+    const uint32_t group_slices = (per_group + run.slice_samples - 1) / run.slice_samples;
+    const uint32_t slice = index - run.frames;
+    const uint32_t group = slice / group_slices;
+    const uint32_t first = (slice % group_slices) * run.slice_samples;
+    const uint32_t samples = std::min(run.slice_samples, per_group - first);
+    list->SetComputeRootDescriptorTable(ROOT_TABLE, frozen_table);
+    list->SetComputeRoot32BitConstants(ROOT_SETTINGS, static_cast<UINT>(run.frozen_settings.size()), run.frozen_settings.data(), 0);
+    list->SetComputeRootConstantBufferView(ROOT_PATHS, run.constants->GetGPUVirtualAddress());
+    list->SetComputeRootConstantBufferView(ROOT_LIGHTS, run.constants->GetGPUVirtualAddress() + 256);
+    const std::array<float, 20> parameters = {run.furnace[0], run.furnace[1], 0.f, 0.f, run.scale};
+    list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(parameters.size()), parameters.data(), 0);
+    grid_pass(((run.effect == ReferenceEffect::PATHS) ? run.paths : run.reflect).Get(),
+              {run.variant | ((run.scale != 1.f) ? REF_SCALED : 0u), samples, first, group, per_group, run.seed, grid[0], grid[1]});
+    if (first + samples >= per_group) {
+      grid_pass(run.group.Get(), {group, 0u, 0u, run.pictures ? 1u : 0u, 0u, 0u, grid[0], grid[1]});
+      state_op(REF_OP_GROUP_DONE, group, 0);
+    }
+    if (first + samples >= per_group && group + 1 >= run.groups) {
+      // The last slice: the reference's census, then every sum, the state and the frozen inputs into a readback buffer.
+      for (const uint32_t output : {8u, 10u, 11u}) grid_pass(run.census.Get(), {output, 0u, 0u, 0u, 0u, 0u, grid[0], grid[1]});
+      run.reads.clear();
+      const std::array<std::pair<const char*, UINT>, 10> outputs = {{{"candidate_shift", REF_CANDIDATE_SHIFT},
+                                                                     {"candidate_mean", REF_CANDIDATE_MEAN},
+                                                                     {"candidate_m2", REF_CANDIDATE_M2},
+                                                                     {"candidate_cross", REF_CANDIDATE_CROSS},
+                                                                     {"candidate_previous", REF_CANDIDATE_PREVIOUS},
+                                                                     {"candidate_last", REF_CANDIDATE_LAST},
+                                                                     {"ref_mean", REF_MEAN},
+                                                                     {"ref_m2", REF_M2},
+                                                                     {"ref_aux", REF_AUX},
+                                                                     {"state", REF_STATE}}};
+      for (const auto& [name, output] : outputs) {
+        run.reads.push_back({.name = name, .resource = run.outputs[output - REF_CANDIDATE_BATCH].Get(), .state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS, .written = true});
+      }
+      if (run.pictures) {
+        run.reads.push_back({.name = "ref_groups", .resource = run.outputs[REF_GROUPS - REF_CANDIDATE_BATCH].Get(), .state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                             .written = true});
+      }
+      for (const ReferenceFrozen& frozen : run.frozen) {
+        const bool uav = frozen.view == ReferenceView::TEXTURE_UAV || frozen.view == ReferenceView::BUFFER_UAV;
+        run.reads.push_back({.name = std::string("frozen_") + frozen.name, .resource = frozen.copy.Get(),
+                             .state = uav ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, .written = frozen.written});
+      }
+      uint64_t total = 0;
+      for (ReferenceRead& read : run.reads) {
+        const D3D12_RESOURCE_DESC desc = read.resource->GetDesc();
+        total = Align(total, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
+        if (desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) {
+          read.footprints = {{.Offset = total, .Footprint = {.Width = static_cast<UINT>(desc.Width), .Height = 1, .Depth = 1,
+                                                             .RowPitch = static_cast<UINT>(desc.Width)}}};
+          read.rows = {1};
+          read.row_bytes = {desc.Width};
+          total += desc.Width;
+          continue;
+        }
+        const UINT subresources = desc.DepthOrArraySize;
+        read.footprints.resize(subresources);
+        read.rows.resize(subresources);
+        read.row_bytes.resize(subresources);
+        uint64_t bytes = 0;
+        device_->GetCopyableFootprints(&desc, 0, subresources, total, read.footprints.data(), read.rows.data(), read.row_bytes.data(), &bytes);
+        total += bytes;
+      }
+      run.readback = Buffer(std::max<uint64_t>(total, 256), D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+      if (!run.readback) {
+        run.phase = ReferencePhase::OFF;
+        slow_report_ += "\n[TW reference] no memory for its readback: off";
+        list->SetComputeRootDescriptorTable(ROOT_TABLE, live_table);
+        return;
+      }
+      std::vector<D3D12_RESOURCE_BARRIER> to_read;
+      for (const ReferenceRead& read : run.reads) to_read.push_back(Transition(read.resource, read.state, D3D12_RESOURCE_STATE_COPY_SOURCE));
+      list->ResourceBarrier(static_cast<UINT>(to_read.size()), to_read.data());
+      for (const ReferenceRead& read : run.reads) {
+        if (read.resource->GetDesc().Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) {
+          list->CopyBufferRegion(run.readback.Get(), read.footprints[0].Offset, read.resource, 0, read.row_bytes[0]);
+          continue;
+        }
+        for (UINT sub = 0; sub < read.footprints.size(); ++sub) {
+          const D3D12_TEXTURE_COPY_LOCATION to = {.pResource = run.readback.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, .PlacedFootprint = read.footprints[sub]};
+          const D3D12_TEXTURE_COPY_LOCATION from = {.pResource = read.resource, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = sub};
+          list->CopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
+        }
+      }
+      for (D3D12_RESOURCE_BARRIER& barrier : to_read) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+      list->ResourceBarrier(static_cast<UINT>(to_read.size()), to_read.data());
+      run.phase = ReferencePhase::DUMPING;
+      run.dump_value = own_value_ + 1;
+    }
+    // The request's own bindings back.
+    list->SetComputeRootDescriptorTable(ROOT_TABLE, live_table);
+    list->SetComputeRoot32BitConstants(ROOT_SETTINGS, static_cast<UINT>(call.settings->size()), call.settings->data(), 0);
+    list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(call.bounce_constants->size()), call.bounce_constants->data(), 0);
+    list->SetComputeRootConstantBufferView(ROOT_PATHS, call.paths);
+    list->SetComputeRootConstantBufferView(ROOT_LIGHTS, call.lights);
+  }
+#endif
 
   // The world radiance cache and the learned lighting (rt_path.hlsli), made at the first path request (zeroed: empty).
   bool EnsureCache() {
@@ -5095,6 +5737,10 @@ class RtScene12 {
     if (ambient_by_nrd && (shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0) {
       NoteNrd(dlaa_bridge::RT_NRD_OFF_AMBIENT, nrd_ambient_ran);
     }
+#if defined(RENODX_REFERENCE)
+    ReferenceRequest(list, {.kind = ReferenceKind::TRACE, .frame = frame, .settings = &settings, .capture_table = slot->table->GetGPUVirtualAddress(),
+                            .instance_descs = instance_descs, .instances = tlas_instances});
+#endif
     barriers.clear();
     for (const auto& [resource, used] : textures) {
       barriers.push_back(Transition(resource, used, D3D12_RESOURCE_STATE_COMMON));

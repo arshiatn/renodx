@@ -42,6 +42,14 @@ if ($env:RENODX_TW_PATH_PROBE_BUILD) {
   & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D PATH_PROBE -Fh "$out\rt_path_probe.h" -Vn RT_PATH_PROBE "$PSScriptRoot\rt_path.cs_6_5.hlsl"
   & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D PATH_PROBE -D OPACITY_MICROMAPS -Fh "$out\rt_path_probe_omm.h" -Vn RT_PATH_PROBE_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 }
+# RENODX_TW_REFERENCE_BUILD set: the reference build's passes too (rt_reference.hlsli, tests only; a player's helper has none).
+$reference_passes = @('accumulate', 'census', 'digest', 'group', 'paths', 'reflect', 'state')
+foreach ($pass in $reference_passes) { Remove-Item "$out\rt_reference_$pass.h" -ErrorAction SilentlyContinue }
+if ($env:RENODX_TW_REFERENCE_BUILD) {
+  foreach ($pass in $reference_passes) {
+    & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D "REF_$($pass.ToUpper())" -Fh "$out\rt_reference_$pass.h" -Vn "RT_REFERENCE_$($pass.ToUpper())" "$PSScriptRoot\rt_reference.cs_6_5.hlsl"
+  }
+}
 & "$root\bin\dxc.exe" -nologo -T cs_6_0 -E main -O3 -Fh "$out\fg_ui.h" -Vn FG_UI "$PSScriptRoot\fg_ui.cs_6_0.hlsl"
 & "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -Fh "$out\rt_path_ser.h" -Vn RT_PATH_SER "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
 # NVIDIA's SHaRC (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/SHARC: its 1.6.5 release) for SHaRC Radiance Cache when
