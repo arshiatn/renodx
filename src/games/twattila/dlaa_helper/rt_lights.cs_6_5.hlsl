@@ -36,6 +36,9 @@ static const uint NO_LIGHT = 0xFFu;
 // Torch and Fire Shadows from the Light Bounce: a pixel's texels' ratios further apart than this hold a shadow's edge or a
 // shadow narrower than a texel (a crack's): their blend lit the shadowed side; it gets its own bits (LIGHTS_RATIO_BITS).
 static const float RATIO_SPREAD = 0.1f;
+// The spread's rays at most this many a pixel (the bits' with Importance: 2 a pixel and their kept bits; 4 lights at every
+// pixel cost 2.6 ms at 4K against the bits' 1.9).
+static const uint RATIO_SPREAD_LIGHTS = 3u;
 
 groupshared uint tile_reach[4];  // the lights any of the tile's pixels reaches (128 bits)
 groupshared uint tile_list[8];   // the tile's lights, a byte each
@@ -166,9 +169,14 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
   // seen by the last trace, none on its plane with light, or its texels' ratios RATIO_SPREAD apart: a shadow's edge or one
   // narrower than a texel) gets its own bits instead, each reached light traced, the word's top bit set
   // (rt_local_lights.hlsli; its list's light 31 reads that bit: lit): one ratio for all its lights from rays weighted by
-  // the normal from the depth went dark there. Else 1: the game's light unshadowed.
+  // the normal from the depth went dark there. The rays stay near the bits' (the row is the faster choice; Nsight at 4K,
+  // the harness with 8 lights at every pixel: 6.1 ms against the bits' 2.7): the spread's only with at most
+  // RATIO_SPREAD_LIGHTS of the pixel's lights in the bounce, the others' with at most LIGHT_RAYS_ALWAYS +
+  // LIGHT_RAYS_TURNS; more keep the texels' ratio as before (all faces counted). Else 1: the game's light unshadowed.
   if ((flags & (LIGHTS_IN_BOUNCE | LIGHT_RATIO)) == (LIGHTS_IN_BOUNCE | LIGHT_RATIO)) {
-    const bool own_bits = (lights_in_bounce & LIGHTS_RATIO_BITS) != 0u;
+    const uint bounce_count = countbits(bounce_slots);
+    const bool own_bits = (lights_in_bounce & LIGHTS_RATIO_BITS) != 0u && bounce_count <= LIGHT_RAYS_ALWAYS + LIGHT_RAYS_TURNS;
+    const float spread_most = (bounce_count <= RATIO_SPREAD_LIGHTS) ? RATIO_SPREAD : 1.f;
     float2 sum = 0.f;
     float2 spread = float2(1.f, 0.f);  // the lowest and highest ratio of the texels counted
     uint2 seen_pixel;
@@ -176,21 +184,26 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
         && bounce_scale != 0u && SeenByLastTrace(position.xyz, seen_pixel)) {
       const uint read_set = ((lights_in_bounce & LIGHTS_RATIO_SET) != 0u) ? 1u : 0u;
       const float seen_depth = LastTracePosition(seen_pixel).w;
-      const int2 center = int2(seen_pixel / bounce_scale);
-      [unroll]
-      for (int y = -1; y <= 1; ++y) {
-        [unroll]
-        for (int x = -1; x <= 1; ++x) {
-          const int2 texel = center + int2(x, y);
-          if (any(texel < 0) || texel.x >= (int)bounce_width || texel.y >= (int)bounce_height) continue;
+      // The texels whose surface (rt_path.hlsli TexelSurface: their block's centre pixel) lies within 1.5 texels each way
+      // of the pixel: 3 a side, 4 where it falls halfway (the bounce apply's rule; the 3 x 3 around its texel, each at its
+      // top-left, read the ratio 0.6 px off at Half).
+      const float2 at = (float2(seen_pixel) - (float)(bounce_scale / 2u)) / (float)bounce_scale;
+      const int2 first = max(int2(ceil(at - 1.5f)), 0);
+      const int2 last = min(int2(floor(at + 1.5f)), int2(bounce_width, bounce_height) - 1);
+      [loop]
+      for (int y = first.y; y <= last.y; ++y) {
+        [loop]
+        for (int x = first.x; x <= last.x; ++x) {
+          const int2 texel = int2(x, y);
+          const float2 offset = float2(texel) - at;
           const float4 kept = light_ratio[read_set][texel];
-          // The texel's surface as the last trace saw it (rt_path.hlsli TexelSurface: its block's centre pixel; its block's
-          // top-left, as the bounce apply takes it, put the ratio scale / 2 pixels off), on this plane as PlanarOf takes it.
-          const uint2 texel_pixel = min(uint2(texel) * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u);
-          const float2 offset = float2(int2(texel_pixel) - int2(seen_pixel)) / (float)bounce_scale;
           const float similar = saturate(1.f - abs(kept.w - seen_depth) / (0.030001808f * seen_depth));
-          const float3 to_texel = LastTracePosition(texel_pixel).xyz - position.xyz;
-          const bool on_plane = abs(dot(to_texel, normal)) <= 0.2f * length(to_texel);
+          // Its surface as the last trace saw it, on this plane as PlanarOf takes it.
+          bool on_plane = true;
+          if (own_bits) {
+            const float3 to_texel = LastTracePosition(min(uint2(texel) * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u)).xyz - position.xyz;
+            on_plane = abs(dot(to_texel, normal)) <= 0.2f * length(to_texel);
+          }
           const float weight = (kept.w > 0.f && on_plane) ? exp2(-0.25f * dot(offset, offset)) * similar : 0.f;
           sum += kept.xy * weight;
           if (weight > 0.f && kept.y > 0.f) spread = float2(min(spread.x, kept.x / kept.y), max(spread.y, kept.x / kept.y));
@@ -198,7 +211,7 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
       }
     }
     uint word = asuint(1.f);
-    if (sum.y > 1e-8f && (!own_bits || spread.y - spread.x <= RATIO_SPREAD)) {
+    if (sum.y > 1e-8f && (!own_bits || spread.y - spread.x <= spread_most)) {
       word = asuint(saturate(sum.x / sum.y));
     } else if (own_bits && bounce_slots != 0u) {
       word = 0xFFFFFFFFu;
