@@ -1440,10 +1440,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x902253FD, .capture_shader = __rt_capture_cloth_sm41, .dynamic = true, .thin = true},
     {.hash = 0xD11B5EC7, .capture_shader = __rt_capture_sail_sm3, .dynamic = true, .thin = true},
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
-    // Ropes (Attila's bytes; in no trace): ribbons the game turns to the camera, solid, captured every frame as drawn; the CPU's
-    // (8D0D26B9) and the placed ones (3926A823, turned in view space: back to the world through inv_view) (test/tw_attila_builds R, Q).
+    // Ropes (Attila's bytes): ribbons the game turns to the camera, solid, captured every frame as drawn; the CPU's (8D0D26B9, in no
+    // trace) and the placed ones (3926A823, turned in view space: back to the world through inv_view; the ships' rigging, a triangle
+    // strip, drawn in Attila's sea battles: DEBUG44's sea1, so not held) (test/tw_attila_builds R, Q).
     {.hash = 0x8D0D26B9, .capture_shader = __rt_capture_rope_sm3, .dynamic = true, .held_row = &rays_untraced_casters_row},
-    {.hash = 0x3926A823, .capture_shader = __rt_capture_rope_rigid_sm3, .dynamic = true, .held_row = &rays_untraced_casters_row},
+    {.hash = 0x3926A823, .capture_shader = __rt_capture_rope_rigid_sm3, .dynamic = true},
     // Sprite soldiers: cards facing the sun, cut out by their diffuse map's alpha.
     // Each with its Shader Model 4.1 / 5 builds (E42AE09F; 98AA2F91, A86B4247): the same instructions, only the version
     // token and dcl_globalFlags differ (tools/tw/thrones/par_th_cards; no trace drew them: level B).
@@ -1554,13 +1555,64 @@ constexpr std::array<twattila::screen_space_shadows::ThinShader, 6> THIN_SHADERS
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%, and the
 // half-size passes drawn whole (their readers: view_share::WHOLE_TEXTURES).
-constexpr std::array<twattila::view_share::RegionRead, 6> RENDER_SCALE_READS = {{
+// The overlays' readers, as Attila's (twattila/addon.cpp RENDER_SCALE_READS): the overlays are drawn by the main camera into
+// display-sized targets, so below 100% into their render share; the ocean reads them at the uv its vertex shader projects,
+// the sun (slm) and the campaign's planes through g_overlay_view_projection: no camera chain view_share finds. Their share
+// only while the overlay is display-sized or a halving (else as at 100%). Census: tools/tw/round_notes/bugs_1117/bug4_census.py.
+constexpr std::array<twattila::view_share::RegionRead, 50> RENDER_SCALE_READS = {{
     {.shader_hash = 0x781681E4, .slots = 0b1},  // luma / bloom downsample
     {.shader_hash = 0x16390F4F, .slots = 0b11},  // shadow depth analysis
     {.shader_hash = 0xB4026AF2, .slots = 0b11, .whole = true},  // AO blur_x
     {.shader_hash = 0x6203C824, .slots = 0b10, .whole = true},  // AO blur_y
     {.shader_hash = 0x820D451B, .slots = 0b11, .whole = true},  // water refraction (3 channels)
     {.shader_hash = 0x25944B2D, .slots = 0b1, .whole = true},   // water refraction (4 channels)
+    // ocean: the colour overlays.
+    {.shader_hash = 0x35CB21DA, .slots = 0b11000000},  // ocean ps30_main_low (gather_4_1)
+    {.shader_hash = 0x507EF531, .slots = 0b1100000000},  // ocean ps30_main_high (pcf)
+    {.shader_hash = 0x5247E655, .slots = 0b110000000},  // ocean ps30_main_high (gather_4_1)
+    {.shader_hash = 0x736DB670, .slots = 0b11000000},  // ocean ps30_main_low (gather_5_0)
+    {.shader_hash = 0x73836BEF, .slots = 0b110000000},  // ocean ps30_main_medium (gather_4_1)
+    {.shader_hash = 0x761A07B1, .slots = 0b11000000},  // ocean ps30_main_low (fetch4)
+    {.shader_hash = 0xA9724510, .slots = 0b110000000},  // ocean ps30_main_medium (gather_5_0)
+    {.shader_hash = 0xBF93E312, .slots = 0b110000000},  // ocean ps30_main_medium (fetch4)
+    {.shader_hash = 0xBFAF409B, .slots = 0b1100000000},  // ocean ps30_main_high (fetch4)
+    {.shader_hash = 0xE122E95A, .slots = 0b1100000000},  // ocean ps30_main_high (software)
+    {.shader_hash = 0xF7E011A4, .slots = 0b110000000},  // ocean ps30_main_high (gather_5_0)
+    // directionallight slm: the overlay.
+    {.shader_hash = 0x13781D8E, .slots = 0b1000},  // directionallight ps41_slm_highdef_ms
+    {.shader_hash = 0x1B10DDD8, .slots = 0b10000000},  // directionallight ps30_slm_highdef (gather_5_0)
+    {.shader_hash = 0x21B916AF, .slots = 0b10000000},  // directionallight ps30_slm_lowdef (gather_5_0)
+    {.shader_hash = 0x2A84FFA0, .slots = 0b100000000},  // directionallight ps30_slm_lowdef (fetch4)
+    {.shader_hash = 0x2AFF2B56, .slots = 0b100000000},  // directionallight ps30_slm_lowdef (pcf)
+    {.shader_hash = 0x3922F24C, .slots = 0b10000000},  // directionallight ps30_slm_highdef
+    {.shader_hash = 0x3F4EA48C, .slots = 0b10000},  // directionallight ps41_slm_lowdef_ms (software)
+    {.shader_hash = 0x4CFB45F9, .slots = 0b100000000},  // directionallight ps30_slm_highdef (software)
+    {.shader_hash = 0x6F789EEE, .slots = 0b10000000},  // directionallight ps30_slm_lowdef
+    {.shader_hash = 0x70C16A46, .slots = 0b10000},  // directionallight ps41_slm_highdef_ms (fetch4)
+    {.shader_hash = 0x70F6E2EA, .slots = 0b100000000},  // directionallight ps30_slm_highdef (fetch4)
+    {.shader_hash = 0x7F21230B, .slots = 0b10000},  // directionallight ps41_slm_highdef_ms (pcf)
+    {.shader_hash = 0x89F671DD, .slots = 0b1000},  // directionallight ps41_slm_highdef_ms (gather_4_1)
+    {.shader_hash = 0x8F453935, .slots = 0b1000},  // directionallight ps41_slm_highdef_ms (gather_5_0)
+    {.shader_hash = 0x94D77BBB, .slots = 0b10000},  // directionallight ps41_slm_lowdef_ms (fetch4)
+    {.shader_hash = 0xA1F4A2BA, .slots = 0b10000000},  // directionallight ps30_slm_highdef (gather_4_1)
+    {.shader_hash = 0xA7D2D500, .slots = 0b100000000},  // directionallight ps30_slm_lowdef (software)
+    {.shader_hash = 0xB6ADBBE1, .slots = 0b10000},  // directionallight ps41_slm_highdef_ms (software)
+    {.shader_hash = 0xB7241C26, .slots = 0b1000},  // directionallight ps41_slm_lowdef_ms (gather_5_0)
+    {.shader_hash = 0xBCE62242, .slots = 0b10000000},  // directionallight ps30_slm_lowdef (gather_4_1)
+    {.shader_hash = 0xC0B29F10, .slots = 0b10000},  // directionallight ps41_slm_lowdef_ms (pcf)
+    {.shader_hash = 0xDB252846, .slots = 0b100000000},  // directionallight ps30_slm_highdef (pcf)
+    {.shader_hash = 0xDBF9617F, .slots = 0b1000},  // directionallight ps41_slm_lowdef_ms
+    {.shader_hash = 0xF145D6A2, .slots = 0b1000},  // directionallight ps41_slm_lowdef_ms (gather_4_1)
+    // the campaign's sea, shroud plane and map quad: the overlay.
+    {.shader_hash = 0x02085CAA, .slots = 0b1000000000},  // waterplane ps30_campaign_high (pcf)
+    {.shader_hash = 0x03E56410, .slots = 0b100000000},  // waterplane ps30_campaign_high (gather_4_1)
+    {.shader_hash = 0x08F47D8C, .slots = 0b100000000},  // waterplane ps30_campaign_low (gather_5_0)
+    {.shader_hash = 0x5FC60B2F, .slots = 0b1000000000},  // waterplane ps30_campaign_high (software)
+    {.shader_hash = 0xAF217585, .slots = 0b1000000000},  // waterplane ps30_campaign_high (fetch4)
+    {.shader_hash = 0xDE739661, .slots = 0b100000000},  // waterplane ps30_campaign_high (gather_5_0)
+    {.shader_hash = 0xE0C38FDF, .slots = 0b100000000},  // waterplane ps30_campaign_low (gather_4_1)
+    {.shader_hash = 0xECB1E7B5, .slots = 0b100000000},  // waterplane ps30_campaign_low (fetch4)
+    {.shader_hash = 0xF6DFFEBC, .slots = 0b100000000},  // waterplane ps30_campaign_high
 }};
 // The game's vertex shaders the addon replaces with ones that read the render share below 100% (cb12), as Attila's.
 constexpr std::array<uint32_t, 1> RENDER_SCALE_VERTEX_SHADERS = {
