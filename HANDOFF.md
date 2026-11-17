@@ -381,7 +381,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARC BUGS (gpr_, for the SHaRC 1.8.3 job): (S1) rt_d3d12.hpp:2659 GrowBuffer(&. ... | ssr_
 - SER VERDICT (gpr_ vs NVIDIA RTXPT): placement right, hint WRONG (InstanceID & 7 ... | ssr_
 - CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still tryi ... | ATN
-- SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | sol_
+- SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | ATN (EJOB / EVEC / EHALF integration stay with ATN's ChatGPT
+- WRITER SMALL FIXES (from Sol's 0001 review): our engine_code.hpp writer: (a) a f ... | ATN's go (game-code file, theoretical today: no site crosses
 - L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; ... | after ssr_ / G1 (helper queue)
 - PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rcg_, rbk_
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
@@ -2817,7 +2818,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         real diffs on engine_code.hpp (0001 patch-writer rework + transaction tests; 0002 one E3P prefetch site behind
         RENODX_ATTILA_EXPERIMENTAL_RENDER_PREFETCH) + prototypes not integrated (EHALF 4 of 20 conversions, EVEC capped
         capacity, EJOB delegated wake + model / 32-thread tests). sol_ xHigh review STARTED 21:1x (apply, build x86,
-        tw_engine_code all parts, verdict per item) -> plan_1117/sol62_review.md. Owner: sol_
+        tw_engine_code all parts, verdict per item) -> plan_1117/sol62_review.md. 22:0x: items 1-3 reviewed, then a
+        safety classifier withheld sol_'s response at the start of EJOB ("not again, even reworded"; third EJOB stop:
+        final); EJOB / EVEC not reviewed. Verdicts: 0001 writer NOT as is (theoretical fixes; adds all-or-nothing
+        batches, 5.43 s detach, partial 5-byte check, aborts on unopenable threads) -> take a small form ourselves (box
+        below); 0002 prefetch REJECT (exact but 0.00 ms site; suite fails with its define); EHALF math exact over all
+        2^32 x 4 lanes vs the game's routine, integration missing, ~-0.1 ms (4 of 20 calls). Branch sol62-review keeps
+        Sol's two commits; worktree removed (links removed alone first). tw_engine_code x86 full PASS with 0001.
+        Owner: ATN (EJOB / EVEC / EHALF integration stay with ATN's ChatGPT work)
+      - [ ] WRITER SMALL FIXES (from Sol's 0001 review): our engine_code.hpp writer: (a) a failed VirtualProtect must not
+        report the site as written; (b) a cross-page restore must restore each page's own protection; (c) the stub
+        page's VirtualProtect / FlushInstructionCache checked in Prepare; (d) a per-site expected-byte check that stands
+        down only that site. Our own code, no game analysis; tests in tw_engine_code. Owner: ATN's go (game-code
+        file, theoretical today: no site crosses a page)
       - [ ] L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; stress 2.73 ms): design
         skipping unmoved soldiers' cluster instantiation and / or cluster LODs for far units (xHigh design, then High).
         Owner: after ssr_ / G1 (helper queue)
