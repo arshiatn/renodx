@@ -107,11 +107,13 @@ static const uint REF_BATCH = 16u;
 // A slice's variants (its word's low byte): `full` (the effect's integral, the reference's own start and the game's values),
 // `same_start` (the effect's own start and normal: isolates everything after the start), `furnace` (every surface albedo
 // ref_parameters[0].x, lit by ref_parameters[0].y, no sun, sky or lights: G1), `lout` (the light leaving each texel's own
-// surface under the screen route's cut: G5).
+// surface under the screen route's cut: G5), `contact` (`full` with the helper's ContactShade on the first ray: the model
+// variant that tells that named model delta from the estimator, I2).
 static const uint REF_FULL = 0u;
 static const uint REF_SAME_START = 1u;
 static const uint REF_FURNACE = 2u;
 static const uint REF_LOUT = 3u;
+static const uint REF_CONTACT = 4u;
 // Its synthetic control (the word's bit 8): the reference x ref_parameters[1].x.
 static const uint REF_SCALED = 256u;
 
@@ -413,9 +415,10 @@ float3 RefEmitted(float3 hit, float3 normal, uint record_index, float3 albedo, b
 // REF_MAX_VERTICES at most (a path cut there counted in `cut`); one sun disk point and every local light at each vertex;
 // an escape brings the game's sky at the surface it left (RefSky; none from the first ray without Path-Traced Ambient,
 // whose screen pixel the game's ambient lights then, or where grass within GRASS_AMBIENT_RANGE blocks it, as the AO's;
-// the furnace's box has no sky). The first ray reaches `first_range` (the integral's), the rest 10 km.
-float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float first_range, bool furnace, uint2 texel, uint sample_index,
-                   inout uint overflow, inout uint cut) {
+// the furnace's box has no sky). The first ray reaches `first_range` (the integral's), the rest 10 km. `contact`: the
+// first ray's hit's light (and all beyond it) x ContactShade (the `contact` variant).
+float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float first_range, bool furnace, bool contact, uint2 texel,
+                   uint sample_index, inout uint overflow, inout uint cut) {
   float3 radiance = 0.f;
   float3 throughput = 1.f;
   float3 leaving_normal = origin_normal;
@@ -432,6 +435,7 @@ float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float 
       break;
     }
     const float3 hit = origin + direction * hit_distance;
+    if (contact && vertex == 0u) throughput *= ContactShade(hit_distance);
     const float3 albedo = furnace ? ref_parameters[0].xxx : HitAlbedo(hit, normal);
     const float2 sun_point = float2(RefRandom(texel, sample_index, dimension), RefRandom(texel, sample_index, dimension + 1u));
     radiance += throughput * RefEmitted(hit, normal, record_index, albedo, furnace, sun_point, overflow);

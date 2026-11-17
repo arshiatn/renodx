@@ -2916,7 +2916,7 @@ class RtScene12 {
   static constexpr uint32_t REF_SOURCE_BOUNCE = 0;
   static constexpr uint32_t REF_SOURCE_SPECULAR_OCCLUSION = 2;
   static constexpr uint64_t REF_GROUP_PICTURES_MAX = uint64_t{1920} * 1080;  // grids up to this keep each group's mean (G3)
-  static constexpr std::array<std::string_view, 4> REF_VARIANTS = {"full", "same_start", "furnace", "lout"};
+  static constexpr std::array<std::string_view, 5> REF_VARIANTS = {"full", "same_start", "furnace", "lout", "contact"};
   // REF_CENSUS's outputs (rt_reference.hlsli REF_OUT_*).
   static constexpr std::array<std::string_view, 12> REF_OUTPUTS = {"bounce", "reflection", "specular", "own_sky_0", "own_sky_1", "reuse_0", "reuse_1",
                                                                   "fog_lights", "ref_mean", "candidate_mean", "ref_m2", "candidate_m2"};

@@ -269,7 +269,9 @@ void main(uint3 id : SV_DispatchThreadID) {
         if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) leaving += RefLights(origin, normal, overflow);
         sum += float4(screen_albedo * leaving, 1.f);
       } else {
-        sum += float4(RefIncoming(origin, RefCosineDirection(normal, u), normal, first_range, furnace, id.xy, sample_index, overflow, cut), 1.f);
+        sum += float4(RefIncoming(origin, RefCosineDirection(normal, u), normal, first_range, furnace, variant == REF_CONTACT, id.xy, sample_index,
+                                  overflow, cut),
+                      1.f);
       }
 #else
       // The lobe's weight w = D G2 / (4 n.v) over Heitz's visible-normal density G1 D / (4 n.v): G2 / G1 (0 below the
