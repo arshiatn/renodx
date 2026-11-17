@@ -720,6 +720,20 @@ int main(int argc, char** argv) {
   CheckClosed();
   std::puts("PASS: a set whose fence has no recovery handle is refused and rolled back");
 
+  // A fence-less answer gives back the game's own (odd) value: the game's next value is odd still, the helper's even, as
+  // the recovery's SignalAbandoned expects.
+  StartReady(game, "start odd value test");
+  {
+    Check(bridge_api::Prepare(device, 16, 16), "the set");
+    Check(!RequestAs(game, bridge_api::EVALUATE, FENCELESS) && bridge.value == 1, "a fence-less answer: the game's own value back");
+    Check(RequestAs(game, bridge_api::EVALUATE, HEALTHY) && bridge.shared->value == 3 && bridge.value == 4, "the game's next value is odd");
+    game.QueueTail();
+    Check(game.TailWithin(3000), "the helper's even value reached");
+  }
+  bridge_api::Shutdown();
+  CheckClosed();
+  std::puts("PASS: the game's fence values stay odd after a fence-less answer");
+
   // Textures that could not be made: tried again at another size or after 30 s, three times a session, a line each. Last:
   // a 32-bit process may find no room afterwards for a later case's 512 MB ray tracing texture.
   StartReady(game, "start texture retry test");

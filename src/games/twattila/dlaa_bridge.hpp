@@ -1049,7 +1049,9 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
     bridge.steady[last] = shared.evaluated != 0 && shared.done_value == shared.value + 1;
   }
   if (bridge.deferred != 0 && !Queued(context4->Wait(bridge.fence.Get(), std::exchange(bridge.deferred, 0)))) return false;
-  ++bridge.value;
+  // The game's values odd, the helper's even (the recovery signals only a landed odd one's next), also after a fence-less
+  // answer that gave back the game's own value.
+  bridge.value = (bridge.value + 1) | 1u;
   if (!Queued(context4->Signal(bridge.fence.Get(), bridge.value))) return false;
   context->Flush();
   shared.value = bridge.value;
