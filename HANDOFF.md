@@ -183,6 +183,7 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [x] ANSWERED 01:xx (ATN: "Row placement, that sounds good!"; the occlusion source asked, coordinator: keep the specular-occlusion lobe, more correct for reflections) C: Path-Traced Reflection Occlusion: lobe vs sky visibility, row next to Path-Traced Ambient (graphics_page, shs2_)
 - [ ] PARTLY ANSWERED 02:xx (ATN: "It should have the same/similar presets like Attila. No RT/PT should use GT-VBAO, GT-VBGI, SSS and SSSR (if that is implemented)": DONE 150e41174, No RT/PT turns GT-VBAO + GT-VBGI + Bend on; SSSR when implemented; probes question explained, coordinator recommends keep (GT-VBAO darkens the probes' light in corners, GT-VBGI adds the nearby bounce: the visibility-bitmask way; black probes = dark wherever the screen sees no light); defaults still open) C: Divinity 2: GT-VBGI (like the rays' bounce) adds on top of the light probes' IBL diffuse: keep, or black the probes' diffuse under GT-VBGI? After a run: No RT/PT (Recommended) turns Bend and GT-VBGI on, as Attila's? Defaults OK: GT-VBAO radius 1 m, Bend thickness 0.005? (from: div2_ 01:xx)
 - [x] ANSWERED 02:xx (ATN: "Maybe do one nsight capture first.": the paths kernel's in-game Nsight goes into the capture runs, then drop or do) C: Attila paths trace / shade split: measured ~0 net at your rows (trace-only 0.288 vs 0.366 ms, no occupancy win): drop it, or one in-game Nsight of the trace-only helper first? (from: gpu3_ 01:xx)
+- [ ] C: LOD bias presets: they now turn "on All Textures" on but leave the level row (Off / Matched / Sharper / Sharpest) alone: a player at Off still gets no bias after a preset. Should presets turn Off back to Sharper (the default) and keep any other level? (from: bug3_ 03:xx)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -330,7 +331,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila ... | coordinator
 - BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before th ... | bug1_
 - BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows ... | bug2_
-- BUG3 (bug3_, started 02:xx): DEBUG44 (g) "For every single game, the LOD bias fo ... | bug3_
+- BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Res ... | coordinator
 - BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails ... | coordinator -> bug4_ after the captures
 - REF1 (ref_, started 02:xx): reference suite step 3: first the design (tools/tw/r ... | ref_
 - SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator after REF1
@@ -2134,8 +2135,14 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows off blown out + (c) path
         torch shadow crevice leaks; every combination of the torch rows (Light / Shadows from Path, Follow the Camera,
         Torch Light in Path-Traced GI) proven against the path probe's reference. Owner: bug2_
-      - [ ] BUG3 (bug3_, started 02:xx): DEBUG44 (g) "For every single game, the LOD bias for everything should be on":
+      - [x] DONE bug3_ 1b7999885 (merged 2b6ac018c): "LOD bias for everything" = Texture LOD Bias on All Textures
+        (AntiAliasingTextureLodBiasTrilinear), already on by default everywhere since 98b1ef105; now every preset (Reset /
+        No RT/PT / RT/PT in the graphics_page games, Shogun 2 / Ryse's ray buttons) turns it on too; page dumps: only the
+        3 preset buttons 0 -> 1 in 10 games; no row in Tales / Expeditions (UE's own mip bias), Rome Remastered (no LOD bias
+        yet), Divinity 1 / 2, R.U.S.E. (no render scale) BUG3 (bug3_, started 02:xx): DEBUG44 (g) "For every single game, the LOD bias for everything should be on":
         the row on by default + in the presets in every game that has it, README lines. Owner: bug3_
+      - [ ] BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Reset / No RT/PT / RT/PT (Shogun 2 /
+        Ryse: their ray buttons): the row comes back on, the level row keeps the player's value. Owner: coordinator
       - [ ] BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails + missing ropes (sea1), (f)
         render scale below 100 % at sea (sea1 traces + a static census of the shipped shaders). Owner: coordinator ->
         bug4_ after the captures
