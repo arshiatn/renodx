@@ -2949,7 +2949,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         0fd36c01d (all 20 conversions four at a time, Attila + Thrones; harness 73.5 -> 51.6 ns a call; all 2^32 floats
         on Attila) + docs 2f5703ae3 (README + HANDOFF: conflicts with ours at merge); E3P / EVEC design notes only. ATN:
         separate agents, one at a time, so one stop does not take the others): (1) ehr_ xHigh EHALF review STARTED
-        23:3x in its own worktree at 2f5703ae3 (never reads the EJOB item) -> plan_1117/ehalf_review.md; (2) then a
+        23:3x in its own worktree at 2f5703ae3 (never reads the EJOB item) -> plan_1117/ehalf_review.md; STOPPED 23:5x:
+        the auto-mode permission classifier refused one Bash grep over the branch's engine_code.hpp for the generic
+        writer code (SITE_SIZE, Eip, GetThreadContext, SuspendThread, Update, MAX_FAILED_WRITES; no reason given): not
+        retried. Partial (capstone on Attila's dll, no builds / tests yet): +0x169a220 integer only, stub formula =
+        the game's 32-bit result; region +0x1907511..+0x19077e2 all 20 lanes / operand order / store offsets /
+        temporaries match; overlap checks 1-2 exact, 3-5 wider (more fallbacks only); after the region nothing reads
+        the arg slots / flags / xmm1-7 (Attila); heapfix touches none of it; test 11c covers each lane with ~1/17 of
+        2^32 (11a draws the edges). Open: thread at match+4 (cpu2_review.md: PausedWrite refuses +1..+4), Thrones
+        +0x197d841, branch scan into match+1..+4, docs, style, builds, full runs. Waiting for ATN's go to finish it
+        without the refused read; (2) then a
         Low EJOB build + tests only (no analysis); (3) then one xHigh E3P design check (never stopped itself; Sol + the
         other session rejected it on merit: fault risk, heapfix area); EVEC skipped (-0.1..-0.3, exactness not
         provable statically by two analyses). A stop = final for that item only. Owner: coordinator
