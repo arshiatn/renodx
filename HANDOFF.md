@@ -359,11 +359,26 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | fix1_ (STARTED 16:xx)
 - CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of ... | cpp_
 - CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
+- CPU B1 (cb1_ High STARTED 18:4x): ES8 site 8 0x18635a0 (corrected: result byte 1 ... | cb1_
+- CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, X ... | next High implementer (after bfx_ merges: build load)
+- CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | High implementer (ATN's C: AF14 scope)
+- CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | High implementer AFTER bfx_ (same dlaa_bridge
+- CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | High implementer after B1
+- CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | coordinator (ATN's C: heapfix notes)
+- CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ATN's C: EJOB first
+- CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V ... | coordinator
+- C: EJOB: may we change the game's job-semaphore protocol (spin-then-sleep, SetEv ... | ?
+- C: heapfix notes to the author (B4G gate with numbers after B6, the loopfetch fi ... | ?
+- C: AF14 ships to Attila first (opt-in), other RenoDX mods only through upstream ... | ?
+- C: the focus-return lockstep (~5 s of 94 ms frames after alt-tab in big battles) ... | ?
+- OURS ON THE RENDER THREAD (cpp_): our add-on anywhere on the stack 8.3 ms of nig ... | coordinator (CPU PLAN 2 END)
 - BRIDGE CLAIMS (ATN 17:3x: another modder's ChatGPT review of HIS port of our bri ... | bfx_, coordinator (merge before plan step 7)
 - SER IN FORESTS (ATN 17:3x, Forge: SER made a huge difference in forests; his pat ... | plan step 6
 - NSIGHT XHIGH COUNTERS (ATN 17:5x: "let's use xhigh for it too on next nsight che ... | coordinator (plan steps 4 / 8)
 - PLAYER FLAG OVERRIDE (needed for SER / SHaRC / part A/Bs on recordings): the pla ... | next recorder touch (after fix1_)
-- WH3 FOREST (ATN 18:1x: ATN looks for a WH3 forest benchmark or makes a replay): ... | ATN, coordinator
+- CAPTURE PASS (run2_ Low STARTED 18:4x, rec_det4 E6EB54F99070, recordings to D:\D ... | run2_
+- FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
+- MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b; hz2_ 13:3x: the 10b design's "all ready" ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -2462,10 +2477,44 @@ heading text are in HANDOFF_ARCHIVE.md)
         functions ~10); stress worker critical path (render waits 16.5 ms; ~13 worker functions 5-10 ms summed); no day1
         / sea1 WPR. Existing ETLs only, result plan_1117/cpu_gaps.md. Owner: cpp_
       - [ ] CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implement them with high. Maybe one
-        last review on them with xHigh"): (1) cpp_ xHigh STARTED 17:2x (brief plan_1117/cpu_plan2_brief.md): the gaps +
+        last review on them with xHigh"): (1) cpp_ xHigh DONE 18:3x (cpu_gaps.md + cpu_plan2.md: steady stress 76.9 ms =
+        63.8 CPU + 13.0 wait; the 7b window mixed ~5 s of post-refocus lockstep at 94.5 ms; render-thread system time = the
+        game's ~570 job-semaphore SetEvents a frame 2.55 / 2.83 ms + its critical sections 0.7 + ours anywhere on the stack
+        3.8 stress / 8.3 night1 (0.47 ms driver waits from the bridge's Flushes) + ReShade 0.16 / 0.32 + the game's D3D11
+        0.95 / 0.86; "?" = our engine_code half-float stub + heapfix's loopfetch page; night1's tail flat (648 functions);
+        stress critical path = render thread + heapfix sort 9.3 + merge 2.3; expected stress -6..-12 ms, night1 -1.2..-2.6,
+        the job change ~-2 more) (was: STARTED 17:2x, brief plan_1117/cpu_plan2_brief.md): the gaps +
         the whole ranked CPU plan with exactness proofs, owners, file sets, batches -> cpu_gaps.md + cpu_plan2.md; (2) High
         implementers, one at a time per file set; (3) one xHigh review of the merged result; (4) one Low bench batch
         (stress / night1 / day1, + day1 / sea1 WPR if the plan asks). Owner: coordinator
+      - [ ] CPU B1 (cb1_ High STARTED 18:4x): ES8 site 8 0x18635a0 (corrected: result byte 1 after a full loop, ecx's top
+        byte) + ETLS site 7 (TlsGetValue thunk); engine_code.hpp + test/tw_engine_code; stress -1.8..-2.4. Owner: cb1_
+      - [ ] CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, XAT rt_core part; rt_scene.hpp,
+        rt_core.hpp, tw_native_context; every rt_core consumer built): night1 -0.6..-1.0. Owner: next High implementer
+        (after bfx_ merges: build load)
+      - [ ] CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src/utils; the memo design's
+        guards + T1-T3, RENODX_RESOURCE_MEMO_CHECK): night1 -0.2..-0.6. Owner: High implementer (ATN's C: AF14 scope)
+      - [ ] CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_motion.hpp, dlaa_bridge.hpp):
+        night1 -0.3..-0.6. Owner: High implementer AFTER bfx_ (same dlaa_bridge.hpp)
+      - [ ] CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization designs then code, EVEC design;
+        engine_code.hpp after B1): stress -1.4..-3.6. Owner: High implementer after B1
+      - [ ] CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, P without loopfetch, loopanim
+        3 shuffled rounds; tools/tw/heapfix, never the repo) + author notes. Owner: coordinator (ATN's C: heapfix notes)
+      - [ ] CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design + counting plan, docs only,
+        xHigh review; ~-2 ms both scenes; not byte-exact, a freeze if wrong). Owner: ATN's C: EJOB first
+      - [ ] CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V0-V4 stress / night1 x3, day1 x2,
+        sea1 x2, WPR stress / night1 / a new day1 (no sea1 WPR: GPU-bound). Owner: coordinator
+      - [ ] C: EJOB: may we change the game's job-semaphore protocol (spin-then-sleep, SetEvent only when a worker
+        sleeps)? Not byte-exact; a freeze is the failure mode (model check + 32-thread soak first, off by a row); ~2 ms a
+        frame in every battle. (from: cpp_ 18:3x)
+      - [ ] C: heapfix notes to the author (B4G gate with numbers after B6, the loopfetch finding, memfast-128, the toolhelp
+        snapshot cost, the serial merge before the sort); ATN plays B4G meanwhile (own build, own use)? (from: cpp_)
+      - [ ] C: AF14 ships to Attila first (opt-in), other RenoDX mods only through upstream with the frozen block? (from: cpp_)
+      - [ ] C: the focus-return lockstep (~5 s of 94 ms frames after alt-tab in big battles): investigate in a helper /
+        driver round, or accept? (from: cpp_)
+      - [ ] OURS ON THE RENDER THREAD (cpp_): our add-on anywhere on the stack 8.3 ms of night1's render thread (3.8 stress);
+        B2 + B4 + B3 cover ~1.1-2.2 of it: the rest needs its own split (which of ours: Capture, motion, bridge, page,
+        pass timer) in the END bench's WPR. Owner: coordinator (CPU PLAN 2 END)
       - [x] DONE 17:2x SKILLS (ATN "add this to the skills"): game-port-method "Effort by job" (runs low, optimization
         analysis / plans / reviews xHigh, implementers high, the token finding) + "Read a profile to its end before
         ranking"; tw-port-checklist testing.md: the frame recorder row (record / play / compare, play-to-play
@@ -2508,9 +2557,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         request flags only; add RENODX_TW_PLAY_TRACE_FLAGS / _PATH_FLAGS set + clear masks (recorder-only code, zero cost
         off), the helper allocating what a set bit needs as live; SHaRC warms over RENODX_TW_PLAY_LOOPS passes (read the
         last pass). Owner: next recorder touch (after fix1_)
-      - [ ] WH3 FOREST (ATN 18:1x: ATN looks for a WH3 forest benchmark or makes a replay): coordinator holds
-        quiet_run.lock + gpu_job.lock while ATN plays (agents wait), removes both when ATN reports; then the capture pass
-        (3 Attila starts' worth in 2 starts + 1 WH3 forest start, one Low runner). Owner: ATN, coordinator
+      - [x] DONE 18:3x WH3 FOREST (ATN: replay "2" = his forest battle; "Mirrors of Madness Benchmark" ~20 fps (17.6 mean
+        in his 17:25 run): an RT/PT candidate; locks removed)
+      - [ ] CAPTURE PASS (run2_ Low STARTED 18:4x, rec_det4 E6EB54F99070, recordings to D:\Dev\tw_recordings (C: 62 GB
+        free, live_proof 27.6 + live_proof2 76.2 GB there), stop under 80 GB on D:): Attila A day1 -> night1 -> sea1 chained
+        by the replay menu, B stress alone, WH3 C 2.replay forest FRAMES=8 (far tree shadow flicker), WH3 D Mirrors of
+        Madness 3 moments; 3 views each; --floor compares; one offline Nsight steady-frame check. Owner: run2_
+      - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
+        shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
+        the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
+      - [ ] MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings into plan step 4 (Nsight with
+        Forge's columns) next to night1 / sea1 / stress / forest. Owner: plan step 4
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
