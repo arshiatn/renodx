@@ -1382,6 +1382,16 @@ class RtScene12 {
     return true;
   }
 
+  // The player's RENODX_TW_PLAY_MICROMAP_LEVEL / RENODX_TW_PLAY_LEAF_MICROMAP_LEVEL (LoadRecordingState): grass's / leaves'
+  // micromaps baked again at that level (-1: built from their recorded bakes), from the first request's block, vertex
+  // texture and atlas (its chunks' bytes; no block: nothing baked again).
+  struct MicromapRebake {
+    int grass_level = -1;
+    int leaf_level = -1;
+    const dlaa_bridge::Shared* block = nullptr;
+    std::span<const uint8_t> vertices;
+    std::span<const uint8_t> atlas;
+  };
   // `folder`/state.bin into this scene before its first request (a scene the harness's player opened at the recording's
   // textures' size), `*first_frame` the recording's first frame. False: refused (`why`: another layout or bridge version,
   // a truncated file, a device or texture size the recording does not fit); the scene stays as it was. `rebake`: the
@@ -8107,16 +8117,6 @@ class RtScene12 {
     uint32_t indices = 0;
     uint32_t histogram = 0;
     uint32_t padding = 0;
-  };
-  // The player's RENODX_TW_PLAY_MICROMAP_LEVEL / RENODX_TW_PLAY_LEAF_MICROMAP_LEVEL (LoadRecordingState): grass's / leaves'
-  // micromaps baked again at that level (-1: built from their recorded bakes), from the first request's block, vertex
-  // texture and atlas (its chunks' bytes; no block: nothing baked again).
-  struct MicromapRebake {
-    int grass_level = -1;
-    int leaf_level = -1;
-    const dlaa_bridge::Shared* block = nullptr;
-    std::span<const uint8_t> vertices;
-    std::span<const uint8_t> atlas;
   };
   // The journal's: a mesh's vertices as its build read them (`build` its mesh's then), or a micromap bake as its mesh's or
   // set's micromaps were built from it (`build` the mesh's build or the set's generation then).
