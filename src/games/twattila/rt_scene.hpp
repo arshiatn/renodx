@@ -958,6 +958,8 @@ struct PointLightCopy {
 };
 // A streamed light record (LightInstances::stream_shader): the light (position, reach), then its colour.
 constexpr UINT STREAMED_LIGHT_BYTES = 32;
+// After a frame whose twin draw could not be left out, the frames that read every record before it is tried again.
+constexpr uint32_t TWIN_RETRY_FRAMES = 64;
 // A read light's position and reach as four keys (each float's bits ordered as the floats compare, -0 as +0) and its place
 // in the frame's read order (OnPointLightDraw's sort).
 struct LightKey {
@@ -975,13 +977,18 @@ struct PointLightReadback {
   ComPtr<ID3D11GeometryShader> stream_output;
   ComPtr<ID3D11Buffer> streamed;
   bool stream_failed = false;
-  // The last sorted frame's keys in read order, and the read places its sort and unique kept, in their order.
+  // The last sorted frame's keys in read order, its sort's adjacent equal keys (their read places), and the read places its
+  // sort and unique kept, in their order.
   std::vector<LightKey> keys;
+  std::vector<std::array<uint32_t, 2>> ties;
   std::vector<uint32_t> order;
-  // The read frame's lights, their keys and their sorted copy: emptied each frame, their room kept.
+  // The read frame's lights, their keys, the keys sorted and the lights in that order: emptied each frame, their room kept.
   std::vector<LocalLight> lights;
   std::vector<LightKey> read_keys;
+  std::vector<LightKey> sorted_keys;
   std::vector<LocalLight> sorted;
+  // Frames left that read every record (a twin draw's left out changed the lights: equal keys, other bytes).
+  uint32_t full_reads = 0;
 };
 static PointLightReadback point_light_readback;
 
@@ -1215,28 +1222,56 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
     auto& buffer = readback.staging[readback.current];
     auto& copies = readback.copies[readback.current];
     if (D3D11_MAPPED_SUBRESOURCE mapped = {}; !copies.empty() && SUCCEEDED(native->Map(buffer.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+      const auto* records = static_cast<const std::byte*>(mapped.pData);
       auto& lights = readback.lights;
-      lights.clear();
-      for (const auto& copy : copies) {
-        for (UINT index = 0; index < copy.count; ++index) {
-          const auto* instance = static_cast<const std::byte*>(mapped.pData) + copy.offset + (index * copy.stride);
-          LocalLight light = {.shadows_only = copy.shadows_only};
-          std::memcpy(light.light.data(), instance + copy.layout.position, sizeof(light.light));
-          if (copy.streamed && !(light.light[3] > 0.f)) continue;
-          std::memcpy(light.colour.data(), instance + copy.layout.colour, sizeof(light.colour));
-          for (size_t channel = 0; channel < 3; ++channel) light.colour[channel] *= internal::host.local_light_scale;
-          lights.push_back(light);
+      // The frame's lights in read order. `twins_left_out`: without a copy whose records are, byte for byte, the first records
+      // of an earlier copy's (the game draws every light twice, a stencil variant each: night1's 9,593 twice, cut at the
+      // ring's 16,384); returns the records left out.
+      const auto read = [&](bool twins_left_out) {
+        lights.clear();
+        size_t left_out = 0;
+        for (size_t copy_index = 0; copy_index < copies.size(); ++copy_index) {
+          const auto& copy = copies[copy_index];
+          const auto* first = records + copy.offset;
+          if (twins_left_out && !copy.streamed
+              && std::ranges::any_of(std::span(copies).first(copy_index), [&](const internal::PointLightCopy& earlier) {
+                   return !earlier.streamed && earlier.stride == copy.stride && earlier.count >= copy.count
+                          && earlier.layout.colour == copy.layout.colour && earlier.layout.position == copy.layout.position
+                          && earlier.shadows_only == copy.shadows_only
+                          && std::memcmp(records + earlier.offset, first, size_t{copy.count} * copy.stride) == 0;
+                 })) {
+            left_out += copy.count;
+            continue;
+          }
+          for (UINT index = 0; index < copy.count; ++index) {
+            const auto* instance = first + (index * copy.stride);
+            LocalLight light = {.shadows_only = copy.shadows_only};
+            std::memcpy(light.light.data(), instance + copy.layout.position, sizeof(light.light));
+            if (copy.streamed && !(light.light[3] > 0.f)) continue;
+            std::memcpy(light.colour.data(), instance + copy.layout.colour, sizeof(light.colour));
+            for (size_t channel = 0; channel < 3; ++channel) light.colour[channel] *= internal::host.local_light_scale;
+            lights.push_back(light);
+          }
         }
+        return left_out;
+      };
+      // After a frame whose twins could not be left out (below), the full read for TWIN_RETRY_FRAMES frames.
+      const bool twins_tried = readback.full_reads == 0;
+      if (!twins_tried) {
+        --readback.full_reads;
       }
-      native->Unmap(buffer.Get(), 0);
+      size_t left_out = read(twins_tried);
       // Each position once, in the order std::ranges::sort(lights, {}, &LocalLight::light) and std::ranges::unique leave
       // them (AddLocalLights keeps that order up to its cap; the trace's partial sort follows it in ties). The same sort and
       // unique run on LightKey: the same comparisons' outcomes, so the same order, without moving the lights or comparing
       // four floats each time. That outcome is the keys' alone: a frame whose keys are the last sorted frame's (lights in
       // the same places, a still camera) takes its order, whatever the colours (the float sort took 0.8 ms a frame of
-      // Attila's render thread at Constantinople). A NaN coordinate has no order: the float sort then.
+      // Attila's render thread at Constantinople). A NaN coordinate has no order: the float sort then, of every record.
       uint32_t light_order = 2u;
       if (std::ranges::any_of(lights, [](const LocalLight& light) { return std::ranges::any_of(light.light, [](float value) { return std::isnan(value); }); })) {
+        if (left_out != 0) {
+          left_out = read(false);
+        }
         std::ranges::sort(lights, {}, &LocalLight::light);
         const auto repeated = std::ranges::unique(lights, {}, &LocalLight::light);
         lights.erase(repeated.begin(), repeated.end());
@@ -1247,37 +1282,68 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
           return ((bits & 0x80000000u) != 0u) ? ~bits : (bits | 0x80000000u);
         };
         const auto same_place = [](const internal::LightKey& a, const internal::LightKey& b) { return a.key == b.key; };
-        auto& keys = readback.read_keys;
-        keys.clear();
-        for (const LocalLight& light : lights) {
-          keys.push_back({.key = {ordered(light.light[0]), ordered(light.light[1]), ordered(light.light[2]), ordered(light.light[3])},
-                          .index = static_cast<uint32_t>(keys.size())});
-        }
-        const bool same_places = std::ranges::equal(keys, readback.keys, same_place);
-        // Whether the game's light draws repeat (the order taken without a sort): the profile's light_order, a frame trace's
-        // mark (no live count).
-        light_order = (same_places ? 1u : 2u);
-        if (frame_trace::Tracing()) {
-          frame_trace::Mark(std::format("local lights read back: {}, {}", lights.size(), (same_places ? "the last sorted frame's order" : "sorted again")));
-        }
-        if (!same_places) {
-          readback.keys = keys;
-          std::ranges::sort(keys, [](const internal::LightKey& a, const internal::LightKey& b) {
+        const auto same_light = [&lights](const std::array<uint32_t, 2>& tie) {
+          const LocalLight& a = lights[tie[0]];
+          const LocalLight& b = lights[tie[1]];
+          return std::memcmp(a.light.data(), b.light.data(), sizeof(a.light)) == 0 && std::memcmp(a.colour.data(), b.colour.data(), sizeof(a.colour)) == 0
+                 && a.shadows_only == b.shadows_only;
+        };
+        // The twins left out give the full read's lights while the kept records with equal keys are the same bytes: each
+        // equal-key run of the full read is then copies of one light, unique keeping any. False: they aren't (nothing kept).
+        const auto order_by_keys = [&] {
+          auto& keys = readback.read_keys;
+          keys.clear();
+          for (const LocalLight& light : lights) {
+            keys.push_back({.key = {ordered(light.light[0]), ordered(light.light[1]), ordered(light.light[2]), ordered(light.light[3])},
+                            .index = static_cast<uint32_t>(keys.size())});
+          }
+          // Whether the game's light draws repeat (the order taken without a sort): the profile's light_order, a frame trace's
+          // mark (no live count).
+          if (std::ranges::equal(keys, readback.keys, same_place)) {
+            if (left_out != 0 && !std::ranges::all_of(readback.ties, same_light)) return false;
+            light_order = 1u;
+            return true;
+          }
+          auto& sorted_keys = readback.sorted_keys;
+          sorted_keys = keys;
+          std::ranges::sort(sorted_keys, [](const internal::LightKey& a, const internal::LightKey& b) {
             for (size_t coordinate = 0; coordinate < a.key.size(); ++coordinate) {
               if (a.key[coordinate] != b.key[coordinate]) return a.key[coordinate] < b.key[coordinate];
             }
             return false;
           });
-          const auto repeated = std::ranges::unique(keys, same_place);
-          keys.erase(repeated.begin(), repeated.end());
+          const auto tie_at = [&](size_t at) { return std::array<uint32_t, 2>{sorted_keys[at].index, sorted_keys[at + 1].index}; };
+          for (size_t at = 0; left_out != 0 && at + 1 < sorted_keys.size(); ++at) {
+            if (same_place(sorted_keys[at], sorted_keys[at + 1]) && !same_light(tie_at(at))) return false;
+          }
+          light_order = 2u;
+          std::swap(readback.keys, keys);
+          readback.ties.clear();
+          for (size_t at = 0; at + 1 < sorted_keys.size(); ++at) {
+            if (same_place(sorted_keys[at], sorted_keys[at + 1])) readback.ties.push_back(tie_at(at));
+          }
+          const auto repeated = std::ranges::unique(sorted_keys, same_place);
+          sorted_keys.erase(repeated.begin(), repeated.end());
           readback.order.clear();
-          for (const internal::LightKey& key : keys) readback.order.push_back(key.index);
+          for (const internal::LightKey& key : sorted_keys) readback.order.push_back(key.index);
+          return true;
+        };
+        if (!order_by_keys()) {
+          readback.full_reads = internal::TWIN_RETRY_FRAMES;
+          left_out = read(false);
+          order_by_keys();
+        }
+        if (frame_trace::Tracing()) {
+          frame_trace::Mark(std::format("local lights read back: {}{}, {}", lights.size() + left_out,
+                                        (left_out != 0 ? std::format(" ({} a twin draw's, left out)", left_out) : std::string()),
+                                        (light_order == 1u ? "the last sorted frame's order" : "sorted again")));
         }
         auto& sorted = readback.sorted;
         sorted.clear();
         for (const uint32_t index : readback.order) sorted.push_back(lights[index]);
         std::swap(lights, sorted);
       }
+      native->Unmap(buffer.Get(), 0);
       if (!lights.empty() && !std::exchange(internal::point_lights_read, true)) {
         renodx::utils::log::i(std::format("[Total War] Local lights: first {} read from the light draws.", lights.size()));
       }

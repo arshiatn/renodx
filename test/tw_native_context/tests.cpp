@@ -15,8 +15,12 @@
 //    buffer; read three frames on): the frame's lights in v160's order, each position once, to the bit (v160's float sort and
 //    unique copied below): ties of one position with other colours, -0 and +0, zero and -0 reach, a coordinate's few
 //    values; random frames of 16384 (two draws, repeats, the 8192 cap reached); a still camera (the places of the frame
-//    before: other colours, zeros as -0, then one light moved); a NaN coordinate. Cost (printed): v160's sort of a
-//    16384-light frame, the reading draw now (new places, the frame before's places), a draw that only copies.
+//    before: other colours, zeros as -0, then one light moved); a NaN coordinate. Twin draws (Attila's two light draws of
+//    the same instances, the second cut at the ring's 16384): the second left out (one copy sorted), a bit apart (both),
+//    an earlier copy's twin, a prefix, a longer copy (not a twin), NaN (every record), equal keys inside a copy (the same
+//    bytes: still left out; other colours, by the sort or by the frame before's order: every record, then for the retry
+//    frames). Cost (printed): v160's sort of a 16384-light frame, the reading draw now (new places, the frame before's
+//    places), a draw that only copies; a twin frame's.
 // 5. Capture's reads (rt_core.hpp: the vertex and index buffers read once for all its parts, the cached
 //    ID3D11DeviceContext1 and device) with RENODX_TW_STATE_CHECK=1: a static draw (three vertex buffers, an index buffer at
 //    an offset) gets v166's short key and key (their formulas below), its index buffer reaches Host::moving_indexed, and
@@ -287,10 +291,12 @@ int main() {
     const auto repeated = std::ranges::unique(*lights, {}, &core::LocalLight::light);
     lights->erase(repeated.begin(), repeated.end());
   };
+  // The records the ring holds (POINT_LIGHT_BYTES: the draws' first 16384), in draw order.
   const auto read_lights = [](const Draws& draws) {
     std::vector<core::LocalLight> lights;
     for (const auto& draw : draws) {
       for (const Instance& instance : draw) {
+        if (lights.size() == core::internal::POINT_LIGHT_BYTES / sizeof(Instance)) break;
         core::LocalLight light = {.light = instance.light, .colour = instance.colour};
         for (size_t channel = 0; channel < 3; ++channel) light.colour[channel] *= core::internal::host.local_light_scale;
         lights.push_back(light);
@@ -375,12 +381,12 @@ int main() {
   }
   // Random frames of 16384 in two draws: positions on a coarse grid (x and y tie often), a third repeats of earlier lights
   // (its colour or another), reach 0 for some; then all distinct (the cap: 8192 of 16384).
-  const auto random_frame = [&](bool distinct) {
+  const auto lights_of = [&](size_t count, bool distinct) {
     std::vector<Instance> lights;
     std::uniform_int_distribution<int> grid(-40, 40);
     std::uniform_real_distribution<float> any(-2000.f, 2000.f);
     std::uniform_int_distribution<int> reach(0, 30);
-    while (lights.size() < 16384) {
+    while (lights.size() < count) {
       if (!distinct && lights.size() > 16 && generator() % 3 == 0) {
         Instance repeat = lights[generator() % lights.size()];
         if (generator() % 2 == 0) repeat.colour[0] += 1.f;
@@ -392,6 +398,10 @@ int main() {
       lights.push_back({.colour = {static_cast<float>(generator() % 256), static_cast<float>(generator() % 256), 0.25f, 0.f},
                         .light = {x, y, any(generator), static_cast<float>(reach(generator))}});
     }
+    return lights;
+  };
+  const auto random_frame = [&](bool distinct) {
+    const std::vector<Instance> lights = lights_of(16384, distinct);
     return Draws{std::vector(lights.begin(), lights.begin() + 10000), std::vector(lights.begin() + 10000, lights.end())};
   };
   for (int repeat = 0; repeat < 6; ++repeat) frames.push_back(random_frame(false));
@@ -426,9 +436,61 @@ int main() {
     nan_frame[0][77].light[1] = std::numeric_limits<float>::quiet_NaN();
     frames.push_back(nan_frame);
   }
+  // Twin draws (Attila's: every light drawn twice, a stencil variant each; night1's 9,593 twice, cut at the ring's 16,384):
+  // a frame's records the sort took (the last sorted frame's keys: a twin copy left out, or every record) and its
+  // light_order (1 the last sorted frame's order), in order; 0: not checked. `retry_cleared`: the retry frames ended after it.
+  struct TwinCheck {
+    size_t sorted = 0;
+    uint32_t light_order = 0;
+    bool retry_cleared = false;
+  };
+  std::vector<TwinCheck> twin_checks(frames.size());
+  const auto add_twins = [&](const Draws& draws, size_t sorted, uint32_t light_order, bool retry_cleared = false) {
+    frames.push_back(draws);
+    twin_checks.push_back({.sorted = sorted, .light_order = light_order, .retry_cleared = retry_cleared});
+  };
+  {
+    const std::vector<Instance> twin = lights_of(9593, true);
+    add_twins({twin, twin}, 9593, 2);  // the second cut at 6,791: its records the first's first, left out
+    std::vector<Instance> recoloured = twin;
+    for (Instance& instance : recoloured) instance.colour[1] += 2.f;
+    add_twins({recoloured, recoloured}, 9593, 1);  // a still camera: the twins' places as before
+    std::vector<Instance> one_bit = twin;
+    one_bit[100].colour[2] = std::nextafter(one_bit[100].colour[2], 1000.f);
+    add_twins({twin, one_bit}, 16384, 2);  // one bit differs: both read, both sorted (the same keys as the twins')
+    add_twins({twin, twin}, 9593, 2);
+    // A twin of a copy before the last; a shorter twin (a prefix); a longer copy (no twin: more records than the first's).
+    const std::vector<Instance> first = lights_of(4000, true);
+    const std::vector<Instance> second = lights_of(3000, true);
+    add_twins({first, second, first}, 7000, 2);
+    const std::vector<Instance> longer = lights_of(5000, true);
+    const std::vector<Instance> prefix(longer.begin(), longer.begin() + 3000);
+    add_twins({longer, prefix}, 5000, 2);
+    add_twins({prefix, longer}, 8000, 2);
+    std::vector<Instance> nan_twin = lights_of(9593, true);
+    nan_twin[50].light[2] = std::numeric_limits<float>::quiet_NaN();
+    add_twins({nan_twin, nan_twin}, 0, 2);  // the float sort of every record
+    // Equal keys inside a copy: other colours at one place read every record (then the retry frames ended by hand); the
+    // same bytes (a light listed twice) keep the twin left out; then the same places with one such pair's colours apart
+    // (the last sorted frame's order taken: its ties checked again) read every record, and so do the next
+    // TWIN_RETRY_FRAMES frames: ties with other colours, again (the full read's places as before), a twin frame.
+    const std::vector<Instance> ties = lights_of(9593, false);
+    add_twins({ties, ties}, 16384, 2, true);
+    std::vector<Instance> listed_twice = lights_of(9593, true);
+    for (size_t light = 0; light < 100; ++light) listed_twice[200 + light] = listed_twice[light];
+    add_twins({listed_twice, listed_twice}, 9593, 2);
+    std::vector<Instance> colours_apart = listed_twice;
+    colours_apart[200].colour[0] += 1.f;
+    add_twins({colours_apart, colours_apart}, 16384, 2);
+    add_twins({ties, ties}, 16384, 2);
+    add_twins({ties, ties}, 16384, 1);
+    add_twins({twin, twin}, 16384, 2);
+  }
   frames.push_back({});
+  twin_checks.resize(frames.size());
   // Each frame read three frames on (then empty frames to read the last three).
   size_t big_checked = 0;
+  size_t twins_checked = 0;
   for (size_t shown = 0; shown < frames.size() + 3; ++shown) {
     std::vector<core::LocalLight> drawn;
     CHECK(instanced_frame((shown < frames.size()) ? frames[shown] : Draws{}, &drawn) >= 0.);
@@ -439,10 +501,22 @@ int main() {
     const auto expected = expected_drawn(frames[shown - 3]);
     CHECK(same_bits(drawn, expected));
     if (expected.size() == core::internal::MAX_LOCAL_LIGHTS) ++big_checked;
+    if (const TwinCheck& check = twin_checks[shown - 3]; check.light_order != 0) {
+      const std::unique_lock lock(runtime.mutex);
+      CHECK(runtime.profile.light_order == check.light_order);
+      CHECK(check.sorted == 0 || core::internal::point_light_readback.keys.size() == check.sorted);
+      if (check.retry_cleared) {
+        CHECK(core::internal::point_light_readback.full_reads == core::internal::TWIN_RETRY_FRAMES);
+        core::internal::point_light_readback.full_reads = 0;
+      }
+      ++twins_checked;
+    }
   }
-  CHECK(big_checked >= 3);
-  std::printf("4 instanced lights: %zu frames (ties, -0 / +0, zero reach, 16384 a frame, the 8192 cap, a still camera, NaN): v160's order and lights, "
-              "to the bit\n", frames.size());
+  CHECK(big_checked >= 3 && twins_checked == 14);
+  std::printf("4 instanced lights: %zu frames (ties, -0 / +0, zero reach, 16384 a frame, the 8192 cap, a still camera, NaN; twin draws: "
+              "one sorted, a bit apart, an earlier copy's twin, a prefix, a longer copy, NaN, a light listed twice, its colours apart, "
+              "other colours at one place, the retry frames): v160's order and lights, to the bit\n", frames.size());
+  core::internal::point_light_readback.full_reads = 0;  // the twin frames below tried at once
   // Cost: a 16384-light frame (repeats), two of them in turn (new places each read), then one again and again (a still
   // camera).
   std::vector<double> old_ms;
@@ -471,6 +545,28 @@ int main() {
   std::printf("4 a 16384-light frame: v160's sort + unique %.3f ms; the reading draw now (read, sort, add) %.3f ms, its places as the "
               "frame before %.3f ms; a draw reading nothing %.3f ms (medians)\n",
               median(old_ms), median(moved_ms), median(still_ms), median(copying_ms));
+  // Cost: a twin frame (9,593 drawn twice, cut at 16,384), two of them in turn (new places each read).
+  std::vector<double> twin_old_ms;
+  std::vector<double> twin_ms;
+  const std::vector<Instance> twin_a = lights_of(9593, true);
+  const std::vector<Instance> twin_b = lights_of(9593, true);
+  const std::array<Draws, 2> twin_frames = {Draws{twin_a, twin_a}, Draws{twin_b, twin_b}};
+  for (int run = 0; run < 9; ++run) {
+    const Draws& frame_draws = twin_frames[run % 2];
+    auto lights = read_lights(frame_draws);
+    const auto start = std::chrono::steady_clock::now();
+    old_order(&lights);
+    twin_old_ms.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+    std::vector<core::LocalLight> drawn;
+    CHECK(instanced_frame(frame_draws, &drawn) >= 0.);
+    instanced_frame(Draws{}, &drawn);
+    instanced_frame(Draws{}, &drawn);
+    twin_ms.push_back(instanced_frame(Draws{}, &drawn));
+    CHECK(same_bits(drawn, expected_drawn(frame_draws)));
+  }
+  std::printf("4 a twin frame (9593 drawn twice, cut at 16384): v160's sort + unique %.3f ms; the reading draw now (read, sort, add) %.3f ms "
+              "(medians)\n",
+              median(twin_old_ms), median(twin_ms));
 
   // 5.
   {
