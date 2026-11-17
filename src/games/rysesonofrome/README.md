@@ -469,3 +469,7 @@ off) under GT-VBAO: each sample takes the depth at its own place between pixels 
 plane (twattila/bitmask.hlsli BitmaskPlaneDepth), so open ground seen at a low angle no longer shades itself; off the
 nearest texel's depth as before. `tw_gtvbao_exact` (WARP): ssdo00-02 off the build before's bits; CONTROL on changes
 47532 / 47532 / 50953 values.
+
+Texture LOD bias (bug3_, 2026-11-17; built only, not run in game): the Ray Tracing presets RT/PT, No RT/PT and Reset
+also turn Texture LOD Bias on All Textures on (ATN: the LOD bias for everything on in every game; on by default
+already). The bias's level stays the player's; the row set off by hand stays off until a preset is pressed.
