@@ -400,7 +400,7 @@ class RtScene12 {
       UsePlacedRoom(&room);
     }
     if (!vertex_buffer_ || !left_out_start_ || !tlas_ || !tlas_scratch_ || !records_ || !uvs_ || !normals_ || !build_rows_
-        || !placed_instances_[0] || !placed_instances_[1] || !placed_state_) {
+        || !placed_instances_[0] || !placed_instances_[1] || !placed_state_ || !placed_scratch_) {
       return Fail("Ray tracing: D3D12 buffers failed");
     }
 #if defined(RENODX_NVAPI_CLUSTERS)
@@ -601,7 +601,7 @@ class RtScene12 {
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = DESCRIPTOR_COUNT - CACHE_KEYS, .BaseShaderRegister = 10,
          .OffsetInDescriptorsFromTableStart = CACHE_KEYS},
     }};
-    const std::array<D3D12_ROOT_PARAMETER, 12> parameters = {{
+    const std::array<D3D12_ROOT_PARAMETER, 13> parameters = {{
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV, .Descriptor = {.ShaderRegister = 0}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
          .DescriptorTable = {.NumDescriptorRanges = static_cast<UINT>(ranges.size()), .pDescriptorRanges = ranges.data()}},
@@ -615,6 +615,7 @@ class RtScene12 {
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV, .Descriptor = {.ShaderRegister = 3}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV, .Descriptor = {.ShaderRegister = 4}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV, .Descriptor = {.ShaderRegister = 15}},
+        {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV, .Descriptor = {.ShaderRegister = 0, .RegisterSpace = 1}},
     }};
     const D3D12_STATIC_SAMPLER_DESC sampler = {
         .Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR,
@@ -3183,6 +3184,7 @@ class RtScene12 {
     ROOT_PATHS,   // b3: the paths' constants (rt_path.hlsli)
     ROOT_LIGHTS,  // b4: the trace's local lights
     ROOT_SMOKE,   // t15: the smoke's TLAS (rt_scene.hlsli smoke_scene)
+    ROOT_PLACE_SCRATCH,  // u0 space1: rt_place's dedupe scratch (PlacedRoom::scratch)
   };
   // b4 (rt_scene.hlsli Lights): RT_ALL_LIGHTS of world position and reach, their count, their colours, their places in
   // the last trace's list (a byte each); a CBV's 256-byte multiple.
@@ -3580,12 +3582,13 @@ class RtScene12 {
   }
 
   // The placed instances' room: their descs (two in turn, the last one's carried instances copied into the next), the
-  // counters and dedupe table (twice the descs), the TLAS and its scratch. A bigger one is made on a worker and put in at a
-  // request's start.
+  // counters and dedupe table (twice the descs), rt_place's dedupe scratch (written anew each request: not recorded), the
+  // TLAS and its scratch. A bigger one is made on a worker and put in at a request's start.
   struct PlacedRoom {
     uint32_t capacity = 0;
     std::array<ComPtr<ID3D12Resource>, 2> instances;
     ComPtr<ID3D12Resource> state;
+    ComPtr<ID3D12Resource> scratch;
     ComPtr<ID3D12Resource> tlas;
     ComPtr<ID3D12Resource> tlas_scratch;
   };
@@ -3608,19 +3611,24 @@ class RtScene12 {
     }
     made->state = Buffer(16 + (uint64_t{capacity} * 2 * 4), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    // rt_place's dedupe scratch: a table entry's owner and an item's slot (8 bytes) and their share of the groups' and
+    // blocks' 16 bytes (one a 64 and a 4096 items) under 9 bytes an entry; a block's rounding and the blocks' counter in 32.
+    made->scratch = Buffer(32 + (uint64_t{capacity} * 2 * 9), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     made->tlas = Buffer(info.ResultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                         D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
     made->tlas_scratch = Buffer(info.ScratchDataSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    return made->instances[0] && made->instances[1] && made->state && made->tlas && made->tlas_scratch;
+    return made->instances[0] && made->instances[1] && made->state && made->scratch && made->tlas && made->tlas_scratch;
   }
 
   // In place of the room before (released once the GPU is past this request).
   void UsePlacedRoom(PlacedRoom* made) {
-    const std::array<std::pair<ComPtr<ID3D12Resource>*, ComPtr<ID3D12Resource>*>, 5> room = {{
+    const std::array<std::pair<ComPtr<ID3D12Resource>*, ComPtr<ID3D12Resource>*>, 6> room = {{
         {std::addressof(placed_instances_[0]), std::addressof(made->instances[0])},
         {std::addressof(placed_instances_[1]), std::addressof(made->instances[1])},
         {std::addressof(placed_state_), std::addressof(made->state)},
+        {std::addressof(placed_scratch_), std::addressof(made->scratch)},
         {std::addressof(tlas_), std::addressof(made->tlas)},
         {std::addressof(tlas_scratch_), std::addressof(made->tlas_scratch)},
     }};
@@ -6235,10 +6243,9 @@ class RtScene12 {
         placed_drawn += draw.instances;
         triangles += uint64_t{mesh.triangles} * draw.instances;
       };
+      // The shadow pass's rows after the main pass's: rt_place's dedupe keeps the lowest drawn instance at a place.
       for (const auto& built_rows : built_placed) place(built_rows);
-      uint32_t placed_main = 0;
       for (const bool cascade : {false, true}) {
-        if (cascade) placed_main = placed_drawn;
         for (uint32_t index = 0; index < placement_count; ++index) {
           if (((shared.rt_placements[index].flags & dlaa_bridge::RT_PLACE_CASCADE) != 0) == cascade) place(shared.rt_placements[index]);
         }
@@ -6261,8 +6268,9 @@ class RtScene12 {
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, written->GetGPUVirtualAddress());
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_INDICES, build_rows_->GetGPUVirtualAddress());
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DESCS, placed_state_->GetGPUVirtualAddress());
-      // The camera (b2: grass outside the view stays out) and the sway's flags and range, then clear, drawn, kept (rt_place's
-      // modes). Grass keeps its alpha tests (v108 took its micromaps as 2-state: a micro-triangle part blade, part gap went
+      list->SetComputeRootUnorderedAccessView(ROOT_PLACE_SCRATCH, placed_scratch_->GetGPUVirtualAddress());
+      // The camera (b2: grass outside the view stays out) and the sway's flags and range, then clear, claim, count, write
+      // (rt_place's modes). Grass keeps its alpha tests (v108 took its micromaps as 2-state: a micro-triangle part blade, part gap went
       // solid, fields black in ATN's debug31; Fast Leaf Shadows still does that for every ray).
       // rt_place's PLACE_ONE_AT_A_PLACE beside the sway's, then Grass Ray Tracing Range (grass past it stays out too).
       const std::array<uint32_t, 4> place_sway = {sway_flags | (((shared.rt_flags & dlaa_bridge::RT_ONE_AT_A_PLACE) != 0) ? 4u : 0u),
@@ -6270,12 +6278,13 @@ class RtScene12 {
                                                   std::bit_cast<uint32_t>(grass_range)};
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, 16, shared.rt_view_projection, 0);
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(place_sway.size()), place_sway.data(), 16);
-      // Drawn twice: the shadow pass's rows after a barrier, so their dedupe finds the main pass's.
-      for (const auto& [mode, threads, first] : {std::tuple{0u, std::max(place_end, placed_capacity_ / 2), instance_count}, std::tuple{1u, placed_main, 0u},
-                                                 std::tuple{1u, placed_drawn - placed_main, placed_main}, std::tuple{2u, place_end, instance_count}}) {
-        // Clearing also takes the dedupe table, four entries a thread.
-        if (threads == 0 || (mode == 2u && (shared.rt_flags & dlaa_bridge::RT_NO_KEPT) != 0)) continue;
-        const std::array<uint32_t, 8> place_dispatch = {mode, job_count, placed_drawn, first, frame, place_end,
+      // The items: this request's drawn instances, then (PLACE_WITH_KEPT) the last dispatch's descs (rt_place ItemCount).
+      const bool with_kept = (shared.rt_flags & dlaa_bridge::RT_NO_KEPT) == 0;
+      const auto items = static_cast<uint32_t>(std::min<uint64_t>(uint64_t{placed_drawn} + (with_kept ? place_end : 0u), uint64_t{placed_capacity_} * 2));
+      for (const auto& [mode, threads] : {std::pair{0u, std::max(place_end, placed_capacity_ / 2)}, std::pair{1u, items}, std::pair{2u, items}, std::pair{3u, items}}) {
+        // Clearing also takes the dedupe table and its owners, four entries a thread.
+        if (threads == 0) continue;
+        const std::array<uint32_t, 8> place_dispatch = {mode | (with_kept ? 16u : 0u), job_count, placed_drawn, instance_count, frame, place_end,
                                                         (version >= 24 && shared.rt_kept_frames != 0) ? shared.rt_kept_frames : RECENT_FRAMES,
                                                         STATIC_RECORDS};
         list->SetComputeRoot32BitConstants(ROOT_DISPATCH, static_cast<UINT>(place_dispatch.size()), place_dispatch.data(), 0);
@@ -8432,6 +8441,7 @@ class RtScene12 {
   ComPtr<ID3D12Resource> smoke_tlas_scratch_;
   uint32_t placed_last_ = 0;
   ComPtr<ID3D12Resource> placed_state_;
+  ComPtr<ID3D12Resource> placed_scratch_;
   uint32_t placed_capacity_ = MAX_INSTANCES;  // their room now (PlacedRoom)
   uint32_t placed_limit_ = MAX_INSTANCES;     // the most (by the GPU's memory)
   uint32_t placed_written_ = 0;               // the last trace's, fitting or not (rt_place's counter)
