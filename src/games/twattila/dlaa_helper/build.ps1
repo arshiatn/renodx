@@ -50,6 +50,9 @@ if ($env:RENODX_TW_REFERENCE_BUILD) {
     & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D "REF_$($pass.ToUpper())" -Fh "$out\rt_reference_$pass.h" -Vn "RT_REFERENCE_$($pass.ToUpper())" "$PSScriptRoot\rt_reference.cs_6_5.hlsl"
   }
 }
+# RENODX_TW_RECORDER_BUILD set: the bridge recorder and its player too (rt_d3d12.hpp RENODX_RECORDER, tests only; a released helper has none).
+Remove-Item "$out\rt_recorder_build.h" -ErrorAction SilentlyContinue
+if ($env:RENODX_TW_RECORDER_BUILD) { Set-Content -Path "$out\rt_recorder_build.h" -Value '#pragma once' -Encoding ascii }
 & "$root\bin\dxc.exe" -nologo -T cs_6_0 -E main -O3 -Fh "$out\fg_ui.h" -Vn FG_UI "$PSScriptRoot\fg_ui.cs_6_0.hlsl"
 & "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -Fh "$out\rt_path_ser.h" -Vn RT_PATH_SER "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
 # NVIDIA's SHaRC (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/SHARC: its 1.6.5 release) for SHaRC Radiance Cache when

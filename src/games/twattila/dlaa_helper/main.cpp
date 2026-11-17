@@ -134,6 +134,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                       : "[TW DLAA helper] The helper had stopped: what the game's GPU waited for from it could not be signalled.");
     return freed ? 0 : 1;
   }
+#if defined(RENODX_RECORDER)
+  // The recorder build's player: "<any> play <recording folder> [<dump folder>]" (below, once Nsight Graphics' activity is up).
+  const std::vector<std::wstring> play_arguments(arguments, arguments + argument_count);
+#endif
   LocalFree(arguments);
   _wfopen_s(&log_file, log_path.c_str(), L"w");
   wcsncpy_s(dump_path.data(), dump_path.size(), (folder + L"\\renodx-tw-dlaa64.dmp").c_str(), _TRUNCATE);
@@ -161,6 +165,33 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                             (initialized == NGFX_Result_Success ? "on" : "off"), static_cast<int>(initialized))
                     .c_str());
   }
+#if defined(RENODX_RECORDER)
+  // The player: a recording's requests on a scene of its own on the first adapter, no game (rt_d3d12.hpp PlayRecording; Nsight
+  // Graphics' frame boundary before each trace); its log renodx-tw-play.log next to the helper; its dump <recording>\play by
+  // default.
+  if (play_arguments.size() >= 4 && play_arguments[2] == L"play") {
+    if (log_file != nullptr) fclose(log_file);
+    _wfopen_s(&log_file, (folder + L"\\renodx-tw-play.log").c_str(), L"w");
+    const std::filesystem::path recording = play_arguments[3];
+    ComPtr<IDXGIFactory4> play_factory;
+    ComPtr<IDXGIAdapter1> play_adapter;
+    auto player = std::make_unique<twattila::dlaa_helper::RtScene12>();
+    std::string report;
+    const bool played = SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(play_factory.GetAddressOf())))
+                        && SUCCEEDED(play_factory->EnumAdapters1(0, play_adapter.GetAddressOf())) && player->Initialize(play_adapter.Get(), folder, false)
+                        && player->PlayRecording(recording, (play_arguments.size() >= 5) ? std::filesystem::path(play_arguments[4]) : recording / L"play",
+                                                 [&] {
+                                                   NGFX_FrameBoundary_D3D12_Params boundary = {.version = NGFX_FrameBoundary_D3D12_Params_VER,
+                                                                                               .commandQueue = player->Queue()};
+                                                   NGFX_FrameBoundary_D3D12(&boundary);
+                                                 },
+                                                 &report);
+    if (!played && report.empty()) report = player->Status();
+    if (const std::string reports = player->TakeReports(); !reports.empty()) ReShadeLogMessage(nullptr, 0, reports.c_str());
+    LogWithTime(std::format("[TW player] {}: {}", played ? "Played" : "FAILED", report).c_str());
+    return played ? 0 : 1;
+  }
+#endif
   // RENODX_TW_REPLAYABLE (Nsight Graphics captures of the 4K harness, tools/tw/nsight): frames its replayer can make again.
   // It makes no cross-process shared fence and no second device from ID3D12DeviceFactory, so the ray tracing device opens
   // no shared fence (the addon's value is waited for and its next signalled here on D3D11, which Nsight does not capture;
@@ -377,8 +408,74 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     return (cluster_data != nullptr) ? std::span(cluster_data, std::min<size_t>(bytes, twattila::dlaa_bridge::RT_CLUSTER_DATA_BYTES))
                                      : std::span<const uint8_t>();
   };
+#if defined(RENODX_RECORDER)
+  // The bridge recorder (the recorder build; rt_d3d12.hpp SaveRecordingState): with RENODX_TW_RECORD=<folder> (relative: the
+  // helper's) set when the game starts, a recording starts at the trace of frame RENODX_TW_RECORD_AT (or the first after it)
+  // or at the first after renodx_record_now appears next to the helper (looked for every 30 traces, then deleted): the
+  // snapshot, then the requests of RENODX_TW_RECORD_FRAMES frames (2) into <folder>\frame_<frame> (with
+  // RENODX_TW_RECORD_HISTORIES=1 the last frame's histories too).
+  const std::filesystem::path record_folder = [&] {
+    std::array<wchar_t, MAX_PATH> value = {};
+    if (GetEnvironmentVariableW(L"RENODX_TW_RECORD", value.data(), MAX_PATH) == 0) return std::filesystem::path();
+    const std::filesystem::path given = value.data();
+    return given.is_absolute() ? given : std::filesystem::path(folder) / given;
+  }();
+  const auto record_number = [](const wchar_t* name, uint32_t otherwise) {
+    std::array<wchar_t, 32> value = {};
+    return (GetEnvironmentVariableW(name, value.data(), static_cast<DWORD>(value.size())) != 0) ? static_cast<uint32_t>(std::wcstoul(value.data(), nullptr, 10))
+                                                                                                : otherwise;
+  };
+  struct Recorder {
+    uint32_t at = UINT32_MAX;  // the frame a recording starts at (UINT32_MAX: none asked for)
+    uint32_t frames = 2;
+    uint32_t first = 0;
+    uint32_t last = 0;
+    const twattila::dlaa_helper::RtScene12* scene = nullptr;  // the recording's (null: none on its way)
+    uint32_t traces = 0;
+    uint32_t waits = 0;
+  } recorder = {.at = record_number(L"RENODX_TW_RECORD_AT", UINT32_MAX), .frames = std::max(record_number(L"RENODX_TW_RECORD_FRAMES", 2), 1u)};
+  const std::filesystem::path record_marker = std::filesystem::path(folder) / L"renodx_record_now";
+  const auto record = [&](const twattila::dlaa_bridge::Shared& from) {
+    if (record_folder.empty()) return;
+    const uint32_t frame = from.rt_frame;
+    if (recorder.scene != nullptr) {
+      if (recorder.scene != scene.get()) {
+        LogWithTime("[TW recorder] The recording stopped: a new ray tracing scene (a GPU reset, a failed request or 10 s idle).");
+        recorder.scene = nullptr;
+      } else if (frame > recorder.last || frame < recorder.first) {
+        LogWithTime(std::format("[TW recorder] {}.", scene->FinishRecording()).c_str());
+        recorder.scene = nullptr;
+      }
+      return;
+    }
+    if (++recorder.traces % 30 == 0 && GetFileAttributesW(record_marker.c_str()) != INVALID_FILE_ATTRIBUTES) {
+      recorder.at = frame;
+      std::error_code ignored;
+      std::filesystem::remove(record_marker, ignored);
+    }
+    if (recorder.at == UINT32_MAX || frame < recorder.at) return;
+    std::string why;
+    bool refused = false;
+    const std::filesystem::path into = record_folder / std::format("frame_{}", frame);
+    if (!scene->SaveRecordingState(into, frame, &why, &refused)) {
+      if (refused) {
+        recorder.at = UINT32_MAX;
+        LogWithTime(std::format("[TW recorder] Not recorded at frame {}: {}.", frame, why).c_str());
+      } else if (recorder.waits++ % 60 == 0) {
+        LogWithTime(std::format("[TW recorder] Frame {}: {}; tried again at the next trace.", frame, why).c_str());
+      }
+      return;
+    }
+    scene->RecordFrames(into, frame, frame + recorder.frames - 1, true, record_number(L"RENODX_TW_RECORD_HISTORIES", 0) != 0);
+    recorder = {.frames = recorder.frames, .first = frame, .last = frame + recorder.frames - 1, .scene = scene.get(), .traces = recorder.traces};
+    LogWithTime(std::format("[TW recorder] Recording frames {} to {} into {} ({}).", frame, recorder.last, into.string(), why).c_str());
+  };
+#endif
   const auto run = [&](const twattila::dlaa_bridge::Shared& from, std::span<const uint8_t> sets) {
     if (version >= 7 && from.rt_request >= 2) return scene->Paths(from, version, from.rt_request == 3);
+#if defined(RENODX_RECORDER)
+    record(from);
+#endif
     // A frame's ray tracing starts with its trace request, so the last frame's last submit is behind: Nsight Graphics'
     // frame boundary (the helper never presents, its default delimiter).
     NGFX_FrameBoundary_D3D12_Params boundary = {.version = NGFX_FrameBoundary_D3D12_Params_VER, .commandQueue = scene->Queue()};
