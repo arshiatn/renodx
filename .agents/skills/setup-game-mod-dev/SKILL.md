@@ -29,7 +29,7 @@ Keep this skill focused on getting the mod development environment and baseline 
 - Keep changes local to one `src/games/{game}` folder unless cross-mod work is explicitly requested.
 - Do not change global CMake presets, CI workflows, vendored dependencies, or external submodules.
 - New mods start from `src/games/generic`.
-- Use the CMake target named after the mod folder; the output artifact is `renodx-{mod}.addon64` or `.addon32`.
+- Use the CMake target named after the mod folder; the output artifact is `renodx-{mod}.addon64` or `.addon32`. `cmake --build` takes either `{mod}` or the artifact's full name with its architecture suffix; `renodx-{mod}` without `.addon64` / `.addon32` is an "unknown target" to ninja.
 - Use the `devkit` and `mcp_bridge` targets for local inspection; their debug outputs are `renodx-devkit.addon64` and `renodx-mcp-bridge.exe`.
 - Prefer Clang CMake presets for real development builds. Use VS Code CMake build integration when available, but select the `clang-*` configure/build presets. Treat `ninja-*` and `vs-*` presets as workflow testing paths only, not normal mod development paths.
 - Do not build a game addon while that game is running with the addon loaded; the DLL can be locked.
@@ -129,6 +129,7 @@ When working on mods, assume debug build artifacts. Use release presets only for
 4. Build the game target named `{mod}`.
 5. If a build fails because the output `.addon64`/`.addon32` is locked, stop the game and rebuild; do not work around it by renaming random artifacts.
 6. A ninja build with no compiler child process and flat CPU is hung: end it before starting another, since on a shared machine it blocks every build queued behind it. Do not pipe builds through PowerShell's `Select-Object -Last`; it holds all output back until the build ends, so a hang looks like a slow build.
+7. Read the build's last lines (each target linked, no "unknown target", the exit code) before writing "built" or "exit 0" into a commit, handoff or report: a commit once claimed a build that never ran.
 
 ## Game-folder ReShade and addon links
 
