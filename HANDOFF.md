@@ -346,6 +346,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RYSE DLSS SQRT (ATN 09:4x): Ryse helper DLSS presets L/M get Attila's sqrt feed ... | next Ryse round
 - PT DI REVISION (rv1_ review "build after these changes", designs/pt_di_rtxdi_rev ... | des1_ (revision), then the helper queue
 - SHARC DESIGN REVISION (rv3_ review "build after these changes", designs/sdk_repl ... | des3_ (revision), then the helper queue
+- GPU CAPTURE ROUND 2 (ATN 09:5x): after the new features (SHaRC update, PT DI / R ... | coordinator (after plan step 6 + reviews)
+- CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best c ... | cpb_
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -2286,6 +2288,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         way; B3 the audit's D2 not approved as written; the anti-firefly risk is moot (ours <= 1); keep build\downloads'
         1.6.5 folder for older worktrees (S8); 11 should-fix + 6 minor in the review. Owner: des3_ (revision), then the helper
         queue
+      - [ ] GPU CAPTURE ROUND 2 (ATN 09:5x): after the new features (SHaRC update, PT DI / RTXDI, the bug fixes) and their
+        reviews: Nsight GPU captures of night1, sea1, stress_test_log2 (and day1 if useful) ONCE per replay (never more than
+        once per siege), 100 % GPU limited: Graphics 2 of 2 at its Reset values (not CPU limited), RT/PT on, DLAA + Ray
+        Reconstruction; fresh backups, ATN's ini restored after; a GPU speed list from them. Owner: coordinator (after plan
+        step 6 + reviews)
+      - [ ] CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best combination (heapfix P + trim add-on,
+        ATN's maxed Graphics 2 of 2) on stress + night1 once each: the remaining hot spots as "next CPU candidates" in
+        cpu_bench_results.md. Owner: cpb_
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
