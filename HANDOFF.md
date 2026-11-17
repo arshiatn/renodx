@@ -337,8 +337,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CAPTURE TOOLING (cap1_ 05:xx): run_game's memory.csv overwritten every start (fi ... | coordinator
 - BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before th ... | bug1_
 - BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows ... | bug2_
+- BUG4 RUNS (bug4_ NEEDS A RUN, specs in bugs_1117/bug4.md): (1) sea1 with ships s ... | coordinator (one game run)
+- BUG4 NEW BOXES (bug4_ 08:xx): (a) foam: the ocean's refraction distortion double ... | next render-scale / helper / per-game rounds, (d) coordinato
 - BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Res ... | coordinator
-- (STARTED 02:1x bug4_: causes + census + add-on-side fixes, helper side as a plan ... | coordinator -> bug4_ after the captures
 - (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
 - REF1 REVIEW (rev_ 04:xx, Opus xHigh: plan_1117/reference_suite_review.md, verdic ... | ref_ (v2), then one implementer at a time after bug2_ leaves
 - (PROVEN ref0_ 07:xx, test/tw_rt_open_sky merged 5b41d3b72 (WARP, the helper's ow ... | bug2_ (I3), then a helper fix round (I4, I5)
@@ -2208,9 +2209,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         3 preset buttons 0 -> 1 in 10 games; no row in Tales / Expeditions (UE's own mip bias), Rome Remastered (no LOD bias
         yet), Divinity 1 / 2, R.U.S.E. (no render scale) BUG3 (bug3_, started 02:xx): DEBUG44 (g) "For every single game, the LOD bias for everything should be on":
         the row on by default + in the presets in every game that has it, README lines. Owner: bug3_
+      - [ ] BUG4 RUNS (bug4_ NEEDS A RUN, specs in bugs_1117/bug4.md): (1) sea1 with ships selected, AntiAliasingDlssMode 0
+        vs 4 + a frame trace at 4 (run_game -Trace 45): footprints at both, no stripes; (2) sea1 close to a ship with
+        RayTracedDebugView: rigging in the scene, rope shadows on the sails, Smooth Banner Shadows 1 vs 0; (3) night1 with RT
+        and RayTracedLightGlow=1: no 4x4 rim around the cypresses against the sky. Owner: coordinator (one game run)
+      - [ ] BUG4 NEW BOXES (bug4_ 08:xx): (a) foam: the ocean's refraction distortion doubles at 50 % (view_share WHOLE
+        patch), a new patch kind (136 water rows apart in WARP); (b) helper (after bug2_): fog sky texels march the camera ray
+        so sky and far hills glow alike (the horizon stays lighter than the sky until then); (c) lead: 10 WH1 / WH2
+        slm_highdef sun shaders differ from 100 % at 33 % outside the overlay under the test's camera (Attila / Thrones
+        exact): check with a 50 % trace; (d) run_game.ps1 -Ini for Attila; (e) WH2 / Troy / Pharaoh rigid ropes still held
+        (not proven drawn); (f) READMEs still call Smooth Banner Shadows "Experimental, off". Owner: next render-scale /
+        helper / per-game rounds, (d) coordinator
       - [ ] BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Reset / No RT/PT / RT/PT (Shogun 2 /
         Ryse: their ray buttons): the row comes back on, the level row keeps the player's value. Owner: coordinator
-      - [ ] (STARTED 02:1x bug4_: causes + census + add-on-side fixes, helper side as a plan while bug2_ is in it) BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails + missing ropes (sea1), (f)
+      - [x] DONE bug4_ 6f3867fee (merged 5f03fd647; bugs_1117/bug4.md, causes written first; WARP tw_strip_capture,
+        tw_fog_upsample, tw_overlay_reads 304 rows, tw_attila_builds 17/17 + 17/17, static_checks 0): (f) the stripes =
+        overlays (selection indicators, colour overlays) drawn into display-sized targets while their readers (ocean uv in
+        the vertex shader, sun slm + campaign planes via g_overlay_view_projection) bypass view_share: RENDER_SCALE_READS rows
+        for every overlay reader in Attila 44 / Thrones 44 / Rome II 95 / WH1 31 / WH2 44 / Troy 41 / Pharaoh 45, bit-equal at
+        100 %; static census over the whole dumps found nothing else; (e) ropes: rigging 3926A823 is a triangle strip and
+        Capture took lists only (+ it sat behind Rarer Objects): strips captured, rigging out of Rarer Objects; steps on
+        sails = the thin-caster receiver test: Smooth Banner Shadows on by default (no longer Experimental); (d) halo = the
+        fog upsample was depth-blind: depth-aware now (t45 positions), sky pixels keep the sky's value; no frame trace in
+        sea1_perf: run_game applies -Ini only for WH3, and ATN's preset is DLSS 50 % in both sea runs BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails + missing ropes (sea1), (f)
         render scale below 100 % at sea (sea1 traces + a static census of the shipped shaders). Owner: coordinator ->
         bug4_ after the captures
       - [ ] (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-force reference per effect in the
