@@ -352,6 +352,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffus ... | next WH3 helper round
 - X86 64-BIT ATOMIC LOADS (rv4_ 10:5x): std::atomic<uint64_t> loads in the x86 add ... | next shared-utils round (with the memo)
 - EFFORT A/B (ATN 10:3x "test low + your judgement and just medium effort for test ... | coordinator
+- HEAPFIX P INSTALL (ATN 12:2x "Install the fastest heapfix build for me please"): ... | coordinator
+- HEAPFIX AUTHOR ZIP 2 (ATN 12:2x: the author liked the 11-15 zip; "make another z ... | coordinator after cpb_'s report
+- RECORDER FIRST (ATN 12:2x: "Wouldn't that be amazing for our RT/PT further optim ... | coordinator
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -2344,6 +2347,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         session, a fresh judge reads only the results). Compare tokens per game start (runner + judge vs cpb_) and quality
         (wrong steps, missed restore checks, wrong conclusions; the coordinator spot-checks both); report to
         ATN, then keep the winner as the rule (memory feedback-data-run). Owner: coordinator
+      - [ ] HEAPFIX P INSTALL (ATN 12:2x "Install the fastest heapfix build for me please"): after cpb_ ends (its restores
+        would undo it): back up ATN's dinput8.dll (6.10.6, e5b39df0) to install/backups/<time>, copy bench heapfix P
+        (8e8fa96a, the prefetched radix sort: -8..-13 ms stress, -4.5..-7 ms night1 vs 7.0; B4 faster only in huge battles,
+        slower at Constantinople), check the hash and heapfix.log's sort line on the next start; ATN's heapfix.ini kept;
+        own use only (heapfix's licence). Owner: coordinator
+      - [ ] HEAPFIX AUTHOR ZIP 2 (ATN 12:2x: the author liked the 11-15 zip; "make another zip file that he can give to
+        his own opus"): like Downloads/AttilaCPUPerfFix_7.0_notes_2026-11-15.zip (README + one folder per proposal: NOTE.md,
+        .patch, bench numbers), written for his AI agent: P (prefetched sort) and B4 (threaded sort for 32768+ items, scene
+        dependent), loopanim / x87keep status, the render thread's wait for the one-worker sort (12.6 / 6.2 / 2.6 ms),
+        memcpy 0x1a280f0's share, the engine site 0x18635a0 design, the 7b recording's next candidates; our patches against
+        his 7.0 source only, no RenoDX code; ATN passes it on. Owner: coordinator after cpb_'s report
+      - [ ] RECORDER FIRST (ATN 12:2x: "Wouldn't that be amazing for our RT/PT further optimizations"): REF BUILD step 4
+        (route B: the bridge recorder + harness player, 12 recordings of night1 / sea1 / stress / day1) moves up: the next
+        helper implementer after ref2_, before SHaRC; then RT/PT optimization and SHaRC's G5 / G6 run in Nsight on recorded
+        real frames without starting the game. Owner: coordinator
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
