@@ -1409,6 +1409,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     return value.first == "GraphicsShadowMapSize" || value.first == "RayTracedDebugLog" || value.first == "FasterGameCpuCode"
            || value.first == "FasterRenderLists";
   });
+  // ATN 2026-11-17 "For every single game, the LOD bias for everything should be on": every preset turns Texture LOD Bias
+  // on All Textures on, though Defaults leaves Anti-Aliasing out (the bias's own level stays the player's).
+  if (b.lod_bias_trilinear != nullptr) {
+    page_defaults.emplace_back("AntiAliasingTextureLodBiasTrilinear", 1.f);
+  }
   for (const std::string& section : Sections()) renodx::utils::settings::section_tints.emplace_back(section, TITLE_TINT);
 }
 

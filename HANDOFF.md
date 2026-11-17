@@ -6,7 +6,7 @@ from (search its text). Tick here and on that line when ATN answers.
 - [ ] NEW 11-16 (from the AUDIT): B: RT AO in place of the game's AO (WH1-3, Troy, Pharaoh, Rome II, Rome Remastered,
   Shogun 2, Tales, Expeditions): look right?; B: after a window switch, still HDR in Attila / Thrones / WH1 / WH2 / Tales /
   Ryse / R.U.S.E.?; C: Rendering Mode SDR on an HDR display with Gamma Correction on is now the darker 2.2 picture (Rome
-  II / WH1 / WH2 / Troy / Pharaoh): OK?; C: Divinity 1's smoother grade shoulder (shipped as default in d1 v3): keep as
+  II / WH1 / WH2 / Troy / Pharaoh): OK?; C: Divinity 1's smoother grade shoulder (shipped as default in d1 v3; an Experimental row, off, since 9da00b28b): keep as
   default, or an Experimental row (div1_ prepares the row)?; C: Ryse No RT/PT as Attila's (GT-VBAO / GT-VBGI / Bend on)
   after the in-game checks?; C: Expeditions' ten TAA hooks proven only at level B but on: Experimental off, or a trace
   with sg.AA 3?; C: Rome Remastered Settings Mode Simple / Advanced vs the three pages, and its Gamma Correction row;
@@ -183,6 +183,7 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [x] ANSWERED 01:xx (ATN: "Row placement, that sounds good!"; the occlusion source asked, coordinator: keep the specular-occlusion lobe, more correct for reflections) C: Path-Traced Reflection Occlusion: lobe vs sky visibility, row next to Path-Traced Ambient (graphics_page, shs2_)
 - [ ] PARTLY ANSWERED 02:xx (ATN: "It should have the same/similar presets like Attila. No RT/PT should use GT-VBAO, GT-VBGI, SSS and SSSR (if that is implemented)": DONE 150e41174, No RT/PT turns GT-VBAO + GT-VBGI + Bend on; SSSR when implemented; probes question explained, coordinator recommends keep (GT-VBAO darkens the probes' light in corners, GT-VBGI adds the nearby bounce: the visibility-bitmask way; black probes = dark wherever the screen sees no light); defaults still open) C: Divinity 2: GT-VBGI (like the rays' bounce) adds on top of the light probes' IBL diffuse: keep, or black the probes' diffuse under GT-VBGI? After a run: No RT/PT (Recommended) turns Bend and GT-VBGI on, as Attila's? Defaults OK: GT-VBAO radius 1 m, Bend thickness 0.005? (from: div2_ 01:xx)
 - [x] ANSWERED 02:xx (ATN: "Maybe do one nsight capture first.": the paths kernel's in-game Nsight goes into the capture runs, then drop or do) C: Attila paths trace / shade split: measured ~0 net at your rows (trace-only 0.288 vs 0.366 ms, no occupancy win): drop it, or one in-game Nsight of the trace-only helper first? (from: gpu3_ 01:xx)
+- [ ] C: LOD bias presets: they now turn "on All Textures" on but leave the level row (Off / Matched / Sharper / Sharpest) alone: a player at Off still gets no bias after a preset. Should presets turn Off back to Sharper (the default) and keep any other level? (from: bug3_ 03:xx)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -327,14 +328,18 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R7 / TEST BOXES (shs2_ 23:xx): R7 clamps: Shogun 2 sea overlay writers C8375A74 ... | per-game rounds, next test round
 - PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction): C:/Users/arshi/.cla ... | coordinator
 - (sk3_ 01:xx) Shared shaders rule (skills lesson 12): rysesonofrome/upscale_outpu ... | next shared round
+- CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila ... | coordinator
 - BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before th ... | bug1_
 - BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows ... | bug2_
-- BUG3 (bug3_, started 02:xx): DEBUG44 (g) "For every single game, the LOD bias fo ... | bug3_
+- BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Res ... | coordinator
 - BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails ... | coordinator -> bug4_ after the captures
-- REF1 (ref_, started 02:xx): reference suite step 3: first the design (tools/tw/r ... | ref_
+- (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
+- REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
+- FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
+- NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
 - SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator after REF1
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
-- CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benc ... | coordinator, after the current merges + install, ATN's go
+- (STARTED 01:5x: tools/tw/captures_1117/captures_all.ps1, six starts: night1, sea ... | coordinator, after the current merges + install, ATN's go
 - ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart batt ... | coordinator, then a CPU / memory round
 - STRESS REPLAY stress_test_log2 (ATN 00:3x: "Maybe do a cpu/gpu recording there t ... | coordinator (plan phase 1)
 - (row moved under the AO method row, ATN's placement, shs2_ 06b31199f: page dumps ... | tw1_ (Attila / Thrones), per-game rounds for the twins
@@ -2115,6 +2120,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         2's upscale_output.cs_5_0.hlsl; Shogun 2's bend_sss_gpu.hlsli and pcss.hlsli are shared the same way: move into
         twattila as shared files. testing.md says 54 suites (2026-11-16), now 72 test/tw_* folders: refresh the list.
         Owner: next shared round
+      - [x] DONE 03:0x (plan step 1, ATN 01:xx "record our next plans for them in handsoff"): every game's next plan
+        in C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw/round_notes/next_plans_1117.md (344 lines, 300 bullets,
+        16 games + Shared + Runs; bugs, then parity, then your decisions, then runs; each bullet points at its open box
+        here by its first words: every one of the 262 open boxes placed except 2 records). The boxes stay the to-do; the
+        file is the per-game view. Stale lines fixed: Divinity 2 RT reflections (done 31770fe86), Divinity 1 grade
+        shoulder (off, 9da00b28b)
+      - [x] DONE 01:48 (plan step 0; log tools/tw/round_notes/plan_1117/install_1117.txt, backups install/backups/
+        20261117_014824, final check ALREADY INSTALLED for every file): all 16 games stamped + installed on helper117, tree
+        da2b1ef7d: Attila v166, WH3 v65, Pharaoh v73, Rome II r9, Thrones r10, WH2 v56, Shogun 2 v79, Rome Remastered v17,
+        Troy v60, WH1 r11, Ryse fix60, Tales v78, Expeditions v35, Divinity 1 v4, Divinity 2 v4, R.U.S.E. u5. Checks: all 16
+        built, tw_vanilla_exact 416 EXACT / 0 FAIL + tw_psychov35 PASS (x86 + amd64). Next free tags: attila 167, wh3 66,
+        pharaoh 74, rome2 r10, thrones r11, wh2 57, shogun2 80, romer 18, troy 61, wh1 r12, ryse fix61, tales 79,
+        expeditions 36, divinity1 5, divinity2 5, ruse u6; helper 118
+      - [ ] CAPTURE SPEED LIST (ATN 02:4x "For upcoming windows cpu/gpu recordings of Attila, if you find anything that can
+        speed cpu/gpu of the game, list them please or plan to do them please"; "Don't worry about sound or time. My pc can
+        run for days"): from the three captures' WPR + Nsight: every CPU / GPU hot spot of the game and of RenoDX with its
+        expected gain, written to tools/tw/round_notes/plan_1117/speed_list.md, each a box here with an owner (a CPU / GPU
+        round after the bug fixes, plan step 4). Owner: coordinator
       - [ ] BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before the refrence runs?" -> the ones
         that need no capture now, in parallel): DEBUG44 (a) PsychoV35 red / NaN in darks: WARP repro with negative /
         near-black / Inf / NaN input, find the producer, fix V35 for every game, tw_psychov35 + tw_vanilla_exact still
@@ -2122,15 +2145,45 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows off blown out + (c) path
         torch shadow crevice leaks; every combination of the torch rows (Light / Shadows from Path, Follow the Camera,
         Torch Light in Path-Traced GI) proven against the path probe's reference. Owner: bug2_
-      - [ ] BUG3 (bug3_, started 02:xx): DEBUG44 (g) "For every single game, the LOD bias for everything should be on":
+      - [x] DONE bug3_ 1b7999885 (merged 2b6ac018c): "LOD bias for everything" = Texture LOD Bias on All Textures
+        (AntiAliasingTextureLodBiasTrilinear), already on by default everywhere since 98b1ef105; now every preset (Reset /
+        No RT/PT / RT/PT in the graphics_page games, Shogun 2 / Ryse's ray buttons) turns it on too; page dumps: only the
+        3 preset buttons 0 -> 1 in 10 games; no row in Tales / Expeditions (UE's own mip bias), Rome Remastered (no LOD bias
+        yet), Divinity 1 / 2, R.U.S.E. (no render scale) BUG3 (bug3_, started 02:xx): DEBUG44 (g) "For every single game, the LOD bias for everything should be on":
         the row on by default + in the presets in every game that has it, README lines. Owner: bug3_
+      - [ ] BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Reset / No RT/PT / RT/PT (Shogun 2 /
+        Ryse: their ray buttons): the row comes back on, the level row keeps the player's value. Owner: coordinator
       - [ ] BUG4 (after the captures): DEBUG44 (d) RT shadow halo (night1), (e) blocky sails + missing ropes (sea1), (f)
         render scale below 100 % at sea (sea1 traces + a static census of the shipped shaders). Owner: coordinator ->
         bug4_ after the captures
-      - [ ] REF1 (ref_, started 02:xx): reference suite step 3: first the design (tools/tw/round_notes/plan_1117/
+      - [ ] (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-force reference per effect in the
+        helper on the same frame, findings = estimator bug / model delta / coverage gap, own seeds + offsets + no caps,
+        analytic checks (AO by a wall, edge penumbra, fog plate, point-light line, furnace), controls from known-buggy
+        commits; build order R0a skeleton, R0b compare + analytic scenes, R1 torches (64 combinations), R2 sun shadows +
+        coverage, R3 GI / PT Ambient + dark texels, R4 AO, R5 reflections, R6 fog, B bridge recorder + harness player for
+        real game frames; ~57-79 agent-hours, 3.5-4.5 h GPU; LEFT: the Opus xHigh design review (rev_, running), then
+        build one step at a time) REF1 (ref_, started 02:xx): reference suite step 3: first the design (tools/tw/round_notes/plan_1117/
         reference_suite.md: one brute-force reference per RT/PT effect, inputs, metrics, tolerances, controls, Nsight /
         GPU-lock rules), an Opus xHigh check of the design, then build it on the existing harness captures; ATN's new
         replays' captures added when they exist. Owner: ref_
+      - [ ] REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures run tonight without the recorder
+        (WPR / timings / shots / frame trace / address space need none); route B (bridge recorder + harness player) built
+        next and a second, shorter capture pass records night1 / sea1 / stress frames for the references; the recorder
+        lives in the helper behind an env switch, zero cost off (HARNESS_DUMP + Nsight proof), no second build swap;
+        recordings on C: (268 GB free; 10-20 GB expected); tolerance 1 % (0.5 % = 4x samples, only where needed); model
+        deltas (ContactShade, first-vertex sky calibration, 2-layer leaf cap, 32-light caps in paths / fog vs 100+ night
+        lights, uniform fog weights, sky_range) reported with numbers, unchanged unless ATN picks a row; R2 adds a debug
+        view of the game's own sun shadow-map term. Owner: coordinator
+      - [ ] FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead of us finding bugs/wrong stuff at
+        once" -> "Then let's do all those 5"): (1) reference suite R0a..R6 after the design review; (2) coverage check: the
+        rays' scene vs what the game draws, every object (sails, banners, ropes, cloth, LOD, animation), in R2; (3) free-code
+        comparisons per effect: pbrt-v4 formulas, RTXDI / RTXPT / NRD / SHaRC, Falcor, kajiya (same inputs, ours vs theirs);
+        (4) route B recorder + harness player, then a second capture pass on night1 / sea1 / stress; (5) Opus review of all
+        shared code. Owner: coordinator (one implementer at a time in the helper)
+      - [ ] NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. Do them too"): survey (nvsdk_,
+        running) -> tools/tw/round_notes/plan_1117/nvidia_sdks.md: licence, use vs compare, already in tree, size; ATN
+        02:xx: "You are allowed to download those. Or any SDKs that is 100% from Nvidia": official NVIDIA sources only,
+        each into tools/nvsdk/<name>; then each into the plan step it serves. Owner: coordinator
       - [ ] SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix our skill sets again"): the
         lessons of the bug fixes + reference suite into .agents/skills + the zip. Owner: coordinator after REF1
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
@@ -2152,7 +2205,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         shader for screen-space reads (not only traced ones) + the sea1 traces, every TW game with sea battles; owner bug1_
         after the sea1 capture. (g) LOD BIAS: ATN "For every single game, the LOD bias for everything should be on": the
         Texture LOD bias on all textures row on by default in every game; owner bug1_.
-      - [ ] CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benches), sea1 (go back a bit,
+      - [ ] (STARTED 01:5x: tools/tw/captures_1117/captures_all.ps1, six starts: night1, sea1, sea1_perf (DLSS Performance
+        + Frame Trace), stress, stress_noaddon (address space without RenoDX); outputs tools/tw/captures_1117/<label>/; no
+        harness frame recorder yet: route B of the reference suite, a second pass later) CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benches), sea1 (go back a bit,
         everything in view), stress_test_log2 (no camera move, it spawns where ATN wants)): per replay one scripted run on
         the newest install: bench + WPR (ATN's tasks) + Nsight GPU trace + harness frame captures + Time Each Pass; stress
         also the address space with / without RenoDX (restart crash box); traces for DEBUG44 (d)-(f); night1 also the paths kernel's in-game Nsight (registers / occupancy / time, the split
@@ -2310,7 +2365,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         page label says "Graphics 1 of 2". Owner: next Divinity 1 round
       - [ ] (tpa_'s spec: rt_scene::WriteSky(context, float4[6]) + a host-sky flag in SettingsOf; today a non-TW host sets settings.path_ambient, writes 6 axis irradiances into rt_sun texels 3-8 (texel 3 w != 0 = sky, texel 4 = scale, texel 6 = 0 unless y-up), drops its own diffuse sky while runtime.path_ambient_on (under runtime.mutex), turns RT AO off) SHARED STEP: rt_core's path ambient works only for TW hosts (internal::ambient_cube): Path-Traced Ambient + RT /
         PT GI for non-TW hosts (Divinity 1 / 2, same gap as Tales / Expeditions, tpa_). Owner: shared round with tpa_'s result
-      - [ ] (div2_ 11-16 DONE: RT sun shadows + RT AO cb2aad103, GI (One Bounce / ReSTIR GI, Strength row) + Path-Traced Ambient replacing PPApplyAO + the IBL diffuse 77078392b (Experimental off, tpa_'s route, no rt_core change), KeepSun fix (tested t0 = the 1x1 Exposure: sun direction only at LinearizeDepth); WARP tw_d2_helper 1-9 PASS; LEFT: RT reflections (rt_guides CS + 7 IBL specular shaders vanilla exact + DeferredSSR off), runs) Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask, RT AO / PT ambient replacing
+      - [ ] (div2_ 11-16 DONE: RT sun shadows + RT AO cb2aad103, GI (One Bounce / ReSTIR GI, Strength row) + Path-Traced Ambient replacing PPApplyAO + the IBL diffuse 77078392b (Experimental off, tpa_'s route, no rt_core change), KeepSun fix (tested t0 = the 1x1 Exposure: sun direction only at LinearizeDepth); WARP tw_d2_helper 1-9 PASS; LEFT: runs; RT reflections DONE 31770fe86) Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask, RT AO / PT ambient replacing
         PPApplyAO, RT / PT GI replacing the IBL diffuse, RT reflections replacing IBL_Specular; the ledger's stacking lines)
         as Divinity 1's steps 9-10. Owner: next Divinity 2 round
       - [x] DONE 12:06 (eob_, 26 starts / 25 valid, ATN's files restored 0 mismatches; report
@@ -2516,7 +2571,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         then the HDR bug round
       - [ ] [P] ATN DECIDES R1 Div1 mode 1 "UC2 Extended / PsychoV30" = UpgradeToneMap then PsychoV30 (tonemappers.hlsli
         :141-143) + preset "PsychoV30 (earlier Recommended)": ATN said keep the old ones, decide at the end. Owner: ATN
-      - [ ] [P] (hca_: Divinity 1's smooth shoulder from 0.8 shipped as the default in a6762afab / d1 v3: div1_ moves it to an Experimental row, off, unless you keep it) ATN DECIDES R1 shoulders not identity below their start: Neutwo from 0 (grade below white moves with Peak:
+      - [ ] [P] (hca_: Divinity 1's smooth shoulder from 0.8 shipped as the default in a6762afab / d1 v3: div1_ moves it to an Experimental row, off, unless you keep it; DONE 9da00b28b, code default 0) ATN DECIDES R1 shoulders not identity below their start: Neutwo from 0 (grade below white moves with Peak:
         1000/203 -> 0.18 = 0.177, 0.5 = 0.45, 1 = 0.71) in Attila / Rome II / Thrones / WH1 / Troy / Pharaoh / Rome R /
         Div1 Pragmap (Troy t00:147 + Pharaoh t00:171 comment "SDR exactly below white" is false); hard max(m,1) knee
         (kink at white) in WH2 / WH3 / Ryse / Tales / Expeditions / Div1 GradeAfterCurve. Fix = an Experimental row.

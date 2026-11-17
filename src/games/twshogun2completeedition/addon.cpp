@@ -2109,7 +2109,12 @@ void BuildRuntimeData() {
         .group = "rays-presets",
         .tooltip = tooltip,
         .tint = RAYS_TINT,
-        .on_change = std::move(on_change),
+        // ATN 2026-11-17 "For every single game, the LOD bias for everything should be on": each of them turns Texture LOD
+        // bias on all textures on (as Attila's page presets; the bias's own level stays the player's).
+        .on_change = [on_change = std::move(on_change)] {
+          on_change();
+          renodx::utils::settings::UpdateSettings({{"AntiAliasingTextureLodBiasTrilinear", 1.f}});
+        },
         .is_visible = [] { return twattila::dlaa_bridge::HelperInstalled(); },
     };
   };
