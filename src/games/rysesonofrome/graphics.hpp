@@ -2675,7 +2675,7 @@ void OnDestroyDevice(reshade::api::device* device) {
   twattila::frame_generation::OnDestroyDevice(native);
   twattila::reflex::OnDestroyDevice(native);
   // The bridge's objects after the ray tracing's (addon.cpp's handler runs first).
-  twattila::dlaa_bridge::Release();
+  twattila::dlaa_bridge::OnDestroyDevice(native);
 }
 
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,

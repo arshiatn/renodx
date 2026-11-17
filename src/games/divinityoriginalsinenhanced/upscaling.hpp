@@ -553,7 +553,7 @@ inline void Release(ID3D11Device* device) {
     state.scene_targets.clear();
     state.failed = false;
   }
-  twattila::dlaa_bridge::Release();
+  twattila::dlaa_bridge::OnDestroyDevice(device);
 }
 
 }  // namespace divinity::upscaling

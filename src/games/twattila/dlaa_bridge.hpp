@@ -1430,9 +1430,10 @@ inline std::string FrameGenerationStatus() {
   return (bridge.shared != nullptr) ? std::string(bridge.shared->fg_status) : std::string();
 }
 
-// The game's device is going away: the shared objects with it (the helper reopens the next ones). `tell_helper`: another
-// anti-aliasing took over: an empty set for the helper (its handles and DLSS's feature go at once, the rest with its idle
-// release); the device and the leaves' atlas stay for a quick return, its meshes still point there (rt_scene frees it).
+// The bridge's device is going away (OnDestroyDevice checks that it is): the shared objects with it (the helper reopens the
+// next ones). `tell_helper`: another anti-aliasing took over: an empty set for the helper (its handles and DLSS's feature go
+// at once, the rest with its idle release); the device and the leaves' atlas stay for a quick return, its meshes still point
+// there (rt_scene frees it).
 inline void Release(bool tell_helper = false) {
   if (tell_helper && bridge.pending) internal::Answer(20000);
   internal::RetireFence(!tell_helper);
@@ -1483,6 +1484,21 @@ inline void Release(bool tell_helper = false) {
     bridge.rt_atlas = {};
     bridge.device.Reset();
   }
+}
+
+// A D3D11 device of the game's process is going away (ReShade's proxy or not): the bridge's objects with it when it is
+// theirs. Another's end (a probe's, an overlay's) leaves the set alone: its recovery handles and the waits the game's GPU
+// has queued on its fence, which Release would drop.
+inline void OnDestroyDevice(ID3D11Device* device) {
+  if (device == nullptr || !bridge.device) return;
+  const auto identity = [](IUnknown* object) {
+    renodx::utils::directx::TryNativeFromReShadeProxy(&object);
+    ComPtr<IUnknown> unknown;
+    object->QueryInterface(IID_PPV_ARGS(unknown.GetAddressOf()));
+    return unknown;
+  };
+  if (identity(device) != identity(bridge.device.Get())) return;
+  Release();
 }
 
 // The addon's unload (AddonUninit, after its users of the bridge are unregistered; never DllMain: it waits for the

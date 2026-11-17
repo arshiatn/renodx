@@ -535,6 +535,39 @@ int main(int argc, char** argv) {
     std::printf("PASS: %s: both sets' waits freed by the recovery process, logged once\n", test.name);
   }
 
+  // Another D3D11 device of the process ends (a probe's, an overlay's) while the game's GPU waits on the helper: the set,
+  // its recovery and the wait stay, so a helper that stops later is still freed (Shogun 2, Divinity, Rome Remastered,
+  // Ryse and Expeditions released the set at any device's end, and the older set's wait was then nobody's).
+  StartReady(game, "start other-device test");
+  {
+    Check(bridge_api::Prepare(device, 16, 16), "the set");
+    Check(RequestAs(game, bridge_api::EVALUATE, STUCK_AFTER_ANSWER), "a request whose GPU work never arrives");
+    const ComPtr<ID3D11Fence> first_fence = bridge.fence;
+    const HANDLE recovery = bridge.watchdog.recovery;
+    const uint64_t waited = bridge.watchdog.waited.load();
+    {
+      ComPtr<ID3D11Device> other;
+      Check(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, other.GetAddressOf(),
+                                        nullptr, nullptr)), "another device");
+      bridge_api::OnDestroyDevice(other.Get());
+    }
+    Check(bridge.width == 16 && bridge.device && bridge.fence == first_fence && bridge.watchdog.recovery == recovery
+          && bridge.watchdog.waited.load() == waited && waited != 0, "another device's end leaves the set, its recovery and its wait");
+    Check(bridge_api::Prepare(device, 32, 32), "a second set");
+    Check(RequestAs(game, bridge_api::EVALUATE, STUCK_AFTER_ANSWER), "the helper closes the first set's fence");
+    processes_created = 0;
+    TerminateProcess(bridge.process, 1);
+    game.QueueTail();
+    Check(game.TailWithin(8000), "the game's GPU gets past the first set's wait");
+    Check(first_fence->GetCompletedValue() == 2 && processes_created.load() == 1, "freed by the recovery");
+    bridge_api::OnDestroyDevice(device);
+    Check(bridge.width == 0 && !bridge.device && !bridge.fence && bridge.watchdog.recovery == nullptr && bridge.watchdog.retired.empty(),
+          "the bridge's own device's end releases it");
+  }
+  bridge_api::Shutdown();
+  CheckClosed();
+  std::puts("PASS: another device's end leaves the set and its recovery; the bridge's own device's end releases it");
+
   // Textures that could not be made: tried again at another size or after 30 s, three times a session, a line each. Last:
   // a 32-bit process may find no room afterwards for a later case's 512 MB ray tracing texture.
   StartReady(game, "start texture retry test");

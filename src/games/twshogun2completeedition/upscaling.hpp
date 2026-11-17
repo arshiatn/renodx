@@ -385,7 +385,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.target = {};
     state.failed = false;
   }
-  twattila::dlaa_bridge::Release();
+  twattila::dlaa_bridge::OnDestroyDevice(native);
 }
 
 }  // namespace twshogun2::upscaling
