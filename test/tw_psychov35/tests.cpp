@@ -602,6 +602,40 @@ static Float3 OkLab(const Float3& c) {
           0.0259040371f * l3 + 0.7827717662f * m3 - 0.8086757660f * s3};
 }
 
+// PsychoV35's cones of a linear BT.709 colour over white's (test35.hlsl: BT.709 -> XYZ -> its LMS). Their mean is the
+// target fit's, under 0 where the pixel is below black; a cone under 0 is beyond the spectral locus.
+static std::array<double, 3> Cones(const Float3& c) {
+  constexpr double TO_XYZ[3][3] = {{.4123907993, .3575843394, .1804807884}, {.2126390059, .7151686788, .0721923154},
+                                   {.0193308187, .1191947798, .9505321522}};
+  constexpr double TO_LMS[3][3] = {{.2670502842655792, .8471990148492798, -.03470416612462053},
+                                   {-.38706882411220156, 1.165429935890458, .10302286696614202},
+                                   {.026727793989083093, -.02729131667566509, .5333267257603284}};
+  std::array<double, 3> cones = {};
+  for (int cone = 0; cone < 3; ++cone) {
+    double lms = 0.0;
+    double white = 0.0;
+    for (int i = 0; i < 3; ++i) {
+      for (int j = 0; j < 3; ++j) {
+        lms += TO_LMS[cone][i] * TO_XYZ[i][j] * c[j];
+        white += TO_LMS[cone][i] * TO_XYZ[i][j];
+      }
+    }
+    cones[cone] = lms / white;
+  }
+  return cones;
+}
+
+static double ConeMean(const Float3& c) {
+  const auto cones = Cones(c);
+  return (cones[0] + cones[1] + cones[2]) / 3.0;
+}
+
+// A cone under 0: beyond the spectral locus (part 3's (1.2, 0.9, -0.2): its S cone).
+static bool BeyondLocus(const Float3& c) {
+  const auto cones = Cones(c);
+  return std::min({cones[0], cones[1], cones[2]}) < 0.0;
+}
+
 // 1. Bits //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct Pair {
@@ -1687,7 +1721,8 @@ static Bindings Wh3GammaBindings(const std::vector<Float4>& scene) {
 // a. Gamma Correction off (every mode) and Rendering Mode SDR: 242d6101's picture, the frame decoded with its gamma
 //    (TW_FRAME_GAMMA; 242d6101's frame: 2.2) within 1e-5 of each texel's brightest channel. Rendering Mode SDR on an HDR
 //    display swaps on and off (at in-game gamma 2.0): on is now the 2.2 display's decode, off the game's gamma 2.0 as
-//    linear. CONTROL: the HDR modes with it on against 242d6101's (which ignored it there) must differ.
+//    linear. CONTROL: the HDR modes with it on against 242d6101's (which ignored it there) must differ. The colour beyond
+//    the spectral locus left out: PsychoV35's edge fix changes it on purpose (part 9).
 // b. Gamma Correction on in the HDR modes, Peak 1000 and 400 and SDR output, the scene ramp of part 3: BT.2020 and
 //    luminance within Peak (SDR output: luminance alone, the BT.709 channels past 1 are the tone mappers' own), grey
 //    never darker, and grey = (off at the corrected Peak, Peak^(1 / 1.1))^1.1 of the UI's white, within Peak. CONTROL:
@@ -1696,9 +1731,10 @@ static Bindings Wh3GammaBindings(const std::vector<Float4>& scene) {
 static void TestGammaCorrection(const std::vector<GammaGame>& games) {
   const auto columns = PatternColumns();
   constexpr UINT GREY = 48;  // PatternColumns' grey
-  const auto worst_difference = [](const std::vector<Float3>& a, const std::vector<Float3>& b) {
+  const auto worst_difference = [&columns](const std::vector<Float3>& a, const std::vector<Float3>& b) {
     double worst = 0.0;
     for (size_t i = 0; i < a.size(); ++i) {
+      if (BeyondLocus(columns[i % WIDTH])) continue;
       const double brightest = std::max({1e-6f, std::abs(a[i][0]), std::abs(a[i][1]), std::abs(a[i][2])});
       for (int c = 0; c < 3; ++c) worst = std::max(worst, std::abs(static_cast<double>(a[i][c]) - b[i][c]) / brightest);
     }
@@ -1807,34 +1843,6 @@ struct EdgeCase {
   Float4 output;
 };
 
-// PsychoV35's cones of a linear BT.709 colour over white's (test35.hlsl: BT.709 -> XYZ -> its LMS). Their mean is the
-// target fit's, under 0 where the pixel is below black; a cone under 0 is beyond the spectral locus.
-static std::array<double, 3> Cones(const Float3& c) {
-  constexpr double TO_XYZ[3][3] = {{.4123907993, .3575843394, .1804807884}, {.2126390059, .7151686788, .0721923154},
-                                   {.0193308187, .1191947798, .9505321522}};
-  constexpr double TO_LMS[3][3] = {{.2670502842655792, .8471990148492798, -.03470416612462053},
-                                   {-.38706882411220156, 1.165429935890458, .10302286696614202},
-                                   {.026727793989083093, -.02729131667566509, .5333267257603284}};
-  std::array<double, 3> cones = {};
-  for (int cone = 0; cone < 3; ++cone) {
-    double lms = 0.0;
-    double white = 0.0;
-    for (int i = 0; i < 3; ++i) {
-      for (int j = 0; j < 3; ++j) {
-        lms += TO_LMS[cone][i] * TO_XYZ[i][j] * c[j];
-        white += TO_LMS[cone][i] * TO_XYZ[i][j];
-      }
-    }
-    cones[cone] = lms / white;
-  }
-  return cones;
-}
-
-static double ConeMean(const Float3& c) {
-  const auto cones = Cones(c);
-  return (cones[0] + cones[1] + cones[2]) / 3.0;
-}
-
 static float Spread(const Float3& c) { return std::max({c[0], c[1], c[2]}) - std::min({c[0], c[1], c[2]}); }
 static float Largest(const Float3& c) { return std::max({std::abs(c[0]), std::abs(c[1]), std::abs(c[2])}); }
 
@@ -1908,8 +1916,8 @@ static Words NightGradeMatrix() { return F({0.9f, 0.f, 0.f, -0.04f, 0.f, 0.95f, 
 //    CONTROL: -Before's (V35 before the fix) must fail these (a grey under 0 turned into a colour, a bluish pixel below
 //    black turned red, below black mid grey under Contrast or Flare, NaN Peak-bright, beyond the locus inverted). Part 3's
 //    ramp (64 colours x 48 steps) at every slider set: every pixel whose cones are all over 0 the same bits as -Before's;
-//    the colour beyond the locus there ((1.2, 0.9, -0.2), S cone under 0) counted apart, with Gamut Compression 1 only
-//    toward grey (no more spread).
+//    the colour beyond the locus there ((1.2, 0.9, -0.2), S cone under 0) counted apart, its blue (the channel under 0)
+//    never higher than -Before's. Dark colours stay dark at every slider set (no channel past 4x the input's largest).
 // b. Attila's t01 (Rendering Mode 3) on a bluish night frame (blue the largest channel, then green, 2^-16 to 2^-2 of
 //    white) under NightGradeMatrix(): no pixel redder than blue (ours, V31 and SDR; -Before's V35 must show them), at
 //    HDR10, scRGB and SDR output.
@@ -1945,7 +1953,7 @@ static void TestEdges(const std::filesystem::path& before, const std::filesystem
   int control_failures = 0;
   int ramp_differences = 0;
   int ramp_beyond = 0;
-  int beyond_more_colour = 0;
+  int beyond_bluer = 0;
   for (const auto& sliders : slider_sets) {
     auto si = AttilaInjection(3.f, 1.f);
     sliders.move(&si);
@@ -1981,6 +1989,9 @@ static void TestEdges(const std::filesystem::path& before, const std::filesystem
               if (gamut_compression == 1.f) ok = ok && within_peak && (grey_out || !sliders.recommended_shape);
               break;
             case Edge::DARK_COLOUR:
+              // Dark stays dark at every slider (Exposure 2, Saturation 2 and Shadow Contrast 0 at most double it); a
+              // cone under 0 once became the anchor under Contrast / Flare.
+              ok = ok && Largest(out) <= 4.f * Largest(in);
               if (sliders.recommended_shape) {
                 ok = ok && spread <= 1.001f * Spread(in) + 1e-6f * Largest(in);
                 if (!sdr && std::min({in[0], in[1], in[2]}) >= 0.f) {
@@ -2020,16 +2031,16 @@ static void TestEdges(const std::filesystem::path& before, const std::filesystem
       size_t worst_beyond_at = 0;
       for (size_t i = 0; i < ramp_cases.size(); ++i) {
         if (std::memcmp(&ramp_after[i], &ramp_before[i], 12) == 0) continue;
-        const Float3 in = {ramp_cases[i].color_and_peak[0], ramp_cases[i].color_and_peak[1], ramp_cases[i].color_and_peak[2]};
-        const auto cones = Cones(in);
-        if (std::min({cones[0], cones[1], cones[2]}) >= 0.0) {
+        if (!BeyondLocus({ramp_cases[i].color_and_peak[0], ramp_cases[i].color_and_peak[1], ramp_cases[i].color_and_peak[2]})) {
           ++different;
           continue;
         }
         ++beyond;
         const Float3 a = {ramp_after[i][0], ramp_after[i][1], ramp_after[i][2]};
         const Float3 b = {ramp_before[i][0], ramp_before[i][1], ramp_before[i][2]};
-        if (gamut_compression == 1.f && Spread(a) > Spread(b)) ++beyond_more_colour;
+        // The channel that came in under 0 (blue) never higher than -Before's (its S cone no longer lifted to the anchor,
+        // its colour no longer inverted).
+        if (a[2] > b[2] + 1e-6f * Largest(b)) ++beyond_bluer;
         for (int c = 0; c < 3; ++c) {
           const double relative = std::abs(static_cast<double>(a[c]) - b[c]) / std::max({1e-30f, Largest(a), Largest(b)});
           if (relative > worst_beyond) {
@@ -2048,6 +2059,17 @@ static void TestEdges(const std::filesystem::path& before, const std::filesystem
           if (failed[side][kind] != 0) std::printf("      %s %s: %s\n", side == 0 ? "ours" : "CONTROL", KIND_NAMES[kind], first[side][kind].c_str());
         }
       }
+      // Printed: the colour beyond the locus (column 55) down the ramp, ours against -Before's, HDR.
+      if (beyond != 0 && !sdr) {
+        std::printf("      ramp beyond the locus, column 55:");
+        for (const UINT row : {0u, 12u, 20u, 28u, 36u, 47u}) {
+          const size_t i = row * WIDTH + 55;
+          std::printf(" (%.3g %.3g %.3g) -> (%.3g %.3g %.3g) was (%.3g %.3g %.3g);", ramp_cases[i].color_and_peak[0],
+                      ramp_cases[i].color_and_peak[1], ramp_cases[i].color_and_peak[2], ramp_after[i][0], ramp_after[i][1],
+                      ramp_after[i][2], ramp_before[i][0], ramp_before[i][1], ramp_before[i][2]);
+        }
+        std::printf("\n");
+      }
       if (beyond != 0) {
         const auto& in = ramp_cases[worst_beyond_at].color_and_peak;
         const auto& a = ramp_after[worst_beyond_at];
@@ -2065,12 +2087,12 @@ static void TestEdges(const std::filesystem::path& before, const std::filesystem
     }
   }
   std::printf("9a. Failures in all: ours %d, CONTROL %d (must be over 0); ramp pixels different from -Before's: %d, beyond the locus %d "
-              "(%d with more colour)\n",
-              ours_failures, control_failures, ramp_differences, ramp_beyond, beyond_more_colour);
+              "(%d bluer than -Before's)\n",
+              ours_failures, control_failures, ramp_differences, ramp_beyond, beyond_bluer);
   CHECK(ours_failures == 0);
   CHECK(control_failures > 0);
   CHECK(ramp_differences == 0);
-  CHECK(beyond_more_colour == 0);
+  CHECK(beyond_bluer == 0);
 
   // b. The night frame through Attila's t01.
   std::vector<Float3> palette;

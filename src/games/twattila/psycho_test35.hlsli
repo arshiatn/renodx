@@ -2,8 +2,9 @@
 #define PSYCHOV_CUSTOMTEST35_HLSLI_
 
 // Total War: ATTILA and Warhammer III: copy of Musa's customtest35 (2026-11-12), only this include's path changed, the
-// SM3 forms below (RUSE's DX9 shaders: no bit casts, no bitwise operations on bools) and pixels at or under black: black,
-// the target fit's room toward black never under 0 (custom_psychotm_test35; Musa's assumes an interior mean).
+// SM3 forms below (RUSE's DX9 shaders: no bit casts, no bitwise operations on bools), pixels at or under black: black,
+// the target fit's room toward black never under 0 (custom_psychotm_test35; Musa's assumes an interior mean) and a cone
+// under 0 kept at 0 by Contrast / Flare as a zero cone is (custom_psycho35_ApplyAnchoredTonalGrading).
 // Needs renodx.hlsl (shared.h).
 
 /*
@@ -101,7 +102,9 @@ float3 custom_psycho35_ApplyAnchoredTonalGrading(
     logarithmic_slope = renodx::math::Select(normalized < 1.f,
                                              exponent + log(2.f) * stops * exponent_derivative,
                                              1.f + (contrast - 1.f) * (1.f - log(2.f) * weight) / (denominator * denominator));
-    graded = renodx::math::Select(normalized == 0.f, 0.f, graded);
+    // Zero cones, and cones under 0 (beyond the spectral locus), stay at zero: a negative cone's log2 is NaN, which min /
+    // max made 0 stops, the anchor (a dark colour lit to mid grey).
+    graded = renodx::math::Select(normalized <= 0.f, 0.f, graded);
   }
   if (highlight_contrast != 1.f) {
     const float3 distance = max(graded - 1.f, 0.f);
