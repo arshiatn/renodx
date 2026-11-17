@@ -143,19 +143,6 @@ static const float ROUGH_LIMIT = 0.75f;  // rougher surfaces keep the game's ref
 static const float MAX_SPECULAR_FRAMES = 12.f;
 static const float SKY_HIT_DISTANCE = 65504.f;  // NVIDIA's for the sky (FP16's most)
 
-#if defined(PATH_REORDER)
-// Shader execution reordering (DXR 1.2, rt_path_ser.lib_6_9.hlsl): threads regroup by what a ray met (none, or its
-// instance's group of eight) before shading it (the screen lookup, the cache, a shadow ray and the next rays diverge
-// most there).
-#define REORDER(query, hint)                                        \
-  {                                                                 \
-    dx::HitObject reorder_hit = dx::HitObject::FromRayQuery(query); \
-    dx::MaybeReorderThread(reorder_hit, (hint), 4);                 \
-  }
-#else
-#define REORDER(query, hint)
-#endif
-
 float3 Camera() {
   return sun[uint2(1, 0)].xyz;
 }
@@ -630,7 +617,17 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     ray.TMax = (vertex == 0u) ? range : bounce_range;
     TRACE_SURFACE(query, ray)
     const bool hit = query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
-    REORDER(query, hit ? 1u + (query.CommittedInstanceID() & 7u) : 0u)
+#if defined(PATH_REORDER)
+    // Shader execution reordering (DXR 1.2, rt_path_ser.lib_6_9.hlsl), as RTXPT's: only a path's first surface, before
+    // its state grows; a miss runs in place (RTXPT's inline miss). One bit: the surface is off the screen (the
+    // projection alone), so it takes the unseen route (its own sun and lights, the path going on) where an on-screen hit
+    // mostly ends on the screen's light. Every thread keeps its own path: the same light as without it.
+    if (vertex == 0u && hit) {
+      const float4 clip = ClipOf(origin + direction * query.CommittedRayT(), view_projection);
+      const float2 uv = clip.xy / clip.w * float2(0.5f, -0.5f) + 0.5f;
+      dx::MaybeReorderThread((clip.w <= 0.f || any(uv < 0.f) || any(uv >= 1.f)) ? 1u : 0u, 1u);
+    }
+#endif
     if (!hit) {
       // Past the first surface the sky (the game's ambient by direction); from the camera's pixel the game's own
       // ambient covers it, but with Path-Traced Ambient (the game's taken away: the paths' the occluded sky).
@@ -679,9 +676,9 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     if (vertex == 0u) first_normal = normal;
 #if defined(SHARC)
     // SHaRC Radiance Cache: what the screen does not know from SHaRC (by the surface's normal; not for a ray shorter than
-    // its voxel).
+    // its voxel's diagonal, SHaRC 1.8.3's rule; false: responsive lighting not skipped, it is off).
     const SharcHitData sharc_hit = {position, normal};
-    if (query.CommittedRayT() >= SharcVoxelSize(position) && SharcGetCachedRadiance(Sharc(), sharc_hit, light_there, false)) {
+    if (query.CommittedRayT() > SharcVoxelSize(position) * 1.7320508f && SharcGetCachedRadiance(Sharc(), sharc_hit, light_there, false)) {
       radiance += throughput * light_there;
       break;
     }
