@@ -356,7 +356,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LIGHT READBACK CAP (jdg1_): rt_lights' readback caps at 16,384 records while nig ... | PT DI step 0
 - BENCH CLOSE RACE BY STACK (jdg1_): the stress M1 run's close AV was the known sh ... | coordinator (tools)
 - RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | fix1_ (STARTED 16:xx)
-- CPU GAPS (cpg_ medium, STARTED 16:4x, ATN asked whether the sanity recording's 1 ... | cpg_
+- CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of ... | cpp_
+- CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b; hz2_ 13:3x: the 10b design's "all ready" ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
@@ -2435,11 +2436,20 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [x] DONE 17:0x (ATN: "The yellow indicators of the ships are fixed now"; both locks removed) BUG4F ATN CHECK (16:4x): ATN checks bug4 (f) now (sea battle, ships selected, DLAA vs DLSS Performance:
         footprints under the ships, no yellow stripes); coordinator holds gpu_job.lock + quiet_run.lock (agents wait)
         until ATN says done, then removes both. Owner: ATN, coordinator
-      - [ ] CPU GAPS (cpg_ medium, STARTED 16:4x, ATN asked whether the sanity recording's 13-item list skipped things):
+      - [ ] CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of CPU PLAN 2 below; ATN asked whether the sanity recording's 13-item list skipped things):
         coordinator found unlisted: render-thread system time ~10 ms night1 / ~9 stress (wow64cpu, d3d11, ntdll, kernel,
         driver) not split by caller; the "?" module 3.7 ms render stress; night1's game tail (22.7 ms in the game, listed
         functions ~10); stress worker critical path (render waits 16.5 ms; ~13 worker functions 5-10 ms summed); no day1
-        / sea1 WPR. Existing ETLs only, result plan_1117/cpu_gaps.md. Owner: cpg_
+        / sea1 WPR. Existing ETLs only, result plan_1117/cpu_gaps.md. Owner: cpp_
+      - [ ] CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implement them with high. Maybe one
+        last review on them with xHigh"): (1) cpp_ xHigh STARTED 17:2x (brief plan_1117/cpu_plan2_brief.md): the gaps +
+        the whole ranked CPU plan with exactness proofs, owners, file sets, batches -> cpu_gaps.md + cpu_plan2.md; (2) High
+        implementers, one at a time per file set; (3) one xHigh review of the merged result; (4) one Low bench batch
+        (stress / night1 / day1, + day1 / sea1 WPR if the plan asks). Owner: coordinator
+      - [x] DONE 17:2x SKILLS (ATN "add this to the skills"): game-port-method "Effort by job" (runs low, optimization
+        analysis / plans / reviews xHigh, implementers high, the token finding) + "Read a profile to its end before
+        ranking"; tw-port-checklist testing.md: the frame recorder row (record / play / compare, play-to-play
+        differences) + the bench's no-underscore variant names. SKILLS UPDATE 4b / 5 stay as planned
       - [ ] CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x16246d0 as engine_code site 7
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
