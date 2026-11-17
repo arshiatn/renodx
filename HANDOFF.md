@@ -349,7 +349,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU SANITY RECORDING (ATN 09:5x): cpb_ item 7b: WPR + leaf sampler of the best c ... | cpb_
 - WH3 DIFFUSE CONSISTENCY (des2_ 10:2x): WH3 shades with its own Oren-Nayar diffus ... | next WH3 helper round
 - X86 64-BIT ATOMIC LOADS (rv4_ 10:5x): std::atomic<uint64_t> loads in the x86 add ... | next shared-utils round (with the memo)
-- HEAPFIX AUTHOR ZIP 2 (ATN 12:2x: the author liked the 11-15 zip; "make another z ... | coordinator after cpb_'s report
 - RECORDER FIRST (ATN 12:2x: "Wouldn't that be amazing for our RT/PT further optim ... | coordinator
 - CPU NEXT (cpu_round_report.md): heapfix P + size-gated B4 (threads only for 3276 ... | next CPU round
 - C-SPRITES (cpb_): Small Soldiers as Sprites is 3.5-3.9x the fps in stress (13-15 ... | ATN
@@ -358,7 +357,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BENCH CLOSE RACE BY STACK (jdg1_): the stress M1 run's close AV was the known sh ... | coordinator (tools)
 - C-LEFTOVERS: 24 renamed old test add-ons (renodx-twattila.addon32.in-use-*, ~170 ... | ATN
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
-- CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases ... | coordinator
+- CPU SITE 8 (D5, cpu_steps_5_10.md 10b; hz2_ 13:3x: the 10b design's "all ready" ... | coordinator
 - CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 ... | coordinator
 - SPEED LIST v2 (cap1_ 07:xx on the redone captures, speed_list.md; supersedes the ... | coordinator -> a CPU round after the bug agents merge (plan 
 - SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers f ... | coordinator -> CPU round (plan step 4)
@@ -2372,7 +2371,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         (8e8fa96a, the prefetched radix sort: -8..-13 ms stress, -4.5..-7 ms night1 vs 7.0; B4 faster only in huge battles,
         slower at Constantinople), check the hash and heapfix.log's sort line on the next start; ATN's heapfix.ini kept;
         own use only (heapfix's licence). Owner: coordinator
-      - [ ] HEAPFIX AUTHOR ZIP 2 (ATN 12:2x: the author liked the 11-15 zip; "make another zip file that he can give to
+      - [x] DONE 13:3x HEAPFIX AUTHOR ZIP 2 (hz2_): Downloads/AttilaCPUPerfFix_7.0_notes_2026-11-17.zip (62 KB, 23 files):
+        1 prefetched sort + 2 threaded-sort gate (patches pass git apply --check / patch --dry-run on his unmodified 7.0
+        4057eb8, LF + CRLF, and give the measured sortfix.c), 3 memfast-128 update, 4 out-of-front memory (runs were on
+        6.10.6), 5 loopanim / x87keep open, 6 engine candidates (exactness rules only), timing/ + bench_results/ (labels and
+        paths removed; coordinator scanned: no private names or paths). ATN passes it on. Was: HEAPFIX AUTHOR ZIP 2 (ATN 12:2x: the author liked the 11-15 zip; "make another zip file that he can give to
         his own opus"): like Downloads/AttilaCPUPerfFix_7.0_notes_2026-11-15.zip (README + one folder per proposal: NOTE.md,
         .patch, bench numbers), written for his AI agent: P (prefetched sort) and B4 (threaded sort for 32768+ items, scene
         dependent), loopanim / x87keep status, the render thread's wait for the one-worker sort (12.6 / 6.2 / 2.6 ms),
@@ -2408,7 +2411,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         (bit-exact incl. last-error; first bytes must be kernel32's / kernelbase's known fast path, else stand down); not
         built yet. A later CPU implementer round (combined order step 4), proof in test/tw_engine_code first. Owner:
         coordinator
-      - [ ] CPU SITE 8 (D5, cpu_steps_5_10.md 10b): engine site 0x18635a0 (copies + releases a shared_ptr per child to test
+      - [ ] CPU SITE 8 (D5, cpu_steps_5_10.md 10b; hz2_ 13:3x: the 10b design's "all ready" result would NOT be exact as
+        written: re-derive the exactness rules from the game's bytes before building): engine site 0x18635a0 (copies + releases a shared_ptr per child to test
         a flag): exact without the copy + an early exit, est. -1.5..-2 ms stress render thread; design + proof plan written,
         no code. Same later CPU round; bench stress + night1 x2 after ATN's OK for the runs. Owner: coordinator
       - [ ] CPU TRIM A/B RUN: base (1cbaa46b7) vs trim (testbin/cpu1_addons/trim) on night1 + sea1 x2 with the bench; after
