@@ -389,6 +389,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SER ON IN WH3 (ssr_: faster in all three forest views, same picture, repeats exa ... | coordinator after g1_
 - SHARC COST 2 (ssr_): the update pass 0.26-0.72 ms (latency-bound, 12-28 % occupa ... | next SHaRC round
 - BAKE POOL POISON TEST (ssr_ S1 kept the GPU micromap bake's transient pools acro ... | next helper round
+- REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our ... | next helper round (measure first)
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2905,6 +2906,13 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] BAKE POOL POISON TEST (ssr_ S1 kept the GPU micromap bake's transient pools across requests, as omm.h says
         they may be reused after baking): recordings refuse GPU baking, so that path is untested: a harness poison test
         (fill pools between bakes, compare baked bytes). Owner: next helper round
+      - [ ] REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our RT/PT stuff?"): ReBAR is ON
+        (nvidia-smi BAR1 total 32768 MiB = all VRAM). The game (D3D11, CPU-bound in battles): NVIDIA's driver profile
+        decides per game; forcing it is ATN's own driver setting, never ours. The helper (D3D12): D3D12 GPU upload heaps
+        (D3D12_HEAP_TYPE_GPU_UPLOAD, needs ReBAR + Agility SDK, check OPTIONS16.GPUUploadHeapSupported) could write
+        per-frame data (instance / light records, constants) straight into VRAM instead of upload + copy. First
+        measure: the helper's per-frame uploads and copy ms in a live frame (the player's 1.3-2.3 ms "copies" are its
+        own staging), then decide. Expected small (~0.1-0.3 ms). Owner: next helper round (measure first)
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
