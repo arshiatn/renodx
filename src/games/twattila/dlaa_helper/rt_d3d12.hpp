@@ -2571,15 +2571,21 @@ class RtScene12 {
 #endif
         std::memcpy(slot.paths_data, &constants, sizeof(constants));
         list->SetComputeRootConstantBufferView(ROOT_PATHS, slot.paths->GetGPUVirtualAddress());
-        // The radiance cache once a frame: filled (from the prepared light, else last frame's colour), resolved.
+        // The radiance cache once a frame: filled (from the prepared light, else last frame's colour), its cells' base
+        // colours by their owners (rt_cache_fill's second pass, with the guides), resolved.
         if (cache_frame_ != frame) {
           const bool from_light = (flags & PATH_LIGHT) != 0;
           const uint32_t fill_width = (from_light ? constants.bounce_width : width) / 2 + 1;
           const uint32_t fill_height = (from_light ? constants.bounce_height : height) / 2 + 1;
           Mark(list, L"radiance cache");
           list->SetPipelineState(cache_fill_pipeline_.Get());
-          list->Dispatch((fill_width + 7) / 8, (fill_height + 7) / 8, 1);
-          list->ResourceBarrier(1, &uav_barrier);
+          list->SetComputeRootUnorderedAccessView(ROOT_SCRATCH, cache_owners_->GetGPUVirtualAddress());
+          const uint32_t fill_passes = (from_light && (flags & PATH_GUIDES) != 0) ? 2u : 1u;
+          for (uint32_t fill_pass = 0; fill_pass < fill_passes; ++fill_pass) {
+            list->SetComputeRoot32BitConstants(ROOT_DISPATCH, 1, &fill_pass, 0);
+            list->Dispatch((fill_width + 7) / 8, (fill_height + 7) / 8, 1);
+            list->ResourceBarrier(1, &uav_barrier);
+          }
           list->SetPipelineState(cache_resolve_pipeline_.Get());
           list->Dispatch(CACHE_ENTRIES / 64, 1, 1);
           list->ResourceBarrier(1, &uav_barrier);
@@ -3184,7 +3190,7 @@ class RtScene12 {
     ROOT_PATHS,   // b3: the paths' constants (rt_path.hlsli)
     ROOT_LIGHTS,  // b4: the trace's local lights
     ROOT_SMOKE,   // t15: the smoke's TLAS (rt_scene.hlsli smoke_scene)
-    ROOT_PLACE_SCRATCH,  // u0 space1: rt_place's dedupe scratch (PlacedRoom::scratch)
+    ROOT_SCRATCH,  // u0 space1: a pass's own scratch (rt_place's dedupe: PlacedRoom::scratch; the cache fill's owners)
   };
   // b4 (rt_scene.hlsli Lights): RT_ALL_LIGHTS of world position and reach, their count, their colours, their places in
   // the last trace's list (a byte each); a CBV's 256-byte multiple.
@@ -4344,7 +4350,10 @@ class RtScene12 {
         && pool(DXGI_FORMAT_R32_UINT, 16, 4, &light_fit_, LIGHT_FIT)
         && pool(DXGI_FORMAT_R32G32B32A32_FLOAT, LIGHT_KEPT_TEXELS, 16, &light_kept_, LIGHT_KEPT)) {
       kept_readback_ = Buffer(uint64_t{LIGHT_KEPT_TEXELS} * 16, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
-      return true;
+      // The fill's cell owners (ROOT_SCRATCH; zeroed: none, and cleared by the resolve each frame: not recorded).
+      cache_owners_ = Buffer(uint64_t{CACHE_ENTRIES} * 4, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                             D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      if (cache_owners_) return true;
     }
     cache_keys_.Reset();
     WriteNullPathDescriptors();
@@ -6268,7 +6277,7 @@ class RtScene12 {
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, written->GetGPUVirtualAddress());
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_INDICES, build_rows_->GetGPUVirtualAddress());
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DESCS, placed_state_->GetGPUVirtualAddress());
-      list->SetComputeRootUnorderedAccessView(ROOT_PLACE_SCRATCH, placed_scratch_->GetGPUVirtualAddress());
+      list->SetComputeRootUnorderedAccessView(ROOT_SCRATCH, placed_scratch_->GetGPUVirtualAddress());
       // The camera (b2: grass outside the view stays out) and the sway's flags and range, then clear, claim, count, write
       // (rt_place's modes). Grass keeps its alpha tests (v108 took its micromaps as 2-state: a micro-triangle part blade, part gap went
       // solid, fields black in ATN's debug31; Fast Leaf Shadows still does that for every ray).
@@ -8615,6 +8624,7 @@ class RtScene12 {
   ComPtr<ID3D12Resource> cache_radiance_;
   ComPtr<ID3D12Resource> cache_sums_;
   ComPtr<ID3D12Resource> cache_albedo_;
+  ComPtr<ID3D12Resource> cache_owners_;
   ComPtr<ID3D12Resource> light_fit_;
   ComPtr<ID3D12Resource> light_kept_;
   uint32_t path_ambient_frame_ = UINT32_MAX;  // the last frame the paths took the sky for the game's ambient

@@ -10,6 +10,8 @@
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_cache_resolve.h -Vn RT_CACHE_RESOLVE.
 #include "./rt_path.hlsli"
 
+RWByteAddressBuffer cache_owners : register(u0, space1);  // rt_cache_fill's, cleared for the next fill (a cell it added to has sums)
+
 void SolveLightFit() {
   // With Path-Traced Ambient the screen's light holds no ambient but the game's sun and sky specular toward the camera:
   // refit from it, the sun's share followed the view (ATN's log: x1.57 in 6 minutes; the harness's pedestal 24 to 36 by
@@ -67,6 +69,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     cache_sums[entry * 4u + 1u] = 0u;
     cache_sums[entry * 4u + 2u] = 0u;
     cache_sums[entry * 4u + 3u] = 0u;
+    cache_owners.Store(entry * 4u, 0u);
   } else if ((float)frame + 1.f - max(kept.w, (float)cache_albedo[entry].y) > CACHE_LIFETIME) {
     cache_keys[entry] = 0u;
     cache_radiance[entry] = 0.f;
