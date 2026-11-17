@@ -1902,7 +1902,27 @@ void Capture(Context& command, const SceneShader& shader) {
   // A sheet made thin by its row stays whole: cut out, it would block the sun as a fence does.
   const bool sheet_by_row = thin && !shader.thin && shader.thin_row == nullptr;
   if ((shader.foliage || !shader.cut_out_shader.empty()) && !shader.clip_cut_outs && !sheet_by_row) native->PSGetShaderResources(shader.mask_slot, 1, mask.GetAddressOf());
+  // The mask's texture, read once for every use (no reference kept: the view holds it while `mask` does).
+  ID3D11Resource* mask_resource = nullptr;
+  const auto read_mask_resource = [&] {
+    if (mask_resource == nullptr) {
+      ComPtr<ID3D11Resource> resource;
+      mask->GetResource(resource.GetAddressOf());
+      mask_resource = resource.Get();
+    } else if (StateCheck()) {
+      ComPtr<ID3D11Resource> resource;
+      mask->GetResource(resource.GetAddressOf());
+      if (resource.Get() != mask_resource) {
+        StateMismatch("the mask's texture read once", shader.hash);
+      }
+    }
+    return mask_resource;
+  };
   bool cut_out = false;
+  // A static mesh's mask counts only where the game's shadow pass alpha-tests its texture (Runtime::cut_out_textures):
+  // looked up in the scene's lock below, not a lock of its own (its writer, OnCutOutShadowDraw, is a draw callback on this
+  // thread's context too: the same answer); the key takes the mask there, the mask dropped after it when not a cut-out.
+  bool cut_out_texture_asked = false;
   if (shader.clip_cut_outs && (shader.cut_out_row == nullptr || *shader.cut_out_row != 0.f)) {
     const uint32_t pixel_shader = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache);
     const auto found = std::ranges::lower_bound(cut_out_masks, pixel_shader, {}, &PixelMask::pixel_shader);
@@ -1922,15 +1942,13 @@ void Capture(Context& command, const SceneShader& shader) {
       cut_out = std::ranges::binary_search(
           cut_out_pixel_shaders,
           renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache));
+      if (!cut_out) {
+        mask.Reset();
+      }
     } else {
-      ComPtr<ID3D11Resource> mask_resource;
-      mask->GetResource(mask_resource.GetAddressOf());
-      const std::unique_lock lock(runtime.mutex);
-      cut_out = runtime.cut_out_textures.contains(mask_resource.Get());
+      cut_out_texture_asked = true;
     }
-    if (!cut_out) mask.Reset();
   }
-  bool foliage = shader.foliage || cut_out;
   // The draw's identity: its buffers, ranges, textures and constant buffers (but the camera's at b0); a placed draw's its
   // geometry alone (its ranges, first vertex buffer and index buffer) and its mask (one grass mesh might be drawn with
   // more than one: its BLAS's alpha test is its first capture's).
@@ -1981,7 +1999,6 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   mix(reinterpret_cast<uintptr_t>(index_buffer));
   mix((uint64_t{static_cast<uint32_t>(index_format)} << 32) | index_offset);
-  mix(reinterpret_cast<uintptr_t>(mask.Get()));
   // A dynamic indexed draw can be compact (v16; the terrain's too: a vertex a texel, not three a triangle), so can a placed
   // draw of leaves (its trees sway: their leaves where drawn also captured every frame, in the wind): its mesh's key (its
   // index buffer and range) and that buffer.
@@ -2030,13 +2047,23 @@ void Capture(Context& command, const SceneShader& shader) {
   {
     const std::unique_lock lock(runtime.mutex);
     if (!Enabled() || !dlaa_bridge::bridge.ray_tracing) return;
+    if (cut_out_texture_asked) {
+      cut_out = runtime.cut_out_textures.contains(read_mask_resource());
+    }
+    // The mask as kept (a static mesh's only as its cut-out): the key's last value.
+    ID3D11ShaderResourceView* const kept_mask = ((cut_out_texture_asked && !cut_out) ? nullptr : mask.Get());
+    mix(reinterpret_cast<uintptr_t>(kept_mask));
     runtime.last_key = key;
     if (short_path) {
       const auto [entry, added] = runtime.short_keys.try_emplace(short_key, Runtime::ShortKey{.key = key});
       if (!added && entry->second.key != key) entry->second.ambiguous = true;
     }
-    if (const auto mesh = (compactable ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end());
-        mesh != runtime.cluster_meshes.end() && mesh->second.remap && mesh->second.rewritten_frame == 0) {
+    // Found once for both its uses below (nothing between adds or erases a cluster mesh).
+    const auto mesh = (compactable ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end());
+    if (StateCheck() && compactable && runtime.cluster_meshes.find(set_key) != mesh) {
+      StateMismatch("the cluster mesh found once", shader.hash);
+    }
+    if (mesh != runtime.cluster_meshes.end() && mesh->second.remap && mesh->second.rewritten_frame == 0) {
       mesh->second.used_frame = runtime.frame;
       blocks = mesh->second.sent || std::ranges::find(runtime.new_sets, set_key) != runtime.new_sets.end()
                || (runtime.new_sets.size() < dlaa_bridge::RT_NEW_SETS
@@ -2064,12 +2091,11 @@ void Capture(Context& command, const SceneShader& shader) {
       };
       full_share = static_cast<size_t>(std::ranges::find(full, true) - full.begin());
     }
-    if (const auto known = runtime.known.find(key); !dynamic && known != runtime.known.end()) {
+    // A dynamic draw is never a known mesh: not looked up.
+    if (const auto known = (dynamic ? runtime.known.end() : runtime.known.find(key)); known != runtime.known.end()) {
       // A leaf's slice stays in use while it is drawn.
-      if (mask) {
-        ComPtr<ID3D11Resource> mask_resource;
-        mask->GetResource(mask_resource.GetAddressOf());
-        if (const auto found = runtime.atlas_slices.find(mask_resource.Get()); found != runtime.atlas_slices.end()) {
+      if (kept_mask != nullptr) {
+        if (const auto found = runtime.atlas_slices.find(read_mask_resource()); found != runtime.atlas_slices.end()) {
           runtime.slice_used[found->second.second] = runtime.frame;
         }
       }
@@ -2102,8 +2128,7 @@ void Capture(Context& command, const SceneShader& shader) {
              && runtime.dynamic_clusters + block_clusters <= dlaa_bridge::RT_DYNAMIC_CLUSTERS;
       // One whose cluster set waits for its triangles' order (first captured before the helper took compact draws: its set
       // made unsorted, each cluster over a whole grass patch) is captured once more in full (its corners: PrepareClusterSet).
-      const auto set = compactable ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end();
-      const bool corners_wanted = set != runtime.cluster_meshes.end() && set->second.staging && !set->second.corners;
+      const bool corners_wanted = mesh != runtime.cluster_meshes.end() && mesh->second.staging && !mesh->second.corners;
       if (!sway && !moving && !corners_wanted && !seen.all_draws && !runtime.camera_moving && seen.instances <= seen.last_instances
           && (key + runtime.frame) % PLACE_TURNS != 0) {
         // Drawn all the same (RT_DRAWN_PLACED: its kept instances stay).
@@ -2117,6 +2142,10 @@ void Capture(Context& command, const SceneShader& shader) {
       place = true;
     }
   }
+  if (cut_out_texture_asked && !cut_out) {
+    mask.Reset();
+  }
+  bool foliage = shader.foliage || cut_out;
   // The main view (not the UI's small 3D views, whose models stand elsewhere in the world): its camera and its depth at
   // the display's size, single-sampled.
   if (!cascade_draw && host.main_view != nullptr && !host.main_view(native)) return;
@@ -2183,10 +2212,8 @@ void Capture(Context& command, const SceneShader& shader) {
   // skip alpha tests would pass through it for good), and leaves a quarter of the atlas to leaves and rigid cut-outs (a slice
   // in use is never reused; without one they leave the scene).
   if (cut_out && (shader.dynamic || shader.clip_cut_outs)) {
-    ComPtr<ID3D11Resource> mask_resource;
-    mask->GetResource(mask_resource.GetAddressOf());
     if (!runtime.settings.micromaps || runtime.tree_corners + (triangles * 3) > runtime.alpha_corners - (runtime.alpha_corners / 2)
-        || (!runtime.atlas_slices.contains(mask_resource.Get()) && runtime.atlas_slices.size() >= dlaa_bridge::RT_ATLAS_SLICES / 4 * 3)
+        || (!runtime.atlas_slices.contains(read_mask_resource()) && runtime.atlas_slices.size() >= dlaa_bridge::RT_ATLAS_SLICES / 4 * 3)
         || !AtlasSlice(native, mask.Get(), &slice)) {
       cut_out = false;
       foliage = false;
@@ -2219,9 +2246,8 @@ void Capture(Context& command, const SceneShader& shader) {
       buffers[slot]->Release();
     }
     // A leaf's opacity mask (the atlas takes its alpha).
-    if (ComPtr<ID3D11Resource> mask_resource; mask) {
-      mask->GetResource(mask_resource.GetAddressOf());
-      if (ComPtr<ID3D11Texture2D> mask_texture; SUCCEEDED(mask_resource.As(&mask_texture))) {
+    if (mask) {
+      if (ComPtr<ID3D11Texture2D> mask_texture; SUCCEEDED(read_mask_resource()->QueryInterface(IID_PPV_ARGS(mask_texture.GetAddressOf())))) {
         D3D11_TEXTURE2D_DESC mask_desc = {};
         mask_texture->GetDesc(&mask_desc);
         described += std::format(", mask {}x{} format {}", mask_desc.Width, mask_desc.Height, static_cast<int>(mask_desc.Format));

@@ -25,7 +25,9 @@
 //    ID3D11DeviceContext1 and device) with RENODX_TW_STATE_CHECK=1: a static draw (three vertex buffers, an index buffer at
 //    an offset) gets v166's short key and key (their formulas below), its index buffer reaches Host::moving_indexed, and
 //    takes the short path the second time; a rows shader's draw from a dynamic vertex buffer (slot 0 read for the dynamic
-//    test, slots 1-3 after) and a placed one (slot 0 alone in its key, its other bound slots none) get theirs; a new draw
+//    test, slots 1-3 after) and a placed one (slot 0 alone in its key, its other bound slots none) get theirs; meshes with a
+//    cut-out version: a static one's key without its mask, then with it once the shadow pass alpha-tests its texture (the
+//    lookup in the scene's lock), a placed known one counted (its texture read once, checked again); a new draw
 //    into the main view's depth twice (the device prepared, then cached); no state check line; CONTROL: a binding changed
 //    between two reads logs one. Cost (printed): v166's reads for a static draw against now's.
 #include <windows.h>
@@ -627,7 +629,7 @@ int main() {
     };
     // v166's: the shader, the arguments (a placed draw's instances 0), VS b1-b4 and their first constants, VS t0-t3, the
     // identity's vertex buffers with their strides and offsets (a placed draw's slot 0 alone), the index buffer, the mask.
-    const auto full_key = [&](uint32_t hash, ID3D11Buffer* first, bool placed) {
+    const auto full_key = [&](uint32_t hash, ID3D11Buffer* first, bool placed, ID3D11ShaderResourceView* mask = nullptr) {
       std::vector<uint64_t> values = {hash, arguments.index_count, placed ? 0u : arguments.instance_count, arguments.first_index,
                                       static_cast<uint32_t>(arguments.vertex_offset), placed ? 0u : arguments.first_instance};
       for (int value = 0; value < (4 * 2) + 4; ++value) values.push_back(0);
@@ -639,7 +641,7 @@ int main() {
       }
       values.push_back(address(indices.Get()));
       values.push_back(index_word);
-      values.push_back(0);
+      values.push_back(address(mask));
       uint64_t key = 14695981039346656037ull;
       for (const uint64_t value : values) key = (key ^ value) * 1099511628211ull;
       return key;
@@ -684,6 +686,49 @@ int main() {
     bind(vertices.Get());
     core::internal::Capture(command, rows);
     const bool placed_keyed = last_key() == full_key(rows.hash, vertices.Get(), true);
+    // Meshes with a cut-out version and their mask at t0: a static one's key takes the mask only where the game's shadow
+    // pass alpha-tests its texture (looked up in the scene's lock), first not, then so; a placed one known, its texture
+    // read once for that lookup and its atlas slice's (the state check reads it again each time).
+    const auto mask_view = [&] {
+      ComPtr<ID3D11Texture2D> texture;
+      const D3D11_TEXTURE2D_DESC desc = {.Width = 4, .Height = 4, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R8G8B8A8_UNORM,
+                                         .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+      ComPtr<ID3D11ShaderResourceView> view;
+      if (SUCCEEDED(device->CreateTexture2D(&desc, nullptr, texture.GetAddressOf()))) {
+        device->CreateShaderResourceView(texture.Get(), nullptr, view.GetAddressOf());
+      }
+      return view;
+    }();
+    CHECK(mask_view);
+    ComPtr<ID3D11Resource> mask_texture;
+    mask_view->GetResource(mask_texture.GetAddressOf());
+    static constexpr std::array<uint8_t, 4> CUT_OUT = {5, 6, 7, 8};
+    immediate->PSSetShaderResources(0, 1, mask_view.GetAddressOf());
+    const core::SceneShader solid_static = {.hash = 0x5EED0002, .cut_out_shader = CUT_OUT};
+    core::internal::Capture(command, solid_static);
+    const bool solid_keyed = last_key() == full_key(solid_static.hash, vertices.Get(), false);
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.cut_out_textures.insert(mask_texture.Get());
+    }
+    const core::SceneShader cut_out_static = {.hash = 0x5EED0003, .cut_out_shader = CUT_OUT};
+    core::internal::Capture(command, cut_out_static);
+    const bool cut_out_keyed = last_key() == full_key(cut_out_static.hash, vertices.Get(), false, mask_view.Get());
+    const core::SceneShader cut_out_placed = {.hash = 0x5EED0004, .rows_shader = ROWS, .cut_out_shader = CUT_OUT};
+    const uint64_t cut_out_placed_key = full_key(cut_out_placed.hash, vertices.Get(), true, mask_view.Get());
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.known[cut_out_placed_key] = {};
+    }
+    core::internal::Capture(command, cut_out_placed);
+    bool cut_out_placed_counted = false;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      cut_out_placed_counted = runtime.last_key == cut_out_placed_key && runtime.known[cut_out_placed_key].counted_frame == runtime.frame;
+      runtime.cut_out_textures.clear();
+    }
+    ID3D11ShaderResourceView* const no_view = nullptr;
+    immediate->PSSetShaderResources(0, 1, &no_view);
     // A new static draw into the main view's depth (the bridge's size), its camera at b0: its capture prepares the device,
     // the next takes the cached one; the frame's room full, both stop before drawing.
     const auto depth = [&] {
@@ -730,9 +775,12 @@ int main() {
                                   return line.find("State check: a vertex buffer read once differs") != std::string::npos;
                                 }) == 1;
     std::printf("5 Capture's reads: static draw key %d, short key learnt %d, short path taken %d, dynamic rows draw key %d, placed draw key %d, "
-                "device prepared %d then cached %d, state check lines %zu; CONTROL a binding changed between reads logged %d\n",
-                rigid_keyed, short_learnt, short_taken, dynamic_keyed, placed_keyed, prepared, still_prepared, check_lines, control_logged);
+                "cut-out mask: not alpha-tested %d, alpha-tested %d, placed and known %d, device prepared %d then cached %d, state check lines "
+                "%zu; CONTROL a binding changed between reads logged %d\n",
+                rigid_keyed, short_learnt, short_taken, dynamic_keyed, placed_keyed, solid_keyed, cut_out_keyed, cut_out_placed_counted, prepared,
+                still_prepared, check_lines, control_logged);
     CHECK(rigid_keyed && short_learnt && short_taken && dynamic_keyed && placed_keyed && prepared && still_prepared);
+    CHECK(solid_keyed && cut_out_keyed && cut_out_placed_counted);
     CHECK(check_lines == 0);
     CHECK(control_logged);
     // Cost: a static draw's reads in v166 (the dynamic test's four slots with each buffer's desc, the topology, MeshKey's
