@@ -1393,10 +1393,21 @@ class RtScene12 {
     return true;
   }
 
+  // The player's RENODX_TW_PLAY_MICROMAP_LEVEL / RENODX_TW_PLAY_LEAF_MICROMAP_LEVEL (LoadRecordingState): grass's / leaves'
+  // micromaps baked again at that level (-1: built from their recorded bakes), from the first request's block, vertex
+  // texture and atlas (its chunks' bytes; no block: nothing baked again).
+  struct MicromapRebake {
+    int grass_level = -1;
+    int leaf_level = -1;
+    const dlaa_bridge::Shared* block = nullptr;
+    std::span<const uint8_t> vertices;
+    std::span<const uint8_t> atlas;
+  };
   // `folder`/state.bin into this scene before its first request (a scene the harness's player opened at the recording's
   // textures' size), `*first_frame` the recording's first frame. False: refused (`why`: another layout or bridge version,
-  // a truncated file, a device or texture size the recording does not fit); the scene stays as it was.
-  bool LoadRecordingState(const std::filesystem::path& folder, uint32_t* first_frame, std::string* why) {
+  // a truncated file, a device or texture size the recording does not fit); the scene stays as it was. `rebake`: the
+  // micromaps baked again (MicromapRebake; `why` says how many and whether their bytes are the recorded ones).
+  bool LoadRecordingState(const std::filesystem::path& folder, const MicromapRebake& rebake, uint32_t* first_frame, std::string* why) {
     if (!device_ || !visibility_ || meshes_.size() != 0) {
       *why = "no new ray tracing scene to load it into";
       return false;
@@ -1608,6 +1619,266 @@ class RtScene12 {
       batch_bytes += found->second.size();
       if (batch_bytes > (512ull << 20) && !flush()) break;
     }
+    // MicromapRebake's kinds baked again as a live bake bakes them (the recording's baker, BakeMicromapsOnGpu or
+    // BakeMicromaps, at the given level) from their recorded inputs: a mesh's UVs and record (atlas slice, cut-off) in the
+    // pools; a cluster set's first instance in the first request (its draw's first vertex, slice and flags, its corners'
+    // UVs in the vertex texture as rt_compact writes them); the atlas slice the first request's. A set the first request
+    // does not draw, or a failed bake, keeps its recorded bake.
+    std::unordered_map<const uint8_t*, std::vector<std::byte>> rebaked;  // by chunk: its bake's bytes (MicromapBytes)
+    std::string rebake_report;
+#if defined(RENODX_OMM_SDK)
+    if (rebake.block != nullptr && list != nullptr && why->empty()) {
+      const auto started = std::chrono::steady_clock::now();
+      if (rebake.grass_level >= 0) grass_micromap_level_ = rebake.grass_level;
+      if (rebake.leaf_level >= 0) leaf_micromap_level_ = rebake.leaf_level;
+      // A recorded buffer's `bytes` at `offset` (nullptr: not recorded there).
+      const auto buffer_part = [&](const char* name, uint64_t offset, uint64_t bytes) -> const uint8_t* {
+        const auto found = resources.find(name);
+        recording::BufferHeader part = {};
+        if (found == resources.end() || found->second.size() < sizeof(part)) return nullptr;
+        std::memcpy(&part, found->second.data(), sizeof(part));
+        if (offset < part.offset || offset - part.offset + bytes > found->second.size() - sizeof(part)) return nullptr;
+        return found->second.data() + sizeof(part) + (offset - part.offset);
+      };
+      // Each atlas slice's mask (its first mip) in the first request's bytes.
+      constexpr uint64_t MASK_BYTES = uint64_t{dlaa_bridge::RT_ATLAS_SIZE} * dlaa_bridge::RT_ATLAS_SIZE;
+      std::vector<const uint8_t*> masks;
+      if (recording::TextureHeader atlas = {}; atlas_ && rebake.atlas.size() >= sizeof(atlas)) {
+        std::memcpy(&atlas, rebake.atlas.data(), sizeof(atlas));
+        const D3D12_RESOURCE_DESC atlas_desc = atlas_->GetDesc();
+        const UINT subresources = atlas_desc.DepthOrArraySize * atlas_desc.MipLevels;
+        std::vector<UINT> rows(subresources);
+        std::vector<UINT64> row_bytes(subresources);
+        device_->GetCopyableFootprints(&atlas_desc, 0, subresources, 0, nullptr, rows.data(), row_bytes.data(), nullptr);
+        uint64_t at = sizeof(atlas);
+        for (UINT subresource = 0; subresource < subresources; ++subresource) {
+          if (subresource % atlas_desc.MipLevels == 0) masks.push_back(rebake.atlas.data() + at);
+          at += uint64_t{rows[subresource]} * row_bytes[subresource];
+        }
+        if (at > rebake.atlas.size() || atlas.slices != subresources || uint64_t{rows[0]} * row_bytes[0] != MASK_BYTES) masks.clear();
+      }
+      recording::TextureHeader vertices = {};
+      if (rebake.vertices.size() >= sizeof(vertices)) std::memcpy(&vertices, rebake.vertices.data(), sizeof(vertices));
+      // A vertex's UV (its w: two halves) in the first request's vertex texture; false: not recorded.
+      const auto vertex_uv = [&](uint64_t vertex, uint32_t* uv) {
+        if (vertices.width == 0) return false;
+        const uint64_t row = vertex / vertices.width;
+        const uint64_t at = sizeof(vertices) + ((row - vertices.first_row) * vertices.row_bytes) + ((vertex % vertices.width) * 16) + 12;
+        if (row < vertices.first_row || row - vertices.first_row >= vertices.rows || at + 4 > rebake.vertices.size()) return false;
+        std::memcpy(uv, rebake.vertices.data() + at, 4);
+        return true;
+      };
+      struct Rebaked {
+        const uint8_t* chunk = nullptr;
+        std::span<const uint8_t> recorded;  // its recorded bake (MicromapBytes on)
+        MicromapBake* bake = nullptr;       // owned by `baking` (GPU bakes: by the scene's lists until AdvanceMicromaps)
+      };
+      std::vector<Rebaked> rebakes;
+      std::vector<std::unique_ptr<MicromapBake>> baking;
+      uint32_t kept = 0;  // their inputs not recorded (a set: not drawn in the first request)
+      const auto add = [&](const uint8_t* chunk, std::span<const uint8_t> recorded, std::unique_ptr<MicromapBake> bake, uint32_t slice) {
+        if (slice >= masks.size()) {
+          ++kept;
+          return;
+        }
+        bake->mask_data.assign(masks[slice], masks[slice] + MASK_BYTES);
+        rebakes.push_back({.chunk = chunk, .recorded = recorded, .bake = bake.get()});
+        baking.push_back(std::move(bake));
+      };
+      for (const std::span<const uint8_t> chunk : mesh_chunks) {
+        MeshRecord record = {};
+        if (chunk.size() < sizeof(record)) continue;
+        std::memcpy(&record, chunk.data(), sizeof(record));
+        const bool grass = (record.flags & MESH_GRASS) != 0;
+        const uint64_t bake_at = sizeof(record) + (uint64_t{record.transforms} * 48) + (uint64_t{record.triangles} * 48);
+        if ((record.flags & MESH_MICROMAPS) == 0 || (grass ? rebake.grass_level : rebake.leaf_level) < 0 || chunk.size() < bake_at) continue;
+        const uint8_t* uvs = buffer_part("uvs", uint64_t{record.uv_offset} * 4, uint64_t{record.triangles} * 12);
+        const uint8_t* entry = buffer_part("records", uint64_t{record.record} * 16, 16);
+        if (uvs == nullptr || entry == nullptr) {
+          ++kept;
+          continue;
+        }
+        // Its record: UV offset, normal offset, atlas slice | flags << 16, its alpha cut-off (rt_scene_data).
+        std::array<uint32_t, 4> placement = {};
+        std::memcpy(placement.data(), entry, sizeof(placement));
+        auto bake = std::make_unique<MicromapBake>();
+        *bake = {.key = record.key, .build = record.build, .triangles = record.triangles, .grass = grass, .cutoff = std::bit_cast<float>(placement[3])};
+        bake->uv_data.resize(uint64_t{record.triangles} * 3);
+        std::memcpy(bake->uv_data.data(), uvs, uint64_t{record.triangles} * 12);
+        add(chunk.data(), chunk.subspan(bake_at), std::move(bake), placement[2] & 0xFFFFu);
+      }
+      std::unordered_map<uint64_t, const dlaa_bridge::RtCompactDraw*> set_draws;  // each set's first draw in the first request
+      for (uint32_t index = 0; index < std::min(rebake.block->rt_compact_count, dlaa_bridge::RT_COMPACT_DRAWS); ++index) {
+        set_draws.try_emplace(rebake.block->rt_compact[index].set, &rebake.block->rt_compact[index]);
+      }
+      // Trace's cut-off (but RENODX_TW_OWN_CUTOFF's).
+      const float own_cutoff = std::clamp((rebake.block->rt_leaf_cutoff > 0.f) ? rebake.block->rt_leaf_cutoff : LEAF_ALPHA_CUTOFF, 0.f, 2.f);
+      for (const std::span<const uint8_t> chunk : set_chunks) {
+        SetRecord record = {};
+        if (chunk.size() < sizeof(record)) continue;
+        std::memcpy(&record, chunk.data(), sizeof(record));
+        const uint64_t bake_at = sizeof(record) + (uint64_t{record.clusters} * 16);
+        if ((record.flags & SET_MICROMAPS) == 0 || chunk.size() < bake_at) continue;
+        const auto drawn = set_draws.find(record.key);
+        const uint8_t* corners = buffer_part("set_pool", (uint64_t{record.offset} + record.clusters) * 16, uint64_t{record.triangles} * 3);
+        if (drawn == set_draws.end() || corners == nullptr) {
+          ++kept;
+          continue;
+        }
+        const dlaa_bridge::RtCompactDraw& draw = *drawn->second;
+        const bool grass = (draw.flags & dlaa_bridge::RT_GRASS) != 0;
+        if ((grass ? rebake.grass_level : rebake.leaf_level) < 0) continue;
+        auto bake = std::make_unique<MicromapBake>();
+        *bake = {.key = record.key, .build = record.generation, .triangles = record.triangles, .set = true, .grass = grass,
+                 .cutoff = ((draw.flags & dlaa_bridge::RT_OWN_CUTOFF) != 0) ? own_cutoff : LEAF_ALPHA_CUTOFF};
+        bake->uv_data.resize(uint64_t{record.triangles} * 3);
+        // Each cluster's triangles (its desc: first vertex in the block, vertices, first triangle, triangles), their corners
+        // three bytes each.
+        bool read = true;
+        for (uint32_t cluster = 0; cluster < record.clusters && read; ++cluster) {
+          std::array<uint32_t, 4> desc = {};
+          std::memcpy(desc.data(), chunk.data() + sizeof(record) + (uint64_t{cluster} * 16), sizeof(desc));
+          for (uint64_t corner = uint64_t{desc[2]} * 3; corner < (uint64_t{desc[2]} + desc[3]) * 3 && read; ++corner) {
+            read = corner < bake->uv_data.size() && vertex_uv(uint64_t{draw.first_vertex} + desc[0] + corners[corner], &bake->uv_data[corner]);
+          }
+        }
+        if (!read) {
+          ++kept;
+          continue;
+        }
+        add(chunk.data(), chunk.subspan(bake_at), std::move(bake), draw.slice);
+      }
+      const bool gpu = gpu_micromaps_ && (rebake.block->rt_flags & dlaa_bridge::RT_GPU_MICROMAPS) != 0;
+      if (gpu) {
+        // A request's GPU bakes at most (BakeMicromapsOnGpu's budget) a list, their UVs and masks uploaded; their outputs
+        // read back as the journal's (AdvanceMicromaps).
+        for (size_t next = 0; next < rebakes.size() && list != nullptr;) {
+          size_t end = next;
+          uint32_t batch_triangles = 0;
+          uint64_t uv_bytes = 0;
+          while (end < rebakes.size() && end - next < MICROMAP_GPU_BAKES
+                 && (end == next || batch_triangles + rebakes[end].bake->triangles <= MICROMAP_GPU_TRIANGLES)) {
+            batch_triangles += rebakes[end].bake->triangles;
+            uv_bytes = Align(uv_bytes + (uint64_t{rebakes[end].bake->triangles} * 12), 256);
+            ++end;
+          }
+          ComPtr<ID3D12Resource> uvs = Buffer(uv_bytes, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+          ComPtr<ID3D12Resource> mask_upload = Buffer((end - next) * MASK_BYTES, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+          uint8_t* uv_data = nullptr;
+          uint8_t* mask_data = nullptr;
+          if (!uvs || !mask_upload || FAILED(uvs->Map(0, nullptr, reinterpret_cast<void**>(&uv_data)))
+              || FAILED(mask_upload->Map(0, nullptr, reinterpret_cast<void**>(&mask_data)))) {
+            break;
+          }
+          std::vector<MicromapBake*> batch;
+          uint64_t uvs_at = 0;
+          for (size_t index = next; index < end; ++index) {
+            MicromapBake& bake = *rebakes[index].bake;
+            const auto mask_index = static_cast<uint32_t>(index - next);
+            auto& gpu_masks = omm_gpu_.masks;
+            if (mask_index == gpu_masks.size()) {
+              const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
+              const D3D12_RESOURCE_DESC texture = {.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D, .Width = dlaa_bridge::RT_ATLAS_SIZE,
+                                                   .Height = dlaa_bridge::RT_ATLAS_SIZE, .DepthOrArraySize = 1, .MipLevels = 1,
+                                                   .Format = DXGI_FORMAT_R8_UNORM, .SampleDesc = {.Count = 1}};
+              ComPtr<ID3D12Resource> made;
+              if (FAILED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &texture, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                                                          nullptr, IID_PPV_ARGS(made.GetAddressOf())))) {
+                break;
+              }
+              gpu_masks.push_back(std::move(made));
+            }
+            std::memcpy(uv_data + uvs_at, bake.uv_data.data(), uint64_t{bake.triangles} * 12);
+            std::memcpy(mask_data + (uint64_t{mask_index} * MASK_BYTES), bake.mask_data.data(), MASK_BYTES);
+            ID3D12Resource* gpu_mask = gpu_masks[mask_index].Get();
+            const auto to_copy = Transition(gpu_mask, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+            list->ResourceBarrier(1, &to_copy);
+            const D3D12_TEXTURE_COPY_LOCATION destination = {.pResource = gpu_mask, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = 0};
+            const D3D12_TEXTURE_COPY_LOCATION source = {
+                .pResource = mask_upload.Get(),
+                .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+                .PlacedFootprint = {.Offset = uint64_t{mask_index} * MASK_BYTES,
+                                    .Footprint = {.Format = DXGI_FORMAT_R8_UNORM, .Width = dlaa_bridge::RT_ATLAS_SIZE, .Height = dlaa_bridge::RT_ATLAS_SIZE,
+                                                  .Depth = 1, .RowPitch = dlaa_bridge::RT_ATLAS_SIZE}},
+            };
+            list->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+            const auto copied = Transition(gpu_mask, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            list->ResourceBarrier(1, &copied);
+            bake.gpu = true;
+            bake.value = own_value_ + 1;  // the flush's
+            bake.uvs = uvs;
+            bake.uvs_offset = uvs_at;
+            bake.mask_index = mask_index;
+            uvs_at = Align(uvs_at + (uint64_t{bake.triangles} * 12), 256);
+            batch.push_back(&bake);
+          }
+          uvs->Unmap(0, nullptr);
+          mask_upload->Unmap(0, nullptr);
+          // The heap, root signature and table a request's bakes find (Trace's).
+          ID3D12DescriptorHeap* heaps[] = {descriptors_.Get()};
+          list->SetDescriptorHeaps(1, heaps);
+          list->SetComputeRootSignature(root_signature_.Get());
+          list->SetComputeRootDescriptorTable(ROOT_TABLE, descriptors_->GetGPUDescriptorHandleForHeapStart());
+          BakeMicromapsOnGpu(list, batch);
+          for (MicromapBake* bake : batch) {
+            const auto owned = std::ranges::find(baking, bake, [](const auto& entry) { return entry.get(); });
+            micromap_reads_.push_back(std::move(*owned));
+          }
+          uploads.push_back(std::move(uvs));
+          uploads.push_back(std::move(mask_upload));
+          if (!flush()) break;
+          AdvanceMicromaps(own_fence_->GetCompletedValue());
+          baking.insert(baking.end(), std::make_move_iterator(micromaps_baked_.begin()), std::make_move_iterator(micromaps_baked_.end()));
+          micromaps_baked_.clear();
+          // A mask's texture failed: the rest keep their recorded bakes.
+          if (batch.size() != end - next) break;
+          next = end;
+        }
+      } else if (bake_micromaps_) {
+        // MICROMAP_WORKERS bakes at once, each with its baker (as AdvanceMicromaps runs them).
+        std::array<std::future<void>, MICROMAP_WORKERS> workers;
+        for (size_t worker = 0; worker < workers.size(); ++worker) {
+          workers[worker] = std::async(std::launch::async, [&, worker] {
+            for (size_t index = worker; index < rebakes.size(); index += MICROMAP_WORKERS) BakeMicromaps(rebakes[index].bake, omm_.bakers[worker]);
+          });
+        }
+        for (const auto& worker : workers) worker.wait();
+      }
+      // The bakes' bytes as the recorder writes them (JoinBytes), beside the recorded ones.
+      uint32_t same = 0;
+      uint32_t failed = 0;
+      std::array<uint64_t, 2> data_bytes = {};  // recorded, baked again
+      for (const Rebaked& entry : rebakes) {
+        MicromapBytes sizes = {};
+        std::memcpy(&sizes, entry.recorded.data(), std::min(sizeof(sizes), entry.recorded.size()));
+        data_bytes[0] += sizes.data;
+        const auto owned = std::ranges::find(baking, entry.bake, [](const auto& bake) { return bake.get(); });
+        if (owned == baking.end() || entry.bake->indices.size() != entry.bake->triangles) {
+          ++failed;
+          continue;
+        }
+        const Journal journal = {.data = std::move(entry.bake->data), .descs = std::move(entry.bake->descs), .indices = std::move(entry.bake->indices),
+                                 .histogram = std::move(entry.bake->histogram)};
+        std::vector<std::byte> bytes = JoinBytes({}, &journal);
+        const auto recorded = std::as_bytes(entry.recorded);
+        same += (recorded.size() >= bytes.size() && std::ranges::equal(recorded.first(bytes.size()), bytes)) ? 1 : 0;
+        data_bytes[1] += journal.data.size();
+        rebaked[entry.chunk] = std::move(bytes);
+      }
+      const auto level_text = [](int level) { return (level >= 0) ? std::to_string(level) : std::string("as recorded"); };
+      rebake_report = std::format(
+          "; micromaps baked again ({} baker; grass level {}, leaves' {}): {} bakes, {} of them the recorded bytes, {} not (from "
+          "{} data bytes to {}); {} kept as recorded ({} not drawn in the first request or inputs not recorded, {} failed); {:.1f} ms",
+          gpu ? "GPU" : "CPU", level_text(rebake.grass_level), level_text(rebake.leaf_level), rebaked.size(), same, rebaked.size() - same, data_bytes[0],
+          data_bytes[1], kept + failed, kept, failed, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
+    }
+#endif
+    // A chunk's bake from `at`: its recorded one, or the one baked again.
+    const auto bake_bytes = [&](std::span<const uint8_t> chunk, uint64_t at) {
+      const auto found = rebaked.find(chunk.data());
+      if (found == rebaked.end()) return chunk.subspan(at);
+      return std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(found->second.data()), found->second.size());
+    };
     // A mesh's bytes: its record, its transforms, its vertices, then its micromaps' (MicromapBytes); its BLAS built as
     // Record builds a static one (its geometry's flags, PREFER_FAST_TRACE, not compacted: the same hits).
     const D3D12_RESOURCE_BARRIER uav_barrier = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
@@ -1649,7 +1920,7 @@ class RtScene12 {
       if ((record.flags & MESH_MICROMAPS) != 0) {
         ComPtr<ID3D12Resource> inputs;
         uint64_t indices_offset = 0;
-        if (!BuildRecordedMicromaps(list, chunk.subspan(sizeof(record) + transforms_bytes + vertices_bytes), std::addressof(mesh.micromaps), std::addressof(inputs), &indices_offset,
+        if (!BuildRecordedMicromaps(list, bake_bytes(chunk, sizeof(record) + transforms_bytes + vertices_bytes), std::addressof(mesh.micromaps), std::addressof(inputs), &indices_offset,
                                     &uploads)) {
           *why = "a mesh's micromaps could not be built";
           break;
@@ -1704,7 +1975,7 @@ class RtScene12 {
       set.descs.resize(record.clusters);
       std::memcpy(set.descs.data(), chunk.data() + sizeof(record), uint64_t{record.clusters} * 16);
       if ((record.flags & SET_MICROMAPS) != 0
-          && !BuildRecordedMicromaps(list, chunk.subspan(sizeof(record) + (uint64_t{record.clusters} * 16)), std::addressof(set.micromaps), std::addressof(set.micromap_inputs),
+          && !BuildRecordedMicromaps(list, bake_bytes(chunk, sizeof(record) + (uint64_t{record.clusters} * 16)), std::addressof(set.micromaps), std::addressof(set.micromap_inputs),
                                      &set.micromap_indices, &uploads)) {
         *why = "a cluster set's micromaps could not be built";
       }
@@ -1781,7 +2052,7 @@ class RtScene12 {
       return false;
     }
     *first_frame = header.frame;
-    *why = std::format("state of frame {} loaded: {} meshes, {} cluster sets, {} GPU resources", header.frame, meshes_.size(), sets_.size(), resources.size());
+    *why = std::format("state of frame {} loaded: {} meshes, {} cluster sets, {} GPU resources", header.frame, meshes_.size(), sets_.size(), resources.size()) + rebake_report;
     return true;
   }
 
@@ -1934,11 +2205,28 @@ class RtScene12 {
       return block;
     };
     uint32_t first_frame = 0;
-    const bool opened_scene = Open(*block_of(first), version, true);
-    // The textures made: the first request's and the state's bytes let go (the player's memory: WH3's 8 frames are ~10 GB).
-    first = {};
+    const std::unique_ptr<dlaa_bridge::Shared> first_block = block_of(first);
+    const bool opened_scene = Open(*first_block, version, true);
+    // RENODX_TW_PLAY_MICROMAP_LEVEL / RENODX_TW_PLAY_LEAF_MICROMAP_LEVEL=<level> (tests): grass's / leaves' micromaps baked
+    // again at that level from the recorded inputs (MicromapRebake), the rest of the recording as it was.
+    const auto level = [](const wchar_t* variable) {
+      std::array<wchar_t, 16> value = {};
+      return (GetEnvironmentVariableW(variable, value.data(), static_cast<DWORD>(value.size())) != 0) ? std::clamp(_wtoi(value.data()), 0, 12) : -1;
+    };
+    MicromapRebake rebake = {.grass_level = level(L"RENODX_TW_PLAY_MICROMAP_LEVEL"), .leaf_level = level(L"RENODX_TW_PLAY_LEAF_MICROMAP_LEVEL")};
+    if (rebake.grass_level >= 0 || rebake.leaf_level >= 0) {
+      rebake.block = first_block.get();
+      for (const auto& [name, bytes] : first.resources) {
+        if (name == "vertices") rebake.vertices = bytes;
+        if (name == "atlas") rebake.atlas = bytes;
+      }
+    } else {
+      // The textures made: the first request's bytes let go (the player's memory: WH3's 8 frames are ~10 GB).
+      first = {};
+    }
     state = {};
-    const bool loaded = opened_scene && LoadRecordingState(recording, &first_frame, report);
+    const bool loaded = opened_scene && LoadRecordingState(recording, rebake, &first_frame, report);
+    first = {};
     for (const HANDLE handle : opened) CloseHandle(handle);
     if (!loaded) {
       if (!opened_scene) *report = "the player's textures could not be opened";
@@ -7312,7 +7600,7 @@ class RtScene12 {
       config.indexFormat = ommIndexFormat_UINT_32;
       config.indexCount = bake->triangles * 3;
       config.alphaCutoff = bake->cutoff;
-      config.maxSubdivisionLevel = static_cast<uint8_t>(bake->grass ? GRASS_MICROMAP_LEVEL : 6);
+      config.maxSubdivisionLevel = static_cast<uint8_t>(bake->grass ? grass_micromap_level_ : leaf_micromap_level_);
       config.maxOutOmmArraySize = MICROMAP_MESH_BYTES;
       config.maxScratchMemorySize = ommGpuScratchMemoryBudget_MB_64;
       if (const ommResult result = omm_.gpu_pre_dispatch(omm_.gpu_pipeline, &config, &plan.info); result != ommResult_SUCCESS) {
@@ -7659,9 +7947,10 @@ class RtScene12 {
       bake.histogram_bytes = static_cast<uint32_t>(plan.sizes[3]);
     }
 #if defined(RENODX_RECORDER)
-    // The recorder's journal (RENODX_TW_RECORD): the post-dispatch infos (the data's and descs' real sizes), data, descs
-    // and indices read back as well (AdvanceMicromaps keeps them as a CPU bake's); the builds' ones readable again after.
-    if (journal_on_) {
+    // The recorder's journal (RENODX_TW_RECORD; the player's bakes again, LoadRecordingState): the post-dispatch infos (the
+    // data's and descs' real sizes), data, descs and indices read back as well (AdvanceMicromaps keeps them as a CPU bake's);
+    // the builds' ones readable again after.
+    if (journal_on_ || player_) {
       static constexpr std::array<size_t, 4> JOURNALED = {5, 0, 1, 3};
       std::array<uint64_t, 4> bases = {};
       uint64_t journal_bytes = 0;
@@ -7703,8 +7992,8 @@ class RtScene12 {
   }
 
   // A leaf mesh's micromaps from its UVs and mask (the bake thread): 4-state as the ray queries test them (bilinear,
-  // wrapping, LEAF_ALPHA_CUTOFF), a micro-triangle about two texels across (at most level 6, grass's
-  // GRASS_MICROMAP_LEVEL), the same ones shared, wholly opaque or clear triangles the special indices (all of them so: no
+  // wrapping, LEAF_ALPHA_CUTOFF), a micro-triangle about two texels across (at most leaf_micromap_level_, grass's
+  // grass_micromap_level_), the same ones shared, wholly opaque or clear triangles the special indices (all of them so: no
   // micromaps, no array); none (no indices) when the SDK fails.
   void BakeMicromaps(MicromapBake* bake, ommBaker baker) const {
     ommCpuTextureMipDesc mip = ommCpuTextureMipDescDefault();
@@ -7732,7 +8021,7 @@ class RtScene12 {
     input.indexBuffer = corners.data();
     input.indexCount = static_cast<uint32_t>(corners.size());
     input.alphaCutoff = bake->cutoff;
-    input.maxSubdivisionLevel = bake->grass ? GRASS_MICROMAP_LEVEL : 6;
+    input.maxSubdivisionLevel = bake->grass ? grass_micromap_level_ : leaf_micromap_level_;
     input.maxArrayDataSize = MICROMAP_MESH_BYTES;
     input.maxWorkloadSize = MICROMAP_WORKLOAD;
     ommCpuBakeResult result = nullptr;
@@ -8520,6 +8809,10 @@ class RtScene12 {
   bool cluster_micromaps_ = false;  // Mega Geometry's operations allow micromaps (grass sets' templates)
   uint64_t set_generation_ = 0;
   uint64_t micromap_logged_ = 0;                 // that line's time (GetTickCount64)
+  // The bakes' finest micromap levels: grass's, leaves' (the player's RENODX_TW_PLAY_MICROMAP_LEVEL and
+  // RENODX_TW_PLAY_LEAF_MICROMAP_LEVEL set them for its bakes, LoadRecordingState).
+  int grass_micromap_level_ = GRASS_MICROMAP_LEVEL;
+  int leaf_micromap_level_ = 6;
 #if defined(RENODX_OMM_SDK)
   OmmSdk omm_;
   OmmGpu omm_gpu_;
