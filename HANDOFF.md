@@ -323,6 +323,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARED STEPS NEXT (shs2_ 23:xx): every game: a census of its other SSAO readers ... | per-game rounds, gpu3_, next shared round
 - R7 / TEST BOXES (shs2_ 23:xx): R7 clamps: Shogun 2 sea overlay writers C8375A74 ... | per-game rounds, next test round
 - PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction): C:/Users/arshi/.cla ... | coordinator
+- SKILLS UPDATE 3 (ATN's order step 2, 01:xx): 16 lessons of 11-16 / 11-17 (tools/ ... | sk3_
 - DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
 - CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benc ... | coordinator, after the current merges + install, ATN's go
 - ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart batt ... | coordinator, then a CPU / memory round
@@ -2074,6 +2075,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         plan into HANDOFF; (2) the skills updated with the lessons of 11-16 / 11-17; (3) RT/PT performance; (4) the new
         features (papers, PT DI, vMF); (5) reference comparisons (should find bugs like DEBUG44's); (6) bug fixes + the
         plan's fixes; (7) best helper; (8) finish Attila. Nsight in every step. Owner: coordinator
+      - [ ] SKILLS UPDATE 3 (ATN's order step 2, 01:xx): 16 lessons of 11-16 / 11-17
+        (tools/tw/round_notes/skill_lessons_1117.md: seen-vs-unseen test, textbook estimator check, measure before a
+        kernel split, every row combination, static census for render scale, thin / cloth RT casters, tonemap edge inputs,
+        x86 address space, grace windows, AO reader census, reflection occlusion lobe, shared shaders folder, build target
+        suffix, git -C, no heredoc patches, overlay screenshots) into .agents/skills + the skills zip. Owner: sk3_
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
         (a) PsychoV35 RED: dark / shadowed pixels turn deep red under V35 (V31 fine, same frame): in Bend shots, path-torch
         shots and plain night ground: V35 mishandles near-black / negative / NaN input; fix V35 (shared, every game's
