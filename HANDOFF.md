@@ -2254,7 +2254,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         source_location / frame-pointer build; 9 missed failure places (tokens not counts, AddonInit attach, pinned modules,
         destroy fan-out, late-loaded DLL TLS, ...); Revision 1 DONE 11:1x ut1_ (native-width words + CAS bump that stops at
         the top bit, frozen uuid block, source_location M1, INTEREST bit, tokens, per-mod opt-in, F28-F37); M1 build STARTED
-        ut2_ (throwaway branch ut1_m1 -> testbin/ut1_m1 + simulator tools/tw/ut1_m1); M1 run = one night1 (+ sea1 / stress)
+        ut2_ (throwaway branch ut1_m1 3598604a8, NOT to merge; view_trace.hpp + test/tw_view_m1; two gated builds queued
+        behind quiet_run.lock: tools/tw/ut1_m1/harness_x86.log + addon_build.log -> testbin/ut1_m1; coordinator: check the
+        logs, fix compile errors, test_sim.py, worktree clean by hand (junctions); run: constantinople_bench.ps1 -Variants
+        variants\ut1_m1.json -Replay night1.replay -Scenes atn -Rounds 1 -Label ut1_m1, then stress with -Keys; sim.py)
+        simulator tools/tw/ut1_m1); M1 run = one night1 (+ sea1 / stress)
         bench start AFTER cpb_; go if >= 0.15 ms in moving frames) UTILS RESOURCE MEMO (ATN 09:10 "Sure"; cpu3_ D3, design cpu_steps_5_10.md 10a): a per-thread memo in front of
         src/utils' ResourceViewInfo lookups with an epoch every writer bumps; audit every writer + measured write rate first,
         a cross-check switch, then every RenoDX mod gets it (est. -0.2..-0.4 ms Attila night1). Owner: next CPU implementer
