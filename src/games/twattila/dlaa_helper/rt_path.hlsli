@@ -110,7 +110,7 @@ static const uint REFLECT_NEIGHBOURS = 4u;
 static const float REFLECT_RADIUS = 12.f;  // half-resolution texels at roughness 1
 static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x its sample's distance away
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
-static const float REUSE_W_CLAMP = 10.f;      // W at most (kajiya's RESTIR_RESERVOIR_W_CLAMP)
+static const float REUSE_W_CLAMP = 10.f;      // a sample's weight at most this many times one ray's (kajiya's RESTIR_RESERVOIR_W_CLAMP; the bounce's: W x cos / pi)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
 #if defined(REUSE_NEAR)
 // Near ReSTIR Reuse (only its rt_reuse_near build): three neighbours within half the reach (Lean Reuse's test with these
@@ -947,7 +947,9 @@ void PathTraceTexel(uint2 id) {
           Random(uint3(id, frame * 16u + 6144u)));
   }
   Finish(reservoir, ReuseTarget(origin, normal, reservoir));
-  reservoir.weight = min(reservoir.weight, REUSE_W_CLAMP);
+  // REUSE_W_CLAMP in this receiver's units (W x cos / pi): a cosine ray's own W is pi / cos, so W <= 10 alone cut every
+  // sample past 72 degrees and darkened the shade beside boxes and walls (the reference harness: ATN's boxes -3.0 %).
+  reservoir.weight = min(reservoir.weight, REUSE_W_CLAMP * 3.14159265f / max(dot(normal, normalize(reservoir.hit - origin)), 1e-3f));
   StoreReservoir(reuse_samples[set], reuse_data[set], id, reservoir, normal);
   if (sky_apart) bounce[id] = float4(sky / samples, 0.f);
 }
