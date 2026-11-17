@@ -376,6 +376,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STEP 4 TRACES (nsr_ Low STARTED 22:2x): all 15 recordings BASE + SER on + SHaRC ... | nsr_, coordinator
 - CPU2 REVIEW LOW FIXES: (3) resource.hpp:1851-1866 vs 1946: attach adds the modul ... | next High fixer round (with the GPU plan's first round)
 - RT / PT SETTINGS SWEEP (ATN 20:0x: "we are testing every RT and PT setting ... o ... | gpr_, coordinator
+- REC_COMPARE SIZE: rec_compare.py counts differing words only; add the size of a ... | next recorder touch (tools)
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2760,6 +2761,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         (NaN / Inf, black / bright pixels, outputs changing with the option off), rec_compare / references; options a play
         cannot toggle -> player support or new recordings (NRD, RR). gpr_ adds the list + job plan to gpu_plan.md; then a
         Low runner, an xHigh read, High fixers. Owner: gpr_, coordinator
+      - [ ] REC_COMPARE SIZE: rec_compare.py counts differing words only; add the size of a change per chunk (mean /
+        max relative difference of float outputs, mean luminance shift) so fixes like fix1_'s brightening are measured,
+        not just counted. Owner: next recorder touch (tools)
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
@@ -3015,7 +3019,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         the clamp (clamp 40 overshoots everywhere; sky samples reused as points = a third of 49's error; no spatial reuse
         +4.5 %). R-A not applied (boxes worse 0.9898). Tales: no ReSTIR GI, flat sky: not affected. Owner: fix1_
       - [ ] FIX1 LEFT: (a) play the merged helper vs the capture-pass recordings (day1 / night1 / sea1 / stress battle +
-        wh3_forest_unit; base rec_play2 twice for the floor, fix1 twice = determinism) -> fx1p_ Low; (b) the 49 (Own Sky
+        wh3_forest_unit; base rec_play2 twice for the floor, fix1 twice = determinism) -> fx1p_ Low DONE 20:2x
+        (plan_1117/fix1_plays.md; FIX1 recorder build 726BCF8010FA at a37b8fc61, 20 plays exit 0, dumps deleted): FIX1 a
+        vs b IDENTICAL on all 5 (day1 60 / 0, night1 60 / 0, sea1 54 / 0, stress 54 / 0, wh3 125 / 0 chunks / differing);
+        BASE a vs b 20 / 20 / 21 / 25 / 32 differ; BASE vs FIX1 above the floor only bounce / reflection paths (day1 4,
+        night1 7 incl. cache_radiance / sums, sea1 3, stress 7, wh3 31: bounce + reflection all 8 frames 2.3-6.5x the
+        floor); trace chunks + record / scene digests same everywhere; stress: own_sky_0 / specular / specular_meta(_history)
+        change by 2-10 words where the base repeats (fix 2's sky, tiny); (b) the 49 (Own Sky
         Rays off) and 40-light residuals (ReSTIR GI bias); (c) cheaper calibration constants from the C++ side (the
         reflections' +0.04..0.05 ms). fix1_'s 24 play dump folders (60 GB) deleted 19:5x. Owner: fx1p_ (a), next ReSTIR
         round (b, c)
