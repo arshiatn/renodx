@@ -1,4 +1,5 @@
-// GT-VBAO's Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth: SI.ssao_exact_depth, R.U.S.E.'s options.y)
+// GT-VBAO's Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth: SI.ssao_exact_depth, R.U.S.E.'s options.y,
+// Divinity 2's ao_exact_depth)
 // in every shader that has it, on WARP: the built shaders against the builds before the change.
 // Per shader: its bindings from its source's reflection (compiled as the build compiles it; its code checked against
 // the built one's), every texture a smooth plane (four texels on one plane: the exact path's case; channel 0 the depth),
@@ -61,10 +62,15 @@ constexpr const char* ATTILA =
 // Shogun 2's sweep camera (ao_bitmask_collect): the view, inv_projection's four columns (x / y the field of view's).
 constexpr const char* SHOGUN2 =
     "g_viewport_dimensions=160,90,0.00625,0.0111111 inv_projection=-5.13,0,0,0,0,-2.887,0,0,0,0,0,-5,0,0,1,-1.00005";
+// Divinity 2's ao_vbao (PerView, ao_settings): far 100 (the depth texture view z / 100: 20 - 75 m), P00 1, P11 1.7, radius
+// 1 m, thickness 0.1 m, 16 steps, 2 slices, no Auto Thickness, noise frame 0.
+constexpr const char* DIVINITY2 =
+    "ao_view_info=100,0.1,160,90 ao_projection=1,0,0,0,0,1.7,0,0,0,0,1,0,0,0,1,0 ao_radius=1 ao_strength=1 ao_thickness=0.1"
+    " ao_steps=16 ao_slices=2 ao_auto_thickness=0 ao_frame=0";
 constexpr const char* RUSE =
     "projection=1,1.7,1.00005,-5 size=160,90,0.00625,0.0111111 range=2,0.5,0,1 options=1,0,0,0";
 
-constexpr std::array<Job, 31> JOBS = {{
+constexpr std::array<Job, 32> JOBS = {{
     {"twattila", true, "ao_bitmask.ps_5_0.hlsl", "ao_bitmask", "ssao_exact_depth", ATTILA},
     {"twthronesofbritannia", true, "ao_bitmask.ps_5_0.hlsl", "ao_bitmask", "ssao_exact_depth", ATTILA},
     {"twrome2", true, "ao_bitmask01.ps_5_0.hlsl", "ao_bitmask01", "ssao_exact_depth", ATTILA},
@@ -96,6 +102,7 @@ constexpr std::array<Job, 31> JOBS = {{
     {"expeditionsrome", false, "shaders/ao01_0xBD381E21.ps_5_0.hlsl", "0xBD381E21", "ssao_exact_depth", ""},
     {"ruse", false, "ground_vbao.cs_5_0.hlsl", "ground_vbao", "options+4", RUSE},
     {"ruse", false, "ground_bounce.cs_5_0.hlsl", "ground_bounce", "options+4", RUSE},
+    {"divinity2originalsindefinitive", false, "ao_vbao.ps_5_0.hlsl", "ao_vbao", "ao_exact_depth", DIVINITY2},
 }};
 
 std::vector<char> ReadFile(const std::string& path) {

@@ -68,7 +68,7 @@ struct AoConstants {
   float slices = 0.f;
   float auto_thickness = 0.f;
   float frame = 0.f;
-  float padding = 0.f;
+  float exact_depth = 0.f;
 };
 
 // bounce_gbuffer.hlsli's bounce_view.
@@ -200,6 +200,7 @@ inline void OnReinterleave(reshade::api::command_list* cmd_list) {
       .slices = static_cast<float>(1u << static_cast<uint32_t>(std::clamp(rows.ssao_directions, 0.f, 3.f))),
       .auto_thickness = (rows.ssao_auto_thickness != 0.f) ? 1.f : 0.f,
       .frame = twattila::feature_settings::Upscaling(dlaa::sliders) ? static_cast<float>(state.frame % 64u) : 0.f,
+      .exact_depth = (rows.ssao_exact_depth != 0.f) ? 1.f : 0.f,
   };
   if (std::memcmp(&constants, &state.uploaded, sizeof(constants)) != 0) {
     native->UpdateSubresource(state.ao_constants.Get(), 0, nullptr, &constants, 0, 0);

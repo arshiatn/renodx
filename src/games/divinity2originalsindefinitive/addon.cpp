@@ -1356,6 +1356,16 @@ void ConfigureAddon() {
                                                        "thin poles stay thin, walls and pillars block fully.",
                                             .labels = {"Off", "On"},
                                         },
+                                        new Setting{
+                                            .key = "ssao_exact_depth",
+                                            .binding = &lighting_rows.ssao_exact_depth,
+                                            .value_type = SettingValueType::BOOLEAN,
+                                            .default_value = 0.f,
+                                            .label = "Exact Depth Samples (Experimental)",
+                                            .section = section,
+                                            .tooltip = twattila::lighting_settings::EXACT_DEPTH_TOOLTIP,
+                                            .labels = {"Off", "On"},
+                                        },
                                     });
   }
   twattila::graphics_page::SetRaysPresetDefaults(&settings);

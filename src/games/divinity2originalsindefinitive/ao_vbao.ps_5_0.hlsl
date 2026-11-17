@@ -31,7 +31,7 @@ cbuffer ao_settings : register(b1) {
   float ao_slices;
   float ao_auto_thickness;  // 1: each occluder as thick as it is wide
   float ao_frame;           // the noise's (0 without a temporal upscaler: still noise)
-  float ao_padding;
+  float ao_exact_depth;     // 1: each sample's depth at its own place (Exact Depth Samples)
 };
 
 float3 AoPosition(float2 uv, float depth) {
@@ -96,7 +96,20 @@ float AoVisibility(uint2 pixel) {
         if (any(sample_uv != saturate(sample_uv))) continue;
         const float sample_depth = ao_linear_depth.SampleLevel(ao_point, sample_uv, 0);
         if (!(sample_depth < 1.f)) continue;
-        const float3 sample_position = AoPosition(sample_uv, sample_depth);
+        float3 sample_position = AoPosition(sample_uv, sample_depth);
+        // Exact Depth Samples: at the sample's own place (unsnapped), its depth between the four texels around it where they
+        // lie on one plane (twattila/bitmask.hlsli BitmaskPlaneDepth); else its texel's, as before.
+        [branch]
+        if (ao_exact_depth != 0.f) {
+          const float2 place_uv = uv + side * step_uv * distance;
+          const float2 place = place_uv * size - 0.5f;
+          const int2 base = int2(floor(place));
+          const int2 last = int2(size) - 1;
+          const float4 depths = float4(ao_linear_depth.Load(int3(clamp(base, 0, last), 0)), ao_linear_depth.Load(int3(clamp(base + int2(1, 0), 0, last), 0)),
+                                       ao_linear_depth.Load(int3(clamp(base + int2(0, 1), 0, last), 0)), ao_linear_depth.Load(int3(clamp(base + 1, 0, last), 0)));
+          float plane_depth;
+          if (BitmaskPlaneDepth(depths, place - base, plane_depth) && plane_depth < 1.f) sample_position = AoPosition(place_uv, plane_depth);
+        }
         float sample_thickness = thickness;
         BitmaskOccluder occluder = occluder_minus;
         if (side > 0) occluder = occluder_plus;
