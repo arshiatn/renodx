@@ -9,6 +9,13 @@ python -I static_checks.py [--rev <commit>]   (--rev: that commit's files, e.g. 
    or hands `p` on). ComPtr's operator& releases the object first (ComPtrRef's conversion), so such a callee always sees an
    empty ComPtr: GrowBuffer(&member) made 16 MiB of buffers every frame, KeepCamera(&member) a D3D11 buffer every call.
    Pass std::addressof(x). A callee that only writes (`p->GetAddressOf()`) is an out-parameter: `&x` is fine there.
+3. views (all of src/, every round, above all after an upstream merge): the view filter (src/utils/resource.hpp
+   ViewFilterData) is exact only while every ResourceViewInfo write sets its bit. Inside resource.hpp each access to
+   `resource_view_infos` must be one the filter's protocol covers (VIEW_MAP_CALLS: by function), the two wrappers must call
+   MarkViewFilter after the write (Update once, Upsert in both lambdas), the pointer forms must call TurnOffViewFilter; outside
+   resource.hpp only swapchain_v1.hpp's one raw write (v1 is never selected; its pointer-form calls turn the filter off
+   first) and the known pointer-form callers (KNOWN_POINTER_CALLS) may exist. A new raw writer would make the filter answer
+   "no clone" for an enabled view (the original texture instead of its upgraded clone).
 """
 import pathlib
 import re
@@ -24,6 +31,18 @@ KEYWORDS = {'if', 'for', 'while', 'switch', 'return', 'sizeof', 'decltype', 'sta
 KNOWN = {('src/games/twattila/dlaa_helper/rt_d3d12.hpp', '&sharc_buffers_[index]'): "SHaRC's cache never outlives a frame",
          ('src/games/twattila/dlaa_helper/rt_d3d12.hpp', '&gpu.uvs'): 'GPU micromap bake, per bake',
          ('src/games/twattila/dlaa_helper/rt_d3d12.hpp', '&gpu.transient[pool]'): 'GPU micromap bake, per bake'}
+UTILS_RESOURCE = 'src/utils/resource.hpp'
+# resource.hpp's functions and the view-map calls each may make (the filter's protocol covers these: section 3).
+VIEW_MAP_CALLS = {'GetResourceViewInfo': {'try_emplace_p', 'if_contains'}, 'GetResourceViewInfoUnsafe': {'try_emplace_p', 'if_contains_unsafe'},
+                  'GetLiveResourceViewInfo': {'if_contains'}, 'UpdateResourceViewInfo': {'modify_if'}, 'UpsertResourceViewInfo': {'lazy_emplace_l'},
+                  'ForEachResourceViewInfo': {'for_each'}, 'EmplaceResourceViewInfoOrReuse': {'try_emplace_p'}, 'Use': {'for_each'}}
+# The protocol calls each function must make: (callee, how many times).
+VIEW_PROTOCOL = {'UpdateResourceViewInfo': ('MarkViewFilter', 1), 'UpsertResourceViewInfo': ('MarkViewFilter', 2),
+                 'GetResourceViewInfoUnsafe': ('TurnOffViewFilter', 1), 'EmplaceResourceViewInfoOrReuse': ('TurnOffViewFilter', 1)}
+# Raw view-map accesses and pointer-form calls outside resource.hpp, by file: how many (v1 is never selected; ue-extended
+# reads only; both turn the filter off before the pointer leaves).
+KNOWN_RAW_VIEW_MAP = {'src/mods/swapchain_v1.hpp': 1}
+KNOWN_POINTER_CALLS = {'src/mods/swapchain_v1.hpp': 8, 'src/games/ue-extended/addon.cpp': 2}
 COMMENT = re.compile(r'("(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\')|//[^\n]*|/\*.*?\*/', re.S)
 
 
@@ -31,12 +50,12 @@ def without_comments(text):
     return COMMENT.sub(lambda match: match.group(1) or re.sub(r'[^\n]', ' ', match.group(0)), text)
 
 
-def read_files(rev):
+def read_files(rev, prefix=GAMES):
     if rev is None:
         files = {path.relative_to(ROOT).as_posix(): path.read_text(encoding='utf-8', errors='replace')
-                 for path in (ROOT / GAMES).rglob('*') if path.suffix in SUFFIXES}
+                 for path in (ROOT / prefix).rglob('*') if path.suffix in SUFFIXES}
     else:
-        listing = subprocess.run(['git', '-C', str(ROOT), 'ls-tree', '-r', '--name-only', rev, '--', GAMES], capture_output=True, text=True,
+        listing = subprocess.run(['git', '-C', str(ROOT), 'ls-tree', '-r', '--name-only', rev, '--', prefix], capture_output=True, text=True,
                                  check=True).stdout
         names = [name for name in listing.splitlines() if name.endswith(SUFFIXES)]
         batch = subprocess.run(['git', '-C', str(ROOT), 'cat-file', '--batch'], input=''.join(f'{rev}:{name}\n' for name in names).encode(),
@@ -144,13 +163,76 @@ def check_comptr(files):
     return findings, known, takers
 
 
+def functions_of(text):
+    """(start, name) of resource.hpp's namespace-scope function definitions, in order."""
+    return [(match.start(), match.group(1)) for match in re.finditer(r'^(?:inline|static)\b[^;{]*?\b(\w+)\s*\(', text, re.M)]
+
+
+def enclosing(functions, index):
+    names = [name for start, name in functions if start < index]
+    return names[-1] if names else None
+
+
+def pointer_calls(text):
+    """GetResourceViewInfo calls without a callback (the pointer forms), and the other pointer-form functions."""
+    found = []
+    for match in re.finditer(r'(?<![\w:])(?:\w+::)*(GetResourceViewInfo|GetResourceViewInfoUnsafe|EmplaceResourceViewInfoOrReuse)\s*\(', text):
+        given, _ = pieces(text, match.end() - 1)
+        if match.group(1) != 'GetResourceViewInfo' or len(given) < 2 or not given[1].strip().startswith('['):
+            found.append(match.start())
+    return found
+
+
+def check_views(files):
+    findings = []
+    resource = files.get(UTILS_RESOURCE)
+    if resource is None:
+        return [f'views: {UTILS_RESOURCE} missing'], 0
+    functions = functions_of(resource)
+    accesses = 0
+    for match in re.finditer(r'\bresource_view_infos\b\s*(?:\.\s*(\w+)|(\[))', resource):
+        accesses += 1
+        call = match.group(1) or 'operator[]'
+        function = enclosing(functions, match.start())
+        if call not in VIEW_MAP_CALLS.get(function, set()):
+            findings.append(f'views: {UTILS_RESOURCE}:{line_of(resource, match.start())} {function}() calls resource_view_infos.{call}: '
+                            'not covered by the view filter\'s protocol (VIEW_MAP_CALLS)')
+    for function, (callee, count) in VIEW_PROTOCOL.items():
+        bodies = [start for start, name in functions if name == function]
+        found = 0
+        for start in bodies:
+            body_start = resource.index('{', start)
+            _, body_end = pieces(resource, body_start)
+            found += len(re.findall(rf'\b{callee}\s*\(', resource[body_start:body_end]))
+        if found < count:
+            findings.append(f'views: {UTILS_RESOURCE} {function}() calls {callee} {found} times, the protocol needs {count}')
+    # The pointer form of GetResourceViewInfo (the one with `create`).
+    pointer_form = re.search(r'ResourceViewInfo\*\s*GetResourceViewInfo\s*\([^)]*create[^)]*\)\s*\{', resource)
+    if pointer_form is None or 'TurnOffViewFilter(' not in resource[pointer_form.end():pieces(resource, pointer_form.end() - 1)[1]]:
+        findings.append(f'views: {UTILS_RESOURCE} the pointer-form GetResourceViewInfo does not call TurnOffViewFilter')
+    for name, text in files.items():
+        if name == UTILS_RESOURCE:
+            continue
+        raw = [match.start() for match in re.finditer(r'\bresource_view_infos\b', text)]
+        if len(raw) > KNOWN_RAW_VIEW_MAP.get(name, 0):
+            findings += [f'views: {name}:{line_of(text, index)} accesses resource_view_infos outside resource.hpp (the view filter '
+                         "misses its writes: use UpdateResourceViewInfo / UpsertResourceViewInfo)" for index in raw]
+        calls = pointer_calls(text)
+        if len(calls) > KNOWN_POINTER_CALLS.get(name, 0):
+            findings += [f'views: {name}:{line_of(text, index)} a pointer-form ResourceViewInfo call (turns the view filter off for the '
+                         'process: use GetResourceViewInfo(view, f) / UpdateResourceViewInfo)' for index in calls]
+    return findings, accesses
+
+
 if __name__ == '__main__':
     rev = sys.argv[sys.argv.index('--rev') + 1] if '--rev' in sys.argv else None
     files = read_files(rev)
     tonemap, hosts = check_tonemap(files)
     comptr, known, takers = check_comptr(files)
-    for finding in tonemap + comptr + known:
+    views, view_accesses = check_views(read_files(rev, 'src/'))
+    for finding in tonemap + comptr + known + views:
         print(finding)
     print(f'tonemap: {len(hosts)} rt_scene hosts, {len(tonemap)} findings; comptr: {len(takers)} callees read a ComPtr<T>* '
-          f'({", ".join(sorted(takers))}), {len(comptr)} findings, {len(known)} known{f" (at {rev})" if rev else ""}')
-    sys.exit(1 if tonemap or comptr else 0)
+          f'({", ".join(sorted(takers))}), {len(comptr)} findings, {len(known)} known; views: {view_accesses} view-map calls in '
+          f'resource.hpp, {len(views)} findings{f" (at {rev})" if rev else ""}')
+    sys.exit(1 if tonemap or comptr or views else 0)
