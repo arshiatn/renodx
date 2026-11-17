@@ -377,7 +377,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NSIGHT XHIGH COUNTERS (ATN 17:5x: "let's use xhigh for it too on next nsight che ... | coordinator (plan steps 4 / 8)
 - PLAYER FLAG OVERRIDE (needed for SER / SHaRC / part A/Bs on recordings): the pla ... | next recorder touch (after fix1_)
 - MIRRORS OF MADNESS START (run2_ 20:4x): game_startup_mode battle_benchmark / ben ... | next run batch
-- NSIGHT ON PLAYS (run2_ 20:4x: day1_battle frame_936, loops 300, start after 6, l ... | rec_
+- STEP 4 TRACES (nsr_ Low STARTED 22:2x): all 15 recordings BASE + SER on + SHaRC ... | nsr_, coordinator
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2673,10 +2673,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         T18-16-14: stacks Warhammer3 + ntdll + KERNEL32 only, no RenoDX / ReShade frame: the game's own crash on that start
         form); not recorded: start it from WH3's graphics options menu (a runner's clicks on game screens, or ATN starts
         it with the recorder hooks in place). Owner: next run batch
-      - [ ] NSIGHT ON PLAYS (run2_ 20:4x: day1_battle frame_936, loops 300, start after 6, limit 4: only 1 frame traced,
+      - [x] DONE 22:2x (rec_, merged 8c0bbc2b2, build rec_play2 7881ED88C769): causes: every loop re-uploaded each
+        request's inputs from upload heaps (150-300 ms a request, GPU idle, ~625 ms frames: GPU Trace ran out of events,
+        RT dispatches lost their times) + gpu_trace.ps1 ran the table without --helper-dir; fix: inputs staged once in
+        video memory, copied on the GPU per request, recording bytes freed after upload; proof rec_ns_day1 (4 frames,
+        12.85 GPU ms a frame) + rec_ns_wh3b (9.13 ms), every RT pass, no "ran out"; outputs unchanged (58 / 58, day1 0
+        above the floor); flag override RENODX_TW_PLAY_TRACE_FLAGS / _PATH_FLAGS=<set>[,<clear>] (day1: SER on 11 chunks
+        above the floor, SHaRC 3, identity 0); ns_metrics.py --counters (day1: trace 3.08 ms 95 regs RT 90 %, path
+        tracing 1.89 ms I$ miss 897 MB 127 regs reg-limited, reflections 1.63 ms SPILLS 453 MB a frame (WH3 371), reuse
+        near 0.87 ms 3.5 GB L1>L2; GCC>L2 <= 5 MB; the MCP has no SASS: hot spots by DXIL line, rt_path_one_omm line 1503
+        = 25 % of its pass) NSIGHT ON PLAYS (run2_ 20:4x: day1_battle frame_936, loops 300, start after 6, limit 4: only 1 frame traced,
         2377 ms, copies / clusters / AS builds only, no RT passes) + PLAYER FLAG OVERRIDE + ns_metrics.py counters
         (Forge's columns, i-cache misses, lmem spills, SASS hot spots): rec_ STARTED 20:5x (recorder-only code + tools).
         Owner: rec_
+      - [ ] STEP 4 TRACES (nsr_ Low STARTED 22:2x): all 15 recordings BASE + SER on + SHaRC on (battle views + the 3 WH3
+        forest views) with Forge's columns -> plan_1117/step4_traces.md; then an xHigh read (GPU plan: the reflections'
+        453 MB spills, path tracing's register limit + 897 MB I$ misses, line 1503, SER / SHaRC per scene), then High
+        implementers, then an xHigh review. Owner: nsr_, coordinator
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
