@@ -1403,22 +1403,23 @@ static void Use(DWORD fdw_reason) {
       internal::shared.UnregisterEvent<reshade::addon_event::destroy_pipeline>(OnDestroyPipeline);
       internal::shared.UnregisterEvent<reshade::addon_event::destroy_device>(OnDestroyDevice);
       if (internal::shared.UnregisterModule()) {
-        // The module set changed (see the attach). The record is inactive now; the token goes after it (the attach's
-        // order reversed). The generation and control stay: the module's later writes still bump.
-        InvalidateBindCache();
-        if (internal::bind_cache_token) {
-          auto* cache = internal::bind_cache.data;  // set before the token
-          {
-            const std::unique_lock lock(cache->mutex);
-            const auto modules = std::span(cache->modules.data(), cache->module_count);
-            if (const auto mine = std::ranges::find(modules, cross_addon::internal::GetModuleToken()); mine != modules.end()) {
-              *mine = modules.back();
-              --cache->module_count;
-            }
+        InvalidateBindCache();  // the module set changed (see the attach)
+      }
+      // The record is inactive now (or never was: RegisterModule failed at attach); the token goes after it (the attach's
+      // order reversed), whatever UnregisterModule returned, as the attach added it whatever RegisterModule returned. The
+      // generation and control stay: the module's later writes still bump.
+      if (internal::bind_cache_token) {
+        auto* cache = internal::bind_cache.data;  // set before the token
+        {
+          const std::unique_lock lock(cache->mutex);
+          const auto modules = std::span(cache->modules.data(), cache->module_count);
+          if (const auto mine = std::ranges::find(modules, cross_addon::internal::GetModuleToken()); mine != modules.end()) {
+            *mine = modules.back();
+            --cache->module_count;
           }
-          internal::bind_cache.UnregisterModule();
-          internal::bind_cache_token = false;
         }
+        internal::bind_cache.UnregisterModule();
+        internal::bind_cache_token = false;
       }
       local_create_callbacks.clear();
       local_bind_callbacks.clear();
