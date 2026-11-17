@@ -1072,6 +1072,9 @@ static bool world_captures = false;  // and some are placed (or SceneShader::cas
 static float leaf_cutoff = 0.f;
 // Either effect on (else every callback returns at once).
 static std::atomic_bool active = false;
+// The light draws' view of the frame, one value set by Update: (runtime.frame << 1) | whether the rays trace the local
+// lights (settings.local_lights; `active` with it). 0 before the first Update.
+static std::atomic_uint64_t light_frame = 0;
 // A cluster mesh holds one of the game's index buffers (runtime.index_buffer_sets not empty): else OnIndexWrite returns.
 static std::atomic_bool index_buffers_held = false;
 // Batched unit draws wait for their flush (runtime.batch_draws not empty): else FlushUnitCaptures and OnBatchTextureWritten return.
@@ -4121,6 +4124,7 @@ inline void Update(const Settings& settings) {
   const uint64_t tick = GetTickCount64();
   if (runtime.traced_frame == runtime.frame) runtime.traced_tick = tick;
   ++runtime.frame;
+  internal::light_frame.store((runtime.frame << 1) | uint64_t{settings.local_lights}, std::memory_order_relaxed);
   // The helper started its ray tracing again (a GPU fault or hang removed its device, or a request failed) or released its
   // scene after 10 s without a trace (the rays off, a menu): every mesh captured again. Only the first is a warning.
   if (const uint32_t device = dlaa_bridge::RayTracingDevice(); device != runtime.helper_device) {

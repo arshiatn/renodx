@@ -132,6 +132,7 @@ int main() {
     const std::unique_lock lock(runtime.mutex);
     runtime.settings.local_lights = on;
     runtime.lights_drawn.clear();
+    core::internal::light_frame.store((runtime.frame << 1) | uint64_t{on});  // as Update stores it
   };
   constexpr UINT LIGHT_BYTES = 64;  // point_light_PS: c0-c3
   const D3D11_BUFFER_DESC mapped_desc = {.ByteWidth = LIGHT_BYTES, .Usage = D3D11_USAGE_DYNAMIC, .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
@@ -318,6 +319,7 @@ int main() {
       ++runtime.frame;
       runtime.settings.local_lights = true;
       runtime.lights_drawn.clear();
+      core::internal::light_frame.store((runtime.frame << 1) | 1u);
     }
     double first_ms = 0.;
     for (size_t index = 0; index <= draws.size(); ++index) {
