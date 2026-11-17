@@ -356,7 +356,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LIGHT READBACK CAP (jdg1_): rt_lights' readback caps at 16,384 records while nig ... | PT DI step 0
 - BENCH CLOSE RACE BY STACK (jdg1_): the stress M1 run's close AV was the known sh ... | coordinator (tools)
 - RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | fix1_ (STARTED 16:xx)
-- BUG4F ATN CHECK (16:4x): ATN checks bug4 (f) now (sea battle, ships selected, DL ... | ATN, coordinator
 - CPU GAPS (cpg_ medium, STARTED 16:4x, ATN asked whether the sanity recording's 1 ... | cpg_
 - CPU STEP 8 (D4, plan_1117/cpu_steps_5_10.md section 8): TlsGetValue thunk +0x162 ... | coordinator
 - CPU SITE 8 (D5, cpu_steps_5_10.md 10b; hz2_ 13:3x: the 10b design's "all ready" ... | coordinator
@@ -365,7 +364,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers f ... | coordinator -> CPU round (plan step 4)
 - (cap1_ 07:xx: also every ReShade 4K screenshot permanently takes 30-95 MB off th ... | next memory round
 - CAPTURE TOOLING (cap1_ 05:xx): run_game's memory.csv overwritten every start (fi ... | coordinator
-- BUG4 RUN LEFT (1) (specs in bugs_1117/bug4.md): footprints at DLSS 0 vs 4 need s ... | ATN
 - BUG4 NEW BOXES (bug4_ 08:xx): (a) foam: the ocean's refraction distortion double ... | next render-scale / helper / per-game rounds, (d) coordinato
 - BUG1 LEFT (bug1_ 08:xx): open for ATN / Musa: at Recommended a bright colour far ... | coordinator (run), ATN
 - BUG2 LEFT (bug2_ 09:xx): in-game Nsight of rt_lights + the bounce apply (9 -> ~1 ... | coordinator (run), ATN (decision)
@@ -2434,7 +2432,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a different order between two
         identical plays (trace outputs stayed equal): make the dedupe order-independent (a stable key) so recordings and
         A/B tests repeat exactly; same picture. Owner: fix1_ (STARTED 16:xx)
-      - [ ] BUG4F ATN CHECK (16:4x): ATN checks bug4 (f) now (sea battle, ships selected, DLAA vs DLSS Performance:
+      - [x] DONE 17:0x (ATN: "The yellow indicators of the ships are fixed now"; both locks removed) BUG4F ATN CHECK (16:4x): ATN checks bug4 (f) now (sea battle, ships selected, DLAA vs DLSS Performance:
         footprints under the ships, no yellow stripes); coordinator holds gpu_job.lock + quiet_run.lock (agents wait)
         until ATN says done, then removes both. Owner: ATN, coordinator
       - [ ] CPU GAPS (cpg_ medium, STARTED 16:4x, ATN asked whether the sanity recording's 13-item list skipped things):
@@ -2533,7 +2531,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         verify/out/verify_sea1_e3/e3_ship_close.jpg): by eye in Debug View 1, rope shadows drawn as thin lines (rigging in
         the scene); the sail's shadow has stair steps with Smooth Banner Shadows 0 and smooth curved edges with 1 (each shot
         a different ship: no pixel metric). Owner: coordinator
-      - [ ] BUG4 RUN LEFT (1) (specs in bugs_1117/bug4.md): footprints at DLSS 0 vs 4 need ships selected: Ctrl+A selects
+      - [x] DONE 17:0x (ATN played it: ship indicators fixed below 100 %) BUG4 RUN LEFT (1) (specs in bugs_1117/bug4.md): footprints at DLSS 0 vs 4 need ships selected: Ctrl+A selects
         nothing in a replay (sent to Attila in front; the frame trace has no indicator draw), so it needs ATN's play (select
         ships, switch DLAA <-> Performance). Owner: ATN
       - [ ] BUG4 NEW BOXES (bug4_ 08:xx): (a) foam: the ocean's refraction distortion doubles at 50 % (view_share WHOLE
