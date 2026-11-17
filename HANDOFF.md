@@ -359,13 +359,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | fix1_ (STARTED 16:xx)
 - CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of ... | cpp_
 - CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
-- CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action u ... | cb1b_
+- CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action u ... | ATN (ES8 alone, without any Windows-internals work, is ATN's
 - CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, X ... | cb2_ High STARTED 19:3x
 - CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | cb3_ High STARTED 19:3x
 - CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | High implementer (bfx_ merged
-- CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | High implementer after B1
+- CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | ATN
 - CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | hb6_, coordinator
-- CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ejd_, coordinator
+- CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ATN
 - CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V ... | coordinator
 - C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GP ... | ?
 - OURS ON THE RENDER THREAD (cpp_): our add-on anywhere on the stack 8.3 ms of nig ... | coordinator (CPU PLAN 2 END)
@@ -2492,7 +2492,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         [TEB+0x34] = 0, edx kept, ebp restored); heapfix touches neither site; the plan's site 8 corrections hold). ES8
         + ETLS: engine_code.hpp + test/tw_engine_code; stress -1.8..-2.4. ATN 19:2x: "let's retry it once more" at xHigh
         ("Run these with xHigh please": the game-code batches B1 / B5 / B7 implementers at xHigh): cb1b_ xHigh STARTED
-        19:2x; a second stop = the game-code batches dropped, the exact denied action reported. Owner: cb1b_
+        19:2x; STOPPED AGAIN 19:4x: the safety classifier withheld its response (not a tool call) right after tls.py
+        disassembled SysWOW64 kernel32 / KernelBase TlsGetValue; both stops came during the TlsGetValue (ETLS: re-doing a
+        Windows function from the TEB) work, so that is the likely trigger (not proven). As agreed with ATN: B1 / B5 / B7
+        DROPPED, no relaunch; ejd_ (B7 design) stopped 19:4x. Facts kept (cb1b_ re-check: Attila thunk 0x16246d0 + call
+        [slot] 0x1a2c569 / 0x1a7dd21; Thrones 0x1690320 + 0x1b2f569 + a jmp [slot]; Rome II 7 calls + 1 jmp; kernel32
+        RVA 0x23650 own code, KernelBase 0x15ac70; indexes >= 0x40 go to the game's thunk). Worktrees
+        agent-a96c7280ab0ca669b / agent-a4280c04499a3ae83 clean. Owner: ATN (ES8 alone, without any Windows-internals
+        work, is ATN's call; nothing until ATN says)
       - [ ] CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, XAT rt_core part; rt_scene.hpp,
         rt_core.hpp, tw_native_context; every rt_core consumer built): night1 -0.6..-1.0. Owner: cb2_ High STARTED 19:3x
       - [ ] CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src/utils; the memo design's
@@ -2501,7 +2508,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_motion.hpp, dlaa_bridge.hpp):
         night1 -0.3..-0.6. Owner: High implementer (bfx_ merged; start when a build slot frees: after cb2_ or cb3_)
       - [ ] CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization designs then code, EVEC design;
-        engine_code.hpp after B1): stress -1.4..-3.6. Owner: High implementer after B1
+        engine_code.hpp after B1): stress -1.4..-3.6. DROPPED 19:4x with B1 (agreed with ATN). Owner: ATN
       - [ ] CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, P without loopfetch, loopanim
         3 shuffled rounds; tools/tw/heapfix, never the repo) + author notes: hb6_ High STARTED 19:1x (builds + eqtest +
         bench variants + notes draft tools/tw/heapfix/author_notes_3); then their bench in the next run batch; then ONE
@@ -2509,7 +2516,8 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design + counting plan, docs only,
         xHigh review; ~-2 ms both scenes; not byte-exact, a freeze if wrong): ATN 19:0x "Sure but don't forget plannings
         and the reviews": ejd_ xHigh design STARTED 19:1x (designs/job_wakeups.md), then an xHigh review, then a High
-        implementer (model check + 32-thread soak first, Experimental row off). Owner: ejd_, coordinator
+        implementer (model check + 32-thread soak first, Experimental row off). DROPPED 19:4x with B1 (agreed: a second
+        safety stop drops the game-code batches); ejd_ stopped. Owner: ATN
       - [ ] CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V0-V4 stress / night1 x3, day1 x2,
         sea1 x2, WPR stress / night1 / a new day1 (no sea1 WPR: GPU-bound). Owner: coordinator
       - [x] ANSWERED 19:0x (ATN: "Sure but don't forget plannings and the reviews") C: EJOB: may we change the game's job-semaphore protocol (spin-then-sleep, SetEvent only when a worker
