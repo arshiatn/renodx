@@ -611,6 +611,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
   float3 radiance = 0.f;
   float3 throughput = 1.f;
   const float4 shade = float4(KeptShade(), light_kept[1].w);  // w: the sun's light known
+  float3 leaving_normal = 0.f;  // past the first vertex: the surface the ray left (its sky's SkyCalibration)
   bool unseen = false;
 #if defined(REFLECT_ONE_SAMPLE)
   const uint unseen_slot = (seed.y & 7u) * 8u + (seed.x & 7u);
@@ -635,11 +636,14 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
       // ambient covers it, but with Path-Traced Ambient (the game's taken away: the paths' the occluded sky).
       // No sky for the pixel itself through a solid cut-out either (TRACE_SURFACE culls what is alpha-tested: a thatched
       // house's parts without a known micromap state were holes to it). Only here: asked of every ray that escapes, the
-      // bounce and the reflections cost 7 to 8% more (4K harness).
+      // bounce and the reflections cost 7 to 8% more (4K harness). Past it calibrated at the surface the ray left, as the
+      // first ray's at its start and the screen's open sky (OpenSky): uncalibrated, Kept Cube's sky left the off-screen hits'
+      // light 2.2% dark on box faces (reference suite step 2, contact_sky).
       if (vertex > 0u) {
-        radiance += throughput * SkyLight(direction, shade.rgb);
+        const float3 sky_there = throughput * SkyLight(direction, shade.rgb) * SkyCalibration(leaving_normal);
+        radiance += sky_there;
 #if defined(PATH_PROBE)
-        probe_sky += throughput * SkyLight(direction, shade.rgb);
+        probe_sky += sky_there;
 #endif
       } else if ((path_flags & PATH_AMBIENT) != 0u && !Occluded(origin, direction, min(range, GRASS_AMBIENT_RANGE), GRASS_STILL)
 #if defined(OPACITY_MICROMAPS)
@@ -719,7 +723,8 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     throughput *= albedo;
     const bool through = transmittance > 0.f && Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 32768u)) < transmittance;
     origin = through ? behind : surface;
-    direction = CosineDirection(through ? -normal : normal, Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 8192u)),
+    leaving_normal = through ? -normal : normal;
+    direction = CosineDirection(leaving_normal, Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 8192u)),
                                 Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 8193u)));
   }
   // The first unseen surface's light feeds the cache once the sun's light is known (the game's, or learned).
