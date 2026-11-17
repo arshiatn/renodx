@@ -335,10 +335,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers f ... | coordinator -> CPU round (plan step 4)
 - (cap1_ 07:xx: also every ReShade 4K screenshot permanently takes 30-95 MB off th ... | next memory round
 - CAPTURE TOOLING (cap1_ 05:xx): run_game's memory.csv overwritten every start (fi ... | coordinator
-- BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows ... | bug2_
 - BUG4 RUNS (bug4_ NEEDS A RUN, specs in bugs_1117/bug4.md): (1) sea1 with ships s ... | coordinator (one game run)
 - BUG4 NEW BOXES (bug4_ 08:xx): (a) foam: the ocean's refraction distortion double ... | next render-scale / helper / per-game rounds, (d) coordinato
 - BUG1 RUN + LEFT (bug1_ 08:xx): Attila night battle, V35 Recommended: dark ground ... | coordinator (run), ATN
+- BUG2 RUN + LEFT (bug2_ 09:xx): Attila at night, the debug44 views: Light from Pa ... | coordinator (run), ATN (decision)
+- HFIX (hfix_, started 09:xx, the only helper editor now): I5 + I4 fixes (tw_rt_op ... | hfix_
 - BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Res ... | coordinator
 - (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
 - REF1 REVIEW (rev_ 04:xx, Opus xHigh: plan_1117/reference_suite_review.md, verdic ... | ref_ (v2), then one implementer at a time after bug2_ leaves
@@ -2208,7 +2209,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         that need no capture now, in parallel): DEBUG44 (a) PsychoV35 red / NaN in darks: WARP repro with negative /
         near-black / Inf / NaN input, find the producer, fix V35 for every game, tw_psychov35 + tw_vanilla_exact still
         PASS. Owner: bug1_
-      - [ ] BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows off blown out + (c) path
+      - [x] DONE bug2_ 90ab4d712 + 89348ddf0 (merged e8e63b5c1; bugs_1117/bug2_torch.md, tools bugs_1117/bug2/): (b) all 40
+        Attila point-light shaders (Rome II / Thrones too) scale diffuse light by colour x 0.004 under g_hdr_on and the
+        hosts sent raw colours, so the paths' torch light was 250x the game's: rt_sun texel 2's w carries the game's scale
+        (0.004 / 1), every setting x1.0000 in game units; (c) rt_lights blended ratio texels across faces, shadow edges
+        and from the block's top-left: texels count only on the pixel's plane, pixels no texel serves get their own rays
+        (flagged per-light bits, RT_SCENE_LIGHT_BITS, old helpers ignore it), capped at 8 lights a pixel (spread rule 3):
+        concave corners bright 12.3 -> 0.68 % (Full), 10.3 -> 0.67 % (Half), 11.7 -> 1.29 % (Quarter), the rays' bits 0.43 %;
+        I3 in the bounce apply + rt_lights: offset + taps by distance, 0.00 px. Rows off + A byte-identical in 47 modes.
+        Nsight rt_lights 4K: 3 torches B 0.99 -> 2.00 ms (rows off 1.97), 32 lights 2.89 -> 3.24 (rows off 7.60). Look:
+        path torch light 1/250 of before (Attila / Rome II / Thrones), sharp torch shadows in cracks BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows off blown out + (c) path
         torch shadow crevice leaks; every combination of the torch rows (Light / Shadows from Path, Follow the Camera,
         Torch Light in Path-Traced GI) proven against the path probe's reference. Owner: bug2_
       - [x] DONE bug3_ 1b7999885 (merged 2b6ac018c): "LOD bias for everything" = Texture LOD Bias on All Textures
@@ -2234,6 +2244,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         ~1/6 of red, above ~50x Paper White) still comes out black (black on screen before too); flooring cones at 0 before
         V35's response would show it bright but changes every beyond-locus pixel; tell Musa about the same fit assumption in
         upstream src/shaders/tonemap/psychov/test35.hlsl (lines 557, 575; no game calls it). Owner: coordinator (run), ATN
+      - [ ] BUG2 RUN + LEFT (bug2_ 09:xx): Attila at night, the debug44 views: Light from Path alone, Shadows from Path alone,
+        + Follow, Torch Light in PT GI, Light + Torch Light in PT GI, rows off: no white walls, no crack lines changing every
+        frame; in-game Nsight of rt_lights + the bounce apply (9 -> ~12 taps); decision for ATN: Shadows from Path with
+        4-8 lights at a pixel now costs about rows off (+0.0..+0.9 ms) for the sharp corners: keep, or trace corners only
+        (1.30 / 1.66 ms, concave bright 5.6 %)? (coordinator: keep, it is the bug fix); the tooltip ("Softer shadows",
+        "faster with many fires") still true. Owner: coordinator (run), ATN (decision)
+      - [ ] HFIX (hfix_, started 09:xx, the only helper editor now): I5 + I4 fixes (tw_rt_open_sky -Expect exact), fog
+        sky-march (bug4_ (d) plan), bug2_ leftovers: UE / Ryse hosts' texel_centre, ao_upsample.hlsli:28 top-left offset,
+        mode A + PT bounce apply blending across faces at concave corners (A at Full 11.8 %, x1.025), rt_debug view 6 reads
+        the mixed words. Owner: hfix_
       - [ ] BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Reset / No RT/PT / RT/PT (Shogun 2 /
         Ryse: their ray buttons): the row comes back on, the level row keeps the player's value. Owner: coordinator
       - [x] DONE bug4_ 6f3867fee (merged 5f03fd647; bugs_1117/bug4.md, causes written first; WARP tw_strip_capture,
