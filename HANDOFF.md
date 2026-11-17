@@ -384,7 +384,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - WRITER SMALL FIXES (from Sol's 0001 review): our engine_code.hpp writer: (a) a f ... | ATN's go (game-code file, theoretical today: no site crosses
 - L1 CLUSTERS (gtr_ T6): every cluster instantiated each frame (~11 us per 1,000; ... | after ssr_ / G1 (helper queue)
 - PLAYER REBAKE (gtr_ T4): the player cannot test micromap levels (recorded bake b ... | rbk_
-- APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-th ... | apipe_, coordinator
 - CPU LEFT FOR THE BENCH (ATN 22:1x calls CPU a day after APIPE): our add-on's ren ... | the combined bench (ATN's go)
 - SER ON IN WH3 (ssr_: faster in all three forest views, same picture, repeats exa ... | coordinator after g1_
 - SHARC COST 2 (ssr_): the update pass 0.26-0.72 ms (latency-bound, 12-28 % occupa ... | next SHaRC round
@@ -2871,7 +2870,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         trace 10.23 / path 4.71 / reuse 1.17 / all 24.2 ms, grass_unit 5.30 / 3.40-3.48 / 0.75-0.82 / 17.5-17.7
         (day1_battle 12.9); grass hot lines rt_trace_omm 2988 ~35 %, rt_path_one_omm 2398 ~34 %. rbk_ told to use
         both. Owner: rbk_
-      - [ ] APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-thread last-pipeline cache in
+      - [x] DONE 23:2x, merged bb47d8b82 (fixes 0511641e6 L1 token removed at detach whatever UnregisterModule returns,
+        fc4862415 L3 checking_modules count: USE cleared when the last checking module detaches + L6 test parts policy /
+        handler / stages_all / last_checker / checker_count, 876c27787 L2 comment; 22 parts x86 + amd64, threaded 59-78
+        M binds 0 wrong; bind x86 31.8 -> 13.4 ns, 4 threads 57.5 -> 13.6; amd64 16.5 -> 7.9, 50.0 -> 8.1; merged tree
+        x86 twattila / twrome2 / twthrones exit 0, static_checks 0 everywhere incl. the auto-merged pipelines + comptr
+        checks; worktree links removed alone, worktree + branches removed). Left: M1 shared writer-token helper with B3
+        after g1_ merges, L4, L5, S1-S4 (apipe_notes.md). Was: APIPE (ATN 22:1x "Yes, do APIPE", then CPU is done until the bench): a render-thread last-pipeline cache in
         front of the pipeline map lock, invalidated by a destroy generation; shared utils, opt-in Attila only (B3's
         pattern), check mode for the bench, new test/tw_pipeline_cache; night1 -0.1..-0.2. apipe_ High STARTED 22:1x
         (notes plan_1117/apipe_notes.md); then an xHigh review (with the pre-bench review). DONE 22:4x apipe_ (branch
