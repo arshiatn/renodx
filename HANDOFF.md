@@ -2636,12 +2636,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         still pass jobs = false (Thrones has the same bytes: add its row later). NOT proven: the in-game gain (-1.9..-2.2 ms
         E; the head worker waking the others starts them 5-15 us later). Left: ATN's go for the bench (V1 + the row on:
         stress, night1, day1, one WPR), then the default decision. Owner: ATN (go), coordinator (bench)
-      - [ ] EHALF / E3P / EVEC NOT DONE (assessed 21:xx, same session): EHALF's 20 conversions sit in 0x1906fa0's row loop
-        between the instance maths (corner offsets, scale, rotation, xmm temporaries and stack slots): an exact
-        replacement is a rewrite of the whole row builder for -0.1..-0.6 ms (workers 4-6 ms summed); F16C is not exact
-        (the game rounds half way down). E3P needs in-game stall data (heapfix's loopfetch moved the stall: 2.3 ms on one
-        prefetcht0), EVEC's reset site is not in 0x17b0000-0x17c0000 (the vector at +0x7c cap / +0x80 size / +0x84 data is
-        std::vector<T*>::push_back growing 1, 2, 4 ...; an owner / reset search over the whole code is still to do). Owner: ATN
+      - [x] EHALF IMPLEMENTED 2026-11-17 22:xx (branch ejob-fork, worktree D:\Dev\renodx-ejob, local commit only; offline: no
+        game run, not benched, not installed, no stamp): a 9th site of Faster Game CPU Code, "half rows" (CPU_CODE_SITES
+        bit 8, Attila +0x1907511 and Thrones +0x197d841, Rome II none): the region from the row builder's first float to half
+        call to the one after the last (+0x1907511 .. +0x19077e2, 726 pattern bytes, 20 calls) done four floats at a time in
+        SSE2 with the game's integer rounding; the vector path only when all 20 floats are zero, tiny or normal and no store of
+        the row can reach an input (five range checks), else the game's code (fallback = the replaced 5 bytes, then the game);
+        the last float is converted by a real call of the game's function (eax / ecx exact, edx kept in xmm3 and put back); the
+        game's own store of the last half after the region is kept. Not byte-exact in: the 16 pushed argument slots below esp,
+        xmm1-7, the flags (all dead), and no live object may lie on the dead stack below the frame. engine_code.hpp section 7,
+        test part 11: 2 M random calls, all pointer overlaps around the check edges (5 kinds), all 2^32 bit patterns through
+        17 lanes, 200 switches under 4 threads; Attila full length + Thrones quick PASS. Harness region 73.5 -> 51.6 ns
+        (68.1 with today's single-call stub). NOT proven: the in-game gain (-0.4..-0.6 ms render, 4-6 ms workers). Owner: ATN
+      - [ ] E3P / EVEC NOT DONE (designs only, 2026-11-17: designs/evec_e3p_design.md): E3P's four sites are particle emitter
+        code (RNG calls, x87 results) and need a stall attribution + the vtable slot targets of 0x1890b90's children from a data
+        run; EVEC's vector (the loop body at 0x17b84a0 of the function at 0x17b83a0, no direct reference to it) has no
+        located reset site; a keep-the-buffer patch is not exact in the allocator and needs a one-frame trace first.
+        Owner: ATN (go for one data run)
       - [ ] CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V0-V4 stress / night1 x3, day1 x2,
         sea1 x2, WPR stress / night1 / a new day1 (no sea1 WPR: GPU-bound). Owner: coordinator
       - [x] ANSWERED 19:0x (ATN: "Sure but don't forget plannings and the reviews") C: EJOB: may we change the game's job-semaphore protocol (spin-then-sleep, SetEvent only when a worker
