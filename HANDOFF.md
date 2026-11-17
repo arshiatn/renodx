@@ -390,6 +390,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARC COST 2 (ssr_): the update pass 0.26-0.72 ms (latency-bound, 12-28 % occupa ... | next SHaRC round
 - BAKE POOL POISON TEST (ssr_ S1 kept the GPU micromap bake's transient pools acro ... | next helper round
 - REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our ... | next helper round (measure first)
+- RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2921,6 +2922,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         per-frame data (instance / light records, constants) straight into VRAM instead of upload + copy. First
         measure: the helper's per-frame uploads and copy ms in a live frame (the player's 1.3-2.3 ms "copies" are its
         own staging), then decide. Expected small (~0.1-0.3 ms). Owner: next helper round (measure first)
+      - [ ] RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / vegetation too?"): ray-traced
+        copies of far trees / bushes / grass simpler than what the game draws (RT only), ideally NVIDIA-style cluster LOD
+        (coarser clusters by distance, crack-free per cluster) rather than whole-mesh swaps. Step 1 MEASURE the ceiling:
+        a player test flag that drops (or makes opaque) vegetation beyond N m, on grass_ground / grass_unit / the wide
+        views / WH3 forests: trace + path ms and BLAS build / refit ms. Step 2 (only if the ceiling is worth it) an xHigh
+        design: LOD build (load time, VRAM for both), wind sway on the LOD, transitions without popping (no temporal
+        dither: DLSS smears it), shadow mismatch with the raster mesh (leaks / acne), the link to WH3's far tree shadow
+        flicker. Look-risk -> Experimental, off. Owner: after L1 clusters (same design round)
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
