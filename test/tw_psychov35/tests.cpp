@@ -1838,7 +1838,7 @@ static double ConeMean(const Float3& c) {
 static float Spread(const Float3& c) { return std::max({c[0], c[1], c[2]}) - std::min({c[0], c[1], c[2]}); }
 static float Largest(const Float3& c) { return std::max({std::abs(c[0]), std::abs(c[1]), std::abs(c[2])}); }
 
-enum class Edge { GREY, BELOW_BLACK, DARK_COLOUR, NOT_A_NUMBER, INFINITE_INPUT, HUGE_INPUT };
+enum class Edge { GREY, BELOW_BLACK, DARK_COLOUR, BEYOND_LOCUS, NOT_A_NUMBER, INFINITE_INPUT, HUGE_INPUT };
 
 struct EdgeInput {
   Edge kind;
@@ -1846,8 +1846,9 @@ struct EdgeInput {
 };
 
 // Greys of either sign; colours below black (cone mean under 0: a grade's offset under 0, signed anti-aliasing) and dark
-// colours above it (1e-6 to 1e-2 of Paper White, some with a channel under 0); NaN, infinities and huge values per channel
-// and mixed.
+// colours above it (1e-6 to 1e-2 of Paper White, some with a channel under 0); bright colours far beyond the spectral
+// locus (cone mean over 0, but blue so far under 0 that V35's response mean is under 0: its negative cone stays linear
+// while the others saturate); NaN, infinities and huge values per channel and mixed.
 static std::vector<EdgeInput> EdgeInputs() {
   std::vector<EdgeInput> inputs;
   for (const float grey : {0.f, -0.f, 1e-7f, -1e-7f, 1e-6f, -1e-6f, 1e-5f, -1e-5f, 1e-4f, -1e-4f, 1e-3f, -1e-3f, 1e-2f, -1e-2f, -0.1f, -1.f,
@@ -1871,6 +1872,10 @@ static std::vector<EdgeInput> EdgeInputs() {
     }
     // A bluish night grade's crushed black, -(offset^2) per channel (its offsets in its gamma 2.0).
     inputs.push_back({Edge::BELOW_BLACK, {-1.6e-3f * k / 1e-3f, -9e-4f * k / 1e-3f, -1e-4f * k / 1e-3f}});
+  }
+  for (const Float3& c : {Float3{10.f, 10.f, -12.f}, Float3{20.f, 20.f, -15.f}, Float3{50.f, 50.f, -40.f}, Float3{300.f, 300.f, -300.f},
+                          Float3{1000.f, 1000.f, -500.f}}) {
+    inputs.push_back({Edge::BEYOND_LOCUS, c});
   }
   const float nan = std::numeric_limits<float>::quiet_NaN();
   const float inf = std::numeric_limits<float>::infinity();
@@ -1897,12 +1902,14 @@ static Words NightGradeMatrix() { return F({0.9f, 0.f, 0.f, -0.04f, 0.f, 0.95f, 
 // a. PsychoV35 alone (v35_edges.hlsl: ApplyPsychoV35, every game's) on EdgeInputs(), HDR (Peak 1000 / 203, BT.2020 fit)
 //    and SDR output, Recommended's sliders (Musa's defaults), Gamut Compression 0.5 and 0, and each of its own sliders
 //    moved: finite everywhere; a grey of either sign stays grey; below black one grey at or under 0, no larger than it
-//    came in (black: the stock picture clips it); NaN black; infinities and huge values within Peak (grey ones grey); at
-//    Recommended's sliders a dark colour's channels kept (within 1e-3 of the largest, positive ones; the others no more
-//    spread than they came in).
+//    came in (black: the stock picture clips it); beyond the locus within Peak, at Recommended's shape with Gamut
+//    Compression 1 grey; NaN black; infinities and huge values within Peak (grey ones grey); at Recommended's sliders a
+//    dark colour's channels kept (within 1e-3 of the largest, positive ones; the others no more spread than they came in).
 //    CONTROL: -Before's (V35 before the fix) must fail these (a grey under 0 turned into a colour, a bluish pixel below
-//    black turned red, below black mid grey under Contrast or Flare, NaN Peak-bright). Every pixel of part 3's ramp (64
-//    colours x 48 steps, cone mean over 0): the same bits as -Before's at every slider set.
+//    black turned red, below black mid grey under Contrast or Flare, NaN Peak-bright, beyond the locus inverted). Part 3's
+//    ramp (64 colours x 48 steps) at every slider set: every pixel whose cones are all over 0 the same bits as -Before's;
+//    the colour beyond the locus there ((1.2, 0.9, -0.2), S cone under 0) counted apart, with Gamut Compression 1 only
+//    toward grey (no more spread).
 // b. Attila's t01 (Rendering Mode 3) on a bluish night frame (blue the largest channel, then green, 2^-16 to 2^-2 of
 //    white) under NightGradeMatrix(): no pixel redder than blue (ours, V31 and SDR; -Before's V35 must show them), at
 //    HDR10, scRGB and SDR output.
@@ -1938,6 +1945,7 @@ static void TestEdges(const std::filesystem::path& before, const std::filesystem
   int control_failures = 0;
   int ramp_differences = 0;
   int ramp_beyond = 0;
+  int beyond_more_colour = 0;
   for (const auto& sliders : slider_sets) {
     auto si = AttilaInjection(3.f, 1.f);
     sliders.move(&si);
@@ -1947,7 +1955,7 @@ static void TestEdges(const std::filesystem::path& before, const std::filesystem
       const float peak = (sdr ? 1.f : HDR10_PEAK);
       std::vector<EdgeCase> cases;
       for (const auto& input : inputs) cases.push_back({{input.color[0], input.color[1], input.color[2], peak}, {sdr ? 1.f : 0.f, 0, 0, 0}});
-      constexpr int KINDS = 6;
+      constexpr int KINDS = 7;
       int failed[2][KINDS] = {};
       std::string first[2][KINDS];
       for (int side = 0; side < 2; ++side) {
@@ -1967,6 +1975,10 @@ static void TestEdges(const std::filesystem::path& before, const std::filesystem
               break;
             case Edge::BELOW_BLACK:
               ok = ok && grey_out && std::max({out[0], out[1], out[2]}) <= 0.f && Largest(out) <= Largest(in);
+              break;
+            case Edge::BEYOND_LOCUS:
+              // Gamut Compression under 1 leaves part of the colour outside the target (0: the display clips it).
+              if (gamut_compression == 1.f) ok = ok && within_peak && (grey_out || !sliders.recommended_shape);
               break;
             case Edge::DARK_COLOUR:
               if (sliders.recommended_shape) {
@@ -2017,6 +2029,7 @@ static void TestEdges(const std::filesystem::path& before, const std::filesystem
         ++beyond;
         const Float3 a = {ramp_after[i][0], ramp_after[i][1], ramp_after[i][2]};
         const Float3 b = {ramp_before[i][0], ramp_before[i][1], ramp_before[i][2]};
+        if (gamut_compression == 1.f && Spread(a) > Spread(b)) ++beyond_more_colour;
         for (int c = 0; c < 3; ++c) {
           const double relative = std::abs(static_cast<double>(a[c]) - b[c]) / std::max({1e-30f, Largest(a), Largest(b)});
           if (relative > worst_beyond) {
@@ -2026,7 +2039,7 @@ static void TestEdges(const std::filesystem::path& before, const std::filesystem
         }
       }
       // Failures by kind, ours / CONTROL, then the first of each kind.
-      constexpr const char* KIND_NAMES[KINDS] = {"grey", "below black", "dark colour", "NaN", "infinite", "huge"};
+      constexpr const char* KIND_NAMES[KINDS] = {"grey", "below black", "dark colour", "beyond the locus", "NaN", "infinite", "huge"};
       std::printf("9a. %-24s %s: failing (ours / CONTROL)", sliders.name, sdr ? "SDR" : "HDR");
       for (int kind = 0; kind < KINDS; ++kind) std::printf(" %s %d / %d,", KIND_NAMES[kind], failed[0][kind], failed[1][kind]);
       std::printf(" ramp: %d of %zu pixels differ, %d beyond the locus\n", different, ramp_cases.size(), beyond);
@@ -2051,11 +2064,13 @@ static void TestEdges(const std::filesystem::path& before, const std::filesystem
       ramp_beyond += beyond;
     }
   }
-  std::printf("9a. Failures in all: ours %d, CONTROL %d (must be over 0); ramp pixels different from -Before's: %d, beyond the locus %d\n",
-              ours_failures, control_failures, ramp_differences, ramp_beyond);
+  std::printf("9a. Failures in all: ours %d, CONTROL %d (must be over 0); ramp pixels different from -Before's: %d, beyond the locus %d "
+              "(%d with more colour)\n",
+              ours_failures, control_failures, ramp_differences, ramp_beyond, beyond_more_colour);
   CHECK(ours_failures == 0);
   CHECK(control_failures > 0);
-  CHECK(ramp_differences == 0 && ramp_beyond == 0);
+  CHECK(ramp_differences == 0);
+  CHECK(beyond_more_colour == 0);
 
   // b. The night frame through Attila's t01.
   std::vector<Float3> palette;

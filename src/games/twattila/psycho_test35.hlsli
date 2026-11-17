@@ -2,8 +2,8 @@
 #define PSYCHOV_CUSTOMTEST35_HLSLI_
 
 // Total War: ATTILA and Warhammer III: copy of Musa's customtest35 (2026-11-12), only this include's path changed, the
-// SM3 forms below (RUSE's DX9 shaders: no bit casts, no bitwise operations on bools) and pixels at or under black: black
-// (custom_psychotm_test35; Musa's target fit assumes an interior mean).
+// SM3 forms below (RUSE's DX9 shaders: no bit casts, no bitwise operations on bools) and pixels at or under black: black,
+// the target fit's room toward black never under 0 (custom_psychotm_test35; Musa's assumes an interior mean).
 // Needs renodx.hlsl (shared.h).
 
 /*
@@ -309,6 +309,9 @@ float3 custom_psychotm_test35(
   const float response_mean = psycho35_Mean(response);
   const float mean = peak_value * response_mean;
   const float headroom = peak_value * psycho35_Mean(deficit);
+  // The fit's room toward black: none under it (a negative cone left linear while the others saturate can take the
+  // response's mean under 0), so the support never turns negative.
+  const float footroom = max(mean, 0.f);
   float3 residual = response_mean > 0.5f ? psycho35_Mean(deficit) - deficit : response - response_mean;
   const float scale = max(abs(residual.x), max(abs(residual.y), abs(residual.z)));
   const float3 scaled = scale > 0.f ? residual / scale : 0.f;
@@ -343,7 +346,7 @@ float3 custom_psychotm_test35(
       if (target_displacement[channel] > 0.f)
         support = min(support, headroom / target_displacement[channel]);
       else if (target_displacement[channel] < 0.f)
-        support = min(support, mean / -target_displacement[channel]);
+        support = min(support, footroom / -target_displacement[channel]);
     }
     if (support >= rcp(knee)) return mean + psycho35_TargetResidual(residual, 0);
     const float excess = max(0.f, 1.f - knee * support);
@@ -357,7 +360,7 @@ float3 custom_psychotm_test35(
       if (target_displacement[channel] > 0.f)
         support = min(support, headroom / target_displacement[channel]);
       else if (target_displacement[channel] < 0.f)
-        support = min(support, mean / -target_displacement[channel]);
+        support = min(support, footroom / -target_displacement[channel]);
     }
     return mean + psycho35_TargetResidual(residual * lerp(1.f, support, gamut_compression), 0);
   }
@@ -367,7 +370,7 @@ float3 custom_psychotm_test35(
     [unroll]
     for (int channel = 0; channel < 3; ++channel) {
       if (target_displacement[channel] != 0.f) {
-        const float available = target_displacement[channel] > 0.f ? headroom : mean;
+        const float available = target_displacement[channel] > 0.f ? headroom : footroom;
         if (available == 0.f)
           endpoint_contact = true;
         else
@@ -388,7 +391,7 @@ float3 custom_psychotm_test35(
   [unroll]
   for (int channel = 0; channel < 3; ++channel) {
     if (target_displacement[channel] != 0.f) {
-      const float available = target_displacement[channel] > 0.f ? headroom : mean;
+      const float available = target_displacement[channel] > 0.f ? headroom : footroom;
       if (available == 0.f)
         endpoint_contact = true;
       else
