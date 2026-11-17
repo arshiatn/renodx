@@ -345,6 +345,7 @@ struct __declspec(uuid("8707f724-c7e5-420e-89d6-cc032c732d2d")) CommandListData 
 
 [[deprecated("Use GetPipelineShaderDetails<F> or UpdatePipelineShaderDetails<F>")]] [[nodiscard]]
 inline PipelineShaderDetails* GetPipelineShaderDetails(const reshade::api::pipeline& pipeline) {
+  pipeline::TurnOffBindCache("a PipelineShaderDetails pointer left the map (shader::GetPipelineShaderDetails(pipeline))");
   PipelineShaderDetails* details = nullptr;
   pipeline::GetPipelineShaderDetails(pipeline, [&](const PipelineShaderDetails& entry) {
     details = const_cast<PipelineShaderDetails*>(&entry);
@@ -710,6 +711,7 @@ static void RemoveRuntimeReplacements(reshade::api::device* device, const std::u
 [[deprecated("Use state::GetBoundShaderPipeline; this reconstructed snapshot is invalidated by the next lookup on this thread.")]]
 inline CommandListData* GetCurrentState(reshade::api::command_list* cmd_list) {
   if (internal::shared.data == nullptr) return nullptr;
+  pipeline::TurnOffBindCache("PipelineShaderDetails pointers left the map (shader::GetCurrentState)");
   state::CommandListStateCache cache;
   state::GetBoundShaderPipeline(cmd_list, reshade::api::pipeline_stage::vertex_shader, &cache);
   if (!cache.has_value() || *cache == nullptr) return nullptr;
@@ -1074,6 +1076,8 @@ static void Use(DWORD fdw_reason) {
           data.use_pipeline_lookup = true;
         }
       });
+      // OnBindPipelineForReplacement's answers depend on the event handler and use_replace_on_bind, both set above.
+      renodx::utils::pipeline::InvalidateBindCache();
       if (internal::shared.data->use_replace_async || internal::shared.data->use_shader_cache || internal::shared.data->use_pipeline_lookup) {
         pipeline::EnableSubobjectCaching();
         pipeline::EnableDestroyedSubobjectRetention();
@@ -1100,6 +1104,7 @@ static void Use(DWORD fdw_reason) {
       renodx::utils::pipeline::UnregisterOnBindInfoCallback(OnBindPipelineForReplacement);
       renodx::utils::pipeline::UnregisterOnDestroyCallback(OnDestroyPipeline);
       internal::shared.UnregisterModule();
+      renodx::utils::pipeline::InvalidateBindCache();  // the event handler changed (see the attach)
       renodx::utils::state::Use(fdw_reason);
       renodx::utils::pipeline_layout::Use(fdw_reason);
       renodx::utils::pipeline::Use(fdw_reason);
