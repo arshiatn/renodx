@@ -2410,7 +2410,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> fix1_ (min-index owner, ~0.03 + ~0.05 ms). New rec_compare.py --floor <base play 2>: all 4 live_proof2
         recordings live vs play 0 ABOVE the floor (20-21 within); Alt+Enter presses fell outside the ~50 ms window, a resize
         inside marks INCOMPLETE (harness); DLSS Quality 67 % normal. LEFT: the Nsight steady-frame check (offline), the
-        12-recording capture pass (a game run, ~1 h of the screen: ATN's timing). Was: LEFT (1) live proof (run2_ low runner 14:xx: stress paused + moving, GPU-baking refusal, Alt+Enter ->
+        12-recording capture pass (a game run, ~1 h of the screen: ATN's timing). ATN 18:0x "is there no way to
+        minimize that?": 12 recordings = 4 replays x 3 views, one start per replay (replays start from the command
+        line); plan: ONE Attila start chaining day1 -> night1 -> sea1 through the game's replay menu (clicks on game
+        screens only; a failed menu step falls back to a fresh start), stress_test_log2 in its own start (x86 memory after
+        3 battles: the restart-crash risk), plus ONE WH3 start in a forest (SER IN FORESTS) = 3 starts; one Low runner
+        for the whole batch + the offline Nsight steady-frame check. Was: LEFT (1) live proof (run2_ low runner 14:xx: stress paused + moving, GPU-baking refusal, Alt+Enter ->
         INCOMPLETE, 67 %, offline play + compare + one Nsight trace); (2) GPU Micromap Baking journal (rec_ again: ATN plays
         with RayTracedGpuMicromaps=1, recordings should match); (3) the 12-recording capture pass (night1 / sea1 / stress /
         day1 x 3 views, ~55 GB at 4K, C: 206 GB free) with ATN's settings; NRD's own history not recorded (first played
@@ -2476,7 +2481,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         instance's group of eight (rt_path.hlsli REORDER). Plan step 6 item 4: record a forest battle view, SER off / on on
         the recording with Nsight's L2 / spill / instruction-miss counters (Forge's table as the template), a hint by
         hit kind (leaf / OMM vs solid vs sky miss) if the instance hint loses; on by default only where faster + same
-        picture. Owner: plan step 6
+        picture. ATN 18:0x: test it in WH3 too (much fuller forests): a WH3 forest recording (the same x64 helper; check
+        the recorder's hooks reach it in WH3's add-on first), Attila and WH3 decided apart if they differ. Owner: plan step 6
       - [x] DONE 17:5x NSIGHT 2026.4 MCP: we have it since 11-14 (tools\nsight\NsightGraphics_2026.4, extracted, no
         install; our stdio client tools\tw\nsight\ns_mcp.py drives ngfx-mcp.exe, used by gpu_trace_table.py /
         ns_metrics.py / ns_hotspots.py). ATN 17:5x allows a newer Nsight download: check NVIDIA's page for a build newer
