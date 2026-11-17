@@ -410,23 +410,6 @@ float3 RayOrigin(float4 position, float3 normal, bool planar) {
   return position.xyz + (planar ? normal : normalize(sun[uint2(1, 0)].xyz - position.xyz)) * SurfaceOffset(position.w);
 }
 
-// The solid triangle a pixel shows: its normal into `normal`, facing the camera (false: none there, a leaf or a blade).
-// Exact where the depth's normal is noise: every frame's jitter and the depth's steps turn that by a degree or more.
-bool ShownNormal(float4 position, inout float3 normal) {
-  const float3 to_camera = normalize(sun[uint2(1, 0)].xyz - position.xyz);
-  const float reach = 2.f * SurfaceOffset(position.w);
-  RayDesc ray;
-  ray.Origin = position.xyz + to_camera * reach;
-  ray.Direction = -to_camera;
-  ray.TMin = 0.f;
-  ray.TMax = 2.f * reach;
-  TRACE_SURFACE(query, ray)
-  if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return false;
-  normal = HitNormal(query.CommittedInstanceID() + query.CommittedGeometryIndex(), query.CommittedPrimitiveIndex(), ray.Direction,
-                     query.CommittedObjectToWorld3x4());
-  return true;
-}
-
 // Interleaved gradient noise (Jimenez 2014, "Next Generation Post Processing in Call of Duty: Advanced Warfare"): a value
 // per pixel that is even over every few neighbours, moved each frame.
 float InterleavedGradientNoise(float2 pixel) {

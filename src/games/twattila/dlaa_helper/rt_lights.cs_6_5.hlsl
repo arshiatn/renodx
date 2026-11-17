@@ -80,6 +80,7 @@ bool LightRayReaches(uint light, float3 from, bool soft, uint2 pixel, uint seed)
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index : SV_GroupIndex) {
   if (index < 4u) tile_reach[index] = 0u;
+  if (index < 8u) tile_list[index] = 0xFFFFFFFFu;
   GroupMemoryBarrierWithGroupSync();
   const bool inside = id.x < width && id.y < height;
   const float4 position = inside ? positions[id.xy] : 0.f;
@@ -109,19 +110,26 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
     if (reached.w != 0u) InterlockedOr(tile_reach[3], reached.w);
   }
   GroupMemoryBarrierWithGroupSync();
-  if (index == 0u) {
-    [unroll]
-    for (uint word = 0u; word < 8u; ++word) tile_list[word] = 0xFFFFFFFFu;
+  {
+    // The tile's list: the first TILE_LIGHTS of the lights it reaches (without tiles every light) in the lights' order, a
+    // light's slot the count of those before it. Every thread places two (lights index and index + 64) into their bytes
+    // (one thread's loop over all of them kept 63 waiting at the barrier).
     const uint4 tile = uint4(tile_reach[0], tile_reach[1], tile_reach[2], tile_reach[3]);
-    uint size = 0u;
-    [loop]
-    for (uint light = 0u; light < count && size < TILE_LIGHTS; ++light) {
-      if (tiled && SetBit(tile, light) == 0u) continue;
-      const uint shift = (size & 3u) * 8u;
-      tile_list[size >> 2u] = (tile_list[size >> 2u] & ~(0xFFu << shift)) | (light << shift);
-      ++size;
+    if (index == 0u) {
+      tile_size = min(tiled ? (countbits(tile.x) + countbits(tile.y) + countbits(tile.z) + countbits(tile.w)) : count, TILE_LIGHTS);
     }
-    tile_size = size;
+    [unroll]
+    for (uint pair = 0u; pair < 2u; ++pair) {
+      const uint light = index + (pair * 64u);
+      if (light >= count || (tiled && SetBit(tile, light) == 0u)) continue;
+      const uint word = light >> 5u;
+      const uint before = countbits(((word == 0u) ? tile.x : (word == 1u) ? tile.y : (word == 2u) ? tile.z : tile.w) & ((1u << (light & 31u)) - 1u))
+                          + ((word > 0u) ? countbits(tile.x) : 0u) + ((word > 1u) ? countbits(tile.y) : 0u) + ((word > 2u) ? countbits(tile.z) : 0u);
+      const uint slot = tiled ? before : light;
+      if (slot >= TILE_LIGHTS) continue;
+      const uint shift = (slot & 3u) * 8u;
+      InterlockedAnd(tile_list[slot >> 2u], (light << shift) | ~(0xFFu << shift));
+    }
   }
   GroupMemoryBarrierWithGroupSync();
   const uint parity_written = (path_flags & PATH_AMBIENT_PARITY) != 0u ? 0u : 1u;

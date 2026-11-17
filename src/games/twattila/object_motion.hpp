@@ -507,8 +507,6 @@ inline bool PrepareDevice(ID3D11Device* device) {
       objects.motion_ring.Reset();
     }
   }
-  renodx::utils::log::i("[Total War] Object motion: the moving draws' constants ",
-                        (objects.motion_ring ? "in a ring (D3D11.1 offsets)." : "in one buffer (no D3D11.1 constant offsets)."));
   return true;
 }
 
@@ -614,6 +612,7 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
   if (objects.context != native) {
     ComPtr<ID3D11Device> context_device;
     native->GetDevice(context_device.GetAddressOf());
+    const bool new_device = (objects.device.Get() != context_device.Get());
     PrepareDevice(context_device.Get());
     objects.context = native;
     ComPtr<ID3D11DeviceContext1> context1;  // none: no ring
@@ -621,6 +620,11 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
     objects.context1 = context1.Get();
     if (objects.context1 == nullptr) {
       objects.motion_ring.Reset();
+    }
+    // Said once a device, after the context's check (a context without ID3D11DeviceContext1 drops the ring).
+    if (new_device && objects.made) {
+      renodx::utils::log::i("[Total War] Object motion: the moving draws' constants ",
+                            (objects.motion_ring ? "in a ring (D3D11.1 offsets)." : "in one buffer (no D3D11.1 constant offsets)."));
     }
   }
   if (!objects.made) return false;

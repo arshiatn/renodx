@@ -1943,12 +1943,15 @@ static void Use(DWORD fdw_reason) {
       shared.UnregisterEvent<reshade::addon_event::destroy_resource>(OnDestroyResource);
       shared.UnregisterEvent<reshade::addon_event::init_resource_view>(OnInitResourceView);
       shared.UnregisterEvent<reshade::addon_event::destroy_resource_view>(OnDestroyResourceView);
-      if (!shared.UnregisterModule()) break;
-      // The record is inactive now; the token goes after it (the attach's order reversed). Bits and control stay: the
-      // module's later writes (after its detach) still follow the protocol, the block outlives every module.
-      view_filter_reading.store(false, std::memory_order_release);
-      reshade::unregister_event<reshade::addon_event::init_device>(OnViewFilterInitDevice);
-      reshade::unregister_event<reshade::addon_event::present>(OnViewFilterPresent);
+      if (shared.UnregisterModule()) {
+        view_filter_reading.store(false, std::memory_order_release);
+        reshade::unregister_event<reshade::addon_event::init_device>(OnViewFilterInitDevice);
+        reshade::unregister_event<reshade::addon_event::present>(OnViewFilterPresent);
+      }
+      // The record is inactive now (or never was: RegisterModule failed at attach); the token goes after it (the attach's
+      // order reversed), whatever UnregisterModule returned, as the attach added it whatever RegisterModule returned. Bits
+      // and control stay: the module's later writes (after its detach) still follow the protocol, the block outlives every
+      // module.
       if (auto* filter = view_filter.data; filter != nullptr) {
         const std::unique_lock lock(filter->mutex);
         const auto modules = std::span(filter->modules.data(), filter->module_count);
