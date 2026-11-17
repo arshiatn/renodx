@@ -128,6 +128,7 @@
 #if __has_include("rt_recorder_build.h")
 #include <cstdio>
 #include <functional>
+#include <optional>
 #include <tuple>
 
 #include "./rt_recording.h"
@@ -1240,6 +1241,7 @@ class RtScene12 {
   // trace) or never (`*refused` too).
   bool SaveRecordingState(const std::filesystem::path& folder, uint32_t frame, std::string* why, bool* refused) {
     *refused = true;
+    snapshot_waiting_ = false;
     if (!device_ || !visibility_ || Lost()) {
       *why = "no ray tracing scene";
       return false;
@@ -1265,8 +1267,9 @@ class RtScene12 {
 #else
     const bool growing = placed_growing_.valid();
 #endif
-    if (bakes != 0 || row_reads != 0 || growing) {
-      *why = std::format("waiting for {} micromap bakes, {} slots' instanced rows{}", bakes, row_reads, growing ? ", a room growing" : "");
+    snapshot_waiting_ = bakes != 0 || row_reads != 0 || growing;
+    if (snapshot_waiting_) {
+      *why = std::format("waiting for {} micromap bakes, {} slots' instanced rows{} (no new bakes meanwhile)", bakes, row_reads, growing ? ", a room growing" : "");
       return false;
     }
     *refused = true;
@@ -1353,7 +1356,23 @@ class RtScene12 {
     for (const RecordedResource& resource : RecordedResources()) {
       if (*resource.member) CopyToReadback(list, resource.name, resource.member->Get(), resource.state, &readbacks, resource.offset, resource.bytes);
     }
-    *why = std::format("state: {} meshes, {} cluster sets, {} GPU resources", meshes_.size(), sets_.size(), readbacks.size());
+    size_t denoisers = 0;
+#if defined(RENODX_NRD)
+    // NRD's denoisers: each one's textures' size and last frame's fields ("nrd<signal>"), its history ("nrd<signal>_<n>").
+    for (size_t signal = 0; signal < NrdSignals().size(); ++signal) {
+      const NrdSignal& nrd = *NrdSignals()[signal];
+      if (!nrd.denoiser) continue;
+      const Nrd12::Kept kept = nrd.denoiser->Saved();
+      AddChunk(&chunks, recording::CHUNK_FIELD, std::format("nrd{}", signal),
+               JoinBytes({std::as_bytes(std::span(nrd.size)), std::as_bytes(std::span(&kept, 1))}, nullptr));
+      const auto history = nrd.denoiser->History();
+      for (size_t index = 0; index < history.size(); ++index) {
+        CopyToReadback(list, std::format("nrd{}_{}", signal, index).c_str(), history[index].first, history[index].second, &readbacks);
+      }
+      ++denoisers;
+    }
+#endif
+    *why = std::format("state: {} meshes, {} cluster sets, {} GPU resources, {} NRD denoisers", meshes_.size(), sets_.size(), readbacks.size(), denoisers);
     std::error_code ignored;
     std::filesystem::create_directories(folder, ignored);
     const uint64_t value = SubmitRecorderList(list);
@@ -1537,6 +1556,21 @@ class RtScene12 {
     // The units' BLAS (without Mega Geometry) is built at the first trace (the live one refitted its own).
     units_layout_.clear();
     units_refits_ = 0;
+#if defined(RENODX_NRD)
+    // NRD's denoisers as recorded, kept until EnsureNrd makes each one here.
+    for (size_t signal = 0; signal < recorded_nrd_.size(); ++signal) {
+      recorded_nrd_[signal].reset();
+      const auto found = fields.find(std::format("nrd{}", signal));
+      if (found == fields.end() || found->second.size() != sizeof(RecordedNrd::size) + sizeof(Nrd12::Kept)) continue;
+      RecordedNrd& nrd = recorded_nrd_[signal].emplace();
+      std::memcpy(nrd.size.data(), found->second.data(), sizeof(nrd.size));
+      std::memcpy(&nrd.kept, found->second.data() + sizeof(nrd.size), sizeof(nrd.kept));
+      for (auto texture = resources.find(std::format("nrd{}_0", signal)); texture != resources.end();
+           texture = resources.find(std::format("nrd{}_{}", signal, nrd.history.size()))) {
+        nrd.history.emplace_back(texture->second.begin(), texture->second.end());
+      }
+    }
+#endif
     why->clear();
     ID3D12GraphicsCommandList4* list = RecorderList();
     if (list == nullptr) {
@@ -1775,6 +1809,7 @@ class RtScene12 {
   // digest into `dump` as the recorder writes them. False: `report` says why.
   bool PlayRecording(const std::filesystem::path& recording, const std::filesystem::path& dump, const std::function<void()>& before_trace,
                      std::string* report) {
+    player_ = true;
     std::error_code error;
     std::vector<std::tuple<uint32_t, uint32_t, std::filesystem::path>> requests;
     for (const auto& entry : std::filesystem::directory_iterator(recording, error)) {
@@ -2017,6 +2052,11 @@ class RtScene12 {
     slot_traced_[slot_index] = true;
     slot_clustered_[slot_index] = false;
     ExpireHistory(shared.rt_frame);
+#if defined(RENODX_RECORDER)
+    // The recorder's lock step (a recording's requests, a play-back): every earlier request finished, so what the GPU's
+    // progress gives back, reads and bakes below goes by the requests alone.
+    if (Lockstep()) WaitFor(own_value_);
+#endif
     const uint64_t completed = own_fence_->GetCompletedValue();
     std::erase_if(releases_, [&](const Release& release) {
       if (release.value > completed) return false;
@@ -4353,6 +4393,27 @@ class RtScene12 {
       if (resource == nullptr) return fail("no memory");
       if (texture.descriptor != 0) Written(resource, texture.format, texture.descriptor);
     }
+#if defined(RENODX_RECORDER)
+    // The recorder's: NRD's frame time fixed in a recording helper's scene and a play-back; a play-back's denoiser of a
+    // recorded signal takes the recording's history and last frame (once, at the recorded size).
+    if (journal_on_ || player_) made->fixed_frame_ms = 16.66f;
+    const std::array<NrdSignal*, 4> signals = NrdSignals();
+    if (std::optional<RecordedNrd>& recorded = recorded_nrd_[std::ranges::find(signals, signal) - signals.begin()];
+        recorded && recorded->size == std::array<uint32_t, 2>{width, height}) {
+      const auto history = made->History();
+      ID3D12GraphicsCommandList4* list = (history.size() == recorded->history.size()) ? RecorderList() : nullptr;
+      std::vector<ComPtr<ID3D12Resource>> uploads;
+      std::string why = (list == nullptr) ? std::format("{} of {} textures", recorded->history.size(), history.size()) : std::string();
+      bool restored = list != nullptr;
+      for (size_t index = 0; restored && index < history.size(); ++index) {
+        restored = UploadRecorded(list, name, history[index].first, history[index].second, recorded->history[index], &uploads, &why);
+      }
+      restored = list != nullptr && WaitFor(SubmitRecorderList(list)) && restored;
+      if (restored) made->Restore(recorded->kept);
+      slow_report_ += std::format("{}[TW player] {}: the recording's history {}.", slow_report_.empty() ? "" : "\n", name, restored ? "taken" : "NOT taken: " + why);
+      recorded.reset();
+    }
+#endif
     slow_report_ += std::format("{}[TW ray tracing] {}: {} MB at {} x {}.", slow_report_.empty() ? "" : "\n", name, made->Bytes() >> 20, width, height);
     signal->denoiser = std::move(made);
     signal->size = {width, height};
@@ -4601,6 +4662,9 @@ class RtScene12 {
     // The last trace's placed instances past 3/4 of their room: twice it or more, up to the GPU's limit, made on a worker and
     // put in at the first request after, with the kept descs and the counters (the last trace is done; paths requests on
     // their way hold the old TLAS until the release's fence value). No memory for it: a limit half as high (the room stays).
+#if defined(RENODX_RECORDER)
+    if (Lockstep() && placed_growing_.valid()) placed_growing_.wait();
+#endif
     if (placed_growing_.valid() && placed_growing_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
       if (const std::unique_ptr<PlacedRoom> made = placed_growing_.get(); made) {
         ID3D12Resource* carried = made->instances[placed_last_].Get();
@@ -4845,6 +4909,9 @@ class RtScene12 {
       room_note_ = std::format("No memory: {} clusters at most | ", cluster_limit_);
       slow_report_ += std::format("{}[TW ray tracing] {}.", (slow_report_.empty() ? "" : "\n"), room_note_.substr(0, room_note_.size() - 3));
     };
+#if defined(RENODX_RECORDER)
+    if (Lockstep() && cluster_growing_.valid()) cluster_growing_.wait();
+#endif
     if (cluster_growing_.valid() && cluster_growing_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
       if (const std::unique_ptr<ClusterRoom> made = cluster_growing_.get(); made) {
         UseClusterRoom(made.get());
@@ -4961,6 +5028,10 @@ class RtScene12 {
                                                       MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
                                                                                                     + MicromapsBaking() + micromaps_baked_.size()))
                                    : 0u;
+#if defined(RENODX_RECORDER)
+    // A snapshot waiting for the bakes in flight: no new ones meanwhile.
+    if (snapshot_waiting_) set_micromap_room = 0;
+#endif
 #if defined(RENODX_NVAPI_CLUSTERS)
     auto* template_args =
         reinterpret_cast<NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_TEMPLATE_ARGS*>(slot->compact_data + COMPACT_TEMPLATE_ARGS_OFFSET);
@@ -5431,6 +5502,9 @@ class RtScene12 {
                                  ? MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
                                                                                  + MicromapsBaking() + micromaps_baked_.size())
                                  : 0u;
+#if defined(RENODX_RECORDER)
+      if (snapshot_waiting_) micromap_room = 0;
+#endif
       // Instanced captures' rows to read back (their first texel in the vertex buffer).
       std::vector<Slot::RowRead> row_copies;
       std::vector<uint32_t> row_sources;
@@ -6945,6 +7019,9 @@ class RtScene12 {
     // theirs: without, dense grass met MAX_CANDIDATES and stayed dark, ATN 2026-10-29); grass sets first.
     for (size_t worker = 0; worker < MICROMAP_WORKERS; ++worker) {
       auto& baking = micromap_baking_[worker];
+#if defined(RENODX_RECORDER)
+      if (Lockstep() && baking.valid()) baking.wait();
+#endif
       if (baking.valid() && baking.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         std::unique_ptr<MicromapBake> baked = baking.get();
         ++micromap_tally_[baked->indices.empty() ? 2 : 0];
@@ -8183,6 +8260,13 @@ class RtScene12 {
     recording_.bytes += written + sizeof(end);
   }
 
+  // The lock step: while a recording's requests run and in a play-back, what the GPU's progress, the bake threads and the
+  // rooms' growth give a request is the requests' alone (Trace waits for every earlier request and for them).
+  [[nodiscard]] bool Lockstep() const { return recording_.on || player_; }
+#if defined(RENODX_NRD)
+  std::array<NrdSignal*, 4> NrdSignals() { return {&nrd_sun_, &nrd_ambient_, &nrd_bounce_, &nrd_reflections_}; }
+#endif
+
   // A recorded frame's request (RecordFrames; Trace, Paths): its block and new sets' data, the inputs it read (the vertex
   // texture's rows it copied), its kind's shared outputs and at the last recorded frame its kind's histories, copied on the
   // queue after its list and before its fence value (the addon's next writes wait for that); a trace's scene digest: its
@@ -8644,8 +8728,20 @@ class RtScene12 {
   std::string profile_counts_;
 #if defined(RENODX_RECORDER)
   // The recorder's (last: destroyed first, its writer waited for in the destructor). The journal while RENODX_TW_RECORD was
-  // set at Initialize: the static meshes' vertices, their CPU bakes and the cluster sets', by key.
+  // set at Initialize: the static meshes' vertices, their micromap bakes and the cluster sets', by key.
   bool journal_on_ = false;
+  bool player_ = false;            // a play-back's scene (PlayRecording)
+  bool snapshot_waiting_ = false;  // a snapshot waits for the bakes in flight (no new ones meanwhile)
+#if defined(RENODX_NRD)
+  // A play-back's NRD denoisers as recorded (NrdSignals' order; EnsureNrd's denoiser takes its one): their textures' size,
+  // last frame, history (the permanent pool's textures' chunks).
+  struct RecordedNrd {
+    std::array<uint32_t, 2> size = {};
+    Nrd12::Kept kept;
+    std::vector<std::vector<uint8_t>> history;
+  };
+  std::array<std::optional<RecordedNrd>, 4> recorded_nrd_;
+#endif
   std::unordered_map<uint64_t, Journal> journal_;
   std::unordered_map<uint64_t, Journal> micromap_journal_;
   std::unordered_map<uint64_t, Journal> set_journal_;

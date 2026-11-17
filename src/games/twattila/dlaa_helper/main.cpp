@@ -439,40 +439,56 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     uint32_t waits = 0;
   } recorder = {.at = record_number(L"RENODX_TW_RECORD_AT", UINT32_MAX), .frames = std::max(record_number(L"RENODX_TW_RECORD_FRAMES", 2), 1u)};
   const std::filesystem::path record_marker = std::filesystem::path(folder) / L"renodx_record_now";
+  // A recorder's line into the helper's log and <folder>\recorder.log (kept when the helper's log is not: another process
+  // holding it, a helper started again).
+  const auto say = [&](const std::string& line) {
+    LogWithTime(line.c_str());
+    SYSTEMTIME now;
+    GetLocalTime(&now);
+    std::error_code ignored;
+    std::filesystem::create_directories(record_folder, ignored);
+    std::ofstream(record_folder / L"recorder.log", std::ios::app)
+        << std::format("{:02}:{:02}:{:02} pid {} {}\n", now.wHour, now.wMinute, now.wSecond, GetCurrentProcessId(), line);
+  };
   const auto record = [&](const twattila::dlaa_bridge::Shared& from) {
     if (record_folder.empty()) return;
     const uint32_t frame = from.rt_frame;
     if (recorder.scene != nullptr) {
       if (recorder.scene != scene.get()) {
-        LogWithTime("[TW recorder] The recording stopped: a new ray tracing scene (a GPU reset, a failed request or 10 s idle).");
+        say("[TW recorder] The recording stopped: a new ray tracing scene (a GPU reset, a failed request or 10 s idle).");
         recorder.scene = nullptr;
       } else if (frame > recorder.last || frame < recorder.first) {
-        LogWithTime(std::format("[TW recorder] {}.", scene->FinishRecording()).c_str());
+        say(std::format("[TW recorder] {}.", scene->FinishRecording()));
         recorder.scene = nullptr;
       }
       return;
     }
-    if (++recorder.traces % 30 == 0 && GetFileAttributesW(record_marker.c_str()) != INVALID_FILE_ATTRIBUTES) {
+    // The marker stays until a recording starts or is refused (a helper started again finds it too).
+    if (++recorder.traces % 30 == 0 && recorder.at == UINT32_MAX && GetFileAttributesW(record_marker.c_str()) != INVALID_FILE_ATTRIBUTES) {
       recorder.at = frame;
-      std::error_code ignored;
-      std::filesystem::remove(record_marker, ignored);
+      say(std::format("[TW recorder] renodx_record_now found at frame {}.", frame));
     }
     if (recorder.at == UINT32_MAX || frame < recorder.at) return;
     std::string why;
     bool refused = false;
     const std::filesystem::path into = record_folder / std::format("frame_{}", frame);
-    if (!scene->SaveRecordingState(into, frame, &why, &refused)) {
+    const bool saved = scene->SaveRecordingState(into, frame, &why, &refused);
+    if (saved || refused) {
+      std::error_code ignored;
+      std::filesystem::remove(record_marker, ignored);
+    }
+    if (!saved) {
       if (refused) {
         recorder.at = UINT32_MAX;
-        LogWithTime(std::format("[TW recorder] Not recorded at frame {}: {}.", frame, why).c_str());
+        say(std::format("[TW recorder] Not recorded at frame {}: {}.", frame, why));
       } else if (recorder.waits++ % 60 == 0) {
-        LogWithTime(std::format("[TW recorder] Frame {}: {}; tried again at the next trace.", frame, why).c_str());
+        say(std::format("[TW recorder] Frame {}: {}; tried again at the next trace.", frame, why));
       }
       return;
     }
     scene->RecordFrames(into, frame, frame + recorder.frames - 1, true, record_number(L"RENODX_TW_RECORD_HISTORIES", 0) != 0);
     recorder = {.frames = recorder.frames, .first = frame, .last = frame + recorder.frames - 1, .scene = scene.get(), .traces = recorder.traces};
-    LogWithTime(std::format("[TW recorder] Recording frames {} to {} into {} ({}).", frame, recorder.last, into.string(), why).c_str());
+    say(std::format("[TW recorder] Recording frames {} to {} into {} ({}).", frame, recorder.last, into.string(), why));
   };
 #endif
   const auto run = [&](const twattila::dlaa_bridge::Shared& from, std::span<const uint8_t> sets) {

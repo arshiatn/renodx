@@ -219,6 +219,9 @@ class Nrd12 {
     common.denoisingRange = DENOISING_RANGE;
     common.frameIndex = frame_index_;
     common.accumulationMode = first ? nrd::AccumulationMode::CLEAR_AND_RESTART : (continued ? nrd::AccumulationMode::CONTINUE : nrd::AccumulationMode::RESTART);
+#if __has_include("rt_recorder_build.h")
+    common.timeDeltaBetweenFrames = fixed_frame_ms;
+#endif
     if (nrd::SetCommonSettings(*instance_, common) != nrd::Result::SUCCESS || nrd::SetDenoiserSettings(*instance_, IDENTIFIER, settings) != nrd::Result::SUCCESS) return false;
     const nrd::DispatchDesc* dispatches = nullptr;
     uint32_t dispatch_count = 0;
@@ -312,6 +315,48 @@ class Nrd12 {
     for (const auto& [type, texture] : own_) add(texture);
     return bytes;
   }
+
+#if __has_include("rt_recorder_build.h")
+  // The recorder's (rt_d3d12.hpp): NRD's frame time fixed (ms; 0: NRD's own clock, which a play-back cannot repeat), the
+  // history (the permanent pool's textures, resting in their states), the last frame's fields; a play-back's denoiser takes
+  // them again with NRD's first use spent (a first use clears the history).
+  struct Kept {
+    uint32_t frame_index = 0;
+    uint32_t last_frame = 0;
+    uint32_t last_width = 0;
+    uint32_t last_height = 0;
+    std::array<float, 16> last_view_to_clip = {};
+    std::array<float, 16> last_world_to_view = {};
+    std::array<float, 2> last_jitter = {};
+  };
+  float fixed_frame_ms = 0.f;
+  std::vector<std::pair<ID3D12Resource*, D3D12_RESOURCE_STATES>> History() const {
+    std::vector<std::pair<ID3D12Resource*, D3D12_RESOURCE_STATES>> history;
+    for (const Texture& texture : permanent_) history.emplace_back(texture.resource.Get(), texture.state);
+    return history;
+  }
+  Kept Saved() const {
+    return {.frame_index = frame_index_, .last_frame = last_frame_, .last_width = last_width_, .last_height = last_height_,
+            .last_view_to_clip = last_view_to_clip_, .last_world_to_view = last_world_to_view_, .last_jitter = last_jitter_};
+  }
+  void Restore(const Kept& kept) {
+    frame_index_ = kept.frame_index;
+    last_frame_ = kept.last_frame;
+    last_width_ = kept.last_width;
+    last_height_ = kept.last_height;
+    last_view_to_clip_ = kept.last_view_to_clip;
+    last_world_to_view_ = kept.last_world_to_view;
+    last_jitter_ = kept.last_jitter;
+    nrd::CommonSettings common = {};
+    common.resourceSize[0] = common.resourceSizePrev[0] = common.rectSize[0] = common.rectSizePrev[0] = static_cast<uint16_t>(width_);
+    common.resourceSize[1] = common.resourceSizePrev[1] = common.rectSize[1] = common.rectSizePrev[1] = static_cast<uint16_t>(height_);
+    common.isMotionVectorInWorldSpace = true;
+    common.denoisingRange = DENOISING_RANGE;
+    common.timeDeltaBetweenFrames = fixed_frame_ms;
+    common.frameIndex = frame_index_ - 1;
+    nrd::SetCommonSettings(*instance_, common);
+  }
+#endif
 
  private:
   struct Texture {
