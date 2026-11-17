@@ -362,7 +362,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU B1 (cb1_ High 18:4x, STOPPED 18:5x by a safety check partway (which action u ... | CPU PLAN 2 END
 - CPU B2 (ALIT one copy of repeated light records, ACAP Capture locks / lookups, X ... | CPU PLAN 2 END
 - CPU B3 (AF14 filter only = memo C1, XAT command_action_fast, APIPE optional; src ... | CPU PLAN 2 END
-- CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_m ... | cb4_ High STARTED 21:4x
 - CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization desig ... | ATN
 - CPU B6 (private heapfix builds: HB4G size-gated threaded sort -3.3..-5.5 stress, ... | hb6_, coordinator
 - B4G THRESHOLD (hb6_ 20:1x): B4 already threaded only lists >= 32768, so B4G diff ... | coordinator (next run batch)
@@ -2544,8 +2543,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         bumps lock cmpxchg8b); APIPE skipped (~0 stress, -0.1..-0.2 night1, needs a destroy generation in pipeline.hpp).
         LEFT: the CMake runtime suites (RENODX_BUILD_TESTS=ON configure outside gated_build); the END bench's night1 WPR
         must show the gtl bucket gone. Owner: CPU PLAN 2 END
-      - [ ] CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_motion.hpp, dlaa_bridge.hpp):
-        night1 -0.3..-0.6. Owner: cb4_ High STARTED 21:4x
+      - [x] CPU B4 (ADOM motion constants ring, ABRG bridge Flushes measured first; object_motion.hpp, dlaa_bridge.hpp):
+        night1 -0.3..-0.6. DONE 23:xx cb4_, merged 2dad9aceb (log plan_1117/cb4_notes.md): ADOM ff12e83de (object_motion.hpp:
+        a D3D11.1 dynamic ring of 1024 x 256 B slots made at PrepareDevice when the device has ConstantBufferOffsetting +
+        MapNoOverwriteOnDynamicConstantBuffer and the context an ID3D11DeviceContext1; Map no-overwrite into the next
+        slot, discard when full, equal constants reuse the last slot; VS / PS b12 by *SetConstantBuffers1; Shogun 2's
+        camera-copy draws and devices without the options keep UpdateSubresource; tw_unit_pack_rounds + ring wrap (1105
+        moving draws), 3 in-draw cases, motion-target dump: 0 differing bytes of 25,165,824 vs bd34f3556 on WARP x86 +
+        amd64; 5090 x86 redrawn draw 1.2 -> 1.0 us, in-draw same); ABRG 8b5326c3f (a frame-trace MARK per bridge request:
+        kind, value, steady; NO Flush change: a request that is not steady waits for its answer, so its Flush is never
+        redundant; a real change needs a caller-side no-flush call or a deferred flush); tw_unit_pack_rounds /
+        tw_motion_record / tw_helper_lifetime (run.ps1 /DWIN32=1) / tw_gpu_completion x86 + amd64 PASS; builds 3 x86 + 13
+        amd64 exit 0. Est. -0.1..-0.3 ms + less upload-ring pressure in the alt-tab transient. LEFT: one FrameTrace=1 frame
+        with the request marks (the END bench's run) to decide ABRG step 2. Owner: CPU PLAN 2 END
       - [ ] CPU B5 (EHALF half-float rows, E3P render-list prefetch / devirtualization designs then code, EVEC design;
         engine_code.hpp after B1): stress -1.4..-3.6. Dropped 19:4x, RESUMED by ATN 20:0x: cb5_ xHigh 21:1x STOPPED 21:5x
         by the safety classifier (its response withheld after etl2\cpp_xref.py listed the static callers of the game's
