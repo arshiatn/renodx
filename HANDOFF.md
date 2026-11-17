@@ -359,7 +359,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT_PLACE DETERMINISM (rec_): rt_place's first-come dedupe places instances in a ... | fix1_ (STARTED 16:xx)
 - CPU GAPS (cpg_ medium STOPPED 17:1x on ATN's "Restart ... at xHigh"; now part of ... | cpp_
 - CPU PLAN 2 (ATN 17:1x: "Plan EVERYTHING that we can improve with xHigh, implemen ... | coordinator
-- BRIDGE CLAIMS (ATN 17:3x: another modder's ChatGPT review of HIS port of our bri ... | rvb_, coordinator
+- BRIDGE CLAIMS (ATN 17:3x: another modder's ChatGPT review of HIS port of our bri ... | bfx_, coordinator (merge before plan step 7)
 - SER IN FORESTS (ATN 17:3x, Forge: SER made a huge difference in forests; his pat ... | plan step 6
 - NSIGHT XHIGH COUNTERS (ATN 17:5x: "let's use xhigh for it too on next nsight che ... | coordinator (plan steps 4 / 8)
 - PLAYER FLAG OVERRIDE (needed for SER / SHaRC / part A/Bs on recordings): the pla ... | next recorder touch (after fix1_)
@@ -2474,9 +2474,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         gaps: request missed by the watcher, the rescue signal undone by the game's queued one, the watcher's unsynced
         reads at a resolution change, shutdown order, a hung helper with no timeout, unchecked signal / wait / thread
         start, a leaked copied fence handle; ATN: "Double check and fix the real bugs please before our 7th step"):
-        rvb_ xHigh STARTED 17:3x (brief plan_1117/bridge_claims_brief.md -> bridge_claims.md, verify only); then a High
-        fixer after fix1_ merges (one helper implementer at a time), failing test first; before plan step 7. Owner: rvb_,
-        coordinator
+        rvb_ xHigh DONE 18:2x (plan_1117/bridge_claims.md): claims 1-5 + 7 NOT IN OURS (two-flag order, SignalAbandoned
+        above a landed value, the watcher reads no D3D object, a joined watcher, 30 s no-progress rescue; his 5 s timeout
+        would kill our first DLSS / RR builds and a 2.7 s RT rebuild), 6 PARTLY. New: F1 Shogun 2 / Divinity 1 + 2 / Rome
+        Remastered / Ryse / Expeditions call the bridge's Release() on ANY D3D11 device's destroy (coordinator checked:
+        divinityoriginalsinenhanced/upscaling.hpp:556, twshogun2completeedition/upscaling.hpp:388 outside the device check,
+        Attila anti_aliasing.hpp:1713 inside it); F4 an answer without a fence leaves a wait with no rescue; F2 unchecked
+        Signal / Wait; F3 a set without a recovery handle; F5 odd fence values unenforced. Residuals (no fix): rescue before
+        a terminated helper is gone; device release never blocking on an unsignalled wait. FIXER bfx_ (High) STARTED 18:2x
+        in its own worktree (bridge + add-on destroy sites only, not dlaa_helper/: no overlap with fix1_), failing tests
+        first. Owner: bfx_, coordinator (merge before plan step 7)
       - [ ] SER IN FORESTS (ATN 17:3x, Forge: SER made a huge difference in forests; his path tracer's split: turning its
         reorder off +19 ms, instruction misses +186 %, GCC->L2 +32 GB; the cost is L2 traffic + 6.1 GB local-memory
         spills a pass, not math): ours is "Path Tracing SER (Experimental)", off, +0.86 ms in the test scene, hint = the
