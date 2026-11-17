@@ -335,10 +335,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SPEED LIST (cap1_ 05:xx, tools/tw/round_notes/plan_1117/speed_list.md; numbers f ... | coordinator -> CPU round (plan step 4)
 - (cap1_ 07:xx: also every ReShade 4K screenshot permanently takes 30-95 MB off th ... | next memory round
 - CAPTURE TOOLING (cap1_ 05:xx): run_game's memory.csv overwritten every start (fi ... | coordinator
-- BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before th ... | bug1_
 - BUG2 (bug2_, started 02:xx): DEBUG44 (b) path torch light with its path shadows ... | bug2_
 - BUG4 RUNS (bug4_ NEEDS A RUN, specs in bugs_1117/bug4.md): (1) sea1 with ships s ... | coordinator (one game run)
 - BUG4 NEW BOXES (bug4_ 08:xx): (a) foam: the ocean's refraction distortion double ... | next render-scale / helper / per-game rounds, (d) coordinato
+- BUG1 RUN + LEFT (bug1_ 08:xx): Attila night battle, V35 Recommended: dark ground ... | coordinator (run), ATN
 - BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Res ... | coordinator
 - (design DONE ref_ 03:4x: plan_1117/reference_suite.md, ~520 lines: one brute-for ... | ref_
 - REF1 REVIEW (rev_ 04:xx, Opus xHigh: plan_1117/reference_suite_review.md, verdic ... | ref_ (v2), then one implementer at a time after bug2_ leaves
@@ -2196,7 +2196,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         stress_noaddon's helper log a stale copy; the quiet lock stops only builds (agents' claude.exe / git / grep took
         ~1.4 cores in night1: agents asked to pause for captures_v2); the add-on's PDB has no function names (LTO object),
         the helper has no PDB: a /Z7 build for symbols. Owner: coordinator
-      - [ ] BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before the refrence runs?" -> the ones
+      - [x] DONE bug1_ 0e543e1c / 7dcf881c / a25899fc (merged 2aa96f1e5; bugs_1117/bug1_v35.md): cause in
+        custom_psychotm_test35: the target fit's support = min(mean / -displacement) went negative for cones under black,
+        inverting and scaling the colour (bluish under black -> red); NaN in -> Peak-bright magenta, Inf the same, Contrast /
+        Flare lifted below-black pixels; source of the negatives: Attila t01's own colour matrix (gamma 2.0 with a negative
+        offset, stock SDR clips), not the RT passes (t00 hands on 0 negatives / non-finite). Fix in the one shared copy
+        (twattila/psycho35.hlsli + psycho_test35.hlsli, all 16 add-ons): below black = black, footroom >= 0 in all four fit
+        paths, NaN -> black, +-65504 clamp, Contrast / Flare floor. tw_psychov35 part 9: 398 edge inputs x 15 slider sets,
+        0 failures, control 4132; Attila t01 night grade 0 red vs 1064; pixels with all cones above 0 keep their bits;
+        vanilla exact 416 / 0 (x86 + amd64); R.U.S.E. ps_3_0 +6 slots BUG1 (bug1_, started 02:xx; ATN 02:xx "Should we fix these issues now, before the refrence runs?" -> the ones
         that need no capture now, in parallel): DEBUG44 (a) PsychoV35 red / NaN in darks: WARP repro with negative /
         near-black / Inf / NaN input, find the producer, fix V35 for every game, tw_psychov35 + tw_vanilla_exact still
         PASS. Owner: bug1_
@@ -2220,6 +2228,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         exact): check with a 50 % trace; (d) run_game.ps1 -Ini for Attila (DONE 08:xx: ini_set.py for non-WH3 games); (e) WH2 / Troy / Pharaoh rigid ropes still held
         (not proven drawn); (f) READMEs still call Smooth Banner Shadows "Experimental, off". Owner: next render-scale /
         helper / per-game rounds, (d) coordinator
+      - [ ] BUG1 RUN + LEFT (bug1_ 08:xx): Attila night battle, V35 Recommended: dark ground / shadows black, not red, also
+        with Contrast + Flare moved; a trace / cbuffer dump of hdr_to_screen_PS colour_matrix (t01) at night to confirm the
+        negative offset; open for ATN / Musa: at Recommended a bright colour far beyond the spectral locus (blue under 0 by
+        ~1/6 of red, above ~50x Paper White) still comes out black (black on screen before too); flooring cones at 0 before
+        V35's response would show it bright but changes every beyond-locus pixel; tell Musa about the same fit assumption in
+        upstream src/shaders/tonemap/psychov/test35.hlsl (lines 557, 575; no game calls it). Owner: coordinator (run), ATN
       - [ ] BUG3 RUN (bug3_ NEEDS A RUN): each changed game: All Textures row off, press Reset / No RT/PT / RT/PT (Shogun 2 /
         Ryse: their ray buttons): the row comes back on, the level row keeps the player's value. Owner: coordinator
       - [x] DONE bug4_ 6f3867fee (merged 5f03fd647; bugs_1117/bug4.md, causes written first; WARP tw_strip_capture,
