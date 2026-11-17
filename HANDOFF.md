@@ -390,6 +390,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BAKE POOL POISON TEST (ssr_ S1 kept the GPU micromap bake's transient pools acro ... | next helper round
 - REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our ... | next helper round (measure first)
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
+- EJOB-FORK CHECKS (ATN 23:3x: ATN's other session finished: local branch ejob-for ... | coordinator
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
 - MIRRORS OF MADNESS RT/PT (ATN 18:3x): WH3's benchmark at ~20 fps: the recordings ... | plan step 4
 - GAME MEMORY LEAK (ATN 19:5x: "it always happened in the last 10+ years. Is there ... | coordinator
@@ -2935,6 +2936,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         design: LOD build (load time, VRAM for both), wind sway on the LOD, transitions without popping (no temporal
         dither: DLSS smears it), shadow mismatch with the raster mesh (leaks / acne), the link to WH3's far tree shadow
         flicker. Look-risk -> Experimental, off. Owner: after L1 clusters (same design round)
+      - [ ] EJOB-FORK CHECKS (ATN 23:3x: ATN's other session finished: local branch ejob-fork = EJOB 65ee50591 + EHALF
+        0fd36c01d (all 20 conversions four at a time, Attila + Thrones; harness 73.5 -> 51.6 ns a call; all 2^32 floats
+        on Attila) + docs 2f5703ae3 (README + HANDOFF: conflicts with ours at merge); E3P / EVEC design notes only. ATN:
+        separate agents, one at a time, so one stop does not take the others): (1) ehr_ xHigh EHALF review STARTED
+        23:3x in its own worktree at 2f5703ae3 (never reads the EJOB item) -> plan_1117/ehalf_review.md; (2) then a
+        Low EJOB build + tests only (no analysis); (3) then one xHigh E3P design check (never stopped itself; Sol + the
+        other session rejected it on merit: fault risk, heapfix area); EVEC skipped (-0.1..-0.3, exactness not
+        provable statically by two analyses). A stop = final for that item only. Owner: coordinator
       - [ ] FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the flickering far tree
         shadows"): on WH3's 8-frame forest recordings: which pass flickers (play frame to frame, per-pixel change maps of
         the shadow terms), cause first, then the fix. Owner: after the capture pass (plan step 3 bug list)
