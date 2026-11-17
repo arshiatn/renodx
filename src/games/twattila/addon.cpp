@@ -1613,6 +1613,8 @@ void ConfigureAddon() {
   renodx::mods::swapchain::use_resource_cloning = true;
   // GetResourceViewClone answers the views never cloned without the view map's lock (resource.hpp ViewFilterData).
   renodx::utils::resource::use_view_filter = true;
+  // A bind reuses its pipeline lookup's outcome until a pipeline write (pipeline.hpp BindCacheData): no map lock a bind.
+  renodx::utils::pipeline::use_bind_cache = true;
   renodx::mods::swapchain::force_borderless = false;
   renodx::mods::swapchain::prevent_full_screen = true;
 

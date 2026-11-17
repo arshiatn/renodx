@@ -16,6 +16,14 @@ python -I static_checks.py [--rev <commit>]   (--rev: that commit's files, e.g. 
    resource.hpp only swapchain_v1.hpp's one raw write (v1 is never selected; its pointer-form calls turn the filter off
    first) and the known pointer-form callers (KNOWN_POINTER_CALLS) may exist. A new raw writer would make the filter answer
    "no clone" for an enabled view (the original texture instead of its upgraded clone).
+4. pipelines (all of src/, every round, above all after an upstream merge): the bind cache (src/utils/pipeline.hpp
+   BindCacheData) is exact only while every write to `pipeline_infos` bumps its generation inside the write's lock. Inside
+   pipeline.hpp each access must be one the protocol covers (PIPELINE_MAP_CALLS: by function), and the writers and the
+   bind-info callback list changes must call InvalidateBindCache (PIPELINE_PROTOCOL); utils/shader.hpp's deprecated pointer
+   forms must call TurnOffBindCache. Outside pipeline.hpp: no `data->pipeline_infos`, no const_cast to PipelineInfo /
+   PipelineShaderDetails (shader.hpp's three known: the pointer forms and PopulateStageState, which hands read-only
+   pointers to mods::shader), no write through a `pipeline_details->` / `pipeline_shader_details->` pointer. A new raw
+   writer would bind a stale (possibly destroyed) replacement pipeline.
 """
 import pathlib
 import re
@@ -42,6 +50,17 @@ VIEW_PROTOCOL = {'UpdateResourceViewInfo': ('MarkViewFilter', 1), 'UpsertResourc
 # reads only; both turn the filter off before the pointer leaves).
 KNOWN_RAW_VIEW_MAP = {'src/mods/swapchain_v1.hpp': 1}
 KNOWN_POINTER_CALLS = {'src/mods/swapchain_v1.hpp': 8, 'src/games/ue-extended/addon.cpp': 2}
+UTILS_PIPELINE = 'src/utils/pipeline.hpp'
+UTILS_SHADER = 'src/utils/shader.hpp'
+# pipeline.hpp's functions and the pipeline-map calls each may make (the bind cache's protocol covers these: section 4).
+PIPELINE_MAP_CALLS = {'UpdatePipelineInfo': {'modify_if'}, 'GetPipelineInfo': {'if_contains'}, 'GetPipelineShaderDetails': {'if_contains'},
+                      'UpdatePipelineShaderDetails': {'modify_if'}, 'OnInitPipeline': {'lazy_emplace_l'},
+                      'OnDestroyPipeline': {'modify_if', 'erase_if'}, 'OnDestroyDevice': {'for_each_m', 'erase_if'}}
+# The InvalidateBindCache calls each function must make: one a write lambda, one a callback-list change, two in Use.
+PIPELINE_PROTOCOL = {'UpdatePipelineInfo': 1, 'UpdatePipelineShaderDetails': 1, 'OnInitPipeline': 2, 'OnDestroyPipeline': 3,
+                     'OnDestroyDevice': 2, 'RegisterOnBindInfoCallback': 1, 'UnregisterOnBindInfoCallback': 1, 'Use': 2}
+# shader.hpp's const_casts out of the map: the two deprecated pointer forms (they turn the cache off) and PopulateStageState.
+KNOWN_PIPELINE_CASTS = {UTILS_SHADER: 3}
 COMMENT = re.compile(r'("(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\')|//[^\n]*|/\*.*?\*/', re.S)
 
 
@@ -223,15 +242,75 @@ def check_views(files):
     return findings, accesses
 
 
+def calls_in(text, functions, function, callee):
+    """How many times `function`'s bodies (every definition of that name) call `callee`."""
+    found = 0
+    for start, name in functions:
+        if name != function:
+            continue
+        body_start = text.index('{', start)
+        _, body_end = pieces(text, body_start)
+        found += len(re.findall(rf'\b{callee}\s*\(', text[body_start:body_end]))
+    return found
+
+
+def check_pipelines(files):
+    findings = []
+    pipeline, shader = files.get(UTILS_PIPELINE), files.get(UTILS_SHADER)
+    if pipeline is None or shader is None:
+        return [f'pipelines: {UTILS_PIPELINE} or {UTILS_SHADER} missing'], 0
+    functions = functions_of(pipeline)
+    accesses = 0
+    for match in re.finditer(r'\bpipeline_infos\b\s*(?:\.\s*(\w+)|(\[))', pipeline):
+        accesses += 1
+        call = match.group(1) or 'operator[]'
+        function = enclosing(functions, match.start())
+        if call not in PIPELINE_MAP_CALLS.get(function, set()):
+            findings.append(f'pipelines: {UTILS_PIPELINE}:{line_of(pipeline, match.start())} {function}() calls pipeline_infos.{call}: '
+                            'not covered by the bind cache\'s protocol (PIPELINE_MAP_CALLS)')
+    for function, count in PIPELINE_PROTOCOL.items():
+        if (found := calls_in(pipeline, functions, function, 'InvalidateBindCache')) < count:
+            findings.append(f'pipelines: {UTILS_PIPELINE} {function}() calls InvalidateBindCache {found} times, the protocol needs {count}')
+    shader_functions = functions_of(shader)
+    if (found := calls_in(shader, shader_functions, 'Use', 'InvalidateBindCache')) < 2:
+        findings.append(f'pipelines: {UTILS_SHADER} Use() calls InvalidateBindCache {found} times (after its RegisterModule and '
+                        'UnregisterModule: the bind-info callback reads the event handler and use_replace_on_bind)')
+    pointer_form = re.search(r'PipelineShaderDetails\*\s*GetPipelineShaderDetails\s*\([^)]*\)\s*\{', shader)
+    if pointer_form is None or 'TurnOffBindCache(' not in shader[pointer_form.end():pieces(shader, pointer_form.end() - 1)[1]]:
+        findings.append(f'pipelines: {UTILS_SHADER} the pointer-form GetPipelineShaderDetails does not call TurnOffBindCache')
+    if calls_in(shader, shader_functions, 'GetCurrentState', 'TurnOffBindCache') < 1:
+        findings.append(f'pipelines: {UTILS_SHADER} the deprecated GetCurrentState does not call TurnOffBindCache')
+    cast = re.compile(r'const_cast\s*<\s*(?:const\s+)?(?:[\w:]*::)?(?:PipelineInfo|PipelineShaderDetails)\b')
+    write = re.compile(r'\b(?:pipeline_details|pipeline_shader_details)\s*->\s*[\w.\[\]]+\s*(?:=(?!=)|\+\+|--|[-+|&^]=)'
+                       r'|\b(?:pipeline_details|pipeline_shader_details)\s*->\s*[\w.]+\s*\.\s*'
+                       r'(?:emplace|emplace_back|push_back|clear|insert|erase|assign|resize|reset)\s*\(')
+    for name, text in files.items():
+        if name == UTILS_PIPELINE:
+            continue
+        findings += [f'pipelines: {name}:{line_of(text, match.start())} accesses the pipeline map outside pipeline.hpp (the bind cache '
+                     'misses its writes: use UpdatePipelineInfo / UpdatePipelineShaderDetails)'
+                     for match in re.finditer(r'\bdata\s*->\s*pipeline_infos\b', text)]
+        casts = [match.start() for match in cast.finditer(text)]
+        if len(casts) > KNOWN_PIPELINE_CASTS.get(name, 0):
+            findings += [f'pipelines: {name}:{line_of(text, index)} a const_cast of the pipeline map\'s info (a write through it '
+                         'skips the bind cache\'s generation)' for index in casts]
+        findings += [f'pipelines: {name}:{line_of(text, match.start())} writes through a PipelineShaderDetails pointer (use '
+                     'UpdatePipelineShaderDetails)' for match in write.finditer(text)]
+    return findings, accesses
+
+
 if __name__ == '__main__':
     rev = sys.argv[sys.argv.index('--rev') + 1] if '--rev' in sys.argv else None
     files = read_files(rev)
     tonemap, hosts = check_tonemap(files)
     comptr, known, takers = check_comptr(files)
-    views, view_accesses = check_views(read_files(rev, 'src/'))
-    for finding in tonemap + comptr + known + views:
+    all_files = read_files(rev, 'src/')
+    views, view_accesses = check_views(all_files)
+    pipelines, pipeline_accesses = check_pipelines(all_files)
+    for finding in tonemap + comptr + known + views + pipelines:
         print(finding)
     print(f'tonemap: {len(hosts)} rt_scene hosts, {len(tonemap)} findings; comptr: {len(takers)} callees read a ComPtr<T>* '
           f'({", ".join(sorted(takers))}), {len(comptr)} findings, {len(known)} known; views: {view_accesses} view-map calls in '
-          f'resource.hpp, {len(views)} findings{f" (at {rev})" if rev else ""}')
-    sys.exit(1 if tonemap or comptr or views else 0)
+          f'resource.hpp, {len(views)} findings; pipelines: {pipeline_accesses} pipeline-map calls in pipeline.hpp, '
+          f'{len(pipelines)} findings{f" (at {rev})" if rev else ""}')
+    sys.exit(1 if tonemap or comptr or views or pipelines else 0)

@@ -5,16 +5,24 @@
 
 #pragma once
 
+#include <windows.h>
+
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <include/reshade.hpp>
 #include <include/reshade_api_device.hpp>
 #include <include/reshade_api_pipeline.hpp>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <shared_mutex>
 #include <span>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -22,13 +30,18 @@
 #include "./cross_addon.hpp"
 #include "./cstring.hpp"
 #include "./hash.hpp"
+#include "./log.hpp"
 #include "./pipeline_layout.hpp"
+#include "./platform.hpp"
 
 namespace renodx::utils::pipeline {
 
 static bool track_shader_hashes = false;
 static bool cache_subobjects = false;
 static bool retain_destroyed_subobjects = false;
+// The process's binds may reuse their locked lookup's outcome (BindCacheData below). Set before this module's first Use.
+// RENODX_PIPELINE_MEMO=0 turns the cache off in the process, =1 turns it on in every module that attaches.
+static bool use_bind_cache = false;
 
 enum class PipelineBindPoint : uint8_t {
   UNKNOWN,
@@ -158,6 +171,111 @@ struct __declspec(uuid("a92dff63-bb92-4543-80aa-3948b089f964")) SharedData {
 
 static cross_addon::Shared<SharedData> shared;
 }  // namespace internal
+
+// The bind cache. OnBindPipeline's locked lookup (GetPipelineInfo, the bind-info callbacks inside the map lock) gives an
+// outcome: found, bind point, replacement. A thread keeps the outcomes of its binds by handle and stages, tagged with
+// `generation`, which every write to pipeline_infos bumps inside its exclusive submap lock (InvalidateBindCache), as does
+// every change to what the bind-info callbacks read besides the info (a module's attach or detach, the callback list). A
+// tag equal to the current generation proves no write since the outcome was taken: the bind uses it without the lock.
+// Never the info itself: the callbacks read fields written after creation (the replacement). Every module attached to the
+// pipeline map must write with this protocol (its token in BindCacheData::modules), else the cache turns off
+// (CheckBindCacheWriters): an add-on built before it writes without bumping.
+// Own uuid, frozen (SharedData is append-only ABI, made by whichever module comes first): any change to these fields or to
+// the protocol takes a new uuid. Native-width words: one plain load on x86 and x64. x86's generation wraps at 2^32 writes:
+// a false hit needs exactly 2^32 pipeline writes between an outcome and its next bind.
+constexpr size_t BIND_CACHE_MAX_MODULES = 8u;
+constexpr size_t BIND_CACHE_WORD_BITS = sizeof(size_t) * 8u;
+constexpr size_t BIND_CACHE_OFF = size_t{1u} << (BIND_CACHE_WORD_BITS - 1u);  // sticky
+constexpr size_t BIND_CACHE_USE = size_t{1u} << (BIND_CACHE_WORD_BITS - 2u);
+constexpr size_t BIND_CACHE_CHECK = size_t{1u} << (BIND_CACHE_WORD_BITS - 3u);  // RENODX_PIPELINE_MEMO_CHECK=1
+constexpr uint32_t BIND_CACHE_INDEX_BITS = 10u;                                // 1,024 entries a thread
+// The self-check compares the hits of the table indices of this frame's phase (advanced at an opting-in module's present):
+// every index once in BIND_CACHE_SELF_CHECK_FRAMES frames.
+constexpr uint32_t BIND_CACHE_SELF_CHECK_FRAMES = 256u;
+static_assert(std::atomic_size_t::is_always_lock_free);
+
+// USE is set while at least one checking module (an opted-in one: it runs the writer check and advances the self-check
+// phase at its present) is attached: the last one's detach clears it, so no module answers from its tables unchecked.
+struct __declspec(uuid("42143cab-fd3f-43e7-9bc8-0f94b99f7db2")) BindCacheData {
+  std::shared_mutex mutex;  // modules, module_count, checking_modules; USE changes under it
+  std::array<cross_addon::internal::ModuleToken, BIND_CACHE_MAX_MODULES> modules = {};
+  size_t module_count = 0u;
+  std::atomic_size_t control = 0u;
+  std::atomic_size_t generation = 0u;
+  std::atomic_size_t self_check_phase = 0u;
+  size_t checking_modules = 0u;
+};
+
+// A bind's locked outcome: pipeline and stages are the key, generation the tag.
+struct BindCacheEntry {
+  uint64_t pipeline = 0u;
+  uint64_t replacement = 0u;
+  size_t generation = 0u;
+  reshade::api::pipeline_stage stages = static_cast<reshade::api::pipeline_stage>(0u);
+  PipelineBindPoint bind_point = PipelineBindPoint::UNKNOWN;
+  bool found = false;
+};
+using BindCacheTable = std::array<BindCacheEntry, size_t{1u} << BIND_CACHE_INDEX_BITS>;
+
+namespace internal {
+static cross_addon::Shared<BindCacheData> bind_cache;
+// Per thread, not per command list: an outcome depends on the handle, the stages and process state only, so a thread's own
+// table needs no synchronization and no lookup to find it (D3D11 deferred contexts and D3D12 lists record on their own
+// threads: a table each). Made at the thread's first cached bind, freed at its exit.
+static thread_local std::unique_ptr<BindCacheTable> bind_cache_table;
+// pipeline::internal::shared's control block: the modules attached to the pipeline map (CheckBindCacheWriters).
+static const cross_addon::internal::ControlBlock<SharedData>* bind_cache_writers = nullptr;
+static bool bind_cache_token = false;     // this module's token is in BindCacheData::modules
+static bool bind_cache_checking = false;  // this module opted in: it checks the writers at init_device and present
+// RENODX_PIPELINE_MEMO_CHECK=1: the handler module's counts (plain loads and stores: a check mode for tests and runs).
+static std::atomic_uint32_t bind_cache_hits = 0u;
+static std::atomic_uint32_t bind_cache_misses = 0u;
+static std::atomic_uint32_t bind_cache_races = 0u;
+static std::atomic_uint32_t bind_cache_mismatches = 0u;
+}  // namespace internal
+
+// After every write to pipeline_infos (inside its exclusive lock) and every change to what the bind-info callbacks read
+// besides the info: no outcome cached before it hits again.
+inline void InvalidateBindCache() {
+  if (auto* cache = internal::bind_cache.data; cache != nullptr) {
+    cache->generation.fetch_add(1u);
+  }
+}
+
+// Sticky for the process. Logged only once a module uses the cache (other mods stay quiet).
+inline void TurnOffBindCache(std::string_view reason) {
+  auto* cache = internal::bind_cache.data;
+  if (cache == nullptr || (cache->control.load() & BIND_CACHE_OFF) != 0u) return;
+  const size_t control = cache->control.fetch_or(BIND_CACHE_OFF);
+  if ((control & BIND_CACHE_OFF) != 0u || (control & BIND_CACHE_USE) == 0u) return;
+  log::w("utils::pipeline bind cache off: ", reason, " (every bind takes the pipeline map's lock again).");
+}
+
+// This module's token before its pipeline-map record turns active: every registration with internal::shared calls this
+// first, so a module whose record is active always has its token. A full table leaves it out: off for all.
+static void RegisterBindCacheToken() {
+  if (internal::bind_cache_token) return;
+  internal::bind_cache.RegisterModule();
+  auto* cache = internal::bind_cache.data;
+  if (cache == nullptr) return;
+  internal::bind_cache_token = true;
+  const auto token = cross_addon::internal::GetModuleToken();
+  bool table_full = false;
+  {
+    const std::unique_lock lock(cache->mutex);
+    const auto modules = std::span(cache->modules.data(), cache->module_count);
+    if (std::ranges::find(modules, token) == modules.end()) {
+      table_full = (cache->module_count == BIND_CACHE_MAX_MODULES);
+      if (!table_full) {
+        cache->modules[cache->module_count++] = token;
+      }
+    }
+  }
+  if (table_full) {
+    TurnOffBindCache("all module slots taken");
+  }
+}
+
 static bool attached = false;
 // RegisterEvent needs this module's interest; the shared callback list also contains other modules' callbacks.
 static std::vector<CreateCallback> local_create_callbacks;
@@ -191,6 +309,7 @@ static bool UpdatePipelineInfo(reshade::api::pipeline pipeline, F&& callback) {
   bool updated = false;
   internal::shared.data->pipeline_infos.modify_if(pipeline.handle, [&](auto& entry) {
     std::invoke(std::forward<F>(callback), entry.second);
+    InvalidateBindCache();
     updated = true;
   });
   return updated;
@@ -243,6 +362,7 @@ static bool UpdatePipelineShaderDetails(reshade::api::pipeline pipeline, F&& cal
   bool updated = false;
   internal::shared.data->pipeline_infos.modify_if(pipeline.handle, [&](auto& entry) {
     std::invoke(std::forward<F>(callback), entry.second.details);
+    InvalidateBindCache();
     updated = true;
   });
   return updated;
@@ -831,10 +951,12 @@ static void OnInitPipeline(
         DestroyPipelineSubobjects(pair.second.details.subobjects);
         pair.second = std::move(info);
         initialize(&pair.second);
+        InvalidateBindCache();
       },
       [&](const PipelineInfoMap::constructor& ctor) {
         const auto& entry = ctor(pipeline.handle, std::move(info));
         initialize(&const_cast<PipelineInfo&>(entry.second));
+        InvalidateBindCache();
       });
   if (should_run_after_destroy_callbacks) {
     for (const auto callback : internal::shared.data->on_after_destroy_callbacks) {
@@ -850,8 +972,6 @@ static void OnBindPipeline(
     reshade::api::pipeline_stage stages,
     reshade::api::pipeline pipeline) {
   PipelineBindPoint bind_point = PipelineBindPoint::UNKNOWN;
-  std::optional<reshade::api::pipeline> replacement;
-  bool retry_unlocked = false;
   if (stages != reshade::api::pipeline_stage::all) {
     if (renodx::utils::bitwise::HasAnyFlag(stages, reshade::api::pipeline_stage::all_ray_tracing)) {
       bind_point = PipelineBindPoint::RAY_TRACING;
@@ -865,43 +985,120 @@ static void OnBindPipeline(
       bind_point = PipelineBindPoint::GRAPHICS;
     }
   }
-  bool found = false;
+  BindCacheEntry outcome = {.pipeline = pipeline.handle, .stages = stages, .bind_point = bind_point};
+  bool retry_unlocked = false;
   if (stages == reshade::api::pipeline_stage::all
       || !internal::shared.data->on_bind_pipeline_info_callbacks.empty()) {
-    found = GetPipelineInfo(pipeline, [&](const PipelineInfo& info) {
-      if (stages == reshade::api::pipeline_stage::all) {
-        bind_point = info.bind_point;
-      }
-      for (const auto callback : internal::shared.data->on_bind_pipeline_info_callbacks) {
-        if (callback != nullptr) {
-          const auto callback_replacement = callback(cmd_list, stages, pipeline, bind_point, &info);
-          retry_unlocked = retry_unlocked || !callback_replacement.has_value();
-          // Non-owner callbacks return zero and must not erase an owner's replacement.
-          if (callback_replacement.has_value() && callback_replacement->handle != 0u) {
-            replacement = callback_replacement;
+    // The locked lookup: the info's bind point and the bind-info callbacks' answers, inside the map lock. Returns whether a
+    // callback asked for the unlocked retry.
+    const auto look_up = [&](BindCacheEntry* result) {
+      bool retry = false;
+      result->found = GetPipelineInfo(pipeline, [&](const PipelineInfo& info) {
+        if (stages == reshade::api::pipeline_stage::all) {
+          result->bind_point = info.bind_point;
+        }
+        for (const auto callback : internal::shared.data->on_bind_pipeline_info_callbacks) {
+          if (callback != nullptr) {
+            const auto callback_replacement = callback(cmd_list, stages, pipeline, result->bind_point, &info);
+            retry = retry || !callback_replacement.has_value();
+            // Non-owner callbacks return zero and must not erase an owner's replacement.
+            if (callback_replacement.has_value() && callback_replacement->handle != 0u) {
+              result->replacement = callback_replacement->handle;
+            }
           }
         }
+      });
+      // assert(result->found && "Pipeline bind has no live PipelineInfo.");
+      return retry;
+    };
+    auto* cache = internal::bind_cache.data;
+    const size_t control = (cache != nullptr ? cache->control.load() : 0u);
+    if ((control & (BIND_CACHE_USE | BIND_CACHE_OFF)) == BIND_CACHE_USE && pipeline.handle != 0u) {
+      // Fibonacci hashing of the handle (D3D11 / D3D12 objects: 16-byte aligned pointers).
+      const auto folded = static_cast<uint32_t>((pipeline.handle >> 4u) ^ (pipeline.handle >> 36u));
+      const uint32_t index = (folded * 0x9E3779B1u) >> (32u - BIND_CACHE_INDEX_BITS);
+      if (internal::bind_cache_table == nullptr) {
+        internal::bind_cache_table = std::make_unique<BindCacheTable>();
       }
-    });
-    // assert(found && "Pipeline bind has no live PipelineInfo.");
+      auto& entry = (*internal::bind_cache_table)[index];
+      // Loaded before the lookup: a write after the lookup bumps past this tag, so the next bind misses.
+      const size_t generation = cache->generation.load();
+      const bool checking = (control & BIND_CACHE_CHECK) != 0u;
+      const bool hit = (entry.pipeline == pipeline.handle && entry.stages == stages && entry.generation == generation);
+      if (hit) {
+        outcome = entry;
+        // The check mode, the self-check (this frame's indices: reads the phase only) and debug builds also take the
+        // lookup. A changed generation means a write between the tag's load and the lookup (a race: the cached outcome
+        // was right when taken); an unchanged one a write without the protocol.
+#ifdef NDEBUG
+        const bool compare = checking
+                             || ((index ^ cache->self_check_phase.load(std::memory_order_relaxed)) % BIND_CACHE_SELF_CHECK_FRAMES) == 0u;
+#else
+        const bool compare = true;
+#endif
+        if (compare) {
+          BindCacheEntry locked = {.pipeline = pipeline.handle, .stages = stages, .bind_point = bind_point};
+          const bool locked_retry = look_up(&locked);
+          if (locked_retry || locked.found != entry.found || locked.bind_point != entry.bind_point
+              || locked.replacement != entry.replacement) {
+            const bool race = (cache->generation.load() != generation);
+            if (checking) {
+              auto& count = (race ? internal::bind_cache_races : internal::bind_cache_mismatches);
+              const uint32_t counted = count.load(std::memory_order_relaxed) + 1u;
+              count.store(counted, std::memory_order_relaxed);
+              if (!race && (counted <= 16u || counted % 1024u == 0u)) {
+                log::w("utils::pipeline bind cache mismatch: pipeline ", log::AsPtr(pipeline.handle), " stages ",
+                       static_cast<uint32_t>(stages), " cached replacement ", log::AsPtr(entry.replacement), " found ",
+                       entry.found, ", locked replacement ", log::AsPtr(locked.replacement), " found ", locked.found,
+                       " retry ", locked_retry, " (", counted, " so far).");
+              }
+            } else if (!race) {
+              TurnOffBindCache("self-check mismatch (a pipeline write without the protocol)");
+            }
+            outcome = locked;
+            retry_unlocked = locked_retry;
+          }
+        }
+      } else {
+        retry_unlocked = look_up(&outcome);
+        // A retry outcome is pending work (the replacement is being built): not kept.
+        if (!retry_unlocked) {
+          outcome.generation = generation;
+          entry = outcome;
+        }
+      }
+      if (checking) {
+        auto& count = (hit ? internal::bind_cache_hits : internal::bind_cache_misses);
+        count.store(count.load(std::memory_order_relaxed) + 1u, std::memory_order_relaxed);
+        const uint32_t hits = internal::bind_cache_hits.load(std::memory_order_relaxed);
+        const uint32_t misses = internal::bind_cache_misses.load(std::memory_order_relaxed);
+        if ((hits + misses) % 100000u == 0u) {
+          log::i("utils::pipeline bind cache check: ", hits + misses, " binds, ", hits, " hits, ", misses, " misses, ",
+                 internal::bind_cache_mismatches.load(std::memory_order_relaxed), " mismatches, ",
+                 internal::bind_cache_races.load(std::memory_order_relaxed), " races.");
+        }
+      }
+    } else {
+      retry_unlocked = look_up(&outcome);
+    }
   }
   for (const auto callback : internal::shared.data->on_bind_callbacks) {
     if (callback != nullptr) {
-      callback(cmd_list, stages, pipeline, bind_point);
+      callback(cmd_list, stages, pipeline, outcome.bind_point);
     }
   }
-  if (found && retry_unlocked) {
+  if (outcome.found && retry_unlocked) {
     for (const auto callback : internal::shared.data->on_bind_pipeline_info_callbacks) {
       if (callback != nullptr) {
-        const auto callback_replacement = callback(cmd_list, stages, pipeline, bind_point, nullptr);
+        const auto callback_replacement = callback(cmd_list, stages, pipeline, outcome.bind_point, nullptr);
         if (callback_replacement.has_value() && callback_replacement->handle != 0u) {
-          replacement = callback_replacement;
+          outcome.replacement = callback_replacement->handle;
         }
       }
     }
   }
-  if (replacement.has_value() && replacement->handle != 0u) {
-    cmd_list->bind_pipeline(stages, *replacement);
+  if (outcome.replacement != 0u) {
+    cmd_list->bind_pipeline(stages, {outcome.replacement});
   }
 }
 
@@ -930,6 +1127,7 @@ static void OnDestroyPipeline(
         entry.second.details.replacement_pipeline = {0u};
         entry.second.details.destroyed = true;
         ++entry.second.details.replacement_revision;
+        InvalidateBindCache();
       });
   if (!destroyed_info.has_value()) return;
   for (const auto callback : internal::shared.data->on_destroy_callbacks) {
@@ -948,9 +1146,13 @@ static void OnDestroyPipeline(
     if (!retain_cache) {
       DestroyPipelineSubobjects(details.subobjects);
     }
+    InvalidateBindCache();
   });
   if (!retain_cache) {
-    internal::shared.data->pipeline_infos.erase(pipeline.handle);
+    internal::shared.data->pipeline_infos.erase_if(pipeline.handle, [](auto&) {
+      InvalidateBindCache();
+      return true;
+    });
   }
   for (const auto callback : internal::shared.data->on_after_destroy_callbacks) {
     if (callback != nullptr) {
@@ -966,17 +1168,72 @@ static void OnDestroyDevice(reshade::api::device* device) {
     if (info.device != device) return;
     pipeline_handles.push_back(pipeline_handle);
     DestroyPipelineSubobjects(info.details.subobjects);
+    InvalidateBindCache();
   });
   for (const auto pipeline_handle : pipeline_handles) {
-    internal::shared.data->pipeline_infos.erase(pipeline_handle);
+    internal::shared.data->pipeline_infos.erase_if(pipeline_handle, [](auto&) {
+      InvalidateBindCache();
+      return true;
+    });
   }
 }
 
+// Every module attached to the pipeline map (internal::shared's active module records) must write with the bind cache's
+// protocol (its token in BindCacheData::modules); else the cache turns off, naming the module's file. Run at an
+// opting-in module's attach, at init_device (add-ons that attached after it, before any pipeline exists) and at every
+// present (a late add-on: unchecked for at most one frame).
+// Accepted window: within that frame a late add-on without the protocol can write without a bump. Unlike the view filter
+// (one frame of an original texture), a hit can then bind a replacement pipeline it destroyed right after (its
+// AddRuntimeReplacement / RemoveRuntimeReplacements: UpdatePipelineInfo, then destroy_pipeline). Reach: an old add-on
+// that changes replacements in its first frame (an old DevKit loaded late); ReShade loads add-ons before the device, and
+// a late add-on is never the pipeline or shader event handler, so its init / destroy events do not run.
+static void CheckBindCacheWriters() {
+  auto* cache = internal::bind_cache.data;
+  if (cache == nullptr || internal::bind_cache_writers == nullptr || (cache->control.load() & BIND_CACHE_OFF) != 0u) return;
+  cross_addon::internal::ModuleToken missing = nullptr;
+  {
+    const std::shared_lock lock(cache->mutex);
+    const auto modules = std::span(cache->modules.data(), cache->module_count);
+    // Records are never freed: the walk is memory-safe while modules attach.
+    for (const auto* module = internal::bind_cache_writers->modules; module != nullptr && missing == nullptr; module = module->next) {
+      if (module->active && std::ranges::find(modules, module->token) == modules.end()) {
+        missing = module->token;
+      }
+    }
+  }
+  if (missing == nullptr) return;
+  std::array<char, MAX_PATH> file = {'?'};
+  if (HMODULE module = nullptr; ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                                       static_cast<const char*>(missing), &module)) {
+    ::GetModuleFileNameA(module, file.data(), static_cast<DWORD>(file.size()));
+  }
+  TurnOffBindCache(std::string("a module writes the pipeline map without its protocol: ") + file.data());
+}
+
+static void OnBindCacheInitDevice(reshade::api::device* device) {
+  CheckBindCacheWriters();
+}
+
+static void OnBindCachePresent(
+    reshade::api::command_queue* queue,
+    reshade::api::swapchain* swapchain,
+    const reshade::api::rect* source_rect,
+    const reshade::api::rect* dest_rect,
+    uint32_t dirty_rect_count,
+    const reshade::api::rect* dirty_rects) {
+  if (auto* cache = internal::bind_cache.data; cache != nullptr) {
+    cache->self_check_phase.fetch_add(1u, std::memory_order_relaxed);
+  }
+  CheckBindCacheWriters();
+}
+
 static void RegisterOnInitCallback(InitCallback callback) {
+  RegisterBindCacheToken();
   internal::shared.RegisterCallback(&internal::SharedData::on_init_callbacks, callback);
 }
 
 static void RegisterOnCreateCallback(CreateCallback callback, bool active = true) {
+  RegisterBindCacheToken();
   internal::shared.RegisterCallback(&internal::SharedData::on_create_callbacks, callback, active);
   if (active) {
     if (std::find(local_create_callbacks.begin(), local_create_callbacks.end(), callback) == local_create_callbacks.end()) {
@@ -989,6 +1246,7 @@ static void RegisterOnCreateCallback(CreateCallback callback, bool active = true
 }
 
 static void RegisterOnBindCallback(BindCallback callback, bool active = true) {
+  RegisterBindCacheToken();
   internal::shared.RegisterCallback(&internal::SharedData::on_bind_callbacks, callback, active);
   if (active) {
     if (std::find(local_bind_callbacks.begin(), local_bind_callbacks.end(), callback) == local_bind_callbacks.end()) {
@@ -1001,8 +1259,13 @@ static void RegisterOnBindCallback(BindCallback callback, bool active = true) {
       OnBindPipeline, !local_bind_callbacks.empty() || !local_bind_info_callbacks.empty());
 }
 
+// A bind-info callback's answer for a live pipeline may depend only on its arguments other than the command list, on the
+// info, and on state that changes only around InvalidateBindCache calls (shader::Use's module registration); when it
+// returns a value it has no side effects. The bind cache reuses the answers until the next InvalidateBindCache.
 static void RegisterOnBindInfoCallback(BindInfoCallback callback) {
+  RegisterBindCacheToken();
   internal::shared.RegisterCallback(&internal::SharedData::on_bind_pipeline_info_callbacks, callback);
+  InvalidateBindCache();
   if (std::find(local_bind_info_callbacks.begin(), local_bind_info_callbacks.end(), callback) == local_bind_info_callbacks.end()) {
     local_bind_info_callbacks.push_back(callback);
   }
@@ -1010,10 +1273,12 @@ static void RegisterOnBindInfoCallback(BindInfoCallback callback) {
 }
 
 static void RegisterOnDestroyCallback(DestroyCallback callback) {
+  RegisterBindCacheToken();
   internal::shared.RegisterCallback(&internal::SharedData::on_destroy_callbacks, callback);
 }
 
 static void RegisterOnAfterDestroyCallback(AfterDestroyCallback callback) {
+  RegisterBindCacheToken();
   internal::shared.RegisterCallback(&internal::SharedData::on_after_destroy_callbacks, callback);
 }
 
@@ -1033,6 +1298,7 @@ static void UnregisterOnBindCallback(BindCallback callback) {
 
 static void UnregisterOnBindInfoCallback(BindInfoCallback callback) {
   internal::shared.UnregisterCallback(&internal::SharedData::on_bind_pipeline_info_callbacks, callback);
+  InvalidateBindCache();
   std::erase(local_bind_info_callbacks, callback);
 }
 
@@ -1046,7 +1312,7 @@ static void UnregisterOnAfterDestroyCallback(AfterDestroyCallback callback) {
 
 static void Use(DWORD fdw_reason) {
   switch (fdw_reason) {
-    case DLL_PROCESS_ATTACH:
+    case DLL_PROCESS_ATTACH: {
       if (attached) {
         if (track_shader_hashes) {
           internal::shared.data->track_shader_hashes = true;
@@ -1060,6 +1326,7 @@ static void Use(DWORD fdw_reason) {
         return;
       }
       attached = true;
+      RegisterBindCacheToken();
       if (internal::shared.RegisterModule([](internal::SharedData& data) {
             data.track_shader_hashes = data.track_shader_hashes || track_shader_hashes;
             data.retain_destroyed_subobjects = data.retain_destroyed_subobjects || retain_destroyed_subobjects;
@@ -1073,16 +1340,106 @@ static void Use(DWORD fdw_reason) {
           OnBindPipeline, !local_bind_callbacks.empty() || !local_bind_info_callbacks.empty());
       internal::shared.RegisterEvent<reshade::addon_event::destroy_pipeline>(OnDestroyPipeline);
       internal::shared.RegisterEvent<reshade::addon_event::destroy_device>(OnDestroyDevice);
+      // The module set changed: which module handles the events (the bind-info callbacks' answers depend on it).
+      InvalidateBindCache();
+
+      auto* cache = internal::bind_cache.data;
+      if (cache == nullptr) break;
+      // '0', '1' or 0 (unset).
+      const auto environment_switch = [](const char* name) {
+        std::array<char, 2> value = {};
+        return (::GetEnvironmentVariableA(name, value.data(), static_cast<DWORD>(value.size())) == 1u) ? value[0] : '\0';
+      };
+      const char memo = environment_switch("RENODX_PIPELINE_MEMO");
+      if (memo == '0') {
+        // The A/B base: said as information (check_logs.py fails a run on the cache's warnings).
+        TurnOffBindCache("RENODX_PIPELINE_MEMO=0");
+        if (use_bind_cache) {
+          reshade::log::message(reshade::log::level::info, "utils::pipeline bind cache not used (RENODX_PIPELINE_MEMO=0).");
+        }
+        break;
+      }
+      if (!use_bind_cache && memo != '1') break;
+
+      if (internal::bind_cache_writers == nullptr) {
+        // The slot's view closes again; the control block stays for the process.
+        auto slot = platform::OpenProcessSharedSlot<cross_addon::internal::ControlBlock<internal::SharedData>>(
+            __uuidof(internal::SharedData), [](auto*&) {});
+        if (slot.value != nullptr) {
+          internal::bind_cache_writers = *slot.value;
+        }
+        if (slot.view != nullptr) {
+          ::UnmapViewOfFile(slot.view);
+        }
+        if (slot.handle != nullptr) {
+          ::CloseHandle(slot.handle);
+        }
+      }
+      if (environment_switch("RENODX_PIPELINE_MEMO_CHECK") == '1') {
+        cache->control.fetch_or(BIND_CACHE_CHECK);
+      }
+      {
+        const std::unique_lock lock(cache->mutex);
+        ++cache->checking_modules;
+        cache->control.fetch_or(BIND_CACHE_USE);
+      }
+      reshade::register_event<reshade::addon_event::init_device>(OnBindCacheInitDevice);
+      reshade::register_event<reshade::addon_event::present>(OnBindCachePresent);
+      internal::bind_cache_checking = true;
+      CheckBindCacheWriters();
+      if (internal::bind_cache_writers == nullptr) {
+        TurnOffBindCache("the pipeline map's module records not found");
+      }
+      if ((cache->control.load() & BIND_CACHE_OFF) != 0u) {
+        reshade::log::message(reshade::log::level::warning,
+                              "utils::pipeline bind cache off at attach (a pointer-form access, a module without its protocol "
+                              "or all module slots taken, logged before): every bind takes the pipeline map's lock.");
+        break;
+      }
+      reshade::log::message(reshade::log::level::info, ((cache->control.load() & BIND_CACHE_CHECK) != 0u)
+                                                            ? "utils::pipeline bind cache on, every hit checked (RENODX_PIPELINE_MEMO_CHECK=1)."
+                                                            : "utils::pipeline bind cache on.");
       break;
+    }
     case DLL_PROCESS_DETACH:
       if (!attached) return;
       attached = false;
+      if (internal::bind_cache_checking) {
+        reshade::unregister_event<reshade::addon_event::init_device>(OnBindCacheInitDevice);
+        reshade::unregister_event<reshade::addon_event::present>(OnBindCachePresent);
+        internal::bind_cache_checking = false;
+        // The last checking module: the binds take the lock again until a module opts in (its attach sets USE and checks
+        // the writers at once; the writes meanwhile bumped as ever, so the threads' tables stay exact).
+        auto* cache = internal::bind_cache.data;  // set before the checking flag
+        const std::unique_lock lock(cache->mutex);
+        if (--cache->checking_modules == 0u) {
+          cache->control.fetch_and(~BIND_CACHE_USE);
+        }
+      }
       internal::shared.UnregisterEvent<reshade::addon_event::init_pipeline>(OnInitPipeline);
       internal::shared.UnregisterEvent<reshade::addon_event::create_pipeline>(OnCreatePipeline);
       internal::shared.UnregisterEvent<reshade::addon_event::bind_pipeline>(OnBindPipeline);
       internal::shared.UnregisterEvent<reshade::addon_event::destroy_pipeline>(OnDestroyPipeline);
       internal::shared.UnregisterEvent<reshade::addon_event::destroy_device>(OnDestroyDevice);
-      internal::shared.UnregisterModule();
+      if (internal::shared.UnregisterModule()) {
+        InvalidateBindCache();  // the module set changed (see the attach)
+      }
+      // The record is inactive now (or never was: RegisterModule failed at attach); the token goes after it (the attach's
+      // order reversed), whatever UnregisterModule returned, as the attach added it whatever RegisterModule returned. The
+      // generation and control stay: the module's later writes still bump.
+      if (internal::bind_cache_token) {
+        auto* cache = internal::bind_cache.data;  // set before the token
+        {
+          const std::unique_lock lock(cache->mutex);
+          const auto modules = std::span(cache->modules.data(), cache->module_count);
+          if (const auto mine = std::ranges::find(modules, cross_addon::internal::GetModuleToken()); mine != modules.end()) {
+            *mine = modules.back();
+            --cache->module_count;
+          }
+        }
+        internal::bind_cache.UnregisterModule();
+        internal::bind_cache_token = false;
+      }
       local_create_callbacks.clear();
       local_bind_callbacks.clear();
       local_bind_info_callbacks.clear();
