@@ -13,7 +13,18 @@
 //    motion constants' ring wraps once a frame).
 // 6. Cases 1a, 3 and 5 in-draw (the game's draw writes the motion: motion_draw_unit_sm3 and the game's pixel shader
 //    patched, the bindings left bound from one moving draw to the next).
-// With RENODX_TW_MOTION_DUMP=<file> every read frame's motion targets go into <file> byte for byte (old vs new builds).
+// 7. Case 4 with 70 draws a soldier (4,550 moving draws a frame: the motion constants' rings wrap 4 times a frame, a ring
+//    comes back after the frame's read-back or a new one is made), in-draw too, and in-draw with 140 (9,100: more slots a
+//    frame than MOTION_RINGS rings hold, a ring comes back in the same frame: the GPU done, or discarded at the cap; the
+//    depth cleared each round, so every round's draws write the motion); 2 to MOTION_RINGS rings made, the wraps counted
+//    by the ring taking over, at least one reused with no-overwrite in each. Cases 4-8: the game's b12 bound again after
+//    the frame (whichever ring was last).
+// 8. Case 4 in-draw, the game's pixel shader made again after frame 2 (ReShade's pipeline events): its handle destroyed
+//    and initialized again, then a new shader object with a new depth view; its patched version made once again (the last
+//    draw's look-up of it not kept), the motion as in case 4.
+// 9. Motion turned off (SetActive): the game's depth view the last draw held let go.
+// With RENODX_TW_MOTION_DUMP=<file> every read frame's motion targets go into <file> byte for byte (old vs new builds;
+// /DBEFORE_RINGS leaves out the rings' checks for the header before them).
 // Then the fix's cost timed: on the game's thread the texture write check and the pack hook, and a pack round's records on
 // 10 pages on the CPU and the GPU (timestamps: real numbers with `hardware` only).
 // Built with /DGAME_CALLS_ONLY the game's calls alone reach the addon (no write event, no pack hook), as before the fix.
@@ -253,10 +264,24 @@ static Page MakePage() {
   return page;
 }
 
-// The addon's motion draws' CPU time, from each case's second frame (the first makes the tables).
+// The addon's motion draws' CPU time, from each case's second frame (the first makes the tables), and of those that
+// began a ring of the motion constants (a wrap).
 static double draw_seconds = 0.0;
 static uint32_t draws = 0;
+static double wrap_seconds = 0.0;
+static uint32_t wraps = 0;
 static bool timing = false;
+
+// A case's wraps by what the ring taking over was: never ended (the first; discarded: its first map), a new one, one
+// whose draws the GPU had done (no-overwrite: done before the wrap, or below the cap without a new ring), at the cap with
+// its draws not done before the wrap (no-overwrite if done meanwhile, else discarded).
+struct RingCounts {
+  uint32_t first_discards = 0;
+  uint32_t made = 0;
+  uint32_t reused = 0;
+  uint32_t at_cap = 0;
+};
+static RingCounts ring_counts;
 
 // The game's draw of one soldier (instance `instance`, its bones at row 0 of `page`), then the addon's motion draw after it
 // (object_motion's post callback).
@@ -288,6 +313,18 @@ static void DrawSoldier(const Page& page, UINT instance) {
       .arguments = {.index_count = 6, .instance_count = 1, .first_index = 0, .vertex_offset = 0, .first_instance = instance},
       .callback_data = motion_shaders.data(),
   };
+  const UINT ring_next = om::internal::state.objects.ring_next;
+#ifndef BEFORE_RINGS
+  const auto& objects = om::internal::state.objects;
+  const size_t rings_before = objects.motion_rings.size();
+  bool next_ended = false;
+  bool next_done = false;
+  if (ring_next == om::internal::MOTION_RING_SLOTS && rings_before != 0 && objects.ring_first != UINT_MAX) {
+    const auto& next = objects.motion_rings[(objects.current_ring + 1) % rings_before];
+    next_ended = next.ended;
+    next_done = next.ended && context->GetData(next.read_done.Get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_OK;
+  }
+#endif
   const auto start = std::chrono::steady_clock::now();
   if (in_draw_mode) {
     // object_motion's OnMovingDraw: the motion written by the draw itself, else drawn again after it.
@@ -305,9 +342,27 @@ static void DrawSoldier(const Page& page, UINT instance) {
     om::internal::DrawObjectMotion(command, nullptr);
   }
   if (timing) {
-    draw_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    draw_seconds += seconds;
     ++draws;
+    if (om::internal::state.objects.ring_next < ring_next) {
+      wrap_seconds += seconds;
+      ++wraps;
+    }
   }
+#ifndef BEFORE_RINGS
+  if (objects.ring_next < ring_next && !objects.motion_rings.empty()) {
+    if (rings_before == 0 || (objects.motion_rings.size() == rings_before && !next_ended)) {
+      ++ring_counts.first_discards;
+    } else if (objects.motion_rings.size() > rings_before) {
+      ++ring_counts.made;
+    } else if (next_done || rings_before < om::internal::MOTION_RINGS) {
+      ++ring_counts.reused;
+    } else {
+      ++ring_counts.at_cap;
+    }
+  }
+#endif
 }
 
 static void BeginFrame() {
@@ -412,6 +467,7 @@ static void Restart(Hook pack_hook, bool in_draw = false) {
   om::internal::state.objects = {};
   om::internal::state.in_draw = {};
   om::internal::state.uav_overlap = {.loaded = true};  // no NVIDIA UAV overlap on WARP
+  ring_counts = {};
   hook = pack_hook;
   in_draw_mode = in_draw;
   motion_shaders[0].draw_shader = {};
@@ -486,8 +542,11 @@ static int TwoPacks(const char* name, Hook pack_hook, Pose a_moved, bool in_draw
 
 // Case 4: 65 pages in one pack at the frame's start, soldier k (instance 2 + k) at row 0 of page k with its own pose: frames
 // 2 and 3 all 0; frame 4 every pose 0.1 m further in x: each soldier that move's motion (its own bones found, no other's).
-// Case 5: every soldier drawn `repeats` times, one after another round the pages.
-static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = false) {
+// Case 5: every soldier drawn `repeats` times, one after another round the pages. `after_second_frame`: called then.
+// `clear_depth`: the depth cleared before each round (in-draw: every round's draws pass the game's depth test and write
+// the motion, the last round's constants in the dump; else only each soldier's first draw).
+static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = false, void (*after_second_frame)() = nullptr,
+                          bool clear_depth = false) {
   Restart(Hook::SAME_THREAD, in_draw);
   constexpr UINT PAGES = 65;
   constexpr float STEP = 0.1f;
@@ -506,12 +565,23 @@ static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = fal
       soldiers.emplace_back(2 + index, pose);
     }
     for (UINT repeat = 0; repeat < repeats; ++repeat) {
+      if (clear_depth) {
+        context->ClearDepthStencilView(depth_view.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+      }
       for (UINT index = 0; index < PAGES; ++index) {
         DrawSoldier(pages[index], 2 + index);
       }
     }
     om::Resolve(context.Get(), current_frame);
+    // The game's b12 back after the frame's moving draws (whichever ring was bound last: RestoreBindings).
+    ComPtr<ID3D11Buffer> vs_motion_slot;
+    ComPtr<ID3D11Buffer> ps_motion_slot;
+    context->VSGetConstantBuffers(om::internal::MOTION_SLOT, 1, vs_motion_slot.GetAddressOf());
+    context->PSGetConstantBuffers(om::internal::MOTION_SLOT, 1, ps_motion_slot.GetAddressOf());
     const auto motion = ReadMotion(soldiers);
+    if (frame == 2 && after_second_frame != nullptr) {
+      after_second_frame();
+    }
     if (frame == 1) continue;
     float worst = 0.f;
     size_t worst_soldier = 0;
@@ -525,12 +595,46 @@ static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = fal
         worst_soldier = soldier;
       }
     }
-    const bool good = written && worst < 0.02f;
-    std::printf("%s frame %d: largest error %.3f px (soldier %zu, motion %.3f), all written %d: %s\n", name, frame, worst, worst_soldier,
-                motion[worst_soldier].x, written, good ? "OK" : "WRONG");
+    const bool game_motion_slot = !vs_motion_slot && !ps_motion_slot;
+    const bool good = written && worst < 0.02f && game_motion_slot;
+    std::printf("%s frame %d: largest error %.3f px (soldier %zu, motion %.3f), all written %d, the game's b12 back %d: %s\n", name, frame,
+                worst, worst_soldier, motion[worst_soldier].x, written, game_motion_slot, good ? "OK" : "WRONG");
     failures += (good ? 0 : 1);
   }
   return failures;
+}
+
+// Case 8: the game's pixel shader made again between frames, as ReShade's pipeline events tell object_motion: (a) its
+// handle destroyed and initialized again (the same shader object), (b) a new shader object, and a new depth view.
+static void InitGamePixelShader() {
+  renodx::utils::pipeline::PipelineInfo info = {.pipeline = {reinterpret_cast<uint64_t>(game_pixel_shader.Get())}};
+  const reshade::api::shader_desc desc = {.code = game_pixel_code.data(), .code_size = game_pixel_code.size()};
+  const reshade::api::pipeline_subobject subobject = {.type = reshade::api::pipeline_subobject_type::pixel_shader, .count = 1,
+                                                      .data = const_cast<reshade::api::shader_desc*>(&desc)};
+  om::internal::OnInitPipeline(&info, 1, &subobject);
+}
+
+static void SamePixelShaderAgain() {
+  om::internal::OnDestroyPipeline({.pipeline = {reinterpret_cast<uint64_t>(game_pixel_shader.Get())}});
+  InitGamePixelShader();
+}
+
+static void NewPixelShaderAndDepthView() {
+  om::internal::OnDestroyPipeline({.pipeline = {reinterpret_cast<uint64_t>(game_pixel_shader.Get())}});
+  game_pixel_shader.Reset();
+  device->CreatePixelShader(game_pixel_code.data(), game_pixel_code.size(), nullptr, game_pixel_shader.GetAddressOf());
+  InitGamePixelShader();
+  depth_view.Reset();
+  device->CreateDepthStencilView(depth.Get(), nullptr, depth_view.GetAddressOf());
+}
+
+// After case 8: the game's pixel shader as object_motion knows it, patched once since it was made again.
+static int PatchedAgain(const char* name) {
+  const auto& shaders = om::internal::pixel_shaders.shaders;
+  const auto game = shaders.find(reinterpret_cast<uint64_t>(game_pixel_shader.Get()));
+  const bool good = game != shaders.end() && game->second.patched.size() == 1;
+  std::printf("%s: patched again %d: %s\n", name, good, good ? "OK" : "WRONG");
+  return good ? 0 : 1;
 }
 
 int main(int argc, char** argv) {
@@ -677,14 +781,54 @@ int main(int argc, char** argv) {
   failures += TwoPacks("3  two packs, A moves 0.2 m", Hook::SAME_THREAD, {.x = 0.2f, .y = 0.f});
   failures += SixtyFivePages("4  65 pages");
   failures += SixtyFivePages("5  65 pages x 17", 17);
-  std::printf("the addon's unit motion draw: %.2f us a draw (%u draws, the D3D runtime's calls included)\n", draw_seconds / std::max(draws, 1u) * 1e6,
-              draws);
-  draw_seconds = 0.0;
-  draws = 0;
+  const auto print_draws = [](const char* kind) {
+    std::printf("the addon's %s: %.2f us a draw (%u draws, the D3D runtime's calls included); a wrap %.2f us (%u)\n", kind,
+                draw_seconds / std::max(draws, 1u) * 1e6, draws, wrap_seconds / std::max(wraps, 1u) * 1e6, wraps);
+    draw_seconds = 0.0;
+    draws = 0;
+    wrap_seconds = 0.0;
+    wraps = 0;
+  };
+  print_draws("unit motion draw");
   failures += TwoPacks("6a in-draw two packs, pack hook", Hook::SAME_THREAD, {}, true);
   failures += TwoPacks("6b in-draw two packs, A moves 0.2 m", Hook::SAME_THREAD, {.x = 0.2f, .y = 0.f}, true);
   failures += SixtyFivePages("6c in-draw 65 pages x 17", 17, true);
-  std::printf("the addon's in-draw unit motion draw: %.2f us a draw (%u draws)\n", draw_seconds / std::max(draws, 1u) * 1e6, draws);
+  print_draws("in-draw unit motion draw");
+  // The motion constants' rings: several wraps a frame (a ring back after the frame's read-back, or a new one), and more
+  // than MOTION_RINGS rings' slots a frame (a ring back in the same frame: done, or discarded at the cap).
+  const auto rings_after = [&](const char* name) {
+#ifndef BEFORE_RINGS
+    const size_t rings = om::internal::state.objects.motion_rings.size();
+    const bool good = rings >= 2 && rings <= om::internal::MOTION_RINGS && ring_counts.reused > 0;
+    std::printf("%s: %zu rings; wraps: %u first discards, %u new rings, %u reused (no-overwrite), %u at the cap: %s\n", name,
+                rings, ring_counts.first_discards, ring_counts.made, ring_counts.reused, ring_counts.at_cap, good ? "OK" : "WRONG");
+    failures += (good ? 0 : 1);
+#endif
+  };
+  failures += SixtyFivePages("7a 65 pages x 70", 70);
+  rings_after("7a 65 pages x 70");
+  print_draws("unit motion draw, 4,550 a frame");
+  failures += SixtyFivePages("7b in-draw 65 pages x 70", 70, true);
+  rings_after("7b in-draw 65 pages x 70");
+  failures += SixtyFivePages("7c in-draw 65 pages x 140, the depth cleared each round", 140, true, nullptr, true);
+  rings_after("7c in-draw 65 pages x 140, the depth cleared each round");
+  print_draws("in-draw unit motion draw, 4,550 and 9,100 a frame");
+  failures += SixtyFivePages("8a in-draw 65 pages, the game's pixel shader's handle made again", 1, true, &SamePixelShaderAgain);
+  failures += PatchedAgain("8a in-draw 65 pages, the game's pixel shader's handle made again");
+  failures += SixtyFivePages("8b in-draw 65 pages, a new game pixel shader and depth view", 1, true, &NewPixelShaderAndDepthView);
+  failures += PatchedAgain("8b in-draw 65 pages, a new game pixel shader and depth view");
+#ifndef BEFORE_RINGS
+  {
+    // Turned off, the game's depth view is let go (Shogun 2 keeps the motion objects meanwhile).
+    const bool held = static_cast<bool>(om::internal::state.objects.last_depth_view);
+    om::SetActive(true);
+    om::SetActive(false);
+    const bool good = held && !om::internal::state.objects.last_depth_view && om::internal::state.objects.last_depth_texture == nullptr;
+    std::printf("9  the depth view held after case 8 %d, let go when turned off %d: %s\n", held,
+                !om::internal::state.objects.last_depth_view, good ? "OK" : "WRONG");
+    failures += (good ? 0 : 1);
+  }
+#endif
   Restart(Hook::NONE);
   {
     const std::unique_lock lock(log_mutex);
