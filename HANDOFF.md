@@ -3596,6 +3596,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         too). Coordinator read the 0d008486d..db5ee2374 diff: as asked. ecm_ rebuilt: reset to 2370ae43c, merged db5ee2374 ->
         fc63af654 (clean; ec4s_'s VirtualProtect check kept, it clears the LOD site too). alod2s_ worktree + alod2s_base_src
         links removed. Waiting: ec4s_ round 4, then merge ecm_ into atn-mods.
+        ec4s_ round 4 DONE (ec4s_report.md 'Round 4'): 9fbf85286 tests (random pointer words >= 2 GB, PushCrash put back, N7,
+        19c2 unfired == 0), 5d57bf1de product nits (tooltip 'soldiers, sprites and more', Prepare's page reason only +
+        early return, job_table freed, SLOT static_assert), 16fc5e618 wrap; Attila / Thrones x3 / Rome II / -Probe -Quick PASS,
+        gated x86 3 exit 0. The planted-guard AFTER repro NOT RUN: AMSI blocked ec4s_'s script (ScriptContainedMaliciousContent);
+        that path stopped (no retry, no other form); the fix stands on the top-bit rule + 3 clean Thrones runs. Coordinator read
+        the product diff. ecm_ + round 4 -> 289175671 (engine_code.hpp Prepare conflict with alod2s_'s found_names: ec4s_'s
+        early return kept, the name alod2s_'s).
+        MERGED 22:56: 618ed0c58 = atn-mods + ecm_ (ci8s_ + ec4s_ rounds 1-4 + alod2s_). Combined check on the merged tip
+        (scratchpad final_verify.ps1): gated x86 3 + amd64 13 exit 0; tw_engine_code -Quick Attila / Thrones / Rome II PASS,
+        -Probe -Quick PASS; tw_native_hook_lifetime x86 + amd64 PASS. Worktrees ec4s_ / ecm_ / alod2s_ / alr2s_ / er3o_
+        removed (links first); er4o_'s locked by its process (no links). NEXT: bench_prep.ps1 (helper final1118, testbin\
+        final1118 + hashes, final1118_fp, final1118_probe), dry run of tools/tw/bench/final1118_run.ps1, notes copy, restart.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
