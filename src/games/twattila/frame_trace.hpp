@@ -654,6 +654,9 @@ struct MapTrace {
   // The exe; the engine (empire.retail.dll) where the game has one. Written once, before `tracing` is first set.
   std::vector<MapModule> modules;
   std::vector<MapCode> code;
+  // The caller scan's stack limits (a test seam: test/tw_map_trace points it at limits that exclude the callback's
+  // frame; set only while no callback runs).
+  void(WINAPI* stack_limits)(PULONG_PTR, PULONG_PTR) = GetCurrentThreadStackLimits;
 };
 static MapTrace map_trace;
 
@@ -702,7 +705,7 @@ inline void RecordMapEvent(MapEvent event, bool with_callers) {
     // stack that the TEB doesn't describe: no scan).
     ULONG_PTR stack_low = 0;
     ULONG_PTR stack_high = 0;
-    GetCurrentThreadStackLimits(&stack_low, &stack_high);
+    map_trace.stack_limits(&stack_low, &stack_high);
     uintptr_t slot = reinterpret_cast<uintptr_t>(&stack_low) & ~(uintptr_t{sizeof(uintptr_t)} - 1);
     if (slot >= stack_low && slot < stack_high) {
       const uintptr_t scan_end = std::min<uintptr_t>(stack_high, slot + MAP_STACK_SCAN_BYTES);

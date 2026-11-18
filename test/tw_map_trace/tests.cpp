@@ -12,9 +12,9 @@
 //    time left out), a default buffer's update, a dispatch; frame 1: a copy into a staging texture (source and
 //    destination described), a copy into a default texture (not traced), a whole-buffer copy into a staging buffer and
 //    a whole-buffer update (ReShade's UINT64_MAX: data_bytes=0), the staging texture's READ map, a texture map never
-//    unmapped, an unmap of a buffer mapped before the trace, a map whose frame lies below the TEB's stack (its low limit
-//    moved above this frame: a job system's own stack: no scan, callers=-). Every other map's first callers in the exe's
-//    code, each once.
+//    unmapped, an unmap of a buffer mapped before the trace, a map whose frame lies below its stack limits (the trace's
+//    stack-limits seam moves the low limit to the stack's top: a job system's own stack: no scan, callers=-). Every
+//    other map's first callers in the exe's code, each once.
 // 3. waits.txt for tools\tw\map_trace.py's join (run.ps1): the presents on another clock (QPC microseconds minus an
 //    offset) and two waits on this thread, one inside the NO_OVERWRITE map's gap, one between events.
 #include <windows.h>
@@ -99,6 +99,13 @@ static std::string Field(const std::string& line, std::string_view key) {
     if (token.starts_with(std::string(key) + "=")) return token.substr(key.size() + 1);
   }
   return "";
+}
+
+// The map trace's stack-limits seam for one map: this thread's stack with its low limit at the top, so every frame
+// below lies outside it.
+static void WINAPI StackAboveThisFrame(PULONG_PTR low, PULONG_PTR high) {
+  GetCurrentThreadStackLimits(low, high);
+  *low = *high - sizeof(ULONG_PTR);
 }
 
 static int64_t Qpc() {
@@ -232,26 +239,13 @@ int main() {
   context->CopyResource(staging_buffer.Get(), default_buffer.Get());
   Invoke<api_event::update_buffer_region>(static_cast<reshade::api::device*>(&mock_device), static_cast<const void*>(bytes.data()),
                                           Handle(default_buffer.Get()), uint64_t{0}, UINT64_MAX);
-  // A stack the TEB doesn't describe (a job system's, below the thread's): for one map the TEB's stack starts above
-  // this frame (its DeallocationStack, GetCurrentThreadStackLimits' low limit: offset checked first). The scan must not
+  // A stack its limits don't describe (a job system's, below the thread's): for one map the trace's stack-limits seam
+  // returns this thread's stack with its low limit moved to the top (the callback's frame below it). The scan must not
   // run (it would find this test's own return addresses: the control is every other map's callers).
-  {
-#if defined(_WIN64)
-    constexpr size_t DEALLOCATION_STACK = 0x1478;
-#else
-    constexpr size_t DEALLOCATION_STACK = 0xE0C;
-#endif
-    auto* low_slot = reinterpret_cast<ULONG_PTR*>(reinterpret_cast<uint8_t*>(NtCurrentTeb()) + DEALLOCATION_STACK);
-    ULONG_PTR stack_low = 0;
-    ULONG_PTR stack_high = 0;
-    GetCurrentThreadStackLimits(&stack_low, &stack_high);
-    CHECK(*low_slot == stack_low);
-    const ULONG_PTR saved_low = *low_slot;
-    *low_slot = (reinterpret_cast<ULONG_PTR>(&stack_low) + 0x1000) & ~ULONG_PTR{0xFFF};
-    frame_trace::internal::OnMapTraceMapBuffer(&mock_device, Handle(dynamic_buffer.Get()), 0, UINT64_MAX,
-                                               reshade::api::map_access::write_discard, nullptr);
-    *low_slot = saved_low;
-  }
+  frame_trace::internal::map_trace.stack_limits = StackAboveThisFrame;
+  frame_trace::internal::OnMapTraceMapBuffer(&mock_device, Handle(dynamic_buffer.Get()), 0, UINT64_MAX,
+                                             reshade::api::map_access::write_discard, nullptr);
+  frame_trace::internal::map_trace.stack_limits = GetCurrentThreadStackLimits;
   const int64_t idle_start = Qpc();
   Sleep(5);
   const int64_t idle_end = Qpc();
