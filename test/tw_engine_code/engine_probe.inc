@@ -3,12 +3,13 @@
 // included inside tests.cpp's anonymous namespace after sweep_prefetch.inc (LoopCall, EnterParticleLoop, ParticleLoopReturn, JumpTo, Random, Address, Read32 and
 // Write32 of the earlier parts are used):
 // 21a. every probed site's jump goes to its probe stub, whose last jump goes on to the production stub, whose first bytes are the production array's (the production
-//    stubs untouched);
+//    stubs untouched), the probe code page read-execute;
 // 21b. each probe stub alone on random registers (a private copy whose last jump returns to the harness): every register, the flags, esp and the frame above esp
-//    as they were, the counters moved exactly as an independent model says;
+//    as they were, the counters moved exactly as an independent model says (the ready check's with a clear flag too, and with an unreadable children array there:
+//    nothing read; the CONTROL without the flag test faults / counts wrong);
 // 21c. parts 19 and 20 quick with the probes in front of the stubs (their site checks follow the probe's jump): the same results as without, and the counters of the
 //    item push loops, the ready check and the sweep counted;
-// 21d. the dump (every histogram line) and the jump bytes log.
+// 21d. the dump (every histogram line), the early dump when a counter reaches 2^31, and the jump bytes log.
 // ====================================================================================================================
 
 namespace probe_test {
@@ -22,7 +23,25 @@ struct ProbeRun {
   std::vector<std::pair<uint32_t, uint32_t>> slots;
 };
 
-// "" if the stub kept every register, the flags, esp and the frame, else what it changed.
+// EnterParticleLoop on a copy of `call` in an arena on this function's stack (as PushBoth: the stub's pushes stay inside the thread's stack, so that an access violation
+// can be caught); `call` gets the result back with esp_after as it would be in its own place. False if the stub faulted (then `call` is the state at the entry).
+bool EnterCaught(LoopCall* call) {
+  alignas(16) uint8_t arena[PUSH_ARENA_BYTES];
+  auto* on_stack = reinterpret_cast<LoopCall*>(arena + PUSH_ARENA_CALL);
+  std::memcpy(on_stack, call, sizeof(LoopCall));
+  bool done = true;
+  __try {
+    EnterParticleLoop(on_stack);
+  } __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+    done = false;
+  }
+  if (!done) return false;
+  std::memcpy(call, on_stack, sizeof(LoopCall));
+  call->esp_after += Address(call) - Address(on_stack);
+  return true;
+}
+
+// "" if the stub kept every register, the flags, esp and the frame, else what it changed ("a fault" if it faulted).
 const char* Run(const uint8_t* code, size_t size, const ProbeRun& run, Random* random) {
   auto* copy = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
   std::memcpy(copy, code, size);
@@ -36,10 +55,11 @@ const char* Run(const uint8_t* code, size_t size, const ProbeRun& run, Random* r
   std::memcpy(call->in, run.in.data(), sizeof(call->in));
   call->flags_in = run.flags;
   call->target = Address(copy);
-  EnterParticleLoop(call.get());
+  const bool done = EnterCaught(call.get());
   const char* what = "";
   const uint32_t expected_flags = (((run.flags & 0xD5) | 2) << 8) | ((run.flags >> 11) & 1);  // lahf's AH (bit 1 always set) and OF
-  if (std::memcmp(call->out, run.in.data(), sizeof(call->out)) != 0) what = "a register";
+  if (!done) what = "a fault";
+  else if (std::memcmp(call->out, run.in.data(), sizeof(call->out)) != 0) what = "a register";
   else if (call->flags_out != expected_flags) what = "the flags";
   else if (call->esp_after != Address(esp)) what = "esp";
   else if (std::memcmp(frame_before.data(), esp, 0x100) != 0) what = "the frame above esp";
@@ -95,6 +115,8 @@ int RunProbeTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
   }
   std::printf("21. probe build: %zu probe stubs in front of their production stubs (the jumps chain site -> probe -> production, the production stubs' first bytes the arrays')\n", probed);
   CHECK(probed >= 5);
+  MEMORY_BASIC_INFORMATION probe_page = {};
+  CHECK(VirtualQuery(probe::code, &probe_page, sizeof(probe_page)) != 0 && probe_page.Protect == PAGE_EXECUTE_READ);  // filled, then read-execute (as the production page)
 
   // 21b. Each probe alone.
   Random random = {.state = 0x21B};
@@ -131,35 +153,75 @@ int RunProbeTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
       compare(model, probe_test::Run(code, size, run, &random), b ? "item push B" : "item push A");
     }
   }
-  // The ready check: the children and the first one not ready.
+  // The ready check: the children and the first one not ready (17 when the list's flag [+4] is clear: the game's check reads no child of such a list, so its children
+  // array pointer is garbage in a third of those worlds, an address that cannot be read; the probe must count them and read nothing).
   if (ec::sites[4].at != nullptr) {
     const auto [code, size] = stub_bytes(4);
-    for (uint64_t index = 0; index < runs; ++index) {
-      probe_test::ProbeRun run = registers();
+    auto* hole = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x10000, MEM_RESERVE, PAGE_NOACCESS));
+    CHECK(hole != nullptr);
+    struct ReadyWorld {
       std::array<uint8_t, 0x50> list = {};
-      const uint32_t count = (random.Next() % 4 == 0 ? random.Next() % 40 : random.Next() % 8);
-      std::vector<uint32_t> children(2 * std::max<uint32_t>(count, 1), 0);
-      std::vector<std::array<uint8_t, 0x80>> objects(std::max<uint32_t>(count, 1));
-      const uint32_t not_ready = (random.Next() % 3 == 0 ? count : random.Next() % std::max<uint32_t>(count, 1));
+      std::vector<uint32_t> children;
+      std::vector<std::array<uint8_t, 0x80>> objects;
+      uint32_t first = 17;  // the model's first child not ready
+    };
+    const auto ready_world = [&](bool flag, bool unreadable, uint32_t count, uint32_t not_ready) {
+      ReadyWorld world;
+      world.children.assign(2 * std::max<uint32_t>(count, 1), 0);
+      world.objects.resize(std::max<uint32_t>(count, 1));
       for (uint32_t child = 0; child < count; ++child) {
-        objects[child][0x6E] = (child == not_ready ? 0 : static_cast<uint8_t>(1 + random.Next() % 255));
-        children[2 * child] = Address(objects[child].data());
+        world.objects[child][0x6E] = (child == not_ready ? 0 : static_cast<uint8_t>(1 + random.Next() % 255));
+        world.children[2 * child] = Address(world.objects[child].data());
       }
-      Write32(list.data() + 0x40, count);
-      Write32(list.data() + 0x44, Address(children.data()));
-      run.in[1] = Address(list.data());
-      probe::Counters model = *probe::counters;
-      ++model.ready_children[std::min<uint32_t>(count, 16)];
-      uint32_t first = 17;
-      for (uint32_t child = 0; child < std::min<uint32_t>(count, 16); ++child) {
-        if (objects[child][0x6E] == 0) {
-          first = child;
+      world.list[4] = (flag ? static_cast<uint8_t>(1 + random.Next() % 255) : 0);
+      Write32(world.list.data() + 0x40, count);
+      Write32(world.list.data() + 0x44, unreadable ? Address(hole) + random.Next() % 0x8000 : Address(world.children.data()));
+      for (uint32_t child = 0; flag && child < std::min<uint32_t>(count, 16); ++child) {
+        if (world.objects[child][0x6E] == 0) {
+          world.first = child;
           break;
         }
       }
-      ++model.ready_first[first];
+      return world;
+    };
+    uint64_t flag_clear = 0, unreadable_runs = 0;
+    for (uint64_t index = 0; index < runs; ++index) {
+      probe_test::ProbeRun run = registers();
+      const uint32_t count = (random.Next() % 4 == 0 ? random.Next() % 40 : random.Next() % 8);
+      const uint32_t not_ready = (random.Next() % 3 == 0 ? count : random.Next() % std::max<uint32_t>(count, 1));
+      const bool flag = random.Next() % 3 != 0;
+      const bool unreadable = !flag && random.Next() % 3 == 0;
+      flag_clear += flag ? 0 : 1;
+      unreadable_runs += unreadable ? 1 : 0;
+      const ReadyWorld world = ready_world(flag, unreadable, count, not_ready);
+      run.in[1] = Address(world.list.data());
+      probe::Counters model = *probe::counters;
+      ++model.ready_children[std::min<uint32_t>(count, 16)];
+      ++model.ready_first[world.first];
       compare(model, probe_test::Run(code, size, run, &random), "ready check");
     }
+    // CONTROL: the stub without the flag test (the `je r_none` after `cmp byte ptr [ecx + 4], 0` as two nops) must be seen: it faults on a clear-flag list whose children
+    // array cannot be read, and counts a first child not ready (0 here) on one whose children can.
+    std::vector<uint8_t> mutant(code, code + size);
+    CHECK(mutant[0x1D] == 0x80 && mutant[0x21] == 0x74);
+    mutant[0x21] = mutant[0x22] = 0x90;
+    uint64_t control_faults = 0, control_counted = 0;
+    constexpr uint64_t CONTROL_RUNS = 200;
+    for (uint64_t index = 0; index < CONTROL_RUNS; ++index) {
+      probe_test::ProbeRun run = registers();
+      const bool unreadable = index % 2 == 0;
+      const ReadyWorld world = ready_world(false, unreadable, 1 + random.Next() % 15, 0);
+      run.in[1] = Address(world.list.data());
+      const probe::Counters before = *probe::counters;
+      const char* what = probe_test::Run(mutant.data(), size, run, &random);
+      control_faults += (unreadable && std::strcmp(what, "a fault") == 0) ? 1 : 0;
+      control_counted += (!unreadable && probe::counters->ready_first[0] == before.ready_first[0] + 1) ? 1 : 0;
+    }
+    std::printf("   ready check: %llu of %llu runs with the flag clear (%llu of them with an unreadable children array): the probe read nothing there; CONTROL without the flag test: %llu of %llu "
+                "faulted on an unreadable array, %llu of %llu counted a first child not ready\n", flag_clear, runs, unreadable_runs, control_faults, CONTROL_RUNS / 2, control_counted,
+                CONTROL_RUNS / 2);
+    CHECK(flag_clear > runs / 4 && unreadable_runs > runs / 16 && control_faults == CONTROL_RUNS / 2 && control_counted == CONTROL_RUNS / 2);
+    VirtualFree(hole, 0, MEM_RELEASE);
   }
   // The sweep: the iterations and the count at a sweep's start (an iteration starts a sweep when ebx does not fall).
   if (ec::sites[ec::SWEEP_PREFETCH_INDEX].at != nullptr) {
@@ -267,13 +329,16 @@ int RunProbeTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
     sum_children += c.sum_children[bucket];
     particles += c.particle_size[bucket];
   }
-  // A ready check that faults inside its probe (the sweep's corrupt scenarios: the game's check faults there too) has counted its children but not its first child not ready.
+  // A ready check that faults inside its probe has counted its children but not its first child not ready. The sweep's corrupt scenarios run with the game's check (no probe
+  // there); the faults are part 20c's CONTROL mutants of the sweep stub, which hand the check a garbage ecx, and they all fall in the bucket of 16 children or more (the
+  // garbage count): that bucket (ready_children[16]) holds at least as many as `ready - first`.
   std::printf("   parts 19, 20, 12, 15 and 18 (quick) through the probes, every result the game's: item push entries A %llu, B %llu (%u / %u with a per-item call), ready checks %llu (%llu with the "
-              "first child counted, the %llu others faulted in the probe), sweep iterations %u in %llu sweeps, child sum bottoms %u (%llu exits), particle loop bottoms %u (%llu exits), "
-              "particle writer entries %u\n",
-              evec_a, evec_b, c.evec_calls[0], c.evec_calls[1], ready, first, ready - first, c.sweep_iterations, sweeps, c.sum_exec, sum_children, c.particle_exec, particles,
-              c.entry_calls);
-  CHECK(evec_a > 1000 && evec_b > 1000 && ready > 1000 && first <= ready && (ready - first) * 1000 <= ready && c.sweep_iterations > 1000 && sweeps > 100);
+              "first child counted; the %llu others faulted in the probe on the garbage ecx that part 20c's CONTROL mutants hand it, %u checks counted 16 children or more), sweep iterations "
+              "%u in %llu sweeps, child sum bottoms %u (%llu exits), particle loop bottoms %u (%llu exits), particle writer entries %u\n",
+              evec_a, evec_b, c.evec_calls[0], c.evec_calls[1], ready, first, ready - first, c.ready_children[16], c.sweep_iterations, sweeps, c.sum_exec, sum_children, c.particle_exec,
+              particles, c.entry_calls);
+  CHECK(evec_a > 1000 && evec_b > 1000 && ready > 1000 && first <= ready && (ready - first) * 1000 <= ready && ready - first <= c.ready_children[16] && c.sweep_iterations > 1000
+        && sweeps > 100);
   CHECK(c.sum_exec > 1000 && sum_children > 100 && c.particle_exec > 1000 && particles > 100 && c.entry_calls > 1000 && c.entry_null + c.entry_one + c.entry_zero + c.entry_other <= c.entry_calls);
 
   // 21d. The dump, armed for 3 presents (the ReShade.ini key's way): none at the first two Updates with the sites written, every line at the third, none after; and the
@@ -302,5 +367,26 @@ int RunProbeTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
     jump_lines += line.find("probe: site ") != std::string::npos && line.find("(the jump)") != std::string::npos;
   }
   CHECK(game_lines > 0 && jump_lines > 0);
+
+  // The early dump (the counters are 32 bits): armed for 1000 presents, the previous entry's address field at 0xC0000000 (state, not a counter) dumps nothing; a counter at
+  // 2^31 (the particle loop's bottoms, set by hand) dumps at the next present with a warning, once.
+  const size_t early_first = log_lines.size();
+  probe::Arm(1000);
+  *probe::counters = {};
+  probe::counters->entry_prev = 0xC0000000u;
+  update(true);
+  update(true);
+  CHECK(dumps() == before + 1);
+  probe::counters->particle_exec = 0x80000000u;
+  update(true);
+  CHECK(dumps() == before + 2);
+  update(true);
+  update(true);
+  CHECK(dumps() == before + 2);
+  bool warned = false;
+  for (size_t index = early_first; index < log_lines.size(); ++index) warned |= log_lines[index].find("a counter reached 2^31") != std::string::npos;
+  CHECK(warned);
+  *probe::counters = {};
+  std::printf("   a counter at 2^31: dumped at the next present, with a warning, once; the previous entry's address (0xC0000000) is not a counter\n");
   return 0;
 }

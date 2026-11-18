@@ -1921,6 +1921,9 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       probe::size_of[entry.site] = entry.size;
       probe::installed |= 1u << entry.site;
     }
+    DWORD protection;
+    VirtualProtect(probe::code, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
+    FlushInstructionCache(GetCurrentProcess(), probe::code, PAGE_SIZE);
   }
 #endif
   for (size_t index = 0; index < sites.size(); ++index) {

@@ -9,9 +9,13 @@
   increments (items left in a push run, children of a ready check and its first child not ready, the pending list's length at a sweep, particles of an
   emitter, children of an effect, the table entry's step from the last one) and goes on to the production stub, which is untouched (nothing counts in the
   release). The histograms go to ReShade.log once, N presents after the first site was written: `EngineProbePresents=N` under `[Total War]` in ReShade.ini
-  (none: never); the sites' jump bytes are logged at each change. Checked in `test/tw_engine_code` part 21 (`run.ps1 -Probe [-Quick]`): each probe alone on
-  random registers and flags (registers, flags, esp, frame and every counter as the model says), then the probed sites' own parts (19, 20, 12, 15, 18) quick
-  through the probes with every result the game's, and the dump armed for 3 presents (once, at the third). Source `test/tw_engine_code/stubs/probes.s`.
+  (none: never), or at the first present at which a counter has reached 2^31 (the counters are 32 bits; a warning says so: pick N small enough, the child
+  sum's and the particle loop's bottoms are hundreds of thousands a frame); the sites' jump bytes are logged at each change. The ready check's probe reads a
+  list's children only when its flag is set, as the game's check does. The probe code page is read-execute. Checked in `test/tw_engine_code` part 21
+  (`run.ps1 -Probe [-Quick]`): each probe alone on random registers and flags (registers, flags, esp, frame and every counter as the model says; the ready
+  check also on clear-flag lists with an unreadable children array, and without its flag test as a CONTROL), then the probed sites' own parts (19, 20, 12, 15,
+  18) quick through the probes with every result the game's, and the dump armed for 3 presents (once, at the third) and the early dump at 2^31. Source
+  `test/tw_engine_code/stubs/probes.s`.
 
 ## Dev, Faster Sweep Prefetch (2026-11-18; offline only, not stamped, not installed, not run in game)
 
