@@ -380,10 +380,13 @@ int RunEntryTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
     CHECK(total_wrong == 0 && random_wrong == 0 && total_faulted > 0 && random_faulted > 0);
   }
 
-  // 18d. CONTROLs: each variant of the stub must be seen on worlds with the odd entries and the plain table.
+  // 18d. CONTROLs: each variant of the stub must be seen on worlds with the odd entries and the plain table. The two copies' code read-only meanwhile (a CONTROL's
+  // wrong stub can leave a garbage pointer, and a store through it into a copy's code would stay: ProtectCode).
   {
     DWORD protection;
     CHECK(VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READWRITE, &protection) != FALSE);
+    ProtectCode(game, PAGE_EXECUTE_READ);
+    ProtectCode(patched, PAGE_EXECUTE_READ);
     struct Mutant {
       const char* what;
       size_t at;
@@ -421,6 +424,8 @@ int RunEntryTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
       std::printf("   CONTROL, %s: %d of %d calls seen as different\n", mutant.what, seen, RUNS);
       CHECK(seen > RUNS / 20);
     }
+    ProtectCode(game, PAGE_EXECUTE_READWRITE);
+    ProtectCode(patched, PAGE_EXECUTE_READWRITE);
     CHECK(VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READ, &protection) != FALSE);
     FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
   }

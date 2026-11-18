@@ -1,5 +1,23 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Faster Sweep Prefetch (2026-11-18; offline only, not stamped, not installed, not run in game)
+
+- New: **Faster Sweep Prefetch (Experimental, off)**, under Graphics (Experimental), the row after Faster Particle Prefetch, a row of its own: the
+  render thread's per-frame sweep over the pending lists (Attila +0x1893290, Thrones of Britannia +0x19085f0; Rome II has none) asks the
+  ready check about each list from the last to the first, and the check's reads of one list are a chain of cache misses (the list object, its
+  children array, the first child) that nothing overlaps with the next list's. Now, at the top of each round, the game asks the memory for the
+  list object of the list 8 places ahead, the children array of the list 4 ahead and the first child's ready byte of the list 2 ahead.
+  The only real reads are what the game's own check reads of that list later in the same sweep (each entry slot inside the vector as it is
+  right then, the list's count and array pointer, the array's first pointer behind a count test); the child is only prefetched, nothing is
+  stored, and every register but three that the game's code leaves dead there stays; every result the game's. Tested against the game's
+  DLL in `test/tw_engine_code` part 20: 250,000 well-formed and 250,000 corrupt sweeps (vector, list objects and children arrays at page
+  ends, the ready check's stub or the game's own) with every register, the flags, esp, every byte and the check's call log equal or both
+  copies faulting with the same memory; 10 CONTROLs (each clause removed) all seen; 200 on / off switches under 4 threads (3.1 M sweeps, 0
+  wrong), a parked thread at each byte of the site. Harness (4,000 lists over 512 MB flushed before each sweep, medians of 9, a PC loaded to
+  100 % by other jobs): lists of 1 to 4 children 86.6 ns a list with the game's check, 34.2 with the check's stub (Faster Game CPU
+  Code), 24.9 with the stub and this row (-27 % on top of the stub); lists of 5 to 8 children 187.6 / 52.7 / 35.6 (-32 %). Not measured in game.
+  Test (ATN): stress with the row on against off; ReShade.log "Faster Sweep Prefetch: on"; keep it off if there is no gain.
+
 ## Dev, Faster Game CPU Code: render list item pushes (2026-11-18; offline only, not stamped, not installed, not run in game)
 
 - Faster: **Faster Game CPU Code** (on by default) has two more routines on Attila and Thrones of Britannia: the loops of the two

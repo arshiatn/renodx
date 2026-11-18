@@ -1332,6 +1332,8 @@ float effect_prefetch_row = 0.f;
 float emitter_prefetch_row = 0.f;
 // Faster Particle Prefetch (Experimental, off): engine_code.hpp's particle writer table entry site, a row of its own.
 float particle_prefetch_row = 0.f;
+// Faster Sweep Prefetch (Experimental, off): engine_code.hpp's pending list sweep site, a row of its own.
+float sweep_prefetch_row = 0.f;
 
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1575,7 +1577,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
                                 job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,
-                                particle_prefetch_row != 0.f);
+                                particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
   if (!shadow_size_locked) twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::graphics_hooks::Update(
@@ -1996,6 +1998,17 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           .tooltip = "The game's particle drawing asks the memory for the place it will write each particle's vertices to, as soon\n"
                      "as it knows which one. May lower the CPU waiting in big battles. Same results.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FasterSweepPrefetch",
+          .binding = &sweep_prefetch_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Faster Sweep Prefetch (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The game's check of its pending lists asks the memory for the next lists, and what the check reads first in\n"
+                     "them, while it works on the current one. May lower the CPU waiting in big battles. Same results.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

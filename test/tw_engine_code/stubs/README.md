@@ -26,3 +26,5 @@ and compare the bytes with the array (the arrays carry the disassembly as commen
 - `entry_prefetch.s` - the particle writer's table entry prefetch, between the game's `mov [esp + 0x7c], eax` and `test eax, eax` (Faster Particle Prefetch).
 - `evec_push.s` - the render list builders' two item push loops (Faster Game CPU Code): the guard and the stubs A (`item + 0x50`) and B (`item + 0x38`) in one file (the
   stubs call the guard by a relative call, so the file's layout is the page's); written for `ITEM_PUSH_MIN_RUN` (the `cmp reg, MIN_RUN + 1` immediates).
+- `sweep_prefetch.s` - the pending list sweep's three prefetch stages on the entries A, B and C places below the index (Faster Sweep Prefetch); written for the
+  (A, B, C) of `SWEEP_STUB` (the disp8 bytes in the three `lea edx, [ebx - d]`); `SweepPrefetchStub(a, b, c)` makes the others.

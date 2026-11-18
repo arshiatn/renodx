@@ -42,7 +42,8 @@
 // writer's two float4 reloads (9. below, the eleventh and twelfth sites) belong to Faster Game CPU Code, as do the
 // soldier draw's three matrix row reloads (12. below, the fifteenth to seventeenth sites) and the matrix product's
 // three (13. below, the eighteenth to twentieth), and the render lists' two item push loops (15. below, the twenty-second and
-// twenty-third sites).
+// twenty-third sites). Faster Sweep Prefetch (its own row, Experimental): the pending list sweep's chain prefetch (16. below,
+// the twenty-fourth).
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
@@ -1258,6 +1259,66 @@ static_assert(ITEM_PUSH_STUB.size() == ITEM_PUSH_STUB_AT[2] && ITEM_PUSH_STUB[IT
 static_assert(ITEM_PUSH_STUB[0x88] == ITEM_PUSH_MIN_RUN + 1 && ITEM_PUSH_STUB[0xB5] == ITEM_PUSH_MIN_RUN + 1
               && ITEM_PUSH_STUB[0x102] == ITEM_PUSH_MIN_RUN + 1 && ITEM_PUSH_STUB[0x133] == ITEM_PUSH_MIN_RUN + 1);  // the stubs' `cmp reg, MIN_RUN + 1`
 
+// 16. The pending list sweep's chain prefetch (Faster Sweep Prefetch, its own row, Experimental, off). The render thread's per-frame sweep over the pending lists
+// (Attila +0x1893290, Thrones +0x19085f0, one caller; thiscall, `this` in esi) walks a vector of {list object, control block} (the count at [this + 0x18], the entries
+// at [this + 0x1c]) from the last entry down (ebx = count - 1 .. 0), asks the ready check of 5. (+0x18635a0, ecx the list object) about each and erases a ready entry
+// by moving the last one in (only entry ebx and the count change: the entries below ebx stay as they are). The check reads the list object's flag byte [+4], its
+// children array [+0x44] and count [+0x40] and the children's ready bytes: a chain of dependent misses per list (list object, array, first child) that the sweep
+// never overlaps with the next list's. The site is the loop's top, `mov eax, [esi + 0x1c]; mov ecx, [eax + ebx*8]` (3 + 3 bytes: the jump takes the first 5, the
+// stub goes on at the call, +6). The stub runs both after three stages for the entries A, B and C places below ebx (each `ebx - d` inside the vector as it is right
+// now: the unsigned compare with the count also skips the wrap below 0): stage A prefetches the list object's first two lines; stage B (a null list object skipped)
+// loads its children array pointer (that line was prefetched two entries ago) and prefetches the array's line; stage C (null skipped) loads the count (0: skipped,
+// the game never reads the array then) and the array's first child pointer and prefetches that child's ready byte. eax, ecx and edx are the only registers it
+// changes and the game's reload of ecx comes last (edx is dead: written before it is read in the erase path, never read on the not-ready one; the flags are dead
+// too: the call's result test sets them); it stores nothing. Every real load is of an address the game's own check of that entry reads later in the same sweep
+// (the entry slots inside [0, count), [list + 0x40], [list + 0x44], [array] with count > 0); the child's pointer is only prefetched. The premise (that of 8., the
+// child sum): nothing but the sweep itself removes or changes the pending lists below ebx while it is in the entry above, and no other thread frees a children
+// array meanwhile; a list object whose +0x40 / +0x44 cannot be read (the game faults a moment later at its own check) makes the stub fault up to one entry's
+// processing earlier. Found by the whole function's bytes (the calls and the mov's constant wild); Thrones' copy is the same bytes at +0x19085f0; Rome II has none.
+constexpr std::string_view SWEEP =
+    "56 8B F1 B9 ?? ?? ?? ?? E8 ?? ?? ?? ?? 84 C0 0F 84 82 00 00 00 8B 46 18 53 8D 58 FF 3B D8 73 76 57 8B 46 1C 8B 0C D8 E8 ?? ?? ?? ?? 84 "
+    "C0 74 5F 8B 4E 1C 8B 46 18 8D 14 D9 8D 04 C1 8B 48 FC 85 C9 74 07 F0 FF 41 04 8B 48 FC 8B 7A 04 8B 40 F8 89 02 89 4A 04 85 FF 74 21 "
+    "83 C8 FF F0 0F C1 47 04 75 17 8B 07 8B CF FF 10 83 C8 FF F0 0F C1 47 08 75 07 8B 07 8B CF FF 50 04 FF 4E 18 8B 4E 18 8B 46 1C 8D 04 "
+    "C8 50 E8 ?? ?? ?? ?? 83 C4 04 4B 3B 5E 18 72 8C 5F 5B 5E C3";
+constexpr size_t SWEEP_SITE = 33;  // mov eax, dword ptr [esi + 0x1c]; mov ecx, dword ptr [eax + ebx*8] (the jump takes the first 5 bytes)
+constexpr size_t SWEEP_SIZE = 6;   // both instructions: where the stub goes on
+// The stub for the three distances A > B > C (the entries `ebx - A`, `ebx - B`, `ebx - C` are looked at; each 1 to 127). The page's is (8, 4, 2): the harness's 4,000
+// cold lists of 1 to 4 children cost 34.2 ns a list with the ready check's stub, 29.0 with (4, 2, 1), 26.3 with (6, 3, 1) and 24.9 with (8, 4, 2) (full length, medians of 9; the
+// quick runs under more load: 76.5 / 45.3 / 38.7 / 33.6, 37.2 / 30.3 / 26.8 / 25.1).
+constexpr std::array<uint8_t, 80> SweepPrefetchStub(uint8_t a, uint8_t b, uint8_t c) {
+  return {
+      0x8B, 0x46, 0x1C,                      // mov eax, dword ptr [esi + 0x1c]
+      0x8D, 0x53, static_cast<uint8_t>(-a),  // lea edx, [ebx - A]
+      0x3B, 0x56, 0x18,                      // cmp edx, dword ptr [esi + 0x18]
+      0x73, 0x0A,                            // jae skip_a                     not inside the vector (unsigned: the wrap below 0 too)
+      0x8B, 0x0C, 0xD0,                      // mov ecx, dword ptr [eax + edx*8]   the entry's list object
+      0x0F, 0x18, 0x09,                      // prefetcht0 [ecx]
+      0x0F, 0x18, 0x49, 0x40,                // prefetcht0 [ecx + 0x40]
+      0x8D, 0x53, static_cast<uint8_t>(-b),  // skip_a: lea edx, [ebx - B]
+      0x3B, 0x56, 0x18,                      // cmp edx, dword ptr [esi + 0x18]
+      0x73, 0x0D,                            // jae skip_b
+      0x8B, 0x0C, 0xD0,                      // mov ecx, dword ptr [eax + edx*8]
+      0x85, 0xC9,                            // test ecx, ecx
+      0x74, 0x06,                            // je skip_b                      a null list object
+      0x8B, 0x49, 0x44,                      // mov ecx, dword ptr [ecx + 0x44]    the children array
+      0x0F, 0x18, 0x09,                      // prefetcht0 [ecx]
+      0x8D, 0x53, static_cast<uint8_t>(-c),  // skip_b: lea edx, [ebx - C]
+      0x3B, 0x56, 0x18,                      // cmp edx, dword ptr [esi + 0x18]
+      0x73, 0x16,                            // jae skip_c
+      0x8B, 0x0C, 0xD0,                      // mov ecx, dword ptr [eax + edx*8]
+      0x85, 0xC9,                            // test ecx, ecx
+      0x74, 0x0F,                            // je skip_c
+      0x83, 0x79, 0x40, 0x00,                // cmp dword ptr [ecx + 0x40], 0
+      0x74, 0x09,                            // je skip_c                      no child: the game never reads the array
+      0x8B, 0x49, 0x44,                      // mov ecx, dword ptr [ecx + 0x44]
+      0x8B, 0x09,                            // mov ecx, dword ptr [ecx]           the first child's object
+      0x0F, 0x18, 0x49, 0x6E,                // prefetcht0 [ecx + 0x6e]            its ready byte
+      0x8B, 0x0C, 0xD8,                      // skip_c: mov ecx, dword ptr [eax + ebx*8]   the game's second instruction
+      0xE9, 0x00, 0x00, 0x00, 0x00,          // jmp the call (+6; patched in Prepare)
+  };
+}
+constexpr std::array<uint8_t, 80> SWEEP_STUB = SweepPrefetchStub(8, 4, 2);
+
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half, fmod and the
 // ready check the same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots
 // (control word 0x20, float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the
@@ -1304,6 +1365,7 @@ struct Build {
   uint32_t entry_fetch_rva;     // the particle writer's top (ENTRY_FETCH's first byte)
   uint32_t push_loop_a_rva;     // the render list builders' item push loops (ITEM_PUSH_A's / _B's first byte)
   uint32_t push_loop_b_rva;
+  uint32_t sweep_rva;           // the pending list sweep (SWEEP's first byte)
 };
 constexpr Build ATTILA_BUILD = {
     .truncation_rva = TRUNCATION_RVA,
@@ -1329,6 +1391,7 @@ constexpr Build ATTILA_BUILD = {
     .entry_fetch_rva = 0x18960d0,
     .push_loop_a_rva = 0x17b8483,
     .push_loop_b_rva = 0x17b7ca3,
+    .sweep_rva = 0x1893290,
 };
 constexpr Build THRONES_BUILD = {
     .truncation_rva = THRONES_TRUNCATION_RVA,
@@ -1354,6 +1417,7 @@ constexpr Build THRONES_BUILD = {
     .entry_fetch_rva = 0x190b430,
     .push_loop_a_rva = 0x182c213,
     .push_loop_b_rva = 0x182ba33,
+    .sweep_rva = 0x19085f0,
 };
 // Rome II has none of the list push, ready check, job, half rows, child sum, float4 reload, effect loop and item push loop
 // sites: their rvas stay 0.
@@ -1389,6 +1453,7 @@ constexpr size_t SOLDIER_ROWS_PAGE = 0xC40;   // one stub for each of the three 
 constexpr size_t MATRIX_PRODUCT_PAGE = 0xCD0;  // the same for the product's three
 constexpr size_t ENTRY_PREFETCH_PAGE = 0xD60;
 constexpr size_t ITEM_PUSH_PAGE = 0xD80;  // the guard and the two stubs of 15.
+constexpr size_t SWEEP_PAGE = 0xEF0;      // the sweep's stub of 16.
 constexpr size_t PAGE_SIZE = 0x1000;
 static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the three games' truncation stubs are one type
               && HALF_PAGE + HALF_STUB.size() + HALF_SIZE <= FMOD_PAGE
@@ -1408,7 +1473,8 @@ static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the thre
               && MATRIX_PRODUCT_STUBS[0].size() <= FLOAT4_RELOAD_STRIDE
               && MATRIX_PRODUCT_PAGE + MATRIX_PRODUCT_STUBS.size() * FLOAT4_RELOAD_STRIDE <= ENTRY_PREFETCH_PAGE
               && ENTRY_PREFETCH_PAGE + ENTRY_FETCH_STUB.size() <= ITEM_PUSH_PAGE
-              && ITEM_PUSH_PAGE + ITEM_PUSH_STUB.size() <= PAGE_SIZE);
+              && ITEM_PUSH_PAGE + ITEM_PUSH_STUB.size() <= SWEEP_PAGE
+              && SWEEP_PAGE + SWEEP_STUB.size() <= PAGE_SIZE);
 
 // Which sites each row writes (bits by `sites` index).
 constexpr size_t FLOAT4_RELOAD_FIRST_SITE = 10;  // the colour's reload; the vector's is the next
@@ -1421,6 +1487,8 @@ constexpr uint32_t MATRIX_PRODUCT_SITES = 0b111u << MATRIX_PRODUCT_FIRST_SITE;
 constexpr size_t ENTRY_PREFETCH_INDEX = 20;  // the particle writer's table entry prefetch (after the matrix product's rows)
 constexpr size_t ITEM_PUSH_FIRST_SITE = 21;  // the render list builders' item push loop A; B is the next
 constexpr uint32_t ITEM_PUSH_SITES = 0b11u << ITEM_PUSH_FIRST_SITE;
+constexpr size_t SWEEP_PREFETCH_INDEX = 23;  // the pending list sweep's chain prefetch (after the item push loops)
+constexpr uint32_t SWEEP_PREFETCH_BIT = 1u << SWEEP_PREFETCH_INDEX;  // Faster Sweep Prefetch: its own row
 constexpr uint32_t CPU_CODE_SITES = 0b100010111 | FLOAT4_RELOAD_SITES | SOLDIER_ROWS_SITES | MATRIX_PRODUCT_SITES | ITEM_PUSH_SITES;  // Faster Game CPU Code
 constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
@@ -1435,12 +1503,13 @@ constexpr uint32_t PREFETCH_SITES = CHILD_SUM_BIT | PARTICLE_PREFETCH_BIT;  // F
 constexpr uint32_t HALF_FUNCTION_BIT = 0b10;  // the half function, which the half rows' stub calls as the game does
 constexpr uint32_t HALF_ROWS_BIT = 0b100000000;
 // The rows by name, for the log lines.
-constexpr std::array<std::pair<uint32_t, std::string_view>, 6> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
+constexpr std::array<std::pair<uint32_t, std::string_view>, 7> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
                                                                          {LIST_SITES, "Faster Render Lists"},
                                                                          {JOB_SITES, "Faster Job Wake-Ups"},
                                                                          {PREFETCH_SITES, "Faster Effect Prefetch"},
                                                                          {EMITTER_PREFETCH_BIT, "Faster Emitter Prefetch"},
-                                                                         {ENTRY_PREFETCH_BIT, "Faster Particle Prefetch"}}};
+                                                                         {ENTRY_PREFETCH_BIT, "Faster Particle Prefetch"},
+                                                                         {SWEEP_PREFETCH_BIT, "Faster Sweep Prefetch"}}};
 
 // The first instruction (or two or three, whole) of each site: 5 bytes that become a jump into the page (the render list
 // push's: a 4-byte instruction and the first byte of the next, both run by its stub).
@@ -1454,7 +1523,7 @@ struct Site {
   uint8_t opcode = 0xE9;  // jmp; the worker destructor's call of Stop stays a call (E8)
 };
 
-static std::array<Site, 23> sites = {{{.name = "soldier draw rounding"},
+static std::array<Site, 24> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half floats"},
                                      {.name = "fmod"},
                                      {.name = "render list pushes"},
@@ -1476,12 +1545,13 @@ static std::array<Site, 23> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "matrix product row 3"},
                                      {.name = "particle entry prefetch"},
                                      {.name = "item push loop 1"},
-                                     {.name = "item push loop 2"}}};
+                                     {.name = "item push loop 2"},
+                                     {.name = "sweep chain prefetch"}}};
 // The reload rows' sites follow each other; every site has a bit of the uint32_t masks.
 static_assert(SOLDIER_ROWS_FIRST_SITE + SOLDIER_ROWS_STUBS.size() == MATRIX_PRODUCT_FIRST_SITE
               && MATRIX_PRODUCT_FIRST_SITE + MATRIX_PRODUCT_STUBS.size() == ENTRY_PREFETCH_INDEX
-              && ENTRY_PREFETCH_INDEX + 1 == ITEM_PUSH_FIRST_SITE && ITEM_PUSH_FIRST_SITE + 2 == std::tuple_size_v<decltype(sites)>
-              && std::tuple_size_v<decltype(sites)> <= 32);
+              && ENTRY_PREFETCH_INDEX + 1 == ITEM_PUSH_FIRST_SITE && ITEM_PUSH_FIRST_SITE + 2 == SWEEP_PREFETCH_INDEX
+              && SWEEP_PREFETCH_INDEX + 1 == std::tuple_size_v<decltype(sites)> && std::tuple_size_v<decltype(sites)> <= 32);
 // Every site belongs to exactly one row: the rows' masks are disjoint and cover every site.
 static_assert([] {
   uint32_t covered = 0;
@@ -1789,6 +1859,10 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
         place_stub(ITEM_PUSH_FIRST_SITE + loop, match + ITEM_PUSH_SITE, ITEM_PUSH_SIZE, stub, page + ITEM_PUSH_PAGE + ITEM_PUSH_STUB_AT[loop]);
       }
     }
+    // The pending list sweep, found by the whole function's bytes; the stub goes on at the call after the site's two instructions.
+    if (uint8_t* match = (build.sweep_rva != 0 ? find(SWEEP, build.sweep_rva) : nullptr); match != nullptr) {
+      place_stub(SWEEP_PREFETCH_INDEX, match + SWEEP_SITE, SWEEP_SIZE, SWEEP_STUB, page + SWEEP_PAGE);
+    }
     DWORD protection;
     VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
     FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
@@ -1803,9 +1877,9 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   const uint32_t reload_rva = (sse4_1 ? build.float4_reload_rva : 0);
   const uint32_t rows_rva = (sse4_1 ? build.soldier_rows_rva : 0);
   const uint32_t product_rva = (sse4_1 ? build.matrix_product_rva : 0);
-  const std::array<uint32_t, 23> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
+  const std::array<uint32_t, 24> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
                                          0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva, 0, 0, rows_rva, rows_rva, rows_rva,
-                                         product_rva, product_rva, product_rva, 0, build.push_loop_a_rva, build.push_loop_b_rva};
+                                         product_rva, product_rva, product_rva, 0, build.push_loop_a_rva, build.push_loop_b_rva, 0};
   static_assert(std::tuple_size_v<decltype(rvas)> == std::tuple_size_v<decltype(sites)>);
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
@@ -1833,14 +1907,14 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
 }  // namespace internal
 
 // Every present: `enabled` (Faster Game CPU Code), `lists` (Faster Render Lists), `jobs` (Faster Job Wake-Ups),
-// `prefetch` (Faster Effect Prefetch), `emitter_prefetch` (Faster Emitter Prefetch) and `particle_prefetch` (Faster
-// Particle Prefetch) once empire.retail.dll is loaded, the first time any is on prepared (`game`'s build); then the jumps
-// go in or the game's bytes back, while no thread stands inside them.
+// `prefetch` (Faster Effect Prefetch), `emitter_prefetch` (Faster Emitter Prefetch), `particle_prefetch` (Faster
+// Particle Prefetch) and `sweep_prefetch` (Faster Sweep Prefetch) once empire.retail.dll is loaded, the first time any is
+// on prepared (`game`'s build); then the jumps go in or the game's bytes back, while no thread stands inside them.
 inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, bool jobs = false, bool prefetch = false,
-                   bool emitter_prefetch = false, bool particle_prefetch = false) {
+                   bool emitter_prefetch = false, bool particle_prefetch = false, bool sweep_prefetch = false) {
   const uint32_t wanted = (enabled ? internal::CPU_CODE_SITES : 0u) | (lists ? internal::LIST_SITES : 0u) | (jobs ? internal::JOB_SITES : 0u)
                           | (prefetch ? internal::PREFETCH_SITES : 0u) | (emitter_prefetch ? internal::EMITTER_PREFETCH_BIT : 0u)
-                          | (particle_prefetch ? internal::ENTRY_PREFETCH_BIT : 0u);
+                          | (particle_prefetch ? internal::ENTRY_PREFETCH_BIT : 0u) | (sweep_prefetch ? internal::SWEEP_PREFETCH_BIT : 0u);
   if (wanted != 0 && !internal::prepared) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;
@@ -1855,7 +1929,7 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     renodx::utils::log::w("[Total War] Faster Job Wake-Ups: left alone (not the game's code as expected: another mod or build)");
   }
   // A prefetch row's sites asked for and not found (another mod's bytes, or another build): each is named once, by its row.
-  constexpr uint32_t PREFETCH_ROWS = internal::PREFETCH_SITES | internal::EMITTER_PREFETCH_BIT | internal::ENTRY_PREFETCH_BIT;
+  constexpr uint32_t PREFETCH_ROWS = internal::PREFETCH_SITES | internal::EMITTER_PREFETCH_BIT | internal::ENTRY_PREFETCH_BIT | internal::SWEEP_PREFETCH_BIT;
   for (const auto& [row_sites, name] : internal::ROWS) {
     const uint32_t missing = wanted & row_sites & PREFETCH_ROWS & ~internal::found & ~internal::prefetch_logged;
     if (!internal::prepared || missing == 0) continue;
@@ -1909,7 +1983,7 @@ inline void Uninstall() {
 
 #else
 
-inline void Update(bool, Game = Game::ATTILA, bool = false, bool = false, bool = false, bool = false, bool = false) {}
+inline void Update(bool, Game = Game::ATTILA, bool = false, bool = false, bool = false, bool = false, bool = false, bool = false) {}
 inline void Uninstall() {}
 
 #endif
