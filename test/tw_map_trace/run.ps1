@@ -1,6 +1,7 @@
 # The map trace (twattila/frame_trace.hpp, RENODX_TW_MAP_TRACE; tests.cpp on WARP with ReShade's events mocked), then
 # tools\tw\map_trace.py on the trace it wrote: the summary, and the join with waits.txt (the presents on another clock,
-# one wait inside a map's gap, one between events). No game build needed. Run as x86 (Attila, Rome II, Thrones) and amd64.
+# one wait ending just before a map, one between events), then tools\tw\map_trace_test.py (the join's synthetic cases).
+# No game build needed. Run as x86 (Attila, Rome II, Thrones) and amd64.
 # -OutDir: where the test exe goes (default testbin\tw_map_trace_<arch>, the maintainer's excluded folder).
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [string]$OutDir = '')
 $ErrorActionPreference = 'Stop'
@@ -26,7 +27,11 @@ $join = & python -I (Join-Path $tools 'map_trace.py') join $trace --waits (Join-
 if ($LASTEXITCODE -ne 0) { throw 'map_trace.py join failed' }
 $join
 # The parser's own checks: the resources and kinds, the alignment of the two clocks, each wait where the test put it.
-foreach ($expected in @('access discard 1, no_overwrite 1', 'readback', 'aligned: 3 of 3 presents', 'IN map no_overwrite', 'between traced events')) {
+foreach ($expected in @('access discard 2, no_overwrite 1', 'readback', 'aligned: 5 of 5 presents', 'wait fit (chain 0x179b980): 1 of 1',
+    'IN map no_overwrite', 'between traced events')) {
   if (-not (($summary + $join) -match [regex]::Escape($expected))) { throw "map_trace.py output lacks '$expected'" }
 }
 'PASS: map_trace.py'
+# The join's own cases (a wait before a map is not in it, an even cadence with a present bias, no presents).
+& python -I (Join-Path $tools 'map_trace_test.py')
+if ($LASTEXITCODE -ne 0) { throw 'map_trace_test.py failed' }
