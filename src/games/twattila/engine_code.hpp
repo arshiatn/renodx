@@ -1898,8 +1898,16 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       place_stub(SWEEP_PREFETCH_INDEX, match + SWEEP_SITE, SWEEP_SIZE, SWEEP_STUB, page + SWEEP_PAGE);
     }
     DWORD protection;
-    VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
-    FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
+    if (VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection) == FALSE) {
+      // As if there were no page (nothing is written to the game yet): a site's jump would lead into memory that cannot run.
+      renodx::utils::log::w("[Total War] Faster Game CPU Code: left alone (the stub page could not be made executable)");
+      for (Site& site : sites) site.at = nullptr;
+      stubs = {};
+      VirtualFree(page, 0, MEM_RELEASE);
+      page = nullptr;
+    } else {
+      FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
+    }
   }
   std::string faster;
   std::string left;
@@ -1929,12 +1937,20 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       write32(stub + entry.size - 4, relative(stub + entry.size, stubs[entry.site]));
       stubs[entry.site] = stub;
       probe::stub_of[entry.site] = stub;
+    const auto production_stubs = stubs;
       probe::size_of[entry.site] = entry.size;
       probe::installed |= 1u << entry.site;
     }
     DWORD protection;
-    VirtualProtect(probe::code, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
-    FlushInstructionCache(GetCurrentProcess(), probe::code, PAGE_SIZE);
+    if (VirtualProtect(probe::code, PAGE_SIZE, PAGE_EXECUTE_READ, &protection) == FALSE) {
+      // No probes: the sites go to the production stubs again (a jump into the read-write page would crash the game).
+      stubs = production_stubs;
+      probe::installed = 0;
+      probe::stub_of = {};
+      probe::size_of = {};
+    } else {
+      FlushInstructionCache(GetCurrentProcess(), probe::code, PAGE_SIZE);
+    }
   }
 #endif
   for (size_t index = 0; index < sites.size(); ++index) {
