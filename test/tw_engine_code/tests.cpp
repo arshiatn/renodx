@@ -16,8 +16,10 @@
 //    x, zero y, NaN) aren't run: the unstarted CRT's errno would fault; the stub hands every non-normal argument to the
 //    same CRT code, shown for zero x and infinite y.
 // 5. Toggling on and off 200 times while 4 threads run B's float to half: their results stay A's, no fault.
-// 6. Timing, A against B: float to half on sprite-like rows, the truncation, fmod(x, 1).
-// 7. The truncation block as the Attila CPU Performance Fix leaves it: left alone, the other two still found.
+// 6. Timing, A against B: float to half on sprite-like rows, the truncation, fmod(x, 1); the ready check (0 and 16
+//    children) also against the stub as it ended before (pop ecx).
+// 7. The truncation block as the Attila CPU Performance Fix leaves it: left alone, the other two still found; the log
+//    names the fix in Attila (CONTROL: one byte more changed names an unknown mod), an unknown mod in the others.
 // 8. The render lists' push (+0x176ced0, Faster Render Lists): 1 M random pushes (thread, vector sizes, the "has items"
 //    byte, the list's other bytes, the item, every register): the registers, esp and every byte of the list, its
 //    vectors and their items equal; on and off 200 times while 4 threads push to one list: every item in its place,
@@ -2484,6 +2486,49 @@ int main(int argc, char** argv) {
     std::printf("6. ns a call, game / ours: float to half %.2f / %.2f, truncation (with the harness) %.2f / %.2f, "
                 "fmod(x, 1) (with the harness) %.2f / %.2f\n",
                 half_game, half_ours, block_game, block_ours, fmod_game, fmod_ours);
+    // The ready check: the game's, the stub as it ended before (pop ecx: a 4-byte reload of the slot whose top byte it had
+    // just stored) and ours; 0 and 16 children (all ready, each with a control block), the best of 5 runs.
+    if (build.ready_check_rva != 0) {
+      constexpr std::array<uint8_t, 15> TAIL = {0xC1, 0xC1, 0x08, 0x88, 0xC1, 0xC1, 0xC9, 0x08, 0x8D, 0x64, 0x24, 0x04, 0x3B, 0xC9, 0xC3};
+      constexpr size_t KEPT = ec::READY_CHECK_STUB.size() - TAIL.size();
+      CHECK(std::equal(TAIL.begin(), TAIL.end(), ec::READY_CHECK_STUB.begin() + KEPT));
+      auto* popping = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+      CHECK(popping != nullptr);
+      std::memcpy(popping, ec::READY_CHECK_STUB.data(), KEPT);
+      popping[KEPT] = 0x59;      // pop ecx
+      popping[KEPT + 1] = 0xC3;  // ret
+      std::array<uint8_t, 0x48> self = {};
+      self[4] = 1;
+      std::vector<std::array<uint8_t, 0x70>> objects(16);
+      std::vector<std::array<uint32_t, 3>> blocks(16, {Address(BLOCK_VTABLE.data()), 1, 1});
+      std::vector<uint32_t> children(32);
+      for (size_t index = 0; index < objects.size(); ++index) {
+        objects[index][0x6e] = 1;
+        children[2 * index] = Address(objects[index].data());
+        children[2 * index + 1] = Address(blocks[index].data());
+      }
+      Write32(self.data() + 0x44, Address(children.data()));
+      using ReadyCheck = uint8_t(__fastcall*)(const void* self, void* unused_edx);
+      const std::array<ReadyCheck, 3> checks = {reinterpret_cast<ReadyCheck>(game + build.ready_check_rva), reinterpret_cast<ReadyCheck>(popping),
+                                                reinterpret_cast<ReadyCheck>(patched + build.ready_check_rva)};
+      std::string line;
+      for (const uint32_t count : {0u, 16u}) {
+        Write32(self.data() + 0x40, count);
+        std::array<double, 3> best = {1e9, 1e9, 1e9};
+        for (size_t which = 0; which < checks.size(); ++which) {
+          CHECK(checks[which](self.data(), nullptr) == 1);
+          for (int run = 0; run < 5; ++run) {
+            volatile uint32_t sink = 0;
+            const auto start = std::chrono::steady_clock::now();
+            for (int index = 0; index < 2'000'000; ++index) sink = sink + checks[which](self.data(), nullptr);
+            best[which] = std::min(best[which], std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / 2'000'000.0);
+          }
+        }
+        line += std::format("{}{} children {:.2f} / {:.2f} / {:.2f}", line.empty() ? "" : ", ", count, best[0], best[1], best[2]);
+      }
+      VirtualFree(popping, 0, MEM_RELEASE);
+      std::printf("   ready check, game / the stub with pop ecx / ours: %s\n", line.c_str());
+    }
   }
 
   // 8. The render lists' push.
@@ -3021,7 +3066,8 @@ int main(int argc, char** argv) {
 
   // 7. With the Attila CPU Performance Fix's x87 fix the truncation block holds fisttp and nops for both fldcw (bytes
   // 23..26, 28 and 31..34 of the block, ATN's heapfix.log: 1277 of 1277 blocks, 165 by fisttp): that site is left
-  // alone, the others still found. Then one byte of the ready check changed (as another mod's patch would): left alone.
+  // alone, the others still found, Attila's log naming the fix. Then one byte of the ready check changed (as another mod's
+  // patch would): left alone.
   uint8_t* block = patched + build.truncation_block_rva;
   for (const size_t at : {23, 31}) std::memcpy(block + at, "\x0F\x1F\x40\x00", 4);
   block[28] = 0x4C;
@@ -3031,19 +3077,42 @@ int main(int argc, char** argv) {
   CHECK(ec::sites[0].at == nullptr && ec::sites[1].at != nullptr && ec::sites[2].at != nullptr);
   CHECK((ec::sites[3].at != nullptr) == (build.list_push_function_rva != 0));
   CHECK((ec::sites[4].at != nullptr) == (build.ready_check_rva != 0));
-  CHECK(log_lines.back().find("left alone") != std::string::npos && log_lines.back().find("soldier draw rounding") != std::string::npos);
+  // The reason: Attila's names the fix (its block at its RVA), the other games' builds the unknown mod.
+  const std::string_view UNKNOWN = "; left alone (not the game's code as expected: another mod or build): ";
+  const std::string_view X87_FIX = "; left alone (the Attila CPU Performance Fix's x87 fix rewrote it): ";
+  const bool attila = (build.code->truncation_rva == ec::TRUNCATION_RVA);
+  const std::string first_line = log_lines.back();
+  CHECK(first_line.ends_with(std::format("{}soldier draw rounding", attila ? X87_FIX : UNKNOWN)));
+  CHECK(first_line.find(attila ? UNKNOWN : X87_FIX) == std::string::npos);
+  std::string control_line;
+  if (attila) {
+    // CONTROL: one byte more changed (fistp back, the nops kept: not the fix's form): the unknown mod.
+    block[28] = 0x5C;
+    for (ec::Site& site : ec::sites) site.at = nullptr;
+    ec::prepared = false;
+    ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
+    control_line = log_lines.back();
+    CHECK(ec::sites[0].at == nullptr && control_line.ends_with(std::format("{}soldier draw rounding", UNKNOWN)) && control_line.find(X87_FIX) == std::string::npos);
+    block[28] = 0x4C;
+  }
+  std::string ready_line;
   if (build.ready_check_rva != 0) {
     patched[build.ready_check_rva + 0x1F] = 0x90;  // the copy's lock prefix
     for (ec::Site& site : ec::sites) site.at = nullptr;
     ec::prepared = false;
     ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
+    ready_line = log_lines.back();
     CHECK(ec::sites[4].at == nullptr && ec::sites[1].at != nullptr);
-    CHECK(log_lines.back().find("left alone") != std::string::npos && log_lines.back().find("ready checks") != std::string::npos);
+    CHECK(ready_line.ends_with(attila ? std::format("{}ready checks{}soldier draw rounding", UNKNOWN, X87_FIX)
+                                      : std::format("{}soldier draw rounding, ready checks", UNKNOWN)));
   } else {
     CHECK(log_lines.back().find("ready checks") == std::string::npos);
   }
-  std::printf("7. a block another mod changed: left alone, the others found%s\nPASS\n",
-              (build.ready_check_rva != 0 ? "; a changed ready check left alone" : ""));
+  std::printf("7. a block another mod changed: left alone, the others found%s\n  log: %s\n", (build.ready_check_rva != 0 ? "; a changed ready check left alone" : ""),
+              first_line.c_str());
+  if (!control_line.empty()) std::printf("  log (CONTROL, not the fix's form): %s\n", control_line.c_str());
+  if (!ready_line.empty()) std::printf("  log: %s\n", ready_line.c_str());
+  std::printf("PASS\n");
   return 0;
 }
 
