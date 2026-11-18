@@ -17,7 +17,8 @@
 //    same CRT code, shown for zero x and infinite y.
 // 5. Toggling on and off 200 times while 4 threads run B's float to half: their results stay A's, no fault.
 // 6. Timing, A against B: float to half on sprite-like rows, the truncation, fmod(x, 1); the ready check (0 and 16
-//    children) also against the stub as it ended before (pop ecx).
+//    children) also against the stub as it ended before (pop ecx) and with rol / ror, all four called directly (no
+//    jump through the site).
 // 7. The truncation block as the Attila CPU Performance Fix leaves it: left alone, the other two still found; the log
 //    names the fix in Attila (CONTROL: one byte more changed names an unknown mod), an unknown mod in the others.
 // 8. The render lists' push (+0x176ced0, Faster Render Lists): 1 M random pushes (thread, vector sizes, the "has items"
@@ -28,9 +29,11 @@
 //    position of the first child not ready (or none) x 7 values of [this + 4] x the last child with and without a
 //    control block x the count's 3 bits above the 29 that x 8 keeps; every [this + 4] with 0 and 1 child; 2 M random
 //    vectors (up to 4096 children; uses from 1 to 0xFFFFFFFF, the carry edges among them; objects no code reads at random
-//    addresses): eax ecx edx ebx esi edi ebp, the arithmetic flags, esp, the 64 bytes of the call's stack, every count
+//    addresses; `this` on the stack (top byte 0) or at the top of the address space (VirtualAlloc, MEM_TOP_DOWN: top
+//    byte 0x7F): eax ecx edx ebx esi edi ebp, the arithmetic flags, esp, the 64 bytes of the call's stack, every count
 //    and [this] equal, the game's results as derived from its bytes (engine_code.hpp), no dispose or destroy run;
-//    CONTROL: a child with uses 0 (the game disposes it) must differ; on and off 200 times while 4 threads call both
+//    CONTROLs: a child with uses 0 (the game disposes it) must differ; the tail with `or cl, al` for `mov cl, al` (merges
+//    al into this's top byte, not a replace) must agree for a low `this` and differ for a high one; on and off 200 times while 4 threads call both
 //    copies on vectors sharing control blocks: every al the game's, every count back; timing, 1 and 4 threads.
 // 10. Faster Job Wake-Ups (the job system's WakeAll, Sleep and the worker destructor's call of Stop, as the add-on's third row;
 //    the game's copy against ours on the game's own functions, the semaphores, workers and destructor included): one thread,
@@ -82,6 +85,7 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <string>
 #include <thread>
 #include <tuple>
@@ -485,6 +489,11 @@ std::atomic<uint32_t> disposed = 0;
 void __fastcall Dispose(void*, void*) { disposed.fetch_add(1); }
 void __fastcall Destroy(void*, void*) { disposed.fetch_add(0x10000); }
 const std::array<uint32_t, 2> BLOCK_VTABLE = {Address(reinterpret_cast<const void*>(&Dispose)), Address(reinterpret_cast<const void*>(&Destroy))};
+
+// The ready check stub's last 11 bytes (bswap ecx; mov cl, al; bswap ecx; lea esp, [esp + 4]; ret) after its first 83, which the
+// older tails and the control below keep.
+constexpr std::array<uint8_t, 11> READY_CHECK_TAIL = {0x0F, 0xC9, 0x88, 0xC1, 0x0F, 0xC9, 0x8D, 0x64, 0x24, 0x04, 0xC3};
+constexpr size_t READY_CHECK_KEPT = twattila::engine_code::internal::READY_CHECK_STUB.size() - READY_CHECK_TAIL.size();
 
 // An 80-bit value from sign, exponent (15 bits) and 64-bit mantissa.
 void Extended(uint8_t* out, bool sign, uint32_t exponent, uint64_t mantissa) {
@@ -2450,6 +2459,16 @@ int main(int argc, char** argv) {
                 SWITCHES, calls.load(), busy, milliseconds / (SWITCHES + busy));
   }
 
+  // The ready check stub's first bytes with another tail (the older ones in 6, the controls in 9), in a page of executable memory of its own.
+  const auto ready_check_with_tail = [](std::span<const uint8_t> tail) {
+    auto* code = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if (code != nullptr) {
+      std::memcpy(code, ec::READY_CHECK_STUB.data(), READY_CHECK_KEPT);
+      std::memcpy(code + READY_CHECK_KEPT, tail.data(), tail.size());
+    }
+    return code;
+  };
+
   // 6. Timing (one thread, warm).
   {
     if (ec::written == 0) twattila::engine_code::Update(true);
@@ -2507,16 +2526,15 @@ int main(int argc, char** argv) {
                 "fmod(x, 1) (with the harness) %.2f / %.2f\n",
                 half_game, half_ours, block_game, block_ours, fmod_game, fmod_ours);
     // The ready check: the game's, the stub as it ended before (pop ecx: a 4-byte reload of the slot whose top byte it had
-    // just stored) and ours; 0 and 16 children (all ready, each with a control block), the best of 5 runs.
+    // just stored), with rol / ror (the next one) and ours (bswap); all four called directly, as the page holds them (no jump through
+    // the site into the page for ours only); 0 and 16 children (all ready, each with a control block), the best of 5 runs.
     if (build.ready_check_rva != 0) {
-      constexpr std::array<uint8_t, 15> TAIL = {0xC1, 0xC1, 0x08, 0x88, 0xC1, 0xC1, 0xC9, 0x08, 0x8D, 0x64, 0x24, 0x04, 0x3B, 0xC9, 0xC3};
-      constexpr size_t KEPT = ec::READY_CHECK_STUB.size() - TAIL.size();
-      CHECK(std::equal(TAIL.begin(), TAIL.end(), ec::READY_CHECK_STUB.begin() + KEPT));
-      auto* popping = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
-      CHECK(popping != nullptr);
-      std::memcpy(popping, ec::READY_CHECK_STUB.data(), KEPT);
-      popping[KEPT] = 0x59;      // pop ecx
-      popping[KEPT + 1] = 0xC3;  // ret
+      CHECK(std::equal(READY_CHECK_TAIL.begin(), READY_CHECK_TAIL.end(), ec::READY_CHECK_STUB.begin() + READY_CHECK_KEPT));
+      constexpr std::array<uint8_t, 2> POPPING_TAIL = {0x59, 0xC3};  // pop ecx; ret
+      constexpr std::array<uint8_t, 15> ROTATING_TAIL = {0xC1, 0xC1, 0x08, 0x88, 0xC1, 0xC1, 0xC9, 0x08, 0x8D, 0x64, 0x24, 0x04, 0x3B, 0xC9, 0xC3};
+      uint8_t* popping = ready_check_with_tail(POPPING_TAIL);
+      uint8_t* rotating = ready_check_with_tail(ROTATING_TAIL);
+      CHECK(popping != nullptr && rotating != nullptr);
       std::array<uint8_t, 0x48> self = {};
       self[4] = 1;
       std::vector<std::array<uint8_t, 0x70>> objects(16);
@@ -2529,12 +2547,12 @@ int main(int argc, char** argv) {
       }
       Write32(self.data() + 0x44, Address(children.data()));
       using ReadyCheck = uint8_t(__fastcall*)(const void* self, void* unused_edx);
-      const std::array<ReadyCheck, 3> checks = {reinterpret_cast<ReadyCheck>(game + build.ready_check_rva), reinterpret_cast<ReadyCheck>(popping),
-                                                reinterpret_cast<ReadyCheck>(patched + build.ready_check_rva)};
+      const std::array<ReadyCheck, 4> checks = {reinterpret_cast<ReadyCheck>(game + build.ready_check_rva), reinterpret_cast<ReadyCheck>(popping),
+                                                reinterpret_cast<ReadyCheck>(rotating), reinterpret_cast<ReadyCheck>(ec::page + ec::READY_CHECK_PAGE)};
       std::string line;
       for (const uint32_t count : {0u, 16u}) {
         Write32(self.data() + 0x40, count);
-        std::array<double, 3> best = {1e9, 1e9, 1e9};
+        std::array<double, 4> best = {1e9, 1e9, 1e9, 1e9};
         for (size_t which = 0; which < checks.size(); ++which) {
           CHECK(checks[which](self.data(), nullptr) == 1);
           for (int run = 0; run < 5; ++run) {
@@ -2544,10 +2562,11 @@ int main(int argc, char** argv) {
             best[which] = std::min(best[which], std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / 2'000'000.0);
           }
         }
-        line += std::format("{}{} children {:.2f} / {:.2f} / {:.2f}", line.empty() ? "" : ", ", count, best[0], best[1], best[2]);
+        line += std::format("{}{} children {:.2f} / {:.2f} / {:.2f} / {:.2f}", line.empty() ? "" : ", ", count, best[0], best[1], best[2], best[3]);
       }
       VirtualFree(popping, 0, MEM_RELEASE);
-      std::printf("   ready check, game / the stub with pop ecx / ours: %s\n", line.c_str());
+      VirtualFree(rotating, 0, MEM_RELEASE);
+      std::printf("   ready check, game / the stub with pop ecx / with rol and ror / ours (bswap): %s\n", line.c_str());
     }
     // The particle writer's reload after the four stores (game's movups / the stub's lane loads / no reload), and the multiply.
     if (build.code->float4_reload_rva != 0) std::fputs(ReloadTimingLines().c_str(), stdout);
@@ -2745,7 +2764,15 @@ int main(int argc, char** argv) {
     // The object ([+4] its flag, [+0x40] the count, [+0x44] the children), the children ({object, control block}), the
     // objects (the ready byte at +0x6e), the control blocks ({vtable, uses, weaks}).
     constexpr uint32_t MAX_CHILDREN = 4096;
-    std::array<uint8_t, 0x48> self = {};
+    // `this`: on the stack (a low address, top byte 0) or at the top of the address space (MEM_TOP_DOWN: top byte 0x7F, the process isn't
+    // large-address aware), picked for each vector; a merge of al into the top byte is not a replace only for the second.
+    std::array<uint8_t, 0x48> self_low = {};
+    auto* self_high_page = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE));
+    CHECK(self_high_page != nullptr && (Address(self_high_page) >> 24) >= 0x7F && (Address(self_low.data()) >> 24) == 0);
+    int this_place = 0;  // 0: either; 1: the stack; 2: the high one
+    uint64_t high_this = 0;
+    uint32_t ours_ready = patched_ready;  // the function run as ours (the controls change it)
+    bool report_failures = true;
     std::vector<uint32_t> children(2 * MAX_CHILDREN);
     std::vector<std::array<uint8_t, 0x70>> objects(MAX_CHILDREN);
     std::vector<std::array<uint32_t, 3>> blocks(MAX_CHILDREN);
@@ -2765,6 +2792,9 @@ int main(int argc, char** argv) {
     // that child's uses 0 (CONTROL). Both copies called with the same registers, flags and stack bytes.
     const auto check = [&](uint32_t count, uint32_t not_ready, uint8_t flag, bool last_block, Random* random, uint32_t dead = ~0u) {
       const uint32_t n = count & 0x1FFFFFFF;
+      const bool at_top = (this_place == 2 || (this_place == 0 && (random->Next() & 1) != 0));
+      const std::span<uint8_t, 0x48> self = (at_top ? std::span<uint8_t, 0x48>(self_high_page + 0x80, 0x48) : std::span<uint8_t, 0x48>(self_low));
+      high_this += (at_top ? 1 : 0);
       for (uint8_t& byte : self) byte = static_cast<uint8_t>(random->Next());
       self[4] = flag;
       Write32(self.data() + 0x40, count);
@@ -2778,17 +2808,18 @@ int main(int argc, char** argv) {
         children[2 * index + 1] = (has_block ? Address(blocks[index].data()) : 0u);
       }
       std::copy_n(blocks.begin(), n, blocks_before.begin());
-      const std::array<uint8_t, 0x48> self_before = self;
+      std::array<uint8_t, 0x48> self_before;
+      std::copy(self.begin(), self.end(), self_before.begin());
       ReadyCall call = {.in = {random->Next(), Address(self.data()), random->Next(), random->Next(), random->Next(), random->Next(), random->Next()},
                         .flags_in = 0x202 | (random->Next() & 0x8D5)};
       for (uint8_t& byte : call.stack) byte = static_cast<uint8_t>(random->Next());
-      const auto world_kept = [&] { return std::equal(blocks.begin(), blocks.begin() + n, blocks_before.begin()) && self == self_before; };
+      const auto world_kept = [&] { return std::equal(blocks.begin(), blocks.begin() + n, blocks_before.begin()) && std::equal(self.begin(), self.end(), self_before.begin()); };
       ReadyCall a = call;
       ready_function = game_ready;
       CallReady(&a);
       const bool game_kept = world_kept();
       ReadyCall b = call;
-      ready_function = patched_ready;
+      ready_function = ours_ready;
       CallReady(&b);
       const bool ours_kept = world_kept();
       // The game's results as engine_code.hpp derives them from its bytes.
@@ -2804,7 +2835,7 @@ int main(int argc, char** argv) {
       const bool same = std::memcmp(a.out, b.out, sizeof(a.out)) == 0 && a.flags_out == b.flags_out
                         && b.esp_after == Address(&b) + READY_CALL_ESP && std::memcmp(a.stack, b.stack, sizeof(a.stack)) == 0;
       const bool good = derived && same && game_kept && ours_kept && disposed.load() == 0;
-      if (!good) {
+      if (!good && report_failures) {
         Report("  ready check: count %08X, first not ready %u, flag %02X, last block %d: derived %d same %d kept %d %d; eax %08X / %08X "
                "ecx %08X / %08X flags %04X / %04X\n", count, not_ready, flag, last_block ? 1 : 0, derived ? 1 : 0, same ? 1 : 0,
                game_kept ? 1 : 0, ours_kept ? 1 : 0, a.out[0], b.out[0], a.out[1], b.out[1], a.flags_out, b.flags_out);
@@ -2847,15 +2878,41 @@ int main(int argc, char** argv) {
       CHECK(check(n | (random.Next() << 29), not_ready, static_cast<uint8_t>(random.Next()), (random.Next() & 1) != 0, &random));
       ++cases;
     }
-    std::printf("9. ready check: %llu vectors (%llu without a child, %llu with the flag 0, %llu all ready, %llu with one not ready): "
-                "every register, the flags, esp, the stack, every count equal and the game's as derived (%.1f s)\n",
-                cases, kinds[0], kinds[1], kinds[2], kinds[3], std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+    std::printf("9. ready check: %llu vectors (%llu without a child, %llu with the flag 0, %llu all ready, %llu with one not ready; %llu with `this` at the top of the "
+                "address space): every register, the flags, esp, the stack, every count equal and the game's as derived (%.1f s)\n",
+                cases, kinds[0], kinds[1], kinds[2], kinds[3], high_this, std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+    CHECK(high_this > cases / 3);
     // CONTROL: a dead child (uses 0, never in the game's vectors): the game's release disposes and destroys it, the stub
     // never touches it; the compare must see it.
     std::printf("   CONTROL, a child with uses 0 (must differ):\n");
     CHECK(!check(3, 3, 1, true, &random, 1));
     CHECK(disposed.load() == 0x10001);
     disposed = 0;
+    // CONTROL: the tail with `or cl, al` for `mov cl, al` (the equal compare's flags kept by a cmp ecx, ecx): al merged into the top byte of `this`
+    // instead of put in it. With a top byte of 0 the result and the flags are the same; with 0x7F they are not (a child exists: al is 0 or 1).
+    {
+      constexpr std::array<uint8_t, 13> MERGING_TAIL = {0x0F, 0xC9, 0x08, 0xC1, 0x0F, 0xC9, 0x8D, 0x64, 0x24, 0x04, 0x3B, 0xC9, 0xC3};
+      constexpr int CONTROL_VECTORS = 20'000;
+      uint8_t* merging = ready_check_with_tail(MERGING_TAIL);
+      CHECK(merging != nullptr);
+      ours_ready = Address(merging);
+      report_failures = false;
+      std::array<int, 2> agreeing = {};  // `this` on the stack, `this` at the top
+      for (const int place : {1, 2}) {
+        this_place = place;
+        for (int run = 0; run < CONTROL_VECTORS; ++run) {
+          const uint32_t n = 1 + random.Next() % 64;
+          agreeing[place - 1] += check(n | (random.Next() << 29), random.Next() % (n + 1), static_cast<uint8_t>(random.Next()), (random.Next() & 1) != 0, &random) ? 1 : 0;
+        }
+      }
+      this_place = 0;
+      report_failures = true;
+      ours_ready = patched_ready;
+      VirtualFree(merging, 0, MEM_RELEASE);
+      std::printf("   CONTROL, `or cl, al` for `mov cl, al`: %d of %d agree with `this` on the stack (all), %d of %d with `this` at the top (none)\n", agreeing[0],
+                  CONTROL_VECTORS, agreeing[1], CONTROL_VECTORS);
+      CHECK(agreeing[0] == CONTROL_VECTORS && agreeing[1] == 0);
+    }
 
     // On and off while 4 threads call both copies on 8 vectors sharing 16 control blocks (the game's copies and releases
     // move the counts the stub reads: eax's bits from the last child's uses may then differ, so al alone, the caller's).

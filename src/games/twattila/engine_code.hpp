@@ -78,7 +78,7 @@ constexpr std::array<uint8_t, 44> TruncationStub(uint8_t control, uint8_t roundi
 constexpr std::array<uint8_t, 44> TRUNCATION_STUB = TruncationStub(0x18, 0x1C, 0x20, 0x2C);
 // The same bytes as the Attila CPU Performance Fix's x87 fix leaves them (its x87fix.c, on the block at +14): both fldcw
 // a 4-byte nop, fistp fisttp. Left to that mod as any other mod's code; only named in the log.
-constexpr auto HEAPFIX_TRUNCATION = [] {
+constexpr auto X87_FIX_TRUNCATION = [] {
   std::array<char, TRUNCATION.size()> pattern = {};
   std::ranges::copy(TRUNCATION, pattern.begin());
   const auto put = [&](size_t offset, std::string_view bytes) { std::ranges::copy(bytes, pattern.begin() + 3 * offset); };
@@ -266,7 +266,7 @@ constexpr std::string_view READY_CHECK =
     "80 7C 24 0F 00 8B 07 74 0A 80 78 6E 00 74 04 B0 01 EB 02 32 C0 88 44 24 0F 85 F6 74 23 B8 FF FF FF FF F0 0F C1 46 "
     "04 75 17 8B 06 8B CE FF 10 83 C8 FF F0 0F C1 46 08 75 07 8B 06 8B CE FF 50 04 83 C7 08 3B FB 75 AB 8A 44 24 0F 5F "
     "5E 5B 59 C3";
-constexpr std::array<uint8_t, 98> READY_CHECK_STUB = {
+constexpr std::array<uint8_t, 94> READY_CHECK_STUB = {
     0x51,                          // push ecx                          the game's frame: the result in the pushed
     0x8A, 0x41, 0x04,              // mov al, byte ptr [ecx + 4]          ecx's top byte
     0x53,                          // push ebx
@@ -301,12 +301,11 @@ constexpr std::array<uint8_t, 98> READY_CHECK_STUB = {
     0x5F,                          // pop edi
     0x5E,                          // pop esi
     0x5B,                          // pop ebx
-    0xC1, 0xC1, 0x08,              // rol ecx, 8                        the pushed ecx (this, never written)
-    0x88, 0xC1,                    // mov cl, al                          with al in its top byte, built in the
-    0xC1, 0xC9, 0x08,              // ror ecx, 8                          register: pop ecx's 4-byte reload of the
-    0x8D, 0x64, 0x24, 0x04,        // lea esp, [esp + 4]                  1-byte store waits for that store
-    0x3B, 0xC9,                    // cmp ecx, ecx                      the equal compare's flags again (rol / ror
-    0xC3,                          // ret                                 changed CF and OF)
+    0x0F, 0xC9,                    // bswap ecx                         the pushed ecx (this, never written) with al in
+    0x88, 0xC1,                    // mov cl, al                          its top byte, built in the register: pop ecx's
+    0x0F, 0xC9,                    // bswap ecx                           4-byte reload of the 1-byte store waits for it
+    0x8D, 0x64, 0x24, 0x04,        // lea esp, [esp + 4]                  the slot dropped, its bytes kept below esp
+    0xC3,                          // ret                               bswap and lea write no flag: the equal compare's stay
 };
 
 // 6. The job system's worker wake-ups (Faster Job Wake-Ups, its own row, Experimental: not byte for byte the game's
@@ -871,7 +870,11 @@ constexpr size_t CHILD_SUM_PAGE = 0xB00;
 constexpr size_t FLOAT4_RELOAD_PAGE = 0xB20;    // one stub for each of the two reloads, a stride apart
 constexpr size_t FLOAT4_RELOAD_STRIDE = 0x30;
 constexpr size_t PAGE_SIZE = 0x1000;
-static_assert(READY_CHECK_PAGE + READY_CHECK_STUB.size() <= JOB_PAGE
+static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the three games' truncation stubs are one type
+              && HALF_PAGE + HALF_STUB.size() + HALF_SIZE <= FMOD_PAGE
+              && FMOD_PAGE + FMOD_STUB.size() <= LIST_PUSH_PAGE
+              && LIST_PUSH_PAGE + LIST_PUSH_STUB.size() <= READY_CHECK_PAGE
+              && READY_CHECK_PAGE + READY_CHECK_STUB.size() <= JOB_PAGE
               && JOB_PAGE + JOB_STUB.size() <= HALF_ROWS_PAGE
               && HALF_ROWS_PAGE + HALF_ROWS_CONSTANTS_AT + sizeof(HALF_ROWS_CONSTANTS) <= CHILD_SUM_PAGE
               && CHILD_SUM_PAGE + CHILD_SUM_STUB.size() <= FLOAT4_RELOAD_PAGE
@@ -1180,7 +1183,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   std::string x87_fixed;
   // Attila's truncation block rewritten by the Attila CPU Performance Fix is named as such, not as an unknown mod.
   const bool truncation_x87_fixed = (sites[0].at == nullptr && build.truncation_rva == TRUNCATION_RVA
-                                     && holds(base + TRUNCATION_RVA, {HEAPFIX_TRUNCATION.data(), HEAPFIX_TRUNCATION.size()}));
+                                     && holds(base + TRUNCATION_RVA, {X87_FIX_TRUNCATION.data(), X87_FIX_TRUNCATION.size()}));
   // A site the build doesn't have (rva 0) isn't named.
   const uint32_t reload_rva = (sse4_1 ? build.float4_reload_rva : 0);
   const std::array<uint32_t, 12> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
@@ -1190,8 +1193,13 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     Site& site = sites[index];
     // The job sites aren't listed here: their row says when it turns them on.
     if (rvas[index] != 0) {
-      std::string& names = (site.at != nullptr ? faster : ((index == 0 && truncation_x87_fixed) ? x87_fixed : left));
-      names += std::format("{}{}", names.empty() ? "" : ", ", site.name);
+      std::string* names = &left;
+      if (site.at != nullptr) {
+        names = &faster;
+      } else if (index == 0 && truncation_x87_fixed) {
+        names = &x87_fixed;
+      }
+      *names += std::format("{}{}", names->empty() ? "" : ", ", site.name);
     }
     if (site.at == nullptr) continue;
     found |= 1u << index;
