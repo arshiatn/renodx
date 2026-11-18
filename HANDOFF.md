@@ -3162,6 +3162,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         STARTED 05:39: cr2_ SONNET xHigh review of dfcf463d0 (EF4 had an Opus stop: ATN's rule) + ci3_ Opus High
         (commit 1 CR1 low fixes L1 / L2 / N1-N4, commit 2 E3P-b particle prefetch, Faster Effect Prefetch row) on
         dfcf463d0.
+        ci3_ (Opus High) STOPPED ~05:4x by the safety classifier (its response after a Read of tests.cpp 1600-2064,
+        part 12's child-sum tests, was withheld; nothing edited). Pattern: both Opus implementer stops came right after
+        reading tw_engine_code harness / test code. Notes kept (L1 / N1 bytes / L2 control / esi dead at 0x1893883 /
+        stub at 0xB80, index 12). Worktree cleaned. Per ATN's rule: ci3s_ Sonnet xHigh retry STARTED 05:43 on
+        dfcf463d0 with the same brief + those notes (a second stop ends E3P-b + the CR1 fixes).
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
