@@ -28,8 +28,12 @@
 //    test, slots 1-3 after) and a placed one (slot 0 alone in its key, its other bound slots none) get theirs; meshes with a
 //    cut-out version: a static one's key without its mask, then with it once the shadow pass alpha-tests its texture (the
 //    lookup in the scene's lock), a placed known one counted (its texture read once, checked again); a new draw
-//    into the main view's depth twice (the device prepared, then cached); no state check line; CONTROL: a binding changed
-//    between two reads logs one. Cost (printed): v166's reads for a static draw against now's.
+//    into the main view's depth twice (the device prepared, then cached); the depth's description read once a view (the
+//    same view again, the main size changed and back, a new view once the held one's other holder let it go, a cascades'
+//    array and back, each rejected in the other's place); with room, a draw captured once, then its key found in the frame's
+//    keys; the keys and captures after every capture hashed (90d7df1b5's the same); no state check line; CONTROLS: a binding
+//    changed between two reads logs one, a held depth description changed logs one. Cost (printed): v166's reads for a
+//    static draw against now's.
 // 6. Trace's light pick (rt_core.hpp, ALPK: each light scored once, the scores with their places partial_sorted, lights_last
 //    put in that order when the helper does not take the trace) against the old pick (29eeab5c's, copied below: partial_sort of the lights, both sides of every
 //    comparison scored): 1600 frames of 0..16384 lights (whole-metre places and few reaches and colours for equal scores,
@@ -680,6 +684,28 @@ int main() {
     const action::DrawIndexedArguments arguments = {.index_count = 36, .instance_count = 3, .first_index = 6, .vertex_offset = -2,
                                                     .first_instance = 7};
     action::CommandContext<action::DrawIndexedArguments> command = {.cmd_list = &cmd_list, .arguments = arguments};
+    // Each capture, then what it left (the scene key, the main view's frame, the prepared context, the frame's captures and
+    // their keys, the drawn and short keys) into one sequence hash: the same as 90d7df1b5's over these cases (run against it).
+    // Keys by their order of first appearance (they hash the buffers' addresses: another run, other keys).
+    uint64_t sequence = 14695981039346656037ull;
+    uint32_t sequence_captures = 0;
+    std::vector<uint64_t> keys_seen;
+    const auto key_order = [&keys_seen](uint64_t key) -> uint64_t {
+      const auto found = std::ranges::find(keys_seen, key);
+      if (found != keys_seen.end()) return static_cast<uint64_t>(found - keys_seen.begin());
+      keys_seen.push_back(key);
+      return keys_seen.size() - 1;
+    };
+    const auto capture = [&](const core::SceneShader& shader) {
+      core::internal::Capture(command, shader);
+      const std::unique_lock lock(runtime.mutex);
+      std::vector<uint64_t> values = {key_order(runtime.last_key), runtime.main_view_frame, uint64_t{runtime.objects.context == immediate.Get()},
+                                      runtime.captures.size(), runtime.captured_keys.size(), uint64_t{runtime.captured_keys.contains(runtime.last_key)},
+                                      runtime.drawn.size(), runtime.short_keys.size(), runtime.captured_vertices};
+      for (const auto& captured : runtime.captures) values.insert(values.end(), {key_order(captured.key), captured.first_vertex, captured.vertex_count, captured.flags});
+      for (const uint64_t value : values) sequence = (sequence ^ value) * 1099511628211ull;
+      ++sequence_captures;
+    };
     const auto fnv = [](std::initializer_list<uint64_t> values) {
       uint64_t key = 14695981039346656037ull;
       for (const uint64_t value : values) key = (key ^ value) * 1099511628211ull;
@@ -724,7 +750,7 @@ int main() {
       runtime.last_key = 0;
     }
     bind(vertices.Get());
-    core::internal::Capture(command, rigid);
+    capture(rigid);
     const bool rigid_keyed = last_key() == rigid_key && moving_buffer == indices.Get() && moving_offset == INDEX_OFFSET;
     bool short_learnt = false;
     {
@@ -736,7 +762,7 @@ int main() {
       runtime.known[rigid_key].frame = 0;
     }
     moving_buffer = nullptr;
-    core::internal::Capture(command, rigid);
+    capture(rigid);
     bool short_taken = false;
     {
       const std::unique_lock lock(runtime.mutex);
@@ -746,10 +772,10 @@ int main() {
     static constexpr std::array<uint8_t, 4> ROWS = {1, 2, 3, 4};
     const core::SceneShader rows = {.hash = 0x5EED0001, .rows_shader = ROWS};
     bind(dynamic_vertices.Get());
-    core::internal::Capture(command, rows);
+    capture(rows);
     const bool dynamic_keyed = last_key() == full_key(rows.hash, dynamic_vertices.Get(), false);
     bind(vertices.Get());
-    core::internal::Capture(command, rows);
+    capture(rows);
     const bool placed_keyed = last_key() == full_key(rows.hash, vertices.Get(), true);
     // Meshes with a cut-out version and their mask at t0: a static one's key takes the mask only where the game's shadow
     // pass alpha-tests its texture (looked up in the scene's lock), first not, then so; a placed one known, its texture
@@ -770,14 +796,14 @@ int main() {
     static constexpr std::array<uint8_t, 4> CUT_OUT = {5, 6, 7, 8};
     immediate->PSSetShaderResources(0, 1, mask_view.GetAddressOf());
     const core::SceneShader solid_static = {.hash = 0x5EED0002, .cut_out_shader = CUT_OUT};
-    core::internal::Capture(command, solid_static);
+    capture(solid_static);
     const bool solid_keyed = last_key() == full_key(solid_static.hash, vertices.Get(), false);
     {
       const std::unique_lock lock(runtime.mutex);
       runtime.cut_out_textures.insert(mask_texture.Get());
     }
     const core::SceneShader cut_out_static = {.hash = 0x5EED0003, .cut_out_shader = CUT_OUT};
-    core::internal::Capture(command, cut_out_static);
+    capture(cut_out_static);
     const bool cut_out_keyed = last_key() == full_key(cut_out_static.hash, vertices.Get(), false, mask_view.Get());
     const core::SceneShader cut_out_placed = {.hash = 0x5EED0004, .rows_shader = ROWS, .cut_out_shader = CUT_OUT};
     const uint64_t cut_out_placed_key = full_key(cut_out_placed.hash, vertices.Get(), true, mask_view.Get());
@@ -785,7 +811,7 @@ int main() {
       const std::unique_lock lock(runtime.mutex);
       runtime.known[cut_out_placed_key] = {};
     }
-    core::internal::Capture(command, cut_out_placed);
+    capture(cut_out_placed);
     bool cut_out_placed_counted = false;
     {
       const std::unique_lock lock(runtime.mutex);
@@ -796,16 +822,20 @@ int main() {
     immediate->PSSetShaderResources(0, 1, &no_view);
     // A new static draw into the main view's depth (the bridge's size), its camera at b0: its capture prepares the device,
     // the next takes the cached one; the frame's room full, both stop before drawing.
-    const auto depth = [&] {
+    // A depth of `slices` (more than one: a cascades' array).
+    const auto depth_of = [&](UINT width, UINT height, UINT slices) {
       ComPtr<ID3D11Texture2D> texture;
-      const D3D11_TEXTURE2D_DESC desc = {.Width = 64, .Height = 32, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_D32_FLOAT,
+      const D3D11_TEXTURE2D_DESC desc = {.Width = width, .Height = height, .MipLevels = 1, .ArraySize = slices, .Format = DXGI_FORMAT_D32_FLOAT,
                                          .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_DEPTH_STENCIL};
+      D3D11_DEPTH_STENCIL_VIEW_DESC view_desc = {.Format = DXGI_FORMAT_D32_FLOAT, .ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY};
+      view_desc.Texture2DArray = {.MipSlice = 0, .FirstArraySlice = 0, .ArraySize = slices};
       ComPtr<ID3D11DepthStencilView> view;
       if (SUCCEEDED(device->CreateTexture2D(&desc, nullptr, texture.GetAddressOf()))) {
-        device->CreateDepthStencilView(texture.Get(), nullptr, view.GetAddressOf());
+        device->CreateDepthStencilView(texture.Get(), (slices == 1) ? nullptr : &view_desc, view.GetAddressOf());
       }
       return view;
-    }();
+    };
+    auto depth = depth_of(64, 32, 1);
     CHECK(depth);
     const auto kept_size = std::pair{bridge.width, bridge.height};
     bridge.width = 64;
@@ -823,11 +853,115 @@ int main() {
       const std::unique_lock lock(runtime.mutex);
       return runtime.objects.context;
     };
-    core::internal::Capture(command, fresh);
+    capture(fresh);
     const bool prepared = prepared_for() == immediate.Get();
-    core::internal::Capture(command, fresh);
+    capture(fresh);
     const bool still_prepared = prepared_for() == immediate.Get();
+    // The depth's description read once a view (the view held to the frame's end): the main view's again from it, a size
+    // change against it, a new view after the last one's only other holder let it go, a cascade's view and back, each
+    // rejected where the other's belongs. The main view's frame and the prepared context say how far a capture came.
+    CHECK(runtime.objects.depth_seen.view == depth);
+    // Did the capture pass the main view's test (its frame noted) / the cascade's (the device's context set again).
+    const auto main_passed = [&](const core::SceneShader& shader) {
+      {
+        const std::unique_lock lock(runtime.mutex);
+        runtime.main_view_frame = 0;
+      }
+      capture(shader);
+      const std::unique_lock lock(runtime.mutex);
+      return runtime.main_view_frame == runtime.frame;
+    };
+    const auto cascade_passed = [&](const core::SceneShader& shader) {
+      {
+        const std::unique_lock lock(runtime.mutex);
+        runtime.objects.context = nullptr;
+      }
+      capture(shader);
+      return prepared_for() == immediate.Get();
+    };
+    const bool same_view_passed = main_passed(fresh) && main_passed(fresh);
+    CHECK(runtime.objects.depth_seen.view == depth);
+    bridge.width = 32;
+    bridge.height = 16;
+    const bool resized_rejected = !main_passed(fresh);
+    bridge.width = 64;
+    bridge.height = 32;
+    const bool size_back_passed = main_passed(fresh);
+    const auto second_depth = depth_of(64, 32, 1);
+    CHECK(second_depth);
+    immediate->OMSetRenderTargets(0, nullptr, second_depth.Get());
+    depth.Reset();  // the held view's last holder: replaced (and released) at the next capture
+    const bool new_view_passed = main_passed(fresh);
+    CHECK(runtime.objects.depth_seen.view == second_depth);
+    static constexpr std::array<uint8_t, 1> KEEP = {1};
+    const core::SceneShader cascade = {.hash = 0x0CA5CADE, .cascade_keep = KEEP};
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.settings.casters_out_of_view = true;
+    }
+    const auto cascade_depth = depth_of(32, 32, 4);
+    CHECK(cascade_depth);
+    const bool cascade_into_main_rejected = !cascade_passed(cascade);
+    immediate->OMSetRenderTargets(0, nullptr, cascade_depth.Get());
+    const bool cascade_view_passed = cascade_passed(cascade);
+    CHECK(runtime.objects.depth_seen.view == cascade_depth);
+    const bool main_into_cascade_rejected = !main_passed(fresh);
+    immediate->OMSetRenderTargets(0, nullptr, second_depth.Get());
+    const bool back_to_main_passed = main_passed(fresh);
+    CHECK(runtime.objects.depth_seen.view == second_depth);
+    // With room: a new draw's triangles streamed out through the game's own vertex shader (its code kept, as OnInitPipeline
+    // keeps it), its capture in the frame's list with its key; the same draw again only finds that key.
+    constexpr char STREAMED_VS[] = "float4 main(float4 position : POSITION) : SV_Position { return position; }";
+    ComPtr<ID3DBlob> streamed_code;
+    CHECK(SUCCEEDED(D3DCompile(STREAMED_VS, sizeof(STREAMED_VS) - 1, nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, &streamed_code, nullptr)));
+    ComPtr<ID3D11VertexShader> streamed_shader;
+    ComPtr<ID3D11InputLayout> streamed_layout;
+    const D3D11_INPUT_ELEMENT_DESC streamed_element = {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0};
+    CHECK(SUCCEEDED(device->CreateVertexShader(streamed_code->GetBufferPointer(), streamed_code->GetBufferSize(), nullptr, &streamed_shader)));
+    CHECK(SUCCEEDED(device->CreateInputLayout(&streamed_element, 1, streamed_code->GetBufferPointer(), streamed_code->GetBufferSize(), &streamed_layout)));
+    const core::SceneShader streamed = {.hash = 0x57EA4ED0};
+    {
+      const std::unique_lock lock(runtime.mutex);
+      const auto* code = static_cast<const uint8_t*>(streamed_code->GetBufferPointer());
+      core::internal::game_code[streamed.hash].assign(code, code + streamed_code->GetBufferSize());
+      runtime.captured_vertices = 0;
+      runtime.captures.clear();
+      runtime.slices.clear();
+      runtime.captured_keys.clear();
+    }
+    immediate->VSSetShader(streamed_shader.Get(), nullptr, 0);
+    immediate->IASetInputLayout(streamed_layout.Get());
+    const auto captured = [&] {
+      const std::unique_lock lock(runtime.mutex);
+      return runtime.captures.size() == 1 && runtime.captures[0].key == runtime.last_key && runtime.captures[0].vertex_count == 36 * 3
+             && runtime.captured_keys.size() == 1 && runtime.captured_keys.contains(runtime.last_key) && runtime.captured_vertices == 36 * 3;
+    };
+    capture(streamed);
+    const bool captured_once = captured();
+    capture(streamed);
+    const bool captured_key_found = captured();
+    immediate->VSSetShader(nullptr, nullptr, 0);
+    immediate->IASetInputLayout(nullptr);
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.captured_vertices = core::internal::MAX_VERTICES;
+      runtime.settings.casters_out_of_view = false;
+    }
+    std::printf("5 the depth read once a view: the same view's again %d, the main size changed %d and back %d, a new view %d, a cascade's into the "
+                "main depth %d, into its own %d, the main view into the cascade's %d and back %d; with room captured once %d, again its key found %d\n",
+                same_view_passed, resized_rejected, size_back_passed, new_view_passed, cascade_into_main_rejected, cascade_view_passed,
+                main_into_cascade_rejected, back_to_main_passed, captured_once, captured_key_found);
+    CHECK(same_view_passed && resized_rejected && size_back_passed && new_view_passed && cascade_into_main_rejected && cascade_view_passed);
+    CHECK(main_into_cascade_rejected && back_to_main_passed && captured_once && captured_key_found);
+    std::printf("5 sequence %016llX over %u captures\n", static_cast<unsigned long long>(sequence), sequence_captures);
     const size_t check_lines = std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("State check") != std::string::npos; });
+    // CONTROL: the description held differs from the view's (a held view's never does): the state check logs it once.
+    log_lines.clear();
+    runtime.objects.depth_seen.desc.Width += 1;
+    capture(fresh);
+    const bool depth_control_logged = std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("the depth's description read once differs") != std::string::npos; }) == 1;
+    std::printf("5 CONTROL the depth's description held differs: logged %d\n", depth_control_logged);
+    CHECK(depth_control_logged);
     // CONTROL: a vertex buffer bound between two reads of one draw.
     log_lines.clear();
     {
