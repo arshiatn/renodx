@@ -3552,6 +3552,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         1.1 % below 1.1x, medians 1.3-1.9x at 64-255); 12_ = alternative to 1_'s one-thread loop; strict controls (CPAR,
         CSUMHI, exact exit codes); hsC strict regex. HSORT CLOSED for the bench. Zombie processes (0 CPU, 0 MB): 7 Attila
         (11-13), 5 hsg0_bench, 1 pass_timing; gone at ATN's restart.
+        er2s_ DONE 18:25 -> night1118/review_ec4s_b.md: ES8c-x MERGE (site, dead eax / ecx / edx / flags, every load bounded,
+        ProtectCode diagnosis reproduced: CONTROL mutant 2 made the game's writer store through a stale pointer); probe build
+        MERGE AFTER FIXES: F3 Medium the ready-check probe reads children when the list's flag is clear (fault risk in a
+        bench run) -> add the flag test; Lows F1 comment, F2 CHECK VirtualProtect, F4 note, F5 counter wrap, F6 probe page
+        RX; nits. Into the engine fix round with cr8s_'s Lows after er1s_.
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
