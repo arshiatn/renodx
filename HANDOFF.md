@@ -3337,6 +3337,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         Reviews STARTED 11:48 in parallel (read only, no builds / test exes during the runs): cr7s_ (Sonnet xHigh,
         ci7_'s commit), fe3s_ (Sonnet xHigh, final independent E3P-b/c/d review on the bytes + EVEC design lines),
         fe3o_ (Opus xHigh, end-of-batch source-level E3P review; a stop = that path ends, Sonnet's stands).
+        SANITY RUNS: run 1 day1 CRASHED 11:46:06 at load (37 s, 0 frames): heapfix EXCEPTION 0xC0000005 in
+        XAudio2_7.dll+0x4BBE5 (movaps [edi+ecx*4] = write to 0: a null mix buffer), its own mixing thread; dump
+        runs/sanity_day1_wpr_cpu_114257/1_sanity1118/new_game_files/crash_20261118_114606.dmp; no RenoDX / engine stub
+        on that thread; first xaudio2 exception in every bench run; 11 s after Keep Render Core Free's first apply
+        (155 threads given the 14 worker CPUs, 3 left alone; its first game run ever). Restores clean. Run 2 stress own
+        camera VALID (sanity_stress_wpr_cpu_114633, 401 presents in the window), run 3 stress Y:6 VALID
+        (sanity_ground_wpr_cpu_115045, 298, sort count CSV); a reviewer's python at ~1.6 cores during run 3 (mechanism
+        runs, not A/B). Locks released 11:54. RERUN of day1 (same set) STARTED 11:55 (sanity_day1b): a second XAudio2
+        crash -> Keep Render Core Free's thread choice is the suspect (it moves third-party threads too: XAudio2, EOS,
+        Steam): fix idea = only threads that start in Attila.exe / empire.retail.dll.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
