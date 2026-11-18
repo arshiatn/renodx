@@ -1,5 +1,42 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Faster Effect Prefetch (2026-11-17; offline only, not stamped, not installed, not run in game)
+
+- New: **Faster Effect Prefetch (Experimental, off)**, under Graphics (Experimental): while the game sums its effect tree
+  (the children of an effect, one call each), it asks the memory for the child two steps ahead. Only a prefetch of an
+  address inside the list as it is right then: no fault, nothing else changes, every result the game's. Gain only where the
+  per-child call has real work (harness, cold children: 45.7 -> 33.3 ns with 40 cycles of work; with a plain getter no gain,
+  a few % slower); the game's own getters are not known yet, so this may do nothing. Test (ATN): stress with the row on
+  against off; ReShade.log "Faster Effect Prefetch: on"; keep it off if there is no gain.
+
+## Dev, Faster Game CPU Code: sprite row builder (2026-11-17; offline only, not stamped, not installed, not run in game)
+
+- Faster: **Faster Game CPU Code** (on by default) has one more routine on Attila and Thrones of Britannia: the sprite soldiers'
+  row builder converts 20 floats to half floats with 20 calls; now four at a time with the game's own rounding, the
+  same bytes in the rows. Special values (infinities, NaN, half denormals, overflow) and any overlap of the row with its
+  inputs run the game's code. Tested against the game's DLL in `test/tw_engine_code` part 11 (every one of the 2^32 float bit
+  patterns in all 18 float lanes at once, and one lane at a time with the others random; 2 M random calls, every pointer
+  overlap around the checks' edges, the SSE and x87 control state in all 16 rounding / DAZ / FTZ modes, faults at page edges,
+  the whole row builder on random instance data, 200 on / off switches under 4 threads; found by its exact bytes including
+  the loop around it): 68.1 -> 51.6 ns a call in the harness against today's
+  single-call stub (73.5 for the game's code; the harness's own entry and copy cost is inside all three). Estimated:
+  -0.4..-0.6 ms of the render thread in a big battle.
+
+## Dev, Faster Job Wake-Ups (2026-11-17; built only, not stamped, not installed, not run in game)
+
+- New: **Faster Job Wake-Ups (Experimental, off)**, under Graphics (Experimental): when the game hands its helper threads
+  new work, one sleeping helper wakes the others instead of the main thread waking all ~15 one by one (65 us a call,
+  33-38 calls a frame in a battle, 2.5-2.8 ms of the main thread). Every helper still gets the game's own wake after
+  every request; the semaphores and the helpers' loop stay the game's code. Off: the game's bytes back at once.
+  Checked in `test/tw_engine_code` part 10 on the game's own functions (state equal after one thread's calls, registers kept,
+  24-helper soak with every item once and every wake's postcondition, the row switched 200 times during a soak, 600
+  shutdown cycles, a wake-up thread held inside its loop while the helpers are destroyed (the destruction waits for it,
+  up to about 3 s), 33 helpers, broken stubs caught) and a model check of the protocol.
+- Test (ATN): a big battle with the row on: ReShade.log "Faster Job Wake-Ups: on" (a warning "left alone" instead: another
+  mod changed those bytes); FPS and Time Each Pass against off; the battle plays as before, no freeze when the battle ends
+  or the game quits. Bench: stress, night1, Constantinople, one WPR each (`SetEvent` under the main thread should drop by
+  most of 2.5 ms).
+
 ## Dev, tw1_ and shared rounds (2026-11-17; built only, not stamped, not installed, not run in game)
 
 - New: **Path-Traced Reflection Occlusion** (on, slider 0..1): with Path-Traced Ambient, reflections darken where

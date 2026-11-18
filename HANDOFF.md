@@ -364,6 +364,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - B4G THRESHOLD (hb6_ 20:1x): B4 already threaded only lists >= 32768, so B4G diff ... | coordinator (next run batch)
 - HEAPFIX NOTES 2 (hb6_ 20:1x, for the author zip): heapfix's x87 watch turned its ... | coordinator (author_notes_3)
 - CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ATN
+- E3P other sites / EVEC NOT DONE (designs only, designs/evec_e3p_design.md): 0x18 ... | ATN (go for one data run)
 - CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V ... | coordinator
 - C: B3 / CLASSIFIER (21:3x: ATN "Then do it. You are allowed to": the coordinator ... | ?
 - C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GP ... | ?
@@ -389,7 +390,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BAKE POOL POISON TEST (ssr_ S1 kept the GPU micromap bake's transient pools acro ... | next helper round
 - REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our ... | next helper round (measure first)
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
-- EJOB-FORK CHECKS (ATN 23:3x: ATN's other session finished: local branch ejob-for ... | coordinator
+- NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
 - M1 SHARED WRITER-TOKEN HELPER (apr_ review): APIPE's pipeline.hpp writer-token p ... | High implementer (utils)
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
@@ -2629,6 +2630,68 @@ heading text are in HANDOFF_ARCHIVE.md)
         auto-reset re-checked; caller counts match. Finished model runs passed (orig 12 configs, design 3, d2 = one loop
         per delegate + delegate as fallback 3, d2 + toggle 2), controls failed as they should. ATN takes B7 / B5 / E3P /
         EVEC to ChatGPT (folder in Downloads). Owner: ATN
+      - [x] EJOB IMPLEMENTED 21:xx (ATN gave Downloads\Attila_CPU_for_ChatGPT, "I think it was half done"; offline only: no
+        game run, not benched, not installed, no stamp): Faster Job Wake-Ups = a 4th engine_code row on Attila
+        (Experimental, off; Update's 4th argument, key FasterJobWakeUps), design d2 (designs/job_wakeups_final.md): WakeAll
+        wakes one sleeping worker and that worker runs the game's WakeAll loop; sites WakeAll (5 bytes), Sleep (whole) and the
+        worker destructor's call of Stop; 285-byte stub (asm source test/tw_engine_code/stubs/job_wakeups.s) + a 256-byte side table; engine_code.hpp
+        section 6, test/tw_engine_code part 10 (the game's own functions: state equal after WakeAll / Sleep / the
+        destructor, registers kept, 24-worker soak x2 copies about 3 M items each, row toggled 200x during a soak, 600
+        shutdown cycles with decommitted worker pages, 33 workers, CONTROL caught, WakeAll 14 us -> 1 us with 15 asleep),
+        model check d2 passes (controls fail), Attila + Thrones DLLs. 2026-11-18 Sonnet 5.5 xhigh review (ejob_review3):
+        found one real fault (a delegate preempted inside its loop for longer than Stop's wait, 4 M pauses = 49 ms, then
+        wakes freed workers) and fixed it: Stop' now waits up to 2^28 pauses (about 3 s, 0.8 to 9 s by CPU), the wait runs
+        only while a delegate runs, Sleep' reads the worker array only below the pool's size, a request that finds its
+        head gone is taken by the delegate itself; stub 285 bytes; part 10e2 holds a delegate suspended in its loop while
+        2 to 16 workers are destroyed (no fault, the Stops wait), 10e3 is the control (the old 4 M bound: 7 of 8 runs fault). Builds: twattila x86 OK. Thrones / Rome II addons
+        still pass jobs = false (Thrones has the same bytes: add its row later). NOT proven: the in-game gain (-1.9..-2.2 ms
+        E; the head worker waking the others starts them 5-15 us later). Left: ATN's go for the bench (V1 + the row on:
+        stress, night1, day1, one WPR), then the default decision. Owner: ATN (go), coordinator (bench)
+      - [x] EHALF IMPLEMENTED 2026-11-17 22:xx (branch ejob-fork, worktree D:\Dev\renodx-ejob, local commit only; offline: no
+        game run, not benched, not installed, no stamp): a 9th site of Faster Game CPU Code, "half rows" (CPU_CODE_SITES
+        bit 8, Attila +0x1907511 and Thrones +0x197d841, Rome II none): the region from the row builder's first float to half
+        call to the one after the last (+0x1907511 .. +0x19077e2, 726 pattern bytes, 20 calls; the loop's head (174 bytes
+        before) and bottom with the exit (35 bytes after) held to exact bytes too) done four floats at a time in
+        SSE2 with the game's integer rounding; the vector path only when all 20 floats are zero, tiny or normal and no store of
+        the row can reach an input (five range checks), else the game's code (fallback = the replaced 5 bytes, then the game);
+        the last float is converted by a real call of the game's function (eax / ecx exact, edx kept in xmm3 and put back); the
+        game's own store of the last half after the region is kept. Not byte-exact in: the stack from 0x50 bytes below the
+        frame up to the frame (the half function's frames and the 16 pushed argument slots), xmm1-7, the flags with the half
+        function's stub in (all dead), the first fault address and the game's partial half stores when the source pointer is
+        bad, and no live object may lie on the dead stack below the frame. engine_code.hpp section 7, test part 11: 2 M random
+        calls, all pointer overlaps around the check edges (5 kinds), every 2^32 bit pattern in all 18 float lanes at once
+        (11c), 200 switches under 4 threads; Attila + Thrones full length PASS (review ehr_ findings 2-7 fixed). 2026-11-18
+        reviews: Opus (ehalf_review2, read only: head / tail not in the pattern, memory-below-esp wording, tests proposed)
+        and Sonnet 5.5 xhigh (ehalf_review3, ran everything: no defect that changes results; found part 11c's old "17 a
+        call" run never took the vector path, so it is gone): fixed = head + tail pinned, comments, PausedWrite leaves a site
+        whose bytes changed since Prepare (and the sites that depend on it: the job trio, the half rows after the half
+        function), new test files half_rows_adversarial.inc + row_builder_call.inc (MXCSR 16 modes + x87 + flags, faults at
+        page edges, dead stack, one lane at a time with the others random, the whole row builder on random instance data,
+        pointer soup, a refused PausedWrite, 4 threads); part 13 tests the foreign bytes. Not done: the 20th lane's class
+        check (a speed-up only). Harness region 68.1 -> 51.6 ns against today's single-call
+        stub (73.5 for the game's code; the harness's entry / copy cost is inside all three). NOT proven: the in-game gain
+        (-0.4..-0.6 ms render, 4-6 ms workers). Owner: ATN
+      - [x] E3P site 0x1890b90 IMPLEMENTED 2026-11-17 23:xx (ejob-fork, local; offline only): "Faster Effect Prefetch
+        (Experimental, off)" = a 10th site (PREFETCH_SITES bit 9, key FasterEffectPrefetch, Update's 5th argument; Attila
+        addon row only, Thrones has the same function at 0x1905ef0 but no row, Rome II none): in the effect tree's child sum
+        (sum += child->vtable[7]() over [this+0x68], [this+0x64] items) the loop's bottom prefetches the child after the next
+        one, only when that slot's 4 bytes [esi + 4, esi + 8) lie wholly inside [begin, end), no wrap (the load is inside the
+        live vector; a prefetch never faults; Opus review e3p_review2 hardened the first bound: any esi alignment, esi + 8
+        wrap). Exact: only eax differs (dead), flags / ecx / edx / esp / memory equal; the one assumption: size * 4 bytes of
+        the vector are committed after every call. Test part 12: 400 k random trees with getters that truncate / grow / shrink
+        the list mid-loop (no-access page after the data), 1 M loop-bottom runs, esi at every byte around a vector ending at a
+        no-access page (682 k) and esi + 8 wrapping, a parked thread at every byte of the site, 200 switches under 4 threads.
+        Harness timing (cold children): plain getter 9.4 -> 9.6 ns a child (no gain: the core overlaps the misses; the
+        reviewer measured a 2-10 % LOSS and thinks the profile points at plain getters), a getter busy 40 cycles 45.7 -> 33.3,
+        busy 150 cycles 102 -> 54: it pays only when the getters have real work. NOT proven: the real getters' weight (the plan
+        has this function at 1.57 ms stress, 0.22 night1). Bench: row on / off in stress; leave it off if there is no gain.
+        Owner: ATN (bench go)
+      - [ ] E3P other sites / EVEC NOT DONE (designs only, designs/evec_e3p_design.md): 0x18960d0 / 0x1893470 / 0x1840520 /
+        0x1829c50 are particle emitter code (RNG calls, x87 results) whose caller's emitter loop was not found statically
+        (the prefetch must sit there, not in 0x1892960, whose loop is a time-step loop on one emitter); EVEC's vector (the loop
+        body at 0x17b84a0 of the function at 0x17b83a0, no direct reference to it) has no located reset site and a
+        keep-the-buffer patch is not exact in the allocator: both need one data run (ETW stall attribution of the emitter
+        update, a one-frame trace of 0x17b83a0). Owner: ATN (go for one data run)
       - [ ] CPU PLAN 2 END: one xHigh review of B1-B5 merged, then the bench (Low runner): V0-V4 stress / night1 x3, day1 x2,
         sea1 x2, WPR stress / night1 / a new day1 (no sea1 WPR: GPU-bound). Owner: coordinator
       - [x] ANSWERED 19:0x (ATN: "Sure but don't forget plannings and the reviews") C: EJOB: may we change the game's job-semaphore protocol (spin-then-sleep, SetEvent only when a worker
@@ -2969,7 +3032,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         design: LOD build (load time, VRAM for both), wind sway on the LOD, transitions without popping (no temporal
         dither: DLSS smears it), shadow mismatch with the raster mesh (leaks / acne), the link to WH3's far tree shadow
         flicker. Look-risk -> Experimental, off. Owner: after L1 clusters (same design round)
-      - [ ] EJOB-FORK CHECKS (ATN 23:3x: ATN's other session finished: local branch ejob-fork = EJOB 65ee50591 + EHALF
+      - [x] EJOB-FORK CHECKS DONE 01:0x: ejob-fork e93c3792e MERGED into atn-mods (no conflicts) after ATN's other
+        session's per-item reviews (E3P Opus; EJOB + EHALF Sonnet xHigh after Opus stops; adversarial tests in the repo;
+        plan_1117/reviews_response_1118.md) and their fixes (E3P load bound without wrap / alignment, EJOB Stop waits for a
+        preempted delegate, EHALF loop head + tail pinned, PausedWrite leaves another mod's bytes); coordinator at merge:
+        gated x86 all + amd64 all exit 0, tw_engine_code x86 FULL PASS on Attila, Thrones and Rome II. My own E3P review
+        not needed (ATN 01:xx: reports first; an independent review comes after the new E3P sites + EVEC). ejb_'s 10
+        links removed by the coordinator on ATN's go, its branch deleted (folder locked by the app, no links left).
+        Was: EJOB-FORK CHECKS (ATN 23:3x: ATN's other session finished: local branch ejob-fork = EJOB 65ee50591 + EHALF
         0fd36c01d (all 20 conversions four at a time, Attila + Thrones; harness 73.5 -> 51.6 ns a call; all 2^32 floats
         on Attila) + docs 2f5703ae3 (README + HANDOFF: conflicts with ours at merge); E3P / EVEC design notes only. ATN:
         separate agents, one at a time, so one stop does not take the others): (1) ehr_ xHigh EHALF review STARTED
@@ -3014,6 +3084,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         extra setup) + the WPR one-frame trace EVEC needs. The other session does NOT stamp / install / bench (one
         installer only: two would overwrite builds and backups in ATN's Attila folder). EVEC skipped. A stop = final for
         that item only. Owner: coordinator
+      - [ ] NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-fork merged; (2) TWO GAME RUNS
+        with WPR (ATN's go for these two): day1 with the usual move behind the units, and stress_test_log2 zoomed onto
+        the ground (more grass); both with the new CPU rows on (Faster Game CPU Code, Faster Job Wake-Ups, Faster Effect
+        Prefetch, Skip the Game's Shadow Map Work, bind cache), heapfix B4G (F7DCD23F: P + the size-gated threaded sort =
+        the author zip's patches 1 + 2; ATN's P 8e8fa96a restored after), every slider of the unit / object / building /
+        campaign detail table above the grass maxed + the 3 grass sliders maxed (Sprites + Big Battle Fix stay off);
+        fresh backups, restore by hash; (3) one Opus xHigh analyst per run (both at once; job wake-ups + Windows TLS out
+        of scope); (4) one Opus xHigh plan; one Opus High implementer per item, one at a time (E3P's other sites 0x18960d0
+        / 0x1893470 + 0x1840520 / 0x1829c50, EVEC, new finds); a safety stop on an item = ONE Sonnet xHigh retry of that
+        item's plan + implementation (ATN's go), a second stop ends it; Opus xHigh review per item (Sonnet xHigh where
+        Opus was stopped); (5) independent final review of E3P + EVEC: Opus xHigh for items without a stop, Sonnet
+        xHigh for items with one; (6) the minimum CPU bench at the very end (rows on / off, freezes / crashes); (7)
+        heapfix-related finds into the author's notes / zip. Carried from the other session (open): EHALF 20th-lane
+        check (speed only, needs its own test). GPU line in parallel: pdi1_ (PT DI steps 0 + 1) running. Owner: coordinator
       - [ ] TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started as `powershell -File ...
         -Env $array` (rbk_'s first batch, renamed nsight\runs\rbkpre_*, was level 5 only): accept one ;-separated
         string or fail loudly on more than one entry; check other agents' multi-Env runs; (b) runners must start the
