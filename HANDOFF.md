@@ -401,6 +401,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - WH3 RR GUIDES CHECK (s0_report.md 6): 76 % of WH3 forest pixels have guide albed ... | next WH3 round
 - CR4 FOLLOW-UPS (review_ci4s.md): M1 emitters 0 / 1 of every effect never prefetc ... | after the final bench
 - CR5 BEFORE THE BENCH (review_ci5.md): M1 site 8 stub -> the per-slot K|K/2 form ... | the engine_code implementer after ci6_ (EF4b), before the fi
+- EF4b REST (ci6_report.md): 0x442360 (~28 float4 reloads in 7 four-row blocks, 8 ... | next CPU round
 - TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
 - DAY1 MAXED GPU LEVERS (gpo1_ / cpa1_): day1 maxed behind the units is GPU-bound ... | coordinator (GPU line)
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
@@ -3285,6 +3286,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         3 on lists of 5 -> the per-slot K|K/2 form (48 B, 0xC00..0xC2F) BEFORE the bench; ci6_ told 09:26 to place
         its stubs from 0xC40. L3: 6aa51b903's message "best or within 1 ns in every cold row" is false (40/32 20.2 vs
         K=8|4 15.8; 40/128 18.9 vs 12.3; 0/8 8.1 vs the game 6.8). MERGED 9bdd8cbfe (gated x86 3 targets 09:26 exit 0, PUSHED 09:27; ci5_'s 11 links removed alone).
+        ci6_ (Opus High, NO stop) DONE ~10:2x -> night1118/ci6_report.md: 85226bef8 + bfd282a7c EF4b, sites 14-16
+        soldier draw matrix rows (disp32, 47-byte stubs; Rome II its own pattern) + 17-19 matrix product rows (whole
+        705-byte function, all three games) in Faster Game CPU Code; part 17 (1 M + 65,600 specials a site, 17c both ways
+        both copies 200 k, 17i 400 k whole-function calls: 0 not equal); harness soldier 24.8 -> 19.3 / 21.5 -> 14.7 ns,
+        24 matrix products 323 -> 170 ns; full x86 PASS 3 DLLs (one Thrones part 9 allocation flake, rerun PASS).
+        LEFT OUT: 0x442360 (needs > 32 site bits), 0x1696820 (movaps into xmm1 / xmm4). STARTED 10:44: cr6_ Opus
+        xHigh review + ci7_ Opus High = CR5 before the bench (site 8 per-slot form, part 12 CONTROLs, 15f warm-up,
+        nits) + the part 9 flake, on bfd282a7c.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
@@ -3335,6 +3344,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         exact by the one-slot argument twice) or lists of 2-6 in 12c and decide on data; L1 part 12 CONTROLs (two
         mutant copies in 12b, no-jc under __try in the wrap loop); L2 15f hot warm-up / median; nits N1-N6. Owner: the
         engine_code implementer after ci6_ (EF4b), before the final bench
+      - [ ] EF4b REST (ci6_report.md): 0x442360 (~28 float4 reloads in 7 four-row blocks, 8 measured ~4.4 ms summed
+        workers): widen the site masks past 32 bits first; 0x1696820 (movaps into xmm1 / xmm4, ~0.6 ms summed): a
+        register-parameter stub + an alignment-fault argument. Owner: next CPU round
       - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
         0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
         drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
