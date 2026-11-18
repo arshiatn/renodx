@@ -3519,6 +3519,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         with another RT row) + a later lean SO-alone path: rtso1_ (Opus High) STARTED 17:57. Subagent permission prompts
         waited for ATN while away (3 approved ~17:5x): cr8s_ / ec4s_ / hl1s_ / hsr1s_ ran 3-4 h. ATN asked about a PC restart
         after the agents + reviews (dead threads, app update): OK then; copy the scratchpad first.
+        hsr1s_ DONE (ran 3.4 h: waited on permission prompts) -> heapfix/hsr1s_review.md: hs SHIP AFTER FIXES (exact: 0 differ
+        over ~480,000 lists, poisoned-table check, 11 columns), hsC USE AFTER FIXES. NOT 'never slower than P': medians
+        1.2-1.9x, but 1-2 % of memory placements below 1.1x and a few below 1.0x (min 0.63 / 0.69); the note's shares were
+        Constantinople, in the battle 4,096+ lists carry ~1/5 of the sort time at 1.13-1.3x; 12_ is an alternative to 1_
+        (same sortfix.c); proof controls too loose; hsC regex. Note / proof / json fixes to hs1s_ 18:03 (no DLL change).
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
