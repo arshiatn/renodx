@@ -3464,6 +3464,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         thread, 69.5 -> 20.7 4 threads; tw_scrub_lods x86 + amd64 PASS) + 57bf20b2b APT (stamps made 1,000 a present
         before the timed frame; MAX_COMMANDS 40k -> 100k; NEVER RUN, no test); gated x86 11 + amd64 15 targets exit 0.
         Review ar5o_ (Opus xHigh) STARTED 14:21.
+        ia3_ DONE -> night1118/ia3_report.md: 80e0f4c5f MAPW-B (frame_trace.hpp: env RENODX_TW_MAP_TRACE=<s>[,<frames>],
+        maps / unmaps / updates / staging copies + draw index + shaders + stack callers; tools/tw/map_trace.py summary /
+        join with a capture's waits; WARP test x86 + amd64 PASS; gated x86 11 + amd64 16 exit 0; bench outputs +
+        tw_map_trace.txt). Review ar3o_ (Opus xHigh) STARTED 14:29 (first: stack scan bounded by the stack base?).
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
