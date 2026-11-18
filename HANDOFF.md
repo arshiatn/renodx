@@ -3324,6 +3324,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         bench/variants/sanity1118.json (night1118's set + KeepRenderCoreFree=1, heapfix Cnt 1b8ee435), scene cpu, WPR
         80,36, env HEAPFIX_SORTCOUNT_START=97 / LENGTH=36 (the counter's window = the WPR's, from DLL load); day1.replay
         IS the Constantinople siege (aa107f05): 2 runs = day1 (A x7 + S x2 keys) + stress (Y:6); both -DryRun OK.
+        hfp1_ (Opus xHigh author-items planner) STOPPED by a safety check 11:38 (response after a read-only Read of
+        tools/tw/heapfix/check_patch.sh; no plan delivered, its text withheld and not used). ONE Sonnet xHigh retry
+        hfp2s_ STARTED 11:38 (same brief; may reuse hfp1_scripts after checking them). A second stop = that path ends.
+        ci7_ waits on its part 9 flake repeat (old code 6 / 30 fail; fixed build 30 launches running).
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
