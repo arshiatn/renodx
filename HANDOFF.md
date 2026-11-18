@@ -402,6 +402,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CR4 FOLLOW-UPS (review_ci4s.md): M1 emitters 0 / 1 of every effect never prefetc ... | after the final bench
 - CR5 BEFORE THE BENCH (review_ci5.md): M1 site 8 stub -> the per-slot K|K/2 form ... | the engine_code implementer after ci6_ (EF4b), before the fi
 - EF4b REST (ci6_report.md): 0x442360 (~28 float4 reloads in 7 four-row blocks, 8 ... | next CPU round
+- ATN: RTSO (cpu_plan4_addon.md section 10): Specular Occlusion alone keeps the wh ... | ATN (pick), then a < 1 h implementer
 - ATN: SHOGUN 2 LIGHT FALLOFF CHECK (review_pdi1.md M2): bridge v32 / L1 gives Sho ... | ATN (later, not this week)
 - vMF DEFAULT 40 % (ATN 11:10): the Rough Diffuse slider's default 40 % when vMF S ... | vMF S4
 - TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
@@ -3404,6 +3405,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         5-15 % faster than P from 1k items (HSORT candidate, sent to cpl4s_). Review hcr1s_ (Sonnet xHigh) STARTED.
         hxr1s_ DONE -> heapfix/hxr1s_review.md: x87b SHIP AFTER FIXES (no code defect; all proofs re-run 0 differences;
         no branch / relocation into any block; guard negative path works); fixes sent back to hx1s_ 13:06.
+        hl1s_ DONE ~13:1x -> heapfix/hl1s_report.md: la16 43a85013 (K=16: anim loop 73.6 % of the game's in the harness),
+        hgl 15ec011c (gather sites A / B, K=16), plt1 48b9f794, la16b 0c94ae86 (two-level 64 %), la16bdbg d257e0f4 (RUN
+        WITHOUT the add-on: collides with passtime.c's hook), lf17 43375f72, la16hgl 7bc6b2e0, lfall d599a889 (all three
+        sites). Review hlr1s_ (Sonnet xHigh) STARTED. x87b round 2 DONE (hash unchanged ce976950; hfa no rebuild).
+        CPU PLAN 4 DONE ~13:4x: night1118/cpu_plan4_addon.md (cpl4o_: ARING, AOM, ACAP2, ALOCK, ASCR, APT, ASMT-T, MAPW-B
+        trace; ABR / ADISP / ALOD dropped; RTSO options for ATN) + cpu_plan4_engine.md (cpl4s_: the stalls are the FIRST
+        elements of short containers; EF4c-1, EVEC-F (not page faults: a store-forward chain), ES8c-x (sweep chain), a
+        probe build; HSG2 = parallel merges + sorts across lists (-2.5..-3.5 day1, -6..-8 stress, note + self-check only
+        this round); HSORT patch). ci8s_ DONE -> night1118/ci8s_report.md: bc5aeb89c (E3P-c 61 B two-stage + live-size
+        bound, own row Faster Emitter Prefetch, named indices, designated BUILDS; x86 full suites PASS 3 games).
+        STARTED 13:23 in parallel: cr8s_ (Sonnet xHigh, ci8s_ review); ec4s_ (Sonnet xHigh, worktree on bc5aeb89c:
+        EF4c-1 -> EVEC-F -> ES8c-x -> probe, one commit each, the only engine_code.hpp writer); add-on Opus High
+        worktrees on 90d7df1b5: ia1_ ASMT-T, ia2_ ARING + AOM, ia3_ MAPW-B trace (+ tw_map_trace.txt in the bench's
+        outputs), ia4_ ACAP2 + ALOCK, ia5_ ASCR + APT; hs1s_ (Sonnet xHigh heapfix: Cnt2 digit column, HSORT hs / hsC).
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
@@ -3457,6 +3472,10 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] EF4b REST (ci6_report.md): 0x442360 (~28 float4 reloads in 7 four-row blocks, 8 measured ~4.4 ms summed
         workers): widen the site masks past 32 bits first; 0x1696820 (movaps into xmm1 / xmm4, ~0.6 ms summed): a
         register-parameter stub + an alignment-fault argument. Owner: next CPU round
+      - [ ] ATN: RTSO (cpu_plan4_addon.md section 10): Specular Occlusion alone keeps the whole RT path on (day1 ~3 ms render,
+        ~7 ms helper GPU, 5 ms game GPU waits) when every other RT row is off; options A keep / B1 gate on any other RT row
+        / B2 gate on Reflections / C1 skip units / C2 no Ray Reconstruction / D tooltip only. Players with the RT/PT preset
+        unaffected. Numbers from the final bench's W1 (SO on) vs W2 (SO off). Owner: ATN (pick), then a < 1 h implementer
       - [ ] ATN: SHOGUN 2 LIGHT FALLOFF CHECK (review_pdi1.md M2): bridge v32 / L1 gives Shogun 2's lights the game's own
         linear falloff (paths / fog / glow x1.33 at a quarter of the reach, x2 at half, x4 at three quarters);
         RENODX_TW_SQUARED_FALLOFF=1 = the old look. Owner: ATN (later, not this week)
