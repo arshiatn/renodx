@@ -3229,7 +3229,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         pass; gated x86 exit 0. asr1_ RESUMED 06:52 for a re-check (repro + mutants on the new code).
         asr1_ re-check DONE ~07:0x -> review_asm1.md: MERGE (each fix right; repro + 3 mutants on the new code; nits:
         bad_alloc after give() leaves the render thread ours until Stop; static Win10 imports = the add-on needs Windows
-        10, accepted: HDR + the DLSS helper need it anyway). MERGED aa2e5cc4d (gated x86 3 targets running 07:03).
+        10, accepted: HDR + the DLSS helper need it anyway). MERGED aa2e5cc4d (gated x86 3 targets 07:03 exit 0, PUSHED 07:05; asm1_'s 9 links removed alone).
         ci3s_ DONE ~06:4x -> night1118/ci3s_report.md: c3adca196 CR1 fixes (L1 / L2 / N1 bswap tail 11 B / N2 / N3 / N4)
         + d6cef1f49 E3P-b (site 12 loop bottom Attila 0x1893883 / Thrones 0x1908be3, 50-byte stub at 0xB80, K = 2,
         Faster Effect Prefetch row; harness 162 -> 67 ns a particle at 300-cycle updates) on dfcf463d0; full x86
