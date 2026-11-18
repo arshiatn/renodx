@@ -3554,6 +3554,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         ar6o_ DONE -> night1118/review_rtso1.md: Ryse MERGE; TW commit MERGE AFTER FIXES: M1 Shogun 2's SO only acts with
         Ray-traced reflections (gate it there, no look change), L2 Shogun 2 Light Bounce at GI 0 runs the RT front end, L3 one
         launch-install policy (Expeditions / Tales / Divinity 2 still count raw SO), nits. Sent to rtso1_ 18:38.
+        rtso1_ round 3 DONE -> 04e87e256 (Shogun 2: SO needs Ray-traced reflections, GI rays only at strength > 0, one
+        any_rays) + 52270a599 (Expeditions / Divinity 2 install without raw SO; Tales kept: its rows aren't marked restart;
+        comments, READMEs); tw_native_context x86 + amd64 PASS; gated x86 3 + amd64 13 exit 0. Re-check ar6o_ STARTED 18:45;
+        merge rtso1_ after.
         alod1s_ DONE -> night1118/alod1s_report.md: ef56d926e ALOD-1x (at 1x at the first look: no detour, the game's PickLod;
         above 1x unchanged; a move off 1x in a game started at 1x applies after a restart + yellow note; no live install:
         Detours' ENLIST_EXISTING_THREADS can deadlock on the heap lock; tw_native_hook_lifetime x86 + amd64 PASS + 2
