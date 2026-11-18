@@ -1980,7 +1980,7 @@ void ConfigureAddon() {
           .default_value = 0.f,
           .label = "Faster Effect Prefetch (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "The game's effect update asks the memory for an effect object two steps ahead while it works on the current one.\n"
+          .tooltip = "The game's effect update asks the memory for the sub-effects and particles coming up next while it works on the current one.\n"
                      "May lower the CPU waiting in big battles. Same results.",
           .labels = {"Off", "On"},
       },
@@ -1991,7 +1991,7 @@ void ConfigureAddon() {
           .default_value = 0.f,
           .label = "Faster Emitter Prefetch (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "The game's effect update also asks the memory for its next two emitters, and what they read first, while it\n"
+          .tooltip = "The game's effect update asks the memory for the emitters coming up next, and for what they read first, while it\n"
                      "works on the current one. May lower the CPU waiting in big battles. Same results.",
           .labels = {"Off", "On"},
       },

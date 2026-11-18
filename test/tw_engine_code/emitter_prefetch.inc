@@ -119,7 +119,7 @@ __declspec(naked) void EmitterUpdate() {
   }
 }
 
-// The update of the timing: loads the emitter's words at +0x14, +0x48 and +0x70 (the real update reads and writes from +0x14 to +0x73: on every line of
+// The update of the timing: loads the emitter's words at +0x14, +0x48 and +0x70 (the real update reads and writes from +0x14 through +0x77: on every line of
 // the object) and its definition's word, then multiplies `emitter_busy` times (3 cycles each, dependent).
 uint32_t emitter_busy = 1;
 __declspec(naked) void EmitterUpdateBusy() {
@@ -466,6 +466,8 @@ int RunEmitterTests(const TestBuild& build, uint8_t* game, uint8_t* patched, boo
           run_one(count, live, esi);
         }
       }
+      // esi = 0xFFFFFFFE is the one value where `lea ecx, [esi + 2]` wraps to 0 (both bounds pass, slot K reads one slot below the array): the loop never has it
+      // (esi stays at or below the count, under 2^29), and no run here can show it, the page below the array being readable.
       for (uint32_t esi = 0xFFFFFFE0u; esi != 0; ++esi) run_one(count, count, esi);
       for (uint32_t esi = 0x7FFFFFF0u; esi < 0x80000010u; ++esi) run_one(count, count, esi);
     }

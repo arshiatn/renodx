@@ -4,7 +4,7 @@
 // instructions around two prefetch stages, K = 1 and K + 1 = 2 slots after the next emitter's (esi is the next emitter's index after the `inc`): it
 // loads the definition pointer ([emitter + 0x58], the stub's one real load) of the emitter in slot esi + K, whose lines the previous round prefetched,
 // and prefetches the definition's line; and it prefetches the lines at +0, +0x40 and +0x70 of the emitter in slot esi + K + 1 (the three lines the
-// emitter's first 0x74 bytes lie on). Both stages run behind one check of the slot esi + K + 1: below the count the loop runs to, and below the size
+// emitter's first 0x78 bytes lie on). Both stages run behind one check of the slot esi + K + 1: below the count the loop runs to, and below the size
 // the vector has right now ([container + 4]). edx and ecx are written, and both are dead there (the loop's top, the way out and the callee write or
 // never read them first); the flags the je tests are the game's cmp. The container comes from [esp + 0x20], the slot the game reloads ebx from.
 // The jump goes to the game's je (+0x18933d3), patched in Prepare.

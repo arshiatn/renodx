@@ -3529,6 +3529,17 @@ int main(int argc, char** argv) {
     std::printf("16. emitter loop prefetch: none in this build\n");
   }
 
+  // 16f. The Faster Effect Prefetch row and the Faster Emitter Prefetch row are independent in Update: each writes only its own sites (the child sum and the
+  // particle loop; the emitter loop), whatever the other is asked for.
+  if (build.code->child_sum_rva != 0 && build.code->particle_loop_rva != 0 && build.code->emitter_loop_rva != 0) {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, false);
+    CHECK((ec::written & ec::EMITTER_PREFETCH_BIT) == 0 && (ec::written & ec::PREFETCH_SITES) == ec::PREFETCH_SITES);
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, false, true);
+    CHECK((ec::written & ec::PREFETCH_SITES) == 0 && (ec::written & ec::EMITTER_PREFETCH_BIT) == ec::EMITTER_PREFETCH_BIT);
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
+    std::printf("16f. prefetch rows: the effect row alone writes the child sum and the particle loop, the emitter row alone the emitter loop\n");
+  }
+
   // 17. More float4 reloads (Faster Game CPU Code): the soldier draw's matrix rows and the matrix product (every build has both).
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
   if (const int failed = RunSoldierRowsTests(build, game, patched, quick); failed != 0) return failed;

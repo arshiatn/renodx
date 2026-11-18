@@ -16,6 +16,7 @@ $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.ex
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation
 $testBuild = if ($BuildFolder -ne '') { $BuildFolder } else { Join-Path $repairRoot "build\tw_engine_code_test_$Architecture" }
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
+$testBuild = (Resolve-Path -LiteralPath $testBuild).Path  # a relative -BuildFolder is relative to where the script was started, not to itself
 Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
 $defines = @('/DNOMINMAX', '/DWIN32=1')

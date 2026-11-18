@@ -907,11 +907,14 @@ constexpr std::array<uint8_t, 50> PARTICLE_PREFETCH_STUB = ParticlePrefetchStub(
 // (in 0x1840520, which the update calls with the emitter) among them.
 // The stub at the loop's bottom (the 5 bytes `inc esi; cmp esi, [esp + 0x34]`) works in two stages on the slots K =
 // EMITTER_PREFETCH_AHEAD and K + 1 after the next emitter's. It prefetches the lines at +0, +0x40 and +0x70 of the emitter
-// in slot K + 1 (the three lines of its first 0x74 bytes, where the update reads and writes from +0x14 to +0x73); and for
-// the emitter in slot K, whose lines the previous round prefetched, it loads the definition pointer [emitter + 0x58] and
-// prefetches the line of [definition + 0x2c] (the update reads +0x28 .. +0x34: one line unless the definition straddles
-// two). Both stages run behind one check of the slot K + 1: below the count the loop runs to, and below the size the
-// vector has right now ([container + 4]). A null slot K is skipped; a null slot K + 1 only sends prefetches to nowhere (a
+// in slot K + 1 (the three lines of its first 0x78 bytes, where the update reads and writes from +0x14 through +0x77; for
+// an 8-aligned object the line at +0x70 holds all of +0x70 .. +0x77); and for the emitter in slot K, whose lines the
+// previous round prefetched, it loads the definition pointer [emitter + 0x58] and prefetches the line of [definition +
+// 0x2c] (the update reads +0x28 .. +0x34: one line unless the definition straddles two). Both stages run behind one check
+// of the slot K + 1: below the count the loop runs to, and below the size the vector has right now ([container + 4]).
+// esi + K + 1 cannot wrap: esi never passes the count the loop started with, a vector's size under 2^29 (8 bytes a
+// slot); only at esi = 0xFFFFFFFF - K, which the loop never has, would K + 1 wrap to 0 and pass both bounds, and the slot
+// K read lie one slot below the array. A null slot K is skipped; a null slot K + 1 only sends prefetches to nowhere (a
 // prefetch never faults).
 // Same results: the stub writes ecx and edx, which are dead at the site. ecx: both ways on write it before they read it
 // (the loop's top `mov ecx, [ebx + 8]`, the way out `mov ecx, [edi + 0x18]`). edx: the update, which the loop's top calls,
@@ -1513,6 +1516,7 @@ constexpr uint32_t PARTICLE_PREFETCH_BIT = 1u << PARTICLE_PREFETCH_INDEX;
 constexpr uint32_t EMITTER_PREFETCH_BIT = 1u << EMITTER_PREFETCH_INDEX;  // Faster Emitter Prefetch: its own row
 constexpr uint32_t ENTRY_PREFETCH_BIT = 1u << ENTRY_PREFETCH_INDEX;      // Faster Particle Prefetch: its own row
 constexpr uint32_t PREFETCH_SITES = CHILD_SUM_BIT | PARTICLE_PREFETCH_BIT;  // Faster Effect Prefetch: the child sum, the particle loop
+constexpr uint32_t ALL_PREFETCH_SITES = PREFETCH_SITES | EMITTER_PREFETCH_BIT | ENTRY_PREFETCH_BIT | SWEEP_PREFETCH_BIT;  // every prefetch row's sites
 constexpr uint32_t HALF_FUNCTION_BIT = 0b10;  // the half function, which the half rows' stub calls as the game does
 constexpr uint32_t HALF_ROWS_BIT = 0b100000000;
 // The rows by name, for the log lines.
@@ -1970,9 +1974,8 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     renodx::utils::log::w("[Total War] Faster Job Wake-Ups: left alone (not the game's code as expected: another mod or build)");
   }
   // A prefetch row's sites asked for and not found (another mod's bytes, or another build): each is named once, by its row.
-  constexpr uint32_t PREFETCH_ROWS = internal::PREFETCH_SITES | internal::EMITTER_PREFETCH_BIT | internal::ENTRY_PREFETCH_BIT | internal::SWEEP_PREFETCH_BIT;
   for (const auto& [row_sites, name] : internal::ROWS) {
-    const uint32_t missing = wanted & row_sites & PREFETCH_ROWS & ~internal::found & ~internal::prefetch_logged;
+    const uint32_t missing = wanted & row_sites & internal::ALL_PREFETCH_SITES & ~internal::found & ~internal::prefetch_logged;
     if (!internal::prepared || missing == 0) continue;
     internal::prefetch_logged |= missing;
     std::string names;
@@ -1993,7 +1996,7 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     internal::probe::LogSites(internal::sites, now);
 #endif
     internal::found &= ~stood_down;
-    internal::prefetch_logged |= stood_down;  // named below, once
+    internal::prefetch_logged |= stood_down & internal::ALL_PREFETCH_SITES;  // named below, once
     internal::failed_writes = 0;
     for (const auto& [row_sites, name] : internal::ROWS) {
       if ((changed & row_sites) != 0) renodx::utils::log::i("[Total War] ", name, ": ", ((now & row_sites) != 0 ? "on" : "off, the game's own code back"));
