@@ -3531,6 +3531,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         (TWATTILA_ENGINE_PROBE only; probe add-on testbin\ec4s_probe_build32). Attila / Thrones / Rome II full suites PASS.
         Reviews STARTED 18:08: er1s_ (EF4c-1 + EVEC-F), er2s_ (ES8c-x + probe), Sonnet xHigh; then one Opus xHigh end review
         of ci8s_ + ec4s_ after cr8s_.
+        hl1s_ round 2 DONE (heapfix/hl1s_report.md 'Round 2'): K = 8 everywhere; hgl8 3f822e19, la8hgl8 (= HFb) 8c45e678, lf8
+        160b5bef + la8b cacabc42 (bench only, NULL test), Plt1 c7f7023e (own log line); note 8 -> 8_info_animation_distance_k8
+        (K=8 confirmed); infra patch + 3 site patches in any order (45 / 45 clean) + one combined; ebp / esi mutants now
+        FAIL; proof scripts self-contained. hl1s_ ASSEMBLING HFx (hfa + la8hgl8 + hs) / HFx2 (+ la8b + lf8) 18:10;
+        re-check hlr1s_ STARTED 18:10.
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
