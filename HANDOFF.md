@@ -3114,7 +3114,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         data in both files; Effect Prefetch at distance 2 no gain; grass at the ground 0.35 ms; ASMT render thread's
         SMT sibling busy 32 %. Day1 maxed is GPU-BOUND: helper GPU 22.8 ms never overlaps the game's 26.0, the CPU
         waits 13.2 (Map 7.3 + driver present spin 5.8): GPUB for the GPU line. (4) cpl1_ Opus xHigh planner STARTED
-        03:32 -> plan_1117/night1118/cpu_plan3.md (saved by the coordinator from its text).
+        03:32 -> plan_1117/night1118/cpu_plan3.md (saved by the coordinator from its text). cpl1_ DONE ~04:0x;
+        its response was STOPPED by the safety classifier after a read-only `ls / grep / sed` over test\ (output
+        already returned); the plan came from what it had read; open from the stop: tw_native_context's light-pick
+        coverage + the i686 /arch (the ALPK implementer checks). Verdict 0x18960d0: store-forwarding reloads (EF4,
+        insertps form), the table load 0.4; ORDER: 1 ES8b + LOGX, 2 EF4, 3 ALPK, 4 E3P-b, 5 E3P-c, 6 E3P-d, 7 EF4b, 8
+        ASMT (Experimental off), 9 symbol build; not this round: stream table, EVEC (reset site = trace on the final
+        bench), AGRS; HF package for the author (HSG, HX87, HLB, memfast, loopfetch, HLA2, watch threads); GPU line G1 /
+        G2 (exact fence moves) vs G4 last-frame RT (ATN's look call). (5) STARTED 04:00: ci1_ Opus High (step 1 ES8b +
+        LOGX, branch ci1_) and gpo1_ Opus xHigh read-only (G1 / G2 ceiling from the day1 ETL, MAPW resource).
       - [ ] TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started as `powershell -File ...
         -Env $array` (rbk_'s first batch, renamed nsight\runs\rbkpre_*, was level 5 only): accept one ;-separated
         string or fail loudly on more than one entry; check other agents' multi-Env runs; (b) runners must start the
