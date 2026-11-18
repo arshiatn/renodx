@@ -3637,6 +3637,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         d2511371f L3 (failure paths untested: VirtualProtect doesn't fail in the harness), 941be5f30 L5 (er3o_'s mutant now
         fails 20d), 5512960a8 nits; N7 not done (reason in the commit). Attila full + Thrones full PASS, Rome II -Quick,
         -Probe -Quick PASS, gated x86 3 exit 0, probe add-on rebuilt. Re-check er3o_ STARTED 21:03.
+        er3o_ re-check DONE 21:33 (review_engine_end.md 'Round 2'): all 5 round-3 commits MERGE, EVEC-F MERGE stands. The
+        CRASH 80000001 flake = TEST HARNESS: CONTROL mutants' random pointers land on another thread's stack guard page
+        (STATUS_GUARD_PAGE_VIOLATION, the filters catch only AV); reproduced on 5512960a8 with a planted guard; real scenarios:
+        our copy never faults where the game's doesn't. ec4s_ ROUND 4 sent 21:33: random words >= 2 GB, PushCrash removed
+        after part 19, N7; nits (Rome II tooltip, Prepare log line, job_table free, SLOT static_assert, 19c2 unfired == 0).
         hl1s_ round 3 DONE 18:32 (heapfix/hl1s_report.md 'Round 3'): HFx 323bf407 (hfa + la8hgl8 + hs) and HFx2 8ce2a57b (+ la8b +
         lf8) built, tests + proofs passed (loopfetch, clean x87 run + hold mutant fails, lw controls, HSORT eq + controls);
         trees = 7.0 + patches in 10 orders x 3 methods, one hash each; heapfix_line needs every component's own line (no
