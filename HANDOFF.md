@@ -3578,6 +3578,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         STARTED 19:30: alod2s_ (Sonnet xHigh) on 97d9a6b30 = branch ecm_, the coordinator's trial merge of atn-mods + ec4s_
         656b0d90b (conflicts in Attila addon.cpp rows + README: both sides kept; not built yet, alod2s_ builds it first),
         in parallel with er3o_ (read-only review, so engine_code.hpp keeps one writer). Keeps the log strings the bench checks.
+        alod2s_ DONE 21:14 -> night1118/alod2s_report.md: a08050808 .. 0d008486d (PickLod = engine_code site in all three games,
+        Attila +0x183d570 / Thrones +0x18b2060 / Rome II +0x14f0710; 47-byte stub, one mulss by 1/(s*s) in a cell; live at any
+        time; Detours LOD path + restart note removed; part 22 a-g, 15 callers checked, mutants all seen; Attila full, Rome II /
+        Thrones -Quick, hook lifetime x86 + amd64 PASS; gated x86 3 exit 0). MXCSR sticky flags left as the old hook left them.
+        Reported a Thrones part 19 crash (80000001) on the round-2 base too -> sent to er3o_'s re-check. Review alr2s_ (Sonnet
+        xHigh) STARTED 21:14. ecm_ now = atn-mods + ec4s_ round 3 (2370ae43c, Thrones README conflict: both kept) + alod2s_
+        (clean merge). Junctions: alod2s_ worktree + testbin\alod2s_base_src\external: links first.
       - [ ] BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let me know so I restart my pc
         before the final CPU bench"). Before telling: no agent running, everything merged / pushed, the scratchpad copied
         to a durable folder (tools/tw/round_notes/plan_1117/night1118/scratchpad_copy). Start the bench only after ATN says
