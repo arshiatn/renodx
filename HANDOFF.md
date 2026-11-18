@@ -391,7 +391,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our ... | next helper round (measure first)
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
 - NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator PROGRESS: (2) DONE 02:38-02:46 gr1_ (bench const
-- ALOD-2 (Sonnet xHigh, after ec4s_ frees engine_code.hpp): PickLod as an engine_c ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
+- ALOD-2 (Sonnet xHigh, after ec4s_ frees engine_code.hpp): PickLod as an engine_c ... | coordinator STARTED 19:30: alod2s_ (Sonnet xHigh) on 97d9a6b
 - AUTHOR ZIP FIXES (hlr1s_ round 2): README.txt entries 8_info_animation_distance_ ... | coordinator, after the bench ia4_ DONE -> night1118/ia4_repo
 - FASTER GAME CPU CODE TOOLTIP + README: tooltip "(soldiers, their sprites and eff ... | coordinator, round end
 - HF NOTES 3 TO FILL (author_notes_3): the counting build's sizes (note 1 + a gate ... | coordinator, after the final bench
@@ -3573,6 +3573,9 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] ALOD-2 (Sonnet xHigh, after ec4s_ frees engine_code.hpp): PickLod as an engine_code PausedWrite site in Attila /
         Thrones / Rome II (first bytes 53 55 8B 6C 24 10) for live Model Detail Distance changes, 0 cost at 1x; + alr1s_'s
         Lows; then a review. Owner: coordinator
+        STARTED 19:30: alod2s_ (Sonnet xHigh) on 97d9a6b30 = branch ecm_, the coordinator's trial merge of atn-mods + ec4s_
+        656b0d90b (conflicts in Attila addon.cpp rows + README: both sides kept; not built yet, alod2s_ builds it first),
+        in parallel with er3o_ (read-only review, so engine_code.hpp keeps one writer). Keeps the log strings the bench checks.
         Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/bench/constantinople_bench.ps1: a scene's 0:GraphicsObjectDetail row
         goes into ReShade.ini [renodx-preset1] before the start (backed up / restored as before); a start above 1x without
         'object detail hooked' in ReShade.log = INVALID; parse OK, ini edit tested on a copy (only preset1's line changes).
