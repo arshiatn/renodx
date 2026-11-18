@@ -1,6 +1,6 @@
 # Stub sources
 
-The byte arrays in `src/games/twattila/engine_code.hpp` (`JOB_STUB`, `HALF_ROWS_STUB`, `CHILD_SUM_STUB`, `FLOAT4_RELOAD_STUB`, `ParticlePrefetchStub(K)`) are the `.text` of these
+The byte arrays in `src/games/twattila/engine_code.hpp` (`JOB_STUB`, `HALF_ROWS_STUB`, `CHILD_SUM_STUB`, `FLOAT4_RELOAD_STUB`, `ParticlePrefetchStub(K)`, `EmitterPrefetchStub(K)`) are the `.text` of these
 files, with the placeholders the header's `Prepare` replaces (`0x5A5A5Axx` sentinels, see `STUB_*_SENTINEL`). Rebuild one with
 
 ```
@@ -17,3 +17,5 @@ and compare the bytes with the array (the arrays carry the disassembly as commen
 - `float4_reload.s` - the particle writer's two float4 reloads, lane by lane (Faster Game CPU Code).
 - `particle_prefetch.s` - the particle update loop's prefetch of the particle K places ahead (Faster Effect Prefetch); the file is written for the
   K in `PARTICLE_PREFETCH_AHEAD` (the two disp8 bytes in `lea esi, [ebx + K]` and `[esi + ebx*4 + 4K]` follow it).
+- `emitter_prefetch.s` - the emitter update loop's prefetch of the emitter K places after the next one (Faster Effect Prefetch); written for the K in
+  `EMITTER_PREFETCH_AHEAD` (the two disp8 bytes in `lea ecx, [esi + K]` and `[ecx + esi*8 + 8K]` follow it).

@@ -35,9 +35,9 @@
 // Thrones of Britannia and Rome II (Game::THRONES, Game::ROME2): the same routines, their builds' (internal::BUILDS);
 // Rome II has no ready check. Faster Job Wake-Ups (its own row, Experimental): a sixth to eighth site, the job system's
 // worker wake-ups (6. below). The sprite soldiers' row builder's 20 half floats at once (7. below) belong to Faster Game
-// CPU Code. Faster Effect Prefetch (its own row, Experimental): the effect tree's child sum (8. below), a tenth site, and the
-// particle update loop (10. below, the thirteenth). The particle writer's two float4 reloads (9. below, the eleventh and
-// twelfth sites) belong to Faster Game CPU Code.
+// CPU Code. Faster Effect Prefetch (its own row, Experimental): the effect tree's child sum (8. below), a tenth site, the
+// particle update loop (10. below, the thirteenth) and the emitter update loop (11. below, the fourteenth). The particle
+// writer's two float4 reloads (9. below, the eleventh and twelfth sites) belong to Faster Game CPU Code.
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
@@ -855,6 +855,62 @@ constexpr std::array<uint8_t, 50> ParticlePrefetchStub(uint8_t ahead) {
 }
 constexpr std::array<uint8_t, 50> PARTICLE_PREFETCH_STUB = ParticlePrefetchStub(PARTICLE_PREFETCH_AHEAD);
 
+// 11. The emitter update loop's prefetch (the effect update +0x1893330, one caller, the loop of its serial arm +0x18933c0 .. +0x18933e5; Faster Effect
+// Prefetch). The loop calls the emitter update (+0x1893470, thiscall, three stack arguments) with the emitter [[container + 8] + i*8] of the vector
+// at [this + 0x14] (+4 its size, +8 its elements, 8 bytes each: the pointer of a shared_ptr first) for i from 0 on while `inc esi; cmp esi, [esp + 0x34];
+// je the way out` says so: the count was read once before the loop ([esp + 0x34] = [this + 0x18]), and the container's address sits in the slot
+// [esp + 0x20] the loop reloads ebx from. Each update starts on lines nobody touched since the last frame (the emitters and their definitions are
+// scattered heap objects): 1.1 ms of the render thread a frame in the stress battle is the first load of the definition, [[emitter + 0x58] + 0x2c] (in
+// 0x1840520, which the update calls with the emitter). The stub at the loop's bottom (the 5 bytes `inc esi; cmp esi, [esp + 0x34]`) takes the slot K =
+// EMITTER_PREFETCH_AHEAD after the next emitter's and prefetches that emitter's first two lines and its definition's first line, only when the slot is
+// below the count the loop runs to and holds a pointer.
+// Same results: only ecx is written, which both ways on from the site write before they read it (the loop's top `mov ecx, [ebx + 8]`, the way out
+// `mov ecx, [edi + 0x18]`); the flags the `je` tests are the game's `cmp esi, [esp + 0x34]`, run again at the end; no store. The loads are the game's own
+// next loads or inside what it loads: [esp + 0x34] and [esp + 0x20] (the next round reads both, and there is one: the slot after the next is below the
+// count), [container + 8], the slot (below the count: the loop reads it itself), and one real load of the emitter, [emitter + 0x58]. That load cannot
+// fault, and the prefetches never do: the vector holds a reference to every emitter below the cached count (the shared_ptr in the slot) for the whole
+// loop, because the loop only reads slots below that count, the elements are removed after the loop (+0x18933eb ..: the ones the emitter's byte +0x6e
+// marks, swapped with the last, size decremented), and the update cannot change the vector (the parallel arm calls the same update from worker
+// threads over slots of this vector, +0x17bc0d1 / +0x17bc179 / +0x182c951: a change would be a data race in the game itself). A non-null slot below the
+// count therefore points at a live emitter, whose shared_ptr of the definition at +0x58 / +0x5c (read by every update) lies inside it; a null slot is
+// skipped before the load. Reading the container from [esp + 0x20], not from ebx, keeps the stub independent of the registers the call keeps. Found by
+// the whole function's bytes (its five calls and two `mov ecx, imm32` wild: the same bytes in Thrones' copy), at the Steam build's place first, then
+// anywhere in the code; no branch lands inside the site (the whole DLL's relative branches and absolute pointers, Attila's and Thrones'), no site or
+// hook of the Attila CPU Performance Fix 7.0 lies in the function.
+constexpr std::string_view EMITTER_LOOP =
+    "83 EC 20 57 8B F9 B9 ?? ?? ?? ?? 89 7C 24 04 E8 ?? ?? ?? ?? 84 C0 0F 84 19 01 00 00 8B 44 24 2C B9 ?? ?? ?? ?? 53 55 8B "
+    "6C 24 30 8D 5F 14 56 8B 77 18 89 44 24 28 8B 44 24 3C 89 5C 24 20 89 6C 24 24 89 44 24 2C C7 44 24 14 00 00 00 00 89 74 "
+    "24 34 89 74 24 18 C7 44 24 1C 01 00 00 00 E8 ?? ?? ?? ?? 84 C0 74 14 8D 44 24 20 50 8D 44 24 18 50 E8 ?? ?? ?? ?? 83 C4 "
+    "08 EB 40 85 F6 74 3C 8B 44 24 38 33 F6 8B 7C 24 3C 0F 1F 80 00 00 00 00 8B 4B 08 57 50 55 8B 0C F1 E8 ?? ?? ?? ?? 46 3B "
+    "74 24 34 74 12 8B 7C 24 2C 8B 44 24 28 8B 6C 24 24 8B 5C 24 20 EB D9 8B 7C 24 10 8B 4F 18 8D 59 FF 3B D9 73 6D 8B 57 1C "
+    "8B 04 DA 80 78 6E 00 74 59 8D 04 CA 8B 48 FC 85 C9 74 07 F0 FF 41 04 8B 48 FC 8B 74 DA 04 8B 40 F8 89 04 DA 89 4C DA 04 "
+    "85 F6 74 21 83 C8 FF F0 0F C1 46 04 75 17 8B 06 8B CE FF 10 83 C8 FF F0 0F C1 46 08 75 07 8B 06 8B CE FF 50 04 FF 4F 18 "
+    "8B 4F 18 8B 47 1C 8D 04 C8 50 E8 ?? ?? ?? ?? 83 C4 04 8B 4F 18 4B 3B D9 72 93 5E 5D 5B 5F 83 C4 20 C2 0C 00";
+constexpr size_t EMITTER_LOOP_SITE = 158;  // inc esi; cmp esi, dword ptr [esp + 0x34]; the je after it is where the stub goes on
+constexpr uint8_t EMITTER_PREFETCH_AHEAD = 1;
+static_assert(EMITTER_PREFETCH_AHEAD >= 1 && EMITTER_PREFETCH_AHEAD * 8 <= 127);  // the slot's displacement is a signed byte
+// The stub for the emitter `ahead` places after the next one (the test builds the others for its timing).
+constexpr std::array<uint8_t, 48> EmitterPrefetchStub(uint8_t ahead) {
+  return {
+      0x46,                                                // inc esi                          the next emitter's index
+      0x8D, 0x4E, ahead,                                   // lea ecx, [esi + ahead]
+      0x3B, 0x4C, 0x24, 0x34,                              // cmp ecx, dword ptr [esp + 0x34]  below the count the loop runs to
+      0x73, 0x1D,                                          // jae skip
+      0x8B, 0x4C, 0x24, 0x20,                              // mov ecx, dword ptr [esp + 0x20]  the container, as the game reloads it
+      0x8B, 0x49, 0x08,                                    // mov ecx, dword ptr [ecx + 8]     the elements as they are now
+      0x8B, 0x4C, 0xF1, static_cast<uint8_t>(ahead * 8),   // mov ecx, dword ptr [ecx + esi*8 + ahead*8]
+      0x85, 0xC9,                                          // test ecx, ecx
+      0x74, 0x0E,                                          // je skip
+      0x0F, 0x18, 0x09,                                    // prefetcht0 byte ptr [ecx]
+      0x0F, 0x18, 0x49, 0x40,                              // prefetcht0 byte ptr [ecx + 0x40]
+      0x8B, 0x49, 0x58,                                    // mov ecx, dword ptr [ecx + 0x58]  the definition: the stub's one real load
+      0x0F, 0x18, 0x49, 0x2C,                              // prefetcht0 byte ptr [ecx + 0x2c]
+      0x3B, 0x74, 0x24, 0x34,                              // skip: cmp esi, dword ptr [esp + 0x34]  the flags the game's je tests
+      0xE9, 0x00, 0x00, 0x00, 0x00,                        // jmp the game's je (patched in Prepare)
+  };
+}
+constexpr std::array<uint8_t, 48> EMITTER_PREFETCH_STUB = EmitterPrefetchStub(EMITTER_PREFETCH_AHEAD);
+
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half, fmod and the
 // ready check the same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots
 // (control word 0x20, float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the
@@ -893,10 +949,11 @@ struct Build {
   uint32_t child_sum_rva;
   uint32_t float4_reload_rva;  // the particle writer's tail (FLOAT4_RELOAD's first byte)
   uint32_t particle_loop_rva;  // the particle update loop (PARTICLE_LOOP's first byte)
+  uint32_t emitter_loop_rva;   // the emitter update loop's function (EMITTER_LOOP's first byte)
 };
-constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA, 0x16b5550, 0x16b5520, 0x1689b90, 0x1907511, 0x1890b90, 0x18967db, 0x1893820};
-constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9, 0x18d8400, 0x1722e60, 0x1722e30, 0x16f7460, 0x197d841, 0x1905ef0, 0x190bb3b, 0x1908b80};
-constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA, 0x16b5550, 0x16b5520, 0x1689b90, 0x1907511, 0x1890b90, 0x18967db, 0x1893820, 0x1893330};
+constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9, 0x18d8400, 0x1722e60, 0x1722e30, 0x16f7460, 0x197d841, 0x1905ef0, 0x190bb3b, 0x1908b80, 0x1908690};
+constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 constexpr std::array<Build, 3> BUILDS = {ATTILA_BUILD, THRONES_BUILD, ROME2_BUILD};  // by Game
 
 // Where each stub sits in the page.
@@ -911,6 +968,7 @@ constexpr size_t CHILD_SUM_PAGE = 0xB00;
 constexpr size_t FLOAT4_RELOAD_PAGE = 0xB20;    // one stub for each of the two reloads, a stride apart
 constexpr size_t FLOAT4_RELOAD_STRIDE = 0x30;
 constexpr size_t PARTICLE_PREFETCH_PAGE = 0xB80;
+constexpr size_t EMITTER_PREFETCH_PAGE = 0xBC0;
 constexpr size_t PAGE_SIZE = 0x1000;
 static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the three games' truncation stubs are one type
               && HALF_PAGE + HALF_STUB.size() + HALF_SIZE <= FMOD_PAGE
@@ -922,7 +980,8 @@ static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the thre
               && CHILD_SUM_PAGE + CHILD_SUM_STUB.size() <= FLOAT4_RELOAD_PAGE
               && FLOAT4_RELOAD_STUB.size() <= FLOAT4_RELOAD_STRIDE
               && FLOAT4_RELOAD_PAGE + FLOAT4_RELOAD_AT.size() * FLOAT4_RELOAD_STRIDE <= PARTICLE_PREFETCH_PAGE
-              && PARTICLE_PREFETCH_PAGE + PARTICLE_PREFETCH_STUB.size() <= PAGE_SIZE);
+              && PARTICLE_PREFETCH_PAGE + PARTICLE_PREFETCH_STUB.size() <= EMITTER_PREFETCH_PAGE
+              && EMITTER_PREFETCH_PAGE + EMITTER_PREFETCH_STUB.size() <= PAGE_SIZE);
 
 // Which sites each row writes (bits by `sites` index).
 constexpr uint32_t FLOAT4_RELOAD_SITES = 0b110000000000;  // the particle writer's two reloads
@@ -930,7 +989,8 @@ constexpr uint32_t CPU_CODE_SITES = 0b100010111 | FLOAT4_RELOAD_SITES;  // Faste
 constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
 constexpr uint32_t PARTICLE_PREFETCH_BIT = 0b1000000000000;  // the particle update loop's prefetch
-constexpr uint32_t PREFETCH_SITES = 0b1000000000 | PARTICLE_PREFETCH_BIT;  // Faster Effect Prefetch: the effect tree's child sum, the particle loop
+constexpr uint32_t EMITTER_PREFETCH_BIT = 0b10000000000000;  // the emitter update loop's prefetch
+constexpr uint32_t PREFETCH_SITES = 0b1000000000 | PARTICLE_PREFETCH_BIT | EMITTER_PREFETCH_BIT;  // Faster Effect Prefetch: the effect tree's child sum, the particle and emitter loops
 constexpr uint32_t HALF_FUNCTION_BIT = 0b10;  // the half function, which the half rows' stub calls as the game does
 constexpr uint32_t HALF_ROWS_BIT = 0b100000000;
 // The rows by name, for the log lines.
@@ -951,7 +1011,7 @@ struct Site {
   uint8_t opcode = 0xE9;  // jmp; the worker destructor's call of Stop stays a call (E8)
 };
 
-static std::array<Site, 13> sites = {{{.name = "soldier draw rounding"},
+static std::array<Site, 14> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half floats"},
                                      {.name = "fmod"},
                                      {.name = "render list pushes"},
@@ -963,7 +1023,8 @@ static std::array<Site, 13> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "child prefetch"},
                                      {.name = "particle colour reload"},
                                      {.name = "particle vector reload"},
-                                     {.name = "particle prefetch"}}};
+                                     {.name = "particle prefetch"},
+                                     {.name = "emitter prefetch"}}};
 static uint8_t* job_table = nullptr;
 static uint8_t* page = nullptr;
 static bool prepared = false;
@@ -1229,6 +1290,15 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       sites[12].at = match + PARTICLE_LOOP_SITE;
       stubs[12] = stub;
     }
+    // The emitter update loop's prefetch, found by the whole function's bytes; the stub goes on at the `je` after the site.
+    if (uint8_t* match = (build.emitter_loop_rva != 0 ? find(EMITTER_LOOP, build.emitter_loop_rva) : nullptr); match != nullptr) {
+      uint8_t* stub = page + EMITTER_PREFETCH_PAGE;
+      std::memcpy(stub, EMITTER_PREFETCH_STUB.data(), EMITTER_PREFETCH_STUB.size());
+      uint8_t* stub_end = stub + EMITTER_PREFETCH_STUB.size();
+      write32(stub_end - 4, relative(stub_end, match + EMITTER_LOOP_SITE + SITE_SIZE));
+      sites[13].at = match + EMITTER_LOOP_SITE;
+      stubs[13] = stub;
+    }
     DWORD protection;
     VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
     FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
@@ -1241,8 +1311,8 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
                                      && holds(base + TRUNCATION_RVA, {X87_FIX_TRUNCATION.data(), X87_FIX_TRUNCATION.size()}));
   // A site the build doesn't have (rva 0) isn't named.
   const uint32_t reload_rva = (sse4_1 ? build.float4_reload_rva : 0);
-  const std::array<uint32_t, 13> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
-                                         0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva, 0};
+  const std::array<uint32_t, 14> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
+                                         0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva, 0, 0};
   static_assert(std::tuple_size_v<decltype(rvas)> == std::tuple_size_v<decltype(sites)>);
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
