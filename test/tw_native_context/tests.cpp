@@ -42,6 +42,11 @@
 //    (the helper never takes it: the second from lights_last as the first left it): the lights, colours, kinds, b9's
 //    constants and lights_last to the bit. CONTROLS (frames apart): nth_element, the picks by place with lights_last in
 //    its own order, ties flipped (>=). Cost (printed): the old pick against now's at 300-8192 lights, 32-128 picked.
+// 7. rt_scene::AmbientReplaced (lock-free: what its writers published) against AmbientReplacedNow (under the lock) after
+//    each of 20000 writes of what it reads: Update with random rows (the rays' AO and Path-Traced Ambient among them) or
+//    the same rows (a new frame), a trace taken (traced_frame set as Trace's taken path sets it, with its publish), a trace
+//    not taken (Trace: nothing written); runs of frames past AMBIENT_REPLACED_FRAMES untraced. CONTROL: traced_frame written
+//    without its publish differs. Cost (printed): the lock's read against the lock-free one, uncontended.
 #include <windows.h>
 #include <d3d11_4.h>
 #include <d3dcompiler.h>
@@ -1352,6 +1357,98 @@ int main() {
     bridge.failed = false;
     bridge.rt_light_tile_row = 0;
     immediate->ClearState();
+  }
+
+  // 7.
+  {
+    auto& bridge = twattila::dlaa_bridge::bridge;
+    bridge.failed = true;  // Trace stops at its request: not taken
+    std::mt19937 random(1119);
+    std::uniform_int_distribution<int> roll(0, 99);
+    const auto replaced_now = [&] {
+      const std::unique_lock lock(runtime.mutex);
+      return core::internal::AmbientReplacedNow();
+    };
+    // A trace the helper took: traced_frame as Trace's taken path sets it, with its publish.
+    const auto trace_taken = [&] {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.traced_frame = runtime.frame;
+      core::internal::PublishAmbientReplaced();
+    };
+    const auto random_settings = [&] {
+      core::Settings settings;
+      settings.ambient_occlusion = roll(random) < 50;
+      settings.path_ambient = roll(random) < 40;
+      settings.sun_shadows = roll(random) < 50;
+      settings.light_bounce = roll(random) < 30;
+      settings.path_tracing = settings.light_bounce && roll(random) < 50;
+      settings.reflections = roll(random) < 20;
+      return settings;
+    };
+    // The test's own writes before (parts 5 and 6) went past the writers: the first Update publishes.
+    core::Update(random_settings());
+    size_t compared = 0;
+    std::array<size_t, 2> answers = {};
+    size_t long_untraced = 0;
+    uint32_t untraced_run = 0;
+    for (int step = 0; step < 20000; ++step) {
+      const int kind = roll(random);
+      if (kind < 4) {
+        trace_taken();
+        untraced_run = 0;
+      } else if (kind < 8) {
+        core::Trace(immediate.Get(), nullptr, core::Camera{});
+      } else if (kind < 20) {
+        core::Update(random_settings());
+        ++untraced_run;
+      } else {
+        // The settings kept, a new frame.
+        core::Settings settings;
+        {
+          const std::unique_lock lock(runtime.mutex);
+          settings = runtime.settings;
+        }
+        core::Update(settings);
+        ++untraced_run;
+      }
+      if (untraced_run > core::internal::AMBIENT_REPLACED_FRAMES) ++long_untraced;
+      const bool now = replaced_now();
+      CHECK(core::AmbientReplaced() == now);
+      ++answers[now ? 1 : 0];
+      ++compared;
+    }
+    // CONTROL: traced_frame written without its publish: the lock-free answer stays the old one.
+    core::Settings ambient = {.ambient_occlusion = true};
+    core::Update(ambient);
+    for (uint64_t frame = 0; frame <= core::internal::AMBIENT_REPLACED_FRAMES; ++frame) core::Update(ambient);
+    const bool control_before = core::AmbientReplaced() == replaced_now();
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.traced_frame = runtime.frame;
+    }
+    const bool control_differs = core::AmbientReplaced() != replaced_now();
+    std::printf("7 AmbientReplaced lock-free against AmbientReplacedNow under the lock: %zu writes (Update with random rows and frames, "
+                "traces taken and not), the same each time (%zu replaced, %zu not, %zu past %llu frames untraced); CONTROL traced_frame "
+                "without its publish differs %d\n",
+                compared, answers[1], answers[0], long_untraced, static_cast<unsigned long long>(core::internal::AMBIENT_REPLACED_FRAMES),
+                control_before && control_differs);
+    CHECK(answers[0] > 1000 && answers[1] > 1000 && long_untraced > 1000);
+    CHECK(control_before && control_differs);
+    {
+      const std::unique_lock lock(runtime.mutex);
+      core::internal::PublishAmbientReplaced();
+    }
+    constexpr int CALLS_7 = 2000000;
+    const auto time_7 = [&](const char* name, auto&& body) {
+      const auto start = std::chrono::steady_clock::now();
+      for (int call = 0; call < CALLS_7; ++call) body();
+      std::printf("7 %-40s %6.1f ns a call (uncontended)\n", name,
+                  std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / CALLS_7);
+    };
+    volatile bool replaced_sink = false;
+    time_7("AmbientReplaced, the lock (before)", [&] { replaced_sink = replaced_now(); });
+    time_7("AmbientReplaced, lock-free (now)", [&] { replaced_sink = core::AmbientReplaced(); });
+    bridge.failed = false;
   }
   std::printf("PASS\n");
   return 0;

@@ -1104,6 +1104,9 @@ static std::atomic_uint64_t light_frame = 0;
 static std::atomic_bool index_buffers_held = false;
 // Batched unit draws wait for their flush (runtime.batch_draws not empty): else FlushUnitCaptures and OnBatchTextureWritten return.
 static std::atomic_bool batch_pending = false;
+// rt_scene::AmbientReplaced's answer (AmbientReplacedNow), stored under runtime.mutex by every writer of what it reads
+// (PublishAmbientReplaced): read without the lock (its lock, once a frame at present, was contended).
+static std::atomic_bool ambient_replaced = false;
 
 inline float RangeScale() {
   return (frame_history::campaign_frames.load(std::memory_order_relaxed) != 0 ? host.campaign_metre : 1.f);
@@ -1112,6 +1115,18 @@ inline float RangeScale() {
 inline bool Enabled() {
   return runtime.settings.sun_shadows || runtime.settings.ambient_occlusion || runtime.settings.light_bounce || runtime.settings.reflections
          || runtime.settings.specular_occlusion || runtime.settings.local_lights || runtime.settings.fog_shadows;
+}
+
+// The rows' ray-traced AO or Path-Traced Ambient, and the rays traced lately. Under the lock.
+inline bool AmbientReplacedNow() {
+  return (runtime.settings.ambient_occlusion || runtime.settings.path_ambient) && runtime.traced_frame != UINT64_MAX
+         && runtime.traced_frame + AMBIENT_REPLACED_FRAMES >= runtime.frame;
+}
+
+// ambient_replaced from what AmbientReplacedNow reads, under the lock after each write of it: the settings and the frame
+// (Update), traced_frame (Trace); nothing else writes or resets them.
+inline void PublishAmbientReplaced() {
+  ambient_replaced.store(AmbientReplacedNow(), std::memory_order_release);
 }
 
 // Fog shadows the only ray-traced effect, with Settings::cheap_fog_alone.
@@ -3684,6 +3699,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     }
     for (const uint64_t set_key : runtime.new_sets) runtime.cluster_meshes.at(set_key).sent = true;
     runtime.traced_frame = runtime.frame;
+    PublishAmbientReplaced();
     runtime.traced_size = render_size;
     runtime.traced_view_projection = camera.view_projection;
     runtime.camera_moving = camera.position != runtime.traced_position;
@@ -4337,6 +4353,7 @@ inline void Update(const Settings& settings) {
   const uint64_t tick = GetTickCount64();
   if (runtime.traced_frame == runtime.frame) runtime.traced_tick = tick;
   ++runtime.frame;
+  internal::PublishAmbientReplaced();
   // Capture's depth-stencil view read again next frame: none of the game's held past its frame (a resize's old depth goes).
   runtime.objects.depth_seen = {};
   internal::light_frame.store((runtime.frame << 1) | uint64_t{settings.local_lights}, std::memory_order_relaxed);

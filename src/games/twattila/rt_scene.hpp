@@ -519,22 +519,12 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
   }
 };
 
-namespace internal {
-
-// AmbientReplaced's without the lock: the rows' ray-traced AO or Path-Traced Ambient, and the rays traced lately.
-inline bool AmbientReplacedNow() {
-  return (runtime.settings.ambient_occlusion || runtime.settings.path_ambient) && runtime.traced_frame != UINT64_MAX
-         && runtime.traced_frame + AMBIENT_REPLACED_FRAMES >= runtime.frame;
-}
-
-}  // namespace internal
-
 // Whether the rays' AO or Path-Traced Ambient stands in for the game's ambient occlusion (its pass then writes white: the
 // shader injection's rt_ambient_alone). Not by the rows alone: with the game's own MSAA the bridge stays off, nothing is
-// traced, and a white AO left the picture without any (2026-11-16 audit: MSAA + DLSS + Path-Traced Ambient).
+// traced, and a white AO left the picture without any (2026-11-16 audit: MSAA + DLSS + Path-Traced Ambient). Lock-free:
+// AmbientReplacedNow as its writers last published it.
 inline bool AmbientReplaced() {
-  const std::unique_lock lock(internal::runtime.mutex);
-  return internal::AmbientReplacedNow();
+  return internal::ambient_replaced.load(std::memory_order_acquire);
 }
 
 // The game's blurs of its ambient occlusion (AmbientOcclusionDraw::blurs) under Path-Traced Ambient: the pass wrote white
