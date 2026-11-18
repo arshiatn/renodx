@@ -401,6 +401,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ALPK NITS (review_alp1.md): L1 optional restore of lights_last on every frame (~ ... | the next rt_core touch
 - ATN: vMF ROUGH DIFFUSE DEFAULT SLIDER (s0_report.md 7.1): Attila's gloss is ~1 a ... | ATN
 - WH3 RR GUIDES CHECK (s0_report.md 6): 76 % of WH3 forest pixels have guide albed ... | next WH3 round
+- CR4 FOLLOW-UPS (review_ci4s.md): M1 emitters 0 / 1 of every effect never prefetc ... | after the final bench
 - TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
 - DAY1 MAXED GPU LEVERS (gpo1_ / cpa1_): day1 maxed behind the units is GPU-bound ... | coordinator (GPU line)
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
@@ -3271,6 +3272,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         flake fix (self_low_page below 16 MB); full x86 suites PASS 3 DLLs; gated x86 exit 0. STARTED 08:00: cr4_
         SONNET xHigh review (E3P-c had an Opus stop) + ci5_ Opus High = E3P-d (site 8 distance sweep) + commit 2 the
         CR2 / CR3 low fixes, on 638946e64.
+        cr4_ review DONE ~08:1x -> night1118/review_ci4s.md: MERGE (own interpreter 300,000 worlds 0 differences;
+        [esp+0x20] = ebx proven from the bytes; liveness of [emitter+0x58] a strong inference). MERGED 125818840 (gated x86
+        3 targets running 08:13 before the push).
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
@@ -3313,6 +3317,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         70 / 85); ~40 % (r 0.16) gives +13 / -11 %. Recommend 40 % (row Experimental, off either way). Owner: ATN
       - [ ] WH3 RR GUIDES CHECK (s0_report.md 6): 76 % of WH3 forest pixels have guide albedo 0 + rho 0 in the route B
         recordings: guides not written? (DLSS RR quality on WH3). Owner: next WH3 round
+      - [ ] CR4 FOLLOW-UPS (review_ci4s.md): M1 emitters 0 / 1 of every effect never prefetched (gain scales (n-2)/n:
+        a one-frame trace of emitters per effect, or a pre-loop prefetch of slots 0 / 1); L1 reword the comment at
+        engine_code.hpp ~875 ("every update stores +0x6c, the removal pass reads +0x6e"); L2 optional bound by the live
+        size [container+4]; L5 a two-stage variant if the WPR shows +0xBE3 > ~0.5 ms. Owner: after the final bench
       - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
         0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
         drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
