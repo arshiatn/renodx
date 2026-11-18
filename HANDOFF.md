@@ -3221,6 +3221,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         brace-rule slips; M2 core 0 picked half the time; Lows L1 1-s rule re-read, L3 log, L4 stand down on 2 CCDs
         without a rule, L5, L6, L7). Rules hold (only SetThreadSelectedCpuSets, subset, exact clear); mutants caught.
         asm1_ RESUMED 06:40 for H1 / M1 / M2 + L1 / L3-L7 + nits (L2 skipped: the off wait is acceptable).
+        asm1_ fixes DONE ~06:5x: ab3cc21aa (H1 restart on another presenting thread + measure again when the render thread
+        ended / foreign / own rule; M1; M2 never core 0 unless nothing else qualifies; L1 1-s re-read; L3; L4 stands down
+        on > 1 L3 = this PC without the 0-15 rule; L5; L6; L7; nits). Tests 931 synthetic + 13 live steps x86 + amd64
+        pass; gated x86 exit 0. asr1_ RESUMED 06:52 for a re-check (repro + mutants on the new code).
         ci3s_ DONE ~06:4x -> night1118/ci3s_report.md: c3adca196 CR1 fixes (L1 / L2 / N1 bswap tail 11 B / N2 / N3 / N4)
         + d6cef1f49 E3P-b (site 12 loop bottom Attila 0x1893883 / Thrones 0x1908be3, 50-byte stub at 0xB80, K = 2,
         Faster Effect Prefetch row; harness 162 -> 67 ns a particle at 300-cycle updates) on dfcf463d0; full x86
