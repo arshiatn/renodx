@@ -3409,7 +3409,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         hgl 15ec011c (gather sites A / B, K=16), plt1 48b9f794, la16b 0c94ae86 (two-level 64 %), la16bdbg d257e0f4 (RUN
         WITHOUT the add-on: collides with passtime.c's hook), lf17 43375f72, la16hgl 7bc6b2e0, lfall d599a889 (all three
         sites). Review hlr1s_ (Sonnet xHigh) STARTED. x87b round 2 DONE (hash unchanged ce976950; hfa no rebuild).
-        CPU PLAN 4 DONE ~13:4x: night1118/cpu_plan4_addon.md (cpl4o_: ARING, AOM, ACAP2, ALOCK, ASCR, APT, ASMT-T, MAPW-B
+        CPU PLAN 4 DONE ~13:1x: night1118/cpu_plan4_addon.md (cpl4o_: ARING, AOM, ACAP2, ALOCK, ASCR, APT, ASMT-T, MAPW-B
         trace; ABR / ADISP / ALOD dropped; RTSO options for ATN) + cpu_plan4_engine.md (cpl4s_: the stalls are the FIRST
         elements of short containers; EF4c-1, EVEC-F (not page faults: a store-forward chain), ES8c-x (sweep chain), a
         probe build; HSG2 = parallel merges + sorts across lists (-2.5..-3.5 day1, -6..-8 stress, note + self-check only
@@ -3419,6 +3419,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         EF4c-1 -> EVEC-F -> ES8c-x -> probe, one commit each, the only engine_code.hpp writer); add-on Opus High
         worktrees on 90d7df1b5: ia1_ ASMT-T, ia2_ ARING + AOM, ia3_ MAPW-B trace (+ tw_map_trace.txt in the bench's
         outputs), ia4_ ACAP2 + ALOCK, ia5_ ASCR + APT; hs1s_ (Sonnet xHigh heapfix: Cnt2 digit column, HSORT hs / hsC).
+        hcr1s_ DONE -> heapfix/hcr1s_review.md: bench script USE, hfp3_build.ps1 USE AFTER FIXES (H1 locked copy ->
+        stale / empty hash, H2 old DLL stays on a failed build, H3 -Reuse publishes a test-failed build), Cnt2 USE (C1
+        verified by the coordinator: the game's memcpy writes eax / ecx / edx before reading), HSG-0 USE. B1: Cnt2's
+        heapfix_line matched the install line, not the CSV write. Fixes B1-B3, H1-H7 sent back to hc1s_ 13:27.
+        BENCH PRE-FLIGHT (hcr1s_ B5 / B6): before the unattended batch compare the dry run's 'ATN's install' hashes
+        with the known ones (dinput8 8e8fa96a, add-on f9471e81, helper 8dfbbfd9, heapfix.ini e05114cb, preferences
+        63ef3490; update for anything installed since); Cnt2 starts LAST or in their own bench call, -Seconds 190.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
