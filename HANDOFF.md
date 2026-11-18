@@ -398,6 +398,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PDI1 IN GAME (review_pdi1.md M2): a v32 recording in a scene with linear lights ... | next game run (M2) / PT DI step 2 (L2, L4, L5)
 - CR3 LOW FIXES (review_ci3s.md): L1 Faster Effect Prefetch row text (addon.cpp:13 ... | the next engine_code implementer (L2 / N1-N3), coordinator r
 - ASMT NITS (review_asm1.md): set `applied` right after give() for the render thre ... | the next cpu_sets touch / release round
+- ALPK NITS (review_alp1.md): L1 optional restore of lights_last on every frame (~ ... | the next rt_core touch
 - TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
 - DAY1 MAXED GPU LEVERS (gpo1_ / cpa1_): day1 maxed behind the units is GPU-bound ... | coordinator (GPU line)
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
@@ -3240,6 +3241,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         part 6 on the real Trace (1600 frames, ties / NaN / inf, x86 = amd64 bit-equal; controls 1271 / 1037 / 1303
         differ); 8192 lights 0.235 -> 0.06-0.08 ms x86; gated all x86 + amd64 exit 0. STARTED 07:15: alr1_ Opus
         xHigh review (read only; may run part 6 from an export in testbin\alr1_).
+        alr1_ review DONE ~07:2x -> night1118/review_alp1.md: MERGE (own harness: comparator outcome sequences identical,
+        8.2-8.5 M per build, 4 builds, default MXCSR + FTZ / DAZ; every lights_last path checked; 30 consumers same
+        presets). MERGED 26e32e418 (gated x86 all + amd64 all running 07:30 before the push).
         ci3s_ DONE ~06:4x -> night1118/ci3s_report.md: c3adca196 CR1 fixes (L1 / L2 / N1 bswap tail 11 B / N2 / N3 / N4)
         + d6cef1f49 E3P-b (site 12 loop bottom Attila 0x1893883 / Thrones 0x1908be3, 50-byte stub at 0xB80, K = 2,
         Faster Effect Prefetch row; harness 162 -> 67 ns a particle at 300-cycle updates) on dfcf463d0; full x86
@@ -3285,6 +3289,10 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] ASMT NITS (review_asm1.md): set `applied` right after give() for the render thread (or build the log
         string first); the add-on now needs Windows 10 (static CPU set + SetThreadDescription imports): say so in the
         README requirements at release. Owner: the next cpu_sets touch / release round
+      - [ ] ALPK NITS (review_alp1.md): L1 optional restore of lights_last on every frame (~0.003-0.01 ms; today's
+        invariant: nothing reads it before Update's swap); N1 move the 0.23 ms history out of the comment
+        (rt_core.hpp:3518-3522); N2 wrap 3520 / 3521 / 3527 / 3645 / 3648; N3 tw_native_context run.ps1 -OutDir. Owner:
+        the next rt_core touch
       - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
         0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
         drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
