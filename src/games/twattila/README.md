@@ -15,8 +15,10 @@
   row builder converts 20 floats to half floats with 20 calls; now four at a time with the game's own rounding, the
   same bytes in the rows. Special values (infinities, NaN, half denormals, overflow) and any overlap of the row with its
   inputs run the game's code. Tested against the game's DLL in `test/tw_engine_code` part 11 (every one of the 2^32 float bit
-  patterns in all 18 float lanes at once, and 17 different patterns a call; 2 M random calls, every pointer overlap around
-  the checks' edges, 200 on / off switches under 4 threads): 68.1 -> 51.6 ns a call in the harness against today's
+  patterns in all 18 float lanes at once, and one lane at a time with the others random; 2 M random calls, every pointer
+  overlap around the checks' edges, the SSE and x87 control state in all 16 rounding / DAZ / FTZ modes, faults at page edges,
+  the whole row builder on random instance data, 200 on / off switches under 4 threads; found by its exact bytes including
+  the loop around it): 68.1 -> 51.6 ns a call in the harness against today's
   single-call stub (73.5 for the game's code; the harness's own entry and copy cost is inside all three). Estimated:
   -0.4..-0.6 ms of the render thread in a big battle.
 
@@ -28,7 +30,8 @@
   every request; the semaphores and the helpers' loop stay the game's code. Off: the game's bytes back at once.
   Checked in `test/tw_engine_code` part 10 on the game's own functions (state equal after one thread's calls, registers kept,
   24-helper soak with every item once and every wake's postcondition, the row switched 200 times during a soak, 600
-  shutdown cycles, 33 helpers, a broken stub caught) and a model check of the protocol.
+  shutdown cycles, a wake-up thread held inside its loop while the helpers are destroyed (the destruction waits for it,
+  up to about 3 s), 33 helpers, broken stubs caught) and a model check of the protocol.
 - Test (ATN): a big battle with the row on: ReShade.log "Faster Job Wake-Ups: on" (a warning "left alone" instead: another
   mod changed those bytes); FPS and Time Each Pass against off; the battle plays as before, no freeze when the battle ends
   or the game quits. Bench: stress, night1, Constantinople, one WPR each (`SetEvent` under the main thread should drop by

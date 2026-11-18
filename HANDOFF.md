@@ -2628,26 +2628,41 @@ heading text are in HANDOFF_ARCHIVE.md)
         game run, not benched, not installed, no stamp): Faster Job Wake-Ups = a 4th engine_code row on Attila
         (Experimental, off; Update's 4th argument, key FasterJobWakeUps), design d2 (designs/job_wakeups_final.md): WakeAll
         wakes one sleeping worker and that worker runs the game's WakeAll loop; sites WakeAll (5 bytes), Sleep (whole) and the
-        worker destructor's call of Stop; 280-byte stub (asm source ejob.s) + a 256-byte side table; engine_code.hpp
+        worker destructor's call of Stop; 285-byte stub (asm source test/tw_engine_code/stubs/job_wakeups.s) + a 256-byte side table; engine_code.hpp
         section 6, test/tw_engine_code part 10 (the game's own functions: state equal after WakeAll / Sleep / the
         destructor, registers kept, 24-worker soak x2 copies about 3 M items each, row toggled 200x during a soak, 600
         shutdown cycles with decommitted worker pages, 33 workers, CONTROL caught, WakeAll 14 us -> 1 us with 15 asleep),
-        model check d2 passes (controls fail), Attila + Thrones DLLs. Builds: twattila x86 OK. Thrones / Rome II addons
+        model check d2 passes (controls fail), Attila + Thrones DLLs. 2026-11-18 Sonnet 5.5 xhigh review (ejob_review3):
+        found one real fault (a delegate preempted inside its loop for longer than Stop's wait, 4 M pauses = 49 ms, then
+        wakes freed workers) and fixed it: Stop' now waits up to 2^28 pauses (about 3 s, 0.8 to 9 s by CPU), the wait runs
+        only while a delegate runs, Sleep' reads the worker array only below the pool's size, a request that finds its
+        head gone is taken by the delegate itself; stub 285 bytes; part 10e2 holds a delegate suspended in its loop while
+        2 to 16 workers are destroyed (no fault, the Stops wait), 10e3 is the control (the old 4 M bound: 7 of 8 runs fault). Builds: twattila x86 OK. Thrones / Rome II addons
         still pass jobs = false (Thrones has the same bytes: add its row later). NOT proven: the in-game gain (-1.9..-2.2 ms
         E; the head worker waking the others starts them 5-15 us later). Left: ATN's go for the bench (V1 + the row on:
         stress, night1, day1, one WPR), then the default decision. Owner: ATN (go), coordinator (bench)
       - [x] EHALF IMPLEMENTED 2026-11-17 22:xx (branch ejob-fork, worktree D:\Dev\renodx-ejob, local commit only; offline: no
         game run, not benched, not installed, no stamp): a 9th site of Faster Game CPU Code, "half rows" (CPU_CODE_SITES
         bit 8, Attila +0x1907511 and Thrones +0x197d841, Rome II none): the region from the row builder's first float to half
-        call to the one after the last (+0x1907511 .. +0x19077e2, 726 pattern bytes, 20 calls) done four floats at a time in
+        call to the one after the last (+0x1907511 .. +0x19077e2, 726 pattern bytes, 20 calls; the loop's head (174 bytes
+        before) and bottom with the exit (35 bytes after) held to exact bytes too) done four floats at a time in
         SSE2 with the game's integer rounding; the vector path only when all 20 floats are zero, tiny or normal and no store of
         the row can reach an input (five range checks), else the game's code (fallback = the replaced 5 bytes, then the game);
         the last float is converted by a real call of the game's function (eax / ecx exact, edx kept in xmm3 and put back); the
-        game's own store of the last half after the region is kept. Not byte-exact in: the 16 pushed argument slots below esp,
-        xmm1-7, the flags (all dead), and no live object may lie on the dead stack below the frame. engine_code.hpp section 7,
-        test part 11: 2 M random calls, all pointer overlaps around the check edges (5 kinds), every 2^32 bit pattern in all
-        18 float lanes at once (11c2) and 17 patterns a call (11c), 200 switches under 4 threads; Attila + Thrones full length
-        PASS (review ehr_ findings 2-7 fixed in the next commit). Harness region 68.1 -> 51.6 ns against today's single-call
+        game's own store of the last half after the region is kept. Not byte-exact in: the stack from 0x50 bytes below the
+        frame up to the frame (the half function's frames and the 16 pushed argument slots), xmm1-7, the flags with the half
+        function's stub in (all dead), the first fault address and the game's partial half stores when the source pointer is
+        bad, and no live object may lie on the dead stack below the frame. engine_code.hpp section 7, test part 11: 2 M random
+        calls, all pointer overlaps around the check edges (5 kinds), every 2^32 bit pattern in all 18 float lanes at once
+        (11c), 200 switches under 4 threads; Attila + Thrones full length PASS (review ehr_ findings 2-7 fixed). 2026-11-18
+        reviews: Opus (ehalf_review2, read only: head / tail not in the pattern, memory-below-esp wording, tests proposed)
+        and Sonnet 5.5 xhigh (ehalf_review3, ran everything: no defect that changes results; found part 11c's old "17 a
+        call" run never took the vector path, so it is gone): fixed = head + tail pinned, comments, PausedWrite leaves a site
+        whose bytes changed since Prepare (and the sites that depend on it: the job trio, the half rows after the half
+        function), new test files half_rows_adversarial.inc + row_builder_call.inc (MXCSR 16 modes + x87 + flags, faults at
+        page edges, dead stack, one lane at a time with the others random, the whole row builder on random instance data,
+        pointer soup, a refused PausedWrite, 4 threads); part 13 tests the foreign bytes. Not done: the 20th lane's class
+        check (a speed-up only). Harness region 68.1 -> 51.6 ns against today's single-call
         stub (73.5 for the game's code; the harness's entry / copy cost is inside all three). NOT proven: the in-game gain
         (-0.4..-0.6 ms render, 4-6 ms workers). Owner: ATN
       - [x] E3P site 0x1890b90 IMPLEMENTED 2026-11-17 23:xx (ejob-fork, local; offline only): "Faster Effect Prefetch

@@ -30,9 +30,9 @@ claimed:
   mov eax, dword ptr [ecx + 8]
   mov eax, dword ptr [eax + edx*4]
   test eax, eax
-  je game_loop
+  je delegate                          // a failed head check takes the request itself (table clean)
   cmp dword ptr [eax + 8], edx         // its index in the pool
-  jne game_loop
+  jne delegate
   mov ecx, eax
   .byte 0xE9
   .long 0x5A5A5A11                     // jmp the game's Wake: the sleeper runs the loop
@@ -68,6 +68,8 @@ sleep:                                 // thiscall, ecx = worker; replaces the g
   jne sleep_game
   mov ecx, dword ptr [esi + 8]         // index
   cmp ecx, 32
+  jae sleep_game
+  cmp ecx, dword ptr [eax + 4]         // within the pool's size (the array may still be growing)
   jae sleep_game
   mov edx, dword ptr [eax + 8]
   cmp dword ptr [edx + ecx*4], esi
@@ -107,7 +109,7 @@ stop:                                  // thiscall, ecx = worker: the worker des
   jne stop_game
   xor eax, eax
   xchg dword ptr [PENDING], eax        // a request that no worker will run any more is dropped
-  mov eax, 4000000
+  mov eax, 0x10000000                  // 2^28 pauses (3 s on Zen 4, 0.8 to 9 s by CPU): a delegate preempted for longer is not waited for
 drain:
   cmp dword ptr [RUNNING], 0
   je stop_game

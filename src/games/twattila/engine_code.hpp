@@ -24,9 +24,10 @@
 #include "../../utils/log.hpp"
 #include "../twrome2/engine_tweaks.hpp"
 
-// Faster Game CPU Code: four of Attila's hot routines in empire.retail.dll, each replaced by code with the same results
-// (test/tw_engine_code runs the game's code and this one side by side: every register, the flags, the stack, the x87
-// state); Faster Render Lists (its own row): a fifth site the same way.
+// Faster Game CPU Code: Attila's hot routines in empire.retail.dll (the truncation, the float to half, fmod, the ready
+// check, the sprite row builder's half floats), each replaced by code with the same results (test/tw_engine_code runs the
+// game's code and this one side by side: every register, the stack, the x87 state, the flags where the code after reads
+// them); Faster Render Lists (its own row): the render list push the same way.
 // Each is found by its exact bytes: code another mod changed (the Attila CPU Performance Fix patches 1277 x87 blocks,
 // the first one below among them) or another build is left alone. A jump into the addon's own code page replaces the
 // first instruction(s) of each; the page is never freed (a thread can still be in it after the game's bytes are back).
@@ -297,7 +298,7 @@ constexpr std::array<uint8_t, 85> READY_CHECK_STUB = {
 // frame, most of it SetEvent system calls. Here WakeAll wakes one sleeping worker and that worker runs the game's own
 // WakeAll loop for the others, so the render thread goes on at once. The semaphore code, Wake and the worker loop stay the
 // game's: only which thread runs the Wakes, and a few microseconds later, changes (every worker still gets the game's Wake
-// after every request).
+// after every request, except one still pending when the pool is destroyed: Stop drops it).
 // Three sites, all thiscall like the game's: WakeAll, Sleep (+0x16b5520, replaced whole: the worker's wait) and the call of
 // Stop (+0x1697490) in the worker's destructor. A side table in its own memory (never freed) holds the pool, `pending` (a
 // WakeAll asked for a loop), `asleep` (bit i: worker i is inside our Sleep) and `running` (loops in progress), each on its
@@ -305,7 +306,10 @@ constexpr std::array<uint8_t, 85> READY_CHECK_STUB = {
 // locked instruction and then reads `asleep`; a worker sets its bit (locked) and reads `pending` before waiting, clears it
 // (locked) after and reads `pending` again: a request is either seen by the worker or sees its bit. Whoever finds `pending`
 // takes it (one locked exchange) and runs one loop, which starts after every request taken. Stop drops the pending request
-// and waits for the loops in progress before the worker's memory goes. Checked by test/tw_engine_code (the game's own
+// and waits for the loops in progress before the worker's memory goes: at most 2^28 pauses (about 3 s, 0.8 to 9 s by CPU),
+// so a loop's thread that was killed can't hang the exit and one preempted for longer than that is not waited for. Sleep
+// reads the pool's array only below the pool's size (the array may still be growing while the first workers start).
+// Checked by test/tw_engine_code (the game's own
 // functions, 32 threads) and a model check (every interleaving of 2 to 4 workers: no lost wake-up, no deadlock, no use after
 // free). Thrones of Britannia: the same bytes at other addresses; Rome II has none of them.
 constexpr std::string_view JOB_WAKE_ALL =
@@ -326,7 +330,7 @@ constexpr std::string_view JOB_STOP =
     "15 ?? ?? ?? ?? 33 C0 C7 03 00 00 00 00 85 C0 74 07 50 FF 15 ?? ?? ?? ?? C7 46 14 00 00 00 00 5E 5B C3";
 constexpr size_t JOB_WAKE_ALL_STUB = 0x00;
 constexpr size_t JOB_SLEEP_STUB = 0x73;
-constexpr size_t JOB_STOP_STUB = 0xED;
+constexpr size_t JOB_STOP_STUB = 0xF2;
 // The stubs' sentinels, replaced in Prepare: absolute fields (the job stub's side table: key, pending, asleep, running,
 // each one cache line on), absolute constants (the half rows' table, +0 .. +0xff) and relative calls (the job stub: Wake,
 // Acquire(INFINITE), WakeAll + 5, Stop; the half rows': the float to half, the region's start + 5, its end).
@@ -335,7 +339,7 @@ constexpr uint32_t STUB_CALL_SENTINEL = 0x5A5A5A11;
 constexpr uint32_t STUB_CONSTANT_SENTINEL = 0x5A5A5B00;
 constexpr size_t JOB_TABLE_SIZE = 256;
 constexpr size_t JOB_TABLE_LINE = 64;
-constexpr std::array<uint8_t, 280> JOB_STUB = {
+constexpr std::array<uint8_t, 285> JOB_STUB = {
     0xA1, 0x01, 0x5A, 0x5A, 0x5A,                    // wake_all: mov eax, dword ptr [key]
     0x39, 0xC8,                                      // cmp eax, ecx
     0x74, 0x10,                                      // je claimed
@@ -354,11 +358,11 @@ constexpr std::array<uint8_t, 280> JOB_STUB = {
     0x8B, 0x41, 0x08,                                // mov eax, dword ptr [ecx + 8]
     0x8B, 0x04, 0x90,                                // mov eax, dword ptr [eax + edx*4]
     0x85, 0xC0,                                      // test eax, eax
-    0x74, 0x2C,                                      // je game_loop
+    0x74, 0x0C,                                      // je delegate  a failed head check takes the request itself (table clean)
     0x39, 0x50, 0x08,                                // cmp dword ptr [eax + 8], edx  its index in the pool
-    0x75, 0x27,                                      // jne game_loop
+    0x75, 0x07,                                      // jne delegate
     0x89, 0xC1,                                      // mov ecx, eax
-    0xE9, 0x11, 0x5A, 0x5A, 0x5A,                    // jmp Wake  the sleeper runs the loop
+    0xE9, 0x11, 0x5A, 0x5A, 0x5A,                    // jmp Wake  jmp the game's Wake: the sleeper runs the loop
     0xF0, 0xFF, 0x05, 0x04, 0x5A, 0x5A, 0x5A,        // delegate: lock inc dword ptr [running]
     0x31, 0xC0,                                      // xor eax, eax
     0x87, 0x05, 0x02, 0x5A, 0x5A, 0x5A,              // xchg dword ptr [pending], eax
@@ -375,13 +379,15 @@ constexpr std::array<uint8_t, 280> JOB_STUB = {
     0x56,                                            // sleep: push esi
     0x89, 0xCE,                                      // mov esi, ecx
     0x83, 0x7E, 0x18, 0x03,                          // cmp dword ptr [esi + 0x18], 3
-    0x74, 0x65,                                      // je sleep_out
+    0x74, 0x6A,                                      // je sleep_out
     0xC7, 0x46, 0x18, 0x01, 0x00, 0x00, 0x00,        // mov dword ptr [esi + 0x18], 1
-    0x8B, 0x46, 0x04,                                // mov eax, dword ptr [esi + 4]  the pool
+    0x8B, 0x46, 0x04,                                // mov eax, dword ptr [esi + 4]  pool
     0x3B, 0x05, 0x01, 0x5A, 0x5A, 0x5A,              // cmp eax, dword ptr [key]
-    0x75, 0x55,                                      // jne sleep_game
+    0x75, 0x5A,                                      // jne sleep_game
     0x8B, 0x4E, 0x08,                                // mov ecx, dword ptr [esi + 8]  index
     0x83, 0xF9, 0x20,                                // cmp ecx, 32
+    0x73, 0x52,                                      // jae sleep_game
+    0x3B, 0x48, 0x04,                                // cmp ecx, dword ptr [eax + 4]  within the pool's size (the array may still be growing)
     0x73, 0x4D,                                      // jae sleep_game
     0x8B, 0x50, 0x08,                                // mov edx, dword ptr [eax + 8]
     0x39, 0x34, 0x8A,                                // cmp dword ptr [edx + ecx*4], esi
@@ -390,15 +396,15 @@ constexpr std::array<uint8_t, 280> JOB_STUB = {
     0x83, 0x3D, 0x02, 0x5A, 0x5A, 0x5A, 0x00,        // cmp dword ptr [pending], 0  a request that missed the bit
     0x74, 0x07,                                      // je acquire
     0x89, 0xC1,                                      // mov ecx, eax
-    0xE8, 0x93, 0xFF, 0xFF, 0xFF,                    // call delegate
+    0xE8, 0x8E, 0xFF, 0xFF, 0xFF,                    // call delegate
     0x8D, 0x4E, 0x1C,                                // acquire: lea ecx, [esi + 0x1c]
-    0xE8, 0x12, 0x5A, 0x5A, 0x5A,                    // call AcquireInf
+    0xE8, 0x12, 0x5A, 0x5A, 0x5A,                    // call AcquireInf  call AcquireInf
     0x8B, 0x4E, 0x08,                                // mov ecx, dword ptr [esi + 8]
     0xF0, 0x0F, 0xB3, 0x0D, 0x03, 0x5A, 0x5A, 0x5A,  // lock btr dword ptr [asleep], ecx
     0x83, 0x3D, 0x02, 0x5A, 0x5A, 0x5A, 0x00,        // cmp dword ptr [pending], 0  the request that woke us
     0x74, 0x08,                                      // je reset
     0x8B, 0x4E, 0x04,                                // mov ecx, dword ptr [esi + 4]
-    0xE8, 0x6F, 0xFF, 0xFF, 0xFF,                    // call delegate
+    0xE8, 0x6A, 0xFF, 0xFF, 0xFF,                    // call delegate
     0x31, 0xC9,                                      // reset: xor ecx, ecx
     0x8D, 0x46, 0x50,                                // lea eax, [esi + 0x50]
     0x87, 0x08,                                      // xchg dword ptr [eax], ecx
@@ -412,13 +418,13 @@ constexpr std::array<uint8_t, 280> JOB_STUB = {
     0x75, 0x1B,                                      // jne stop_game
     0x31, 0xC0,                                      // xor eax, eax
     0x87, 0x05, 0x02, 0x5A, 0x5A, 0x5A,              // xchg dword ptr [pending], eax  a request that no worker will run any more is dropped
-    0xB8, 0x00, 0x09, 0x3D, 0x00,                    // mov eax, 4000000
+    0xB8, 0x00, 0x00, 0x00, 0x10,                    // mov eax, 0x10000000  2^28 pauses (3 s on Zen 4, 0.8 to 9 s by CPU): a delegate preempted for longer is not waited for
     0x83, 0x3D, 0x04, 0x5A, 0x5A, 0x5A, 0x00,        // drain: cmp dword ptr [running], 0
     0x74, 0x05,                                      // je stop_game
     0xF3, 0x90,                                      // pause
     0x48,                                            // dec eax
     0x75, 0xF2,                                      // jne drain
-    0xE9, 0x14, 0x5A, 0x5A, 0x5A,                    // stop_game: jmp Stop
+    0xE9, 0x14, 0x5A, 0x5A, 0x5A,                    // stop_game: jmp Stop  jmp the game's Stop
 };
 
 // 7. The sprite soldiers' row builder (+0x1906fa0; 4 rows of 0x38 bytes a call): between its row loop's maths it converts 20
@@ -432,9 +438,14 @@ constexpr std::array<uint8_t, 280> JOB_STUB = {
 // +0x74) as the game does, and makes the last conversion by a real call of the game's float to half with its argument slot:
 // eax (its high half too) and ecx come out as that function leaves them; edx, which only that function writes, is kept in
 // xmm3 and put back before the call and before the fallback. What differs from the game's code, all dead after the region:
-// the 16 pushed argument slots below esp (the game's stack pointer ends 16 bytes down in both; no live object lies on the
-// stack below the frame), xmm1 to xmm7 (nothing in the loop or the way out reads them first), the flags, and the order of
-// the reads against the halves' stores (the checks) and of a fault: an invalid pointer faults in both.
+// the stack from 0x50 bytes below the frame (where the game's calls leave the half function's frames: return addresses, saved
+// registers, the 16 pushed argument slots) up to the frame (no live object lies on the stack below the frame; the memory
+// from the frame up is the game's), xmm1 to xmm7 (nothing in the loop or the way out
+// reads them first: the head and the code after the region are held to exact bytes, the jb goes back to that head; the
+// function's callers read none before they return), and the order of the reads against the halves' stores (the checks) and
+// of a fault: an invalid pointer faults in both (a bad source pointer at another first address, and without the halves the
+// game stored before it). The flags at the end are the game's when the float to half site is off; with its stub in they are
+// that stub's (dead after a call).
 constexpr std::string_view HALF_ROWS =
     "8D 44 24 38 50 F3 0F 11 44 24 3C E8 ?? ?? ?? ?? 8B 4C 24 6C F3 0F 10 44 24 28 F3 0F 11 44 24 3C 66 89 41 08 8D 44 24 "
     "3C 50 E8 ?? ?? ?? ?? 8B 4C 24 70 66 89 41 0A 8D 44 24 40 F3 0F 10 46 1C 50 F3 0F 11 44 24 44 E8 ?? ?? ?? ?? 8B 4C 24 "
@@ -456,6 +467,17 @@ constexpr std::string_view HALF_ROWS =
     "8D 44 24 7C 50 F3 0F 11 84 24 80 00 00 00 E8 ?? ?? ?? ?? 8B 4C 24 74 66 89 41 2C 8B 44 24 68 F3 0F 10 40 4C 8D 84 24 "
     "80 00 00 00 50 F3 0F 11 84 24 84 00 00 00 E8 ?? ?? ?? ?? 8B 4C 24 78 47";
 constexpr size_t HALF_ROWS_END = 721;  // mov ecx, dword ptr [esp + 0x78]: where the region ends
+// The code the stub's deadness argument also stands on, held to exact bytes: the loop's head (xmm1 to xmm5 are written before they
+// are read, xmm6 and xmm7 never read) and the code after the region (the pop of the 16 argument slots, the loop's bottom whose
+// jb goes back to that head, the exit). The same in Attila's and Thrones' builds (the three addresses in the head are wildcards).
+constexpr std::string_view HALF_ROWS_HEAD =
+    "8B CF F3 0F 10 15 ?? ?? ?? ?? D1 E9 8B D7 0F 57 C9 83 E2 01 66 0F 6E C1 8D 04 49 F3 0F 10 5C 84 08 F3 0F 10 64 84 0C F3 0F 10 6C "
+    "84 10 F3 0F 58 5C 24 34 F3 0F 58 64 24 30 F3 0F 58 6C 24 2C F3 0F E6 C0 C1 E9 1F F2 0F 58 04 CD ?? ?? ?? ?? 66 0F 5A C0 0F 2F C1 "
+    "76 08 F3 0F 11 54 24 58 EB 06 F3 0F 11 4C 24 58 F3 0F 10 44 24 54 85 D2 74 08 F3 0F 11 4C 24 70 EB 0D 0F 57 05 ?? ?? ?? ?? F3 0F "
+    "11 54 24 70 8B 44 24 68 F3 0F 11 44 24 74 F3 0F 10 44 24 6C F3 0F 11 40 04 F3 0F 10 44 24 28 F3 0F 11 58 F8 F3 0F 11 60 FC F3 0F "
+    "11 28";
+constexpr size_t HALF_ROWS_HEAD_AT = 174;  // the head starts this many bytes before the region
+constexpr std::string_view HALF_ROWS_TAIL = "8B 4C 24 78 47 83 C4 10 66 89 41 2E 83 C1 38 89 4C 24 68 83 FF 04 0F 82 65 FC FF FF 5F 5E 83 C4 5C C2 10";
 constexpr std::array<uint16_t, 20> HALF_ROWS_CALLS = {11, 41, 70, 103, 142, 178, 226, 274, 313, 348, 387, 425, 463, 501, 539, 577, 612, 641, 677, 716};
 constexpr size_t HALF_ROWS_CONSTANTS_AT = 0x4D0;
 constexpr std::array<uint8_t, 1222> HALF_ROWS_STUB = {
@@ -807,6 +829,8 @@ constexpr uint32_t CPU_CODE_SITES = 0b100010111;  // Faster Game CPU Code
 constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
 constexpr uint32_t PREFETCH_SITES = 0b1000000000;  // Faster Effect Prefetch: the effect tree's child sum
+constexpr uint32_t HALF_FUNCTION_BIT = 0b10;  // the half function, which the half rows' stub calls as the game does
+constexpr uint32_t HALF_ROWS_BIT = 0b100000000;
 // The rows by name, for the log lines.
 constexpr std::array<std::pair<uint32_t, std::string_view>, 4> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
                                                                          {LIST_SITES, "Faster Render Lists"},
@@ -852,9 +876,12 @@ constexpr uint32_t MAX_FAILED_WRITES = 30;
 // every other thread of the process is suspended and none stands inside a changing site past its first byte (it would go
 // on in the middle of the jump). False: one did (or its position is unknown), nothing written. From the first suspension
 // to the last resume nothing allocates, logs or takes a lock: a suspended thread may hold it. A thread started after the
-// snapshot isn't held (as with Detours).
-inline bool PausedWrite(uint32_t patched) {
+// snapshot isn't held (as with Detours). A site whose bytes are not what our last write left (another mod hooked or patched
+// it since Prepare) is not touched: `stood_down` names it, and with it the sites that go in on the strength of it (the three job
+// sites work together; the half rows' stub calls the half function as the game does).
+inline bool PausedWrite(uint32_t patched, uint32_t* stood_down) {
   const uint32_t changing = (patched ^ written) & found;
+  *stood_down = 0;
   std::vector<HANDLE> threads;
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
   if (snapshot == INVALID_HANDLE_VALUE) return false;
@@ -888,9 +915,21 @@ inline bool PausedWrite(uint32_t patched) {
   if (clear) {
     for (size_t index = 0; index < sites.size(); ++index) {
       const Site& site = sites[index];
-      if ((changing >> index & 1) == 0) continue;
+      if ((changing >> index & 1) != 0 && std::memcmp(site.at, ((written >> index & 1) != 0 ? site.jump : site.game).data(), SITE_SIZE) != 0) {
+        *stood_down |= 1u << index;
+      }
+    }
+    const uint32_t going_in = changing & patched;
+    if ((*stood_down & JOB_SITES) != 0) *stood_down |= JOB_SITES & going_in;
+    if ((*stood_down & HALF_FUNCTION_BIT) != 0) *stood_down |= HALF_ROWS_BIT & going_in;
+    for (size_t index = 0; index < sites.size(); ++index) {
+      const Site& site = sites[index];
+      if (((changing & ~*stood_down) >> index & 1) == 0) continue;
       DWORD protection;
-      if (VirtualProtect(site.at, SITE_SIZE, PAGE_EXECUTE_READWRITE, &protection) == FALSE) continue;
+      if (VirtualProtect(site.at, SITE_SIZE, PAGE_EXECUTE_READWRITE, &protection) == FALSE) {
+        *stood_down |= 1u << index;
+        continue;
+      }
       const auto& bytes = ((patched >> index & 1) != 0 ? site.jump : site.game);
       std::memcpy(site.at, bytes.data(), SITE_SIZE);
       VirtualProtect(site.at, SITE_SIZE, protection, &protection);
@@ -1026,8 +1065,8 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       uint8_t* destructor = find(JOB_WORKER_DESTRUCTOR, build.job_worker_destructor_rva);
       const uint8_t* wake = (wake_all != nullptr ? target(wake_all + JOB_WAKE_ALL_WAKE_CALL) : nullptr);
       const uint8_t* stop = (destructor != nullptr ? target(destructor + JOB_WORKER_DESTRUCTOR_STOP_CALL) : nullptr);
-      job_table = static_cast<uint8_t*>(VirtualAlloc(nullptr, JOB_TABLE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-      if (job_table != nullptr && worker_sleep != nullptr && wake != nullptr && stop != nullptr && holds(wake, JOB_WAKE) && holds(stop, JOB_STOP)) {
+      if (worker_sleep != nullptr && wake != nullptr && stop != nullptr && holds(wake, JOB_WAKE) && holds(stop, JOB_STOP)
+          && (job_table = static_cast<uint8_t*>(VirtualAlloc(nullptr, JOB_TABLE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE))) != nullptr) {
         uint8_t* stub = page + JOB_PAGE;
         std::memcpy(stub, JOB_STUB.data(), JOB_STUB.size());
         const std::array<const uint8_t*, 4> fields = {job_table, job_table + JOB_TABLE_LINE, job_table + 2 * JOB_TABLE_LINE, job_table + 3 * JOB_TABLE_LINE};
@@ -1043,7 +1082,8 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     }
     // The sprite row builder's 20 conversions, only with the game's float to half the target of every one of its calls.
     if (uint8_t* match = (build.half_rows_rva != 0 ? find(HALF_ROWS, build.half_rows_rva) : nullptr); match != nullptr && sites[1].at != nullptr) {
-      if (std::ranges::all_of(HALF_ROWS_CALLS, [&](uint16_t call) { return target(match + call) == sites[1].at; })) {
+      if (holds(match - HALF_ROWS_HEAD_AT, HALF_ROWS_HEAD) && holds(match + HALF_ROWS_END, HALF_ROWS_TAIL)
+          && std::ranges::all_of(HALF_ROWS_CALLS, [&](uint16_t call) { return target(match + call) == sites[1].at; })) {
         uint8_t* stub = page + HALF_ROWS_PAGE;
         std::memcpy(stub, HALF_ROWS_STUB.data(), HALF_ROWS_STUB.size());
         std::memcpy(stub + HALF_ROWS_CONSTANTS_AT, HALF_ROWS_CONSTANTS.data(), sizeof(HALF_ROWS_CONSTANTS));
@@ -1116,13 +1156,21 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   }
   const uint32_t target = wanted & internal::found;
   if (target == internal::written || internal::failed_writes >= internal::MAX_FAILED_WRITES) return;
-  if (internal::PausedWrite(target)) {
-    const uint32_t changed = target ^ internal::written;
-    internal::written = target;
+  uint32_t stood_down = 0;
+  if (internal::PausedWrite(target, &stood_down)) {
+    const uint32_t changing = target ^ internal::written;
+    const uint32_t now = (internal::written & ~changing) | (target & changing & ~stood_down);
+    const uint32_t changed = now ^ internal::written;
+    internal::written = now;
+    internal::found &= ~stood_down;
     internal::failed_writes = 0;
     for (const auto& [row_sites, name] : internal::ROWS) {
-      if ((changed & row_sites) == 0) continue;
-      renodx::utils::log::i("[Total War] ", name, ": ", ((target & row_sites) != 0 ? "on" : "off, the game's own code back"));
+      if ((changed & row_sites) != 0) renodx::utils::log::i("[Total War] ", name, ": ", ((now & row_sites) != 0 ? "on" : "off, the game's own code back"));
+    }
+    for (size_t index = 0; index < internal::sites.size(); ++index) {
+      if ((stood_down >> index & 1) != 0) {
+        renodx::utils::log::w("[Total War] ", internal::sites[index].name, ": left alone (its bytes changed since the start: another mod)");
+      }
     }
   } else if (++internal::failed_writes == internal::MAX_FAILED_WRITES) {
     for (const auto& [row_sites, name] : internal::ROWS) {
@@ -1137,8 +1185,8 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
 // the game's code if no attempt finds the threads clear: the stubs need nothing of this module.
 inline void Uninstall() {
   for (int attempt = 0; internal::written != 0 && attempt < 100; ++attempt) {
-    if (internal::PausedWrite(0)) {
-      internal::written = 0;
+    if (uint32_t stood_down; internal::PausedWrite(0, &stood_down)) {
+      internal::written = 0;  // a site another mod changed is that mod's now
     } else {
       Sleep(1);
     }

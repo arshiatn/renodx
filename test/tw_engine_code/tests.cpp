@@ -40,8 +40,11 @@
 // 11. The sprite soldiers' row builder (Faster Game CPU Code; the 20 conversions of +0x1907511 .. +0x19077e2 done four at a
 //    time): the region entered with a fake frame in the game's copy and in ours, every register, esp, xmm0, the frame from F up,
 //    the row and the objects equal: 2 M random calls (the vector path taken exactly when all 20 floats are zeros, tiny values or
-//    normals), every offset of the row's and the objects' pointers around each overlap check's edge, all 2^32 bit patterns
-//    through 15 float lanes and the two product lanes, 200 switches while 4 threads run it, timing.
+//    normals), every offset of the row's and the objects' pointers around each overlap check's edge, all 2^32 bit patterns in
+//    all 18 float lanes at once, 200 switches while 4 threads run it, timing; then half_rows_adversarial.inc (quick length; `adv
+//    full` for the long runs): the MXCSR / x87 state and the flags, faults at page edges, the dead stack, one lane at a time on
+//    the vector path with the others random, pointer soup, a refused PausedWrite, the whole row builder (row_builder_call.inc).
+// 13. Another mod's bytes in a site: left alone, and the sites that depend on it with it.
 // 12. The effect tree's child sum (+0x1890b90; Faster Effect Prefetch): the whole function on random trees with getters that
 //    change the size mid-loop, the loop's bottom alone at every place of esi around the vector (a no-access page follows the
 //    data: no load past it), cold-children timing, 200 switches under 4 threads.
@@ -546,6 +549,20 @@ uint8_t* NewWorker(const JobCopy& copy, uint32_t index, uint32_t count, HANDLE t
   return worker;
 }
 
+// Decommits a worker's page (a worker used afterwards faults) and keeps its reservation for a while: each VirtualAlloc reserves
+// 64 KB of the 32-bit address space, so the oldest go back (the shutdown cycles would otherwise use up 2 GB).
+void DecommitWorker(uint8_t* worker) {
+  static std::mutex lock;
+  static std::deque<uint8_t*> kept;
+  VirtualFree(worker, 0x1000, MEM_DECOMMIT);
+  const std::unique_lock guard(lock);
+  kept.push_back(worker);
+  while (kept.size() > 1500) {
+    VirtualFree(kept.front(), 0, MEM_RELEASE);
+    kept.pop_front();
+  }
+}
+
 struct JobRun {
   const JobCopy* copy = nullptr;
   uint32_t count = 0;
@@ -720,13 +737,40 @@ SoakResult Soak(const JobCopy& copy, uint32_t workers, uint32_t submitters, doub
   for (uint32_t index = 0; index < workers; ++index) {
     // The game's destructor: Stop (state 3, the semaphore released, the thread waited for and closed), then the semaphore.
     copy.destroy(run.workers[index], nullptr);
-    VirtualFree(run.workers[index], 0x1000, MEM_DECOMMIT);  // a worker used afterwards faults
+    DecommitWorker(run.workers[index]);
   }
   return {.items = run.pushed.load(), .requests = run.requests.load(), .sleeper_seen = run.sleeper_seen.load(), .failure = run.failure};
 }
 
 // engine_code's table (null while the copy is the game's).
 uint32_t JobTableField(uint32_t line) { return Read32(twattila::engine_code::internal::job_table + 64 * line); }
+
+// A thread that runs the job copy's WakeAll again and again, an access violation (a freed worker's page) counted and ending it.
+struct DelegateState {
+  const JobCopy* copy = nullptr;
+  std::atomic<bool> stop = false;
+  std::atomic<uint32_t> faults = 0;
+};
+
+bool CallGuarded(void(__fastcall* function)(void*, void*), void* argument) {
+  __try {
+    function(argument, nullptr);
+    return true;
+  } __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+    return false;
+  }
+}
+
+DWORD WINAPI DelegateMain(void* parameter) {
+  auto* state = static_cast<DelegateState*>(parameter);
+  while (!state->stop.load()) {
+    if (!CallGuarded(state->copy->wake_all, state->copy->pool)) {
+      state->faults.fetch_add(1);
+      return 1;
+    }
+  }
+  return 0;
+}
 
 int RunJobTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick) {
   namespace ec = twattila::engine_code::internal;
@@ -818,7 +862,7 @@ int RunJobTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
     });
     CHECK(JobTableField(1) == 0 && JobTableField(2) == 0 && JobTableField(3) == 0);  // Stop dropped the pending request
     for (const std::vector<uint8_t*>* workers : {&a, &b}) {
-      for (uint8_t* worker : *workers) VirtualFree(worker, 0x1000, MEM_DECOMMIT);
+      for (uint8_t* worker : *workers) DecommitWorker(worker);
     }
     std::printf("10. job wake-ups: 7 workers, one thread: WakeAll twice, Sleep, the destructor: every worker's state, counter, count and event equal\n");
   }
@@ -848,7 +892,7 @@ int RunJobTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
           }
         }
         for (uint8_t* worker : workers) {
-          if (worker != nullptr) VirtualFree(worker, 0x1000, MEM_DECOMMIT);
+          if (worker != nullptr) DecommitWorker(worker);
         }
         // The destructor ran on one worker only; the others' semaphores stay (a test: the handles end with the process).
       }
@@ -903,6 +947,94 @@ int RunJobTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
       }
     }
     std::printf("   %d shutdown cycles each (2 to 24 workers, 1 to 4 submitters), %llu items: no fault, table clean after each\n", cycles, items);
+  }
+
+  // 10e2. A delegate thread suspended inside its wake loop while the pool is destroyed (10e meets it rarely): every Stop waits for
+  // it, and the delegate resumed 400 ms later (its drain bound is 2^28 pauses, seconds) writes to no freed worker (the workers'
+  // pages are decommitted: a write there faults under the delegate's exception filter).
+  struct ForcedResult {
+    uint32_t suspended_runs = 0;
+    uint32_t gave_up_runs = 0;  // a Stop that did not wait for the suspended delegate
+    uint32_t faulted_runs = 0;
+  };
+  const auto forced_preemption = [&] {
+    ForcedResult total;
+    for (const uint32_t workers : {2u, 4u, 8u, 16u}) {
+      for (int repeat = 0; repeat < 2; ++repeat) {
+        for (uint32_t line = 0; line < 4; ++line) *reinterpret_cast<volatile uint32_t*>(ec::job_table + 64 * line) = 0;
+        std::vector<uint8_t*> table_workers;
+        for (uint32_t index = 0; index < workers; ++index) table_workers.push_back(NewWorker(ours, index, workers, nullptr));
+        DelegateState state;
+        state.copy = &ours;
+        HANDLE delegate = CreateThread(nullptr, 0, &DelegateMain, &state, 0, nullptr);
+        const uint8_t* loop_begin = patched + build.code->job_wake_all_rva + 0x10;
+        const uint8_t* loop_end = patched + build.code->job_wake_all_rva + 0x20;
+        bool suspended = false;
+        for (int attempt = 0; attempt < 5'000'000 && !suspended; ++attempt) {
+          SuspendThread(delegate);
+          CONTEXT context = {.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER};
+          GetThreadContext(delegate, &context);
+          const auto* eip = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(context.Eip));
+          suspended = JobTableField(3) == 1 && eip >= loop_begin && eip < loop_end && context.Esi + 1 < context.Ebx;  // workers still to wake
+          if (suspended) break;
+          ResumeThread(delegate);
+          for (int spin = attempt % 97; spin > 0; --spin) YieldProcessor();
+        }
+        if (!suspended) {
+          state.stop = true;
+          WaitForSingleObject(delegate, 5000);
+          CloseHandle(delegate);
+          for (uint8_t* worker : table_workers) {
+            ours.destroy(worker, nullptr);
+            DecommitWorker(worker);
+          }
+          continue;
+        }
+        ++total.suspended_runs;
+        std::atomic<uint32_t> destroyed = 0;
+        std::thread destroyer([&] {
+          for (uint8_t* worker : table_workers) {
+            ours.destroy(worker, nullptr);
+            DecommitWorker(worker);
+            destroyed.fetch_add(1);
+          }
+        });
+        Sleep(400);
+        if (destroyed.load() != 0) ++total.gave_up_runs;
+        state.stop = true;
+        ResumeThread(delegate);
+        destroyer.join();
+        WaitForSingleObject(delegate, 10000);
+        CloseHandle(delegate);
+        if (state.faults.load() != 0) ++total.faulted_runs;
+      }
+    }
+    return total;
+  };
+  {
+    const ForcedResult result = forced_preemption();
+    CHECK(result.suspended_runs >= 4 && result.gave_up_runs == 0 && result.faulted_runs == 0);
+    std::printf("   a delegate suspended in its loop while 2 to 16 workers are destroyed (%u runs): every Stop waited for it, no freed worker touched\n", result.suspended_runs);
+  }
+
+  // 10e3. CONTROL: the drain's bound cut to 4 M pauses (about 50 ms): the Stops give up and the resumed delegate wakes freed
+  // workers, so the test above must be able to see it.
+  {
+    uint8_t* bound = ec::page + ec::JOB_PAGE + ec::JOB_STOP_STUB + 20;  // mov eax, imm32 of the drain
+    CHECK(bound[-1] == 0xB8 && Read32(bound) == 0x10000000);
+    DWORD protection;
+    VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READWRITE, &protection);
+    Write32(bound, 4'000'000);
+    VirtualProtect(ec::page, ec::PAGE_SIZE, protection, &protection);
+    FlushInstructionCache(GetCurrentProcess(), ec::page, ec::PAGE_SIZE);
+    const ForcedResult result = forced_preemption();
+    VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READWRITE, &protection);
+    Write32(bound, 0x10000000);
+    VirtualProtect(ec::page, ec::PAGE_SIZE, protection, &protection);
+    FlushInstructionCache(GetCurrentProcess(), ec::page, ec::PAGE_SIZE);
+    for (uint32_t line = 0; line < 4; ++line) *reinterpret_cast<volatile uint32_t*>(ec::job_table + 64 * line) = 0;  // a faulted delegate never left its loop
+    std::printf("   CONTROL, the drain cut to 4 M pauses (must fail): %u of %u runs gave up, %u faulted\n", result.gave_up_runs, result.suspended_runs, result.faulted_runs);
+    CHECK(result.suspended_runs >= 4 && result.gave_up_runs != 0);
   }
 
   // 10f. More workers than the mask has bits: the game's own loop (the stub stands down), same soak.
@@ -973,7 +1105,7 @@ int RunJobTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
       line += std::format("{}{} {:.1f} us (p90 {:.1f})", line.empty() ? "" : ", ", copy->name, microseconds[microseconds.size() / 2], microseconds[microseconds.size() * 9 / 10]);
       for (uint32_t index = 0; index < 15; ++index) {
         copy->destroy(run.workers[index], nullptr);
-        VirtualFree(run.workers[index], 0x1000, MEM_DECOMMIT);
+        DecommitWorker(run.workers[index]);
       }
     }
     std::printf("   median call of WakeAll with 15 workers asleep: %s\n", line.c_str());
@@ -1000,8 +1132,25 @@ struct RowsCall {
   alignas(16) uint8_t xmm_in[112];   // 80: xmm1 to xmm7
   alignas(16) uint8_t xmm_out[112];  // 192
   alignas(16) uint8_t frame[0x200];  // 304: F = frame + 0x100
+  // The state and fault parts of half_rows_adversarial.inc:
+  uint32_t mxcsr_in;                  // 816
+  uint32_t mxcsr_out;                 // 820
+  uint32_t mxcsr_saved;               // 824
+  uint32_t frame_top;                 // 828: EnterRows4: F, in a stack of its own
+  alignas(16) uint8_t xmm0_full[16];  // 832
+  alignas(16) uint8_t fx_in[512];     // 848
+  alignas(16) uint8_t fx_out[512];    // 1360
+  alignas(16) uint8_t fx_saved[512];  // 1872
+  uint32_t faulted;                   // 2384: the fault tests
+  uint32_t fault_address;             // 2388
+  uint32_t fault_write;               // 2392
+  uint32_t fault_eip;                 // 2396
+  uint32_t fault_esp;                 // 2400
+  uint32_t fault_regs[8];             // 2404
 };
 static_assert(offsetof(RowsCall, frame) == 304 && offsetof(RowsCall, xmm_out) == 192 && offsetof(RowsCall, out) == 40);
+static_assert(offsetof(RowsCall, mxcsr_in) == 816 && offsetof(RowsCall, xmm0_full) == 832 && offsetof(RowsCall, fx_in) == 848 && offsetof(RowsCall, fx_out) == 1360
+              && offsetof(RowsCall, fx_saved) == 1872);
 
 __declspec(naked) void __cdecl EnterRows(RowsCall*) {
   __asm {
@@ -1279,65 +1428,7 @@ int RunRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32
     std::printf("   %llu calls with overlapping pointers (5 kinds, every offset -0x90 .. 0x90 around the edges): equal, the vector path in %llu\n", cases, fast);
   }
 
-  // 11c. Every bit pattern: 17 patterns a call (the 15 floats read as they are, the product lanes x * 1.0 and 1.0 * x, the rest
-  // fixed), 2^32 patterns in a multiplicative order (2^28 of them, spread over the range, when quick): each call's 20 halves,
-  // registers and frame equal. Each pattern is in
-  // one lane here (the lanes differ by the pattern's place in the call); 11c2 puts every pattern in all lanes.
-  {
-    const uint64_t patterns = (quick ? (1ull << 28) : (1ull << 32));
-    const uint64_t blocks = (patterns + 16) / 17;
-    std::atomic<uint64_t> fast_blocks = 0;
-    const auto start = std::chrono::steady_clock::now();
-    const uint64_t wrong = Parallel(blocks, [&](uint64_t first, uint64_t last, unsigned worker) -> uint64_t {
-      auto in = std::make_unique<RowsWorld>();
-      auto saved = std::make_unique<RowsWorld>();
-      auto ra = std::make_unique<RowsWorld>();
-      auto rb = std::make_unique<RowsWorld>();
-      Random random = {.state = 0x9E3779B97F4A7C15ull ^ (first * 0x2545F4914F6CDD1Dull) ^ worker};
-      RowsRandom(in.get(), &random, 0);
-      uint8_t* frame = in->call.frame + 0x100;
-      uint8_t* source = in->arena.data();
-      uint8_t* second = in->arena.data() + 0x100;
-      Write32(frame + 0x50, 0x3F800000);  // the products: x * 1.0 and 1.0 * x
-      Write32(frame + 0x4C, 0x3F800000);
-      Write32(frame + 0x20, 1000);
-      uint64_t bad = 0;
-      uint64_t fast_here = 0;
-      for (uint64_t block = first; block < last; ++block) {
-        const auto pattern = [&](uint32_t lane) { return static_cast<uint32_t>((block * 17 + lane) * 0x9E3779B1ull); };
-        for (uint32_t slot = 0; slot < 4; ++slot) Write32(frame - 0x10 + 4 * slot, random.Next());  // see 11c2
-        in->call.xmm0_in = pattern(0);
-        Write32(frame + 0x24, pattern(1));
-        Write32(source + 0x1C, pattern(2));
-        Write32(frame + 0x70, pattern(3));
-        Write32(frame + 0x58, pattern(4));
-        Write32(frame + 0x74, pattern(5));
-        Write32(source + 0x40, pattern(6));
-        Write32(frame + 0x48, pattern(7));
-        Write32(frame + 0x44, pattern(8));
-        for (uint32_t index = 0; index < 5; ++index) Write32(source + 0x28 + 4 * index, pattern(9 + index));
-        Write32(source + 0x3C, pattern(14));
-        Write32(second + 0x48, pattern(15));
-        Write32(second + 0x4C, pattern(16));
-        *saved = *in;
-        RunRows(game_block, in.get(), *saved, ra.get());
-        RunRows(patched_block, in.get(), *saved, rb.get());
-        bool took_fast;
-        if (!RowsEqual(*in, *saved, *ra, *rb, &took_fast)) {
-          ++bad;
-          Report("  rows pattern block %llu: NOT equal (eax %08X / %08X)\n", block, ra->call.out[0], rb->call.out[0]);
-        }
-        fast_here += took_fast ? 1 : 0;
-      }
-      fast_blocks += fast_here;
-      return bad;
-    });
-    CHECK(wrong == 0);
-    std::printf("   every bit pattern, %llu in %llu calls of 17 (%llu on the vector path): the 20 halves, registers, frame equal (%.0f s)\n", patterns, blocks, fast_blocks.load(),
-                std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
-  }
-
-  // 11c2. Every bit pattern in every lane at once: one pattern a call in all 18 float lanes (the integer lane fixed at 1000, the
+  // 11c. Every bit pattern in every lane at once: one pattern a call in all 18 float lanes (the integer lane fixed at 1000, the
   // zero lane at 0; the product lanes x * 1.0 and 1.0 * x give x), 2^32 calls (2^28 quick): the 20 halves, registers and frame equal.
   {
     const uint64_t patterns = (quick ? (1ull << 28) : (1ull << 32));
@@ -1961,6 +2052,9 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
   return 0;
 }
 
+// The state, fault, whole-function and thread parts of the half rows (review 3), run by `tests.exe <dll> quick|full adv <part>`.
+#include "half_rows_adversarial.inc"
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2032,6 +2126,18 @@ int main(int argc, char** argv) {
   if (argc > 3 && std::string(argv[3]) == "rows" && build.code->half_rows_rva != 0) {
     if (const int failed = RunRowsTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
     std::printf("PASS (rows only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "adv" && build.code->half_rows_rva != 0) {
+    twattila::engine_code::Update(true);
+    const int failed = RunAdv(build, game, patched, text_rva, text_size, quick, argc > 4 ? argv[4] : "all");
+    std::printf(failed != 0 ? "FAILED (adv)\n" : "DONE (adv)\n");
+    return failed;
+  }
+  if (argc > 3 && std::string(argv[3]) == "jobs" && build.code->job_wake_all_rva != 0) {
+    twattila::engine_code::Update(true);
+    if (const int failed = RunJobTests(build, game, patched, quick); failed != 0) return failed;
+    std::printf("PASS (jobs only)\n");
     return 0;
   }
   if (argc > 3 && std::string(argv[3]) == "sum" && build.code->child_sum_rva != 0) {
@@ -2820,6 +2926,9 @@ int main(int argc, char** argv) {
   if (build.code->half_rows_rva != 0) {
     twattila::engine_code::Update(true);
     if (const int failed = RunRowsTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
+    twattila::engine_code::Update(true);
+    if (const int failed = RunAdv(build, game, patched, text_rva, text_size, true, "all"); failed != 0) return failed;
+    twattila::engine_code::Update(true);
   } else {
     CHECK(ec::sites[8].at == nullptr);
     std::printf("11. sprite row builder: none in this build\n");
@@ -2842,6 +2951,73 @@ int main(int argc, char** argv) {
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Uninstall();
   std::printf("off: the game's code back byte for byte\n");
+
+  // 13. Another mod's bytes in a site after the start: that site is not touched, nothing that goes in on the strength of it is
+  // (the three job sites; the half rows after the half function), the rest is, and the site is left alone from then on.
+  {
+    const auto foreign = [&](size_t index, const std::array<uint8_t, ec::SITE_SIZE>& bytes) {
+      DWORD protection;
+      VirtualProtect(ec::sites[index].at, ec::SITE_SIZE, PAGE_EXECUTE_READWRITE, &protection);
+      std::memcpy(ec::sites[index].at, bytes.data(), ec::SITE_SIZE);
+      VirtualProtect(ec::sites[index].at, ec::SITE_SIZE, protection, &protection);
+    };
+    const auto holds = [&](size_t index, const std::array<uint8_t, ec::SITE_SIZE>& bytes) { return std::memcmp(ec::sites[index].at, bytes.data(), ec::SITE_SIZE) == 0; };
+    const auto prepare_again = [&] {
+      for (ec::Site& site : ec::sites) site.at = nullptr;
+      ec::prepared = false;
+      ec::written = 0;
+      ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
+    };
+    const std::array<uint8_t, ec::SITE_SIZE> hook = {0xE9, 0x10, 0x20, 0x30, 0x40};
+    const uint32_t all = ec::found;
+    const auto on = [&] { twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, true, true); };
+    const auto off = [&] { twattila::engine_code::Update(false); };
+    const auto game_bytes = [&](uint32_t mask) {  // every site of `mask` holds the game's bytes
+      for (size_t index = 0; index < ec::sites.size(); ++index) {
+        if ((mask >> index & 1) != 0 && !holds(index, ec::sites[index].game)) return false;
+      }
+      return true;
+    };
+    if (build.code->job_wake_all_rva != 0) {
+      // (a) the job sleeps changed before the jobs go in
+      foreign(6, hook);
+      on();
+      CHECK(ec::found == (all & ~ec::JOB_SITES) && ec::written == ec::found && holds(6, hook) && game_bytes(ec::JOB_SITES & ~0b01000000u));
+      CHECK(log_lines.back().find("left alone") != std::string::npos && log_lines.back().find("job stops") != std::string::npos);
+      foreign(6, ec::sites[6].game);
+      off();
+      CHECK(ec::written == 0 && game_bytes(all));
+      prepare_again();
+      // (b) the job destructor's call of Stop changed while the jobs are on: switching off leaves it (a foreign call), restores the other two
+      on();
+      CHECK(ec::written == all);
+      foreign(7, hook);
+      off();
+      CHECK(ec::written == 0 && holds(7, hook) && game_bytes(all & ~0b10000000u) && (ec::found & 0b10000000u) == 0);
+      foreign(7, ec::sites[7].game);
+      prepare_again();
+    }
+    if (build.code->half_rows_rva != 0) {
+      // (c) the half function changed before the half rows go in
+      foreign(1, hook);
+      on();
+      CHECK((ec::found & (ec::HALF_ROWS_BIT | ec::HALF_FUNCTION_BIT)) == 0 && (ec::written & (ec::HALF_ROWS_BIT | ec::HALF_FUNCTION_BIT)) == 0
+            && ec::written == ec::found && holds(1, hook));
+      foreign(1, ec::sites[1].game);
+      off();
+      CHECK(ec::written == 0 && game_bytes(all));
+      prepare_again();
+    }
+    // (d) the soldier rounding site changed while the rows are on: switching off leaves it, restores the others
+    on();
+    CHECK(ec::written == all);
+    foreign(0, hook);
+    off();
+    CHECK(ec::written == 0 && holds(0, hook) && game_bytes(all & ~1u));
+    foreign(0, ec::sites[0].game);
+    prepare_again();
+    std::printf("13. another mod's bytes in a site: left alone, the sites that depend on it stay out, the rest as asked\n");
+  }
 
   // 7. With the Attila CPU Performance Fix's x87 fix the truncation block holds fisttp and nops for both fldcw (bytes
   // 23..26, 28 and 31..34 of the block, ATN's heapfix.log: 1277 of 1277 blocks, 165 by fisttp): that site is left
