@@ -3486,6 +3486,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         of the free address space ends a wait: dips 5 s+ seen 100 % like 7.0, fuzz 0 late / 0 missing, walks 27 % of
         7.0's), hfa e94fd060 (18 / 18 patch orders = one tree); startup log lines + variants heapfix_line. Old DLLs in
         dlls\superseded. Re-check hwr1s_ STARTED 14:45.
+        hwr1s_ re-check DONE (heapfix/hwr1s_review.md round 2): lw SHIP (trigger correct, no walk storm, fuzz confirmed);
+        xw / hfa DLLs fine for the bench (fresh builds byte-identical); X1 the test's dwell excuse lets a 'hold' watcher bug
+        pass on a quiet PC (excuse on the sentinel gap only), hfa regex too weak (H1). Test / json fixes to hw1s_ 15:08,
+        no DLL rebuild.
         ar3o_ DONE -> night1118/review_ia3.md: MAPW-B MERGE AFTER FIXES (off path clean for every game; stack reads capped by
         StackBase). M1 no lower stack bound, M2 events (un)registered inside present (ReShade lists unsynchronized ->
         register at Install when armed), M3 / M4 parser: 'IN map' too loose, present-bias / even-cadence alignment off by
@@ -3506,6 +3510,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         held DSV released every present before ResizeBuffers and on every device destroy; only 3 writers, all publish).
         Lows (destroy-handler rule comment, desc by value, StateCheck compare in AmbientReplaced, last_key test) sent
         to ia4_ 15:05; merge after.
+        ar2o_ DONE -> night1118/review_ia2.md: ARING MERGE + AOM MERGE (slot 0 NO_OVERWRITE safe: GetData S_OK after the
+        End that follows every draw reading the ring; LRU order kept on insert; generation stamp exact over all 6 writers).
+        Lows (test proves reuse ran, Shogun 2 old depth kept through menus, names) sent to ia2_ 15:08; merge after. W1:
+        check the 'in 8 rings' line + Map waits left at the cap, and the GPU frame time.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
