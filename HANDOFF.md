@@ -402,7 +402,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CR4 FOLLOW-UPS (review_ci4s.md): M1 emitters 0 / 1 of every effect never prefetc ... | after the final bench
 - CR5 BEFORE THE BENCH (review_ci5.md): M1 site 8 stub -> the per-slot K|K/2 form ... | the engine_code implementer after ci6_ (EF4b), before the fi
 - EF4b REST (ci6_report.md): 0x442360 (~28 float4 reloads in 7 four-row blocks, 8 ... | next CPU round
-- ATN: RTSO (cpu_plan4_addon.md section 10): Specular Occlusion alone keeps the wh ... | ATN (pick), then a < 1 h implementer
+- GPU line, after the bench: a lean Specular Occlusion path when it's the only RT ... | coordinator (ATN 11-18 ~15:5x)
 - ATN: SHOGUN 2 LIGHT FALLOFF CHECK (review_pdi1.md M2): bridge v32 / L1 gives Sho ... | ATN (later, not this week)
 - vMF DEFAULT 40 % (ATN 11:10): the Rough Diffuse slider's default 40 % when vMF S ... | vMF S4
 - TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
@@ -3514,6 +3514,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         seeds: offset within 4 us, 64 / 67 / 69 waits IN their map, no warnings; the round-2 parser fails the new DENSE
         case); OVERLAPS label; d02fefa83 copy gate first -> MERGED 93b72a972 15:48 (gated x86 3 targets exit 0), PUSHED;
         ia3_'s links removed alone. MAPW-B CLOSED.
+        ATN ~15:5x (home): plays with object detail at 1x (8x only for the CPU tests) -> ALOD-1x: no LOD pick detour at 1x
+        (0.3-0.9 ms summed on workers): alod1s_ (Sonnet xHigh, engine hook) STARTED 17:57. RTSO: ATN picked B1 (SO only
+        with another RT row) + a later lean SO-alone path: rtso1_ (Opus High) STARTED 17:57. Subagent permission prompts
+        waited for ATN while away (3 approved ~15:5x): cr8s_ / ec4s_ / hl1s_ / hsr1s_ ran 3-4 h. ATN asked about a PC restart
+        after the agents + reviews (dead threads, app update): OK then; copy the scratchpad first.
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
@@ -3593,7 +3598,10 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] EF4b REST (ci6_report.md): 0x442360 (~28 float4 reloads in 7 four-row blocks, 8 measured ~4.4 ms summed
         workers): widen the site masks past 32 bits first; 0x1696820 (movaps into xmm1 / xmm4, ~0.6 ms summed): a
         register-parameter stub + an alignment-fault argument. Owner: next CPU round
-      - [ ] ATN: RTSO (cpu_plan4_addon.md section 10): Specular Occlusion alone keeps the whole RT path on (day1 ~3 ms render,
+      - [ ] GPU line, after the bench: a lean Specular Occlusion path when it's the only RT row (cpu_plan4_addon.md
+        section 10 C1 / C2 / C3: units skipped, no Ray Reconstruction, SO rays inside the trace request), so B1's gate can
+        go. Owner: coordinator (ATN 11-18 ~15:5x)
+      - [x] ATN PICKED B1 ~15:5x (rtso1_): RTSO (cpu_plan4_addon.md section 10): Specular Occlusion alone keeps the whole RT path on (day1 ~3 ms render,
         ~7 ms helper GPU, 5 ms game GPU waits) when every other RT row is off; options A keep / B1 gate on any other RT row
         / B2 gate on Reflections / C1 skip units / C2 no Ray Reconstruction / D tooltip only. Players with the RT/PT preset
         unaffected. Numbers from the final bench's W1 (SO on) vs W2 (SO off). Owner: ATN (pick), then a < 1 h implementer
