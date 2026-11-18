@@ -3179,6 +3179,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         SetThreadSelectedCpuSets, always a subset of the user's 0-15 set; new header + Experimental row off + new
         test/tw_cpu_sets) on b59262b2c, branch asm1_ (no engine_code.hpp: runs beside ci3s_). pdi1_ resumed 05:53 for its
         final report (its turn ended while verify_pdi3 ran).
+        pdi1_ DONE ~05:5x -> plan_1117/pdi1_report.md: branch pdi1_ de9a7cc57 (on 492d08fc6): bridge v32 (append-only,
+        SharedBytes(31) 964360, x86 = x64) + L1 per-light falloff as the game shader's (linear tables per host, on by
+        default, RENODX_TW_SQUARED_FALLOFF=1 = old) + recorder plays v20..v32. WARP gate 40/40, controls fail, HARNESS_DUMP
+        0 changes, 17 recordings byte-identical (all v31 = smooth only), Nsight noise, gated x86 + amd64 all exit 0.
+        Open for step 2: O2, a game capture (R1 G-T0 + tile histogram), A3 residuals, slot decision, a v32 recording
+        with linear lights. STARTED 05:56: pdr1_ Opus xHigh review of 492d08fc6..de9a7cc57 (read only).
+        ci3s_ STOPPED ~05:5x on a WORKTREE GUARD refusal (its own cd + heredoc compound; not the safety classifier),
+        commit-1 edits half done, nothing committed. RESUMED 05:56 with Edit-tool-only edits + plain single commands
+        (as the guard asks; ci1_ / ci2s_ did the same).
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
