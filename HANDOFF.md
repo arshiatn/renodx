@@ -3430,6 +3430,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         on / W2 SO off + map trace / W1b HFx / W1c HFx2, P1 probe, H1-H4, D1 la16bdbg add-on OFF, H0 Cnt2 + hsC LAST at
         -Seconds 190); A1 and H2's third round dropped to fit 4 h. STILL TO BUILD before it: HFx (hfa + lfall) and HFx2 (la16b)
         after hlr1s_ / hwr1s_ fixes (one Sonnet xHigh assembler), the probe build (ec4s_ step 4), final1118 + final1118_fp.
+        hwr1s_ DONE -> heapfix/hwr1s_review.md: xw / lw / hfa SHIP AFTER FIXES (hfa rebuilt byte-identical a5af2f23; patches
+        clean alone and in all 6 orders). X1 xw timing phases fail on a busy PC (adversary descheduled 18 ms, not the
+        watcher); X2 log 'once' -> 'bad in N of 4 reads'; L1 lw misses short dips (5 s 16 % / 10 s 33 % / 20 s 66 % seen vs
+        7.0's 100 %): NOTE fix + try a GlobalMemoryStatusEx early-walk trigger; startup log lines for the bench proof.
+        Sent back to hw1s_ 13:38 (rebuild xw / lw / hfa).
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
