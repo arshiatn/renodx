@@ -1283,24 +1283,31 @@ static_assert(ITEM_PUSH_STUB.size() == ITEM_PUSH_STUB_AT[2] && ITEM_PUSH_STUB[IT
 static_assert(ITEM_PUSH_STUB[0x88] == ITEM_PUSH_MIN_RUN + 1 && ITEM_PUSH_STUB[0xB5] == ITEM_PUSH_MIN_RUN + 1
               && ITEM_PUSH_STUB[0x102] == ITEM_PUSH_MIN_RUN + 1 && ITEM_PUSH_STUB[0x133] == ITEM_PUSH_MIN_RUN + 1);  // the stubs' `cmp reg, MIN_RUN + 1`
 
-// 16. The pending list sweep's chain prefetch (Faster Sweep Prefetch, its own row, Experimental, off). The render thread's per-frame sweep over the pending lists
-// (Attila +0x1893290, Thrones +0x19085f0, one caller; thiscall, `this` in esi) walks a vector of {list object, control block} (the count at [this + 0x18], the entries
-// at [this + 0x1c]) from the last entry down (ebx = count - 1 .. 0), asks the ready check of 5. (+0x18635a0, ecx the list object) about each and erases a ready entry
-// by moving the last one in (only entry ebx and the count change: the entries below ebx stay as they are). The check reads the list object's flag byte [+4], its
-// children array [+0x44] and count [+0x40] and the children's ready bytes: a chain of dependent misses per list (list object, array, first child) that the sweep
-// never overlaps with the next list's. The site is the loop's top, `mov eax, [esi + 0x1c]; mov ecx, [eax + ebx*8]` (3 + 3 bytes: the jump takes the first 5, the
-// stub goes on at the call, +6). The stub runs both after three stages for the entries A, B and C places below ebx (each `ebx - d` inside the vector as it is right
-// now: the unsigned compare with the count also skips the wrap below 0): stage A prefetches the list object's first two lines; stage B (a null list object skipped)
-// loads its children array pointer (that line was prefetched two entries ago) and prefetches the array's line; stage C (null skipped) loads the count (0: skipped,
-// the game never reads the array then) and the array's first child pointer and prefetches that child's ready byte. eax, ecx and edx are the only registers it
-// changes and the game's reload of ecx comes last (edx is dead: written before it is read in the erase path, never read on the not-ready one; the flags are dead
-// too: the call's result test sets them); it stores nothing. Every real load is of an address the game's own check of that entry reads later in the same sweep
-// (the entry slots inside [0, count), [list + 0x40], [list + 0x44], [array] with count > 0); the child's pointer is only prefetched. The premise (that of 8., the
-// child sum): nothing but the sweep itself removes or changes the pending lists below ebx while it is in the entry above, and no other thread frees a children
-// array meanwhile. Known limit: a non-null list object whose +0x40 / +0x44 cannot be read makes the stub fault up to 4 entries' checks earlier than the game (stage B
-// reads [list + 0x44] four entries ahead, stage C [list + 0x40] two ahead; the game faults at its own check of that entry, so it is a crash either way; the stub
-// stores nothing, so only what the entries in between did first is missing). Found by the whole function's bytes (the calls and the mov's constant wild); Thrones' copy
-// is the same bytes at +0x19085f0; Rome II has none.
+// 16. The pending list sweep's chain prefetch (Faster Sweep Prefetch, its own row, Experimental, off). The render thread's
+// per-frame sweep over the pending lists (Attila +0x1893290, Thrones +0x19085f0, one caller; thiscall, `this` in esi) walks a
+// vector of {list object, control block} (the count at [this + 0x18], the entries at [this + 0x1c]) from the last entry down
+// (ebx = count - 1 .. 0), asks the ready check of 5. (+0x18635a0, ecx the list object) about each and erases a ready entry by
+// moving the last one in (only entry ebx and the count change: the entries below ebx stay as they are). The check reads the
+// list object's flag byte [+4], its children array [+0x44] and count [+0x40] and the children's ready bytes: a chain of
+// dependent misses per list (list object, array, first child) that the sweep never overlaps with the next list's. The site is
+// the loop's top, `mov eax, [esi + 0x1c]; mov ecx, [eax + ebx*8]` (3 + 3 bytes: the jump takes the first 5, the stub goes on
+// at the call, +6). The stub runs both after three stages for the entries A, B and C places below ebx (each `ebx - d` inside
+// the vector as it is right now: the unsigned compare with the count also skips the wrap below 0): stage A prefetches the list
+// object's first two lines; stage B (a null list object skipped) loads its children array pointer (that line was prefetched
+// two entries ago) and prefetches the array's line; stage C (null skipped) loads the count (0: skipped, the game never reads
+// the array then) and the array's first child pointer and prefetches that child's ready byte. eax, ecx and edx are the only
+// registers it changes and the game's reload of ecx comes last (edx is dead: written before it is read in the erase path,
+// never read on the not-ready one; the flags are dead too: the call's result test sets them); it stores nothing. Every real
+// load is of an address the game's own check of that entry reads later in the same sweep (the entry slots inside [0, count),
+// [list + 0x40], [list + 0x44]) or that lies in the block it reads: [array] with count > 0, which with the ready check's stub
+// on and the list's flag clear nobody reads (the stub reads [array + 8 * count - 4]), but it is the same block, so the load is
+// safe all the same; the child's pointer is only prefetched. The premise (that of 8., the child sum): nothing but the sweep
+// itself removes or changes the pending lists below ebx while it is in the entry above, and no other thread frees a children
+// array meanwhile. Known limit: a non-null list object whose +0x40 / +0x44 cannot be read makes the stub fault up to 4
+// entries' checks earlier than the game (stage B reads [list + 0x44] four entries ahead, stage C [list + 0x40] two ahead; the
+// game faults at its own check of that entry, so it is a crash either way; the stub stores nothing, so only what the entries
+// in between did first is missing). Found by the whole function's bytes (the calls and the mov's constant wild); Thrones'
+// copy is the same bytes at +0x19085f0; Rome II has none.
 constexpr std::string_view SWEEP =
     "56 8B F1 B9 ?? ?? ?? ?? E8 ?? ?? ?? ?? 84 C0 0F 84 82 00 00 00 8B 46 18 53 8D 58 FF 3B D8 73 76 57 8B 46 1C 8B 0C D8 E8 ?? ?? ?? ?? 84 "
     "C0 74 5F 8B 4E 1C 8B 46 18 8D 14 D9 8D 04 C1 8B 48 FC 85 C9 74 07 F0 FF 41 04 8B 48 FC 8B 7A 04 8B 40 F8 89 02 89 4A 04 85 FF 74 21 "
@@ -1308,11 +1315,14 @@ constexpr std::string_view SWEEP =
     "C8 50 E8 ?? ?? ?? ?? 83 C4 04 4B 3B 5E 18 72 8C 5F 5B 5E C3";
 constexpr size_t SWEEP_SITE = 33;  // mov eax, dword ptr [esi + 0x1c]; mov ecx, dword ptr [eax + ebx*8] (the jump takes the first 5 bytes)
 constexpr size_t SWEEP_SIZE = 6;   // both instructions: where the stub goes on
-// The stub for the three distances A > B > C (the entries `ebx - A`, `ebx - B`, `ebx - C` are looked at; each 1 to 127). The page's is (8, 4, 2): the harness's 4,000
-// cold lists of 1 to 4 children cost 34.2 ns a list with the ready check's stub, 29.0 with (4, 2, 1), 26.3 with (6, 3, 1) and 24.9 with (8, 4, 2) (full length, medians of 9; the
-// quick runs under more load: 76.5 / 45.3 / 38.7 / 33.6, 37.2 / 30.3 / 26.8 / 25.1).
+// The stub for the three distances A > B > C (the entries `ebx - A`, `ebx - B`, `ebx - C` are looked at; each 1 to 127). The
+// page's is (8, 4, 2): the harness's 4,000 cold lists of 1 to 4 children cost 34.2 ns a list with the ready check's stub, 29.0
+// with (4, 2, 1), 26.3 with (6, 3, 1) and 24.9 with (8, 4, 2) (full length, medians of 9; the quick runs under more load:
+// 76.5 / 45.3 / 38.7 / 33.6, 37.2 / 30.3 / 26.8 / 25.1).
 constexpr std::array<uint8_t, 80> SweepPrefetchStub(uint8_t a, uint8_t b, uint8_t c) {
-  if (c == 0 || a > 127 || a <= b || b <= c) throw std::invalid_argument("SweepPrefetchStub needs 127 >= A > B > C >= 1");  // a compile error in a constant
+  if (c == 0 || a > 127 || a <= b || b <= c) {
+    throw std::invalid_argument("SweepPrefetchStub needs 127 >= A > B > C >= 1");  // a compile error in a constant
+  }
   return {
       0x8B, 0x46, 0x1C,                      // mov eax, dword ptr [esi + 0x1c]
       0x8D, 0x53, static_cast<uint8_t>(-a),  // lea edx, [ebx - A]
@@ -1927,6 +1937,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   // The probe build: each probed site's jump goes to its probe stub first (a copy of the probe's bytes with the counters' addresses put in), whose last jump goes on
   // to the production stub the site would have jumped to; the production stubs stay as they are.
   if (probe::Allocate()) {
+    const auto production_stubs = stubs;
     const std::array<const uint8_t*, probe::FIELDS> fields = probe::Fields();
     size_t slot = 0;
     for (const probe::Probe& entry : probe::PROBES) {
@@ -1937,7 +1948,6 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       write32(stub + entry.size - 4, relative(stub + entry.size, stubs[entry.site]));
       stubs[entry.site] = stub;
       probe::stub_of[entry.site] = stub;
-    const auto production_stubs = stubs;
       probe::size_of[entry.site] = entry.size;
       probe::installed |= 1u << entry.site;
     }
