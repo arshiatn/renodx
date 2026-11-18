@@ -3499,6 +3499,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         offset fit on 0x179b980 waits + ambiguity warnings; all 8 reviewer seeds exact; gated x86 11 + amd64 16 exit 0).
         Its M1 test WROTE the TEB's DeallocationStack: sent back 15:14 to use a stack-limits test seam instead (no TEB
         writes, tests included); merge after.
+        ia3_ round 3 DONE -> c1d729fcc (stack_limits test seam, no TEB code left; CONTROL fails at the callers line; x86 +
+        amd64 + parser tests PASS; gated x86 3 + amd64 16 exit 0). Re-check ar3o_ (Opus xHigh) of 80e0f4c5f..c1d729fcc
+        STARTED 15:31; merge after.
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
