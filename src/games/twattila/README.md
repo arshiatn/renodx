@@ -1,5 +1,25 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Faster Game CPU Code: render list item pushes (2026-11-18; offline only, not stamped, not installed, not run in game)
+
+- Faster: **Faster Game CPU Code** (on by default) has two more routines on Attila and Thrones of Britannia: the loops of the two
+  render list builders that push each item's address into a vector (the game keeps the vector's size in memory and reloads
+  the item array, the capacity, the data pointer and the end every item). With more than five items left, the size below
+  the capacity and no per-item call, the loop now runs all but the last item with the size in a register: the same loads
+  of the item array, the same stores in the game's order; the game's own code does the last item, every growth, every
+  per-item call and every case a guard cannot rule out (the vector's three fields, the item array's field or the loop's stack slots
+  within reach of the run's stores). Every register that is live afterwards, the flags and every byte of memory are the
+  game's. Tested against the game's DLL in `test/tw_engine_code` part 19: the guard against an exact model (6 M tuples, 0
+  wrongly accepted; each of its ten clauses removed is accepted wrongly 10 k to 700 k times in 1.5 M); the whole loops, 250,000
+  random lists, vectors and registers (starts through the index's wrap, growth in the middle, per-item calls that stop, the
+  vector's block and the item array ending at a no-access page, overlap layouts: every register, the flags, esp, xmm, the frame,
+  every byte and the allocator's call log equal, or both copies fault with the same memory); 28 CONTROLs each seen; 200 on / off
+  switches under 4 threads (1.6 M scenarios, 0 wrong), a parked thread at each byte. Harness (hot caches, medians of 9 rounds,
+  a PC loaded to 100 % by other jobs): for 4,096 items loop A 3831 -> 3352 ns (-12 %), loop B 3286 -> 2491 (-24 %); for 64 items
+  A 55 -> 55, B 55 -> 37; lists of up to 8 items cost the same or 1 to 3 ns more (the guard). Estimated: 0.05-0.15 ms of the
+  render thread in a big battle (the loops were 0.5-0.7 ms in the recordings; the doubling copy and its page faults stay the
+  game's).
+
 ## Dev, Faster Effect Prefetch, Faster Emitter Prefetch and Faster Particle Prefetch (2026-11-17, 11-18; offline only, not stamped, not installed, not run in game)
 
 - New: **Faster Particle Prefetch (Experimental, off)**, the row after Faster Emitter Prefetch, a row of its own: the game's particle

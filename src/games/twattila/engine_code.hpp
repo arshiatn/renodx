@@ -41,7 +41,8 @@
 // Prefetch (its own row, Experimental): the particle writer's table entry (14. below, the twenty-first). The particle
 // writer's two float4 reloads (9. below, the eleventh and twelfth sites) belong to Faster Game CPU Code, as do the
 // soldier draw's three matrix row reloads (12. below, the fifteenth to seventeenth sites) and the matrix product's
-// three (13. below, the eighteenth to twentieth).
+// three (13. below, the eighteenth to twentieth), and the render lists' two item push loops (15. below, the twenty-second and
+// twenty-third sites).
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
@@ -1067,6 +1068,196 @@ constexpr std::array<uint8_t, 18> ENTRY_FETCH_STUB = {
     0xE9, 0x00, 0x00, 0x00, 0x00,  // jmp the game's je (patched in Prepare)
 };
 
+// 15. The render lists' item push loops (Faster Game CPU Code). Two builders of the render lists (Attila +0x17b83a0, loop head +0x17b8490, and
+// +0x17b7bc0, head +0x17b7cb0; Thrones' copies are the same bytes) push the address of an item, `item + 0x50` (A) or `item + 0x38` (B), a round into a vector
+// of 4-byte slots {+0x7c capacity, +0x80 size, +0x84 data} at edi: `push_back` inlined, its growth (a doubling copy) in the loop. The size lives in memory
+// (`mov ecx, [edi + 0x80]` at the top, `inc dword ptr [edi + 0x80]` at the bottom: a store-forward chain of ~7 cycles an item) and the list ([esp + 0x1c], its
+// item array +8), the capacity, the data pointer and the end are loaded again every round: 75-80 % of the loop's user time in the recordings (0.2-0.35 ms of
+// the render thread's 0.5-0.7 ms; the doubling copy and its page faults are the rest). The site is the head's `mov eax, [esp + 0x1c]; mov ecx, [edi + 0x80]` (4 + 6
+// bytes: the jump takes the first 5, the stub goes on after the second). The stub runs both, then, with edx == 0 (no per-item call), the size below the capacity
+// (a push that doesn't grow), more than ITEM_PUSH_MIN_RUN items left and room for them, runs the rounds but the last with the size in a register: the same
+// loads of the item array, the same stores in the game's order (the scratch slots [esp + 0x30] (A) and [esp + 0x14], the slot, the size field), none of the
+// loads that cannot change. The game's code then does the last round, so every register that is live afterwards, the flags and every byte of memory are the
+// game's (edx is 0 again, eax the list again; ebx (A), esi and ecx are written before they are read at the top, the flags are set by the push's capacity
+// compare before they are read). The comparisons are the game's unsigned ones (`cmp ebp, end; jb`: the remaining count is only taken when ebp is below the end).
+// A guard (once a run) shows that no store of the run can reach what the run doesn't load again: the vector object's three fields, the list's item array
+// field, the stack from the stub's own pushes (B's limit) to the loop's slots; otherwise the game's code runs the round. The premise (that of 4., the list
+// push): no other thread changes the vector or the list while the run is in it (they are the builder's own). Found by the whole loop's bytes (calls and the
+// jump out wild); no branch lands inside the site (the whole DLLs' relative branches and absolute pointers, Attila's and Thrones': only the loop's own
+// back-edge at +0; one rel8 hit at B's +5 is the operand byte of the `cmp ebp, ebx` before the loop). Rome II has neither (rva 0).
+constexpr std::string_view ITEM_PUSH_A =
+    "3B E9 0F 83 ?? ?? ?? ?? 0F 1F 44 00 00 8B 44 24 1C 8B 8F 80 00 00 00 8B 40 08 8B 1C A8 8B 47 7C 89 5C 24 30 8D 73 50 89 "
+    "74 24 14 3B C8 73 12 8B 87 84 00 00 00 89 34 88 E9 CA 00 00 00 33 D2 EB 9F 85 C0 75 26 50 6A 01 C7 47 7C 01 00 00 00 E8 "
+    "?? ?? ?? ?? 8B 8F 80 00 00 00 83 C4 08 89 87 84 00 00 00 89 34 88 E9 98 00 00 00 8B 9F 84 00 00 00 03 C0 89 47 7C 74 13 "
+    "6A 00 50 E8 ?? ?? ?? ?? 8B 8F 80 00 00 00 83 C4 08 EB 02 33 C0 33 D2 89 87 84 00 00 00 85 C9 74 1B 0F 1F 40 00 8B 8F 84 "
+    "00 00 00 8B 04 93 89 04 91 42 8B 8F 80 00 00 00 3B D1 72 E9 8D 44 24 14 3B C3 72 2D 8D 14 8D 00 00 00 00 8D 7C 24 14 8D "
+    "04 1A 3B F8 8B 7C 24 40 73 17 8B 8F 84 00 00 00 8D 44 24 14 2B C3 C1 F8 02 8B 04 81 89 04 0A EB 09 8B 87 84 00 00 00 89 "
+    "34 88 85 DB 74 09 53 E8 ?? ?? ?? ?? 83 C4 04 8B 5C 24 30 8B 54 24 3C FF 87 80 00 00 00 85 D2 74 0E FF 73 38 8B CA E8 ?? "
+    "?? ?? ?? 8B 54 24 3C 45 3B 6C 24 34 0F 82 E3 FE FF FF";
+constexpr std::string_view ITEM_PUSH_B =
+    "3B EB 0F 83 ?? ?? ?? ?? 0F 1F 44 00 00 8B 44 24 1C 8B 8F 80 00 00 00 8B 70 08 8B 47 7C 8B 34 AE 83 C6 38 89 74 24 14 3B "
+    "C8 73 12 8B 87 84 00 00 00 89 34 88 E9 CE 00 00 00 33 D2 EB A3 85 C0 75 26 50 6A 01 C7 47 7C 01 00 00 00 E8 ?? ?? ?? ?? "
+    "8B 8F 80 00 00 00 83 C4 08 89 87 84 00 00 00 89 34 88 E9 9C 00 00 00 8B 9F 84 00 00 00 03 C0 89 47 7C 74 13 6A 00 50 E8 "
+    "?? ?? ?? ?? 8B 8F 80 00 00 00 83 C4 08 EB 02 33 C0 33 D2 89 87 84 00 00 00 85 C9 74 1F 0F 1F 84 00 00 00 00 00 8B 8F 84 "
+    "00 00 00 8B 04 93 89 04 91 42 8B 8F 80 00 00 00 3B D1 72 E9 8D 44 24 14 3B C3 72 2D 8D 14 8D 00 00 00 00 8D 7C 24 14 8D "
+    "04 1A 3B F8 8B 7C 24 40 73 17 8B 8F 84 00 00 00 8D 44 24 14 2B C3 C1 F8 02 8B 04 81 89 04 0A EB 09 8B 87 84 00 00 00 89 "
+    "34 88 85 DB 74 09 53 E8 ?? ?? ?? ?? 83 C4 04 8B 5C 24 30 8B 54 24 3C FF 87 80 00 00 00 85 D2 74 0D 6A FF 8B CA E8 ?? ?? "
+    "?? ?? 8B 54 24 3C 45 3B EB 0F 82 E6 FE FF FF";
+constexpr size_t ITEM_PUSH_SITE = 13;  // mov eax, dword ptr [esp + 0x1c]; mov ecx, dword ptr [edi + 0x80] (the jump takes the first 5 bytes)
+constexpr size_t ITEM_PUSH_SIZE = 10;  // both instructions: where each stub goes on
+constexpr uint8_t ITEM_PUSH_MIN_RUN = 4;  // rounds of a run (the stub's compares are against MIN_RUN + 1 items left)
+// The guard (first), then stub A, then stub B in one array: the stubs call the guard by a relative call.
+constexpr std::array<size_t, 3> ITEM_PUSH_STUB_AT = {0x6E, 0xEA, 361};  // the stubs' starts and the end
+constexpr std::array<uint8_t, 361> ITEM_PUSH_STUB = {
+    // guard:
+    0x53,                                          // +0x00 push ebx
+    0x81, 0xFF, 0x00, 0xFF, 0xFF, 0xFF,            // +0x01 cmp edi, 0xffffff00
+    0x77, 0x5E,                                    // +0x07 ja bad
+    0x3D, 0x00, 0xFF, 0xFF, 0xFF,                  // +0x09 cmp eax, 0xffffff00
+    0x77, 0x57,                                    // +0x0E ja bad
+    0x8D, 0x1C, 0xB2,                              // +0x10 lea ebx, [edx + esi*4]
+    0x39, 0xD3,                                    // +0x13 cmp ebx, edx
+    0x72, 0x50,                                    // +0x15 jb bad
+    0x8D, 0x77, 0x7C,                              // +0x17 lea esi, [edi + 0x7c]
+    0x39, 0xF3,                                    // +0x1A cmp ebx, esi
+    0x76, 0x0A,                                    // +0x1C jbe hdr_clear
+    0x8D, 0xB7, 0x88, 0x00, 0x00, 0x00,            // +0x1E lea esi, [edi + 0x88]
+    0x39, 0xF2,                                    // +0x24 cmp edx, esi
+    0x72, 0x3F,                                    // +0x26 jb bad
+    // hdr_clear:
+    0x8D, 0x70, 0x08,                              // +0x28 lea esi, [eax + 8]
+    0x39, 0xF3,                                    // +0x2B cmp ebx, esi
+    0x76, 0x07,                                    // +0x2D jbe field_clear
+    0x8D, 0x70, 0x0C,                              // +0x2F lea esi, [eax + 0xc]
+    0x39, 0xF2,                                    // +0x32 cmp edx, esi
+    0x72, 0x31,                                    // +0x34 jb bad
+    // field_clear:
+    0x8D, 0x77, 0x7B,                              // +0x36 lea esi, [edi + 0x7b]
+    0x29, 0xC6,                                    // +0x39 sub esi, eax
+    0x83, 0xFE, 0x07,                              // +0x3B cmp esi, 7
+    0x72, 0x27,                                    // +0x3E jb bad
+    0x39, 0xE3,                                    // +0x40 cmp ebx, esp
+    0x76, 0x08,                                    // +0x42 jbe frame_clear
+    0x8D, 0x74, 0x24, 0x40,                        // +0x44 lea esi, [esp + 0x40]
+    0x39, 0xF2,                                    // +0x48 cmp edx, esi
+    0x72, 0x1B,                                    // +0x4A jb bad
+    // frame_clear:
+    0x8D, 0xB7, 0x87, 0x00, 0x00, 0x00,            // +0x4C lea esi, [edi + 0x87]
+    0x29, 0xE6,                                    // +0x52 sub esi, esp
+    0x83, 0xFE, 0x4C,                              // +0x54 cmp esi, 0x4c
+    0x72, 0x0E,                                    // +0x57 jb bad
+    0x8D, 0x70, 0x0B,                              // +0x59 lea esi, [eax + 0xb]
+    0x29, 0xE6,                                    // +0x5C sub esi, esp
+    0x83, 0xFE, 0x44,                              // +0x5E cmp esi, 0x44
+    0x72, 0x04,                                    // +0x61 jb bad
+    0x31, 0xF6,                                    // +0x63 xor esi, esi
+    0x5B,                                          // +0x65 pop ebx
+    0xC3,                                          // +0x66 ret
+    // bad:
+    0xBE, 0x01, 0x00, 0x00, 0x00,                  // +0x67 mov esi, 1
+    0x5B,                                          // +0x6C pop ebx
+    0xC3,                                          // +0x6D ret
+    // stub_a:
+    0x8B, 0x44, 0x24, 0x1C,                        // +0x6E mov eax, dword ptr [esp + 0x1c]
+    0x8B, 0x8F, 0x80, 0x00, 0x00, 0x00,            // +0x72 mov ecx, dword ptr [edi + 0x80]
+    0x85, 0xD2,                                    // +0x78 test edx, edx
+    0x75, 0x65,                                    // +0x7A jne keep_a
+    0x8B, 0x5C, 0x24, 0x34,                        // +0x7C mov ebx, dword ptr [esp + 0x34]
+    0x39, 0xDD,                                    // +0x80 cmp ebp, ebx
+    0x73, 0x5D,                                    // +0x82 jae keep_a
+    0x29, 0xEB,                                    // +0x84 sub ebx, ebp
+    0x83, 0xFB, 0x05,                              // +0x86 cmp ebx, 5
+    0x72, 0x56,                                    // +0x89 jb keep_a
+    0x8B, 0x77, 0x7C,                              // +0x8B mov esi, dword ptr [edi + 0x7c]
+    0x39, 0xF1,                                    // +0x8E cmp ecx, esi
+    0x73, 0x4F,                                    // +0x90 jae keep_a
+    0x81, 0xFE, 0x00, 0x00, 0x10, 0x00,            // +0x92 cmp esi, 0x100000
+    0x73, 0x47,                                    // +0x98 jae keep_a
+    0x8B, 0x97, 0x84, 0x00, 0x00, 0x00,            // +0x9A mov edx, dword ptr [edi + 0x84]
+    0xE8, 0x5B, 0xFF, 0xFF, 0xFF,                  // +0xA0 call guard
+    0x85, 0xF6,                                    // +0xA5 test esi, esi
+    0x75, 0x36,                                    // +0xA7 jne game_a
+    0x8B, 0x77, 0x7C,                              // +0xA9 mov esi, dword ptr [edi + 0x7c]
+    0x29, 0xCE,                                    // +0xAC sub esi, ecx
+    0x39, 0xF3,                                    // +0xAE cmp ebx, esi
+    0x0F, 0x47, 0xDE,                              // +0xB0 cmova ebx, esi
+    0x83, 0xFB, 0x05,                              // +0xB3 cmp ebx, 5
+    0x72, 0x27,                                    // +0xB6 jb game_a
+    0x4B,                                          // +0xB8 dec ebx
+    0x01, 0xEB,                                    // +0xB9 add ebx, ebp
+    0x8B, 0x44, 0x24, 0x1C,                        // +0xBB mov eax, dword ptr [esp + 0x1c]
+    0x8B, 0x40, 0x08,                              // +0xBF mov eax, dword ptr [eax + 8]
+    // run_a:
+    0x8B, 0x34, 0xA8,                              // +0xC2 mov esi, dword ptr [eax + ebp*4]
+    0x89, 0x74, 0x24, 0x30,                        // +0xC5 mov dword ptr [esp + 0x30], esi
+    0x83, 0xC6, 0x50,                              // +0xC9 add esi, 0x50
+    0x89, 0x74, 0x24, 0x14,                        // +0xCC mov dword ptr [esp + 0x14], esi
+    0x89, 0x34, 0x8A,                              // +0xD0 mov dword ptr [edx + ecx*4], esi
+    0x41,                                          // +0xD3 inc ecx
+    0x89, 0x8F, 0x80, 0x00, 0x00, 0x00,            // +0xD4 mov dword ptr [edi + 0x80], ecx
+    0x45,                                          // +0xDA inc ebp
+    0x39, 0xDD,                                    // +0xDB cmp ebp, ebx
+    0x72, 0xE3,                                    // +0xDD jb run_a
+    // game_a:
+    0x31, 0xD2,                                    // +0xDF xor edx, edx
+    // keep_a:
+    0x8B, 0x44, 0x24, 0x1C,                        // +0xE1 mov eax, dword ptr [esp + 0x1c]
+    0xE9, 0x00, 0x00, 0x00, 0x00,                  // +0xE5 jmp the game's code after the site's two instructions (patched in Prepare)
+    // stub_b:
+    0x8B, 0x44, 0x24, 0x1C,                        // +0xEA mov eax, dword ptr [esp + 0x1c]
+    0x8B, 0x8F, 0x80, 0x00, 0x00, 0x00,            // +0xEE mov ecx, dword ptr [edi + 0x80]
+    0x85, 0xD2,                                    // +0xF4 test edx, edx
+    0x75, 0x68,                                    // +0xF6 jne keep_b
+    0x39, 0xDD,                                    // +0xF8 cmp ebp, ebx
+    0x73, 0x64,                                    // +0xFA jae keep_b
+    0x89, 0xDE,                                    // +0xFC mov esi, ebx
+    0x29, 0xEE,                                    // +0xFE sub esi, ebp
+    0x83, 0xFE, 0x05,                              // +0x100 cmp esi, 5
+    0x72, 0x5B,                                    // +0x103 jb keep_b
+    0x8B, 0x77, 0x7C,                              // +0x105 mov esi, dword ptr [edi + 0x7c]
+    0x39, 0xF1,                                    // +0x108 cmp ecx, esi
+    0x73, 0x54,                                    // +0x10A jae keep_b
+    0x81, 0xFE, 0x00, 0x00, 0x10, 0x00,            // +0x10C cmp esi, 0x100000
+    0x73, 0x4C,                                    // +0x112 jae keep_b
+    0x8B, 0x97, 0x84, 0x00, 0x00, 0x00,            // +0x114 mov edx, dword ptr [edi + 0x84]
+    0xE8, 0xE1, 0xFE, 0xFF, 0xFF,                  // +0x11A call guard
+    0x85, 0xF6,                                    // +0x11F test esi, esi
+    0x75, 0x3B,                                    // +0x121 jne game_b
+    0x8B, 0x77, 0x7C,                              // +0x123 mov esi, dword ptr [edi + 0x7c]
+    0x29, 0xCE,                                    // +0x126 sub esi, ecx
+    0x89, 0xD8,                                    // +0x128 mov eax, ebx
+    0x29, 0xE8,                                    // +0x12A sub eax, ebp
+    0x39, 0xF0,                                    // +0x12C cmp eax, esi
+    0x0F, 0x47, 0xC6,                              // +0x12E cmova eax, esi
+    0x83, 0xF8, 0x05,                              // +0x131 cmp eax, 5
+    0x72, 0x28,                                    // +0x134 jb game_b
+    0x48,                                          // +0x136 dec eax
+    0x01, 0xE8,                                    // +0x137 add eax, ebp
+    0x50,                                          // +0x139 push eax
+    0x8B, 0x44, 0x24, 0x20,                        // +0x13A mov eax, dword ptr [esp + 0x20]
+    0x8B, 0x40, 0x08,                              // +0x13E mov eax, dword ptr [eax + 8]
+    // run_b:
+    0x8B, 0x34, 0xA8,                              // +0x141 mov esi, dword ptr [eax + ebp*4]
+    0x83, 0xC6, 0x38,                              // +0x144 add esi, 0x38
+    0x89, 0x74, 0x24, 0x18,                        // +0x147 mov dword ptr [esp + 0x18], esi
+    0x89, 0x34, 0x8A,                              // +0x14B mov dword ptr [edx + ecx*4], esi
+    0x41,                                          // +0x14E inc ecx
+    0x89, 0x8F, 0x80, 0x00, 0x00, 0x00,            // +0x14F mov dword ptr [edi + 0x80], ecx
+    0x45,                                          // +0x155 inc ebp
+    0x3B, 0x2C, 0x24,                              // +0x156 cmp ebp, dword ptr [esp]
+    0x72, 0xE6,                                    // +0x159 jb run_b
+    0x83, 0xC4, 0x04,                              // +0x15B add esp, 4
+    // game_b:
+    0x31, 0xD2,                                    // +0x15E xor edx, edx
+    // keep_b:
+    0x8B, 0x44, 0x24, 0x1C,                        // +0x160 mov eax, dword ptr [esp + 0x1c]
+    0xE9, 0x00, 0x00, 0x00, 0x00,                  // +0x164 jmp the game's code after the site's two instructions (patched in Prepare)
+};
+static_assert(ITEM_PUSH_STUB.size() == ITEM_PUSH_STUB_AT[2] && ITEM_PUSH_STUB[ITEM_PUSH_STUB_AT[1] - 5] == 0xE9
+              && ITEM_PUSH_STUB[ITEM_PUSH_STUB_AT[2] - 5] == 0xE9);  // each stub ends with its jump into the game's code
+static_assert(ITEM_PUSH_STUB[0x88] == ITEM_PUSH_MIN_RUN + 1 && ITEM_PUSH_STUB[0xB5] == ITEM_PUSH_MIN_RUN + 1
+              && ITEM_PUSH_STUB[0x102] == ITEM_PUSH_MIN_RUN + 1 && ITEM_PUSH_STUB[0x133] == ITEM_PUSH_MIN_RUN + 1);  // the stubs' `cmp reg, MIN_RUN + 1`
+
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half, fmod and the
 // ready check the same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots
 // (control word 0x20, float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the
@@ -1111,6 +1302,8 @@ struct Build {
   std::array<size_t, 3> soldier_rows_at;  // the three reloads in soldier_rows
   uint32_t matrix_product_rva;  // the matrix product (MATRIX_PRODUCT's first byte)
   uint32_t entry_fetch_rva;     // the particle writer's top (ENTRY_FETCH's first byte)
+  uint32_t push_loop_a_rva;     // the render list builders' item push loops (ITEM_PUSH_A's / _B's first byte)
+  uint32_t push_loop_b_rva;
 };
 constexpr Build ATTILA_BUILD = {
     .truncation_rva = TRUNCATION_RVA,
@@ -1134,6 +1327,8 @@ constexpr Build ATTILA_BUILD = {
     .soldier_rows_at = SOLDIER_ROWS_AT,
     .matrix_product_rva = 0x168d570,
     .entry_fetch_rva = 0x18960d0,
+    .push_loop_a_rva = 0x17b8483,
+    .push_loop_b_rva = 0x17b7ca3,
 };
 constexpr Build THRONES_BUILD = {
     .truncation_rva = THRONES_TRUNCATION_RVA,
@@ -1157,9 +1352,11 @@ constexpr Build THRONES_BUILD = {
     .soldier_rows_at = SOLDIER_ROWS_AT,
     .matrix_product_rva = 0x16fac90,
     .entry_fetch_rva = 0x190b430,
+    .push_loop_a_rva = 0x182c213,
+    .push_loop_b_rva = 0x182ba33,
 };
-// Rome II has none of the list push, ready check, job, half rows, child sum, float4 reload and effect loop sites: their
-// rvas stay 0.
+// Rome II has none of the list push, ready check, job, half rows, child sum, float4 reload, effect loop and item push loop
+// sites: their rvas stay 0.
 constexpr Build ROME2_BUILD = {
     .truncation_rva = 0x14b433c,
     .truncation = ROME2_TRUNCATION,
@@ -1191,6 +1388,7 @@ constexpr size_t CHILD_SUM_SLOT = 0x40;       // the child sum's stub and room f
 constexpr size_t SOLDIER_ROWS_PAGE = 0xC40;   // one stub for each of the three reloads, FLOAT4_RELOAD_STRIDE apart
 constexpr size_t MATRIX_PRODUCT_PAGE = 0xCD0;  // the same for the product's three
 constexpr size_t ENTRY_PREFETCH_PAGE = 0xD60;
+constexpr size_t ITEM_PUSH_PAGE = 0xD80;  // the guard and the two stubs of 15.
 constexpr size_t PAGE_SIZE = 0x1000;
 static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the three games' truncation stubs are one type
               && HALF_PAGE + HALF_STUB.size() + HALF_SIZE <= FMOD_PAGE
@@ -1209,7 +1407,8 @@ static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the thre
               && SOLDIER_ROWS_PAGE + SOLDIER_ROWS_STUBS.size() * FLOAT4_RELOAD_STRIDE <= MATRIX_PRODUCT_PAGE
               && MATRIX_PRODUCT_STUBS[0].size() <= FLOAT4_RELOAD_STRIDE
               && MATRIX_PRODUCT_PAGE + MATRIX_PRODUCT_STUBS.size() * FLOAT4_RELOAD_STRIDE <= ENTRY_PREFETCH_PAGE
-              && ENTRY_PREFETCH_PAGE + ENTRY_FETCH_STUB.size() <= PAGE_SIZE);
+              && ENTRY_PREFETCH_PAGE + ENTRY_FETCH_STUB.size() <= ITEM_PUSH_PAGE
+              && ITEM_PUSH_PAGE + ITEM_PUSH_STUB.size() <= PAGE_SIZE);
 
 // Which sites each row writes (bits by `sites` index).
 constexpr size_t FLOAT4_RELOAD_FIRST_SITE = 10;  // the colour's reload; the vector's is the next
@@ -1219,13 +1418,15 @@ constexpr size_t SOLDIER_ROWS_FIRST_SITE = 14;  // the soldier draw's first row 
 constexpr uint32_t SOLDIER_ROWS_SITES = 0b111u << SOLDIER_ROWS_FIRST_SITE;
 constexpr size_t MATRIX_PRODUCT_FIRST_SITE = 17;  // the matrix product's first row reload; the second and third are the next
 constexpr uint32_t MATRIX_PRODUCT_SITES = 0b111u << MATRIX_PRODUCT_FIRST_SITE;
-constexpr uint32_t CPU_CODE_SITES = 0b100010111 | FLOAT4_RELOAD_SITES | SOLDIER_ROWS_SITES | MATRIX_PRODUCT_SITES;  // Faster Game CPU Code
+constexpr size_t ENTRY_PREFETCH_INDEX = 20;  // the particle writer's table entry prefetch (after the matrix product's rows)
+constexpr size_t ITEM_PUSH_FIRST_SITE = 21;  // the render list builders' item push loop A; B is the next
+constexpr uint32_t ITEM_PUSH_SITES = 0b11u << ITEM_PUSH_FIRST_SITE;
+constexpr uint32_t CPU_CODE_SITES = 0b100010111 | FLOAT4_RELOAD_SITES | SOLDIER_ROWS_SITES | MATRIX_PRODUCT_SITES | ITEM_PUSH_SITES;  // Faster Game CPU Code
 constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
 constexpr size_t CHILD_SUM_INDEX = 9;  // the effect tree's child sum
 constexpr size_t PARTICLE_PREFETCH_INDEX = 12;  // the particle update loop's prefetch
 constexpr size_t EMITTER_PREFETCH_INDEX = 13;   // the emitter update loop's prefetch
-constexpr size_t ENTRY_PREFETCH_INDEX = 20;     // the particle writer's table entry prefetch (after the matrix product's rows)
 constexpr uint32_t CHILD_SUM_BIT = 1u << CHILD_SUM_INDEX;
 constexpr uint32_t PARTICLE_PREFETCH_BIT = 1u << PARTICLE_PREFETCH_INDEX;
 constexpr uint32_t EMITTER_PREFETCH_BIT = 1u << EMITTER_PREFETCH_INDEX;  // Faster Emitter Prefetch: its own row
@@ -1253,7 +1454,7 @@ struct Site {
   uint8_t opcode = 0xE9;  // jmp; the worker destructor's call of Stop stays a call (E8)
 };
 
-static std::array<Site, 21> sites = {{{.name = "soldier draw rounding"},
+static std::array<Site, 23> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half floats"},
                                      {.name = "fmod"},
                                      {.name = "render list pushes"},
@@ -1273,11 +1474,14 @@ static std::array<Site, 21> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "matrix product row 1"},
                                      {.name = "matrix product row 2"},
                                      {.name = "matrix product row 3"},
-                                     {.name = "particle entry prefetch"}}};
+                                     {.name = "particle entry prefetch"},
+                                     {.name = "item push loop 1"},
+                                     {.name = "item push loop 2"}}};
 // The reload rows' sites follow each other; every site has a bit of the uint32_t masks.
 static_assert(SOLDIER_ROWS_FIRST_SITE + SOLDIER_ROWS_STUBS.size() == MATRIX_PRODUCT_FIRST_SITE
               && MATRIX_PRODUCT_FIRST_SITE + MATRIX_PRODUCT_STUBS.size() == ENTRY_PREFETCH_INDEX
-              && ENTRY_PREFETCH_INDEX + 1 == std::tuple_size_v<decltype(sites)> && std::tuple_size_v<decltype(sites)> <= 32);
+              && ENTRY_PREFETCH_INDEX + 1 == ITEM_PUSH_FIRST_SITE && ITEM_PUSH_FIRST_SITE + 2 == std::tuple_size_v<decltype(sites)>
+              && std::tuple_size_v<decltype(sites)> <= 32);
 // Every site belongs to exactly one row: the rows' masks are disjoint and cover every site.
 static_assert([] {
   uint32_t covered = 0;
@@ -1575,6 +1779,16 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       place_stub(ENTRY_PREFETCH_INDEX, match + ENTRY_FETCH_SITE, ENTRY_FETCH_RESUME - ENTRY_FETCH_SITE, ENTRY_FETCH_STUB,
                  page + ENTRY_PREFETCH_PAGE);
     }
+    // The render list builders' two item push loops, found by the whole loop's bytes: the guard first, each stub's last jump goes on after the site's two
+    // instructions.
+    std::memcpy(page + ITEM_PUSH_PAGE, ITEM_PUSH_STUB.data(), ITEM_PUSH_STUB_AT[0]);
+    const std::array<std::pair<std::string_view, uint32_t>, 2> push_loops = {{{ITEM_PUSH_A, build.push_loop_a_rva}, {ITEM_PUSH_B, build.push_loop_b_rva}}};
+    for (size_t loop = 0; loop < push_loops.size(); ++loop) {
+      if (uint8_t* match = (push_loops[loop].second != 0 ? find(push_loops[loop].first, push_loops[loop].second) : nullptr); match != nullptr) {
+        const std::span<const uint8_t> stub = std::span(ITEM_PUSH_STUB).subspan(ITEM_PUSH_STUB_AT[loop], ITEM_PUSH_STUB_AT[loop + 1] - ITEM_PUSH_STUB_AT[loop]);
+        place_stub(ITEM_PUSH_FIRST_SITE + loop, match + ITEM_PUSH_SITE, ITEM_PUSH_SIZE, stub, page + ITEM_PUSH_PAGE + ITEM_PUSH_STUB_AT[loop]);
+      }
+    }
     DWORD protection;
     VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
     FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
@@ -1589,9 +1803,9 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   const uint32_t reload_rva = (sse4_1 ? build.float4_reload_rva : 0);
   const uint32_t rows_rva = (sse4_1 ? build.soldier_rows_rva : 0);
   const uint32_t product_rva = (sse4_1 ? build.matrix_product_rva : 0);
-  const std::array<uint32_t, 21> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
+  const std::array<uint32_t, 23> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
                                          0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva, 0, 0, rows_rva, rows_rva, rows_rva,
-                                         product_rva, product_rva, product_rva, 0};
+                                         product_rva, product_rva, product_rva, 0, build.push_loop_a_rva, build.push_loop_b_rva};
   static_assert(std::tuple_size_v<decltype(rvas)> == std::tuple_size_v<decltype(sites)>);
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];

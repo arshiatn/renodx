@@ -92,6 +92,13 @@
 //    with the same memory or neither does), CONTROLs (no test, a write to ecx, no store, a load for the prefetch, the jump past the je), 200 switches under 4
 //    threads, a parked thread at each byte of the site, the three micro-benchmarks (the entry hot / cold, the multiply's stale operand normal / subnormal, the
 //    definition chain hot / cold / chain-prefetched). Rome II has none.
+// 19. The render lists' item push loops (+0x17b8490 / +0x17b7cb0, Thrones +0x182c220 / +0x182ba40; Faster Game CPU Code; item_push.inc): the guard against an exact model
+//    of the locations a run's stores may reach (millions of tuples, a mutant per clause must be accepted wrongly), the whole loops in both copies of the DLL (the
+//    allocator, the free and the per-item call faked and logged) on random lists, vectors and registers (starts through the index's wrap, ends at or below the start,
+//    capacities 0 to 0x100000 and more, growth in the middle, per-item calls that stop, the block and the item array ending at a no-access page, and layouts in which the
+//    block, the object and the list overlap each other or the frame): every register, the flags, esp, xmm, the frame above esp, every byte and the fakes' log equal or
+//    both fault with the same memory; CONTROLs (a mutant of each stub instruction that matters); 200 switches under 4 threads, a parked thread at each byte of each
+//    site; timing for 1 to 4,096 items. Rome II has neither loop.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -2369,6 +2376,9 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
 // The particle writer's table entry prefetch (part 18): the whole function, odd entries, controls, switching, parked threads, timing.
 #include "entry_prefetch.inc"
 
+// The render lists' item push loops (part 19): the guard against a model, the whole loops, controls, switching, parked threads, timing.
+#include "item_push.inc"
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2412,6 +2422,8 @@ int main(int argc, char** argv) {
   CHECK(Matches(game + text_rva, text_size, ec::PARTICLE_LOOP) == (build.code->particle_loop_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::EMITTER_LOOP) == (build.code->emitter_loop_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::ENTRY_FETCH) == (build.code->entry_fetch_rva != 0 ? 1u : 0u));
+  CHECK(Matches(game + text_rva, text_size, ec::ITEM_PUSH_A) == (build.code->push_loop_a_rva != 0 ? 1u : 0u));
+  CHECK(Matches(game + text_rva, text_size, ec::ITEM_PUSH_B) == (build.code->push_loop_b_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, build.code->soldier_rows) == 1);
   CHECK(Matches(game + text_rva, text_size, ec::SOLDIER_ROWS) + Matches(game + text_rva, text_size, ec::ROME2_SOLDIER_ROWS) == 1);
   CHECK(Matches(game + text_rva, text_size, ec::MATRIX_PRODUCT) == 1);
@@ -2429,6 +2441,8 @@ int main(int argc, char** argv) {
   CHECK(ec::sites[ec::PARTICLE_PREFETCH_INDEX].at == (build.code->particle_loop_rva != 0 ? patched + build.code->particle_loop_rva + ec::PARTICLE_LOOP_SITE : nullptr));
   CHECK(ec::sites[ec::EMITTER_PREFETCH_INDEX].at == (build.code->emitter_loop_rva != 0 ? patched + build.code->emitter_loop_rva + ec::EMITTER_LOOP_SITE : nullptr));
   CHECK(ec::sites[ec::ENTRY_PREFETCH_INDEX].at == (build.code->entry_fetch_rva != 0 ? patched + build.code->entry_fetch_rva + ec::ENTRY_FETCH_SITE : nullptr));
+  CHECK(ec::sites[ec::ITEM_PUSH_FIRST_SITE].at == (build.code->push_loop_a_rva != 0 ? patched + build.code->push_loop_a_rva + ec::ITEM_PUSH_SITE : nullptr));
+  CHECK(ec::sites[ec::ITEM_PUSH_FIRST_SITE + 1].at == (build.code->push_loop_b_rva != 0 ? patched + build.code->push_loop_b_rva + ec::ITEM_PUSH_SITE : nullptr));
   for (size_t row = 0; row < ec::SOLDIER_ROWS_STUBS.size(); ++row) {
     CHECK(ec::sites[ec::SOLDIER_ROWS_FIRST_SITE + row].at == patched + build.code->soldier_rows_rva + build.code->soldier_rows_at[row]);
     CHECK(ec::sites[ec::MATRIX_PRODUCT_FIRST_SITE + row].at == patched + build.code->matrix_product_rva + ec::MATRIX_PRODUCT_AT[row]);
@@ -2441,6 +2455,7 @@ int main(int argc, char** argv) {
                          | (build.code->child_sum_rva != 0 ? ec::CHILD_SUM_BIT : 0u) | (build.code->particle_loop_rva != 0 ? ec::PARTICLE_PREFETCH_BIT : 0u)
                          | (build.code->emitter_loop_rva != 0 ? ec::EMITTER_PREFETCH_BIT : 0u)
                          | (build.code->entry_fetch_rva != 0 ? ec::ENTRY_PREFETCH_BIT : 0u)
+                         | (build.code->push_loop_a_rva != 0 ? ec::ITEM_PUSH_SITES : 0u)
                          | (build.code->float4_reload_rva != 0 ? ec::FLOAT4_RELOAD_SITES : 0u) | ec::SOLDIER_ROWS_SITES | ec::MATRIX_PRODUCT_SITES));
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
@@ -2498,6 +2513,12 @@ int main(int argc, char** argv) {
   if (argc > 3 && std::string(argv[3]) == "emitter" && build.code->emitter_loop_rva != 0) {
     if (const int failed = RunEmitterTests(build, game, patched, quick); failed != 0) return failed;
     std::printf("PASS (emitter only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "push" && build.code->push_loop_a_rva != 0) {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true, true);
+    if (const int failed = RunPushTests(build, game, patched, quick); failed != 0) return failed;
+    std::printf("PASS (push only)\n");
     return 0;
   }
   if (argc > 3 && std::string(argv[3]) == "entry" && build.code->entry_fetch_rva != 0) {
@@ -3446,6 +3467,16 @@ int main(int argc, char** argv) {
   } else {
     CHECK(ec::sites[ec::ENTRY_PREFETCH_INDEX].at == nullptr);
     std::printf("18. particle writer table entry prefetch: none in this build\n");
+  }
+
+  // 19. The render lists' item push loops (Faster Game CPU Code).
+  if (build.code->push_loop_a_rva != 0) {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true, true);
+    if (const int failed = RunPushTests(build, game, patched, quick); failed != 0) return failed;
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true, true);
+  } else {
+    CHECK(ec::sites[ec::ITEM_PUSH_FIRST_SITE].at == nullptr && ec::sites[ec::ITEM_PUSH_FIRST_SITE + 1].at == nullptr);
+    std::printf("19. item push loops: none in this build\n");
   }
 
   // Off: the game's bytes back (the harness's jumps removed first).

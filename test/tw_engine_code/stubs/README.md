@@ -24,3 +24,5 @@ and compare the bytes with the array (the arrays carry the disassembly as commen
 - `emitter_prefetch.s` - the emitter update loop's two prefetch stages on the slots K and K + 1 after the next emitter's (Faster Emitter Prefetch); written
   for the K in `EMITTER_PREFETCH_AHEAD` (the disp8 bytes in `lea ecx, [esi + K + 1]`, `[edx + esi*8 + 8K]` and `[edx + esi*8 + 8K + 8]` follow it).
 - `entry_prefetch.s` - the particle writer's table entry prefetch, between the game's `mov [esp + 0x7c], eax` and `test eax, eax` (Faster Particle Prefetch).
+- `evec_push.s` - the render list builders' two item push loops (Faster Game CPU Code): the guard and the stubs A (`item + 0x50`) and B (`item + 0x38`) in one file (the
+  stubs call the guard by a relative call, so the file's layout is the page's); written for `ITEM_PUSH_MIN_RUN` (the `cmp reg, MIN_RUN + 1` immediates).
