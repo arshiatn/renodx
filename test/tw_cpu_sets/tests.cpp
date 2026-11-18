@@ -41,15 +41,17 @@ static int failures = 0;
 using Ids = std::vector<ULONG>;
 
 // `cores` cores of `per_core` logical CPUs in each of `groups` groups; ids 0x100 + the global index (Windows' numbering);
-// CoreIndex = the core's first logical CPU. `efficiency(core)` gives each core's class.
-static std::vector<cs::CpuSet> Topology(int cores, int per_core, int groups = 1, const std::function<BYTE(int)>& efficiency = [](int) -> BYTE { return 0; }) {
+// CoreIndex = the core's first logical CPU. `efficiency(core)` gives each core's class; `cores_per_cache` cores share an L3.
+static std::vector<cs::CpuSet> Topology(int cores, int per_core, int groups = 1, const std::function<BYTE(int)>& efficiency = [](int) -> BYTE { return 0; },
+                                        int cores_per_cache = 64) {
   std::vector<cs::CpuSet> system;
   for (int group = 0; group < groups; ++group) {
     for (int core = 0; core < cores; ++core) {
       for (int thread = 0; thread < per_core; ++thread) {
         const int logical = core * per_core + thread;
         system.push_back({.id = static_cast<ULONG>(0x100 + group * cores * per_core + logical), .group = static_cast<WORD>(group),
-                          .logical = static_cast<BYTE>(logical), .core = static_cast<BYTE>(core * per_core), .efficiency = efficiency(core)});
+                          .logical = static_cast<BYTE>(logical), .core = static_cast<BYTE>(core * per_core), .efficiency = efficiency(core),
+                          .cache = static_cast<BYTE>(core / cores_per_cache)});
       }
     }
   }
@@ -107,17 +109,54 @@ static void CheckStandDown(const cs::Plan& plan, std::string_view reason_part) {
 static void Synthetic() {
   std::printf("Part 1: synthetic CPUs\n");
   const uint64_t all = ~0ull;
-  const auto x3d = Topology(16, 2);
+  // A 7950X3D: two CCDs of 8 cores (two L3 caches); `one_l3`: 16 cores on one L3.
+  const auto x3d = Topology(16, 2, 1, [](int) -> BYTE { return 0; }, 8);
+  const auto one_l3 = Topology(16, 2);
   std::array<uint32_t, 64> runs = {};
   int cases = 0;
+  // The render core when only `logical` was counted: its core, but core 0's goes to the next core (core 0 avoided).
+  const auto expected = [](int logical) { return (logical < 2 ? 2 : (logical & ~1)); };
 
-  // 7950X3D without a rule: most presents on logical 9 (core 8), some elsewhere.
+  // 7950X3D without a rule: both CCDs, stands down; one L3: most presents on logical 9 (core 8), some elsewhere.
   runs = {};
   runs[9] = 40;
   runs[3] = 10;
   runs[30] = 14;
-  CheckApplied(cs::PlanSets(x3d, {}, all, runs), x3d, {}, all, 8);
-  ++cases;
+  CheckStandDown(cs::PlanSets(x3d, {}, all, runs), "L3 cache");
+  CheckApplied(cs::PlanSets(one_l3, {}, all, runs), one_l3, {}, all, 8);
+  // A rule across both CCDs (4-19) stands down too.
+  CheckStandDown(cs::PlanSets(x3d, IdsOf(x3d, 4, 19), all, runs), "L3 cache");
+  cases += 3;
+  // Core 0 avoided: the most used other core (logical 5: core 4), or the next one when only core 0 ran; core 0 when no
+  // other core has a second logical CPU in the base (0, 1, 2, 4, 6: cores 2, 4, 6 with one each).
+  runs = {};
+  runs[0] = 50;
+  runs[1] = 10;
+  runs[5] = 3;
+  CheckApplied(cs::PlanSets(one_l3, {}, all, runs), one_l3, {}, all, 4);
+  runs = {};
+  runs[0] = 64;
+  CheckApplied(cs::PlanSets(one_l3, {}, all, runs), one_l3, {}, all, 2);
+  {
+    const Ids only_core0_smt = {one_l3[0].id, one_l3[1].id, one_l3[2].id, one_l3[4].id, one_l3[6].id};
+    runs = {};
+    runs[2] = 64;
+    CheckApplied(cs::PlanSets(one_l3, only_core0_smt, all, runs), one_l3, only_core0_smt, all, 0);
+  }
+  cases += 3;
+  // SMT siblings not next to each other (logical k and k + 16 on core k): logical 20 -> core 4, sets 4 and 20.
+  {
+    std::vector<cs::CpuSet> split;
+    for (int logical = 0; logical < 32; ++logical) {
+      split.push_back({.id = static_cast<ULONG>(0x100 + logical), .logical = static_cast<BYTE>(logical), .core = static_cast<BYTE>(logical % 16)});
+    }
+    runs = {};
+    runs[20] = 64;
+    const cs::Plan plan = cs::PlanSets(split, {}, all, runs);
+    CheckApplied(plan, split, {}, all, 4);
+    CHECK((plan.render_sets == Ids{0x104, 0x114}));
+    ++cases;
+  }
   // The same with the rule 0-15 (a CPU set, the V-cache CCD); presents outside it don't count: logical 20 most, then 5.
   const Ids ccd0 = IdsOf(x3d, 0, 15);
   runs = {};
@@ -144,27 +183,36 @@ static void Synthetic() {
   runs[6] = 8;
   CheckApplied(cs::PlanSets(x3d, ccd0, all, runs), x3d, ccd0, all, 6);
   ++cases;
-  // Every single logical CPU as the render thread's, with and without the rule, every affinity of whole cores 4..16.
+  // Every single logical CPU as the render thread's, one L3 and the 7950X3D with the rule, every affinity of whole cores
+  // 4..16 on both (the 7950X3D's past 8 cores spans both CCDs).
   for (int logical = 0; logical < 32; ++logical) {
     runs = {};
     runs[logical] = 64;
-    CheckApplied(cs::PlanSets(x3d, {}, all, runs), x3d, {}, all, logical & ~1);
+    CheckApplied(cs::PlanSets(one_l3, {}, all, runs), one_l3, {}, all, expected(logical));
     ++cases;
     if (logical < 16) {
-      CheckApplied(cs::PlanSets(x3d, ccd0, all, runs), x3d, ccd0, all, logical & ~1);
+      CheckApplied(cs::PlanSets(x3d, ccd0, all, runs), x3d, ccd0, all, expected(logical));
     } else {
       CheckStandDown(cs::PlanSets(x3d, ccd0, all, runs), "ran on none");
     }
     ++cases;
     for (int cores = 4; cores <= 16; ++cores) {
-      const uint64_t affinity = (cores == 32 ? all : ((1ull << (cores * 2)) - 1));
-      const cs::Plan plan = cs::PlanSets(x3d, {}, affinity, runs);
+      const uint64_t affinity = (1ull << (cores * 2)) - 1;
+      const cs::Plan plan = cs::PlanSets(one_l3, {}, affinity, runs);
+      const cs::Plan plan_x3d = cs::PlanSets(x3d, {}, affinity, runs);
       if (logical < cores * 2) {
-        CheckApplied(plan, x3d, {}, affinity, logical & ~1);
+        CheckApplied(plan, one_l3, {}, affinity, expected(logical));
       } else {
         CheckStandDown(plan, "ran on none");
       }
-      ++cases;
+      if (cores > 8) {
+        CheckStandDown(plan_x3d, "L3 cache");
+      } else if (logical < cores * 2) {
+        CheckApplied(plan_x3d, x3d, {}, affinity, expected(logical));
+      } else {
+        CheckStandDown(plan_x3d, "ran on none");
+      }
+      cases += 2;
     }
   }
   // The rule and a narrower affinity together: their intersection (0-7: 4 cores applies, 0-5: 3 cores stands down).
@@ -175,10 +223,10 @@ static void Synthetic() {
   cases += 2;
   // A rule of 3 cores (0-5).
   CheckStandDown(cs::PlanSets(x3d, IdsOf(x3d, 0, 5), all, runs), "fewer than 4");
-  // A rule of 4 cores whose render core has one logical CPU in it (0-6: core 6 only logical 6).
+  // A rule of 4 cores whose most used core has one logical CPU in it (0-6: core 6 only logical 6): the next core with two.
   runs = {};
   runs[6] = 64;
-  CheckStandDown(cs::PlanSets(x3d, IdsOf(x3d, 0, 6), all, runs), "SMT");
+  CheckApplied(cs::PlanSets(x3d, IdsOf(x3d, 0, 6), all, runs), x3d, IdsOf(x3d, 0, 6), all, 2);
   cases += 2;
   // CPUs Windows gave to other processes are not the game's.
   {
@@ -195,7 +243,7 @@ static void Synthetic() {
   }
   // No presents counted.
   runs = {};
-  CheckStandDown(cs::PlanSets(x3d, {}, all, runs), "ran on none");
+  CheckStandDown(cs::PlanSets(one_l3, {}, all, runs), "ran on none");
   ++cases;
   // 8 cores without SMT.
   {
@@ -226,7 +274,7 @@ static void Synthetic() {
     runs = {};
     runs[4] = 64;
     CheckStandDown(cs::PlanSets(groups, {}, all, runs), "processor group");
-    CheckStandDown(cs::PlanSets(groups, IdsOf(groups, 0, 15), all, runs), "processor group");
+    CheckStandDown(cs::PlanSets(groups, IdsOf(groups, 0, 7), all, runs), "processor group");
     cases += 2;
   }
   // Fewer than 4 cores: 3 cores with SMT, 2 cores, 1 core.
@@ -335,12 +383,15 @@ static void Live() {
   std::set<WORD> groups;
   std::set<BYTE> classes;
   std::set<int> cores;
+  std::set<BYTE> caches;
   for (const cs::CpuSet& cpu : system) {
     groups.insert(cpu.group);
     classes.insert(cpu.efficiency);
     cores.insert(cpu.group * 256 + cpu.core);
+    caches.insert(cpu.cache);
   }
-  std::printf("  this PC: %zu logical CPUs, %zu cores, %zu groups, efficiency classes:", system.size(), cores.size(), groups.size());
+  std::printf("  this PC: %zu logical CPUs, %zu cores, %zu groups, %zu L3 caches, efficiency classes:", system.size(), cores.size(),
+              groups.size(), caches.size());
   for (const BYTE efficiency : classes) std::printf(" %u", efficiency);
   std::printf("\n");
   for (int k = 0; k < 3; ++k) {
@@ -357,7 +408,8 @@ static void Live() {
     return;
   }
   REQUIRE(cs::ReadSets(GetProcessDefaultCpuSets, GetCurrentProcess()).value_or(Ids{1}).empty());
-  cs::check_ms = 100;
+  // A read every 20 ms, a check every 100 ms.
+  cs::tick_ms = 20;
   const Ids set_a = IdsOf(system, 0, 15);
   const Ids set_b = IdsOf(system, 16, 31);
   const Ids set_c = IdsOf(system, 16, 21);
@@ -500,7 +552,10 @@ static void Live() {
 
   // 9. On and off 20 times, quickly: symmetric every time.
   for (int round = 0; round < 20; ++round) {
-    PresentUntil([&] { return !Selected(render).empty(); }, (round % 2 == 0 ? 10000 : 150));
+    const bool applied = PresentUntil([&] { return !Selected(render).empty(); }, (round % 2 == 0 ? 10000 : 150));
+    if (round % 2 == 0) {
+      CHECK(applied);
+    }
     cs::Update(false);
     check_cleared({render, late.handle});
     check_cleared(ours_rest);
@@ -541,6 +596,60 @@ static void Live() {
   check_cleared({render});
   REQUIRE(SetProcessAffinityMask(GetCurrentProcess(), system_mask) != FALSE);
   std::printf("  11. affinity-only base: applied inside it, cleared\n");
+  set_default(set_a);
+
+  // 12. Another thread presents 10 times first, then stops (alive): the count starts again on this thread, applied.
+  ClearLog();
+  {
+    std::atomic<bool> release = false;
+    std::atomic<HANDLE> early_handle = nullptr;
+    std::thread early([&] {
+      early_handle = OpenSelf();
+      for (int i = 0; i < 10; ++i) {
+        cs::Update(true);
+        Sleep(1);
+      }
+      while (!release.load()) Sleep(10);
+    });
+    while (cs::samples.load() < 10) Sleep(1);
+    CHECK(PresentUntil([&] { return Selected(render).size() == 2; }, 10000));
+    PresentUntil([] { return false; }, 300);
+    std::vector<HANDLE> others = ours_rest;
+    others.push_back(early_handle.load());
+    check_applied(set_a, render, others);
+    release = true;
+    early.join();
+    CloseHandle(early_handle.load());
+    cs::Update(false);
+    check_cleared({render});
+    std::printf("  12. an early presenter that stops: measured again on this thread, applied\n");
+  }
+
+  // 13. Another thread is counted to SAMPLE_PRESENTS after the first check (whose base is never stable), then ends
+  // before the second: the plan finds it ended, measures again, this thread applied. A check every second here: the
+  // thread presents once (the worker starts), waits 1.5 s, presents the rest at once and ends.
+  ClearLog();
+  cs::tick_ms = 200;
+  {
+    DWORD ended_id = 0;
+    std::thread ending([&] {
+      ended_id = GetCurrentThreadId();
+      cs::Update(true);
+      Sleep(1500);
+      while (cs::samples.load() < cs::SAMPLE_PRESENTS) cs::Update(true);
+    });
+    ending.join();
+    CHECK(cs::render_thread.load() == ended_id);
+    CHECK(PresentUntil([&] { return Selected(render).size() == 2; }, 10000));
+    CHECK(LogHas("the render thread has ended"));
+    PresentUntil([] { return false; }, 300);
+    check_applied(set_a, render, ours_rest);
+    cs::Update(false);
+    check_cleared({render});
+    check_cleared(ours_rest);
+    std::printf("  13. a measured presenter that ended: measured again on this thread, applied\n");
+  }
+  cs::tick_ms = 20;
 
   // Steady cost of a present with the row on (sampling done).
   PresentUntil([&] { return !Selected(render).empty(); }, 10000);
