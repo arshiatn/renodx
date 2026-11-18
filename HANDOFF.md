@@ -3234,6 +3234,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         bond-albedo inversion, the C++ walk with failing controls, T0-T2, beta + fast-form tables, the rho histogram's
         data question) in designs/vmf_s0, no repo code, no GPU. vMF S1+ wait for the SDK audit's D2 stage A (design
         section 12). Next engine_code item after E3P-c: E3P-d (Opus first), then EF4b.
+        alp1_ DONE ~07:1x -> night1118/alp1_report.md: 8de31e0a8 on alp1_ (parent 29eeab5ce): scores once + partial_sort
+        of {score, index}; plan corrected (lights_last is read again when the helper doesn't take the trace: restored to
+        the pick's whole order then); OPEN 1 SSE2 (pentium4 target, no x87 in the loop); OPEN 2 new tw_native_context
+        part 6 on the real Trace (1600 frames, ties / NaN / inf, x86 = amd64 bit-equal; controls 1271 / 1037 / 1303
+        differ); 8192 lights 0.235 -> 0.06-0.08 ms x86; gated all x86 + amd64 exit 0. STARTED 07:15: alr1_ Opus
+        xHigh review (read only; may run part 6 from an export in testbin\alr1_).
         ci3s_ DONE ~06:4x -> night1118/ci3s_report.md: c3adca196 CR1 fixes (L1 / L2 / N1 bswap tail 11 B / N2 / N3 / N4)
         + d6cef1f49 E3P-b (site 12 loop bottom Attila 0x1893883 / Thrones 0x1908be3, 50-byte stub at 0xB80, K = 2,
         Faster Effect Prefetch row; harness 162 -> 67 ns a particle at 300-cycle updates) on dfcf463d0; full x86
