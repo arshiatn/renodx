@@ -35,8 +35,9 @@
 // Thrones of Britannia and Rome II (Game::THRONES, Game::ROME2): the same routines, their builds' (internal::BUILDS);
 // Rome II has no ready check. Faster Job Wake-Ups (its own row, Experimental): a sixth to eighth site, the job system's
 // worker wake-ups (6. below). The sprite soldiers' row builder's 20 half floats at once (7. below) belong to Faster Game
-// CPU Code. Faster Effect Prefetch (its own row, Experimental): the effect tree's child sum (8. below), a tenth site. The
-// particle writer's two float4 reloads (9. below, the eleventh and twelfth sites) belong to Faster Game CPU Code.
+// CPU Code. Faster Effect Prefetch (its own row, Experimental): the effect tree's child sum (8. below), a tenth site, and the
+// particle update loop (10. below, the thirteenth). The particle writer's two float4 reloads (9. below, the eleventh and
+// twelfth sites) belong to Faster Game CPU Code.
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
@@ -78,7 +79,7 @@ constexpr std::array<uint8_t, 44> TruncationStub(uint8_t control, uint8_t roundi
 constexpr std::array<uint8_t, 44> TRUNCATION_STUB = TruncationStub(0x18, 0x1C, 0x20, 0x2C);
 // The same bytes as the Attila CPU Performance Fix's x87 fix leaves them (its x87fix.c, on the block at +14): both fldcw
 // a 4-byte nop, fistp fisttp. Left to that mod as any other mod's code; only named in the log.
-constexpr auto HEAPFIX_TRUNCATION = [] {
+constexpr auto X87_FIX_TRUNCATION = [] {
   std::array<char, TRUNCATION.size()> pattern = {};
   std::ranges::copy(TRUNCATION, pattern.begin());
   const auto put = [&](size_t offset, std::string_view bytes) { std::ranges::copy(bytes, pattern.begin() + 3 * offset); };
@@ -266,7 +267,7 @@ constexpr std::string_view READY_CHECK =
     "80 7C 24 0F 00 8B 07 74 0A 80 78 6E 00 74 04 B0 01 EB 02 32 C0 88 44 24 0F 85 F6 74 23 B8 FF FF FF FF F0 0F C1 46 "
     "04 75 17 8B 06 8B CE FF 10 83 C8 FF F0 0F C1 46 08 75 07 8B 06 8B CE FF 50 04 83 C7 08 3B FB 75 AB 8A 44 24 0F 5F "
     "5E 5B 59 C3";
-constexpr std::array<uint8_t, 98> READY_CHECK_STUB = {
+constexpr std::array<uint8_t, 94> READY_CHECK_STUB = {
     0x51,                          // push ecx                          the game's frame: the result in the pushed
     0x8A, 0x41, 0x04,              // mov al, byte ptr [ecx + 4]          ecx's top byte
     0x53,                          // push ebx
@@ -301,12 +302,11 @@ constexpr std::array<uint8_t, 98> READY_CHECK_STUB = {
     0x5F,                          // pop edi
     0x5E,                          // pop esi
     0x5B,                          // pop ebx
-    0xC1, 0xC1, 0x08,              // rol ecx, 8                        the pushed ecx (this, never written)
-    0x88, 0xC1,                    // mov cl, al                          with al in its top byte, built in the
-    0xC1, 0xC9, 0x08,              // ror ecx, 8                          register: pop ecx's 4-byte reload of the
-    0x8D, 0x64, 0x24, 0x04,        // lea esp, [esp + 4]                  1-byte store waits for that store
-    0x3B, 0xC9,                    // cmp ecx, ecx                      the equal compare's flags again (rol / ror
-    0xC3,                          // ret                                 changed CF and OF)
+    0x0F, 0xC9,                    // bswap ecx                         the pushed ecx (this, never written) with al in
+    0x88, 0xC1,                    // mov cl, al                          its top byte, built in the register: pop ecx's
+    0x0F, 0xC9,                    // bswap ecx                           4-byte reload of the 1-byte store waits for it
+    0x8D, 0x64, 0x24, 0x04,        // lea esp, [esp + 4]                  the slot dropped, its bytes kept below esp
+    0xC3,                          // ret                               bswap and lea write no flag: the equal compare's stay
 };
 
 // 6. The job system's worker wake-ups (Faster Job Wake-Ups, its own row, Experimental: not byte for byte the game's
@@ -816,6 +816,45 @@ constexpr std::array<uint8_t, 35> FLOAT4_RELOAD_STUB = {
 // Whether the CPU has insertps; the test turns it off to see the sites left out.
 static bool sse4_1 = (IsProcessorFeaturePresent(PF_SSE4_1_INSTRUCTIONS_AVAILABLE) != FALSE);
 
+// 10. The particle update loop's prefetch (the emitter update +0x1893470, one caller, its loop +0x1893820 .. +0x1893888; Faster Effect Prefetch). The
+// loop takes the particle [[edi + 0x68] + ebx*4] while ebx < [edi + 0x64] (the vector's array and size read again after every call), stores to it
+// (+0x18, +0x20, +0x30), calls its update through the vtable (+0xc) and ends with `cmp ebx, dword ptr [edi + 0x64]; jb the top`: 1.8 ms of the render
+// thread a frame in the stress battle, 0.84 of it the first load of the particle (scattered heap objects of four lines) and 0.24 the array. The stub at
+// that bottom, where ebx is already the next particle's index, loads the slot K = PARTICLE_PREFETCH_AHEAD particles after the next one and prefetches the
+// particle's four lines, only when the slot is inside the size as it is right now: the array the game's next load reads holds size * 4 bytes (the one
+// assumption, as in 8.), and the lea wraps like the load's address does, so an index past 2^32 loads from inside the vector too. The prefetch never
+// faults. The stub spends esi, which is dead there (the loop's top loads it, the way out only pops it and calls a function that saves it: checked in the
+// DLL's bytes, Attila's and Thrones'); the flags the `jb` tests are the game's `cmp`; no store, no other register: every register but esi, the flags and
+// all memory at the loop's end are the game's. Found by the loop's 104 bytes and the 36 after it (the way out the esi argument stands on, its call wild), at
+// the Steam build's place first, then anywhere in the code; no branch lands inside the site (the whole DLL's relative branches and absolute pointers,
+// Attila's and Thrones'), no site or hook of the Attila CPU Performance Fix 7.0 lies in the loop.
+constexpr std::string_view PARTICLE_LOOP =
+    "8B 47 68 51 F3 0F 11 04 24 51 8B 34 98 FF 75 0C 66 0F D6 6E 18 89 56 20 8B 16 0F 11 76 30 83 7F 08 01 0F 94 C0 0F B6 C0 50 51 8B CE F3 0F 11 24 24 "
+    "FF 52 0C 80 7E 64 00 75 08 C6 47 6C 00 32 C0 EB 03 8A 47 6C F3 0F 10 44 24 10 43 F3 0F 10 64 24 0C 0F 28 6C 24 40 0F 10 74 24 30 8B 4D 10 8B 54 24 14 "
+    "3B 5F 64 72 98 84 C0 74 10 80 7F 6D 00 74 0A 80 7F 04 00 74 04 C6 47 6E 01 8B CF E8 ?? ?? ?? ?? 5F 5E 5B 8B E5 5D C2 0C 00";
+constexpr size_t PARTICLE_LOOP_SITE = 99;   // cmp ebx, dword ptr [edi + 0x64]; jb the loop's top
+constexpr size_t PARTICLE_LOOP_EXIT = 104;  // test al, al: the code after the loop
+constexpr uint8_t PARTICLE_PREFETCH_AHEAD = 2;
+static_assert(PARTICLE_PREFETCH_AHEAD >= 1 && PARTICLE_PREFETCH_AHEAD * 4 <= 127);  // the slot's displacement is a signed byte
+// The stub for the particle `ahead` places after the next one (the test builds the others for its timing).
+constexpr std::array<uint8_t, 50> ParticlePrefetchStub(uint8_t ahead) {
+  return {
+      0x8D, 0x73, ahead,                                  // lea esi, [ebx + ahead]
+      0x3B, 0x77, 0x64,                                   // cmp esi, dword ptr [edi + 0x64]  inside the size as it is now
+      0x73, 0x1C,                                         // jae skip
+      0x8B, 0x77, 0x68,                                   // mov esi, dword ptr [edi + 0x68]  the array as it is now
+      0x8B, 0x74, 0x9E, static_cast<uint8_t>(ahead * 4),  // mov esi, dword ptr [esi + ebx*4 + ahead*4]
+      0x0F, 0x18, 0x0E,                                   // prefetcht0 byte ptr [esi]
+      0x0F, 0x18, 0x4E, 0x40,                             // prefetcht0 byte ptr [esi + 0x40]
+      0x0F, 0x18, 0x8E, 0x80, 0x00, 0x00, 0x00,           // prefetcht0 byte ptr [esi + 0x80]
+      0x0F, 0x18, 0x8E, 0xC0, 0x00, 0x00, 0x00,           // prefetcht0 byte ptr [esi + 0xc0]
+      0x3B, 0x5F, 0x64,                                   // skip: cmp ebx, dword ptr [edi + 0x64]  the flags the game's jb tests
+      0x0F, 0x82, 0x00, 0x00, 0x00, 0x00,                 // jb the loop's top (patched in Prepare)
+      0xE9, 0x00, 0x00, 0x00, 0x00,                       // jmp the code after the loop (patched in Prepare)
+  };
+}
+constexpr std::array<uint8_t, 50> PARTICLE_PREFETCH_STUB = ParticlePrefetchStub(PARTICLE_PREFETCH_AHEAD);
+
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half, fmod and the
 // ready check the same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots
 // (control word 0x20, float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the
@@ -853,10 +892,11 @@ struct Build {
   uint32_t half_rows_rva;
   uint32_t child_sum_rva;
   uint32_t float4_reload_rva;  // the particle writer's tail (FLOAT4_RELOAD's first byte)
+  uint32_t particle_loop_rva;  // the particle update loop (PARTICLE_LOOP's first byte)
 };
-constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA, 0x16b5550, 0x16b5520, 0x1689b90, 0x1907511, 0x1890b90, 0x18967db};
-constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9, 0x18d8400, 0x1722e60, 0x1722e30, 0x16f7460, 0x197d841, 0x1905ef0, 0x190bb3b};
-constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0, 0, 0, 0, 0, 0};
+constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA, 0x16b5550, 0x16b5520, 0x1689b90, 0x1907511, 0x1890b90, 0x18967db, 0x1893820};
+constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9, 0x18d8400, 0x1722e60, 0x1722e30, 0x16f7460, 0x197d841, 0x1905ef0, 0x190bb3b, 0x1908b80};
+constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 constexpr std::array<Build, 3> BUILDS = {ATTILA_BUILD, THRONES_BUILD, ROME2_BUILD};  // by Game
 
 // Where each stub sits in the page.
@@ -870,20 +910,27 @@ constexpr size_t HALF_ROWS_PAGE = 0x500;
 constexpr size_t CHILD_SUM_PAGE = 0xB00;
 constexpr size_t FLOAT4_RELOAD_PAGE = 0xB20;    // one stub for each of the two reloads, a stride apart
 constexpr size_t FLOAT4_RELOAD_STRIDE = 0x30;
+constexpr size_t PARTICLE_PREFETCH_PAGE = 0xB80;
 constexpr size_t PAGE_SIZE = 0x1000;
-static_assert(READY_CHECK_PAGE + READY_CHECK_STUB.size() <= JOB_PAGE
+static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the three games' truncation stubs are one type
+              && HALF_PAGE + HALF_STUB.size() + HALF_SIZE <= FMOD_PAGE
+              && FMOD_PAGE + FMOD_STUB.size() <= LIST_PUSH_PAGE
+              && LIST_PUSH_PAGE + LIST_PUSH_STUB.size() <= READY_CHECK_PAGE
+              && READY_CHECK_PAGE + READY_CHECK_STUB.size() <= JOB_PAGE
               && JOB_PAGE + JOB_STUB.size() <= HALF_ROWS_PAGE
               && HALF_ROWS_PAGE + HALF_ROWS_CONSTANTS_AT + sizeof(HALF_ROWS_CONSTANTS) <= CHILD_SUM_PAGE
               && CHILD_SUM_PAGE + CHILD_SUM_STUB.size() <= FLOAT4_RELOAD_PAGE
               && FLOAT4_RELOAD_STUB.size() <= FLOAT4_RELOAD_STRIDE
-              && FLOAT4_RELOAD_PAGE + FLOAT4_RELOAD_AT.size() * FLOAT4_RELOAD_STRIDE <= PAGE_SIZE);
+              && FLOAT4_RELOAD_PAGE + FLOAT4_RELOAD_AT.size() * FLOAT4_RELOAD_STRIDE <= PARTICLE_PREFETCH_PAGE
+              && PARTICLE_PREFETCH_PAGE + PARTICLE_PREFETCH_STUB.size() <= PAGE_SIZE);
 
 // Which sites each row writes (bits by `sites` index).
 constexpr uint32_t FLOAT4_RELOAD_SITES = 0b110000000000;  // the particle writer's two reloads
 constexpr uint32_t CPU_CODE_SITES = 0b100010111 | FLOAT4_RELOAD_SITES;  // Faster Game CPU Code
 constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
-constexpr uint32_t PREFETCH_SITES = 0b1000000000;  // Faster Effect Prefetch: the effect tree's child sum
+constexpr uint32_t PARTICLE_PREFETCH_BIT = 0b1000000000000;  // the particle update loop's prefetch
+constexpr uint32_t PREFETCH_SITES = 0b1000000000 | PARTICLE_PREFETCH_BIT;  // Faster Effect Prefetch: the effect tree's child sum, the particle loop
 constexpr uint32_t HALF_FUNCTION_BIT = 0b10;  // the half function, which the half rows' stub calls as the game does
 constexpr uint32_t HALF_ROWS_BIT = 0b100000000;
 // The rows by name, for the log lines.
@@ -904,7 +951,7 @@ struct Site {
   uint8_t opcode = 0xE9;  // jmp; the worker destructor's call of Stop stays a call (E8)
 };
 
-static std::array<Site, 12> sites = {{{.name = "soldier draw rounding"},
+static std::array<Site, 13> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half floats"},
                                      {.name = "fmod"},
                                      {.name = "render list pushes"},
@@ -915,7 +962,8 @@ static std::array<Site, 12> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half rows"},
                                      {.name = "child prefetch"},
                                      {.name = "particle colour reload"},
-                                     {.name = "particle vector reload"}}};
+                                     {.name = "particle vector reload"},
+                                     {.name = "particle prefetch"}}};
 static uint8_t* job_table = nullptr;
 static uint8_t* page = nullptr;
 static bool prepared = false;
@@ -1171,6 +1219,16 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
         stubs[10 + reload] = stub;
       }
     }
+    // The particle update loop's prefetch, found by the loop's bytes and those of its way out.
+    if (uint8_t* match = (build.particle_loop_rva != 0 ? find(PARTICLE_LOOP, build.particle_loop_rva) : nullptr); match != nullptr) {
+      uint8_t* stub = page + PARTICLE_PREFETCH_PAGE;
+      std::memcpy(stub, PARTICLE_PREFETCH_STUB.data(), PARTICLE_PREFETCH_STUB.size());
+      uint8_t* stub_end = stub + PARTICLE_PREFETCH_STUB.size();
+      write32(stub_end - 9, relative(stub_end - 5, match));
+      write32(stub_end - 4, relative(stub_end, match + PARTICLE_LOOP_EXIT));
+      sites[12].at = match + PARTICLE_LOOP_SITE;
+      stubs[12] = stub;
+    }
     DWORD protection;
     VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
     FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
@@ -1180,18 +1238,23 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   std::string x87_fixed;
   // Attila's truncation block rewritten by the Attila CPU Performance Fix is named as such, not as an unknown mod.
   const bool truncation_x87_fixed = (sites[0].at == nullptr && build.truncation_rva == TRUNCATION_RVA
-                                     && holds(base + TRUNCATION_RVA, {HEAPFIX_TRUNCATION.data(), HEAPFIX_TRUNCATION.size()}));
+                                     && holds(base + TRUNCATION_RVA, {X87_FIX_TRUNCATION.data(), X87_FIX_TRUNCATION.size()}));
   // A site the build doesn't have (rva 0) isn't named.
   const uint32_t reload_rva = (sse4_1 ? build.float4_reload_rva : 0);
-  const std::array<uint32_t, 12> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
-                                         0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva};
+  const std::array<uint32_t, 13> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
+                                         0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva, 0};
   static_assert(std::tuple_size_v<decltype(rvas)> == std::tuple_size_v<decltype(sites)>);
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
     // The job sites aren't listed here: their row says when it turns them on.
     if (rvas[index] != 0) {
-      std::string& names = (site.at != nullptr ? faster : ((index == 0 && truncation_x87_fixed) ? x87_fixed : left));
-      names += std::format("{}{}", names.empty() ? "" : ", ", site.name);
+      std::string* names = &left;
+      if (site.at != nullptr) {
+        names = &faster;
+      } else if (index == 0 && truncation_x87_fixed) {
+        names = &x87_fixed;
+      }
+      *names += std::format("{}{}", names->empty() ? "" : ", ", site.name);
     }
     if (site.at == nullptr) continue;
     found |= 1u << index;
@@ -1225,9 +1288,13 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     internal::job_missing_logged = true;
     renodx::utils::log::w("[Total War] Faster Job Wake-Ups: left alone (not the game's code as expected: another mod or build)");
   }
-  if (prefetch && internal::prepared && (internal::found & internal::PREFETCH_SITES) == 0 && !internal::prefetch_missing_logged) {
+  if (prefetch && internal::prepared && (internal::found & internal::PREFETCH_SITES) != internal::PREFETCH_SITES && !internal::prefetch_missing_logged) {
     internal::prefetch_missing_logged = true;
-    renodx::utils::log::w("[Total War] Faster Effect Prefetch: left alone (not the game's code as expected: another mod or build)");
+    std::string missing;
+    for (size_t index = 0; index < internal::sites.size(); ++index) {
+      if (((internal::PREFETCH_SITES & ~internal::found) >> index & 1) != 0) missing += std::format("{}{}", missing.empty() ? "" : ", ", internal::sites[index].name);
+    }
+    renodx::utils::log::w("[Total War] Faster Effect Prefetch: left alone (not the game's code as expected: another mod or build): ", missing);
   }
   const uint32_t target = wanted & internal::found;
   if (target == internal::written || internal::failed_writes >= internal::MAX_FAILED_WRITES) return;
