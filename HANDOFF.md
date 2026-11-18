@@ -3328,6 +3328,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         tools/tw/heapfix/check_patch.sh; no plan delivered, its text withheld and not used). ONE Sonnet xHigh retry
         hfp2s_ STARTED 11:38 (same brief; may reuse hfp1_scripts after checking them). A second stop = that path ends.
         ci7_ waits on its part 9 flake repeat (old code 6 / 30 fail; fixed build 30 launches running).
+        ATN ~11:4x: GO for the WPR runs; parallel work allowed where it costs about the same tokens. SANITY RUNS STARTED
+        11:42 (locks held): 1 day1 = Constantinople at the bench camera, 2 stress at its own camera (the heaviest CPU
+        scene; replaces a duplicate Constantinople run), 3 stress Y:6 ground; log scratchpad sanity_runs.log.
+        ci7_ DONE 11:48 -> night1118/ci7_report.md: 31674db75 on ci7_ (M1 per-slot K|K/2 48 B, L1 CONTROLs, L2, part 9
+        fix = both pages at static init (high page also flaked 2 / 30), 30 / 30 pass, nits + cr6_ nits; gated x86 exit
+        0; FULL SUITES NOT RUN (game runs): run.ps1 -Architecture x86 on Attila / Thrones / Rome II after the runs).
+        Reviews STARTED 11:48 in parallel (read only, no builds / test exes during the runs): cr7s_ (Sonnet xHigh,
+        ci7_'s commit), fe3s_ (Sonnet xHigh, final independent E3P-b/c/d review on the bytes + EVEC design lines),
+        fe3o_ (Opus xHigh, end-of-batch source-level E3P review; a stop = that path ends, Sonnet's stands).
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
