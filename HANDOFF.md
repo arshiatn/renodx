@@ -3542,6 +3542,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         (unreachable: comment), L2 row-independence test, N1-N4 comments / run.ps1 relative path / tooltip wording.
         PLAN: one Sonnet xHigh fix round on the ec4s_ tip for cr8s_'s Lows + er1s_ / er2s_'s findings, then the Opus xHigh
         end review of ci8s_ + ec4s_, then merge the chain.
+        rtso1_ DONE -> night1118/rtso1_report.md: 00ecf9cd5 RTSO B1 (RaysBesideSpecularOcclusion = sun shadows / AO / Light
+        Bounce (GI > 0) / reflections / local lights / fog shadows; SO alone = SO off in every SettingsOf host; row greyed;
+        Shogun 2 gated in its own code; Pharaoh / Troy keep their stricter gate; WH3 unchanged; tw_native_context part 8 x86 +
+        amd64 PASS; gated x86 3 + amd64 13 exit 0). Ryse not covered (own settings): sent back 18:22 for a Ryse commit (ATN's
+        rule is general). Review ar6o_ (Opus xHigh) STARTED 18:22.
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
