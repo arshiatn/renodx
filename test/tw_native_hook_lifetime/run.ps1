@@ -1,7 +1,5 @@
-# twattila/graphics_hooks.hpp's and the engine tweaks' Detours hooks across a failed uninstall, the engine values at an
-# add-on's detach, and the LOD pick hook by the Model Detail Distance slider (none at 1x; the detour only when the game starts
-# with the slider up, on a PickLod made of the game's first bytes) (module.cpp, loaded by host.cpp). x86 only for the LOD
-# part. Needs build32\twattila.include (a renodx-twattila.addon32 build):
+# twattila/graphics_hooks.hpp's Detours hooks across a failed uninstall and the engine values at an add-on's detach
+# (module.cpp, loaded by host.cpp). Needs build32\twattila.include (a renodx-twattila.addon32 build):
 # graphics_hooks.hpp includes rt_core.hpp, whose embedded shaders are generated there (byte arrays: amd64 takes the same).
 # -OutDir: where the test binaries go (default build\astra_native_hooks_<arch>).
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [string]$OutDir = '')
