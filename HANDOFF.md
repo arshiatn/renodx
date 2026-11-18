@@ -3125,7 +3125,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         bench), AGRS; HF package for the author (HSG, HX87, HLB, memfast, loopfetch, HLA2, watch threads); GPU line G1 /
         G2 (exact fence moves) vs G4 last-frame RT (ATN's look call). (5) STARTED 04:00: ci1_ Opus High (step 1 ES8b +
         LOGX, branch ci1_) and gpo1_ Opus xHigh read-only (G1 / G2 ceiling from the day1 ETL, MAPW resource).
-        gpo1_ DONE 04:3x -> night1118/gpu_overlap.md (saved by the coordinator): G1 / G2 NOT worth code (exact window
+        gpo1_ DONE 04:2x -> night1118/gpu_overlap.md (saved by the coordinator): G1 / G2 NOT worth code (exact window
         ~0.2 ms: only the trace has one, the AO draw + 60 post-AO draws; every Signal already at its earliest point);
         game + helper queues both on node 0 3D as separate processes = most likely time-sliced, so even G4 (last
         frame's RT) gains ~0 in day1 until the two-plays check says otherwise; MAPW releases after the consumers (G1
