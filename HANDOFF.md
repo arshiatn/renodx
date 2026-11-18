@@ -402,6 +402,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CR4 FOLLOW-UPS (review_ci4s.md): M1 emitters 0 / 1 of every effect never prefetc ... | after the final bench
 - CR5 BEFORE THE BENCH (review_ci5.md): M1 site 8 stub -> the per-slot K|K/2 form ... | the engine_code implementer after ci6_ (EF4b), before the fi
 - EF4b REST (ci6_report.md): 0x442360 (~28 float4 reloads in 7 four-row blocks, 8 ... | next CPU round
+- ATN: SHOGUN 2 LIGHT FALLOFF CHECK (review_pdi1.md M2): bridge v32 / L1 gives Sho ... | ATN (later, not this week)
+- vMF DEFAULT 40 % (ATN 11:10): the Rough Diffuse slider's default 40 % when vMF S ... | vMF S4
 - TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
 - DAY1 MAXED GPU LEVERS (gpo1_ / cpa1_): day1 maxed behind the units is GPU-bound ... | coordinator (GPU line)
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
@@ -3301,6 +3303,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         cr6_ review DONE ~10:5x -> night1118/review_ci6.md: MERGE (lanes traced on every path, three games; branch
         scan; patterns once each; no relocations; heapfix clear; Low-1 = part 9's low page: cause part 2's places
         blocks + ASLR, passed to ci7_ with the nits). MERGED 5b226f207 (gated x86 3 targets 11:04 exit 0, PUSHED 11:05; ci6_'s 11 links removed alone).
+        ATN 11:10 ANSWERS: Windows 10 requirement OK (README requirements at release); vMF Rough Diffuse default 40 %
+        (ATN judges by eye later); Constantinople -ReplayCopy ALLOWED, may stay in the replays folder (memory
+        feedback_constantinople_replay_copy); Shogun 2's linear light falloff = a box for ATN to check later (not this
+        week); BENCH NOT YET: ATN has one more CPU-analysis sanity-check idea first; AUTHOR: do the author's items as
+        ready code (patches against his 7.0 source + full changed files), benched in game, with what is proven, then ONE
+        zip. Pipeline for engine-code work (ATN asked; recommended): Opus xHigh plan -> Sonnet xHigh implement -> Sonnet
+        xHigh review -> one Opus xHigh review at the end of the batch (a stop there = stop that path, Sonnet's stands).
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
@@ -3354,6 +3363,11 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] EF4b REST (ci6_report.md): 0x442360 (~28 float4 reloads in 7 four-row blocks, 8 measured ~4.4 ms summed
         workers): widen the site masks past 32 bits first; 0x1696820 (movaps into xmm1 / xmm4, ~0.6 ms summed): a
         register-parameter stub + an alignment-fault argument. Owner: next CPU round
+      - [ ] ATN: SHOGUN 2 LIGHT FALLOFF CHECK (review_pdi1.md M2): bridge v32 / L1 gives Shogun 2's lights the game's own
+        linear falloff (paths / fog / glow x1.33 at a quarter of the reach, x2 at half, x4 at three quarters);
+        RENODX_TW_SQUARED_FALLOFF=1 = the old look. Owner: ATN (later, not this week)
+      - [ ] vMF DEFAULT 40 % (ATN 11:10): the Rough Diffuse slider's default 40 % when vMF S4 adds the row (Experimental,
+        off; ATN judges by eye). Owner: vMF S4
       - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
         0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
         drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
