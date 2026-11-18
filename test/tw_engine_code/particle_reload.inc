@@ -195,16 +195,9 @@ uint32_t ReloadFillWorld(uint8_t* bytes, Random* random, int flavor) {
 
 // One call's state: the graph, the arguments, random registers, MXCSR from the caller; the stack filled with 0xFF (the function's own
 // writes then show which way it went) or at random.
-void ReloadRandom(ReloadWorld* world, Random* random, int flavor, uint32_t function, uint32_t mxcsr, bool canary) {
-  FnCall* call = &world->call;
-  const uint32_t first = ReloadFillWorld(world->bytes.data(), random, flavor);
-  const uint32_t base = Address(world->bytes.data());
-  call->function = function;
-  call->this_ptr = base + RELOAD_THIS;
-  call->args[0] = first;
-  call->args[1] = base + RELOAD_SIX;
-  call->args[2] = random->Next();
-  call->args[3] = random->Next();
+// A call's registers, stack (0xFF with `canary`, else random) and x87 / SSE state at random, MXCSR `mxcsr`; the function, this and the
+// arguments are the caller's.
+void ReloadCallRandom(FnCall* call, Random* random, uint32_t mxcsr, bool canary) {
   for (uint32_t& value : call->in) value = random->Next();
   call->faulted = 0;
   for (uint8_t& byte : call->stack) byte = (canary ? 0xFF : static_cast<uint8_t>(random->Next()));
@@ -217,6 +210,19 @@ void ReloadRandom(ReloadWorld* world, Random* random, int flavor, uint32_t funct
   put16(6, 0);
   Write32(fx + 24, mxcsr);
   for (int reg = 0; reg < 8; ++reg) std::memset(fx + 32 + 16 * reg + 10, 0, 6);
+}
+
+void ReloadRandom(ReloadWorld* world, Random* random, int flavor, uint32_t function, uint32_t mxcsr, bool canary) {
+  FnCall* call = &world->call;
+  const uint32_t first = ReloadFillWorld(world->bytes.data(), random, flavor);
+  const uint32_t base = Address(world->bytes.data());
+  call->function = function;
+  call->this_ptr = base + RELOAD_THIS;
+  call->args[0] = first;
+  call->args[1] = base + RELOAD_SIX;
+  call->args[2] = random->Next();
+  call->args[3] = random->Next();
+  ReloadCallRandom(call, random, mxcsr, canary);
 }
 
 void RunReload(ReloadWorld* world, const ReloadWorld& backup, ReloadWorld* out) {

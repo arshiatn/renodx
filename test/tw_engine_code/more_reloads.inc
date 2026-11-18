@@ -12,6 +12,8 @@
 // 17d. 200 switches while 4 threads run both ways in both copies;
 // 17e. a parked thread at each byte of each site;
 // 17f. timing of both ways, game / ours / each site alone.
+// 17g .. 17m. The matrix product's three row reloads (RunMatrixProductTests): the same parts, and the whole function on random matrices
+//    instead of the ways.
 // The whole draw is not called: it walks the scene's nodes through virtual calls, the thread's TLS block and globals a fake graph can't
 // stand in for; its two ways hold every store the three reloads read (engine_code.hpp 12.).
 // ====================================================================================================================
@@ -217,5 +219,225 @@ int RunSoldierRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
   std::memcpy(game + end_rva, game_end.data(), 5);
   std::memcpy(patched + end_rva, patched_end.data(), 5);
   FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+  return 0;
+}
+
+// ---- the matrix product (engine_code.hpp 13.) ----
+// The product's world in a ReloadWorld's bytes: this at 0 (+1 the done byte, +4 its count, +8 its matrices), the argument at 0x20 (+8 its
+// count, +0xc its matrices), this' matrices at 0x100, the argument's at 0x600, up to PRODUCT_MAX of 0x30 bytes each.
+constexpr uint32_t PRODUCT_THIS = 0x000, PRODUCT_ARGUMENT = 0x020, PRODUCT_LEFT = 0x100, PRODUCT_RIGHT = 0x600, PRODUCT_MAX = 24;
+static_assert(PRODUCT_LEFT + PRODUCT_MAX * 0x30 <= PRODUCT_RIGHT && PRODUCT_RIGHT + PRODUCT_MAX * 0x30 <= RELOAD_WORLD_SIZE);
+
+// One call on random matrices (every third round some of every float class), counts 0 .. PRODUCT_MAX (mostly the same two), the done
+// byte set one call in 8; returns the way the game's call takes: 0 done already, 1 no matrix, 2 the loop.
+int ProductRandom(ReloadWorld* world, Random* random, uint32_t function, int round, bool canary) {
+  uint8_t* bytes = world->bytes.data();
+  const uint32_t base = Address(bytes);
+  const bool nasty = (round % 3 == 0);
+  for (uint32_t at = 0; at < RELOAD_WORLD_SIZE; at += 4) Write32(bytes + at, nasty ? ReloadFloat(random) : ReloadOrdinary(random));
+  const uint32_t count = random->Next() % (PRODUCT_MAX + 1);
+  const uint32_t other = (random->Next() % 4 == 0 ? random->Next() % (PRODUCT_MAX + 1) : count);
+  const bool done = (random->Next() % 8 == 0);
+  bytes[PRODUCT_THIS + 1] = (done ? static_cast<uint8_t>(1 + random->Next() % 255) : 0);
+  Write32(bytes + PRODUCT_THIS + 4, count);
+  Write32(bytes + PRODUCT_THIS + 8, base + PRODUCT_LEFT);
+  Write32(bytes + PRODUCT_ARGUMENT + 8, other);
+  Write32(bytes + PRODUCT_ARGUMENT + 0xC, base + PRODUCT_RIGHT);
+  FnCall* call = &world->call;
+  call->function = function;
+  call->this_ptr = base + PRODUCT_THIS;
+  call->args[0] = base + PRODUCT_ARGUMENT;
+  call->args[1] = random->Next();
+  call->args[2] = random->Next();
+  call->args[3] = random->Next();
+  ReloadCallRandom(call, random, ReloadMxcsr(random, round), canary);
+  if (done) return 0;
+  return (std::min(count, other) == 0 ? 1 : 2);
+}
+
+// The product on a thread's own world (fastcall carries this in ecx; the argument goes on the stack, popped by ret 4).
+using ProductCall = void(__fastcall*)(void* self, void* unused_edx, const void* argument);
+
+// 17g .. 17m: the matrix product's three row reloads, each an `movups xmm0, [esp + 0x18 / 0x28 / 0x38]` (Attila +0x168d7f0 / +0x168d803 /
+// +0x168d812, Thrones +0x16faf10 .., Rome II +0x135b7b0 ..): the sites; each alone; the whole function on random matrices with the three
+// sites and each alone (registers, x87 / MXCSR / xmm, flags, esp, the stack, the matrices and the objects equal); CONTROLs per stub and
+// lane; 200 switches under 4 threads; a parked thread at each byte; timing.
+int RunMatrixProductTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick) {
+  namespace ec = twattila::engine_code::internal;
+  const uint32_t function_rva = build.code->matrix_product_rva;
+  const uint32_t copy_distance = static_cast<uint32_t>(patched - game);
+  constexpr std::array<size_t, 3> ROWS = {ec::MATRIX_PRODUCT_FIRST_SITE, ec::MATRIX_PRODUCT_FIRST_SITE + 1, ec::MATRIX_PRODUCT_FIRST_SITE + 2};
+
+  // 17g. The sites and stubs as Prepare made them.
+  for (size_t row = 0; row < ROWS.size(); ++row) {
+    const ec::Site& site = ec::sites[ROWS[row]];
+    const uint32_t site_rva = function_rva + static_cast<uint32_t>(ec::MATRIX_PRODUCT_AT[row]);
+    const uint8_t* stub = ec::page + ec::MATRIX_PRODUCT_PAGE + row * ec::FLOAT4_RELOAD_STRIDE;
+    const std::array<uint8_t, 5> movups = {0x0F, 0x10, 0x44, 0x24, static_cast<uint8_t>(0x18 + 0x10 * row)};
+    const size_t code_size = ec::MATRIX_PRODUCT_STUBS[row].size() - 5;
+    CHECK(site.at == patched + site_rva && ((ec::written >> ROWS[row]) & 1) != 0);
+    CHECK(std::memcmp(game + site_rva, movups.data(), movups.size()) == 0 && std::memcmp(site.game.data(), movups.data(), 5) == 0);
+    CHECK(patched[site_rva] == 0xE9 && Address(patched + site_rva + 5) + Read32(patched + site_rva + 1) == Address(stub));
+    CHECK(std::memcmp(stub, ec::MATRIX_PRODUCT_STUBS[row].data(), code_size) == 0);
+    CHECK(stub[code_size] == 0xE9 && Address(stub + code_size + 5) + Read32(stub + code_size + 1) == Address(patched + site_rva + 5));
+  }
+  std::printf("17. matrix product row reloads: the three sites (+%zX, +%zX, +%zX in the function) found and written, the stubs jump back after them\n",
+              ec::MATRIX_PRODUCT_AT[0], ec::MATRIX_PRODUCT_AT[1], ec::MATRIX_PRODUCT_AT[2]);
+
+  // 17h. Each reload alone.
+  Random random = {.state = 0x17E};
+  for (size_t row = 0; row < ROWS.size(); ++row) {
+    if (const int failed = ReloadAlone(ROWS[row], game + function_rva + ec::MATRIX_PRODUCT_AT[row], ec::SITE_SIZE, ec::MATRIX_PRODUCT_STUBS[row].size(),
+                                       0x18 + 0x10 * static_cast<uint32_t>(row), RELOAD_NEAR_DISPLACEMENT_AT, quick ? 200'000 : 1'000'000, quick ? 100 : 500, &random);
+        failed != 0) {
+      return failed;
+    }
+  }
+
+  // 17i. The whole function, the game's copy against the patched copy with the three sites, and with each alone.
+  auto world = std::make_unique<ReloadWorld>();
+  auto backup = std::make_unique<ReloadWorld>();
+  auto result_a = std::make_unique<ReloadWorld>();
+  auto result_b = std::make_unique<ReloadWorld>();
+  const uint32_t game_function = Address(game + function_rva);
+  const uint32_t patched_function = Address(patched + function_rva);
+  {
+    constexpr std::array<uint32_t, 4> VARIANTS = {ec::MATRIX_PRODUCT_SITES, 1u << ROWS[0], 1u << ROWS[1], 1u << ROWS[2]};  // all three, each alone
+    const int calls = (quick ? 60'000 : 400'000);
+    std::array<uint64_t, 3> ways = {};
+    std::array<uint64_t, 4> wrong = {};
+    for (int round = 0; round < calls; ++round) {
+      ++ways[ProductRandom(world.get(), &random, game_function, round, round % 4 != 3)];
+      *backup = *world;
+      RunReload(world.get(), *backup, result_a.get());
+      backup->call.function = patched_function;
+      for (size_t variant = 0; variant < VARIANTS.size(); ++variant) {
+        HoldSites(VARIANTS[variant], ec::MATRIX_PRODUCT_SITES);
+        RunReload(world.get(), *backup, result_b.get());
+        if (const char* what = ReloadDiff(*result_a, *result_b, copy_distance); what[0] != 0) {
+          ++wrong[variant];
+          Report("  matrix product: round %d, sites %X: %s differs\n", round, VARIANTS[variant] >> ec::MATRIX_PRODUCT_FIRST_SITE, what);
+        }
+      }
+    }
+    HoldSites(ec::MATRIX_PRODUCT_SITES, ec::MATRIX_PRODUCT_SITES);
+    std::printf("   the whole function: %d calls (done already %llu, no matrix %llu, the loop %llu): NOT equal with the three sites %llu, the first alone %llu, the second %llu, the third %llu\n",
+                calls, ways[0], ways[1], ways[2], wrong[0], wrong[1], wrong[2], wrong[3]);
+    CHECK(wrong[0] == 0 && wrong[1] == 0 && wrong[2] == 0 && wrong[3] == 0);
+    const uint64_t at_least = (quick ? 1500 : 10000);
+    CHECK(ways[0] > at_least && ways[1] > at_least && ways[2] > at_least);
+  }
+
+  // 17j. CONTROL for the whole function: each stub with each lane 4 bytes off, on calls that take the loop, must be seen.
+  {
+    DWORD protection;
+    CHECK(VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READWRITE, &protection) != FALSE);
+    std::string line;
+    for (size_t row = 0; row < ROWS.size(); ++row) {
+      uint8_t* stub = ec::page + ec::MATRIX_PRODUCT_PAGE + row * ec::FLOAT4_RELOAD_STRIDE;
+      for (size_t lane = 0; lane < 4; ++lane) {
+        stub[RELOAD_NEAR_DISPLACEMENT_AT[lane]] += 4;
+        FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+        int seen = 0;
+        for (int round = 0; round < 1000; ++round) {
+          while (ProductRandom(world.get(), &random, game_function, 1, true) != 2) {
+          }
+          *backup = *world;
+          RunReload(world.get(), *backup, result_a.get());
+          backup->call.function = patched_function;
+          RunReload(world.get(), *backup, result_b.get());
+          seen += (ReloadDiff(*result_a, *result_b, copy_distance)[0] != 0) ? 1 : 0;
+        }
+        stub[RELOAD_NEAR_DISPLACEMENT_AT[lane]] -= 4;
+        FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+        line += std::format("{}{}", line.empty() ? "" : " ", seen);
+        CHECK(seen > 950);
+      }
+    }
+    CHECK(VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READ, &protection) != FALSE);
+    FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+    std::printf("   CONTROL, each stub's lane 0 .. 3 from the wrong address (rows 1, 2, 3), calls that take the loop: seen in %s of 1000\n", line.c_str());
+  }
+
+  // 17k. The product switched with the row (CPU code) on and off 200 times while 4 threads call both copies on their own matrices.
+  {
+    std::atomic<bool> stop = false;
+    std::atomic<uint64_t> bad = 0;
+    std::atomic<uint64_t> calls = 0;
+    const auto game_product = reinterpret_cast<ProductCall>(game + function_rva);
+    const auto patched_product = reinterpret_cast<ProductCall>(patched + function_rva);
+    std::vector<std::thread> threads;
+    for (int worker = 0; worker < 4; ++worker) {
+      threads.emplace_back([&, worker] {
+        auto thread_world = std::make_unique<ReloadWorld>();
+        auto before = std::make_unique<ReloadWorld>();
+        auto after_game = std::make_unique<ReloadWorld>();
+        Random thread_random = {.state = 0x17F0ull + static_cast<uint64_t>(worker)};
+        uint8_t* bytes = thread_world->bytes.data();
+        for (int round = 0; !stop.load(); ++round) {
+          ProductRandom(thread_world.get(), &thread_random, 0, round, false);
+          before->bytes = thread_world->bytes;
+          game_product(bytes + PRODUCT_THIS, nullptr, bytes + PRODUCT_ARGUMENT);
+          after_game->bytes = thread_world->bytes;
+          thread_world->bytes = before->bytes;
+          patched_product(bytes + PRODUCT_THIS, nullptr, bytes + PRODUCT_ARGUMENT);
+          if (thread_world->bytes != after_game->bytes) ++bad;
+          ++calls;
+        }
+      });
+    }
+    int busy = 0;
+    bool on = true;
+    for (int switches = 0; switches < 200; ++switches) {
+      on = !on;
+      int tries = 0;
+      do {
+        twattila::engine_code::Update(on, twattila::engine_code::Game::ATTILA, false, false, true);
+        ++tries;
+      } while ((((ec::written >> ROWS[0]) & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
+      busy += tries > 1 ? 1 : 0;
+    }
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    stop = true;
+    for (auto& thread : threads) thread.join();
+    std::printf("   200 switches while 4 threads made %llu calls of each copy on their own matrices: %llu wrong (%d writes waited for a thread inside a site)\n", calls.load(), bad.load(), busy);
+    CHECK(bad.load() == 0 && (ec::written & ec::MATRIX_PRODUCT_SITES) == ec::MATRIX_PRODUCT_SITES);
+  }
+
+  // 17l. A parked thread at each byte of each site.
+  if (const int failed = ParkedAtSites(ec::MATRIX_PRODUCT_SITES, 6); failed != 0) return failed;
+  std::printf("   a parked thread at each site -1 .. +6: refused at +1 .. +4 and written at the others\n");
+
+  // 17m. Timing: PRODUCT_MAX matrices times identities (the values stay as they are call after call), the done byte cleared before each call;
+  // the patched copy with the game's bytes / ours / each site alone, the best of 5.
+  {
+    ProductRandom(world.get(), &random, 0, 1, false);
+    uint8_t* bytes = world->bytes.data();
+    Write32(bytes + PRODUCT_THIS + 4, PRODUCT_MAX);
+    Write32(bytes + PRODUCT_ARGUMENT + 8, PRODUCT_MAX);
+    for (uint32_t matrix = 0; matrix < PRODUCT_MAX; ++matrix) {
+      for (uint32_t element = 0; element < 12; ++element) {
+        Write32(bytes + PRODUCT_RIGHT + 0x30 * matrix + 4 * element, (element % 5 == 0 ? 0x3F800000u : 0u));
+      }
+    }
+    const auto patched_product = reinterpret_cast<ProductCall>(patched + function_rva);
+    constexpr std::array<uint32_t, 5> VARIANTS = {0, ec::MATRIX_PRODUCT_SITES, 1u << ROWS[0], 1u << ROWS[1], 1u << ROWS[2]};
+    std::array<double, VARIANTS.size()> best = {1e9, 1e9, 1e9, 1e9, 1e9};
+    for (int round = 0; round < 5; ++round) {
+      for (size_t variant = 0; variant < VARIANTS.size(); ++variant) {
+        HoldSites(VARIANTS[variant], ec::MATRIX_PRODUCT_SITES);
+        constexpr int CALLS = 200'000;
+        const auto start = std::chrono::steady_clock::now();
+        for (int call = 0; call < CALLS; ++call) {
+          bytes[PRODUCT_THIS + 1] = 0;
+          patched_product(bytes + PRODUCT_THIS, nullptr, bytes + PRODUCT_ARGUMENT);
+        }
+        best[variant] = std::min(best[variant], std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / CALLS);
+      }
+    }
+    HoldSites(ec::MATRIX_PRODUCT_SITES, ec::MATRIX_PRODUCT_SITES);
+    std::printf("   ns a call of %u products, game / ours / row 1 alone / row 2 alone / row 3 alone: %.1f / %.1f / %.1f / %.1f / %.1f\n", PRODUCT_MAX, best[0], best[1], best[2],
+                best[3], best[4]);
+  }
   return 0;
 }

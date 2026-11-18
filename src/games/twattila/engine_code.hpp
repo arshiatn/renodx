@@ -38,7 +38,7 @@
 // CPU Code. Faster Effect Prefetch (its own row, Experimental): the effect tree's child sum (8. below), a tenth site, the
 // particle update loop (10. below, the thirteenth) and the emitter update loop (11. below, the fourteenth). The particle
 // writer's two float4 reloads (9. below, the eleventh and twelfth sites) belong to Faster Game CPU Code, as do the soldier draw's three
-// matrix row reloads (12. below, the fifteenth to seventeenth sites).
+// matrix row reloads (12. below, the fifteenth to seventeenth sites) and the matrix product's three (13. below, the eighteenth to twentieth).
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
@@ -968,6 +968,37 @@ constexpr std::array<uint8_t, 47> Float4ReloadFarStub(uint32_t at) {
 }
 constexpr std::array<std::array<uint8_t, 47>, 3> SOLDIER_ROWS_STUBS = {Float4ReloadFarStub(0x90), Float4ReloadFarStub(0xA0), Float4ReloadFarStub(0xB0)};
 
+// 13. The matrix product's three row reloads, the same way (Faster Game CPU Code, SSE4.1). The product (+0x168d570, thiscall(const
+// matrices*), ret 4; one caller, +0x17db161) multiplies each of this' 3x4 matrices ([this + 8], min([this + 4], [argument + 8]) of them)
+// with the argument's ([argument + 0xc]) in place, then sets the byte at this + 1. It builds each product's three rows at [esp + 0x18 ..
+// 0x47] with twelve `movss` stores, each lane by one 4-byte store on the loop's one way, and reloads them with the 5-byte `movups xmm0,
+// [esp + 0x18 / 0x28 / 0x38]` (+0x168d7f0 / +0x168d803 / +0x168d812) to store them over this' matrix. Float4ReloadStub's stubs, each
+// jumping back after its site. The same results as 9. Found by the whole function (no wildcard: the same bytes in the three games), at
+// the Steam build's place first, then anywhere in the code. No branch lands inside a site (the whole DLL's relative branches and
+// absolute pointers, the three games'), no relocation lies in the function, no hook of the Attila CPU Performance Fix (its pass timer
+// takes the caller's first 7 bytes, +0x17db0f0).
+constexpr std::string_view MATRIX_PRODUCT =
+    "83 EC 3C 56 8B F1 80 7E 01 00 0F 85 AA 02 00 00 57 8B 7C 24 48 8B 57 08 3B 56 04 0F 43 56 04 85 D2 0F 84 8E 02 00 00 53 "
+    "33 DB 66 0F 1F 44 00 00 8B 4E 08 8B 47 0C 03 CB 03 C3 F3 0F 10 09 F3 0F 10 40 0C F3 0F 10 20 F3 0F 10 50 10 F3 0F 11 44 "
+    "24 0C F3 0F 10 40 1C F3 0F 11 44 24 10 F3 0F 10 40 2C F3 0F 10 58 20 F3 0F 11 44 24 14 F3 0F 10 41 04 F3 0F 59 CC F3 0F "
+    "59 C2 F3 0F 10 69 20 F3 0F 10 78 14 F3 0F 58 C8 F3 0F 10 71 28 F3 0F 10 41 08 F3 0F 59 C3 F3 0F 58 C8 F3 0F 10 41 14 F3 "
+    "0F 59 C2 F3 0F 11 4C 24 18 F3 0F 10 49 10 F3 0F 59 CC F3 0F 59 E5 F3 0F 58 C8 F3 0F 10 41 18 F3 0F 59 C3 F3 0F 59 DE F3 "
+    "0F 58 C8 F3 0F 10 41 24 F3 0F 59 C2 F3 0F 10 50 24 F3 0F 11 4C 24 28 F3 0F 58 E0 F3 0F 10 09 F3 0F 59 48 04 F3 0F 10 41 "
+    "04 F3 0F 59 C7 F3 0F 58 E3 F3 0F 10 59 18 F3 0F 58 C8 F3 0F 10 41 08 F3 0F 59 C2 F3 0F 11 64 24 38 F3 0F 10 61 14 F3 0F "
+    "58 C8 0F 28 C4 F3 0F 59 C7 F3 0F 11 4C 24 1C F3 0F 10 49 10 F3 0F 59 48 04 F3 0F 58 C8 0F 28 C3 F3 0F 59 C2 F3 0F 59 D6 "
+    "F3 0F 58 C8 F3 0F 10 41 24 F3 0F 59 C7 F3 0F 10 79 08 F3 0F 11 4C 24 2C F3 0F 10 48 04 F3 0F 59 CD F3 0F 58 C8 F3 0F 10 "
+    "41 04 F3 0F 59 40 18 F3 0F 58 CA F3 0F 10 51 10 F3 0F 11 4C 24 3C F3 0F 10 09 F3 0F 59 48 08 F3 0F 58 C8 0F 28 C7 F3 0F "
+    "59 40 28 F3 0F 58 C8 F3 0F 11 4C 24 20 0F 28 CA F3 0F 59 7C 24 14 83 C3 30 F3 0F 59 48 08 0F 28 C4 F3 0F 59 40 18 F3 0F "
+    "59 64 24 10 F3 0F 58 C8 0F 28 C3 F3 0F 59 40 28 F3 0F 58 C8 F3 0F 10 40 08 F3 0F 59 C5 F3 0F 11 44 24 4C F3 0F 10 6C 24 "
+    "4C F3 0F 11 4C 24 30 F3 0F 10 49 24 0F 28 C1 F3 0F 59 4C 24 10 F3 0F 59 40 18 F3 0F 58 E8 F3 0F 10 40 28 F3 0F 59 C6 F3 "
+    "0F 58 E8 F3 0F 10 01 F3 0F 59 44 24 0C F3 0F 11 44 24 4C F3 0F 10 41 04 F3 0F 59 44 24 10 F3 0F 11 6C 24 40 F3 0F 10 6C "
+    "24 4C F3 0F 58 E8 F3 0F 11 6C 24 4C 0F 28 C5 F3 0F 58 C7 F3 0F 10 7C 24 0C F3 0F 59 D7 F3 0F 59 79 20 F3 0F 58 D4 F3 0F "
+    "10 64 24 14 F3 0F 59 DC F3 0F 59 E6 F3 0F 58 CF F3 0F 58 D3 F3 0F 58 41 0C F3 0F 58 CC F3 0F 58 51 1C F3 0F 11 44 24 24 "
+    "0F 10 44 24 18 F3 0F 58 49 2C F3 0F 11 54 24 34 0F 11 01 0F 10 44 24 28 F3 0F 11 4C 24 44 0F 11 41 10 0F 10 44 24 38 0F "
+    "11 41 20 83 EA 01 0F 85 7C FD FF FF 5B C6 46 01 01 5F 5E 83 C4 3C C2 04 00";
+constexpr std::array<size_t, 3> MATRIX_PRODUCT_AT = {640, 659, 674};  // movups xmm0, xmmword ptr [esp + 0x18 / 0x28 / 0x38]
+constexpr std::array<std::array<uint8_t, 35>, 3> MATRIX_PRODUCT_STUBS = {Float4ReloadStub(0x18), Float4ReloadStub(0x28), Float4ReloadStub(0x38)};
+
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half, fmod and the
 // ready check the same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots
 // (control word 0x20, float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the
@@ -1010,10 +1041,11 @@ struct Build {
   uint32_t soldier_rows_rva;   // the soldier draw's matrix rows (soldier_rows' first byte)
   std::string_view soldier_rows;
   std::array<uint16_t, 3> soldier_rows_at;  // the three reloads in soldier_rows
+  uint32_t matrix_product_rva;  // the matrix product (MATRIX_PRODUCT's first byte)
 };
-constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA, 0x16b5550, 0x16b5520, 0x1689b90, 0x1907511, 0x1890b90, 0x18967db, 0x1893820, 0x1893330, 0x17f689d, SOLDIER_ROWS, SOLDIER_ROWS_AT};
-constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9, 0x18d8400, 0x1722e60, 0x1722e30, 0x16f7460, 0x197d841, 0x1905ef0, 0x190bb3b, 0x1908b80, 0x1908690, 0x186ade2, SOLDIER_ROWS, SOLDIER_ROWS_AT};
-constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x14b46e5, ROME2_SOLDIER_ROWS, ROME2_SOLDIER_ROWS_AT};
+constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA, 0x16b5550, 0x16b5520, 0x1689b90, 0x1907511, 0x1890b90, 0x18967db, 0x1893820, 0x1893330, 0x17f689d, SOLDIER_ROWS, SOLDIER_ROWS_AT, 0x168d570};
+constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9, 0x18d8400, 0x1722e60, 0x1722e30, 0x16f7460, 0x197d841, 0x1905ef0, 0x190bb3b, 0x1908b80, 0x1908690, 0x186ade2, SOLDIER_ROWS, SOLDIER_ROWS_AT, 0x16fac90};
+constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x14b46e5, ROME2_SOLDIER_ROWS, ROME2_SOLDIER_ROWS_AT, 0x135b530};
 constexpr std::array<Build, 3> BUILDS = {ATTILA_BUILD, THRONES_BUILD, ROME2_BUILD};  // by Game
 
 // Where each stub sits in the page.
@@ -1031,6 +1063,7 @@ constexpr size_t EMITTER_PREFETCH_PAGE = 0xBC0;
 constexpr size_t CHILD_SUM_PAGE = 0xC00;
 constexpr size_t CHILD_SUM_SLOT = 0x40;       // the child sum's stub and room for it to grow
 constexpr size_t SOLDIER_ROWS_PAGE = 0xC40;   // one stub for each of the three reloads, FLOAT4_RELOAD_STRIDE apart
+constexpr size_t MATRIX_PRODUCT_PAGE = 0xCD0;  // the same for the product's three
 constexpr size_t PAGE_SIZE = 0x1000;
 static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the three games' truncation stubs are one type
               && HALF_PAGE + HALF_STUB.size() + HALF_SIZE <= FMOD_PAGE
@@ -1046,7 +1079,9 @@ static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the thre
               && CHILD_SUM_STUB.size() <= CHILD_SUM_SLOT
               && CHILD_SUM_PAGE + CHILD_SUM_SLOT <= SOLDIER_ROWS_PAGE
               && SOLDIER_ROWS_STUBS[0].size() <= FLOAT4_RELOAD_STRIDE
-              && SOLDIER_ROWS_PAGE + SOLDIER_ROWS_STUBS.size() * FLOAT4_RELOAD_STRIDE <= PAGE_SIZE);
+              && SOLDIER_ROWS_PAGE + SOLDIER_ROWS_STUBS.size() * FLOAT4_RELOAD_STRIDE <= MATRIX_PRODUCT_PAGE
+              && MATRIX_PRODUCT_STUBS[0].size() <= FLOAT4_RELOAD_STRIDE
+              && MATRIX_PRODUCT_PAGE + MATRIX_PRODUCT_STUBS.size() * FLOAT4_RELOAD_STRIDE <= PAGE_SIZE);
 
 // Which sites each row writes (bits by `sites` index).
 constexpr size_t FLOAT4_RELOAD_FIRST_SITE = 10;  // the colour's reload; the vector's is the next
@@ -1054,7 +1089,9 @@ constexpr uint32_t FLOAT4_RELOAD_SITES = 0b110000000000;  // the particle writer
 static_assert(FLOAT4_RELOAD_SITES == 0b11u << FLOAT4_RELOAD_FIRST_SITE && FLOAT4_RELOAD_AT.size() == 2);
 constexpr size_t SOLDIER_ROWS_FIRST_SITE = 14;  // the soldier draw's first row reload; the second and third are the next
 constexpr uint32_t SOLDIER_ROWS_SITES = 0b111u << SOLDIER_ROWS_FIRST_SITE;
-constexpr uint32_t CPU_CODE_SITES = 0b100010111 | FLOAT4_RELOAD_SITES | SOLDIER_ROWS_SITES;  // Faster Game CPU Code
+constexpr size_t MATRIX_PRODUCT_FIRST_SITE = 17;  // the matrix product's first row reload; the second and third are the next
+constexpr uint32_t MATRIX_PRODUCT_SITES = 0b111u << MATRIX_PRODUCT_FIRST_SITE;
+constexpr uint32_t CPU_CODE_SITES = 0b100010111 | FLOAT4_RELOAD_SITES | SOLDIER_ROWS_SITES | MATRIX_PRODUCT_SITES;  // Faster Game CPU Code
 constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
 constexpr uint32_t PARTICLE_PREFETCH_BIT = 0b1000000000000;  // the particle update loop's prefetch
@@ -1080,7 +1117,7 @@ struct Site {
   uint8_t opcode = 0xE9;  // jmp; the worker destructor's call of Stop stays a call (E8)
 };
 
-static std::array<Site, 17> sites = {{{.name = "soldier draw rounding"},
+static std::array<Site, 20> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half floats"},
                                      {.name = "fmod"},
                                      {.name = "render list pushes"},
@@ -1096,7 +1133,10 @@ static std::array<Site, 17> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "emitter prefetch"},
                                      {.name = "soldier matrix row 1"},
                                      {.name = "soldier matrix row 2"},
-                                     {.name = "soldier matrix row 3"}}};
+                                     {.name = "soldier matrix row 3"},
+                                     {.name = "matrix product row 1"},
+                                     {.name = "matrix product row 2"},
+                                     {.name = "matrix product row 3"}}};
 static uint8_t* job_table = nullptr;
 static uint8_t* page = nullptr;
 static bool prepared = false;
@@ -1361,6 +1401,13 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
                      page + SOLDIER_ROWS_PAGE + row * FLOAT4_RELOAD_STRIDE);
       }
     }
+    // The matrix product's three row reloads, found by the whole function.
+    if (uint8_t* match = ((build.matrix_product_rva != 0 && sse4_1) ? find(MATRIX_PRODUCT, build.matrix_product_rva) : nullptr); match != nullptr) {
+      for (size_t row = 0; row < MATRIX_PRODUCT_STUBS.size(); ++row) {
+        place_reload(MATRIX_PRODUCT_FIRST_SITE + row, match + MATRIX_PRODUCT_AT[row], SITE_SIZE, MATRIX_PRODUCT_STUBS[row],
+                     page + MATRIX_PRODUCT_PAGE + row * FLOAT4_RELOAD_STRIDE);
+      }
+    }
     // The particle update loop's prefetch, found by the loop's bytes and those of its way out.
     if (uint8_t* match = (build.particle_loop_rva != 0 ? find(PARTICLE_LOOP, build.particle_loop_rva) : nullptr); match != nullptr) {
       uint8_t* stub = page + PARTICLE_PREFETCH_PAGE;
@@ -1393,8 +1440,10 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   // A site the build doesn't have (rva 0) isn't named.
   const uint32_t reload_rva = (sse4_1 ? build.float4_reload_rva : 0);
   const uint32_t rows_rva = (sse4_1 ? build.soldier_rows_rva : 0);
-  const std::array<uint32_t, 17> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
-                                         0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva, 0, 0, rows_rva, rows_rva, rows_rva};
+  const uint32_t product_rva = (sse4_1 ? build.matrix_product_rva : 0);
+  const std::array<uint32_t, 20> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
+                                         0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva, 0, 0, rows_rva, rows_rva, rows_rva,
+                                         product_rva, product_rva, product_rva};
   static_assert(std::tuple_size_v<decltype(rvas)> == std::tuple_size_v<decltype(sites)>);
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
