@@ -3210,6 +3210,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         add rt_di_light[2] + rt_di_ok per request, keeps one bump for the batch), then MERGE; tables right for all 137
         shaders + Shogun 2 (vs the games' own bytes); M2 L1 not proven in game (box). pdi1_ RESUMED 06:20 for M1 + L1
         asserts + N1 / N3 / N4 + the design text L3, rebuild + tests + 2 quick plays.
+        pdi1_ fixes DONE ~06:3x: 1ff178eac (rt_di_light[2] at 964512, sizeof 964528, SharedBytes(31) 964360; 3 real
+        asserts; N1 / N3 / N4; design L3 + release note; N2 skipped: moved 4 shader headers). Gated x86 all + amd64 all
+        exit 0, 53 / 53 shader headers identical, helper tests pass, day1 + night1 plays byte-identical. MERGED
+        29eeab5ce (gated x86 all + amd64 all of the merged tree running 06:35 before the push).
+        STARTED 06:35: alp1_ Opus High = cpu_plan3 step 3 ALPK (light pick: scores once + partial_sort of indices,
+        exact; OPEN: i686 /arch SSE2 floats, tw_native_context coverage) on 29eeab5ce, branch alp1_.
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
