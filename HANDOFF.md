@@ -391,6 +391,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our ... | next helper round (measure first)
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
 - NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator PROGRESS: (2) DONE 02:38-02:46 gr1_ (bench const
+- ALOD-2 (Sonnet xHigh, after ec4s_ frees engine_code.hpp): PickLod as an engine_c ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
 - AUTHOR ZIP FIXES (hlr1s_ round 2): README.txt entries 8_info_animation_distance_ ... | coordinator, after the bench ia4_ DONE -> night1118/ia4_repo
 - FASTER GAME CPU CODE TOOLTIP + README: tooltip "(soldiers, their sprites and eff ... | coordinator, round end
 - HF NOTES 3 TO FILL (author_notes_3): the counting build's sizes (note 1 + a gate ... | coordinator, after the final bench
@@ -3562,6 +3563,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         above 1x unchanged; a move off 1x in a game started at 1x applies after a restart + yellow note; no live install:
         Detours' ENLIST_EXISTING_THREADS can deadlock on the heap lock; tw_native_hook_lifetime x86 + amd64 PASS + 2
         CONTROLs; gated x86 3 targets exit 0). Review alr1s_ (Sonnet xHigh) STARTED 18:38.
+        alr1s_ DONE -> night1118/review_alod1s.md: MERGE (exact at 1x and above, settings load before the first look in all
+        three games, no live install verified in Detours' source); Lows into ALOD-2: an Update-level retained-hooks test,
+        the Rome II README presets sentence, host.cpp CHECK whitespace. MERGED cd7de0c4d.
+        ar6o_ round 2 DONE: 52270a599 MERGE, 04e87e256 MERGE AFTER FIXES (M1: Shogun 2's launch install must count the GI
+        row at strength 0, or raising it later stays screen-space until a restart). rtso1_ round 4 -> 1437243ae (M1 + N1
+        rt_scene reformat + N2 Tales comment), checked against ar6o_'s fix by the coordinator. MERGED 8096e3af2 (README
+        conflicts with alod1s_ in Attila / Thrones: both entries kept). Gated x86 3 + amd64 13 after both merges exit 0.
+      - [ ] ALOD-2 (Sonnet xHigh, after ec4s_ frees engine_code.hpp): PickLod as an engine_code PausedWrite site in Attila /
+        Thrones / Rome II (first bytes 53 55 8B 6C 24 10) for live Model Detail Distance changes, 0 cost at 1x; + alr1s_'s
+        Lows; then a review. Owner: coordinator
+        Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/bench/constantinople_bench.ps1: a scene's 0:GraphicsObjectDetail row
+        goes into ReShade.ini [renodx-preset1] before the start (backed up / restored as before); a start above 1x without
+        'object detail hooked' in ReShade.log = INVALID; parse OK, ini edit tested on a copy (only preset1's line changes).
+        final_bench_plan_v2.md: final heapfix hashes, W1 = the RTSO B1 proof (SO alone = no rays), the new gate.
         hs1s_ round 2 DONE 18:24 (heapfix/hs1s_report.md 'Round 2'): notes / proofs / json only, hs e9b84ddb + hsC 25bca47a
         unchanged. Battle / ground / Constantinople shares in the note; placement tails stated (new run: 0.5 % below 1.0x,
         1.1 % below 1.1x, medians 1.3-1.9x at 64-255); 12_ = alternative to 1_'s one-thread loop; strict controls (CPAR,
