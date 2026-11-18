@@ -3428,7 +3428,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         63ef3490; update for anything installed since); Cnt2 starts LAST or in their own bench call, -Seconds 190.
         FINAL BENCH PLAN v2 DRAFTED 13:29 -> night1118/final_bench_plan_v2.md: 56 starts ~3.9 h (F1 + F1+ / F2 / F3, W1 SO
         on / W2 SO off + map trace / W1b HFx / W1c HFx2, P1 probe, H1-H4, D1 la16bdbg add-on OFF, H0 Cnt2 + hsC LAST at
-        -Seconds 190); A1 and H2's third round dropped to fit 4 h. STILL TO BUILD before it: HFx (hfa + la8hgl8 + hs) and HFx2 (+ la8b + lf8)
+        -Seconds 190); A1 and H2's third round dropped to fit 4 h. BUILT 18:3x: HFx 323bf407 and HFx2 8ce2a57b
         after hlr1s_ / hwr1s_ fixes (one Sonnet xHigh assembler), the probe build (ec4s_ step 4), final1118 + final1118_fp.
         hwr1s_ DONE -> heapfix/hwr1s_review.md: xw / lw / hfa SHIP AFTER FIXES (hfa rebuilt byte-identical a5af2f23; patches
         clean alone and in all 6 orders). X1 xw timing phases fail on a busy PC (adversary descheduled 18 ms, not the
@@ -3561,6 +3561,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         thread; the game's own non-atomic RMWs on the builder show it has one); Lows: premise comment, fault-order note,
         2 untested guard clauses (size > cap, cap >= 0x40000000), Thrones full push re-run. ENGINE FIX ROUND (cr8s_ + er1s_ +
         er2s_) sent to ec4s_ 18:30; then the Opus xHigh end review of ci8s_ + ec4s_; then merge the chain.
+        hl1s_ round 3 DONE 18:32 (heapfix/hl1s_report.md 'Round 3'): HFx 323bf407 (hfa + la8hgl8 + hs) and HFx2 8ce2a57b (+ la8b +
+        lf8) built, tests + proofs passed (loopfetch, clean x87 run + hold mutant fails, lw controls, HSORT eq + controls);
+        trees = 7.0 + patches in 10 orders x 3 methods, one hash each; heapfix_line needs every component's own line (no
+        match on P / hfa / la8hgl8 / hs / ... logs). Fixed a header-hunk clash between the gather and two-level patches (la8b
+        DLL unchanged). er2s_ stopped by the coordinator (kept re-sending its finished report). BENCH HEAPFIX SET COMPLETE:
+        P 8e8fa96a, B4G f7dcd23f, Pnolf 75959a6f, Plt1 c7f7023e, HFa e94fd060, HFb 8c45e678, HFx 323bf407, HFx2 8ce2a57b,
+        Cnt2 aa226276, hsC 25bca47a, la16bdbg d257e0f4 (hlr1s_ re-check still running).
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
