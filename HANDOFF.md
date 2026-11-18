@@ -3375,6 +3375,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         x86 3 targets exit 0 12:31, PUSHED; ci7_'s 11 links removed alone. ci8s_ (Sonnet xHigh, worktree, on
         31674db75) STARTED ~12:1x: the E3P review fixes (M1 live-size bound + 16c NOACCESS mode, M2 two-stage if it fits,
         E3P-c its own Experimental row, named site indices, designated BUILDS, the nits), then its Sonnet xHigh review.
+        hx1s_ DONE ~12:4x -> tools/tw/heapfix/hx1s_report.md: x87b ce976950 (165 blocks split; CPU diff 3.32 M runs a pair
+        0 differences, emulator 5.3 M + 20k random shapes 0, mutants 84 / 84 program-changing killed; patch clean alone
+        and with the watch patch). Review hxr1s_ (Sonnet xHigh) STARTED 12:37.
+        hw1s_ DONE ~12:5x -> tools/tw/heapfix/hw1s_report.md: xw 20c0c170 (re-check x3, NtQuery thread list ~5 vs ~45 ms;
+        CONTROLs fail as they must), lw e8882d5c (4x rule NEVER fires here: largest free block < 2048 MB in every state).
+        Sent back 12:37: lw steadiness rule (30 s while steady and > 2x the next mark), xw uneven re-read gaps
+        (lockstep thread), one combined build xw + x87b + lw. Then their review.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
