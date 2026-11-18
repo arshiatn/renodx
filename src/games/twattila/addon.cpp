@@ -1330,6 +1330,8 @@ float job_wakeups_row = 0.f;
 float effect_prefetch_row = 0.f;
 // Keep Render Core Free (Experimental, off): cpu_sets.hpp.
 float keep_render_core_row = 0.f;
+// Where the game's own threads start (the job workers in the engine's DLL); the rest is the driver's, audio's, etc.
+constexpr std::array<const wchar_t*, 2> GAME_THREAD_MODULES = {nullptr, L"empire.retail.dll"};
 
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1524,7 +1526,7 @@ void OnInitDevice(reshade::api::device*) {
 
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  twattila::cpu_sets::Update(keep_render_core_row != 0.f);
+  twattila::cpu_sets::Update(keep_render_core_row != 0.f, GAME_THREAD_MODULES);
   talesofarise::pixel_trace::OnPresent(queue);
   if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
@@ -1981,8 +1983,8 @@ void ConfigureAddon() {
           .default_value = 0.f,
           .label = "Keep Render Core Free (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "Keeps the second half of the render thread's CPU core free for it. Only inside the CPU cores\n"
-                     "Windows or your own rules give the game. Same results.",
+          .tooltip = "Keeps the second half of the render thread's CPU core free for it: only the game's own threads\n"
+                     "are moved, inside the CPU cores Windows or your own rules give the game. Same results.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{
