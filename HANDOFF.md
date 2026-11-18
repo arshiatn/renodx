@@ -397,6 +397,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - HF NOTES 3 TO FILL (author_notes_3): the counting build's sizes (note 1 + a gate ... | coordinator, after the final bench
 - PDI1 IN GAME (review_pdi1.md M2): a v32 recording in a scene with linear lights ... | next game run (M2) / PT DI step 2 (L2, L4, L5)
 - CR3 LOW FIXES (review_ci3s.md): L1 Faster Effect Prefetch row text (addon.cpp:13 ... | the next engine_code implementer (L2 / N1-N3), coordinator r
+- ASMT NITS (review_asm1.md): set `applied` right after give() for the render thre ... | the next cpu_sets touch / release round
 - TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
 - DAY1 MAXED GPU LEVERS (gpo1_ / cpa1_): day1 maxed behind the units is GPU-bound ... | coordinator (GPU line)
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
@@ -3226,6 +3227,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         ended / foreign / own rule; M1; M2 never core 0 unless nothing else qualifies; L1 1-s re-read; L3; L4 stands down
         on > 1 L3 = this PC without the 0-15 rule; L5; L6; L7; nits). Tests 931 synthetic + 13 live steps x86 + amd64
         pass; gated x86 exit 0. asr1_ RESUMED 06:52 for a re-check (repro + mutants on the new code).
+        asr1_ re-check DONE ~07:0x -> review_asm1.md: MERGE (each fix right; repro + 3 mutants on the new code; nits:
+        bad_alloc after give() leaves the render thread ours until Stop; static Win10 imports = the add-on needs Windows
+        10, accepted: HDR + the DLSS helper need it anyway). MERGED aa2e5cc4d (gated x86 3 targets running 07:03).
         ci3s_ DONE ~06:4x -> night1118/ci3s_report.md: c3adca196 CR1 fixes (L1 / L2 / N1 bswap tail 11 B / N2 / N3 / N4)
         + d6cef1f49 E3P-b (site 12 loop bottom Attila 0x1893883 / Thrones 0x1908be3, 50-byte stub at 0xB80, K = 2,
         Faster Effect Prefetch row; harness 162 -> 67 ns a particle at 300-cycle updates) on dfcf463d0; full x86
@@ -3240,7 +3244,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         item (Opus first) after E3P-c.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
-        pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets running 06:59 before the push).
+        pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
@@ -3268,6 +3272,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         bullet after the bench); L2 a hot column for K = 2 in 15f; N1 braces + parentheses engine_code.hpp:1294-1296; N2
         :826 "never reads esi as an input"; N3 assert HALF_ROWS_STUB.size() <= HALF_ROWS_CONSTANTS_AT. Owner: the next
         engine_code implementer (L2 / N1-N3), coordinator round end (L1 with the other tooltips)
+      - [ ] ASMT NITS (review_asm1.md): set `applied` right after give() for the render thread (or build the log
+        string first); the add-on now needs Windows 10 (static CPU set + SetThreadDescription imports): say so in the
+        README requirements at release. Owner: the next cpu_sets touch / release round
       - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
         0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
         drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
