@@ -390,7 +390,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BAKE POOL POISON TEST (ssr_ S1 kept the GPU micromap bake's transient pools acro ... | next helper round
 - REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our ... | next helper round (measure first)
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
-- NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator
+- NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator PROGRESS: (2) DONE 02:38-02:46 gr1_ (bench const
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
 - M1 SHARED WRITER-TOKEN HELPER (apr_ review): APIPE's pipeline.hpp writer-token p ... | High implementer (utils)
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
@@ -3098,6 +3098,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         xHigh for items with one; (6) the minimum CPU bench at the very end (rows on / off, freezes / crashes); (7)
         heapfix-related finds into the author's notes / zip. Carried from the other session (open): EHALF 20th-lane
         check (speed only, needs its own test). GPU line in parallel: pdi1_ (PT DI steps 0 + 1) running. Owner: coordinator
+        PROGRESS: (2) DONE 02:38-02:46 gr1_ (bench constantinople_bench.ps1, $SCAN got Y / X; variant
+        bench\variants\night1118.json: add-on 6c3588c8 c53ea4b7a, helper 332f483d, heapfix B4G f7dcd23f): both VALID, no
+        crash / freeze / reset, 0 hash mismatches, ATN's P 8e8fa96a back; day1 21.0 fps mean 47.5 ms (CPU busy 37.1,
+        GPU 25.6), ETL 4.0 GB bench\runs\night1118_day1_wpr_atn_023852; stress zoomed 12.8 fps 78.3 ms (CPU busy 82.0, GPU
+        39.1), ETL 1.2 GB bench\runs\night1118_stress_wpr_atn_024236. Logs: all rows on; one Faster Game CPU Code site
+        (soldier draw rounding) left alone "not the game's code as expected" (cpa1_ finds why). (3) cpa1_ (day1) + cpa2_
+        (stress) Opus xHigh analysts STARTED 02:49 -> plan_1117/night1118/analysis_{day1,stress}.md.
       - [ ] TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started as `powershell -File ...
         -Env $array` (rbk_'s first batch, renamed nsight\runs\rbkpre_*, was level 5 only): accept one ;-separated
         string or fail loudly on more than one entry; check other agents' multi-Env runs; (b) runners must start the
