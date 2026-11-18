@@ -3216,6 +3216,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         29eeab5ce (gated x86 all + amd64 all of the merged tree running 06:35 before the push).
         STARTED 06:35: alp1_ Opus High = cpu_plan3 step 3 ALPK (light pick: scores once + partial_sort of indices,
         exact; OPEN: i686 /arch SSE2 floats, tw_native_context coverage) on 29eeab5ce, branch alp1_.
+        asr1_ review DONE ~06:4x -> night1118/review_asm1.md: FIX FIRST (H1 the render-thread sampling can stop for
+        the session silently: a loader thread presenting < 64 times or the sampled thread ending; reproduced; M1 3
+        brace-rule slips; M2 core 0 picked half the time; Lows L1 1-s rule re-read, L3 log, L4 stand down on 2 CCDs
+        without a rule, L5, L6, L7). Rules hold (only SetThreadSelectedCpuSets, subset, exact clear); mutants caught.
+        asm1_ RESUMED 06:40 for H1 / M1 / M2 + L1 / L3-L7 + nits (L2 skipped: the off wait is acceptable).
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
