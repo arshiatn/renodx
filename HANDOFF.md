@@ -3494,6 +3494,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
         xHigh) STARTED 14:45.
+        ia5_ round 2 DONE -> 0e715f3dc (M1 one press = one file: retries while stamps can grow, partial file when capped;
+        MAX_COMMANDS 40k; device check; destroy compare; NEW test/tw_pass_timing x86 + amd64 PASS, fails on 57bf20b2b).
+        MERGED 76beebfb7 14:55 (gated x86 3 targets exit 0), PUSHED. ia1_'s worktree removed (links first, alone); ia5_'s
+        links removed, its worktree still locked by its agent process (left).
+        ia2_ DONE -> night1118/ia2_report.md: e4a5ceca4 ARING (up to 8 rings of 256 KB, event query per ring, NO_OVERWRITE
+        when done, new ring when not) + 2b0ecd2a1 AOM ((c) depth view kept, (d) pixel shader look-up with a generation
+        stamp; (a) no change: WRL skips equal pointers); dumps byte-equal with 90d7df1b5 on WARP x86 / amd64 and the
+        5090; gated x86 3 + amd64 16 exit 0. Review ar2o_ (Opus xHigh) STARTED 14:55.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
