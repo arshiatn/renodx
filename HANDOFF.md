@@ -391,6 +391,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our ... | next helper round (measure first)
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
 - NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator PROGRESS: (2) DONE 02:38-02:46 gr1_ (bench const
+- AUTHOR ZIP FIXES (hlr1s_ round 2): README.txt entries 8_info_animation_distance_ ... | coordinator, after the bench ia4_ DONE -> night1118/ia4_repo
 - FASTER GAME CPU CODE TOOLTIP + README: tooltip "(soldiers, their sprites and eff ... | coordinator, round end
 - HF NOTES 3 TO FILL (author_notes_3): the counting build's sizes (note 1 + a gate ... | coordinator, after the final bench
 - PDI1 IN GAME (review_pdi1.md M2): a v32 recording in a scene with linear lights ... | next game run (M2) / PT DI step 2 (L2, L4, L5)
@@ -3578,6 +3579,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         DLL unchanged). er2s_ stopped by the coordinator (kept re-sending its finished report). BENCH HEAPFIX SET COMPLETE:
         P 8e8fa96a, B4G f7dcd23f, Pnolf 75959a6f, Plt1 c7f7023e, HFa e94fd060, HFb 8c45e678, HFx 323bf407, HFx2 8ce2a57b,
         Cnt2 aa226276, hsC 25bca47a, la16bdbg d257e0f4 (hlr1s_ re-check still running).
+        hlr1s_ re-check DONE 18:44 (heapfix/hlr1s_review.md round 2): hgl8 / la8hgl8 / lf8 / HFx SHIP (bench), la8b / Plt1 / HFx2
+        BENCH ONLY; every stub re-verified (10 trees + HFx / HFx2), 9 mutants caught, patch sets clean, jsons match only their
+        own logs. No code defect. Note / packaging Lows for the author zip (after the bench, with the [TO FILL]s):
+      - [ ] AUTHOR ZIP FIXES (hlr1s_ round 2): README.txt entries 8_info_animation_distance_k8 / 10 / 11 + delete the old
+        8_info_animation_fill_distance folder; note 8 packed-cold wording (12 / 16 up to 1.9 points better there); note 10
+        A / B order; notes 10 / 11 don't name check_patch.sh; note 2 Plt1 hash c7f7023e; la8b 8 / 4 never swept; patch
+        comments citing notes; infra patch -Wmissing-field-initializers (explicit 0); scrub process names in
+        timing\sweep_raw\load_s2 / s3.csv; 6.05 vs 6.04 ms; old heapfix_hgl.json regex. Owner: coordinator, after the bench
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
