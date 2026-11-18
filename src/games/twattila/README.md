@@ -1,13 +1,19 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
-## Dev, Faster Effect Prefetch (2026-11-17; offline only, not stamped, not installed, not run in game)
+## Dev, Faster Effect Prefetch and Faster Emitter Prefetch (2026-11-17, 11-18; offline only, not stamped, not installed, not run in game)
 
 - New: **Faster Effect Prefetch (Experimental, off)**, under Graphics (Experimental): while the game sums its effect tree
-  (the children of an effect, one call each), it asks the memory for the child two steps ahead. Only a prefetch of an
-  address inside the list as it is right then: no fault, nothing else changes, every result the game's. Gain only where the
-  per-child call has real work (harness, cold children: 45.7 -> 33.3 ns with 40 cycles of work; with a plain getter no gain,
-  a few % slower); the game's own getters are not known yet, so this may do nothing. Test (ATN): stress with the row on
-  against off; ReShade.log "Faster Effect Prefetch: on"; keep it off if there is no gain.
+  (the children of an effect, one call each) or updates an emitter's particles, it asks the memory for the child or the
+  particle two steps ahead. Only a prefetch of an address inside the list as it is right then: no fault, nothing else
+  changes, every result the game's. Gain only where the per-child call has real work (harness, cold children: 45.7 -> 33.3 ns
+  with 40 cycles of work; with a plain getter no gain, a few % slower); the game's own getters are not known yet, so this may
+  do nothing. Test (ATN): stress with the row on against off; ReShade.log "Faster Effect Prefetch: on"; keep it off if there
+  is no gain.
+- New: **Faster Emitter Prefetch (Experimental, off)**, the row after it, a row of its own so that the bench can decide it
+  apart: while the game updates an effect's emitters one after the other, it asks the memory for the next two emitters (their
+  three cache lines) and for the definition of the next one. The only real read is that definition's address inside an emitter
+  that the effect's list holds right then (checked against the list's size at that moment); every result the game's. Test
+  (ATN): the same, ReShade.log "Faster Emitter Prefetch: on"; keep it off if there is no gain.
 
 ## Dev, Faster Game CPU Code: sprite row builder (2026-11-17; offline only, not stamped, not installed, not run in game)
 

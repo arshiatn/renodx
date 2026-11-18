@@ -1,6 +1,6 @@
 # Stub sources
 
-The byte arrays in `src/games/twattila/engine_code.hpp` (`JOB_STUB`, `HALF_ROWS_STUB`, `ChildSumStub(K)`, `Float4ReloadStub<at>()` / `FLOAT4_RELOAD_STUB`, `Float4ReloadFarStub(at)`, `ParticlePrefetchStub(K)`, `EmitterPrefetchStub(K)`) are the `.text` of these
+The byte arrays in `src/games/twattila/engine_code.hpp` (`JOB_STUB`, `HALF_ROWS_STUB`, `ChildSumStub<K>()`, `Float4ReloadStub<AT>()` / `FLOAT4_RELOAD_STUB`, `Float4ReloadFarStub(at)`, `ParticlePrefetchStub(K)`, `EmitterPrefetchStub(K)`) are the `.text` of these
 files, with the placeholders the header's `Prepare` replaces (`0x5A5A5Axx` sentinels, see `STUB_*_SENTINEL`). Rebuild one with
 
 ```
@@ -21,5 +21,5 @@ and compare the bytes with the array (the arrays carry the disassembly as commen
   `[esp + 0x90]` (the four disp32 follow `at`).
 - `particle_prefetch.s` - the particle update loop's prefetch of the particle K places ahead (Faster Effect Prefetch); the file is written for the
   K in `PARTICLE_PREFETCH_AHEAD` (the two disp8 bytes in `lea esi, [ebx + K]` and `[esi + ebx*4 + 4K]` follow it).
-- `emitter_prefetch.s` - the emitter update loop's prefetch of the emitter K places after the next one (Faster Effect Prefetch); written for the K in
-  `EMITTER_PREFETCH_AHEAD` (the two disp8 bytes in `lea ecx, [esi + K]` and `[ecx + esi*8 + 8K]` follow it).
+- `emitter_prefetch.s` - the emitter update loop's two prefetch stages on the slots K and K + 1 after the next emitter's (Faster Emitter Prefetch); written
+  for the K in `EMITTER_PREFETCH_AHEAD` (the disp8 bytes in `lea ecx, [esi + K + 1]`, `[edx + esi*8 + 8K]` and `[edx + esi*8 + 8K + 8]` follow it).

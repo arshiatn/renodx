@@ -1325,8 +1325,11 @@ float engine_code_row = 1.f;
 float render_lists_row = 1.f;
 // Faster Job Wake-Ups (Experimental, off; graphics_page-style row below): engine_code.hpp's job system sites.
 float job_wakeups_row = 0.f;
-// Faster Effect Prefetch (Experimental, off): engine_code.hpp's effect tree child sum site.
+// Faster Effect Prefetch (Experimental, off): engine_code.hpp's effect tree child sum site and particle update loop site.
 float effect_prefetch_row = 0.f;
+// Faster Emitter Prefetch (Experimental, off): engine_code.hpp's emitter update loop site, a row of its own so that a bench
+// can decide it apart from Faster Effect Prefetch.
+float emitter_prefetch_row = 0.f;
 
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1569,7 +1572,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
-                                job_wakeups_row != 0.f, effect_prefetch_row != 0.f);
+                                job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
   if (!shadow_size_locked) twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::graphics_hooks::Update(
@@ -1968,6 +1971,17 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           .tooltip = "The game's effect update asks the memory for an effect object two steps ahead while it works on the current one.\n"
                      "May lower the CPU waiting in big battles. Same results.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FasterEmitterPrefetch",
+          .binding = &emitter_prefetch_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Faster Emitter Prefetch (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The game's effect update also asks the memory for its next two emitters, and what they read first, while it\n"
+                     "works on the current one. May lower the CPU waiting in big battles. Same results.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

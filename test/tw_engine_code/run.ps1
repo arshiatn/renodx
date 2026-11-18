@@ -1,14 +1,17 @@
 # Faster Game CPU Code (twattila/engine_code.hpp) against the game's own code in empire.retail.dll (tests.cpp), read
 # from the game folder, never loaded as a DLL. -Quick: 2^28 floats instead of all 2^32 in the exhaustive parts.
+# -BuildFolder: where engine_code.exe is built and run (default build\tw_engine_code_test_<architecture> of the repository): two runs at the same time
+# (another game's DLL, say) each need their own, or the second compile races the first's running exe.
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86',
       [string]$GameDll = 'C:\Program Files (x86)\Steam\steamapps\common\Total War Attila\empire.retail.dll',
+      [string]$BuildFolder = '',
       [switch]$Quick)
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_engine_code'
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation
-$testBuild = Join-Path $repairRoot "build\tw_engine_code_test_$Architecture"
+$testBuild = if ($BuildFolder -ne '') { $BuildFolder } else { Join-Path $repairRoot "build\tw_engine_code_test_$Architecture" }
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }

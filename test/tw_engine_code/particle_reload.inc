@@ -531,7 +531,7 @@ int ParkedAtSites(uint32_t mask, int last_offset) {
       moved.Eip = Address(site + offset);
       CHECK(SetThreadContext(thread, &moved) != FALSE);
       const uint32_t before = ec::written;
-      twattila::engine_code::Update(!on, twattila::engine_code::Game::ATTILA, false, false, true);
+      twattila::engine_code::Update(!on, twattila::engine_code::Game::ATTILA, false, false, true, true);
       const bool changed = (((ec::written ^ before) >> index) & 1) != 0;
       wrong += (changed != !(offset > 0 && offset < 5)) ? 1 : 0;
       if (((ec::written ^ before) & ec::CPU_CODE_SITES) != 0) on = !on;
@@ -540,7 +540,7 @@ int ParkedAtSites(uint32_t mask, int last_offset) {
     }
   }
   for (int tries = 0; !on && tries < static_cast<int>(ec::MAX_FAILED_WRITES); ++tries) {
-    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
     on = (ec::written & mask) == mask;
   }
   stop = true;
@@ -693,12 +693,12 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
       on = !on;
       int tries = 0;
       do {
-        twattila::engine_code::Update(on, twattila::engine_code::Game::ATTILA, false, false, true);
+        twattila::engine_code::Update(on, twattila::engine_code::Game::ATTILA, false, false, true, true);
         ++tries;
       } while ((((ec::written >> ec::FLOAT4_RELOAD_FIRST_SITE) & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
       busy += tries > 1 ? 1 : 0;
     }
-    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
     stop = true;
     for (auto& thread : threads) thread.join();
     std::printf("   200 switches while 4 threads made %llu calls of each copy on their own graphs: %llu wrong (%d writes waited for a thread inside a site)\n", calls.load(), bad.load(), busy);
