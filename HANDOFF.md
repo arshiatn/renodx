@@ -3490,6 +3490,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         xw / hfa DLLs fine for the bench (fresh builds byte-identical); X1 the test's dwell excuse lets a 'hold' watcher bug
         pass on a quiet PC (excuse on the sentinel gap only), hfa regex too weak (H1). Test / json fixes to hw1s_ 15:08,
         no DLL rebuild.
+        hw1s_ round 4 DONE 15:39 (heapfix/hw1s_report.md 'Round 4'): excuse only on the sentinel gap (hold mutant now FAILS
+        on a quiet PC, passed before); 'N timing phases skipped' last line + hw1s_build.ps1 needs a clean run for the proof;
+        hfa regex fixed (7 log cases); patch regenerated, 18 / 18 orders one tree. DLLs unchanged: xw 2e72d17d, lw
+        87eb0c33, hfa e94fd060. WATCH TRACK CLOSED for the bench.
         ar3o_ DONE -> night1118/review_ia3.md: MAPW-B MERGE AFTER FIXES (off path clean for every game; stack reads capped by
         StackBase). M1 no lower stack bound, M2 events (un)registered inside present (ReShade lists unsynchronized ->
         register at Install when armed), M3 / M4 parser: 'IN map' too loose, present-bias / even-cadence alignment off by
