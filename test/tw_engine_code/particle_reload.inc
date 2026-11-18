@@ -4,8 +4,8 @@
 // the x87 and SSE state, are that test's). The game's `movups xmm0, [esp + 0x40]` after four 4-byte stores against the stub's lane loads:
 // 14a. the sites and stubs as Prepare made them;
 // 14b. the region alone with random 16 stack bytes of every float class per lane (NaN payloads, subnormals, -0, infinities), stored as
-//    the game stores them: every register, all of xmm0-7, the flags, esp and the frame equal; CONTROL: a stub with one lane wrong (each
-//    of the four) must differ;
+//    the game stores them, any MXCSR: every register, all of xmm0-7, the flags, MXCSR, esp and the frame equal; CONTROL: a stub with one
+//    lane wrong (each of the four) must differ (ReloadAlone, which part 17 runs for its sites too);
 // 14c. the whole function on a fake object graph (the fields engine_code.hpp 9. lists), both sides of the je at +0x18961a1 and of the
 //    comiss at +0x189660c: registers, x87 / MXCSR / xmm, flags, esp, the frame (return addresses apart), the six streams and the
 //    objects equal, with each site alone and both;
@@ -35,45 +35,50 @@ uint32_t ReloadFloat(Random* random) {
 uint32_t ReloadOrdinary(Random* random) { return ((random->Next() & 1) << 31) | (118 + random->Next() % 12) << 23 | (random->Next() & 0x7FFFFF); }
 
 // ---- a. the region alone ----
+// A block of code entered with every register, the flags, MXCSR and a 0x200-byte frame set; its end jumps to ReloadBlockReturn. The
+// block must leave esp as it found it: the frame's last two dwords ([esp + 0x1d8], [esp + 0x1dc]) carry the target and the call
+// itself to the return, so threads can run blocks at once (part 17).
 struct ReloadBlockCall {
   uint32_t in[7];       // 0: eax ecx edx ebx esi edi ebp
   uint32_t flags_in;    // 28
   uint32_t target;      // 32
-  uint32_t lanes[4];    // 36: stored with movss, as the game does, to esp + 0x40 .. 0x4c before the block runs
+  uint32_t lanes[4];    // 36: stored with movss, as the game does, to esp + lanes_at .. + 0xc before the block runs
   uint32_t out[7];      // 52
   uint32_t flags_out;   // 80: lahf's SF ZF AF PF CF in bits 8-15, OF in bit 0
   uint32_t saved_esp;   // 84
   uint32_t esp_after;   // 88
-  uint32_t unused;      // 92
+  uint32_t lanes_at = 0x40;  // 92
   alignas(16) uint8_t xmm_in[8][16];   // 96
   alignas(16) uint8_t xmm_out[8][16];  // 224
-  alignas(16) uint8_t frame[0x100];    // 352: esp = frame + 0x20, so the block's [esp + 0x40] is frame + 0x60
+  alignas(16) uint8_t frame[0x200];    // 352: esp = frame + 0x20, so the block's [esp + 0x40] is frame + 0x60
+  uint32_t mxcsr_in = 0x1F80;          // 864
+  uint32_t mxcsr_out = 0;              // 868
+  uint32_t saved_mxcsr = 0;            // 872: the harness's
 };
 static_assert(offsetof(ReloadBlockCall, out) == 52 && offsetof(ReloadBlockCall, flags_out) == 80 && offsetof(ReloadBlockCall, esp_after) == 88
-              && offsetof(ReloadBlockCall, xmm_in) == 96 && offsetof(ReloadBlockCall, xmm_out) == 224 && offsetof(ReloadBlockCall, frame) == 352);
-
-static ReloadBlockCall* reload_call = nullptr;
-static uint32_t reload_target = 0;
-static uint32_t reload_eax = 0;
-static uint32_t reload_flags = 0;
+              && offsetof(ReloadBlockCall, lanes_at) == 92 && offsetof(ReloadBlockCall, xmm_in) == 96 && offsetof(ReloadBlockCall, xmm_out) == 224
+              && offsetof(ReloadBlockCall, frame) == 352 && offsetof(ReloadBlockCall, mxcsr_in) == 864 && offsetof(ReloadBlockCall, saved_mxcsr) == 872);
 
 __declspec(naked) void __cdecl EnterReloadBlock(ReloadBlockCall*) {
   __asm {
     pushad
     mov ebp, [esp + 36]
-    mov reload_call, ebp
-    mov eax, [ebp + 32]
-    mov reload_target, eax
     mov [ebp + 84], esp
+    stmxcsr [ebp + 872]
     lea esp, [ebp + 384]
+    mov eax, [ebp + 32]
+    mov [esp + 0x1D8], eax
+    mov [esp + 0x1DC], ebp
+    mov eax, [ebp + 92]
     movss xmm0, dword ptr [ebp + 36]
-    movss dword ptr [esp + 0x40], xmm0
+    movss dword ptr [esp + eax], xmm0
     movss xmm0, dword ptr [ebp + 40]
-    movss dword ptr [esp + 0x44], xmm0
+    movss dword ptr [esp + eax + 4], xmm0
     movss xmm0, dword ptr [ebp + 44]
-    movss dword ptr [esp + 0x48], xmm0
+    movss dword ptr [esp + eax + 8], xmm0
     movss xmm0, dword ptr [ebp + 48]
-    movss dword ptr [esp + 0x4C], xmm0
+    movss dword ptr [esp + eax + 0xC], xmm0
+    ldmxcsr [ebp + 864]
     movups xmm0, [ebp + 96]
     movups xmm1, [ebp + 112]
     movups xmm2, [ebp + 128]
@@ -91,18 +96,15 @@ __declspec(naked) void __cdecl EnterReloadBlock(ReloadBlockCall*) {
     mov esi, [ebp + 16]
     mov edi, [ebp + 20]
     mov ebp, [ebp + 24]
-    jmp dword ptr [reload_target]
+    jmp dword ptr [esp + 0x1D8]
   }
 }
 
+// The block's end: everything saved into the call in its frame (the block's eax left in that slot, the target's slot cleared: both
+// copies' frames then compare equal when their registers do), the harness's MXCSR and registers back.
 __declspec(naked) void ReloadBlockReturn() {
   __asm {
-    mov reload_eax, eax
-    lahf
-    seto al
-    movzx eax, ax
-    mov reload_flags, eax
-    mov eax, reload_call
+    xchg eax, [esp + 0x1DC]
     mov [eax + 56], ecx
     mov [eax + 60], edx
     mov [eax + 64], ebx
@@ -118,11 +120,16 @@ __declspec(naked) void ReloadBlockReturn() {
     movups [eax + 304], xmm5
     movups [eax + 320], xmm6
     movups [eax + 336], xmm7
-    mov ecx, reload_eax
-    mov [eax + 52], ecx
-    mov ecx, reload_flags
-    mov [eax + 80], ecx
+    stmxcsr [eax + 868]
     mov ebp, eax
+    lahf
+    seto al
+    movzx eax, ax
+    mov [ebp + 80], eax
+    mov eax, [esp + 0x1DC]
+    mov [ebp + 52], eax
+    mov dword ptr [esp + 0x1D8], 0
+    ldmxcsr [ebp + 872]
     mov esp, [ebp + 84]
     popad
     ret
@@ -131,7 +138,8 @@ __declspec(naked) void ReloadBlockReturn() {
 
 bool ReloadBlockEqual(const ReloadBlockCall& a, const ReloadBlockCall& b) {
   return std::memcmp(a.out, b.out, sizeof(a.out)) == 0 && a.flags_out == b.flags_out && a.esp_after - Address(&a) == b.esp_after - Address(&b)
-         && std::memcmp(a.xmm_out, b.xmm_out, sizeof(a.xmm_out)) == 0 && std::memcmp(a.frame, b.frame, sizeof(a.frame)) == 0;
+         && std::memcmp(a.xmm_out, b.xmm_out, sizeof(a.xmm_out)) == 0 && std::memcmp(a.frame, b.frame, sizeof(a.frame)) == 0
+         && a.mxcsr_out == b.mxcsr_out;
 }
 
 // ---- b. the whole function ----
@@ -187,16 +195,9 @@ uint32_t ReloadFillWorld(uint8_t* bytes, Random* random, int flavor) {
 
 // One call's state: the graph, the arguments, random registers, MXCSR from the caller; the stack filled with 0xFF (the function's own
 // writes then show which way it went) or at random.
-void ReloadRandom(ReloadWorld* world, Random* random, int flavor, uint32_t function, uint32_t mxcsr, bool canary) {
-  FnCall* call = &world->call;
-  const uint32_t first = ReloadFillWorld(world->bytes.data(), random, flavor);
-  const uint32_t base = Address(world->bytes.data());
-  call->function = function;
-  call->this_ptr = base + RELOAD_THIS;
-  call->args[0] = first;
-  call->args[1] = base + RELOAD_SIX;
-  call->args[2] = random->Next();
-  call->args[3] = random->Next();
+// A call's registers, stack (0xFF with `canary`, else random) and x87 / SSE state at random, MXCSR `mxcsr`; the function, this and the
+// arguments are the caller's.
+void ReloadCallRandom(FnCall* call, Random* random, uint32_t mxcsr, bool canary) {
   for (uint32_t& value : call->in) value = random->Next();
   call->faulted = 0;
   for (uint8_t& byte : call->stack) byte = (canary ? 0xFF : static_cast<uint8_t>(random->Next()));
@@ -209,6 +210,19 @@ void ReloadRandom(ReloadWorld* world, Random* random, int flavor, uint32_t funct
   put16(6, 0);
   Write32(fx + 24, mxcsr);
   for (int reg = 0; reg < 8; ++reg) std::memset(fx + 32 + 16 * reg + 10, 0, 6);
+}
+
+void ReloadRandom(ReloadWorld* world, Random* random, int flavor, uint32_t function, uint32_t mxcsr, bool canary) {
+  FnCall* call = &world->call;
+  const uint32_t first = ReloadFillWorld(world->bytes.data(), random, flavor);
+  const uint32_t base = Address(world->bytes.data());
+  call->function = function;
+  call->this_ptr = base + RELOAD_THIS;
+  call->args[0] = first;
+  call->args[1] = base + RELOAD_SIX;
+  call->args[2] = random->Next();
+  call->args[3] = random->Next();
+  ReloadCallRandom(call, random, mxcsr, canary);
 }
 
 void RunReload(ReloadWorld* world, const ReloadWorld& backup, ReloadWorld* out) {
@@ -383,6 +397,159 @@ std::string ReloadTimingLines() {
   return std::format("   particle writer reload (the four stores, the load, a store; ns an iteration, game / ours / no reload): {}\n   mulss, ns an operation: {}\n", text, multiply);
 }
 
+// Every float class at the edges: zeros, subnormals, the smallest normals, ones, the largest, infinities, NaNs (quiet, signalling, payloads).
+constexpr std::array<uint32_t, 32> RELOAD_SPECIAL = {0x00000000, 0x80000000, 0x00000001, 0x80000001, 0x007FFFFF, 0x807FFFFF, 0x00800000, 0x80800000, 0x3F800000, 0xBF800000, 0x7F7FFFFF,
+                                                     0xFF7FFFFF, 0x7F800000, 0xFF800000, 0x7F800001, 0xFF800001, 0x7FBFFFFF, 0xFFBFFFFF, 0x7FC00000, 0xFFC00000, 0x7FC00001, 0xFFC00001,
+                                                     0x7FFFFFFF, 0xFFFFFFFF, 0x7FA5A5A5, 0xFFDEAD01, 0x0000FFFF, 0x00400000, 0x80400000, 0x12345678, 0x5A5A5A5A, 0xA5A5A5A5};
+// Where a reload stub's four lane displacements are (Float4ReloadStub's bytes; Float4ReloadFarStub's: each disp32's low byte).
+constexpr std::array<size_t, 4> RELOAD_NEAR_DISPLACEMENT_AT = {5, 12, 20, 28};
+constexpr std::array<size_t, 4> RELOAD_FAR_DISPLACEMENT_AT = {5, 15, 26, 37};
+
+// MXCSR for a call: any rounding, DAZ and FTZ at times, sticky flags set on odd rounds.
+uint32_t ReloadMxcsr(Random* random, int round) {
+  return 0x1F80 | (random->Next() & 3) << 13 | (random->Next() % 4 == 0 ? 1u << 6 : 0u) | (random->Next() % 4 == 0 ? 1u << 15 : 0u)
+         | ((round & 1) != 0 ? (random->Next() & 0x3F) : 0);
+}
+
+// The sites `of` names hold their jump where `on` has their bit, the game's bytes where not (the test's own variants, not Update's).
+void HoldSites(uint32_t on, uint32_t of) {
+  namespace ec = twattila::engine_code::internal;
+  for (size_t index = 0; index < ec::sites.size(); ++index) {
+    if (((of >> index) & 1) == 0) continue;
+    const ec::Site& site = ec::sites[index];
+    std::memcpy(site.at, (((on >> index) & 1) != 0 ? site.jump : site.game).data(), ec::SITE_SIZE);
+  }
+  FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+}
+
+// One reload site alone (engine_code's site `index`): the game's `load_size`-byte movups (`game_bytes`) against the page's stub (the site's
+// jump target, `stub_size` bytes with its jump back), each followed by a jump to the harness, on random lanes stored with movss at esp +
+// `displacement` (`runs` random ones, then every special value in each lane `contexts` times): every register, xmm0-7, the flags, MXCSR, esp
+// and the frame equal. CONTROL: each lane's displacement (its byte at `displacement_at`) moved by 4 must be seen.
+int ReloadAlone(size_t index, const uint8_t* game_bytes, size_t load_size, size_t stub_size, uint32_t displacement,
+                const std::array<size_t, 4>& displacement_at, int runs, int contexts, Random* random) {
+  namespace ec = twattila::engine_code::internal;
+  const ec::Site& site = ec::sites[index];
+  const uint8_t* stub = site.at + ec::SITE_SIZE + Read32(site.jump.data() + 1);
+  uint8_t* blocks = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+  CHECK(blocks != nullptr && stub_size <= 0x40 && load_size + 5 <= 0x40);
+  const auto make_block = [&](uint32_t slot, const uint8_t* bytes, size_t size) {
+    uint8_t* at = blocks + 0x40 * slot;
+    std::memcpy(at, bytes, size);
+    JumpTo(at + size, reinterpret_cast<const void*>(&ReloadBlockReturn));
+    return Address(at);
+  };
+  const uint32_t game_block = make_block(0, game_bytes, load_size);
+  const uint32_t ours_block = make_block(1, stub, stub_size - 5);
+  std::array<uint32_t, 4> wrong_blocks = {};
+  for (size_t lane = 0; lane < 4; ++lane) {
+    std::array<uint8_t, 0x40> bytes = {};
+    std::memcpy(bytes.data(), stub, stub_size - 5);
+    bytes[displacement_at[lane]] += 4;
+    wrong_blocks[lane] = make_block(2 + static_cast<uint32_t>(lane), bytes.data(), stub_size - 5);
+  }
+  auto game_call = std::make_unique<ReloadBlockCall>();
+  auto ours_call = std::make_unique<ReloadBlockCall>();
+  CHECK(Address(game_call.get()) % 16 == 0 && Address(ours_call.get()) % 16 == 0);
+  // One run of both blocks on the same random input; true if every register, xmm0-7, the flags, MXCSR, esp and the frame are equal.
+  int round = 0;
+  const auto region_run = [&](uint32_t target, const std::array<uint32_t, 4>* lanes) {
+    for (uint32_t& value : game_call->in) value = random->Next();
+    game_call->flags_in = (random->Next() & 0x8D5) | 2;
+    game_call->mxcsr_in = ReloadMxcsr(random, ++round);
+    game_call->lanes_at = displacement;
+    for (uint8_t& byte : game_call->frame) byte = static_cast<uint8_t>(random->Next());
+    for (uint8_t& byte : std::span(&game_call->xmm_in[0][0], 128)) byte = static_cast<uint8_t>(random->Next());
+    for (uint32_t& lane : game_call->lanes) lane = ReloadFloat(random);
+    if (lanes != nullptr) std::copy(lanes->begin(), lanes->end(), game_call->lanes);
+    *ours_call = *game_call;
+    game_call->target = game_block;
+    ours_call->target = target;
+    EnterReloadBlock(game_call.get());
+    EnterReloadBlock(ours_call.get());
+    return ReloadBlockEqual(*game_call, *ours_call);
+  };
+  uint64_t wrong = 0;
+  for (int run = 0; run < runs; ++run) {
+    if (!region_run(ours_block, nullptr)) {
+      ++wrong;
+      Report("  reload region of site %zu: run %d NOT equal (lanes %08X %08X %08X %08X)\n", index, run, game_call->lanes[0], game_call->lanes[1], game_call->lanes[2], game_call->lanes[3]);
+    }
+  }
+  CHECK(wrong == 0);
+  // Every special value in every lane against random others, then the specials in all four lanes at once.
+  uint64_t special_runs = 0;
+  for (const uint32_t value : RELOAD_SPECIAL) {
+    for (size_t lane = 0; lane < 4; ++lane) {
+      for (int context = 0; context < contexts; ++context) {
+        std::array<uint32_t, 4> lanes = {ReloadFloat(random), ReloadFloat(random), ReloadFloat(random), ReloadFloat(random)};
+        lanes[lane] = value;
+        CHECK(region_run(ours_block, &lanes));
+        ++special_runs;
+      }
+    }
+    for (int context = 0; context < contexts / 10; ++context) {
+      const std::array<uint32_t, 4> lanes = {value, value, RELOAD_SPECIAL[random->Next() % RELOAD_SPECIAL.size()], RELOAD_SPECIAL[random->Next() % RELOAD_SPECIAL.size()]};
+      CHECK(region_run(ours_block, &lanes));
+      ++special_runs;
+    }
+  }
+  std::string controls;
+  for (size_t lane = 0; lane < 4; ++lane) {
+    int seen = 0;
+    for (int run = 0; run < 20'000; ++run) seen += region_run(wrong_blocks[lane], nullptr) ? 0 : 1;
+    controls += std::format("{}{}", controls.empty() ? "" : " / ", seen);
+    CHECK(seen > 19'000);
+  }
+  std::printf("   %s alone ([esp + 0x%X]): %d random runs and %llu with every special value (NaN payloads, subnormals, -0, infinities) in each lane: every register, xmm0-7, the flags, MXCSR, esp and the frame equal; CONTROL, lane 0 / 1 / 2 / 3 from the wrong address: seen in %s of 20000\n",
+              std::string(site.name).c_str(), displacement, runs, special_runs, controls.c_str());
+  VirtualFree(blocks, 0, MEM_RELEASE);
+  return 0;
+}
+
+// A parked thread whose saved Eip is each byte of each site of `mask` (from the byte before to +`last_offset`), the rows switched each time: a site
+// changes only with Eip at its first byte or outside its jump's 5 bytes (any write waits while Eip is inside one). The rows end on.
+int ParkedAtSites(uint32_t mask, int last_offset) {
+  namespace ec = twattila::engine_code::internal;
+  std::atomic<bool> stop = false;
+  std::thread parked([&] {
+    while (!stop.load()) Sleep(1);
+  });
+  HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
+  CHECK(thread != nullptr);
+  bool on = true;
+  CHECK((ec::written & mask) == mask);
+  int wrong = 0;
+  for (size_t index = 0; index < ec::sites.size(); ++index) {
+    if (((mask >> index) & 1) == 0) continue;
+    const uint8_t* site = ec::sites[index].at;
+    for (int offset = -1; offset <= last_offset; ++offset) {
+      CHECK(SuspendThread(thread) != static_cast<DWORD>(-1));
+      CONTEXT saved = {.ContextFlags = CONTEXT_CONTROL};
+      CHECK(GetThreadContext(thread, &saved) != FALSE);
+      CONTEXT moved = saved;
+      moved.Eip = Address(site + offset);
+      CHECK(SetThreadContext(thread, &moved) != FALSE);
+      const uint32_t before = ec::written;
+      twattila::engine_code::Update(!on, twattila::engine_code::Game::ATTILA, false, false, true);
+      const bool changed = (((ec::written ^ before) >> index) & 1) != 0;
+      wrong += (changed != !(offset > 0 && offset < 5)) ? 1 : 0;
+      if (((ec::written ^ before) & ec::CPU_CODE_SITES) != 0) on = !on;
+      CHECK(SetThreadContext(thread, &saved) != FALSE);
+      ResumeThread(thread);
+    }
+  }
+  for (int tries = 0; !on && tries < static_cast<int>(ec::MAX_FAILED_WRITES); ++tries) {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    on = (ec::written & mask) == mask;
+  }
+  stop = true;
+  parked.join();
+  CloseHandle(thread);
+  CHECK(wrong == 0 && on && (ec::written & mask) == mask);
+  return 0;
+}
+
 int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick) {
   namespace ec = twattila::engine_code::internal;
   const uint32_t tail_rva = build.code->float4_reload_rva;
@@ -408,86 +575,13 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
   std::printf("14. particle writer float4 reloads: the two sites (+%X, +%X in the tail) found and written, the stubs jump back after them\n",
               static_cast<uint32_t>(ec::FLOAT4_RELOAD_AT[0]), static_cast<uint32_t>(ec::FLOAT4_RELOAD_AT[1]));
 
-  // 14b. The region alone. The game's block: the movups and a jump to the harness; ours: the page's stub (its jump to the harness).
-  uint8_t* blocks = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
-  CHECK(blocks != nullptr);
-  const auto make_block = [&](uint32_t slot, const uint8_t* bytes, size_t size) {
-    uint8_t* at = blocks + 0x40 * slot;
-    std::memcpy(at, bytes, size);
-    JumpTo(at + size, reinterpret_cast<const void*>(&ReloadBlockReturn));
-    return Address(at);
-  };
-  const uint32_t game_block = make_block(0, MOVUPS.data(), MOVUPS.size());
-  const uint32_t ours_block = make_block(1, stubs[0], ec::FLOAT4_RELOAD_STUB.size() - 5);
-  // CONTROLs: one lane wrong each: its source address moved to the next lane's (the last lane's to past the 16 bytes).
-  constexpr std::array<size_t, 4> DISPLACEMENT_AT = {5, 12, 20, 28};
-  std::array<uint32_t, 4> wrong_blocks = {};
-  for (size_t lane = 0; lane < 4; ++lane) {
-    std::array<uint8_t, ec::FLOAT4_RELOAD_STUB.size() - 5> bytes;
-    std::memcpy(bytes.data(), stubs[0], bytes.size());
-    bytes[DISPLACEMENT_AT[lane]] += 4;
-    wrong_blocks[lane] = make_block(2 + static_cast<uint32_t>(lane), bytes.data(), bytes.size());
-  }
-  auto game_call = std::make_unique<ReloadBlockCall>();
-  auto ours_call = std::make_unique<ReloadBlockCall>();
-  CHECK(Address(game_call.get()) % 16 == 0 && Address(ours_call.get()) % 16 == 0);
+  // 14b. The region alone (both stubs are the same bytes: the first).
   Random random = {.state = 0x14A};
-  // One run of both blocks on the same random input; true if every register, xmm0-7, the flags, esp and the frame are equal.
-  const auto region_run = [&](uint32_t target, const std::array<uint32_t, 4>* lanes) {
-    for (uint32_t& value : game_call->in) value = random.Next();
-    game_call->flags_in = (random.Next() & 0x8D5) | 2;
-    for (uint8_t& byte : game_call->frame) byte = static_cast<uint8_t>(random.Next());
-    for (uint8_t& byte : std::span(&game_call->xmm_in[0][0], 128)) byte = static_cast<uint8_t>(random.Next());
-    for (uint32_t& lane : game_call->lanes) lane = ReloadFloat(&random);
-    if (lanes != nullptr) std::copy(lanes->begin(), lanes->end(), game_call->lanes);
-    *ours_call = *game_call;
-    game_call->target = game_block;
-    ours_call->target = target;
-    EnterReloadBlock(game_call.get());
-    EnterReloadBlock(ours_call.get());
-    return ReloadBlockEqual(*game_call, *ours_call);
-  };
-  {
-    uint64_t wrong = 0;
-    const int runs = (quick ? 2'000'000 : 8'000'000);
-    for (int run = 0; run < runs; ++run) {
-      if (!region_run(ours_block, nullptr)) {
-        ++wrong;
-        Report("  reload region: run %d NOT equal (lanes %08X %08X %08X %08X)\n", run, game_call->lanes[0], game_call->lanes[1], game_call->lanes[2], game_call->lanes[3]);
-      }
-    }
-    CHECK(wrong == 0);
-    // Every special value in every lane against random others, then the specials in all four lanes at once.
-    constexpr std::array<uint32_t, 32> SPECIAL = {0x00000000, 0x80000000, 0x00000001, 0x80000001, 0x007FFFFF, 0x807FFFFF, 0x00800000, 0x80800000, 0x3F800000, 0xBF800000, 0x7F7FFFFF,
-                                                  0xFF7FFFFF, 0x7F800000, 0xFF800000, 0x7F800001, 0xFF800001, 0x7FBFFFFF, 0xFFBFFFFF, 0x7FC00000, 0xFFC00000, 0x7FC00001, 0xFFC00001,
-                                                  0x7FFFFFFF, 0xFFFFFFFF, 0x7FA5A5A5, 0xFFDEAD01, 0x0000FFFF, 0x00400000, 0x80400000, 0x12345678, 0x5A5A5A5A, 0xA5A5A5A5};
-    uint64_t special_runs = 0;
-    for (const uint32_t value : SPECIAL) {
-      for (size_t lane = 0; lane < 4; ++lane) {
-        for (int context = 0; context < 2000; ++context) {
-          std::array<uint32_t, 4> lanes = {ReloadFloat(&random), ReloadFloat(&random), ReloadFloat(&random), ReloadFloat(&random)};
-          lanes[lane] = value;
-          CHECK(region_run(ours_block, &lanes));
-          ++special_runs;
-        }
-      }
-      for (int context = 0; context < 200; ++context) {
-        const std::array<uint32_t, 4> lanes = {value, value, SPECIAL[random.Next() % SPECIAL.size()], SPECIAL[random.Next() % SPECIAL.size()]};
-        CHECK(region_run(ours_block, &lanes));
-        ++special_runs;
-      }
-    }
-    std::printf("   the region alone: %d random runs and %llu with every special value (NaN payloads, subnormals, -0, infinities) in each lane: every register, xmm0-7, the flags, esp and the frame equal\n",
-                runs, special_runs);
-    // CONTROL: one lane read from the wrong place: each must be seen.
-    for (size_t lane = 0; lane < 4; ++lane) {
-      int seen = 0;
-      for (int run = 0; run < 20'000; ++run) seen += region_run(wrong_blocks[lane], nullptr) ? 0 : 1;
-      std::printf("   CONTROL, lane %zu from the wrong address: %d of 20000 runs seen as different\n", lane, seen);
-      CHECK(seen > 19'000);
-    }
+  if (const int failed = ReloadAlone(ec::FLOAT4_RELOAD_FIRST_SITE, MOVUPS.data(), MOVUPS.size(), ec::FLOAT4_RELOAD_STUB.size(), 0x40,
+                                     RELOAD_NEAR_DISPLACEMENT_AT, quick ? 2'000'000 : 8'000'000, 2000, &random);
+      failed != 0) {
+    return failed;
   }
-  VirtualFree(blocks, 0, MEM_RELEASE);
 
   // 14c. The whole function on a fake object graph, the game's copy against the patched copy with both sites, and with each alone.
   auto world = std::make_unique<ReloadWorld>();
@@ -495,17 +589,6 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
   auto result_a = std::make_unique<ReloadWorld>();
   auto result_b = std::make_unique<ReloadWorld>();
   CHECK(Address(world->call.fx_in) % 16 == 0 && Address(world->call.fx_out) % 16 == 0 && Address(world->call.fx_saved) % 16 == 0 && Address(world->call.stack) % 16 == 0);
-  const auto set_sites = [&](uint32_t mask) {  // the site bits (FLOAT4_RELOAD_SITES) in `mask` hold their jump, the others the game's movups
-    for (size_t reload = 0; reload < 2; ++reload) {
-      const ec::Site& site = ec::sites[ec::FLOAT4_RELOAD_FIRST_SITE + reload];
-      const bool on = ((mask >> (ec::FLOAT4_RELOAD_FIRST_SITE + reload)) & 1) != 0;
-      std::memcpy(site.at, (on ? site.jump : site.game).data(), 5);
-    }
-    FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
-  };
-  const auto mxcsr_of = [&](int round) {
-    return 0x1F80 | (random.Next() & 3) << 13 | (random.Next() % 4 == 0 ? 1u << 6 : 0u) | (random.Next() % 4 == 0 ? 1u << 15 : 0u) | ((round & 1) != 0 ? (random.Next() & 0x3F) : 0);
-  };
   {
     const int calls = (quick ? 60'000 : 400'000);
     std::array<uint64_t, 4> paths = {};  // no entry, no matrix, matrix with the jb, matrix with the sqrt (the stack filled 0xFF)
@@ -513,13 +596,13 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
     std::array<uint64_t, 3> wrong = {};
     for (int round = 0; round < calls; ++round) {
       const bool canary = (round % 4 != 3);
-      ReloadRandom(world.get(), &random, round % 4 < 2 ? 0 : (round % 4 == 2 ? 1 : 2), game_function, mxcsr_of(round), canary);
+      ReloadRandom(world.get(), &random, round % 4 < 2 ? 0 : (round % 4 == 2 ? 1 : 2), game_function, ReloadMxcsr(&random, round), canary);
       *backup = *world;
       backup->call.function = game_function;
       RunReload(world.get(), *backup, result_a.get());
       backup->call.function = patched_function;
       for (size_t variant = 0; variant < VARIANTS.size(); ++variant) {
-        set_sites(VARIANTS[variant]);
+        HoldSites(VARIANTS[variant], ec::FLOAT4_RELOAD_SITES);
         RunReload(world.get(), *backup, result_b.get());
         if (const char* what = ReloadDiff(*result_a, *result_b, copy_distance); what[0] != 0) {
           ++wrong[variant];
@@ -528,7 +611,7 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
       }
       if (canary) ++paths[ReloadPath(*result_a)];
     }
-    set_sites(VARIANTS[0]);
+    HoldSites(VARIANTS[0], ec::FLOAT4_RELOAD_SITES);
     std::printf("   the whole function: %d calls (no table entry %llu, no matrix %llu, matrix and the comiss's jb %llu, matrix and the square root %llu): NOT equal with both sites %llu, the colour's alone %llu, the vector's alone %llu\n",
                 calls, paths[0], paths[1], paths[2], paths[3], wrong[0], wrong[1], wrong[2]);
     CHECK(wrong[0] == 0 && wrong[1] == 0 && wrong[2] == 0);
@@ -543,7 +626,7 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
     for (size_t reload = 0; reload < 2; ++reload) {
       uint8_t* stub = ec::page + ec::FLOAT4_RELOAD_PAGE + reload * ec::FLOAT4_RELOAD_STRIDE;
       for (size_t lane = 0; lane < 4; ++lane) {
-        stub[DISPLACEMENT_AT[lane]] += 4;
+        stub[RELOAD_NEAR_DISPLACEMENT_AT[lane]] += 4;
         FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
         int seen = 0;
         for (int round = 0; round < 1500; ++round) {
@@ -555,7 +638,7 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
           RunReload(world.get(), *backup, result_b.get());
           seen += (ReloadDiff(*result_a, *result_b, copy_distance)[0] != 0) ? 1 : 0;
         }
-        stub[DISPLACEMENT_AT[lane]] -= 4;
+        stub[RELOAD_NEAR_DISPLACEMENT_AT[lane]] -= 4;
         FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
         // Not all 1500: no table entry takes ~20 % of the calls, and without the matrix the vector's lanes come from constants (two of them
         // equal), so a lane read from its neighbour's place gives the same bits there.
@@ -624,44 +707,8 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
 
   // 14f. A parked thread whose saved Eip is each byte of each site (and the byte before, the bytes after): the row switched, a site
   // changes only with Eip at its first byte or outside it.
-  {
-    std::atomic<bool> stop = false;
-    std::thread parked([&] {
-      while (!stop.load()) Sleep(1);
-    });
-    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
-    CHECK(thread != nullptr);
-    bool on = true;
-    CHECK(((ec::written >> ec::FLOAT4_RELOAD_FIRST_SITE) & 3) == 3);
-    int wrong = 0;
-    for (size_t reload = 0; reload < 2; ++reload) {
-      const uint8_t* site = ec::sites[ec::FLOAT4_RELOAD_FIRST_SITE + reload].at;
-      for (int offset = -1; offset <= 6; ++offset) {
-        CHECK(SuspendThread(thread) != static_cast<DWORD>(-1));
-        CONTEXT saved = {.ContextFlags = CONTEXT_CONTROL};
-        CHECK(GetThreadContext(thread, &saved) != FALSE);
-        CONTEXT moved = saved;
-        moved.Eip = Address(site + offset);
-        CHECK(SetThreadContext(thread, &moved) != FALSE);
-        const uint32_t before = ec::written;
-        twattila::engine_code::Update(!on, twattila::engine_code::Game::ATTILA, false, false, true);
-        const bool changed = (((ec::written ^ before) >> (ec::FLOAT4_RELOAD_FIRST_SITE + reload)) & 1) != 0;
-        wrong += (changed != !(offset > 0 && offset < 5)) ? 1 : 0;
-        if (((ec::written ^ before) & ec::CPU_CODE_SITES) != 0) on = !on;
-        CHECK(SetThreadContext(thread, &saved) != FALSE);
-        ResumeThread(thread);
-      }
-    }
-    for (int tries = 0; !on && tries < static_cast<int>(ec::MAX_FAILED_WRITES); ++tries) {
-      twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
-      on = ((ec::written >> ec::FLOAT4_RELOAD_FIRST_SITE) & 1) != 0;
-    }
-    stop = true;
-    parked.join();
-    CloseHandle(thread);
-    CHECK(wrong == 0 && on && ((ec::written >> ec::FLOAT4_RELOAD_FIRST_SITE) & 3) == 3);
-    std::printf("   a parked thread at each site -1 .. +6: refused at +1 .. +4 and written at the others\n");
-  }
+  if (const int failed = ParkedAtSites(ec::FLOAT4_RELOAD_SITES, 6); failed != 0) return failed;
+  std::printf("   a parked thread at each site -1 .. +6: refused at +1 .. +4 and written at the others\n");
 
   // 14g. Timing: the whole function with streams in hot lines, in cold ones (random lines of 256 MB), and in write-combined memory (as a
   // mapped vertex buffer is: rows appended in order, 16 bytes a call to each stream), game / ours, the best of 5 (part 6 prints the region's

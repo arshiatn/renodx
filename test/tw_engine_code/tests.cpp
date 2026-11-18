@@ -74,6 +74,14 @@
 //    register but ecx, the flags, esp, xmm0-7, all memory and the call order equal; CONTROLs (a stub that writes eax, ends with the wrong compare, stores, has
 //    no null test, the wrong bound, reads ebx for the container); 200 switches under 4 threads, a parked thread at each byte of the site; timing for K = 1 to 3.
 //    Rome II has none.
+// 17. More float4 reloads (Faster Game CPU Code; more_reloads.inc): the soldier draw's three matrix row reloads (+0x17f6937 / +0x17f6956 /
+//    +0x17f6963, Thrones +0x186ae7c .., Rome II +0x14b47d2 ..): each alone with random lanes of every float class and any MXCSR (registers,
+//    xmm0-7, flags, MXCSR, esp, the frame equal; CONTROLs a lane 4 bytes off); both ways of the draw into them run in both copies (the
+//    game's code from each way's last branch to the jump after the third reload) with the three sites and each alone, CONTROLs per stub and
+//    lane; 200 switches under 4 threads; a parked thread at each byte of each site; timing. In 7 the x87 fix's block leaves them found; in
+//    13 a changed site, a changed pattern byte, no SSE4.1. The matrix product's three row reloads (+0x168d7f0 / +0x168d803 / +0x168d812,
+//    Thrones +0x16faf10 .., Rome II +0x135b7b0 ..) the same way, the whole function on random matrices (done already, none, up to 24) instead
+//    of the ways: registers, x87 / MXCSR / xmm, flags, esp, the stack, the matrices and the objects equal.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -150,13 +158,16 @@ struct TestBuild {
   uint32_t integer_slot;
   uint32_t list_push_function_rva;  // 0: none in this build
   uint32_t ready_check_rva;         // 0: none in this build
+  std::array<uint32_t, 2> soldier_ways;  // the soldier draw's two ways into its matrix row reloads: the first instruction after each one's last branch
 };
 constexpr TestBuild ATTILA = {"Attila", &twattila::engine_code::internal::ATTILA_BUILD, 0x169a220, 0x17f6515, 0x17f6539, 0x1a05cc0,
-                              0x1dae4f4, 0x2a8b504, 0x2a8b4cc, 0x1c, 0x28, 0x176ced0, 0x18635a0};
+                              0x1dae4f4, 0x2a8b504, 0x2a8b4cc, 0x1c, 0x28, 0x176ced0, 0x18635a0,
+                              {0x17f65b8, 0x17f697d}};
 constexpr TestBuild THRONES = {"Thrones of Britannia", &twattila::engine_code::internal::THRONES_BUILD, 0x1707eb0, 0x186aa48, 0x186aa6c,
-                               0x1b0a030, 0x1eec634, 0x25fde74, 0x25fde3c, 0x20, 0x18, 0x17defc0, 0x18d8400};
+                               0x1b0a030, 0x1eec634, 0x25fde74, 0x25fde3c, 0x20, 0x18, 0x17defc0, 0x18d8400,
+                               {0x186aafd, 0x186aec2}};
 constexpr TestBuild ROME2 = {"Rome II", &twattila::engine_code::internal::ROME2_BUILD, 0x1368030, 0x14b434a, 0x14b436e, 0x169ca30,
-                             0x19ebd74, 0x21263cc, 0x2126394, 0x1c, 0x20, 0, 0};
+                             0x19ebd74, 0x21263cc, 0x2126394, 0x1c, 0x20, 0, 0, {0x14b4417, 0x14b4806}};
 
 uint32_t Read32(const uint8_t* at) {
   uint32_t value;
@@ -2166,6 +2177,9 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
 // The emitter update loop's prefetch (part 16): the loop's bottom alone, the whole loop, controls, switching, parked threads, timing.
 #include "emitter_prefetch.inc"
 
+// More float4 reloads (part 17): each alone, the soldier draw's ways into them, controls, switching, parked threads, timing.
+#include "more_reloads.inc"
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2208,6 +2222,9 @@ int main(int argc, char** argv) {
   CHECK(Matches(game + text_rva, text_size, ec::FLOAT4_RELOAD) == (build.code->float4_reload_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::PARTICLE_LOOP) == (build.code->particle_loop_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::EMITTER_LOOP) == (build.code->emitter_loop_rva != 0 ? 1u : 0u));
+  CHECK(Matches(game + text_rva, text_size, build.code->soldier_rows) == 1);
+  CHECK(Matches(game + text_rva, text_size, ec::SOLDIER_ROWS) + Matches(game + text_rva, text_size, ec::ROME2_SOLDIER_ROWS) == 1);
+  CHECK(Matches(game + text_rva, text_size, ec::MATRIX_PRODUCT) == 1);
   // B's own code as mapped (A's differs in every relocated address).
   const std::vector<uint8_t> unpatched(patched + text_rva, patched + text_rva + text_size);
   ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
@@ -2221,6 +2238,10 @@ int main(int argc, char** argv) {
   }
   CHECK(ec::sites[12].at == (build.code->particle_loop_rva != 0 ? patched + build.code->particle_loop_rva + ec::PARTICLE_LOOP_SITE : nullptr));
   CHECK(ec::sites[13].at == (build.code->emitter_loop_rva != 0 ? patched + build.code->emitter_loop_rva + ec::EMITTER_LOOP_SITE : nullptr));
+  for (size_t row = 0; row < ec::SOLDIER_ROWS_STUBS.size(); ++row) {
+    CHECK(ec::sites[ec::SOLDIER_ROWS_FIRST_SITE + row].at == patched + build.code->soldier_rows_rva + build.code->soldier_rows_at[row]);
+    CHECK(ec::sites[ec::MATRIX_PRODUCT_FIRST_SITE + row].at == patched + build.code->matrix_product_rva + ec::MATRIX_PRODUCT_AT[row]);
+  }
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true);
   CHECK(ec::written == (ec::found & ~ec::JOB_SITES)
@@ -2228,7 +2249,7 @@ int main(int argc, char** argv) {
                          | (build.code->job_wake_all_rva != 0 ? ec::JOB_SITES : 0u) | (build.code->half_rows_rva != 0 ? 0b100000000u : 0u)
                          | (build.code->child_sum_rva != 0 ? 0b1000000000u : 0u) | (build.code->particle_loop_rva != 0 ? ec::PARTICLE_PREFETCH_BIT : 0u)
                          | (build.code->emitter_loop_rva != 0 ? ec::EMITTER_PREFETCH_BIT : 0u)
-                         | (build.code->float4_reload_rva != 0 ? ec::FLOAT4_RELOAD_SITES : 0u)));
+                         | (build.code->float4_reload_rva != 0 ? ec::FLOAT4_RELOAD_SITES : 0u) | ec::SOLDIER_ROWS_SITES | ec::MATRIX_PRODUCT_SITES));
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
     if (unpatched[at - text_rva] == patched[at]) continue;
@@ -2274,6 +2295,12 @@ int main(int argc, char** argv) {
   if (argc > 3 && std::string(argv[3]) == "prefetch" && build.code->particle_loop_rva != 0) {
     if (const int failed = RunParticleTests(build, game, patched, quick); failed != 0) return failed;
     std::printf("PASS (prefetch only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "more") {
+    if (const int failed = RunSoldierRowsTests(build, game, patched, quick); failed != 0) return failed;
+    if (const int failed = RunMatrixProductTests(build, game, patched, quick); failed != 0) return failed;
+    std::printf("PASS (more reloads only)\n");
     return 0;
   }
   if (argc > 3 && std::string(argv[3]) == "emitter" && build.code->emitter_loop_rva != 0) {
@@ -3206,6 +3233,12 @@ int main(int argc, char** argv) {
     std::printf("16. emitter loop prefetch: none in this build\n");
   }
 
+  // 17. More float4 reloads (Faster Game CPU Code): the soldier draw's matrix rows and the matrix product (every build has both).
+  twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+  if (const int failed = RunSoldierRowsTests(build, game, patched, quick); failed != 0) return failed;
+  if (const int failed = RunMatrixProductTests(build, game, patched, quick); failed != 0) return failed;
+  twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+
   // Off: the game's bytes back (the harness's jumps removed first).
   std::memcpy(game + build.truncation_resume_rva, file.data() + (build.truncation_resume_rva - text_rva + text_header->PointerToRawData), 5);
   std::memcpy(patched + build.truncation_resume_rva, unpatched.data() + (build.truncation_resume_rva - text_rva), 5);
@@ -3297,9 +3330,11 @@ int main(int argc, char** argv) {
       ec::sse4_1 = false;
       prepare_again();
       CHECK(ec::sites[COLOUR].at == nullptr && ec::sites[VECTOR].at == nullptr && ec::sites[9].at != nullptr && log_lines.back().find("particle") == std::string::npos);
+      CHECK((ec::found & (ec::SOLDIER_ROWS_SITES | ec::MATRIX_PRODUCT_SITES)) == 0 && log_lines.back().find("matrix") == std::string::npos);
       ec::sse4_1 = true;
       prepare_again();
-      CHECK(ec::sites[COLOUR].at != nullptr && ec::sites[VECTOR].at != nullptr);
+      CHECK(ec::sites[COLOUR].at != nullptr && ec::sites[VECTOR].at != nullptr && (ec::found & ec::SOLDIER_ROWS_SITES) == ec::SOLDIER_ROWS_SITES
+            && (ec::found & ec::MATRIX_PRODUCT_SITES) == ec::MATRIX_PRODUCT_SITES);
       // (g) one byte changed in the function's tail, outside the sites and in each site's first byte: both reloads left alone, named
       uint8_t* tail = patched + build.code->float4_reload_rva;
       for (const size_t at : {size_t{14}, ec::FLOAT4_RELOAD_AT[0], ec::FLOAT4_RELOAD_AT[1]}) {
@@ -3359,6 +3394,51 @@ int main(int argc, char** argv) {
       prepare_again();
       CHECK(ec::sites[13].at != nullptr && ec::found == all);
     }
+    // (l) each of the soldier draw's and the matrix product's row reloads changed while the rows are on: switching off leaves it, restores the
+    // other five and the rest
+    for (size_t changed = ec::SOLDIER_ROWS_FIRST_SITE; changed < ec::MATRIX_PRODUCT_FIRST_SITE + 3; ++changed) {
+      on();
+      CHECK(ec::written == all);
+      foreign(changed, hook);
+      off();
+      CHECK(ec::written == 0 && holds(changed, hook) && game_bytes(all & ~(1u << changed)) && (ec::found & (1u << changed)) == 0);
+      foreign(changed, ec::sites[changed].game);
+      prepare_again();
+    }
+    // (m) one byte changed in the rows' pattern (its first, a byte between the stores, each site's first and last, the jump after them):
+    // the three left alone, named; without SSE4.1 not looked for (part (f))
+    {
+      uint8_t* rows = patched + build.code->soldier_rows_rva;
+      const size_t size = (build.code->soldier_rows.size() + 1) / 3;
+      const auto& at = build.code->soldier_rows_at;
+      for (const size_t changed : {size_t{0}, size_t{30}, size_t{at[0]}, size_t{at[0] + 7u}, size_t{at[1]}, size_t{at[2]}, size_t{at[2] + 7u}, size - 4}) {
+        rows[changed] ^= 1;
+        prepare_again();
+        CHECK((ec::found & ec::SOLDIER_ROWS_SITES) == 0 && ec::sites[0].at != nullptr);
+        CHECK(log_lines.back().find("left alone (not the game's code as expected: another mod or build): ") != std::string::npos
+              && log_lines.back().find("soldier matrix row 1, soldier matrix row 2, soldier matrix row 3") != std::string::npos);
+        rows[changed] ^= 1;
+        prepare_again();
+        CHECK(ec::found == all);
+      }
+    }
+    // (n) one byte changed in the matrix product (its first, one between the stores, each site's first and last, its ret): the three left
+    // alone, named
+    {
+      uint8_t* product = patched + build.code->matrix_product_rva;
+      const size_t size = (ec::MATRIX_PRODUCT.size() + 1) / 3;
+      const auto& at = ec::MATRIX_PRODUCT_AT;
+      for (const size_t changed : {size_t{0}, size_t{0x100}, at[0], at[0] + 4, at[1], at[2], at[2] + 4, size - 3}) {
+        product[changed] ^= 1;
+        prepare_again();
+        CHECK((ec::found & ec::MATRIX_PRODUCT_SITES) == 0 && (ec::found & ec::SOLDIER_ROWS_SITES) == ec::SOLDIER_ROWS_SITES);
+        CHECK(log_lines.back().find("left alone (not the game's code as expected: another mod or build): ") != std::string::npos
+              && log_lines.back().find("matrix product row 1, matrix product row 2, matrix product row 3") != std::string::npos);
+        product[changed] ^= 1;
+        prepare_again();
+        CHECK(ec::found == all);
+      }
+    }
     std::printf("13. another mod's bytes in a site: left alone, the sites that depend on it stay out, the rest as asked\n");
   }
 
@@ -3373,6 +3453,8 @@ int main(int argc, char** argv) {
   ec::prepared = false;
   ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
   CHECK(ec::sites[0].at == nullptr && ec::sites[1].at != nullptr && ec::sites[2].at != nullptr);
+  CHECK((ec::found & ec::SOLDIER_ROWS_SITES) == ec::SOLDIER_ROWS_SITES);  // the same function, clear of the fix's block
+  CHECK((ec::found & ec::MATRIX_PRODUCT_SITES) == ec::MATRIX_PRODUCT_SITES);
   CHECK((ec::sites[3].at != nullptr) == (build.list_push_function_rva != 0));
   CHECK((ec::sites[4].at != nullptr) == (build.ready_check_rva != 0));
   // The reason: Attila's names the fix (its block at its RVA), the other games' builds the unknown mod.
