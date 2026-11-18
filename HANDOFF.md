@@ -391,6 +391,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our ... | next helper round (measure first)
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
 - NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator PROGRESS: (2) DONE 02:38-02:46 gr1_ (bench const
+- CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page ... | the next engine_code implementer (after EF4), folded in
 - TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
 - DAY1 MAXED GPU LEVERS (gpo1_ / cpa1_): day1 maxed behind the units is GPU-bound ... | coordinator (GPU line)
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
@@ -3145,6 +3146,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         branch target inside 0x18960d0 on site+1..+4; callee map for part 14(b). Worktree cleaned (links removed alone,
         branch deleted). Per ATN's rule (a stop = ONE Sonnet xHigh retry of that item's plan + implementation, a
         second stop ends it): ci2s_ Sonnet xHigh STARTED 04:44 on c74a6ce08 with the same brief + those facts.
+        cr1_ review DONE 04:53 -> night1118/review_ci1.md: MERGE (exact on every path, own 60,000-case emulation 0
+        differences; layout safe; LOGX right bytes, Attila only; keep ES8b in the default-on row, check it in the final
+        bench's WPR: page +0x280..+0x2E1 ~1.37 -> ~0.2 ms, the caller must not pick it up). MERGED 1e5324f4c (gated x86
+        build of the 3 add-ons running before the push). ci1_'s 10 links removed alone (folder locked by the app).
+      - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
+        L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
+        tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
+        TRUNCATION / HALF / FMOD / LIST_PUSH page slots. Owner: the next engine_code implementer (after EF4), folded in
       - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
         0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
         drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
