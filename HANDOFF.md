@@ -3347,6 +3347,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         runs, not A/B). Locks released 11:54. RERUN of day1 (same set) STARTED 11:55 (sanity_day1b): a second XAudio2
         crash -> Keep Render Core Free's thread choice is the suspect (it moves third-party threads too: XAudio2, EOS,
         Steam): fix idea = only threads that start in Attila.exe / empire.retail.dll.
+        RERUN day1 VALID 11:58 (sanity_day1b_wpr_cpu_115525, 758 presents, sort count CSV): the XAudio2 crash = 1 of 4
+        starts, not reproduced; the Keep Render Core Free thread-scope fix (game's own threads only) goes into the CPU
+        round anyway (Experimental row, safer). ci7_ full suites (x86, Attila / Thrones / Rome II) STARTED ~12:00.
+        Analysts STARTED ~12:0x (Opus xHigh, read only): sa1_ Constantinople (-> analysis_sanity_day1.md), sa2_ stress
+        own camera + ground (-> analysis_sanity_stress.md). Then an Opus xHigh combined plan (cpu_plan4.md) with the
+        author items (hfp2s_'s plan), implement (Sonnet xHigh engine code / heapfix, Opus High add-on C++), reviews,
+        then the final bench (plan with durations to ATN first; F6 / W1 of final_bench_plan.md covered by today's runs).
+        ATN 12:01 (going to work): the full Nsight SETTINGS SWEEP comes AFTER the rest of the GPU plan (PT DI steps 2-5,
+        vMF, G2, faster RT freeze rebuild), each of those with its own Nsight before / after; the GPU line after the
+        CPU round.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
