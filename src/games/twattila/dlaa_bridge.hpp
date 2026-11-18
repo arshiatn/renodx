@@ -1151,7 +1151,7 @@ inline bool TraceScene(ID3D11DeviceContext* context, const TraceRequest& request
       float* colour = (first ? shared->rt_light_colours[light] : shared->rt_light_colours_more[light - RT_MAX_LIGHTS]);
       std::copy_n(request.lights[light].begin(), 4, position);
       if (light < request.light_colours.size()) std::copy_n(request.light_colours[light].begin(), 4, colour);
-      shared->rt_light_kinds[light] = (light < request.light_kinds.size()) ? request.light_kinds[light] : RT_LIGHT_SMOOTH;
+      shared->rt_light_kinds[light] = (light < request.light_kinds.size() ? request.light_kinds[light] : RT_LIGHT_SMOOTH);
     }
     std::copy_n(request.view_projection.begin(), 16, shared->rt_view_projection);
     shared->rt_placement_count = static_cast<uint32_t>(std::min<size_t>(request.placements.size(), RT_PLACEMENTS));

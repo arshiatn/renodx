@@ -3568,7 +3568,7 @@ class RtScene12 {
     for (uint32_t light = 0; light < count; ++light) {
       std::memcpy(data + (light * 16), SharedLight(shared, light, false), 16);
       std::memcpy(data + LIGHT_COLOURS_OFFSET + (light * 16), SharedLight(shared, light, true), 16);
-      data[LIGHT_KINDS_OFFSET + light] = (version >= 32) ? shared.rt_light_kinds[light] : dlaa_bridge::RT_LIGHT_SMOOTH;
+      data[LIGHT_KINDS_OFFSET + light] = (version >= 32 ? shared.rt_light_kinds[light] : dlaa_bridge::RT_LIGHT_SMOOTH);
     }
     std::memcpy(data + LIGHT_COUNT_OFFSET, &count, sizeof(count));
   }
