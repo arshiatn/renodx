@@ -955,7 +955,10 @@ struct PointLightCopy {
   PointLightLayout layout;
   bool shadows_only = false;  // LightInstances'
   bool streamed = false;      // LightInstances::stream_shader's records: an undrawn instance's reach 0, left out
+  uint8_t falloff = dlaa_bridge::RT_LIGHT_SMOOTH;  // the drawing shader's (InstallLinearFalloff)
 };
+// The game's light shaders whose light falls off as 1 - distance / reach (InstallLinearFalloff); the others' squared.
+static std::vector<uint32_t> linear_falloff_shaders;
 // A streamed light record (LightInstances::stream_shader): the light (position, reach), then its colour.
 constexpr UINT STREAMED_LIGHT_BYTES = 32;
 // After a frame whose twin draw could not be left out, the frames that read every record before it is tried again.
@@ -1154,6 +1157,9 @@ static LightInstances point_shadow_instances = {};
 constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   const auto& light_instances = command.template GetCallbackData<LightInstances>();
   if (light_instances.enabled != nullptr && *light_instances.enabled == 0.f) return {};
+  // The callback data is one for every hash of a family: the falloff by the draw's own shader.
+  const bool linear = std::ranges::find(internal::linear_falloff_shaders, command.matched_shader_hash) != internal::linear_falloff_shaders.end();
+  const uint8_t falloff = (linear ? dlaa_bridge::RT_LIGHT_LINEAR : dlaa_bridge::RT_LIGHT_SMOOTH);
   const uint64_t light_frame = internal::light_frame.load(std::memory_order_relaxed);
   const bool traced = (light_frame & 1u) != 0u;
   const uint64_t frame = light_frame >> 1;
@@ -1191,7 +1197,7 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
     internal::light_uploads_watched.store(true, std::memory_order_relaxed);
     if (uploaded) {
       const float scale = internal::host.local_light_scale;
-      AddLocalLight({.light = {rows[0], rows[1], rows[2], rows[7]}, .colour = {rows[4] * scale, rows[5] * scale, rows[6] * scale, 0.f}});
+      AddLocalLight({.light = {rows[0], rows[1], rows[2], rows[7]}, .colour = {rows[4] * scale, rows[5] * scale, rows[6] * scale, 0.f}, .falloff = falloff});
       if (!std::exchange(internal::point_lights_read, true)) {
         renodx::utils::log::i(std::format("[Total War] Local lights: the first read from a light draw's constants (b{}).", internal::light_constants_slot));
       }
@@ -1237,7 +1243,7 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
               && std::ranges::any_of(std::span(copies).first(copy_index), [&](const internal::PointLightCopy& earlier) {
                    return !earlier.streamed && earlier.stride == copy.stride && earlier.count >= copy.count
                           && earlier.layout.colour == copy.layout.colour && earlier.layout.position == copy.layout.position
-                          && earlier.shadows_only == copy.shadows_only
+                          && earlier.shadows_only == copy.shadows_only && earlier.falloff == copy.falloff
                           && std::memcmp(records + earlier.offset, first, size_t{copy.count} * copy.stride) == 0;
                  })) {
             left_out += copy.count;
@@ -1245,7 +1251,7 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
           }
           for (UINT index = 0; index < copy.count; ++index) {
             const auto* instance = first + (index * copy.stride);
-            LocalLight light = {.shadows_only = copy.shadows_only};
+            LocalLight light = {.shadows_only = copy.shadows_only, .falloff = copy.falloff};
             std::memcpy(light.light.data(), instance + copy.layout.position, sizeof(light.light));
             if (copy.streamed && !(light.light[3] > 0.f)) continue;
             std::memcpy(light.colour.data(), instance + copy.layout.colour, sizeof(light.colour));
@@ -1286,7 +1292,7 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
           const LocalLight& a = lights[tie[0]];
           const LocalLight& b = lights[tie[1]];
           return std::memcmp(a.light.data(), b.light.data(), sizeof(a.light)) == 0 && std::memcmp(a.colour.data(), b.colour.data(), sizeof(a.colour)) == 0
-                 && a.shadows_only == b.shadows_only;
+                 && a.shadows_only == b.shadows_only && a.falloff == b.falloff;
         };
         // The twins left out give the full read's lights while the kept records with equal keys are the same bytes: each
         // equal-key run of the full read is then copies of one light, unique keeping any. False: they aren't (nothing kept).
@@ -1321,7 +1327,11 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
           readback.ties.clear();
           for (size_t at = 0; at + 1 < sorted_keys.size(); ++at) {
             if (same_place(sorted_keys[at], sorted_keys[at + 1])) {
-              readback.ties.push_back(tie_at(at));
+              const auto tie = tie_at(at);
+              readback.ties.push_back(tie);
+              if (lights[tie[0]].falloff != lights[tie[1]].falloff) {
+                internal::LightFalloffsDisagree();
+              }
             }
           }
           const auto repeated = std::ranges::unique(sorted_keys, same_place);
@@ -1404,7 +1414,7 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
         const D3D11_BOX box = {.left = 0, .top = 0, .front = 0, .right = count * RECORD, .bottom = 1, .back = 1};
         native->CopySubresourceRegion(buffer.Get(), 0, used, 0, 0, readback.streamed.Get(), 0, &box);
         readback.copies[readback.current].push_back({.offset = used, .count = count, .stride = RECORD, .layout = {.colour = 16},
-                                                     .shadows_only = light_instances.shadows_only, .streamed = true});
+                                                     .shadows_only = light_instances.shadows_only, .streamed = true, .falloff = falloff});
         used += count * RECORD;
       }
     }
@@ -1457,7 +1467,7 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
       const D3D11_BOX box = {.left = first, .top = 0, .front = 0, .right = first + (count * stride), .bottom = 1, .back = 1};
       native->CopySubresourceRegion(buffer.Get(), 0, used, 0, 0, instances.Get(), 0, &box);
       readback.copies[readback.current].push_back(
-          {.offset = used, .count = count, .stride = stride, .layout = layout, .shadows_only = light_instances.shadows_only});
+          {.offset = used, .count = count, .stride = stride, .layout = layout, .shadows_only = light_instances.shadows_only, .falloff = falloff});
       used += count * stride;
     }
     if (!BindLocalLights(native)) return {};
@@ -1507,6 +1517,13 @@ inline void InstallPointLights(std::span<const uint32_t> shader_hashes, UINT lig
   }
 }
 
+// Of the installed light shaders (InstallPointLights), those whose light falls off as 1 - distance / reach, not squared
+// (each host's table, read from its shaders' code): their lights' falloff goes to the paths, the fog and the glow
+// (bridge v32). At load, before the device.
+inline void InstallLinearFalloff(std::span<const uint32_t> shader_hashes) {
+  internal::linear_falloff_shaders.insert(internal::linear_falloff_shaders.end(), shader_hashes.begin(), shader_hashes.end());
+}
+
 // The game's point light builds with its point light shadows on (dx11_enable_point_shadows_*: Cutscene Point Light Shadows;
 // gather 4.1 at shader model 4.1, gather 5.0 at 5; the MSAA ones left out: DLAA has none), Attila's and Thrones' (the same
 // bytes; names.tsv, drawn in no trace: level B). The shadowed ones read the game's point shadow map (a 2D array, its cube's
@@ -1538,6 +1555,13 @@ inline constexpr std::array<PointShadowLight, internal::POINT_SHADOW_LIGHT_COUNT
     {.hash = 0xE48A600D, .map_slot = 5, .sampler_slot = 6, .comparison_slot = 5},
     {.hash = 0x5C3798EA, .map_slot = 5, .sampler_slot = 6, .comparison_slot = 5},
 }};
+
+// Attila's and Thrones' linear-falloff point lights (InstallLinearFalloff; names.tsv pointlightlinearfalloff*, their code
+// 1 - saturate(d / r) used once where the smooth ones square it: shaders/pointlight04-15, 24-31; WARP
+// tools/tw/reference/warp_lights): POINT_LIGHT_SHADERS' last 4, POINT_SHADOW_LIGHT_SHADERS' 8 first of each gather.
+constexpr std::array<uint32_t, 20> LINEAR_FALLOFF_LIGHT_SHADERS = {
+    0x593989DE, 0x0D7A1213, 0xB8F368CF, 0xC9E4E52D, 0xF59F5A63, 0x80A99678, 0xC15B836C, 0xC499C463, 0x448E583F, 0x3DD3CC25,
+    0x2F02F050, 0xEA5A7C4F, 0x43CA2116, 0xBB678513, 0x463D51CA, 0x194C988B, 0x507F23D6, 0x819D9051, 0xD18997A5, 0xB5C224DF};
 
 // A point-shadowed light draw with the traced lights bound at t42 (OnPointLightDraw, registered before, bound them: the row on
 // and something traced or screen-space shadowed): our build of its shader in place of the game's, its point shadow map lit
@@ -1931,6 +1955,7 @@ inline void Uninstall() {
     }
     reshade::unregister_event<reshade::addon_event::destroy_device>(internal::OnDestroyPointLightDevice);
   }
+  internal::linear_falloff_shaders.clear();
   if (std::exchange(internal::point_shadow_lights_installed, false)) {
     renodx::utils::command_action::Unregister(OnPointShadowLightDraw);
     internal::point_shadow_objects = {};

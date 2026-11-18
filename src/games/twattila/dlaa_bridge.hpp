@@ -77,6 +77,7 @@ struct TraceRequest {
   // v9, with RT_LOCAL_LIGHTS: the local lights (world position, reach in metres; RT_MAX_LIGHTS at most).
   std::span<const std::array<float, 4>> lights;
   std::span<const std::array<float, 4>> light_colours;  // v11: as `lights`
+  std::span<const uint8_t> light_kinds;                  // v32: as `lights`, RT_LIGHT_* (none: smooth)
   std::array<float, 16> view_projection = {};            // v11: the camera's registers (the ambient's history)
   std::span<const RtPlacement> placements;               // v14: the known placed draws (RT_PLACEMENTS at most)
   // v16: the compact draws and the cluster sets new to the helper, each one's data as `new_set_data` (copied into the
@@ -1150,6 +1151,7 @@ inline bool TraceScene(ID3D11DeviceContext* context, const TraceRequest& request
       float* colour = (first ? shared->rt_light_colours[light] : shared->rt_light_colours_more[light - RT_MAX_LIGHTS]);
       std::copy_n(request.lights[light].begin(), 4, position);
       if (light < request.light_colours.size()) std::copy_n(request.light_colours[light].begin(), 4, colour);
+      shared->rt_light_kinds[light] = (light < request.light_kinds.size()) ? request.light_kinds[light] : RT_LIGHT_SMOOTH;
     }
     std::copy_n(request.view_projection.begin(), 16, shared->rt_view_projection);
     shared->rt_placement_count = static_cast<uint32_t>(std::min<size_t>(request.placements.size(), RT_PLACEMENTS));

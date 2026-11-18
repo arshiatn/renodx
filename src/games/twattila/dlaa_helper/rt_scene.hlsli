@@ -84,7 +84,21 @@ cbuffer Lights : register(b4) {
   uint light_count;
   float4 light_colours[128];  // rgb
   uint4 light_previous[8];    // each light's place in the last trace's list, a byte each (255: new)
+  uint4 light_kinds[8];       // each light's falloff, a byte each (bridge v32 RT_LIGHT_*: 0 smooth, 1 linear)
 };
+
+static const uint LIGHT_LINEAR = 1u;  // dlaa_bridge.h RT_LIGHT_LINEAR
+
+// Light `index`'s falloff over its distance, as the game's shader that drew it gives it, is `falloff` (1 - distance /
+// reach) times this: `falloff` again for the smooth falloff (an older addon's lights all), 1 for the linear. Each site
+// multiplies the two in its own order, so smooth lights keep their bytes.
+float LightFalloffFactor(uint index, float falloff) {
+  // Its byte (selected, not indexed).
+  const uint4 words = light_kinds[index >> 4u];
+  const uint lane = (index >> 2u) & 3u;
+  const uint kind = (((lane == 0u) ? words.x : (lane == 1u) ? words.y : (lane == 2u) ? words.z : words.w) >> ((index & 3u) * 8u)) & 0xFFu;
+  return (kind == LIGHT_LINEAR) ? 1.f : falloff;
+}
 
 // Where the rays toward a local light stop before it (metres; at most half the way): its lamp, torch or fire's wood.
 static const float LIGHT_CLEARANCE = 0.5f;
@@ -99,9 +113,9 @@ float Luminance(float3 color) {
 // rt_core.hpp Host::local_light_scale).
 static const uint SUN_LIGHT_TEXEL = 2u;
 
-// What local light `index` gives a surface at `surface` facing `normal` (its colour at the game's diffuse scale, the games'
-// smooth falloff (1 - distance / reach)^2, its angle; 0 out of reach or behind), its direction and distance. Unscaled, the
-// paths' torch light in Attila came out 250 times the game's (walls blown out white, ATN's debug44).
+// What local light `index` gives a surface at `surface` facing `normal` (its colour at the game's diffuse scale, its
+// shader's falloff (LightFalloffFactor), its angle; 0 out of reach or behind), its direction and distance. Unscaled, the paths'
+// torch light in Attila came out 250 times the game's (walls blown out white, ATN's debug44).
 float3 LightArriving(uint index, float3 surface, float3 normal, out float3 direction, out float light_distance) {
   const float3 to_light = lights[index].xyz - surface;
   light_distance = length(to_light);
@@ -111,7 +125,7 @@ float3 LightArriving(uint index, float3 surface, float3 normal, out float3 direc
   if (n_dot_l <= 0.f) return 0.f;
   const float falloff = 1.f - light_distance / lights[index].w;
   const float diffuse_scale = sun[uint2(SUN_LIGHT_TEXEL, 0)].w;
-  return max(light_colours[index].rgb, 0.f) * (falloff * falloff * n_dot_l) * ((diffuse_scale > 0.f) ? diffuse_scale : 1.f);
+  return max(light_colours[index].rgb, 0.f) * (falloff * LightFalloffFactor(index, falloff) * n_dot_l) * ((diffuse_scale > 0.f) ? diffuse_scale : 1.f);
 }
 
 

@@ -3173,6 +3173,9 @@ bool AttachAddon() {
   // The fires: their particle lights' draws, the lights streamed (PARTICLE_LIGHTS, behind its own row); particlelight00 reads
   // the bits.
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x5AD46115}, twattila::rt_scene::internal::NO_LIGHT_CONSTANTS, &PARTICLE_LIGHTS);
+  // Their falloff 1 - saturate(d / r) unsquared: pointlight02, 03, 06, 07 (names.tsv pointlightlinearfalloff*) and the fires
+  // (particlelight00: used once).
+  twattila::rt_scene::InstallLinearFalloff(std::array<uint32_t, 5>{0xF8E063A1, 0x30261389, 0x4D9F5B28, 0x663B02B9, 0x5AD46115});
   twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   twattila::light_count::Install(0xE318CE77, 0x5AD46115);
   // Fog Shadows: rt_scene's fog hook binds the rays, then ours swaps the fog's shader where they are bound (registration order).

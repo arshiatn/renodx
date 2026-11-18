@@ -247,6 +247,10 @@ constexpr std::array<uint32_t, 26> POINT_LIGHT_SHADERS = {
     0xEB8E5349, 0x7CB7BB8A, 0x04DC39EE, 0x9D4260BA, 0xE021B167, 0xE5D3E58F, 0x977F794E, 0xB8658A9B, 0x35C55373,
     0xE6CBBA92, 0x7D38EDEC, 0x1C5F3E24, 0xBFB1B8BE, 0xEEA0895B, 0x7668C232, 0x25EAE821, 0xAED219EE, 0xED9F7ABE,
     0x9BDD40BF, 0xBE13FD5C, 0x4B8CE904, 0xFE570665, 0x357EA6B1, 0xCB257BE6, 0x8B834C92, 0xEF102757};
+// Of them the 12 linear-falloff builds (names.tsv pointlightlinearfalloff*: 1 - saturate(d / r) unsquared;
+// rt_scene::InstallLinearFalloff).
+constexpr std::array<uint32_t, 12> LINEAR_FALLOFF_LIGHT_SHADERS = {0xE021B167, 0xE5D3E58F, 0x977F794E, 0xB8658A9B, 0xBFB1B8BE, 0xEEA0895B,
+                                                                   0x7668C232, 0x25EAE821, 0x357EA6B1, 0xCB257BE6, 0x8B834C92, 0xEF102757};
 constexpr std::array<std::span<const uint8_t>, POINT_LIGHT_SHADERS.size()> RAY_TRACED_LIGHT_SHADERS = {
     __0xEB8E5349, __0x7CB7BB8A, __0x04DC39EE, __0x9D4260BA, __0xE021B167, __0xE5D3E58F, __0x977F794E, __0xB8658A9B, __0x35C55373,
     __0xE6CBBA92, __0x7D38EDEC, __0x1C5F3E24, __0xBFB1B8BE, __0xEEA0895B, __0x7668C232, __0x25EAE821, __0xAED219EE, __0xED9F7ABE,
@@ -2745,6 +2749,7 @@ bool AttachAddon() {
   // (c0 position, c1 colour and reach); ours drawn in place of the light shaders without the game's cube shadows where the
   // rays are bound (after rt_scene's hook: registration order).
   twattila::rt_scene::InstallPointLights(POINT_LIGHT_SHADERS, 2);
+  twattila::rt_scene::InstallLinearFalloff(LINEAR_FALLOFF_LIGHT_SHADERS);
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyLightShadowsDevice);
   for (const uint32_t hash : POINT_LIGHT_SHADERS) {
     renodx::utils::command_action::Register(

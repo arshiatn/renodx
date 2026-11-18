@@ -596,7 +596,9 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
   if (point_light) talesofarise::dlss::constants::Watch(point_light.Get(), 32);
   if (std::array<std::array<float, 4>, 2> rows = {};
       point_light && talesofarise::dlss::constants::Read(point_light.Get(), 0, std::as_writable_bytes(std::span(rows)))) {
-    twattila::rt_scene::AddLocalLight({.light = {rows[0][0], rows[0][1], rows[0][2], rows[1][3]}, .colour = {rows[1][0], rows[1][1], rows[1][2], 0.f}});
+    // point_light_PS's falloff 1 - saturate(d / g_light_radius), unsquared (pointlight00 / 01).
+    twattila::rt_scene::AddLocalLight({.light = {rows[0][0], rows[0][1], rows[0][2], rows[1][3]}, .colour = {rows[1][0], rows[1][1], rows[1][2], 0.f},
+                                       .falloff = twattila::dlaa_bridge::RT_LIGHT_LINEAR});
   }
   if (!twattila::rt_scene::BindLocalLights(native)) return {};
   return {.post_callback = [](Context& command, const void*) {

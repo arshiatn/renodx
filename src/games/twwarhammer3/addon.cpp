@@ -4354,6 +4354,8 @@ bool AttachAddon() {
   }
   twattila::rt_scene::InstallCutOutMasks(twwarhammer3::CUT_OUT_MASKS);
   twattila::rt_scene::InstallPointLights(std::span(traced_lights::SHADERS).first(traced_lights::POINT_LIGHT_SHADERS));
+  // Of them fx_pointlightlinearfalloff(shadow) (names.tsv): 1 - saturate(d / r) unsquared.
+  twattila::rt_scene::InstallLinearFalloff(std::array<uint32_t, 4>{0x8AD6BFD4, 0xEBF0B0A0, 0x1315B4F2, 0xB2453C88});
   twattila::rt_scene::InstallFogShadows(std::span(traced_lights::SHADERS).subspan(traced_lights::POINT_LIGHT_SHADERS, traced_lights::FOG_SHADERS));
   twwarhammer3::object_motion::Install([] { return twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.object_motion != 0.f; },
                                        [] { return twattila::feature_settings::Upscaling(aa_sliders) && water_motion_row != 0.f; },
