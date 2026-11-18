@@ -3104,7 +3104,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         GPU 25.6), ETL 4.0 GB bench\runs\night1118_day1_wpr_atn_023852; stress zoomed 12.8 fps 78.3 ms (CPU busy 82.0, GPU
         39.1), ETL 1.2 GB bench\runs\night1118_stress_wpr_atn_024236. Logs: all rows on; one Faster Game CPU Code site
         (soldier draw rounding) left alone "not the game's code as expected" (cpa1_ finds why). (3) cpa1_ (day1) + cpa2_
-        (stress) Opus xHigh analysts STARTED 02:49 -> plan_1117/night1118/analysis_{day1,stress}.md.
+        (stress) Opus xHigh analysts STARTED 02:49 -> plan_1117/night1118/analysis_{day1,stress}.md. DONE ~03:4x (their
+        own Writes of the files refused by the harness, "Subagents should return findings as text": the coordinator
+        saved both texts). Stress (CPU-bound, 82.7 ms): B4G's threaded sort NEVER ran (no list >= 32768; sort chain
+        still 9.6 ms on the path: author, lower gate); new exact class = store-forwarding stalls: ES8b our own ready
+        stub 1.17, EF4 0x18960d0 1.77 (cpa1_ reads the same IPs as output-stream stores: the planner settles it from
+        the bytes), HX87 heapfix fisttp reload 0.85 render + 14.9 workers (author; this is also why the soldier
+        rounding site stood down: heapfix rewrote those bytes, our stand-down is right, log wording only); E3P sites'
+        data in both files; Effect Prefetch at distance 2 no gain; grass at the ground 0.35 ms; ASMT render thread's
+        SMT sibling busy 32 %. Day1 maxed is GPU-BOUND: helper GPU 22.8 ms never overlaps the game's 26.0, the CPU
+        waits 13.2 (Map 7.3 + driver present spin 5.8): GPUB for the GPU line. (4) cpl1_ Opus xHigh planner STARTED
+        03:32 -> plan_1117/night1118/cpu_plan3.md (saved by the coordinator from its text).
       - [ ] TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started as `powershell -File ...
         -Env $array` (rbk_'s first batch, renamed nsight\runs\rbkpre_*, was level 5 only): accept one ;-separated
         string or fail loudly on more than one entry; check other agents' multi-Env runs; (b) runners must start the
