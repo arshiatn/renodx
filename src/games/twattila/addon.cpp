@@ -40,6 +40,7 @@
 #include "./graphics_hooks.hpp"
 #include "./anti_aliasing.hpp"
 #include "./ao_pass.hpp"
+#include "./cpu_sets.hpp"
 #include "./device_loss.hpp"
 #include "./draw_dispatch.hpp"
 #include "./engine_code.hpp"
@@ -1327,6 +1328,8 @@ float render_lists_row = 1.f;
 float job_wakeups_row = 0.f;
 // Faster Effect Prefetch (Experimental, off): engine_code.hpp's effect tree child sum site.
 float effect_prefetch_row = 0.f;
+// Keep Render Core Free (Experimental, off): cpu_sets.hpp.
+float keep_render_core_row = 0.f;
 
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1521,6 +1524,7 @@ void OnInitDevice(reshade::api::device*) {
 
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  twattila::cpu_sets::Update(keep_render_core_row != 0.f);
   talesofarise::pixel_trace::OnPresent(queue);
   if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
@@ -1971,6 +1975,17 @@ void ConfigureAddon() {
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{
+          .key = "KeepRenderCoreFree",
+          .binding = &keep_render_core_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Keep Render Core Free (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Keeps the second half of the render thread's CPU core free for it. Only inside the CPU cores\n"
+                     "Windows or your own rules give the game. Same results.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
           .key = "RayTracedSkipShadowPass",
           .binding = &shadow_pass_row,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
@@ -2333,6 +2348,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  twattila::cpu_sets::Stop();
   twattila::test_hooks::Uninstall();
   twattila::pass_timing::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);

@@ -1,5 +1,17 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Keep Render Core Free (2026-11-18; built only, not stamped, not installed, not run in game)
+
+- New: **Keep Render Core Free (Experimental, off)**, under Graphics (Experimental): the game's other threads are kept off
+  the CPU core its render thread runs on (the core it used most over 64 presents), so the core's second logical CPU is
+  free for it. Windows CPU sets on the game's own threads only, always inside the CPUs the game may use (its process CPU
+  set, such as a CPU set tool's rule, else its affinity); threads with their own rules are left alone. Stands down on
+  fewer than 4 cores, no SMT, mixed core kinds or more than one processor group; a change of the game's CPU set clears
+  ours and measures again. Off: exactly ours cleared. Scheduling only: same results. Checked in `test/tw_cpu_sets`
+  (synthetic CPUs, then live in its own process).
+- Test (ATN): stress / night1 / day1 with the row on against off; ReShade.log "Keep Render Core Free: on: ... CPU core N"
+  (or "stands down: <why>"); one WPR showing the render core's sibling idle.
+
 ## Dev, Faster Effect Prefetch (2026-11-17; offline only, not stamped, not installed, not run in game)
 
 - New: **Faster Effect Prefetch (Experimental, off)**, under Graphics (Experimental): while the game sums its effect tree
