@@ -759,55 +759,64 @@ constexpr std::array<uint32_t, 40> HALF_ROWS_CONSTANTS = {
 // 8. The effect tree's child sum (+0x1890b90; E3P of the CPU plan): `sum += child->vtable[0x1c]()` over the vector at
 // [this+0x68] of [this+0x64] pointers, the bounds read again after every call. The children are scattered heap objects, so
 // the loop waits for each one's first line. The stub at the loop's bottom (the `lea ecx, [ecx + edx*4]; cmp esi, ecx` that
-// the `jne` tests; esi is the next item's slot, ecx the vector's begin, edx its size) prefetches the children K - 1 and K / 2 - 1
-// places after the next one (K = CHILD_SUM_AHEAD): only when the far slot's 4 bytes [esi + 4K - 4, esi + 4K) lie wholly inside
-// [begin, end) as the vector is right now, with no wrap of the address space (a vector the call reallocated puts the old esi
-// outside it: no load; esi need not be 4 apart from the begin). The near slot [esi + 2K - 4, esi + 2K) is then inside too:
-// begin <= esi <= esi + 2K - 4 and esi + 2K <= esi + 4K <= end, no wrap. `prefetcht0` itself never faults. Same results: the
-// flags the `jne` sees are the game's `cmp esi, ecx`, ecx is the end as the game computes it, edx is not touched, and eax, which
-// the game has added to the sum and next overwrites (the loop's top, `mov eax, edi` at the exit), is the one register that
-// differs. No store, and loads only inside the vector's size * 4 bytes, which any vector keeps committed after a call returns
-// (the one assumption): every register, the flags and the memory at the function's return are the game's.
+// the `jne` tests; esi is the next item's slot, ecx the vector's begin, edx its size) prefetches the children K / 2 - 1 and K - 1
+// places after the next one (K = CHILD_SUM_AHEAD), each behind its own check: the near child only when the near slot's 4 bytes
+// [esi + 2K - 4, esi + 2K) lie wholly inside [begin, end) as the vector is right now, with no wrap of the address space, the far
+// child only when the far slot's [esi + 4K - 4, esi + 4K) does the same (a vector the call reallocated puts the old esi outside
+// it: no load; esi need not be 4 apart from the begin). Each check is exact by itself: esi >= begin and K >= 2 put the slot's
+// first byte at or above the begin, the add's carry rules out the wrap, the compare puts its last byte below the end. A near
+// slot that fails fails the far one too (esi + 2K past the end or past 2^32 puts esi + 4K there), so the stub skips the second
+// check. `prefetcht0` itself never faults. Same results: the flags the `jne` sees are the game's `cmp esi, ecx`, ecx is the end
+// as the game computes it, edx is not touched, and eax, which the game has added to the sum and next overwrites (the loop's top,
+// `mov eax, edi` at the exit), is the one register that differs. No store, and loads only inside the vector's size * 4 bytes,
+// which any vector keeps committed after a call returns (the one assumption): every register, the flags and the memory at the
+// function's return are the game's.
 constexpr std::string_view CHILD_SUM =
     "53 8B D9 56 57 33 FF 8B 73 68 8B 43 64 8D 04 86 3B F0 74 19 8B 0E 8B 01 FF 50 1C 8B 53 64 83 C6 04 8B 4B 68 03 F8 8D 0C 91 "
     "3B F1 75 E7 8B C7 5F 5E 5B C3";
 constexpr size_t CHILD_SUM_SITE = 38;    // lea ecx, [ecx + edx*4]; cmp esi, ecx
 constexpr size_t CHILD_SUM_RESUME = 43;  // jne to the loop's top
 constexpr uint8_t CHILD_SUM_AHEAD = 4;
-static_assert(CHILD_SUM_AHEAD >= 2 && CHILD_SUM_AHEAD % 2 == 0 && CHILD_SUM_AHEAD * 4 <= 127);  // K / 2 a whole slot; the add's immediate a signed byte
-// The stub for K = `ahead`: the children in the slots [esi + 4K - 4, esi + 4K) and [esi + 2K - 4, esi + 2K), K - 1 and K / 2 - 1 places after the
-// next one, both behind the one check of the far slot (the test builds the stub for other K and the other forms for its timing).
-constexpr std::array<uint8_t, 37> ChildSumStub(uint8_t ahead) {
+// K >= 2: the near slot starts at esi or above (2K - 4 >= 0); K even: K / 2 a whole slot; 4K: the add's immediate a signed byte.
+static_assert(CHILD_SUM_AHEAD >= 2 && CHILD_SUM_AHEAD % 2 == 0 && CHILD_SUM_AHEAD * 4 <= 127);
+// The stub for K = `ahead` (the same preconditions: the test builds it for K = 4, 8 and 16 for its timing, and the other forms):
+// the children in the slots [esi + 2K - 4, esi + 2K) and [esi + 4K - 4, esi + 4K), K / 2 - 1 and K - 1 places after the next one.
+constexpr std::array<uint8_t, 48> ChildSumStub(uint8_t ahead) {
   return {
-      0x39, 0xCE,                                       // cmp esi, ecx                    esi against the begin
-      0x8D, 0x0C, 0x91,                                 // lea ecx, [ecx + edx*4]          the end (no flags)
-      0x72, 0x17,                                       // jb skip                         esi below the begin: stale, no load
-      0x89, 0xF0,                                       // mov eax, esi
-      0x83, 0xC0, static_cast<uint8_t>(ahead * 4),      // add eax, 4K
-      0x72, 0x10,                                       // jc skip                         esi + 4K past 2^32
-      0x39, 0xC8,                                       // cmp eax, ecx
-      0x77, 0x0C,                                       // ja skip                         the far slot is not wholly inside
-      0x8B, 0x40, 0xFC,                                 // mov eax, dword ptr [eax - 4]     the child in the far slot
-      0x0F, 0x18, 0x08,                                 // prefetcht0 byte ptr [eax]
-      0x8B, 0x46, static_cast<uint8_t>(ahead * 2 - 4),  // mov eax, dword ptr [esi + 2K - 4]  the child in the near slot
-      0x0F, 0x18, 0x08,                                 // prefetcht0 byte ptr [eax]
-      0x39, 0xCE,                                       // skip: cmp esi, ecx              the flags the game's jne tests
-      0xE9, 0x00, 0x00, 0x00, 0x00,                     // jmp the loop's jne (patched in Prepare)
+      0x39, 0xCE,                                   // cmp esi, ecx                 esi against the begin
+      0x8D, 0x0C, 0x91,                             // lea ecx, [ecx + edx*4]       the end (no flags)
+      0x72, 0x22,                                   // jb skip                      esi below the begin: stale, no load
+      0x89, 0xF0,                                   // mov eax, esi
+      0x83, 0xC0, static_cast<uint8_t>(ahead * 2),  // add eax, 2K
+      0x72, 0x1B,                                   // jc skip                      esi + 2K past 2^32 (esi + 4K too)
+      0x39, 0xC8,                                   // cmp eax, ecx
+      0x77, 0x17,                                   // ja skip                      the near slot is not wholly inside (the far one neither)
+      0x8B, 0x40, 0xFC,                             // mov eax, dword ptr [eax - 4]  the child in the near slot
+      0x0F, 0x18, 0x08,                             // prefetcht0 byte ptr [eax]
+      0x89, 0xF0,                                   // mov eax, esi
+      0x83, 0xC0, static_cast<uint8_t>(ahead * 4),  // add eax, 4K
+      0x72, 0x0A,                                   // jc skip                      esi + 4K past 2^32
+      0x39, 0xC8,                                   // cmp eax, ecx
+      0x77, 0x06,                                   // ja skip                      the far slot is not wholly inside
+      0x8B, 0x40, 0xFC,                             // mov eax, dword ptr [eax - 4]  the child in the far slot
+      0x0F, 0x18, 0x08,                             // prefetcht0 byte ptr [eax]
+      0x39, 0xCE,                                   // skip: cmp esi, ecx           the flags the game's jne tests
+      0xE9, 0x00, 0x00, 0x00, 0x00,                 // jmp the loop's jne (patched in Prepare)
   };
 }
-constexpr std::array<uint8_t, 37> CHILD_SUM_STUB = ChildSumStub(CHILD_SUM_AHEAD);
+constexpr std::array<uint8_t, 48> CHILD_SUM_STUB = ChildSumStub(CHILD_SUM_AHEAD);
 
 // 9. The particle writer's float4 reloads (+0x18960d0, thiscall(float, const float*), ret 8; the effect update calls it once for
 // every particle). It builds two float4s (a colour and a vector) with four 4-byte `movss` stores each into the frame at
 // [esp + 0x40 .. 0x4f] and reloads each with one 16-byte `movups xmm0, [esp + 0x40]` to store it into a vertex stream. A load that
-// spans four stores can't be forwarded from the store buffer. The stub loads each lane from the address and size of the store that
-// wrote it: `movss xmm0, [esp + 0x40]`, then `insertps xmm0, [esp + 0x44 / 0x48 / 0x4c], 0x10 / 0x20 / 0x30` (SSE4.1: without it
-// the sites are not looked for). Same results:
-// xmm0 holds the same 128 bits (moves only: NaN payloads, subnormals and the sign of zero as they are; MXCSR untouched), no flag and
-// no other register changes, no store, and the four loads read the same 16 stack bytes after the same stores. Found by the function's
-// tail (+0x18967db, its call's displacement wild), at the Steam build's place first, then anywhere in the code: another mod's change
-// in the tail, a site included, leaves both alone. No branch lands inside either site (the whole DLL's relative branches and absolute
-// pointers, Attila's and Thrones').
+// spans four stores can't be forwarded from the store buffer: it waits until they have reached the cache, and stores drain in
+// program order, so it also waits for every older store (the streams' other rows). The stub loads each lane from the address and
+// size of the store that wrote it: `movss xmm0, [esp + 0x40]`, then `insertps xmm0, [esp + 0x44 / 0x48 / 0x4c], 0x10 / 0x20 /
+// 0x30` (SSE4.1: without it the sites are not looked for). Same results: xmm0 holds the same 128 bits (moves only: NaN payloads,
+// subnormals and the sign of zero as they are; MXCSR untouched), no flag and no other register changes, no store, and the four
+// loads read the same 16 stack bytes after the same stores. Found by the function's tail (+0x18967db, its call's displacement
+// wild), at the Steam build's place first, then anywhere in the code: another mod's change in the tail, a site included, leaves
+// both alone. No branch lands inside either site (the whole DLL's relative branches and absolute pointers, Attila's and Thrones').
 constexpr std::string_view FLOAT4_RELOAD =
     "8D 44 24 40 8B CF 50 E8 ?? ?? ?? ?? 8B 47 10 8B 40 78 80 78 2C 00 74 07 F3 0F 10 4F 78 EB 03 0F 57 C9 8B 54 24 7C "
     "F3 0F 10 44 24 4C F3 0F 59 C1 8B 02 F3 0F 11 44 24 4C F3 0F 10 45 08 F3 0F 11 40 0C 8B 42 04 F3 0F 10 84 24 80 00 "
@@ -817,17 +826,19 @@ constexpr std::string_view FLOAT4_RELOAD =
     "10 44 24 10 F3 0F 11 44 24 44 F3 0F 10 44 24 18 89 41 08 8B 42 10 F3 0F 11 44 24 48 F3 0F 10 44 24 1C F3 0F 11 44 "
     "24 4C 0F 10 44 24 40 0F 11 00 8B 4F 0C 8B 42 14 0F 10 81 80 00 00 00 0F 11 00 5F 5E 8B E5 5D C2 08 00";
 constexpr std::array<size_t, 2> FLOAT4_RELOAD_AT = {128, 230};  // movups xmm0, xmmword ptr [esp + 0x40]: the colour's, the vector's
-// The stub for the 5-byte `movups xmm0, [esp + at]`, lane by lane (12. uses it for other sites).
-constexpr std::array<uint8_t, 35> Float4ReloadStub(uint8_t at) {
+// The stub for the 5-byte `movups xmm0, [esp + AT]`, lane by lane (13. uses it for other sites).
+template <uint8_t AT>
+constexpr std::array<uint8_t, 35> Float4ReloadStub() {
+  static_assert(AT + 12 <= 0x7F);  // the four displacements signed bytes
   return {
-      0xF3, 0x0F, 0x10, 0x44, 0x24, at,                                              // movss xmm0, dword ptr [esp + at]
-      0x66, 0x0F, 0x3A, 0x21, 0x44, 0x24, static_cast<uint8_t>(at + 4), 0x10,        // insertps xmm0, dword ptr [esp + at + 4], 0x10
-      0x66, 0x0F, 0x3A, 0x21, 0x44, 0x24, static_cast<uint8_t>(at + 8), 0x20,        // insertps xmm0, dword ptr [esp + at + 8], 0x20
-      0x66, 0x0F, 0x3A, 0x21, 0x44, 0x24, static_cast<uint8_t>(at + 12), 0x30,       // insertps xmm0, dword ptr [esp + at + 12], 0x30
+      0xF3, 0x0F, 0x10, 0x44, 0x24, AT,                                              // movss xmm0, dword ptr [esp + AT]
+      0x66, 0x0F, 0x3A, 0x21, 0x44, 0x24, static_cast<uint8_t>(AT + 4), 0x10,        // insertps xmm0, dword ptr [esp + AT + 4], 0x10
+      0x66, 0x0F, 0x3A, 0x21, 0x44, 0x24, static_cast<uint8_t>(AT + 8), 0x20,        // insertps xmm0, dword ptr [esp + AT + 8], 0x20
+      0x66, 0x0F, 0x3A, 0x21, 0x44, 0x24, static_cast<uint8_t>(AT + 12), 0x30,       // insertps xmm0, dword ptr [esp + AT + 12], 0x30
       0xE9, 0x00, 0x00, 0x00, 0x00,                                                  // jmp back (the instruction after the site)
   };
 }
-constexpr std::array<uint8_t, 35> FLOAT4_RELOAD_STUB = Float4ReloadStub(0x40);
+constexpr std::array<uint8_t, 35> FLOAT4_RELOAD_STUB = Float4ReloadStub<0x40>();
 // Whether the CPU has insertps; the test turns it off to see the sites left out.
 static bool sse4_1 = (IsProcessorFeaturePresent(PF_SSE4_1_INSTRUCTIONS_AVAILABLE) != FALSE);
 
@@ -838,9 +849,9 @@ static bool sse4_1 = (IsProcessorFeaturePresent(PF_SSE4_1_INSTRUCTIONS_AVAILABLE
 // that bottom, where ebx is already the next particle's index, loads the slot K = PARTICLE_PREFETCH_AHEAD particles after the next one and prefetches the
 // particle's four lines, only when the slot is inside the size as it is right now: the array the game's next load reads holds size * 4 bytes (the one
 // assumption, as in 8.), and the lea wraps like the load's address does, so an index past 2^32 loads from inside the vector too. The prefetch never
-// faults. The stub spends esi, which is dead there (the loop's top loads it, the way out only pops it and calls a function that never reads esi as an input: checked in the
-// DLL's bytes, Attila's and Thrones'); the flags the `jb` tests are the game's `cmp`; no store, no other register: every register but esi, the flags and
-// all memory at the loop's end are the game's. Found by the loop's 104 bytes and the 36 after it (the way out the esi argument stands on, its call wild), at
+// faults. The stub spends esi, which is dead there (the loop's top loads it, the way out only pops it and calls a function that never reads esi as an
+// input: checked in the DLL's bytes, Attila's and Thrones'); the flags the `jb` tests are the game's `cmp`; no store, no other register: every register
+// but esi, the flags and all memory at the loop's end are the game's. Found by the loop's 104 bytes and the 36 after it (the way out the esi argument stands on, its call wild), at
 // the Steam build's place first, then anywhere in the code; no branch lands inside the site (the whole DLL's relative branches and absolute pointers,
 // Attila's and Thrones'), no site or hook of the Attila CPU Performance Fix 7.0 lies in the loop.
 constexpr std::string_view PARTICLE_LOOP =
@@ -944,7 +955,7 @@ constexpr std::string_view SOLDIER_ROWS =
     "18 F3 0F 11 84 24 A8 00 00 00 F3 0F 10 44 24 ?? F3 0F 11 84 24 B8 00 00 00 F3 0F 11 8C 24 9C 00 00 00 0F 10 84 24 90 00 "
     "00 00 F3 0F 11 B4 24 A4 00 00 00 0F 11 44 24 ?? F3 0F 11 9C 24 A0 00 00 00 0F 10 84 24 A0 00 00 00 0F 11 44 24 ?? 0F 10 "
     "84 24 B0 00 00 00 E9 53 01 00 00";
-constexpr std::array<uint16_t, 3> SOLDIER_ROWS_AT = {154, 185, 198};  // movups xmm0, xmmword ptr [esp + 0x90 / 0xa0 / 0xb0]
+constexpr std::array<size_t, 3> SOLDIER_ROWS_AT = {154, 185, 198};  // movups xmm0, xmmword ptr [esp + 0x90 / 0xa0 / 0xb0]
 constexpr std::string_view ROME2_SOLDIER_ROWS =
     "F3 0F 11 9C 24 A0 00 00 00 F3 0F 59 86 E0 00 00 00 0F 28 D7 F3 0F 59 D1 0F 28 CE F3 0F 59 8E E4 00 00 00 F3 0F 58 D0 F3 "
     "0F 11 AC 24 B0 00 00 00 F3 0F 10 44 24 10 F3 0F 59 86 E8 00 00 00 F3 0F 11 B4 24 94 00 00 00 F3 0F 11 BC 24 A4 00 00 00 "
@@ -953,17 +964,22 @@ constexpr std::string_view ROME2_SOLDIER_ROWS =
     "00 00 F3 0F 10 44 24 34 F3 0F 11 84 24 B4 00 00 00 F3 0F 10 44 24 20 F3 0F 58 4C 24 1C F3 0F 11 84 24 98 00 00 00 F3 0F "
     "10 44 24 10 F3 0F 11 84 24 A8 00 00 00 F3 0F 10 44 24 18 F3 0F 11 84 24 B8 00 00 00 F3 0F 11 8C 24 9C 00 00 00 0F 10 84 "
     "24 90 00 00 00 0F 11 44 24 44 0F 10 84 24 A0 00 00 00 0F 11 44 24 54 0F 10 84 24 B0 00 00 00 E9 69 01 00 00";
-constexpr std::array<uint16_t, 3> ROME2_SOLDIER_ROWS_AT = {237, 250, 263};
+constexpr std::array<size_t, 3> ROME2_SOLDIER_ROWS_AT = {237, 250, 263};
 constexpr size_t SOLDIER_ROW_LOAD_SIZE = 8;  // movups xmm0, xmmword ptr [esp + disp32]
 // The stub for the 8-byte `movups xmm0, [esp + at]`, lane by lane.
 constexpr std::array<uint8_t, 47> Float4ReloadFarStub(uint32_t at) {
   const auto byte = [](uint32_t value, int shift) { return static_cast<uint8_t>(value >> shift); };
   return {
-      0xF3, 0x0F, 0x10, 0x84, 0x24, byte(at, 0), byte(at, 8), byte(at, 16), byte(at, 24),  // movss xmm0, dword ptr [esp + at]
-      0x66, 0x0F, 0x3A, 0x21, 0x84, 0x24, byte(at + 4, 0), byte(at + 4, 8), byte(at + 4, 16), byte(at + 4, 24), 0x10,       // insertps xmm0, dword ptr [esp + at + 4], 0x10
-      0x66, 0x0F, 0x3A, 0x21, 0x84, 0x24, byte(at + 8, 0), byte(at + 8, 8), byte(at + 8, 16), byte(at + 8, 24), 0x20,       // insertps xmm0, dword ptr [esp + at + 8], 0x20
-      0x66, 0x0F, 0x3A, 0x21, 0x84, 0x24, byte(at + 12, 0), byte(at + 12, 8), byte(at + 12, 16), byte(at + 12, 24), 0x30,   // insertps xmm0, dword ptr [esp + at + 12], 0x30
-      0xE9, 0x00, 0x00, 0x00, 0x00,                                                         // jmp back (the instruction after the site)
+      // movss xmm0, dword ptr [esp + at]
+      0xF3, 0x0F, 0x10, 0x84, 0x24, byte(at, 0), byte(at, 8), byte(at, 16), byte(at, 24),
+      // insertps xmm0, dword ptr [esp + at + 4], 0x10
+      0x66, 0x0F, 0x3A, 0x21, 0x84, 0x24, byte(at + 4, 0), byte(at + 4, 8), byte(at + 4, 16), byte(at + 4, 24), 0x10,
+      // insertps xmm0, dword ptr [esp + at + 8], 0x20
+      0x66, 0x0F, 0x3A, 0x21, 0x84, 0x24, byte(at + 8, 0), byte(at + 8, 8), byte(at + 8, 16), byte(at + 8, 24), 0x20,
+      // insertps xmm0, dword ptr [esp + at + 12], 0x30
+      0x66, 0x0F, 0x3A, 0x21, 0x84, 0x24, byte(at + 12, 0), byte(at + 12, 8), byte(at + 12, 16), byte(at + 12, 24), 0x30,
+      // jmp back (the instruction after the site)
+      0xE9, 0x00, 0x00, 0x00, 0x00,
   };
 }
 constexpr std::array<std::array<uint8_t, 47>, 3> SOLDIER_ROWS_STUBS = {Float4ReloadFarStub(0x90), Float4ReloadFarStub(0xA0), Float4ReloadFarStub(0xB0)};
@@ -997,7 +1013,7 @@ constexpr std::string_view MATRIX_PRODUCT =
     "0F 10 44 24 18 F3 0F 58 49 2C F3 0F 11 54 24 34 0F 11 01 0F 10 44 24 28 F3 0F 11 4C 24 44 0F 11 41 10 0F 10 44 24 38 0F "
     "11 41 20 83 EA 01 0F 85 7C FD FF FF 5B C6 46 01 01 5F 5E 83 C4 3C C2 04 00";
 constexpr std::array<size_t, 3> MATRIX_PRODUCT_AT = {640, 659, 674};  // movups xmm0, xmmword ptr [esp + 0x18 / 0x28 / 0x38]
-constexpr std::array<std::array<uint8_t, 35>, 3> MATRIX_PRODUCT_STUBS = {Float4ReloadStub(0x18), Float4ReloadStub(0x28), Float4ReloadStub(0x38)};
+constexpr std::array<std::array<uint8_t, 35>, 3> MATRIX_PRODUCT_STUBS = {Float4ReloadStub<0x18>(), Float4ReloadStub<0x28>(), Float4ReloadStub<0x38>()};
 
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half, fmod and the
 // ready check the same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots
@@ -1040,7 +1056,7 @@ struct Build {
   uint32_t emitter_loop_rva;   // the emitter update loop's function (EMITTER_LOOP's first byte)
   uint32_t soldier_rows_rva;   // the soldier draw's matrix rows (soldier_rows' first byte)
   std::string_view soldier_rows;
-  std::array<uint16_t, 3> soldier_rows_at;  // the three reloads in soldier_rows
+  std::array<size_t, 3> soldier_rows_at;  // the three reloads in soldier_rows
   uint32_t matrix_product_rva;  // the matrix product (MATRIX_PRODUCT's first byte)
 };
 constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA, 0x16b5550, 0x16b5520, 0x1689b90, 0x1907511, 0x1890b90, 0x18967db, 0x1893820, 0x1893330, 0x17f689d, SOLDIER_ROWS, SOLDIER_ROWS_AT, 0x168d570};
@@ -1085,8 +1101,8 @@ static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the thre
 
 // Which sites each row writes (bits by `sites` index).
 constexpr size_t FLOAT4_RELOAD_FIRST_SITE = 10;  // the colour's reload; the vector's is the next
-constexpr uint32_t FLOAT4_RELOAD_SITES = 0b110000000000;  // the particle writer's two reloads
-static_assert(FLOAT4_RELOAD_SITES == 0b11u << FLOAT4_RELOAD_FIRST_SITE && FLOAT4_RELOAD_AT.size() == 2);
+constexpr uint32_t FLOAT4_RELOAD_SITES = 0b11u << FLOAT4_RELOAD_FIRST_SITE;  // the particle writer's two reloads
+static_assert(FLOAT4_RELOAD_AT.size() == 2);
 constexpr size_t SOLDIER_ROWS_FIRST_SITE = 14;  // the soldier draw's first row reload; the second and third are the next
 constexpr uint32_t SOLDIER_ROWS_SITES = 0b111u << SOLDIER_ROWS_FIRST_SITE;
 constexpr size_t MATRIX_PRODUCT_FIRST_SITE = 17;  // the matrix product's first row reload; the second and third are the next
@@ -1137,6 +1153,10 @@ static std::array<Site, 20> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "matrix product row 1"},
                                      {.name = "matrix product row 2"},
                                      {.name = "matrix product row 3"}}};
+// The reload rows' sites follow each other to the end of `sites`; every site has a bit of the uint32_t masks.
+static_assert(SOLDIER_ROWS_FIRST_SITE + SOLDIER_ROWS_STUBS.size() == MATRIX_PRODUCT_FIRST_SITE
+              && MATRIX_PRODUCT_FIRST_SITE + MATRIX_PRODUCT_STUBS.size() == std::tuple_size_v<decltype(sites)>
+              && std::tuple_size_v<decltype(sites)> <= 32);
 static uint8_t* job_table = nullptr;
 static uint8_t* page = nullptr;
 static bool prepared = false;
@@ -1276,7 +1296,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
 
   page = static_cast<uint8_t*>(VirtualAlloc(nullptr, PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
   std::array<uint8_t*, std::tuple_size_v<decltype(sites)>> stubs = {};
-  // A float4 reload's stub (9., 12.) at `stub`: its jump back goes after the game's `load_size`-byte movups at `site`.
+  // A float4 reload's stub (9., 12., 13.) at `stub`: its jump back goes after the game's `load_size`-byte movups at `site`.
   const auto place_reload = [&](size_t index, uint8_t* site, size_t load_size, std::span<const uint8_t> code, uint8_t* stub) {
     std::memcpy(stub, code.data(), code.size());
     write32(stub + code.size() - 4, relative(stub + code.size(), site + load_size));
@@ -1395,14 +1415,16 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       }
     }
     // The soldier draw's three matrix row reloads, found by the rows' stores and reloads.
-    if (uint8_t* match = ((build.soldier_rows_rva != 0 && sse4_1) ? find(build.soldier_rows, build.soldier_rows_rva) : nullptr); match != nullptr) {
+    if (uint8_t* match = ((build.soldier_rows_rva != 0 && sse4_1) ? find(build.soldier_rows, build.soldier_rows_rva) : nullptr);
+        match != nullptr) {
       for (size_t row = 0; row < SOLDIER_ROWS_STUBS.size(); ++row) {
         place_reload(SOLDIER_ROWS_FIRST_SITE + row, match + build.soldier_rows_at[row], SOLDIER_ROW_LOAD_SIZE, SOLDIER_ROWS_STUBS[row],
                      page + SOLDIER_ROWS_PAGE + row * FLOAT4_RELOAD_STRIDE);
       }
     }
     // The matrix product's three row reloads, found by the whole function.
-    if (uint8_t* match = ((build.matrix_product_rva != 0 && sse4_1) ? find(MATRIX_PRODUCT, build.matrix_product_rva) : nullptr); match != nullptr) {
+    if (uint8_t* match = ((build.matrix_product_rva != 0 && sse4_1) ? find(MATRIX_PRODUCT, build.matrix_product_rva) : nullptr);
+        match != nullptr) {
       for (size_t row = 0; row < MATRIX_PRODUCT_STUBS.size(); ++row) {
         place_reload(MATRIX_PRODUCT_FIRST_SITE + row, match + MATRIX_PRODUCT_AT[row], SITE_SIZE, MATRIX_PRODUCT_STUBS[row],
                      page + MATRIX_PRODUCT_PAGE + row * FLOAT4_RELOAD_STRIDE);

@@ -298,16 +298,6 @@ __declspec(naked) void ParticleBlockFell() {
   }
 }
 
-// A block entered by itself (EnterSumBlock) with an access violation caught: false if it faulted.
-bool EnterSumBlockGuarded(SumBlockCall* call) {
-  __try {
-    EnterSumBlock(call);
-    return true;
-  } __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
-    return false;
-  }
-}
-
 int RunParticleTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick) {
   namespace ec = twattila::engine_code::internal;
   const uint32_t loop_rva = build.code->particle_loop_rva;
@@ -705,13 +695,19 @@ int RunParticleTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bo
         std::sort(ns[variant].begin(), ns[variant].end());
         median[variant] = ns[variant][ROUNDS / 2];
       }
-      // Hot: the copy without the stub (the update alone) and with K = 2 (what the stub costs when nothing misses).
-      const double hot = run_emitters(6, true, PER_EMITTER);
-      const double hot_k2 = run_emitters(3, true, PER_EMITTER);
+      // Hot: the copy without the stub (the update alone) and with K = 2 (what the stub costs when nothing misses); one run to warm the 256
+      // particles up, then the median of 7 rounds each, the two taking turns.
+      run_emitters(6, true, PER_EMITTER);
+      std::array<std::vector<double>, 2> hot_ns;
+      for (int round = 0; round < ROUNDS; ++round) {
+        hot_ns[0].push_back(run_emitters(6, true, PER_EMITTER));
+        hot_ns[1].push_back(run_emitters(3, true, PER_EMITTER));
+      }
+      for (std::vector<double>& values : hot_ns) std::sort(values.begin(), values.end());
       lines += std::format("   ns a particle, update of {} multiplies (hot: no stub {:.1f}, K=2 {:.1f}), emitters of {}: game {:.1f}, ours (K = {}) {:.1f}, copies: no stub {:.1f}, K=1 {:.1f}, "
                            "K=2 {:.1f}, K=3 {:.1f}, K=4 {:.1f}\n",
-                           busy, hot, hot_k2, per_emitter, median[0], static_cast<uint32_t>(ec::PARTICLE_PREFETCH_AHEAD), median[1], median[6], median[2], median[3], median[4],
-                           median[5]);
+                           busy, hot_ns[0][ROUNDS / 2], hot_ns[1][ROUNDS / 2], per_emitter, median[0], static_cast<uint32_t>(ec::PARTICLE_PREFETCH_AHEAD), median[1],
+                           median[6], median[2], median[3], median[4], median[5]);
     }
     std::fputs(lines.c_str(), stdout);
     VirtualFree(memory, 0, MEM_RELEASE);
