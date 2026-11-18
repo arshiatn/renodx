@@ -287,19 +287,19 @@ T* GameBinding(const ComPtr<T>& bound, const ComPtr<T>& ours, const ComPtr<T>& g
 }
 
 // A ring of the motion constants (dynamic) and an event after the last draw that read it, ended when the next ring took
-// over (`read`: the GPU may read it until that event).
+// over (the GPU may read the ring until that event).
 struct MotionRing {
   ComPtr<ID3D11Buffer> buffer;
   ComPtr<ID3D11Query> read_done;
-  bool read = false;
+  bool ended = false;
 };
 
 inline bool MakeMotionRing(ID3D11Device* device, MotionRing* ring) {
   const D3D11_BUFFER_DESC desc = {.ByteWidth = MOTION_RING_SLOTS * MOTION_RING_SLOT_BYTES, .Usage = D3D11_USAGE_DYNAMIC,
                                   .BindFlags = D3D11_BIND_CONSTANT_BUFFER, .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE};
-  const D3D11_QUERY_DESC query = {.Query = D3D11_QUERY_EVENT};
+  const D3D11_QUERY_DESC query_desc = {.Query = D3D11_QUERY_EVENT};
   return SUCCEEDED(device->CreateBuffer(&desc, nullptr, ring->buffer.GetAddressOf()))
-         && SUCCEEDED(device->CreateQuery(&query, ring->read_done.GetAddressOf()));
+         && SUCCEEDED(device->CreateQuery(&query_desc, ring->read_done.GetAddressOf()));
 }
 
 // The immediate context under ReShade's command list (looked up again when that changes).
@@ -337,7 +337,7 @@ struct DeviceObjects {
   // its constants.
   std::vector<MotionRing> motion_rings;
   ID3D11DeviceContext1* context1 = nullptr;  // `context`'s (the same object: no reference)
-  size_t ring = 0;
+  size_t current_ring = 0;
   UINT ring_next = MOTION_RING_SLOTS;
   UINT ring_first = UINT_MAX;
   MotionConstants ring_uploaded = {};
@@ -1170,23 +1170,25 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
     if (objects.ring_first == UINT_MAX || std::memcmp(&constants, &objects.ring_uploaded, sizeof(constants)) != 0) {
       // A ring's slots since it took over are new to the GPU (discarded, or the GPU done with its draws): written without
       // a wait. A full one hands over (its event ended here: every draw that read it was issued, this one reads the next).
-      size_t next = objects.ring;
+      size_t next = objects.current_ring;
       D3D11_MAP map_type = D3D11_MAP_WRITE_NO_OVERWRITE;
       if (objects.ring_next == MOTION_RING_SLOTS) {
         if (objects.ring_first != UINT_MAX) {
-          native->End(rings[objects.ring].read_done.Get());
-          rings[objects.ring].read = true;
-          next = (objects.ring + 1) % rings.size();
+          // An event never read back ended again (at the cap, after a failed map): the debug layer may warn
+          // QUERY_END_ABANDONING_PREVIOUS_RESULTS, harmless.
+          native->End(rings[objects.current_ring].read_done.Get());
+          rings[objects.current_ring].ended = true;
+          next = (objects.current_ring + 1) % rings.size();
         }
-        if (!rings[next].read) {
+        if (!rings[next].ended) {
           map_type = D3D11_MAP_WRITE_DISCARD;
         } else if (native->GetData(rings[next].read_done.Get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) != S_OK) {
           map_type = D3D11_MAP_WRITE_DISCARD;
           if (MotionRing grown; rings.size() < MOTION_RINGS && MakeMotionRing(device, &grown)) {
-            next = objects.ring + 1;
+            next = objects.current_ring + 1;
             rings.insert(rings.begin() + static_cast<std::ptrdiff_t>(next), std::move(grown));
             renodx::utils::log::i("[Total War] Object motion: the moving draws' constants in ", rings.size(),
-                                  " rings (the GPU still read the others).");
+                                  " rings (the GPU still reads the others).");
           }
         }
       }
@@ -1197,7 +1199,7 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
         return false;
       }
       if (objects.ring_next == MOTION_RING_SLOTS) {
-        objects.ring = next;
+        objects.current_ring = next;
         objects.ring_next = 0;
       }
       // The slot's constants past MotionConstants 0, as past the one buffer's end.
@@ -1209,7 +1211,7 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
       objects.ring_uploaded = constants;
       ++objects.ring_next;
     }
-    motion_constants = rings[objects.ring].buffer.Get();
+    motion_constants = rings[objects.current_ring].buffer.Get();
   } else if (std::memcmp(&constants, &objects.motion_uploaded, sizeof(constants)) != 0 || !view.camera_copies.empty()) {
     native->UpdateSubresource(objects.motion_constants.Get(), 0, nullptr, &constants, 0, 0);
     objects.motion_uploaded = constants;
@@ -1812,9 +1814,16 @@ inline bool OnUpdateTextureRegion(reshade::api::device*, const reshade::api::sub
 
 }  // namespace internal
 
-// The host draws motion from now on (true) or not.
+// The host draws motion from now on (true) or not. Turned off, the last draw's depth view (the game's, held) is let go:
+// a host that keeps the motion objects meanwhile (Shogun 2) would keep an old depth alive after a resolution change.
 inline void SetActive(bool active) {
-  internal::active.store(active, std::memory_order_relaxed);
+  if (!internal::active.exchange(active, std::memory_order_relaxed) || active) return;
+  ComPtr<ID3D11DepthStencilView> released;  // after the lock
+  const std::unique_lock lock(internal::state.mutex);
+  auto& objects = internal::state.objects;
+  released = std::move(objects.last_depth_view);
+  objects.last_depth_texture = nullptr;
+  objects.last_depth_texture_desc = {};
 }
 
 // The frame's end, after its last motion draw: the rigid objects' flags of a few frames back read (which meshes move),
