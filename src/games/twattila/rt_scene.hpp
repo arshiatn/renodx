@@ -2747,9 +2747,11 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
             .tooltip = "The sky's reflection dimmed where something blocks it. Works with another ray-traced effect on.\n"
                        "Needs DLAA or an upscaler, renodx-tw-dlaa64.exe and in-game Screen Space Reflections on.",
             .labels = {"Off", "On"},
-            // As SettingsOf counts it (a host without the strength here: the Light Bounce row's alone).
+            // Greyed exactly where SettingsOf drops it. A host that passes no strength counts the Light Bounce row as on
+            // (its Global Illumination strength unknown here).
             .is_enabled = [sliders, aa, light_bounce_strength] {
-              return RaysBesideSpecularOcclusion(SettingsOf(*sliders, *aa, (light_bounce_strength != nullptr) ? *light_bounce_strength : 1.f));
+              const float strength = (light_bounce_strength != nullptr) ? *light_bounce_strength : 1.f;
+              return RaysBesideSpecularOcclusion(SettingsOf(*sliders, *aa, strength));
             },
         },
     });

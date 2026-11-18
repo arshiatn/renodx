@@ -40,9 +40,9 @@ using renodx::utils::settings::SettingValueType;
 // The RT/PT preset (RAYS_PRESET) and Values: rays_preset.hpp.
 
 // RAYS_PRESET as a game's defaults of what the methods leave (Warhammer III, Pharaoh); the methods themselves (sun
-// shadows, Path-Traced AO, Global Illumination and its strength, reflections) stay off, and so do the rows that start the
-// rays alone (Fog Shadows, Specular Occlusion: with an upscaler they traced with every method off). Before Apply: the
-// page's Reset reads the defaults as it is built.
+// shadows, Path-Traced AO, Global Illumination and its strength, reflections) stay off, and so do Fog Shadows (with an
+// upscaler it traces with every method off) and Specular Occlusion (Experimental; it acts only beside another ray-traced
+// effect). Before Apply: the page's Reset reads the defaults as it is built.
 inline void SetRaysPresetDefaults(std::vector<Setting*>* settings) {
   constexpr std::array<std::string_view, 7> RAY_METHODS = {"RayTracedSunShadows", "RayTracedPathAmbient", "RayTracedLightBounce",
                                                            "light_bounce_strength", "RayTracedReflections", "RayTracedFogShadows",

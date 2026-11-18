@@ -235,8 +235,8 @@ struct Settings {
 };
 
 // A ray-traced effect on besides Specular Occlusion (Path-Traced Ambient and the paths come with the Light Bounce, smoke
-// shadows with the sun's). Specular Occlusion counts as on only with one (rt_scene.hpp SettingsOf): alone it ran the
-// whole scene capture, the helper's scene build and Ray Reconstruction for its 0.35 ms pass (night1118 RTSO, ATN's B1).
+// shadows with the sun's). Specular Occlusion counts as on only with one (rt_scene.hpp SettingsOf): alone it would run
+// the whole scene capture, the helper's scene build and Ray Reconstruction for one small pass.
 inline bool RaysBesideSpecularOcclusion(const Settings& settings) {
   return settings.sun_shadows || settings.ambient_occlusion || settings.light_bounce || settings.reflections || settings.local_lights
          || settings.fog_shadows;
