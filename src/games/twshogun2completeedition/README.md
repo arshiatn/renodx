@@ -2,11 +2,14 @@
 
 ### Specular Occlusion with other rays (2026-11-18; built only, not run in game)
 
-- Changed: **Ray-Traced Specular Occlusion** works only with another ray-traced effect on, as Attila's; alone it is off
-  and greyed out, the game's look as with the row off (alone it started the whole ray tracing for itself: in Attila
-  ~3 ms of render CPU and the helper's scene build for a 0.35 ms pass). With another effect on, and in the RT/PT preset:
-  unchanged.
-- With Specular Occlusion the only ray-traced row at launch the ray tracing isn't installed (as with every row off).
+- Changed: **Ray-traced specular occlusion** works only with **Ray-traced reflections** on (here only they make the
+  textures it is traced into: with other rays alone it did nothing); without them it is off and greyed out, the game's
+  look as with the row off (alone it started the whole ray tracing for itself: in Attila ~3 ms of render CPU and the
+  helper's scene build). With the reflections, and in the RT/PT preset: unchanged.
+- Changed: **Ray-traced Global Illumination** counts only with the Global Illumination's strength above 0 (at 0 nothing
+  reads its rays): with it alone at 0 no ray tracing runs. Same picture.
+- With neither counting at launch (Specular Occlusion alone, or the ray-traced GI at strength 0) the ray tracing isn't
+  installed, as with every row off: restart after turning a ray-traced effect on, as the section says.
 
 ### Shared round 2 (2026-11-17; built only, not run in game)
 

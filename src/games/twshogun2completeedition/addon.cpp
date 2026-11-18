@@ -405,7 +405,9 @@ twattila::rt_scene::Settings RaySettings() {
   rays.light_importance = on(rows.light_importance);
   rays.light_steady = on(rows.light_steady);
   rays.light_range = std::clamp(rows.light_range, 0.f, 500.f);
-  rays.light_bounce = on(rows.light_bounce);
+  // The Global Illumination's light from rays only while the Global Illumination is on (at 0 its pass is off: nothing
+  // would read the trace), as Attila's SettingsOf.
+  rays.light_bounce = on(rows.light_bounce) && shader_injection.light_bounce_strength > 0.f;
   // Reflection Reuse (Attila's): 1 from ReSTIR GI (the ray-traced Global Illumination's), 2 Own ReSTIR.
   const uint32_t reflection_reuse = count(rows.reflection_reuse, 0, 2);
   rays.reflection_reuse = reflection_reuse == 1 && rays.light_bounce;
@@ -416,7 +418,7 @@ twattila::rt_scene::Settings RaySettings() {
   rays.path_tracing = on(rows.path_tracing);
   // Path-Traced AO (twattila/rt_scene.hpp SettingsOf's): the paths bring the sky's light, the ray-traced AO off. Needs
   // the ray-traced Global Illumination's paths and the Global Illumination (its apply adds them).
-  rays.path_ambient = rays.path_tracing && rays.light_bounce && shader_injection.light_bounce_strength > 0.f && on(rows.path_ambient);
+  rays.path_ambient = rays.path_tracing && rays.light_bounce && on(rows.path_ambient);
   if (rays.path_ambient) rays.ambient_occlusion = false;
   // Own Sky Rays and Steady Bounce Light (rt_sun's texel 3 w 1 and 4 w 1: its cube is the sky, in the game's units).
   rays.path_sky_apart = on(rows.path_sky_apart);
@@ -443,8 +445,8 @@ twattila::rt_scene::Settings RaySettings() {
   // With the helper's upscaler (OnPresent): NRD, the torches' size under Ray Reconstruction.
   rays.nrd = on(rows.denoiser);
   rays.light_size = std::clamp(rows.light_softness, 0.f, 1.f);
-  // Specular Occlusion with another ray-traced effect only (Attila's SettingsOf): alone it started the whole ray tracing.
-  rays.specular_occlusion = rays.specular_occlusion && twattila::rt_scene::RaysBesideSpecularOcclusion(rays);
+  // Specular Occlusion only with the reflections: only they make the textures it is traced into (OnPresent's SetUse).
+  rays.specular_occlusion = rays.specular_occlusion && rays.reflections;
   return rays;
 }
 
@@ -2066,13 +2068,12 @@ void BuildRuntimeData() {
   const auto paths = [] { return (rt_sliders.light_bounce != 0.f || rt_sliders.reflections != 0.f) && rt_sliders.path_tracing != 0.f; };
   const auto reconstruction = [] { return DlssRayReconstruction(); };
   const auto micromaps = [] { return rt_sliders.micromaps != 0.f; };
-  // Specular Occlusion acts with one of these (RaySettings).
-  const auto rays_beside_occlusion = [] {
+  // With a ray-traced effect on, as RaySettings counts them (Specular Occlusion needs the reflections; the Global
+  // Illumination's rays its strength): the rows for all of them.
+  const auto any_rays = [] {
     return rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.local_lights != 0.f || rt_sliders.fog_shadows != 0.f
-           || rt_sliders.reflections != 0.f || rt_sliders.light_bounce != 0.f;
+           || rt_sliders.reflections != 0.f || (rt_sliders.light_bounce != 0.f && shader_injection.light_bounce_strength > 0.f);
   };
-  // With a ray-traced effect on: the rows for all of them.
-  const auto any_rays = [rays_beside_occlusion] { return rays_beside_occlusion() || rt_sliders.specular_occlusion != 0.f; };
   const auto extra_rays = [any_rays] { return any_rays() && rt_sliders.output_rays != 0.f; };
   const auto ray_toggle = [&](const std::string& key, float* binding, const std::string& label, const std::string& tooltip,
                               std::function<bool()> enabled = {}) {
@@ -2237,9 +2238,8 @@ void BuildRuntimeData() {
                  "Calmer water reflections, a little softer. Samples and reuse then work on water too. Heavier.", water),
       ray_toggle("RayTracedSpecularOcclusion", &rt_sliders.specular_occlusion, "Ray-traced specular occlusion (Experimental)",
                  "The sky's reflection taken off shiny surfaces where something stands over them (inside\n"
-                 "doorways, under hulls and roofs). Works with another ray-traced effect on. Needs the game's\n"
-                 "screen-space reflections on.",
-                 rays_beside_occlusion),
+                 "doorways, under hulls and roofs). Works with Ray-traced reflections on.",
+                 reflections),
       ray_toggle("RayTracedLightBounce", &rt_sliders.light_bounce, "Ray-traced Global Illumination",
                  "The Global Illumination's light found with rays: no guessing behind what you see, light from farther.\n"
                  "Needs the Global Illumination on."),
