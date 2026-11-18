@@ -3590,6 +3590,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         nothing below the live esp, MXCSR sticky flags acceptable, 13 product mutants seen). Lows: no Uninstall test with the
         site written (its mutant passed), a brace-less if, Prepare's log says 'faster' for found-only sites; nits; squash 1+2,
         3+4. alod2s_ ROUND 2 sent 21:43 (parallel with ec4s_ round 4, other spots). The bench greps no 'Faster' line.
+        alod2s_ round 2 DONE 22:02 (alod2s_report.md 'Round 2'): squashed to 5d1664332 / f4d9ad0e5 / db5ee2374 (old commits only in
+        the reflog); Uninstall test (its mutant fails line 734), braces, Prepare log 'found', nits, 'object detail: not hooked
+        yet' (log only); Attila / Thrones / Rome II -Quick + hook lifetime x86 PASS, gated x86 3 exit 0 (commit 1 alone builds
+        too). Coordinator read the 0d008486d..db5ee2374 diff: as asked. ecm_ rebuilt: reset to 2370ae43c, merged db5ee2374 ->
+        fc63af654 (clean; ec4s_'s VirtualProtect check kept, it clears the LOD site too). alod2s_ worktree + alod2s_base_src
+        links removed. Waiting: ec4s_ round 4, then merge ecm_ into atn-mods.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
