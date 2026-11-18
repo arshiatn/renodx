@@ -3585,6 +3585,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         Reported a Thrones part 19 crash (80000001) on the round-2 base too -> sent to er3o_'s re-check. Review alr2s_ (Sonnet
         xHigh) STARTED 21:14. ecm_ now = atn-mods + ec4s_ round 3 (2370ae43c, Thrones README conflict: both kept) + alod2s_
         (clean merge). Junctions: alod2s_ worktree + testbin\alod2s_base_src\external: links first.
+        ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
+        Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
+        package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
+        er3o_ checked against its files (logs PASS, mutant FAIL, re-check folders active 21:04-21:29): not safety-stopped.
       - [ ] BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let me know so I restart my pc
         before the final CPU bench"). Before telling: no agent running, everything merged / pushed, the scratchpad copied
         to a durable folder (tools/tw/round_notes/plan_1117/night1118/scratchpad_copy). Start the bench only after ATN says
