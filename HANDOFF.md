@@ -3139,6 +3139,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         SLOWER in the tight loop: the bench decides). Worktree guard refused 3 compound commands; ci1_ re-ran two git
         commands as plain single commands (the guard's own suggested form) and dropped a heredoc disassembly.
         STARTED 04:39: cr1_ Opus xHigh review of c74a6ce08 (read only) and ci2_ Opus High EF4 on top of c74a6ce08.
+        ci2_ (EF4, Opus High) STOPPED 04:4x by the safety classifier: its response after reading tests.cpp 140-479 (the
+        harness helpers) was withheld; nothing implemented. Byte facts kept: the first reload has FOUR movss stores
+        before it (0x183c5d0 writes [out+0..0xc], then +0x189680d overwrites lane 3), the second four on one path; no
+        branch target inside 0x18960d0 on site+1..+4; callee map for part 14(b). Worktree cleaned (links removed alone,
+        branch deleted). Per ATN's rule (a stop = ONE Sonnet xHigh retry of that item's plan + implementation, a
+        second stop ends it): ci2s_ Sonnet xHigh STARTED 04:44 on c74a6ce08 with the same brief + those facts.
       - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
         0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
         drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
