@@ -13,7 +13,12 @@
 //    motion constants' ring wraps once a frame).
 // 6. Cases 1a, 3 and 5 in-draw (the game's draw writes the motion: motion_draw_unit_sm3 and the game's pixel shader
 //    patched, the bindings left bound from one moving draw to the next).
-// With RENODX_TW_MOTION_DUMP=<file> every read frame's motion targets go into <file> byte for byte (old vs new builds).
+// 7. Case 4 with 70 draws a soldier (4,550 moving draws a frame: the motion constants' rings wrap 4 times a frame, a ring
+//    comes back after the frame's read-back or a new one is made), in-draw too, and in-draw with 140 (9,100: more slots a
+//    frame than MOTION_RINGS rings hold, a ring comes back in the same frame: the GPU done, or discarded at the cap);
+//    2 to MOTION_RINGS rings made. Cases 4-7: the game's b12 bound again after the frame (whichever ring was last).
+// With RENODX_TW_MOTION_DUMP=<file> every read frame's motion targets go into <file> byte for byte (old vs new builds;
+// /DBEFORE_RINGS leaves out the rings' checks for the header before them).
 // Then the fix's cost timed: on the game's thread the texture write check and the pack hook, and a pack round's records on
 // 10 pages on the CPU and the GPU (timestamps: real numbers with `hardware` only).
 // Built with /DGAME_CALLS_ONLY the game's calls alone reach the addon (no write event, no pack hook), as before the fix.
@@ -253,9 +258,12 @@ static Page MakePage() {
   return page;
 }
 
-// The addon's motion draws' CPU time, from each case's second frame (the first makes the tables).
+// The addon's motion draws' CPU time, from each case's second frame (the first makes the tables), and of those that
+// began a ring of the motion constants (a wrap).
 static double draw_seconds = 0.0;
 static uint32_t draws = 0;
+static double wrap_seconds = 0.0;
+static uint32_t wraps = 0;
 static bool timing = false;
 
 // The game's draw of one soldier (instance `instance`, its bones at row 0 of `page`), then the addon's motion draw after it
@@ -288,6 +296,7 @@ static void DrawSoldier(const Page& page, UINT instance) {
       .arguments = {.index_count = 6, .instance_count = 1, .first_index = 0, .vertex_offset = 0, .first_instance = instance},
       .callback_data = motion_shaders.data(),
   };
+  const UINT ring_next = om::internal::state.objects.ring_next;
   const auto start = std::chrono::steady_clock::now();
   if (in_draw_mode) {
     // object_motion's OnMovingDraw: the motion written by the draw itself, else drawn again after it.
@@ -305,8 +314,13 @@ static void DrawSoldier(const Page& page, UINT instance) {
     om::internal::DrawObjectMotion(command, nullptr);
   }
   if (timing) {
-    draw_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    draw_seconds += seconds;
     ++draws;
+    if (om::internal::state.objects.ring_next < ring_next) {
+      wrap_seconds += seconds;
+      ++wraps;
+    }
   }
 }
 
@@ -511,6 +525,11 @@ static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = fal
       }
     }
     om::Resolve(context.Get(), current_frame);
+    // The game's b12 back after the frame's moving draws (whichever ring was bound last: RestoreBindings).
+    ComPtr<ID3D11Buffer> vs_motion_slot;
+    ComPtr<ID3D11Buffer> ps_motion_slot;
+    context->VSGetConstantBuffers(om::internal::MOTION_SLOT, 1, vs_motion_slot.GetAddressOf());
+    context->PSGetConstantBuffers(om::internal::MOTION_SLOT, 1, ps_motion_slot.GetAddressOf());
     const auto motion = ReadMotion(soldiers);
     if (frame == 1) continue;
     float worst = 0.f;
@@ -525,9 +544,10 @@ static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = fal
         worst_soldier = soldier;
       }
     }
-    const bool good = written && worst < 0.02f;
-    std::printf("%s frame %d: largest error %.3f px (soldier %zu, motion %.3f), all written %d: %s\n", name, frame, worst, worst_soldier,
-                motion[worst_soldier].x, written, good ? "OK" : "WRONG");
+    const bool game_motion_slot = !vs_motion_slot && !ps_motion_slot;
+    const bool good = written && worst < 0.02f && game_motion_slot;
+    std::printf("%s frame %d: largest error %.3f px (soldier %zu, motion %.3f), all written %d, the game's b12 back %d: %s\n", name, frame,
+                worst, worst_soldier, motion[worst_soldier].x, written, game_motion_slot, good ? "OK" : "WRONG");
     failures += (good ? 0 : 1);
   }
   return failures;
@@ -677,14 +697,37 @@ int main(int argc, char** argv) {
   failures += TwoPacks("3  two packs, A moves 0.2 m", Hook::SAME_THREAD, {.x = 0.2f, .y = 0.f});
   failures += SixtyFivePages("4  65 pages");
   failures += SixtyFivePages("5  65 pages x 17", 17);
-  std::printf("the addon's unit motion draw: %.2f us a draw (%u draws, the D3D runtime's calls included)\n", draw_seconds / std::max(draws, 1u) * 1e6,
-              draws);
-  draw_seconds = 0.0;
-  draws = 0;
+  const auto print_draws = [](const char* kind) {
+    std::printf("the addon's %s: %.2f us a draw (%u draws, the D3D runtime's calls included); a wrap %.2f us (%u)\n", kind,
+                draw_seconds / std::max(draws, 1u) * 1e6, draws, wrap_seconds / std::max(wraps, 1u) * 1e6, wraps);
+    draw_seconds = 0.0;
+    draws = 0;
+    wrap_seconds = 0.0;
+    wraps = 0;
+  };
+  print_draws("unit motion draw");
   failures += TwoPacks("6a in-draw two packs, pack hook", Hook::SAME_THREAD, {}, true);
   failures += TwoPacks("6b in-draw two packs, A moves 0.2 m", Hook::SAME_THREAD, {.x = 0.2f, .y = 0.f}, true);
   failures += SixtyFivePages("6c in-draw 65 pages x 17", 17, true);
-  std::printf("the addon's in-draw unit motion draw: %.2f us a draw (%u draws)\n", draw_seconds / std::max(draws, 1u) * 1e6, draws);
+  print_draws("in-draw unit motion draw");
+  // The motion constants' rings: several wraps a frame (a ring back after the frame's read-back, or a new one), and more
+  // than MOTION_RINGS rings' slots a frame (a ring back in the same frame: done, or discarded at the cap).
+  const auto rings_after = [&](const char* name) {
+#ifndef BEFORE_RINGS
+    const size_t rings = om::internal::state.objects.motion_rings.size();
+    const bool good = rings >= 2 && rings <= om::internal::MOTION_RINGS;
+    std::printf("%s: %zu rings: %s\n", name, rings, good ? "OK" : "WRONG");
+    failures += (good ? 0 : 1);
+#endif
+  };
+  failures += SixtyFivePages("7a 65 pages x 70", 70);
+  rings_after("7a 65 pages x 70");
+  print_draws("unit motion draw, 4,550 a frame");
+  failures += SixtyFivePages("7b in-draw 65 pages x 70", 70, true);
+  rings_after("7b in-draw 65 pages x 70");
+  failures += SixtyFivePages("7c in-draw 65 pages x 140", 140, true);
+  rings_after("7c in-draw 65 pages x 140");
+  print_draws("in-draw unit motion draw, 4,550 and 9,100 a frame");
   Restart(Hook::NONE);
   {
     const std::unique_lock lock(log_mutex);
