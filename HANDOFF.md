@@ -3206,7 +3206,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         base = process default sets x affinity; first apply after the base is stable two checks; off / detach clear
         exactly ours), test/tw_cpu_sets 509 synthetic + 11 live steps x86 + amd64 pass, gated x86 3 targets exit 0.
         STARTED 06:17: asr1_ Opus xHigh review (read only; may build and run the own-process test in testbin\asr1_).
-        pdr1_ review DONE ~06:3x -> night1118/review_pdi1.md: FIX FIRST (M1: v32 has no room for step 4's DI composite:
+        pdr1_ review DONE ~06:2x -> night1118/review_pdi1.md: FIX FIRST (M1: v32 has no room for step 4's DI composite:
         add rt_di_light[2] + rt_di_ok per request, keeps one bump for the batch), then MERGE; tables right for all 137
         shaders + Shogun 2 (vs the games' own bytes); M2 L1 not proven in game (box). pdi1_ RESUMED 06:20 for M1 + L1
         asserts + N1 / N3 / N4 + the design text L3, rebuild + tests + 2 quick plays.
