@@ -3149,7 +3149,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         cr1_ review DONE 04:53 -> night1118/review_ci1.md: MERGE (exact on every path, own 60,000-case emulation 0
         differences; layout safe; LOGX right bytes, Attila only; keep ES8b in the default-on row, check it in the final
         bench's WPR: page +0x280..+0x2E1 ~1.37 -> ~0.2 ms, the caller must not pick it up). MERGED 1e5324f4c (gated x86
-        build of the 3 add-ons running before the push). ci1_'s 10 links removed alone (folder locked by the app).
+        build of the 3 add-ons running before the push; exit 0, PUSHED 04:5x). ci1_'s 10 links removed alone (folder
+        locked by the app).
+        ci2s_ (EF4, Sonnet xHigh retry) DONE 05:39: dfcf463d0 on ci2s_ (parent c74a6ce08): sites 10 / 11 "particle colour
+        reload" / "particle vector reload" in Faster Game CPU Code (default on), 262-byte tail at Attila 0x18967db /
+        Thrones 0x190bb3b (Rome II absent), stubs 0xB20 / 0xB50, SSE4.1 gate, part 14 (8 M + 262 K region runs, 400 K
+        whole-function calls on a fake graph, 0 differences; controls fail), parts 13 e/f/g, part 6 (stub at the
+        no-reload floor: cold 29.1 -> 24.6 ns), DLL-wide branch scan clean, heapfix nowhere near; full x86 suites PASS
+        3 DLLs; gated x86 exit 0. mulss subnormal bench: no FP assist (+0x189680b = the table-load skid). One guard
+        refusal (a compound line with git): ci2s_ ran the one plain command the guard named. Open: the Faster Game
+        CPU Code tooltip still says soldiers only (graphics_page.hpp, shared: needs all includers built).
+        STARTED 05:39: cr2_ SONNET xHigh review of dfcf463d0 (EF4 had an Opus stop: ATN's rule) + ci3_ Opus High
+        (commit 1 CR1 low fixes L1 / L2 / N1-N4, commit 2 E3P-b particle prefetch, Faster Effect Prefetch row) on
+        dfcf463d0.
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
