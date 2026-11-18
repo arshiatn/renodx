@@ -29,7 +29,7 @@
 //    position of the first child not ready (or none) x 7 values of [this + 4] x the last child with and without a
 //    control block x the count's 3 bits above the 29 that x 8 keeps; every [this + 4] with 0 and 1 child; 2 M random
 //    vectors (up to 4096 children; uses from 1 to 0xFFFFFFFF, the carry edges among them; objects no code reads at random
-//    addresses; `this` on the stack (top byte 0) or at the top of the address space (VirtualAlloc, MEM_TOP_DOWN: top
+//    addresses; `this` at a low address (a page below 16 MB, top byte 0) or at the top of the address space (VirtualAlloc, MEM_TOP_DOWN: top
 //    byte 0x7F): eax ecx edx ebx esi edi ebp, the arithmetic flags, esp, the 64 bytes of the call's stack, every count
 //    and [this] equal, the game's results as derived from its bytes (engine_code.hpp), no dispose or destroy run;
 //    CONTROLs: a child with uses 0 (the game disposes it) must differ; the tail with `or cl, al` for `mov cl, al` (merges
@@ -66,6 +66,13 @@
 //    in both copies of the DLL on random emitters (a fake update that counts and hashes its calls and may shrink the vector, swap the array, grow it; garbage
 //    in the slots the loop never reads): every register but esi, the flags, esp, xmm0-7, all memory and the call order equal; CONTROLs (a stub that writes
 //    eax, ends with the wrong compare, stores); 200 switches under 4 threads, a parked thread at each byte of the site; timing for K = 1 to 4. Rome II has none.
+// 16. The emitter update loop's prefetch (the effect update +0x1893330, loop +0x18933c0, site +0x18933ce, Thrones +0x1908690; Faster Effect Prefetch; emitter_prefetch.inc):
+//    the loop's bottom alone (every esi around the count 0 to 48, the edges of the address space, null slots, an array ending at a no-access page: no load
+//    past the vector), the whole loop in both copies of the DLL on random vectors (null slots, definition pointers that are garbage, a fake update that counts and
+//    hashes its calls, overwrites ebx edi ebp and may swap the array, grow the vector or change only its size; garbage in the slots the loop never reads): every
+//    register but ecx, the flags, esp, xmm0-7, all memory and the call order equal; CONTROLs (a stub that writes eax, ends with the wrong compare, stores, has
+//    no null test, the wrong bound, reads ebx for the container); 200 switches under 4 threads, a parked thread at each byte of the site; timing for K = 1 to 3.
+//    Rome II has none.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -2085,6 +2092,9 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
 // The particle update loop's prefetch (part 15): the loop's bottom alone, the whole loop, controls, switching, parked threads, timing.
 #include "particle_prefetch.inc"
 
+// The emitter update loop's prefetch (part 16): the loop's bottom alone, the whole loop, controls, switching, parked threads, timing.
+#include "emitter_prefetch.inc"
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2126,6 +2136,7 @@ int main(int argc, char** argv) {
   CHECK(Matches(game + text_rva, text_size, ec::CHILD_SUM) == (build.code->child_sum_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::FLOAT4_RELOAD) == (build.code->float4_reload_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::PARTICLE_LOOP) == (build.code->particle_loop_rva != 0 ? 1u : 0u));
+  CHECK(Matches(game + text_rva, text_size, ec::EMITTER_LOOP) == (build.code->emitter_loop_rva != 0 ? 1u : 0u));
   // B's own code as mapped (A's differs in every relocated address).
   const std::vector<uint8_t> unpatched(patched + text_rva, patched + text_rva + text_size);
   ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
@@ -2138,12 +2149,14 @@ int main(int argc, char** argv) {
     CHECK(ec::sites[10 + reload].at == (build.code->float4_reload_rva != 0 ? patched + build.code->float4_reload_rva + ec::FLOAT4_RELOAD_AT[reload] : nullptr));
   }
   CHECK(ec::sites[12].at == (build.code->particle_loop_rva != 0 ? patched + build.code->particle_loop_rva + ec::PARTICLE_LOOP_SITE : nullptr));
+  CHECK(ec::sites[13].at == (build.code->emitter_loop_rva != 0 ? patched + build.code->emitter_loop_rva + ec::EMITTER_LOOP_SITE : nullptr));
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true);
   CHECK(ec::written == (ec::found & ~ec::JOB_SITES)
         && ec::found == (0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.ready_check_rva != 0 ? 0b10000u : 0u)
                          | (build.code->job_wake_all_rva != 0 ? ec::JOB_SITES : 0u) | (build.code->half_rows_rva != 0 ? 0b100000000u : 0u)
                          | (build.code->child_sum_rva != 0 ? 0b1000000000u : 0u) | (build.code->particle_loop_rva != 0 ? ec::PARTICLE_PREFETCH_BIT : 0u)
+                         | (build.code->emitter_loop_rva != 0 ? ec::EMITTER_PREFETCH_BIT : 0u)
                          | (build.code->float4_reload_rva != 0 ? ec::FLOAT4_RELOAD_SITES : 0u)));
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
@@ -2190,6 +2203,11 @@ int main(int argc, char** argv) {
   if (argc > 3 && std::string(argv[3]) == "prefetch" && build.code->particle_loop_rva != 0) {
     if (const int failed = RunParticleTests(build, game, patched, quick); failed != 0) return failed;
     std::printf("PASS (prefetch only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "emitter" && build.code->emitter_loop_rva != 0) {
+    if (const int failed = RunEmitterTests(build, game, patched, quick); failed != 0) return failed;
+    std::printf("PASS (emitter only)\n");
     return 0;
   }
 
@@ -2780,11 +2798,15 @@ int main(int argc, char** argv) {
     // The object ([+4] its flag, [+0x40] the count, [+0x44] the children), the children ({object, control block}), the
     // objects (the ready byte at +0x6e), the control blocks ({vtable, uses, weaks}).
     constexpr uint32_t MAX_CHILDREN = 4096;
-    // `this`: on the stack (a low address, top byte 0) or at the top of the address space (MEM_TOP_DOWN: top byte 0x7F, the process isn't
-    // large-address aware), picked for each vector; a merge of al into the top byte is not a replace only for the second.
-    std::array<uint8_t, 0x48> self_low = {};
+    // `this`: at a low address (top byte 0: a page below 16 MB; the stack is above it in about a third of the launches) or at the top of the
+    // address space (MEM_TOP_DOWN: top byte 0x7F, the process isn't large-address aware), picked for each vector; a merge of al into the top byte
+    // is not a replace only for the second.
+    uint8_t* self_low_page = nullptr;
+    for (uintptr_t where = 0x00100000; where < 0x01000000 && self_low_page == nullptr; where += 0x10000) {
+      self_low_page = static_cast<uint8_t*>(VirtualAlloc(reinterpret_cast<void*>(where), 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    }
     auto* self_high_page = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE));
-    CHECK(self_high_page != nullptr && (Address(self_high_page) >> 24) >= 0x7F && (Address(self_low.data()) >> 24) == 0);
+    CHECK(self_high_page != nullptr && (Address(self_high_page) >> 24) >= 0x7F && self_low_page != nullptr && (Address(self_low_page) >> 24) == 0);
     int this_place = 0;  // 0: either; 1: the stack; 2: the high one
     uint64_t high_this = 0;
     uint32_t ours_ready = patched_ready;  // the function run as ours (the controls change it)
@@ -2809,7 +2831,7 @@ int main(int argc, char** argv) {
     const auto check = [&](uint32_t count, uint32_t not_ready, uint8_t flag, bool last_block, Random* random, uint32_t dead = ~0u) {
       const uint32_t n = count & 0x1FFFFFFF;
       const bool at_top = (this_place == 2 || (this_place == 0 && (random->Next() & 1) != 0));
-      const std::span<uint8_t, 0x48> self = (at_top ? std::span<uint8_t, 0x48>(self_high_page + 0x80, 0x48) : std::span<uint8_t, 0x48>(self_low));
+      const std::span<uint8_t, 0x48> self = (at_top ? std::span<uint8_t, 0x48>(self_high_page + 0x80, 0x48) : std::span<uint8_t, 0x48>(self_low_page + 0x80, 0x48));
       high_this += (at_top ? 1 : 0);
       for (uint8_t& byte : self) byte = static_cast<uint8_t>(random->Next());
       self[4] = flag;
@@ -3103,6 +3125,16 @@ int main(int argc, char** argv) {
     std::printf("15. particle loop prefetch: none in this build\n");
   }
 
+  // 16. The emitter update loop's prefetch (Faster Effect Prefetch).
+  if (build.code->emitter_loop_rva != 0) {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    if (const int failed = RunEmitterTests(build, game, patched, quick); failed != 0) return failed;
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+  } else {
+    CHECK(ec::sites[13].at == nullptr);
+    std::printf("16. emitter loop prefetch: none in this build\n");
+  }
+
   // Off: the game's bytes back (the harness's jumps removed first).
   std::memcpy(game + build.truncation_resume_rva, file.data() + (build.truncation_resume_rva - text_rva + text_header->PointerToRawData), 5);
   std::memcpy(patched + build.truncation_resume_rva, unpatched.data() + (build.truncation_resume_rva - text_rva), 5);
@@ -3225,6 +3257,29 @@ int main(int argc, char** argv) {
       loop[10] ^= 1;
       prepare_again();
       CHECK(ec::sites[12].at != nullptr && ec::found == all);
+    }
+    if (build.code->emitter_loop_rva != 0) {
+      // (j) the emitter loop's prefetch site changed while the rows are on: switching off leaves it, restores the others
+      on();
+      CHECK(ec::written == all);
+      foreign(13, hook);
+      off();
+      CHECK(ec::written == 0 && holds(13, hook) && game_bytes(all & ~ec::EMITTER_PREFETCH_BIT) && (ec::found & ec::EMITTER_PREFETCH_BIT) == 0);
+      foreign(13, ec::sites[13].game);
+      prepare_again();
+      // (k) one byte changed in the function outside the site: not found (the others are), the row's warning names it
+      uint8_t* function = patched + build.code->emitter_loop_rva;
+      function[12] ^= 1;
+      prepare_again();
+      CHECK(ec::sites[13].at == nullptr && ec::sites[9].at != nullptr && ec::sites[12].at != nullptr);
+      ec::prefetch_missing_logged = false;
+      on();
+      CHECK(ec::written == ec::found && (ec::written & ec::EMITTER_PREFETCH_BIT) == 0);
+      CHECK(std::ranges::any_of(log_lines, [](const std::string& line) { return line.ends_with("another mod or build): emitter prefetch"); }));
+      off();
+      function[12] ^= 1;
+      prepare_again();
+      CHECK(ec::sites[13].at != nullptr && ec::found == all);
     }
     std::printf("13. another mod's bytes in a site: left alone, the sites that depend on it stay out, the rest as asked\n");
   }
