@@ -392,6 +392,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
 - NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator PROGRESS: (2) DONE 02:38-02:46 gr1_ (bench const
 - CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page ... | the next engine_code implementer (after EF4), folded in
+- CR2 LOW FIXES (review_ci2s.md): Low-1 part 13g flips only tail[14] (add tail[128 ... | the next engine_code implementer, folded in
+- FASTER GAME CPU CODE TOOLTIP + README: tooltip "(soldiers, their sprites and eff ... | coordinator, round end
 - TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
 - DAY1 MAXED GPU LEVERS (gpo1_ / cpa1_): day1 maxed behind the units is GPU-bound ... | coordinator (GPU line)
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
@@ -3167,10 +3169,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         reading tw_engine_code harness / test code. Notes kept (L1 / N1 bytes / L2 control / esi dead at 0x1893883 /
         stub at 0xB80, index 12). Worktree cleaned. Per ATN's rule: ci3s_ Sonnet xHigh retry STARTED 05:43 on
         dfcf463d0 with the same brief + those notes (a second stop ends E3P-b + the CR1 fixes).
+        cr2_ review DONE ~05:3x -> night1118/review_ci2s.md: MERGE (stubs bit-exact for every input incl. NaN / sNaN /
+        subnormal; pattern once DLL-wide, no relocations, no branch into site+1..+4, Thrones = Attila instruction for
+        instruction; page layout and SSE4.1 gate safe; tests prove what they claim). MERGED d6356a3f0 (gated x86 build of
+        the 3 add-ons running 05:51 before the push). Check in the final bench's WPR: the two `movups [eax],xmm0` after
+        the sites (+0x1896860 0.44 ms, +0x18968c6 1.33 ms) fall to ~0, no new samples on neighbouring stores.
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
         TRUNCATION / HALF / FMOD / LIST_PUSH page slots. Owner: the next engine_code implementer (after EF4), folded in
+      - [ ] CR2 LOW FIXES (review_ci2s.md): Low-1 part 13g flips only tail[14] (add tail[128] / tail[230] cases);
+        Low-2 part 13e makes only site 10 foreign (add the site 11 mirror case); nits FLOAT4_RELOAD_FIRST_SITE = 10 +
+        static_assert, parenthesise engine_code.hpp:1163, particle_reload.inc header a/b/c -> 14a..14g, trim the 4.9 /
+        1.77 ms comment, optional no-SSE4.1 log line. Owner: the next engine_code implementer, folded in
+      - [ ] FASTER GAME CPU CODE TOOLTIP + README: tooltip "(soldiers, their sprites and effect particles)"
+        (graphics_page.hpp, shared: all includers built); twattila README Dev section: ES8b ready check + EF4 particle
+        reloads. Owner: coordinator, round end
       - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
         0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
         drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
