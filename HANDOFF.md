@@ -3460,6 +3460,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         hc1s_ round 3 DONE 14:20 (heapfix/hc1s_report.md 'Round 3'): floor -Seconds 158; Cnt2 proof needs the install
         line + both CSV lines ending in .csv (18 regex cases; coordinator: 105 ms on a 2.3 M-char failing log); a failed
         proof moves the DLL aside. Bench + hfp3 tooling CLOSED for this round.
+        ia5_ DONE -> night1118/ia5_report.md: 71bdee949 ASCR (LOD cache 512, Fibonacci index; 128 models 18.2 -> 8.5 ns 1
+        thread, 69.5 -> 20.7 4 threads; tw_scrub_lods x86 + amd64 PASS) + 57bf20b2b APT (stamps made 1,000 a present
+        before the timed frame; MAX_COMMANDS 40k -> 100k; NEVER RUN, no test); gated x86 11 + amd64 15 targets exit 0.
+        Review ar5o_ (Opus xHigh) STARTED 14:21.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
