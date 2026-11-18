@@ -2797,7 +2797,10 @@ bool AttachAddon() {
   // Before the Light Bounce's callbacks on the same sun draws: this frame's trace first. Only with the helper (its D3D12
   // device traces).
   const auto rays = RaySettings();
-  ray_tracing_installed = twattila::dlaa_bridge::HelperInstalled() && twattila::rt_scene::RaysBesideSpecularOcclusion(rays);
+  // The ray-traced GI row counts at strength 0 too: the strength raised later traces at once (installed, inactive: no
+  // cost a frame).
+  ray_tracing_installed = twattila::dlaa_bridge::HelperInstalled()
+                          && (twattila::rt_scene::RaysBesideSpecularOcclusion(rays) || rt_sliders.light_bounce != 0.f);
   if (ray_tracing_installed) {
     twshogun2::ray_tracing::Install(rays.casters_out_of_view, rays.smoke_shadows);
     reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);

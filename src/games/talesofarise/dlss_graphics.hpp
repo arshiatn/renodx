@@ -3602,6 +3602,7 @@ inline bool Install(HMODULE module) {
                                                       });
   }
   // Ray Tracing in the Helper: installed when on at launch with the helper there and an effect it traces on.
+  // Specular Occlusion counts here though it traces nothing alone: else a row turned on later ran in process until a restart.
   helper_rays_installed = twattila::dlaa_bridge::HelperInstalled() && helper_rays_row != 0.f
                           && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.reflections != 0.f
                               || rt_sliders.specular_occlusion != 0.f || rt_sliders.light_bounce != 0.f);

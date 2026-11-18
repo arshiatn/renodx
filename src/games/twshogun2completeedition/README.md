@@ -8,8 +8,9 @@
   helper's scene build). With the reflections, and in the RT/PT preset: unchanged.
 - Changed: **Ray-traced Global Illumination** counts only with the Global Illumination's strength above 0 (at 0 nothing
   reads its rays): with it alone at 0 no ray tracing runs. Same picture.
-- With neither counting at launch (Specular Occlusion alone, or the ray-traced GI at strength 0) the ray tracing isn't
-  installed, as with every row off: restart after turning a ray-traced effect on, as the section says.
+- With Specular Occlusion the only ray-traced row at launch the ray tracing isn't installed, as with every row off:
+  restart after turning a ray-traced effect on, as the section says. The ray-traced GI row at strength 0 still installs
+  it (inactive), so raising the strength later traces at once.
 
 ### Shared round 2 (2026-11-17; built only, not run in game)
 

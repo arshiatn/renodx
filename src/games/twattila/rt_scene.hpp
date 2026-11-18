@@ -2750,8 +2750,8 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
             // Greyed exactly where SettingsOf drops it. A host that passes no strength counts the Light Bounce row as on
             // (its Global Illumination strength unknown here).
             .is_enabled = [sliders, aa, light_bounce_strength] {
-              const float strength = (light_bounce_strength != nullptr) ? *light_bounce_strength : 1.f;
-              return RaysBesideSpecularOcclusion(SettingsOf(*sliders, *aa, strength));
+              return RaysBesideSpecularOcclusion(
+                  SettingsOf(*sliders, *aa, (light_bounce_strength != nullptr) ? *light_bounce_strength : 1.f));
             },
         },
     });
