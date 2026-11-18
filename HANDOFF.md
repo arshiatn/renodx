@@ -3557,6 +3557,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         MERGE AFTER FIXES: F3 Medium the ready-check probe reads children when the list's flag is clear (fault risk in a
         bench run) -> add the flag test; Lows F1 comment, F2 CHECK VirtualProtect, F4 note, F5 counter wrap, F6 probe page
         RX; nits. Into the engine fix round with cr8s_'s Lows after er1s_.
+        er1s_ DONE -> night1118/review_ec4s_a.md: EF4c-1 MERGE, EVEC-F MERGE (no accepted case differs for a single owner
+        thread; the game's own non-atomic RMWs on the builder show it has one); Lows: premise comment, fault-order note,
+        2 untested guard clauses (size > cap, cap >= 0x40000000), Thrones full push re-run. ENGINE FIX ROUND (cr8s_ + er1s_ +
+        er2s_) sent to ec4s_ 18:30; then the Opus xHigh end review of ci8s_ + ec4s_; then merge the chain.
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
