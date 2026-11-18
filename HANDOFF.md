@@ -3371,6 +3371,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         HEAPFIX IMPLEMENTERS STARTED 12:10 in parallel (Sonnet xHigh, own variant folders, no game): hx1s_ (HX87 x87b),
         hl1s_ (K sweep, la16, hgl, plt1, la16b), hw1s_ (xw, lw), hc1s_ (bench heapfix_line / env fields, hfp3_build.ps1,
         Cnt2, HSG-0, note 1 tables). Then a Sonnet xHigh review each, HFa / HFb / HFx / HFx2 assembly, dry runs.
+        ci7_ suites PASS 12:28 (x86 full: Attila 12:00-12:12, Thrones -12:25, Rome II -12:28) -> MERGED aab80778c, gated
+        x86 3 targets exit 0 12:31, PUSHED; ci7_'s 11 links removed alone. ci8s_ (Sonnet xHigh, worktree, on
+        31674db75) STARTED ~12:1x: the E3P review fixes (M1 live-size bound + 16c NOACCESS mode, M2 two-stage if it fits,
+        E3P-c its own Experimental row, named site indices, designated BUILDS, the nits), then its Sonnet xHigh review.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
