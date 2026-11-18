@@ -11,14 +11,16 @@
 // 19c. the whole loops, both copies of the DLL (the calls of the allocator, the free and the per-item callback pointed at fakes that log them, the exit at the
 //    loop's end hooked to the harness, entered at the head with a fake frame on the thread's stack): random lists (0 to 5,000 items, starts from 0 to the top of
 //    the address space through the wrap, ends at or below the start), vectors (capacity 0, 1 .., the size at capacity - 1 / capacity / above it, a capacity of
-//    0x100000 and more, 0x4000000k with the block's first stored slot on a field in the overlap layouts), growth in the middle, per-item calls that stop after some call, the vector's block and the item array ending at a no-access page (the same fault, the same
+//    0x100000 and more, 0x40000000 + k with the block's first stored slot on a field in the overlap layouts), growth in the middle, per-item calls that stop after some call, the vector's block and the item array ending at a no-access page (the same fault, the same
 //    memory), and layouts in which the block, the vector's object or the list overlap each other or the frame (the guard sends those to the game's code): every
 //    register, the flags, esp, xmm0-7, the frame above esp, every byte of the world and the log of the fakes' calls equal (or both fault with the same memory);
+// 19c2. the source list moving between the rounds of a run (its array moves to a bigger one, or the frame's list slot to a second list, at the load of a chosen
+//    entry: a guarded page, a vectored handler): the game loads the list and its item array every round, so must the stub; CONTROLs: the stubs that keep them;
 // 19d. CONTROLs: mutants of the stubs and of the guard, each must be seen;
 // 19e. 200 switches under 4 threads that run both loops in both copies, a parked thread at each byte of each site;
 // 19f. timing: the loops for 1 to 4,096 items, game / stub.
 // To reproduce a failing scenario (`engine_code.exe <dll> [quick] push`): ITEM_PUSH_SEED (hex) and ITEM_PUSH_FIRST / ITEM_PUSH_LAST run 19c's scenarios of that range
-// alone, ITEM_PUSH_EXPLAIN prints what differs, ITEM_PUSH_TRACE the spec and each run's exceptions, ITEM_PUSH_THREADS_ONLY runs 19e alone.
+// alone, ITEM_PUSH_EXPLAIN prints what differs, ITEM_PUSH_TRACE the spec and each run's exceptions, ITEM_PUSH_THREADS_ONLY runs 19e alone, ITEM_PUSH_MOVE_ONLY 19c2 alone.
 // ====================================================================================================================
 
 constexpr uint32_t PUSH_ITEMS = 5200;      // the item array's entries
@@ -472,25 +474,106 @@ void PushExplain(const ItemPushWorld& a, const ItemPushWorld& b) {
   }
 }
 
+// A source list that moves between the rounds of a run (19c2). The old item array lies across two pages, its entries from `entry` on on the second, which is guarded
+// for the run: the first access to it (the load of entry `entry`) is the moment another thread grows the list. The vectored handler then points the list at a bigger
+// array (its field [list + 8]) or the frame's list slot [esp + 0x1c] at a second list (whose array is the bigger one), and makes the old array's later entries stale
+// (what a freed array holds). The game loads the list and its item array every round, so it pushes the new array's entries from the next round on; a stub that
+// kept the old array for the run would push the stale ones.
+struct PushMove {
+  uint8_t* region;                       // the two pages
+  std::array<uint8_t, 0x2000> snapshot;  // as the scenario made them (put back before each copy's run)
+  alignas(16) uint8_t second_list[0x40];
+  uint32_t fresh[PUSH_ITEMS + 4];  // the array the list moves to
+  uint32_t entry;                  // the first entry on the guarded page
+  uint32_t rounds;
+  uint32_t array_field;  // the address of [list + 8]
+  uint32_t list_slot;    // the address of the frame's [esp + 0x1c]
+  bool swap;             // the frame's list slot moves to the second list, else [list + 8] to `fresh`
+  uint32_t fired;        // the handler's calls (one a run)
+  // The dispatch of the guard page violation writes its context below the loop's esp, over the call's registers, `target` and the saved esp that the exit restores
+  // (EnterParticleLoop's): PushBoth measures that saved esp with an entry that returns at once, and the handler writes it back.
+  uint32_t* saved_esp_at;
+  uint32_t saved_esp;
+};
+thread_local PushMove* push_move = nullptr;
+
+LONG CALLBACK PushMoveHandler(EXCEPTION_POINTERS* pointers) {
+  const EXCEPTION_RECORD* record = pointers->ExceptionRecord;
+  PushMove* move = push_move;
+  if (move == nullptr || record->ExceptionCode != STATUS_GUARD_PAGE_VIOLATION || record->NumberParameters < 2
+      || (record->ExceptionInformation[1] & ~static_cast<ULONG_PTR>(0xFFF)) != reinterpret_cast<ULONG_PTR>(move->region + 0x1000)) {
+    return EXCEPTION_CONTINUE_SEARCH;
+  }
+  ++move->fired;
+  *move->saved_esp_at = move->saved_esp;
+  static const bool trace = (std::getenv("ITEM_PUSH_TRACE") != nullptr);
+  if (trace) std::fprintf(stderr, "  move: guard page hit at %p (entry %u, %s), eip %p\n", reinterpret_cast<void*>(record->ExceptionInformation[1]), move->entry, move->swap ? "list slot" : "[list + 8]",
+                          record->ExceptionAddress);
+  Write32(reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(move->swap ? move->list_slot : move->array_field)), move->swap ? Address(move->second_list) : Address(move->fresh));
+  for (uint32_t later = move->entry + 1; later < move->rounds + 2; ++later) Write32(move->region + 0x1000 + 4 * (later - move->entry), 0xDEAD0000u + later);
+  return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+// Scenario `index` of the seed with a moving source list: loop A or B from 0 over 8 to 60 rounds into a vector with room for them (the stub takes the run), the list's
+// array in `move`'s pages, the move at entry 1 to rounds - 3 (the stub's run covers the rounds 0 .. rounds - 2: at least one more round after the move).
+PushSpec PushMoveScenario(ItemPushWorld* world, uint32_t frame_esp, uint8_t* edge, uint64_t seed, uint64_t index, PushMove* move) {
+  Random random = {.state = (seed + index) * 0x9E3779B97F4A7C15ull | 1};
+  for (int warm = 0; warm < 4; ++warm) random.Next();
+  PushSpec spec = {.b = (random.Next() & 1) != 0, .start = 0, .end = 8 + random.Next() % 53, .size = random.Next() % 20, .mode = 0, .layout = PUSH_PLAIN, .shift = random.Next()};
+  spec.capacity = spec.size + spec.end + 3 + random.Next() % 8;
+  push_spec_now = spec;
+  push_world_now = world;
+  PushSetup(world, frame_esp, edge, spec, &random);
+  move->entry = 1 + random.Next() % (spec.end - 3);
+  move->rounds = spec.end;
+  move->swap = (random.Next() & 1) != 0;
+  uint8_t* old_array = move->region + 0x1000 - 4 * move->entry;
+  for (uint32_t entry = 0; entry < spec.end + 2; ++entry) {
+    const uint32_t value = random.Next();
+    Write32(old_array + 4 * entry, value);
+    move->fresh[entry] = (entry <= move->entry ? value : random.Next());
+  }
+  std::memcpy(move->snapshot.data(), move->region, move->snapshot.size());
+  std::memset(move->second_list, 0, sizeof(move->second_list));
+  Write32(move->second_list + 8, Address(move->fresh));
+  Write32(world->list + 8, Address(old_array));
+  move->array_field = Address(world->list) + 8;
+  move->list_slot = frame_esp + 0x1C;
+  return spec;
+}
+
 // Scenario `index` of `seed` in both copies of the DLL: the spec and the world are made in `world` (a copy goes to `backup`), the game's loop runs on it (the world
 // after goes to `result`), then the patched copy's on the world as it was (`world` ends as that run left it). Each run's frame is in an array on this function's own
 // stack at a fixed place (the world's overlap layouts point into it): an access violation is dispatched on the stack below esp and unwinds to the __try's frame, so
 // that frame must lie above the array (a callee's frame would be run into). Returns "" if the two runs agree, else what differs; `faulted`: the game's run faulted.
+// With `move` the scenario is PushMoveScenario's and the old array's second page is guarded before each run (`move->fired` ends as the number of runs that moved it).
 const char* PushBoth(ItemPushWorld* world, ItemPushWorld* backup, ItemPushWorld* result, uint8_t* edge, uint64_t seed, uint64_t index,
-                     const std::array<uint32_t, 2>& game_heads, const std::array<uint32_t, 2>& patched_heads, PushSpec* spec_out, bool* faulted) {
+                     const std::array<uint32_t, 2>& game_heads, const std::array<uint32_t, 2>& patched_heads, PushSpec* spec_out, bool* faulted, PushMove* move = nullptr) {
   alignas(16) uint8_t arena[PUSH_ARENA_BYTES];
   auto* on_stack = reinterpret_cast<LoopCall*>(arena + PUSH_ARENA_CALL);
   push_scenario_now = index;
-  *spec_out = PushScenario(world, Address(on_stack) + LOOP_ESP, edge, seed, index);
+  *spec_out = (move == nullptr ? PushScenario(world, Address(on_stack) + LOOP_ESP, edge, seed, index) : PushMoveScenario(world, Address(on_stack) + LOOP_ESP, edge, seed, index, move));
   push_layout_now = spec_out->layout;
   *backup = *world;
   bool done[2] = {true, true};
+  DWORD guard_protection;
+  if (move != nullptr) move->fired = 0;
   for (int copy = 0; copy < 2; ++copy) {
     *world = *backup;
     push_world = world;
     std::memcpy(edge, world->edge_snapshot, PUSH_EDGE_BYTES);
     std::memcpy(on_stack, &world->call, sizeof(LoopCall));
     on_stack->target = (copy == 0 ? game_heads : patched_heads)[spec_out->b];
+    if (move != nullptr) {
+      auto* entry_probe = reinterpret_cast<LoopCall*>(arena + PUSH_ARENA_CALL + 0x400);  // above the loop's esp: the dispatch of the guard page violation does not reach it
+      std::memset(entry_probe, 0, sizeof(LoopCall));
+      entry_probe->target = Address(reinterpret_cast<const void*>(&ParticleLoopReturn));
+      EnterParticleLoop(entry_probe);
+      move->saved_esp = entry_probe->saved_esp;
+      move->saved_esp_at = &on_stack->saved_esp;
+      std::memcpy(move->region, move->snapshot.data(), move->snapshot.size());
+      VirtualProtect(move->region + 0x1000, 0x1000, PAGE_READWRITE | PAGE_GUARD, &guard_protection);
+    }
     static const bool run_trace = (std::getenv("ITEM_PUSH_TRACE") != nullptr);
     if (run_trace) {
       std::fprintf(stderr, "  run %d: flags_in %08X target %08X backup flags %08X world flags %08X on_stack %p\n", copy, on_stack->flags_in, on_stack->target, backup->call.flags_in,
@@ -501,6 +584,7 @@ const char* PushBoth(ItemPushWorld* world, ItemPushWorld* backup, ItemPushWorld*
     } __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
       done[copy] = false;
     }
+    if (move != nullptr) VirtualProtect(move->region + 0x1000, 0x1000, PAGE_READWRITE, &guard_protection);  // not guarded any more if the run never reached it
     std::memcpy(&world->call, on_stack, sizeof(LoopCall));
     world->unused[0] = done[copy] ? 1 : 0;
     if (done[copy]) world->call.esp_after -= Address(on_stack);
@@ -537,8 +621,9 @@ __declspec(naked) uint32_t __cdecl PushGuardCall(uint32_t guard, uint32_t list, 
   }
 }
 
-// The exact model: does a store of a run (any slot of the block, the size field, the loop's scratch slots) reach a location the stub loads once and keeps (the list
-// pointer on the stack, the list's item array field, the capacity, size and data fields, A's end / B's limit slot)? The size store is the size load's own place.
+// The model: does a store of a run (any slot of the block, the size field, the loop's scratch slots) reach a location the stub loads once and keeps (the capacity, size
+// and data fields, A's end / B's limit slot) or one the guard still keeps clear (the list pointer on the stack and the list's item array field: the run loads those
+// again every round, as the game does, so a store on them would be read like the game's; the guard refuses it anyway)? The size store is the size load's own place.
 bool PushOverlaps(uint32_t list, uint32_t data, uint32_t capacity, uint32_t object, uint32_t site_esp, bool b) {
   struct Range {
     uint64_t lo;
@@ -776,8 +861,9 @@ int RunPushTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool q
 
   // 19b. The guard against the exact model, and each clause's mutant.
   DWORD protection;
+  const bool move_only = (std::getenv("ITEM_PUSH_MOVE_ONLY") != nullptr);
   const bool only_threads = (std::getenv("ITEM_PUSH_THREADS_ONLY") != nullptr);
-  if (std::getenv("ITEM_PUSH_FIRST") == nullptr && !only_threads) {
+  if (std::getenv("ITEM_PUSH_FIRST") == nullptr && !only_threads && !move_only) {
     auto buffer = std::make_unique<std::array<uint8_t, 0x1000>>();
     Random random = {.state = 0x6A4D1};
     const uint64_t tuples = (quick ? 400'000 : 6'000'000);
@@ -820,7 +906,7 @@ int RunPushTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool q
   const auto run_scenario = [&](uint64_t seed, uint64_t index, bool* faulted, PushSpec* spec_out) {
     return PushBoth(world, backup, result, edge, seed, index, game_heads, patched_heads, spec_out, faulted);
   };
-  if (!only_threads) {
+  if (!only_threads && !move_only) {
     const uint64_t scenarios = (std::getenv("ITEM_PUSH_LAST") != nullptr ? std::strtoull(std::getenv("ITEM_PUSH_LAST"), nullptr, 10) + 1 : (quick ? 20'000 : 250'000));
     std::array<uint64_t, PUSH_LAYOUTS> by_layout = {};
     std::array<uint64_t, PUSH_LAYOUTS> faulted_by_layout = {};
@@ -864,7 +950,7 @@ int RunPushTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool q
   }
 
   // 19d. CONTROLs on the stubs: each mutant is run on the same scenarios.
-  if (!only_threads) {
+  if (!only_threads && !move_only) {
     CHECK(VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READWRITE, &protection) != FALSE);
     const uint64_t scenarios = (quick ? 4000 : 12000);
     // The stubs' two `at least five items left` tests are the same condition twice (before and after the room limit), so each alone is equivalent to the stub
@@ -933,6 +1019,69 @@ int RunPushTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool q
     }
     CHECK(VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READ, &protection) != FALSE);
     FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+  }
+
+  // 19c2. The source list moves between the rounds of a run (PushMove: [list + 8] points at a bigger array, or the frame's list slot at a second list, at the moment the
+  // run loads entry `entry`, the old array's later entries become stale): the stub must give the game's result, which loads the list and its item array every round.
+  // CONTROLs: the stubs as they were before the fix, the jump back past the two loads (`jb run`'s displacement), must be seen on every one of them.
+  if (!only_threads) {
+    auto move = std::make_unique<PushMove>();
+    move->region = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x2000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    CHECK(move->region != nullptr);
+    push_move = move.get();
+    PVOID const move_handler = AddVectoredExceptionHandler(1, PushMoveHandler);
+    CHECK(move_handler != nullptr);
+    struct MoveFinding {
+      std::array<uint64_t, 2> scenarios = {};  // by loop (A, B)
+      std::array<uint64_t, 2> different = {};
+      std::array<uint64_t, 2> swapped = {};    // the scenarios with the frame's list slot moved to a second list (the others: [list + 8] moved to a bigger array)
+      std::array<uint64_t, 2> different_swapped = {};
+      uint64_t unfired = 0;                    // runs in which the guarded page was not reached in both copies, or the game faulted
+    };
+    const auto run_moves = [&](uint64_t count) {
+      MoveFinding found;
+      for (uint64_t index = 0; index < count; ++index) {
+        bool faulted = false;
+        PushSpec spec;
+        const bool seen = PushBoth(world, backup, result, edge, SEED + 0x4D0, index, game_heads, patched_heads, &spec, &faulted, move.get())[0] != 0;
+        const size_t loop = spec.b ? 1 : 0;
+        ++found.scenarios[loop];
+        found.different[loop] += seen ? 1 : 0;
+        found.swapped[loop] += move->swap ? 1 : 0;
+        found.different_swapped[loop] += (seen && move->swap) ? 1 : 0;
+        found.unfired += (move->fired != 2 || faulted) ? 1 : 0;
+      }
+      return found;
+    };
+    const uint64_t scenarios = (quick ? 4000 : 40000);
+    const MoveFinding moved = run_moves(scenarios);
+    std::printf("   the source list moving between the rounds of a run: %llu scenarios (loop A %llu, B %llu; %llu with the frame's list slot moved to a second list, the others with [list + 8] "
+                "moved to a bigger array): NOT equal %llu, the move not reached in both copies %llu\n", moved.scenarios[0] + moved.scenarios[1], moved.scenarios[0], moved.scenarios[1],
+                moved.swapped[0] + moved.swapped[1], moved.different[0] + moved.different[1], moved.unfired);
+    CHECK(moved.different[0] + moved.different[1] == 0 && moved.unfired == 0 && moved.scenarios[0] > scenarios / 4 && moved.scenarios[1] > scenarios / 4);
+    CHECK(moved.swapped[0] + moved.swapped[1] > scenarios / 4 && moved.swapped[0] + moved.swapped[1] < scenarios - scenarios / 4);
+    // The stubs as they were before the loads went into the run: the `jb`'s displacement back to after them. Each must be seen on every scenario of its own loop.
+    CHECK(VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READWRITE, &protection) != FALSE);
+    const std::array<PushMutant, 2> kept = {{{"A: the list and its item array loaded once for the run (`jb run_a` back past the two loads)", 0xDE, {0xE3}, 1, 0},
+                                             {"B: the list and its item array loaded once for the run (`jb run_b` back past the two loads)", 0x15A, {0xE6}, 1, 0}}};
+    for (size_t loop = 0; loop < kept.size(); ++loop) {
+      const PushMutant& mutant = kept[loop];
+      const uint8_t saved = stub_base[mutant.at];
+      stub_base[mutant.at] = mutant.bytes[0];
+      FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+      const MoveFinding seen = run_moves(quick ? 400 : 2000);
+      stub_base[mutant.at] = saved;
+      FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+      std::printf("   CONTROL, %s: %llu of %llu scenarios of its loop seen as different (%llu of the %llu with the list slot moved)\n", mutant.what, seen.different[loop], seen.scenarios[loop],
+                  seen.different_swapped[loop], seen.swapped[loop]);
+      CHECK(seen.scenarios[loop] > 0 && seen.different[loop] == seen.scenarios[loop] && seen.different[1 - loop] == 0 && seen.swapped[loop] > 0);
+    }
+    CHECK(VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READ, &protection) != FALSE);
+    FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+    RemoveVectoredExceptionHandler(move_handler);
+    push_move = nullptr;
+    VirtualFree(move->region, 0, MEM_RELEASE);
+    if (move_only) return 0;
   }
 
   // 19e. The sites switched with their row 200 times while 4 threads run both loops of both copies on their own worlds, then a parked thread at each byte.

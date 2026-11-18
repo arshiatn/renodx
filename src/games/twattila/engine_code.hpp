@@ -1074,31 +1074,42 @@ constexpr std::array<uint8_t, 18> ENTRY_FETCH_STUB = {
     0xE9, 0x00, 0x00, 0x00, 0x00,  // jmp the game's je (patched in Prepare)
 };
 
-// 15. The render lists' item push loops (Faster Game CPU Code). Two builders of the render lists (Attila +0x17b83a0, loop head +0x17b8490, and
-// +0x17b7bc0, head +0x17b7cb0; Thrones' copies are the same bytes) push the address of an item, `item + 0x50` (A) or `item + 0x38` (B), a round into a vector
-// of 4-byte slots {+0x7c capacity, +0x80 size, +0x84 data} at edi: `push_back` inlined, its growth (a doubling copy) in the loop. The size lives in memory
-// (`mov ecx, [edi + 0x80]` at the top, `inc dword ptr [edi + 0x80]` at the bottom: a store-forward chain of ~7 cycles an item) and the list ([esp + 0x1c], its
-// item array +8), the capacity, the data pointer and the end are loaded again every round: 75-80 % of the loop's user time in the recordings (0.2-0.35 ms of
-// the render thread's 0.5-0.7 ms; the doubling copy and its page faults are the rest). The site is the head's `mov eax, [esp + 0x1c]; mov ecx, [edi + 0x80]` (4 + 6
-// bytes: the jump takes the first 5, the stub goes on after the second). The stub runs both, then, with edx == 0 (no per-item call), the size below the capacity
-// (a push that doesn't grow), more than ITEM_PUSH_MIN_RUN items left and room for them, runs the rounds but the last with the size in a register: the same
-// loads of the item array, the same stores in the game's order (the scratch slots [esp + 0x30] (A) and [esp + 0x14], the slot, the size field), none of the
-// loads that cannot change. The game's code then does the last round, so every register that is live afterwards, the flags and every byte of memory are the
-// game's (edx is 0 again, eax the list again; ebx (A), esi and ecx are written before they are read at the top, the flags are set by the push's capacity
-// compare before they are read). The comparisons are the game's unsigned ones (`cmp ebp, end; jb`: the remaining count is only taken when ebp is below the end).
-// A guard (once a run) shows that no store of the run can reach what the run doesn't load again: the vector object's three fields, the list's item array
-// field, the stack from the stub's own pushes (B's limit) to the loop's slots; otherwise the game's code runs the round. The premise is the one of 11. (the
-// emitter loop), with a worse failure: no other thread changes the vector or the list while the run is in it (there a violation only feeds a prefetch, here it
-// would be a store through a hoisted pointer or size). It holds because they are the builder's own: both loops do non-atomic read-modify-writes on the same
-// builder (`add [edi + 0xac], ecx`, `mov [edi + 0xb0], eax`, `add [ebp], eax`, `inc [edi + 0x80]`), so a second concurrent writer would already corrupt the game;
-// both builders are reached only through vtable thunks (+0x1863340, +0x1863300, +0x1902B70, +0x1902B90; the owner thread was not traced). The stub is exact for a
-// single owner thread. Fault order matters only if something caught an access violation and went on (nothing does): the stub reads [edi + 0x7c] and
-// [edi + 0x84] before [list + 8] and the item array's slot (the game's order: list item array, slot, capacity, data), so a bad list or item array and an unreadable
-// header word together fault in another order; the hoisted [edi + 0x84] can fault one round's two scratch stores earlier (an unreadable data field next to a
-// readable size field); at a fault edx, ebx, eax and esi are not the game's, B's esp is 4 lower and 8 to 12 bytes below esp were written (the call, the pushes).
-// Found by the whole loop's bytes (calls and the jump out wild); no branch lands inside the site (the whole DLLs' relative branches and absolute pointers,
-// Attila's and Thrones': only the loop's own back-edge at +0; one rel8 hit at B's +5 is the operand byte of the `cmp ebp, ebx` before the loop). Rome II has
-// neither (rva 0).
+// 15. The render lists' item push loops (Faster Game CPU Code). Two builders of the render lists (Attila +0x17b83a0, loop head
+// +0x17b8490, and +0x17b7bc0, head +0x17b7cb0; Thrones' copies are the same bytes) push the address of an item, `item + 0x50`
+// (A) or `item + 0x38` (B), a round into a vector of 4-byte slots {+0x7c capacity, +0x80 size, +0x84 data} at edi (the loop's
+// argument [esp + 0x40]): `push_back` inlined, its growth (a doubling copy) in the loop. The size lives in memory (`mov ecx,
+// [edi + 0x80]` at the top, `inc dword ptr [edi + 0x80]` at the bottom: a store-forward chain of ~7 cycles an item) and the list
+// ([esp + 0x1c], its item array +8), the capacity, the data pointer and the end are loaded again every round: 75-80 % of the
+// loop's user time in the recordings (0.2-0.35 ms of the render thread's 0.5-0.7 ms; the doubling copy and its page faults are
+// the rest). The site is the head's `mov eax, [esp + 0x1c]; mov ecx, [edi + 0x80]` (4 + 6 bytes: the jump takes the first 5, the
+// stub goes on after the second). The stub runs both, then, with edx == 0 (no per-item call), the size below the capacity (a
+// push that doesn't grow), more than ITEM_PUSH_MIN_RUN items left and room for them, runs the rounds but the last with the size
+// in a register: the same loads of the list and its item array every round (two L1 loads, not on the size's chain), the same
+// stores in the game's order (the scratch slots [esp + 0x30] (A) and [esp + 0x14], the slot, the size field), and none of the
+// loads of the capacity, the data pointer and the end, which only the loop's own stores could change (the guard shows that they
+// don't). The game's code then does the last round, so every register that is live afterwards, the flags and every byte of
+// memory are the game's (edx is 0 again, eax the list again; ebx (A), esi and ecx are written before they are read at the top,
+// the flags are set by the push's capacity compare before they are read). The comparisons are the game's unsigned ones (`cmp
+// ebp, end; jb`: the remaining count is only taken when ebp is below the end). A guard (once a run) shows that no store of the
+// run can reach what the run keeps in registers or reads from the frame: the vector object's three fields, the stack from the
+// stub's own pushes (B's limit) to the loop's slots; it also refuses a store on the list's item array field and on the list's
+// slot, which the run loads again every round now (cautious, not needed); otherwise the game's code runs the round.
+// The premise: no other thread changes the output vector (edi) while a run is in it, as in 11. (the emitter loop) but with a
+// worse failure (there a violation only feeds a prefetch, here it would be a store through a kept pointer or size). The
+// loops' own `inc dword ptr [edi + 0x80]` is a non-atomic read-modify-write of that vector's size, so a second thread pushing to
+// the same vector would already corrupt the game; both builders are reached only through vtable thunks (+0x1863340, +0x1863300,
+// +0x1902B70, +0x1902B90; the owner thread was not traced). The source list is not part of the premise: it is the builder's
+// second argument + 4 (the list getter's `lea eax, [ecx + 4]`), another object that another thread may grow, and the stub
+// loads it and its item array every round like the game, so an array that moves between rounds is read where it is then (an
+// item array pointer kept for the run would read the freed old array). The stub is exact for one thread pushing to the output
+// vector. Fault order matters only if something caught an access violation and went on (nothing does): the
+// stub reads [edi + 0x7c] and [edi + 0x84] before [list + 8] and the item array's slot (the game's order: list item array, slot,
+// capacity, data), so a bad list or item array and an unreadable header word together fault in another order; the kept
+// [edi + 0x84] can fault one round's two scratch stores earlier (an unreadable data field next to a readable size field); at a
+// fault edx, ebx, eax and esi are not the game's, B's esp is 4 lower and 8 to 12 bytes below esp were written (the call, the
+// pushes). Found by the whole loop's bytes (calls and the jump out wild); no branch lands inside the site (the whole DLLs'
+// relative branches and absolute pointers, Attila's and Thrones': only the loop's own back-edge at +0; one rel8 hit at B's +5
+// is the operand byte of the `cmp ebp, ebx` before the loop). Rome II has neither (rva 0).
 constexpr std::string_view ITEM_PUSH_A =
     "3B E9 0F 83 ?? ?? ?? ?? 0F 1F 44 00 00 8B 44 24 1C 8B 8F 80 00 00 00 8B 40 08 8B 1C A8 8B 47 7C 89 5C 24 30 8D 73 50 89 "
     "74 24 14 3B C8 73 12 8B 87 84 00 00 00 89 34 88 E9 CA 00 00 00 33 D2 EB 9F 85 C0 75 26 50 6A 01 C7 47 7C 01 00 00 00 E8 "
@@ -1199,9 +1210,9 @@ constexpr std::array<uint8_t, 361> ITEM_PUSH_STUB = {
     0x72, 0x27,                                    // +0xB6 jb game_a
     0x4B,                                          // +0xB8 dec ebx
     0x01, 0xEB,                                    // +0xB9 add ebx, ebp
-    0x8B, 0x44, 0x24, 0x1C,                        // +0xBB mov eax, dword ptr [esp + 0x1c]
-    0x8B, 0x40, 0x08,                              // +0xBF mov eax, dword ptr [eax + 8]
     // run_a:
+    0x8B, 0x44, 0x24, 0x1C,                        // +0xBB mov eax, dword ptr [esp + 0x1c]    the list and its item array every round
+    0x8B, 0x40, 0x08,                              // +0xBF mov eax, dword ptr [eax + 8]
     0x8B, 0x34, 0xA8,                              // +0xC2 mov esi, dword ptr [eax + ebp*4]
     0x89, 0x74, 0x24, 0x30,                        // +0xC5 mov dword ptr [esp + 0x30], esi
     0x83, 0xC6, 0x50,                              // +0xC9 add esi, 0x50
@@ -1211,7 +1222,7 @@ constexpr std::array<uint8_t, 361> ITEM_PUSH_STUB = {
     0x89, 0x8F, 0x80, 0x00, 0x00, 0x00,            // +0xD4 mov dword ptr [edi + 0x80], ecx
     0x45,                                          // +0xDA inc ebp
     0x39, 0xDD,                                    // +0xDB cmp ebp, ebx
-    0x72, 0xE3,                                    // +0xDD jb run_a
+    0x72, 0xDC,                                    // +0xDD jb run_a
     // game_a:
     0x31, 0xD2,                                    // +0xDF xor edx, edx
     // keep_a:
@@ -1248,9 +1259,9 @@ constexpr std::array<uint8_t, 361> ITEM_PUSH_STUB = {
     0x48,                                          // +0x136 dec eax
     0x01, 0xE8,                                    // +0x137 add eax, ebp
     0x50,                                          // +0x139 push eax
-    0x8B, 0x44, 0x24, 0x20,                        // +0x13A mov eax, dword ptr [esp + 0x20]
-    0x8B, 0x40, 0x08,                              // +0x13E mov eax, dword ptr [eax + 8]
     // run_b:
+    0x8B, 0x44, 0x24, 0x20,                        // +0x13A mov eax, dword ptr [esp + 0x20]    the list and its item array every round
+    0x8B, 0x40, 0x08,                              // +0x13E mov eax, dword ptr [eax + 8]
     0x8B, 0x34, 0xA8,                              // +0x141 mov esi, dword ptr [eax + ebp*4]
     0x83, 0xC6, 0x38,                              // +0x144 add esi, 0x38
     0x89, 0x74, 0x24, 0x18,                        // +0x147 mov dword ptr [esp + 0x18], esi
@@ -1259,7 +1270,7 @@ constexpr std::array<uint8_t, 361> ITEM_PUSH_STUB = {
     0x89, 0x8F, 0x80, 0x00, 0x00, 0x00,            // +0x14F mov dword ptr [edi + 0x80], ecx
     0x45,                                          // +0x155 inc ebp
     0x3B, 0x2C, 0x24,                              // +0x156 cmp ebp, dword ptr [esp]
-    0x72, 0xE6,                                    // +0x159 jb run_b
+    0x72, 0xDF,                                    // +0x159 jb run_b
     0x83, 0xC4, 0x04,                              // +0x15B add esp, 4
     // game_b:
     0x31, 0xD2,                                    // +0x15E xor edx, edx
