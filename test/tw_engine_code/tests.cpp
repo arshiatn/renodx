@@ -272,6 +272,10 @@ struct Random {
     state ^= state << 17;
     return static_cast<uint32_t>(state >> 16);
   }
+  // A random word that is no address of this process (2 GB and up; the exe is not large-address-aware): the random words of a world that a wrong stub (a CONTROL) or a
+  // layout can read as a pointer are these, so that such a read always raises an access violation, never a read of some other thread's stack guard page (a random
+  // user address can be one: STATUS_GUARD_PAGE_VIOLATION is not caught by the runs' filters and the first touch would clear the other thread's guard).
+  uint32_t NextUnmapped() { return 0x80000000u | Next(); }
 };
 
 // A call with every register set: in (eax ecx edx ebx esi edi ebp), out after, esp as the callee left it (cdecl: at the

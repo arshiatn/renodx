@@ -256,12 +256,12 @@ PushSpec PushRandomSpec(Random* random) {
   return spec;
 }
 
-// The world as the head sees it: the frame (random above esp, then the loop's slots), the vector object, the list and its item array, the registers; the
+// The world as the head sees it: the frame (random words of 2 GB or more above esp, then the loop's slots), the vector object, the list and its item array, the registers; the
 // vector's block and the item array wherever the layout puts them. `frame_esp` is the run's esp (the frame will sit there when the run starts), `edge` the page
 // ending at a no-access page. The loop's slots: [esp + 0x1c] the list, [esp + 0x34] the end (A) / [esp + 0x30] (B), [esp + 0x3c] edx, [esp + 0x40] edi.
 void PushSetup(ItemPushWorld* world, uint32_t frame_esp, uint8_t* edge, const PushSpec& spec, Random* random) {
   uint8_t* esp = world->call.frame + PUSH_LOCALS;
-  for (uint32_t at = 0; at < PUSH_LOCALS; at += 4) Write32(esp + at, random->Next());
+  for (uint32_t at = 0; at < PUSH_LOCALS; at += 4) Write32(esp + at, random->NextUnmapped());
   const uint32_t rounds = PushRounds(spec.start, spec.end);
   const bool small_items = spec.layout >= PUSH_BLOCK_ON_FIELDS && spec.layout <= PUSH_LIST_ON_DATA;
   uint32_t edi = Address(world->vec) + PUSH_EDI;
@@ -332,22 +332,23 @@ void PushSetup(ItemPushWorld* world, uint32_t frame_esp, uint8_t* edge, const Pu
     return reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(address));
   };
   const auto fill_edge = [&] {
-    for (uint32_t at = 0; at < PUSH_EDGE_BYTES; at += 4) Write32(world->edge_snapshot + at, random->Next());
+    for (uint32_t at = 0; at < PUSH_EDGE_BYTES; at += 4) Write32(world->edge_snapshot + at, random->NextUnmapped());
   };
   if (spec.layout == PUSH_BLOCK_EDGE || spec.layout == PUSH_ITEMS_EDGE) fill_edge();
   // The block's first `size` slots, then the item array's entries (the array can lie in the block: written last, its entries are the items).
-  // (In the layouts where a slot of the block can end up as the list's pointer, the block holds no valid pointers: the loop reads [that + 4 * index] and a random
-  // word would be some other thread's stack.)
+  // (The block holds no valid pointers in any layout: where a slot can end up as the list's pointer the loop reads [that + 4 * index], and where one is read as an item
+  // the per-item call loads [item + 0x38]; a random word would be some other thread's stack. NextUnmapped: every random word of the world that a wrong stub or a layout
+  // can read as a pointer is 2 GB or more, the same in both runs.)
   for (uint32_t slot = 0; slot < (small_items ? 64u : std::min(size, PUSH_SLOTS)) && spec.layout != PUSH_BLOCK_EDGE; ++slot) {
     if (spec.layout == PUSH_ARRAY_ON_BLOCK) break;
-    world->block[slot] = (small_items ? 0x80000000u : 0u) | random->Next();
+    world->block[slot] = random->NextUnmapped();
   }
   if (spec.layout == PUSH_ARRAY_ON_BLOCK) {
-    for (uint32_t slot = 0; slot < PUSH_SLOTS && slot < capacity + 64; ++slot) world->block[slot] = random->Next();
+    for (uint32_t slot = 0; slot < PUSH_SLOTS && slot < capacity + 64; ++slot) world->block[slot] = random->NextUnmapped();
   }
   const bool calls = (spec.mode != 0);
   for (uint32_t entry = 0; entry < rounds + 2; ++entry) {
-    uint32_t value = random->Next();
+    uint32_t value = random->NextUnmapped();
     if (calls) value = Address(world->items[random->Next() % 8]);
     if (small_items) value = 0x80000000u | (0x20 + (random->Next() & 0xFFF));  // above 2 GB: a field that gets one is no valid pointer
     uint8_t* at = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(array_entries_at + 4 * entry));
@@ -383,7 +384,7 @@ void PushSetup(ItemPushWorld* world, uint32_t frame_esp, uint8_t* edge, const Pu
   world->zero_after = (spec.mode == 2 ? spec.zero_after : 0xFFFFFFFFu);
   world->edx_slot = frame_esp + 0x3C;
   std::memset(world->log, 0, sizeof(world->log));
-  for (uint32_t& value : world->call.in) value = random->Next();
+  for (uint32_t& value : world->call.in) value = random->NextUnmapped();
   world->call.in[2] = (spec.mode != 0 ? Address(world->object) : 0u);
   world->call.in[3] = (spec.b ? spec.end : world->call.in[3]);
   world->call.in[5] = edi;
@@ -529,9 +530,9 @@ PushSpec PushMoveScenario(ItemPushWorld* world, uint32_t frame_esp, uint8_t* edg
   move->swap = (random.Next() & 1) != 0;
   uint8_t* old_array = move->region + 0x1000 - 4 * move->entry;
   for (uint32_t entry = 0; entry < spec.end + 2; ++entry) {
-    const uint32_t value = random.Next();
+    const uint32_t value = random.NextUnmapped();
     Write32(old_array + 4 * entry, value);
-    move->fresh[entry] = (entry <= move->entry ? value : random.Next());
+    move->fresh[entry] = (entry <= move->entry ? value : random.NextUnmapped());
   }
   std::memcpy(move->snapshot.data(), move->region, move->snapshot.size());
   std::memset(move->second_list, 0, sizeof(move->second_list));
@@ -781,7 +782,7 @@ LONG WINAPI PushCrash(EXCEPTION_POINTERS* pointers) {
 
 int RunPushTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick) {
   namespace ec = twattila::engine_code::internal;
-  SetUnhandledExceptionFilter(PushCrash);
+  const LPTOP_LEVEL_EXCEPTION_FILTER previous_filter = SetUnhandledExceptionFilter(PushCrash);  // put back at the end: it prints this part's scenario
   PVOID trace_handler = nullptr;
   if (std::getenv("ITEM_PUSH_TRACE") != nullptr) {
     trace_handler = AddVectoredExceptionHandler(1, [](EXCEPTION_POINTERS* pointers) -> LONG {
@@ -1072,16 +1073,19 @@ int RunPushTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool q
       const MoveFinding seen = run_moves(quick ? 400 : 2000);
       stub_base[mutant.at] = saved;
       FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
-      std::printf("   CONTROL, %s: %llu of %llu scenarios of its loop seen as different (%llu of the %llu with the list slot moved)\n", mutant.what, seen.different[loop], seen.scenarios[loop],
-                  seen.different_swapped[loop], seen.swapped[loop]);
-      CHECK(seen.scenarios[loop] > 0 && seen.different[loop] == seen.scenarios[loop] && seen.different[1 - loop] == 0 && seen.swapped[loop] > 0);
+      std::printf("   CONTROL, %s: %llu of %llu scenarios of its loop seen as different (%llu of the %llu with the list slot moved), the move not reached in both copies %llu\n", mutant.what,
+                  seen.different[loop], seen.scenarios[loop], seen.different_swapped[loop], seen.swapped[loop], seen.unfired);
+      CHECK(seen.scenarios[loop] > 0 && seen.different[loop] == seen.scenarios[loop] && seen.different[1 - loop] == 0 && seen.swapped[loop] > 0 && seen.unfired == 0);
     }
     CHECK(VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READ, &protection) != FALSE);
     FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
     RemoveVectoredExceptionHandler(move_handler);
     push_move = nullptr;
     VirtualFree(move->region, 0, MEM_RELEASE);
-    if (move_only) return 0;
+    if (move_only) {
+      SetUnhandledExceptionFilter(previous_filter);
+      return 0;
+    }
   }
 
   // 19e. The sites switched with their row 200 times while 4 threads run both loops of both copies on their own worlds, then a parked thread at each byte.
@@ -1152,5 +1156,6 @@ int RunPushTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool q
   PushFreeWorld(world);
   PushFreeWorld(backup);
   PushFreeWorld(result);
+  SetUnhandledExceptionFilter(previous_filter);
   return 0;
 }

@@ -101,7 +101,7 @@ thread_local uint32_t sweep_poison_distance = 0;  // 20b2: the entry that many b
 void SweepSetup(SweepWorld* world, const SweepEdges& edges, const SweepSpec& spec, Random* random) {
   std::memset(world->self, 0, sizeof(SweepWorld) - offsetof(SweepWorld, self));
   uint8_t* esp = world->call.frame + SWEEP_LOCALS;
-  for (uint32_t at = 0; at < SWEEP_LOCALS; at += 4) Write32(esp + at, random->Next());
+  for (uint32_t at = 0; at < SWEEP_LOCALS; at += 4) Write32(esp + at, random->NextUnmapped());
   const uint32_t n = spec.entries;
   std::array<uint32_t, SWEEP_LISTS> kids = {};
   std::array<bool, SWEEP_LISTS> null_list = {};
@@ -126,7 +126,7 @@ void SweepSetup(SweepWorld* world, const SweepEdges& edges, const SweepSpec& spe
     const uint32_t ready_kind = random->Next() % 3;  // all ready / mostly / half
     for (uint32_t kid = 0; kid < count; ++kid) {
       uint8_t* object = world->objects[list * SWEEP_KIDS + kid];
-      for (uint32_t at = 0; at < 0x80; at += 4) Write32(object + at, random->Next());
+      for (uint32_t at = 0; at < 0x80; at += 4) Write32(object + at, random->NextUnmapped());
       const bool ready = (ready_kind == 0 || random->Next() % 100 < (ready_kind == 1 ? 90u : 45u));
       object[0x6E] = (ready ? static_cast<uint8_t>(1 + random->Next() % 255) : 0);
       uint32_t object_pointer = Address(object);
@@ -137,7 +137,7 @@ void SweepSetup(SweepWorld* world, const SweepEdges& edges, const SweepSpec& spe
       uint32_t block_pointer = Address(block);
       if (spec.corrupt) {
         const uint32_t corrupt = random->Next() % 100;
-        if (corrupt < 4) object_pointer = 0x80000000u | random->Next();  // unmapped
+        if (corrupt < 4) object_pointer = random->NextUnmapped();
         else if (corrupt < 6) object_pointer = 0;
         if (random->Next() % 100 < 12) block_pointer = 0;
       }
@@ -146,10 +146,10 @@ void SweepSetup(SweepWorld* world, const SweepEdges& edges, const SweepSpec& spe
     }
     kids_after -= count;
     // The list object: the flag byte, the count, the array (garbage when there is no child: the game never reads it).
-    for (uint32_t at = 0; at < SWEEP_LIST_BYTES; at += 4) Write32(list_w + at, random->Next());
+    for (uint32_t at = 0; at < SWEEP_LIST_BYTES; at += 4) Write32(list_w + at, random->NextUnmapped());
     list_w[4] = (random->Next() % 100 < 85 ? static_cast<uint8_t>(1 + random->Next() % 255) : 0);
     Write32(list_w + 0x40, count);
-    Write32(list_w + 0x44, count != 0 || (spec.layout & SWEEP_KIDS_END) != 0 ? kids_w_at : (0x80000000u | random->Next()));
+    Write32(list_w + 0x44, count != 0 || (spec.layout & SWEEP_KIDS_END) != 0 ? kids_w_at : random->NextUnmapped());
     // The entry.
     uint32_t* entry_block = world->blocks[list * (SWEEP_KIDS + 1)];
     entry_block[0] = Address(SWEEP_VTABLE.data());
@@ -170,10 +170,10 @@ void SweepSetup(SweepWorld* world, const SweepEdges& edges, const SweepSpec& spe
     std::memcpy(at_w, world->entries, 8 * n);
     entries_at = at;
   }
-  for (uint32_t at = 0; at < sizeof(world->self); at += 4) Write32(world->self + at, random->Next());
+  for (uint32_t at = 0; at < sizeof(world->self); at += 4) Write32(world->self + at, random->NextUnmapped());
   Write32(world->self + 0x18, n);
   Write32(world->self + 0x1C, entries_at);
-  for (uint32_t& value : world->call.in) value = random->Next();
+  for (uint32_t& value : world->call.in) value = random->NextUnmapped();
   world->call.in[3] = spec.start;
   world->call.in[4] = Address(world->self);
   world->call.flags_in = (random->Next() & 0x8D5) | 2;
