@@ -3591,6 +3591,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         thread; the game's own non-atomic RMWs on the builder show it has one); Lows: premise comment, fault-order note,
         2 untested guard clauses (size > cap, cap >= 0x40000000), Thrones full push re-run. ENGINE FIX ROUND (cr8s_ + er1s_ +
         er2s_) sent to ec4s_ 18:30; then the Opus xHigh end review of ci8s_ + ec4s_; then merge the chain.
+        ec4s_ round 2 DONE 19:27 (night1118/ec4s_report.md 'Round 2'): cb66d199c EVEC-F, 337f52a43 ES8c-x, d46817bac E3P-c,
+        656b0d90b probe fixes (ready check tests the list's flag, early dump at 2^31, code page RX); new tests 16f / 20b2 /
+        21b / 21d + 6 push mutants; Attila full + Thrones full PASS, Rome II -Quick + -Probe -Quick PASS, gated x86 3 exit 0,
+        probe add-on testbin\ec4s_probe_build32 rebuilt (probe strings absent from production). Not done as agreed: the
+        8-bools refactor, F8 / F9 nits. END REVIEW er3o_ (Opus xHigh, 31674db75..656b0d90b) STARTED 19:27; then merge the
+        chain, then ALOD-2.
         hl1s_ round 3 DONE 18:32 (heapfix/hl1s_report.md 'Round 3'): HFx 323bf407 (hfa + la8hgl8 + hs) and HFx2 8ce2a57b (+ la8b +
         lf8) built, tests + proofs passed (loopfetch, clean x87 run + hold mutant fails, lw controls, HSORT eq + controls);
         trees = 7.0 + patches in 10 orders x 3 methods, one hash each; heapfix_line needs every component's own line (no
