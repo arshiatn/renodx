@@ -3200,6 +3200,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         window 60..80 s after load, CSV heapfix_sortcount_<time>.csv + a summary line in heapfix.log); build.bat test
         passed, eq test through the recording path 10 / 10 bit for bit, ring test exact; variant heapfix_cnt.json
         -DryRun OK. The bench now copies heapfix_sortcount_*.csv out per start ($RUN_OUTPUTS, 06:15).
+        asm1_ DONE ~06:2x -> night1118/asm1_report.md: 4669d33e7 on asm1_ (parent b59262b2c): "Keep Render Core Free
+        (Experimental)" off, Attila only, new cpu_sets.hpp (our own background thread: snapshot 35-50 ms every 30 s;
+        base = process default sets x affinity; first apply after the base is stable two checks; off / detach clear
+        exactly ours), test/tw_cpu_sets 509 synthetic + 11 live steps x86 + amd64 pass, gated x86 3 targets exit 0.
+        STARTED 06:17: asr1_ Opus xHigh review (read only; may build and run the own-process test in testbin\asr1_).
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
