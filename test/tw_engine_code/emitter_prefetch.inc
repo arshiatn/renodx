@@ -680,6 +680,7 @@ int RunEmitterTests(const TestBuild& build, uint8_t* game, uint8_t* patched, boo
       });
     }
     int busy = 0;
+    int never = 0;
     bool on = true;
     for (int switches = 0; switches < 200; ++switches) {
       on = !on;
@@ -689,12 +690,14 @@ int RunEmitterTests(const TestBuild& build, uint8_t* game, uint8_t* patched, boo
         ++tries;
       } while (((ec::written >> ec::EMITTER_PREFETCH_INDEX & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
       busy += tries > 1 ? 1 : 0;
+      never += ((ec::written >> ec::EMITTER_PREFETCH_INDEX & 1) != 0) != on ? 1 : 0;
     }
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
     stop = true;
     for (auto& thread : threads) thread.join();
-    std::printf("   200 switches while 4 threads ran the loop %llu times in each copy: %llu different (%d writes waited for a thread inside a site)\n", loops.load(), bad.load(), busy);
-    CHECK(bad.load() == 0 && (ec::written >> ec::EMITTER_PREFETCH_INDEX & 1) != 0);
+    std::printf("   200 switches while 4 threads ran the loop %llu times in each copy: %llu different (%d writes waited for a thread inside a site, %d switches never reached)\n", loops.load(),
+                bad.load(), busy, never);
+    CHECK(bad.load() == 0 && never == 0 && loops.load() > 0 && (ec::written >> ec::EMITTER_PREFETCH_INDEX & 1) != 0);
   }
 
   // A parked thread whose saved Eip is each byte of the site (and the byte before, the bytes after): the row switched, the site changes only with Eip at

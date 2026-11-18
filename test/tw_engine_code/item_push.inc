@@ -1119,6 +1119,7 @@ int RunPushTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool q
       });
     }
     int busy = 0;
+    int never = 0;
     bool on = true;
     for (int switches = 0; switches < 200; ++switches) {
       on = !on;
@@ -1128,13 +1129,14 @@ int RunPushTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool q
         ++tries;
       } while ((((ec::written >> ec::ITEM_PUSH_FIRST_SITE) & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
       busy += tries > 1 ? 1 : 0;
+      never += (((ec::written >> ec::ITEM_PUSH_FIRST_SITE) & 1) != 0) != on ? 1 : 0;
     }
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true, true);
     stop = true;
     for (auto& thread : threads) thread.join();
-    std::printf("   200 switches while 4 threads made %llu scenarios in both copies on their own worlds: %llu wrong (%d writes waited for a thread inside a site)\n", scenarios_run.load(),
-                bad.load(), busy);
-    CHECK(bad.load() == 0 && (ec::written & ec::ITEM_PUSH_SITES) == ec::ITEM_PUSH_SITES);
+    std::printf("   200 switches while 4 threads made %llu scenarios in both copies on their own worlds: %llu wrong (%d writes waited for a thread inside a site, %d switches never reached)\n",
+                scenarios_run.load(), bad.load(), busy, never);
+    CHECK(bad.load() == 0 && never == 0 && scenarios_run.load() > 0 && (ec::written & ec::ITEM_PUSH_SITES) == ec::ITEM_PUSH_SITES);
   }
   if (const int failed = ParkedAtSites(ec::ITEM_PUSH_SITES, 10); failed != 0) return failed;
   std::printf("   a parked thread at each site -1 .. +10: refused at +1 .. +4 and written at the others\n");
