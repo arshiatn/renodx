@@ -1,5 +1,18 @@
 # Total War Saga: THRONES OF BRITANNIA (RenoDX HDR, ATN)
 
+## Dev, Model Detail Distance at 1x (2026-11-18; built only, not stamped, not installed, not run in game)
+
+- Faster: at **Model Detail Distance 1x** (the default) the add-on no longer hooks the game's LOD pick (the hook shared with
+  Attila and Rome II): the game runs its own code; the detour's call count alone cost 0.3-0.9 ms summed over the worker
+  threads. Above 1x nothing changes: the hook goes in when the game starts with the slider up, the same LOD picks at every value
+  (back at 1x the hook stays in and passes the distance through).
+- Changed: a game started at 1x applies a move up from 1x after the next game start (a live install would have to stop every
+  other thread of the game, and a stopped thread can hold the heap lock Detours then needs). While the slider is above 1x
+  and the hook is out, a yellow line under it says "Restart the game to apply Model Detail Distance."; the tooltip says so too.
+  This includes the presets that move the slider (ATN's 1.5x, the maximum's 8x) on a game started at 1x.
+  Advanced status / ReShade.log: "object detail at 1x: the game's LOD pick left alone".
+- Checked in `test/tw_native_hook_lifetime` (see Attila's entry).
+
 ## Dev, tw1_ and shared rounds (2026-11-17; built only, not stamped, not installed, not run in game)
 
 - New: **Path-Traced Reflection Occlusion** (on, slider 0..1): with Path-Traced Ambient, reflections darken where

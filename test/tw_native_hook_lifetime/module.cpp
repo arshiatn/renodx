@@ -92,6 +92,53 @@ extern "C" __declspec(dllexport) int RemoveLod(int stage) {
   forced_flag = 0;
   return static_cast<int>(lod::hooks.size());
 }
+// A PickLod of the game's first 50 bytes (the pattern in twrome2/engine_tweaks.hpp, which Update finds in this module), then
+// a tail for a model without LODs (+0x28 is 0): the camera's distance squared as the result.
+#pragma section(".text", read, execute)
+alignas(16) __declspec(allocate(".text")) static const uint8_t fake_pick_lod[] = {
+    0x53,                                      // push ebx
+    0x55,                                      // push ebp
+    0x8B, 0x6C, 0x24, 0x10,                    // mov ebp, [esp + 0x10]: next
+    0x56,                                      // push esi
+    0x57,                                      // push edi
+    0x8B, 0xF9,                                // mov edi, ecx: model
+    0xC7, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov dword ptr [ebp], 0
+    0x8B, 0x47, 0x28,                          // mov eax, [edi + 0x28]: the LOD count
+    0x85, 0xC0,                                // test eax, eax
+    0x0F, 0x84, 0x1C, 0x00, 0x00, 0x00,        // je tail
+    0x83, 0xF8, 0x01,                          // cmp eax, 1
+    0x75, 0x11,                                // jne
+    0x8B, 0x47, 0x2C,                          // mov eax, [edi + 0x2c]
+    0x8B, 0x00,                                // mov eax, [eax]
+    0x83, 0x78, 0x20, 0x00,                    // cmp dword ptr [eax + 0x20], 0
+    0x75, 0x06,                                // jne
+    0x83, 0x78, 0x2C, 0x00,                    // cmp dword ptr [eax + 0x2c], 0
+    0x77, 0x7A,                                // ja
+    0x8B, 0x0D, 0x00, 0x00, 0x00, 0x00,        // mov ecx, [address]
+    0x8B, 0x44, 0x24, 0x14,                    // tail: mov eax, [esp + 0x14]: the distance squared
+    0x5F, 0x5E, 0x5D, 0x5B,                    // pop edi, esi, ebp, ebx
+    0xC2, 0x08, 0x00,                          // ret 8
+};
+extern "C" __declspec(dllexport) const uint8_t* FakePickLod() { return fake_pick_lod; }
+// What the add-on's present does with the slider at `scale` (the first one finds the module). Bit 0: a hook is installed,
+// 1: it is active, 2: the restart note shows. The status text through `status_text`.
+static tw::engine_tweaks::Option lod_slider;
+static bool lod_found = false;
+static renodx::utils::settings::Setting lod_status;
+static renodx::utils::settings::Setting* lod_note = tw::engine_tweaks::RestartNote(&lod_slider);
+static std::array<tw::engine_tweaks::Option*, 1> lod_options = {&lod_slider};
+extern "C" __declspec(dllexport) int UpdateLod(float scale, const char** status_text) {
+  lod_slider.scale = scale;
+  tw::engine_tweaks::Update(L"native_hooks_test.dll", lod_options, &lod_slider, &lod_found, &lod_status);
+  *status_text = lod_status.label.c_str();
+  return (lod::hooks.empty() ? 0 : 1) | (lod::hooks_active.load() ? 2 : 0) | (lod_note->is_visible() ? 4 : 0);
+}
+// The add-on's detach and, after it, a new image's first look.
+extern "C" __declspec(dllexport) int DetachLod() {
+  tw::engine_tweaks::Uninstall(lod_options);
+  lod_found = false;
+  return static_cast<int>(lod::hooks.size());
+}
 #endif
 // The game's engine values are the host's (its image stays, this one unloads). Phase 0, the first image: two values
 // scaled and a flag set, one value set again by the game, a constant in the game's code, then the detach. Phase 1, the

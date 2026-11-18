@@ -1908,7 +1908,10 @@ void ConfigureAddon() {
       tw::engine_tweaks::Slider(&footstep_effects, "GraphicsFootstepEffects", "Footstep Effects Distance",
                                 "How far soldiers' footsteps kick up dust. Higher: heavier.", 4.f, 0.1f),
       tw::engine_tweaks::Slider(&object_detail, "GraphicsObjectDetail", "Model Detail Distance",
-                                "Battle: trees and other objects keep their detailed versions farther away.", 8.f),
+                                "Battle: trees and other objects keep their detailed versions farther away.\n"
+                                "A game started at 1x needs a restart before it applies.",
+                                8.f),
+      tw::engine_tweaks::RestartNote(&object_detail),
       tw::engine_tweaks::Slider(&building_detail, "GraphicsBuildingDetail", "Building Detail Distance",
                                 "Battle: buildings keep their detailed versions farther away. From the next battle.",
                                 8.f),
