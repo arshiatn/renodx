@@ -394,6 +394,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page ... | the next engine_code implementer (after EF4), folded in
 - CR2 LOW FIXES (review_ci2s.md): Low-1 part 13g flips only tail[14] (add tail[128 ... | the next engine_code implementer, folded in
 - FASTER GAME CPU CODE TOOLTIP + README: tooltip "(soldiers, their sprites and eff ... | coordinator, round end
+- HF NOTES 3 TO FILL (author_notes_3): the counting build's sizes (note 1 + a gate ... | coordinator, after the final bench
 - TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
 - DAY1 MAXED GPU LEVERS (gpo1_ / cpa1_): day1 maxed behind the units is GPU-bound ... | coordinator (GPU line)
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
@@ -3188,6 +3189,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         ci3s_ STOPPED ~05:5x on a WORKTREE GUARD refusal (its own cd + heredoc compound; not the safety classifier),
         commit-1 edits half done, nothing committed. RESUMED 05:56 with Edit-tool-only edits + plain single commands
         (as the guard asks; ci1_ / ci2s_ did the same).
+        HF NOTES 06:01: tonight's heapfix finds written into the third-notes draft tools/tw/heapfix/author_notes_3:
+        new 7_proposal_x87_fisttp_cw_reload (HX87: options A / B, B exact in the same 30 / 45 bytes),
+        8_info_animation_fill_distance (HLA2), 9_info_fresh_pages_every_frame (HLB); note 1 + "the gate never fired in
+        the ground view" (HSG), notes 2 / 3 / 4 / 5 + tonight's numbers (loopfetch, memfast, watch threads), README
+        entries + our-sites paragraph. STARTED 06:01: hfc1_ Opus High = the private HSG counting build
+        (AttilaCPUPerfFix_cnt = B4G + a per-sort ring: n, time, thread, path, caller RVA -> heapfix_sortcount.csv;
+        variant bench/variants/heapfix_cnt.json) for the final bench.
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
@@ -3199,6 +3207,9 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] FASTER GAME CPU CODE TOOLTIP + README: tooltip "(soldiers, their sprites and effect particles)"
         (graphics_page.hpp, shared: all includers built); twattila README Dev section: ES8b ready check + EF4 particle
         reloads. Owner: coordinator, round end
+      - [ ] HF NOTES 3 TO FILL (author_notes_3): the counting build's sizes (note 1 + a gate number), the B4G / P /
+        Pnolf bench (notes 1 / 2, bench_results/), the final list of our sites (README), privacy scan, then ONE zip in
+        ATN's Downloads for ATN to send. Owner: coordinator, after the final bench
       - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
         0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
         drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
