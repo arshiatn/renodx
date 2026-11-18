@@ -399,6 +399,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CR3 LOW FIXES (review_ci3s.md): L1 Faster Effect Prefetch row text (addon.cpp:13 ... | the next engine_code implementer (L2 / N1-N3), coordinator r
 - ASMT NITS (review_asm1.md): set `applied` right after give() for the render thre ... | the next cpu_sets touch / release round
 - ALPK NITS (review_alp1.md): L1 optional restore of lights_last on every frame (~ ... | the next rt_core touch
+- ATN: vMF ROUGH DIFFUSE DEFAULT SLIDER (s0_report.md 7.1): Attila's gloss is ~1 a ... | ATN
+- WH3 RR GUIDES CHECK (s0_report.md 6): 76 % of WH3 forest pixels have guide albed ... | next WH3 round
 - TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
 - DAY1 MAXED GPU LEVERS (gpo1_ / cpa1_): day1 maxed behind the units is GPU-bound ... | coordinator (GPU line)
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
@@ -3244,6 +3246,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         alr1_ review DONE ~07:2x -> night1118/review_alp1.md: MERGE (own harness: comparator outcome sequences identical,
         8.2-8.5 M per build, 4 builds, default MXCSR + FTZ / DAZ; every lights_last path checked; 30 consumers same
         presets). MERGED 26e32e418 (gated x86 all + amd64 all running 07:30 before the push).
+        vmf0_ (vMF S0) DONE ~07:3x -> designs/vmf_s0/s0_report.md: transcription checked on page images (x2 series right;
+        Eq. 5 is the paper's own 1-6 % fit; fm wrong below r 0.2 -> fade saturate((r - 0.15) / 0.25); R clamp [0, 4]); walk
+        T0 1.59 % rms (controls fail), T1 gate -> 2 %, beta table 8x8 (0.08 % rms), fast form 7 terms (1.56 % / 4.5 %),
+        rho histogram from 17 recordings: ATTILA'S GLOSS ~1 EVERYWHERE (94.6 % rho >= 0.875) -> at slider 100 % nearly
+        every pixel gets the strongest lobe (+84 / -54 % sun 70 / view 70): default slider = ATN (recommend ~40 %, +13 /
+        -11 %); WH3's guides look unwritten on 76 % (check rr_guides). S1 ready (after the bench; design S1 waits for D2
+        stage A only for the shared bridge).
         ci3s_ DONE ~06:4x -> night1118/ci3s_report.md: c3adca196 CR1 fixes (L1 / L2 / N1 bswap tail 11 B / N2 / N3 / N4)
         + d6cef1f49 E3P-b (site 12 loop bottom Attila 0x1893883 / Thrones 0x1908be3, 50-byte stub at 0xB80, K = 2,
         Faster Effect Prefetch row; harness 162 -> 67 ns a particle at 300-cycle updates) on dfcf463d0; full x86
@@ -3293,6 +3302,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         invariant: nothing reads it before Update's swap); N1 move the 0.23 ms history out of the comment
         (rt_core.hpp:3518-3522); N2 wrap 3520 / 3521 / 3527 / 3645 / 3648; N3 tw_native_context run.ps1 -OutDir. Owner:
         the next rt_core touch
+      - [ ] ATN: vMF ROUGH DIFFUSE DEFAULT SLIDER (s0_report.md 7.1): Attila's gloss is ~1 almost everywhere, so at
+        100 % nearly every pixel gets r 0.40 (+26 / -23 % at sun 45 / view 45, +84 / -54 % at 70 / 70, +143 / -65 % at
+        70 / 85); ~40 % (r 0.16) gives +13 / -11 %. Recommend 40 % (row Experimental, off either way). Owner: ATN
+      - [ ] WH3 RR GUIDES CHECK (s0_report.md 6): 76 % of WH3 forest pixels have guide albedo 0 + rho 0 in the route B
+        recordings: guides not written? (DLSS RR quality on WH3). Owner: next WH3 round
       - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
         0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
         drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
