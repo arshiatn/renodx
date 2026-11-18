@@ -757,33 +757,43 @@ constexpr std::array<uint32_t, 40> HALF_ROWS_CONSTANTS = {
 // 8. The effect tree's child sum (+0x1890b90; E3P of the CPU plan): `sum += child->vtable[0x1c]()` over the vector at
 // [this+0x68] of [this+0x64] pointers, the bounds read again after every call. The children are scattered heap objects, so
 // the loop waits for each one's first line. The stub at the loop's bottom (the `lea ecx, [ecx + edx*4]; cmp esi, ecx` that
-// the `jne` tests; esi is the next item's slot, ecx the vector's begin, edx its size) prefetches the child after the next
-// one: only when that slot's 4 bytes [esi + 4, esi + 8) lie wholly inside [begin, end) as the vector is right now, with no
-// wrap of the address space (a vector the call reallocated puts the old esi outside it: no load; esi need not be 4 apart from
-// the begin); `prefetcht0` itself never faults. Same results: the flags the `jne` sees are the game's `cmp esi, ecx`, ecx is
-// the end as the game computes it, edx is not touched, and eax, which the game has added to the sum and next overwrites (the
-// loop's top, `mov eax, edi` at the exit), is the one register that differs. No store, and a load only inside the vector's
-// size * 4 bytes, which any vector keeps committed after a call returns (the one assumption): every register, the flags and
-// the memory at the function's return are the game's.
+// the `jne` tests; esi is the next item's slot, ecx the vector's begin, edx its size) prefetches the children K - 1 and K / 2 - 1
+// places after the next one (K = CHILD_SUM_AHEAD): only when the far slot's 4 bytes [esi + 4K - 4, esi + 4K) lie wholly inside
+// [begin, end) as the vector is right now, with no wrap of the address space (a vector the call reallocated puts the old esi
+// outside it: no load; esi need not be 4 apart from the begin). The near slot [esi + 2K - 4, esi + 2K) is then inside too:
+// begin <= esi <= esi + 2K - 4 and esi + 2K <= esi + 4K <= end, no wrap. `prefetcht0` itself never faults. Same results: the
+// flags the `jne` sees are the game's `cmp esi, ecx`, ecx is the end as the game computes it, edx is not touched, and eax, which
+// the game has added to the sum and next overwrites (the loop's top, `mov eax, edi` at the exit), is the one register that
+// differs. No store, and loads only inside the vector's size * 4 bytes, which any vector keeps committed after a call returns
+// (the one assumption): every register, the flags and the memory at the function's return are the game's.
 constexpr std::string_view CHILD_SUM =
     "53 8B D9 56 57 33 FF 8B 73 68 8B 43 64 8D 04 86 3B F0 74 19 8B 0E 8B 01 FF 50 1C 8B 53 64 83 C6 04 8B 4B 68 03 F8 8D 0C 91 "
     "3B F1 75 E7 8B C7 5F 5E 5B C3";
 constexpr size_t CHILD_SUM_SITE = 38;    // lea ecx, [ecx + edx*4]; cmp esi, ecx
 constexpr size_t CHILD_SUM_RESUME = 43;  // jne to the loop's top
-constexpr std::array<uint8_t, 31> CHILD_SUM_STUB = {
-    0x39, 0xCE,              // cmp esi, ecx                (esi against the begin)
-    0x8D, 0x0C, 0x91,        // lea ecx, [ecx + edx*4]      (the end; no flags)
-    0x72, 0x11,              // jb skip                     (esi below the begin: stale, no load)
-    0x89, 0xF0,              // mov eax, esi
-    0x83, 0xC0, 0x08,        // add eax, 8
-    0x72, 0x0A,              // jc skip                     (esi + 8 past 2^32)
-    0x39, 0xC8,              // cmp eax, ecx
-    0x77, 0x06,              // ja skip                     (the slot after the next one is not wholly inside)
-    0x8B, 0x40, 0xFC,        // mov eax, dword ptr [eax - 4] (the child after the next one)
-    0x0F, 0x18, 0x08,        // prefetcht0 byte ptr [eax]
-    0x39, 0xCE,              // skip: cmp esi, ecx          (the flags the game's jne tests)
-    0xE9, 0x00, 0x00, 0x00, 0x00,  // jmp the loop's jne (patched in Prepare)
-};
+constexpr uint8_t CHILD_SUM_AHEAD = 4;
+static_assert(CHILD_SUM_AHEAD >= 2 && CHILD_SUM_AHEAD % 2 == 0 && CHILD_SUM_AHEAD * 4 <= 127);  // K / 2 a whole slot; the add's immediate a signed byte
+// The stub for K = `ahead`: the children in the slots [esi + 4K - 4, esi + 4K) and [esi + 2K - 4, esi + 2K), K - 1 and K / 2 - 1 places after the
+// next one, both behind the one check of the far slot (the test builds the stub for other K and the other forms for its timing).
+constexpr std::array<uint8_t, 37> ChildSumStub(uint8_t ahead) {
+  return {
+      0x39, 0xCE,                                       // cmp esi, ecx                    esi against the begin
+      0x8D, 0x0C, 0x91,                                 // lea ecx, [ecx + edx*4]          the end (no flags)
+      0x72, 0x17,                                       // jb skip                         esi below the begin: stale, no load
+      0x89, 0xF0,                                       // mov eax, esi
+      0x83, 0xC0, static_cast<uint8_t>(ahead * 4),      // add eax, 4K
+      0x72, 0x10,                                       // jc skip                         esi + 4K past 2^32
+      0x39, 0xC8,                                       // cmp eax, ecx
+      0x77, 0x0C,                                       // ja skip                         the far slot is not wholly inside
+      0x8B, 0x40, 0xFC,                                 // mov eax, dword ptr [eax - 4]     the child in the far slot
+      0x0F, 0x18, 0x08,                                 // prefetcht0 byte ptr [eax]
+      0x8B, 0x46, static_cast<uint8_t>(ahead * 2 - 4),  // mov eax, dword ptr [esi + 2K - 4]  the child in the near slot
+      0x0F, 0x18, 0x08,                                 // prefetcht0 byte ptr [eax]
+      0x39, 0xCE,                                       // skip: cmp esi, ecx              the flags the game's jne tests
+      0xE9, 0x00, 0x00, 0x00, 0x00,                     // jmp the loop's jne (patched in Prepare)
+  };
+}
+constexpr std::array<uint8_t, 37> CHILD_SUM_STUB = ChildSumStub(CHILD_SUM_AHEAD);
 
 // 9. The particle writer's float4 reloads (+0x18960d0, thiscall(float, const float*), ret 8; the effect update calls it once for
 // every particle: 4.9 ms of the render thread a frame in the stress battle, 1.77 ms of it the two reloads). It builds two float4s
@@ -964,11 +974,11 @@ constexpr size_t LIST_PUSH_PAGE = 0x240;
 constexpr size_t READY_CHECK_PAGE = 0x280;
 constexpr size_t JOB_PAGE = 0x300;
 constexpr size_t HALF_ROWS_PAGE = 0x500;
-constexpr size_t CHILD_SUM_PAGE = 0xB00;
 constexpr size_t FLOAT4_RELOAD_PAGE = 0xB20;    // one stub for each of the two reloads, a stride apart
 constexpr size_t FLOAT4_RELOAD_STRIDE = 0x30;
 constexpr size_t PARTICLE_PREFETCH_PAGE = 0xB80;
 constexpr size_t EMITTER_PREFETCH_PAGE = 0xBC0;
+constexpr size_t CHILD_SUM_PAGE = 0xC00;
 constexpr size_t PAGE_SIZE = 0x1000;
 static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the three games' truncation stubs are one type
               && HALF_PAGE + HALF_STUB.size() + HALF_SIZE <= FMOD_PAGE
@@ -976,12 +986,12 @@ static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the thre
               && LIST_PUSH_PAGE + LIST_PUSH_STUB.size() <= READY_CHECK_PAGE
               && READY_CHECK_PAGE + READY_CHECK_STUB.size() <= JOB_PAGE
               && JOB_PAGE + JOB_STUB.size() <= HALF_ROWS_PAGE
-              && HALF_ROWS_PAGE + HALF_ROWS_CONSTANTS_AT + sizeof(HALF_ROWS_CONSTANTS) <= CHILD_SUM_PAGE
-              && CHILD_SUM_PAGE + CHILD_SUM_STUB.size() <= FLOAT4_RELOAD_PAGE
+              && HALF_ROWS_PAGE + HALF_ROWS_CONSTANTS_AT + sizeof(HALF_ROWS_CONSTANTS) <= FLOAT4_RELOAD_PAGE
               && FLOAT4_RELOAD_STUB.size() <= FLOAT4_RELOAD_STRIDE
               && FLOAT4_RELOAD_PAGE + FLOAT4_RELOAD_AT.size() * FLOAT4_RELOAD_STRIDE <= PARTICLE_PREFETCH_PAGE
               && PARTICLE_PREFETCH_PAGE + PARTICLE_PREFETCH_STUB.size() <= EMITTER_PREFETCH_PAGE
-              && EMITTER_PREFETCH_PAGE + EMITTER_PREFETCH_STUB.size() <= PAGE_SIZE);
+              && EMITTER_PREFETCH_PAGE + EMITTER_PREFETCH_STUB.size() <= CHILD_SUM_PAGE
+              && CHILD_SUM_PAGE + CHILD_SUM_STUB.size() <= PAGE_SIZE);
 
 // Which sites each row writes (bits by `sites` index).
 constexpr uint32_t FLOAT4_RELOAD_SITES = 0b110000000000;  // the particle writer's two reloads
