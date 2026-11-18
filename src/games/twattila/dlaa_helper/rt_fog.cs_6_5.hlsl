@@ -19,7 +19,7 @@ RWTexture2D<unorm float> fog : register(u27);
 RWTexture2D<float4> fog_lights : register(u34);
 
 // The local lights' light at a point of the fog: one light picked by what it gives there (its colour's brightness times
-// the games' smooth falloff (1 - distance / reach)^2; reservoir sampling with one number), weighted back by its odds,
+// its shader's falloff, rt_scene.hlsli LightLinear; reservoir sampling with one number), weighted back by its odds,
 // through a shadow ray that the smoke it meets dims.
 float3 FogLightAt(float3 at, float u) {
   float total = 0.f;
@@ -28,7 +28,8 @@ float3 FogLightAt(float3 at, float u) {
   [loop]
   for (uint light = 0u; light < min(light_count, 32u); ++light) {
     const float falloff = saturate(1.f - (distance(lights[light].xyz, at) / max(lights[light].w, 1.0002842e-3f)));
-    const float weight = dot(light_colours[light].rgb, float3(0.2126f, 0.7152f, 0.0722f)) * falloff * falloff;
+    const float weight = dot(light_colours[light].rgb, float3(0.2126f, 0.7152f, 0.0722f))
+                         * (LightLinear(light) ? falloff : (falloff * falloff));
     if (weight <= 0.f) continue;
     total += weight;
     const float keep = weight / total;
@@ -50,6 +51,9 @@ float3 FogLightAt(float3 at, float u) {
   const float falloff = saturate(1.f - (light_distance / max(lights[picked].w, 1e-3f)));
   // The smoke apart (rt_scene.hlsli SmokeTransmittance): a fog sample's ray counts 2 that dim it, 4 met at most (its rays
   // are as many as the sun's; here, not along the quads' normal, the chord's share is only near enough).
+  if (LightLinear(picked)) {
+    return light_colours[picked].rgb * (falloff * total / picked_weight * SmokeTransmittance(at, to_light / light_distance, reach, 2u));
+  }
   return light_colours[picked].rgb
          * (falloff * falloff * total / picked_weight * SmokeTransmittance(at, to_light / light_distance, reach, 2u));
 }

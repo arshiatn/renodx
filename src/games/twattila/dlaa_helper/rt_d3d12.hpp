@@ -1426,8 +1426,8 @@ class RtScene12 {
       return false;
     }
     std::memcpy(&header, data.data(), sizeof(header));
-    if (header.magic != recording::MAGIC || header.format != recording::FORMAT || header.bridge_version != dlaa_bridge::VERSION
-        || header.layout != RecordingLayout()) {
+    if (header.magic != recording::MAGIC || header.format != recording::FORMAT || header.bridge_version < dlaa_bridge::OLDEST_VERSION
+        || header.bridge_version > dlaa_bridge::VERSION || header.layout != RecordingLayout()) {
       *why = std::format("state.bin is another build's (format {} bridge v{} layout {:016X}, written by {}; this helper: format {} bridge v{} layout {:016X})",
                          header.format, header.bridge_version, header.layout, std::string_view(header.helper, strnlen(header.helper, sizeof(header.helper))),
                          recording::FORMAT, dlaa_bridge::VERSION, RecordingLayout());
@@ -2127,7 +2127,8 @@ class RtScene12 {
         return false;
       }
       std::memcpy(&file->header, file->data.data(), sizeof(file->header));
-      if (file->header.magic != recording::MAGIC || file->header.format != recording::FORMAT || file->header.bridge_version != dlaa_bridge::VERSION) {
+      if (file->header.magic != recording::MAGIC || file->header.format != recording::FORMAT || file->header.bridge_version < dlaa_bridge::OLDEST_VERSION
+          || file->header.bridge_version > dlaa_bridge::VERSION) {
         *report = std::format("{} is another build's (format {}, bridge v{}; this helper: {}, v{})", path.string(), file->header.format,
                               file->header.bridge_version, recording::FORMAT, dlaa_bridge::VERSION);
         return false;
@@ -2855,7 +2856,7 @@ class RtScene12 {
         // The local lights with their colours (v11): what the paths meet unseen by the screen lit by them too.
         const uint32_t light_count = ((shared.rt_flags & dlaa_bridge::RT_LOCAL_LIGHTS) != 0) ? SharedLightCount(shared, version) : 0u;
         if (light_count != 0) {
-          CopyLights(shared, light_count, slot.light_data);
+          CopyLights(shared, version, light_count, slot.light_data);
           flags |= PATH_LOCAL_LIGHTS;
         }
         list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot.lights->GetGPUVirtualAddress());
@@ -3546,11 +3547,12 @@ class RtScene12 {
     ROOT_SCRATCH,  // u0 space1: a pass's own scratch (rt_place's dedupe: PlacedRoom::scratch; the cache fill's owners)
   };
   // b4 (rt_scene.hlsli Lights): RT_ALL_LIGHTS of world position and reach, their count, their colours, their places in
-  // the last trace's list (a byte each); a CBV's 256-byte multiple.
+  // the last trace's list and their falloffs (a byte each); a CBV's 256-byte multiple.
   static constexpr UINT LIGHT_COUNT_OFFSET = dlaa_bridge::RT_ALL_LIGHTS * 16;
   static constexpr UINT LIGHT_COLOURS_OFFSET = LIGHT_COUNT_OFFSET + 16;
   static constexpr UINT LIGHT_PREVIOUS_OFFSET = LIGHT_COLOURS_OFFSET + (dlaa_bridge::RT_ALL_LIGHTS * 16);
-  static constexpr UINT LIGHT_CONSTANT_BYTES = (LIGHT_PREVIOUS_OFFSET + dlaa_bridge::RT_ALL_LIGHTS + 255) / 256 * 256;
+  static constexpr UINT LIGHT_KINDS_OFFSET = LIGHT_PREVIOUS_OFFSET + dlaa_bridge::RT_ALL_LIGHTS;
+  static constexpr UINT LIGHT_CONSTANT_BYTES = (LIGHT_KINDS_OFFSET + dlaa_bridge::RT_ALL_LIGHTS + 255) / 256 * 256;
 
   // The addon's lights: at most RT_MAX_LIGHTS before v31; light `index`'s position and reach (or colour), the first
   // RT_MAX_LIGHTS in rt_lights, the others in rt_lights_more.
@@ -3562,11 +3564,12 @@ class RtScene12 {
     const uint32_t more = index - dlaa_bridge::RT_MAX_LIGHTS;
     return colour ? shared.rt_light_colours_more[more] : shared.rt_lights_more[more];
   }
-  // b4's positions, count and colours.
-  static void CopyLights(const dlaa_bridge::Shared& shared, uint32_t count, uint8_t* data) {
+  // b4's positions, count, colours and falloffs (an addon before v32 sends none: every light smooth).
+  static void CopyLights(const dlaa_bridge::Shared& shared, uint32_t version, uint32_t count, uint8_t* data) {
     for (uint32_t light = 0; light < count; ++light) {
       std::memcpy(data + (light * 16), SharedLight(shared, light, false), 16);
       std::memcpy(data + LIGHT_COLOURS_OFFSET + (light * 16), SharedLight(shared, light, true), 16);
+      data[LIGHT_KINDS_OFFSET + light] = (version >= 32 ? shared.rt_light_kinds[light] : dlaa_bridge::RT_LIGHT_SMOOTH);
     }
     std::memcpy(data + LIGHT_COUNT_OFFSET, &count, sizeof(count));
   }
@@ -6832,7 +6835,7 @@ class RtScene12 {
     if (local_lights) {
       textures.emplace_back(light_mask_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
       // With their colours for the fog's torch and fire light (rt_fog; the paths' requests copy them too).
-      CopyLights(shared, light_count, slot->light_data);
+      CopyLights(shared, version, light_count, slot->light_data);
       for (uint32_t light = 0; light < light_count; ++light) {
         const float* position = SharedLight(shared, light, false);
         const auto found = std::ranges::find_if(previous_lights_.begin(), previous_lights_.begin() + previous_light_count_,

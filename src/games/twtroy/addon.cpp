@@ -2501,6 +2501,9 @@ bool AttachAddon() {
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 8>{0x143A02ED, 0x027D250D, 0x58B3C96F, 0x4E7D9E2D, 0xC8345238, 0xD60958F1, 0xFB4A7ED0, 0x5DAF337D});
   // The fires: their particle lights' draws, the lights streamed (PARTICLE_LIGHTS); shaders/particlelight00 reads the bits.
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x643FC156}, twattila::rt_scene::internal::NO_LIGHT_CONSTANTS, &PARTICLE_LIGHTS);
+  // Their falloff 1 - saturate(d / r) unsquared: pointlight02, 03, 06, 07 (names.tsv pointlightlinearfalloff*) and the fires
+  // (particlelight00: used once).
+  twattila::rt_scene::InstallLinearFalloff(std::array<uint32_t, 5>{0x58B3C96F, 0x4E7D9E2D, 0xFB4A7ED0, 0x5DAF337D, 0x643FC156});
   // Log Details' light count: the point lights and the night siege's fires (particle lights 643FC156, VS F5CE48CC: one draw,
   // 192k indices in ATN's session 2; Pharaoh's 5AD46115).
   twattila::light_count::Install(0x143A02ED, 0x643FC156);

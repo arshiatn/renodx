@@ -69,10 +69,12 @@ using Microsoft::WRL::ComPtr;
 
 // A local light a light draw had: world position, reach (metres); its colour (rgb). `shadows_only`: its colour only ranks
 // it, the paths, the fog and the glow take none of its light (a spot light, lit all around there; its cone is its shader's).
+// `falloff`: the drawing shader's over the distance (dlaa_bridge::RT_LIGHT_*), which the paths, the fog and the glow follow.
 struct LocalLight {
   std::array<float, 4> light = {};
   std::array<float, 4> colour = {};
   bool shadows_only = false;
+  uint8_t falloff = dlaa_bridge::RT_LIGHT_SMOOTH;
 };
 
 struct Settings {
@@ -966,6 +968,7 @@ struct Runtime {
   std::vector<LocalLight> lights_last;
   std::vector<std::array<float, 4>> lights;
   std::vector<std::array<float, 4>> light_colours;
+  std::vector<uint8_t> light_kinds;
   bool lights_traced = false;
   // This frame's trace's Torch and Fire Light in the Light Bounce: 0 none, 1 the lights' light in the bounce, 3 the
   // bounce's shadow ratio (the Light Bounce request asks the same).
@@ -3486,6 +3489,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   // brightest channel) within Torch and Fire Shadow Range.
   runtime.lights.clear();
   runtime.light_colours.clear();
+  runtime.light_kinds.clear();
   if (runtime.settings.local_lights && !runtime.lights_last.empty()) {
     const auto distance_squared = [&](const LocalLight& light) {
       const float x = light.light[0] - camera.position[0];
@@ -3509,15 +3513,24 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     const size_t count = std::min<size_t>({candidates.size(), runtime.settings.light_count, light_ratio ? dlaa_bridge::RT_MAX_LIGHTS : dlaa_bridge::RT_ALL_LIGHTS});
     std::partial_sort(candidates.begin(), candidates.begin() + static_cast<ptrdiff_t>(count), candidates.end(),
                       [&](const LocalLight& a, const LocalLight& b) { return score(a) > score(b); });
+    // RENODX_TW_SQUARED_FALLOFF=1 (a test switch, for A/B runs against the helpers before bridge v32): every light's
+    // falloff squared, the linear-falloff shaders' lights too.
+    static const bool squared_falloff = [] {
+      std::array<char, 2> value = {};
+      return GetEnvironmentVariableA("RENODX_TW_SQUARED_FALLOFF", value.data(), static_cast<DWORD>(value.size())) == 1
+             && value[0] == '1';
+    }();
     // b9 (rt_local_lights.hlsli): positions and reach, the count, the glow (torch and fire light in fog and smoke), the
-    // lit mask's first tile row (bridge v31) and whether its words are shadow ratios, the colours.
+    // lit mask's first tile row (bridge v31) and whether its words are shadow ratios, the colours with the falloff in w.
     std::array<std::array<float, 4>, (dlaa_bridge::RT_ALL_LIGHTS * 2) + 1> constants = {};
     for (size_t index = 0; index < count; ++index) {
       const std::array<float, 4> colour = (candidates[index].shadows_only ? std::array<float, 4>{} : candidates[index].colour);
+      const uint8_t kind = (squared_falloff ? dlaa_bridge::RT_LIGHT_SMOOTH : candidates[index].falloff);
       runtime.lights.push_back(candidates[index].light);
       runtime.light_colours.push_back(colour);
+      runtime.light_kinds.push_back(kind);
       constants[index] = candidates[index].light;
-      constants[dlaa_bridge::RT_ALL_LIGHTS + 1 + index] = colour;
+      constants[dlaa_bridge::RT_ALL_LIGHTS + 1 + index] = {colour[0], colour[1], colour[2], static_cast<float>(kind)};
     }
     constants[dlaa_bridge::RT_ALL_LIGHTS] = {std::bit_cast<float>(static_cast<uint32_t>(count)), runtime.settings.light_glow,
                                              std::bit_cast<float>(dlaa_bridge::bridge.rt_light_tile_row), std::bit_cast<float>(light_ratio ? 1u : 0u)};
@@ -3584,6 +3597,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .drawn = runtime.drawn,
       .lights = runtime.lights,
       .light_colours = runtime.light_colours,
+      .light_kinds = runtime.light_kinds,
       .view_projection = camera.view_projection,
       .placements = runtime.placements,
       .compact = runtime.compact,
@@ -4675,13 +4689,28 @@ inline std::array<ID3D11ShaderResourceView*, 2> Visibilities() {
   return {dlaa_bridge::bridge.rt_visibility.srv.Get(), dlaa_bridge::bridge.rt_ambient.srv.Get()};
 }
 
+namespace internal {
+// One light drawn by shaders of both falloffs (the copy kept decides): said once.
+inline void LightFalloffsDisagree() {
+  static std::atomic_bool said = false;
+  if (!said.exchange(true, std::memory_order_relaxed)) {
+    renodx::utils::log::w("[Total War] Local lights: a light drawn with both a linear-falloff and a smooth-falloff shader (one falloff kept).");
+  }
+}
+}  // namespace internal
+
 // A local light a light draw had (one drawn twice counts once): the next frame's trace picks the nearest and brightest of
 // this frame's.
 inline void AddLocalLight(const LocalLight& light) {
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
   if (!runtime.settings.local_lights || !(light.light[3] > 0.f) || runtime.lights_drawn.size() >= internal::MAX_LOCAL_LIGHTS) return;
-  if (std::ranges::any_of(runtime.lights_drawn, [&](const LocalLight& drawn) { return drawn.light == light.light; })) return;
+  if (const auto drawn = std::ranges::find(runtime.lights_drawn, light.light, &LocalLight::light); drawn != runtime.lights_drawn.end()) {
+    if (drawn->falloff != light.falloff) {
+      internal::LightFalloffsDisagree();
+    }
+    return;
+  }
   runtime.lights_drawn.push_back(light);
 }
 

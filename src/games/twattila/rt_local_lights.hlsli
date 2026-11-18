@@ -17,18 +17,18 @@ Texture2D<uint> t_rt_light_mask : register(t42);
 cbuffer rt_local_lights : register(b9) {
   float4 rt_light_positions[128];  // xyz, w the reach (metres)
   uint4 rt_light_count;            // x; y the glow (asfloat: torch and fire light in fog and smoke, 0 none); z the tiles' row; w 1: the mask holds shadow ratios
-  float4 rt_light_colours[128];    // rgb
+  float4 rt_light_colours[128];    // rgb; w 1: the light falls off linearly (its shader's), 0 squared
 };
 
-// The local lights' light reaching a world point (no shadows): each one's colour times the games' smooth falloff
-// (1 - distance / reach)^2, times the glow setting. Torches and fires lighting the smoke and dust near them (vfx00): the
-// 32 brightest.
+// The local lights' light reaching a world point (no shadows): each one's colour times its shader's falloff (smooth
+// (1 - distance / reach)^2 or linear 1 - distance / reach), times the glow setting. Torches and fires lighting the smoke
+// and dust near them (vfx00): the 32 brightest.
 float3 RtLocalLightAt(float3 world) {
   float3 light = 0.f;
   [loop]
   for (uint index = 0u; index < min(rt_light_count.x, 32u); ++index) {
     const float falloff = saturate(1.f - (distance(rt_light_positions[index].xyz, world) / max(rt_light_positions[index].w, 1.0002184e-3f)));
-    light += rt_light_colours[index].rgb * (falloff * falloff);
+    light += rt_light_colours[index].rgb * ((rt_light_colours[index].w != 0.f) ? falloff : (falloff * falloff));
   }
   return light * asfloat(rt_light_count.y);
 }

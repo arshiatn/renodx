@@ -2514,6 +2514,7 @@ bool AttachAddon() {
   // instances POSITION1 the colour, POSITION2 the place and reach, as Warhammer II's), then ours over the game's shader
   // while their rays are bound (PointLightRays).
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 2>{PointLightRays::SHADER, LinearPointLightRays::SHADER});
+  twattila::rt_scene::InstallLinearFalloff(std::array<uint32_t, 1>{LinearPointLightRays::SHADER});
   renodx::utils::command_action::Register(
       PointLightRays::OnDraw, {.shader_hash = PointLightRays::SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   renodx::utils::command_action::Register(

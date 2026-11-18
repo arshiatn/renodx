@@ -336,9 +336,9 @@ float3 PreviousLight(uint2 pixel) {
   return (previous_square_root != 0u) ? color * color : color;
 }
 
-// The local lights' light on a surface the screen never saw: one of them picked by what it would give (its colour, the
-// games' smooth falloff (1 - distance / reach)^2, its angle; reservoir sampling with one number) and weighted back by its
-// odds, if a ray reaches it.
+// The local lights' light on a surface the screen never saw: one of them picked by what it would give (LightArriving: its
+// colour, its shader's falloff, its angle; reservoir sampling with one number) and weighted back by its odds, if a ray
+// reaches it.
 float3 LocalLight(float3 surface, float3 normal, float u) {
   float total = 0.f;
   float picked_weight = 0.f;

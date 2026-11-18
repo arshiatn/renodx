@@ -2294,6 +2294,7 @@ bool AttachAddon() {
   // light shadows (pointlight08-39, after them: their hook reads what InstallPointLights' bound).
   twattila::rt_scene::InstallPointLights(twattila::rt_scene::POINT_LIGHT_SHADERS);
   twattila::rt_scene::InstallPointShadowLights(&rt_sliders.game_point_shadows);
+  twattila::rt_scene::InstallLinearFalloff(twattila::rt_scene::LINEAR_FALLOFF_LIGHT_SHADERS);
   // The battle fog's ray-traced shadows (its shader replaced: shaders/battlefog00).
   twattila::rt_scene::InstallFogShadows(twattila::rt_scene::FOG_SHADERS);
   // Smoke's ray-traced shadows (the lit particles streamed out).
