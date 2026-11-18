@@ -3453,6 +3453,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         190 kept), B2 / B3, bench checks path DLLs vs sha256.txt; hfp3 H1-H7 (move-aside, hfp3_ok.txt, temp + Move under
         the mutex, stale-lock StartTime) with 40+ sandbox cases. Cnt2 rebuilt 13:35 by another run (aa226276, sortfix.c
         13:27: expected hs1s_'s digit column; confirm in its report). Re-check hcr1s_ STARTED 14:04.
+        hcr1s_ re-check DONE -> heapfix/hcr1s_review.md (round 2): bench USE, hfp3 USE, Cnt2 aa226276 USE (only hs1s_'s
+        'vary' column; unit + eq proofs re-run clean). Backup / restore / Put-File byte-identical; nothing can leave ATN's
+        files swapped. Low L1 constant 38 -> 32, L2 regex skips 'NOT WRITTEN', H8 a failed proof publishes nothing: sent
+        to hc1s_ 14:14.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
