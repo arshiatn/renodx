@@ -46,7 +46,15 @@
 //    all 18 float lanes at once, 200 switches while 4 threads run it, timing; then half_rows_adversarial.inc (quick length; `adv
 //    full` for the long runs): the MXCSR / x87 state and the flags, faults at page edges, the dead stack, one lane at a time on
 //    the vector path with the others random, pointer soup, a refused PausedWrite, the whole row builder (row_builder_call.inc).
-// 13. Another mod's bytes in a site: left alone, and the sites that depend on it with it.
+// 13. Another mod's bytes in a site: left alone, and the sites that depend on it with it; the particle writer's reloads also without
+//    SSE4.1 (not looked for) and with a changed byte in the function's tail (both left alone, named).
+// 14. The particle writer's two float4 reloads (+0x18960d0, Thrones +0x190b430; Faster Game CPU Code; particle_reload.inc): the region
+//    alone with random 16 stack bytes of every float class per lane (NaN payloads, subnormals, -0, infinities), stored as the game
+//    stores them: every register, xmm0-7, the flags, esp and the frame equal, CONTROLs with one lane read from the wrong address; the
+//    whole function on a fake object graph, both sides of the je at +0x18961a1 and of the comiss at +0x189660c (registers, x87, MXCSR,
+//    xmm, flags, esp, the frame, the six streams and the objects equal, with each site alone and both, CONTROLs per stub and lane);
+//    200 switches while 4 threads run it; a parked thread at each byte of each site; timing (also in 6: the reload after a store
+//    backlog, game / ours; the multiply on subnormals). Rome II has neither site.
 // 12. The effect tree's child sum (+0x1890b90; Faster Effect Prefetch): the whole function on random trees with getters that
 //    change the size mid-loop, the loop's bottom alone at every place of esi around the vector (a no-access page follows the
 //    data: no load past it), cold-children timing, 200 switches under 4 threads.
@@ -2057,6 +2065,9 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
 // The state, fault, whole-function and thread parts of the half rows (review 3), run by `tests.exe <dll> quick|full adv <part>`.
 #include "half_rows_adversarial.inc"
 
+// The particle writer's float4 reloads (part 14): the region alone, the whole function, switching, parked threads, timing.
+#include "particle_reload.inc"
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2096,6 +2107,7 @@ int main(int argc, char** argv) {
   CHECK(Matches(game + text_rva, text_size, ec::READY_CHECK) == (build.ready_check_rva != 0 ? 1u : 0u));
   CHECK(build.code->ready_check_rva == build.ready_check_rva);
   CHECK(Matches(game + text_rva, text_size, ec::CHILD_SUM) == (build.code->child_sum_rva != 0 ? 1u : 0u));
+  CHECK(Matches(game + text_rva, text_size, ec::FLOAT4_RELOAD) == (build.code->float4_reload_rva != 0 ? 1u : 0u));
   // B's own code as mapped (A's differs in every relocated address).
   const std::vector<uint8_t> unpatched(patched + text_rva, patched + text_rva + text_size);
   ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
@@ -2104,12 +2116,15 @@ int main(int argc, char** argv) {
   CHECK(ec::sites[2].at == patched + build.fmod_rva);
   CHECK(ec::sites[3].at == (build.list_push_function_rva != 0 ? patched + build.code->list_push_rva + ec::LIST_PUSH_SITE : nullptr));
   CHECK(ec::sites[4].at == (build.ready_check_rva != 0 ? patched + build.ready_check_rva : nullptr));
+  for (size_t reload = 0; reload < ec::FLOAT4_RELOAD_AT.size(); ++reload) {
+    CHECK(ec::sites[10 + reload].at == (build.code->float4_reload_rva != 0 ? patched + build.code->float4_reload_rva + ec::FLOAT4_RELOAD_AT[reload] : nullptr));
+  }
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true);
   CHECK(ec::written == (ec::found & ~ec::JOB_SITES)
         && ec::found == (0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.ready_check_rva != 0 ? 0b10000u : 0u)
                          | (build.code->job_wake_all_rva != 0 ? ec::JOB_SITES : 0u) | (build.code->half_rows_rva != 0 ? 0b100000000u : 0u)
-                         | (build.code->child_sum_rva != 0 ? ec::PREFETCH_SITES : 0u)));
+                         | (build.code->child_sum_rva != 0 ? ec::PREFETCH_SITES : 0u) | (build.code->float4_reload_rva != 0 ? ec::FLOAT4_RELOAD_SITES : 0u)));
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
     if (unpatched[at - text_rva] == patched[at]) continue;
@@ -2145,6 +2160,11 @@ int main(int argc, char** argv) {
   if (argc > 3 && std::string(argv[3]) == "sum" && build.code->child_sum_rva != 0) {
     if (const int failed = RunSumTests(build, game, patched, quick); failed != 0) return failed;
     std::printf("PASS (sum only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "reload" && build.code->float4_reload_rva != 0) {
+    if (const int failed = RunReloadTests(build, game, patched, quick); failed != 0) return failed;
+    std::printf("PASS (reload only)\n");
     return 0;
   }
 
@@ -2529,6 +2549,8 @@ int main(int argc, char** argv) {
       VirtualFree(popping, 0, MEM_RELEASE);
       std::printf("   ready check, game / the stub with pop ecx / ours: %s\n", line.c_str());
     }
+    // The particle writer's reload after the four stores (game's movups / the stub's lane loads / no reload), and the multiply.
+    if (build.code->float4_reload_rva != 0) std::fputs(ReloadTimingLines().c_str(), stdout);
   }
 
   // 8. The render lists' push.
@@ -2988,6 +3010,16 @@ int main(int argc, char** argv) {
     std::printf("12. effect tree child sum: none in this build\n");
   }
 
+  // 14. The particle writer's two float4 reloads (Faster Game CPU Code).
+  if (build.code->float4_reload_rva != 0) {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    if (const int failed = RunReloadTests(build, game, patched, quick); failed != 0) return failed;
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+  } else {
+    CHECK(ec::sites[10].at == nullptr && ec::sites[11].at == nullptr);
+    std::printf("14. particle writer float4 reloads: none in this build\n");
+  }
+
   // Off: the game's bytes back (the harness's jumps removed first).
   std::memcpy(game + build.truncation_resume_rva, file.data() + (build.truncation_resume_rva - text_rva + text_header->PointerToRawData), 5);
   std::memcpy(patched + build.truncation_resume_rva, unpatched.data() + (build.truncation_resume_rva - text_rva), 5);
@@ -3061,6 +3093,33 @@ int main(int argc, char** argv) {
     CHECK(ec::written == 0 && holds(0, hook) && game_bytes(all & ~1u));
     foreign(0, ec::sites[0].game);
     prepare_again();
+    if (build.code->float4_reload_rva != 0) {
+      // (e) the particle writer's colour reload changed while the rows are on: switching off leaves it, restores the vector reload and the rest
+      on();
+      CHECK(ec::written == all);
+      foreign(10, hook);
+      off();
+      CHECK(ec::written == 0 && holds(10, hook) && game_bytes(all & ~(1u << 10)) && (ec::found & (1u << 10)) == 0);
+      foreign(10, ec::sites[10].game);
+      prepare_again();
+      // (f) without SSE4.1 (insertps) neither reload is looked for, and none is named as left alone
+      ec::sse4_1 = false;
+      prepare_again();
+      CHECK(ec::sites[10].at == nullptr && ec::sites[11].at == nullptr && ec::sites[9].at != nullptr && log_lines.back().find("particle") == std::string::npos);
+      ec::sse4_1 = true;
+      prepare_again();
+      CHECK(ec::sites[10].at != nullptr && ec::sites[11].at != nullptr);
+      // (g) one byte changed in the function's tail (not in a site): both reloads left alone, named
+      uint8_t* tail = patched + build.code->float4_reload_rva;
+      tail[14] ^= 1;
+      prepare_again();
+      CHECK(ec::sites[10].at == nullptr && ec::sites[11].at == nullptr && ec::sites[9].at != nullptr);
+      CHECK(log_lines.back().find("left alone (not the game's code as expected: another mod or build): ") != std::string::npos
+            && log_lines.back().ends_with("particle colour reload, particle vector reload"));
+      tail[14] ^= 1;
+      prepare_again();
+      CHECK(ec::sites[10].at != nullptr && ec::sites[11].at != nullptr && ec::found == all);
+    }
     std::printf("13. another mod's bytes in a site: left alone, the sites that depend on it stay out, the rest as asked\n");
   }
 

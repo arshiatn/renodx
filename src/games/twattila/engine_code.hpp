@@ -35,7 +35,8 @@
 // Thrones of Britannia and Rome II (Game::THRONES, Game::ROME2): the same routines, their builds' (internal::BUILDS);
 // Rome II has no ready check. Faster Job Wake-Ups (its own row, Experimental): a sixth to eighth site, the job system's
 // worker wake-ups (6. below). The sprite soldiers' row builder's 20 half floats at once (7. below) belong to Faster Game
-// CPU Code. Faster Effect Prefetch (its own row, Experimental): the effect tree's child sum (8. below), a tenth site.
+// CPU Code. Faster Effect Prefetch (its own row, Experimental): the effect tree's child sum (8. below), a tenth site. The
+// particle writer's two float4 reloads (9. below, the eleventh and twelfth sites) belong to Faster Game CPU Code.
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
@@ -784,6 +785,37 @@ constexpr std::array<uint8_t, 31> CHILD_SUM_STUB = {
     0xE9, 0x00, 0x00, 0x00, 0x00,  // jmp the loop's jne (patched in Prepare)
 };
 
+// 9. The particle writer's float4 reloads (+0x18960d0, thiscall(float, const float*), ret 8; the effect update calls it once for
+// every particle: 4.9 ms of the render thread a frame in the stress battle, 1.77 ms of it the two reloads). It builds two float4s
+// (a colour and a vector) with four 4-byte `movss` stores each into the frame at [esp + 0x40 .. 0x4f] and reloads each with one 16-byte
+// `movups xmm0, [esp + 0x40]` to store it into a vertex stream. A load that spans four stores can't be forwarded from the store buffer:
+// it waits until they have reached the cache, and stores drain in program order, so it also waits for every older store (the
+// streams' other rows). The stub loads each lane from the address and size of the store that wrote it: `movss xmm0, [esp + 0x40]`, then
+// `insertps xmm0, [esp + 0x44 / 0x48 / 0x4c], 0x10 / 0x20 / 0x30` (SSE4.1: without it the sites are not looked for). Same results:
+// xmm0 holds the same 128 bits (moves only: NaN payloads, subnormals and the sign of zero as they are; MXCSR untouched), no flag and
+// no other register changes, no store, and the four loads read the same 16 stack bytes after the same stores. Found by the function's
+// tail (+0x18967db, its call's displacement wild), at the Steam build's place first, then anywhere in the code: another mod's change
+// in the tail, a site included, leaves both alone. No branch lands inside either site (the whole DLL's relative branches and absolute
+// pointers, Attila's and Thrones').
+constexpr std::string_view FLOAT4_RELOAD =
+    "8D 44 24 40 8B CF 50 E8 ?? ?? ?? ?? 8B 47 10 8B 40 78 80 78 2C 00 74 07 F3 0F 10 4F 78 EB 03 0F 57 C9 8B 54 24 7C "
+    "F3 0F 10 44 24 4C F3 0F 59 C1 8B 02 F3 0F 11 44 24 4C F3 0F 10 45 08 F3 0F 11 40 0C 8B 42 04 F3 0F 10 84 24 80 00 "
+    "00 00 F3 0F 11 40 0C 8B 47 14 8B 40 08 66 0F 6E 40 18 8B 42 0C 0F 5B C0 F3 0F 11 00 8B 47 0C F3 0F 10 40 70 F3 0F "
+    "59 47 70 8B 42 0C F3 0F 11 40 04 8B 42 08 0F 10 44 24 40 0F 11 00 8B 02 F3 0F 7E 47 18 8B 4F 20 66 0F D6 00 F3 0F "
+    "7E 84 24 90 00 00 00 89 48 08 8B 4A 04 8B 84 24 98 00 00 00 66 0F D6 01 F3 0F 10 44 24 14 F3 0F 11 44 24 40 F3 0F "
+    "10 44 24 10 F3 0F 11 44 24 44 F3 0F 10 44 24 18 89 41 08 8B 42 10 F3 0F 11 44 24 48 F3 0F 10 44 24 1C F3 0F 11 44 "
+    "24 4C 0F 10 44 24 40 0F 11 00 8B 4F 0C 8B 42 14 0F 10 81 80 00 00 00 0F 11 00 5F 5E 8B E5 5D C2 08 00";
+constexpr std::array<size_t, 2> FLOAT4_RELOAD_AT = {128, 230};  // movups xmm0, xmmword ptr [esp + 0x40]: the colour's, the vector's
+constexpr std::array<uint8_t, 35> FLOAT4_RELOAD_STUB = {
+    0xF3, 0x0F, 0x10, 0x44, 0x24, 0x40,                    // movss xmm0, dword ptr [esp + 0x40]
+    0x66, 0x0F, 0x3A, 0x21, 0x44, 0x24, 0x44, 0x10,        // insertps xmm0, dword ptr [esp + 0x44], 0x10
+    0x66, 0x0F, 0x3A, 0x21, 0x44, 0x24, 0x48, 0x20,        // insertps xmm0, dword ptr [esp + 0x48], 0x20
+    0x66, 0x0F, 0x3A, 0x21, 0x44, 0x24, 0x4C, 0x30,        // insertps xmm0, dword ptr [esp + 0x4c], 0x30
+    0xE9, 0x00, 0x00, 0x00, 0x00,                          // jmp back (the game's movups [eax], xmm0 after the site)
+};
+// Whether the CPU has insertps; the test turns it off to see the sites left out.
+static bool sse4_1 = (IsProcessorFeaturePresent(PF_SSE4_1_INSTRUCTIONS_AVAILABLE) != FALSE);
+
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half, fmod and the
 // ready check the same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots
 // (control word 0x20, float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the
@@ -820,10 +852,11 @@ struct Build {
   uint32_t job_worker_destructor_rva;
   uint32_t half_rows_rva;
   uint32_t child_sum_rva;
+  uint32_t float4_reload_rva;  // the particle writer's tail (FLOAT4_RELOAD's first byte)
 };
-constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA, 0x16b5550, 0x16b5520, 0x1689b90, 0x1907511, 0x1890b90};
-constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9, 0x18d8400, 0x1722e60, 0x1722e30, 0x16f7460, 0x197d841, 0x1905ef0};
-constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0, 0, 0, 0, 0};
+constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, READY_CHECK_RVA, 0x16b5550, 0x16b5520, 0x1689b90, 0x1907511, 0x1890b90, 0x18967db};
+constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9, 0x18d8400, 0x1722e60, 0x1722e30, 0x16f7460, 0x197d841, 0x1905ef0, 0x190bb3b};
+constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0, 0, 0, 0, 0, 0};
 constexpr std::array<Build, 3> BUILDS = {ATTILA_BUILD, THRONES_BUILD, ROME2_BUILD};  // by Game
 
 // Where each stub sits in the page.
@@ -835,14 +868,19 @@ constexpr size_t READY_CHECK_PAGE = 0x280;
 constexpr size_t JOB_PAGE = 0x300;
 constexpr size_t HALF_ROWS_PAGE = 0x500;
 constexpr size_t CHILD_SUM_PAGE = 0xB00;
+constexpr size_t FLOAT4_RELOAD_PAGE = 0xB20;    // one stub for each of the two reloads, a stride apart
+constexpr size_t FLOAT4_RELOAD_STRIDE = 0x30;
 constexpr size_t PAGE_SIZE = 0x1000;
 static_assert(READY_CHECK_PAGE + READY_CHECK_STUB.size() <= JOB_PAGE
               && JOB_PAGE + JOB_STUB.size() <= HALF_ROWS_PAGE
               && HALF_ROWS_PAGE + HALF_ROWS_CONSTANTS_AT + sizeof(HALF_ROWS_CONSTANTS) <= CHILD_SUM_PAGE
-              && CHILD_SUM_PAGE + CHILD_SUM_STUB.size() <= PAGE_SIZE);
+              && CHILD_SUM_PAGE + CHILD_SUM_STUB.size() <= FLOAT4_RELOAD_PAGE
+              && FLOAT4_RELOAD_STUB.size() <= FLOAT4_RELOAD_STRIDE
+              && FLOAT4_RELOAD_PAGE + FLOAT4_RELOAD_AT.size() * FLOAT4_RELOAD_STRIDE <= PAGE_SIZE);
 
 // Which sites each row writes (bits by `sites` index).
-constexpr uint32_t CPU_CODE_SITES = 0b100010111;  // Faster Game CPU Code
+constexpr uint32_t FLOAT4_RELOAD_SITES = 0b110000000000;  // the particle writer's two reloads
+constexpr uint32_t CPU_CODE_SITES = 0b100010111 | FLOAT4_RELOAD_SITES;  // Faster Game CPU Code
 constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
 constexpr uint32_t PREFETCH_SITES = 0b1000000000;  // Faster Effect Prefetch: the effect tree's child sum
@@ -866,7 +904,7 @@ struct Site {
   uint8_t opcode = 0xE9;  // jmp; the worker destructor's call of Stop stays a call (E8)
 };
 
-static std::array<Site, 10> sites = {{{.name = "soldier draw rounding"},
+static std::array<Site, 12> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half floats"},
                                      {.name = "fmod"},
                                      {.name = "render list pushes"},
@@ -875,7 +913,9 @@ static std::array<Site, 10> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "job sleeps"},
                                      {.name = "job stops", .opcode = 0xE8},
                                      {.name = "half rows"},
-                                     {.name = "child prefetch"}}};
+                                     {.name = "child prefetch"},
+                                     {.name = "particle colour reload"},
+                                     {.name = "particle vector reload"}}};
 static uint8_t* job_table = nullptr;
 static uint8_t* page = nullptr;
 static bool prepared = false;
@@ -1014,7 +1054,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   };
 
   page = static_cast<uint8_t*>(VirtualAlloc(nullptr, PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-  std::array<uint8_t*, 10> stubs = {};
+  std::array<uint8_t*, std::tuple_size_v<decltype(sites)>> stubs = {};
   if (page != nullptr) {
     if (uint8_t* match = find(build.truncation, build.truncation_rva); match != nullptr) {
       uint8_t* stub = page + TRUNCATION_PAGE;
@@ -1119,6 +1159,18 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       sites[9].at = match + CHILD_SUM_SITE;
       stubs[9] = stub;
     }
+    // The particle writer's two reloads (insertps is SSE4.1), found by the function's tail.
+    if (uint8_t* match = (build.float4_reload_rva != 0 && sse4_1 ? find(FLOAT4_RELOAD, build.float4_reload_rva) : nullptr); match != nullptr) {
+      for (size_t reload = 0; reload < FLOAT4_RELOAD_AT.size(); ++reload) {
+        uint8_t* stub = page + FLOAT4_RELOAD_PAGE + reload * FLOAT4_RELOAD_STRIDE;
+        std::memcpy(stub, FLOAT4_RELOAD_STUB.data(), FLOAT4_RELOAD_STUB.size());
+        uint8_t* stub_end = stub + FLOAT4_RELOAD_STUB.size();
+        uint8_t* site = match + FLOAT4_RELOAD_AT[reload];
+        write32(stub_end - 4, relative(stub_end, site + SITE_SIZE));
+        sites[10 + reload].at = site;
+        stubs[10 + reload] = stub;
+      }
+    }
     DWORD protection;
     VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
     FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
@@ -1130,8 +1182,9 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   const bool truncation_x87_fixed = (sites[0].at == nullptr && build.truncation_rva == TRUNCATION_RVA
                                      && holds(base + TRUNCATION_RVA, {HEAPFIX_TRUNCATION.data(), HEAPFIX_TRUNCATION.size()}));
   // A site the build doesn't have (rva 0) isn't named.
-  const std::array<uint32_t, 10> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
-                                         0, 0, 0, build.half_rows_rva, 0};
+  const uint32_t reload_rva = (sse4_1 ? build.float4_reload_rva : 0);
+  const std::array<uint32_t, 12> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
+                                         0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva};
   static_assert(std::tuple_size_v<decltype(rvas)> == std::tuple_size_v<decltype(sites)>);
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
