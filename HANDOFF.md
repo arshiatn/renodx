@@ -3104,7 +3104,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         GPU 25.6), ETL 4.0 GB bench\runs\night1118_day1_wpr_atn_023852; stress zoomed 12.8 fps 78.3 ms (CPU busy 82.0, GPU
         39.1), ETL 1.2 GB bench\runs\night1118_stress_wpr_atn_024236. Logs: all rows on; one Faster Game CPU Code site
         (soldier draw rounding) left alone "not the game's code as expected" (cpa1_ finds why). (3) cpa1_ (day1) + cpa2_
-        (stress) Opus xHigh analysts STARTED 02:49 -> plan_1117/night1118/analysis_{day1,stress}.md. DONE ~03:4x (their
+        (stress) Opus xHigh analysts STARTED 02:49 -> plan_1117/night1118/analysis_{day1,stress}.md. DONE ~03:2x (their
         own Writes of the files refused by the harness, "Subagents should return findings as text": the coordinator
         saved both texts). Stress (CPU-bound, 82.7 ms): B4G's threaded sort NEVER ran (no list >= 32768; sort chain
         still 9.6 ms on the path: author, lower gate); new exact class = store-forwarding stalls: ES8b our own ready
