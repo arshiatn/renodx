@@ -3494,6 +3494,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         StackBase). M1 no lower stack bound, M2 events (un)registered inside present (ReShade lists unsynchronized ->
         register at Install when armed), M3 / M4 parser: 'IN map' too loose, present-bias / even-cadence alignment off by
         frames. Sent to ia3_ 14:45.
+        ia3_ round 2 DONE -> night1118/ia3_report.md 'Round 2': f107a4f69 (M1 lower bound, M2 events registered at Install
+        when armed + atomic gate, L5-L13, a 128-present QPC ring; parser M3 'IN map' only right before a map callback, M4
+        offset fit on 0x179b980 waits + ambiguity warnings; all 8 reviewer seeds exact; gated x86 11 + amd64 16 exit 0).
+        Its M1 test WROTE the TEB's DeallocationStack: sent back 15:14 to use a stack-limits test seam instead (no TEB
+        writes, tests included); merge after.
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
