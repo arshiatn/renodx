@@ -3550,6 +3550,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         rtso1_ round 2 DONE 18:33 -> 868e3c5d8 Ryse (SO only with sun shadows / AO / reflections / Light Bounce or PT at
         strength > 0; AnyRays no longer counts SO, so SO alone at launch = RT not installed; row greyed; README; no Ryse test
         suite; gated amd64 exit 0). ar6o_ reviews both commits.
+        ar6o_ DONE -> night1118/review_rtso1.md: Ryse MERGE; TW commit MERGE AFTER FIXES: M1 Shogun 2's SO only acts with
+        Ray-traced reflections (gate it there, no look change), L2 Shogun 2 Light Bounce at GI 0 runs the RT front end, L3 one
+        launch-install policy (Expeditions / Tales / Divinity 2 still count raw SO), nits. Sent to rtso1_ 18:38.
+        alod1s_ DONE -> night1118/alod1s_report.md: ef56d926e ALOD-1x (at 1x at the first look: no detour, the game's PickLod;
+        above 1x unchanged; a move off 1x in a game started at 1x applies after a restart + yellow note; no live install:
+        Detours' ENLIST_EXISTING_THREADS can deadlock on the heap lock; tw_native_hook_lifetime x86 + amd64 PASS + 2
+        CONTROLs; gated x86 3 targets exit 0). Review alr1s_ (Sonnet xHigh) STARTED 18:38.
         hs1s_ round 2 DONE 18:24 (heapfix/hs1s_report.md 'Round 2'): notes / proofs / json only, hs e9b84ddb + hsC 25bca47a
         unchanged. Battle / ground / Constantinople shares in the note; placement tails stated (new run: 0.5 % below 1.0x,
         1.1 % below 1.1x, medians 1.3-1.9x at 64-255); 12_ = alternative to 1_'s one-thread loop; strict controls (CPAR,
