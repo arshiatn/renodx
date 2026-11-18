@@ -28,3 +28,7 @@ and compare the bytes with the array (the arrays carry the disassembly as commen
   stubs call the guard by a relative call, so the file's layout is the page's); written for `ITEM_PUSH_MIN_RUN` (the `cmp reg, MIN_RUN + 1` immediates).
 - `sweep_prefetch.s` - the pending list sweep's three prefetch stages on the entries A, B and C places below the index (Faster Sweep Prefetch); written for the
   (A, B, C) of `SWEEP_STUB` (the disp8 bytes in the three `lea edx, [ebx - d]`); `SweepPrefetchStub(a, b, c)` makes the others.
+- `probes.s` - the probe build's seven histogram stubs (`PROBE_*` in `src/games/twattila/engine_probe.hpp`, compiled only with `TWATTILA_ENGINE_PROBE`; no row, no
+  release): item push entries A and B, the ready check, the pending list sweep, the particle loop, the child sum loop and the particle writer's entry; each keeps every
+  register and the flags and ends with the jump that the page gives to the site's production stub. The `F_*` sentinels are the indices of `probe::Counters` in order
+  (the bytes in the header are the assembled file's, rebuilt as above). Build and run: `run.ps1 -Probe` (part 21, then parts 19 and 20 through the probes).

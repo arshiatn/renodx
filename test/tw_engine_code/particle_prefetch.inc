@@ -280,7 +280,7 @@ const char* LoopDiff(const LoopWorld& a, const LoopWorld& b, uint32_t copy_dista
   for (size_t at = 0; at < sizeof(a.call.frame); at += 4) {
     const uint32_t x = Read32(a.call.frame + at);
     const uint32_t y = Read32(b.call.frame + at);
-    if (x != y && y - x != copy_distance) return "stack";
+    if (x != y && y - x != copy_distance && !ProbeDeadStack(static_cast<uint32_t>(at), 0x100)) return "stack";
   }
   return "";
 }
@@ -319,7 +319,7 @@ int RunParticleTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bo
   // 15a. The site and the stub as Prepare made them.
   CHECK(ec::sites[ec::PARTICLE_PREFETCH_INDEX].at == patched + site_rva && (ec::written >> ec::PARTICLE_PREFETCH_INDEX & 1) != 0);
   CHECK(std::memcmp(game + site_rva, GAME_SITE.data(), 5) == 0 && std::memcmp(ec::sites[ec::PARTICLE_PREFETCH_INDEX].game.data(), GAME_SITE.data(), 5) == 0);
-  CHECK(patched[site_rva] == 0xE9 && Address(patched + site_rva + 5) + Read32(patched + site_rva + 1) == Address(stub));
+  CHECK(patched[site_rva] == 0xE9 && SiteJumpTarget(ec::PARTICLE_PREFETCH_INDEX, patched + site_rva) == Address(stub));
   CHECK(stub[STUB_SIZE - 5] == 0xE9 && Address(stub + STUB_SIZE) + Read32(stub + STUB_SIZE - 4) == Address(patched + exit_rva));
   CHECK(stub[STUB_SIZE - 11] == 0x0F && stub[STUB_SIZE - 10] == 0x82 && Address(stub + STUB_SIZE - 5) + Read32(stub + STUB_SIZE - 9) == Address(patched + loop_rva));
   CHECK(std::memcmp(stub, ec::PARTICLE_PREFETCH_STUB.data(), STUB_SIZE - 11) == 0);

@@ -244,7 +244,7 @@ const char* ReloadDiff(const ReloadWorld& a, const ReloadWorld& b, uint32_t copy
   for (uint32_t at = FN_STACK_E - 0x400; at < FN_STACK_E + 0x20; at += 4) {
     const uint32_t x = Read32(a.call.stack + at);
     const uint32_t y = Read32(b.call.stack + at);
-    if (x != y && y - x != copy_distance) return "stack";
+    if (x != y && y - x != copy_distance && !ProbeDeadStack(at, FN_STACK_E - 0xE0)) return "stack";
   }
   return "";
 }

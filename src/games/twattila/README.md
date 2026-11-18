@@ -1,5 +1,18 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, engine probe build (2026-11-18; a private build for the bench, never a release, no row, no setting)
+
+- A build of the add-on compiled with `TWATTILA_ENGINE_PROBE` (`engine_probe.hpp`, included from the end of `engine_code.hpp`; no CMake target sets it: in a
+  folder of its own, `$env:CL = '/DTWATTILA_ENGINE_PROBE'; cmake --preset clang-x86 -B <folder>; cmake --build <folder> --config Release --target
+  renodx-twattila.addon32`, built that way 2026-11-18) puts a probe stub in front of seven sites' stubs (the two item push loops, the ready check, the pending list sweep, the particle update loop, the child sum
+  loop and the particle writer's table entry): the site's jump goes to the probe, which keeps every register and the flags, counts a histogram with locked
+  increments (items left in a push run, children of a ready check and its first child not ready, the pending list's length at a sweep, particles of an
+  emitter, children of an effect, the table entry's step from the last one) and goes on to the production stub, which is untouched (nothing counts in the
+  release). The histograms go to ReShade.log once, N presents after the first site was written: `EngineProbePresents=N` under `[Total War]` in ReShade.ini
+  (none: never); the sites' jump bytes are logged at each change. Checked in `test/tw_engine_code` part 21 (`run.ps1 -Probe [-Quick]`): each probe alone on
+  random registers and flags (registers, flags, esp, frame and every counter as the model says), then the probed sites' own parts (19, 20, 12, 15, 18) quick
+  through the probes with every result the game's, and the dump armed for 3 presents (once, at the third). Source `test/tw_engine_code/stubs/probes.s`.
+
 ## Dev, Faster Sweep Prefetch (2026-11-18; offline only, not stamped, not installed, not run in game)
 
 - New: **Faster Sweep Prefetch (Experimental, off)**, under Graphics (Experimental), the row after Faster Particle Prefetch, a row of its own: the

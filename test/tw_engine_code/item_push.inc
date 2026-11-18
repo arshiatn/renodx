@@ -708,7 +708,7 @@ int RunPushTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool q
     const uint8_t* stub_end = stub_base + ec::ITEM_PUSH_STUB_AT[loop + 1];
     CHECK(site.at == patched + site_rva && ((ec::written >> (ec::ITEM_PUSH_FIRST_SITE + loop)) & 1) != 0);
     CHECK(std::memcmp(game + site_rva, GAME_SITE.data(), GAME_SITE.size()) == 0 && std::memcmp(site.game.data(), GAME_SITE.data(), 5) == 0);
-    CHECK(patched[site_rva] == 0xE9 && Address(patched + site_rva + 5) + Read32(patched + site_rva + 1) == Address(stub));
+    CHECK(patched[site_rva] == 0xE9 && SiteJumpTarget(ec::ITEM_PUSH_FIRST_SITE + loop, patched + site_rva) == Address(stub));
     CHECK(std::memcmp(patched + site_rva + 5, GAME_SITE.data() + 5, 5) == 0);  // the rest of the second instruction is the game's, never run
     CHECK(stub_end[-5] == 0xE9 && Address(stub_end) + Read32(stub_end - 4) == Address(patched + site_rva + ec::ITEM_PUSH_SIZE));
     CHECK(std::memcmp(stub, ec::ITEM_PUSH_STUB.data() + ec::ITEM_PUSH_STUB_AT[loop], ec::ITEM_PUSH_STUB_AT[loop + 1] - ec::ITEM_PUSH_STUB_AT[loop] - 4) == 0);

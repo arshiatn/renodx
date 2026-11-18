@@ -42,7 +42,7 @@ const char* EntryFaultDiff(const ReloadWorld& a, const ReloadWorld& b, uint32_t 
   for (uint32_t at = FN_STACK_E - 0x400; at < FN_STACK_E + 0x20; at += 4) {
     const uint32_t x = Read32(a.call.stack + at);
     const uint32_t y = Read32(b.call.stack + at);
-    if (x != y && y - x != copy_distance) return "stack";
+    if (x != y && y - x != copy_distance && !ProbeDeadStack(at, FN_STACK_E - 0xE0)) return "stack";
   }
   return "";
 }
@@ -256,7 +256,7 @@ int RunEntryTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
   CHECK(std::memcmp(game + site_rva, GAME_SITE.data(), 6) == 0 && std::memcmp(ec::sites[ec::ENTRY_PREFETCH_INDEX].game.data(), GAME_SITE.data(), 5) == 0);
   CHECK(game[function_rva + 0x20] == 0xE8 && function_rva + 0x25 == site_rva);  // the lookup's call returns to the site's first byte
   CHECK(game[site_rva + 6] == 0x0F && game[site_rva + 7] == 0x84);              // the je
-  CHECK(patched[site_rva] == 0xE9 && Address(patched + site_rva + 5) + Read32(patched + site_rva + 1) == Address(stub) && patched[site_rva + 5] == 0xC0);
+  CHECK(patched[site_rva] == 0xE9 && SiteJumpTarget(ec::ENTRY_PREFETCH_INDEX, patched + site_rva) == Address(stub) && patched[site_rva + 5] == 0xC0);
   CHECK(stub[STUB_SIZE - 5] == 0xE9 && Address(stub + STUB_SIZE) + Read32(stub + STUB_SIZE - 4) == Address(patched + site_rva + 6));
   CHECK(std::memcmp(stub, ec::ENTRY_FETCH_STUB.data(), STUB_SIZE - 5) == 0);
   std::printf("18. particle writer table entry prefetch: the site (+0x%X in the writer) found and written, the stub (%zu bytes) jumps back to the je\n",

@@ -437,7 +437,7 @@ int RunSweepTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
     const ec::Site& site = ec::sites[ec::SWEEP_PREFETCH_INDEX];
     CHECK(site.at == patched + site_rva && ((ec::written >> ec::SWEEP_PREFETCH_INDEX) & 1) != 0);
     CHECK(std::memcmp(game + site_rva, GAME_SITE.data(), GAME_SITE.size()) == 0 && std::memcmp(site.game.data(), GAME_SITE.data(), 5) == 0);
-    CHECK(patched[site_rva] == 0xE9 && Address(patched + site_rva + 5) + Read32(patched + site_rva + 1) == Address(stub));
+    CHECK(patched[site_rva] == 0xE9 && SiteJumpTarget(ec::SWEEP_PREFETCH_INDEX, patched + site_rva) == Address(stub));
     CHECK(patched[site_rva + 5] == GAME_SITE[5]);  // the rest of the second instruction is the game's, never run
     CHECK(stub[ec::SWEEP_STUB.size() - 5] == 0xE9 && Address(stub + ec::SWEEP_STUB.size()) + Read32(stub + ec::SWEEP_STUB.size() - 4) == Address(patched + site_rva + ec::SWEEP_SIZE));
     CHECK(std::memcmp(stub, ec::SWEEP_STUB.data(), ec::SWEEP_STUB.size() - 4) == 0);

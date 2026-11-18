@@ -502,6 +502,34 @@ struct PushWorld {
 
 uint32_t Address(const void* pointer) { return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(pointer)); }
 
+// Where site `index`'s jump (at `site`) leads: the production stub, through the probe stub in front of it in the probe build (its last jump goes on to the stub).
+uint32_t SiteJumpTarget(size_t index, const uint8_t* site) {
+  uint32_t target = Address(site + 5) + Read32(site + 1);
+#if defined(TWATTILA_ENGINE_PROBE)
+  namespace probe = twattila::engine_code::internal::probe;
+  if (probe::stub_of[index] != nullptr && target == Address(probe::stub_of[index])) {
+    const uint8_t* end = probe::stub_of[index] + probe::size_of[index];
+    target = Address(end) + Read32(end - 4);
+  }
+#else
+  (void)index;
+#endif
+  return target;
+}
+
+// The probe build's stubs push and pop up to five dwords right below esp at their site (twattila::engine_code::internal::probe::STACK_USED): dead after the jump (the game's
+// code writes there next), so the tests that compare the dead stack below the site's esp `esp_at` (an offset in the same frame as `at`) skip those bytes; the production
+// build compares every byte.
+bool ProbeDeadStack(uint32_t at, uint32_t esp_at) {
+#if defined(TWATTILA_ENGINE_PROBE)
+  return at < esp_at && at + twattila::engine_code::internal::probe::STACK_USED >= esp_at;
+#else
+  (void)at;
+  (void)esp_at;
+  return false;
+#endif
+}
+
 // The ready check (thiscall, no arguments) on a stack of its own inside the call: esp at stack + 48 at the call (the
 // return address at stack + 44, the routine's pushes below it), every register and the arithmetic flags set; after it
 // every register, the arithmetic flags and esp, and the stack's bytes as the routine left them. One thread at a time.
@@ -2400,6 +2428,11 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
 // The pending list sweep's chain prefetch (part 20): whole sweeps, controls, switching, parked threads, timing.
 #include "sweep_prefetch.inc"
 
+#if defined(TWATTILA_ENGINE_PROBE)
+// The probe build (part 21, `probe` alone): the probe stubs in front of the production stubs, each alone, parts 19 and 20 through them.
+#include "engine_probe.inc"
+#endif
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2557,6 +2590,17 @@ int main(int argc, char** argv) {
     std::printf("PASS (sweep only)\n");
     return 0;
   }
+#if defined(TWATTILA_ENGINE_PROBE)
+  // The probe build runs only this (the other parts check the production sites' bytes).
+  if (argc > 3 && std::string(argv[3]) == "probe") {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true, true, true);
+    if (const int failed = RunProbeTests(build, game, patched, quick); failed != 0) return failed;
+    std::printf("PASS (probe only)\n");
+    return 0;
+  }
+  std::printf("the probe build runs only `probe`\n");
+  return 2;
+#endif
 
   // 2. float to half.
   {

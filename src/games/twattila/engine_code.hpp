@@ -43,7 +43,8 @@
 // soldier draw's three matrix row reloads (12. below, the fifteenth to seventeenth sites) and the matrix product's
 // three (13. below, the eighteenth to twentieth), and the render lists' two item push loops (15. below, the twenty-second and
 // twenty-third sites). Faster Sweep Prefetch (its own row, Experimental): the pending list sweep's chain prefetch (16. below,
-// the twenty-fourth).
+// the twenty-fourth). A private probe build (compiled only with TWATTILA_ENGINE_PROBE: engine_probe.hpp, 17. below; no
+// row, no release) counts histograms of the sites' loops in front of the production stubs, which it leaves as they are.
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
@@ -1575,6 +1576,10 @@ static uint32_t prefetch_logged = 0;  // the prefetch sites already named as lef
 // Presents with a thread inside a site before giving up (until the row changes); each try snapshots the system's threads
 // (~0.1 s with some antivirus hooks; 3 of 200 writes waited once in the test, four threads running the sites nonstop).
 constexpr uint32_t MAX_FAILED_WRITES = 30;
+#if defined(TWATTILA_ENGINE_PROBE)
+// 17. The probe build (private, compiled only with TWATTILA_ENGINE_PROBE, no row): a histogram stub in front of each probed site's production stub.
+#include "engine_probe.hpp"
+#endif
 
 // The jumps of the sites in `patched` and the game's bytes in the others, written (where that changes `written`) while
 // every other thread of the process is suspended and none stands inside a changing site past its first byte (it would go
@@ -1881,6 +1886,25 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
                                          0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva, 0, 0, rows_rva, rows_rva, rows_rva,
                                          product_rva, product_rva, product_rva, 0, build.push_loop_a_rva, build.push_loop_b_rva, 0};
   static_assert(std::tuple_size_v<decltype(rvas)> == std::tuple_size_v<decltype(sites)>);
+#if defined(TWATTILA_ENGINE_PROBE)
+  // The probe build: each probed site's jump goes to its probe stub first (a copy of the probe's bytes with the counters' addresses put in), whose last jump goes on
+  // to the production stub the site would have jumped to; the production stubs stay as they are.
+  if (probe::Allocate()) {
+    const std::array<const uint8_t*, probe::FIELDS> fields = probe::Fields();
+    size_t slot = 0;
+    for (const probe::Probe& entry : probe::PROBES) {
+      if (sites[entry.site].at == nullptr || stubs[entry.site] == nullptr) continue;
+      uint8_t* stub = probe::code + probe::SLOT * slot++;
+      std::memcpy(stub, entry.code, entry.size);
+      resolve(stub, entry.size, fields, nullptr, {});
+      write32(stub + entry.size - 4, relative(stub + entry.size, stubs[entry.site]));
+      stubs[entry.site] = stub;
+      probe::stub_of[entry.site] = stub;
+      probe::size_of[entry.site] = entry.size;
+      probe::installed |= 1u << entry.site;
+    }
+  }
+#endif
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
     // The job sites aren't listed here: their row says when it turns them on.
@@ -1920,6 +1944,9 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     if (module == nullptr) return;
     internal::Prepare(module, internal::BUILDS[static_cast<size_t>(game)]);
   }
+#if defined(TWATTILA_ENGINE_PROBE)
+  internal::probe::Tick(internal::written);
+#endif
   if (wanted != internal::asked) {
     internal::asked = wanted;
     internal::failed_writes = 0;
@@ -1948,6 +1975,9 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     const uint32_t now = (internal::written & ~changing) | (target & changing & ~stood_down);
     const uint32_t changed = now ^ internal::written;
     internal::written = now;
+#if defined(TWATTILA_ENGINE_PROBE)
+    internal::probe::LogSites(internal::sites, now);
+#endif
     internal::found &= ~stood_down;
     internal::prefetch_logged |= stood_down;  // named below, once
     internal::failed_writes = 0;
@@ -1981,10 +2011,18 @@ inline void Uninstall() {
   if (internal::written != 0) renodx::utils::log::w("[Total War] Faster Game CPU Code: left in at detach (a game thread kept running it)");
 }
 
+#if defined(TWATTILA_ENGINE_PROBE)
+// The probe build's histogram dump: N presents after the first site was written (the ReShade.ini key the addon reads; 0: never).
+inline void ProbeArm(uint32_t presents) { internal::probe::Arm(presents); }
+#endif
+
 #else
 
 inline void Update(bool, Game = Game::ATTILA, bool = false, bool = false, bool = false, bool = false, bool = false, bool = false) {}
 inline void Uninstall() {}
+#if defined(TWATTILA_ENGINE_PROBE)
+inline void ProbeArm(uint32_t) {}
+#endif
 
 #endif
 

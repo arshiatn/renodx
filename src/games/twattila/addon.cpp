@@ -1688,6 +1688,12 @@ void ConfigureAddon() {
   talesofarise::pixel_trace::file_prefix = "attila";
   graphics_status = tw::engine_tweaks::StatusLine();
   reshade::get_config_value(nullptr, "Attila", "DisableGraphics", shadow_size_locked);
+#if defined(TWATTILA_ENGINE_PROBE)
+  // The probe build (engine_probe.hpp): the histograms go to the log this many presents after the first site was written (ReShade.ini [Total War] EngineProbePresents; none: never).
+  if (int presents = 0; reshade::get_config_value(nullptr, "Total War", "EngineProbePresents", presents) && presents > 0) {
+    twattila::engine_code::ProbeArm(static_cast<uint32_t>(presents));
+  }
+#endif
   ui_mod_compatibility = shadow_size_locked ? 1 : 0;
   // Every Graphics (Experimental) setting at its default: the presets change some, the rest goes back (none left over).
   // Not the ambient occlusion or the Light Bounce (their own sections); the tests too.
