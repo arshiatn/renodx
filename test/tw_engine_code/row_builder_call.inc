@@ -312,8 +312,8 @@ int RunFnTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qui
   JumpTo(probe_at, reinterpret_cast<const void*>(&Probe));
 
   // Variants of the patched copy: all the CPU sites ("as shipped") and the half rows site alone (the game's own bytes at the others).
-  const std::array<bool, 10> found_before = [&] {
-    std::array<bool, 10> result = {};
+  const std::array<bool, std::tuple_size_v<decltype(ec::sites)>> found_before = [&] {
+    std::array<bool, std::tuple_size_v<decltype(ec::sites)>> result = {};
     for (size_t index = 0; index < ec::sites.size(); ++index) result[index] = ec::sites[index].at != nullptr && std::memcmp(ec::sites[index].at, ec::sites[index].jump.data(), 5) == 0;
     return result;
   }();
