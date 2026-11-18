@@ -3547,6 +3547,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         Shogun 2 gated in its own code; Pharaoh / Troy keep their stricter gate; WH3 unchanged; tw_native_context part 8 x86 +
         amd64 PASS; gated x86 3 + amd64 13 exit 0). Ryse not covered (own settings): sent back 18:22 for a Ryse commit (ATN's
         rule is general). Review ar6o_ (Opus xHigh) STARTED 18:22.
+        rtso1_ round 2 DONE 18:33 -> 868e3c5d8 Ryse (SO only with sun shadows / AO / reflections / Light Bounce or PT at
+        strength > 0; AnyRays no longer counts SO, so SO alone at launch = RT not installed; row greyed; README; no Ryse test
+        suite; gated amd64 exit 0). ar6o_ reviews both commits.
         hs1s_ round 2 DONE 18:24 (heapfix/hs1s_report.md 'Round 2'): notes / proofs / json only, hs e9b84ddb + hsC 25bca47a
         unchanged. Battle / ground / Constantinople shares in the note; placement tails stated (new run: 0.5 % below 1.0x,
         1.1 % below 1.1x, medians 1.3-1.9x at 64-255); 12_ = alternative to 1_'s one-thread loop; strict controls (CPAR,
