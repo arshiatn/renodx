@@ -3482,6 +3482,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         harness exe from the note folder (outside testbin) was refused; hs1s_ stopped that path, re-ran under testbin.
         Coordinator: sa2_sortcount.py reads the first 9 columns. HFx = HFa + HFb + hs. Review hsr1s_ (Sonnet xHigh)
         STARTED 14:37.
+        hw1s_ round 3 DONE -> heapfix/hw1s_report.md 'Round 3': xw 2e72d17d, lw 87eb0c33 (+ early-walk trigger: a 128 MB fall
+        of the free address space ends a wait: dips 5 s+ seen 100 % like 7.0, fuzz 0 late / 0 missing, walks 27 % of
+        7.0's), hfa e94fd060 (18 / 18 patch orders = one tree); startup log lines + variants heapfix_line. Old DLLs in
+        dlls\superseded. Re-check hwr1s_ STARTED 14:45.
+        ar3o_ DONE -> night1118/review_ia3.md: MAPW-B MERGE AFTER FIXES (off path clean for every game; stack reads capped by
+        StackBase). M1 no lower stack bound, M2 events (un)registered inside present (ReShade lists unsynchronized ->
+        register at Install when armed), M3 / M4 parser: 'IN map' too loose, present-bias / even-cadence alignment off by
+        frames. Sent to ia3_ 14:45.
+        ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
+        flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
+        0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
+        xHigh) STARTED 14:45.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
