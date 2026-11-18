@@ -3274,7 +3274,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         CR2 / CR3 low fixes, on 638946e64.
         cr4_ review DONE ~08:1x -> night1118/review_ci4s.md: MERGE (own interpreter 300,000 worlds 0 differences;
         [esp+0x20] = ebx proven from the bytes; liveness of [emitter+0x58] a strong inference). MERGED 125818840 (gated x86
-        3 targets running 08:13 before the push).
+        3 targets 08:13 exit 0, PUSHED 08:15; ci4s_'s 11 links removed alone).
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
