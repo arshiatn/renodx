@@ -31,7 +31,8 @@
 //    into the main view's depth twice (the device prepared, then cached); the depth's description read once a view (the
 //    same view again, the main size changed and back, a new view once the held one's other holder let it go, a cascades'
 //    array and back, each rejected in the other's place); with room, a draw captured once, then its key found in the frame's
-//    keys; the keys and captures after every capture hashed (90d7df1b5's the same); no state check line; CONTROLS: a binding
+//    keys; every capture's key its formula's; the keys and captures after every capture hashed (90d7df1b5's the same); no
+//    state check line; CONTROLS: a binding
 //    changed between two reads logs one, a held depth description changed logs one. Cost (printed): v166's reads for a
 //    static draw against now's.
 // 6. Trace's light pick (rt_core.hpp, ALPK: each light scored once, the scores with their places partial_sorted, lights_last
@@ -45,8 +46,10 @@
 // 7. rt_scene::AmbientReplaced (lock-free: what its writers published) against AmbientReplacedNow (under the lock) after
 //    each of 20000 writes of what it reads: Update with random rows (the rays' AO and Path-Traced Ambient among them) or
 //    the same rows (a new frame), a trace taken (traced_frame set as Trace's taken path sets it, with its publish), a trace
-//    not taken (Trace: nothing written); runs of frames past AMBIENT_REPLACED_FRAMES untraced. CONTROL: traced_frame written
-//    without its publish differs. Cost (printed): the lock's read against the lock-free one, uncontended.
+//    not taken (Trace: nothing written); runs of frames past AMBIENT_REPLACED_FRAMES untraced; the state check's own
+//    comparison logs nothing. CONTROL: traced_frame written without its publish differs, the state check logs it once. Not
+//    Trace's real taken branch: its request needs the helper (the shared block, the fence it signals, its answer event).
+//    Cost (printed): the lock's read against the lock-free load, uncontended.
 #include <windows.h>
 #include <d3d11_4.h>
 #include <d3dcompiler.h>
@@ -701,9 +704,12 @@ int main() {
       keys_seen.push_back(key);
       return keys_seen.size() - 1;
     };
-    const auto capture = [&](const core::SceneShader& shader) {
+    // Each capture's scene key against its formula (`expected`, full_key's below; every capture here reaches the key).
+    uint32_t keys_unexpected = 0;
+    const auto capture = [&](const core::SceneShader& shader, uint64_t expected) {
       core::internal::Capture(command, shader);
       const std::unique_lock lock(runtime.mutex);
+      if (runtime.last_key != expected) ++keys_unexpected;
       std::vector<uint64_t> values = {key_order(runtime.last_key), runtime.main_view_frame, uint64_t{runtime.objects.context == immediate.Get()},
                                       runtime.captures.size(), runtime.captured_keys.size(), uint64_t{runtime.captured_keys.contains(runtime.last_key)},
                                       runtime.drawn.size(), runtime.short_keys.size(), runtime.captured_vertices};
@@ -755,7 +761,7 @@ int main() {
       runtime.last_key = 0;
     }
     bind(vertices.Get());
-    capture(rigid);
+    capture(rigid, rigid_key);
     const bool rigid_keyed = last_key() == rigid_key && moving_buffer == indices.Get() && moving_offset == INDEX_OFFSET;
     bool short_learnt = false;
     {
@@ -767,7 +773,7 @@ int main() {
       runtime.known[rigid_key].frame = 0;
     }
     moving_buffer = nullptr;
-    capture(rigid);
+    capture(rigid, rigid_key);
     bool short_taken = false;
     {
       const std::unique_lock lock(runtime.mutex);
@@ -777,10 +783,10 @@ int main() {
     static constexpr std::array<uint8_t, 4> ROWS = {1, 2, 3, 4};
     const core::SceneShader rows = {.hash = 0x5EED0001, .rows_shader = ROWS};
     bind(dynamic_vertices.Get());
-    capture(rows);
+    capture(rows, full_key(rows.hash, dynamic_vertices.Get(), false));
     const bool dynamic_keyed = last_key() == full_key(rows.hash, dynamic_vertices.Get(), false);
     bind(vertices.Get());
-    capture(rows);
+    capture(rows, full_key(rows.hash, vertices.Get(), true));
     const bool placed_keyed = last_key() == full_key(rows.hash, vertices.Get(), true);
     // Meshes with a cut-out version and their mask at t0: a static one's key takes the mask only where the game's shadow
     // pass alpha-tests its texture (looked up in the scene's lock), first not, then so; a placed one known, its texture
@@ -801,14 +807,14 @@ int main() {
     static constexpr std::array<uint8_t, 4> CUT_OUT = {5, 6, 7, 8};
     immediate->PSSetShaderResources(0, 1, mask_view.GetAddressOf());
     const core::SceneShader solid_static = {.hash = 0x5EED0002, .cut_out_shader = CUT_OUT};
-    capture(solid_static);
+    capture(solid_static, full_key(solid_static.hash, vertices.Get(), false));
     const bool solid_keyed = last_key() == full_key(solid_static.hash, vertices.Get(), false);
     {
       const std::unique_lock lock(runtime.mutex);
       runtime.cut_out_textures.insert(mask_texture.Get());
     }
     const core::SceneShader cut_out_static = {.hash = 0x5EED0003, .cut_out_shader = CUT_OUT};
-    capture(cut_out_static);
+    capture(cut_out_static, full_key(cut_out_static.hash, vertices.Get(), false, mask_view.Get()));
     const bool cut_out_keyed = last_key() == full_key(cut_out_static.hash, vertices.Get(), false, mask_view.Get());
     const core::SceneShader cut_out_placed = {.hash = 0x5EED0004, .rows_shader = ROWS, .cut_out_shader = CUT_OUT};
     const uint64_t cut_out_placed_key = full_key(cut_out_placed.hash, vertices.Get(), true, mask_view.Get());
@@ -816,7 +822,7 @@ int main() {
       const std::unique_lock lock(runtime.mutex);
       runtime.known[cut_out_placed_key] = {};
     }
-    capture(cut_out_placed);
+    capture(cut_out_placed, cut_out_placed_key);
     bool cut_out_placed_counted = false;
     {
       const std::unique_lock lock(runtime.mutex);
@@ -858,21 +864,21 @@ int main() {
       const std::unique_lock lock(runtime.mutex);
       return runtime.objects.context;
     };
-    capture(fresh);
+    capture(fresh, full_key(fresh.hash, vertices.Get(), false));
     const bool prepared = prepared_for() == immediate.Get();
-    capture(fresh);
+    capture(fresh, full_key(fresh.hash, vertices.Get(), false));
     const bool still_prepared = prepared_for() == immediate.Get();
     // The depth's description read once a view (the view held to the frame's end): the main view's again from it, a size
     // change against it, a new view after the last one's only other holder let it go, a cascade's view and back, each
     // rejected where the other's belongs. The main view's frame and the prepared context say how far a capture came.
-    CHECK(runtime.objects.depth_seen.view == depth);
+    CHECK(runtime.depth_seen.view == depth);
     // Did the capture pass the main view's test (its frame noted) / the cascade's (the device's context set again).
     const auto main_passed = [&](const core::SceneShader& shader) {
       {
         const std::unique_lock lock(runtime.mutex);
         runtime.main_view_frame = 0;
       }
-      capture(shader);
+      capture(shader, full_key(shader.hash, vertices.Get(), false));
       const std::unique_lock lock(runtime.mutex);
       return runtime.main_view_frame == runtime.frame;
     };
@@ -881,11 +887,11 @@ int main() {
         const std::unique_lock lock(runtime.mutex);
         runtime.objects.context = nullptr;
       }
-      capture(shader);
+      capture(shader, full_key(shader.hash, vertices.Get(), false));
       return prepared_for() == immediate.Get();
     };
     const bool same_view_passed = main_passed(fresh) && main_passed(fresh);
-    CHECK(runtime.objects.depth_seen.view == depth);
+    CHECK(runtime.depth_seen.view == depth);
     bridge.width = 32;
     bridge.height = 16;
     const bool resized_rejected = !main_passed(fresh);
@@ -897,7 +903,7 @@ int main() {
     immediate->OMSetRenderTargets(0, nullptr, second_depth.Get());
     depth.Reset();  // the held view's last holder: replaced (and released) at the next capture
     const bool new_view_passed = main_passed(fresh);
-    CHECK(runtime.objects.depth_seen.view == second_depth);
+    CHECK(runtime.depth_seen.view == second_depth);
     static constexpr std::array<uint8_t, 1> KEEP = {1};
     const core::SceneShader cascade = {.hash = 0x0CA5CADE, .cascade_keep = KEEP};
     {
@@ -909,11 +915,11 @@ int main() {
     const bool cascade_into_main_rejected = !cascade_passed(cascade);
     immediate->OMSetRenderTargets(0, nullptr, cascade_depth.Get());
     const bool cascade_view_passed = cascade_passed(cascade);
-    CHECK(runtime.objects.depth_seen.view == cascade_depth);
+    CHECK(runtime.depth_seen.view == cascade_depth);
     const bool main_into_cascade_rejected = !main_passed(fresh);
     immediate->OMSetRenderTargets(0, nullptr, second_depth.Get());
     const bool back_to_main_passed = main_passed(fresh);
-    CHECK(runtime.objects.depth_seen.view == second_depth);
+    CHECK(runtime.depth_seen.view == second_depth);
     // With room: a new draw's triangles streamed out through the game's own vertex shader (its code kept, as OnInitPipeline
     // keeps it), its capture in the frame's list with its key; the same draw again only finds that key.
     constexpr char STREAMED_VS[] = "float4 main(float4 position : POSITION) : SV_Position { return position; }";
@@ -941,9 +947,9 @@ int main() {
       return runtime.captures.size() == 1 && runtime.captures[0].key == runtime.last_key && runtime.captures[0].vertex_count == 36 * 3
              && runtime.captured_keys.size() == 1 && runtime.captured_keys.contains(runtime.last_key) && runtime.captured_vertices == 36 * 3;
     };
-    capture(streamed);
+    capture(streamed, full_key(streamed.hash, vertices.Get(), false));
     const bool captured_once = captured();
-    capture(streamed);
+    capture(streamed, full_key(streamed.hash, vertices.Get(), false));
     const bool captured_key_found = captured();
     immediate->VSSetShader(nullptr, nullptr, 0);
     immediate->IASetInputLayout(nullptr);
@@ -958,12 +964,14 @@ int main() {
                 main_into_cascade_rejected, back_to_main_passed, captured_once, captured_key_found);
     CHECK(same_view_passed && resized_rejected && size_back_passed && new_view_passed && cascade_into_main_rejected && cascade_view_passed);
     CHECK(main_into_cascade_rejected && back_to_main_passed && captured_once && captured_key_found);
-    std::printf("5 sequence %016llX over %u captures\n", static_cast<unsigned long long>(sequence), sequence_captures);
+    std::printf("5 sequence %016llX over %u captures, %u keys not their formula's\n", static_cast<unsigned long long>(sequence), sequence_captures,
+                keys_unexpected);
+    CHECK(keys_unexpected == 0);
     const size_t check_lines = std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("State check") != std::string::npos; });
     // CONTROL: the description held differs from the view's (a held view's never does): the state check logs it once.
     log_lines.clear();
-    runtime.objects.depth_seen.desc.Width += 1;
-    capture(fresh);
+    runtime.depth_seen.desc.Width += 1;
+    capture(fresh, full_key(fresh.hash, vertices.Get(), false));
     const bool depth_control_logged = std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("the depth's description read once differs") != std::string::npos; }) == 1;
     std::printf("5 CONTROL the depth's description held differs: logged %d\n", depth_control_logged);
     CHECK(depth_control_logged);
@@ -1387,6 +1395,12 @@ int main() {
     };
     // The test's own writes before (parts 5 and 6) went past the writers: the first Update publishes.
     core::Update(random_settings());
+    // The state check (on since part 5) compares each published answer under the lock too: none logged, then the
+    // CONTROL's one.
+    const auto published_lines = [] {
+      return std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("AmbientReplaced's published answer differs") != std::string::npos; });
+    };
+    log_lines.clear();
     size_t compared = 0;
     std::array<size_t, 2> answers = {};
     size_t long_untraced = 0;
@@ -1417,7 +1431,8 @@ int main() {
       ++answers[now ? 1 : 0];
       ++compared;
     }
-    // CONTROL: traced_frame written without its publish: the lock-free answer stays the old one.
+    const auto loop_lines = published_lines();
+    // CONTROL: traced_frame written without its publish: the lock-free answer stays the old one, the state check logs it.
     core::Settings ambient = {.ambient_occlusion = true};
     core::Update(ambient);
     for (uint64_t frame = 0; frame <= core::internal::AMBIENT_REPLACED_FRAMES; ++frame) core::Update(ambient);
@@ -1427,13 +1442,14 @@ int main() {
       runtime.traced_frame = runtime.frame;
     }
     const bool control_differs = core::AmbientReplaced() != replaced_now();
+    const bool control_logged = loop_lines == 0 && published_lines() == 1;
     std::printf("7 AmbientReplaced lock-free against AmbientReplacedNow under the lock: %zu writes (Update with random rows and frames, "
-                "traces taken and not), the same each time (%zu replaced, %zu not, %zu past %llu frames untraced); CONTROL traced_frame "
-                "without its publish differs %d\n",
+                "traces taken and not), the same each time (%zu replaced, %zu not, %zu past %llu frames untraced), state check lines %zu; "
+                "CONTROL traced_frame without its publish differs %d, logged once %d\n",
                 compared, answers[1], answers[0], long_untraced, static_cast<unsigned long long>(core::internal::AMBIENT_REPLACED_FRAMES),
-                control_before && control_differs);
+                static_cast<size_t>(loop_lines), control_before && control_differs, control_logged);
     CHECK(answers[0] > 1000 && answers[1] > 1000 && long_untraced > 1000);
-    CHECK(control_before && control_differs);
+    CHECK(control_before && control_differs && control_logged);
     {
       const std::unique_lock lock(runtime.mutex);
       core::internal::PublishAmbientReplaced();
@@ -1447,7 +1463,8 @@ int main() {
     };
     volatile bool replaced_sink = false;
     time_7("AmbientReplaced, the lock (before)", [&] { replaced_sink = replaced_now(); });
-    time_7("AmbientReplaced, lock-free (now)", [&] { replaced_sink = core::AmbientReplaced(); });
+    // Its load as off the state check (on here: AmbientReplaced itself takes the lock).
+    time_7("AmbientReplaced, lock-free (now)", [&] { replaced_sink = core::internal::ambient_replaced.load(std::memory_order_acquire); });
     bridge.failed = false;
   }
   std::printf("PASS\n");
