@@ -3502,6 +3502,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         ia3_ round 3 DONE -> c1d729fcc (stack_limits test seam, no TEB code left; CONTROL fails at the callers line; x86 +
         amd64 + parser tests PASS; gated x86 3 + amd64 16 exit 0). Re-check ar3o_ (Opus xHigh) of 80e0f4c5f..c1d729fcc
         STARTED 15:31; merge after.
+        ar3o_ re-check DONE (review_ia3.md round 2): C++ MERGE (events only at Install / Uninstall, gated; unset = one
+        relaxed load); parser HIGH: on dense maps the bias fit locks onto an earlier map (-1980 us vs +400) with no
+        warning -> containment fit, sent to ia3_ 15:37 with the RecordStagingCopy nit. MERGED 229a031ac (gated x86 3
+        targets: exit 0, PUSHED). ALL FIVE ADD-ON ITEMS MERGED (ia1_-ia5_); ia3_'s parser + nit still open.
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
