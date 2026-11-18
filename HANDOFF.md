@@ -3621,6 +3621,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         L4 EVEC 1-4 ns slower on lists below 5 items (bench P1 counts decide the default); L5 the switch loops don't check a
         switch happened; nits. ec4s_ ROUND 3 (L1 / L2 / L3 / L5 / N2-N7) sent 19:57, parallel with alod2s_ (other regions
         of engine_code.hpp; the coordinator merges). Then a re-check, then merge ecm_ (+ round 3 + alod2s_) into atn-mods.
+        ec4s_ round 3 DONE 21:03 (ec4s_report.md 'Round 3'): 0bcd62b8c L1 (EVEC stubs reload the list + [list+8] every round;
+        new 19c2: array moved between rounds, 40000 scenarios equal, old-read CONTROLs 988/988 + 1012/1012), 3fc083521 L2,
+        d2511371f L3 (failure paths untested: VirtualProtect doesn't fail in the harness), 941be5f30 L5 (er3o_'s mutant now
+        fails 20d), 5512960a8 nits; N7 not done (reason in the commit). Attila full + Thrones full PASS, Rome II -Quick,
+        -Probe -Quick PASS, gated x86 3 exit 0, probe add-on rebuilt. Re-check er3o_ STARTED 21:03.
         hl1s_ round 3 DONE 18:32 (heapfix/hl1s_report.md 'Round 3'): HFx 323bf407 (hfa + la8hgl8 + hs) and HFx2 8ce2a57b (+ la8b +
         lf8) built, tests + proofs passed (loopfetch, clean x87 run + hold mutant fails, lw controls, HSORT eq + controls);
         trees = 7.0 + patches in 10 orders x 3 methods, one hash each; heapfix_line needs every component's own line (no
