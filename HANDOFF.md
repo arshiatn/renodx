@@ -3613,6 +3613,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         probe add-on testbin\ec4s_probe_build32 rebuilt (probe strings absent from production). Not done as agreed: the
         8-bools refactor, F8 / F9 nits. END REVIEW er3o_ (Opus xHigh, 31674db75..656b0d90b) STARTED 19:27; then merge the
         chain, then ALOD-2.
+        er3o_ DONE 19:57 -> night1118/review_engine_end.md: every commit MERGE, no High / Medium. Lows: L1 EVEC-F's premise
+        names the wrong objects (the source list isn't proven single-writer; the stub reads [list+8] once a run) -> reload it
+        each round = exact; L2 probe bucket 16 for flag-clear lists; L3 VirtualProtect to RX unchecked (crash if it fails);
+        L4 EVEC 1-4 ns slower on lists below 5 items (bench P1 counts decide the default); L5 the switch loops don't check a
+        switch happened; nits. ec4s_ ROUND 3 (L1 / L2 / L3 / L5 / N2-N7) sent 19:57, parallel with alod2s_ (other regions
+        of engine_code.hpp; the coordinator merges). Then a re-check, then merge ecm_ (+ round 3 + alod2s_) into atn-mods.
         hl1s_ round 3 DONE 18:32 (heapfix/hl1s_report.md 'Round 3'): HFx 323bf407 (hfa + la8hgl8 + hs) and HFx2 8ce2a57b (+ la8b +
         lf8) built, tests + proofs passed (loopfetch, clean x87 run + hold mutant fails, lw controls, HSORT eq + controls);
         trees = 7.0 + patches in 10 orders x 3 methods, one hash each; heapfix_line needs every component's own line (no
