@@ -3310,6 +3310,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         ready code (patches against his 7.0 source + full changed files), benched in game, with what is proven, then ONE
         zip. Pipeline for engine-code work (ATN asked; recommended): Opus xHigh plan -> Sonnet xHigh implement -> Sonnet
         xHigh review -> one Opus xHigh review at the end of the batch (a stop there = stop that path, Sonnet's stands).
+        ATN 11:17: ONE LAST CPU SANITY ROUND before the final bench: WPR recordings with page 2 maxed as last night
+        (unit detail small-huge, dead units, unit / facial / hand animation, unit variety, footsteps, object / building /
+        campaign detail, the 3 grass sliders), every improvement on, page 1 DLSS Ultra Performance + no RT / PT (the
+        bench's cpu scene) so the CPU is the limit; then analysis -> plan -> implement -> reviews with the Opus / Sonnet
+        rules, author items the same (new finds for him planned + implemented too); in-game tests allowed for these;
+        then the final CPU bench (not limited to 2 h; plan with durations to ATN for approval first). Builds STARTED
+        11:17: frame-pointer add-on cpu1118b_fp (sym_build_head.ps1) + helper_cpu1118b (bridge v32) from the merged
+        tip. Proposed to ATN: 3 WPR runs (day1 behind the units, stress zoomed onto the ground, Constantinople via the
+        replay copy), heapfix Cnt (B4G + the sort counter: the HSG sizes in the same runs), ~25-30 min; waiting for go.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
