@@ -3502,6 +3502,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         when done, new ring when not) + 2b0ecd2a1 AOM ((c) depth view kept, (d) pixel shader look-up with a generation
         stamp; (a) no change: WRL skips equal pointers); dumps byte-equal with 90d7df1b5 on WARP x86 / amd64 and the
         5090; gated x86 3 + amd64 16 exit 0. Review ar2o_ (Opus xHigh) STARTED 14:55.
+        ar4o_ DONE -> night1118/review_ia4.md: ACAP2 MERGE + ALOCK MERGE (no deadlock path over all 16 hosts' lock scopes;
+        held DSV released every present before ResizeBuffers and on every device destroy; only 3 writers, all publish).
+        Lows (destroy-handler rule comment, desc by value, StateCheck compare in AmbientReplaced, last_key test) sent
+        to ia4_ 15:05; merge after.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
