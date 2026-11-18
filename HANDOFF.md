@@ -3536,6 +3536,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         (K=8 confirmed); infra patch + 3 site patches in any order (45 / 45 clean) + one combined; ebp / esi mutants now
         FAIL; proof scripts self-contained. hl1s_ ASSEMBLING HFx (hfa + la8hgl8 + hs) / HFx2 (+ la8b + lf8) 18:10;
         re-check hlr1s_ STARTED 18:10.
+        cr8s_ DONE 18:15 (ran 4.8 h: waited on permission prompts) -> night1118/review_ci8s.md: ci8s_ bc5aeb89c MERGE (61-byte
+        stub decoded = commit bytes; page old vs new differs only in the emitter stub + its rel32; edx / ecx dead by an
+        independent CFG walk; 400,000 emulated frames: every load below both bounds). Lows: L1 wrap at esi 0xFFFFFFFE
+        (unreachable: comment), L2 row-independence test, N1-N4 comments / run.ps1 relative path / tooltip wording.
+        PLAN: one Sonnet xHigh fix round on the ec4s_ tip for cr8s_'s Lows + er1s_ / er2s_'s findings, then the Opus xHigh
+        end review of ci8s_ + ec4s_, then merge the chain.
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
