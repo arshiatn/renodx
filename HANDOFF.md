@@ -3444,6 +3444,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         K=8 never > 100 %; F4 lf17 K a guess; F6 proof scripts carry our local paths (fix before the zip). DECISION: K=8
         everywhere (la16 = his loopanim at 16 -> note 8 becomes info 'K=8 confirmed'); new hgl8, la8hgl8 (= HFb, no
         shadow loop), lf8 + la8b bench only. Sent back to hl1s_ 13:52.
+        ar1o_ DONE -> night1118/review_ia1.md: ia1_ MERGE (ntdll read only; filter, stand-down, handles, off all right; the
+        ETW census puts 17 job workers + 3 engine threads in empire.retail.dll, main in Attila.exe, no DLL-CRT starts:
+        ~20 moved, ~130 not the game's). Follow-ups sent to ia1_ 13:56: L3 no allocation in Update, N1 our worker counts as
+        the game's, N2 stand down when 0 move, L1 / L2 tests, tooltip break, README. Bench: W2's core_cswitch decides an
+        nvwgf2um follow-up (102 driver threads may now land on the render core).
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
