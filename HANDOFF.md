@@ -3132,6 +3132,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         doesn't touch it), stress Map waits = the RR answer / frame end (G4 -1..-3 there); day1 is 99.5 % GPU-busy:
         its levers are GPU work (trace request 10.06 ms, ~half BLAS / cluster builds for 22.7 M dynamic triangles; RR
         6.24; bounce 4.58; reflections 1.94).
+        ci1_ DONE 04:3x: c74a6ce08 on ci1_ (ES8b: pop ecx -> rol / mov cl / ror / lea / cmp ecx,ecx, stub 85 -> 98 B,
+        static_assert below JOB_PAGE; LOGX: "the Attila CPU Performance Fix's x87 fix" reason when site 0 holds heapfix's
+        fisttp form, Attila only); full x86 suites PASS Attila / Thrones / Rome II (part 9 2.24 M vectors, flags 0x4600);
+        gated x86 build32 exit 0; harness ns a call: 0 children 4.72 -> 2.15, 16 ready children 6.72 -> 7.09 (slightly
+        SLOWER in the tight loop: the bench decides). Worktree guard refused 3 compound commands; ci1_ re-ran two git
+        commands as plain single commands (the guard's own suggested form) and dropped a heredoc disassembly.
+        STARTED 04:39: cr1_ Opus xHigh review of c74a6ce08 (read only) and ci2_ Opus High EF4 on top of c74a6ce08.
       - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
         0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
         drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
