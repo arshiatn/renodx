@@ -969,6 +969,14 @@ struct Runtime {
   std::vector<std::array<float, 4>> lights;
   std::vector<std::array<float, 4>> light_colours;
   std::vector<uint8_t> light_kinds;
+  // Trace's pick: each candidate's score with its place; the candidates in the picked order for a trace not taken (both
+  // kept between frames for their room).
+  struct LightRank {
+    float score = 0.f;
+    uint32_t index = 0;
+  };
+  std::vector<LightRank> light_ranks;
+  std::vector<LocalLight> lights_ranked;
   bool lights_traced = false;
   // This frame's trace's Torch and Fire Light in the Light Bounce: 0 none, 1 the lights' light in the bounce, 3 the
   // bounce's shadow ratio (the Light Bounce request asks the same).
@@ -3497,10 +3505,6 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       const float z = light.light[2] - camera.position[2];
       return (x * x) + (y * y) + (z * z);
     };
-    const auto score = [&](const LocalLight& light) {
-      return std::max({light.colour[0], light.colour[1], light.colour[2]}) * light.light[3] * light.light[3]
-             / std::max(distance_squared(light), 1.f);
-    };
     auto& candidates = runtime.lights_last;
     if (const float range = runtime.settings.light_range; range > 0.f) {
       std::erase_if(candidates, [&](const LocalLight& light) { return distance_squared(light) > range * range; });
@@ -3511,8 +3515,21 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     if (lights_in_bounce) std::erase_if(candidates, [](const LocalLight& light) { return light.shadows_only; });
     // The shadow ratio covers the lights the bounce samples: the first 32.
     const size_t count = std::min<size_t>({candidates.size(), runtime.settings.light_count, light_ratio ? dlaa_bridge::RT_MAX_LIGHTS : dlaa_bridge::RT_ALL_LIGHTS});
-    std::partial_sort(candidates.begin(), candidates.begin() + static_cast<ptrdiff_t>(count), candidates.end(),
-                      [&](const LocalLight& a, const LocalLight& b) { return score(a) > score(b); });
+    // Each light scored once, with its place (scoring both sides of every comparison cost 0.23 ms a frame, day1
+    // 2026-11-18). partial_sort's moves follow its comparisons alone, so the same lights land in the same places, ties
+    // and NaN too (the scores SSE floats, the same bits each time; std::max({...}) kept: the STL's vectorized max_element
+    // picks among NaN and -0 / +0 otherwise than std::max of std::max). lights_last takes that whole order only when the
+    // helper does not take the trace (below): it is tried again this frame from there.
+    auto& ranks = runtime.light_ranks;
+    ranks.resize(candidates.size());
+    for (uint32_t index = 0; index < ranks.size(); ++index) {
+      const LocalLight& light = candidates[index];
+      ranks[index] = {.score = std::max({light.colour[0], light.colour[1], light.colour[2]}) * light.light[3] * light.light[3]
+                               / std::max(distance_squared(light), 1.f),
+                      .index = index};
+    }
+    std::partial_sort(ranks.begin(), ranks.begin() + static_cast<ptrdiff_t>(count), ranks.end(),
+                      [](const Runtime::LightRank& a, const Runtime::LightRank& b) { return a.score > b.score; });
     // RENODX_TW_SQUARED_FALLOFF=1 (a test switch, for A/B runs against the helpers before bridge v32): every light's
     // falloff squared, the linear-falloff shaders' lights too.
     static const bool squared_falloff = [] {
@@ -3524,12 +3541,13 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     // lit mask's first tile row (bridge v31) and whether its words are shadow ratios, the colours with the falloff in w.
     std::array<std::array<float, 4>, (dlaa_bridge::RT_ALL_LIGHTS * 2) + 1> constants = {};
     for (size_t index = 0; index < count; ++index) {
-      const std::array<float, 4> colour = (candidates[index].shadows_only ? std::array<float, 4>{} : candidates[index].colour);
-      const uint8_t kind = (squared_falloff ? dlaa_bridge::RT_LIGHT_SMOOTH : candidates[index].falloff);
-      runtime.lights.push_back(candidates[index].light);
+      const LocalLight& light = candidates[ranks[index].index];
+      const std::array<float, 4> colour = (light.shadows_only ? std::array<float, 4>{} : light.colour);
+      const uint8_t kind = (squared_falloff ? dlaa_bridge::RT_LIGHT_SMOOTH : light.falloff);
+      runtime.lights.push_back(light.light);
       runtime.light_colours.push_back(colour);
       runtime.light_kinds.push_back(kind);
-      constants[index] = candidates[index].light;
+      constants[index] = light.light;
       constants[dlaa_bridge::RT_ALL_LIGHTS + 1 + index] = {colour[0], colour[1], colour[2], static_cast<float>(kind)};
     }
     constants[dlaa_bridge::RT_ALL_LIGHTS] = {std::bit_cast<float>(static_cast<uint32_t>(count)), runtime.settings.light_glow,
@@ -3623,6 +3641,13 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     ++objects.timing_next;
   }
   if (!traced) NotTraced("the helper did not trace: " + dlaa_bridge::TraceStatus());
+  // Not taken: lights_last in the pick's whole order, as partial_sort of the lights themselves left it before (a trace
+  // again this frame starts from there; a taken trace's lights_last goes at the frame's end). No lights picked: in its order.
+  if (!traced && lights) {
+    runtime.lights_ranked.clear();
+    for (const Runtime::LightRank& rank : runtime.light_ranks) runtime.lights_ranked.push_back(runtime.lights_last[rank.index]);
+    std::swap(runtime.lights_last, runtime.lights_ranked);
+  }
   runtime.lights_traced = traced && lights;
   runtime.lights_in_bounce = (runtime.lights_traced && lights_in_bounce) ? (light_ratio ? 3u : 1u) : 0u;
   if (traced) {

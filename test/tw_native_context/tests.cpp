@@ -30,12 +30,21 @@
 //    lookup in the scene's lock), a placed known one counted (its texture read once, checked again); a new draw
 //    into the main view's depth twice (the device prepared, then cached); no state check line; CONTROL: a binding changed
 //    between two reads logs one. Cost (printed): v166's reads for a static draw against now's.
+// 6. Trace's light pick (rt_core.hpp, ALPK: each light scored once, the scores with their places partial_sorted, lights_last
+//    put in that order when the helper does not take the trace) against the old pick (29eeab5c's, copied below: partial_sort of the lights, both sides of every
+//    comparison scored): 1600 frames of 0..16384 lights (whole-metre places and few reaches and colours for equal scores,
+//    earlier lights again with their colour turned, zeros, -0, NaN, a signalling NaN, inf, huge, tiny, negative), Light
+//    Count 0..256, Torch and Fire Shadow Range, the Light Bounce's shadows-only cut and 32 cap; each frame traced twice
+//    (the helper never takes it: the second from lights_last as the first left it): the lights, colours, kinds, b9's
+//    constants and lights_last to the bit. CONTROLS (frames apart): nth_element, the picks by place with lights_last in
+//    its own order, ties flipped (>=). Cost (printed): the old pick against now's at 300-8192 lights, 32-128 picked.
 #include <windows.h>
 #include <d3d11_4.h>
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -68,6 +77,62 @@ static ID3D11DeviceContext* OldNativeContext(reshade::api::command_list* cmd_lis
 struct OtherApiDevice : mock::Device {
   reshade::api::device_api get_api() const override { return reshade::api::device_api::d3d12; }
 };
+
+// What Trace's light pick hands on: the lights, colours and kinds of the request, b9's constants (when written).
+struct PickedLights {
+  std::vector<std::array<float, 4>> lights;
+  std::vector<std::array<float, 4>> colours;
+  std::vector<uint8_t> kinds;
+  std::array<std::array<float, 4>, (twattila::dlaa_bridge::RT_ALL_LIGHTS * 2) + 1> constants = {};
+  bool written = false;
+};
+
+// The light pick of Trace before ALPK (rt_core.hpp at 29eeab5c), its sort step given: `sort(candidates, count, score)`
+// returns the first `count` and leaves `candidates` as lights_last stays (the old one: partial_sort of the lights, both
+// sides of every comparison scored). `bounced`: the path-traced Light Bounce ran the frame before.
+template <typename Sort>
+static PickedLights PickLights(std::vector<core::LocalLight>* lights_last, const core::Settings& settings, const core::Camera& camera,
+                               bool bounced, uint32_t light_tile_row, Sort&& sort) {
+  namespace bridge = twattila::dlaa_bridge;
+  PickedLights picked;
+  const bool lights_in_bounce = (settings.lights_in_bounce || settings.light_ratio) && settings.light_bounce && settings.path_tracing && bounced;
+  const bool light_ratio = lights_in_bounce && settings.light_ratio;
+  if (!settings.local_lights || lights_last->empty()) return picked;
+  const auto distance_squared = [&](const core::LocalLight& light) {
+    const float x = light.light[0] - camera.position[0];
+    const float y = light.light[1] - camera.position[1];
+    const float z = light.light[2] - camera.position[2];
+    return (x * x) + (y * y) + (z * z);
+  };
+  const auto score = [&](const core::LocalLight& light) {
+    return std::max({light.colour[0], light.colour[1], light.colour[2]}) * light.light[3] * light.light[3]
+           / std::max(distance_squared(light), 1.f);
+  };
+  auto& candidates = *lights_last;
+  if (const float range = settings.light_range; range > 0.f) {
+    std::erase_if(candidates, [&](const core::LocalLight& light) { return distance_squared(light) > range * range; });
+  }
+  if (lights_in_bounce) std::erase_if(candidates, [](const core::LocalLight& light) { return light.shadows_only; });
+  const size_t count = std::min<size_t>({candidates.size(), settings.light_count, light_ratio ? bridge::RT_MAX_LIGHTS : bridge::RT_ALL_LIGHTS});
+  const std::vector<core::LocalLight> chosen = sort(&candidates, count, score);
+  static const bool squared_falloff = [] {
+    std::array<char, 2> value = {};
+    return GetEnvironmentVariableA("RENODX_TW_SQUARED_FALLOFF", value.data(), static_cast<DWORD>(value.size())) == 1 && value[0] == '1';
+  }();
+  for (size_t index = 0; index < count; ++index) {
+    const std::array<float, 4> colour = (chosen[index].shadows_only ? std::array<float, 4>{} : chosen[index].colour);
+    const uint8_t kind = (squared_falloff ? bridge::RT_LIGHT_SMOOTH : chosen[index].falloff);
+    picked.lights.push_back(chosen[index].light);
+    picked.colours.push_back(colour);
+    picked.kinds.push_back(kind);
+    picked.constants[index] = chosen[index].light;
+    picked.constants[bridge::RT_ALL_LIGHTS + 1 + index] = {colour[0], colour[1], colour[2], static_cast<float>(kind)};
+  }
+  picked.constants[bridge::RT_ALL_LIGHTS] = {std::bit_cast<float>(static_cast<uint32_t>(count)), settings.light_glow,
+                                             std::bit_cast<float>(light_tile_row), std::bit_cast<float>(light_ratio ? 1u : 0u)};
+  picked.written = true;
+  return picked;
+}
 
 int main() {
   ComPtr<ID3D11Device> device;
@@ -842,6 +907,316 @@ int main() {
     bridge.width = kept_size.first;
     bridge.height = kept_size.second;
     bridge.ray_tracing = false;
+    immediate->ClearState();
+  }
+
+  // 6.
+  {
+    namespace rt_bridge = twattila::dlaa_bridge;
+    auto& bridge = rt_bridge::bridge;
+    const auto kept_size = std::pair{bridge.width, bridge.height};
+    bridge.ray_tracing = true;
+    bridge.failed = true;  // the request stops at once: the trace not taken, so tried again in the same frame
+    bridge.width = 64;
+    bridge.height = 32;
+    bridge.rt_light_tile_row = 32;
+    core::internal::host = {.render_size = [] { return std::array<UINT, 2>{64, 32}; }};
+    constexpr UINT CONSTANT_BYTES = ((rt_bridge::RT_ALL_LIGHTS * 2) + 1) * 16;
+    ComPtr<ID3D11Buffer> constants_read;
+    const D3D11_BUFFER_DESC read_desc = {.ByteWidth = CONSTANT_BYTES, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+    CHECK(SUCCEEDED(device->CreateBuffer(&read_desc, nullptr, constants_read.GetAddressOf())));
+    {
+      const std::unique_lock lock(runtime.mutex);
+      auto& objects = runtime.objects;
+      if (!objects.constants) {
+        const D3D11_BUFFER_DESC desc = {.ByteWidth = 96, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+        CHECK(SUCCEEDED(device->CreateBuffer(&desc, nullptr, objects.constants.GetAddressOf())));
+      }
+      if (!objects.light_constants) {
+        const D3D11_BUFFER_DESC desc = {.ByteWidth = CONSTANT_BYTES, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+        CHECK(SUCCEEDED(device->CreateBuffer(&desc, nullptr, objects.light_constants.GetAddressOf())));
+      }
+      // Nothing captured (part 5's room left full): the trace reaches its lights with no dispatch.
+      runtime.captured_vertices = 0;
+      runtime.world_vertices = core::internal::WORLD_BASE;
+      runtime.tessellated_draws = 0;
+      runtime.particles = 0;
+      runtime.captures.clear();
+      runtime.slices.clear();
+      runtime.uv_scales.clear();
+      runtime.drawn.clear();
+      runtime.placements.clear();
+      runtime.compact.clear();
+      runtime.new_sets.clear();
+      runtime.batch_draws.clear();
+      runtime.timed = false;
+      runtime.frame = 900;
+      runtime.traced_frame = 0;
+    }
+    const auto old_sort = [](std::vector<core::LocalLight>* candidates, size_t count, const auto& score) {
+      std::partial_sort(candidates->begin(), candidates->begin() + static_cast<ptrdiff_t>(count), candidates->end(),
+                        [&](const core::LocalLight& a, const core::LocalLight& b) { return score(a) > score(b); });
+      return std::vector<core::LocalLight>(candidates->begin(), candidates->begin() + static_cast<ptrdiff_t>(count));
+    };
+    // CONTROLS (each must differ somewhere): nth_element, then the first `count` sorted; the plan's form, the picks by the
+    // scores' places with lights_last left in its own order; ties flipped (>=).
+    const auto nth_sort = [](std::vector<core::LocalLight>* candidates, size_t count, const auto& score) {
+      const auto by_score = [&](const core::LocalLight& a, const core::LocalLight& b) { return score(a) > score(b); };
+      std::nth_element(candidates->begin(), candidates->begin() + static_cast<ptrdiff_t>(count), candidates->end(), by_score);
+      std::sort(candidates->begin(), candidates->begin() + static_cast<ptrdiff_t>(count), by_score);
+      return std::vector<core::LocalLight>(candidates->begin(), candidates->begin() + static_cast<ptrdiff_t>(count));
+    };
+    const auto order_kept_sort = [](std::vector<core::LocalLight>* candidates, size_t count, const auto& score) {
+      std::vector<std::pair<float, uint32_t>> ranks;
+      for (uint32_t index = 0; index < candidates->size(); ++index) ranks.emplace_back(score((*candidates)[index]), index);
+      std::partial_sort(ranks.begin(), ranks.begin() + static_cast<ptrdiff_t>(count), ranks.end(),
+                        [](const auto& a, const auto& b) { return a.first > b.first; });
+      std::vector<core::LocalLight> chosen;
+      for (size_t rank = 0; rank < count; ++rank) chosen.push_back((*candidates)[ranks[rank].second]);
+      return chosen;
+    };
+    const auto ties_flipped_sort = [](std::vector<core::LocalLight>* candidates, size_t count, const auto& score) {
+      std::partial_sort(candidates->begin(), candidates->begin() + static_cast<ptrdiff_t>(count), candidates->end(),
+                        [&](const core::LocalLight& a, const core::LocalLight& b) { return score(a) >= score(b); });
+      return std::vector<core::LocalLight>(candidates->begin(), candidates->begin() + static_cast<ptrdiff_t>(count));
+    };
+    const auto same_lights = [](const std::vector<core::LocalLight>& a, const std::vector<core::LocalLight>& b) {
+      if (a.size() != b.size()) return false;
+      for (size_t index = 0; index < a.size(); ++index) {
+        if (std::memcmp(a[index].light.data(), b[index].light.data(), sizeof(a[index].light)) != 0
+            || std::memcmp(a[index].colour.data(), b[index].colour.data(), sizeof(a[index].colour)) != 0
+            || a[index].shadows_only != b[index].shadows_only || a[index].falloff != b[index].falloff) {
+          return false;
+        }
+      }
+      return true;
+    };
+    const auto same_picks = [](const PickedLights& a, const PickedLights& b) {
+      return a.lights.size() == b.lights.size() && a.colours.size() == b.colours.size() && a.kinds == b.kinds
+             && std::memcmp(a.lights.data(), b.lights.data(), a.lights.size() * sizeof(a.lights[0])) == 0
+             && std::memcmp(a.colours.data(), b.colours.data(), a.colours.size() * sizeof(a.colours[0])) == 0;
+    };
+
+    std::mt19937 random(1118);
+    std::uniform_real_distribution<float> unit(0.f, 1.f);
+    const auto one_of = [&](std::initializer_list<float> values) {
+      return *(values.begin() + std::uniform_int_distribution<size_t>(0, values.size() - 1)(random));
+    };
+    const float quiet_nan = std::numeric_limits<float>::quiet_NaN();
+    const float signalling_nan = std::bit_cast<float>(0x7FA00001u);
+    const float inf = std::numeric_limits<float>::infinity();
+    // `coarse`: places a few metres apart in whole metres, reach and colours of a few values (many equal scores, and
+    // the 1 m floor of the distance); else spread over 300 m. 15% an earlier light's place and reach with its colour's
+    // channels turned (the same score, another colour), `special` 5% one field zero, -0, NaN, inf, huge, tiny.
+    const auto make_lights = [&](size_t light_count, const core::Camera& camera, bool coarse, bool special) {
+      std::vector<core::LocalLight> lights;
+      for (size_t index = 0; index < light_count; ++index) {
+        const float roll = unit(random);
+        core::LocalLight light;
+        if (index > 0 && roll < 0.15f) {
+          light = lights[std::uniform_int_distribution<size_t>(0, index - 1)(random)];
+          std::rotate(light.colour.begin(), light.colour.begin() + 1, light.colour.begin() + 3);
+        } else if (coarse) {
+          for (int axis = 0; axis < 3; ++axis) light.light[axis] = camera.position[axis] + one_of({-2.f, -1.f, 0.f, 1.f, 2.f});
+          light.light[3] = one_of({0.f, 1.f, 2.f, 4.f});
+          for (int channel = 0; channel < 3; ++channel) light.colour[channel] = one_of({0.f, 0.5f, 1.f});
+        } else {
+          for (int axis = 0; axis < 3; ++axis) light.light[axis] = camera.position[axis] + ((unit(random) - 0.5f) * 300.f);
+          light.light[3] = unit(random) * 30.f;
+          for (int channel = 0; channel < 3; ++channel) light.colour[channel] = unit(random) * 4.f;
+        }
+        light.colour[3] = unit(random);
+        if (special && roll > 0.95f) {
+          const float value = one_of({0.f, -0.f, quiet_nan, -quiet_nan, signalling_nan, inf, -inf, 3e38f, 1e-30f, -1.f,
+                                      std::numeric_limits<float>::denorm_min()});
+          const int field = std::uniform_int_distribution<int>(0, 6)(random);
+          if (field < 4) {
+            light.light[field] = value;
+          } else {
+            light.colour[field - 4] = value;
+          }
+        }
+        light.shadows_only = unit(random) < 0.2f;
+        light.falloff = (unit(random) < 0.5f ? rt_bridge::RT_LIGHT_SMOOTH : rt_bridge::RT_LIGHT_LINEAR);
+        lights.push_back(light);
+      }
+      return lights;
+    };
+    const auto camera_at = [](std::array<float, 3> position) {
+      core::Camera camera;
+      camera.position = position;
+      return camera;
+    };
+    const auto trace = [&](const core::Camera& camera) {
+      core::Trace(immediate.Get(), nullptr, camera);
+      const std::unique_lock lock(runtime.mutex);
+      PickedLights picked = {.lights = runtime.lights, .colours = runtime.light_colours, .kinds = runtime.light_kinds};
+      immediate->CopyResource(constants_read.Get(), runtime.objects.light_constants.Get());
+      D3D11_MAPPED_SUBRESOURCE mapped = {};
+      if (SUCCEEDED(immediate->Map(constants_read.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+        std::memcpy(picked.constants.data(), mapped.pData, CONSTANT_BYTES);
+        immediate->Unmap(constants_read.Get(), 0);
+        picked.written = true;
+      }
+      return std::pair{picked, runtime.lights_last};
+    };
+
+    // Random frames, each traced twice in the frame (the helper never takes it), against the old pick.
+    struct Case {
+      std::vector<core::LocalLight> lights;
+      core::Settings settings;
+      bool bounced = false;
+      std::array<core::Camera, 2> cameras;
+    };
+    std::vector<Case> cases;
+    for (int index = 0; index < 1600; ++index) {
+      const float size_roll = unit(random);
+      size_t light_count = 0;
+      if (index < 40) {
+        light_count = std::array<size_t, 8>{0, 1, 2, 3, 128, 129, 4096, 16384}[index % 8];
+      } else if (size_roll < 0.4f) {
+        light_count = std::uniform_int_distribution<size_t>(0, 40)(random);
+      } else if (size_roll < 0.75f) {
+        light_count = std::uniform_int_distribution<size_t>(0, 400)(random);
+      } else if (size_roll < 0.97f) {
+        light_count = std::uniform_int_distribution<size_t>(0, 3000)(random);
+      } else {
+        light_count = std::uniform_int_distribution<size_t>(3000, 16384)(random);
+      }
+      const bool coarse = unit(random) < 0.5f;
+      const auto place = [&] {
+        if (coarse) return std::array<float, 3>{one_of({0.f, 10.f, -37.f}), one_of({0.f, 2.f}), one_of({0.f, 5.f, -100.f})};
+        return std::array<float, 3>{(unit(random) - 0.5f) * 2000.f, unit(random) * 50.f, (unit(random) - 0.5f) * 2000.f};
+      };
+      Case frame = {.cameras = {camera_at(place())}};
+      // The retry at the same camera half the time (one pass again), else another.
+      frame.cameras[1] = (unit(random) < 0.5f ? frame.cameras[0] : camera_at(place()));
+      frame.lights = make_lights(light_count, frame.cameras[0], coarse, unit(random) < 0.5f);
+      frame.settings.local_lights = true;
+      frame.settings.light_count = std::uniform_int_distribution<uint32_t>(0, 256)(random);
+      frame.settings.light_range = (unit(random) < 0.3f ? (coarse ? one_of({1.f, 2.f, 3.f}) : 5.f + (unit(random) * 145.f)) : 0.f);
+      frame.settings.light_glow = unit(random) * 2.f;
+      frame.settings.light_bounce = unit(random) < 0.5f;
+      frame.settings.path_tracing = unit(random) < 0.7f;
+      frame.settings.lights_in_bounce = unit(random) < 0.5f;
+      frame.settings.light_ratio = unit(random) < 0.3f;
+      frame.bounced = unit(random) < 0.7f;
+      cases.push_back(std::move(frame));
+    }
+    size_t compared = 0;
+    size_t ties = 0;
+    size_t specials = 0;
+    for (const Case& frame : cases) {
+      {
+        const std::unique_lock lock(runtime.mutex);
+        runtime.settings = frame.settings;
+        runtime.bounced_frame = (frame.bounced ? runtime.frame - 1 : UINT64_MAX);
+        runtime.lights_last = frame.lights;
+      }
+      std::vector<core::LocalLight> old_last = frame.lights;
+      for (const core::Camera& camera : frame.cameras) {
+        const PickedLights old_picked = PickLights(&old_last, frame.settings, camera, frame.bounced, bridge.rt_light_tile_row, old_sort);
+        const auto [new_picked, new_last] = trace(camera);
+        const bool same = same_picks(new_picked, old_picked) && same_lights(new_last, old_last)
+                          && (!old_picked.written || std::memcmp(new_picked.constants.data(), old_picked.constants.data(), CONSTANT_BYTES) == 0);
+        if (!same) {
+          std::printf("6 FAIL: %zu lights, count %u, range %.1f: %zu picked now, %zu before\n", frame.lights.size(), frame.settings.light_count,
+                      frame.settings.light_range, new_picked.lights.size(), old_picked.lights.size());
+        }
+        CHECK(same);
+        ++compared;
+        // Ties among the picks: neighbours of one place and reach (an earlier light's, its colour turned).
+        for (size_t index = 1; index < old_picked.lights.size(); ++index) {
+          if (std::memcmp(old_picked.lights[index].data(), old_picked.lights[index - 1].data(), sizeof(old_picked.lights[index])) == 0) ++ties;
+        }
+      }
+      specials += std::ranges::count_if(frame.lights, [](const core::LocalLight& light) {
+        return std::ranges::any_of(light.light, [](float value) { return !std::isfinite(value) || value == 0.f; })
+               || std::ranges::any_of(light.colour, [](float value) { return !std::isfinite(value); });
+      });
+    }
+    // The controls on the same frames: a frame differs when either of its two picks does.
+    const auto differing = [&](const auto& sort) {
+      size_t frames = 0;
+      for (const Case& frame : cases) {
+        std::vector<core::LocalLight> old_last = frame.lights;
+        std::vector<core::LocalLight> other_last = frame.lights;
+        bool same = true;
+        for (const core::Camera& camera : frame.cameras) {
+          const PickedLights old_picked = PickLights(&old_last, frame.settings, camera, frame.bounced, 0, old_sort);
+          const PickedLights other_picked = PickLights(&other_last, frame.settings, camera, frame.bounced, 0, sort);
+          same = same && same_picks(old_picked, other_picked);
+        }
+        if (!same) ++frames;
+      }
+      return frames;
+    };
+    const size_t nth_differs = differing(nth_sort);
+    const size_t order_kept_differs = differing(order_kept_sort);
+    const size_t ties_flipped_differs = differing(ties_flipped_sort);
+    std::printf("6 the light pick: %zu frames of 0..16384 lights (count 0..256, ranges, shadows-only lights left out), each traced twice "
+                "in the frame, %zu picks (%zu tied neighbours among them, %zu lights with a zero, NaN or inf): lights, colours, kinds, b9 "
+                "and lights_last the old pick's, to the bit; CONTROLS frames apart: nth_element %zu, lights_last in its own order %zu, "
+                "ties flipped %zu\n",
+                cases.size(), compared, ties, specials, nth_differs, order_kept_differs, ties_flipped_differs);
+    CHECK(ties > 1000 && specials > 1000);
+    CHECK(nth_differs > 0 && order_kept_differs > 0 && ties_flipped_differs > 0);
+
+    // Cost: the old pick against Trace's (Trace with the lights less Trace with one; both from the same lights each run;
+    // taken: less the reorder a trace not taken adds).
+    const auto median = [](std::vector<double> values) {
+      std::ranges::sort(values);
+      return values[values.size() / 2];
+    };
+    const core::Camera timed_camera = camera_at({120.f, 10.f, -340.f});
+    for (const size_t light_count : {300u, 1000u, 3000u, 8192u}) {
+      const std::vector<core::LocalLight> lights = make_lights(light_count, timed_camera, false, false);
+      for (const uint32_t picks : {32u, 64u, 128u}) {
+        core::Settings settings;
+        settings.local_lights = true;
+        settings.light_count = picks;
+        std::vector<double> old_ms;
+        std::vector<double> new_ms;
+        std::vector<double> one_ms;
+        std::vector<double> reorder_ms;
+        for (int run = 0; run < 21; ++run) {
+          std::vector<core::LocalLight> old_last = lights;
+          const auto old_start = std::chrono::steady_clock::now();
+          PickLights(&old_last, settings, timed_camera, false, 0, old_sort);
+          old_ms.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - old_start).count());
+          const auto timed_trace = [&](const std::vector<core::LocalLight>& last) {
+            {
+              const std::unique_lock lock(runtime.mutex);
+              runtime.settings = settings;
+              runtime.lights_last = last;
+            }
+            const auto start = std::chrono::steady_clock::now();
+            core::Trace(immediate.Get(), nullptr, timed_camera);
+            return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+          };
+          new_ms.push_back(timed_trace(lights));
+          // The not-taken trace's part (all of them here): lights_last put in the pick's order, as Trace does it.
+          {
+            const std::unique_lock lock(runtime.mutex);
+            std::vector<core::LocalLight> ranked;
+            ranked.reserve(lights.size());
+            const auto start = std::chrono::steady_clock::now();
+            for (const auto& rank : runtime.light_ranks) ranked.push_back(lights[rank.index]);
+            reorder_ms.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+          }
+          one_ms.push_back(timed_trace({lights[0]}));
+        }
+        const double now_ms = median(new_ms) - median(one_ms);
+        std::printf("6 %5zu lights, %3u picked: the old pick %.4f ms, now %.4f ms taken, %.4f ms not taken (Trace %.4f less Trace with one "
+                    "light %.4f, its reorder %.4f; medians)\n",
+                    light_count, picks, median(old_ms), now_ms - median(reorder_ms), now_ms, median(new_ms), median(one_ms), median(reorder_ms));
+      }
+    }
+    bridge.width = kept_size.first;
+    bridge.height = kept_size.second;
+    bridge.ray_tracing = false;
+    bridge.failed = false;
+    bridge.rt_light_tile_row = 0;
     immediate->ClearState();
   }
   std::printf("PASS\n");
