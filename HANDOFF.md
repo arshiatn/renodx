@@ -3428,7 +3428,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         63ef3490; update for anything installed since); Cnt2 starts LAST or in their own bench call, -Seconds 190.
         FINAL BENCH PLAN v2 DRAFTED 13:29 -> night1118/final_bench_plan_v2.md: 56 starts ~3.9 h (F1 + F1+ / F2 / F3, W1 SO
         on / W2 SO off + map trace / W1b HFx / W1c HFx2, P1 probe, H1-H4, D1 la16bdbg add-on OFF, H0 Cnt2 + hsC LAST at
-        -Seconds 190); A1 and H2's third round dropped to fit 4 h. STILL TO BUILD before it: HFx (hfa + lfall) and HFx2 (la16b)
+        -Seconds 190); A1 and H2's third round dropped to fit 4 h. STILL TO BUILD before it: HFx (hfa + la8hgl8) and HFx2 (la8b)
         after hlr1s_ / hwr1s_ fixes (one Sonnet xHigh assembler), the probe build (ec4s_ step 4), final1118 + final1118_fp.
         hwr1s_ DONE -> heapfix/hwr1s_review.md: xw / lw / hfa SHIP AFTER FIXES (hfa rebuilt byte-identical a5af2f23; patches
         clean alone and in all 6 orders). X1 xw timing phases fail on a busy PC (adversary descheduled 18 ms, not the
@@ -3438,6 +3438,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         ia1_ DONE -> night1118/ia1_report.md: 5442bedec (ASMT-T: only threads started in Attila.exe / empire.retail.dll get
         the worker sets; NtQueryInformationThread class 9 read only; stands down without the query or modules; tests x86 +
         amd64 PASS, step 11 waits up to 3 s; gated x86 3 targets exit 0). Review ar1o_ (Opus xHigh) STARTED 13:42.
+        hlr1s_ DONE -> heapfix/hlr1s_review.md: all 4 sites exact (entries, flags, registers, bounds; builds reproduce the
+        hashes). F1 la16b loads through item pointers (NULL / freed not ruled out: bench only + null test); F2 tests miss
+        live ebp / esi (mutants pass); F3 K=16 LOSES on short lists (16 items: anim 116 %, gather A 108 % of unpatched),
+        K=8 never > 100 %; F4 lf17 K a guess; F6 proof scripts carry our local paths (fix before the zip). DECISION: K=8
+        everywhere (la16 = his loopanim at 16 -> note 8 becomes info 'K=8 confirmed'); new hgl8, la8hgl8 (= HFb, no
+        shadow loop), lf8 + la8b bench only. Sent back to hl1s_ 13:52.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
