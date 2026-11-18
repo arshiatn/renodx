@@ -1424,10 +1424,10 @@ bool AttachAddon() {
   talesofarise::ue_light_bounce::KeepSavedGiOff(2);
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   twattila::test_hooks::Install(&settings, true, "[Divinity 2]");
-  // A ray tracing row on at launch: its scene's shaders kept from the start.
+  // A ray tracing row on at launch: its scene's shaders kept from the start (Specular Occlusion alone is none:
+  // rt_scene::SettingsOf drops it).
   if (divinity2::ray_tracing::sliders.sun_shadows != 0.f || divinity2::ray_tracing::sliders.ambient_occlusion != 0.f
-      || divinity2::ray_tracing::sliders.light_bounce != 0.f || divinity2::ray_tracing::sliders.reflections != 0.f
-      || divinity2::ray_tracing::sliders.specular_occlusion != 0.f) {
+      || divinity2::ray_tracing::sliders.light_bounce != 0.f || divinity2::ray_tracing::sliders.reflections != 0.f) {
     divinity2::ray_tracing::Install();
   }
   // Before the swap chain mod (below): a removed device's chain let go, the no-frame limit and stall log after it. The

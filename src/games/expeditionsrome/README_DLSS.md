@@ -11,6 +11,12 @@ Performance and Custom upscaling**, not frame generation or a finished release. 
 game's actual 1–100% Screen Percentage; native 100% uses DLAA. Temporal
 Upscaling must be on below 100%. The Temporal Upscaling-off path is not enabled.
 
+### Specular Occlusion with other rays (2026-11-18; built only, not run in game)
+
+- Changed: **Ray-Traced Specular Occlusion** works only with another ray-traced effect on (shadows, AO, Light Bounce,
+  reflections), as Attila's; alone it is off and greyed out, the game's look as with the row off, and at launch it
+  installs no ray tracing (no ray tracing textures held; restart after turning a ray-traced effect on, as before).
+
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 
 - **Ray-Traced AO replaces Unreal's screen-space AO and GT-VBAO** (ATN: never on top of them): the traced visibility is

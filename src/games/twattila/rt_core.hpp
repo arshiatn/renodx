@@ -234,6 +234,14 @@ struct Settings {
   bool operator==(const Settings&) const = default;
 };
 
+// A ray-traced effect on besides Specular Occlusion (Path-Traced Ambient and the paths come with the Light Bounce, smoke
+// shadows with the sun's). Specular Occlusion counts as on only with one (rt_scene.hpp SettingsOf): alone it would run
+// the whole scene capture, the helper's scene build and Ray Reconstruction for one small pass.
+inline bool RaysBesideSpecularOcclusion(const Settings& settings) {
+  return settings.sun_shadows || settings.ambient_occlusion || settings.light_bounce || settings.reflections || settings.local_lights
+         || settings.fog_shadows;
+}
+
 // A game vertex shader whose main-view draws are in the scene, and its capture version; the terrain's draws are in it
 // only in the frames that draw them, dynamic ones (units) are captured every frame, foliage (leaves: their capture
 // version also gives the UV) is alpha-tested against its diffuse map's alpha (the pixel shader's t0, or `mask_slot`;
@@ -1114,8 +1122,7 @@ inline float RangeScale() {
 }
 
 inline bool Enabled() {
-  return runtime.settings.sun_shadows || runtime.settings.ambient_occlusion || runtime.settings.light_bounce || runtime.settings.reflections
-         || runtime.settings.specular_occlusion || runtime.settings.local_lights || runtime.settings.fog_shadows;
+  return RaysBesideSpecularOcclusion(runtime.settings) || runtime.settings.specular_occlusion;
 }
 
 // The rows' ray-traced AO or Path-Traced Ambient, and the rays traced lately. Under the lock.

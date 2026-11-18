@@ -13,6 +13,13 @@
   Advanced status / ReShade.log: "object detail at 1x: the game's LOD pick left alone".
 - Checked in `test/tw_native_hook_lifetime` (see Attila's entry).
 
+## Dev, Specular Occlusion with other rays (2026-11-18; built only, not stamped, not installed, not run in game)
+
+- Changed: **Ray-Traced Specular Occlusion** works only with another ray-traced effect on, as Attila's; alone it is off
+  and greyed out, the game's look as with the row off (alone it started the whole ray tracing for itself: in Attila
+  ~3 ms of render CPU and the helper's scene build for a 0.35 ms pass). With another effect on, and in the RT/PT preset:
+  unchanged.
+
 ## Dev, tw1_ and shared rounds (2026-11-17; built only, not stamped, not installed, not run in game)
 
 - New: **Path-Traced Reflection Occlusion** (on, slider 0..1): with Path-Traced Ambient, reflections darken where

@@ -171,7 +171,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       (sliders.output_rays == 1.f) ? std::clamp(std::lround(1.f / (render_scale * render_scale)), 1l, 8l)
                                    : std::clamp(std::lround(sliders.output_rays), 1l, 8l));
   const auto rays_of = [density](float on) { return (on != 0.f) ? density : 1u; };
-  return {
+  Settings settings = {
       .sun_shadows = sliders.sun_shadows != 0.f && dlaa,
       .ambient_occlusion = sliders.ambient_occlusion != 0.f && dlaa && !path_ambient,
       .ambient_range = sliders.ambient_range,
@@ -249,6 +249,9 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .sprite_shadows = sliders.sprite_shadows != 0.f,
       .far_tree_shadows = sliders.far_tree_shadows != 0.f,
   };
+  // Alone it would start the whole ray tracing for itself: off then, the game's look (RaysBesideSpecularOcclusion).
+  settings.specular_occlusion = settings.specular_occlusion && RaysBesideSpecularOcclusion(settings);
+  return settings;
 }
 
 // Softer Water Reflections' least roughness on water (Attila's guides give it 0.03, Warhammer III's 0.01): past the helper's
@@ -258,8 +261,7 @@ constexpr float WATER_SOFT_ROUGHNESS = 0.06f;
 // What the anti-aliasing's bridge makes for these settings: the ray tracing textures, the G-buffer guides (the paths read
 // them) and the reflections' textures.
 inline void Configure(const Settings& settings, anti_aliasing::Settings* aa) {
-  aa->ray_tracing = settings.sun_shadows || settings.ambient_occlusion || settings.light_bounce || settings.reflections
-                    || settings.specular_occlusion || settings.local_lights || settings.fog_shadows;
+  aa->ray_tracing = RaysBesideSpecularOcclusion(settings) || settings.specular_occlusion;
   // Ray Reconstruction only with rays to denoise: without them DLSS's usual model (ATN 2026-11-01). The fog's shadows alone light
   // no surface (Settings::cheap_fog_alone).
   aa->ray_reconstruction = aa->ray_reconstruction && aa->ray_tracing && !internal::CheapFogAlone(settings);
@@ -2742,10 +2744,15 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
             .default_value = 0.f,
             .label = "Ray-Traced Specular Occlusion (Experimental)",
             .section = section,
-            .tooltip = "The sky's reflection dimmed where something blocks it.\n"
+            .tooltip = "The sky's reflection dimmed where something blocks it. Works with another ray-traced effect on.\n"
                        "Needs DLAA or an upscaler, renodx-tw-dlaa64.exe and in-game Screen Space Reflections on.",
             .labels = {"Off", "On"},
-            .is_enabled = dlaa_on,
+            // Greyed exactly where SettingsOf drops it. A host that passes no strength counts the Light Bounce row as on
+            // (its Global Illumination strength unknown here).
+            .is_enabled = [sliders, aa, light_bounce_strength] {
+              return RaysBesideSpecularOcclusion(
+                  SettingsOf(*sliders, *aa, (light_bounce_strength != nullptr) ? *light_bounce_strength : 1.f));
+            },
         },
     });
   }

@@ -336,7 +336,10 @@ Lean ReSTIR reuse and SER for the paths, Log Details and Record Ray Tracing Prof
 specular occlusion (`RayTracedSpecularOcclusion`, restart): the game's tiled lighting lerps its probes' reflection to its
 screen-space reflections (t6) by their alpha, so without the traced reflections `rt_specular_merge` writes a t6 whose
 lerp gives the probes times the occlusion (alpha 1 - occlusion x (1 - alpha), colour x alpha / that); with them the
-rays already stand in for the probes where they meet something. Without the helper the section shows its download note
+rays already stand in for the probes where they meet something. Since 2026-11-18 (Attila's, built only) it works only
+with another ray-traced effect on (sun shadows, AO, reflections, or the Light Bounce / Path Tracing with Light Bounce
+above 0): alone it is off and greyed out, as with the row off (no ray tracing installed at launch, no guides, no Ray
+Reconstruction); alone it started the whole ray tracing for itself. Without the helper the section shows its download note
 alone. Not yet: the Debug View (Ryse has no hook for it before the data run shows where its tone mapper's output is).
 
 fix57 (draft, 2026-11-15 night parity round, built only, not run in game): the non-TW skills audit's Ryse gaps.

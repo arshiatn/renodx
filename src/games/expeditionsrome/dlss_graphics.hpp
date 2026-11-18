@@ -2159,9 +2159,10 @@ inline bool Install() {
                                                                                                 });
   }
   // Installed when an effect is on at launch (restart to turn the first one on) and the helper is there to trace it.
+  // Specular Occlusion alone is none (rt_scene::SettingsOf drops it): nothing installed, no ray tracing textures held.
   ray_tracing_installed = twattila::dlaa_bridge::HelperInstalled()
                           && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.light_bounce != 0.f
-                              || rt_sliders.reflections != 0.f || rt_sliders.specular_occlusion != 0.f);
+                              || rt_sliders.reflections != 0.f);
   if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Install();
   renodx::utils::command_action::Register(expeditionsrome::dlss::contact_shadows::OnLightRectangle, {
                                                                                                         .shader_hash = expeditionsrome::dlss::contact_shadows::LIGHT_RECTANGLE_SHADER,
