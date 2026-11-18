@@ -61,6 +61,11 @@
 // 12. The effect tree's child sum (+0x1890b90; Faster Effect Prefetch): the whole function on random trees with getters that
 //    change the size mid-loop, the loop's bottom alone at every place of esi around the vector (a no-access page follows the
 //    data: no load past it), cold-children timing, 200 switches under 4 threads.
+// 15. The particle update loop's prefetch (+0x1893820 .. +0x1893888, Thrones +0x1908b80; Faster Effect Prefetch; particle_prefetch.inc): the loop's bottom
+//    alone (every ebx around the size 0 to 48, the edges of the address space, an array ending at a no-access page: no load past the vector), the whole loop
+//    in both copies of the DLL on random emitters (a fake update that counts and hashes its calls and may shrink the vector, swap the array, grow it; garbage
+//    in the slots the loop never reads): every register but esi, the flags, esp, xmm0-7, all memory and the call order equal; CONTROLs (a stub that writes
+//    eax, ends with the wrong compare, stores); 200 switches under 4 threads, a parked thread at each byte of the site; timing for K = 1 to 4. Rome II has none.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -2077,6 +2082,9 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
 // The particle writer's float4 reloads (part 14): the region alone, the whole function, switching, parked threads, timing.
 #include "particle_reload.inc"
 
+// The particle update loop's prefetch (part 15): the loop's bottom alone, the whole loop, controls, switching, parked threads, timing.
+#include "particle_prefetch.inc"
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2117,6 +2125,7 @@ int main(int argc, char** argv) {
   CHECK(build.code->ready_check_rva == build.ready_check_rva);
   CHECK(Matches(game + text_rva, text_size, ec::CHILD_SUM) == (build.code->child_sum_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::FLOAT4_RELOAD) == (build.code->float4_reload_rva != 0 ? 1u : 0u));
+  CHECK(Matches(game + text_rva, text_size, ec::PARTICLE_LOOP) == (build.code->particle_loop_rva != 0 ? 1u : 0u));
   // B's own code as mapped (A's differs in every relocated address).
   const std::vector<uint8_t> unpatched(patched + text_rva, patched + text_rva + text_size);
   ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
@@ -2128,12 +2137,14 @@ int main(int argc, char** argv) {
   for (size_t reload = 0; reload < ec::FLOAT4_RELOAD_AT.size(); ++reload) {
     CHECK(ec::sites[10 + reload].at == (build.code->float4_reload_rva != 0 ? patched + build.code->float4_reload_rva + ec::FLOAT4_RELOAD_AT[reload] : nullptr));
   }
+  CHECK(ec::sites[12].at == (build.code->particle_loop_rva != 0 ? patched + build.code->particle_loop_rva + ec::PARTICLE_LOOP_SITE : nullptr));
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true);
   CHECK(ec::written == (ec::found & ~ec::JOB_SITES)
         && ec::found == (0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.ready_check_rva != 0 ? 0b10000u : 0u)
                          | (build.code->job_wake_all_rva != 0 ? ec::JOB_SITES : 0u) | (build.code->half_rows_rva != 0 ? 0b100000000u : 0u)
-                         | (build.code->child_sum_rva != 0 ? ec::PREFETCH_SITES : 0u) | (build.code->float4_reload_rva != 0 ? ec::FLOAT4_RELOAD_SITES : 0u)));
+                         | (build.code->child_sum_rva != 0 ? 0b1000000000u : 0u) | (build.code->particle_loop_rva != 0 ? ec::PARTICLE_PREFETCH_BIT : 0u)
+                         | (build.code->float4_reload_rva != 0 ? ec::FLOAT4_RELOAD_SITES : 0u)));
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
     if (unpatched[at - text_rva] == patched[at]) continue;
@@ -2174,6 +2185,11 @@ int main(int argc, char** argv) {
   if (argc > 3 && std::string(argv[3]) == "reload" && build.code->float4_reload_rva != 0) {
     if (const int failed = RunReloadTests(build, game, patched, quick); failed != 0) return failed;
     std::printf("PASS (reload only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "prefetch" && build.code->particle_loop_rva != 0) {
+    if (const int failed = RunParticleTests(build, game, patched, quick); failed != 0) return failed;
+    std::printf("PASS (prefetch only)\n");
     return 0;
   }
 
@@ -3077,6 +3093,16 @@ int main(int argc, char** argv) {
     std::printf("14. particle writer float4 reloads: none in this build\n");
   }
 
+  // 15. The particle update loop's prefetch (Faster Effect Prefetch).
+  if (build.code->particle_loop_rva != 0) {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    if (const int failed = RunParticleTests(build, game, patched, quick); failed != 0) return failed;
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+  } else {
+    CHECK(ec::sites[12].at == nullptr);
+    std::printf("15. particle loop prefetch: none in this build\n");
+  }
+
   // Off: the game's bytes back (the harness's jumps removed first).
   std::memcpy(game + build.truncation_resume_rva, file.data() + (build.truncation_resume_rva - text_rva + text_header->PointerToRawData), 5);
   std::memcpy(patched + build.truncation_resume_rva, unpatched.data() + (build.truncation_resume_rva - text_rva), 5);
@@ -3176,6 +3202,29 @@ int main(int argc, char** argv) {
       tail[14] ^= 1;
       prepare_again();
       CHECK(ec::sites[10].at != nullptr && ec::sites[11].at != nullptr && ec::found == all);
+    }
+    if (build.code->particle_loop_rva != 0) {
+      // (h) the particle loop's prefetch site changed while the rows are on: switching off leaves it, restores the others
+      on();
+      CHECK(ec::written == all);
+      foreign(12, hook);
+      off();
+      CHECK(ec::written == 0 && holds(12, hook) && game_bytes(all & ~ec::PARTICLE_PREFETCH_BIT) && (ec::found & ec::PARTICLE_PREFETCH_BIT) == 0);
+      foreign(12, ec::sites[12].game);
+      prepare_again();
+      // (i) one byte changed in the loop outside the site: not found (the child sum and the rest are), the row's warning names it
+      uint8_t* loop = patched + build.code->particle_loop_rva;
+      loop[10] ^= 1;
+      prepare_again();
+      CHECK(ec::sites[12].at == nullptr && ec::sites[9].at != nullptr && ec::sites[10].at != nullptr);
+      ec::prefetch_missing_logged = false;
+      on();
+      CHECK(ec::written == ec::found && (ec::written & ec::PARTICLE_PREFETCH_BIT) == 0);
+      CHECK(std::ranges::any_of(log_lines, [](const std::string& line) { return line.ends_with("another mod or build): particle prefetch"); }));
+      off();
+      loop[10] ^= 1;
+      prepare_again();
+      CHECK(ec::sites[12].at != nullptr && ec::found == all);
     }
     std::printf("13. another mod's bytes in a site: left alone, the sites that depend on it stay out, the rest as asked\n");
   }
