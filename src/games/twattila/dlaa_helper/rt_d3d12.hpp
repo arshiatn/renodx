@@ -1426,8 +1426,8 @@ class RtScene12 {
       return false;
     }
     std::memcpy(&header, data.data(), sizeof(header));
-    if (header.magic != recording::MAGIC || header.format != recording::FORMAT || header.bridge_version != dlaa_bridge::VERSION
-        || header.layout != RecordingLayout()) {
+    if (header.magic != recording::MAGIC || header.format != recording::FORMAT || header.bridge_version < dlaa_bridge::OLDEST_VERSION
+        || header.bridge_version > dlaa_bridge::VERSION || header.layout != RecordingLayout()) {
       *why = std::format("state.bin is another build's (format {} bridge v{} layout {:016X}, written by {}; this helper: format {} bridge v{} layout {:016X})",
                          header.format, header.bridge_version, header.layout, std::string_view(header.helper, strnlen(header.helper, sizeof(header.helper))),
                          recording::FORMAT, dlaa_bridge::VERSION, RecordingLayout());
@@ -2127,7 +2127,8 @@ class RtScene12 {
         return false;
       }
       std::memcpy(&file->header, file->data.data(), sizeof(file->header));
-      if (file->header.magic != recording::MAGIC || file->header.format != recording::FORMAT || file->header.bridge_version != dlaa_bridge::VERSION) {
+      if (file->header.magic != recording::MAGIC || file->header.format != recording::FORMAT || file->header.bridge_version < dlaa_bridge::OLDEST_VERSION
+          || file->header.bridge_version > dlaa_bridge::VERSION) {
         *report = std::format("{} is another build's (format {}, bridge v{}; this helper: {}, v{})", path.string(), file->header.format,
                               file->header.bridge_version, recording::FORMAT, dlaa_bridge::VERSION);
         return false;
