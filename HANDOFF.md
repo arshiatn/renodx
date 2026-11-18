@@ -392,6 +392,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
 - NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator PROGRESS: (2) DONE 02:38-02:46 gr1_ (bench const
 - ALOD-2 (Sonnet xHigh, after ec4s_ frees engine_code.hpp): PickLod as an engine_c ... | coordinator STARTED 19:30: alod2s_ (Sonnet xHigh) on 97d9a6b
+- AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
 - AUTHOR ZIP FIXES (hlr1s_ round 2): README.txt entries 8_info_animation_distance_ ... | coordinator, after the bench ia4_ DONE -> night1118/ia4_repo
@@ -3593,6 +3594,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
         er3o_ checked against its files (logs PASS, mutant FAIL, re-check folders active 21:04-21:29): not safety-stopped.
+        er4o_ DONE 22:00 -> heapfix/er4o_review.md: no High, no code defect; all 14 bench DLLs = 7.0 + their own patches
+        (21 private rebuilds equal sha256.txt). SHIP: P, B4G (code), HFa, HFb, hs, HFx; BENCH ONLY: Pnolf, Plt1, HFx2, la8b, lf8,
+        Cnt2, hsC, la16bdbg; author_notes_1118 sortfix_threaded_b4 DON'T RUN (superseded by 1_gated). M1 (P / B4G / Pnolf had no
+        identity line) FIXED 22:00: bench/variants/heapfix_final_base.json with er4o_'s regexes, checked on past logs (B4G
+        matches only B4G runs, rejects Cnt; P rejects B4G). L3: hsC = B4G's gate + hs one-thread loop + counters, compare it
+        only with Cnt2. Info: 7 leftover Attila process objects may trip the bench's game-process check: ATN's restart clears them.
+      - [ ] AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 a persistent DAZ phase in
+        x87fix_test (er4o_'s version: testbin\er4o_mut\x87, its mutant fails line 541) before note 4 ships; L1 note 11: needs the
+        infrastructure patch first; L2 B4G.ps1 / hb6_build eq step timeouts; L4 xw's 2 MB buffer every 10 s -> last used +
+        256 KB; L5 GetProcessIdOfThread check (7.0's own gap, a proposal); L6 README 4_ / 5_ / 8_info leftovers; N1-N5. Owner:
+        coordinator
       - [ ] BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let me know so I restart my pc
         before the final CPU bench"). Before telling: no agent running, everything merged / pushed, the scratchpad copied
         to a durable folder (tools/tw/round_notes/plan_1117/night1118/scratchpad_copy). Start the bench only after ATN says
