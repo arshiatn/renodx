@@ -96,7 +96,9 @@ bool LightLinear(uint index) {
   // Its byte (selected, not indexed).
   const uint4 words = light_kinds[index >> 4u];
   const uint lane = (index >> 2u) & 3u;
-  const uint kind = (((lane == 0u) ? words.x : (lane == 1u) ? words.y : (lane == 2u) ? words.z : words.w) >> ((index & 3u) * 8u)) & 0xFFu;
+  const uint kind = (((lane == 0u) ? words.x : (lane == 1u) ? words.y : (lane == 2u) ? words.z : words.w)
+                     >> ((index & 3u) * 8u))
+                    & 0xFFu;
   return kind == LIGHT_LINEAR;
 }
 
@@ -125,7 +127,9 @@ float3 LightArriving(uint index, float3 surface, float3 normal, out float3 direc
   if (n_dot_l <= 0.f) return 0.f;
   const float falloff = 1.f - light_distance / lights[index].w;
   const float diffuse_scale = sun[uint2(SUN_LIGHT_TEXEL, 0)].w;
-  if (LightLinear(index)) return max(light_colours[index].rgb, 0.f) * (falloff * n_dot_l) * ((diffuse_scale > 0.f) ? diffuse_scale : 1.f);
+  if (LightLinear(index)) {
+    return max(light_colours[index].rgb, 0.f) * (falloff * n_dot_l) * ((diffuse_scale > 0.f) ? diffuse_scale : 1.f);
+  }
   return max(light_colours[index].rgb, 0.f) * (falloff * falloff * n_dot_l) * ((diffuse_scale > 0.f) ? diffuse_scale : 1.f);
 }
 

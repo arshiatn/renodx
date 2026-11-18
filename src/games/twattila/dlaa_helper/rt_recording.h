@@ -23,7 +23,7 @@ struct FileHeader {
   uint32_t magic = MAGIC;
   uint32_t format = FORMAT;
   // dlaa_bridge::VERSION of the helper that wrote it; a player of a later bridge plays it as it answers an older addon
-  // (OLDEST_VERSION on: each request's block keeps its own version, the fields after it absent).
+  // (OLDEST_VERSION on: all requests at the first one's block version, the fields past that version's block absent).
   uint32_t bridge_version = 0;
   uint32_t shared_bytes = 0;    // its block's bytes (a request's CHUNK_BLOCK)
   uint64_t layout = 0;          // a hash of the snapshot's field names and sizes (state.bin)

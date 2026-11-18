@@ -3517,7 +3517,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     // falloff squared, the linear-falloff shaders' lights too.
     static const bool squared_falloff = [] {
       std::array<char, 2> value = {};
-      return GetEnvironmentVariableA("RENODX_TW_SQUARED_FALLOFF", value.data(), static_cast<DWORD>(value.size())) == 1 && value[0] == '1';
+      return GetEnvironmentVariableA("RENODX_TW_SQUARED_FALLOFF", value.data(), static_cast<DWORD>(value.size())) == 1
+             && value[0] == '1';
     }();
     // b9 (rt_local_lights.hlsli): positions and reach, the count, the glow (torch and fire light in fog and smoke), the
     // lit mask's first tile row (bridge v31) and whether its words are shadow ratios, the colours with the falloff in w.

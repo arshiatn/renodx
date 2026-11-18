@@ -573,13 +573,15 @@ struct Shared {
   uint32_t rt_di_flags = 0;
   uint32_t rt_restir_flags = 0;
   uint64_t rt_light_surface = 0;
-  // The helper's (v32; older helpers and this one leave it 0): 1 when it runs Path-Traced Torch Light.
+  // The helper's (v32; older helpers and this one leave it 0): written for each trace request, 1 when that request ran
+  // Path-Traced Torch Light (0: it ran no DI, the addon keeps the game's lights).
   uint32_t rt_di_ok = 0;
   // The addon's (v32): Rough Diffuse's roughness (vMF diffuse at the receivers, 0-1; 0: Lambert).
   float rt_diffuse_roughness = 0.f;
+  // The addon's (v32; unused yet, 0: none): Path-Traced Torch Light's two helper-written DI textures (R11G11B10 at the
+  // textures' size: the light SSAO dims and the light it does not), for the addon's composite.
+  uint64_t rt_di_light[2] = {};
 };
-static_assert(offsetof(Shared, rt_light_surface) % 8 == 0, "64-bit fields keep one place in the 32- and 64-bit builds");
-static_assert(sizeof(Shared) % 8 == 0, "the block ends on its 64-bit alignment in both builds");
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
@@ -607,5 +609,10 @@ constexpr size_t SharedBytes(uint32_t version) {
   if (version == 4) return offsetof(Shared, fg_window);
   return version == 3 ? offsetof(Shared, rt_vertices) : offsetof(Shared, diffuse_albedo);
 }
+static_assert(SharedBytes(31) == offsetof(Shared, rt_grass_range) + sizeof(float), "v32 starts right after v31's block");
+static_assert(offsetof(Shared, rt_light_surface) == offsetof(Shared, rt_restir_flags) + sizeof(uint32_t),
+              "no padding before v32's 64-bit handle in the 32- and 64-bit builds");
+static_assert(sizeof(Shared) == offsetof(Shared, rt_di_light) + sizeof(Shared::rt_di_light),
+              "the block ends at its last field in both builds");
 
 }  // namespace twattila::dlaa_bridge

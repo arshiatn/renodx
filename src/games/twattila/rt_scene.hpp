@@ -1158,7 +1158,8 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
   const auto& light_instances = command.template GetCallbackData<LightInstances>();
   if (light_instances.enabled != nullptr && *light_instances.enabled == 0.f) return {};
   // The callback data is one for every hash of a family: the falloff by the draw's own shader.
-  const uint8_t falloff = (std::ranges::find(internal::linear_falloff_shaders, command.matched_shader_hash) != internal::linear_falloff_shaders.end()
+  const uint8_t falloff = (std::ranges::find(internal::linear_falloff_shaders, command.matched_shader_hash)
+                                   != internal::linear_falloff_shaders.end()
                                ? dlaa_bridge::RT_LIGHT_LINEAR
                                : dlaa_bridge::RT_LIGHT_SMOOTH);
   const uint64_t light_frame = internal::light_frame.load(std::memory_order_relaxed);
