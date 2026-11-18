@@ -249,8 +249,8 @@ constexpr std::array<uint8_t, 76> PROBE_ENTRY = {
 };
 
 // Every probe stub fits its slot of the code page (the next stub would be overwritten).
-static_assert(std::max({PROBE_EVEC_A.size(), PROBE_EVEC_B.size(), PROBE_READY.size(), PROBE_SWEEP.size(), PROBE_PARTICLE.size(),
-                        PROBE_SUM.size(), PROBE_ENTRY.size()})
+static_assert(std::max({PROBE_EVEC_A.size(), PROBE_EVEC_B.size(), PROBE_READY.size(), PROBE_SWEEP.size(),
+                        PROBE_PARTICLE.size(), PROBE_SUM.size(), PROBE_ENTRY.size()})
               <= SLOT);
 
 // The sites that have a probe, in the order of their slots.
