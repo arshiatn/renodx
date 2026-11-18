@@ -392,7 +392,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
 - NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator PROGRESS: (2) DONE 02:38-02:46 gr1_ (bench const
 - ALOD-2 (Sonnet xHigh, after ec4s_ frees engine_code.hpp): PickLod as an engine_c ... | coordinator STARTED 19:30: alod2s_ (Sonnet xHigh) on 97d9a6b
-- BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator
+- BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
 - AUTHOR ZIP FIXES (hlr1s_ round 2): README.txt entries 8_info_animation_distance_ ... | coordinator, after the bench ia4_ DONE -> night1118/ia4_repo
 - FASTER GAME CPU CODE TOOLTIP + README: tooltip "(soldiers, their sprites and eff ... | coordinator, round end
@@ -3582,6 +3582,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         before the final CPU bench"). Before telling: no agent running, everything merged / pushed, the scratchpad copied
         to a durable folder (tools/tw/round_notes/plan_1117/night1118/scratchpad_copy). Start the bench only after ATN says
         the restart is done. Owner: coordinator
+        ATN 20:00 (home): the COORDINATOR restarts the PC (`shutdown /r /t 60`) once all of the above is true and the bench
+        builds are frozen; ATN hears it, logs in, opens the app and says "run". Extra runs: A B A B OK'd.
       - [ ] AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay (stress_test_log2, replay camera):
         Graphics 1 of 2 at Reset + DLSS Ultra Performance; Graphics 2 of 2 at Reset except the 4 Unit Detail sliders (Foot
         Soldiers / Cavalry / Elephants / Artillery) at 8x and the grass sliders at max (Grass Detail Distance 4, Grass Density
