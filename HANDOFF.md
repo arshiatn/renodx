@@ -3468,6 +3468,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         maps / unmaps / updates / staging copies + draw index + shaders + stack callers; tools/tw/map_trace.py summary /
         join with a capture's waits; WARP test x86 + amd64 PASS; gated x86 11 + amd64 16 exit 0; bench outputs +
         tw_map_trace.txt). Review ar3o_ (Opus xHigh) STARTED 14:29 (first: stack scan bounded by the stack base?).
+        ar5o_ DONE -> night1118/review_ia5.md: ASCR MERGE (512 slots: 256 models still 39 % share a slot -> ~-0.35 ms
+        workers; 1024 only if W1 shows misses; 22.5 KB TLS on every thread = ~3.4 MB 32-bit commit); APT MERGE AFTER
+        FIXES: M1 'run it again' loops forever over the cap / on CreateQuery failure, M2 keep MAX_COMMANDS 40k (biggest
+        frame 7,153; >= 13 MB at 40k, never freed), device check, destroy compare. Sent to ia5_ 14:34.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
