@@ -3547,6 +3547,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         Shogun 2 gated in its own code; Pharaoh / Troy keep their stricter gate; WH3 unchanged; tw_native_context part 8 x86 +
         amd64 PASS; gated x86 3 + amd64 13 exit 0). Ryse not covered (own settings): sent back 18:22 for a Ryse commit (ATN's
         rule is general). Review ar6o_ (Opus xHigh) STARTED 18:22.
+        hs1s_ round 2 DONE 18:24 (heapfix/hs1s_report.md 'Round 2'): notes / proofs / json only, hs e9b84ddb + hsC 25bca47a
+        unchanged. Battle / ground / Constantinople shares in the note; placement tails stated (new run: 0.5 % below 1.0x,
+        1.1 % below 1.1x, medians 1.3-1.9x at 64-255); 12_ = alternative to 1_'s one-thread loop; strict controls (CPAR,
+        CSUMHI, exact exit codes); hsC strict regex. HSORT CLOSED for the bench. Zombie processes (0 CPU, 0 MB): 7 Attila
+        (11-13), 5 hsg0_bench, 1 pass_timing; gone at ATN's restart.
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
