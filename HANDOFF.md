@@ -3173,7 +3173,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         subnormal; pattern once DLL-wide, no relocations, no branch into site+1..+4, Thrones = Attila instruction for
         instruction; page layout and SSE4.1 gate safe; tests prove what they claim). MERGED d6356a3f0 (gated x86 build of
         the 3 add-ons running 05:51 before the push). Check in the final bench's WPR: the two `movups [eax],xmm0` after
-        the sites (+0x1896860 0.44 ms, +0x18968c6 1.33 ms) fall to ~0, no new samples on neighbouring stores.
+        the sites (+0x1896860 0.44 ms, +0x18968c6 1.33 ms) fall to ~0, no new samples on neighbouring stores. Build exit 0, PUSHED
+        b59262b2c; ci2s_ links removed alone, worktree + branch removed.
+        STARTED 05:53: asm1_ Opus High = cpu_plan3 step 8 ASMT (render thread's SMT sibling free via
+        SetThreadSelectedCpuSets, always a subset of the user's 0-15 set; new header + Experimental row off + new
+        test/tw_cpu_sets) on b59262b2c, branch asm1_ (no engine_code.hpp: runs beside ci3s_). pdi1_ resumed 05:53 for its
+        final report (its turn ended while verify_pdi3 ran).
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
