@@ -801,6 +801,8 @@ inline MapResource DescribeMapResource(reshade::api::resource handle) {
 // (the whole buffer) as 0.
 inline void RecordStagingCopy(reshade::api::command_list* cmd_list, reshade::api::resource source,
                               reshade::api::resource dest, uint64_t bytes) {
+  // The gate before the virtual get_device(): every copy of the run comes through here.
+  if (!map_trace.tracing.load(std::memory_order_relaxed)) return;
   if (!MapTracing(cmd_list->get_device())) return;
   const int64_t qpc = Qpc();
   const MapResource destination = DescribeMapResource(dest);
