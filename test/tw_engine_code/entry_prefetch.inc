@@ -416,6 +416,9 @@ int RunEntryTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
           ReloadRandom(world.get(), &random, run % 3, game_function, 0x1F80, true);  // the world's own table
           *backup = *world;
         }
+        // The slot of the mutant without the store holds what the writer's frame held before: an address of 2 GB or more (the writer's later store through it faults
+        // in the mutant, as in a canary world), never a random user address (some thread's stack guard page, or the test's own data).
+        for (ReloadWorld* each : {world.get(), backup.get()}) Write32(each->call.stack + FN_STACK_E - 0xE0 + 0x7C, random.NextUnmapped());
         seen += EntryCompare(world.get(), backup.get(), result_a.get(), result_b.get(), game_function, patched_function, copy_distance, &faulted)[0] != 0 ? 1 : 0;
       }
       std::memcpy(stub, saved.data(), STUB_SIZE);

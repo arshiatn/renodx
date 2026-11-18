@@ -1965,14 +1965,24 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     DWORD protection;
     if (VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection) == FALSE) {
       // As if there were no page (nothing is written to the game yet): a site's jump would lead into memory that cannot run.
-      renodx::utils::log::w("[Total War] Faster Game CPU Code: left alone (the stub page could not be made executable)");
       for (Site& site : sites) site.at = nullptr;
       stubs = {};
       VirtualFree(page, 0, MEM_RELEASE);
       page = nullptr;
+      if (job_table != nullptr) VirtualFree(job_table, 0, MEM_RELEASE);
+      job_table = nullptr;
     } else {
       FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
     }
+  }
+  if (page == nullptr) {
+    // No page (not allocated, or not made executable): that is the reason, not another mod or build, so no site is
+    // named as left alone, here or by Update's lines.
+    renodx::utils::log::w("[Total War] Faster Game CPU Code: left alone ",
+                          "(the stubs' page could not be allocated or made executable)");
+    job_missing_logged = true;
+    prefetch_logged = ALL_PREFETCH_SITES;
+    return;
   }
   std::string found_names;
   std::string left;

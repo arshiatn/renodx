@@ -248,6 +248,11 @@ constexpr std::array<uint8_t, 76> PROBE_ENTRY = {
     0xE9, 0x00, 0x00, 0x00, 0x00,                  // +0x47 jmp 0x4c
 };
 
+// Every probe stub fits its slot of the code page (the next stub would be overwritten).
+static_assert(std::max({PROBE_EVEC_A.size(), PROBE_EVEC_B.size(), PROBE_READY.size(), PROBE_SWEEP.size(),
+                        PROBE_PARTICLE.size(), PROBE_SUM.size(), PROBE_ENTRY.size()})
+              <= SLOT);
+
 // The sites that have a probe, in the order of their slots.
 inline const std::array<Probe, 7> PROBES = {{{ITEM_PUSH_FIRST_SITE, PROBE_EVEC_A.data(), PROBE_EVEC_A.size()},
                                               {ITEM_PUSH_FIRST_SITE + 1, PROBE_EVEC_B.data(), PROBE_EVEC_B.size()},
