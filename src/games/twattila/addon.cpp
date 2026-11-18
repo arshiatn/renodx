@@ -1051,7 +1051,7 @@ void BuildRuntimeData() {
   twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 }
 
-// Graphics (Experimental): the sliders, through the LOD pick hook (object detail), Attila's unit hook
+// Graphics (Experimental): the sliders, through the LOD pick (object detail: engine_code's site), Attila's unit hook
 // (graphics_hooks.hpp) and engine tweaks (filled in ConfigureAddon).
 std::array<tw::engine_tweaks::Option, 4> unit_detail;  // foot soldiers, cavalry, elephants, artillery
 float big_battle_fix = 0.f;
@@ -1583,8 +1583,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
                                 job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,
-                                particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f);
-  tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
+                                particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale);
+  tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, twattila::engine_code::ModelDetailStatus(object_detail.scale), &graphics_found,
+                            graphics_status);
   if (!shadow_size_locked) twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::graphics_hooks::Update(
       {
@@ -1922,10 +1923,7 @@ void ConfigureAddon() {
       tw::engine_tweaks::Slider(&footstep_effects, "GraphicsFootstepEffects", "Footstep Effects Distance",
                                 "How far soldiers' footsteps kick up dust. Higher: heavier.", 4.f, 0.1f),
       tw::engine_tweaks::Slider(&object_detail, "GraphicsObjectDetail", "Model Detail Distance",
-                                "Battle: trees and other objects keep their detailed versions farther away.\n"
-                                "A game started at 1x needs a restart before it applies.",
-                                8.f),
-      tw::engine_tweaks::RestartNote(&object_detail),
+                                "Battle: trees and other objects keep their detailed versions farther away.", 8.f),
       tw::engine_tweaks::Slider(&building_detail, "GraphicsBuildingDetail", "Building Detail Distance",
                                 "Battle: buildings keep their detailed versions farther away. From the next battle.",
                                 8.f),

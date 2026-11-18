@@ -1965,7 +1965,8 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
 
 // The shadow map size and cascades, before the game builds its shadows.
 void OnInitDevice(reshade::api::device*) {
-  tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &model_detail, &graphics_found, graphics_status);
+  tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, twattila::engine_code::ModelDetailStatus(model_detail.scale), &graphics_found,
+                            graphics_status);
   SetShadowCascades(shadow_cascades_row != 0.f && rays_skip_cascades_row != 0.f
                     && twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).shadows_only);
 }
@@ -2020,8 +2021,9 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                                 shader_injection.ssao_temporal != 0.f, shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
-  twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ROME2);
-  tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &model_detail, &graphics_found, graphics_status);
+  twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ROME2, false, false, false, false, false, false, model_detail.scale);
+  tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, twattila::engine_code::ModelDetailStatus(model_detail.scale), &graphics_found,
+                            graphics_status);
   twattila::graphics_hooks::Update(
       {
           .unit_detail = {unit_detail[0].scale, unit_detail[1].scale, unit_detail[2].scale, unit_detail[3].scale},
@@ -2310,10 +2312,7 @@ void ConfigureAddon() {
       tw::engine_tweaks::Slider(&footstep_effects, "GraphicsFootstepEffects", "Footstep Effects Distance",
                                 "How far soldiers' footsteps kick up dust. Higher: heavier.", 4.f, 0.1f),
       tw::engine_tweaks::Slider(&model_detail, "GraphicsModelDetail", "Model Detail Distance",
-                                "Battle: trees and other objects keep their detailed versions farther away.\n"
-                                "A game started at 1x needs a restart before it applies.",
-                                8.f),
-      tw::engine_tweaks::RestartNote(&model_detail),
+                                "Battle: trees and other objects keep their detailed versions farther away.", 8.f),
       tw::engine_tweaks::Slider(&terrain_detail, "GraphicsTerrainDetail", "Terrain Detail Distance",
                                 "Detailed terrain shading reaches farther.", 4.f),
       tw::engine_tweaks::Slider(&building_detail, "GraphicsBuildingDetail", "Building Detail Distance",

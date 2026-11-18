@@ -104,6 +104,11 @@
 //    without children, garbage children arrays, ready ones erased, the vector and the lists at the edge of a page between no-access pages), every register but eax /
 //    ecx / edx, the flags, esp, xmm, the frame, every byte and the count of the releases' calls equal or both fault with the same memory; CONTROLs (a mutant of each
 //    check that matters); 200 switches under 4 threads, a parked thread at each byte of the site; timing for 4,000 cold lists of 1 to 4 and 5 to 8 children. Rome II has none.
+// 22. Model Detail Distance (the game's LOD pick, +0x183d570, Rome II +0x14f0710, Thrones +0x18b2060; the slider's row, engine_code.hpp 18.; lod_pick.inc): the site's first three
+//    instructions run by the stub, which multiplies the distance squared on the stack by the reciprocal of the slider squared as the old Detours hook did: the callers' shape
+//    pinned, the stub alone and the whole function against the game's with the distance multiplied (every register, the flags, x87 / MXCSR / xmm, esp, the stack) at 14 sliders
+//    and any MXCSR, the slider moved with 4 threads calling, a parked thread at each byte, the status words, another mod's bytes, the pattern not found, CONTROLs (mutants of the stub
+//    and a restore left out) that must be seen, timing; `tests.exe <dll> quick lod` runs it alone.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -2430,6 +2435,9 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
 // The pending list sweep's chain prefetch (part 20): whole sweeps, controls, switching, parked threads, timing.
 #include "sweep_prefetch.inc"
 
+// Model Detail Distance (part 22): the LOD pick's site, its callers, the stub's exactness, switching, parked threads, controls.
+#include "lod_pick.inc"
+
 #if defined(TWATTILA_ENGINE_PROBE)
 // The probe build (part 21, `probe` alone): the probe stubs in front of the production stubs, each alone, parts 19 and 20 through them.
 #include "engine_probe.inc"
@@ -2481,6 +2489,7 @@ int main(int argc, char** argv) {
   CHECK(Matches(game + text_rva, text_size, ec::ITEM_PUSH_A) == (build.code->push_loop_a_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::ITEM_PUSH_B) == (build.code->push_loop_b_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::SWEEP) == (build.code->sweep_rva != 0 ? 1u : 0u));
+  CHECK(Matches(game + text_rva, text_size, ec::PICK_LOD) == 1);
   CHECK(Matches(game + text_rva, text_size, build.code->soldier_rows) == 1);
   CHECK(Matches(game + text_rva, text_size, ec::SOLDIER_ROWS) + Matches(game + text_rva, text_size, ec::ROME2_SOLDIER_ROWS) == 1);
   CHECK(Matches(game + text_rva, text_size, ec::MATRIX_PRODUCT) == 1);
@@ -2501,14 +2510,15 @@ int main(int argc, char** argv) {
   CHECK(ec::sites[ec::ITEM_PUSH_FIRST_SITE].at == (build.code->push_loop_a_rva != 0 ? patched + build.code->push_loop_a_rva + ec::ITEM_PUSH_SITE : nullptr));
   CHECK(ec::sites[ec::ITEM_PUSH_FIRST_SITE + 1].at == (build.code->push_loop_b_rva != 0 ? patched + build.code->push_loop_b_rva + ec::ITEM_PUSH_SITE : nullptr));
   CHECK(ec::sites[ec::SWEEP_PREFETCH_INDEX].at == (build.code->sweep_rva != 0 ? patched + build.code->sweep_rva + ec::SWEEP_SITE : nullptr));
+  CHECK(ec::sites[ec::MODEL_DETAIL_INDEX].at == patched + build.code->pick_lod_rva);
   for (size_t row = 0; row < ec::SOLDIER_ROWS_STUBS.size(); ++row) {
     CHECK(ec::sites[ec::SOLDIER_ROWS_FIRST_SITE + row].at == patched + build.code->soldier_rows_rva + build.code->soldier_rows_at[row]);
     CHECK(ec::sites[ec::MATRIX_PRODUCT_FIRST_SITE + row].at == patched + build.code->matrix_product_rva + ec::MATRIX_PRODUCT_AT[row]);
   }
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true, true, true, true);
-  CHECK(ec::written == (ec::found & ~ec::JOB_SITES)
-        && ec::found == (0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.ready_check_rva != 0 ? 0b10000u : 0u)
+  CHECK(ec::written == (ec::found & ~ec::JOB_SITES & ~ec::MODEL_DETAIL_BIT)  // the LOD pick's row is asked for by the slider (part 22)
+        && ec::found == (ec::MODEL_DETAIL_BIT | 0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.ready_check_rva != 0 ? 0b10000u : 0u)
                          | (build.code->job_wake_all_rva != 0 ? ec::JOB_SITES : 0u) | (build.code->half_rows_rva != 0 ? 0b100000000u : 0u)
                          | (build.code->child_sum_rva != 0 ? ec::CHILD_SUM_BIT : 0u) | (build.code->particle_loop_rva != 0 ? ec::PARTICLE_PREFETCH_BIT : 0u)
                          | (build.code->emitter_loop_rva != 0 ? ec::EMITTER_PREFETCH_BIT : 0u)
@@ -2584,6 +2594,11 @@ int main(int argc, char** argv) {
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true, true);
     if (const int failed = RunEntryTests(build, game, patched, quick); failed != 0) return failed;
     std::printf("PASS (entry only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "lod") {
+    if (const int failed = RunLodTests(build, game, patched, text_rva, text_size, image_size, quick); failed != 0) return failed;
+    std::printf("PASS (lod only)\n");
     return 0;
   }
   if (argc > 3 && std::string(argv[3]) == "sweep" && build.code->sweep_rva != 0) {
@@ -3003,7 +3018,7 @@ int main(int argc, char** argv) {
   // 8. The render lists' push.
   if (build.list_push_function_rva != 0) {
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
-    CHECK(ec::written == (ec::found & ~(ec::JOB_SITES | ec::PREFETCH_SITES | ec::EMITTER_PREFETCH_BIT | ec::ENTRY_PREFETCH_BIT | ec::SWEEP_PREFETCH_BIT)));
+    CHECK(ec::written == (ec::found & ~(ec::JOB_SITES | ec::PREFETCH_SITES | ec::EMITTER_PREFETCH_BIT | ec::ENTRY_PREFETCH_BIT | ec::SWEEP_PREFETCH_BIT | ec::MODEL_DETAIL_BIT)));
     const uint32_t game_push = Address(game + build.list_push_function_rva);
     const uint32_t patched_push = Address(patched + build.list_push_function_rva);
     const auto start = std::chrono::steady_clock::now();
@@ -3585,6 +3600,10 @@ int main(int argc, char** argv) {
   twattila::engine_code::Uninstall();
   std::printf("off: the game's code back byte for byte\n");
 
+  // 22. Model Detail Distance: the LOD pick's site and stub (lod_pick.inc; the row is asked for by the slider, so it is off in the parts before and after).
+  // After the Off block: its Prepare calls look for the truncation site again, which the harness's jump at the truncation's resume point hid.
+  if (const int failed = RunLodTests(build, game, patched, text_rva, text_size, image_size, quick); failed != 0) return failed;
+
   // 13. Another mod's bytes in a site after the start: that site is not touched, nothing that goes in on the strength of it is
   // (the three job sites; the half rows after the half function), the rest is, and the site is left alone from then on.
   {
@@ -3603,7 +3622,7 @@ int main(int argc, char** argv) {
     };
     const std::array<uint8_t, ec::SITE_SIZE> hook = {0xE9, 0x10, 0x20, 0x30, 0x40};
     const uint32_t all = ec::found;
-    const auto on = [&] { twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, true, true, true, true, true); };
+    const auto on = [&] { twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, true, true, true, true, true, 2.f); };
     const auto off = [&] { twattila::engine_code::Update(false); };
     const auto game_bytes = [&](uint32_t mask) {  // every site of `mask` holds the game's bytes
       for (size_t index = 0; index < ec::sites.size(); ++index) {

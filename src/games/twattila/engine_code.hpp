@@ -11,10 +11,13 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <format>
+#include <new>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -46,6 +49,8 @@
 // twenty-third sites). Faster Sweep Prefetch (its own row, Experimental): the pending list sweep's chain prefetch (16. below,
 // the twenty-fourth). A private probe build (compiled only with TWATTILA_ENGINE_PROBE: engine_probe.hpp, 17. below; no
 // row, no release) counts histograms of the sites' loops in front of the production stubs, which it leaves as they are.
+// Model Detail Distance (its own row, the slider's value in Update's last argument): the game's LOD pick (18. below, the twenty-fifth site), scaled live,
+// the game's own bytes back at 1x.
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
@@ -1356,6 +1361,36 @@ constexpr std::array<uint8_t, 80> SweepPrefetchStub(uint8_t a, uint8_t b, uint8_
 }
 constexpr std::array<uint8_t, 80> SWEEP_STUB = SweepPrefetchStub(8, 4, 2);
 
+// 18. Model Detail Distance (its own row; Attila +0x183d570, Rome II +0x14f0710, Thrones +0x18b2060: the same bytes): the game's LOD pick
+// `Entry* __thiscall PickLod(Model* model, float distance_squared, Entry** next)` returns the first LOD whose distance squared (entry + 0x38) is beyond the
+// camera's, for trees and other objects (not battle units). The stub multiplies `distance_squared` by 1 / slider squared, so they keep their detail farther away.
+// The jump goes in while the slider is above 1x and the game's bytes are back at 1x, at any time (a detour can't go in while the game runs); a slider move
+// writes only the float.
+// The site is the first three instructions, whole and position independent (`push ebx; push ebp; mov ebp, [esp + 0x10]`); the stub runs them and goes on at +6.
+// The product goes over the argument's own slot: the call is callee-pop (`ret 8`), the callers never read the slot after it (part 22 reads every direct caller),
+// and PickLod reads it once, `movss xmm1, [esp + 0x14]`, unless an early return (no LOD, or one LOD that passes the +0x20 / +0x2c test) comes first. Registers and
+// flags stay (lea, never add), xmm0 is saved below the new esp and loaded back, MXCSR's control bits are not touched. The multiply leaves its sticky exception flags
+// set, as the old hook's did (volatile across a call; PickLod's comiss sets them too): saving and loading them back would cost as much as the function. The
+// scale is a float in a page of its own (this one is read-execute), never freed: a thread can be in the stub after the module is gone.
+constexpr std::string_view PICK_LOD =
+    "53 55 8B 6C 24 10 56 57 8B F9 C7 45 00 00 00 00 00 8B 47 28 85 C0 0F 84 ?? ?? ?? ?? 83 F8 01 75 ?? 8B 47 2C 8B 00 "
+    "83 78 20 00 75 ?? 83 78 2C 00 77 ?? 8B 0D";
+constexpr size_t PICK_LOD_RESUME = 6;  // after the three instructions the stub runs
+constexpr uint32_t UNSCALED_BITS = 0x3F800000;  // 1.f
+constexpr std::array<uint8_t, 47> MODEL_DETAIL_STUB = {
+    0x8D, 0x64, 0x24, 0xF0,                    // lea esp, [esp - 16]
+    0x0F, 0x11, 0x04, 0x24,                    // movups [esp], xmm0
+    0xF3, 0x0F, 0x10, 0x44, 0x24, 0x14,        // movss xmm0, [esp + 20]             the distance squared (the argument at the entry's esp + 4)
+    0xF3, 0x0F, 0x59, 0x05, 0x01, 0x5A, 0x5A, 0x5A,  // mulss xmm0, [the scale]      (STUB_FIELD_SENTINEL: Prepare puts the float's address in)
+    0xF3, 0x0F, 0x11, 0x44, 0x24, 0x14,        // movss [esp + 20], xmm0             over its slot
+    0x0F, 0x10, 0x04, 0x24,                    // movups xmm0, [esp]
+    0x8D, 0x64, 0x24, 0x10,                    // lea esp, [esp + 16]
+    0x53,                                      // push ebx                           the game's three instructions
+    0x55,                                      // push ebp
+    0x8B, 0x6C, 0x24, 0x10,                    // mov ebp, [esp + 0x10]
+    0xE9, 0x00, 0x00, 0x00, 0x00,              // jmp PickLod + 6 (patched in Prepare)
+};
+
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half, fmod and the
 // ready check the same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots
 // (control word 0x20, float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the
@@ -1403,6 +1438,7 @@ struct Build {
   uint32_t push_loop_a_rva;     // the render list builders' item push loops (ITEM_PUSH_A's / _B's first byte)
   uint32_t push_loop_b_rva;
   uint32_t sweep_rva;           // the pending list sweep (SWEEP's first byte)
+  uint32_t pick_lod_rva;        // the LOD pick (PICK_LOD's first byte)
 };
 constexpr Build ATTILA_BUILD = {
     .truncation_rva = TRUNCATION_RVA,
@@ -1429,6 +1465,7 @@ constexpr Build ATTILA_BUILD = {
     .push_loop_a_rva = 0x17b8483,
     .push_loop_b_rva = 0x17b7ca3,
     .sweep_rva = 0x1893290,
+    .pick_lod_rva = 0x183d570,
 };
 constexpr Build THRONES_BUILD = {
     .truncation_rva = THRONES_TRUNCATION_RVA,
@@ -1455,6 +1492,7 @@ constexpr Build THRONES_BUILD = {
     .push_loop_a_rva = 0x182c213,
     .push_loop_b_rva = 0x182ba33,
     .sweep_rva = 0x19085f0,
+    .pick_lod_rva = 0x18b2060,
 };
 // Rome II has none of the list push, ready check, job, half rows, child sum, float4 reload, effect loop and item push loop
 // sites: their rvas stay 0.
@@ -1469,6 +1507,7 @@ constexpr Build ROME2_BUILD = {
     .soldier_rows = ROME2_SOLDIER_ROWS,
     .soldier_rows_at = ROME2_SOLDIER_ROWS_AT,
     .matrix_product_rva = 0x135b530,
+    .pick_lod_rva = 0x14f0710,
 };
 constexpr std::array<Build, 3> BUILDS = {ATTILA_BUILD, THRONES_BUILD, ROME2_BUILD};  // by Game
 
@@ -1491,6 +1530,7 @@ constexpr size_t MATRIX_PRODUCT_PAGE = 0xCD0;  // the same for the product's thr
 constexpr size_t ENTRY_PREFETCH_PAGE = 0xD60;
 constexpr size_t ITEM_PUSH_PAGE = 0xD80;  // the guard and the two stubs of 15.
 constexpr size_t SWEEP_PAGE = 0xEF0;      // the sweep's stub of 16.
+constexpr size_t MODEL_DETAIL_PAGE = 0xF40;  // the LOD pick's stub of 18.
 constexpr size_t PAGE_SIZE = 0x1000;
 static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the three games' truncation stubs are one type
               && HALF_PAGE + HALF_STUB.size() + HALF_SIZE <= FMOD_PAGE
@@ -1511,7 +1551,8 @@ static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the thre
               && MATRIX_PRODUCT_PAGE + MATRIX_PRODUCT_STUBS.size() * FLOAT4_RELOAD_STRIDE <= ENTRY_PREFETCH_PAGE
               && ENTRY_PREFETCH_PAGE + ENTRY_FETCH_STUB.size() <= ITEM_PUSH_PAGE
               && ITEM_PUSH_PAGE + ITEM_PUSH_STUB.size() <= SWEEP_PAGE
-              && SWEEP_PAGE + SWEEP_STUB.size() <= PAGE_SIZE);
+              && SWEEP_PAGE + SWEEP_STUB.size() <= MODEL_DETAIL_PAGE
+              && MODEL_DETAIL_PAGE + MODEL_DETAIL_STUB.size() <= PAGE_SIZE);
 
 // Which sites each row writes (bits by `sites` index).
 constexpr size_t FLOAT4_RELOAD_FIRST_SITE = 10;  // the colour's reload; the vector's is the next
@@ -1526,6 +1567,8 @@ constexpr size_t ITEM_PUSH_FIRST_SITE = 21;  // the render list builders' item p
 constexpr uint32_t ITEM_PUSH_SITES = 0b11u << ITEM_PUSH_FIRST_SITE;
 constexpr size_t SWEEP_PREFETCH_INDEX = 23;  // the pending list sweep's chain prefetch (after the item push loops)
 constexpr uint32_t SWEEP_PREFETCH_BIT = 1u << SWEEP_PREFETCH_INDEX;  // Faster Sweep Prefetch: its own row
+constexpr size_t MODEL_DETAIL_INDEX = 24;  // the LOD pick's scale (after the sweep prefetch)
+constexpr uint32_t MODEL_DETAIL_BIT = 1u << MODEL_DETAIL_INDEX;  // Model Detail Distance: its own row, on while the slider is above 1x
 constexpr uint32_t CPU_CODE_SITES = 0b100010111 | FLOAT4_RELOAD_SITES | SOLDIER_ROWS_SITES | MATRIX_PRODUCT_SITES | ITEM_PUSH_SITES;  // Faster Game CPU Code
 constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
@@ -1541,13 +1584,14 @@ constexpr uint32_t ALL_PREFETCH_SITES = PREFETCH_SITES | EMITTER_PREFETCH_BIT | 
 constexpr uint32_t HALF_FUNCTION_BIT = 0b10;  // the half function, which the half rows' stub calls as the game does
 constexpr uint32_t HALF_ROWS_BIT = 0b100000000;
 // The rows by name, for the log lines.
-constexpr std::array<std::pair<uint32_t, std::string_view>, 7> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
+constexpr std::array<std::pair<uint32_t, std::string_view>, 8> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
                                                                          {LIST_SITES, "Faster Render Lists"},
                                                                          {JOB_SITES, "Faster Job Wake-Ups"},
                                                                          {PREFETCH_SITES, "Faster Effect Prefetch"},
                                                                          {EMITTER_PREFETCH_BIT, "Faster Emitter Prefetch"},
                                                                          {ENTRY_PREFETCH_BIT, "Faster Particle Prefetch"},
-                                                                         {SWEEP_PREFETCH_BIT, "Faster Sweep Prefetch"}}};
+                                                                         {SWEEP_PREFETCH_BIT, "Faster Sweep Prefetch"},
+                                                                         {MODEL_DETAIL_BIT, "Model Detail Distance"}}};
 
 // The first instruction (or two or three, whole) of each site: 5 bytes that become a jump into the page (the render list
 // push's: a 4-byte instruction and the first byte of the next, both run by its stub).
@@ -1561,7 +1605,7 @@ struct Site {
   uint8_t opcode = 0xE9;  // jmp; the worker destructor's call of Stop stays a call (E8)
 };
 
-static std::array<Site, 24> sites = {{{.name = "soldier draw rounding"},
+static std::array<Site, 25> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half floats"},
                                      {.name = "fmod"},
                                      {.name = "render list pushes"},
@@ -1584,12 +1628,14 @@ static std::array<Site, 24> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "particle entry prefetch"},
                                      {.name = "item push loop 1"},
                                      {.name = "item push loop 2"},
-                                     {.name = "sweep chain prefetch"}}};
+                                     {.name = "sweep chain prefetch"},
+                                     {.name = "model detail"}}};
 // The reload rows' sites follow each other; every site has a bit of the uint32_t masks.
 static_assert(SOLDIER_ROWS_FIRST_SITE + SOLDIER_ROWS_STUBS.size() == MATRIX_PRODUCT_FIRST_SITE
               && MATRIX_PRODUCT_FIRST_SITE + MATRIX_PRODUCT_STUBS.size() == ENTRY_PREFETCH_INDEX
               && ENTRY_PREFETCH_INDEX + 1 == ITEM_PUSH_FIRST_SITE && ITEM_PUSH_FIRST_SITE + 2 == SWEEP_PREFETCH_INDEX
-              && SWEEP_PREFETCH_INDEX + 1 == std::tuple_size_v<decltype(sites)> && std::tuple_size_v<decltype(sites)> <= 32);
+              && SWEEP_PREFETCH_INDEX + 1 == MODEL_DETAIL_INDEX && MODEL_DETAIL_INDEX + 1 == std::tuple_size_v<decltype(sites)>
+              && std::tuple_size_v<decltype(sites)> <= 32);
 // Every site belongs to exactly one row: the rows' masks are disjoint and cover every site.
 static_assert([] {
   uint32_t covered = 0;
@@ -1602,6 +1648,7 @@ static_assert([] {
 // The loop stubs of the effect update (8., 10., 11.) go on at the instruction after their 5-byte site.
 static_assert(CHILD_SUM_RESUME == CHILD_SUM_SITE + SITE_SIZE && PARTICLE_LOOP_EXIT == PARTICLE_LOOP_SITE + SITE_SIZE);
 static uint8_t* job_table = nullptr;
+static std::atomic<uint32_t>* model_detail_scale = nullptr;  // the stub's float (18.), as bits; null: the site isn't there
 static uint8_t* page = nullptr;
 static bool prepared = false;
 static uint32_t found = 0;    // the sites found (bits by index)
@@ -1907,6 +1954,14 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     if (uint8_t* match = (build.sweep_rva != 0 ? find(SWEEP, build.sweep_rva) : nullptr); match != nullptr) {
       place_stub(SWEEP_PREFETCH_INDEX, match + SWEEP_SITE, SWEEP_SIZE, SWEEP_STUB, page + SWEEP_PAGE);
     }
+    // The LOD pick, found by its first bytes and the start of its body; its stub reads the scale from a page of its own (this one is read-execute).
+    if (uint8_t* match = find(PICK_LOD, build.pick_lod_rva); match != nullptr) {
+      if (void* cell = VirtualAlloc(nullptr, sizeof(uint32_t), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); cell != nullptr) {
+        model_detail_scale = new (cell) std::atomic<uint32_t>(UNSCALED_BITS);
+        place_stub(MODEL_DETAIL_INDEX, match, PICK_LOD_RESUME, MODEL_DETAIL_STUB, page + MODEL_DETAIL_PAGE);
+        resolve(page + MODEL_DETAIL_PAGE, MODEL_DETAIL_STUB.size(), std::array<const uint8_t*, 1>{static_cast<const uint8_t*>(cell)}, nullptr, {});
+      }
+    }
     DWORD protection;
     if (VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection) == FALSE) {
       // As if there were no page (nothing is written to the game yet): a site's jump would lead into memory that cannot run.
@@ -1919,7 +1974,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
     }
   }
-  std::string faster;
+  std::string found_names;
   std::string left;
   std::string x87_fixed;
   // Attila's truncation block rewritten by the Attila CPU Performance Fix is named as such, not as an unknown mod.
@@ -1929,9 +1984,9 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   const uint32_t reload_rva = (sse4_1 ? build.float4_reload_rva : 0);
   const uint32_t rows_rva = (sse4_1 ? build.soldier_rows_rva : 0);
   const uint32_t product_rva = (sse4_1 ? build.matrix_product_rva : 0);
-  const std::array<uint32_t, 24> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
+  const std::array<uint32_t, 25> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
                                          0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva, 0, 0, rows_rva, rows_rva, rows_rva,
-                                         product_rva, product_rva, product_rva, 0, build.push_loop_a_rva, build.push_loop_b_rva, 0};
+                                         product_rva, product_rva, product_rva, 0, build.push_loop_a_rva, build.push_loop_b_rva, 0, 0};
   static_assert(std::tuple_size_v<decltype(rvas)> == std::tuple_size_v<decltype(sites)>);
 #if defined(TWATTILA_ENGINE_PROBE)
   // The probe build: each probed site's jump goes to its probe stub first (a copy of the probe's bytes with the counters' addresses put in), whose last jump goes on
@@ -1969,7 +2024,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     if (rvas[index] != 0) {
       std::string* names = &left;
       if (site.at != nullptr) {
-        names = &faster;
+        names = &found_names;
       } else if (index == 0 && truncation_x87_fixed) {
         names = &x87_fixed;
       }
@@ -1981,7 +2036,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     site.jump[0] = site.opcode;
     write32(site.jump.data() + 1, relative(site.at + SITE_SIZE, stubs[index]));
   }
-  renodx::utils::log::i("[Total War] Faster Game CPU Code: ", (faster.empty() ? "nothing" : faster), " faster",
+  renodx::utils::log::i("[Total War] Faster Game CPU Code: ", (found_names.empty() ? "nothing" : found_names), " found",
                         (left.empty() ? "" : "; left alone (not the game's code as expected: another mod or build): "), left,
                         (x87_fixed.empty() ? "" : "; left alone (the Attila CPU Performance Fix's x87 fix rewrote it): "), x87_fixed);
 }
@@ -1990,17 +2045,26 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
 
 // Every present: `enabled` (Faster Game CPU Code), `lists` (Faster Render Lists), `jobs` (Faster Job Wake-Ups),
 // `prefetch` (Faster Effect Prefetch), `emitter_prefetch` (Faster Emitter Prefetch), `particle_prefetch` (Faster
-// Particle Prefetch) and `sweep_prefetch` (Faster Sweep Prefetch) once empire.retail.dll is loaded, the first time any is
-// on prepared (`game`'s build); then the jumps go in or the game's bytes back, while no thread stands inside them.
+// Particle Prefetch), `sweep_prefetch` (Faster Sweep Prefetch) and `model_detail` (the Model Detail Distance slider: the
+// LOD pick's site is in while it is not 1) once empire.retail.dll is loaded, the first time any is on prepared (`game`'s
+// build); then the jumps go in or the game's bytes back, while no thread stands inside them. A slider move writes only the
+// stub's float.
 inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, bool jobs = false, bool prefetch = false,
-                   bool emitter_prefetch = false, bool particle_prefetch = false, bool sweep_prefetch = false) {
+                   bool emitter_prefetch = false, bool particle_prefetch = false, bool sweep_prefetch = false, float model_detail = 1.f) {
   const uint32_t wanted = (enabled ? internal::CPU_CODE_SITES : 0u) | (lists ? internal::LIST_SITES : 0u) | (jobs ? internal::JOB_SITES : 0u)
                           | (prefetch ? internal::PREFETCH_SITES : 0u) | (emitter_prefetch ? internal::EMITTER_PREFETCH_BIT : 0u)
-                          | (particle_prefetch ? internal::ENTRY_PREFETCH_BIT : 0u) | (sweep_prefetch ? internal::SWEEP_PREFETCH_BIT : 0u);
+                          | (particle_prefetch ? internal::ENTRY_PREFETCH_BIT : 0u) | (sweep_prefetch ? internal::SWEEP_PREFETCH_BIT : 0u)
+                          | (model_detail != 1.f ? internal::MODEL_DETAIL_BIT : 0u);
   if (wanted != 0 && !internal::prepared) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;
     internal::Prepare(module, internal::BUILDS[static_cast<size_t>(game)]);
+  }
+  if (internal::model_detail_scale != nullptr) {
+    const uint32_t bits = std::bit_cast<uint32_t>(1.f / (model_detail * model_detail));
+    if (internal::model_detail_scale->load(std::memory_order_relaxed) != bits) {
+      internal::model_detail_scale->store(bits, std::memory_order_relaxed);
+    }
   }
 #if defined(TWATTILA_ENGINE_PROBE)
   internal::probe::Tick(internal::written);
@@ -2055,6 +2119,14 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   }
 }
 
+// The Advanced status's words for the LOD pick's site, for the slider `model_detail` now; null: not decided yet (Prepare has not run).
+inline const char* ModelDetailStatus(float model_detail) {
+  if ((internal::written & internal::MODEL_DETAIL_BIT) != 0) return "object detail hooked";
+  if (model_detail == 1.f) return "object detail at 1x: the game's LOD pick left alone";
+  if (!internal::prepared) return nullptr;
+  return ((internal::found & internal::MODEL_DETAIL_BIT) == 0 ? "object detail: the game's LOD code was not found" : "object detail: not hooked yet");
+}
+
 // Addon detach: the game's bytes back. The page stays (a thread may still be in it), so the jumps are safe to leave in
 // the game's code if no attempt finds the threads clear: the stubs need nothing of this module.
 inline void Uninstall() {
@@ -2075,7 +2147,8 @@ inline void ProbeArm(uint32_t presents) { internal::probe::Arm(presents); }
 
 #else
 
-inline void Update(bool, Game = Game::ATTILA, bool = false, bool = false, bool = false, bool = false, bool = false, bool = false) {}
+inline void Update(bool, Game = Game::ATTILA, bool = false, bool = false, bool = false, bool = false, bool = false, bool = false, float = 1.f) {}
+inline const char* ModelDetailStatus(float) { return nullptr; }
 inline void Uninstall() {}
 #if defined(TWATTILA_ENGINE_PROBE)
 inline void ProbeArm(uint32_t) {}
