@@ -3608,6 +3608,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         -Probe -Quick PASS; tw_native_hook_lifetime x86 + amd64 PASS. Worktrees ec4s_ / ecm_ / alod2s_ / alr2s_ / er3o_
         removed (links first); er4o_'s locked by its process (no links). NEXT: bench_prep.ps1 (helper final1118, testbin\
         final1118 + hashes, final1118_fp, final1118_probe), dry run of tools/tw/bench/final1118_run.ps1, notes copy, restart.
+        BENCH READY 23:01 (commit d7445f40b): testbin\final1118 add-on 684a6aac + helper 38db7a5d (build\tw_dlaa_helper_final1118,
+        hashes.txt), testbin\cpu1_addons\final1118_fp c12908c3, testbin\final1118_probe\Release 41477ad5 (probe strings in it,
+        none in the production add-on). Variants bench\variants\final1118_*.json (scratchpad make_final_variants.py); the bench
+        got a 'reshade_ini' variant field ("<section>/<key>=<value>", for the probe's [Total War] EngineProbePresents=3000;
+        tested on ini copies). Run list tools\tw\bench\final1118_run.ps1 (17 calls = 56 starts, stops at the first non-zero
+        exit, -From <id> resumes): -DryRun all 17 exit 0, no PROBLEMS / WARN; ATN's install = the known hashes.
+        AFTER ATN'S RESTART + "run": dry run again (Steam not elevated, CPU Set Setter 0-15, no zombies), then
+        `powershell -NoProfile -ExecutionPolicy Bypass -File tools\tw\bench\final1118_run.ps1` in the background (~3.9 h);
+        then the xHigh analysis, then ATN's 2 extra runs (page 1 Reset = page-presets/Reset, page 2's = graphics-presets/Reset:
+        check its group first).
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
