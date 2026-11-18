@@ -75,6 +75,17 @@ constexpr std::array<uint8_t, 44> TruncationStub(uint8_t control, uint8_t roundi
   };
 }
 constexpr std::array<uint8_t, 44> TRUNCATION_STUB = TruncationStub(0x18, 0x1C, 0x20, 0x2C);
+// The same bytes as the Attila CPU Performance Fix's x87 fix leaves them (its x87fix.c, on the block at +14): both fldcw
+// a 4-byte nop, fistp fisttp. Left to that mod as any other mod's code; only named in the log.
+constexpr auto HEAPFIX_TRUNCATION = [] {
+  std::array<char, TRUNCATION.size()> pattern = {};
+  std::ranges::copy(TRUNCATION, pattern.begin());
+  const auto put = [&](size_t offset, std::string_view bytes) { std::ranges::copy(bytes, pattern.begin() + 3 * offset); };
+  put(37, "0F 1F 40 00");  // fldcw word ptr [esp + 0x1c]
+  put(42, "4C");           // fistp dword ptr [esp + 0x2c] -> fisttp
+  put(45, "0F 1F 40 00");  // fldcw word ptr [esp + 0x18]
+  return pattern;
+}();
 
 // 2. float to half (+0x169a220, 98 callers; the sprite soldiers' instance rows, 20 a row: ~4.3 ms a frame): uint16_t
 // __cdecl(const float*) in software, its own rounding (half way down, NaN to infinity), and it leaves the pointer's
@@ -244,16 +255,17 @@ constexpr std::array<uint8_t, 19> LIST_PUSH_STUB = {
 // [this + 4] as it is with no child, 1 after a full loop of ready children, else 0; eax's other bits the count's with
 // no child, else the last child's control block's uses + 1 (the release's old value) or, without one, its object; ecx
 // this with al in its top byte and the same 16 bytes below esp (the game's frame: the result kept in the pushed ecx's top
-// byte); the flags of an equal compare, the game's last. Only eax's bits from the last child's uses can differ, while
-// another thread changes them during the call (the game's value then depends on the timing too); without the game's
-// locked instructions (full fences) a ready byte another thread sets can only be seen sooner (x86 keeps loads in order).
+// byte; the stub builds ecx in the register instead of popping it); the flags of an equal compare, the game's last.
+// Only eax's bits from the last child's uses can differ, while another thread changes them during the call (the game's
+// value then depends on the timing too); without the game's locked instructions (full fences) a ready byte another
+// thread sets can only be seen sooner (x86 keeps loads in order).
 constexpr uint32_t READY_CHECK_RVA = 0x18635a0;
 constexpr std::string_view READY_CHECK =
     "51 8A 41 04 53 56 57 8B 79 44 88 44 24 0F 8B 41 40 8D 1C C7 3B FB 74 55 8B 77 04 85 F6 74 07 F0 FF 46 04 8B 77 04 "
     "80 7C 24 0F 00 8B 07 74 0A 80 78 6E 00 74 04 B0 01 EB 02 32 C0 88 44 24 0F 85 F6 74 23 B8 FF FF FF FF F0 0F C1 46 "
     "04 75 17 8B 06 8B CE FF 10 83 C8 FF F0 0F C1 46 08 75 07 8B 06 8B CE FF 50 04 83 C7 08 3B FB 75 AB 8A 44 24 0F 5F "
     "5E 5B 59 C3";
-constexpr std::array<uint8_t, 85> READY_CHECK_STUB = {
+constexpr std::array<uint8_t, 98> READY_CHECK_STUB = {
     0x51,                          // push ecx                          the game's frame: the result in the pushed
     0x8A, 0x41, 0x04,              // mov al, byte ptr [ecx + 4]          ecx's top byte
     0x53,                          // push ebx
@@ -288,8 +300,12 @@ constexpr std::array<uint8_t, 85> READY_CHECK_STUB = {
     0x5F,                          // pop edi
     0x5E,                          // pop esi
     0x5B,                          // pop ebx
-    0x59,                          // pop ecx
-    0xC3,                          // ret
+    0xC1, 0xC1, 0x08,              // rol ecx, 8                        the pushed ecx (this, never written)
+    0x88, 0xC1,                    // mov cl, al                          with al in its top byte, built in the
+    0xC1, 0xC9, 0x08,              // ror ecx, 8                          register: pop ecx's 4-byte reload of the
+    0x8D, 0x64, 0x24, 0x04,        // lea esp, [esp + 4]                  1-byte store waits for that store
+    0x3B, 0xC9,                    // cmp ecx, ecx                      the equal compare's flags again (rol / ror
+    0xC3,                          // ret                                 changed CF and OF)
 };
 
 // 6. The job system's worker wake-ups (Faster Job Wake-Ups, its own row, Experimental: not byte for byte the game's
@@ -820,7 +836,8 @@ constexpr size_t JOB_PAGE = 0x300;
 constexpr size_t HALF_ROWS_PAGE = 0x500;
 constexpr size_t CHILD_SUM_PAGE = 0xB00;
 constexpr size_t PAGE_SIZE = 0x1000;
-static_assert(JOB_PAGE + JOB_STUB.size() <= HALF_ROWS_PAGE
+static_assert(READY_CHECK_PAGE + READY_CHECK_STUB.size() <= JOB_PAGE
+              && JOB_PAGE + JOB_STUB.size() <= HALF_ROWS_PAGE
               && HALF_ROWS_PAGE + HALF_ROWS_CONSTANTS_AT + sizeof(HALF_ROWS_CONSTANTS) <= CHILD_SUM_PAGE
               && CHILD_SUM_PAGE + CHILD_SUM_STUB.size() <= PAGE_SIZE);
 
@@ -1108,6 +1125,10 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   }
   std::string faster;
   std::string left;
+  std::string x87_fixed;
+  // Attila's truncation block rewritten by the Attila CPU Performance Fix is named as such, not as an unknown mod.
+  const bool truncation_x87_fixed = (sites[0].at == nullptr && build.truncation_rva == TRUNCATION_RVA
+                                     && holds(base + TRUNCATION_RVA, {HEAPFIX_TRUNCATION.data(), HEAPFIX_TRUNCATION.size()}));
   // A site the build doesn't have (rva 0) isn't named.
   const std::array<uint32_t, 10> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
                                          0, 0, 0, build.half_rows_rva, 0};
@@ -1116,7 +1137,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     Site& site = sites[index];
     // The job sites aren't listed here: their row says when it turns them on.
     if (rvas[index] != 0) {
-      std::string& names = (site.at != nullptr ? faster : left);
+      std::string& names = (site.at != nullptr ? faster : ((index == 0 && truncation_x87_fixed) ? x87_fixed : left));
       names += std::format("{}{}", names.empty() ? "" : ", ", site.name);
     }
     if (site.at == nullptr) continue;
@@ -1126,7 +1147,8 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     write32(site.jump.data() + 1, relative(site.at + SITE_SIZE, stubs[index]));
   }
   renodx::utils::log::i("[Total War] Faster Game CPU Code: ", (faster.empty() ? "nothing" : faster), " faster",
-                        (left.empty() ? "" : "; left alone (not the game's code as expected: another mod or build): "), left);
+                        (left.empty() ? "" : "; left alone (not the game's code as expected: another mod or build): "), left,
+                        (x87_fixed.empty() ? "" : "; left alone (the Attila CPU Performance Fix's x87 fix rewrote it): "), x87_fixed);
 }
 
 }  // namespace internal
