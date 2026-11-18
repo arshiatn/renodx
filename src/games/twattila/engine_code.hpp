@@ -739,6 +739,7 @@ constexpr std::array<uint8_t, 1222> HALF_ROWS_STUB = {
     0x50,                                            // push eax
     0xE9, 0x12, 0x5A, 0x5A, 0x5A,                    // jmp 0x5a5a5ed8
 };
+static_assert(HALF_ROWS_STUB.size() <= HALF_ROWS_CONSTANTS_AT);  // the constants after the code
 // The stub's constants, 16-byte vectors: |f|, 0x387fffff, 0x33000400, 1, 0x1fff, 0x4000, 0x477fffff, 0x33800000, 0x80000000,
 // 0x84ffffff.
 constexpr std::array<uint32_t, 40> HALF_ROWS_CONSTANTS = {
@@ -757,41 +758,50 @@ constexpr std::array<uint32_t, 40> HALF_ROWS_CONSTANTS = {
 // 8. The effect tree's child sum (+0x1890b90; E3P of the CPU plan): `sum += child->vtable[0x1c]()` over the vector at
 // [this+0x68] of [this+0x64] pointers, the bounds read again after every call. The children are scattered heap objects, so
 // the loop waits for each one's first line. The stub at the loop's bottom (the `lea ecx, [ecx + edx*4]; cmp esi, ecx` that
-// the `jne` tests; esi is the next item's slot, ecx the vector's begin, edx its size) prefetches the child after the next
-// one: only when that slot's 4 bytes [esi + 4, esi + 8) lie wholly inside [begin, end) as the vector is right now, with no
-// wrap of the address space (a vector the call reallocated puts the old esi outside it: no load; esi need not be 4 apart from
-// the begin); `prefetcht0` itself never faults. Same results: the flags the `jne` sees are the game's `cmp esi, ecx`, ecx is
-// the end as the game computes it, edx is not touched, and eax, which the game has added to the sum and next overwrites (the
-// loop's top, `mov eax, edi` at the exit), is the one register that differs. No store, and a load only inside the vector's
-// size * 4 bytes, which any vector keeps committed after a call returns (the one assumption): every register, the flags and
-// the memory at the function's return are the game's.
+// the `jne` tests; esi is the next item's slot, ecx the vector's begin, edx its size) prefetches the children K - 1 and K / 2 - 1
+// places after the next one (K = CHILD_SUM_AHEAD): only when the far slot's 4 bytes [esi + 4K - 4, esi + 4K) lie wholly inside
+// [begin, end) as the vector is right now, with no wrap of the address space (a vector the call reallocated puts the old esi
+// outside it: no load; esi need not be 4 apart from the begin). The near slot [esi + 2K - 4, esi + 2K) is then inside too:
+// begin <= esi <= esi + 2K - 4 and esi + 2K <= esi + 4K <= end, no wrap. `prefetcht0` itself never faults. Same results: the
+// flags the `jne` sees are the game's `cmp esi, ecx`, ecx is the end as the game computes it, edx is not touched, and eax, which
+// the game has added to the sum and next overwrites (the loop's top, `mov eax, edi` at the exit), is the one register that
+// differs. No store, and loads only inside the vector's size * 4 bytes, which any vector keeps committed after a call returns
+// (the one assumption): every register, the flags and the memory at the function's return are the game's.
 constexpr std::string_view CHILD_SUM =
     "53 8B D9 56 57 33 FF 8B 73 68 8B 43 64 8D 04 86 3B F0 74 19 8B 0E 8B 01 FF 50 1C 8B 53 64 83 C6 04 8B 4B 68 03 F8 8D 0C 91 "
     "3B F1 75 E7 8B C7 5F 5E 5B C3";
 constexpr size_t CHILD_SUM_SITE = 38;    // lea ecx, [ecx + edx*4]; cmp esi, ecx
 constexpr size_t CHILD_SUM_RESUME = 43;  // jne to the loop's top
-constexpr std::array<uint8_t, 31> CHILD_SUM_STUB = {
-    0x39, 0xCE,              // cmp esi, ecx                (esi against the begin)
-    0x8D, 0x0C, 0x91,        // lea ecx, [ecx + edx*4]      (the end; no flags)
-    0x72, 0x11,              // jb skip                     (esi below the begin: stale, no load)
-    0x89, 0xF0,              // mov eax, esi
-    0x83, 0xC0, 0x08,        // add eax, 8
-    0x72, 0x0A,              // jc skip                     (esi + 8 past 2^32)
-    0x39, 0xC8,              // cmp eax, ecx
-    0x77, 0x06,              // ja skip                     (the slot after the next one is not wholly inside)
-    0x8B, 0x40, 0xFC,        // mov eax, dword ptr [eax - 4] (the child after the next one)
-    0x0F, 0x18, 0x08,        // prefetcht0 byte ptr [eax]
-    0x39, 0xCE,              // skip: cmp esi, ecx          (the flags the game's jne tests)
-    0xE9, 0x00, 0x00, 0x00, 0x00,  // jmp the loop's jne (patched in Prepare)
-};
+constexpr uint8_t CHILD_SUM_AHEAD = 4;
+static_assert(CHILD_SUM_AHEAD >= 2 && CHILD_SUM_AHEAD % 2 == 0 && CHILD_SUM_AHEAD * 4 <= 127);  // K / 2 a whole slot; the add's immediate a signed byte
+// The stub for K = `ahead`: the children in the slots [esi + 4K - 4, esi + 4K) and [esi + 2K - 4, esi + 2K), K - 1 and K / 2 - 1 places after the
+// next one, both behind the one check of the far slot (the test builds the stub for other K and the other forms for its timing).
+constexpr std::array<uint8_t, 37> ChildSumStub(uint8_t ahead) {
+  return {
+      0x39, 0xCE,                                       // cmp esi, ecx                    esi against the begin
+      0x8D, 0x0C, 0x91,                                 // lea ecx, [ecx + edx*4]          the end (no flags)
+      0x72, 0x17,                                       // jb skip                         esi below the begin: stale, no load
+      0x89, 0xF0,                                       // mov eax, esi
+      0x83, 0xC0, static_cast<uint8_t>(ahead * 4),      // add eax, 4K
+      0x72, 0x10,                                       // jc skip                         esi + 4K past 2^32
+      0x39, 0xC8,                                       // cmp eax, ecx
+      0x77, 0x0C,                                       // ja skip                         the far slot is not wholly inside
+      0x8B, 0x40, 0xFC,                                 // mov eax, dword ptr [eax - 4]     the child in the far slot
+      0x0F, 0x18, 0x08,                                 // prefetcht0 byte ptr [eax]
+      0x8B, 0x46, static_cast<uint8_t>(ahead * 2 - 4),  // mov eax, dword ptr [esi + 2K - 4]  the child in the near slot
+      0x0F, 0x18, 0x08,                                 // prefetcht0 byte ptr [eax]
+      0x39, 0xCE,                                       // skip: cmp esi, ecx              the flags the game's jne tests
+      0xE9, 0x00, 0x00, 0x00, 0x00,                     // jmp the loop's jne (patched in Prepare)
+  };
+}
+constexpr std::array<uint8_t, 37> CHILD_SUM_STUB = ChildSumStub(CHILD_SUM_AHEAD);
 
 // 9. The particle writer's float4 reloads (+0x18960d0, thiscall(float, const float*), ret 8; the effect update calls it once for
-// every particle: 4.9 ms of the render thread a frame in the stress battle, 1.77 ms of it the two reloads). It builds two float4s
-// (a colour and a vector) with four 4-byte `movss` stores each into the frame at [esp + 0x40 .. 0x4f] and reloads each with one 16-byte
-// `movups xmm0, [esp + 0x40]` to store it into a vertex stream. A load that spans four stores can't be forwarded from the store buffer:
-// it waits until they have reached the cache, and stores drain in program order, so it also waits for every older store (the
-// streams' other rows). The stub loads each lane from the address and size of the store that wrote it: `movss xmm0, [esp + 0x40]`, then
-// `insertps xmm0, [esp + 0x44 / 0x48 / 0x4c], 0x10 / 0x20 / 0x30` (SSE4.1: without it the sites are not looked for). Same results:
+// every particle). It builds two float4s (a colour and a vector) with four 4-byte `movss` stores each into the frame at
+// [esp + 0x40 .. 0x4f] and reloads each with one 16-byte `movups xmm0, [esp + 0x40]` to store it into a vertex stream. A load that
+// spans four stores can't be forwarded from the store buffer. The stub loads each lane from the address and size of the store that
+// wrote it: `movss xmm0, [esp + 0x40]`, then `insertps xmm0, [esp + 0x44 / 0x48 / 0x4c], 0x10 / 0x20 / 0x30` (SSE4.1: without it
+// the sites are not looked for). Same results:
 // xmm0 holds the same 128 bits (moves only: NaN payloads, subnormals and the sign of zero as they are; MXCSR untouched), no flag and
 // no other register changes, no store, and the four loads read the same 16 stack bytes after the same stores. Found by the function's
 // tail (+0x18967db, its call's displacement wild), at the Steam build's place first, then anywhere in the code: another mod's change
@@ -823,7 +833,7 @@ static bool sse4_1 = (IsProcessorFeaturePresent(PF_SSE4_1_INSTRUCTIONS_AVAILABLE
 // that bottom, where ebx is already the next particle's index, loads the slot K = PARTICLE_PREFETCH_AHEAD particles after the next one and prefetches the
 // particle's four lines, only when the slot is inside the size as it is right now: the array the game's next load reads holds size * 4 bytes (the one
 // assumption, as in 8.), and the lea wraps like the load's address does, so an index past 2^32 loads from inside the vector too. The prefetch never
-// faults. The stub spends esi, which is dead there (the loop's top loads it, the way out only pops it and calls a function that saves it: checked in the
+// faults. The stub spends esi, which is dead there (the loop's top loads it, the way out only pops it and calls a function that never reads esi as an input: checked in the
 // DLL's bytes, Attila's and Thrones'); the flags the `jb` tests are the game's `cmp`; no store, no other register: every register but esi, the flags and
 // all memory at the loop's end are the game's. Found by the loop's 104 bytes and the 36 after it (the way out the esi argument stands on, its call wild), at
 // the Steam build's place first, then anywhere in the code; no branch lands inside the site (the whole DLL's relative branches and absolute pointers,
@@ -964,11 +974,11 @@ constexpr size_t LIST_PUSH_PAGE = 0x240;
 constexpr size_t READY_CHECK_PAGE = 0x280;
 constexpr size_t JOB_PAGE = 0x300;
 constexpr size_t HALF_ROWS_PAGE = 0x500;
-constexpr size_t CHILD_SUM_PAGE = 0xB00;
 constexpr size_t FLOAT4_RELOAD_PAGE = 0xB20;    // one stub for each of the two reloads, a stride apart
 constexpr size_t FLOAT4_RELOAD_STRIDE = 0x30;
 constexpr size_t PARTICLE_PREFETCH_PAGE = 0xB80;
 constexpr size_t EMITTER_PREFETCH_PAGE = 0xBC0;
+constexpr size_t CHILD_SUM_PAGE = 0xC00;
 constexpr size_t PAGE_SIZE = 0x1000;
 static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the three games' truncation stubs are one type
               && HALF_PAGE + HALF_STUB.size() + HALF_SIZE <= FMOD_PAGE
@@ -976,15 +986,17 @@ static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the thre
               && LIST_PUSH_PAGE + LIST_PUSH_STUB.size() <= READY_CHECK_PAGE
               && READY_CHECK_PAGE + READY_CHECK_STUB.size() <= JOB_PAGE
               && JOB_PAGE + JOB_STUB.size() <= HALF_ROWS_PAGE
-              && HALF_ROWS_PAGE + HALF_ROWS_CONSTANTS_AT + sizeof(HALF_ROWS_CONSTANTS) <= CHILD_SUM_PAGE
-              && CHILD_SUM_PAGE + CHILD_SUM_STUB.size() <= FLOAT4_RELOAD_PAGE
+              && HALF_ROWS_PAGE + HALF_ROWS_CONSTANTS_AT + sizeof(HALF_ROWS_CONSTANTS) <= FLOAT4_RELOAD_PAGE
               && FLOAT4_RELOAD_STUB.size() <= FLOAT4_RELOAD_STRIDE
               && FLOAT4_RELOAD_PAGE + FLOAT4_RELOAD_AT.size() * FLOAT4_RELOAD_STRIDE <= PARTICLE_PREFETCH_PAGE
               && PARTICLE_PREFETCH_PAGE + PARTICLE_PREFETCH_STUB.size() <= EMITTER_PREFETCH_PAGE
-              && EMITTER_PREFETCH_PAGE + EMITTER_PREFETCH_STUB.size() <= PAGE_SIZE);
+              && EMITTER_PREFETCH_PAGE + EMITTER_PREFETCH_STUB.size() <= CHILD_SUM_PAGE
+              && CHILD_SUM_PAGE + CHILD_SUM_STUB.size() <= PAGE_SIZE);
 
 // Which sites each row writes (bits by `sites` index).
+constexpr size_t FLOAT4_RELOAD_FIRST_SITE = 10;  // the colour's reload; the vector's is the next
 constexpr uint32_t FLOAT4_RELOAD_SITES = 0b110000000000;  // the particle writer's two reloads
+static_assert(FLOAT4_RELOAD_SITES == 0b11u << FLOAT4_RELOAD_FIRST_SITE && FLOAT4_RELOAD_AT.size() == 2);
 constexpr uint32_t CPU_CODE_SITES = 0b100010111 | FLOAT4_RELOAD_SITES;  // Faster Game CPU Code
 constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
@@ -1269,15 +1281,15 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       stubs[9] = stub;
     }
     // The particle writer's two reloads (insertps is SSE4.1), found by the function's tail.
-    if (uint8_t* match = (build.float4_reload_rva != 0 && sse4_1 ? find(FLOAT4_RELOAD, build.float4_reload_rva) : nullptr); match != nullptr) {
+    if (uint8_t* match = ((build.float4_reload_rva != 0 && sse4_1) ? find(FLOAT4_RELOAD, build.float4_reload_rva) : nullptr); match != nullptr) {
       for (size_t reload = 0; reload < FLOAT4_RELOAD_AT.size(); ++reload) {
         uint8_t* stub = page + FLOAT4_RELOAD_PAGE + reload * FLOAT4_RELOAD_STRIDE;
         std::memcpy(stub, FLOAT4_RELOAD_STUB.data(), FLOAT4_RELOAD_STUB.size());
         uint8_t* stub_end = stub + FLOAT4_RELOAD_STUB.size();
         uint8_t* site = match + FLOAT4_RELOAD_AT[reload];
         write32(stub_end - 4, relative(stub_end, site + SITE_SIZE));
-        sites[10 + reload].at = site;
-        stubs[10 + reload] = stub;
+        sites[FLOAT4_RELOAD_FIRST_SITE + reload].at = site;
+        stubs[FLOAT4_RELOAD_FIRST_SITE + reload] = stub;
       }
     }
     // The particle update loop's prefetch, found by the loop's bytes and those of its way out.
@@ -1362,7 +1374,9 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     internal::prefetch_missing_logged = true;
     std::string missing;
     for (size_t index = 0; index < internal::sites.size(); ++index) {
-      if (((internal::PREFETCH_SITES & ~internal::found) >> index & 1) != 0) missing += std::format("{}{}", missing.empty() ? "" : ", ", internal::sites[index].name);
+      if ((((internal::PREFETCH_SITES & ~internal::found) >> index) & 1) != 0) {
+        missing += std::format("{}{}", missing.empty() ? "" : ", ", internal::sites[index].name);
+      }
     }
     renodx::utils::log::w("[Total War] Faster Effect Prefetch: left alone (not the game's code as expected: another mod or build): ", missing);
   }
