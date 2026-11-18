@@ -273,10 +273,18 @@ bool PathAmbientWanted() {
   return rt_sliders.path_ambient != 0.f && rt_sliders.path_tracing != 0.f && shader_injection.light_bounce > 0.f;
 }
 
-// With a ray-traced effect on (the rows for all of them; at launch: the ray tracing installed).
+// With a ray-traced effect on (the rows for all of them; at launch: the ray tracing installed). Specular Occlusion alone
+// is none: it counts only beside another (RaysBesideSpecularOcclusion).
 bool AnyRays() {
   return rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.reflections != 0.f
-         || rt_sliders.specular_occlusion != 0.f || rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f;
+         || rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f;
+}
+
+// A ray-traced effect traced this frame besides Specular Occlusion (Attila's rt_core.hpp RaysBesideSpecularOcclusion): alone
+// it started the ray tracing, its guides and Ray Reconstruction for itself, so then it is off, the game's look.
+bool RaysBesideSpecularOcclusion() {
+  return rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.reflections != 0.f
+         || (shader_injection.light_bounce > 0.f && (rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f));
 }
 
 // The Ray Tracing presets: RT/PT writes RAYS_RESET, then the one list every game's RT/PT writes
@@ -1386,8 +1394,9 @@ void BuildRuntimeData() {
           .section = "Ray Tracing (Experimental)",
           .tooltip = "The sky's and the probes' reflection taken off shiny surfaces where something stands over them\n"
                      "(doorways, under roofs). With the screen-space reflections; the ray-traced ones have it already.\n"
-                     "Restart the game after turning on.",
+                     "Works with another ray-traced effect on. Restart the game after turning on.",
           .labels = {"Off", "On"},
+          .is_enabled = RaysBesideSpecularOcclusion,
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
       new renodx::utils::settings::Setting{
@@ -1741,14 +1750,14 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
     const bool bounce = shader_injection.light_bounce > 0.f && (rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f);
     const bool reflections = rt_sliders.reflections != 0.f;
     const bool path_tracing = (bounce || reflections) && rt_sliders.path_tracing != 0.f;
-    const bool specular_occlusion = rt_sliders.specular_occlusion != 0.f;
+    const bool other_rays = RaysBesideSpecularOcclusion();
+    const bool specular_occlusion = rt_sliders.specular_occlusion != 0.f && other_rays;
     // The specular occlusion comes with the reflections' trace (their textures and guides).
     use = {
         .ray_tracing = true,
         .guides = reflections || specular_occlusion || path_tracing,
         .reflections = reflections || specular_occlusion,
-        .ray_reconstruction =
-            (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || bounce || reflections || specular_occlusion) ? 1u : 0u,
+        .ray_reconstruction = other_rays ? 1u : 0u,
     };
     const bool path_ambient = path_tracing && bounce && PathAmbientWanted();
     twattila::rt_scene::Settings rays = {
