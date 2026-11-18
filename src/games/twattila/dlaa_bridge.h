@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 31;
+constexpr uint32_t VERSION = 32;
 // The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
 // addons' blocks no longer match).
 constexpr uint32_t OLDEST_VERSION = 20;
@@ -41,6 +41,18 @@ constexpr uint32_t RT_ALL_LIGHTS = 128;
 constexpr uint32_t RT_LIGHT_TILE = 8;
 constexpr uint32_t RT_NO_LIGHT = 0xFF;
 constexpr uint32_t LightTileRows(uint32_t height) { return ((height + RT_LIGHT_TILE - 1) / RT_LIGHT_TILE) * 2; }
+// Shared::rt_light_kinds (v32): the falloff of the game's point-light shader that drew each sent light, over its distance
+// d and reach r.
+constexpr uint8_t RT_LIGHT_SMOOTH = 0;  // (1 - d / r)^2 (older addons: every light)
+constexpr uint8_t RT_LIGHT_LINEAR = 1;  // 1 - d / r
+// Shared::rt_di_flags (v32, the addon's; no helper runs it yet): Path-Traced Torch Light, NVIDIA's RTXDI lighting the
+// listed torches of each pixel that reaches more than four; their mask words 0, the addon adds the helper's light at the
+// point lights' draw.
+constexpr uint32_t RT_DI_LIGHTS = 1;
+// Shared::rt_restir_flags (v32, a Light Bounce request's; no helper reads them yet): ReSTIR GI's neighbours by
+// compatibility, Ray Reconstruction's decorrelation.
+constexpr uint32_t RT_RESTIR_COMPATIBLE = 1;
+constexpr uint32_t RT_RESTIR_DECORRELATE = 2;
 // Placed draws (v14) a frame at most, besides the new captures (v20: 16384).
 constexpr uint32_t RT_PLACEMENTS = 16384;
 
@@ -553,11 +565,26 @@ struct Shared {
   // The addon's (in v31's padding; an older v31 addon leaves it 0: none): Grass Ray Tracing Range, grass (placed or drawn) whose
   // instance lies farther along the view (metres) out of the scene, its still and swaying copies alike.
   float rt_grass_range = 0.f;
+  // The addon's (v32): each sent light's falloff (RT_LIGHT_*, as rt_lights / rt_lights_more; older addons: none, smooth).
+  uint8_t rt_light_kinds[RT_ALL_LIGHTS] = {};
+  // The addon's (v32): RT_DI_* in a trace request, RT_RESTIR_* in a Light Bounce request, and the G-buffer's light surface
+  // for Path-Traced Torch Light (RGBA32_UINT at the textures' size: channels 1-3 and the light model selector as bytes;
+  // made only when asked; 0: none).
+  uint32_t rt_di_flags = 0;
+  uint32_t rt_restir_flags = 0;
+  uint64_t rt_light_surface = 0;
+  // The helper's (v32; older helpers and this one leave it 0): 1 when it runs Path-Traced Torch Light.
+  uint32_t rt_di_ok = 0;
+  // The addon's (v32): Rough Diffuse's roughness (vMF diffuse at the receivers, 0-1; 0: Lambert).
+  float rt_diffuse_roughness = 0.f;
 };
+static_assert(offsetof(Shared, rt_light_surface) % 8 == 0, "64-bit fields keep one place in the 32- and 64-bit builds");
+static_assert(sizeof(Shared) % 8 == 0, "the block ends on its 64-bit alignment in both builds");
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 31) return sizeof(Shared);
+  if (version >= 32) return sizeof(Shared);
+  if (version == 31) return offsetof(Shared, rt_light_kinds);
   if (version == 30) return offsetof(Shared, rt_lights_more);
   if (version >= 25) return offsetof(Shared, fence_generation);
   if (version == 24) return offsetof(Shared, rr_extra);
