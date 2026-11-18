@@ -3221,6 +3221,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         brace-rule slips; M2 core 0 picked half the time; Lows L1 1-s rule re-read, L3 log, L4 stand down on 2 CCDs
         without a rule, L5, L6, L7). Rules hold (only SetThreadSelectedCpuSets, subset, exact clear); mutants caught.
         asm1_ RESUMED 06:40 for H1 / M1 / M2 + L1 / L3-L7 + nits (L2 skipped: the off wait is acceptable).
+        ci3s_ DONE ~06:4x -> night1118/ci3s_report.md: c3adca196 CR1 fixes (L1 / L2 / N1 bswap tail 11 B / N2 / N3 / N4)
+        + d6cef1f49 E3P-b (site 12 loop bottom Attila 0x1893883 / Thrones 0x1908be3, 50-byte stub at 0xB80, K = 2,
+        Faster Effect Prefetch row; harness 162 -> 67 ns a particle at 300-cycle updates) on dfcf463d0; full x86
+        suites PASS 3 DLLs, gated x86 exit 0. STARTED 06:43: cr3_ SONNET xHigh review of both (E3P-b had an Opus
+        stop: ATN's rule) + ci4_ Opus High = E3P-c (emitter / definition prefetch, part 16) + E3P-d (site 8 distance
+        sweep) on d6cef1f49 (engine_code.hpp one after another; review fixes folded in after).
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
