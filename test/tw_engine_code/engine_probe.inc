@@ -153,8 +153,9 @@ int RunProbeTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
       compare(model, probe_test::Run(code, size, run, &random), b ? "item push B" : "item push A");
     }
   }
-  // The ready check: the children and the first one not ready (17 when the list's flag [+4] is clear: the game's check reads no child of such a list, so its children
-  // array pointer is garbage in a third of those worlds, an address that cannot be read; the probe must count them and read nothing).
+  // The ready check: the children and the first one not ready (16 when the list's flag [+4] is clear, 17 when none of the first 16 is not ready: the game's check reads
+  // no child of a clear-flag list, so its children array pointer is garbage in a third of those worlds, an address that cannot be read; the probe must count them and
+  // read nothing).
   if (ec::sites[4].at != nullptr) {
     const auto [code, size] = stub_bytes(4);
     auto* hole = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x10000, MEM_RESERVE, PAGE_NOACCESS));
@@ -163,7 +164,7 @@ int RunProbeTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
       std::array<uint8_t, 0x50> list = {};
       std::vector<uint32_t> children;
       std::vector<std::array<uint8_t, 0x80>> objects;
-      uint32_t first = 17;  // the model's first child not ready
+      uint32_t first = 17;  // the model's first child not ready (16: the list's flag clear, 17: none of the first 16)
     };
     const auto ready_world = [&](bool flag, bool unreadable, uint32_t count, uint32_t not_ready) {
       ReadyWorld world;
@@ -176,6 +177,7 @@ int RunProbeTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
       world.list[4] = (flag ? static_cast<uint8_t>(1 + random.Next() % 255) : 0);
       Write32(world.list.data() + 0x40, count);
       Write32(world.list.data() + 0x44, unreadable ? Address(hole) + random.Next() % 0x8000 : Address(world.children.data()));
+      if (!flag) world.first = 16;
       for (uint32_t child = 0; flag && child < std::min<uint32_t>(count, 16); ++child) {
         if (world.objects[child][0x6E] == 0) {
           world.first = child;

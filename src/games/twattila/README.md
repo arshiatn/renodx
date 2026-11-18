@@ -11,7 +11,8 @@
   release). The histograms go to ReShade.log once, N presents after the first site was written: `EngineProbePresents=N` under `[Total War]` in ReShade.ini
   (none: never), or at the first present at which a counter has reached 2^31 (the counters are 32 bits; a warning says so: pick N small enough, the child
   sum's and the particle loop's bottoms are hundreds of thousands a frame); the sites' jump bytes are logged at each change. The ready check's probe reads a
-  list's children only when its flag is set, as the game's check does. The probe code page is read-execute. Checked in `test/tw_engine_code` part 21
+  list's children only when its flag is set, as the game's check does (a clear flag is bucket 16 of its "first child not ready"
+  histogram, none of the first 16 not ready is 17: opposite results of the check). The probe code page is read-execute. Checked in `test/tw_engine_code` part 21
   (`run.ps1 -Probe [-Quick]`): each probe alone on random registers and flags (registers, flags, esp, frame and every counter as the model says; the ready
   check also on clear-flag lists with an unreadable children array, and without its flag test as a CONTROL), then the probed sites' own parts (19, 20, 12, 15,
   18) quick through the probes with every result the game's, and the dump armed for 3 presents (once, at the third) and the early dump at 2^31. Source
