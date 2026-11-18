@@ -12,8 +12,8 @@
 //    3 cold: the same on new models without that first scaling: this version at the closed form (v157 printed).
 //    3b: a model's first scaling from four threads at once: v157 scaled some models twice (its map path's read, write and
 //    insert were three steps; printed), this one never (the map path under the entry's lock: every model = closed form).
-// 4. Cost: ns a call, cells alternating 6 models, runs of one model, and 128 models in turn (more than the cache holds:
-//    every call takes the map path), one thread and four (printed).
+// 4. Cost: ns a call, cells alternating 6 models, runs of one model, 128 models in turn (more than the old 64-entry cache
+//    held) and 512 models in turn (the cache's size: its conflict misses take the map path), one thread and four (printed).
 // 5. The scrub's cell radius clamp (OnScrubUpdate) and DrawScrub's early-out (OnDrawScrub): a replay of the game's
 //    ScrubUpdate, cell loop and DrawScrub (namespace scrub) through the hooks and as v158 (its radius, every record to
 //    DrawScrub): the same draws in 400 random scenes and 40 scenes with LODs one float step around their records' keys;
@@ -729,14 +729,14 @@ int main() {
   {
     World old_world;
     World new_world;
-    for (size_t model = 0; model < 128; ++model) {
+    for (size_t model = 0; model < 512; ++model) {
       const auto distances = Distances(&random, 3);
       old_world.Add(distances);
       new_world.Add(distances);
     }
     constexpr float SCALE = 4.f;
     constexpr uint32_t CALLS = 2000000;
-    enum class Order : uint8_t { ALTERNATING, RUNS, PAST_CACHE };
+    enum class Order : uint8_t { ALTERNATING, RUNS, IN_TURN_128, IN_TURN_512 };
     const auto time = [&](auto scale_lods, uint8_t* manager, Order order, uint32_t thread_count) {
       std::vector<std::thread> threads;
       const auto start = std::chrono::steady_clock::now();
@@ -747,7 +747,8 @@ int main() {
             switch (order) {
               case Order::ALTERNATING: model = (round + thread) % 6; break;
               case Order::RUNS:        model = ((round / 64) + thread) % 6; break;
-              case Order::PAST_CACHE:  model = (round + thread * 32) % 128; break;
+              case Order::IN_TURN_128: model = (round + thread * 32) % 128; break;
+              case Order::IN_TURN_512: model = (round + thread * 128) % 512; break;
             }
             scale_lods(manager, model, SCALE);
           }
@@ -757,17 +758,21 @@ int main() {
       return std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / CALLS;
     };
     for (const uint32_t threads : {1u, 4u}) {
-      for (const Order order : {Order::ALTERNATING, Order::RUNS, Order::PAST_CACHE}) {
+      for (const Order order : {Order::ALTERNATING, Order::RUNS, Order::IN_TURN_128, Order::IN_TURN_512}) {
         const double old_ns = time(&old::ScaleModelLods, old_world.manager.get(), order, threads);
         const double new_ns = time(&hooks::internal::ScaleModelLods, new_world.manager.get(), order, threads);
-        const char* name = (order == Order::ALTERNATING ? "cells alternating 6 models"
-                            : order == Order::RUNS      ? "runs of 64 of one model"
-                                                        : "128 models in turn (the map path every call)");
+        const char* name = "";
+        switch (order) {
+          case Order::ALTERNATING: name = "cells alternating 6 models"; break;
+          case Order::RUNS:        name = "runs of 64 of one model"; break;
+          case Order::IN_TURN_128: name = "128 models in turn"; break;
+          case Order::IN_TURN_512: name = "512 models in turn (the cache's size: conflicts take the map path)"; break;
+        }
         std::printf("4 %s, %u thread%s: old %.1f ns a call, new %.1f ns a call (wall time / calls a thread)\n", name,
                     threads, threads == 1 ? "" : "s", old_ns, new_ns);
       }
     }
-    for (size_t model = 0; model < 128; ++model) CHECK(ClosedForm(new_world, model, SCALE) && ClosedForm(old_world, model, SCALE));
+    for (size_t model = 0; model < 512; ++model) CHECK(ClosedForm(new_world, model, SCALE) && ClosedForm(old_world, model, SCALE));
   }
 
   // 5. The cell radius clamp (OnScrubUpdate): every scene's frames through the hooks (the clamp) and at the radius v158

@@ -335,14 +335,17 @@ static std::atomic<bool> models_scaled = false;  // a model's LOD distances were
 // The models this thread scaled, by address (direct-mapped): the scrub's cells draw their instances model after model in
 // turn (ATN's grass profile: a one-model cache missed there and the map's lock took 0.53 ms a frame). An entry holds what
 // the addon wrote; a model whose LOD distances all still hold it at the same scale needs nothing, as the map's path
-// finds too (every distance the addon's: nothing to write, nothing new to keep).
+// finds too (every distance the addon's: nothing to write, nothing new to keep). 512 entries (twice MAX_SCRUB_MODELS, the
+// trees beside them), indexed by a Fibonacci hash of the address: 64 took the map's lock on conflict misses with grass
+// maxed (~0.6 ms a frame summed on the workers).
 struct CachedModel {
   const uint8_t* model = nullptr;
   float scale = 1.f;
   uint32_t count = 0;
   std::array<uint32_t, MAX_MODEL_LODS> written = {};
 };
-constexpr size_t CACHED_MODELS = 64;
+constexpr uint32_t CACHED_MODEL_BITS = 9;
+constexpr size_t CACHED_MODELS = size_t{1} << CACHED_MODEL_BITS;
 static thread_local std::array<CachedModel, CACHED_MODELS> cached_models;
 static ScrubValues scrub_values;  // the scrub update's thread
 static bool draw_scrub_read = false;  // DrawScrub's code is DRAW_SCRUB_NO_LOD and DRAW_SCRUB_RETURN (set at install)
@@ -787,7 +790,7 @@ static uint8_t* ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
     uint8_t** entries;
     std::memcpy(&entries, model + 0x2c, sizeof(entries));
     const auto key = reinterpret_cast<uintptr_t>(model);
-    auto& cached = cached_models[((key >> 4) ^ (key >> 12)) % CACHED_MODELS];
+    auto& cached = cached_models[(static_cast<uint32_t>(key >> 4) * 0x9E3779B1u) >> (32 - CACHED_MODEL_BITS)];
     const auto holds_written = [&] {
       for (uint32_t index = 0; index < count; ++index) {
         uint32_t bits;
