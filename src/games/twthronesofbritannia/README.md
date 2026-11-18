@@ -20,6 +20,15 @@
   ~3 ms of render CPU and the helper's scene build for a 0.35 ms pass). With another effect on, and in the RT/PT preset:
   unchanged.
 
+## Dev, Faster Game CPU Code covers more routines here (2026-11-18; offline only, not stamped, not installed, not run in game)
+
+- **Faster Game CPU Code (Experimental, off)** is the shared engine code's row (`twattila/engine_code.hpp`), and this build has
+  every routine of it, not only the three of the Round 3 and later notes below (half floats, the soldier draw's rounding,
+  fmod): also the ready checks, the sprite row builder, the particle writer's float4 reloads, the soldier draw's matrix rows,
+  the matrix product and the render lists' two item push loops, each found by its bytes at this build's addresses and checked
+  against this game's DLL in `test/tw_engine_code` (full length). The row is still off by default here. The prefetch rows
+  (Faster Effect, Emitter, Particle and Sweep Prefetch) are not in this add-on.
+
 ## Dev, tw1_ and shared rounds (2026-11-17; built only, not stamped, not installed, not run in game)
 
 - New: **Path-Traced Reflection Occlusion** (on, slider 0..1): with Path-Traced Ambient, reflections darken where

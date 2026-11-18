@@ -58,7 +58,8 @@
   release). The histograms go to ReShade.log once, N presents after the first site was written: `EngineProbePresents=N` under `[Total War]` in ReShade.ini
   (none: never), or at the first present at which a counter has reached 2^31 (the counters are 32 bits; a warning says so: pick N small enough, the child
   sum's and the particle loop's bottoms are hundreds of thousands a frame); the sites' jump bytes are logged at each change. The ready check's probe reads a
-  list's children only when its flag is set, as the game's check does. The probe code page is read-execute. Checked in `test/tw_engine_code` part 21
+  list's children only when its flag is set, as the game's check does (a clear flag is bucket 16 of its "first child not ready"
+  histogram, none of the first 16 not ready is 17: opposite results of the check). The probe code page is read-execute. Checked in `test/tw_engine_code` part 21
   (`run.ps1 -Probe [-Quick]`): each probe alone on random registers and flags (registers, flags, esp, frame and every counter as the model says; the ready
   check also on clear-flag lists with an unreadable children array, and without its flag test as a CONTROL), then the probed sites' own parts (19, 20, 12, 15,
   18) quick through the probes with every result the game's, and the dump armed for 3 presents (once, at the third) and the early dump at 2^31. Source
@@ -88,15 +89,18 @@
   render list builders that push each item's address into a vector (the game keeps the vector's size in memory and reloads
   the item array, the capacity, the data pointer and the end every item). With at least five items left, the size below
   the capacity and no per-item call, the loop now runs all but the last item with the size in a register: the same loads
-  of the item array, the same stores in the game's order; the game's own code does the last item, every growth, every
-  per-item call and every case a guard cannot rule out (the vector's three fields, the item array's field or the loop's stack slots
-  within reach of the run's stores). Every register that is live afterwards, the flags and every byte of memory are the
-  game's, for a vector and a list that one thread owns (both loops already do non-atomic read-modify-writes on the same
-  builder). Tested against the game's DLL in `test/tw_engine_code` part 19: the guard against an exact model (6 M tuples, 0
-  wrongly accepted; each of its ten clauses removed is accepted wrongly 10 k to 700 k times in 1.5 M); the whole loops, 250,000
+  of the list and its item array every item (so a list that another thread grows meanwhile is read as the game reads it), the
+  same stores in the game's order; the game's own code does the last item, every growth, every per-item call and every case a
+  guard cannot rule out (the vector's three fields or the loop's stack slots within reach of the run's stores). Every register
+  that is live afterwards, the flags and every byte of memory are the game's, for an output vector that one thread pushes to (the
+  loops' own `inc dword ptr [edi + 0x80]` is a non-atomic read-modify-write of its size). Tested against the game's DLL in
+  `test/tw_engine_code` part 19: the guard against an exact model (6 M tuples, 0 wrongly accepted; each of its ten clauses
+  removed is accepted wrongly 10 k to 700 k times in 1.5 M); the whole loops, 250,000
   random lists, vectors and registers (starts through the index's wrap, growth in the middle, per-item calls that stop, the
   vector's block and the item array ending at a no-access page, overlap layouts: every register, the flags, esp, xmm, the frame,
-  every byte and the allocator's call log equal, or both copies fault with the same memory); 28 CONTROLs each seen; 200 on / off
+  every byte and the allocator's call log equal, or both copies fault with the same memory); the source list moving between the
+  rounds of a run (its array moves to a bigger one, or the loop's list slot to a second list, at a chosen item: 40,000 scenarios,
+  0 different; the stubs that keep the old array for the run are seen on every scenario of theirs); 34 more CONTROLs each seen; 200 on / off
   switches under 4 threads (1.6 M scenarios, 0 wrong), a parked thread at each byte. Harness (hot caches, medians of 9 rounds,
   a PC loaded to 100 % by other jobs): for 4,096 items loop A 3831 -> 3352 ns (-12 %), loop B 3286 -> 2491 (-24 %); for 64 items
   A 55 -> 55, B 55 -> 37; lists of up to 8 items cost the same or 1 to 3 ns more (the guard). Estimated: 0.05-0.15 ms of the

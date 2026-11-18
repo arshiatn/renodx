@@ -5,11 +5,12 @@
 // the item array), the capacity, the data pointer and the end every round. The site is the loop head's `mov eax, [esp + 0x1c]; mov ecx, [edi + 0x80]` (4 + 6
 // bytes; the jump takes the first 5): the stub runs both, then, with edx == 0 (no per-item call), the size below the capacity and the room for MIN_RUN items or
 // more, runs the rounds for all items but the last of the room / of the list with the size in a register, writing what the game writes in its order (the two
-// frame slots, the slot, the size) and none of the loads that cannot change, and goes on at the instruction after the two (the game's code does the last
-// round: every register that is live there, the flags and every byte of memory are then the game's). Where the guard can't show that no store of the run
-// reaches a location the game reads again, the game's code runs the round. A: the end is [esp + 0x34], the frame slots [esp + 0x30] (the item) and [esp + 0x14];
-// B: the end is ebx (live), the frame slot [esp + 0x14] only (the limit goes on the stack). Patched in Prepare: the last jump of each stub (the game's code
-// after the two instructions).
+// frame slots, the slot, the size) and loading the list and its item array again every round as the game does (they are another object's: another thread may
+// grow the list and move its array), but not the capacity, the data pointer and the end (the output vector and the frame are the loop's own), and goes on at the
+// instruction after the two (the game's code does the last round: every register that is live there, the flags and every byte of memory are then the game's).
+// Where the guard can't show that no store of the run reaches a location the game reads again, the game's code runs the round. A: the end is [esp + 0x34], the
+// frame slots [esp + 0x30] (the item) and [esp + 0x14]; B: the end is ebx (live), the frame slot [esp + 0x14] only (the limit goes on the stack). Patched in
+// Prepare: the last jump of each stub (the game's code after the two instructions).
 .intel_syntax noprefix
 .text
 .globl guard
@@ -96,9 +97,9 @@ stub_a:
   jb game_a
   dec ebx
   add ebx, ebp
-  mov eax, dword ptr [esp + 0x1c]
-  mov eax, dword ptr [eax + 8]
 run_a:
+  mov eax, dword ptr [esp + 0x1c]    // the list and its item array are loaded every round, as the game does (another thread may grow the list: its array moves)
+  mov eax, dword ptr [eax + 8]
   mov esi, dword ptr [eax + ebp*4]
   mov dword ptr [esp + 0x30], esi
   add esi, 0x50
@@ -148,9 +149,9 @@ stub_b:
   dec eax
   add eax, ebp
   push eax
-  mov eax, dword ptr [esp + 0x20]
-  mov eax, dword ptr [eax + 8]
 run_b:
+  mov eax, dword ptr [esp + 0x20]    // the list and its item array every round (the limit's push moved esp by 4)
+  mov eax, dword ptr [eax + 8]
   mov esi, dword ptr [eax + ebp*4]
   add esi, 0x38
   mov dword ptr [esp + 0x18], esi

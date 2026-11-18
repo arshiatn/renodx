@@ -5,35 +5,42 @@
 
 #pragma once
 
-// The probe build of engine_code.hpp (included only with TWATTILA_ENGINE_PROBE, from the middle of engine_code.hpp's internal namespace; a private build for
-// the bench, never a release, no row). Each site of the effect and render list code that a prefetch or a faster loop works on gets a probe stub: the site's jump
-// goes to it first, it counts the histograms the plan's decisions need (the item push runs, the ready check's children and its first child not ready, the
-// pending list sweep's length, the particles of an emitter, the children of an effect, the particle writer's table entry deltas), keeps every register and the
-// flags (pushfd, the registers it spends) and goes on with `jmp` to the site's production stub, which runs exactly as it always does: the production stubs are
-// untouched (the probe build's only change to them is the address their site's jump goes to). The counters live in a page of their own and are bumped with
-// locked increments (the effect loops run on the job threads too). They are dumped to the log once, N presents after the first site was written (N from the
-// ReShade.ini key the addon reads and hands to Arm(); 0 or no key: never), or at the first present at which a counter has reached 2^31 (they are 32 bits and
-// wrap at 2^32: the particle loop's and the child sum's bottoms are the fastest, hundreds of thousands a frame; a warning says so), and the jump bytes of every
-// site are logged each time the sites change. The stubs' source is test/tw_engine_code/stubs/probes.s (the counters' field sentinels F_* there are the indices
-// of `Counters` below, in order). The probes only read what the game's own code of that site reads in the game (live objects: the effect, emitter and list
-// objects; the ready check's probe reads the first children's ready bytes, up to 16 and up to the first not ready one, and only when the list's flag [this + 4]
-// is set, as the game's check does: a subset of what it reads), the cost is a few locked increments a call (a probe build's timing is not a release's), and none
-// of it is in a release: no row, no setting, no counter in the production stubs. The probe code page is made read-execute once filled (Prepare).
+// The probe build of engine_code.hpp (included only with TWATTILA_ENGINE_PROBE, from the middle of engine_code.hpp's internal
+// namespace; a private build for the bench, never a release, no row). Each site of the effect and render list code that a
+// prefetch or a faster loop works on gets a probe stub: the site's jump goes to it first, it counts the histograms the plan's
+// decisions need (the item push runs, the ready check's children and its first child not ready, the pending list sweep's
+// length, the particles of an emitter, the children of an effect, the particle writer's table entry deltas), keeps every
+// register and the flags (pushfd, the registers it spends) and goes on with `jmp` to the site's production stub, which runs
+// exactly as it always does: the production stubs are untouched (the probe build's only change to them is the address their
+// site's jump goes to). The counters live in a page of their own and are bumped with locked increments (the effect loops run
+// on the job threads too). They are dumped to the log once, N presents after the first site was written (N from the
+// ReShade.ini key the addon reads and hands to Arm(); 0 or no key: never), or at the first present at which a counter has
+// reached 2^31 (they are 32 bits and wrap at 2^32: the particle loop's and the child sum's bottoms are the fastest, hundreds
+// of thousands a frame; a warning says so), and the jump bytes of every site are logged each time the sites change. The
+// stubs' source is test/tw_engine_code/stubs/probes.s (the counters' field sentinels F_* there are the indices of `Counters`
+// below, in order). The probes only read what the game's own code of that site reads in the game (live objects: the effect,
+// emitter and list objects; the ready check's probe reads the first children's ready bytes, up to 16 and up to the first not
+// ready one, and only when the list's flag [this + 4] is set, as the game's check does: a subset of what it reads). The cost
+// is a few locked increments a call (a probe build's timing is not a release's), and none of it is in a release: no row, no
+// setting, no counter in the production stubs. The probe code page is made read-execute once filled (Prepare); if that fails,
+// no site gets a probe.
 
 namespace probe {
 
 constexpr size_t FIELDS = 20;  // STUB_FIELD_SENTINEL + 0 .. 19
-constexpr size_t SLOT = 0x50;  // the code page's room for a probe stub (the largest is 76 bytes)
-constexpr size_t STACK_USED = 20;  // the stack below esp a probe stub writes (the ready check's: five pushes); dead after its jump on, but not the game's own bytes there
+constexpr size_t SLOT = 0x60;  // the code page's room for a probe stub (the largest is 83 bytes)
+// The stack below esp a probe stub writes (the ready check's: five pushes); dead after its jump on, but not the game's own
+// bytes there.
+constexpr size_t STACK_USED = 20;
 
 struct Counters {
-  uint32_t evec_run[2][17];     // 0, 1: the remaining items at stub A's / B's entry (bucket 0: none, n: 2^(n-1) .. 2^n - 1, 16: 32768 or more)
+  uint32_t evec_run[2][17];     // 0, 1: items left at stub A's / B's entry (0: none, n: 2^(n-1) .. 2^n - 1, 16: 32768 or more)
   uint32_t evec_calls[2];       // 2, 3: the entries with edx != 0 (the per-item call path: the game's code)
   uint32_t ready_children[18];  // 4: the ready check's children (0 .. 15, 16: 16 or more)
-  uint32_t ready_first[18];     // 5: the first child not ready (0 .. 15), 17: none of the first 16 (or the list's flag clear: no child is read)
+  uint32_t ready_first[18];     // 5: the first child not ready (0 .. 15), 16: the list's flag clear, 17: none of the first 16
   uint32_t sweep_iterations;    // 6
   uint32_t sweep_len[32];       // 7: log2 of the pending list count at a sweep's start
-  uint32_t sweep_last;          // 8
+  uint32_t sweep_last;          // 8: the last iteration's ebx (state: an index below the list's count, never near 2^31)
   uint32_t particle_exec;       // 9: the particle loop's bottoms
   uint32_t particle_taken;      // 10: of them with the slot 2 places on inside the size (PARTICLE_PREFETCH_AHEAD)
   uint32_t particle_size[32];   // 11: the particles of an emitter at the loop's exit (31: 31 or more)
@@ -44,18 +51,18 @@ struct Counters {
   uint32_t entry_one;           // 16: the entry 24 bytes after the previous one's
   uint32_t entry_zero;          // 17: the same entry
   uint32_t entry_other;         // 18
-  uint32_t entry_prev;          // 19: the previous entry's address (state, not a counter: the last field, which Tick leaves out)
+  uint32_t entry_prev;          // 19: the previous entry's address (state: the last field, which Tick leaves out)
 };
 static_assert(sizeof(Counters) <= 0x1000);
 
 inline uint8_t* code = nullptr;  // the probe stubs (read-write while Prepare fills them, then read-execute)
 inline Counters* counters = nullptr;
-inline uint32_t installed = 0;                      // the sites that have a probe stub in front of their production stub
-inline std::array<uint8_t*, 32> stub_of = {};       // by site index
+inline uint32_t installed = 0;                 // the sites that have a probe stub in front of their production stub
+inline std::array<uint8_t*, 32> stub_of = {};  // by site index
 inline std::array<size_t, 32> size_of = {};
-inline uint32_t dump_after = 0;                     // the presents after the first write at which the histograms are dumped (0: never)
+inline uint32_t dump_after = 0;  // the presents after the first write at which the histograms are dumped (0: never)
 inline uint32_t presents_on = 0;
-inline bool dumped = false;                         // the one dump is done (at the Nth present, or early when a counter reached 2^31)
+inline bool dumped = false;      // the one dump is done (at the Nth present, or early when a counter reached 2^31)
 
 struct Probe {
   size_t site;  // the index in `sites`
@@ -63,7 +70,8 @@ struct Probe {
   size_t size;
 };
 
-// The stubs' bytes (probes.s through probe_arrays.py: pushfd, the registers it spends, locked increments, the registers back, popfd, `jmp` the production stub).
+// The stubs' bytes (probes.s assembled, with its disassembly as comments: pushfd, the registers it spends, locked increments,
+// the registers back, popfd, `jmp` the production stub).
 constexpr std::array<uint8_t, 56> PROBE_EVEC_A = {
     0x9C,                                          // +0x00 pushfd
     0x50,                                          // +0x01 push eax
@@ -114,7 +122,7 @@ constexpr std::array<uint8_t, 54> PROBE_EVEC_B = {
     0x9D,                                          // +0x30 popfd
     0xE9, 0x00, 0x00, 0x00, 0x00,                  // +0x31 jmp 0x36
 };
-constexpr std::array<uint8_t, 76> PROBE_READY = {
+constexpr std::array<uint8_t, 83> PROBE_READY = {
     0x9C,                                          // +0x00 pushfd
     0x50,                                          // +0x01 push eax
     0x52,                                          // +0x02 push edx
@@ -127,26 +135,29 @@ constexpr std::array<uint8_t, 76> PROBE_READY = {
     0xF0, 0xFF, 0x04, 0x85, 0x05, 0x5A, 0x5A, 0x5A, // +0x12 lock inc dword ptr [eax*4 + F_READY_CHILDREN]
     0x8B, 0x71, 0x44,                              // +0x1A mov esi, dword ptr [ecx + 0x44]
     0x80, 0x79, 0x04, 0x00,                        // +0x1D cmp byte ptr [ecx + 4], 0
-    0x74, 0x12,                                    // +0x21 je r_none
+    0x74, 0x12,                                    // +0x21 je r_clear
     0x31, 0xD2,                                    // +0x23 xor edx, edx
     // r_next:
     0x39, 0xC2,                                    // +0x25 cmp edx, eax
-    0x73, 0x0C,                                    // +0x27 jae r_none
+    0x73, 0x13,                                    // +0x27 jae r_none
     0x8B, 0x0C, 0xD6,                              // +0x29 mov ecx, dword ptr [esi + edx*8]
     0x80, 0x79, 0x6E, 0x00,                        // +0x2C cmp byte ptr [ecx + 0x6e], 0
-    0x74, 0x08,                                    // +0x30 je r_found
+    0x74, 0x0F,                                    // +0x30 je r_found
     0x42,                                          // +0x32 inc edx
     0xEB, 0xF0,                                    // +0x33 jmp r_next
+    // r_clear:
+    0xBA, 0x10, 0x00, 0x00, 0x00,                  // +0x35 mov edx, 0x10
+    0xEB, 0x05,                                    // +0x3A jmp r_found
     // r_none:
-    0xBA, 0x11, 0x00, 0x00, 0x00,                  // +0x35 mov edx, 0x11
+    0xBA, 0x11, 0x00, 0x00, 0x00,                  // +0x3C mov edx, 0x11
     // r_found:
-    0xF0, 0xFF, 0x04, 0x95, 0x06, 0x5A, 0x5A, 0x5A, // +0x3A lock inc dword ptr [edx*4 + F_READY_FIRST]
-    0x59,                                          // +0x42 pop ecx
-    0x5E,                                          // +0x43 pop esi
-    0x5A,                                          // +0x44 pop edx
-    0x58,                                          // +0x45 pop eax
-    0x9D,                                          // +0x46 popfd
-    0xE9, 0x00, 0x00, 0x00, 0x00,                  // +0x47 jmp 0x4c
+    0xF0, 0xFF, 0x04, 0x95, 0x06, 0x5A, 0x5A, 0x5A, // +0x41 lock inc dword ptr [edx*4 + F_READY_FIRST]
+    0x59,                                          // +0x49 pop ecx
+    0x5E,                                          // +0x4A pop esi
+    0x5A,                                          // +0x4B pop edx
+    0x58,                                          // +0x4C pop eax
+    0x9D,                                          // +0x4D popfd
+    0xE9, 0x00, 0x00, 0x00, 0x00,                  // +0x4E jmp 0x53
 };
 constexpr std::array<uint8_t, 49> PROBE_SWEEP = {
     0x9C,                                          // +0x00 pushfd
@@ -249,13 +260,17 @@ inline const std::array<Probe, 7> PROBES = {{{ITEM_PUSH_FIRST_SITE, PROBE_EVEC_A
 // The counters' addresses in the sentinels' order.
 inline std::array<const uint8_t*, FIELDS> Fields() {
   const auto at = [](const void* pointer) { return static_cast<const uint8_t*>(pointer); };
-  return {at(counters->evec_run[0]), at(counters->evec_run[1]), at(&counters->evec_calls[0]), at(&counters->evec_calls[1]), at(counters->ready_children),
-          at(counters->ready_first), at(&counters->sweep_iterations), at(counters->sweep_len), at(&counters->sweep_last), at(&counters->particle_exec),
-          at(&counters->particle_taken), at(counters->particle_size), at(&counters->sum_exec), at(counters->sum_children), at(&counters->entry_calls),
-          at(&counters->entry_null), at(&counters->entry_one), at(&counters->entry_zero), at(&counters->entry_other), at(&counters->entry_prev)};
+  return {at(counters->evec_run[0]),       at(counters->evec_run[1]),     at(&counters->evec_calls[0]),
+          at(&counters->evec_calls[1]),    at(counters->ready_children),  at(counters->ready_first),
+          at(&counters->sweep_iterations), at(counters->sweep_len),       at(&counters->sweep_last),
+          at(&counters->particle_exec),    at(&counters->particle_taken), at(counters->particle_size),
+          at(&counters->sum_exec),         at(counters->sum_children),    at(&counters->entry_calls),
+          at(&counters->entry_null),       at(&counters->entry_one),      at(&counters->entry_zero),
+          at(&counters->entry_other),      at(&counters->entry_prev)};
 }
 
-// The two pages (once, in Prepare; the code page read-write until Prepare has filled it); false if either is missing, and then neither is kept (no site gets a probe).
+// The two pages (once, in Prepare; the code page read-write until Prepare has filled it); false if either is missing, and
+// then neither is kept (no site gets a probe).
 inline bool Allocate() {
   code = static_cast<uint8_t*>(VirtualAlloc(nullptr, PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
   counters = static_cast<Counters*>(VirtualAlloc(nullptr, PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
@@ -267,7 +282,7 @@ inline bool Allocate() {
   return false;
 }
 
-// Arms the dump for `presents` presents after the first site is written (a new count, and a new dump: the one dump per arming).
+// Arms the dump for `presents` presents after the first site is written (a new count, and a new dump: one dump per arming).
 inline void Arm(uint32_t presents) {
   dump_after = presents;
   presents_on = 0;
@@ -287,24 +302,29 @@ inline void Dump() {
   renodx::utils::log::i(Row("item push loop B, items left at the stub's entry", c.evec_run[1], 17));
   renodx::utils::log::i("[Total War] probe: item push entries with a per-item call: A ", c.evec_calls[0], ", B ", c.evec_calls[1]);
   renodx::utils::log::i(Row("ready check, children (16: 16 or more)", c.ready_children, 17));
-  renodx::utils::log::i(Row("ready check, first child not ready (17: none of the first 16, or the list's flag clear)", c.ready_first, 18));
+  renodx::utils::log::i(Row("ready check, first child not ready (16: the list's flag clear, 17: none of the first 16)", c.ready_first, 18));
   renodx::utils::log::i("[Total War] probe: pending list sweep iterations ", c.sweep_iterations);
   renodx::utils::log::i(Row("pending list sweep, log2 of the count at a sweep's start", c.sweep_len, 16));
-  renodx::utils::log::i("[Total War] probe: particle loop bottoms ", c.particle_exec, ", with the slot 2 on inside the size ", c.particle_taken);
+  renodx::utils::log::i("[Total War] probe: particle loop bottoms ", c.particle_exec, ", with the slot 2 on inside the size ",
+                        c.particle_taken);
   renodx::utils::log::i(Row("particle loop, particles of an emitter at the loop's exit (31: 31 or more)", c.particle_size, 32));
   renodx::utils::log::i("[Total War] probe: child sum loop bottoms ", c.sum_exec);
   renodx::utils::log::i(Row("child sum, children of a call at the loop's exit (31: 31 or more)", c.sum_children, 32));
-  renodx::utils::log::i("[Total War] probe: particle writer entries ", c.entry_calls, ": none ", c.entry_null, ", the next (+24) ", c.entry_one, ", the same ", c.entry_zero, ", other ",
-                        c.entry_other);
+  renodx::utils::log::i("[Total War] probe: particle writer entries ", c.entry_calls, ": none ", c.entry_null, ", the next (+24) ",
+                        c.entry_one, ", the same ", c.entry_zero, ", other ", c.entry_other);
 }
 
-// Each present: counts the presents since the sites were first written and dumps once, at the Nth or at the first present with a counter at 2^31 or more (before it wraps).
+// Each present: counts the presents since the sites were first written and dumps once, at the Nth or at the first present
+// with a counter at 2^31 or more (before it wraps). The scan takes every field but the last (entry_prev, an address);
+// sweep_last is state too, but an index below the list's count: never near 2^31.
 inline void Tick(uint32_t written_sites) {
   if (counters == nullptr || dump_after == 0 || written_sites == 0 || dumped) return;
   if (++presents_on != dump_after) {
-    const std::span<const uint32_t> words(reinterpret_cast<const uint32_t*>(counters), offsetof(Counters, entry_prev) / sizeof(uint32_t));
+    const std::span<const uint32_t> words(reinterpret_cast<const uint32_t*>(counters),
+                                          offsetof(Counters, entry_prev) / sizeof(uint32_t));
     if (std::none_of(words.begin(), words.end(), [](uint32_t count) { return count >= 0x80000000u; })) return;
-    renodx::utils::log::w("[Total War] probe: a counter reached 2^31 (they are 32 bits and wrap at 2^32): dumped after ", presents_on, " presents, not ", dump_after);
+    renodx::utils::log::w("[Total War] probe: a counter reached 2^31 (they are 32 bits and wrap at 2^32): dumped after ",
+                          presents_on, " presents, not ", dump_after);
   }
   Dump();
   dumped = true;
@@ -315,9 +335,9 @@ inline void LogSites(const std::array<Site, std::tuple_size_v<decltype(sites)>>&
   for (size_t index = 0; index < all.size(); ++index) {
     const Site& site = all[index];
     if (site.at == nullptr) continue;
-    renodx::utils::log::i("[Total War] probe: site ", site.name, " ", std::format("{:02X} {:02X} {:02X} {:02X} {:02X}", site.at[0], site.at[1], site.at[2], site.at[3], site.at[4]),
+    renodx::utils::log::i("[Total War] probe: site ", site.name, " ",
+                          std::format("{:02X} {:02X} {:02X} {:02X} {:02X}", site.at[0], site.at[1], site.at[2], site.at[3], site.at[4]),
                           ((written_sites >> index & 1) != 0 ? " (the jump)" : " (the game's bytes)"));
   }
 }
-
 }  // namespace probe

@@ -467,6 +467,7 @@ int RunEntryTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
       });
     }
     int busy = 0;
+    int never = 0;
     bool on = true;
     for (int switches = 0; switches < 200; ++switches) {
       on = !on;
@@ -476,13 +477,14 @@ int RunEntryTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
         ++tries;
       } while ((((ec::written >> ec::ENTRY_PREFETCH_INDEX) & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
       busy += tries > 1 ? 1 : 0;
+      never += (((ec::written >> ec::ENTRY_PREFETCH_INDEX) & 1) != 0) != on ? 1 : 0;
     }
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true, true);
     stop = true;
     for (auto& thread : threads) thread.join();
-    std::printf("   200 switches while 4 threads made %llu calls of each copy on their own graphs: %llu wrong (%d writes waited for a thread inside the site)\n",
-                calls.load(), bad.load(), busy);
-    CHECK(bad.load() == 0 && ((ec::written >> ec::ENTRY_PREFETCH_INDEX) & 1) != 0);
+    std::printf("   200 switches while 4 threads made %llu calls of each copy on their own graphs: %llu wrong (%d writes waited for a thread inside the site, %d switches never reached)\n",
+                calls.load(), bad.load(), busy, never);
+    CHECK(bad.load() == 0 && never == 0 && calls.load() > 0 && ((ec::written >> ec::ENTRY_PREFETCH_INDEX) & 1) != 0);
   }
   if (const int failed = ParkedAtSites(ec::ENTRY_PREFETCH_BIT, 6, true); failed != 0) return failed;
   std::printf("   a parked thread at the site -1 .. +6: refused at +1 .. +4 and written at the others\n");

@@ -9,7 +9,7 @@
 .set F_EVEC_CALLS_A, 0x5A5A5A03   // [1] A's entries with edx != 0 (the per-item call path: the game's code)
 .set F_EVEC_CALLS_B, 0x5A5A5A04
 .set F_READY_CHILDREN, 0x5A5A5A05 // [18] the ready check's children (0 .. 15, 16 = 16 or more)
-.set F_READY_FIRST, 0x5A5A5A06    // [18] the first child not ready (0 .. 15), 17: none of the first 16 (or the list's flag clear)
+.set F_READY_FIRST, 0x5A5A5A06    // [18] the first child not ready (0 .. 15), 16: the list's flag clear (no child read), 17: none of the first 16
 .set F_SWEEP_ITER, 0x5A5A5A07     // [1] the sweep loop's iterations
 .set F_SWEEP_LEN, 0x5A5A5A08      // [32] log2 of the pending list count at a sweep's start
 .set F_SWEEP_LAST, 0x5A5A5A09     // [1] the last iteration's ebx (a sweep starts when ebx does not fall)
@@ -87,8 +87,9 @@ b_done:
   .byte 0xE9
   .long 0
 
-// The ready check's entry (ecx the list object; the whole function is the stub): the count, and the first child not ready among the first 16 (17 when the list's flag
-// [+4] is clear: the game's check reads no child of such a list, so neither does the probe: its array pointer and children may be anything).
+// The ready check's entry (ecx the list object; the whole function is the stub): the count, and the first child not ready among the first 16 (16 when the list's flag
+// [+4] is clear: the game's check reads no child of such a list, so neither does the probe: its array pointer and children may be anything; 17 when none of the first
+// 16 is not ready: the two are opposite results of the check).
 probe_ready:
   pushfd
   push eax
@@ -102,7 +103,7 @@ probe_ready:
   lock inc dword ptr [eax*4 + F_READY_CHILDREN]
   mov esi, dword ptr [ecx + 0x44]
   cmp byte ptr [ecx + 4], 0
-  je r_none
+  je r_clear
   xor edx, edx
 r_next:
   cmp edx, eax
@@ -112,6 +113,9 @@ r_next:
   je r_found
   inc edx
   jmp r_next
+r_clear:
+  mov edx, 16
+  jmp r_found
 r_none:
   mov edx, 17
 r_found:
