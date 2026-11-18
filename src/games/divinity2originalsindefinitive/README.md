@@ -245,7 +245,9 @@ Total War helper (`renodx-tw-dlaa64.exe` and its DLLs next to `EoCApp.exe`):
   colour DeferredSky's IBL uses replaces the game's (sky and light probes
   alike); the game's IBL stays for the rest, times the open share under
   Specular Occlusion. The game's screen-space reflections (DeferredSSR and
-  its combine) are left out under them: one method.
+  its combine) are left out under them: one method. Specular Occlusion works
+  only with another ray-traced effect on (2026-11-18, Attila's: alone it
+  started the whole ray tracing for itself); alone it is off, the game's look.
 
 Without the helper (`screen_space.hpp`, Experimental, off until a game run):
 

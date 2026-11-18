@@ -1,5 +1,12 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
+### Specular Occlusion with other rays (2026-11-18; built only, not run in game)
+
+- Changed: **Ray-Traced Specular Occlusion** works only with another ray-traced effect on, as Attila's; alone it is off
+  and greyed out, the game's look as with the row off (alone it started the whole ray tracing for itself: in Attila
+  ~3 ms of render CPU and the helper's scene build for a 0.35 ms pass). With another effect on, and in the RT/PT preset:
+  unchanged.
+
 ### Shared round 2 (2026-11-17; built only, not run in game)
 
 - New: **Exact Depth Samples (Experimental, off)**, under GT-VBAO's More Options: each sample takes the depth at its own

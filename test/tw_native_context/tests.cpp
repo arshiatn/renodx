@@ -50,6 +50,13 @@
 //    comparison logs nothing. CONTROL: traced_frame written without its publish differs, the state check logs it once. Not
 //    Trace's real taken branch: its request needs the helper (the shared block, the fence it signals, its answer event).
 //    Cost (printed): the lock's read against the lock-free load, uncontended.
+// 8. Ray-Traced Specular Occlusion counts as on only with another ray-traced row (rt_scene.hpp SettingsOf,
+//    rt_core.hpp RaysBesideSpecularOcclusion): alone (and beside a Light Bounce row with the Global Illumination at 0) its
+//    settings are those of the row off, Configure asks for no ray tracing textures, guides, reflections or Ray
+//    Reconstruction, Update leaves Enabled() and `active` false, Trace asks nothing, a scene draw captures nothing, the
+//    row's is_enabled is false; CONTROL: the build before's SettingsOf and Configure (copied there) start all of them.
+//    With Ray-Traced Shadows, AO, the Light Bounce, Path Tracing, Reflections or Fog Shadows: the settings and all of
+//    the above as the build before's, the row enabled. Without an upscaler: off, as before.
 #include <windows.h>
 #include <d3d11_4.h>
 #include <d3dcompiler.h>
@@ -1465,6 +1472,127 @@ int main() {
     time_7("AmbientReplaced, the lock (before)", [&] { replaced_sink = replaced_now(); });
     // Its load as off the state check (on here: AmbientReplaced itself takes the lock).
     time_7("AmbientReplaced, lock-free (now)", [&] { replaced_sink = core::internal::ambient_replaced.load(std::memory_order_acquire); });
+    bridge.failed = false;
+  }
+
+  // 8.
+  {
+    auto& bridge = twattila::dlaa_bridge::bridge;
+    bridge.ray_tracing = true;
+    bridge.failed = true;  // Trace stops at its request, as in 7
+    core::internal::fog_shadows_installed = true;
+    const twattila::feature_settings::AaSliders upscaling = {.method = 5.f};
+    core::Sliders sliders;
+    float strength = 1.f;
+    std::vector<renodx::utils::settings::Setting*> rows;
+    core::AppendSettings(&rows, &sliders, &upscaling, false, true, twattila::feature_settings::AA_SECTION, &strength);
+    const auto row = std::ranges::find_if(rows, [](const renodx::utils::settings::Setting* setting) { return setting->key == "RayTracedSpecularOcclusion"; });
+    CHECK(row != rows.end());
+    // The build before's SettingsOf (Specular Occlusion with an upscaler alone) and Configure (rt_scene.hpp at fca62ddf9).
+    const auto old_settings = [&] {
+      core::Settings settings = core::SettingsOf(sliders, upscaling, strength);
+      settings.specular_occlusion = sliders.specular_occlusion != 0.f && twattila::feature_settings::Upscaling(upscaling);
+      return settings;
+    };
+    const auto old_configure = [](const core::Settings& settings, twattila::anti_aliasing::Settings* aa) {
+      aa->ray_tracing = settings.sun_shadows || settings.ambient_occlusion || settings.light_bounce || settings.reflections
+                        || settings.specular_occlusion || settings.local_lights || settings.fog_shadows;
+      aa->ray_reconstruction = aa->ray_reconstruction && aa->ray_tracing && !core::internal::CheapFogAlone(settings);
+      aa->ray_traced_guides = settings.path_tracing || settings.reflections || settings.specular_occlusion;
+      aa->ray_traced_reflections = settings.reflections || settings.specular_occlusion;
+    };
+    // What a frame with these settings starts: the bridge's textures and Ray Reconstruction (Configure), the rays on
+    // (Update: Enabled, active), a trace asked for, a scene draw's capture, the row's is_enabled.
+    struct Started {
+      bool ray_tracing = false;
+      bool ray_reconstruction = false;
+      bool guides = false;
+      bool reflections = false;
+      bool enabled = false;
+      bool active = false;
+      bool trace_asked = false;
+      bool captured = false;
+
+      bool operator==(const Started&) const = default;
+    };
+    const core::SceneShader scene_shader = {.hash = 0x5EED0010};
+    const auto started = [&](const core::Settings& settings, bool configure_old) {
+      twattila::anti_aliasing::Settings aa = {.ray_reconstruction = true};
+      if (configure_old) {
+        old_configure(settings, &aa);
+      } else {
+        core::Configure(settings, &aa);
+      }
+      core::Update(settings);
+      Started result = {.ray_tracing = aa.ray_tracing, .ray_reconstruction = aa.ray_reconstruction, .guides = aa.ray_traced_guides,
+                        .reflections = aa.ray_traced_reflections, .active = core::internal::active.load()};
+      {
+        const std::unique_lock lock(runtime.mutex);
+        result.enabled = core::internal::Enabled();
+        runtime.trace_asked = false;
+      }
+      core::Trace(immediate.Get(), nullptr, core::Camera{});
+      {
+        const std::unique_lock lock(runtime.mutex);
+        result.trace_asked = runtime.trace_asked;
+      }
+      action::CommandContext<action::DrawIndexedArguments> draw = {.cmd_list = &cmd_list, .arguments = {.index_count = 3, .instance_count = 1},
+                                                                   .callback_data = &scene_shader};
+      result.captured = core::OnSceneDraw.operator()<core::SceneShader>(draw).post_callback != nullptr;
+      return result;
+    };
+    const auto all_on = [](const Started& s) { return s.ray_tracing && s.ray_reconstruction && s.guides && s.reflections && s.enabled && s.active && s.trace_asked && s.captured; };
+    const auto all_off = [](const Started& s) { return !(s.ray_tracing || s.ray_reconstruction || s.guides || s.reflections || s.enabled || s.active || s.trace_asked || s.captured); };
+    // Specular Occlusion alone: off, as with the row off (the same settings), nothing started, the row greyed; CONTROL: the
+    // build before started all of it. The Light Bounce row with the Global Illumination at 0 traces nothing: alone too.
+    struct Case {
+      const char* name;
+      core::Sliders sliders;
+      float strength = 1.f;
+    };
+    const std::array<Case, 2> alone = {{
+        {.name = "alone", .sliders = {.specular_occlusion = 1.f}},
+        {.name = "with the Light Bounce row, GI 0", .sliders = {.light_bounce = 1.f, .specular_occlusion = 1.f}, .strength = 0.f},
+    }};
+    for (const Case& test : alone) {
+      sliders = test.sliders;
+      strength = test.strength;
+      const core::Settings settings = core::SettingsOf(sliders, upscaling, strength);
+      core::Sliders without = test.sliders;
+      without.specular_occlusion = 0.f;
+      CHECK(!settings.specular_occlusion && settings == core::SettingsOf(without, upscaling, strength));
+      CHECK(all_off(started(settings, false)));
+      CHECK(!(*row)->is_enabled());
+      const core::Settings before = old_settings();
+      CHECK(before.specular_occlusion && all_on(started(before, true)));
+      std::printf("8 Specular Occlusion %s: off (settings as with the row off), no bridge textures, no Ray Reconstruction, Enabled false, "
+                  "no trace asked, no capture, the row greyed; CONTROL the build before: all of them on\n", test.name);
+    }
+    // With another ray-traced row: everything as the build before (settings, Configure, Update), the row enabled.
+    const std::array<Case, 6> with_others = {{
+        {.name = "Ray-Traced Shadows", .sliders = {.sun_shadows = 1.f, .specular_occlusion = 1.f}},
+        {.name = "Ray-Traced AO", .sliders = {.ambient_occlusion = 1.f, .specular_occlusion = 1.f}},
+        {.name = "Light Bounce", .sliders = {.light_bounce = 1.f, .specular_occlusion = 1.f}},
+        {.name = "Path Tracing", .sliders = {.light_bounce = 2.f, .specular_occlusion = 1.f}},
+        {.name = "Reflections", .sliders = {.reflections = 1.f, .specular_occlusion = 1.f}},
+        {.name = "Fog Shadows", .sliders = {.fog_shadows = 1.f, .specular_occlusion = 1.f}},
+    }};
+    for (const Case& test : with_others) {
+      sliders = test.sliders;
+      strength = test.strength;
+      const core::Settings settings = core::SettingsOf(sliders, upscaling, strength);
+      const core::Settings before = old_settings();
+      CHECK(settings.specular_occlusion && settings == before);
+      const Started now = started(settings, false);
+      CHECK(all_on(now) && now == started(before, true));
+      CHECK((*row)->is_enabled());
+      std::printf("8 Specular Occlusion with %s: on, settings / Configure / Update as the build before, the row enabled\n", test.name);
+    }
+    // Without an upscaler: off with every row, as before.
+    sliders = {.sun_shadows = 1.f, .specular_occlusion = 1.f};
+    CHECK(!core::SettingsOf(sliders, {}, strength).specular_occlusion);
+    core::Update({});
+    core::internal::fog_shadows_installed = false;
     bridge.failed = false;
   }
   std::printf("PASS\n");

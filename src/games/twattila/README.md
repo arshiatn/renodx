@@ -1,5 +1,15 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Specular Occlusion with other rays (2026-11-18; built only, not stamped, not installed, not run in game)
+
+- Changed: **Ray-Traced Specular Occlusion** works only with another ray-traced effect on (Ray-Traced Shadows, AO,
+  Light Bounce or Path Tracing, Reflections, Fog Shadows); alone it is off and greyed out, the game's look as with the
+  row off. Alone it started the whole ray tracing for its 0.35 ms pass (day1: ~3.0 ms render CPU, 7.3 ms of the helper's
+  GPU, the game's GPU waiting 5 ms, Ray Reconstruction in place of DLSS's usual model). With another effect on, and
+  in the RT/PT preset: unchanged. `test/tw_native_context` part 8 (alone: nothing captured or asked for, Enabled false;
+  with each other row: the build before's settings; CONTROL the build before alone: all of it on).
+- Test (ATN): Specular Occlusion alone: greyed, no rays in the log, DLSS's usual model; with Ray-Traced Shadows on: as before.
+
 ## Dev, Keep Render Core Free (2026-11-18; built only, not stamped, not installed, not run in game)
 
 - New: **Keep Render Core Free (Experimental, off)**, under Graphics (Experimental): the game's other threads are kept off
@@ -1392,7 +1402,8 @@ From ATN's first profile (Ctesiphon, 4K, every ray-traced effect on, grass maxed
   Space Reflections on): GGX samples of each pixel's reflection (Ray-Traced Reflection Samples 1-8; mirrors one ray)
   traced through the scene in the helper and kept over frames by world position. Where they meet a surface its light
   replaces the screen-space march, which is then skipped (Attila's and Thrones' environment_specular_light pass, ssr00 / ssr01); the game's environment stays for the rest (the
-  sky). Specular occlusion dims the environment where something blocks it.
+  sky). Specular occlusion dims the environment where something blocks it; since 2026-11-18 only with another
+  ray-traced effect on (alone: off, the game's look).
 - Fix: the Ray-Traced Light Bounce alone (without ray-traced sun shadows or AO) never got its textures.
 - **Frame Rate Limit** (Anti-Aliasing section, with frame generation): NVIDIA Reflex's cap for the rendered frames
   (frame generation multiplies them). A cap the game always reaches keeps the frame rate steady: less VRR flicker on

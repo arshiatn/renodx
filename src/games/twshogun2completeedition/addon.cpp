@@ -443,6 +443,8 @@ twattila::rt_scene::Settings RaySettings() {
   // With the helper's upscaler (OnPresent): NRD, the torches' size under Ray Reconstruction.
   rays.nrd = on(rows.denoiser);
   rays.light_size = std::clamp(rows.light_softness, 0.f, 1.f);
+  // Specular Occlusion with another ray-traced effect only (Attila's SettingsOf): alone it started the whole ray tracing.
+  rays.specular_occlusion = rays.specular_occlusion && twattila::rt_scene::RaysBesideSpecularOcclusion(rays);
   return rays;
 }
 
@@ -2064,11 +2066,13 @@ void BuildRuntimeData() {
   const auto paths = [] { return (rt_sliders.light_bounce != 0.f || rt_sliders.reflections != 0.f) && rt_sliders.path_tracing != 0.f; };
   const auto reconstruction = [] { return DlssRayReconstruction(); };
   const auto micromaps = [] { return rt_sliders.micromaps != 0.f; };
-  // With a ray-traced effect on: the rows for all of them.
-  const auto any_rays = [] {
+  // Specular Occlusion acts with one of these (RaySettings).
+  const auto rays_beside_occlusion = [] {
     return rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.local_lights != 0.f || rt_sliders.fog_shadows != 0.f
-           || rt_sliders.reflections != 0.f || rt_sliders.specular_occlusion != 0.f || rt_sliders.light_bounce != 0.f;
+           || rt_sliders.reflections != 0.f || rt_sliders.light_bounce != 0.f;
   };
+  // With a ray-traced effect on: the rows for all of them.
+  const auto any_rays = [rays_beside_occlusion] { return rays_beside_occlusion() || rt_sliders.specular_occlusion != 0.f; };
   const auto extra_rays = [any_rays] { return any_rays() && rt_sliders.output_rays != 0.f; };
   const auto ray_toggle = [&](const std::string& key, float* binding, const std::string& label, const std::string& tooltip,
                               std::function<bool()> enabled = {}) {
@@ -2233,7 +2237,9 @@ void BuildRuntimeData() {
                  "Calmer water reflections, a little softer. Samples and reuse then work on water too. Heavier.", water),
       ray_toggle("RayTracedSpecularOcclusion", &rt_sliders.specular_occlusion, "Ray-traced specular occlusion (Experimental)",
                  "The sky's reflection taken off shiny surfaces where something stands over them (inside\n"
-                 "doorways, under hulls and roofs). Needs the game's screen-space reflections on."),
+                 "doorways, under hulls and roofs). Works with another ray-traced effect on. Needs the game's\n"
+                 "screen-space reflections on.",
+                 rays_beside_occlusion),
       ray_toggle("RayTracedLightBounce", &rt_sliders.light_bounce, "Ray-traced Global Illumination",
                  "The Global Illumination's light found with rays: no guessing behind what you see, light from farther.\n"
                  "Needs the Global Illumination on."),
@@ -2441,9 +2447,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   twattila::reflex::Update(swapchain, reflex, frame_limit);
   const uint32_t upscaler = HelperUpscaling() ? std::min(static_cast<uint32_t>(aa_sliders.method), 7u) - 4u : 0u;
   helper_evaluates.store(upscaler != 0 || frame_generation != 0, std::memory_order_relaxed);
-  const bool any_rays = ray_tracing_installed
-                        && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections || rays.local_lights
-                            || rays.fog_shadows || rays.specular_occlusion);
+  const bool any_rays = ray_tracing_installed && twattila::rt_scene::RaysBesideSpecularOcclusion(rays);
   twshogun2::upscaling::SetUse({
       .ray_tracing = ray_tracing_installed,
       .guides = ray_tracing_installed && (rays.reflections || rays.path_tracing),
@@ -2793,9 +2797,7 @@ bool AttachAddon() {
   // Before the Light Bounce's callbacks on the same sun draws: this frame's trace first. Only with the helper (its D3D12
   // device traces).
   const auto rays = RaySettings();
-  ray_tracing_installed = twattila::dlaa_bridge::HelperInstalled()
-                          && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections || rays.local_lights
-                              || rays.fog_shadows || rays.specular_occlusion);
+  ray_tracing_installed = twattila::dlaa_bridge::HelperInstalled() && twattila::rt_scene::RaysBesideSpecularOcclusion(rays);
   if (ray_tracing_installed) {
     twshogun2::ray_tracing::Install(rays.casters_out_of_view, rays.smoke_shadows);
     reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);
