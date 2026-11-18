@@ -3457,6 +3457,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         'vary' column; unit + eq proofs re-run clean). Backup / restore / Put-File byte-identical; nothing can leave ATN's
         files swapped. Low L1 constant 38 -> 32, L2 regex skips 'NOT WRITTEN', H8 a failed proof publishes nothing: sent
         to hc1s_ 14:14.
+        hc1s_ round 3 DONE 14:20 (heapfix/hc1s_report.md 'Round 3'): floor -Seconds 158; Cnt2 proof needs the install
+        line + both CSV lines ending in .csv (18 regex cases; coordinator: 105 ms on a 2.3 M-char failing log); a failed
+        proof moves the DLL aside. Bench + hfp3 tooling CLOSED for this round.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
