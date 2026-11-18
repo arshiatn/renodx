@@ -391,8 +391,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our ... | next helper round (measure first)
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
 - NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator PROGRESS: (2) DONE 02:38-02:46 gr1_ (bench const
-- CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page ... | the next engine_code implementer (after EF4), folded in
-- CR2 LOW FIXES (review_ci2s.md): Low-1 part 13g flips only tail[14] (add tail[128 ... | the next engine_code implementer, folded in
 - FASTER GAME CPU CODE TOOLTIP + README: tooltip "(soldiers, their sprites and eff ... | coordinator, round end
 - HF NOTES 3 TO FILL (author_notes_3): the counting build's sizes (note 1 + a gate ... | coordinator, after the final bench
 - PDI1 IN GAME (review_pdi1.md M2): a v32 recording in a scene with linear lights ... | next game run (M2) / PT DI step 2 (L2, L4, L5)
@@ -3275,14 +3273,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         cr4_ review DONE ~08:1x -> night1118/review_ci4s.md: MERGE (own interpreter 300,000 worlds 0 differences;
         [esp+0x20] = ebx proven from the bytes; liveness of [emitter+0x58] a strong inference). MERGED 125818840 (gated x86
         3 targets 08:13 exit 0, PUSHED 08:15; ci4s_'s 11 links removed alone).
+        ci5_ (Opus High, NO stop) DONE ~08:5x -> night1118/ci5_report.md: 6aa51b903 E3P-d (site 8: two prefetches 4 + 2
+        slots ahead behind the far slot's check, 37-byte stub moved to page 0xC00; harness 15-35 % less wait a child
+        than K=2 in every cold row) + a99a26880 the CR2 / CR3 low fixes (13g / 13e cases, FLOAT4_RELOAD_FIRST_SITE,
+        15f hot column, braces, comments, HALF_ROWS assert); full x86 suites PASS 3 DLLs both commits; gated x86 exit
+        0. STARTED 09:12: cr5_ Opus xHigh review of both + ci6_ Opus High = EF4b (float4 reloads in 0x17f61a0 /
+        0x168d570, then 0x442360 / 0x1696820 if time; patterns clear of heapfix's x87 block) on a99a26880.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
-      - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
+      - [x] DONE (CR1: c3adca196 ci3s_, merged e27e8d5e5; CR2: a99a26880 ci5_, in review) CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
         TRUNCATION / HALF / FMOD / LIST_PUSH page slots. Owner: the next engine_code implementer (after EF4), folded in
-      - [ ] CR2 LOW FIXES (review_ci2s.md): Low-1 part 13g flips only tail[14] (add tail[128] / tail[230] cases);
+      - [x] DONE (CR1: c3adca196 ci3s_, merged e27e8d5e5; CR2: a99a26880 ci5_, in review) CR2 LOW FIXES (review_ci2s.md): Low-1 part 13g flips only tail[14] (add tail[128] / tail[230] cases);
         Low-2 part 13e makes only site 10 foreign (add the site 11 mirror case); nits FLOAT4_RELOAD_FIRST_SITE = 10 +
         static_assert, parenthesise engine_code.hpp:1163, particle_reload.inc header a/b/c -> 14a..14g, trim the 4.9 /
         1.77 ms comment, optional no-SSE4.1 log line. Owner: the next engine_code implementer, folded in
