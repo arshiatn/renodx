@@ -6,12 +6,17 @@
   the CPU core its render thread runs on (the core it used most over 64 presents in a row, core 0 only when no other
   core qualifies), so the core's second logical CPU is free for it. Windows CPU sets on the game's own threads only,
   always inside the CPUs the game may use (its process CPU set, such as a CPU set tool's rule, else its affinity); threads
-  with their own rules are left alone. Stands down on fewer than 4 cores, no SMT, mixed core kinds, more than one L3
-  cache (both CCDs of a 7950X3D without a rule) or more than one processor group, and when the render thread can't have
-  its CPUs; a change of the game's CPU set clears ours within a second and measures again. Off: exactly ours cleared.
-  Scheduling only: same results. Checked in `test/tw_cpu_sets` (synthetic CPUs, then live in its own process).
+  with their own rules are left alone. Only threads that start in Attila.exe or empire.retail.dll are the game's (the
+  render thread wherever it starts); the driver's, audio's, EOS', Windows' pool threads and any thread whose start
+  can't be read are left alone (the first apply moved all of them; XAudio2 crashed 11 s later). Stands down on fewer
+  than 4 cores, no SMT, mixed core kinds, more than one L3 cache (both CCDs of a 7950X3D without a rule) or more than
+  one processor group, when the render thread can't have its CPUs, when it "cannot tell the game's threads apart" (no
+  start address query), and when no thread of the game's besides the render thread would move; a change of the game's
+  CPU set clears ours within a second and measures again. Off: exactly ours cleared. Scheduling only: same results.
+  Checked in `test/tw_cpu_sets` (synthetic CPUs, then live in its own process).
 - Test (ATN): stress / night1 / day1 with the row on against off; ReShade.log "Keep Render Core Free: on: ... logical
-  CPUs a, b" (or "stands down: <why>"); one WPR showing the render core's sibling idle.
+  CPUs a, b ..., X of the game's threads ..., W not the game's" (or "stands down: <why>"); no XAudio2 exception in any
+  start with the row on; one WPR showing the render core's sibling idle.
 
 ## Dev, Faster Effect Prefetch (2026-11-17; offline only, not stamped, not installed, not run in game)
 

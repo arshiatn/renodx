@@ -1983,8 +1983,8 @@ void ConfigureAddon() {
           .default_value = 0.f,
           .label = "Keep Render Core Free (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "Keeps the second half of the render thread's CPU core free for it: only the game's own threads\n"
-                     "are moved, inside the CPU cores Windows or your own rules give the game. Same results.",
+          .tooltip = "Keeps the second half of the render thread's CPU core free for it.\n"
+                     "Only the game's own threads move, inside the CPU cores Windows or your own rules give the game. Same results.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

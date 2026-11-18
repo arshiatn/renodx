@@ -191,8 +191,8 @@ constexpr int SNAPSHOT_EVERY = 6;
 constexpr ULONG THREAD_QUERY_SET_WIN32_START_ADDRESS = 9;
 static auto* query_thread_information = reinterpret_cast<LONG(WINAPI*)(HANDLE, ULONG, void*, ULONG, ULONG*)>(
     GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationThread"));
-// The game's modules as GetModuleHandleW takes them (nullptr: the exe), copied by Update when the worker starts.
-static std::vector<const wchar_t*> game_module_names;
+// The game's modules as GetModuleHandleW takes them (nullptr: the exe), set by Update when the worker starts.
+static std::span<const wchar_t* const> game_module_names;
 constexpr std::string_view NOT_THE_GAMES = "is not the game's";
 
 // One hand-off without a lock: while samples < SAMPLE_PRESENTS only the presenting thread (Update) writes runs and
@@ -230,6 +230,8 @@ static DWORD WINAPI WorkerLoop(void* stop) {
   std::string last_note;
   int ticks = 0;
   int checks_since_apply = 0;
+  // The first thread snapshot after an apply found none of the game's threads to move.
+  bool nothing_to_move = false;
 
   // Exactly ours: a thread whose sets someone changed since keeps theirs. How many were reset.
   const auto clear_given = [&given] {
@@ -263,10 +265,10 @@ static DWORD WINAPI WorkerLoop(void* stop) {
     measure_again();
     renodx::utils::log::i(std::format("[Total War] Keep Render Core Free: stands down: {}; ours cleared, measuring again.", change));
   };
-  // `sets` given to the thread unless it ended, is another process's (a reused ID), started outside `game_modules` (when
-  // given; a start that can't be read too) or has its own rule (selected CPU sets not ours, or an affinity other than the
-  // process's); empty when given, else why not. Recorded before the call: an exception leaves no set unrecorded and no
-  // handle open.
+  // `sets` given to the thread unless it ended, is another process's (a reused ID), is not the game's (when `game_modules`
+  // is given: started outside them, or a start that can't be read; this worker is moved as the game's, as in the tests) or
+  // has its own rule (selected CPU sets not ours, or an affinity other than the process's); empty when given, else why
+  // not. Recorded before the call: an exception leaves no set unrecorded and no handle open.
   const auto give = [&given](DWORD thread_id, const std::vector<ULONG>& sets, DWORD_PTR process_mask,
                              const std::vector<HMODULE>* game_modules) -> std::string_view {
     given.push_back({.id = thread_id, .sets = sets});
@@ -278,7 +280,7 @@ static DWORD WINAPI WorkerLoop(void* stop) {
     HMODULE start_module = nullptr;
     if (thread == nullptr || GetProcessIdOfThread(thread) != GetCurrentProcessId() || WaitForSingleObject(thread, 0) != WAIT_TIMEOUT) {
       refused = "has ended";
-    } else if (game_modules != nullptr
+    } else if (game_modules != nullptr && thread_id != GetCurrentThreadId()
                && (query_thread_information == nullptr
                    || query_thread_information(thread, THREAD_QUERY_SET_WIN32_START_ADDRESS, &start, sizeof(start), nullptr) < 0
                    || GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -332,6 +334,7 @@ static DWORD WINAPI WorkerLoop(void* stop) {
           note("cannot tell the game's threads apart");
           continue;
         }
+        if (nothing_to_move) continue;
         if (samples.load(std::memory_order_acquire) < SAMPLE_PRESENTS) continue;
         // Presents counted under another base, or a plan that stands down: measured again (the reason may pass, such as
         // a render thread counted outside a CPU set changed since).
@@ -389,6 +392,7 @@ static DWORD WINAPI WorkerLoop(void* stop) {
         }
       }
       const DWORD process = GetCurrentProcessId();
+      const DWORD self = GetCurrentThreadId();
       int others = 0;
       int left_alone = 0;
       int not_games = 0;
@@ -397,15 +401,24 @@ static DWORD WINAPI WorkerLoop(void* stop) {
         if (entry.th32OwnerProcessID != process) continue;
         if (std::ranges::any_of(given, [&entry](const Given& thread) { return thread.id == entry.th32ThreadID; })) continue;
         const std::string_view refused = give(entry.th32ThreadID, applied_plan.worker_sets, process_mask, &game_modules);
-        if (refused.empty()) {
-          ++others;
-        } else if (refused == NOT_THE_GAMES) {
+        if (refused == NOT_THE_GAMES) {
           ++not_games;
-        } else {
+        } else if (!refused.empty()) {
           ++left_alone;
+        } else if (entry.th32ThreadID != self) {
+          // This worker is moved too, but isn't one of the game's threads the render core is kept free of.
+          ++others;
         }
       }
       if (!on_logged) {
+        // Only the render thread on its core with nobody moved off it: worse than off. Stays down until the row is off.
+        if (others == 0) {
+          clear_given();
+          applied = false;
+          nothing_to_move = true;
+          note("none of the game's threads to move off the render core; ours cleared until the row is off and on again");
+          continue;
+        }
         on_logged = true;
         renodx::utils::log::i(std::format(
             "[Total War] Keep Render Core Free: on: the render thread (thread {}) on logical CPUs {} (one core), {} of the game's "
@@ -446,8 +459,9 @@ inline void Stop() {
 }
 
 // Every present, on the thread that presents (the render thread): `enabled` is the row, `game_modules` where the game's
-// own threads start (GetModuleHandleW's names, nullptr: the exe; read when the worker starts; empty: it stands down). On:
-// the worker runs, and SAMPLE_PRESENTS presents in a row of one thread count where it runs; off: only this branch.
+// own threads start (GetModuleHandleW's names, nullptr: the exe; taken when the worker starts, not copied: the array and
+// its names must outlive the worker, such as a static array of literals; empty: it stands down). On: the worker runs, and
+// SAMPLE_PRESENTS presents in a row of one thread count where it runs; off: only this branch.
 inline void Update(bool enabled, std::span<const wchar_t* const> game_modules) {
   if (!enabled) {
     start_failed = false;
@@ -456,7 +470,7 @@ inline void Update(bool enabled, std::span<const wchar_t* const> game_modules) {
   }
   if (start_failed) return;
   if (worker == nullptr) {
-    game_module_names.assign(game_modules.begin(), game_modules.end());
+    game_module_names = game_modules;
     worker_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     if (worker_stop != nullptr) {
       worker = CreateThread(nullptr, 0, WorkerLoop, worker_stop, 0, nullptr);
