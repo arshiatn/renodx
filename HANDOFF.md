@@ -3357,6 +3357,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 12:01 (going to work): the full Nsight SETTINGS SWEEP comes AFTER the rest of the GPU plan (PT DI steps 2-5,
         vMF, G2, faster RT freeze rebuild), each of those with its own Nsight before / after; the GPU line after the
         CPU round.
+        hfp2s_ (Sonnet xHigh retry) DONE ~12:1x -> tools/tw/heapfix/hfp2s_plan.md: HSG answered by the sanity CSVs (gates
+        8192 / 16384 / frame-sum dead; B4G stays; Cnt2 counts at ATN's own settings); HX87 Option B (disp8 only, 166
+        blocks); HLA2a K=16 (+ HLA2b optional); NEW HGL gather-loop prefetch (the 65-127 B copies' cold source); Plt1;
+        xw / lw watch fixes; HLB note only; memfast data first (Cnt2); bench H0-H4 + W1 / W1b / W1c + F1-F3 = 52 starts
+        ~3.6 h; zip layout with notes 1-10.
+        Reviews DONE ~12:2x: cr7s_ -> night1118/review_ci7.md (ci7_ MERGE, Low / Nit only); fe3s_ + fe3o_ ->
+        night1118/review_e3p_final.md (E3P-b / c / d KEEP; fe3s_ M1 E3P-c live-size bound + M2 the +0x58 third line + L1;
+        E3P-c Experimental until the bench, its bit split from b / d; Low / Nits from both). ci7_ merge waits for its
+        suites (running). Next: one Sonnet xHigh fix round for the E3P findings, then its review.
+        ATN ~12:1x (not home): approved running the final bench while away (read as: the full final bench after every
+        CPU / author item, ~3.6 h, cap 4 h; today's runs removed its WPR + sort-count batches).
+        HEAPFIX IMPLEMENTERS STARTED 12:10 in parallel (Sonnet xHigh, own variant folders, no game): hx1s_ (HX87 x87b),
+        hl1s_ (K sweep, la16, hgl, plt1, la16b), hw1s_ (xw, lw), hc1s_ (bench heapfix_line / env fields, hfp3_build.ps1,
+        Cnt2, HSG-0, note 1 tables). Then a Sonnet xHigh review each, HFa / HFb / HFx / HFx2 assembly, dry runs.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
