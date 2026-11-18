@@ -400,6 +400,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: vMF ROUGH DIFFUSE DEFAULT SLIDER (s0_report.md 7.1): Attila's gloss is ~1 a ... | ATN
 - WH3 RR GUIDES CHECK (s0_report.md 6): 76 % of WH3 forest pixels have guide albed ... | next WH3 round
 - CR4 FOLLOW-UPS (review_ci4s.md): M1 emitters 0 / 1 of every effect never prefetc ... | after the final bench
+- CR5 BEFORE THE BENCH (review_ci5.md): M1 site 8 stub -> the per-slot K|K/2 form ... | the engine_code implementer after ci6_ (EF4b), before the fi
 - TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
 - DAY1 MAXED GPU LEVERS (gpo1_ / cpa1_): day1 maxed behind the units is GPU-bound ... | coordinator (GPU line)
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
@@ -3279,6 +3280,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         15f hot column, braces, comments, HALF_ROWS assert); full x86 suites PASS 3 DLLs both commits; gated x86 exit
         0. STARTED 09:12: cr5_ Opus xHigh review of both + ci6_ Opus High = EF4b (float4 reloads in 0x17f61a0 /
         0x168d570, then 0x442360 / 0x1696820 if time; patterns clear of heapfix's x87 block) on a99a26880.
+        cr5_ review DONE ~09:2x -> night1118/review_ci5.md: MERGE (exhaustive 8-bit emulation + 1 M random worlds 0
+        problems; mutants caught). M1 (bench): the shared far-slot check drops every prefetch on lists of 3-4 and child
+        3 on lists of 5 -> the per-slot K|K/2 form (48 B, 0xC00..0xC2F) BEFORE the bench; ci6_ told 09:26 to place
+        its stubs from 0xC40. L3: 6aa51b903's message "best or within 1 ns in every cold row" is false (40/32 20.2 vs
+        K=8|4 15.8; 40/128 18.9 vs 12.3; 0/8 8.1 vs the game 6.8). MERGED 9bdd8cbfe (gated x86 3 targets running 09:26).
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
@@ -3325,6 +3331,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         a one-frame trace of emitters per effect, or a pre-loop prefetch of slots 0 / 1); L1 reword the comment at
         engine_code.hpp ~875 ("every update stores +0x6c, the removal pass reads +0x6e"); L2 optional bound by the live
         size [container+4]; L5 a two-stage variant if the WPR shows +0xBE3 > ~0.5 ms. Owner: after the final bench
+      - [ ] CR5 BEFORE THE BENCH (review_ci5.md): M1 site 8 stub -> the per-slot K|K/2 form (48 B at 0xC00..0xC2F,
+        exact by the one-slot argument twice) or lists of 2-6 in 12c and decide on data; L1 part 12 CONTROLs (two
+        mutant copies in 12b, no-jc under __try in the wrap loop); L2 15f hot warm-up / median; nits N1-N6. Owner: the
+        engine_code implementer after ci6_ (EF4b), before the final bench
       - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
         0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
         drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
