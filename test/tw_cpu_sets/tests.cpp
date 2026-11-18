@@ -3,8 +3,10 @@
 // given to other processes, ties): every set a subset of the base, the render core the most used, the stand-downs.
 // Part 2, live, in this process only: its own process default CPU sets, the real worker on its own threads (a render thread
 // presenting, busy workers, one with its own CPU sets, one with its own affinity, one started later, one whose sets
-// someone changes); a default change, a default of 3 cores, another presenting thread, the row off, a render thread with
-// its own rule, an affinity-only base. Nothing outside this process is changed.
+// someone changes, two not the game's: started at kernel32!Sleep and a Windows pool thread); a default change, a default of
+// 3 cores, another presenting thread, the row off, a render thread with its own rule, an affinity-only base, no game
+// modules and no start address query, every start unreadable (nothing to move), kernel32 as the game's module.
+// Nothing outside this process is changed.
 #include <windows.h>
 #include <tlhelp32.h>
 
@@ -33,6 +35,9 @@ extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* 
 #include "src/games/twattila/cpu_sets.hpp"
 
 namespace cs = twattila::cpu_sets;
+
+// The game's modules here: the test exe (its threads start in its own code: CreateThread / the static CRT's std::thread).
+static constexpr std::array<const wchar_t*, 1> GAME_MODULES = {nullptr};
 
 static int failures = 0;
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); ++failures; } } while (false)
@@ -317,10 +322,30 @@ static void ClearLog() {
   log_lines.clear();
 }
 
+// A start address query that is refused (STATUS_ACCESS_DENIED): every start unreadable.
+static LONG WINAPI FailQuery(HANDLE, ULONG, void*, ULONG, ULONG*) {
+  return static_cast<LONG>(0xC0000022);
+}
+
 static HANDLE OpenSelf() {
   HANDLE self = nullptr;
   DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &self, 0, FALSE, DUPLICATE_SAME_ACCESS);
   return self;
+}
+
+// A Windows pool thread (it starts in ntdll): holds until `release`, then `done` (its wait is over: `release` may close).
+struct PoolItem {
+  std::atomic<HANDLE> handle = nullptr;
+  HANDLE release = nullptr;
+  std::atomic<bool> done = false;
+};
+
+static DWORD WINAPI RunPoolItem(void* context) {
+  auto* item = static_cast<PoolItem*>(context);
+  item->handle = OpenSelf();
+  WaitForSingleObject(item->release, INFINITE);
+  item->done = true;
+  return 0;
 }
 
 struct Spinner {
@@ -349,10 +374,10 @@ static Spinner Spin(const std::function<void()>& setup = [] {}) {
 }
 
 // Presents (cs::Update on this thread, ~1 ms apart) until `done` or `ms`.
-static bool PresentUntil(const std::function<bool()>& done, int ms, bool enabled = true) {
+static bool PresentUntil(const std::function<bool()>& done, int ms, bool enabled = true, std::span<const wchar_t* const> modules = GAME_MODULES) {
   const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
   while (std::chrono::steady_clock::now() < end) {
-    cs::Update(enabled);
+    cs::Update(enabled, modules);
     if (done()) return true;
     volatile uint64_t work = 0;
     for (int i = 0; i < 50000; ++i) work = work + i;
@@ -424,6 +449,18 @@ static void Live() {
   for (int i = 0; i < 6; ++i) workers.push_back(Spin());
   Spinner foreign = Spin([&] { SetThreadSelectedCpuSets(GetCurrentThread(), foreign_sets.data(), static_cast<ULONG>(foreign_sets.size())); });
   Spinner narrow = Spin([] { SetThreadAffinityMask(GetCurrentThread(), 0xF0); });
+  // Not the game's: a thread started at kernel32!Sleep (sleeps until the process ends) and a Windows pool thread.
+  const HANDLE sleeper = CreateThread(nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "Sleep")),
+                                      reinterpret_cast<void*>(static_cast<uintptr_t>(INFINITE)), 0, nullptr);
+  REQUIRE(sleeper != nullptr);
+  PoolItem pool_item = {.release = CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+  REQUIRE(QueueUserWorkItem(RunPoolItem, &pool_item, WT_EXECUTELONGFUNCTION) != FALSE);
+  while (pool_item.handle.load() == nullptr) Sleep(1);
+  const HANDLE pool_thread = pool_item.handle.load();
+  const auto check_not_games = [&] {
+    CHECK(Selected(sleeper).empty());
+    CHECK(Selected(pool_thread).empty());
+  };
 
   // The render thread's sets: one core's, inside `base`; every worker the rest of `base`.
   const auto check_applied = [&](const Ids& base, HANDLE render_thread, const std::vector<HANDLE>& others) {
@@ -452,11 +489,27 @@ static void Live() {
   };
   std::vector<HANDLE> worker_handles;
   for (const Spinner& spinner : workers) worker_handles.push_back(spinner.handle);
+  // After an apply: its on line, logged after the apply's first thread snapshot (a late line is a late snapshot on a
+  // loaded PC: tens of ms of CPU with thousands of threads).
+  const auto wait_on = [](std::span<const wchar_t* const> modules = GAME_MODULES) {
+    return PresentUntil([] { return LogHas("Keep Render Core Free: on:"); }, 10000, true, modules);
+  };
+  // The on line's count before `what` (such as " not the game's"); -1 without one.
+  const auto on_count = [](std::string_view what) {
+    const std::unique_lock lock(log_mutex);
+    for (const std::string& line : log_lines) {
+      if (line.find("Keep Render Core Free: on:") == std::string::npos) continue;
+      const size_t end = line.find(what);
+      if (end == std::string::npos) return -1;
+      const size_t begin = line.rfind(' ', end - 1) + 1;
+      return std::atoi(line.substr(begin, end - begin).c_str());
+    }
+    return -1;
+  };
 
   // 1. Applied inside A.
   ClearLog();
-  REQUIRE(PresentUntil([&] { return !Selected(render).empty(); }, 10000));
-  PresentUntil([] { return false; }, 300);
+  REQUIRE(wait_on());
   std::printf("  1. applied inside A\n");
   const Ids render_a = check_applied(set_a, render, worker_handles);
   CHECK(Selected(foreign.handle) == foreign_sets);
@@ -464,12 +517,19 @@ static void Live() {
   check_all_inside(set_a, {foreign_sets});
   CHECK(LogHas("Keep Render Core Free: on:"));
   CHECK(LogHas(", 2 left alone"));
+  // The game's: the 6 workers (the render thread given first; cpu_sets' own worker moved too, not counted); not: the
+  // sleeper, the pool thread, any other pool thread of Windows'.
+  check_not_games();
+  std::printf("  1. on line: %d of the game's threads, %d not the game's\n", on_count(" of the game's threads"), on_count(" not the game's"));
+  CHECK(on_count(" of the game's threads") == 6);
+  CHECK(on_count(" not the game's") >= 2);
 
   // 2. A thread started later gets the workers' sets at a later check.
   Spinner late = Spin();
   CHECK(PresentUntil([&] { return !Selected(late.handle).empty(); }, 3000));
   check_applied(set_a, render, {late.handle});
-  std::printf("  2. a later thread given\n");
+  check_not_games();
+  std::printf("  2. a later thread given, the others' still not\n");
 
   // 3. Someone else's rule on one of ours: kept from here on.
   const Ids someone = IdsOf(system, 4, 4);
@@ -480,8 +540,7 @@ static void Live() {
   ClearLog();
   set_default(set_b);
   CHECK(PresentUntil([&] { return LogHas("CPU set or affinity changed"); }, 3000));
-  CHECK(PresentUntil([&] { return Subset(Selected(render), set_b) && !Selected(render).empty(); }, 10000));
-  PresentUntil([] { return false; }, 300);
+  CHECK(wait_on());
   check_applied(set_b, render, ours_rest);
   check_all_inside(set_b, {foreign_sets, someone});
   CHECK(Selected(workers[0].handle) == someone);
@@ -499,9 +558,9 @@ static void Live() {
   std::printf("  5. default of 3 cores: stood down, cleared\n");
 
   // 6. Back to A: applied again.
+  ClearLog();
   set_default(set_a);
-  CHECK(PresentUntil([&] { return !Selected(render).empty(); }, 10000));
-  PresentUntil([] { return false; }, 300);
+  CHECK(wait_on());
   check_applied(set_a, render, ours_rest);
   std::printf("  6. back to A: applied\n");
 
@@ -513,7 +572,7 @@ static void Live() {
     std::thread presenter([&] {
       presenter_handle = OpenSelf();
       while (!stop_presenting) {
-        cs::Update(true);
+        cs::Update(true, GAME_MODULES);
         volatile uint64_t work = 0;
         for (int i = 0; i < 50000; ++i) work = work + i;
         Sleep(1);
@@ -534,13 +593,12 @@ static void Live() {
   }
   // This thread presents again: back to it.
   ClearLog();
-  CHECK(PresentUntil([&] { return LogHas("presents from another thread") && Selected(render).size() == 2; }, 10000));
-  PresentUntil([] { return false; }, 300);
+  CHECK(PresentUntil([&] { return LogHas("presents from another thread") && LogHas("Keep Render Core Free: on:"); }, 10000));
   check_applied(set_a, render, ours_rest);
 
   // 8. The row off: exactly ours cleared, the others' rules kept.
   ClearLog();
-  cs::Update(false);
+  cs::Update(false, GAME_MODULES);
   CHECK(LogHas("off: ours cleared"));
   check_cleared({render, late.handle});
   check_cleared(ours_rest);
@@ -548,6 +606,7 @@ static void Live() {
   CHECK(Selected(workers[0].handle) == someone);
   CHECK(Selected(narrow.handle).empty());
   for (const auto& [id, sets] : AllThreads()) CHECK(sets.empty() || sets == foreign_sets || sets == someone);
+  check_not_games();
   std::printf("  8. off: ours cleared, the others' kept\n");
 
   // 9. On and off 20 times, quickly: symmetric every time.
@@ -556,7 +615,7 @@ static void Live() {
     if (round % 2 == 0) {
       CHECK(applied);
     }
-    cs::Update(false);
+    cs::Update(false, GAME_MODULES);
     check_cleared({render, late.handle});
     check_cleared(ours_rest);
     CHECK(Selected(foreign.handle) == foreign_sets);
@@ -573,7 +632,7 @@ static void Live() {
   check_cleared({late.handle});
   check_cleared(ours_rest);
   CHECK(Selected(render) == own);
-  cs::Update(false);
+  cs::Update(false, GAME_MODULES);
   CHECK(Selected(render) == own);
   REQUIRE(SetThreadSelectedCpuSets(GetCurrentThread(), nullptr, 0) != FALSE);
   std::printf("  10. render thread's own rule: stood down\n");
@@ -587,11 +646,10 @@ static void Live() {
   REQUIRE(SetProcessAffinityMask(GetCurrentProcess(), 0xFFFF) != FALSE);
   std::vector<HANDLE> plain = ours_rest;
   plain.push_back(late.handle);
-  CHECK(PresentUntil([&] { return !Selected(render).empty(); }, 10000));
-  PresentUntil([] { return false; }, 300);
-  check_applied(set_a, render, plain);
+  CHECK(wait_on());
   CHECK(LogHas("the game's affinity"));
-  cs::Update(false);
+  check_applied(set_a, render, plain);
+  cs::Update(false, GAME_MODULES);
   check_cleared(plain);
   check_cleared({render});
   REQUIRE(SetProcessAffinityMask(GetCurrentProcess(), system_mask) != FALSE);
@@ -606,21 +664,20 @@ static void Live() {
     std::thread early([&] {
       early_handle = OpenSelf();
       for (int i = 0; i < 10; ++i) {
-        cs::Update(true);
+        cs::Update(true, GAME_MODULES);
         Sleep(1);
       }
       while (!release.load()) Sleep(10);
     });
     while (cs::samples.load() < 10) Sleep(1);
-    CHECK(PresentUntil([&] { return Selected(render).size() == 2; }, 10000));
-    PresentUntil([] { return false; }, 300);
+    CHECK(wait_on());
     std::vector<HANDLE> others = ours_rest;
     others.push_back(early_handle.load());
     check_applied(set_a, render, others);
     release = true;
     early.join();
     CloseHandle(early_handle.load());
-    cs::Update(false);
+    cs::Update(false, GAME_MODULES);
     check_cleared({render});
     std::printf("  12. an early presenter that stops: measured again on this thread, applied\n");
   }
@@ -634,32 +691,83 @@ static void Live() {
     DWORD ended_id = 0;
     std::thread ending([&] {
       ended_id = GetCurrentThreadId();
-      cs::Update(true);
+      cs::Update(true, GAME_MODULES);
       Sleep(1500);
-      while (cs::samples.load() < cs::SAMPLE_PRESENTS) cs::Update(true);
+      while (cs::samples.load() < cs::SAMPLE_PRESENTS) cs::Update(true, GAME_MODULES);
     });
     ending.join();
     CHECK(cs::render_thread.load() == ended_id);
-    CHECK(PresentUntil([&] { return Selected(render).size() == 2; }, 10000));
+    CHECK(wait_on());
     CHECK(LogHas("the render thread has ended"));
-    PresentUntil([] { return false; }, 300);
     check_applied(set_a, render, ours_rest);
-    cs::Update(false);
+    cs::Update(false, GAME_MODULES);
     check_cleared({render});
     check_cleared(ours_rest);
     std::printf("  13. a measured presenter that ended: measured again on this thread, applied\n");
   }
   cs::tick_ms = 20;
 
+  // 14. No game modules from the host, then no start address query: stands down, nobody given (never every thread).
+  for (const bool null_query : {false, true}) {
+    ClearLog();
+    const auto query = cs::query_thread_information;
+    if (null_query) {
+      cs::query_thread_information = nullptr;
+    }
+    const std::span<const wchar_t* const> modules = (null_query ? std::span<const wchar_t* const>(GAME_MODULES) : std::span<const wchar_t* const>());
+    CHECK(PresentUntil([&] { return LogHas("cannot tell the game's threads apart"); }, 5000, true, modules));
+    PresentUntil([] { return false; }, 500, true, modules);
+    check_cleared({render, late.handle});
+    check_cleared(ours_rest);
+    check_not_games();
+    CHECK(!LogHas("Keep Render Core Free: on:"));
+    cs::Update(false, modules);
+    cs::query_thread_information = query;
+  }
+  std::printf("  14. no game modules / no start query: stood down, nobody given\n");
+
+  // 15. Every start unreadable (the query refused): none of the game's threads to move but the render thread: stands
+  // down after the first snapshot, ours cleared, not applied again until the row is off.
+  ClearLog();
+  {
+    const auto query = cs::query_thread_information;
+    cs::query_thread_information = FailQuery;
+    CHECK(PresentUntil([] { return LogHas("none of the game's threads to move"); }, 10000));
+    PresentUntil([] { return false; }, 1000);
+    check_cleared({render, late.handle});
+    check_cleared(ours_rest);
+    check_not_games();
+    CHECK(!LogHas("Keep Render Core Free: on:"));
+    cs::Update(false, GAME_MODULES);
+    CHECK(!LogHas("off: ours cleared"));
+    cs::query_thread_information = query;
+  }
+  std::printf("  15. every start unreadable: nothing to move, stood down, cleared\n");
+
+  // 16. kernel32 as the game's module: only the sleeper is the game's; the render thread (started in the exe) is given.
+  ClearLog();
+  {
+    static constexpr std::array<const wchar_t*, 1> KERNEL32 = {L"kernel32.dll"};
+    CHECK(wait_on(KERNEL32));
+    check_applied(set_a, render, {sleeper});
+    check_cleared({late.handle});
+    check_cleared(ours_rest);
+    CHECK(Selected(pool_thread).empty());
+    CHECK(on_count(" of the game's threads") == 1);
+    cs::Update(false, KERNEL32);
+    check_cleared({render, sleeper});
+  }
+  std::printf("  16. kernel32 as the game's module: only the sleeper moved, the render thread given\n");
+
   // Steady cost of a present with the row on (sampling done).
   PresentUntil([&] { return !Selected(render).empty(); }, 10000);
   const auto start = std::chrono::steady_clock::now();
-  for (int i = 0; i < 1000000; ++i) cs::Update(true);
+  for (int i = 0; i < 1000000; ++i) cs::Update(true, GAME_MODULES);
   std::printf("  Update(true): %.1f ns a present; Update(false) with the worker stopped: ",
               std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / 1e6);
-  cs::Update(false);
+  cs::Update(false, GAME_MODULES);
   const auto off_start = std::chrono::steady_clock::now();
-  for (int i = 0; i < 1000000; ++i) cs::Update(false);
+  for (int i = 0; i < 1000000; ++i) cs::Update(false, GAME_MODULES);
   std::printf("%.1f ns\n", std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - off_start).count() / 1e6);
 
   stop_spinners = true;
@@ -671,6 +779,11 @@ static void Live() {
     spinner->thread.join();
     CloseHandle(spinner->handle);
   }
+  SetEvent(pool_item.release);
+  while (!pool_item.done.load()) Sleep(1);
+  CloseHandle(pool_item.release);
+  CloseHandle(pool_thread);
+  CloseHandle(sleeper);
   CloseHandle(render);
 }
 
