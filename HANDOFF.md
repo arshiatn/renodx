@@ -3382,6 +3382,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         CONTROLs fail as they must), lw e8882d5c (4x rule NEVER fires here: largest free block < 2048 MB in every state).
         Sent back 12:37: lw steadiness rule (30 s while steady and > 2x the next mark), xw uneven re-read gaps
         (lockstep thread), one combined build xw + x87b + lw. Then their review.
+        ANALYSES DONE ~12:4x: sa1_ -> night1118/analysis_sanity_day1.md (Constantinople 44.5 ms, render-thread bound,
+        GPU idle 10.9; the sort chain 5.6 ms on the path; Keep Render Core Free: sibling 24.7 % -> 0.1 %; our add-on 5.75
+        ms render); sa2_ -> night1118/analysis_sanity_stress.md (stress 82.9 / ground 113.3 ms; ground: the game's Map
+        waits 14.8 + our object-motion ring DISCARD 5.84 ms with the game's shadow pass on; chain 10.3 ms; EF4 -1.46,
+        E3P-c -1.14, EF4b ~-3.5 workers; E3P-b / E3P-d 0 (installed: log 'Faster Effect Prefetch: on')). BOTH: ATN's ini
+        keeps RayTracedSpecularOcclusion=1, which keeps the whole RT path running in the 'no RT' scene (~1.6-3 ms render +
+        helper GPU): the bench's cpu / maxcpu scenes get 1:RayTracedSpecularOcclusion=0 (sent to hc1s_). No rerun needed:
+        CPU-bound anyway, the RT parts are measured apart. 7 dead Attila processes (0 CPU / 0 MB, back to 11-13) hold
+        renamed in-use files: left alone.
+        HLF17 (his disabled loopfetch site 0x17B1840, 2.88 ms ground view) added to hl1s_'s queue 12:46.
+        CPU PLAN 4 STARTED 12:46: cpl4o_ (Opus xHigh, add-on: ARING, AOM, ACAP2, ALOCK, ABR, ADISP, ASCR / ALOD, APT,
+        ASMT own-threads-only, RTSO options for ATN, MAPW-B trace) + cpl4s_ (Sonnet xHigh, engine + heapfix: ES8c,
+        E3P-bd K sweep, EF4c, EVEC mining, HSG2 / HSORT, HMC) -> night1118/cpu_plan4_addon.md / cpu_plan4_engine.md.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
