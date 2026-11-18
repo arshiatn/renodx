@@ -3213,7 +3213,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         pdi1_ fixes DONE ~06:3x: 1ff178eac (rt_di_light[2] at 964512, sizeof 964528, SharedBytes(31) 964360; 3 real
         asserts; N1 / N3 / N4; design L3 + release note; N2 skipped: moved 4 shader headers). Gated x86 all + amd64 all
         exit 0, 53 / 53 shader headers identical, helper tests pass, day1 + night1 plays byte-identical. MERGED
-        29eeab5ce (gated x86 all + amd64 all of the merged tree running 06:35 before the push).
+        29eeab5ce (gated x86 all + amd64 all of the merged tree 06:35 exit 0, PUSHED 06:46; pdi1_'s 10 links removed alone, folder locked by the app).
         STARTED 06:35: alp1_ Opus High = cpu_plan3 step 3 ALPK (light pick: scores once + partial_sort of indices,
         exact; OPEN: i686 /arch SSE2 floats, tw_native_context coverage) on 29eeab5ce, branch alp1_.
         asr1_ review DONE ~06:4x -> night1118/review_asm1.md: FIX FIRST (H1 the render-thread sampling can stop for
