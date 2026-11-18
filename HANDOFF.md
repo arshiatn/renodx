@@ -3395,6 +3395,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         CPU PLAN 4 STARTED 12:46: cpl4o_ (Opus xHigh, add-on: ARING, AOM, ACAP2, ALOCK, ABR, ADISP, ASCR / ALOD, APT,
         ASMT own-threads-only, RTSO options for ATN, MAPW-B trace) + cpl4s_ (Sonnet xHigh, engine + heapfix: ES8c,
         E3P-bd K sweep, EF4c, EVEC mining, HSG2 / HSORT, HMC) -> night1118/cpu_plan4_addon.md / cpu_plan4_engine.md.
+        hw1s_ round 2 DONE: xw 8ea677ef (QPC-spun uneven gaps 2 / 5 / 11 ms: lockstep thread 0 / 60 flagged, old 59-60 /
+        60), lw 2a3ca528 (steady + mark + 128 MB rule: steady hours 120 walks vs 7.0's 715), NEW hfa a5af2f23 (P + x87b +
+        xw + lw, build.bat test PASS); review hwr1s_ (Sonnet xHigh) STARTED. -> heapfix/hw1s_report.md.
+        hc1s_ DONE -> heapfix/hc1s_report.md: bench heapfix_line / env fields + cpu / maxcpu SpecularOcclusion=0 (dry
+        runs: only additions); hfp3_build.ps1 (P / Cnt hashes reproduced); Cnt2 da293bc9 (exact bins + 1 M-record rings;
+        needs -Seconds 170+); HSG-0: B4's small-list loss = its 8-digit offset tables, NOT sync_threads(1); B4F
+        5-15 % faster than P from 1k items (HSORT candidate, sent to cpl4s_). Review hcr1s_ (Sonnet xHigh) STARTED.
+        hxr1s_ DONE -> heapfix/hxr1s_review.md: x87b SHIP AFTER FIXES (no code defect; all proofs re-run 0 differences;
+        no branch / relocation into any block; guard negative path works); fixes sent back to hx1s_ 13:06.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
