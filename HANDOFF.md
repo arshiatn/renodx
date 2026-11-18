@@ -3196,6 +3196,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         entries + our-sites paragraph. STARTED 06:01: hfc1_ Opus High = the private HSG counting build
         (AttilaCPUPerfFix_cnt = B4G + a per-sort ring: n, time, thread, path, caller RVA -> heapfix_sortcount.csv;
         variant bench/variants/heapfix_cnt.json) for the final bench.
+        hfc1_ DONE ~06:1x -> tools/tw/heapfix/hfc1_report.md: Cnt_dinput8.dll 1b8ee435.. (B4G + the per-sort ring,
+        window 60..80 s after load, CSV heapfix_sortcount_<time>.csv + a summary line in heapfix.log); build.bat test
+        passed, eq test through the recording path 10 / 10 bit for bit, ring test exact; variant heapfix_cnt.json
+        -DryRun OK. The bench now copies heapfix_sortcount_*.csv out per start ($RUN_OUTPUTS, 06:15).
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
