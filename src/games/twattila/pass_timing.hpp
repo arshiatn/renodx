@@ -34,7 +34,9 @@
 // addon's first (Install before any other draw hook): a draw another hook replays and skips (command_action's post callbacks)
 // still gets its stamp, and the addon's work at a command counts to it. Otherwise each event only tests a flag.
 // A request first counts one frame's commands, then makes the timestamps it needs (a quarter more and 1024 spare) a chunk
-// a present (creating 40,001 in one present took ~100 ms), then times the next frame; the stamps stay for later runs.
+// a present (creating 40,001 in one present took ~100 ms), then times the next frame; the stamps stay for later runs. A
+// timed frame with more commands than stamps makes more and times another frame, until the stamps can't grow (the cap,
+// or the device makes no more): then its first commands are saved.
 // In an add-on: Install("<prefix>") first in its AttachAddon, Button(<section>) among its settings (graphics_page.hpp
 // places it by its label), Uninstall() in its DetachAddon. Its own present event ends and reads the timed frame.
 namespace twattila::pass_timing {
@@ -43,7 +45,9 @@ namespace internal {
 
 using Microsoft::WRL::ComPtr;
 
-constexpr uint32_t MAX_COMMANDS = 100000;
+// Stamps are kept until the device goes away (>= 13 MB at the cap in a 32-bit process); the biggest frame timed so far
+// had 7,153 commands.
+constexpr uint32_t MAX_COMMANDS = 40000;
 constexpr uint32_t STAMPS_A_PRESENT = 1000;
 constexpr uint32_t WAIT_PRESENTS = 120;
 
@@ -68,6 +72,7 @@ struct State {
   uint32_t counted = 0;        // the counting frame's commands
   uint32_t unstamped = 0;      // the timed frame's commands after the stamps ran out
   uint32_t most_commands = 0;  // the most commands a counted or timed frame had on this device
+  bool stamps_capped = false;  // the timed frame's stamps can't grow (MAX_COMMANDS, or CreateQuery failed)
   std::vector<Command> commands;
   std::unordered_map<const void*, std::string> targets;  // described once, while they live
   uint32_t presents_waited = 0;
@@ -213,13 +218,15 @@ inline void Write(ID3D11DeviceContext* context, const D3D11_QUERY_DATA_TIMESTAMP
   exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
   const auto path = std::filesystem::path(exe).parent_path() / (prefix + "_pass_timing.txt");
   std::ofstream(path, std::ios::binary | std::ios::trunc) << text;
-  state.status = std::format("Saved: {:.2f} ms, {} commands, {}.", total, count, path.filename().string());
-  renodx::utils::log::i(std::format("[Total War] Time Each Pass: {:.3f} ms, {} commands, saved to {}.", total, count, path.string()));
+  const std::string commands_saved = (state.unstamped == 0 ? std::format("{} commands", count)
+                                                           : std::format("first {} of {} commands", count, count + state.unstamped));
+  state.status = std::format("Saved: {:.2f} ms, {}, {}.", total, commands_saved, path.filename().string());
+  renodx::utils::log::i(std::format("[Total War] Time Each Pass: {:.3f} ms, {}, saved to {}.", total, commands_saved, path.string()));
 }
 
 }  // namespace internal
 
-// The button: times the next whole frame.
+// The button: counts the next frame's commands, makes their stamps, then times a whole frame.
 inline void Request() {
   const std::lock_guard lock(internal::state.mutex);
   if (internal::state.phase != internal::Phase::IDLE) return;
@@ -244,10 +251,12 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr || context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  context->GetDevice(device.GetAddressOf());
+  // A run started stays on its device: the stamps are its queries.
+  if (state.phase != Phase::REQUESTED && device != state.device) return;
   switch (state.phase) {
     case Phase::REQUESTED: {
-      Microsoft::WRL::ComPtr<ID3D11Device> device;
-      context->GetDevice(device.GetAddressOf());
       if (state.device != device) {
         state.stamps.clear();
         state.disjoint.Reset();
@@ -288,6 +297,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
       }
       // More next present, unless the device makes no more: then the frame is timed with what exists.
       if (!out_of_queries && state.stamps.size() < wanted) break;
+      state.stamps_capped = out_of_queries || state.stamps.size() >= size_t{internal::MAX_COMMANDS} + 1;
       state.commands.clear();
       state.targets.clear();
       state.unstamped = 0;
@@ -301,13 +311,13 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
       context->End(state.disjoint.Get());
       state.in_frame.store(false);
       state.most_commands = std::max(state.most_commands, static_cast<uint32_t>(state.commands.size()) + state.unstamped);
-      if (state.unstamped != 0) {
-        // The next run counts again and makes stamps for at least this frame's commands.
-        state.status = "More commands than stamps: run it again.";
-        state.phase = Phase::IDLE;
+      if (state.unstamped != 0 && !state.stamps_capped) {
+        // Stamps for at least this frame's commands, then another frame timed: one press, one file.
+        state.phase = Phase::PREPARING;
         state.targets.clear();
         break;
       }
+      // All stamped, or the stamps can't grow: the first commands saved (Write names the rest).
       state.presents_waited = 0;
       state.phase = Phase::READING;
       break;
@@ -332,10 +342,20 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
   }
 }
 
-// Device loss: nothing timing, queries released.
-inline void OnDestroyDevice(reshade::api::device*) {
+// The run's device going away (null: Uninstall): nothing timing, queries released. Other devices (an NGX D3D12 device
+// made again, another D3D11 device) leave the run and the kept stamps alone.
+inline void OnDestroyDevice(reshade::api::device* destroyed) {
   auto& state = internal::state;
   const std::lock_guard lock(state.mutex);
+  if (destroyed != nullptr) {
+    if (destroyed->get_api() != reshade::api::device_api::d3d11) return;
+    auto* native = reinterpret_cast<ID3D11Device*>(destroyed->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+    if (native != state.device.Get()) return;
+  }
+  if (state.phase != internal::Phase::IDLE) {
+    state.status = "The game's device went away during the run: run it again.";
+  }
   state.in_frame.store(false);
   state.phase = internal::Phase::IDLE;
   state.stamps.clear();
