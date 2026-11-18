@@ -3245,7 +3245,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         xHigh review (read only; may run part 6 from an export in testbin\alr1_).
         alr1_ review DONE ~07:2x -> night1118/review_alp1.md: MERGE (own harness: comparator outcome sequences identical,
         8.2-8.5 M per build, 4 builds, default MXCSR + FTZ / DAZ; every lights_last path checked; 30 consumers same
-        presets). MERGED 26e32e418 (gated x86 all + amd64 all running 07:30 before the push).
+        presets). MERGED 26e32e418 (gated x86 all + amd64 all 07:30 exit 0, PUSHED 07:40; alp1_'s 10 links removed alone).
         vmf0_ (vMF S0) DONE ~07:3x -> designs/vmf_s0/s0_report.md: transcription checked on page images (x2 series right;
         Eq. 5 is the paper's own 1-6 % fit; fm wrong below r 0.2 -> fade saturate((r - 0.15) / 0.25); R clamp [0, 4]); walk
         T0 1.59 % rms (controls fail), T1 gate -> 2 %, beta table 8x8 (0.08 % rms), fast form 7 terms (1.56 % / 4.5 %),
