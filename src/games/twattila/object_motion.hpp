@@ -268,6 +268,17 @@ struct InDraw {
   D3D11_TEXTURE2D_DESC depth_desc = {};  // its texture's (checked at the targets' first draw)
 };
 
+// The last in-draw draw's look-up of its pixel shader (in PixelShaders, under its lock at its `generation`): the game's
+// pixel shader (compared only) and the motion shader, whether that pixel shader can follow it and its version patched
+// for the motion shader's MOTION register (null: not patchable there).
+struct InDrawLookup {
+  uint64_t game_key = 0;
+  size_t index = SIZE_MAX;
+  uint64_t generation = UINT64_MAX;
+  bool follows = false;
+  ComPtr<ID3D11PixelShader> patched;
+};
+
 // A binding of the game's: `bound`, or where that is still ours from the last in-draw motion draw, the game's then (held
 // by `bound` or the kept bindings).
 template <typename T>
@@ -352,13 +363,17 @@ struct DeviceObjects {
   // are drawn) is null from then on, so its next draws take a new key: two packs' soldiers at one place of one page never
   // share a key.
   std::vector<ID3D11Resource*> animation_textures;
-  // The last draw's animation view, its texture and key, and its depth state and that's description (consecutive draws
-  // share them).
+  // The last draw's animation view, its texture and key, its depth state and that's description, and its depth view
+  // (held: no other view takes its address; a view's texture and description never change), that's texture (null: none
+  // or not 2D; compared only) and description (consecutive draws share them).
   ComPtr<ID3D11ShaderResourceView> last_animation_map;
   ID3D11Resource* last_animation_texture = nullptr;
   uint32_t last_animation_key = 0;
   ComPtr<ID3D11DepthStencilState> last_depth_state;
   D3D11_DEPTH_STENCIL_DESC last_depth_desc = {};
+  ComPtr<ID3D11DepthStencilView> last_depth_view;
+  ID3D11Resource* last_depth_texture = nullptr;
+  D3D11_TEXTURE2D_DESC last_depth_texture_desc = {};
   size_t placement_index = 0;            // this frame's table
   uint64_t placement_frame = UINT64_MAX;  // the frame it was cleared in
   bool previous_placements = false;      // last frame's table was written last frame
@@ -410,6 +425,7 @@ struct DeviceObjects {
   ComPtr<ID3D11RenderTargetView> drawn_depth_rtv;
   ComPtr<ID3D11ShaderResourceView> drawn_depth_srv;
   std::vector<std::pair<ComPtr<ID3D11BlendState>, ComPtr<ID3D11BlendState>>> drawn_blend_states;
+  InDrawLookup in_draw_lookup;
 };
 
 // A constant buffer bound at MOTION_SLOT is ours: the one buffer or a ring.
@@ -448,6 +464,8 @@ struct PixelShaders {
   std::shared_mutex mutex;
   std::vector<DrawSignature> draw_signatures;
   std::unordered_map<uint64_t, GamePixelShader> shaders;
+  // Raised by every write, inside the lock: a lookup made under the lock at this value still holds (InDrawLookup).
+  std::atomic_uint64_t generation = 0;
 };
 
 static PixelShaders pixel_shaders;
@@ -766,16 +784,25 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
   // The main view's depth (the kept targets': checked at their first draw).
   D3D11_TEXTURE2D_DESC texture_desc = state.in_draw.depth_desc;
   if (!kept_targets) {
-    ComPtr<ID3D11Resource> depth_resource;
-    if (depth_stencil) {
-      depth_stencil->GetResource(depth_resource.GetAddressOf());
+    if (depth_stencil != objects.last_depth_view) {
+      ComPtr<ID3D11Resource> depth_resource;
+      if (depth_stencil) {
+        depth_stencil->GetResource(depth_resource.GetAddressOf());
+      }
+      ComPtr<ID3D11Texture2D> depth_texture;
+      objects.last_depth_texture = nullptr;
+      objects.last_depth_texture_desc = {};
+      if (depth_resource && SUCCEEDED(depth_resource.As(&depth_texture))) {
+        depth_texture->GetDesc(&objects.last_depth_texture_desc);
+        objects.last_depth_texture = depth_resource.Get();
+      }
+      objects.last_depth_view = depth_stencil;
     }
-    ComPtr<ID3D11Texture2D> depth_texture;
-    if (!depth_resource || (view.depth != nullptr && depth_resource.Get() != view.depth) || FAILED(depth_resource.As(&depth_texture))) {
+    if (objects.last_depth_texture == nullptr || (view.depth != nullptr && objects.last_depth_texture != view.depth)) {
       release_targets();
       return false;
     }
-    depth_texture->GetDesc(&texture_desc);
+    texture_desc = objects.last_depth_texture_desc;
   }
   if (!game_depth_state || !depth_desc.DepthEnable) {
     release_targets();
@@ -799,19 +826,36 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
     bool patched_known = false;
     uint32_t motion_register = 0;
     std::vector<uint8_t> game_code;  // without a patched copy for this register yet
-    {
-      const std::shared_lock pixel_lock(pixel_shaders.mutex);
-      if (const auto game = pixel_shaders.shaders.find(game_key); game != pixel_shaders.shaders.end()) {
-        follows = true;
-        motion_register = pixel_shaders.draw_signatures[index].motion_register;
-        const auto& patched = game->second.patched;
-        const auto known = std::ranges::find(patched, motion_register, &std::pair<uint32_t, ComPtr<ID3D11PixelShader>>::first);
-        patched_known = known != patched.end();
-        if (patched_known) {
-          drawn_pixel_shader = known->second;
-        } else {
-          game_code = game->second.code;
+    // The last draw's look-up while pixel_shaders is unchanged since (the game's pixel shader bound for this draw cannot
+    // be destroyed meanwhile: another at its address raised the generation), else made under its lock.
+    auto& lookup = objects.in_draw_lookup;
+    if (lookup.game_key == game_key && lookup.index == index
+        && lookup.generation == pixel_shaders.generation.load(std::memory_order_acquire)) {
+      follows = lookup.follows;
+      patched_known = true;
+      drawn_pixel_shader = lookup.patched;
+    } else {
+      uint64_t generation = 0;
+      {
+        const std::shared_lock pixel_lock(pixel_shaders.mutex);
+        generation = pixel_shaders.generation.load(std::memory_order_relaxed);
+        if (const auto game = pixel_shaders.shaders.find(game_key); game != pixel_shaders.shaders.end()) {
+          follows = true;
+          motion_register = pixel_shaders.draw_signatures[index].motion_register;
+          const auto& patched = game->second.patched;
+          const auto known = std::ranges::find(patched, motion_register, &std::pair<uint32_t, ComPtr<ID3D11PixelShader>>::first);
+          patched_known = known != patched.end();
+          if (patched_known) {
+            drawn_pixel_shader = known->second;
+          } else {
+            game_code = game->second.code;
+          }
         }
+      }
+      // Kept only when complete (a patched version still to make: its first draw writes it, the next keeps it), set after
+      // the lock (it releases the last one's).
+      if (!follows || patched_known) {
+        lookup = {.game_key = game_key, .index = index, .generation = generation, .follows = follows, .patched = drawn_pixel_shader};
       }
     }
     if (!follows || game_targets[dxbc::MOTION_TARGET] != nullptr || game_targets[dxbc::MOTION_DEPTH_TARGET] != nullptr) {
@@ -828,6 +872,7 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
       const std::unique_lock pixel_lock(pixel_shaders.mutex);
       if (const auto game = pixel_shaders.shaders.find(game_key); game != pixel_shaders.shaders.end()) {
         game->second.patched.emplace_back(motion_register, drawn_pixel_shader);
+        pixel_shaders.generation.fetch_add(1, std::memory_order_release);
       }
     }
     if (!drawn_pixel_shader) {
@@ -1620,6 +1665,7 @@ inline void OnInitPipeline(renodx::utils::pipeline::PipelineInfo* info, uint32_t
     });
     if (follows) {
       replaced = std::exchange(pixel_shaders.shaders[info->pipeline.handle], GamePixelShader{.code = {code.begin(), code.end()}});
+      pixel_shaders.generation.fetch_add(1, std::memory_order_release);
     }
   }
 }
@@ -1630,6 +1676,9 @@ inline void OnDestroyPipeline(const renodx::utils::pipeline::PipelineInfo& info)
   {
     const std::unique_lock lock(pixel_shaders.mutex);
     erased = pixel_shaders.shaders.extract(info.pipeline.handle);
+    if (!erased.empty()) {
+      pixel_shaders.generation.fetch_add(1, std::memory_order_release);
+    }
   }
 }
 
@@ -1918,6 +1967,7 @@ inline void Install(const Shaders& shaders, MakeView make_view) {
   {
     const std::unique_lock lock(internal::pixel_shaders.mutex);
     internal::pixel_shaders.draw_signatures = std::move(signatures);
+    internal::pixel_shaders.generation.fetch_add(1, std::memory_order_release);
   }
   for (const auto& shader : shaders.shaders) {
     renodx::utils::command_action::Register(
@@ -1962,6 +2012,7 @@ inline void Uninstall() {
     const std::unique_lock pixel_lock(internal::pixel_shaders.mutex);
     internal::pixel_shaders.draw_signatures.clear();
     released_shaders.swap(internal::pixel_shaders.shaders);
+    internal::pixel_shaders.generation.fetch_add(1, std::memory_order_release);
   }
   const std::unique_lock lock(internal::state.mutex);
   internal::make_view.store(nullptr, std::memory_order_relaxed);
@@ -1990,6 +2041,7 @@ inline void OnDestroyDevice(ID3D11Device* device) {
       released_patched.push_back(std::move(shader.patched));
       shader.patched.clear();
     }
+    internal::pixel_shaders.generation.fetch_add(1, std::memory_order_release);
   }
 }
 

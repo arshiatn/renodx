@@ -16,7 +16,10 @@
 // 7. Case 4 with 70 draws a soldier (4,550 moving draws a frame: the motion constants' rings wrap 4 times a frame, a ring
 //    comes back after the frame's read-back or a new one is made), in-draw too, and in-draw with 140 (9,100: more slots a
 //    frame than MOTION_RINGS rings hold, a ring comes back in the same frame: the GPU done, or discarded at the cap);
-//    2 to MOTION_RINGS rings made. Cases 4-7: the game's b12 bound again after the frame (whichever ring was last).
+//    2 to MOTION_RINGS rings made. Cases 4-8: the game's b12 bound again after the frame (whichever ring was last).
+// 8. Case 4 in-draw, the game's pixel shader made again after frame 2 (ReShade's pipeline events): its handle destroyed
+//    and initialized again, then a new shader object with a new depth view; its patched version made once again (the last
+//    draw's look-up of it not kept), the motion as in case 4.
 // With RENODX_TW_MOTION_DUMP=<file> every read frame's motion targets go into <file> byte for byte (old vs new builds;
 // /DBEFORE_RINGS leaves out the rings' checks for the header before them).
 // Then the fix's cost timed: on the game's thread the texture write check and the pack hook, and a pack round's records on
@@ -500,8 +503,8 @@ static int TwoPacks(const char* name, Hook pack_hook, Pose a_moved, bool in_draw
 
 // Case 4: 65 pages in one pack at the frame's start, soldier k (instance 2 + k) at row 0 of page k with its own pose: frames
 // 2 and 3 all 0; frame 4 every pose 0.1 m further in x: each soldier that move's motion (its own bones found, no other's).
-// Case 5: every soldier drawn `repeats` times, one after another round the pages.
-static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = false) {
+// Case 5: every soldier drawn `repeats` times, one after another round the pages. `after_second_frame`: called then.
+static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = false, void (*after_second_frame)() = nullptr) {
   Restart(Hook::SAME_THREAD, in_draw);
   constexpr UINT PAGES = 65;
   constexpr float STEP = 0.1f;
@@ -531,6 +534,9 @@ static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = fal
     context->VSGetConstantBuffers(om::internal::MOTION_SLOT, 1, vs_motion_slot.GetAddressOf());
     context->PSGetConstantBuffers(om::internal::MOTION_SLOT, 1, ps_motion_slot.GetAddressOf());
     const auto motion = ReadMotion(soldiers);
+    if (frame == 2 && after_second_frame != nullptr) {
+      after_second_frame();
+    }
     if (frame == 1) continue;
     float worst = 0.f;
     size_t worst_soldier = 0;
@@ -551,6 +557,39 @@ static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = fal
     failures += (good ? 0 : 1);
   }
   return failures;
+}
+
+// Case 8: the game's pixel shader made again between frames, as ReShade's pipeline events tell object_motion: (a) its
+// handle destroyed and initialized again (the same shader object), (b) a new shader object, and a new depth view.
+static void InitGamePixelShader() {
+  renodx::utils::pipeline::PipelineInfo info = {.pipeline = {reinterpret_cast<uint64_t>(game_pixel_shader.Get())}};
+  const reshade::api::shader_desc desc = {.code = game_pixel_code.data(), .code_size = game_pixel_code.size()};
+  const reshade::api::pipeline_subobject subobject = {.type = reshade::api::pipeline_subobject_type::pixel_shader, .count = 1,
+                                                      .data = const_cast<reshade::api::shader_desc*>(&desc)};
+  om::internal::OnInitPipeline(&info, 1, &subobject);
+}
+
+static void SamePixelShaderAgain() {
+  om::internal::OnDestroyPipeline({.pipeline = {reinterpret_cast<uint64_t>(game_pixel_shader.Get())}});
+  InitGamePixelShader();
+}
+
+static void NewPixelShaderAndDepthView() {
+  om::internal::OnDestroyPipeline({.pipeline = {reinterpret_cast<uint64_t>(game_pixel_shader.Get())}});
+  game_pixel_shader.Reset();
+  device->CreatePixelShader(game_pixel_code.data(), game_pixel_code.size(), nullptr, game_pixel_shader.GetAddressOf());
+  InitGamePixelShader();
+  depth_view.Reset();
+  device->CreateDepthStencilView(depth.Get(), nullptr, depth_view.GetAddressOf());
+}
+
+// After case 8: the game's pixel shader as object_motion knows it, patched once since it was made again.
+static int PatchedAgain(const char* name) {
+  const auto& shaders = om::internal::pixel_shaders.shaders;
+  const auto game = shaders.find(reinterpret_cast<uint64_t>(game_pixel_shader.Get()));
+  const bool good = game != shaders.end() && game->second.patched.size() == 1;
+  std::printf("%s: patched again %d: %s\n", name, good, good ? "OK" : "WRONG");
+  return good ? 0 : 1;
 }
 
 int main(int argc, char** argv) {
@@ -728,6 +767,10 @@ int main(int argc, char** argv) {
   failures += SixtyFivePages("7c in-draw 65 pages x 140", 140, true);
   rings_after("7c in-draw 65 pages x 140");
   print_draws("in-draw unit motion draw, 4,550 and 9,100 a frame");
+  failures += SixtyFivePages("8a in-draw 65 pages, the game's pixel shader's handle made again", 1, true, &SamePixelShaderAgain);
+  failures += PatchedAgain("8a in-draw 65 pages, the game's pixel shader's handle made again");
+  failures += SixtyFivePages("8b in-draw 65 pages, a new game pixel shader and depth view", 1, true, &NewPixelShaderAndDepthView);
+  failures += PatchedAgain("8b in-draw 65 pages, a new game pixel shader and depth view");
   Restart(Hook::NONE);
   {
     const std::unique_lock lock(log_mutex);
