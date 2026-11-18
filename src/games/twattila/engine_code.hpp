@@ -1083,10 +1083,18 @@ constexpr std::array<uint8_t, 18> ENTRY_FETCH_STUB = {
 // game's (edx is 0 again, eax the list again; ebx (A), esi and ecx are written before they are read at the top, the flags are set by the push's capacity
 // compare before they are read). The comparisons are the game's unsigned ones (`cmp ebp, end; jb`: the remaining count is only taken when ebp is below the end).
 // A guard (once a run) shows that no store of the run can reach what the run doesn't load again: the vector object's three fields, the list's item array
-// field, the stack from the stub's own pushes (B's limit) to the loop's slots; otherwise the game's code runs the round. The premise (that of 4., the list
-// push): no other thread changes the vector or the list while the run is in it (they are the builder's own). Found by the whole loop's bytes (calls and the
-// jump out wild); no branch lands inside the site (the whole DLLs' relative branches and absolute pointers, Attila's and Thrones': only the loop's own
-// back-edge at +0; one rel8 hit at B's +5 is the operand byte of the `cmp ebp, ebx` before the loop). Rome II has neither (rva 0).
+// field, the stack from the stub's own pushes (B's limit) to the loop's slots; otherwise the game's code runs the round. The premise is the one of 11. (the
+// emitter loop), with a worse failure: no other thread changes the vector or the list while the run is in it (there a violation only feeds a prefetch, here it
+// would be a store through a hoisted pointer or size). It holds because they are the builder's own: both loops do non-atomic read-modify-writes on the same
+// builder (`add [edi + 0xac], ecx`, `mov [edi + 0xb0], eax`, `add [ebp], eax`, `inc [edi + 0x80]`), so a second concurrent writer would already corrupt the game;
+// both builders are reached only through vtable thunks (+0x1863340, +0x1863300, +0x1902B70, +0x1902B90; the owner thread was not traced). The stub is exact for a
+// single owner thread. Fault order matters only if something caught an access violation and went on (nothing does): the stub reads [edi + 0x7c] and
+// [edi + 0x84] before [list + 8] and the item array's slot (the game's order: list item array, slot, capacity, data), so a bad list or item array and an unreadable
+// header word together fault in another order; the hoisted [edi + 0x84] can fault one round's two scratch stores earlier (an unreadable data field next to a
+// readable size field); at a fault edx, ebx, eax and esi are not the game's, B's esp is 4 lower and 8 to 12 bytes below esp were written (the call, the pushes).
+// Found by the whole loop's bytes (calls and the jump out wild); no branch lands inside the site (the whole DLLs' relative branches and absolute pointers,
+// Attila's and Thrones': only the loop's own back-edge at +0; one rel8 hit at B's +5 is the operand byte of the `cmp ebp, ebx` before the loop). Rome II has
+// neither (rva 0).
 constexpr std::string_view ITEM_PUSH_A =
     "3B E9 0F 83 ?? ?? ?? ?? 0F 1F 44 00 00 8B 44 24 1C 8B 8F 80 00 00 00 8B 40 08 8B 1C A8 8B 47 7C 89 5C 24 30 8D 73 50 89 "
     "74 24 14 3B C8 73 12 8B 87 84 00 00 00 89 34 88 E9 CA 00 00 00 33 D2 EB 9F 85 C0 75 26 50 6A 01 C7 47 7C 01 00 00 00 E8 "
@@ -1859,9 +1867,11 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     std::memcpy(page + ITEM_PUSH_PAGE, ITEM_PUSH_STUB.data(), ITEM_PUSH_STUB_AT[0]);
     const std::array<std::pair<std::string_view, uint32_t>, 2> push_loops = {{{ITEM_PUSH_A, build.push_loop_a_rva}, {ITEM_PUSH_B, build.push_loop_b_rva}}};
     for (size_t loop = 0; loop < push_loops.size(); ++loop) {
-      if (uint8_t* match = (push_loops[loop].second != 0 ? find(push_loops[loop].first, push_loops[loop].second) : nullptr); match != nullptr) {
-        const std::span<const uint8_t> stub = std::span(ITEM_PUSH_STUB).subspan(ITEM_PUSH_STUB_AT[loop], ITEM_PUSH_STUB_AT[loop + 1] - ITEM_PUSH_STUB_AT[loop]);
-        place_stub(ITEM_PUSH_FIRST_SITE + loop, match + ITEM_PUSH_SITE, ITEM_PUSH_SIZE, stub, page + ITEM_PUSH_PAGE + ITEM_PUSH_STUB_AT[loop]);
+      const auto& [loop_bytes, loop_rva] = push_loops[loop];
+      if (uint8_t* match = (loop_rva != 0 ? find(loop_bytes, loop_rva) : nullptr); match != nullptr) {
+        place_stub(ITEM_PUSH_FIRST_SITE + loop, match + ITEM_PUSH_SITE, ITEM_PUSH_SIZE,
+                   std::span(ITEM_PUSH_STUB).subspan(ITEM_PUSH_STUB_AT[loop], ITEM_PUSH_STUB_AT[loop + 1] - ITEM_PUSH_STUB_AT[loop]),
+                   page + ITEM_PUSH_PAGE + ITEM_PUSH_STUB_AT[loop]);
       }
     }
     // The pending list sweep, found by the whole function's bytes; the stub goes on at the call after the site's two instructions.

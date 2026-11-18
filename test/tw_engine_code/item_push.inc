@@ -10,8 +10,8 @@
 //    clauses' mutants must each be accepted wrongly;
 // 19c. the whole loops, both copies of the DLL (the calls of the allocator, the free and the per-item callback pointed at fakes that log them, the exit at the
 //    loop's end hooked to the harness, entered at the head with a fake frame on the thread's stack): random lists (0 to 5,000 items, starts from 0 to the top of
-//    the address space through the wrap, ends at or below the start), vectors (capacity 0, 1 .., the size at capacity - 1 / capacity, a capacity of 0x100000 and
-//    more), growth in the middle, per-item calls that stop after some call, the vector's block and the item array ending at a no-access page (the same fault, the same
+//    the address space through the wrap, ends at or below the start), vectors (capacity 0, 1 .., the size at capacity - 1 / capacity / above it, a capacity of
+//    0x100000 and more, 0x4000000k with the block's first stored slot on a field in the overlap layouts), growth in the middle, per-item calls that stop after some call, the vector's block and the item array ending at a no-access page (the same fault, the same
 //    memory), and layouts in which the block, the vector's object or the list overlap each other or the frame (the guard sends those to the game's code): every
 //    register, the flags, esp, xmm0-7, the frame above esp, every byte of the world and the log of the fakes' calls equal (or both fault with the same memory);
 // 19d. CONTROLs: mutants of the stubs and of the guard, each must be seen;
@@ -225,11 +225,25 @@ PushSpec PushRandomSpec(Random* random) {
     default:
       capacity = 1 + random->Next() % 40;
       size = capacity - (random->Next() % 3 == 0 ? 0 : 1);
+      if (random->Next() % 4 == 0) size = capacity + 1 + random->Next() % 3;  // above the capacity: the stubs' `cmp ecx, esi; jae` leaves it to the game
       break;
   }
   if (spec.layout >= PUSH_BLOCK_ON_FIELDS && spec.layout <= PUSH_ARRAY_ON_BLOCK) {
     capacity = 2 + random->Next() % 11;
     size = random->Next() % capacity;
+    switch (random->Next() % 8) {
+      case 0:  // above the capacity
+        size = capacity + 1 + random->Next() % 3;
+        break;
+      case 1:  // a capacity whose 4 * capacity wraps to a few slots (the stubs' `cmp esi, 0x100000; jae`: the guard's extent would miss the stores, see PushSetup)
+        if (spec.layout == PUSH_BLOCK_ON_FIELDS || spec.layout == PUSH_BLOCK_ON_LIST) {
+          capacity = 0x40000000 + random->Next() % 4;
+          size = 4 + random->Next() % 40;
+        }
+        break;
+      default:
+        break;
+    }
   }
   spec.size = size;
   spec.capacity = capacity;
@@ -260,11 +274,15 @@ void PushSetup(ItemPushWorld* world, uint32_t frame_esp, uint8_t* edge, const Pu
   switch (spec.layout) {
     // Overlaps by whole slots (an item stored over a field's part would make a pointer of the neighbours' bytes: a wild store into the test's own memory),
     // from the block that ends where the fields start to the one that starts where they end.
+    // With a capacity of 0x4000000k the block's 4 * capacity wraps to 4k bytes, which a guard without the stubs' `cmp esi, 0x100000; jae` would take for the block's
+    // extent: the first slot a run stores (slot `size`) is put on a field, 4 or more slots past the wrapped extent.
     case PUSH_BLOCK_ON_FIELDS:
       data = edi + 0x7C + 4 * (spec.shift % (capacity + 4)) - 4 * capacity;
+      if (capacity >= 0x40000000) data = edi + 0x7C + 4 * (spec.shift % 3) - 4 * size;
       break;
     case PUSH_BLOCK_ON_LIST:
       data = list + 8 + 4 * (spec.shift % (capacity + 2)) - 4 * capacity;
+      if (capacity >= 0x40000000) data = list + 8 + 4 * (spec.shift % 3) - 4 * size;
       break;
     // On the frame: from esp up (what is below esp is dead: the game's own calls and any exception overwrite it).
     case PUSH_BLOCK_ON_FRAME:
@@ -660,6 +678,8 @@ struct PushMutant {
   std::array<uint8_t, 6> bytes;
   size_t size;
   uint64_t least;  // how many of the scenarios must show it
+  size_t second_at = 0;    // a second place nopped out with it (the mutants that need two tests gone; none: second_size 0)
+  size_t second_size = 0;
 };
 
 LONG WINAPI PushCrash(EXCEPTION_POINTERS* pointers) {
@@ -847,7 +867,10 @@ int RunPushTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool q
   if (!only_threads) {
     CHECK(VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READWRITE, &protection) != FALSE);
     const uint64_t scenarios = (quick ? 4000 : 12000);
-    const std::array<PushMutant, 28> mutants = {{
+    // The stubs' two `at least five items left` tests are the same condition twice (before and after the room limit), so each alone is equivalent to the stub
+    // (not a CONTROL); both gone must be seen. The size-below-capacity and the capacity-below-0x100000 jumps matter only for a size above the capacity and a
+    // capacity whose 4 * capacity wraps (PushRandomSpec).
+    const std::array<PushMutant, 34> mutants = {{
         {"A: no edx test", 0x7A, {0x90, 0x90}, 2, 5},
         {"A: no unsigned `ebp below the end` test", 0x82, {0x90, 0x90}, 2, 5},
         {"A: the guard's answer ignored", 0xA7, {0x90, 0x90}, 2, 5},
@@ -876,11 +899,20 @@ int RunPushTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool q
         {"B: jbe for jb at the run's bottom", 0x159, {0x76}, 1, 20},
         {"B: edx not zero again", 0x15E, {0x90, 0x90}, 2, 5},
         {"B: eax not the list again", 0x160, {0x90, 0x90, 0x90, 0x90}, 4, 5},
+        {"A: no size-below-capacity test (cmp ecx, esi; jae)", 0x90, {0x90, 0x90}, 2, 1},
+        {"A: no capacity-below-0x100000 test", 0x98, {0x90, 0x90}, 2, 1},
+        {"A: both `at least five items left` tests gone", 0x89, {0x90, 0x90}, 2, 5, 0xB6, 2},
+        {"B: no size-below-capacity test (cmp ecx, esi; jae)", 0x10A, {0x90, 0x90}, 2, 1},
+        {"B: no capacity-below-0x100000 test", 0x112, {0x90, 0x90}, 2, 1},
+        {"B: both `at least five items left` tests gone", 0x103, {0x90, 0x90}, 2, 5, 0x134, 2},
     }};
     for (const PushMutant& mutant : mutants) {
       std::array<uint8_t, 6> saved = {};
+      std::array<uint8_t, 2> saved_second = {};
       std::memcpy(saved.data(), stub_base + mutant.at, mutant.size);
+      std::memcpy(saved_second.data(), stub_base + mutant.second_at, mutant.second_size);
       std::memcpy(stub_base + mutant.at, mutant.bytes.data(), mutant.size);
+      std::memset(stub_base + mutant.second_at, 0x90, mutant.second_size);
       FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
       uint64_t seen = 0;
       uint64_t seen_faulted = 0;
@@ -894,6 +926,7 @@ int RunPushTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool q
         faulted_scenarios += faulted ? 1 : 0;
       }
       std::memcpy(stub_base + mutant.at, saved.data(), mutant.size);
+      std::memcpy(stub_base + mutant.second_at, saved_second.data(), mutant.second_size);
       FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
       std::printf("   CONTROL, %s: %llu of %llu scenarios seen as different (%llu of the %llu that fault)\n", mutant.what, seen, scenarios, seen_faulted, faulted_scenarios);
       CHECK(seen >= mutant.least);

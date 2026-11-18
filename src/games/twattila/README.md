@@ -35,12 +35,13 @@
 
 - Faster: **Faster Game CPU Code** (on by default) has two more routines on Attila and Thrones of Britannia: the loops of the two
   render list builders that push each item's address into a vector (the game keeps the vector's size in memory and reloads
-  the item array, the capacity, the data pointer and the end every item). With more than five items left, the size below
+  the item array, the capacity, the data pointer and the end every item). With at least five items left, the size below
   the capacity and no per-item call, the loop now runs all but the last item with the size in a register: the same loads
   of the item array, the same stores in the game's order; the game's own code does the last item, every growth, every
   per-item call and every case a guard cannot rule out (the vector's three fields, the item array's field or the loop's stack slots
   within reach of the run's stores). Every register that is live afterwards, the flags and every byte of memory are the
-  game's. Tested against the game's DLL in `test/tw_engine_code` part 19: the guard against an exact model (6 M tuples, 0
+  game's, for a vector and a list that one thread owns (both loops already do non-atomic read-modify-writes on the same
+  builder). Tested against the game's DLL in `test/tw_engine_code` part 19: the guard against an exact model (6 M tuples, 0
   wrongly accepted; each of its ten clauses removed is accepted wrongly 10 k to 700 k times in 1.5 M); the whole loops, 250,000
   random lists, vectors and registers (starts through the index's wrap, growth in the middle, per-item calls that stop, the
   vector's block and the item array ending at a no-access page, overlap layouts: every register, the flags, esp, xmm, the frame,
