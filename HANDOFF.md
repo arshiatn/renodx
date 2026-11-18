@@ -3227,6 +3227,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         suites PASS 3 DLLs, gated x86 exit 0. STARTED 06:43: cr3_ SONNET xHigh review of both (E3P-b had an Opus
         stop: ATN's rule) + ci4_ Opus High = E3P-c (emitter / definition prefetch, part 16) + E3P-d (site 8 distance
         sweep) on d6cef1f49 (engine_code.hpp one after another; review fixes folded in after).
+        ci4_ (Opus High) STOPPED ~06:5x by the safety classifier on E3P-c (its response withheld right after a
+        read-only capstone CFG walk of ecx / eax at 0x18933d3; nothing edited). The 3rd Opus implementer stop on
+        engine-code work tonight. Facts kept: night1118/ci4_notes.md (site 0x18933ce / Thrones 0x190872e, wildcards,
+        ecx dead, liveness from the parallel_for, 44-byte stub at 0xBC0, heapfix patches nothing there). Per ATN's rule:
+        ci4s_ Sonnet xHigh retry of E3P-c STARTED 06:51 on d6cef1f49 (a second stop ends E3P-c). E3P-d stays its own
+        item (Opus first) after E3P-c.
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
