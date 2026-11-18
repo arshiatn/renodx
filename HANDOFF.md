@@ -3428,7 +3428,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         63ef3490; update for anything installed since); Cnt2 starts LAST or in their own bench call, -Seconds 190.
         FINAL BENCH PLAN v2 DRAFTED 13:29 -> night1118/final_bench_plan_v2.md: 56 starts ~3.9 h (F1 + F1+ / F2 / F3, W1 SO
         on / W2 SO off + map trace / W1b HFx / W1c HFx2, P1 probe, H1-H4, D1 la16bdbg add-on OFF, H0 Cnt2 + hsC LAST at
-        -Seconds 190); A1 and H2's third round dropped to fit 4 h. STILL TO BUILD before it: HFx (hfa + la8hgl8) and HFx2 (la8b)
+        -Seconds 190); A1 and H2's third round dropped to fit 4 h. STILL TO BUILD before it: HFx (hfa + la8hgl8 + hs) and HFx2 (+ la8b + lf8)
         after hlr1s_ / hwr1s_ fixes (one Sonnet xHigh assembler), the probe build (ec4s_ step 4), final1118 + final1118_fp.
         hwr1s_ DONE -> heapfix/hwr1s_review.md: xw / lw / hfa SHIP AFTER FIXES (hfa rebuilt byte-identical a5af2f23; patches
         clean alone and in all 6 orders). X1 xw timing phases fail on a busy PC (adversary descheduled 18 ms, not the
@@ -3472,6 +3472,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         workers; 1024 only if W1 shows misses; 22.5 KB TLS on every thread = ~3.4 MB 32-bit commit); APT MERGE AFTER
         FIXES: M1 'run it again' loops forever over the cap / on CreateQuery failure, M2 keep MAX_COMMANDS 40k (biggest
         frame 7,153; >= 13 MB at 40k, never freed), device check, destroy compare. Sent to ia5_ 14:34.
+        hs1s_ DONE -> heapfix/hs1s_report.md: Cnt2 vary column (aa226276); HSORT hs e9b84ddb (OR / AND digit skip +
+        per-pass count table cut to the byte's range; merge and first-items prefetch DROPPED by measurement): warm
+        1.15-3.1x P at every size / key set, cold 1.17-2.1x; exact (eq 3,744 sorts, 7,104-list check, page-end lists,
+        4 CONTROLs); patch 12_proposal_sort_small_lists +20 / -8; hsC 25bca47a. Accept rule 64-255 >= 1.3x missed for
+        v5 (1.27) / v8 (1.20): ACCEPTED by the coordinator (never slower than P). ONE CLASSIFIER STOP: running the
+        harness exe from the note folder (outside testbin) was refused; hs1s_ stopped that path, re-ran under testbin.
+        Coordinator: sa2_sortcount.py reads the first 9 columns. HFx = HFa + HFb + hs. Review hsr1s_ (Sonnet xHigh)
+        STARTED 14:37.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
