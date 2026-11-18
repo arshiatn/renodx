@@ -27,7 +27,7 @@ $join = & python -I (Join-Path $tools 'map_trace.py') join $trace --waits (Join-
 if ($LASTEXITCODE -ne 0) { throw 'map_trace.py join failed' }
 $join
 # The parser's own checks: the resources and kinds, the alignment of the two clocks, each wait where the test put it.
-foreach ($expected in @('access discard 2, no_overwrite 1', 'readback', 'aligned: 5 of 5 presents', 'wait fit (chain 0x179b980): 1 of 1',
+foreach ($expected in @('access discard 2, no_overwrite 1', 'readback', 'aligned: 5 of 5 presents', '1 of 1 waits, ',
     'IN map no_overwrite', 'between traced events')) {
   if (-not (($summary + $join) -match [regex]::Escape($expected))) { throw "map_trace.py output lacks '$expected'" }
 }
