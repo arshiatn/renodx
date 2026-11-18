@@ -3524,6 +3524,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         1.2-1.9x, but 1-2 % of memory placements below 1.1x and a few below 1.0x (min 0.63 / 0.69); the note's shares were
         Constantinople, in the battle 4,096+ lists carry ~1/5 of the sort time at 1.13-1.3x; 12_ is an alternative to 1_
         (same sortfix.c); proof controls too loose; hsC regex. Note / proof / json fixes to hs1s_ 18:03 (no DLL change).
+        ec4s_ DONE (4.8 h) -> night1118/ec4s_report.md, branch ec4s_ on bc5aeb89c: 955c040c2 EF4c-1 (Faster Particle
+        Prefetch, Experimental off; cold entry 132.8 -> 76.1 ns), a5badaa09 EVEC-F (exact, in Faster Game CPU Code; 4,096
+        items -12 / -24 %), 3ed4b2c82 ES8c-x (Faster Sweep Prefetch, Experimental off; 27-54 % a list at 1-4 children; +
+        ProtectCode harness fix: part 18 CONTROL stubs stored into the DLL copies' code), 29f992176 probe build
+        (TWATTILA_ENGINE_PROBE only; probe add-on testbin\ec4s_probe_build32). Attila / Thrones / Rome II full suites PASS.
+        Reviews STARTED 18:08: er1s_ (EF4c-1 + EVEC-F), er2s_ (ES8c-x + probe), Sonnet xHigh; then one Opus xHigh end review
+        of ci8s_ + ec4s_ after cr8s_.
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
