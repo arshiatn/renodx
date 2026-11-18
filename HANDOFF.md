@@ -3319,6 +3319,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         11:17: frame-pointer add-on cpu1118b_fp (sym_build_head.ps1) + helper_cpu1118b (bridge v32) from the merged
         tip. Proposed to ATN: 3 WPR runs (day1 behind the units, stress zoomed onto the ground, Constantinople via the
         replay copy), heapfix Cnt (B4G + the sort counter: the HSG sizes in the same runs), ~25-30 min; waiting for go.
+        READY 11:22: fp add-on cpu1118b_fp cc1b9f99 (bdf9e74f1; the first build at 11:17 was SUSPECT: my HANDOFF commit
+        moved HEAD mid-build, rebuilt with no commits), helper testbin/sanity1118 3188f26f (bridge v32), variant
+        bench/variants/sanity1118.json (night1118's set + KeepRenderCoreFree=1, heapfix Cnt 1b8ee435), scene cpu, WPR
+        80,36, env HEAPFIX_SORTCOUNT_START=97 / LENGTH=36 (the counter's window = the WPR's, from DLL load); day1.replay
+        IS the Constantinople siege (aa107f05): 2 runs = day1 (A x7 + S x2 keys) + stress (Y:6); both -DryRun OK.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
