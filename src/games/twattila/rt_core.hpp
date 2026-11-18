@@ -33,6 +33,7 @@
 #include <utility>
 #include <vector>
 
+#include <gtl/phmap.hpp>
 #include <include/reshade.hpp>
 
 #include <embed/shaders.h>
@@ -808,7 +809,8 @@ struct Runtime {
   // This frame's new captures (consecutive dynamic draws joined) and their draws' keys, the scene meshes it drew; the
   // keys in the scene (the frame they were last drawn).
   std::vector<dlaa_bridge::RtCapture> captures;
-  std::unordered_set<uint64_t> captured_keys;
+  // Flat: its clear keeps its room, so a frame's inserts allocate nothing once a frame as large was seen.
+  gtl::flat_hash_set<uint64_t> captured_keys;
   // Host::mask_uv_scales: this frame's scaled masks by first captured vertex (first vertex, vertices, the register's components for
   // u and v), their registers in DeviceObjects::uv_scales in this order.
   std::vector<std::array<uint32_t, 4>> uv_scales;
@@ -1037,6 +1039,15 @@ struct Runtime {
   std::array<uint64_t, dlaa_bridge::RT_ATLAS_SLICES> slice_used = {};
   uint32_t atlas_generation = 0;
   DeviceObjects objects;
+  // The depth-stencil view Capture last tested this frame (held to the frame's end, any device's: no other view takes its
+  // address) and its texture's description, read once a view (a view's texture never changes); `texture_2d` false: no 2D
+  // texture.
+  struct DepthSeen {
+    ComPtr<ID3D11DepthStencilView> view;
+    D3D11_TEXTURE2D_DESC desc = {};
+    bool texture_2d = false;
+  };
+  DepthSeen depth_seen;
   uint64_t last_key = 0;  // the last Capture's scene key (CaptureReplayed's answer)
 };
 
@@ -1094,6 +1105,9 @@ static std::atomic_uint64_t light_frame = 0;
 static std::atomic_bool index_buffers_held = false;
 // Batched unit draws wait for their flush (runtime.batch_draws not empty): else FlushUnitCaptures and OnBatchTextureWritten return.
 static std::atomic_bool batch_pending = false;
+// rt_scene::AmbientReplaced's answer (AmbientReplacedNow), stored under runtime.mutex by every writer of what it reads
+// (PublishAmbientReplaced): read without the lock (its lock, once a frame at present, was contended).
+static std::atomic_bool ambient_replaced = false;
 
 inline float RangeScale() {
   return (frame_history::campaign_frames.load(std::memory_order_relaxed) != 0 ? host.campaign_metre : 1.f);
@@ -1102,6 +1116,18 @@ inline float RangeScale() {
 inline bool Enabled() {
   return runtime.settings.sun_shadows || runtime.settings.ambient_occlusion || runtime.settings.light_bounce || runtime.settings.reflections
          || runtime.settings.specular_occlusion || runtime.settings.local_lights || runtime.settings.fog_shadows;
+}
+
+// The rows' ray-traced AO or Path-Traced Ambient, and the rays traced lately. Under the lock.
+inline bool AmbientReplacedNow() {
+  return (runtime.settings.ambient_occlusion || runtime.settings.path_ambient) && runtime.traced_frame != UINT64_MAX
+         && runtime.traced_frame + AMBIENT_REPLACED_FRAMES >= runtime.frame;
+}
+
+// ambient_replaced from what AmbientReplacedNow reads, under the lock after each write of it: the settings and the frame
+// (Update), traced_frame (Trace); nothing else writes or resets them.
+inline void PublishAmbientReplaced() {
+  ambient_replaced.store(AmbientReplacedNow(), std::memory_order_release);
 }
 
 // Fog shadows the only ray-traced effect, with Settings::cheap_fog_alone.
@@ -2055,8 +2081,14 @@ void Capture(Context& command, const SceneShader& shader) {
   UINT texels = vertex_count;
   UINT triangles = vertex_count / 3;
   UINT clusters = (triangles + dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES - 1) / dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES;
+  // One section from here to the end. The view's tests below call the host's main_view and camera / capture_camera under it:
+  // those take only locks never held while runtime.mutex is taken (as host.camera and host.render_size under Trace's), and
+  // the D3D11 calls between are Gets and Releases, no draw (a draw fires D3D11's deferred destroy_pipeline). A final Release
+  // here (the held depth view replaced after the game let it go) fires destroy_resource(_view) under runtime.mutex: no
+  // destroy handler may take runtime.mutex.
+  const std::unique_lock lock(runtime.mutex);
+  // Not a lock's scope (the lock above holds on): the scene state's names stay in it.
   {
-    const std::unique_lock lock(runtime.mutex);
     if (!Enabled() || !dlaa_bridge::bridge.ray_tracing) return;
     if (cut_out_texture_asked) {
       cut_out = runtime.cut_out_textures.contains(read_mask_resource());
@@ -2174,12 +2206,24 @@ void Capture(Context& command, const SceneShader& shader) {
       if (!camera_buffer || !host.camera(camera_buffer.Get(), &camera)) return;
     }
   }
-  ComPtr<ID3D11Resource> depth_resource;
-  depth_view->GetResource(depth_resource.GetAddressOf());
-  ComPtr<ID3D11Texture2D> depth_texture;
-  D3D11_TEXTURE2D_DESC depth_desc = {};
-  if (FAILED(depth_resource.As(&depth_texture))) return;
-  depth_texture->GetDesc(&depth_desc);
+  auto& depth_seen = runtime.depth_seen;
+  if (const bool seen = depth_seen.view == depth_view; !seen || StateCheck()) {
+    ComPtr<ID3D11Resource> depth_resource;
+    depth_view->GetResource(depth_resource.GetAddressOf());
+    ComPtr<ID3D11Texture2D> depth_texture;
+    D3D11_TEXTURE2D_DESC read_desc = {};
+    const bool texture_2d = SUCCEEDED(depth_resource.As(&depth_texture));
+    if (texture_2d) {
+      depth_texture->GetDesc(&read_desc);
+    }
+    if (!seen) {
+      depth_seen = {.view = depth_view, .desc = read_desc, .texture_2d = texture_2d};
+    } else if (texture_2d != depth_seen.texture_2d || std::memcmp(&read_desc, &depth_seen.desc, sizeof(read_desc)) != 0) {
+      StateMismatch("the depth's description read once", shader.hash);
+    }
+  }
+  if (!depth_seen.texture_2d) return;
+  const D3D11_TEXTURE2D_DESC depth_desc = depth_seen.desc;
   if (cascade_draw) {
     const bool cascades = (host.cascade_target != nullptr) ? host.cascade_target(depth_desc)
                                                            : (depth_desc.ArraySize == 4 && depth_desc.Width == depth_desc.Height);
@@ -2190,7 +2234,6 @@ void Capture(Context& command, const SceneShader& shader) {
     if (depth_desc.SampleDesc.Count != 1 || depth_desc.Width != main_size[0] || depth_desc.Height != main_size[1]) return;
   }
 
-  const std::unique_lock lock(runtime.mutex);
   if (cascade_draw) {
     if (runtime.main_view_frame != runtime.frame && !(host.cascade_last_view && runtime.main_view_frame + 1 == runtime.frame)) return;
   } else {
@@ -3662,6 +3705,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     }
     for (const uint64_t set_key : runtime.new_sets) runtime.cluster_meshes.at(set_key).sent = true;
     runtime.traced_frame = runtime.frame;
+    PublishAmbientReplaced();
     runtime.traced_size = render_size;
     runtime.traced_view_projection = camera.view_projection;
     runtime.camera_moving = camera.position != runtime.traced_position;
@@ -4315,6 +4359,9 @@ inline void Update(const Settings& settings) {
   const uint64_t tick = GetTickCount64();
   if (runtime.traced_frame == runtime.frame) runtime.traced_tick = tick;
   ++runtime.frame;
+  internal::PublishAmbientReplaced();
+  // Capture's depth-stencil view read again next frame: none of the game's held past its frame (a resize's old depth goes).
+  runtime.depth_seen = {};
   internal::light_frame.store((runtime.frame << 1) | uint64_t{settings.local_lights}, std::memory_order_relaxed);
   // The helper started its ray tracing again (a GPU fault or hang removed its device, or a request failed) or released its
   // scene after 10 s without a trace (the rays off, a menu): every mesh captured again. Only the first is a warning.
@@ -4957,6 +5004,8 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   internal::destroyed_devices.fetch_add(1, std::memory_order_relaxed);
   const std::unique_lock lock(internal::runtime.mutex);
   if (internal::runtime.particle_stream.device.Get() == native) internal::runtime.particle_stream = {};
+  // Whichever device's view it is (Capture tests the depth before it prepares a device).
+  internal::runtime.depth_seen = {};
   if (internal::runtime.objects.device.Get() == native) {
     internal::runtime.objects = {};
     internal::runtime.batch_draws.clear();
