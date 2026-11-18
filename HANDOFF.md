@@ -3449,6 +3449,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         ~20 moved, ~130 not the game's). Follow-ups sent to ia1_ 13:56: L3 no allocation in Update, N1 our worker counts as
         the game's, N2 stand down when 0 move, L1 / L2 tests, tooltip break, README. Bench: W2's core_cswitch decides an
         nvwgf2um follow-up (102 driver threads may now land on the render core).
+        hc1s_ round 2 DONE -> heapfix/hc1s_report.md 'Round 2': B1 regex + plan-time window rule (minimum -Seconds 152;
+        190 kept), B2 / B3, bench checks path DLLs vs sha256.txt; hfp3 H1-H7 (move-aside, hfp3_ok.txt, temp + Move under
+        the mutex, stale-lock StartTime) with 40+ sandbox cases. Cnt2 rebuilt 13:35 by another run (aa226276, sortfix.c
+        13:27: expected hs1s_'s digit column; confirm in its report). Re-check hcr1s_ STARTED 14:04.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
