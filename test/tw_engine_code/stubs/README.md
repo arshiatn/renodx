@@ -1,6 +1,6 @@
 # Stub sources
 
-The byte arrays in `src/games/twattila/engine_code.hpp` (`JOB_STUB`, `HALF_ROWS_STUB`, `ChildSumStub(K)`, `Float4ReloadStub<at>()` / `FLOAT4_RELOAD_STUB`, `Float4ReloadFarStub(at)`, `ParticlePrefetchStub(K)`, `EmitterPrefetchStub(K)`) are the `.text` of these
+The byte arrays in `src/games/twattila/engine_code.hpp` (`JOB_STUB`, `HALF_ROWS_STUB`, `ChildSumStub<K>()`, `Float4ReloadStub<AT>()` / `FLOAT4_RELOAD_STUB`, `Float4ReloadFarStub(at)`, `ParticlePrefetchStub(K)`, `EmitterPrefetchStub(K)`, `ENTRY_FETCH_STUB`) are the `.text` of these
 files, with the placeholders the header's `Prepare` replaces (`0x5A5A5Axx` sentinels, see `STUB_*_SENTINEL`). Rebuild one with
 
 ```
@@ -21,5 +21,14 @@ and compare the bytes with the array (the arrays carry the disassembly as commen
   `[esp + 0x90]` (the four disp32 follow `at`).
 - `particle_prefetch.s` - the particle update loop's prefetch of the particle K places ahead (Faster Effect Prefetch); the file is written for the
   K in `PARTICLE_PREFETCH_AHEAD` (the two disp8 bytes in `lea esi, [ebx + K]` and `[esi + ebx*4 + 4K]` follow it).
-- `emitter_prefetch.s` - the emitter update loop's prefetch of the emitter K places after the next one (Faster Effect Prefetch); written for the K in
-  `EMITTER_PREFETCH_AHEAD` (the two disp8 bytes in `lea ecx, [esi + K]` and `[ecx + esi*8 + 8K]` follow it).
+- `emitter_prefetch.s` - the emitter update loop's two prefetch stages on the slots K and K + 1 after the next emitter's (Faster Emitter Prefetch); written
+  for the K in `EMITTER_PREFETCH_AHEAD` (the disp8 bytes in `lea ecx, [esi + K + 1]`, `[edx + esi*8 + 8K]` and `[edx + esi*8 + 8K + 8]` follow it).
+- `entry_prefetch.s` - the particle writer's table entry prefetch, between the game's `mov [esp + 0x7c], eax` and `test eax, eax` (Faster Particle Prefetch).
+- `evec_push.s` - the render list builders' two item push loops (Faster Game CPU Code): the guard and the stubs A (`item + 0x50`) and B (`item + 0x38`) in one file (the
+  stubs call the guard by a relative call, so the file's layout is the page's); written for `ITEM_PUSH_MIN_RUN` (the `cmp reg, MIN_RUN + 1` immediates).
+- `sweep_prefetch.s` - the pending list sweep's three prefetch stages on the entries A, B and C places below the index (Faster Sweep Prefetch); written for the
+  (A, B, C) of `SWEEP_STUB` (the disp8 bytes in the three `lea edx, [ebx - d]`); `SweepPrefetchStub(a, b, c)` makes the others.
+- `probes.s` - the probe build's seven histogram stubs (`PROBE_*` in `src/games/twattila/engine_probe.hpp`, compiled only with `TWATTILA_ENGINE_PROBE`; no row, no
+  release): item push entries A and B, the ready check, the pending list sweep, the particle loop, the child sum loop and the particle writer's entry; each keeps every
+  register and the flags and ends with the jump that the page gives to the site's production stub. The `F_*` sentinels are the indices of `probe::Counters` in order
+  (the bytes in the header are the assembled file's, rebuilt as above). Build and run: `run.ps1 -Probe` (part 21, then parts 19 and 20 through the probes).

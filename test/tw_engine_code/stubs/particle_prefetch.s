@@ -9,7 +9,7 @@
 .globl stub
 stub:
   lea esi, [ebx + 2]                 // the particle K = 2 after the next one
-  cmp esi, dword ptr [edi + 0x64]    // inside the count as it is now (no wrap: lea wraps like the load's address does)
+  cmp esi, dword ptr [edi + 0x64]    // inside the count as it is now (an index past 2^32 wraps in the lea as in the load: still inside)
   jae skip
   mov esi, dword ptr [edi + 0x68]    // the array as it is now
   mov esi, dword ptr [esi + ebx*4 + 8]

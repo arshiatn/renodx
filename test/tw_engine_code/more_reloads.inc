@@ -175,12 +175,12 @@ int RunSoldierRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
       on = !on;
       int tries = 0;
       do {
-        twattila::engine_code::Update(on, twattila::engine_code::Game::ATTILA, false, false, true);
+        twattila::engine_code::Update(on, twattila::engine_code::Game::ATTILA, false, false, true, true);
         ++tries;
       } while ((((ec::written >> ROWS[0]) & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
       busy += tries > 1 ? 1 : 0;
     }
-    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
     stop = true;
     for (auto& thread : threads) thread.join();
     std::printf("   200 switches while 4 threads made %llu runs of both ways in each copy: %llu wrong (%d writes waited for a thread inside a site)\n", runs.load(), bad.load(), busy);
@@ -392,12 +392,12 @@ int RunMatrixProductTests(const TestBuild& build, uint8_t* game, uint8_t* patche
       on = !on;
       int tries = 0;
       do {
-        twattila::engine_code::Update(on, twattila::engine_code::Game::ATTILA, false, false, true);
+        twattila::engine_code::Update(on, twattila::engine_code::Game::ATTILA, false, false, true, true);
         ++tries;
       } while ((((ec::written >> ROWS[0]) & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
       busy += tries > 1 ? 1 : 0;
     }
-    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
     stop = true;
     for (auto& thread : threads) thread.join();
     std::printf("   200 switches while 4 threads made %llu calls of each copy on their own matrices: %llu wrong (%d writes waited for a thread inside a site)\n", calls.load(), bad.load(), busy);

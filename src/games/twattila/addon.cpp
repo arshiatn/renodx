@@ -1326,12 +1326,19 @@ float engine_code_row = 1.f;
 float render_lists_row = 1.f;
 // Faster Job Wake-Ups (Experimental, off; graphics_page-style row below): engine_code.hpp's job system sites.
 float job_wakeups_row = 0.f;
-// Faster Effect Prefetch (Experimental, off): engine_code.hpp's effect tree child sum site.
+// Faster Effect Prefetch (Experimental, off): engine_code.hpp's effect tree child sum site and particle update loop site.
 float effect_prefetch_row = 0.f;
 // Keep Render Core Free (Experimental, off): cpu_sets.hpp.
 float keep_render_core_row = 0.f;
 // Where the game's own threads start (the job workers in the engine's DLL); the rest is the driver's, audio's, etc.
 constexpr std::array<const wchar_t*, 2> GAME_THREAD_MODULES = {nullptr, L"empire.retail.dll"};
+// Faster Emitter Prefetch (Experimental, off): engine_code.hpp's emitter update loop site, a row of its own so that a bench
+// can decide it apart from Faster Effect Prefetch.
+float emitter_prefetch_row = 0.f;
+// Faster Particle Prefetch (Experimental, off): engine_code.hpp's particle writer table entry site, a row of its own.
+float particle_prefetch_row = 0.f;
+// Faster Sweep Prefetch (Experimental, off): engine_code.hpp's pending list sweep site, a row of its own.
+float sweep_prefetch_row = 0.f;
 
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1575,7 +1582,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
-                                job_wakeups_row != 0.f, effect_prefetch_row != 0.f);
+                                job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,
+                                particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
   if (!shadow_size_locked) twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::graphics_hooks::Update(
@@ -1686,6 +1694,12 @@ void ConfigureAddon() {
   talesofarise::pixel_trace::file_prefix = "attila";
   graphics_status = tw::engine_tweaks::StatusLine();
   reshade::get_config_value(nullptr, "Attila", "DisableGraphics", shadow_size_locked);
+#if defined(TWATTILA_ENGINE_PROBE)
+  // The probe build (engine_probe.hpp): the histograms go to the log this many presents after the first site was written (ReShade.ini [Total War] EngineProbePresents; none: never).
+  if (int presents = 0; reshade::get_config_value(nullptr, "Total War", "EngineProbePresents", presents) && presents > 0) {
+    twattila::engine_code::ProbeArm(static_cast<uint32_t>(presents));
+  }
+#endif
   ui_mod_compatibility = shadow_size_locked ? 1 : 0;
   // Every Graphics (Experimental) setting at its default: the presets change some, the rest goes back (none left over).
   // Not the ambient occlusion or the Light Bounce (their own sections); the tests too.
@@ -1975,7 +1989,7 @@ void ConfigureAddon() {
           .default_value = 0.f,
           .label = "Faster Effect Prefetch (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "The game's effect update asks the memory for an effect object two steps ahead while it works on the current one.\n"
+          .tooltip = "The game's effect update asks the memory for the sub-effects and particles coming up next while it works on the current one.\n"
                      "May lower the CPU waiting in big battles. Same results.",
           .labels = {"Off", "On"},
       },
@@ -1988,6 +2002,39 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           .tooltip = "Keeps the second half of the render thread's CPU core free for it.\n"
                      "Only the game's own threads move, inside the CPU cores Windows or your own rules give the game. Same results.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FasterEmitterPrefetch",
+          .binding = &emitter_prefetch_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Faster Emitter Prefetch (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The game's effect update asks the memory for the emitters coming up next, and for what they read first, while it\n"
+                     "works on the current one. May lower the CPU waiting in big battles. Same results.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FasterParticlePrefetch",
+          .binding = &particle_prefetch_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Faster Particle Prefetch (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The game's particle drawing asks the memory for the place it will write each particle's vertices to, as soon\n"
+                     "as it knows which one. May lower the CPU waiting in big battles. Same results.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FasterSweepPrefetch",
+          .binding = &sweep_prefetch_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Faster Sweep Prefetch (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The game's check of its pending lists asks the memory for the next lists, and what the check reads first in\n"
+                     "them, while it works on the current one. May lower the CPU waiting in big battles. Same results.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

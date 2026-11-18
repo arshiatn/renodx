@@ -47,14 +47,83 @@
   CPUs a, b ..., X of the game's threads ..., W not the game's" (or "stands down: <why>"); no XAudio2 exception in any
   start with the row on; one WPR showing the render core's sibling idle.
 
-## Dev, Faster Effect Prefetch (2026-11-17; offline only, not stamped, not installed, not run in game)
+## Dev, engine probe build (2026-11-18; a private build for the bench, never a release, no row, no setting)
+
+- A build of the add-on compiled with `TWATTILA_ENGINE_PROBE` (`engine_probe.hpp`, included from the end of `engine_code.hpp`; no CMake target sets it: in a
+  folder of its own, `$env:CL = '/DTWATTILA_ENGINE_PROBE'; cmake --preset clang-x86 -B <folder>; cmake --build <folder> --config Release --target
+  renodx-twattila.addon32`, built that way 2026-11-18) puts a probe stub in front of seven sites' stubs (the two item push loops, the ready check, the pending list sweep, the particle update loop, the child sum
+  loop and the particle writer's table entry): the site's jump goes to the probe, which keeps every register and the flags, counts a histogram with locked
+  increments (items left in a push run, children of a ready check and its first child not ready, the pending list's length at a sweep, particles of an
+  emitter, children of an effect, the table entry's step from the last one) and goes on to the production stub, which is untouched (nothing counts in the
+  release). The histograms go to ReShade.log once, N presents after the first site was written: `EngineProbePresents=N` under `[Total War]` in ReShade.ini
+  (none: never), or at the first present at which a counter has reached 2^31 (the counters are 32 bits; a warning says so: pick N small enough, the child
+  sum's and the particle loop's bottoms are hundreds of thousands a frame); the sites' jump bytes are logged at each change. The ready check's probe reads a
+  list's children only when its flag is set, as the game's check does. The probe code page is read-execute. Checked in `test/tw_engine_code` part 21
+  (`run.ps1 -Probe [-Quick]`): each probe alone on random registers and flags (registers, flags, esp, frame and every counter as the model says; the ready
+  check also on clear-flag lists with an unreadable children array, and without its flag test as a CONTROL), then the probed sites' own parts (19, 20, 12, 15,
+  18) quick through the probes with every result the game's, and the dump armed for 3 presents (once, at the third) and the early dump at 2^31. Source
+  `test/tw_engine_code/stubs/probes.s`.
+
+## Dev, Faster Sweep Prefetch (2026-11-18; offline only, not stamped, not installed, not run in game)
+
+- New: **Faster Sweep Prefetch (Experimental, off)**, under Graphics (Experimental), the row after Faster Particle Prefetch, a row of its own: the
+  render thread's per-frame sweep over the pending lists (Attila +0x1893290, Thrones of Britannia +0x19085f0; Rome II has none) asks the
+  ready check about each list from the last to the first, and the check's reads of one list are a chain of cache misses (the list object, its
+  children array, the first child) that nothing overlaps with the next list's. Now, at the top of each round, the game asks the memory for the
+  list object of the list 8 places ahead, the children array of the list 4 ahead and the first child's ready byte of the list 2 ahead.
+  The only real reads are what the game's own check reads of that list later in the same sweep (each entry slot inside the vector as it is
+  right then, the list's count and array pointer, the array's first pointer behind a count test); the child is only prefetched, nothing is
+  stored, and every register but three that the game's code leaves dead there stays; every result the game's. Tested against the game's
+  DLL in `test/tw_engine_code` part 20: 250,000 well-formed and 250,000 corrupt sweeps (vector, list objects and children arrays at page
+  ends, the ready check's stub or the game's own) with every register, the flags, esp, every byte and the check's call log equal or both
+  copies faulting with the same memory; 10 CONTROLs (each clause removed) all seen; 200 on / off switches under 4 threads (3.1 M sweeps, 0
+  wrong), a parked thread at each byte of the site. Harness (4,000 lists over 512 MB flushed before each sweep, medians of 9, a PC loaded to
+  100 % by other jobs): lists of 1 to 4 children 86.6 ns a list with the game's check, 34.2 with the check's stub (Faster Game CPU
+  Code), 24.9 with the stub and this row (-27 % on top of the stub); lists of 5 to 8 children 187.6 / 52.7 / 35.6 (-32 %). Not measured in game.
+  Test (ATN): stress with the row on against off; ReShade.log "Faster Sweep Prefetch: on"; keep it off if there is no gain.
+
+## Dev, Faster Game CPU Code: render list item pushes (2026-11-18; offline only, not stamped, not installed, not run in game)
+
+- Faster: **Faster Game CPU Code** (on by default) has two more routines on Attila and Thrones of Britannia: the loops of the two
+  render list builders that push each item's address into a vector (the game keeps the vector's size in memory and reloads
+  the item array, the capacity, the data pointer and the end every item). With at least five items left, the size below
+  the capacity and no per-item call, the loop now runs all but the last item with the size in a register: the same loads
+  of the item array, the same stores in the game's order; the game's own code does the last item, every growth, every
+  per-item call and every case a guard cannot rule out (the vector's three fields, the item array's field or the loop's stack slots
+  within reach of the run's stores). Every register that is live afterwards, the flags and every byte of memory are the
+  game's, for a vector and a list that one thread owns (both loops already do non-atomic read-modify-writes on the same
+  builder). Tested against the game's DLL in `test/tw_engine_code` part 19: the guard against an exact model (6 M tuples, 0
+  wrongly accepted; each of its ten clauses removed is accepted wrongly 10 k to 700 k times in 1.5 M); the whole loops, 250,000
+  random lists, vectors and registers (starts through the index's wrap, growth in the middle, per-item calls that stop, the
+  vector's block and the item array ending at a no-access page, overlap layouts: every register, the flags, esp, xmm, the frame,
+  every byte and the allocator's call log equal, or both copies fault with the same memory); 28 CONTROLs each seen; 200 on / off
+  switches under 4 threads (1.6 M scenarios, 0 wrong), a parked thread at each byte. Harness (hot caches, medians of 9 rounds,
+  a PC loaded to 100 % by other jobs): for 4,096 items loop A 3831 -> 3352 ns (-12 %), loop B 3286 -> 2491 (-24 %); for 64 items
+  A 55 -> 55, B 55 -> 37; lists of up to 8 items cost the same or 1 to 3 ns more (the guard). Estimated: 0.05-0.15 ms of the
+  render thread in a big battle (the loops were 0.5-0.7 ms in the recordings; the doubling copy and its page faults stay the
+  game's).
+
+## Dev, Faster Effect Prefetch, Faster Emitter Prefetch and Faster Particle Prefetch (2026-11-17, 11-18; offline only, not stamped, not installed, not run in game)
+
+- New: **Faster Particle Prefetch (Experimental, off)**, the row after Faster Emitter Prefetch, a row of its own: the game's particle
+  writer finds the 24-byte table entry it writes each particle's vertices through about a thousand instructions before it first reads
+  it; now it asks the memory for the entry the moment it has the address. Only a prefetch (of any address: it never faults), the
+  game's own store and test run as before; every result the game's. Harness (the whole function on a fake graph, the entries over
+  256 MB): with cold entries about 35 ns a call less, with hot or sequential entries no change. Test (ATN): the same as the
+  other two rows; ReShade.log "Faster Particle Prefetch: on"; keep it off if there is no gain.
 
 - New: **Faster Effect Prefetch (Experimental, off)**, under Graphics (Experimental): while the game sums its effect tree
-  (the children of an effect, one call each), it asks the memory for the child two steps ahead. Only a prefetch of an
-  address inside the list as it is right then: no fault, nothing else changes, every result the game's. Gain only where the
-  per-child call has real work (harness, cold children: 45.7 -> 33.3 ns with 40 cycles of work; with a plain getter no gain,
-  a few % slower); the game's own getters are not known yet, so this may do nothing. Test (ATN): stress with the row on
-  against off; ReShade.log "Faster Effect Prefetch: on"; keep it off if there is no gain.
+  (the children of an effect, one call each) or updates an emitter's particles, it asks the memory for the child or the
+  particle two steps ahead. Only a prefetch of an address inside the list as it is right then: no fault, nothing else
+  changes, every result the game's. Gain only where the per-child call has real work (harness, cold children: 45.7 -> 33.3 ns
+  with 40 cycles of work; with a plain getter no gain, a few % slower); the game's own getters are not known yet, so this may
+  do nothing. Test (ATN): stress with the row on against off; ReShade.log "Faster Effect Prefetch: on"; keep it off if there
+  is no gain.
+- New: **Faster Emitter Prefetch (Experimental, off)**, the row after it, a row of its own so that the bench can decide it
+  apart: while the game updates an effect's emitters one after the other, it asks the memory for the next two emitters (their
+  three cache lines) and for the definition of the next one. The only real read is that definition's address inside an emitter
+  that the effect's list holds right then (checked against the list's size at that moment); every result the game's. Test
+  (ATN): the same, ReShade.log "Faster Emitter Prefetch: on"; keep it off if there is no gain.
 
 ## Dev, Faster Game CPU Code: sprite row builder (2026-11-17; offline only, not stamped, not installed, not run in game)
 

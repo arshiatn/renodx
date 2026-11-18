@@ -778,19 +778,19 @@ int RunAdv(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32_t tex
     const DWORD benign = context.Eip;
     bool ok = true;
     std::string line;
-    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true);  // the state the loop below switches off and on
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true, true);  // the state the loop below switches off and on
     std::printf("   E7b starts with written %X of found %X\n", ec::written, ec::found);
     for (int k = 0; k <= 5; ++k) {
       context.Eip = Address(site) + k;
       CHECK(SetThreadContext(thread, &context) != FALSE);
       const uint32_t before = ec::written;
-      twattila::engine_code::Update(false, twattila::engine_code::Game::ATTILA, true, false, true);
+      twattila::engine_code::Update(false, twattila::engine_code::Game::ATTILA, true, false, true, true);
       const bool refused = (ec::written == before);
       line += std::format(" k={}:{}", k, refused ? "refused" : "written");
       if (refused != (k >= 1 && k <= 4)) ok = false;
       context.Eip = benign;
       CHECK(SetThreadContext(thread, &context) != FALSE);
-      twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true);
+      twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true, true);
       if (ec::written != before) ok = false;
     }
     TerminateThread(thread, 0);
@@ -828,7 +828,7 @@ int RunAdv(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32_t tex
       on = !on;
       int tries = 0;
       do {
-        twattila::engine_code::Update(on, twattila::engine_code::Game::ATTILA, true, false, true);
+        twattila::engine_code::Update(on, twattila::engine_code::Game::ATTILA, true, false, true, true);
         ++tries;
       } while (((ec::written >> 8 & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
       busy += tries > 1 ? 1 : 0;
@@ -913,7 +913,7 @@ int RunAdv(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32_t tex
         ec::written |= 1u << 8;
       }
     }
-    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true);
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true, true);
     loop_stop = 1;
     for (auto& thread : threads) thread.join();
     std::printf("E7d: no crash\n");

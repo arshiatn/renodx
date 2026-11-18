@@ -244,7 +244,7 @@ const char* ReloadDiff(const ReloadWorld& a, const ReloadWorld& b, uint32_t copy
   for (uint32_t at = FN_STACK_E - 0x400; at < FN_STACK_E + 0x20; at += 4) {
     const uint32_t x = Read32(a.call.stack + at);
     const uint32_t y = Read32(b.call.stack + at);
-    if (x != y && y - x != copy_distance) return "stack";
+    if (x != y && y - x != copy_distance && !ProbeDeadStack(at, FN_STACK_E - 0xE0)) return "stack";
   }
   return "";
 }
@@ -508,8 +508,10 @@ int ReloadAlone(size_t index, const uint8_t* game_bytes, size_t load_size, size_
 }
 
 // A parked thread whose saved Eip is each byte of each site of `mask` (from the byte before to +`last_offset`), the rows switched each time: a site
-// changes only with Eip at its first byte or outside its jump's 5 bytes (any write waits while Eip is inside one). The rows end on.
-int ParkedAtSites(uint32_t mask, int last_offset) {
+// changes only with Eip at its first byte or outside its jump's 5 bytes (any write waits while Eip is inside one). The rows end on. `entry_row`: the sites
+// are the particle writer's entry prefetch's, which its own row (Update's seventh argument) switches, not Faster Game CPU Code; `sweep_row`: the pending list
+// sweep's (the eighth argument).
+int ParkedAtSites(uint32_t mask, int last_offset, bool entry_row = false, bool sweep_row = false) {
   namespace ec = twattila::engine_code::internal;
   std::atomic<bool> stop = false;
   std::thread parked([&] {
@@ -531,16 +533,16 @@ int ParkedAtSites(uint32_t mask, int last_offset) {
       moved.Eip = Address(site + offset);
       CHECK(SetThreadContext(thread, &moved) != FALSE);
       const uint32_t before = ec::written;
-      twattila::engine_code::Update(!on, twattila::engine_code::Game::ATTILA, false, false, true);
+      twattila::engine_code::Update(entry_row || sweep_row || !on, twattila::engine_code::Game::ATTILA, false, false, true, true, entry_row ? !on : sweep_row, sweep_row && !on);
       const bool changed = (((ec::written ^ before) >> index) & 1) != 0;
       wrong += (changed != !(offset > 0 && offset < 5)) ? 1 : 0;
-      if (((ec::written ^ before) & ec::CPU_CODE_SITES) != 0) on = !on;
+      if (((ec::written ^ before) & (entry_row ? ec::ENTRY_PREFETCH_BIT : (sweep_row ? ec::SWEEP_PREFETCH_BIT : ec::CPU_CODE_SITES))) != 0) on = !on;
       CHECK(SetThreadContext(thread, &saved) != FALSE);
       ResumeThread(thread);
     }
   }
   for (int tries = 0; !on && tries < static_cast<int>(ec::MAX_FAILED_WRITES); ++tries) {
-    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true, entry_row || sweep_row, sweep_row);
     on = (ec::written & mask) == mask;
   }
   stop = true;
@@ -693,12 +695,12 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
       on = !on;
       int tries = 0;
       do {
-        twattila::engine_code::Update(on, twattila::engine_code::Game::ATTILA, false, false, true);
+        twattila::engine_code::Update(on, twattila::engine_code::Game::ATTILA, false, false, true, true);
         ++tries;
       } while ((((ec::written >> ec::FLOAT4_RELOAD_FIRST_SITE) & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
       busy += tries > 1 ? 1 : 0;
     }
-    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
     stop = true;
     for (auto& thread : threads) thread.join();
     std::printf("   200 switches while 4 threads made %llu calls of each copy on their own graphs: %llu wrong (%d writes waited for a thread inside a site)\n", calls.load(), bad.load(), busy);
