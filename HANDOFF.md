@@ -395,6 +395,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CR2 LOW FIXES (review_ci2s.md): Low-1 part 13g flips only tail[14] (add tail[128 ... | the next engine_code implementer, folded in
 - FASTER GAME CPU CODE TOOLTIP + README: tooltip "(soldiers, their sprites and eff ... | coordinator, round end
 - HF NOTES 3 TO FILL (author_notes_3): the counting build's sizes (note 1 + a gate ... | coordinator, after the final bench
+- PDI1 IN GAME (review_pdi1.md M2): a v32 recording in a scene with linear lights ... | next game run (M2) / PT DI step 2 (L2, L4, L5)
 - TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
 - DAY1 MAXED GPU LEVERS (gpo1_ / cpa1_): day1 maxed behind the units is GPU-bound ... | coordinator (GPU line)
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
@@ -3205,6 +3206,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         base = process default sets x affinity; first apply after the base is stable two checks; off / detach clear
         exactly ours), test/tw_cpu_sets 509 synthetic + 11 live steps x86 + amd64 pass, gated x86 3 targets exit 0.
         STARTED 06:17: asr1_ Opus xHigh review (read only; may build and run the own-process test in testbin\asr1_).
+        pdr1_ review DONE ~06:3x -> night1118/review_pdi1.md: FIX FIRST (M1: v32 has no room for step 4's DI composite:
+        add rt_di_light[2] + rt_di_ok per request, keeps one bump for the batch), then MERGE; tables right for all 137
+        shaders + Shogun 2 (vs the games' own bytes); M2 L1 not proven in game (box). pdi1_ RESUMED 06:20 for M1 + L1
+        asserts + N1 / N3 / N4 + the design text L3, rebuild + tests + 2 quick plays.
       - [ ] CR1 LOW FIXES (review_ci1.md): L1 part 6 times old vs new unlike (time ec::page + READY_CHECK_PAGE directly);
         L2 part 9's `this` always < 0x01000000 (add high-address vectors, VirtualAlloc MEM_TOP_DOWN); nits N1 bswap
         tail (11 B, no cmp), N2 HEAPFIX_TRUNCATION -> X87_FIX_TRUNCATION, N3 if / else for the list pick, N4 assert the
@@ -3219,6 +3224,13 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] HF NOTES 3 TO FILL (author_notes_3): the counting build's sizes (note 1 + a gate number), the B4G / P /
         Pnolf bench (notes 1 / 2, bench_results/), the final list of our sites (README), privacy scan, then ONE zip in
         ATN's Downloads for ATN to send. Owner: coordinator, after the final bench
+      - [ ] PDI1 IN GAME (review_pdi1.md M2): a v32 recording in a scene with linear lights + an A/B with
+        RENODX_TW_SQUARED_FALLOFF=1 (Attila night1 drew 0 of 20 linear shaders: its picture may not change there);
+        SHOGUN 2 changes EVERY light (linear: paths / fog / glow x1.33 at a quarter of the reach, x2 at half, x4 at
+        three quarters = the game's own falloff; tell ATN); L2 fog linear check; L4 deterministic kind if the
+        "falloffs differ" log fires; L5 census of linear point-light shaders not installed (WH2 0x9DD90B27 /
+        0x28199759, WH1 0x2BD69947 + gather variants, Rome II / Troy / Pharaoh gather 4.1 / 5.0). Owner: next game
+        run (M2) / PT DI step 2 (L2, L4, L5)
       - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
         0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
         drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
