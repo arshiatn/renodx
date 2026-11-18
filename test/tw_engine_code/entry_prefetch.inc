@@ -385,8 +385,7 @@ int RunEntryTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
   {
     DWORD protection;
     CHECK(VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READWRITE, &protection) != FALSE);
-    ProtectCode(game, PAGE_EXECUTE_READ);
-    ProtectCode(patched, PAGE_EXECUTE_READ);
+    CHECK(ProtectCode(game, PAGE_EXECUTE_READ) && ProtectCode(patched, PAGE_EXECUTE_READ));
     struct Mutant {
       const char* what;
       size_t at;
@@ -424,8 +423,7 @@ int RunEntryTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
       std::printf("   CONTROL, %s: %d of %d calls seen as different\n", mutant.what, seen, RUNS);
       CHECK(seen > RUNS / 20);
     }
-    ProtectCode(game, PAGE_EXECUTE_READWRITE);
-    ProtectCode(patched, PAGE_EXECUTE_READWRITE);
+    CHECK(ProtectCode(game, PAGE_EXECUTE_READWRITE) && ProtectCode(patched, PAGE_EXECUTE_READWRITE));
     CHECK(VirtualProtect(ec::page, ec::PAGE_SIZE, PAGE_EXECUTE_READ, &protection) != FALSE);
     FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
   }

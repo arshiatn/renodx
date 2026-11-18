@@ -448,14 +448,16 @@ void JumpTo(uint8_t* at, const void* to) {
 // The code sections of the mapped DLL at `image` made `protection` (the harness maps its copies read-write-execute). The CONTROLs that run a deliberately wrong stub
 // on random worlds can store through a garbage pointer (a stack slot never written, a register not set), and a store that lands in a copy's code stays there
 // and breaks the byte-for-byte comparison at the end of the run (which copy's code a garbage pointer reaches depends on where the OS maps the copies); read-only,
-// such a store faults in the copy that makes it, like any other wild store the CONTROL's world has.
-void ProtectCode(uint8_t* image, DWORD protection) {
+// such a store faults in the copy that makes it, like any other wild store the CONTROL's world has. False if a section could not be protected (the caller CHECKs).
+bool ProtectCode(uint8_t* image, DWORD protection) {
   const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS32*>(image + reinterpret_cast<const IMAGE_DOS_HEADER*>(image)->e_lfanew);
   const IMAGE_SECTION_HEADER* section = IMAGE_FIRST_SECTION(nt);
+  bool all = true;
   for (WORD index = 0; index < nt->FileHeader.NumberOfSections; ++index, ++section) {
     DWORD previous;
-    if ((section->Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0) VirtualProtect(image + section->VirtualAddress, section->Misc.VirtualSize, protection, &previous);
+    if ((section->Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0) all &= VirtualProtect(image + section->VirtualAddress, section->Misc.VirtualSize, protection, &previous) != FALSE;
   }
+  return all;
 }
 
 // Runs `body(first, last, worker)` over [0, count) on every core; returns the sum of what each returned.

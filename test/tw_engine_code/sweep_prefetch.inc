@@ -95,6 +95,7 @@ SweepSpec SweepRandomSpec(Random* random, bool corrupt) {
 
 thread_local SweepWorld* sweep_world_now = nullptr;
 thread_local SweepSpec sweep_spec_now = {};
+thread_local uint32_t sweep_poison_distance = 0;  // 20b2: the entry that many below the first one has a non-null list object that cannot be read
 
 // The world as the loop's top sees it. `edges`: the thread's pages (the snapshot in the world goes there before the run), `frame_esp` the run's esp.
 void SweepSetup(SweepWorld* world, const SweepEdges& edges, const SweepSpec& spec, Random* random) {
@@ -157,6 +158,7 @@ void SweepSetup(SweepWorld* world, const SweepEdges& edges, const SweepSpec& spe
     world->entries[2 * list] = (null_list[list] ? 0 : list_at);
     world->entries[2 * list + 1] = (random->Next() % 100 < 12 ? 0u : Address(entry_block));
   }
+  if (sweep_poison_distance != 0 && spec.start == n - 1 && n > sweep_poison_distance) world->entries[2 * (spec.start - sweep_poison_distance)] = 0x80001000u;
   // The vector itself.
   uint32_t entries_at = Address(world->entries);
   if ((spec.layout & SWEEP_ENTRIES_FRONT) != 0) {
@@ -482,6 +484,35 @@ int RunSweepTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool 
                 well_formed.scenarios, well_formed.faulted, corrupt.scenarios, corrupt.faulted, layout_text.c_str(), well_formed.different + corrupt.different);
     CHECK(well_formed.different == 0 && corrupt.different == 0);
     CHECK(one_range || (well_formed.faulted > well_formed.scenarios / 20 && corrupt.faulted > corrupt.scenarios / 10));
+  }
+
+  // 20b2. The stub's known limit (the game's check in both copies): the entry `distance` below the first one has a non-null list object that cannot be read. The game
+  // faults at its own check of that entry, a crash either way; the stub faults earlier when it looks at the entry: stage B loads [list + 0x44] four entries ahead (so at
+  // distance 8 and 4, up to 4 entries' checks and erases earlier), stage C [list + 0x40] two ahead (distance 3 and 2); stage A only prefetches and nothing looks at
+  // distance 1, so there the two copies fault together with the same memory. Both copies fault in every scenario; the memory differs once an entry in between was erased.
+  if (!only_threads && !one_range) {
+    HoldSites(ec::SWEEP_PREFETCH_BIT, ec::SWEEP_PREFETCH_BIT | READY_BIT);
+    for (const uint32_t distance : {8u, 4u, 2u, 1u}) {
+      sweep_poison_distance = distance;
+      uint64_t used = 0;
+      uint64_t both_faulted = 0;
+      uint64_t different = 0;
+      for (uint64_t index = 0; used < 300 && index < 20'000; ++index) {
+        bool faulted = false;
+        SweepSpec spec;
+        const char* what = SweepBoth(world.get(), backup.get(), result.get(), edges, seed + 0x3000000, index, false, game_top, patched_top, &spec, &faulted);
+        if (spec.start != spec.entries - 1 || spec.entries <= distance) continue;
+        ++used;
+        both_faulted += (faulted && std::strcmp(what, "ONE of the copies faulted") != 0) ? 1 : 0;
+        different += (what[0] != 0 ? 1 : 0);
+      }
+      sweep_poison_distance = 0;
+      std::printf("   the known limit, an unreadable non-null list object at the entry %u below the first: %llu scenarios, both copies faulted in %llu, the memory differs in %llu (%s)\n", distance,
+                  used, both_faulted, different, distance == 1 ? "nothing looks at it: must be 0" : "the stub faulted first");
+      CHECK(used == 300 && both_faulted == used);
+      CHECK(distance == 1 ? different == 0 : different > 0);
+    }
+    HoldSites(ec::SWEEP_PREFETCH_BIT | READY_BIT, ec::SWEEP_PREFETCH_BIT | READY_BIT);
   }
 
   // 20c. CONTROLs.

@@ -16,6 +16,7 @@
 #include <cstring>
 #include <format>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -1282,8 +1283,10 @@ static_assert(ITEM_PUSH_STUB[0x88] == ITEM_PUSH_MIN_RUN + 1 && ITEM_PUSH_STUB[0x
 // too: the call's result test sets them); it stores nothing. Every real load is of an address the game's own check of that entry reads later in the same sweep
 // (the entry slots inside [0, count), [list + 0x40], [list + 0x44], [array] with count > 0); the child's pointer is only prefetched. The premise (that of 8., the
 // child sum): nothing but the sweep itself removes or changes the pending lists below ebx while it is in the entry above, and no other thread frees a children
-// array meanwhile; a list object whose +0x40 / +0x44 cannot be read (the game faults a moment later at its own check) makes the stub fault up to one entry's
-// processing earlier. Found by the whole function's bytes (the calls and the mov's constant wild); Thrones' copy is the same bytes at +0x19085f0; Rome II has none.
+// array meanwhile. Known limit: a non-null list object whose +0x40 / +0x44 cannot be read makes the stub fault up to 4 entries' checks earlier than the game (stage B
+// reads [list + 0x44] four entries ahead, stage C [list + 0x40] two ahead; the game faults at its own check of that entry, so it is a crash either way; the stub
+// stores nothing, so only what the entries in between did first is missing). Found by the whole function's bytes (the calls and the mov's constant wild); Thrones' copy
+// is the same bytes at +0x19085f0; Rome II has none.
 constexpr std::string_view SWEEP =
     "56 8B F1 B9 ?? ?? ?? ?? E8 ?? ?? ?? ?? 84 C0 0F 84 82 00 00 00 8B 46 18 53 8D 58 FF 3B D8 73 76 57 8B 46 1C 8B 0C D8 E8 ?? ?? ?? ?? 84 "
     "C0 74 5F 8B 4E 1C 8B 46 18 8D 14 D9 8D 04 C1 8B 48 FC 85 C9 74 07 F0 FF 41 04 8B 48 FC 8B 7A 04 8B 40 F8 89 02 89 4A 04 85 FF 74 21 "
@@ -1295,6 +1298,7 @@ constexpr size_t SWEEP_SIZE = 6;   // both instructions: where the stub goes on
 // cold lists of 1 to 4 children cost 34.2 ns a list with the ready check's stub, 29.0 with (4, 2, 1), 26.3 with (6, 3, 1) and 24.9 with (8, 4, 2) (full length, medians of 9; the
 // quick runs under more load: 76.5 / 45.3 / 38.7 / 33.6, 37.2 / 30.3 / 26.8 / 25.1).
 constexpr std::array<uint8_t, 80> SweepPrefetchStub(uint8_t a, uint8_t b, uint8_t c) {
+  if (c == 0 || a > 127 || a <= b || b <= c) throw std::invalid_argument("SweepPrefetchStub needs 127 >= A > B > C >= 1");  // a compile error in a constant
   return {
       0x8B, 0x46, 0x1C,                      // mov eax, dword ptr [esi + 0x1c]
       0x8D, 0x53, static_cast<uint8_t>(-a),  // lea edx, [ebx - A]
