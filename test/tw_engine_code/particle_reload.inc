@@ -2,14 +2,17 @@
 // 14. The particle writer's two float4 reloads (+0x18960d0, Thrones +0x190b430; Faster Game CPU Code; engine_code.hpp 9.), included inside
 // tests.cpp's anonymous namespace after row_builder_call.inc (FnCall and CallFn, the whole-function call with every register, the flags,
 // the x87 and SSE state, are that test's). The game's `movups xmm0, [esp + 0x40]` after four 4-byte stores against the stub's lane loads:
-// a. the region alone with random 16 stack bytes of every float class per lane (NaN payloads, subnormals, -0, infinities), stored as the
-//    game stores them: every register, all of xmm0-7, the flags, esp and the frame equal; CONTROL: a stub with one lane wrong (each of
-//    the four) must differ;
-// b. the whole function on a fake object graph (the fields engine_code.hpp 9. lists), both sides of the je at +0x18961a1 and of the
+// 14a. the sites and stubs as Prepare made them;
+// 14b. the region alone with random 16 stack bytes of every float class per lane (NaN payloads, subnormals, -0, infinities), stored as
+//    the game stores them: every register, all of xmm0-7, the flags, esp and the frame equal; CONTROL: a stub with one lane wrong (each
+//    of the four) must differ;
+// 14c. the whole function on a fake object graph (the fields engine_code.hpp 9. lists), both sides of the je at +0x18961a1 and of the
 //    comiss at +0x189660c: registers, x87 / MXCSR / xmm, flags, esp, the frame (return addresses apart), the six streams and the
-//    objects equal, with each site alone and both; CONTROL: each stub with each lane wrong;
-// c. 200 switches while 4 threads run the whole function with both copies, a parked thread at each byte of both sites, timing (the
-//    sub-parts below are 14a to 14g).
+//    objects equal, with each site alone and both;
+// 14d. CONTROL: each stub with each lane wrong;
+// 14e. 200 switches while 4 threads run the whole function with both copies;
+// 14f. a parked thread at each byte of both sites;
+// 14g. timing.
 // ====================================================================================================================
 
 // A float's bits, any lane: mostly ordinary, then zeros, subnormals, infinities, NaNs with payloads (quiet and signalling), the edges.
@@ -395,8 +398,8 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
   // instruction after its site (the game's `movups [eax], xmm0`), each site's jump goes to its stub; the stubs are the same bytes.
   for (size_t reload = 0; reload < 2; ++reload) {
     const uint32_t site_rva = tail_rva + ec::FLOAT4_RELOAD_AT[reload];
-    CHECK(ec::sites[10 + reload].at == patched + site_rva && (ec::written >> (10 + reload) & 1) != 0);
-    CHECK(std::memcmp(game + site_rva, MOVUPS.data(), 5) == 0 && std::memcmp(ec::sites[10 + reload].game.data(), MOVUPS.data(), 5) == 0);
+    CHECK(ec::sites[ec::FLOAT4_RELOAD_FIRST_SITE + reload].at == patched + site_rva && ((ec::written >> (ec::FLOAT4_RELOAD_FIRST_SITE + reload)) & 1) != 0);
+    CHECK(std::memcmp(game + site_rva, MOVUPS.data(), 5) == 0 && std::memcmp(ec::sites[ec::FLOAT4_RELOAD_FIRST_SITE + reload].game.data(), MOVUPS.data(), 5) == 0);
     CHECK(game[site_rva + 5] == 0x0F && game[site_rva + 6] == 0x11 && game[site_rva + 7] == 0x00);
     CHECK(patched[site_rva] == 0xE9 && Address(patched + site_rva + 5) + Read32(patched + site_rva + 1) == Address(stubs[reload]));
     CHECK(stubs[reload][30] == 0xE9 && Address(stubs[reload] + 35) + Read32(stubs[reload] + 31) == Address(patched + site_rva + 5));
@@ -492,10 +495,11 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
   auto result_a = std::make_unique<ReloadWorld>();
   auto result_b = std::make_unique<ReloadWorld>();
   CHECK(Address(world->call.fx_in) % 16 == 0 && Address(world->call.fx_out) % 16 == 0 && Address(world->call.fx_saved) % 16 == 0 && Address(world->call.stack) % 16 == 0);
-  const auto set_sites = [&](uint32_t mask) {  // the site bits (10, 11) in `mask` hold their jump, the others the game's movups
+  const auto set_sites = [&](uint32_t mask) {  // the site bits (FLOAT4_RELOAD_SITES) in `mask` hold their jump, the others the game's movups
     for (size_t reload = 0; reload < 2; ++reload) {
-      const bool on = ((mask >> (10 + reload)) & 1) != 0;
-      std::memcpy(ec::sites[10 + reload].at, (on ? ec::sites[10 + reload].jump : ec::sites[10 + reload].game).data(), 5);
+      const ec::Site& site = ec::sites[ec::FLOAT4_RELOAD_FIRST_SITE + reload];
+      const bool on = ((mask >> (ec::FLOAT4_RELOAD_FIRST_SITE + reload)) & 1) != 0;
+      std::memcpy(site.at, (on ? site.jump : site.game).data(), 5);
     }
     FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
   };
@@ -505,7 +509,7 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
   {
     const int calls = (quick ? 60'000 : 400'000);
     std::array<uint64_t, 4> paths = {};  // no entry, no matrix, matrix with the jb, matrix with the sqrt (the stack filled 0xFF)
-    constexpr std::array<uint32_t, 3> VARIANTS = {0b110000000000u, 0b010000000000u, 0b100000000000u};  // both sites, the colour's alone, the vector's alone
+    constexpr std::array<uint32_t, 3> VARIANTS = {0b11u << ec::FLOAT4_RELOAD_FIRST_SITE, 0b01u << ec::FLOAT4_RELOAD_FIRST_SITE, 0b10u << ec::FLOAT4_RELOAD_FIRST_SITE};  // both sites, the colour's alone, the vector's alone
     std::array<uint64_t, 3> wrong = {};
     for (int round = 0; round < calls; ++round) {
       const bool canary = (round % 4 != 3);
@@ -519,7 +523,7 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
         RunReload(world.get(), *backup, result_b.get());
         if (const char* what = ReloadDiff(*result_a, *result_b, copy_distance); what[0] != 0) {
           ++wrong[variant];
-          Report("  reload whole function: round %d, sites %X: %s differs\n", round, VARIANTS[variant] >> 10, what);
+          Report("  reload whole function: round %d, sites %X: %s differs\n", round, VARIANTS[variant] >> ec::FLOAT4_RELOAD_FIRST_SITE, what);
         }
       }
       if (canary) ++paths[ReloadPath(*result_a)];
@@ -608,14 +612,14 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
       do {
         twattila::engine_code::Update(on, twattila::engine_code::Game::ATTILA, false, false, true);
         ++tries;
-      } while (((ec::written >> 10 & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
+      } while ((((ec::written >> ec::FLOAT4_RELOAD_FIRST_SITE) & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
       busy += tries > 1 ? 1 : 0;
     }
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
     stop = true;
     for (auto& thread : threads) thread.join();
     std::printf("   200 switches while 4 threads made %llu calls of each copy on their own graphs: %llu wrong (%d writes waited for a thread inside a site)\n", calls.load(), bad.load(), busy);
-    CHECK(bad.load() == 0 && (ec::written >> 10 & 3) == 3);
+    CHECK(bad.load() == 0 && ((ec::written >> ec::FLOAT4_RELOAD_FIRST_SITE) & 3) == 3);
   }
 
   // 14f. A parked thread whose saved Eip is each byte of each site (and the byte before, the bytes after): the row switched, a site
@@ -628,10 +632,10 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
     HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
     CHECK(thread != nullptr);
     bool on = true;
-    CHECK((ec::written >> 10 & 3) == 3);
+    CHECK(((ec::written >> ec::FLOAT4_RELOAD_FIRST_SITE) & 3) == 3);
     int wrong = 0;
     for (size_t reload = 0; reload < 2; ++reload) {
-      const uint8_t* site = ec::sites[10 + reload].at;
+      const uint8_t* site = ec::sites[ec::FLOAT4_RELOAD_FIRST_SITE + reload].at;
       for (int offset = -1; offset <= 6; ++offset) {
         CHECK(SuspendThread(thread) != static_cast<DWORD>(-1));
         CONTEXT saved = {.ContextFlags = CONTEXT_CONTROL};
@@ -641,7 +645,7 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
         CHECK(SetThreadContext(thread, &moved) != FALSE);
         const uint32_t before = ec::written;
         twattila::engine_code::Update(!on, twattila::engine_code::Game::ATTILA, false, false, true);
-        const bool changed = ((ec::written ^ before) >> (10 + reload) & 1) != 0;
+        const bool changed = (((ec::written ^ before) >> (ec::FLOAT4_RELOAD_FIRST_SITE + reload)) & 1) != 0;
         wrong += (changed != !(offset > 0 && offset < 5)) ? 1 : 0;
         if (((ec::written ^ before) & ec::CPU_CODE_SITES) != 0) on = !on;
         CHECK(SetThreadContext(thread, &saved) != FALSE);
@@ -650,12 +654,12 @@ int RunReloadTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool
     }
     for (int tries = 0; !on && tries < static_cast<int>(ec::MAX_FAILED_WRITES); ++tries) {
       twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
-      on = (ec::written >> 10 & 1) != 0;
+      on = ((ec::written >> ec::FLOAT4_RELOAD_FIRST_SITE) & 1) != 0;
     }
     stop = true;
     parked.join();
     CloseHandle(thread);
-    CHECK(wrong == 0 && on && (ec::written >> 10 & 3) == 3);
+    CHECK(wrong == 0 && on && ((ec::written >> ec::FLOAT4_RELOAD_FIRST_SITE) & 3) == 3);
     std::printf("   a parked thread at each site -1 .. +6: refused at +1 .. +4 and written at the others\n");
   }
 

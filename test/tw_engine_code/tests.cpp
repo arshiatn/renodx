@@ -2217,7 +2217,7 @@ int main(int argc, char** argv) {
   CHECK(ec::sites[3].at == (build.list_push_function_rva != 0 ? patched + build.code->list_push_rva + ec::LIST_PUSH_SITE : nullptr));
   CHECK(ec::sites[4].at == (build.ready_check_rva != 0 ? patched + build.ready_check_rva : nullptr));
   for (size_t reload = 0; reload < ec::FLOAT4_RELOAD_AT.size(); ++reload) {
-    CHECK(ec::sites[10 + reload].at == (build.code->float4_reload_rva != 0 ? patched + build.code->float4_reload_rva + ec::FLOAT4_RELOAD_AT[reload] : nullptr));
+    CHECK(ec::sites[ec::FLOAT4_RELOAD_FIRST_SITE + reload].at == (build.code->float4_reload_rva != 0 ? patched + build.code->float4_reload_rva + ec::FLOAT4_RELOAD_AT[reload] : nullptr));
   }
   CHECK(ec::sites[12].at == (build.code->particle_loop_rva != 0 ? patched + build.code->particle_loop_rva + ec::PARTICLE_LOOP_SITE : nullptr));
   CHECK(ec::sites[13].at == (build.code->emitter_loop_rva != 0 ? patched + build.code->emitter_loop_rva + ec::EMITTER_LOOP_SITE : nullptr));
@@ -3182,7 +3182,7 @@ int main(int argc, char** argv) {
     if (const int failed = RunReloadTests(build, game, patched, quick); failed != 0) return failed;
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
   } else {
-    CHECK(ec::sites[10].at == nullptr && ec::sites[11].at == nullptr);
+    CHECK(ec::sites[ec::FLOAT4_RELOAD_FIRST_SITE].at == nullptr && ec::sites[ec::FLOAT4_RELOAD_FIRST_SITE + 1].at == nullptr);
     std::printf("14. particle writer float4 reloads: none in this build\n");
   }
 
@@ -3280,31 +3280,38 @@ int main(int argc, char** argv) {
     foreign(0, ec::sites[0].game);
     prepare_again();
     if (build.code->float4_reload_rva != 0) {
-      // (e) the particle writer's colour reload changed while the rows are on: switching off leaves it, restores the vector reload and the rest
-      on();
-      CHECK(ec::written == all);
-      foreign(10, hook);
-      off();
-      CHECK(ec::written == 0 && holds(10, hook) && game_bytes(all & ~(1u << 10)) && (ec::found & (1u << 10)) == 0);
-      foreign(10, ec::sites[10].game);
-      prepare_again();
+      // (e) one of the particle writer's reloads changed while the rows are on (the colour's, then the vector's): switching off leaves it,
+      // restores the other reload and the rest
+      constexpr size_t COLOUR = ec::FLOAT4_RELOAD_FIRST_SITE;
+      constexpr size_t VECTOR = ec::FLOAT4_RELOAD_FIRST_SITE + 1;
+      for (const size_t changed : {COLOUR, VECTOR}) {
+        on();
+        CHECK(ec::written == all);
+        foreign(changed, hook);
+        off();
+        CHECK(ec::written == 0 && holds(changed, hook) && game_bytes(all & ~(1u << changed)) && (ec::found & (1u << changed)) == 0);
+        foreign(changed, ec::sites[changed].game);
+        prepare_again();
+      }
       // (f) without SSE4.1 (insertps) neither reload is looked for, and none is named as left alone
       ec::sse4_1 = false;
       prepare_again();
-      CHECK(ec::sites[10].at == nullptr && ec::sites[11].at == nullptr && ec::sites[9].at != nullptr && log_lines.back().find("particle") == std::string::npos);
+      CHECK(ec::sites[COLOUR].at == nullptr && ec::sites[VECTOR].at == nullptr && ec::sites[9].at != nullptr && log_lines.back().find("particle") == std::string::npos);
       ec::sse4_1 = true;
       prepare_again();
-      CHECK(ec::sites[10].at != nullptr && ec::sites[11].at != nullptr);
-      // (g) one byte changed in the function's tail (not in a site): both reloads left alone, named
+      CHECK(ec::sites[COLOUR].at != nullptr && ec::sites[VECTOR].at != nullptr);
+      // (g) one byte changed in the function's tail, outside the sites and in each site's first byte: both reloads left alone, named
       uint8_t* tail = patched + build.code->float4_reload_rva;
-      tail[14] ^= 1;
-      prepare_again();
-      CHECK(ec::sites[10].at == nullptr && ec::sites[11].at == nullptr && ec::sites[9].at != nullptr);
-      CHECK(log_lines.back().find("left alone (not the game's code as expected: another mod or build): ") != std::string::npos
-            && log_lines.back().ends_with("particle colour reload, particle vector reload"));
-      tail[14] ^= 1;
-      prepare_again();
-      CHECK(ec::sites[10].at != nullptr && ec::sites[11].at != nullptr && ec::found == all);
+      for (const size_t at : {size_t{14}, ec::FLOAT4_RELOAD_AT[0], ec::FLOAT4_RELOAD_AT[1]}) {
+        tail[at] ^= 1;
+        prepare_again();
+        CHECK(ec::sites[COLOUR].at == nullptr && ec::sites[VECTOR].at == nullptr && ec::sites[9].at != nullptr);
+        CHECK(log_lines.back().find("left alone (not the game's code as expected: another mod or build): ") != std::string::npos
+              && log_lines.back().ends_with("particle colour reload, particle vector reload"));
+        tail[at] ^= 1;
+        prepare_again();
+        CHECK(ec::sites[COLOUR].at != nullptr && ec::sites[VECTOR].at != nullptr && ec::found == all);
+      }
     }
     if (build.code->particle_loop_rva != 0) {
       // (h) the particle loop's prefetch site changed while the rows are on: switching off leaves it, restores the others
@@ -3319,7 +3326,7 @@ int main(int argc, char** argv) {
       uint8_t* loop = patched + build.code->particle_loop_rva;
       loop[10] ^= 1;
       prepare_again();
-      CHECK(ec::sites[12].at == nullptr && ec::sites[9].at != nullptr && ec::sites[10].at != nullptr);
+      CHECK(ec::sites[12].at == nullptr && ec::sites[9].at != nullptr && ec::sites[ec::FLOAT4_RELOAD_FIRST_SITE].at != nullptr);
       ec::prefetch_missing_logged = false;
       on();
       CHECK(ec::written == ec::found && (ec::written & ec::PARTICLE_PREFETCH_BIT) == 0);

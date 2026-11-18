@@ -705,9 +705,13 @@ int RunParticleTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bo
         std::sort(ns[variant].begin(), ns[variant].end());
         median[variant] = ns[variant][ROUNDS / 2];
       }
+      // Hot: the copy without the stub (the update alone) and with K = 2 (what the stub costs when nothing misses).
       const double hot = run_emitters(6, true, PER_EMITTER);
-      lines += std::format("   ns a particle, update of {} multiplies (alone, hot: {:.1f}), emitters of {}: game {:.1f}, ours (K = {}) {:.1f}, copies: no stub {:.1f}, K=1 {:.1f}, K=2 {:.1f}, "
-                           "K=3 {:.1f}, K=4 {:.1f}\n", busy, hot, per_emitter, median[0], static_cast<uint32_t>(ec::PARTICLE_PREFETCH_AHEAD), median[1], median[6], median[2], median[3], median[4], median[5]);
+      const double hot_k2 = run_emitters(3, true, PER_EMITTER);
+      lines += std::format("   ns a particle, update of {} multiplies (hot: no stub {:.1f}, K=2 {:.1f}), emitters of {}: game {:.1f}, ours (K = {}) {:.1f}, copies: no stub {:.1f}, K=1 {:.1f}, "
+                           "K=2 {:.1f}, K=3 {:.1f}, K=4 {:.1f}\n",
+                           busy, hot, hot_k2, per_emitter, median[0], static_cast<uint32_t>(ec::PARTICLE_PREFETCH_AHEAD), median[1], median[6], median[2], median[3], median[4],
+                           median[5]);
     }
     std::fputs(lines.c_str(), stdout);
     VirtualFree(memory, 0, MEM_RELEASE);

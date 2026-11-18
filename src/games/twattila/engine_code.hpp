@@ -739,6 +739,7 @@ constexpr std::array<uint8_t, 1222> HALF_ROWS_STUB = {
     0x50,                                            // push eax
     0xE9, 0x12, 0x5A, 0x5A, 0x5A,                    // jmp 0x5a5a5ed8
 };
+static_assert(HALF_ROWS_STUB.size() <= HALF_ROWS_CONSTANTS_AT);  // the constants after the code
 // The stub's constants, 16-byte vectors: |f|, 0x387fffff, 0x33000400, 1, 0x1fff, 0x4000, 0x477fffff, 0x33800000, 0x80000000,
 // 0x84ffffff.
 constexpr std::array<uint32_t, 40> HALF_ROWS_CONSTANTS = {
@@ -796,12 +797,11 @@ constexpr std::array<uint8_t, 37> ChildSumStub(uint8_t ahead) {
 constexpr std::array<uint8_t, 37> CHILD_SUM_STUB = ChildSumStub(CHILD_SUM_AHEAD);
 
 // 9. The particle writer's float4 reloads (+0x18960d0, thiscall(float, const float*), ret 8; the effect update calls it once for
-// every particle: 4.9 ms of the render thread a frame in the stress battle, 1.77 ms of it the two reloads). It builds two float4s
-// (a colour and a vector) with four 4-byte `movss` stores each into the frame at [esp + 0x40 .. 0x4f] and reloads each with one 16-byte
-// `movups xmm0, [esp + 0x40]` to store it into a vertex stream. A load that spans four stores can't be forwarded from the store buffer:
-// it waits until they have reached the cache, and stores drain in program order, so it also waits for every older store (the
-// streams' other rows). The stub loads each lane from the address and size of the store that wrote it: `movss xmm0, [esp + 0x40]`, then
-// `insertps xmm0, [esp + 0x44 / 0x48 / 0x4c], 0x10 / 0x20 / 0x30` (SSE4.1: without it the sites are not looked for). Same results:
+// every particle). It builds two float4s (a colour and a vector) with four 4-byte `movss` stores each into the frame at
+// [esp + 0x40 .. 0x4f] and reloads each with one 16-byte `movups xmm0, [esp + 0x40]` to store it into a vertex stream. A load that
+// spans four stores can't be forwarded from the store buffer. The stub loads each lane from the address and size of the store that
+// wrote it: `movss xmm0, [esp + 0x40]`, then `insertps xmm0, [esp + 0x44 / 0x48 / 0x4c], 0x10 / 0x20 / 0x30` (SSE4.1: without it
+// the sites are not looked for). Same results:
 // xmm0 holds the same 128 bits (moves only: NaN payloads, subnormals and the sign of zero as they are; MXCSR untouched), no flag and
 // no other register changes, no store, and the four loads read the same 16 stack bytes after the same stores. Found by the function's
 // tail (+0x18967db, its call's displacement wild), at the Steam build's place first, then anywhere in the code: another mod's change
@@ -833,7 +833,7 @@ static bool sse4_1 = (IsProcessorFeaturePresent(PF_SSE4_1_INSTRUCTIONS_AVAILABLE
 // that bottom, where ebx is already the next particle's index, loads the slot K = PARTICLE_PREFETCH_AHEAD particles after the next one and prefetches the
 // particle's four lines, only when the slot is inside the size as it is right now: the array the game's next load reads holds size * 4 bytes (the one
 // assumption, as in 8.), and the lea wraps like the load's address does, so an index past 2^32 loads from inside the vector too. The prefetch never
-// faults. The stub spends esi, which is dead there (the loop's top loads it, the way out only pops it and calls a function that saves it: checked in the
+// faults. The stub spends esi, which is dead there (the loop's top loads it, the way out only pops it and calls a function that never reads esi as an input: checked in the
 // DLL's bytes, Attila's and Thrones'); the flags the `jb` tests are the game's `cmp`; no store, no other register: every register but esi, the flags and
 // all memory at the loop's end are the game's. Found by the loop's 104 bytes and the 36 after it (the way out the esi argument stands on, its call wild), at
 // the Steam build's place first, then anywhere in the code; no branch lands inside the site (the whole DLL's relative branches and absolute pointers,
@@ -994,7 +994,9 @@ static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the thre
               && CHILD_SUM_PAGE + CHILD_SUM_STUB.size() <= PAGE_SIZE);
 
 // Which sites each row writes (bits by `sites` index).
+constexpr size_t FLOAT4_RELOAD_FIRST_SITE = 10;  // the colour's reload; the vector's is the next
 constexpr uint32_t FLOAT4_RELOAD_SITES = 0b110000000000;  // the particle writer's two reloads
+static_assert(FLOAT4_RELOAD_SITES == 0b11u << FLOAT4_RELOAD_FIRST_SITE && FLOAT4_RELOAD_AT.size() == 2);
 constexpr uint32_t CPU_CODE_SITES = 0b100010111 | FLOAT4_RELOAD_SITES;  // Faster Game CPU Code
 constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
@@ -1279,15 +1281,15 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       stubs[9] = stub;
     }
     // The particle writer's two reloads (insertps is SSE4.1), found by the function's tail.
-    if (uint8_t* match = (build.float4_reload_rva != 0 && sse4_1 ? find(FLOAT4_RELOAD, build.float4_reload_rva) : nullptr); match != nullptr) {
+    if (uint8_t* match = ((build.float4_reload_rva != 0 && sse4_1) ? find(FLOAT4_RELOAD, build.float4_reload_rva) : nullptr); match != nullptr) {
       for (size_t reload = 0; reload < FLOAT4_RELOAD_AT.size(); ++reload) {
         uint8_t* stub = page + FLOAT4_RELOAD_PAGE + reload * FLOAT4_RELOAD_STRIDE;
         std::memcpy(stub, FLOAT4_RELOAD_STUB.data(), FLOAT4_RELOAD_STUB.size());
         uint8_t* stub_end = stub + FLOAT4_RELOAD_STUB.size();
         uint8_t* site = match + FLOAT4_RELOAD_AT[reload];
         write32(stub_end - 4, relative(stub_end, site + SITE_SIZE));
-        sites[10 + reload].at = site;
-        stubs[10 + reload] = stub;
+        sites[FLOAT4_RELOAD_FIRST_SITE + reload].at = site;
+        stubs[FLOAT4_RELOAD_FIRST_SITE + reload] = stub;
       }
     }
     // The particle update loop's prefetch, found by the loop's bytes and those of its way out.
@@ -1372,7 +1374,9 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     internal::prefetch_missing_logged = true;
     std::string missing;
     for (size_t index = 0; index < internal::sites.size(); ++index) {
-      if (((internal::PREFETCH_SITES & ~internal::found) >> index & 1) != 0) missing += std::format("{}{}", missing.empty() ? "" : ", ", internal::sites[index].name);
+      if ((((internal::PREFETCH_SITES & ~internal::found) >> index) & 1) != 0) {
+        missing += std::format("{}{}", missing.empty() ? "" : ", ", internal::sites[index].name);
+      }
     }
     renodx::utils::log::w("[Total War] Faster Effect Prefetch: left alone (not the game's code as expected: another mod or build): ", missing);
   }
