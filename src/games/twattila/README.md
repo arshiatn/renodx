@@ -1,6 +1,13 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
-## Dev, Faster Effect Prefetch and Faster Emitter Prefetch (2026-11-17, 11-18; offline only, not stamped, not installed, not run in game)
+## Dev, Faster Effect Prefetch, Faster Emitter Prefetch and Faster Particle Prefetch (2026-11-17, 11-18; offline only, not stamped, not installed, not run in game)
+
+- New: **Faster Particle Prefetch (Experimental, off)**, the row after Faster Emitter Prefetch, a row of its own: the game's particle
+  writer finds the 24-byte table entry it writes each particle's vertices through about a thousand instructions before it first reads
+  it; now it asks the memory for the entry the moment it has the address. Only a prefetch (of any address: it never faults), the
+  game's own store and test run as before; every result the game's. Harness (the whole function on a fake graph, the entries over
+  256 MB): with cold entries about 35 ns a call less, with hot or sequential entries no change. Test (ATN): the same as the
+  other two rows; ReShade.log "Faster Particle Prefetch: on"; keep it off if there is no gain.
 
 - New: **Faster Effect Prefetch (Experimental, off)**, under Graphics (Experimental): while the game sums its effect tree
   (the children of an effect, one call each) or updates an emitter's particles, it asks the memory for the child or the

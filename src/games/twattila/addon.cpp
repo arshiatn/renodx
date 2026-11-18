@@ -1330,6 +1330,8 @@ float effect_prefetch_row = 0.f;
 // Faster Emitter Prefetch (Experimental, off): engine_code.hpp's emitter update loop site, a row of its own so that a bench
 // can decide it apart from Faster Effect Prefetch.
 float emitter_prefetch_row = 0.f;
+// Faster Particle Prefetch (Experimental, off): engine_code.hpp's particle writer table entry site, a row of its own.
+float particle_prefetch_row = 0.f;
 
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1572,7 +1574,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
-                                job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f);
+                                job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,
+                                particle_prefetch_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
   if (!shadow_size_locked) twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::graphics_hooks::Update(
@@ -1982,6 +1985,17 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           .tooltip = "The game's effect update also asks the memory for its next two emitters, and what they read first, while it\n"
                      "works on the current one. May lower the CPU waiting in big battles. Same results.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FasterParticlePrefetch",
+          .binding = &particle_prefetch_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Faster Particle Prefetch (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The game's particle drawing asks the memory for the place it will write each particle's vertices to, as soon\n"
+                     "as it knows which one. May lower the CPU waiting in big battles. Same results.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

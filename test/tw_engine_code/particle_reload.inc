@@ -508,8 +508,9 @@ int ReloadAlone(size_t index, const uint8_t* game_bytes, size_t load_size, size_
 }
 
 // A parked thread whose saved Eip is each byte of each site of `mask` (from the byte before to +`last_offset`), the rows switched each time: a site
-// changes only with Eip at its first byte or outside its jump's 5 bytes (any write waits while Eip is inside one). The rows end on.
-int ParkedAtSites(uint32_t mask, int last_offset) {
+// changes only with Eip at its first byte or outside its jump's 5 bytes (any write waits while Eip is inside one). The rows end on. `entry_row`: the sites
+// are the particle writer's entry prefetch's, which its own row (Update's last argument) switches, not Faster Game CPU Code.
+int ParkedAtSites(uint32_t mask, int last_offset, bool entry_row = false) {
   namespace ec = twattila::engine_code::internal;
   std::atomic<bool> stop = false;
   std::thread parked([&] {
@@ -531,16 +532,16 @@ int ParkedAtSites(uint32_t mask, int last_offset) {
       moved.Eip = Address(site + offset);
       CHECK(SetThreadContext(thread, &moved) != FALSE);
       const uint32_t before = ec::written;
-      twattila::engine_code::Update(!on, twattila::engine_code::Game::ATTILA, false, false, true, true);
+      twattila::engine_code::Update(entry_row || !on, twattila::engine_code::Game::ATTILA, false, false, true, true, entry_row && !on);
       const bool changed = (((ec::written ^ before) >> index) & 1) != 0;
       wrong += (changed != !(offset > 0 && offset < 5)) ? 1 : 0;
-      if (((ec::written ^ before) & ec::CPU_CODE_SITES) != 0) on = !on;
+      if (((ec::written ^ before) & (entry_row ? ec::ENTRY_PREFETCH_BIT : ec::CPU_CODE_SITES)) != 0) on = !on;
       CHECK(SetThreadContext(thread, &saved) != FALSE);
       ResumeThread(thread);
     }
   }
   for (int tries = 0; !on && tries < static_cast<int>(ec::MAX_FAILED_WRITES); ++tries) {
-    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true, entry_row);
     on = (ec::written & mask) == mask;
   }
   stop = true;

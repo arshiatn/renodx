@@ -37,7 +37,8 @@
 // worker wake-ups (6. below). The sprite soldiers' row builder's 20 half floats at once (7. below) belong to Faster Game
 // CPU Code. Faster Effect Prefetch (its own row, Experimental): the effect tree's child sum (8. below, the tenth site)
 // and the particle update loop (10. below, the thirteenth). Faster Emitter Prefetch (its own row, Experimental, so that
-// a bench can decide it apart from the other two): the emitter update loop (11. below, the fourteenth). The particle
+// a bench can decide it apart from the other two): the emitter update loop (11. below, the fourteenth). Faster Particle
+// Prefetch (its own row, Experimental): the particle writer's table entry (14. below, the twenty-first). The particle
 // writer's two float4 reloads (9. below, the eleventh and twelfth sites) belong to Faster Game CPU Code, as do the
 // soldier draw's three matrix row reloads (12. below, the fifteenth to seventeenth sites) and the matrix product's
 // three (13. below, the eighteenth to twentieth).
@@ -1041,6 +1042,31 @@ constexpr std::string_view MATRIX_PRODUCT =
 constexpr std::array<size_t, 3> MATRIX_PRODUCT_AT = {640, 659, 674};  // movups xmm0, xmmword ptr [esp + 0x18 / 0x28 / 0x38]
 constexpr std::array<std::array<uint8_t, 35>, 3> MATRIX_PRODUCT_STUBS = {Float4ReloadStub<0x18>(), Float4ReloadStub<0x28>(), Float4ReloadStub<0x38>()};
 
+// 14. The particle writer's table entry (the function of 9., +0x18960d0; Faster Particle Prefetch, its own row, Experimental).
+// Its first calls find the entry of the table that holds the six vertex streams' pointers (a thiscall that returns the
+// table's base + 24 * index and loads nothing of the entry), store the address into the frame and leave if it is null:
+// `mov [esp + 0x7c], eax; test eax, eax; je the way out`. The entry's first load is some 1,000 instructions on (the first
+// stream store, +0x189680b), so with the table cold the whole writer waits for the entry's line there. The stub runs the
+// game's `mov` and `test` and prefetches the entry's first and last byte (24 bytes: one line or two) on the way, then goes
+// on at the `je`. Same results: the store is the game's, no register is touched, the flags the `je` tests are those of the
+// game's `test` (run again), and a prefetch of null, of garbage or of a no-access page never faults. The site is the `mov`
+// and the first byte of the `test` (5 bytes); the second byte never runs. Found by the function's first 49 bytes (the call and
+// the `je` wild), at the Steam build's place first, then anywhere in the code: Thrones' copy has the same bytes, Rome II has
+// none. No branch lands inside the site (the whole DLL's relative branches and absolute pointers, Attila's and Thrones'); the
+// call's return lands on its first byte.
+constexpr std::string_view ENTRY_FETCH =
+    "55 8B EC 83 E4 F0 81 EC B8 00 00 00 56 57 8B F9 89 7C 24 78 FF B7 D0 00 00 00 8B 8F CC 00 00 00 E8 ?? ?? ?? ?? 89 44 24 7C 85 C0 "
+    "0F 84 ?? ?? ?? ??";
+constexpr size_t ENTRY_FETCH_SITE = 37;    // mov dword ptr [esp + 0x7c], eax; test eax, eax (its first byte)
+constexpr size_t ENTRY_FETCH_RESUME = 43;  // the je after the test
+constexpr std::array<uint8_t, 18> ENTRY_FETCH_STUB = {
+    0x89, 0x44, 0x24, 0x7C,        // mov dword ptr [esp + 0x7c], eax
+    0x0F, 0x18, 0x08,              // prefetcht0 byte ptr [eax]           the entry's first line
+    0x0F, 0x18, 0x48, 0x17,        // prefetcht0 byte ptr [eax + 0x17]    and its last byte's (the entry is 24 bytes)
+    0x85, 0xC0,                    // test eax, eax                       the flags the game's je tests
+    0xE9, 0x00, 0x00, 0x00, 0x00,  // jmp the game's je (patched in Prepare)
+};
+
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half, fmod and the
 // ready check the same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots
 // (control word 0x20, float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the
@@ -1084,6 +1110,7 @@ struct Build {
   std::string_view soldier_rows;
   std::array<size_t, 3> soldier_rows_at;  // the three reloads in soldier_rows
   uint32_t matrix_product_rva;  // the matrix product (MATRIX_PRODUCT's first byte)
+  uint32_t entry_fetch_rva;     // the particle writer's top (ENTRY_FETCH's first byte)
 };
 constexpr Build ATTILA_BUILD = {
     .truncation_rva = TRUNCATION_RVA,
@@ -1106,6 +1133,7 @@ constexpr Build ATTILA_BUILD = {
     .soldier_rows = SOLDIER_ROWS,
     .soldier_rows_at = SOLDIER_ROWS_AT,
     .matrix_product_rva = 0x168d570,
+    .entry_fetch_rva = 0x18960d0,
 };
 constexpr Build THRONES_BUILD = {
     .truncation_rva = THRONES_TRUNCATION_RVA,
@@ -1128,6 +1156,7 @@ constexpr Build THRONES_BUILD = {
     .soldier_rows = SOLDIER_ROWS,
     .soldier_rows_at = SOLDIER_ROWS_AT,
     .matrix_product_rva = 0x16fac90,
+    .entry_fetch_rva = 0x190b430,
 };
 // Rome II has none of the list push, ready check, job, half rows, child sum, float4 reload and effect loop sites: their
 // rvas stay 0.
@@ -1161,6 +1190,7 @@ constexpr size_t CHILD_SUM_PAGE = 0xC00;
 constexpr size_t CHILD_SUM_SLOT = 0x40;       // the child sum's stub and room for it to grow
 constexpr size_t SOLDIER_ROWS_PAGE = 0xC40;   // one stub for each of the three reloads, FLOAT4_RELOAD_STRIDE apart
 constexpr size_t MATRIX_PRODUCT_PAGE = 0xCD0;  // the same for the product's three
+constexpr size_t ENTRY_PREFETCH_PAGE = 0xD60;
 constexpr size_t PAGE_SIZE = 0x1000;
 static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the three games' truncation stubs are one type
               && HALF_PAGE + HALF_STUB.size() + HALF_SIZE <= FMOD_PAGE
@@ -1178,7 +1208,8 @@ static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the thre
               && SOLDIER_ROWS_STUBS[0].size() <= FLOAT4_RELOAD_STRIDE
               && SOLDIER_ROWS_PAGE + SOLDIER_ROWS_STUBS.size() * FLOAT4_RELOAD_STRIDE <= MATRIX_PRODUCT_PAGE
               && MATRIX_PRODUCT_STUBS[0].size() <= FLOAT4_RELOAD_STRIDE
-              && MATRIX_PRODUCT_PAGE + MATRIX_PRODUCT_STUBS.size() * FLOAT4_RELOAD_STRIDE <= PAGE_SIZE);
+              && MATRIX_PRODUCT_PAGE + MATRIX_PRODUCT_STUBS.size() * FLOAT4_RELOAD_STRIDE <= ENTRY_PREFETCH_PAGE
+              && ENTRY_PREFETCH_PAGE + ENTRY_FETCH_STUB.size() <= PAGE_SIZE);
 
 // Which sites each row writes (bits by `sites` index).
 constexpr size_t FLOAT4_RELOAD_FIRST_SITE = 10;  // the colour's reload; the vector's is the next
@@ -1194,18 +1225,21 @@ constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, S
 constexpr size_t CHILD_SUM_INDEX = 9;  // the effect tree's child sum
 constexpr size_t PARTICLE_PREFETCH_INDEX = 12;  // the particle update loop's prefetch
 constexpr size_t EMITTER_PREFETCH_INDEX = 13;   // the emitter update loop's prefetch
+constexpr size_t ENTRY_PREFETCH_INDEX = 20;     // the particle writer's table entry prefetch (after the matrix product's rows)
 constexpr uint32_t CHILD_SUM_BIT = 1u << CHILD_SUM_INDEX;
 constexpr uint32_t PARTICLE_PREFETCH_BIT = 1u << PARTICLE_PREFETCH_INDEX;
 constexpr uint32_t EMITTER_PREFETCH_BIT = 1u << EMITTER_PREFETCH_INDEX;  // Faster Emitter Prefetch: its own row
+constexpr uint32_t ENTRY_PREFETCH_BIT = 1u << ENTRY_PREFETCH_INDEX;      // Faster Particle Prefetch: its own row
 constexpr uint32_t PREFETCH_SITES = CHILD_SUM_BIT | PARTICLE_PREFETCH_BIT;  // Faster Effect Prefetch: the child sum, the particle loop
 constexpr uint32_t HALF_FUNCTION_BIT = 0b10;  // the half function, which the half rows' stub calls as the game does
 constexpr uint32_t HALF_ROWS_BIT = 0b100000000;
 // The rows by name, for the log lines.
-constexpr std::array<std::pair<uint32_t, std::string_view>, 5> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
+constexpr std::array<std::pair<uint32_t, std::string_view>, 6> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
                                                                          {LIST_SITES, "Faster Render Lists"},
                                                                          {JOB_SITES, "Faster Job Wake-Ups"},
                                                                          {PREFETCH_SITES, "Faster Effect Prefetch"},
-                                                                         {EMITTER_PREFETCH_BIT, "Faster Emitter Prefetch"}}};
+                                                                         {EMITTER_PREFETCH_BIT, "Faster Emitter Prefetch"},
+                                                                         {ENTRY_PREFETCH_BIT, "Faster Particle Prefetch"}}};
 
 // The first instruction (or two or three, whole) of each site: 5 bytes that become a jump into the page (the render list
 // push's: a 4-byte instruction and the first byte of the next, both run by its stub).
@@ -1219,7 +1253,7 @@ struct Site {
   uint8_t opcode = 0xE9;  // jmp; the worker destructor's call of Stop stays a call (E8)
 };
 
-static std::array<Site, 20> sites = {{{.name = "soldier draw rounding"},
+static std::array<Site, 21> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half floats"},
                                      {.name = "fmod"},
                                      {.name = "render list pushes"},
@@ -1238,11 +1272,12 @@ static std::array<Site, 20> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "soldier matrix row 3"},
                                      {.name = "matrix product row 1"},
                                      {.name = "matrix product row 2"},
-                                     {.name = "matrix product row 3"}}};
-// The reload rows' sites follow each other to the end of `sites`; every site has a bit of the uint32_t masks.
+                                     {.name = "matrix product row 3"},
+                                     {.name = "particle entry prefetch"}}};
+// The reload rows' sites follow each other; every site has a bit of the uint32_t masks.
 static_assert(SOLDIER_ROWS_FIRST_SITE + SOLDIER_ROWS_STUBS.size() == MATRIX_PRODUCT_FIRST_SITE
-              && MATRIX_PRODUCT_FIRST_SITE + MATRIX_PRODUCT_STUBS.size() == std::tuple_size_v<decltype(sites)>
-              && std::tuple_size_v<decltype(sites)> <= 32);
+              && MATRIX_PRODUCT_FIRST_SITE + MATRIX_PRODUCT_STUBS.size() == ENTRY_PREFETCH_INDEX
+              && ENTRY_PREFETCH_INDEX + 1 == std::tuple_size_v<decltype(sites)> && std::tuple_size_v<decltype(sites)> <= 32);
 // Every site belongs to exactly one row: the rows' masks are disjoint and cover every site.
 static_assert([] {
   uint32_t covered = 0;
@@ -1535,6 +1570,11 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     if (uint8_t* match = (build.emitter_loop_rva != 0 ? find(EMITTER_LOOP, build.emitter_loop_rva) : nullptr); match != nullptr) {
       place_stub(EMITTER_PREFETCH_INDEX, match + EMITTER_LOOP_SITE, SITE_SIZE, EMITTER_PREFETCH_STUB, page + EMITTER_PREFETCH_PAGE);
     }
+    // The particle writer's table entry prefetch, found by the function's top; the stub goes on at the `je` after the `test`.
+    if (uint8_t* match = (build.entry_fetch_rva != 0 ? find(ENTRY_FETCH, build.entry_fetch_rva) : nullptr); match != nullptr) {
+      place_stub(ENTRY_PREFETCH_INDEX, match + ENTRY_FETCH_SITE, ENTRY_FETCH_RESUME - ENTRY_FETCH_SITE, ENTRY_FETCH_STUB,
+                 page + ENTRY_PREFETCH_PAGE);
+    }
     DWORD protection;
     VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
     FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
@@ -1549,9 +1589,9 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   const uint32_t reload_rva = (sse4_1 ? build.float4_reload_rva : 0);
   const uint32_t rows_rva = (sse4_1 ? build.soldier_rows_rva : 0);
   const uint32_t product_rva = (sse4_1 ? build.matrix_product_rva : 0);
-  const std::array<uint32_t, 20> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
+  const std::array<uint32_t, 21> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
                                          0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva, 0, 0, rows_rva, rows_rva, rows_rva,
-                                         product_rva, product_rva, product_rva};
+                                         product_rva, product_rva, product_rva, 0};
   static_assert(std::tuple_size_v<decltype(rvas)> == std::tuple_size_v<decltype(sites)>);
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
@@ -1579,13 +1619,14 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
 }  // namespace internal
 
 // Every present: `enabled` (Faster Game CPU Code), `lists` (Faster Render Lists), `jobs` (Faster Job Wake-Ups),
-// `prefetch` (Faster Effect Prefetch) and `emitter_prefetch` (Faster Emitter Prefetch) once empire.retail.dll is
-// loaded, the first time any is on prepared (`game`'s build); then the jumps go in or the game's bytes back, while no
-// thread stands inside them.
+// `prefetch` (Faster Effect Prefetch), `emitter_prefetch` (Faster Emitter Prefetch) and `particle_prefetch` (Faster
+// Particle Prefetch) once empire.retail.dll is loaded, the first time any is on prepared (`game`'s build); then the jumps
+// go in or the game's bytes back, while no thread stands inside them.
 inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, bool jobs = false, bool prefetch = false,
-                   bool emitter_prefetch = false) {
+                   bool emitter_prefetch = false, bool particle_prefetch = false) {
   const uint32_t wanted = (enabled ? internal::CPU_CODE_SITES : 0u) | (lists ? internal::LIST_SITES : 0u) | (jobs ? internal::JOB_SITES : 0u)
-                          | (prefetch ? internal::PREFETCH_SITES : 0u) | (emitter_prefetch ? internal::EMITTER_PREFETCH_BIT : 0u);
+                          | (prefetch ? internal::PREFETCH_SITES : 0u) | (emitter_prefetch ? internal::EMITTER_PREFETCH_BIT : 0u)
+                          | (particle_prefetch ? internal::ENTRY_PREFETCH_BIT : 0u);
   if (wanted != 0 && !internal::prepared) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;
@@ -1600,7 +1641,7 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     renodx::utils::log::w("[Total War] Faster Job Wake-Ups: left alone (not the game's code as expected: another mod or build)");
   }
   // A prefetch row's sites asked for and not found (another mod's bytes, or another build): each is named once, by its row.
-  constexpr uint32_t PREFETCH_ROWS = internal::PREFETCH_SITES | internal::EMITTER_PREFETCH_BIT;
+  constexpr uint32_t PREFETCH_ROWS = internal::PREFETCH_SITES | internal::EMITTER_PREFETCH_BIT | internal::ENTRY_PREFETCH_BIT;
   for (const auto& [row_sites, name] : internal::ROWS) {
     const uint32_t missing = wanted & row_sites & PREFETCH_ROWS & ~internal::found & ~internal::prefetch_logged;
     if (!internal::prepared || missing == 0) continue;
@@ -1654,7 +1695,7 @@ inline void Uninstall() {
 
 #else
 
-inline void Update(bool, Game = Game::ATTILA, bool = false, bool = false, bool = false, bool = false) {}
+inline void Update(bool, Game = Game::ATTILA, bool = false, bool = false, bool = false, bool = false, bool = false) {}
 inline void Uninstall() {}
 
 #endif

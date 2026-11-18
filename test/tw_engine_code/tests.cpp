@@ -86,6 +86,12 @@
 //    13 a changed site, a changed pattern byte, no SSE4.1. The matrix product's three row reloads (+0x168d7f0 / +0x168d803 / +0x168d812,
 //    Thrones +0x16faf10 .., Rome II +0x135b7b0 ..) the same way, the whole function on random matrices (done already, none, up to 24) instead
 //    of the ways: registers, x87 / MXCSR / xmm, flags, esp, the stack, the matrices and the objects equal.
+// 18. The particle writer's table entry prefetch (+0x18960f5, Thrones +0x190b455; Faster Particle Prefetch; entry_prefetch.inc): the whole function on the part 14
+//    fake graph with the site alone and with the reload sites (every register, x87 / MXCSR / xmm, the flags, esp, the frame, the streams and the objects equal, both
+//    sides of the je), entries in odd places (null, across a no-access page's edge, the top of the address space, random ones: both copies fault in the same place
+//    with the same memory or neither does), CONTROLs (no test, a write to ecx, no store, a load for the prefetch, the jump past the je), 200 switches under 4
+//    threads, a parked thread at each byte of the site, the three micro-benchmarks (the entry hot / cold, the multiply's stale operand normal / subnormal, the
+//    definition chain hot / cold / chain-prefetched). Rome II has none.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -2360,6 +2366,9 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
 // More float4 reloads (part 17): each alone, the soldier draw's ways into them, controls, switching, parked threads, timing.
 #include "more_reloads.inc"
 
+// The particle writer's table entry prefetch (part 18): the whole function, odd entries, controls, switching, parked threads, timing.
+#include "entry_prefetch.inc"
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2402,6 +2411,7 @@ int main(int argc, char** argv) {
   CHECK(Matches(game + text_rva, text_size, ec::FLOAT4_RELOAD) == (build.code->float4_reload_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::PARTICLE_LOOP) == (build.code->particle_loop_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::EMITTER_LOOP) == (build.code->emitter_loop_rva != 0 ? 1u : 0u));
+  CHECK(Matches(game + text_rva, text_size, ec::ENTRY_FETCH) == (build.code->entry_fetch_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, build.code->soldier_rows) == 1);
   CHECK(Matches(game + text_rva, text_size, ec::SOLDIER_ROWS) + Matches(game + text_rva, text_size, ec::ROME2_SOLDIER_ROWS) == 1);
   CHECK(Matches(game + text_rva, text_size, ec::MATRIX_PRODUCT) == 1);
@@ -2418,17 +2428,19 @@ int main(int argc, char** argv) {
   }
   CHECK(ec::sites[ec::PARTICLE_PREFETCH_INDEX].at == (build.code->particle_loop_rva != 0 ? patched + build.code->particle_loop_rva + ec::PARTICLE_LOOP_SITE : nullptr));
   CHECK(ec::sites[ec::EMITTER_PREFETCH_INDEX].at == (build.code->emitter_loop_rva != 0 ? patched + build.code->emitter_loop_rva + ec::EMITTER_LOOP_SITE : nullptr));
+  CHECK(ec::sites[ec::ENTRY_PREFETCH_INDEX].at == (build.code->entry_fetch_rva != 0 ? patched + build.code->entry_fetch_rva + ec::ENTRY_FETCH_SITE : nullptr));
   for (size_t row = 0; row < ec::SOLDIER_ROWS_STUBS.size(); ++row) {
     CHECK(ec::sites[ec::SOLDIER_ROWS_FIRST_SITE + row].at == patched + build.code->soldier_rows_rva + build.code->soldier_rows_at[row]);
     CHECK(ec::sites[ec::MATRIX_PRODUCT_FIRST_SITE + row].at == patched + build.code->matrix_product_rva + ec::MATRIX_PRODUCT_AT[row]);
   }
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
-  twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true, true);
+  twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true, true, true);
   CHECK(ec::written == (ec::found & ~ec::JOB_SITES)
         && ec::found == (0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.ready_check_rva != 0 ? 0b10000u : 0u)
                          | (build.code->job_wake_all_rva != 0 ? ec::JOB_SITES : 0u) | (build.code->half_rows_rva != 0 ? 0b100000000u : 0u)
                          | (build.code->child_sum_rva != 0 ? ec::CHILD_SUM_BIT : 0u) | (build.code->particle_loop_rva != 0 ? ec::PARTICLE_PREFETCH_BIT : 0u)
                          | (build.code->emitter_loop_rva != 0 ? ec::EMITTER_PREFETCH_BIT : 0u)
+                         | (build.code->entry_fetch_rva != 0 ? ec::ENTRY_PREFETCH_BIT : 0u)
                          | (build.code->float4_reload_rva != 0 ? ec::FLOAT4_RELOAD_SITES : 0u) | ec::SOLDIER_ROWS_SITES | ec::MATRIX_PRODUCT_SITES));
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
@@ -2486,6 +2498,12 @@ int main(int argc, char** argv) {
   if (argc > 3 && std::string(argv[3]) == "emitter" && build.code->emitter_loop_rva != 0) {
     if (const int failed = RunEmitterTests(build, game, patched, quick); failed != 0) return failed;
     std::printf("PASS (emitter only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "entry" && build.code->entry_fetch_rva != 0) {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true, true);
+    if (const int failed = RunEntryTests(build, game, patched, quick); failed != 0) return failed;
+    std::printf("PASS (entry only)\n");
     return 0;
   }
 
@@ -2888,7 +2906,7 @@ int main(int argc, char** argv) {
   // 8. The render lists' push.
   if (build.list_push_function_rva != 0) {
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
-    CHECK(ec::written == (ec::found & ~(ec::JOB_SITES | ec::PREFETCH_SITES | ec::EMITTER_PREFETCH_BIT)));
+    CHECK(ec::written == (ec::found & ~(ec::JOB_SITES | ec::PREFETCH_SITES | ec::EMITTER_PREFETCH_BIT | ec::ENTRY_PREFETCH_BIT)));
     const uint32_t game_push = Address(game + build.list_push_function_rva);
     const uint32_t patched_push = Address(patched + build.list_push_function_rva);
     const auto start = std::chrono::steady_clock::now();
@@ -3420,6 +3438,16 @@ int main(int argc, char** argv) {
   if (const int failed = RunMatrixProductTests(build, game, patched, quick); failed != 0) return failed;
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
 
+  // 18. The particle writer's table entry prefetch (Faster Particle Prefetch).
+  if (build.code->entry_fetch_rva != 0) {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true, true);
+    if (const int failed = RunEntryTests(build, game, patched, quick); failed != 0) return failed;
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true, true);
+  } else {
+    CHECK(ec::sites[ec::ENTRY_PREFETCH_INDEX].at == nullptr);
+    std::printf("18. particle writer table entry prefetch: none in this build\n");
+  }
+
   // Off: the game's bytes back (the harness's jumps removed first).
   std::memcpy(game + build.truncation_resume_rva, file.data() + (build.truncation_resume_rva - text_rva + text_header->PointerToRawData), 5);
   std::memcpy(patched + build.truncation_resume_rva, unpatched.data() + (build.truncation_resume_rva - text_rva), 5);
@@ -3447,7 +3475,7 @@ int main(int argc, char** argv) {
     };
     const std::array<uint8_t, ec::SITE_SIZE> hook = {0xE9, 0x10, 0x20, 0x30, 0x40};
     const uint32_t all = ec::found;
-    const auto on = [&] { twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, true, true, true); };
+    const auto on = [&] { twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, true, true, true, true); };
     const auto off = [&] { twattila::engine_code::Update(false); };
     const auto game_bytes = [&](uint32_t mask) {  // every site of `mask` holds the game's bytes
       for (size_t index = 0; index < ec::sites.size(); ++index) {
