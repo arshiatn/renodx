@@ -1766,8 +1766,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                                 shader_injection.ssao_temporal != 0.f, shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
-  twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::THRONES, render_lists_row != 0.f);
-  tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
+  twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::THRONES, render_lists_row != 0.f, false, false, false, false, false,
+                                object_detail.scale);
+  tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, twattila::engine_code::ModelDetailStatus(object_detail.scale), &graphics_found,
+                            graphics_status);
   twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::graphics_hooks::Update(
       {
@@ -2044,10 +2046,7 @@ void ConfigureAddon() {
       tw::engine_tweaks::Slider(&footstep_effects, "GraphicsFootstepEffects", "Footstep Effects Distance",
                                 "How far soldiers' footsteps kick up dust. Higher: heavier.", 4.f, 0.1f),
       tw::engine_tweaks::Slider(&object_detail, "GraphicsObjectDetail", "Model Detail Distance",
-                                "Battle: trees and other objects keep their detailed versions farther away.\n"
-                                "A game started at 1x needs a restart before it applies.",
-                                8.f),
-      tw::engine_tweaks::RestartNote(&object_detail),
+                                "Battle: trees and other objects keep their detailed versions farther away.", 8.f),
       tw::engine_tweaks::Slider(&building_detail, "GraphicsBuildingDetail", "Building Detail Distance",
                                 "Battle: buildings keep their detailed versions farther away. From the next battle.",
                                 8.f),

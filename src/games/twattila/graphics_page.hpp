@@ -1338,7 +1338,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .default_value = 1.f,
           .label = "Faster Game CPU Code",
           .section = section,
-          .tooltip = "Faster versions of some of the game's own CPU code (soldiers and their sprites), same results.\n"
+          .tooltip = "Faster versions of some of the game's own CPU code (soldiers, sprites and more), same results.\n"
                      "Parts another mod already changed are left as that mod made them.",
           .is_visible = more(&more_rt, always),
       });

@@ -7,7 +7,8 @@
 // a. the site and the stub as Prepare made them (jumps, bytes);
 // b. the loop's bottom alone (the game's three instructions and a copy of the stub, both exits to the harness): every ebx around the count 0 to 48,
 //    ebx at the edges of the address space, random registers, an array that ends where the next page is no access (a load past the vector crashes
-//    the test): every register but esi, the flags, esp and which way it went equal;
+//    the test): every register but esi, the flags, esp and which way it went equal, esi the slot the stub loaded (index ebx + K below the size) or
+//    the index itself;
 // c. the whole loop in both copies of the DLL (the harness's jump from +0x1893888 back to itself): random emitters of 1 to 48 particles with a fake update
 //    that counts its calls, hashes their order, writes into its particle and may change the vector at one call (shrink to any size, another array of any
 //    size, grow in place), the array ending at a no-access page, garbage in the slots the loop never reads, random registers, flags, xmm and frame:
@@ -204,7 +205,9 @@ LoopSpec LoopRandomSpec(Random* random) {
 }
 
 // Fills `world` (every byte the loop or the update could read at random, then the structure) for `spec`; `ends` are two blocks' ends (LoopBlockEnd):
-// the vector's array is placed to end exactly there, so a load of a slot past the size the vector has at that moment crashes the test. Slots the loop
+// the vector's array is placed to end exactly there, so a load past the array's room crashes the test. The room is the old size, or in mode 3 the
+// grown one; after a shrink (mode 1) the slots between the new size and the old one stay readable and hold garbage or particles, and so does the old
+// array after a swap (mode 2): a load there does not crash the test, only the stub's check against the size as it is then keeps it out. Slots the loop
 // can never reach hold garbage (small numbers, no-access and wrapping addresses, the no-access page itself); the registers, flags, xmm and frame
 // are random; `target` is left to the run.
 void LoopSetup(LoopWorld* world, const std::array<uint8_t*, 2>& ends, const LoopSpec& spec, Random* random) {
@@ -277,7 +280,7 @@ const char* LoopDiff(const LoopWorld& a, const LoopWorld& b, uint32_t copy_dista
   for (size_t at = 0; at < sizeof(a.call.frame); at += 4) {
     const uint32_t x = Read32(a.call.frame + at);
     const uint32_t y = Read32(b.call.frame + at);
-    if (x != y && y - x != copy_distance) return "stack";
+    if (x != y && y - x != copy_distance && !ProbeDeadStack(static_cast<uint32_t>(at), 0x100)) return "stack";
   }
   return "";
 }
@@ -314,9 +317,9 @@ int RunParticleTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bo
   constexpr size_t STUB_SIZE = ec::PARTICLE_PREFETCH_STUB.size();
 
   // 15a. The site and the stub as Prepare made them.
-  CHECK(ec::sites[12].at == patched + site_rva && (ec::written >> 12 & 1) != 0);
-  CHECK(std::memcmp(game + site_rva, GAME_SITE.data(), 5) == 0 && std::memcmp(ec::sites[12].game.data(), GAME_SITE.data(), 5) == 0);
-  CHECK(patched[site_rva] == 0xE9 && Address(patched + site_rva + 5) + Read32(patched + site_rva + 1) == Address(stub));
+  CHECK(ec::sites[ec::PARTICLE_PREFETCH_INDEX].at == patched + site_rva && (ec::written >> ec::PARTICLE_PREFETCH_INDEX & 1) != 0);
+  CHECK(std::memcmp(game + site_rva, GAME_SITE.data(), 5) == 0 && std::memcmp(ec::sites[ec::PARTICLE_PREFETCH_INDEX].game.data(), GAME_SITE.data(), 5) == 0);
+  CHECK(patched[site_rva] == 0xE9 && SiteJumpTarget(ec::PARTICLE_PREFETCH_INDEX, patched + site_rva) == Address(stub));
   CHECK(stub[STUB_SIZE - 5] == 0xE9 && Address(stub + STUB_SIZE) + Read32(stub + STUB_SIZE - 4) == Address(patched + exit_rva));
   CHECK(stub[STUB_SIZE - 11] == 0x0F && stub[STUB_SIZE - 10] == 0x82 && Address(stub + STUB_SIZE - 5) + Read32(stub + STUB_SIZE - 9) == Address(patched + loop_rva));
   CHECK(std::memcmp(stub, ec::PARTICLE_PREFETCH_STUB.data(), STUB_SIZE - 11) == 0);
@@ -374,11 +377,14 @@ int RunParticleTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bo
       sum_block_target = Address(ours_block);
       EnterSumBlock(&b);
       const uint32_t exit_b = particle_exit;
+      // esi is the stub's: the slot [array + 4 * (ebx + K)] when that index is below the size, else the index itself (the lea's result).
+      const uint32_t slot_index = ebx + ec::PARTICLE_PREFETCH_AHEAD;
+      const uint32_t expected_esi = (slot_index < count ? Read32(arrays - 4 * count + 4 * slot_index) : slot_index);
       const bool same = [&] {
         for (const size_t reg : {0, 1, 2, 3, 5, 6}) {
           if (a.out[reg] != b.out[reg]) return false;
         }
-        return a.flags_out == b.flags_out && a.esp_after == b.esp_after && exit_a == exit_b && exit_a != 0;
+        return a.flags_out == b.flags_out && a.esp_after == b.esp_after && exit_a == exit_b && exit_a != 0 && b.out[4] == expected_esi;
       }();
       ++runs;
       taken += (exit_a == 1 ? 1 : 0);
@@ -564,16 +570,16 @@ int RunParticleTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bo
       on = !on;
       int tries = 0;
       do {
-        twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, on);
+        twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, on, true);
         ++tries;
-      } while (((ec::written >> 12 & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
+      } while (((ec::written >> ec::PARTICLE_PREFETCH_INDEX & 1) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
       busy += tries > 1 ? 1 : 0;
     }
-    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
     stop = true;
     for (auto& thread : threads) thread.join();
     std::printf("   200 switches while 4 threads ran the loop %llu times in each copy: %llu different (%d writes waited for a thread inside a site)\n", loops.load(), bad.load(), busy);
-    CHECK(bad.load() == 0 && (ec::written >> 12 & 1) != 0);
+    CHECK(bad.load() == 0 && (ec::written >> ec::PARTICLE_PREFETCH_INDEX & 1) != 0);
   }
 
   // A parked thread whose saved Eip is each byte of the site (and the byte before, the bytes after): the row switched, the site changes only with Eip at
@@ -586,7 +592,7 @@ int RunParticleTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bo
     HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
     CHECK(thread != nullptr);
     const uint8_t* site = patched + site_rva;
-    bool on = (ec::written >> 12 & 1) != 0;
+    bool on = (ec::written >> ec::PARTICLE_PREFETCH_INDEX & 1) != 0;
     CHECK(on);
     int wrong = 0;
     for (int offset = -1; offset <= 6; ++offset) {
@@ -597,16 +603,16 @@ int RunParticleTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bo
       moved.Eip = Address(site + offset);
       CHECK(SetThreadContext(thread, &moved) != FALSE);
       const uint32_t before = ec::written;
-      twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, !on);
-      const bool changed = ((ec::written ^ before) >> 12 & 1) != 0;
+      twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, !on, true);
+      const bool changed = ((ec::written ^ before) >> ec::PARTICLE_PREFETCH_INDEX & 1) != 0;
       wrong += (changed != !(offset > 0 && offset < 5)) ? 1 : 0;
       if (changed) on = !on;
       CHECK(SetThreadContext(thread, &saved) != FALSE);
       ResumeThread(thread);
     }
     for (int tries = 0; !on && tries < static_cast<int>(ec::MAX_FAILED_WRITES); ++tries) {
-      twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true);
-      on = (ec::written >> 12 & 1) != 0;
+      twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
+      on = (ec::written >> ec::PARTICLE_PREFETCH_INDEX & 1) != 0;
     }
     stop = true;
     parked.join();
