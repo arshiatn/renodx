@@ -3265,6 +3265,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         ecx dead, liveness from the parallel_for, 44-byte stub at 0xBC0, heapfix patches nothing there). Per ATN's rule:
         ci4s_ Sonnet xHigh retry of E3P-c STARTED 06:51 on d6cef1f49 (a second stop ends E3P-c). E3P-d stays its own
         item (Opus first) after E3P-c.
+        ci4s_ DONE ~07:4x -> night1118/ci4s_report.md: 638946e64 on ci4s_ (parent d6cef1f49): E3P-c site 13 (Attila
+        0x18933ce / Thrones 0x190872e, 48-byte stub at 0xBC0, K = 1, container from [esp+0x20], only ecx = dead; part
+        16: 5 M bottom + 1 M whole-loop runs 0 differences, 6 CONTROLs; harness 192 -> 111 ns an emitter) + a part 9 ASLR
+        flake fix (self_low_page below 16 MB); full x86 suites PASS 3 DLLs; gated x86 exit 0. STARTED 08:00: cr4_
+        SONNET xHigh review (E3P-c had an Opus stop) + ci5_ Opus High = E3P-d (site 8 distance sweep) + commit 2 the
+        CR2 / CR3 low fixes, on 638946e64.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
