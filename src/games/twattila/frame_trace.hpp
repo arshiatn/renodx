@@ -13,16 +13,19 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <charconv>
 #include <cstdint>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <mutex>
 #include <shared_mutex>
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -41,6 +44,16 @@
 // (tools\tw\scale_audit.py): which passes read the 3D image's part of a display-size texture as if it filled it. Its
 // events are registered only for the traced frame (with FrameTraceReads=1 also the frame after it, and the input layouts'
 // from the start).
+// Debug (env RENODX_TW_MAP_TRACE=<seconds after the first present>[,<frames>], default 3 frames, read at Install): the map
+// trace, what the game's Map calls wait for. Each traced frame's maps, unmaps, buffer updates and copies into staging
+// resources (the resource, the access, the time since the previous traced event on that thread ended, the first return
+// addresses into the game's code) and its draws and dispatches (the time and shaders only: no Gets, no GPU reads), kept as
+// structs and written to tw_map_trace.txt next to the exe after the last traced present (tools\tw\map_trace.py). Armed,
+// its callbacks are registered at Install (gated off outside the traced frames); unarmed, none. ReShade reports only
+// the Maps that succeed: a failed DO_NOT_WAIT poll is not seen (its time is in the gap of the Map that succeeds), and
+// the Map flags are not recorded. A map's unmap is the next unmap of its resource and subresource on any thread or
+// context. A gap leaves the trace's own time out but holds the native call of the event before it when that callback
+// runs first (a draw's, an unmap's, an update's, a copy's: gap_from names it).
 namespace twattila::frame_trace {
 
 // `count` values of a buffer from `offset` bytes on, read back (it waits for the GPU: for traced frames); empty: past the
@@ -560,6 +573,357 @@ inline void UseEvents(bool use) {
   }
 }
 
+// ---- The map trace (RENODX_TW_MAP_TRACE).
+
+constexpr uint32_t MAP_TRACE_FRAMES = 3;
+constexpr uint32_t MAX_MAP_TRACE_FRAMES = 100;
+constexpr size_t MAX_MAP_DRAWS = size_t{1} << 17;
+constexpr size_t MAX_MAP_EVENTS = size_t{1} << 15;
+constexpr size_t MAP_CALLERS = 4;
+constexpr uintptr_t MAP_STACK_SCAN_BYTES = 16384;
+constexpr size_t MAP_RECENT_PRESENTS = 128;  // the presents before the trace, for the parser's clock alignment
+
+enum class MapEventKind : uint8_t { MAP, UNMAP, UPDATE, COPY };
+enum class MapDrawKind : uint8_t { DRAW, INDEXED, DISPATCH, DRAW_INDIRECT, DISPATCH_INDIRECT };
+
+struct MapDraw {
+  int64_t qpc = 0;   // the callback's start (before the native draw)
+  int64_t done = 0;  // its end: the next event's gap starts here
+  uint32_t thread = 0;
+  MapDrawKind kind = MapDrawKind::DRAW;
+  uint32_t vertex_shader = 0;  // a dispatch's compute shader
+  uint32_t pixel_shader = 0;
+};
+
+// A resource as the map trace prints it (a buffer's width in bytes; depth: a 3D texture's, else the array size).
+struct MapResource {
+  uintptr_t pointer = 0;
+  D3D11_RESOURCE_DIMENSION dimension = D3D11_RESOURCE_DIMENSION_UNKNOWN;
+  uint32_t width = 0;
+  uint32_t height = 0;
+  uint32_t depth = 0;
+  uint32_t mips = 0;
+  DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+  D3D11_USAGE usage = D3D11_USAGE_DEFAULT;
+  uint32_t bind_flags = 0;
+  uint32_t cpu_access_flags = 0;
+  uint32_t misc_flags = 0;
+};
+
+struct MapEvent {
+  int64_t qpc = 0;   // the callback's start (a map's: after the D3D11 runtime's Map returned; the others' before theirs)
+  int64_t done = 0;  // its end: the next event's gap starts here (the trace's own time left out)
+  uint32_t thread = 0;
+  MapEventKind kind = MapEventKind::MAP;
+  reshade::api::map_access access = reshade::api::map_access::read_only;
+  uint32_t subresource = 0;
+  uint64_t bytes = 0;    // an update's or a buffer copy's size (0: the whole resource)
+  MapResource resource;  // a copy's destination
+  MapResource source;    // a copy's
+  std::array<uintptr_t, MAP_CALLERS> callers = {};
+};
+
+struct MapModule {
+  std::string name;
+  uintptr_t base = 0;
+};
+
+// An executable section of a MapModule.
+struct MapCode {
+  uintptr_t begin = 0;
+  uintptr_t end = 0;
+  size_t module = 0;
+};
+
+struct MapTrace {
+  std::shared_mutex mutex;
+  std::atomic_bool armed = false;    // RENODX_TW_MAP_TRACE set, its file not yet written
+  std::atomic_bool tracing = false;  // inside the traced frames (the callbacks' gate)
+  bool registered = false;           // the callbacks (Install's, when armed)
+  std::string setting;
+  double delay_seconds = 0.;
+  uint32_t frames = MAP_TRACE_FRAMES;
+  int64_t first_present = 0;
+  std::array<int64_t, MAP_RECENT_PRESENTS> recent_presents = {};
+  size_t recent_count = 0;
+  std::vector<int64_t> presents;  // each traced frame's start, then the last one's end
+  std::vector<MapDraw> draws;
+  std::vector<MapEvent> events;
+  uint32_t dropped_draws = 0;
+  uint32_t dropped_events = 0;
+  // The exe; the engine (empire.retail.dll) where the game has one. Written once, before `tracing` is first set.
+  std::vector<MapModule> modules;
+  std::vector<MapCode> code;
+  // The caller scan's stack limits (a test seam: test/tw_map_trace points it at limits that exclude the callback's
+  // frame; set only while no callback runs).
+  void(WINAPI* stack_limits)(PULONG_PTR, PULONG_PTR) = GetCurrentThreadStackLimits;
+};
+static MapTrace map_trace;
+
+inline bool IsDispatch(MapDrawKind kind) {
+  return kind == MapDrawKind::DISPATCH || kind == MapDrawKind::DISPATCH_INDIRECT;
+}
+
+inline int64_t Qpc() {
+  LARGE_INTEGER now = {};
+  QueryPerformanceCounter(&now);
+  return now.QuadPart;
+}
+
+// The map, unmap and update callbacks' gate (a D3D11 device only: GetType / GetDesc on its handles).
+inline bool MapTracing(reshade::api::device* device) {
+  return map_trace.tracing.load(std::memory_order_relaxed) && device->get_api() == reshade::api::device_api::d3d11;
+}
+
+inline void RecordMapDraw(reshade::api::command_list* cmd_list, MapDrawKind kind) {
+  if (!map_trace.tracing.load(std::memory_order_relaxed)) return;
+  const int64_t qpc = Qpc();
+  const bool compute = IsDispatch(kind);
+  const uint32_t first_shader = renodx::utils::state::GetCurrentShaderHash(
+      cmd_list, (compute ? reshade::api::pipeline_stage::compute_shader : reshade::api::pipeline_stage::vertex_shader));
+  const uint32_t pixel_shader =
+      (compute ? 0u : renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader));
+  const std::unique_lock lock(map_trace.mutex);
+  if (!map_trace.tracing.load(std::memory_order_relaxed)) return;
+  if (map_trace.draws.size() >= MAX_MAP_DRAWS) {
+    ++map_trace.dropped_draws;
+    return;
+  }
+  map_trace.draws.push_back({.qpc = qpc, .done = Qpc(), .thread = GetCurrentThreadId(), .kind = kind,
+                             .vertex_shader = first_shader, .pixel_shader = pixel_shader});
+}
+
+// One traced map, unmap, update or staging copy (`event.qpc` taken at its callback's start), with the game's return
+// addresses above this call (`with_callers`).
+inline void RecordMapEvent(MapEvent event, bool with_callers) {
+  // Acquire: `code` was written before `tracing` was set.
+  if (!map_trace.tracing.load(std::memory_order_acquire)) return;
+  if (with_callers) {
+    // Stack values inside the exe's or the engine's code just after a call instruction (E8 rel32, or FF /2 in its 2, 3,
+    // 4, 6 and 7-byte forms), nearest first, each once (x64 frames keep spilled copies): the first is the game's call
+    // into the D3D11 runtime. A heuristic: a stale value can match. Only on the thread's own stack (a job system's
+    // stack that the TEB doesn't describe: no scan).
+    ULONG_PTR stack_low = 0;
+    ULONG_PTR stack_high = 0;
+    map_trace.stack_limits(&stack_low, &stack_high);
+    uintptr_t slot = reinterpret_cast<uintptr_t>(&stack_low) & ~(uintptr_t{sizeof(uintptr_t)} - 1);
+    if (slot >= stack_low && slot < stack_high) {
+      const uintptr_t scan_end = std::min<uintptr_t>(stack_high, slot + MAP_STACK_SCAN_BYTES);
+      size_t found = 0;
+      for (; slot + sizeof(uintptr_t) <= scan_end && found < event.callers.size(); slot += sizeof(uintptr_t)) {
+        const uintptr_t value = *reinterpret_cast<const uintptr_t*>(slot);
+        const bool in_code = std::ranges::any_of(map_trace.code, [value](const MapCode& code) {
+          return value >= code.begin + 7 && value <= code.end;
+        });
+        if (!in_code) continue;
+        const auto* after = reinterpret_cast<const uint8_t*>(value);
+        const auto indirect_call = [after](int length) {
+          return after[-length] == 0xFF && (after[-length + 1] & 0x38) == 0x10;
+        };
+        const auto found_end = event.callers.begin() + found;
+        if (std::ranges::find(event.callers.begin(), found_end, value) == found_end
+            && (after[-5] == 0xE8 || indirect_call(2) || indirect_call(3) || indirect_call(4) || indirect_call(6)
+                || indirect_call(7))) {
+          event.callers[found++] = value;
+        }
+      }
+    }
+  }
+  const std::unique_lock lock(map_trace.mutex);
+  if (!map_trace.tracing.load(std::memory_order_relaxed)) return;
+  if (map_trace.events.size() >= MAX_MAP_EVENTS) {
+    ++map_trace.dropped_events;
+    return;
+  }
+  event.done = Qpc();
+  map_trace.events.push_back(event);
+}
+
+inline MapResource DescribeMapResource(reshade::api::resource handle) {
+  MapResource result = {.pointer = static_cast<uintptr_t>(handle.handle)};
+  auto* resource = reinterpret_cast<ID3D11Resource*>(handle.handle);
+  if (resource == nullptr) return result;
+  const auto flags = [&result](const auto& desc) {
+    result.usage = desc.Usage;
+    result.bind_flags = desc.BindFlags;
+    result.cpu_access_flags = desc.CPUAccessFlags;
+    result.misc_flags = desc.MiscFlags;
+  };
+  resource->GetType(&result.dimension);
+  switch (result.dimension) {
+    case D3D11_RESOURCE_DIMENSION_BUFFER: {
+      D3D11_BUFFER_DESC desc = {};
+      static_cast<ID3D11Buffer*>(resource)->GetDesc(&desc);
+      flags(desc);
+      result.width = desc.ByteWidth;
+      break;
+    }
+    case D3D11_RESOURCE_DIMENSION_TEXTURE1D: {
+      D3D11_TEXTURE1D_DESC desc = {};
+      static_cast<ID3D11Texture1D*>(resource)->GetDesc(&desc);
+      flags(desc);
+      result.width = desc.Width;
+      result.height = 1;
+      result.depth = desc.ArraySize;
+      result.mips = desc.MipLevels;
+      result.format = desc.Format;
+      break;
+    }
+    case D3D11_RESOURCE_DIMENSION_TEXTURE2D: {
+      D3D11_TEXTURE2D_DESC desc = {};
+      static_cast<ID3D11Texture2D*>(resource)->GetDesc(&desc);
+      flags(desc);
+      result.width = desc.Width;
+      result.height = desc.Height;
+      result.depth = desc.ArraySize;
+      result.mips = desc.MipLevels;
+      result.format = desc.Format;
+      break;
+    }
+    case D3D11_RESOURCE_DIMENSION_TEXTURE3D: {
+      D3D11_TEXTURE3D_DESC desc = {};
+      static_cast<ID3D11Texture3D*>(resource)->GetDesc(&desc);
+      flags(desc);
+      result.width = desc.Width;
+      result.height = desc.Height;
+      result.depth = desc.Depth;
+      result.mips = desc.MipLevels;
+      result.format = desc.Format;
+      break;
+    }
+    default:
+      break;
+  }
+  return result;
+}
+
+// A copy into a staging resource (the game's readbacks); other copies are not traced. `bytes`: ReShade's UINT64_MAX
+// (the whole buffer) as 0.
+inline void RecordStagingCopy(reshade::api::command_list* cmd_list, reshade::api::resource source,
+                              reshade::api::resource dest, uint64_t bytes) {
+  if (!MapTracing(cmd_list->get_device())) return;
+  const int64_t qpc = Qpc();
+  const MapResource destination = DescribeMapResource(dest);
+  if (destination.usage != D3D11_USAGE_STAGING) return;
+  RecordMapEvent({.qpc = qpc, .thread = GetCurrentThreadId(), .kind = MapEventKind::COPY,
+                  .bytes = (bytes == UINT64_MAX ? 0 : bytes), .resource = destination,
+                  .source = DescribeMapResource(source)},
+                 true);
+}
+
+inline bool OnMapTraceDraw(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, uint32_t) {
+  RecordMapDraw(cmd_list, MapDrawKind::DRAW);
+  return false;
+}
+
+inline bool OnMapTraceDrawIndexed(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, int32_t,
+                                  uint32_t) {
+  RecordMapDraw(cmd_list, MapDrawKind::INDEXED);
+  return false;
+}
+
+inline bool OnMapTraceDispatch(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t) {
+  RecordMapDraw(cmd_list, MapDrawKind::DISPATCH);
+  return false;
+}
+
+inline bool OnMapTraceIndirect(reshade::api::command_list* cmd_list, reshade::api::indirect_command type,
+                               reshade::api::resource, uint64_t, uint32_t, uint32_t) {
+  RecordMapDraw(cmd_list, (type == reshade::api::indirect_command::dispatch ? MapDrawKind::DISPATCH_INDIRECT
+                                                                            : MapDrawKind::DRAW_INDIRECT));
+  return false;
+}
+
+inline void OnMapTraceMapBuffer(reshade::api::device* device, reshade::api::resource resource, uint64_t, uint64_t,
+                                reshade::api::map_access access, void**) {
+  if (!MapTracing(device)) return;
+  RecordMapEvent({.qpc = Qpc(), .thread = GetCurrentThreadId(), .kind = MapEventKind::MAP, .access = access,
+                  .resource = DescribeMapResource(resource)},
+                 true);
+}
+
+inline void OnMapTraceMapTexture(reshade::api::device* device, reshade::api::resource resource, uint32_t subresource,
+                                 const reshade::api::subresource_box*, reshade::api::map_access access,
+                                 reshade::api::subresource_data*) {
+  if (!MapTracing(device)) return;
+  RecordMapEvent({.qpc = Qpc(), .thread = GetCurrentThreadId(), .kind = MapEventKind::MAP, .access = access,
+                  .subresource = subresource, .resource = DescribeMapResource(resource)},
+                 true);
+}
+
+inline void OnMapTraceUnmapBuffer(reshade::api::device* device, reshade::api::resource resource) {
+  if (!MapTracing(device)) return;
+  RecordMapEvent({.qpc = Qpc(), .thread = GetCurrentThreadId(), .kind = MapEventKind::UNMAP,
+                  .resource = {.pointer = static_cast<uintptr_t>(resource.handle)}},
+                 false);
+}
+
+inline void OnMapTraceUnmapTexture(reshade::api::device* device, reshade::api::resource resource, uint32_t subresource) {
+  if (!MapTracing(device)) return;
+  RecordMapEvent({.qpc = Qpc(), .thread = GetCurrentThreadId(), .kind = MapEventKind::UNMAP, .subresource = subresource,
+                  .resource = {.pointer = static_cast<uintptr_t>(resource.handle)}},
+                 false);
+}
+
+inline bool OnMapTraceUpdateBuffer(reshade::api::device* device, const void*, reshade::api::resource dest, uint64_t,
+                                   uint64_t size) {
+  if (!MapTracing(device)) return false;
+  RecordMapEvent({.qpc = Qpc(), .thread = GetCurrentThreadId(), .kind = MapEventKind::UPDATE,
+                  .bytes = (size == UINT64_MAX ? 0 : size), .resource = DescribeMapResource(dest)},
+                 true);
+  return false;
+}
+
+inline bool OnMapTraceCopyResource(reshade::api::command_list* cmd_list, reshade::api::resource source,
+                                   reshade::api::resource dest) {
+  RecordStagingCopy(cmd_list, source, dest, 0);
+  return false;
+}
+
+inline bool OnMapTraceCopyBuffer(reshade::api::command_list* cmd_list, reshade::api::resource source, uint64_t,
+                                 reshade::api::resource dest, uint64_t, uint64_t size) {
+  RecordStagingCopy(cmd_list, source, dest, size);
+  return false;
+}
+
+inline bool OnMapTraceCopyTexture(reshade::api::command_list* cmd_list, reshade::api::resource source, uint32_t,
+                                  const reshade::api::subresource_box*, reshade::api::resource dest, uint32_t,
+                                  const reshade::api::subresource_box*, reshade::api::filter_mode) {
+  RecordStagingCopy(cmd_list, source, dest, 0);
+  return false;
+}
+
+// At Install (armed) and Uninstall only: ReShade's event lists are not safe to change while other threads draw.
+inline void UseMapEvents(bool use) {
+  if (use) {
+    reshade::register_event<reshade::addon_event::draw>(OnMapTraceDraw);
+    reshade::register_event<reshade::addon_event::draw_indexed>(OnMapTraceDrawIndexed);
+    reshade::register_event<reshade::addon_event::dispatch>(OnMapTraceDispatch);
+    reshade::register_event<reshade::addon_event::draw_or_dispatch_indirect>(OnMapTraceIndirect);
+    reshade::register_event<reshade::addon_event::map_buffer_region>(OnMapTraceMapBuffer);
+    reshade::register_event<reshade::addon_event::map_texture_region>(OnMapTraceMapTexture);
+    reshade::register_event<reshade::addon_event::unmap_buffer_region>(OnMapTraceUnmapBuffer);
+    reshade::register_event<reshade::addon_event::unmap_texture_region>(OnMapTraceUnmapTexture);
+    reshade::register_event<reshade::addon_event::update_buffer_region>(OnMapTraceUpdateBuffer);
+    reshade::register_event<reshade::addon_event::copy_resource>(OnMapTraceCopyResource);
+    reshade::register_event<reshade::addon_event::copy_buffer_region>(OnMapTraceCopyBuffer);
+    reshade::register_event<reshade::addon_event::copy_texture_region>(OnMapTraceCopyTexture);
+  } else {
+    reshade::unregister_event<reshade::addon_event::draw>(OnMapTraceDraw);
+    reshade::unregister_event<reshade::addon_event::draw_indexed>(OnMapTraceDrawIndexed);
+    reshade::unregister_event<reshade::addon_event::dispatch>(OnMapTraceDispatch);
+    reshade::unregister_event<reshade::addon_event::draw_or_dispatch_indirect>(OnMapTraceIndirect);
+    reshade::unregister_event<reshade::addon_event::map_buffer_region>(OnMapTraceMapBuffer);
+    reshade::unregister_event<reshade::addon_event::map_texture_region>(OnMapTraceMapTexture);
+    reshade::unregister_event<reshade::addon_event::unmap_buffer_region>(OnMapTraceUnmapBuffer);
+    reshade::unregister_event<reshade::addon_event::unmap_texture_region>(OnMapTraceUnmapTexture);
+    reshade::unregister_event<reshade::addon_event::update_buffer_region>(OnMapTraceUpdateBuffer);
+    reshade::unregister_event<reshade::addon_event::copy_resource>(OnMapTraceCopyResource);
+    reshade::unregister_event<reshade::addon_event::copy_buffer_region>(OnMapTraceCopyBuffer);
+    reshade::unregister_event<reshade::addon_event::copy_texture_region>(OnMapTraceCopyTexture);
+  }
+}
+
 }  // namespace internal
 
 // At the addon's start: whether this run traces a frame (FrameTrace), and how; whether with the draw reads
@@ -575,6 +939,64 @@ inline void Install(Options options = {}) {
     reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
     renodx::utils::log::i("[Total War] Frame trace: the draw reads on (FrameTraceReads).");
   }
+  // The map trace: <seconds after the first present>[,<frames>], parsed without the C runtime's locale.
+  std::array<char, 64> setting = {};
+  const DWORD setting_length =
+      GetEnvironmentVariableA("RENODX_TW_MAP_TRACE", setting.data(), static_cast<DWORD>(setting.size()));
+  if (setting_length != 0) {
+    const char* setting_end = setting.data() + std::min<size_t>(setting_length, setting.size() - 1);
+    double delay_seconds = -1.;
+    uint32_t frames = internal::MAP_TRACE_FRAMES;
+    const auto [delay_end, delay_error] = std::from_chars(setting.data(), setting_end, delay_seconds);
+    bool valid = setting_length < setting.size() && delay_error == std::errc{} && delay_seconds >= 0.
+                 && delay_seconds <= 86400. && (delay_end == setting_end || *delay_end == ',');
+    if (valid && delay_end != setting_end) {
+      const auto [frames_end, frames_error] = std::from_chars(delay_end + 1, setting_end, frames);
+      valid = frames_error == std::errc{} && frames_end == setting_end && frames >= 1
+              && frames <= internal::MAX_MAP_TRACE_FRAMES;
+    }
+    auto& trace = internal::map_trace;
+    if (valid) {
+      const std::unique_lock lock(trace.mutex);
+      // Its storage now, not inside a present.
+      trace.tracing.store(false);
+      trace.presents.clear();
+      trace.draws.clear();
+      trace.events.clear();
+      trace.modules.clear();
+      trace.code.clear();
+      trace.dropped_draws = 0;
+      trace.dropped_events = 0;
+      try {
+        trace.presents.reserve(frames + 1);
+        trace.draws.reserve(internal::MAX_MAP_DRAWS);
+        trace.events.reserve(internal::MAX_MAP_EVENTS);
+      } catch (const std::bad_alloc&) {
+        trace.presents = {};
+        trace.draws = {};
+        trace.events = {};
+        valid = false;
+        renodx::utils::log::w("[Total War] Map trace: no memory for its storage: off.");
+      }
+      if (valid) {
+        trace.setting = setting.data();
+        trace.delay_seconds = delay_seconds;
+        trace.frames = frames;
+        trace.first_present = 0;
+        trace.recent_count = 0;
+        trace.registered = true;
+        trace.armed.store(true);
+        renodx::utils::log::i("[Total War] Map trace (RENODX_TW_MAP_TRACE=", trace.setting, "): ", frames, " frames from ",
+                              delay_seconds, " s after the first present, into tw_map_trace.txt.");
+      }
+    } else {
+      renodx::utils::log::w("[Total War] Map trace: RENODX_TW_MAP_TRACE=", setting.data(),
+                            " is not <seconds after the first present>[,<frames 1-100>]: off.");
+    }
+    if (valid) {
+      internal::UseMapEvents(true);
+    }
+  }
   std::wstring exe(32768, L'\0');
   exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
   const std::lock_guard lock(internal::state.mutex);
@@ -584,7 +1006,7 @@ inline void Install(Options options = {}) {
   internal::state.folder = std::filesystem::path(exe).parent_path();
 }
 
-// At the addon's end: the events Install (FrameTraceReads) and a frame being traced registered.
+// At the addon's end: the events Install (FrameTraceReads), a frame being traced and the map trace registered.
 inline void Uninstall() {
   internal::state.tracing.store(false);
   internal::state.next_frame.store(false);
@@ -596,6 +1018,15 @@ inline void Uninstall() {
   if (reads) {
     reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
     reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
+  }
+  const bool map_registered = [] {
+    const std::unique_lock lock(internal::map_trace.mutex);
+    internal::map_trace.armed.store(false);
+    internal::map_trace.tracing.store(false);
+    return std::exchange(internal::map_trace.registered, false);
+  }();
+  if (map_registered) {
+    internal::UseMapEvents(false);
   }
 }
 
@@ -617,9 +1048,257 @@ inline void Mark(std::string_view text) {
 
 // Every present (`scaled`: the DLSS render scale ran this frame; `view_3d`: the 3D view drew, at any scale): ends a
 // traced frame (writes the file; with the draw reads after the frame after it); starts one after SCALED_PRESENTS scaled
-// presents (at_100: of the 3D view), or at once when the marker is there (on_demand).
+// presents (at_100: of the 3D view), or at once when the marker is there (on_demand). The map trace: starts at the first
+// present its delay after the first one, ends its frames later (its file written then).
 inline void OnPresent(bool scaled, bool view_3d = false) {
   auto& state = internal::state;
+  if (auto& trace = internal::map_trace; trace.armed.load(std::memory_order_relaxed)) {
+    const int64_t now = internal::Qpc();
+    LARGE_INTEGER frequency = {};
+    QueryPerformanceFrequency(&frequency);
+    const std::unique_lock lock(trace.mutex);
+    if (!trace.tracing.load(std::memory_order_relaxed)) {
+      if (trace.first_present == 0) {
+        trace.first_present = now;
+      }
+      if (static_cast<double>(now - trace.first_present) < trace.delay_seconds * static_cast<double>(frequency.QuadPart)) {
+        trace.recent_presents[trace.recent_count % trace.recent_presents.size()] = now;
+        ++trace.recent_count;
+      } else {
+        // The game's code for the return addresses: the exe, and the engine where the game has one (Attila's, Rome II's);
+        // a module whose headers don't look like a PE image's is left out.
+        try {
+          for (HMODULE module : {GetModuleHandleW(nullptr), GetModuleHandleW(L"empire.retail.dll")}) {
+            if (module == nullptr) continue;
+            const auto base = reinterpret_cast<uintptr_t>(module);
+            const auto* dos_header = reinterpret_cast<const IMAGE_DOS_HEADER*>(module);
+            if (dos_header->e_magic != IMAGE_DOS_SIGNATURE || dos_header->e_lfanew <= 0
+                || dos_header->e_lfanew > 4096 - static_cast<LONG>(sizeof(IMAGE_NT_HEADERS))) {
+              continue;
+            }
+            const auto* headers = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos_header->e_lfanew);
+            if (headers->Signature != IMAGE_NT_SIGNATURE) continue;
+            std::wstring path(32768, L'\0');
+            path.resize(GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size())));
+            // Named: a range-for over filename()'s temporary would dangle.
+            const std::filesystem::path file_name = std::filesystem::path(path).filename();
+            std::string name;
+            for (const wchar_t letter : file_name.native()) {
+              name += (letter < 128 ? static_cast<char>(letter) : '?');
+            }
+            for (const auto& section : std::span(IMAGE_FIRST_SECTION(headers), headers->FileHeader.NumberOfSections)) {
+              if ((section.Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0 || section.Misc.VirtualSize == 0
+                  || uint64_t{section.VirtualAddress} + section.Misc.VirtualSize > headers->OptionalHeader.SizeOfImage) {
+                continue;
+              }
+              trace.code.push_back({.begin = base + section.VirtualAddress,
+                                    .end = base + section.VirtualAddress + section.Misc.VirtualSize,
+                                    .module = trace.modules.size()});
+            }
+            trace.modules.push_back({.name = std::move(name), .base = base});
+          }
+        } catch (const std::bad_alloc&) {
+          trace.code.clear();
+          renodx::utils::log::w("[Total War] Map trace: no memory for the game's module list: the callers left out.");
+        }
+        trace.presents.assign(1, now);
+        trace.tracing.store(true, std::memory_order_release);
+      }
+    } else {
+      trace.presents.push_back(now);
+      if (trace.presents.size() > trace.frames) {
+        trace.tracing.store(false);
+        trace.armed.store(false);
+        // The callbacks stay registered (until Uninstall), gated off.
+        try {
+          const double ms_per_tick = 1000. / static_cast<double>(frequency.QuadPart);
+          const size_t frames = trace.presents.size() - 1;
+          // An event timed just after the last present but recorded before the present took the lock: the last frame's.
+          const auto frame_of = [&](int64_t qpc) {
+            const auto after = static_cast<size_t>(std::ranges::upper_bound(trace.presents, qpc) - trace.presents.begin());
+            return std::clamp(after, size_t{1}, frames) - 1;
+          };
+          // Each thread's draws in order, for an event's draw index, last draw and gap.
+          std::unordered_map<uint32_t, std::vector<const internal::MapDraw*>> thread_draws;
+          std::vector<std::array<uint32_t, 6>> counts(frames);  // draws, dispatches, maps, unmaps, updates, copies
+          for (const auto& draw : trace.draws) {
+            thread_draws[draw.thread].push_back(&draw);
+            ++counts[frame_of(draw.qpc)][internal::IsDispatch(draw.kind) ? 1 : 0];
+          }
+          // Each map's unmap: the next unmap of its resource and subresource (on any thread or context).
+          std::vector<size_t> unmap_of(trace.events.size(), SIZE_MAX);
+          std::vector<bool> unmap_matched(trace.events.size(), false);
+          std::map<std::pair<uintptr_t, uint32_t>, size_t> open_maps;
+          for (size_t index = 0; index < trace.events.size(); ++index) {
+            const auto& event = trace.events[index];
+            const auto key = std::pair{event.resource.pointer, event.subresource};
+            ++counts[frame_of(event.qpc)][2 + static_cast<size_t>(event.kind)];
+            if (event.kind == internal::MapEventKind::MAP) {
+              open_maps[key] = index;
+            } else if (event.kind == internal::MapEventKind::UNMAP) {
+              if (const auto open = open_maps.find(key); open != open_maps.end()) {
+                unmap_of[open->second] = index;
+                unmap_matched[index] = true;
+                open_maps.erase(open);
+              }
+            }
+          }
+          std::string text = std::format(
+              "trace setting={} qpc_frequency={} frames={} end_qpc={} draws={} events={} dropped_draws={}"
+              " dropped_events={}\n",
+              trace.setting, frequency.QuadPart, frames, trace.presents.back(), trace.draws.size(), trace.events.size(),
+              trace.dropped_draws, trace.dropped_events);
+          for (const auto& module : trace.modules) {
+            text += std::format("module name={} base=0x{:x}\n", module.name, module.base);
+          }
+          // Every present the trace saw, oldest first: the ones before it (up to MAP_RECENT_PRESENTS), then its own.
+          const size_t recent = std::min(trace.recent_count, trace.recent_presents.size());
+          for (size_t index = trace.recent_count - recent; index < trace.recent_count; ++index) {
+            text += std::format("present qpc={}\n", trace.recent_presents[index % trace.recent_presents.size()]);
+          }
+          for (const int64_t present : trace.presents) {
+            text += std::format("present qpc={}\n", present);
+          }
+          for (size_t frame = 0; frame < frames; ++frame) {
+            const auto& count = counts[frame];
+            text += std::format(
+                "frame index={} present_qpc={} ms={:.3f} draws={} dispatches={} maps={} unmaps={} updates={} copies={}\n",
+                frame, trace.presents[frame],
+                static_cast<double>(trace.presents[frame + 1] - trace.presents[frame]) * ms_per_tick, count[0], count[1], count[2], count[3], count[4], count[5]);
+          }
+          const auto describe = [](std::string_view prefix, const internal::MapResource& resource) {
+            constexpr std::array<const char*, 4> USAGES = {"default", "immutable", "dynamic", "staging"};
+            std::string description = std::format(
+                " {0}res=0x{1:x} {0}usage={2} {0}bind=0x{3:x} {0}cpu=0x{4:x} {0}misc=0x{5:x}", prefix, resource.pointer,
+                (static_cast<size_t>(resource.usage) < USAGES.size() ? USAGES[resource.usage] : "?"), resource.bind_flags,
+                resource.cpu_access_flags, resource.misc_flags);
+            switch (resource.dimension) {
+              case D3D11_RESOURCE_DIMENSION_BUFFER:
+                description += std::format(" {0}type=buffer {0}bytes={1}", prefix, resource.width);
+                break;
+              case D3D11_RESOURCE_DIMENSION_TEXTURE1D:
+              case D3D11_RESOURCE_DIMENSION_TEXTURE2D:
+              case D3D11_RESOURCE_DIMENSION_TEXTURE3D:
+                description += std::format(" {0}type=tex{1}d {0}size={2}x{3}x{4} {0}mips={5} {0}format={6}", prefix,
+                                           static_cast<int>(resource.dimension)
+                                               - static_cast<int>(D3D11_RESOURCE_DIMENSION_BUFFER),
+                                           resource.width, resource.height, resource.depth, resource.mips,
+                                           static_cast<int>(resource.format));
+                break;
+              default:
+                description += std::format(" {}type=?", prefix);
+                break;
+            }
+            return description;
+          };
+          constexpr std::array<const char*, 4> EVENT_KINDS = {"map", "unmap", "update", "copy"};
+          constexpr std::array<const char*, 5> DRAW_KINDS = {"draw", "indexed", "dispatch", "draw_indirect",
+                                                             "dispatch_indirect"};
+          // Each thread's last traced event: its end and its kind (where the next one's gap starts).
+          std::unordered_map<uint32_t, std::pair<int64_t, const char*>> thread_last;
+          for (size_t index = 0; index < trace.events.size(); ++index) {
+            const auto& event = trace.events[index];
+            const size_t frame = frame_of(event.qpc);
+            const auto ms_of = [&](int64_t qpc) { return static_cast<double>(qpc - trace.presents[frame]) * ms_per_tick; };
+            std::pair<int64_t, const char*> previous = {0, "-"};
+            if (const auto last = thread_last.find(event.thread); last != thread_last.end()) {
+              previous = last->second;
+            }
+            thread_last[event.thread] = {event.done, EVENT_KINDS[static_cast<size_t>(event.kind)]};
+            uint32_t draw_index = 0;
+            std::string last_draw = "-";
+            if (const auto draws = thread_draws.find(event.thread); draws != thread_draws.end()) {
+              const auto& list = draws->second;
+              const auto draw_qpc = [](const internal::MapDraw* draw) { return draw->qpc; };
+              const auto after = std::ranges::upper_bound(list, event.qpc, {}, draw_qpc);
+              const auto frame_start = std::ranges::lower_bound(list, trace.presents[frame], {}, draw_qpc);
+              draw_index = static_cast<uint32_t>(after - frame_start);
+              if (after != list.begin()) {
+                const auto& draw = **(after - 1);
+                if (draw.done > previous.first) {
+                  previous = {draw.done, "draw"};
+                }
+                const char* draw_kind = DRAW_KINDS[static_cast<size_t>(draw.kind)];
+                last_draw = (internal::IsDispatch(draw.kind)
+                                 ? std::format("{}/cs:{:08X}", draw_kind, draw.vertex_shader)
+                                 : std::format("{}/vs:{:08X}/ps:{:08X}", draw_kind, draw.vertex_shader, draw.pixel_shader));
+              }
+            }
+            // A matched unmap is its map's unmap_ms (still the next event's previous one).
+            if (event.kind == internal::MapEventKind::UNMAP && unmap_matched[index]) continue;
+            text += std::format(
+                "{} frame={} qpc={} ms={:.3f} gap_ms={} gap_from={} thread={} draw={} last={}",
+                EVENT_KINDS[static_cast<size_t>(event.kind)], frame, event.qpc, ms_of(event.qpc),
+                (previous.first != 0 ? std::format("{:.3f}", static_cast<double>(event.qpc - previous.first) * ms_per_tick)
+                                     : std::string("-")),
+                previous.second, event.thread, draw_index, last_draw);
+            switch (event.kind) {
+              case internal::MapEventKind::MAP: {
+                const char* access = "?";
+                switch (event.access) {
+                  case reshade::api::map_access::read_only:
+                    access = "read";
+                    break;
+                  case reshade::api::map_access::write_only:
+                    // D3D11's WRITE_NO_OVERWRITE (a dynamic resource) and WRITE (a staging one) both arrive as write_only.
+                    access = (event.resource.usage == D3D11_USAGE_DYNAMIC ? "no_overwrite" : "write");
+                    break;
+                  case reshade::api::map_access::read_write:
+                    access = "read_write";
+                    break;
+                  case reshade::api::map_access::write_discard:
+                    access = "discard";
+                    break;
+                }
+                const size_t unmap = unmap_of[index];
+                text += std::format(
+                    " access={} sub={} unmap_ms={}", access, event.subresource,
+                    (unmap != SIZE_MAX ? std::format("{:.3f}", ms_of(trace.events[unmap].qpc)) : std::string("-")));
+                text += describe("", event.resource);
+                break;
+              }
+              case internal::MapEventKind::UNMAP:
+                text += std::format(" sub={} res=0x{:x}", event.subresource, event.resource.pointer);
+                break;
+              case internal::MapEventKind::UPDATE:
+                text += std::format(" data_bytes={}", event.bytes);
+                text += describe("", event.resource);
+                break;
+              case internal::MapEventKind::COPY:
+                text += std::format(" data_bytes={}", event.bytes);
+                text += describe("", event.resource);
+                text += describe("src_", event.source);
+                break;
+            }
+            std::string callers;
+            for (const uintptr_t caller : event.callers) {
+              if (caller == 0) break;
+              // Found: RecordMapEvent took it inside one of these sections.
+              const auto code = std::ranges::find_if(trace.code, [caller](const internal::MapCode& range) {
+                return caller > range.begin && caller <= range.end;
+              });
+              const auto& module = trace.modules[code->module];
+              callers += std::format("{}{}+0x{:x}", (callers.empty() ? "" : ","), module.name, caller - module.base);
+            }
+            text += std::format(" callers={}\n", (callers.empty() ? std::string("-") : callers));
+          }
+          std::ofstream file(state.folder / L"tw_map_trace.txt", std::ios::binary | std::ios::trunc);
+          file << text;
+          file.close();
+          if (file) {
+            renodx::utils::log::i("[Total War] Map trace: ", frames, " frames, ", trace.draws.size(), " draws, ",
+                                  trace.events.size(), " events saved to tw_map_trace.txt next to the exe.");
+          } else {
+            renodx::utils::log::w("[Total War] Map trace: tw_map_trace.txt next to the exe could not be written.");
+          }
+        } catch (const std::exception& error) {
+          renodx::utils::log::w("[Total War] Map trace: not written (", error.what(), ").");
+        }
+        trace.draws = {};
+        trace.events = {};
+      }
+    }
+  }
   bool counted = scaled || (state.options.at_100 && view_3d);
   if (state.options.on_demand) {
     ++state.presents;
