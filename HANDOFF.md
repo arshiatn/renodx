@@ -3284,7 +3284,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         problems; mutants caught). M1 (bench): the shared far-slot check drops every prefetch on lists of 3-4 and child
         3 on lists of 5 -> the per-slot K|K/2 form (48 B, 0xC00..0xC2F) BEFORE the bench; ci6_ told 09:26 to place
         its stubs from 0xC40. L3: 6aa51b903's message "best or within 1 ns in every cold row" is false (40/32 20.2 vs
-        K=8|4 15.8; 40/128 18.9 vs 12.3; 0/8 8.1 vs the game 6.8). MERGED 9bdd8cbfe (gated x86 3 targets running 09:26).
+        K=8|4 15.8; 40/128 18.9 vs 12.3; 0/8 8.1 vs the game 6.8). MERGED 9bdd8cbfe (gated x86 3 targets 09:26 exit 0, PUSHED 09:27; ci5_'s 11 links removed alone).
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
