@@ -28,8 +28,7 @@ float3 FogLightAt(float3 at, float u) {
   [loop]
   for (uint light = 0u; light < min(light_count, 32u); ++light) {
     const float falloff = saturate(1.f - (distance(lights[light].xyz, at) / max(lights[light].w, 1.0002842e-3f)));
-    const float weight = (LightLinear(light) ? (dot(light_colours[light].rgb, float3(0.2126f, 0.7152f, 0.0722f)) * falloff)
-                                             : (dot(light_colours[light].rgb, float3(0.2126f, 0.7152f, 0.0722f)) * falloff * falloff));
+    const float weight = dot(light_colours[light].rgb, float3(0.2126f, 0.7152f, 0.0722f)) * (LightLinear(light) ? falloff : (falloff * falloff));
     if (weight <= 0.f) continue;
     total += weight;
     const float keep = weight / total;
