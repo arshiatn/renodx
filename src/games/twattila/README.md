@@ -1,23 +1,17 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
-## Dev, Model Detail Distance at 1x (2026-11-18; built only, not stamped, not installed, not run in game)
+## Dev, Model Detail Distance at any time (2026-11-18; built only, not stamped, not installed, not run in game)
 
-- Faster: at **Model Detail Distance 1x** (the default) the add-on no longer hooks the game's LOD pick (the shared hook of
-  Attila, Rome II and Thrones): the game runs its own code. The detour's call count alone cost 0.3-0.9 ms summed over the
-  worker threads in a WPR. Above 1x nothing changes: the hook goes in when the game starts with the slider up, and the
-  camera's distance squared / slider squared picks the same LODs at every value (back at 1x the hook stays in and passes
-  the distance through).
-- Changed: a game started at 1x applies a move up from 1x after the next game start. A live install would have to stop every
-  other thread of the game (Detours' thread enlistment is what the upstream merge turned off: a stopped thread can hold the
-  heap lock the transaction needs), and no point is known where no thread is inside the LOD pick. While the slider is above 1x
-  and the hook is out, a yellow line under it says "Restart the game to apply Model Detail Distance."; the tooltip says so too.
-  ReShade.log and the Advanced status: "object detail at 1x: the game's LOD pick left alone" (or "object detail hooked").
-- Checked in `test/tw_native_hook_lifetime` (x86; a PickLod made of the game's first 50 bytes, found by the add-on's own
-  pattern): 1x leaves the game's bytes untouched and the results the game's; 2x / 3x without a restart: still untouched, the
-  note shows; a new image with the slider up: hooked once, results = distance squared x 1 / slider squared; back at 1x the
-  hook passes through; the detach restores the bytes. CONTROL: the build before's hook at 1x changes the bytes.
-- Test (ATN): at 1x ReShade.log has "object detail at 1x: the game's LOD pick left alone" and a WPR shows no OnPickLod; move
-  the slider up: the yellow line; restart: "object detail hooked", trees and objects keep their detail farther away as before.
+- Faster: at **Model Detail Distance 1x** (the default) the game runs its own LOD code: the add-on's hook cost 0.3-0.9 ms
+  summed over the worker threads in a WPR from its call count alone.
+- Changed: the slider works at any time, with no restart: a game started at 1x applies a move up at once, and back at 1x
+  the game's own code is back. The LODs picked are the same at every value. ReShade.log and the Advanced status: "object detail
+  at 1x: the game's LOD pick left alone", "object detail hooked" while it is above 1x ("object detail: not hooked yet" while a
+  write waits for a game thread).
+- Checked in `test/tw_engine_code` part 22 on Attila's, Rome II's and Thrones' DLLs: the add-on's code against the game's own
+  (every register, the flags, xmm, the stack) at 14 slider values, and 1x <-> above 1x under 4 threads. Test (ATN): at 1x the
+  log line; move the slider up in a battle: "object detail hooked" at once and trees and objects keep their detail farther
+  away as before; back at 1x: the log line again.
 
 ## Dev, Specular Occlusion with other rays (2026-11-18; built only, not stamped, not installed, not run in game)
 
@@ -2316,7 +2310,7 @@ Unit Detail (units stay 3D farther), Grass (taller grass farther), Shadow Distan
   into each model when it loads (ATN: no change). Now the LOD pick is hooked (`Entry* __thiscall PickLod(model,
   distance squared, next)`, the same code in both games: Rome II +0x14f0710, Attila +0x183d570): the camera's
   distance squared / slider squared, every frame, every model. The fade-out at the last LOD (draw distance) stays.
-  (2026-11-18: hooked only when the game starts with the slider above 1x; see the first entry of this file.)
+  (2026-11-18: no hook any more, a code jump written only while the slider is above 1x, live; see the first entry of this file.)
 - Grass Distance (up to 8x, next battle load): v2 scaled only `scrub_lod_distance_default`, the grass node's cell
   distance; the node's constructor also stores a second distance, a constant 200 m (Rome II node +0x80 at
   +0x1492663, Attila node +0x84 at +0x17cb350), now scaled too (code constant).
