@@ -3300,7 +3300,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         default slider; offered the HX87 patch against his 7.0 source.
         cr6_ review DONE ~10:5x -> night1118/review_ci6.md: MERGE (lanes traced on every path, three games; branch
         scan; patterns once each; no relocations; heapfix clear; Low-1 = part 9's low page: cause part 2's places
-        blocks + ASLR, passed to ci7_ with the nits). MERGED 5b226f207 (gated x86 3 targets running 11:04).
+        blocks + ASLR, passed to ci7_ with the nits). MERGED 5b226f207 (gated x86 3 targets 11:04 exit 0, PUSHED 11:05; ci6_'s 11 links removed alone).
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
