@@ -391,6 +391,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REBAR / GPU UPLOAD HEAPS (ATN 22:1x: "would resizable bar help this game for our ... | next helper round (measure first)
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
 - NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator PROGRESS: (2) DONE 02:38-02:46 gr1_ (bench const
+- TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at ... | coordinator (Low runner, when no other GPU job runs)
+- DAY1 MAXED GPU LEVERS (gpo1_ / cpa1_): day1 maxed behind the units is GPU-bound ... | coordinator (GPU line)
 - TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started ... | next tools touch
 - M1 SHARED WRITER-TOKEN HELPER (apr_ review): APIPE's pipeline.hpp writer-token p ... | High implementer (utils)
 - FAR TREE SHADOW FLICKER (ATN 18:3x: "Maybe nsight recordings can finally fix the ... | after the capture pass (plan step 3 bug list)
@@ -3123,6 +3125,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         bench), AGRS; HF package for the author (HSG, HX87, HLB, memfast, loopfetch, HLA2, watch threads); GPU line G1 /
         G2 (exact fence moves) vs G4 last-frame RT (ATN's look call). (5) STARTED 04:00: ci1_ Opus High (step 1 ES8b +
         LOGX, branch ci1_) and gpo1_ Opus xHigh read-only (G1 / G2 ceiling from the day1 ETL, MAPW resource).
+        gpo1_ DONE 04:3x -> night1118/gpu_overlap.md (saved by the coordinator): G1 / G2 NOT worth code (exact window
+        ~0.2 ms: only the trace has one, the AO draw + 60 post-AO draws; every Signal already at its earliest point);
+        game + helper queues both on node 0 3D as separate processes = most likely time-sliced, so even G4 (last
+        frame's RT) gains ~0 in day1 until the two-plays check says otherwise; MAPW releases after the consumers (G1
+        doesn't touch it), stress Map waits = the RR answer / frame end (G4 -1..-3 there); day1 is 99.5 % GPU-busy:
+        its levers are GPU work (trace request 10.06 ms, ~half BLAS / cluster builds for 22.7 M dynamic triangles; RR
+        6.24; bounce 4.58; reflections 1.94).
+      - [ ] TWO-PLAYS GPU CONCURRENCY CHECK (gpo1_, ~5 min, no game): two recorder plays at once (renodx-tw-dlaa64.exe
+        0 play, RENODX_TW_PLAY_LOOPS) vs one alone: wall time ~ the sum = time-sliced (G4 gains ~0 in GPU-bound views,
+        drop it); clearly less = concurrent (then measure G4 properly for ATN's look decision). Needs the GPU free
+        (gpu_job.lock held for both plays). Owner: coordinator (Low runner, when no other GPU job runs)
+      - [ ] DAY1 MAXED GPU LEVERS (gpo1_ / cpa1_): day1 maxed behind the units is GPU-bound (helper 22.8 + game 26.0
+        ms serial): the dynamic BLAS / cluster builds (~5 ms of the 10.06 trace request, 22.7 M dynamic triangles,
+        320 K clusters) and RR 6.24 are the biggest helper parts: fold into G2 / the cluster-LOD + RT LOD boxes and
+        the SETTINGS SWEEP (measure day1 maxed in Nsight first). Owner: coordinator (GPU line)
       - [ ] TOOLS FROM RBK_: (a) gpu_trace.ps1 keeps only the first -Env entry when started as `powershell -File ...
         -Env $array` (rbk_'s first batch, renamed nsight\runs\rbkpre_*, was level 5 only): accept one ;-separated
         string or fail loudly on more than one entry; check other agents' multi-Env runs; (b) runners must start the
