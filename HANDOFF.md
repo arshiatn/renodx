@@ -3510,6 +3510,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         relaxed load); parser HIGH: on dense maps the bias fit locks onto an earlier map (-1980 us vs +400) with no
         warning -> containment fit, sent to ia3_ 15:37 with the RecordStagingCopy nit. MERGED 229a031ac (gated x86 3
         targets: exit 0, PUSHED). ALL FIVE ADD-ON ITEMS MERGED (ia1_-ia5_); ia3_'s parser + nit still open.
+        ia3_ round 4 DONE (ia3_report.md 'Round 4'): map_trace.py one-sided containment fit, duration-weighted (ar3o_'s dense
+        seeds: offset within 4 us, 64 / 67 / 69 waits IN their map, no warnings; the round-2 parser fails the new DENSE
+        case); OVERLAPS label; d02fefa83 copy gate first -> MERGED 93b72a972 15:48 (gated x86 3 targets exit 0), PUSHED;
+        ia3_'s links removed alone. MAPW-B CLOSED.
         ia4_ DONE -> night1118/ia4_report.md: 440b2e099 ACAP2 (one lock section, DSV description cache held to frame end,
         flat captured_keys; host audit of every game's camera lambdas) + b03faa9d3 ALOCK (AmbientReplaced atomic, 12.1 ->
         0.1 ns); keys / captures sequence = 90d7df1b5 x86 + amd64; gated x86 11 + amd64 16 exit 0. Review ar4o_ (Opus
