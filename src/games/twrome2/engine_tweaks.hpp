@@ -384,6 +384,11 @@ inline std::string Status(std::span<Option*> options) {
 // in both: +0x14f0710 Rome II, +0x183d570 Attila). The hook divides the camera's distance squared by the slider
 // squared, live for every model that uses it: trees and other objects (ATN: not battle units, which have their own
 // distances). The fade-out at the last LOD's distance (other functions) stays: detail farther, not draw distance.
+// The hook goes in only when the slider is above 1x at the first look at the game's module (Install). At 1x it changes
+// nothing, and the detour's call count alone cost the game's worker threads 0.3-0.9 ms summed. A game that started at 1x
+// keeps its own LOD pick until it is restarted with the slider up: a later install would have to stop every other thread
+// of the game (Detours' ENLIST_EXISTING_THREADS: a stopped thread can hold the heap lock the transaction then needs),
+// and no point is known where none of them is inside the LOD pick.
 namespace lod_pick {
 
 namespace internal {
@@ -400,16 +405,23 @@ static std::vector<renodx::utils::detour::Function> hooks;
 static tw::native_hooks::Lifetime hook_lifetime;
 static std::atomic<bool> hooks_active = false;
 static std::atomic<float> distance_squared_scale = 1.f;
+static std::atomic<bool> unhooked_at_1x = false;  // the slider was at 1x at the first look: the game's own LOD pick
 
 static void* __fastcall OnPickLod(void* model, void* unused_edx, float distance_squared, void** next) {
   if (!hooks_active.load(std::memory_order_relaxed)) return original_pick_lod(model, unused_edx, distance_squared, next);
   return original_pick_lod(model, unused_edx, distance_squared * distance_squared_scale.load(std::memory_order_relaxed), next);
 }
 
-inline std::string Install(const tw::engine_tweaks::Sections& sections) {
+// `scale`: the slider now. CALLER_GUARANTEES_QUIESCENCE rests on this being the first look at the module after the
+// add-on's load (the game's start, before a scene is drawn).
+inline std::string Install(const tw::engine_tweaks::Sections& sections, float scale) {
   if (!hooks.empty()) {
     hooks_active.store(true, std::memory_order_relaxed);
     return "object detail hooked";
+  }
+  if (scale == 1.f) {
+    unhooked_at_1x.store(true, std::memory_order_relaxed);
+    return "object detail at 1x: the game's LOD pick left alone";
   }
   uint8_t* pick_lod = tw::engine_tweaks::FindPattern(sections.code, PATTERN);
   if (pick_lod == nullptr) return "object detail: the game's LOD code was not found";
@@ -430,8 +442,8 @@ inline std::string Install(const tw::engine_tweaks::Sections& sections) {
 }  // namespace lod_pick
 #endif
 
-// Every present: finds the tweaks (and, with object_detail, hooks the LOD pick: Rome II / Attila) once the module
-// (null: the game's exe) is loaded, the result in `status`, then applies the sliders.
+// Every present: finds the tweaks (and, with object_detail above 1x, hooks the LOD pick: Rome II / Attila) once the
+// module (null: the game's exe) is loaded, the result in `status`, then applies the sliders.
 inline void Update(const wchar_t* module_name, std::span<Option*> options, [[maybe_unused]] const Option* object_detail,
                    bool* found, renodx::utils::settings::Setting* status) {
   if (!*found) {
@@ -442,7 +454,7 @@ inline void Update(const wchar_t* module_name, std::span<Option*> options, [[may
     internal::Restore(options);
     status->label = internal::Status(options);
 #if !defined(_WIN64)
-    if (object_detail != nullptr) status->label += "; " + lod_pick::internal::Install(sections);
+    if (object_detail != nullptr) status->label += "; " + lod_pick::internal::Install(sections, object_detail->scale);
 #endif
     renodx::utils::log::i("[Total War] Graphics: ", status->label);
     *found = true;
@@ -714,7 +726,7 @@ inline void StartIfRequested(std::span<Option*> options, std::span<const std::st
 // scaled values for the game's and scaled them once more with every device (a flag once set read back as the game's
 // own). The section is added to, never emptied: an image that saw no frame (a device made only to ask something, a
 // second loss before the first present) knows none of the values and must leave what the image before kept. An image
-// that stays loaded keeps what it saw. And the LOD pick hook removed.
+// that stays loaded keeps what it saw. And the LOD pick hook removed (if it was ever installed).
 inline void Uninstall(std::span<Option*> options) {
   const HANDLE section = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(internal::KeptValues),
                                             internal::KeptValuesName().c_str());
@@ -773,6 +785,7 @@ inline void Uninstall(std::span<Option*> options) {
   }
 #if !defined(_WIN64)
   lod_pick::internal::hooks_active.store(false, std::memory_order_relaxed);
+  lod_pick::internal::unhooked_at_1x.store(false, std::memory_order_relaxed);
   if (lod_pick::internal::hooks.empty()) return;
   try {
     lod_pick::internal::hook_lifetime.Uninstall(&lod_pick::internal::hooks);
@@ -782,15 +795,33 @@ inline void Uninstall(std::span<Option*> options) {
 #endif
 }
 
+constexpr uint32_t NOTE_TINT = 0xFFD23C;
+
 // The yellow note at the top of Graphics (Experimental).
 inline renodx::utils::settings::Setting* Note() {
   return new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
       .label = "Experimental: these may not work, and may crash the game.",
       .section = "Graphics (Experimental)",
-      .tint = 0xFFD23C,
+      .tint = NOTE_TINT,
   };
 }
+
+#if !defined(_WIN64)
+// Under Model Detail Distance (Rome II / Attila / Thrones): shown while the slider is above 1x and the game, started at
+// 1x, still runs its own LOD pick (lod_pick::Install).
+inline renodx::utils::settings::Setting* RestartNote(const Option* object_detail) {
+  return new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::TEXT,
+      .label = "Restart the game to apply Model Detail Distance.",
+      .section = "Graphics (Experimental)",
+      .tint = NOTE_TINT,
+      .is_visible = [object_detail] {
+        return object_detail->scale != 1.f && lod_pick::internal::unhooked_at_1x.load(std::memory_order_relaxed);
+      },
+  };
+}
+#endif
 
 // The Graphics (Experimental) status line, filled by Update: shown only when something was not found or failed (the
 // full result is in ReShade.log).
