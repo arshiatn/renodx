@@ -3519,6 +3519,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         End that follows every draw reading the ring; LRU order kept on insert; generation stamp exact over all 6 writers).
         Lows (test proves reuse ran, Shogun 2 old depth kept through menus, names) sent to ia2_ 15:08; merge after. W1:
         check the 'in 8 rings' line + Map waits left at the cap, and the GPU frame time.
+        ia4_ round 2 DONE -> 086668c3e (destroy-handler rule comment, desc by value, depth_seen in Runtime, StateCheck compare
+        in AmbientReplaced, part 5 keys vs formula; part 7 still simulates Trace's taken path: needs the helper). MERGED
+        9431f921b (gated x86 3 targets exit 0). ia2_ round 2 DONE -> a11419fea (reuse counted: 12 / 12 / 21 WARP, 15 / 16
+        / 34 on the 5090 incl. in-frame; 7c depth cleared each round; Shogun 2 lets the depth go on SetActive(false);
+        renames; dumps byte-equal). MERGED acfa505a5 15:29 (gated x86 3 targets: exit 0). Links of ia2_ / ia4_ removed
+        alone. ADD-ON ITEMS MERGED: ia1_ ia2_ ia4_ ia5_; ia3_ waits for its test seam; ci8s_ for cr8s_.
         cr3_ review DONE ~06:5x -> night1118/review_ci3s.md: MERGE (both exact: own emulation 40,000 ready-check worlds
         vs the game's 118 bytes and 300,000 loop-bottom worlds, 0 differences; esi dead through the callee tree;
         pattern once / once / never). MERGED e27e8d5e5 (gated x86 3 targets 06:59 exit 0, PUSHED 07:03).
