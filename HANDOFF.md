@@ -396,6 +396,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Bench tool fixes (fa1o_ section 6): pooled within-variant spread instead of the ... | coordinator, before the next bench fa2o_ DONE -> night1118/f
 - Helper memory with ATN's settings: 13.5 GB VRAM + 12.5 GB private while the batt ... | next GPU / memory round fa3o_ round 2 DONE (final_bench_fa3o
 - NEXT CPU ROUND (from the final bench, ranked by fa2o_): (1) the driver GPU-sync ... | coordinator W3 RAN 05:25 (VALID, 323 presents in the 36 s WP
+- Bench variants M1 (er4o_): heapfix_b6.json + night1118.json have no heapfix_line ... | coordinator, with the bench tool fixes before the next bench
+- RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go ATN 21:30 asked whether the Opus re
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -3693,6 +3695,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         1405 presents in the window = ~4.3x W3's; runs/final1119_R_wpr_cpu_053032). fa4o_ (Opus xHigh, read-only) STARTED 05:36:
         the maxed-slider gap R1 vs W3 by category, multithreading split (Amdahl + D3D11 deferred-context feasibility, ATN asked),
         W3 vs W1b (6 rows), driver-wait state, new top-10 + look-safe list -> night1118/final_bench_fa4o.md. az1s_ resumed.
+        AUTHOR PACKAGE az1s_ DONE 06:03 (report tools/tw/heapfix/az1s_report.md): C:\Users\arshi\Downloads\
+        AttilaCPUPerfFix_7.0_notes_2026-11-19.zip, 660,003 bytes, sha256 f82e83f4..., 151 files; every [TO FILL] filled from
+        fa1o_ / fa2o_ / fa3o_, hlr1s_ round 2 + er4o_ M2 / L1-L6 / N1-N5 fixed; every rebuilt DLL EQUAL to its bench hash,
+        build.bat test passes (HFx, HFx2, la8b, XWalone, AB), apply checks clean in every order on 4057eb8. Coordinator check:
+        testzip clean, one top folder, all ASCII, no private text (the only 'Claude' hit = the author's own README credit).
+        Not sent: ATN sends it to the author. Lesson: az1s_'s python check ran through the settling starts (see above).
+      - [ ] Bench variants M1 (er4o_): heapfix_b6.json + night1118.json have no heapfix_line for B4G / P / Pnolf; the old
+        heapfix_hgl.json regex fix. Owner: coordinator, with the bench tool fixes before the next bench
+      - [ ] RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map GPU waits, piece-by-piece loop
+        splits onto the workers, full D3D11 deferred-context split; Fable 5.2 xHigh plans (on a stop tell ATN first: ATN may
+        force Fable 5.1; one retry, else Sonnet 5.5 xHigh; a second stop ends that part); inputs fa4o_ + fa2o_; memory
+        project_render_mt. Owner: coordinator, on ATN's go
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
