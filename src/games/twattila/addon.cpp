@@ -1326,6 +1326,8 @@ float engine_code_row = 1.f;
 float render_lists_row = 1.f;
 // Faster Job Wake-Ups (Experimental, off; graphics_page-style row below): engine_code.hpp's job system sites.
 float job_wakeups_row = 0.f;
+// Fewer Constant Uploads (Experimental, off): mods::shader::use_native_d3d11_injection.
+float fewer_constant_uploads_row = 0.f;
 // Faster Effect Prefetch (Experimental, off): engine_code.hpp's effect tree child sum site and particle update loop site.
 float effect_prefetch_row = 0.f;
 // Keep Render Core Free (Experimental, off): cpu_sets.hpp.
@@ -1534,6 +1536,7 @@ void OnInitDevice(reshade::api::device*) {
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twattila::cpu_sets::Update(keep_render_core_row != 0.f, GAME_THREAD_MODULES);
+  renodx::mods::shader::use_native_d3d11_injection.store(fewer_constant_uploads_row != 0.f, std::memory_order_relaxed);
   talesofarise::pixel_trace::OnPresent(queue);
   if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
@@ -1978,6 +1981,17 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           .tooltip = "The game's main thread wakes its helper threads one by one; now one helper wakes the others.\n"
                      "Less CPU time on the main thread in big battles. Same results.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FewerConstantUploads",
+          .binding = &fewer_constant_uploads_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Fewer Constant Uploads (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The mod's shader settings go to the GPU once a frame instead of before every draw:\n"
+                     "less waiting on the graphics driver on the render thread. Same results.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{
