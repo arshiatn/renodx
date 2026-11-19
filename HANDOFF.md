@@ -393,7 +393,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator PROGRESS: (2) DONE 02:38-02:46 gr1_ (bench const
 - ALOD-2 (Sonnet xHigh, after ec4s_ frees engine_code.hpp): PickLod as an engine_c ... | coordinator STARTED 19:30: alod2s_ (Sonnet xHigh) on 97d9a6b
 - HSG2 (heapfix, Sonnet xHigh): the draw-site sort chain over more threads (fa3o_: ... | coordinator
-- Bench tool fixes (fa1o_ section 6): pooled within-variant spread instead of the ... | coordinator, before the next bench ATN 21:30 asked whether t
+- Bench tool fixes (fa1o_ section 6): pooled within-variant spread instead of the ... | coordinator, before the next bench fa2o_ DONE -> night1118/f
+- Helper memory with ATN's settings: 13.5 GB VRAM + 12.5 GB private while the batt ... | next GPU / memory round ATN 21:30 asked whether the Opus rev
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -3647,6 +3648,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         HSORT, -2.6 day1); next CPU round. Owner: coordinator
       - [ ] Bench tool fixes (fa1o_ section 6): pooled within-variant spread instead of the two-start rule; a discarded warm-up
         start after a reboot; rotate the variant order per round. Owner: coordinator, before the next bench
+        fa2o_ DONE -> night1118/final_bench_fa2o.md (WPR): RTSO B1 PROVEN (W1: no RT work at all); engine sites: emitter -0.9 ms
+        render, ready / sweep -0.37, EVEC-F stalls gone (net -0.06), EF4c-1 net 0, E3P-b + E3P-d DO NOTHING; Faster Job Wake-Ups
+        works (render SetEvent 2.56 -> 0.35 ms; workers +3.5 summed); KRCF works (sibling 99.4 % idle, preemptions 26 -> 1);
+        heapfix: x87b -1.2 render / -8.4 workers, la8 -1.2, HGL -1.35 render / -10 workers, lf8 -0.64, HSORT -18..-23 %, xw /
+        lw help, la8b COSTS +0.8 (HFx2 stays bench only). Render-thread CPU time didn't move: the gains are eaten by stub stalls
+        and DRIVER GPU-SYNC WAITS IN THE GAME'S MAP: 13-25 ms a frame (frame-end DISCARD of a 464,000-byte dynamic VB ~8.7 ms,
+        8 MB VB discards ~4.3 ms) -> next CPU round's top item (-5..-9 ms), then HSG2 (-5..-7).
+        ATN's A B A B (+ -Sample) 04:12: the 03:28 batch (final1118_ATNab) had malformed Reset rows (a button row needs '=1'; the
+        parser read the next rows into the key: no Reset, no AntiAliasing row) = ATN's own settings + DLSS UP + grass max: B
+        +11.8 % fps (15.2 vs 13.6, median 65.7 vs 73.5 ms). Re-run final1118_ATNab2 with both Resets pressed (checked by a
+        reshade_log_line): A 14.5 fps / B 15.3 (+5.5 %), median 68.7 / 65.2 ms, p99 78.8 / 73.9, 1 % low 12.7 / 13.5; B faster in
+        both rounds (-4.0 / -3.0 ms); VRAM game 3.7 GB, helper 0.8, total 6.5; game RAM 2.0 WS / 2.3 private, address space
+        2.98 of 4 GB; with ATN's own settings the helper holds 13.5 GB VRAM + 12.5 GB private (worth a look). Probe re-run
+        (N=2000) dumped in both starts -> fa3o_ round 2 STARTED.
+      - [ ] Helper memory with ATN's settings: 13.5 GB VRAM + 12.5 GB private while the battle ran (Reset: 0.8 GB); check what
+        holds it (RT scene / caches reserved with rays off?). Owner: next GPU / memory round
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
