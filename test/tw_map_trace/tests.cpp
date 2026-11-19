@@ -15,25 +15,36 @@
 //    unmapped, an unmap of a buffer mapped before the trace, a map whose frame lies below its stack limits (the trace's
 //    stack-limits seam moves the low limit to the stack's top: a job system's own stack: no scan, callers=-). Every
 //    other map's first callers in the exe's code, each once.
-//    No present event before it: no immediate context, native_hook=no_context, no native call.
+//    The present event after each of the add-on's presents (the game's order): the context is known at the start, the
+//    native hook on: the trace's three real Maps as native_map lines (the v1 file has five maps: map_trace.py's check
+//    "native maps per frame >= v1 maps" warns for frame 1, its control).
 // 3. waits.txt for tools\tw\map_trace.py's join (run.ps1): the presents on another clock (QPC microseconds minus an
 //    offset) and two waits on this thread, one inside the NO_OVERWRITE map's gap, one between events.
-// 4. Map trace v2, the native hook (RENODX_TW_MAP_TRACE=0,1): the present event gives the WARP immediate context; the
-//    test's own "slow driver" hook already sits in its Map slot (15 ms inside the call for one buffer). The first present
-//    starts the frame and puts the trace's hook into the Map and Unmap slots (above the test's); every Map and Unmap on
+// 4. Map trace v2, the native hook (RENODX_TW_MAP_TRACE=0,1), the game's order: the add-on's first present comes before
+//    any present event (no context: the start waits one present), then the present event gives the WARP immediate
+//    context; the test's own "slow driver" hook already sits in its Map slot (15 ms inside the call for one buffer). The
+//    second present starts the frame and puts the trace's hook into the Map and Unmap slots (above the test's); every Map
+//    and Unmap on
 //    that context is a native_map / native_unmap line: a constant buffer's DISCARD (native_ms >= 14: the slow driver's
 //    wait, inside the call), a vertex buffer's NO_OVERWRITE after a 15 ms sleep before the call (CONTROL: native_ms
 //    under 5, the time before the call is not the call's), an index buffer's DISCARD, a dynamic texture's DISCARD (its
 //    depth pitch), a structured buffer's DISCARD (other), a staging buffer's READ with DO_NOT_WAIT (its flags and
 //    result), an invalid DISCARD of a staging buffer (failed, its HRESULT), an unmap of a map made before the trace (a
-//    native_unmap line); each map's class, type, flags, bytes and unmap; the direct caller and the game's callers in
-//    the exe. CONTROLS: a second WARP device's immediate context (its vtable the same) and a deferred context map too,
-//    none recorded. The native_frame line's totals (counts, failed, DISCARD bytes, per class). After the frame: both
-//    slots back to what was there (the test's slow Map, the runtime's Unmap); Uninstall unregisters all 13.
-// 5. Another hook takes the Map slot over above the trace's: at the trace's end the slot can't go back (logged: "stays
-//    chained"), the Unmap slot goes back; Maps through the chain still work and record nothing.
-// 6. A long trace past the native calls' room: the drops counted, the file (tens of MB) written in parts, every kept
-//    map in it in order, the totals of the kept ones.
+//    native_unmap line, callers=-); each map's class, type, flags, bytes and unmap; the direct caller and the game's
+//    callers in the exe. CONTROLS: a second WARP device's immediate context (WARP gives it its own table copy with the
+//    same functions: its Map is called through the hooked slot's function) and a deferred context (the same when its slot
+//    holds that function, else said so) map too, none
+//    recorded. The native_frame line's totals (counts, failed, DISCARD bytes, per class). After the frame: both slots
+//    back to what was there (the test's slow Map, the runtime's Unmap); Uninstall unregisters all 13.
+// 5. A long trace (RENODX_TW_MAP_TRACE=0,12, W3m's frame count) past the native calls' room (2^16): the drops counted,
+//    the file (tens of MB) written in more than one part (the log's part count), every kept map in it in order, the
+//    totals of the kept ones; no .part file left.
+// 6. No present event at all: the start waits one present, then starts without the hook (native_hook=no_context).
+// 7. Uninstall while a trace runs: both slots back, nothing registered, no file, Maps still work.
+// 8. Another hook takes the Map slot over above the trace's: at the trace's end the slot can't go back (logged: "stays
+//    chained"), the Unmap slot goes back; Maps through the chain still work and record nothing. Armed again with the
+//    other hook still there (case B), then after it left (case A, the slot holds the trace's hook): native_hook=failed,
+//    Maps through the slot work (a hook that became its own next would recurse until the stack overflows).
 #include <windows.h>
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -192,6 +203,15 @@ int main() {
   TestList list;
   list.native = context;
   list.owner = &mock_device;
+  TestQueue queue;
+  queue.owner = &mock_device;
+  queue.list = &list;
+  // ReShade's present event (in Attila after the add-on's own present callback, frame_trace::OnPresent's caller).
+  const auto present_event = [&queue] {
+    Invoke<api_event::present>(static_cast<reshade::api::command_queue*>(&queue), static_cast<reshade::api::swapchain*>(nullptr),
+                               static_cast<const reshade::api::rect*>(nullptr), static_cast<const reshade::api::rect*>(nullptr), 0u,
+                               static_cast<const reshade::api::rect*>(nullptr));
+  };
 
   // 1. Off.
   SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", nullptr);
@@ -216,7 +236,9 @@ int main() {
   std::setlocale(LC_ALL, "C");
   CHECK(Registered() == 13);
   frame_trace::OnPresent(false);
+  present_event();
   frame_trace::OnPresent(false);
+  present_event();
   const D3D11_BUFFER_DESC before_desc = {.ByteWidth = 512, .Usage = D3D11_USAGE_DYNAMIC, .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
                                          .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE};
   ComPtr<ID3D11Buffer> before_buffer;
@@ -334,8 +356,8 @@ int main() {
   CHECK(Field(header[0], "frames") == "2");
   CHECK(Field(header[0], "draws") == "4" && Field(header[0], "events") == "13");
   CHECK(Field(header[0], "dropped_events") == "0");
-  CHECK(Field(header[0], "native_hook") == "no_context" && Field(header[0], "native_calls") == "0");
-  CHECK(Lines(trace_path, "native_map").empty() && Lines(trace_path, "native_frame").size() == 2);
+  CHECK(Field(header[0], "native_hook") == "on" && Field(header[0], "native_calls") == "6");
+  CHECK(Lines(trace_path, "native_map").size() == 3 && Lines(trace_path, "native_frame").size() == 2);
   CHECK(std::stoll(Field(header[0], "qpc_frequency")) == frequency.QuadPart);
   const auto modules = Lines(trace_path, "module");
   CHECK(modules.size() == 1 && Field(modules[0], "name") == exe_name);
@@ -440,29 +462,34 @@ int main() {
   CHECK(SUCCEEDED(other_device->CreateBuffer(&other_desc, nullptr, other_buffer.GetAddressOf())));
   ComPtr<ID3D11DeviceContext> deferred_context;
   CHECK(SUCCEEDED(device->CreateDeferredContext(0, deferred_context.GetAddressOf())));
-  const bool shared_table = TableEntry(other_context.Get(), 14) == TableEntry(context.Get(), 14);
 
   void* const runtime_map = TableEntry(context.Get(), 14);
   void* const runtime_unmap = TableEntry(context.Get(), 15);
   renodx::utils::vtable::Slot<MapFunction> slow_slot = {.object = context.Get(), .index = 14, .original = &slow_next, .replacement = &SlowMap};
   renodx::utils::vtable::Install(&slow_slot);
   slow_resource = constant_buffer.Get();
-  TestQueue queue;
-  queue.owner = &mock_device;
-  queue.list = &list;
   SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,1");
   frame_trace::Install();
   CHECK(Registered() == 13);
   CHECK(SUCCEEDED(context->Map(early_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
   CHECK(frame_trace::internal::map_trace.immediate_context.load() == nullptr);
-  Invoke<api_event::present>(static_cast<reshade::api::command_queue*>(&queue), static_cast<reshade::api::swapchain*>(nullptr),
-                             static_cast<const reshade::api::rect*>(nullptr), static_cast<const reshade::api::rect*>(nullptr), 0u,
-                             static_cast<const reshade::api::rect*>(nullptr));
+  frame_trace::OnPresent(false);
+  CHECK(!frame_trace::internal::map_trace.tracing.load() && frame_trace::internal::map_trace.armed.load());
+  present_event();
   CHECK(frame_trace::internal::map_trace.immediate_context.load() == context.Get());
   frame_trace::OnPresent(false);
+  present_event();
   CHECK(frame_trace::internal::map_trace.tracing.load());
-  CHECK(TableEntry(context.Get(), 14) == reinterpret_cast<void*>(&frame_trace::internal::NativeMap));
+  const auto native_map_entry = reinterpret_cast<void*>(&frame_trace::internal::NativeMap);
+  CHECK(TableEntry(context.Get(), 14) == native_map_entry);
   CHECK(TableEntry(context.Get(), 15) == reinterpret_cast<void*>(&frame_trace::internal::NativeUnmap));
+  // The other contexts' tables (WARP gives each device its own copy, the same functions in it): their Maps are sent
+  // through the hooked slot's function, as a context of a shared table would be, unless their slot holds another
+  // function (then said so: no control).
+  const auto hooked_map = reinterpret_cast<MapFunction>(TableEntry(context.Get(), 14));
+  CHECK(TableEntry(other_context.Get(), 14) == native_map_entry || TableEntry(other_context.Get(), 14) == runtime_map);
+  const bool deferred_through_hook =
+      TableEntry(deferred_context.Get(), 14) == native_map_entry || TableEntry(deferred_context.Get(), 14) == runtime_map;
 
   struct Expected {
     std::string res;
@@ -501,10 +528,14 @@ int main() {
   const HRESULT invalid = context->Map(readback_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
   CHECK(FAILED(invalid));
   expected.push_back({.res = res_text(readback_buffer.Get()), .map = "discard", .map_class = "other", .result = invalid});
-  // CONTROLS: other contexts' maps through the same slot (when their table is the same) are not the game's.
-  CHECK(SUCCEEDED(other_context->Map(other_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+  // CONTROLS: other contexts' maps through the hooked slot's function are not the game's.
+  CHECK(SUCCEEDED(hooked_map(other_context.Get(), other_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
   other_context->Unmap(other_buffer.Get(), 0);
-  CHECK(SUCCEEDED(deferred_context->Map(vertex_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+  if (deferred_through_hook) {
+    CHECK(SUCCEEDED(hooked_map(deferred_context.Get(), vertex_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+  } else {
+    CHECK(SUCCEEDED(deferred_context->Map(vertex_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+  }
   deferred_context->Unmap(vertex_buffer.Get(), 0);
   frame_trace::OnPresent(false);
   CHECK(!frame_trace::internal::map_trace.tracing.load());
@@ -548,7 +579,8 @@ int main() {
   for (const auto& line : native_maps) CHECK(Field(line, "res") != res_text(other_buffer.Get()));
   CHECK(std::ranges::count_if(native_maps, [&](const std::string& line) { return Field(line, "res") == res_text(vertex_buffer.Get()); }) == 1);
   const auto native_unmaps = Lines(native_path, "native_unmap");
-  CHECK(native_unmaps.size() == 1 && Field(native_unmaps[0], "res") == res_text(early_buffer.Get()) && Field(native_unmaps[0], "direct").starts_with(exe_name + "+0x"));
+  CHECK(native_unmaps.size() == 1 && Field(native_unmaps[0], "res") == res_text(early_buffer.Get()) && Field(native_unmaps[0], "direct").starts_with(exe_name + "+0x")
+        && Field(native_unmaps[0], "callers") == "-");
   const auto native_frames = Lines(native_path, "native_frame");
   CHECK(native_frames.size() == 1);
   const auto& totals = native_frames[0];
@@ -565,18 +597,90 @@ int main() {
   CHECK(Field(totals, "other_maps") == "3" && Field(totals, "other_discards") == "1" && Field(totals, "other_discard_bytes") == "2048");
   CHECK(std::stod(Field(totals, "native_ms")) >= std::stod(Field(totals, "constant_ms")));
   std::printf("4. native hook: %zu maps (%d failed, the poll 0x%08x), 1 unmap without its map, totals per class; the slow driver's 15 ms inside "
-              "the call, the sleep before one outside it; other contexts (second device's table %s) and the deferred one not recorded; both "
+              "the call, the sleep before one outside it; the second device's Map through the hooked slot's function and the deferred one's (through %s) "
+              "not recorded; both "
               "slots back\n",
-              native_maps.size(), failed, static_cast<uint32_t>(poll), (shared_table ? "shared" : "its own"));
+              native_maps.size(), failed, static_cast<uint32_t>(poll), (deferred_through_hook ? "the hooked slot's function" : "its own Map: no control"));
 
-  // 5. Another hook over the trace's Map slot.
+  // 5. A long trace: 70,000 maps and unmaps on one frame of 12, more than the native calls' room: the rest counted as
+  // dropped, the file written in parts (tens of MB), every kept map's line in it, in order.
+  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,12");
+  frame_trace::Install();
+  present_event();
+  frame_trace::OnPresent(false);
+  CHECK(frame_trace::internal::map_trace.tracing.load());
+  constexpr size_t LONG_MAPS = 70000;
+  for (size_t index = 0; index < LONG_MAPS; ++index) {
+    CHECK(SUCCEEDED(context->Map(vertex_buffer.Get(), 0, D3D11_MAP_WRITE_NO_OVERWRITE, 0, &mapped)));
+    context->Unmap(vertex_buffer.Get(), 0);
+  }
+  log_lines.clear();
+  for (int present = 0; present < 12; ++present) frame_trace::OnPresent(false);
+  CHECK(!frame_trace::internal::map_trace.tracing.load());
+  frame_trace::Uninstall();
+  CHECK(TableEntry(context.Get(), 14) == runtime_map && TableEntry(context.Get(), 15) == runtime_unmap);
+  const size_t kept_calls = std::min(frame_trace::internal::MAX_NATIVE_CALLS, 12 * frame_trace::internal::NATIVE_CALLS_A_FRAME);
+  CHECK(kept_calls == frame_trace::internal::MAX_NATIVE_CALLS);
+  const auto long_header = Lines(trace_path, "trace");
+  CHECK(long_header.size() == 1 && Field(long_header[0], "native_calls") == std::to_string(kept_calls)
+        && Field(long_header[0], "dropped_native_calls") == std::to_string(2 * LONG_MAPS - kept_calls));
+  const auto long_maps = Lines(trace_path, "native_map");
+  CHECK(long_maps.size() == kept_calls / 2);
+  CHECK(std::ranges::is_sorted(long_maps, {}, [](const std::string& line) { return std::stoll(Field(line, "qpc")); }));
+  const auto long_frames = Lines(trace_path, "native_frame");
+  CHECK(long_frames.size() == 12 && Field(long_frames[0], "maps") == std::to_string(kept_calls / 2)
+        && Field(long_frames[0], "vertex_maps") == std::to_string(kept_calls / 2) && Field(long_frames[0], "no_overwrites") == std::to_string(kept_calls / 2));
+  const auto long_bytes = std::filesystem::file_size(trace_path);
+  CHECK(long_bytes > (size_t{1} << 23) && !std::filesystem::exists(folder / L"tw_map_trace.txt.part"));
+  // The parts from the log's line ("... (N parts)."): more than one, so the file was not built in one string.
+  int long_parts = 0;
+  for (const auto& line : log_lines) {
+    if (const size_t at = line.find(" parts)."); at != std::string::npos) long_parts = std::stoi(line.substr(line.rfind('(', at) + 1));
+  }
+  CHECK(long_parts >= 2);
+  std::printf("5. a long trace: %zu native maps kept, %zu calls dropped, %llu bytes written in %d parts\n", long_maps.size(), 2 * LONG_MAPS - kept_calls,
+              static_cast<unsigned long long>(long_bytes), long_parts);
+  std::filesystem::remove(trace_path);
+
+  // 6. No present event: one present waited for it, then the trace without the hook.
   SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,1");
   frame_trace::Install();
-  Invoke<api_event::present>(static_cast<reshade::api::command_queue*>(&queue), static_cast<reshade::api::swapchain*>(nullptr),
-                             static_cast<const reshade::api::rect*>(nullptr), static_cast<const reshade::api::rect*>(nullptr), 0u,
-                             static_cast<const reshade::api::rect*>(nullptr));
   frame_trace::OnPresent(false);
-  CHECK(TableEntry(context.Get(), 14) == reinterpret_cast<void*>(&frame_trace::internal::NativeMap));
+  CHECK(!frame_trace::internal::map_trace.tracing.load());
+  frame_trace::OnPresent(false);
+  CHECK(frame_trace::internal::map_trace.tracing.load() && TableEntry(context.Get(), 14) == runtime_map);
+  CHECK(SUCCEEDED(context->Map(constant_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+  context->Unmap(constant_buffer.Get(), 0);
+  frame_trace::OnPresent(false);
+  frame_trace::Uninstall();
+  const auto no_context_header = Lines(trace_path, "trace");
+  CHECK(no_context_header.size() == 1 && Field(no_context_header[0], "native_hook") == "no_context" && Field(no_context_header[0], "native_calls") == "0");
+  CHECK(Lines(trace_path, "present").size() == 3);
+  std::filesystem::remove(trace_path);
+  std::printf("6. no present event: the start waited one present, then traced without the hook (no_context)\n");
+
+  // 7. Uninstall while the trace runs.
+  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,5");
+  frame_trace::Install();
+  present_event();
+  frame_trace::OnPresent(false);
+  CHECK(frame_trace::internal::map_trace.tracing.load() && TableEntry(context.Get(), 14) == native_map_entry);
+  CHECK(SUCCEEDED(context->Map(constant_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+  context->Unmap(constant_buffer.Get(), 0);
+  frame_trace::Uninstall();
+  CHECK(Registered() == 0 && !frame_trace::internal::map_trace.tracing.load());
+  CHECK(TableEntry(context.Get(), 14) == runtime_map && TableEntry(context.Get(), 15) == runtime_unmap);
+  CHECK(SUCCEEDED(context->Map(constant_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+  context->Unmap(constant_buffer.Get(), 0);
+  CHECK(!std::filesystem::exists(trace_path) && !std::filesystem::exists(folder / L"tw_map_trace.txt.part"));
+  std::printf("7. Uninstall while the trace runs: both slots back, nothing registered, no file, maps work\n");
+
+  // 8. Another hook over the trace's Map slot (last: this image never hooks again).
+  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,1");
+  frame_trace::Install();
+  present_event();
+  frame_trace::OnPresent(false);
+  CHECK(TableEntry(context.Get(), 14) == native_map_entry);
   renodx::utils::vtable::Slot<MapFunction> intruder_slot = {.object = context.Get(), .index = 14, .original = &intruder_next, .replacement = &IntruderMap};
   renodx::utils::vtable::Install(&intruder_slot);
   log_lines.clear();
@@ -588,50 +692,32 @@ int main() {
   CHECK(intruder_calls == 1 && frame_trace::internal::map_trace.native_calls.empty());
   frame_trace::Uninstall();
   CHECK(Registered() == 0);
-  // The intruder leaves (the trace's hook back in its place, passing on), then the runtime's Map by hand.
+  // Armed again: case B (the other hook still over ours), then case A (it left: the slot holds the trace's hook).
+  const auto arm_again = [&](void* slot_entry, int intruder_calls_after) {
+    SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,1");
+    frame_trace::Install();
+    present_event();
+    log_lines.clear();
+    frame_trace::OnPresent(false);
+    CHECK(frame_trace::internal::map_trace.tracing.load() && TableEntry(context.Get(), 14) == slot_entry);
+    CHECK(std::ranges::any_of(log_lines, [](const std::string& line) { return line.find("stayed chained earlier") != std::string::npos; }));
+    CHECK(SUCCEEDED(context->Map(constant_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+    context->Unmap(constant_buffer.Get(), 0);
+    CHECK(intruder_calls == intruder_calls_after);
+    frame_trace::OnPresent(false);
+    frame_trace::Uninstall();
+    CHECK(TableEntry(context.Get(), 14) == slot_entry && TableEntry(context.Get(), 15) == runtime_unmap);
+    const auto again_header = Lines(trace_path, "trace");
+    CHECK(again_header.size() == 1 && Field(again_header[0], "native_hook") == "failed" && Field(again_header[0], "native_calls") == "0");
+    std::filesystem::remove(trace_path);
+    return 0;
+  };
+  CHECK(arm_again(reinterpret_cast<void*>(&IntruderMap), 2) == 0);
   renodx::utils::vtable::Uninstall(&intruder_slot);
-  CHECK(TableEntry(context.Get(), 14) == reinterpret_cast<void*>(&frame_trace::internal::NativeMap));
-  CHECK(SUCCEEDED(context->Map(constant_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
-  context->Unmap(constant_buffer.Get(), 0);
-  {
-    void** entry = *reinterpret_cast<void***>(context.Get()) + 14;
-    DWORD protection = 0;
-    CHECK(VirtualProtect(entry, sizeof(void*), PAGE_READWRITE, &protection) != FALSE);
-    *entry = runtime_map;
-    VirtualProtect(entry, sizeof(void*), protection, &protection);
-  }
-  std::printf("5. a hook over the trace's: the slot stays chained (logged), the unmap slot back, maps still work and record nothing\n");
-
-  // 6. A long trace: 70,000 maps and unmaps on one frame, more than the native calls' room (2^17): the rest counted as
-  // dropped, the file written in parts (tens of MB), every kept map's line in it, in order.
-  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,1");
-  frame_trace::Install();
-  Invoke<api_event::present>(static_cast<reshade::api::command_queue*>(&queue), static_cast<reshade::api::swapchain*>(nullptr),
-                             static_cast<const reshade::api::rect*>(nullptr), static_cast<const reshade::api::rect*>(nullptr), 0u,
-                             static_cast<const reshade::api::rect*>(nullptr));
-  frame_trace::OnPresent(false);
-  constexpr size_t LONG_MAPS = 70000;
-  for (size_t index = 0; index < LONG_MAPS; ++index) {
-    CHECK(SUCCEEDED(context->Map(vertex_buffer.Get(), 0, D3D11_MAP_WRITE_NO_OVERWRITE, 0, &mapped)));
-    context->Unmap(vertex_buffer.Get(), 0);
-  }
-  frame_trace::OnPresent(false);
-  frame_trace::Uninstall();
-  CHECK(TableEntry(context.Get(), 14) == runtime_map && TableEntry(context.Get(), 15) == runtime_unmap);
-  const size_t kept_calls = frame_trace::internal::MAX_NATIVE_CALLS;
-  const auto long_header = Lines(trace_path, "trace");
-  CHECK(long_header.size() == 1 && Field(long_header[0], "native_calls") == std::to_string(kept_calls)
-        && Field(long_header[0], "dropped_native_calls") == std::to_string(2 * LONG_MAPS - kept_calls));
-  const auto long_maps = Lines(trace_path, "native_map");
-  CHECK(long_maps.size() == kept_calls / 2);
-  CHECK(std::ranges::is_sorted(long_maps, {}, [](const std::string& line) { return std::stoll(Field(line, "qpc")); }));
-  const auto long_frames = Lines(trace_path, "native_frame");
-  CHECK(long_frames.size() == 1 && Field(long_frames[0], "maps") == std::to_string(kept_calls / 2)
-        && Field(long_frames[0], "vertex_maps") == std::to_string(kept_calls / 2) && Field(long_frames[0], "no_overwrites") == std::to_string(kept_calls / 2));
-  const auto long_bytes = std::filesystem::file_size(trace_path);
-  CHECK(long_bytes > (size_t{1} << 23));
-  std::printf("6. a long trace: %zu native maps kept, %zu calls dropped, %llu bytes written in parts\n", long_maps.size(), 2 * LONG_MAPS - kept_calls,
-              static_cast<unsigned long long>(long_bytes));
+  CHECK(TableEntry(context.Get(), 14) == native_map_entry);
+  CHECK(arm_again(native_map_entry, 2) == 0);
+  std::printf("8. a hook over the trace's: the slot stays chained (logged), the unmap slot back, maps work and record nothing; armed again"
+              " with the other hook there and after it left: native_hook=failed, maps work\n");
 
   // Part 2's trace back in its place for run.ps1.
   std::filesystem::remove(trace_path);

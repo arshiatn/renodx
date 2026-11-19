@@ -27,9 +27,11 @@ $summary
 $join = & python -I (Join-Path $tools 'map_trace.py') join $trace --waits (Join-Path $testBuild 'waits.txt')
 if ($LASTEXITCODE -ne 0) { throw 'map_trace.py join failed' }
 $join
-# The parser's own checks: the resources and kinds, the alignment of the two clocks, each wait where the test put it.
+# The parser's own checks: the resources and kinds, the alignment of the two clocks, each wait where the test put it;
+# part 2's native maps (each followed by its v1 map: game) and frame 1's WARNING (3 v1 maps, two of them events only).
 foreach ($expected in @('access discard 2, no_overwrite 1', 'readback', 'aligned: 5 of 5 presents', '1 of 1 waits, ',
-    'IN map no_overwrite', 'between traced events', 'native hook: no_context')) {
+    'IN map no_overwrite', 'between traced events', 'native hook: on, 6 native calls',
+    'WARNING: frame 1: 1 native maps < 3 v1 maps', 'game: 3 of 3 native maps')) {
   if (-not (($summary + $join) -match [regex]::Escape($expected))) { throw "map_trace.py output lacks '$expected'" }
 }
 $native = & python -I (Join-Path $tools 'map_trace.py') summary (Join-Path $testBuild 'tw_map_trace_native.txt')
