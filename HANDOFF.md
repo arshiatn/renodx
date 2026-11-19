@@ -3925,6 +3925,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         cost gate (P > ~1.2 ms = stop), in-frame K=1 vs chunked op compare, short spin, pool on worker_sets, realistic E
         3.5-4.8 ms at K=4; K live switch keeps 2..16 (reviewer expects no gain past 6-8 on the X3D). Next for C: c1o_
         writes the C1 note v2, then C.2. s1ro_ (Opus xHigh, review of rmt_s1 18e8d6db9) STARTED 19:3x.
+        s1ro_ DONE 20:0x (render_mt/reports/s1ro_review.md): MERGE AFTER FIXES, no crash bug on Attila's path, unarmed
+        unchanged. Must: (1) install only on a SINGLE-THREADED device (other TW add-ons reach frame_trace::OnPresent; WH3
+        is multithreaded), (2) mark everything `?` after the first dropped record, (9) README to v3; strongly: (3) time the
+        Unmap hash + make it opt-in; small 4-8, 10, 11, style. Build list: every TW add-on + Divinity 1 / 2, Expeditions,
+        Ryse, Tales, Ruse, ~20 tests that now include device_loss / Detours. s1o_ resumed 20:0x for the fixes; then the
+        same reviewer re-checks, then merge.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
