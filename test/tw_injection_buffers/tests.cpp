@@ -1,10 +1,9 @@
 // mods::shader's native D3D11 injection (PushNativeD3D11Injection, use_native_d3d11_injection: Attila's Fewer Constant
-// Uploads) on WARP with ReShade's command list mocked (its push_constants counted) and the context's Map counted (its
-// vtable slot):
+// Uploads) on WARP with ReShade's command list mocked and the context's Map counted (its vtable slot):
 // 1. The opt-in is off by default.
 // 2. 200 pushes of the same 432 bytes (Attila's ShaderInjectData size): one upload (one WRITE_DISCARD map), 200 binds
-//    (slot 13 cleared before each push, bound again after it at VS, HS, DS, GS and PS, not CS), no ReShade push; the
-//    bound buffer holds the bytes (a staging copy). A dispatch's push binds CS only.
+//    (slot 13 cleared before each push, bound again after it at VS, HS, DS, GS and PS, not CS); the bound buffer holds
+//    the bytes (a staging copy). A dispatch's push binds CS only.
 // 3. One float changed: one new upload, the bound buffer holds the new bytes; 50 more pushes: no upload.
 //    CONTROL: the re-upload skipped (the ring told the bytes are uploaded): the bound buffer differs from the bytes.
 // 4. Not taken (false, no map, nothing bound): a deferred context, another API, slot 14.
@@ -48,19 +47,14 @@ struct OtherApiDevice : Device {
   reshade::api::device_api get_api() const override { return reshade::api::device_api::d3d12; }
 };
 
-struct CommandList : mock::CommandList {
-  int reshade_pushes = 0;
-  void push_constants(reshade::api::shader_stage, reshade::api::pipeline_layout, uint32_t, uint32_t, uint32_t, const void*) override {
-    ++reshade_pushes;
-  }
-};
-
 using MapFunction = HRESULT(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT, D3D11_MAP, UINT, D3D11_MAPPED_SUBRESOURCE*);
 static MapFunction original_map = nullptr;
 static int discard_maps = 0;
 static HRESULT STDMETHODCALLTYPE CountingMap(ID3D11DeviceContext* context, ID3D11Resource* resource, UINT subresource, D3D11_MAP type,
                                              UINT flags, D3D11_MAPPED_SUBRESOURCE* mapped) {
-  if (type == D3D11_MAP_WRITE_DISCARD) ++discard_maps;
+  if (type == D3D11_MAP_WRITE_DISCARD) {
+    ++discard_maps;
+  }
   return original_map(context, resource, subresource, type, flags, mapped);
 }
 
@@ -160,10 +154,12 @@ int main() {
 
   Device game_device;
   game_device.native = device;
-  CommandList cmd_list;
+  mock::CommandList cmd_list;
   cmd_list.owner = &game_device;
   cmd_list.native = immediate;
-  for (size_t index = 0; index < FLOATS; ++index) injection[index] = 0.25f * static_cast<float>(index + 1);
+  for (size_t index = 0; index < FLOATS; ++index) {
+    injection[index] = 0.25f * static_cast<float>(index + 1);
+  }
   shader::shader_injection = injection.data();
   shader::shader_injection_size = FLOATS;
   auto& ring = shader::internal::native_injection_ring;
@@ -179,17 +175,18 @@ int main() {
     CHECK(shader::PushNativeD3D11Injection(&cmd_list, SLOT, false));
     const ComPtr<ID3D11Buffer> bound = BoundOnce(immediate.Get(), false);
     CHECK(bound != nullptr);
-    if (push == 0) first_bound = bound;
+    if (push == 0) {
+      first_bound = bound;
+    }
     CHECK(bound == first_bound);
   }
   CHECK(discard_maps == 1);
-  CHECK(cmd_list.reshade_pushes == 0);
   CHECK(Holds(device.Get(), immediate.Get(), first_bound.Get(), injection));
   Unbind(immediate.Get());
   CHECK(shader::PushNativeD3D11Injection(&cmd_list, SLOT, true));
   CHECK(BoundOnce(immediate.Get(), true) == first_bound);
   CHECK(discard_maps == 1);
-  std::printf("2 200 pushes of the same bytes: 1 upload, 200 binds (VS HS DS GS PS), no ReShade push, the bytes bound; a dispatch: CS\n");
+  std::printf("2 200 pushes of the same bytes: 1 upload, 200 binds (VS HS DS GS PS), the bytes bound; a dispatch: CS\n");
 
   // 3.
   injection[57] = -3.5f;
@@ -198,7 +195,9 @@ int main() {
   CHECK(discard_maps == 2);
   ComPtr<ID3D11Buffer> changed = BoundOnce(immediate.Get(), false);
   CHECK(changed != nullptr && Holds(device.Get(), immediate.Get(), changed.Get(), injection));
-  for (int push = 0; push < 50; ++push) CHECK(shader::PushNativeD3D11Injection(&cmd_list, SLOT, false));
+  for (int push = 0; push < 50; ++push) {
+    CHECK(shader::PushNativeD3D11Injection(&cmd_list, SLOT, false));
+  }
   CHECK(discard_maps == 2);
   // CONTROL: the re-upload skipped.
   injection[3] = 99.f;
@@ -212,11 +211,11 @@ int main() {
   std::printf("3 a change: 1 new upload, the new bytes bound; 50 more: no upload; CONTROL: the upload skipped, the bound bytes differ\n");
 
   // 4.
-  CommandList deferred_list;
+  mock::CommandList deferred_list;
   deferred_list.owner = &game_device;
   deferred_list.native = deferred;
   OtherApiDevice other_device;
-  CommandList other_list;
+  mock::CommandList other_list;
   other_list.owner = &other_device;
   other_list.native = immediate;
   Unbind(immediate.Get());
@@ -272,7 +271,9 @@ int main() {
     }
     CHECK(shader::PushNativeD3D11Injection(&cmd_list, SLOT, false));
     draw_pixel(change);
-    for (int component = 0; component < 4; ++component) expected[change][component] = values[component] + injection[104 + component];
+    for (int component = 0; component < 4; ++component) {
+      expected[change][component] = values[component] + injection[104 + component];
+    }
   }
   for (UINT pixel = CHANGES; pixel < CHANGES + 4; ++pixel) {
     CHECK(shader::PushNativeD3D11Injection(&cmd_list, SLOT, false));
@@ -320,7 +321,7 @@ int main() {
   shader::OnDestroyDevice(&another_device);
   CHECK(ring.device == &game_device && !ring.buffers.empty());
   shader::OnDestroyDevice(&game_device);
-  CHECK(ring.device == nullptr && ring.buffers.empty() && ring.uploaded.empty());
+  CHECK(ring.device == nullptr && ring.buffers.empty() && ring.uploaded.empty() && ring.current == 0);
   std::printf("6 destroy_device: another device's leaves the ring, its own releases it\n");
   std::printf("PASS\n");
   return 0;

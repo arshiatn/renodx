@@ -223,7 +223,8 @@ namespace internal {
 
 // A ring of injection buffers, each with an event ended when the next took over. An upload moves to the next one, or
 // to a new one while the GPU may still read the next (up to NATIVE_INJECTION_BUFFERS; then that one is discarded anyway:
-// still correct, the driver renames or waits).
+// still correct, the driver renames or waits). It follows one D3D11 device: a push from another rebuilds it. A b13 reader
+// that did not push itself (no on_inject, or a save/restore around an upload) can see an earlier push's buffer.
 constexpr size_t NATIVE_INJECTION_BUFFERS = 8;
 struct NativeInjectionBuffer {
   Microsoft::WRL::ComPtr<ID3D11Buffer> buffer;
@@ -236,6 +237,14 @@ struct NativeInjectionRing {
   std::vector<NativeInjectionBuffer> buffers;
   size_t current = 0;
   std::vector<uint8_t> uploaded;  // the current buffer's bytes; empty: nothing uploaded yet
+
+  // With `mutex` held.
+  void Reset() {
+    buffers.clear();
+    uploaded.clear();
+    current = 0;
+    device = nullptr;
+  }
 };
 static NativeInjectionRing native_injection_ring;
 
@@ -717,9 +726,7 @@ static void OnDestroyDevice(reshade::api::device* device) {
   if (auto& ring = internal::native_injection_ring; device->get_api() == reshade::api::device_api::d3d11) {
     const std::unique_lock lock(ring.mutex);
     if (ring.device == device) {
-      ring.buffers.clear();
-      ring.uploaded.clear();
-      ring.device = nullptr;
+      ring.Reset();
     }
   }
   device->destroy_private_data<DeviceData>();
@@ -2082,9 +2089,10 @@ static thread_local uint64_t pending_post_command_id = 0u;
 // compute: its push range's visibility is all), from the ring's current buffer, uploaded first when its bytes changed.
 // False: not taken (another API, a deferred context, a failed upload); the caller pushes through ReShade. Offset 0 only:
 // ReShade's buffer keeps an earlier push's values before the offset.
-inline bool PushNativeD3D11Injection(reshade::api::command_list* cmd_list, uint32_t slot, bool is_dispatch) {
+static bool PushNativeD3D11Injection(reshade::api::command_list* cmd_list, uint32_t slot, bool is_dispatch) {
   auto* device = cmd_list->get_device();
-  if (slot >= D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT || device->get_api() != reshade::api::device_api::d3d11) {
+  if (slot >= D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT || shader_injection_size == 0u
+      || device->get_api() != reshade::api::device_api::d3d11) {
     return false;
   }
   // The context ReShade's push binds on (no proxy unwrap).
@@ -2095,9 +2103,7 @@ inline bool PushNativeD3D11Injection(reshade::api::command_list* cmd_list, uint3
   auto& ring = internal::native_injection_ring;
   const std::unique_lock lock(ring.mutex);
   if (ring.device != device) {
-    ring.buffers.clear();
-    ring.uploaded.clear();
-    ring.current = 0;
+    ring.Reset();
     ring.device = device;
   }
   if (ring.uploaded.empty() || !std::ranges::equal(bytes, ring.uploaded)) {
@@ -2133,10 +2139,11 @@ inline bool PushNativeD3D11Injection(reshade::api::command_list* cmd_list, uint3
     ID3D11Buffer* const written = ring.buffers[next].buffer.Get();
     D3D11_MAPPED_SUBRESOURCE mapped = {};
     if (FAILED(native->Map(written, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return false;
-    std::memcpy(mapped.pData, bytes.data(), bytes.size());
+    // The GPU gets `uploaded`'s bytes, not a second read of shader_injection, so they match even if it changed meanwhile.
+    ring.uploaded.assign(bytes.begin(), bytes.end());
+    std::memcpy(mapped.pData, ring.uploaded.data(), ring.uploaded.size());
     native->Unmap(written, 0);
     ring.current = next;
-    ring.uploaded.assign(bytes.begin(), bytes.end());
   }
   ID3D11Buffer* const bound = ring.buffers[ring.current].buffer.Get();
   if (is_dispatch) {
@@ -2844,9 +2851,7 @@ static void Use(DWORD fdw_reason, const CustomShaderList& new_custom_shaders, T*
       {
         // A device still alive (destroy_device releases them otherwise): the bound buffers keep the context's references.
         const std::unique_lock lock(internal::native_injection_ring.mutex);
-        internal::native_injection_ring.buffers.clear();
-        internal::native_injection_ring.uploaded.clear();
-        internal::native_injection_ring.device = nullptr;
+        internal::native_injection_ring.Reset();
       }
 
       break;
