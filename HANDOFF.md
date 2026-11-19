@@ -399,7 +399,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Bench variants M1 (er4o_): heapfix_b6.json + night1118.json have no heapfix_line ... | coordinator, with the bench tool fixes before the next bench
 - RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go fa4o_ DONE (night1118/final_bench_f
 - OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 08:08: 64-bit decisions = coordinator's reco
-- NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | coordinator (next session) ATN 21:30 asked whether the Opus 
+- NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | coordinator (next session) ROUND 2 STARTED 2026-11-19 (fresh
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -3805,6 +3805,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         prototype design per the P0.b / P0.f addenda. Cleanup: the p0c_ worktree D:\Dev\renodx\.claude\worktrees\agent-
         a79a00ab8cbb74ac5 has junctions into the main checkout: remove the links alone first. Disk C: 99 % full. Owner:
         coordinator (next session)
+        ROUND 2 STARTED 2026-11-19 (fresh session). Cleanup DONE: the p0c_ worktree's 10 links removed alone (main
+        checkout's bin / downloads / external intact; the worktree itself kept). (1) FOUND: the 432 B CB is ReShade's own
+        per-slot push-constant buffer (d3d11_impl_command_list.cpp:490: every push_constants = Map(WRITE_DISCARD) of the
+        whole buffer + binds), filled by mods::shader's per-draw injection push (shader.hpp ~2195 PushShaderInjections,
+        slot b13, ShaderInjectData = 108 floats); shader_injection changes only between frames -> upload once, bind per
+        draw. q1o_ (Opus High, worktree branch rmt_cb: opt-in in mods/shader.hpp, default off for every other game, Attila
+        CPU row OFF until a game run proves it) STARTED; review rq1o_ (Opus xHigh) after. (2) vt1s_ (Sonnet xHigh,
+        read-only) STARTED -> render_mt/reports/vt1s_report.md. Then (3) A design note, (4) map trace v3, (5) B1 / C1.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
