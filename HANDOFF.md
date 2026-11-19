@@ -3977,6 +3977,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         S3 STARTED 21:4x: s3o_ (Opus High) in worktree .claude/worktrees/rmt_s1 on NEW branch rmt_s3 (from 16fae0bf5;
         10 links re-made: remove them alone before any cleanup): slim tw_map_replay (baseline, wait locator, ring seam,
         pixel parity, overhead; WARP tests; ONE short NVIDIA baseline check, stop on any TDR).
+        s3o_ DONE 22:3x (reports/s3o_report.md): d3d71b18b, test/tw_map_replay 2,218 lines (reader v3 + v2, replayer,
+        wait locator, RingPlugin seam ring_seam.hpp, pixel strips, overhead ABBA); WARP tests PASS x86 + amd64. NVIDIA
+        baseline (W3m v2, 2 fresh devices, 21.5 s, no TDR): CB DISCARD wait only 0.21 / 0.17 ms/f, the wait landed in the
+        8 MB VB rings (20.8 / 22.4 ms/f) because v2 has no binds (assumed: every VB bound at slot 0) -> the >= 5 ms/f CB mark
+        needs batch 2's v3 data (real per-draw binds). Reflex left out (only via reflex.hpp, needs a src split; batch 1
+        found Reflex moot). WARP overhead native vs native, hooked calls: -0.005 +- 0.025 ms/f. MERGED 1a98a3b13 + pushed
+        (test-only, no separate review; S7 covers it).
+        S5 STARTED 22:4x: s5o_ (Opus xHigh, ATN's one-time pick) on NEW branch rmt_s5 (same worktree, from 1a98a3b13):
+        commit 1 = S1 follow-ups N1-N7, then buffer_pool.hpp ring + context_hooks bodies + row (Attila-only, OFF,
+        Experimental) + WARP tests + harness ring adapter + WARP ring parity. Then: independent Opus xHigh review ->
+        s5o_ fixes -> same reviewer re-checks -> merge. S6 (NVIDIA parity + overhead) needs D1m v3 data (batch 2).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
