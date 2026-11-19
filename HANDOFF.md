@@ -3938,6 +3938,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         update KB5132061 (26200.9974) installed at 15:21 today. Not our shutdown (that was 15:17, ATN's restart). s1o_ was
         stopped mid-fix: rmt_s1 has UNCOMMITTED edits in context_hooks.hpp, frame_trace.hpp, both tests.cpp. Next: ATN
         copies the dump (admin) for an offline read (no symbol server), and decides when s1o_ resumes.
+        DUMP READ 19:0x (ATN copied it to Downloads; kd, no symbols): SINGLE_DPC_TIMEOUT_EXCEEDED; the only non-Microsoft
+        code on the crashing CPU's raw stack = nvlddmkm+0xd21e29 / +0xd21e82 (NVIDIA display driver 32.0.15.9579 = 595.79,
+        dated 2026-03-04). Raw stack scan only (no nt symbols), so a strong hint, not proof. ATN 19:0x: resume S1 ->
+        s1o_ resumed (finish fixes, builds + tests strictly one at a time, WARP only, local commit, fix-round report).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
