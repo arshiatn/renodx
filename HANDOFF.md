@@ -3916,6 +3916,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         twattila / twrome2 / twthronesofbritannia + amd64 twwarhammer3 exit 0; tests PASS both archs, controls caught.
         Reviewer points in the report (lazy state application after a swap calls 7 bodies from inside d3d11 = the ring
         must handle it). Next: S1 review (Opus xHigh) after c1r_ (1 agent at a time).
+        c1r_ DONE 19:3x (render_mt/reports/c1r_review_census.md): GO WITH CHANGES, no blocker. CENSUS: every worker-side
+        call is read-only for all 10 weighted vtables (vf58 2 impls, vf60 10, others 1; VF68 writes = deferred as designed);
+        technique flags written only by constructors; tracker+0x20 == sceneview->vf3c(). Must-change before C.2: M1 owner
+        registration at mesh setup (+1 site, vtable check), M2 engine_code site table > 32 (uint64 masks or a 2nd table),
+        M3 detach race + Uninstall give-up must pin the module, M4 thunk return addresses / live registers (SRV, FACTION,
+        CONST1, E9 sites). Adopted (delegated): VF64 ops dropped (no-op stub), depth loop first (1 cut + 6 sites), stage-2
+        cost gate (P > ~1.2 ms = stop), in-frame K=1 vs chunked op compare, short spin, pool on worker_sets, realistic E
+        3.5-4.8 ms at K=4; K live switch keeps 2..16 (reviewer expects no gain past 6-8 on the X3D). Next for C: c1o_
+        writes the C1 note v2, then C.2. s1ro_ (Opus xHigh, review of rmt_s1 18e8d6db9) STARTED 19:3x.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
