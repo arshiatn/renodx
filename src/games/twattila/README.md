@@ -1,5 +1,20 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, map trace v2 (2026-11-19; built only, not stamped, not installed, not run in game)
+
+- New (debug, no row): the map trace (env `RENODX_TW_MAP_TRACE=<seconds after the first present>,<frames>`, e.g. `95,12`)
+  also hooks the real immediate context's Map and Unmap below ReShade (vtable slots 14 / 15, `utils::vtable::Slot`) for
+  its frames only: each call is timed around the native call (the time the driver holds it), with the Map type
+  (read / write / read_write / discard / no_overwrite), its flags (DO_NOT_WAIT), the result (failed polls too), the
+  resource's class (constant / vertex / index / other buffer, texture), the bytes it maps, its unmap, the native call's
+  direct caller (ReShade's proxy, or an add-on) and the game's return addresses; per frame the totals (DISCARD bytes, maps
+  and native ms per class). Lines `native_map`, `native_unmap`, `native_frame` in `tw_map_trace.txt`, the trace line's
+  `native_hook=on|no_context|failed`; `tools\tw\map_trace.py summary` prints them. Other contexts (a second device's
+  immediate one shares the vtable, deferred ones) pass straight on; outside the frames nothing is hooked; a slot another
+  hook took over meanwhile stays chained through ours (passing on, logged). Every TW add-on with the map trace gets it.
+- Checked in `test/tw_map_trace` parts 4-5 (x86, amd64) and `tools\tw\map_trace_test.py` N1. Test (bench, W3m): the log
+  line "Map trace (RENODX_TW_MAP_TRACE=95,12)", the file's `native_hook=on`, the constant-buffer DISCARDs' native_ms.
+
 ## Dev, Model Detail Distance at any time (2026-11-18; built only, not stamped, not installed, not run in game)
 
 - Faster: at **Model Detail Distance 1x** (the default) the game runs its own LOD code: the add-on's hook cost 0.3-0.9 ms
