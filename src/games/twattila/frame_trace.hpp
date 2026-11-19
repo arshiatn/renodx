@@ -8,6 +8,7 @@
 #include <windows.h>
 
 #include <d3d11.h>
+#include <intrin.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -35,6 +36,7 @@
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/state.hpp"
+#include "../../utils/vtable.hpp"
 
 // Debug (ReShade.ini [renodx] FrameTrace=1, read at start): one frame, 600 presents after the DLSS render scale began
 // (Options' at_100: after the 3D view began, also at 100%), or the next frame when renodx_trace_now sits next to the exe
@@ -54,6 +56,17 @@
 // the Map flags are not recorded. A map's unmap is the next unmap of its resource and subresource on any thread or
 // context. A gap leaves the trace's own time out but holds the native call of the event before it when that callback
 // runs first (a draw's, an unmap's, an update's, a copy's: gap_from names it).
+// Version 2: while the traced frames run, the real immediate context's own Map and Unmap (its vtable slots, below
+// ReShade, which calls them from its proxy) are hooked and timed around the native call: every call on that context
+// (the game's through ReShade's proxy, the add-ons' through ReShade's API or their own, the failed DO_NOT_WAIT polls
+// too) with the Map type and flags, the result, the resource's class (constant / vertex / index / other buffer, texture)
+// and the bytes it maps, the native call's direct caller (module file name + offset: ReShade's proxy and ReShade's API
+// both sit in ReShade's module; only a v1 map right after a native one marks it the game's, tools\tw\map_trace.py), and
+// a map's game return addresses; per frame the totals (DISCARD bytes, counts and native time per class). The context
+// comes from the present callback while armed (a start without one waits one present); the hook is installed at the
+// trace's first frame and removed after its last (and at Uninstall). Measure only: every call goes on to the native
+// function unchanged. A v1 map's gap on that context then holds the native record's own time too (its callers' scan,
+// microseconds). The file is written to tw_map_trace.txt.part and renamed when whole.
 namespace twattila::frame_trace {
 
 // `count` values of a buffer from `offset` bytes on, read back (it waits for the GPU: for traced frames); empty: past the
@@ -577,11 +590,22 @@ inline void UseEvents(bool use) {
 
 constexpr uint32_t MAP_TRACE_FRAMES = 3;
 constexpr uint32_t MAX_MAP_TRACE_FRAMES = 100;
+// Each kind's storage: <frames> x a frame's room (W2's stress frame: ~4,200 draws, ~1,780 maps and as many unmaps),
+// capped. Reserved at Install (armed) and held until the trace's file is written; x86 bytes a record: draw 32, event
+// 144, native call 112 (12 frames: 3.1 + 9.4 + 7.3 MB at the caps; 3 frames: about 5.5 MB). A record past its room is
+// counted as dropped.
+constexpr size_t MAP_DRAWS_A_FRAME = 8192;
+constexpr size_t MAP_EVENTS_A_FRAME = 6144;
+constexpr size_t NATIVE_CALLS_A_FRAME = 6144;
 constexpr size_t MAX_MAP_DRAWS = size_t{1} << 17;
-constexpr size_t MAX_MAP_EVENTS = size_t{1} << 15;
+constexpr size_t MAX_MAP_EVENTS = size_t{1} << 16;
 constexpr size_t MAP_CALLERS = 4;
 constexpr uintptr_t MAP_STACK_SCAN_BYTES = 16384;
 constexpr size_t MAP_RECENT_PRESENTS = 128;  // the presents before the trace, for the parser's clock alignment
+constexpr size_t MAX_NATIVE_CALLS = size_t{1} << 16;
+// ID3D11DeviceContext's vtable: IUnknown (3), ID3D11DeviceChild (4), VSSetConstantBuffers ... Draw, then Map and Unmap.
+constexpr size_t NATIVE_MAP_SLOT = 14;
+constexpr size_t NATIVE_UNMAP_SLOT = 15;
 
 enum class MapEventKind : uint8_t { MAP, UNMAP, UPDATE, COPY };
 enum class MapDrawKind : uint8_t { DRAW, INDEXED, DISPATCH, DRAW_INDIRECT, DISPATCH_INDIRECT };
@@ -623,6 +647,26 @@ struct MapEvent {
   std::array<uintptr_t, MAP_CALLERS> callers = {};
 };
 
+// A Map or Unmap on the game's immediate context, timed around the native call (the native hook, below ReShade).
+struct NativeMapCall {
+  int64_t qpc = 0;   // before the native call
+  int64_t done = 0;  // after it
+  uint32_t thread = 0;
+  bool unmap = false;
+  D3D11_MAP map_type = D3D11_MAP_READ;
+  uint32_t map_flags = 0;
+  HRESULT result = S_OK;
+  uint32_t subresource = 0;
+  uint32_t mapped_bytes = 0;     // a buffer's width, a texture's mapped depth pitch (one slice); 0: the map failed
+  uintptr_t direct_caller = 0;   // the native call's return address (ReShade's proxy for the game's own maps)
+  MapResource resource;          // an unmap's: the pointer only
+  std::array<uintptr_t, MAP_CALLERS> callers = {};
+};
+
+using NativeMapFunction = HRESULT(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT, D3D11_MAP, UINT,
+                                                      D3D11_MAPPED_SUBRESOURCE*);
+using NativeUnmapFunction = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT);
+
 struct MapModule {
   std::string name;
   uintptr_t base = 0;
@@ -649,8 +693,26 @@ struct MapTrace {
   std::vector<int64_t> presents;  // each traced frame's start, then the last one's end
   std::vector<MapDraw> draws;
   std::vector<MapEvent> events;
+  std::vector<NativeMapCall> native_calls;
   uint32_t dropped_draws = 0;
   uint32_t dropped_events = 0;
+  uint32_t dropped_native_calls = 0;
+  // The native hook: the game's immediate context (the present callback's while armed), the one hooked (null: the
+  // hook passes every call on), the slots, and the functions it calls, kept after a slot's Uninstall: a thread that read
+  // the hook's address from the table before goes on through them. The vtable is shared by every context of its class.
+  std::atomic<ID3D11DeviceContext*> immediate_context = nullptr;
+  std::atomic<ID3D11DeviceContext*> hooked_context = nullptr;
+  std::atomic<NativeMapFunction> native_map = nullptr;
+  std::atomic<NativeUnmapFunction> native_unmap = nullptr;
+  NativeMapFunction slot_map_original = nullptr;
+  NativeUnmapFunction slot_unmap_original = nullptr;
+  renodx::utils::vtable::Slot<NativeMapFunction> map_slot;
+  renodx::utils::vtable::Slot<NativeUnmapFunction> unmap_slot;
+  const char* native_hook = "no_context";  // the trace line's native_hook: on, no_context, failed
+  // A slot stayed chained through the hook (another hook took it over, or its restore failed): this image is pinned and
+  // never hooks again in this process (Install keeps it). Hooking over the chain would make the hook its own next.
+  bool native_hook_chained = false;
+  bool waited_for_context = false;  // the trace's start held back one present for the present callback's context
   // The exe; the engine (empire.retail.dll) where the game has one. Written once, before `tracing` is first set.
   std::vector<MapModule> modules;
   std::vector<MapCode> code;
@@ -685,12 +747,43 @@ inline void RecordMapDraw(reshade::api::command_list* cmd_list, MapDrawKind kind
       (compute ? 0u : renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader));
   const std::unique_lock lock(map_trace.mutex);
   if (!map_trace.tracing.load(std::memory_order_relaxed)) return;
-  if (map_trace.draws.size() >= MAX_MAP_DRAWS) {
+  if (map_trace.draws.size() >= map_trace.draws.capacity()) {
     ++map_trace.dropped_draws;
     return;
   }
   map_trace.draws.push_back({.qpc = qpc, .done = Qpc(), .thread = GetCurrentThreadId(), .kind = kind,
                              .vertex_shader = first_shader, .pixel_shader = pixel_shader});
+}
+
+// The game's return addresses above this call: stack values inside the exe's or the engine's code just after a call
+// instruction (E8 rel32, or FF /2 in its 2, 3, 4, 6 and 7-byte forms), nearest first, each once (x64 frames keep
+// spilled copies): the first is the game's call into the D3D11 runtime. A heuristic: a stale value can match. Only on
+// the thread's own stack (a job system's stack that the TEB doesn't describe: no scan). While `tracing` (`code` set).
+inline void ScanCallers(std::array<uintptr_t, MAP_CALLERS>* callers) {
+  ULONG_PTR stack_low = 0;
+  ULONG_PTR stack_high = 0;
+  map_trace.stack_limits(&stack_low, &stack_high);
+  uintptr_t slot = reinterpret_cast<uintptr_t>(&stack_low) & ~(uintptr_t{sizeof(uintptr_t)} - 1);
+  if (slot < stack_low || slot >= stack_high) return;
+  const uintptr_t scan_end = std::min<uintptr_t>(stack_high, slot + MAP_STACK_SCAN_BYTES);
+  size_t found = 0;
+  for (; slot + sizeof(uintptr_t) <= scan_end && found < callers->size(); slot += sizeof(uintptr_t)) {
+    const uintptr_t value = *reinterpret_cast<const uintptr_t*>(slot);
+    const bool in_code = std::ranges::any_of(map_trace.code, [value](const MapCode& code) {
+      return value >= code.begin + 7 && value <= code.end;
+    });
+    if (!in_code) continue;
+    const auto* after = reinterpret_cast<const uint8_t*>(value);
+    const auto indirect_call = [after](int length) {
+      return after[-length] == 0xFF && (after[-length + 1] & 0x38) == 0x10;
+    };
+    const auto found_end = callers->begin() + found;
+    if (std::ranges::find(callers->begin(), found_end, value) == found_end
+        && (after[-5] == 0xE8 || indirect_call(2) || indirect_call(3) || indirect_call(4) || indirect_call(6)
+            || indirect_call(7))) {
+      (*callers)[found++] = value;
+    }
+  }
 }
 
 // One traced map, unmap, update or staging copy (`event.qpc` taken at its callback's start), with the game's return
@@ -699,39 +792,11 @@ inline void RecordMapEvent(MapEvent event, bool with_callers) {
   // Acquire: `code` was written before `tracing` was set.
   if (!map_trace.tracing.load(std::memory_order_acquire)) return;
   if (with_callers) {
-    // Stack values inside the exe's or the engine's code just after a call instruction (E8 rel32, or FF /2 in its 2, 3,
-    // 4, 6 and 7-byte forms), nearest first, each once (x64 frames keep spilled copies): the first is the game's call
-    // into the D3D11 runtime. A heuristic: a stale value can match. Only on the thread's own stack (a job system's
-    // stack that the TEB doesn't describe: no scan).
-    ULONG_PTR stack_low = 0;
-    ULONG_PTR stack_high = 0;
-    map_trace.stack_limits(&stack_low, &stack_high);
-    uintptr_t slot = reinterpret_cast<uintptr_t>(&stack_low) & ~(uintptr_t{sizeof(uintptr_t)} - 1);
-    if (slot >= stack_low && slot < stack_high) {
-      const uintptr_t scan_end = std::min<uintptr_t>(stack_high, slot + MAP_STACK_SCAN_BYTES);
-      size_t found = 0;
-      for (; slot + sizeof(uintptr_t) <= scan_end && found < event.callers.size(); slot += sizeof(uintptr_t)) {
-        const uintptr_t value = *reinterpret_cast<const uintptr_t*>(slot);
-        const bool in_code = std::ranges::any_of(map_trace.code, [value](const MapCode& code) {
-          return value >= code.begin + 7 && value <= code.end;
-        });
-        if (!in_code) continue;
-        const auto* after = reinterpret_cast<const uint8_t*>(value);
-        const auto indirect_call = [after](int length) {
-          return after[-length] == 0xFF && (after[-length + 1] & 0x38) == 0x10;
-        };
-        const auto found_end = event.callers.begin() + found;
-        if (std::ranges::find(event.callers.begin(), found_end, value) == found_end
-            && (after[-5] == 0xE8 || indirect_call(2) || indirect_call(3) || indirect_call(4) || indirect_call(6)
-                || indirect_call(7))) {
-          event.callers[found++] = value;
-        }
-      }
-    }
+    ScanCallers(&event.callers);
   }
   const std::unique_lock lock(map_trace.mutex);
   if (!map_trace.tracing.load(std::memory_order_relaxed)) return;
-  if (map_trace.events.size() >= MAX_MAP_EVENTS) {
+  if (map_trace.events.size() >= map_trace.events.capacity()) {
     ++map_trace.dropped_events;
     return;
   }
@@ -795,6 +860,97 @@ inline MapResource DescribeMapResource(reshade::api::resource handle) {
       break;
   }
   return result;
+}
+
+// One native Map or Unmap of the hooked context (the native hook's).
+inline void RecordNativeCall(const NativeMapCall& call) {
+  const std::unique_lock lock(map_trace.mutex);
+  if (!map_trace.tracing.load(std::memory_order_relaxed)) return;
+  if (map_trace.native_calls.size() >= map_trace.native_calls.capacity()) {
+    ++map_trace.dropped_native_calls;
+    return;
+  }
+  map_trace.native_calls.push_back(call);
+}
+
+// The native hook's Map (the real context's vtable slot): any other context, or outside the traced frames, straight on.
+inline HRESULT STDMETHODCALLTYPE NativeMap(ID3D11DeviceContext* context, ID3D11Resource* resource, UINT subresource,
+                                           D3D11_MAP map_type, UINT map_flags, D3D11_MAPPED_SUBRESOURCE* mapped) {
+  const NativeMapFunction native = map_trace.native_map.load(std::memory_order_relaxed);
+  // Acquire: `code` (the callers' scan) was written before `tracing` was set.
+  if (context != map_trace.hooked_context.load(std::memory_order_relaxed)
+      || !map_trace.tracing.load(std::memory_order_acquire)) {
+    return native(context, resource, subresource, map_type, map_flags, mapped);
+  }
+  const int64_t qpc = Qpc();
+  const HRESULT result = native(context, resource, subresource, map_type, map_flags, mapped);
+  NativeMapCall call = {.qpc = qpc, .done = Qpc(), .thread = GetCurrentThreadId(), .map_type = map_type,
+                        .map_flags = map_flags, .result = result, .subresource = subresource,
+                        .direct_caller = reinterpret_cast<uintptr_t>(_ReturnAddress()),
+                        .resource = DescribeMapResource({reinterpret_cast<uintptr_t>(resource)})};
+  if (SUCCEEDED(result)) {
+    if (call.resource.dimension == D3D11_RESOURCE_DIMENSION_BUFFER) {
+      call.mapped_bytes = call.resource.width;
+    } else if (mapped != nullptr) {
+      call.mapped_bytes = mapped->DepthPitch;
+    }
+  }
+  // The game's return addresses: the maps' only (an unmap is matched to its map; its own scan would be thrown away).
+  ScanCallers(&call.callers);
+  RecordNativeCall(call);
+  return result;
+}
+
+inline void STDMETHODCALLTYPE NativeUnmap(ID3D11DeviceContext* context, ID3D11Resource* resource, UINT subresource) {
+  const NativeUnmapFunction native = map_trace.native_unmap.load(std::memory_order_relaxed);
+  if (context != map_trace.hooked_context.load(std::memory_order_relaxed)
+      || !map_trace.tracing.load(std::memory_order_acquire)) {
+    native(context, resource, subresource);
+    return;
+  }
+  const int64_t qpc = Qpc();
+  native(context, resource, subresource);
+  RecordNativeCall({.qpc = qpc, .done = Qpc(), .thread = GetCurrentThreadId(), .unmap = true,
+                    .subresource = subresource, .direct_caller = reinterpret_cast<uintptr_t>(_ReturnAddress()),
+                    .resource = {.pointer = reinterpret_cast<uintptr_t>(resource)}});
+}
+
+// The native hook out (the trace's end, Uninstall): the context unhooked first (calls in flight pass on), then both
+// slots back. A slot another hook took over since stays chained through ours, which passes every call on: this image
+// stays loaded for the process.
+inline void UninstallNativeHook() {
+  map_trace.hooked_context.store(nullptr);
+  const auto uninstall = []<typename Function>(renodx::utils::vtable::Slot<Function>* slot, Function* original) {
+    if (slot->installed_address == nullptr) return;
+    try {
+      renodx::utils::vtable::Uninstall(slot);
+    } catch (const std::exception& error) {
+      map_trace.native_hook_chained = true;
+      renodx::utils::log::w("[Total War] Map trace: the native hook stays chained (", error.what(),
+                            "); no native Map timing again in this process.");
+      HMODULE pinned = nullptr;
+      if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+                             reinterpret_cast<LPCWSTR>(slot->replacement), &pinned)
+          == FALSE) {
+        renodx::utils::log::e("[Total War] Map trace: the add-on could not be kept loaded (", GetLastError(),
+                              "): a game call through the chained slot after its unload would crash.");
+      }
+      *original = nullptr;
+    }
+    *slot = {};
+  };
+  uninstall(&map_trace.map_slot, &map_trace.slot_map_original);
+  uninstall(&map_trace.unmap_slot, &map_trace.slot_unmap_original);
+}
+
+// While armed: the game's immediate context, the real one below ReShade's proxy (its native).
+inline void OnMapTracePresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*,
+                              const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  if (!map_trace.armed.load(std::memory_order_relaxed)) return;
+  if (queue->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  map_trace.immediate_context.store(
+      reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native()),
+      std::memory_order_relaxed);
 }
 
 // A copy into a staging resource (the game's readbacks); other copies are not traced. `bytes`: ReShade's UINT64_MAX
@@ -910,6 +1066,7 @@ inline void UseMapEvents(bool use) {
     reshade::register_event<reshade::addon_event::copy_resource>(OnMapTraceCopyResource);
     reshade::register_event<reshade::addon_event::copy_buffer_region>(OnMapTraceCopyBuffer);
     reshade::register_event<reshade::addon_event::copy_texture_region>(OnMapTraceCopyTexture);
+    reshade::register_event<reshade::addon_event::present>(OnMapTracePresent);
   } else {
     reshade::unregister_event<reshade::addon_event::draw>(OnMapTraceDraw);
     reshade::unregister_event<reshade::addon_event::draw_indexed>(OnMapTraceDrawIndexed);
@@ -923,6 +1080,7 @@ inline void UseMapEvents(bool use) {
     reshade::unregister_event<reshade::addon_event::copy_resource>(OnMapTraceCopyResource);
     reshade::unregister_event<reshade::addon_event::copy_buffer_region>(OnMapTraceCopyBuffer);
     reshade::unregister_event<reshade::addon_event::copy_texture_region>(OnMapTraceCopyTexture);
+    reshade::unregister_event<reshade::addon_event::present>(OnMapTracePresent);
   }
 }
 
@@ -965,18 +1123,25 @@ inline void Install(Options options = {}) {
       trace.presents.clear();
       trace.draws.clear();
       trace.events.clear();
+      trace.native_calls.clear();
       trace.modules.clear();
       trace.code.clear();
       trace.dropped_draws = 0;
       trace.dropped_events = 0;
+      trace.dropped_native_calls = 0;
+      trace.native_hook = "no_context";
+      trace.waited_for_context = false;
+      trace.immediate_context.store(nullptr);
       try {
         trace.presents.reserve(frames + 1);
-        trace.draws.reserve(internal::MAX_MAP_DRAWS);
-        trace.events.reserve(internal::MAX_MAP_EVENTS);
+        trace.draws.reserve(std::min(internal::MAX_MAP_DRAWS, frames * internal::MAP_DRAWS_A_FRAME));
+        trace.events.reserve(std::min(internal::MAX_MAP_EVENTS, frames * internal::MAP_EVENTS_A_FRAME));
+        trace.native_calls.reserve(std::min(internal::MAX_NATIVE_CALLS, frames * internal::NATIVE_CALLS_A_FRAME));
       } catch (const std::bad_alloc&) {
         trace.presents = {};
         trace.draws = {};
         trace.events = {};
+        trace.native_calls = {};
         valid = false;
         renodx::utils::log::w("[Total War] Map trace: no memory for its storage: off.");
       }
@@ -1025,6 +1190,7 @@ inline void Uninstall() {
     const std::unique_lock lock(internal::map_trace.mutex);
     internal::map_trace.armed.store(false);
     internal::map_trace.tracing.store(false);
+    internal::UninstallNativeHook();
     return std::exchange(internal::map_trace.registered, false);
   }();
   if (map_registered) {
@@ -1055,6 +1221,18 @@ inline void Mark(std::string_view text) {
 inline void OnPresent(bool scaled, bool view_3d = false) {
   auto& state = internal::state;
   if (auto& trace = internal::map_trace; trace.armed.load(std::memory_order_relaxed)) {
+    // A module's file name, ASCII ('?' for any other letter).
+    const auto module_name = [](HMODULE module) {
+      std::wstring path(32768, L'\0');
+      path.resize(GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size())));
+      // Named: a range-for over filename()'s temporary would dangle.
+      const std::filesystem::path file_name = std::filesystem::path(path).filename();
+      std::string name;
+      for (const wchar_t letter : file_name.native()) {
+        name += (letter < 128 ? static_cast<char>(letter) : '?');
+      }
+      return name;
+    };
     const int64_t now = internal::Qpc();
     LARGE_INTEGER frequency = {};
     QueryPerformanceFrequency(&frequency);
@@ -1063,7 +1241,16 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
       if (trace.first_present == 0) {
         trace.first_present = now;
       }
-      if (static_cast<double>(now - trace.first_present) < trace.delay_seconds * static_cast<double>(frequency.QuadPart)) {
+      const bool before_start =
+          static_cast<double>(now - trace.first_present) < trace.delay_seconds * static_cast<double>(frequency.QuadPart);
+      // No context yet at the start (Attila's own present callback, this one's caller, runs before the map trace's
+      // present callback that gives it): one present later, once.
+      const bool waiting_for_context = !before_start && !trace.waited_for_context
+                                       && trace.immediate_context.load(std::memory_order_relaxed) == nullptr;
+      if (waiting_for_context) {
+        trace.waited_for_context = true;
+      }
+      if (before_start || waiting_for_context) {
         trace.recent_presents[trace.recent_count % trace.recent_presents.size()] = now;
         ++trace.recent_count;
       } else {
@@ -1080,14 +1267,6 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
             }
             const auto* headers = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos_header->e_lfanew);
             if (headers->Signature != IMAGE_NT_SIGNATURE) continue;
-            std::wstring path(32768, L'\0');
-            path.resize(GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size())));
-            // Named: a range-for over filename()'s temporary would dangle.
-            const std::filesystem::path file_name = std::filesystem::path(path).filename();
-            std::string name;
-            for (const wchar_t letter : file_name.native()) {
-              name += (letter < 128 ? static_cast<char>(letter) : '?');
-            }
             for (const auto& section : std::span(IMAGE_FIRST_SECTION(headers), headers->FileHeader.NumberOfSections)) {
               if ((section.Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0 || section.Misc.VirtualSize == 0
                   || uint64_t{section.VirtualAddress} + section.Misc.VirtualSize > headers->OptionalHeader.SizeOfImage) {
@@ -1097,11 +1276,45 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
                                     .end = base + section.VirtualAddress + section.Misc.VirtualSize,
                                     .module = trace.modules.size()});
             }
-            trace.modules.push_back({.name = std::move(name), .base = base});
+            trace.modules.push_back({.name = module_name(module), .base = base});
           }
         } catch (const std::bad_alloc&) {
           trace.code.clear();
           renodx::utils::log::w("[Total War] Map trace: no memory for the game's module list: the callers left out.");
+        }
+        // The native hook on the game's immediate context (the present callback's): the functions it calls first,
+        // read from the table, so that a call through the new slot never finds them unset (a slot that holds the hook
+        // already keeps the functions it has: the hook never becomes its own next).
+        auto* context = trace.immediate_context.load(std::memory_order_relaxed);
+        if (context == nullptr) {
+          trace.native_hook = "no_context";
+        } else if (trace.native_hook_chained) {
+          trace.native_hook = "failed";
+          renodx::utils::log::w("[Total War] Map trace: no native Map timing (the hook stayed chained earlier).");
+        } else {
+          auto** table = *reinterpret_cast<void***>(context);
+          if (table[internal::NATIVE_MAP_SLOT] != reinterpret_cast<void*>(&internal::NativeMap)) {
+            trace.native_map.store(reinterpret_cast<internal::NativeMapFunction>(table[internal::NATIVE_MAP_SLOT]));
+          }
+          if (table[internal::NATIVE_UNMAP_SLOT] != reinterpret_cast<void*>(&internal::NativeUnmap)) {
+            trace.native_unmap.store(reinterpret_cast<internal::NativeUnmapFunction>(table[internal::NATIVE_UNMAP_SLOT]));
+          }
+          trace.map_slot = {.object = context, .index = internal::NATIVE_MAP_SLOT, .original = &trace.slot_map_original,
+                            .replacement = &internal::NativeMap};
+          trace.unmap_slot = {.object = context, .index = internal::NATIVE_UNMAP_SLOT,
+                              .original = &trace.slot_unmap_original, .replacement = &internal::NativeUnmap};
+          try {
+            renodx::utils::vtable::Install(&trace.map_slot);
+            trace.native_map.store(trace.slot_map_original);
+            renodx::utils::vtable::Install(&trace.unmap_slot);
+            trace.native_unmap.store(trace.slot_unmap_original);
+            trace.hooked_context.store(context);
+            trace.native_hook = "on";
+          } catch (const std::exception& error) {
+            internal::UninstallNativeHook();
+            trace.native_hook = "failed";
+            renodx::utils::log::w("[Total War] Map trace: no native Map timing (", error.what(), ").");
+          }
         }
         trace.presents.assign(1, now);
         trace.tracing.store(true, std::memory_order_release);
@@ -1111,6 +1324,7 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
       if (trace.presents.size() > trace.frames) {
         trace.tracing.store(false);
         trace.armed.store(false);
+        internal::UninstallNativeHook();
         // The callbacks stay registered (until Uninstall), gated off.
         try {
           const double ms_per_tick = 1000. / static_cast<double>(frequency.QuadPart);
@@ -1145,11 +1359,29 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
               }
             }
           }
-          std::string text = std::format(
+          // Written in parts of about 4 MB (a 12-frame trace is tens of MB: one string would need that much of an x86
+          // game's address space in one block, twice while it grows), into tw_map_trace.txt.part, renamed when whole: a
+          // write that fails half way leaves no tw_map_trace.txt that looks complete.
+          const auto path = state.folder / L"tw_map_trace.txt";
+          auto part_path = path;
+          part_path += L".part";
+          std::error_code ignored;
+          std::filesystem::remove(path, ignored);
+          std::ofstream file(part_path, std::ios::binary | std::ios::trunc);
+          std::string text;
+          uint32_t parts = 0;
+          const auto write_part = [&file, &text, &parts] {
+            if (text.size() < (size_t{1} << 22)) return;
+            file << text;
+            text.clear();
+            ++parts;
+          };
+          text = std::format(
               "trace setting={} qpc_frequency={} frames={} end_qpc={} draws={} events={} dropped_draws={}"
-              " dropped_events={}\n",
+              " dropped_events={} native_calls={} dropped_native_calls={} native_hook={}\n",
               trace.setting, frequency.QuadPart, frames, trace.presents.back(), trace.draws.size(), trace.events.size(),
-              trace.dropped_draws, trace.dropped_events);
+              trace.dropped_draws, trace.dropped_events, trace.native_calls.size(), trace.dropped_native_calls,
+              trace.native_hook);
           for (const auto& module : trace.modules) {
             text += std::format("module name={} base=0x{:x}\n", module.name, module.base);
           }
@@ -1196,9 +1428,24 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
           constexpr std::array<const char*, 4> EVENT_KINDS = {"map", "unmap", "update", "copy"};
           constexpr std::array<const char*, 5> DRAW_KINDS = {"draw", "indexed", "dispatch", "draw_indirect",
                                                              "dispatch_indirect"};
+          // " callers=..." and the line's end: the first return addresses into the game's code (module+RVA).
+          const auto callers_text = [&trace](const std::array<uintptr_t, internal::MAP_CALLERS>& addresses) {
+            std::string callers;
+            for (const uintptr_t caller : addresses) {
+              if (caller == 0) break;
+              // Found: ScanCallers took it inside one of these sections.
+              const auto code = std::ranges::find_if(trace.code, [caller](const internal::MapCode& range) {
+                return caller > range.begin && caller <= range.end;
+              });
+              const auto& module = trace.modules[code->module];
+              callers += std::format("{}{}+0x{:x}", (callers.empty() ? "" : ","), module.name, caller - module.base);
+            }
+            return std::format(" callers={}\n", (callers.empty() ? std::string("-") : callers));
+          };
           // Each thread's last traced event: its end and its kind (where the next one's gap starts).
           std::unordered_map<uint32_t, std::pair<int64_t, const char*>> thread_last;
           for (size_t index = 0; index < trace.events.size(); ++index) {
+            write_part();
             const auto& event = trace.events[index];
             const size_t frame = frame_of(event.qpc);
             const auto ms_of = [&](int64_t qpc) { return static_cast<double>(qpc - trace.presents[frame]) * ms_per_tick; };
@@ -1272,24 +1519,152 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
                 text += describe("src_", event.source);
                 break;
             }
-            std::string callers;
-            for (const uintptr_t caller : event.callers) {
-              if (caller == 0) break;
-              // Found: RecordMapEvent took it inside one of these sections.
-              const auto code = std::ranges::find_if(trace.code, [caller](const internal::MapCode& range) {
-                return caller > range.begin && caller <= range.end;
-              });
-              const auto& module = trace.modules[code->module];
-              callers += std::format("{}{}+0x{:x}", (callers.empty() ? "" : ","), module.name, caller - module.base);
-            }
-            text += std::format(" callers={}\n", (callers.empty() ? std::string("-") : callers));
+            text += callers_text(event.callers);
           }
-          std::ofstream file(state.folder / L"tw_map_trace.txt", std::ios::binary | std::ios::trunc);
+          // The native calls (the hook's): each map with its unmap (the next one of its resource and subresource),
+          // the unmaps without a map in the trace, then each frame's totals by class.
+          constexpr std::array<const char*, 5> CLASSES = {"constant", "vertex", "index", "other", "texture"};
+          constexpr std::array<const char*, 6> MAP_TYPES = {"?", "read", "write", "read_write", "discard", "no_overwrite"};
+          struct ClassTotals {
+            uint32_t maps = 0;
+            int64_t ticks = 0;
+            uint32_t discards = 0;
+            uint64_t discard_bytes = 0;
+          };
+          struct NativeTotals {
+            uint32_t maps = 0;
+            uint32_t failed = 0;
+            uint32_t unmaps = 0;
+            int64_t map_ticks = 0;
+            int64_t unmap_ticks = 0;
+            std::array<uint32_t, 6> types = {};
+            uint64_t discard_bytes = 0;
+            std::array<ClassTotals, 5> classes = {};
+          };
+          std::vector<NativeTotals> native_totals(frames);
+          std::vector<size_t> native_unmap_of(trace.native_calls.size(), SIZE_MAX);
+          std::vector<bool> native_unmap_matched(trace.native_calls.size(), false);
+          std::map<std::pair<uintptr_t, uint32_t>, size_t> native_open;
+          for (size_t index = 0; index < trace.native_calls.size(); ++index) {
+            const auto& call = trace.native_calls[index];
+            const auto key = std::pair{call.resource.pointer, call.subresource};
+            if (call.unmap) {
+              if (const auto open = native_open.find(key); open != native_open.end()) {
+                native_unmap_of[open->second] = index;
+                native_unmap_matched[index] = true;
+                native_open.erase(open);
+              }
+            } else if (SUCCEEDED(call.result)) {
+              native_open[key] = index;
+            }
+          }
+          // Direct callers by module (ReShade's proxy, an add-on), named once each.
+          std::unordered_map<uintptr_t, std::string> direct_names;
+          const auto direct_text = [&direct_names, &module_name](uintptr_t address) {
+            HMODULE module = nullptr;
+            if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                   reinterpret_cast<LPCWSTR>(address), &module)
+                == FALSE) {
+              return std::format("0x{:x}", address);
+            }
+            const auto base = reinterpret_cast<uintptr_t>(module);
+            auto [named, added] = direct_names.try_emplace(base);
+            if (added) {
+              named->second = module_name(module);
+            }
+            return std::format("{}+0x{:x}", named->second, address - base);
+          };
+          for (size_t index = 0; index < trace.native_calls.size(); ++index) {
+            write_part();
+            const auto& call = trace.native_calls[index];
+            const size_t frame = frame_of(call.qpc);
+            const auto ms_of = [&](int64_t qpc) { return static_cast<double>(qpc - trace.presents[frame]) * ms_per_tick; };
+            auto& totals = native_totals[frame];
+            if (call.unmap) {
+              ++totals.unmaps;
+              totals.unmap_ticks += call.done - call.qpc;
+              if (native_unmap_matched[index]) continue;
+              text += std::format("native_unmap frame={} qpc={} ms={:.3f} native_ms={:.4f} thread={} sub={} res=0x{:x}"
+                                  " direct={}",
+                                  frame, call.qpc, ms_of(call.qpc), static_cast<double>(call.done - call.qpc) * ms_per_tick,
+                                  call.thread, call.subresource, call.resource.pointer, direct_text(call.direct_caller));
+              text += callers_text(call.callers);
+              continue;
+            }
+            // Its class from its description: a buffer by its bind flags (constant first, then vertex, then index).
+            size_t map_class = 4;
+            if (call.resource.dimension == D3D11_RESOURCE_DIMENSION_BUFFER) {
+              if ((call.resource.bind_flags & D3D11_BIND_CONSTANT_BUFFER) != 0) {
+                map_class = 0;
+              } else if ((call.resource.bind_flags & D3D11_BIND_VERTEX_BUFFER) != 0) {
+                map_class = 1;
+              } else if ((call.resource.bind_flags & D3D11_BIND_INDEX_BUFFER) != 0) {
+                map_class = 2;
+              } else {
+                map_class = 3;
+              }
+            }
+            const auto map_type_index = static_cast<size_t>(call.map_type);
+            const size_t map_type = (map_type_index < MAP_TYPES.size() ? map_type_index : 0);
+            const int64_t ticks = call.done - call.qpc;
+            auto& class_totals = totals.classes[map_class];
+            ++totals.maps;
+            ++class_totals.maps;
+            totals.map_ticks += ticks;
+            class_totals.ticks += ticks;
+            if (FAILED(call.result)) {
+              ++totals.failed;
+            } else {
+              ++totals.types[map_type];
+              if (call.map_type == D3D11_MAP_WRITE_DISCARD) {
+                totals.discard_bytes += call.mapped_bytes;
+                ++class_totals.discards;
+                class_totals.discard_bytes += call.mapped_bytes;
+              }
+            }
+            std::string unmap_ms = "-";
+            std::string unmap_native_ms = "-";
+            if (const size_t unmap = native_unmap_of[index]; unmap != SIZE_MAX) {
+              const auto& unmap_call = trace.native_calls[unmap];
+              unmap_ms = std::format("{:.3f}", ms_of(unmap_call.qpc));
+              unmap_native_ms = std::format("{:.4f}", static_cast<double>(unmap_call.done - unmap_call.qpc) * ms_per_tick);
+            }
+            text += std::format(
+                "native_map frame={} qpc={} done_qpc={} ms={:.3f} native_ms={:.4f} thread={} map={} map_flags=0x{:x} hr=0x{:08x}"
+                " sub={} map_bytes={} class={} unmap_ms={} unmap_native_ms={} direct={}",
+                frame, call.qpc, call.done, ms_of(call.qpc), static_cast<double>(ticks) * ms_per_tick, call.thread,
+                MAP_TYPES[map_type], call.map_flags, static_cast<uint32_t>(call.result), call.subresource, call.mapped_bytes,
+                CLASSES[map_class], unmap_ms, unmap_native_ms, direct_text(call.direct_caller));
+            text += describe("", call.resource);
+            text += callers_text(call.callers);
+          }
+          for (size_t frame = 0; frame < frames; ++frame) {
+            const auto& totals = native_totals[frame];
+            text += std::format(
+                "native_frame index={} maps={} failed={} unmaps={} native_ms={:.4f} unmap_native_ms={:.4f} reads={}"
+                " writes={} read_writes={} discards={} no_overwrites={} discard_bytes={}",
+                frame, totals.maps, totals.failed, totals.unmaps, static_cast<double>(totals.map_ticks) * ms_per_tick,
+                static_cast<double>(totals.unmap_ticks) * ms_per_tick, totals.types[1], totals.types[2], totals.types[3],
+                totals.types[4], totals.types[5], totals.discard_bytes);
+            for (size_t map_class = 0; map_class < CLASSES.size(); ++map_class) {
+              const auto& class_totals = totals.classes[map_class];
+              text += std::format(" {0}_maps={1} {0}_ms={2:.4f} {0}_discards={3} {0}_discard_bytes={4}", CLASSES[map_class],
+                                  class_totals.maps, static_cast<double>(class_totals.ticks) * ms_per_tick,
+                                  class_totals.discards, class_totals.discard_bytes);
+            }
+            text += '\n';
+          }
           file << text;
+          ++parts;
           file.close();
+          std::error_code renamed;
           if (file) {
+            std::filesystem::rename(part_path, path, renamed);
+          }
+          if (file && !renamed) {
             renodx::utils::log::i("[Total War] Map trace: ", frames, " frames, ", trace.draws.size(), " draws, ",
-                                  trace.events.size(), " events saved to tw_map_trace.txt next to the exe.");
+                                  trace.events.size(), " events, ", trace.native_calls.size(),
+                                  " native calls saved to tw_map_trace.txt next to the exe (", parts, " parts).");
           } else {
             renodx::utils::log::w("[Total War] Map trace: tw_map_trace.txt next to the exe could not be written.");
           }
@@ -1298,6 +1673,7 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
         }
         trace.draws = {};
         trace.events = {};
+        trace.native_calls = {};
       }
     }
   }
