@@ -398,6 +398,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NEXT CPU ROUND (from the final bench, ranked by fa2o_): (1) the driver GPU-sync ... | coordinator W3 RAN 05:25 (VALID, 323 presents in the 36 s WP
 - Bench variants M1 (er4o_): heapfix_b6.json + night1118.json have no heapfix_line ... | coordinator, with the bench tool fixes before the next bench
 - RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go fa4o_ DONE (night1118/final_bench_f
+- OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 21:30 asked whether the Opus review covers h
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -3724,6 +3725,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         600 MB free); VFX_PARALLEL_UPDATER is live-switchable (B1 three-way row). Order: Phase 0 (offline P0.a-e, then game
         batch 1 ~70 min), A, C prototype (batch 2 ~60 min), B (HSG2 / animation rows / ready split), full C, final bench
         (batch 3). 9 decisions for ATN in section 9. Waits for ATN's go (~11-23).
+        LINUX DEPOT (ATN downloaded 325624): 64-bit ELF with FULL debug info (313k symbols, DWARF); same engine source, same
+        one-render-thread design (OPENGL_DEVICE_CONTEXT = the D3D11-style interface on GL), x87 nearly gone. Plan addendum:
+        Phase 0 step P0.f = Windows-to-Linux name map. Symbol dump + imports: tools/tw/attila64/. Memory
+        reference_linux_attila_symbols (read-only; derived data never in the public repo or player files).
+      - [ ] OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only) STARTED 07:24: verdict +
+        plan (ELF loader, TLS without TEB writes, Steam intact, GL then own D3D11 backend, port of our work, order vs
+        render_mt) -> tools/tw/round_notes/attila64/plan.md; never run the Workshop mod's exe. Owner: coordinator
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
