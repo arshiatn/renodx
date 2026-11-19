@@ -3760,6 +3760,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         binds, context cache, draw counter, ring cursor; B3a dead (B3b only); VFX unit = one VFX instance, own RNG per
         emitter; new item: cache total_drawn_particles per frame. P0.b p0b_ (Sonnet xHigh, read-only) STARTED -> namemap/
         census.md. Still running: p0a_ (driver timeline). Rule ATN 11-19: fresh session per round (memory).
+        P0.a p0a_ DONE 08:42 (bench/analysis_p0a/report.md): the driver holds each WRITE_DISCARD Map until the GPU has run
+        all queued packets (GPU fence) = reading (a); no backlog, no CPU starvation; Reflex untested (W3r stays). In W3 14.9 of
+        16.7 ms are CONSTANT-BUFFER DISCARDs (W2: the 464 KB VB) -> A2 VB pool first, A2b (CB ring) ready; map trace v2 must
+        log CB maps; A1 early Flush = fallback only; free-core variant dropped (in render_mt/plan.md "P0.a findings").
+        ATN 08:3x: decide approvals myself (recommendation), more game batches OK if really needed; fresh session per round
+        with the 6-point checklist (memory). P0.c p0c_ (Opus High, worktree branch rmt_p0: map trace v2 + Parallel Effect
+        Update row + tests) STARTED 08:42; p0b_ censuses still running.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
