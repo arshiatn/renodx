@@ -3947,6 +3947,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         PID 21948, AV c0000005 in d3d11.dll 10.0.26100.9818 +0x1627f4, after part 2's output). PID 10028 = WER's reflected
         clone of it (0 threads / handles, Stop-Process denied) locks the exe until a reboot; leave it. s1o_ resumed: new
         OutDir under testbin, cdb stack (own PDB only, no symbol server), fix, re-run both arches, local commit.
+        s1o_ DONE 20:0x: rmt_s1 @ 51cd38341 (LOCAL). The amd64 crash was the fix round's own TEST bug (part 4's deferred
+        context on the 2nd device mapped the hooked device's vertex_buffer; now other_buffer, tests.cpp:550-551). tw_map_trace
+        + tw_context_hooks PASS x86 + amd64; builds unchanged (test-only fix). WER clones PIDs 10028 + 12224 lock
+        testbin\tw_map_trace_amd64 / _amd64b until a reboot (passing run in _amd64c). s1ro_ resumed: re-check of the fixes.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
