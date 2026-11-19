@@ -3892,6 +3892,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
         c1o_ (C.1 design, read-only). Next: Opus xHigh review of rmt_s1, fixes, merge.
+        ATN 17:5x: (a) after c1o_ + s1o_, ONLY 1 SUBAGENT AT A TIME until the weekly reset or ATN says (97 % usage);
+        (b) build the BIG design (c) ring directly: mode 4 / restart-only question dropped; (b) timer stays only as the
+        fallback if (c) costs > 0.1 ms/f. Coordinator advice (ATN asked): no new planner (note v2 + review = spec), Opus
+        xHigh implementer for the ring this once, independent Opus xHigh review -> implementer fixes -> same reviewer
+        re-checks; S7 end review = the 2nd independent review (extra one only on a core lifetime / binding bug); P0.d
+        slimmed to baseline + shipping ring + NVIDIA pixel parity + overhead. Order: S1 -> S2 audit -> slim P0.d -> ring.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
