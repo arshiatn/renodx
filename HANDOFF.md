@@ -3988,6 +3988,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         commit 1 = S1 follow-ups N1-N7, then buffer_pool.hpp ring + context_hooks bodies + row (Attila-only, OFF,
         Experimental) + WARP tests + harness ring adapter + WARP ring parity. Then: independent Opus xHigh review ->
         s5o_ fixes -> same reviewer re-checks -> merge. S6 (NVIDIA parity + overhead) needs D1m v3 data (batch 2).
+        ATN 22:5x: usage ~100 % -> ONLY finish s5o_, then STOP: no review, no new agents until ATN says (weekly reset).
+        Open question for ATN then: run batch 2's v3 trace starts + Fewer Constant Uploads A/B early (before C.2 / C.3)?
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
