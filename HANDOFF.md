@@ -3894,6 +3894,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         reset by ATN; never enter or extract credentials myself.
         ATN 18:0x: SKIP the ReShade report for now (draft kept; our design avoids that path). Owner: ATN, when ATN brings
         it up again.
+        c1o_ DONE 18:1x (render_mt/reports/c1o_design_C1.md, Opus xHigh): C1 = NO D3D11 recorder: workers run only the
+        weighted loops' per-instance scan on private tracker copies; flush / VF68 / VF64 / shader-state writes become
+        game-level ops replayed in item order on the render thread. Cuts +0x17ae849 (depth loop 0x17b17f0 first) and
+        +0x17ae910 (colour loop 0x17b0400); chunks at mesh changes, seeded by a 1-item warm-up, validated, serial rerun
+        on any miss / overflow / owner conflict. 24 sites (plan cap ~12), full C ~60-70. E: weighted K=4 -4.8 ms net, full
+        -6.7. Stage 0 touch-ahead (2 sites) first. Batch 2 share: 13 starts ~56 min. Gate before C.3: read-only purity
+        census of vf58 / vf60 / vf54->vf14 / vf6c / 0x1178c460. 3 questions to ATN (sites, stage 0, drop stage 5) ASKED
+        18:1x. Next (1 agent at a time, after s1o_): S1 review, then C.1 review + purity census.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
