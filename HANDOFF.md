@@ -3907,6 +3907,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         up with the plan's end step. ATN asked about thread counts: K is a row value; batch 2's D4 live switch gets
         K = 2 / 4 / 6 / 8 / 12 / 16 inside the same start (no extra starts).
         ATN 18:3x: Q3 DROP the C prototype's stage 5 (deferred-context / no-single-thread device test, 3 starts).
+        ATN 18:3x allowed ONE extra agent this once: c1r_ (Opus xHigh, read-only) = C.1 design review + purity census
+        (gate for C.3) STARTED 18:3x -> render_mt/reports/c1r_review_census.md.
+        s1o_ DONE 18:5x (render_mt/reports/s1o_report.md): rmt_s1 @ 18e8d6db9 (LOCAL, not reviewed / merged / pushed):
+        context_hooks.hpp (17 bodies, checks, quiescent install, 1-device rule, depth guard, swap tracking, seeding) +
+        map trace v3 (env-armed only; v2 slot hook removed; tw_map_trace_v3.txt) + test/tw_context_hooks + tw_map_trace
+        parts 8-9. WARP x86 = x64: 17 bodies distinct, hot-patch prologues, swap stubs call the same bodies. Gated x86
+        twattila / twrome2 / twthronesofbritannia + amd64 twwarhammer3 exit 0; tests PASS both archs, controls caught.
+        Reviewer points in the report (lazy state application after a swap calls 7 bodies from inside d3d11 = the ring
+        must handle it). Next: S1 review (Opus xHigh) after c1r_ (1 agent at a time).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
