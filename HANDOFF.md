@@ -3845,6 +3845,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         rdao_ (Opus xHigh, read-only, track A design note A.1: what is left after the quick win, A2b (a) / (b) / (c),
         body detours, budget, A1 test, VB pool, tests, work split, questions for ATN) STARTED 15:5x ->
         render_mt/reports/rdao_design_A.md.
+        rdao_ DONE 16:1x (render_mt/reports/rdao_design_A.md): left after the quick win = the game's own dynamic CBs
+        (W3 ~15.4 ms/f, ATN ~27 ms/f; VB only 1.4 / 0.1). Pick: ALL game dynamic CBs (by description at init_resource) ->
+        CPU shadow on Map, Unmap into a 256 KB-piece ring (4..16 pieces) mapped NO_OVERWRITE + D3D11.1 offset binds, Get
+        translation; 31 Detours on the x86 d3d11.dll bodies in a shared context_hooks.hpp (map trace v3 on it too); VB pool
+        DROPPED; A1 Flush = harness mode only; A4 done by the quick win. Gain (E): W3 -8..-15 ms, ATN -15..-30 ms. Steps
+        S1 context_hooks + v3, S2 A3 audit, S3 buffer_pool + row OFF + test, S4 P0.d, S5 runs, S6 review (all add-on C++,
+        Opus). 3 questions for ATN (timer if day1 overhead > 0.1 ms/f; drop VB pool; v3 in batch 2): asked 16:1x.
+        a2ro_ (Opus xHigh, read-only design review A.2) STARTED 16:1x -> render_mt/reports/a2ro_review.md.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
