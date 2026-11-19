@@ -3853,6 +3853,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         S1 context_hooks + v3, S2 A3 audit, S3 buffer_pool + row OFF + test, S4 P0.d, S5 runs, S6 review (all add-on C++,
         Opus). 3 questions for ATN (timer if day1 overhead > 0.1 ms/f; drop VB pool; v3 in batch 2): asked 16:1x.
         a2ro_ (Opus xHigh, read-only design review A.2) STARTED 16:1x -> render_mt/reports/a2ro_review.md.
+        ATN 16:3x DECIDED the note's 3 questions: (1) CB-upload timer allowed only if the all-CBs ring costs > 0.1 ms/f in
+        day1 (P0.d measures); (2) VB pool dropped now, revisited at the END: report the VB waits left at the final bench to
+        ATN whatever their size (even ~2 ms), ATN decides (owner: final bench report); (3) map trace v3 starts (W3m +
+        ATNm) ride in batch 2 next to the Fewer Constant Uploads ATNm OFF / ON A/B.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
