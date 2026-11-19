@@ -1,33 +1,37 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
-## Dev, map trace v2 (2026-11-19; built only, not stamped, not installed, not run in game)
+## Dev, map trace v3 (2026-11-19; built only, not stamped, not installed, not run in game)
 
-- New (debug, no row): the map trace (env `RENODX_TW_MAP_TRACE=<seconds after the first present>,<frames>`, e.g. `95,12`)
-  also hooks the real immediate context's Map and Unmap below ReShade (vtable slots 14 / 15, `utils::vtable::Slot`) for
-  its frames only: each call is timed around the native call (the time the driver holds it), with the Map type
-  (read / write / read_write / discard / no_overwrite), its flags (DO_NOT_WAIT), the result (failed polls too), the
-  resource's class (constant / vertex / index / other buffer, texture), the bytes it maps, its unmap, the native call's
-  direct caller (module file name + offset) and a map's game return addresses (unmaps: none, `callers=-`); per frame the
-  totals (DISCARD bytes, maps and native ms per class). Lines `native_map`, `native_unmap`, `native_frame` in
-  `tw_map_trace.txt`, the trace line's `native_hook=on|no_context|failed`; `tools\tw\map_trace.py summary` prints them.
-- Reading them: ReShade's proxy (the game's maps) and ReShade's own API (an add-on's maps through
-  `device::map_buffer_region`) both sit in ReShade's module, at other offsets; `direct=` names a file only (a ReShade
-  installed as `d3d11.dll` reads as `d3d11.dll+...`). `map_trace.py` marks a native map "game" when the v1 map of the same
-  resource follows it on its thread (within 1 ms), splits each class into game / other, and warns for a frame whose native
-  maps are fewer than its v1 maps (the game's maps not all through the hooked slot: `native_hook=on` alone does not prove
-  it).
-- Other contexts pass straight on; outside the frames nothing is hooked. A start without the game's context waits one
-  present for it (in Attila the present callback that gives it runs after the add-on's own), then starts without the hook
-  (`no_context`). A slot another hook took over meanwhile stays chained through ours (passing on, logged, the add-on kept
-  loaded); this process then never hooks again (`native_hook=failed`), so the hook never becomes its own next.
-- Storage: `<frames>` x a frame's room (8,192 draws, 6,144 events, 6,144 native calls), capped at 2^17 / 2^16 / 2^16; on
-  x86 about 5.5 MB for 3 frames and 20 MB for W3m's 12 (draws 3.1, events 9.4, native calls 7.3 MB), reserved from the
-  add-on's start (armed) until the file is written; more is counted as dropped. The file goes to `tw_map_trace.txt.part`
-  in parts of about 4 MB and is renamed when whole (the log line names the parts). Every TW add-on with the map trace gets it.
-- Checked in `test/tw_map_trace` parts 2 and 4-8 (x86, amd64) and `tools\tw\map_trace_test.py` N1-N2. Not a control on WARP:
-  a deferred context's Map (its own function there, not the hooked slot's). Test (bench, W3m): the log line "Map trace
-  (RENODX_TW_MAP_TRACE=95,12)", the file's `native_hook=on`, no WARNING line in the summary, the constant-buffer DISCARDs'
-  native_ms (game).
+- New (debug, no row): the map trace (env `RENODX_TW_MAP_TRACE=<seconds after the first present>,<frames>[,hash]`,
+  e.g. `95,12`) hooks the game's immediate context below ReShade for its frames only, through the context hooks
+  (`context_hooks.hpp`): Detours on d3d11.dll's 17 bodies (Map, Unmap, the 6 Set and 6 Set1 constant buffer calls,
+  IASetVertexBuffers, SwapDeviceContextState, ClearState). Bodies, not table slots: d3d11 rewrites each context's table at
+  every SwapDeviceContextState, so v2's slot hook (slots 14 / 15) lost the context at the add-on's first private-state
+  pass. Measure only: every call goes on to the native body unchanged.
+- `tw_map_trace.txt` keeps v2's lines (`native_map`, `native_unmap`, `native_frame`, the trace line's
+  `native_hook=on|no_context|failed|foreign_thread`); `tools\tw\map_trace.py summary` reads it as before.
+- New file `tw_map_trace_v3.txt` (its lines documented at the writer, `frame_trace.hpp` OnPresent): the render thread's
+  stream in call order (`seq=`): maps and unmaps, the constant and vertex buffer binds, the bindings held when the hooks
+  went in (`seed_cb`, `seed_vb`), swaps and ClearStates, and each draw with its arguments and the bindings changed since
+  the draw before (`?`: not known). The constant buffers made while armed, with their creating and destroying threads
+  (`buffer` lines; constant buffers only, so a load's vertex buffers can't fill the room). With `hash`, each written
+  constant buffer's content hash at its unmap (`#` in a draw's `cbs`); it reads write-combined memory on the render
+  thread, so it is timed (`hash_ms` per frame in the header) and off by default: leave it off for timing runs.
+- Rules: the hooks go in only on the render thread with exactly one D3D11 device, and only when it is single-threaded
+  (Attila, Rome II, Thrones, Shogun 2; WH3 and the other DX11 TW games: not installed, logged, `native_hook=failed`); the
+  bodies must sit in the system's d3d11.dll, distinct, with no jump at their start. They come out after the last frame, at
+  the device's end and at Uninstall. A call on the context from another thread switches them to pass-through (logged,
+  `hook=foreign_thread`). After a dropped record (`first_drop_seq` in the v3 header) or the foreign-thread switch, every
+  later draw reads `cbs=? vbs=?`.
+- Storage: `<frames>` x a frame's room (8,192 draws, 6,144 events, 6,144 native calls, 12,288 binds, 32,768 bind slots),
+  capped at 2^17 / 2^16 / 2^16 / 2^17 / 2^18, plus 32,768 constant buffers, reserved from the add-on's start (armed) until
+  the files are written; more is counted as dropped. Each file goes to `<name>.part` in parts of about 4 MB and is renamed
+  when whole. Every TW add-on with the map trace gets it.
+- Checked in `test/tw_context_hooks` (the bodies, the refusals incl. a multithreaded device, every table state, the slot
+  hook CONTROL, re-entry, records, other contexts and threads, removal) and `test/tw_map_trace` parts 1-10 (x86, amd64,
+  WARP), plus `tools\tw\map_trace_test.py`. Test (bench, W3m, Attila): the log lines "Map trace
+  (RENODX_TW_MAP_TRACE=95,12)" and "Context hooks: 17 d3d11.dll bodies hooked", both files' `native_hook=on` / `hook=on`,
+  `first_drop_seq=-`, no WARNING line in the summary; then once with `,hash` for the content ids (its `hash_ms`).
 
 ## Dev, Model Detail Distance at any time (2026-11-18; built only, not stamped, not installed, not run in game)
 
