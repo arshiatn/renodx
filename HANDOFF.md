@@ -399,6 +399,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Bench variants M1 (er4o_): heapfix_b6.json + night1118.json have no heapfix_line ... | coordinator, with the bench tool fixes before the next bench
 - RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go fa4o_ DONE (night1118/final_bench_f
 - OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 08:08: 64-bit decisions = coordinator's reco
+- NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | coordinator (next session) ATN 21:30 asked whether the Opus 
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -3790,6 +3791,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         the long waits land on small dynamic CONSTANT buffers (a 16-byte CB ~11 ms a DISCARD, a 57 KB CB ~13 ms a frame) while
         the 8 MB rings DISCARD ~20 times in 12 frames each = fits a shared rename budget. b1a_ (Sonnet xHigh, read-only)
         STARTED 10:18 -> bench/analysis_b1/ (Reflex effect, which maps wait, VB-only pool vs A2b, ATNm, FT, P0.d event set).
+        b1a_ DONE 10:41 (bench/analysis_b1/report.md): Reflex NOT the cause (off = worse), the waits are CONSTANT-BUFFER
+        DISCARDs of 1-2 CBs per process that the driver does not rename (shared-budget reading refuted); VB-only pool = ~8-9 %
+        only -> A2b is track A's main part; QUICK WIN: the add-on's own 432 B CB DISCARDed 492x a frame costs 4.7 ms/f with
+        ATN's settings; DEFECT: something rewrites the context vtable slot 14/15 in the pass-timing frame (native hook only
+        saw frame 0 in W3m / W3r / D1m); P0.d needs per-draw bound CB / IA pointers first. All in render_mt/plan.md "Batch 1
+        findings". ROUND (Phase 0) CLOSED 10:41: everything saved; nothing running; next round in a fresh session.
+      - [ ] NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own 432 B DISCARD CB (ATNm map trace
+        direct= offsets name it) -> a NO_OVERWRITE ring, Opus High + Opus xHigh review; (2) find who rewrites the real
+        context's vtable slot 14 / 15 during the pass-timing frame (read-only first); (3) the track A design note (A.1,
+        Opus xHigh): A2b variants (a) / (b) / (c), the live-timing question for ATN, A1 early-Flush test; (4) map trace v3 /
+        Frame Trace: per-draw bound CB + IA buffer pointers (one frame) -> then the P0.d harness; (5) B1 guards and C1
+        prototype design per the P0.b / P0.f addenda. Cleanup: the p0c_ worktree D:\Dev\renodx\.claude\worktrees\agent-
+        a79a00ab8cbb74ac5 has junctions into the main checkout: remove the links alone first. Disk C: 99 % full. Owner:
+        coordinator (next session)
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
