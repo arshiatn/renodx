@@ -399,7 +399,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Bench variants M1 (er4o_): heapfix_b6.json + night1118.json have no heapfix_line ... | coordinator, with the bench tool fixes before the next bench
 - RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go fa4o_ DONE (night1118/final_bench_f
 - OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 08:08: 64-bit decisions = coordinator's reco
-- NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | coordinator (next session) ROUND 2 STARTED 2026-11-19 (fresh
+- NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | coordinator
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -3880,6 +3880,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         &initial_data (the std::vector) instead of initial_data.data() after a create_resource desc change. 7 questions
         for ATN (3 needed now: d3d11.dll detours in a release, restart-only row allowed, batch 2 v3 = 17 bodies + a D1m
         start; later: light-scene budget, timer 1-in-N, on by default, report the ReShade bug) ASKED 17:2x.
+        ATN 17:3x ANSWERED: (1) d3d11.dll body detours in an Attila player release: yes (other games after their own
+        tests); (2) asked the big ring's pros / cons first (answered 17:3x; restart-only row still open, needed before S3);
+        (3) batch 2 v3 = 17 bodies, env-armed only, + a D1m v3 start: yes; (4) light-scene budget: ask ATN with P0.d's data;
+        (5) timer 1-in-N, re-check with real numbers; (6) faster + same picture = on by default applies: yes; (7) ATN asked
+        me to send the ReShade bug report (crosire/reshade issue: d3d11_device.cpp:252 + d3d10_device.cpp:803 cast
+        &initial_data; confirmed on upstream main 17:3x): draft shown to ATN, posted only after ATN's OK of the text
+        (gh not installed: built-in browser, ATN's GitHub sign-in). Owner: coordinator.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
