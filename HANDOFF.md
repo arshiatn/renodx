@@ -3753,6 +3753,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         APPROVED for tonight once rmt_p0 is built + reviewed; x87 hot-spot sweep added to render_mt. P0.a p0a_ (Opus xHigh,
         read-only) STARTED -> bench/analysis_p0a/. Order: nm1s_ + p0a_ -> P0.b censuses (Sonnet xHigh) -> P0.c rmt_p0 (Opus
         High + Opus xHigh review) -> P0.d tw_map_replay harness -> batch 1 (quiet window, fresh backups, agents held).
+        NAME MAP nm1s_ DONE 08:24 (tools/tw/attila64/namemap/report.md, private): 84 rows (46 high / 20 medium / 18 low),
+        layouts.md, notes.md. Plan-changing (added to render_mt/plan.md "Name map findings"): 0x17ae480 is only the WEIGHTED
+        (soldier) driver of ~10 drivers -> track C must cut the other 9 families too; per-pass state = 248-byte
+        RENDER_INSTANCED_STATE_TRACKER (per-chunk copies work); shared writes = set_dirty cookies, faction CB, technique
+        binds, context cache, draw counter, ring cursor; B3a dead (B3b only); VFX unit = one VFX instance, own RNG per
+        emitter; new item: cache total_drawn_particles per frame. P0.b p0b_ (Sonnet xHigh, read-only) STARTED -> namemap/
+        census.md. Still running: p0a_ (driver timeline). Rule ATN 11-19: fresh session per round (memory).
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
