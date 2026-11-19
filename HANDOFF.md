@@ -397,7 +397,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Helper memory with ATN's settings: 13.5 GB VRAM + 12.5 GB private while the batt ... | next GPU / memory round fa3o_ round 2 DONE (final_bench_fa3o
 - NEXT CPU ROUND (from the final bench, ranked by fa2o_): (1) the driver GPU-sync ... | coordinator W3 RAN 05:25 (VALID, 323 presents in the 36 s WP
 - Bench variants M1 (er4o_): heapfix_b6.json + night1118.json have no heapfix_line ... | coordinator, with the bench tool fixes before the next bench
-- RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go ATN 21:30 asked whether the Opus re
+- RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go fa4o_ DONE (night1118/final_bench_f
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -3707,6 +3707,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         splits onto the workers, full D3D11 deferred-context split; Fable 5.2 xHigh plans (on a stop tell ATN first: ATN may
         force Fable 5.1; one retry, else Sonnet 5.5 xHigh; a second stop ends that part); inputs fa4o_ + fa2o_; memory
         project_render_mt. Owner: coordinator, on ATN's go
+        fa4o_ DONE (night1118/final_bench_fa4o.md): gap W3 104.7 vs R1 24.0 ms = +50.0 render CPU (draw loops 8.0, soldier
+        LOD 7.8, animation 6.0, shadow loop 3.3, SetEvent 3.0, particles 2.9 ...), +16.7 driver Map waits (R1: none; the
+        slider set decides it), +14.2 sort-chain wait; ~2/3 of the gap = Unit Detail x4 + unit / facial / hand animation;
+        Reset also = Shadow Map 2048 (8192 atlas 15.8 GPU ms), Rope 1, ALOD off. Amdahl: all splits -16..-28 ms, floor =
+        draw phase + GPU 35 ms; deferred contexts -5..-10 (high risk); VFX_PARALLEL_UPDATER (game's own parallel emitter
+        path, default 0) -2.5..-7 (Experimental); W3 vs W1b: the 6 rows ~-1.7 ms in stress (day1 A/B disagrees: stress A/B
+        needed). PLANNER rmt1f_ (Fable 5.2 xHigh, read-only) STARTED 06:17 -> tools/tw/round_notes/render_mt/plan.md;
+        implementation only on ATN's go.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
