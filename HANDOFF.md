@@ -3773,6 +3773,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         (material virtuals + flush) as a pair, only the scan moves; Windows = 2 driver bodies + 8 dispatchers; B3b = 3-phase
         bit-exact design, smaller gain; C proof baseline = HFx. Batch 1 now W3m / W3r / ATNm / D1m / FT (~40 min). p0f_ (Sonnet
         xHigh, read-only) STARTED: function split of the loops' 11.5 ms -> bench/analysis_p0f/. Plan addendum "P0.b findings".
+        p0f_ DONE 09:08 (bench/analysis_p0f/report.md): the 11.5 ms IS the scan (movable ~10-12 ms); the deferred pair is
+        only ~3.6 ms serial; 4 chunks net -6.7 ms draw-phase CPU (E). DECIDED: C's go = net saving >= 5-6 ms at 4 chunks incl.
+        dispatch + replay; private pool (never the game's start_task wake path, 3.7 ms); new A/B item: the fill wake + queue
+        lock 3.67 + memcpy 3.07 ms on the render thread. Plan addendum "P0.f-split findings". p0c_ still building.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
