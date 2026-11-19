@@ -3679,6 +3679,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         DISCARD of the 464,000-byte dynamic VB (~8.7 ms) + the 8 MB VB discards (~4.3 ms) -> a rename pool / bigger ring in the
         add-on (-5..-9 ms); (2) HSG2 (-5..-7); (3) E3P-c3 / d2 slot-0 chains (-0.6..-1.5); (4) sweep distances + stage C flag
         test; (5) EF4c-1 second stage; (6) the settling A/B (OFF / J / P4 / K, day1 cpu) if ATN wants it. Owner: coordinator
+        SETTLING A/B DONE 05:22 (ATN's OK; final1118_settle1 OFF,J,P4,K + settle2 reversed; day1 cpu, B4G, 8/8 VALID): mean
+        frame ms pooled OFF 39.07 / P4 39.06 / J 39.40 / K 39.48 (median 38.62 / 38.62 / 38.94 / 39.05): the 4 prefetch rows do
+        nothing, Faster Job Wake-Ups +0.33 ms and Keep Render Core Free +0.41 ms COST time (slower than OFF in both rounds) ->
+        the 6 Experimental CPU rows stay off (confirmed). Caveat: az1s_'s python check (az1s_sets.py, one full core, all cores
+        allowed) ran from 04:50 through all 8 starts (equal for all; the bench saw it, still VALID); lesson: hold ALL agent CPU
+        work, not only builds / test exes, during game runs.
+        WPR W3 (ATN 05:23): final1119_wpr_run.ps1 = the W call (stress, cpu, Y:6, -Wpr 80,36, W sliders) with today's set:
+        final1118_fp add-on + final1118 helper, HFx, Faster Game CPU Code + Faster Render Lists on, 6 Experimental rows off;
+        dry run clean; then the last xHigh analysis vs W1b / W1c. Owner: coordinator
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
