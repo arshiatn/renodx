@@ -398,7 +398,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NEXT CPU ROUND (from the final bench, ranked by fa2o_): (1) the driver GPU-sync ... | coordinator W3 RAN 05:25 (VALID, 323 presents in the 36 s WP
 - Bench variants M1 (er4o_): heapfix_b6.json + night1118.json have no heapfix_line ... | coordinator, with the bench tool fixes before the next bench
 - RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go fa4o_ DONE (night1118/final_bench_f
-- OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 21:30 asked whether the Opus review covers h
+- OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator 07:47: a64f_ stopped (its brief named the Worksh
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -3732,6 +3732,13 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only) STARTED 07:24: verdict +
         plan (ELF loader, TLS without TEB writes, Steam intact, GL then own D3D11 backend, port of our work, order vs
         render_mt) -> tools/tw/round_notes/attila64/plan.md; never run the Workshop mod's exe. Owner: coordinator
+        07:47: a64f_ stopped (its brief named the Workshop mod; ATN: no influence) and restarted clean as a64f2_ (whitelisted
+        inputs). If GO: a new Fable 5.2 xHigh re-plans the render-thread work for 64-bit. After the plan: offline work, 1-2
+        agents at a time, P0.f name map first (Sonnet xHigh). GPU / Nsight round + code review: next time (helper / shader
+        GPU work carries over; game-side GPU + full review after a port, or on 32-bit if no-go).
+        render_mt DECISIONS (ATN 07:47): 1-6 + 8 = coordinator's recommendation (batch 1 after the verdict, C1 software
+        recording, C prototype before B, pool 96 MB / 600 MB, Reflex relax row, Parallel Effect Update Experimental, 2 smoke
+        starts in batch 2); 7 HSG2 to the author; 9 Rome II / Thrones NOT yet (Attila first). In plan.md "Decisions".
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
