@@ -3872,6 +3872,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         render_mt/reports/c1o_design_C1.md. plan.md rows C.1 / B.2 design refresh / B.4 B3 design now Opus xHigh.
         ATN 17:0x: if an Opus design is safety-stopped, Sonnet xHigh is the fallback (= the one retry); a second stop ends
         that part (report to ATN).
+        rdao_ note v2 DONE 17:2x (render_mt/reports/rdao_design_A_v2.md): all 16 review findings accepted; two designs,
+        P0.d picks by a fixed rule before S5: (c) ring (31 bodies, live toggle, E 0.1-1.0 ms/f on no-wait scenes) vs mode 4
+        (CBs made DEFAULT in a CreateBuffer body detour + UpdateSubresource, 3 bodies, restart-only, E 0.15-1.9). Steps S1
+        context_hooks.hpp + v3 on 17 bodies (env-armed only) + test/tw_context_hooks -> batch 2; S2 audit; S3 P0.d; S4
+        choice; S5 winner; S6 runs; S7 review. ReShade bug found + checked by the coordinator: d3d11_device.cpp:252 casts
+        &initial_data (the std::vector) instead of initial_data.data() after a create_resource desc change. 7 questions
+        for ATN (3 needed now: d3d11.dll detours in a release, restart-only row allowed, batch 2 v3 = 17 bodies + a D1m
+        start; later: light-scene budget, timer 1-in-N, on by default, report the ReShade bug) ASKED 17:2x.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
