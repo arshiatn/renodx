@@ -398,7 +398,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NEXT CPU ROUND (from the final bench, ranked by fa2o_): (1) the driver GPU-sync ... | coordinator W3 RAN 05:25 (VALID, 323 presents in the 36 s WP
 - Bench variants M1 (er4o_): heapfix_b6.json + night1118.json have no heapfix_line ... | coordinator, with the bench tool fixes before the next bench
 - RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go fa4o_ DONE (night1118/final_bench_f
-- OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 21:30 asked whether the Opus review covers h
+- OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 08:08: 64-bit decisions = coordinator's reco
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -3748,6 +3748,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         re-plan of render_mt yet (only on a GO).
         NAME MAP nm1s_ (Sonnet xHigh, read-only) STARTED 07:53 -> tools/tw/attila64/namemap/ (map.tsv, layouts.md, notes.md,
         written as it goes; private). Owner: coordinator
+        ATN 08:08: 64-bit decisions = coordinator's recommendations except 7 (legal, open: later or a collab with the existing
+        port's author, only with his source) -> attila64/plan.md "Decisions"; 32-BIT MT WORK STARTS NOW; GAME BATCH 1
+        APPROVED for tonight once rmt_p0 is built + reviewed; x87 hot-spot sweep added to render_mt. P0.a p0a_ (Opus xHigh,
+        read-only) STARTED -> bench/analysis_p0a/. Order: nm1s_ + p0a_ -> P0.b censuses (Sonnet xHigh) -> P0.c rmt_p0 (Opus
+        High + Opus xHigh review) -> P0.d tw_map_replay harness -> batch 1 (quiet window, fresh backups, agents held).
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
