@@ -3777,6 +3777,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         only ~3.6 ms serial; 4 chunks net -6.7 ms draw-phase CPU (E). DECIDED: C's go = net saving >= 5-6 ms at 4 chunks incl.
         dispatch + replay; private pool (never the game's start_task wake path, 3.7 ms); new A/B item: the fill wake + queue
         lock 3.67 + memcpy 3.07 ms on the render thread. Plan addendum "P0.f-split findings". p0c_ still building.
+        P0.c p0c_ DONE: branch rmt_p0 commit 53372741b (map trace v2: native Map / Unmap timing below ReShade, CB maps, per-
+        class totals; no Parallel Effect Update row; builds x86 + amd64, tests pass; report render_mt/reports/p0c_report.md).
+        Review r0co_ (Opus xHigh) 09:38: merge after fixes (re-arm recursion after a chained exit, ~28 MB reserve -> scale,
+        direct= can't tell game vs ReShade-API maps (tools), unmap stack scans, nits) -> render_mt/reports/r0co_review.md; fix
+        round sent to p0c_. Batch 1 prepared: tools/tw/bench/b1_run.ps1 + variants b1_W3 / b1_ATN / b1_D1 / b1_FT (add-on =
+        testbin/cpu1_addons/rmt_p0_fp, to build after the merge). New model rule (ATN): engine-code implementers Sonnet High.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
