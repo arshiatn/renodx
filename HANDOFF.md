@@ -3828,6 +3828,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         ROUND 2 PAUSED 15:13 by the starting session (ATN's change of plan): nothing running, handover in
         render_mt/reports/round2_handover.md. Left: review of rmt_cb (Opus xHigh, the coordinator starts it), then merge;
         (3) A design note; (4) map trace v3 + P0.d; (5) B1 guards + C1 design; frame_trace.hpp:702 comment fix with v3.
+        ROUND 2 RESUMED 15:2x in the coordinator session (ATN: stay in one session): side session archived, the q1o_
+        worktree's 10 links removed alone (main checkout intact, worktree kept), PC restarted for autocompact 40 %.
+        rcbo_ (Opus xHigh, read-only review of rmt_cb cd93625b6) STARTED 15:2x -> render_mt/reports/rcbo_review.md;
+        fixes after it by a new Opus High agent (q1o_ belonged to the side session), then gated builds + WARP test, merge.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
