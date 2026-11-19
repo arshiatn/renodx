@@ -3832,6 +3832,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         worktree's 10 links removed alone (main checkout intact, worktree kept), PC restarted for autocompact 40 %.
         rcbo_ (Opus xHigh, read-only review of rmt_cb cd93625b6) STARTED 15:2x -> render_mt/reports/rcbo_review.md;
         fixes after it by a new Opus High agent (q1o_ belonged to the side session), then gated builds + WARP test, merge.
+        rcbo_ DONE 15:3x (render_mt/reports/rcbo_review.md): MERGE AFTER FIXES, no bug Attila can reach today. R1 upload
+        order (assign before memcpy, else a torn upload stays stale), R2 / R3 comment limits, N1 static, N2 one ring reset,
+        N3 size-0 guard, N4 dead test CHECK, N5 test style. rfxo_ (Opus High, same worktree, links re-made for the build:
+        remove them alone again before any cleanup) STARTED 15:3x. Game proof still needed: map trace bytes=432 lines
+        ~492 -> ~1 a frame (batch 2, ATNm OFF / ON).
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
