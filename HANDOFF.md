@@ -3857,6 +3857,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         day1 (P0.d measures); (2) VB pool dropped now, revisited at the END: report the VB waits left at the final bench to
         ATN whatever their size (even ~2 ms), ATN decides (owner: final bench report); (3) map trace v3 starts (W3m +
         ATNm) ride in batch 2 next to the Fewer Constant Uploads ATNm OFF / ON A/B.
+        a2ro_ DONE 16:4x (render_mt/reports/a2ro_review.md): GO WITH CHANGES, 16 findings: must-change = AddRef virtually
+        bound CBs (D3D11 lifetime), seed the bind table at install (or install at init_device), CALLER_GUARANTEES_QUIESCENCE
+        not ENLIST_EXISTING_THREADS (heap-lock deadlock), the cost estimate (+0.15..0.4, maybe 0.3-1 ms/f) already fails
+        the 0.1 ms gates, a paused OFF / ON screenshot gate + NVIDIA pixel parity; should = a 2-detour alternative (CBs made
+        DEFAULT at create_resource + UpdateSubresource, ~500 lines vs 2,500-3,500) as P0.d mode 4, re-entry guard, thread
+        ids in v3, edges, debug-frame cap, positional-wait check, batch 2 ships only the v3 hook subset; hidden ATN
+        decisions (d3d11.dll detours in a release, live vs restart row, no-wait overhead budget). rdao_ resumed 16:4x for
+        note v2 -> render_mt/reports/rdao_design_A_v2.md.
+        c1s_ (Sonnet xHigh, read-only, track C1 design note C.1, parallel: no worktree) STARTED 16:4x (ATN asked for a
+        parallel design) -> render_mt/reports/c1s_design_C1.md.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
