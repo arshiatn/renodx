@@ -3842,6 +3842,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         N5 braces; gated x86 twattila + amd64 twwarhammer3 exit 0, WARP x86 + amd64 PASS (both controls caught). Coordinator
         read the diff. MERGED c2bb3e636 into atn-mods + pushed; q1o_ worktree links removed alone again (main intact, folder
         kept). (1) DONE in code; its game proof waits for batch 2. Next: (3) the track A design note (A.1, Opus xHigh).
+        rdao_ (Opus xHigh, read-only, track A design note A.1: what is left after the quick win, A2b (a) / (b) / (c),
+        body detours, budget, A1 test, VB pool, tests, work split, questions for ATN) STARTED 15:5x ->
+        render_mt/reports/rdao_design_A.md.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
