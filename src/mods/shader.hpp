@@ -13,6 +13,7 @@
 #include <d3d12.h>
 #include <dxgi.h>
 #include <dxgi1_6.h>
+#include <wrl/client.h>
 
 #include <algorithm>
 #include <array>
@@ -213,6 +214,32 @@ static uint32_t constant_buffer_offset = 0;
 // Alignment of the custom push constant start (in 32-bit values). 0 disables additional alignment.
 static uint32_t push_constant_alignment = 4u;
 static auto minimum_constant_buffer_stages = reshade::api::shader_stage::pixel | reshade::api::shader_stage::compute;
+// D3D11 opt-in, may change at any time (off: ReShade's push_constants). ReShade's push Map(WRITE_DISCARD)s its one buffer a
+// slot on every draw, and a driver that does not rename it waits for the GPU each time. On, the injection is bound from
+// the add-on's own buffers on the immediate context (PushNativeD3D11Injection) and uploaded only when its bytes change.
+static std::atomic_bool use_native_d3d11_injection = false;
+
+namespace internal {
+
+// A ring of injection buffers, each with an event ended when the next took over. An upload moves to the next one, or
+// to a new one while the GPU may still read the next (up to NATIVE_INJECTION_BUFFERS; then that one is discarded anyway:
+// still correct, the driver renames or waits).
+constexpr size_t NATIVE_INJECTION_BUFFERS = 8;
+struct NativeInjectionBuffer {
+  Microsoft::WRL::ComPtr<ID3D11Buffer> buffer;
+  Microsoft::WRL::ComPtr<ID3D11Query> read_done;
+  bool ended = false;
+};
+struct NativeInjectionRing {
+  std::shared_mutex mutex;
+  reshade::api::device* device = nullptr;
+  std::vector<NativeInjectionBuffer> buffers;
+  size_t current = 0;
+  std::vector<uint8_t> uploaded;  // the current buffer's bytes; empty: nothing uploaded yet
+};
+static NativeInjectionRing native_injection_ring;
+
+}  // namespace internal
 
 static renodx::utils::data::ParallelNodeHashMap<uint32_t, CustomShader> custom_shaders;
 
@@ -685,6 +712,14 @@ static void OnDestroyDevice(reshade::api::device* device) {
     }
     if (data->root_signature_buffer_range.buffer.handle != 0u) {
       device->destroy_resource(data->root_signature_buffer_range.buffer);
+    }
+  }
+  if (auto& ring = internal::native_injection_ring; device->get_api() == reshade::api::device_api::d3d11) {
+    const std::unique_lock lock(ring.mutex);
+    if (ring.device == device) {
+      ring.buffers.clear();
+      ring.uploaded.clear();
+      ring.device = nullptr;
     }
   }
   device->destroy_private_data<DeviceData>();
@@ -2043,6 +2078,79 @@ struct PostCommandData {
 static thread_local std::deque<PostCommandData> pending_post_command_data;
 static thread_local uint64_t pending_post_command_id = 0u;
 
+// use_native_d3d11_injection: the injection bound at `slot` to the stages ReShade's push binds on D3D11 (all graphics or
+// compute: its push range's visibility is all), from the ring's current buffer, uploaded first when its bytes changed.
+// False: not taken (another API, a deferred context, a failed upload); the caller pushes through ReShade. Offset 0 only:
+// ReShade's buffer keeps an earlier push's values before the offset.
+inline bool PushNativeD3D11Injection(reshade::api::command_list* cmd_list, uint32_t slot, bool is_dispatch) {
+  auto* device = cmd_list->get_device();
+  if (slot >= D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT || device->get_api() != reshade::api::device_api::d3d11) {
+    return false;
+  }
+  // The context ReShade's push binds on (no proxy unwrap).
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return false;
+  const std::span<const uint8_t> bytes = {reinterpret_cast<const uint8_t*>(shader_injection),
+                                          shader_injection_size * sizeof(float)};
+  auto& ring = internal::native_injection_ring;
+  const std::unique_lock lock(ring.mutex);
+  if (ring.device != device) {
+    ring.buffers.clear();
+    ring.uploaded.clear();
+    ring.current = 0;
+    ring.device = device;
+  }
+  if (ring.uploaded.empty() || !std::ranges::equal(bytes, ring.uploaded)) {
+    size_t next = 0;
+    if (!ring.uploaded.empty()) {
+      // Every draw that read the current buffer is issued: its event ends here.
+      native->End(ring.buffers[ring.current].read_done.Get());
+      ring.buffers[ring.current].ended = true;
+      next = (ring.current + 1) % ring.buffers.size();
+    }
+    const bool next_in_flight = next < ring.buffers.size() && ring.buffers[next].ended
+                                && native->GetData(ring.buffers[next].read_done.Get(), nullptr, 0,
+                                                   D3D11_ASYNC_GETDATA_DONOTFLUSH)
+                                       != S_OK;
+    if (next == ring.buffers.size() || (next_in_flight && ring.buffers.size() < internal::NATIVE_INJECTION_BUFFERS)) {
+      Microsoft::WRL::ComPtr<ID3D11Device> native_device;
+      native->GetDevice(native_device.GetAddressOf());
+      const D3D11_BUFFER_DESC desc = {
+          .ByteWidth = static_cast<UINT>((bytes.size() + 15u) & ~size_t{15u}),
+          .Usage = D3D11_USAGE_DYNAMIC,
+          .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
+          .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE,
+      };
+      const D3D11_QUERY_DESC query_desc = {.Query = D3D11_QUERY_EVENT};
+      internal::NativeInjectionBuffer added;
+      if (FAILED(native_device->CreateBuffer(&desc, nullptr, added.buffer.GetAddressOf()))
+          || FAILED(native_device->CreateQuery(&query_desc, added.read_done.GetAddressOf()))) {
+        return false;
+      }
+      next = (ring.uploaded.empty() ? ring.buffers.size() : ring.current + 1);
+      ring.buffers.insert(ring.buffers.begin() + static_cast<std::ptrdiff_t>(next), std::move(added));
+    }
+    ID3D11Buffer* const written = ring.buffers[next].buffer.Get();
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (FAILED(native->Map(written, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return false;
+    std::memcpy(mapped.pData, bytes.data(), bytes.size());
+    native->Unmap(written, 0);
+    ring.current = next;
+    ring.uploaded.assign(bytes.begin(), bytes.end());
+  }
+  ID3D11Buffer* const bound = ring.buffers[ring.current].buffer.Get();
+  if (is_dispatch) {
+    native->CSSetConstantBuffers(slot, 1, &bound);
+  } else {
+    native->VSSetConstantBuffers(slot, 1, &bound);
+    native->HSSetConstantBuffers(slot, 1, &bound);
+    native->DSSetConstantBuffers(slot, 1, &bound);
+    native->GSSetConstantBuffers(slot, 1, &bound);
+    native->PSSetConstantBuffers(slot, 1, &bound);
+  }
+  return true;
+}
+
 inline constexpr auto OnCommandAction = []<typename T, typename Context>(
                                             Context& context) -> renodx::utils::command_action::CallbackResult<Context> {
   struct DrawResponse {
@@ -2192,16 +2300,28 @@ inline constexpr auto OnCommandAction = []<typename T, typename Context>(
           response.constant_buffer_bindings.push_back({.snapshot = std::move(*binding), .slot = slot});
         }
       }
-      renodx::utils::constants::PushShaderInjections(
-          context.cmd_list,
-          state.pipeline_details->injection_layout,
-          static_cast<uint32_t>(state.pipeline_details->injection_index),
-          shader_stage == reshade::api::pipeline_stage::compute_shader,
-          {shader_injection, shader_injection_size},
-          injection_offset,
-          resource_tag_float,
-          resource_tag,
-          visibility);
+      const bool is_compute = shader_stage == reshade::api::pipeline_stage::compute_shader;
+      bool pushed_natively = false;
+      // A resource tag changes the injection a draw: ReShade's push.
+      if (use_native_d3d11_injection.load(std::memory_order_relaxed) && injection_offset == 0u
+          && resource_tag_float == nullptr) {
+        pushed_natively = PushNativeD3D11Injection(
+            context.cmd_list,
+            static_cast<uint32_t>(state.pipeline_details->injection_register_index),
+            is_compute);
+      }
+      if (!pushed_natively) {
+        renodx::utils::constants::PushShaderInjections(
+            context.cmd_list,
+            state.pipeline_details->injection_layout,
+            static_cast<uint32_t>(state.pipeline_details->injection_index),
+            is_compute,
+            {shader_injection, shader_injection_size},
+            injection_offset,
+            resource_tag_float,
+            resource_tag,
+            visibility);
+      }
     }
 
     bool applied_replacement = false;
@@ -2525,27 +2645,36 @@ inline void OnPresent(
     }
     reshade::api::pipeline_layout injection_layout = {0u};
     int32_t injection_index = -1;
+    int32_t injection_register_index = -1;
     int32_t injection_offset = 0;
     reshade::api::shader_stage visibility = reshade::api::shader_stage::all;
     renodx::utils::shader::GetPipelineShaderDetails(pipeline, [&](const auto& details) {
       injection_layout = details.injection_layout;
       injection_index = details.injection_index;
+      injection_register_index = details.injection_register_index;
       injection_offset = details.injection_constant_buffer_offset;
       if (!use_pipeline_layout_cloning) {
         visibility = details.injection_visibility;
       }
     });
     if (injection_layout.handle != 0u && injection_index != -1) {
-      renodx::utils::constants::PushShaderInjections(
-          cmd_list,
-          injection_layout,
-          static_cast<uint32_t>(injection_index),
-          false,
-          {shader_injection, shader_injection_size},
-          (constant_buffer_offset != 0 ? constant_buffer_offset : injection_offset),
-          nullptr,
-          0.f,
-          visibility);
+      const uint32_t offset = (constant_buffer_offset != 0 ? constant_buffer_offset : injection_offset);
+      bool pushed_natively = false;
+      if (use_native_d3d11_injection.load(std::memory_order_relaxed) && offset == 0u) {
+        pushed_natively = PushNativeD3D11Injection(cmd_list, static_cast<uint32_t>(injection_register_index), false);
+      }
+      if (!pushed_natively) {
+        renodx::utils::constants::PushShaderInjections(
+            cmd_list,
+            injection_layout,
+            static_cast<uint32_t>(injection_index),
+            false,
+            {shader_injection, shader_injection_size},
+            offset,
+            nullptr,
+            0.f,
+            visibility);
+      }
     }
   }
 }
@@ -2711,6 +2840,14 @@ static void Use(DWORD fdw_reason, const CustomShaderList& new_custom_shaders, T*
       reshade::unregister_event<reshade::addon_event::push_constants>(OnPushConstants);
       reshade::unregister_event<reshade::addon_event::push_descriptors>(OnPushDescriptors);
       reshade::unregister_event<reshade::addon_event::bind_descriptor_tables>(OnBindDescriptorTables);
+
+      {
+        // A device still alive (destroy_device releases them otherwise): the bound buffers keep the context's references.
+        const std::unique_lock lock(internal::native_injection_ring.mutex);
+        internal::native_injection_ring.buffers.clear();
+        internal::native_injection_ring.uploaded.clear();
+        internal::native_injection_ring.device = nullptr;
+      }
 
       break;
   }
