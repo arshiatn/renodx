@@ -3956,6 +3956,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         S1 MERGED 915f04348 + pushed; rmt_s1's 10 links removed (folder + branch kept). New optional items N1-N7 -> own
         box below. Next (1 agent at a time): c1o_ writes the C1 note v2 (c1r_ M1-M4 + adopted items), then S2 A3 audit.
         c1o_ (Opus xHigh, read-only) RESUMED 20:3x: C1 note v2 -> render_mt/reports/c1o_design_C1_v2.md.
+        c1o_ DONE 20:5x (reports/c1o_design_C1_v2.md, self-contained C.2 spec): 23 sites (VF64 gone, +1 colour site
+        0x17b04ce at mesh setup), depth loop first, M1-M4 folded in, uint64 masks (C.3), primary proof = in-frame K=1 vs
+        chunked compare, gates G1 (seed hits / run lengths) + G2 (match, P <= 1.2 ms, depth <= 0.5 ms), go >= 4.5 ms,
+        3.75-4.5 ms = ATN decides with the full-build figure, kill < 2.5 ms, depth alone must save >= 1.5 ms. No ATN
+        questions. C.2 = 4 steps (C.2-1 types + pool + cpu_sets publish; C.2-2 depth path; C.2-3 colour path; C.2-4 addon
+        wiring), Sonnet High, Opus xHigh review after C.2-2 and C.2-3. C.2 brief must say: no Linux-derived names in
+        src/ or test/ (addresses / neutral names only).
+        s2a_ (Opus xHigh, read-only) STARTED 21:0x: S2 A3 audit -> render_mt/reports/s2a_audit_A3.md.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
