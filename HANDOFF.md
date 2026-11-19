@@ -3902,6 +3902,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         -6.7. Stage 0 touch-ahead (2 sites) first. Batch 2 share: 13 starts ~56 min. Gate before C.3: read-only purity
         census of vf58 / vf60 / vf54->vf14 / vf6c / 0x1178c460. 3 questions to ATN (sites, stage 0, drop stage 5) ASKED
         18:1x. Next (1 agent at a time, after s1o_): S1 review, then C.1 review + purity census.
+        ATN 18:2x: Q1 24 sites for the prototype OK (full build decided after batch 2); Q2 stage 0 touch-ahead first: yes;
+        Q3 (drop C prototype stage 5 = no-single-thread device + deferred-context smoke, 3 starts) re-asked: ATN mixed it
+        up with the plan's end step. ATN asked about thread counts: K is a row value; batch 2's D4 live switch gets
+        K = 2 / 4 / 6 / 8 / 12 / 16 inside the same start (no extra starts).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
