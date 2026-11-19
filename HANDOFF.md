@@ -3767,6 +3767,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 08:3x: decide approvals myself (recommendation), more game batches OK if really needed; fresh session per round
         with the 6-point checklist (memory). P0.c p0c_ (Opus High, worktree branch rmt_p0: map trace v2 + Parallel Effect
         Update row + tests) STARTED 08:42; p0b_ censuses still running.
+        P0.b p0b_ DONE 08:48 (namemap/census.md + census_report.md): VFX_PARALLEL_UPDATER=1 is RACY as shipped (spawn
+        counter, emitter-pool dead list = crash path, static RNG, sound refcounts) -> DECIDED (ATN delegated): row dropped from
+        P0.c (p0c_ told), VFX starts out of batch 1, B1 = engine-code piece with guards (Sonnet xHigh); C1 re-designed: defer
+        (material virtuals + flush) as a pair, only the scan moves; Windows = 2 driver bodies + 8 dispatchers; B3b = 3-phase
+        bit-exact design, smaller gain; C proof baseline = HFx. Batch 1 now W3m / W3r / ATNm / D1m / FT (~40 min). p0f_ (Sonnet
+        xHigh, read-only) STARTED: function split of the loops' 11.5 ms -> bench/analysis_p0f/. Plan addendum "P0.b findings".
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
