@@ -3931,6 +3931,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         Unmap hash + make it opt-in; small 4-8, 10, 11, style. Build list: every TW add-on + Divinity 1 / 2, Expeditions,
         Ryse, Tales, Ruse, ~20 tests that now include device_loss / Detours. s1o_ resumed 20:0x for the fixes; then the
         same reviewer re-checks, then merge.
+        PC CRASH 2026-11-19 ~18:48 (real clock; my earlier time stamps in this box ran ~1.5 h ahead): BSOD 0x133
+        DPC_WATCHDOG_VIOLATION (P2 0x500 / P3 0x500 = one DPC over its time limit; a kernel driver), minidump
+        C:\Windows\Minidump\111926-17296-01.dmp (admin-only, not read). No GPU TDR / nvlddmkm event before it. Last
+        files 18:47:38-50 = s1o_'s fix-round tests tw_context_hooks x86 + tw_map_trace amd64 (WARP only, no GPU). Windows
+        update KB5132061 (26200.9974) installed at 15:21 today. Not our shutdown (that was 15:17, ATN's restart). s1o_ was
+        stopped mid-fix: rmt_s1 has UNCOMMITTED edits in context_hooks.hpp, frame_trace.hpp, both tests.cpp. Next: ATN
+        copies the dump (admin) for an offline read (no symbol server), and decides when s1o_ resumes.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
