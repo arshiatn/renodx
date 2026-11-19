@@ -3906,6 +3906,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Q3 (drop C prototype stage 5 = no-single-thread device + deferred-context smoke, 3 starts) re-asked: ATN mixed it
         up with the plan's end step. ATN asked about thread counts: K is a row value; batch 2's D4 live switch gets
         K = 2 / 4 / 6 / 8 / 12 / 16 inside the same start (no extra starts).
+        ATN 18:3x: Q3 DROP the C prototype's stage 5 (deferred-context / no-single-thread device test, 3 starts).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
