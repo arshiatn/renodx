@@ -3715,6 +3715,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         path, default 0) -2.5..-7 (Experimental); W3 vs W1b: the 6 rows ~-1.7 ms in stress (day1 A/B disagrees: stress A/B
         needed). PLANNER rmt1f_ (Fable 5.2 xHigh, read-only) STARTED 06:17 -> tools/tw/round_notes/render_mt/plan.md;
         implementation only on ATN's go.
+        PLAN DONE 06:42 (rmt1f_, no safety stop): tools/tw/round_notes/render_mt/plan.md (+ rmt1f_listings/). W3 104.7 ->
+        57-78 ms E (A 88-96, A+B 66-83, A+B+C). Key facts: the device is single-threaded (Flags 0x1: no deferred contexts as
+        is) -> track C = software recording of the game's own draw loops on workers, played back on the render thread (C2 =
+        real deferred contexts only if the prototype's numbers justify it); Reflex was on + boost in W3 (Phase 0 tests the
+        waits with Reflex off); the 8 MB VBs are 0x17ae480's instance rings (~190 MB a frame: a bigger ring won't help) ->
+        A2 = Dynamic Buffer Pool below ReShade (vtable Map/Unmap/IASetVertexBuffers, event queries, 96 MB cap, off below
+        600 MB free); VFX_PARALLEL_UPDATER is live-switchable (B1 three-way row). Order: Phase 0 (offline P0.a-e, then game
+        batch 1 ~70 min), A, C prototype (batch 2 ~60 min), B (HSG2 / animation rows / ready split), full C, final bench
+        (batch 3). 9 decisions for ATN in section 9. Waits for ATN's go (~11-23).
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
