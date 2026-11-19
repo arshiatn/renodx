@@ -3813,6 +3813,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         draw. q1o_ (Opus High, worktree branch rmt_cb: opt-in in mods/shader.hpp, default off for every other game, Attila
         CPU row OFF until a game run proves it) STARTED; review rq1o_ (Opus xHigh) after. (2) vt1s_ (Sonnet xHigh,
         read-only) STARTED -> render_mt/reports/vt1s_report.md. Then (3) A design note, (4) map trace v3, (5) B1 / C1.
+        q1o_ DONE 15:07 (render_mt/reports/q1o_report.md): cd93625b6 on LOCAL branch rmt_cb (worktree .claude/worktrees/
+        agent-aa7ea5f77b2a5ea64, from 0ac4c0a30), NOT merged / pushed: mods::shader opt-in use_native_d3d11_injection
+        (default off), own CB ring (event query each, up to 8) uploaded only when the bytes change, native bind to
+        ReShade's slot / stages, ReShade fallback for other APIs / deferred / offset != 0 / resource tags / failures;
+        Attila row Fewer Constant Uploads (Experimental) OFF; test/tw_injection_buffers WARP x86 + amd64 PASS (2 controls
+        caught); gated x86 twattila + amd64 twwarhammer3 exit 0. Not run in game.
+        vt1s_ DONE 15:12 (render_mt/reports/vt1s_report.md): the slot 14 / 15 rewriter is OUR OWN SwapDeviceContextState
+        (d3d11.dll rewrites the immediate context's own vtable, slots 7..115): smoke_map.hpp:251/289 (Smoke Shadows, off
+        under RT sun shadows = why ATNm lived), anti_aliasing.hpp:992/1008 (DLSS below 100 %), frame_generation.hpp:245/438;
+        mechanism proven with standalone ctypes scripts on the real NVIDIA context, fit to the 3 starts likely; vtable is
+        per context (frame_trace.hpp:702 comment wrong). DECIDED: A2 / A2b hook the runtime's Map / Unmap BODIES, not the
+        slots (plan.md "Round 2 findings").
+        ROUND 2 PAUSED 15:13 by the starting session (ATN's change of plan): nothing running, handover in
+        render_mt/reports/round2_handover.md. Left: review of rmt_cb (Opus xHigh, the coordinator starts it), then merge;
+        (3) A design note; (4) map trace v3 + P0.d; (5) B1 guards + C1 design; frame_trace.hpp:702 comment fix with v3.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
