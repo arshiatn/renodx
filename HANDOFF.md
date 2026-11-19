@@ -400,6 +400,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go fa4o_ DONE (night1118/final_bench_f
 - OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 08:08: 64-bit decisions = coordinator's reco
 - NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | ATN, when ATN brings it up again
+- S1 FOLLOW-UPS (s1ro_ re-check 11-19, all optional / low; OWNER: the S5 ring impl ... | ?
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -3951,6 +3952,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         context on the 2nd device mapped the hooked device's vertex_buffer; now other_buffer, tests.cpp:550-551). tw_map_trace
         + tw_context_hooks PASS x86 + amd64; builds unchanged (test-only fix). WER clones PIDs 10028 + 12224 lock
         testbin\tw_map_trace_amd64 / _amd64b until a reboot (passing run in _amd64c). s1ro_ resumed: re-check of the fixes.
+        s1ro_ RE-CHECK DONE 20:2x (s1ro_review.md "Re-check"): MERGE, findings 1-11 fixed / accepted, unarmed unchanged.
+        S1 MERGED 915f04348 + pushed; rmt_s1's 10 links removed (folder + branch kept). New optional items N1-N7 -> own
+        box below. Next (1 agent at a time): c1o_ writes the C1 note v2 (c1r_ M1-M4 + adopted items), then S2 A3 audit.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -3971,6 +3975,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         identity line) FIXED 22:00: bench/variants/heapfix_final_base.json with er4o_'s regexes, checked on past logs (B4G
         matches only B4G runs, rejects Cnt; P rejects B4G). L3: hsC = B4G's gate + hs one-thread loop + counters, compare it
         only with Cnt2. Info: 7 leftover Attila process objects may trip the bench's game-process check: ATN's restart clears them.
+      - [ ] S1 FOLLOW-UPS (s1ro_ re-check 11-19, all optional / low; OWNER: the S5 ring implementer in its first commit,
+        since it reworks context_hooks.hpp / frame_trace.hpp anyway): N1 device ends during the trace -> set first_drop =
+        min(first_drop, seq) in OnMapTraceDestroyDevice; N2 a dropped Map / Unmap blanks every later draw's bindings ->
+        separate native-call first drop; N3 take Qpc() before the foreign_qpc exchange (context_hooks.hpp:167-168); N4
+        gate the foreign_qpc check on native_hook == foreign_thread; N5 `// No-op:` marker on the empty catch
+        (context_hooks.hpp:174, CXX_STYLE.md:35-40); N6 README line 5 `<seconds>[,<frames>[,hash]]` + map_trace.py
+        docstring foreign_thread; N7 a frame_trace-level test of the foreign-thread switch. Also after ATN's next reboot:
+        testbin\tw_map_trace_amd64 + _amd64b hold stale exes (WER clones 10028 / 12224); _amd64c is the good one.
       - [ ] AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 a persistent DAZ phase in
         x87fix_test (er4o_'s version: testbin\er4o_mut\x87, its mutant fails line 541) before note 4 ships; L1 note 11: needs the
         infrastructure patch first; L2 B4G.ps1 / hb6_build eq step timeouts; L4 xw's 2 MB buffer every 10 s -> last used +
