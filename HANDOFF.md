@@ -3618,6 +3618,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         `powershell -NoProfile -ExecutionPolicy Bypass -File tools\tw\bench\final1118_run.ps1` in the background (~3.9 h);
         then the xHigh analysis, then ATN's 2 extra runs (page 1 Reset = page-presets/Reset, page 2's = graphics-presets/Reset:
         check its group first).
+        ATN restarted 23:05 via the coordinator's `shutdown /r /t 90` (ATN's OK); after it Steam started elevated, then
+        restarted itself non-elevated by 23:06:38 (not touched); dry run clean. BENCH RAN 23:07 -> 02:50 (11-19): all 17
+        calls exit 0, 55 of 56 starts VALID (W1 INVALID only for 2 pass timings < 3; its ETL usable), no crash / freeze / GPU
+        reset. Output tools/tw/bench/final1118_run_out.txt, runs/final1118_*. First look F1 (stress): ON not faster; OFF got
+        faster over the rounds (77 -> 72 -> 71 ms) while ON stayed ~76 (+3.9 / +5.2 ms in rounds 2-3, inside the gate's
+        spread). xHIGH ANALYSIS STARTED 02:53: fa1o_ frame times + row defaults + author numbers, fa2o_ WPR traces,
+        fa3o_ probe + Cnt2 / hsC (Opus xHigh, read-only, outputs in bench/analysis_fa1o|fa2o|fa3o).
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
