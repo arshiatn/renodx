@@ -3870,6 +3870,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 16:5x: designs are ALWAYS Opus xHigh (Fable 5.2 xHigh only when ATN says), never Sonnet unless ATN says.
         c1s_ STOPPED 16:5x (no output kept); c1o_ (Opus xHigh, same brief, read-only, no worktree) STARTED 16:5x ->
         render_mt/reports/c1o_design_C1.md. plan.md rows C.1 / B.2 design refresh / B.4 B3 design now Opus xHigh.
+        ATN 17:0x: if an Opus design is safety-stopped, Sonnet xHigh is the fallback (= the one retry); a second stop ends
+        that part (report to ATN).
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
