@@ -3837,6 +3837,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         N3 size-0 guard, N4 dead test CHECK, N5 test style. rfxo_ (Opus High, same worktree, links re-made for the build:
         remove them alone again before any cleanup) STARTED 15:3x. Game proof still needed: map trace bytes=432 lines
         ~492 -> ~1 a frame (batch 2, ATNm OFF / ON).
+        rfxo_ DONE 15:4x (render_mt/reports/rfxo_report.md): 108be34b2 = R1 assign-then-memcpy, R2 / R3 comment, N1 static,
+        N2 NativeInjectionRing::Reset() at all 3 sites, N3 size-0 guard, N4 dead CHECK removed (mock push_constants throws),
+        N5 braces; gated x86 twattila + amd64 twwarhammer3 exit 0, WARP x86 + amd64 PASS (both controls caught). Coordinator
+        read the diff. MERGED c2bb3e636 into atn-mods + pushed; q1o_ worktree links removed alone again (main intact, folder
+        kept). (1) DONE in code; its game proof waits for batch 2. Next: (3) the track A design note (A.1, Opus xHigh).
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
