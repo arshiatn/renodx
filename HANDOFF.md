@@ -392,6 +392,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT LOD FOR FAR VEGETATION (ATN 23:1x: "simpler clusters for far trees / grass / ... | after L1 clusters (same design round)
 - NIGHT ORDER 11-18 (ATN 01:xx, ATN asleep; all in this session): (1) [x] ejob-for ... | coordinator PROGRESS: (2) DONE 02:38-02:46 gr1_ (bench const
 - ALOD-2 (Sonnet xHigh, after ec4s_ frees engine_code.hpp): PickLod as an engine_c ... | coordinator STARTED 19:30: alod2s_ (Sonnet xHigh) on 97d9a6b
+- HSG2 (heapfix, Sonnet xHigh): the draw-site sort chain over more threads (fa3o_: ... | coordinator
+- Bench tool fixes (fa1o_ section 6): pooled within-variant spread instead of the ... | coordinator, before the next bench ATN 21:30 asked whether t
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -3625,6 +3627,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         faster over the rounds (77 -> 72 -> 71 ms) while ON stayed ~76 (+3.9 / +5.2 ms in rounds 2-3, inside the gate's
         spread). xHIGH ANALYSIS STARTED 02:53: fa1o_ frame times + row defaults + author numbers, fa2o_ WPR traces,
         fa3o_ probe + Cnt2 / hsC (Opus xHigh, read-only, outputs in bench/analysis_fa1o|fa2o|fa3o).
+        fa3o_ DONE -> night1118/final_bench_fa3o.md: probe NO DUMP (EngineProbePresents=3000 > the starts' 2573 / 2958
+        presents: the coordinator's N) -> L4 (EVEC-F short lists) and the prefetch workloads undecided; Cnt2: no list >= 32768 in
+        any scene (B4G = P: send as is), HSG2 worth building (upper bound -6.6 ms stress / -2.6 day1 on top of HSORT), mf1k DON'T
+        build (<= 0.2 ms), hsC vs Cnt2 sort time -20 % stress / -11.5 % day1; author [TO FILL] numbers for notes 1 / 12.
+        fa1o_ DONE -> night1118/final_bench_fa1o.md: pooled spread stress 1.9-2.9 ms, night1 1.3, day1 cpu 0.08 (only H4 resolves
+        sub-ms). HFx FASTER at Constantinople cpu -0.64 ms (8 SE; p99 -1.1); B4G / Pnolf / Plt1 / HFa same; HFb likely -4.1 +-
+        2.9 (not proven). The 6 Experimental CPU rows: none faster anywhere -> ALL STAY OFF; F1 ON +3.1 +- 1.5 vs warm OFF
+        (KRCF excluded, a uniform per-frame cost; P1a with the same rows ran at warm-OFF speed; suspect Faster Job Wake-Ups ~40 %);
+        day1 ON starts flipped CPU-bound at +85 s. Stability: 56 / 56 clean (0 EXCEPTION / FREEZE, device S_OK 112 / 112, 0
+        nvlddmkm). D1: count > end in 37 % of calls (er4o_ N2's fixture lacks it). Bench issues: two-start spread rule misleads,
+        no warm-up start after a reboot, F1 order never rotated, probe dump unchecked.
+        PREPARED 03:16: bench -Sample (counters.csv every ~3 s: VRAM / RAM / virtual bytes / 3D % / CPU / commit; tested),
+        variant fields reshade_ini + reshade_log_line, bench/atn_ab_report.py (fps avg / median / min / max / 1 % / 0.1 % lows,
+        frame times, spikes, busy / wait, the counters), variants atn_ab_1119.json (A: Reset x2, DLSS UP, grass max, units 8x by
+        the scene, all 8 CPU rows off, P; B: the same, all on, HFx), final1118_P1r.json (N=2000 + dump check), settle_1119(_rev)
+        .json; run list bench/atn_ab_1119_run.ps1 (-Settle adds the 8-start settling A/B: needs ATN's OK); dry run clean.
+      - [ ] HSG2 (heapfix, Sonnet xHigh): the draw-site sort chain over more threads (fa3o_: up to -6.6 ms stress on top of
+        HSORT, -2.6 day1); next CPU round. Owner: coordinator
+      - [ ] Bench tool fixes (fa1o_ section 6): pooled within-variant spread instead of the two-start rule; a discarded warm-up
+        start after a reboot; rotate the variant order per round. Owner: coordinator, before the next bench
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
