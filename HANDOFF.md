@@ -3783,6 +3783,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         direct= can't tell game vs ReShade-API maps (tools), unmap stack scans, nits) -> render_mt/reports/r0co_review.md; fix
         round sent to p0c_. Batch 1 prepared: tools/tw/bench/b1_run.ps1 + variants b1_W3 / b1_ATN / b1_D1 / b1_FT (add-on =
         testbin/cpu1_addons/rmt_p0_fp, to build after the merge). New model rule (ATN): engine-code implementers Sonnet High.
+        P0.c fixes cb1f6c774 (all r0co_ findings) -> MERGED 0162de628 (pushed); frame-pointer build testbin/cpu1_addons/
+        rmt_p0_fp (afd2bc8d, from 0162de628, clean). GAME BATCH 1 RAN 09:56-10:17 (b1_run.ps1; ATN's OK): W3m VALID, W3r (Reflex
+        off) INVALID only for 2 of 3 pass timings, ATNm VALID (map trace hit the 65,536 cap, 9,890 dropped: RT on maps far
+        more), D1m VALID, FT VALID; 0 hash mismatches, 0 nvlddmkm events, no crash; native_hook=on in all. First look (W3m):
+        the long waits land on small dynamic CONSTANT buffers (a 16-byte CB ~11 ms a DISCARD, a 57 KB CB ~13 ms a frame) while
+        the 8 MB rings DISCARD ~20 times in 12 frames each = fits a shared rename budget. b1a_ (Sonnet xHigh, read-only)
+        STARTED 10:18 -> bench/analysis_b1/ (Reflex effect, which maps wait, VB-only pool vs A2b, ATNm, FT, P0.d event set).
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
