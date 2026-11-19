@@ -3942,6 +3942,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         code on the crashing CPU's raw stack = nvlddmkm+0xd21e29 / +0xd21e82 (NVIDIA display driver 32.0.15.9579 = 595.79,
         dated 2026-03-04). Raw stack scan only (no nt symbols), so a strong hint, not proof. ATN 19:0x: resume S1 ->
         s1o_ resumed (finish fixes, builds + tests strictly one at a time, WARP only, local commit, fix-round report).
+        s1o_ fix round 19:2x: all 11 findings DONE in the rmt_s1 tree (UNCOMMITTED, +405/-199); x86 3 TW + amd64 13 targets
+        exit 0; tw_context_hooks x86 + amd64 PASS; tw_map_trace x86 PASS; tw_map_trace amd64 CRASHED (event 1000 19:01:09,
+        PID 21948, AV c0000005 in d3d11.dll 10.0.26100.9818 +0x1627f4, after part 2's output). PID 10028 = WER's reflected
+        clone of it (0 threads / handles, Stop-Process denied) locks the exe until a reboot; leave it. s1o_ resumed: new
+        OutDir under testbin, cdb stack (own PDB only, no symbol server), fix, re-run both arches, local commit.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
