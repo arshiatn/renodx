@@ -1,8 +1,9 @@
 # The map trace (twattila/frame_trace.hpp, RENODX_TW_MAP_TRACE; tests.cpp on WARP with ReShade's events mocked), then
 # tools\tw\map_trace.py on the traces it wrote: the summary, and the join with waits.txt (the presents on another clock,
 # one wait ending just before a map, one between events), the native calls' summary (v2: the native hook's maps by
-# class and type, the longest native waits) on tw_map_trace_native.txt, then tools\tw\map_trace_test.py (the join's
-# synthetic cases, the native lines' parse). No game build needed. Run as x86 (Attila, Rome II, Thrones) and amd64.
+# class and type, the longest native waits; v3's context hooks write the same lines) on tw_map_trace_native.txt, then
+# tools\tw\map_trace_test.py (the join's synthetic cases, the native lines' parse). No game build needed. Run as x86
+# (Attila, Rome II, Thrones) and amd64; links Detours (the context hooks).
 # -OutDir: where the test exe goes (default testbin\tw_map_trace_<arch>, the maintainer's excluded folder).
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [string]$OutDir = '')
 $ErrorActionPreference = 'Stop'
@@ -15,8 +16,9 @@ $testBuild = if ($OutDir -ne '') { $OutDir } else { Join-Path $tools "testbin\tw
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
+$detoursArch = if ($Architecture -eq 'x86') { 'X86' } else { 'X64' }
 $exe = "map_trace_$Architecture.exe"
-& 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /bigobj /DNOMINMAX /DWIN32=1 -Wno-deprecated-declarations /I $repoRoot /I "$repoRoot\external\reshade" /I "$repoRoot\external\frozen\include" /I "$repoRoot\external\gtl\include" /I "$repoRoot\external\Detours\include" "$testRoot\tests.cpp" /Fe:$exe /link /OPT:REF /OPT:ICF user32.lib advapi32.lib d3d11.lib dxgi.lib dxguid.lib
+& 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /bigobj /DNOMINMAX /DWIN32=1 -Wno-deprecated-declarations /I $repoRoot /I "$repoRoot\external\reshade" /I "$repoRoot\external\frozen\include" /I "$repoRoot\external\gtl\include" /I "$repoRoot\external\Detours\include" "$testRoot\tests.cpp" /Fe:$exe /link /OPT:REF /OPT:ICF "$repoRoot\external\Detours\lib.$detoursArch\detours.lib" user32.lib advapi32.lib d3d11.lib dxgi.lib dxguid.lib
 if ($LASTEXITCODE -ne 0) { throw 'Map trace test compile failed' }
 & (Join-Path $testBuild $exe)
 if ($LASTEXITCODE -ne 0) { throw 'Map trace test failed' }
