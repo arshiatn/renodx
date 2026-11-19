@@ -3964,6 +3964,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         wiring), Sonnet High, Opus xHigh review after C.2-2 and C.2-3. C.2 brief must say: no Linux-derived names in
         src/ or test/ (addresses / neutral names only).
         s2a_ (Opus xHigh, read-only) STARTED 21:0x: S2 A3 audit -> render_mt/reports/s2a_audit_A3.md.
+        s2a_ DONE 21:3x (reports/s2a_audit_A3.md): NO BLOCKERS. No code of ours Maps a game CB; no usage / CPU-access
+        check changes behaviour; no worker calls the game's device / context / ReShade cmd lists. Readbacks lose quality
+        at lead 3, no stall: object_motion RIGID_READBACKS = 3 (:171), rt_scene point lights bounded wait at lead >= 3
+        (:1225), dlaa_bridge Answer + helper slot fences cap the lead. WH3-only waits (rt_core :3223 / :3305-3342) = lead-0
+        sync points if WH3 ever gets the ring. 14 S5 spec items (Get/Get1 = caller's args, Set1 offsets, per-buffer slot
+        sets, Copy translation, null / untracked Set releases, per-state tables for anti_aliasing / smoke_map /
+        frame_generation, Map = CPU copy + upload after ReShade's unmap event, foreign thread -> unwind to native,
+        ClearState / device loss release, v3 records caller args, ring uploads below the ReShade proxy, skip our own
+        injection-ring CBs (shader.hpp:2126), optional readback depth, fallbacks in Copy / Get). Mode-4 items moot.
+        Open (batch 2 v3 thread ids): CreateSwapChain / ResizeBuffers / last Release thread; does the game use Set1 / Get1.
+        S3 STARTED 21:4x: s3o_ (Opus High) in worktree .claude/worktrees/rmt_s1 on NEW branch rmt_s3 (from 16fae0bf5;
+        10 links re-made: remove them alone before any cleanup): slim tw_map_replay (baseline, wait locator, ring seam,
+        pixel parity, overhead; WARP tests; ONE short NVIDIA baseline check, stop on any TDR).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
