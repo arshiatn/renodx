@@ -395,7 +395,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - HSG2 (heapfix, Sonnet xHigh): the draw-site sort chain over more threads (fa3o_: ... | coordinator
 - Bench tool fixes (fa1o_ section 6): pooled within-variant spread instead of the ... | coordinator, before the next bench fa2o_ DONE -> night1118/f
 - Helper memory with ATN's settings: 13.5 GB VRAM + 12.5 GB private while the batt ... | next GPU / memory round fa3o_ round 2 DONE (final_bench_fa3o
-- NEXT CPU ROUND (from the final bench, ranked by fa2o_): (1) the driver GPU-sync ... | coordinator ATN 21:30 asked whether the Opus review covers h
+- NEXT CPU ROUND (from the final bench, ranked by fa2o_): (1) the driver GPU-sync ... | coordinator W3 RAN 05:25 (VALID, 323 presents in the 36 s WP
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -3688,6 +3688,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         WPR W3 (ATN 05:23): final1119_wpr_run.ps1 = the W call (stress, cpu, Y:6, -Wpr 80,36, W sliders) with today's set:
         final1118_fp add-on + final1118 helper, HFx, Faster Game CPU Code + Faster Render Lists on, 6 Experimental rows off;
         dry run clean; then the last xHigh analysis vs W1b / W1c. Owner: coordinator
+        W3 RAN 05:25 (VALID, 323 presents in the 36 s WPR window, 3 pass timings; runs/final1119_W_wpr_cpu_052501). ATN's OK
+        for a second WPR: R1 = W3 with graphics page 2 at Reset (pressed at 0 s + 46 s; final1119_R.json) RAN 05:30 (VALID,
+        1405 presents in the window = ~4.3x W3's; runs/final1119_R_wpr_cpu_053032). fa4o_ (Opus xHigh, read-only) STARTED 05:36:
+        the maxed-slider gap R1 vs W3 by category, multithreading split (Amdahl + D3D11 deferred-context feasibility, ATN asked),
+        W3 vs W1b (6 rows), driver-wait state, new top-10 + look-safe list -> night1118/final_bench_fa4o.md. az1s_ resumed.
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
