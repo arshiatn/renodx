@@ -394,7 +394,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ALOD-2 (Sonnet xHigh, after ec4s_ frees engine_code.hpp): PickLod as an engine_c ... | coordinator STARTED 19:30: alod2s_ (Sonnet xHigh) on 97d9a6b
 - HSG2 (heapfix, Sonnet xHigh): the draw-site sort chain over more threads (fa3o_: ... | coordinator
 - Bench tool fixes (fa1o_ section 6): pooled within-variant spread instead of the ... | coordinator, before the next bench fa2o_ DONE -> night1118/f
-- Helper memory with ATN's settings: 13.5 GB VRAM + 12.5 GB private while the batt ... | next GPU / memory round ATN 21:30 asked whether the Opus rev
+- Helper memory with ATN's settings: 13.5 GB VRAM + 12.5 GB private while the batt ... | next GPU / memory round fa3o_ round 2 DONE (final_bench_fa3o
+- NEXT CPU ROUND (from the final bench, ranked by fa2o_): (1) the driver GPU-sync ... | coordinator ATN 21:30 asked whether the Opus review covers h
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -3664,6 +3665,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         (N=2000) dumped in both starts -> fa3o_ round 2 STARTED.
       - [ ] Helper memory with ATN's settings: 13.5 GB VRAM + 12.5 GB private while the battle ran (Reset: 0.8 GB); check what
         holds it (RT scene / caches reserved with rays off?). Owner: next GPU / memory round
+        fa3o_ round 2 DONE (final_bench_fa3o.md 'Round 2', probe N=2000): EVEC-F STAYS ON (no per-item-call entries; short
+        lists cost <= 0.002 ms vs the -0.06 gain); E3P-b / E3P-d do nothing because 99.8 % of stress containers hold ONE element
+        (day1 68 %): replace with outer-loop slot-0 chains (E3P-c3 / d2-chain, likely one chain for both); sweep: lengthen the
+        distances (24,12,6 / 32,16,8: harness first) + test the flag at [L+4] in stage C (day1 34.6 % clear); EF4c-1's design
+        holds, needs a second stage (the entry's stream pointers). ROW DEFAULTS: unchanged (the 6 Experimental CPU rows stay
+        off; Faster Game CPU Code incl. EVEC-F and Faster Render Lists stay on): no code change.
+        INSTALLED 04:21: Attila v168 + WH3 v67 on helper119 (stamped; tw_install.py --install; fresh backups; ATN's files
+        unchanged; log night1118/install_1119.txt); other 14 games unchanged (helper118); ATN's heapfix stays 7.0 P.
+        AUTHOR PACKAGE az1s_ (Sonnet xHigh) STARTED 04:21: [TO FILL]s from fa1o_ / fa2o_ / fa3o_, hlr1s_ + er4o_ fixes,
+        one zip in Downloads.
+      - [ ] NEXT CPU ROUND (from the final bench, ranked by fa2o_): (1) the driver GPU-sync waits in the game's Map: the frame-end
+        DISCARD of the 464,000-byte dynamic VB (~8.7 ms) + the 8 MB VB discards (~4.3 ms) -> a rename pool / bigger ring in the
+        add-on (-5..-9 ms); (2) HSG2 (-5..-7); (3) E3P-c3 / d2 slot-0 chains (-0.6..-1.5); (4) sweep distances + stage C flag
+        test; (5) EF4c-1 second stage; (6) the settling A/B (OFF / J / P4 / K, day1 cpu) if ATN wants it. Owner: coordinator
         ATN 21:30 asked whether the Opus review covers heapfix: it didn't (er3o_ = add-on engine code only; heapfix had
         Sonnet xHigh reviews + re-checks, no Opus end review). er4o_ (Opus xHigh, heapfix end review: bench DLLs + author
         package, read-only, private rebuilds in testbin\er4o_*) STARTED 21:30. A High there drops that variant from the bench.
