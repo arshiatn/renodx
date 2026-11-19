@@ -1,8 +1,9 @@
-// The map trace (twattila/frame_trace.hpp, env RENODX_TW_MAP_TRACE=<seconds after the first present>[,<frames>]) on WARP
-// with ReShade's event lists mocked: the test makes the D3D11 calls and then calls the registered callbacks as ReShade's
-// D3D11 layer does (a map's after Map returned, an unmap's before Unmap, a copy's before the copy).
+// The map trace (twattila/frame_trace.hpp, env RENODX_TW_MAP_TRACE=<seconds after the first present>[,<frames>[,hash]])
+// on WARP (the hooked device single-threaded, as Attila's) with ReShade's event lists mocked: the test makes the D3D11
+// calls and then calls the registered callbacks as ReShade's D3D11 layer does (a map's after Map returned, an unmap's
+// before Unmap, a copy's before the copy).
 // 1. Off (no variable): nothing registered, no file. Malformed variables (junk after the delay or the frame count, a
-//    frame count outside 1-100, a negative delay): off too, nothing registered.
+//    third field other than `hash`, a frame count outside 1-100, a negative delay): off too, nothing registered.
 // 2. RENODX_TW_MAP_TRACE=0.15,2 under a comma-decimal C locale (the parse ignores it): the callbacks registered at
 //    Install, gated off: a map before the trace's start is not in the file; the first present after 0.15 s starts two
 //    frames; after them the callbacks stay registered (until Uninstall) and record nothing. tw_map_trace.txt next to
@@ -30,24 +31,28 @@
 //    index buffer's DISCARD, a dynamic texture's DISCARD (its depth pitch), a structured buffer's DISCARD (other), a
 //    staging buffer's READ with DO_NOT_WAIT (its flags and result), an invalid DISCARD of a staging buffer (failed, its
 //    HRESULT), an unmap of a map made before the trace (a native_unmap line, callers=-); each map's class, type, flags,
-//    bytes and unmap; the direct caller and the game's callers in the exe. CONTROLS: a second WARP device's immediate
-//    context and a deferred context map too (through the same hooked bodies when their slots hold them, else said so),
-//    none recorded. The native_frame line's totals (counts, failed, DISCARD bytes, per class). After the frame: the
+//    bytes and unmap; the direct caller and the game's callers in the exe. CONTROLS: a second (multithreaded) WARP
+//    device's immediate context and its deferred context map too (through the same hooked bodies when their slots hold
+//    them, else said so), none recorded. The native_frame line's totals (counts, failed, DISCARD bytes, per class).
+//    After the frame: the
 //    hooks out, both slots as they were; Uninstall unregisters all 16.
 // 5. A long trace (RENODX_TW_MAP_TRACE=0,12, W3m's frame count) past the native calls' room (2^16): the drops counted,
 //    the file (tens of MB) written in more than one part (the log's part count), every kept map in it in order, the
-//    totals of the kept ones; no .part file left.
+//    totals of the kept ones; no .part file left. v3: first_drop_seq where the drops began, a draw before them with its
+//    bindings, the draw after them cbs=? vbs=? (not known), hash=off.
 // 6. No present event at all: the start waits one present, then starts without the hooks (native_hook=no_context).
 // 7. Uninstall while a trace runs: the hooks out, nothing registered, no file, Maps still work.
 // 8. Another add-on's table-slot hook over the Map slot while the trace runs (v2's hook was one, and broke when another
 //    sat above it): its Maps reach the body and are recorded; at the trace's end the slot still holds the other hook
 //    (the trace never writes the table), Maps through it work; after it left, the slot holds the body.
-// 9. tw_map_trace_v3.txt (RENODX_TW_MAP_TRACE=0,2): the seeds (the bindings from before the trace: VS b0 by Set, PS b2
+// 9. tw_map_trace_v3.txt (RENODX_TW_MAP_TRACE=0,2,hash: hash=on, hash_ms per frame, no drop): the seeds (the
+//    bindings from before the trace: VS b0 by Set, PS b2
 //    by Set1, input slot 1), a constant buffer made on another thread (its buffer line: create and destroy threads; a
 //    texture's creation: no line), its maps' content hashes (the test's own FNV-1a of the bytes it wrote), a Set1 at PS
 //    b3, draws with the bindings changed since the draw before (the first: all; then none; then only the new content),
 //    a swap to a private state (every binding unknown) and back (the state's bindings again), a ClearState (the bound
 //    slots null), a dispatch's CS binding; every line in call order, the stream equal to the calls made.
+// 10. destroy_device while a trace runs: another device's: nothing; the game's: the hooks out, the context let go.
 #include <windows.h>
 #include <d3d11_1.h>
 #include <wrl/client.h>
@@ -203,10 +208,12 @@ int main() {
 
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11DeviceContext> context;
-  CHECK(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
+  CHECK(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_SINGLETHREADED, nullptr, 0, D3D11_SDK_VERSION,
+                                    device.GetAddressOf(), nullptr,
                                     context.GetAddressOf())));
-  // The context hooks go in only while device_loss knows one D3D11 device: this one (its init_device in the game).
-  twattila::device_loss::devices.push_back({.device = device.Get()});
+  // The context hooks go in only while device_loss knows one single-threaded D3D11 device: this one (its init_device in
+  // the game: Attila's is single-threaded).
+  twattila::device_loss::devices.push_back({.device = device.Get(), .single_threaded = true});
   mock::Device mock_device;
   mock_device.native = device;
   TestList list;
@@ -228,7 +235,8 @@ int main() {
   for (int present = 0; present < 5; ++present) frame_trace::OnPresent(false);
   CHECK(Registered() == 0);
   frame_trace::Uninstall();
-  for (const wchar_t* malformed : {L"soon", L"95abc", L"95;3", L"95,x", L"95,-1", L"95,0", L"95,101", L"95,3x", L"-1", L"1e999"}) {
+  for (const wchar_t* malformed : {L"soon", L"95abc", L"95;3", L"95,x", L"95,-1", L"95,0", L"95,101", L"95,3x", L"95,3,x", L"95,3,hashx", L"95,hash", L"-1",
+                                    L"1e999"}) {
     SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", malformed);
     frame_trace::Install();
     frame_trace::OnPresent(false);
@@ -236,7 +244,7 @@ int main() {
     frame_trace::Uninstall();
   }
   CHECK(!std::filesystem::exists(trace_path));
-  std::printf("1. off and 10 malformed settings: nothing registered, no file\n");
+  std::printf("1. off and 13 malformed settings: nothing registered, no file\n");
 
   // 2. Two frames from 0.15 s after the first present.
   const bool comma_locale = std::setlocale(LC_ALL, "de-DE") != nullptr;
@@ -460,7 +468,7 @@ int main() {
                                                      .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE};
   ComPtr<ID3D11Texture2D> dynamic_texture;
   CHECK(SUCCEEDED(device->CreateTexture2D(&dynamic_texture_desc, nullptr, dynamic_texture.GetAddressOf())));
-  // The other contexts: a second device's immediate one, a deferred one of this device.
+  // The other contexts: a second device's immediate and deferred ones (the deferred one maps that device's buffer).
   ComPtr<ID3D11Device> other_device;
   ComPtr<ID3D11DeviceContext> other_context;
   CHECK(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, other_device.GetAddressOf(), nullptr,
@@ -470,7 +478,8 @@ int main() {
   ComPtr<ID3D11Buffer> other_buffer;
   CHECK(SUCCEEDED(other_device->CreateBuffer(&other_desc, nullptr, other_buffer.GetAddressOf())));
   ComPtr<ID3D11DeviceContext> deferred_context;
-  CHECK(SUCCEEDED(device->CreateDeferredContext(0, deferred_context.GetAddressOf())));
+  // The hooked device is single-threaded (no deferred contexts): the deferred one is the multithreaded device's.
+  CHECK(SUCCEEDED(other_device->CreateDeferredContext(0, deferred_context.GetAddressOf())));
 
   void* const runtime_map = TableEntry(context.Get(), 14);
   void* const runtime_unmap = TableEntry(context.Get(), 15);
@@ -538,8 +547,8 @@ int main() {
   // CONTROLS: other contexts' maps through the same bodies are not the game's.
   CHECK(SUCCEEDED(other_context->Map(other_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
   other_context->Unmap(other_buffer.Get(), 0);
-  CHECK(SUCCEEDED(deferred_context->Map(vertex_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
-  deferred_context->Unmap(vertex_buffer.Get(), 0);
+  CHECK(SUCCEEDED(deferred_context->Map(other_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+  deferred_context->Unmap(other_buffer.Get(), 0);
   // The seam back before the hooks come out (their removal names the trampoline).
   hook_state.trampolines[hooks::internal::MAP] = reinterpret_cast<void*>(slow_next);
   frame_trace::OnPresent(false);
@@ -612,10 +621,13 @@ int main() {
   frame_trace::OnPresent(false);
   CHECK(frame_trace::internal::map_trace.tracing.load());
   constexpr size_t LONG_MAPS = 70000;
+  // A draw before the drops (its bindings known) and one after them (not known: cbs=? vbs=?).
+  Invoke<api_event::draw>(static_cast<reshade::api::command_list*>(&list), 3u, 1u, 0u, 0u);
   for (size_t index = 0; index < LONG_MAPS; ++index) {
     CHECK(SUCCEEDED(context->Map(vertex_buffer.Get(), 0, D3D11_MAP_WRITE_NO_OVERWRITE, 0, &mapped)));
     context->Unmap(vertex_buffer.Get(), 0);
   }
+  Invoke<api_event::draw>(static_cast<reshade::api::command_list*>(&list), 3u, 1u, 0u, 0u);
   log_lines.clear();
   for (int present = 0; present < 12; ++present) frame_trace::OnPresent(false);
   CHECK(!frame_trace::internal::map_trace.tracing.load());
@@ -640,8 +652,16 @@ int main() {
     if (const size_t at = line.find(" parts)."); at != std::string::npos) long_parts = std::stoi(line.substr(line.rfind('(', at) + 1));
   }
   CHECK(long_parts >= 2);
-  std::printf("5. a long trace: %zu native maps kept, %zu calls dropped, %llu bytes written in %d parts\n", long_maps.size(), 2 * LONG_MAPS - kept_calls,
-              static_cast<unsigned long long>(long_bytes), long_parts);
+  // v3: the drops from the sequence after the seeds (7), the first draw and the kept calls on.
+  const auto v3_path = folder / L"tw_map_trace_v3.txt";
+  const auto long_v3 = Lines(v3_path, "v3");
+  const auto long_draws = Lines(v3_path, "draw");
+  CHECK(long_v3.size() == 1 && Field(long_v3[0], "first_drop_seq") == std::to_string(7 + 1 + kept_calls) && Field(long_v3[0], "hash") == "off");
+  CHECK(long_draws.size() == 2 && Field(long_draws[0], "cbs") != "?" && Field(long_draws[1], "cbs") == "?" && Field(long_draws[1], "vbs") == "?");
+  std::printf("5. a long trace: %zu native maps kept, %zu calls dropped, %llu bytes written in %d parts; v3 first_drop_seq %s, the draw after"
+              " it cbs=? vbs=?\n",
+              long_maps.size(), 2 * LONG_MAPS - kept_calls, static_cast<unsigned long long>(long_bytes), long_parts,
+              Field(long_v3[0], "first_drop_seq").c_str());
   std::filesystem::remove(trace_path);
 
   // 6. No present event: one present waited for it, then the trace without the hook.
@@ -704,14 +724,13 @@ int main() {
   std::filesystem::remove(trace_path);
   std::printf("8. another add-on's slot hook over the Map slot: its map recorded through the body, the slot left to it, maps work after\n");
 
-  // 9. tw_map_trace_v3.txt.
-  const auto v3_path = folder / L"tw_map_trace_v3.txt";
+  // 9. tw_map_trace_v3.txt (the content hashes on).
   ComPtr<ID3D11Device1> device1;
   ComPtr<ID3D11DeviceContext1> context1;
   CHECK(SUCCEEDED(device.As(&device1)) && SUCCEEDED(context.As(&context1)));
   const D3D_FEATURE_LEVEL level = device->GetFeatureLevel();
   ComPtr<ID3DDeviceContextState> private_state;
-  CHECK(SUCCEEDED(device1->CreateDeviceContextState(0, &level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1), nullptr, private_state.GetAddressOf())));
+  CHECK(SUCCEEDED(device1->CreateDeviceContextState(D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED, &level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1), nullptr, private_state.GetAddressOf())));
   const auto seed_vs = describe_buffer(256, D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE);
   const auto seed_ps = describe_buffer(512, D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE);
   CHECK(seed_vs && seed_ps);
@@ -722,7 +741,7 @@ int main() {
   context->VSSetConstantBuffers(0, 1, seed_vs.GetAddressOf());
   context1->PSSetConstantBuffers1(2, 1, seed_ps.GetAddressOf(), &window_first, &window_count);
   context->IASetVertexBuffers(1, 1, vertex_buffer.GetAddressOf(), &vb_stride, &vb_offset);
-  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,2");
+  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,2,hash");
   frame_trace::Install();
   present_event();
   frame_trace::OnPresent(false);
@@ -797,6 +816,8 @@ int main() {
   CHECK(v3_header.size() == 1 && Field(v3_header[0], "hook") == "on" && Field(v3_header[0], "frames") == "2");
   CHECK(Field(v3_header[0], "native_calls") == "4" && Field(v3_header[0], "binds") == "12" && Field(v3_header[0], "draws") == "7"
         && Field(v3_header[0], "buffers") == "1");
+  CHECK(Field(v3_header[0], "first_drop_seq") == "-" && Field(v3_header[0], "hash") == "on"
+        && std::ranges::count(Field(v3_header[0], "hash_ms"), ',') == 1);
   CHECK(Field(v3_header[0], "dropped_native_calls") == "0" && Field(v3_header[0], "dropped_binds") == "0" && Field(v3_header[0], "dropped_draws") == "0"
         && Field(v3_header[0], "dropped_buffers") == "0");
   CHECK(Lines(v3_path, "present").size() == 3);
@@ -864,6 +885,23 @@ int main() {
   std::printf("9. v3: %zu stream lines equal to the calls made; seeds, content hashes, changed bindings per draw, swap and ClearState replayed;"
               " the buffer made on thread %lu, ended on thread %lu\n",
               stream.size(), static_cast<unsigned long>(maker_thread), static_cast<unsigned long>(destroyer_thread));
+  // 10. The game's device's end while the trace runs (another device's end first: nothing): the hooks out, the context
+  // let go.
+  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,3");
+  frame_trace::Install();
+  present_event();
+  frame_trace::OnPresent(false);
+  CHECK(hook_state.hooks.size() == hooks::internal::BODIES);
+  mock::Device other_mock;
+  other_mock.native = other_device;
+  Invoke<api_event::destroy_device>(static_cast<reshade::api::device*>(&other_mock));
+  CHECK(hook_state.hooks.size() == hooks::internal::BODIES && frame_trace::internal::map_trace.immediate_context.load() == context.Get());
+  Invoke<api_event::destroy_device>(static_cast<reshade::api::device*>(&mock_device));
+  CHECK(hook_state.hooks.empty() && frame_trace::internal::map_trace.immediate_context.load() == nullptr);
+  frame_trace::Uninstall();
+  CHECK(Registered() == 0);
+  std::printf("10. the game's device's end: the hooks out, the context let go (another device's end: nothing)\n");
+
   // Part 2's trace back in its place for run.ps1.
   std::filesystem::remove(trace_path);
   std::filesystem::rename(part2_path, trace_path);

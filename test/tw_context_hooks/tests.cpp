@@ -1,7 +1,8 @@
 // twattila/context_hooks.hpp on WARP (WARP runs on the same d3d11.dll runtime bodies as the game's device), a
 // single-threaded device as the game's, x86 and amd64:
 // 1. The 17 bodies read from the immediate context's own table: inside d3d11.dll, distinct, none starting with a jump
-//    (each printed: slot, RVA, first bytes). CONTROLS refused: no device / two devices in device_loss's list; a body the
+//    (each printed: slot, RVA, first bytes). CONTROLS refused: no device / two devices / one multithreaded device in
+//    device_loss's list; a body the
 //    test detoured first (its E9).
 // 2. Seeds: a constant buffer bound with a Set1 window, one with Set, a vertex buffer, all before Install: the seeds.
 // 3. Every body in every table state: settled, after a Flush, after a Draw, after SwapDeviceContextState and after the
@@ -173,19 +174,22 @@ int main() {
   auto sorted = bodies;
   std::ranges::sort(sorted);
   CHECK(std::ranges::adjacent_find(sorted) == sorted.end());
-  CHECK(!hooks::Install(context.Get(), Observe) && Logged("0 D3D11 devices"));
+  CHECK(!hooks::Install(context.Get(), Observe, true) && Logged("0 D3D11 devices"));
   loss::devices = {{.device = device.Get(), .single_threaded = true}, {.device = device.Get(), .single_threaded = true}};
-  CHECK(!hooks::Install(context.Get(), Observe) && Logged("2 D3D11 devices"));
+  CHECK(!hooks::Install(context.Get(), Observe, true) && Logged("2 D3D11 devices"));
+  loss::devices = {{.device = device.Get(), .single_threaded = false}};
+  CHECK(!hooks::Install(context.Get(), Observe, true) && Logged("not single-threaded") && hooks::internal::state.hooks.empty());
   loss::devices = {{.device = device.Get(), .single_threaded = true}};
   test_detour_next = reinterpret_cast<hooks::internal::MapFunction>(bodies[hooks::internal::MAP]);
   CHECK(DetourTransactionBegin() == NO_ERROR && DetourAttach(reinterpret_cast<void**>(&test_detour_next), reinterpret_cast<void*>(&TestDetourMap)) == NO_ERROR
         && DetourTransactionCommit() == NO_ERROR);
   CHECK(static_cast<const uint8_t*>(bodies[hooks::internal::MAP])[0] == 0xE9);
-  CHECK(!hooks::Install(context.Get(), Observe) && Logged("starts with a jump") && hooks::internal::state.hooks.empty());
+  CHECK(!hooks::Install(context.Get(), Observe, true) && Logged("starts with a jump") && hooks::internal::state.hooks.empty());
   CHECK(DetourTransactionBegin() == NO_ERROR && DetourDetach(reinterpret_cast<void**>(&test_detour_next), reinterpret_cast<void*>(&TestDetourMap)) == NO_ERROR
         && DetourTransactionCommit() == NO_ERROR);
   CHECK(std::memcmp(bodies[hooks::internal::MAP], prologues[hooks::internal::MAP].data(), 16) == 0);
-  std::printf("1. 17 distinct bodies in d3d11.dll, no jump prologue; refused: 0 and 2 devices, a body detoured first (E9)\n");
+  std::printf("1. 17 distinct bodies in d3d11.dll, no jump prologue; refused: 0 and 2 devices, a multithreaded one, a body detoured"
+              " first (E9)\n");
 
   // 2. Seeds.
   const UINT window_first = 16;
@@ -195,7 +199,7 @@ int main() {
   const UINT seed_stride = 12;
   const UINT seed_offset = 24;
   context->IASetVertexBuffers(1, 1, vb.GetAddressOf(), &seed_stride, &seed_offset);
-  CHECK(hooks::Install(context.Get(), Observe));
+  CHECK(hooks::Install(context.Get(), Observe, true));
   CHECK(records.size() == 7);
   for (size_t stage = 0; stage < hooks::STAGES; ++stage) {
     const auto& seed = records[stage];
@@ -205,12 +209,14 @@ int main() {
       const bool cs5 = (stage == 5 && slot == 5);
       CHECK(seed.buffers[slot] == (ps3 ? cb_big.Get() : (cs5 ? cb.Get() : nullptr)));
       if (ps3) CHECK(seed.first_constants[slot] == window_first && seed.constant_counts[slot] == window_count);
-      if (cs5) std::printf("  seed of a Set bind (256 B): first %u count %u\n", seed.first_constants[slot], seed.constant_counts[slot]);
+      // Get1's answer for a Set bind: the whole buffer as 0 + 4096 constants (map trace v3 reads it so).
+      if (cs5) CHECK(seed.first_constants[slot] == 0 && seed.constant_counts[slot] == D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT);
     }
   }
   CHECK(records[6].call.kind == Kind::SEED_VERTEX_BUFFERS && records[6].buffers.size() == 32 && records[6].buffers[1] == vb.Get()
         && records[6].strides[1] == seed_stride && records[6].offsets[1] == seed_offset && records[6].buffers[0] == nullptr);
-  std::printf("2. seeds: ps b3 (Set1 window %u+%u), cs b5 (Set), vb 1 (stride %u offset %u)\n", window_first, window_count, seed_stride, seed_offset);
+  std::printf("2. seeds: ps b3 (Set1 window %u+%u), cs b5 (Set: 0+4096), vb 1 (stride %u offset %u)\n", window_first, window_count, seed_stride,
+              seed_offset);
 
   // 3. Every body in every table state.
   D3D11_MAPPED_SUBRESOURCE mapped = {};
@@ -422,7 +428,22 @@ int main() {
   std::printf("6. 10 records equal the calls (content hash, failed Map 0x%08x, Set1 windows and nulls, vertex buffers, both swaps' states, ClearState)\n",
               static_cast<uint32_t>(invalid));
 
-  // 7. Other contexts and another thread.
+  // 7. Other contexts and another thread. A second single-threaded device's table holds the hooked bodies (its calls enter
+  // them: the control); the multithreaded one's may hold others (counted, said so).
+  ComPtr<ID3D11Device> twin_device;
+  ComPtr<ID3D11DeviceContext> twin_context;
+  CHECK(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_SINGLETHREADED, &level, 1, D3D11_SDK_VERSION,
+                                    twin_device.GetAddressOf(), nullptr, twin_context.GetAddressOf())));
+  const auto hooked_slots = [&](ID3D11DeviceContext* other) {
+    other->IAGetPrimitiveTopology(&topology);
+    void* const* other_table = *reinterpret_cast<void* const* const*>(other);
+    size_t count = 0;
+    for (size_t body = 0; body < bodies.size(); ++body) {
+      count += (other_table[hooks::internal::BODY_SLOTS[body]] == bodies[body] ? 1 : 0);
+    }
+    return count;
+  };
+  CHECK(hooked_slots(twin_context.Get()) == hooks::internal::BODIES);
   ComPtr<ID3D11Device> other_device;
   ComPtr<ID3D11DeviceContext> other_context;
   CHECK(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &level, 1, D3D11_SDK_VERSION, other_device.GetAddressOf(), nullptr,
@@ -434,8 +455,17 @@ int main() {
   const D3D11_BUFFER_DESC other_desc = {.ByteWidth = 256, .Usage = D3D11_USAGE_DYNAMIC, .BindFlags = D3D11_BIND_CONSTANT_BUFFER, .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE};
   ComPtr<ID3D11Buffer> other_cb;
   CHECK(SUCCEEDED(other_device->CreateBuffer(&other_desc, nullptr, other_cb.GetAddressOf())));
+  ComPtr<ID3D11Buffer> twin_cb;
+  CHECK(SUCCEEDED(twin_device->CreateBuffer(&other_desc, nullptr, twin_cb.GetAddressOf())));
+  const size_t other_hooked = hooked_slots(other_context.Get());
+  const size_t deferred_hooked = hooked_slots(deferred.Get());
   records.clear();
   const auto entries_other = hooks::internal::state.entries;
+  CHECK(SUCCEEDED(twin_context->Map(twin_cb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+  twin_context->Unmap(twin_cb.Get(), 0);
+  twin_context->PSSetConstantBuffers(0, 1, twin_cb.GetAddressOf());
+  twin_context->IASetVertexBuffers(0, 1, twin_cb.GetAddressOf(), &seed_stride, &seed_offset);
+  twin_context->ClearState();
   CHECK(SUCCEEDED(other_context->Map(other_cb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
   other_context->Unmap(other_cb.Get(), 0);
   other_context->PSSetConstantBuffers(0, 1, other_cb.GetAddressOf());
@@ -451,8 +481,10 @@ int main() {
   }).join();
   context->PSSetConstantBuffers(2, 1, cb.GetAddressOf());
   CHECK(records.empty() && std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("called the game's context") != std::string::npos; }) == 1);
-  std::printf("7. not recorded: a second device's immediate and deferred contexts (this device's deferred: %s), another thread (logged once, later calls passed on)\n",
-              (own_deferred_made ? "made" : "refused, single-threaded"));
+  std::printf("7. not recorded: a second single-threaded device's context (all 17 slots the hooked bodies), a multithreaded device's immediate"
+              " (%zu of 17 slots the hooked bodies) and deferred (%zu of 17) contexts (this device's deferred: %s), another thread (logged once,"
+              " later calls passed on)\n",
+              other_hooked, deferred_hooked, (own_deferred_made ? "made" : "refused, single-threaded"));
 
   // 8. Uninstall, then installed and removed again.
   const auto removed = [&] {
@@ -468,7 +500,7 @@ int main() {
   };
   hooks::Uninstall();
   CHECK(removed());
-  CHECK(hooks::Install(context.Get(), Observe) && records.size() == 7);
+  CHECK(hooks::Install(context.Get(), Observe, true) && records.size() == 7);
   records.clear();
   context->PSSetConstantBuffers(2, 1, cb.GetAddressOf());
   CHECK(records.size() == 1);

@@ -18,7 +18,6 @@
 #include <cstring>
 #include <exception>
 #include <format>
-#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <string_view>
@@ -34,13 +33,14 @@
 
 // The game's immediate context's D3D11 runtime bodies, detoured: the single owner of these detours. Each feature is a
 // path inside the same replacements (now only the measure path, map trace v3), never a second detour on a body.
-// Bodies, not table slots: d3d11.dll gives each context its own table inside the context object and rewrites it at every
-// SwapDeviceContextState (to stubs that call the same bodies, settled back at the next state call), so a slot hook dies
-// at the add-on's first private-state pass. ReShade's proxy calls the bodies too, so every call on the context comes
-// through: the game's, ReShade's and the add-ons'. Installed (Install) only on the render thread, while device_loss
-// knows exactly one D3D11 device (the game's, single-threaded: no other thread runs these bodies), with
-// CALLER_GUARANTEES_QUIESCENCE (enlisting threads can deadlock on the heap lock), and only when the bodies check out.
-// Removed by the installing feature, at the device's end (OnDestroyDevice) and at the add-on's detach.
+// Bodies, not table slots: d3d11.dll gives each context its own table inside the context object and rewrites it at
+// every SwapDeviceContextState (to stubs that call the same bodies, settled back at the next state call), so a slot
+// hook dies at the add-on's first private-state pass. ReShade's proxy calls the bodies too, so every call on the
+// context comes through: the game's, ReShade's and the add-ons'. Installed (Install) only on the render thread, while
+// device_loss knows exactly one D3D11 device and it is single-threaded (the game's: no other thread runs these bodies),
+// with CALLER_GUARANTEES_QUIESCENCE (enlisting threads can deadlock on the heap lock), and only when the bodies check
+// out. Removed by the installing feature: at its end, at the device's end (OnDestroyDevice, from its destroy_device
+// handler, under its lock) and at the add-on's detach.
 namespace twattila::context_hooks {
 
 enum class Kind : uint8_t {
@@ -74,8 +74,11 @@ struct Call {
   UINT map_flags = 0;
   HRESULT result = S_OK;
   UINT depth_pitch = 0;
-  bool content_known = false;  // an Unmap of a constant buffer written through its Map: its bytes' hash (FNV-1a, 8-byte words)
+  // An Unmap of a constant buffer written through its Map, hashing on: its bytes' hash (FNV-1a, 8-byte words) and the
+  // hash's time (before the native body, outside qpc / done).
+  bool content_known = false;
   uint64_t content = 0;
+  int64_t hash_ticks = 0;
   UINT start_slot = 0;
   UINT count = 0;
   ID3D11Buffer* const* buffers = nullptr;
@@ -86,6 +89,8 @@ struct Call {
   ID3DDeviceContextState* state = nullptr;           // SwapDeviceContextState's new state
   ID3DDeviceContextState* previous_state = nullptr;  // and the one it replaced (asked for where the caller passed null)
 };
+
+using Observer = void (*)(const Call&);
 
 namespace internal {
 
@@ -110,7 +115,8 @@ constexpr size_t SET_VERTEX_BUFFERS = 14;
 constexpr size_t SWAP_STATE = 15;
 constexpr size_t CLEAR_STATE = 16;
 constexpr size_t BODIES = 17;
-constexpr std::array<size_t, BODIES> BODY_SLOTS = {14, 15, 7, 62, 66, 22, 16, 71, 119, 120, 121, 122, 123, 124, 18, 131, 110};
+constexpr std::array<size_t, BODIES> BODY_SLOTS = {14,  15,  7,   62,  66,  22, 16,  71, 119,
+                                                   120, 121, 122, 123, 124, 18, 131, 110};
 
 // A constant buffer mapped for writing, not yet unmapped: its pointer for the unmap's hash.
 struct OpenMap {
@@ -124,14 +130,16 @@ struct State {
   // The hooked context (null: every call goes straight on), read by every thread that runs a hooked body.
   std::atomic<ID3D11DeviceContext*> context = nullptr;
   std::atomic_bool foreign_thread = false;  // a call on it from another thread came: every later call goes straight on
+  std::atomic<int64_t> foreign_qpc = 0;     // when (0: none)
   // Set at Install before `context`; the rest only on the render thread.
   ID3D11Device* device = nullptr;  // not owned: the context's
   DWORD thread = 0;                // the render thread
-  void (*observer)(const Call&) = nullptr;
+  Observer observer = nullptr;
+  bool hash_contents = false;  // the Unmaps' content hashes (they read write-combined memory: off for timing runs)
   uint32_t depth = 0;
   std::array<uint32_t, BODIES> entries = {};  // hook entries on the context and thread since Install, nested ones too
   uint32_t nested = 0;                        // of them, inside another hook's native body
-  std::vector<OpenMap> open_maps;
+  std::vector<OpenMap> open_maps;  // reserved at Install, never grown inside a body
   // Detours' trampolines (a body's own address until installed). A test seam: test/tw_map_trace puts a slow driver
   // between a replacement and its trampoline (only while no call runs).
   std::array<void*, BODIES> trampolines = {};
@@ -148,24 +156,32 @@ inline int64_t Qpc() {
 
 // The replacements' guards, in order: another context (or none hooked) straight on; a call from another thread straight
 // on, logged once, and every later call too (the device is single-threaded: never expected); a call inside another
-// hook's native body straight on, counted. True: the feature path.
-inline bool Tracked(const void* context, size_t body) {
-  if (context != state.context.load(std::memory_order_acquire) || state.foreign_thread.load(std::memory_order_relaxed)) {
-    return false;
+// hook's native body straight on, counted. The feature path's observer (kept by the caller for after the native body),
+// or null: straight on.
+inline Observer Tracked(const void* context, size_t body) {
+  if (context != state.context.load(std::memory_order_acquire)
+      || state.foreign_thread.load(std::memory_order_relaxed)) {
+    return nullptr;
   }
   if (GetCurrentThreadId() != state.thread) {
     if (!state.foreign_thread.exchange(true)) {
-      renodx::utils::log::w("[Total War] Context hooks: thread ", GetCurrentThreadId(), " called the game's context (body ",
-                            BODY_SLOTS[body], "): every call goes straight on from now.");
+      state.foreign_qpc.store(Qpc(), std::memory_order_relaxed);
+      // The log line allocates: nothing may unwind through d3d11.
+      try {
+        renodx::utils::log::w("[Total War] Context hooks: thread ", GetCurrentThreadId(),
+                              " called the game's context (body ", BODY_SLOTS[body],
+                              "): every call goes straight on from now.");
+      } catch (const std::exception&) {
+      }
     }
-    return false;
+    return nullptr;
   }
   ++state.entries[body];
   if (state.depth != 0) {
     ++state.nested;
-    return false;
+    return nullptr;
   }
-  return state.observer != nullptr;
+  return state.observer;
 }
 
 // The native body (the trampoline), timed, with the depth raised: entries inside it are nested ones.
@@ -192,40 +208,57 @@ auto TimeNative(Call* call, Native native) {
 inline HRESULT STDMETHODCALLTYPE Map(ID3D11DeviceContext* context, ID3D11Resource* resource, UINT subresource,
                                      D3D11_MAP map_type, UINT map_flags, D3D11_MAPPED_SUBRESOURCE* mapped) {
   const auto native = reinterpret_cast<MapFunction>(state.trampolines[MAP]);
-  if (!Tracked(context, MAP)) return native(context, resource, subresource, map_type, map_flags, mapped);
+  const Observer observer = Tracked(context, MAP);
+  if (observer == nullptr) return native(context, resource, subresource, map_type, map_flags, mapped);
   Call call = {.kind = Kind::MAP, .direct_caller = reinterpret_cast<uintptr_t>(_ReturnAddress()), .resource = resource,
                .subresource = subresource, .map_type = map_type, .map_flags = map_flags};
   call.result = TimeNative(&call, [&] { return native(context, resource, subresource, map_type, map_flags, mapped); });
   if (SUCCEEDED(call.result) && mapped != nullptr) {
     call.depth_pitch = mapped->DepthPitch;
+  }
+  if (SUCCEEDED(call.result) && mapped != nullptr && state.hash_contents && map_type != D3D11_MAP_READ) {
     D3D11_RESOURCE_DIMENSION dimension = D3D11_RESOURCE_DIMENSION_UNKNOWN;
     resource->GetType(&dimension);
     D3D11_BUFFER_DESC desc = {};
     if (dimension == D3D11_RESOURCE_DIMENSION_BUFFER) {
       static_cast<ID3D11Buffer*>(resource)->GetDesc(&desc);
     }
-    if ((desc.BindFlags & D3D11_BIND_CONSTANT_BUFFER) != 0 && map_type != D3D11_MAP_READ) {
-      state.open_maps.push_back({.resource = resource, .subresource = subresource, .data = mapped->pData, .bytes = desc.ByteWidth});
+    // A constant buffer's map: one of the same subresource replaces the older (its unmap not seen here); a full list
+    // takes no more.
+    if ((desc.BindFlags & D3D11_BIND_CONSTANT_BUFFER) != 0) {
+      const OpenMap open = {.resource = resource, .subresource = subresource, .data = mapped->pData,
+                            .bytes = desc.ByteWidth};
+      const auto same = std::ranges::find_if(state.open_maps, [&](const OpenMap& map) {
+        return map.resource == resource && map.subresource == subresource;
+      });
+      if (same != state.open_maps.end()) {
+        *same = open;
+      } else if (state.open_maps.size() < state.open_maps.capacity()) {
+        state.open_maps.push_back(open);
+      }
     }
   }
-  state.observer(call);
+  observer(call);
   return call.result;
 }
 
 inline void STDMETHODCALLTYPE Unmap(ID3D11DeviceContext* context, ID3D11Resource* resource, UINT subresource) {
   const auto native = reinterpret_cast<UnmapFunction>(state.trampolines[UNMAP]);
-  if (!Tracked(context, UNMAP)) {
+  const Observer observer = Tracked(context, UNMAP);
+  if (observer == nullptr) {
     native(context, resource, subresource);
     return;
   }
-  Call call = {.kind = Kind::UNMAP, .direct_caller = reinterpret_cast<uintptr_t>(_ReturnAddress()), .resource = resource,
-               .subresource = subresource};
+  Call call = {.kind = Kind::UNMAP, .direct_caller = reinterpret_cast<uintptr_t>(_ReturnAddress()),
+               .resource = resource, .subresource = subresource};
   // The bytes as the caller wrote them, before the native Unmap (its pointer is valid until then). Write-combined
-  // memory: slow to read, a trace's cost outside the native time.
+  // memory: slow to read, a trace's cost outside the native time (timed: hash_ticks). A DISCARD's bytes the caller did
+  // not write are undefined: the same upload can hash differently.
   const auto open = std::ranges::find_if(state.open_maps, [&](const OpenMap& map) {
     return map.resource == resource && map.subresource == subresource;
   });
   if (open != state.open_maps.end()) {
+    const int64_t hash_start = Qpc();
     const auto* bytes = static_cast<const uint8_t*>(open->data);
     uint64_t hash = 0xCBF29CE484222325;
     size_t offset = 0;
@@ -240,16 +273,18 @@ inline void STDMETHODCALLTYPE Unmap(ID3D11DeviceContext* context, ID3D11Resource
     call.content_known = true;
     call.content = hash;
     state.open_maps.erase(open);
+    call.hash_ticks = Qpc() - hash_start;
   }
   TimeNative(&call, [&] { native(context, resource, subresource); });
-  state.observer(call);
+  observer(call);
 }
 
 template <size_t STAGE>
 void STDMETHODCALLTYPE SetConstantBuffers(ID3D11DeviceContext* context, UINT start_slot, UINT count,
                                           ID3D11Buffer* const* buffers) {
   const auto native = reinterpret_cast<SetConstantBuffersFunction>(state.trampolines[SET_CONSTANT_BUFFERS + STAGE]);
-  if (!Tracked(context, SET_CONSTANT_BUFFERS + STAGE)) {
+  const Observer observer = Tracked(context, SET_CONSTANT_BUFFERS + STAGE);
+  if (observer == nullptr) {
     native(context, start_slot, count, buffers);
     return;
   }
@@ -257,7 +292,7 @@ void STDMETHODCALLTYPE SetConstantBuffers(ID3D11DeviceContext* context, UINT sta
                .direct_caller = reinterpret_cast<uintptr_t>(_ReturnAddress()), .start_slot = start_slot, .count = count,
                .buffers = buffers};
   TimeNative(&call, [&] { native(context, start_slot, count, buffers); });
-  state.observer(call);
+  observer(call);
 }
 
 template <size_t STAGE>
@@ -265,7 +300,8 @@ void STDMETHODCALLTYPE SetConstantBuffers1(ID3D11DeviceContext1* context, UINT s
                                            ID3D11Buffer* const* buffers, const UINT* first_constants,
                                            const UINT* constant_counts) {
   const auto native = reinterpret_cast<SetConstantBuffers1Function>(state.trampolines[SET_CONSTANT_BUFFERS1 + STAGE]);
-  if (!Tracked(context, SET_CONSTANT_BUFFERS1 + STAGE)) {
+  const Observer observer = Tracked(context, SET_CONSTANT_BUFFERS1 + STAGE);
+  if (observer == nullptr) {
     native(context, start_slot, count, buffers, first_constants, constant_counts);
     return;
   }
@@ -273,30 +309,33 @@ void STDMETHODCALLTYPE SetConstantBuffers1(ID3D11DeviceContext1* context, UINT s
                .direct_caller = reinterpret_cast<uintptr_t>(_ReturnAddress()), .start_slot = start_slot, .count = count,
                .buffers = buffers, .first_constants = first_constants, .constant_counts = constant_counts};
   TimeNative(&call, [&] { native(context, start_slot, count, buffers, first_constants, constant_counts); });
-  state.observer(call);
+  observer(call);
 }
 
 inline void STDMETHODCALLTYPE SetVertexBuffers(ID3D11DeviceContext* context, UINT start_slot, UINT count,
                                                ID3D11Buffer* const* buffers, const UINT* strides, const UINT* offsets) {
   const auto native = reinterpret_cast<SetVertexBuffersFunction>(state.trampolines[SET_VERTEX_BUFFERS]);
-  if (!Tracked(context, SET_VERTEX_BUFFERS)) {
+  const Observer observer = Tracked(context, SET_VERTEX_BUFFERS);
+  if (observer == nullptr) {
     native(context, start_slot, count, buffers, strides, offsets);
     return;
   }
   Call call = {.kind = Kind::SET_VERTEX_BUFFERS, .direct_caller = reinterpret_cast<uintptr_t>(_ReturnAddress()),
                .start_slot = start_slot, .count = count, .buffers = buffers, .strides = strides, .offsets = offsets};
   TimeNative(&call, [&] { native(context, start_slot, count, buffers, strides, offsets); });
-  state.observer(call);
+  observer(call);
 }
 
 // The active state tracked here: a swap back passes no out pointer (the add-on's passes), so the hook asks for the
 // replaced state itself and lets it go. d3d11 applies the new state lazily: its swap stubs, at the next call on the
-// context, call IASetVertexBuffers and each stage's SetConstantBuffers1 bodies from inside d3d11.dll (test/tw_context_hooks).
+// context, call IASetVertexBuffers and each stage's SetConstantBuffers1 bodies from inside d3d11.dll
+// (test/tw_context_hooks).
 // One settling call here makes that application nested in this hook (passed on, not taken for the caller's binds).
 inline void STDMETHODCALLTYPE SwapState(ID3D11DeviceContext1* context, ID3DDeviceContextState* new_state,
                                         ID3DDeviceContextState** previous_state) {
   const auto native = reinterpret_cast<SwapStateFunction>(state.trampolines[SWAP_STATE]);
-  if (!Tracked(context, SWAP_STATE)) {
+  const Observer observer = Tracked(context, SWAP_STATE);
+  if (observer == nullptr) {
     native(context, new_state, previous_state);
     return;
   }
@@ -312,18 +351,19 @@ inline void STDMETHODCALLTYPE SwapState(ID3D11DeviceContext1* context, ID3DDevic
       replaced->Release();
     }
   });
-  state.observer(call);
+  observer(call);
 }
 
 inline void STDMETHODCALLTYPE ClearState(ID3D11DeviceContext* context) {
   const auto native = reinterpret_cast<ClearStateFunction>(state.trampolines[CLEAR_STATE]);
-  if (!Tracked(context, CLEAR_STATE)) {
+  const Observer observer = Tracked(context, CLEAR_STATE);
+  if (observer == nullptr) {
     native(context);
     return;
   }
   Call call = {.kind = Kind::CLEAR_STATE, .direct_caller = reinterpret_cast<uintptr_t>(_ReturnAddress())};
   TimeNative(&call, [&] { native(context); });
-  state.observer(call);
+  observer(call);
 }
 
 }  // namespace internal
@@ -340,15 +380,16 @@ inline void Uninstall() {
   try {
     state.lifetime.Uninstall(&state.hooks);
   } catch (const std::exception& error) {
-    renodx::utils::log::e("[Total War] Context hooks could not be removed; they pass every call on and the add-on stays loaded: ",
-                          error.what());
+    renodx::utils::log::e(
+        "[Total War] Context hooks could not be removed; they pass every call on and the add-on stays loaded: ",
+        error.what());
   }
 }
 
 // On the render thread, `context` the game's immediate context below ReShade's proxy, and `observer` the measure path:
 // the bodies in its table checked and detoured, the bindings it already holds given to `observer` as seeds, then its
-// calls taken. False (logged): nothing installed.
-inline bool Install(ID3D11DeviceContext* context, void (*observer)(const Call&)) {
+// calls taken (`hash_contents`: with the constant buffers' content hashes). False (logged): nothing installed.
+inline bool Install(ID3D11DeviceContext* context, Observer observer, bool hash_contents) {
   auto& state = internal::state;
   const auto refuse = [](std::string_view reason) {
     renodx::utils::log::w("[Total War] Context hooks: not installed (", reason, ").");
@@ -362,6 +403,8 @@ inline bool Install(ID3D11DeviceContext* context, void (*observer)(const Call&))
     if (device_loss::devices.size() != 1 || device_loss::devices.front().device != device.Get()) {
       return refuse(std::format("{} D3D11 devices known, not only the game's", device_loss::devices.size()));
     }
+    // A multithreaded device's other threads may run these bodies while Detours patches them.
+    if (!device_loss::devices.front().single_threaded) return refuse("the game's D3D11 device is not single-threaded");
   }
   Microsoft::WRL::ComPtr<ID3D11DeviceContext1> context1;
   if (FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf()))) || context1.Get() != context) {
@@ -406,8 +449,10 @@ inline bool Install(ID3D11DeviceContext* context, void (*observer)(const Call&))
         || module != d3d11) {
       return refuse("a body outside d3d11.dll");
     }
-    if (code[0] == 0xE9 || code[0] == 0xEB || (code[0] == 0xFF && code[1] == 0x25) || (code[0] == 0x68 && code[5] == 0xC3)) {
-      return refuse(std::format("the body at d3d11.dll+0x{:x} starts with a jump", reinterpret_cast<uintptr_t>(body) - reinterpret_cast<uintptr_t>(d3d11)));
+    if (code[0] == 0xE9 || code[0] == 0xEB || (code[0] == 0xFF && code[1] == 0x25)
+        || (code[0] == 0x68 && code[5] == 0xC3)) {
+      return refuse(std::format("the body at d3d11.dll+0x{:x} starts with a jump",
+                                reinterpret_cast<uintptr_t>(body) - reinterpret_cast<uintptr_t>(d3d11)));
     }
   }
   auto sorted = bodies;
@@ -436,12 +481,14 @@ inline bool Install(ID3D11DeviceContext* context, void (*observer)(const Call&))
   state.device = device.Get();
   state.thread = GetCurrentThreadId();
   state.observer = observer;
+  state.hash_contents = hash_contents;
   state.depth = 0;
   state.entries = {};
   state.nested = 0;
   state.open_maps.clear();
-  state.open_maps.reserve(16);
+  state.open_maps.reserve(64);
   state.foreign_thread.store(false);
+  state.foreign_qpc.store(0);
   state.trampolines = bodies;
   for (size_t body = 0; body < internal::BODIES; ++body) {
     state.hooks.emplace_back(&state.trampolines[body], replacements[body],
@@ -456,38 +503,49 @@ inline bool Install(ID3D11DeviceContext* context, void (*observer)(const Call&))
   }
   // The seeds: the bindings from before (the game keeps buffers bound across frames), read straight from d3d11 (the Get
   // bodies are not hooked).
-  constexpr std::array GETS = {&ID3D11DeviceContext1::VSGetConstantBuffers1, &ID3D11DeviceContext1::HSGetConstantBuffers1,
-                               &ID3D11DeviceContext1::DSGetConstantBuffers1, &ID3D11DeviceContext1::GSGetConstantBuffers1,
-                               &ID3D11DeviceContext1::PSGetConstantBuffers1, &ID3D11DeviceContext1::CSGetConstantBuffers1};
+  constexpr std::array GETS = {
+      &ID3D11DeviceContext1::VSGetConstantBuffers1, &ID3D11DeviceContext1::HSGetConstantBuffers1,
+      &ID3D11DeviceContext1::DSGetConstantBuffers1, &ID3D11DeviceContext1::GSGetConstantBuffers1,
+      &ID3D11DeviceContext1::PSGetConstantBuffers1, &ID3D11DeviceContext1::CSGetConstantBuffers1};
   for (size_t stage = 0; stage < STAGES; ++stage) {
     std::array<ID3D11Buffer*, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT> buffers = {};
     std::array<UINT, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT> first_constants = {};
     std::array<UINT, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT> constant_counts = {};
     const int64_t qpc = internal::Qpc();
-    (context1.Get()->*GETS[stage])(0, static_cast<UINT>(buffers.size()), buffers.data(), first_constants.data(), constant_counts.data());
-    observer({.kind = Kind::SEED_CONSTANT_BUFFERS, .stage = static_cast<Stage>(stage), .qpc = qpc, .done = internal::Qpc(),
-              .count = static_cast<UINT>(buffers.size()), .buffers = buffers.data(), .first_constants = first_constants.data(),
-              .constant_counts = constant_counts.data()});
+    (context1.Get()->*GETS[stage])(0, static_cast<UINT>(buffers.size()), buffers.data(), first_constants.data(),
+                                   constant_counts.data());
+    observer({.kind = Kind::SEED_CONSTANT_BUFFERS, .stage = static_cast<Stage>(stage), .qpc = qpc,
+              .done = internal::Qpc(), .count = static_cast<UINT>(buffers.size()), .buffers = buffers.data(),
+              .first_constants = first_constants.data(), .constant_counts = constant_counts.data()});
     for (ID3D11Buffer* buffer : buffers) {
-      if (buffer != nullptr) buffer->Release();
+      if (buffer != nullptr) {
+        buffer->Release();
+      }
     }
   }
   std::array<ID3D11Buffer*, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> vertex_buffers = {};
   std::array<UINT, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> strides = {};
   std::array<UINT, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> offsets = {};
   const int64_t qpc = internal::Qpc();
-  context->IAGetVertexBuffers(0, static_cast<UINT>(vertex_buffers.size()), vertex_buffers.data(), strides.data(), offsets.data());
-  observer({.kind = Kind::SEED_VERTEX_BUFFERS, .qpc = qpc, .done = internal::Qpc(), .count = static_cast<UINT>(vertex_buffers.size()),
-            .buffers = vertex_buffers.data(), .strides = strides.data(), .offsets = offsets.data()});
+  context->IAGetVertexBuffers(0, static_cast<UINT>(vertex_buffers.size()), vertex_buffers.data(), strides.data(),
+                              offsets.data());
+  observer({.kind = Kind::SEED_VERTEX_BUFFERS, .qpc = qpc, .done = internal::Qpc(),
+            .count = static_cast<UINT>(vertex_buffers.size()), .buffers = vertex_buffers.data(),
+            .strides = strides.data(), .offsets = offsets.data()});
   for (ID3D11Buffer* buffer : vertex_buffers) {
-    if (buffer != nullptr) buffer->Release();
+    if (buffer != nullptr) {
+      buffer->Release();
+    }
   }
   state.context.store(context, std::memory_order_release);
-  renodx::utils::log::i("[Total War] Context hooks: ", internal::BODIES, " d3d11.dll bodies hooked on the game's context.");
+  renodx::utils::log::i("[Total War] Context hooks: ", internal::BODIES,
+                        " d3d11.dll bodies hooked on the game's context",
+                        (hash_contents ? ", content hashes on." : "."));
   return true;
 }
 
-// The game's device's end (ReShade's destroy_device; the installing feature registers it): the hooks out with it.
+// The game's device's end (ReShade's destroy_device): the hooks out with it. The installing feature calls it from its
+// own handler, under the lock it holds around its other removals.
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (internal::state.context.load() == nullptr || device->get_api() != reshade::api::device_api::d3d11) return;
   if (reinterpret_cast<ID3D11Device*>(device->get_native()) == internal::state.device) {
