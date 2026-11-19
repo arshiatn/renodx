@@ -3955,6 +3955,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         s1ro_ RE-CHECK DONE 20:2x (s1ro_review.md "Re-check"): MERGE, findings 1-11 fixed / accepted, unarmed unchanged.
         S1 MERGED 915f04348 + pushed; rmt_s1's 10 links removed (folder + branch kept). New optional items N1-N7 -> own
         box below. Next (1 agent at a time): c1o_ writes the C1 note v2 (c1r_ M1-M4 + adopted items), then S2 A3 audit.
+        c1o_ (Opus xHigh, read-only) RESUMED 20:3x: C1 note v2 -> render_mt/reports/c1o_design_C1_v2.md.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
