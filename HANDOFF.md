@@ -4148,7 +4148,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Should 2 swap-path rebinds (bp:808, Seed bp:797) not proved by pixels; Should 3 = the GPU checks box. Nits 1-6
         (detach before pool.mutex, `lost` only on a removed device, atomic unwind_wanted, RingSwap previous_state check,
         open_maps on destroy, RingGet bounds). S5 MERGED 15:1x: rmt_s5 b5e89f0b2 -> atn-mods ca057a7ee (clean); build32
-        check of the merged tree started. s5o_ RESUMED: s5x_'s Should 1 / 2 + Nits 1-6 on rmt_s5 (after merging atn-mods
+        check of the merged tree: twattila + twrome2 + twthrones x86 exit 0. s5o_ RESUMED: s5x_'s Should 1 / 2 + Nits 1-6 on rmt_s5 (after merging atn-mods
         in), then s5x_ re-checks. Before the row is offered to players: these + the GPU checks box.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
