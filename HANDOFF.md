@@ -4474,6 +4474,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         projects\D--Dev-renodx\tools\tw\bench\analysis_b2\replay\atn_harness_runs.ps1 -Trap); (c) G1: batch 3's 195 s
         shots by eye (S0 ring on vs REF-ATN / ATNa / ATNb). ORDER (one implementer at a time): c2i_ C.2-4 -> s5o_ latch
         follow-up + trap harness -> c3i_ C.3-2 (B sites + SetGame) -> C.3-3 / C.3-4 -> C batch. Track B after the C batch.
+        c2i_ C.2-4 DONE 21:0x: rmt_c2 5aa638d92 (local, on fee60fba5): rows under #if TWATTILA_DRAW_RECORDING (stage x7, K
+        2-16 default 4, 4 group rows default Off, B Families 0-255), Update order (engine_code::Update gets SiteGroups,
+        then draw_recording::Update; Detach: engine_code::Uninstall then draw_recording::Uninstall), sticky groups (OR of
+        masks since stage Off), S4 / N-6 arena_size = 0 first, N-9 per-group not-usable log, R-N1 nested_calls + guard
+        control (A control sets in_round by hand: a real guard-off nested call loops forever; DepthNested guard on), R-N2
+        differing op's own mesh, R-N3 static_assert, R-N4, N-2 round_meshes + BOversizeRound 8492, N-4 +0x69 unit test +
+        +0x78 mask control. All draw_recording suites + engine_code -Quick + amd64 stubs PASS; gated builds with / without
+        the define exit 0; name check plain words; merge-tree vs atn-mods clean. c23r_ RESUMED: review ->
+        reports/c24r_review.md. s5o_ RESUMED (sole implementer): commit 1 s5x_ Shoulds 1-2 + nits 1-4, commit 2 the trap
+        harness (-Trap switch; NVIDIA runs wait for ATN's rule). Agents: c23r_, s5o_.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
