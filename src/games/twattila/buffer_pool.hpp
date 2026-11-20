@@ -53,7 +53,7 @@ constexpr UINT UNIT_BYTES = 256;  // a segment's granularity: Set1's offset unit
 constexpr UINT UNIT_CONSTANTS = UNIT_BYTES / 16;
 constexpr UINT PIECE_BYTES = 256 * 1024;
 constexpr UINT PIECE_UNITS = PIECE_BYTES / UNIT_BYTES;
-constexpr size_t FIRST_PIECES = 4;
+constexpr size_t FIRST_PIECES = 8;
 constexpr size_t MAX_PIECES = 32;
 constexpr UINT MAX_BUFFER_BYTES = 65536;
 constexpr UINT WHOLE = D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT;  // a whole bind's window as Get1 gives it: 0 + 4096
@@ -178,9 +178,10 @@ struct Pool {
   ID3D11DeviceContext1* context = nullptr;  // not owned: its immediate context, below ReShade
   bool installed = false;
   bool stopped = false;  // unwound: every call goes straight on (open ring maps finish in their buffers)
-  // Unwind at the render thread's next call: the add-on's detach came off it, or a copy body the install never saw.
-  bool unwind_wanted = false;
-  bool lost = false;   // a piece's map or event failed: the device is gone
+  // Unwind at the render thread's next call: the add-on's detach came off it (any thread), or a body the install never
+  // saw in the context's table.
+  std::atomic_bool unwind_wanted = false;
+  bool lost = false;   // a piece's event failed, or a map on a removed device: the device is gone
   bool quiet = false;  // a debug frame: the full ring's line waits
   bool full_logged = false;
   uint32_t open_maps = 0;  // ring maps not yet unmapped
@@ -315,12 +316,13 @@ inline void Detach(Buffer* record) {
   }
 }
 
-// `record`'s copy into the buffer itself: a native DISCARD map (today's wait). A failed map: the device is gone.
+// `record`'s copy into the buffer itself: a native DISCARD map (today's wait). A failed map on a removed device: the
+// device is gone (the other write-backs skipped); else this buffer alone keeps its old bytes.
 inline void WriteNative(const Buffer& record) {
   D3D11_MAPPED_SUBRESOURCE mapped = {};
   if (FAILED(Native<hooks::MapFunction>(hooks::MAP)(pool.context, record.buffer, 0, D3D11_MAP_WRITE_DISCARD, 0,
                                                      &mapped))) {
-    pool.lost = true;
+    pool.lost = pool.lost || FAILED(pool.device->GetDeviceRemovedReason());
     return;
   }
   std::memcpy(mapped.pData, record.copy.data(), record.bytes);
@@ -377,7 +379,8 @@ inline void Drop(StateTable* table) {
 // The ring out of every state: each buffer's bytes back in itself (open ring maps finish there at their Unmaps), every
 // live state's slots rebound to the game's buffers (the others swapped in natively and back), the tables, pieces and
 // copies let go. Calls go straight on from now. The depth raised (d3d11's application of a swapped state is nested).
-// No active table (a swap's, out of memory): the state d3d11 has holds none of the ring's segments.
+// No active table (a swap's: out of memory, or a new state after a swap below the hook): the state d3d11 has now is
+// left as it is.
 inline void Unwind() {
   if (pool.stopped) return;
   pool.stopped = true;
@@ -452,10 +455,38 @@ inline void Unwind() {
 // A call from another thread, a lost device or an unwind wanted: the ring unwinds at once. True: calls go straight on.
 inline bool Stopped() {
   if (!pool.stopped
-      && (pool.lost || pool.unwind_wanted || hooks::state.foreign_thread.load(std::memory_order_relaxed))) {
+      && (pool.lost || pool.unwind_wanted.load(std::memory_order_relaxed)
+          || hooks::state.foreign_thread.load(std::memory_order_relaxed))) {
     Unwind();
   }
   return pool.stopped;
+}
+
+// The context's table against the bodies the install read (each copy slot: either version), settled first as the
+// install read it. Another body there (another d3d11.dll build's, at a trigger the install never ran) would take the
+// game's calls past the ring: out at the render thread's next call (logged). At each present and after each swap (the
+// call that rewrites the table on purpose).
+inline void CheckTable() {
+  D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+  pool.context->IAGetPrimitiveTopology(&topology);
+  void* const* table = *reinterpret_cast<void* const* const*>(pool.context);
+  for (size_t body = 0; body < hooks::FLUSHED_COPIES; ++body) {
+    void* const now = table[hooks::BODY_SLOTS[body]];
+    if (now == hooks::state.bodies[body]
+        || (body >= hooks::COPY_SUBRESOURCE_REGION
+            && now == hooks::state.bodies[body + hooks::FLUSHED_COPIES - hooks::COPY_SUBRESOURCE_REGION])) {
+      continue;
+    }
+    pool.unwind_wanted.store(true, std::memory_order_relaxed);
+    // The log line allocates: nothing may unwind through d3d11.
+    try {
+      renodx::utils::log::w("[Total War] Fewer Driver Waits: the context's table holds a body unknown to it (slot ",
+                            hooks::BODY_SLOTS[body], ").");
+    } catch (const std::exception&) {
+      // No-op: the unwind stands without its log line.
+    }
+    return;
+  }
 }
 
 // Map of a game buffer for writing (DISCARD, or NO_OVERWRITE with its copy valid): its CPU copy, pitches its size.
@@ -497,14 +528,15 @@ inline bool RingUnmap(ID3D11Resource* resource, UINT subresource) {
     WriteNative(*record);
     return true;
   }
-  // `uploaded`'s copy at the current piece's next unit (room checked), its slots rebound. False: the device is gone.
+  // `uploaded`'s copy at the current piece's next unit (room checked), its slots rebound. False: the piece's map failed
+  // (the device gone where it is removed).
   const auto upload = [](Buffer* uploaded) {
     Piece& piece = *pool.pieces[pool.current];
     D3D11_MAPPED_SUBRESOURCE mapped = {};
     if (FAILED(Native<hooks::MapFunction>(hooks::MAP)(
             pool.context, piece.buffer.Get(), 0,
             (piece.mapped_before ? D3D11_MAP_WRITE_NO_OVERWRITE : D3D11_MAP_WRITE_DISCARD), 0, &mapped))) {
-      pool.lost = true;
+      pool.lost = pool.lost || FAILED(pool.device->GetDeviceRemovedReason());
       return false;
     }
     piece.mapped_before = true;
@@ -656,15 +688,16 @@ inline bool RingSet(Stage stage_value, UINT start, UINT count, ID3D11Buffer* con
   return true;
 }
 
-// After the native Get and Get1: the game's buffer for its segment (a reference the caller's), the caller's window.
-// Unwound by this call (after another thread's): the native call again, the slots now as d3d11 has them.
+// After the native Get and Get1 (`count` within the stage's slots: the hooks bound both calls): the game's buffer for
+// its segment (a reference the caller's), the caller's window. Unwound by this call (after another thread's): the
+// native call again, the slots now as d3d11 has them.
 inline void RingGet(Stage stage_value, UINT start, UINT count, ID3D11Buffer** buffers, UINT* firsts, UINT* counts) {
   const auto stage = static_cast<size_t>(stage_value);
   const bool stopped_before = pool.stopped;
   if (Stopped()) {
-    if (stopped_before || start >= SLOTS) return;
+    if (stopped_before) return;
     if (buffers != nullptr) {
-      for (UINT index = 0; index < std::min(count, SLOTS - start); ++index) {
+      for (UINT index = 0; index < count; ++index) {
         if (buffers[index] != nullptr) {
           buffers[index]->Release();
         }
@@ -674,8 +707,7 @@ inline void RingGet(Stage stage_value, UINT start, UINT count, ID3D11Buffer** bu
                                                                                       buffers, firsts, counts);
     return;
   }
-  if (start >= SLOTS) return;
-  for (UINT index = 0; index < std::min(count, SLOTS - start); ++index) {
+  for (UINT index = 0; index < count; ++index) {
     const Slot& entry = pool.active->slots[stage][start + index];
     if (entry.buffer == nullptr) continue;
     if (buffers != nullptr) {
@@ -754,7 +786,7 @@ inline bool RingCopyResource(ID3D11Resource* destination, ID3D11Resource* source
 }
 
 // After the native swap and its settling call: the replaced state's table named, the new state's found (its slots on
-// the segments as they are now) or made from d3d11's binds.
+// the segments as they are now) or made from d3d11's binds; the context's table checked.
 inline void RingSwap(ID3DDeviceContextState* state, ID3DDeviceContextState* previous_state) {
   if (pool.stopped) return;
   // The state's end sets the table's dead flag (the note in its private data). Not noted (no memory, or the state
@@ -782,6 +814,18 @@ inline void RingSwap(ID3DDeviceContextState* state, ID3DDeviceContextState* prev
   const auto found = std::ranges::find_if(pool.states, [state](const std::unique_ptr<StateTable>& table) {
     return table->key == state && state != nullptr && !table->dead->load();
   });
+  if (old->key != nullptr && old->key != previous_state) {
+    // d3d11 replaced another state than the active table's (a swap below this hook: another hooker's, or a native
+    // one). Out, the new state's table (if any) the active one: d3d11 has its state now.
+    pool.active = (found != pool.states.end() ? found->get() : nullptr);
+    try {
+      renodx::utils::log::w("[Total War] Fewer Driver Waits: a state swap it never saw (another state replaced).");
+    } catch (const std::exception&) {
+      // No-op: the unwind stands without its log line.
+    }
+    Unwind();
+    return;
+  }
   if (found == pool.states.end()) {
     try {
       pool.states.push_back(std::make_unique<StateTable>());
@@ -813,6 +857,7 @@ inline void RingSwap(ID3DDeviceContextState* state, ID3DDeviceContextState* prev
       }
     }
   }
+  CheckTable();
   Stopped();
 }
 
@@ -848,7 +893,7 @@ inline void Release() {
   pool.zero.Reset();
   pool.installed = false;
   pool.stopped = false;
-  pool.unwind_wanted = false;
+  pool.unwind_wanted.store(false, std::memory_order_relaxed);
   pool.lost = false;
   pool.open_maps = 0;
   pool.full_logged = false;
@@ -1014,20 +1059,33 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 }
 
 // At each present, on the present thread (the render thread in Attila), `context` the game's immediate context below
-// ReShade: destroyed buffers and dead states' tables freed; the ring in when `on` (its first present on, again after the
-// row was off when it stopped), out when off or stopped (with no ring map open). `quiet`: a debug frame (its line waits).
+// ReShade: destroyed buffers and dead states' tables freed, the context's table checked; the ring in when `on` (its
+// first present on, again after the row was off when it stopped), out when off or stopped (with no ring map open).
+// `quiet`: a debug frame (its line waits).
 inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
   using internal::pool;
   namespace hooks = internal::hooks;
   pool.quiet = quiet;
   if (pool.installed && GetCurrentThreadId() != hooks::state.thread) return;
   if (pool.reclaim_wanted.exchange(false)) {
+    // Destroyed buffers out of their pieces first, not under the lock (a piece's event may end there: a D3D11 call).
+    // From the back: Detach moves the last one into the slot it frees.
+    for (const auto& piece : pool.pieces) {
+      for (size_t index = piece->live.size(); index-- > 0;) {
+        if (piece->live[index]->destroyed.load()) {
+          internal::Detach(piece->live[index]);
+        }
+      }
+    }
     const std::lock_guard lock(pool.mutex);
     for (const auto& record : pool.records) {
-      if (!record->destroyed.load()) continue;
-      // Not one in a slot (each holds a reference); in a piece only as its newest bytes.
-      if (record->piece != nullptr) {
-        internal::Detach(record.get());
+      // One destroyed (any thread) since the pass above is still in its piece: kept until the next present (its
+      // Forget asked for that reclaim). Not one in a slot (each holds a reference).
+      if (!record->destroyed.load() || record->piece != nullptr) continue;
+      // Destroyed while mapped through the ring (d3d11 never saw the map): the map ends with it.
+      if (record->mapped) {
+        record->mapped = false;
+        --pool.open_maps;
       }
       // Its slot (replaced already where its address was reused).
       internal::Table* table = pool.table.load(std::memory_order_relaxed);
@@ -1041,7 +1099,9 @@ inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
         }
       }
     }
-    std::erase_if(pool.records, [](const std::unique_ptr<internal::Buffer>& record) { return record->destroyed.load(); });
+    std::erase_if(pool.records, [](const std::unique_ptr<internal::Buffer>& record) {
+      return record->destroyed.load() && record->piece == nullptr;
+    });
     if (pool.tables.size() > 1) {
       pool.tables.erase(pool.tables.begin(), pool.tables.end() - 1);
     }
@@ -1052,24 +1112,13 @@ inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
       internal::Drop(table.get());
       return true;
     });
-    // A copy body d3d11 put in the context's table that the install never saw (another d3d11.dll build): copies from
-    // the game's buffers would skip the ring there (their old bytes). Out (logged).
-    if (!pool.stopped && !pool.unwind_wanted) {
-      D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
-      context->IAGetPrimitiveTopology(&topology);  // the table settled, as the install read it
-      void* const* table = *reinterpret_cast<void* const* const*>(context);
-      for (size_t body = hooks::COPY_SUBRESOURCE_REGION; body < hooks::FLUSHED_COPIES; ++body) {
-        void* const now = table[hooks::BODY_SLOTS[body]];
-        if (now != hooks::state.bodies[body]
-            && now != hooks::state.bodies[body + hooks::FLUSHED_COPIES - hooks::COPY_SUBRESOURCE_REGION]) {
-          pool.unwind_wanted = true;
-          renodx::utils::log::w("[Total War] Fewer Driver Waits: the context's table holds a copy body unknown to it",
-                                " (slot ", hooks::BODY_SLOTS[body], ").");
-          break;
-        }
-      }
+    if (!pool.stopped && !pool.unwind_wanted.load(std::memory_order_relaxed)) {
+      // The depth raised: its settle after a swap below the hook applies that state's binds (passed on, not the game's).
+      ++hooks::state.depth;
+      internal::CheckTable();
+      --hooks::state.depth;
     }
-    const bool stop = pool.stopped || pool.lost || pool.unwind_wanted
+    const bool stop = pool.stopped || pool.lost || pool.unwind_wanted.load(std::memory_order_relaxed)
                       || hooks::state.foreign_thread.load(std::memory_order_relaxed);
     if ((on && !stop) || pool.open_maps != 0) return;
     internal::Remove();
@@ -1190,6 +1239,18 @@ inline void Use() {
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
 }
 
+// RENODX_TW_SET's key "memory" (test_hooks.hpp): what the ring holds, its pieces and the game buffers' copies, beside
+// the address space. On the render thread (the present).
+inline std::string Reserved() {
+  auto& pool = internal::pool;
+  size_t copy_units = 0;
+  const std::shared_lock lock(pool.mutex);
+  for (const auto& record : pool.records) copy_units += record->copy.size();
+  return std::format("; Fewer Driver Waits {}: {} pieces ({} KB), copies {} KB for {} buffers",
+                     (pool.installed ? "in" : "out"), pool.pieces.size(), pool.pieces.size() * internal::PIECE_BYTES / 1024,
+                     copy_units * internal::UNIT_BYTES / 1024, pool.records.size());
+}
+
 // At the add-on's detach: the ring out where the render thread runs this with no ring map open; else it unwinds at the
 // render thread's next call and its hooks stay, passing every call on (the image kept loaded). The events go either
 // way: a device's end after an off-thread detach goes unseen (at process exit, none follows).
@@ -1199,7 +1260,7 @@ inline void Uninstall() {
     if (GetCurrentThreadId() == internal::hooks::state.thread && pool.open_maps == 0) {
       internal::Remove();
     } else {
-      pool.unwind_wanted = true;
+      pool.unwind_wanted.store(true, std::memory_order_relaxed);
       internal::hooks::state.lifetime.retain_until_exit = true;
       internal::hooks::state.ring_lifetime.retain_until_exit = true;
     }

@@ -25,6 +25,7 @@
 #include "../../utils/log.hpp"
 #include "../../utils/mutex.hpp"
 #include "../../utils/settings.hpp"
+#include "./device_end.hpp"
 // RENODX_TW_PROFILE's action: Record Ray Tracing Profile, unless the add-on (one without the Total War ray-tracing
 // scene) defines its own before including this.
 #ifndef RENODX_TEST_HOOKS_PROFILE
@@ -39,7 +40,9 @@
 // RENODX_TW_SET=<seconds>:<key>=<value>[;<seconds>:<key>=<value>...] settings changed then, as their sliders would; a
 // button's label as the key presses it (every button with that label: several pages have a Reset), "<group>/<label>"
 // only that group's (page-presets/Reset); the key "shot" takes a screenshot, the key "trace" writes renodx_trace_now
-// next to the exe (the frame traces' on-demand marker).
+// next to the exe (the frame traces' on-demand marker), the key "memory" logs the address space (free, the largest free
+// block: one walk) and, when the add-on defines RENODX_TEST_HOOKS_MEMORY (a function returning text) before including
+// this, its own reservations (Attila: the constant buffer ring's).
 // A game that restarts itself through Steam (Tales of Arise's SteamStub) doesn't inherit the launching shell's
 // environment: the same NAME=value lines in renodx_test_hooks.txt next to the exe set them for the process (and the helper
 // it starts). The first present deletes the file, so a stub process that relaunches leaves it for the game and the next
@@ -135,6 +138,12 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     } else if (key == "trace") {
       std::ofstream(exe_folder / L"renodx_trace_now", std::ios::binary | std::ios::trunc);
       renodx::utils::log::i(std::format("{} Test: renodx_trace_now written.", log_name));
+    } else if (key == "memory") {
+      std::string line = std::format("{} Test: memory: {}", log_name, device_end::AddressSpace());
+#ifdef RENODX_TEST_HOOKS_MEMORY
+      line += RENODX_TEST_HOOKS_MEMORY();
+#endif
+      renodx::utils::log::i(line + ".");
     } else {
       Change(key, std::strtof(changes.c_str() + equals + 1, nullptr));
     }

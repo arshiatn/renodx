@@ -58,6 +58,8 @@
 #include "./rt_scene.hpp"
 #include "./screen_space_shadows.hpp"
 #include "./shadow_pass.hpp"
+// RENODX_TW_SET's key "memory": the constant buffer ring's own reservations beside the address space.
+#define RENODX_TEST_HOOKS_MEMORY twattila::buffer_pool::Reserved
 #include "./test_hooks.hpp"
 #include "./water_effects.hpp"
 #include "./smoke_map.hpp"

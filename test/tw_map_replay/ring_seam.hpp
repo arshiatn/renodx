@@ -20,7 +20,8 @@ struct RingPlugin {
   // init_device: the device and its immediate context exist, nothing is bound and no stream call has run (the row on at
   // start). False refuses: the run stops.
   bool (*attach)(ID3D11Device* device, ID3D11DeviceContext* immediate_context) = nullptr;
-  // init_resource / destroy_resource for every buffer the stream makes (initial data: its bytes, or null).
+  // init_resource / destroy_resource for each game buffer the stream makes (Resource::game; every buffer with
+  // Options::addon_buffers), as ReShade's proxy fires them in the game (initial data: its bytes, or null).
   void (*buffer_created)(ID3D11Buffer* buffer, const D3D11_BUFFER_DESC& desc, const void* initial_data) = nullptr;
   void (*buffer_destroyed)(ID3D11Buffer* buffer) = nullptr;
   // ReShade's present event: on the render thread, before every Present (timed with the Present).

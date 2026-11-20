@@ -107,6 +107,7 @@ struct Ring {
   // Set and Set1 (first_constants and constant_counts null: whole buffers).
   bool (*set)(Stage stage, UINT start_slot, UINT count, ID3D11Buffer* const* buffers, const UINT* first_constants,
               const UINT* constant_counts);
+  // After Get and Get1 (`count` within the stage's slots).
   void (*get)(Stage stage, UINT start_slot, UINT count, ID3D11Buffer** buffers, UINT* first_constants,
               UINT* constant_counts);
   // CopySubresourceRegion (copy_flags null) and CopySubresourceRegion1.
@@ -495,7 +496,8 @@ inline void STDMETHODCALLTYPE ClearState(ID3D11DeviceContext* context) {
   route.observer(call);
 }
 
-// The ring's bodies: straight on unless the ring is on.
+// The ring's bodies: straight on unless the ring is on. There a Get's count is bounded to the stage's slots (past them
+// the call is invalid: d3d11 may fill none of the entries the ring reads).
 template <size_t STAGE>
 void STDMETHODCALLTYPE GetConstantBuffers(ID3D11DeviceContext* context, UINT start_slot, UINT count,
                                           ID3D11Buffer** buffers) {
@@ -505,9 +507,11 @@ void STDMETHODCALLTYPE GetConstantBuffers(ID3D11DeviceContext* context, UINT sta
     native(context, start_slot, count, buffers);
     return;
   }
+  constexpr UINT SLOTS = D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT;
+  const UINT bounded = (start_slot < SLOTS ? std::min(count, SLOTS - start_slot) : 0);
   RunBody(nullptr, [&] {
-    native(context, start_slot, count, buffers);
-    ring->get(static_cast<Stage>(STAGE), start_slot, count, buffers, nullptr, nullptr);
+    native(context, start_slot, bounded, buffers);
+    ring->get(static_cast<Stage>(STAGE), start_slot, bounded, buffers, nullptr, nullptr);
   });
 }
 
@@ -520,9 +524,11 @@ void STDMETHODCALLTYPE GetConstantBuffers1(ID3D11DeviceContext1* context, UINT s
     native(context, start_slot, count, buffers, first_constants, constant_counts);
     return;
   }
+  constexpr UINT SLOTS = D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT;
+  const UINT bounded = (start_slot < SLOTS ? std::min(count, SLOTS - start_slot) : 0);
   RunBody(nullptr, [&] {
-    native(context, start_slot, count, buffers, first_constants, constant_counts);
-    ring->get(static_cast<Stage>(STAGE), start_slot, count, buffers, first_constants, constant_counts);
+    native(context, start_slot, bounded, buffers, first_constants, constant_counts);
+    ring->get(static_cast<Stage>(STAGE), start_slot, bounded, buffers, first_constants, constant_counts);
   });
 }
 

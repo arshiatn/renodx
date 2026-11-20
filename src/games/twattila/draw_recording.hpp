@@ -239,6 +239,8 @@ struct GameCalls {
   uint32_t class_count = 0;
   // False: a pattern did not match or an entry jump is in; the recording stands down whole.
   bool usable = false;
+  // The loop groups (bits of Group) whose sites are all found, with the flush path they use: the others run directly.
+  uint32_t usable_groups = ~0u;
 };
 
 #if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
@@ -1438,7 +1440,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     return value;
   };
   const char* direct_reason = nullptr;
-  if (!game_calls.usable) {
+  if (!game_calls.usable || ((game_calls.usable_groups >> group_index) & 1) == 0) {
     direct_reason = "not usable";
   } else if (detached.load(std::memory_order_relaxed)) {
     direct_reason = "detached";
@@ -1446,6 +1448,10 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     direct_reason = "stage";
   } else if (nested) {
     direct_reason = "nested";
+  } else if (shared->arena_size == 0) {
+    // Not one site of the thunks is in (engine_code zeroes it when the last comes out): the thunks only run directly.
+    direct_reason = "sites out";
+
   } else if (((settings.loops >> group_index) & 1) == 0) {
     direct_reason = "loop off";
   } else if (((latched_groups >> group_index) & 1) != 0) {

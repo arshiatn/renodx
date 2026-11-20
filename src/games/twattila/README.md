@@ -7,7 +7,7 @@
   instead of a driver rename at every DISCARD map (the render thread's waits inside Map). A Map hands the game a CPU copy;
   the Unmap (after ReShade's unmap event) writes it into the current piece and rebinds every slot that holds the buffer.
   Set, Set1, Get, Get1 and the copies translate between the game's buffer (all the game ever sees) and its segment, per
-  context state (the add-on's private states too). 4 pieces at the start, more (up to 32) while the GPU still reads the
+  context state (the add-on's private states too). 8 pieces (2 MB) at the start, more (up to 32) while the GPU still reads the
   oldest; a full ring writes the old way meanwhile (logged once).
 - Through the context hooks (`context_hooks.hpp`): the map trace's 17 bodies, 15 more (the 6 Get and 6 Get1 constant
   buffer calls, CopySubresourceRegion, CopyResource, CopySubresourceRegion1) and the copies' second versions: d3d11
@@ -16,15 +16,20 @@
 - In at the first present with the row on, on the render thread, with the map trace's rules (one D3D11 device,
   single-threaded, the bodies checked). Out when the row goes off, at the device's end and at the unload: every buffer
   written back into itself and every slot of every live state rebound to it first. A call on the context from another
-  thread, or a lost device: the ring unwinds at the render thread's next call and stays off until the row is turned off
-  and on again (logged). Our own constant buffers are made below ReShade (no init_resource): never in the ring. Rome II,
-  Thrones and WH3 compile it without the row.
+  thread, a lost device, a body in the context's table that the install never saw (checked at each present and after
+  each swap: another d3d11.dll build) or a swap below the hook: the ring unwinds at the render thread's next call and
+  stays off until the row is turned off and on again (logged). Our own constant buffers are made below ReShade (no
+  init_resource): never in the ring. Rome II, Thrones and WH3 compile it without the row.
 - Checked in `test/tw_buffer_pool` (x86, amd64, WARP: pixels, compute output and copies equal with the ring, a full ring,
-  another thread's call and the measure path beside it, five CONTROLS that must differ; Get / Get1 / Map parity and the
+  another thread's call and the measure path beside it, seven CONTROLS that must differ; Get / Get1 / Map parity and the
   references over 3000 random steps; the device's end) and `test/tw_map_replay --plugin ring` (run.ps1 -RingAdapter
   `test\tw_map_replay\ring_adapter.hpp`: bit-for-bit parity on W3m's v3 trace and the synthetic stream, its controls).
-  Test (bench, Attila): the log line "Fewer Driver Waits: on (4 pieces of 256 KB, up to 32)" and no "pieces still in use"
-  line; a map trace with the row on and off (the CB DISCARD time inside Map).
+  Test (bench, Attila): the log line "Fewer Driver Waits: on (8 pieces of 256 KB, up to 32; d3d11.dll ...)" and no
+  "pieces still in use" line; a map trace with the row on and off (the CB DISCARD time inside Map).
+- Debug (no row): `RENODX_TW_SET=<seconds>:memory=1` (test_hooks.hpp; several times: `;`) logs once then "Test: memory:
+  address space free <MB> of <MB>, largest free block <MB>; Fewer Driver Waits in|out: <n> pieces (<KB>), copies <KB>
+  for <n> buffers." (the address space walk shared with the device's end line, device_end.hpp). For the vertex buffer
+  ring's budget (32-bit games).
 
 ## Dev, map trace v3 (2026-11-19; built only, not stamped, not installed, not run in game)
 
