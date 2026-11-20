@@ -4635,6 +4635,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         reports/bd3o_design_B2_ring_v2.md. FOR ATN (one list later): S7 into the build (yes recommended), the presort
         instead of "census or drop" (yes recommended); the author-patch split is answered (one package at the end).
         Agents: c3i_, bd2r_, bd1r_, bd3o_ (4 of 4).
+        bd2r_ REVIEW DONE 23:4x (reports/bd2r_review.md): L1 GO WITH CHANGES (NO as written: 5 shared touches without an
+        order point = M1 a second sound path 0x17D9B80, M2 BURST function statics in 0x1895130, M3 rigid add 0x17F9450
+        (per-thread list order?), M4 tracked rigid child 0x187AEC0, M5 the real child append 0x1873820 + creators
+        0x1819320 / 0x1819270 drawing the static random in 0x181A930; hangs M6 late-unit deadlock -> help while waiting,
+        M8 lost wake-up -> epoch + timeout, M9 allocation-failure drain; M7 the thunk must fxsave (live XMM / x87); M10
+        in-flight counter before site removal), L2 GO WITH CHANGES (tag flow checked clean), small item GO, pool extraction
+        = the ONE shared step. S4: L1's gain likely the low end (<= 2.5 ms W3), L2 is the main lever. B1.0 census mostly
+        answered (27 static-random refs in 7 functions; 0x184DA60 open; rigid vf 0x78 list choice open). Nothing new for
+        ATN. bd2o_ RESUMED 23:4x: design v2 (all review items + the open B1.0 items) -> reports/bd2o_design_B1_v2.md.
+        Agents: c3i_, bd1r_, bd3o_, bd2o_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
