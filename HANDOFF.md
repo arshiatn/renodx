@@ -4025,6 +4025,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         (Update / Uninstall / SetGame / SharedPage now; colour site ids without ops; anim stack index 9 to prove in C.3).
         c2r_ (Opus xHigh, read-only) id a39864e75a97f62bf STARTED 13:xx -> reports/c2r_review.md. c2i_ idle until c2r_ + the
         v3 note (C.2-3 waits for both).
+        s5o_ DONE 14:xx (reports/s5o_report.md): rmt_s5 e6a835ffc (N1-N7) + ffaba9804 (row "Fewer Driver Waits", buffer_pool.hpp
+        1,128 lines, context_hooks 874 lines = 35 bodies: 17 measure + 18 ring; WH3 / Rome II / Thrones include only). d3d11
+        swaps copy slots 46 / 47 / 115 after a Flush -> both versions hooked, found at install by one 16 B copy + one Flush.
+        Installs at the first present with the row on. S2 items 1-10 + 14 met (13 optional not done). WARP tw_buffer_pool PASS
+        x86 + amd64 (5 controls differ, 3,000 random steps match native, refcount invariant), tw_context_hooks / tw_map_trace
+        PASS, harness ring parity on W3m b2 v3 equal (only the upload control differs there). Gated x86 3 + amd64 13 exit 0.
+        Zombie test exe locks testbin\s5o_buffer_pool_x86 (reboot clears). s5r_ (Opus xHigh, independent) id
+        a40d2e052afe50821 STARTED 14:xx -> reports/s5r_review.md; then s5o_ fixes, s5r_ re-checks, merge.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
