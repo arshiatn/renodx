@@ -4209,6 +4209,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         right, workers counted, passtime safe enough, Update order right, BuildCut needs args / ret / slot per group).
         Coordinator: keep the single-use builders (C.3-2..4 add callers). c3i_ fix round QUEUED (3-agent cap): M1 / M2 /
         S1-S5 / nits, then c31r_ re-checks.
+        s5o_ R1 ROUND DONE 18:1x: rmt_s5 47085a2c8 (R1 locked pass skips destroyed records still in a piece + erase keeps
+        them, Nit 7 depth around CheckTable, t:538 comment, SETTLE_OFF pinned); tw_buffer_pool x86 + amd64 PASS, gated
+        builds exit 0. Coordinator checked the diff = s5x_'s prescribed fix (no extra review round). S5 ROUND 2 MERGED
+        18:2x: atn-mods 3829a1217; build32 of the merged tree (attila, rome2, thrones x86) exit 0. c3i_ RESUMED (agent 3 of 3): C.3-1 fix round. s5o_
+        idle until s5r_'s VB design. ATN's harness script: bench/analysis_b2/replay/atn_harness_runs.ps1 (runs 1-5c in
+        order; -Overhead = run 6 in the quiet window); ATN STARTED it 18:2x (runs 1-5c).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
