@@ -4018,6 +4018,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         b2a_ (Opus xHigh, read-only) id a37d325f5461bb538 STARTED 12:4x -> bench/analysis_b2/report.md (data quality,
         victims with real binds, FCU A/B frames 0-4, S2 open questions, harness readiness, S5 changes). LATER (quiet PC):
         harness tw_map_replay baseline on W3m v3 on NVIDIA for the >= 5 ms/f CB mark (short GPU run, agents held).
+        c2i_ DONE 13:xx (reports/c2i_report.md): rmt_c2 9f595631a (cpu_sets worker_sets publish) + 2e934ea55 (draw_recording.hpp
+        1,103 lines x86 / x64 stubs + test/tw_draw_recording 835 lines; C.2-1 + C.2-2 in one commit). Tests x86 PASS: pool
+        x100, K 2->16->2, x87 / MXCSR 64 combos, synthetic depth loop 720 cases equal to serial (1,716 exact reruns), controls
+        fail as required; tw_cpu_sets x86 + amd64 PASS; build32 twattila exit 0 (temp include, reverted). 5 deviations
+        (Update / Uninstall / SetGame / SharedPage now; colour site ids without ops; anim stack index 9 to prove in C.3).
+        c2r_ (Opus xHigh, read-only) id a39864e75a97f62bf STARTED 13:xx -> reports/c2r_review.md. c2i_ idle until c2r_ + the
+        v3 note (C.2-3 waits for both).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
