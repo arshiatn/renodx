@@ -4150,6 +4150,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         open_maps on destroy, RingGet bounds). S5 MERGED 15:1x: rmt_s5 b5e89f0b2 -> atn-mods ca057a7ee (clean); build32
         check of the merged tree: twattila + twrome2 + twthrones x86 exit 0. s5o_ RESUMED: s5x_'s Should 1 / 2 + Nits 1-6 on rmt_s5 (after merging atn-mods
         in), then s5x_ re-checks. Before the row is offered to players: these + the GPU checks box.
+        c3i_ TESTS DONE 15:3x: tw_engine_code x86 -Quick all parts PASS on rmt_c3 (second table empty there; the real use
+        is in the new tests); rmt_c3 d7724ee73 NEW test/tw_draw_recording_loop: the game's own depth loop 0x17b17f0, mapped
+        twice like tw_engine_code (serial copy vs recorded copy through PausedWrite + DispatchDepth), callees faked: 704
+        dispatcher cases + direct / unknown-class / tiny-buffer / continuation (F2, 64 cases) all equal to serial (call
+        log, tracker 0xa0 bytes incl. +0x50, mesh +0x40 / +0x44); 6 CONTROLs differ. NOT covered: real callee bodies
+        (flush, vf54-68, purity of vf58 / 60 / 64), count-0 flush, the real cut caller, colour, real data, full-length
+        tw_engine_code. Name check: plain words. c31r_ a15eea3316c48613b (Opus xHigh) STARTED: review of 832196221 +
+        d7724ee73 with c3i_'s 7 points -> reports/c31r_review.md.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
