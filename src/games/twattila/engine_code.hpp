@@ -27,6 +27,9 @@
 
 #include "../../utils/log.hpp"
 #include "../twrome2/engine_tweaks.hpp"
+#if defined(TWATTILA_DRAW_RECORDING)
+#include "./draw_recording.hpp"
+#endif
 
 // Faster Game CPU Code: Attila's hot routines in empire.retail.dll (the truncation, the float to half, fmod, the ready
 // check, the sprite row builder's half floats), each replaced by code with the same results (test/tw_engine_code runs the
@@ -1657,6 +1660,38 @@ static uint32_t asked = 0;    // the sites the rows last asked for
 static uint32_t failed_writes = 0;
 static bool job_missing_logged = false;
 static uint32_t prefetch_logged = 0;  // the prefetch sites already named as left alone: each is named once
+// Threaded Draw Recording's table (draw_recording_sites.hpp, compiled only with TWATTILA_DRAW_RECORDING): the same window writes it
+// with the 25 sites above, its masks have 64 bits. Without the feature nothing is ever found in it.
+constexpr size_t RECORDING_SITES = 12;
+static std::array<Site, RECORDING_SITES> recording_sites = {};
+static bool recording_prepared = false;
+static uint64_t recording_found = 0;
+static uint64_t recording_written = 0;
+static uint64_t recording_asked = 0;
+static uint8_t* recording_page = nullptr;
+// The page's start up to here holds the cut stubs: a thread in one is about to dispatch.
+static uint8_t* recording_cut_end = nullptr;
+// The page's end: with every site coming out, no thread may be anywhere in it (a thunk's direct path runs on every
+// flush).
+static uint8_t* recording_page_end = nullptr;
+static const std::atomic<int32_t>* recording_active = nullptr;  // Shared::active: the dispatches in flight
+static uint32_t* recording_arena_size = nullptr;                 // Shared::arena_size: 0 sends every thunk the direct way
+static uint32_t recording_arena_size_value = 0;
+// The sites each loop group (draw_recording::Group, the four loop groups) turns on besides the entry hook, and the
+// entry hook's bit: a mismatch stands down the group's sites together, the entry hook's every group's.
+static std::array<uint64_t, 4> recording_group_sites = {};
+static uint64_t recording_entry_bit = 0;
+// A turn-on refused for the session (passtime hooked an entry): nothing goes in again, what is written can still come
+// out.
+static bool recording_refused = false;
+// A site stood down on the way out (a page that could not be written back, another mod's bytes over our jump) or
+// Uninstall gave up: a thunk can still be reached, so draw_recording keeps its memory and its module for the life of
+// the process.
+static bool recording_left_in = false;
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+// The n-th (0 first) VirtualProtect that a window makes for the sites going in fails; negative: none.
+static int32_t recording_fail_protect = -1;
+#endif
 // Presents with a thread inside a site before giving up (until the row changes); each try snapshots the system's threads
 // (~0.1 s with some antivirus hooks; 3 of 200 writes waited once in the test, four threads running the sites nonstop).
 constexpr uint32_t MAX_FAILED_WRITES = 30;
@@ -1664,16 +1699,36 @@ constexpr uint32_t MAX_FAILED_WRITES = 30;
 // 17. The probe build (private, compiled only with TWATTILA_ENGINE_PROBE, no row): a histogram stub in front of each probed site's production stub.
 #include "engine_probe.hpp"
 #endif
+#if defined(TWATTILA_DRAW_RECORDING)
+#include "draw_recording_sites.hpp"
+#endif
 
 // The jumps of the sites in `patched` and the game's bytes in the others, written (where that changes `written`) while
-// every other thread of the process is suspended and none stands inside a changing site past its first byte (it would go
-// on in the middle of the jump). False: one did (or its position is unknown), nothing written. From the first suspension
-// to the last resume nothing allocates, logs or takes a lock: a suspended thread may hold it. A thread started after the
-// snapshot isn't held (as with Detours). A site whose bytes are not what our last write left (another mod hooked or patched
-// it since Prepare) is not touched: `stood_down` names it, and with it the sites that go in on the strength of it (the three job
-// sites work together; the half rows' stub calls the half function as the game does).
-inline bool PausedWrite(uint32_t patched, uint32_t* stood_down) {
-  const uint32_t changing = (patched ^ written) & found;
+// every other thread of the process is suspended and none stands inside a changing site past its first byte (it would
+// go on in the middle of the jump). False: one did (or its position is unknown), nothing written. From the first
+// suspension to the last resume nothing allocates, logs or takes a lock: a suspended thread may hold it. A thread
+// started after the snapshot isn't held (as with Detours). A site whose bytes are not what our last write left (another
+// mod hooked or patched it since Prepare) is not touched: `stood_down` names it, and with it the sites that go in on
+// the strength of it (the three job sites work together; the half rows' stub calls the half function as the game does).
+// Threaded Draw Recording's sites (`recording_patched` the same way, `recording_stood_down` the same way) are written
+// in the same window. A loop group's sites go in whole or not at all (a loop run on a copy of its tracker with one site
+// missing would call the game's own flush on a worker): one site's bytes that are not the game's stand the group down,
+// the entry hook's the whole feature, and so does a page that cannot be made writable (every page of the sites going in
+// is made writable first, and put back if one fails: nothing of them is written). Sites come out only while no dispatch
+// is in flight and no thread is about to start one; the last ones to come out also wait for every thread to be out of
+// the thunks' page (the arena size, 0 once none is in, sends every thunk the direct way).
+inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recording_patched = 0,
+                        uint64_t* recording_stood_down = nullptr) {
+  const std::array<std::span<Site>, 2> tables = {std::span<Site>(sites), std::span<Site>(recording_sites)};
+  const std::array<uint64_t, 2> wanted = {patched, recording_patched};
+  const std::array<uint64_t, 2> changing = {(patched ^ written) & found,
+                                            (recording_patched ^ recording_written) & recording_found};
+  const bool recording_out = (changing[1] & ~wanted[1]) != 0;
+  // The thunks' direct paths run on every flush of the game, on any thread, and draw_recording frees its memory and
+  // releases its module after the last removal: a thread anywhere in the page then is not clear. A partial removal only
+  // waits for the cut stubs.
+  const uint8_t* const recording_limit = (recording_patched == 0 ? recording_page_end : recording_cut_end);
+  std::array<uint64_t, 2> stood = {};
   *stood_down = 0;
   std::vector<HANDLE> threads;
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
@@ -1700,39 +1755,117 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down) {
     CONTEXT context = {.ContextFlags = CONTEXT_CONTROL};
     clear = (GetThreadContext(threads[suspended], &context) != FALSE);
     ++suspended;
-    for (size_t index = 0; index < sites.size(); ++index) {
-      const auto start = reinterpret_cast<uintptr_t>(sites[index].at);
-      if ((changing >> index & 1) != 0 && context.Eip > start && context.Eip < start + SITE_SIZE) clear = false;
+    for (size_t table = 0; table < tables.size(); ++table) {
+      for (size_t index = 0; index < tables[table].size(); ++index) {
+        const auto start = reinterpret_cast<uintptr_t>(tables[table][index].at);
+        if ((changing[table] >> index & 1) != 0 && context.Eip > start && context.Eip < start + SITE_SIZE) {
+          clear = false;
+        }
+      }
+    }
+    if (recording_out && context.Eip >= reinterpret_cast<uintptr_t>(recording_page)
+        && context.Eip < reinterpret_cast<uintptr_t>(recording_limit)) {
+      clear = false;
     }
   }
+  if (clear && recording_out && recording_active != nullptr && recording_active->load(std::memory_order_acquire) != 0) {
+    clear = false;
+  }
   if (clear) {
-    for (size_t index = 0; index < sites.size(); ++index) {
-      const Site& site = sites[index];
-      if ((changing >> index & 1) != 0 && std::memcmp(site.at, ((written >> index & 1) != 0 ? site.jump : site.game).data(), SITE_SIZE) != 0) {
-        *stood_down |= 1u << index;
+    for (size_t table = 0; table < tables.size(); ++table) {
+      const uint64_t now = (table == 0 ? written : recording_written);
+      for (size_t index = 0; index < tables[table].size(); ++index) {
+        const Site& site = tables[table][index];
+        const auto& expected = ((now >> index & 1) != 0 ? site.jump : site.game);
+        if ((changing[table] >> index & 1) != 0 && std::memcmp(site.at, expected.data(), SITE_SIZE) != 0) {
+          stood[table] |= uint64_t{1} << index;
+        }
       }
     }
-    const uint32_t going_in = changing & patched;
-    if ((*stood_down & JOB_SITES) != 0) *stood_down |= JOB_SITES & going_in;
-    if ((*stood_down & HALF_FUNCTION_BIT) != 0) *stood_down |= HALF_ROWS_BIT & going_in;
-    for (size_t index = 0; index < sites.size(); ++index) {
-      const Site& site = sites[index];
-      if (((changing & ~*stood_down) >> index & 1) == 0) continue;
-      DWORD protection;
-      if (VirtualProtect(site.at, SITE_SIZE, PAGE_EXECUTE_READWRITE, &protection) == FALSE) {
-        *stood_down |= 1u << index;
+    const std::array<uint64_t, 2> going_in = {changing[0] & wanted[0], changing[1] & wanted[1]};
+    if ((stood[0] & JOB_SITES) != 0) stood[0] |= JOB_SITES & going_in[0];
+    if ((stood[0] & HALF_FUNCTION_BIT) != 0) stood[0] |= HALF_ROWS_BIT & going_in[0];
+    // The recording sites that go in stand down by group; the entry hook is every group's, so it takes them all, and
+    // with no group left it is no use alone.
+    const uint64_t entry_in = going_in[1] & recording_entry_bit;
+    const auto staying_in = [&]() { return (recording_written & ~changing[1]) | (going_in[1] & ~stood[1]); };
+    if ((stood[1] & entry_in) != 0) {
+      stood[1] |= going_in[1];
+    } else {
+      for (const uint64_t group_sites : recording_group_sites) {
+        if ((stood[1] & going_in[1] & group_sites) != 0) {
+          stood[1] |= going_in[1] & group_sites;
+        }
+      }
+      if (entry_in != 0 && (staying_in() & ~recording_entry_bit) == 0) {
+        stood[1] |= entry_in;
+      }
+    }
+    // Every page of the recording sites going in is made writable before any is written: one that fails puts back the
+    // ones made so far and stands the whole table's going-in sites down (a loop with one site missing would run the
+    // game's own flush on a worker).
+    std::array<DWORD, RECORDING_SITES> recording_protection = {};
+    uint64_t made_writable = 0;
+    // Last made, first put back: sites on one page see the earlier ones' writable state as their old protection.
+    const auto restore_protections = [&]() {
+      for (size_t done = RECORDING_SITES; done-- > 0;) {
+        DWORD ignored;
+        if ((made_writable >> done & 1) != 0) {
+          VirtualProtect(recording_sites[done].at, SITE_SIZE, recording_protection[done], &ignored);
+        }
+      }
+    };
+    for (size_t index = 0; index < RECORDING_SITES; ++index) {
+      if ((going_in[1] & ~stood[1] & (uint64_t{1} << index)) == 0) continue;
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+      const bool forced_failure = (recording_fail_protect == 0);
+      if (recording_fail_protect >= 0) --recording_fail_protect;
+#else
+      constexpr bool forced_failure = false;
+#endif
+      if (!forced_failure && VirtualProtect(recording_sites[index].at, SITE_SIZE, PAGE_EXECUTE_READWRITE,
+                                            &recording_protection[index]) != FALSE) {
+        made_writable |= uint64_t{1} << index;
         continue;
       }
-      const auto& bytes = ((patched >> index & 1) != 0 ? site.jump : site.game);
-      std::memcpy(site.at, bytes.data(), SITE_SIZE);
-      VirtualProtect(site.at, SITE_SIZE, protection, &protection);
+      restore_protections();
+      made_writable = 0;
+      stood[1] |= going_in[1];
+      break;
     }
+    // The arena size is 0 only when no site is left in (a group still in needs its thunks on slots).
+    if (recording_arena_size != nullptr) {
+      if ((going_in[1] & ~stood[1]) != 0) {
+        *recording_arena_size = recording_arena_size_value;
+      } else if (recording_out && staying_in() == 0) {
+        *recording_arena_size = 0;
+      }
+    }
+    for (size_t table = 0; table < tables.size(); ++table) {
+      for (size_t index = 0; index < tables[table].size(); ++index) {
+        const Site& site = tables[table][index];
+        if (((changing[table] & ~stood[table]) >> index & 1) == 0) continue;
+        // The recording sites going in were made writable above, and are put back after the last write.
+        const bool prepared_page = (table == 1 && (made_writable >> index & 1) != 0);
+        DWORD protection;
+        if (!prepared_page && VirtualProtect(site.at, SITE_SIZE, PAGE_EXECUTE_READWRITE, &protection) == FALSE) {
+          stood[table] |= uint64_t{1} << index;
+          continue;
+        }
+        const auto& bytes = ((wanted[table] >> index & 1) != 0 ? site.jump : site.game);
+        std::memcpy(site.at, bytes.data(), SITE_SIZE);
+        if (!prepared_page) VirtualProtect(site.at, SITE_SIZE, protection, &protection);
+      }
+    }
+    restore_protections();
     FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
   }
   for (size_t index = 0; index < threads.size(); ++index) {
     if (index < suspended) ResumeThread(threads[index]);
     CloseHandle(threads[index]);
   }
+  *stood_down = static_cast<uint32_t>(stood[0]);
+  if (recording_stood_down != nullptr) *recording_stood_down = stood[1];
   return clear;
 }
 
@@ -2058,9 +2191,11 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
 // Particle Prefetch), `sweep_prefetch` (Faster Sweep Prefetch) and `model_detail` (the Model Detail Distance slider: the
 // LOD pick's site is in while it is not 1) once empire.retail.dll is loaded, the first time any is on prepared (`game`'s
 // build); then the jumps go in or the game's bytes back, while no thread stands inside them. A slider move writes only the
-// stub's float.
+// stub's float. `draw_recording_groups` (bits of draw_recording::Group; the private TWATTILA_DRAW_RECORDING build, Attila): the
+// sites of Threaded Draw Recording's loop groups, written in the same window.
 inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, bool jobs = false, bool prefetch = false,
-                   bool emitter_prefetch = false, bool particle_prefetch = false, bool sweep_prefetch = false, float model_detail = 1.f) {
+                   bool emitter_prefetch = false, bool particle_prefetch = false, bool sweep_prefetch = false, float model_detail = 1.f,
+                   [[maybe_unused]] uint32_t draw_recording_groups = 0) {
   const uint32_t wanted = (enabled ? internal::CPU_CODE_SITES : 0u) | (lists ? internal::LIST_SITES : 0u) | (jobs ? internal::JOB_SITES : 0u)
                           | (prefetch ? internal::PREFETCH_SITES : 0u) | (emitter_prefetch ? internal::EMITTER_PREFETCH_BIT : 0u)
                           | (particle_prefetch ? internal::ENTRY_PREFETCH_BIT : 0u) | (sweep_prefetch ? internal::SWEEP_PREFETCH_BIT : 0u)
@@ -2070,6 +2205,16 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     if (module == nullptr) return;
     internal::Prepare(module, internal::BUILDS[static_cast<size_t>(game)]);
   }
+#if defined(TWATTILA_DRAW_RECORDING)
+  if (draw_recording_groups != 0 && game == Game::ATTILA && !internal::recording_prepared) {
+    if (HMODULE module = GetModuleHandleW(L"empire.retail.dll"); module != nullptr) {
+      internal::PrepareRecording(module);
+    }
+  }
+  const uint64_t recording_wanted = (internal::recording_prepared ? internal::RecordingWanted(draw_recording_groups) : 0);
+#else
+  const uint64_t recording_wanted = 0;
+#endif
   if (internal::model_detail_scale != nullptr) {
     const uint32_t bits = std::bit_cast<uint32_t>(1.f / (model_detail * model_detail));
     if (internal::model_detail_scale->load(std::memory_order_relaxed) != bits) {
@@ -2079,8 +2224,9 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
 #if defined(TWATTILA_ENGINE_PROBE)
   internal::probe::Tick(internal::written);
 #endif
-  if (wanted != internal::asked) {
+  if (wanted != internal::asked || recording_wanted != internal::recording_asked) {
     internal::asked = wanted;
+    internal::recording_asked = recording_wanted;
     internal::failed_writes = 0;
   }
   if (jobs && internal::prepared && (internal::found & internal::JOB_SITES) == 0 && !internal::job_missing_logged) {
@@ -2099,9 +2245,14 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     renodx::utils::log::w("[Total War] ", name, ": left alone (not the game's code as expected: another mod or build): ", names);
   }
   const uint32_t target = wanted & internal::found;
-  if (target == internal::written || internal::failed_writes >= internal::MAX_FAILED_WRITES) return;
+  const uint64_t recording_target = recording_wanted & internal::recording_found;
+  if ((target == internal::written && recording_target == internal::recording_written)
+      || internal::failed_writes >= internal::MAX_FAILED_WRITES) {
+    return;
+  }
   uint32_t stood_down = 0;
-  if (internal::PausedWrite(target, &stood_down)) {
+  uint64_t recording_stood_down = 0;
+  if (internal::PausedWrite(target, &stood_down, recording_target, &recording_stood_down)) {
     const uint32_t changing = target ^ internal::written;
     const uint32_t now = (internal::written & ~changing) | (target & changing & ~stood_down);
     const uint32_t changed = now ^ internal::written;
@@ -2111,6 +2262,19 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
 #endif
     internal::found &= ~stood_down;
     internal::prefetch_logged |= stood_down & internal::ALL_PREFETCH_SITES;  // named below, once
+    const uint64_t recording_changing = recording_target ^ internal::recording_written;
+    const uint64_t recording_now = (internal::recording_written & ~recording_changing)
+                                   | (recording_target & recording_changing & ~recording_stood_down);
+    const uint64_t recording_changed = recording_now ^ internal::recording_written;
+    // A site that stood down on its way out is still ours in the game's code (a page that could not be written back) or
+    // hooked by another mod, and its thunk can still be reached.
+    if ((recording_stood_down & recording_changing & ~recording_target) != 0) {
+      internal::recording_left_in = true;
+    }
+    internal::recording_written = recording_now;
+    // A stood-down entry hook leaves found with the others: harmless, since a hook that stood down on the way out and is
+    // still in the game's code is covered by recording_left_in.
+    internal::recording_found &= ~recording_stood_down;
     internal::failed_writes = 0;
     for (const auto& [row_sites, name] : internal::ROWS) {
       if ((changed & row_sites) != 0) renodx::utils::log::i("[Total War] ", name, ": ", ((now & row_sites) != 0 ? "on" : "off, the game's own code back"));
@@ -2120,14 +2284,43 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
         renodx::utils::log::w("[Total War] ", internal::sites[index].name, ": left alone (its bytes changed since the start: another mod)");
       }
     }
+    if (recording_changed != 0) {
+      renodx::utils::log::i("[Total War] Threaded Draw Recording: ", (recording_now != 0 ? "sites in" : "off, the game's own code back"));
+    }
+    if (recording_stood_down != 0) {
+      // The sites whose bytes are not what this window expected (the game's going in, ours coming out): another mod's.
+      // The others stood down with them (their group's, or the whole table's after a page that could not be made
+      // writable).
+      std::string changed_sites;
+      for (size_t index = 0; index < internal::recording_sites.size(); ++index) {
+        const internal::Site& site = internal::recording_sites[index];
+        const auto& expected = ((recording_target >> index & 1) != 0 ? site.game : site.jump);
+        const bool differs = (std::memcmp(site.at, expected.data(), internal::SITE_SIZE) != 0);
+        if ((recording_stood_down >> index & 1) != 0 && differs) {
+          changed_sites += std::format("{}{}", changed_sites.empty() ? "" : ", ", site.name);
+        }
+      }
+      renodx::utils::log::w(
+          "[Total War] Threaded Draw Recording: left alone, with the sites that go with it",
+          (changed_sites.empty() ? " (a page of the game's code could not be made writable)"
+                                 : std::format(" (its bytes changed since the start: another mod): {}", changed_sites)));
+    }
   } else if (++internal::failed_writes == internal::MAX_FAILED_WRITES) {
     for (const auto& [row_sites, name] : internal::ROWS) {
       if (((target ^ internal::written) & row_sites) != 0) {
         renodx::utils::log::w("[Total War] ", name, ": not written, a game thread kept running the code");
       }
     }
+    if (recording_target != internal::recording_written) {
+      renodx::utils::log::w("[Total War] Threaded Draw Recording: not written, a game thread kept running the code");
+    }
   }
 }
+
+// True while any site of Threaded Draw Recording is written or may still be reached (one that stood down on its way
+// out, or that Uninstall gave up on): draw_recording::Update and Uninstall take it as `sites_in` and then keep their
+// memory and module.
+inline bool DrawRecordingSitesIn() { return internal::recording_written != 0 || internal::recording_left_in; }
 
 // The Advanced status's words for the LOD pick's site, for the slider `model_detail` now; null: not decided yet (Prepare has not run).
 inline const char* ModelDetailStatus(float model_detail) {
@@ -2140,14 +2333,27 @@ inline const char* ModelDetailStatus(float model_detail) {
 // Addon detach: the game's bytes back. The page stays (a thread may still be in it), so the jumps are safe to leave in
 // the game's code if no attempt finds the threads clear: the stubs need nothing of this module.
 inline void Uninstall() {
-  for (int attempt = 0; internal::written != 0 && attempt < 100; ++attempt) {
-    if (uint32_t stood_down; internal::PausedWrite(0, &stood_down)) {
+  for (int attempt = 0; (internal::written != 0 || internal::recording_written != 0) && attempt < 100; ++attempt) {
+    uint32_t stood_down;
+    uint64_t recording_stood_down;
+    if (internal::PausedWrite(0, &stood_down, 0, &recording_stood_down)) {
       internal::written = 0;  // a site another mod changed is that mod's now
+      // The recording thunks need this module and Shared: a site left behind keeps them alive.
+      if ((recording_stood_down & internal::recording_written) != 0) {
+        internal::recording_left_in = true;
+      }
+      internal::recording_written = 0;
     } else {
       Sleep(1);
     }
   }
-  if (internal::written != 0) renodx::utils::log::w("[Total War] Faster Game CPU Code: left in at detach (a game thread kept running it)");
+  if (internal::written != 0) {
+    renodx::utils::log::w("[Total War] Faster Game CPU Code: left in at detach (a game thread kept running it)");
+  }
+  if (internal::recording_written != 0) {
+    internal::recording_left_in = true;
+    renodx::utils::log::w("[Total War] Threaded Draw Recording: left in at detach (a game thread kept running it)");
+  }
 }
 
 #if defined(TWATTILA_ENGINE_PROBE)
@@ -2157,7 +2363,9 @@ inline void ProbeArm(uint32_t presents) { internal::probe::Arm(presents); }
 
 #else
 
-inline void Update(bool, Game = Game::ATTILA, bool = false, bool = false, bool = false, bool = false, bool = false, bool = false, float = 1.f) {}
+inline void Update(bool, Game = Game::ATTILA, bool = false, bool = false, bool = false, bool = false, bool = false, bool = false, float = 1.f,
+                   uint32_t = 0) {}
+inline bool DrawRecordingSitesIn() { return false; }
 inline const char* ModelDetailStatus(float) { return nullptr; }
 inline void Uninstall() {}
 #if defined(TWATTILA_ENGINE_PROBE)
