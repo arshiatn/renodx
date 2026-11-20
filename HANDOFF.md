@@ -4262,6 +4262,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         stubs, cpu_sets, build32 exit 0. The A regressions were test-side (latch state between tests). Name check: plain
         words (RunLoop generic). N-6 -> C.2-4, N-7 -> C.3. REVIEW of 411694a81 QUEUED (next slot).
         s5x_ RESUMED 18:0x (slot 3 of 3): independent review of VB design v2 -> reports/s5x_review_vb.md.
+        s5o_ H0 DONE 18:1x: rmt_s5 0ea33703d (local): the harness offers the ring only the game's buffers (a v1 map line
+        OR a v3 buffer line = ReShade init_resource; coordinator ACCEPTS that deviation: v1-only would skip 100 game CBs
+        never mapped in the traced frames); not offered on b2: 61 buffers, 4 dynamic CBs (the add-on's two 256 KB +
+        ReShade's 432 B / 80 B push buffers); --addon-buffers ring = old behaviour. tw_map_replay + tw_buffer_pool x86 +
+        amd64 PASS (WARP), W3m frames 1-2 parity EQUAL. atn_harness_runs.ps1 -H0 (h7 D1m locator native, h8 D1m overhead
+        x20, h9 W3m locator ring) = QUIET WINDOW, waits for ATN. c23r_ RESUMED (slot): review of b4c4739f2 + 411694a81 ->
+        reports/c25r_review.md.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
