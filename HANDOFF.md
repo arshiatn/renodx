@@ -4495,6 +4495,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         amd64 twattila exit 0 + pushed. Fix commit S-1 / S-2 / N-1..N-3 -> owner c2i_ after s5o_ (one implementer).
         ATN 21:2x: (a) Fewer Driver Waits = keep Experimental + Off (not hidden); (b) -Trap rule ADDED (checked exact);
         (c) asked where the shots are -> S0 + REF-ATN sent.
+        ATN 21:3x: G1 PASS: S0 (ring on all battle) and REF-ATN (never on) look the same to ATN.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
