@@ -217,6 +217,14 @@ constexpr std::array<SiteInfo, static_cast<size_t>(Site::COUNT)> SITES = {{
     {Group::SHARED, OpKind::FLUSH, 0},
 }};
 
+// Payloads, in dwords. An op is a header (kind in the low 16 bits, the op's size in dwords, header included, in the high 16)
+// and its payload.
+constexpr uint32_t FLUSH_PAYLOAD = 14;  // mesh, 10 arguments, mesh +0x40, mesh +0x44, the tracker's +0x69 byte (any)
+constexpr uint32_t VF68_PAYLOAD = 5;    // mesh, 2 arguments, mesh +0x40, mesh +0x44
+constexpr uint32_t ANIM_PAYLOAD = 3;    // state, value, index
+// The most bytes the ops of one depth item take: its flush, the shared-state call and an animation change.
+constexpr uint32_t DEPTH_OP_BYTES_PER_ITEM = 4 * (1 + FLUSH_PAYLOAD + 1 + VF68_PAYLOAD + 1 + ANIM_PAYLOAD);
+
 struct CopyRange {
   uint32_t begin;
   uint32_t end;
@@ -227,8 +235,9 @@ struct CopyRange {
 struct GroupInfo {
   uint32_t tracker_bytes;
   std::array<CopyRange, 4> copy_back;
+  uint32_t op_bytes_per_item;
 };
-constexpr GroupInfo SAME_TRACKER = {TRACKER_SIZE, {{{0x00, 0x18}, {0x58, 0x5c}, {0x68, 0x69}, {0x6c, 0x7c}}}};
+constexpr GroupInfo SAME_TRACKER = {TRACKER_SIZE, {{{0x00, 0x18}, {0x58, 0x5c}, {0x68, 0x69}, {0x6c, 0x7c}}}, DEPTH_OP_BYTES_PER_ITEM};
 constexpr std::array<GroupInfo, static_cast<size_t>(Group::COUNT)> GROUPS = {SAME_TRACKER, SAME_TRACKER, SAME_TRACKER, SAME_TRACKER, SAME_TRACKER};
 constexpr uint32_t STRIDE_OFFSET = 0x50;
 constexpr uint32_t ANY_OFFSET = 0x69;
@@ -239,6 +248,8 @@ struct Controls {
   bool validate_seeds = true;
   bool translate_pointers = true;
   bool guard_continuation = true;
+  // Trace frames compare only in the last frame of a trace (the others are timed); the tests compare every call.
+  bool compare_every_call = false;
   bool capture_any = true;
   bool stride_non_zero = true;
   bool fail_thread_creation = false;
@@ -248,12 +259,6 @@ static Controls controls;
 #else
 constexpr Controls controls;
 #endif
-
-// Payloads, in dwords. An op is a header (kind in the low 16 bits, the op's size in dwords, header included, in the high 16)
-// and its payload.
-constexpr uint32_t FLUSH_PAYLOAD = 14;  // mesh, 10 arguments, mesh +0x40, mesh +0x44, the tracker's +0x69 byte (any)
-constexpr uint32_t VF68_PAYLOAD = 5;    // mesh, 2 arguments, mesh +0x40, mesh +0x44
-constexpr uint32_t ANIM_PAYLOAD = 3;    // state, value, index
 
 }  // namespace internal
 
@@ -416,6 +421,8 @@ struct CallTrace {
   uint32_t threads = 0;
   uint32_t chunks = 0;
   std::array<uint32_t, MAX_THREADS> chunk_items = {};
+  // The call ran the compare (its times are not a normal frame's: read timings only from calls without it).
+  bool compared = false;
   Stage stage = Stage::OFF;
   const char* direct_reason = "";
   uint32_t cut_targets = 0;
@@ -478,11 +485,10 @@ struct LastCall {
   bool direct = false;
 };
 
-// Op memory is reserved per slot and committed as a call needs it: the worst case is about 96 bytes an item (a flush, the
-// shared-state call and an animation change) plus the end flush.
-constexpr uint32_t OP_RESERVE_BYTES = 4 * 1024 * 1024;
-constexpr uint32_t COMPARE_RESERVE_BYTES = 8 * 1024 * 1024;
-constexpr uint32_t OP_BYTES_PER_ITEM = 96;
+// Op memory is one address range, committed as a call needs it. The chunks of a call tile its items, so their buffers (the
+// group's worst case bytes an item, plus the end flush) take consecutive parts of one buffer of the whole call; the compare run's
+// follows. A part that does not fit makes that chunk overflow, which runs it again (exact, slower).
+constexpr uint32_t OP_ARENA_BYTES = 32 * 1024 * 1024;
 constexpr uint32_t OP_SLACK_BYTES = 128;
 // Calls with fewer items run directly.
 constexpr uint32_t MIN_ITEMS = 512;
@@ -505,10 +511,10 @@ static bool kept_logged = false;
 static Shared* shared = nullptr;
 static uint8_t* arena = nullptr;
 static uint8_t* op_memory = nullptr;
-static std::array<uint32_t, SLOT_COUNT> op_committed = {};
+static uint32_t op_committed = 0;
 static HMODULE module_reference = nullptr;
 // The most op bytes a chunk may use (tests lower it to force overflows).
-static uint32_t op_buffer_limit = OP_RESERVE_BYTES;
+static uint32_t op_buffer_limit = OP_ARENA_BYTES;
 static uint32_t thread_attempts = 0;
 
 static std::array<PoolWorker, MAX_WORKERS> pool;
@@ -663,6 +669,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   const Call call = {.group = group, .loop = game_calls.loops[group_index], .node = node, .list = list, .unused = unused};
   const uint32_t items = (end > begin ? end - begin : 0);
   CallTrace* const trace_call = (trace.active ? &trace.calls.emplace_back() : nullptr);
+  const bool compare_now = (trace_call != nullptr && (controls.compare_every_call || trace.frames_left == 1));
   uint64_t last_lap = (trace_call != nullptr ? Qpc() : 0);
   const uint64_t call_start = last_lap;
   // Work only trace frames do: left out of the call's total.
@@ -682,9 +689,25 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     trace_call->items = items;
     trace_call->threads = settings.threads;
     trace_call->stage = settings.stage;
+    trace_call->compared = compare_now;
   }
+  const uint32_t* data = (items != 0 ? *reinterpret_cast<uint32_t* const*>(static_cast<uint8_t*>(list) + 8) : nullptr);
+  const auto mesh_of = [data](uint32_t i) { return *reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(data[i])); };
   const auto finish = [&](const char* direct_reason) {
     if (trace_call != nullptr) {
+      if (items != 0) {
+        // Mesh run lengths over the whole call: trace-only, after everything else the call does, so it warms nothing.
+        uint32_t run = 1;
+        for (uint32_t i = begin + 1; i <= end; ++i) {
+          if (i < end && mesh_of(i) == mesh_of(i - 1)) {
+            ++run;
+            continue;
+          }
+          ++trace_call->runs[std::min<uint32_t>(std::bit_width(run) - 1, trace_call->runs.size() - 1)];
+          run = 1;
+        }
+      }
+      lap(&CallTrace::run_scan, true);
       trace_call->direct_reason = (direct_reason != nullptr ? direct_reason : "");
       trace_call->wall = Qpc() - call_start;
       trace_call->total = trace_call->wall - trace_only_ticks;
@@ -713,8 +736,6 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     std::memcpy(&value, static_cast<const uint8_t*>(base) + offset, 4);
     return value;
   };
-  const uint32_t* data = (items != 0 ? *reinterpret_cast<uint32_t* const*>(static_cast<uint8_t*>(list) + 8) : nullptr);
-  const auto mesh_of = [data](uint32_t i) { return *reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(data[i])); };
   const char* direct_reason = nullptr;
   if (!game_calls.usable) {
     direct_reason = "not usable";
@@ -797,21 +818,10 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   cuts[chunks] = end;
   lap(&CallTrace::cut);
   if (trace_call != nullptr) {
-    // Mesh run lengths over the whole call.
-    uint32_t run = 1;
-    for (uint32_t i = begin + 1; i <= end; ++i) {
-      if (i < end && mesh_of(i) == mesh_of(i - 1)) {
-        ++run;
-        continue;
-      }
-      ++trace_call->runs[std::min<uint32_t>(std::bit_width(run) - 1, trace_call->runs.size() - 1)];
-      run = 1;
-    }
     trace_call->chunks = chunks;
     for (uint32_t k = 0; k < chunks; ++k) {
       trace_call->chunk_items[k] = cuts[k + 1] - cuts[k];
     }
-    lap(&CallTrace::run_scan, true);
   }
   if (chunks == 1) {
     RunLoop(call, tracker, begin, end);
@@ -823,7 +833,9 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     last_call = {.chunks = chunks};
   }
 
-  // The slots: a copy of the real tracker each, an empty op buffer sized for the chunk (committed as needed).
+  // The slots: a copy of the real tracker each, an empty op buffer sized for the chunk, the next part of the op memory
+  // (committed as needed).
+  uint32_t op_used = 0;
   const auto prepare_slot = [&](uint32_t index, uint32_t chunk_items) {
     Slot* slot = SlotAt(index);
     std::memcpy(slot->tracker.data(), tracker, GROUPS[group_index].tracker_bytes);
@@ -832,17 +844,18 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     slot->tracker[ANY_OFFSET] = 0;
     slot->mode = MODE_RECORD;
     slot->anim = -1;
-    const uint32_t reserve = (index == COMPARE_SLOT ? COMPARE_RESERVE_BYTES : OP_RESERVE_BYTES);
-    const uint32_t wanted_bytes = chunk_items * OP_BYTES_PER_ITEM + OP_SLACK_BYTES;
-    uint32_t bytes = std::min(wanted_bytes, (index == COMPARE_SLOT ? reserve : std::min(reserve, op_buffer_limit)));
-    if (bytes > op_committed[index]) {
-      const uint32_t target = (bytes + 4095) & ~4095u;
-      if (VirtualAlloc(reinterpret_cast<uint8_t*>(slot->ops_begin) + op_committed[index], target - op_committed[index], MEM_COMMIT, PAGE_READWRITE) != nullptr) {
-        op_committed[index] = target;
+    const uint32_t wanted_bytes = chunk_items * GROUPS[group_index].op_bytes_per_item + OP_SLACK_BYTES;
+    uint32_t bytes = std::min({wanted_bytes, op_buffer_limit, OP_ARENA_BYTES - op_used}) & ~3u;
+    if (op_used + bytes > op_committed) {
+      const uint32_t target = (op_used + bytes + 4095) & ~4095u;
+      if (VirtualAlloc(op_memory + op_committed, target - op_committed, MEM_COMMIT, PAGE_READWRITE) != nullptr) {
+        op_committed = target;
       } else {
-        bytes = op_committed[index];
+        bytes = (op_committed - op_used) & ~3u;
       }
     }
+    slot->ops_begin = reinterpret_cast<uint32_t*>(op_memory + op_used);
+    op_used += bytes;
     slot->ops_cursor = slot->ops_begin;
     slot->ops_end = slot->ops_begin + bytes / 4;
     slot->flags = 0;
@@ -854,7 +867,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     }
     return slot;
   };
-  if (settings.stage >= Stage::RECORDED || trace_call != nullptr) {
+  if (settings.stage >= Stage::RECORDED || compare_now) {
     for (uint32_t k = 0; k < chunks; ++k) {
       prepare_slot(k, cuts[k + 1] - cuts[k]);
     }
@@ -870,7 +883,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
       std::memset(slot->tracker.data() + STRIDE_OFFSET, 0, 4);
       slot->tracker[ANY_OFFSET] = 0;
     }
-    // Chunked does these in trace frames only (to count seed hits).
+    // Chunked does these in compared trace frames only (to count seed hits).
     lap(&CallTrace::warm_ups, settings.stage == Stage::CHUNKED);
   }
 
@@ -879,7 +892,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     shared->last_anim = -1;
     for (uint32_t k = 0; k < chunks; ++k) {
       shared->seed_anim = (k == 0 ? -1 : shared->last_anim);
-      if (trace_call != nullptr && k > 0) {
+      if (compare_now && k > 0) {
         if (SlotAt(k)->seed_anim == shared->seed_anim) {
           ++trace_call->seed_hits;
         } else {
@@ -899,7 +912,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
 
   // The in-frame compare (trace frames): the same call recorded whole in the compare slot, before anything changes.
   Slot* compare_slot = nullptr;
-  if (trace_call != nullptr) {
+  if (compare_now) {
     compare_slot = prepare_slot(COMPARE_SLOT, items);
     RunLoop(call, compare_slot, begin, end);
     lap(&CallTrace::compare, true);
@@ -1071,7 +1084,7 @@ inline bool Allocate() {
   if (allocation_failed) return false;
   void* const page = VirtualAlloc(nullptr, 4096, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
   void* const slots = VirtualAlloc(nullptr, static_cast<size_t>(SLOT_COUNT) * SLOT_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-  void* const ops = VirtualAlloc(nullptr, static_cast<size_t>(MAX_THREADS) * OP_RESERVE_BYTES + COMPARE_RESERVE_BYTES, MEM_RESERVE, PAGE_READWRITE);
+  void* const ops = VirtualAlloc(nullptr, OP_ARENA_BYTES, MEM_RESERVE, PAGE_READWRITE);
   HMODULE module = nullptr;
   if (page == nullptr || slots == nullptr || ops == nullptr
       || GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCWSTR>(&Record), &module) == FALSE) {
@@ -1087,10 +1100,9 @@ inline bool Allocate() {
   arena = static_cast<uint8_t*>(slots);
   op_memory = static_cast<uint8_t*>(ops);
   module_reference = module;
-  op_committed = {};
+  op_committed = 0;
   for (uint32_t k = 0; k < SLOT_COUNT; ++k) {
-    Slot* slot = new (arena + static_cast<size_t>(k) * SLOT_SIZE) Slot();
-    slot->ops_begin = reinterpret_cast<uint32_t*>(op_memory + static_cast<size_t>(k) * OP_RESERVE_BYTES);
+    new (arena + static_cast<size_t>(k) * SLOT_SIZE) Slot();
   }
   shared = new (page) Shared();
   shared->arena = reinterpret_cast<uint32_t>(arena);
@@ -1203,13 +1215,13 @@ inline void Update(const Settings& settings, bool sites_in) {
       const auto milliseconds = [](uint64_t ticks) { return static_cast<double>(ticks) * 1000.0 / static_cast<double>(qpc_frequency); };
       std::string text = "Threaded Draw Recording trace\n";
       for (const FrameTrace& frame : trace.frame_list) {
-        text += std::format("frame: calls {:.3f} ms (trace-only work left out), present thread {} context_hooks'\n", milliseconds(frame.call_ticks),
-                            (frame.thread_matched ? "is" : "is not"));
+        text += std::format("frame: calls {:.3f} ms (trace-only work left out; read timings from calls marked 'timing'), present thread {} context_hooks'\n",
+                            milliseconds(frame.call_ticks), (frame.thread_matched ? "is" : "is not"));
       }
       for (const CallTrace& call : trace.calls) {
-        text += std::format("call: group {} family {} stage {} K {} items {} chunks {} direct '{}'\n  chunk items:", static_cast<uint32_t>(call.group),
+        text += std::format("call: group {} family {} stage {} K {} items {} chunks {} direct '{}' {}\n  chunk items:", static_cast<uint32_t>(call.group),
                             (call.family == NO_FAMILY ? std::string("-") : std::to_string(call.family)), static_cast<uint32_t>(call.stage), call.threads,
-                            call.items, call.chunks, call.direct_reason);
+                            call.items, call.chunks, call.direct_reason, (call.compared ? "compared" : "timing"));
         for (uint32_t k = 0; k < call.chunks && k < call.chunk_items.size(); ++k) {
           text += std::format(" {}", call.chunk_items[k]);
         }
@@ -1217,7 +1229,7 @@ inline void Update(const Settings& settings, bool sites_in) {
         for (const uint32_t runs : call.runs) {
           text += std::format(" {}", runs);
         }
-        const char* compare_text = "";
+        const char* compare_text = (call.compared ? "" : "not run (timing frame)");
         switch (call.compare_result) {
           case CompareResult::EQUAL:
             compare_text = "equal";

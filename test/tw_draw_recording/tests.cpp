@@ -735,6 +735,8 @@ static void Setup() {
   REQUIRE(g_shared->record == reinterpret_cast<uint32_t>(&dr::Record));
   REQUIRE(g_shared->dispatch_depth == reinterpret_cast<uint32_t>(&dr::DispatchDepth));
   dr::SetGame(Game(true));
+  // Every traced call compares (a real trace compares only in its last frame); DepthTrace checks the real rule.
+  di::controls.compare_every_call = true;
 }
 
 static void DepthStages() {
@@ -818,7 +820,7 @@ static void DepthOverflow() {
       }
     }
   }
-  di::op_buffer_limit = di::OP_RESERVE_BYTES;
+  di::op_buffer_limit = di::OP_ARENA_BYTES;
   std::printf("depth: tiny op buffers: overflowing chunks run again, logs equal (%u reruns)\n", reruns);
 }
 
@@ -832,13 +834,12 @@ static void DepthLarge() {
       CHECK(Equal(serial, staged, "large call"));
       CHECK(staged.portions == 2 && staged.direct_calls == 0);
       CHECK(staged.accounted);
-      CHECK(staged.most_buffer <= di::OP_RESERVE_BYTES);
+      CHECK(staged.most_buffer <= di::OP_ARENA_BYTES);
     }
   }
-  for (uint32_t index = 0; index < dr::SLOT_COUNT; ++index) {
-    CHECK(di::op_committed[index] <= (index == dr::COMPARE_SLOT ? di::COMPARE_RESERVE_BYTES : di::OP_RESERVE_BYTES));
-  }
-  std::printf("depth: 200000 items in one call at K 2 / 3: logs equal, op buffers within their reserve\n");
+  CHECK(di::op_committed <= di::OP_ARENA_BYTES);
+  std::printf("depth: 200000 items in one call at K 2 / 3: logs equal, op memory within its %u MB reserve (%u KB committed)\n",
+              di::OP_ARENA_BYTES >> 20, di::op_committed >> 10);
 }
 
 // A call that starts in a state the chunks can't reproduce runs directly.
@@ -934,24 +935,39 @@ static void DepthTrace() {
   // The trace armed through the environment: written next to the exe after its frames.
   const std::filesystem::path file = std::filesystem::path(__argv[0]).parent_path() / "tw_draw_recording.txt";
   std::filesystem::remove(file);
-  SetEnvironmentVariableA("RENODX_TW_DRAW_TRACE", "0,2");
+  SetEnvironmentVariableA("RENODX_TW_DRAW_TRACE", "0,3");
   di::trace.read_environment = false;
   di::trace.armed = false;
   di::trace.finished = false;
+  di::controls.compare_every_call = false;
   ResetWorld(world.get());
   const dr::Settings settings = {.stage = dr::Stage::WORKERS, .threads = 6, .loops = 1};
   dr::Update(settings, true);
   CHECK(di::trace.armed);
   dr::Update(settings, true);
   CHECK(di::trace.active);
+  // Frames 1 and 2 of the trace are timed (no compare, no compare slot); the last one compares.
   for (int frame = 0; frame < 2; ++frame) {
+    const size_t calls_before = di::trace.calls.size();
     Driver(world.get(), [&](uint32_t begin, uint32_t end) { dr::DispatchDepth(NODE, nullptr, world->tracker.data(), &world->list, begin, end); });
+    CHECK(di::trace.calls.size() > calls_before);
+    for (size_t i = calls_before; i < di::trace.calls.size(); ++i) {
+      const di::CallTrace& call = di::trace.calls[i];
+      CHECK(call.compared == (frame == 1));
+      CHECK((call.compare != 0) == (frame == 1 && call.chunks > 1));
+      CHECK(call.run_scan != 0);
+      CHECK((call.compare_result == di::CompareResult::NONE) == !(frame == 1 && call.chunks > 1));
+      CHECK(call.compare_result != di::CompareResult::DIFFERS);
+    }
     dr::Update(settings, true);
   }
+  di::controls.compare_every_call = true;
   CHECK(!di::trace.active && di::trace.finished);
   std::ifstream stream(file, std::ios::binary);
   const std::string text_value((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
   CHECK(text_value.find("compare: equal") != std::string::npos);
+  CHECK(text_value.find("compare: not run (timing frame)") != std::string::npos);
+  CHECK(text_value.find(" timing\r\n") != std::string::npos && text_value.find(" compared\r\n") != std::string::npos);
   CHECK(text_value.find("frame:") != std::string::npos);
   CHECK(text_value.find("K 6") != std::string::npos);
   CHECK(text_value.find("chunk items:") != std::string::npos);
