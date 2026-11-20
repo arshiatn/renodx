@@ -4560,6 +4560,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         the rest later; (2) early start only if the offline census proves >= 3 ms; (3) R1 now on C's pool, R2 after C's
         batch. bd3r_ STARTED 22:5x (Opus xHigh, read-only): independent review + S0 items 1-5 + R-S0 ->
         reports/bd3r_review.md. Agents: bd1o_, bd2o_, c3i_, bd3r_ (4 of 4).
+        ATN 23:0x on bd3o_'s questions: (1) the heapfix author gets ALL our heapfix patches in ONE package when render_mt
+        is completely done -> S5 (author patch vs 4057eb8) moves to the round end, after the end batch; (2) asked the
+        early-start options -> coordinator: (a) offline census first, build only if it proves a safe window >= 3 ms
+        (kept: early reads of lists a producer still writes could crash, not only change a frame), (b) build without the
+        census and let the end batch's check mode decide (crash risk found only at the end), (c) drop it (-1..-2.5 ms);
+        (3) asked why R2 (fill folded into C's dispatch) waits -> it lives in C's dispatch code, which c3i_ is still
+        changing (same files) and C.3-3 / C.3-4 change the chunk plan it hooks into -> R2 is built RIGHT AFTER C.3-4,
+        before the end batch, on its own Experimental row (the end batch measures R1 and R2). PARALLEL IMPLEMENTERS OK
+        when they touch no shared files (memory feedback_workflow_serial): heapfix S1 prepare.c can run beside c3i_ as
+        soon as bd3r_'s review + S0 are in; R1 (draw_recording files) waits for a gap in the C chain.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4604,7 +4614,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         switches need ATN's rules. Owner s5o_ (after the C chain), only if ATN wants it.
       - [ ] TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 (owner bd1o_) | bd2o_ B1 (owner bd2o_) | bd3o_ B2 + ring
         DONE (reports/bd3o_design_B2_ring.md) -> bd3r_ review + S0 / R-S0 (owner bd3r_) -> ATN's 3 answers -> implementers
-        (Sonnet High, one at a time unless ATN allows a heapfix implementer beside C's) -> reviews -> the ONE end batch.
+        (Sonnet High; in parallel when no shared files, ATN 23:0x) -> reviews -> the ONE end batch -> heapfix author
+        package (all patches at once, via ATN).
       - [x] S5 RING GPU CHECKS (DONE 11-20 19:29: re-check with 8 pieces + H0 passed, parity EQUAL; s5r_ re-check 11-20; gate ANY game run / release with "Fewer Driver Waits" on, batch 3
         included; agents can't run the harness (classifier), ATN runs bench/analysis_b2/replay/atn_harness_runs.ps1): 1. DONE
         11-20 17:18 (EQUAL, upload differs, no unknown-body line) NVIDIA x86 parity:
