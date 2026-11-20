@@ -4320,25 +4320,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         (N1 harmless). c3i_ RESUMED 18:5x: R1 + N2 / N3 -> then c31r_ re-checks -> merge rmt_c3. s5r_ RESUMED 18:5x: VB
         design v3 addendum (reports/s5r_design_vb_v3.md) + the CB ring's in-game batch plan (part 2, runs before VB work).
         c23r_ got c31r_'s OpsEqual / compare-gating note. Agents: c23r_, c3i_, s5r_ (3 of 3).
-        c3i_ R1 DONE 19:0x: rmt_c3 555e81d7e (local, Sonnet trailer): compare_every_call = tracing in RunStaged, the
+        c3i_ R1 DONE 18:5x: rmt_c3 555e81d7e (local, Sonnet trailer): compare_every_call = tracing in RunStaged, the
         guard-off RECORDED K 4 traced control = the CHECK again (differs deterministically; WORKERS K 8 / 16 prints only),
         comments, N1 comment, N2 page_failed = shared_ok, N3 braces. loop / sites / draw_recording x86 PASS, no DIFFERS /
         COMPARE_HAS_MORE in any traced case. Coordinator gated builds on rmt_c3: x86 twattila + twrome2 +
         twthronesofbritannia exit 0, amd64 twattila exit 0. c31r_ RESUMED: re-check 2 (+ tw_engine_code -Quick) -> merge.
-        c23r_ C.2-5 REVIEW DONE 19:0x (reports/c25r_review.md): MERGE AFTER M-1, M-2 (B groups' compare / S9b latch only;
+        c23r_ C.2-5 REVIEW DONE 18:5x (reports/c25r_review.md): MERGE AFTER M-1, M-2 (B groups' compare / S9b latch only;
         a normal frame's replay stays right). M-1 round result = first non-EQUAL run -> a rerun in run 0 hides run 1's
         DIFFERS -> combine by severity + run / op index. M-2 compare runs leave the straddler planned[0] +0x40 / +0x44
         changed (depth variation path writes +0x44; flush leaves +0x40 = vf3c()) -> false Depth B latch for real-vf64
         classes + wrong restore in compared frames -> save / restore around the compare runs. Should S-1 straddler test,
         S-2 nesting guard, S-3 B family numbers, S-4 duplicate check only when compare_now + static array, S-5 M2 memcmp
-        [0x18, 0x28); N-1..N-10. Tests x86 PASS (BStages 768, 249 real compares). c2i_ RESUMED 19:1x: fix round on rmt_c2
+        [0x18, 0x28); N-1..N-10. Tests x86 PASS (BStages 768, 249 real compares). c2i_ RESUMED 18:5x: fix round on rmt_c2
         (no atn-mods merge yet: rmt_c3 lands first) -> c23r_ re-checks -> merge. Agents: c31r_, s5r_, c2i_ (3 of 3).
-        c31r_ RE-CHECK 2 DONE 19:2x: MERGE (R1 really fixed: the guard-off RECORDED K 4 control differs on one thread;
+        c31r_ RE-CHECK 2 DONE 18:5x: MERGE (R1 really fixed: the guard-off RECORDED K 4 control differs on one thread;
         tw_engine_code -Quick + loop x86 PASS). Optional carry-overs -> C.3-2 (owner c3i_): N1 comment should name the
         hook stood down GOING IN (leaves found -> a later group takes the call-site fallback); sum compares[EQUAL] over 2b
         and CHECK > 0 so the compare can't go vacuous silently again. MERGED rmt_c3 d0623d049 (clean) + gated builds on
         the merged tree x86 twattila / twrome2 / twthronesofbritannia + amd64 twattila exit 0 + pushed.
-        s5r_ VB DESIGN v3 DONE 19:2x (reports/s5r_design_vb_v3.md): C1-C4 + S1-S5 all accepted (S3 counters test-only;
+        s5r_ VB DESIGN v3 DONE 18:5x (reports/s5r_design_vb_v3.md): C1-C4 + S1-S5 all accepted (S3 counters test-only;
         S4 VB cost gate <= 0.15 ms/f without waits + W3m total waits must drop, not move); 6 MB maps = dynamic textures
         (already excluded); VB budget from the memory log 64 / 32 / 0 MB, 512 MB floor; order V1, V5a, V2, V3a, V3b, Opus
         review, V4 + V5b, V6 (~1,250 lines, from atn-mods >= 7f8729474). Part 2 = CB ring BATCH 3 (~33-35 min): harness
@@ -4349,10 +4349,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         budget. FOR ATN (morning): (a) if the memory log gives an x86 VB budget of 0: drop 8 MB pooling on x86, ship V3a +
         the 464 KB reserve alone? (b) after a WIN, the row default-on = the first default-on hook of the game's own D3D11
         calls: ATN may want to confirm before a release.
-        b2p_ RESUMED 19:3x: batch 3 prep (fp build of d0623d049 = rmt_b3_fp, b3_*.json, b3_run.ps1 -DryRun, b3_check.ps1;
-        no game). b2a_ RESUMED 19:3x: batch 2b analysis -> bench/analysis_b2b/report.md. Agents: c2i_, b2p_, b2a_ (3 of 3).
+        b2p_ RESUMED 18:5x: batch 3 prep (fp build of d0623d049 = rmt_b3_fp, b3_*.json, b3_run.ps1 -DryRun, b3_check.ps1;
+        no game). b2a_ RESUMED 18:5x: batch 2b analysis -> bench/analysis_b2b/report.md. Agents: c2i_, b2p_, b2a_ (3 of 3).
         NEXT: harness default run (coordinator, agents held) -> batch 3 (coordinator, agents held) -> b3 analysis; VB V1
         after c2i_ (one implementer at a time).
+        b2p_ (as b3p_) BATCH 3 PREP DONE 19:0x: bench/b3_run.ps1 (+ b3_check.ps1, variants/b3_S0 / W3a / D1a / ATNa / W3b /
+        D1b / ATNb.json, b3_dryrun_out.txt; made by scratchpad make_b3.ps1 from b2's variants). Build testbin/cpu1_addons/
+        rmt_b3_fp (sym_build_head -FramePointers, HEAD 2da273238 = d0623d049's build inputs), sha256 05867ced..; helper
+        final1118, heapfix HFx, FCU 0, no map trace. Dry run 7 starts exit 0, no WARN. Changes: shot 195 s (WPR stop at 188
+        takes the focus), G0 regex stricter (row values in order, 5 memory lines, shot, no map trace). Risks: D1 never ran
+        with WPR; S0 = first in-game ring install (at loading). Disk: C: 57.6 GB free 19:07 (b2a_'s 23 GB gpu.txt dump in
+        scratchpad/b2b); bench doesn't check disk -> check before the run. RUN: hold all agents, default
+        atn_harness_runs.ps1 first (closes S5 RING GPU CHECKS on pass), then
+        `powershell -NoProfile -ExecutionPolicy Bypass -File ...\bench\b3_run.ps1 *>&1 | Tee-Object ...\bench\b3_run_out.txt`,
+        then b3_check.ps1. WAITS for b2a_'s 2b report (it may change batch 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
