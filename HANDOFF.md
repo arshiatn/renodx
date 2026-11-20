@@ -4190,6 +4190,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         1 / 2 + Nits 1-6 done (residuals accepted). Nit 7 depth around the present-time CheckTable. CONTROL no settle 8 px
         is still a valid proof (pin it CHECK(after != 0), fix comment t:538). tw_buffer_pool x86 + amd64 PASS. s5o_ RESUMED:
         R1 + Nit 7 + comment + pin; then the VB extension after s5r_'s design + the coordinator's go.
+        b2p_ BATCH 2b READY 17:4x (dry run exit 0, no PROBLEMS / WARN): bench/b2b_run.ps1 + b2b_check.ps1, variants b2b_FCU
+        (ATN's settings as 2_ATNmF, FCU 0@0 / OFF1 107 s / ON 132 s / OFF2 157 s, 25 s each, WPR 70-183 s GPU profile,
+        probes all before 107 s) + b2b_T (b2_W3, RENODX_TW_MAP_TRACE=97,8 no hash). Build = batch 2's rmt_b2_fp 79d4a7ab +
+        helper final1118 + HFx. ~11 min; FCU ETL ~5-6 GB. Risk: c31r_'s engine_code.exe test must have exited (HOLD).
+        ATN 18:0x: harness rule? -> settings.local.json ALREADY allows `powershell -NoProfile -ExecutionPolicy Bypass -File
+        D:\Dev\renodx\.claude\worktrees\*` and the classifier still refused -> a new rule likely won't help; ATN runs the
+        commands. C batch (9 starts) = ATN's GO once C is built (ATN "Sure"). Building-heavy start: stress is in the batch
+        already; the optional one is for buildings (B groups) -> skip unless a siege / settlement replay exists. MAX 3
+        AGENTS at a time after the current ones (Max 5-hour limits; Ultra ~11-22). Batch 2b waits for ATN's "now".
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
