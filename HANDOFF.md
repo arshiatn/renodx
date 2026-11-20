@@ -4438,6 +4438,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         generic / devkit / ue-extended exit 0, name check plain words. REVIEW s5x_ (Opus xHigh) RESUMED ->
         reports/s5x_review_latch.md -> s5o_ fixes -> s5x_ re-checks -> merge. c2i_ RESUMED: C.2-4 (rows + carry-overs).
         Agents: b2a_, s5x_, c2i_ (3 of 3).
+        b2a_ BATCH 3 ANALYSIS DONE 20:4x (bench/analysis_b3/report.md, saved by the coordinator): CB ring NEUTRAL in every
+        scene after drift correction (W3 +0.8, ATN +0.4, D1 +0.5 ms/f; D1's LOSS = the replay's own +3 ms climb); NO CB
+        VICTIMS in game this session (Off1 driver waits W3a 0.69 / D1a 0.12 ms/f); the ring = +0.4..+1.4 ms/f hook CPU
+        (RunBody, SetVertexBuffers, RingGet); the harness's -18.7 came from its synthetic GPU load. TRAP 5 of 6 (W3b's
+        +13.6 too; packets 50 -> 205 / f, ~150 extra short waits at the game's Map site = 37.9 ms/f, GPU drains at every
+        present). 32 pieces = a RECLAIM-RULE property (0.53-0.67 MB / f = ~8 pieces; a closed piece's event ends one piece
+        before reuse; fix = end at once + move live buffers half a ring ahead + flushed GetData before growing + wait /
+        grow instead of the DISCARD fallback). VB waits of b2 / b2b W3 (9.5 ms/f) ABSENT in b3 (<= 0.6). Memory fine (B 64
+        MB, F 512 MB). Verdict: park the CB ring (Experimental at most); VB V3 only after an untraced WPR shows VB waits >=
+        3 ms/f; harness trap test with a native keep-warm DISCARD. G1 (shots by eye) not checked -> ATN.
+        s5x_ LATCH REVIEW DONE 20:4x (reports/s5x_review_latch.md): MERGE, no Must. Should 1 test a stop while latched,
+        Should 2 the restart hint on every stop that removes the ring, Should 3 (bench) in-start Off after On now measures
+        On; nits: under-lock re-check of the opt-in (sh:2111), early-out before get_device() for other games, ONE tooltip
+        text "after restarting the game", comment on two pushing devices. MERGED rmt_s5 10cb95a8e + gated builds on the
+        merged tree x86 twattila / twrome2 / twthronesofbritannia + amd64 twattila exit 0 + pushed. Follow-up commit
+        (owner s5o_, after c2i_'s C.2-4: one implementer at a time): Shoulds 1-2 + nits. s5r_ RESUMED 20:5x: track A
+        Part 3 (park, reclaim fix, keep-warm trap test incl. its harness switch for ATN's rule, VB gate, A vs C effort).
+        Agents: c2i_ (C.2-4), s5r_.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
