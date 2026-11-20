@@ -598,13 +598,13 @@ inline void UseEvents(bool use) {
 
 constexpr uint32_t MAP_TRACE_FRAMES = 3;
 constexpr uint32_t MAX_MAP_TRACE_FRAMES = 100;
-// Each kind's storage: <frames> x a frame's room (W2's stress frame: ~4,200 draws, ~1,780 maps and as many unmaps),
-// capped. Reserved at Install (armed) and held until the trace's file is written; x86 bytes a record: draw 32, event
-// 144, native call 112 (12 frames: 3.1 + 9.4 + 7.3 MB at the caps; 3 frames: about 5.5 MB). A record past its room is
-// counted as dropped.
+// Each kind's storage: <frames> x a frame's room (W2's stress frame: ~4,200 draws, ~1,780 maps and as many unmaps; W3:
+// ~6,330 native map and unmap records), capped (8 frames of native calls fit). Reserved at Install (armed) and held
+// until the trace's file is written; x86 bytes a record: draw 32, event 144, native call 112 (12 frames: 3.1 + 9.4 +
+// 7.3 MB at the caps; 3 frames: about 6.2 MB). A record past its room is counted as dropped.
 constexpr size_t MAP_DRAWS_A_FRAME = 8192;
 constexpr size_t MAP_EVENTS_A_FRAME = 6144;
-constexpr size_t NATIVE_CALLS_A_FRAME = 6144;
+constexpr size_t NATIVE_CALLS_A_FRAME = 8192;
 constexpr size_t MAX_MAP_DRAWS = size_t{1} << 17;
 constexpr size_t MAX_MAP_EVENTS = size_t{1} << 16;
 constexpr size_t MAP_CALLERS = 4;

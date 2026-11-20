@@ -1,5 +1,15 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Fewer Constant Uploads Off after a restart (2026-11-20; built only, not stamped, not installed, not run in game)
+
+- Fixed: **Fewer Constant Uploads** turned Off after On cost +47 ms a frame until the battle ended (batch 2b): ReShade's
+  432 B push buffer, idle while the row was on, came back no longer renamed by NVIDIA's driver (one ~33 ms GPU wait a
+  frame). Now a device that used the row keeps it until its end (`mods/shader.hpp`: PushNativeD3D11Injection takes the
+  push while the opt-in is on or the ring follows that device); Off takes effect after a restart (the tooltip says so).
+  Checked in `test/tw_injection_buffers` (the latch, its control, the device's end).
+- Debug: the map trace's room for native calls 6,144 -> 8,192 a frame (W3: ~6,330 map + unmap records a frame; 8 frames
+  still fit the 65,536 cap).
+
 ## Dev, Fewer Driver Waits (2026-11-20; built only, not stamped, not installed, not run in game)
 
 - New row (Graphics (Experimental), **off** by default): **Fewer Driver Waits** (`buffer_pool.hpp`). The game's dynamic
