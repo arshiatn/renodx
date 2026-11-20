@@ -4012,6 +4012,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         written, UNCOMMITTED; WARP rewrites copy slots 46/47/115 after a Flush -> hook both copy bodies next), c2i_ (no code
         yet, design settled), c1o_ (census ~40 %: folded driver = 1 E9 site 0x17aed4a, N loops like weighted, ~52 C sites ->
         a second 64-bit site table; files scratchpad\c3o). GAME BATCH 2 STARTED 12:3x (b2_run_out.txt).
+        GAME BATCH 2 RAN 12:21-12:38: W3m / ATNm / ATNmF / D1m all VALID, 0 hash mismatches after restore, 0 nvlddmkm
+        events (runs/b2_W3_wpr_cpu_122128, b2_ATN_wpr_atn_122545, b2_D1_cpu_123416). First look (single WPR starts): ATNm
+        73.6 ms mean, ATNmF (Fewer Constant Uploads ON) 79.4 ms -> noise vs real: b2a_ decides. Agents RESUMED 12:4x.
+        b2a_ (Opus xHigh, read-only) id a37d325f5461bb538 STARTED 12:4x -> bench/analysis_b2/report.md (data quality,
+        victims with real binds, FCU A/B frames 0-4, S2 open questions, harness readiness, S5 changes). LATER (quiet PC):
+        harness tw_map_replay baseline on W3m v3 on NVIDIA for the >= 5 ms/f CB mark (short GPU run, agents held).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
