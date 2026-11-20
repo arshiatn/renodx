@@ -99,6 +99,10 @@ struct Resource {
   uint32_t cpu = 0;
   uint32_t misc = 0;
   bool described = false;
+  // The game's (made through ReShade's proxy): the plugin is offered it. A v3 trace with tw_map_trace.txt beside it: a
+  // v1 map line (a map through the proxy) or a v3 buffer line (its init_resource); ReShade's own buffers (its 432 B
+  // push buffer) have native_map lines only.
+  bool game = true;
   // How the stream uses it (for an assumed description).
   bool bound_constant = false;
   bool bound_vertex = false;
@@ -348,15 +352,23 @@ inline Stream LoadV3(const std::filesystem::path& path) {
   internal::Reader reader;
   auto& stream = reader.stream;
   stream.version = 3;
-  if (const auto v1_path = path.parent_path() / "tw_map_trace.txt"; std::filesystem::exists(v1_path)) {
+  const auto v1_path = path.parent_path() / "tw_map_trace.txt";
+  const bool v1 = std::filesystem::exists(v1_path);
+  // Through ReShade's proxy: v1's map lines, v3's buffer lines (its init_resource).
+  std::set<uint64_t> game_buffers;
+  if (v1) {
     internal::ForEachLine(v1_path, [&](std::string_view text) {
       const auto line = internal::Split(text);
       if (line.kind == "map" || line.kind == "native_map" || line.kind == "update" || line.kind == "copy") {
         reader.Describe(line);
       }
+      if (line.kind == "map") {
+        game_buffers.insert(internal::Number(line.Required("res")));
+      }
     });
   } else {
-    stream.notes.push_back("no tw_map_trace.txt beside the v3 file: only the v3 buffer lines describe resources");
+    stream.notes.push_back("no tw_map_trace.txt beside the v3 file: only the v3 buffer lines describe resources, and the"
+                           " plugin is offered every buffer");
   }
   double frequency = 0.;
   uint64_t header_calls = 0;
@@ -461,6 +473,7 @@ inline Stream LoadV3(const std::filesystem::path& path) {
     }
     if (line.kind == "buffer") {
       reader.Describe(line);
+      game_buffers.insert(internal::Number(line.Required("res")));
       return;
     }
     if (presents.size() != stream.frames + 1) throw std::runtime_error("the stream starts before every present line");
@@ -547,6 +560,20 @@ inline Stream LoadV3(const std::filesystem::path& path) {
   stream.notes.push_back("draws replayed as one triangle (indexed and indirect ones as direct draws), dispatches as"
                          " one group; queries, copies and UpdateSubresource are not in v3's stream");
   reader.AssumeDescriptions();
+  if (v1) {
+    uint32_t not_game = 0;
+    uint32_t dynamic_constants = 0;
+    for (auto& resource : stream.resources) {
+      resource.game = game_buffers.contains(resource.trace_pointer);
+      if (resource.game || resource.texture || resource.width == 0) continue;
+      ++not_game;
+      dynamic_constants += (resource.usage == D3D11_USAGE_DYNAMIC && resource.bind == D3D11_BIND_CONSTANT_BUFFER ? 1 : 0);
+    }
+    stream.notes.push_back(std::format("{} buffers neither mapped nor made through ReShade's proxy (ReShade's own, as"
+                                       " its push buffer, or bound only; {} of them dynamic constant buffers): the"
+                                       " plugin is not offered them (--addon-buffers ring offers them)",
+                                       not_game, dynamic_constants));
+  }
   return stream;
 }
 
@@ -770,6 +797,7 @@ struct Options {
   uint32_t target_size = 2048;
   Control control = Control::NONE;
   const RingPlugin* plugin = &NATIVE_PLUGIN;
+  bool addon_buffers = false;  // the plugin offered ReShade's own buffers too (Resource::game false), as before H0
   double wait_ms = 0.1;  // a call at least this long counts as a wait
   // Test seam: `test_delay_ms` of spin inside every call that lands in `test_delay_where`.
   Where test_delay_where = Where::COUNT;
@@ -1079,11 +1107,13 @@ RWByteAddressBuffer counter : register(u1);
     context->RSSetViewports(1, &load_viewport);
   }
 
-  // The stream's resources, then the ring (init_device: nothing bound yet).
+  // The stream's resources, then the ring (init_device: nothing bound yet). It gets init_resource / destroy_resource
+  // for the game's buffers alone, as in the game (ReShade's own too with `addon_buffers`).
   const RingPlugin& plugin = *options.plugin;
   if (plugin.attach != nullptr && !plugin.attach(device.Get(), context.Get())) {
     throw std::runtime_error(std::format("plugin {} refused the device", plugin.name));
   }
+  const auto offered = [&](size_t index) { return stream.resources[index].game || options.addon_buffers; };
   std::vector<ComPtr<ID3D11Resource>> resources(stream.resources.size());
   for (size_t index = 0; index < stream.resources.size(); ++index) {
     const auto& described = stream.resources[index];
@@ -1110,7 +1140,7 @@ RWByteAddressBuffer counter : register(u1);
       const D3D11_SUBRESOURCE_DATA initial_data = {.pSysMem = zeros.data()};
       ComPtr<ID3D11Buffer> buffer;
       hr = device->CreateBuffer(&desc, (initialized ? &initial_data : nullptr), &buffer);
-      if (SUCCEEDED(hr) && plugin.buffer_created != nullptr) {
+      if (SUCCEEDED(hr) && plugin.buffer_created != nullptr && offered(index)) {
         plugin.buffer_created(buffer.Get(), desc, (initialized ? zeros.data() : nullptr));
       }
       resources[index] = buffer;
@@ -1372,9 +1402,10 @@ RWByteAddressBuffer counter : register(u1);
   }
   if (plugin.stats != nullptr) result.plugin_stats = plugin.stats();
   if (plugin.detach != nullptr) plugin.detach();
-  for (auto& resource : resources) {
+  for (size_t index = 0; index < resources.size(); ++index) {
     ComPtr<ID3D11Buffer> buffer;
-    if (resource != nullptr && plugin.buffer_destroyed != nullptr && SUCCEEDED(resource.As(&buffer))) {
+    if (resources[index] != nullptr && plugin.buffer_destroyed != nullptr && offered(index)
+        && SUCCEEDED(resources[index].As(&buffer))) {
       plugin.buffer_destroyed(buffer.Get());
     }
   }

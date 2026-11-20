@@ -3,8 +3,10 @@
 // 1. v3 reader: a written v3 stream (S1's writer format: seeds, Map / Unmap, Set, Set1 windows, a vertex buffer, a
 //    staging read, a swap to a private state and back, a ClearState, a dispatch, a failed DO_NOT_WAIT poll, an unmap of
 //    a map made before the trace) with tw_map_trace.txt's descriptions beside it: the calls, slots, windows, states,
-//    descriptions (one assumed) and the pacing (qpc minus the frame's start minus the native times before). CONTROLS:
-//    a map line removed (the header's native_calls no longer match), a bad slot: both refused.
+//    descriptions (one assumed) and the pacing (qpc minus the frame's start minus the native times before); the game's
+//    buffers (a v1 map line or a v3 buffer line, through ReShade's proxy; not B, mapped only below it, nor the
+//    bound-only S), every buffer without tw_map_trace.txt. CONTROLS: a map line removed (the header's native_calls no
+//    longer match), a bad slot: both refused.
 //    S1's own v3 output (testbin\tw_map_trace_amd64c, when there): read, its header's counts.
 // 2. v2 reader: a written v2 trace and its waits: the draws before each map at its draw index (a dispatch right before
 //    a map from last=dispatch), the assumed binds (a once-a-frame CB on a dedicated slot from the start, a per-draw one
@@ -14,8 +16,9 @@
 //    written bytes, a NO_OVERWRITE map keeping the bytes, Set1 windows and the zeros past them, a 16 B buffer's zeros past its
 //    end, one buffer at two offsets in two slots, a swap's private state and back, ClearState, the compute rows).
 //    CONTROL: a model that ignores the windows disagrees.
-// 4. Parity: native against native on two fresh devices, equal bit for bit; the plugin seam's callbacks (attach, every
-//    buffer, every present, detach). CONTROLS: upload, window, offset each differ.
+// 4. Parity: native against native on two fresh devices, equal bit for bit; the plugin seam's callbacks (attach, the
+//    game's buffers alone, never B or S, every present, detach). CONTROL: --addon-buffers ring offers every buffer.
+//    CONTROLS: upload, window, offset each differ.
 // 5. The wait locator: a 2 ms delay inside every CB DISCARD lands in cb_discard (>= 5 ms/f: the mark met); CONTROL:
 //    the delay in vertex buffer maps leaves cb_discard under 1 ms/f. The calls a frame per row as the stream has them.
 #include <cstdio>
@@ -158,10 +161,12 @@ std::string WriteV3(const std::filesystem::path& folder, bool drop_a_map) {
     text.replace(text.find(counted), counted.size(), std::format("native_calls={}", writer.native_calls + 1));
   }
   WriteText(folder / "tw_map_trace_v3.txt", text);
+  // B mapped only below ReShade's proxy (as ReShade's push buffer), V and T through it; A and C made through it (their
+  // v3 buffer lines); S bound only.
   WriteText(folder / "tw_map_trace.txt",
             "native_map frame=0 res=0x2000 usage=dynamic bind=0x4 cpu=0x10000 misc=0x0 type=buffer bytes=16\n"
-            "native_map frame=0 res=0x4000 usage=dynamic bind=0x1 cpu=0x10000 misc=0x0 type=buffer bytes=4096\n"
-            "native_map frame=0 res=0x6000 usage=staging bind=0x0 cpu=0x20000 misc=0x0 type=buffer bytes=256\n");
+            "map frame=0 res=0x4000 usage=dynamic bind=0x1 cpu=0x10000 misc=0x0 type=buffer bytes=4096\n"
+            "map frame=0 res=0x6000 usage=staging bind=0x0 cpu=0x20000 misc=0x0 type=buffer bytes=256\n");
   return text;
 }
 
@@ -267,7 +272,7 @@ std::vector<std::vector<uint32_t>> ModelStrips(const replay::Stream& stream, boo
 // The seam's test plugin: counts its callbacks.
 struct PluginCounts {
   uint32_t attach = 0;
-  uint32_t created = 0;
+  std::vector<UINT> created;  // each offered buffer's bytes
   uint32_t destroyed = 0;
   uint32_t presents = 0;
   uint32_t detach = 0;
@@ -276,7 +281,7 @@ PluginCounts plugin_counts;
 const replay::RingPlugin COUNTING_PLUGIN = {
     .name = "counting",
     .attach = [](ID3D11Device*, ID3D11DeviceContext*) { return ++plugin_counts.attach != 0; },
-    .buffer_created = [](ID3D11Buffer*, const D3D11_BUFFER_DESC&, const void*) { ++plugin_counts.created; },
+    .buffer_created = [](ID3D11Buffer*, const D3D11_BUFFER_DESC& desc, const void*) { plugin_counts.created.push_back(desc.ByteWidth); },
     .buffer_destroyed = [](ID3D11Buffer*) { ++plugin_counts.destroyed; },
     .present = [](ID3D11DeviceContext*) { ++plugin_counts.presents; },
     .detach = [] { ++plugin_counts.detach; },
@@ -312,6 +317,18 @@ int main() {
     CHECK(s != replay::NO_RESOURCE && stream.resources[s].bind == D3D11_BIND_CONSTANT_BUFFER
           && stream.resources[s].usage == D3D11_USAGE_DEFAULT && stream.resources[s].width == 65536);
     CHECK(ResourceIndex(stream, 0x9000) == replay::NO_RESOURCE);
+    // H0: a v1 map line or a v3 buffer line (through ReShade's proxy) makes a buffer the game's; B (native_map lines
+    // only) and S are not.
+    const uint32_t v = ResourceIndex(stream, 0x4000);
+    CHECK(stream.resources[a].game && stream.resources[c].game && v != replay::NO_RESOURCE && stream.resources[v].game);
+    CHECK(!stream.resources[b].game && !stream.resources[s].game);
+    std::printf("  without tw_map_trace.txt: every buffer the game's\n");
+    {
+      WriteText(root / "v3_alone" / "tw_map_trace_v3.txt", WriteV3(root / "v3_alone_source", false));
+      const auto alone = replay::LoadV3(root / "v3_alone" / "tw_map_trace_v3.txt");
+      CHECK(std::ranges::all_of(alone.resources, &replay::Resource::game));
+      CHECK(std::ranges::any_of(alone.notes, [](const std::string& note) { return note.find("offered every buffer") != std::string::npos; }));
+    }
     const auto window = std::ranges::find_if(stream.calls, [](const replay::Call& call) {
       return call.kind == replay::Kind::SET1 && call.stage == replay::PIXEL_STAGE && call.start_slot == 3;
     });
@@ -416,7 +433,14 @@ int main() {
     const auto on = replay::Replay(stream, options);
     CHECK(replay::CompareStrips(off, on).empty());
     CHECK(plugin_counts.attach == 1 && plugin_counts.detach == 1 && plugin_counts.presents == 2);
-    CHECK(plugin_counts.created == 6 && plugin_counts.destroyed == 6 && on.plugin_stats == "2 presents");
+    // The game's 4 buffers alone: never B (16 B, ReShade's) nor S (bound only, 64 KB assumed).
+    CHECK(plugin_counts.created.size() == 4 && plugin_counts.destroyed == 4 && on.plugin_stats == "2 presents");
+    CHECK(std::ranges::count(plugin_counts.created, 16u) == 0 && std::ranges::count(plugin_counts.created, 65536u) == 0);
+    std::printf("  control: --addon-buffers ring offers every buffer\n");
+    options.addon_buffers = true;
+    CHECK(replay::CompareStrips(off, replay::Replay(stream, options)).empty());
+    CHECK(plugin_counts.created.size() == 10 && plugin_counts.destroyed == 10 && std::ranges::count(plugin_counts.created, 16u) == 1);
+    options.addon_buffers = false;
     for (const auto control : {replay::Control::UPLOAD, replay::Control::WINDOW, replay::Control::OFFSET}) {
       options.plugin = &replay::NATIVE_PLUGIN;
       options.control = control;

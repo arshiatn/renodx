@@ -9,6 +9,8 @@
 //   --nvidia (else WARP)  --frames a-b  --loops n (1)  --pace on|off (on)  --gpu-ms x (0)  --target n (2048)
 //   --plugin native|ring  --control none|upload|window|offset  --wait-ms x (0.1)  --warm n (1: frames left out of the
 //   summary)  --waits <join file> (v2: the ETL waits left out of the pacing)  --gap-cap-ms x (0.5, v2 without waits)
+//   --addon-buffers native|ring (native: the plugin gets the game's buffers alone, those mapped (tw_map_trace.txt) or
+//   made (v3 buffer lines) through ReShade's proxy; ring: ReShade's own too, as before H0)
 // Exit 2 with "STOP:" on an error (a removed device, a failed call): GPU runs end there.
 #include <cstdio>
 #include <cstdlib>
@@ -88,6 +90,10 @@ int main(int argc, char** argv) {
         const auto found = std::ranges::find(CONTROLS, control);
         if (found == CONTROLS.end()) throw std::runtime_error(std::format("unknown control {}", control));
         options.control = static_cast<tw_map_replay::Control>(found - CONTROLS.begin());
+      } else if (argument == "--addon-buffers") {
+        const std::string_view offer = value();
+        if (offer != "native" && offer != "ring") throw std::runtime_error(std::format("unknown --addon-buffers {}", offer));
+        options.addon_buffers = (offer == "ring");
       } else if (argument == "--wait-ms") {
         options.wait_ms = tw_map_replay::internal::Decimal(value());
       } else if (argument == "--warm") {

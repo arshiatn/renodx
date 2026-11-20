@@ -1,8 +1,9 @@
 // The shipping constant buffer ring (src/games/twattila/buffer_pool.hpp) as the map replay's `--plugin ring`
 // (run.ps1 -RingAdapter test\tw_map_replay\ring_adapter.hpp, force-included into map_replay.cpp): handed what the
-// add-on hands it in the game. device_loss's device list (init_device), ReShade's init_resource / destroy_resource,
-// the present event with the row on (the ring goes in at the first one), the row off at the unload, then the device's
-// end. The ring's log lines go to stdout.
+// add-on hands it in the game. device_loss's device list (init_device), ReShade's init_resource / destroy_resource (the
+// game's buffers alone: ReShade's own, as its push buffer, are made below its proxy; --addon-buffers ring offers them
+// too), the present event with the row on (the ring goes in at the first one), the row off at the unload, then the
+// device's end. The ring's log lines go to stdout.
 #pragma once
 
 #include <cstdio>
