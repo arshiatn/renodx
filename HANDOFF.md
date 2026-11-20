@@ -4456,6 +4456,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         (owner s5o_, after c2i_'s C.2-4: one implementer at a time): Shoulds 1-2 + nits. s5r_ RESUMED 20:5x: track A
         Part 3 (park, reclaim fix, keep-warm trap test incl. its harness switch for ATN's rule, VB gate, A vs C effort).
         Agents: c2i_ (C.2-4), s5r_.
+        s5r_ TRACK A PART 3 DONE 20:5x (end of s5r_design_vb_v3.md): (1) CB ring PARKED (merged, Off, latched, installs
+        nothing when Off); re-test only when an untraced native WPR shows game-CB waits >= 2 ms/f AND the hook cost is down
+        (first: don't install IASetVertexBuffers' body for the ring, -0.3-0.6 ms/f W3) AND the reclaim fix is in; re-test =
+        Off1 -> On + a REF start. (2) Reclaim fix designed (3.2: end a piece's event when the head leaves it, copy live
+        buffers from their CPU copy when half a ring behind, flushed GetData before growing, bounded 50 ms wait instead of
+        the native fallback at a full ring, release pieces unused 300 presents; ~100-140 + 60 test lines), NOT built while
+        parked. (3) HARNESS TRAP TEST (3.3, owner s5o_, ~200 lines): --park cb|vb|all,<start>,<length>, --keep-warm <N>,
+        --keep-warm-bind, --plugin-window, per-phase table + `TRAP yes|no`, WARP self-check; runs t1-t8 on b2_W3m (~12 min):
+        new switch atn_harness_runs.ps1 -Trap = NEEDS ATN's RULE (morning). (4) The trap explains the game's own session
+        waits only partly; keep-warm can't help the game alone. (5) VB V1 / V5a / V2 DEFERRED (unused code + merges vs
+        track C's context_hooks changes); V3 gate = untraced WPR VB waits >= 3 ms/f + Off1 -> On with REF + a safe
+        hand-back. (6) Track A = only the trap test left this round -> effort to TRACK C. Data for C: in game the context
+        hooks cost RunBody 1.1-1.3 ms/f (W3, ~4,200 draws / 8,000 binds a frame), SetVertexBuffers 0.3-0.6.
+        FOR ATN (morning): (a) hide the Fewer Driver Waits row from players (s5r_'s advice) or keep it Experimental Off?
+        (b) one more exact rule: PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\arshi\.claude\
+        projects\D--Dev-renodx\tools\tw\bench\analysis_b2\replay\atn_harness_runs.ps1 -Trap); (c) G1: batch 3's 195 s
+        shots by eye (S0 ring on vs REF-ATN / ATNa / ATNb). ORDER (one implementer at a time): c2i_ C.2-4 -> s5o_ latch
+        follow-up + trap harness -> c3i_ C.3-2 (B sites + SetGame) -> C.3-3 / C.3-4 -> C batch. Track B after the C batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
