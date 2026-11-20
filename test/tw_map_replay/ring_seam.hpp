@@ -24,8 +24,9 @@ struct RingPlugin {
   // Options::addon_buffers), as ReShade's proxy fires them in the game (initial data: its bytes, or null).
   void (*buffer_created)(ID3D11Buffer* buffer, const D3D11_BUFFER_DESC& desc, const void* initial_data) = nullptr;
   void (*buffer_destroyed)(ID3D11Buffer* buffer) = nullptr;
-  // ReShade's present event: on the render thread, before every Present (timed with the Present).
-  void (*present)(ID3D11DeviceContext* immediate_context) = nullptr;
+  // ReShade's present event: on the render thread, before every Present (timed with the Present). `on`: the row
+  // (false outside Options' plugin window).
+  void (*present)(ID3D11DeviceContext* immediate_context, bool on) = nullptr;
   // The add-on's unload, the device still alive: every buffer the ring holds goes back to its native form.
   void (*detach)() = nullptr;
   // One line for the run's report (pieces used, fallbacks); null: none.

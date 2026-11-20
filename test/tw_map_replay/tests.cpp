@@ -21,6 +21,11 @@
 //    CONTROLS: upload, window, offset each differ.
 // 5. The wait locator: a 2 ms delay inside every CB DISCARD lands in cb_discard (>= 5 ms/f: the mark met); CONTROL:
 //    the delay in vertex buffer maps leaves cb_discard under 1 ms/f. The calls a frame per row as the stream has them.
+// 6. The trap test (a clock of 1 s a frame): native against the CB victims (A, C) parked in frames 2-4, equal bit for
+//    bit, every victim map in the window to a stand-in. CONTROL: the park's end leaving the binds on the stand-ins
+//    differs. Keep-warm every frame with a bind (6 DISCARDs), the plugin's row on in its window only; CONTROL:
+//    --keep-warm-bind refused in parity mode. The phases of synthetic frames: TRAP yes for waits after the window;
+//    CONTROL: a late phase that recovers says no.
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -275,6 +280,7 @@ struct PluginCounts {
   std::vector<UINT> created;  // each offered buffer's bytes
   uint32_t destroyed = 0;
   uint32_t presents = 0;
+  uint32_t on_presents = 0;  // with the row on
   uint32_t detach = 0;
 };
 PluginCounts plugin_counts;
@@ -283,7 +289,11 @@ const replay::RingPlugin COUNTING_PLUGIN = {
     .attach = [](ID3D11Device*, ID3D11DeviceContext*) { return ++plugin_counts.attach != 0; },
     .buffer_created = [](ID3D11Buffer*, const D3D11_BUFFER_DESC& desc, const void*) { plugin_counts.created.push_back(desc.ByteWidth); },
     .buffer_destroyed = [](ID3D11Buffer*) { ++plugin_counts.destroyed; },
-    .present = [](ID3D11DeviceContext*) { ++plugin_counts.presents; },
+    .present =
+        [](ID3D11DeviceContext*, bool on) {
+          ++plugin_counts.presents;
+          plugin_counts.on_presents += (on ? 1 : 0);
+        },
     .detach = [] { ++plugin_counts.detach; },
     .stats = [] { return std::format("{} presents", plugin_counts.presents); },
 };
@@ -466,6 +476,57 @@ int main() {
     options.test_delay_where = Where::VB_OTHER_MAP;
     const auto moved = replay::Summarize(replay::Replay(stream, options), 0);
     CHECK(moved.ms[row(Where::CB_DISCARD)] < 1. && moved.ms[row(Where::VB_OTHER_MAP)] >= 0.99);
+
+    std::printf("6. trap test\n");
+    // The windows' clock in frames of 1 s: 3 loops of the 2 frames, the park in frames 2-4 (frame 0, 1, 0).
+    options = {.loops = 3, .pace = false, .parity = true, .target_size = 256, .seconds_per_frame = 1.};
+    const auto native = replay::Replay(stream, options);
+    options.park = replay::Park::CB;
+    options.park_start_s = 2.;
+    options.park_length_s = 3.;
+    const auto parked = replay::Replay(stream, options);
+    const std::string parked_difference = replay::CompareStrips(native, parked);
+    std::printf("  park cb,2,3: %u victims, %u maps to their stand-ins: %s\n", parked.victims, parked.parked_maps,
+                (parked_difference.empty() ? "EQUAL bit for bit" : parked_difference.c_str()));
+    // A and C (B is ReShade's, V a VB); their maps in frame 0 (4) and frame 1 (3).
+    CHECK(parked_difference.empty() && parked.victims == 2 && parked.parked_maps == 4 + 3 + 4);
+    std::printf("  control: the park's end leaves the binds on the stand-ins\n");
+    options.control = replay::Control::PARK;
+    const std::string kept = replay::CompareStrips(native, replay::Replay(stream, options));
+    std::printf("  %s\n", kept.c_str());
+    CHECK(!kept.empty());
+    options.control = replay::Control::NONE;
+    std::printf("  keep-warm every frame with a bind, the plugin's row on in frames 1-2\n");
+    options.parity = false;
+    options.keep_warm = 1;
+    options.keep_warm_bind = true;
+    options.plugin = &COUNTING_PLUGIN;
+    options.plugin_start_s = 1.;
+    options.plugin_length_s = 2.;
+    plugin_counts = {};
+    const auto warm = replay::Replay(stream, options);
+    CHECK(warm.warm_maps == 2 * 3 && warm.failed_maps == 0);
+    CHECK(plugin_counts.presents == 6 && plugin_counts.on_presents == 2);
+    CHECK(warm.frames.size() == 6 && warm.frames[5].start_ticks == 5 * warm.frequency);
+    std::printf("  control: --keep-warm-bind in parity mode\n");
+    options.parity = true;
+    CHECK(Throws([&] { replay::Replay(stream, options); }));
+    std::printf("  the phases: waits from 15 s on (the window 10 s + 5 s)\n");
+    replay::Result phased = {.frequency = 1000};  // a tick a ms
+    for (int64_t second = 0; second < 40; ++second) {
+      phased.frames.push_back({.start_ticks = second * 1000, .frame_ticks = 100});
+      phased.frames.back().wait_ticks[row(Where::CB_DISCARD)] = (second >= 15 ? 3 : 0);
+      phased.frames.back().waits[row(Where::CB_DISCARD)] = (second >= 15 ? 1 : 0);
+    }
+    const std::string trapped = replay::PhaseReport(phased, 10., 5.);
+    std::printf("%s", trapped.c_str());
+    CHECK(trapped.find("TRAP cb_discard: yes") != std::string::npos);
+    CHECK(trapped.find("TRAP vb_discard: no") != std::string::npos);
+    std::printf("  control: the late phase (25-35 s) recovers\n");
+    for (auto& times : phased.frames) {
+      if (times.start_ticks >= 25000) times.wait_ticks[row(Where::CB_DISCARD)] = 0;
+    }
+    CHECK(replay::PhaseReport(phased, 10., 5.).find("TRAP cb_discard: no") != std::string::npos);
   } catch (const std::exception& error) {
     std::printf("FAIL: %s\n", error.what());
     ++failures;

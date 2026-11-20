@@ -2094,10 +2094,13 @@ static thread_local uint64_t pending_post_command_id = 0u;
 // the caller pushes through ReShade. Offset 0 only: ReShade's buffer keeps an earlier push's values before the offset.
 static bool PushNativeD3D11Injection(reshade::api::command_list* cmd_list, uint32_t slot, bool is_dispatch) {
   auto& ring = internal::native_injection_ring;
+  const bool opted_in = use_native_d3d11_injection.load(std::memory_order_relaxed);
+  // Never used (every other game): nothing more.
+  if (!opted_in && ring.device.load(std::memory_order_relaxed) == nullptr) return false;
   auto* device = cmd_list->get_device();
-  if (!use_native_d3d11_injection.load(std::memory_order_relaxed) && ring.device.load(std::memory_order_relaxed) != device) {
-    return false;
-  }
+  // The latch follows the ring's one device: with two devices pushing while opted in, the one pushed last keeps it after
+  // the opt-in goes off, the other goes back to ReShade's push.
+  if (!opted_in && ring.device.load(std::memory_order_relaxed) != device) return false;
   if (slot >= D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT || shader_injection_size == 0u
       || device->get_api() != reshade::api::device_api::d3d11) {
     return false;
@@ -2109,6 +2112,8 @@ static bool PushNativeD3D11Injection(reshade::api::command_list* cmd_list, uint3
                                           shader_injection_size * sizeof(float)};
   const std::unique_lock lock(ring.mutex);
   if (ring.device != device) {
+    // The gate saw the device before a reset (its end, the detach): adopted again only while opted in.
+    if (!opted_in) return false;
     ring.Reset();
     ring.device = device;
   }

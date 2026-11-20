@@ -7,15 +7,22 @@
 //     overhead: --runs per mode (20), native and --plugin alternating ABBA; the render thread's D3D11 call time a frame
 //       (Present left out) and of the calls the ring hooks per mode, their 95 % intervals and the differences.
 //   --nvidia (else WARP)  --frames a-b  --loops n (1)  --pace on|off (on)  --gpu-ms x (0)  --target n (2048)
-//   --plugin native|ring  --control none|upload|window|offset  --wait-ms x (0.1)  --warm n (1: frames left out of the
-//   summary)  --waits <join file> (v2: the ETL waits left out of the pacing)  --gap-cap-ms x (0.5, v2 without waits)
+//   --plugin native|ring  --control none|upload|window|offset|park  --wait-ms x (0.1)  --warm n (1: frames left out of
+//   the summary)  --waits <join file> (v2: the ETL waits left out of the pacing)  --gap-cap-ms x (0.5, v2 without waits)
 //   --addon-buffers native|ring (native: the plugin gets the game's buffers alone, those mapped (tw_map_trace.txt) or
 //   made (v3 buffer lines) through ReShade's proxy; ring: ReShade's own too, as before H0)
+//   The trap test (s5r_ design v3 3.3; seconds from the first replayed frame's start): --park cb|vb|all,<start>,<length>
+//   (the victims' maps and binds to stand-ins in the window: cb the game's dynamic CBs <= 64 KB, vb its dynamic VBs
+//   > 64 KB, all every dynamic buffer of its; parity: the ON run only)  --keep-warm n (a native DISCARD of each victim
+//   every n parked frames)  --keep-warm-bind (and one draw with it bound; not in parity mode)  --plugin-window
+//   <start>,<length> (the plugin's row on only in it). Baseline mode then prints the phases around the window (the
+//   park's, else the plugin's) and a TRAP line per DISCARD row.
 // Exit 2 with "STOP:" on an error (a removed device, a failed call): GPU runs end there.
 #include <cstdio>
 #include <cstdlib>
 #include <numeric>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "./map_replay.hpp"
@@ -61,6 +68,13 @@ int main(int argc, char** argv) {
         if (index + 1 >= argc) throw std::runtime_error(std::format("{} needs a value", argument));
         return argv[++index];
       };
+      // "<start s>,<length s>"
+      const auto window = [](std::string_view text) {
+        const size_t comma = text.find(',');
+        if (comma == std::string_view::npos) throw std::runtime_error(std::format("not <start>,<length>: '{}'", text));
+        return std::pair(tw_map_replay::internal::Decimal(text.substr(0, comma)),
+                         tw_map_replay::internal::Decimal(text.substr(comma + 1)));
+      };
       if (argument == "--mode") {
         mode = value();
       } else if (argument == "--nvidia") {
@@ -86,7 +100,7 @@ int main(int argc, char** argv) {
         plugin_name = value();
       } else if (argument == "--control") {
         const std::string_view control = value();
-        constexpr std::array<std::string_view, 4> CONTROLS = {"none", "upload", "window", "offset"};
+        constexpr std::array<std::string_view, 5> CONTROLS = {"none", "upload", "window", "offset", "park"};
         const auto found = std::ranges::find(CONTROLS, control);
         if (found == CONTROLS.end()) throw std::runtime_error(std::format("unknown control {}", control));
         options.control = static_cast<tw_map_replay::Control>(found - CONTROLS.begin());
@@ -94,6 +108,22 @@ int main(int argc, char** argv) {
         const std::string_view offer = value();
         if (offer != "native" && offer != "ring") throw std::runtime_error(std::format("unknown --addon-buffers {}", offer));
         options.addon_buffers = (offer == "ring");
+      } else if (argument == "--park") {
+        const std::string_view park = value();
+        const size_t comma = park.find(',');
+        constexpr std::array<std::string_view, 4> PARKS = {"none", "cb", "vb", "all"};
+        const auto found = std::ranges::find(PARKS, park.substr(0, comma));
+        if (found == PARKS.end() || comma == std::string_view::npos) {
+          throw std::runtime_error(std::format("not cb|vb|all,<start>,<length>: '{}'", park));
+        }
+        options.park = static_cast<tw_map_replay::Park>(found - PARKS.begin());
+        std::tie(options.park_start_s, options.park_length_s) = window(park.substr(comma + 1));
+      } else if (argument == "--keep-warm") {
+        options.keep_warm = static_cast<uint32_t>(tw_map_replay::internal::Number(value()));
+      } else if (argument == "--keep-warm-bind") {
+        options.keep_warm_bind = true;
+      } else if (argument == "--plugin-window") {
+        std::tie(options.plugin_start_s, options.plugin_length_s) = window(value());
       } else if (argument == "--wait-ms") {
         options.wait_ms = tw_map_replay::internal::Decimal(value());
       } else if (argument == "--warm") {
@@ -142,6 +172,13 @@ int main(int argc, char** argv) {
                                        * 1000. / static_cast<double>(result.frequency));
         }
         std::printf("cb_discard ms per frame: %s\n", per_frame.c_str());
+        if (const bool park = (options.park != tw_map_replay::Park::NONE); park || options.plugin_start_s >= 0.) {
+          std::printf("park: %u victims, %u maps to their stand-ins, %u keep-warm DISCARDs\n%s", result.victims,
+                      result.parked_maps, result.warm_maps,
+                      tw_map_replay::PhaseReport(result, (park ? options.park_start_s : options.plugin_start_s),
+                                                 (park ? options.park_length_s : options.plugin_length_s))
+                          .c_str());
+        }
         std::fflush(stdout);
         cb_discard.push_back(summary.ms[static_cast<size_t>(Where::CB_DISCARD)]);
       }
@@ -160,11 +197,17 @@ int main(int argc, char** argv) {
       options.pace = false;
       options.plugin = &tw_map_replay::NATIVE_PLUGIN;
       const tw_map_replay::Control control = options.control;
+      const tw_map_replay::Park park = options.park;
       options.control = tw_map_replay::Control::NONE;
+      options.park = tw_map_replay::Park::NONE;
       const auto off = tw_map_replay::Replay(stream, options);
       options.plugin = plugin;
       options.control = control;
+      options.park = park;
       const auto on = tw_map_replay::Replay(stream, options);
+      if (park != tw_map_replay::Park::NONE) {
+        std::printf("park: %u victims, %u maps to their stand-ins\n", on.victims, on.parked_maps);
+      }
       const std::string difference = tw_map_replay::CompareStrips(off, on);
       size_t draws = 0;
       for (const uint32_t frame_draws : off.draws_per_frame) draws += frame_draws;
