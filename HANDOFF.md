@@ -4411,6 +4411,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         (rmt_b3_fp, unlatched on purpose). LATCH before the ring ships (s5r_ decision): Off applies after a restart;
         new R10 for VB: a mode decrease at restart, an increase live. b2p_ RESUMED 19:3x: scripts to Part 2b + dry run.
         s5o_ got the CB ring latch as a 2nd commit after FCU (test seam latch_off, tooltip, README).
+        b2p_ SCRIPTS TO PART 2b DONE 19:3x: b3_run.ps1 / b3_check.ps1 / 9 variants (REF-W3 / REF-ATN names: no `_` in
+        bench variant names), dry run 9 calls exit 0; shot 195 s kept (WPR stop focus); WPR-start packet / Map-site trap
+        criteria = analyst (ETL). s5o_ HELD 19:3x with commit 1 UNCOMMITTED on rmt_s5 (FCU latch in src/mods/shader.hpp:
+        NativeInjectionRing::device atomic, PushNativeD3D11Injection keeps native once used on that device; tooltip "Turning
+        it off takes effect after a restart."; NATIVE_CALLS_A_FRAME 8,192 + tw_map_trace check; tw_injection_buffers
+        parts 1 / 6 / 7; WARP suites x86 + amd64 PASS; left: gated builds incl. generic / ue-extended / devkit, commit 1,
+        then commit 2 = ring latch). GAME BATCH 3 STARTED 19:39 by the coordinator (all agents held; zombie Attila 28704
+        0 threads as before; C: 56 GB): b3_run.ps1 -> bench/b3_run_out.txt; then b3_check.ps1, b2a_ analysis (xHigh).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
