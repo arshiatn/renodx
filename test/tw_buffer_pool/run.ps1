@@ -1,6 +1,7 @@
-# twattila/buffer_pool.hpp, Fewer Driver Waits (the constant buffer ring), on WARP (tests.cpp: the 32 bodies, the rules
+# twattila/buffer_pool.hpp, Fewer Driver Waits (the constant buffer ring), on WARP (tests.cpp: the 35 bodies, the rules
 # it relies on, pixels / compute output / copies on vs off with its controls, Get / Get1 / Map parity, references, the
-# full ring, another thread's call, the device's end). No game build needed. Run as x86 (Attila) and amd64.
+# full ring and its wrap, another thread's call, the unwind's edges, the device's end, Uninstall on and off the render
+# thread). No game build needed. Run as x86 (Attila) and amd64.
 # -OutDir: where the test exe goes (default testbin\tw_buffer_pool_<arch>, the maintainer's excluded folder).
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [string]$OutDir = '')
 $ErrorActionPreference = 'Stop'

@@ -240,7 +240,9 @@ inline Route Tracked(const void* context, size_t body) {
   const bool foreign = state.foreign_thread.load(std::memory_order_relaxed);
   if (state.observer != nullptr && !foreign) {
     ++state.entries[body];
-    if (state.depth != 0) ++state.nested;
+    if (state.depth != 0) {
+      ++state.nested;
+    }
   }
   if (state.depth != 0) return {};
   return {.observer = (foreign ? nullptr : state.observer), .ring = state.ring};
@@ -298,9 +300,11 @@ inline HRESULT STDMETHODCALLTYPE Map(ID3D11DeviceContext* context, ID3D11Resourc
     if (dimension == D3D11_RESOURCE_DIMENSION_BUFFER) {
       static_cast<ID3D11Buffer*>(resource)->GetDesc(&desc);
     }
-    // A constant buffer's map: one of the same subresource replaces the older (its unmap not seen here); a full list
-    // takes no more.
-    if ((desc.BindFlags & D3D11_BIND_CONSTANT_BUFFER) != 0) {
+    // A constant buffer's map, at most 64 KB (all a shader sees of one; larger ones are the add-on's own rings, too
+    // costly to hash): one of the same subresource replaces the older (its unmap not seen here); a full list takes no
+    // more.
+    if ((desc.BindFlags & D3D11_BIND_CONSTANT_BUFFER) != 0
+        && desc.ByteWidth <= D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT * 16) {
       const OpenMap open = {.resource = resource, .subresource = subresource, .data = mapped->pData,
                             .bytes = desc.ByteWidth};
       const auto same = std::ranges::find_if(state.open_maps, [&](const OpenMap& map) {
@@ -751,7 +755,8 @@ inline bool Hook(ID3D11DeviceContext* context, bool ring) {
     state.foreign_thread.store(false);
     state.foreign_qpc.store(0);
   }
-  std::copy(bodies.begin() + first_new, bodies.begin() + used, state.bodies.begin() + first_new);
+  // The ring's: both copy versions, also where they are one (its check at each present compares the table with them).
+  std::copy(bodies.begin() + first_new, bodies.begin() + (ring ? BODIES : used), state.bodies.begin() + first_new);
   std::copy(bodies.begin() + first_new, bodies.begin() + used, state.trampolines.begin() + first_new);
   // The measure bodies into `hooks`, the ring's others into `ring_hooks`, each set with its own module reference.
   for (const size_t set_start : {size_t{0}, MEASURE_BODIES}) {

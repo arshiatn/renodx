@@ -6,19 +6,30 @@
 // 2. The rules it relies on: the caps; a copy into a dynamic constant buffer lands, UpdateSubresource into one does not.
 // 3. Pixels, compute output and copies, ring off vs on, each run on a fresh device: per-draw DISCARDs of a 208 B buffer
 //    (the shaders read past its end), a once-a-frame one bound before its DISCARD, NO_OVERWRITE windows of a 1 KB one
-//    (Set1), VS / PS / CS, Get1 / Set1 round trips, a private state swapped in and back (d3d11's lazy application),
-//    ClearState, copies from and into game buffers (each through both versions of its body: after a Flush or not),
-//    buffers bound and mapped before the install (the ring in at frame 0's present). Equal: the ring; the full ring (busy pieces: the fallback, logged once); another thread's call (the
-//    ring unwinds at the render thread's next call, then stays off, logged); the map trace's measure path on beside it
-//    (its records the caller's buffers). CONTROLS (must differ): no rebind, the Get hooks off, a piece reused early,
-//    the copy hooks off, the swap's settling call left out.
+//    (Set1), a window past a buffer's end (the zero segment), VS / PS / CS, Get1 / Set1 round trips, a private state
+//    swapped in and back (d3d11's lazy application), ClearState, copies from and into game buffers (each through both
+//    versions of its body: after a Flush or not; one into a raw-views buffer), buffers bound and mapped before the
+//    install (the ring in at frame 0's present), a script on the fresh ring at frame 1 (b drawn from two segments, the
+//    ring filled with 64 KB uploads, b again, the GPU done, the ring wrapped over every piece, b drawn again), and after
+//    the ring's removal the private state's binds and a draw there. Equal: the ring; the full ring (busy pieces: the
+//    fallback, logged once); the full ring, then the wrap with b still bound (b falls back, not into the closed piece);
+//    another thread's call (the ring unwinds at the render thread's next call, then stays off, logged); the map trace's
+//    measure path on beside it, installed after the ring or before it (its records the caller's buffers). CONTROLS
+//    (must differ): no rebind, the Get hooks off, a piece reused early (the script's first draws: deterministic), the
+//    copy hooks off, the swap's settling call left out.
 // 4. Get / Get1 / Map parity against a second device (ring off) over random Set / Set1 (invalid windows, null arrays,
 //    windows past a buffer's end) / Map-Unmap / ClearState / swaps: buffers and windows equal; every game buffer's
 //    references its own plus one per slot of the ring at every step, its own alone after the ring's removal (the
 //    device's too). A buffer the game lets go of while bound lives until unbound, as natively; CONTROL: without the
-//    ring's reference it goes at once. Our own dynamic buffers (made below ReShade) never tracked.
+//    ring's reference it goes at once. Our own dynamic buffers (made below ReShade) never tracked. Out by
+//    buffer_pool::Uninstall on the render thread, slots bound.
 // 5. The device's end with the ring on: its hooks out, its references let go, its records freed at the next present;
 //    every body's first bytes back, the modules let go.
+// 6. The unwind's edges: a buffer destroyed since the present gets no write-back, another thread's bind is what the next
+//    Get returns; a lost device (an event's error): no write-backs, off until the row; a copy body in the table that the
+//    install never saw: out at the present, logged.
+// 7. buffer_pool::Uninstall off the render thread: the hooks kept to the process's end, the ring unwound at the render
+//    thread's next call (its buffer written back and bound again).
 #include <windows.h>
 #include <d3d11_1.h>
 #include <d3dcompiler.h>
@@ -216,16 +227,21 @@ static Device MakeDevice(UINT flags = D3D11_CREATE_DEVICE_SINGLETHREADED) {
   return made;
 }
 
-enum class Control { NONE, FULL, FOREIGN, MEASURE, NO_REBIND, GET_OFF, EARLY_REUSE, COPY_OFF, SETTLE_OFF };
-constexpr std::array<const char*, 9> CONTROL_NAMES = {"ring",          "full ring",       "another thread",     "measure path beside",
-                                                      "CONTROL no rebind", "CONTROL Get off", "CONTROL early reuse", "CONTROL copy off",
-                                                      "CONTROL no settle"};
+enum class Control { NONE, FULL, FOREIGN, MEASURE, MEASURE_FIRST, WRAP, NO_REBIND, GET_OFF, EARLY_REUSE, COPY_OFF, SETTLE_OFF };
+constexpr std::array<const char*, 11> CONTROL_NAMES = {"ring",          "full ring",           "another thread",       "measure path beside",
+                                                       "measure path first", "full ring, then wrap", "CONTROL no rebind", "CONTROL Get off",
+                                                       "CONTROL early reuse", "CONTROL copy off",  "CONTROL no settle"};
+// WRAP: the pieces' events busy until the script's GPU wait, then polled for real.
+static bool wrap_polls = false;
+using Get1 = void (STDMETHODCALLTYPE ID3D11DeviceContext1::*)(UINT, UINT, ID3D11Buffer**, UINT*, UINT*);
 
 struct Output {
   std::vector<uint32_t> pixels;
   std::vector<uint32_t> computed;
   std::vector<uint32_t> copies;
-  std::string failed;  // empty: ran
+  std::vector<uint32_t> after;   // after the ring's removal: the private state's binds (VS, PS, CS slots 0-3)
+  std::vector<uint32_t> script;  // the frame-1 script's pixels
+  std::string failed;            // empty: ran
 };
 
 struct Measured {
@@ -288,9 +304,17 @@ static Output Run(bool ring, Control control, uint32_t frames, uint32_t draws) {
         bp::internal::piece_cap = bp::internal::FIRST_PIECES;
         bp::internal::piece_done = [](ID3D11DeviceContext*, ID3D11Query*) { return S_FALSE; };
         break;
+      case Control::WRAP:
+        bp::internal::piece_cap = bp::internal::FIRST_PIECES;
+        bp::internal::piece_done = [](ID3D11DeviceContext* context, ID3D11Query* query) {
+          return (wrap_polls ? context->GetData(query, nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) : S_FALSE);
+        };
+        break;
       default: break;
     }
   }
+  wrap_polls = false;
+  std::vector<uint32_t> script;
   Device made = MakeDevice();
   auto* context = made.context.Get();
   auto* context1 = made.context1.Get();
@@ -329,6 +353,11 @@ static Output Run(bool ring, Control control, uint32_t frames, uint32_t draws) {
   const auto copy_b = Buffer(made.device.Get(), 256, D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 6);
   const auto copy_c = Buffer(made.device.Get(), 1024, D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 7);
   const auto b_source = Buffer(made.device.Get(), 256, D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 8);
+  // As water_effects' copy of the game's lighting buffer.
+  const D3D11_BUFFER_DESC raw_desc = {.ByteWidth = 256, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                      .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS};
+  ComPtr<ID3D11Buffer> copy_raw;
+  made.device->CreateBuffer(&raw_desc, nullptr, copy_raw.GetAddressOf());
   UINT window = 0;
   const auto write = [&](ID3D11Buffer* buffer, D3D11_MAP type, UINT offset, UINT bytes, uint32_t seed, int index_word) {
     D3D11_MAPPED_SUBRESOURCE mapped = {};
@@ -369,12 +398,13 @@ static Output Run(bool ring, Control control, uint32_t frames, uint32_t draws) {
     bp::internal::Native<hooks::internal::SwapStateFunction>(hooks::internal::SWAP_STATE)(context1, state, previous);
   };
   bind_all(false);
+  const bool measuring = ring && (control == Control::MEASURE || control == Control::MEASURE_FIRST);
   for (uint32_t frame = 0; frame < frames; ++frame) {
-    if (ring && control == Control::MEASURE && frame == 2) {
+    if (measuring && frame == (control == Control::MEASURE ? 2u : 0u)) {
       measured.clear();
       if (!hooks::Install(context, Measure, false)) out.failed = "the measure path not installed beside the ring";
     }
-    if (ring && control == Control::MEASURE && frame == 3) hooks::Uninstall();
+    if (measuring && frame == 3) hooks::Uninstall();
     if (control == Control::FOREIGN && frame == 3) {
       std::thread([&] { context->PSSetConstantBuffers(5, 1, own.GetAddressOf()); }).join();
       if (ring) {
@@ -392,10 +422,45 @@ static Output Run(bool ring, Control control, uint32_t frames, uint32_t draws) {
         if (bound != nullptr) bound->Release();
       }
     }
+    if (frame == 1) {
+      // The ring fresh (in at frame 0's present; 4 pieces of 4 uploads of d). b at piece 0's units 0 and 1, each drawn;
+      // 15 uploads of d: the 12th's new piece takes b, the 15th finds piece 0 ended (WRAP: busy, the full ring with
+      // room left in the current piece; EARLY_REUSE: free, overwritten while the two draws wait in WARP: no flush). b
+      // again, drawn; the GPU done (WRAP: polled for real now); 16 uploads of d wrap over every piece, b drawn again.
+      const auto script_draw = [&] {
+        ++index;
+        script.push_back(index);
+        draw();
+      };
+      write(b.Get(), D3D11_MAP_WRITE_DISCARD, 0, 256, 2001, -1);
+      script_draw();
+      write(b.Get(), D3D11_MAP_WRITE_DISCARD, 0, 256, 2002, -1);
+      script_draw();
+      for (uint32_t upload = 0; upload < 15; ++upload) write(d.Get(), D3D11_MAP_WRITE_DISCARD, 0, 65536, 3000 + upload, -1);
+      write(b.Get(), D3D11_MAP_WRITE_DISCARD, 0, 256, 2003, -1);
+      if (ring && control == Control::WRAP && bp::internal::Find(b.Get())->piece != nullptr) out.failed = "b written into the full ring's closed piece";
+      script_draw();
+      wrap_polls = true;
+      context->Flush();
+      Read(made.device.Get(), context, b_source.Get(), 256);
+      for (uint32_t upload = 0; upload < 16; ++upload) write(d.Get(), D3D11_MAP_WRITE_DISCARD, 0, 65536, 4000 + upload, -1);
+      script_draw();
+      if (ring && control == Control::WRAP) {
+        bp::internal::piece_cap = bp::internal::MAX_PIECES;
+        bp::internal::piece_done = nullptr;
+      }
+    }
     write(b.Get(), D3D11_MAP_WRITE_DISCARD, 0, 256, 1000 + frame, -1);
     if (frame == 4) context->CopyResource(b.Get(), b_source.Get());
     for (uint32_t step = 0; step < draws; ++step) {
       ++index;
+      if (frame == 1 && step == 100) {
+        // b's window from its end (16 constants): zeros (the ring: the zero segment, b's bytes in a piece).
+        const UINT first = 16;
+        const UINT count = 16;
+        context1->PSSetConstantBuffers1(1, 1, b.GetAddressOf(), &first, &count);
+      }
+      if (frame == 1 && step == 110) context->PSSetConstantBuffers(1, 1, b.GetAddressOf());
       if (step % 9 != 4) write(a.Get(), D3D11_MAP_WRITE_DISCARD, 0, 208, index, static_cast<int>(index));
       if (step >= 200 && step < 212) write(d.Get(), D3D11_MAP_WRITE_DISCARD, 0, 65536, index * 3, -1);
       if (step % 5 == 0) {
@@ -452,14 +517,21 @@ static Output Run(bool ring, Control control, uint32_t frames, uint32_t draws) {
     // c's newest window alone (the others undefined since its DISCARD).
     const D3D11_BOX window_box = {.left = window * 256, .top = 0, .front = 0, .right = (window * 256) + 256, .bottom = 1, .back = 1};
     context1->CopySubresourceRegion1(copy_c.Get(), 0, 0, 0, 0, c.Get(), 0, &window_box, 0);
-    for (auto [copy, bytes] : {std::pair{copy_a.Get(), 208u}, std::pair{copy_b.Get(), 256u}, std::pair{copy_c.Get(), 1024u}}) {
+    context->CopyResource(copy_raw.Get(), b.Get());
+    for (auto [copy, bytes] :
+         {std::pair{copy_a.Get(), 208u}, std::pair{copy_b.Get(), 256u}, std::pair{copy_c.Get(), 1024u}, std::pair{copy_raw.Get(), 256u}}) {
       const auto words = Read(made.device.Get(), context, copy, bytes);
       out.copies.insert(out.copies.end(), words.begin(), words.end());
     }
     bp::Update(context, ring, false);
     if (ring && frame == 0 && !bp::internal::pool.installed) out.failed = "not installed at frame 0's present";
+    if (ring && frame == 0 && control == Control::MEASURE_FIRST
+        && (hooks::internal::state.hooks.size() != hooks::internal::MEASURE_BODIES
+            || hooks::internal::state.ring_hooks.size() != hooks::internal::BODIES - hooks::internal::MEASURE_BODIES)) {
+      out.failed = "the ring's hooks beside the measure path";
+    }
   }
-  if (ring && control == Control::MEASURE) {
+  if (measuring) {
     // The ring's own buffers (its pieces, the zero segment) never in a record: the caller's arguments alone.
     size_t maps = 0;
     for (const auto& record : measured) {
@@ -483,13 +555,46 @@ static Output Run(bool ring, Control control, uint32_t frames, uint32_t draws) {
     }
     return words;
   };
-  out.pixels = pixels();
-  out.computed = Read(made.device.Get(), context, output.Get(), 1024 * 16);
   if (ring) {
     bp::Update(context, false, false);
     if (bp::internal::pool.installed || !hooks::internal::state.hooks.empty() || !hooks::internal::state.ring_hooks.empty()) {
       out.failed = "the ring's hooks left after Update(off)";
     }
+  }
+  // The private state after the removal (FOREIGN: the unwind at frame 3): its binds and a draw there as natively (none of
+  // the ring's segments left in it), a, b and all of c newly written (its window there an old one).
+  ++index;
+  write(a.Get(), D3D11_MAP_WRITE_DISCARD, 0, 208, index, static_cast<int>(index));
+  write(b.Get(), D3D11_MAP_WRITE_DISCARD, 0, 256, 7000, -1);
+  write(c.Get(), D3D11_MAP_WRITE_DISCARD, 0, 1024, 7001, -1);
+  {
+    ComPtr<ID3DDeviceContextState> game_state;
+    context1->SwapDeviceContextState(made.private_state.Get(), game_state.GetAddressOf());
+    const std::array<ID3D11Buffer*, 6> names = {a.Get(), b.Get(), c.Get(), d.Get(), own.Get(), nullptr};
+    constexpr std::array<Get1, 3> GETS1 = {&ID3D11DeviceContext1::VSGetConstantBuffers1, &ID3D11DeviceContext1::PSGetConstantBuffers1,
+                                           &ID3D11DeviceContext1::CSGetConstantBuffers1};
+    for (const Get1 get : GETS1) {
+      std::array<ID3D11Buffer*, 4> held = {};
+      std::array<UINT, 4> firsts = {};
+      std::array<UINT, 4> counts = {};
+      (context1->*get)(0, 4, held.data(), firsts.data(), counts.data());
+      for (size_t slot = 0; slot < held.size(); ++slot) {
+        out.after.push_back(static_cast<uint32_t>(std::ranges::find(names, held[slot]) - names.begin()));  // 6: neither (a piece)
+        out.after.push_back(firsts[slot]);
+        out.after.push_back(counts[slot]);
+        if (held[slot] != nullptr) held[slot]->Release();
+      }
+    }
+    script.push_back(index);
+    draw();
+    context1->SwapDeviceContextState(game_state.Get(), nullptr);
+  }
+  out.pixels = pixels();
+  out.computed = Read(made.device.Get(), context, output.Get(), 1024 * 16);
+  for (const uint32_t drawn : script) {
+    const size_t pixel = ((drawn % 128) + (((drawn / 128) % 64) * 128)) * 4;
+    out.script.insert(out.script.end(), out.pixels.begin() + static_cast<std::ptrdiff_t>(pixel),
+                      out.pixels.begin() + static_cast<std::ptrdiff_t>(pixel + 4));
   }
   bp::internal::ring_paths = ring_paths;
   bp::internal::piece_cap = bp::internal::MAX_PIECES;
@@ -578,20 +683,26 @@ int main() {
       const size_t pixels = Differences(off.pixels, on.pixels);
       const size_t computed = Differences(off.computed, on.computed);
       const size_t copies = Differences(off.copies, on.copies);
-      const bool equal = pixels == 0 && computed == 0 && copies == 0;
-      const bool must_equal = static_cast<Control>(control) <= Control::MEASURE;
-      std::printf("  %-22s pixels %zu, compute %zu, copies %zu words differ\n", CONTROL_NAMES[control], pixels, computed, copies);
+      const size_t after = Differences(off.after, on.after);
+      const size_t script = Differences(off.script, on.script);
+      const bool equal = pixels == 0 && computed == 0 && copies == 0 && after == 0;
+      const bool must_equal = static_cast<Control>(control) <= Control::WRAP;
+      std::printf("  %-22s pixels %zu (script %zu), compute %zu, copies %zu, private state after %zu words differ\n", CONTROL_NAMES[control], pixels,
+                  script, computed, copies, after);
       CHECK(equal == must_equal);
       switch (static_cast<Control>(control)) {
         case Control::NONE: CHECK(Logged("Fewer Driver Waits: on") == 1 && Logged("pieces still in use") == 0); break;
-        case Control::FULL: CHECK(Logged("all 4 pieces still in use") == 1); break;
+        case Control::FULL:
+        case Control::WRAP: CHECK(Logged("all 4 pieces still in use") == 1); break;
         case Control::FOREIGN: CHECK(Logged("called the game's context") == 1 && Logged("off until the row") == 1); break;
+        case Control::EARLY_REUSE: CHECK(script != 0); break;
         case Control::COPY_OFF: CHECK(copies != 0); break;
         default: break;
       }
     }
-    std::printf("3. %u frames x %u draws (lit words %zu): equal with the ring, a full ring, another thread's call and the measure path beside it;"
-                " every CONTROL differs\n",
+    std::printf("3. %u frames x %u draws (lit words %zu): equal with the ring, a full ring, the full ring then its wrap, another thread's call and"
+                " the measure path beside it (after the ring, before it), the private state after the removal too; every CONTROL differs (early"
+                " reuse: in the script's draws)\n",
                 FRAMES, DRAWS, lit);
   }
 
@@ -625,7 +736,6 @@ int main() {
       }
       return 100;  // neither: a piece or the zero segment
     };
-    using Get1 = void (STDMETHODCALLTYPE ID3D11DeviceContext1::*)(UINT, UINT, ID3D11Buffer**, UINT*, UINT*);
     constexpr std::array<Get1, hooks::STAGES> GETS1 = {&ID3D11DeviceContext1::VSGetConstantBuffers1, &ID3D11DeviceContext1::HSGetConstantBuffers1,
                                                         &ID3D11DeviceContext1::DSGetConstantBuffers1, &ID3D11DeviceContext1::GSGetConstantBuffers1,
                                                         &ID3D11DeviceContext1::PSGetConstantBuffers1, &ID3D11DeviceContext1::CSGetConstantBuffers1};
@@ -839,14 +949,15 @@ int main() {
     native.context->PSSetConstantBuffers(7, 1, &no_buffer);
     native.context->Flush();
     CHECK(control_native_gone && compare(3001));
-    // The ring out: every reference as natively, the device's too, and the binds the same.
-    bp::Update(ring.context.Get(), false, false);
-    CHECK(!bp::internal::pool.installed && compare(3002));
+    // The ring out (Uninstall on the render thread, slots bound): every reference as natively, the device's too, and the
+    // binds the same.
+    bp::Uninstall();
+    CHECK(!bp::internal::pool.installed && hooks::internal::state.hooks.empty() && hooks::internal::state.ring_hooks.empty() && compare(3002));
     for (size_t index = 0; index < SIZES.size(); ++index) CHECK(References(ring_buffers[index].Get()) == References(native_buffers[index].Get()));
     CHECK(References(ring.device.Get()) == device_references);
     std::printf("4. Get / Get1 parity over 3000 random steps, every game buffer's references its own plus one per slot of the ring at every step,"
                 " its own alone after the removal (the device: %lu references as before); Map parity; our own buffer untracked; a buffer let go of"
-                " while bound lives until unbound, as natively; CONTROL: without the ring's reference it goes at once\n",
+                " while bound lives until unbound, as natively; CONTROL: without the ring's reference it goes at once; out by Uninstall\n",
                 device_references);
     bp::ForgetDevice(ring.device.Get());
   }
@@ -879,6 +990,125 @@ int main() {
     std::printf("5. the device's end with the ring on: hooks out, its reference on the bound buffer let go (%lu -> 1), %zu records freed at the next"
                 " present; every body's first 16 bytes back, both modules let go\n",
                 with_ring, records);
+  }
+  // 6. The unwind's edges.
+  {
+    log_lines.clear();
+    Device made = MakeDevice();
+    auto* context = made.context.Get();
+    loss::devices = {{.device = made.device.Get(), .single_threaded = true}};
+    const auto fill = [context](ID3D11Buffer* buffer, int value, UINT bytes) {
+      D3D11_MAPPED_SUBRESOURCE mapped = {};
+      if (FAILED(context->Map(buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return false;
+      std::memset(mapped.pData, value, bytes);
+      context->Unmap(buffer, 0);
+      return true;
+    };
+    // `kept`: its record destroyed as at its end, the buffer kept so a write-back into it would show; `destroyed`: gone;
+    // `bound`: at PS b0, unbound natively by another thread.
+    auto kept = GameBuffer(made.device.Get(), 256, 60);
+    auto destroyed = Buffer(made.device.Get(), 256, D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE, 61);
+    bool destroyed_gone = false;
+    bp::Track(made.device.Get(), destroyed.Get(), nullptr);
+    Watch(destroyed.Get(), &destroyed_gone);
+    auto bound = GameBuffer(made.device.Get(), 256, 62);
+    context->PSSetConstantBuffers(0, 1, bound.GetAddressOf());
+    const auto kept_bytes = Read(made.device.Get(), context, kept.Get(), 256);
+    bp::Update(context, true, false);
+    CHECK(bp::internal::pool.installed);
+    for (ID3D11Buffer* buffer : {kept.Get(), destroyed.Get(), bound.Get()}) CHECK(fill(buffer, 0x77, 256));
+    CHECK(bp::internal::Find(kept.Get())->piece != nullptr && bp::internal::Find(destroyed.Get())->piece != nullptr);
+    bp::Forget(kept.Get());
+    destroyed.Reset();
+    context->Flush();
+    CHECK(destroyed_gone);
+    std::thread([context] {
+      ID3D11Buffer* const none = nullptr;
+      context->PSSetConstantBuffers(0, 1, &none);
+    }).join();
+    // The render thread's next call: the unwind, then the Get as d3d11 has the slot now.
+    ID3D11Buffer* probe = nullptr;
+    context->PSGetConstantBuffers(0, 1, &probe);
+    CHECK(probe == nullptr && bp::internal::pool.stopped && made.device->GetDeviceRemovedReason() == S_OK);
+    CHECK(Read(made.device.Get(), context, kept.Get(), 256) == kept_bytes && References(bound.Get()) == 1);
+    bp::Update(context, true, false);
+    CHECK(!bp::internal::pool.installed && Logged("off until the row") == 1);
+    bp::Update(context, false, false);
+    // A lost device: an event's error at the ring's wrap (the 15th 64 KB upload), no write-back of `narrow`.
+    log_lines.clear();
+    auto wide = GameBuffer(made.device.Get(), 65536, 63);
+    auto narrow = GameBuffer(made.device.Get(), 256, 64);
+    const auto narrow_bytes = Read(made.device.Get(), context, narrow.Get(), 256);
+    bp::internal::piece_done = [](ID3D11DeviceContext*, ID3D11Query*) { return DXGI_ERROR_DEVICE_REMOVED; };
+    bp::Update(context, true, false);
+    CHECK(bp::internal::pool.installed && fill(narrow.Get(), 0x55, 256));
+    size_t uploads = 0;
+    while (!bp::internal::pool.lost && uploads < 40) {
+      CHECK(fill(wide.Get(), static_cast<int>(uploads), 65536));
+      ++uploads;
+    }
+    CHECK(uploads == 15 && bp::internal::pool.stopped && Logged("pieces still in use") == 0);
+    CHECK(Read(made.device.Get(), context, narrow.Get(), 256) == narrow_bytes);
+    bp::Update(context, true, false);
+    CHECK(!bp::internal::pool.installed && Logged("off until the row") == 1);
+    bp::Update(context, true, false);
+    CHECK(!bp::internal::pool.installed && Logged("Fewer Driver Waits: on") == 1);
+    bp::Update(context, false, false);
+    bp::internal::piece_done = nullptr;
+    // A copy body unknown to the install in the table (slot 47's both versions taken for others).
+    log_lines.clear();
+    bp::Update(context, true, false);
+    CHECK(bp::internal::pool.installed);
+    auto& bodies = hooks::internal::state.bodies;
+    const auto read_bodies = bodies;
+    bodies[hooks::internal::COPY_RESOURCE] = &log_lines;
+    bodies[hooks::internal::FLUSHED_COPIES + 1] = &log_lines;
+    bp::Update(context, true, false);
+    CHECK(!bp::internal::pool.installed && Logged("copy body unknown to it (slot 47)") == 1 && Logged("off until the row") == 1);
+    bodies = read_bodies;
+    bp::Update(context, false, false);
+    bp::ForgetDevice(made.device.Get());
+    std::printf("6. unwind edges: no write-back into a buffer destroyed since the present, another thread's unbind is what the next Get"
+                " returns (the device not removed); a lost device at the %zuth upload: no write-back, off until the row; an unknown copy body"
+                " in the table: out at the present, logged\n",
+                uploads);
+  }
+
+  // 7. Uninstall off the render thread (the add-on's detach on another).
+  {
+    log_lines.clear();
+    Device made = MakeDevice();
+    auto* context = made.context.Get();
+    loss::devices = {{.device = made.device.Get(), .single_threaded = true}};
+    auto buffer = GameBuffer(made.device.Get(), 256, 65);
+    context->PSSetConstantBuffers(0, 1, buffer.GetAddressOf());
+    bp::Update(context, true, false);
+    CHECK(bp::internal::pool.installed);
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    CHECK(SUCCEEDED(context->Map(buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+    std::memset(mapped.pData, 0x33, 256);
+    context->Unmap(buffer.Get(), 0);
+    std::thread([] { bp::Uninstall(); }).join();
+    CHECK(bp::internal::pool.installed && bp::internal::pool.unwind_wanted && !bp::internal::pool.stopped && !hooks::internal::state.ring_hooks.empty()
+          && hooks::internal::state.lifetime.retain_until_exit && hooks::internal::state.ring_lifetime.retain_until_exit);
+    ID3D11Buffer* probe = nullptr;
+    context->PSGetConstantBuffers(0, 1, &probe);
+    CHECK(probe == buffer.Get() && bp::internal::pool.stopped);
+    probe->Release();
+    ID3D11Buffer* native = nullptr;
+    UINT first = 1;
+    UINT count = 0;
+    bp::internal::Native<hooks::internal::GetConstantBuffers1Function>(hooks::internal::GET_CONSTANT_BUFFERS1 + 4)(made.context1.Get(), 0, 1, &native,
+                                                                                                                &first, &count);
+    CHECK(native == buffer.Get() && first == 0 && count == 4096);
+    native->Release();
+    CHECK(Read(made.device.Get(), context, buffer.Get(), 256) == std::vector<uint32_t>(64, 0x33333333) && References(buffer.Get()) == 1);
+    // At the process's end the hooks pass every call on; out here for the test's end (as at a present).
+    bp::Update(context, false, false);
+    CHECK(!bp::internal::pool.installed && hooks::internal::state.hooks.empty() && hooks::internal::state.ring_hooks.empty());
+    bp::ForgetDevice(made.device.Get());
+    std::printf("7. Uninstall off the render thread: hooks kept (to the process's end), the ring unwound at the render thread's next call (the"
+                " buffer written back and bound again, its reference let go)\n");
   }
   std::printf("PASS\n");
   return 0;

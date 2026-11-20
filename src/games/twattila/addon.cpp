@@ -1542,9 +1542,10 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   renodx::mods::shader::use_native_d3d11_injection.store(fewer_constant_uploads_row != 0.f, std::memory_order_relaxed);
   // A traced frame's full-ring line waits (its own work fills the ring).
   if (queue->get_device()->get_api() == reshade::api::device_api::d3d11) {
-    twattila::buffer_pool::Update(reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native()),
-                                  fewer_driver_waits_row != 0.f,
-                                  twattila::frame_trace::Tracing() || twattila::frame_trace::internal::map_trace.tracing.load(std::memory_order_relaxed));
+    auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
+    const bool traced = twattila::frame_trace::Tracing()
+                        || twattila::frame_trace::internal::map_trace.tracing.load(std::memory_order_relaxed);
+    twattila::buffer_pool::Update(context, fewer_driver_waits_row != 0.f, traced);
   }
   talesofarise::pixel_trace::OnPresent(queue);
   if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {

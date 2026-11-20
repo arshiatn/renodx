@@ -41,8 +41,9 @@
   went in (`seed_cb`, `seed_vb`), swaps and ClearStates, and each draw with its arguments and the bindings changed since
   the draw before (`?`: not known). The constant buffers made while armed, with their creating and destroying threads
   (`buffer` lines; constant buffers only, so a load's vertex buffers can't fill the room). With `hash`, each written
-  constant buffer's content hash at its unmap (`#` in a draw's `cbs`); it reads write-combined memory on the render
-  thread, so it is timed (`hash_ms` per frame in the header) and off by default: leave it off for timing runs.
+  constant buffer's content hash at its unmap (up to 64 KB; `#` in a draw's `cbs`); it reads write-combined memory on
+  the render thread, so it is timed (`hash_ms` per frame in the header) and off by default: leave it off for timing
+  runs.
 - Rules: the hooks go in only on the render thread with exactly one D3D11 device, and only when it is single-threaded
   (Attila, Rome II, Thrones, Shogun 2; WH3 and the other DX11 TW games: not installed, logged, `native_hook=failed`); the
   bodies must sit in the system's d3d11.dll, distinct, with no jump at their start. They come out after the last frame, at

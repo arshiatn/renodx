@@ -68,13 +68,13 @@
 // the start), its swaps and ClearStates, each draw's arguments, and the constant buffers the game makes while armed with
 // their threads: one stream in call order, each draw with the bindings that changed since the one before, in
 // tw_map_trace_v3.txt (its lines at its writer, OnPresent). With `hash`, also a written constant buffer's content hash at
-// its unmap (it reads write-combined memory on the render thread: timed, the header's hash_ms; off for timing runs). The
-// context comes from the present callback while armed (a start without one waits one present); the hooks go in at the
-// trace's first frame (only on the render thread, with one single-threaded D3D11 device: Attila, Rome II, Thrones,
-// Shogun 2; logged otherwise) and out after its last, at the device's end and at Uninstall. Measure only: every call goes
-// on to the native body unchanged (a swap settles d3d11's table inside its hook, context_hooks.hpp). A v1 map's gap on
-// that context then holds the hook's own time too (its callers' scan, an unmap's hash). Each file is written to
-// <name>.part and renamed when whole.
+// its unmap (up to 64 KB; it reads write-combined memory on the render thread: timed, the header's hash_ms; off for
+// timing runs). The context comes from the present callback while armed (a start without one waits one present); the
+// hooks go in at the trace's first frame (only on the render thread, with one single-threaded D3D11 device: Attila,
+// Rome II, Thrones, Shogun 2; logged otherwise) and out after its last, at the device's end and at Uninstall. Measure
+// only: every call goes on to the native body unchanged (a swap settles d3d11's table inside its hook,
+// context_hooks.hpp). A v1 map's gap on that context then holds the hook's own time too (its callers' scan, an unmap's
+// hash). Each file is written to <name>.part and renamed when whole.
 namespace twattila::frame_trace {
 
 // `count` values of a buffer from `offset` bytes on, read back (it waits for the GPU: for traced frames); empty: past the

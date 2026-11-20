@@ -17,9 +17,12 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <format>
 #include <memory>
 #include <mutex>
 #include <new>
+#include <shared_mutex>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -34,8 +37,9 @@
 // handlers' edits are in) writes the copy into the current piece and rebinds every slot of the active state that holds
 // the buffer. Set, Get and Copy translate between the game's buffer (all the caller ever sees) and its segment, per
 // context state. The paths run inside context_hooks' replacements on the render thread; taken out (row off, another
-// thread's call, a lost device, the add-on's detach), every buffer is written back into itself and every slot of every
-// live state rebound to it first. Our own buffers are made below ReShade (no init_resource): never tracked.
+// thread's call, a lost device, a copy body the install never saw, the add-on's detach), every buffer is written back
+// into itself and every slot of every live state rebound to it first. Our own buffers are made below ReShade (no
+// init_resource): never tracked.
 namespace twattila::buffer_pool {
 
 namespace internal {
@@ -61,6 +65,7 @@ struct alignas(UNIT_BYTES) Unit {
   std::array<uint8_t, UNIT_BYTES> bytes = {};
 };
 
+// Buffer and Piece point at each other (a buffer's piece, a piece's buffers).
 struct Piece;
 
 // A game buffer (selected at its creation). The render thread's, but `destroyed`.
@@ -110,8 +115,9 @@ struct Piece {
   std::vector<Buffer*> live;   // the buffers whose newest bytes are here (reserved: never grown inside a body)
 };
 
-// A slot of a state as the caller sees it: a game buffer (one reference held) with the caller's window, and what is
-// bound for it.
+// A slot of a state as the caller sees it: a game buffer with the caller's window, and what is bound for it. The slot
+// holds one reference on the buffer, so it lives while bound as natively (d3d11's own binds hold no public reference:
+// its Release() returns one more per such slot than natively).
 struct Slot {
   Buffer* buffer = nullptr;
   UINT first = 0;  // in constants (a whole bind: 0 + WHOLE)
@@ -121,7 +127,7 @@ struct Slot {
 };
 
 // A context state's slots (the add-on's private states have their own). Key null: the state active at install, until
-// the first swap names it.
+// the first swap names it (a swap that gives no replaced state leaves it unnamed: the unwind cannot swap back into it).
 struct StateTable {
   ID3DDeviceContextState* key = nullptr;  // not owned
   std::shared_ptr<std::atomic_bool> dead = std::make_shared<std::atomic_bool>(false);
@@ -161,7 +167,7 @@ class DeathNote final : public IUnknown {
 };
 
 struct Pool {
-  std::mutex mutex;  // the writers of `table`, `tables`, `records` and `copies`
+  std::shared_mutex mutex;  // the writers of `table`, `tables`, `records` and `copies`
   std::atomic<Table*> table = nullptr;
   std::vector<std::unique_ptr<Table>> tables;  // the current one last; replaced ones until a present
   std::vector<std::unique_ptr<Buffer>> records;
@@ -171,15 +177,16 @@ struct Pool {
   ID3D11Device* device = nullptr;           // not owned: the game's
   ID3D11DeviceContext1* context = nullptr;  // not owned: its immediate context, below ReShade
   bool installed = false;
-  bool stopped = false;        // unwound: every call goes straight on (open ring maps finish in their buffers)
-  bool unwind_wanted = false;  // the add-on's detach came off the render thread
-  bool lost = false;           // a piece's map or event failed: the device is gone
-  bool quiet = false;          // a debug frame: the full ring's line waits
+  bool stopped = false;  // unwound: every call goes straight on (open ring maps finish in their buffers)
+  // Unwind at the render thread's next call: the add-on's detach came off it, or a copy body the install never saw.
+  bool unwind_wanted = false;
+  bool lost = false;   // a piece's map or event failed: the device is gone
+  bool quiet = false;  // a debug frame: the full ring's line waits
   bool full_logged = false;
   uint32_t open_maps = 0;  // ring maps not yet unmapped
   std::vector<std::unique_ptr<Piece>> pieces;  // in ring order
   size_t current = 0;
-  UINT next_unit = 0;  // in the current piece
+  UINT next_unit = 0;  // in the current piece (PIECE_UNITS: none written there, the ring full)
   Microsoft::WRL::ComPtr<ID3D11Buffer> zero;  // the zero segment: a window past a buffer's end reads zeros
   std::vector<std::unique_ptr<StateTable>> states;
   StateTable* active = nullptr;
@@ -207,59 +214,6 @@ inline Buffer* Find(const ID3D11Resource* resource) {
   }
 }
 
-// Under `pool.mutex`: `record` into `table`, over the slot of the same address (a destroyed buffer's, its address
-// reused before the reclaim) or in the first free one.
-inline void Place(Table* table, Buffer* record) {
-  const size_t mask = table->slots.size() - 1;
-  size_t free = SIZE_MAX;
-  for (size_t index = Home(record->buffer, table->slots.size());; index = (index + 1) & mask) {
-    Buffer* held = table->slots[index].load(std::memory_order_relaxed);
-    if (held == nullptr) {
-      if (free == SIZE_MAX) {
-        free = index;
-        ++table->used;
-      }
-      break;
-    }
-    if (held == &tombstone) {
-      free = std::min(free, index);
-    } else if (held->buffer == record->buffer) {
-      free = index;
-      break;
-    }
-  }
-  table->slots[free].store(record, std::memory_order_release);
-}
-
-// Under `pool.mutex`: `record` in, the table grown (copied) first at half full. May throw (no memory).
-inline void Insert(Buffer* record) {
-  Table* table = pool.table.load(std::memory_order_relaxed);
-  if (table == nullptr || (table->used + 1) * 2 > table->slots.size()) {
-    size_t live = 0;
-    if (table != nullptr) {
-      live = static_cast<size_t>(std::ranges::count_if(table->slots, [](const std::atomic<Buffer*>& slot) {
-        Buffer* held = slot.load(std::memory_order_relaxed);
-        return held != nullptr && held != &tombstone;
-      }));
-    }
-    size_t capacity = 1024;
-    while (capacity < (live + 1) * 4) capacity *= 2;
-    auto grown = std::make_unique<Table>(capacity);
-    pool.tables.reserve(pool.tables.size() + 1);
-    if (table != nullptr) {
-      for (const auto& slot : table->slots) {
-        if (Buffer* held = slot.load(std::memory_order_relaxed); held != nullptr && held != &tombstone) {
-          Place(grown.get(), held);
-        }
-      }
-    }
-    table = grown.get();
-    pool.tables.push_back(std::move(grown));
-    pool.table.store(table, std::memory_order_release);
-  }
-  Place(table, record);
-}
-
 // Where a bind of `record` with the caller's window goes now: the buffer itself, its segment (the window clamped to the
 // segment, padding zero) or, a window from past its end, the zero segment (D3D11 reads zeros past a buffer's end).
 struct Bound {
@@ -269,10 +223,11 @@ struct Bound {
 };
 
 inline Bound Translate(const Buffer& record, UINT first, UINT count) {
-  if (record.piece == nullptr) return {record.buffer, first, count};
+  if (record.piece == nullptr) return {.buffer = record.buffer, .first = first, .count = count};
   const UINT constants = record.units * UNIT_CONSTANTS;
-  if (first >= constants) return {pool.zero.Get(), 0, std::min(count, UNIT_CONSTANTS)};
-  return {record.piece->buffer.Get(), record.first + first, std::min(count, constants - first)};
+  if (first >= constants) return {.buffer = pool.zero.Get(), .first = 0, .count = std::min(count, UNIT_CONSTANTS)};
+  return {.buffer = record.piece->buffer.Get(), .first = record.first + first,
+          .count = std::min(count, constants - first)};
 }
 
 inline void BindSlot(size_t stage, UINT slot, const Bound& bound) {
@@ -334,7 +289,8 @@ inline void Seed(size_t stage, UINT start, UINT count) {
     const Slot& entry = pool.active->slots[stage][slot];
     if (entry.buffer == nullptr || entry.bound != buffers[index] || entry.bound_first != firsts[index]) {
       Buffer* record = Find(buffers[index]);
-      Assign(stage, slot, record, firsts[index], counts[index], {buffers[index], firsts[index], counts[index]});
+      Assign(stage, slot, record, firsts[index], counts[index],
+             {.buffer = buffers[index], .first = firsts[index], .count = counts[index]});
       if (record != nullptr && record->piece != nullptr) {
         Rebind(*record);
       }
@@ -398,111 +354,6 @@ inline bool MakePiece(std::unique_ptr<Piece>* made) {
   }
 }
 
-inline bool Upload(Buffer* record);
-
-// The next piece to write: the one after the current once the GPU passed it, else a new one between them (the ring
-// grows while the oldest is busy, up to piece_cap). Then the oldest closed piece's buffers move into it while it keeps
-// `reserve` units free, so that piece's event ends a lap before its reuse. False: full (or the device lost).
-inline bool Advance(UINT reserve) {
-  // Closed once (a full ring leaves it current in name, closed or ended, until a piece frees).
-  if (Piece& closing = *pool.pieces[pool.current]; closing.phase == Phase::CURRENT) {
-    if (closing.live.empty()) {
-      pool.context->End(closing.done.Get());
-      closing.phase = Phase::ENDED;
-    } else {
-      closing.phase = Phase::CLOSED;
-    }
-  }
-  size_t next = (pool.current + 1) % pool.pieces.size();
-  Piece& candidate = *pool.pieces[next];
-  if (candidate.phase == Phase::ENDED) {
-    const HRESULT done = (piece_done != nullptr ? piece_done(pool.context, candidate.done.Get())
-                                                : pool.context->GetData(candidate.done.Get(), nullptr, 0,
-                                                                        D3D11_ASYNC_GETDATA_DONOTFLUSH));
-    if (done == S_OK) {
-      candidate.phase = Phase::FREE;
-    } else if (done != S_FALSE) {
-      pool.lost = true;
-    }
-  }
-  if (candidate.phase != Phase::FREE) {
-    std::unique_ptr<Piece> grown;
-    if (pool.lost || pool.pieces.size() >= piece_cap || !MakePiece(&grown)) return false;
-    next = pool.current + 1;
-    pool.pieces.insert(pool.pieces.begin() + static_cast<std::ptrdiff_t>(next), std::move(grown));
-  }
-  pool.current = next;
-  pool.next_unit = 0;
-  pool.pieces[next]->phase = Phase::CURRENT;
-  Piece& oldest = *pool.pieces[(next + 1) % pool.pieces.size()];
-  if (oldest.phase == Phase::CLOSED) {
-    // From the back: Detach moves the last one into the slot it frees.
-    for (size_t index = oldest.live.size(); index-- > 0 && index < oldest.live.size();) {
-      Buffer* moved = oldest.live[index];
-      if (moved->mapped) continue;
-      if (pool.next_unit + moved->units + reserve > PIECE_UNITS || !Upload(moved)) break;
-    }
-  }
-  return true;
-}
-
-// `record`'s copy into the current piece (the next one when this has no room), every active slot holding it rebound.
-// False: the ring is full or the device lost (the caller falls back to the buffer itself).
-inline bool Upload(Buffer* record) {
-  if (pool.next_unit + record->units > PIECE_UNITS && !Advance(record->units)) return false;
-  Piece& piece = *pool.pieces[pool.current];
-  D3D11_MAPPED_SUBRESOURCE mapped = {};
-  if (FAILED(Native<hooks::MapFunction>(hooks::MAP)(
-          pool.context, piece.buffer.Get(), 0,
-          (piece.mapped_before ? D3D11_MAP_WRITE_NO_OVERWRITE : D3D11_MAP_WRITE_DISCARD), 0, &mapped))) {
-    pool.lost = true;
-    return false;
-  }
-  piece.mapped_before = true;
-  auto* target = static_cast<uint8_t*>(mapped.pData) + (size_t{pool.next_unit} * UNIT_BYTES);
-  std::memcpy(target, record->copy.data(), record->bytes);
-  std::memset(target + record->bytes, 0, (size_t{record->units} * UNIT_BYTES) - record->bytes);
-  Native<hooks::UnmapFunction>(hooks::UNMAP)(pool.context, piece.buffer.Get(), 0);
-  if (record->piece != nullptr) {
-    Detach(record);
-  }
-  record->piece = &piece;
-  record->first = pool.next_unit * UNIT_CONSTANTS;
-  record->live_index = static_cast<uint32_t>(piece.live.size());
-  piece.live.push_back(record);
-  pool.next_unit += record->units;
-  Rebind(*record);
-  return true;
-}
-
-// The active state's slots back on the game's buffers (each bound as the caller bound it, where d3d11 still holds what
-// was bound for it; else left as it is), their references let go.
-inline void Restore(StateTable* table) {
-  for (size_t stage = 0; stage < STAGES; ++stage) {
-    if (table->used[stage] == 0) continue;
-    std::array<ID3D11Buffer*, SLOTS> buffers = {};
-    std::array<UINT, SLOTS> firsts = {};
-    std::array<UINT, SLOTS> counts = {};
-    Native<hooks::GetConstantBuffers1Function>(hooks::GET_CONSTANT_BUFFERS1 + stage)(
-        pool.context, 0, SLOTS, buffers.data(), firsts.data(), counts.data());
-    for (UINT slot = 0; slot < SLOTS; ++slot) {
-      Slot& entry = table->slots[stage][slot];
-      if (entry.buffer != nullptr) {
-        if (buffers[slot] == entry.bound && firsts[slot] == entry.bound_first) {
-          BindSlot(stage, slot, {entry.buffer->buffer, entry.first, entry.count});
-        }
-        entry.buffer->active[stage] = 0;
-        entry.buffer->buffer->Release();
-        entry = {};
-      }
-      if (buffers[slot] != nullptr) {
-        buffers[slot]->Release();
-      }
-    }
-    table->used[stage] = 0;
-  }
-}
-
 // A state's table let go: its references, and its state's note (the state still alive).
 inline void Drop(StateTable* table) {
   for (size_t stage = 0; stage < STAGES; ++stage) {
@@ -526,33 +377,67 @@ inline void Drop(StateTable* table) {
 // The ring out of every state: each buffer's bytes back in itself (open ring maps finish there at their Unmaps), every
 // live state's slots rebound to the game's buffers (the others swapped in natively and back), the tables, pieces and
 // copies let go. Calls go straight on from now. The depth raised (d3d11's application of a swapped state is nested).
+// No active table (a swap's, out of memory): the state d3d11 has holds none of the ring's segments.
 inline void Unwind() {
   if (pool.stopped) return;
   pool.stopped = true;
   for (const auto& piece : pool.pieces) {
     for (Buffer* record : piece->live) {
-      if (!record->mapped && !pool.lost) {
+      // Not an open map's (written at its Unmap), nor a destroyed buffer's (it may be gone; reclaimed at a present).
+      if (!record->mapped && !record->destroyed.load() && !pool.lost) {
         WriteNative(*record);
       }
       record->piece = nullptr;
     }
     piece->live.clear();
   }
+  // The active state's slots back on the game's buffers (each bound as the caller bound it, where d3d11 still holds
+  // what was bound for it; else left as it is), their references let go.
+  const auto restore = [](StateTable* table) {
+    for (size_t stage = 0; stage < STAGES; ++stage) {
+      if (table->used[stage] == 0) continue;
+      std::array<ID3D11Buffer*, SLOTS> buffers = {};
+      std::array<UINT, SLOTS> firsts = {};
+      std::array<UINT, SLOTS> counts = {};
+      Native<hooks::GetConstantBuffers1Function>(hooks::GET_CONSTANT_BUFFERS1 + stage)(
+          pool.context, 0, SLOTS, buffers.data(), firsts.data(), counts.data());
+      for (UINT slot = 0; slot < SLOTS; ++slot) {
+        Slot& entry = table->slots[stage][slot];
+        if (entry.buffer != nullptr) {
+          if (buffers[slot] == entry.bound && firsts[slot] == entry.bound_first) {
+            BindSlot(stage, slot, {.buffer = entry.buffer->buffer, .first = entry.first, .count = entry.count});
+          }
+          entry.buffer->active[stage] = 0;
+          entry.buffer->buffer->Release();
+          entry = {};
+        }
+        if (buffers[slot] != nullptr) {
+          buffers[slot]->Release();
+        }
+      }
+      table->used[stage] = 0;
+    }
+  };
   if (pool.active != nullptr) {
-    Restore(pool.active);
-    for (const auto& table : pool.states) {
-      if (table.get() == pool.active || table->key == nullptr || table->dead->load()) continue;
-      ID3DDeviceContextState* back = nullptr;
-      ID3DDeviceContextState* swapped = nullptr;
-      const auto swap = Native<hooks::SwapStateFunction>(hooks::SWAP_STATE);
-      D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
-      swap(pool.context, table->key, &back);
-      pool.context->IAGetPrimitiveTopology(&topology);
-      Restore(table.get());
-      swap(pool.context, back, &swapped);
-      pool.context->IAGetPrimitiveTopology(&topology);
-      if (swapped != nullptr) swapped->Release();
-      if (back != nullptr) back->Release();
+    restore(pool.active);
+  }
+  for (const auto& table : pool.states) {
+    // Key null: never named (see StateTable).
+    if (table.get() == pool.active || table->key == nullptr || table->dead->load()) continue;
+    ID3DDeviceContextState* back = nullptr;
+    ID3DDeviceContextState* swapped = nullptr;
+    const auto swap = Native<hooks::SwapStateFunction>(hooks::SWAP_STATE);
+    D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+    swap(pool.context, table->key, &back);
+    pool.context->IAGetPrimitiveTopology(&topology);
+    restore(table.get());
+    swap(pool.context, back, &swapped);
+    pool.context->IAGetPrimitiveTopology(&topology);
+    if (swapped != nullptr) {
+      swapped->Release();
+    }
+    if (back != nullptr) {
+      back->Release();
     }
   }
   for (const auto& table : pool.states) {
@@ -564,8 +449,7 @@ inline void Unwind() {
   pool.zero.Reset();
 }
 
-// A call from another thread, a lost device or a detach off the render thread: the ring unwinds at once. True: calls
-// go straight on.
+// A call from another thread, a lost device or an unwind wanted: the ring unwinds at once. True: calls go straight on.
 inline bool Stopped() {
   if (!pool.stopped
       && (pool.lost || pool.unwind_wanted || hooks::state.foreign_thread.load(std::memory_order_relaxed))) {
@@ -575,20 +459,13 @@ inline bool Stopped() {
 }
 
 // Map of a game buffer for writing (DISCARD, or NO_OVERWRITE with its copy valid): its CPU copy, pitches its size.
-// Flags (DO_NOT_WAIT): the buffer itself, its bytes there first.
+// Flags (DO_NOT_WAIT) are invalid with both: the native call, which fails as made.
 inline bool RingMap(ID3D11Resource* resource, UINT subresource, D3D11_MAP map_type, UINT map_flags,
                     D3D11_MAPPED_SUBRESOURCE* mapped, HRESULT* result) {
   if (Stopped()) return false;
   Buffer* record = Find(resource);
-  if (record == nullptr || subresource != 0 || mapped == nullptr || record->copy.empty()
+  if (record == nullptr || subresource != 0 || mapped == nullptr || record->copy.empty() || map_flags != 0
       || (map_type != D3D11_MAP_WRITE_DISCARD && map_type != D3D11_MAP_WRITE_NO_OVERWRITE)) {
-    return false;
-  }
-  if (map_flags != 0) {
-    if (record->piece != nullptr) {
-      ToNative(record);
-    }
-    record->copy_valid = false;
     return false;
   }
   // Its newest bytes are in itself (none in the copy): the native pair.
@@ -605,6 +482,11 @@ inline bool RingMap(ID3D11Resource* resource, UINT subresource, D3D11_MAP map_ty
   return true;
 }
 
+// Unmap of a ring map: the copy into the current piece (the next one when this has no room: the one after the current
+// once the GPU passed it, else a new one between them, the ring growing while the oldest is busy, up to piece_cap),
+// every active slot holding the buffer rebound. A new piece first takes the oldest closed piece's buffers while it
+// keeps this one's units free, so that piece's event ends a lap before its reuse. The ring full or the device lost:
+// today's DISCARD of the buffer itself.
 inline bool RingUnmap(ID3D11Resource* resource, UINT subresource) {
   const bool stopped = Stopped();
   Buffer* record = Find(resource);
@@ -613,26 +495,106 @@ inline bool RingUnmap(ID3D11Resource* resource, UINT subresource) {
   --pool.open_maps;
   if (stopped) {
     WriteNative(*record);
-  } else if (!Upload(record)) {
-    // The ring full: today's DISCARD of the buffer itself, bound as the caller bound it.
-    ToNative(record);
-    if (!pool.lost && !pool.quiet && !pool.full_logged) {
-      pool.full_logged = true;
-      try {
-        renodx::utils::log::w("[Total War] Fewer Driver Waits: all ", pool.pieces.size(),
-                              " pieces still in use by the GPU: constants written the old way meanwhile.");
-      } catch (const std::exception&) {
-        // No-op: the fallback stands without its log line.
+    return true;
+  }
+  // `uploaded`'s copy at the current piece's next unit (room checked), its slots rebound. False: the device is gone.
+  const auto upload = [](Buffer* uploaded) {
+    Piece& piece = *pool.pieces[pool.current];
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (FAILED(Native<hooks::MapFunction>(hooks::MAP)(
+            pool.context, piece.buffer.Get(), 0,
+            (piece.mapped_before ? D3D11_MAP_WRITE_NO_OVERWRITE : D3D11_MAP_WRITE_DISCARD), 0, &mapped))) {
+      pool.lost = true;
+      return false;
+    }
+    piece.mapped_before = true;
+    auto* target = static_cast<uint8_t*>(mapped.pData) + (size_t{pool.next_unit} * UNIT_BYTES);
+    std::memcpy(target, uploaded->copy.data(), uploaded->bytes);
+    std::memset(target + uploaded->bytes, 0, (size_t{uploaded->units} * UNIT_BYTES) - uploaded->bytes);
+    Native<hooks::UnmapFunction>(hooks::UNMAP)(pool.context, piece.buffer.Get(), 0);
+    if (uploaded->piece != nullptr) {
+      Detach(uploaded);
+    }
+    uploaded->piece = &piece;
+    uploaded->first = pool.next_unit * UNIT_CONSTANTS;
+    uploaded->live_index = static_cast<uint32_t>(piece.live.size());
+    piece.live.push_back(uploaded);
+    pool.next_unit += uploaded->units;
+    Rebind(*uploaded);
+    return true;
+  };
+  bool room = pool.next_unit + record->units <= PIECE_UNITS;
+  if (!room) {
+    // Closed once (a full ring leaves it current in name, closed or ended, until a piece frees).
+    if (Piece& closing = *pool.pieces[pool.current]; closing.phase == Phase::CURRENT) {
+      if (closing.live.empty()) {
+        pool.context->End(closing.done.Get());
+        closing.phase = Phase::ENDED;
+      } else {
+        closing.phase = Phase::CLOSED;
       }
     }
-    Stopped();
+    size_t next = (pool.current + 1) % pool.pieces.size();
+    Piece& candidate = *pool.pieces[next];
+    if (candidate.phase == Phase::ENDED) {
+      HRESULT done = S_FALSE;
+      if (piece_done != nullptr) {
+        done = piece_done(pool.context, candidate.done.Get());
+      } else {
+        done = pool.context->GetData(candidate.done.Get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH);
+      }
+      if (done == S_OK) {
+        candidate.phase = Phase::FREE;
+      } else if (done != S_FALSE) {
+        pool.lost = true;
+      }
+    }
+    room = candidate.phase == Phase::FREE;
+    std::unique_ptr<Piece> grown;
+    if (!room && !pool.lost && pool.pieces.size() < piece_cap && MakePiece(&grown)) {
+      next = pool.current + 1;
+      pool.pieces.insert(pool.pieces.begin() + static_cast<std::ptrdiff_t>(next), std::move(grown));
+      room = true;
+    }
+    if (room) {
+      pool.current = next;
+      pool.next_unit = 0;
+      pool.pieces[next]->phase = Phase::CURRENT;
+      Piece& oldest = *pool.pieces[(next + 1) % pool.pieces.size()];
+      if (oldest.phase == Phase::CLOSED) {
+        // From the back: Detach moves the last one into the slot it frees.
+        for (size_t index = oldest.live.size(); index-- > 0 && index < oldest.live.size();) {
+          Buffer* moved = oldest.live[index];
+          // An open map's bytes go at its Unmap; a destroyed buffer's stay until the reclaim.
+          if (moved->mapped || moved->destroyed.load()) continue;
+          if (pool.next_unit + moved->units + record->units > PIECE_UNITS || !upload(moved)) break;
+        }
+      }
+    } else {
+      // Full: nothing more into the closed (or ended) piece; every upload comes here until a piece frees.
+      pool.next_unit = PIECE_UNITS;
+    }
   }
+  if (room && upload(record)) return true;
+  // The ring full: today's DISCARD of the buffer itself, bound as the caller bound it.
+  ToNative(record);
+  if (!pool.lost && !pool.quiet && !pool.full_logged) {
+    pool.full_logged = true;
+    try {
+      renodx::utils::log::w("[Total War] Fewer Driver Waits: all ", pool.pieces.size(),
+                            " pieces still in use by the GPU: constants written the old way meanwhile.");
+    } catch (const std::exception&) {
+      // No-op: the fallback stands without its log line.
+    }
+  }
+  Stopped();
   return true;
 }
 
-// Set and Set1: a game buffer bound to its segment (the caller's window translated), the stage's entries updated. An
-// invalid window or slot range (the runtime drops such a call), half a window or no array: the native call, its slots
-// read back.
+// Set and Set1: a game buffer bound to its segment (the caller's window translated), the stage's entries updated; the
+// same binds again (each slot's buffer, window and segment as its entry has them): nothing. Whole buffers none of which
+// is in the ring: the call as made. An invalid window or slot range (the runtime drops such a call), half a window or
+// no array: the native call, its slots read back.
 inline bool RingSet(Stage stage_value, UINT start, UINT count, ID3D11Buffer* const* buffers, const UINT* firsts,
                     const UINT* counts) {
   if (Stopped() || start >= SLOTS || count == 0 || buffers == nullptr) return false;
@@ -650,52 +612,86 @@ inline bool RingSet(Stage stage_value, UINT start, UINT count, ID3D11Buffer* con
   }
   std::array<Buffer*, SLOTS> records = {};
   bool any = (pool.active->used[stage] & (((1u << bound_count) - 1) << start)) != 0;
+  bool ringed = false;
   for (UINT index = 0; index < bound_count; ++index) {
     records[index] = Find(buffers[index]);
-    any = any || records[index] != nullptr;
+    if (records[index] != nullptr) {
+      any = true;
+      ringed = ringed || records[index]->piece != nullptr;
+    }
   }
   if (!any) return false;
   std::array<ID3D11Buffer*, SLOTS> bound_buffers = {};
   std::array<UINT, SLOTS> bound_firsts = {};
   std::array<UINT, SLOTS> bound_counts = {};
+  // An entry is exact only for a game buffer (other binds untracked).
+  bool same = true;
   for (UINT index = 0; index < bound_count; ++index) {
     const UINT first = (firsts != nullptr ? firsts[index] : 0);
     const UINT constants = (firsts != nullptr ? counts[index] : WHOLE);
-    const Bound bound =
-        (records[index] != nullptr ? Translate(*records[index], first, constants) : Bound{buffers[index], first, constants});
+    Bound bound = {.buffer = buffers[index], .first = first, .count = constants};
+    if (records[index] != nullptr) {
+      bound = Translate(*records[index], first, constants);
+    }
     bound_buffers[index] = bound.buffer;
     bound_firsts[index] = bound.first;
     bound_counts[index] = bound.count;
+    const Slot& entry = pool.active->slots[stage][start + index];
+    same = same && records[index] != nullptr && entry.buffer == records[index] && entry.first == first
+           && entry.count == constants && entry.bound == bound.buffer && entry.bound_first == bound.first;
   }
-  Native<hooks::SetConstantBuffers1Function>(hooks::SET_CONSTANT_BUFFERS1 + stage)(
-      pool.context, start, bound_count, bound_buffers.data(), bound_firsts.data(), bound_counts.data());
+  if (same) return true;
+  if (firsts == nullptr && !ringed) {
+    Native<hooks::SetConstantBuffersFunction>(hooks::SET_CONSTANT_BUFFERS + stage)(pool.context, start, bound_count,
+                                                                                    buffers);
+  } else {
+    Native<hooks::SetConstantBuffers1Function>(hooks::SET_CONSTANT_BUFFERS1 + stage)(
+        pool.context, start, bound_count, bound_buffers.data(), bound_firsts.data(), bound_counts.data());
+  }
   for (UINT index = 0; index < bound_count; ++index) {
     Assign(stage, start + index, records[index], (firsts != nullptr ? firsts[index] : 0),
            (firsts != nullptr ? counts[index] : WHOLE),
-           {bound_buffers[index], bound_firsts[index], bound_counts[index]});
+           {.buffer = bound_buffers[index], .first = bound_firsts[index], .count = bound_counts[index]});
   }
   return true;
 }
 
 // After the native Get and Get1: the game's buffer for its segment (a reference the caller's), the caller's window.
+// Unwound by this call (after another thread's): the native call again, the slots now as d3d11 has them.
 inline void RingGet(Stage stage_value, UINT start, UINT count, ID3D11Buffer** buffers, UINT* firsts, UINT* counts) {
-  if (!pool.stopped && pool.active != nullptr && start < SLOTS) {
-    const auto stage = static_cast<size_t>(stage_value);
-    for (UINT index = 0; index < std::min(count, SLOTS - start); ++index) {
-      const Slot& entry = pool.active->slots[stage][start + index];
-      if (entry.buffer == nullptr) continue;
-      if (buffers != nullptr) {
+  const auto stage = static_cast<size_t>(stage_value);
+  const bool stopped_before = pool.stopped;
+  if (Stopped()) {
+    if (stopped_before || start >= SLOTS) return;
+    if (buffers != nullptr) {
+      for (UINT index = 0; index < std::min(count, SLOTS - start); ++index) {
         if (buffers[index] != nullptr) {
           buffers[index]->Release();
         }
-        buffers[index] = entry.buffer->buffer;
-        buffers[index]->AddRef();
       }
-      if (firsts != nullptr) firsts[index] = entry.first;
-      if (counts != nullptr) counts[index] = entry.count;
+    }
+    Native<hooks::GetConstantBuffers1Function>(hooks::GET_CONSTANT_BUFFERS1 + stage)(pool.context, start, count,
+                                                                                      buffers, firsts, counts);
+    return;
+  }
+  if (start >= SLOTS) return;
+  for (UINT index = 0; index < std::min(count, SLOTS - start); ++index) {
+    const Slot& entry = pool.active->slots[stage][start + index];
+    if (entry.buffer == nullptr) continue;
+    if (buffers != nullptr) {
+      if (buffers[index] != nullptr) {
+        buffers[index]->Release();
+      }
+      buffers[index] = entry.buffer->buffer;
+      buffers[index]->AddRef();
+    }
+    if (firsts != nullptr) {
+      firsts[index] = entry.first;
+    }
+    if (counts != nullptr) {
+      counts[index] = entry.count;
     }
   }
-  Stopped();
 }
 
 // A copy into a game buffer: its bytes back in itself first (the copy lands there; its CPU copy no longer the newest).
@@ -757,27 +753,26 @@ inline bool RingCopyResource(ID3D11Resource* destination, ID3D11Resource* source
   return true;
 }
 
-// The state's end sets the table's dead flag (the note in its private data). No memory: never noticed (its table kept
-// until the ring goes).
-inline void Note(StateTable* table) {
-  if (table->key == nullptr || table->noted) return;
-  try {
-    auto* note = new DeathNote(table->dead);
-    table->noted = SUCCEEDED(table->key->SetPrivateDataInterface(DEATH_NOTE, note));
-    note->Release();
-  } catch (const std::bad_alloc&) {
-    // No-op: the table stays until the ring goes.
-  }
-}
-
 // After the native swap and its settling call: the replaced state's table named, the new state's found (its slots on
 // the segments as they are now) or made from d3d11's binds.
 inline void RingSwap(ID3DDeviceContextState* state, ID3DDeviceContextState* previous_state) {
   if (pool.stopped) return;
+  // The state's end sets the table's dead flag (the note in its private data). Not noted (no memory, or the state
+  // refused it): its end goes unseen, and its table, kept until the ring goes, can match a new state at its address.
+  const auto note = [](StateTable* table) {
+    if (table->key == nullptr || table->noted) return;
+    try {
+      auto* death_note = new DeathNote(table->dead);
+      table->noted = SUCCEEDED(table->key->SetPrivateDataInterface(DEATH_NOTE, death_note));
+      death_note->Release();
+    } catch (const std::bad_alloc&) {
+      // No-op: the table stays until the ring goes.
+    }
+  };
   StateTable* old = pool.active;
   if (old->key == nullptr && previous_state != nullptr) {
     old->key = previous_state;
-    Note(old);
+    note(old);
   }
   for (size_t stage = 0; stage < STAGES; ++stage) {
     for (uint32_t slots = old->used[stage]; slots != 0; slots &= slots - 1) {
@@ -791,14 +786,14 @@ inline void RingSwap(ID3DDeviceContextState* state, ID3DDeviceContextState* prev
     try {
       pool.states.push_back(std::make_unique<StateTable>());
     } catch (const std::bad_alloc&) {
-      pool.lost = true;
-      pool.active = old;
-      Stopped();
+      // No table for the new state (none of the ring's segments are bound in it): the ring out of the others now.
+      pool.active = nullptr;
+      Unwind();
       return;
     }
     pool.active = pool.states.back().get();
     pool.active->key = state;
-    Note(pool.active);
+    note(pool.active);
     for (size_t stage = 0; stage < STAGES; ++stage) {
       Seed(stage, 0, SLOTS);
     }
@@ -869,69 +864,6 @@ inline void Release() {
   }
 }
 
-// The ring in on the game's immediate context (below ReShade), on the render thread: its pieces made, the game's
-// buffers' copies, the hooks, the active state's slots seeded. False (logged): off.
-inline bool Install(ID3D11DeviceContext* context) {
-  const auto refuse = [](std::string_view reason) {
-    renodx::utils::log::w("[Total War] Fewer Driver Waits: off (", reason, ").");
-    return false;
-  };
-  Microsoft::WRL::ComPtr<ID3D11Device> device;
-  context->GetDevice(device.GetAddressOf());
-  D3D11_FEATURE_DATA_D3D11_OPTIONS options = {};
-  if (FAILED(device->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &options, sizeof(options)))
-      || options.ConstantBufferOffsetting == FALSE || options.MapNoOverwriteOnDynamicConstantBuffer == FALSE) {
-    return refuse("the driver has no constant buffer offsets");
-  }
-  Microsoft::WRL::ComPtr<ID3D11DeviceContext1> context1;
-  if (FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return refuse("no D3D11.1 context");
-  pool.device = device.Get();
-  pool.context = context1.Get();
-  const auto fail = [&](std::string_view reason) {
-    Release();
-    return refuse(reason);
-  };
-  try {
-    pool.pieces.reserve(MAX_PIECES);
-    pool.states.reserve(8);
-    for (size_t index = 0; index < FIRST_PIECES; ++index) {
-      std::unique_ptr<Piece> piece;
-      if (!MakePiece(&piece)) return fail("no room for its pieces");
-      pool.pieces.push_back(std::move(piece));
-    }
-    const std::array<uint8_t, UNIT_BYTES> zeros = {};
-    const D3D11_BUFFER_DESC zero_desc = {.ByteWidth = UNIT_BYTES, .Usage = D3D11_USAGE_IMMUTABLE,
-                                         .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
-    const D3D11_SUBRESOURCE_DATA zero_data = {.pSysMem = zeros.data()};
-    if (FAILED(device->CreateBuffer(&zero_desc, &zero_data, pool.zero.GetAddressOf()))) {
-      return fail("no room for its pieces");
-    }
-    pool.states.push_back(std::make_unique<StateTable>());
-    const std::lock_guard lock(pool.mutex);
-    for (const auto& record : pool.records) {
-      record->copy.assign(record->units, {});
-      record->copy_valid = false;
-    }
-    pool.copies = true;
-  } catch (const std::bad_alloc&) {
-    return fail("no memory");
-  }
-  if (!context_hooks::InstallRing(context, &ring_paths)) return fail("its hooks");
-  pool.active = pool.states.front().get();
-  pool.current = 0;
-  pool.next_unit = 0;
-  pool.pieces.front()->phase = Phase::CURRENT;
-  pool.installed = true;
-  ++hooks::state.depth;
-  for (size_t stage = 0; stage < STAGES; ++stage) {
-    Seed(stage, 0, SLOTS);
-  }
-  --hooks::state.depth;
-  renodx::utils::log::i("[Total War] Fewer Driver Waits: on (", FIRST_PIECES, " pieces of 256 KB, up to ", MAX_PIECES,
-                        ").");
-  return true;
-}
-
 // The ring out on the render thread: unwound (the depth raised), its hooks and objects let go.
 inline void Remove() {
   ++hooks::state.depth;
@@ -948,6 +880,7 @@ inline void Remove() {
 // initial data while the ring is in.
 inline void Track(ID3D11Device* device, ID3D11Buffer* buffer, const void* initial_data) {
   using internal::pool;
+  using internal::Table;
   D3D11_BUFFER_DESC desc = {};
   buffer->GetDesc(&desc);
   if (desc.Usage != D3D11_USAGE_DYNAMIC || desc.BindFlags != D3D11_BIND_CONSTANT_BUFFER
@@ -955,6 +888,29 @@ inline void Track(ID3D11Device* device, ID3D11Buffer* buffer, const void* initia
       || desc.ByteWidth > internal::MAX_BUFFER_BYTES) {
     return;
   }
+  // `record` into `table`, over the slot of the same address (a destroyed buffer's, its address reused before the
+  // reclaim) or in the first free one.
+  const auto place = [](Table* table, internal::Buffer* record) {
+    const size_t mask = table->slots.size() - 1;
+    size_t free = SIZE_MAX;
+    for (size_t index = internal::Home(record->buffer, table->slots.size());; index = (index + 1) & mask) {
+      internal::Buffer* held = table->slots[index].load(std::memory_order_relaxed);
+      if (held == nullptr) {
+        if (free == SIZE_MAX) {
+          free = index;
+          ++table->used;
+        }
+        break;
+      }
+      if (held == &internal::tombstone) {
+        free = std::min(free, index);
+      } else if (held->buffer == record->buffer) {
+        free = index;
+        break;
+      }
+    }
+    table->slots[free].store(record, std::memory_order_release);
+  };
   const std::lock_guard lock(pool.mutex);
   try {
     pool.records.reserve(pool.records.size() + 1);
@@ -970,12 +926,36 @@ inline void Track(ID3D11Device* device, ID3D11Buffer* buffer, const void* initia
         record->copy_valid = true;
       }
     }
-    pool.records.push_back(std::move(record));
-    try {
-      internal::Insert(pool.records.back().get());
-    } catch (const std::bad_alloc&) {
-      pool.records.pop_back();
+    // The table grown (copied) first at half full: nothing after it throws.
+    Table* table = pool.table.load(std::memory_order_relaxed);
+    if (table == nullptr || (table->used + 1) * 2 > table->slots.size()) {
+      size_t live = 0;
+      if (table != nullptr) {
+        live = static_cast<size_t>(std::ranges::count_if(table->slots, [](const std::atomic<internal::Buffer*>& slot) {
+          internal::Buffer* held = slot.load(std::memory_order_relaxed);
+          return held != nullptr && held != &internal::tombstone;
+        }));
+      }
+      size_t capacity = 1024;
+      while (capacity < (live + 1) * 4) {
+        capacity *= 2;
+      }
+      auto grown = std::make_unique<Table>(capacity);
+      pool.tables.reserve(pool.tables.size() + 1);
+      if (table != nullptr) {
+        for (const auto& slot : table->slots) {
+          if (internal::Buffer* held = slot.load(std::memory_order_relaxed);
+              held != nullptr && held != &internal::tombstone) {
+            place(grown.get(), held);
+          }
+        }
+      }
+      table = grown.get();
+      pool.tables.push_back(std::move(grown));
+      pool.table.store(table, std::memory_order_release);
     }
+    pool.records.push_back(std::move(record));
+    place(table, pool.records.back().get());
   } catch (const std::bad_alloc&) {
     // No-op: the buffer stays the game's own (its maps native).
   }
@@ -1038,8 +1018,9 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 // row was off when it stopped), out when off or stopped (with no ring map open). `quiet`: a debug frame (its line waits).
 inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
   using internal::pool;
+  namespace hooks = internal::hooks;
   pool.quiet = quiet;
-  if (pool.installed && GetCurrentThreadId() != internal::hooks::state.thread) return;
+  if (pool.installed && GetCurrentThreadId() != hooks::state.thread) return;
   if (pool.reclaim_wanted.exchange(false)) {
     const std::lock_guard lock(pool.mutex);
     for (const auto& record : pool.records) {
@@ -1071,8 +1052,25 @@ inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
       internal::Drop(table.get());
       return true;
     });
+    // A copy body d3d11 put in the context's table that the install never saw (another d3d11.dll build): copies from
+    // the game's buffers would skip the ring there (their old bytes). Out (logged).
+    if (!pool.stopped && !pool.unwind_wanted) {
+      D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+      context->IAGetPrimitiveTopology(&topology);  // the table settled, as the install read it
+      void* const* table = *reinterpret_cast<void* const* const*>(context);
+      for (size_t body = hooks::COPY_SUBRESOURCE_REGION; body < hooks::FLUSHED_COPIES; ++body) {
+        void* const now = table[hooks::BODY_SLOTS[body]];
+        if (now != hooks::state.bodies[body]
+            && now != hooks::state.bodies[body + hooks::FLUSHED_COPIES - hooks::COPY_SUBRESOURCE_REGION]) {
+          pool.unwind_wanted = true;
+          renodx::utils::log::w("[Total War] Fewer Driver Waits: the context's table holds a copy body unknown to it",
+                                " (slot ", hooks::BODY_SLOTS[body], ").");
+          break;
+        }
+      }
+    }
     const bool stop = pool.stopped || pool.lost || pool.unwind_wanted
-                      || internal::hooks::state.foreign_thread.load(std::memory_order_relaxed);
+                      || hooks::state.foreign_thread.load(std::memory_order_relaxed);
     if ((on && !stop) || pool.open_maps != 0) return;
     internal::Remove();
     if (stop && on) {
@@ -1090,9 +1088,97 @@ inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
   Microsoft::WRL::ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
   if (pool.refused == device.Get()) return;
-  if (!internal::Install(context)) {
+  // The ring in, on the render thread: its pieces made, the game's buffers' copies, the hooks, the active state's slots
+  // seeded. Refused (logged): off until the row is turned off.
+  const auto refuse = [&device](std::string_view reason) {
     pool.refused = device.Get();
+    renodx::utils::log::w("[Total War] Fewer Driver Waits: off (", reason, ").");
+  };
+  D3D11_FEATURE_DATA_D3D11_OPTIONS options = {};
+  if (FAILED(device->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &options, sizeof(options)))
+      || options.ConstantBufferOffsetting == FALSE || options.MapNoOverwriteOnDynamicConstantBuffer == FALSE) {
+    refuse("the driver has no constant buffer offsets");
+    return;
   }
+  Microsoft::WRL::ComPtr<ID3D11DeviceContext1> context1;
+  if (FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) {
+    refuse("no D3D11.1 context");
+    return;
+  }
+  pool.device = device.Get();
+  pool.context = context1.Get();
+  const auto fail = [&refuse](std::string_view reason) {
+    internal::Release();
+    refuse(reason);
+  };
+  try {
+    pool.pieces.reserve(internal::MAX_PIECES);
+    // The game's state and the add-on's private ones: a swap's table without a reallocation.
+    pool.states.reserve(16);
+    for (size_t index = 0; index < internal::FIRST_PIECES; ++index) {
+      std::unique_ptr<internal::Piece> piece;
+      if (!internal::MakePiece(&piece)) {
+        fail("no room for its pieces");
+        return;
+      }
+      pool.pieces.push_back(std::move(piece));
+    }
+    const std::array<uint8_t, internal::UNIT_BYTES> zeros = {};
+    const D3D11_BUFFER_DESC zero_desc = {.ByteWidth = internal::UNIT_BYTES, .Usage = D3D11_USAGE_IMMUTABLE,
+                                         .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const D3D11_SUBRESOURCE_DATA zero_data = {.pSysMem = zeros.data()};
+    if (FAILED(device->CreateBuffer(&zero_desc, &zero_data, pool.zero.GetAddressOf()))) {
+      fail("no room for its pieces");
+      return;
+    }
+    pool.states.push_back(std::make_unique<internal::StateTable>());
+    const std::lock_guard lock(pool.mutex);
+    for (const auto& record : pool.records) {
+      record->copy.assign(record->units, {});
+      record->copy_valid = false;
+    }
+    pool.copies = true;
+  } catch (const std::bad_alloc&) {
+    fail("no memory");
+    return;
+  }
+  if (!context_hooks::InstallRing(context, &internal::ring_paths)) {
+    fail("its hooks");
+    return;
+  }
+  pool.active = pool.states.front().get();
+  pool.current = 0;
+  pool.next_unit = 0;
+  pool.pieces.front()->phase = internal::Phase::CURRENT;
+  pool.installed = true;
+  ++hooks::state.depth;
+  for (size_t stage = 0; stage < internal::STAGES; ++stage) {
+    internal::Seed(stage, 0, internal::SLOTS);
+  }
+  --hooks::state.depth;
+  // d3d11.dll's file version (its build decides the copy bodies' versions): VS_FIXEDFILEINFO in its version resource.
+  std::string version = "unknown";
+  HMODULE d3d11 = nullptr;
+  if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                         static_cast<LPCWSTR>(hooks::state.bodies.front()), &d3d11)
+      != FALSE) {
+    // Type 16: RT_VERSION.
+    if (const HRSRC resource = FindResourceW(d3d11, MAKEINTRESOURCEW(VS_VERSION_INFO), MAKEINTRESOURCEW(16));
+        resource != nullptr) {
+      const auto* bytes = static_cast<const uint8_t*>(LockResource(LoadResource(d3d11, resource)));
+      const DWORD size = SizeofResource(d3d11, resource);
+      for (DWORD offset = 0; bytes != nullptr && offset + sizeof(VS_FIXEDFILEINFO) <= size; offset += 4) {
+        VS_FIXEDFILEINFO info = {};
+        std::memcpy(&info, bytes + offset, sizeof(info));
+        if (info.dwSignature != VS_FFI_SIGNATURE) continue;
+        version = std::format("{}.{}.{}.{}", HIWORD(info.dwFileVersionMS), LOWORD(info.dwFileVersionMS),
+                              HIWORD(info.dwFileVersionLS), LOWORD(info.dwFileVersionLS));
+        break;
+      }
+    }
+  }
+  renodx::utils::log::i("[Total War] Fewer Driver Waits: on (", internal::FIRST_PIECES, " pieces of 256 KB, up to ",
+                        internal::MAX_PIECES, "; d3d11.dll ", version, ").");
 }
 
 // At the add-on's load: the buffers' events (the destroy event only reaches buffers made after it is registered).
@@ -1105,7 +1191,8 @@ inline void Use() {
 }
 
 // At the add-on's detach: the ring out where the render thread runs this with no ring map open; else it unwinds at the
-// render thread's next call and its hooks stay, passing every call on (the image kept loaded).
+// render thread's next call and its hooks stay, passing every call on (the image kept loaded). The events go either
+// way: a device's end after an off-thread detach goes unseen (at process exit, none follows).
 inline void Uninstall() {
   using internal::pool;
   if (pool.installed) {
