@@ -706,7 +706,7 @@ inline bool PrepareRecording(HMODULE module) {
   if (recording_page == nullptr || !assembler.Fits()
       || VirtualProtect(recording_page, RECORDING_CODE_SIZE, PAGE_EXECUTE_READ, &protection) == FALSE) {
     // As if there were nothing (no write has been made): a jump into a page that cannot run would crash the game.
-    const bool page_failed = (shared_ok && refused.empty());
+    const bool page_failed = shared_ok;
     if (recording_page != nullptr) VirtualFree(recording_page, 0, MEM_RELEASE);
     recording_page = nullptr;
     recording_cut_end = nullptr;

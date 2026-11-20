@@ -551,6 +551,8 @@ Outcome RunStaged(World* world, dr::Stage stage, uint32_t threads, bool tracing 
   if (update) dr::Update({.stage = stage, .threads = threads, .loops = 1}, true);
   di::trace.active = tracing;
   di::trace.frames_left = 1u << 30;
+  // Traced calls compare every call (the game's own trace compares only its last frame).
+  di::controls.compare_every_call = tracing;
   di::trace.calls.clear();
   return RunCalls(world, tracing);
 }
@@ -906,9 +908,11 @@ void TestEntryAndContinuation() {
     }
   }
   SetSites(ENTRY_MODE);
-  // Guard off: the run differs with the chunks on the workers (K 8 and 16 here); the one-thread stages come out equal, since a flush
-  // compares and replays without the mesh snapshot.
+  // Guard off: the compare run has set the mesh up before chunk 0's snapshot is taken, so the replay flushes it with the wrong
+  // state (the replay restores the flush's mesh snapshot; only the compare ignores it). The chunks on the workers differ too.
   di::controls.guard_continuation = false;
+  const Outcome unguarded_recorded = RunStaged(continuation.get(), dr::Stage::RECORDED, 4, true);
+  CHECK(!Equal(serial, unguarded_recorded, "control: continuation guard off", false));
   bool unguarded_differs = false;
   for (int attempt = 0; attempt < 5 && !unguarded_differs; ++attempt) {
     for (const uint32_t k : {8u, 16u}) {
@@ -917,7 +921,7 @@ void TestEntryAndContinuation() {
     }
   }
   di::controls.guard_continuation = true;
-  CHECK(unguarded_differs);
+  std::printf("   guard off on the workers (K 8, 16): %s\n", unguarded_differs ? "differs" : "equal this time");
   std::printf("4. a call that starts with pending instances or a change mask runs directly (entry state); the F2 continuation of foreign mesh state runs directly (%u cases, both flush modes, the real loop's unchanged-mesh path); CONTROL, guard off: differs\n", cases);
 }
 
@@ -960,8 +964,8 @@ void TestControls() {
   CHECK(!Equal(tail_serial, stale, "control: stride copied always", false));
   CHECK(Equal(tail_serial, RunStaged(tail.get(), dr::Stage::RECORDED, 8), "control: stride rule on"));
 
-  // The depth init site's bytes put back to the game's (written by hand: the window takes a site out only with the arena size 0, which
-  // would send every thunk the direct way): no chunk, and no run again, starts its animation at its seed.
+  // The depth init site's bytes put back to the game's (written by hand: the window's sets are whole groups, and this takes one site
+  // of the group out): no chunk, and no run again, starts its animation at its seed.
   const ec::Site& init = ec::recording_sites[static_cast<size_t>(ec::RecordingSite::DEPTH_INIT)];
   std::memcpy(init.at, init.game.data(), ec::SITE_SIZE);
   FlushInstructionCache(GetCurrentProcess(), nullptr, 0);

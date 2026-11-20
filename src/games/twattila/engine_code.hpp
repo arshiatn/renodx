@@ -1793,9 +1793,13 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
       stood[1] |= going_in[1];
     } else {
       for (const uint64_t group_sites : recording_group_sites) {
-        if ((stood[1] & going_in[1] & group_sites) != 0) stood[1] |= going_in[1] & group_sites;
+        if ((stood[1] & going_in[1] & group_sites) != 0) {
+          stood[1] |= going_in[1] & group_sites;
+        }
       }
-      if (entry_in != 0 && (staying_in() & ~recording_entry_bit) == 0) stood[1] |= entry_in;
+      if (entry_in != 0 && (staying_in() & ~recording_entry_bit) == 0) {
+        stood[1] |= entry_in;
+      }
     }
     // Every page of the recording sites going in is made writable before any is written: one that fails puts back the
     // ones made so far and stands the whole table's going-in sites down (a loop with one site missing would run the
@@ -2264,8 +2268,12 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     const uint64_t recording_changed = recording_now ^ internal::recording_written;
     // A site that stood down on its way out is still ours in the game's code (a page that could not be written back) or
     // hooked by another mod, and its thunk can still be reached.
-    if ((recording_stood_down & recording_changing & ~recording_target) != 0) internal::recording_left_in = true;
+    if ((recording_stood_down & recording_changing & ~recording_target) != 0) {
+      internal::recording_left_in = true;
+    }
     internal::recording_written = recording_now;
+    // A stood-down entry hook leaves found with the others: harmless, since a hook that stood down on the way out and is
+    // still in the game's code is covered by recording_left_in.
     internal::recording_found &= ~recording_stood_down;
     internal::failed_writes = 0;
     for (const auto& [row_sites, name] : internal::ROWS) {
@@ -2331,7 +2339,9 @@ inline void Uninstall() {
     if (internal::PausedWrite(0, &stood_down, 0, &recording_stood_down)) {
       internal::written = 0;  // a site another mod changed is that mod's now
       // The recording thunks need this module and Shared: a site left behind keeps them alive.
-      if ((recording_stood_down & internal::recording_written) != 0) internal::recording_left_in = true;
+      if ((recording_stood_down & internal::recording_written) != 0) {
+        internal::recording_left_in = true;
+      }
       internal::recording_written = 0;
     } else {
       Sleep(1);
