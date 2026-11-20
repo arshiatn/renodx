@@ -46,7 +46,7 @@ inline const RingPlugin RING_PLUGIN = {
           twattila::buffer_pool::Track(ring_adapter::device, buffer, initial_data);
         },
     .buffer_destroyed = [](ID3D11Buffer* buffer) { twattila::buffer_pool::Forget(buffer); },
-    .present = [](ID3D11DeviceContext* context) { twattila::buffer_pool::Update(context, true, false); },
+    .present = [](ID3D11DeviceContext* context, bool on) { twattila::buffer_pool::Update(context, on, false); },
     .detach =
         [] {
           twattila::buffer_pool::Update(ring_adapter::context, false, false);

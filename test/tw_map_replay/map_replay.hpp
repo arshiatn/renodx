@@ -12,6 +12,8 @@
 // Parity mode: each draw writes a 64-pixel strip of what it read (the VS's constant buffer hash, then 14 PS slots x
 // constant indices 0, 1, 16, 255: in-window, past a 16 B buffer, past a 16-constant window, deep), each dispatch a row;
 // read back each frame, compared bit for bit between two runs.
+// The trap test (s5r_ design v3 3.3): the victims parked in a time window (Options::park), keep-warm, the plugin in a
+// window only; PhaseReport's phases around it and its TRAP lines.
 #pragma once
 
 #include <windows.h>
@@ -32,6 +34,7 @@
 #include <format>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
@@ -784,7 +787,12 @@ enum class Control : uint8_t {
   UPLOAD,  // a wrong word in every fifth constant buffer DISCARD's bytes
   WINDOW,  // Set1 windows 16 constants wider (the out-of-window reads see data)
   OFFSET,  // a buffer bound in two slots of a stage at two offsets: both at the first one's
+  PARK,    // the park's end leaves the victims' binds on their stand-ins (the draws after it read old bytes)
 };
+
+// The trap test's victims (s5r_ 3.3), all dynamic buffers of the game's that the stream maps: CB the constant buffers
+// up to 64 KB (the ring's set), VB the vertex buffers over 64 KB, ALL every one.
+enum class Park : uint8_t { NONE, CB, VB, ALL };
 
 struct Options {
   bool warp = true;  // else the first NVIDIA adapter
@@ -802,9 +810,25 @@ struct Options {
   // Test seam: `test_delay_ms` of spin inside every call that lands in `test_delay_where`.
   Where test_delay_where = Where::COUNT;
   double test_delay_ms = 0.;
+  // The trap test: inside [park_start_s, + park_length_s) the victims are neither mapped nor bound, as the ring does
+  // to the game's buffers: their maps and binds go to stand-ins of the same description (made at the window's start,
+  // given the victim's bytes); at its end each victim gets its newest bytes back with a native DISCARD (the ring's
+  // write-back) and is bound again where the stand-in was. Every `keep_warm` frames inside it each victim gets one
+  // native DISCARD (with `keep_warm_bind`, then one draw with it bound at its last bind's slot, a CB in the PS).
+  Park park = Park::NONE;
+  double park_start_s = 0.;
+  double park_length_s = 0.;
+  uint32_t keep_warm = 0;
+  bool keep_warm_bind = false;
+  // The plugin in only inside [plugin_start_s, + plugin_length_s) (its present told so; negative start: always in).
+  double plugin_start_s = -1.;
+  double plugin_length_s = 0.;
+  // Test seam: the windows' clock in replayed frames of this many seconds (0: QPC from the first replayed frame).
+  double seconds_per_frame = 0.;
 };
 
 struct FrameTimes {
+  int64_t start_ticks = 0;  // from the first replayed frame's start (the windows' clock)
   std::array<int64_t, static_cast<size_t>(Where::COUNT)> ticks = {};
   std::array<int64_t, static_cast<size_t>(Where::COUNT)> wait_ticks = {};
   std::array<uint32_t, static_cast<size_t>(Where::COUNT)> calls = {};
@@ -833,6 +857,9 @@ struct Result {
   double expected_gpu_ms = 0.;
   uint32_t failed_resources = 0;
   uint32_t failed_maps = 0;
+  uint32_t victims = 0;      // the trap test's
+  uint32_t parked_maps = 0;  // victims' maps that went to their stand-ins
+  uint32_t warm_maps = 0;    // keep-warm DISCARDs
 };
 
 inline Result Replay(const Stream& stream, const Options& options) {
@@ -1147,25 +1174,124 @@ RWByteAddressBuffer counter : register(u1);
     }
     if (FAILED(hr)) ++result.failed_resources;
   }
+
+  // The trap test's victims (Options::park): the game's dynamic buffers of the class that the replayed frames map.
+  if (options.parity && options.keep_warm_bind) throw std::runtime_error("--keep-warm-bind draws: not in parity mode");
+  struct Victim {
+    uint32_t resource = NO_RESOURCE;
+    ID3D11Buffer* buffer = nullptr;  // the game's
+    ComPtr<ID3D11Buffer> stand_in;
+    uint32_t newest = UINT32_MAX;  // the map ordinal of its newest DISCARD's bytes
+    UINT slot = 0;                 // its last bind's
+  };
+  std::vector<Victim> victims;
+  std::vector<uint32_t> victim_index(stream.resources.size(), NO_RESOURCE);
+  for (size_t index = begin; index < end && options.park != Park::NONE; ++index) {
+    const auto& call = stream.calls[index];
+    if (call.kind != Kind::MAP || victim_index[call.resource] != NO_RESOURCE || resources[call.resource] == nullptr) {
+      continue;
+    }
+    const auto& described = stream.resources[call.resource];
+    const bool constants = (described.bind & D3D11_BIND_CONSTANT_BUFFER) != 0 && described.width <= 65536;
+    const bool vertices = (described.bind & D3D11_BIND_VERTEX_BUFFER) != 0 && described.width > 65536;
+    if (described.texture || described.usage != D3D11_USAGE_DYNAMIC || !described.game
+        || (options.park == Park::CB && !constants) || (options.park == Park::VB && !vertices)) {
+      continue;
+    }
+    victim_index[call.resource] = static_cast<uint32_t>(victims.size());
+    victims.push_back({.resource = call.resource, .buffer = static_cast<ID3D11Buffer*>(resources[call.resource].Get())});
+  }
+  result.victims = static_cast<uint32_t>(victims.size());
+  bool parked = false;
+  uint32_t park_changes = 0;
+  const auto victim_of = [&](uint32_t resource) -> Victim* {
+    if (resource == NO_RESOURCE || victim_index[resource] == NO_RESOURCE) return nullptr;
+    return &victims[victim_index[resource]];
+  };
+  // A victim's maps and binds go to its stand-in while parked.
+  const auto actual = [&](uint32_t resource) -> ID3D11Resource* {
+    if (auto* victim = victim_of(resource); parked && victim != nullptr) return victim->stand_in.Get();
+    return resources[resource].Get();
+  };
   const auto buffer_of = [&](uint32_t resource) -> ID3D11Buffer* {
     if (resource == NO_RESOURCE || stream.resources[resource].texture) return nullptr;
-    return static_cast<ID3D11Buffer*>(resources[resource].Get());
+    return static_cast<ID3D11Buffer*>(actual(resource));
   };
+  std::vector<ID3D11Resource*> mapped_as(resources.size(), nullptr);
   std::vector<ComPtr<ID3DDeviceContextState>> states(stream.states);
-  // The constant buffer bindings as the replay made them (the OFFSET control's view): [stage][slot] = resource, first.
-  std::array<std::array<std::pair<uint32_t, uint32_t>, CB_SLOTS>, STAGES> bound = {};
-  const auto clear_bound = [&] {
-    for (auto& stage : bound) stage.fill({NO_RESOURCE, 0});
+  // Each device context state's constant and vertex buffer binds as the replay made them (the OFFSET control's view;
+  // the park moves the victims' to and from their stand-ins), and the park changes it has seen.
+  struct ConstantBind {
+    uint32_t resource = NO_RESOURCE;
+    UINT first = 0;
+    UINT count = 0;
+    bool set1 = false;
   };
-  clear_bound();
+  struct VertexBind {
+    uint32_t resource = NO_RESOURCE;
+    UINT stride = 0;
+    UINT offset = 0;
+  };
+  struct Binds {
+    std::array<std::array<ConstantBind, CB_SLOTS>, STAGES> constants = {};
+    std::array<VertexBind, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> vertices = {};
+    uint32_t park_changes = 0;
+  };
+  std::vector<Binds> binds(stream.states);
+  uint32_t active_state = 0;
+  // A plain Set goes to the plain bodies (the ring hooks Set and Set1 apart).
+  const auto set_constants = [&](uint32_t stage, UINT start, UINT count, ID3D11Buffer* const* list, const UINT* firsts,
+                                 const UINT* counts, bool set1) {
+    if (!set1) {
+      switch (stage) {
+        case 0: context->VSSetConstantBuffers(start, count, list); break;
+        case 1: context->HSSetConstantBuffers(start, count, list); break;
+        case 2: context->DSSetConstantBuffers(start, count, list); break;
+        case 3: context->GSSetConstantBuffers(start, count, list); break;
+        case 4: context->PSSetConstantBuffers(start, count, list); break;
+        default: context->CSSetConstantBuffers(start, count, list); break;
+      }
+      return;
+    }
+    switch (stage) {
+      case 0: context1->VSSetConstantBuffers1(start, count, list, firsts, counts); break;
+      case 1: context1->HSSetConstantBuffers1(start, count, list, firsts, counts); break;
+      case 2: context1->DSSetConstantBuffers1(start, count, list, firsts, counts); break;
+      case 3: context1->GSSetConstantBuffers1(start, count, list, firsts, counts); break;
+      case 4: context1->PSSetConstantBuffers1(start, count, list, firsts, counts); break;
+      default: context1->CSSetConstantBuffers1(start, count, list, firsts, counts); break;
+    }
+  };
+  // The active state's victim binds again, to what `actual` gives now (the park's start and end, a state swapped in
+  // after them).
+  const auto rebind = [&] {
+    auto& state = binds[active_state];
+    state.park_changes = park_changes;
+    for (uint32_t stage = 0; stage < STAGES; ++stage) {
+      for (UINT slot = 0; slot < CB_SLOTS; ++slot) {
+        const auto& bind = state.constants[stage][slot];
+        if (victim_of(bind.resource) == nullptr) continue;
+        ID3D11Buffer* const buffer = buffer_of(bind.resource);
+        set_constants(stage, slot, 1, &buffer, &bind.first, &bind.count, bind.set1);
+      }
+    }
+    for (UINT slot = 0; slot < state.vertices.size(); ++slot) {
+      const auto& bind = state.vertices[slot];
+      if (victim_of(bind.resource) == nullptr) continue;
+      ID3D11Buffer* const buffer = buffer_of(bind.resource);
+      context->IASetVertexBuffers(slot, 1, &buffer, &bind.stride, &bind.offset);
+    }
+  };
 
   uint32_t map_ordinal = 0;
   uint32_t draw_index = 0;
   uint32_t dispatch_index = 0;
   int64_t frame_begin = Qpc();
+  int64_t replay_begin = 0;
   int64_t native_ticks = 0;
   FrameTimes times;
-  std::vector<uint32_t> words;
+  bool plugin_on = true;
+  uint32_t parked_frames = 0;
   const auto timed = [&](Where where, uint32_t resource, auto&& work) {
     const int64_t before = Qpc();
     work();
@@ -1189,6 +1315,73 @@ RWByteAddressBuffer counter : register(u1);
       if (result.longest.size() > 16) result.longest.pop_back();
     }
   };
+  // A native DISCARD of `buffer` with the victim's newest bytes (its stand-in at the park's start; the victim at its
+  // end, the ring's write-back, and for keep-warm), timed in plugin_present's row (where the ring would do it).
+  const auto write_newest = [&](ID3D11Buffer* buffer, const Victim& victim) {
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    HRESULT hr = S_OK;
+    timed(Where::PLUGIN_PRESENT, victim.resource,
+          [&] { hr = context->Map(buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped); });
+    if (FAILED(hr)) {
+      ++result.failed_maps;
+      return;
+    }
+    const uint32_t count = (victim.newest == UINT32_MAX
+                                ? 0
+                                : FillWords(stream.resources[victim.resource], D3D11_MAP_WRITE_DISCARD));
+    auto* target_words = static_cast<uint32_t*>(mapped.pData);
+    for (uint32_t word = 0; word < count; ++word) target_words[word] = FillWord(victim.newest, word);
+    context->Unmap(buffer, 0);
+  };
+  // A replayed frame's start: the windows' clock, the plugin's row, the park's start or end, keep-warm.
+  const auto begin_frame = [&] {
+    times.start_ticks = (options.seconds_per_frame > 0.
+                             ? static_cast<int64_t>(static_cast<double>(result.frames.size()) * options.seconds_per_frame
+                                                    * static_cast<double>(result.frequency))
+                             : frame_begin - replay_begin);
+    const double at = static_cast<double>(times.start_ticks) / static_cast<double>(result.frequency);
+    const auto inside = [at](double start, double length) { return at >= start && at < start + length; };
+    plugin_on = (options.plugin_start_s < 0. || inside(options.plugin_start_s, options.plugin_length_s));
+    if (const bool park = !victims.empty() && inside(options.park_start_s, options.park_length_s); park != parked) {
+      for (auto& victim : victims) {
+        if (park && victim.stand_in == nullptr) {
+          D3D11_BUFFER_DESC desc;
+          victim.buffer->GetDesc(&desc);
+          check(device->CreateBuffer(&desc, nullptr, &victim.stand_in), "a park stand-in");
+        }
+        write_newest((park ? victim.stand_in.Get() : victim.buffer), victim);
+      }
+      parked = park;
+      ++park_changes;
+      if (park || options.control != Control::PARK) rebind();
+    }
+    if (!parked || options.keep_warm == 0 || ++parked_frames % options.keep_warm != 0) return;
+    for (auto& victim : victims) {
+      write_newest(victim.buffer, victim);
+      ++result.warm_maps;
+      if (!options.keep_warm_bind) continue;
+      // One draw with it bound at its own slot (a constant buffer in the PS), the slot's bind put back.
+      const uint32_t bind = stream.resources[victim.resource].bind;
+      ComPtr<ID3D11Buffer> saved;
+      timed(Where::PLUGIN_PRESENT, victim.resource, [&] {
+        if ((bind & D3D11_BIND_CONSTANT_BUFFER) != 0) {
+          UINT first = 0;
+          UINT count = 0;
+          context1->PSGetConstantBuffers1(victim.slot, 1, &saved, &first, &count);
+          context->PSSetConstantBuffers(victim.slot, 1, &victim.buffer);
+          context->DrawInstanced(3, 1, 0, 0);
+          context1->PSSetConstantBuffers1(victim.slot, 1, saved.GetAddressOf(), &first, &count);
+        } else if ((bind & D3D11_BIND_VERTEX_BUFFER) != 0) {
+          UINT stride = 0;
+          UINT offset = 0;
+          context->IAGetVertexBuffers(victim.slot, 1, &saved, &stride, &offset);
+          context->IASetVertexBuffers(victim.slot, 1, &victim.buffer, &stride, &offset);
+          context->DrawInstanced(3, 1, 0, 0);
+          context->IASetVertexBuffers(victim.slot, 1, saved.GetAddressOf(), &stride, &offset);
+        }
+      });
+    }
+  };
   // `state_only`: a frame before the first replayed one (its binds, swaps and clears; nothing timed).
   const auto issue = [&](const Call& call, bool state_only) {
     const bool binding = (call.kind == Kind::SET || call.kind == Kind::SET1 || call.kind == Kind::VB
@@ -1208,7 +1401,7 @@ RWByteAddressBuffer counter : register(u1);
     switch (call.kind) {
       case Kind::MAP: {
         const auto& described = stream.resources[call.resource];
-        ID3D11Resource* resource = resources[call.resource].Get();
+        ID3D11Resource* resource = actual(call.resource);
         if (resource == nullptr) return;
         Where where = Where::OTHER_MAP;
         if (described.texture) {
@@ -1227,7 +1420,12 @@ RWByteAddressBuffer counter : register(u1);
           ++result.failed_maps;
           return;
         }
+        mapped_as[call.resource] = resource;
         const uint32_t ordinal = map_ordinal++;
+        if (auto* victim = victim_of(call.resource); victim != nullptr) {
+          if (call.map_type == D3D11_MAP_WRITE_DISCARD) victim->newest = ordinal;
+          if (parked) ++result.parked_maps;
+        }
         const uint32_t count = (described.texture ? std::min(FillWords(described, call.map_type), mapped.RowPitch / 4)
                                                   : FillWords(described, call.map_type));
         auto* target_words = static_cast<uint32_t*>(mapped.pData);
@@ -1240,7 +1438,9 @@ RWByteAddressBuffer counter : register(u1);
         return;
       }
       case Kind::UNMAP: {
-        ID3D11Resource* resource = resources[call.resource].Get();
+        // What its map went to (a map before the park's start or end unmaps that one).
+        ID3D11Resource* const mapped = std::exchange(mapped_as[call.resource], nullptr);
+        ID3D11Resource* resource = (mapped != nullptr ? mapped : actual(call.resource));
         if (resource == nullptr) return;
         run(Where::UNMAP, call.resource, [&] { context->Unmap(resource, call.subresource); });
         return;
@@ -1250,7 +1450,7 @@ RWByteAddressBuffer counter : register(u1);
         std::array<ID3D11Buffer*, CB_SLOTS> buffers = {};
         std::array<UINT, CB_SLOTS> firsts = {};
         std::array<UINT, CB_SLOTS> counts = {};
-        auto& stage_bound = bound[call.stage];
+        auto& stage_binds = binds[active_state].constants[call.stage];
         for (uint32_t index = 0; index < call.count; ++index) {
           const auto& slot = stream.slots[call.first_slot + index];
           buffers[index] = buffer_of(slot.resource);
@@ -1261,38 +1461,19 @@ RWByteAddressBuffer counter : register(u1);
           }
           if (call.kind == Kind::SET1 && options.control == Control::OFFSET && slot.resource != NO_RESOURCE) {
             for (uint32_t other = 0; other < CB_SLOTS; ++other) {
-              if (other != call.start_slot + index && stage_bound[other].first == slot.resource) {
-                firsts[index] = stage_bound[other].second;
+              if (other != call.start_slot + index && stage_binds[other].resource == slot.resource) {
+                firsts[index] = stage_binds[other].first;
                 break;
               }
             }
           }
-          stage_bound[call.start_slot + index] = {slot.resource, firsts[index]};
+          stage_binds[call.start_slot + index] = {.resource = slot.resource, .first = firsts[index],
+                                                  .count = counts[index], .set1 = (call.kind == Kind::SET1)};
+          if (auto* victim = victim_of(slot.resource); victim != nullptr) victim->slot = call.start_slot + index;
         }
-        // A plain Set goes to the plain bodies (the ring hooks Set and Set1 apart).
-        const UINT start = call.start_slot;
-        const UINT count = call.count;
-        ID3D11Buffer* const* list = buffers.data();
         run(Where::BIND, NO_RESOURCE, [&] {
-          if (call.kind == Kind::SET) {
-            switch (call.stage) {
-              case 0: context->VSSetConstantBuffers(start, count, list); break;
-              case 1: context->HSSetConstantBuffers(start, count, list); break;
-              case 2: context->DSSetConstantBuffers(start, count, list); break;
-              case 3: context->GSSetConstantBuffers(start, count, list); break;
-              case 4: context->PSSetConstantBuffers(start, count, list); break;
-              default: context->CSSetConstantBuffers(start, count, list); break;
-            }
-            return;
-          }
-          switch (call.stage) {
-            case 0: context1->VSSetConstantBuffers1(start, count, list, firsts.data(), counts.data()); break;
-            case 1: context1->HSSetConstantBuffers1(start, count, list, firsts.data(), counts.data()); break;
-            case 2: context1->DSSetConstantBuffers1(start, count, list, firsts.data(), counts.data()); break;
-            case 3: context1->GSSetConstantBuffers1(start, count, list, firsts.data(), counts.data()); break;
-            case 4: context1->PSSetConstantBuffers1(start, count, list, firsts.data(), counts.data()); break;
-            default: context1->CSSetConstantBuffers1(start, count, list, firsts.data(), counts.data()); break;
-          }
+          set_constants(call.stage, call.start_slot, call.count, buffers.data(), firsts.data(), counts.data(),
+                        call.kind == Kind::SET1);
         });
         return;
       }
@@ -1305,6 +1486,9 @@ RWByteAddressBuffer counter : register(u1);
           buffers[index] = buffer_of(slot.resource);
           strides[index] = slot.first_or_stride;
           offsets[index] = slot.count_or_offset;
+          binds[active_state].vertices[call.start_slot + index] = {.resource = slot.resource, .stride = strides[index],
+                                                                   .offset = offsets[index]};
+          if (auto* victim = victim_of(slot.resource); victim != nullptr) victim->slot = call.start_slot + index;
         }
         run(Where::BIND, NO_RESOURCE, [&] {
           context->IASetVertexBuffers(call.start_slot, call.count, buffers.data(), strides.data(), offsets.data());
@@ -1320,13 +1504,14 @@ RWByteAddressBuffer counter : register(u1);
         ComPtr<ID3DDeviceContextState> previous;
         run(Where::SWAP_CLEAR, NO_RESOURCE, [&] { context1->SwapDeviceContextState(next.Get(), &previous); });
         if (states[call.previous_state] == nullptr) states[call.previous_state] = previous;
-        clear_bound();
+        active_state = call.resource;
         apply_harness_state();
+        if (binds[active_state].park_changes != park_changes) rebind();
         return;
       }
       case Kind::CLEAR:
         run(Where::SWAP_CLEAR, NO_RESOURCE, [&] { context->ClearState(); });
-        clear_bound();
+        binds[active_state] = {.park_changes = park_changes};
         apply_harness_state();
         return;
       case Kind::DRAW: {
@@ -1370,7 +1555,7 @@ RWByteAddressBuffer counter : register(u1);
           context->ClearUnorderedAccessViewUint(uavs[1].Get(), zero.data());
         }
         if (plugin.present != nullptr) {
-          timed(Where::PLUGIN_PRESENT, NO_RESOURCE, [&] { plugin.present(context.Get()); });
+          timed(Where::PLUGIN_PRESENT, NO_RESOURCE, [&] { plugin.present(context.Get(), plugin_on); });
         }
         HRESULT hr = S_OK;
         timed(Where::PRESENT, NO_RESOURCE, [&] { hr = swapchain->Present(0, 0); });
@@ -1397,8 +1582,12 @@ RWByteAddressBuffer counter : register(u1);
   };
   for (size_t index = 0; index < begin; ++index) issue(stream.calls[index], true);
   frame_begin = Qpc();
+  replay_begin = frame_begin;
   for (uint32_t loop = 0; loop < options.loops; ++loop) {
-    for (size_t index = begin; index < end; ++index) issue(stream.calls[index], false);
+    for (size_t index = begin; index < end; ++index) {
+      if (index == begin || stream.calls[index - 1].kind == Kind::PRESENT) begin_frame();
+      issue(stream.calls[index], false);
+    }
   }
   if (plugin.stats != nullptr) result.plugin_stats = plugin.stats();
   if (plugin.detach != nullptr) plugin.detach();
@@ -1520,6 +1709,51 @@ inline std::string Report(const Stream& stream, const Result& result, const Summ
     text += std::format("failed: {} resources, {} maps\n", result.failed_resources, result.failed_maps);
   }
   if (!result.plugin_stats.empty()) text += std::format("plugin: {}\n", result.plugin_stats);
+  return text;
+}
+
+// The trap test's phases (s5r_ 3.3) around a window [start_s, + length_s), by each frame's start: before (the 10 s
+// before it), idle (in it), after (its first 10 s after), late (the next 10 s). Then per DISCARD row: TRAP yes when the
+// after and late phases both wait at least max(2 ms/f, 5x the before phase's waits), no recovery.
+inline std::string PhaseReport(const Result& result, double start_s, double length_s) {
+  constexpr std::array<std::string_view, 4> PHASES = {"before", "idle", "after", "late"};
+  const double end_s = start_s + length_s;
+  const std::array<double, 5> edges = {start_s - 10., start_s, end_s, end_s + 10., end_s + 20.};
+  std::array<Summary, 4> phases;
+  for (size_t phase = 0; phase < PHASES.size(); ++phase) {
+    Result part = {.frequency = result.frequency};
+    std::ranges::copy_if(result.frames, std::back_inserter(part.frames), [&](const FrameTimes& times) {
+      const double at = static_cast<double>(times.start_ticks) / static_cast<double>(result.frequency);
+      return at >= edges[phase] && at < edges[phase + 1];
+    });
+    phases[phase] = Summarize(part, 0);
+  }
+  constexpr std::array<Where, 2> ROWS = {Where::CB_DISCARD, Where::VB_DISCARD};
+  std::string text = std::format("phases around {:.1f} s + {:.1f} s\n{:<7} {:>13} {:>6} {:>9}", start_s, length_s,
+                                 "phase", "seconds", "frames", "frame ms");
+  for (const Where where : ROWS) {
+    text += std::format(" {:>15} {:>8} {:>10}", std::format("{} ms/f", WHERE_NAMES[static_cast<size_t>(where)]),
+                        "waits/f", "wait ms/f");
+  }
+  text += "\n";
+  for (size_t phase = 0; phase < PHASES.size(); ++phase) {
+    const auto& summary = phases[phase];
+    text += std::format("{:<7} {:>13} {:>6} {:>9.2f}", PHASES[phase],
+                        std::format("{:.1f}-{:.1f}", edges[phase], edges[phase + 1]), summary.frames, summary.frame_ms);
+    for (const Where where : ROWS) {
+      const auto row = static_cast<size_t>(where);
+      text += std::format(" {:>15.3f} {:>8.2f} {:>10.3f}", summary.ms[row], summary.waits[row], summary.wait_ms[row]);
+    }
+    text += "\n";
+  }
+  for (const Where where : ROWS) {
+    const auto row = static_cast<size_t>(where);
+    const double mark = std::max(2., 5. * phases[0].wait_ms[row]);
+    const bool trapped = phases[2].frames != 0 && phases[3].frames != 0 && phases[2].wait_ms[row] >= mark
+                         && phases[3].wait_ms[row] >= mark;
+    text += std::format("TRAP {}: {} (DISCARD waits after {:.3f}, late {:.3f} ms/f; the mark {:.3f}: max(2, 5x before))\n",
+                        WHERE_NAMES[row], (trapped ? "yes" : "no"), phases[2].wait_ms[row], phases[3].wait_ms[row], mark);
+  }
   return text;
 }
 
