@@ -335,6 +335,8 @@ struct TestControls {
   uint32_t inject_mesh = 0;
   // The chunk (slot index) whose first boundary flush op gets a zero header once recorded (a damaged op buffer).
   int corrupt_chunk = -1;
+  // The corruption repeats in every round (not once).
+  bool corrupt_keep = false;
 };
 static TestControls test_controls;
 
@@ -510,7 +512,7 @@ static void FlushSite(dr::Site site, void* t, uint32_t mesh, uint32_t technique,
   if (test_controls.corrupt_chunk == static_cast<int>(slot->chunk) && slot->mode == dr::MODE_RECORD
       && (site == dr::Site::DEPTH_FLUSH_BOUNDARY || site == dr::Site::COLOUR_FLUSH_BOUNDARY)
       && slot->ops_cursor >= slot->ops_begin + 1 + di::FLUSH_PAYLOAD) {
-    test_controls.corrupt_chunk = -1;
+    if (!test_controls.corrupt_keep) test_controls.corrupt_chunk = -1;
     *(slot->ops_cursor - (1 + di::FLUSH_PAYLOAD)) = 0;
   }
 }
@@ -3421,6 +3423,32 @@ static void BStraddler() {
       }
       di::controls.restore_straddler = true;
       CHECK(differs);
+      // R-S1: chunk 0 of a round that starts at a straddler run again (overflow), or the whole round run directly (a damaged op
+      // buffer), starts from the straddler's state the round began with: its recording wrote the mesh's +0x44 (the real virtual
+      // call logs it). Without the restore the logs differ.
+      for (const bool damaged : {false, true}) {
+        bool restore_differs = false;
+        for (const bool restore : {true, false}) {
+          di::controls.restore_straddler = restore;
+          test_controls.overflow_chunk = (damaged ? -1 : 0);
+          test_controls.corrupt_chunk = (damaged ? 0 : -1);
+          test_controls.corrupt_keep = true;
+          for (const uint32_t k : {2u, 4u, 8u}) {
+            const Outcome rerun = RunBStaged(world.get(), dr::Stage::RECORDED, k, false);
+            CHECK(rerun.reruns > 0 || damaged);
+            if (restore) {
+              CHECK(Equal(serial, rerun, "R-S1 straddler chunk 0 run again"));
+            } else {
+              restore_differs = restore_differs || !Equal(serial, rerun, "control: R-S1 restore off", false);
+            }
+          }
+          test_controls.overflow_chunk = -1;
+          test_controls.corrupt_chunk = -1;
+          test_controls.corrupt_keep = false;
+          di::controls.restore_straddler = true;
+        }
+        CHECK(restore_differs);
+      }
     }
 #endif
   }
