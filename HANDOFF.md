@@ -401,6 +401,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 08:08: 64-bit decisions = coordinator's reco
 - NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | ATN, when ATN brings it up again
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
+- TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - S1 FOLLOW-UPS: N1-N7 DONE by s5o_ in e6a835ffc (merged with S5 in ca057a7ee, 11- ... | ?
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
@@ -4507,6 +4508,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         can't be judged here. Both rows are latched + parked, so nothing waits on it. Outputs replay/t1-t8*.txt.
         s5x_ RESUMED: re-check 8980475ca + 937e59ffb (+ why the harness can't trap) -> merge. c2i_ RESUMED (sole
         implementer): C.2-4 fixes S-1 / S-2 / N-1 (zero-header op walk) / N-2 / N-3 -> c23r_ re-checks -> then c3i_ C.3-2.
+        ATN 22:1x: MAX 4 SUBAGENTS from now; tracks B + C = the biggest gains -> BIG designs over small ones (memory
+        saved). Started 22:2x, Opus xHigh read-only, text -> reports/: bd1o_ B3b animation rows (bit-exact 3 phases) +
+        B4 ready check (bd1o_design_B3.md); bd2o_ B1 Parallel Effect Update, guards for H1-H6+, same-picture aim
+        (bd2o_design_B1.md); bd3o_ B2 HSG2 (heapfix patch, private) + the ring part (start_task wakes 3.67 + memcpy fill
+        3.07 ms) (bd3o_design_B2_ring.md). Each lists what ONE combined end batch must measure.
+        s5x_ RE-CHECK DONE 22:1x (reports/s5x_review_latch.md "Re-check"): 8980475ca MERGE, 937e59ffb MERGE (test-only).
+        MERGED rmt_s5 186fcb0fd + gated builds x86 x3 + amd64 twattila exit 0 + pushed. s5x_'s trap-rule Should + repro
+        ideas -> box TRAP HARNESS FOLLOW-UP (optional, latched anyway).
+        c2i_ C.2-4 FIXES DONE 22:2x: rmt_c2 9e279ad28 (S-1 RoundScope on B's direct fallback + BNestedSmallRound, S-2
+        arena_size only on the free path, N-1 OpsWellFormed check in A / B / MakeCompare + DepthBadOps / BBadOps, N-2
+        texts, N-3 GROUP_NAMES); all draw_recording suites + engine_code -Quick PASS; gated builds with / without the
+        define exit 0. c23r_ RE-CHECK 22:3x (reports/c24r_review.md "Re-check"): MERGE; new Should R-S1 (since C.2-5):
+        a chunk-0 rerun or the bad-ops fallback leaves the straddler's mesh +0x44 changed -> save +0x40..+0x48 every round,
+        restore before both + BStraddler overflow_chunk / corrupt_chunk = 0 tests; nit: N-1's hot-path cost -> measure at
+        the end batch's G1. MERGED rmt_c2 7e08a03f4 + gated builds x86 x3 + amd64 twattila exit 0 + pushed. c2i_
+        RESUMED 22:3x (sole implementer): R-S1 fix -> c23r_ re-checks -> then c3i_ C.3-2. Agents: bd1o_, bd2o_, bd3o_,
+        c2i_ (4 of 4).
+        ATN 22:2x asked: (1) disk space (C: 48 GB free): coordinator survey -> list sent to ATN, nothing deleted without
+        ATN's yes; (2) all in-game runs AFTER all tracks are built: coordinator agrees -> the C batch moves into ONE end
+        batch (C groups + B rows switched live, then the final bench after ATN's reboot); offline WARP / harness proofs
+        stay per step.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4537,6 +4559,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (draw_recording_sites.hpp:747) leaves accessor / vf64_stub / module_shift / classes at 0 and DispatchMesh's direct
         fallback calls game_calls.accessor whenever PlanRound didn't run -> fill them first or the first direct B round
         calls address 0. c31r_ -> C.3-2: N1 comment wording, compares[EQUAL] total CHECK > 0.
+        c23r_ re-check 11-20 22:3x: C.2-4 items S-1 / S-2 / N-1..N-3 DONE (merged 7e08a03f4); R-S1 straddler +0x40..+0x48
+        save / restore before a chunk-0 rerun and the bad-ops fallback + 2 tests -> owner c2i_ (BEFORE C.3-2); N-1 cost
+        -> end batch G1 (owner coordinator); optional len == 0 stop in the Replay walk -> c2i_ if trivial.
+      - [ ] TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the TRAP rule can't see a VB step
+        under the synthetic load (mark max(2, 5x before) = 15-17 ms/f; t2 / t4-t8 show VB 3.0 -> 5.4-6.7 ms/f, frame
+        +2.5 ms) -> add an absolute delta (after - before >= 2 and late - before >= 2 ms/f), print deltas, a control that
+        frees the stand-ins at the window end. Repro ideas, cheapest first: x86 harness with ballast up to Attila's
+        address space / commit; a 120 s before-phase; Attila.exe's NVIDIA profile (driver settings = ATN's call). New
+        switches need ATN's rules. Owner s5o_ (after the C chain), only if ATN wants it.
       - [x] S5 RING GPU CHECKS (DONE 11-20 19:29: re-check with 8 pieces + H0 passed, parity EQUAL; s5r_ re-check 11-20; gate ANY game run / release with "Fewer Driver Waits" on, batch 3
         included; agents can't run the harness (classifier), ATN runs bench/analysis_b2/replay/atn_harness_runs.ps1): 1. DONE
         11-20 17:18 (EQUAL, upload differs, no unknown-body line) NVIDIA x86 parity:
