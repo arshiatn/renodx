@@ -4119,6 +4119,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         rows: `none` = the ring with no fault, EQUAL bit for bit (synthetic v3 + W3m frames 1-2); upload / window / offset
         are injected faults that must differ -> no parity gap on WARP. Merge may go ahead without GPU runs (row off by
         default = hooks never installed); the GPU checks gate any row-on run / release (box below). Waits for s5x_.
+        c2i_ C.2-3 DONE 14:4x (c2i_report.md last section): rmt_c2 79a25329c (N1 compare only on the last trace frame +
+        compare_every_call test switch, F7 32 MB op arena by chunk, per-item bytes from payloads) + c5d1c0308 (Colour A:
+        SETUP + vtable check, ReplayConst CONST1 / CONST2 with repeats, SRV / faction (4 colours, fixed buffer), any-capture,
+        seeds 0x14, v3.1 S1 / S2 / S7 / M4, N2-N4, F13). S10: the colour F2 continuation guard IS needed (flush writes +0x40
+        before vf58 reads it). tw_draw_recording x86 1280 colour cases + depth PASS, controls fail, amd64 stubs, cpu_sets
+        PASS, build32 twattila exit 0. Not covered: S2 has no failing control. Coordinator's name check: RegisterMesh,
+        set_colours, test faction_colours -> c2i_ RESUMED for a neutral-rename commit. c23r_ a0d0b5a5199025b89 (Opus xHigh)
+        STARTED: fresh review of 79a25329c + c5d1c0308 -> reports/c23r_review.md. Then C.2-4 (4 group rows) + C.2-5 (B).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
