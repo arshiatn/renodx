@@ -18,6 +18,7 @@
 // 7. The assembler's bounds.
 // tests.exe [empire.retail.dll]
 #include <windows.h>
+#include <intrin.h>
 
 #include <algorithm>
 #include <array>
@@ -109,6 +110,11 @@ bool Prepare() {
   ec::recording_asked = 0;
   ec::failed_writes = 0;
   ec::recording_prepared = false;
+  ec::recording_refused = false;
+  ec::recording_left_in = false;
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  ec::recording_fail_protect = -1;
+#endif
   log_lines.clear();
   return ec::PrepareRecording(reinterpret_cast<HMODULE>(image));
 }
@@ -485,8 +491,217 @@ void TestWindow() {
   CHECK(ec::recording_written == in && ecp::DrawRecordingSitesIn() && LogHas("left in at detach"));
   shared->active.store(0);
   ecp::Uninstall();
-  CHECK(ec::recording_written == 0 && !ecp::DrawRecordingSitesIn() && DifferingBytes() == 0);
+  CHECK(ec::recording_written == 0 && ecp::DrawRecordingSitesIn() && DifferingBytes() == 0);  // the give-up stays noted
   std::printf("5. window: in, out, arena size, dispatch in flight, thread in the cut stub, thread in a site, another mod's bytes (in / out), Uninstall\n");
+}
+
+// A thread parked on 4 bytes of the test's own copy of the page or the game's data (`nop; jmp $; ret` over them) until Release.
+struct Parked {
+  uint8_t* code = nullptr;
+  std::array<uint8_t, 4> saved = {};
+  DWORD protection = 0;
+  HANDLE thread = nullptr;
+};
+
+Parked Park(uint8_t* code) {
+  constexpr std::array<uint8_t, 4> SPIN_CODE = {0x90, 0xEB, 0xFE, 0xC3};
+  Parked parked = {.code = code};
+  VirtualProtect(code, 4, PAGE_EXECUTE_READWRITE, &parked.protection);
+  std::memcpy(parked.saved.data(), code, 4);
+  std::memcpy(code, SPIN_CODE.data(), 4);
+  cut_thread_started = false;
+  parked.thread = CreateThread(nullptr, 0, CallCode, code, 0, nullptr);
+  while (!cut_thread_started) Sleep(1);
+  Sleep(50);
+  return parked;
+}
+
+void Release(Parked* parked) {
+  const uint16_t jump_on = 0x00EB;  // jmp +0: falls through to the ret
+  std::memcpy(parked->code + 1, &jump_on, sizeof(jump_on));
+  CHECK(WaitForSingleObject(parked->thread, 5000) == WAIT_OBJECT_0);
+  CloseHandle(parked->thread);
+  std::memcpy(parked->code, parked->saved.data(), 4);
+  VirtualProtect(parked->code, 4, parked->protection, &parked->protection);
+}
+
+uint8_t* ThunkOf(ec::RecordingSite recording_site) {
+  const ec::Site& site = ec::recording_sites[static_cast<size_t>(recording_site)];
+  return reinterpret_cast<uint8_t*>(ec::Address(site.at + ec::SITE_SIZE) + Read32(site.jump.data() + 1));
+}
+
+uint8_t* SiteAt(ec::RecordingSite recording_site) { return ec::recording_sites[static_cast<size_t>(recording_site)].at; }
+
+DWORD ProtectionAt(const void* at) {
+  MEMORY_BASIC_INFORMATION information = {};
+  VirtualQuery(at, &information, sizeof(information));
+  return information.Protect;
+}
+
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+// M1: every page of the sites going in is made writable first; one that cannot be stands the whole table down with nothing written
+// and the protections of the ones already changed back.
+void TestProtectFailure() {
+  const uint64_t in = DEPTH_A_SITES;
+  const uint32_t count = std::popcount(in);
+  DWORD ignored;
+  const auto set_protection = [&](DWORD protection) {
+    for (const ec::Site& site : ec::recording_sites) VirtualProtect(site.at, ec::SITE_SIZE, protection, &ignored);
+  };
+  const auto protections_are = [&](DWORD protection) {
+    return std::all_of(ec::recording_sites.begin(), ec::recording_sites.end(),
+                       [&](const ec::Site& site) { return ProtectionAt(site.at) == protection; });
+  };
+  for (const uint32_t failing : {0u, 2u, count - 1}) {
+    REQUIRE(Prepare());
+    set_protection(PAGE_READONLY);
+    ec::recording_fail_protect = static_cast<int32_t>(failing);
+    UpdateWith(Groups());
+    CHECK(ec::recording_written == 0 && (ec::recording_found & in) == 0 && DifferingBytes() == 0 && ec::failed_writes == 0);
+    CHECK(LogHas("left alone") && LogHas("could not be made writable") && !LogHas("sites in"));
+    CHECK(protections_are(PAGE_READONLY) && !ecp::DrawRecordingSitesIn() && ec::recording_fail_protect == -1);
+    UpdateWith(Groups());
+    CHECK(ec::recording_written == 0);
+    set_protection(PAGE_READWRITE);
+  }
+  // The control: no call fails, the sites go in, and every page is back as it was (sites sharing a page too).
+  REQUIRE(Prepare());
+  set_protection(PAGE_READONLY);
+  ec::recording_fail_protect = static_cast<int32_t>(count);
+  UpdateWith(Groups());
+  CHECK(ec::recording_written == in && protections_are(PAGE_READONLY));
+  ec::recording_fail_protect = -1;
+  UpdateWith(0);
+  CHECK(ec::recording_written == 0 && DifferingBytes() == 0 && protections_are(PAGE_READONLY));
+  set_protection(PAGE_READWRITE);
+  std::printf("5b. a VirtualProtect that fails (first, middle, last site going in): nothing written, protections back, the table stood down\n");
+}
+#endif
+
+// M2: a thread in a thunk's direct path (any thunk past the cut stubs) blocks the last removal, not a partial one.
+void TestThreadInThunks() {
+  REQUIRE(Prepare());
+  dr::Shared* const shared = dr::SharedPage();
+  const uint32_t arena_size = ec::recording_arena_size_value;
+  REQUIRE(arena_size != 0);
+  const uint64_t in = DEPTH_A_SITES;
+  const uint64_t entry = ec::RECORDING_ENTRY_BIT;
+  UpdateWith(Groups());
+  CHECK(ec::recording_written == in);
+  uint8_t* const flush_thunk = ThunkOf(ec::RecordingSite::FLUSH_ENTRY);
+  REQUIRE(flush_thunk >= ec::recording_cut_end && flush_thunk + 4 <= ec::recording_page_end);
+  Parked parked = Park(flush_thunk);
+  // Partial: the entry hook alone comes out (the call Update makes for it); the thread is not in a cut stub.
+  uint32_t stood_down = 0;
+  uint64_t recording_stood_down = 0;
+  CHECK(ec::PausedWrite(0, &stood_down, in & ~entry, &recording_stood_down) && recording_stood_down == 0);
+  CHECK(SiteHolds(static_cast<size_t>(ec::RecordingSite::FLUSH_ENTRY), false) && shared->arena_size == arena_size);
+  ec::recording_written = in & ~entry;
+  // Last: nothing stays in, so a thread anywhere in the page blocks it.
+  ec::failed_writes = 0;
+  UpdateWith(0);
+  CHECK(ec::recording_written == (in & ~entry) && ec::failed_writes == 1 && shared->arena_size == arena_size);
+  CHECK(ecp::DrawRecordingSitesIn());
+  Release(&parked);
+  UpdateWith(0);
+  CHECK(ec::recording_written == 0 && DifferingBytes() == 0 && shared->arena_size == 0 && !ecp::DrawRecordingSitesIn());
+  // Going in is not held by a thread in the page.
+  REQUIRE(Prepare());
+  parked = Park(ThunkOf(ec::RecordingSite::DEPTH_VF68));
+  UpdateWith(Groups());
+  CHECK(ec::recording_written == in);
+  Release(&parked);
+  UpdateWith(0);
+  CHECK(ec::recording_written == 0 && DifferingBytes() == 0);
+  std::printf("5c. a thread in a thunk's direct path: blocks the last removal, not a partial one, not going in\n");
+}
+
+// S1 and S3: the arena size stays while a site stays in; a site that stood down on the way out keeps the feature reachable.
+// S5: a mismatch stands down its own group, the entry hook goes on while a group is in; the log names the sites that changed.
+void TestStandDown() {
+  REQUIRE(Prepare());
+  dr::Shared* const shared = dr::SharedPage();
+  const uint32_t arena_size = ec::recording_arena_size_value;
+  REQUIRE(arena_size != 0);
+  const uint64_t in = DEPTH_A_SITES;
+  const uint64_t entry = ec::RECORDING_ENTRY_BIT;
+  const uint64_t first = ec::RecordingBit(ec::RecordingSite::DEPTH_CUT) | ec::RecordingBit(ec::RecordingSite::DEPTH_INIT);
+  const uint64_t second = ec::RecordingBit(ec::RecordingSite::DEPTH_VF68) | ec::RecordingBit(ec::RecordingSite::DEPTH_ANIM);
+  // Two groups split the depth loop's sites for this test (the real second group arrives with colour).
+  const std::array<uint64_t, 4> real_groups = ec::recording_group_sites;
+  ec::recording_group_sites = {first, second, 0, 0};
+  uint8_t* const modded = SiteAt(ec::RecordingSite::DEPTH_VF68);
+  modded[0] ^= 0x55;
+  log_lines.clear();
+  UpdateWith(Groups());
+  CHECK(ec::recording_written == (first | entry) && (ec::recording_found & second) == 0 && (ec::recording_found & (first | entry)) == (first | entry));
+  CHECK(shared->arena_size == arena_size && ecp::DrawRecordingSitesIn());
+  CHECK(LogHas("depth loop shared-state call") && !LogHas("depth loop cut") && !LogHas("depth loop animation call"));
+  // Out: the group that stayed comes out, and the arena size is 0 only then.
+  UpdateWith(0);
+  CHECK(ec::recording_written == 0 && shared->arena_size == 0 && !ecp::DrawRecordingSitesIn());
+  modded[0] ^= 0x55;
+  // Both groups changed: the entry hook has no group left and stands down with them.
+  REQUIRE(Prepare());
+  ec::recording_group_sites = {first, second, 0, 0};
+  SiteAt(ec::RecordingSite::DEPTH_CUT)[0] ^= 0x55;
+  SiteAt(ec::RecordingSite::DEPTH_ANIM)[0] ^= 0x55;
+  UpdateWith(Groups());
+  CHECK(ec::recording_written == 0 && (ec::recording_found & in) == 0);
+  SiteAt(ec::RecordingSite::DEPTH_CUT)[0] ^= 0x55;
+  SiteAt(ec::RecordingSite::DEPTH_ANIM)[0] ^= 0x55;
+  CHECK(DifferingBytes() == 0);
+  // The entry hook changed: every group stands down with it.
+  REQUIRE(Prepare());
+  ec::recording_group_sites = {first, second, 0, 0};
+  uint8_t* const hook = SiteAt(ec::RecordingSite::FLUSH_ENTRY);
+  hook[1] ^= 0x55;
+  log_lines.clear();
+  UpdateWith(Groups());
+  CHECK(ec::recording_written == 0 && (ec::recording_found & in) == 0 && LogHas("flush entry") && !LogHas("depth loop cut"));
+  hook[1] ^= 0x55;
+  // Coming out with one site changed since: the others go back, and the feature stays reachable.
+  REQUIRE(Prepare());
+  UpdateWith(Groups());
+  CHECK(ec::recording_written == in && !LogHas("left alone"));
+  uint8_t* const anim = SiteAt(ec::RecordingSite::DEPTH_ANIM);
+  anim[1] ^= 0x55;
+  log_lines.clear();
+  UpdateWith(0);
+  CHECK(ec::recording_written == 0 && shared->arena_size == 0 && ecp::DrawRecordingSitesIn() && LogHas("depth loop animation call"));
+  CHECK(!LogHas("depth loop cut"));
+  UpdateWith(0);
+  CHECK(ecp::DrawRecordingSitesIn());  // sticky until the next Prepare
+  std::memcpy(anim, &pristine[ec::DEPTH_ANIM_RVA], ec::SITE_SIZE);
+  REQUIRE(Prepare());
+  CHECK(!ecp::DrawRecordingSitesIn() && DifferingBytes() == 0);
+  ec::recording_group_sites = real_groups;
+  std::printf("5d. stand-down: by group, the entry hook with its groups, the arena size, the sticky left-in flag, the log names the changed sites\n");
+}
+
+// S2: a hooked entry found at a turn-on refuses for good, and what is written can still come out.
+void TestRefusedTurnOn() {
+  REQUIRE(Prepare());
+  dr::Shared* const shared = dr::SharedPage();
+  const uint64_t in = DEPTH_A_SITES;
+  UpdateWith(Groups());
+  CHECK(ec::recording_written == in);
+  // One site is not written yet (as for a group joining later), and passtime has started.
+  const ec::Site& anim = ec::recording_sites[static_cast<size_t>(ec::RecordingSite::DEPTH_ANIM)];
+  std::memcpy(anim.at, anim.game.data(), ec::SITE_SIZE);
+  ec::recording_written &= ~ec::RecordingBit(ec::RecordingSite::DEPTH_ANIM);
+  *Rva(0x17b0400) = 0xE9;
+  log_lines.clear();
+  CHECK(ec::RecordingWanted(1) == 0);
+  CHECK(ec::recording_found == ec::recording_written && ec::recording_refused && LogHas("hooked by another tool"));
+  CHECK(ecp::DrawRecordingSitesIn());
+  UpdateWith(Groups());  // asks for nothing now: what is written comes out
+  CHECK(ec::recording_written == 0 && shared->arena_size == 0 && !ecp::DrawRecordingSitesIn());
+  *Rva(0x17b0400) = pristine[0x17b0400];
+  CHECK(DifferingBytes() == 0);
+  UpdateWith(Groups());
+  CHECK(ec::recording_written == 0);  // refused for the session
+  std::printf("5e. a hooked entry at a turn-on: nothing goes in again, the sites written can still come out\n");
 }
 
 // ---------------------------------------------------------------- 6. the thunks on synthetic code
@@ -499,6 +714,11 @@ struct Seen {
   uint32_t esi = 0;
   uint32_t eax = 0;
   uint32_t xmm0 = 0;
+  uint32_t edx = 0;
+  uint32_t edi = 0;
+  uint32_t ebp = 0;
+  uint32_t ebx = 0;
+  uint32_t eflags = 0;
   std::array<uint32_t, 12> stack = {};
 };
 Seen seen;
@@ -512,6 +732,11 @@ void __fastcall FakeRecord(dr::Slot* slot, dr::Frame* frame) {
   seen.esi = frame->esi;
   seen.eax = frame->eax;
   seen.xmm0 = frame->xmm0;
+  seen.edx = frame->edx;
+  seen.edi = frame->edi;
+  seen.ebp = frame->ebp;
+  seen.ebx = frame->ebx;
+  seen.eflags = frame->eflags;
   std::memcpy(seen.stack.data(), frame + 1, sizeof(seen.stack));
   if (frame->site < static_cast<uint32_t>(dr::Site::COUNT)) frame->eax = record_sets_eax;
 }
@@ -519,22 +744,30 @@ void __fastcall FakeRecord(dr::Slot* slot, dr::Frame* frame) {
 std::atomic<uint32_t> direct_calls = 0;
 std::array<uint32_t, 12> direct_args = {};
 uint32_t direct_ecx = 0;
-uint32_t __fastcall FakeFlush(void* ecx, void*, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5, uint32_t a6, uint32_t a7, uint32_t a8,
+uint32_t direct_edx = 0;
+uint32_t direct_flags = 0;
+uint32_t __fastcall FakeFlush(void* ecx, void* edx, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5, uint32_t a6, uint32_t a7, uint32_t a8,
                               uint32_t a9, uint32_t a10) {
   ++direct_calls;
   direct_ecx = reinterpret_cast<uint32_t>(ecx);
+  direct_edx = reinterpret_cast<uint32_t>(edx);
+  direct_flags = __readeflags();
   direct_args = {a1, a2, a3, a4, a5, a6, a7, a8, a9, a10};
   return 0xF105;
 }
-uint32_t __fastcall FakeVf68(void* ecx, void*, uint32_t a1, uint32_t a2) {
+uint32_t __fastcall FakeVf68(void* ecx, void* edx, uint32_t a1, uint32_t a2) {
   ++direct_calls;
   direct_ecx = reinterpret_cast<uint32_t>(ecx);
+  direct_edx = reinterpret_cast<uint32_t>(edx);
+  direct_flags = __readeflags();
   direct_args = {a1, a2};
   return 0x6868;
 }
-uint32_t __fastcall FakeAnimation(void* ecx, void*, uint32_t a1) {
+uint32_t __fastcall FakeAnimation(void* ecx, void* edx, uint32_t a1) {
   ++direct_calls;
   direct_ecx = reinterpret_cast<uint32_t>(ecx);
+  direct_edx = reinterpret_cast<uint32_t>(edx);
+  direct_flags = __readeflags();
   direct_args = {a1};
   return 0xA111;
 }
@@ -547,6 +780,12 @@ struct HarnessOut {
   uint32_t eax = 0;
 };
 HarnessOut harness_out;
+// What the harness puts in edx and sets (DF) before the call, and what it keeps for the checks of the registers that must come
+// through a thunk: the frame pointer, the arguments' address.
+constexpr uint32_t EDX_IN = 0xED5ED5ED;
+constexpr uint32_t DIRECTION_FLAG = 0x400;
+uint32_t harness_ebp = 0;
+const uint32_t* harness_args = nullptr;
 
 // cdecl: uint32_t(esi, target, args, ecx, eax). Pushes `pushed` dwords of args (args[0] ends lowest: the first the callee
 // sees), calls target (the callee pops `popped` of them), then drops the rest and reports esp's balance and ebx esi edi.
@@ -557,7 +796,9 @@ HarnessFn BuildHarness(ec::Assembler* assembler, uint32_t pushed, uint32_t poppe
   assembler->Bytes({0x8B, 0x75, 0x08, 0x8B, 0x5D, 0x10, 0x8B, 0x4D, 0x14, 0x8B, 0x45, 0x18});
   assembler->BytesAndOperand({0xBF}, 0xDEADBEEF);
   for (uint32_t index = pushed; index > 0; --index) assembler->Bytes({0xFF, 0x73, static_cast<uint8_t>(4 * (index - 1))});
-  assembler->Bytes({0xFF, 0x55, 0x0C});
+  assembler->BytesAndOperand({0x89, 0x2D}, ec::Address(&harness_ebp));
+  assembler->BytesAndOperand({0xBA}, EDX_IN);
+  assembler->Bytes({0xFD, 0xFF, 0x55, 0x0C, 0xFC});  // std; call [ebp + 0xC]; cld
   if (pushed > popped) assembler->Bytes({0x83, 0xC4, static_cast<uint8_t>(4 * (pushed - popped))});
   assembler->Bytes({0x8D, 0x55, 0xF4, 0x2B, 0xD4});
   assembler->BytesAndOperand({0x89, 0x15}, ec::Address(&harness_out.balance));
@@ -574,6 +815,7 @@ uint32_t Call(HarnessFn harness, uint32_t esi, const void* target, const std::ve
   harness_out = {};
   seen = {};
   direct_calls = 0;
+  harness_args = args.data();
   const uint32_t result = harness(esi, target, args.data(), ecx, eax);
   harness_out.eax = result;
   CHECK(harness_out.balance == 0);
@@ -581,6 +823,13 @@ uint32_t Call(HarnessFn harness, uint32_t esi, const void* target, const std::ve
   CHECK(harness_out.ebx == reinterpret_cast<uint32_t>(args.data()));
   CHECK(harness_out.esi == esi);
   return result;
+}
+
+// edx and DF come through a thunk's direct path; a record path hands Record every register and the flags as the game had them.
+void CheckDirect() { CHECK(direct_edx == EDX_IN && (direct_flags & DIRECTION_FLAG) != 0); }
+void CheckRecordFrame(uint32_t esi) {
+  CHECK(seen.edx == EDX_IN && seen.edi == 0xDEADBEEF && seen.ebx == reinterpret_cast<uint32_t>(harness_args) && seen.ebp == harness_ebp);
+  CHECK(seen.esi == esi && (seen.eflags & DIRECTION_FLAG) != 0);
 }
 
 void TestThunks() {
@@ -608,7 +857,9 @@ void TestThunks() {
   // The flush's entry. Direct: the game's two instructions and its code on (here a stand-in that reports the flags of the
   // compare and returns as the game does); record: Record sees the slot and the frame, the call returns at once.
   uint32_t resume_flags = 0;
+  uint32_t resume_edx = 0;
   uint8_t* const resume = assembler.Cursor();
+  assembler.BytesAndOperand({0x89, 0x15}, ec::Address(&resume_edx));
   assembler.Bytes({0x9C, 0x58});  // pushfd; pop eax
   assembler.BytesAndOperand({0xA3}, ec::Address(&resume_flags));
   assembler.Bytes({0xB8, 0x45, 0xE5, 0x00, 0x00, 0x83, 0xC4, 0x1C, 0xC2, 0x28, 0x00});  // mov eax, 0xE545; add esp, 0x1c; ret 0x28
@@ -619,7 +870,7 @@ void TestThunks() {
   for (const uint32_t tracker : entry_outsides) {
     resume_flags = 0;
     CHECK(Call(harness10, 0x5151, entry_thunk, flush_args(tracker + 0x69, 7), 0xEC0, 0) == 0xE545);
-    CHECK(seen.calls == 0 && (resume_flags & 0x40) == 0);
+    CHECK(seen.calls == 0 && (resume_flags & 0x40) == 0 && resume_edx == EDX_IN && (resume_flags & DIRECTION_FLAG) != 0);
     resume_flags = 0;
     Call(harness10, 0x5151, entry_thunk, flush_args(tracker + 0x69, 0), 0xEC0, 0);
     CHECK(seen.calls == 0 && (resume_flags & 0x40) != 0);  // the game's own compare: no instances
@@ -628,6 +879,7 @@ void TestThunks() {
     resume_flags = 0;
     Call(harness10, 0x5151, entry_thunk, flush_args(tracker + 0x69, 3), 0xEC0, 0);
     CHECK(seen.calls == 1 && resume_flags == 0);
+    CheckRecordFrame(0x5151);
     CHECK(seen.site == static_cast<uint32_t>(dr::Site::FLUSH_ENTRY) && reinterpret_cast<uint32_t>(seen.slot) == tracker && seen.ecx == 0xEC0);
     CHECK(seen.stack[0] != 0);
     for (uint32_t argument = 1; argument <= 10; ++argument) CHECK(seen.stack[argument] == flush_args(tracker + 0x69, 3)[argument - 1]);
@@ -641,11 +893,13 @@ void TestThunks() {
   for (const uint32_t tracker : {outside, outsides[0], outsides[1]}) {
     CHECK(Call(harness10, tracker, call_thunk, flush_args(tracker + 0x69, 3), 0xEC0, 0) == 0xF105);
     CHECK(seen.calls == 0 && direct_calls == 1 && direct_ecx == 0xEC0 && direct_args == (std::array<uint32_t, 12>{0xA1, 0xA2, 0xA3, tracker + 0x69, 3, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0, 0}));
+    CheckDirect();
   }
   for (const uint32_t tracker : insides) {
     Call(harness10, tracker, call_thunk, flush_args(tracker + 0x69, 3), 0xEC0, 0);
     CHECK(direct_calls == 0 && seen.calls == 1 && seen.site == static_cast<uint32_t>(dr::Site::DEPTH_FLUSH_END) && reinterpret_cast<uint32_t>(seen.slot) == tracker);
     CHECK(seen.ecx == 0xEC0 && seen.esi == tracker && seen.stack[4] == tracker + 0x69 && seen.stack[5] == 3);
+    CheckRecordFrame(tracker);
     Call(harness10, tracker, call_thunk, flush_args(tracker + 0x69, 0), 0xEC0, 0);
     CHECK(seen.calls == 1);  // Record is called; it drops a flush of no instances itself
   }
@@ -661,12 +915,14 @@ void TestThunks() {
   for (const uint32_t tracker : {outside, outsides[0], outsides[1]}) {
     CHECK(Call(harness2, tracker, vf68_thunk, {0x11, 0x22}, 0xBEEF, ec::Address(fake_vtables[10].data())) == 0x6868);
     CHECK(seen.calls == 0 && direct_calls == 1 && direct_ecx == 0xBEEF && direct_args[0] == 0x11 && direct_args[1] == 0x22);
+    CheckDirect();
   }
   for (const uint32_t tracker : insides) {
     for (size_t index = 0; index < known.size(); ++index) {
       CHECK(Call(harness2, tracker, vf68_thunk, {0x11, 0x22}, 0xBEEF, known[index]) == 0x600D);
       CHECK(seen.calls == 1 && direct_calls == 0 && seen.site == static_cast<uint32_t>(dr::Site::DEPTH_VF68) && reinterpret_cast<uint32_t>(seen.slot) == tracker);
       CHECK(seen.ecx == 0xBEEF && seen.eax == known[index] && seen.stack[1] == 0x11 && seen.stack[2] == 0x22);
+      CheckRecordFrame(tracker);
     }
     // A vtable that is not one of the 10: Record is told by an id it does not know (the chunk is run again), eax is 0.
     CHECK(Call(harness2, tracker, vf68_thunk, {0x11, 0x22}, 0xBEEF, ec::Address(fake_vtables[10].data())) == 0);
@@ -681,6 +937,7 @@ void TestThunks() {
     const std::vector<uint32_t> words = {0xAA, 1, 2, 3, 4, 5, 6, 7, 0x1D0, 9};
     CHECK(Call(harness_anim, tracker, anim_thunk, words, 0x57A7, 0x7777) == 0xA111);
     CHECK(seen.calls == 0 && direct_calls == 1 && direct_ecx == 0x57A7 && direct_args[0] == 0xAA && shared->last_anim == 0x1D0);
+    CheckDirect();
     shared->last_anim = -1;
   }
   for (const uint32_t tracker : insides) {
@@ -688,6 +945,7 @@ void TestThunks() {
     Call(harness_anim, tracker, anim_thunk, words, 0x57A7, 0x7777);
     CHECK(seen.calls == 1 && direct_calls == 0 && seen.site == static_cast<uint32_t>(dr::Site::DEPTH_ANIM) && reinterpret_cast<uint32_t>(seen.slot) == tracker);
     CHECK(seen.ecx == 0x57A7 && seen.stack[1] == 0xAA && seen.stack[9] == 0x1D1 && shared->last_anim == -1);
+    CheckRecordFrame(tracker);
   }
 
   // The cut: the loop's four arguments go again to the dispatcher (a fastcall that pops them); active counts the dispatch.
@@ -702,10 +960,26 @@ void TestThunks() {
   };
   const uint32_t saved_dispatch = shared->dispatch_depth;
   shared->dispatch_depth = ec::Address(reinterpret_cast<const void*>(&CutHook::Dispatch));
-  const uint8_t* const cut_thunk = ec::BuildCut(&assembler, shared);
+  const uint8_t* const cut_thunk = ec::BuildCut(&assembler, shared, 4, 0x10, &shared->dispatch_depth);
   CHECK(Call(harness4, 0x5151, cut_thunk, {0x1000, 0x2000, 7, 99}, 0x40DE, 0) == 0xC07);
   CHECK(cut_active_seen == 1 && shared->active.load() == 0 && cut_args == (std::array<uint32_t, 4>{0x40DE, 0x1000 ^ 0x2000, 7, 99}));
   shared->dispatch_depth = saved_dispatch;
+  // The same builder for a cut of five arguments, `ret 0x14` and another dispatcher slot (the colour loop's).
+  static std::array<uint32_t, 5> colour_args = {};
+  struct ColourHook {
+    static uint32_t __fastcall Dispatch(void* node, void*, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5) {
+      colour_args = {reinterpret_cast<uint32_t>(node), a1 ^ a2, a3, a4, a5};
+      return 0xC01;
+    }
+  };
+  const uint32_t saved_colour = shared->dispatch_colour;
+  shared->dispatch_colour = ec::Address(reinterpret_cast<const void*>(&ColourHook::Dispatch));
+  const HarnessFn harness5 = BuildHarness(&assembler, 5, 5);
+  const uint8_t* const colour_cut = ec::BuildCut(&assembler, shared, 5, 0x14, &shared->dispatch_colour);
+  REQUIRE(assembler.Fits());
+  CHECK(Call(harness5, 0x5151, colour_cut, {0x1000, 0x2000, 7, 99, 5}, 0x40DE, 0) == 0xC01);
+  CHECK(shared->active.load() == 0 && colour_args == (std::array<uint32_t, 5>{0x40DE, 0x1000 ^ 0x2000, 7, 99, 5}));
+  shared->dispatch_colour = saved_colour;
 
   // The depth init: jumped to from the loop with esi the tracker and the local at [esp + 0x18]; goes on at `resume`.
   uint32_t init_index = 0;
@@ -789,6 +1063,12 @@ int main(int argc, char** argv) {
   TestFlips();
   TestHookedEntries();
   TestWindow();
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  TestProtectFailure();
+#endif
+  TestThreadInThunks();
+  TestStandDown();
+  TestRefusedTurnOn();
   TestThunks();
   TestAssembler();
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);

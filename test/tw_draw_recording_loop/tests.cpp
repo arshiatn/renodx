@@ -173,6 +173,17 @@ std::array<StrideObject, 8> stride_objects;
 std::array<uint32_t, 0x20> stride_vtable;
 std::array<uint32_t, 0x70 / 4> unknown_vtable;  // a class the sites do not know, with the same fakes
 uint8_t* flush_body = nullptr;
+uint8_t* empty_flush_exit = nullptr;
+std::atomic<uint32_t> empty_flushes = 0;  // flushes of no instances the game's own code let through (its head's exit)
+DWORD main_thread_id = 0;
+
+// The fakes that log what the game would have done run on the main thread only: a call on a worker is a deferred call that ran.
+void CheckMainThread() {
+  if (GetCurrentThreadId() != main_thread_id) {
+    std::printf("FAIL: a logging fake ran off the main thread\n");
+    ++failures;
+  }
+}
 
 std::atomic<bool> vf64_other = false;  // a control: the fake answers differently in the run that sets it
 
@@ -189,6 +200,7 @@ uint32_t __fastcall FakeAnimValue(void*, void*, int32_t anim) {
   return static_cast<uint32_t>(anim) * 3 + 1;
 }
 void __fastcall FakeAnimCall(void* state, void*, uint32_t value) {
+  CheckMainThread();
   Count(ANIM_CALL);
   game_log.push_back({3, reinterpret_cast<uint32_t>(state), value, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
 }
@@ -220,6 +232,7 @@ uint8_t __fastcall FakeVf64(Mesh* mesh, void*, uint32_t tracker_18, uint32_t tra
   return static_cast<uint8_t>(static_cast<uint32_t>(item->anim) + mesh->kind + tracker_1c + (tracker_18 >> 4) + (vf64_other.load(std::memory_order_relaxed) ? 1 : 0));
 }
 uint8_t __fastcall FakeVf68(Mesh* mesh, void*, uint32_t view, uint32_t zero) {
+  CheckMainThread();
   Count(VF68);
   game_log.push_back({2, reinterpret_cast<uint32_t>(mesh), view, zero, 0, 0, 0, 0, 0, 0, 0, 0, mesh->view_tag, mesh->pass, 0});
   return static_cast<uint8_t>(mesh->kind & 1);
@@ -227,6 +240,7 @@ uint8_t __fastcall FakeVf68(Mesh* mesh, void*, uint32_t view, uint32_t zero) {
 // The flush's body (its head, with the entry hook or not, is the game's): the cursor +0x5c advances by count x stride, the +0x28 cache
 // is written, the +0x69 byte is read and cleared.
 void __cdecl FlushImpl(Mesh* mesh, const uint32_t* args) {
+  CheckMainThread();
   Count(FLUSH);
   auto* any = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(args[3]));
   game_log.push_back({1, reinterpret_cast<uint32_t>(mesh), args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9],
@@ -246,6 +260,16 @@ uint8_t* BuildFlushBody() {
   return page;
 }
 
+// The flush's exit for a count of 0 (lock inc [empty_flushes]; then the game's own pops and `ret 0x28`), so that a list with
+// max_count 0 can be shown to reach it.
+uint8_t* BuildEmptyFlushExit() {
+  auto* page = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+  const uint8_t code[] = {0xF0, 0xFF, 0x05, 0, 0, 0, 0, 0x5F, 0x5E, 0x5D, 0x5B, 0x83, 0xC4, 0x1C, 0xC2, 0x28, 0x00};
+  std::memcpy(page, code, sizeof(code));
+  Write32(page + 3, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&empty_flushes)));
+  return page;
+}
+
 // The vtable slots of the weighted classes' fakes, as the game's vtable would hold them.
 void FillSlots(uint32_t* vtable) {
   vtable[0x54 / 4] = reinterpret_cast<uint32_t>(&FakeVf54);
@@ -262,6 +286,7 @@ void InstallFakes(uint8_t* image) {
   JumpTo(image + ec::ANIM_CALL_RVA, reinterpret_cast<const void*>(&FakeAnimCall));
   JumpTo(image + TECHNIQUE_CHECK_RVA, reinterpret_cast<const void*>(&FakeTechniqueCheck));
   JumpTo(image + FLUSH_BODY_RVA, flush_body);
+  JumpTo(image + ec::FLUSH_EMPTY_RVA, empty_flush_exit);
   for (const ec::WeightedClass& weighted : ec::WEIGHTED_CLASSES) FillSlots(reinterpret_cast<uint32_t*>(image + weighted.vtable));
 }
 
@@ -593,6 +618,7 @@ std::vector<ListCase> Lists() {
           {"no technique before cuts", {.items = 6000, .seed = 4, .max_run = 6, .none_percent = 45}},
           {"seed breaking pattern", {.items = 4000, .seed = 5, .pattern = true}},
           {"max count flushes", {.items = 6000, .seed = 6, .max_run = 120, .max_count = 6}},
+          {"max count 0 (flushes of no instances)", {.items = 6000, .seed = 9, .max_run = 60, .max_count = 0}},
           {"last chunks without technique", {.items = 6000, .seed = 7, .max_run = 12, .enabled_percent = 10}},
           {"last chunks without technique or animation", {.items = 6000, .seed = 8, .max_run = 12, .anim_minus_percent = 100, .enabled_percent = 10}}};
 }
@@ -648,8 +674,8 @@ void TestImages() {
   for (const IndirectCall& call : indirect) CHECK(std::memcmp(game + call.at, call.bytes.data(), call.bytes.size()) == 0);
   // The flush's body behind its head (and its `je` for no instances), where the fake goes.
   CHECK(Read32(pristine.data() + FLUSH_BODY_RVA) == 0x34244C8B);
-  // The fakes are the only changes to A: 5 jumps and the 5 slots of each of the 10 weighted vtables.
-  const size_t expected = 5 * 5 + ec::WEIGHTED_CLASSES.size() * 5 * 4;
+  // The fakes are the only changes to A: 6 jumps (the flush's exit for no instances among them) and the 5 slots of each of the 10 weighted vtables.
+  const size_t expected = 6 * 5 + ec::WEIGHTED_CLASSES.size() * 5 * 4;
   size_t differing = 0;
   for (uint32_t at = 0; at < image_size; ++at) {
     if (game[at] != pristine[at]) ++differing;
@@ -717,8 +743,11 @@ void TestStages() {
       const bool full = (mode == ENTRY_MODE && !cut);
       for (const ListCase& list : Lists()) {
         const auto world = BuildWorld(list.spec);
+        empty_flushes = 0;
         const Outcome serial = RunSerial(world.get());
         CHECK(serial.log.size() > 100);
+        // The loop's flushes of no instances (the game's own exit for count 0): only a list with max_count 0 reaches it.
+        CHECK((empty_flushes.load() > 0) == (list.spec.max_count == 0));
         for (const dr::Stage stage : RECORD_STAGES) {
           for (const uint32_t k : (full ? std::vector<uint32_t>{2, 3, 4, 8, 16} : std::vector<uint32_t>{4, 16})) {
             for (const bool tracing : {false, true}) {
@@ -750,7 +779,7 @@ void TestStages() {
   }
   through_cut = false;
   CHECK(reruns_seen > 0);
-  std::printf("2b. the real loop through the dispatcher: %u cases (8 lists x 4 stages x K x trace off / on; the flush entry's hook and the 3 call-site fallbacks; DispatchDepth and the cut thunk): log, tracker (+0x50, +0x5c, +0x28, +0x69 included) and the meshes' +0x40 / +0x44 equal the serial run; %u chunks run in all, %u run again; recorded in the first list at K 4 (both modes, the two ways in): %u flush, %u vf68, %u animation ops\n",
+  std::printf("2b. the real loop through the dispatcher: %u cases (9 lists x 4 stages x K x trace off / on; the flush entry's hook and the 3 call-site fallbacks; DispatchDepth and the cut thunk): log, tracker (+0x50, +0x5c, +0x28, +0x69 included) and the meshes' +0x40 / +0x44 equal the serial run; %u chunks run in all, %u run again; recorded in the first list at K 4 (both modes, the two ways in): %u flush, %u vf68, %u animation ops\n",
               cases, chunks_seen, reruns_seen, ops_flush, ops_vf68, ops_anim);
 }
 
@@ -776,9 +805,15 @@ void TestDirectStages() {
     const Outcome unusable = RunStaged(world.get(), dr::Stage::WORKERS, 8);
     di::game_calls = calls;
     CHECK(Equal(serial, unusable, "not usable") && unusable.direct_calls == unusable.portions);
-    cases += 2;
+    // The sites out (the arena size is 0, as it is when no site is in): the dispatcher runs the loop directly, as for a cut left in.
+    const uint32_t arena_size = shared->arena_size;
+    shared->arena_size = 0;
+    const Outcome sites_out = RunStaged(world.get(), dr::Stage::WORKERS, 8);
+    shared->arena_size = arena_size;
+    CHECK(Equal(serial, sites_out, "arena size 0") && sites_out.direct_calls == sites_out.portions);
+    cases += 3;
   }
-  std::printf("2c. the sites in and the loop run directly (stage off / direct, a call under the floor, the dispatcher not usable): %u cases equal\n", cases);
+  std::printf("2c. the sites in and the loop run directly (stage off / direct, a call under the floor, the dispatcher not usable, the arena size 0): %u cases equal\n", cases);
 }
 
 // ---------------------------------------------------------------- 3. lists
@@ -821,7 +856,7 @@ void TestOverflowAndLarge() {
         }
       }
     }
-    di::op_buffer_limit = di::OP_RESERVE_BYTES;
+    di::op_buffer_limit = di::OP_ARENA_BYTES;
   }
   const auto world = BuildWorld({.items = 200000, .seed = 41, .max_run = 8, .max_count = 6, .portion_numerator = 12000000});
   const Outcome serial = RunSerial(world.get());
@@ -830,7 +865,7 @@ void TestOverflowAndLarge() {
       const Outcome staged = RunStaged(world.get(), stage, k, true);
       CHECK(Equal(serial, staged, "large call"));
       CHECK(staged.portions == 2 && staged.direct_calls == 0);
-      CHECK(staged.most_buffer <= di::OP_RESERVE_BYTES);
+      CHECK(staged.most_buffer <= di::OP_ARENA_BYTES);
     }
   }
   std::printf("3b. tiny op buffers (%u chunks run again) and a 200000-item call at K 2 / 3: logs, trackers and meshes equal\n", reruns);
@@ -871,11 +906,18 @@ void TestEntryAndContinuation() {
     }
   }
   SetSites(ENTRY_MODE);
-  // Guard off: the compare run has set the mesh up before chunk 0's snapshot is taken, so the replay flushes it with the wrong state.
+  // Guard off: the run differs with the chunks on the workers (K 8 and 16 here); the one-thread stages come out equal, since a flush
+  // compares and replays without the mesh snapshot.
   di::controls.guard_continuation = false;
-  const Outcome unguarded = RunStaged(continuation.get(), dr::Stage::RECORDED, 4, true);
+  bool unguarded_differs = false;
+  for (int attempt = 0; attempt < 5 && !unguarded_differs; ++attempt) {
+    for (const uint32_t k : {8u, 16u}) {
+      const Outcome unguarded = RunStaged(continuation.get(), dr::Stage::WORKERS, k, true);
+      unguarded_differs |= !Equal(serial, unguarded, "control: continuation guard off", false);
+    }
+  }
   di::controls.guard_continuation = true;
-  CHECK(!Equal(serial, unguarded, "control: continuation guard off", false));
+  CHECK(unguarded_differs);
   std::printf("4. a call that starts with pending instances or a change mask runs directly (entry state); the F2 continuation of foreign mesh state runs directly (%u cases, both flush modes, the real loop's unchanged-mesh path); CONTROL, guard off: differs\n", cases);
 }
 
@@ -966,6 +1008,8 @@ int main(int argc, char** argv) {
   shared = dr::SharedPage();
   REQUIRE(shared != nullptr);
   flush_body = BuildFlushBody();
+  empty_flush_exit = BuildEmptyFlushExit();
+  main_thread_id = GetCurrentThreadId();
   FillSlots(unknown_vtable.data());
   stride_vtable.fill(0);
   stride_vtable[0x14 / 4] = reinterpret_cast<uint32_t>(&FakeStride);

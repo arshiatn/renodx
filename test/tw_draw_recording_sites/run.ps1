@@ -15,7 +15,7 @@ $testBuild = Join-Path $env:USERPROFILE ".claude\projects\D--Dev-renodx\tools\tw
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
-& 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 /DTWATTILA_DRAW_RECORDING -fms-extensions -Wno-deprecated-declarations /I $repairRoot /I "$external\reshade" /I "$external\reshade\include" /I "$external\frozen\include" /I "$external\Detours\include" /I "$external\Detours\src" /I "$external\gtl\include" "$testRoot\tests.cpp" /Fe:draw_recording_sites.exe /link /OPT:REF /OPT:ICF user32.lib
+& 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 /DTWATTILA_DRAW_RECORDING /DTWATTILA_DRAW_RECORDING_CONTROLS -fms-extensions -Wno-deprecated-declarations /I $repairRoot /I "$external\reshade" /I "$external\reshade\include" /I "$external\frozen\include" /I "$external\Detours\include" /I "$external\Detours\src" /I "$external\gtl\include" "$testRoot\tests.cpp" /Fe:draw_recording_sites.exe /link /OPT:REF /OPT:ICF user32.lib
 if ($LASTEXITCODE -ne 0) { throw 'Threaded Draw Recording sites test compile failed' }
 & (Join-Path $testBuild 'draw_recording_sites.exe') $GameDll
 if ($LASTEXITCODE -ne 0) { throw 'Threaded Draw Recording sites test failed' }
