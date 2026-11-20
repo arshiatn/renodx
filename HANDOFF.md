@@ -4721,6 +4721,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         twthronesofbritannia + amd64 twattila exit 0, pushed. NEXT in C's gap: S2 the shared worker_pool.hpp (bd1r_ §4 +
         the v2 notes) by c3i_ on rmt_pool, BEFORE C.3-3 (it unblocks B1 / B3b / ring implementers on their own files).
         c3i_ RESUMED 00:1x: S2. Agents: ebo_, bd3r_, x87o_, c3i_ (4 of 4).
+        bd3r_ RE-CHECK OF v2 DONE 00:1x (appended to reports/bd3r_review.md): weighted prepass + full GO; S7 GO WITH
+        CHANGES; presort GO WITH CHANGES; P4 +0x192D2DA clean GO; ring R1 GO; R2 GO WITH CHANGES; S7-alone gain rejection
+        accepted. NEW MUSTS for later steps: NM1 (S8a) the push's growth window: skip a buffer when size == cap / 2;
+        NM2 (S8a) presort only lists whose main size is 0, cap <= 4096 for buffers only; NM3 (S8a) trim interlock in
+        pool_munmap (pools.c), the single release point; NM4 (S7) guard by (0x130, 0xd8) PAIRS (0x186bd60 has 0xd8 =
+        0xc46b0; 0x1906300 / 0x1906320 also jump into 0x17b9170) + more FNV; NM5 (R-S5a) every chunk exit with an open
+        fold publishes + joins, plus a net at present before worker_pool::Update. Shoulds for S8a (one posted CAS per
+        present, waiter sleeps on an event, mesh-list read rule, presort never outlives its frame, arena-full reason) and
+        R2 (publish carries cut-time x87 / MXCSR). LANE H S1 MAY START: hp1i_ STARTED 00:1x (Sonnet High): S1 prepare.c
+        weighted prepass / full / check + S2 prepare_test.c, in a NEW clone heapfix\AttilaCPUPerfFix_prep (branch prep,
+        from HFx 5d837b6), local commits only. Agents: ebo_, x87o_, c3i_, hp1i_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
