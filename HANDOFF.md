@@ -4570,6 +4570,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         before the end batch, on its own Experimental row (the end batch measures R1 and R2). PARALLEL IMPLEMENTERS OK
         when they touch no shared files (memory feedback_workflow_serial): heapfix S1 prepare.c can run beside c3i_ as
         soon as bd3r_'s review + S0 are in; R1 (draw_recording files) waits for a gap in the C chain.
+        ATN 23:1x: early start = (a) the offline census FIRST; if it says no safe window, DON'T drop it (worth ~1-2.5 ms
+        E): an Opus xHigh addendum finds another way (per-list start when each list's own producer is done, start at the
+        producers' join point, the render thread helps with the prepare items while it waits). bd3r_ told to collect the
+        data for that (producers' jobs + join points, append-only vs realloc, per-list finish order, render-thread help).
+        R2 after C.3-4: ATN "go with it".
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
