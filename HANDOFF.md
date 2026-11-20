@@ -4654,6 +4654,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         merge). Notes for review: test-5 depth controls may not clear latched groups (blind spot?), up to a quarter of
         portions direct in 60-mesh lists. c31r_ RESUMED 23:4x: review -> reports/c32r_review.md. Agents: bd1r_, bd3o_,
         bd2o_, c31r_ (4 of 4).
+        bd1r_ REVIEW DONE 23:5x (reports/bd1r_review.md): B3b streaming + Bulk GO WITH CHANGES (exact rules hold; gain
+        likely -2..-3 ms, not -4: per-call wake + join), B4 GO WITH CHANGES but FULL B4 ONLY AFTER A TRACE (M3: the sweep
+        runs once per effect GROUP, loop +0x192d481..515, so calls may be small; trace-only Arm logs n per call first),
+        pool extraction + second page GO WITH CHANGES. Musts: M1 stub data words on a separate RW page (code page RX,
+        never RWX); M2 armed_this = 0 in every PausedWrite window (stale arm on re-enable mid-sweep); M4 0x102a2f40 etc.
+        are absolute addresses -> RVA 0x2a2f40, base + RVA everywhere; M5 C's pool tests move to a pool section of the
+        same test exe. S1 DONE: height() = +0x184bc60 pure getter (height >> mip). Reconciled worker_pool.hpp spec in
+        section 4 (owner thread, busy exchange, Start / Join, generation + open Dekker, ALL / ENTERED joins, Available()
+        per user, WorkerThreads row + RENODX_TW_WORKER_LIMITS / RENODX_TW_POOL_SPIN_US batch-only env, no CCD pinning,
+        C's private DrawRecordingThreads row -> public Worker Threads). Steps: S2 pool extraction (C's files: only after
+        rmt_c3 merges, no C implementer running) + S2r review, S3 engine_code (C's files, serial), S4..S6 B3b + rows, S9
+        full B4 after the end batch's trace. Nothing for ATN (2 heads-ups: B4 may not pay; the public row). bd1o_
+        RESUMED 23:5x: design v2 -> reports/bd1o_design_B3_v2.md. Agents: bd3o_, bd2o_, c31r_, bd1o_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
