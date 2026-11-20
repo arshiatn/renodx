@@ -4607,6 +4607,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (changes C's pool too; ATN's PC unchanged)? (2) one threads row for B3b + B4 (C keeps its own) or one for all?
         bd1r_ STARTED 23:1x (Opus xHigh, read-only): independent review + S1 + ONE reconciled worker_pool.hpp spec for C,
         B1, B3b, B4 and the ring fill -> reports/bd1r_review.md. Agents: c3i_, bd3r_, bd2r_, bd1r_ (4 of 4).
+        ATN 23:2x: (1) B1 L2 "Parallel Effect Spawns" = BUILD it, own Off row, decided after the end batch; (2) the crash
+        start's scene: ATN thinks about making one; the stress replay has 10,000+ archers that volley together at some
+        point (time unknown) and already gave ~34k effect instances a frame (fa3o_) -> stress is the default crash /
+        effects start, an ATN-made fire-arrow / burning-buildings siege is welcome as an extra before the end batch;
+        (3) CPU placement: NO CCD pinning of our own: pool threads follow the CPUs the game may use (process default
+        sets / affinity / a player's tool, Keep Render Core Free's worker sets when on), else Windows decides (Intel
+        hybrid too); heapfix places no threads (checked: no CPU-set / affinity calls in HFx); (4) threads rows: coordinator
+        suggests ONE "Worker Threads" row for the whole pool, per-user counts only as batch-only env overrides (split
+        later only if the end batch shows different best K per user) -> both sent to bd1r_ for the pool spec.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
