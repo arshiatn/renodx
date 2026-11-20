@@ -4529,6 +4529,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN's yes; (2) all in-game runs AFTER all tracks are built: coordinator agrees -> the C batch moves into ONE end
         batch (C groups + B rows switched live, then the final bench after ATN's reboot); offline WARP / harness proofs
         stay per step.
+        ATN 22:4x: YES to the clean-up -> DELETED 22:4x (scratchpad disk_clean.ps1: link-free walk, exact names, dry run
+        first): 26 WPR .etl before 11-19 05:00 (60.9 GB; kept the 12 newest = final1119 W3 / R1 + batches 1-3, 33.3 GB),
+        1,192 testbin upscaler DLL copies (53.3 GB; 6 names, folders untouched for 3 h; originals in build\tw_dlaa_helper),
+        wh3_batch3\shots (1,155 files, 31.9 GB). C: 48.4 -> 194.4 GB free. ATN: the PT reference runs
+        (tools\tw\reference\runs) are NEVER deleted (memory feedback_keep_reference_runs); Nsight traces + RT
+        recordings kept.
+        c2i_ R-S1 DONE 22:4x: rmt_c2 60c63ba8c (save every B round, restores before the chunk-0 rerun + the bad-ops
+        fallback behind restore_straddler, ReplayChunk stops on a zero header, BStraddler overflow / zero header in chunk 0
+        at K 2/4/8 with a permanent restore-off control). c23r_ RE-CHECK 2 22:5x (reports/c24r_review.md): MERGE, no
+        path left; optional nits: once-only log when the replay stop fires, assert first_reason in the damaged case.
+        MERGED rmt_c2 44a45dfe1 + gated builds x86 x3 + amd64 twattila exit 0 + pushed. c3i_ RESUMED 22:5x (sole
+        implementer): C.3-2 = Colour A (11 sites, c1o_design_C_full_v3.md) + the SetGame MUST + c31r_ N1 / CHECK > 0 +
+        N-7 / S-3 real-bytes colour paths -> c31r_ review -> fixes -> re-check -> merge. Then C.3-3 (B cut + Depth B),
+        C.3-4 (Colour B). Agents: bd1o_, bd2o_, bd3o_, c3i_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4561,7 +4575,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         calls address 0. c31r_ -> C.3-2: N1 comment wording, compares[EQUAL] total CHECK > 0.
         c23r_ re-check 11-20 22:3x: C.2-4 items S-1 / S-2 / N-1..N-3 DONE (merged 7e08a03f4); R-S1 straddler +0x40..+0x48
         save / restore before a chunk-0 rerun and the bad-ops fallback + 2 tests -> owner c2i_ (BEFORE C.3-2); N-1 cost
-        -> end batch G1 (owner coordinator); optional len == 0 stop in the Replay walk -> c2i_ if trivial.
+        -> end batch G1 (owner coordinator); optional len == 0 stop in the Replay walk -> DONE (60c63ba8c). R-S1 DONE
+        (merged 44a45dfe1). c23r_ re-check 2 nits (optional, owner c2i_ when draw_recording.hpp is next touched): a
+        once-only log when the ReplayChunk zero-header stop fires; BStraddler's damaged case asserts first_reason ==
+        "bad ops"; run BStraddler in a second stage too. MUST SetGame + c31r_ N1 / CHECK > 0 + N-7 / S-3 -> c3i_ C.3-2.
       - [ ] TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the TRAP rule can't see a VB step
         under the synthetic load (mark max(2, 5x before) = 15-17 ms/f; t2 / t4-t8 show VB 3.0 -> 5.4-6.7 ms/f, frame
         +2.5 ms) -> add an absolute delta (after - before >= 2 and late - before >= 2 ms/f), print deltas, a control that
