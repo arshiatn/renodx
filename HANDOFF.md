@@ -4401,7 +4401,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         c23r_ RE-CHECK DONE 19:3x (c25r_review.md Re-check): MERGE (M-1 / M-2 fixed, their tests fail without the fixes;
         shoulds done; merge hunk + B gating right; B unreachable on a real build until C.3-2). tw_draw_recording x86 PASS.
         MERGED rmt_c2 3a1a4533b (code = the tested rmt_c2 tree; name check plain words) + pushed. Carry-overs in the box.
-        s5r_ BATCH 3 PART 2b DONE 19:4x (end of s5r_design_vb_v3.md, wins over Part 2): ONE hand-back per start at the end
+        s5r_ BATCH 3 PART 2b DONE 19:3x (end of s5r_design_vb_v3.md, wins over Part 2): ONE hand-back per start at the end
         (Off1 106-136, On 136-166, Off2 166-186; Off1 -> On = install only = trap-free gain, On -> Off2 = the trap test);
         2 native references (row Off all the way) for drift + natural steps; 9 starts ~42-44 min: S0 (ATN scene, On from
         0 s = smoke + whole-battle memory + On picture), W3a / D1a (WPR 70,118), ATNa, REF_W3, W3b, D1b, ATNb, REF_ATN;
@@ -4409,7 +4409,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         frame, unless a reference steps too; a trapped start stays valid (On - Off1, drift-corrected, "trap observed in
         n of 6"). G3 WIN <= -3 (W3 / ATN) / -1.5 (D1), LOSS >= +2 / +1, ATN WIN <= -5 in both starts. Build unchanged
         (rmt_b3_fp, unlatched on purpose). LATCH before the ring ships (s5r_ decision): Off applies after a restart;
-        new R10 for VB: a mode decrease at restart, an increase live. b2p_ RESUMED 19:4x: scripts to Part 2b + dry run.
+        new R10 for VB: a mode decrease at restart, an increase live. b2p_ RESUMED 19:3x: scripts to Part 2b + dry run.
         s5o_ got the CB ring latch as a 2nd commit after FCU (test seam latch_off, tooltip, README).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
