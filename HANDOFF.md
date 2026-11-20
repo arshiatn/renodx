@@ -4305,6 +4305,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         the next harness need (h9 re-run after FIRST_PIECES = 8, or V5a), agents held; still stopped -> report, no retry.
         Docs check (claude-code-guide): auto mode drops wildcard script / interpreter rules at entry; autoMode block only
         in user settings.
+        s5o_ DONE 18:4x: rmt_s5 183c59302 (on merge 9e079643a): FIRST_PIECES = 8 (2 MB start, up to 32); one-time
+        address-space log = device_end::AddressSpace() (shared with the device-end line) + RENODX_TW_SET key `memory`
+        (`RENODX_TW_SET=300:memory=1;600:memory=1`; line `Test: memory: address space free .. MB of .. MB, largest free
+        block .. MB; Fewer Driver Waits in|out: n pieces (KB), copies KB for n buffers`; Attila via
+        RENODX_TEST_HOOKS_MEMORY = buffer_pool::Reserved; nothing unarmed). tw_buffer_pool x86 + amd64 PASS, gated builds
+        x86 3 / amd64 13 exit 0, name check plain words. Coordinator checked the diff -> MERGED 7f8729474 (+ H0
+        0ea33703d) + pushed.
+        c31r_ RE-CHECK DONE 18:4x (c31r_review.md Re-check): MERGE AFTER R1 (test-only). M1 / M2 / S1-S5 correct, engine
+        code no change. Guard control: C.2-3 compares only in a trace's LAST frame (draw_recording.hpp:875), the loop test
+        traces 1<<30 frames + never sets compare_every_call -> no traced case compares (every !CompareDiffers CHECK
+        vacuous); the compare run WAS the control's mechanism. Nothing else masks it. R1: compare_every_call = tracing in
+        RunStaged + deterministic control (guard off, RECORDED, K 4, traced) as the CHECK + comment L:909; nits N2 / N3
+        (N1 harmless). c3i_ RESUMED 18:5x: R1 + N2 / N3 -> then c31r_ re-checks -> merge rmt_c3. s5r_ RESUMED 18:5x: VB
+        design v3 addendum (reports/s5r_design_vb_v3.md) + the CB ring's in-game batch plan (part 2, runs before VB work).
+        c23r_ got c31r_'s OpsEqual / compare-gating note. Agents: c23r_, c3i_, s5r_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
