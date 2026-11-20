@@ -4419,6 +4419,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         parts 1 / 6 / 7; WARP suites x86 + amd64 PASS; left: gated builds incl. generic / ue-extended / devkit, commit 1,
         then commit 2 = ring latch). GAME BATCH 3 STARTED 19:39 by the coordinator (all agents held; zombie Attila 28704
         0 threads as before; C: 56 GB): b3_run.ps1 -> bench/b3_run_out.txt; then b3_check.ps1, b2a_ analysis (xHigh).
+        GAME BATCH 3 DONE 20:19 (19:39-20:19): 9 / 9 VALID, 0 hash mismatches, 0 nvlddmkm. b3_check.ps1 (bench/
+        b3_check_out.txt, checks failed 0; a null CPUStartDateTime at b3_check.ps1:92 in ATNb's PresentMon, analyst checks):
+        TRAP OBSERVED in 4 of 6 hand-backs (Off2 - Off1: W3a +45.1, D1b +11.8, ATNa +26.0, ATNb +24.5; W3b +13.5, D1a +5.3)
+        -> the ring's Off latch is a MUST before any release with the row. G3: W3 NEUTRAL (+1.50 / -6.16), D1 LOSS (+1.07 /
+        +3.41 ms/f), ATN NEUTRAL (+1.17 / -0.36) -> the CB ring alone does NOT win in game (harness D1m -18.7 was a trace
+        effect?). G4: m_free 1099 / m_block 969 MB -> VB budget B 64 MB, F 512 MB; ring in costs up to 41 MB free (S0 vs
+        REF-ATN). Ring size: S0 21 pieces at 60 s, 32 (8 MB) from 105 s; D1b "all 32 pieces still in use by the GPU:
+        constants written the old way meanwhile" (harness stays at 8). Row stays OFF (Experimental). Agents RESUMED
+        20:2x: s5o_ (commit 1 FCU latch, commit 2 ring latch), b2a_ (batch 3 analysis: G2 mechanism, why D1 LOSS, 32-piece
+        growth / reclaim bug?, the trap's buffer, verdict for the row + the VB track) -> bench/analysis_b3/report.md.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
