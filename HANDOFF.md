@@ -402,7 +402,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | ATN, when ATN brings it up again
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
-- TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 (owner bd1o_) | bd2o_ B1 ( ... | ?
+- TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 (owner bd1o_) | bd2o_ B1 D ... | ?
 - S1 FOLLOW-UPS: N1-N7 DONE by s5o_ in e6a835ffc (merged with S5 in ca057a7ee, 11- ... | ?
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
@@ -4575,6 +4575,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         producers' join point, the render thread helps with the prepare items while it waits). bd3r_ told to collect the
         data for that (producers' jobs + join points, append-only vs realloc, per-list finish order, render-thread help).
         R2 after C.3-4: ATN "go with it".
+        bd2o_ DESIGN DONE 23:0x (reports/bd2o_design_B1.md, 564 lines, saved by the coordinator): B1 Parallel Effect Update
+        big form: the effects walk (0x192D290's 2nd loop, 0x1893330 per effect) becomes units (one effect instance each) on
+        C's pool (worker_pool.hpp extracted from draw_recording.hpp, Start / Join); "wait at the first shared touch":
+        ~15 order points (spawn query / write wrappers 0x18F90F0 / 0x1927090, static random 0x190B780 + surface sampler
+        +0x183FA94, emitter slot pool 0x183C980 / 0x17F9D80, 3 sound sites, event dispatch 0x18637C0, child append
+        0x1890C40 U, rigid create 0x181BF10, BURST users TBD) where a unit waits until all earlier units are done, then
+        runs direct = L1 exact by construction; L2 stages spawns + defers the create caller's random draw (NaN tags at
+        record +4), exact except counted overflow frames (guard); the effect's own sweep = ordered pseudo-unit through the
+        game's bytes (+0x18933EB); watched words catch a missed shared writer. Small item Cached Particle Count (0x1929E60
+        once per walk, engine_code 25 + 2 sites). Gain W3 E: L1 -2.5..-6.7, L2 -0.2..-1.2 more; stress -7..-8. Rows
+        (Experimental, Off): Parallel Effect Update (Off / 2-16 threads), Parallel Effect Spawns, Cached Particle Count.
+        Steps B1.0 census -> B1.1 pool extraction (C's files) -> B1.2 L1 + tests (~1,070 src / 900 test) -> B1.3 review ->
+        B1.4 L2 -> B1.5 small item -> B1.6 rows -> B1.7 / B1.8 reviews. FOR ATN: (1) build L2 as its own Off row, decide
+        after the end batch (recommended) or L1 only? (2) which save / replay for the fire-arrow / burning-buildings crash
+        start, or may the run set up a custom siege from the menus? bd2r_ STARTED 23:1x (Opus xHigh, read-only):
+        independent review + the B1.0 census -> reports/bd2r_review.md. Agents: bd1o_, c3i_, bd3r_, bd2r_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4617,7 +4633,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         frees the stand-ins at the window end. Repro ideas, cheapest first: x86 harness with ballast up to Attila's
         address space / commit; a 120 s before-phase; Attila.exe's NVIDIA profile (driver settings = ATN's call). New
         switches need ATN's rules. Owner s5o_ (after the C chain), only if ATN wants it.
-      - [ ] TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 (owner bd1o_) | bd2o_ B1 (owner bd2o_) | bd3o_ B2 + ring
+      - [ ] TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 (owner bd1o_) | bd2o_ B1 DONE (reports/bd2o_design_B1.md)
+        -> bd2r_ review + B1.0 census (owner bd2r_); B1.1 pool extraction touches C's draw_recording.hpp -> a gap in the C
+        chain | bd3o_ B2 + ring
         DONE (reports/bd3o_design_B2_ring.md) -> bd3r_ review + S0 / R-S0 (owner bd3r_) -> ATN's 3 answers -> implementers
         (Sonnet High; in parallel when no shared files, ATN 23:0x) -> reviews -> the ONE end batch -> heapfix author
         package (all patches at once, via ATN).
