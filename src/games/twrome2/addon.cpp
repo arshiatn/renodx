@@ -31,6 +31,8 @@
 #include "../twattila/graphics_hooks.hpp"
 #include "../twattila/ao_pass.hpp"
 #include "../twattila/light_bounce.hpp"
+// Fewer Driver Waits (the constant buffer ring): compiled here, its row Attila's only.
+#include "../twattila/buffer_pool.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"

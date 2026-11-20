@@ -502,7 +502,7 @@ int main() {
   CHECK(frame_trace::internal::map_trace.tracing.load());
   // The hooks in the bodies, the table untouched; the slow driver below them.
   auto& hook_state = hooks::internal::state;
-  CHECK(hook_state.hooks.size() == hooks::internal::BODIES && hook_state.context.load() == context.Get());
+  CHECK(hook_state.hooks.size() == hooks::internal::MEASURE_BODIES && hook_state.context.load() == context.Get());
   CHECK(TableEntry(context.Get(), 14) == runtime_map && TableEntry(context.Get(), 15) == runtime_unmap);
   slow_next = reinterpret_cast<MapFunction>(hook_state.trampolines[hooks::internal::MAP]);
   hook_state.trampolines[hooks::internal::MAP] = reinterpret_cast<void*>(&SlowMap);
@@ -691,7 +691,7 @@ int main() {
   frame_trace::Install();
   present_event();
   frame_trace::OnPresent(false);
-  CHECK(frame_trace::internal::map_trace.tracing.load() && hook_state.hooks.size() == hooks::internal::BODIES);
+  CHECK(frame_trace::internal::map_trace.tracing.load() && hook_state.hooks.size() == hooks::internal::MEASURE_BODIES);
   CHECK(SUCCEEDED(context->Map(constant_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
   context->Unmap(constant_buffer.Get(), 0);
   frame_trace::Uninstall();
@@ -707,7 +707,7 @@ int main() {
   frame_trace::Install();
   present_event();
   frame_trace::OnPresent(false);
-  CHECK(hook_state.hooks.size() == hooks::internal::BODIES);
+  CHECK(hook_state.hooks.size() == hooks::internal::MEASURE_BODIES);
   renodx::utils::vtable::Slot<MapFunction> intruder_slot = {.object = context.Get(), .index = 14, .original = &intruder_next, .replacement = &IntruderMap};
   renodx::utils::vtable::Install(&intruder_slot);
   CHECK(intruder_next == reinterpret_cast<MapFunction>(runtime_map));
@@ -750,7 +750,7 @@ int main() {
   frame_trace::Install();
   present_event();
   frame_trace::OnPresent(false);
-  CHECK(hook_state.hooks.size() == hooks::internal::BODIES);
+  CHECK(hook_state.hooks.size() == hooks::internal::MEASURE_BODIES);
   // Frame 0. A constant buffer made on another thread (ReShade's init_resource on the creating thread), a texture's
   // creation (CONTROL: no line).
   ComPtr<ID3D11Buffer> made_buffer;
@@ -896,11 +896,11 @@ int main() {
   frame_trace::Install();
   present_event();
   frame_trace::OnPresent(false);
-  CHECK(hook_state.hooks.size() == hooks::internal::BODIES);
+  CHECK(hook_state.hooks.size() == hooks::internal::MEASURE_BODIES);
   mock::Device other_mock;
   other_mock.native = other_device;
   Invoke<api_event::destroy_device>(static_cast<reshade::api::device*>(&other_mock));
-  CHECK(hook_state.hooks.size() == hooks::internal::BODIES && frame_trace::internal::map_trace.immediate_context.load() == context.Get());
+  CHECK(hook_state.hooks.size() == hooks::internal::MEASURE_BODIES && frame_trace::internal::map_trace.immediate_context.load() == context.Get());
   draw();
   const uint64_t device_end_sequence = frame_trace::internal::map_trace.sequence;
   Invoke<api_event::destroy_device>(static_cast<reshade::api::device*>(&mock_device));
@@ -926,7 +926,7 @@ int main() {
   frame_trace::Install();
   present_event();
   frame_trace::OnPresent(false);
-  CHECK(hook_state.hooks.size() == hooks::internal::BODIES);
+  CHECK(hook_state.hooks.size() == hooks::internal::MEASURE_BODIES);
   draw();
   std::thread([&] { context->PSSetConstantBuffers(0, 1, seed_vs.GetAddressOf()); }).join();
   CHECK(hook_state.foreign_thread.load());

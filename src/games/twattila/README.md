@@ -1,5 +1,31 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Fewer Driver Waits (2026-11-20; built only, not stamped, not installed, not run in game)
+
+- New row (Graphics (Experimental), **off** by default): **Fewer Driver Waits** (`buffer_pool.hpp`). The game's dynamic
+  constant buffers go to the GPU through one ring of 256 KB pieces mapped NO_OVERWRITE and bound with D3D11.1 offsets,
+  instead of a driver rename at every DISCARD map (the render thread's waits inside Map). A Map hands the game a CPU copy;
+  the Unmap (after ReShade's unmap event) writes it into the current piece and rebinds every slot that holds the buffer.
+  Set, Set1, Get, Get1 and the copies translate between the game's buffer (all the game ever sees) and its segment, per
+  context state (the add-on's private states too). 4 pieces at the start, more (up to 32) while the GPU still reads the
+  oldest; a full ring writes the old way meanwhile (logged once).
+- Through the context hooks (`context_hooks.hpp`): the map trace's 17 bodies, 15 more (the 6 Get and 6 Get1 constant
+  buffer calls, CopySubresourceRegion, CopyResource, CopySubresourceRegion1) and the copies' second versions: d3d11
+  rewrites the three copy slots of a context's table in place after a Flush and back at the next copy, so both versions
+  are hooked (read at the install around one 16-byte copy between two buffers of the ring's own and one Flush).
+- In at the first present with the row on, on the render thread, with the map trace's rules (one D3D11 device,
+  single-threaded, the bodies checked). Out when the row goes off, at the device's end and at the unload: every buffer
+  written back into itself and every slot of every live state rebound to it first. A call on the context from another
+  thread, or a lost device: the ring unwinds at the render thread's next call and stays off until the row is turned off
+  and on again (logged). Our own constant buffers are made below ReShade (no init_resource): never in the ring. Rome II,
+  Thrones and WH3 compile it without the row.
+- Checked in `test/tw_buffer_pool` (x86, amd64, WARP: pixels, compute output and copies equal with the ring, a full ring,
+  another thread's call and the measure path beside it, five CONTROLS that must differ; Get / Get1 / Map parity and the
+  references over 3000 random steps; the device's end) and `test/tw_map_replay --plugin ring` (run.ps1 -RingAdapter
+  `test\tw_map_replay\ring_adapter.hpp`: bit-for-bit parity on W3m's v3 trace and the synthetic stream, its controls).
+  Test (bench, Attila): the log line "Fewer Driver Waits: on (4 pieces of 256 KB, up to 32)" and no "pieces still in use"
+  line; a map trace with the row on and off (the CB DISCARD time inside Map).
+
 ## Dev, map trace v3 (2026-11-19; built only, not stamped, not installed, not run in game)
 
 - New (debug, no row): the map trace (env `RENODX_TW_MAP_TRACE=<seconds after the first present>[,<frames>[,hash]]`,
