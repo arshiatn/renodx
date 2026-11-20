@@ -2918,6 +2918,18 @@ static void BFallbacks() {
   CHECK(Equal(depth_serial, unusable, "not usable"));
   CHECK(unusable.direct_calls == unusable.portions);
   dr::SetGame(Game(true));
+  // A group whose sites are not all found (usable_groups), and no site of the thunks in (arena_size 0): direct.
+  dr::GameCalls partial = Game(true);
+  partial.usable_groups = ~(1u << static_cast<uint32_t>(dr::Group::DEPTH_B));
+  dr::SetGame(partial);
+  const Outcome group_out = RunBStaged(depth.get(), dr::Stage::WORKERS, 8, true);
+  CHECK(Equal(depth_serial, group_out, "group not usable") && group_out.first_reason == "not usable" && group_out.direct_calls == group_out.portions);
+  dr::SetGame(Game(true));
+  const uint32_t arena_size = g_shared->arena_size;
+  g_shared->arena_size = 0;
+  const Outcome sites_out = RunBStaged(depth.get(), dr::Stage::WORKERS, 8, true);
+  g_shared->arena_size = arena_size;
+  CHECK(Equal(depth_serial, sites_out, "sites out") && sites_out.first_reason == "sites out" && sites_out.direct_calls == sites_out.portions);
   // A round that starts with pending instances runs directly (entry state).
   depth->pending = 5;
   const Outcome pending_serial = RunBSerial(depth.get());

@@ -1935,6 +1935,11 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   }
   if (direct_reason != nullptr) {
     // Decided above.
+  } else if (((game_calls.usable_groups >> group_index) & 1) == 0) {
+    direct_reason = "not usable";
+  } else if (shared->arena_size == 0) {
+    // Not one site of the thunks is in (engine_code zeroes it when the last comes out): the thunks only run directly.
+    direct_reason = "sites out";
   } else if (view_type == 0x49) {
     direct_reason = "visibility view";
   } else if (((settings.loops >> group_index) & 1) == 0) {
