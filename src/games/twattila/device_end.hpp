@@ -24,6 +24,28 @@
 // game's own teardown (a display or mode change) look alike without it. Only at these two events, nothing per frame.
 namespace twattila::device_end {
 
+// The address space left: free, of all, and the largest free block (one walk over the process's regions).
+inline std::string AddressSpace() {
+  MEMORYSTATUSEX memory = {.dwLength = sizeof(memory)};
+  GlobalMemoryStatusEx(&memory);
+  SYSTEM_INFO system = {};
+  GetSystemInfo(&system);
+  SIZE_T largest_free = 0;
+  auto address = reinterpret_cast<uintptr_t>(system.lpMinimumApplicationAddress);
+  MEMORY_BASIC_INFORMATION region = {};
+  while (address < reinterpret_cast<uintptr_t>(system.lpMaximumApplicationAddress)
+         && VirtualQuery(reinterpret_cast<LPCVOID>(address), &region, sizeof(region)) != 0) {
+    if (region.State == MEM_FREE) {
+      largest_free = std::max(largest_free, region.RegionSize);
+    }
+    const uintptr_t next = reinterpret_cast<uintptr_t>(region.BaseAddress) + region.RegionSize;
+    if (next <= address) break;  // the address space's end
+    address = next;
+  }
+  return std::format("address space free {} MB of {} MB, largest free block {} MB", memory.ullAvailVirtual >> 20,
+                     memory.ullTotalVirtual >> 20, largest_free >> 20);
+}
+
 // One line: the device's removed reason and, in a 32-bit game, the address space left.
 inline void Log(reshade::api::device* device, const char* ended) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
@@ -53,24 +75,7 @@ inline void Log(reshade::api::device* device, const char* ended) {
       break;
   }
 #if !defined(_WIN64)
-  MEMORYSTATUSEX memory = {.dwLength = sizeof(memory)};
-  GlobalMemoryStatusEx(&memory);
-  SYSTEM_INFO system = {};
-  GetSystemInfo(&system);
-  SIZE_T largest_free = 0;
-  auto address = reinterpret_cast<uintptr_t>(system.lpMinimumApplicationAddress);
-  MEMORY_BASIC_INFORMATION region = {};
-  while (address < reinterpret_cast<uintptr_t>(system.lpMaximumApplicationAddress)
-         && VirtualQuery(reinterpret_cast<LPCVOID>(address), &region, sizeof(region)) != 0) {
-    if (region.State == MEM_FREE) {
-      largest_free = std::max(largest_free, region.RegionSize);
-    }
-    const uintptr_t next = reinterpret_cast<uintptr_t>(region.BaseAddress) + region.RegionSize;
-    if (next <= address) break;  // the address space's end
-    address = next;
-  }
-  line += std::format("; address space free {} MB of {} MB, largest free block {} MB", memory.ullAvailVirtual >> 20,
-                      memory.ullTotalVirtual >> 20, largest_free >> 20);
+  line += "; " + AddressSpace();
 #endif
   line += ".";
   if (reason == S_OK) {

@@ -57,6 +57,8 @@ using Microsoft::WRL::ComPtr;
 namespace bp = twattila::buffer_pool;
 namespace hooks = twattila::context_hooks;
 namespace loss = twattila::device_loss;
+// 64 KB uploads that fill the ring's first pieces (4 a piece).
+constexpr size_t RING_UPLOADS = bp::internal::FIRST_PIECES * (bp::internal::PIECE_BYTES / 65536);
 
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); std::fflush(stdout); return 1; } } while (false)
 
@@ -470,10 +472,11 @@ static Output Run(bool ring, Control control, uint32_t frames, uint32_t draws) {
       }
     }
     if (frame == 1) {
-      // The ring fresh (in at frame 0's present; 4 pieces of 4 uploads of d). b at piece 0's units 0 and 1, each drawn;
-      // 15 uploads of d: the 12th's new piece takes b, the 15th finds piece 0 ended (WRAP: busy, the full ring with
-      // room left in the current piece; EARLY_REUSE: free, overwritten while the two draws wait in WARP: no flush). b
-      // again, drawn; the GPU done (WRAP: polled for real now); 16 uploads of d wrap over every piece, b drawn again.
+      // The ring fresh (in at frame 0's present; FIRST_PIECES pieces of 4 uploads of d). b at piece 0's units 0 and 1,
+      // each drawn; RING_UPLOADS - 1 uploads of d (3 in piece 0): the last piece's first takes b, the last upload finds
+      // piece 0 ended (WRAP: busy, the full ring with room left in the current piece; EARLY_REUSE: free, overwritten
+      // while the two draws wait in WARP: no flush). b again, drawn; the GPU done (WRAP: polled for real now);
+      // RING_UPLOADS uploads of d wrap over every piece, b drawn again.
       const auto script_draw = [&] {
         ++index;
         script.push_back(index);
@@ -483,14 +486,14 @@ static Output Run(bool ring, Control control, uint32_t frames, uint32_t draws) {
       script_draw();
       write(b.Get(), D3D11_MAP_WRITE_DISCARD, 0, 256, 2002, -1);
       script_draw();
-      for (uint32_t upload = 0; upload < 15; ++upload) write(d.Get(), D3D11_MAP_WRITE_DISCARD, 0, 65536, 3000 + upload, -1);
+      for (uint32_t upload = 0; upload < RING_UPLOADS - 1; ++upload) write(d.Get(), D3D11_MAP_WRITE_DISCARD, 0, 65536, 3000 + upload, -1);
       write(b.Get(), D3D11_MAP_WRITE_DISCARD, 0, 256, 2003, -1);
       if (ring && control == Control::WRAP && bp::internal::Find(b.Get())->piece != nullptr) out.failed = "b written into the full ring's closed piece";
       script_draw();
       wrap_polls = true;
       context->Flush();
       Read(made.device.Get(), context, b_source.Get(), 256);
-      for (uint32_t upload = 0; upload < 16; ++upload) write(d.Get(), D3D11_MAP_WRITE_DISCARD, 0, 65536, 4000 + upload, -1);
+      for (uint32_t upload = 0; upload < RING_UPLOADS; ++upload) write(d.Get(), D3D11_MAP_WRITE_DISCARD, 0, 65536, 4000 + upload, -1);
       script_draw();
       if (ring && control == Control::WRAP) {
         bp::internal::piece_cap = bp::internal::MAX_PIECES;
@@ -755,7 +758,7 @@ int main() {
       switch (static_cast<Control>(control)) {
         case Control::NONE: CHECK(Logged("Fewer Driver Waits: on") == 1 && Logged("pieces still in use") == 0); break;
         case Control::FULL:
-        case Control::WRAP: CHECK(Logged("all 4 pieces still in use") == 1); break;
+        case Control::WRAP: CHECK(Logged(std::format("all {} pieces still in use", bp::internal::FIRST_PIECES).c_str()) == 1); break;
         case Control::FOREIGN: CHECK(Logged("called the game's context") == 1 && Logged("off until the row") == 1); break;
         case Control::EARLY_REUSE: CHECK(script != 0); break;
         case Control::COPY_OFF: CHECK(copies != 0); break;
@@ -1110,7 +1113,8 @@ int main() {
     bp::Update(context, true, false);
     CHECK(!bp::internal::pool.installed && Logged("off until the row") == 1);
     bp::Update(context, false, false);
-    // A lost device: an event's error at the ring's wrap (the 15th 64 KB upload), no write-back of `narrow`.
+    // A lost device: an event's error at the ring's wrap (64 KB upload RING_UPLOADS - 1), no write-back of `narrow`.
+    // Reserved (RENODX_TW_SET's "memory" line): the first pieces and the copies while in, nothing out.
     log_lines.clear();
     auto wide = GameBuffer(made.device.Get(), 65536, 63);
     auto narrow = GameBuffer(made.device.Get(), 256, 64);
@@ -1118,12 +1122,14 @@ int main() {
     bp::internal::piece_done = [](ID3D11DeviceContext*, ID3D11Query*) { return DXGI_ERROR_DEVICE_REMOVED; };
     bp::Update(context, true, false);
     CHECK(bp::internal::pool.installed && fill(narrow.Get(), 0x55, 256));
+    CHECK(bp::Reserved().starts_with(std::format("; Fewer Driver Waits in: {} pieces ({} KB), copies ", bp::internal::FIRST_PIECES,
+                                                 bp::internal::FIRST_PIECES * 256)));
     size_t uploads = 0;
-    while (!bp::internal::pool.lost && uploads < 40) {
+    while (!bp::internal::pool.lost && uploads < 2 * RING_UPLOADS) {
       CHECK(fill(wide.Get(), static_cast<int>(uploads), 65536));
       ++uploads;
     }
-    CHECK(uploads == 15 && bp::internal::pool.stopped && Logged("pieces still in use") == 0);
+    CHECK(uploads == RING_UPLOADS - 1 && bp::internal::pool.stopped && Logged("pieces still in use") == 0);
     CHECK(Read(made.device.Get(), context, narrow.Get(), 256) == narrow_bytes);
     bp::Update(context, true, false);
     CHECK(!bp::internal::pool.installed && Logged("off until the row") == 1);
@@ -1192,9 +1198,10 @@ int main() {
     }
     bp::Update(context, false, false);
     CHECK(!bp::internal::pool.installed && bp::internal::pool.open_maps == 0);
+    CHECK(bp::Reserved().starts_with("; Fewer Driver Waits out: 0 pieces (0 KB), copies 0 KB for "));
     bp::ForgetDevice(made.device.Get());
     std::printf("6. unwind edges: no write-back into a buffer destroyed since the present, another thread's unbind is what the next Get"
-                " returns (the device not removed); a lost device at the %zuth upload: no write-back, off until the row; unknown bodies in"
+                " returns (the device not removed); a lost device at upload %zu: no write-back, off until the row; unknown bodies in"
                 " the table (a copy's, Map's: out at the present; PS Set1's: out at a swap), a swap below the hook: out, logged; a buffer"
                 " destroyed while ring-mapped: its map ends, the ring out at the row's off\n",
                 uploads);

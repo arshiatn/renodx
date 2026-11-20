@@ -53,7 +53,7 @@ constexpr UINT UNIT_BYTES = 256;  // a segment's granularity: Set1's offset unit
 constexpr UINT UNIT_CONSTANTS = UNIT_BYTES / 16;
 constexpr UINT PIECE_BYTES = 256 * 1024;
 constexpr UINT PIECE_UNITS = PIECE_BYTES / UNIT_BYTES;
-constexpr size_t FIRST_PIECES = 4;
+constexpr size_t FIRST_PIECES = 8;
 constexpr size_t MAX_PIECES = 32;
 constexpr UINT MAX_BUFFER_BYTES = 65536;
 constexpr UINT WHOLE = D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT;  // a whole bind's window as Get1 gives it: 0 + 4096
@@ -1237,6 +1237,18 @@ inline void Use() {
   reshade::register_event<reshade::addon_event::init_resource>(OnInitResource);
   reshade::register_event<reshade::addon_event::destroy_resource>(OnDestroyResource);
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
+}
+
+// RENODX_TW_SET's key "memory" (test_hooks.hpp): what the ring holds, its pieces and the game buffers' copies, beside
+// the address space. On the render thread (the present).
+inline std::string Reserved() {
+  auto& pool = internal::pool;
+  size_t copy_units = 0;
+  const std::shared_lock lock(pool.mutex);
+  for (const auto& record : pool.records) copy_units += record->copy.size();
+  return std::format("; Fewer Driver Waits {}: {} pieces ({} KB), copies {} KB for {} buffers",
+                     (pool.installed ? "in" : "out"), pool.pieces.size(), pool.pieces.size() * internal::PIECE_BYTES / 1024,
+                     copy_units * internal::UNIT_BYTES / 1024, pool.records.size());
 }
 
 // At the add-on's detach: the ring out where the render thread runs this with no ring map open; else it unwinds at the
