@@ -4168,6 +4168,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         tests run by c23r_ (results = c2i_'s). C.2-3 MERGED 15:4x: rmt_c2 c1d3887e8 -> atn-mods 61ca92bab (clean; header not
         included by any add-on yet). c2i_ RESUMED: commit 1 = S-1 / S-2 / S-3 / S-4a / N-1..N-5 / N-8, commit 2 = C.2-5 (B
         path); C.2-4 waits for C.3-1's merge.
+        s5o_ s5x_ ITEMS DONE 16:0x: rmt_s5 b2ba0de51 (fast-forwarded to ca057a7ee first): Should 1 CheckTable all 32 slots at
+        each present + after RingSwap (part 6: slots 47 / 14 / 123); Should 2 swap rebinds proved by pixels (CONTROLs no
+        swap rebind 4 px, no seed 4 px + 4 words); Nits 1-6 (lost only via GetDeviceRemovedReason, untested). WARP tests x86 +
+        amd64 PASS, gated builds exit 0. CONTROL no settle 1024 -> 8 px (swap-time CheckTable settles itself) -> s5x_ judges.
+        16:1x the 5-HOUR LIMIT stopped c31r_ + c2i_ mid-work (reset 17:00). 17:01 resumed both; s5x_ RESUMED: re-check of
+        b2ba0de51.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
