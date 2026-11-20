@@ -21,6 +21,13 @@
 // Part 3b (C.2-3 review items): a continuation or warm-up item of an unknown class, the call-start claim, the warm-up's mesh
 // restore (strict flush) and the constant repeat counts, each with a control that must differ; the trace's seed misses by field
 // and constant repeats; a count of recorded continuations.
+// Part 4 (C.2-5): the B groups (Depth B, Colour B) on synthetic mesh bodies with the same state machines (no animation, the
+// flush through the entry hook, the class's virtual call at a batch start, a flag byte carried across meshes, the colour body's
+// state block) behind a per-mesh dispatcher and the 23-class table: every stage at K 2 to 16 over lists with direct classes
+// between census chunks, empty slices, long meshes, meshes without a technique; the view types, the fall-backs and the family
+// bits; the entry check (a count, a mask or a batch size left by a direct segment), the seeds (warm-up step back, unknown seed),
+// the stride rule, overflow, a mesh twice in a round, the latch; the VF64 and STATE ops. Controls: class flags, entry check,
+// seed validation, stride rule, any capture, snapshot restore, a dropped end flush and an injected op must each show.
 #include <windows.h>
 #include <tlhelp32.h>
 
@@ -455,10 +462,11 @@ static StackImage MakeImage(dr::Site site, uint32_t ecx) {
   return image;
 }
 
-static void FlushSite(dr::Site site, void* t, uint32_t mesh, uint32_t technique, uint32_t count) {
+static void FlushSite(dr::Site site, void* t, uint32_t mesh, uint32_t technique, uint32_t count, uint32_t last_argument = 0) {
   const uint32_t address = reinterpret_cast<uint32_t>(t);
   const std::array<uint32_t, 10> args = {Field<uint32_t>(t, 0x18), Field<uint32_t>(t, 0x1c), technique, address + 0x69, count,
-                                         Field<uint32_t>(t, 0x24), address + 0x5c, Field<uint32_t>(t, 0x78), address + 0x28, 0};
+                                         Field<uint32_t>(t, 0x24), address + 0x5c, Field<uint32_t>(t, 0x78), address + 0x28,
+                                         last_argument};
   if (!InArena(t)) {
     FakeFlush(reinterpret_cast<void*>(mesh), args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9]);
     return;
@@ -790,15 +798,66 @@ struct World {
   bool strict = false;
 };
 
-static std::unique_ptr<World> BuildWorld(const Spec& spec) {
-  auto world = std::make_unique<World>();
-  uint64_t state = spec.seed * 0x9e3779b97f4a7c15ull + 1;
-  const auto random = [&state](uint32_t bound) {
+// The tests' random numbers (xorshift): the same list for the same seed.
+struct Rng {
+  uint64_t state;
+  uint32_t operator()(uint32_t bound) {
     state ^= state << 13;
     state ^= state >> 7;
     state ^= state << 17;
     return static_cast<uint32_t>((state >> 11) % bound);
-  };
+  }
+};
+
+// The colour fields of a list's items (and the faction tables they index): the same random walk for every world.
+static void FillColourFields(std::vector<SynthItem>* items, std::array<SynthMask, 3>* masks, const Spec& spec, Rng* random_state) {
+  Rng& random = *random_state;
+  // Factions 0 to 3 have lists of 6, 3, 70 and 4 colours (all pointing into one table); -1 is the default.
+  for (uint32_t e = 0; e < synth_colours.size(); ++e) {
+    synth_colours[e] = {{1.0f + 0.5f * static_cast<float>(e), 0.25f * static_cast<float>(e), 0.5f + 0.125f * static_cast<float>(e)}};
+  }
+  const std::array<uint32_t, 4> list_counts = {6, 3, 70, 4};
+  for (uint32_t f = 0; f < 4; ++f) faction_lists[f] = {.count = list_counts[f], .data = synth_colours.data()};
+  for (uint32_t m = 0; m < (*masks).size(); ++m) {
+    uint8_t* bytes = reinterpret_cast<uint8_t*>(&(*masks)[m]);
+    for (uint32_t j = 0; j < sizeof(SynthMask); ++j) bytes[j] = static_cast<uint8_t>(j * 37 + m * 11);
+    (*masks)[m].index = static_cast<int32_t>(10 + m);
+    for (uint32_t j = 0; j < 4; ++j) (*masks)[m].bytes[j] = static_cast<uint8_t>(j + 3 * m);
+  }
+  const std::array<uint32_t, 6> values = {0x00000000, 0x80000000, 0x7fc00000, 0x3f800000, 0x40000000, 0x3f800000};
+  int32_t faction = -1;
+  uint32_t value_index = 0;
+  uint32_t texture1 = 1;
+  uint32_t texture2 = 1;
+  for (SynthItem& item : (*items)) {
+    // Fields change now and then, so the tracker's detection fields hold across items and across a chunk's first item.
+    if (random(100) < 15) faction = static_cast<int32_t>(random(5)) - 1;
+    if (random(100) < 20) value_index = random(static_cast<uint32_t>(values.size()));
+    if (random(100) < 25) texture1 = random(4);
+    if (random(100) < 25) texture2 = random(3);
+    item.faction = faction;
+    item.value = values[value_index];
+    item.texture1 = texture1;
+    item.texture2 = texture2;
+    item.repeat = 1 + random(3);
+    item.variation = (random(100) < spec.variation_percent ? 1 + random(3) : 0);
+    item.mask = (random(3) == 0 ? nullptr : &(*masks)[random(3)]);
+    item.flags = (random(100) < spec.const1_percent ? ITEM_CONST1 : 0) | (random(100) < spec.const2_percent ? ITEM_CONST2 : 0)
+                 | (random(100) < spec.texture_percent ? ITEM_TEXTURES : 0) | (random(100) < spec.faction_percent ? ITEM_FACTION : 0)
+                 | (random(100) < spec.any_only_percent ? ITEM_ANY_ONLY : 0);
+    if (spec.merge) {
+      // One animation for the whole list (the loop starts with it): every seed hits.
+      item.flags = ITEM_CONST2 | (random(100) < 70 ? ITEM_ANY_ONLY : 0);
+      item.value = values[3];
+      item.variation = 0;
+      item.anim = -1;
+    }
+  }
+}
+
+static std::unique_ptr<World> BuildWorld(const Spec& spec) {
+  auto world = std::make_unique<World>();
+  Rng random{spec.seed * 0x9e3779b97f4a7c15ull + 1};
   world->max_count = spec.max_count;
   world->portion_numerator = spec.portion_numerator;
   world->continuation = spec.continuation;
@@ -876,47 +935,7 @@ static std::unique_ptr<World> BuildWorld(const Spec& spec) {
     for (uint32_t r = spec.items * spec.enabled_percent / 100; r < spec.items; ++r) world->items[r].mesh->kind = random(2);
   }
   if (spec.colour) {
-    // Factions 0 to 3 have lists of 6, 3, 70 and 4 colours (all pointing into one table); -1 is the default.
-    for (uint32_t e = 0; e < synth_colours.size(); ++e) {
-      synth_colours[e] = {{1.0f + 0.5f * static_cast<float>(e), 0.25f * static_cast<float>(e), 0.5f + 0.125f * static_cast<float>(e)}};
-    }
-    const std::array<uint32_t, 4> list_counts = {6, 3, 70, 4};
-    for (uint32_t f = 0; f < 4; ++f) faction_lists[f] = {.count = list_counts[f], .data = synth_colours.data()};
-    for (uint32_t m = 0; m < world->masks.size(); ++m) {
-      uint8_t* bytes = reinterpret_cast<uint8_t*>(&world->masks[m]);
-      for (uint32_t j = 0; j < sizeof(SynthMask); ++j) bytes[j] = static_cast<uint8_t>(j * 37 + m * 11);
-      world->masks[m].index = static_cast<int32_t>(10 + m);
-      for (uint32_t j = 0; j < 4; ++j) world->masks[m].bytes[j] = static_cast<uint8_t>(j + 3 * m);
-    }
-    const std::array<uint32_t, 6> values = {0x00000000, 0x80000000, 0x7fc00000, 0x3f800000, 0x40000000, 0x3f800000};
-    int32_t faction = -1;
-    uint32_t value_index = 0;
-    uint32_t texture1 = 1;
-    uint32_t texture2 = 1;
-    for (SynthItem& item : world->items) {
-      // Fields change now and then, so the tracker's detection fields hold across items and across a chunk's first item.
-      if (random(100) < 15) faction = static_cast<int32_t>(random(5)) - 1;
-      if (random(100) < 20) value_index = random(static_cast<uint32_t>(values.size()));
-      if (random(100) < 25) texture1 = random(4);
-      if (random(100) < 25) texture2 = random(3);
-      item.faction = faction;
-      item.value = values[value_index];
-      item.texture1 = texture1;
-      item.texture2 = texture2;
-      item.repeat = 1 + random(3);
-      item.variation = (random(100) < spec.variation_percent ? 1 + random(3) : 0);
-      item.mask = (random(3) == 0 ? nullptr : &world->masks[random(3)]);
-      item.flags = (random(100) < spec.const1_percent ? ITEM_CONST1 : 0) | (random(100) < spec.const2_percent ? ITEM_CONST2 : 0)
-                   | (random(100) < spec.texture_percent ? ITEM_TEXTURES : 0) | (random(100) < spec.faction_percent ? ITEM_FACTION : 0)
-                   | (random(100) < spec.any_only_percent ? ITEM_ANY_ONLY : 0);
-      if (spec.merge) {
-        // One animation for the whole list (the loop starts with it): every seed hits.
-        item.flags = ITEM_CONST2 | (random(100) < 70 ? ITEM_ANY_ONLY : 0);
-        item.value = values[3];
-        item.variation = 0;
-        item.anim = -1;
-      }
-    }
+    FillColourFields(&world->items, &world->masks, spec, &random);
   }
   world->pointers.resize(spec.items);
   for (uint32_t k = 0; k < spec.items; ++k) world->pointers[k] = &world->items[k];
@@ -968,6 +987,14 @@ struct Outcome {
   bool accounted = true;
   uint32_t most_buffer = 0;
   std::string first_reason;
+  // B rounds: direct segments, chunks the entry check ran again, chunks with no seed, meshes twice in a round, the items the
+  // planner gave the pool and the ones it kept.
+  uint32_t direct_segments = 0;
+  uint32_t entry_reruns = 0;
+  uint32_t unknown_seeds = 0;
+  uint32_t duplicates = 0;
+  uint32_t census_items = 0;
+  uint32_t direct_items = 0;
 };
 
 static bool CompareDiffers(const Outcome& outcome) {
@@ -1203,8 +1230,10 @@ static std::vector<ListCase> Lists() {
   return lists;
 }
 
+static void BGame(dr::GameCalls* game);
+
 static dr::GameCalls Game(bool usable) {
-  return {.loops = {{reinterpret_cast<uint32_t>(&SynthDepthLoop), reinterpret_cast<uint32_t>(&SynthColourLoop)}},
+  dr::GameCalls game = {.loops = {{reinterpret_cast<uint32_t>(&SynthDepthLoop), reinterpret_cast<uint32_t>(&SynthColourLoop)}},
           .flush = reinterpret_cast<uint32_t>(&FakeFlush),
           .anim_call = reinterpret_cast<uint32_t>(&FakeAnimCall),
           .dirty_call = reinterpret_cast<uint32_t>(&FakeDirty),
@@ -1215,7 +1244,11 @@ static dr::GameCalls Game(bool usable) {
           .faction_default = &faction_default,
           .weighted_vtables = {{reinterpret_cast<uint32_t>(mesh_vtable.data())}},
           .usable = usable};
+  BGame(&game);
+  return game;
 }
+
+static void BSetup();
 
 static void Setup() {
   mesh_vtable.fill(0);
@@ -1228,14 +1261,18 @@ static void Setup() {
   // The first constant's four blocks and the second constant's block (state + 0x2d4, its cell pointer at +0x14 of it).
   for (uint32_t i = 0; i < const1_blocks.size(); ++i) const1_blocks[i].cell = &const1_cells[i];
   *reinterpret_cast<float**>(synth_node.state + 0x2e8) = &const2_cell;
+  BSetup();
   g_shared = dr::SharedPage();
   REQUIRE(g_shared != nullptr);
   REQUIRE(g_shared->record == reinterpret_cast<uint32_t>(&dr::Record));
   REQUIRE(g_shared->dispatch_depth == reinterpret_cast<uint32_t>(&dr::DispatchDepth));
   REQUIRE(g_shared->dispatch_colour == reinterpret_cast<uint32_t>(&dr::DispatchColour));
+  REQUIRE(g_shared->dispatch_mesh == reinterpret_cast<uint32_t>(&dr::DispatchMesh));
   dr::SetGame(Game(true));
   // Every traced call compares (a real trace compares only in its last frame); DepthTrace checks the real rule.
   di::controls.compare_every_call = true;
+  // The controls' tests make compares differ on purpose: a latched group would run directly for the rest of the process.
+  di::controls.latch_groups = false;
 }
 
 static void DepthStages() {
@@ -2062,31 +2099,6 @@ static void ColourOpsEqual() {
   std::printf("colour: compare rules: flush snapshots ignored, the any byte joined with the earlier chunks', vf68 snapshots compared\n");
 }
 
-// RECORD_MESHES (the B groups' mesh rounds) flags every chunk its worker owns, also one worker alone.
-static void RecordWorkMeshes() {
-  di::Descriptor& d = di::descriptor;
-  d.kind = di::WorkKind::RECORD_MESHES;
-  d.chunks = 5;
-  const auto flagged = [] {
-    std::array<bool, 6> result = {};
-    for (uint32_t k = 0; k < result.size(); ++k) {
-      result[k] = (di::SlotAt(k)->flags & dr::SLOT_UNKNOWN_CLASS) != 0;
-      di::SlotAt(k)->flags = 0;
-    }
-    return result;
-  };
-  flagged();
-  d.one_worker = true;
-  di::RecordWork(d, 0);
-  CHECK((flagged() == std::array<bool, 6>{false, true, true, true, true, false}));
-  d.one_worker = false;
-  di::RecordWork(d, 2);
-  CHECK((flagged() == std::array<bool, 6>{false, false, false, true, false, false}));
-  d.kind = di::WorkKind::RECORD_LOOP;
-  d.one_worker = false;
-  std::printf("record work: RECORD_MESHES flags every chunk of its worker (one worker: chunks 1 to n - 1)\n");
-}
-
 // Each colour control makes one thing wrong; its run must differ.
 static void ColourControls() {
 #if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
@@ -2150,6 +2162,1026 @@ static void ColourControls() {
 #endif
 }
 
+// ---------------------------------------------------------------- part 4: the B groups (C.2-5)
+
+// A mesh of a B round: the synthetic mesh's fields, the slice at +0xac / +0xb0 and the lists at base + 4 + 32 * list type.
+struct BMesh {
+  SynthMesh head;
+  uint8_t more[0x400 - sizeof(SynthMesh)];
+};
+static_assert(sizeof(BMesh) == 0x400);
+
+struct BView {
+  uint32_t* vtable;
+  uint32_t type;
+};
+
+// The 23 routed classes, from the listing: the vtable, the family, the census flags of Depth B / Colour B, the list's offset and
+// whether the class's virtual call at a batch start does something (the others are the stub).
+struct ClassRow {
+  uint32_t va;
+  uint32_t family;
+  bool depth;
+  bool colour;
+  uint32_t base;
+  bool real_vf64;
+};
+constexpr std::array<ClassRow, 23> CLASS_ROWS = {{
+    {0x11cbdb38, 0, true, true, 0x244, false},  {0x11cbdc84, 0, true, true, 0x244, false},  {0x11cbddd0, 0, false, false, 0x244, false},
+    {0x11cbdf34, 1, true, true, 0x244, false},  {0x11cbe080, 1, true, true, 0x244, false},  {0x11cbf71c, 2, true, true, 0x244, false},
+    {0x11cbf868, 2, true, true, 0x244, true},   {0x11cbd34c, 3, true, true, 0x244, false},  {0x11cbd498, 3, true, true, 0x244, false},
+    {0x11cbd5e0, 3, true, true, 0x244, false},  {0x11cc19d0, 4, true, true, 0x10c, false},  {0x11cbd888, 5, true, true, 0x244, false},
+    {0x11cbd9d4, 5, true, false, 0x244, false}, {0x11cbca34, 6, true, true, 0x244, false},  {0x11cbcb80, 6, false, false, 0x244, false},
+    {0x11cbcccc, 6, true, true, 0x244, true},   {0x11cbce14, 6, true, true, 0x244, false},  {0x11cbcf5c, 6, true, true, 0x244, false},
+    {0x11cbd0a4, 6, true, true, 0x244, false},  {0x11cbd1ec, 6, true, true, 0x244, false},  {0x11cbd728, 6, true, true, 0x244, false},
+    {0x11cbe1e4, 6, true, true, 0x244, false},  {0x11cbf5b8, 6, true, true, 0x108, false},
+}};
+constexpr uint32_t CLASS_FIRST = 0x11cbca34;
+// The classes the planner never records, whatever the census says (what the tests expect of the header's table): the three that
+// call through runtime objects (both groups) and the colour views' own loop (Colour B).
+static bool ForcedDirect(uint32_t va, bool colour) {
+  return va == 0x11cbcb80 || va == 0x11cbddd0 || va == 0x11cbdc84 || (colour && va == 0x11cbd9d4);
+}
+constexpr uint32_t CLASS_UNKNOWN = static_cast<uint32_t>(CLASS_ROWS.size());
+
+// The vtables sit at their listing offsets in one block (the runtime vtable minus the module shift is the listing's address, as in
+// the game). Slot 0x100 holds the class's direct flags (1: Depth B, 2: Colour B) and slot 0x104 its list offset.
+static std::array<uint32_t, 0x5200 / 4> vtable_pool;
+static std::array<uint32_t, 0x140 / 4> unknown_vtable;
+static std::array<uint32_t, 0x40 / 4> view_vtable;
+static BView b_view;
+static uint32_t* ClassVtable(uint32_t index) {
+  return (index == CLASS_UNKNOWN ? unknown_vtable.data() : &vtable_pool[(CLASS_ROWS[index].va - CLASS_FIRST) / 4]);
+}
+// Violations: a direct class's body ran on a slot. What a direct class's mesh leaves in the real tracker (a test switch).
+static uint32_t direct_on_slot = 0;
+static uint32_t direct_leave = 0;
+static uint32_t b_vf64_calls = 0;
+
+static uint8_t __thiscall FakeVf64Stub(void*, uint32_t, uint32_t, uint32_t) { return 0; }
+static uint8_t __thiscall FakeVf64Real(void* mesh, uint32_t a, uint32_t b, uint32_t c) {
+  const auto* m = static_cast<const SynthMesh*>(mesh);
+  game_log.push_back({8, reinterpret_cast<uint32_t>(mesh), a, b, c, 0, 0, 0, 0, 0, 0, 0, m->view_tag, m->pass, 0});
+  return static_cast<uint8_t>((m->kind >> 1) & 1);
+}
+static uint32_t __thiscall FakeViewType(void* view) { return static_cast<const BView*>(view)->type; }
+static uint32_t* __thiscall FakeAccessor(void* sorted, uint32_t index) { return &static_cast<uint32_t*>(sorted)[index]; }
+
+// The mesh's virtual call at a batch start, as a site: outside the arena the class's own function, inside a Record frame (the stub
+// class records nothing).
+static uint8_t Vf64Site(dr::Site site, void* t, uint32_t mesh) {
+  const std::array<uint32_t, 3> arguments = {Field<uint32_t>(t, 0x1c), Field<uint32_t>(t, 0x18), Field<uint32_t>(t, 0x24)};
+  if (!InArena(t)) {
+    const auto function = reinterpret_cast<uint8_t(__thiscall*)(void*, uint32_t, uint32_t, uint32_t)>(
+        static_cast<uintptr_t>((*reinterpret_cast<uint32_t**>(mesh))[0x64 / 4]));
+    return function(reinterpret_cast<void*>(mesh), arguments[0], arguments[1], arguments[2]);
+  }
+  StackImage image = MakeImage(site, mesh);
+  for (uint32_t i = 0; i < 3; ++i) image.stack[1 + i] = arguments[i];
+  dr::Record(static_cast<dr::Slot*>(t), &image.frame);
+  return static_cast<uint8_t>(image.frame.eax);
+}
+
+// A colour body's state block: the tracker writes, then the calls in the block's order (outside the arena); inside, Record.
+static void StateSite(void* t, const dr::StateBlock& block) {
+  if (InArena(t)) {
+    StackImage image = MakeImage(dr::Site::COLOUR_B_STATE, 0);
+    std::memcpy(image.stack, &block, sizeof(block));
+    dr::Record(static_cast<dr::Slot*>(t), &image.frame);
+    return;
+  }
+  if ((block.writes & dr::STATE_WRITE_FLAGS) != 0) Field<uint8_t>(t, 0x10) = static_cast<uint8_t>(block.flags);
+  if ((block.writes & dr::STATE_WRITE_TEXTURES) != 0) {
+    Field<uint32_t>(t, 0x04) = block.diffuse;
+    Field<uint32_t>(t, 0x08) = block.normal;
+  }
+  const auto* mask = reinterpret_cast<const SynthMask*>(static_cast<uintptr_t>(block.mask));
+  if ((block.writes & dr::STATE_WRITE_FACTION) != 0) {
+    Field<int32_t>(t, 0x00) = block.faction;
+    Field<int32_t>(t, 0x0c) = (mask != nullptr ? mask->index : -1);
+  }
+  if ((block.parts & dr::STATE_SNOW) != 0) GameConst(block.snow_object, block.snow_bits);
+  if ((block.parts & dr::STATE_DIFFUSE) != 0) GameSrv(block.diffuse_slot, block.diffuse);
+  if ((block.parts & dr::STATE_NORMAL) != 0) GameSrv(block.normal_slot, block.normal);
+  if ((block.parts & dr::STATE_FACTION) != 0) GameFaction(block.faction, mask, reinterpret_cast<void*>(static_cast<uintptr_t>(block.node)), block.state);
+}
+
+// The depth body of a B mesh: the depth loop's state machine over the mesh's slice, without the animation, with the flush through
+// the entry hook (the tests' sites ids stay for the controls), the class's virtual call at a batch start, and a flag byte (+0x12)
+// that an enabled mesh with its flag set sets from the mesh (the others carry the last one's) and the flush passes on: state a
+// chunk's warm-up has to reproduce.
+static void __thiscall SynthBDepth(void* mesh_pointer, void* t, void* list_pointer, uint32_t begin, uint32_t end) {
+  const auto* list = static_cast<const SynthList*>(list_pointer);
+  auto* mesh = static_cast<SynthMesh*>(mesh_pointer);
+  const uint32_t mesh_address = reinterpret_cast<uint32_t>(mesh);
+  for (uint32_t i = begin; i < end; ++i) {
+    Field<uint32_t>(t, 0x6c) = mesh_address;
+    const bool changed = (mesh_address != Field<uint32_t>(t, 0x70) || Field<uint32_t>(t, 0x14) != 0);
+    const uint32_t count = Field<uint32_t>(t, 0x58);
+    if (changed ? count != 0 : count == Field<uint32_t>(t, 0x64)) {
+      FlushSite(dr::Site::DEPTH_FLUSH_BOUNDARY, t, Field<uint32_t>(t, 0x70), Field<uint32_t>(t, 0x74), count, Field<uint8_t>(t, 0x12));
+      Field<uint32_t>(t, 0x58) = 0;
+      Field<uint32_t>(t, 0x78) = 0;
+    }
+    Field<uint32_t>(t, 0x70) = mesh_address;
+    Field<uint32_t>(t, 0x14) = 0;
+    if (changed) {
+      mesh->view_tag = Field<uint32_t>(t, 0x20);
+      Field<uint8_t>(t, 0x68) = mesh->flag;
+      const uint32_t kind = (mesh->kind ^ (mesh->view_tag & 0x10000)) & 0xffff;
+      mesh->pass = Field<uint32_t>(t, 0x14);
+      const uint32_t technique = (kind == 0 ? 0 : (kind == 1 ? 0x101 : kind * 0x10));
+      Field<uint32_t>(t, 0x74) = technique;
+      if (technique != 0) {
+        if ((technique & 1) == 0) {
+          Field<uint32_t>(t, 0x50) = 4 + mesh->kind;
+          if (mesh->flag != 0) Field<uint8_t>(t, 0x12) = static_cast<uint8_t>(mesh->kind & 3);
+          Field<uint8_t>(t, 0x69) |= Vf68Site(dr::Site::DEPTH_B_VF68, t, mesh_address, Field<uint32_t>(t, 0x1c));
+          if (kind == 3) Field<uint8_t>(t, 0x69) = 1;
+        } else {
+          Field<uint32_t>(t, 0x74) = 0;
+        }
+      }
+    }
+    if (Field<uint32_t>(t, 0x74) == 0) continue;
+    if (Field<uint32_t>(t, 0x58) == 0) Field<uint8_t>(t, 0x69) |= Vf64Site(dr::Site::DEPTH_B_VF64, t, mesh_address);
+    ++Field<uint32_t>(t, 0x58);
+  }
+  const uint32_t pending = Field<uint32_t>(t, 0x58);
+  if (pending != 0) {
+    FlushSite(dr::Site::DEPTH_FLUSH_END, t, Field<uint32_t>(t, 0x6c), Field<uint32_t>(t, 0x74), pending, Field<uint8_t>(t, 0x12));
+    Field<uint32_t>(t, 0x58) = 0;
+    Field<uint32_t>(t, 0x78) = 0;
+  }
+}
+
+// The colour body of a B mesh: the colour loop's machine (the variation path, the state block in place of the constants,
+// textures and faction block, the class's virtual call at a batch start), without the animation and the mesh setup's vtable check.
+static void __thiscall SynthBColour(void* mesh_pointer, void* t, void* list_pointer, void* node_pointer, uint32_t begin, uint32_t end) {
+  const auto* list = static_cast<const SynthList*>(list_pointer);
+  auto* mesh = static_cast<SynthMesh*>(mesh_pointer);
+  auto* node = static_cast<SynthNode*>(node_pointer);
+  const uint32_t mesh_address = reinterpret_cast<uint32_t>(mesh);
+  const uint32_t state = reinterpret_cast<uint32_t>(node->state);
+  for (uint32_t i = begin; i < end; ++i) {
+    SynthItem* item = list->data[i];
+    Field<uint32_t>(t, 0x6c) = mesh_address;
+    const bool changed = (mesh_address != Field<uint32_t>(t, 0x70) || Field<uint32_t>(t, 0x14) != 0);
+    const uint32_t count = Field<uint32_t>(t, 0x58);
+    if (changed ? count != 0 : count == Field<uint32_t>(t, 0x64)) {
+      FlushSite(dr::Site::COLOUR_FLUSH_BOUNDARY, t, Field<uint32_t>(t, 0x70), Field<uint32_t>(t, 0x74), count);
+      Field<uint32_t>(t, 0x58) = 0;
+      Field<uint32_t>(t, 0x78) = 0;
+    }
+    Field<uint32_t>(t, 0x70) = mesh_address;
+    Field<uint32_t>(t, 0x14) = 0;
+    if (changed) {
+      mesh->view_tag = Field<uint32_t>(t, 0x20);
+      Field<uint8_t>(t, 0x68) = mesh->flag;
+      const uint32_t kind = (mesh->kind ^ (mesh->view_tag & 0x10000)) & 0xffff;
+      mesh->pass = Field<uint32_t>(t, 0x14);
+      const uint32_t technique = (kind == 0 ? 0 : (kind == 1 ? 0x101 : kind * 0x10));
+      Field<uint32_t>(t, 0x74) = technique;
+      if (technique != 0) {
+        if ((technique & 1) == 0) {
+          Field<uint32_t>(t, 0x50) = 4 + mesh->kind;
+          Field<uint8_t>(t, 0x69) |= Vf68Site(dr::Site::COLOUR_B_VF68, t, mesh_address, Field<uint32_t>(t, 0x1c));
+        } else {
+          Field<uint32_t>(t, 0x74) = 0;
+        }
+      }
+    }
+    const uint32_t technique = Field<uint32_t>(t, 0x74);
+    if (technique == 0) continue;
+    const uint32_t pending = Field<uint32_t>(t, 0x58);
+    if (pending == Field<uint32_t>(t, 0x64) || item->variation != Field<uint32_t>(t, 0x14)) {
+      FlushSite(dr::Site::COLOUR_FLUSH_VARIATION, t, Field<uint32_t>(t, 0x70), technique, pending);
+      Field<uint32_t>(t, 0x58) = 0;
+      Field<uint32_t>(t, 0x78) = 0;
+      if (item->variation != Field<uint32_t>(t, 0x14)) {
+        Field<uint32_t>(t, 0x14) = item->variation;
+        mesh->pass = item->variation;
+        Field<uint8_t>(t, 0x69) |= Vf68Site(dr::Site::COLOUR_B_VF68, t, mesh_address, Field<uint32_t>(t, 0x1c));
+      }
+    }
+    // The state block: only what the tracker's fields say changed (the first constant is the "snow" one, the second sets +0x10).
+    dr::StateBlock block = {};
+    if ((item->flags & ITEM_CONST1) != 0) {
+      block.parts |= dr::STATE_SNOW;
+      block.snow_object = reinterpret_cast<uint32_t>(&const1_blocks[mesh->kind & 3]);
+    }
+    if ((item->flags & ITEM_CONST2) != 0) {
+      block.writes |= dr::STATE_WRITE_FLAGS;
+      block.flags = item->value & 0xff;
+    }
+    if ((item->flags & ITEM_TEXTURES) != 0 && (item->texture1 != Field<uint32_t>(t, 0x04) || item->texture2 != Field<uint32_t>(t, 0x08))) {
+      block.parts |= dr::STATE_DIFFUSE | dr::STATE_NORMAL;
+      block.writes |= dr::STATE_WRITE_TEXTURES;
+      block.diffuse_slot = mesh_address + 0x41f4;
+      block.diffuse = item->texture1;
+      block.normal_slot = mesh_address + 0x421c;
+      block.normal = item->texture2;
+    }
+    const int32_t mask_index = (item->mask != nullptr ? item->mask->index : -1);
+    if ((item->flags & ITEM_FACTION) != 0 && (item->faction != Field<int32_t>(t, 0x00) || mask_index != Field<int32_t>(t, 0x0c))) {
+      block.parts |= dr::STATE_FACTION;
+      block.writes |= dr::STATE_WRITE_FACTION;
+      block.faction = item->faction;
+      block.mask = reinterpret_cast<uint32_t>(item->mask);
+      block.node = reinterpret_cast<uint32_t>(node);
+      block.state = state;
+    }
+    if ((block.parts | block.writes) != 0) StateSite(t, block);
+    if (Field<uint32_t>(t, 0x58) == 0 && Field<uint8_t>(t, 0x68) != 0) {
+      Field<uint8_t>(t, 0x69) |= (mesh->kind >> 1) & 1;
+      Field<uint8_t>(t, 0x69) |= Vf64Site(dr::Site::COLOUR_B_VF64, t, mesh_address);
+    }
+    ++Field<uint32_t>(t, 0x58);
+  }
+  const uint32_t pending = Field<uint32_t>(t, 0x58);
+  if (pending != 0) {
+    FlushSite(dr::Site::COLOUR_FLUSH_END, t, Field<uint32_t>(t, 0x6c), Field<uint32_t>(t, 0x74), pending);
+    Field<uint32_t>(t, 0x58) = 0;
+    Field<uint32_t>(t, 0x78) = 0;
+  }
+}
+
+// The mesh's slot-0x138 call (the game's per-mesh dispatcher): the view's type picks the body, the list is at the class's offset.
+static void __thiscall FakeVf138(void* mesh_pointer, void* t, void*, void* view, uint32_t list_type, void* node) {
+  const uint32_t type = static_cast<const BView*>(view)->type;
+  if (type == 0x49) return;
+  const bool depth = (type == 0 || type == 0x55 || type == 0x60);
+  const uint32_t* vtable = *reinterpret_cast<uint32_t* const*>(mesh_pointer);
+  const bool direct_class = (vtable[0x100 / 4] & (depth ? 1u : 2u)) != 0;
+  if (direct_class && InArena(t)) ++direct_on_slot;
+  const uint32_t begin = Field<uint32_t>(mesh_pointer, 0xac);
+  const uint32_t end = begin + Field<uint32_t>(mesh_pointer, 0xb0);
+  void* list = static_cast<uint8_t*>(mesh_pointer) + vtable[0x104 / 4] + 32 * list_type + 4;
+  if (depth) {
+    SynthBDepth(mesh_pointer, t, list, begin, end);
+  } else {
+    SynthBColour(mesh_pointer, t, list, node, begin, end);
+  }
+  if (direct_class && !InArena(t)) {
+    // What a class with its own body can leave behind it: a pending count, a change mask, another batch size.
+    if (direct_leave == 1) Field<uint32_t>(t, 0x58) = 1;
+    if (direct_leave == 2) Field<uint32_t>(t, 0x78) = 8;
+    if (direct_leave == 3) Field<uint32_t>(t, 0x64) = 5;
+  }
+}
+
+static void BSetup() {
+  const auto fill = [](uint32_t* vtable, bool real_vf64, uint32_t flags, uint32_t base) {
+    vtable[0x64 / 4] = reinterpret_cast<uint32_t>(real_vf64 ? &FakeVf64Real : &FakeVf64Stub);
+    vtable[0x68 / 4] = reinterpret_cast<uint32_t>(&FakeVf68);
+    vtable[0x100 / 4] = flags;
+    vtable[0x104 / 4] = base;
+    vtable[0x138 / 4] = reinterpret_cast<uint32_t>(&FakeVf138);
+  };
+  for (uint32_t i = 0; i < CLASS_ROWS.size(); ++i) {
+    const ClassRow& row = CLASS_ROWS[i];
+    fill(ClassVtable(i), row.real_vf64, (ForcedDirect(row.va, false) || !row.depth ? 1u : 0u) | (ForcedDirect(row.va, true) || !row.colour ? 2u : 0u), row.base);
+  }
+  fill(unknown_vtable.data(), false, 3, 0x244);
+  view_vtable[0x3c / 4] = reinterpret_cast<uint32_t>(&FakeViewType);
+  b_view.vtable = view_vtable.data();
+}
+
+// The B groups' part of the game: the accessor, the stub, the module shift and the class table (what the header's planner reads).
+static void BGame(dr::GameCalls* game) {
+  game->accessor = reinterpret_cast<uint32_t>(&FakeAccessor);
+  game->vf64_stub = reinterpret_cast<uint32_t>(&FakeVf64Stub);
+  game->module_shift = reinterpret_cast<uint32_t>(vtable_pool.data()) - CLASS_FIRST;
+  game->class_count = static_cast<uint32_t>(CLASS_ROWS.size());
+  for (uint32_t i = 0; i < CLASS_ROWS.size(); ++i) {
+    const ClassRow& row = CLASS_ROWS[i];
+    game->classes[i] = {.vtable = reinterpret_cast<uint32_t>(ClassVtable(i)),
+                        .base = row.base,
+                        .depth_body = reinterpret_cast<uint32_t>(&SynthBDepth),
+                        .colour_body = reinterpret_cast<uint32_t>(&SynthBColour),
+                        .family = row.family,
+                        .depth = row.depth,
+                        .colour = row.colour};
+  }
+}
+
+struct BSpec {
+  uint32_t meshes = 1500;
+  uint32_t seed = 1;
+  uint32_t max_items = 6;
+  uint32_t none_percent = 10;
+  uint32_t empty_percent = 5;
+  // Meshes of a class that never records (one of the three forced classes or one outside the table).
+  uint32_t direct_percent = 0;
+  // The random classes include the forced ones (the planner makes them direct).
+  bool all_classes = false;
+  // The last meshes have no technique.
+  uint32_t tail_disabled_percent = 0;
+  uint32_t max_count = 1000;
+  uint32_t round_numerator = 2400;
+  bool colour = false;
+  // The view's type (~0: the group's usual one).
+  uint32_t view_type = ~0u;
+  // Entries of the sorted list that repeat another's mesh.
+  uint32_t duplicates = 0;
+};
+
+struct BWorld {
+  std::vector<BMesh> meshes;
+  std::vector<SynthItem> items;
+  std::vector<SynthItem*> pointers;
+  std::array<SynthMask, 3> masks = {};
+  std::vector<uint32_t> sorted;
+  BView view = {};
+  uint32_t list_type = 1;
+  bool colour = false;
+  alignas(16) std::array<uint8_t, dr::TRACKER_SIZE> tracker = {};
+  uint32_t max_count = 1000;
+  uint32_t round_numerator = 2400;
+  // The tracker's state when a round starts (a round the bodies ended leaves both 0).
+  uint32_t pending = 0;
+};
+
+static std::unique_ptr<BWorld> BuildBWorld(const BSpec& spec) {
+  auto world = std::make_unique<BWorld>();
+  Rng random{spec.seed * 0x9e3779b97f4a7c15ull + 1};
+  world->colour = spec.colour;
+  world->max_count = spec.max_count;
+  world->round_numerator = spec.round_numerator;
+  world->view = {view_vtable.data(), (spec.view_type != ~0u ? spec.view_type : (spec.colour ? 0x10u : 0u))};
+  world->meshes.resize(spec.meshes);
+  // The classes meshes get: the table's rows (without the forced ones unless asked), or one that never records.
+  std::vector<uint32_t> pool;
+  for (uint32_t r = 0; r < CLASS_ROWS.size(); ++r) {
+    if (spec.all_classes || !(ForcedDirect(CLASS_ROWS[r].va, false) || ForcedDirect(CLASS_ROWS[r].va, true) || !CLASS_ROWS[r].depth || !CLASS_ROWS[r].colour)) {
+      pool.push_back(r);
+    }
+  }
+  const std::array<uint32_t, 4> direct_pool = {2, 14, 1, CLASS_UNKNOWN};
+  uint32_t total = 0;
+  std::vector<uint32_t> counts(spec.meshes);
+  for (uint32_t m = 0; m < spec.meshes; ++m) {
+    BMesh& mesh = world->meshes[m];
+    const uint32_t index = (random(100) < spec.direct_percent ? direct_pool[random(4)] : pool[random(static_cast<uint32_t>(pool.size()))]);
+    mesh.head.vtable = ClassVtable(index);
+    mesh.head.flag = static_cast<uint8_t>(m & 1);
+    const bool tail = (static_cast<uint64_t>(m) * 100 >= static_cast<uint64_t>(spec.meshes) * (100 - spec.tail_disabled_percent));
+    mesh.head.kind = ((tail || random(100) < spec.none_percent) ? random(2) : 2 + random(4));
+    counts[m] = (random(100) < spec.empty_percent ? 0 : 1 + random(spec.max_items));
+    total += counts[m];
+  }
+  world->items.resize(total);
+  uint32_t first = 0;
+  for (uint32_t m = 0; m < spec.meshes; ++m) {
+    for (uint32_t r = 0; r < counts[m]; ++r) {
+      world->items[first + r].mesh = &world->meshes[m].head;
+      world->items[first + r].anim = -1;
+    }
+    Field<uint32_t>(&world->meshes[m], 0xac) = first;
+    Field<uint32_t>(&world->meshes[m], 0xb0) = counts[m];
+    first += counts[m];
+  }
+  if (spec.colour) {
+    const Spec colour_spec = {};
+    FillColourFields(&world->items, &world->masks, colour_spec, &random);
+  }
+  world->pointers.resize(total);
+  for (uint32_t k = 0; k < total; ++k) world->pointers[k] = &world->items[k];
+  for (BMesh& mesh : world->meshes) {
+    const uint32_t base = mesh.head.vtable[0x104 / 4];
+    for (uint32_t list_type = 0; list_type < 4; ++list_type) {
+      Field<SynthList>(&mesh, base + 4 + 32 * list_type) = {.count = total, .data = world->pointers.data()};
+    }
+    world->sorted.push_back(reinterpret_cast<uint32_t>(&mesh));
+  }
+  for (uint32_t d = 0; d < spec.duplicates; ++d) {
+    world->sorted[(d * 37 + 5) % spec.meshes] = world->sorted[(d * 37 + 8) % spec.meshes];
+  }
+  return world;
+}
+
+static void ResetBWorld(BWorld* world) {
+  for (BMesh& mesh : world->meshes) {
+    mesh.head.view_tag = 0xffffffff;
+    mesh.head.pass = 0xffffffff;
+  }
+  world->tracker = {};
+  uint8_t* t = world->tracker.data();
+  Field<uint32_t>(t, 0x18) = 0xd0;
+  Field<uint32_t>(t, 0x1c) = 0xe0;
+  Field<uint32_t>(t, 0x20) = 0x12345;
+  Field<uint32_t>(t, 0x24) = 0xb0;
+  Field<uint32_t>(t, 0x50) = 6;
+  Field<uint32_t>(t, 0x64) = world->max_count;
+  strict_flush = !world->colour;
+  if (world->colour) {
+    Field<int32_t>(t, 0x00) = -2;
+    Field<int32_t>(t, 0x0c) = -2;
+    Field<uint32_t>(t, 0x20) = Field<uint32_t>(t, 0x1c) ^ 0x77;
+    const1_cells.fill(1.0f);
+    const2_cell = 0.5f;
+  }
+  if (world->pending != 0) {
+    BMesh& mesh = world->meshes.back();
+    Field<uint32_t>(t, 0x70) = reinterpret_cast<uint32_t>(&mesh);
+    Field<uint32_t>(t, 0x74) = 0x20;
+    Field<uint32_t>(t, 0x58) = world->pending;
+    mesh.head.view_tag = 0xabc;
+    mesh.head.pass = 0x77;
+  }
+  g_shared->seed_anim = -1;
+  g_shared->last_anim = -1;
+  game_log.clear();
+  direct_on_slot = 0;
+}
+
+static Outcome CaptureB(BWorld* world) {
+  Outcome outcome = {.log = game_log, .tracker = world->tracker};
+  for (const BMesh& mesh : world->meshes) outcome.mesh_fields.push_back({mesh.head.view_tag, mesh.head.pass});
+  for (uint32_t i = 0; i < 4; ++i) std::memcpy(&outcome.cells[i], &const1_cells[i], 4);
+  std::memcpy(&outcome.cells[4], &const2_cell, 4);
+  return outcome;
+}
+
+static void* const B_DEVICE = reinterpret_cast<void*>(0x2000);
+
+// The driver of the B rounds: runs of meshes [first, last] sized from the tracker's +0x50 (read after each round).
+template <class RunRound>
+static void BDriver(BWorld* world, RunRound&& run_round) {
+  const uint32_t total = static_cast<uint32_t>(world->sorted.size());
+  for (uint32_t first = 0; first < total;) {
+    const uint32_t stride = std::max<uint32_t>(1, Field<uint32_t>(world->tracker.data(), 0x50));
+    const uint32_t last = std::min(total, first + std::max<uint32_t>(1, world->round_numerator / stride)) - 1;
+    run_round(first, last);
+    first = last + 1;
+  }
+}
+
+static Outcome RunBSerial(BWorld* world) {
+  ResetBWorld(world);
+  for (int pass = 0; pass < 2; ++pass) {
+    BDriver(world, [&](uint32_t first, uint32_t last) {
+      for (uint32_t i = first; i <= last; ++i) {
+        const uint32_t mesh = world->sorted[i];
+        reinterpret_cast<void(__thiscall*)(void*, void*, void*, void*, uint32_t, void*)>((*reinterpret_cast<uint32_t**>(mesh))[0x138 / 4])(
+            reinterpret_cast<void*>(mesh), world->tracker.data(), B_DEVICE, &world->view, world->list_type, &synth_node);
+      }
+    });
+  }
+  return CaptureB(world);
+}
+
+static Outcome RunBCalls(BWorld* world, bool tracing) {
+  Outcome total = {};
+  for (int pass = 0; pass < 2; ++pass) {
+    BDriver(world, [&](uint32_t first, uint32_t last) {
+      dr::DispatchMesh(world->tracker.data(), B_DEVICE, &world->view, world->list_type, &synth_node, world->sorted.data(), first, last);
+      ++total.portions;
+      total.chunks += di::last_call.chunks;
+      total.reruns += di::last_call.reruns;
+      total.replayed += di::last_call.replayed;
+      total.ops += di::last_call.ops;
+      total.direct_calls += (di::last_call.direct ? 1 : 0);
+      total.direct_segments += di::last_call.direct_segments;
+      total.entry_reruns += di::last_call.entry_reruns;
+      total.unknown_seeds += di::last_call.unknown_seeds;
+      if (tracing && !di::trace.calls.empty()) {
+        const di::CallTrace& call = di::trace.calls.back();
+        ++total.compares[static_cast<size_t>(call.compare_result)];
+        if (total.first_reason.empty()) total.first_reason = call.direct_reason;
+        total.duplicates += call.duplicate_meshes;
+        total.census_items += call.census_items;
+        total.direct_items += call.direct_items;
+        total.seed_misses += call.seed_misses;
+        for (size_t kind = 0; kind < call.ops.size(); ++kind) total.kind_ops[kind] += call.ops[kind];
+      }
+    });
+  }
+  if (tracing) {
+    for (const di::CallTrace& call : di::trace.calls) {
+      const uint64_t trace_only = call.compare + call.run_scan + (call.stage == dr::Stage::CHUNKED ? call.warm_ups : 0);
+      total.accounted = total.accounted && call.total + trace_only == call.wall;
+    }
+  }
+  di::trace.active = false;
+  Outcome outcome = CaptureB(world);
+  outcome.chunks = total.chunks;
+  outcome.reruns = total.reruns;
+  outcome.replayed = total.replayed;
+  outcome.ops = total.ops;
+  outcome.direct_calls = total.direct_calls;
+  outcome.portions = total.portions;
+  outcome.compares = total.compares;
+  outcome.kind_ops = total.kind_ops;
+  outcome.direct_segments = total.direct_segments;
+  outcome.entry_reruns = total.entry_reruns;
+  outcome.unknown_seeds = total.unknown_seeds;
+  outcome.duplicates = total.duplicates;
+  outcome.census_items = total.census_items;
+  outcome.direct_items = total.direct_items;
+  outcome.seed_misses = total.seed_misses;
+  outcome.accounted = total.accounted;
+  outcome.first_reason = total.first_reason;
+  return outcome;
+}
+
+// The B groups' loops bits (Depth B 4, Colour B 8).
+static uint32_t b_families = 0xff;
+static Outcome RunBStaged(BWorld* world, dr::Stage stage, uint32_t threads, bool tracing = false, bool update = true) {
+  ResetBWorld(world);
+  if (update) dr::Update({.stage = stage, .threads = threads, .loops = 12, .b_families = b_families}, true);
+  di::trace.active = tracing;
+  di::trace.frames_left = 1u << 30;
+  di::trace.calls.clear();
+  return RunBCalls(world, tracing);
+}
+
+static std::vector<std::pair<const char*, BSpec>> BLists(bool colour) {
+  std::vector<std::pair<const char*, BSpec>> lists = {
+      {"census meshes only", {.seed = 1}},
+      {"direct meshes between chunks", {.seed = 2, .direct_percent = 6}},
+      {"many direct meshes", {.seed = 3, .direct_percent = 30}},
+      {"empty slices", {.seed = 4, .empty_percent = 30}},
+      {"long meshes, small batches", {.seed = 5, .max_items = 40, .max_count = 6}},
+      {"every class", {.seed = 6, .direct_percent = 5, .all_classes = true}},
+      {"last meshes without a technique", {.seed = 7, .tail_disabled_percent = 25}},
+      {"mostly no technique", {.seed = 8, .none_percent = 85}},
+  };
+  for (auto& [name, spec] : lists) spec.colour = colour;
+  return lists;
+}
+
+// The planner's class rules: 20 / 3 census / direct classes in Depth B and 19 / 4 in Colour B, and a family bit clear makes its
+// classes direct.
+static void BClassTable() {
+  // The B bodies flush through the entry hook only.
+  test_controls.entry_site = true;
+  for (const bool colour : {false, true}) {
+    uint32_t census = 0;
+    for (uint32_t i = 0; i < CLASS_ROWS.size(); ++i) census += (di::ClassRecords(i, colour, 0xff) ? 1 : 0);
+    CHECK(census == (colour ? 19u : 20u));
+    CHECK(!di::ClassRecords(CLASS_UNKNOWN, colour, 0xff));
+    for (uint32_t family = 0; family < 7; ++family) {
+      uint32_t lost = 0;
+      for (uint32_t i = 0; i < CLASS_ROWS.size(); ++i) {
+        lost += (di::ClassRecords(i, colour, 0xff) && !di::ClassRecords(i, colour, 0xff & ~(1u << family)) ? 1 : 0);
+      }
+      CHECK(lost > 0);
+    }
+  }
+  di::controls.class_flags = false;
+  CHECK(di::ClassRecords(2, false, 0) && di::ClassRecords(14, true, 0));
+  di::controls.class_flags = true;
+  std::printf("B classes: 23 routed classes: Depth B 20 census / 3 direct, Colour B 19 / 4; a clear family bit makes its classes direct; a class outside the table is direct\n");
+}
+
+// The stage x K matrix of both B groups over the lists: logs, tracker and mesh fields equal the serial run.
+static void BStages() {
+  uint32_t cases = 0;
+  uint32_t reruns_seen = 0;
+  uint32_t direct_segments_seen = 0;
+  uint32_t entry_reruns_seen = 0;
+  uint32_t replayed_seen = 0;
+  uint32_t compared_equal = 0;
+  std::array<uint32_t, static_cast<size_t>(di::OpKind::COUNT)> kinds = {};
+  for (const bool colour : {false, true}) {
+    for (const auto& [name, spec] : BLists(colour)) {
+      const auto world = BuildBWorld(spec);
+      const Outcome serial = RunBSerial(world.get());
+      CHECK(serial.log.size() > 100);
+      for (const dr::Stage stage : RECORD_STAGES) {
+        for (const uint32_t k : {2u, 3u, 4u, 6u, 8u, 16u}) {
+          for (const bool tracing : {false, true}) {
+            const Outcome staged = RunBStaged(world.get(), stage, k, tracing);
+            char label[160];
+            std::snprintf(label, sizeof(label), "B %s '%s' %s K %u trace %d", colour ? "colour" : "depth", name, StageName(stage), k, tracing ? 1 : 0);
+            CHECK(Equal(serial, staged, label));
+            CHECK(direct_on_slot == 0);
+            if (tracing) {
+              CHECK(!CompareDiffers(staged));
+              CHECK(staged.accounted);
+              CHECK(staged.duplicates == 0);
+              compared_equal += staged.compares[static_cast<size_t>(di::CompareResult::EQUAL)];
+              for (size_t kind = 0; kind < kinds.size(); ++kind) kinds[kind] += staged.kind_ops[kind];
+            }
+            reruns_seen += staged.reruns;
+            direct_segments_seen += staged.direct_segments;
+            entry_reruns_seen += staged.entry_reruns;
+            replayed_seen += staged.replayed;
+            ++cases;
+          }
+        }
+      }
+    }
+  }
+  CHECK(replayed_seen > 0 && direct_segments_seen > 0 && reruns_seen > 0 && compared_equal > 0);
+  for (const di::OpKind kind : {di::OpKind::FLUSH, di::OpKind::VF68, di::OpKind::VF64, di::OpKind::STATE}) {
+    CHECK(kinds[static_cast<size_t>(kind)] > 0);
+  }
+  CHECK(kinds[static_cast<size_t>(di::OpKind::ANIM)] == 0);
+  std::printf("B stages: %u cases (2 groups x 8 lists x 4 stages x 6 K x trace off / on): logs, tracker and mesh fields equal the serial run;"
+              " %u chunks replayed, %u run again (%u by the entry check), %u direct segments; %u compares equal; ops flush %u vf68 %u vf64 %u state %u\n",
+              cases, replayed_seen, reruns_seen, entry_reruns_seen, direct_segments_seen, compared_equal, kinds[1], kinds[2], kinds[7], kinds[8]);
+}
+
+// The view types, the fall-backs and the families.
+static void BFallbacks() {
+  BSpec depth_spec = {.seed = 11, .direct_percent = 4};
+  const auto depth = BuildBWorld(depth_spec);
+  const Outcome depth_serial = RunBSerial(depth.get());
+  // Every depth view type records; the visibility view type is direct (and does nothing here).
+  for (const uint32_t type : {0u, 0x55u, 0x60u}) {
+    depth->view.type = type;
+    const Outcome staged = RunBStaged(depth.get(), dr::Stage::WORKERS, 8, true);
+    CHECK(Equal(depth_serial, staged, "depth view type"));
+    CHECK(staged.replayed > 0 && staged.first_reason.empty());
+  }
+  depth->view.type = 0x49;
+  const Outcome visibility_serial = RunBSerial(depth.get());
+  const Outcome visibility = RunBStaged(depth.get(), dr::Stage::WORKERS, 8, true);
+  CHECK(Equal(visibility_serial, visibility, "visibility view"));
+  CHECK(visibility.first_reason == "visibility view" && visibility.direct_calls == visibility.portions && visibility_serial.log.empty());
+  depth->view.type = 0;
+  // A colour view type of another number.
+  BSpec colour_spec = {.seed = 12, .direct_percent = 4};
+  colour_spec.colour = true;
+  const auto colour = BuildBWorld(colour_spec);
+  const Outcome colour_serial = RunBSerial(colour.get());
+  for (const uint32_t type : {0x10u, 0x5fu, 1u}) {
+    colour->view.type = type;
+    const Outcome staged = RunBStaged(colour.get(), dr::Stage::RECORDED, 6, true);
+    CHECK(Equal(colour_serial, staged, "colour view type"));
+    CHECK(staged.replayed > 0);
+  }
+  colour->view.type = 0x10;
+  // A round of few census items.
+  BSpec small_spec = {.meshes = 90, .seed = 13};
+  const auto few = BuildBWorld(small_spec);
+  const Outcome small_serial = RunBSerial(few.get());
+  const Outcome small_staged = RunBStaged(few.get(), dr::Stage::WORKERS, 8, true);
+  CHECK(Equal(small_serial, small_staged, "small round"));
+  CHECK(small_staged.first_reason == "small round" && small_staged.direct_calls == small_staged.portions);
+  // The stages Direct and Off, a loop group that is off, a pool smaller than the stage needs, another thread, not usable.
+  for (const dr::Stage stage : {dr::Stage::DIRECT, dr::Stage::OFF}) {
+    const Outcome staged = RunBStaged(depth.get(), stage, 8);
+    CHECK(Equal(depth_serial, staged, "stage direct"));
+    CHECK(staged.direct_calls == staged.portions);
+  }
+  dr::Update({.stage = dr::Stage::WORKERS, .threads = 8, .loops = 8}, true);
+  const Outcome loop_off = RunBStaged(depth.get(), dr::Stage::WORKERS, 8, true, false);
+  CHECK(Equal(depth_serial, loop_off, "Depth B off"));
+  CHECK(loop_off.first_reason == "loop off" && loop_off.direct_calls == loop_off.portions);
+  dr::Update({.stage = dr::Stage::OFF}, false);
+  RunBStaged(depth.get(), dr::Stage::WORKERS, 4);
+  CHECK(di::worker_count == 3);
+  di::config.threads = 16;
+  const Outcome missing = RunBStaged(depth.get(), dr::Stage::WORKERS, 16, false, false);
+  CHECK(Equal(depth_serial, missing, "pool missing"));
+  CHECK(missing.direct_calls == missing.portions);
+  dr::Update({.stage = dr::Stage::WORKERS, .threads = 8, .loops = 12}, true);
+  ResetBWorld(depth.get());
+  Outcome other_outcome;
+  std::thread other([&] { other_outcome = RunBCalls(depth.get(), false); });
+  other.join();
+  CHECK(Equal(depth_serial, other_outcome, "other thread"));
+  CHECK(other_outcome.direct_calls == other_outcome.portions);
+  dr::SetGame(Game(false));
+  const Outcome unusable = RunBStaged(depth.get(), dr::Stage::WORKERS, 8);
+  CHECK(Equal(depth_serial, unusable, "not usable"));
+  CHECK(unusable.direct_calls == unusable.portions);
+  dr::SetGame(Game(true));
+  // A round that starts with pending instances runs directly (entry state).
+  depth->pending = 5;
+  const Outcome pending_serial = RunBSerial(depth.get());
+  const Outcome pending = RunBStaged(depth.get(), dr::Stage::WORKERS, 8, true);
+  CHECK(Equal(pending_serial, pending, "pending instances"));
+  CHECK(pending.first_reason == "entry state");
+  depth->pending = 0;
+  // A family switched off: its classes become direct segments, the picture is the same.
+  uint32_t family_segments = 0;
+  for (uint32_t family = 0; family < 7; ++family) {
+    b_families = 0xff & ~(1u << family);
+    const Outcome staged = RunBStaged(depth.get(), dr::Stage::WORKERS, 8, true);
+    CHECK(Equal(depth_serial, staged, "family off"));
+    family_segments += staged.direct_segments;
+  }
+  b_families = 0;
+  const Outcome none = RunBStaged(depth.get(), dr::Stage::WORKERS, 8, true);
+  CHECK(Equal(depth_serial, none, "no family"));
+  CHECK(none.first_reason == "small round" && none.direct_calls == none.portions);
+  b_families = 0xff;
+  CHECK(family_segments > 0);
+  std::printf("B fall-backs: depth view types 0 / 0x55 / 0x60 and colour ones record; the visibility view, a small round, Direct, Off, a loop group off, a pool too small, another thread, not usable, an entry state and no family run directly; each family off keeps the picture\n");
+}
+
+// A direct segment between census chunks that leaves the tracker where a body does not: a pending count, a change mask or
+// another batch size. The check before the chunk (M2) runs it directly.
+static void BEntryCheck() {
+  uint32_t reruns = 0;
+  for (const bool colour : {false, true}) {
+    BSpec spec = {.seed = 21, .max_items = 20, .direct_percent = 4, .max_count = 6};
+    spec.colour = colour;
+    const auto world = BuildBWorld(spec);
+    for (const uint32_t leave : {1u, 2u, 3u}) {
+      direct_leave = leave;
+      const Outcome serial = RunBSerial(world.get());
+      for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+        for (const uint32_t k : {3u, 8u}) {
+          const Outcome staged = RunBStaged(world.get(), stage, k, true);
+          CHECK(Equal(serial, staged, "entry check"));
+          CHECK(!CompareDiffers(staged));
+          CHECK(staged.entry_reruns > 0);
+          reruns += staged.entry_reruns;
+        }
+      }
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+      // Without the check, the chunk after the direct segment replays from the round's start state: a pending count leaves a
+      // flush the chunk does not have, another batch size flushes elsewhere (a change mask alone changes nothing visible).
+      di::controls.entry_check = false;
+      const Outcome unchecked = RunBStaged(world.get(), dr::Stage::RECORDED, 4);
+      di::controls.entry_check = true;
+      // (A change of the batch size shows in Depth B only: most Colour B chunks miss their seeds and run again anyway.)
+      if (leave != 2 && (leave == 1 || !colour) && Equal(serial, unchecked, "control: entry check off", false)) {
+        std::printf("  entry check control did not differ: colour %d leave %u\n", colour, leave);
+        CHECK(false);
+      }
+#endif
+    }
+    direct_leave = 0;
+  }
+  std::printf("B entry check: a direct segment that leaves a count, a mask or another batch size makes the next chunk run directly (%u chunks), logs equal; with the check off the count and batch size cases differ\n", reruns);
+}
+
+// Seeds: the warm-ups, the step back over meshes without a technique, the unknown seed after four, validation.
+static void BSeeds() {
+  uint32_t unknown = 0;
+  for (const bool colour : {false, true}) {
+    BSpec spec = {.seed = 31, .none_percent = 85};
+    spec.colour = colour;
+    const auto sparse = BuildBWorld(spec);
+    const Outcome serial = RunBSerial(sparse.get());
+    for (const dr::Stage stage : RECORD_STAGES) {
+      const Outcome staged = RunBStaged(sparse.get(), stage, 8, true);
+      CHECK(Equal(serial, staged, "no technique before chunks"));
+      CHECK(!CompareDiffers(staged));
+      unknown += staged.unknown_seeds;
+    }
+    BSpec mixed_spec = {.seed = 32, .direct_percent = 4};
+    mixed_spec.colour = colour;
+    const auto mixed = BuildBWorld(mixed_spec);
+    const Outcome mixed_serial = RunBSerial(mixed.get());
+    CHECK(Equal(mixed_serial, RunBStaged(mixed.get(), dr::Stage::WORKERS, 8, true), "direct meshes change the seed"));
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+    // The direct meshes between chunks change the fields a warm-up could not see: without validation the replay starts wrong.
+    di::controls.validate_seeds = false;
+    const Outcome unvalidated = RunBStaged(mixed.get(), dr::Stage::RECORDED, 8);
+    di::controls.validate_seeds = true;
+    CHECK(!Equal(mixed_serial, unvalidated, "control: B seed validation off", false));
+#endif
+  }
+  CHECK(unknown > 0);
+  std::printf("B seeds: warm-ups step back over meshes without a technique, %u chunks had no seed after 4 meshes (run again), logs equal; validation off differs\n", unknown);
+}
+
+// The stride (+0x50): the driver sizes its next round from it; a chunk that wrote none leaves the real one.
+static void BStride() {
+  for (const bool colour : {false, true}) {
+    BSpec spec = {.seed = 41, .direct_percent = 5, .tail_disabled_percent = 30};
+    spec.colour = colour;
+    const auto world = BuildBWorld(spec);
+    const Outcome serial = RunBSerial(world.get());
+    for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+      CHECK(Equal(serial, RunBStaged(world.get(), stage, 8, true), "stride"));
+    }
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+    di::controls.stride_non_zero = false;
+    const Outcome zeroed = RunBStaged(world.get(), dr::Stage::RECORDED, 8);
+    di::controls.stride_non_zero = true;
+    CHECK(!Equal(serial, zeroed, "control: stride copied always", false));
+#endif
+  }
+  std::printf("B stride: the stride is zeroed after the fill and the warm-ups and copied back only when a chunk wrote it; copying it always differs\n");
+}
+
+// Overflowing chunks run again; a mesh twice in a round (trace frames) makes the round direct and is counted.
+static void BOverflowAndDuplicates() {
+  BSpec spec = {.seed = 51, .direct_percent = 3};
+  const auto world = BuildBWorld(spec);
+  const Outcome serial = RunBSerial(world.get());
+  uint32_t reruns = 0;
+  for (const uint32_t limit : {600u, 3000u}) {
+    di::op_buffer_limit = limit;
+    for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+      const Outcome staged = RunBStaged(world.get(), stage, 6, true);
+      CHECK(Equal(serial, staged, "B tiny buffers"));
+      CHECK(!CompareDiffers(staged));
+      reruns += staged.reruns;
+    }
+  }
+  di::op_buffer_limit = di::OP_ARENA_BYTES;
+  CHECK(reruns > 0);
+  spec.duplicates = 30;
+  const auto repeating = BuildBWorld(spec);
+  const Outcome repeating_serial = RunBSerial(repeating.get());
+  const Outcome repeated = RunBStaged(repeating.get(), dr::Stage::WORKERS, 6, true);
+  CHECK(Equal(repeating_serial, repeated, "duplicate meshes"));
+  CHECK(repeated.duplicates > 0 && repeated.first_reason == "duplicate meshes");
+  std::printf("B overflow and duplicates: tiny op buffers run chunks again (%u), logs equal; a mesh twice in a round runs it directly and is counted\n", reruns);
+}
+
+// The ops: a stub class's virtual call records nothing, another's is deferred; a state block's tracker writes happen in both
+// modes and its calls replay in the block's order.
+static void BRecordRules() {
+  uint32_t used = 0;
+  alignas(16) std::array<uint8_t, dr::TRACKER_SIZE> real = {};
+  dr::Slot* slot = di::PrepareSlot(0, static_cast<uint32_t>(dr::Group::COLOUR_B), real.data(), 4096, &used);
+  BMesh stub_mesh = {};
+  BMesh real_mesh = {};
+  stub_mesh.head.vtable = ClassVtable(0);
+  real_mesh.head.vtable = ClassVtable(6);
+  real_mesh.head.view_tag = 5;
+  real_mesh.head.pass = 6;
+  Field<uint32_t>(slot, 0x1c) = 0x11;
+  Field<uint32_t>(slot, 0x18) = 0x22;
+  Field<uint32_t>(slot, 0x24) = 0x33;
+  CHECK(Vf64Site(dr::Site::COLOUR_B_VF64, slot, reinterpret_cast<uint32_t>(&stub_mesh)) == 0);
+  CHECK(slot->ops_cursor == slot->ops_begin);
+  CHECK(Vf64Site(dr::Site::COLOUR_B_VF64, slot, reinterpret_cast<uint32_t>(&real_mesh)) == 0);
+  CHECK(slot->ops_cursor == slot->ops_begin + 1 + di::VF64_PAYLOAD);
+  CHECK((slot->ops_begin[0] & 0xffff) == static_cast<uint32_t>(di::OpKind::VF64) && slot->ops_begin[2] == 0x11 && slot->ops_begin[3] == 0x22
+        && slot->ops_begin[4] == 0x33 && slot->ops_begin[5] == 5 && slot->ops_begin[6] == 6);
+  // A group A slot refuses a B site.
+  dr::Slot* other = di::PrepareSlot(1, static_cast<uint32_t>(dr::Group::DEPTH_A), real.data(), 4096, &used);
+  Vf64Site(dr::Site::COLOUR_B_VF64, other, reinterpret_cast<uint32_t>(&real_mesh));
+  CHECK((other->flags & dr::SLOT_UNKNOWN_CLASS) != 0);
+  // The state block: writes in both modes, the op only when recording.
+  dr::StateBlock block = {.parts = dr::STATE_SNOW | dr::STATE_DIFFUSE | dr::STATE_NORMAL | dr::STATE_FACTION,
+                          .writes = dr::STATE_WRITE_FLAGS | dr::STATE_WRITE_TEXTURES | dr::STATE_WRITE_FACTION,
+                          .flags = 0x5a,
+                          .snow_object = reinterpret_cast<uint32_t>(&const1_blocks[1]),
+                          .snow_bits = 0,
+                          .diffuse_slot = 0x41f4,
+                          .diffuse = 3,
+                          .normal_slot = 0x421c,
+                          .normal = 2,
+                          .faction = -1,
+                          .mask = 0,
+                          .node = reinterpret_cast<uint32_t>(&synth_node),
+                          .state = reinterpret_cast<uint32_t>(synth_node.state)};
+  uint32_t* const before = slot->ops_cursor;
+  slot->mode = dr::MODE_SUPPRESS;
+  StateSite(slot, block);
+  CHECK(slot->ops_cursor == before && slot->tracker[0x10] == 0x5a && Field<uint32_t>(slot, 0x04) == 3 && Field<uint32_t>(slot, 0x08) == 2
+        && Field<int32_t>(slot, 0x00) == -1 && Field<int32_t>(slot, 0x0c) == -1);
+  slot->mode = dr::MODE_RECORD;
+  Field<uint32_t>(slot, 0x04) = 0;
+  StateSite(slot, block);
+  CHECK(slot->ops_cursor == before + 1 + di::STATE_PAYLOAD && Field<uint32_t>(slot, 0x04) == 3);
+  // The replay: the real tracker's cells and the log get the calls in the block's order.
+  game_log.clear();
+  const1_cells.fill(1.0f);
+  cached_constants = 0;
+  di::Replay replay = {.real = real.data(), .group_index = static_cast<uint32_t>(dr::Group::COLOUR_B), .last_anim = -1, .op_count = 0, .trace_call = nullptr};
+  real_mesh.head.view_tag = 5;
+  di::ReplayChunk(&replay, slot);
+  CHECK(replay.op_count == 2);
+  CHECK(game_log.size() == 5 && game_log[0][0] == 8 && game_log[1][0] == 4 && game_log[2][0] == 5 && game_log[3][0] == 5 && game_log[4][0] == 6);
+  CHECK(game_log[2][1] == 0x41f4 && game_log[2][2] == FakeView(3) && game_log[3][1] == 0x421c);
+  std::printf("B records: a stub class's virtual call records nothing, another's is deferred with its arguments and snapshots; a state block writes the tracker in both modes and replays its calls in order\n");
+}
+
+// The trace of the B groups: armed from the environment, the last frame compares (per run of census chunks), the file names the
+// B round's numbers (the gates).
+static void BTrace() {
+  BSpec spec = {.seed = 81, .direct_percent = 4};
+  spec.colour = true;
+  const auto world = BuildBWorld(spec);
+  const std::filesystem::path file = std::filesystem::path(__argv[0]).parent_path() / "tw_draw_recording.txt";
+  std::filesystem::remove(file);
+  SetEnvironmentVariableA("RENODX_TW_DRAW_TRACE", "0,3");
+  di::trace.read_environment = false;
+  di::trace.armed = false;
+  di::trace.finished = false;
+  di::controls.compare_every_call = false;
+  ResetBWorld(world.get());
+  const dr::Settings settings = {.stage = dr::Stage::WORKERS, .threads = 6, .loops = 12};
+  dr::Update(settings, true);
+  CHECK(di::trace.armed);
+  dr::Update(settings, true);
+  CHECK(di::trace.active);
+  for (int frame = 0; frame < 2; ++frame) {
+    const size_t calls_before = di::trace.calls.size();
+    BDriver(world.get(), [&](uint32_t first, uint32_t last) {
+      dr::DispatchMesh(world->tracker.data(), B_DEVICE, &world->view, world->list_type, &synth_node, world->sorted.data(), first, last);
+    });
+    CHECK(di::trace.calls.size() > calls_before);
+    for (size_t i = calls_before; i < di::trace.calls.size(); ++i) {
+      const di::CallTrace& call = di::trace.calls[i];
+      CHECK(call.compared == (frame == 1));
+      CHECK(call.group == dr::Group::COLOUR_B);
+      CHECK((call.compare_result == di::CompareResult::NONE) == !(frame == 1 && call.chunks > 1));
+      CHECK(call.meshes > 0 && call.census_items + call.direct_items > 0);
+    }
+    dr::Update(settings, true);
+  }
+  di::controls.compare_every_call = true;
+  CHECK(!di::trace.active && di::trace.finished);
+  std::ifstream stream(file, std::ios::binary);
+  const std::string text_value((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+  CHECK(text_value.find("group 3 family -") != std::string::npos);
+  CHECK(text_value.find("B round: meshes ") != std::string::npos && text_value.find("duplicate meshes 0") != std::string::npos);
+  CHECK(text_value.find("seeds hit ") != std::string::npos && text_value.find("planner ") != std::string::npos);
+  CHECK(text_value.find("vf64 ") != std::string::npos && text_value.find("state ") != std::string::npos);
+  CHECK(text_value.find("compare: equal") != std::string::npos || text_value.find("compare: not comparable") != std::string::npos);
+  CHECK(text_value.find("differs") == std::string::npos);
+  SetEnvironmentVariableA("RENODX_TW_DRAW_TRACE", nullptr);
+  stream.close();
+  std::filesystem::remove(file);
+  std::printf("B trace: armed from the environment wrote the file (group, the B round's meshes, census share, seeds, planner time), compare not different\n");
+}
+
+// A compare difference latches the group off (S9b): the next rounds run directly, logs equal.
+static void BLatch() {
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  BSpec spec = {.seed = 61, .max_items = 20, .max_count = 6};
+  const auto world = BuildBWorld(spec);
+  const Outcome serial = RunBSerial(world.get());
+  // An op injected into a chunk the compare sees (a chunk run again hides it): the first of chunks 1 to 3 that replays.
+  Outcome injected;
+  for (const int chunk : {1, 2, 3}) {
+    di::latched_groups = 0;
+    di::controls.latch_groups = true;
+    test_controls.inject_chunk = chunk;
+    injected = RunBStaged(world.get(), dr::Stage::RECORDED, 4, true);
+    test_controls.inject_chunk = -1;
+    di::controls.latch_groups = false;
+    if (CompareDiffers(injected)) break;
+  }
+  CHECK(CompareDiffers(injected));
+  CHECK((di::latched_groups & (1u << static_cast<uint32_t>(dr::Group::DEPTH_B))) != 0);
+  di::controls.latch_groups = true;
+  const Outcome latched = RunBStaged(world.get(), dr::Stage::RECORDED, 4, true);
+  di::controls.latch_groups = false;
+  CHECK(Equal(serial, latched, "latched off"));
+  CHECK(latched.first_reason == "latched off" && latched.direct_calls == latched.portions);
+  di::latched_groups = 0;
+  std::printf("B latch: a compare that differs switches the group off for the rest of the run; the next rounds run directly\n");
+#else
+  std::printf("B latch: skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
+#endif
+}
+
+// Each B control makes one thing wrong; its run must differ (or its violation must show).
+static void BControls() {
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  for (const bool colour : {false, true}) {
+    BSpec spec = {.seed = 71, .max_items = 20, .direct_percent = 8, .max_count = 6};
+    spec.colour = colour;
+    const auto world = BuildBWorld(spec);
+    const Outcome serial = RunBSerial(world.get());
+    CHECK(Equal(serial, RunBStaged(world.get(), dr::Stage::RECORDED, 8, true), "B control baseline"));
+    CHECK(direct_on_slot == 0);
+    // The census flags: a direct class's body must never run on a slot.
+    di::controls.class_flags = false;
+    RunBStaged(world.get(), dr::Stage::RECORDED, 8);
+    di::controls.class_flags = true;
+    CHECK(direct_on_slot > 0);
+    di::controls.capture_any = false;
+    CHECK(!Equal(serial, RunBStaged(world.get(), dr::Stage::RECORDED, 8), "control: B any capture off", false));
+    di::controls.capture_any = true;
+    // (Depth B's meshes keep one view tag and pass: its snapshots equal what the replay finds anyway.)
+    di::controls.restore_snapshots = false;
+    if (colour) CHECK(!Equal(serial, RunBStaged(world.get(), dr::Stage::RECORDED, 8), "control: B snapshot restore off", false));
+    di::controls.restore_snapshots = true;
+    test_controls.drop_end_flush = true;
+    CHECK(!Equal(serial, RunBStaged(world.get(), dr::Stage::RECORDED, 4), "control: B dropped end flush", false));
+    test_controls.drop_end_flush = false;
+    // An op injected into one chunk: one that replays (a chunk run again hides it, and stops the compare after it) must differ and be named. (A list
+    // without direct meshes: after those most chunks miss their seeds and run again.)
+    BSpec plain_spec = {.seed = 72, .max_items = 20, .max_count = 6};
+    plain_spec.colour = colour;
+    const auto plain = BuildBWorld(plain_spec);
+    const Outcome plain_serial = RunBSerial(plain.get());
+    bool differs = false;
+    bool named = false;
+    for (const uint32_t k : {2u, 3u, 4u, 8u}) {
+      for (uint32_t chunk = 1; chunk < k; ++chunk) {
+        test_controls.inject_chunk = static_cast<int>(chunk);
+        const Outcome injected = RunBStaged(plain.get(), dr::Stage::RECORDED, k, true);
+        test_controls.inject_chunk = -1;
+        differs = differs || !Equal(plain_serial, injected, "control: B injected op", false);
+        named = named || CompareDiffers(injected);
+      }
+    }
+    CHECK(differs && named);
+    CHECK(Equal(serial, RunBStaged(world.get(), dr::Stage::WORKERS, 8), "B controls cleared"));
+  }
+  std::printf("B controls: class flags off (a direct class runs on a slot), any capture off, snapshot restore off, dropped end flush, injected op: each shows; the other controls are in their tests\n");
+#else
+  std::printf("B controls: skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
+#endif
+}
+
 static void Detach() {
   const auto world = BuildWorld({.items = 6000, .seed = 31, .max_run = 10});
   const Outcome serial = RunSerial(world.get());
@@ -2193,7 +3225,6 @@ int main() {
   DepthControls();
   ColourRecordRules();
   ColourOpsEqual();
-  RecordWorkMeshes();
   ColourReplayUnits();
   ColourStages();
   ColourInterleaved();
@@ -2203,6 +3234,18 @@ int main() {
   ColourClaimControl();
   ColourWarmUpRestore();
   ColourControls();
+  BClassTable();
+  BStages();
+  BFallbacks();
+  BEntryCheck();
+  BSeeds();
+  BStride();
+  BOverflowAndDuplicates();
+  BRecordRules();
+  BTrace();
+  BLatch();
+  BControls();
+  test_controls.entry_site = false;
   Detach();
   if (failures != 0) {
     std::printf("%d FAILED\n", failures);
