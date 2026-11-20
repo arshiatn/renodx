@@ -2006,7 +2006,7 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           .tooltip = "The mod's shader settings go to the GPU once a frame instead of before every draw:\n"
                      "less waiting on the graphics driver on the render thread. Same results.\n"
-                     "Turning it off takes effect after a restart.",
+                     "Turning it off takes effect after restarting the game.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{
@@ -2018,7 +2018,7 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           .tooltip = "The game's shader constants go to the GPU through one shared ring instead of a new buffer each time:\n"
                      "the render thread waits less for the graphics driver. Same results.\n"
-                     "Off applies after a restart.",
+                     "Turning it off takes effect after restarting the game.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

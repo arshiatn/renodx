@@ -1135,12 +1135,15 @@ inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
     pool.off_latched = false;
     if ((on && !stop) || pool.open_maps != 0) return;
     internal::Remove();
-    if (stop && on) {
-      Microsoft::WRL::ComPtr<ID3D11Device> device;
-      context->GetDevice(device.GetAddressOf());
-      pool.refused = device.Get();
-      renodx::utils::log::w("[Total War] Fewer Driver Waits: off until the row is turned off and on again. Restart the game for"
-                            " full speed.");
+    // A stop hands the game's buffers back live (the row's Off latched or not): full speed again after a restart.
+    if (stop) {
+      if (on) {
+        Microsoft::WRL::ComPtr<ID3D11Device> device;
+        context->GetDevice(device.GetAddressOf());
+        pool.refused = device.Get();
+      }
+      renodx::utils::log::w("[Total War] Fewer Driver Waits: off", (on ? " until the row is turned off and on again" : ""),
+                            ". Restart the game for full speed.");
     }
     return;
   }

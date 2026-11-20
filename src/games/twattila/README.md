@@ -29,8 +29,9 @@
   until the game restarts"; the tooltip says so): batch 3's live Off handed the game's buffers back and 4 of 6 starts got
   +11..+45 ms a frame (the driver no longer renamed them). A call on the context from another
   thread, a lost device, a body in the context's table that the install never saw (checked at each present and after
-  each swap: another d3d11.dll build) or a swap below the hook: the ring unwinds at the render thread's next call and
-  stays off until the row is turned off and on again (logged, with "Restart the game for full speed."). Our own constant buffers are made below ReShade (no
+  each swap: another d3d11.dll build) or a swap below the hook: the ring unwinds at the render thread's next call (the
+  Off latched or not) and stays off until the row is turned off and on again (logged, with "Restart the game for full
+  speed."). Our own constant buffers are made below ReShade (no
   init_resource): never in the ring. Rome II, Thrones and WH3 compile it without the row.
 - Checked in `test/tw_buffer_pool` (x86, amd64, WARP: pixels, compute output and copies equal with the ring, a full ring,
   another thread's call and the measure path beside it, seven CONTROLS that must differ; Get / Get1 / Map parity and the
