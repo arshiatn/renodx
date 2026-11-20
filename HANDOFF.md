@@ -4033,7 +4033,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         PASS, harness ring parity on W3m b2 v3 equal (only the upload control differs there). Gated x86 3 + amd64 13 exit 0.
         Zombie test exe locks testbin\s5o_buffer_pool_x86 (reboot clears). s5r_ (Opus xHigh, independent) id
         a40d2e052afe50821 STARTED 14:xx -> reports/s5r_review.md; then s5o_ fixes, s5r_ re-checks, merge.
-        b2a_ DONE 15:xx (bench/analysis_b2/report.md, saved by the coordinator: the harness refused b2a_'s Write): NO CB
+        b2a_ DONE 13:1x (bench/analysis_b2/report.md, saved by the coordinator: the harness refused b2a_'s Write): NO CB
         DISCARD WAITS in batch 2. The wait MOVED to the game's 464,000 B dynamic VB ring (2nd DISCARD a frame, ia0; W3m 13-16
         ms untraced, ATNmF 27-35 ms) + 8 MB VB rings; b1's CB victims DISCARD at the same draw and wait 0. The driver drains
         the whole queue at whichever DISCARD it won't rename -> a CB-only ring likely moves the wait (W3m polls 290 vs b1 311
@@ -4052,7 +4052,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         the permission system, reason "Undermining Oversight". Not retried, not worked around, not run by the coordinator.
         Trace files copied to bench/analysis_b2/replay/b2_W3m + b2_D1m. Waits for ATN: run the 4 commands yourself, or
         give a one-time unchanged retry, or skip S6's harness runs for now.
-        c2r_ DONE 15:xx (reports/c2r_review.md): MERGE AFTER FIXES. Must: F1 tracker +0x50 is READ by the driver (0x17ae4e5 /
+        c2r_ DONE 13:2x (reports/c2r_review.md): MERGE AFTER FIXES. Must: F1 tracker +0x50 is READ by the driver (0x17ae4e5 /
         0x17ae771; v2's N1 + c2i_ claim wrong) -> zero after warm-ups, copy back only non-zero; F2 first-mesh-of-chunk-0 race
         (M0 +0x40 / +0x44 from another view) -> run direct; F3 trace totals include trace-only work. Should F4-F13 (x87 / MXCSR
         every dispatch, no string alloc, +0x58 / +0x78 entry checks, op buffer size, K + chunk sizes in trace, CreateThread
@@ -4060,15 +4060,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         F15 for C.3 (one caller of 0x17b17f0, TLS, VF68 vtable check). Coordinator's Linux-name check: GameCalls fields
         set_animation / set_dirty / set_shader_resource / set_faction_colours / texture_view + SetAnimationFn match Linux
         method names -> RENAME to neutral (in the fix round).
-        c1o_ DONE 15:xx (reports/c1o_design_C_full_v3.md, PRIVATE): full build, no blockers. Groups Depth A 1.8-2.3 / Colour A
+        c1o_ DONE 13:2x (reports/c1o_design_C_full_v3.md, PRIVATE): full build, no blockers. Groups Depth A 1.8-2.3 / Colour A
         1.7-2.5 / Depth B 0.5-0.8 / Colour B 0.5-0.9 ms at K=4 (E), total 4.5-6.5 ms. 52 sites in C's own 2nd site table
         (uint64, 12 spare; old table stays 25 sites uint32), one flush-entry hook 0x1778390 replaces 42 call sites, any-capture
         replaces SETANY, folded driver loop 2 cut 0x17aed4a, 3 classes direct; heapfix batchfix keeps +0x14 live in N depth
         bodies (seeds stay [0,0x14)); passtime FULL dev mode -> C stands down. Steps: C.2 fix round (+ v3 changes), C.2-3,
         C.2-4 (4 group rows), NEW C.2-5 (B path), C.3-1..4. Batch: 8 starts ~45 min (+ optional N-heavy siege start: ask ATN
-        for a siege / city replay). c2i_ RESUMED 15:xx: fix round (F1-F14 + v3 changes + renames). c1r_ (af3a62018ba20d485)
+        for a siege / city replay). c2i_ RESUMED 13:2x: fix round (F1-F14 + v3 changes + renames). c1r_ (af3a62018ba20d485)
         RESUMED: independent review of note v3 + census -> reports/c1r_review_v3.md (gate before C.3's new groups).
-        s5r_ DONE 16:xx (reports/s5r_review.md): MERGE AFTER FIXES. Core reference model: no bug. M1 piece reuse after a failed
+        s5r_ DONE 13:3x (reports/s5r_review.md): MERGE AFTER FIXES. Core reference model: no bug. M1 piece reuse after a failed
         Advance (full ring) writes into a closed / ended piece -> wrong constants while bound (binding-exactness = CORE by the
         brief -> the EXTRA independent review applies after the re-check); M2 Unwind writes back destroyed records (UAF on a
         mid-frame unwind). Should: S1 NVIDIA parity + native plain Set when nothing ringed; S2 cost E 0.2-1.0 ms/f W3 / 0.1-0.4
@@ -4077,13 +4077,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         can't pass batch 3's W3 gate; keep OFF until a VB part or a measured gain. FCU + ring never double-handle the 432 B CB
         (both made below the proxy). VB extension design = "own rename": N shadow buffers (4-6 x 464 KB), DISCARD switches
         shadow, IA offsets kept, +1 body (IAGetVertexBuffers slot 79), E 300-500 lines + tests; risk: 8 MB rings next.
-        s5o_ RESUMED 16:xx: fix round (M1, M2, S1-S5, S7, nits; no VB yet, no GPU runs). Then s5r_ re-checks, then the extra
+        s5o_ RESUMED 13:3x: fix round (M1, M2, S1-S5, S7, nits; no VB yet, no GPU runs). Then s5r_ re-checks, then the extra
         independent review, then merge.
-        c2i_ FIX ROUND DONE 16:xx: rmt_c2 b5e97fef0 (F1-F14 + v3 C.2 changes + neutral renames; F15 left for C.3). tw_draw_
+        c2i_ FIX ROUND DONE 13:39: rmt_c2 b5e97fef0 (F1-F14 + v3 C.2 changes + neutral renames; F15 left for C.3). tw_draw_
         recording x86 960 depth cases PASS (new +0x50 / continuation / any-capture controls differ), tw_cpu_sets x86 + amd64
         PASS, build32 twattila exit 0 (temp include, reverted). Seed misses in no-technique runs cost reruns (exact, slower) ->
         v3's step-back seed search in C.2-5. c2r_ RE-CHECK started.
-        c1r_ v3 REVIEW DONE 17:xx (reports/c1r_review_v3.md, saved by the coordinator): GO WITH CHANGES. Must: M1 +0x50 for
+        c1r_ v3 REVIEW DONE 13:48 (reports/c1r_review_v3.md, saved by the coordinator): GO WITH CHANGES. Must: M1 +0x50 for
         the B groups (folded driver divides by it every round; direct segments make it worse); M2 check real +0x58 / +0x78 /
         +0x64 before replaying a census chunk after a direct segment; M3 class 0x11cbdc84 makes the same call that forces
         0x11cbddd0 direct -> coordinator: force BOTH direct; M4 trace-only work out of B's totals. Confirmed exact: any-
@@ -4093,18 +4093,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         group's first compare diff, mandatory paused-view dump for B, pre-flight, Colour A continuation check, batch may run
         without Colour B). c1o_ RESUMED: writes the v3.1 addendum at the end of c1o_design_C_full_v3.md. The C batch (8
         starts) needs ATN's go later.
-        c1o_ v3.1 ADDENDUM DONE 17:xx (end of c1o_design_C_full_v3.md; spec of record = v2 + v3 + v3.1, v3.1 wins): M1-M4 +
+        c1o_ v3.1 ADDENDUM DONE 13:49 (end of c1o_design_C_full_v3.md; spec of record = v2 + v3 + v3.1, v3.1 wins): M1-M4 +
         S1-S11 folded in; Depth B 20 census / 3 direct, Colour B 19 / 4; C table 59 of 64 sites (7 fallback flush sites
         counted); batch now ~51 min / 9 starts (+8 optional N-heavy). Next C: C.2-3 (c2i_) after c2r_'s re-check, then
         C.2-4 / C.2-5; C.3-1 (Sonnet High, own worktree) can start after the C.2 base merges.
-        c2r_ RE-CHECK DONE 17:xx (c2r_review.md "Re-check"): MERGE AFTER N1 (N1 = compare only in one trace frame, timings
-        from the others; N2-N4 + F7 / F13 go with C.2-3). C BASE MERGED 17:xx: rmt_c2 b5e97fef0 -> atn-mods 048fccae7
+        c2r_ RE-CHECK DONE 13:54 (c2r_review.md "Re-check"): MERGE AFTER N1 (N1 = compare only in one trace frame, timings
+        from the others; N2-N4 + F7 / F13 go with C.2-3). C BASE MERGED 13:55: rmt_c2 b5e97fef0 -> atn-mods 048fccae7
         (pushed): draw_recording.hpp + cpu_sets worker_sets publish. c2i_ RESUMED on rmt_c2: commit 1 = N1 + F7 shoulds,
         commit 2 = C.2-3 colour path (Colour A, v3.1 S1 / S2 / S7 / M4, N2-N4, F13 control, S10 listing check); then a
         fresh Opus xHigh review. C.3-1 STARTED: c3i_ a77126f3fada50077 (Sonnet High) in worktree .claude/worktrees/rmt_c3
         (branch rmt_c3 from 048fccae7, 10 links: remove them alone before any cleanup): C's own uint64 site table, flush-
         entry hook 0x1778390, Depth A sites, 7 fallback flush sites, F15, real-bytes tests; then an Opus xHigh review.
-        s5o_ FIX ROUND DONE 18:xx: rmt_s5 b5e89f0b2 (on ffaba9804, not pushed; reports/s5o_fix_report.md). M1 (bp:575, new
+        s5o_ FIX ROUND DONE 14:20: rmt_s5 b5e89f0b2 (on ffaba9804, not pushed; reports/s5o_fix_report.md). M1 (bp:575, new
         WRAP control, negative check differs), M2 (bp:387 / :569), S1 native plain Set, S2 redundant-Set fast path, S3 copy
         slots per present + d3d11 version log, S4 tests, S5 hash <= 64 KB CBs, S7 flagged maps native, N1-N11. NOT done (GPU
         harness blocked): S1 NVIDIA parity, S2 overhead vs the 0.1 ms gate; VB extension waits for ATN. WARP: tw_buffer_pool
