@@ -4194,12 +4194,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         (ATN's settings as 2_ATNmF, FCU 0@0 / OFF1 107 s / ON 132 s / OFF2 157 s, 25 s each, WPR 70-183 s GPU profile,
         probes all before 107 s) + b2b_T (b2_W3, RENODX_TW_MAP_TRACE=97,8 no hash). Build = batch 2's rmt_b2_fp 79d4a7ab +
         helper final1118 + HFx. ~11 min; FCU ETL ~5-6 GB. Risk: c31r_'s engine_code.exe test must have exited (HOLD).
-        ATN 18:0x: harness rule? -> settings.local.json ALREADY allows `powershell -NoProfile -ExecutionPolicy Bypass -File
+        ATN 17:1x: harness rule? -> settings.local.json ALREADY allows `powershell -NoProfile -ExecutionPolicy Bypass -File
         D:\Dev\renodx\.claude\worktrees\*` and the classifier still refused -> a new rule likely won't help; ATN runs the
         commands. C batch (9 starts) = ATN's GO once C is built (ATN "Sure"). Building-heavy start: stress is in the batch
         already; the optional one is for buildings (B groups) -> skip unless a siege / settlement replay exists. MAX 3
         AGENTS at a time after the current ones (Max 5-hour limits; Ultra ~11-22). Batch 2b waits for ATN's "now".
-        c31r_ REVIEW DONE 18:1x (reports/c31r_review.md): MERGE AFTER M1 + M2. Re-ran tw_draw_recording_sites, tw_draw_
+        c31r_ REVIEW DONE 17:1x (reports/c31r_review.md): MERGE AFTER M1 + M2. Re-ran tw_draw_recording_sites, tw_draw_
         recording_loop, tw_engine_code -Quick x86: PASS. All 12 sites / thunks / ret sizes / no overlaps verified vs dis_at.
         M1 a VirtualProtect failure stands down one site and writes the rest (VF68 on a worker) -> protect all first, all
         or none; M2 the last removal checks EIPs only in the cut stubs (direct paths read Shared -> UAF after Uninstall) ->
@@ -4209,12 +4209,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         right, workers counted, passtime safe enough, Update order right, BuildCut needs args / ret / slot per group).
         Coordinator: keep the single-use builders (C.3-2..4 add callers). c3i_ fix round QUEUED (3-agent cap): M1 / M2 /
         S1-S5 / nits, then c31r_ re-checks.
-        s5o_ R1 ROUND DONE 18:1x: rmt_s5 47085a2c8 (R1 locked pass skips destroyed records still in a piece + erase keeps
+        s5o_ R1 ROUND DONE 17:1x: rmt_s5 47085a2c8 (R1 locked pass skips destroyed records still in a piece + erase keeps
         them, Nit 7 depth around CheckTable, t:538 comment, SETTLE_OFF pinned); tw_buffer_pool x86 + amd64 PASS, gated
         builds exit 0. Coordinator checked the diff = s5x_'s prescribed fix (no extra review round). S5 ROUND 2 MERGED
-        18:2x: atn-mods 3829a1217; build32 of the merged tree (attila, rome2, thrones x86) exit 0. c3i_ RESUMED (agent 3 of 3): C.3-1 fix round. s5o_
+        17:1x: atn-mods 3829a1217; build32 of the merged tree (attila, rome2, thrones x86) exit 0. c3i_ RESUMED (agent 3 of 3): C.3-1 fix round. s5o_
         idle until s5r_'s VB design. ATN's harness script: bench/analysis_b2/replay/atn_harness_runs.ps1 (runs 1-5c in
-        order; -Overhead = run 6 in the quiet window); ATN STARTED it 18:2x (runs 1-5c).
+        order; -Overhead = run 6 in the quiet window); ATN STARTED it 17:14 (runs 1-5c).
+        HARNESS RUNS 1-5c DONE 17:18 (ATN's terminal, RTX 5090, ring at 47085a2c8; bench/analysis_b2/replay/h*.txt UTF-16):
+        NVIDIA PARITY: none EQUAL bit for bit (D1m 8 frames 51,965 draws; W3m 7 frames 29,389 draws); upload control differs
+        (35,989 rows); window / offset EQUAL on game traces (no Set1: synthetic-only, WARP covers them); no unknown-body
+        lines. W3m LOCATOR native -> ring (ms/f, run 1 / 2): cb_discard 0.68 / 0.51 -> 0.06 / 0.04 (waits 0.28 / 0.14 ->
+        0); unmap 0.09 / 0.07 -> 0.53 / 0.41 (ring upload); bind +0.07-0.11; all calls 3.75 / 3.31 -> 3.79 / 3.19 = about
+        even. vb_discard 2.3-2.4 ms/f waits unchanged: the 8 MB VB rings (8,388,480 B: 13 ms + 9-10 ms single calls), a 3 MB
+        one (1.3 ms); the 464 KB ring only 0.17 ms once -> sent to s5r_ for the VB design (8 MB rings + cut the Unmap upload
+        cost). GPU checks box: item 1 (parity) DONE; item 2 (D1m overhead x20) = quiet window.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4240,7 +4248,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         colour round (owner the C.3 implementer); S-4 (b) arm more compare frames in the C-A batch plan (G2 samples only
         1 of 3 frames) -> owner coordinator.
       - [ ] S5 RING GPU CHECKS (s5r_ re-check 11-20; gate ANY game run / release with "Fewer Driver Waits" on, batch 3
-        included; blocked now: the harness GPU run was denied 11-20, needs ATN's go or ATN runs it): 1. NVIDIA x86 parity:
+        included; agents can't run the harness (classifier), ATN runs bench/analysis_b2/replay/atn_harness_runs.ps1): 1. DONE
+        11-20 17:18 (EQUAL, upload differs, no unknown-body line) NVIDIA x86 parity:
         harness `--nvidia --plugin ring` on b2_W3m + b2_D1m, `none` EQUAL, every control differs, no "copy body unknown"
         log line; 2. D1m overhead: `--mode overhead`, 20 runs ABBA, vs the 0.1 ms/f gate, redundant-Set skip included.
         Owner: coordinator
