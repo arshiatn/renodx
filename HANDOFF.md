@@ -4233,6 +4233,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         --gpu-ms 25): D3D11 calls native 24.87 +- 0.70 vs ring 2.04 +- 0.03 ms/f = ring -22.83 +- 0.70 ms/f; hooked
         calls 24.77 vs 1.95. Native waits ~23 ms/f in CB DISCARDs under GPU load; OPEN: how much is ReShade's 432 B buffer
         (FCU's case in the game) -> s5r_. Gate (ring adds <= 0.1 ms/f) passed in this replay. BATCH 2b STARTED 17:3x.
+        BATCH 2b DONE 17:32-17:41, both VALID, hash mismatches after restore 0, nvlddmkm events 0: runs/b2b_FCU_wpr_atn_173201
+        /1_FCUt (FCU changes logged 0 @ 0 / 0 @ 107 / 1 @ 132.01 / 0 @ 157.05 s, all OK; WPR 70-183 s, ETL 6.33 GB) + runs/
+        b2b_T_wpr_cpu_173657/1_W3t (trace 97,8 hash=off, hash_ms 0; 8 frames 33,956 draws, 49,152 native calls, 1,436
+        dropped, first_drop_seq 146,417; ETL 2.55 GB). b2b_check.ps1: 0 failed. Agents RESUMED 17:4x (c2i_, c3i_, s5r_ +
+        the D1m overhead questions). ANALYSIS of 2b QUEUED for the next free slot (3-agent cap): b2a_ (FCU OFF / ON / OFF
+        frame times + helper pairs + driver waits per segment; T start: v3 timings without the hash vs b2 W3m).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
