@@ -4004,6 +4004,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         C.2-2, Sonnet High, rmt_c2); c1o_ aa3cda2c36420de87 (C full-build note v3 -> reports/c1o_design_C_full_v3.md, Opus
         xHigh); b2p_ a98370844dc5fd28e (batch 2 prep: rmt_b2_fp build, b2_run.ps1 + b2_*.json, dry run only). All told the
         HOLD protocol (finish the running command, hand back). Batch 2 run = coordinator, after b2p_ is ready + all held.
+        b2p_ DONE 12:2x: tools/tw/bench/b2_run.ps1 + variants b2_W3 / b2_ATN (ATNm + ATNmF) / b2_D1; add-on testbin/
+        cpu1_addons/rmt_b2_fp (frame-pointer, sym_build_head.ps1 -FramePointers, from a024360a7, sha256 79d4a7ab...), helper
+        final1118, heapfix HFx, as batch 1. Coordinator moved W3m to 97,8,hash (95,12 hit the pass-timing frame + capped
+        rooms); ATNm / ATNmF 95,6,hash (ATNm OFF drops ~1-2k native calls in frame 5 only: use frames 0-4); D1m 95,8,hash.
+        v3 file lands in <start>\new_game_files\. Dry run 2 clean. ALL 3 AGENTS HELD: s5o_ (commit 1 = e6a835ffc; ring
+        written, UNCOMMITTED; WARP rewrites copy slots 46/47/115 after a Flush -> hook both copy bodies next), c2i_ (no code
+        yet, design settled), c1o_ (census ~40 %: folded driver = 1 E9 site 0x17aed4a, N loops like weighted, ~52 C sites ->
+        a second 64-bit site table; files scratchpad\c3o). GAME BATCH 2 STARTED 12:3x (b2_run_out.txt).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
