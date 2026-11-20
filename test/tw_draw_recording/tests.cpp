@@ -331,8 +331,19 @@ struct TestControls {
   int overflow_chunk = -1;
   // The flush entry's site id for every flush instead of the call-site ids.
   bool entry_site = false;
+  // The mesh of the op an injection adds (0: the flush's own mesh).
+  uint32_t inject_mesh = 0;
 };
 static TestControls test_controls;
+
+// A real flush that calls the dispatcher (A nesting): every nest_a_every-th flush, nest_a_budget times, runs nest_a_call.
+static uint32_t nest_a_every = 0;
+static uint32_t nest_a_flushes = 0;
+static uint32_t nest_a_budget = 0;
+static bool nest_a_running = false;
+static void (*nest_a_call)() = nullptr;
+// The mesh of the op the last injection added.
+static uint32_t injected_mesh = 0;
 
 // The real flush's tracker writes: the cursor +0x5c advances by count x stride, the +0x28 cache is written, the +0x69 byte is
 // read and cleared. The pointers in the arguments are the tracker's.
@@ -352,6 +363,12 @@ static void __thiscall FakeFlush(void* mesh, uint32_t a0, uint32_t a1, uint32_t 
   *reinterpret_cast<uint32_t*>(static_cast<uintptr_t>(a6)) += a4 * (m->kind + 1);
   *reinterpret_cast<uint32_t*>(static_cast<uintptr_t>(a8)) = a4 ^ a2;
   *any = 0;
+  if (nest_a_every != 0 && nest_a_budget > 0 && !nest_a_running && ++nest_a_flushes % nest_a_every == 0) {
+    --nest_a_budget;
+    nest_a_running = true;
+    nest_a_call();
+    nest_a_running = false;
+  }
 }
 static uint8_t __thiscall FakeVf68(void* mesh, uint32_t view, uint32_t zero) {
   const auto* m = static_cast<const SynthMesh*>(mesh);
@@ -484,6 +501,8 @@ static void FlushSite(dr::Site site, void* t, uint32_t mesh, uint32_t technique,
   if (test_controls.inject_chunk == static_cast<int>(slot->chunk) && slot->mode == dr::MODE_RECORD
       && (site == dr::Site::DEPTH_FLUSH_BOUNDARY || site == dr::Site::COLOUR_FLUSH_BOUNDARY)) {
     test_controls.inject_chunk = -1;
+    injected_mesh = (test_controls.inject_mesh != 0 ? test_controls.inject_mesh : mesh);
+    image.frame.ecx = injected_mesh;
     dr::Record(slot, &image.frame);
   }
 }
@@ -1006,7 +1025,8 @@ static bool CompareDiffers(const Outcome& outcome) {
   return outcome.compares[static_cast<size_t>(di::CompareResult::DIFFERS)] + outcome.compares[static_cast<size_t>(di::CompareResult::COMPARE_HAS_MORE)] > 0;
 }
 
-static void ResetWorld(World* world) {
+// A world's own state at the start of a run (the shared page and the log are ResetWorld's).
+static void ResetState(World* world) {
   for (SynthMesh& mesh : world->meshes) {
     mesh.view_tag = 0xffffffff;
     mesh.pass = 0xffffffff;
@@ -1046,6 +1066,10 @@ static void ResetWorld(World* world) {
     world->start_mesh->view_tag = Field<uint32_t>(t, 0x20);
     world->start_mesh->pass = 0;
   }
+}
+
+static void ResetWorld(World* world) {
+  ResetState(world);
   g_shared->seed_anim = -1;
   g_shared->last_anim = -1;
   game_log.clear();
@@ -1060,6 +1084,8 @@ static Outcome Capture(World* world) {
 }
 
 static void* const NODE = reinterpret_cast<void*>(0x1000);
+// The world the nesting flush's call runs (DepthNested).
+static World* nest_a_world_pointer = nullptr;
 
 // The serial loop of the world's group, and the same call through its dispatcher.
 static void SerialPortion(World* world, uint32_t begin, uint32_t end) {
@@ -1649,6 +1675,89 @@ static void DepthControls() {
 #else
   std::printf("controls: skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
 #endif
+}
+
+// A dispatcher call inside a round: a real flush the replay makes calls the dispatcher with a list of another world and tracker.
+// That call runs directly (S-2), as the serial run's does; without the guard it takes the slots the round is replaying.
+static void NestedWorldRun() {
+  ResetState(nest_a_world_pointer);
+  Driver(nest_a_world_pointer, [&](uint32_t begin, uint32_t end) { DispatchPortion(nest_a_world_pointer, begin, end); });
+}
+
+static void DepthNested() {
+  const auto world = BuildWorld({.items = 6000, .seed = 41, .max_run = 10});
+  const auto nested = BuildWorld({.items = 1500, .seed = 42, .max_run = 10});
+  nest_a_world_pointer = nested.get();
+  nest_a_call = NestedWorldRun;
+  dr::Update({.stage = dr::Stage::OFF}, false);
+  nest_a_every = 40;
+  nest_a_flushes = 0;
+  nest_a_budget = 3;
+  const Outcome serial = RunSerial(world.get());
+  CHECK(nest_a_budget == 0 && !serial.log.empty());
+  for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+    for (const uint32_t k : {4u, 8u}) {
+      nest_a_flushes = 0;
+      nest_a_budget = 3;
+      di::nested_calls = 0;
+      const Outcome staged = RunStaged(world.get(), stage, k);
+      CHECK(Equal(serial, staged, "A nested dispatcher calls"));
+      CHECK(nest_a_budget == 0 && staged.replayed > 0 && !di::in_round);
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+      CHECK(di::nested_calls >= 3);
+#endif
+    }
+  }
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  // The guard alone: a call made while a round stands (the flag set by hand, no round to corrupt) runs directly, and without the
+  // guard it records. (Nested inside a real replay the unguarded call overwrites the ops the outer round is reading.)
+  nest_a_every = 0;
+  for (const bool guard : {true, false}) {
+    di::controls.nested_guard = guard;
+    di::nested_calls = 0;
+    di::in_round = true;
+    const Outcome inside = RunStaged(nested.get(), dr::Stage::RECORDED, 4);
+    di::in_round = false;
+    di::controls.nested_guard = true;
+    CHECK(Equal(RunSerial(nested.get()), inside, "A nesting guard"));
+    CHECK(guard ? (inside.direct_calls == inside.portions && di::nested_calls == inside.portions && inside.replayed == 0)
+                : (inside.replayed > 0 && di::nested_calls == 0));
+  }
+#endif
+  nest_a_every = 0;
+  nest_a_budget = 0;
+  nest_a_call = nullptr;
+  std::printf("depth nested: a dispatcher call from a replayed flush runs directly, logs equal the serial run; with the guard off a call inside a round records\n");
+}
+
+// The chunk end's join of the "any" byte (+0x69) into the real tracker: a chunk that left nothing pending keeps what is there
+// (a body never ends a mesh's run with it set after its flush, so no list shows the difference: a unit on the replay).
+static void AnyJoinControl() {
+  dr::Slot unit = {};
+  std::array<uint32_t, 8> buffer = {};
+  unit.ops_begin = buffer.data();
+  unit.ops_cursor = buffer.data();
+  unit.ops_end = buffer.data() + buffer.size();
+  alignas(16) std::array<uint8_t, dr::TRACKER_SIZE> real = {};
+  for (const uint8_t pending : {uint8_t{0}, uint8_t{1}}) {
+    for (const uint8_t there : {uint8_t{0}, uint8_t{1}}) {
+      real = {};
+      real[di::ANY_OFFSET] = there;
+      unit.tracker[di::ANY_OFFSET] = pending;
+      di::Replay replay = {.real = real.data(), .group_index = static_cast<uint32_t>(dr::Group::DEPTH_A), .last_anim = -1, .op_count = 0,
+                           .trace_call = nullptr};
+      di::ReplayChunk(&replay, &unit);
+      CHECK(real[di::ANY_OFFSET] == (pending | there));
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+      real[di::ANY_OFFSET] = there;
+      di::controls.any_join = false;
+      di::ReplayChunk(&replay, &unit);
+      di::controls.any_join = true;
+      CHECK(real[di::ANY_OFFSET] == pending);
+#endif
+    }
+  }
+  std::printf("any join: a chunk's pending +0x69 joins the real byte (a copy over it loses what an earlier chunk left)\n");
 }
 
 // ---------------------------------------------------------------- part 3: the colour path
@@ -2990,6 +3099,14 @@ static void BEntryCheck() {
         std::printf("  entry check control did not differ: colour %d leave %u\n", colour, leave);
         CHECK(false);
       }
+      // The change mask (+0x78) alone: a flush after the direct segment passes it on.
+      di::controls.entry_check_mask = false;
+      const Outcome mask_unchecked = RunBStaged(world.get(), dr::Stage::RECORDED, 4);
+      di::controls.entry_check_mask = true;
+      if (leave == 2 && !colour && Equal(serial, mask_unchecked, "control: entry check mask off", false)) {
+        std::printf("  entry check mask control did not differ: leave %u\n", leave);
+        CHECK(false);
+      }
       // Other inputs (+0x1c, which the flushes pass on): only the inputs compare sees it.
       di::controls.entry_check_inputs = false;
       const Outcome inputs_unchecked = RunBStaged(world.get(), dr::Stage::RECORDED, 4);
@@ -3173,7 +3290,7 @@ static void BTrace() {
       CHECK(call.compared == (frame == 1));
       CHECK(call.group == dr::Group::COLOUR_B);
       CHECK((call.compare_result == di::CompareResult::NONE) == !(frame == 1 && call.chunks > 1));
-      CHECK(call.meshes > 0 && call.census_items + call.direct_items > 0);
+      CHECK(call.meshes > 0 && call.census_items + call.direct_items > 0 && call.round_meshes == call.meshes);
       uint32_t family_items = 0;
       uint32_t family_chunks = 0;
       for (const uint32_t items : call.family_items) family_items += items;
@@ -3313,7 +3430,10 @@ static void BCompareRuns() {
           di::controls.latch_groups = true;
           test_controls.overflow_chunk = 0;
           test_controls.inject_chunk = static_cast<int>(chunk);
+          // The op's own mesh (any mesh of the round) names the class, not the chunk's first mesh.
+          test_controls.inject_mesh = world->sorted[(chunk * 53 + k * 7) % world->sorted.size()];
           RunBStaged(world.get(), stage, k, true);
+          test_controls.inject_mesh = 0;
           test_controls.overflow_chunk = -1;
           test_controls.inject_chunk = -1;
           di::controls.latch_groups = false;
@@ -3323,6 +3443,9 @@ static void BCompareRuns() {
             // The op index is the run's own; the chunk is the one the op was injected into.
             CHECK(call.compare_run == 1 && call.compare_chunk == chunk);
             CHECK(call.family != di::NO_FAMILY && call.compare_class < CLASS_ROWS.size());
+            // The class of the injected op's own mesh (not the chunk's first).
+            CHECK(di::game_calls.classes[call.compare_class].vtable == *reinterpret_cast<const uint32_t*>(injected_mesh));
+            CHECK(call.family == di::game_calls.classes[call.compare_class].family);
             CHECK((di::latched_groups & group_bit) != 0);
             found = true;
           } else {
@@ -3341,6 +3464,19 @@ static void BCompareRuns() {
 #endif
 }
 
+// A round that lists more meshes than the planner holds runs directly; the trace counts what it listed (N-2).
+static void BOversizeRound() {
+  BSpec spec = {.meshes = di::MAX_ROUND_MESHES + 300, .seed = 111, .max_items = 2, .none_percent = 0, .empty_percent = 0,
+                .round_numerator = 1u << 28};
+  const auto world = BuildBWorld(spec);
+  const Outcome serial = RunBSerial(world.get());
+  const Outcome staged = RunBStaged(world.get(), dr::Stage::RECORDED, 4, true);
+  CHECK(Equal(serial, staged, "round over the mesh limit"));
+  CHECK(staged.first_reason == "too many meshes" && staged.direct_calls == staged.portions && !di::trace.calls.empty());
+  CHECK(di::trace.calls.front().round_meshes == di::MAX_ROUND_MESHES + 300 && di::trace.calls.front().meshes == 0);
+  std::printf("B oversize round: %u meshes in one round run directly, logs equal the serial run, the trace lists them\n", di::MAX_ROUND_MESHES + 300);
+}
+
 // A dispatcher call inside a round (here a direct class's own call, made on the real tracker while the round's chunks are waiting
 // to replay) runs directly: it would take the slots and the planned meshes the round is using (S-2).
 static void BNested() {
@@ -3356,11 +3492,25 @@ static void BNested() {
     const Outcome serial = RunBSerial(world.get());
     CHECK(nest_budget == 0);
     for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+      di::nested_calls = 0;
       const Outcome staged = RunBStaged(world.get(), stage, 8);
       CHECK(Equal(serial, staged, "nested dispatcher calls"));
       CHECK(nest_budget == 0 && direct_on_slot == 0 && staged.replayed > 0 && staged.direct_segments > 0);
       CHECK(!di::in_round);
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+      // The classes' two calls (one per budget step), each run directly as a nested call.
+      CHECK(di::nested_calls == 2);
+#endif
     }
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+    // Without the guard the nested round plans over the outer round's meshes and takes its slots.
+    di::controls.nested_guard = false;
+    di::nested_calls = 0;
+    const Outcome unguarded = RunBStaged(world.get(), dr::Stage::RECORDED, 8);
+    di::controls.nested_guard = true;
+    di::in_round = false;
+    CHECK(!Equal(serial, unguarded, "control: B nesting guard off", false) && di::nested_calls == 0);
+#endif
     nest_budget_start = 0;
     nest_budget = 0;
   }
@@ -3418,6 +3568,21 @@ static void BControls() {
 #endif
 }
 
+// The groups the engine code keeps its sites in: none while the stage is Off; with the stage on, a group stays once on until
+// the stage goes Off (the live mask is Settings::loops).
+static void SiteGroupsSticky() {
+  CHECK(dr::SiteGroups(dr::Stage::OFF, 15) == 0);
+  CHECK(dr::SiteGroups(dr::Stage::OFF, 0) == 0);
+  CHECK(dr::SiteGroups(dr::Stage::WORKERS, 1) == 1);
+  CHECK(dr::SiteGroups(dr::Stage::WORKERS, 4) == 5);
+  CHECK(dr::SiteGroups(dr::Stage::WORKERS, 0) == 5);
+  CHECK(dr::SiteGroups(dr::Stage::DIRECT, 8) == 13);
+  CHECK(dr::SiteGroups(dr::Stage::OFF, 15) == 0);
+  CHECK(dr::SiteGroups(dr::Stage::RECORDED, 2) == 2);
+  CHECK(dr::SiteGroups(dr::Stage::OFF, 0) == 0);
+  std::printf("site groups: none while the stage is Off; sticky while it is on\n");
+}
+
 static void Detach() {
   const auto world = BuildWorld({.items = 6000, .seed = 31, .max_run = 10});
   const Outcome serial = RunSerial(world.get());
@@ -3425,8 +3590,11 @@ static void Detach() {
   dr::Update({.stage = dr::Stage::OFF}, false);
   dr::Update({.stage = dr::Stage::WORKERS, .threads = 8, .loops = 1}, true);
   // Sites still in: everything stays, the dispatcher runs directly.
+  CHECK(g_shared->arena_size != 0);
   dr::Uninstall(true);
   CHECK(di::detached.load() && di::shared != nullptr && di::worker_count == 7);
+  // S4: every thunk takes the direct way from the start of Uninstall.
+  CHECK(g_shared->arena_size == 0);
   const Outcome detached = RunStaged(world.get(), dr::Stage::WORKERS, 8);
   CHECK(Equal(serial, detached, "detached"));
   CHECK(detached.direct_calls == detached.portions);
@@ -3459,6 +3627,8 @@ int main() {
   DepthFallbacks();
   DepthTrace();
   DepthControls();
+  DepthNested();
+  AnyJoinControl();
   ColourRecordRules();
   ColourOpsEqual();
   ColourReplayUnits();
@@ -3482,8 +3652,10 @@ int main() {
   BLatch();
   BStraddler();
   BCompareRuns();
+  BOversizeRound();
   BNested();
   BControls();
+  SiteGroupsSticky();
   test_controls.entry_site = false;
   Detach();
   if (failures != 0) {
