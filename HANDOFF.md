@@ -4496,6 +4496,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 21:2x: (a) Fewer Driver Waits = keep Experimental + Off (not hidden); (b) -Trap rule ADDED (checked exact);
         (c) asked where the shots are -> S0 + REF-ATN sent.
         ATN 21:3x: G1 PASS: S0 (ring on all battle) and REF-ATN (never on) look the same to ATN.
+        s5o_ DONE 21:5x (rmt_s5, worktree rmt_s1, local): 8980475ca = s5x_ Shoulds 1-2 + nits 1-4 (stop-while-latched test,
+        restart hint on every removing stop, under-lock opt-in re-check, early-out before get_device(), one tooltip text
+        "after restarting the game", two-device comment; addon.cpp = the two tooltip strings only) + 937e59ffb test-only
+        trap harness (--park / --keep-warm / --keep-warm-bind / --plugin-window, phase table + TRAP lines, WARP self-check,
+        atn_harness_runs.ps1 -Trap t1-t8). WARP suites x86 + amd64 PASS, gated builds exit 0.
+        TRAP TEST RUN 21:56-22:06 by the coordinator (ATN's -Trap rule, all agents idle): t1-t8 all exit 0, TRAP NO for cb
+        and vb in EVERY run (park cb 74 victims / vb 12 / all 86, keep-warm 60 / 8 / bind, ring window); vb_discard waits
+        2.9-6.7 ms/f from the synthetic load in all phases -> the harness does NOT reproduce the in-game trap: keep-warm
+        can't be judged here. Both rows are latched + parked, so nothing waits on it. Outputs replay/t1-t8*.txt.
+        s5x_ RESUMED: re-check 8980475ca + 937e59ffb (+ why the harness can't trap) -> merge. c2i_ RESUMED (sole
+        implementer): C.2-4 fixes S-1 / S-2 / N-1 (zero-header op walk) / N-2 / N-3 -> c23r_ re-checks -> then c3i_ C.3-2.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
