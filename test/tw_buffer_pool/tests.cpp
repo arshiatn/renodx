@@ -535,7 +535,8 @@ static Output Run(bool ring, Control control, uint32_t frames, uint32_t draws) {
         draw();
         context->Dispatch(1, 1, 1);
         if (ring && control == Control::SETTLE_OFF) {
-          // The swap back without the hook's settling call: d3d11 applies the state at the next call, outside the hook.
+          // The swap back without the hook's settling call: d3d11 applies the state inside the ring's swap path, at its table
+          // check's settle after the found path's rebinds (they are overwritten: the game state's old segments).
           ComPtr<ID3DDeviceContextState> replaced;
           native_swap(game_state.Get(), replaced.GetAddressOf());
           ++hooks::internal::state.depth;
@@ -758,6 +759,7 @@ int main() {
         case Control::FOREIGN: CHECK(Logged("called the game's context") == 1 && Logged("off until the row") == 1); break;
         case Control::EARLY_REUSE: CHECK(script != 0); break;
         case Control::COPY_OFF: CHECK(copies != 0); break;
+        case Control::SETTLE_OFF: CHECK(after != 0); break;
         default: break;
       }
     }

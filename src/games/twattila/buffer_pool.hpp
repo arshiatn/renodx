@@ -1079,9 +1079,10 @@ inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
     }
     const std::lock_guard lock(pool.mutex);
     for (const auto& record : pool.records) {
-      if (!record->destroyed.load()) continue;
-      // Not one in a slot (each holds a reference). Destroyed while mapped through the ring (d3d11 never saw the map):
-      // the map ends with it.
+      // One destroyed (any thread) since the pass above is still in its piece: kept until the next present (its
+      // Forget asked for that reclaim). Not one in a slot (each holds a reference).
+      if (!record->destroyed.load() || record->piece != nullptr) continue;
+      // Destroyed while mapped through the ring (d3d11 never saw the map): the map ends with it.
       if (record->mapped) {
         record->mapped = false;
         --pool.open_maps;
@@ -1098,8 +1099,9 @@ inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
         }
       }
     }
-    std::erase_if(pool.records,
-                  [](const std::unique_ptr<internal::Buffer>& record) { return record->destroyed.load(); });
+    std::erase_if(pool.records, [](const std::unique_ptr<internal::Buffer>& record) {
+      return record->destroyed.load() && record->piece == nullptr;
+    });
     if (pool.tables.size() > 1) {
       pool.tables.erase(pool.tables.begin(), pool.tables.end() - 1);
     }
@@ -1111,7 +1113,10 @@ inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
       return true;
     });
     if (!pool.stopped && !pool.unwind_wanted.load(std::memory_order_relaxed)) {
+      // The depth raised: its settle after a swap below the hook applies that state's binds (passed on, not the game's).
+      ++hooks::state.depth;
       internal::CheckTable();
+      --hooks::state.depth;
     }
     const bool stop = pool.stopped || pool.lost || pool.unwind_wanted.load(std::memory_order_relaxed)
                       || hooks::state.foreign_thread.load(std::memory_order_relaxed);
