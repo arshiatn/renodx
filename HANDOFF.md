@@ -4097,6 +4097,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         S1-S11 folded in; Depth B 20 census / 3 direct, Colour B 19 / 4; C table 59 of 64 sites (7 fallback flush sites
         counted); batch now ~51 min / 9 starts (+8 optional N-heavy). Next C: C.2-3 (c2i_) after c2r_'s re-check, then
         C.2-4 / C.2-5; C.3-1 (Sonnet High, own worktree) can start after the C.2 base merges.
+        c2r_ RE-CHECK DONE 17:xx (c2r_review.md "Re-check"): MERGE AFTER N1 (N1 = compare only in one trace frame, timings
+        from the others; N2-N4 + F7 / F13 go with C.2-3). C BASE MERGED 17:xx: rmt_c2 b5e97fef0 -> atn-mods 048fccae7
+        (pushed): draw_recording.hpp + cpu_sets worker_sets publish. c2i_ RESUMED on rmt_c2: commit 1 = N1 + F7 shoulds,
+        commit 2 = C.2-3 colour path (Colour A, v3.1 S1 / S2 / S7 / M4, N2-N4, F13 control, S10 listing check); then a
+        fresh Opus xHigh review. C.3-1 STARTED: c3i_ a77126f3fada50077 (Sonnet High) in worktree .claude/worktrees/rmt_c3
+        (branch rmt_c3 from 048fccae7, 10 links: remove them alone before any cleanup): C's own uint64 site table, flush-
+        entry hook 0x1778390, Depth A sites, 7 fallback flush sites, F15, real-bytes tests; then an Opus xHigh review.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
