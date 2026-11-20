@@ -383,7 +383,7 @@ static std::array<float, 4> const1_cells;
 static float const2_cell = 0;
 static uint8_t cached_constants = 0;
 static float faction_default = 0.25f;
-static std::array<SynthColour, 256> faction_colours;
+static std::array<SynthColour, 256> synth_colours;
 static std::array<SynthFactionList, 4> faction_lists;
 
 static void __thiscall FakeDirty(uint32_t object) {
@@ -849,11 +849,11 @@ static std::unique_ptr<World> BuildWorld(const Spec& spec) {
   }
   if (spec.colour) {
     // Factions 0 to 3 have lists of 6, 3, 70 and 4 colours (all pointing into one table); -1 is the default.
-    for (uint32_t e = 0; e < faction_colours.size(); ++e) {
-      faction_colours[e] = {{1.0f + 0.5f * static_cast<float>(e), 0.25f * static_cast<float>(e), 0.5f + 0.125f * static_cast<float>(e)}};
+    for (uint32_t e = 0; e < synth_colours.size(); ++e) {
+      synth_colours[e] = {{1.0f + 0.5f * static_cast<float>(e), 0.25f * static_cast<float>(e), 0.5f + 0.125f * static_cast<float>(e)}};
     }
     const std::array<uint32_t, 4> list_counts = {6, 3, 70, 4};
-    for (uint32_t f = 0; f < 4; ++f) faction_lists[f] = {.count = list_counts[f], .data = faction_colours.data()};
+    for (uint32_t f = 0; f < 4; ++f) faction_lists[f] = {.count = list_counts[f], .data = synth_colours.data()};
     for (uint32_t m = 0; m < world->masks.size(); ++m) {
       uint8_t* bytes = reinterpret_cast<uint8_t*>(&world->masks[m]);
       for (uint32_t j = 0; j < sizeof(SynthMask); ++j) bytes[j] = static_cast<uint8_t>(j * 37 + m * 11);

@@ -242,7 +242,7 @@ inline void NextOwnerCall() {
 }
 
 // False: the mesh is owned by another chunk in this call, or the table is too full to say.
-inline bool RegisterMesh(uint32_t mesh, uint32_t chunk) noexcept {
+inline bool ClaimMesh(uint32_t mesh, uint32_t chunk) noexcept {
   const uint64_t mine = (static_cast<uint64_t>(mesh) << 32) | (static_cast<uint64_t>(owner_call) << 8) | chunk;
   uint32_t index = (mesh * 2654435761u) >> 19;
   for (uint32_t probe = 0; probe < OWNER_PROBES; ++probe, index = (index + 1) % OWNER_ENTRIES) {
@@ -426,7 +426,7 @@ inline void __fastcall Record(Slot* slot, Frame* frame) noexcept {
         frame->eax = 1;
         return;
       }
-      if (recording && slot->chunk != COMPARE_SLOT && internal::controls.owner_check && !internal::RegisterMesh(frame->ebx, slot->chunk)) {
+      if (recording && slot->chunk != COMPARE_SLOT && internal::controls.owner_check && !internal::ClaimMesh(frame->ebx, slot->chunk)) {
         slot->flags |= SLOT_CONFLICT;
       }
       return;
@@ -729,7 +729,7 @@ inline void ReplaySrv(uint32_t slot, uint32_t texture) {
 // The faction block: the four colours of a faction (the default one without a faction), picked by the item's mask when it has
 // one; sent when there are 4 or more. Only the first four colours are read by the call, so only those are gathered.
 inline void ReplayFaction(int32_t faction, uint32_t mask, uint32_t node, uint32_t state) {
-  const auto set_colours = reinterpret_cast<FactionFn>(static_cast<uintptr_t>(game_calls.faction_call));
+  const auto faction_fn = reinterpret_cast<FactionFn>(static_cast<uintptr_t>(game_calls.faction_call));
   std::array<float, 12> colours = {};
   if (faction == -1) {
     for (uint32_t i = 0; i < 4; ++i) {
@@ -737,7 +737,7 @@ inline void ReplayFaction(int32_t faction, uint32_t mask, uint32_t node, uint32_
       colours[3 * i + 1] = *game_calls.faction_default;
       colours[3 * i + 2] = 1.0f;
     }
-    set_colours(state, colours.data());
+    faction_fn(state, colours.data());
     return;
   }
   uint32_t list = 0;
@@ -749,14 +749,14 @@ inline void ReplayFaction(int32_t faction, uint32_t mask, uint32_t node, uint32_
   std::memcpy(&data, list_bytes + 8, 4);
   if (count < 4) return;
   if (mask == 0) {
-    set_colours(state, reinterpret_cast<const float*>(static_cast<uintptr_t>(data)));
+    faction_fn(state, reinterpret_cast<const float*>(static_cast<uintptr_t>(data)));
     return;
   }
   // The game gathers the list's `count` entries into a vector and the call reads the first four (48 bytes): gathered here.
   for (uint32_t i = 0; i < 4; ++i) {
     std::memcpy(&colours[3 * i], reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(data)) + 12 * reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(mask))[i], 12);
   }
-  set_colours(state, colours.data());
+  faction_fn(state, colours.data());
 }
 
 // Whether a chunk's op is the compare run's. A flush compares its mesh, its ten arguments and its any byte (the compare run's
@@ -1125,7 +1125,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     NextOwnerCall();
     // Chunk 0 may continue the tracker's last mesh with no setup site before it: it owns its first mesh from the start (a fresh
     // call's table cannot refuse the entry).
-    RegisterMesh(mesh_of(begin), 0);
+    ClaimMesh(mesh_of(begin), 0);
   }
 
   // The in-frame compare (trace frames): the same call recorded whole in the compare slot, before anything changes.
