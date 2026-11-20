@@ -4033,6 +4033,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         PASS, harness ring parity on W3m b2 v3 equal (only the upload control differs there). Gated x86 3 + amd64 13 exit 0.
         Zombie test exe locks testbin\s5o_buffer_pool_x86 (reboot clears). s5r_ (Opus xHigh, independent) id
         a40d2e052afe50821 STARTED 14:xx -> reports/s5r_review.md; then s5o_ fixes, s5r_ re-checks, merge.
+        b2a_ DONE 15:xx (bench/analysis_b2/report.md, saved by the coordinator: the harness refused b2a_'s Write): NO CB
+        DISCARD WAITS in batch 2. The wait MOVED to the game's 464,000 B dynamic VB ring (2nd DISCARD a frame, ia0; W3m 13-16
+        ms untraced, ATNmF 27-35 ms) + 8 MB VB rings; b1's CB victims DISCARD at the same draw and wait 0. The driver drains
+        the whole queue at whichever DISCARD it won't rename -> a CB-only ring likely moves the wait (W3m polls 290 vs b1 311
+        a frame). Game never calls Set1 / Get1 (no D3D11.1 IIDs); all 174 CBs made on the render thread at start; swapchain /
+        destroys on the render thread, no ResizeBuffers. v3 HASH DEFECT: hashes full ByteWidth of every CB write-map (our 256
+        KB motion rings) = ~26 ms/f -> hash only DISCARDs or skip >= 64 KB (S5 fix round). FCU WORKS (432 B DISCARDs 586 ->
+        2 a frame, -0.04 ms/f), but ATNmF was 10 ms/f slower with helper GPU work in pairs (36 / 0 ms) - cause unknown; FCU
+        stays OFF; next = an OFF / ON / OFF toggle inside one start (WPR + PresentMon). Harness: b2 v3 can't show a CB mark
+        (none), can measure ring overhead (D1m 0-7, W3m 0-6). b2a_ asks S5 to add the 464 KB VB ring (pool 4-6 x 464 KB) and
+        not to double-handle the 432 B CB with FCU. ASKED ATN: add the 464 KB VB ring to S5 now? + a 2-start batch 2b (FCU
+        toggle start + v3 timing start with hash off)? s5r_ told the findings. s6r_ (Sonnet Low) id abe69558a45a12b74
+        STARTED: harness NVIDIA runs (W3m locator native / ring, D1m ring overhead x20, ring parity D1m + W3m).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
