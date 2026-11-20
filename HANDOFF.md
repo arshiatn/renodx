@@ -4110,6 +4110,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         harness blocked): S1 NVIDIA parity, S2 overhead vs the 0.1 ms gate; VB extension waits for ATN. WARP: tw_buffer_pool
         / tw_context_hooks / tw_map_trace PASS x86 + amd64; harness ring parity as at ffaba9804 ("none EQUAL" rows -> re-
         checker settles). gated builds x86 3 + amd64 13 exit 0. s5r_ RE-CHECK started; then the extra independent review.
+        s5x_ a5eac8d890c211c29 (Opus xHigh) STARTED 14:2x: the EXTRA independent review of b5e89f0b2, in parallel with s5r_'s
+        re-check (read-only, WARP only) -> reports/s5x_review.md. Merge rmt_s5 only after both verdicts. Agents now: c2i_,
+        c3i_, s5r_, s5x_.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
