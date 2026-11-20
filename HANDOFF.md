@@ -4000,6 +4000,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN: "why not the big plans first?" -> C goes BIG-FIRST: the full build (weighted + N loops + folded driver + 8
         dispatchers) is designed now (c1o_ note v3 incl. its census), per-group rows keep the go / kill numbers inside one
         later batch; C.2-1 / C.2-2 (shared base) start now (Sonnet High). Track A was already big-first (ring).
+        RUNNING 11-20 (agent ids for SendMessage): s5o_ afc360fc6f57dd9aa (S5 ring, rmt_s5); c2i_ ae71365ae416b1351 (C.2-1 +
+        C.2-2, Sonnet High, rmt_c2); c1o_ aa3cda2c36420de87 (C full-build note v3 -> reports/c1o_design_C_full_v3.md, Opus
+        xHigh); b2p_ a98370844dc5fd28e (batch 2 prep: rmt_b2_fp build, b2_run.ps1 + b2_*.json, dry run only). All told the
+        HOLD protocol (finish the running command, hand back). Batch 2 run = coordinator, after b2p_ is ready + all held.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
