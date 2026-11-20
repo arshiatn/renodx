@@ -18,6 +18,9 @@
 // call runs directly), meshes of an unknown class, constants that are NaN / -0 / equal in a row with the game's cache flag on
 // and off, every faction case, an "any" byte left over at a chunk's end, and the colour controls (snapshot restore off, the
 // owner table off with another chunk's write racing in, seed validation off): each must make the run differ.
+// Part 3b (C.2-3 review items): a continuation or warm-up item of an unknown class, the call-start claim, the warm-up's mesh
+// restore (strict flush) and the constant repeat counts, each with a control that must differ; the trace's seed misses by field
+// and constant repeats; a count of recorded continuations.
 #include <windows.h>
 #include <tlhelp32.h>
 
@@ -349,6 +352,9 @@ static uint8_t __thiscall FakeVf68(void* mesh, uint32_t view, uint32_t zero) {
 static void __thiscall FakeAnimCall(void* state, uint32_t value) {
   game_log.push_back({3, reinterpret_cast<uint32_t>(state), value, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
 }
+// The virtual call at a batch's first instance (0x17b09ce): a stub in the census classes; one of a class outside the census may
+// have effects (it logs here, at once, so a call made while recording lands before the replayed ops of the log).
+static void __thiscall FakeForeignVf64(void* mesh) { game_log.push_back({7, reinterpret_cast<uint32_t>(mesh), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}); }
 
 static std::array<uint32_t, 0x70 / 4> mesh_vtable = {};
 // A class the census did not cover.
@@ -613,6 +619,20 @@ static void __thiscall SynthDepthLoop(void* node, void* t, void* list_pointer, u
 // textures and faction block (each only when the tracker's fields +0x00..+0x0c say the item changed them), and the item's
 // end: the pure virtual call that sets the "any" byte on the first instance. Mesh kinds from 6 on have no shared-state call at
 // their setup (lets the constants of two chunks touch).
+// Where it is NOT the listing's loop (C.3's test 2 runs the real bytes; the recording does not depend on these being absent):
+//  - no flag machine at +0x10..+0x13 (0x17b06db sets +0x11 and drives the first constant, 0x17b0783 clears +0x10, 0x17b0708
+//    clears +0x12 / +0x13): the seed bytes 0x10..0x13 never differ here, so the "flags" miss counter stays 0 in these tests;
+//  - the "any" byte's source at a change (0x17b0745) is not modelled: the sources here are the batch start and ITEM_ANY_ONLY
+//    items, which the game does not have (they reach the pending-any compare and the constant merge across chunk ends);
+//  - the game flushes at every change of the mask (before a texture, faction or animation-only change); this loop flushes only
+//    before an animation change;
+//  - texture 0 is "no change" in the game (never written to +0x04 / +0x08); here 0 is written and bound;
+//  - the variation path's vf58 / vf60 / +0x74 rewrite (0x17b0618) and the batch-size flush (vf6c, 0x17b05b6) are missing: the
+//    variation path here is flush, write the mesh, shared-state call;
+//  - kind-6 meshes (no shared-state call at the setup) and ANY_ONLY items are not paths of the game;
+//  - the batchfix continuation (+0x14 kept with an equal variation) is not modelled (C.3's test 4);
+//  - the virtual call at a batch's first instance (0x17b09ce) is a stub for the census classes; here a class outside the census
+//    logs when it is called (FakeForeignVf64), which the continuation tests use.
 static void __thiscall SynthColourLoop(void* node_pointer, void* t, void* list_pointer, uint32_t, uint32_t begin, uint32_t end) {
   const auto* list = static_cast<const SynthList*>(list_pointer);
   if (list->count == 0) return;
@@ -696,7 +716,10 @@ static void __thiscall SynthColourLoop(void* node_pointer, void* t, void* list_p
         FactionSite(t, item, node, state);
       }
     }
-    if (Field<uint32_t>(t, 0x58) == 0 && Field<uint8_t>(t, 0x68) != 0) Field<uint8_t>(t, 0x69) |= (mesh->kind >> 1) & 1;
+    if (Field<uint32_t>(t, 0x58) == 0 && Field<uint8_t>(t, 0x68) != 0) {
+      Field<uint8_t>(t, 0x69) |= (mesh->kind >> 1) & 1;
+      if (mesh->vtable[0x64 / 4] != 0) reinterpret_cast<void(__thiscall*)(void*)>(mesh->vtable[0x64 / 4])(mesh);
+    }
     if ((item->flags & ITEM_ANY_ONLY) != 0) {
       Field<uint8_t>(t, 0x69) |= 1;
       continue;
@@ -760,6 +783,11 @@ struct World {
   // The tracker's state when a call starts (a call the loop itself ended leaves both 0).
   uint32_t pending = 0;
   uint32_t change_mask = 0;
+  // The mesh the tracker starts on, in the state a call's own setup would leave it in (the guard accepts it): a continuation
+  // that is recorded, not run directly.
+  SynthMesh* start_mesh = nullptr;
+  // The colour world's flush reads the mesh state like the depth worlds' does.
+  bool strict = false;
 };
 
 static std::unique_ptr<World> BuildWorld(const Spec& spec) {
@@ -896,6 +924,18 @@ static std::unique_ptr<World> BuildWorld(const Spec& spec) {
   return world;
 }
 
+// A colour list (Spec::unique_meshes) whose first `run` items are one mesh (the world's last, which no run uses) that the
+// tracker starts on in a state the guard accepts: the first call is a continuation that is recorded.
+static std::unique_ptr<World> BuildContinuedWorld(const Spec& spec, uint32_t run) {
+  auto world = BuildWorld(spec);
+  SynthMesh* mesh = &world->meshes.back();
+  mesh->kind = 2;
+  mesh->flag = 1;
+  for (uint32_t i = 0; i < run; ++i) world->items[i].mesh = mesh;
+  world->start_mesh = mesh;
+  return world;
+}
+
 struct Outcome {
   std::vector<LogEntry> log;
   std::array<uint8_t, dr::TRACKER_SIZE> tracker = {};
@@ -916,6 +956,14 @@ struct Outcome {
   uint32_t conflicts = 0;
   std::array<uint32_t, static_cast<size_t>(di::OpKind::COUNT)> kind_ops = {};
   uint32_t split_constants = 0;
+  // Calls whose first item continued the tracker's mesh (no setup before it) and that were replayed, not run directly.
+  uint32_t continued = 0;
+  // Trace frames: the seed misses, by field (faction, decals, mask, flags, animation), and the replayed constants' repeats.
+  uint32_t seed_misses = 0;
+  std::array<uint32_t, 5> miss_fields = {};
+  uint32_t constant_repeats = 0;
+  // Trace frames: every miss is counted under at least one field.
+  bool misses_explained = true;
   // Trace frames: total + the trace-only phases == wall, in every call.
   bool accounted = true;
   uint32_t most_buffer = 0;
@@ -939,7 +987,7 @@ static void ResetWorld(World* world) {
   Field<uint32_t>(t, 0x24) = 0xb0;
   Field<uint32_t>(t, 0x50) = 6;
   Field<uint32_t>(t, 0x64) = world->max_count;
-  strict_flush = !world->colour;
+  strict_flush = (!world->colour || world->strict);
   if (world->colour) {
     // The detection fields start unlike any item's; the constants' cells and the cache flag are the test's.
     Field<int32_t>(t, 0x00) = -2;
@@ -958,6 +1006,13 @@ static void ResetWorld(World* world) {
     Field<uint32_t>(t, 0x78) = world->change_mask;
     mesh->view_tag = 0xabc;
     mesh->pass = 0x77;
+  }
+  if (world->start_mesh != nullptr) {
+    Field<uint32_t>(t, 0x70) = reinterpret_cast<uint32_t>(world->start_mesh);
+    Field<uint32_t>(t, 0x74) = 0x20;
+    Field<uint8_t>(t, 0x68) = world->start_mesh->flag;
+    world->start_mesh->view_tag = Field<uint32_t>(t, 0x20);
+    world->start_mesh->pass = 0;
   }
   g_shared->seed_anim = -1;
   g_shared->last_anim = -1;
@@ -1016,6 +1071,8 @@ static Outcome RunCalls(World* world, bool tracing) {
   Outcome total = {};
   for (int pass = 0; pass < 2; ++pass) {
     Driver(world, [&](uint32_t begin, uint32_t end) {
+      const bool continues = (reinterpret_cast<uint32_t>(world->items[begin].mesh) == Field<uint32_t>(world->tracker.data(), 0x70)
+                              && Field<uint32_t>(world->tracker.data(), 0x14) == 0);
       DispatchPortion(world, begin, end);
       ++total.portions;
       total.small_calls += (end - begin < di::MIN_ITEMS ? 1 : 0);
@@ -1025,12 +1082,21 @@ static Outcome RunCalls(World* world, bool tracing) {
       total.ops += di::last_call.ops;
       total.direct_calls += (di::last_call.direct ? 1 : 0);
       total.split_constants += di::last_call.split_constants;
+      total.continued += (continues && di::last_call.replayed > 0 ? 1 : 0);
       if (tracing && !di::trace.calls.empty()) {
         const di::CallTrace& call = di::trace.calls.back();
         ++total.compares[static_cast<size_t>(call.compare_result)];
         if (total.first_reason.empty()) total.first_reason = call.direct_reason;
         total.conflicts += (std::string_view(call.direct_reason) == "conflict" ? 1 : 0);
         for (size_t kind = 0; kind < call.ops.size(); ++kind) total.kind_ops[kind] += call.ops[kind];
+        total.seed_misses += call.seed_misses;
+        uint32_t explained = 0;
+        for (size_t field = 0; field < call.seed_miss_fields.size(); ++field) {
+          total.miss_fields[field] += call.seed_miss_fields[field];
+          explained += call.seed_miss_fields[field];
+        }
+        total.misses_explained = total.misses_explained && explained >= call.seed_misses;
+        total.constant_repeats += call.constant_repeats;
       }
     });
   }
@@ -1054,6 +1120,11 @@ static Outcome RunCalls(World* world, bool tracing) {
   outcome.conflicts = total.conflicts;
   outcome.kind_ops = total.kind_ops;
   outcome.split_constants = total.split_constants;
+  outcome.continued = total.continued;
+  outcome.seed_misses = total.seed_misses;
+  outcome.miss_fields = total.miss_fields;
+  outcome.constant_repeats = total.constant_repeats;
+  outcome.misses_explained = total.misses_explained;
   outcome.accounted = total.accounted;
   outcome.most_buffer = total.most_buffer;
   outcome.first_reason = total.first_reason;
@@ -1150,6 +1221,7 @@ static void Setup() {
   mesh_vtable.fill(0);
   mesh_vtable[0x68 / 4] = reinterpret_cast<uint32_t>(&FakeVf68);
   foreign_vtable = mesh_vtable;
+  foreign_vtable[0x64 / 4] = reinterpret_cast<uint32_t>(&FakeForeignVf64);
   node_vtable.fill(0);
   node_vtable[0xc0 / 4] = reinterpret_cast<uint32_t>(&FakeFactionLists);
   synth_node.vtable = node_vtable.data();
@@ -1567,6 +1639,9 @@ static void ColourStages() {
   uint32_t cases = 0;
   uint32_t reruns_seen = 0;
   uint32_t split_seen = 0;
+  uint32_t continued_seen = 0;
+  uint32_t repeats_seen = 0;
+  std::array<uint32_t, 5> miss_fields = {};
   std::array<uint32_t, static_cast<size_t>(di::OpKind::COUNT)> kinds = {};
   for (const ListCase& list : ColourLists()) {
     const auto world = BuildWorld(list.spec);
@@ -1588,8 +1663,12 @@ static void ColourStages() {
             if (stage != dr::Stage::CHUNKED) CHECK(staged.replayed + staged.reruns == staged.chunks);
             if (stage != dr::Stage::CHUNKED && staged.chunks > 0) CHECK(staged.ops > 0 || staged.reruns > 0);
             CHECK(!CompareDiffers(staged));
+            CHECK(staged.misses_explained);
             reruns_seen += staged.reruns;
             split_seen += staged.split_constants;
+            continued_seen += staged.continued;
+            repeats_seen += staged.constant_repeats;
+            for (size_t field = 0; field < miss_fields.size(); ++field) miss_fields[field] += staged.miss_fields[field];
             for (size_t kind = 0; kind < kinds.size(); ++kind) kinds[kind] += staged.kind_ops[kind];
             ++cases;
           }
@@ -1599,12 +1678,20 @@ static void ColourStages() {
   }
   cached_constants = 0;
   CHECK(reruns_seen > 0);
+  // Calls that continue the tracker's mesh with state the guard accepts are recorded and replayed (at portion boundaries).
+  CHECK(continued_seen > 0);
+  // Seed misses by field: the loop changes the faction, the mask, the textures and the animation, never the flags (S-3).
+  CHECK(miss_fields[0] > 0 && miss_fields[1] > 0 && miss_fields[2] > 0 && miss_fields[3] == 0 && miss_fields[4] > 0);
+  // Every constant op repeats at least once, and equal constants in a row merge (repeat counts above 1).
+  CHECK(repeats_seen > kinds[static_cast<size_t>(di::OpKind::CONSTANT)]);
   for (const di::OpKind kind : {di::OpKind::FLUSH, di::OpKind::VF68, di::OpKind::ANIM, di::OpKind::CONSTANT, di::OpKind::SRV, di::OpKind::FACTION}) {
     CHECK(kinds[static_cast<size_t>(kind)] > 0);
   }
   CHECK(split_seen > 0);
   std::printf("colour: %u cases (10 lists x cache flag 0 / 1 x 4 stages x 8 K x trace off / on): logs, tracker, mesh fields and constant cells equal the serial run; %u chunks run again; ops flush %u vf68 %u anim %u const %u srv %u faction %u; %u constants split by a chunk end\n",
               cases, reruns_seen, kinds[1], kinds[2], kinds[3], kinds[4], kinds[5], kinds[6], split_seen);
+  std::printf("colour: %u calls continued the tracker's mesh and were replayed; seed misses by field (traced): faction %u decals %u mask %u flags %u anim %u; constant repeats %u\n",
+              continued_seen, miss_fields[0], miss_fields[1], miss_fields[2], miss_fields[3], miss_fields[4], repeats_seen);
 }
 
 // Meshes that recur in several chunks: the call runs directly (before any replay), and with the owner table off a write of
@@ -1681,6 +1768,98 @@ static void ColourContinuation() {
   CHECK(!Equal(serial, unguarded, "control: colour continuation guard off", false));
 #endif
   std::printf("colour: a continuation of foreign mesh state runs directly (%u cases equal)\n", cases);
+}
+
+// A continuation (no setup site before the call's first item) of a class the census did not cover runs directly; so does a
+// warm-up item that continues such a mesh (its chunk is run again). The class's virtual call at a batch start logs when it runs:
+// made while recording or warming up, it lands before the replayed ops in the log.
+static void ColourForeignContinuation() {
+  const Spec spec = {.items = 6000, .seed = 91, .max_run = 8, .portion_numerator = 12000000, .colour = true, .unique_meshes = true};
+  const auto first = BuildContinuedWorld(spec, 40);
+  first->start_mesh->vtable = foreign_vtable.data();
+  first->items[0].variation = 2;
+  const Outcome first_serial = RunSerial(first.get());
+  CHECK(std::ranges::any_of(first_serial.log, [](const LogEntry& entry) { return entry[0] == 7; }));
+  // The warm-up item before the first cut (K = 2: item 3049) is the tracker's foreign mesh, which the call reaches later.
+  const auto warm = BuildContinuedWorld(spec, 0);
+  warm->start_mesh->vtable = foreign_vtable.data();
+  for (uint32_t i = 2900; i < 3050; ++i) warm->items[i].mesh = warm->start_mesh;
+  const Outcome warm_serial = RunSerial(warm.get());
+  uint32_t cases = 0;
+  for (const dr::Stage stage : {dr::Stage::CHUNKED, dr::Stage::RECORDED, dr::Stage::ONE_WORKER, dr::Stage::WORKERS}) {
+    for (const uint32_t k : {2u, 4u, 16u}) {
+      const Outcome staged = RunStaged(first.get(), stage, k, true);
+      CHECK(Equal(first_serial, staged, "foreign continuation"));
+      CHECK(staged.first_reason == "unknown class");
+      ++cases;
+    }
+    for (const bool tracing : {false, true}) {
+      CHECK(Equal(warm_serial, RunStaged(warm.get(), stage, 2, tracing), "foreign warm-up item"));
+      ++cases;
+    }
+  }
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  di::controls.check_continuation_class = false;
+  const Outcome unchecked_call = RunStaged(first.get(), dr::Stage::RECORDED, 4);
+  const Outcome unchecked_warm = RunStaged(warm.get(), dr::Stage::RECORDED, 2);
+  di::controls.check_continuation_class = true;
+  CHECK(!Equal(first_serial, unchecked_call, "control: continuation class check off (call)", false));
+  CHECK(!Equal(warm_serial, unchecked_warm, "control: continuation class check off (warm-up)", false));
+#endif
+  std::printf("colour: a continuation of a mesh of an unknown class runs directly, a warm-up item that continues one is skipped (chunk run again): %u cases equal; check off: both runs differ\n", cases);
+}
+
+// The call-start claim of chunk 0's first mesh: chunk 0 continues M (no setup site to claim it) and a later chunk sets M up.
+static void ColourClaimControl() {
+  const Spec spec = {.items = 6000, .seed = 92, .max_run = 8, .anim_change_percent = 0, .portion_numerator = 12000000, .colour = true,
+                     .unique_meshes = true, .variation_percent = 0, .texture_percent = 0, .faction_percent = 0};
+  const auto world = BuildContinuedWorld(spec, 3100);
+  // The only variation of chunk 0's mesh is its last item's: a variation makes the next item a "change" (a setup that claims
+  // the mesh), so this is the one shared-state call that chunk 0 makes before it could have claimed M any other way.
+  world->items[3099].variation = 2;
+  for (uint32_t i = 4000; i < 4010; ++i) world->items[i].mesh = world->start_mesh;
+  const Outcome serial = RunSerial(world.get());
+  // Both passes conflict (pass 2 starts elsewhere: chunk 0's setup of M claims it).
+  const Outcome claimed = RunStaged(world.get(), dr::Stage::RECORDED, 2, true);
+  CHECK(Equal(serial, claimed, "claimed"));
+  CHECK(claimed.conflicts == 2);
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  di::controls.race_chunks = 1;
+  CHECK(Equal(serial, RunStaged(world.get(), dr::Stage::RECORDED, 2, true), "claim on, race hook on"));
+  di::controls.claim_first_mesh = false;
+  // Without the claim only pass 2 conflicts; the other chunk's setup landing before chunk 0's snapshots (the hook) is wrong.
+  di::controls.race_chunks = 0;
+  const Outcome unclaimed = RunStaged(world.get(), dr::Stage::RECORDED, 2, true);
+  CHECK(unclaimed.conflicts == 1);
+  di::controls.race_chunks = 1;
+  const Outcome raced = RunStaged(world.get(), dr::Stage::RECORDED, 2);
+  di::controls.race_chunks = 0;
+  di::controls.claim_first_mesh = true;
+  CHECK(Equal(serial, unclaimed, "claim off, no race"));
+  CHECK(!Equal(serial, raced, "control: call-start claim off", false));
+#endif
+  std::printf("colour: chunk 0's continuation mesh is claimed at the call start: a later chunk's setup of it makes the call run directly; claim off + a racing setup differs\n");
+}
+
+// The warm-up puts back the mesh state it wrote: chunk 0 continues M past the first cut, the warm-up item (the last of M) takes
+// the variation path, and a flush that reads the mesh state (strict) sees the warm-up's write if it is not put back.
+static void ColourWarmUpRestore() {
+  const Spec spec = {.items = 6000, .seed = 93, .max_run = 8, .anim_change_percent = 0, .max_count = 6, .portion_numerator = 12000000,
+                     .colour = true, .unique_meshes = true, .variation_percent = 0, .const1_percent = 0, .const2_percent = 0,
+                     .texture_percent = 0, .faction_percent = 0};
+  const auto world = BuildContinuedWorld(spec, 3100);
+  world->items[3099].variation = 2;
+  world->strict = true;
+  const Outcome serial = RunSerial(world.get());
+  // (Not traced: the compare run's own writes would hide it.)
+  CHECK(Equal(serial, RunStaged(world.get(), dr::Stage::RECORDED, 2), "warm-up restore on"));
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  di::controls.restore_warm_up = false;
+  const Outcome unrestored = RunStaged(world.get(), dr::Stage::RECORDED, 2);
+  di::controls.restore_warm_up = true;
+  CHECK(!Equal(serial, unrestored, "control: warm-up restore off", false));
+#endif
+  std::printf("colour: the warm-up puts back the mesh state it wrote (strict flush): restore off differs\n");
 }
 
 // The replay's own constants, textures and faction block against the game's (written separately from the listing).
@@ -1953,6 +2132,17 @@ static void ColourControls() {
   CHECK(Equal(merge_serial, unjoined, "pending any not joined: the run itself is exact"));
   CHECK(unjoined.reruns == 0 && joined.reruns == 0);
   CHECK(CompareDiffers(unjoined));
+  // The repeat counts of constants: with the game's cache flag off each repeat writes and dirties, so replaying each once differs.
+  const ListCase constants_list = ColourLists()[8];
+  CHECK(std::string_view(constants_list.name) == "colour constants only");
+  const auto constants = BuildWorld(constants_list.spec);
+  cached_constants = 0;
+  const Outcome constants_serial = RunSerial(constants.get());
+  CHECK(Equal(constants_serial, RunStaged(constants.get(), dr::Stage::RECORDED, 8), "constants, repeats on"));
+  di::controls.replay_repeats = false;
+  const Outcome once = RunStaged(constants.get(), dr::Stage::RECORDED, 8);
+  di::controls.replay_repeats = true;
+  CHECK(!Equal(constants_serial, once, "control: constant repeat counts off", false));
   CHECK(Equal(serial, RunStaged(world.get(), dr::Stage::WORKERS, 8), "colour controls cleared"));
   std::printf("colour controls: snapshot restore off, seed validation off, any capture off, dropped flush, wrong anim slot, injected op: each run differs (injection named by the compare); the compare without the earlier chunks' any byte reports a difference on a list whose chunks end with it set (the run itself is exact); owner table off and the continuation guard off are in their own tests\n");
 #else
@@ -2009,6 +2199,9 @@ int main() {
   ColourInterleaved();
   ColourUnknownClass();
   ColourContinuation();
+  ColourForeignContinuation();
+  ColourClaimControl();
+  ColourWarmUpRestore();
   ColourControls();
   Detach();
   if (failures != 0) {

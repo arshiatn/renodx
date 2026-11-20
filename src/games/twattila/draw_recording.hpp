@@ -223,12 +223,21 @@ constexpr std::array<SiteInfo, static_cast<size_t>(Site::COUNT)> SITES = {{
 
 static GameCalls game_calls;
 
+// Whether a mesh's vtable is one of the 10 classes the census covered (an unfilled table knows none: every class is unknown).
+inline bool WeightedClass(uint32_t vtable) {
+  return vtable != 0 && std::ranges::find(game_calls.weighted_vtables, vtable) != game_calls.weighted_vtables.end();
+}
+
 // The colour loop's meshes: which chunk set each one up in the call being recorded. A mesh set up by two chunks would have its
 // +0x40 / +0x44 written (and read back by the virtual calls) by two threads: the call then runs directly, before any replay.
 // Entries are {mesh 32 bits | call 24 bits | chunk 8 bits}; an entry of an older call is free.
+// Cost: each setup is one compare-exchange on a random line of the 64 KB table, which another worker owned last: about one
+// cross-core transfer per setup (an estimate, 50 to 100 ns, not measured). If Colour A misses its time goal, look here first;
+// the alternative is a mesh list per chunk, checked after the join.
 constexpr uint32_t OWNER_ENTRIES = 8192;
 constexpr uint32_t OWNER_PROBES = 64;
 static std::array<std::atomic<uint64_t>, OWNER_ENTRIES> owners;
+static_assert(std::atomic<uint64_t>::is_always_lock_free, "a locked fallback would serialise every claim");
 static uint32_t owner_call = 0;
 
 // Starts a call's registrations (render thread, before the wake).
@@ -268,11 +277,14 @@ constexpr uint32_t SRV_PAYLOAD = 2;     // slot, texture
 constexpr uint32_t FACTION_PAYLOAD = 4; // faction, mask, node, state
 // The block a CONST2 site sets, from the state.
 constexpr uint32_t CONST2_BLOCK = 0x2d4;
-// The most bytes the ops of one item take: a flush (an item flushes at most once), the shared-state calls and an animation
-// change; colour adds the two constants, the two textures and the faction block.
+// The most bytes the ops of one item take: a flush (an item flushes at most once: every flush zeroes the pending count, and
+// the count grows only at the item's end, so a second flush of the same item has no instances and records nothing), the
+// shared-state calls and an animation change; colour has two shared-state calls (the mesh's setup and its variation) and adds
+// the two constants, the two textures and the faction block.
 constexpr uint32_t DEPTH_OP_BYTES_PER_ITEM = 4 * ((1 + FLUSH_PAYLOAD) + (1 + VF68_PAYLOAD) + (1 + ANIM_PAYLOAD));
-constexpr uint32_t COLOUR_OP_BYTES_PER_ITEM = 4 * (2 * (1 + FLUSH_PAYLOAD) + 2 * (1 + VF68_PAYLOAD) + (1 + ANIM_PAYLOAD) + 2 * (1 + CONST_PAYLOAD)
-                                                   + 2 * (1 + SRV_PAYLOAD) + (1 + FACTION_PAYLOAD));
+constexpr uint32_t COLOUR_OP_BYTES_PER_ITEM =
+    4 * ((1 + FLUSH_PAYLOAD) + 2 * (1 + VF68_PAYLOAD) + (1 + ANIM_PAYLOAD) + 2 * (1 + CONST_PAYLOAD) + 2 * (1 + SRV_PAYLOAD)
+         + (1 + FACTION_PAYLOAD));
 
 struct CopyRange {
   uint32_t begin;
@@ -292,10 +304,16 @@ struct GroupInfo {
   bool owns_meshes;
 };
 constexpr std::array<CopyRange, 4> SAME_COPY_BACK = {{{0x00, 0x18}, {0x58, 0x5c}, {0x68, 0x69}, {0x6c, 0x7c}}};
-constexpr GroupInfo DEPTH_INFO = {.tracker_bytes = TRACKER_SIZE, .copy_back = SAME_COPY_BACK, .op_bytes_per_item = DEPTH_OP_BYTES_PER_ITEM,
-                                  .seed_bytes = 0, .owns_meshes = false};
-constexpr GroupInfo COLOUR_INFO = {.tracker_bytes = TRACKER_SIZE, .copy_back = SAME_COPY_BACK, .op_bytes_per_item = COLOUR_OP_BYTES_PER_ITEM,
-                                   .seed_bytes = 0x14, .owns_meshes = true};
+constexpr GroupInfo DEPTH_INFO = {.tracker_bytes = TRACKER_SIZE,
+                                  .copy_back = SAME_COPY_BACK,
+                                  .op_bytes_per_item = DEPTH_OP_BYTES_PER_ITEM,
+                                  .seed_bytes = 0,
+                                  .owns_meshes = false};
+constexpr GroupInfo COLOUR_INFO = {.tracker_bytes = TRACKER_SIZE,
+                                   .copy_back = SAME_COPY_BACK,
+                                   .op_bytes_per_item = COLOUR_OP_BYTES_PER_ITEM,
+                                   .seed_bytes = 0x14,
+                                   .owns_meshes = true};
 // The B groups' own entries arrive with their step.
 constexpr std::array<GroupInfo, static_cast<size_t>(Group::COUNT)> GROUPS = {DEPTH_INFO, COLOUR_INFO, DEPTH_INFO, COLOUR_INFO, DEPTH_INFO};
 constexpr uint32_t STRIDE_OFFSET = 0x50;
@@ -318,6 +336,14 @@ struct Controls {
   uint32_t race_chunks = 0;
   bool stride_non_zero = true;
   bool fail_thread_creation = false;
+  // Chunk 0's first mesh is claimed at the call start (a continuation has no setup site to claim it).
+  bool claim_first_mesh = true;
+  // The replay of a constant op repeats it as often as the loop did.
+  bool replay_repeats = true;
+  // The warm-up puts back the mesh state it wrote.
+  bool restore_warm_up = true;
+  // A call or warm-up that continues the tracker's mesh (no setup site before it) needs a class the census covered.
+  bool check_continuation_class = true;
 };
 #if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
 static Controls controls;
@@ -379,7 +405,8 @@ inline void __fastcall Record(Slot* slot, Frame* frame) noexcept {
       // The pointers into the tracker copy are the real tracker's for the replay.
       for (uint32_t i = 0; i < 10; ++i) {
         const uint32_t argument = stack[1 + i];
-        payload[1 + i] = ((internal::controls.translate_pointers && argument - slot_address < tracker_bytes) ? real_address + (argument - slot_address) : argument);
+        const bool in_tracker = (internal::controls.translate_pointers && argument - slot_address < tracker_bytes);
+        payload[1 + i] = (in_tracker ? real_address + (argument - slot_address) : argument);
       }
       std::memcpy(payload + 11, mesh + 0x40, 4);
       std::memcpy(payload + 12, mesh + 0x44, 4);
@@ -420,8 +447,7 @@ inline void __fastcall Record(Slot* slot, Frame* frame) noexcept {
       // the chunk run again and the loop skip the mesh (eax = 1: no technique); a known one is registered to its chunk. The
       // known classes are the 10 vtables of the weighted mesh classes the census covered.
       frame->eax = 0;
-      const uint32_t vtable = *reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(frame->ebx));
-      if (vtable == 0 || std::ranges::find(internal::game_calls.weighted_vtables, vtable) == internal::game_calls.weighted_vtables.end()) {
+      if (!internal::WeightedClass(*reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(frame->ebx)))) {
         slot->flags |= SLOT_UNKNOWN_CLASS;
         frame->eax = 1;
         return;
@@ -484,7 +510,8 @@ namespace internal {
 
 using DepthLoopFn = void(__thiscall*)(void* node, void* tracker, void* list, uint32_t begin, uint32_t end);
 using ColourLoopFn = void(__thiscall*)(void* node, void* tracker, void* list, uint32_t unused, uint32_t begin, uint32_t end);
-using FlushFn = void(__thiscall*)(void* mesh, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
+using FlushFn =
+    void(__thiscall*)(void* mesh, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 using Vf68Fn = uint8_t(__thiscall*)(void* mesh, uint32_t, uint32_t);
 using AnimCallFn = void(__thiscall*)(void* state, uint32_t value);
 using DirtyFn = void(__thiscall*)(uint32_t object);
@@ -573,6 +600,10 @@ struct CallTrace {
   uint32_t op_buffer_bytes = 0;
   uint32_t seed_hits = 0;
   uint32_t seed_misses = 0;
+  // The misses by what differed (one miss counts under every field that differs): faction, decals, mask, flags, animation.
+  std::array<uint32_t, 5> seed_miss_fields = {};
+  // The sum of the repeat counts of the replayed constant ops.
+  uint32_t constant_repeats = 0;
   uint32_t overflows = 0;
   uint32_t unknown_classes = 0;
   uint32_t conflicts = 0;
@@ -597,7 +628,13 @@ struct CallTrace {
 struct FrameTrace {
   uint64_t call_ticks = 0;
   bool thread_matched = true;
+  // A call of the frame ran the compare (its times are not a normal frame's).
+  bool compared = false;
 };
+
+// The seed fields a miss is counted under: four byte ranges of the tracker's first 0x14 bytes (the animation index is the
+// fifth counter).
+constexpr std::array<CopyRange, 4> SEED_FIELDS = {{{0x00, 0x04}, {0x04, 0x0c}, {0x0c, 0x10}, {0x10, 0x14}}};
 
 // The one-frame trace: armed by RENODX_TW_DRAW_TRACE=<seconds after the first present>[,<frames>]. Render thread only.
 struct Trace {
@@ -610,6 +647,7 @@ struct Trace {
   uint32_t frames_left = 0;
   uint64_t first_present = 0;
   uint64_t frame_call_ticks = 0;
+  bool frame_compared = false;
   std::vector<CallTrace> calls;
   std::vector<FrameTrace> frame_list;
 };
@@ -712,7 +750,7 @@ inline void RecordWork(const Descriptor& d, uint32_t worker) {
 inline void ReplayConst(uint32_t object, uint32_t bits, uint32_t repeat) {
   float value = 0;
   std::memcpy(&value, &bits, 4);
-  for (uint32_t i = 0; i < repeat; ++i) {
+  for (uint32_t i = 0; i < (controls.replay_repeats ? repeat : 1); ++i) {
     auto* const cell = *reinterpret_cast<float**>(static_cast<uintptr_t>(object) + 0x14);
     if (*game_calls.cached_constants == 0 || !(*cell == value)) {
       std::memcpy(cell, &bits, 4);
@@ -722,8 +760,8 @@ inline void ReplayConst(uint32_t object, uint32_t bits, uint32_t repeat) {
 }
 
 inline void ReplaySrv(uint32_t slot, uint32_t texture) {
-  const uint32_t view = reinterpret_cast<ViewFn>(static_cast<uintptr_t>(game_calls.view_call))(texture);
-  reinterpret_cast<SrvFn>(static_cast<uintptr_t>(game_calls.srv_call))(slot, view);
+  reinterpret_cast<SrvFn>(static_cast<uintptr_t>(game_calls.srv_call))(
+      slot, reinterpret_cast<ViewFn>(static_cast<uintptr_t>(game_calls.view_call))(texture));
 }
 
 // The faction block: the four colours of a faction (the default one without a faction), picked by the item's mask when it has
@@ -741,7 +779,8 @@ inline void ReplayFaction(int32_t faction, uint32_t mask, uint32_t node, uint32_
     return;
   }
   uint32_t list = 0;
-  reinterpret_cast<FactionListFn>(static_cast<uintptr_t>((*reinterpret_cast<const uint32_t* const*>(static_cast<uintptr_t>(node)))[0xc0 / 4]))(node, faction, &list);
+  const auto* const node_vtable = *reinterpret_cast<const uint32_t* const*>(static_cast<uintptr_t>(node));
+  reinterpret_cast<FactionListFn>(static_cast<uintptr_t>(node_vtable[0xc0 / 4]))(node, faction, &list);
   const auto* const list_bytes = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(list));
   uint32_t count = 0;
   uint32_t data = 0;
@@ -753,8 +792,10 @@ inline void ReplayFaction(int32_t faction, uint32_t mask, uint32_t node, uint32_
     return;
   }
   // The game gathers the list's `count` entries into a vector and the call reads the first four (48 bytes): gathered here.
+  const auto* const entries = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(data));
+  const auto* const picks = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(mask));
   for (uint32_t i = 0; i < 4; ++i) {
-    std::memcpy(&colours[3 * i], reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(data)) + 12 * reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(mask))[i], 12);
+    std::memcpy(&colours[3 * i], entries + 12 * picks[i], 12);
   }
   faction_fn(state, colours.data());
 }
@@ -797,8 +838,10 @@ static DWORD WINAPI WorkerMain(void* context) {
   for (;;) {
     uint32_t ticket = self.ticket.load(std::memory_order_acquire);
     if (ticket == seen) {
-      for (const uint64_t start = Qpc(); ticket == seen && Qpc() - start < spin_ticks; ticket = self.ticket.load(std::memory_order_acquire)) {
+      const uint64_t start = Qpc();
+      while (ticket == seen && Qpc() - start < spin_ticks) {
         _mm_pause();
+        ticket = self.ticket.load(std::memory_order_acquire);
       }
       while (ticket == seen) {
         self.ticket.wait(seen);
@@ -891,9 +934,16 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     trace_call->threads = settings.threads;
     trace_call->stage = settings.stage;
     trace_call->compared = compare_now;
+    trace.frame_compared = trace.frame_compared || compare_now;
   }
   const uint32_t* data = (items != 0 ? *reinterpret_cast<uint32_t* const*>(static_cast<uint8_t*>(list) + 8) : nullptr);
   const auto mesh_of = [data](uint32_t i) { return *reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(data[i])); };
+  // A dword of item i's mesh (only meshes of this list are read: a stale pointer of the tracker may be freed).
+  const auto mesh_field = [&](uint32_t i, uint32_t offset) {
+    uint32_t value = 0;
+    std::memcpy(&value, reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(mesh_of(i))) + offset, 4);
+    return value;
+  };
   const auto finish = [&](const char* direct_reason) {
     if (trace_call != nullptr) {
       if (items != 0) {
@@ -955,9 +1005,13 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   } else if (read32(tracker, 0x58) != 0 || read32(tracker, 0x78) != 0) {
     // The chunks start with no pending instances and no change mask, as a call the loop itself ended does.
     direct_reason = "entry state";
-  } else if (controls.guard_continuation && settings.stage >= Stage::CHUNKED && mesh_of(begin) == read32(tracker, 0x70) && read32(tracker, 0x14) == 0
-             && (read32(reinterpret_cast<const void*>(static_cast<uintptr_t>(mesh_of(begin))), 0x40) != read32(tracker, 0x20)
-                 || read32(reinterpret_cast<const void*>(static_cast<uintptr_t>(mesh_of(begin))), 0x44) != 0)) {
+  } else if (GROUPS[group_index].owns_meshes && controls.check_continuation_class && settings.stage >= Stage::CHUNKED
+             && mesh_of(begin) == read32(tracker, 0x70) && !WeightedClass(mesh_field(begin, 0))) {
+    // The call continues a mesh of a class the census did not cover: no setup site precedes its first item to stop it, so
+    // its virtual calls would run while recording (and again in the compare run and in warm-ups).
+    direct_reason = "unknown class";
+  } else if (controls.guard_continuation && settings.stage >= Stage::CHUNKED && mesh_of(begin) == read32(tracker, 0x70)
+             && read32(tracker, 0x14) == 0 && (mesh_field(begin, 0x40) != read32(tracker, 0x20) || mesh_field(begin, 0x44) != 0)) {
     // The call continues a mesh whose state is not what this tracker's setup would write (another view's, the colour
     // loop's): no setup precedes its first flush, so a snapshot taken while a chunk sets the mesh up would differ.
     direct_reason = "continuation";
@@ -1073,6 +1127,21 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   const auto seed_matches = [&](const Slot* slot, const void* real_tracker, int32_t last_anim) {
     return slot->seed_anim == last_anim && std::memcmp(slot->seed_fields.data(), real_tracker, GROUPS[group_index].seed_bytes) == 0;
   };
+  // Trace frames: counts a seed hit, or a miss under every field that differs.
+  const auto note_seed = [&](const Slot* slot, const void* real_tracker, int32_t last_anim) {
+    if (seed_matches(slot, real_tracker, last_anim)) {
+      ++trace_call->seed_hits;
+      return;
+    }
+    ++trace_call->seed_misses;
+    for (size_t field = 0; field < SEED_FIELDS.size(); ++field) {
+      const auto [from, to] = SEED_FIELDS[field];
+      trace_call->seed_miss_fields[field] += static_cast<uint32_t>(
+          to <= GROUPS[group_index].seed_bytes
+          && std::memcmp(slot->seed_fields.data() + from, static_cast<const uint8_t*>(real_tracker) + from, to - from) != 0);
+    }
+    trace_call->seed_miss_fields[SEED_FIELDS.size()] += static_cast<uint32_t>(slot->seed_anim != last_anim);
+  };
   if (settings.stage >= Stage::RECORDED || compare_now) {
     for (uint32_t k = 0; k < chunks; ++k) {
       prepare_slot(k, cuts[k + 1] - cuts[k]);
@@ -1080,13 +1149,23 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     // Warm-up of chunk k: the game's own loop over the item before its first, suppressed; what it leaves is the seed.
     for (uint32_t k = 1; k < chunks; ++k) {
       Slot* slot = SlotAt(k);
+      // A warm-up item that continues the tracker's mesh has no setup site before it: with a class the census did not cover,
+      // the warm-up would run that class's virtual calls. No warm-up then: the chunk is run again (its seed is never a hit).
+      if (GROUPS[group_index].owns_meshes && controls.check_continuation_class && mesh_of(cuts[k] - 1) == read32(tracker, 0x70)
+          && !WeightedClass(mesh_field(cuts[k] - 1, 0))) {
+        slot->flags = SLOT_UNKNOWN_CLASS;
+        slot->seed_anim = INT32_MIN;
+        continue;
+      }
       // The chunk before sets the warm-up item's mesh up itself: what the warm-up writes into it (+0x40 / +0x44) is put back.
       auto* const warm_mesh = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(mesh_of(cuts[k] - 1)));
       std::array<uint8_t, 8> mesh_state = {};
       std::memcpy(mesh_state.data(), warm_mesh + 0x40, 8);
       slot->mode = MODE_SUPPRESS;
       RunLoop(call, slot, cuts[k] - 1, cuts[k]);
-      std::memcpy(warm_mesh + 0x40, mesh_state.data(), 8);
+      if (controls.restore_warm_up) {
+        std::memcpy(warm_mesh + 0x40, mesh_state.data(), 8);
+      }
       std::memcpy(slot->seed_fields.data(), slot->tracker.data(), slot->seed_fields.size());
       slot->seed_anim = slot->anim;
       slot->mode = MODE_RECORD;
@@ -1104,11 +1183,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     for (uint32_t k = 0; k < chunks; ++k) {
       shared->seed_anim = (k == 0 ? -1 : shared->last_anim);
       if (compare_now && k > 0) {
-        if (seed_matches(SlotAt(k), tracker, shared->seed_anim)) {
-          ++trace_call->seed_hits;
-        } else {
-          ++trace_call->seed_misses;
-        }
+        note_seed(SlotAt(k), tracker, shared->seed_anim);
       }
       RunLoop(call, tracker, cuts[k], cuts[k + 1]);
     }
@@ -1125,7 +1200,9 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     NextOwnerCall();
     // Chunk 0 may continue the tracker's last mesh with no setup site before it: it owns its first mesh from the start (a fresh
     // call's table cannot refuse the entry).
-    ClaimMesh(mesh_of(begin), 0);
+    if (controls.claim_first_mesh) {
+      ClaimMesh(mesh_of(begin), 0);
+    }
   }
 
   // The in-frame compare (trace frames): the same call recorded whole in the compare slot, before anything changes.
@@ -1176,7 +1253,8 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   const uint32_t* compare_cursor = (compare_slot != nullptr ? compare_slot->ops_begin : nullptr);
   CompareResult compare_result = CompareResult::NONE;
   if (compare_slot != nullptr) {
-    compare_result = ((compare_slot->flags & (SLOT_OVERFLOW | SLOT_UNKNOWN_CLASS)) != 0 ? CompareResult::SLOT_NOT_COMPARABLE : CompareResult::EQUAL);
+    compare_result =
+        ((compare_slot->flags & (SLOT_OVERFLOW | SLOT_UNKNOWN_CLASS)) != 0 ? CompareResult::SLOT_NOT_COMPARABLE : CompareResult::EQUAL);
   }
   uint32_t compared_ops = 0;
   uint32_t compare_kind = 0;
@@ -1194,11 +1272,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
       trace_call->overflows += ((slot->flags & SLOT_OVERFLOW) != 0 ? 1 : 0);
       trace_call->unknown_classes += ((slot->flags & SLOT_UNKNOWN_CLASS) != 0 ? 1 : 0);
       if (k > 0) {
-        if (seed_missed) {
-          ++trace_call->seed_misses;
-        } else {
-          ++trace_call->seed_hits;
-        }
+        note_seed(slot, real, real_last);
       }
     }
     if (flagged || (seed_missed && controls.validate_seeds)) {
@@ -1220,8 +1294,8 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
       for (const uint32_t* op = slot->ops_begin; op < slot->ops_cursor && compare_result == CompareResult::EQUAL; op += (*op >> 16)) {
         bool same = (compare_cursor < compare_slot->ops_cursor);
         if (same && static_cast<OpKind>(*op & 0xffff) == OpKind::CONSTANT) {
-          same = (static_cast<OpKind>(*compare_cursor & 0xffff) == OpKind::CONSTANT && compare_cursor[1] == op[1] && compare_cursor[2] == op[2]
-                  && compare_cursor[3] - compare_used >= op[3]);
+          same = (static_cast<OpKind>(*compare_cursor & 0xffff) == OpKind::CONSTANT && compare_cursor[1] == op[1]
+                  && compare_cursor[2] == op[2] && compare_cursor[3] - compare_used >= op[3]);
           if (same) {
             compare_used += op[3];
             if (compare_used == compare_cursor[3]) {
@@ -1253,6 +1327,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
       if (trace_call != nullptr) {
         ++trace_call->ops[std::min<size_t>(static_cast<size_t>(kind), trace_call->ops.size() - 1)];
         trace_call->op_bytes += (*op >> 16) * 4;
+        trace_call->constant_repeats += (kind == OpKind::CONSTANT ? payload[2] : 0);
       }
       switch (kind) {
         case OpKind::FLUSH: {
@@ -1262,8 +1337,9 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
             std::memcpy(mesh + 0x44, payload + 12, 4);
           }
           real[ANY_OFFSET] |= static_cast<uint8_t>(payload[13]);
-          reinterpret_cast<FlushFn>(static_cast<uintptr_t>(game_calls.flush))(mesh, payload[1], payload[2], payload[3], payload[4], payload[5],
-                                                                               payload[6], payload[7], payload[8], payload[9], payload[10]);
+          reinterpret_cast<FlushFn>(static_cast<uintptr_t>(game_calls.flush))(mesh, payload[1], payload[2], payload[3], payload[4],
+                                                                               payload[5], payload[6], payload[7], payload[8],
+                                                                               payload[9], payload[10]);
           break;
         }
         case OpKind::VF68: {
@@ -1272,12 +1348,13 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
             std::memcpy(mesh + 0x40, payload + 3, 4);
             std::memcpy(mesh + 0x44, payload + 4, 4);
           }
-          const auto vf68 = reinterpret_cast<Vf68Fn>(static_cast<uintptr_t>((*reinterpret_cast<const uint32_t* const*>(mesh))[0x68 / 4]));
-          real[ANY_OFFSET] |= vf68(mesh, payload[1], payload[2]);
+          real[ANY_OFFSET] |= reinterpret_cast<Vf68Fn>(static_cast<uintptr_t>((*reinterpret_cast<const uint32_t* const*>(mesh))[0x68 / 4]))(
+              mesh, payload[1], payload[2]);
           break;
         }
         case OpKind::ANIM:
-          reinterpret_cast<AnimCallFn>(static_cast<uintptr_t>(game_calls.anim_call))(reinterpret_cast<void*>(static_cast<uintptr_t>(payload[0])), payload[1]);
+          reinterpret_cast<AnimCallFn>(static_cast<uintptr_t>(game_calls.anim_call))(
+              reinterpret_cast<void*>(static_cast<uintptr_t>(payload[0])), payload[1]);
           real_last = static_cast<int32_t>(payload[2]);
           break;
         case OpKind::CONSTANT:
@@ -1306,7 +1383,8 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     ++replayed;
   }
   lap(&CallTrace::replay);
-  if (compare_slot != nullptr && compare_result == CompareResult::EQUAL && (compare_cursor != compare_slot->ops_cursor || compare_used != 0)) {
+  if (compare_slot != nullptr && compare_result == CompareResult::EQUAL
+      && (compare_cursor != compare_slot->ops_cursor || compare_used != 0)) {
     compare_result = CompareResult::COMPARE_HAS_MORE;
   }
   if (trace_call != nullptr) {
@@ -1316,7 +1394,8 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     trace_call->compare_kind = compare_kind;
   }
   if constexpr (TEST_SWITCHES) {
-    last_call = {.chunks = chunks, .reruns = reruns, .replayed = replayed, .ops = op_count, .direct = false, .split_constants = split_constants};
+    last_call = {.chunks = chunks, .reruns = reruns, .replayed = replayed, .ops = op_count, .direct = false,
+                 .split_constants = split_constants};
   }
   finish(nullptr);
 }
@@ -1461,9 +1540,12 @@ inline void Update(const Settings& settings, bool sites_in) {
     }
   }
   if (trace.active) {
-    trace.frame_list.push_back({.call_ticks = trace.frame_call_ticks,
-                                .thread_matched = (settings.context_hooks_thread == 0 || settings.context_hooks_thread == GetCurrentThreadId())});
+    trace.frame_list.push_back(
+        {.call_ticks = trace.frame_call_ticks,
+         .thread_matched = (settings.context_hooks_thread == 0 || settings.context_hooks_thread == GetCurrentThreadId()),
+         .compared = trace.frame_compared});
     trace.frame_call_ticks = 0;
+    trace.frame_compared = false;
     if (--trace.frames_left == 0) {
       trace.active = false;
       trace.finished = true;
@@ -1472,13 +1554,16 @@ inline void Update(const Settings& settings, bool sites_in) {
       const auto milliseconds = [](uint64_t ticks) { return static_cast<double>(ticks) * 1000.0 / static_cast<double>(qpc_frequency); };
       std::string text = "Threaded Draw Recording trace\n";
       for (const FrameTrace& frame : trace.frame_list) {
-        text += std::format("frame: calls {:.3f} ms (trace-only work left out; read timings from calls marked 'timing'), present thread {} context_hooks'\n",
-                            milliseconds(frame.call_ticks), (frame.thread_matched ? "is" : "is not"));
+        text += std::format("frame: calls {:.3f} ms ({}; trace-only work left out), present thread {} context_hooks' thread\n",
+                            milliseconds(frame.call_ticks),
+                            (frame.compared ? "compared frame: warmed by the compare run, not a normal frame's time" : "timing frame"),
+                            (frame.thread_matched ? "is" : "is not"));
       }
       for (const CallTrace& call : trace.calls) {
-        text += std::format("call: group {} family {} stage {} K {} items {} chunks {} direct '{}' {}\n  chunk items:", static_cast<uint32_t>(call.group),
-                            (call.family == NO_FAMILY ? std::string("-") : std::to_string(call.family)), static_cast<uint32_t>(call.stage), call.threads,
-                            call.items, call.chunks, call.direct_reason, (call.compared ? "compared" : "timing"));
+        text += std::format("call: group {} family {} stage {} K {} items {} chunks {} direct '{}' {}\n  chunk items:",
+                            static_cast<uint32_t>(call.group), (call.family == NO_FAMILY ? std::string("-") : std::to_string(call.family)),
+                            static_cast<uint32_t>(call.stage), call.threads, call.items, call.chunks, call.direct_reason,
+                            (call.compared ? "compared" : "timing"));
         for (uint32_t k = 0; k < call.chunks && k < call.chunk_items.size(); ++k) {
           text += std::format(" {}", call.chunk_items[k]);
         }
@@ -1486,7 +1571,11 @@ inline void Update(const Settings& settings, bool sites_in) {
         for (const uint32_t runs : call.runs) {
           text += std::format(" {}", runs);
         }
-        const char* compare_text = (call.compared ? "" : "not run (timing frame)");
+        std::string compare_text = "not run (timing frame)";
+        if (call.compared) {
+          compare_text = (call.direct_reason[0] != '\0' ? std::format("not run (direct: {})", call.direct_reason)
+                                                        : std::string("not run (this stage does not compare)"));
+        }
         switch (call.compare_result) {
           case CompareResult::EQUAL:
             compare_text = "equal";
@@ -1504,17 +1593,21 @@ inline void Update(const Settings& settings, bool sites_in) {
             break;
         }
         text += std::format(
-            "\n  ops: flush {} vf68 {} anim {} const {} srv {} faction {} bytes {} (buffer {}); seeds hit {} miss {}; overflow {} unknown {} conflict {} rerun {}\n"
+            "\n  ops: flush {} vf68 {} anim {} const {} (repeats {}) srv {} faction {} bytes {} (buffer {});"
+            " seeds hit {} miss {} (by field: faction {} decals {} mask {} flags {} anim {}); overflow {} unknown {} conflict {} rerun {}\n"
             "  ms: direct {:.3f} cut {:.3f} warm-ups {:.3f} chunk0 {:.3f} join {:.3f} replay {:.3f} rerun {:.3f} total {:.3f}"
             " (trace only: compare {:.3f} run scan {:.3f}; wall {:.3f})\n  compare: ",
-            call.ops[1], call.ops[2], call.ops[3], call.ops[4], call.ops[5], call.ops[6], call.op_bytes, call.op_buffer_bytes, call.seed_hits, call.seed_misses, call.overflows,
-            call.unknown_classes, call.conflicts, call.reruns, milliseconds(call.direct), milliseconds(call.cut), milliseconds(call.warm_ups),
-            milliseconds(call.chunk_zero), milliseconds(call.join_wait), milliseconds(call.replay), milliseconds(call.rerun), milliseconds(call.total),
+            call.ops[1], call.ops[2], call.ops[3], call.ops[4], call.constant_repeats, call.ops[5], call.ops[6], call.op_bytes,
+            call.op_buffer_bytes, call.seed_hits, call.seed_misses, call.seed_miss_fields[0], call.seed_miss_fields[1],
+            call.seed_miss_fields[2],
+            call.seed_miss_fields[3], call.seed_miss_fields[4], call.overflows, call.unknown_classes, call.conflicts, call.reruns,
+            milliseconds(call.direct), milliseconds(call.cut), milliseconds(call.warm_ups), milliseconds(call.chunk_zero),
+            milliseconds(call.join_wait), milliseconds(call.replay), milliseconds(call.rerun), milliseconds(call.total),
             milliseconds(call.compare), milliseconds(call.run_scan), milliseconds(call.wall));
         if (call.compare_result == CompareResult::DIFFERS) {
           text += std::format("differs at op {} (kind {})\n", call.compare_op, call.compare_kind);
         } else {
-          text += std::format("{}\n", compare_text);
+          text += compare_text + "\n";
         }
       }
       std::ofstream(std::filesystem::path(exe.data()).parent_path() / "tw_draw_recording.txt") << text;
@@ -1524,7 +1617,8 @@ inline void Update(const Settings& settings, bool sites_in) {
   } else if (trace.armed && !trace.finished && Qpc() >= trace.arm_ticks) {
     trace.active = true;
     trace.frames_left = std::max<uint32_t>(trace.frames, 1);
-    trace.calls.reserve(256);
+    // Room for a window's calls: a reallocation inside a timing frame would evict the caches before the timed phases.
+    trace.calls.reserve(4096);
   }
 
   config = {.stage = stage, .threads = threads, .loops = settings.loops};
