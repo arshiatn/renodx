@@ -4269,6 +4269,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         amd64 PASS (WARP), W3m frames 1-2 parity EQUAL. atn_harness_runs.ps1 -H0 (h7 D1m locator native, h8 D1m overhead
         x20, h9 W3m locator ring) = QUIET WINDOW, waits for ATN. c23r_ RESUMED (slot): review of b4c4739f2 + 411694a81 ->
         reports/c25r_review.md.
+        c3i_ C.3-1 FIX ROUND DONE 18:2x: rmt_c3 04836950c (on its atn-mods merge 8698498f1, local, Sonnet trailer): M1
+        protection pre-pass + restore + whole-table stand-down (+ found: sites on page 0x17b1000 left it RWX -> restore
+        last-made-first), M2 last removal checks the whole recording page, S1 staying_in + D:950 arena 0 -> direct, S2
+        refusal latch, S3 sticky left_in, S4 a-d tests, S5 per-group stand-down + log, nits, BuildCut parameterized,
+        usable_groups. Tests sites / loop / draw_recording / engine_code -Quick x86 PASS; gated builds exit 0; name check
+        plain words. FLAG: after the merge the loop test's continuation-guard-off CONTROL no longer differs on one-thread
+        stages (only workers K 8 / 16) -> c3i_ re-based it (timing-dependent) -> c31r_ RESUMED: re-check + find why
+        (masked by C.2-3's S-1 class check? a depth-path change?) + a deterministic control.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
