@@ -4239,6 +4239,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         dropped, first_drop_seq 146,417; ETL 2.55 GB). b2b_check.ps1: 0 failed. Agents RESUMED 17:4x (c2i_, c3i_, s5r_ +
         the D1m overhead questions). ANALYSIS of 2b QUEUED for the next free slot (3-agent cap): b2a_ (FCU OFF / ON / OFF
         frame times + helper pairs + driver waits per segment; T start: v3 timings without the hash vs b2 W3m).
+        s5r_ VB DESIGN v2 DONE 17:5x (reports/s5r_design_vb.md): H0 first = the harness rings only buffers with a v1 map
+        line (skips ReShade's 432 B push buffer, ~40-60 + 20 test lines; ATN GPU ~15 min: D1m locator native, D1m overhead,
+        W3m locator). D1m's 23 ms/f is in the CB DISCARD class, prime suspect the 432 B buffer (25 % of D1m's CB DISCARDs;
+        never waited in game in b2). Ring's real gain in game ~0 in b2-like sessions, removes b1-like CB waits (6-15 ms);
+        the lever = VB DISCARDs. Unmap cost = moved work (Map + Unmap at parity); net +0.11-0.15 ms/f binds / swaps, 3/4
+        of Sets = the 432 B artifact; FIRST_PIECES = 8 (+1 MB); gate looks reachable (E). VB scheme: 464 KB ring own
+        backings (<= 3.7 MB); class B six 8 MB burst rings = shared pool per description, 64 MB budget (E 25-50 MB); class
+        A once-a-frame unbound early (8 MB / 3 MB / 367 KB) = idle reuse NO_OVERWRITE after its event (0 MB); total <= 68
+        MB; moves the replay's 2.2-2.4 ms/f VB waits, in game the traced 3.0 + untraced >= 5 ms class (~7.4 ms/f W3m);
+        VB cost E 0.1-0.15 ms/f. Plan H0 + V1-V6 ~1,200 lines, tw_buffer_pool part 8 (8 controls), harness vbword /
+        vboffset controls, Unwind via CopyResource + one wait, row INTEGER Off / Constants / Constants + Vertices (Off).
+        s5o_ RESUMED (slot 3 of 3): H0 only + atn_harness_runs.ps1 -H0. NEXT free slots: an independent Opus xHigh review
+        of design v2 (before V1-V6), then the b2b analysis.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
