@@ -23,7 +23,9 @@
 #include <cstdint>
 #include <format>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <span>
 #include <string>
 #include <string_view>
@@ -213,6 +215,24 @@ struct Given {
   std::vector<ULONG> sets;
 };
 
+// The worker_sets of the plan now applied (empty: none), for the threads that follow the game's other threads (the draw
+// recording pool). The generation changes with every change of the sets; it is atomic so that a reader can compare it
+// without the lock (and copy the sets only when it changed).
+struct PublishedSets {
+  std::shared_mutex mutex;
+  std::vector<ULONG> worker_sets;
+  std::atomic<uint32_t> generation = 0;
+};
+static PublishedSets published;
+
+inline uint32_t AppliedGeneration() { return published.generation.load(std::memory_order_acquire); }
+
+inline std::vector<ULONG> AppliedWorkerSets(uint32_t* generation) {
+  const std::shared_lock lock(published.mutex);
+  *generation = published.generation.load(std::memory_order_relaxed);
+  return published.worker_sets;
+}
+
 // The worker: the game's CPU set and affinity every tick_ms and a check every CHECK_EVERY-th (the render thread, a plan,
 // new threads) until `stop`, then ours cleared.
 static DWORD WINAPI WorkerLoop(void* stop) {
@@ -233,8 +253,17 @@ static DWORD WINAPI WorkerLoop(void* stop) {
   // The first thread snapshot after an apply found none of the game's threads to move.
   bool nothing_to_move = false;
 
+  // Moves the sets in (no allocation, so it can't throw once the render thread has its own sets).
+  const auto publish = [](std::vector<ULONG>&& sets) {
+    const std::unique_lock lock(published.mutex);
+    if (published.worker_sets != sets) {
+      published.worker_sets = std::move(sets);
+      published.generation.fetch_add(1, std::memory_order_release);
+    }
+  };
   // Exactly ours: a thread whose sets someone changed since keeps theirs. How many were reset.
-  const auto clear_given = [&given] {
+  const auto clear_given = [&given, &publish] {
+    publish({});
     int reset = 0;
     for (const Given& thread : given) {
       if (thread.thread == nullptr) continue;
@@ -349,7 +378,9 @@ static DWORD WINAPI WorkerLoop(void* stop) {
           measure_again();
           continue;
         }
-        // Only read while applied: filled before the render thread's sets, so nothing after them can throw.
+        // Only read while applied: filled before the render thread's sets, so nothing after them can throw. The published
+        // copy is made here too.
+        std::vector<ULONG> published_sets = plan.worker_sets;
         applied_cpus.clear();
         for (const CpuSet& cpu : system) {
           if (std::ranges::binary_search(plan.render_sets, cpu.id)) {
@@ -371,6 +402,7 @@ static DWORD WINAPI WorkerLoop(void* stop) {
         applied_affinity = affinity;
         last_note.clear();
         checks_since_apply = 0;
+        publish(std::move(published_sets));
       }
 
       // Threads not given sets yet (new ones too) get theirs unless they have their own rule; ended ones let go. A thread

@@ -475,6 +475,9 @@ static void Live() {
     Ids rest;
     std::ranges::set_difference(base, render_sets, std::back_inserter(rest));
     for (const HANDLE other : others) CHECK(Selected(other) == rest);
+    // The sets published to the draw recording pool are the ones applied to the other threads.
+    uint32_t generation = 0;
+    CHECK(cs::AppliedWorkerSets(&generation) == rest);
     return render_sets;
   };
   // Every thread's sets inside `base`, but the ones with their own rule.
@@ -486,6 +489,12 @@ static void Live() {
   };
   const auto check_cleared = [&](const std::vector<HANDLE>& threads) {
     for (const HANDLE thread : threads) CHECK(Selected(thread).empty());
+  };
+  // The sets published to the draw recording pool: empty after every stand-down and clear (the pool follows within a present).
+  const auto check_published_empty = [] {
+    uint32_t generation = 0;
+    CHECK(cs::AppliedWorkerSets(&generation).empty());
+    CHECK(generation == cs::AppliedGeneration());
   };
   std::vector<HANDLE> worker_handles;
   for (const Spinner& spinner : workers) worker_handles.push_back(spinner.handle);
@@ -548,10 +557,13 @@ static void Live() {
 
   // 5. A default of 3 cores (C): stands down, ours cleared.
   ClearLog();
+  const uint32_t generation_applied = cs::AppliedGeneration();
   set_default(set_c);
   CHECK(PresentUntil([&] { return LogHas("fewer than 4"); }, 5000));
   check_cleared({render, late.handle});
   check_cleared(ours_rest);
+  check_published_empty();
+  CHECK(cs::AppliedGeneration() != generation_applied);
   CHECK(Selected(foreign.handle) == foreign_sets);
   CHECK(Selected(workers[0].handle) == someone);
   check_all_inside(set_c, {foreign_sets, someone});
@@ -602,6 +614,10 @@ static void Live() {
   CHECK(LogHas("off: ours cleared"));
   check_cleared({render, late.handle});
   check_cleared(ours_rest);
+  {
+    uint32_t generation = 0;
+    CHECK(cs::AppliedWorkerSets(&generation).empty());
+  }
   CHECK(Selected(foreign.handle) == foreign_sets);
   CHECK(Selected(workers[0].handle) == someone);
   CHECK(Selected(narrow.handle).empty());
@@ -631,6 +647,7 @@ static void Live() {
   PresentUntil([] { return false; }, 500);
   check_cleared({late.handle});
   check_cleared(ours_rest);
+  check_published_empty();
   CHECK(Selected(render) == own);
   cs::Update(false, GAME_MODULES);
   CHECK(Selected(render) == own);
@@ -652,6 +669,7 @@ static void Live() {
   cs::Update(false, GAME_MODULES);
   check_cleared(plain);
   check_cleared({render});
+  check_published_empty();
   REQUIRE(SetProcessAffinityMask(GetCurrentProcess(), system_mask) != FALSE);
   std::printf("  11. affinity-only base: applied inside it, cleared\n");
   set_default(set_a);
@@ -719,6 +737,7 @@ static void Live() {
     PresentUntil([] { return false; }, 500, true, modules);
     check_cleared({render, late.handle});
     check_cleared(ours_rest);
+    check_published_empty();
     check_not_games();
     CHECK(!LogHas("Keep Render Core Free: on:"));
     cs::Update(false, modules);
@@ -736,6 +755,7 @@ static void Live() {
     PresentUntil([] { return false; }, 1000);
     check_cleared({render, late.handle});
     check_cleared(ours_rest);
+    check_published_empty();
     check_not_games();
     CHECK(!LogHas("Keep Render Core Free: on:"));
     cs::Update(false, GAME_MODULES);
@@ -756,6 +776,7 @@ static void Live() {
     CHECK(on_count(" of the game's threads") == 1);
     cs::Update(false, KERNEL32);
     check_cleared({render, sleeper});
+    check_published_empty();
   }
   std::printf("  16. kernel32 as the game's module: only the sleeper moved, the render thread given\n");
 
