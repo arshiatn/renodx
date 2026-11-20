@@ -4320,6 +4320,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         (N1 harmless). c3i_ RESUMED 18:5x: R1 + N2 / N3 -> then c31r_ re-checks -> merge rmt_c3. s5r_ RESUMED 18:5x: VB
         design v3 addendum (reports/s5r_design_vb_v3.md) + the CB ring's in-game batch plan (part 2, runs before VB work).
         c23r_ got c31r_'s OpsEqual / compare-gating note. Agents: c23r_, c3i_, s5r_ (3 of 3).
+        c3i_ R1 DONE 19:0x: rmt_c3 555e81d7e (local, Sonnet trailer): compare_every_call = tracing in RunStaged, the
+        guard-off RECORDED K 4 traced control = the CHECK again (differs deterministically; WORKERS K 8 / 16 prints only),
+        comments, N1 comment, N2 page_failed = shared_ok, N3 braces. loop / sites / draw_recording x86 PASS, no DIFFERS /
+        COMPARE_HAS_MORE in any traced case. Coordinator gated builds on rmt_c3: x86 twattila + twrome2 +
+        twthronesofbritannia exit 0, amd64 twattila exit 0. c31r_ RESUMED: re-check 2 (+ tw_engine_code -Quick) -> merge.
+        c23r_ C.2-5 REVIEW DONE 19:0x (reports/c25r_review.md): MERGE AFTER M-1, M-2 (B groups' compare / S9b latch only;
+        a normal frame's replay stays right). M-1 round result = first non-EQUAL run -> a rerun in run 0 hides run 1's
+        DIFFERS -> combine by severity + run / op index. M-2 compare runs leave the straddler planned[0] +0x40 / +0x44
+        changed (depth variation path writes +0x44; flush leaves +0x40 = vf3c()) -> false Depth B latch for real-vf64
+        classes + wrong restore in compared frames -> save / restore around the compare runs. Should S-1 straddler test,
+        S-2 nesting guard, S-3 B family numbers, S-4 duplicate check only when compare_now + static array, S-5 M2 memcmp
+        [0x18, 0x28); N-1..N-10. Tests x86 PASS (BStages 768, 249 real compares). c2i_ RESUMED 19:1x: fix round on rmt_c2
+        (no atn-mods merge yet: rmt_c3 lands first) -> c23r_ re-checks -> merge. Agents: c31r_, s5r_, c2i_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
