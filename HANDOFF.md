@@ -4363,6 +4363,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         atn_harness_runs.ps1 first (closes S5 RING GPU CHECKS on pass), then
         `powershell -NoProfile -ExecutionPolicy Bypass -File ...\bench\b3_run.ps1 *>&1 | Tee-Object ...\bench\b3_run_out.txt`,
         then b3_check.ps1. WAITS for b2a_'s 2b report (it may change batch 3).
+        c2i_ C.2-5 FIX ROUND DONE 19:0x: rmt_c2 1d16f15f3 (local): M-1 severity combine + run / op / chunk / class in the
+        trace (BCompareRuns), M-2 straddler +0x40 / +0x44 save / restore (control restore_straddler; BStraddler 48 cases),
+        S-2 in_round RAII (nested -> direct; BNested, B only), S-3 family items / chunks, S-4 compare_now + static (present
+        thread only), S-5 [0x18, 0x28) memcmp (BEntryCheck mode 4), nits N-1..N-8. Not done: N-2 counter, N-4 +0x69 / mask
+        controls, N-9 + c23r_ S4 -> C.2-4. x86 PASS, amd64 stubs, cpu_sets, build32 exit 0, negative checks fail as they
+        should. Name check plain words. atn-mods -> rmt_c2 merge CONFLICTS in draw_recording.hpp (C.3-1) -> c2i_ RESUMED
+        19:1x: plain merge + hunk notes + all draw_recording suites + engine_code -Quick + builds -> then c23r_ re-checks
+        1d16f15f3 + the merge -> merge rmt_c2. Agents: b2a_, c2i_.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
