@@ -4180,6 +4180,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         RESUMED (retry command 2 unchanged; then ring parity W3m + D1m; timing runs only in the quiet window), b2p_ RESUMED
         (batch 2b variants + dry run, batch 2's build), s5r_ RESUMED (VB design, Opus xHigh -> reports/s5r_design_vb.md;
         then s5o_ implements). Quiet window = all agents HELD: harness overhead x20 + W3m timing, then batch 2b.
+        s6r_ RETRY DENIED 17:2x (the one unchanged retry of the W3m locator command): "[Undermining Oversight]" again ->
+        path ENDED (second stop), nothing ran. Commands for ATN's own terminal (or ATN adds an allow rule themself):
+        bench/analysis_b2/replay/atn_harness_commands.md (1-2 W3m locator native / ring, 3-4 parity D1m / W3m, 5a-c
+        controls, 6 D1m overhead x20 = quiet window only; outputs h*.txt beside it). ASKED ATN: run them / add a rule.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
