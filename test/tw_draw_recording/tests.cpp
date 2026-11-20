@@ -1,13 +1,18 @@
 // Threaded Draw Recording (twattila/draw_recording.hpp), x86 only.
 // Part 1 (C.2-1): the pool: start / stop 100 times, K 2 to 16 to 2 live, the x87 and SSE control words of the dispatching
-// thread seen by every worker, the CPU-set mirror of Keep Render Core Free's published sets, the types' offsets (static
-// asserts in the header).
-// Part 2 (C.2-2): the depth path on a synthetic loop with the same state machine as the game's (written from its listing):
-// the serial call log equals the log of the Chunked, Recorded, One Worker and Workers stages at K = 2 to 16 over lists with
-// runs of 1 to 300 items, animation -1 runs, meshes without a technique before cuts, tiny op buffers (overflow: run again),
-// two calls in a row on one tracker; Touch-Ahead; the fall-backs; the trace's in-frame compare. Controls: each safeguard
-// off (seed validation, pointer translation), a dropped flush, a wrong animation stack slot, an op injected into one chunk:
-// every one must make the run differ.
+// thread seen by every worker on every dispatch, the CPU-set mirror of Keep Render Core Free's published sets (applied once
+// per generation), worker thread creation failing (one attempt per stage and K), the types' offsets (static asserts in the
+// header).
+// Part 2 (C.2-2): the depth path on a synthetic loop with the same state machine as the game's (written from its listing),
+// driven by a synthetic driver that splits the list into portions from the tracker's +0x50 (so the portions start at
+// begin != 0, back to back on one tracker, and a stale stride changes the split). The fake flush does the real flush's
+// writes (+0x5c, +0x28, the +0x69 byte it reads and clears) and logs the +0x69 byte it saw. The serial call log equals the log
+// of the Chunked, Recorded, One Worker and Workers stages at K = 2 to 16 over lists with runs of 1 to 300 items, animation
+// -1 runs, meshes without a technique before cuts and in the last chunk, tiny op buffers (overflow: run again), two passes in a
+// row on one tracker, calls with 200000 items; Touch-Ahead; the fall-backs (entry state, continuation of foreign mesh state);
+// the flush entry site; the Record rules (group, any byte); the trace's in-frame compare and its time accounting. Controls:
+// each safeguard off (seed validation, pointer translation, continuation guard, any capture, the stride rule), a dropped
+// flush, a wrong animation stack slot, an op injected into one chunk: every one must make the run differ.
 #include <windows.h>
 #include <tlhelp32.h>
 
@@ -18,9 +23,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <mutex>
-#include <iterator>
 #include <string>
 #include <thread>
 #include <vector>
@@ -73,6 +78,10 @@ static void ReportWork(const di::Descriptor&, uint32_t worker) {
   report.sse = sse;
   report.mxcsr = _mm_getcsr();
   report.thread_id = GetCurrentThreadId();
+  // Game code on a worker may leave its own control words changed: the next dispatch must set them again.
+  unsigned int ignored = 0;
+  __control87_2(_PC_24 | _RC_CHOP, _MCW_RC | _MCW_PC, &ignored, nullptr);
+  __control87_2(_RC_CHOP | _DN_FLUSH, _MCW_RC | _MCW_DN, nullptr, &ignored);
   report.runs.fetch_add(1);
 }
 
@@ -146,6 +155,7 @@ static void PoolControlWords() {
         const uint32_t mine = _mm_getcsr();
         unsigned int my_x87 = 0;
         __control87_2(0, 0, &my_x87, &ignored);
+        // Back to back on the same workers, each of which clobbered its own words after the last dispatch.
         RunReport(15);
         for (uint32_t w = 0; w < 15; ++w) {
           CHECK(((reports[w].mxcsr ^ mine) & 0xffc0) == 0);
@@ -158,7 +168,7 @@ static void PoolControlWords() {
   __control87_2(saved_x87, x87_mask, &saved_x87, nullptr);
   __control87_2(saved_sse, _MCW_EM | _MCW_RC | _MCW_DN, nullptr, &saved_sse);
   dr::Update({.stage = dr::Stage::OFF}, false);
-  std::printf("pool: x87 PC / RC and MXCSR RC / DAZ / FTZ copied to all 15 workers (%d combinations)\n", checked);
+  std::printf("pool: x87 PC / RC and MXCSR RC / DAZ / FTZ copied to all 15 workers on every dispatch (%d combinations)\n", checked);
 }
 
 static void PoolCpuSets() {
@@ -173,7 +183,7 @@ static void PoolCpuSets() {
   const auto publish = [](const std::vector<ULONG>& published_sets) {
     const std::unique_lock lock(cs::published.mutex);
     cs::published.worker_sets = published_sets;
-    ++cs::published.generation;
+    cs::published.generation.fetch_add(1, std::memory_order_release);
   };
   const auto all_equal = [](const std::vector<ULONG>& expected) {
     for (uint32_t w = 0; w < di::worker_count; ++w) {
@@ -189,11 +199,44 @@ static void PoolCpuSets() {
   dr::Update(Workers(12), true);
   CHECK(di::worker_count == 11);
   CHECK(all_equal(sets));
+  // The sets are read once per generation: a change made behind the pool's back stays until the next publish.
+  SetThreadSelectedCpuSets(di::pool[0].thread, nullptr, 0);
+  dr::Update(Workers(12), true);
+  CHECK(cs::ReadSets(GetThreadSelectedCpuSets, di::pool[0].thread) == std::vector<ULONG>{});
+  CHECK(di::given_generation == cs::AppliedGeneration());
   publish({});
   dr::Update(Workers(12), true);
   CHECK(all_equal({}));
   dr::Update({.stage = dr::Stage::OFF}, false);
-  std::printf("pool: CPU-set mirror: the published sets are the pool threads' sets (set, grown, cleared)\n");
+  std::printf("pool: CPU-set mirror: the published sets are the pool threads' sets (set, grown, cleared), applied once per generation\n");
+}
+
+// A worker thread that can't be created is tried once per stage and K, not every present.
+static void PoolThreadFailure() {
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  dr::Update({.stage = dr::Stage::OFF}, false);
+  CHECK(di::worker_count == 0);
+  di::controls.fail_thread_creation = true;
+  di::thread_attempts = 0;
+  for (int present = 0; present < 5; ++present) dr::Update(Workers(8), true);
+  CHECK(di::thread_attempts == 1);
+  CHECK(di::worker_count == 0);
+  dr::Update(Workers(6), true);
+  CHECK(di::thread_attempts == 2);
+  const uint32_t attempts = di::thread_attempts;
+  di::controls.fail_thread_creation = false;
+  // Same stage and K: still not tried.
+  dr::Update(Workers(6), true);
+  CHECK(di::thread_attempts == 2 && di::worker_count == 0);
+  // The stage or K changed: tried again, and now it works.
+  dr::Update(Workers(7), true);
+  CHECK(di::worker_count == 6);
+  dr::Update({.stage = dr::Stage::OFF}, false);
+  CHECK(di::worker_count == 0);
+  std::printf("pool: a failed CreateThread is tried once per stage and K (%u attempts for 7 presents)\n", attempts);
+#else
+  std::printf("pool: thread failure skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
+#endif
 }
 
 // ---------------------------------------------------------------- part 2: the synthetic game
@@ -207,13 +250,13 @@ struct SynthMesh {
   uint32_t* vtable;
   uint32_t kind;
   uint8_t pad0[0x38];
-  uint32_t svt;
+  uint32_t view_tag;
   uint32_t pass;
   uint8_t pad1[0x14];
   uint8_t flag;
   uint8_t pad2[0x23];
 };
-static_assert(sizeof(SynthMesh) == 0x80 && offsetof(SynthMesh, svt) == 0x40 && offsetof(SynthMesh, pass) == 0x44 && offsetof(SynthMesh, flag) == 0x5c);
+static_assert(sizeof(SynthMesh) == 0x80 && offsetof(SynthMesh, view_tag) == 0x40 && offsetof(SynthMesh, pass) == 0x44 && offsetof(SynthMesh, flag) == 0x5c);
 
 struct SynthItem {
   SynthMesh* mesh;
@@ -230,7 +273,8 @@ struct SynthList {
 };
 static_assert(offsetof(SynthList, count) == 4 && offsetof(SynthList, data) == 8);
 
-using LogEntry = std::array<uint32_t, 14>;
+// kind, mesh, the 10 flush arguments (or the call's arguments), view_tag, pass, the +0x69 byte the flush saw.
+using LogEntry = std::array<uint32_t, 15>;
 static std::vector<LogEntry> game_log;
 static dr::Shared* g_shared = nullptr;
 
@@ -239,20 +283,28 @@ struct TestControls {
   bool drop_end_flush = false;
   uint32_t anim_stack = 9;
   int inject_chunk = -1;
+  // The flush entry's site id for every flush instead of the call-site ids.
+  bool entry_site = false;
 };
 static TestControls test_controls;
 
+// The real flush's tracker writes: the cursor +0x5c advances by count x stride, the +0x28 cache is written, the +0x69 byte is
+// read and cleared. The pointers in the arguments are the tracker's.
 static void __thiscall FakeFlush(void* mesh, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5, uint32_t a6, uint32_t a7, uint32_t a8, uint32_t a9) {
   const auto* m = static_cast<const SynthMesh*>(mesh);
-  game_log.push_back({1, reinterpret_cast<uint32_t>(mesh), a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, m->svt, m->pass});
+  auto* any = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(a3));
+  game_log.push_back({1, reinterpret_cast<uint32_t>(mesh), a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, m->view_tag, m->pass, *any});
+  *reinterpret_cast<uint32_t*>(static_cast<uintptr_t>(a6)) += a4 * (m->kind + 1);
+  *reinterpret_cast<uint32_t*>(static_cast<uintptr_t>(a8)) = a4 ^ a2;
+  *any = 0;
 }
 static uint8_t __thiscall FakeVf68(void* mesh, uint32_t view, uint32_t zero) {
   const auto* m = static_cast<const SynthMesh*>(mesh);
-  game_log.push_back({2, reinterpret_cast<uint32_t>(mesh), view, zero, 0, 0, 0, 0, 0, 0, 0, 0, m->svt, m->pass});
+  game_log.push_back({2, reinterpret_cast<uint32_t>(mesh), view, zero, 0, 0, 0, 0, 0, 0, 0, 0, m->view_tag, m->pass, 0});
   return static_cast<uint8_t>(m->kind & 1);
 }
-static void __thiscall FakeSetAnimation(void* state, uint32_t value) {
-  game_log.push_back({3, reinterpret_cast<uint32_t>(state), value, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+static void __thiscall FakeAnimCall(void* state, uint32_t value) {
+  game_log.push_back({3, reinterpret_cast<uint32_t>(state), value, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
 }
 
 static std::array<uint32_t, 0x70 / 4> mesh_vtable = {};
@@ -283,7 +335,7 @@ static void FlushSite(dr::Site site, void* t, uint32_t mesh, uint32_t technique,
   }
   auto* slot = static_cast<dr::Slot*>(t);
   if (test_controls.drop_end_flush && site == dr::Site::DEPTH_FLUSH_END && slot->mode == dr::MODE_RECORD) return;
-  StackImage image = MakeImage(site, mesh);
+  StackImage image = MakeImage(test_controls.entry_site ? dr::Site::FLUSH_ENTRY : site, mesh);
   for (uint32_t i = 0; i < 10; ++i) image.stack[1 + i] = args[i];
   dr::Record(slot, &image.frame);
   if (test_controls.inject_chunk == static_cast<int>(slot->chunk) && slot->mode == dr::MODE_RECORD && site == dr::Site::DEPTH_FLUSH_BOUNDARY) {
@@ -307,7 +359,7 @@ static uint8_t Vf68Site(void* t, uint32_t mesh, uint32_t view) {
 static void AnimSite(void* t, uint32_t state, uint32_t value, uint32_t index) {
   if (!InArena(t)) {
     g_shared->last_anim = static_cast<int32_t>(index);
-    FakeSetAnimation(reinterpret_cast<void*>(state), value);
+    FakeAnimCall(reinterpret_cast<void*>(state), value);
     return;
   }
   StackImage image = MakeImage(dr::Site::DEPTH_ANIM, state);
@@ -337,17 +389,20 @@ static void __thiscall SynthDepthLoop(void* node, void* t, void* list_pointer, u
     Field<uint32_t>(t, 0x70) = mesh_address;
     Field<uint32_t>(t, 0x14) = 0;
     if (changed) {
-      mesh->svt = Field<uint32_t>(t, 0x20);
+      mesh->view_tag = Field<uint32_t>(t, 0x20);
       Field<uint8_t>(t, 0x68) = mesh->flag;
-      const uint32_t type = mesh->kind ^ (mesh->svt & 0x10000);
+      const uint32_t type = mesh->kind ^ (mesh->view_tag & 0x10000);
       mesh->pass = Field<uint32_t>(t, 0x14);
       const uint32_t kind = type & 0xffff;
       const uint32_t technique = (kind == 0 ? 0 : (kind == 1 ? 0x101 : kind * 0x10));
       Field<uint32_t>(t, 0x74) = technique;
       if (technique != 0) {
         if ((technique & 1) == 0) {
+          // The stride the driver reads; written only by a mesh with an enabled technique.
           Field<uint32_t>(t, 0x50) = 4 + mesh->kind;
           Field<uint8_t>(t, 0x69) |= Vf68Site(t, mesh_address, Field<uint32_t>(t, 0x1c));
+          // A path that sets the "any" byte itself.
+          if (kind == 3) Field<uint8_t>(t, 0x69) = 1;
         } else {
           Field<uint32_t>(t, 0x74) = 0;
         }
@@ -384,6 +439,12 @@ struct Spec {
   uint32_t anim_change_percent = 20;
   uint32_t max_count = 1000;
   bool pattern = false;
+  // Items from this percent of the list on use meshes without an enabled technique.
+  uint32_t enabled_percent = 100;
+  // The list starts with 40 items of one mesh, and the tracker starts as a continuation of it with foreign mesh state.
+  bool continuation = false;
+  // The driver's portion = this / the tracker's stride.
+  uint32_t portion_numerator = 12000;
 };
 
 struct World {
@@ -393,6 +454,11 @@ struct World {
   SynthList list = {};
   alignas(16) std::array<uint8_t, dr::TRACKER_SIZE> tracker = {};
   uint32_t max_count = 1000;
+  uint32_t portion_numerator = 12000;
+  bool continuation = false;
+  // The tracker's state when a call starts (a call the loop itself ended leaves both 0).
+  uint32_t pending = 0;
+  uint32_t change_mask = 0;
 };
 
 static std::unique_ptr<World> BuildWorld(const Spec& spec) {
@@ -405,6 +471,8 @@ static std::unique_ptr<World> BuildWorld(const Spec& spec) {
     return static_cast<uint32_t>((state >> 11) % bound);
   };
   world->max_count = spec.max_count;
+  world->portion_numerator = spec.portion_numerator;
+  world->continuation = spec.continuation;
   world->meshes.resize(60);
   for (uint32_t m = 0; m < world->meshes.size(); ++m) {
     SynthMesh& mesh = world->meshes[m];
@@ -412,6 +480,8 @@ static std::unique_ptr<World> BuildWorld(const Spec& spec) {
     mesh.flag = static_cast<uint8_t>(m & 1);
     if (spec.pattern) {
       mesh.kind = (m < 6 ? 2 + m % 4 : 0);
+    } else if (spec.enabled_percent < 100) {
+      mesh.kind = (m < 4 ? m % 2 : 2 + random(4));
     } else if (random(100) < spec.none_percent) {
       mesh.kind = random(2);
     } else {
@@ -432,7 +502,12 @@ static std::unique_ptr<World> BuildWorld(const Spec& spec) {
       run = (none ? 3 : 5);
       ++pattern_run;
     } else {
-      mesh_index = random(static_cast<uint32_t>(world->meshes.size()));
+      if (spec.enabled_percent < 100) {
+        const bool tail = (static_cast<uint64_t>(i) * 100 >= static_cast<uint64_t>(spec.items) * spec.enabled_percent);
+        mesh_index = (tail ? random(4) : 4 + random(static_cast<uint32_t>(world->meshes.size()) - 4));
+      } else {
+        mesh_index = random(static_cast<uint32_t>(world->meshes.size()));
+      }
       // Log-uniform lengths from 1 to max_run.
       run = 1 + random(1u << random(1 + static_cast<uint32_t>(std::bit_width(spec.max_run))));
       run = std::min(run, spec.max_run);
@@ -446,6 +521,13 @@ static std::unique_ptr<World> BuildWorld(const Spec& spec) {
       }
       world->items[i].mesh = &world->meshes[mesh_index];
       world->items[i].anim = anim;
+    }
+  }
+  if (spec.continuation) {
+    world->meshes[0].kind = 2;
+    for (uint32_t r = 0; r < 40 && r < spec.items; ++r) {
+      world->items[r].mesh = &world->meshes[0];
+      world->items[r].anim = 0;
     }
   }
   world->pointers.resize(spec.items);
@@ -463,12 +545,23 @@ struct Outcome {
   uint32_t replayed = 0;
   uint32_t ops = 0;
   uint32_t direct_calls = 0;
-  std::string compare;
+  // The driver's calls, and those with fewer items than the dispatcher's floor.
+  uint32_t portions = 0;
+  uint32_t small_calls = 0;
+  std::array<uint32_t, 6> compares = {};
+  // Trace frames: total + the trace-only phases == wall, in every call.
+  bool accounted = true;
+  uint32_t most_buffer = 0;
+  std::string first_reason;
 };
+
+static bool CompareDiffers(const Outcome& outcome) {
+  return outcome.compares[static_cast<size_t>(di::CompareResult::DIFFERS)] + outcome.compares[static_cast<size_t>(di::CompareResult::COMPARE_HAS_MORE)] > 0;
+}
 
 static void ResetWorld(World* world) {
   for (SynthMesh& mesh : world->meshes) {
-    mesh.svt = 0xffffffff;
+    mesh.view_tag = 0xffffffff;
     mesh.pass = 0xffffffff;
   }
   world->tracker = {};
@@ -477,7 +570,18 @@ static void ResetWorld(World* world) {
   Field<uint32_t>(t, 0x1c) = 0xe0;
   Field<uint32_t>(t, 0x20) = 0x12345;
   Field<uint32_t>(t, 0x24) = 0xb0;
+  Field<uint32_t>(t, 0x50) = 6;
   Field<uint32_t>(t, 0x64) = world->max_count;
+  if (world->continuation || world->pending != 0 || world->change_mask != 0) {
+    // A call that starts in the middle of a mesh whose state is another view's (or not this call's).
+    SynthMesh* mesh = (world->continuation ? world->items[0].mesh : &world->meshes.back());
+    Field<uint32_t>(t, 0x70) = reinterpret_cast<uint32_t>(mesh);
+    Field<uint32_t>(t, 0x74) = 0x20;
+    Field<uint32_t>(t, 0x58) = world->pending;
+    Field<uint32_t>(t, 0x78) = world->change_mask;
+    mesh->view_tag = 0xabc;
+    mesh->pass = 0x77;
+  }
   g_shared->seed_anim = -1;
   g_shared->last_anim = -1;
   game_log.clear();
@@ -485,40 +589,57 @@ static void ResetWorld(World* world) {
 
 static Outcome Capture(World* world) {
   Outcome outcome = {.log = game_log, .tracker = world->tracker};
-  // +0x50 is only written, never read (the stride): not copied back, so not compared.
-  std::fill_n(outcome.tracker.begin() + 0x50, 4, uint8_t{0});
-  for (const SynthMesh& mesh : world->meshes) outcome.mesh_fields.push_back({mesh.svt, mesh.pass});
+  for (const SynthMesh& mesh : world->meshes) outcome.mesh_fields.push_back({mesh.view_tag, mesh.pass});
   return outcome;
 }
 
 static void* const NODE = reinterpret_cast<void*>(0x1000);
 
+// The driver: portions of the list sized from the tracker's +0x50 (read after each portion), back to back on one tracker.
+template <class RunPortion>
+static void Driver(World* world, RunPortion&& run_portion) {
+  const uint32_t total = world->list.count;
+  for (uint32_t begin = 0; begin < total;) {
+    const uint32_t stride = std::max<uint32_t>(1, Field<uint32_t>(world->tracker.data(), 0x50));
+    const uint32_t end = std::min(total, begin + world->portion_numerator / stride);
+    run_portion(begin, end);
+    begin = end;
+  }
+}
+
 static Outcome RunSerial(World* world) {
   ResetWorld(world);
-  for (int call = 0; call < 2; ++call) {
-    Field<uint32_t>(world->tracker.data(), 0x58) = 0;
-    SynthDepthLoop(NODE, world->tracker.data(), &world->list, 0, world->list.count);
+  for (int pass = 0; pass < 2; ++pass) {
+    Driver(world, [&](uint32_t begin, uint32_t end) { SynthDepthLoop(NODE, world->tracker.data(), &world->list, begin, end); });
   }
   return Capture(world);
 }
 
-static Outcome RunStaged(World* world, dr::Stage stage, uint32_t threads, bool tracing = false) {
-  ResetWorld(world);
-  dr::Update({.stage = stage, .threads = threads, .loops = 1}, true);
-  di::trace.active = tracing;
-  di::trace.frames_left = 1u << 30;
-  di::trace.calls.clear();
+// Two passes of the driver through the dispatcher (the world is reset and the settings applied).
+static Outcome RunCalls(World* world, bool tracing) {
   Outcome total = {};
-  for (int call = 0; call < 2; ++call) {
-    Field<uint32_t>(world->tracker.data(), 0x58) = 0;
-    dr::DispatchDepth(NODE, nullptr, world->tracker.data(), &world->list, 0, world->list.count);
-    total.chunks += di::last_call.chunks;
-    total.reruns += di::last_call.reruns;
-    total.replayed += di::last_call.replayed;
-    total.ops += di::last_call.ops;
-    total.direct_calls += (di::last_call.direct ? 1 : 0);
-    if (tracing && !di::trace.calls.empty() && !di::trace.calls.back().compare_result.empty()) {
-      total.compare += di::trace.calls.back().compare_result + ";";
+  for (int pass = 0; pass < 2; ++pass) {
+    Driver(world, [&](uint32_t begin, uint32_t end) {
+      dr::DispatchDepth(NODE, nullptr, world->tracker.data(), &world->list, begin, end);
+      ++total.portions;
+      total.small_calls += (end - begin < di::MIN_ITEMS ? 1 : 0);
+      total.chunks += di::last_call.chunks;
+      total.reruns += di::last_call.reruns;
+      total.replayed += di::last_call.replayed;
+      total.ops += di::last_call.ops;
+      total.direct_calls += (di::last_call.direct ? 1 : 0);
+      if (tracing && !di::trace.calls.empty()) {
+        const di::CallTrace& call = di::trace.calls.back();
+        ++total.compares[static_cast<size_t>(call.compare_result)];
+        if (total.first_reason.empty()) total.first_reason = call.direct_reason;
+      }
+    });
+  }
+  if (tracing) {
+    for (const di::CallTrace& call : di::trace.calls) {
+      const uint64_t trace_only = call.compare + call.run_scan + (call.stage == dr::Stage::CHUNKED ? call.warm_ups : 0);
+      total.accounted = total.accounted && call.total + trace_only == call.wall;
+      total.most_buffer = std::max(total.most_buffer, call.op_buffer_bytes);
     }
   }
   di::trace.active = false;
@@ -528,8 +649,22 @@ static Outcome RunStaged(World* world, dr::Stage stage, uint32_t threads, bool t
   outcome.replayed = total.replayed;
   outcome.ops = total.ops;
   outcome.direct_calls = total.direct_calls;
-  outcome.compare = total.compare;
+  outcome.portions = total.portions;
+  outcome.small_calls = total.small_calls;
+  outcome.compares = total.compares;
+  outcome.accounted = total.accounted;
+  outcome.most_buffer = total.most_buffer;
+  outcome.first_reason = total.first_reason;
   return outcome;
+}
+
+static Outcome RunStaged(World* world, dr::Stage stage, uint32_t threads, bool tracing = false, bool update = true) {
+  ResetWorld(world);
+  if (update) dr::Update({.stage = stage, .threads = threads, .loops = 1}, true);
+  di::trace.active = tracing;
+  di::trace.frames_left = 1u << 30;
+  di::trace.calls.clear();
+  return RunCalls(world, tracing);
 }
 
 static bool Equal(const Outcome& serial, const Outcome& staged, const char* label, bool print = true) {
@@ -579,7 +714,17 @@ static std::vector<ListCase> Lists() {
   lists.push_back({"no technique before cuts", {.items = 6000, .seed = 4, .max_run = 6, .none_percent = 45}, true});
   lists.push_back({"seed breaking pattern", {.items = 4000, .seed = 5, .pattern = true}, true});
   lists.push_back({"max count flushes", {.items = 6000, .seed = 6, .max_run = 120, .max_count = 6}, true});
+  lists.push_back({"last chunks without technique", {.items = 6000, .seed = 7, .max_run = 12, .enabled_percent = 10}, true});
+  // No animation changes: every seed hits, so the chunks without a technique are replayed and copied back, not run again.
+  lists.push_back({"last chunks without technique or animation", {.items = 6000, .seed = 8, .max_run = 12, .anim_minus_percent = 100, .enabled_percent = 10}, true});
   return lists;
+}
+
+static dr::GameCalls Game(bool usable) {
+  return {.loops = {{reinterpret_cast<uint32_t>(&SynthDepthLoop)}},
+          .flush = reinterpret_cast<uint32_t>(&FakeFlush),
+          .anim_call = reinterpret_cast<uint32_t>(&FakeAnimCall),
+          .usable = usable};
 }
 
 static void Setup() {
@@ -589,10 +734,7 @@ static void Setup() {
   REQUIRE(g_shared != nullptr);
   REQUIRE(g_shared->record == reinterpret_cast<uint32_t>(&dr::Record));
   REQUIRE(g_shared->dispatch_depth == reinterpret_cast<uint32_t>(&dr::DispatchDepth));
-  dr::SetGame({.depth_loop = reinterpret_cast<uint32_t>(&SynthDepthLoop),
-               .flush = reinterpret_cast<uint32_t>(&FakeFlush),
-               .set_animation = reinterpret_cast<uint32_t>(&FakeSetAnimation),
-               .usable = true});
+  dr::SetGame(Game(true));
 }
 
 static void DepthStages() {
@@ -610,11 +752,13 @@ static void DepthStages() {
           std::snprintf(label, sizeof(label), "%s, %s, K %u%s", list.name, StageName(stage), k, (tracing ? ", traced" : ""));
           const bool equal = Equal(serial, staged, label);
           CHECK(equal);
-          CHECK(staged.direct_calls == 0);
+          CHECK(staged.portions > 2);
+          CHECK(staged.direct_calls == staged.small_calls);
+          CHECK(staged.accounted);
           if (list.expect_chunks && k >= 4) CHECK(staged.chunks >= 2 * 2);
           if (stage != dr::Stage::CHUNKED) CHECK(staged.replayed + staged.reruns == staged.chunks);
           if (stage != dr::Stage::CHUNKED && staged.chunks > 0) CHECK(staged.ops > 0 || staged.reruns > 0);
-          CHECK(staged.compare.find("differs") == std::string::npos);
+          CHECK(!CompareDiffers(staged));
           reruns_seen += staged.reruns;
           ++cases;
         }
@@ -622,7 +766,26 @@ static void DepthStages() {
     }
   }
   CHECK(reruns_seen > 0);
-  std::printf("depth: %u cases (6 lists x 4 stages x K 2..16 x trace off / on): logs, tracker and mesh fields equal the serial run; %u chunks run again\n", cases, reruns_seen);
+  std::printf("depth: %u cases (8 lists x 4 stages x K 2..16 x trace off / on, portions at begin != 0): logs, tracker (+0x50, +0x5c, +0x28, +0x69 included) and mesh fields equal the serial run; %u chunks run again\n", cases, reruns_seen);
+}
+
+static void DepthFlushEntry() {
+  test_controls.entry_site = true;
+  uint32_t cases = 0;
+  for (const ListCase& list : Lists()) {
+    const auto world = BuildWorld(list.spec);
+    const Outcome serial = RunSerial(world.get());
+    for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+      for (const uint32_t k : {4u, 16u}) {
+        const Outcome staged = RunStaged(world.get(), stage, k, true);
+        CHECK(Equal(serial, staged, list.name));
+        CHECK(staged.ops > 0);
+        ++cases;
+      }
+    }
+  }
+  test_controls.entry_site = false;
+  std::printf("depth: the flush entry's site id (shared group) for every flush: %u cases equal\n", cases);
 }
 
 static void DepthTouchAhead() {
@@ -632,9 +795,9 @@ static void DepthTouchAhead() {
     const uint32_t before = di::touch_generation.load();
     const Outcome staged = RunStaged(world.get(), dr::Stage::TOUCH_AHEAD, k);
     CHECK(Equal(serial, staged, "touch-ahead"));
-    CHECK(staged.direct_calls == 0);
+    CHECK(staged.direct_calls == staged.small_calls);
     CHECK(di::descriptor.workers == k - 1);
-    CHECK(di::touch_generation.load() == before + 2);
+    CHECK(di::touch_generation.load() == before + (staged.portions - staged.small_calls));
   }
   std::printf("depth: touch-ahead at K 2..16: the loop unchanged, the helpers stopped after each call\n");
 }
@@ -651,12 +814,73 @@ static void DepthOverflow() {
         CHECK(Equal(serial, staged, "tiny buffers"));
         reruns += staged.reruns;
         CHECK(staged.reruns > 0);
-        CHECK(staged.compare.find("differs") == std::string::npos);
+        CHECK(!CompareDiffers(staged));
       }
     }
   }
-  di::op_buffer_limit = di::OP_BUFFER_BYTES;
+  di::op_buffer_limit = di::OP_RESERVE_BYTES;
   std::printf("depth: tiny op buffers: overflowing chunks run again, logs equal (%u reruns)\n", reruns);
+}
+
+// One call of 200000 items: chunks larger than the op buffer's reserve.
+static void DepthLarge() {
+  const auto world = BuildWorld({.items = 200000, .seed = 41, .max_run = 8, .max_count = 6, .portion_numerator = 12000000});
+  const Outcome serial = RunSerial(world.get());
+  for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+    for (const uint32_t k : {2u, 3u}) {
+      const Outcome staged = RunStaged(world.get(), stage, k, true);
+      CHECK(Equal(serial, staged, "large call"));
+      CHECK(staged.portions == 2 && staged.direct_calls == 0);
+      CHECK(staged.accounted);
+      CHECK(staged.most_buffer <= di::OP_RESERVE_BYTES);
+    }
+  }
+  for (uint32_t index = 0; index < dr::SLOT_COUNT; ++index) {
+    CHECK(di::op_committed[index] <= (index == dr::COMPARE_SLOT ? di::COMPARE_RESERVE_BYTES : di::OP_RESERVE_BYTES));
+  }
+  std::printf("depth: 200000 items in one call at K 2 / 3: logs equal, op buffers within their reserve\n");
+}
+
+// A call that starts in a state the chunks can't reproduce runs directly.
+static void DepthEntryState() {
+  const auto world = BuildWorld({.items = 6000, .seed = 16, .max_run = 10});
+  for (const uint32_t variant : {0u, 1u}) {
+    world->pending = (variant == 0 ? 5 : 0);
+    world->change_mask = (variant == 1 ? 8 : 0);
+    const Outcome serial = RunSerial(world.get());
+    for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+      const Outcome staged = RunStaged(world.get(), stage, 8, true);
+      CHECK(Equal(serial, staged, (variant == 0 ? "pending instances" : "change mask")));
+      CHECK(staged.first_reason == "entry state");
+      CHECK(staged.direct_calls > staged.small_calls);
+    }
+  }
+  world->pending = 0;
+  world->change_mask = 0;
+  std::printf("depth: a call that starts with pending instances or a change mask runs directly (entry state), logs equal\n");
+}
+
+// The first mesh of the call is the tracker's last one, with state another view wrote and that recurs later in the list.
+static void DepthContinuation() {
+  const auto world = BuildWorld({.items = 6000, .seed = 17, .max_run = 10, .max_count = 6, .continuation = true});
+  const Outcome serial = RunSerial(world.get());
+  uint32_t cases = 0;
+  for (const dr::Stage stage : {dr::Stage::CHUNKED, dr::Stage::RECORDED, dr::Stage::ONE_WORKER, dr::Stage::WORKERS}) {
+    for (uint32_t k = 2; k <= 16; ++k) {
+      const Outcome staged = RunStaged(world.get(), stage, k, true);
+      CHECK(Equal(serial, staged, "continuation"));
+      CHECK(staged.first_reason == "continuation");
+      ++cases;
+    }
+  }
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  // Guard off: the compare run has set the mesh up before chunk 0's snapshot is taken, so the replay flushes it with the wrong state.
+  di::controls.guard_continuation = false;
+  const Outcome unguarded = RunStaged(world.get(), dr::Stage::RECORDED, 4, true);
+  di::controls.guard_continuation = true;
+  CHECK(!Equal(serial, unguarded, "control: continuation guard off", false));
+#endif
+  std::printf("depth: a continuation of foreign mesh state runs directly (%u cases equal)\n", cases);
 }
 
 static void DepthFallbacks() {
@@ -667,53 +891,46 @@ static void DepthFallbacks() {
   const Outcome few_serial = RunSerial(few_items.get());
   const Outcome few_staged = RunStaged(few_items.get(), dr::Stage::WORKERS, 8);
   CHECK(Equal(few_serial, few_staged, "small call"));
-  CHECK(few_staged.direct_calls == 2);
+  CHECK(few_staged.direct_calls == few_staged.portions && few_staged.portions == 2);
   // The stage Direct and the row off.
   for (const dr::Stage stage : {dr::Stage::DIRECT, dr::Stage::OFF}) {
     const Outcome staged = RunStaged(world.get(), stage, 8);
     CHECK(Equal(serial, staged, "stage direct"));
-    CHECK(staged.direct_calls == 2);
+    CHECK(staged.direct_calls == staged.portions);
   }
   // The pool smaller than the stage needs.
   dr::Update({.stage = dr::Stage::OFF}, false);
   RunStaged(world.get(), dr::Stage::WORKERS, 4);
   CHECK(di::worker_count == 3);
   di::config.threads = 16;
-  ResetWorld(world.get());
-  for (int call = 0; call < 2; ++call) {
-    Field<uint32_t>(world->tracker.data(), 0x58) = 0;
-    dr::DispatchDepth(NODE, nullptr, world->tracker.data(), &world->list, 0, world->list.count);
-    CHECK(di::last_call.direct);
-  }
-  CHECK(Equal(serial, Capture(world.get()), "pool missing"));
+  const Outcome missing = RunStaged(world.get(), dr::Stage::WORKERS, 16, false, false);
+  CHECK(Equal(serial, missing, "pool missing"));
+  CHECK(missing.direct_calls == missing.portions);
   // Another thread.
   dr::Update({.stage = dr::Stage::WORKERS, .threads = 8, .loops = 1}, true);
   ResetWorld(world.get());
-  bool direct = false;
-  std::thread other([&] {
-    for (int call = 0; call < 2; ++call) {
-      Field<uint32_t>(world->tracker.data(), 0x58) = 0;
-      dr::DispatchDepth(NODE, nullptr, world->tracker.data(), &world->list, 0, world->list.count);
-      direct = di::last_call.direct;
-    }
-  });
+  Outcome other_outcome;
+  std::thread other([&] { other_outcome = RunCalls(world.get(), false); });
   other.join();
-  CHECK(direct);
-  CHECK(Equal(serial, Capture(world.get()), "other thread"));
+  CHECK(other_outcome.direct_calls == other_outcome.portions);
+  CHECK(Equal(serial, other_outcome, "other thread"));
+  // A loop group that is off.
+  dr::Update({.stage = dr::Stage::WORKERS, .threads = 8, .loops = 2}, true);
+  ResetWorld(world.get());
+  const Outcome loop_off = RunCalls(world.get(), false);
+  CHECK(loop_off.direct_calls == loop_off.portions);
+  CHECK(Equal(serial, loop_off, "loop off"));
   // Not usable.
-  dr::SetGame({.depth_loop = reinterpret_cast<uint32_t>(&SynthDepthLoop), .flush = reinterpret_cast<uint32_t>(&FakeFlush),
-               .set_animation = reinterpret_cast<uint32_t>(&FakeSetAnimation), .usable = false});
+  dr::SetGame(Game(false));
   const Outcome unusable = RunStaged(world.get(), dr::Stage::WORKERS, 8);
   CHECK(Equal(serial, unusable, "not usable"));
-  CHECK(unusable.direct_calls == 2);
-  dr::SetGame({.depth_loop = reinterpret_cast<uint32_t>(&SynthDepthLoop), .flush = reinterpret_cast<uint32_t>(&FakeFlush),
-               .set_animation = reinterpret_cast<uint32_t>(&FakeSetAnimation), .usable = true});
-  std::printf("depth: fall-backs (small call, Direct, Off, pool missing, other thread, not usable) run the loop directly, logs equal\n");
+  CHECK(unusable.direct_calls == unusable.portions);
+  dr::SetGame(Game(true));
+  std::printf("depth: fall-backs (small call, Direct, Off, pool missing, other thread, loop off, not usable) run the loop directly, logs equal\n");
 }
 
 static void DepthTrace() {
   const auto world = BuildWorld({.items = 6000, .seed = 15, .max_run = 12});
-  const Outcome serial = RunSerial(world.get());
   // The trace armed through the environment: written next to the exe after its frames.
   const std::filesystem::path file = std::filesystem::path(__argv[0]).parent_path() / "tw_draw_recording.txt";
   std::filesystem::remove(file);
@@ -728,8 +945,7 @@ static void DepthTrace() {
   dr::Update(settings, true);
   CHECK(di::trace.active);
   for (int frame = 0; frame < 2; ++frame) {
-    Field<uint32_t>(world->tracker.data(), 0x58) = 0;
-    dr::DispatchDepth(NODE, nullptr, world->tracker.data(), &world->list, 0, world->list.count);
+    Driver(world.get(), [&](uint32_t begin, uint32_t end) { dr::DispatchDepth(NODE, nullptr, world->tracker.data(), &world->list, begin, end); });
     dr::Update(settings, true);
   }
   CHECK(!di::trace.active && di::trace.finished);
@@ -737,12 +953,82 @@ static void DepthTrace() {
   const std::string text_value((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
   CHECK(text_value.find("compare: equal") != std::string::npos);
   CHECK(text_value.find("frame:") != std::string::npos);
+  CHECK(text_value.find("K 6") != std::string::npos);
+  CHECK(text_value.find("chunk items:") != std::string::npos);
+  CHECK(text_value.find("group 0 family -") != std::string::npos);
   CHECK(text_value.find("differs") == std::string::npos);
   SetEnvironmentVariableA("RENODX_TW_DRAW_TRACE", nullptr);
   stream.close();
   std::filesystem::remove(file);
-  static_cast<void>(serial);
-  std::printf("depth: trace armed from the environment wrote the file, compare equal\n");
+  std::printf("depth: trace armed from the environment wrote the file (group, K, chunk sizes), compare equal\n");
+}
+
+// The Record rules the thunks rely on, called directly.
+static void RecordRules() {
+  static dr::Slot unit;
+  static std::array<uint32_t, 64> buffer;
+  static SynthMesh mesh;
+  mesh = {};
+  mesh.view_tag = 0x40;
+  mesh.pass = 0x44;
+  const auto reset = [&](uint32_t group, uint32_t mode) {
+    unit = {};
+    unit.group = group;
+    unit.mode = mode;
+    unit.ops_begin = unit.ops_cursor = buffer.data();
+    unit.ops_end = buffer.data() + buffer.size();
+    buffer.fill(0);
+  };
+  const auto flush = [&](dr::Site site, uint32_t count) {
+    StackImage image = MakeImage(site, reinterpret_cast<uint32_t>(&mesh));
+    image.stack[5] = count;
+    dr::Record(&unit, &image.frame);
+  };
+  CHECK(di::FLUSH_PAYLOAD == 14);
+  // A site of another loop group in the chunk: run again, nothing recorded.
+  reset(1, dr::MODE_RECORD);
+  StackImage vf68 = MakeImage(dr::Site::DEPTH_VF68, reinterpret_cast<uint32_t>(&mesh));
+  dr::Record(&unit, &vf68.frame);
+  CHECK((unit.flags & dr::SLOT_UNKNOWN_CLASS) != 0 && unit.ops_cursor == unit.ops_begin);
+  // A site id past the table.
+  reset(0, dr::MODE_RECORD);
+  StackImage unknown = MakeImage(static_cast<dr::Site>(static_cast<uint32_t>(dr::Site::COUNT) + 3), 0);
+  dr::Record(&unit, &unknown.frame);
+  CHECK((unit.flags & dr::SLOT_UNKNOWN_CLASS) != 0);
+  // The flush entry (shared group) records in any loop group, with the any byte.
+  reset(1, dr::MODE_RECORD);
+  unit.tracker[0x69] = 1;
+  flush(dr::Site::FLUSH_ENTRY, 3);
+  CHECK(unit.flags == 0 && unit.ops_cursor == unit.ops_begin + 1 + di::FLUSH_PAYLOAD);
+  CHECK((buffer[0] & 0xffff) == static_cast<uint32_t>(di::OpKind::FLUSH) && (buffer[0] >> 16) == 1 + di::FLUSH_PAYLOAD);
+  CHECK(buffer[1 + 13] == 1 && unit.tracker[0x69] == 0 && buffer[1 + 11] == 0x40 && buffer[1 + 12] == 0x44);
+  // Suppress mode: the byte is cleared, nothing recorded.
+  reset(0, dr::MODE_SUPPRESS);
+  unit.tracker[0x69] = 1;
+  flush(dr::Site::DEPTH_FLUSH_END, 3);
+  CHECK(unit.tracker[0x69] == 0 && unit.ops_cursor == unit.ops_begin && unit.flags == 0);
+  // A flush of no instances leaves the byte alone, in both modes.
+  for (const uint32_t mode : {dr::MODE_RECORD, dr::MODE_SUPPRESS}) {
+    reset(0, mode);
+    unit.tracker[0x69] = 1;
+    flush(dr::Site::DEPTH_FLUSH_END, 0);
+    CHECK(unit.tracker[0x69] == 1 && unit.ops_cursor == unit.ops_begin);
+  }
+  // A full buffer: flagged, and the byte is cleared all the same.
+  reset(0, dr::MODE_RECORD);
+  unit.ops_end = unit.ops_begin + 3;
+  unit.tracker[0x69] = 1;
+  flush(dr::Site::DEPTH_FLUSH_END, 3);
+  CHECK((unit.flags & dr::SLOT_OVERFLOW) != 0 && unit.tracker[0x69] == 0);
+  // The animation site keeps the index in both modes.
+  for (const uint32_t mode : {dr::MODE_RECORD, dr::MODE_SUPPRESS}) {
+    reset(0, mode);
+    StackImage anim = MakeImage(dr::Site::DEPTH_ANIM, 0x1000);
+    anim.stack[9] = 5;
+    dr::Record(&unit, &anim.frame);
+    CHECK(unit.anim == 5 && (unit.ops_cursor != unit.ops_begin) == (mode == dr::MODE_RECORD));
+  }
+  std::printf("record: group check, unknown site, flush entry with the any byte (record, suppress, count 0, overflow), animation index\n");
 }
 
 // Each control makes one thing wrong; its run must differ (or the compare must report it).
@@ -778,15 +1064,30 @@ static void DepthControls() {
   test_controls.anim_stack = 9;
   CHECK(!Equal(serial, wrong_anim, "control: wrong anim stack slot", false));
 
+  // The any byte the loop sets itself must travel in the flush op.
+  di::controls.capture_any = false;
+  const Outcome uncaptured = RunStaged(world.get(), dr::Stage::RECORDED, 8);
+  di::controls.capture_any = true;
+  CHECK(!Equal(serial, uncaptured, "control: any capture off", false));
+
+  // The stride of the last chunk that wrote one, not the last chunk's.
+  const auto tail = BuildWorld({.items = 6000, .seed = 8, .max_run = 12, .anim_minus_percent = 100, .enabled_percent = 10});
+  const Outcome tail_serial = RunSerial(tail.get());
+  di::controls.stride_non_zero = false;
+  const Outcome stale = RunStaged(tail.get(), dr::Stage::RECORDED, 8);
+  di::controls.stride_non_zero = true;
+  CHECK(!Equal(tail_serial, stale, "control: stride copied always", false));
+  CHECK(Equal(tail_serial, RunStaged(tail.get(), dr::Stage::RECORDED, 8), "control: stride rule on"));
+
   // An op in one chunk that the serial run does not have: the log differs and the compare names it.
   test_controls.inject_chunk = 2;
   const Outcome injected = RunStaged(world.get(), dr::Stage::RECORDED, 4, true);
   test_controls.inject_chunk = -1;
   CHECK(!Equal(serial, injected, "control: injected op", false));
-  CHECK(injected.compare.find("differs at op") != std::string::npos);
+  CHECK(CompareDiffers(injected));
 
   CHECK(Equal(serial, RunStaged(world.get(), dr::Stage::WORKERS, 8), "controls cleared"));
-  std::printf("controls: validation off, dropped flush, translation off, wrong anim slot, injected op: each run differs (injection named by the compare)\n");
+  std::printf("controls: validation off, dropped flush, translation off, wrong anim slot, any capture off, stride copied always, injected op: each run differs (injection named by the compare)\n");
 #else
   std::printf("controls: skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
 #endif
@@ -798,10 +1099,10 @@ static void Detach() {
   dr::Update({.stage = dr::Stage::WORKERS, .threads = 8, .loops = 1}, true);
   // Sites still in: everything stays, the dispatcher runs directly.
   dr::Uninstall(true);
-  CHECK(di::detached && di::shared != nullptr && di::worker_count == 7);
+  CHECK(di::detached.load() && di::shared != nullptr && di::worker_count == 7);
   const Outcome detached = RunStaged(world.get(), dr::Stage::WORKERS, 8);
   CHECK(Equal(serial, detached, "detached"));
-  CHECK(detached.direct_calls == 2);
+  CHECK(detached.direct_calls == detached.portions);
   // A dispatch still counted active: kept too.
   g_shared->active = 1;
   dr::Uninstall(false);
@@ -818,10 +1119,16 @@ int main() {
   PoolLiveK();
   PoolControlWords();
   PoolCpuSets();
+  PoolThreadFailure();
   Setup();
+  RecordRules();
   DepthStages();
+  DepthFlushEntry();
   DepthTouchAhead();
   DepthOverflow();
+  DepthLarge();
+  DepthEntryState();
+  DepthContinuation();
   DepthFallbacks();
   DepthTrace();
   DepthControls();
