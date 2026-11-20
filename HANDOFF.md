@@ -4184,6 +4184,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         path ENDED (second stop), nothing ran. Commands for ATN's own terminal (or ATN adds an allow rule themself):
         bench/analysis_b2/replay/atn_harness_commands.md (1-2 W3m locator native / ring, 3-4 parity D1m / W3m, 5a-c
         controls, 6 D1m overhead x20 = quiet window only; outputs h*.txt beside it). ASKED ATN: run them / add a rule.
+        s5x_ RE-CHECK DONE 17:3x (s5x_review.md "Re-check"): MERGE AFTER R1. R1 (Must, new): the Nit 1 reclaim detaches
+        unlocked (bp:1073-1079) then erases records destroyed by the locked pass (bp:1101) -> a late destroy leaves piece->
+        live dangling (UAF); fix = locked pass skips records with a piece, erase only destroyed && piece == nullptr. Should
+        1 / 2 + Nits 1-6 done (residuals accepted). Nit 7 depth around the present-time CheckTable. CONTROL no settle 8 px
+        is still a valid proof (pin it CHECK(after != 0), fix comment t:538). tw_buffer_pool x86 + amd64 PASS. s5o_ RESUMED:
+        R1 + Nit 7 + comment + pin; then the VB extension after s5r_'s design + the coordinator's go.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
