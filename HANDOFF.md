@@ -400,6 +400,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go fa4o_ DONE (night1118/final_bench_f
 - OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 08:08: 64-bit decisions = coordinator's reco
 - NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | ATN, when ATN brings it up again
+- S5 RING GPU CHECKS (s5r_ re-check 11-20; gate ANY game run / release with "Fewer ... | coordinator
 - S1 FOLLOW-UPS (s1ro_ re-check 11-19, all optional / low; OWNER: the S5 ring impl ... | ?
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
@@ -4113,6 +4114,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         s5x_ a5eac8d890c211c29 (Opus xHigh) STARTED 14:2x: the EXTRA independent review of b5e89f0b2, in parallel with s5r_'s
         re-check (read-only, WARP only) -> reports/s5x_review.md. Merge rmt_s5 only after both verdicts. Agents now: c2i_,
         c3i_, s5r_, s5x_.
+        s5r_ RE-CHECK DONE 14:3x (s5r_review.md "Re-check of b5e89f0b2"): MERGE. M1 / M2 fixed (WRAP control fails without
+        the fix), S1 code half / S2 / S3 / S4 / S5 / S7 / N1-N11 done, no new bugs; buffer_pool x86 WARP PASS re-run. Harness
+        rows: `none` = the ring with no fault, EQUAL bit for bit (synthetic v3 + W3m frames 1-2); upload / window / offset
+        are injected faults that must differ -> no parity gap on WARP. Merge may go ahead without GPU runs (row off by
+        default = hooks never installed); the GPU checks gate any row-on run / release (box below). Waits for s5x_.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4133,6 +4139,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         identity line) FIXED 22:00: bench/variants/heapfix_final_base.json with er4o_'s regexes, checked on past logs (B4G
         matches only B4G runs, rejects Cnt; P rejects B4G). L3: hsC = B4G's gate + hs one-thread loop + counters, compare it
         only with Cnt2. Info: 7 leftover Attila process objects may trip the bench's game-process check: ATN's restart clears them.
+      - [ ] S5 RING GPU CHECKS (s5r_ re-check 11-20; gate ANY game run / release with "Fewer Driver Waits" on, batch 3
+        included; blocked now: the harness GPU run was denied 11-20, needs ATN's go or ATN runs it): 1. NVIDIA x86 parity:
+        harness `--nvidia --plugin ring` on b2_W3m + b2_D1m, `none` EQUAL, every control differs, no "copy body unknown"
+        log line; 2. D1m overhead: `--mode overhead`, 20 runs ABBA, vs the 0.1 ms/f gate, redundant-Set skip included.
+        Owner: coordinator
       - [ ] S1 FOLLOW-UPS (s1ro_ re-check 11-19, all optional / low; OWNER: the S5 ring implementer in its first commit,
         since it reworks context_hooks.hpp / frame_trace.hpp anyway): N1 device ends during the trace -> set first_drop =
         min(first_drop, seq) in OnMapTraceDestroyDevice; N2 a dropped Map / Unmap blanks every later draw's bindings ->
