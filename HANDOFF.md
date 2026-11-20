@@ -4199,6 +4199,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         commands. C batch (9 starts) = ATN's GO once C is built (ATN "Sure"). Building-heavy start: stress is in the batch
         already; the optional one is for buildings (B groups) -> skip unless a siege / settlement replay exists. MAX 3
         AGENTS at a time after the current ones (Max 5-hour limits; Ultra ~11-22). Batch 2b waits for ATN's "now".
+        c31r_ REVIEW DONE 18:1x (reports/c31r_review.md): MERGE AFTER M1 + M2. Re-ran tw_draw_recording_sites, tw_draw_
+        recording_loop, tw_engine_code -Quick x86: PASS. All 12 sites / thunks / ret sizes / no overlaps verified vs dis_at.
+        M1 a VirtualProtect failure stands down one site and writes the rest (VF68 on a worker) -> protect all first, all
+        or none; M2 the last removal checks EIPs only in the cut stubs (direct paths read Shared -> UAF after Uninstall) ->
+        whole recording page. Should S1 arena_size zeroed on any removal; S2 passtime stand-down orphans written sites; S3
+        sites left in on the way out forgotten (sticky left_in); S4 tests (main-thread CHECKs in fakes, max_count 0, M1 / M2
+        cases, full Frame + edx + eflags); S5 per-group stand-down + log. Points 1-7 answered (alignment safe, count 0
+        right, workers counted, passtime safe enough, Update order right, BuildCut needs args / ret / slot per group).
+        Coordinator: keep the single-use builders (C.3-2..4 add callers). c3i_ fix round QUEUED (3-agent cap): M1 / M2 /
+        S1-S5 / nits, then c31r_ re-checks.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
