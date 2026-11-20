@@ -40,6 +40,7 @@
 #include "./graphics_hooks.hpp"
 #include "./anti_aliasing.hpp"
 #include "./ao_pass.hpp"
+#include "./buffer_pool.hpp"
 #include "./cpu_sets.hpp"
 #include "./device_loss.hpp"
 #include "./draw_dispatch.hpp"
@@ -1328,6 +1329,8 @@ float render_lists_row = 1.f;
 float job_wakeups_row = 0.f;
 // Fewer Constant Uploads (Experimental, off): mods::shader::use_native_d3d11_injection.
 float fewer_constant_uploads_row = 0.f;
+// Fewer Driver Waits (Experimental, off): buffer_pool.hpp, the game's constant buffers through one ring.
+float fewer_driver_waits_row = 0.f;
 // Faster Effect Prefetch (Experimental, off): engine_code.hpp's effect tree child sum site and particle update loop site.
 float effect_prefetch_row = 0.f;
 // Keep Render Core Free (Experimental, off): cpu_sets.hpp.
@@ -1537,6 +1540,13 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twattila::cpu_sets::Update(keep_render_core_row != 0.f, GAME_THREAD_MODULES);
   renodx::mods::shader::use_native_d3d11_injection.store(fewer_constant_uploads_row != 0.f, std::memory_order_relaxed);
+  // A traced frame's full-ring line waits (its own work fills the ring).
+  if (queue->get_device()->get_api() == reshade::api::device_api::d3d11) {
+    auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
+    const bool traced = twattila::frame_trace::Tracing()
+                        || twattila::frame_trace::internal::map_trace.tracing.load(std::memory_order_relaxed);
+    twattila::buffer_pool::Update(context, fewer_driver_waits_row != 0.f, traced);
+  }
   talesofarise::pixel_trace::OnPresent(queue);
   if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
@@ -1995,6 +2005,17 @@ void ConfigureAddon() {
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{
+          .key = "FewerDriverWaits",
+          .binding = &fewer_driver_waits_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Fewer Driver Waits (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The game's shader constants go to the GPU through one shared ring instead of a new buffer each time:\n"
+                     "the render thread waits less for the graphics driver. Same results.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
           .key = "FasterEffectPrefetch",
           .binding = &effect_prefetch_row,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
@@ -2296,6 +2317,8 @@ bool AttachAddon() {
   ConfigureAddon();
 
   twattila::device_loss::Install();
+  // The game's constant buffers are known from their creation on (the row may come on later).
+  twattila::buffer_pool::Use();
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
@@ -2407,6 +2430,7 @@ void DetachAddon() {
   if (!attached) return;
 
   twattila::device_loss::Uninstall();
+  twattila::buffer_pool::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   twattila::particle_layer::Uninstall();

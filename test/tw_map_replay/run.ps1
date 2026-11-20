@@ -20,8 +20,16 @@ Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
 $flags = @("--target=$triple", '/nologo', '/std:c++20', '/EHsc', '/O2', '/MT', '/DNOMINMAX', '/DWIN32=1', '-Wno-deprecated-declarations', '/I', $repoRoot)
 $libraries = @('/link', '/OPT:REF', '/OPT:ICF', 'user32.lib', 'd3d11.lib', 'dxgi.lib', 'dxguid.lib', 'd3dcompiler.lib')
-$adapter = if ($RingAdapter -ne '') { @('/FI', (Resolve-Path -LiteralPath $RingAdapter).Path) } else { @() }
-& 'C:\Program Files\LLVM\bin\clang-cl.exe' @flags @adapter "$testRoot\map_replay.cpp" "/Fe:map_replay_$Architecture.exe" @libraries
+$adapter = @()
+$adapterLibraries = @()
+if ($RingAdapter -ne '') {
+  # The ring's own headers (ReShade, Detours and the utils' dependencies) and libraries.
+  $detoursArch = if ($Architecture -eq 'x86') { 'X86' } else { 'X64' }
+  $adapter = @('/bigobj', '/I', "$repoRoot\external\reshade", '/I', "$repoRoot\external\frozen\include", '/I', "$repoRoot\external\gtl\include",
+    '/I', "$repoRoot\external\Detours\include", '/FI', (Resolve-Path -LiteralPath $RingAdapter).Path)
+  $adapterLibraries = @("$repoRoot\external\Detours\lib.$detoursArch\detours.lib", 'advapi32.lib')
+}
+& 'C:\Program Files\LLVM\bin\clang-cl.exe' @flags @adapter "$testRoot\map_replay.cpp" "/Fe:map_replay_$Architecture.exe" @libraries @adapterLibraries
 if ($LASTEXITCODE -ne 0) { throw 'Map replay compile failed' }
 if (-not $SkipTests) {
   & 'C:\Program Files\LLVM\bin\clang-cl.exe' @flags "$testRoot\tests.cpp" "/Fe:map_replay_tests_$Architecture.exe" @libraries

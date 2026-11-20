@@ -121,7 +121,7 @@ static uint64_t Fnv(const void* data, size_t bytes) {
 }
 
 int main() {
-  constexpr std::array<const char*, hooks::internal::BODIES> NAMES = {
+  constexpr std::array<const char*, hooks::internal::MEASURE_BODIES> NAMES = {
       "Map", "Unmap", "VSSetConstantBuffers", "HSSetConstantBuffers", "DSSetConstantBuffers", "GSSetConstantBuffers",
       "PSSetConstantBuffers", "CSSetConstantBuffers", "VSSetConstantBuffers1", "HSSetConstantBuffers1", "DSSetConstantBuffers1",
       "GSSetConstantBuffers1", "PSSetConstantBuffers1", "CSSetConstantBuffers1", "IASetVertexBuffers", "SwapDeviceContextState",
@@ -158,8 +158,8 @@ int main() {
   context->IAGetPrimitiveTopology(&topology);
   void* const* table = *reinterpret_cast<void* const* const*>(context.Get());
   const auto d3d11 = reinterpret_cast<uintptr_t>(GetModuleHandleW(L"d3d11.dll"));
-  std::array<void*, hooks::internal::BODIES> bodies = {};
-  std::array<std::array<uint8_t, 16>, hooks::internal::BODIES> prologues = {};
+  std::array<void*, hooks::internal::MEASURE_BODIES> bodies = {};
+  std::array<std::array<uint8_t, 16>, hooks::internal::MEASURE_BODIES> prologues = {};
   for (size_t body = 0; body < bodies.size(); ++body) {
     bodies[body] = table[hooks::internal::BODY_SLOTS[body]];
     std::memcpy(prologues[body].data(), bodies[body], 16);
@@ -280,9 +280,9 @@ int main() {
   const auto native_swap = reinterpret_cast<hooks::internal::SwapStateFunction>(hooks::internal::state.trampolines[hooks::internal::SWAP_STATE]);
   constexpr std::array<const char*, 7> TABLE_STATES = {"settled", "after Flush", "after Draw", "swapped in", "swapped back with null",
                                                        "swapped in natively (stubs)", "applied, swapped back with null natively (stubs)"};
-  std::array<uint32_t, hooks::internal::BODIES> nested_seen = {};
+  std::array<uint32_t, hooks::internal::MEASURE_BODIES> nested_seen = {};
   size_t applied = 0;
-  for (size_t body = 0; body < hooks::internal::BODIES; ++body) {
+  for (size_t body = 0; body < hooks::internal::MEASURE_BODIES; ++body) {
     for (size_t table_state = 0; table_state < TABLE_STATES.size(); ++table_state) {
       if (body == hooks::internal::UNMAP) context->Map(cb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
       switch (table_state) {
@@ -333,7 +333,7 @@ int main() {
       if (table_state == 3 || table_state == 5) context1->SwapDeviceContextState(game_state.Get(), nullptr);
     }
   }
-  for (size_t body = 0; body < hooks::internal::BODIES; ++body) {
+  for (size_t body = 0; body < hooks::internal::MEASURE_BODIES; ++body) {
     if (nested_seen[body] != 0) std::printf("  %s: %u nested hook entries inside it (d3d11's own calls)\n", NAMES[body], nested_seen[body]);
   }
   std::printf("3. every body's own call seen once in all 7 table states; d3d11's state application after a native swap (stubs): 7 bind calls"
@@ -443,7 +443,7 @@ int main() {
     }
     return count;
   };
-  CHECK(hooked_slots(twin_context.Get()) == hooks::internal::BODIES);
+  CHECK(hooked_slots(twin_context.Get()) == hooks::internal::MEASURE_BODIES);
   ComPtr<ID3D11Device> other_device;
   ComPtr<ID3D11DeviceContext> other_context;
   CHECK(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &level, 1, D3D11_SDK_VERSION, other_device.GetAddressOf(), nullptr,
@@ -488,7 +488,7 @@ int main() {
 
   // 8. Uninstall, then installed and removed again.
   const auto removed = [&] {
-    if (!hooks::internal::state.hooks.empty() || hooks::internal::state.lifetime.module != nullptr || hooks::internal::state.trampolines != bodies) return false;
+    if (!hooks::internal::state.hooks.empty() || hooks::internal::state.lifetime.module != nullptr || !std::equal(bodies.begin(), bodies.end(), hooks::internal::state.trampolines.begin())) return false;
     for (size_t body = 0; body < bodies.size(); ++body) {
       if (std::memcmp(bodies[body], prologues[body].data(), 16) != 0) return false;
     }
