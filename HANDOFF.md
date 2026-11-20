@@ -4686,6 +4686,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         from P3 (adaptive delay) - the coordinator's addendum ask (a fixed E clear of B1) still pending; (2) R2 needs 3
         spec properties written + tested in S2 (mid-job wait on an owner publish, Available() 0 while a job is open
         across game code, ALL job claiming shared units) - else R2 dropped. bd3o_ resumed again with the addendum ask.
+        ATN 00:0x (11-21): heapfix's own pool size = AUTOMATIC ONLY (min(6, logical CPUs / 2 - 1), batch env override
+        only, no ini line); add an ini line later only if the end batch shows the count matters a lot.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
