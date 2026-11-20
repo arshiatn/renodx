@@ -2,7 +2,8 @@
 // pieces) on WARP (the same d3d11.dll runtime bodies as the game's device), a single-threaded device as the game's, x86
 // and amd64:
 // 1. The ring's 35 bodies (the three copies' versions after a Flush among them): inside d3d11.dll, distinct, none
-//    starting with a jump. Refused (logged, nothing hooked): two devices known, a multithreaded one.
+//    starting with a jump. Refused (logged, nothing hooked): two devices known, a multithreaded one. The row's Off
+//    latched (the ring stays in, logged once a latch; its writes, Get and copies as on). CONTROL: unlatched, out at once.
 // 2. The rules it relies on: the caps; a copy into a dynamic constant buffer lands, UpdateSubresource into one does not.
 // 3. Pixels, compute output and copies, ring off vs on, each run on a fresh device: per-draw DISCARDs of a 208 B buffer
 //    (the shaders read past its end), a once-a-frame one bound before its DISCARD, NO_OVERWRITE windows of a 1 KB one
@@ -676,6 +677,8 @@ static size_t Differences(const std::vector<uint32_t>& left, const std::vector<u
 int main() {
   setvbuf(stdout, nullptr, _IONBF, 0);
   CHECK(Compile());
+  // The removals below take the ring out at the row's Off (part 1 latches it on purpose).
+  bp::internal::latch_off = false;
 
   // 1. The bodies; refusals.
   {
@@ -706,9 +709,40 @@ int main() {
     bp::Update(made.context.Get(), true, false);
     CHECK(!bp::internal::pool.installed && Logged("not single-threaded") == 1 && hooks::internal::state.hooks.empty());
     bp::Update(made.context.Get(), false, false);
+    // The row's Off latched: the ring stays in (logged once), a DISCARD still goes into a piece, Get and a copy give the
+    // game's buffer and its newest bytes; back On clears it (the next Off logs again). CONTROL: unlatched, Off takes it
+    // out (pieces and copies gone), the bytes written back.
+    loss::devices = {{.device = made.device.Get(), .single_threaded = true}};
+    const auto latched = GameBuffer(made.device.Get(), 256, 21);
+    bp::Update(made.context.Get(), true, false);
+    CHECK(bp::internal::pool.installed);
+    bp::internal::latch_off = true;
+    bp::Update(made.context.Get(), false, false);
+    bp::Update(made.context.Get(), false, false);
+    CHECK(bp::internal::pool.installed && Logged("stays on until the game restarts") == 1);
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    CHECK(SUCCEEDED(made.context->Map(latched.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+    std::memset(mapped.pData, 0x5A, 256);
+    made.context->Unmap(latched.Get(), 0);
+    made.context->PSSetConstantBuffers(0, 1, latched.GetAddressOf());
+    ComPtr<ID3D11Buffer> bound;
+    made.context->PSGetConstantBuffers(0, 1, bound.GetAddressOf());
+    const std::vector<uint32_t> written(64, 0x5A5A5A5Au);
+    CHECK(bound == latched && bp::internal::Find(latched.Get())->piece != nullptr
+          && Read(made.device.Get(), made.context.Get(), latched.Get(), 256) == written);
+    bp::Update(made.context.Get(), true, false);
+    bp::Update(made.context.Get(), false, false);
+    CHECK(bp::internal::pool.installed && Logged("stays on until the game restarts") == 2);
+    bp::internal::latch_off = false;
+    bp::Update(made.context.Get(), false, false);
+    CHECK(!bp::internal::pool.installed && bp::internal::pool.pieces.empty() && !bp::internal::pool.copies);
+    CHECK(Read(made.device.Get(), made.context.Get(), latched.Get(), 256) == written);
+    ID3D11Buffer* const none = nullptr;
+    made.context->PSSetConstantBuffers(0, 1, &none);
     bp::ForgetDevice(made.device.Get());
     std::printf("1. 35 distinct bodies in d3d11.dll (the ring's 18 printed), no jump prologue; refused once each (logged, nothing hooked): 2 devices, a"
-                " multithreaded one\n");
+                " multithreaded one; the row's Off latched: still in (logged once a latch), its writes in a piece, Get / copy the game's"
+                " buffer and bytes; CONTROL unlatched: out at once, the bytes written back\n");
   }
 
   // 2. The rules.

@@ -24,11 +24,13 @@
   rewrites the three copy slots of a context's table in place after a Flush and back at the next copy, so both versions
   are hooked (read at the install around one 16-byte copy between two buffers of the ring's own and one Flush).
 - In at the first present with the row on, on the render thread, with the map trace's rules (one D3D11 device,
-  single-threaded, the bodies checked). Out when the row goes off, at the device's end and at the unload: every buffer
-  written back into itself and every slot of every live state rebound to it first. A call on the context from another
+  single-threaded, the bodies checked). Out at the device's end and at the unload: every buffer written back into itself
+  and every slot of every live state rebound to it first. The row's Off applies after a restart (logged once: "stays on
+  until the game restarts"; the tooltip says so): batch 3's live Off handed the game's buffers back and 4 of 6 starts got
+  +11..+45 ms a frame (the driver no longer renamed them). A call on the context from another
   thread, a lost device, a body in the context's table that the install never saw (checked at each present and after
   each swap: another d3d11.dll build) or a swap below the hook: the ring unwinds at the render thread's next call and
-  stays off until the row is turned off and on again (logged). Our own constant buffers are made below ReShade (no
+  stays off until the row is turned off and on again (logged, with "Restart the game for full speed."). Our own constant buffers are made below ReShade (no
   init_resource): never in the ring. Rome II, Thrones and WH3 compile it without the row.
 - Checked in `test/tw_buffer_pool` (x86, amd64, WARP: pixels, compute output and copies equal with the ring, a full ring,
   another thread's call and the measure path beside it, seven CONTROLS that must differ; Get / Get1 / Map parity and the
