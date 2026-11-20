@@ -4079,6 +4079,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         shadow, IA offsets kept, +1 body (IAGetVertexBuffers slot 79), E 300-500 lines + tests; risk: 8 MB rings next.
         s5o_ RESUMED 16:xx: fix round (M1, M2, S1-S5, S7, nits; no VB yet, no GPU runs). Then s5r_ re-checks, then the extra
         independent review, then merge.
+        c2i_ FIX ROUND DONE 16:xx: rmt_c2 b5e97fef0 (F1-F14 + v3 C.2 changes + neutral renames; F15 left for C.3). tw_draw_
+        recording x86 960 depth cases PASS (new +0x50 / continuation / any-capture controls differ), tw_cpu_sets x86 + amd64
+        PASS, build32 twattila exit 0 (temp include, reverted). Seed misses in no-technique runs cost reruns (exact, slower) ->
+        v3's step-back seed search in C.2-5. c2r_ RE-CHECK started.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
