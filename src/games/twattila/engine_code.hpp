@@ -1662,7 +1662,7 @@ static bool job_missing_logged = false;
 static uint32_t prefetch_logged = 0;  // the prefetch sites already named as left alone: each is named once
 // Threaded Draw Recording's table (draw_recording_sites.hpp, compiled only with TWATTILA_DRAW_RECORDING): the same window writes it
 // with the 25 sites above, its masks have 64 bits. Without the feature nothing is ever found in it.
-constexpr size_t RECORDING_SITES = 12;
+constexpr size_t RECORDING_SITES = 23;
 static std::array<Site, RECORDING_SITES> recording_sites = {};
 static bool recording_prepared = false;
 static uint64_t recording_found = 0;
@@ -2272,8 +2272,9 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
       internal::recording_left_in = true;
     }
     internal::recording_written = recording_now;
-    // A stood-down entry hook leaves found with the others: harmless, since a hook that stood down on the way out and is
-    // still in the game's code is covered by recording_left_in.
+    // The entry hook that stood down GOING IN (its bytes were not the game's) leaves found with the others: a group asked
+    // for later then takes its call-site flush fallback (RecordingWanted). One that stood down on the way out is still in
+    // the game's code and covered by recording_left_in.
     internal::recording_found &= ~recording_stood_down;
     internal::failed_writes = 0;
     for (const auto& [row_sites, name] : internal::ROWS) {

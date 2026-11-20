@@ -995,6 +995,10 @@ inline void ReplayFaction(int32_t faction, uint32_t mask, uint32_t node, uint32_
   uint32_t list = 0;
   const auto* const node_vtable = *reinterpret_cast<const uint32_t* const*>(static_cast<uintptr_t>(node));
   reinterpret_cast<FactionListFn>(static_cast<uintptr_t>(node_vtable[0xc0 / 4]))(node, faction, &list);
+  // The game reads its local list pointer with no value set before the call: it relies on the call writing it, which the bytes
+  // do not prove for every node (the class is not named by them). A call that left it alone has no list here: nothing is
+  // sent (the game would read a stale stack slot).
+  if (list == 0) return;
   const auto* const list_bytes = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(list));
   uint32_t count = 0;
   uint32_t data = 0;
