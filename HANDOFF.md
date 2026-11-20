@@ -4715,6 +4715,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         x87o_ STARTED 00:0x (Opus xHigh, read-only): the x87 hot-spot sweep design -> reports/x87o_design.md.
         Agents: c31r_, ebo_, bd3r_, x87o_ (4 of 4). Waiting: bd2r_ re-check of B1 v2, bd1r_ re-check of B3b v2, the R2
         addendum (R-S5a).
+        c31r_ C.3-2 REVIEW DONE 00:0x (reports/c32r_review.md): MERGE, no Must (S-1 + N-1..N-5 -> C.3-3's test commit,
+        carry-over box); N-7 answered: "out stays 0" is never a legal no-colour case, sending nothing is right; tests
+        re-run PASS. MERGED rmt_c3 -> ee00eec70 (name check: 47 generic words only), gated builds x86 twattila twrome2
+        twthronesofbritannia + amd64 twattila exit 0, pushed. NEXT in C's gap: S2 the shared worker_pool.hpp (bd1r_ §4 +
+        the v2 notes) by c3i_ on rmt_pool, BEFORE C.3-3 (it unblocks B1 / B3b / ring implementers on their own files).
+        c3i_ RESUMED 00:1x: S2. Agents: ebo_, bd3r_, x87o_, c3i_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4751,6 +4757,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         (merged 44a45dfe1). c23r_ re-check 2 nits (optional, owner c2i_ when draw_recording.hpp is next touched): a
         once-only log when the ReplayChunk zero-header stop fires; BStraddler's damaged case asserts first_reason ==
         "bad ops"; run BStraddler in a second stage too. MUST SetGame + c31r_ N1 / CHECK > 0 + N-7 / S-3 -> c3i_ C.3-2.
+        All of those DONE in C.3-2 (merged ee00eec70). c32r_ (11-21 00:0x) -> owner c3i_ WITH C.3-3's test commit: S-1
+        loop test 1226 checks each call's direct_reason is one the list can produce, count bound on "no cut" only;
+        N-1 di::latched_groups = 0 in RunStaged (:749) (+ CHECK 0 after must-record runs); N-2 trace-only "list stayed
+        0" count in ReplayFaction; N-3 fake push_back 0x1972b0 / free 0xe98c0 so the real loop's mask path runs; N-4
+        the accessor moves into B's usable bits when the B sites land; N-5 engine_code.hpp:2275 comment wording.
       - [ ] TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the TRAP rule can't see a VB step
         under the synthetic load (mark max(2, 5x before) = 15-17 ms/f; t2 / t4-t8 show VB 3.0 -> 5.4-6.7 ms/f, frame
         +2.5 ms) -> add an absolute delta (after - before >= 2 and late - before >= 2 ms/f), print deltas, a control that
