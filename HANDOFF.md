@@ -4484,6 +4484,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         the define exit 0; name check plain words; merge-tree vs atn-mods clean. c23r_ RESUMED: review ->
         reports/c24r_review.md. s5o_ RESUMED (sole implementer): commit 1 s5x_ Shoulds 1-2 + nits 1-4, commit 2 the trap
         harness (-Trap switch; NVIDIA runs wait for ATN's rule). Agents: c23r_, s5o_.
+        c23r_ C.2-4 REVIEW DONE 21:2x (reports/c24r_review.md): MERGE, no Must. S-1 (fix BEFORE C.3-2's B cut): B's direct
+        fallback after a PlanRound reason runs RunMeshes over planned[] without RoundScope -> a nesting direct class could
+        overwrite planned[] -> RoundScope there (or the accessor loop) + BNested with an outer round < 512 items. S-2:
+        Uninstall's arena_size = 0 before the kept check is a regression on a live detach where all 100 removals fail
+        (workers could run the game's flush direct) -> zero it only on the free path. Nits: N-1 op walks loop forever on a
+        zero header (a silent freeze on op corruption) -> stop + log / rerun; N-2 stale printf texts; N-3 N-9 log names
+        groups by number; N-4 release builds still compile the inert recording shell. Order / sticky groups / define all
+        verified. MERGED rmt_c2 d2547840a (clean; addon.cpp auto-merged with the latch tooltips) + gated builds x86 x3 +
+        amd64 twattila exit 0 + pushed. Fix commit S-1 / S-2 / N-1..N-3 -> owner c2i_ after s5o_ (one implementer).
+        ATN 21:2x: (a) Fewer Driver Waits = keep Experimental + Off (not hidden); (b) -Trap rule ADDED (checked exact);
+        (c) asked where the shots are -> S0 + REF-ATN sent.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
