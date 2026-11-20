@@ -4252,6 +4252,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         vboffset controls, Unwind via CopyResource + one wait, row INTEGER Off / Constants / Constants + Vertices (Off).
         s5o_ RESUMED (slot 3 of 3): H0 only + atn_harness_runs.ps1 -H0. NEXT free slots: an independent Opus xHigh review
         of design v2 (before V1-V6), then the b2b analysis.
+        c2i_ C.2-5 DONE 18:0x (rmt_c2, local): b4c4739f2 = c23r_'s items (S-1 continuation class check, S-2 controls a / b /
+        c, S-3 comments + `continued` counter, S-4a seed-miss field counters + CONST2 repeat sum, N-1..N-5, N-8) + 411694a81
+        = B path (DispatchMesh / PlanRound, view type -> group, forced-direct 0x11cbcb80 / 0x11cbddd0 / 0x11cbdc84 both +
+        0x11cbd9d4 colour only, step-back seed search x4, +0x50 stride rule shared, M2 entry checks WIDER: every census chunk
+        after any direct segment, compare per census run, duplicate meshes -> direct, S9b latch on first difference, B
+        trace numbers; A + B share PrepareSlot / ReplayChunk / Compare* as free functions). Tests x86 PASS (BStages 768
+        cases equal serial, fallbacks, entry check, seeds, stride, overflow, record rules, latch, 8 controls differ), amd64
+        stubs, cpu_sets, build32 exit 0. The A regressions were test-side (latch state between tests). Name check: plain
+        words (RunLoop generic). N-6 -> C.2-4, N-7 -> C.3. REVIEW of 411694a81 QUEUED (next slot).
+        s5x_ RESUMED 18:0x (slot 3 of 3): independent review of VB design v2 -> reports/s5x_review_vb.md.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
