@@ -4699,6 +4699,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         B1.7 / B1.8 reviews. No ATN questions. NOTE for the pool step: B1 claims G = 1, not the spec's G = 4.
         ebo_ STARTED 00:0x (Opus xHigh, read-only): the END BATCH PLAN -> reports/ebo_end_batch_plan.md, with ONE
         "Questions for ATN" list. Agents: bd3o_ (addendum), c31r_, bd1o_, ebo_ (4 of 4).
+        bd1o_ DESIGN v2 DONE 00:0x (reports/bd1o_design_B3_v2.md, 862 lines): all bd1r_ items folded; B3b GO, gain -1..-4
+        W3 (central -2..-3 E); row "Animation Rows on Workers" Off / Check / On, Bulk = batch env
+        RENODX_TW_ANIMATION_SCHEDULE; B4 = trace-only Arm now (5-byte entry, only with RENODX_TW_WORKER_TRACE), full B4 or
+        the whole-table pass at +0x192d479 decided by the end batch's histogram (>= 2048 per call / 16k+ a frame / drop);
+        B4's check stub + M2 move from S3 to S9 (no unused code in src). Steps S2 pool (C's files, after rmt_c3 merges),
+        S2r, S3 engine_code (C's files, serial), S4 / S5 B3b (own files, parallel OK), S6 rows, S7 review, S9 / S9r
+        conditional. Notes for the pool step (S2): Join's first entered load after open.store(0) must be seq_cst; the
+        finisher of an ALL job calls done.notify_one(); WORKER_LIMITS must accept 1. No ATN questions.
+        bd3o_ ADDENDUM DONE 00:0x (appended to bd3o_design_B2_ring_v2.md): presort E = +0x192D2DA (the walk's first call,
+        E8 to 0x118E51E0, only caller, clean, no clash with B1 / B3b / B4 / emitter prefetch), +1.4..+1.8 ms more lead,
+        pass-2 retry for dropped lists, timeout start for frames without the walk; ring pool needs all given except R2's
+        mid-job wait (a comment + an S2 test); max 4 agents fixed. Ownership: B1 owns +0x192D5C4 / +0x192D65A / the walk
+        entry, heapfix owns +0x192D2DA. bd3r_ RESUMED 00:0x: re-check of v2 + pool update + addendum (unblocks lane H S1).
+        x87o_ STARTED 00:0x (Opus xHigh, read-only): the x87 hot-spot sweep design -> reports/x87o_design.md.
+        Agents: c31r_, ebo_, bd3r_, x87o_ (4 of 4). Waiting: bd2r_ re-check of B1 v2, bd1r_ re-check of B3b v2, the R2
+        addendum (R-S5a).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
