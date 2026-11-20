@@ -4286,6 +4286,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         ReShade's 432 B). h9 W3m ring: all calls 3.44 / 3.17 vs native 3.75 / 3.31 = the ring is cheaper (gate passed);
         vb_discard waits 2.4 / 2.2 unchanged (8 MB rings). -> CB ring matters in D1m-like frames, VB part in W3m-like
         frames; in-game proof = batch 3. Agents RESUMED 18:2x (s5x_ got the H0 data).
+        s5x_ VB DESIGN REVIEW DONE 18:3x (reports/s5x_review_vb.md): GO WITH CHANGES C1-C4. C1 idle reuse holds pool backings
+        for good (W3m ~51 of 64 MB idle -> bursts fall back native) -> End(own.done) at install / IA seed, an idle DISCARD
+        goes back to own G + returns the backing (class A really 0 MB); C2 32-bit address space: measure first (one-time
+        free / largest-block log in ATN's heaviest battle), floor guard, release unused backings after N presents, grow at
+        a present not inside the game's Map, x86 budget from data; C3 copies INTO G re-end the event, a destroyed G's
+        backing back ENDED, reclaim in one locked pass (R1 lesson); C4 branch >= 47085a2c8, FIRST_PIECES out of V2, V3a idle
+        reuse only (0 MB) / V3b switch + pools + substitution + unwind, harness VB words (V5a) before V3b, review after V3b.
+        Should S1-S5 (odd IASetVertexBuffers native + re-read, 464 KB backings outside the budget, part 8 counters +
+        controls, gates incl. VB cost without waits + no wait just moved, row 3 modes). H0: CB ring = the D1m lever, cost
+        gate + NVIDIA parity MET -> CB ring to in-game batch 3 BEFORE the VB work. s5o_ RESUMED: FIRST_PIECES = 8 + C2's
+        one-time address-space log (one commit). NEXT slot: s5r_ design v3 addendum (C1-C4 + S1-S5 + rewrite 0 c).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
