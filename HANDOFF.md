@@ -400,6 +400,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go fa4o_ DONE (night1118/final_bench_f
 - OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 08:08: 64-bit decisions = coordinator's reco
 - NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | ATN, when ATN brings it up again
+- C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - S5 RING GPU CHECKS (s5r_ re-check 11-20; gate ANY game run / release with "Fewer ... | coordinator
 - S1 FOLLOW-UPS: N1-N7 DONE by s5o_ in e6a835ffc (merged with S5 in ca057a7ee, 11- ... | ?
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
@@ -4158,6 +4159,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (flush, vf54-68, purity of vf58 / 60 / 64), count-0 flush, the real cut caller, colour, real data, full-length
         tw_engine_code. Name check: plain words. c31r_ a15eea3316c48613b (Opus xHigh) STARTED: review of 832196221 +
         d7724ee73 with c3i_'s 7 points -> reports/c31r_review.md.
+        c23r_ REVIEW DONE 15:4x (reports/c23r_review.md): MERGE, no Musts; every colour rule checked against 0x17b0400
+        (SETUP / vtables, CONST cache flag + NaN / -0, SRV, faction 4 colours, any-capture, seeds, continuation guard,
+        slot conflict, +0x50, owner table, F7, N1 no timing bias). Should S-1 continuation mesh's class unchecked; S-2
+        three safeguards without a failing control; S-3 synthetic loop differs from 0x17b0400 (real-bytes colour test in
+        C.3); S-4 seed-miss field counters + (b) more compare frames in the C-A plan. Nits N-1..N-8. STOPPED: c23r_'s one
+        test compile / run (x86, CPU) was refused by the auto-mode classifier ("Undermining Oversight"); not retried, no
+        tests run by c23r_ (results = c2i_'s). C.2-3 MERGED 15:4x: rmt_c2 c1d3887e8 -> atn-mods 61ca92bab (clean; header not
+        included by any add-on yet). c2i_ RESUMED: commit 1 = S-1 / S-2 / S-3 / S-4a / N-1..N-5 / N-8, commit 2 = C.2-5 (B
+        path); C.2-4 waits for C.3-1's merge.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4178,6 +4188,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         identity line) FIXED 22:00: bench/variants/heapfix_final_base.json with er4o_'s regexes, checked on past logs (B4G
         matches only B4G runs, rejects Cnt; P rejects B4G). L3: hsC = B4G's gate + hs one-thread loop + counters, compare it
         only with Cnt2. Info: 7 leftover Attila process objects may trip the bench's game-process check: ATN's restart clears them.
+      - [ ] C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C.2-4 (owner c2i_); N-7 the
+        faction node's vf+0xc0 always writes its out pointer (open assumption) + S-3's real-bytes colour paths -> C.3's
+        colour round (owner the C.3 implementer); S-4 (b) arm more compare frames in the C-A batch plan (G2 samples only
+        1 of 3 frames) -> owner coordinator.
       - [ ] S5 RING GPU CHECKS (s5r_ re-check 11-20; gate ANY game run / release with "Fewer Driver Waits" on, batch 3
         included; blocked now: the harness GPU run was denied 11-20, needs ATN's go or ATN runs it): 1. NVIDIA x86 parity:
         harness `--nvidia --plugin ring` on b2_W3m + b2_D1m, `none` EQUAL, every control differs, no "copy body unknown"
