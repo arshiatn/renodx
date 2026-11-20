@@ -4645,6 +4645,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         answered (27 static-random refs in 7 functions; 0x184DA60 open; rigid vf 0x78 list choice open). Nothing new for
         ATN. bd2o_ RESUMED 23:4x: design v2 (all review items + the open B1.0 items) -> reports/bd2o_design_B1_v2.md.
         Agents: c3i_, bd1r_, bd3o_, bd2o_ (4 of 4).
+        c3i_ C.3-2 DONE 23:4x: rmt_c3 a2dd2e09e (local, on 44a45dfe1): 11 Colour A sites (RECORDING_SITES 23), MUST done
+        (PrepareRecording fills accessor 0x1719160 / vf64_stub / module_shift, refuses on foreign bytes; tests on the real
+        bytes + loop test 6d), c31r_ N1 + compares[EQUAL] CHECK > 0, c23r_ N-7 not provable -> ReplayFaction sends nothing
+        when the out pointer stays 0 (+ test), S-3 loop test 6 = the real colour loop 0x17b0400 vs the dispatcher, 576
+        cases equal, controls differ. Tests _sites / _loop / tw_draw_recording / engine_code -Quick PASS; gated builds x86
+        twattila with + without the define, twrome2, twthronesofbritannia, amd64 twwarhammer3 exit 0 (twattila amd64 at
+        merge). Notes for review: test-5 depth controls may not clear latched groups (blind spot?), up to a quarter of
+        portions direct in 60-mesh lists. c31r_ RESUMED 23:4x: review -> reports/c32r_review.md. Agents: bd1r_, bd3o_,
+        bd2o_, c31r_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
