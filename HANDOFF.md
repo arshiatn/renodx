@@ -402,7 +402,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | ATN, when ATN brings it up again
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
-- TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 (owner bd1o_) | bd2o_ B1 D ... | ?
+- TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
 - S1 FOLLOW-UPS: N1-N7 DONE by s5o_ in e6a835ffc (merged with S5 in ca057a7ee, 11- ... | ?
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
@@ -4591,6 +4591,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         after the end batch (recommended) or L1 only? (2) which save / replay for the fire-arrow / burning-buildings crash
         start, or may the run set up a custom siege from the menus? bd2r_ STARTED 23:1x (Opus xHigh, read-only):
         independent review + the B1.0 census -> reports/bd2r_review.md. Agents: bd1o_, c3i_, bd3r_, bd2r_ (4 of 4).
+        bd1o_ DESIGN DONE 23:1x (reports/bd1o_design_B3.md, 665 lines, saved by the coordinator): B3b animation rows: stub
+        at the call +0x1893d2a; phase A parallel gather {instance, animation, line word, need} into a 64-block ring, phase
+        B serial exact allocator on the render thread (game memos in memory, game push_back 0x102a2f40 on growth, F(x) on
+        the render thread's MXCSR), phase C parallel scatter of inst +0x5c / +0xa4; then the game's 0x182e080 with end =
+        s (limit 0 = its own tail: Map, texture fill, Unmap); Streaming (big) + Bulk + Check (restore + compare); census
+        corrections (padding n/12 + 1, record word 4 = inst +0x70). B4 NOT dropped: the ready check writes only net-zero
+        counts (site 5's twin), so a parallel "not ready" map at the sweep entry +0x18932a5 + a check-call stub
+        +0x18932b7. Shared: worker_pool.hpp extraction, a second engine_code page with CutRange / cut_active for
+        module-calling stubs, main table 25 -> 28. Gain W3 E: B3b streaming -2.5..-5 (6.23 M), Bulk -2..-4; B4
+        -0.7..-1.1 (1.44 M). Rows (Experimental, Off): Animation Rows on Workers (Off / Check / Bulk / On), Pending Sweep
+        Split (Off / Check / On), Engine Worker Threads (1-16, default 4). Steps S1 height() check -> S2 pool extraction
+        (after c3i_ merges) -> S3 cut page -> S4 B4 -> S5 B3b Bulk -> S6 streaming -> S7 rows / trace -> S8 reviews (~3,000
+        lines with tests). FOR ATN: (1) keep our pool threads on the render thread's CCD when no CPU-set rule applies
+        (changes C's pool too; ATN's PC unchanged)? (2) one threads row for B3b + B4 (C keeps its own) or one for all?
+        bd1r_ STARTED 23:1x (Opus xHigh, read-only): independent review + S1 + ONE reconciled worker_pool.hpp spec for C,
+        B1, B3b, B4 and the ring fill -> reports/bd1r_review.md. Agents: c3i_, bd3r_, bd2r_, bd1r_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4633,7 +4649,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         frees the stand-ins at the window end. Repro ideas, cheapest first: x86 harness with ballast up to Attila's
         address space / commit; a 120 s before-phase; Attila.exe's NVIDIA profile (driver settings = ATN's call). New
         switches need ATN's rules. Owner s5o_ (after the C chain), only if ATN wants it.
-      - [ ] TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 (owner bd1o_) | bd2o_ B1 DONE (reports/bd2o_design_B1.md)
+      - [ ] TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_B3.md) -> bd1r_ review + S1 +
+        the shared pool spec (owner bd1r_); ONE pool extraction step for all users after c3i_'s C step | bd2o_ B1 DONE
+        (reports/bd2o_design_B1.md)
         -> bd2r_ review + B1.0 census (owner bd2r_); B1.1 pool extraction touches C's draw_recording.hpp -> a gap in the C
         chain | bd3o_ B2 + ring
         DONE (reports/bd3o_design_B2_ring.md) -> bd3r_ review + S0 / R-S0 (owner bd3r_) -> ATN's 3 answers -> implementers
