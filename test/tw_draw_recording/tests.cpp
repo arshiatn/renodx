@@ -327,6 +327,8 @@ struct TestControls {
   bool drop_end_flush = false;
   uint32_t anim_stack = 9;
   int inject_chunk = -1;
+  // The chunk (slot index) whose recording overflows at its first flush: the replay runs it again.
+  int overflow_chunk = -1;
   // The flush entry's site id for every flush instead of the call-site ids.
   bool entry_site = false;
 };
@@ -475,6 +477,9 @@ static void FlushSite(dr::Site site, void* t, uint32_t mesh, uint32_t technique,
   if (test_controls.drop_end_flush && (site == dr::Site::DEPTH_FLUSH_END || site == dr::Site::COLOUR_FLUSH_END) && slot->mode == dr::MODE_RECORD) return;
   StackImage image = MakeImage(test_controls.entry_site ? dr::Site::FLUSH_ENTRY : site, mesh);
   for (uint32_t i = 0; i < 10; ++i) image.stack[1 + i] = args[i];
+  if (test_controls.overflow_chunk == static_cast<int>(slot->chunk) && slot->mode == dr::MODE_RECORD) {
+    slot->flags |= dr::SLOT_OVERFLOW;
+  }
   dr::Record(slot, &image.frame);
   if (test_controls.inject_chunk == static_cast<int>(slot->chunk) && slot->mode == dr::MODE_RECORD
       && (site == dr::Site::DEPTH_FLUSH_BOUNDARY || site == dr::Site::COLOUR_FLUSH_BOUNDARY)) {
@@ -2217,6 +2222,15 @@ static uint32_t* ClassVtable(uint32_t index) {
 static uint32_t direct_on_slot = 0;
 static uint32_t direct_leave = 0;
 static uint32_t b_vf64_calls = 0;
+// The depth body's variation path (a flush and the mesh's +0x44 written when the item's variation is not the tracker's; the +0x14
+// reset only at a mesh setup), and a direct class's call into the dispatcher: the sorted list and range it runs, and how many
+// times the classes' calls make it.
+static bool depth_variation = false;
+static uint32_t* nest_sorted = nullptr;
+static uint32_t nest_first = 0;
+static uint32_t nest_last = 0;
+static uint32_t nest_budget_start = 0;
+static uint32_t nest_budget = 0;
 
 static uint8_t __thiscall FakeVf64Stub(void*, uint32_t, uint32_t, uint32_t) { return 0; }
 static uint8_t __thiscall FakeVf64Real(void* mesh, uint32_t a, uint32_t b, uint32_t c) {
@@ -2284,7 +2298,7 @@ static void __thiscall SynthBDepth(void* mesh_pointer, void* t, void* list_point
       Field<uint32_t>(t, 0x78) = 0;
     }
     Field<uint32_t>(t, 0x70) = mesh_address;
-    Field<uint32_t>(t, 0x14) = 0;
+    if (changed || !depth_variation) Field<uint32_t>(t, 0x14) = 0;
     if (changed) {
       mesh->view_tag = Field<uint32_t>(t, 0x20);
       Field<uint8_t>(t, 0x68) = mesh->flag;
@@ -2304,6 +2318,13 @@ static void __thiscall SynthBDepth(void* mesh_pointer, void* t, void* list_point
       }
     }
     if (Field<uint32_t>(t, 0x74) == 0) continue;
+    if (depth_variation && list->data[i]->variation != Field<uint32_t>(t, 0x14)) {
+      FlushSite(dr::Site::DEPTH_FLUSH_BOUNDARY, t, Field<uint32_t>(t, 0x70), Field<uint32_t>(t, 0x74), Field<uint32_t>(t, 0x58), Field<uint8_t>(t, 0x12));
+      Field<uint32_t>(t, 0x58) = 0;
+      Field<uint32_t>(t, 0x78) = 0;
+      Field<uint32_t>(t, 0x14) = list->data[i]->variation;
+      mesh->pass = list->data[i]->variation;
+    }
     if (Field<uint32_t>(t, 0x58) == 0) Field<uint8_t>(t, 0x69) |= Vf64Site(dr::Site::DEPTH_B_VF64, t, mesh_address);
     ++Field<uint32_t>(t, 0x58);
   }
@@ -2407,7 +2428,7 @@ static void __thiscall SynthBColour(void* mesh_pointer, void* t, void* list_poin
 }
 
 // The mesh's slot-0x138 call (the game's per-mesh dispatcher): the view's type picks the body, the list is at the class's offset.
-static void __thiscall FakeVf138(void* mesh_pointer, void* t, void*, void* view, uint32_t list_type, void* node) {
+static void __thiscall FakeVf138(void* mesh_pointer, void* t, void* device, void* view, uint32_t list_type, void* node) {
   const uint32_t type = static_cast<const BView*>(view)->type;
   if (type == 0x49) return;
   const bool depth = (type == 0 || type == 0x55 || type == 0x60);
@@ -2427,6 +2448,15 @@ static void __thiscall FakeVf138(void* mesh_pointer, void* t, void*, void* view,
     if (direct_leave == 1) Field<uint32_t>(t, 0x58) = 1;
     if (direct_leave == 2) Field<uint32_t>(t, 0x78) = 8;
     if (direct_leave == 3) Field<uint32_t>(t, 0x64) = 5;
+    if (direct_leave == 4) {
+      // Another view's inputs: the colour tracker's +0x20 is always the function of +0x1c that the flush writes into the mesh.
+      Field<uint32_t>(t, 0x1c) ^= 0x100;
+      if (!depth) Field<uint32_t>(t, 0x20) = Field<uint32_t>(t, 0x1c) ^ 0x77;
+    }
+    if (nest_budget > 0) {
+      --nest_budget;
+      dr::DispatchMesh(t, device, view, list_type, node, nest_sorted, nest_first, nest_last);
+    }
   }
 }
 
@@ -2484,6 +2514,15 @@ struct BSpec {
   uint32_t view_type = ~0u;
   // Entries of the sorted list that repeat another's mesh.
   uint32_t duplicates = 0;
+  // Every round but the last ends inside its last mesh (half of its items) and the next starts at that mesh with the rest, as the
+  // game's driver does when its batch runs out (the first mesh of a round is then a straddler).
+  bool restart = false;
+  // The depth body's variation path (items get variations: 0 half of the time), and only the two classes with a real virtual
+  // call at a batch start.
+  bool depth_variation = false;
+  bool real_vf64_only = false;
+  // The mesh with this index is of a class that never records (~0: none).
+  uint32_t direct_mesh = ~0u;
 };
 
 struct BWorld {
@@ -2500,12 +2539,16 @@ struct BWorld {
   uint32_t round_numerator = 2400;
   // The tracker's state when a round starts (a round the bodies ended leaves both 0).
   uint32_t pending = 0;
+  bool restart = false;
+  bool depth_variation = false;
 };
 
 static std::unique_ptr<BWorld> BuildBWorld(const BSpec& spec) {
   auto world = std::make_unique<BWorld>();
   Rng random{spec.seed * 0x9e3779b97f4a7c15ull + 1};
   world->colour = spec.colour;
+  world->restart = spec.restart;
+  world->depth_variation = spec.depth_variation;
   world->max_count = spec.max_count;
   world->round_numerator = spec.round_numerator;
   world->view = {view_vtable.data(), (spec.view_type != ~0u ? spec.view_type : (spec.colour ? 0x10u : 0u))};
@@ -2513,7 +2556,8 @@ static std::unique_ptr<BWorld> BuildBWorld(const BSpec& spec) {
   // The classes meshes get: the table's rows (without the forced ones unless asked), or one that never records.
   std::vector<uint32_t> pool;
   for (uint32_t r = 0; r < CLASS_ROWS.size(); ++r) {
-    if (spec.all_classes || !(ForcedDirect(CLASS_ROWS[r].va, false) || ForcedDirect(CLASS_ROWS[r].va, true) || !CLASS_ROWS[r].depth || !CLASS_ROWS[r].colour)) {
+    if ((spec.all_classes || !(ForcedDirect(CLASS_ROWS[r].va, false) || ForcedDirect(CLASS_ROWS[r].va, true) || !CLASS_ROWS[r].depth || !CLASS_ROWS[r].colour))
+        && (!spec.real_vf64_only || CLASS_ROWS[r].real_vf64)) {
       pool.push_back(r);
     }
   }
@@ -2522,7 +2566,8 @@ static std::unique_ptr<BWorld> BuildBWorld(const BSpec& spec) {
   std::vector<uint32_t> counts(spec.meshes);
   for (uint32_t m = 0; m < spec.meshes; ++m) {
     BMesh& mesh = world->meshes[m];
-    const uint32_t index = (random(100) < spec.direct_percent ? direct_pool[random(4)] : pool[random(static_cast<uint32_t>(pool.size()))]);
+    uint32_t index = (random(100) < spec.direct_percent ? direct_pool[random(4)] : pool[random(static_cast<uint32_t>(pool.size()))]);
+    if (m == spec.direct_mesh) index = 2;
     mesh.head.vtable = ClassVtable(index);
     mesh.head.flag = static_cast<uint8_t>(m & 1);
     const bool tail = (static_cast<uint64_t>(m) * 100 >= static_cast<uint64_t>(spec.meshes) * (100 - spec.tail_disabled_percent));
@@ -2544,6 +2589,8 @@ static std::unique_ptr<BWorld> BuildBWorld(const BSpec& spec) {
   if (spec.colour) {
     const Spec colour_spec = {};
     FillColourFields(&world->items, &world->masks, colour_spec, &random);
+  } else if (spec.depth_variation) {
+    for (SynthItem& item : world->items) item.variation = (random(2) == 0 ? 0 : 1 + random(3));
   }
   world->pointers.resize(total);
   for (uint32_t k = 0; k < total; ++k) world->pointers[k] = &world->items[k];
@@ -2593,6 +2640,8 @@ static void ResetBWorld(BWorld* world) {
   g_shared->last_anim = -1;
   game_log.clear();
   direct_on_slot = 0;
+  depth_variation = world->depth_variation;
+  nest_budget = nest_budget_start;
 }
 
 static Outcome CaptureB(BWorld* world) {
@@ -2609,11 +2658,30 @@ static void* const B_DEVICE = reinterpret_cast<void*>(0x2000);
 template <class RunRound>
 static void BDriver(BWorld* world, RunRound&& run_round) {
   const uint32_t total = static_cast<uint32_t>(world->sorted.size());
+  // The slices a restart changed (mesh index, +0xac, +0xb0 before), put back at the end.
+  std::vector<std::array<uint32_t, 3>> slices;
   for (uint32_t first = 0; first < total;) {
     const uint32_t stride = std::max<uint32_t>(1, Field<uint32_t>(world->tracker.data(), 0x50));
     const uint32_t last = std::min(total, first + std::max<uint32_t>(1, world->round_numerator / stride)) - 1;
+    auto* const end_mesh = reinterpret_cast<uint8_t*>(world->sorted[last]);
+    const uint32_t begin = Field<uint32_t>(end_mesh, 0xac);
+    const uint32_t count = Field<uint32_t>(end_mesh, 0xb0);
+    const bool split = (world->restart && last + 1 < total && count >= 2);
+    if (split) {
+      slices.push_back({last, begin, count});
+      Field<uint32_t>(end_mesh, 0xb0) = count / 2;
+    }
     run_round(first, last);
-    first = last + 1;
+    if (split) {
+      Field<uint32_t>(end_mesh, 0xac) = begin + count / 2;
+      Field<uint32_t>(end_mesh, 0xb0) = count - count / 2;
+    }
+    first = (split ? last : last + 1);
+  }
+  for (auto it = slices.rbegin(); it != slices.rend(); ++it) {
+    auto* const mesh = reinterpret_cast<uint8_t*>(world->sorted[(*it)[0]]);
+    Field<uint32_t>(mesh, 0xac) = (*it)[1];
+    Field<uint32_t>(mesh, 0xb0) = (*it)[2];
   }
 }
 
@@ -2871,6 +2939,11 @@ static void BFallbacks() {
   CHECK(none.first_reason == "small round" && none.direct_calls == none.portions);
   b_families = 0xff;
   CHECK(family_segments > 0);
+  // A round whose first mesh is past its last does nothing (the game's loop runs no mesh).
+  ResetBWorld(depth.get());
+  dr::Update({.stage = dr::Stage::WORKERS, .threads = 8, .loops = 12, .b_families = 0xff}, true);
+  dr::DispatchMesh(depth->tracker.data(), B_DEVICE, &depth->view, depth->list_type, &synth_node, depth->sorted.data(), 5, 3);
+  CHECK(game_log.empty() && depth->tracker[0x58] == 0 && Field<uint32_t>(depth->tracker.data(), 0x70) == 0);
   std::printf("B fall-backs: depth view types 0 / 0x55 / 0x60 and colour ones record; the visibility view, a small round, Direct, Off, a loop group off, a pool too small, another thread, not usable, an entry state and no family run directly; each family off keeps the picture\n");
 }
 
@@ -2882,7 +2955,7 @@ static void BEntryCheck() {
     BSpec spec = {.seed = 21, .max_items = 20, .direct_percent = 4, .max_count = 6};
     spec.colour = colour;
     const auto world = BuildBWorld(spec);
-    for (const uint32_t leave : {1u, 2u, 3u}) {
+    for (const uint32_t leave : {1u, 2u, 3u, 4u}) {
       direct_leave = leave;
       const Outcome serial = RunBSerial(world.get());
       for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
@@ -2901,15 +2974,23 @@ static void BEntryCheck() {
       const Outcome unchecked = RunBStaged(world.get(), dr::Stage::RECORDED, 4);
       di::controls.entry_check = true;
       // (A change of the batch size shows in Depth B only: most Colour B chunks miss their seeds and run again anyway.)
-      if (leave != 2 && (leave == 1 || !colour) && Equal(serial, unchecked, "control: entry check off", false)) {
+      if (leave != 2 && leave != 4 && (leave == 1 || !colour) && Equal(serial, unchecked, "control: entry check off", false)) {
         std::printf("  entry check control did not differ: colour %d leave %u\n", colour, leave);
+        CHECK(false);
+      }
+      // Other inputs (+0x1c, which the flushes pass on): only the inputs compare sees it.
+      di::controls.entry_check_inputs = false;
+      const Outcome inputs_unchecked = RunBStaged(world.get(), dr::Stage::RECORDED, 4);
+      di::controls.entry_check_inputs = true;
+      if (leave == 4 && !colour && Equal(serial, inputs_unchecked, "control: entry check inputs off", false)) {
+        std::printf("  entry check inputs control did not differ: leave %u\n", leave);
         CHECK(false);
       }
 #endif
     }
     direct_leave = 0;
   }
-  std::printf("B entry check: a direct segment that leaves a count, a mask or another batch size makes the next chunk run directly (%u chunks), logs equal; with the check off the count and batch size cases differ\n", reruns);
+  std::printf("B entry check: a direct segment that leaves a count, a mask, another batch size or other inputs (+0x1c) makes the next chunk run directly (%u chunks), logs equal; with the check off the count, batch size and inputs cases differ\n", reruns);
 }
 
 // Seeds: the warm-ups, the step back over meshes without a technique, the unknown seed after four, validation.
@@ -3081,6 +3162,11 @@ static void BTrace() {
       CHECK(call.group == dr::Group::COLOUR_B);
       CHECK((call.compare_result == di::CompareResult::NONE) == !(frame == 1 && call.chunks > 1));
       CHECK(call.meshes > 0 && call.census_items + call.direct_items > 0);
+      uint32_t family_items = 0;
+      uint32_t family_chunks = 0;
+      for (const uint32_t items : call.family_items) family_items += items;
+      for (const uint32_t chunks : call.family_chunks) family_chunks += chunks;
+      CHECK(family_items <= call.census_items && (call.chunks == 0 || (family_items > 0 && family_chunks >= call.chunks)));
     }
     dr::Update(settings, true);
   }
@@ -3089,6 +3175,8 @@ static void BTrace() {
   std::ifstream stream(file, std::ios::binary);
   const std::string text_value((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
   CHECK(text_value.find("group 3 family -") != std::string::npos);
+  CHECK(text_value.find("B families (census items / chunks): f0 ") != std::string::npos && text_value.find(" f7 ") != std::string::npos);
+  CHECK(text_value.find("cut: targets") == std::string::npos);
   CHECK(text_value.find("B round: meshes ") != std::string::npos && text_value.find("duplicate meshes 0") != std::string::npos);
   CHECK(text_value.find("seeds hit ") != std::string::npos && text_value.find("planner ") != std::string::npos);
   CHECK(text_value.find("vf64 ") != std::string::npos && text_value.find("state ") != std::string::npos);
@@ -3097,7 +3185,7 @@ static void BTrace() {
   SetEnvironmentVariableA("RENODX_TW_DRAW_TRACE", nullptr);
   stream.close();
   std::filesystem::remove(file);
-  std::printf("B trace: armed from the environment wrote the file (group, the B round's meshes, census share, seeds, planner time), compare not different\n");
+  std::printf("B trace: armed from the environment wrote the file (group, the B round's meshes, census share and per-family numbers, seeds, planner time), compare not different\n");
 }
 
 // A compare difference latches the group off (S9b): the next rounds run directly, logs equal.
@@ -3129,6 +3217,142 @@ static void BLatch() {
 #else
   std::printf("B latch: skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
 #endif
+}
+
+// A round that restarts at the previous round's last mesh (first != last + 1): the mesh is continued with no setup of its own (a
+// straddler). The compare runs of a trace frame set it up like any mesh; the chunk that records it must start from the state the real
+// run left, not the compare run's (M-2): logs and meshes equal the serial run, the compare is equal and the group stays on.
+static void BStraddler() {
+  uint32_t equal_compares = 0;
+  uint32_t cases = 0;
+  for (const bool colour : {false, true}) {
+    BSpec spec = {.meshes = 1200, .seed = 91, .max_items = 16, .none_percent = 0, .empty_percent = 0, .round_numerator = 700,
+                  .restart = true, .depth_variation = !colour, .real_vf64_only = true};
+    spec.colour = colour;
+    const auto world = BuildBWorld(spec);
+    const Outcome serial = RunBSerial(world.get());
+    CHECK(serial.log.size() > 100);
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+    di::latched_groups = 0;
+    di::controls.latch_groups = true;
+#endif
+    for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+      for (const uint32_t k : {2u, 3u, 4u, 6u, 8u, 16u}) {
+        for (const bool tracing : {false, true}) {
+          const Outcome staged = RunBStaged(world.get(), stage, k, tracing);
+          char label[160];
+          std::snprintf(label, sizeof(label), "B straddler %s %s K %u trace %d", colour ? "colour" : "depth", StageName(stage), k, tracing ? 1 : 0);
+          CHECK(Equal(serial, staged, label));
+          CHECK(direct_on_slot == 0);
+          CHECK(staged.replayed > 0);
+          if (tracing) {
+            CHECK(!CompareDiffers(staged));
+            equal_compares += staged.compares[static_cast<size_t>(di::CompareResult::EQUAL)];
+          }
+          ++cases;
+        }
+      }
+    }
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+    CHECK(di::latched_groups == 0);
+    di::controls.latch_groups = false;
+    // Without the restore a compared round that starts at a straddler of a real virtual call leaves the chunk the compare run's
+    // state: the log or the compare differs (Depth B only: a colour body sets a mesh up at its entry).
+    if (!colour) {
+      di::controls.restore_straddler = false;
+      bool differs = false;
+      for (const uint32_t k : {2u, 4u, 8u}) {
+        const Outcome unrestored = RunBStaged(world.get(), dr::Stage::RECORDED, k, true);
+        differs = differs || !Equal(serial, unrestored, "control: straddler restore off", false) || CompareDiffers(unrestored);
+      }
+      di::controls.restore_straddler = true;
+      CHECK(differs);
+    }
+#endif
+  }
+  CHECK(equal_compares > 0);
+  std::printf("B straddler: %u cases (rounds restart at the previous round's last mesh, real virtual call classes, the variation path): logs and meshes equal the serial run, %u compares equal, no group latched; the restore off differs\n", cases, equal_compares);
+}
+
+// Runs of census chunks in one round (a direct mesh between them): the compare of each run is combined by severity. Run 0 run again
+// (an overflow) and an op injected into a chunk of run 1: the round's compare says DIFFERS, run 1, and the group latches off.
+static void BCompareRuns() {
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  bool found = false;
+  for (const bool colour : {false, true}) {
+    BSpec spec = {.meshes = 300, .seed = 95, .max_items = 20, .none_percent = 0, .empty_percent = 0, .max_count = 6, .round_numerator = 6000,
+                  .direct_mesh = 150};
+    spec.colour = colour;
+    const auto world = BuildBWorld(spec);
+    const Outcome serial = RunBSerial(world.get());
+    const uint32_t group_bit = 1u << static_cast<uint32_t>(colour ? dr::Group::COLOUR_B : dr::Group::DEPTH_B);
+    for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+      for (const uint32_t k : {4u, 8u}) {
+        // Run 0 is run again and nothing else is wrong: exact, and the compare says so (not DIFFERS, run 0).
+        di::latched_groups = 0;
+        test_controls.overflow_chunk = 0;
+        const Outcome rerun = RunBStaged(world.get(), stage, k, true);
+        test_controls.overflow_chunk = -1;
+        CHECK(Equal(serial, rerun, "B compare runs: run 0 run again"));
+        CHECK(rerun.direct_segments > 0 && rerun.reruns > 0 && !di::trace.calls.empty());
+        CHECK(di::trace.calls.front().compare_result == di::CompareResult::CHUNK_RERUN && di::trace.calls.front().compare_run == 0);
+        for (uint32_t chunk = 1; chunk < k; ++chunk) {
+          di::latched_groups = 0;
+          di::controls.latch_groups = true;
+          test_controls.overflow_chunk = 0;
+          test_controls.inject_chunk = static_cast<int>(chunk);
+          RunBStaged(world.get(), stage, k, true);
+          test_controls.overflow_chunk = -1;
+          test_controls.inject_chunk = -1;
+          di::controls.latch_groups = false;
+          CHECK(!di::trace.calls.empty());
+          const di::CallTrace& call = di::trace.calls.front();
+          if (call.compare_result == di::CompareResult::DIFFERS) {
+            // The op index is the run's own; the chunk is the one the op was injected into.
+            CHECK(call.compare_run == 1 && call.compare_chunk == chunk);
+            CHECK(call.family != di::NO_FAMILY && call.compare_class < CLASS_ROWS.size());
+            CHECK((di::latched_groups & group_bit) != 0);
+            found = true;
+          } else {
+            // Hidden: an injection into run 0 stops at its rerun; one into a chunk of run 1 that ran again too.
+            CHECK(call.compare_result == di::CompareResult::CHUNK_RERUN && (di::latched_groups & group_bit) == 0);
+          }
+        }
+      }
+    }
+  }
+  di::latched_groups = 0;
+  CHECK(found);
+  std::printf("B compare runs: two runs in a round, run 0 run again and an op injected into run 1: the round's compare says DIFFERS (run 1, the chunk and its first mesh's class and family) and the group latches\n");
+#else
+  std::printf("B compare runs: skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
+#endif
+}
+
+// A dispatcher call inside a round (here a direct class's own call, made on the real tracker while the round's chunks are waiting
+// to replay) runs directly: it would take the slots and the planned meshes the round is using (S-2).
+static void BNested() {
+  for (const bool colour : {false, true}) {
+    BSpec spec = {.seed = 101, .max_items = 12, .direct_percent = 3};
+    spec.colour = colour;
+    const auto world = BuildBWorld(spec);
+    nest_sorted = world->sorted.data();
+    nest_first = 100;
+    nest_last = 420;
+    nest_budget_start = 2;
+    dr::Update({.stage = dr::Stage::OFF}, false);
+    const Outcome serial = RunBSerial(world.get());
+    CHECK(nest_budget == 0);
+    for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+      const Outcome staged = RunBStaged(world.get(), stage, 8);
+      CHECK(Equal(serial, staged, "nested dispatcher calls"));
+      CHECK(nest_budget == 0 && direct_on_slot == 0 && staged.replayed > 0 && staged.direct_segments > 0);
+      CHECK(!di::in_round);
+    }
+    nest_budget_start = 0;
+    nest_budget = 0;
+  }
+  std::printf("B nested: a dispatcher call made from a direct class's own call inside a round runs directly, logs equal the serial run\n");
 }
 
 // Each B control makes one thing wrong; its run must differ (or its violation must show).
@@ -3244,6 +3468,9 @@ int main() {
   BRecordRules();
   BTrace();
   BLatch();
+  BStraddler();
+  BCompareRuns();
+  BNested();
   BControls();
   test_controls.entry_site = false;
   Detach();

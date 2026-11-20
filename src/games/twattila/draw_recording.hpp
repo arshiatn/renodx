@@ -440,6 +440,10 @@ struct Controls {
   bool class_flags = true;
   // A compare difference switches the group off for the rest of the run (S9b; the tests clear it).
   bool latch_groups = true;
+  // B trace frames: the compare runs leave the round's first mesh (a straddler, continued with no setup) as it was before them.
+  bool restore_straddler = true;
+  // B: the entry check also compares the tracker's +0x18 .. +0x28 (what the bodies read into flush and virtual call arguments).
+  bool entry_check_inputs = true;
 };
 #if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
 static Controls controls;
@@ -726,8 +730,11 @@ constexpr uint32_t NO_FAMILY = 0xff;
 // the warm-ups of Chunked), so that the sum of the calls of a trace frame is what the stage costs in a normal frame.
 struct CallTrace {
   Group group = Group::DEPTH_A;
-  // The B family of the call (0 to 7; NO_FAMILY: not a B call).
+  // B calls: the family of the first mesh of the chunk where the compare differs (0 to 7; NO_FAMILY: no difference, or not a B call).
   uint32_t family = NO_FAMILY;
+  // B rounds: census items and chunks per family (a chunk counts once under every family it holds).
+  std::array<uint32_t, 8> family_items = {};
+  std::array<uint32_t, 8> family_chunks = {};
   uint32_t items = 0;
   uint32_t threads = 0;
   uint32_t chunks = 0;
@@ -777,8 +784,13 @@ struct CallTrace {
   uint64_t run_scan = 0;
   uint64_t wall = 0;
   CompareResult compare_result = CompareResult::NONE;
+  // Where the compare's result comes from: the run (a B round has one per run of census chunks), the op index in that run, the
+  // kind of the differing op, the chunk it was found in and that chunk's first mesh's class (index in the game's table).
+  uint32_t compare_run = 0;
   uint32_t compare_op = 0;
   uint32_t compare_kind = 0;
+  uint32_t compare_chunk = 0;
+  uint32_t compare_class = 0;
 };
 
 struct FrameTrace {
@@ -901,6 +913,8 @@ struct PlannedMesh {
 };
 constexpr uint32_t MAX_ROUND_MESHES = 8192;
 static std::array<PlannedMesh, MAX_ROUND_MESHES> planned;
+// S3's sorted copy of the planned meshes' addresses (the render thread's only).
+static std::array<uint32_t, MAX_ROUND_MESHES> duplicate_scan;
 
 inline void RunMesh(const MeshRound& round, void* tracker, uint32_t mesh) noexcept {
   const auto vtable = *reinterpret_cast<const uint32_t* const*>(static_cast<uintptr_t>(mesh));
@@ -1227,6 +1241,8 @@ struct CompareCursor {
   CompareResult result = CompareResult::NONE;
   uint32_t compared_ops = 0;
   uint32_t kind = 0;
+  // The chunk the first difference was found in.
+  uint32_t chunk = 0;
   // The compare run merges equal constants that a chunk end splits: the repeats of its current constant op already matched.
   uint32_t used = 0;
   // What the chunks before left in +0x69 without a flush after it: the next flush of the compare run carries it.
@@ -1243,7 +1259,7 @@ inline CompareCursor MakeCompare(const Slot* compare_slot) {
 }
 
 // This chunk's stream must be the compare run's next ops.
-inline void CompareChunk(CompareCursor* compare, const Slot* slot) {
+inline void CompareChunk(CompareCursor* compare, const Slot* slot, uint32_t chunk) {
   for (const uint32_t* op = slot->ops_begin; op < slot->ops_cursor && compare->result == CompareResult::EQUAL; op += (*op >> 16)) {
     bool same = (compare->cursor < compare->end);
     if (same && static_cast<OpKind>(*op & 0xffff) == OpKind::CONSTANT) {
@@ -1268,6 +1284,7 @@ inline void CompareChunk(CompareCursor* compare, const Slot* slot) {
     } else {
       compare->result = CompareResult::DIFFERS;
       compare->kind = *op & 0xffff;
+      compare->chunk = chunk;
     }
   }
   compare->pending_any |= slot->tracker[ANY_OFFSET];
@@ -1296,6 +1313,25 @@ inline void LatchOnDifference(Group group, CompareResult result) {
   latched_groups |= bit;
 }
 
+// How a round's compare runs combine: the worst one names the result (a difference first, then a compare run with ops left, a
+// chunk run again, a compare slot that could not be compared), by CompareResult.
+constexpr std::array<uint8_t, 6> COMPARE_SEVERITY = {0, 0, 1, 2, 4, 3};
+
+// S-2: set on the render thread from the moment a round's plan stands (or a loop's chunks are cut) to the end of the dispatch. A
+// dispatcher call made inside it (a direct segment's mesh, a direct class's own call into the dispatcher) would take the slots,
+// the planned meshes and the descriptor the round is using: it runs directly ("nested").
+static bool in_round = false;
+
+struct RoundScope {
+  RoundScope() noexcept { in_round = true; }
+  ~RoundScope() noexcept { in_round = false; }
+  RoundScope(const RoundScope&) = delete;
+  RoundScope& operator=(const RoundScope&) = delete;
+};
+
+// True inside a round on the render thread (the flag is read there only).
+inline bool InRound() noexcept { return GetCurrentThreadId() == present_thread.load(std::memory_order_relaxed) && in_round; }
+
 // What a warm-up left must be what the real tracker holds when the chunk starts.
 inline bool SeedMatches(const Slot* slot, const void* real_tracker, int32_t last_anim, uint32_t group_index) {
   return slot->seed_anim == last_anim && std::memcmp(slot->seed_fields.data(), real_tracker, GROUPS[group_index].seed_bytes) == 0;
@@ -1323,7 +1359,10 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   const uint32_t group_index = static_cast<uint32_t>(group);
   const Call call = {.group = group, .loop = game_calls.loops[group_index], .node = node, .list = list, .unused = unused};
   const uint32_t items = (end > begin ? end - begin : 0);
-  CallTrace* const trace_call = (trace.active ? &trace.calls.emplace_back() : nullptr);
+  const bool nested = InRound();
+  // Trace-only (noexcept: an allocation failure here ends the process; Update reserves room when the trace arms). A nested call
+  // adds no entry: the round it is in holds a pointer to its own.
+  CallTrace* const trace_call = (trace.active && !nested ? &trace.calls.emplace_back() : nullptr);
   const bool compare_now = (trace_call != nullptr && (controls.compare_every_call || trace.frames_left == 1));
   uint64_t last_lap = (trace_call != nullptr ? Qpc() : 0);
   const uint64_t call_start = last_lap;
@@ -1405,6 +1444,8 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     direct_reason = "detached";
   } else if (settings.stage <= Stage::DIRECT) {
     direct_reason = "stage";
+  } else if (nested) {
+    direct_reason = "nested";
   } else if (((settings.loops >> group_index) & 1) == 0) {
     direct_reason = "loop off";
   } else if (((latched_groups >> group_index) & 1) != 0) {
@@ -1435,6 +1476,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     finish(direct_reason);
     return;
   }
+  const RoundScope round_scope;
 
   if (settings.stage == Stage::TOUCH_AHEAD) {
     descriptor.work = TouchWork;
@@ -1648,7 +1690,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
       continue;
     }
     if (compare.result == CompareResult::EQUAL) {
-      CompareChunk(&compare, slot);
+      CompareChunk(&compare, slot, k);
     }
     ReplayChunk(&replay, slot);
     ++replayed;
@@ -1660,6 +1702,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     trace_call->compare_result = compare.result;
     trace_call->compare_op = compare.compared_ops;
     trace_call->compare_kind = compare.kind;
+    trace_call->compare_chunk = compare.chunk;
     LatchOnDifference(group, compare.result);
   }
   if constexpr (TEST_SWITCHES) {
@@ -1704,7 +1747,8 @@ struct Plan {
 };
 
 // The classes whose meshes never record, whatever the game's table says (the census could not clear their virtual calls: a
-// getter reached through a runtime object): their vtables as the listings print them. The last is Colour B's only.
+// getter reached through a runtime object): their vtables as the listings print them. The last is Colour B's only. (Two sources of
+// "direct" now, these lists and the MeshClass flags; C.2-4 puts them in the table.)
 constexpr std::array<uint32_t, 3> FORCED_DIRECT_BOTH = {0x11cbcb80, 0x11cbddd0, 0x11cbdc84};
 constexpr uint32_t FORCED_DIRECT_COLOUR = 0x11cbd9d4;
 
@@ -1729,6 +1773,10 @@ inline const char* PlanRound(const MeshRound& round, bool colour, uint32_t famil
   if (count > MAX_ROUND_MESHES) return "too many meshes";
   const auto accessor = reinterpret_cast<AccessorFn>(static_cast<uintptr_t>(game_calls.accessor));
   for (uint32_t i = 0; i < count; ++i) {
+    if (i + PREFETCH_AHEAD < count) {
+      _mm_prefetch(reinterpret_cast<const char*>(static_cast<uintptr_t>(*accessor(round.sorted, first + i + PREFETCH_AHEAD))),
+                   _MM_HINT_T0);
+    }
     const uint32_t mesh = *accessor(round.sorted, first + i);
     uint32_t vtable = 0;
     uint32_t items = 0;
@@ -1804,12 +1852,10 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   if (first > last) return;
   const Config settings = config;
   const MeshRound round = {.device = device, .view = view, .list_type = list_type, .node = node, .sorted = sorted};
-  const auto view_vtable = *reinterpret_cast<const uint32_t* const*>(view);
-  const uint32_t view_type = reinterpret_cast<ViewTypeFn>(static_cast<uintptr_t>(view_vtable[0x3c / 4]))(view);
-  const bool is_depth = (view_type == 0 || view_type == 0x55 || view_type == 0x60);
-  const Group group = (is_depth ? Group::DEPTH_B : Group::COLOUR_B);
-  const uint32_t group_index = static_cast<uint32_t>(group);
-  CallTrace* const trace_call = (trace.active ? &trace.calls.emplace_back() : nullptr);
+  const bool nested = InRound();
+  // Trace-only (noexcept: an allocation failure here ends the process; Update reserves room when the trace arms). A nested call
+  // adds no entry: the round it is in holds a pointer to its own.
+  CallTrace* const trace_call = (trace.active && !nested ? &trace.calls.emplace_back() : nullptr);
   const bool compare_now = (trace_call != nullptr && (controls.compare_every_call || trace.frames_left == 1));
   uint64_t last_lap = (trace_call != nullptr ? Qpc() : 0);
   const uint64_t call_start = last_lap;
@@ -1838,7 +1884,6 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     }
   };
   if (trace_call != nullptr) {
-    trace_call->group = group;
     trace_call->threads = settings.threads;
     trace_call->stage = settings.stage;
     trace_call->compared = compare_now;
@@ -1848,6 +1893,7 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     last_call = {.direct = true};
   }
 
+  // ONE_WORKER is the render thread and one worker here (the A groups' is one worker for the chunks after the first).
   uint32_t participants = 1;
   switch (settings.stage) {
     case Stage::WORKERS:
@@ -1866,6 +1912,23 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     direct_reason = "detached";
   } else if (settings.stage <= Stage::DIRECT || settings.stage == Stage::TOUCH_AHEAD) {
     direct_reason = "stage";
+  } else if (nested) {
+    direct_reason = "nested";
+  }
+  // The view's type (a virtual call of the game) is read once the cheap checks are through; a trace wants every call's group.
+  uint32_t view_type = 0;
+  if (direct_reason == nullptr || trace_call != nullptr) {
+    const auto view_vtable = *reinterpret_cast<const uint32_t* const*>(view);
+    view_type = reinterpret_cast<ViewTypeFn>(static_cast<uintptr_t>(view_vtable[0x3c / 4]))(view);
+  }
+  const bool is_depth = (view_type == 0 || view_type == 0x55 || view_type == 0x60);
+  const Group group = (is_depth ? Group::DEPTH_B : Group::COLOUR_B);
+  const uint32_t group_index = static_cast<uint32_t>(group);
+  if (trace_call != nullptr) {
+    trace_call->group = group;
+  }
+  if (direct_reason != nullptr) {
+    // Decided above.
   } else if (view_type == 0x49) {
     direct_reason = "visibility view";
   } else if (((settings.loops >> group_index) & 1) == 0) {
@@ -1883,12 +1946,12 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   } else {
     direct_reason = PlanRound(round, !is_depth, settings.families, settings.threads, first, last, &plan);
     lap(&CallTrace::plan);
-    if (direct_reason == nullptr && trace_call != nullptr) {
-      // S3: no mesh appears twice in a round (trace frames only: a repeat makes the round direct and is counted).
-      std::array<uint32_t, MAX_ROUND_MESHES> addresses = {};
-      for (uint32_t i = 0; i < plan.meshes; ++i) addresses[i] = planned[i].mesh;
-      std::sort(addresses.begin(), addresses.begin() + plan.meshes);
-      for (uint32_t i = 1; i < plan.meshes; ++i) trace_call->duplicate_meshes += (addresses[i] == addresses[i - 1] ? 1 : 0);
+    if (direct_reason == nullptr && compare_now) {
+      // S3: no mesh appears twice in a round (compared trace frames only: a repeat makes the round direct and is counted). The
+      // scan buffer is static: only the render thread gets here (the present thread check above).
+      for (uint32_t i = 0; i < plan.meshes; ++i) duplicate_scan[i] = planned[i].mesh;
+      std::sort(duplicate_scan.begin(), duplicate_scan.begin() + plan.meshes);
+      for (uint32_t i = 1; i < plan.meshes; ++i) trace_call->duplicate_meshes += (duplicate_scan[i] == duplicate_scan[i - 1] ? 1 : 0);
       lap(&CallTrace::run_scan, true);
       if (trace_call->duplicate_meshes != 0) direct_reason = "duplicate meshes";
     }
@@ -1906,13 +1969,21 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     finish(direct_reason);
     return;
   }
+  const RoundScope round_scope;
   const uint32_t chunks = plan.chunks;
   if (trace_call != nullptr) {
     trace_call->chunks = chunks;
     trace_call->items = plan.census_items + plan.direct_items;
     for (uint32_t c = 0; c < chunks && c < trace_call->chunk_items.size(); ++c) {
       const Segment& segment = plan.segments[plan.chunk_segment[c]];
-      for (uint32_t m = segment.begin; m < segment.end; ++m) trace_call->chunk_items[c] += planned[m].items;
+      uint32_t families_in_chunk = 0;
+      for (uint32_t m = segment.begin; m < segment.end; ++m) {
+        trace_call->chunk_items[c] += planned[m].items;
+        const uint32_t family = game_calls.classes[planned[m].class_index].family;
+        trace_call->family_items[family % 8] += planned[m].items;
+        families_in_chunk |= 1u << (family % 8);
+      }
+      for (uint32_t family = 0; family < 8; ++family) trace_call->family_chunks[family] += (families_in_chunk >> family) & 1;
     }
   }
   if constexpr (TEST_SWITCHES) {
@@ -1956,6 +2027,8 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
         const PlannedMesh& earlier = planned[--j];
         if (!earlier.census || earlier.items == 0) continue;
         ++attempts;
+        // The test below reads what this attempt's body left in +0x74: not what an earlier attempt or the tracker held.
+        std::memset(slot->tracker.data() + 0x74, 0, 4);
         const MeshClass& earlier_class = game_calls.classes[earlier.class_index];
         auto* const mesh = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(earlier.mesh));
         // The mesh's own chunk sets it up again: what the warm-up writes into it (+0x40 / +0x44) is put back.
@@ -2012,10 +2085,18 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   }
 
   // The in-frame compare (trace frames): each run of census chunks recorded whole in the compare slot, from the state its first
-  // chunk starts with, before anything changes. (Direct segments are not run on a slot: a run's compare starts at its seed.)
+  // chunk starts with, before anything changes. (Direct segments are not run on a slot: a run's compare starts at its seed.) One
+  // compare per run replaces A's DIRECT marker: the runs are what a direct segment cuts the round into.
+  // The compare runs set the round's meshes up, the first one (a straddler: the previous round's last mesh, continued with no
+  // setup of its own) included; the chunk that records it reads that state before it writes it, so it is put back (M-2).
   std::array<CompareCursor, MAX_THREADS> compares = {};
   std::array<uint32_t, MAX_SEGMENTS> run_of = {};
   uint32_t runs = 0;
+  auto* const straddler = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(planned[0].mesh));
+  std::array<uint8_t, 8> straddler_state = {};
+  if (compare_now) {
+    std::memcpy(straddler_state.data(), straddler + 0x40, straddler_state.size());
+  }
   for (uint32_t s = 0; s < plan.segment_count; ++s) {
     const Segment& segment = plan.segments[s];
     if (segment.chunk == NO_CHUNK) continue;
@@ -2029,6 +2110,9 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     std::memcpy(compare_slot->tracker.data(), SlotAt(segment.chunk)->tracker.data(), TRACKER_SIZE);
     RunMeshes(round, compare_slot, segment.begin, plan.segments[run_end - 1].end);
     compares[run_of[s]] = MakeCompare(compare_slot);
+  }
+  if (compare_now && controls.restore_straddler) {
+    std::memcpy(straddler + 0x40, straddler_state.data(), straddler_state.size());
   }
   lap(&CallTrace::compare, true);
 
@@ -2078,10 +2162,14 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     // M2: once a direct segment has run in this round, a census chunk replays only when the real tracker is where a body leaves
     // it, with the +0x64 the record started from (also a chunk that follows a replayed chunk: the batch size a direct segment
     // changed stays changed).
+    // The bodies also read +0x18 .. +0x28 (into flush and virtual call arguments, and +0x20 into the mesh's +0x40): what the slot
+    // was copied with must still be there.
     const bool entry_bad = (direct_segments > 0 && controls.entry_check
                             && (*reinterpret_cast<const uint32_t*>(replay.real + 0x58) != 0
                                 || *reinterpret_cast<const uint32_t*>(replay.real + 0x78) != 0
-                                || *reinterpret_cast<const uint32_t*>(replay.real + 0x64) != round_start_64));
+                                || *reinterpret_cast<const uint32_t*>(replay.real + 0x64) != round_start_64
+                                || (controls.entry_check_inputs
+                                    && std::memcmp(replay.real + 0x18, slot->tracker.data() + 0x18, 0x10) != 0)));
     if (trace_call != nullptr) {
       trace_call->overflows += ((slot->flags & SLOT_OVERFLOW) != 0 ? 1 : 0);
       trace_call->unknown_classes += ((slot->flags & SLOT_UNKNOWN_CLASS) != 0 ? 1 : 0);
@@ -2103,30 +2191,35 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
       continue;
     }
     if (compare.result == CompareResult::EQUAL) {
-      CompareChunk(&compare, slot);
+      CompareChunk(&compare, slot, segment.chunk);
     }
     ReplayChunk(&replay, slot);
     ++replayed;
   }
   lap(&CallTrace::replay);
   if (compare_now) {
-    // The round's compare: the first run that is not equal says why; the counts add up.
-    CompareCursor total;
-    total.result = CompareResult::EQUAL;
+    // The round's compare: the runs combined by severity (the first of the worst names the result and where it is), so that a
+    // later run's difference is not hidden by an earlier run that was run again; the latch sees the combined result.
+    uint32_t worst = 0;
     for (uint32_t r = 0; r < runs; ++r) {
       CompareEnd(&compares[r]);
-      total.compared_ops += compares[r].compared_ops;
-      total.split_constants += compares[r].split_constants;
-      if (total.result == CompareResult::EQUAL && compares[r].result != CompareResult::EQUAL) {
-        total.result = compares[r].result;
-        total.kind = compares[r].kind;
+      split_constants += compares[r].split_constants;
+      if (COMPARE_SEVERITY[static_cast<size_t>(compares[r].result)] > COMPARE_SEVERITY[static_cast<size_t>(compares[worst].result)]) {
+        worst = r;
       }
     }
-    trace_call->compare_result = total.result;
-    trace_call->compare_op = total.compared_ops;
-    trace_call->compare_kind = total.kind;
-    LatchOnDifference(group, total.result);
-    split_constants = total.split_constants;
+    const CompareCursor& named = compares[worst];
+    trace_call->compare_result = named.result;
+    trace_call->compare_run = worst;
+    trace_call->compare_op = named.compared_ops;
+    trace_call->compare_kind = named.kind;
+    if (named.result == CompareResult::DIFFERS) {
+      const uint32_t class_index = planned[plan.segments[plan.chunk_segment[named.chunk]].begin].class_index;
+      trace_call->compare_chunk = named.chunk;
+      trace_call->compare_class = class_index;
+      trace_call->family = game_calls.classes[class_index].family;
+    }
+    LatchOnDifference(group, named.result);
   }
   if (trace_call != nullptr) {
     trace_call->reruns = reruns;
@@ -2298,9 +2391,21 @@ inline void Update(const Settings& settings, bool sites_in) {
         for (uint32_t k = 0; k < call.chunks && k < call.chunk_items.size(); ++k) {
           text += std::format(" {}", call.chunk_items[k]);
         }
-        text += std::format("\n  cut: targets {} probes {} failures {}; runs", call.cut_targets, call.cut_probes, call.cut_failures);
-        for (const uint32_t runs : call.runs) {
-          text += std::format(" {}", runs);
+        const bool b_call = (call.group == Group::DEPTH_B || call.group == Group::COLOUR_B);
+        if (!b_call) {
+          // (The B rounds cut by the planner: no targets, probes or run lengths.)
+          text += std::format("\n  cut: targets {} probes {} failures {}; runs", call.cut_targets, call.cut_probes, call.cut_failures);
+          for (const uint32_t runs : call.runs) {
+            text += std::format(" {}", runs);
+          }
+        }
+        // The seed fields: Depth B's bytes are the tracker's, not the colour loops' fields.
+        const std::array<const char*, 5> field_names = (call.group == Group::DEPTH_B
+                                                            ? std::array<const char*, 5>{"+0x00", "+0x04", "+0x0c", "+0x10", "anim"}
+                                                            : std::array<const char*, 5>{"faction", "decals", "mask", "flags", "anim"});
+        std::string miss_fields;
+        for (size_t field = 0; field < field_names.size(); ++field) {
+          miss_fields += std::format("{}{} {}", (field == 0 ? "" : " "), field_names[field], call.seed_miss_fields[field]);
         }
         std::string compare_text = "not run (timing frame)";
         if (call.compared) {
@@ -2325,18 +2430,22 @@ inline void Update(const Settings& settings, bool sites_in) {
         }
         text += std::format(
             "\n  ops: flush {} vf68 {} vf64 {} anim {} const {} (repeats {}) srv {} faction {} state {} bytes {} (buffer {});"
-            " seeds hit {} miss {} (by field: faction {} decals {} mask {} flags {} anim {}); overflow {} unknown {} conflict {} rerun {}\n"
+            " seeds hit {} miss {} (by field: {}); overflow {} unknown {} conflict {} rerun {}\n"
             "  ms: direct {:.3f} cut {:.3f} warm-ups {:.3f} chunk0 {:.3f} join {:.3f} replay {:.3f} rerun {:.3f} total {:.3f}"
             " (trace only: compare {:.3f} run scan {:.3f}; wall {:.3f})\n  compare: ",
             call.ops[1], call.ops[2], call.ops[7], call.ops[3], call.ops[4], call.constant_repeats, call.ops[5], call.ops[6], call.ops[8],
-            call.op_bytes, call.op_buffer_bytes, call.seed_hits, call.seed_misses, call.seed_miss_fields[0], call.seed_miss_fields[1],
-            call.seed_miss_fields[2], call.seed_miss_fields[3], call.seed_miss_fields[4], call.overflows, call.unknown_classes,
+            call.op_bytes, call.op_buffer_bytes, call.seed_hits, call.seed_misses, miss_fields, call.overflows, call.unknown_classes,
             call.conflicts, call.reruns,
             milliseconds(call.direct), milliseconds(call.cut), milliseconds(call.warm_ups), milliseconds(call.chunk_zero),
             milliseconds(call.join_wait), milliseconds(call.replay), milliseconds(call.rerun), milliseconds(call.total),
             milliseconds(call.compare), milliseconds(call.run_scan), milliseconds(call.wall));
         if (call.compare_result == CompareResult::DIFFERS) {
-          text += std::format("differs at op {} (kind {})\n", call.compare_op, call.compare_kind);
+          text += std::format("differs at op {} of run {} (kind {}) in chunk {}", call.compare_op, call.compare_run, call.compare_kind,
+                              call.compare_chunk);
+          if (b_call) {
+            text += std::format(" (its first mesh: class {} family {})", call.compare_class, call.family);
+          }
+          text += "\n";
         } else {
           text += compare_text + "\n";
         }
@@ -2353,6 +2462,12 @@ inline void Update(const Settings& settings, bool sites_in) {
               (all_items != 0 ? 100.0 * call.census_items / all_items : 0.0), call.direct_items, call.duplicate_meshes,
               (seeds != 0 ? 100.0 * call.seed_hits / seeds : 100.0), call.unknown_seeds, call.reruns, call.entry_reruns, call.chunks,
               milliseconds(call.plan));
+          // Census items / chunks of each family (the planner's, the class table's family numbers).
+          text += "  B families (census items / chunks):";
+          for (size_t family = 0; family < call.family_items.size(); ++family) {
+            text += std::format(" f{} {}/{}", family, call.family_items[family], call.family_chunks[family]);
+          }
+          text += "\n";
         }
       }
       std::ofstream(std::filesystem::path(exe.data()).parent_path() / "tw_draw_recording.txt") << text;
