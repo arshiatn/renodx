@@ -4679,6 +4679,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         own pool size automatic min(6, logical CPUs / 2 - 1), batch env override only (yes recommended: heapfix must work
         without the add-on). bd3o_ RESUMED 23:5x with the pool-spec note + the clash -> "## v2 addendum" appended.
         Agents: bd3o_, bd2o_, c31r_, bd1o_ (4 of 4).
+        bd3o_ POOL UPDATE 23:5x (reports/bd3o_design_B2_ring_v2_pool.md, replaces v2's piece 2 + ring rows): R1 on
+        worker_pool (RING_FILL, ENTERED, Available() replaces the nesting guard; R1.5 gone; FILL_WORKERS / POOL_JOIN env
+        dropped), new file instance_fill.hpp (R1 no longer touches C's files; R-S1 after S2 + S2r, serial with S3 for the
+        engine_code include); R2 = C's ALL job, Unmap stub waits chunks_done. Notes: (1) presort drops P4, starts by time
+        from P3 (adaptive delay) - the coordinator's addendum ask (a fixed E clear of B1) still pending; (2) R2 needs 3
+        spec properties written + tested in S2 (mid-job wait on an owner publish, Available() 0 while a job is open
+        across game code, ALL job claiming shared units) - else R2 dropped. bd3o_ resumed again with the addendum ask.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
