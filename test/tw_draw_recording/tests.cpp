@@ -435,6 +435,10 @@ static void __thiscall FakeFactionColours(uint32_t state, const float* colours) 
   game_log.push_back(entry);
 }
 static void __thiscall FakeFactionLists(void*, int32_t faction, uint32_t* list) { *list = reinterpret_cast<uint32_t>(&faction_lists[static_cast<uint32_t>(faction) & 3]); }
+// A node whose list call leaves its out pointer alone (N-7: the bytes do not prove that every node writes it).
+static void __thiscall FakeFactionListsSilent(void*, int32_t, uint32_t*) {}
+static std::array<uint32_t, 0xc4 / 4> silent_vtable = {};
+static const uint32_t* silent_node = nullptr;
 
 // What the game does at those sites, written from its listing (the replay's own functions are checked against these).
 static void GameConst(uint32_t object, uint32_t bits) {
@@ -2081,7 +2085,21 @@ static void ColourReplayUnits() {
           [&] { di::ReplayFaction(faction, reinterpret_cast<uint32_t>(mask), reinterpret_cast<uint32_t>(&synth_node), 0x5678); }, [] {});
     }
   }
-  std::printf("colour: the replay of constants (flag 0 / 1, cell 1 / 0 / -0 / NaN, value 0 / -0 / NaN / 1, repeat 1 / 3), textures and the faction block (-1 and the lists of 6 / 3 / 70 / 4 colours, with and without a mask) equals the game's: %u cases\n", cases);
+  // N-7: a node whose list call writes nothing through its out pointer: no list, nothing sent, nothing read through the pointer
+  // (the -1 faction does not ask the node: its default colours are still sent).
+  silent_vtable[0xc0 / 4] = reinterpret_cast<uint32_t>(&FakeFactionListsSilent);
+  silent_node = silent_vtable.data();
+  for (const int32_t faction : {0, 1, 2, 3}) {
+    for (const SynthMask* mask : std::initializer_list<const SynthMask*>{nullptr, &world->masks[0]}) {
+      game_log.clear();
+      di::ReplayFaction(faction, reinterpret_cast<uint32_t>(mask), reinterpret_cast<uint32_t>(&silent_node), 0x5678);
+      CHECK(game_log.empty());
+    }
+  }
+  game_log.clear();
+  di::ReplayFaction(-1, 0, reinterpret_cast<uint32_t>(&silent_node), 0x5678);
+  CHECK(game_log.size() == 1);
+  std::printf("colour: the replay of constants (flag 0 / 1, cell 1 / 0 / -0 / NaN, value 0 / -0 / NaN / 1, repeat 1 / 3), textures and the faction block (-1 and the lists of 6 / 3 / 70 / 4 colours, with and without a mask) equals the game's: %u cases; a node whose list call writes no list sends nothing (N-7)\n", cases);
 }
 
 // The colour sites in Record, called directly.
