@@ -4570,7 +4570,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         before the end batch, on its own Experimental row (the end batch measures R1 and R2). PARALLEL IMPLEMENTERS OK
         when they touch no shared files (memory feedback_workflow_serial): heapfix S1 prepare.c can run beside c3i_ as
         soon as bd3r_'s review + S0 are in; R1 (draw_recording files) waits for a gap in the C chain.
-        ATN 23:1x: early start = (a) the offline census FIRST; if it says no safe window, DON'T drop it (worth ~1-2.5 ms
+        ATN 23:0x: early start = (a) the offline census FIRST; if it says no safe window, DON'T drop it (worth ~1-2.5 ms
         E): an Opus xHigh addendum finds another way (per-list start when each list's own producer is done, start at the
         producers' join point, the render thread helps with the prepare items while it waits). bd3r_ told to collect the
         data for that (producers' jobs + join points, append-only vs realloc, per-list finish order, render-thread help).
@@ -4607,7 +4607,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (changes C's pool too; ATN's PC unchanged)? (2) one threads row for B3b + B4 (C keeps its own) or one for all?
         bd1r_ STARTED 23:1x (Opus xHigh, read-only): independent review + S1 + ONE reconciled worker_pool.hpp spec for C,
         B1, B3b, B4 and the ring fill -> reports/bd1r_review.md. Agents: c3i_, bd3r_, bd2r_, bd1r_ (4 of 4).
-        ATN 23:2x: (1) B1 L2 "Parallel Effect Spawns" = BUILD it, own Off row, decided after the end batch; (2) the crash
+        ATN 23:1x: (1) B1 L2 "Parallel Effect Spawns" = BUILD it, own Off row, decided after the end batch; (2) the crash
         start's scene: ATN thinks about making one; the stress replay has 10,000+ archers that volley together at some
         point (time unknown) and already gave ~34k effect instances a frame (fa3o_) -> stress is the default crash /
         effects start, an ATN-made fire-arrow / burning-buildings siege is welcome as an extra before the end batch;
@@ -4616,7 +4616,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         hybrid too); heapfix places no threads (checked: no CPU-set / affinity calls in HFx); (4) threads rows: coordinator
         suggests ONE "Worker Threads" row for the whole pool, per-user counts only as batch-only env overrides (split
         later only if the end batch shows different best K per user) -> both sent to bd1r_ for the pool spec.
-        ATN 23:3x: ONE "Worker Threads" row for the whole pool = AGREED (+ the batch-only per-user overrides).
+        ATN 23:1x: ONE "Worker Threads" row for the whole pool = AGREED (+ the batch-only per-user overrides).
+        ATN 23:2x: DESIGNS THAT NEED ATN'S ANSWERS RUN FIRST (right after the 3 reviews), so ATN can answer before being
+        away on 11-21; then the coordinator works on without ATN. Designs left in render_mt: (1) the 3 design v2s (each
+        designer folds its review: bd1o_ / bd2o_ / bd3o_); (2) the END BATCH PLAN (scenes, segments, live switches, K
+        sweeps, WPR / shots, durations, reboot, what ATN must look at); (3) the R2 fold addendum (fill inside C's
+        dispatch, built after C.3-4); (4) the x87 hot-spot sweep (plan line 316, not started); (5) conditional: the B2
+        early-start fallback (only if bd3r_'s census says no), B2 S7 instances sort (only if S0 shows the 2nd wait there),
+        B1 fiber park (only after the end batch, ATN's go). All ATN questions from them go to ATN in ONE list.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
