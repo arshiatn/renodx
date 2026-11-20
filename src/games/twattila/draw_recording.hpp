@@ -1192,7 +1192,8 @@ struct Replay {
 // Replays one chunk's ops on the real tracker and copies its tracker back.
 inline void ReplayChunk(Replay* replay, const Slot* slot) {
   uint8_t* const real = replay->real;
-  for (const uint32_t* op = slot->ops_begin; op < slot->ops_cursor; op += (*op >> 16)) {
+  // (A zero header ends the walk: damage made during the replay gives a wrong frame, not a freeze.)
+  for (const uint32_t* op = slot->ops_begin; op < slot->ops_cursor && (*op >> 16) != 0; op += (*op >> 16)) {
     const uint32_t* payload = op + 1;
     const auto kind = static_cast<OpKind>(*op & 0xffff);
     ++replay->op_count;
@@ -2156,15 +2157,15 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   // chunk starts with, before anything changes. (Direct segments are not run on a slot: a run's compare starts at its seed.) One
   // compare per run replaces A's DIRECT marker: the runs are what a direct segment cuts the round into.
   // The compare runs set the round's meshes up, the first one (a straddler: the previous round's last mesh, continued with no
-  // setup of its own) included; the chunk that records it reads that state before it writes it, so it is put back (M-2).
+  // setup of its own) included; the chunk that records it reads that state before it writes it, so it is put back (M-2). The
+  // recording of the straddler's chunk also writes its +0x44 (the variation path) without the flush that writes +0x40 with it: a
+  // chunk 0 run again, or a round run directly after a damaged buffer, starts from the state saved here (R-S1).
   std::array<CompareCursor, MAX_THREADS> compares = {};
   std::array<uint32_t, MAX_SEGMENTS> run_of = {};
   uint32_t runs = 0;
   auto* const straddler = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(planned[0].mesh));
   std::array<uint8_t, 8> straddler_state = {};
-  if (compare_now) {
-    std::memcpy(straddler_state.data(), straddler + 0x40, straddler_state.size());
-  }
+  std::memcpy(straddler_state.data(), straddler + 0x40, straddler_state.size());
   for (uint32_t s = 0; s < plan.segment_count; ++s) {
     const Segment& segment = plan.segments[s];
     if (segment.chunk == NO_CHUNK) continue;
@@ -2209,6 +2210,7 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   bool damaged = false;
   for (uint32_t c = 0; c < chunks; ++c) damaged = damaged || !OpsWellFormed(SlotAt(c));
   if (damaged) {
+    if (controls.restore_straddler) std::memcpy(straddler + 0x40, straddler_state.data(), straddler_state.size());
     RunMeshes(round, tracker, 0, plan.meshes);
     lap(&CallTrace::rerun);
     finish("bad ops");
@@ -2259,6 +2261,7 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     CompareCursor& compare = compares[run_of[s]];
     if (flagged || entry_bad || (seed_missed && controls.validate_seeds)) {
       lap(&CallTrace::replay);
+      if (segment.begin == 0 && controls.restore_straddler) std::memcpy(straddler + 0x40, straddler_state.data(), straddler_state.size());
       RunMeshes(round, tracker, segment.begin, segment.end);
       ++reruns;
       entry_reruns += (entry_bad ? 1 : 0);
