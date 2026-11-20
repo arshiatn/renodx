@@ -333,6 +333,8 @@ struct TestControls {
   bool entry_site = false;
   // The mesh of the op an injection adds (0: the flush's own mesh).
   uint32_t inject_mesh = 0;
+  // The chunk (slot index) whose first boundary flush op gets a zero header once recorded (a damaged op buffer).
+  int corrupt_chunk = -1;
 };
 static TestControls test_controls;
 
@@ -504,6 +506,12 @@ static void FlushSite(dr::Site site, void* t, uint32_t mesh, uint32_t technique,
     injected_mesh = (test_controls.inject_mesh != 0 ? test_controls.inject_mesh : mesh);
     image.frame.ecx = injected_mesh;
     dr::Record(slot, &image.frame);
+  }
+  if (test_controls.corrupt_chunk == static_cast<int>(slot->chunk) && slot->mode == dr::MODE_RECORD
+      && (site == dr::Site::DEPTH_FLUSH_BOUNDARY || site == dr::Site::COLOUR_FLUSH_BOUNDARY)
+      && slot->ops_cursor >= slot->ops_begin + 1 + di::FLUSH_PAYLOAD) {
+    test_controls.corrupt_chunk = -1;
+    *(slot->ops_cursor - (1 + di::FLUSH_PAYLOAD)) = 0;
   }
 }
 
@@ -1728,6 +1736,23 @@ static void DepthNested() {
   nest_a_budget = 0;
   nest_a_call = nullptr;
   std::printf("depth nested: a dispatcher call from a replayed flush runs directly, logs equal the serial run; with the guard off a call inside a round records\n");
+}
+
+// N-1: a recorded op buffer with a zero header is never walked: the call runs directly, logs equal (it would loop forever).
+static void DepthBadOps() {
+  const auto world = BuildWorld({.items = 6000, .seed = 43, .max_run = 10});
+  const Outcome serial = RunSerial(world.get());
+  for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+    for (const uint32_t chunk : {1u, 2u, 3u}) {
+      test_controls.corrupt_chunk = static_cast<int>(chunk);
+      const Outcome staged = RunStaged(world.get(), stage, 4, true);
+      CHECK(test_controls.corrupt_chunk == -1);
+      test_controls.corrupt_chunk = -1;
+      CHECK(Equal(serial, staged, "A damaged op buffer"));
+      CHECK(staged.first_reason == "bad ops" && staged.replayed > 0);
+    }
+  }
+  std::printf("depth bad ops: a zero op header in one chunk makes that call run directly, logs equal the serial run\n");
 }
 
 // The chunk end's join of the "any" byte (+0x69) into the real tracker: a chunk that left nothing pending keeps what is there
@@ -3119,7 +3144,7 @@ static void BEntryCheck() {
     }
     direct_leave = 0;
   }
-  std::printf("B entry check: a direct segment that leaves a count, a mask, another batch size or other inputs (+0x1c) makes the next chunk run directly (%u chunks), logs equal; with the check off the count, batch size and inputs cases differ\n", reruns);
+  std::printf("B entry check: a direct segment that leaves a count, a mask, another batch size or other inputs (+0x1c) makes the next chunk run directly (%u chunks), logs equal; with the check off (or the mask term alone) the count, batch size, mask and inputs cases differ\n", reruns);
 }
 
 // Seeds: the warm-ups, the step back over meshes without a technique, the unknown seed after four, validation.
@@ -3458,7 +3483,7 @@ static void BCompareRuns() {
   }
   di::latched_groups = 0;
   CHECK(found);
-  std::printf("B compare runs: two runs in a round, run 0 run again and an op injected into run 1: the round's compare says DIFFERS (run 1, the chunk and its first mesh's class and family) and the group latches\n");
+  std::printf("B compare runs: two runs in a round, run 0 run again and an op injected into run 1: the round's compare says DIFFERS (run 1, the chunk and the class and family of the op's mesh) and the group latches\n");
 #else
   std::printf("B compare runs: skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
 #endif
@@ -3475,6 +3500,25 @@ static void BOversizeRound() {
   CHECK(staged.first_reason == "too many meshes" && staged.direct_calls == staged.portions && !di::trace.calls.empty());
   CHECK(di::trace.calls.front().round_meshes == di::MAX_ROUND_MESHES + 300 && di::trace.calls.front().meshes == 0);
   std::printf("B oversize round: %u meshes in one round run directly, logs equal the serial run, the trace lists them\n", di::MAX_ROUND_MESHES + 300);
+}
+
+// N-1 for the B rounds.
+static void BBadOps() {
+  for (const bool colour : {false, true}) {
+    BSpec spec = {.seed = 112, .max_items = 20, .direct_percent = 3, .max_count = 6};
+    spec.colour = colour;
+    const auto world = BuildBWorld(spec);
+    const Outcome serial = RunBSerial(world.get());
+    for (const uint32_t chunk : {1u, 2u}) {
+      test_controls.corrupt_chunk = static_cast<int>(chunk);
+      const Outcome staged = RunBStaged(world.get(), dr::Stage::RECORDED, 4, true);
+      CHECK(test_controls.corrupt_chunk == -1);
+      test_controls.corrupt_chunk = -1;
+      CHECK(Equal(serial, staged, "B damaged op buffer"));
+      CHECK(staged.first_reason == "bad ops" && staged.replayed > 0);
+    }
+  }
+  std::printf("B bad ops: a zero op header in one chunk makes that round run directly, logs equal the serial run\n");
 }
 
 // A dispatcher call inside a round (here a direct class's own call, made on the real tracker while the round's chunks are waiting
@@ -3515,6 +3559,39 @@ static void BNested() {
     nest_budget = 0;
   }
   std::printf("B nested: a dispatcher call made from a direct class's own call inside a round runs directly, logs equal the serial run\n");
+}
+
+// S-1: the same in a round that is too small to record (it runs its planned meshes directly, and a direct class's call into the
+// dispatcher must not plan over them).
+static void BNestedSmallRound() {
+  for (const bool colour : {false, true}) {
+    BSpec spec = {.seed = 103, .max_items = 12, .direct_percent = 3, .round_numerator = 300};
+    spec.colour = colour;
+    const auto world = BuildBWorld(spec);
+    nest_sorted = world->sorted.data();
+    nest_first = 100;
+    nest_last = 420;
+    nest_budget_start = 2;
+    dr::Update({.stage = dr::Stage::OFF}, false);
+    const Outcome serial = RunBSerial(world.get());
+    CHECK(nest_budget == 0);
+    di::nested_calls = 0;
+    const Outcome staged = RunBStaged(world.get(), dr::Stage::RECORDED, 8, true);
+    CHECK(Equal(serial, staged, "nested call in a small round"));
+    CHECK(staged.first_reason == "small round" && staged.direct_calls == staged.portions && nest_budget == 0 && !di::in_round);
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+    CHECK(di::nested_calls == 2);
+    di::controls.nested_guard = false;
+    di::nested_calls = 0;
+    const Outcome unguarded = RunBStaged(world.get(), dr::Stage::RECORDED, 8);
+    di::controls.nested_guard = true;
+    di::in_round = false;
+    CHECK(!Equal(serial, unguarded, "control: small round nesting guard off", false) && di::nested_calls == 0);
+#endif
+    nest_budget_start = 0;
+    nest_budget = 0;
+  }
+  std::printf("B nested, small round: a dispatcher call from a direct class inside a round that runs directly is nested too; the guard off differs\n");
 }
 
 // Each B control makes one thing wrong; its run must differ (or its violation must show).
@@ -3593,8 +3670,8 @@ static void Detach() {
   CHECK(g_shared->arena_size != 0);
   dr::Uninstall(true);
   CHECK(di::detached.load() && di::shared != nullptr && di::worker_count == 7);
-  // S4: every thunk takes the direct way from the start of Uninstall.
-  CHECK(g_shared->arena_size == 0);
+  // S-2: a kept detach leaves the thunks as they are (a dispatch may still be recording).
+  CHECK(g_shared->arena_size != 0);
   const Outcome detached = RunStaged(world.get(), dr::Stage::WORKERS, 8);
   CHECK(Equal(serial, detached, "detached"));
   CHECK(detached.direct_calls == detached.portions);
@@ -3628,6 +3705,7 @@ int main() {
   DepthTrace();
   DepthControls();
   DepthNested();
+  DepthBadOps();
   AnyJoinControl();
   ColourRecordRules();
   ColourOpsEqual();
@@ -3653,7 +3731,9 @@ int main() {
   BStraddler();
   BCompareRuns();
   BOversizeRound();
+  BBadOps();
   BNested();
+  BNestedSmallRound();
   BControls();
   SiteGroupsSticky();
   test_controls.entry_site = false;
