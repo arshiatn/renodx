@@ -4667,6 +4667,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         rmt_c3 merges, no C implementer running) + S2r review, S3 engine_code (C's files, serial), S4..S6 B3b + rows, S9
         full B4 after the end batch's trace. Nothing for ATN (2 heads-ups: B4 may not pay; the public row). bd1o_
         RESUMED 23:5x: design v2 -> reports/bd1o_design_B3_v2.md. Agents: bd3o_, bd2o_, c31r_, bd1o_ (4 of 4).
+        bd3o_ DESIGN v2 DONE 23:5x (reports/bd3o_design_B2_ring_v2.md): all bd3r_ items folded. S0-bis: wait #0 entry
+        PINNED = node+0xa98 (instances prepare, owner node+0x19c); LOD join not found statically, no longer needed.
+        heapfix part = weighted prepass / full + S7 instances (P2' 0x17b9197, thread rule) + presort with commit-if-clean
+        (read order size -> data -> cap, copy only cap <= 4096, hf_trim SRW interlock, P1 abort) + check mode; gains E:
+        prepass -8..-10, full -11..-12, full + S7 + presort -13.7..-14 (S7 alone ~0: both chains share the pool). Instances
+        presort check-only until S0-ter proves its keys. Ring R1 -4..-5.4 E, R2 -1..-2 more; 11-byte Unmap blocks at all 4
+        sites. Steps: lane H (heapfix) S0-ter, S1, S2, S3/S4, S7, S8a, S8, S5 package at the round end; lane A (add-on)
+        R-S1..R-S5 after C.3-4 + the pool. SITE CLASH: presort E wanted +0x192d5c4 = B1's WALK_CALL -> coordinator: B1
+        keeps it, the presort moves (bd3o_ addendum + bd2o_ exact site table asked 23:5x). FOR ATN (one list): heapfix's
+        own pool size automatic min(6, logical CPUs / 2 - 1), batch env override only (yes recommended: heapfix must work
+        without the add-on). bd3o_ RESUMED 23:5x with the pool-spec note + the clash -> "## v2 addendum" appended.
+        Agents: bd3o_, bd2o_, c31r_, bd1o_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
