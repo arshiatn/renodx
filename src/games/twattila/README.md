@@ -16,15 +16,16 @@
 - In at the first present with the row on, on the render thread, with the map trace's rules (one D3D11 device,
   single-threaded, the bodies checked). Out when the row goes off, at the device's end and at the unload: every buffer
   written back into itself and every slot of every live state rebound to it first. A call on the context from another
-  thread, or a lost device: the ring unwinds at the render thread's next call and stays off until the row is turned off
-  and on again (logged). Our own constant buffers are made below ReShade (no init_resource): never in the ring. Rome II,
-  Thrones and WH3 compile it without the row.
+  thread, a lost device, a body in the context's table that the install never saw (checked at each present and after
+  each swap: another d3d11.dll build) or a swap below the hook: the ring unwinds at the render thread's next call and
+  stays off until the row is turned off and on again (logged). Our own constant buffers are made below ReShade (no
+  init_resource): never in the ring. Rome II, Thrones and WH3 compile it without the row.
 - Checked in `test/tw_buffer_pool` (x86, amd64, WARP: pixels, compute output and copies equal with the ring, a full ring,
-  another thread's call and the measure path beside it, five CONTROLS that must differ; Get / Get1 / Map parity and the
+  another thread's call and the measure path beside it, seven CONTROLS that must differ; Get / Get1 / Map parity and the
   references over 3000 random steps; the device's end) and `test/tw_map_replay --plugin ring` (run.ps1 -RingAdapter
   `test\tw_map_replay\ring_adapter.hpp`: bit-for-bit parity on W3m's v3 trace and the synthetic stream, its controls).
-  Test (bench, Attila): the log line "Fewer Driver Waits: on (4 pieces of 256 KB, up to 32)" and no "pieces still in use"
-  line; a map trace with the row on and off (the CB DISCARD time inside Map).
+  Test (bench, Attila): the log line "Fewer Driver Waits: on (4 pieces of 256 KB, up to 32; d3d11.dll ...)" and no
+  "pieces still in use" line; a map trace with the row on and off (the CB DISCARD time inside Map).
 
 ## Dev, map trace v3 (2026-11-19; built only, not stamped, not installed, not run in game)
 
