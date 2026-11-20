@@ -4277,6 +4277,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         plain words. FLAG: after the merge the loop test's continuation-guard-off CONTROL no longer differs on one-thread
         stages (only workers K 8 / 16) -> c3i_ re-based it (timing-dependent) -> c31r_ RESUMED: re-check + find why
         (masked by C.2-3's S-1 class check? a depth-path change?) + a deterministic control.
+        QUIET WINDOW 2, 18:1x: agents HELD (c31r_ mid re-check, lead = warm-up +0x40 / +0x44 restore; s5x_ VB review GO
+        WITH CHANGES coming: idle reuse leaves pool backings held as current -> 64 MB budget fills; c23r_ C.2-5 test run
+        x86 exit 0, report not written). H0 GPU RUNS (ATN's terminal 18:15-18:21, ring at 0ea33703d, game buffers only):
+        h7 D1m native: cb_discard 26.4 / 23.7 ms/f (waits 16.6 / 13.9), MARK REPRODUCED, the waits on the GAME's CBs (64 B
+        0x11c93264 14 + 10 ms, 57,344 B 0x11cc55a4 8-9.6 ms every frame, 64 B 0x11a303e4 6 ms, 80 B); vb_discard 0.1 ms/f.
+        h8 D1m overhead x20: native 23.33 +- 2.96 vs ring 4.66 +- 0.25 = ring -18.67 +- 2.97 ms/f (real game CBs, not
+        ReShade's 432 B). h9 W3m ring: all calls 3.44 / 3.17 vs native 3.75 / 3.31 = the ring is cheaper (gate passed);
+        vb_discard waits 2.4 / 2.2 unchanged (8 MB rings). -> CB ring matters in D1m-like frames, VB part in W3m-like
+        frames; in-game proof = batch 3. Agents RESUMED 18:2x (s5x_ got the H0 data).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
