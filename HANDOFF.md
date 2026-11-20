@@ -4616,6 +4616,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         hybrid too); heapfix places no threads (checked: no CPU-set / affinity calls in HFx); (4) threads rows: coordinator
         suggests ONE "Worker Threads" row for the whole pool, per-user counts only as batch-only env overrides (split
         later only if the end batch shows different best K per user) -> both sent to bd1r_ for the pool spec.
+        ATN 23:3x: ONE "Worker Threads" row for the whole pool = AGREED (+ the batch-only per-user overrides).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
