@@ -475,6 +475,9 @@ static void Live() {
     Ids rest;
     std::ranges::set_difference(base, render_sets, std::back_inserter(rest));
     for (const HANDLE other : others) CHECK(Selected(other) == rest);
+    // The sets published to the draw recording pool are the ones applied to the other threads.
+    uint32_t generation = 0;
+    CHECK(cs::AppliedWorkerSets(&generation) == rest);
     return render_sets;
   };
   // Every thread's sets inside `base`, but the ones with their own rule.
@@ -602,6 +605,10 @@ static void Live() {
   CHECK(LogHas("off: ours cleared"));
   check_cleared({render, late.handle});
   check_cleared(ours_rest);
+  {
+    uint32_t generation = 0;
+    CHECK(cs::AppliedWorkerSets(&generation).empty());
+  }
   CHECK(Selected(foreign.handle) == foreign_sets);
   CHECK(Selected(workers[0].handle) == someone);
   CHECK(Selected(narrow.handle).empty());

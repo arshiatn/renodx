@@ -23,7 +23,9 @@
 #include <cstdint>
 #include <format>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <span>
 #include <string>
 #include <string_view>
@@ -213,6 +215,21 @@ struct Given {
   std::vector<ULONG> sets;
 };
 
+// The worker_sets of the plan now applied (empty: none), for the threads that follow the game's other threads (the draw
+// recording pool). The generation changes with every change of the sets.
+struct PublishedSets {
+  std::shared_mutex mutex;
+  std::vector<ULONG> worker_sets;
+  uint32_t generation = 0;
+};
+static PublishedSets published;
+
+inline std::vector<ULONG> AppliedWorkerSets(uint32_t* generation) {
+  const std::shared_lock lock(published.mutex);
+  *generation = published.generation;
+  return published.worker_sets;
+}
+
 // The worker: the game's CPU set and affinity every tick_ms and a check every CHECK_EVERY-th (the render thread, a plan,
 // new threads) until `stop`, then ours cleared.
 static DWORD WINAPI WorkerLoop(void* stop) {
@@ -233,8 +250,16 @@ static DWORD WINAPI WorkerLoop(void* stop) {
   // The first thread snapshot after an apply found none of the game's threads to move.
   bool nothing_to_move = false;
 
+  const auto publish = [](const std::vector<ULONG>& sets) {
+    const std::unique_lock lock(published.mutex);
+    if (published.worker_sets != sets) {
+      published.worker_sets = sets;
+      ++published.generation;
+    }
+  };
   // Exactly ours: a thread whose sets someone changed since keeps theirs. How many were reset.
-  const auto clear_given = [&given] {
+  const auto clear_given = [&given, &publish] {
+    publish({});
     int reset = 0;
     for (const Given& thread : given) {
       if (thread.thread == nullptr) continue;
@@ -368,6 +393,7 @@ static DWORD WINAPI WorkerLoop(void* stop) {
         applied = true;
         on_logged = false;
         applied_plan = std::move(plan);
+        publish(applied_plan.worker_sets);
         applied_affinity = affinity;
         last_note.clear();
         checks_since_apply = 0;
