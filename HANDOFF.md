@@ -4130,6 +4130,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         c2i_ RENAMES DONE 14:5x: rmt_c2 c1d3887e8 (ClaimMesh, faction_fn, synth_colours; 22 lines), tw_draw_recording x86
         PASS, build32 twattila exit 0; the coordinator's name re-check leaves only plain words. c2i_ idle until c23r_'s
         verdict (it may build in rmt_c2).
+        c3i_ C.3-1 DONE 15:0x: rmt_c3 832196221 (local; Sonnet trailer kept): NEW draw_recording_sites.hpp 567 lines (C's
+        table: flush entry 0x1778390, depth cut 0x17ae849, init 0x17b1812, VF68 0x17b1968 (10-vtable check in the thunk),
+        anim 0x17b19d3, 3 depth + 4 colour fallback flush call sites; byte patterns + targets + callee heads, passtime 13-
+        entry E9 check at Prepare + each turn-on), engine_code.hpp +117 / -30 (one PausedWrite for both tables, Update(...,
+        groups), DrawRecordingSitesIn), test/tw_draw_recording_sites 798 lines x86 PASS (12 / 12 real sites from the file
+        as data, 732 byte flips, window cases, thunks). All behind TWATTILA_DRAW_RECORDING; addon.cpp not wired. F15: one
+        caller of 0x17b17f0, no fs: in 56 functions, VF68 vtable check. Builds twattila x86 +/- macro, twrome2,
+        twthrones, wh3 amd64 exit 0. Name check: plain words only. Stopped as told: tw_engine_code suite + the real-loop
+        equivalence test run game routines outside the game -> coordinator: same method as tw_engine_code parts 9-10
+        (established, ATN's patch rounds run it) -> c3i_ RESUMED: run tw_engine_code x86 all parts + write the real-loop
+        test (2 h box, fakes outside the loop). Then an Opus xHigh review with c3i_'s 7 open points (stack alignment into
+        Record, count 0, whole-or-nothing stand-down, removal vs workers, passtime check outside the window, Update order
+        for C.2-4, colour / B cuts at the page start).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
