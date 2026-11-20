@@ -3993,6 +3993,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         s5o_ STOPPED 11-20 by the old account's weekly limit (resets 11-23 22:00): only commit-1 work done, UNCOMMITTED in
         rmt_s5 (README.md, context_hooks.hpp, frame_trace.hpp, test/tw_map_trace/tests.cpp, +102 / -37 = N1-N7), tests
         not run yet, ring not started. ATN now on a second account; resume s5o_ (SendMessage) only on ATN's go.
+        ATN 11-20 (second account, then MAX): s5o_ resumed on ATN's go. ATN's answers: (1) batch 2's v3 trace starts +
+        Fewer Constant Uploads A/B RUN TODAY while ATN is at work (newest add-on build, fresh backups, hash-checked restore,
+        agents HELD during the game runs, bench script only; C stages later); (2) UP TO 6 SUBAGENTS at a time; (3) track C
+        starts NOW beside S5 (worktree .claude/worktrees/rmt_c2, branch rmt_c2 from 69f13a88d, 10 links: remove them alone).
+        ATN: "why not the big plans first?" -> C goes BIG-FIRST: the full build (weighted + N loops + folded driver + 8
+        dispatchers) is designed now (c1o_ note v3 incl. its census), per-group rows keep the go / kill numbers inside one
+        later batch; C.2-1 / C.2-2 (shared base) start now (Sonnet High). Track A was already big-first (ring).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
