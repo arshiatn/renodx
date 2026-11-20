@@ -4333,6 +4333,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         S-2 nesting guard, S-3 B family numbers, S-4 duplicate check only when compare_now + static array, S-5 M2 memcmp
         [0x18, 0x28); N-1..N-10. Tests x86 PASS (BStages 768, 249 real compares). c2i_ RESUMED 19:1x: fix round on rmt_c2
         (no atn-mods merge yet: rmt_c3 lands first) -> c23r_ re-checks -> merge. Agents: c31r_, s5r_, c2i_ (3 of 3).
+        c31r_ RE-CHECK 2 DONE 19:2x: MERGE (R1 really fixed: the guard-off RECORDED K 4 control differs on one thread;
+        tw_engine_code -Quick + loop x86 PASS). Optional carry-overs -> C.3-2 (owner c3i_): N1 comment should name the
+        hook stood down GOING IN (leaves found -> a later group takes the call-site fallback); sum compares[EQUAL] over 2b
+        and CHECK > 0 so the compare can't go vacuous silently again. MERGED rmt_c3 d0623d049 (clean) + gated builds on
+        the merged tree x86 twattila / twrome2 / twthronesofbritannia + amd64 twattila exit 0 + pushed.
+        s5r_ VB DESIGN v3 DONE 19:2x (reports/s5r_design_vb_v3.md): C1-C4 + S1-S5 all accepted (S3 counters test-only;
+        S4 VB cost gate <= 0.15 ms/f without waits + W3m total waits must drop, not move); 6 MB maps = dynamic textures
+        (already excluded); VB budget from the memory log 64 / 32 / 0 MB, 512 MB floor; order V1, V5a, V2, V3a, V3b, Opus
+        review, V4 + V5b, V6 (~1,250 lines, from atn-mods >= 7f8729474). Part 2 = CB ring BATCH 3 (~33-35 min): harness
+        re-check first (default atn_harness_runs.ps1 = h1-h5c on rmt_s5 183c59302: W3m / D1m parity EQUAL, W3m locator
+        8 pieces, no growth unmaps -> closes S5 RING GPU CHECKS), 7 starts (S0 smoke; W3a / D1a WPR; ATNa, W3b, D1b, ATNb;
+        a = Off first, b = On first, 8 x 10 s segments 106-186 s), memory snapshots 60 / 105 / 137 / 177 / 187 s, gates
+        G0 validity regex, G1 shots, G2 WPR waits, G3 WIN <= -2 (W3 / ATN) / -1 (D1) ms/f, LOSS >= +1.5 / +0.75, G4 VB
+        budget. FOR ATN (morning): (a) if the memory log gives an x86 VB budget of 0: drop 8 MB pooling on x86, ship V3a +
+        the 464 KB reserve alone? (b) after a WIN, the row default-on = the first default-on hook of the game's own D3D11
+        calls: ATN may want to confirm before a release.
+        b2p_ RESUMED 19:3x: batch 3 prep (fp build of d0623d049 = rmt_b3_fp, b3_*.json, b3_run.ps1 -DryRun, b3_check.ps1;
+        no game). b2a_ RESUMED 19:3x: batch 2b analysis -> bench/analysis_b2b/report.md. Agents: c2i_, b2p_, b2a_ (3 of 3).
+        NEXT: harness default run (coordinator, agents held) -> batch 3 (coordinator, agents held) -> b3 analysis; VB V1
+        after c2i_ (one implementer at a time).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
