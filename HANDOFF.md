@@ -4223,6 +4223,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         even. vb_discard 2.3-2.4 ms/f waits unchanged: the 8 MB VB rings (8,388,480 B: 13 ms + 9-10 ms single calls), a 3 MB
         one (1.3 ms); the 464 KB ring only 0.17 ms once -> sent to s5r_ for the VB design (8 MB rings + cut the Unmap upload
         cost). GPU checks box: item 1 (parity) DONE; item 2 (D1m overhead x20) = quiet window.
+        QUIET WINDOW 17:2x: all 3 agents HELD (c2i_: commit 1 b4c4739f2 = c23r_'s items, tested; C.2-5 B path uncommitted,
+        old A tests fail at tests.cpp 1712 / 1724 / 1741 / 1757 / 2081 / 2084 since the B edits, undiagnosed. c3i_: atn-mods
+        merged 8698498f1, fix round uncommitted / unbuilt. s5r_: design file written (verdict 464 KB own backings, 8 MB
+        out) but the 5090 data changes it: 8 MB + 3 MB rings must be covered (~200 MB, 400-600 MB if the GPU lags; cheaper
+        idea = DISCARD as NO_OVERWRITE when the GPU is done, an event at the last IA unbind); Unmap cost mostly moved work,
+        net +0.12-0.17 ms/f; the replay rings ReShade's 432 B push buffer, which the game never rings (550 of 1,649
+        uploads, 2,930 of 8,165 binds) -> harness should skip it). D1m OVERHEAD x20 (ATN's terminal, 17:24-17:30, ABBA,
+        --gpu-ms 25): D3D11 calls native 24.87 +- 0.70 vs ring 2.04 +- 0.03 ms/f = ring -22.83 +- 0.70 ms/f; hooked
+        calls 24.77 vs 1.95. Native waits ~23 ms/f in CB DISCARDs under GPU load; OPEN: how much is ReShade's 432 B buffer
+        (FCU's case in the game) -> s5r_. Gate (ring adds <= 0.1 ms/f) passed in this replay. BATCH 2b STARTED 17:3x.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4251,7 +4261,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         included; agents can't run the harness (classifier), ATN runs bench/analysis_b2/replay/atn_harness_runs.ps1): 1. DONE
         11-20 17:18 (EQUAL, upload differs, no unknown-body line) NVIDIA x86 parity:
         harness `--nvidia --plugin ring` on b2_W3m + b2_D1m, `none` EQUAL, every control differs, no "copy body unknown"
-        log line; 2. D1m overhead: `--mode overhead`, 20 runs ABBA, vs the 0.1 ms/f gate, redundant-Set skip included.
+        log line; 2. DONE 11-20 17:30 (ring -22.8 ms/f vs native; re-run once the harness skips ReShade's 432 B buffer) D1m
+        overhead: `--mode overhead`, 20 runs ABBA, vs the 0.1 ms/f gate, redundant-Set skip included.
         Owner: coordinator
       - [ ] S1 FOLLOW-UPS: N1-N7 DONE by s5o_ in e6a835ffc (merged with S5 in ca057a7ee, 11-20); OPEN only the stale testbin
         exes after ATN's next reboot (last lines). Was: (s1ro_ re-check 11-19, all optional / low; OWNER: the S5 ring implementer in its first commit,
