@@ -3990,6 +3990,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         s5o_ fixes -> same reviewer re-checks -> merge. S6 (NVIDIA parity + overhead) needs D1m v3 data (batch 2).
         ATN 22:5x: usage ~100 % -> ONLY finish s5o_, then STOP: no review, no new agents until ATN says (weekly reset).
         Open question for ATN then: run batch 2's v3 trace starts + Fewer Constant Uploads A/B early (before C.2 / C.3)?
+        s5o_ STOPPED 11-20 by the old account's weekly limit (resets 11-23 22:00): only commit-1 work done, UNCOMMITTED in
+        rmt_s5 (README.md, context_hooks.hpp, frame_trace.hpp, test/tw_map_trace/tests.cpp, +102 / -37 = N1-N7), tests
+        not run yet, ring not started. ATN now on a second account; resume s5o_ (SendMessage) only on ATN's go.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
