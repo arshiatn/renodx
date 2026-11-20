@@ -44,6 +44,8 @@
 #include "../twattila/rt_scene.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
+// Fewer Driver Waits (the constant buffer ring): compiled here, its row Attila's only.
+#include "../twattila/buffer_pool.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
