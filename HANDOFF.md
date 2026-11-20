@@ -4127,6 +4127,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         PASS, build32 twattila exit 0. Not covered: S2 has no failing control. Coordinator's name check: RegisterMesh,
         set_colours, test faction_colours -> c2i_ RESUMED for a neutral-rename commit. c23r_ a0d0b5a5199025b89 (Opus xHigh)
         STARTED: fresh review of 79a25329c + c5d1c0308 -> reports/c23r_review.md. Then C.2-4 (4 group rows) + C.2-5 (B).
+        c2i_ RENAMES DONE 14:5x: rmt_c2 c1d3887e8 (ClaimMesh, faction_fn, synth_colours; 22 lines), tw_draw_recording x86
+        PASS, build32 twattila exit 0; the coordinator's name re-check leaves only plain words. c2i_ idle until c23r_'s
+        verdict (it may build in rmt_c2).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
