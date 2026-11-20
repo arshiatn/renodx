@@ -401,7 +401,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 08:08: 64-bit decisions = coordinator's reco
 - NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | ATN, when ATN brings it up again
 - S5 RING GPU CHECKS (s5r_ re-check 11-20; gate ANY game run / release with "Fewer ... | coordinator
-- S1 FOLLOW-UPS (s1ro_ re-check 11-19, all optional / low; OWNER: the S5 ring impl ... | ?
+- S1 FOLLOW-UPS: N1-N7 DONE by s5o_ in e6a835ffc (merged with S5 in ca057a7ee, 11- ... | ?
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
 - AFTER THE BENCH'S xHIGH ANALYSIS, ATN's 2 EXTRA RUNS (ATN 19:56), stress replay ... | coordinator Bench LOW 2 (alr1s_) FIXED 18:58 in tools/tw/ben
@@ -4143,6 +4143,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         test (2 h box, fakes outside the loop). Then an Opus xHigh review with c3i_'s 7 open points (stack alignment into
         Record, count 0, whole-or-nothing stand-down, removal vs workers, passtime check outside the window, Update order
         for C.2-4, colour / B cuts at the page start).
+        s5x_ EXTRA REVIEW DONE 15:1x (reports/s5x_review.md): MERGE, no Musts; tw_buffer_pool x86 + amd64 PASS (built by
+        run.ps1). Should 1 per-present check covers only copy slots 46 / 47 / 115 -> all 35 slots + after RingSwap's settle;
+        Should 2 swap-path rebinds (bp:808, Seed bp:797) not proved by pixels; Should 3 = the GPU checks box. Nits 1-6
+        (detach before pool.mutex, `lost` only on a removed device, atomic unwind_wanted, RingSwap previous_state check,
+        open_maps on destroy, RingGet bounds). S5 MERGED 15:1x: rmt_s5 b5e89f0b2 -> atn-mods ca057a7ee (clean); build32
+        check of the merged tree started. s5o_ RESUMED: s5x_'s Should 1 / 2 + Nits 1-6 on rmt_s5 (after merging atn-mods
+        in), then s5x_ re-checks. Before the row is offered to players: these + the GPU checks box.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4168,7 +4175,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         harness `--nvidia --plugin ring` on b2_W3m + b2_D1m, `none` EQUAL, every control differs, no "copy body unknown"
         log line; 2. D1m overhead: `--mode overhead`, 20 runs ABBA, vs the 0.1 ms/f gate, redundant-Set skip included.
         Owner: coordinator
-      - [ ] S1 FOLLOW-UPS (s1ro_ re-check 11-19, all optional / low; OWNER: the S5 ring implementer in its first commit,
+      - [ ] S1 FOLLOW-UPS: N1-N7 DONE by s5o_ in e6a835ffc (merged with S5 in ca057a7ee, 11-20); OPEN only the stale testbin
+        exes after ATN's next reboot (last lines). Was: (s1ro_ re-check 11-19, all optional / low; OWNER: the S5 ring implementer in its first commit,
         since it reworks context_hooks.hpp / frame_trace.hpp anyway): N1 device ends during the trace -> set first_drop =
         min(first_drop, seq) in OnMapTraceDestroyDevice; N2 a dropped Map / Unmap blanks every later draw's bindings ->
         separate native-call first drop; N3 take Qpc() before the foreign_qpc exchange (context_hooks.hpp:167-168); N4
