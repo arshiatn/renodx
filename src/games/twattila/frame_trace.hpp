@@ -758,9 +758,12 @@ struct MapTrace {
   uint32_t dropped_binds = 0;
   uint32_t dropped_buffers = 0;
   uint64_t sequence = 0;  // the next draw's, native call's or bind's
-  // The sequence from which a native call or bind was dropped (UINT64_MAX: none): v3's bindings and contents from it
-  // on are not known.
+  // The sequence from which a bind was dropped or the hooks came out with the device (UINT64_MAX: none): v3's bindings
+  // and contents from it on are not known.
   uint64_t first_drop = UINT64_MAX;
+  // The sequence from which a map or unmap was dropped (UINT64_MAX: none): v3's contents from it on are not known (maps
+  // change no binding).
+  uint64_t first_native_drop = UINT64_MAX;
   bool hash_contents = false;  // RENODX_TW_MAP_TRACE's third field `hash`: the unmaps' content hashes
   // The game's immediate context below ReShade's proxy (the present callback's while armed), the context hooks' target.
   // Each context has its own table inside the context object, which d3d11.dll rewrites at every SwapDeviceContextState:
@@ -941,7 +944,7 @@ inline void OnNativeCall(const context_hooks::Call& call) {
     if (!map_trace.tracing.load(std::memory_order_relaxed)) return;
     if (map_trace.native_calls.size() >= map_trace.native_calls.capacity()) {
       ++map_trace.dropped_native_calls;
-      map_trace.first_drop = std::min(map_trace.first_drop, map_trace.sequence);
+      map_trace.first_native_drop = std::min(map_trace.first_native_drop, map_trace.sequence);
       return;
     }
     record.sequence = map_trace.sequence++;
@@ -1019,11 +1022,14 @@ inline void OnMapTraceDestroyResource(reshade::api::device*, reshade::api::resou
 
 // While armed, a device's end: the context hooks out with the game's device, under the trace's lock (the trace's end
 // and Uninstall remove them under it; Install runs on the render thread at a present, not beside its device's end), and
-// the immediate context let go (a trace start must not use the freed one).
+// the immediate context let go (a trace start must not use the freed one). Hooks out inside the traced frames: the
+// bindings of every later draw are not known.
 inline void OnMapTraceDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   const std::unique_lock lock(map_trace.mutex);
-  context_hooks::OnDestroyDevice(device);
+  if (context_hooks::OnDestroyDevice(device) && map_trace.tracing.load(std::memory_order_relaxed)) {
+    map_trace.first_drop = std::min(map_trace.first_drop, map_trace.sequence);
+  }
   if (auto* context = map_trace.immediate_context.load(std::memory_order_relaxed); context != nullptr) {
     Microsoft::WRL::ComPtr<ID3D11Device> context_device;
     context->GetDevice(context_device.GetAddressOf());
@@ -1239,6 +1245,7 @@ inline void Install(Options options = {}) {
       trace.dropped_buffers = 0;
       trace.sequence = 0;
       trace.first_drop = UINT64_MAX;
+      trace.first_native_drop = UINT64_MAX;
       trace.native_hook = "no_context";
       trace.waited_for_context = false;
       trace.immediate_context.store(nullptr);
@@ -1771,10 +1778,12 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
           // tw_map_trace_v3.txt, the context hooks' stream. Its lines:
           //   v3 setting= qpc_frequency= frames= end_qpc= hook= native_calls= dropped_native_calls= binds=
           //     dropped_binds= draws= dropped_draws= buffers= dropped_buffers= first_drop_seq= hash= hash_ms=
+          //     first_native_drop_seq=
           //     hook: on, no_context, failed, foreign_thread (a call from another thread: pass-through from then on);
-          //     first_drop_seq: the seq from which a native call or bind was dropped (-: none); hash: on with the
-          //     setting's third field `hash`; hash_ms: each frame's time in the unmaps' content hashes (render thread,
-          //     outside native_ms), comma-separated.
+          //     first_drop_seq: the seq from which a bind was dropped or the hooks came out with the device (-: none);
+          //     hash: on with the setting's third field `hash`; hash_ms: each frame's time in the unmaps' content hashes
+          //     (render thread, outside native_ms), comma-separated; first_native_drop_seq: the seq from which a map or
+          //     unmap was dropped (-: none).
           //   present qpc=: each traced frame's start, then the last one's end.
           //   buffer create_qpc= thread= destroy_qpc= destroy_thread= res= usage= bind= cpu= misc= type= bytes=: a
           //     constant buffer made while armed (destroy_qpc=0 destroy_thread=0: not destroyed while armed).
@@ -1795,7 +1804,8 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
           //     <stage><slot>:<buffer>[@<first>+<count>][#<content>] (the buffer's last hashed unmap; an UpdateSubresource is
           //     not seen) and <slot>:<buffer>/<stride>/<offset>; <stage><slot>:? and <slot>:?: not known (bound before the
           //     hooks or in a state not seen yet); -: none changed. From first_drop_seq on, and after the foreign
-          //     thread's call, cbs=? vbs=?: a dropped or passed-on bind makes every later binding unknown.
+          //     thread's call, cbs=? vbs=?: a dropped or passed-on bind makes every later binding unknown. From
+          //     first_native_drop_seq on, no #<content>: a dropped unmap leaves every later content unknown.
           open_file(L"tw_map_trace_v3.txt");
           std::vector<int64_t> hash_ticks(frames, 0);
           for (const auto& call : trace.native_calls) {
@@ -1808,12 +1818,13 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
           text = std::format(
               "v3 setting={} qpc_frequency={} frames={} end_qpc={} hook={} native_calls={} dropped_native_calls={}"
               " binds={} dropped_binds={} draws={} dropped_draws={} buffers={} dropped_buffers={} first_drop_seq={}"
-              " hash={} hash_ms={}\n",
+              " hash={} hash_ms={} first_native_drop_seq={}\n",
               trace.setting, frequency.QuadPart, frames, trace.presents.back(), trace.native_hook,
               trace.native_calls.size(), trace.dropped_native_calls, trace.binds.size(), trace.dropped_binds,
               trace.draws.size(), trace.dropped_draws, trace.buffers.size(), trace.dropped_buffers,
               (trace.first_drop == UINT64_MAX ? std::string("-") : std::to_string(trace.first_drop)),
-              (trace.hash_contents ? "on" : "off"), hash_ms);
+              (trace.hash_contents ? "on" : "off"), hash_ms,
+              (trace.first_native_drop == UINT64_MAX ? std::string("-") : std::to_string(trace.first_native_drop)));
           for (const int64_t present : trace.presents) {
             text += std::format("present qpc={}\n", present);
           }
@@ -1852,8 +1863,12 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
           std::unordered_map<uintptr_t, uint64_t> contents;  // a buffer's last hashed unmap
           std::vector<uint32_t> frame_draws(frames, 0);
           const uint32_t render_thread = GetCurrentThreadId();
-          // A call from another thread switched the hooks to pass-through at this time (0: none).
-          const int64_t foreign_qpc = context_hooks::internal::state.foreign_qpc.load(std::memory_order_relaxed);
+          // A call from another thread switched this trace's hooks to pass-through at this time (0: none; a refused
+          // install leaves an earlier trace's time behind).
+          const int64_t foreign_qpc =
+              (std::string_view(trace.native_hook) == "foreign_thread"
+                   ? context_hooks::internal::state.foreign_qpc.load(std::memory_order_relaxed)
+                   : 0);
           const auto slot_text = [](size_t slot, const internal::BindSlot& bound, bool vertex) {
             if (vertex) {
               return std::format("{}:0x{:x}/{}/{}", slot, bound.buffer, bound.first_or_stride, bound.count_or_offset);
@@ -1939,6 +1954,7 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
               const size_t frame = frame_of(draw.qpc);
               const bool compute = internal::IsDispatch(draw.kind);
               const bool lost = (draw.sequence >= trace.first_drop || (foreign_qpc != 0 && draw.qpc >= foreign_qpc));
+              const bool contents_lost = draw.sequence >= trace.first_native_drop;
               const auto& bindings = states[active];
               std::string constant_buffers = (lost ? "?" : "");
               for (size_t stage = (compute ? context_hooks::STAGES - 1 : 0);
@@ -1946,7 +1962,8 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
                 for (size_t slot = 0; slot < D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT; ++slot) {
                   const auto& bound = bindings.constant_buffers[stage][slot];
                   std::optional<uint64_t> content;
-                  if (const auto found = (bound.has_value() ? contents.find(bound->buffer) : contents.end());
+                  if (const auto found = (bound.has_value() && !contents_lost ? contents.find(bound->buffer)
+                                                                              : contents.end());
                       found != contents.end()) {
                     content = found->second;
                   }

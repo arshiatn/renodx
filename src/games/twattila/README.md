@@ -2,7 +2,7 @@
 
 ## Dev, map trace v3 (2026-11-19; built only, not stamped, not installed, not run in game)
 
-- New (debug, no row): the map trace (env `RENODX_TW_MAP_TRACE=<seconds after the first present>,<frames>[,hash]`,
+- New (debug, no row): the map trace (env `RENODX_TW_MAP_TRACE=<seconds after the first present>[,<frames>[,hash]]`,
   e.g. `95,12`) hooks the game's immediate context below ReShade for its frames only, through the context hooks
   (`context_hooks.hpp`): Detours on d3d11.dll's 17 bodies (Map, Unmap, the 6 Set and 6 Set1 constant buffer calls,
   IASetVertexBuffers, SwapDeviceContextState, ClearState). Bodies, not table slots: d3d11 rewrites each context's table at
@@ -21,8 +21,9 @@
   (Attila, Rome II, Thrones, Shogun 2; WH3 and the other DX11 TW games: not installed, logged, `native_hook=failed`); the
   bodies must sit in the system's d3d11.dll, distinct, with no jump at their start. They come out after the last frame, at
   the device's end and at Uninstall. A call on the context from another thread switches them to pass-through (logged,
-  `hook=foreign_thread`). After a dropped record (`first_drop_seq` in the v3 header) or the foreign-thread switch, every
-  later draw reads `cbs=? vbs=?`.
+  `hook=foreign_thread`). After a dropped bind, the hooks' removal with the device (`first_drop_seq` in the v3 header) or
+  the foreign-thread switch, every later draw reads `cbs=? vbs=?`; after a dropped map or unmap (`first_native_drop_seq`)
+  only the `#` contents go. Default 3 frames.
 - Storage: `<frames>` x a frame's room (8,192 draws, 6,144 events, 6,144 native calls, 12,288 binds, 32,768 bind slots),
   capped at 2^17 / 2^16 / 2^16 / 2^17 / 2^18, plus 32,768 constant buffers, reserved from the add-on's start (armed) until
   the files are written; more is counted as dropped. Each file goes to `<name>.part` in parts of about 4 MB and is renamed

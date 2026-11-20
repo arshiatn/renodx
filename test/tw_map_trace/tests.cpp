@@ -38,8 +38,9 @@
 //    hooks out, both slots as they were; Uninstall unregisters all 16.
 // 5. A long trace (RENODX_TW_MAP_TRACE=0,12, W3m's frame count) past the native calls' room (2^16): the drops counted,
 //    the file (tens of MB) written in more than one part (the log's part count), every kept map in it in order, the
-//    totals of the kept ones; no .part file left. v3: first_drop_seq where the drops began, a draw before them with its
-//    bindings, the draw after them cbs=? vbs=? (not known), hash=off.
+//    totals of the kept ones; no .part file left. v3: first_native_drop_seq where the map drops began (first_drop_seq
+//    -: maps change no binding), a draw before them with its bindings, the draw after them with its bindings still known
+//    (nothing changed: cbs=- vbs=-), hash=off.
 // 6. No present event at all: the start waits one present, then starts without the hooks (native_hook=no_context).
 // 7. Uninstall while a trace runs: the hooks out, nothing registered, no file, Maps still work.
 // 8. Another add-on's table-slot hook over the Map slot while the trace runs (v2's hook was one, and broke when another
@@ -52,7 +53,10 @@
 //    b3, draws with the bindings changed since the draw before (the first: all; then none; then only the new content),
 //    a swap to a private state (every binding unknown) and back (the state's bindings again), a ClearState (the bound
 //    slots null), a dispatch's CS binding; every line in call order, the stream equal to the calls made.
-// 10. destroy_device while a trace runs: another device's: nothing; the game's: the hooks out, the context let go.
+// 10. destroy_device while a trace runs: another device's: nothing; the game's: the hooks out, the context let go, and
+//     first_drop_seq from there (a later draw cbs=? vbs=?).
+// 11. A call on the hooked context from another thread while a trace runs: tw_map_trace.txt native_hook=foreign_thread,
+//     the v3 header hook=foreign_thread, the draw before it with its bindings, the draws after it cbs=? vbs=?.
 #include <windows.h>
 #include <d3d11_1.h>
 #include <wrl/client.h>
@@ -621,7 +625,7 @@ int main() {
   frame_trace::OnPresent(false);
   CHECK(frame_trace::internal::map_trace.tracing.load());
   constexpr size_t LONG_MAPS = 70000;
-  // A draw before the drops (its bindings known) and one after them (not known: cbs=? vbs=?).
+  // A draw before the drops (its bindings known) and one after them (still known: maps change no binding).
   Invoke<api_event::draw>(static_cast<reshade::api::command_list*>(&list), 3u, 1u, 0u, 0u);
   for (size_t index = 0; index < LONG_MAPS; ++index) {
     CHECK(SUCCEEDED(context->Map(vertex_buffer.Get(), 0, D3D11_MAP_WRITE_NO_OVERWRITE, 0, &mapped)));
@@ -652,16 +656,17 @@ int main() {
     if (const size_t at = line.find(" parts)."); at != std::string::npos) long_parts = std::stoi(line.substr(line.rfind('(', at) + 1));
   }
   CHECK(long_parts >= 2);
-  // v3: the drops from the sequence after the seeds (7), the first draw and the kept calls on.
+  // v3: the map drops from the sequence after the seeds (7), the first draw and the kept calls on; no bind dropped.
   const auto v3_path = folder / L"tw_map_trace_v3.txt";
   const auto long_v3 = Lines(v3_path, "v3");
   const auto long_draws = Lines(v3_path, "draw");
-  CHECK(long_v3.size() == 1 && Field(long_v3[0], "first_drop_seq") == std::to_string(7 + 1 + kept_calls) && Field(long_v3[0], "hash") == "off");
-  CHECK(long_draws.size() == 2 && Field(long_draws[0], "cbs") != "?" && Field(long_draws[1], "cbs") == "?" && Field(long_draws[1], "vbs") == "?");
-  std::printf("5. a long trace: %zu native maps kept, %zu calls dropped, %llu bytes written in %d parts; v3 first_drop_seq %s, the draw after"
-              " it cbs=? vbs=?\n",
+  CHECK(long_v3.size() == 1 && Field(long_v3[0], "first_native_drop_seq") == std::to_string(7 + 1 + kept_calls)
+        && Field(long_v3[0], "first_drop_seq") == "-" && Field(long_v3[0], "hash") == "off");
+  CHECK(long_draws.size() == 2 && Field(long_draws[0], "cbs") != "?" && Field(long_draws[1], "cbs") == "-" && Field(long_draws[1], "vbs") == "-");
+  std::printf("5. a long trace: %zu native maps kept, %zu calls dropped, %llu bytes written in %d parts; v3 first_native_drop_seq %s"
+              " (first_drop_seq -), the draw after it with its bindings (cbs=- vbs=-)\n",
               long_maps.size(), 2 * LONG_MAPS - kept_calls, static_cast<unsigned long long>(long_bytes), long_parts,
-              Field(long_v3[0], "first_drop_seq").c_str());
+              Field(long_v3[0], "first_native_drop_seq").c_str());
   std::filesystem::remove(trace_path);
 
   // 6. No present event: one present waited for it, then the trace without the hook.
@@ -816,7 +821,7 @@ int main() {
   CHECK(v3_header.size() == 1 && Field(v3_header[0], "hook") == "on" && Field(v3_header[0], "frames") == "2");
   CHECK(Field(v3_header[0], "native_calls") == "4" && Field(v3_header[0], "binds") == "12" && Field(v3_header[0], "draws") == "7"
         && Field(v3_header[0], "buffers") == "1");
-  CHECK(Field(v3_header[0], "first_drop_seq") == "-" && Field(v3_header[0], "hash") == "on"
+  CHECK(Field(v3_header[0], "first_drop_seq") == "-" && Field(v3_header[0], "first_native_drop_seq") == "-" && Field(v3_header[0], "hash") == "on"
         && std::ranges::count(Field(v3_header[0], "hash_ms"), ',') == 1);
   CHECK(Field(v3_header[0], "dropped_native_calls") == "0" && Field(v3_header[0], "dropped_binds") == "0" && Field(v3_header[0], "dropped_draws") == "0"
         && Field(v3_header[0], "dropped_buffers") == "0");
@@ -886,7 +891,7 @@ int main() {
               " the buffer made on thread %lu, ended on thread %lu\n",
               stream.size(), static_cast<unsigned long>(maker_thread), static_cast<unsigned long>(destroyer_thread));
   // 10. The game's device's end while the trace runs (another device's end first: nothing): the hooks out, the context
-  // let go.
+  // let go, the later draws' bindings not known.
   SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,3");
   frame_trace::Install();
   present_event();
@@ -896,11 +901,50 @@ int main() {
   other_mock.native = other_device;
   Invoke<api_event::destroy_device>(static_cast<reshade::api::device*>(&other_mock));
   CHECK(hook_state.hooks.size() == hooks::internal::BODIES && frame_trace::internal::map_trace.immediate_context.load() == context.Get());
+  draw();
+  const uint64_t device_end_sequence = frame_trace::internal::map_trace.sequence;
   Invoke<api_event::destroy_device>(static_cast<reshade::api::device*>(&mock_device));
   CHECK(hook_state.hooks.empty() && frame_trace::internal::map_trace.immediate_context.load() == nullptr);
+  draw();
+  for (int present = 0; present < 3; ++present) frame_trace::OnPresent(false);
+  CHECK(!frame_trace::internal::map_trace.tracing.load());
+  const auto device_end_v3 = Lines(v3_path, "v3");
+  const auto device_end_draws = Lines(v3_path, "draw");
+  CHECK(device_end_v3.size() == 1 && Field(device_end_v3[0], "first_drop_seq") == std::to_string(device_end_sequence));
+  CHECK(device_end_draws.size() == 2 && Field(device_end_draws[0], "cbs") != "?" && Field(device_end_draws[1], "cbs") == "?"
+        && Field(device_end_draws[1], "vbs") == "?");
   frame_trace::Uninstall();
   CHECK(Registered() == 0);
-  std::printf("10. the game's device's end: the hooks out, the context let go (another device's end: nothing)\n");
+  std::filesystem::remove(trace_path);
+  std::printf("10. the game's device's end: the hooks out, the context let go (another device's end: nothing), first_drop_seq %s,"
+              " the draw after it cbs=? vbs=?\n",
+              Field(device_end_v3[0], "first_drop_seq").c_str());
+
+  // 11. A call on the hooked context from another thread while the trace runs: pass-through from then on, said so in
+  // both files, the later draws' bindings not known.
+  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,1");
+  frame_trace::Install();
+  present_event();
+  frame_trace::OnPresent(false);
+  CHECK(hook_state.hooks.size() == hooks::internal::BODIES);
+  draw();
+  std::thread([&] { context->PSSetConstantBuffers(0, 1, seed_vs.GetAddressOf()); }).join();
+  CHECK(hook_state.foreign_thread.load());
+  draw();
+  draw();
+  frame_trace::OnPresent(false);
+  CHECK(!frame_trace::internal::map_trace.tracing.load() && hook_state.hooks.empty());
+  frame_trace::Uninstall();
+  CHECK(Registered() == 0);
+  const auto foreign_header = Lines(trace_path, "trace");
+  const auto foreign_v3 = Lines(v3_path, "v3");
+  const auto foreign_draws = Lines(v3_path, "draw");
+  CHECK(foreign_header.size() == 1 && Field(foreign_header[0], "native_hook") == "foreign_thread");
+  CHECK(foreign_v3.size() == 1 && Field(foreign_v3[0], "hook") == "foreign_thread" && Field(foreign_v3[0], "first_drop_seq") == "-");
+  CHECK(foreign_draws.size() == 3 && Field(foreign_draws[0], "cbs") != "?" && Field(foreign_draws[1], "cbs") == "?"
+        && Field(foreign_draws[1], "vbs") == "?" && Field(foreign_draws[2], "cbs") == "?");
+  std::printf("11. another thread's call while the trace runs: native_hook=foreign_thread, hook=foreign_thread, the draws after it"
+              " cbs=? vbs=?\n");
 
   // Part 2's trace back in its place for run.ps1.
   std::filesystem::remove(trace_path);

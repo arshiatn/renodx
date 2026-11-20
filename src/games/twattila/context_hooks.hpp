@@ -164,14 +164,17 @@ inline Observer Tracked(const void* context, size_t body) {
     return nullptr;
   }
   if (GetCurrentThreadId() != state.thread) {
+    // The time before the switch: a render-thread call passed on after it is never taken for one before it.
+    const int64_t now = Qpc();
     if (!state.foreign_thread.exchange(true)) {
-      state.foreign_qpc.store(Qpc(), std::memory_order_relaxed);
+      state.foreign_qpc.store(now, std::memory_order_relaxed);
       // The log line allocates: nothing may unwind through d3d11.
       try {
         renodx::utils::log::w("[Total War] Context hooks: thread ", GetCurrentThreadId(),
                               " called the game's context (body ", BODY_SLOTS[body],
                               "): every call goes straight on from now.");
       } catch (const std::exception&) {
+        // No-op: the switch stands without its log line.
       }
     }
     return nullptr;
@@ -545,12 +548,12 @@ inline bool Install(ID3D11DeviceContext* context, Observer observer, bool hash_c
 }
 
 // The game's device's end (ReShade's destroy_device): the hooks out with it. The installing feature calls it from its
-// own handler, under the lock it holds around its other removals.
-inline void OnDestroyDevice(reshade::api::device* device) {
-  if (internal::state.context.load() == nullptr || device->get_api() != reshade::api::device_api::d3d11) return;
-  if (reinterpret_cast<ID3D11Device*>(device->get_native()) == internal::state.device) {
-    Uninstall();
-  }
+// own handler, under the lock it holds around its other removals. True: they were in and came out.
+inline bool OnDestroyDevice(reshade::api::device* device) {
+  if (internal::state.context.load() == nullptr || device->get_api() != reshade::api::device_api::d3d11) return false;
+  if (reinterpret_cast<ID3D11Device*>(device->get_native()) != internal::state.device) return false;
+  Uninstall();
+  return true;
 }
 
 }  // namespace twattila::context_hooks
