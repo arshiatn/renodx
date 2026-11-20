@@ -1159,6 +1159,26 @@ inline void ReplayState(const StateBlock& block) {
   if ((block.parts & STATE_FACTION) != 0) ReplayFaction(block.faction, block.mask, block.node, block.state);
 }
 
+// The four loop groups' names, as the rows call them (the logs).
+constexpr std::array<const char*, 4> GROUP_NAMES = {"Depth A", "Colour A", "Depth B", "Colour B"};
+
+static bool bad_ops_logged = false;
+
+// N-1: the op walks step by the header's length, so a buffer whose headers do not tile it up to the cursor (a zero header
+// would never end) is never walked: its call runs directly. Logged once.
+inline bool OpsWellFormed(const Slot* slot) {
+  for (const uint32_t* op = slot->ops_begin; op < slot->ops_cursor; op += (*op >> 16)) {
+    if ((*op >> 16) == 0 || (*op >> 16) > static_cast<size_t>(slot->ops_cursor - op)) {
+      if (!bad_ops_logged) {
+        renodx::utils::log::w("[Total War] Threaded Draw Recording: a recorded op buffer is damaged; its calls run directly.");
+      }
+      bad_ops_logged = true;
+      return false;
+    }
+  }
+  return true;
+}
+
 // The replay of a call, on the render thread, in the game's order: what its chunks' ops need.
 struct Replay {
   uint8_t* real;
@@ -1270,8 +1290,9 @@ struct CompareCursor {
 inline CompareCursor MakeCompare(const Slot* compare_slot) {
   return {.cursor = compare_slot->ops_begin,
           .end = compare_slot->ops_cursor,
-          .result = ((compare_slot->flags & (SLOT_OVERFLOW | SLOT_UNKNOWN_CLASS)) != 0 ? CompareResult::SLOT_NOT_COMPARABLE
-                                                                                         : CompareResult::EQUAL)};
+          .result = ((compare_slot->flags & (SLOT_OVERFLOW | SLOT_UNKNOWN_CLASS)) != 0 || !OpsWellFormed(compare_slot)
+                         ? CompareResult::SLOT_NOT_COMPARABLE
+                         : CompareResult::EQUAL)};
 }
 
 // This chunk's stream must be the compare run's next ops.
@@ -1328,7 +1349,7 @@ inline void LatchOnDifference(Group group, CompareResult result) {
   if ((latched_groups & bit) == 0) {
     renodx::utils::log::w(std::format(
         "[Total War] Threaded Draw Recording: the compare of group {} differs: the group is switched off for this run.",
-        static_cast<uint32_t>(group)));
+        GROUP_NAMES[static_cast<uint32_t>(group) % GROUP_NAMES.size()]));
   }
   latched_groups |= bit;
 }
@@ -1678,16 +1699,18 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   lap(&CallTrace::chunk_zero);
 
   bool conflict = false;
+  bool damaged = false;
   for (uint32_t k = 0; k < chunks; ++k) {
     conflict = conflict || (SlotAt(k)->flags & SLOT_CONFLICT) != 0;
+    damaged = damaged || !OpsWellFormed(SlotAt(k));
   }
-  if (conflict) {
+  if (conflict || damaged) {
     if (trace_call != nullptr) {
-      ++trace_call->conflicts;
+      trace_call->conflicts += (conflict ? 1 : 0);
     }
     RunLoop(call, tracker, begin, end);
     lap(&CallTrace::rerun);
-    finish("conflict");
+    finish(conflict ? "conflict" : "bad ops");
     return;
   }
 
@@ -2001,6 +2024,8 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   }
   if (direct_reason != nullptr) {
     if (plan.meshes != 0) {
+      // S-1: the planned list is in use while these run: a dispatcher call from a mesh's body runs directly.
+      const RoundScope planned_scope;
       RunMeshes(round, tracker, 0, plan.meshes);
     } else {
       const auto accessor = reinterpret_cast<AccessorFn>(static_cast<uintptr_t>(game_calls.accessor));
@@ -2180,6 +2205,16 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   }
   lap(&CallTrace::chunk_zero);
 
+  // A damaged op buffer is never walked: nothing has run on the real tracker yet, so the whole round runs directly.
+  bool damaged = false;
+  for (uint32_t c = 0; c < chunks; ++c) damaged = damaged || !OpsWellFormed(SlotAt(c));
+  if (damaged) {
+    RunMeshes(round, tracker, 0, plan.meshes);
+    lap(&CallTrace::rerun);
+    finish("bad ops");
+    return;
+  }
+
   // Replay in list order: direct segments run on the real tracker; a census chunk that can't be trusted (an overflow, a seed
   // that is not the real tracker's, an entry state after a direct segment the chunks did not see) runs directly too.
   Replay replay = {
@@ -2345,7 +2380,8 @@ inline void Update(const Settings& settings, bool sites_in) {
     for (uint32_t group = 0; unusable >> group != 0; ++group) {
       if (((unusable >> group) & 1) != 0) {
         renodx::utils::log::w(std::format(
-            "[Total War] Threaded Draw Recording: group {} is on but not usable in this build: it runs the game's own loop.", group));
+            "[Total War] Threaded Draw Recording: group {} is on but not usable in this build: it runs the game's own loop.",
+            GROUP_NAMES[group]));
       }
     }
     unusable_logged |= unusable;
@@ -2559,8 +2595,6 @@ inline void Uninstall(bool sites_in) {
   using namespace internal;
   detached.store(true, std::memory_order_relaxed);
   if (shared == nullptr) return;
-  // S4: from here every thunk takes the direct way, also when a site is left in (and before the memory below goes).
-  shared->arena_size = 0;
   if (sites_in || shared->active.load(std::memory_order_acquire) != 0) {
     // A thread may still be in a thunk or the dispatcher: everything stays for the life of the process.
     if (!kept_logged) {
@@ -2569,6 +2603,9 @@ inline void Uninstall(bool sites_in) {
     kept_logged = true;
     return;
   }
+  // S4: no site is in (the engine code zeroes the size when the last comes out): zeroed before the memory goes. On the kept
+  // path it stays as it is: a dispatch that may still be recording needs its thunks on the slots.
+  shared->arena_size = 0;
   StopPool();
   for (void* memory : {static_cast<void*>(shared), static_cast<void*>(arena), static_cast<void*>(op_memory)}) {
     VirtualFree(memory, 0, MEM_RELEASE);
