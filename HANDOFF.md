@@ -4052,6 +4052,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         the permission system, reason "Undermining Oversight". Not retried, not worked around, not run by the coordinator.
         Trace files copied to bench/analysis_b2/replay/b2_W3m + b2_D1m. Waits for ATN: run the 4 commands yourself, or
         give a one-time unchanged retry, or skip S6's harness runs for now.
+        c2r_ DONE 15:xx (reports/c2r_review.md): MERGE AFTER FIXES. Must: F1 tracker +0x50 is READ by the driver (0x17ae4e5 /
+        0x17ae771; v2's N1 + c2i_ claim wrong) -> zero after warm-ups, copy back only non-zero; F2 first-mesh-of-chunk-0 race
+        (M0 +0x40 / +0x44 from another view) -> run direct; F3 trace totals include trace-only work. Should F4-F13 (x87 / MXCSR
+        every dispatch, no string alloc, +0x58 / +0x78 entry checks, op buffer size, K + chunk sizes in trace, CreateThread
+        retry, no per-present lock / copy, atomic detached, cpu_sets publish order, fake flush writes); F14 slot size per v3;
+        F15 for C.3 (one caller of 0x17b17f0, TLS, VF68 vtable check). Coordinator's Linux-name check: GameCalls fields
+        set_animation / set_dirty / set_shader_resource / set_faction_colours / texture_view + SetAnimationFn match Linux
+        method names -> RENAME to neutral (in the fix round).
+        c1o_ DONE 15:xx (reports/c1o_design_C_full_v3.md, PRIVATE): full build, no blockers. Groups Depth A 1.8-2.3 / Colour A
+        1.7-2.5 / Depth B 0.5-0.8 / Colour B 0.5-0.9 ms at K=4 (E), total 4.5-6.5 ms. 52 sites in C's own 2nd site table
+        (uint64, 12 spare; old table stays 25 sites uint32), one flush-entry hook 0x1778390 replaces 42 call sites, any-capture
+        replaces SETANY, folded driver loop 2 cut 0x17aed4a, 3 classes direct; heapfix batchfix keeps +0x14 live in N depth
+        bodies (seeds stay [0,0x14)); passtime FULL dev mode -> C stands down. Steps: C.2 fix round (+ v3 changes), C.2-3,
+        C.2-4 (4 group rows), NEW C.2-5 (B path), C.3-1..4. Batch: 8 starts ~45 min (+ optional N-heavy siege start: ask ATN
+        for a siege / city replay). c2i_ RESUMED 15:xx: fix round (F1-F14 + v3 changes + renames). c1r_ (af3a62018ba20d485)
+        RESUMED: independent review of note v3 + census -> reports/c1r_review_v3.md (gate before C.3's new groups).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
