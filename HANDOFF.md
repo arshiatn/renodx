@@ -402,6 +402,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | ATN, when ATN brings it up again
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
+- TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 (owner bd1o_) | bd2o_ B1 ( ... | ?
 - S1 FOLLOW-UPS: N1-N7 DONE by s5o_ in e6a835ffc (merged with S5 in ca057a7ee, 11- ... | ?
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
@@ -4543,6 +4544,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         implementer): C.3-2 = Colour A (11 sites, c1o_design_C_full_v3.md) + the SetGame MUST + c31r_ N1 / CHECK > 0 +
         N-7 / S-3 real-bytes colour paths -> c31r_ review -> fixes -> re-check -> merge. Then C.3-3 (B cut + Depth B),
         C.3-4 (Colour B). Agents: bd1o_, bd2o_, bd3o_, c3i_ (4 of 4).
+        bd3o_ DESIGN DONE 22:5x (reports/bd3o_design_B2_ring.md, 620 lines, saved by the coordinator from the transcript):
+        PIECE 1 B2 "parallel prepare" (HSG2) = heapfix prepare.c: P1 E9 at the instance prepare 0x17b92d0 (weighted task
+        only, by its name +0x1cc093c), P2 sort-call shim at 0x17b9297; modes 0 off / 1 prepass (pool merges + sorts all
+        weighted lists, the game's loop runs, sorted lists skip) / 2 full (parallel merge + sort, serial prefix sums, parallel
+        copy into the combined list; guard -> trampoline) / 3 check; stage 3 early start only if a census proves a window;
+        heapfix-private pool (<= 8 threads, events, K default 6); bit-exact (pointer arrays, combined list, start / end
+        indices). Gain W3 E: prepass -8..-10, full -10..-12.5 ms (14.2 ms wait M); no heapfix bytes at its sites. PIECE 2
+        ring fill: R1 retargets the 4 parallel-loop calls (+0x17ae71c / +0x17ae818 / +0x17ae8d8 / +0x17aed1f) to a
+        dispatcher on C's pool (WorkKind FILL, inline < 512 items, SFENCE, check mode), row "Parallel Instance Fill"
+        Experimental Off; W3 E -5..-5.7 ms render-thread CPU (6.99 M) vs Faster Job Wake-Ups off; R2 folds the fill into
+        C's dispatch after C's batch. Steps: S0 facts -> S1 prepare.c 550 -> S2 test 500 -> S3 review -> S4 fixes -> S5
+        author patch vs 4057eb8 (-> ATN) -> S6 early start (gated) / S7 instances sort; R-S0 -> R-S1 ~235 -> R-S2 test
+        ~305 -> R-S3 review -> R-S4. FOR ATN (3, designer recommends yes to all): (1) author patch = weighted part now,
+        the rest later; (2) early start only if the offline census proves >= 3 ms; (3) R1 now on C's pool, R2 after C's
+        batch. bd3r_ STARTED 22:5x (Opus xHigh, read-only): independent review + S0 items 1-5 + R-S0 ->
+        reports/bd3r_review.md. Agents: bd1o_, bd2o_, c3i_, bd3r_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4585,6 +4602,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         frees the stand-ins at the window end. Repro ideas, cheapest first: x86 harness with ballast up to Attila's
         address space / commit; a 120 s before-phase; Attila.exe's NVIDIA profile (driver settings = ATN's call). New
         switches need ATN's rules. Owner s5o_ (after the C chain), only if ATN wants it.
+      - [ ] TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 (owner bd1o_) | bd2o_ B1 (owner bd2o_) | bd3o_ B2 + ring
+        DONE (reports/bd3o_design_B2_ring.md) -> bd3r_ review + S0 / R-S0 (owner bd3r_) -> ATN's 3 answers -> implementers
+        (Sonnet High, one at a time unless ATN allows a heapfix implementer beside C's) -> reviews -> the ONE end batch.
       - [x] S5 RING GPU CHECKS (DONE 11-20 19:29: re-check with 8 pieces + H0 passed, parity EQUAL; s5r_ re-check 11-20; gate ANY game run / release with "Fewer Driver Waits" on, batch 3
         included; agents can't run the harness (classifier), ATN runs bench/analysis_b2/replay/atn_harness_runs.ps1): 1. DONE
         11-20 17:18 (EQUAL, upload differs, no unknown-body line) NVIDIA x86 parity:
