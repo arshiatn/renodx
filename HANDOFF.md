@@ -4377,6 +4377,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         x86 PASS (merge + final), engine_code -Quick PASS (merge), amd64 stubs, build32 x3 + amd64 twattila exit 0.
         c23r_ RESUMED: re-check 1d16f15f3 + 989d02892 + 0a651e74b -> merge rmt_c2. Then C.2-4 (c2i_) / C.3-2 (c3i_), one at
         a time. VB V1 waits for batch 3's result. Agents: b2a_, c23r_.
+        b2a_ BATCH 2b ANALYSIS DONE 19:2x (bench/analysis_b2b/report.md, saved by the coordinator: the harness blocked the
+        agent's Write): (1) FCU does NOT cause ATNmF's helper pairing / slower frames (ON -0.65 ms/f vs OFF1, -2.7 ms/f
+        driver waits). (2) NEW DEFECT, the ON -> OFF TRAP: FCU off after on -> +47 ms/f until the battle ends: the NVIDIA
+        driver stops renaming ReShade's 432 B push buffer (PushShaderInjections 38 ms/f: 215 tiny waits + one ~33 ms wait
+        a frame; game packets 28 -> 345 a frame). Fix: latch the native injection for the device's lifetime once used
+        (Off after a restart), alt. drop ReShade's push on D3D11; default stays Off. (3) W3t hash-free v3 trace clean
+        (+~2 ms/f): CB waits 0, 464 KB ring 6.65 ms/f, 8 MB rings 2.80 -> W3 likely NEUTRAL for the CB ring (VB = the
+        lever). (4) frame_trace NATIVE_CALLS_A_FRAME 6,144 -> 8,192 (W3 makes ~6,330 map + unmap a frame). (5) W3t's own
+        +30 ms step after its WPR stop (not measured; trap hypothesis). (6) BATCH 3 RISK: the row's On -> Off hand-backs
+        can trap the game's CBs and fake a WIN -> trap check per Off segment after an On, a trapped start = INVALID for
+        G3; any ring that takes over game buffers needs a latched / safe hand-back before it ships as a live row.
+        QUIET WINDOW 3, 19:2x: c23r_ HELD (re-check: M-1 / M-2 / S-2 look fixed, merge + B gating match; test run left).
+        HARNESS RE-CHECK started 19:2x BY THE COORDINATOR with ATN's exact PowerShell(...) rule (default
+        atn_harness_runs.ps1, h1-h5c on rmt_s5 183c59302; earlier outputs kept in replay/run_1718/): NOT STOPPED.
+        NEXT: s5r_ amends batch 3 for the trap; s5o_ FCU latch + NATIVE_CALLS 8,192; b2p_ updates the scripts; run.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
