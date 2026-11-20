@@ -4624,6 +4624,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         dispatch, built after C.3-4); (4) the x87 hot-spot sweep (plan line 316, not started); (5) conditional: the B2
         early-start fallback (only if bd3r_'s census says no), B2 S7 instances sort (only if S0 shows the 2nd wait there),
         B1 fiber park (only after the end batch, ATN's go). All ATN questions from them go to ATN in ONE list.
+        bd3r_ REVIEW DONE 23:3x (reports/bd3r_review.md): prepass + full GO WITH CHANGES; stage 3 as designed NO (by the
+        game's contract adds are legal until the task starts: no safe window; gap last producer -> prepare >= 13.3 ms
+        measured) -> REPLACED by a side-array presort + per-list commit-if-clean (exact whatever late adds occur); S7
+        (instances sort) PROMOTED: it is wait #0 (2.23 ms, the floor after B2), the weighted chain is wait #1 (11.90 ms);
+        ring R1 GO WITH CHANGES (gain -4..-5.4 E), R1.5 needs its own completion word, R2's Unmap = 11 bytes
+        0x17aed30..3a. Musts: M1 weighted entry node+0xa84 / flag +0xa94 (5th started), M2 wait accounting, M3 more FNV
+        checks; S0 + R-S0 answered (capacity kept, growth doubling, mesh sort is a total order, eax ignored, colour =
+        0x17ae8d8). bd3o_ RESUMED 23:3x: design v2 (all review items, S7 step, presort design + S0-bis) ->
+        reports/bd3o_design_B2_ring_v2.md. FOR ATN (one list later): S7 into the build (yes recommended), the presort
+        instead of "census or drop" (yes recommended); the author-patch split is answered (one package at the end).
+        Agents: c3i_, bd2r_, bd1r_, bd3o_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
