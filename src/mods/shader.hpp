@@ -214,9 +214,11 @@ static uint32_t constant_buffer_offset = 0;
 // Alignment of the custom push constant start (in 32-bit values). 0 disables additional alignment.
 static uint32_t push_constant_alignment = 4u;
 static auto minimum_constant_buffer_stages = reshade::api::shader_stage::pixel | reshade::api::shader_stage::compute;
-// D3D11 opt-in, may change at any time (off: ReShade's push_constants). ReShade's push Map(WRITE_DISCARD)s its one buffer a
-// slot on every draw, and a driver that does not rename it waits for the GPU each time. On, the injection is bound from
-// the add-on's own buffers on the immediate context (PushNativeD3D11Injection) and uploaded only when its bytes change.
+// D3D11 opt-in (off: ReShade's push_constants). ReShade's push Map(WRITE_DISCARD)s its one buffer a slot on every draw,
+// and a driver that does not rename it waits for the GPU each time. On, the injection is bound from the add-on's own
+// buffers on the immediate context (PushNativeD3D11Injection) and uploaded only when its bytes change. On takes effect at
+// once; off only on a device that never used it: the device that did keeps it until its end (ReShade's buffer, idle
+// meanwhile, came back no longer renamed by NVIDIA's driver: a GPU wait every frame).
 static std::atomic_bool use_native_d3d11_injection = false;
 
 namespace internal {
@@ -233,7 +235,8 @@ struct NativeInjectionBuffer {
 };
 struct NativeInjectionRing {
   std::shared_mutex mutex;
-  reshade::api::device* device = nullptr;
+  // Written with `mutex` held; read without it to keep the injection on this device with the opt-in off.
+  std::atomic<reshade::api::device*> device = nullptr;
   std::vector<NativeInjectionBuffer> buffers;
   size_t current = 0;
   std::vector<uint8_t> uploaded;  // the current buffer's bytes; empty: nothing uploaded yet
@@ -2087,10 +2090,14 @@ static thread_local uint64_t pending_post_command_id = 0u;
 
 // use_native_d3d11_injection: the injection bound at `slot` to the stages ReShade's push binds on D3D11 (all graphics or
 // compute: its push range's visibility is all), from the ring's current buffer, uploaded first when its bytes changed.
-// False: not taken (another API, a deferred context, a failed upload); the caller pushes through ReShade. Offset 0 only:
-// ReShade's buffer keeps an earlier push's values before the offset.
+// False: not taken (the opt-in off on a device that never used it, another API, a deferred context, a failed upload);
+// the caller pushes through ReShade. Offset 0 only: ReShade's buffer keeps an earlier push's values before the offset.
 static bool PushNativeD3D11Injection(reshade::api::command_list* cmd_list, uint32_t slot, bool is_dispatch) {
+  auto& ring = internal::native_injection_ring;
   auto* device = cmd_list->get_device();
+  if (!use_native_d3d11_injection.load(std::memory_order_relaxed) && ring.device.load(std::memory_order_relaxed) != device) {
+    return false;
+  }
   if (slot >= D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT || shader_injection_size == 0u
       || device->get_api() != reshade::api::device_api::d3d11) {
     return false;
@@ -2100,7 +2107,6 @@ static bool PushNativeD3D11Injection(reshade::api::command_list* cmd_list, uint3
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return false;
   const std::span<const uint8_t> bytes = {reinterpret_cast<const uint8_t*>(shader_injection),
                                           shader_injection_size * sizeof(float)};
-  auto& ring = internal::native_injection_ring;
   const std::unique_lock lock(ring.mutex);
   if (ring.device != device) {
     ring.Reset();
@@ -2310,8 +2316,7 @@ inline constexpr auto OnCommandAction = []<typename T, typename Context>(
       const bool is_compute = shader_stage == reshade::api::pipeline_stage::compute_shader;
       bool pushed_natively = false;
       // A resource tag changes the injection a draw: ReShade's push.
-      if (use_native_d3d11_injection.load(std::memory_order_relaxed) && injection_offset == 0u
-          && resource_tag_float == nullptr) {
+      if (injection_offset == 0u && resource_tag_float == nullptr) {
         pushed_natively = PushNativeD3D11Injection(
             context.cmd_list,
             static_cast<uint32_t>(state.pipeline_details->injection_register_index),
@@ -2667,7 +2672,7 @@ inline void OnPresent(
     if (injection_layout.handle != 0u && injection_index != -1) {
       const uint32_t offset = (constant_buffer_offset != 0 ? constant_buffer_offset : injection_offset);
       bool pushed_natively = false;
-      if (use_native_d3d11_injection.load(std::memory_order_relaxed) && offset == 0u) {
+      if (offset == 0u) {
         pushed_natively = PushNativeD3D11Injection(cmd_list, static_cast<uint32_t>(injection_register_index), false);
       }
       if (!pushed_natively) {

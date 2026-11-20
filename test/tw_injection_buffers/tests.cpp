@@ -1,6 +1,6 @@
 // mods::shader's native D3D11 injection (PushNativeD3D11Injection, use_native_d3d11_injection: Attila's Fewer Constant
 // Uploads) on WARP with ReShade's command list mocked and the context's Map counted (its vtable slot):
-// 1. The opt-in is off by default.
+// 1. The opt-in is off by default: not taken (false, no map, nothing bound) on a device that never used it; then on.
 // 2. 200 pushes of the same 432 bytes (Attila's ShaderInjectData size): one upload (one WRITE_DISCARD map), 200 binds
 //    (slot 13 cleared before each push, bound again after it at VS, HS, DS, GS and PS, not CS); the bound buffer holds
 //    the bytes (a staging copy). A dispatch's push binds CS only.
@@ -11,7 +11,9 @@
 //    first and last 16 bytes), then 4 draws of the same bytes: every pixel holds its own push's values; one upload a
 //    change; the ring grew past 1 buffer and stays at 8 or fewer. CONTROL: a change with the re-upload skipped draws the
 //    old values.
-// 6. destroy_device of the ring's device releases it; another device's leaves it.
+// 6. The latch: the opt-in off after the ring's device used it: still taken there (an upload, the bytes bound), not on
+//    another device that never used it. CONTROL: the ring told it follows no device: not taken (ReShade's push).
+// 7. destroy_device of the ring's device releases it (then not taken with the opt-in off); another device's leaves it.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -166,7 +168,10 @@ int main() {
 
   // 1.
   CHECK(!shader::use_native_d3d11_injection.load());
-  std::printf("1 off by default\n");
+  CHECK(!shader::PushNativeD3D11Injection(&cmd_list, SLOT, false));
+  CHECK(discard_maps == 0 && Bound(immediate.Get(), 4) == nullptr && ring.device == nullptr);
+  shader::use_native_d3d11_injection.store(true);
+  std::printf("1 off by default: not taken on a device that never used it\n");
 
   // 2.
   ComPtr<ID3D11Buffer> first_bound;
@@ -317,12 +322,34 @@ int main() {
               " CONTROL: the skipped upload draws the old values\n", CHANGES, CHANGES, ring_size);
 
   // 6.
+  shader::use_native_d3d11_injection.store(false);
+  injection[1] = -8.f;
+  Unbind(immediate.Get());
+  const int maps_before_latch = discard_maps;
+  CHECK(shader::PushNativeD3D11Injection(&cmd_list, SLOT, false));
+  CHECK(discard_maps == maps_before_latch + 1 && Holds(device.Get(), immediate.Get(), BoundOnce(immediate.Get(), false).Get(), injection));
   Device another_device;
+  another_device.native = device;
+  mock::CommandList another_list;
+  another_list.owner = &another_device;
+  another_list.native = immediate;
+  Unbind(immediate.Get());
+  CHECK(!shader::PushNativeD3D11Injection(&another_list, SLOT, false));
+  CHECK(Bound(immediate.Get(), 4) == nullptr && ring.device == &game_device);
+  // CONTROL: the latch forgotten.
+  ring.device = nullptr;
+  CHECK(!shader::PushNativeD3D11Injection(&cmd_list, SLOT, false));
+  CHECK(discard_maps == maps_before_latch + 1 && Bound(immediate.Get(), 4) == nullptr);
+  ring.device = &game_device;
+  std::printf("6 the opt-in off: the ring's device keeps it (an upload, the bytes bound), another device not; CONTROL: forgotten, not taken\n");
+
+  // 7.
   shader::OnDestroyDevice(&another_device);
   CHECK(ring.device == &game_device && !ring.buffers.empty());
   shader::OnDestroyDevice(&game_device);
   CHECK(ring.device == nullptr && ring.buffers.empty() && ring.uploaded.empty() && ring.current == 0);
-  std::printf("6 destroy_device: another device's leaves the ring, its own releases it\n");
+  CHECK(!shader::PushNativeD3D11Injection(&cmd_list, SLOT, false));
+  std::printf("7 destroy_device: another device's leaves the ring, its own releases it (then not taken with the opt-in off)\n");
   std::printf("PASS\n");
   return 0;
 }

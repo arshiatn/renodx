@@ -33,6 +33,8 @@ inline const RingPlugin RING_PLUGIN = {
     .name = "ring",
     .attach =
         [](ID3D11Device* device, ID3D11DeviceContext* context) {
+          // The detach takes the ring out (the row's Off latch kept off).
+          twattila::buffer_pool::internal::latch_off = false;
           twattila::device_loss::devices = {
               {.device = device, .single_threaded = (device->GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED) != 0}};
           ring_adapter::device = device;

@@ -639,6 +639,8 @@ int main() {
   CHECK(hook_state.hooks.empty());
   const size_t kept_calls = std::min(frame_trace::internal::MAX_NATIVE_CALLS, 12 * frame_trace::internal::NATIVE_CALLS_A_FRAME);
   CHECK(kept_calls == frame_trace::internal::MAX_NATIVE_CALLS);
+  // RENODX_TW_MAP_TRACE=<s>,8 (W3's 6,330 native records a frame) keeps every frame's room.
+  CHECK(8 * frame_trace::internal::NATIVE_CALLS_A_FRAME <= frame_trace::internal::MAX_NATIVE_CALLS);
   const auto long_header = Lines(trace_path, "trace");
   CHECK(long_header.size() == 1 && Field(long_header[0], "native_calls") == std::to_string(kept_calls)
         && Field(long_header[0], "dropped_native_calls") == std::to_string(2 * LONG_MAPS - kept_calls));

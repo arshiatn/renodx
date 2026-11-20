@@ -1329,9 +1329,11 @@ float engine_code_row = 1.f;
 float render_lists_row = 1.f;
 // Faster Job Wake-Ups (Experimental, off; graphics_page-style row below): engine_code.hpp's job system sites.
 float job_wakeups_row = 0.f;
-// Fewer Constant Uploads (Experimental, off): mods::shader::use_native_d3d11_injection.
+// Fewer Constant Uploads (Experimental, off): mods::shader::use_native_d3d11_injection (once used, the game's device keeps
+// it: Off after a restart).
 float fewer_constant_uploads_row = 0.f;
-// Fewer Driver Waits (Experimental, off): buffer_pool.hpp, the game's constant buffers through one ring.
+// Fewer Driver Waits (Experimental, off): buffer_pool.hpp, the game's constant buffers through one ring (Off after a
+// restart).
 float fewer_driver_waits_row = 0.f;
 // Faster Effect Prefetch (Experimental, off): engine_code.hpp's effect tree child sum site and particle update loop site.
 float effect_prefetch_row = 0.f;
@@ -2003,7 +2005,8 @@ void ConfigureAddon() {
           .label = "Fewer Constant Uploads (Experimental)",
           .section = "Graphics (Experimental)",
           .tooltip = "The mod's shader settings go to the GPU once a frame instead of before every draw:\n"
-                     "less waiting on the graphics driver on the render thread. Same results.",
+                     "less waiting on the graphics driver on the render thread. Same results.\n"
+                     "Turning it off takes effect after a restart.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{
@@ -2014,7 +2017,8 @@ void ConfigureAddon() {
           .label = "Fewer Driver Waits (Experimental)",
           .section = "Graphics (Experimental)",
           .tooltip = "The game's shader constants go to the GPU through one shared ring instead of a new buffer each time:\n"
-                     "the render thread waits less for the graphics driver. Same results.",
+                     "the render thread waits less for the graphics driver. Same results.\n"
+                     "Off applies after a restart.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

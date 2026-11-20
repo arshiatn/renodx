@@ -1,5 +1,15 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Fewer Constant Uploads Off after a restart (2026-11-20; built only, not stamped, not installed, not run in game)
+
+- Fixed: **Fewer Constant Uploads** turned Off after On cost +47 ms a frame until the battle ended (batch 2b): ReShade's
+  432 B push buffer, idle while the row was on, came back no longer renamed by NVIDIA's driver (one ~33 ms GPU wait a
+  frame). Now a device that used the row keeps it until its end (`mods/shader.hpp`: PushNativeD3D11Injection takes the
+  push while the opt-in is on or the ring follows that device); Off takes effect after a restart (the tooltip says so).
+  Checked in `test/tw_injection_buffers` (the latch, its control, the device's end).
+- Debug: the map trace's room for native calls 6,144 -> 8,192 a frame (W3: ~6,330 map + unmap records a frame; 8 frames
+  still fit the 65,536 cap).
+
 ## Dev, Fewer Driver Waits (2026-11-20; built only, not stamped, not installed, not run in game)
 
 - New row (Graphics (Experimental), **off** by default): **Fewer Driver Waits** (`buffer_pool.hpp`). The game's dynamic
@@ -14,11 +24,13 @@
   rewrites the three copy slots of a context's table in place after a Flush and back at the next copy, so both versions
   are hooked (read at the install around one 16-byte copy between two buffers of the ring's own and one Flush).
 - In at the first present with the row on, on the render thread, with the map trace's rules (one D3D11 device,
-  single-threaded, the bodies checked). Out when the row goes off, at the device's end and at the unload: every buffer
-  written back into itself and every slot of every live state rebound to it first. A call on the context from another
+  single-threaded, the bodies checked). Out at the device's end and at the unload: every buffer written back into itself
+  and every slot of every live state rebound to it first. The row's Off applies after a restart (logged once: "stays on
+  until the game restarts"; the tooltip says so): batch 3's live Off handed the game's buffers back and 4 of 6 starts got
+  +11..+45 ms a frame (the driver no longer renamed them). A call on the context from another
   thread, a lost device, a body in the context's table that the install never saw (checked at each present and after
   each swap: another d3d11.dll build) or a swap below the hook: the ring unwinds at the render thread's next call and
-  stays off until the row is turned off and on again (logged). Our own constant buffers are made below ReShade (no
+  stays off until the row is turned off and on again (logged, with "Restart the game for full speed."). Our own constant buffers are made below ReShade (no
   init_resource): never in the ring. Rome II, Thrones and WH3 compile it without the row.
 - Checked in `test/tw_buffer_pool` (x86, amd64, WARP: pixels, compute output and copies equal with the ring, a full ring,
   another thread's call and the measure path beside it, seven CONTROLS that must differ; Get / Get1 / Map parity and the

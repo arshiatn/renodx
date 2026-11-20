@@ -57,9 +57,11 @@ constexpr size_t FIRST_PIECES = 8;
 constexpr size_t MAX_PIECES = 32;
 constexpr UINT MAX_BUFFER_BYTES = 65536;
 constexpr UINT WHOLE = D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT;  // a whole bind's window as Get1 gives it: 0 + 4096
-// Test seams: the most pieces (MAX_PIECES), and a piece's event as GetData(DONOTFLUSH) answers it.
+// Test seams: the most pieces (MAX_PIECES), a piece's event as GetData(DONOTFLUSH) answers it, and the row's Off
+// latched (false: Off takes the ring out at once, as the removal tests and the map replay need).
 static size_t piece_cap = MAX_PIECES;
 static HRESULT (*piece_done)(ID3D11DeviceContext* context, ID3D11Query* query) = nullptr;
+static bool latch_off = true;
 
 struct alignas(UNIT_BYTES) Unit {
   std::array<uint8_t, UNIT_BYTES> bytes = {};
@@ -184,7 +186,8 @@ struct Pool {
   bool lost = false;   // a piece's event failed, or a map on a removed device: the device is gone
   bool quiet = false;  // a debug frame: the full ring's line waits
   bool full_logged = false;
-  uint32_t open_maps = 0;  // ring maps not yet unmapped
+  bool off_latched = false;  // the row's Off while in (logged once): the ring stays in
+  uint32_t open_maps = 0;    // ring maps not yet unmapped
   std::vector<std::unique_ptr<Piece>> pieces;  // in ring order
   size_t current = 0;
   UINT next_unit = 0;  // in the current piece (PIECE_UNITS: none written there, the ring full)
@@ -897,6 +900,7 @@ inline void Release() {
   pool.lost = false;
   pool.open_maps = 0;
   pool.full_logged = false;
+  pool.off_latched = false;
   pool.context = nullptr;
   pool.device = nullptr;
   const std::lock_guard lock(pool.mutex);
@@ -1060,8 +1064,9 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 
 // At each present, on the present thread (the render thread in Attila), `context` the game's immediate context below
 // ReShade: destroyed buffers and dead states' tables freed, the context's table checked; the ring in when `on` (its
-// first present on, again after the row was off when it stopped), out when off or stopped (with no ring map open).
-// `quiet`: a debug frame (its line waits).
+// first present on, again after the row was off when it stopped), out when stopped (with no ring map open). The row's
+// Off keeps it in until the device's end: the game's buffers handed back live can come back no longer renamed by the
+// driver (GPU waits every frame); the saved Off applies at the next start. `quiet`: a debug frame (its line waits).
 inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
   using internal::pool;
   namespace hooks = internal::hooks;
@@ -1120,13 +1125,22 @@ inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
     }
     const bool stop = pool.stopped || pool.lost || pool.unwind_wanted.load(std::memory_order_relaxed)
                       || hooks::state.foreign_thread.load(std::memory_order_relaxed);
+    if (!on && !stop && internal::latch_off) {
+      if (!pool.off_latched) {
+        pool.off_latched = true;
+        renodx::utils::log::i("[Total War] Fewer Driver Waits: stays on until the game restarts (the row's Off applies then).");
+      }
+      return;
+    }
+    pool.off_latched = false;
     if ((on && !stop) || pool.open_maps != 0) return;
     internal::Remove();
     if (stop && on) {
       Microsoft::WRL::ComPtr<ID3D11Device> device;
       context->GetDevice(device.GetAddressOf());
       pool.refused = device.Get();
-      renodx::utils::log::w("[Total War] Fewer Driver Waits: off until the row is turned off and on again.");
+      renodx::utils::log::w("[Total War] Fewer Driver Waits: off until the row is turned off and on again. Restart the game for"
+                            " full speed.");
     }
     return;
   }
