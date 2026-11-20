@@ -4429,6 +4429,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         constants written the old way meanwhile" (harness stays at 8). Row stays OFF (Experimental). Agents RESUMED
         20:2x: s5o_ (commit 1 FCU latch, commit 2 ring latch), b2a_ (batch 3 analysis: G2 mechanism, why D1 LOSS, 32-piece
         growth / reclaim bug?, the trap's buffer, verdict for the row + the VB track) -> bench/analysis_b3/report.md.
+        s5o_ LATCHES DONE 20:4x (rmt_s5, local, on atn-mods 224f80bb3): 29db74221 src/mods/shader.hpp FCU latch (native
+        injection kept on a device once used, NativeInjectionRing::device atomic, reset clears it; tooltip "Turning it
+        off takes effect after a restart."; NATIVE_CALLS_A_FRAME 8,192; tw_injection_buffers parts 1 / 6 / 7, tw_map_trace
+        fit check) + 083d014f9 Fewer Driver Waits Off latch (Update skips Remove() while installed + row Off + no stop; logs
+        once; On clears it; stops / device end / Uninstall unwind; seam latch_off, false in tests + harness adapter;
+        tooltip "Off applies after a restart."). WARP suites x86 + amd64 PASS, W3m parity EQUAL, gated builds incl.
+        generic / devkit / ue-extended exit 0, name check plain words. REVIEW s5x_ (Opus xHigh) RESUMED ->
+        reports/s5x_review_latch.md -> s5o_ fixes -> s5x_ re-checks -> merge. c2i_ RESUMED: C.2-4 (rows + carry-overs).
+        Agents: b2a_, s5x_, c2i_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
