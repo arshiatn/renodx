@@ -4297,6 +4297,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         controls, gates incl. VB cost without waits + no wait just moved, row 3 modes). H0: CB ring = the D1m lever, cost
         gate + NVIDIA parity MET -> CB ring to in-game batch 3 BEFORE the VB work. s5o_ RESUMED: FIRST_PIECES = 8 + C2's
         one-time address-space log (one commit). NEXT slot: s5r_ design v3 addendum (C1-C4 + S1-S5 + rewrite 0 c).
+        ATN 18:3x: (1) render_mt GAME BATCHES = coordinator runs them without asking (bench scripts, agents HELD, fresh
+        backups, hash-checked restore; PC restart stays ATN's -> the final bench needs ATN's reboot first). (2) ATN added
+        exact allow rules for atn_harness_runs.ps1 (none / -Overhead / -H0) to .claude/settings.local.json as Bash(...)
+        with backslashes: Git Bash eats unquoted backslashes, so a working Bash command can't match them -> asked ATN
+        to add the same three as PowerShell(...) (coordinator runs them through the PowerShell tool). First real use =
+        the next harness need (h9 re-run after FIRST_PIECES = 8, or V5a), agents held; still stopped -> report, no retry.
+        Docs check (claude-code-guide): auto mode drops wildcard script / interpreter rules at entry; autoMode block only
+        in user settings.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
