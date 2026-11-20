@@ -4262,6 +4262,41 @@ heading text are in HANDOFF_ARCHIVE.md)
         stubs, cpu_sets, build32 exit 0. The A regressions were test-side (latch state between tests). Name check: plain
         words (RunLoop generic). N-6 -> C.2-4, N-7 -> C.3. REVIEW of 411694a81 QUEUED (next slot).
         s5x_ RESUMED 18:0x (slot 3 of 3): independent review of VB design v2 -> reports/s5x_review_vb.md.
+        s5o_ H0 DONE 18:1x: rmt_s5 0ea33703d (local): the harness offers the ring only the game's buffers (a v1 map line
+        OR a v3 buffer line = ReShade init_resource; coordinator ACCEPTS that deviation: v1-only would skip 100 game CBs
+        never mapped in the traced frames); not offered on b2: 61 buffers, 4 dynamic CBs (the add-on's two 256 KB +
+        ReShade's 432 B / 80 B push buffers); --addon-buffers ring = old behaviour. tw_map_replay + tw_buffer_pool x86 +
+        amd64 PASS (WARP), W3m frames 1-2 parity EQUAL. atn_harness_runs.ps1 -H0 (h7 D1m locator native, h8 D1m overhead
+        x20, h9 W3m locator ring) = QUIET WINDOW, waits for ATN. c23r_ RESUMED (slot): review of b4c4739f2 + 411694a81 ->
+        reports/c25r_review.md.
+        c3i_ C.3-1 FIX ROUND DONE 18:2x: rmt_c3 04836950c (on its atn-mods merge 8698498f1, local, Sonnet trailer): M1
+        protection pre-pass + restore + whole-table stand-down (+ found: sites on page 0x17b1000 left it RWX -> restore
+        last-made-first), M2 last removal checks the whole recording page, S1 staying_in + D:950 arena 0 -> direct, S2
+        refusal latch, S3 sticky left_in, S4 a-d tests, S5 per-group stand-down + log, nits, BuildCut parameterized,
+        usable_groups. Tests sites / loop / draw_recording / engine_code -Quick x86 PASS; gated builds exit 0; name check
+        plain words. FLAG: after the merge the loop test's continuation-guard-off CONTROL no longer differs on one-thread
+        stages (only workers K 8 / 16) -> c3i_ re-based it (timing-dependent) -> c31r_ RESUMED: re-check + find why
+        (masked by C.2-3's S-1 class check? a depth-path change?) + a deterministic control.
+        QUIET WINDOW 2, 18:1x: agents HELD (c31r_ mid re-check, lead = warm-up +0x40 / +0x44 restore; s5x_ VB review GO
+        WITH CHANGES coming: idle reuse leaves pool backings held as current -> 64 MB budget fills; c23r_ C.2-5 test run
+        x86 exit 0, report not written). H0 GPU RUNS (ATN's terminal 18:15-18:21, ring at 0ea33703d, game buffers only):
+        h7 D1m native: cb_discard 26.4 / 23.7 ms/f (waits 16.6 / 13.9), MARK REPRODUCED, the waits on the GAME's CBs (64 B
+        0x11c93264 14 + 10 ms, 57,344 B 0x11cc55a4 8-9.6 ms every frame, 64 B 0x11a303e4 6 ms, 80 B); vb_discard 0.1 ms/f.
+        h8 D1m overhead x20: native 23.33 +- 2.96 vs ring 4.66 +- 0.25 = ring -18.67 +- 2.97 ms/f (real game CBs, not
+        ReShade's 432 B). h9 W3m ring: all calls 3.44 / 3.17 vs native 3.75 / 3.31 = the ring is cheaper (gate passed);
+        vb_discard waits 2.4 / 2.2 unchanged (8 MB rings). -> CB ring matters in D1m-like frames, VB part in W3m-like
+        frames; in-game proof = batch 3. Agents RESUMED 18:2x (s5x_ got the H0 data).
+        s5x_ VB DESIGN REVIEW DONE 18:3x (reports/s5x_review_vb.md): GO WITH CHANGES C1-C4. C1 idle reuse holds pool backings
+        for good (W3m ~51 of 64 MB idle -> bursts fall back native) -> End(own.done) at install / IA seed, an idle DISCARD
+        goes back to own G + returns the backing (class A really 0 MB); C2 32-bit address space: measure first (one-time
+        free / largest-block log in ATN's heaviest battle), floor guard, release unused backings after N presents, grow at
+        a present not inside the game's Map, x86 budget from data; C3 copies INTO G re-end the event, a destroyed G's
+        backing back ENDED, reclaim in one locked pass (R1 lesson); C4 branch >= 47085a2c8, FIRST_PIECES out of V2, V3a idle
+        reuse only (0 MB) / V3b switch + pools + substitution + unwind, harness VB words (V5a) before V3b, review after V3b.
+        Should S1-S5 (odd IASetVertexBuffers native + re-read, 464 KB backings outside the budget, part 8 counters +
+        controls, gates incl. VB cost without waits + no wait just moved, row 3 modes). H0: CB ring = the D1m lever, cost
+        gate + NVIDIA parity MET -> CB ring to in-game batch 3 BEFORE the VB work. s5o_ RESUMED: FIRST_PIECES = 8 + C2's
+        one-time address-space log (one commit). NEXT slot: s5r_ design v3 addendum (C1-C4 + S1-S5 + rewrite 0 c).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
