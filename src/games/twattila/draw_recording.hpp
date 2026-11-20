@@ -120,6 +120,8 @@ struct alignas(SLOT_SIZE) Slot {
   // What the warm-up left: the tracker's first 0x14 bytes (read by colour only) and the animation index.
   std::array<uint8_t, 0x14> seed_fields = {};
   int32_t seed_anim = -1;
+  // The header of the last op when it is a constant (equal constants that follow it add to its repeat count); else null.
+  uint32_t* last_const = nullptr;
 };
 static_assert(sizeof(Slot) == SLOT_SIZE && offsetof(Slot, tracker) == 0x00 && offsetof(Slot, mode) == 0xa0 && offsetof(Slot, anim) == 0xa4);
 
@@ -185,45 +187,92 @@ constexpr bool TEST_SWITCHES = false;
 
 namespace internal {
 
-// The kinds of op; 0 is a site this build does not record (its chunk is run again).
-enum class OpKind : uint16_t { NONE, FLUSH, VF68, ANIM, COUNT };
+// The kinds of op (0: a site this build does not record; its chunk is run again), and what a site does in Record.
+enum class OpKind : uint16_t { NONE, FLUSH, VF68, ANIM, CONSTANT, SRV, FACTION, COUNT };
+enum class SiteKind : uint8_t { NONE, FLUSH, VF68, ANIM, SETUP, CONST1, CONST2, SRV, FACTION };
 
 struct SiteInfo {
   Group group;
-  OpKind kind;
-  // The animation site's index on the game's stack (stack[0] is the return address).
-  uint32_t anim_stack;
+  SiteKind kind;
+  // ANIM: the index's slot on the game's stack (stack[0] is the return address). SRV: the slot's offset from the state.
+  uint32_t operand;
 };
 constexpr std::array<SiteInfo, static_cast<size_t>(Site::COUNT)> SITES = {{
-    {Group::DEPTH_A, OpKind::FLUSH, 0},
-    {Group::DEPTH_A, OpKind::FLUSH, 0},
-    {Group::DEPTH_A, OpKind::FLUSH, 0},
-    {Group::DEPTH_A, OpKind::VF68, 0},
-    {Group::DEPTH_A, OpKind::ANIM, 9},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::COLOUR_A, OpKind::NONE, 0},
-    {Group::SHARED, OpKind::FLUSH, 0},
+    {Group::DEPTH_A, SiteKind::FLUSH, 0},
+    {Group::DEPTH_A, SiteKind::FLUSH, 0},
+    {Group::DEPTH_A, SiteKind::FLUSH, 0},
+    {Group::DEPTH_A, SiteKind::VF68, 0},
+    {Group::DEPTH_A, SiteKind::ANIM, 9},
+    {Group::COLOUR_A, SiteKind::FLUSH, 0},
+    {Group::COLOUR_A, SiteKind::FLUSH, 0},
+    {Group::COLOUR_A, SiteKind::FLUSH, 0},
+    {Group::COLOUR_A, SiteKind::FLUSH, 0},
+    {Group::COLOUR_A, SiteKind::SETUP, 0},
+    {Group::COLOUR_A, SiteKind::VF68, 0},
+    {Group::COLOUR_A, SiteKind::VF68, 0},
+    // The "any" byte is captured at the flush now: this site is not written.
+    {Group::COLOUR_A, SiteKind::NONE, 0},
+    {Group::COLOUR_A, SiteKind::ANIM, 11},
+    {Group::COLOUR_A, SiteKind::CONST1, 0},
+    {Group::COLOUR_A, SiteKind::CONST2, 0},
+    {Group::COLOUR_A, SiteKind::SRV, 0x41f4},
+    {Group::COLOUR_A, SiteKind::SRV, 0x421c},
+    {Group::COLOUR_A, SiteKind::FACTION, 0},
+    {Group::SHARED, SiteKind::FLUSH, 0},
 }};
+
+static GameCalls game_calls;
+
+// The colour loop's meshes: which chunk set each one up in the call being recorded. A mesh set up by two chunks would have its
+// +0x40 / +0x44 written (and read back by the virtual calls) by two threads: the call then runs directly, before any replay.
+// Entries are {mesh 32 bits | call 24 bits | chunk 8 bits}; an entry of an older call is free.
+constexpr uint32_t OWNER_ENTRIES = 8192;
+constexpr uint32_t OWNER_PROBES = 64;
+static std::array<std::atomic<uint64_t>, OWNER_ENTRIES> owners;
+static uint32_t owner_call = 0;
+
+// Starts a call's registrations (render thread, before the wake).
+inline void NextOwnerCall() {
+  if (++owner_call >= (1u << 24)) {
+    for (std::atomic<uint64_t>& entry : owners) {
+      entry.store(0, std::memory_order_relaxed);
+    }
+    owner_call = 1;
+  }
+}
+
+// False: the mesh is owned by another chunk in this call, or the table is too full to say.
+inline bool RegisterMesh(uint32_t mesh, uint32_t chunk) noexcept {
+  const uint64_t mine = (static_cast<uint64_t>(mesh) << 32) | (static_cast<uint64_t>(owner_call) << 8) | chunk;
+  uint32_t index = (mesh * 2654435761u) >> 19;
+  for (uint32_t probe = 0; probe < OWNER_PROBES; ++probe, index = (index + 1) % OWNER_ENTRIES) {
+    uint64_t entry = owners[index].load(std::memory_order_relaxed);
+    for (;;) {
+      if (((entry >> 8) & 0xffffff) == owner_call) {
+        if ((entry >> 32) == mesh) return (entry & 0xff) == chunk;
+        break;
+      }
+      if (owners[index].compare_exchange_weak(entry, mine, std::memory_order_relaxed)) return true;
+    }
+  }
+  return false;
+}
 
 // Payloads, in dwords. An op is a header (kind in the low 16 bits, the op's size in dwords, header included, in the high 16)
 // and its payload.
 constexpr uint32_t FLUSH_PAYLOAD = 14;  // mesh, 10 arguments, mesh +0x40, mesh +0x44, the tracker's +0x69 byte (any)
 constexpr uint32_t VF68_PAYLOAD = 5;    // mesh, 2 arguments, mesh +0x40, mesh +0x44
 constexpr uint32_t ANIM_PAYLOAD = 3;    // state, value, index
-// The most bytes the ops of one depth item take: its flush, the shared-state call and an animation change.
-constexpr uint32_t DEPTH_OP_BYTES_PER_ITEM = 4 * (1 + FLUSH_PAYLOAD + 1 + VF68_PAYLOAD + 1 + ANIM_PAYLOAD);
+constexpr uint32_t CONST_PAYLOAD = 3;   // object, the float's bits, repeat count
+constexpr uint32_t SRV_PAYLOAD = 2;     // slot, texture
+constexpr uint32_t FACTION_PAYLOAD = 4; // faction, mask, node, state
+// The block a CONST2 site sets, from the state.
+constexpr uint32_t CONST2_BLOCK = 0x2d4;
+// The most bytes the ops of one item take: a flush (an item flushes at most once), the shared-state calls and an animation
+// change; colour adds the two constants, the two textures and the faction block.
+constexpr uint32_t DEPTH_OP_BYTES_PER_ITEM = 4 * ((1 + FLUSH_PAYLOAD) + (1 + VF68_PAYLOAD) + (1 + ANIM_PAYLOAD));
+constexpr uint32_t COLOUR_OP_BYTES_PER_ITEM = 4 * (2 * (1 + FLUSH_PAYLOAD) + 2 * (1 + VF68_PAYLOAD) + (1 + ANIM_PAYLOAD) + 2 * (1 + CONST_PAYLOAD)
+                                                   + 2 * (1 + SRV_PAYLOAD) + (1 + FACTION_PAYLOAD));
 
 struct CopyRange {
   uint32_t begin;
@@ -236,9 +285,19 @@ struct GroupInfo {
   uint32_t tracker_bytes;
   std::array<CopyRange, 4> copy_back;
   uint32_t op_bytes_per_item;
+  // The first bytes of the tracker a warm-up seeds and replay checks (the colour loop carries its fields from item to item;
+  // the animation index is checked in every group).
+  uint32_t seed_bytes;
+  // The group registers the meshes its chunks set up: one mesh set up by two chunks makes the call run directly.
+  bool owns_meshes;
 };
-constexpr GroupInfo SAME_TRACKER = {TRACKER_SIZE, {{{0x00, 0x18}, {0x58, 0x5c}, {0x68, 0x69}, {0x6c, 0x7c}}}, DEPTH_OP_BYTES_PER_ITEM};
-constexpr std::array<GroupInfo, static_cast<size_t>(Group::COUNT)> GROUPS = {SAME_TRACKER, SAME_TRACKER, SAME_TRACKER, SAME_TRACKER, SAME_TRACKER};
+constexpr std::array<CopyRange, 4> SAME_COPY_BACK = {{{0x00, 0x18}, {0x58, 0x5c}, {0x68, 0x69}, {0x6c, 0x7c}}};
+constexpr GroupInfo DEPTH_INFO = {.tracker_bytes = TRACKER_SIZE, .copy_back = SAME_COPY_BACK, .op_bytes_per_item = DEPTH_OP_BYTES_PER_ITEM,
+                                  .seed_bytes = 0, .owns_meshes = false};
+constexpr GroupInfo COLOUR_INFO = {.tracker_bytes = TRACKER_SIZE, .copy_back = SAME_COPY_BACK, .op_bytes_per_item = COLOUR_OP_BYTES_PER_ITEM,
+                                   .seed_bytes = 0x14, .owns_meshes = true};
+// The B groups' own entries arrive with their step.
+constexpr std::array<GroupInfo, static_cast<size_t>(Group::COUNT)> GROUPS = {DEPTH_INFO, COLOUR_INFO, DEPTH_INFO, COLOUR_INFO, DEPTH_INFO};
 constexpr uint32_t STRIDE_OFFSET = 0x50;
 constexpr uint32_t ANY_OFFSET = 0x69;
 
@@ -251,6 +310,12 @@ struct Controls {
   // Trace frames compare only in the last frame of a trace (the others are timed); the tests compare every call.
   bool compare_every_call = false;
   bool capture_any = true;
+  bool owner_check = true;
+  bool restore_snapshots = true;
+  // The compare joins what earlier chunks left in the "any" byte to the flush of the compare run's it meets.
+  bool pending_any_compare = true;
+  // The chunks (bit mask) that "race": another thread's setup of the mesh lands before the chunk's VF68 snapshot.
+  uint32_t race_chunks = 0;
   bool stride_non_zero = true;
   bool fail_thread_creation = false;
 };
@@ -267,6 +332,7 @@ constexpr Controls controls;
 // shared-state virtual call returns 0).
 inline void __fastcall Record(Slot* slot, Frame* frame) noexcept {
   using internal::OpKind;
+  using internal::SiteKind;
   if (frame->site >= static_cast<uint32_t>(Site::COUNT)) {
     slot->flags |= SLOT_UNKNOWN_CLASS;
     return;
@@ -286,13 +352,14 @@ inline void __fastcall Record(Slot* slot, Frame* frame) noexcept {
       slot->flags |= SLOT_OVERFLOW;
       return nullptr;
     }
+    slot->last_const = nullptr;
     uint32_t* op = slot->ops_cursor;
     op[0] = static_cast<uint32_t>(kind) | (total << 16);
     slot->ops_cursor += total;
     return op + 1;
   };
   switch (site.kind) {
-    case OpKind::FLUSH: {
+    case SiteKind::FLUSH: {
       // A flush of no instances returns at once in the game and leaves *any alone: dropped (exact).
       if (stack[5] == 0) return;
       // The flush reads and clears *any (the tracker's +0x69); the copy's is taken here, in both modes, and carried in the
@@ -319,9 +386,15 @@ inline void __fastcall Record(Slot* slot, Frame* frame) noexcept {
       payload[13] = any;
       return;
     }
-    case OpKind::VF68: {
+    case SiteKind::VF68: {
       frame->eax = 0;
       if (!recording) return;
+      if constexpr (TEST_SWITCHES) {
+        // Test hook: another chunk's setup of this mesh lands before this chunk's snapshot.
+        if (((internal::controls.race_chunks >> slot->chunk) & 1) != 0) {
+          *reinterpret_cast<uint32_t*>(static_cast<uintptr_t>(frame->ecx) + 0x44) ^= 0x5a5a;
+        }
+      }
       uint32_t* payload = append(OpKind::VF68, internal::VF68_PAYLOAD);
       if (payload == nullptr) return;
       payload[0] = frame->ecx;
@@ -331,8 +404,8 @@ inline void __fastcall Record(Slot* slot, Frame* frame) noexcept {
       std::memcpy(payload + 4, mesh + 0x44, 4);
       return;
     }
-    case OpKind::ANIM: {
-      const uint32_t index = stack[site.anim_stack];
+    case SiteKind::ANIM: {
+      const uint32_t index = stack[site.operand];
       slot->anim = static_cast<int32_t>(index);
       if (!recording) return;
       uint32_t* payload = append(OpKind::ANIM, internal::ANIM_PAYLOAD);
@@ -340,6 +413,65 @@ inline void __fastcall Record(Slot* slot, Frame* frame) noexcept {
       payload[0] = frame->ecx;
       payload[1] = stack[1];
       payload[2] = index;
+      return;
+    }
+    case SiteKind::SETUP: {
+      // Before the loop reads or writes anything of the mesh (ebx), in every mode: a class the census did not cover makes
+      // the chunk run again and the loop skip the mesh (eax = 1: no technique); a known one is registered to its chunk. The
+      // known classes are the 10 vtables of the weighted mesh classes the census covered.
+      frame->eax = 0;
+      const uint32_t vtable = *reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(frame->ebx));
+      if (vtable == 0 || std::ranges::find(internal::game_calls.weighted_vtables, vtable) == internal::game_calls.weighted_vtables.end()) {
+        slot->flags |= SLOT_UNKNOWN_CLASS;
+        frame->eax = 1;
+        return;
+      }
+      if (recording && slot->chunk != COMPARE_SLOT && internal::controls.owner_check && !internal::RegisterMesh(frame->ebx, slot->chunk)) {
+        slot->flags |= SLOT_CONFLICT;
+      }
+      return;
+    }
+    case SiteKind::CONST1:
+    case SiteKind::CONST2: {
+      if (!recording) return;
+      // CONST1 sets the block in ecx to 0.0f; CONST2 the block at the state + 0x2d4 to the float in xmm0. Equal constants in a
+      // row make one op with a repeat count (the game writes each time when its cache flag is off).
+      const bool zero = (site.kind == SiteKind::CONST1);
+      const uint32_t object = (zero ? frame->ecx : stack[5] + internal::CONST2_BLOCK);
+      const uint32_t bits = (zero ? 0 : frame->xmm0);
+      if (slot->last_const != nullptr && slot->last_const[1] == object && slot->last_const[2] == bits) {
+        ++slot->last_const[3];
+        return;
+      }
+      uint32_t* payload = append(OpKind::CONSTANT, internal::CONST_PAYLOAD);
+      if (payload == nullptr) return;
+      payload[0] = object;
+      payload[1] = bits;
+      payload[2] = 1;
+      slot->last_const = payload - 1;
+      return;
+    }
+    case SiteKind::SRV: {
+      if (!recording) return;
+      uint32_t* payload = append(OpKind::SRV, internal::SRV_PAYLOAD);
+      if (payload == nullptr) return;
+      payload[0] = frame->ebx + site.operand;
+      payload[1] = frame->ecx;
+      return;
+    }
+    case SiteKind::FACTION: {
+      // The two stores before this site are done (the faction into the tracker); the third, the mask's index, is this site's,
+      // in both modes. The item is in edi.
+      const uint32_t mask = *reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(frame->edi) + 0x54);
+      const int32_t mask_index = (mask != 0 ? *reinterpret_cast<const int32_t*>(static_cast<uintptr_t>(mask) + 4) : -1);
+      std::memcpy(slot->tracker.data() + 0x0c, &mask_index, 4);
+      if (!recording) return;
+      uint32_t* payload = append(OpKind::FACTION, internal::FACTION_PAYLOAD);
+      if (payload == nullptr) return;
+      payload[0] = frame->ecx;
+      payload[1] = mask;
+      payload[2] = stack[0x28 / 4];
+      payload[3] = stack[0x14 / 4];
       return;
     }
     default:
@@ -351,9 +483,15 @@ inline void __fastcall Record(Slot* slot, Frame* frame) noexcept {
 namespace internal {
 
 using DepthLoopFn = void(__thiscall*)(void* node, void* tracker, void* list, uint32_t begin, uint32_t end);
+using ColourLoopFn = void(__thiscall*)(void* node, void* tracker, void* list, uint32_t unused, uint32_t begin, uint32_t end);
 using FlushFn = void(__thiscall*)(void* mesh, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 using Vf68Fn = uint8_t(__thiscall*)(void* mesh, uint32_t, uint32_t);
 using AnimCallFn = void(__thiscall*)(void* state, uint32_t value);
+using DirtyFn = void(__thiscall*)(uint32_t object);
+using ViewFn = uint32_t(__thiscall*)(uint32_t texture);
+using SrvFn = void(__thiscall*)(uint32_t slot, uint32_t view);
+using FactionFn = void(__thiscall*)(uint32_t state, const float* colours);
+using FactionListFn = void(__thiscall*)(uint32_t node, int32_t faction, uint32_t* list);
 
 // One call of a loop, as the dispatcher got it.
 struct Call {
@@ -483,6 +621,7 @@ struct LastCall {
   uint32_t replayed = 0;
   uint32_t ops = 0;
   bool direct = false;
+  uint32_t split_constants = 0;
 };
 
 // Op memory is one address range, committed as a call needs it. The chunks of a call tile its items, so their buffers (the
@@ -498,7 +637,6 @@ constexpr uint32_t MIN_CHUNK = 64;
 constexpr uint32_t PREFETCH_AHEAD = 8;
 constexpr uint32_t WORKER_STACK_BYTES = 512 * 1024;
 
-static GameCalls game_calls;
 static Config config;
 static LastCall last_call;
 static Trace trace;
@@ -545,26 +683,89 @@ inline void RunLoop(const Call& call, void* tracker, uint32_t begin, uint32_t en
     case Group::DEPTH_A:
       reinterpret_cast<DepthLoopFn>(static_cast<uintptr_t>(call.loop))(call.node, tracker, call.list, begin, end);
       break;
+    case Group::COLOUR_A:
+      reinterpret_cast<ColourLoopFn>(static_cast<uintptr_t>(call.loop))(call.node, tracker, call.list, call.unused, begin, end);
+      break;
     default:
       // No-op: the other groups arrive with their loops; the dispatcher never gets here for them.
       break;
   }
 }
 
-// A worker records its chunk: worker w runs chunk w + 1, or, one worker alone, chunks 1 to n - 1 in order.
+// A worker records its chunks: worker w runs chunk w + 1, or, one worker alone, chunks 1 to n - 1 in order.
 inline void RecordWork(const Descriptor& d, uint32_t worker) {
-  if (d.kind != WorkKind::RECORD_LOOP) {
-    // The B groups' mesh rounds arrive with their step: until then a chunk given to a worker for them is run again.
-    SlotAt(worker + 1)->flags |= SLOT_UNKNOWN_CLASS;
-    return;
-  }
-  if (d.one_worker) {
-    for (uint32_t chunk = 1; chunk < d.chunks; ++chunk) {
+  const uint32_t first = (d.one_worker ? 1 : worker + 1);
+  const uint32_t last = (d.one_worker ? d.chunks : worker + 2);
+  for (uint32_t chunk = first; chunk < last; ++chunk) {
+    if (d.kind == WorkKind::RECORD_LOOP) {
       RunLoop(d.call, SlotAt(chunk), d.cuts[chunk], d.cuts[chunk + 1]);
+    } else {
+      // The B groups' mesh rounds arrive with their step: until then every chunk given to a worker for them is run again.
+      SlotAt(chunk)->flags |= SLOT_UNKNOWN_CLASS;
     }
+  }
+}
+
+// The replays of the shared-state ops, on the render thread in the game's order. The constants: `*t = value` and the block's
+// dirty call, unless the game's cache flag is on and the cell already equals the value (NaN never equals, -0 equals 0), once
+// per repeat.
+inline void ReplayConst(uint32_t object, uint32_t bits, uint32_t repeat) {
+  float value = 0;
+  std::memcpy(&value, &bits, 4);
+  for (uint32_t i = 0; i < repeat; ++i) {
+    auto* const cell = *reinterpret_cast<float**>(static_cast<uintptr_t>(object) + 0x14);
+    if (*game_calls.cached_constants == 0 || !(*cell == value)) {
+      std::memcpy(cell, &bits, 4);
+      reinterpret_cast<DirtyFn>(static_cast<uintptr_t>(game_calls.dirty_call))(object);
+    }
+  }
+}
+
+inline void ReplaySrv(uint32_t slot, uint32_t texture) {
+  const uint32_t view = reinterpret_cast<ViewFn>(static_cast<uintptr_t>(game_calls.view_call))(texture);
+  reinterpret_cast<SrvFn>(static_cast<uintptr_t>(game_calls.srv_call))(slot, view);
+}
+
+// The faction block: the four colours of a faction (the default one without a faction), picked by the item's mask when it has
+// one; sent when there are 4 or more. Only the first four colours are read by the call, so only those are gathered.
+inline void ReplayFaction(int32_t faction, uint32_t mask, uint32_t node, uint32_t state) {
+  const auto set_colours = reinterpret_cast<FactionFn>(static_cast<uintptr_t>(game_calls.faction_call));
+  std::array<float, 12> colours = {};
+  if (faction == -1) {
+    for (uint32_t i = 0; i < 4; ++i) {
+      colours[3 * i] = *game_calls.faction_default;
+      colours[3 * i + 1] = *game_calls.faction_default;
+      colours[3 * i + 2] = 1.0f;
+    }
+    set_colours(state, colours.data());
     return;
   }
-  RunLoop(d.call, SlotAt(worker + 1), d.cuts[worker + 1], d.cuts[worker + 2]);
+  uint32_t list = 0;
+  reinterpret_cast<FactionListFn>(static_cast<uintptr_t>((*reinterpret_cast<const uint32_t* const*>(static_cast<uintptr_t>(node)))[0xc0 / 4]))(node, faction, &list);
+  const auto* const list_bytes = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(list));
+  uint32_t count = 0;
+  uint32_t data = 0;
+  std::memcpy(&count, list_bytes + 4, 4);
+  std::memcpy(&data, list_bytes + 8, 4);
+  if (count < 4) return;
+  if (mask == 0) {
+    set_colours(state, reinterpret_cast<const float*>(static_cast<uintptr_t>(data)));
+    return;
+  }
+  // The game gathers the list's `count` entries into a vector and the call reads the first four (48 bytes): gathered here.
+  for (uint32_t i = 0; i < 4; ++i) {
+    std::memcpy(&colours[3 * i], reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(data)) + 12 * reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(mask))[i], 12);
+  }
+  set_colours(state, colours.data());
+}
+
+// Whether a chunk's op is the compare run's. A flush compares its mesh, its ten arguments and its any byte (the compare run's
+// carries what earlier chunks left pending), not the mesh snapshot: the flush writes +0x40 itself before it reads it and never
+// reads +0x44. The other ops compare whole, snapshots included (the virtual call reads +0x44).
+inline bool OpsEqual(const uint32_t* chunk_op, const uint32_t* whole_op, uint32_t pending_any) noexcept {
+  if (chunk_op[0] != whole_op[0]) return false;
+  if (static_cast<OpKind>(chunk_op[0] & 0xffff) != OpKind::FLUSH) return std::memcmp(chunk_op, whole_op, (chunk_op[0] >> 16) * 4) == 0;
+  return std::memcmp(chunk_op, whole_op, 12 * 4) == 0 && whole_op[14] == (chunk_op[14] | pending_any);
 }
 
 // Touch-ahead: helper h of H reads blocks of 16 items from begin + 64 + 16 h on, stride 16 H, until the end or the stop.
@@ -859,6 +1060,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     slot->ops_cursor = slot->ops_begin;
     slot->ops_end = slot->ops_begin + bytes / 4;
     slot->flags = 0;
+    slot->last_const = nullptr;
     slot->group = group_index;
     slot->chunk = index;
     slot->real_tracker = static_cast<uint8_t*>(tracker);
@@ -867,6 +1069,10 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     }
     return slot;
   };
+  // What a warm-up left must be what the real tracker holds when the chunk starts.
+  const auto seed_matches = [&](const Slot* slot, const void* real_tracker, int32_t last_anim) {
+    return slot->seed_anim == last_anim && std::memcmp(slot->seed_fields.data(), real_tracker, GROUPS[group_index].seed_bytes) == 0;
+  };
   if (settings.stage >= Stage::RECORDED || compare_now) {
     for (uint32_t k = 0; k < chunks; ++k) {
       prepare_slot(k, cuts[k + 1] - cuts[k]);
@@ -874,8 +1080,13 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     // Warm-up of chunk k: the game's own loop over the item before its first, suppressed; what it leaves is the seed.
     for (uint32_t k = 1; k < chunks; ++k) {
       Slot* slot = SlotAt(k);
+      // The chunk before sets the warm-up item's mesh up itself: what the warm-up writes into it (+0x40 / +0x44) is put back.
+      auto* const warm_mesh = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(mesh_of(cuts[k] - 1)));
+      std::array<uint8_t, 8> mesh_state = {};
+      std::memcpy(mesh_state.data(), warm_mesh + 0x40, 8);
       slot->mode = MODE_SUPPRESS;
       RunLoop(call, slot, cuts[k] - 1, cuts[k]);
+      std::memcpy(warm_mesh + 0x40, mesh_state.data(), 8);
       std::memcpy(slot->seed_fields.data(), slot->tracker.data(), slot->seed_fields.size());
       slot->seed_anim = slot->anim;
       slot->mode = MODE_RECORD;
@@ -893,7 +1104,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     for (uint32_t k = 0; k < chunks; ++k) {
       shared->seed_anim = (k == 0 ? -1 : shared->last_anim);
       if (compare_now && k > 0) {
-        if (SlotAt(k)->seed_anim == shared->seed_anim) {
+        if (seed_matches(SlotAt(k), tracker, shared->seed_anim)) {
           ++trace_call->seed_hits;
         } else {
           ++trace_call->seed_misses;
@@ -908,6 +1119,13 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     }
     finish(nullptr);
     return;
+  }
+
+  if (GROUPS[group_index].owns_meshes) {
+    NextOwnerCall();
+    // Chunk 0 may continue the tracker's last mesh with no setup site before it: it owns its first mesh from the start (a fresh
+    // call's table cannot refuse the entry).
+    RegisterMesh(mesh_of(begin), 0);
   }
 
   // The in-frame compare (trace frames): the same call recorded whole in the compare slot, before anything changes.
@@ -962,10 +1180,16 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   }
   uint32_t compared_ops = 0;
   uint32_t compare_kind = 0;
+  // The compare run merges equal constants that a chunk end splits: the repeats of its current constant op already matched.
+  uint32_t compare_used = 0;
+  // What the chunks before left in +0x69 without a flush after it: the next flush of the compare run carries it.
+  uint32_t pending_any = 0;
+  // Chunk ends that fell inside one of the compare run's constant ops (the tests count them).
+  uint32_t split_constants = 0;
   for (uint32_t k = 0; k < chunks; ++k) {
     Slot* slot = SlotAt(k);
     const bool flagged = (slot->flags & (SLOT_OVERFLOW | SLOT_UNKNOWN_CLASS)) != 0;
-    const bool seed_missed = (k > 0 && slot->seed_anim != real_last);
+    const bool seed_missed = (k > 0 && !seed_matches(slot, real, real_last));
     if (trace_call != nullptr) {
       trace_call->overflows += ((slot->flags & SLOT_OVERFLOW) != 0 ? 1 : 0);
       trace_call->unknown_classes += ((slot->flags & SLOT_UNKNOWN_CLASS) != 0 ? 1 : 0);
@@ -992,20 +1216,35 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
       continue;
     }
     if (compare_cursor != nullptr && compare_result == CompareResult::EQUAL) {
-      // This chunk's stream must be the compare run's next bytes.
-      const uint32_t* stream = slot->ops_begin;
-      while (stream < slot->ops_cursor) {
-        const uint32_t header = *stream;
-        const uint32_t size = header >> 16;
-        if (compare_cursor >= compare_slot->ops_cursor || *compare_cursor != header || std::memcmp(compare_cursor, stream, size * 4) != 0) {
-          compare_result = CompareResult::DIFFERS;
-          compare_kind = header & 0xffff;
-          break;
+      // This chunk's stream must be the compare run's next ops.
+      for (const uint32_t* op = slot->ops_begin; op < slot->ops_cursor && compare_result == CompareResult::EQUAL; op += (*op >> 16)) {
+        bool same = (compare_cursor < compare_slot->ops_cursor);
+        if (same && static_cast<OpKind>(*op & 0xffff) == OpKind::CONSTANT) {
+          same = (static_cast<OpKind>(*compare_cursor & 0xffff) == OpKind::CONSTANT && compare_cursor[1] == op[1] && compare_cursor[2] == op[2]
+                  && compare_cursor[3] - compare_used >= op[3]);
+          if (same) {
+            compare_used += op[3];
+            if (compare_used == compare_cursor[3]) {
+              compare_cursor += 1 + CONST_PAYLOAD;
+              compare_used = 0;
+            }
+          }
+        } else {
+          same = (same && compare_used == 0 && OpsEqual(op, compare_cursor, (controls.pending_any_compare ? pending_any : 0)));
+          if (same) {
+            pending_any = (static_cast<OpKind>(*op & 0xffff) == OpKind::FLUSH ? 0 : pending_any);
+            compare_cursor += *compare_cursor >> 16;
+          }
         }
-        compare_cursor += size;
-        stream += size;
-        ++compared_ops;
+        if (same) {
+          ++compared_ops;
+        } else {
+          compare_result = CompareResult::DIFFERS;
+          compare_kind = *op & 0xffff;
+        }
       }
+      pending_any |= slot->tracker[ANY_OFFSET];
+      split_constants += (compare_used != 0 ? 1 : 0);
     }
     for (const uint32_t* op = slot->ops_begin; op < slot->ops_cursor; op += (*op >> 16)) {
       const uint32_t* payload = op + 1;
@@ -1018,8 +1257,10 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
       switch (kind) {
         case OpKind::FLUSH: {
           auto* const mesh = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(payload[0]));
-          std::memcpy(mesh + 0x40, payload + 11, 4);
-          std::memcpy(mesh + 0x44, payload + 12, 4);
+          if (controls.restore_snapshots) {
+            std::memcpy(mesh + 0x40, payload + 11, 4);
+            std::memcpy(mesh + 0x44, payload + 12, 4);
+          }
           real[ANY_OFFSET] |= static_cast<uint8_t>(payload[13]);
           reinterpret_cast<FlushFn>(static_cast<uintptr_t>(game_calls.flush))(mesh, payload[1], payload[2], payload[3], payload[4], payload[5],
                                                                                payload[6], payload[7], payload[8], payload[9], payload[10]);
@@ -1027,8 +1268,10 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
         }
         case OpKind::VF68: {
           auto* const mesh = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(payload[0]));
-          std::memcpy(mesh + 0x40, payload + 3, 4);
-          std::memcpy(mesh + 0x44, payload + 4, 4);
+          if (controls.restore_snapshots) {
+            std::memcpy(mesh + 0x40, payload + 3, 4);
+            std::memcpy(mesh + 0x44, payload + 4, 4);
+          }
           const auto vf68 = reinterpret_cast<Vf68Fn>(static_cast<uintptr_t>((*reinterpret_cast<const uint32_t* const*>(mesh))[0x68 / 4]));
           real[ANY_OFFSET] |= vf68(mesh, payload[1], payload[2]);
           break;
@@ -1036,6 +1279,15 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
         case OpKind::ANIM:
           reinterpret_cast<AnimCallFn>(static_cast<uintptr_t>(game_calls.anim_call))(reinterpret_cast<void*>(static_cast<uintptr_t>(payload[0])), payload[1]);
           real_last = static_cast<int32_t>(payload[2]);
+          break;
+        case OpKind::CONSTANT:
+          ReplayConst(payload[0], payload[1], payload[2]);
+          break;
+        case OpKind::SRV:
+          ReplaySrv(payload[0], payload[1]);
+          break;
+        case OpKind::FACTION:
+          ReplayFaction(static_cast<int32_t>(payload[0]), payload[1], payload[2], payload[3]);
           break;
         default:
           break;
@@ -1054,7 +1306,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     ++replayed;
   }
   lap(&CallTrace::replay);
-  if (compare_slot != nullptr && compare_result == CompareResult::EQUAL && compare_cursor != compare_slot->ops_cursor) {
+  if (compare_slot != nullptr && compare_result == CompareResult::EQUAL && (compare_cursor != compare_slot->ops_cursor || compare_used != 0)) {
     compare_result = CompareResult::COMPARE_HAS_MORE;
   }
   if (trace_call != nullptr) {
@@ -1064,7 +1316,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     trace_call->compare_kind = compare_kind;
   }
   if constexpr (TEST_SWITCHES) {
-    last_call = {.chunks = chunks, .reruns = reruns, .replayed = replayed, .ops = op_count, .direct = false};
+    last_call = {.chunks = chunks, .reruns = reruns, .replayed = replayed, .ops = op_count, .direct = false, .split_constants = split_constants};
   }
   finish(nullptr);
 }
@@ -1073,6 +1325,10 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
 
 inline void __fastcall DispatchDepth(void* node, void*, void* tracker, void* list, uint32_t begin, uint32_t end) {
   internal::Dispatch(Group::DEPTH_A, node, tracker, list, 0, begin, end);
+}
+
+inline void __fastcall DispatchColour(void* node, void*, void* tracker, void* list, uint32_t unused, uint32_t begin, uint32_t end) {
+  internal::Dispatch(Group::COLOUR_A, node, tracker, list, unused, begin, end);
 }
 
 namespace internal {
@@ -1109,6 +1365,7 @@ inline bool Allocate() {
   shared->arena_size = SLOT_COUNT * SLOT_SIZE;
   shared->record = reinterpret_cast<uint32_t>(&Record);
   shared->dispatch_depth = reinterpret_cast<uint32_t>(&DispatchDepth);
+  shared->dispatch_colour = reinterpret_cast<uint32_t>(&DispatchColour);
   return true;
 }
 
@@ -1247,10 +1504,10 @@ inline void Update(const Settings& settings, bool sites_in) {
             break;
         }
         text += std::format(
-            "\n  ops: flush {} vf68 {} anim {} bytes {} (buffer {}); seeds hit {} miss {}; overflow {} unknown {} conflict {} rerun {}\n"
+            "\n  ops: flush {} vf68 {} anim {} const {} srv {} faction {} bytes {} (buffer {}); seeds hit {} miss {}; overflow {} unknown {} conflict {} rerun {}\n"
             "  ms: direct {:.3f} cut {:.3f} warm-ups {:.3f} chunk0 {:.3f} join {:.3f} replay {:.3f} rerun {:.3f} total {:.3f}"
             " (trace only: compare {:.3f} run scan {:.3f}; wall {:.3f})\n  compare: ",
-            call.ops[1], call.ops[2], call.ops[3], call.op_bytes, call.op_buffer_bytes, call.seed_hits, call.seed_misses, call.overflows,
+            call.ops[1], call.ops[2], call.ops[3], call.ops[4], call.ops[5], call.ops[6], call.op_bytes, call.op_buffer_bytes, call.seed_hits, call.seed_misses, call.overflows,
             call.unknown_classes, call.conflicts, call.reruns, milliseconds(call.direct), milliseconds(call.cut), milliseconds(call.warm_ups),
             milliseconds(call.chunk_zero), milliseconds(call.join_wait), milliseconds(call.replay), milliseconds(call.rerun), milliseconds(call.total),
             milliseconds(call.compare), milliseconds(call.run_scan), milliseconds(call.wall));
