@@ -4398,6 +4398,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         19:3x: c23r_ (finish re-check), s5r_ (batch 3 Part 2b: toggles + trap check vs start-level A/B, measure the CB
         ring's own hand-back, row latch?), s5o_ (rmt_s5: FCU latch for the device's lifetime + Off after restart text,
         NATIVE_CALLS_A_FRAME 8,192; CB ring untouched).
+        c23r_ RE-CHECK DONE 19:3x (c25r_review.md Re-check): MERGE (M-1 / M-2 fixed, their tests fail without the fixes;
+        shoulds done; merge hunk + B gating right; B unreachable on a real build until C.3-2). tw_draw_recording x86 PASS.
+        MERGED rmt_c2 3a1a4533b (code = the tested rmt_c2 tree; name check plain words) + pushed. Carry-overs in the box.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4421,7 +4424,13 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C.2-4 (owner c2i_); N-7 the
         faction node's vf+0xc0 always writes its out pointer (open assumption) + S-3's real-bytes colour paths -> C.3's
         colour round (owner the C.3 implementer); S-4 (b) arm more compare frames in the C-A batch plan (G2 samples only
-        1 of 3 frames) -> owner coordinator.
+        1 of 3 frames) -> owner coordinator. c25r_ re-check 11-20 -> C.2-4 (owner c2i_): R-N1 BNested needs a
+        nested-call counter + guard-off control (and an A nesting test), R-N2 report the differing op's own mesh class /
+        family, R-N3 static_assert COMPARE_SEVERITY vs the enum order, R-N4 stray blank line hpp:1454, N-2 counter / N-4
+        +0x69 + mask controls. -> C.3-2 (owner c3i_), MUST before the 0x17aed4a cut goes in: SetGame
+        (draw_recording_sites.hpp:747) leaves accessor / vf64_stub / module_shift / classes at 0 and DispatchMesh's direct
+        fallback calls game_calls.accessor whenever PlanRound didn't run -> fill them first or the first direct B round
+        calls address 0. c31r_ -> C.3-2: N1 comment wording, compares[EQUAL] total CHECK > 0.
       - [x] S5 RING GPU CHECKS (DONE 11-20 19:29: re-check with 8 pieces + H0 passed, parity EQUAL; s5r_ re-check 11-20; gate ANY game run / release with "Fewer Driver Waits" on, batch 3
         included; agents can't run the harness (classifier), ATN runs bench/analysis_b2/replay/atn_harness_runs.ps1): 1. DONE
         11-20 17:18 (EQUAL, upload differs, no unknown-body line) NVIDIA x86 parity:
