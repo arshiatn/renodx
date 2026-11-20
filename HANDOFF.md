@@ -4371,6 +4371,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         should. Name check plain words. atn-mods -> rmt_c2 merge CONFLICTS in draw_recording.hpp (C.3-1) -> c2i_ RESUMED
         19:1x: plain merge + hunk notes + all draw_recording suites + engine_code -Quick + builds -> then c23r_ re-checks
         1d16f15f3 + the merge -> merge rmt_c2. Agents: b2a_, c2i_.
+        c2i_ MERGE DONE: rmt_c2 989d02892 (atn-mods dc49b35a1; one conflict = the A Dispatch reason chain: nested, then
+        sites out, before loop off) + 0a651e74b (DispatchMesh gets C.3-1's gating: not usable by usable_groups, sites out;
+        BFallbacks tests; B rounds stay direct on a real build until C.3-2 sets the B bits). draw_recording / loop / sites
+        x86 PASS (merge + final), engine_code -Quick PASS (merge), amd64 stubs, build32 x3 + amd64 twattila exit 0.
+        c23r_ RESUMED: re-check 1d16f15f3 + 989d02892 + 0a651e74b -> merge rmt_c2. Then C.2-4 (c2i_) / C.3-2 (c3i_), one at
+        a time. VB V1 waits for batch 3's result. Agents: b2a_, c23r_.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
