@@ -4068,6 +4068,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         C.2-4 (4 group rows), NEW C.2-5 (B path), C.3-1..4. Batch: 8 starts ~45 min (+ optional N-heavy siege start: ask ATN
         for a siege / city replay). c2i_ RESUMED 15:xx: fix round (F1-F14 + v3 changes + renames). c1r_ (af3a62018ba20d485)
         RESUMED: independent review of note v3 + census -> reports/c1r_review_v3.md (gate before C.3's new groups).
+        s5r_ DONE 16:xx (reports/s5r_review.md): MERGE AFTER FIXES. Core reference model: no bug. M1 piece reuse after a failed
+        Advance (full ring) writes into a closed / ended piece -> wrong constants while bound (binding-exactness = CORE by the
+        brief -> the EXTRA independent review applies after the re-check); M2 Unwind writes back destroyed records (UAF on a
+        mid-frame unwind). Should: S1 NVIDIA parity + native plain Set when nothing ringed; S2 cost E 0.2-1.0 ms/f W3 / 0.1-0.4
+        day1 (over the 0.1 gate?) -> measure (harness blocked) + redundant-Set fast path; S3 copy slots per present + d3d11
+        version; S4 test gaps; S5 v3 hash <= 64 KB / DISCARD only; S7 DO_NOT_WAIT -> false; nits N1-N12. b2: CB ring alone
+        can't pass batch 3's W3 gate; keep OFF until a VB part or a measured gain. FCU + ring never double-handle the 432 B CB
+        (both made below the proxy). VB extension design = "own rename": N shadow buffers (4-6 x 464 KB), DISCARD switches
+        shadow, IA offsets kept, +1 body (IAGetVertexBuffers slot 79), E 300-500 lines + tests; risk: 8 MB rings next.
+        s5o_ RESUMED 16:xx: fix round (M1, M2, S1-S5, S7, nits; no VB yet, no GPU runs). Then s5r_ re-checks, then the extra
+        independent review, then merge.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
