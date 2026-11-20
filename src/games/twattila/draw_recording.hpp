@@ -446,6 +446,12 @@ struct Controls {
   bool restore_straddler = true;
   // B: the entry check also compares the tracker's +0x18 .. +0x28 (what the bodies read into flush and virtual call arguments).
   bool entry_check_inputs = true;
+  // B: the entry check's change mask (+0x78) conjunct alone.
+  bool entry_check_mask = true;
+  // A chunk's replay ends by joining its pending "any" flag to the real one (not copying it over what is there).
+  bool any_join = true;
+  // A dispatcher call made inside a round runs directly (S-2).
+  bool nested_guard = true;
 };
 #if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
 static Controls controls;
@@ -732,7 +738,7 @@ constexpr uint32_t NO_FAMILY = 0xff;
 // the warm-ups of Chunked), so that the sum of the calls of a trace frame is what the stage costs in a normal frame.
 struct CallTrace {
   Group group = Group::DEPTH_A;
-  // B calls: the family of the first mesh of the chunk where the compare differs (0 to 7; NO_FAMILY: no difference, or not a B call).
+  // B calls: the family of the differing op's mesh (0 to 7; NO_FAMILY: no difference, or not a B call).
   uint32_t family = NO_FAMILY;
   // B rounds: census items and chunks per family (a chunk counts once under every family it holds).
   std::array<uint32_t, 8> family_items = {};
@@ -764,7 +770,9 @@ struct CallTrace {
   uint32_t conflicts = 0;
   uint32_t reruns = 0;
   // B rounds (the gates' numbers): meshes and census items in the round, the ones in direct segments, meshes that appear twice
-  // (trace frames; target 0), chunks whose warm-ups found no seed, chunks run again by the entry check (M2).
+  // (trace frames; target 0), chunks whose warm-ups found no seed, chunks run again by the entry check (M2). round_meshes: the
+  // meshes the round lists (a round over MAX_ROUND_MESHES runs directly, planned as none).
+  uint32_t round_meshes = 0;
   uint32_t meshes = 0;
   uint32_t direct_meshes = 0;
   uint32_t census_items = 0;
@@ -787,7 +795,7 @@ struct CallTrace {
   uint64_t wall = 0;
   CompareResult compare_result = CompareResult::NONE;
   // Where the compare's result comes from: the run (a B round has one per run of census chunks), the op index in that run, the
-  // kind of the differing op, the chunk it was found in and that chunk's first mesh's class (index in the game's table).
+  // kind of the differing op, the chunk it was found in and the class (index in the game's table) of the op's mesh.
   uint32_t compare_run = 0;
   uint32_t compare_op = 0;
   uint32_t compare_kind = 0;
@@ -858,6 +866,10 @@ static bool allocation_failed = false;
 // The stage and K a worker thread could not be created for (no retry until they change).
 static uint32_t pool_failed_key = ~0u;
 static bool kept_logged = false;
+// The groups already logged as on but not usable in this game build (bits of Group).
+static uint32_t unusable_logged = 0;
+// The groups the engine code keeps its sites in (SiteGroups).
+static uint32_t sticky_groups = 0;
 static Shared* shared = nullptr;
 static uint8_t* arena = nullptr;
 static uint8_t* op_memory = nullptr;
@@ -1233,7 +1245,7 @@ inline void ReplayChunk(Replay* replay, const Slot* slot) {
   if (stride != 0 || !controls.stride_non_zero) {
     std::memcpy(real + STRIDE_OFFSET, &stride, 4);
   }
-  real[ANY_OFFSET] |= slot->tracker[ANY_OFFSET];
+  real[ANY_OFFSET] = slot->tracker[ANY_OFFSET] | (controls.any_join ? real[ANY_OFFSET] : 0);
 }
 
 // The compare run's stream and how far the chunks' ops have matched it (trace frames).
@@ -1243,8 +1255,10 @@ struct CompareCursor {
   CompareResult result = CompareResult::NONE;
   uint32_t compared_ops = 0;
   uint32_t kind = 0;
-  // The chunk the first difference was found in.
+  // The chunk the first difference was found in, and the mesh of the differing op (the latest op of the chunk that carries one, up
+  // to the differing op itself; 0: none).
   uint32_t chunk = 0;
+  uint32_t mesh = 0;
   // The compare run merges equal constants that a chunk end splits: the repeats of its current constant op already matched.
   uint32_t used = 0;
   // What the chunks before left in +0x69 without a flush after it: the next flush of the compare run carries it.
@@ -1262,9 +1276,12 @@ inline CompareCursor MakeCompare(const Slot* compare_slot) {
 
 // This chunk's stream must be the compare run's next ops.
 inline void CompareChunk(CompareCursor* compare, const Slot* slot, uint32_t chunk) {
+  uint32_t mesh = 0;
   for (const uint32_t* op = slot->ops_begin; op < slot->ops_cursor && compare->result == CompareResult::EQUAL; op += (*op >> 16)) {
+    const auto kind = static_cast<OpKind>(*op & 0xffff);
+    mesh = (kind == OpKind::FLUSH || kind == OpKind::VF68 || kind == OpKind::VF64 ? op[1] : mesh);
     bool same = (compare->cursor < compare->end);
-    if (same && static_cast<OpKind>(*op & 0xffff) == OpKind::CONSTANT) {
+    if (same && kind == OpKind::CONSTANT) {
       same = (static_cast<OpKind>(*compare->cursor & 0xffff) == OpKind::CONSTANT && compare->cursor[1] == op[1]
               && compare->cursor[2] == op[2] && compare->cursor[3] - compare->used >= op[3]);
       if (same) {
@@ -1277,7 +1294,7 @@ inline void CompareChunk(CompareCursor* compare, const Slot* slot, uint32_t chun
     } else {
       same = (same && compare->used == 0 && OpsEqual(op, compare->cursor, (controls.pending_any_compare ? compare->pending_any : 0)));
       if (same) {
-        compare->pending_any = (static_cast<OpKind>(*op & 0xffff) == OpKind::FLUSH ? 0 : compare->pending_any);
+        compare->pending_any = (kind == OpKind::FLUSH ? 0 : compare->pending_any);
         compare->cursor += *compare->cursor >> 16;
       }
     }
@@ -1287,6 +1304,7 @@ inline void CompareChunk(CompareCursor* compare, const Slot* slot, uint32_t chun
       compare->result = CompareResult::DIFFERS;
       compare->kind = *op & 0xffff;
       compare->chunk = chunk;
+      compare->mesh = mesh;
     }
   }
   compare->pending_any |= slot->tracker[ANY_OFFSET];
@@ -1318,11 +1336,21 @@ inline void LatchOnDifference(Group group, CompareResult result) {
 // How a round's compare runs combine: the worst one names the result (a difference first, then a compare run with ops left, a
 // chunk run again, a compare slot that could not be compared), by CompareResult.
 constexpr std::array<uint8_t, 6> COMPARE_SEVERITY = {0, 0, 1, 2, 4, 3};
+constexpr uint8_t Severity(CompareResult result) { return COMPARE_SEVERITY[static_cast<size_t>(result)]; }
+static_assert(COMPARE_SEVERITY.size() == static_cast<size_t>(CompareResult::COMPARE_HAS_MORE) + 1
+                  && Severity(CompareResult::NONE) == Severity(CompareResult::EQUAL)
+                  && Severity(CompareResult::EQUAL) < Severity(CompareResult::SLOT_NOT_COMPARABLE)
+                  && Severity(CompareResult::SLOT_NOT_COMPARABLE) < Severity(CompareResult::CHUNK_RERUN)
+                  && Severity(CompareResult::CHUNK_RERUN) < Severity(CompareResult::COMPARE_HAS_MORE)
+                  && Severity(CompareResult::COMPARE_HAS_MORE) < Severity(CompareResult::DIFFERS),
+              "COMPARE_SEVERITY follows the CompareResult order");
 
 // S-2: set on the render thread from the moment a round's plan stands (or a loop's chunks are cut) to the end of the dispatch. A
 // dispatcher call made inside it (a direct segment's mesh, a direct class's own call into the dispatcher) would take the slots,
 // the planned meshes and the descriptor the round is using: it runs directly ("nested").
 static bool in_round = false;
+// The nested calls that ran directly (the tests count them).
+static uint32_t nested_calls = 0;
 
 struct RoundScope {
   RoundScope() noexcept { in_round = true; }
@@ -1332,7 +1360,9 @@ struct RoundScope {
 };
 
 // True inside a round on the render thread (the flag is read there only).
-inline bool InRound() noexcept { return GetCurrentThreadId() == present_thread.load(std::memory_order_relaxed) && in_round; }
+inline bool InRound() noexcept {
+  return controls.nested_guard && GetCurrentThreadId() == present_thread.load(std::memory_order_relaxed) && in_round;
+}
 
 // What a warm-up left must be what the real tracker holds when the chunk starts.
 inline bool SeedMatches(const Slot* slot, const void* real_tracker, int32_t last_anim, uint32_t group_index) {
@@ -1448,10 +1478,10 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     direct_reason = "stage";
   } else if (nested) {
     direct_reason = "nested";
+    if constexpr (TEST_SWITCHES) ++nested_calls;
   } else if (shared->arena_size == 0) {
     // Not one site of the thunks is in (engine_code zeroes it when the last comes out): the thunks only run directly.
     direct_reason = "sites out";
-
   } else if (((settings.loops >> group_index) & 1) == 0) {
     direct_reason = "loop off";
   } else if (((latched_groups >> group_index) & 1) != 0) {
@@ -1920,6 +1950,7 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     direct_reason = "stage";
   } else if (nested) {
     direct_reason = "nested";
+    if constexpr (TEST_SWITCHES) ++nested_calls;
   }
   // The view's type (a virtual call of the game) is read once the cheap checks are through; a trace wants every call's group.
   uint32_t view_type = 0;
@@ -1932,6 +1963,7 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   const uint32_t group_index = static_cast<uint32_t>(group);
   if (trace_call != nullptr) {
     trace_call->group = group;
+    trace_call->round_meshes = last - first + 1;
   }
   if (direct_reason != nullptr) {
     // Decided above.
@@ -2177,7 +2209,7 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     // was copied with must still be there.
     const bool entry_bad = (direct_segments > 0 && controls.entry_check
                             && (*reinterpret_cast<const uint32_t*>(replay.real + 0x58) != 0
-                                || *reinterpret_cast<const uint32_t*>(replay.real + 0x78) != 0
+                                || (controls.entry_check_mask && *reinterpret_cast<const uint32_t*>(replay.real + 0x78) != 0)
                                 || *reinterpret_cast<const uint32_t*>(replay.real + 0x64) != round_start_64
                                 || (controls.entry_check_inputs
                                     && std::memcmp(replay.real + 0x18, slot->tracker.data() + 0x18, 0x10) != 0)));
@@ -2215,7 +2247,7 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     for (uint32_t r = 0; r < runs; ++r) {
       CompareEnd(&compares[r]);
       split_constants += compares[r].split_constants;
-      if (COMPARE_SEVERITY[static_cast<size_t>(compares[r].result)] > COMPARE_SEVERITY[static_cast<size_t>(compares[worst].result)]) {
+      if (Severity(compares[r].result) > Severity(compares[worst].result)) {
         worst = r;
       }
     }
@@ -2225,7 +2257,13 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     trace_call->compare_op = named.compared_ops;
     trace_call->compare_kind = named.kind;
     if (named.result == CompareResult::DIFFERS) {
-      const uint32_t class_index = planned[plan.segments[plan.chunk_segment[named.chunk]].begin].class_index;
+      // The differing op's own mesh names the class (a chunk's first flush is the mesh before it: anywhere in the round; an op
+      // with no mesh, or one that is not in the round: the chunk's first mesh).
+      uint32_t at = plan.segments[plan.chunk_segment[named.chunk]].begin;
+      for (uint32_t m = 0; m < plan.meshes; ++m) {
+        if (planned[m].mesh == named.mesh) at = m;
+      }
+      const uint32_t class_index = planned[at].class_index;
       trace_call->compare_chunk = named.chunk;
       trace_call->compare_class = class_index;
       trace_call->family = game_calls.classes[class_index].family;
@@ -2299,6 +2337,18 @@ inline void Update(const Settings& settings, bool sites_in) {
   const uint32_t threads = std::clamp<uint32_t>(settings.threads, 1, MAX_THREADS);
   if (stage != Stage::OFF && !Allocate()) {
     stage = Stage::DIRECT;
+  }
+  // A group that is on but not usable in this build (the whole game, or its own sites) runs the game's loop: said once each.
+  if (stage != Stage::OFF) {
+    const uint32_t unusable = settings.loops & (game_calls.usable ? ~game_calls.usable_groups : ~0u) & ~unusable_logged
+                              & ((1u << static_cast<uint32_t>(Group::SHARED)) - 1);
+    for (uint32_t group = 0; unusable >> group != 0; ++group) {
+      if (((unusable >> group) & 1) != 0) {
+        renodx::utils::log::w(std::format(
+            "[Total War] Threaded Draw Recording: group {} is on but not usable in this build: it runs the game's own loop.", group));
+      }
+    }
+    unusable_logged |= unusable;
   }
 
   // The pool grows here, never inside a dispatch. After a failure it is not tried again until the stage or K changes.
@@ -2454,7 +2504,7 @@ inline void Update(const Settings& settings, bool sites_in) {
           text += std::format("differs at op {} of run {} (kind {}) in chunk {}", call.compare_op, call.compare_run, call.compare_kind,
                               call.compare_chunk);
           if (b_call) {
-            text += std::format(" (its first mesh: class {} family {})", call.compare_class, call.family);
+            text += std::format(" (the op's mesh: class {} family {})", call.compare_class, call.family);
           }
           text += "\n";
         } else {
@@ -2466,10 +2516,11 @@ inline void Update(const Settings& settings, bool sites_in) {
           const uint32_t all_items = call.census_items + call.direct_items;
           const uint32_t seeds = call.seed_hits + call.seed_misses;
           text += std::format(
-              "  B round: meshes {} (direct {}) items {} census {} ({:.1f} %) direct {}; duplicate meshes {};"
+              "  B round: meshes {} (direct {}; the round lists {}{}) items {} census {} ({:.1f} %) direct {}; duplicate meshes {};"
               " seeds hit {:.1f} % unknown {};"
               " chunks run again {} (entry check {}, of {}); planner {:.3f} ms\n",
-              call.meshes, call.direct_meshes, all_items, call.census_items,
+              call.meshes, call.direct_meshes, call.round_meshes, (call.round_meshes > MAX_ROUND_MESHES ? ": over the limit" : ""),
+              all_items, call.census_items,
               (all_items != 0 ? 100.0 * call.census_items / all_items : 0.0), call.direct_items, call.duplicate_meshes,
               (seeds != 0 ? 100.0 * call.seed_hits / seeds : 100.0), call.unknown_seeds, call.reruns, call.entry_reruns, call.chunks,
               milliseconds(call.plan));
@@ -2495,11 +2546,21 @@ inline void Update(const Settings& settings, bool sites_in) {
   config = {.stage = stage, .threads = threads, .loops = settings.loops, .families = settings.b_families};
 }
 
+// The `groups` the engine code's Update takes (bits of Group), from this present's stage and live loops mask: none while the
+// stage is Off (which also makes the engine code check its sites again when the stage comes back); with the stage on, a group
+// stays once its row was on until the stage goes Off (switched off, its cut calls the loop directly and the sites stay in).
+inline uint32_t SiteGroups(Stage stage, uint32_t loops) {
+  internal::sticky_groups = (stage == Stage::OFF ? 0 : internal::sticky_groups | loops);
+  return internal::sticky_groups;
+}
+
 // Addon detach, right after the engine code's Uninstall. `sites_in`: a site is still written (the engine code gave up).
 inline void Uninstall(bool sites_in) {
   using namespace internal;
   detached.store(true, std::memory_order_relaxed);
   if (shared == nullptr) return;
+  // S4: from here every thunk takes the direct way, also when a site is left in (and before the memory below goes).
+  shared->arena_size = 0;
   if (sites_in || shared->active.load(std::memory_order_acquire) != 0) {
     // A thread may still be in a thunk or the dispatcher: everything stays for the life of the process.
     if (!kept_logged) {
@@ -2527,6 +2588,7 @@ struct GameCalls {
 };
 inline Shared* SharedPage() { return nullptr; }
 inline void SetGame(const GameCalls&) {}
+inline uint32_t SiteGroups(Stage, uint32_t) { return 0; }
 inline void Update(const Settings&, bool) {}
 inline void Uninstall(bool) {}
 

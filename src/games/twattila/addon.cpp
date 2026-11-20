@@ -1348,6 +1348,28 @@ float emitter_prefetch_row = 0.f;
 float particle_prefetch_row = 0.f;
 // Faster Sweep Prefetch (Experimental, off): engine_code.hpp's pending list sweep site, a row of its own.
 float sweep_prefetch_row = 0.f;
+#if defined(TWATTILA_DRAW_RECORDING)
+// Threaded Draw Recording (private build, draw_recording.hpp): the stage, the threads that scan (K), the four loop groups (bit g of
+// draw_recording::Settings::loops, in the order of draw_recording::Group) and the B dispatchers' families.
+float draw_recording_stage_row = 0.f;
+float draw_recording_threads_row = 4.f;
+std::array<float, 4> draw_recording_group_rows = {};
+float draw_recording_families_row = 255.f;
+
+// One of the four group rows: its key and label, the tooltip's loop.
+renodx::utils::settings::Setting* DrawRecordingGroupRow(const char* key, const char* label, size_t group, const char* tooltip) {
+  return new renodx::utils::settings::Setting{
+      .key = key,
+      .binding = &draw_recording_group_rows[group],
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = label,
+      .section = "Graphics (Experimental)",
+      .tooltip = tooltip,
+      .labels = {"Off", "On"},
+  };
+}
+#endif
 
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1598,9 +1620,29 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                 shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
+  uint32_t recording_groups = 0;
+#if defined(TWATTILA_DRAW_RECORDING)
+  twattila::draw_recording::Settings recording = {
+      .stage = static_cast<twattila::draw_recording::Stage>(draw_recording_stage_row),
+      .threads = static_cast<uint32_t>(draw_recording_threads_row),
+      .loops = 0,
+      // The thread context_hooks installed on (0: not installed), for the trace's note.
+      .context_hooks_thread = (twattila::context_hooks::internal::state.context.load() != nullptr
+                                   ? twattila::context_hooks::internal::state.thread
+                                   : 0),
+      .b_families = static_cast<uint32_t>(draw_recording_families_row)};
+  for (size_t group = 0; group < draw_recording_group_rows.size(); ++group) {
+    recording.loops |= (draw_recording_group_rows[group] != 0.f ? 1u << group : 0u);
+  }
+  recording_groups = twattila::draw_recording::SiteGroups(recording.stage, recording.loops);
+#endif
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
                                 job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,
-                                particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale);
+                                particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale, recording_groups);
+#if defined(TWATTILA_DRAW_RECORDING)
+  // After the engine code's Update: the sites are in or out for this present.
+  twattila::draw_recording::Update(recording, twattila::engine_code::DrawRecordingSitesIn());
+#endif
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, twattila::engine_code::ModelDetailStatus(object_detail.scale), &graphics_found,
                             graphics_status);
   if (!shadow_size_locked) twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), shadow_cascades_row != 0.f && rt_settings.shadows_only);
@@ -2076,6 +2118,45 @@ void ConfigureAddon() {
                      "them, while it works on the current one. May lower the CPU waiting in big battles. Same results.",
           .labels = {"Off", "On"},
       },
+#if defined(TWATTILA_DRAW_RECORDING)
+      new renodx::utils::settings::Setting{
+          .key = "DrawRecordingStage",
+          .binding = &draw_recording_stage_row,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Threaded Draw Recording (Private)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The game's draw loops, recorded on worker threads and replayed on the render thread in order.\n"
+                     "Each stage does more of it; Off leaves the game's own loops alone.",
+          .labels = {"Off", "Direct", "Touch ahead", "Chunked", "Recorded", "One worker", "Workers"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "DrawRecordingThreads",
+          .binding = &draw_recording_threads_row,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "Draw Recording Threads (Private)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The threads that scan the draw loops, the render thread included.",
+          .labels = {"2", "4", "6", "8", "12", "16"},
+          .parse = [](float value) { return std::array<float, 6>{2.f, 4.f, 6.f, 8.f, 12.f, 16.f}[static_cast<size_t>(value)]; },
+      },
+      DrawRecordingGroupRow("DrawRecordingDepthA", "Draw Recording Depth A (Private)", 0, "The depth passes' item loop."),
+      DrawRecordingGroupRow("DrawRecordingColourA", "Draw Recording Colour A (Private)", 1, "The colour passes' item loop."),
+      DrawRecordingGroupRow("DrawRecordingDepthB", "Draw Recording Depth B (Private)", 2, "The depth passes' per-mesh loops."),
+      DrawRecordingGroupRow("DrawRecordingColourB", "Draw Recording Colour B (Private)", 3, "The colour passes' per-mesh loops."),
+      new renodx::utils::settings::Setting{
+          .key = "DrawRecordingFamilies",
+          .binding = &draw_recording_families_row,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 255.f,
+          .label = "Draw Recording B Families (Private)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The per-mesh dispatchers that may record (bit f: dispatcher f). A clear bit runs its meshes directly.",
+          .min = 0.f,
+          .max = 255.f,
+      },
+#endif
       new renodx::utils::settings::Setting{
           .key = "RayTracedSkipShadowPass",
           .binding = &shadow_pass_row,
@@ -2457,6 +2538,10 @@ void DetachAddon() {
   twattila::engine_tests::StopAtStart(&at_start_stop);
   tw::engine_tweaks::Uninstall(graphics_options);
   twattila::engine_code::Uninstall();
+#if defined(TWATTILA_DRAW_RECORDING)
+  // After the engine code's Uninstall: the memory the sites use goes only when none is left in.
+  twattila::draw_recording::Uninstall(twattila::engine_code::DrawRecordingSitesIn());
+#endif
   twattila::graphics_hooks::Uninstall();
   twattila::shadow_pass::Uninstall();
   twattila::graphics_hooks::shadow_map::Uninstall();
