@@ -4104,6 +4104,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         fresh Opus xHigh review. C.3-1 STARTED: c3i_ a77126f3fada50077 (Sonnet High) in worktree .claude/worktrees/rmt_c3
         (branch rmt_c3 from 048fccae7, 10 links: remove them alone before any cleanup): C's own uint64 site table, flush-
         entry hook 0x1778390, Depth A sites, 7 fallback flush sites, F15, real-bytes tests; then an Opus xHigh review.
+        s5o_ FIX ROUND DONE 18:xx: rmt_s5 b5e89f0b2 (on ffaba9804, not pushed; reports/s5o_fix_report.md). M1 (bp:575, new
+        WRAP control, negative check differs), M2 (bp:387 / :569), S1 native plain Set, S2 redundant-Set fast path, S3 copy
+        slots per present + d3d11 version log, S4 tests, S5 hash <= 64 KB CBs, S7 flagged maps native, N1-N11. NOT done (GPU
+        harness blocked): S1 NVIDIA parity, S2 overhead vs the 0.1 ms gate; VB extension waits for ATN. WARP: tw_buffer_pool
+        / tw_context_hooks / tw_map_trace PASS x86 + amd64; harness ring parity as at ffaba9804 ("none EQUAL" rows -> re-
+        checker settles). gated builds x86 3 + amd64 13 exit 0. s5r_ RE-CHECK started; then the extra independent review.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
