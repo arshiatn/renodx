@@ -4474,7 +4474,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         projects\D--Dev-renodx\tools\tw\bench\analysis_b2\replay\atn_harness_runs.ps1 -Trap); (c) G1: batch 3's 195 s
         shots by eye (S0 ring on vs REF-ATN / ATNa / ATNb). ORDER (one implementer at a time): c2i_ C.2-4 -> s5o_ latch
         follow-up + trap harness -> c3i_ C.3-2 (B sites + SetGame) -> C.3-3 / C.3-4 -> C batch. Track B after the C batch.
-        c2i_ C.2-4 DONE 21:0x: rmt_c2 5aa638d92 (local, on fee60fba5): rows under #if TWATTILA_DRAW_RECORDING (stage x7, K
+        c2i_ C.2-4 DONE 21:1x: rmt_c2 5aa638d92 (local, on fee60fba5): rows under #if TWATTILA_DRAW_RECORDING (stage x7, K
         2-16 default 4, 4 group rows default Off, B Families 0-255), Update order (engine_code::Update gets SiteGroups,
         then draw_recording::Update; Detach: engine_code::Uninstall then draw_recording::Uninstall), sticky groups (OR of
         masks since stage Off), S4 / N-6 arena_size = 0 first, N-9 per-group not-usable log, R-N1 nested_calls + guard
