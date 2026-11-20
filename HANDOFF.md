@@ -4688,6 +4688,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         across game code, ALL job claiming shared units) - else R2 dropped. bd3o_ resumed again with the addendum ask.
         ATN 00:0x (11-21): heapfix's own pool size = AUTOMATIC ONLY (min(6, logical CPUs / 2 - 1), batch env override
         only, no ini line); add an ini line later only if the end batch shows the count matters a lot.
+        bd2o_ DESIGN v2 DONE 00:0x (reports/bd2o_design_B1_v2.md): all bd2r_ items folded (M1 SOUND_EMITTER, M2 BURST_1,
+        M3 RIGID_ADD forwarded to the render thread = exact either way, M4 TRACKED_CHILD, M5 CHILD_CREATE_A/B +
+        CHILD_APPEND_A/B + CREATE_RANDOM + TYPE_ADD_A/B + ATTACH_PAIR/LIST, M6 frontier-unit help with G = 1 (new: G = 4
+        serialises chunk-mates), M7 own fxsave frame, M8 epoch + 50 ms timeout, M9 failure order, M10 in-flight counter +
+        PausedWrite third table); sweeps render-only; exact 27-site table (+2 small-item sites in engine_code's table) on
+        the bd1r_ pool spec (EFFECT_UPDATE, ENTERED, Start at WALK_CALL / Join at WALK_END); 512 KB stacks enough (E,
+        tested). Gain E: L1 alone W3 -0.5..-2.5 (stress may be slower), L1 + L2 -2..-5 W3 / -3..-6.5 stress. Steps P0
+        (pool), B1.2a (engine_code.hpp), B1.2b, B1.3 review, B1.4 L2, B1.5 small item (engine_code.hpp), B1.6 rows,
+        B1.7 / B1.8 reviews. No ATN questions. NOTE for the pool step: B1 claims G = 1, not the spec's G = 4.
+        ebo_ STARTED 00:0x (Opus xHigh, read-only): the END BATCH PLAN -> reports/ebo_end_batch_plan.md, with ONE
+        "Questions for ATN" list. Agents: bd3o_ (addendum), c31r_, bd1o_, ebo_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
