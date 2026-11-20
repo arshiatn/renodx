@@ -4174,6 +4174,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         amd64 PASS, gated builds exit 0. CONTROL no settle 1024 -> 8 px (swap-time CheckTable settles itself) -> s5x_ judges.
         16:1x the 5-HOUR LIMIT stopped c31r_ + c2i_ mid-work (reset 17:00). 17:01 resumed both; s5x_ RESUMED: re-check of
         b2ba0de51.
+        ATN 17:1x (home): batch 2b GO (2 starts ~10 min: b2b_FCU = ATN's settings, FCU OFF / ON / OFF via RENODX_TW_SET
+        + WPR + PresentMon; b2b_T = W3 settings, v3 trace hash OFF); harness: "For the harness not running, ask me and
+        allow it for you <3" = ONE unchanged retry; VB ring: "Sure go ahead and add, why shouldn't we?". Started: s6r_
+        RESUMED (retry command 2 unchanged; then ring parity W3m + D1m; timing runs only in the quiet window), b2p_ RESUMED
+        (batch 2b variants + dry run, batch 2's build), s5r_ RESUMED (VB design, Opus xHigh -> reports/s5r_design_vb.md;
+        then s5o_ implements). Quiet window = all agents HELD: harness overhead x20 + W3m timing, then batch 2b.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
