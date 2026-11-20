@@ -401,7 +401,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 08:08: 64-bit decisions = coordinator's reco
 - NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | ATN, when ATN brings it up again
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
-- S5 RING GPU CHECKS (s5r_ re-check 11-20; gate ANY game run / release with "Fewer ... | coordinator
 - S1 FOLLOW-UPS: N1-N7 DONE by s5o_ in e6a835ffc (merged with S5 in ca057a7ee, 11- ... | ?
 - AUTHOR ZIP, er4o_ items (after the bench, Sonnet xHigh, with the hlr1s_ box): M2 ... | coordinator
 - BEFORE THE FINAL CPU BENCH: tell ATN, ATN restarts the PC first (ATN 19:43: "let ... | coordinator ATN 20:00 (home): the COORDINATOR restarts the P
@@ -4392,6 +4391,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         HARNESS RE-CHECK started 19:2x BY THE COORDINATOR with ATN's exact PowerShell(...) rule (default
         atn_harness_runs.ps1, h1-h5c on rmt_s5 183c59302; earlier outputs kept in replay/run_1718/): NOT STOPPED.
         NEXT: s5r_ amends batch 3 for the trap; s5o_ FCU latch + NATIVE_CALLS 8,192; b2p_ updates the scripts; run.
+        HARNESS RE-CHECK PASSED 19:26-19:29 (coordinator, ATN's PowerShell rule, no stop): h3 D1m + h4 W3m parity EQUAL
+        bit for bit (51,965 / 29,389 draws), h5a upload control differs, h5b / h5c EQUAL (as before: window / offset
+        can't show on game traces), h2 W3m locator "ring in, 8 pieces, full ring never, stopped no", no growth unmaps
+        (longest 0.115 ms), D3D11 calls 3.22 ms/f vs native 3.36 / 3.17 -> S5 RING GPU CHECKS CLOSED. Agents RESUMED
+        19:3x: c23r_ (finish re-check), s5r_ (batch 3 Part 2b: toggles + trap check vs start-level A/B, measure the CB
+        ring's own hand-back, row latch?), s5o_ (rmt_s5: FCU latch for the device's lifetime + Off after restart text,
+        NATIVE_CALLS_A_FRAME 8,192; CB ring untouched).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
@@ -4416,7 +4422,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         faction node's vf+0xc0 always writes its out pointer (open assumption) + S-3's real-bytes colour paths -> C.3's
         colour round (owner the C.3 implementer); S-4 (b) arm more compare frames in the C-A batch plan (G2 samples only
         1 of 3 frames) -> owner coordinator.
-      - [ ] S5 RING GPU CHECKS (s5r_ re-check 11-20; gate ANY game run / release with "Fewer Driver Waits" on, batch 3
+      - [x] S5 RING GPU CHECKS (DONE 11-20 19:29: re-check with 8 pieces + H0 passed, parity EQUAL; s5r_ re-check 11-20; gate ANY game run / release with "Fewer Driver Waits" on, batch 3
         included; agents can't run the harness (classifier), ATN runs bench/analysis_b2/replay/atn_harness_runs.ps1): 1. DONE
         11-20 17:18 (EQUAL, upload differs, no unknown-body line) NVIDIA x86 parity:
         harness `--nvidia --plugin ring` on b2_W3m + b2_D1m, `none` EQUAL, every control differs, no "copy body unknown"
