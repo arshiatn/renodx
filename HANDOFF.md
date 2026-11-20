@@ -4093,6 +4093,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         group's first compare diff, mandatory paused-view dump for B, pre-flight, Colour A continuation check, batch may run
         without Colour B). c1o_ RESUMED: writes the v3.1 addendum at the end of c1o_design_C_full_v3.md. The C batch (8
         starts) needs ATN's go later.
+        c1o_ v3.1 ADDENDUM DONE 17:xx (end of c1o_design_C_full_v3.md; spec of record = v2 + v3 + v3.1, v3.1 wins): M1-M4 +
+        S1-S11 folded in; Depth B 20 census / 3 direct, Colour B 19 / 4; C table 59 of 64 sites (7 fallback flush sites
+        counted); batch now ~51 min / 9 starts (+8 optional N-heavy). Next C: C.2-3 (c2i_) after c2r_'s re-check, then
+        C.2-4 / C.2-5; C.3-1 (Sonnet High, own worktree) can start after the C.2 base merges.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
