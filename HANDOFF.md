@@ -4083,6 +4083,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         recording x86 960 depth cases PASS (new +0x50 / continuation / any-capture controls differ), tw_cpu_sets x86 + amd64
         PASS, build32 twattila exit 0 (temp include, reverted). Seed misses in no-technique runs cost reruns (exact, slower) ->
         v3's step-back seed search in C.2-5. c2r_ RE-CHECK started.
+        c1r_ v3 REVIEW DONE 17:xx (reports/c1r_review_v3.md, saved by the coordinator): GO WITH CHANGES. Must: M1 +0x50 for
+        the B groups (folded driver divides by it every round; direct segments make it worse); M2 check real +0x58 / +0x78 /
+        +0x64 before replaying a census chunk after a direct segment; M3 class 0x11cbdc84 makes the same call that forces
+        0x11cbddd0 direct -> coordinator: force BOTH direct; M4 trace-only work out of B's totals. Confirmed exact: any-
+        capture, flush-entry hook, cut stub, 52 sites, no overlaps, no TLS. Coordinator adopted S1-S11 (FLUSH snapshots out
+        of the compare, warm-up mesh +0x40 / +0x44 save-restore, mesh uniqueness check, arena lifetime, 7 fallback flush sites
+        counted + tested, passtime re-check, no heap in DispatchMesh, per-group gates (4.5 ms bar = groups A), auto-off on a
+        group's first compare diff, mandatory paused-view dump for B, pre-flight, Colour A continuation check, batch may run
+        without Colour B). c1o_ RESUMED: writes the v3.1 addendum at the end of c1o_design_C_full_v3.md. The C batch (8
+        starts) needs ATN's go later.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
