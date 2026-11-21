@@ -6085,6 +6085,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: ebr_ (round 10), b13r_ (R1 re-check), c33i_ (R2 answers) (3 of 3). QUEUE: merge rmt_b15r1, c33i_ part 2b
         (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, bd3o_ R2 answers fold + bd3r_
         re-check, x0i_ X2 notes, B1.6 (+ N5 real-routine tests), X1, R-S5.
+        c33i_ R2 ANSWERS DONE 20:4x (reports/c33i_r2_answers.md): 1 ENTERED + claimed shares OK; 2 sites 4..6 with
+        per-site size + group masks (R1 0x0F, stubs 0x70), per-group all-or-none / stand-down; 3 close in RunLoop /
+        RunMesh OK (noexcept: no alloc / format / log; ticks to a fold field); 4 no +0x40..+0x4F / D3D use found, not
+        proven for every virtual -> test 9; 5 B fold without record OK; 6 tests in tw_draw_recording + stub test in
+        tw_instance_fill; 7 masks still RecordingSite bits (pass cut bits into Wanted); 8 'fold:' line in CallTrace.
+        bd3o_ RESUMED 20:4x: fold the answers into the R2 addendum -> bd3r_ re-check.
+        Agents: ebr_ (round 10), b13r_ (R1 re-check), bd3o_ (R2 v2) (3 of 3). QUEUE: merge rmt_b15r1, c33i_ part 2b
+        (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, bd3r_ R2 re-check, x0i_ X2 notes,
+        B1.6 (+ N5 real-routine tests), X1, R-S5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
