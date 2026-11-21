@@ -5725,6 +5725,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         b13r_ STARTED B1.4 review 15:3x -> reports/b13r_b14_review.md.
         Agents: c33i_ (C.3-4 fixes + LOGX), ebr_ (round 7), b13r_ (B1.4 review) (3 of 3). QUEUE: bd1r_ re-check, merge
         rmt_c34, t4i_ LOGX test_check case, x87o_ v2, c3i_ B1.4 fixes, B1.5 (after rmt_c34: S4 shared table Must).
+        ebr_ ROUND 7 DONE 15:3x (reports/ebr_t1b_review.md from line 345): all round 6 fixes in, no regressions, no Musts
+        / Shoulds; T4 READY except the x87 M1 (LOGX -> t4i_ test_check case -> ebr_ confirms). run_all 726 / 726.
+        [ ] t4i_ cosmetic nit (bundle with the LOGX test_check case): the single line + ebo_analyze.py:31 say only 'the
+        noise band' (add 'and / or the floor'); gate keeps only the last ab_report's single / ab_note.
+        x87o_ (a604175c0f0e9cd11) RESUMED 15:3x: x87o_design_v2.md (S1-S7 + nits + decisions: LOGX done by c33i_, T5
+        frozen unless X2 reviewed in time, no new DLL rule (walker on dis_at.py output, micro in the suites), X1 after
+        B1.5 with a site index clear of B1.5's Cached Particle Count sites, EB 16, slot flow-through, main = present
+        thread check, author notes) + the slotwalk.py question (possible deviation #3).
+        Agents: c33i_ (C.3-4 fixes + LOGX), b13r_ (B1.4 review), x87o_ (design v2) (3 of 3). QUEUE: bd1r_ re-check, merge
+        rmt_c34, t4i_ LOGX case + nit, ebr_ T4 confirm, x87o_ v2 review, c3i_ B1.4 fixes, B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
