@@ -400,6 +400,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go fa4o_ DONE (night1118/final_bench_f
 - OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 08:08: 64-bit decisions = coordinator's reco
 - NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | coordinator -> a hybrid bug-fix step in the GPU plan after r
+- group 3 after R-S5 / B1.6 / X1 land: engine_code A-M2 / A-S1 / A-S2 / A-N1, inst ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -6448,6 +6449,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents (8): bd3r_ + bd1r_ (R-S5 review), gtb_ (GPU S1b), gtp_ (GPU S1c), lga_ (logging audit), gtv_ (S1r), upt_
         (unified PT v2.1). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6, X1, logging fixes, upr_ spot-check, S1r
         S1b / S1c, bulk index, H0, T5 freeze, T6 dry run, end batch.
+        lga_ LOGGING AUDIT DONE 00:4x (reports/lga_logging_audit.md, hand-back reports/lga_handback.md): 6 MUST / 20
+        SHOULD / 11 NIT. MUSTs: A-M1 no crash line in any TW game (device_loss.hpp: filtered VEH + set_terminate in
+        Install; 32-bit stall check is _WIN64 only); A-M2 instance fill gives up after 30 tries with no line / no
+        PinModule (engine_code.hpp, re-check after R-S5); B-M4 helper rescue says no failing step; B-M5 failed RT requests
+        turned Off with no reason; B-M6 helper has no terminate / purecall / invalid-parameter handler (__fastfail skips
+        OnUnhandledFault); C-M3 bridge never logs the helper's exit code, copy_count == 0 path silent. worker_pool.hpp
+        invariant comment text in the report. Upstream: no real bug found.
+        [ ] ATN (end batch): '[Total War] StallDump=1' in ReShade.ini so the first stall writes renodx-stall.dmp with
+        every thread's place (lga_ changed no settings) -> ask ATN / put into the T6 checklist.
+        LOGGING FIXES STARTED 00:4x (Opus High, own worktrees, from ca66dc537):
+        - lgf1_ (a89db83b1713e90b2) rmt_lg1: device_loss.hpp A-M1 / A-S9 / A-S7 half, effect_update A-S5, engine_tests
+          A-S8 / A-N6, anti_aliasing A-S10, rt_core A-S11, frame_trace A-N4, twrome2 engine_tweaks D-S1;
+        - lgf2_ (a2e927f66592ef97f) rmt_lg2: all of helper B + bridge C (exit codes defined once; no bridge bump unless
+          needed, then stop and ask).
+        - [ ] group 3 after R-S5 / B1.6 / X1 land: engine_code A-M2 / A-S1 / A-S2 / A-N1, instance_fill A-S3 / A-N5,
+          draw_recording A-S4 / A-N2 / A-N3, worker_pool A-S6 + Describe() half of A-S7 + the invariant comment.
+        Then lga_ re-checks each branch.
+        Agents (9): bd3r_ + bd1r_ (R-S5 review), gtb_ (GPU S1b), gtp_ (GPU S1c), gtv_ (S1r), upt_ (unified PT v2.1),
+        lgf1_ + lgf2_ (logging fixes). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6, X1, logging group 3, lga_
+        re-checks, upr_ spot-check, S1r S1b / S1c, bulk index, H0, T5 freeze, T6 dry run, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
