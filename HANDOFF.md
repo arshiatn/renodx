@@ -5380,6 +5380,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         bd3r_ RESUMED 09:5x: check of S8a v4 -> hp1i_ S8-1c -> S8-2.
         Agents: c3i_ (B1.2b), c33i_ (C.3-3), bd3r_ (v4 check) (3 of 3). QUEUE: t4i_ T1b follow-ups + ebo_ lane;
         hp1i_ S8-1c after the v4 check.
+        c33i_ ASKED 10:0x (stopped before any edit, as briefed): C.3-3 needs engine_code.hpp:1770 RECORDING_SITES 23 ->
+        39 (table full; draw_recording_sites.hpp static_asserts the count; uint64 masks already fit 64). Coordinator
+        APPROVED that one line as an isolated commit (B1.2a's rmt_b12a hunks don't touch it; no other engine_code.hpp
+        writer active); test constants follow (minimal + listed if in test/tw_engine_code). Its design so far: cut
+        0x17aed4a (8 bytes, stub calls dispatch_mesh stdcall, exit 0x17aee68), 15 Depth B sites in 5 bodies 0x17b09f0 ..
+        0x17b1520, thunk / dispatcher decode, compile-time overlap check (no overlap by hand; nearest 0x17b10f7 vs
+        batchfix 0x17b1117), RECORDING_CODE_SIZE may need 0x2000.
+        c33i_ RESUMED 10:0x: full C.3-3.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
