@@ -4740,6 +4740,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         deadlines + per-phase timing logs, pitfall files, local spec references); (3) Shortfuse's "Failures and
         invariants" text (ATN's Downloads\message (1).txt, not in docs/CXX_STYLE.md or upstream yet): coordinator
         suggests a CXX_STYLE.md section, not a skill - waiting for ATN's answer.
+        c3i_ S2 DONE 03:1x: rmt_pool 09ea47065 (local, on ee00eec70): new worker_pool.hpp per bd1r_ §4 + the 5 amendments,
+        C moved onto it (Run / ALL at its 3 sites, K = Available + 1), public "Worker Threads (Experimental)" row
+        WorkerThreads in all builds, Update once per present, Stop in DetachAddon; pool tests moved + new (properties a-c,
+        late worker, refusals, open-job join, env limits incl. 1, CPU-set generation). Tests x86 + amd64 stubs PASS,
+        gated builds x86 x3 (+ with the define) + amd64 twattila exit 0. 8 deviation notes (Stop keeps the pool while a
+        job is open elsewhere; dropped tests; row in all builds; entered = finished workers) -> reviewer. No script under
+        tools says DrawRecordingThreads (only report text). bd1r_ RESUMED 03:1x: S2r review -> reports/s2r_review.md.
+        Agents: ebo_, x87o_, hp1i_, bd1r_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
