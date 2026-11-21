@@ -6486,7 +6486,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         numbers (33 kinds, (kind << 12) | index, path stride 32, reflections 16 + s, reservoir texel 32) + exact
         distinctness test; rt_reference.cs 136-141 renamed (bit-identical); Random(uint3) deleted (H0 checks DXC rejects
         a uint3 call). Unified PT design CLOSED until its build slot.
-        Agents (9): bd3r_ + bd1r_ (R-S5 review), gtb_ (GPU S1b), gtp_ (GPU S1c), gtv_ (S1r), upt_ (v2.2 notes), lgf1_ +
+        gtb_ GPU S1b DONE 00:5x (plan_1117/gtb_s1b_handback.md; all new files in tools/tw/lab, no existing file edited):
+        resident_protocol.md + cmd / ans / alive / result / iq schemas + schema_check.py; gpu_gate.py (G- / Q- ids,
+        --settle), gate_sim.py + gate_constants.json (20000 jobs per form / K), report_check.py, budget.py + Budget.psm1;
+        tests 25 + 8 + 9 all OK. A/A false rates <= 1.6 %, toggle K 6 power 98.5 % at +0.1 ms / sigma 0.02; rotation 8
+        per arm 98.2 %, 4 per arm only 21-54 % (rec: always 8). Deviations: Qn instead of MAD, shared Theil-Sen detrend,
+        stricter c / c_AA, report_check reads joined units + scopes bench / CPU headings, ASCII gate lines, exit codes
+        0-4. Sent to gtv_ as '## S1b' after S1a.
+        Agents (9): bd3r_ + bd1r_ (R-S5 review), gtp_ (GPU S1c), gtv_ (S1r), upt_ (v2.2 notes), lgf1_ +
         lgf2_ (logging fixes). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6, X1, logging group 3, lga_ re-checks,
         S1r S1b / S1c, bulk index, H0, T5 freeze, T6 dry run, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
