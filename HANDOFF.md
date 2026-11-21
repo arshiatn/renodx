@@ -5659,6 +5659,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         t4i_ RESUMED 14:3x: heapfix A/B (ATN yes) + crash-record segment nit + S6 x87 revert INFO gate -> ebr_ re-check.
         Agents: bd1r_ (C.3-4 review), b13r_ (B1.3 re-check), t4i_ (A/B + nits) (3 of 3). QUEUE: merges rmt_c34 /
         rmt_b12a, LOGX (c33i_), x87o_ v2, ebr_ re-check of t4i_, B1.4 / B1.5.
+        b13r_ RE-CHECK DONE 14:3x (appended to reports/b13r_l1_review.md): MERGE c561d5ae8 - M1 + M2 fixed; S5 / S8 /
+        S11 design calls accepted (S5: real prologue 83 EC 20 57 8B F9 B9 68 4D A7 12); deferrals S3 / S10 / S4
+        accepted; heapfix_ranges.hpp (2bd22fed7) closes every listed gap, B1 vs 54 timing hooks no overlap (nearest
+        0x15B). New: R1 Should for B1.4 (a new type between the tail and the failed effect skipped for one frame on
+        OOM -> late segment when target_slot < slot_of(failed)); N9 (non-owner walk call with no round open writes
+        last_node; check owner first); N6 half (open round's units at present use a dead frame; needs an exception,
+        stays). Re-runs exit 0 (FULL: thunks 2613 / 8192 B, 25f 238 M spawn calls 0 wrong; part 26 x5, part 25 x2;
+        gated builds).
+        MERGED 14:4x: rmt_b12a -> atn-mods 676cda27f (name_check 2088 ids / 102 generic hits; engine_code.hpp
+        auto-merged with C.3-3; gated x86 x3 + amd64 exit 0; pushed). c3i_ runs FULL on the merged tree first.
+        c3i_ STARTED B1.4 14:4x on rmt_b14 (from 676cda27f): L2 Parallel Effect Spawns (own Off row) + NM3 + S10 + R1 +
+        N9 + v1 L2 controls; engine_code.hpp edits only in a separate last commit (rmt_c34 pending) -> b13r_ review.
+        Agents: bd1r_ (C.3-4 review), t4i_ (A/B + nits), c3i_ (B1.4) (3 of 3). QUEUE: merge rmt_c34, LOGX (c33i_),
+        x87o_ v2, ebr_ re-check of t4i_, b13r_ B1.4 review, B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
