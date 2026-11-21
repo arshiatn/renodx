@@ -5248,6 +5248,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         agreed (T5 fills built from the frozen DLL itself).
         t4i_ RESUMED 08:3x: round 3 -> ebr_ re-check.
         Agents: c3i_ (B1.2a), bd3o_ (S8a v3), t4i_ (3 of 3).
+        bd3o_ S8a v3 DONE 08:3x (appended to bd3o_design_S8a.md; dis_at.py only, via a chaining wrapper): DECISION (a)
+        pin the 4 reset callers + 2 changes: P3' MOVES to +0x18124E8 (block 11's call, the reset's last; reset row
+        0x1811F0C len 0x5DC); the commit COMPARES CONTENT (unsorted copy kept, 8 B / item, memcmp after the game's merge,
+        count "same header, other items") so exactness no longer depends on any reset path. Proofs: thunk can't reach
+        pair 1 (nodes = fresh 0xC70 blocks), P3's other calls run while seq = 0, pair 2 / 3 lists never records; abort
+        rule: only a current P1 aborts. New exact expected sets for S8-1a (0x189B9A0 callers, thunk caller + bytes,
+        constructor caller, vtable refs, 11-block table, owner-reset set). (b) / (c) / (d) rejected with reasons.
+        bd3r_ RESUMED 08:3x: check of v3 -> hp1i_ re-runs S8-1a with the new table.
+        Agents: c3i_ (B1.2a), t4i_ (T4 round 3), bd3r_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
