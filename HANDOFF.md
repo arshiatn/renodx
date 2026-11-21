@@ -5735,6 +5735,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         thread check, author notes) + the slotwalk.py question (possible deviation #3).
         Agents: c33i_ (C.3-4 fixes + LOGX), b13r_ (B1.4 review), x87o_ (design v2) (3 of 3). QUEUE: bd1r_ re-check, merge
         rmt_c34, t4i_ LOGX case + nit, ebr_ T4 confirm, x87o_ v2 review, c3i_ B1.4 fixes, B1.5.
+        x87o_ DESIGN v2 DONE 15:4x (reports/x87o_design_v2.md, complete, no ATN questions): X1 = engine_code site 29 (B1.5
+        takes 27 / 28), plain 5-byte, after B1.5's merge, 2 new controls, pass line -0.07 ms + slow path < 1 %; X2 EB 16 +
+        22 CC, byte-level walker with slot sharing (+0xe80d1 dead via sharing + a failing control), any-form neighbours;
+        T5 Way A (05b9a5c + x87c, needs the add-on to know the x87c bytes 50 F3 0F 2C 44 24 20 89 44 24 2C 58 EB 16 +
+        22 CC) / Way B (frozen); S7 walker on dis_at.py output only (+ block table / hash from a list mode in the x87c
+        x87fix_test.c suite), X1 micro in tw_engine_code; main = present thread: Present on M in 9 captures, frame hook
+        +0xC1950 caller side still open (X0 step); author notes (paused_write all threads; +0xe80d1 wording).
+        RULE DEVIATION #3 (for ATN's report): x87o_ v1's scratchpad slotwalk.py (2026-11-21 03:13-03:17) opened
+        empire.retail.dll directly (tools\tw\pe_xref.py / pefile mapped image + capstone, read-only) - against its own
+        brief (dis_at.py only for disassembly). Its other v1 scratch scripts (scan.py, covered.py, x87ip.py, callers.py,
+        sites.py, range.py, 00:11-00:25) read raw bytes for byte scans, which MY v1 brief allowed - ATN to say whether
+        that brief was too loose under the dis_at.py-only rule. v2 used dis_at.py only (+ 2 scripts on capture pickles).
+        c33i_ told: LOGX also recognizes the x87c bytes (all 3 forms in the unit test).
+        ebr_ RESUMED 15:4x: v2 re-check -> appended to reports/ebr_x87_review.md (verdict per X0 / X1 / X2 / X2b; checks
+        the list mode is an existing DLL reader, not a new one).
+        Agents: c33i_ (C.3-4 fixes + LOGX), b13r_ (B1.4 review), ebr_ (x87 v2 re-check) (3 of 3). QUEUE: bd1r_ re-check,
+        merge rmt_c34, t4i_ LOGX case + nit, ebr_ T4 confirm, c3i_ B1.4 fixes, B1.5, X0.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
