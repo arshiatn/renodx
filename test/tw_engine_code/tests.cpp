@@ -3915,6 +3915,8 @@ int main(int argc, char** argv) {
   // displacement): the unknown mod.
   std::string split_line;
   std::string split_control_line;
+  std::string x87c_line;
+  std::string x87c_control_line;
   if (attila) {
     if (build.ready_check_rva != 0) patched[build.ready_check_rva + 0x1F] = ready_saved;
     const std::array<uint8_t, 30> split = {0x0F, 0xB7, 0x44, 0x24, 0x1A, 0xD9, 0x7C, 0x24, 0x18, 0xC1, 0xE0, 0x10, 0x66, 0x8B, 0x44,
@@ -3934,10 +3936,29 @@ int main(int argc, char** argv) {
     CHECK(ec::sites[0].at == nullptr && split_control_line.ends_with(std::format("{}soldier draw rounding", UNKNOWN))
           && split_control_line.find(X87_FIX) == std::string::npos);
     block[5 + 4] ^= 1;
+    // 7c. heapfix's future x87c: the whole 36-byte block (push eax; cvttss2si eax, [esp + 0x20]; mov [esp + 0x2c], eax; pop eax;
+    // jmp +0x16; 22 int3). CONTROL: its jump's displacement changed.
+    std::array<uint8_t, 36> x87c = {0x50, 0xF3, 0x0F, 0x2C, 0x44, 0x24, 0x20, 0x89, 0x44, 0x24, 0x2C, 0x58, 0xEB, 0x16};
+    std::fill(x87c.begin() + 14, x87c.end(), uint8_t{0xCC});
+    std::memcpy(block, x87c.data(), x87c.size());
+    for (ec::Site& site : ec::sites) site.at = nullptr;
+    ec::prepared = false;
+    ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
+    x87c_line = log_lines.back();
+    CHECK(ec::sites[0].at == nullptr && ec::sites[1].at != nullptr && ec::sites[2].at != nullptr);
+    CHECK(x87c_line.ends_with(std::format("{}soldier draw rounding", X87_FIX)) && x87c_line.find(UNKNOWN) == std::string::npos);
+    block[13] ^= 1;
+    for (ec::Site& site : ec::sites) site.at = nullptr;
+    ec::prepared = false;
+    ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
+    x87c_control_line = log_lines.back();
+    CHECK(ec::sites[0].at == nullptr && x87c_control_line.ends_with(std::format("{}soldier draw rounding", UNKNOWN))
+          && x87c_control_line.find(X87_FIX) == std::string::npos);
   }
   std::printf("7. a block another mod changed: left alone, the others found%s\n  log: %s\n", (build.ready_check_rva != 0 ? "; a changed ready check left alone" : ""),
               first_line.c_str());
   if (!split_line.empty()) std::printf("  log (the fix's split form): %s\n  log (CONTROL, one byte of it changed): %s\n", split_line.c_str(), split_control_line.c_str());
+  if (!x87c_line.empty()) std::printf("  log (the fix's x87c form): %s\n  log (CONTROL, its jump changed): %s\n", x87c_line.c_str(), x87c_control_line.c_str());
   if (!control_line.empty()) std::printf("  log (CONTROL, not the fix's form): %s\n", control_line.c_str());
   if (!ready_line.empty()) std::printf("  log: %s\n", ready_line.c_str());
   std::printf("PASS\n");

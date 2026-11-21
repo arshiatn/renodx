@@ -106,11 +106,12 @@ constexpr std::array<uint8_t, 44> TruncationStub(uint8_t control, uint8_t roundi
 }
 constexpr std::array<uint8_t, 44> TRUNCATION_STUB = TruncationStub(0x18, 0x1C, 0x20, 0x2C);
 // The same bytes as the Attila CPU Performance Fix's x87 fix leaves them (its x87fix.c, on the block at +14): the form of
-// 7.0 (both fldcw a 4-byte nop, fistp fisttp) and the split form of the later builds (the control word reload split: the
-// fwait through the fistp are 30 bytes of integer code, with fisttp and no control word loads). Left to that mod as any
+// 7.0 (both fldcw a 4-byte nop, fistp fisttp), the split form of the later builds (the control word reload split: the
+// fwait through the fistp are 30 bytes of integer code, with fisttp and no control word loads) and the form of its x87c
+// (the whole 36-byte block: push eax, cvttss2si, the store, pop eax, a short jump over 22 int3). Left to that mod as any
 // other mod's code; only named in the log.
 constexpr auto X87_FIX_TRUNCATIONS = [] {
-  std::array<std::array<char, TRUNCATION.size()>, 2> patterns = {};
+  std::array<std::array<char, TRUNCATION.size()>, 3> patterns = {};
   for (std::array<char, TRUNCATION.size()>& pattern : patterns) {
     std::ranges::copy(TRUNCATION, pattern.begin());
   }
@@ -123,6 +124,10 @@ constexpr auto X87_FIX_TRUNCATIONS = [] {
   // movzx eax, word ptr [esp + 0x1a]; fstcw [esp + 0x18]; shl eax, 0x10; mov ax, [esp + 0x18]; or eax, 0xc00;
   // mov [esp + 0x1c], eax; fisttp dword ptr [esp + 0x2c]
   put(1, 19, "0F B7 44 24 1A D9 7C 24 18 C1 E0 10 66 8B 44 24 18 0D 00 0C 00 00 89 44 24 1C DB 4C 24 2C");
+  put(2, 14, "50 F3 0F 2C 44 24 20 89 44 24 2C 58 EB 16");
+  for (size_t offset = 28; offset < 50; ++offset) {
+    put(2, offset, "CC");
+  }
   return patterns;
 }();
 
