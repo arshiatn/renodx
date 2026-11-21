@@ -5419,6 +5419,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         review of S8-1c + the v4.1 text.
         Agents: c3i_ (B1.2b), c33i_ (C.3-3), hp1i_ (S8-1c) (3 of 3). QUEUE: t4i_ T1b follow-ups + ebo_ lane; bd3r_ after
         S8-1c.
+        hp1i_ S8-1c DONE 10:2x (prep ca4dbc8 on 36a7766, local; reports/hp1i_s8_1c_handback.md): compile gate
+        HEAPFIX_PRESORT default 0 (release line ends "presort: not in this build"; nothing made, P3 / P3' / P4
+        unpatched; new presortoff_test checks it with the heap part on + off), read-depth count (HEAPFIX_TEST only),
+        lock-invariant comment + test 51, stub block RW -> RX with failure path, truer failure messages, 9 PIN rows +
+        125-site slot 0x128 / 0x12C call list pinned (74 / 51), nits 1-5. build.bat test src_prep10 all passed,
+        prepare_test x6 exit 0, S8-1a stop check 0 / 0. Exes only under testbin this time.
+        NOTE: agents share the coordinator scratchpad; another agent's edit.py replaced hp1i_'s mid-run (no harm) ->
+        every brief now asks for agent-prefixed scratch names.
+        bd3r_ RESUMED 10:2x: review of S8-1c + v4.1 text Musts -> reports/bd3r_s8_1c_review.md (S8 lane closed for T5, or
+        Musts).
+        Agents: c3i_ (B1.2b), c33i_ (C.3-3), bd3r_ (S8-1c review) (3 of 3). QUEUE: t4i_ T1b follow-ups + ebo_ lane.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
