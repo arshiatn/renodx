@@ -4835,6 +4835,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         prep_dinput8.dll sha256 bf5d49fe...7461. A crashed prepare_test.exe (PID 33924) is a zombie until ATN's next
         reboot (not ours to kill). bd3r_ RESUMED 03:3x: Opus xHigh review of S1 + S2.
         Agents: c3i_, bd2r_, bd3r_ (3 of 3). QUEUE: gto_ review + addendum, x87 review, ebo_ review, R2 addendum.
+        bd2r_ RE-CHECK OF B1 v2 DONE 03:3x (appended to reports/bd2r_review.md): L1 GO WITH CHANGES, L2 GO WITH CHANGES,
+        small item GO. All 27 + 2 sites byte-exact, no branch into patched ranges (whole-DLL scan), flags dead, x87 empty;
+        S2 rejection + G = 1 accepted; deadlock proof holds. B1.2a MAY START once S2 + its fix round are merged (from that
+        tip, no other engine_code.hpp step at the same time). B1.2a BRIEF MUST CARRY: NM1 fast path = one word (sub
+        [direct_high], esp; cmp limit) instead of the torn low / high pair + a tearing control; NM2 return addresses into
+        B1's page (CHILD_APPEND E8 thunks: walk_active test + tail-jump, counted call when set; WALK_END: push return +
+        jmp 0x100E06F0) + SwitchStress thread parked in 0x1873820; PRESORT RULE: PARTICLE_COUNT_EPOCH pattern ends by
+        +0x192D2D9, WALK_CALL / WALK_END patterns start after +0x192D2DF (or wildcard the 5 bytes), else refuse with
+        presort on; whole-DLL branch scan in the offline test. B1.4 (L2): NM3 the drain commits + merges staged spawns
+        before clearing walk_active (test AllocationFailure with L2). B1.6: NM4 OR B1's row into pool_in_use + pool_trace,
+        compile the Worker Threads row wherever B1 is compiled. Shoulds S-a..S-h (render thread sets current /
+        direct_high while it sweeps / serves the mailbox; RANDOM_FILL forwarded like RIGID_ADD + "device calls from pool
+        threads" = 0 count; site errors stored and printed at Update; counters only in trace frames; node+0xC8 count
+        watched; WalkEnd serves sweep + mailbox first; Update clears a stale walk_active; key layout stated).
+        ebr_ STARTED 03:3x (Opus xHigh, read-only): review of ebo_'s end batch plan (order reconciled, one replay per
+        start, T1a). Agents: c3i_, bd3r_, ebr_ (3 of 3). QUEUE: gto_ review + addendum, x87 review, R2 addendum,
+        bd1r_ re-check of the S2r fixes (takes c3i_'s slot).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
