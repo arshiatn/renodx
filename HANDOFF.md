@@ -6176,6 +6176,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: t4i_ (T3), c33i_ (part 2b), s0r_ (S0 GPU review) (3 of 3). QUEUE: bd1r_ R-S3 re-check + merge rmt_rs2b,
         ebr_ T3 review, R-S5 (c33i_, Sonnet High, serial, after rmt_rs2b merges) -> bd3r_ / Opus xHigh review, B1.6 (+
         N5 real-routine tests + b13r_'s half-rows R2), X1, unified PT design (after S0).
+        t4i_ T3 DONE 21:2x (reports/t4i_t3_handback.md): rmt_t3 69d2351a1 from 58232d5df (frame_trace.hpp +
+        test/tw_map_trace; +324 / -92). Up to 6 windows, strict parse (refused whole, reason logged), rising order (a
+        late window starts right after the previous one's files), v1 + v3 file per window (tw_map_trace[_v3][_<w>].txt),
+        ClearMapRecords between windows, storage for the longest window, no cost unarmed; pre-existing x86 leak fixed
+        (trace.draws = {} kept capacity -> std::exchange). Bench: constantinople_bench collects tw_map_trace*.txt,
+        Get-EboMapWindows, ebo_make PROBLEM on a refused value, ebo_check map_trace FAIL / NOTE section, gates map_trace
+        section; run_all 843 / 843; gated x86 x3 + amd64 exit 0. ONE amd64 FLAKE in section 9 (tests.cpp:853,
+        pre-existing, 4 later runs passed, not root-caused). [ ] §4.2 hash-window compare (OFF / OFF / C / ALL) NOT BUILT
+        anywhere -> owner t4i_ after the T3 review (ebo_analyze).
+        ebr_ STARTED T3 review 21:2x (+ the flake, + what §4.2 must compare) -> reports/ebr_t1b_review.md '## T3 review'.
+        Agents: c33i_ (part 2b), s0r_ (S0 GPU review), ebr_ (T3 review) (3 of 3). QUEUE: bd1r_ R-S3 re-check + merge
+        rmt_rs2b, merge rmt_t3, t4i_ §4.2 compare + flake fix, R-S5 (c33i_, after rmt_rs2b merges) -> Opus xHigh review,
+        B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, unified PT design (after S0).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
