@@ -5104,6 +5104,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         whole updates 0 wrong, 2 mutations caught). No overlap with B1's 27 sites. Cut off before FULL tests / builds /
         commit -> c3i_ RESUMED to finish (no overlapping runs, logs readable by Windows tools, found-line lists the new
         sites, env-unset check).
+        c3i_ 05:3x: first FULL run (only at part 2) stopped by c3i_ (own PID), fresh FULL run on the final source
+        running (log scratchpad\ec_full.txt, UTF-16; parts 1-2 pass); found-line now lists both new sites; env unset =
+        no site written, only the one-time found line changes. Other 3 suites + gated builds + commit after the run.
+        ebr_ T4 REVIEW DONE 05:3x (reports/ebr_t4_review.md): ALL SAFETY RULES PASS (interface = ATN's 8 rules, only own
+        PresentMon stopped, no deletes of ATN's files, hash-checked restores, keys only in front, WPR via ATN's tasks,
+        no SteamAdminStart, no system settings), tests re-run green. NOT READY FOR T5 / T6: M1 crash budget + Q5 true;
+        M2 restore_pending.txt on hang / not restored; M3 data / tool failures = resumable stops; M4 memory limit L_mem
+        inside a replay; M5 regexes silently void vs the real strings (B2 mismatch LATCH, realloc leak, family stats,
+        draw-trace window check, C rows + group names) + verbatim corpus test; M6 FAIL segments whose EARLY / PROBE is
+        "parsed only" in the DLL. Shoulds S1-S7, 8 nits. COORDINATOR DEFAULTS (stricter, ATN asked on return): ONE
+        shared crash budget (any 2nd crash ends the batch); a pinned crash gets ONE continuation with the part Off
+        (its part-needing segments logged lost). [ ] ATN Q1 (one budget or one per kind?) + Q2 (continuation of the
+        crashed start with the part Off, or only later starts?) - defaults above run until ATN answers.
+        T1b BRIEF NOTES (ebr_ S7): empty env value = clear the env + log "Test: env NAME cleared (generation N)."; no
+        "(window N)" in the mt_trace armed line (the pool numbers at the next header); set file one <s>:<key>=<value>;
+        per line, cut at ;, trim CR. If a hang / not-restored end ever happens: hold GPU jobs until that game is gone.
+        t4i_ RESUMED 05:3x: M1-M6 + S1-S7 + nits + manifest additions -> ebr_ re-check.
+        Agents: c3i_ (FULL run), bd3o_, t4i_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
