@@ -31,6 +31,7 @@
 
 #include "../../utils/log.hpp"
 #include "./cpu_sets.hpp"
+#include "./worker_pool.hpp"
 #endif
 
 // Threaded Draw Recording (private build, Attila 32-bit): the game's draw loops scan their instance lists on private copies
@@ -55,8 +56,6 @@ enum class Group : uint32_t { DEPTH_A, COLOUR_A, DEPTH_B, COLOUR_B, SHARED, COUN
 
 struct Settings {
   Stage stage = Stage::OFF;
-  // Threads that scan, the render thread included (2 to 16).
-  uint32_t threads = 4;
   uint32_t loops = 1;
   // The thread context_hooks installed on (0: not installed), for the trace's note.
   DWORD context_hooks_thread = 0;
@@ -66,8 +65,7 @@ struct Settings {
 
 #if !defined(_WIN64)
 
-constexpr uint32_t MAX_THREADS = 16;
-constexpr uint32_t MAX_WORKERS = MAX_THREADS - 1;
+constexpr uint32_t MAX_THREADS = worker_pool::MAX_WORKERS + 1;
 constexpr uint32_t SLOT_SIZE = 256;
 // One slot per chunk, one more for the compare run.
 constexpr uint32_t SLOT_COUNT = MAX_THREADS + 1;
@@ -426,7 +424,6 @@ struct Controls {
   // The chunks (bit mask) that "race": another thread's setup of the mesh lands before the chunk's VF68 snapshot.
   uint32_t race_chunks = 0;
   bool stride_non_zero = true;
-  bool fail_thread_creation = false;
   // Chunk 0's first mesh is claimed at the call start (a continuation has no setup site to claim it).
   bool claim_first_mesh = true;
   // The replay of a constant op repeats it as often as the loop did.
@@ -695,12 +692,9 @@ struct MeshRound {
 
 // The hand-off to the workers: written by the render thread before it wakes anyone.
 struct alignas(64) Descriptor {
-  void (*work)(const Descriptor&, uint32_t worker) = nullptr;
   WorkKind kind = WorkKind::RECORD_LOOP;
   // Workers woken for this dispatch.
   uint32_t workers = 0;
-  uint32_t x87 = 0;
-  uint32_t sse = 0;
   Call call;
   MeshRound meshes;
   uint32_t chunks = 0;
@@ -717,15 +711,9 @@ struct alignas(64) Descriptor {
   uint32_t touch_generation = 0;
 };
 
-struct alignas(64) PoolWorker {
-  std::atomic<uint32_t> ticket{0};
-  HANDLE thread = nullptr;
-};
-
 // What the dispatcher reads on the render thread (Update writes it there too).
 struct Config {
   Stage stage = Stage::OFF;
-  uint32_t threads = 4;
   uint32_t loops = 1;
   uint32_t families = 0xff;
 };
@@ -814,11 +802,20 @@ struct FrameTrace {
 // fifth counter).
 constexpr std::array<CopyRange, 4> SEED_FIELDS = {{{0x00, 0x04}, {0x04, 0x0c}, {0x0c, 0x10}, {0x10, 0x14}}};
 
-// The one-frame trace: armed by RENODX_TW_DRAW_TRACE=<seconds after the first present>[,<frames>]. Render thread only.
+// The draw trace: one per window of the pool's trace (worker_pool::ArmTrace), for the window's frames, and again for every later
+// window. RENODX_TW_DRAW_TRACE=<seconds after the first present>[,<frames>] opens the first window itself. Render thread only.
 struct Trace {
+  // The environment asked for a window (armed), and it was opened (env_fired).
   bool armed = false;
+  bool env_fired = false;
   bool active = false;
-  bool finished = false;
+  // This window already started its trace.
+  bool in_window = false;
+  // The pool's number of the window being traced (a window with the stage Off is not traced, so numbers can skip): window 1 writes
+  // tw_draw_recording.txt, window w tw_draw_recording_<w>.txt (none overwrites another).
+  uint32_t window = 0;
+  // The values the window started with (the pool's header holds the pool's own), for the log and the file.
+  std::string header;
   bool read_environment = false;
   uint64_t arm_ticks = 0;
   uint32_t frames = 3;
@@ -855,7 +852,6 @@ constexpr uint32_t MIN_ITEMS = 512;
 constexpr uint32_t CUT_SEARCH = 256;
 constexpr uint32_t MIN_CHUNK = 64;
 constexpr uint32_t PREFETCH_AHEAD = 8;
-constexpr uint32_t WORKER_STACK_BYTES = 512 * 1024;
 
 static Config config;
 static LastCall last_call;
@@ -863,8 +859,6 @@ static Trace trace;
 static std::atomic<DWORD> present_thread = 0;
 static std::atomic<bool> detached = false;
 static bool allocation_failed = false;
-// The stage and K a worker thread could not be created for (no retry until they change).
-static uint32_t pool_failed_key = ~0u;
 static bool kept_logged = false;
 // The groups already logged as on but not usable in this game build (bits of Group).
 static uint32_t unusable_logged = 0;
@@ -877,28 +871,11 @@ static uint32_t op_committed = 0;
 static HMODULE module_reference = nullptr;
 // The most op bytes a chunk may use (tests lower it to force overflows).
 static uint32_t op_buffer_limit = OP_ARENA_BYTES;
-static uint32_t thread_attempts = 0;
 
-static std::array<PoolWorker, MAX_WORKERS> pool;
-static uint32_t worker_count = 0;
-alignas(64) static std::atomic<uint32_t> done = 0;
-static std::atomic<bool> stopping = false;
 static std::atomic<uint32_t> touch_generation = 0;
 alignas(64) static Descriptor descriptor;
-// The generation of cpu_sets' published sets the pool threads were given (all ones: none yet).
-static uint32_t given_generation = ~0u;
-
-static uint64_t qpc_frequency = [] {
-  LARGE_INTEGER frequency = {};
-  QueryPerformanceFrequency(&frequency);
-  return static_cast<uint64_t>(frequency.QuadPart);
-}();
-
-inline uint64_t Qpc() {
-  LARGE_INTEGER counter = {};
-  QueryPerformanceCounter(&counter);
-  return static_cast<uint64_t>(counter.QuadPart);
-}
+using worker_pool::qpc_frequency;
+using worker_pool::Qpc;
 
 inline Slot* SlotAt(uint32_t index) { return reinterpret_cast<Slot*>(arena + static_cast<size_t>(index) * SLOT_SIZE); }
 
@@ -942,17 +919,18 @@ inline void RunMeshes(const MeshRound& round, void* tracker, uint32_t begin, uin
   }
 }
 
-// A worker records its chunks. Loops: worker w runs chunk w + 1, or, one worker alone, chunks 1 to n - 1 in order. Mesh rounds:
-// chunk c belongs to thread c % participants (thread 0 is the render thread), so worker w runs chunks w + 1, w + 1 + P, ...
-inline void RecordWork(const Descriptor& d, uint32_t worker) {
+// A worker records its chunks (worker 1 to n; the render thread is 0). Loops: worker w runs chunk w, or, one worker alone, chunks
+// 1 to n - 1 in order. Mesh rounds: chunk c belongs to thread c % participants, so worker w runs chunks w, w + P, ...
+inline void RecordWork(void* context, uint32_t worker) {
+  const auto& d = *static_cast<const Descriptor*>(context);
   if (d.kind == WorkKind::RECORD_MESHES) {
-    for (uint32_t chunk = worker + 1; chunk < d.chunks; chunk += d.participants) {
+    for (uint32_t chunk = worker; chunk < d.chunks; chunk += d.participants) {
       RunMeshes(d.meshes, SlotAt(chunk), d.mesh_begin[chunk], d.mesh_end[chunk]);
     }
     return;
   }
-  const uint32_t first = (d.one_worker ? 1 : worker + 1);
-  const uint32_t last = (d.one_worker ? d.chunks : worker + 2);
+  const uint32_t first = (d.one_worker ? 1 : worker);
+  const uint32_t last = (d.one_worker ? d.chunks : worker + 1);
   for (uint32_t chunk = first; chunk < last; ++chunk) {
     RunLoop(d.call, SlotAt(chunk), d.cuts[chunk], d.cuts[chunk + 1]);
   }
@@ -1027,12 +1005,13 @@ inline bool OpsEqual(const uint32_t* chunk_op, const uint32_t* whole_op, uint32_
   return std::memcmp(chunk_op, whole_op, 12 * 4) == 0 && whole_op[14] == (chunk_op[14] | pending_any);
 }
 
-// Touch-ahead: helper h of H reads blocks of 16 items from begin + 64 + 16 h on, stride 16 H, until the end or the stop.
-// Reads only; the loop itself runs unchanged on the render thread.
-inline void TouchWork(const Descriptor& d, uint32_t worker) {
+// Touch-ahead: helper h of H (worker h + 1) reads blocks of 16 items from begin + 64 + 16 h on, stride 16 H, until the end or the
+// stop. Reads only; the loop itself runs unchanged on the render thread.
+inline void TouchWork(void* context, uint32_t worker) {
+  const auto& d = *static_cast<const Descriptor*>(context);
   const uint32_t* data = *reinterpret_cast<uint32_t* const*>(static_cast<uint8_t*>(d.call.list) + 8);
   uint32_t sink = 0;
-  for (uint32_t block = d.touch_begin + 64 + 16 * worker; block < d.touch_end; block += 16 * d.workers) {
+  for (uint32_t block = d.touch_begin + 64 + 16 * (worker - 1); block < d.touch_end; block += 16 * d.workers) {
     if (touch_generation.load(std::memory_order_relaxed) != d.touch_generation) break;
     for (uint32_t i = block; i < std::min(block + 16, d.touch_end); ++i) {
       const auto* item = reinterpret_cast<const volatile uint32_t*>(static_cast<uintptr_t>(data[i]));
@@ -1043,85 +1022,6 @@ inline void TouchWork(const Descriptor& d, uint32_t worker) {
   }
   static volatile uint32_t touched = 0;
   touched = touched + sink;
-}
-
-// A worker: spins about 3 us for its next ticket, then waits on it; takes the dispatching thread's x87 and SSE control
-// words every dispatch (game code on a worker may have changed its own and not restored it); runs the descriptor's work;
-// the last one to finish wakes the join.
-static DWORD WINAPI WorkerMain(void* context) {
-  PoolWorker& self = pool[reinterpret_cast<uintptr_t>(context)];
-  const uint32_t index = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(context));
-  const uint64_t spin_ticks = std::max<uint64_t>(1, qpc_frequency * 3 / 1000000);
-  uint32_t seen = 0;
-  for (;;) {
-    uint32_t ticket = self.ticket.load(std::memory_order_acquire);
-    if (ticket == seen) {
-      const uint64_t start = Qpc();
-      while (ticket == seen && Qpc() - start < spin_ticks) {
-        _mm_pause();
-        ticket = self.ticket.load(std::memory_order_acquire);
-      }
-      while (ticket == seen) {
-        self.ticket.wait(seen);
-        ticket = self.ticket.load(std::memory_order_acquire);
-      }
-    }
-    seen = ticket;
-    if (stopping.load(std::memory_order_acquire)) return 0;
-    const Descriptor& d = descriptor;
-    unsigned int ignored = 0;
-    __control87_2(d.x87, _MCW_EM | _MCW_RC | _MCW_PC | _MCW_IC, &ignored, nullptr);
-    __control87_2(d.sse, _MCW_EM | _MCW_RC | _MCW_DN, nullptr, &ignored);
-    const uint32_t woken = d.workers;
-    d.work(d, index);
-    if (done.fetch_add(1, std::memory_order_release) + 1 == woken) {
-      done.notify_one();
-    }
-  }
-}
-
-// Render thread: wakes the first `count` workers for the filled descriptor, runs `render_part`, and joins (a short spin,
-// then a wait; no timeout: a worker can't be stopped inside the game's code). `join_ticks` (optional) gets the join wait.
-template <typename Part>
-inline void RunOnWorkers(uint32_t count, Part&& render_part, uint64_t* join_ticks) {
-  descriptor.workers = count;
-  __control87_2(0, 0, &descriptor.x87, &descriptor.sse);
-  done.store(0, std::memory_order_relaxed);
-  for (uint32_t w = 0; w < count; ++w) {
-    pool[w].ticket.fetch_add(1, std::memory_order_release);
-    pool[w].ticket.notify_one();
-  }
-  render_part();
-  const uint64_t join_start = Qpc();
-  const uint64_t spin_ticks = qpc_frequency * 2 / 1000;
-  while (done.load(std::memory_order_acquire) != count && Qpc() - join_start < spin_ticks) {
-    _mm_pause();
-  }
-  for (uint32_t finished = done.load(std::memory_order_acquire); finished != count; finished = done.load(std::memory_order_acquire)) {
-    done.wait(finished);
-  }
-  if (join_ticks != nullptr) {
-    *join_ticks += Qpc() - join_start;
-  }
-}
-
-// Ends the workers and joins them (Update with the row off, Uninstall; never DllMain).
-inline void StopPool() {
-  if (worker_count == 0) return;
-  stopping.store(true, std::memory_order_release);
-  std::array<HANDLE, MAX_WORKERS> handles = {};
-  for (uint32_t w = 0; w < worker_count; ++w) {
-    handles[w] = pool[w].thread;
-    pool[w].ticket.fetch_add(1, std::memory_order_release);
-    pool[w].ticket.notify_one();
-  }
-  WaitForMultipleObjects(worker_count, handles.data(), TRUE, INFINITE);
-  for (uint32_t w = 0; w < worker_count; ++w) {
-    CloseHandle(handles[w]);
-    pool[w].thread = nullptr;
-  }
-  worker_count = 0;
-  given_generation = ~0u;
 }
 
 // The next slot of a call: a copy of the real tracker (the stride and the pending "any" flag are the chunk's own from here on)
@@ -1165,6 +1065,7 @@ inline void ReplayState(const StateBlock& block) {
 
 // The four loop groups' names, as the rows call them (the logs).
 constexpr std::array<const char*, 4> GROUP_NAMES = {"Depth A", "Colour A", "Depth B", "Colour B"};
+constexpr std::array<const char*, 7> STAGE_NAMES = {"Off", "Direct", "Touch ahead", "Chunked", "Recorded", "One worker", "Workers"};
 
 static bool bad_ops_logged = false;
 
@@ -1414,6 +1315,8 @@ inline void NoteSeed(CallTrace* trace_call, const Slot* slot, const void* real_t
 // The shared implementation of the loop dispatchers (one per group).
 inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_t unused, uint32_t begin, uint32_t end) {
   const Config settings = config;
+  // The threads that scan, the render thread included: what the pool offers this call.
+  const uint32_t threads = worker_pool::Available(worker_pool::User::DRAW_RECORDING) + 1;
   const uint32_t group_index = static_cast<uint32_t>(group);
   const Call call = {.group = group, .loop = game_calls.loops[group_index], .node = node, .list = list, .unused = unused};
   const uint32_t items = (end > begin ? end - begin : 0);
@@ -1439,7 +1342,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   if (trace_call != nullptr) {
     trace_call->group = group;
     trace_call->items = items;
-    trace_call->threads = settings.threads;
+    trace_call->threads = threads;
     trace_call->stage = settings.stage;
     trace_call->compared = compare_now;
     trace.frame_compared = trace.frame_compared || compare_now;
@@ -1482,7 +1385,8 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   switch (settings.stage) {
     case Stage::TOUCH_AHEAD:
     case Stage::WORKERS:
-      helpers = settings.threads - 1;
+      // At least one: with no worker on offer (an empty pool, a limit of 1) the pool is missing.
+      helpers = std::max(threads - 1, 1u);
       break;
     case Stage::ONE_WORKER:
       helpers = 1;
@@ -1516,7 +1420,7 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     direct_reason = "not the present thread";
   } else if (items < MIN_ITEMS) {
     direct_reason = "small call";
-  } else if (worker_count < helpers) {
+  } else if (threads - 1 < helpers) {
     direct_reason = "pool missing";
   } else if (read32(tracker, 0x58) != 0 || read32(tracker, 0x78) != 0) {
     // The chunks start with no pending instances and no change mask, as a call the loop itself ended does.
@@ -1541,16 +1445,22 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   const RoundScope round_scope;
 
   if (settings.stage == Stage::TOUCH_AHEAD) {
-    descriptor.work = TouchWork;
     descriptor.kind = WorkKind::TOUCH;
+    descriptor.workers = helpers;
     descriptor.call = call;
     descriptor.touch_begin = begin;
     descriptor.touch_end = end;
     descriptor.touch_generation = touch_generation.load(std::memory_order_relaxed);
-    RunOnWorkers(helpers, [&] {
-      RunLoop(call, tracker, begin, end);
-      touch_generation.fetch_add(1, std::memory_order_relaxed);
-    }, (trace_call != nullptr ? &trace_call->join_wait : nullptr));
+    const worker_pool::JoinResult joined = worker_pool::Run(
+        {.work = TouchWork, .context = &descriptor, .user = worker_pool::User::DRAW_RECORDING, .join = worker_pool::JoinRule::ALL,
+         .trace = (trace_call != nullptr)},
+        helpers, [&] {
+          RunLoop(call, tracker, begin, end);
+          touch_generation.fetch_add(1, std::memory_order_relaxed);
+        });
+    if (trace_call != nullptr) {
+      trace_call->join_wait += joined.wait_ticks;
+    }
     lap(&CallTrace::chunk_zero);
     if constexpr (TEST_SWITCHES) {
       last_call.direct = false;
@@ -1562,8 +1472,8 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   // The cut: targets begin + j * items / K, each moved forward (at most CUT_SEARCH items) to the first mesh change.
   std::array<uint32_t, MAX_THREADS + 1> cuts = {begin};
   uint32_t chunks = 1;
-  for (uint32_t j = 1; j < settings.threads; ++j) {
-    const uint32_t target = begin + static_cast<uint32_t>(static_cast<uint64_t>(items) * j / settings.threads);
+  for (uint32_t j = 1; j < threads; ++j) {
+    const uint32_t target = begin + static_cast<uint32_t>(static_cast<uint64_t>(items) * j / threads);
     const uint32_t limit = std::min(target + CUT_SEARCH, end);
     uint32_t cut = 0;
     for (uint32_t i = std::max(target, cuts[chunks - 1] + 1); i < limit; ++i) {
@@ -1692,14 +1602,20 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
       RunLoop(call, SlotAt(k), cuts[k], cuts[k + 1]);
     }
   } else {
-    descriptor.work = RecordWork;
     descriptor.kind = WorkKind::RECORD_LOOP;
     descriptor.call = call;
     descriptor.chunks = chunks;
     descriptor.one_worker = (settings.stage == Stage::ONE_WORKER);
     descriptor.cuts = cuts;
-    RunOnWorkers((settings.stage == Stage::ONE_WORKER ? 1 : chunks - 1), [&] { RunLoop(call, SlotAt(0), cuts[0], cuts[1]); },
-                 (trace_call != nullptr ? &trace_call->join_wait : nullptr));
+    const uint32_t workers = (settings.stage == Stage::ONE_WORKER ? 1 : chunks - 1);
+    descriptor.workers = workers;
+    const worker_pool::JoinResult joined = worker_pool::Run(
+        {.work = RecordWork, .context = &descriptor, .user = worker_pool::User::DRAW_RECORDING, .join = worker_pool::JoinRule::ALL,
+         .trace = (trace_call != nullptr)},
+        workers, [&] { RunLoop(call, SlotAt(0), cuts[0], cuts[1]); });
+    if (trace_call != nullptr) {
+      trace_call->join_wait += joined.wait_ticks;
+    }
   }
   lap(&CallTrace::chunk_zero);
 
@@ -1915,6 +1831,8 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   using namespace internal;
   if (first > last) return;
   const Config settings = config;
+  // The threads that scan, the render thread included: what the pool offers this call.
+  const uint32_t threads = worker_pool::Available(worker_pool::User::DRAW_RECORDING) + 1;
   const MeshRound round = {.device = device, .view = view, .list_type = list_type, .node = node, .sorted = sorted};
   const bool nested = InRound();
   // Trace-only (noexcept: an allocation failure here ends the process; Update reserves room when the trace arms). A nested call
@@ -1948,7 +1866,7 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     }
   };
   if (trace_call != nullptr) {
-    trace_call->threads = settings.threads;
+    trace_call->threads = threads;
     trace_call->stage = settings.stage;
     trace_call->compared = compare_now;
     trace.frame_compared = trace.frame_compared || compare_now;
@@ -1961,7 +1879,8 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   uint32_t participants = 1;
   switch (settings.stage) {
     case Stage::WORKERS:
-      participants = settings.threads;
+      // At least two: with no worker on offer the pool is missing.
+      participants = std::max(threads, 2u);
       break;
     case Stage::ONE_WORKER:
       participants = 2;
@@ -2008,14 +1927,14 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     direct_reason = "latched off";
   } else if (GetCurrentThreadId() != present_thread.load(std::memory_order_relaxed)) {
     direct_reason = "not the present thread";
-  } else if (worker_count + 1 < participants) {
+  } else if (threads < participants) {
     direct_reason = "pool missing";
   } else if (*reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(tracker) + 0x58) != 0
              || *reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(tracker) + 0x78) != 0) {
     // The chunks start with no pending instances and no change mask, as a round the bodies themselves ended does.
     direct_reason = "entry state";
   } else {
-    direct_reason = PlanRound(round, !is_depth, settings.families, settings.threads, first, last, &plan);
+    direct_reason = PlanRound(round, !is_depth, settings.families, threads, first, last, &plan);
     lap(&CallTrace::plan);
     if (direct_reason == nullptr && compare_now) {
       // S3: no mesh appears twice in a round (compared trace frames only: a repeat makes the round direct and is counted). The
@@ -2195,18 +2114,24 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
       RunMeshes(round, SlotAt(c), mesh_begin[c], mesh_end[c]);
     }
   } else {
-    descriptor.work = RecordWork;
     descriptor.kind = WorkKind::RECORD_MESHES;
     descriptor.meshes = round;
     descriptor.chunks = chunks;
     descriptor.participants = participants;
     descriptor.mesh_begin = mesh_begin;
     descriptor.mesh_end = mesh_end;
-    RunOnWorkers(std::min(participants, chunks) - 1, [&] {
-      for (uint32_t c = 0; c < chunks; c += participants) {
-        RunMeshes(round, SlotAt(c), mesh_begin[c], mesh_end[c]);
-      }
-    }, (trace_call != nullptr ? &trace_call->join_wait : nullptr));
+    descriptor.workers = std::min(participants, chunks) - 1;
+    const worker_pool::JoinResult joined = worker_pool::Run(
+        {.work = RecordWork, .context = &descriptor, .user = worker_pool::User::DRAW_RECORDING, .join = worker_pool::JoinRule::ALL,
+         .trace = (trace_call != nullptr)},
+        descriptor.workers, [&] {
+          for (uint32_t c = 0; c < chunks; c += participants) {
+            RunMeshes(round, SlotAt(c), mesh_begin[c], mesh_end[c]);
+          }
+        });
+    if (trace_call != nullptr) {
+      trace_call->join_wait += joined.wait_ticks;
+    }
   }
   lap(&CallTrace::chunk_zero);
 
@@ -2371,12 +2296,11 @@ inline Shared* SharedPage() { return (internal::Allocate() ? internal::shared : 
 // The game's addresses (Prepare, once the sites are verified).
 inline void SetGame(const GameCalls& calls) { internal::game_calls = calls; }
 
-// Every present on the render thread, after the engine code's Update. `sites_in`: any of this feature's sites is written.
-inline void Update(const Settings& settings, bool sites_in) {
+// Every present on the render thread, after the engine code's Update.
+inline void Update(const Settings& settings) {
   using namespace internal;
   present_thread.store(GetCurrentThreadId(), std::memory_order_relaxed);
   Stage stage = settings.stage;
-  const uint32_t threads = std::clamp<uint32_t>(settings.threads, 1, MAX_THREADS);
   if (stage != Stage::OFF && !Allocate()) {
     stage = Stage::DIRECT;
   }
@@ -2392,61 +2316,6 @@ inline void Update(const Settings& settings, bool sites_in) {
       }
     }
     unusable_logged |= unusable;
-  }
-
-  // The pool grows here, never inside a dispatch. After a failure it is not tried again until the stage or K changes.
-  uint32_t wanted = 0;
-  switch (stage) {
-    case Stage::TOUCH_AHEAD:
-    case Stage::WORKERS:
-      wanted = threads - 1;
-      break;
-    case Stage::ONE_WORKER:
-      wanted = 1;
-      break;
-    default:
-      break;
-  }
-  const uint32_t pool_key = (static_cast<uint32_t>(stage) << 8) | threads;
-  if (stage == Stage::OFF || pool_key != pool_failed_key) {
-    pool_failed_key = ~0u;
-  }
-  if (wanted > worker_count && pool_failed_key == ~0u) {
-    stopping.store(false, std::memory_order_release);
-  }
-  for (; worker_count < wanted && pool_failed_key == ~0u; ++worker_count) {
-    pool[worker_count].ticket.store(0, std::memory_order_relaxed);
-    HANDLE thread = nullptr;
-    if constexpr (TEST_SWITCHES) {
-      ++thread_attempts;
-    }
-    if (!controls.fail_thread_creation) {
-      thread = CreateThread(nullptr, WORKER_STACK_BYTES, WorkerMain, reinterpret_cast<void*>(static_cast<uintptr_t>(worker_count)),
-                            STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
-    }
-    if (thread == nullptr) {
-      renodx::utils::log::w("[Total War] Threaded Draw Recording: a worker thread could not start; the calls run directly.");
-      pool_failed_key = pool_key;
-      break;
-    }
-    SetThreadDescription(thread, L"RenoDX draw recording");
-    SetThreadPriority(thread, GetThreadPriority(GetCurrentThread()));
-    pool[worker_count].thread = thread;
-    given_generation = ~0u;
-  }
-
-  // The pool follows Keep Render Core Free: the sets it applied to the game's other threads (none: cleared). The sets are
-  // copied only when their generation changed.
-  if (worker_count > 0 && cpu_sets::AppliedGeneration() != given_generation) {
-    uint32_t generation = 0;
-    const std::vector<ULONG> sets = cpu_sets::AppliedWorkerSets(&generation);
-    for (uint32_t w = 0; w < worker_count; ++w) {
-      SetThreadSelectedCpuSets(pool[w].thread, (sets.empty() ? nullptr : sets.data()), static_cast<ULONG>(sets.size()));
-    }
-    given_generation = generation;
-  }
-  if (stage == Stage::OFF && !sites_in) {
-    StopPool();
   }
 
   // The one-frame trace.
@@ -2467,6 +2336,11 @@ inline void Update(const Settings& settings, bool sites_in) {
       }
     }
   }
+  // The window is the pool's: the environment's arm opens one when its time comes (the pool's header follows at the next present).
+  if (trace.armed && !trace.env_fired && Qpc() >= trace.arm_ticks) {
+    trace.env_fired = true;
+    worker_pool::ArmTrace(std::max<uint32_t>(trace.frames, 1));
+  }
   if (trace.active) {
     trace.frame_list.push_back(
         {.call_ticks = trace.frame_call_ticks,
@@ -2476,11 +2350,10 @@ inline void Update(const Settings& settings, bool sites_in) {
     trace.frame_compared = false;
     if (--trace.frames_left == 0) {
       trace.active = false;
-      trace.finished = true;
       std::array<wchar_t, MAX_PATH> exe = {};
       GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size()));
       const auto milliseconds = [](uint64_t ticks) { return static_cast<double>(ticks) * 1000.0 / static_cast<double>(qpc_frequency); };
-      std::string text = "Threaded Draw Recording trace\n";
+      std::string text = "Threaded Draw Recording trace\n" + trace.header + "\n";
       for (const FrameTrace& frame : trace.frame_list) {
         text += std::format("frame: calls {:.3f} ms ({}; trace-only work left out), present thread {} context_hooks' thread\n",
                             milliseconds(frame.call_ticks),
@@ -2575,18 +2448,35 @@ inline void Update(const Settings& settings, bool sites_in) {
           text += "\n";
         }
       }
-      std::ofstream(std::filesystem::path(exe.data()).parent_path() / "tw_draw_recording.txt") << text;
+      std::ofstream(std::filesystem::path(exe.data()).parent_path()
+                    / (trace.window == 1 ? std::string("tw_draw_recording.txt") : std::format("tw_draw_recording_{}.txt", trace.window)))
+          << text;
       trace.calls.clear();
       trace.frame_list.clear();
     }
-  } else if (trace.armed && !trace.finished && Qpc() >= trace.arm_ticks) {
+  } else if (worker_pool::Tracing() && !trace.in_window && stage != Stage::OFF) {
+    // A pool window opened (its header was written by the pool's Update before this one): this window's trace, for its frames.
+    trace.in_window = true;
     trace.active = true;
-    trace.frames_left = std::max<uint32_t>(trace.frames, 1);
+    trace.window = worker_pool::TraceWindow();
+    trace.frames_left = worker_pool::TraceFramesLeft();
     // Room for a window's calls: a reallocation inside a timing frame would evict the caches before the timed phases.
     trace.calls.reserve(4096);
+    std::string groups;
+    for (uint32_t group = 0; group < GROUP_NAMES.size(); ++group) {
+      if (((settings.loops >> group) & 1) != 0) {
+        groups += std::format("{}{}", (groups.empty() ? "" : ", "), GROUP_NAMES[group]);
+      }
+    }
+    trace.header = std::format("window {} of {} frames: stage {}, groups on {}, B families {:#x}", trace.window, trace.frames_left,
+                               STAGE_NAMES[static_cast<size_t>(stage)], (groups.empty() ? "none" : groups), settings.b_families);
+    renodx::utils::log::i("[Total War] Threaded Draw Recording trace " + trace.header + ".");
+  }
+  if (!worker_pool::Tracing()) {
+    trace.in_window = false;
   }
 
-  config = {.stage = stage, .threads = threads, .loops = settings.loops, .families = settings.b_families};
+  config = {.stage = stage, .loops = settings.loops, .families = settings.b_families};
 }
 
 // The `groups` the engine code's Update takes (bits of Group), from this present's stage and live loops mask: none while the
@@ -2613,7 +2503,6 @@ inline void Uninstall(bool sites_in) {
   // S4: no site is in (the engine code zeroes the size when the last comes out): zeroed before the memory goes. On the kept
   // path it stays as it is: a dispatch that may still be recording needs its thunks on the slots.
   shared->arena_size = 0;
-  StopPool();
   for (void* memory : {static_cast<void*>(shared), static_cast<void*>(arena), static_cast<void*>(op_memory)}) {
     VirtualFree(memory, 0, MEM_RELEASE);
   }
@@ -2633,7 +2522,7 @@ struct GameCalls {
 inline Shared* SharedPage() { return nullptr; }
 inline void SetGame(const GameCalls&) {}
 inline uint32_t SiteGroups(Stage, uint32_t) { return 0; }
-inline void Update(const Settings&, bool) {}
+inline void Update(const Settings&) {}
 inline void Uninstall(bool) {}
 
 #endif

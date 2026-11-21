@@ -71,6 +71,12 @@ int failures = 0;
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); ++failures; } } while (false)
 #define REQUIRE(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); std::exit(1); } } while (false)
 
+// One present of the add-on: the pool's row (`threads`, the render thread included), then the user's own Update.
+void UpdateAt(uint32_t threads, const dr::Settings& settings) {
+  twattila::worker_pool::Update({.threads = threads, .in_use = settings.stage != dr::Stage::OFF});
+  dr::Update(settings);
+}
+
 // The game's addresses (RVAs): the loop and what it calls.
 constexpr uint32_t LOOP_RVA = 0x17b17f0;
 constexpr uint32_t STATE_OWNER_RVA = 0x178c460;  // returns the object whose +0x2950 is the animation state
@@ -749,7 +755,7 @@ Outcome RunCalls(World* world, bool tracing) {
 Outcome RunStaged(World* world, dr::Stage stage, uint32_t threads, bool tracing = false, bool update = true) {
   Bind(world, patched);
   ResetWorld(world);
-  if (update) dr::Update({.stage = stage, .threads = threads, .loops = (world->colour ? 2u : 1u)}, true);
+  if (update) UpdateAt(threads, {.stage = stage, .loops = (world->colour ? 2u : 1u)});
   di::trace.active = tracing;
   di::trace.frames_left = 1u << 30;
   // Traced calls compare every call (the game's own trace compares only its last frame).
@@ -1349,7 +1355,7 @@ void TestMeshBeforePlan() {
     for (const dr::Stage stage : {dr::Stage::DIRECT, dr::Stage::WORKERS}) {
       const dr::GameCalls calls = di::game_calls;
       di::game_calls.usable = usable;
-      dr::Update({.stage = stage, .threads = 4, .loops = 0xf}, true);
+      UpdateAt(4, {.stage = stage, .loops = 0xf});
       mesh_visits.clear();
       dr::DispatchMesh(tracker, nullptr, const_cast<void*>(static_cast<const void*>(&view)), 0, nullptr, &sorted, 1, 4);
       di::game_calls = calls;
@@ -1484,7 +1490,7 @@ int main(int argc, char** argv) {
   CHECK(CheckWrittenSites(0) == 0 && CheckWrittenSites(0, true) == 0);  // the sites out: the game's own bytes again
   CHECK(std::memcmp(patched + LOOP_RVA, loop_bytes_b.data(), loop_bytes_b.size()) == 0);
   CHECK(std::memcmp(patched + COLOUR_LOOP_RVA, colour_bytes_b.data(), colour_bytes_b.size()) == 0);
-  dr::Update({.stage = dr::Stage::OFF}, false);
+  UpdateAt(1, {.stage = dr::Stage::OFF});
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);
   return failures == 0 ? 0 : 1;
 }
