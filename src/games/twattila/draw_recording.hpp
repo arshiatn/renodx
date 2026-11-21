@@ -757,6 +757,8 @@ struct CallTrace {
   uint32_t unknown_classes = 0;
   uint32_t conflicts = 0;
   uint32_t reruns = 0;
+  // Replayed faction ops whose list call left its out pointer at 0 (nothing was sent for them).
+  uint32_t faction_lists_unwritten = 0;
   // B rounds (the gates' numbers): meshes and census items in the round, the ones in direct segments, meshes that appear twice
   // (trace frames; target 0), chunks whose warm-ups found no seed, chunks run again by the entry check (M2). round_meshes: the
   // meshes the round lists (a round over MAX_ROUND_MESHES runs directly, planned as none).
@@ -958,7 +960,7 @@ inline void ReplaySrv(uint32_t slot, uint32_t texture) {
 
 // The faction block: the four colours of a faction (the default one without a faction), picked by the item's mask when it has
 // one; sent when there are 4 or more. Only the first four colours are read by the call, so only those are gathered.
-inline void ReplayFaction(int32_t faction, uint32_t mask, uint32_t node, uint32_t state) {
+inline void ReplayFaction(int32_t faction, uint32_t mask, uint32_t node, uint32_t state, CallTrace* trace_call = nullptr) {
   const auto faction_fn = reinterpret_cast<FactionFn>(static_cast<uintptr_t>(game_calls.faction_call));
   std::array<float, 12> colours = {};
   if (faction == -1) {
@@ -976,7 +978,10 @@ inline void ReplayFaction(int32_t faction, uint32_t mask, uint32_t node, uint32_
   // The game reads its local list pointer with no value set before the call: it relies on the call writing it, which the bytes
   // do not prove for every node (the class is not named by them). A call that left it alone has no list here: nothing is
   // sent (the game would read a stale stack slot).
-  if (list == 0) return;
+  if (list == 0) {
+    if (trace_call != nullptr) ++trace_call->faction_lists_unwritten;
+    return;
+  }
   const auto* const list_bytes = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(list));
   uint32_t count = 0;
   uint32_t data = 0;
@@ -1056,11 +1061,11 @@ inline Slot* PrepareSlot(uint32_t index, uint32_t group_index, void* tracker, ui
 }
 
 // A colour body's state block, replayed: its calls in the block's order.
-inline void ReplayState(const StateBlock& block) {
+inline void ReplayState(const StateBlock& block, CallTrace* trace_call = nullptr) {
   if ((block.parts & STATE_SNOW) != 0) ReplayConst(block.snow_object, block.snow_bits, 1);
   if ((block.parts & STATE_DIFFUSE) != 0) ReplaySrv(block.diffuse_slot, block.diffuse);
   if ((block.parts & STATE_NORMAL) != 0) ReplaySrv(block.normal_slot, block.normal);
-  if ((block.parts & STATE_FACTION) != 0) ReplayFaction(block.faction, block.mask, block.node, block.state);
+  if ((block.parts & STATE_FACTION) != 0) ReplayFaction(block.faction, block.mask, block.node, block.state, trace_call);
 }
 
 // The four loop groups' names, as the rows call them (the logs).
@@ -1152,10 +1157,10 @@ inline void ReplayChunk(Replay* replay, const Slot* slot) {
         ReplaySrv(payload[0], payload[1]);
         break;
       case OpKind::FACTION:
-        ReplayFaction(static_cast<int32_t>(payload[0]), payload[1], payload[2], payload[3]);
+        ReplayFaction(static_cast<int32_t>(payload[0]), payload[1], payload[2], payload[3], replay->trace_call);
         break;
       case OpKind::STATE:
-        ReplayState(*reinterpret_cast<const StateBlock*>(payload));
+        ReplayState(*reinterpret_cast<const StateBlock*>(payload), replay->trace_call);
         break;
       default:
         break;
@@ -2406,12 +2411,12 @@ inline void Update(const Settings& settings) {
             break;
         }
         text += std::format(
-            "\n  ops: flush {} vf68 {} vf64 {} anim {} const {} (repeats {}) srv {} faction {} state {} bytes {} (buffer {});"
+            "\n  ops: flush {} vf68 {} vf64 {} anim {} const {} (repeats {}) srv {} faction {} (list stayed 0: {}) state {} bytes {} (buffer {});"
             " seeds hit {} miss {} (by field: {}); overflow {} unknown {} conflict {} rerun {}\n"
             "  ms: direct {:.3f} cut {:.3f} warm-ups {:.3f} chunk0 {:.3f} join {:.3f} replay {:.3f} rerun {:.3f} total {:.3f}"
             " (trace only: compare {:.3f} run scan {:.3f}; wall {:.3f})\n  compare: ",
-            call.ops[1], call.ops[2], call.ops[7], call.ops[3], call.ops[4], call.constant_repeats, call.ops[5], call.ops[6], call.ops[8],
-            call.op_bytes, call.op_buffer_bytes, call.seed_hits, call.seed_misses, miss_fields, call.overflows, call.unknown_classes,
+            call.ops[1], call.ops[2], call.ops[7], call.ops[3], call.ops[4], call.constant_repeats, call.ops[5], call.ops[6], call.faction_lists_unwritten,
+            call.ops[8], call.op_bytes, call.op_buffer_bytes, call.seed_hits, call.seed_misses, miss_fields, call.overflows, call.unknown_classes,
             call.conflicts, call.reruns,
             milliseconds(call.direct), milliseconds(call.cut), milliseconds(call.warm_ups), milliseconds(call.chunk_zero),
             milliseconds(call.join_wait), milliseconds(call.replay), milliseconds(call.rerun), milliseconds(call.total),

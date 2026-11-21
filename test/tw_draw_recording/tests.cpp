@@ -2764,17 +2764,24 @@ static void ColourReplayUnits() {
   // (the -1 faction does not ask the node: its default colours are still sent).
   silent_vtable[0xc0 / 4] = reinterpret_cast<uint32_t>(&FakeFactionListsSilent);
   silent_node = silent_vtable.data();
+  // N-2: the trace counts the faction ops whose list stayed 0 (a call without a trace counts nothing).
+  di::CallTrace silent_trace = {};
+  uint32_t silent_ops = 0;
   for (const int32_t faction : {0, 1, 2, 3}) {
     for (const SynthMask* mask : std::initializer_list<const SynthMask*>{nullptr, &world->masks[0]}) {
       game_log.clear();
       di::ReplayFaction(faction, reinterpret_cast<uint32_t>(mask), reinterpret_cast<uint32_t>(&silent_node), 0x5678);
       CHECK(game_log.empty());
+      di::ReplayFaction(faction, reinterpret_cast<uint32_t>(mask), reinterpret_cast<uint32_t>(&silent_node), 0x5678, &silent_trace);
+      CHECK(game_log.empty());
+      CHECK(silent_trace.faction_lists_unwritten == ++silent_ops);
     }
   }
   game_log.clear();
-  di::ReplayFaction(-1, 0, reinterpret_cast<uint32_t>(&silent_node), 0x5678);
+  di::ReplayFaction(-1, 0, reinterpret_cast<uint32_t>(&silent_node), 0x5678, &silent_trace);
   CHECK(game_log.size() == 1);
-  std::printf("colour: the replay of constants (flag 0 / 1, cell 1 / 0 / -0 / NaN, value 0 / -0 / NaN / 1, repeat 1 / 3), textures and the faction block (-1 and the lists of 6 / 3 / 70 / 4 colours, with and without a mask) equals the game's: %u cases; a node whose list call writes no list sends nothing (N-7)\n", cases);
+  CHECK(silent_trace.faction_lists_unwritten == silent_ops);
+  std::printf("colour: the replay of constants (flag 0 / 1, cell 1 / 0 / -0 / NaN, value 0 / -0 / NaN / 1, repeat 1 / 3), textures and the faction block (-1 and the lists of 6 / 3 / 70 / 4 colours, with and without a mask) equals the game's: %u cases; a node whose list call writes no list sends nothing (N-7) and the call's trace counts those ops (N-2)\n", cases);
 }
 
 // The colour sites in Record, called directly.

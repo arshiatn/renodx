@@ -21,8 +21,9 @@
 //    constants-dirty and change flags (+0x10, +0x12, +0x13) and the game's constants cache flag on and off: the log (flushes, virtual
 //    calls, animation calls, the constants' dirty calls, the binds and the faction colours) and the tracker equal the serial run.
 //    CONTROLs again, and a B round the dispatcher runs directly before it has planned anything (the sorted list's accessor SetGame
-//    found). What stays synthetic-only (test/tw_draw_recording, test/tw_draw_recording_sites): an item's faction mask (the loop's
-//    gather runs the game's allocator) and the batchfix continuation bytes.
+//    found). Some items carry a faction mask: the loop's gather runs the game's vector push_back and free, faked in both copies like
+//    the vector constructor. What stays synthetic-only (test/tw_draw_recording, test/tw_draw_recording_sites): the batchfix
+//    continuation bytes.
 // tests.exe [empire.retail.dll]
 #include <windows.h>
 
@@ -39,6 +40,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 extern "C" __declspec(dllexport) const char* const NAME = "Draw recording loop test";
@@ -95,6 +97,8 @@ constexpr uint32_t DIRTY_RVA = 0x191d960;
 constexpr uint32_t SET_SRV_RVA = 0x18d2b60;
 constexpr uint32_t FACTION_COLOURS_RVA = 0x1885350;
 constexpr uint32_t VECTOR_INIT_RVA = 0xbeea0;
+constexpr uint32_t PUSH_BACK_RVA = 0x1972b0;  // the faction mask's gather: the vector's push_back (thiscall, one argument) and free (cdecl)
+constexpr uint32_t FREE_RVA = 0xe98c0;
 constexpr uint32_t CACHE_FLAG_RVA = 0x1da661b;
 
 std::vector<uint8_t> file;
@@ -213,7 +217,7 @@ std::vector<LogEntry> game_log;  // only the render thread writes it (the record
 enum Fake { OWNER, ANIM_VALUE, ANIM_CALL, TECHNIQUE_CHECK, VF54, STRIDE, VF58, VF60, VF64, VF68, FLUSH, FAKES };
 std::array<std::atomic<uint32_t>, FAKES> fake_calls;
 // The colour loop's own (reached only by it).
-enum ColourFake { DIRTY, SRV, FACTION_COLOURS, FACTION_LIST, VF6C, VECTOR_INIT, COLOUR_FAKES };
+enum ColourFake { DIRTY, SRV, FACTION_COLOURS, FACTION_LIST, VF6C, VECTOR_INIT, PUSH_BACK, FREE, COLOUR_FAKES };
 std::array<std::atomic<uint32_t>, COLOUR_FAKES> colour_calls;
 
 alignas(16) uint8_t state_owner[0x7000];
@@ -316,7 +320,7 @@ struct FactionList {
   uint32_t count;
   const float* data;
 };
-std::array<std::array<float, 16>, 5> faction_colours;
+std::array<std::array<float, 24>, 5> faction_colours;  // up to 8 colours of 3 floats: a list's count is 4 + faction
 std::array<FactionList, 5> faction_lists;
 struct Node {
   const uint32_t* vtable;
@@ -338,6 +342,26 @@ void __fastcall FakeVectorInit(float* vector, void*) {
   colour_calls[VECTOR_INIT].fetch_add(1, std::memory_order_relaxed);
   vector[0] = vector[1] = vector[2] = 0;
 }
+// The mask's gather vector is {pad, count, data} (a List's layout): push_back appends the 12-byte colour the argument points to.
+void __fastcall FakePushBack(uint32_t* vector, void*, const float* colour) {
+  colour_calls[PUSH_BACK].fetch_add(1, std::memory_order_relaxed);
+  auto* const data = static_cast<float*>(std::realloc(reinterpret_cast<void*>(static_cast<uintptr_t>(vector[2])), 12u * (vector[1] + 1)));
+  std::memcpy(data + 3 * vector[1], colour, 12);
+  vector[2] = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(data));
+  ++vector[1];
+}
+void __cdecl FakeFree(void* data) {
+  colour_calls[FREE].fetch_add(1, std::memory_order_relaxed);
+  std::free(data);
+}
+// A faction mask: the colours' picks in its first 4 bytes (the gather reads one byte per colour of the list, up to 8), then the index
+// the loop keeps in the tracker's +0xc.
+struct Mask {
+  uint8_t picks[4];
+  int32_t index;
+  uint8_t more[248];
+};
+std::array<Mask, 4> masks = {};
 
 // The flush's body (its head, with the entry hook or not, is the game's): the cursor +0x5c advances by count x stride, the +0x28 cache
 // is written, the +0x69 byte is read and cleared.
@@ -397,6 +421,8 @@ void InstallFakes(uint8_t* image) {
   JumpTo(image + SET_SRV_RVA, reinterpret_cast<const void*>(&FakeSetSrv));
   JumpTo(image + FACTION_COLOURS_RVA, reinterpret_cast<const void*>(&FakeFactionColours));
   JumpTo(image + VECTOR_INIT_RVA, reinterpret_cast<const void*>(&FakeVectorInit));
+  JumpTo(image + PUSH_BACK_RVA, reinterpret_cast<const void*>(&FakePushBack));
+  JumpTo(image + FREE_RVA, reinterpret_cast<const void*>(&FakeFree));
   for (const ec::WeightedClass& weighted : ec::WEIGHTED_CLASSES) FillSlots(reinterpret_cast<uint32_t*>(image + weighted.vtable));
 }
 
@@ -429,6 +455,8 @@ struct Spec {
   uint32_t faction_percent = 20;
   uint32_t faction_none_percent = 10;
   uint32_t batch_percent = 15;
+  // The mask changes from item to item by this percent (30 percent of the changes are no mask).
+  uint32_t mask_percent = 25;
   // The game's constants cache flag, and whether the driver sets the tracker's constants-dirty and change flags (+0x10, +0x12,
   // +0x13) before some of its calls.
   uint8_t cache = 1;
@@ -564,15 +592,19 @@ std::unique_ptr<World> BuildWorld(const Spec& spec) {
     Texture* tex_b = &textures[1];
     int32_t faction = -1;
     uint32_t batch = 0;
+    uint32_t mask = 0;
     for (Item& item : world->items) {
       if (colour_random(100) < spec.tex_percent) tex_a = pick_texture();
       if (colour_random(100) < spec.tex_percent) tex_b = pick_texture();
       if (colour_random(100) < spec.faction_percent) faction = (colour_random(100) < spec.faction_none_percent ? -1 : static_cast<int32_t>(colour_random(5)));
       if (colour_random(100) < spec.batch_percent) batch = colour_random(3);
+      if (colour_random(100) < spec.mask_percent) {
+        mask = (colour_random(100) < 30 ? 0 : static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&masks[colour_random(static_cast<uint32_t>(masks.size()))])));
+      }
       item.tex_a = tex_a;
       item.tex_b = tex_b;
       item.faction = faction;
-      item.mask = 0;  // a mask's gather runs the game's allocator: only the synthetic suite covers it
+      item.mask = mask;
       item.batch = batch;
     }
   }
@@ -755,6 +787,9 @@ Outcome RunCalls(World* world, bool tracing) {
 Outcome RunStaged(World* world, dr::Stage stage, uint32_t threads, bool tracing = false, bool update = true) {
   Bind(world, patched);
   ResetWorld(world);
+  // N-1: a compare that differed in an earlier run latched its group off; every run starts with none latched, and the runs that must
+  // record check that none latched in them.
+  di::latched_groups = 0;
   if (update) UpdateAt(threads, {.stage = stage, .loops = (world->colour ? 2u : 1u)});
   di::trace.active = tracing;
   di::trace.frames_left = 1u << 30;
@@ -828,6 +863,25 @@ struct ListCase {
   Spec spec;
 };
 
+// S-1: the reason each traced call ran directly (di::trace.calls) is one the list can explain: a small call or no cut anywhere, an
+// unknown class only where the list has meshes of one, a continuation or a conflict only on the interleaved list. Returns the calls
+// with no cut (the bound on them is the caller's).
+uint32_t DirectReasonsExplained(const ListCase& list) {
+  uint32_t no_cut = 0;
+  for (const di::CallTrace& call : di::trace.calls) {
+    const std::string_view reason = call.direct_reason;
+    if (reason == "no cut") {
+      ++no_cut;
+    } else if (!reason.empty() && reason != "small call") {
+      const bool allowed = (reason == "unknown class" ? list.spec.unknown_percent > 0
+                                                      : (reason == "continuation" || reason == "conflict") && list.spec.interleaved);
+      if (!allowed) std::printf("  %s: a call ran directly for '%s'\n", list.name, call.direct_reason);
+      CHECK(allowed);
+    }
+  }
+  return no_cut;
+}
+
 std::vector<ListCase> Lists() {
   return {{"short runs", {.items = 6000, .seed = 1, .max_run = 8}},
           {"runs 1 to 300", {.items = 9000, .seed = 2, .max_run = 300, .none_percent = 15}},
@@ -892,8 +946,8 @@ void TestImages() {
   for (const IndirectCall& call : indirect) CHECK(std::memcmp(game + call.at, call.bytes.data(), call.bytes.size()) == 0);
   // The flush's body behind its head (and its `je` for no instances), where the fake goes.
   CHECK(Read32(pristine.data() + FLUSH_BODY_RVA) == 0x34244C8B);
-  // The fakes are the only changes to A: 10 jumps (the flush's exit for no instances among them) and the 6 slots of each of the 10 weighted vtables.
-  const size_t expected = 10 * 5 + ec::WEIGHTED_CLASSES.size() * 6 * 4;
+  // The fakes are the only changes to A: 12 jumps (the flush's exit for no instances among them) and the 6 slots of each of the 10 weighted vtables.
+  const size_t expected = 12 * 5 + ec::WEIGHTED_CLASSES.size() * 6 * 4;
   size_t differing = 0;
   for (uint32_t at = 0; at < image_size; ++at) {
     if (game[at] != pristine[at]) ++differing;
@@ -980,6 +1034,8 @@ void TestStages() {
               CHECK(staged.portions > 2);
               CHECK(staged.direct_calls == staged.small_calls);
               CHECK(!CompareDiffers(staged));
+              CHECK(di::latched_groups == 0);
+              if (tracing) CHECK(DirectReasonsExplained(list) == 0);
               if (stage != dr::Stage::CHUNKED) CHECK(staged.replayed + staged.reruns == staged.chunks);
               if (stage != dr::Stage::CHUNKED && staged.chunks > 0) CHECK(staged.ops > 0 || staged.reruns > 0);
               if (k >= 4) CHECK(staged.chunks >= 2 * 2);
@@ -1161,14 +1217,15 @@ std::vector<ListCase> ColourLists() {
           {"no technique, unknown classes", {.items = 6000, .seed = 36, .max_run = 40, .none_percent = 40, .unknown_percent = 15, .colour = true}},
           {"interleaved meshes", {.items = 6000, .seed = 37, .colour = true, .interleaved = true}},
           {"flags, cache off", {.items = 20000, .seed = 38, .portion_numerator = 8000, .colour = true, .cache = 0, .flag_portions = true}},
-          {"flags, cache on", {.items = 20000, .seed = 39, .portion_numerator = 8000, .colour = true, .cache = 1, .flag_portions = true}}};
+          {"flags, cache on", {.items = 20000, .seed = 39, .portion_numerator = 8000, .colour = true, .cache = 1, .flag_portions = true}},
+          {"masks often", {.items = 6000, .seed = 40, .max_run = 60, .colour = true, .faction_percent = 60, .faction_none_percent = 0, .mask_percent = 70}}};
 }
 
 void TestColourImages() {
   // The loop's bytes in A are the file's (the fakes are outside it); every call it makes, from its bytes.
   CHECK(DifferingBytes(game, COLOUR_LOOP_RVA, COLOUR_LOOP_END_RVA) == 0);
   CHECK(game[COLOUR_LOOP_RVA] == 0x55 && game[COLOUR_LOOP_END_RVA - 5] == 0xE9 && game[COLOUR_LOOP_END_RVA] == 0xCC);
-  const std::array<DirectCall, 17> direct = {{{0x17b0430, STATE_OWNER_RVA},
+  const std::array<DirectCall, 19> direct = {{{0x17b0430, STATE_OWNER_RVA},
                                               {0x17b04a5, ec::FLUSH_RVA},
                                               {0x17b0500, TECHNIQUE_CHECK_RVA},
                                               {0x17b054d, ec::FLUSH_RVA},
@@ -1184,7 +1241,9 @@ void TestColourImages() {
                                               {0x17b082f, SET_SRV_RVA},
                                               {0x17b0872, VECTOR_INIT_RVA},
                                               {0x17b0912, FACTION_COLOURS_RVA},
-                                              {0x17b099c, FACTION_COLOURS_RVA}}};
+                                              {0x17b0972, PUSH_BACK_RVA},
+                                              {0x17b099c, FACTION_COLOURS_RVA},
+                                              {0x17b09aa, FREE_RVA}}};
   for (const DirectCall& call : direct) CHECK(game[call.at] == 0xE8 && call.at + 5 + Read32(game + call.at + 1) == call.target);
   const std::vector<IndirectCall> indirect = {{0x17b04de, {0xFF, 0x50, 0x58}},                      // call [eax + 0x58]
                                               {0x17b04ec, {0x8B, 0x51, 0x60, 0x8B, 0xCB, 0xFF, 0xD2}},  // mov edx, [ecx + 0x60]; mov ecx, ebx; call edx
@@ -1199,7 +1258,7 @@ void TestColourImages() {
   CHECK(game[0x17b0787] == 0x80 && game[0x17b0788] == 0x3D && game[0x17b07bb] == 0x80 && game[0x17b07bc] == 0x3D);
   CHECK(Read32(game + 0x17b0789) == Read32(game + 0x17b07bd) && Read32(game + 0x17b0789) - static_cast<uint32_t>(reinterpret_cast<uintptr_t>(game)) == CACHE_FLAG_RVA);
   CHECK(CACHE_FLAG_RVA < image_size);
-  std::printf("6a. the colour loop's %u bytes in A are the file's; its 17 direct calls (the state owner, the flush x4, the technique check, the animation value and call, the constants' dirty call x2, the texture view x2, the shader resource bind x2, the vector constructor, the faction colours x2) and 8 indirect ones (vtable slots +0x14 +0x54 +0x58 +0x60 +0x64 +0x68 +0x6c, the node's +0xc0) are the ones the fakes stand for; the two constants' guards read the one cache flag\n",
+  std::printf("6a. the colour loop's %u bytes in A are the file's; its 19 direct calls (the state owner, the flush x4, the technique check, the animation value and call, the constants' dirty call x2, the texture view x2, the shader resource bind x2, the vector constructor, the faction colours x2, the mask gather's push_back and free) and 8 indirect ones (vtable slots +0x14 +0x54 +0x58 +0x60 +0x64 +0x68 +0x6c, the node's +0xc0) are the ones the fakes stand for; the two constants' guards read the one cache flag\n",
               COLOUR_LOOP_END_RVA - COLOUR_LOOP_RVA);
 }
 
@@ -1229,8 +1288,14 @@ void TestColourStages() {
               CHECK(staged.portions > 2);
               // A call inside one long mesh run has no cut and runs directly (a few portions of a list with 60 meshes); the rest are
               // all recorded.
-              CHECK(list.spec.interleaved || staged.direct_calls <= staged.small_calls + staged.portions / 4);
+              if (tracing) {
+                const uint32_t no_cut = DirectReasonsExplained(list);
+                CHECK(list.spec.interleaved || no_cut <= staged.portions / 4);
+              } else {
+                CHECK(list.spec.interleaved || staged.direct_calls <= staged.small_calls + staged.portions / 4);
+              }
               CHECK(!CompareDiffers(staged));
+              CHECK(di::latched_groups == 0);
               if (stage != dr::Stage::CHUNKED) {
                 if (list.spec.interleaved) {
                   // Two chunks set one mesh up (the lists are not sorted): the owner check sends the call to the direct run after
@@ -1262,7 +1327,7 @@ void TestColourStages() {
   CHECK(reruns_seen > 0);
   CHECK(compares_equal > 0);
   CHECK(conflicts > 0);
-  std::printf("6b. the real colour loop through the dispatcher: %u cases (9 lists x 4 stages x K 4 / 16 x trace off / on; the flush entry's hook and the call-site fallbacks; DispatchColour and the cut thunk): log (flushes, virtual calls, animation calls, constants' dirty calls, binds, faction colours) and tracker equal the serial run; %u chunks run in all, %u run again, %u of the unsorted list's meshes' chunks left to the direct run (the owner check); %u compare runs equal; recorded at K 4: %u flush, %u vf68, %u animation, %u constant, %u bind, %u faction ops; every fake reached (dirty %u, bind %u, faction colours %u, faction list %u, batch size %u)\n",
+  std::printf("6b. the real colour loop through the dispatcher: %u cases (10 lists x 4 stages x K 4 / 16 x trace off / on; the flush entry's hook and the call-site fallbacks; DispatchColour and the cut thunk): log (flushes, virtual calls, animation calls, constants' dirty calls, binds, faction colours) and tracker equal the serial run; %u chunks run in all, %u run again, %u of the unsorted list's meshes' chunks left to the direct run (the owner check); %u compare runs equal; recorded at K 4: %u flush, %u vf68, %u animation, %u constant, %u bind, %u faction ops; every fake reached (dirty %u, bind %u, faction colours %u, faction list %u, batch size %u)\n",
               cases, chunks_seen, reruns_seen, conflicts, compares_equal, ops[0], ops[1], ops[2], ops[3], ops[4], ops[5], colour_calls[DIRTY].load(), colour_calls[SRV].load(),
               colour_calls[FACTION_COLOURS].load(), colour_calls[FACTION_LIST].load(), colour_calls[VF6C].load());
 }
@@ -1449,7 +1514,7 @@ int main(int argc, char** argv) {
 
   // B prepared by engine_code with the DLL as it ships, then the fakes in both; the sites are written by its PausedWrite.
   REQUIRE(ec::PrepareRecording(reinterpret_cast<HMODULE>(patched)));
-  REQUIRE(ec::recording_found == (1u << ec::RECORDING_SITE_COUNT) - 1);
+  REQUIRE(ec::recording_found == (uint64_t{1} << ec::RECORDING_SITE_COUNT) - 1);
   REQUIRE(di::game_calls.usable && di::game_calls.loops[static_cast<size_t>(dr::Group::DEPTH_A)] == ec::Address(patched + LOOP_RVA));
   REQUIRE(di::game_calls.loops[static_cast<size_t>(dr::Group::COLOUR_A)] == ec::Address(patched + COLOUR_LOOP_RVA));
   REQUIRE(((di::game_calls.usable_groups >> static_cast<size_t>(dr::Group::COLOUR_A)) & 1) != 0);
@@ -1464,6 +1529,11 @@ int main(int argc, char** argv) {
   for (uint32_t kind = 0; kind < stride_objects.size(); ++kind) stride_objects[kind] = {.vtable = stride_vtable.data(), .kind = kind};
   node_vtable.fill(0);
   node_vtable[0xc0 / 4] = reinterpret_cast<uint32_t>(&FakeFactionList);
+  for (uint32_t k = 0; k < masks.size(); ++k) {
+    const uint8_t picks[4][4] = {{3, 1, 0, 2}, {0, 0, 1, 1}, {2, 3, 2, 3}, {7, 6, 5, 4}};
+    std::memcpy(masks[k].picks, picks[k], 4);
+    masks[k].index = static_cast<int32_t>(k);
+  }
   for (uint32_t i = 0; i < textures.size(); ++i) textures[i].view = (i == textures.size() - 1 ? 0 : 0x100 + 0x10 * i);
   for (uint32_t faction = 0; faction < faction_lists.size(); ++faction) {
     for (uint32_t i = 0; i < faction_colours[faction].size(); ++i) faction_colours[faction][i] = static_cast<float>(faction * 100 + i) + 0.5f;
