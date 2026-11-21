@@ -62,6 +62,7 @@
 #define RENODX_TEST_HOOKS_MEMORY twattila::buffer_pool::Reserved
 #include "./test_hooks.hpp"
 #include "./water_effects.hpp"
+#include "./worker_pool.hpp"
 #include "./smoke_map.hpp"
 #include "./ssr_hiz.hpp"
 #include "./shared.h"
@@ -1339,6 +1340,8 @@ float fewer_driver_waits_row = 0.f;
 float effect_prefetch_row = 0.f;
 // Keep Render Core Free (Experimental, off): cpu_sets.hpp.
 float keep_render_core_row = 0.f;
+// Worker Threads (Experimental): the threads, the render thread included, that worker_pool.hpp's users may use.
+float worker_threads_row = 4.f;
 // Where the game's own threads start (the job workers in the engine's DLL); the rest is the driver's, audio's, etc.
 constexpr std::array<const wchar_t*, 2> GAME_THREAD_MODULES = {nullptr, L"empire.retail.dll"};
 // Faster Emitter Prefetch (Experimental, off): engine_code.hpp's emitter update loop site, a row of its own so that a bench
@@ -1349,10 +1352,9 @@ float particle_prefetch_row = 0.f;
 // Faster Sweep Prefetch (Experimental, off): engine_code.hpp's pending list sweep site, a row of its own.
 float sweep_prefetch_row = 0.f;
 #if defined(TWATTILA_DRAW_RECORDING)
-// Threaded Draw Recording (private build, draw_recording.hpp): the stage, the threads that scan (K), the four loop groups (bit g of
+// Threaded Draw Recording (private build, draw_recording.hpp): the stage, the four loop groups (bit g of
 // draw_recording::Settings::loops, in the order of draw_recording::Group) and the B dispatchers' families.
 float draw_recording_stage_row = 0.f;
-float draw_recording_threads_row = 4.f;
 std::array<float, 4> draw_recording_group_rows = {};
 float draw_recording_families_row = 255.f;
 
@@ -1621,10 +1623,11 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   uint32_t recording_groups = 0;
+  // Any user of the worker pool is on.
+  bool pool_in_use = false;
 #if defined(TWATTILA_DRAW_RECORDING)
   twattila::draw_recording::Settings recording = {
       .stage = static_cast<twattila::draw_recording::Stage>(draw_recording_stage_row),
-      .threads = static_cast<uint32_t>(draw_recording_threads_row),
       .loops = 0,
       // The thread context_hooks installed on (0: not installed), for the trace's note.
       .context_hooks_thread = (twattila::context_hooks::internal::state.context.load() != nullptr
@@ -1635,13 +1638,16 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     recording.loops |= (draw_recording_group_rows[group] != 0.f ? 1u << group : 0u);
   }
   recording_groups = twattila::draw_recording::SiteGroups(recording.stage, recording.loops);
+  pool_in_use = (recording.stage != twattila::draw_recording::Stage::OFF);
 #endif
+  // Before the users' own Updates.
+  twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use});
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
                                 job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,
                                 particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale, recording_groups);
 #if defined(TWATTILA_DRAW_RECORDING)
   // After the engine code's Update: the sites are in or out for this present.
-  twattila::draw_recording::Update(recording, twattila::engine_code::DrawRecordingSitesIn());
+  twattila::draw_recording::Update(recording);
 #endif
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, twattila::engine_code::ModelDetailStatus(object_detail.scale), &graphics_found,
                             graphics_status);
@@ -2118,6 +2124,17 @@ void ConfigureAddon() {
                      "them, while it works on the current one. May lower the CPU waiting in big battles. Same results.",
           .labels = {"Off", "On"},
       },
+      new renodx::utils::settings::Setting{
+          .key = "WorkerThreads",
+          .binding = &worker_threads_row,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "Worker Threads (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The threads the settings that share their work between threads may use, the render thread included.",
+          .labels = {"2", "4", "6", "8", "12", "16"},
+          .parse = [](float value) { return std::array<float, 6>{2.f, 4.f, 6.f, 8.f, 12.f, 16.f}[static_cast<size_t>(value)]; },
+      },
 #if defined(TWATTILA_DRAW_RECORDING)
       new renodx::utils::settings::Setting{
           .key = "DrawRecordingStage",
@@ -2129,17 +2146,6 @@ void ConfigureAddon() {
           .tooltip = "The game's draw loops, recorded on worker threads and replayed on the render thread in order.\n"
                      "Each stage does more of it; Off leaves the game's own loops alone.",
           .labels = {"Off", "Direct", "Touch ahead", "Chunked", "Recorded", "One worker", "Workers"},
-      },
-      new renodx::utils::settings::Setting{
-          .key = "DrawRecordingThreads",
-          .binding = &draw_recording_threads_row,
-          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 1.f,
-          .label = "Draw Recording Threads (Private)",
-          .section = "Graphics (Experimental)",
-          .tooltip = "The threads that scan the draw loops, the render thread included.",
-          .labels = {"2", "4", "6", "8", "12", "16"},
-          .parse = [](float value) { return std::array<float, 6>{2.f, 4.f, 6.f, 8.f, 12.f, 16.f}[static_cast<size_t>(value)]; },
       },
       DrawRecordingGroupRow("DrawRecordingDepthA", "Draw Recording Depth A (Private)", 0, "The depth passes' item loop."),
       DrawRecordingGroupRow("DrawRecordingColourA", "Draw Recording Colour A (Private)", 1, "The colour passes' item loop."),
@@ -2538,6 +2544,9 @@ void DetachAddon() {
   twattila::engine_tests::StopAtStart(&at_start_stop);
   tw::engine_tweaks::Uninstall(graphics_options);
   twattila::engine_code::Uninstall();
+  // Before the users' Uninstall frees their memory and the module reference: a job open on another thread keeps the pool (and
+  // the users keep their memory then).
+  twattila::worker_pool::Stop();
 #if defined(TWATTILA_DRAW_RECORDING)
   // After the engine code's Uninstall: the memory the sites use goes only when none is left in.
   twattila::draw_recording::Uninstall(twattila::engine_code::DrawRecordingSitesIn());
