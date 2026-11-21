@@ -5455,6 +5455,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         Final builds + FULL not yet run on the final sources -> c3i_ told to finish + commit. B1.3 review must read
         the relocation fix and the behaviour changes (AsksAlways sites without fast path, late-rank midpoint,
         WaitOnAddress via GetProcAddress, Update counter lines, census no longer drains).
+        hp1i_ S8-1c FIXES DONE 10:4x (prep 05b9a5c on ca4dbc8, local; appended to reports/hp1i_s8_1c_handback.md): Must 1
+        fix (a) - pools.c PRESORT_LOCK = HEAPFIX_PRESORT || HEAPFIX_TEST, lock + read-section exports compiled out of
+        release, release pool_munmap = 7.0's text (diffed vs 99a9a01: identical), new poolsrel_test (4 threads x 20000
+        map + release, all 0; control with the lock on fails); nits: "presort: off in this build" (release line suffix
+        exactly "; presort: off in this build" -> t4i_ corpus), both VirtualProtect steps tested, Nit 3 comment.
+        build.bat test src_prep12 all passed, prepare_test x6 exit 0.
+        bd3r_ RESUMED 10:4x: re-check of S8-1c fixes -> S8 lane closed for T5.
+        Agents: c3i_ (B1.2b finish), c33i_ (C.3-3), bd3r_ (S8-1c re-check) (3 of 3). QUEUE: t4i_ T1b follow-ups +
+        ebo_ lane (per-kind budget, presort segments out, W_w logging, new presort line).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
