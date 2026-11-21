@@ -4956,6 +4956,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         Full build.bat test exit 0 (src_prep4); DLL prep3_dinput8.dll sha256 71245afb...98e0. Not proven: live change
         under real concurrent threads (one-thread test). hp1i_ asked to stop its leftover background work.
         bd3r_ RESUMED 04:1x: review of T2. Agents: c3i_, gto_, bd3r_ (3 of 3).
+        hp1i_ leftover background wait loop (waited for the zombie) stopped by hp1i_ 04:1x; nothing of ours running.
+        gto_ ADDENDUM "QUALITY AND ENFORCEMENT" DONE 04:2x (appended to plan_1117/gto_design.md, 858 lines): A gate_hook.py
+        (spec gate on D3D / HLSL / NVAPI / NGX / SL / NGFX identifiers in changed lines until spec.py was run; CXX_STYLE
+        read gate for src C++; shell-editor route; commit cite check; protected gate / settings files; marker files,
+        fails open, every refusal names its clearer, markers cleared at compaction; gate_override.ps1 ATN-only; hook
+        JSON = PROPOSAL for ATN, shadow mode 1-2 days before enforce); B iq_frames.py on full 4K (relMSE / MAPE / SMAPE /
+        HDR-FLIP / flicker / swim / disocclusion recovery / light lag, masks, gate --quality with Q- ids, moments in the
+        resident); C 6 known-answer scenes (furnace, cornell + grey, cards, thin, lights500, fog) as recordings through
+        HARNESS_SCENE, three-way compare with pbrt-v4. Waves W1-W5 after render_mt. ATN QUESTIONS Q12-Q22 (for ATN's
+        return, with Q1-Q11; needs the S0 review first): Q12 install hooks (shadow first), Q13 allow spec.py +
+        spec_cite_check.py, Q14 gate scope, Q15 commit cite check, Q16 FLIP-tool.exe in testbin, Q17 one game slot for
+        2 x 24-frame sequences (~85 GB on C:), Q18 recorder depth + motion, Q19 reference GPU hours, Q20 pbrt-v4
+        submodules + CPU build + lab runs, Q21 HARNESS_SCENE switch + 4K harness build, Q22 MS win32 d3d docs + DXC docs
+        (downloads covered by ATN's 04:1x papers / free code OK; fetch when S1c needs them). [ ] S0 Opus xHigh review of
+        gto_design.md + both addenda (GPU plan filler slot).
+        t4i_ STARTED 04:2x (Opus High): T4 end batch bench scripts (constantinople_bench.ps1 + new ebo_run / ebo_make /
+        ebo_check / ebo_analyze, data in render_mt\ebo\), offline tests only, never runs ebo_run.ps1.
+        Agents: c3i_, bd3r_, t4i_ (3 of 3). QUEUE: T3, x87 review, R2 addendum, S0 GPU design review, unified PT design.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
