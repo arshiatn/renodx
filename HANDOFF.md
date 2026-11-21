@@ -5697,6 +5697,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         ebr_ RESUMED 15:0x: round 6 re-check -> reports/ebr_t1b_review.md.
         Agents: c3i_ (B1.4), c33i_ (C.3-4 fixes + LOGX), ebr_ (round 6) (3 of 3). QUEUE: bd1r_ re-check, merge rmt_c34,
         t4i_ LOGX test_check case, x87o_ v2, b13r_ B1.4 review, B1.5.
+        ebr_ ROUND 6 DONE 15:0x (reports/ebr_t1b_review.md from line 268): round 5 sound, no new Musts; T4 still waits
+        only on the x87 M1 (LOGX). 4 Shoulds: S1 band = max(A/A) gives ~22% false 'outside' per scene (~39% per batch);
+        S2 four_off never ran in a bench (loopfetch / memfast / x87fix never off with an MT add-on) -> crash risk
+        before key starts; S3 'all four off' keeps the add-on's site-1 stub on the soldier-draw block; S4 B1's 'left
+        alone' WARN has no gate row + its Prepare ROWFAIL not in code_rows. 4 Nits. run_all 705 / 705.
+        COORDINATOR DECISIONS: S1 practical floor (|on - off| > max(band, 0.2 ms W3, 0.1 ms D1), floors in
+        segments.json) + '<scene>: no result' wording; S2 the 8 HF starts go to the very END of the batch's last leg.
+        t4i_ RESUMED 15:1x: round 6 fixes (S1-S4 + nits 1-4) -> ebr_ round 7.
+        Agents: c3i_ (B1.4), c33i_ (C.3-4 fixes + LOGX), t4i_ (round 6 fixes) (3 of 3). QUEUE: bd1r_ re-check, merge
+        rmt_c34, t4i_ LOGX test_check case, ebr_ round 7, x87o_ v2, b13r_ B1.4 review, B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
