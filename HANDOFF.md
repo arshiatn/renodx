@@ -5266,6 +5266,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         0x5DC) + printed tables incl. the 0x11DA6110 / 0x11DA6C50 relocated refs; fresh src_prep7, prepare_test x6,
         commit if clean, output verbatim. Rule note on dispscan.py given. S8-1b only after my OK.
         Agents: c3i_ (B1.2a), t4i_ (T4 round 3), hp1i_ (3 of 3).
+        hp1i_ S8-1a RE-RUN CLEAN 08:5x (prep 99a9a01 "S8-1a: whole-DLL scans and expected sets", tests\prepare_test.c
+        +437 only; reports/hp1i_s8_1a_handback.md): build.bat test src_prep7 all passed, prepare_test x6 exit 0; stop rows
+        that differ 0, pinned rows that differ 0; every v3.6 exact set matched (0x189B9A0 callers 4, thunk 1, constructor
+        1, vtable refs 2, 11 blocks + tail jmp, 9 owner resets, 0 relocs in 26 old + 10 new rows; new reset row fnv
+        0x6170A238). Item-store table printed: +0x1810800 (instances) / +0x1812580 (weighted) touch store fields
+        base+0x4 / 0x8 / 0x28 / 0x2C -> S8-1 reviewer reads them with dis_at.py for the address-uniqueness premise.
+        hp1i_ RESUMED 08:5x: OK for S8-1b (v2.7 row + P3' at +0x18124E8 + row 0x1811F0C len 0x5DC + printed caller
+        chains of the two store functions; src_prep8, prepare_test x6, commit if clean) -> bd3r_ review -> S8-2.
+        Agents: c3i_ (B1.2a), t4i_ (T4 round 3), hp1i_ (S8-1b) (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
