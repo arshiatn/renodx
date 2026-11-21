@@ -5973,6 +5973,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: b13r_ (B1.5 re-check), ebr_ (X2 review), c33i_ (R-S4 part 1) (3 of 3). QUEUE: merge rmt_b15fix, c33i_
         R-S4 part 2, bd1r_ R-S3 re-check, t4i_ gate row refresh, R-S5a addendum, B1.6 (+ N5 real-routine tests), X1,
         x0i_ X2 fixes.
+        ebr_ X2 REVIEW DONE 20:0x (reports/ebr_x87_review.md line 627): X2 READY TO MEASURE LATER. No Musts, 2 Shoulds, 7
+        Nits; suite --x2 reproduced (exit 0, 2 s). .reloc parse + hash right at any base (2 parsers agree, 3 deltas);
+        S-X2-1 holds; mask check on the installing thread nearly empty, but the game's FPU reset (69 sites) masks
+        everything at every task and all 452 logged thread states were masked; skipping the revert safe (cvttss2si =
+        fisttp for any RC / DAZ / FTZ, NaN / inf / range = 0x80000000; only sticky flags move to MXCSR); writes only the
+        36 block bytes, row 1 overlap handled by LOGX. 2^32 sweep not needed before a measurement (~1 min), before an
+        author package yes.
+        [ ] S-X2r-1 (t4i_, round 9): heapfix.log x87c gate (non-x87c segments: any x87c line = ROWFAIL; x87c segment:
+        missing summary / reason / N < 89 = ROWFAIL) + segments.json key note [fixes] x87c.
+        [ ] S-X2r-2 + nits 1 / 3 / 4 / 5 / 7 (x0i_, before an author package): 2^32 sweep behind a switch on --x2.
+        t4i_ STARTED round 9 20:0x: SPAWNS_OFF gate row refresh vs merged c3f89865b + S-X2r-1.
+        Agents: b13r_ (B1.5 re-check), c33i_ (R-S4 part 1), t4i_ (round 9) (3 of 3). QUEUE: merge rmt_b15fix, c33i_ R-S4
+        part 2, bd1r_ R-S3 re-check, x0i_ S-X2r-2 + nits, R-S5a addendum, B1.6 (+ N5 real-routine tests), X1.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
