@@ -290,7 +290,7 @@ int RunEffectSitesTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
   for (const uint32_t rva : eu::HOOKED_ENTRIES) CHECK(game[rva] != 0xE9 && patched[rva] != 0xE9);
   // The whole code section: no branch into the middle of a site; a planted branch is found (CONTROL).
   std::vector<uint32_t> hits;
-  const size_t branch_hits = ei::BranchesIntoSites({game + text_rva, text_size}, text_rva, &hits);
+  const size_t branch_hits = ei::BranchesIntoSites({game + text_rva, text_size}, text_rva, &hits, ei::RelocatedWords(game));
   for (const uint32_t source : hits) std::printf("   a branch at +%X lands inside a site\n", source);
   CHECK(branch_hits == 0);
   {
@@ -310,6 +310,10 @@ int RunEffectSitesTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
     Write32(window.data() + 0x32, site_rva - (first + 0x36));
     std::vector<uint32_t> planted_hits;
     CHECK(ei::BranchesIntoSites(window, first, &planted_hits) == 3 && planted_hits[0] == first && planted_hits[1] == first + 0x10 && planted_hits[2] == first + 0x20);
+    // CONTROL: the two whose bytes lie in a relocated word (the loader rewrites it: data) are skipped.
+    const std::array<uint32_t, 2> relocated = {first - 2, first + 0x11};
+    planted_hits.clear();
+    CHECK(ei::BranchesIntoSites(window, first, &planted_hits, relocated) == 1 && planted_hits[0] == first + 0x20);
   }
   {
     // Every relocated pointer of the image: none into a site (a jump table or a vtable would be one).
@@ -571,7 +575,7 @@ int RunEffectSitesTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
           gates(&harness, 1, 1, direct, stack_limit);
           const SiteRun open = thunk_run(&harness, index, x87_value, *on);
           ++slow_runs;
-          const bool fast = (order && direct == own_top);
+          const bool fast = (order && direct == own_top && !eu::AsksAlways(static_cast<eu::Site>(index)));  // the forwarded and the enumeration sites ask every time
           if (append) {
             // The callee runs from the thunk with the count raised and a copy of the argument; ecx and the result come back; the thunk returns as the callee would.
             const uint32_t arg = Read32(reinterpret_cast<const uint8_t*>(esp_in) + 4);

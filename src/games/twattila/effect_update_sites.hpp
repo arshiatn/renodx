@@ -30,9 +30,9 @@
 // touches state that several effects share (the particle spawn buffer, the random generator, the sound system, the
 // emitter slot pool, children, rigid adds, ...), and the walk that calls it for every effect. This file owns the table of
 // sites, the thunks that each site's jump goes to, the words they read and the checks that keep the sites out of
-// code that is not the game's as expected. The scheduler that decides what a site does (effect_update.hpp, a later step)
-// plugs in as the `Handler`; until then every site is consulted only while `walk_armed` / `walk_active` are set, and
-// nothing sets them: the sites are in the game's code but never change what it does.
+// code that is not the game's as expected. The scheduler that decides what a site does (effect_update.hpp) plugs in as the
+// `Handler`; until then (and while no walk is open) every site is consulted only while `walk_armed` / `walk_active` are set,
+// and nothing sets them: the sites are in the game's code but never change what it does.
 //
 // A site is an E9 (a jump) over whole instructions of the game, padded with NOPs, or an E8 (a call) retargeted. Every
 // thunk is one of three paths:
@@ -41,7 +41,9 @@
 //   fast:     while a walk is open, the thread that runs the one direct (oldest) unit goes on the original path without
 //             calling anything: `walk_active`, then `direct_high - esp < limit` (one word, `direct_high` the HighLimit of
 //             the direct thread's stack, `limit` the smallest stack reservation of any thread that may be direct: stacks
-//             never overlap, so for any other thread the difference is past `limit`, and 0 means nobody is direct);
+//             never overlap, so for any other thread the difference is past `limit`, and 0 means nobody is direct); the
+//             sites for which AsksAlways is true have no fast path (the forwarded calls, and the sites that wait for the
+//             enumeration to end: a direct unit passes them through the slow path), and neither do the E8 sites;
 //   slow:     everything else calls `Handler` in a frame of its own (pushfd, pushad, a 16-aligned fxsave of the vector
 //             state, the frame's address and the site id on the stack, cdecl). The handler returns an action: 0 runs the
 //             original path, 1 returns from the function with the Frame's eax (only the sites with a `return_bytes`).
@@ -86,6 +88,17 @@ enum class Site : uint8_t {
   COUNT,
 };
 constexpr size_t SITE_COUNT = static_cast<size_t>(Site::COUNT);
+// The sites whose call the scheduler forwards to the render thread, and the sites that change what the render thread reads while
+// it enumerates the walk's effects (vectors, the table, lists): their thunks ask the handler on every hit, from the direct
+// thread's stack too (a unit that became direct at an earlier site would otherwise run the forwarded call on its worker, and
+// pass the others before enumeration is done). The handler answers 0 at once for the render thread, for its own forwarded
+// call and for a direct unit with enumeration done.
+constexpr bool Forwards(Site site) { return site == Site::RIGID_ADD || site == Site::RANDOM_FILL; }
+constexpr bool WaitsForEnumeration(Site site) {
+  return site == Site::EVENT_DISPATCH || site == Site::CHILD_CREATE_A || site == Site::CHILD_CREATE_B || site == Site::TYPE_ADD_A || site == Site::TYPE_ADD_B
+         || site == Site::ATTACH_PAIR || site == Site::ATTACH_LIST || site == Site::TRACKED_CHILD;
+}
+constexpr bool AsksAlways(Site site) { return Forwards(site) || WaitsForEnumeration(site); }
 constexpr uint32_t ALL_SITES = (1u << SITE_COUNT) - 1;
 static_assert(SITE_COUNT == 27);
 
@@ -160,6 +173,9 @@ constexpr std::array<SiteInfo, SITE_COUNT> SITES = {{
     {.name = "attach list", .rva = 0x17FA1B0, .pattern = "56 8D 44 24 08"},
     {.name = "random fill", .rva = 0x184DA60, .pattern = "83 EC 14 56 8B F1", .return_bytes = 8},
 }};
+
+// The game's sweep of one effect (after its instances' updates): the second half of the per-effect function, from here to its epilogue.
+constexpr uint32_t SWEEP_RVA = 0x18933EB;
 
 // The heap fix's presort owns +0x192D2DA .. +0x192D2DE (its fourth patch): no site of ours may touch it.
 constexpr uint32_t PRESORT_BEGIN = 0x192D2DA;
@@ -347,7 +363,7 @@ inline uint8_t* EmitThunk(Assembler* assembler, size_t index, const Data* data, 
     return entry;
   }
 
-  if (info.kind == Kind::ORDER) {
+  if (info.kind == Kind::ORDER && !AsksAlways(site)) {
 #if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
     if (control_torn_pair) {
       // The first design's two loads: a thread preempted between them can see a low and a high of two different threads.
@@ -421,6 +437,7 @@ constexpr size_t CODE_SIZE = 0x2000;  // the thunks (read-execute once built); t
 static std::array<PatchedSite, SITE_COUNT> sites;
 static std::array<const uint8_t*, SITE_COUNT> thunks = {};
 static const uint8_t* base = nullptr;
+static const uint8_t* sweep = nullptr;  // the sweep thunk (in the page): `thiscall void(effect)`, the game's sweep alone
 static uint8_t* page = nullptr;      // the thunk page
 static uint8_t* page_end = nullptr;  // its end
 static Data* data = nullptr;
@@ -433,14 +450,34 @@ static uint32_t asked = 0;    // what the row last asked for
 // The branches (jmp, jcc, call, loop with a rel8 or rel32 target) of `code` (the game's bytes from `first_rva`) whose
 // target is inside a patched range past its first byte, by the branch's RVA: no byte pattern knows the instruction
 // boundaries, so a byte of another instruction that looks like a branch is a hit too (the sources the shipped build
-// has are listed in IGNORED_SOURCES, each one read in the disassembly).
+// has are listed in IGNORED_SOURCES, each one read in the disassembly; the bytes of a relocated word are skipped).
 // A thread that jumped into a range would run the middle of our jump: the shipped build has none (test/tw_engine_code scans the
 // whole code section, Prepare the 2 KB around each site).
 // +17F94C5 and +1819284 / +1819333: the immediate of a `push` (0x78; the 0xE0 of 0x12A5EDE0); +181A95C: the address operand of an
 // `imul` (0x11DA7408); +192D661: the displacement of the call at +192D65E (inside the walk end's own site).
 constexpr std::array<uint32_t, 5> IGNORED_SOURCES = {0x17F94C5, 0x1819284, 0x1819333, 0x181A95C, 0x192D661};
 
-inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rva, std::vector<uint32_t>* hits) {
+// The RVAs of the image's relocated 32-bit words, sorted: the loader rewrites them to the load address (ASLR), so a branch-like
+// byte pair inside one is data that changes from run to run, never an instruction.
+inline std::vector<uint32_t> RelocatedWords(const uint8_t* module) {
+  std::vector<uint32_t> words;
+  const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS32*>(module + reinterpret_cast<const IMAGE_DOS_HEADER*>(module)->e_lfanew);
+  const IMAGE_DATA_DIRECTORY& directory = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
+  for (uint32_t at = 0; at + sizeof(IMAGE_BASE_RELOCATION) <= directory.Size;) {
+    const auto* block = reinterpret_cast<const IMAGE_BASE_RELOCATION*>(module + directory.VirtualAddress + at);
+    if (block->SizeOfBlock < sizeof(IMAGE_BASE_RELOCATION)) break;
+    const auto* entries = reinterpret_cast<const uint16_t*>(block + 1);
+    for (size_t entry = 0; entry < (block->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / 2; ++entry) {
+      if ((entries[entry] >> 12) == IMAGE_REL_BASED_HIGHLOW) words.push_back(block->VirtualAddress + (entries[entry] & 0xFFF));
+    }
+    at += block->SizeOfBlock;
+  }
+  std::ranges::sort(words);
+  return words;
+}
+
+inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rva, std::vector<uint32_t>* hits,
+                                std::span<const uint32_t> relocated = {}) {
   size_t count = 0;
   const auto read32 = [&](size_t at) {
     uint32_t value;
@@ -464,6 +501,9 @@ inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rv
       continue;
     }
     const uint32_t source = first_rva + static_cast<uint32_t>(at);
+    // Bytes of a relocated word: data (its value follows the load address), not a branch.
+    const auto word = std::ranges::lower_bound(relocated, source - 3);
+    if (word != relocated.end() && *word < source + length) continue;
     const uint32_t target = source + static_cast<uint32_t>(length) + static_cast<uint32_t>(displacement);
     for (const SiteInfo& info : SITES) {
       if (target <= info.rva || target >= info.rva + SizeOf(info)) continue;
@@ -540,6 +580,7 @@ inline bool Prepare(HMODULE module) {
   }
   // No branch of the game into the middle of a site (the game's own code around each one; the 2 KB either side).
   size_t branches = 0;
+  const std::vector<uint32_t> relocated = RelocatedWords(base);
   for (const SiteInfo& info : SITES) {
     for (const std::string_view memory : sections.code) {
       const auto* begin = reinterpret_cast<const uint8_t*>(memory.data());
@@ -547,7 +588,7 @@ inline bool Prepare(HMODULE module) {
       if (at < begin || at >= begin + memory.size()) continue;
       const uint8_t* from = std::max(begin, at - 0x800);
       const uint8_t* to = std::min(begin + memory.size(), at + 0x800);
-      branches += BranchesIntoSites({from, to}, static_cast<uint32_t>(from - base), nullptr);
+      branches += BranchesIntoSites({from, to}, static_cast<uint32_t>(from - base), nullptr, relocated);
     }
   }
   if (branches != 0) {
@@ -569,6 +610,13 @@ inline bool Prepare(HMODULE module) {
     const uint8_t* const at = base + info.rva;
     built[index] = EmitThunk(&assembler, index, words, at, (info.callee_rva != 0 ? callee_of(index) : nullptr), at + SizeOf(info));
   }
+  // The sweep thunk: three zero arguments, a call to a copy of the game's prologue that jumps into the sweep, so the sweep's own
+  // epilogue (`ret 0xC`) pops them; the sweep reads no locals of its own (it uses edi, the effect, only).
+  const uint8_t* const sweep_thunk = assembler.Cursor();
+  assembler.Bytes({0x6A, 0x00, 0x6A, 0x00, 0x6A, 0x00});
+  assembler.Relative(0xE8, sweep_thunk + 12);
+  assembler.Bytes({0xC3, 0x83, 0xEC, 0x20, 0x57, 0x8B, 0xF9, 0x53, 0x55, 0x56});
+  assembler.Relative(0xE9, base + SWEEP_RVA);
   DWORD protection;
   if (!assembler.Fits() || VirtualProtect(memory, CODE_SIZE, PAGE_EXECUTE_READ, &protection) == FALSE) {
     VirtualFree(memory, 0, MEM_RELEASE);
@@ -587,6 +635,7 @@ inline bool Prepare(HMODULE module) {
     std::memcpy(site.patch.data() + 1, &displacement, sizeof(displacement));
   }
   thunks = built;
+  sweep = sweep_thunk;
   page = memory;
   page_end = memory + CODE_SIZE;
   data = words;
