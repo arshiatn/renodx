@@ -6242,6 +6242,40 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: bd1r_ (R-S4 re-check), t4i_ (T3 follow-ups), s0r_ (GPU v2 re-check) (3 of 3). QUEUE: merge rmt_rs2b, R-S5
         (c33i_, after rmt_rs2b merges) -> Opus xHigh review, ebr_ T3b re-check, B1.6 (+ N5 real-routine tests + b13r_'s
         half-rows R2), X1, unified PT design (after S0).
+        t4i_ T3B DONE 23:0x (reports/t4i_t3b_handback.md): rmt_t3b f4d6b5764 on df70c75e3: S-T3-1 frame_of lower_bound
+        (a QPC tie goes to the frame its present ends; v1 event draw index same rule) + nits 1-3 + test section 14
+        (fails at :1128 with upper_bound back); amd64 8 / 8. Bench (backups scratchpad\t4i_bak\r12): nits 4-6,
+        check.json windows[].started_t, S-T3-2 = tools\tw\bench\ebo_mapcmp.py (§4.2 compare: preconditions, rebuilt
+        bound state self-checked vs cbs= / vbs=, per-frame + per-draw, OFF pair drops differing fields, C and ALL vs
+        reference) + ebo_analyze integration + 18 synthetic checks; run_all green (analyze 90 / 90).
+        ebr_ STARTED 23:0x: T3b re-check -> reports/ebr_t1b_review.md '## T3b re-check' (MERGE / FIX) + verdict on
+        map_compare DIFFERS = NOTE (t4i_) or leg PROBLEM (mine: C / ALL DIFFERS on fields the OFF pair agrees on =
+        PROBLEM; 'not comparable' stays a NOTE).
+        bd1r_ R-S4 RE-CHECK DONE 23:0x (reports/bd1r_rs3_review.md line 244, hand-back reports/bd1r_rs4_handback.md):
+        MERGE rmt_rs2b. M1 / S1-S3 / N3-N10 closed, each with a test that fails when the fix is undone; shared-header
+        edits keep B1's behaviour; 13 mutants of part 29 caught. FULL tw_engine_code x86 PASS (not cut by the limit),
+        tw_instance_fill x86 x4, tw_draw_recording x3 + _sites + _loop, gated x86 / DRAW_RECORDING / amd64 exit 0.
+        For R-S5 (not blockers): S drop the 'stand_group_down(index); break;' (instance_fill.hpp:612-613, addendum S3
+        rule: every changing site ends written or stood); narrow the no-overlap static_assert (:120-134) to written
+        bytes (R2 stubs share R1's '75 0B'); SITE_SIZE uses incl. VisitRanges; G1 no case covers another mod's byte
+        over our E8 at detach (Uninstall's stand-down pin) -> 3 lines in 29e; nits 29d comment (instance_fill.inc:204),
+        N8 comment (:279-282), 7 lines over 120 columns.
+        MERGED 23:0x: rmt_rs2b -> atn-mods 14ec1d954 (name_check 1369 ids / 75 generic; gated x86 x3 + amd64 exit 0;
+        pushed).
+        c33i_ STARTED 23:0x on rmt_rs5 (from 14ec1d954, Sonnet High): first commit = bd1r_'s R-S4 items (break, assert,
+        SITE_SIZE, G1 case, nits), then addendum §9 R-S5.1-R-S5.5 + bd3r_'s plain-build Should + Nits 1-4 -> Opus
+        xHigh review.
+        s0r_ GPU v2 RE-CHECK DONE 23:0x (plan_1117/s0r_review.md line 207, hand-back plan_1117/s0r_v2_handback.md): GO
+        WITH CHANGES; M1 / M2 / M5-M10 closed, M3 / M4 partly. New Musts: V1 (§4) A/A split {1, 8} vs {4, 5} (old split
+        reads linear drift as INVALID) + drift case + rotation power target in S1b, before S1b; V2 (§2) ReloadTemporal
+        must not re-upload structural pools in RecordedResources() (rt_d3d12.hpp:8211) -> classify by made_by / history /
+        output + test with a mesh added after load, before S2; V3 (A.8) hook's exec_module of pitfall_check.py can raise
+        SystemExit(2) = every shell call blocked -> catch BaseException, clearing commands first, test; protection of
+        the block rows = ATN's step, before S1c. 8 Shoulds + 3 Nits; 3 other options OK; one grand total ~71-107 agent-h
+        + reviews (E). ATN list unchanged (Q8 / Q12 / Q14 / Q15 / Q4b first, rows start Off, not blocking S1).
+        gto_ STARTED 23:0x: v3 (V1-V3 + Shoulds / Nits + one total) -> s0r_ re-check of V1-V3.
+        Agents: ebr_ (T3b re-check), c33i_ (R-S5), gto_ (GPU v3) (3 of 3). QUEUE: merge rmt_t3b, R-S5 review, s0r_ V1-V3
+        re-check, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, unified PT design (after S0).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
