@@ -61,6 +61,9 @@ struct Settings {
   DWORD context_hooks_thread = 0;
   // The B groups' dispatcher families (bit f: family f may record; a clear bit makes its classes direct segments).
   uint32_t b_families = 0xff;
+  // The groups whose own sites and flush path are all written (engine_code); a group not in it runs the game's loop even
+  // when its row is on. All by default (a test that drives the dispatcher without sites).
+  uint32_t groups_in = ~0u;
 };
 
 #if !defined(_WIN64)
@@ -2485,7 +2488,7 @@ inline void Update(const Settings& settings) {
     trace.in_window = false;
   }
 
-  config = {.stage = stage, .loops = settings.loops, .families = settings.b_families};
+  config = {.stage = stage, .loops = settings.loops & settings.groups_in, .families = settings.b_families};
 }
 
 // The `groups` the engine code's Update takes (bits of Group), from this present's stage and live loops mask: none while the

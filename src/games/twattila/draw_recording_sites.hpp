@@ -1495,6 +1495,22 @@ inline uint64_t RecordingWanted(uint32_t groups) {
   return wanted;
 }
 
+// The loop groups (bits of draw_recording::Group) whose own sites and flush path (the entry hook, else the call sites) are
+// all written now: the dispatcher runs only these groups' rounds, whatever the rows say (a group that stood down at run
+// time, a failed write, a pause with no clear moment leaves its sites out, and a round the dispatcher records then would
+// run a loop whose sites are not there).
+inline uint32_t RecordingGroupsIn() {
+  uint32_t groups = 0;
+  for (size_t group = 0; group < RECORDING_OWN.size(); ++group) {
+    const uint64_t flush =
+        ((recording_written & RECORDING_ENTRY_BIT) != 0 ? RECORDING_ENTRY_BIT : RECORDING_FALLBACK[group]);
+    if (RECORDING_OWN[group] != 0 && flush != 0 && ((RECORDING_OWN[group] | flush) & ~recording_written) == 0) {
+      groups |= 1u << group;
+    }
+  }
+  return groups;
+}
+
 // Once: the sites found and checked by their bytes, the thunks built in a page, each site's bytes made (nothing written
 // to the game). One log line names what was left alone. False: Threaded Draw Recording cannot be used (nothing is
 // found, the dispatchers run the loops directly).

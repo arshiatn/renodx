@@ -2521,6 +2521,10 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
 // memory and module.
 inline bool DrawRecordingSitesIn() { return internal::recording_written != 0 || internal::recording_left_in; }
 
+// The loop groups (bits of draw_recording::Group) whose sites and flush path are all written now (draw_recording::Settings::
+// groups_in): the dispatcher runs the rounds of these groups only.
+inline uint32_t DrawRecordingGroupsIn() { return internal::RecordingGroupsIn(); }
+
 // The Advanced status's words for the LOD pick's site, for the slider `model_detail` now; null: not decided yet (Prepare has not run).
 inline const char* ModelDetailStatus(float model_detail) {
   if ((internal::written & internal::MODEL_DETAIL_BIT) != 0) return "object detail hooked";
@@ -2572,6 +2576,7 @@ inline void ProbeArm(uint32_t presents) { internal::probe::Arm(presents); }
 inline void Update(bool, Game = Game::ATTILA, bool = false, bool = false, bool = false, bool = false, bool = false, bool = false, float = 1.f,
                    uint32_t = 0, const WorkerRows& = {}) {}
 inline bool DrawRecordingSitesIn() { return false; }
+inline uint32_t DrawRecordingGroupsIn() { return 0; }
 inline const char* ModelDetailStatus(float) { return nullptr; }
 inline void Uninstall() {}
 #if defined(TWATTILA_ENGINE_PROBE)

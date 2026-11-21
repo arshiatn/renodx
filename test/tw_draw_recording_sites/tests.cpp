@@ -1646,6 +1646,12 @@ void TestBGroup() {
   UpdateWith(b_row | colour_b_row | colour_row | depth_row);
   constexpr uint64_t EVERY_ROW = DEPTH_A_SITES | COLOUR_A_SITES | DEPTH_B_SITES | COLOUR_B_SITES;
   CHECK(ec::recording_written == EVERY_ROW && AllHold(EVERY_ROW) && std::popcount(EVERY_ROW) == 59 - 7);
+  // The groups wholly in (what addon.cpp hands the dispatcher): the four loop groups here.
+  constexpr uint32_t DEPTH_A_BIT = 1u << static_cast<uint32_t>(dr::Group::DEPTH_A);
+  constexpr uint32_t COLOUR_A_BIT = 1u << static_cast<uint32_t>(dr::Group::COLOUR_A);
+  constexpr uint32_t DEPTH_B_BIT = 1u << static_cast<uint32_t>(dr::Group::DEPTH_B);
+  constexpr uint32_t COLOUR_B_BIT = 1u << static_cast<uint32_t>(dr::Group::COLOUR_B);
+  CHECK(ecp::DrawRecordingGroupsIn() == (DEPTH_A_BIT | COLOUR_A_BIT | DEPTH_B_BIT | COLOUR_B_BIT));
   UpdateWith(colour_b_row);
   CHECK(ec::recording_written == COLOUR_B_SITES && shared->arena_size == arena_size);
   UpdateWith(0);
@@ -1660,11 +1666,13 @@ void TestBGroup() {
     log_lines.clear();
     UpdateWith(b_row | colour_b_row | depth_row);
     CHECK(ec::recording_written == (DEPTH_B_SITES | DEPTH_A_SITES) && AllHold(DEPTH_B_SITES | DEPTH_A_SITES, ec::RecordingBit(modded_site)));
+    // Colour B's row is still on, its 20 sites are out and the cut is in: only Depth B (and A) are groups wholly in.
+    CHECK(ecp::DrawRecordingGroupsIn() == (DEPTH_B_BIT | DEPTH_A_BIT));
     CHECK(LogHas(ec::RECORDING_INFO[static_cast<size_t>(modded_site)].name.data()));
     UpdateWith(0);
-    CHECK(ec::recording_written == 0);
+    CHECK(ec::recording_written == 0 && ecp::DrawRecordingGroupsIn() == 0);
     UpdateWith(colour_b_row);
-    CHECK(ec::recording_written == 0 && AllHold(0, ec::RecordingBit(modded_site)));
+    CHECK(ec::recording_written == 0 && AllHold(0, ec::RecordingBit(modded_site)) && ecp::DrawRecordingGroupsIn() == 0);
     modded[0] ^= 0x55;
     UpdateWith(0);
     CHECK(ec::recording_written == 0 && DifferingBytes() == 0);

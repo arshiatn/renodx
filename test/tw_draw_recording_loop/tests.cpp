@@ -1399,7 +1399,8 @@ void TestColourControls() {
 // SetGame found from the DLL's bytes, here the real code in B): a zero pointer would crash, and the meshes must be visited in order.
 std::vector<uint32_t> mesh_visits;
 void __fastcall FakeMeshBody(uint32_t* mesh, void*, void*, void*, void*, uint32_t, void*) { mesh_visits.push_back(mesh[1]); }
-uint32_t __fastcall FakeViewType(void*, void*) { return 0x60; }
+uint32_t fake_view_type = 0x60;
+uint32_t __fastcall FakeViewType(void*, void*) { return fake_view_type; }
 
 void TestMeshBeforePlan() {
   REQUIRE(di::game_calls.accessor != 0 && di::game_calls.vf64_stub != 0);
@@ -1435,6 +1436,63 @@ void TestMeshBeforePlan() {
     }
   }
   std::printf("6d. a B round run directly before it is planned (stage direct, or the dispatcher not usable) visits the sorted list's meshes in order through the accessor SetGame found (%u cases)\n", cases);
+}
+
+// M1: the per-mesh cut is both B groups'. With Depth B's sites, the cut and the flush entry hook written and Colour B's 20 sites out
+// (a stand-down, a failed write), both rows on: the groups the engine code says are in are Depth B (and A when they are), the
+// dispatcher takes only those rows, and a colour round runs directly (the fakes would flag a logging call off the main thread, and a
+// recorded round would run the body with no sites on workers).
+void TestGroupsIn() {
+  const size_t depth_b = static_cast<size_t>(dr::Group::DEPTH_B);
+  const size_t colour_b = static_cast<size_t>(dr::Group::COLOUR_B);
+  const uint64_t depth_b_mode = ec::RECORDING_OWN[depth_b] | ec::RECORDING_ENTRY_BIT | ec::RecordingBit(ec::RecordingSite::DEPTH_B_CUT);
+  REQUIRE((depth_b_mode & ec::RECORDING_OWN[colour_b]) == ec::RecordingBit(ec::RecordingSite::DEPTH_B_CUT));
+  std::array<uint32_t, 0x140 / 4> mesh_vtable = {};
+  mesh_vtable[0x138 / 4] = reinterpret_cast<uint32_t>(&FakeMeshBody);
+  std::array<std::array<uint32_t, 2>, 6> meshes = {};
+  std::array<uint32_t, 6> slots = {};
+  for (uint32_t i = 0; i < meshes.size(); ++i) {
+    meshes[i] = {reinterpret_cast<uint32_t>(mesh_vtable.data()), i};
+    slots[i] = reinterpret_cast<uint32_t>(&meshes[i]);
+  }
+  struct Sorted {
+    uint32_t pad[3];
+    const uint32_t* data;
+  } sorted = {{0, 0, 0}, slots.data()};
+  std::array<uint32_t, 0x40> view_vtable = {};
+  view_vtable[0x3c / 4] = reinterpret_cast<uint32_t>(&FakeViewType);
+  const struct {
+    const uint32_t* vtable;
+  } view = {view_vtable.data()};
+  alignas(16) uint8_t tracker[dr::TRACKER_SIZE] = {};
+  uint32_t cases = 0;
+  for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+    for (const uint32_t colour_view : {0x10u, 0x20u}) {
+      SetSites(depth_b_mode);
+      CHECK(twattila::engine_code::DrawRecordingGroupsIn() == 1u << depth_b);
+      // The Colour B row is on, and its sites are not: the dispatcher's loops mask has Depth B only.
+      UpdateAt(4, {.stage = stage, .loops = 0xc, .groups_in = twattila::engine_code::DrawRecordingGroupsIn()});
+      CHECK(di::config.loops == 1u << depth_b);
+      REQUIRE(shared->arena_size != 0);
+      fake_view_type = colour_view;
+      mesh_visits.clear();
+      di::last_call = {};
+      dr::DispatchMesh(tracker, nullptr, const_cast<void*>(static_cast<const void*>(&view)), 0, nullptr, &sorted, 1, 4);
+      CHECK((mesh_visits == std::vector<uint32_t>{1, 2, 3, 4}));
+      CHECK(di::last_call.direct);
+      ++cases;
+    }
+  }
+  fake_view_type = 0x60;
+  // Both B groups' sites written: both are in; Colour B's flush path is the same entry hook.
+  SetSites(depth_b_mode | ec::RECORDING_OWN[colour_b]);
+  CHECK(twattila::engine_code::DrawRecordingGroupsIn() == (1u << depth_b | 1u << colour_b));
+  UpdateAt(4, {.stage = dr::Stage::WORKERS, .loops = 0xc, .groups_in = twattila::engine_code::DrawRecordingGroupsIn()});
+  CHECK(di::config.loops == 0xc);
+  SetSites(0);
+  CHECK(twattila::engine_code::DrawRecordingGroupsIn() == 0);
+  std::printf("6e. a B group whose sites are out (Colour B's 20 out, Depth B's, the cut and the entry hook in, both rows on) is not in the groups-in mask, "
+              "the dispatcher's loops are Depth B's only, and a colour round runs directly (%u cases); with both in, both rows run\n", cases);
 }
 
 // ---------------------------------------------------------------- 7. the colour bodies' state blocks (B group)
@@ -1540,7 +1598,9 @@ void TestStateBlocks() {
   UpdateAt(4, {.stage = dr::Stage::WORKERS, .loops = 2u});
   REQUIRE(shared->arena_size != 0);
   const BlockHarness harness = BuildBlockHarness();
-  alignas(16) static uint8_t frame_memory[0x400];
+  // The fakes run on this stack below the frame (esp is the frame's start): room for the heap and the log, not the 0x180 bytes that
+  // once let a deep call write into the neighbouring statics.
+  alignas(16) static uint8_t frame_memory[0x2400];
   alignas(16) static uint32_t ebp_block[8];
   ebp_block[4] = reinterpret_cast<uint32_t>(&colour_node);
   alignas(16) static uint8_t tracker_plain[dr::TRACKER_SIZE];
@@ -1550,7 +1610,7 @@ void TestStateBlocks() {
   items[2].mask = reinterpret_cast<uint32_t>(&masks[3]);
   uint8_t* const cfg = state_owner + STATE_OFFSET;
   Write32(cfg + 0x2ac + 0x14, reinterpret_cast<uint32_t>(&block_cell));
-  uint8_t* const frame_at = frame_memory + 0x180;
+  uint8_t* const frame_at = frame_memory + 0x2000;
   const uint32_t esp = reinterpret_cast<uint32_t>(frame_at);
   uint32_t cases = 0;
   std::array<uint32_t, 4> parts_seen = {};  // the cases with a snow constant, a texture bind, the default colours, the item's colours
@@ -1819,6 +1879,7 @@ int main(int argc, char** argv) {
   TestColourStages();
   TestColourControls();
   TestMeshBeforePlan();
+  TestGroupsIn();
   TestStateBlocks();
   SetSites(0);
   CHECK(CheckWrittenSites(0) == 0 && CheckWrittenSites(0, true) == 0);  // the sites out: the game's own bytes again
