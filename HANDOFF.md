@@ -5828,6 +5828,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         b13r_ review.
         Agents: x0i_ (X0), t4i_ (LOGX case), c3i_ (B1.5) (3 of 3). QUEUE: ebr_ T4 confirm, t4i_ L2 counters, b13r_ B1.5
         review, B1.6, X1, ebr_ X0 review.
+        t4i_ ROUND 7 DONE 17:2x (reports/t4i_round7_handback.md): x87 M1 closed bench-side (verbatim split + x87c lines
+        from c33i_'s LOGX FULL log -> INFO cpu_code_x87, start passes; real old b3 line stays ROWFAIL; gates regexes
+        unchanged) + ebr_ round 7 nit; run_all 735 / 735.
+        x0i_ X0 DONE 17:4x (reports/x0i_x0_handback.md; variant tools\tw\heapfix\AttilaCPUPerfFix_x87c branch x87c
+        16a60c8, only tests\x87fix_test.c +314, origin removed, prep clone untouched; scripts tools\tw\heapfix\x87c_scripts):
+        166 blocks: 96 PROVEN / 60 UNPROVEN (44 W6 escapes) / 9 LIVE; HOT BLOCK +0x17f6515 UNPROVEN (W6: frame address
+        -724 reaches call +17F6587) -> X2b stays off, X2 = proven list only; hot blocks 4 + 5 proven, block 6 LIVE x3;
+        +0xe80d1 control PROVEN via copy tracking, wrong control LIVE; hash 2200E75A over 60918 B; self-test PASS (80
+        instr vs capstone flags on hand-written bytes, 25 / 25 synthetic). X0-T static: +C1950 only on the thread that
+        calls the export entry_point (no thread start on the chain); capture half NOT done by x0i_ (pickles not found).
+        Micro: x87c -1.0 ns / block latency vs x87b. Walker rule added beyond v2 (parent-frame pointer at / above the
+        alignment esp is no escape) -> review.
+        USAGE LIMIT ~17:4x stopped c3i_ (B1.5 mid-work, uncommitted in rmt_c3 on rmt_b15) + x0i_ (after its hand-back);
+        RESUMED 18:0x.
+        ebr_ RESUMED 18:0x: job 1 T4 confirm (round 8) -> job 2 X0 review (spot checks, +0x17f6515 escape, list mode
+        read-only, X0-T capture half, X2 go / no-go on the proven list).
+        t4i_ RESUMED 18:0x: L2 counters per scene (+ mt_trace arms if trace-only), 'L2 hidden by the half-room guard'
+        flag, SPAWNS_OFF marks, memory note.
+        Agents: c3i_ (B1.5), ebr_ (T4 confirm + X0 review), t4i_ (L2 counters) (3 of 3). QUEUE: b13r_ B1.5 review, B1.6,
+        X1, X2 (if ebr_ says go).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
