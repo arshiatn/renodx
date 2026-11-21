@@ -865,8 +865,8 @@ static uint32_t op_buffer_limit = OP_ARENA_BYTES;
 
 static std::atomic<uint32_t> touch_generation = 0;
 alignas(64) static Descriptor descriptor;
-using worker_pool::internal::qpc_frequency;
-using worker_pool::internal::Qpc;
+using worker_pool::qpc_frequency;
+using worker_pool::Qpc;
 
 inline Slot* SlotAt(uint32_t index) { return reinterpret_cast<Slot*>(arena + static_cast<size_t>(index) * SLOT_SIZE); }
 
@@ -1375,7 +1375,8 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   switch (settings.stage) {
     case Stage::TOUCH_AHEAD:
     case Stage::WORKERS:
-      helpers = threads - 1;
+      // At least one: with no worker on offer (an empty pool, a limit of 1) the pool is missing.
+      helpers = std::max(threads - 1, 1u);
       break;
     case Stage::ONE_WORKER:
       helpers = 1;
@@ -1868,7 +1869,8 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   uint32_t participants = 1;
   switch (settings.stage) {
     case Stage::WORKERS:
-      participants = threads;
+      // At least two: with no worker on offer the pool is missing.
+      participants = std::max(threads, 2u);
       break;
     case Stage::ONE_WORKER:
       participants = 2;

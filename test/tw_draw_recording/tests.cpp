@@ -241,7 +241,7 @@ static void PoolCpuSets() {
 
 // A worker thread that can't be created is tried once per target (and per Stop), not every present.
 static void PoolThreadFailure() {
-#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+#if defined(TWATTILA_WORKER_POOL_CONTROLS)
   wp::Update({.in_use = false});
   CHECK(wi::created == 0);
   wi::controls.fail_thread_creation = true;
@@ -271,7 +271,7 @@ static void PoolThreadFailure() {
   wp::Update({.in_use = false});
   std::printf("pool: a failed CreateThread is tried once per target (%u attempts for 7 presents)\n", attempts);
 #else
-  std::printf("pool: thread failure skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
+  std::printf("pool: thread failure skipped (TWATTILA_WORKER_POOL_CONTROLS not defined)\n");
 #endif
 }
 
@@ -318,7 +318,7 @@ static void PoolAllClaims() {
     const wp::JoinResult joined = wp::Run({.work = ClaimWork, .context = claims.get(), .user = wp::User::DRAW_RECORDING,
                                            .join = wp::JoinRule::ALL},
                                           5, [&] { ClaimWork(claims.get(), 0); });
-    CHECK(joined.entered == 5);
+    CHECK(joined.ran == 5);
     CHECK(EveryUnitOnce(*claims));
     for (uint32_t w = 0; w <= 5; ++w) CHECK(claims->partition[w] == 1);
   }
@@ -329,7 +329,7 @@ static void PoolAllClaims() {
 // ENTERED: the owner claims until none is left and Join waits only for workers already inside; a worker that wakes late finds
 // the job closed and skips it, and never touches the memory after Join.
 static void PoolLateWorker() {
-#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+#if defined(TWATTILA_WORKER_POOL_CONTROLS)
   wp::Update({.threads = 4, .in_use = true});
   const auto claims = std::make_unique<Claims>();
   ResetClaims(claims.get(), 1000);
@@ -340,7 +340,7 @@ static void PoolLateWorker() {
       {.work = ClaimWork, .context = claims.get(), .user = wp::User::EFFECT_UPDATE, .join = wp::JoinRule::ENTERED}, 2,
       [&] { ClaimWork(claims.get(), 0); });
   // Join returned although worker 2 had not counted itself in.
-  CHECK(joined.entered <= 1);
+  CHECK(joined.ran <= 1);
   CHECK(EveryUnitOnce(*claims));
   for (int wait = 0; wait < 2000 && wi::controls.late_parked == 0; ++wait) Sleep(1);
   CHECK(wi::controls.late_parked == 1);
@@ -359,7 +359,7 @@ static void PoolLateWorker() {
   wp::Update({.in_use = false});
   std::printf("pool: a late worker skips a closed job and never touches its memory; the next job runs it\n");
 #else
-  std::printf("pool: late worker skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
+  std::printf("pool: late worker skipped (TWATTILA_WORKER_POOL_CONTROLS not defined)\n");
 #endif
 }
 
@@ -386,7 +386,7 @@ static void PoolMidJobWait() {
     gate.word.store(1, std::memory_order_release);
     gate.word.notify_all();
     const wp::JoinResult joined = wp::Join();
-    CHECK(gate.passed == 4 && joined.entered == 4);
+    CHECK(gate.passed == 4 && joined.ran == 4);
   }
   wp::Update({.in_use = false});
   std::printf("pool: workers waiting mid-job on a word published between Start and Join (ALL and ENTERED) all come out\n");
@@ -399,33 +399,35 @@ static size_t LogCount(std::string_view text) {
 
 static bool LogHas(std::string_view text) { return LogCount(text) != 0; }
 
-// A job open across game code on the owner thread (property (b)), nested Starts, other threads, and the trace's refusal counts.
+// A job open across game code on the owner thread (property (b)), nested Starts, other threads, the trace's refusal counts, and
+// the trace record: Join logs nothing, the next Update prints it.
 static void PoolRefusals() {
-  wp::Update({.threads = 4, .in_use = true});
+  wp::Update({.threads = 4, .in_use = true, .trace = true});
+  const auto users = [] { return static_cast<size_t>(wp::User::COUNT); };
+  const auto count_of = [](wp::User user) { return wi::refused[static_cast<size_t>(user)].load(); };
   for (auto& count : wi::refused) count = 0;
   const auto claims = std::make_unique<Claims>();
   ResetClaims(claims.get(), 1000);
-  for (size_t user = 0; user < static_cast<size_t>(wp::User::COUNT); ++user) {
-    CHECK(wp::Available(static_cast<wp::User>(user)) == 3);
-  }
-  // Off the owner thread: no workers, Start refused (and counted), Join does nothing.
+  for (size_t user = 0; user < users(); ++user) CHECK(wp::Available(static_cast<wp::User>(user)) == 3);
+  // Off the owner thread: no workers (counted), Start refused (counted), Join does nothing.
   std::thread other([&] {
-    for (size_t user = 0; user < static_cast<size_t>(wp::User::COUNT); ++user) CHECK(wp::Available(static_cast<wp::User>(user)) == 0);
+    for (size_t user = 0; user < users(); ++user) CHECK(wp::Available(static_cast<wp::User>(user)) == 0);
     CHECK(!wp::Start({.work = ClaimWork, .context = claims.get(), .user = wp::User::PENDING_SWEEP, .join = wp::JoinRule::ENTERED}, 1));
     CHECK(wp::Join().wait_ticks == 0);
   });
   other.join();
-  CHECK(wi::refused[static_cast<size_t>(wp::User::PENDING_SWEEP)] == 1 && !wi::busy.load());
-  // B1's window: Start, game code, Join.
+  CHECK(count_of(wp::User::PENDING_SWEEP) == 2 && count_of(wp::User::RING_FILL) == 1 && !wi::busy.load());
+  for (auto& count : wi::refused) count = 0;
+  // The effect update's window: Start, game code, Join.
   REQUIRE(wp::Start({.work = ClaimWork, .context = claims.get(), .user = wp::User::EFFECT_UPDATE, .join = wp::JoinRule::ENTERED}, 2));
-  for (size_t user = 0; user < static_cast<size_t>(wp::User::COUNT); ++user) CHECK(wp::Available(static_cast<wp::User>(user)) == 0);
+  for (size_t user = 0; user < users(); ++user) CHECK(wp::Available(static_cast<wp::User>(user)) == 0);
   // A nested Start is refused; a nested Run runs its part alone and joins nothing.
   CHECK(!wp::Start({.work = ReportWork, .user = wp::User::RING_FILL, .join = wp::JoinRule::ENTERED}, 1));
   uint32_t alone = 0;
   const wp::JoinResult nested = wp::Run({.work = ReportWork, .user = wp::User::RING_FILL, .join = wp::JoinRule::ENTERED}, 1,
                                         [&] { ++alone; });
-  CHECK(alone == 1 && nested.entered == 0 && nested.wait_ticks == 0);
-  CHECK(wi::refused[static_cast<size_t>(wp::User::RING_FILL)] == 2);
+  CHECK(alone == 1 && nested.ran == 0 && nested.wait_ticks == 0);
+  CHECK(count_of(wp::User::RING_FILL) == 3 && count_of(wp::User::EFFECT_UPDATE) == 1);
   // Another thread's Join does not close the owner's job.
   std::thread other_join([] { CHECK(wp::Join().wait_ticks == 0); });
   other_join.join();
@@ -433,16 +435,141 @@ static void PoolRefusals() {
   ClaimWork(claims.get(), 0);
   wp::Join();
   CHECK(!wi::busy.load() && EveryUnitOnce(*claims));
-  for (size_t user = 0; user < static_cast<size_t>(wp::User::COUNT); ++user) CHECK(wp::Available(static_cast<wp::User>(user)) == 3);
-  // A trace job logs its workers and the refusals since the last trace line, then the counts start again.
+  for (size_t user = 0; user < users(); ++user) CHECK(wp::Available(static_cast<wp::User>(user)) == 3);
+  CHECK(count_of(wp::User::RING_FILL) == 3);
+  // A trace job: Join keeps a record and logs nothing; the next Update prints it and the refusals, then the counts start again.
   ResetClaims(claims.get(), 1000);
+  const size_t lines = LogCount("Worker pool trace");
   wp::Run({.work = ClaimWork, .context = claims.get(), .user = wp::User::ANIMATION_ROWS, .join = wp::JoinRule::ALL, .trace = true}, 2,
           [&] { ClaimWork(claims.get(), 0); });
-  CHECK(LogHas("Worker pool trace (animation)") && LogHas("worker 1 on CPU") && LogHas("worker 2 on CPU"));
-  CHECK(LogHas("1 Starts refused for sweep") && LogHas("2 Starts refused for ring"));
+  CHECK(LogCount("Worker pool trace") == lines && wi::record_count == 1);
+  wp::Update({.threads = 4, .in_use = true, .trace = true});
+  CHECK(LogCount("Worker pool trace (animation)") == 1 && LogHas("worker 1 on CPU") && LogHas("worker 2 on CPU"));
+  CHECK(LogHas("ring 3") && LogHas("effects 1"));
+  CHECK(wi::record_count == 0 && wi::record_drops == 0);
   for (const auto& count : wi::refused) CHECK(count == 0);
+  // Without a trace frame nothing is counted.
+  wp::Update({.threads = 4, .in_use = true});
+  std::thread untraced([] { CHECK(wp::Available(wp::User::RING_FILL) == 0); });
+  untraced.join();
+  CHECK(count_of(wp::User::RING_FILL) == 0);
   wp::Update({.in_use = false});
-  std::printf("pool: a job open across game code gives every user 0; nested and off-owner Starts refused and counted for the trace\n");
+  std::printf("pool: a job open across game code gives every user 0; nested and off-owner calls refused and counted while tracing; Join logs nothing, Update prints the record\n");
+}
+
+// A refused ALL job (a job already open) still completes: the workers' parts run on the owner after its own.
+static void PoolRefusedAllCompletes() {
+  wp::Update({.threads = 4, .in_use = true});
+  Gate gate;
+  gate.word = 1;
+  REQUIRE(wp::Start({.work = GatedWork, .context = &gate, .user = wp::User::EFFECT_UPDATE, .join = wp::JoinRule::ENTERED}, 1));
+  ResetReports();
+  uint32_t own_part = 0;
+  wp::Run({.work = ReportWork, .user = wp::User::DRAW_RECORDING, .join = wp::JoinRule::ALL}, 3, [&] { ++own_part; });
+  CHECK(own_part == 1);
+  for (uint32_t w = 1; w <= 3; ++w) CHECK(reports[w].runs == 1 && reports[w].thread_id == GetCurrentThreadId());
+  wp::Join();
+  wp::Update({.in_use = false});
+  std::printf("pool: an ALL job whose Start was refused runs the workers' parts on the owner\n");
+}
+
+// Stop from another thread while the owner's job is open keeps the pool and pins the module; the owner's Join finishes the job.
+static void PoolStopWithOpenJob() {
+  wp::Update({.threads = 4, .in_use = true});
+  Gate gate;
+  REQUIRE(wp::Start({.work = GatedWork, .context = &gate, .user = wp::User::EFFECT_UPDATE, .join = wp::JoinRule::ALL}, 3));
+  std::thread other([] { wp::Stop(); });
+  other.join();
+  CHECK(wi::created == 3 && wi::pinned && LogHas("the module is pinned"));
+  // A second Stop says nothing more; the job still completes.
+  gate.word.store(1, std::memory_order_release);
+  gate.word.notify_all();
+  const wp::JoinResult joined = wp::Join();
+  CHECK(joined.ran == 3 && gate.passed == 3 && !wi::busy.load());
+  wp::Stop();
+  CHECK(wi::created == 0 && !wi::busy.load());
+  std::printf("pool: Stop with a job open on another thread keeps the pool, pins the module; the owner's Join completes the job\n");
+}
+
+// The Dekker pair on close, under stress (property of ENTERED): short jobs at K 2 to 16 where the owner drains the units alone
+// and flags the context right after Join; a work function that sees the flag at its start or end ran past the Join.
+struct StressJob {
+  std::atomic<uint32_t> next{0};
+  std::atomic<bool> joined{false};
+};
+static std::atomic<uint32_t> stress_failures{0};
+
+static void StressWork(void* context, uint32_t) {
+  auto& job = *static_cast<StressJob*>(context);
+  if (job.joined.load()) stress_failures.fetch_add(1);
+  for (uint32_t unit = job.next.fetch_add(1); unit < 8; unit = job.next.fetch_add(1)) {
+  }
+  if (job.joined.load()) stress_failures.fetch_add(1);
+}
+
+// Fails the run if the test does not finish in time (a lost wake-up would hang it).
+struct Watchdog {
+  std::atomic<bool> finished{false};
+  std::thread thread;
+  Watchdog(int seconds, const char* what) : thread([this, seconds, what] {
+    for (int tick = 0; tick < seconds * 10 && !finished.load(); ++tick) Sleep(100);
+    if (!finished.load()) {
+      std::printf("FAIL watchdog: %s did not finish in %d s\n", what, seconds);
+      std::exit(1);
+    }
+  }) {}
+  ~Watchdog() {
+    finished = true;
+    thread.join();
+  }
+};
+
+static void PoolEnteredStress() {
+  constexpr uint32_t JOBS_PER_K = 14000;
+  const Watchdog watchdog(120, "ENTERED stress");
+  const auto jobs = std::make_unique<std::array<StressJob, 64>>();
+  stress_failures = 0;
+  uint32_t total = 0;
+  for (uint32_t k = 2; k <= 16; ++k) {
+    wp::Update({.threads = k, .in_use = true});
+    for (uint32_t n = 0; n < JOBS_PER_K; ++n) {
+      StressJob& job = (*jobs)[n % jobs->size()];
+      job.next = 0;
+      job.joined = false;
+      wp::Run({.work = StressWork, .context = &job, .user = wp::User::EFFECT_UPDATE, .join = wp::JoinRule::ENTERED}, k - 1,
+              [&] { StressWork(&job, 0); });
+      job.joined = true;
+      ++total;
+    }
+  }
+  wp::Update({.in_use = false});
+  CHECK(stress_failures == 0);
+  std::printf("pool: ENTERED stress: %u short jobs at K 2..16, no work function ran past its Join\n", total);
+}
+
+// Work that takes longer than the join's spin: the last finisher's wake-up of Join must arrive (both rules), under a watchdog.
+struct SlowJob {
+  std::atomic<uint32_t> ran{0};
+};
+
+static void SlowWork(void* context, uint32_t) {
+  Sleep(20);
+  static_cast<SlowJob*>(context)->ran.fetch_add(1);
+}
+
+static void PoolSlowWork() {
+  wp::Update({.threads = 4, .in_use = true});
+  const Watchdog watchdog(10, "slow work");
+  for (const wp::JoinRule rule : {wp::JoinRule::ALL, wp::JoinRule::ENTERED}) {
+    SlowJob slow;
+    // ENTERED: the owner has no units; it waits until the workers are inside, so Join has to wait for them.
+    const wp::JoinResult joined = wp::Run({.work = SlowWork, .context = &slow, .user = wp::User::ANIMATION_ROWS, .join = rule}, 3,
+                                          [&] { Sleep(5); });
+    CHECK(slow.ran == 3 && joined.ran == 3);
+    CHECK(joined.wait_ticks * 1000 / wp::qpc_frequency >= 10);
+  }
+  wp::Update({.in_use = false});
+  std::printf("pool: work slower than the join's spin (20 ms), both rules: Join is woken\n");
 }
 
 // An update with a job still open joins it, and says so once.
@@ -465,6 +592,8 @@ static void PoolOpenAtUpdate() {
 // RENODX_TW_WORKER_LIMITS and RENODX_TW_POOL_SPIN_US, read once; a limit of 1 is the render thread alone.
 static void PoolEnvironment() {
   const auto read_again = [](const char* limits, const char* spin) {
+    // The workers read the spin knob: stopped before it is read again.
+    wp::Update({.in_use = false});
     SetEnvironmentVariableA("RENODX_TW_WORKER_LIMITS", limits);
     SetEnvironmentVariableA("RENODX_TW_POOL_SPIN_US", spin);
     wi::environment_read = false;
@@ -476,7 +605,7 @@ static void PoolEnvironment() {
   CHECK(wp::Available(wp::User::ANIMATION_ROWS) == 7);
   CHECK(wp::Available(wp::User::PENDING_SWEEP) == 7);
   CHECK(wp::Available(wp::User::RING_FILL) == 7);
-  CHECK(wi::spin_ticks == wi::qpc_frequency * 50 / 1000000);
+  CHECK(wi::spin_ticks == wp::qpc_frequency * 50 / 1000000);
   // The limit and the row: the smaller wins.
   wp::Update({.threads = 2, .in_use = true});
   CHECK(wp::Available(wp::User::EFFECT_UPDATE) == 1 && wp::Available(wp::User::RING_FILL) == 1);
@@ -492,7 +621,7 @@ static void PoolEnvironment() {
   read_again(nullptr, nullptr);
   wp::Update({.threads = 8, .in_use = true});
   for (size_t user = 0; user < static_cast<size_t>(wp::User::COUNT); ++user) CHECK(wp::Available(static_cast<wp::User>(user)) == 7);
-  CHECK(wi::spin_ticks == wi::qpc_frequency * wi::DEFAULT_SPIN_US / 1000000);
+  CHECK(wi::spin_ticks == wp::qpc_frequency * wi::DEFAULT_SPIN_US / 1000000);
   wp::Update({.in_use = false});
   std::printf("pool: env limits per user (1 = render thread alone, bad entries left out, clamped, smaller of row and limit), spin knob, read once\n");
 }
@@ -1707,6 +1836,12 @@ static void DepthContinuation() {
   std::printf("depth: a continuation of foreign mesh state runs directly (%u cases equal)\n", cases);
 }
 
+// The traced calls of the last staged run that went direct for `reason`.
+static size_t TracedReasons(std::string_view reason) {
+  return static_cast<size_t>(std::ranges::count_if(
+      di::trace.calls, [&](const di::CallTrace& call) { return std::string_view(call.direct_reason) == reason; }));
+}
+
 static void DepthFallbacks() {
   const auto world = BuildWorld({.items = 6000, .seed = 13, .max_run = 10});
   const Outcome serial = RunSerial(world.get());
@@ -1729,6 +1864,26 @@ static void DepthFallbacks() {
   const Outcome missing = RunStaged(world.get(), dr::Stage::ONE_WORKER, 1);
   CHECK(Equal(serial, missing, "pool missing"));
   CHECK(missing.direct_calls == missing.portions);
+  // Workers and Touch-ahead with no worker on offer (a limit of 1, a pool that could not start): every call that is not small runs
+  // directly, "pool missing".
+  for (const dr::Stage stage : {dr::Stage::WORKERS, dr::Stage::TOUCH_AHEAD}) {
+    for (const bool failed_pool : {false, true}) {
+      UpdateAt(1, {.stage = dr::Stage::OFF});
+      wi::limits[static_cast<size_t>(wp::User::DRAW_RECORDING)] = (failed_pool ? wp::MAX_WORKERS + 1 : 1);
+#if defined(TWATTILA_WORKER_POOL_CONTROLS)
+      wi::controls.fail_thread_creation = failed_pool;
+#endif
+      const Outcome empty = RunStaged(world.get(), stage, 8, true);
+      CHECK(Equal(serial, empty, "empty pool"));
+      CHECK(wp::Available(wp::User::DRAW_RECORDING) == 0 && empty.direct_calls == empty.portions);
+      CHECK(TracedReasons("pool missing") == empty.portions - empty.small_calls);
+#if defined(TWATTILA_WORKER_POOL_CONTROLS)
+      wi::controls.fail_thread_creation = false;
+#endif
+      wi::limits[static_cast<size_t>(wp::User::DRAW_RECORDING)] = wp::MAX_WORKERS + 1;
+    }
+  }
+  UpdateAt(1, {.stage = dr::Stage::OFF});
   // Another thread.
   UpdateAt(8, {.stage = dr::Stage::WORKERS, .loops = 1});
   ResetWorld(world.get());
@@ -3300,6 +3455,23 @@ static void BFallbacks() {
   const Outcome missing = RunBStaged(depth.get(), dr::Stage::ONE_WORKER, 1);
   CHECK(Equal(depth_serial, missing, "pool missing"));
   CHECK(missing.direct_calls == missing.portions);
+  // Workers with no worker on offer (a limit of 1, a pool that could not start): every round runs directly, "pool missing".
+  for (const bool failed_pool : {false, true}) {
+    UpdateAt(1, {.stage = dr::Stage::OFF});
+    wi::limits[static_cast<size_t>(wp::User::DRAW_RECORDING)] = (failed_pool ? wp::MAX_WORKERS + 1 : 1);
+#if defined(TWATTILA_WORKER_POOL_CONTROLS)
+    wi::controls.fail_thread_creation = failed_pool;
+#endif
+    const Outcome empty = RunBStaged(depth.get(), dr::Stage::WORKERS, 8, true);
+    CHECK(Equal(depth_serial, empty, "empty pool"));
+    CHECK(wp::Available(wp::User::DRAW_RECORDING) == 0 && empty.direct_calls == empty.portions);
+    CHECK(TracedReasons("pool missing") == empty.portions);
+#if defined(TWATTILA_WORKER_POOL_CONTROLS)
+    wi::controls.fail_thread_creation = false;
+#endif
+    wi::limits[static_cast<size_t>(wp::User::DRAW_RECORDING)] = wp::MAX_WORKERS + 1;
+  }
+  UpdateAt(1, {.stage = dr::Stage::OFF});
   UpdateAt(8, {.stage = dr::Stage::WORKERS, .loops = 12});
   ResetBWorld(depth.get());
   Outcome other_outcome;
@@ -3952,10 +4124,14 @@ static void Detach() {
   // The pool starts from nothing (earlier tests grew it to 15).
   UpdateAt(1, {.stage = dr::Stage::OFF});
   UpdateAt(8, {.stage = dr::Stage::WORKERS, .loops = 1});
-  // Sites still in: everything stays, the dispatcher runs directly.
+  CHECK(wi::created == 7);
+  // The add-on's order: the pool stops first, then the users' Uninstall. Sites still in: everything stays, the dispatcher runs
+  // directly.
   CHECK(g_shared->arena_size != 0);
+  wp::Stop();
+  CHECK(wi::created == 0);
   dr::Uninstall(true);
-  CHECK(di::detached.load() && di::shared != nullptr && wi::created == 7);
+  CHECK(di::detached.load() && di::shared != nullptr);
   // S-2: a kept detach leaves the thunks as they are (a dispatch may still be recording).
   CHECK(g_shared->arena_size != 0);
   const Outcome detached = RunStaged(world.get(), dr::Stage::WORKERS, 8);
@@ -3963,16 +4139,14 @@ static void Detach() {
   CHECK(detached.direct_calls == detached.portions);
   // A dispatch still counted active: kept too.
   g_shared->active = 1;
-  dr::Uninstall(false);
-  CHECK(di::shared != nullptr && wi::created == 7);
-  g_shared->active = 0;
-  dr::Uninstall(false);
-  CHECK(di::shared == nullptr && di::arena == nullptr && di::module_reference == nullptr);
-  // The users' Uninstall leaves the pool alone; the add-on's detach stops it.
-  CHECK(wi::created == 7);
   wp::Stop();
-  CHECK(wi::created == 0);
-  std::printf("detach: kept while sites are in or a dispatch is active; clean case frees the memory, Stop ends the pool\n");
+  dr::Uninstall(false);
+  CHECK(di::shared != nullptr);
+  g_shared->active = 0;
+  wp::Stop();
+  dr::Uninstall(false);
+  CHECK(di::shared == nullptr && di::arena == nullptr && di::module_reference == nullptr && wi::created == 0);
+  std::printf("detach: kept while sites are in or a dispatch is active; clean case frees the memory (the pool stopped first)\n");
 }
 
 int main() {
@@ -3986,6 +4160,10 @@ int main() {
   PoolLateWorker();
   PoolMidJobWait();
   PoolRefusals();
+  PoolRefusedAllCompletes();
+  PoolStopWithOpenJob();
+  PoolEnteredStress();
+  PoolSlowWork();
   PoolOpenAtUpdate();
   PoolEnvironment();
   Setup();

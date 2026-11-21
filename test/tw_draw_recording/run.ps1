@@ -18,7 +18,7 @@ if ($Architecture -eq 'amd64') {
   # The x64 stubs: the header must compile and its calls be empty.
   Set-Content -LiteralPath $source -Value ('#include "src/games/twattila/draw_recording.hpp"' + [Environment]::NewLine + '#include "src/games/twattila/worker_pool.hpp"' + [Environment]::NewLine + 'int main() { twattila::worker_pool::Update({}); twattila::draw_recording::Update({}); twattila::draw_recording::Uninstall(false); twattila::worker_pool::Stop(); return twattila::draw_recording::SharedPage() == nullptr && twattila::worker_pool::Available(twattila::worker_pool::User::RING_FILL) == 0 ? 0 : 1; }') -Encoding ascii
 }
-& 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 /DTWATTILA_DRAW_RECORDING_CONTROLS -Wno-deprecated-declarations /I $repairRoot /I "$external\reshade" /I "$external\reshade\include" $source /Fe:draw_recording.exe /link /OPT:REF /OPT:ICF user32.lib
+& 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 /DTWATTILA_DRAW_RECORDING_CONTROLS /DTWATTILA_WORKER_POOL_CONTROLS -Wno-deprecated-declarations /I $repairRoot /I "$external\reshade" /I "$external\reshade\include" $source /Fe:draw_recording.exe /link /OPT:REF /OPT:ICF user32.lib
 $exit = $LASTEXITCODE
 if ($Architecture -eq 'amd64') { Remove-Item -LiteralPath $source -Force }
 if ($exit -ne 0) { throw 'Threaded Draw Recording test compile failed' }

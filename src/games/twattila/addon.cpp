@@ -1340,7 +1340,8 @@ float fewer_driver_waits_row = 0.f;
 float effect_prefetch_row = 0.f;
 // Keep Render Core Free (Experimental, off): cpu_sets.hpp.
 float keep_render_core_row = 0.f;
-// Worker Threads (Experimental): the threads, the render thread included, that worker_pool.hpp's users may use.
+// Worker Threads (Experimental): the threads, the render thread included, that worker_pool.hpp's users may use. The row is
+// compiled only where a pool user is (today the private draw recording build).
 float worker_threads_row = 4.f;
 // Where the game's own threads start (the job workers in the engine's DLL); the rest is the driver's, audio's, etc.
 constexpr std::array<const wchar_t*, 2> GAME_THREAD_MODULES = {nullptr, L"empire.retail.dll"};
@@ -1623,8 +1624,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   uint32_t recording_groups = 0;
-  // Any user of the worker pool is on.
+  // Any user of the worker pool is in a stage that wakes workers; a trace frame is running.
   bool pool_in_use = false;
+  bool pool_trace = false;
 #if defined(TWATTILA_DRAW_RECORDING)
   twattila::draw_recording::Settings recording = {
       .stage = static_cast<twattila::draw_recording::Stage>(draw_recording_stage_row),
@@ -1638,10 +1640,13 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     recording.loops |= (draw_recording_group_rows[group] != 0.f ? 1u << group : 0u);
   }
   recording_groups = twattila::draw_recording::SiteGroups(recording.stage, recording.loops);
-  pool_in_use = (recording.stage != twattila::draw_recording::Stage::OFF);
+  pool_in_use = (recording.stage == twattila::draw_recording::Stage::TOUCH_AHEAD
+                 || recording.stage == twattila::draw_recording::Stage::ONE_WORKER
+                 || recording.stage == twattila::draw_recording::Stage::WORKERS);
+  pool_trace = twattila::draw_recording::internal::trace.active;
 #endif
   // Before the users' own Updates.
-  twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use});
+  twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use, .trace = pool_trace});
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
                                 job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,
                                 particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale, recording_groups);
@@ -2124,6 +2129,7 @@ void ConfigureAddon() {
                      "them, while it works on the current one. May lower the CPU waiting in big battles. Same results.",
           .labels = {"Off", "On"},
       },
+#if defined(TWATTILA_DRAW_RECORDING)
       new renodx::utils::settings::Setting{
           .key = "WorkerThreads",
           .binding = &worker_threads_row,
@@ -2131,11 +2137,10 @@ void ConfigureAddon() {
           .default_value = 1.f,
           .label = "Worker Threads (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "The threads the settings that share their work between threads may use, the render thread included.",
+          .tooltip = "How many threads the multi-threaded engine options may use, the render thread included.",
           .labels = {"2", "4", "6", "8", "12", "16"},
           .parse = [](float value) { return std::array<float, 6>{2.f, 4.f, 6.f, 8.f, 12.f, 16.f}[static_cast<size_t>(value)]; },
       },
-#if defined(TWATTILA_DRAW_RECORDING)
       new renodx::utils::settings::Setting{
           .key = "DrawRecordingStage",
           .binding = &draw_recording_stage_row,
