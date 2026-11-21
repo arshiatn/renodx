@@ -6034,6 +6034,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: c3i_ (R1), ebr_ (round 9 review), bd3o_ (R-S5a) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_ part
         2b (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, ebr_ X2 nits re-check, B1.6 (+
         N5 real-routine tests), X1, R-S5.
+        ebr_ ROUND 9 DONE 20:3x (reports/ebr_t1b_review.md line 430): T4 STILL READY FOR LEG 1. No Musts / Shoulds, 4
+        Nits; run_all 783 / 783 reproduced; x87c rows match the format strings, no earlier row catches them; ROWFAIL
+        refresh changes no earlier class result. [ ] t4i_ next round: Nit 1 summary N == M == 89; Nit 2 INFO count
+        cosmetic; Nit 3 corpus src '::' + real stamp 69CE1786; Nit 4 b1_refused_hooked :681 -> :710 at 3f0f0c581 + 'also
+        at 3f0f0c581' on b1_spawns_off; + the ', 0 not found' corpus line.
+        ebr_ STARTED X2 nits re-check 20:4x (6593a8f) -> reports/ebr_x87_review.md '## X2 nits re-check'.
+        Agents: c3i_ (R1), bd3o_ (R-S5a), ebr_ (X2 nits re-check) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_ part
+        2b (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, t4i_ round 10 (nits), B1.6 (+
+        N5 real-routine tests), X1, R-S5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
