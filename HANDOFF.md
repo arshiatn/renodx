@@ -6072,6 +6072,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: bd3o_ (R-S5a), ebr_ (round 10), b13r_ (R1 re-check) (3 of 3). QUEUE: merge rmt_b15r1, c33i_ part 2b
         (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, x0i_ X2 notes, B1.6 (+ N5
         real-routine tests), X1, R-S5.
+        bd3o_ R-S5a DONE 20:4x (reports/bd3o_design_R2_addendum.md): 3 fold sites (depth 0x17AE818 -> cut 0x17AE849,
+        colour 0x17AE8D8 -> 0x17AE910, folded 0x17AED1F -> B cut 0x17AED4A; visibility fill stays R1); one job per fold
+        (DRAW_RECORDING, ENTERED join; workers fill chunks, wait for C's publish, claim C's shares; RecordWork unchanged);
+        Unmap stub (push [reg+0x18]; nop; E8 UnmapEntry<k>) notes the Unmap, real Unmap after the fold's Join; NM5 closes
+        on every exit + nets (any net: warn once, R2 off for the session); publish carries the cut's x87 / MXCSR
+        (worker_pool::ApplyControlWords helper); stubs = sites 4..6 of instance_fill's table (no new PausedWrite arg);
+        heapfix clear; row 'Fill With Draw Recording (Experimental)' default Off; 10 tests + 11 controls; R-S5 = one
+        Sonnet High implementer after R-S4 part 2 merges, ~365 + 320 lines. 8 open questions for C's owner.
+        c33i_ STARTED 20:4x (read only, while R1 is in re-check): answers to bd3o_'s 8 questions ->
+        reports/c33i_r2_answers.md. Then bd3o_ folds the answers -> bd3r_ design re-check -> R-S5.
+        Agents: ebr_ (round 10), b13r_ (R1 re-check), c33i_ (R2 answers) (3 of 3). QUEUE: merge rmt_b15r1, c33i_ part 2b
+        (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, bd3o_ R2 answers fold + bd3r_
+        re-check, x0i_ X2 notes, B1.6 (+ N5 real-routine tests), X1, R-S5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
