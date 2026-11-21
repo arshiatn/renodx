@@ -4993,6 +4993,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         start when the applied line is > 1 s after SET, marks the segment invalid with no applied line; both forms are
         INFO lines the switch-line check requires.
         Agents: t4i_, bd1r_, hp1i_ (3 of 3).
+        bd1r_ DIFF CHECK DONE 04:2x (appended to reports/s2r_review.md): bfd7cf8e3 fine as is; d6ec96678 merge after
+        small fixes: 1 window alignment (ReShade's present fires before reshade_present, so mt_trace's ArmTrace lands
+        after that present's Update -> Tracing() only from the header Update, exactly N frames, test CHECK(!Tracing())
+        after ArmTrace); 2 C's draw trace hooked into the window (re-armable, C env arm calls ArmTrace, one C values
+        line, no overwrite of tw_draw_recording.txt) -> done NOW on rmt_pool, not moved; 3 header prints
+        env_generation_applied. Nits a-d (pin on any Stop refusal + neutral wording, spin clamp <= 1000 us, ignore
+        ArmTrace(0), generation bump while another thread holds busy). Split for T1b confirmed: test_hooks cannot
+        include the x86 pool -> callback addon.cpp registers, bumps worker_env_generation (one counter for S6 / R-S1).
+        c3i_ RESUMED 04:2x: fixes 1-3 + nits on rmt_pool -> bd1r_ diff check -> merge rmt_pool.
+        Agents: t4i_, hp1i_, c3i_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
