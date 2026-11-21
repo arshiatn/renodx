@@ -4812,9 +4812,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         old script, nothing runs it -> nothing blocked; no new excluded folder asked; scripts are never moved into
         testbin to dodge scans. (4) FORGE INPUT 2: enforce, don't trust memory / skills: (a) read-before-edit gate =
         Claude Code hook that refuses Edit / Write on D3D / HLSL code until the agent ran the spec lookup in its session
-        (and src C++ until docs/CXX_STYLE.md was read), with exact spec cites checked at merge; (b) a separate GPU
-        reference renderer with known scenes (Cornell box + our hard cases) to compare our RT / PT passes against a
-        converged reference. Both -> gto_ addendum (queued); hooks are settings = ATN adds them or OKs the exact text.
+        (and src C++ until docs/CXX_STYLE.md was read), with exact spec cites checked at merge; (b) known-answer
+        scenes: we ALREADY have the GPU reference (reference build PT, 127 GB recordings of real frames, 77 GB reference
+        runs, xcheck = our samplers vs pbrt-v4 / Falcor per function). Missing piece only: a few synthetic scenes
+        (Cornell box, foliage cards, thin geometry, many lights, fog) in the recorder's format, rendered whole by our
+        reference PT AND by pbrt-v4 (independent code) -> image compare, so bugs shared by our real-time + reference
+        code (light units, MIS, NEE, bounce energy) show up. Both -> gto_ addendum (queued); hooks are settings = ATN
+        adds them or OKs the exact text. FORGE ON PTLAS (03:3x): PTLAS is never faster than a game's culled TLAS; it
+        pays only when culling is removed (whole map in the RT scene, long ray distances, full PT) and rebuilds get
+        expensive (5 ms in his game). Matches ours (Attila TLAS 0.1-0.4 ms, PTLAS off) -> the planned PTLAS re-measure
+        runs only on no-culling / big scenes; retry PTLAS once our TLAS build passes ~1 ms.
         gto_ GPU TOOLING DESIGN DONE 03:2x (plan_1117/gto_design.md, 292 lines): resident replayer (recorder build
         `serve`, D3D12 timestamps, A / A' / B interleaved), SQLite trace index, measurement gate (A/A, Latin square,
         noise threshold, gate ids), budgets + per-phase deadlines, spec index + cite check, pitfall registries; steps
