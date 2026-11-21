@@ -1327,9 +1327,10 @@ void TestColourStages() {
   CHECK(reruns_seen > 0);
   CHECK(compares_equal > 0);
   CHECK(conflicts > 0);
-  std::printf("6b. the real colour loop through the dispatcher: %u cases (10 lists x 4 stages x K 4 / 16 x trace off / on; the flush entry's hook and the call-site fallbacks; DispatchColour and the cut thunk): log (flushes, virtual calls, animation calls, constants' dirty calls, binds, faction colours) and tracker equal the serial run; %u chunks run in all, %u run again, %u of the unsorted list's meshes' chunks left to the direct run (the owner check); %u compare runs equal; recorded at K 4: %u flush, %u vf68, %u animation, %u constant, %u bind, %u faction ops; every fake reached (dirty %u, bind %u, faction colours %u, faction list %u, batch size %u)\n",
+  std::printf("6b. the real colour loop through the dispatcher: %u cases (10 lists x 4 stages x K 4 / 16 x trace off / on; the flush entry's hook and the call-site fallbacks; DispatchColour and the cut thunk): log (flushes, virtual calls, animation calls, constants' dirty calls, binds, faction colours) and tracker equal the serial run; %u chunks run in all, %u run again, %u of the unsorted list's meshes' chunks left to the direct run (the owner check); %u compare runs equal; recorded at K 4: %u flush, %u vf68, %u animation, %u constant, %u bind, %u faction ops; every fake reached (dirty %u, bind %u, faction colours %u, faction list %u, batch size %u, vector init %u, push_back %u, free %u)\n",
               cases, chunks_seen, reruns_seen, conflicts, compares_equal, ops[0], ops[1], ops[2], ops[3], ops[4], ops[5], colour_calls[DIRTY].load(), colour_calls[SRV].load(),
-              colour_calls[FACTION_COLOURS].load(), colour_calls[FACTION_LIST].load(), colour_calls[VF6C].load());
+              colour_calls[FACTION_COLOURS].load(), colour_calls[FACTION_LIST].load(), colour_calls[VF6C].load(), colour_calls[VECTOR_INIT].load(), colour_calls[PUSH_BACK].load(),
+              colour_calls[FREE].load());
 }
 
 void TestColourControls() {

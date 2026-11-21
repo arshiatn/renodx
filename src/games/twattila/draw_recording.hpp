@@ -979,7 +979,9 @@ inline void ReplayFaction(int32_t faction, uint32_t mask, uint32_t node, uint32_
   // do not prove for every node (the class is not named by them). A call that left it alone has no list here: nothing is
   // sent (the game would read a stale stack slot).
   if (list == 0) {
-    if (trace_call != nullptr) ++trace_call->faction_lists_unwritten;
+    if (trace_call != nullptr) {
+      ++trace_call->faction_lists_unwritten;
+    }
     return;
   }
   const auto* const list_bytes = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(list));
@@ -1065,7 +1067,9 @@ inline void ReplayState(const StateBlock& block, CallTrace* trace_call = nullptr
   if ((block.parts & STATE_SNOW) != 0) ReplayConst(block.snow_object, block.snow_bits, 1);
   if ((block.parts & STATE_DIFFUSE) != 0) ReplaySrv(block.diffuse_slot, block.diffuse);
   if ((block.parts & STATE_NORMAL) != 0) ReplaySrv(block.normal_slot, block.normal);
-  if ((block.parts & STATE_FACTION) != 0) ReplayFaction(block.faction, block.mask, block.node, block.state, trace_call);
+  if ((block.parts & STATE_FACTION) != 0) {
+    ReplayFaction(block.faction, block.mask, block.node, block.state, trace_call);
+  }
 }
 
 // The four loop groups' names, as the rows call them (the logs).

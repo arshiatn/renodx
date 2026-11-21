@@ -224,8 +224,11 @@ void TestRealBytes() {
     CHECK(calls.weighted_vtables[index] == ec::Address(Rva(ec::WEIGHTED_CLASSES[index].vtable)));
   }
   CHECK(ec::recording_cut.active == &dr::SharedPage()->active && *ec::recording_arena_size == dr::SLOT_COUNT * dr::SLOT_SIZE);
-  for (const std::string& line : log_lines) std::printf("   log: %s\n", line.c_str());
-  CHECK(LogHas("39 of 39 sites found") && !LogHas("left alone"));
+  const bool all_found = LogHas("39 of 39 sites found") && !LogHas("left alone");
+  if (!all_found) {
+    for (const std::string& line : log_lines) std::printf("   log: %s\n", line.c_str());
+  }
+  CHECK(all_found);
   // The colour loop's pieces, decoded from the code: the call targets, the faction block's default and the cache flag.
   CHECK(calls.loops[static_cast<size_t>(dr::Group::COLOUR_A)] == ec::Address(Rva(ec::COLOUR_LOOP_RVA)));
   CHECK(calls.dirty_call == ec::Address(Rva(0x191d960)) && calls.srv_call == ec::Address(Rva(0x18d2b60)));

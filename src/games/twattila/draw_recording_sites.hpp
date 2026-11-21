@@ -28,6 +28,12 @@
 // pieces, the whole feature) out and is logged once. None of these bytes belongs to the heapfix patches (loopfetch,
 // batchfix) or to engine_code's own 25 sites; passtime's dev hooks start with an E9 at the loops' and the flush's
 // entries: Prepare and every turn-on refuse them.
+//
+// The B groups (the per-mesh loops of the folded driver) have no call-site fallback: they need the entry hook. Their cut is
+// one E9 in DispatchMesh (the 8 covered bytes are the game's two loads; the thunk's DispatchMesh runs inside `active`).
+// The depth and colour bodies' shared-state calls are the same thunk as A's without the vtable check (vf68 `ret 8`, vf64
+// `ret 0xc`): the planner chose the class. The class table is decoded from the slot-0x138 thunks and the dispatchers.
+// Colour B has no site yet.
 
 enum class RecordingSite : uint8_t {
   FLUSH_ENTRY,
@@ -313,7 +319,7 @@ constexpr uint32_t MESH_VF138 = 0x138;
 // no-op are the classes with no technique; `depth` / `colour` are the groups the class records in (the classes whose technique
 // calls reach objects the census could not clear run directly in both).
 constexpr uint32_t ROUTED_VF54 = 0x18559c0;
-constexpr uint32_t ROUTED_VF54_ALT = 0x18559e0;  // the same call, for two classes
+constexpr uint32_t ROUTED_VF54_ALT = 0x18559e0;  // the same getter for the smaller layout (this + 0x3f4 instead of + 0x52c), pure
 constexpr uint32_t ROUTED_VF6C = 0x174ebd0;
 constexpr uint32_t ROUTED_NO_TECHNIQUE = 0x449760;
 constexpr uint32_t ROUTED_NO_SHARED_STATE = 0x29ecb0;
@@ -1092,11 +1098,12 @@ struct HeapfixRange {
   uint32_t rva;
   uint32_t size;
 };
-constexpr std::array<HeapfixRange, 21> HEAPFIX_PATCHED = {{
+constexpr std::array<HeapfixRange, 24> HEAPFIX_PATCHED = {{
     // The six sites: the instance prepare, the two sort calls, the list reset and its last call, the effect walk's call.
     {0x17B92D0, 5}, {0x17B9297, 5}, {0x17B9197, 5}, {0x1811F00, 5}, {0x18124E8, 5}, {0x192D2DA, 5},
-    // loopfetch: the fetch of the loops' next item.
+    // loopfetch: the loops' fetch of the next item, the animation batching and the two record copies.
     {0x17B1840, 9}, {0x17B0450, 6}, {0x17B1560, 6}, {0x17B0FC0, 6}, {0x17B0065, 6}, {0x17AFCE2, 6}, {0x17AF7F5, 6},
+    {0x182E0DA, 9}, {0x17DAB90, 8}, {0x182C9A3, 8},
     // batchfix, per loop: the compare (6 bytes patched) and the reset (7).
     {0x17B0466, 6}, {0x17B04BF, 7}, {0x17B0FD9, 6}, {0x17B1032, 7}, {0x17B12A9, 6}, {0x17B1302, 7}, {0x17B1579, 6}, {0x17B15D2, 7},
 }};
@@ -1137,24 +1144,48 @@ constexpr bool SiteClearOfHeapfix(const RecordingSiteInfo& info) {
   }
   return true;
 }
-constexpr bool SitesClearOfHeapfix() {
+static_assert([] {
   for (const RecordingSiteInfo& info : RECORDING_INFO) {
     if (!SiteClearOfHeapfix(info)) return false;
   }
   return true;
-}
-static_assert(SitesClearOfHeapfix());
-// The slot-0x138 thunks and the dispatchers the class tables are decoded from: bytes nobody patches or checks.
-constexpr bool DecodedPiecesClearOfHeapfix() {
-  for (const HeapfixRange& range : HEAPFIX_PATCHED) {
-    if (Touches(0x1827830, 0x1827a40 - 0x1827830, range) || Touches(DISPATCHER_FIRST_RVA, DISPATCHER_COUNT * DISPATCHER_STRIDE, range)) return false;
+}());
+// The other bytes C reads: the slot-0x138 thunks and the dispatchers the class tables are decoded from touch no patched or
+// checked range; the rest (the accessor and the list helper lie in heapfix's rows, which only checks them) touch no patched one.
+static_assert([] {
+  const auto patched = [](uint32_t rva, uint32_t size) {
+    for (const HeapfixRange& range : HEAPFIX_PATCHED) {
+      if (Touches(rva, size, range)) return true;
+    }
+    return false;
+  };
+  const auto checked = [](uint32_t rva, uint32_t size) {
+    for (const HeapfixRange& range : HEAPFIX_CHECKED) {
+      if (Touches(rva, size, range)) return true;
+    }
+    return false;
+  };
+  const std::array<HeapfixRange, 2> decoded = {{{0x1827830, 0x1827a40 - 0x1827830}, {DISPATCHER_FIRST_RVA, DISPATCHER_COUNT * DISPATCHER_STRIDE}}};
+  for (const HeapfixRange& window : decoded) {
+    if (patched(window.rva, window.size) || checked(window.rva, window.size)) return false;
   }
-  for (const HeapfixRange& range : HEAPFIX_CHECKED) {
-    if (Touches(0x1827830, 0x1827a40 - 0x1827830, range) || Touches(DISPATCHER_FIRST_RVA, DISPATCHER_COUNT * DISPATCHER_STRIDE, range)) return false;
+  const std::array<HeapfixRange, 6> read = {{{ACCESSOR_RVA, PatternSize(ACCESSOR_HEAD)},
+                                             {LIST_HELPER_RVA, PatternSize(LIST_HELPER_HEAD)},
+                                             {WEIGHTED_VF64, PatternSize(VF64_STUB_HEAD)},
+                                             {FLUSH_RVA, PatternSize(FLUSH_HEAD)},
+                                             {FLUSH_EMPTY_RVA, PatternSize(FLUSH_EMPTY)},
+                                             {TEXTURE_VIEW_RVA, PatternSize(TEXTURE_VIEW_HEAD)}}};
+  for (const HeapfixRange& window : read) {
+    if (patched(window.rva, window.size)) return false;
+  }
+  for (const ColourPieceInfo& piece : COLOUR_PIECES) {
+    if (patched(piece.rva - piece.context_offset, PatternSize(piece.context))
+        || (piece.callee_rva != 0 && patched(piece.callee_rva, PatternSize(piece.callee_head)))) {
+      return false;
+    }
   }
   return true;
-}
-static_assert(DecodedPiecesClearOfHeapfix());
+}());
 
 static const uint8_t* recording_base = nullptr;
 // The bytes of the page the thunks take (the test reads it: RECORDING_CODE_SIZE must hold with room to spare).
@@ -1219,7 +1250,7 @@ inline bool PrepareRecording(HMODULE module) {
   const uint8_t* image_end = base + headers->OptionalHeader.SizeOfImage;
   const auto sections = tw::engine_tweaks::ModuleSections(module);
   const auto holds = [&](const uint8_t* at, std::string_view pattern) {
-    const size_t size = (pattern.size() + 1) / 3;
+    const size_t size = PatternSize(pattern);
     for (const std::string_view memory : sections.code) {
       const auto* begin = reinterpret_cast<const uint8_t*>(memory.data());
       if (at >= begin && size <= memory.size() && at <= begin + memory.size() - size) {
@@ -1263,14 +1294,14 @@ inline bool PrepareRecording(HMODULE module) {
     refuse("the virtual call that does nothing");
   }
   std::array<uint32_t, WEIGHTED_CLASSES.size()> vtables = {};
+  const auto address_at = [&](uint32_t rva) { return Address(base + rva); };
   for (size_t index = 0; index < WEIGHTED_CLASSES.size() && shared_ok; ++index) {
     const WeightedClass& weighted = WEIGHTED_CLASSES[index];
     const uint8_t* const vtable = base + weighted.vtable;
     const auto slot = [&](uint32_t offset) { return read32(vtable + offset); };
-    const auto at = [&](uint32_t rva) { return Address(base + rva); };
-    if (vtable + 0x70 > image_end || slot(0x54) != at(WEIGHTED_VF54) || slot(0x58) != at(weighted.vf58)
-        || slot(0x60) != at(weighted.vf60) || slot(0x64) != at(WEIGHTED_VF64) || slot(0x68) != at(weighted.vf68)
-        || slot(0x6c) != at(WEIGHTED_VF6C)) {
+    if (vtable + 0x70 > image_end || slot(0x54) != address_at(WEIGHTED_VF54) || slot(0x58) != address_at(weighted.vf58)
+        || slot(0x60) != address_at(weighted.vf60) || slot(0x64) != address_at(WEIGHTED_VF64)
+        || slot(0x68) != address_at(weighted.vf68) || slot(0x6c) != address_at(WEIGHTED_VF6C)) {
       shared_ok = false;
       refuse("a weighted class's vtable");
     }
@@ -1323,13 +1354,12 @@ inline bool PrepareRecording(HMODULE module) {
     if (!b_ok) break;
     const uint8_t* const vtable = base + routed.vtable;
     const auto slot = [&](uint32_t offset) { return read32(vtable + offset); };
-    const auto at = [&](uint32_t rva) { return Address(base + rva); };
     const uint8_t* const thunk = base + routed.thunk;
     const bool standard = holds(thunk, SLOT138_THUNK);
     const bool decodable = standard || holds(thunk, SLOT138_SPECIAL_THUNK);
     const uint8_t* const dispatcher =
         (decodable ? target(thunk + (standard ? SLOT138_THUNK_CALL : SLOT138_SPECIAL_CALL)) : nullptr);
-    const uint32_t offset = Address(dispatcher) - Address(base + DISPATCHER_FIRST_RVA);
+    const uint32_t offset = (decodable ? Address(dispatcher) - Address(base + DISPATCHER_FIRST_RVA) : 0);
     const uint32_t list_base = (decodable ? read32(thunk + (standard ? SLOT138_THUNK_BASE : SLOT138_SPECIAL_BASE)) : 0);
     const bool dispatcher_ok =
         decodable && offset % DISPATCHER_STRIDE == 0 && offset / DISPATCHER_STRIDE < DISPATCHER_COUNT
@@ -1338,10 +1368,11 @@ inline bool PrepareRecording(HMODULE module) {
         && holds(base + LIST_HELPER_RVA, LIST_HELPER_HEAD)
         && is_body(dispatcher + DISPATCHER_DEPTH_CALL, DEPTH_B_BODIES)
         && is_body(dispatcher + DISPATCHER_COLOUR_CALL, COLOUR_B_BODIES);
-    if (!dispatcher_ok || list_base >= 0x400 || vtable + MESH_VF138 + 4 > image_end || slot(0x54) != at(routed.vf54)
-        || slot(0x58) != at(routed.vf58) || slot(0x60) != at(routed.vf60) || slot(0x64) != at(routed.vf64)
-        || slot(0x68) != at(routed.vf68) || slot(0x6c) != at(ROUTED_VF6C) || slot(MESH_VF138) != at(routed.thunk)
-        || calls.class_count >= calls.classes.size()) {
+    if (!dispatcher_ok || list_base >= 0x400 || vtable + MESH_VF138 + 4 > image_end
+        || slot(0x54) != address_at(routed.vf54) || slot(0x58) != address_at(routed.vf58)
+        || slot(0x60) != address_at(routed.vf60) || slot(0x64) != address_at(routed.vf64)
+        || slot(0x68) != address_at(routed.vf68) || slot(0x6c) != address_at(ROUTED_VF6C)
+        || slot(MESH_VF138) != address_at(routed.thunk) || calls.class_count >= calls.classes.size()) {
       refuse(std::format("class {:#x}", routed.vtable + 0x10000000));
       continue;
     }
@@ -1358,7 +1389,9 @@ inline bool PrepareRecording(HMODULE module) {
     b_ok = false;
     refuse("the routed classes");
   }
-  if (!b_ok) calls.class_count = 0;
+  if (!b_ok) {
+    calls.class_count = 0;
+  }
 
   recording_page = nullptr;
   if (shared_ok) {
