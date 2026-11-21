@@ -5257,6 +5257,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         constructor caller, vtable refs, 11-block table, owner-reset set). (b) / (c) / (d) rejected with reasons.
         bd3r_ RESUMED 08:3x: check of v3 -> hp1i_ re-runs S8-1a with the new table.
         Agents: c3i_ (B1.2a), t4i_ (T4 round 3), bd3r_ (3 of 3).
+        bd3r_ CHECK OF S8a v3 DONE 08:4x (appended to reports/bd3r_s8a_review.md): NO MUSTS, hp1i_ may re-run S8-1a.
+        Shoulds for S8-2: (1) write the address-uniqueness premise into the lemma (item stores not rewound / freed
+        within a generation; allocator globals 0x11DA6110 / 0x11DA6C50) + a printed reloc-ref table in S8-1a;
+        (2) clamp K + K_presort to logical processors - 2; (3) carry the v2 Shoulds 1-2 (keep S == C/2; allow
+        commits by a late P1 with seq != 0). 4 nits.
+        hp1i_ RESUMED 08:4x: S8-1a re-run with the v3.6 exact sets (P3' at +0x18124E8, reset row 0x1811F0C len
+        0x5DC) + printed tables incl. the 0x11DA6110 / 0x11DA6C50 relocated refs; fresh src_prep7, prepare_test x6,
+        commit if clean, output verbatim. Rule note on dispscan.py given. S8-1b only after my OK.
+        Agents: c3i_ (B1.2a), t4i_ (T4 round 3), hp1i_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
