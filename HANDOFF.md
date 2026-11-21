@@ -6380,6 +6380,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents (6): c33i_ (R-S5), gti_ (GPU S1a), upr_ (unified PT review), lga_ (logging audit), gtb_ (GPU S1b), gtp_
         (GPU S1c). QUEUE: R-S5 review, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging fixes, S1r
         (after S1a-c), F1 fix (after upr_'s verdict), T5 freeze, T6 dry run, end batch.
+        upr_ UNIFIED PT REVIEW DONE 00:2x (designs/unified_pt_review.md 335 lines, hand-back designs/upr_handback.md): GO
+        WITH CHANGES. One estimator per output over disjoint path space = unbiased; sun never in the torch reservoir =
+        the right U2 answer. Musts: M1 SO from bounce isn't E5's integral (first_range 6 m vs 10 m); M2 IGN screen-space
+        noise exists (rt_lights:318/319, rt_trace:302, rt_path.hlsli:898); M3 T-starve vacuous (<= 4 lights = exact),
+        no GI share metric, 640x360; M4 reflection reuse threshold undefined for our lobe; M5 F1 fix must be a
+        non-linear hash + missed sites; M6 whole sun block + per-consumer origin / normal; M7 RR checks lack a full-4K
+        path; M8 missing row: torch light on smoke exists (RtLocalLightAt in vfx00). 14 Shoulds (honest cost ~0..-1.3 ms).
+        F1 = REAL: game caps bounces at 2 (in-frame vertex alias harness / PROBE_REFERENCE only); cross-frame repeats at
+        Light Bounce Rays 9-16 or 4 x Rays a Pixel >= 3 (Match Output at DLSS Balanced / Performance / Ultra
+        Performance), reflections at samples x density >= 9; defaults + ATN's preset unaffected; no bias.
+        [ ] ATN (unified PT, not blocking now): Q1-Q10 of the design + NQ1 rough SO route (rec test (a) no-ray PT
+        Reflection Occlusion first; blocks U4), NQ2 IGN -> white noise in the mode (rec yes if flicker at floor), NQ3
+        F1 hybrid fix on by default before U1 (rec yes), NQ4 reflection reuse set (rec at least today's), NQ5 torch
+        light on smoke as is vs shadows / 128 lights (look change), NQ6 full-4K RR scoring now vs P2.
+        [ ] F1 HYBRID FIX (GPU plan, after render_mt; needs a harness window with agents held): non-linear hash in
+        Random (rt_scene.hlsli:462) + every seed site (rt_path / rt_trace / rt_lights / rt_fog) -> owner coordinator.
+        upt_ RESUMED 00:2x: v2 of unified_pt.md (8 Musts + 14 Shoulds + NQ1-NQ6 in the ATN list) -> upr_ re-check.
+        Agents (6): c33i_ (R-S5), gti_ (GPU S1a), upt_ (unified PT v2), lga_ (logging audit), gtb_ (GPU S1b), gtp_ (GPU
+        S1c). QUEUE: R-S5 review, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging fixes, S1r (after
+        S1a-c), upr_ re-check, F1 hybrid fix, T5 freeze, T6 dry run, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
