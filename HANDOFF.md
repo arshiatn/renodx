@@ -5673,6 +5673,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         N9 + v1 L2 controls; engine_code.hpp edits only in a separate last commit (rmt_c34 pending) -> b13r_ review.
         Agents: bd1r_ (C.3-4 review), t4i_ (A/B + nits), c3i_ (B1.4) (3 of 3). QUEUE: merge rmt_c34, LOGX (c33i_),
         x87o_ v2, ebr_ re-check of t4i_, b13r_ B1.4 review, B1.5.
+        bd1r_ C.3-4 REVIEW DONE 14:5x (reports/bd1r_c34_review.md): NOT YET - 1 Must: M1 the B groups' shared cut lets
+        DispatchMesh record a B group whose own sites are out (stand-down / VirtualProtect / PausedWrite failure with
+        the other B group in) -> game's calls run for real on workers; fix = engine_code exports fully written groups,
+        addon.cpp masks recording.loops + loop test. passtime: installed only with the DLSS add-on's FrameBridge, then
+        lean bridge mode (+0x176A450 / +0x177BB10, not our entries) -> C does NOT refuse in the end batch. Shoulds: S1
+        heapfix_ranges.hpp still lacks heapfix.c's 4 allocator hooks, pool.c's 2 jumps + 8 hashed functions,
+        scriptext's 2 checks; S2 clearance of state block insides; S3 gates class for 'Threaded Draw Recording: left
+        alone' + FrameBridge absent / lean-mode pre-check. Nits incl. code page 183 B below 3/4 line. Colour B bytes,
+        BuildState, dead scratch, fixpoint all verified; test 5 needs no mutation control. Flaky tests.cpp:614 =
+        Sleep(5) under load -> own commit. Re-runs all exit 0.
+        c33i_ RESUMED 14:5x on rmt_c34: c5 M1; c6 S1 + S2 + nits + code page 0x2000 (coordinator decision); c7 flaky
+        :614 alone; c8 LOGX (x87 review M1, leg-1 blocker: heapfix's split x87 form at +0x17f6515 -> INFO cpu_code_x87
+        + unit test) -> bd1r_ re-check -> merge. t4i_ also takes bd1r_ S3 (gates class + FrameBridge pre-check).
+        Agents: t4i_ (A/B + nits + S3), c3i_ (B1.4), c33i_ (C.3-4 fixes + LOGX) (3 of 3). QUEUE: bd1r_ re-check, merge
+        rmt_c34, x87o_ v2, ebr_ re-check of t4i_ (+ T4 ready again after LOGX), b13r_ B1.4 review, B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
