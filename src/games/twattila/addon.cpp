@@ -1627,9 +1627,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   uint32_t recording_groups = 0;
-  // Any user of the worker pool is in a stage that wakes workers; a trace frame is running.
+  // Any user of the worker pool is in a stage that wakes workers.
   bool pool_in_use = false;
-  bool pool_trace = false;
 #if defined(TWATTILA_DRAW_RECORDING)
   twattila::draw_recording::Settings recording = {
       .stage = static_cast<twattila::draw_recording::Stage>(draw_recording_stage_row),
@@ -1646,10 +1645,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   pool_in_use = (recording.stage == twattila::draw_recording::Stage::TOUCH_AHEAD
                  || recording.stage == twattila::draw_recording::Stage::ONE_WORKER
                  || recording.stage == twattila::draw_recording::Stage::WORKERS);
-  pool_trace = twattila::draw_recording::internal::trace.active;
 #endif
   // Before the users' own Updates.
-  twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use, .trace = pool_trace,
+  twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use,
                                  .env_generation = worker_env_generation.load(std::memory_order_relaxed)});
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
                                 job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,

@@ -811,8 +811,9 @@ struct Trace {
   bool active = false;
   // This window already started its trace.
   bool in_window = false;
-  // The windows traced so far; the first writes tw_draw_recording.txt, the nth tw_draw_recording_<n>.txt (none overwrites another).
-  uint32_t windows = 0;
+  // The pool's number of the window being traced (a window with the stage Off is not traced, so numbers can skip): window 1 writes
+  // tw_draw_recording.txt, window w tw_draw_recording_<w>.txt (none overwrites another).
+  uint32_t window = 0;
   // The values the window started with (the pool's header holds the pool's own), for the log and the file.
   std::string header;
   bool read_environment = false;
@@ -2448,7 +2449,7 @@ inline void Update(const Settings& settings) {
         }
       }
       std::ofstream(std::filesystem::path(exe.data()).parent_path()
-                    / (trace.windows == 1 ? std::string("tw_draw_recording.txt") : std::format("tw_draw_recording_{}.txt", trace.windows)))
+                    / (trace.window == 1 ? std::string("tw_draw_recording.txt") : std::format("tw_draw_recording_{}.txt", trace.window)))
           << text;
       trace.calls.clear();
       trace.frame_list.clear();
@@ -2457,7 +2458,7 @@ inline void Update(const Settings& settings) {
     // A pool window opened (its header was written by the pool's Update before this one): this window's trace, for its frames.
     trace.in_window = true;
     trace.active = true;
-    ++trace.windows;
+    trace.window = worker_pool::TraceWindow();
     trace.frames_left = worker_pool::TraceFramesLeft();
     // Room for a window's calls: a reallocation inside a timing frame would evict the caches before the timed phases.
     trace.calls.reserve(4096);
@@ -2467,7 +2468,7 @@ inline void Update(const Settings& settings) {
         groups += std::format("{}{}", (groups.empty() ? "" : ", "), GROUP_NAMES[group]);
       }
     }
-    trace.header = std::format("window {} of {} frames: stage {}, groups on {}, B families {:#x}", trace.windows, trace.frames_left,
+    trace.header = std::format("window {} of {} frames: stage {}, groups on {}, B families {:#x}", trace.window, trace.frames_left,
                                STAGE_NAMES[static_cast<size_t>(stage)], (groups.empty() ? "none" : groups), settings.b_families);
     renodx::utils::log::i("[Total War] Threaded Draw Recording trace " + trace.header + ".");
   }

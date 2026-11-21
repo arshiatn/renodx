@@ -402,7 +402,10 @@ static bool LogHas(std::string_view text) { return LogCount(text) != 0; }
 // A job open across game code on the owner thread (property (b)), nested Starts, other threads, the trace's refusal counts, and
 // the trace record: Join logs nothing, the next Update prints it.
 static void PoolRefusals() {
-  wp::Update({.threads = 4, .in_use = true, .trace = true});
+  // Counting runs inside a trace window: 3 presents, the header's Update first.
+  wp::Update({.threads = 4, .in_use = true});
+  wp::ArmTrace(3);
+  wp::Update({.threads = 4, .in_use = true});
   const auto users = [] { return static_cast<size_t>(wp::User::COUNT); };
   const auto count_of = [](wp::User user) { return wi::refused[static_cast<size_t>(user)].load(); };
   for (auto& count : wi::refused) count = 0;
@@ -443,13 +446,15 @@ static void PoolRefusals() {
   wp::Run({.work = ClaimWork, .context = claims.get(), .user = wp::User::ANIMATION_ROWS, .join = wp::JoinRule::ALL, .trace = true}, 2,
           [&] { ClaimWork(claims.get(), 0); });
   CHECK(LogCount("Worker pool trace") == lines && wi::record_count == 1);
-  wp::Update({.threads = 4, .in_use = true, .trace = true});
+  wp::Update({.threads = 4, .in_use = true});
   CHECK(LogCount("Worker pool trace (animation)") == 1 && LogHas("worker 1 on CPU") && LogHas("worker 2 on CPU"));
   CHECK(LogHas("ring 3") && LogHas("effects 1"));
   CHECK(wi::record_count == 0 && wi::record_drops == 0);
   for (const auto& count : wi::refused) CHECK(count == 0);
-  // Without a trace frame nothing is counted.
+  // Without a window nothing is counted: it ends with the next two Updates.
   wp::Update({.threads = 4, .in_use = true});
+  wp::Update({.threads = 4, .in_use = true});
+  CHECK(!wp::Tracing());
   std::thread untraced([] { CHECK(wp::Available(wp::User::RING_FILL) == 0); });
   untraced.join();
   CHECK(count_of(wp::User::RING_FILL) == 0);
@@ -733,10 +738,13 @@ static void PoolEnvironment() {
 }
 
 // ArmTrace (present thread only): the arm lands between two Updates, as the bench's does. Tracing() turns true at the Update that
-// writes the header, and the window is exactly its frames: counting from that Update to the one `frames` Updates later. 0 is ignored.
+// writes the header, and the window is exactly its frames: counting from that Update to the one `frames` Updates later. 0 is
+// ignored, and so is an arm while a window is open or pending. The header carries the pool's number of the window.
 static void PoolArmTrace() {
   wp::Update({.threads = 4, .in_use = true});
   const size_t headers = LogCount("Worker pool trace window");
+  const std::string_view ignored_text = "a trace window is open or pending";
+  const size_t ignored = LogCount(ignored_text);
   for (auto& count : wi::refused) count = 0;
   CHECK(!wp::Tracing());
   const auto refused_ring = [] {
@@ -746,21 +754,33 @@ static void PoolArmTrace() {
   };
   wp::ArmTrace(0);
   wp::Update({.threads = 4, .in_use = true});
-  CHECK(!wp::Tracing() && LogCount("Worker pool trace window") == headers);
+  CHECK(!wp::Tracing() && LogCount("Worker pool trace window") == headers && LogCount(ignored_text) == ignored);
+  const uint32_t before = wp::TraceWindow();
   wp::ArmTrace(2);
+  // An arm while one is pending is ignored (the window keeps its 2 presents).
+  wp::ArmTrace(7);
+  CHECK(LogCount(ignored_text) == ignored + 1);
   // Not yet: the frame before the header is not part of the window.
   CHECK(!wp::Tracing() && wp::TraceFramesLeft() == 0 && refused_ring() == 0);
   wp::Update({.threads = 4, .in_use = true});
-  CHECK(LogCount("Worker pool trace window") == headers + 1 && LogHas("window of 2 presents") && LogHas("workers ready 3 of 3"));
+  CHECK(LogCount("Worker pool trace window") == headers + 1 && wp::TraceWindow() == before + 1);
+  CHECK(LogHas(std::format("trace window {}: 2 presents", before + 1)) && LogHas("workers ready 3 of 3"));
   CHECK(LogHas("spin 3 us, env generation 0, limits recording 16 effects 16"));
   CHECK(wp::Tracing() && wp::TraceFramesLeft() == 2 && refused_ring() == 1);
+  // An arm inside the open window is ignored too.
+  wp::ArmTrace(9);
+  CHECK(LogCount(ignored_text) == ignored + 2);
   wp::Update({.threads = 4, .in_use = true});
   CHECK(wp::Tracing() && wp::TraceFramesLeft() == 1 && LogHas("ring 1") && refused_ring() == 1);
   wp::Update({.threads = 4, .in_use = true});
-  CHECK(!wp::Tracing() && LogCount("Worker pool trace window") == headers + 1);
+  CHECK(!wp::Tracing() && LogCount("Worker pool trace window") == headers + 1 && wp::TraceWindow() == before + 1);
+  // Counting stops at the window's last present: a refusal after it is not counted, and no refusal line follows.
+  const size_t lines = LogCount("starts and Available() calls refused");
   CHECK(refused_ring() == 0);
+  wp::Update({.threads = 4, .in_use = true});
+  CHECK(LogCount("starts and Available() calls refused") == lines && !wp::Tracing());
   wp::Update({.in_use = false});
-  std::printf("pool: ArmTrace: no window before the header, then exactly the frames counted (2), one header line; 0 ignored\n");
+  std::printf("pool: ArmTrace: no window before the header, exactly the frames counted (2), numbered, an arm while pending or open ignored, nothing counted after the last present; 0 ignored\n");
 }
 
 // ---------------------------------------------------------------- part 2: the synthetic game
@@ -2054,7 +2074,8 @@ static void DepthTrace() {
   di::trace.armed = false;
   di::trace.env_fired = false;
   di::trace.in_window = false;
-  di::trace.windows = 0;
+  di::trace.window = 0;
+  wi::trace_window = 0;
   di::controls.compare_every_call = false;
   ResetWorld(world.get());
   const dr::Settings settings = {.stage = dr::Stage::WORKERS, .loops = 1};
@@ -2079,7 +2100,7 @@ static void DepthTrace() {
     UpdateAt(6, settings);
   }
   di::controls.compare_every_call = true;
-  CHECK(!di::trace.active && di::trace.windows == 1 && !wp::Tracing());
+  CHECK(!di::trace.active && di::trace.window == 1 && !wp::Tracing());
   std::ifstream stream(file, std::ios::binary);
   const std::string text_value((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
   CHECK(text_value.find("compare: equal") != std::string::npos);
@@ -2114,7 +2135,8 @@ static void DepthTraceWindows() {
   di::trace.env_fired = false;
   di::trace.active = false;
   di::trace.in_window = false;
-  di::trace.windows = 0;
+  di::trace.window = 0;
+  wi::trace_window = 0;
   di::controls.compare_every_call = false;
   ResetWorld(world.get());
   const dr::Settings settings = {.stage = dr::Stage::WORKERS, .loops = 1};
@@ -2122,13 +2144,13 @@ static void DepthTraceWindows() {
     std::ifstream stream(path, std::ios::binary);
     return std::string((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
   };
-  const size_t pool_headers = LogCount("Worker pool trace window of 2 presents");
+  const size_t pool_headers = LogCount("Worker pool trace window");
   UpdateAt(6, settings);
   std::string first_text;
   for (uint32_t window = 1; window <= 2; ++window) {
     wp::ArmTrace(2);
     UpdateAt(6, settings);
-    CHECK(wp::Tracing() && di::trace.active && di::trace.windows == window && di::trace.frames_left == 2);
+    CHECK(wp::Tracing() && di::trace.active && di::trace.window == window && di::trace.frames_left == 2);
     CHECK(LogCount(std::format("Threaded Draw Recording trace window {} of 2 frames: stage Workers, groups on Depth A, B families 0xff.", window)) == 1);
     for (int frame = 0; frame < 2; ++frame) {
       const size_t calls_before = di::trace.calls.size();
@@ -2136,7 +2158,7 @@ static void DepthTraceWindows() {
       CHECK(di::trace.calls.size() > calls_before);
       UpdateAt(6, settings);
     }
-    CHECK(!di::trace.active && !wp::Tracing() && LogCount("Worker pool trace window of 2 presents") == pool_headers + window);
+    CHECK(!di::trace.active && !wp::Tracing() && LogCount("Worker pool trace window") == pool_headers + window);
     const std::string text_value = read_file(window == 1 ? first_file : second_file);
     CHECK(text_value.find(std::format("window {} of 2 frames: stage Workers", window)) != std::string::npos);
     CHECK(text_value.find("call: group 0") != std::string::npos);
@@ -2153,6 +2175,65 @@ static void DepthTraceWindows() {
   std::filesystem::remove(first_file);
   std::filesystem::remove(second_file);
   std::printf("depth: two pool windows in a row: each started C's trace for its frames with C's values at its top, the second file (tw_draw_recording_2.txt) left the first alone\n");
+}
+
+// The pool numbers the windows and C uses its number: a window with the stage Off is not traced (its number is skipped, the next file
+// is _2), an arm inside a window is ignored, the stage going Off in the middle still ends C's trace with the pool's window.
+static void DepthTraceSkippedWindows() {
+  const auto world = BuildWorld({.items = 6000, .seed = 17, .max_run = 12});
+  const std::filesystem::path dir = std::filesystem::path(__argv[0]).parent_path();
+  const auto file_of = [&](uint32_t window) { return dir / (window == 1 ? std::string("tw_draw_recording.txt") : std::format("tw_draw_recording_{}.txt", window)); };
+  for (uint32_t window = 1; window <= 3; ++window) std::filesystem::remove(file_of(window));
+  SetEnvironmentVariableA("RENODX_TW_DRAW_TRACE", nullptr);
+  di::trace.read_environment = true;
+  di::trace.armed = false;
+  di::trace.env_fired = false;
+  di::trace.active = false;
+  di::trace.in_window = false;
+  di::trace.window = 0;
+  wi::trace_window = 0;
+  di::controls.compare_every_call = false;
+  ResetWorld(world.get());
+  const dr::Settings on = {.stage = dr::Stage::WORKERS, .loops = 1};
+  const dr::Settings off = {.stage = dr::Stage::OFF, .loops = 1};
+  const auto read_file = [](const std::filesystem::path& path) {
+    std::ifstream stream(path, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+  };
+  const size_t window_lines = LogCount("Threaded Draw Recording trace window 2 of 2 frames: stage Workers");
+  const size_t first_window_lines = LogCount("Threaded Draw Recording trace window 1 of");
+  UpdateAt(6, off);
+  // Window 1, stage Off: no C trace, no file.
+  wp::ArmTrace(2);
+  for (int present = 0; present < 3; ++present) UpdateAt(6, off);
+  CHECK(wp::TraceWindow() == 1 && !wp::Tracing() && !di::trace.active && di::trace.window == 0 && !std::filesystem::exists(file_of(1)));
+  // Window 2, stage on: C's line and file are window 2's.
+  wp::ArmTrace(2);
+  UpdateAt(6, on);
+  CHECK(wp::TraceWindow() == 2 && di::trace.active && di::trace.window == 2);
+  CHECK(LogCount("Threaded Draw Recording trace window 2 of 2 frames: stage Workers") == window_lines + 1);
+  CHECK(LogCount("Threaded Draw Recording trace window 1 of") == first_window_lines);
+  for (int frame = 0; frame < 2; ++frame) {
+    Driver(world.get(), [&](uint32_t begin, uint32_t end) { dr::DispatchDepth(NODE, nullptr, world->tracker.data(), &world->list, begin, end); });
+    UpdateAt(6, on);
+  }
+  CHECK(!di::trace.active && !wp::Tracing() && std::filesystem::exists(file_of(2)) && !std::filesystem::exists(file_of(1)));
+  CHECK(read_file(file_of(2)).find("window 2 of 2 frames: stage Workers") != std::string::npos);
+  // Window 3: an arm inside it is ignored, and the stage goes Off in the middle; C ends with the pool's window.
+  wp::ArmTrace(2);
+  UpdateAt(6, on);
+  CHECK(wp::TraceWindow() == 3 && di::trace.active && di::trace.window == 3);
+  wp::ArmTrace(9);
+  UpdateAt(6, off);
+  CHECK(di::trace.active && wp::Tracing() && wp::TraceFramesLeft() == 1);
+  UpdateAt(6, off);
+  CHECK(!di::trace.active && !wp::Tracing() && std::filesystem::exists(file_of(3)));
+  UpdateAt(6, off);
+  CHECK(!di::trace.active && wp::TraceWindow() == 3 && !std::filesystem::exists(file_of(4)));
+  di::controls.compare_every_call = true;
+  wp::Update({.in_use = false});
+  for (uint32_t window = 1; window <= 4; ++window) std::filesystem::remove(file_of(window));
+  std::printf("depth: the pool's window numbers: an Off window is skipped (next file _2, line says window 2), an arm inside a window is ignored, the stage going Off mid-window still ends C with the pool\n");
 }
 
 // The Record rules the thunks rely on, called directly.
@@ -3928,7 +4009,8 @@ static void BTrace() {
   di::trace.armed = false;
   di::trace.env_fired = false;
   di::trace.in_window = false;
-  di::trace.windows = 0;
+  di::trace.window = 0;
+  wi::trace_window = 0;
   di::controls.compare_every_call = false;
   ResetBWorld(world.get());
   const dr::Settings settings = {.stage = dr::Stage::WORKERS, .loops = 12};
@@ -3958,7 +4040,7 @@ static void BTrace() {
     UpdateAt(6, settings);
   }
   di::controls.compare_every_call = true;
-  CHECK(!di::trace.active && di::trace.windows == 1 && !wp::Tracing());
+  CHECK(!di::trace.active && di::trace.window == 1 && !wp::Tracing());
   std::ifstream stream(file, std::ios::binary);
   const std::string text_value((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
   CHECK(text_value.find("group 3 family -") != std::string::npos);
@@ -4381,6 +4463,7 @@ int main() {
   DepthFallbacks();
   DepthTrace();
   DepthTraceWindows();
+  DepthTraceSkippedWindows();
   DepthControls();
   DepthNested();
   DepthBadOps();

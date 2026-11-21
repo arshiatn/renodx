@@ -60,7 +60,7 @@
 // every user (the ring fill keeps its own sfence before the release increment of each chunk).
 //
 // Trace: a job with `trace` only copies one record into a fixed array at Join (no formatting, no log call inside game code);
-// Update prints the records, and the refusals counted while Settings::trace is on, at the next present.
+// Update prints the records, and the refusals counted while a trace window is open, at the next present.
 //
 // Per-user limits are batch-only: RENODX_TW_WORKER_LIMITS=recording:4,effects:8,animation:2,sweep:4,ring:4 (threads, the
 // render thread included, 1 to 16; 1 = the render thread alone). RENODX_TW_POOL_SPIN_US (default 3) is how long an idle worker
@@ -99,8 +99,6 @@ struct Settings {
   uint32_t threads = 4;
   // Any pool user's stage wakes workers.
   bool in_use = false;
-  // A trace frame is running: calls that were refused (a job open, not the owner) are counted for the trace lines.
-  bool trace = false;
   // The add-on's env generation: the limits and the spin are read again when it changes.
   uint32_t env_generation = 0;
 };
@@ -192,6 +190,8 @@ static std::vector<std::string> bad_said;
 static std::atomic<uint32_t> trace_frames = 0;
 // The frames ArmTrace asked for: they become `trace_frames` at the header's Update (present thread only).
 static uint32_t trace_armed_frames = 0;
+// The number of the window now open or last opened (counted at its header's Update; 0: none yet).
+static uint32_t trace_window = 0;
 static bool trace_header_pending = false;
 static uint64_t first_update_ticks = 0;
 static bool open_logged = false;
@@ -215,7 +215,7 @@ alignas(64) static std::atomic<uint32_t> entered = 0;
 alignas(64) static std::atomic<uint32_t> done = 0;
 // A job is open, or Stop is stopping the threads.
 alignas(64) static std::atomic<bool> busy = false;
-// Refused calls per user since the last trace line (counted only while Settings::trace is on).
+// Refused calls per user since the last trace line (counted only while a trace window is open).
 static std::array<std::atomic<uint32_t>, USER_COUNT> refused = {};
 static std::array<uint32_t, MAX_WORKERS> trace_cpu = {};
 static std::array<uint64_t, MAX_WORKERS> trace_entry = {};
@@ -287,10 +287,15 @@ static DWORD WINAPI WorkerMain(void* context) {
 // Opens one trace window of `frames` presents (0: ignored); present thread only. ReShade fires the add-on's present, and with
 // it Update, before the effect runtime's present where test_hooks runs, so a bench arms between two Updates: the next Update
 // writes a header line (time, the row, the ready workers, the limits, the spin, the env generation) and only then does Tracing()
-// turn true, for exactly `frames` presents (the frames between that Update and the one `frames` Updates later).
+// turn true, for exactly `frames` presents (the frames between that Update and the one `frames` Updates later). An arm while a
+// window is open or pending is ignored (one log line), so users that follow the window always end with it.
 inline void ArmTrace(uint32_t frames) {
   using namespace internal;
   if (frames == 0) return;
+  if (trace_header_pending || trace_frames.load(std::memory_order_relaxed) != 0) {
+    renodx::utils::log::i(std::format("[Total War] Worker pool: a trace window is open or pending; the arm for {} presents is ignored.", frames));
+    return;
+  }
   trace_armed_frames = frames;
   trace_header_pending = true;
 }
@@ -300,6 +305,9 @@ inline bool Tracing() { return internal::trace_frames.load(std::memory_order_rel
 
 // The presents the open window still has: 1 while its last frame runs.
 inline uint32_t TraceFramesLeft() { return internal::trace_frames.load(std::memory_order_relaxed); }
+
+// The number of the open window (or of the last one), as its header prints it: users number their trace output with it.
+inline uint32_t TraceWindow() { return internal::trace_window; }
 
 // Workers this user may use now (0: run alone). 0 when the caller is not the owner (pool threads and game threads), when a job
 // is open or when the pool is empty; otherwise the ready workers, up to the user's limit less the render thread. While a trace
@@ -413,8 +421,9 @@ inline JoinResult Run(const Job& job, uint32_t workers, Part&& part) {
 
 // Ends the threads and joins them (Update with no user on, detach; never under the loader lock). Users then run alone, so it
 // does not depend on any site coming out. A job still open is joined first (the starting thread only). One open on another
-// thread keeps the pool as it is (its owner joins it later) and pins the module (so does any Stop that finds the pool busy), so a thread that is still inside the work
-// function never runs in unmapped code. Stop holds `busy` while it ends the threads: a Start meanwhile is refused.
+// thread keeps the pool as it is (its owner joins it later) and pins the module (so does any Stop that finds the pool busy), so
+// a thread that is still inside the work function never runs in unmapped code. Stop holds `busy` while it ends the threads: a
+// Start meanwhile is refused.
 inline void Stop() {
   using namespace internal;
   Join();
@@ -424,7 +433,9 @@ inline void Stop() {
       HMODULE module = nullptr;
       GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&WorkerMain),
                          &module);
-      renodx::utils::log::w("[Total War] Worker pool: Stop found the pool busy (a job, a Stop or growth on another thread); the pool stays and the module is pinned.");
+      renodx::utils::log::w(
+          "[Total War] Worker pool: Stop found the pool busy (a job, a Stop or growth on another thread); the pool stays and the module "
+          "is pinned.");
     }
     return;
   }
@@ -557,12 +568,13 @@ inline void Update(const Settings& settings) {
   if (trace_header_pending) {
     trace_header_pending = false;
     trace_frames.store(trace_armed_frames, std::memory_order_relaxed);
+    ++trace_window;
     SYSTEMTIME now = {};
     GetLocalTime(&now);
     std::string header = std::format(
-        "[Total War] Worker pool trace window of {} presents at {:02}:{:02}:{:02}.{:03} ({:.1f} ms after the first present): threads {}, "
+        "[Total War] Worker pool trace window {}: {} presents at {:02}:{:02}:{:02}.{:03} ({:.1f} ms after the first present): threads {}, "
         "workers ready {} of {}, spin {} us, env generation {}, limits",
-        trace_armed_frames, now.wHour, now.wMinute, now.wSecond, now.wMilliseconds,
+        trace_window, trace_armed_frames, now.wHour, now.wMinute, now.wSecond, now.wMilliseconds,
         static_cast<double>(Qpc() - first_update_ticks) * 1000.0 / static_cast<double>(qpc_frequency), settings.threads,
         ready.load(std::memory_order_relaxed), created,
         static_cast<uint64_t>(spin_ticks.load(std::memory_order_relaxed)) * 1000000 / qpc_frequency, env_generation_applied);
@@ -573,7 +585,7 @@ inline void Update(const Settings& settings) {
   } else if (trace_frames.load(std::memory_order_relaxed) != 0) {
     trace_frames.fetch_sub(1, std::memory_order_relaxed);
   }
-  counting.store(settings.trace || trace_frames.load(std::memory_order_relaxed) != 0, std::memory_order_relaxed);
+  counting.store(trace_frames.load(std::memory_order_relaxed) != 0, std::memory_order_relaxed);
 
   if (!settings.in_use) {
     Stop();
@@ -642,6 +654,7 @@ inline void Stop() {}
 inline void ArmTrace(uint32_t) {}
 inline bool Tracing() { return false; }
 inline uint32_t TraceFramesLeft() { return 0; }
+inline uint32_t TraceWindow() { return 0; }
 
 #endif
 
