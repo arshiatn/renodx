@@ -595,11 +595,18 @@ static void PoolEnteredStress() {
 // Work that takes longer than the join's spin: the last finisher's wake-up of Join must arrive (both rules), under a watchdog.
 struct SlowJob {
   std::atomic<uint32_t> ran{0};
+  // The latest end (QPC) of any worker's work.
+  std::atomic<uint64_t> last_done{0};
 };
 
 static void SlowWork(void* context, uint32_t) {
   Sleep(20);
-  static_cast<SlowJob*>(context)->ran.fetch_add(1);
+  auto* const job = static_cast<SlowJob*>(context);
+  const uint64_t done = wp::Qpc();
+  uint64_t seen = job->last_done.load();
+  while (seen < done && !job->last_done.compare_exchange_weak(seen, done)) {
+  }
+  job->ran.fetch_add(1);
 }
 
 static void PoolSlowWork() {
@@ -607,11 +614,19 @@ static void PoolSlowWork() {
   const Watchdog watchdog(10, "slow work");
   for (const wp::JoinRule rule : {wp::JoinRule::ALL, wp::JoinRule::ENTERED}) {
     SlowJob slow;
+    uint64_t owner_done = 0;
     // ENTERED: the owner has no units; it waits until the workers are inside, so Join has to wait for them.
     const wp::JoinResult joined = wp::Run({.work = SlowWork, .context = &slow, .user = wp::User::ANIMATION_ROWS, .join = rule}, 3,
-                                          [&] { Sleep(5); });
+                                          [&] {
+                                            Sleep(5);
+                                            owner_done = wp::Qpc();
+                                          });
     CHECK(slow.ran == 3 && joined.ran == 3);
-    CHECK(joined.wait_ticks * 1000 / wp::qpc_frequency >= 10);
+    // Join waited from the owner's end until the last worker was done (not a fixed time: Sleep and the scheduler decide when each
+    // ends); 2 ms for the owner's own delay between its work and the Join call.
+    const uint64_t last_done = slow.last_done.load();
+    const uint64_t expected = (last_done > owner_done ? last_done - owner_done : 0);
+    CHECK(joined.wait_ticks + wp::qpc_frequency * 2 / 1000 >= expected);
   }
   wp::Update({.in_use = false});
   std::printf("pool: work slower than the join's spin (20 ms), both rules: Join is woken\n");
