@@ -57,8 +57,8 @@ inline void __fastcall Arm(void* object) {
     ++dropped;
     return;
   }
-  const auto* bytes = static_cast<const uint8_t*>(object);
-  calls[call_count++] = {.object = reinterpret_cast<uintptr_t>(object), .entries = *reinterpret_cast<const uint32_t*>(bytes + 0x18)};
+  calls[call_count++] = {.object = reinterpret_cast<uintptr_t>(object),
+                         .entries = *reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(object) + 0x18)};
 }
 
 // Every present on the present thread, after the pool's Update (which counts the window's frames): prints and clears what the
