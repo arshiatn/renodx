@@ -802,11 +802,19 @@ struct FrameTrace {
 // fifth counter).
 constexpr std::array<CopyRange, 4> SEED_FIELDS = {{{0x00, 0x04}, {0x04, 0x0c}, {0x0c, 0x10}, {0x10, 0x14}}};
 
-// The one-frame trace: armed by RENODX_TW_DRAW_TRACE=<seconds after the first present>[,<frames>]. Render thread only.
+// The draw trace: one per window of the pool's trace (worker_pool::ArmTrace), for the window's frames, and again for every later
+// window. RENODX_TW_DRAW_TRACE=<seconds after the first present>[,<frames>] opens the first window itself. Render thread only.
 struct Trace {
+  // The environment asked for a window (armed), and it was opened (env_fired).
   bool armed = false;
+  bool env_fired = false;
   bool active = false;
-  bool finished = false;
+  // This window already started its trace.
+  bool in_window = false;
+  // The windows traced so far; the first writes tw_draw_recording.txt, the nth tw_draw_recording_<n>.txt (none overwrites another).
+  uint32_t windows = 0;
+  // The values the window started with (the pool's header holds the pool's own), for the log and the file.
+  std::string header;
   bool read_environment = false;
   uint64_t arm_ticks = 0;
   uint32_t frames = 3;
@@ -1056,6 +1064,7 @@ inline void ReplayState(const StateBlock& block) {
 
 // The four loop groups' names, as the rows call them (the logs).
 constexpr std::array<const char*, 4> GROUP_NAMES = {"Depth A", "Colour A", "Depth B", "Colour B"};
+constexpr std::array<const char*, 7> STAGE_NAMES = {"Off", "Direct", "Touch ahead", "Chunked", "Recorded", "One worker", "Workers"};
 
 static bool bad_ops_logged = false;
 
@@ -2326,6 +2335,11 @@ inline void Update(const Settings& settings) {
       }
     }
   }
+  // The window is the pool's: the environment's arm opens one when its time comes (the pool's header follows at the next present).
+  if (trace.armed && !trace.env_fired && Qpc() >= trace.arm_ticks) {
+    trace.env_fired = true;
+    worker_pool::ArmTrace(std::max<uint32_t>(trace.frames, 1));
+  }
   if (trace.active) {
     trace.frame_list.push_back(
         {.call_ticks = trace.frame_call_ticks,
@@ -2335,11 +2349,10 @@ inline void Update(const Settings& settings) {
     trace.frame_compared = false;
     if (--trace.frames_left == 0) {
       trace.active = false;
-      trace.finished = true;
       std::array<wchar_t, MAX_PATH> exe = {};
       GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size()));
       const auto milliseconds = [](uint64_t ticks) { return static_cast<double>(ticks) * 1000.0 / static_cast<double>(qpc_frequency); };
-      std::string text = "Threaded Draw Recording trace\n";
+      std::string text = "Threaded Draw Recording trace\n" + trace.header + "\n";
       for (const FrameTrace& frame : trace.frame_list) {
         text += std::format("frame: calls {:.3f} ms ({}; trace-only work left out), present thread {} context_hooks' thread\n",
                             milliseconds(frame.call_ticks),
@@ -2434,15 +2447,32 @@ inline void Update(const Settings& settings) {
           text += "\n";
         }
       }
-      std::ofstream(std::filesystem::path(exe.data()).parent_path() / "tw_draw_recording.txt") << text;
+      std::ofstream(std::filesystem::path(exe.data()).parent_path()
+                    / (trace.windows == 1 ? std::string("tw_draw_recording.txt") : std::format("tw_draw_recording_{}.txt", trace.windows)))
+          << text;
       trace.calls.clear();
       trace.frame_list.clear();
     }
-  } else if (trace.armed && !trace.finished && Qpc() >= trace.arm_ticks) {
+  } else if (worker_pool::Tracing() && !trace.in_window && stage != Stage::OFF) {
+    // A pool window opened (its header was written by the pool's Update before this one): this window's trace, for its frames.
+    trace.in_window = true;
     trace.active = true;
-    trace.frames_left = std::max<uint32_t>(trace.frames, 1);
+    ++trace.windows;
+    trace.frames_left = worker_pool::TraceFramesLeft();
     // Room for a window's calls: a reallocation inside a timing frame would evict the caches before the timed phases.
     trace.calls.reserve(4096);
+    std::string groups;
+    for (uint32_t group = 0; group < GROUP_NAMES.size(); ++group) {
+      if (((settings.loops >> group) & 1) != 0) {
+        groups += std::format("{}{}", (groups.empty() ? "" : ", "), GROUP_NAMES[group]);
+      }
+    }
+    trace.header = std::format("window {} of {} frames: stage {}, groups on {}, B families {:#x}", trace.windows, trace.frames_left,
+                               STAGE_NAMES[static_cast<size_t>(stage)], (groups.empty() ? "none" : groups), settings.b_families);
+    renodx::utils::log::i("[Total War] Threaded Draw Recording trace " + trace.header + ".");
+  }
+  if (!worker_pool::Tracing()) {
+    trace.in_window = false;
   }
 
   config = {.stage = stage, .loops = settings.loops, .families = settings.b_families};

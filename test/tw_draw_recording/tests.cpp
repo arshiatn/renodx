@@ -480,7 +480,7 @@ static void PoolStopWithOpenJob() {
   REQUIRE(wp::Start({.work = GatedWork, .context = &gate, .user = wp::User::EFFECT_UPDATE, .join = wp::JoinRule::ALL}, 3));
   std::thread other([] { wp::Stop(); });
   other.join();
-  CHECK(wi::created == 3 && wi::pinned && LogHas("the module is pinned"));
+  CHECK(wi::created == 3 && wi::pinned && LogHas("Stop found the pool busy") && LogHas("the module is pinned"));
   // A second Stop says nothing more; the job still completes.
   gate.word.store(1, std::memory_order_release);
   gate.word.notify_all();
@@ -504,19 +504,24 @@ static void PoolStopHoldsBusy() {
   std::thread stopper([] { wp::Stop(); });
   for (int wait = 0; wait < 2000 && !wi::stopping.load(); ++wait) Sleep(1);
   REQUIRE(wi::stopping.load() && wi::busy.load());
-  wp::Update({.threads = 16, .in_use = true});
+  // A new env generation (and a trace window) while the other thread holds busy: nothing is read, and the header names the
+  // generation that was applied.
+  wp::ArmTrace(1);
+  wp::Update({.threads = 16, .in_use = true, .env_generation = 77});
+  CHECK(LogCount("env generation 77") == 0 && LogHas("env generation 0, limits"));
   CHECK(wi::busy.load() && wi::stopping.load() && wi::created == 3);
   CHECK(wp::Join().wait_ticks == 0 && wi::busy.load());
   wp::Stop();
   CHECK(wi::busy.load() && wi::created == 3);
   CHECK(wp::Available(wp::User::DRAW_RECORDING) == 0);
-  CHECK(LogHas("a job is open on another thread"));
+  CHECK(LogHas("a job or Stop on another thread holds the pool"));
   wi::controls.hold_exit = false;
   stopper.join();
   CHECK(wi::created == 0 && !wi::busy.load() && !wi::stopping.load() && wi::pool[0].thread == nullptr);
   CHECK(ProcessThreadCount() == baseline);
-  // The pool starts again afterwards.
-  wp::Update({.threads = 3, .in_use = true});
+  // The pool starts again afterwards, and the generation is read at the first Update that can.
+  wp::Update({.threads = 3, .in_use = true, .env_generation = 77});
+  CHECK(LogCount("(env generation 77):") == 1);
   CHECK(wi::created == 2 && wp::Available(wp::User::DRAW_RECORDING) == 2);
   wp::Update({.in_use = false});
   std::printf("pool: Stop on another thread keeps busy through the owner's Update / Join / Stop; no growth meanwhile, threads end once\n");
@@ -664,6 +669,12 @@ static void PoolEnvironment() {
   CHECK(wi::created == 7 && wp::Available(wp::User::DRAW_RECORDING) == 5 && wp::Available(wp::User::EFFECT_UPDATE) == 7);
   CHECK(wi::spin_ticks.load() == ticks_of(wi::DEFAULT_SPIN_US));
   CHECK(LogHas("(env generation 2): recording 6 effects 16 animation 16 sweep 16 ring 16, spin 3 us."));
+  // A spin over the limit is clamped, and the applied line shows the clamped value.
+  set_env(nullptr, "5000");
+  generation = 20;
+  update(8);
+  CHECK(wi::spin_ticks.load() == ticks_of(wi::MAX_SPIN_US));
+  CHECK(LogHas("(env generation 20): recording 16 effects 16 animation 16 sweep 16 ring 16, spin 1000 us."));
   // 1 is allowed and the work still runs, on the render thread alone.
   set_env("recording:1", nullptr);
   generation = 3;
@@ -690,9 +701,10 @@ static void PoolEnvironment() {
   REQUIRE(wp::Start({.work = GatedWork, .context = &gate, .user = wp::User::EFFECT_UPDATE, .join = wp::JoinRule::ENTERED}, 1));
   update(8);
   CHECK(!wi::busy.load() && wp::Available(wp::User::RING_FILL) == 1 && wp::Available(wp::User::EFFECT_UPDATE) == 7);
-  // No tear while idle workers spin: the spin is one 32-bit word, changed between two values at every present.
+  // The spin is one 32-bit word, changed between two values at every present. This cannot fail on x86 (an aligned 32-bit access
+  // is never torn, and both values have a zero upper half): it only keeps the .load() API of the word in place.
   const uint32_t low = ticks_of(3);
-  const uint32_t high = ticks_of(1000000);
+  const uint32_t high = ticks_of(wi::MAX_SPIN_US);
   std::atomic<bool> sampling{true};
   std::atomic<uint32_t> torn{0};
   std::thread sampler([&] {
@@ -702,7 +714,7 @@ static void PoolEnvironment() {
     }
   });
   for (int round = 0; round < 1500; ++round) {
-    set_env(nullptr, (round % 2 == 0 ? "1000000" : "3"));
+    set_env(nullptr, (round % 2 == 0 ? "1000" : "3"));
     ++generation;
     update(8);
     RunReport(7);
@@ -720,30 +732,35 @@ static void PoolEnvironment() {
   std::printf("pool: env limits and spin read again at a new generation with the pool running, the applied line, bad entries said once, no tear of the spin\n");
 }
 
-// ArmTrace: a header line at the next present (time and the pool's values), refusals counted and Tracing() true for the window.
+// ArmTrace (present thread only): the arm lands between two Updates, as the bench's does. Tracing() turns true at the Update that
+// writes the header, and the window is exactly its frames: counting from that Update to the one `frames` Updates later. 0 is ignored.
 static void PoolArmTrace() {
   wp::Update({.threads = 4, .in_use = true});
   const size_t headers = LogCount("Worker pool trace window");
   for (auto& count : wi::refused) count = 0;
   CHECK(!wp::Tracing());
-  wp::ArmTrace(2);
-  CHECK(wp::Tracing());
   const auto refused_ring = [] {
     std::thread other([] { wp::Available(wp::User::RING_FILL); });
     other.join();
     return wi::refused[static_cast<size_t>(wp::User::RING_FILL)].load();
   };
+  wp::ArmTrace(0);
+  wp::Update({.threads = 4, .in_use = true});
+  CHECK(!wp::Tracing() && LogCount("Worker pool trace window") == headers);
+  wp::ArmTrace(2);
+  // Not yet: the frame before the header is not part of the window.
+  CHECK(!wp::Tracing() && wp::TraceFramesLeft() == 0 && refused_ring() == 0);
   wp::Update({.threads = 4, .in_use = true});
   CHECK(LogCount("Worker pool trace window") == headers + 1 && LogHas("window of 2 presents") && LogHas("workers ready 3 of 3"));
   CHECK(LogHas("spin 3 us, env generation 0, limits recording 16 effects 16"));
-  CHECK(wp::Tracing() && refused_ring() == 1);
+  CHECK(wp::Tracing() && wp::TraceFramesLeft() == 2 && refused_ring() == 1);
   wp::Update({.threads = 4, .in_use = true});
-  CHECK(wp::Tracing() && LogHas("ring 1"));
+  CHECK(wp::Tracing() && wp::TraceFramesLeft() == 1 && LogHas("ring 1") && refused_ring() == 1);
   wp::Update({.threads = 4, .in_use = true});
   CHECK(!wp::Tracing() && LogCount("Worker pool trace window") == headers + 1);
   CHECK(refused_ring() == 0);
   wp::Update({.in_use = false});
-  std::printf("pool: ArmTrace: one header line, counting and Tracing() for the window, then off\n");
+  std::printf("pool: ArmTrace: no window before the header, then exactly the frames counted (2), one header line; 0 ignored\n");
 }
 
 // ---------------------------------------------------------------- part 2: the synthetic game
@@ -2035,37 +2052,41 @@ static void DepthTrace() {
   SetEnvironmentVariableA("RENODX_TW_DRAW_TRACE", "0,3");
   di::trace.read_environment = false;
   di::trace.armed = false;
-  di::trace.finished = false;
+  di::trace.env_fired = false;
+  di::trace.in_window = false;
+  di::trace.windows = 0;
   di::controls.compare_every_call = false;
   ResetWorld(world.get());
   const dr::Settings settings = {.stage = dr::Stage::WORKERS, .loops = 1};
+  // The environment's arm opens a pool window at its time; the pool's header and C's trace start at the next present.
   UpdateAt(6, settings);
-  CHECK(di::trace.armed);
+  CHECK(di::trace.armed && di::trace.env_fired && !di::trace.active);
   UpdateAt(6, settings);
-  CHECK(di::trace.active);
-  // Frames 1 and 2 of the trace are timed (no compare, no compare slot); the last one compares.
-  for (int frame = 0; frame < 2; ++frame) {
+  CHECK(di::trace.active && di::trace.frames_left == 3);
+  // Frames 1 and 2 of the trace are timed (no compare, no compare slot); the last of its 3 frames compares.
+  for (int frame = 0; frame < 3; ++frame) {
     const size_t calls_before = di::trace.calls.size();
     Driver(world.get(), [&](uint32_t begin, uint32_t end) { dr::DispatchDepth(NODE, nullptr, world->tracker.data(), &world->list, begin, end); });
     CHECK(di::trace.calls.size() > calls_before);
     for (size_t i = calls_before; i < di::trace.calls.size(); ++i) {
       const di::CallTrace& call = di::trace.calls[i];
-      CHECK(call.compared == (frame == 1));
-      CHECK((call.compare != 0) == (frame == 1 && call.chunks > 1));
+      CHECK(call.compared == (frame == 2));
+      CHECK((call.compare != 0) == (frame == 2 && call.chunks > 1));
       CHECK(call.run_scan != 0);
-      CHECK((call.compare_result == di::CompareResult::NONE) == !(frame == 1 && call.chunks > 1));
+      CHECK((call.compare_result == di::CompareResult::NONE) == !(frame == 2 && call.chunks > 1));
       CHECK(call.compare_result != di::CompareResult::DIFFERS);
     }
     UpdateAt(6, settings);
   }
   di::controls.compare_every_call = true;
-  CHECK(!di::trace.active && di::trace.finished);
+  CHECK(!di::trace.active && di::trace.windows == 1 && !wp::Tracing());
   std::ifstream stream(file, std::ios::binary);
   const std::string text_value((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
   CHECK(text_value.find("compare: equal") != std::string::npos);
   CHECK(text_value.find("compare: not run (timing frame)") != std::string::npos);
   CHECK(text_value.find(" timing\r\n") != std::string::npos && text_value.find(" compared\r\n") != std::string::npos);
   CHECK(text_value.find("frame:") != std::string::npos);
+  CHECK(text_value.find("window 1 of 3 frames: stage Workers, groups on Depth A") != std::string::npos);
   CHECK(text_value.find("K 6") != std::string::npos);
   CHECK(text_value.find("chunk items:") != std::string::npos);
   CHECK(text_value.find("group 0 family -") != std::string::npos);
@@ -2075,6 +2096,63 @@ static void DepthTrace() {
   stream.close();
   std::filesystem::remove(file);
   std::printf("depth: trace armed from the environment wrote the file (group, K, chunk sizes), compare equal\n");
+}
+
+// Two pool windows in a row (the bench's mt_trace twice): each starts C's trace for its frames and writes its own file, with the
+// window's values at its top; the second does not overwrite the first (the first is tw_draw_recording.txt, the nth is
+// tw_draw_recording_<n>.txt).
+static void DepthTraceWindows() {
+  const auto world = BuildWorld({.items = 6000, .seed = 16, .max_run = 12});
+  const std::filesystem::path dir = std::filesystem::path(__argv[0]).parent_path();
+  const std::filesystem::path first_file = dir / "tw_draw_recording.txt";
+  const std::filesystem::path second_file = dir / "tw_draw_recording_2.txt";
+  std::filesystem::remove(first_file);
+  std::filesystem::remove(second_file);
+  SetEnvironmentVariableA("RENODX_TW_DRAW_TRACE", nullptr);
+  di::trace.read_environment = true;
+  di::trace.armed = false;
+  di::trace.env_fired = false;
+  di::trace.active = false;
+  di::trace.in_window = false;
+  di::trace.windows = 0;
+  di::controls.compare_every_call = false;
+  ResetWorld(world.get());
+  const dr::Settings settings = {.stage = dr::Stage::WORKERS, .loops = 1};
+  const auto read_file = [](const std::filesystem::path& path) {
+    std::ifstream stream(path, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+  };
+  const size_t pool_headers = LogCount("Worker pool trace window of 2 presents");
+  UpdateAt(6, settings);
+  std::string first_text;
+  for (uint32_t window = 1; window <= 2; ++window) {
+    wp::ArmTrace(2);
+    UpdateAt(6, settings);
+    CHECK(wp::Tracing() && di::trace.active && di::trace.windows == window && di::trace.frames_left == 2);
+    CHECK(LogCount(std::format("Threaded Draw Recording trace window {} of 2 frames: stage Workers, groups on Depth A, B families 0xff.", window)) == 1);
+    for (int frame = 0; frame < 2; ++frame) {
+      const size_t calls_before = di::trace.calls.size();
+      Driver(world.get(), [&](uint32_t begin, uint32_t end) { dr::DispatchDepth(NODE, nullptr, world->tracker.data(), &world->list, begin, end); });
+      CHECK(di::trace.calls.size() > calls_before);
+      UpdateAt(6, settings);
+    }
+    CHECK(!di::trace.active && !wp::Tracing() && LogCount("Worker pool trace window of 2 presents") == pool_headers + window);
+    const std::string text_value = read_file(window == 1 ? first_file : second_file);
+    CHECK(text_value.find(std::format("window {} of 2 frames: stage Workers", window)) != std::string::npos);
+    CHECK(text_value.find("call: group 0") != std::string::npos);
+    CHECK(text_value.find(window == 1 ? "window 2" : "window 1") == std::string::npos);
+    if (window == 1) {
+      first_text = text_value;
+    } else {
+      CHECK(read_file(first_file) == first_text && !first_text.empty());
+    }
+  }
+  CHECK(LogCount("Threaded Draw Recording trace window") >= 2);
+  di::controls.compare_every_call = true;
+  wp::Update({.in_use = false});
+  std::filesystem::remove(first_file);
+  std::filesystem::remove(second_file);
+  std::printf("depth: two pool windows in a row: each started C's trace for its frames with C's values at its top, the second file (tw_draw_recording_2.txt) left the first alone\n");
 }
 
 // The Record rules the thunks rely on, called directly.
@@ -3848,15 +3926,18 @@ static void BTrace() {
   SetEnvironmentVariableA("RENODX_TW_DRAW_TRACE", "0,3");
   di::trace.read_environment = false;
   di::trace.armed = false;
-  di::trace.finished = false;
+  di::trace.env_fired = false;
+  di::trace.in_window = false;
+  di::trace.windows = 0;
   di::controls.compare_every_call = false;
   ResetBWorld(world.get());
   const dr::Settings settings = {.stage = dr::Stage::WORKERS, .loops = 12};
+  // The environment's arm opens a pool window at its time; the pool's header and C's trace start at the next present.
   UpdateAt(6, settings);
-  CHECK(di::trace.armed);
+  CHECK(di::trace.armed && di::trace.env_fired && !di::trace.active);
   UpdateAt(6, settings);
-  CHECK(di::trace.active);
-  for (int frame = 0; frame < 2; ++frame) {
+  CHECK(di::trace.active && di::trace.frames_left == 3);
+  for (int frame = 0; frame < 3; ++frame) {
     const size_t calls_before = di::trace.calls.size();
     BDriver(world.get(), [&](uint32_t first, uint32_t last) {
       dr::DispatchMesh(world->tracker.data(), B_DEVICE, &world->view, world->list_type, &synth_node, world->sorted.data(), first, last);
@@ -3864,9 +3945,9 @@ static void BTrace() {
     CHECK(di::trace.calls.size() > calls_before);
     for (size_t i = calls_before; i < di::trace.calls.size(); ++i) {
       const di::CallTrace& call = di::trace.calls[i];
-      CHECK(call.compared == (frame == 1));
+      CHECK(call.compared == (frame == 2));
       CHECK(call.group == dr::Group::COLOUR_B);
-      CHECK((call.compare_result == di::CompareResult::NONE) == !(frame == 1 && call.chunks > 1));
+      CHECK((call.compare_result == di::CompareResult::NONE) == !(frame == 2 && call.chunks > 1));
       CHECK(call.meshes > 0 && call.census_items + call.direct_items > 0 && call.round_meshes == call.meshes);
       uint32_t family_items = 0;
       uint32_t family_chunks = 0;
@@ -3877,7 +3958,7 @@ static void BTrace() {
     UpdateAt(6, settings);
   }
   di::controls.compare_every_call = true;
-  CHECK(!di::trace.active && di::trace.finished);
+  CHECK(!di::trace.active && di::trace.windows == 1 && !wp::Tracing());
   std::ifstream stream(file, std::ios::binary);
   const std::string text_value((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
   CHECK(text_value.find("group 3 family -") != std::string::npos);
@@ -4299,6 +4380,7 @@ int main() {
   DepthContinuation();
   DepthFallbacks();
   DepthTrace();
+  DepthTraceWindows();
   DepthControls();
   DepthNested();
   DepthBadOps();

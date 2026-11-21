@@ -64,7 +64,7 @@
 //
 // Per-user limits are batch-only: RENODX_TW_WORKER_LIMITS=recording:4,effects:8,animation:2,sweep:4,ring:4 (threads, the
 // render thread included, 1 to 16; 1 = the render thread alone). RENODX_TW_POOL_SPIN_US (default 3) is how long an idle worker
-// spins for its next job before it waits. Both are read with GetEnvironmentVariableA at the first present and again whenever
+// spins for its next job before it waits (at most 1000). Both are read with GetEnvironmentVariableA at the first present and again whenever
 // Settings::env_generation changes (the bench sets the variables, then bumps the generation), at an Update with no job open;
 // one line says what was applied, and an entry that does not parse is said once. ArmTrace(frames) opens one trace window with
 // a header line (time and the pool's values) for a bench trace. No CPU pinning of our own: each pool thread gets the sets
@@ -123,6 +123,7 @@ namespace internal {
 
 constexpr uint32_t WORKER_STACK_BYTES = 512 * 1024;
 constexpr uint32_t DEFAULT_SPIN_US = 3;
+constexpr uint32_t MAX_SPIN_US = 1000;
 constexpr size_t USER_COUNT = static_cast<size_t>(User::COUNT);
 constexpr size_t MAX_RECORDS = 1024;
 // The user names of RENODX_TW_WORKER_LIMITS and of the trace lines, in the order of User.
@@ -189,6 +190,8 @@ static uint32_t env_generation_applied = ~0u;
 static std::vector<std::string> bad_said;
 // A trace window: presents left, and the header line still to be written; the first present's time for it.
 static std::atomic<uint32_t> trace_frames = 0;
+// The frames ArmTrace asked for: they become `trace_frames` at the header's Update (present thread only).
+static uint32_t trace_armed_frames = 0;
 static bool trace_header_pending = false;
 static uint64_t first_update_ticks = 0;
 static bool open_logged = false;
@@ -281,16 +284,22 @@ static DWORD WINAPI WorkerMain(void* context) {
 
 }  // namespace internal
 
-// Opens one trace window of `frames` presents: the next Update writes a header line (time, the row, the ready workers, the
-// limits, the spin, the env generation), and Tracing() is true until the window ends. A bench trace of any user arms it.
+// Opens one trace window of `frames` presents (0: ignored); present thread only. ReShade fires the add-on's present, and with
+// it Update, before the effect runtime's present where test_hooks runs, so a bench arms between two Updates: the next Update
+// writes a header line (time, the row, the ready workers, the limits, the spin, the env generation) and only then does Tracing()
+// turn true, for exactly `frames` presents (the frames between that Update and the one `frames` Updates later).
 inline void ArmTrace(uint32_t frames) {
   using namespace internal;
+  if (frames == 0) return;
+  trace_armed_frames = frames;
   trace_header_pending = true;
-  trace_frames.store(frames, std::memory_order_relaxed);
 }
 
 // A trace window is open: users set Job::trace from it (and their own trace output).
 inline bool Tracing() { return internal::trace_frames.load(std::memory_order_relaxed) != 0; }
+
+// The presents the open window still has: 1 while its last frame runs.
+inline uint32_t TraceFramesLeft() { return internal::trace_frames.load(std::memory_order_relaxed); }
 
 // Workers this user may use now (0: run alone). 0 when the caller is not the owner (pool threads and game threads), when a job
 // is open or when the pool is empty; otherwise the ready workers, up to the user's limit less the render thread. While a trace
@@ -404,18 +413,18 @@ inline JoinResult Run(const Job& job, uint32_t workers, Part&& part) {
 
 // Ends the threads and joins them (Update with no user on, detach; never under the loader lock). Users then run alone, so it
 // does not depend on any site coming out. A job still open is joined first (the starting thread only). One open on another
-// thread keeps the pool as it is (its owner joins it later) and pins the module, so a thread that is still inside the work
+// thread keeps the pool as it is (its owner joins it later) and pins the module (so does any Stop that finds the pool busy), so a thread that is still inside the work
 // function never runs in unmapped code. Stop holds `busy` while it ends the threads: a Start meanwhile is refused.
 inline void Stop() {
   using namespace internal;
   Join();
   if (busy.exchange(true, std::memory_order_acquire)) {
-    if (created > 0 && !pinned) {
+    if (!pinned) {
       pinned = true;
       HMODULE module = nullptr;
       GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&WorkerMain),
                          &module);
-      renodx::utils::log::w("[Total War] Worker pool: stopped with a job open on another thread; the pool stays and the module is pinned.");
+      renodx::utils::log::w("[Total War] Worker pool: Stop found the pool busy (a job, a Stop or growth on another thread); the pool stays and the module is pinned.");
     }
     return;
   }
@@ -451,13 +460,13 @@ inline void Update(const Settings& settings) {
   if (first_update_ticks == 0) {
     first_update_ticks = Qpc();
   }
-  // A job still open here is joined first (only the thread that started it can: another thread's stays open and is said once).
+  // A job still open here is joined first (only the thread that started it can: another thread's job or Stop stays and is said once).
   if (busy.load(std::memory_order_acquire)) {
     Join();
     const bool still_open = busy.load(std::memory_order_acquire);
     bool& logged = (still_open ? other_open_logged : open_logged);
     if (!logged) {
-      renodx::utils::log::w(still_open ? "[Total War] Worker pool: a job is open on another thread."
+      renodx::utils::log::w(still_open ? "[Total War] Worker pool: a job or Stop on another thread holds the pool."
                                        : "[Total War] Worker pool: a job was still open at the present; joined.");
     }
     logged = true;
@@ -489,7 +498,8 @@ inline void Update(const Settings& settings) {
       microseconds = DEFAULT_SPIN_US;
       complain("RENODX_TW_POOL_SPIN_US=" + spin);
     }
-    spin_ticks.store(static_cast<uint32_t>(std::min<uint64_t>(qpc_frequency * microseconds / 1000000, ~0u)), std::memory_order_relaxed);
+    microseconds = std::min(microseconds, MAX_SPIN_US);
+    spin_ticks.store(static_cast<uint32_t>(qpc_frequency * microseconds / 1000000), std::memory_order_relaxed);
     // recording:4,effects:8,...
     const std::string list = read("RENODX_TW_WORKER_LIMITS");
     for (std::string_view rest = list; !rest.empty();) {
@@ -546,15 +556,16 @@ inline void Update(const Settings& settings) {
   // A trace window: the header at its first present, one present counted off at each later one.
   if (trace_header_pending) {
     trace_header_pending = false;
+    trace_frames.store(trace_armed_frames, std::memory_order_relaxed);
     SYSTEMTIME now = {};
     GetLocalTime(&now);
     std::string header = std::format(
         "[Total War] Worker pool trace window of {} presents at {:02}:{:02}:{:02}.{:03} ({:.1f} ms after the first present): threads {}, "
         "workers ready {} of {}, spin {} us, env generation {}, limits",
-        trace_frames.load(std::memory_order_relaxed), now.wHour, now.wMinute, now.wSecond, now.wMilliseconds,
+        trace_armed_frames, now.wHour, now.wMinute, now.wSecond, now.wMilliseconds,
         static_cast<double>(Qpc() - first_update_ticks) * 1000.0 / static_cast<double>(qpc_frequency), settings.threads,
         ready.load(std::memory_order_relaxed), created,
-        static_cast<uint64_t>(spin_ticks.load(std::memory_order_relaxed)) * 1000000 / qpc_frequency, settings.env_generation);
+        static_cast<uint64_t>(spin_ticks.load(std::memory_order_relaxed)) * 1000000 / qpc_frequency, env_generation_applied);
     for (size_t user = 0; user < USER_COUNT; ++user) {
       header += std::format(" {} {}", USER_KEYS[user], limits[user]);
     }
@@ -630,6 +641,7 @@ inline void Update(const Settings&) {}
 inline void Stop() {}
 inline void ArmTrace(uint32_t) {}
 inline bool Tracing() { return false; }
+inline uint32_t TraceFramesLeft() { return 0; }
 
 #endif
 
