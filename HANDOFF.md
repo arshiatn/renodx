@@ -5322,6 +5322,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         (dis_at.py on the allocators, +0x17D42A0 / +0x17D4420, +0x1810800 / +0x1812580) -> reports/bd3r_s8_1_review.md
         -> hp1i_ fixes -> S8-2.
         Agents: c3i_ (B1.2b), t4i_ (T1b), bd3r_ (S8-1 review) (3 of 3). QUEUE next slot: C.3-3.
+        t4i_ T1b DONE 09:3x (rmt_t1b 685aceedf on 56c99055d, local; reports/t4i_t1b_handback.md; +173 / -11 in addon.cpp,
+        test_hooks.hpp, test/tw_test_hooks): SET_FILE installs alone, set file joined into the same time-ordered loop (no
+        size limit, SET keeps 8 KB), both set / unreadable = ERROR line + nothing, env.<NAME>= (NULL clears, generation
+        bumped on success only), mt_trace=<N> strict, LiveHooks = Install's last default arg (other 15 call sites
+        unchanged), addon.cpp lambda bumps worker_env_generation + ArmTrace. Gated builds x86 x3 + amd64 all 16 includers
+        (Thrones / Troy / WH1-3 include it too) exit 0; tw_test_hooks x86 + amd64 PASS (setfile 807 entries, bothset,
+        nohooks, nofile). T4 side: new gates rows, corpus 100 lines, ebr_ nits 1-3 fixed, run_all 609 / 0. Notes: "armed"
+        logged even when the pool ignores the arm (ArmTrace void); Tales frame_trace.hpp:402 doesn't read SET_FILE.
+        ebr_ RESUMED 09:3x: Opus xHigh review of T1b -> reports/ebr_t1b_review.md -> t4i_ fixes -> merge (addon.cpp token).
+        Agents: c3i_ (B1.2b), bd3r_ (S8-1 review), ebr_ (T1b review) (3 of 3). QUEUE next slot: C.3-3.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
