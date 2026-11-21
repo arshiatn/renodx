@@ -80,7 +80,7 @@ struct SiteInfo {
   Copy copy = Copy::LIST_ITEMS;
 };
 
-constexpr size_t PatternSize(std::string_view pattern) { return (pattern.size() + 1) / 3; }
+using effect_update::PatternSize;  // the byte count of a pattern (the effect update's sites own the formula)
 
 // The Steam build's RVAs (nothing else is supported: another build fails the bytes check and the row stays out).
 constexpr std::array<CopyInfo, COPY_COUNT> COPIES = {{
