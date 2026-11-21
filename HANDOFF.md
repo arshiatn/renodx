@@ -5529,6 +5529,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         USAGE LIMIT ~11:3x stopped all 3 agents; RESUMED 13:0x. c33i_ had rmt_c34 edf35684d (C.3-3 review fixes) +
         0743e9896 (RECORDING_SITES 39 -> 59 alone), C.3-4 next; t4i_ had uncommitted test_hooks / tw_test_hooks edits;
         b13r_ review not yet written.
+        b13r_ B1.3 REVIEW DONE 13:1x (reports/b13r_l1_review.md): NOT YET - 2 Musts: M1 per-present log lines all
+        session (serial_rounds, longest wait, FOREIGN_HITS, FAILED_ROUNDS, wrong trace-window label); M2 partial
+        install (found &= ~stood_down lets 26 of 27 sites in; walk_armed unchecked). 11 Shoulds + 8 Nits. Confirmed:
+        thunks byte level, relocated-word skip exact, 5 IGNORED_SOURCES + 35 HOOKED_ENTRIES, PausedWrite, Uninstall pin,
+        heapfix clearance of all 27 sites (heapfix checks once at DLL load -> B1 can never make it refuse). Re-runs
+        exit 0 (FULL, part 26 x5, part 25 x3, 3 C suites, gated builds). S4 (shared heapfix table) = Must at B1.5
+        (EPOCH +0x192D290/6 ends where check row +0x192D296 starts).
+        c3i_ RESUMED 13:1x: M1, M2, S1-S3 (S3 rel32-only at run time), S5-S11 (S10 built or written deferral), N1-N8 on
+        rmt_b12a -> b13r_ re-check. S4 deferred to B1.5.
+        [ ] c33i_ commit 4 on rmt_c34 (after C.3-4): C's heapfix tables -> one shared header, COMPLETED from prep 05b9a5c
+        (C's table also lacked heightcache, campfix, texfix + check, sortfix x2, uikeep + 3 checks; bd1r_ only caught
+        loopfetch) -> bd1r_ reviews all 4 commits. [ ] B1.5: c3i_ switches B1 to the shared header (S4 Must).
+        Agents: c33i_ (C.3-4 + shared table), t4i_ (T1b follow-ups + ebo_ lane), c3i_ (B1.3 fixes) (3 of 3). b13r_,
+        bd1r_ idle until hand-backs. QUEUE: bd1r_ C.3-4 review, b13r_ re-check, B1.4 / B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
