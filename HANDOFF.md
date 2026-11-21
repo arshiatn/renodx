@@ -5122,6 +5122,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         per line, cut at ;, trim CR. If a hang / not-restored end ever happens: hold GPU jobs until that game is gone.
         t4i_ RESUMED 05:3x: M1-M6 + S1-S7 + nits + manifest additions -> ebr_ re-check.
         Agents: c3i_ (FULL run), bd3o_, t4i_ (3 of 3).
+        bd3o_ S0-ter + S8a DONE 05:3x (reports/bd3o_design_S8a.md, 478 lines; dis_at.py only, its helper
+        s0ter_words.py only reformats dis_at.py output - checked): instances key writers 0x1833B80 / 0x1833C30 /
+        0x1833D00 (+0x48 / +0x4C), two 0x186BD60 producers proven; main-kind producers NOT proven -> instances presort
+        check-only in MODE 1 / 2, commits only in MODE 3 with check + put-back, INST_KEYS_PROVEN 0 until the S8
+        reviewer reads every scanned caller; reads fault-safe (pool_owns both ends + munmap interlock), commit needs the
+        node's P3 sequence number; P4 +0x192D2DA + P3 0x1811F00 clean of every other site; NEW: add-on LIST_PUSH
+        patches +0x176CFC1 inside 0x176CED0 -> heapfix FNV row ends at +0x176CFC0. S8a: NM1-NM3, Shoulds 1-5, S7 §5
+        1-8, live_apply waits / aborts SLOT_PRESORT, PROBE one frame re-armed per generation (300-frame cap), EARLY
+        check MODE 3 + put-back, new LATCH "PRESORT CHECK MISMATCH", 19 cases + 8 controls + whole-DLL branch / reloc /
+        caller scan in prepare_test. GO for S8: bd3r_ pass, lane H free, scan before P3 / P4 bytes (0 interior hits or
+        pinned), INST_KEYS_PROVEN 0, refuses without the heap part. Size ~+450 / +15 / +500.
+        bd3r_ RESUMED 05:3x: review of S8a (+ told its own DLL scan does not count; dis_at.py only).
+        Agents: c3i_ (FULL run), t4i_, bd3r_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
