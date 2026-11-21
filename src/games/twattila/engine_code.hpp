@@ -28,6 +28,7 @@
 #include "../../utils/log.hpp"
 #include "../twrome2/engine_tweaks.hpp"
 #include "./animation_rows.hpp"
+#include "./effect_update_sites.hpp"
 #include "./pending_sweep.hpp"
 #if defined(TWATTILA_DRAW_RECORDING)
 #include "./draw_recording.hpp"
@@ -65,10 +66,12 @@ enum class Game : uint8_t { ATTILA, THRONES, ROME2 };
 
 // What the worker sites are asked for (Update's last argument): the animation update's call of the animation texture
 // fill goes through animation_rows::Dispatch while `animation` is not OFF; the pending list sweep's entry goes through
-// pending_sweep::Arm while `pending_sweep_trace` is set (a bench's RENODX_TW_WORKER_TRACE, never a player's).
+// pending_sweep::Arm while `pending_sweep_trace` is set (a bench's RENODX_TW_WORKER_TRACE, never a player's); the effect
+// update's 27 sites (effect_update_sites.hpp: their own table, written in the same window) while `effect_update` is set.
 struct WorkerRows {
   animation_rows::Stage animation = animation_rows::Stage::OFF;
   bool pending_sweep_trace = false;
+  bool effect_update = false;
 };
 
 #if !defined(_WIN64)
@@ -1823,20 +1826,29 @@ constexpr uint32_t MAX_FAILED_WRITES = 30;
 // the thunks' page (the arena size, 0 once none is in, sends every thunk the direct way). The worker sites (WORKER_SITES) are
 // cut sites too: one comes out only while no call through its stub is in flight and no thread is in the stubs.
 inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recording_patched = 0,
-                        uint64_t* recording_stood_down = nullptr) {
+                        uint64_t* recording_stood_down = nullptr, uint32_t effect_patched = 0, uint32_t* effect_stood_down = nullptr) {
+  namespace eu = effect_update::internal;
   const std::array<std::span<Site>, 2> tables = {std::span<Site>(sites), std::span<Site>(recording_sites)};
   const std::array<uint64_t, 2> wanted = {patched, recording_patched};
   const std::array<uint64_t, 2> changing = {(patched ^ written) & found,
                                             (recording_patched ^ recording_written) & recording_found};
   const bool recording_out = (changing[1] & ~wanted[1]) != 0;
+  // The effect update's sites: their own table (sites of up to 11 bytes), whole or not at all.
+  const uint32_t effect_changing = (effect_patched ^ eu::written) & eu::found;
+  const bool effect_out = (effect_changing & ~effect_patched) != 0;
   // The cuts with a site coming out. The thunks' direct paths run on every flush of the game, on any thread, and
   // draw_recording frees its memory and releases its module after the last removal: a thread anywhere in the page then
   // is not clear. A partial removal only waits for the cut stubs.
-  const std::array<std::pair<CutRange, bool>, 2> cuts = {{
+  // The effect update's thunks count the threads in their slow paths (and in the game's calls they make), and any thread
+  // anywhere in the page may be about to enter one: the whole page.
+  const std::array<std::pair<CutRange, bool>, 3> cuts = {{
       {worker_cut, (changing[0] & ~wanted[0] & WORKER_SITES) != 0},
-      {{recording_cut.begin, (recording_patched == 0 ? recording_page_end : recording_cut.end), recording_cut.active}, recording_out}}};
+      {{recording_cut.begin, (recording_patched == 0 ? recording_page_end : recording_cut.end), recording_cut.active}, recording_out},
+      {{eu::page, eu::page_end, (eu::data != nullptr ? &eu::data->active : nullptr)}, effect_out}}};
   std::array<uint64_t, 2> stood = {};
+  uint32_t effect_stood = 0;
   *stood_down = 0;
+  if (effect_stood_down != nullptr) *effect_stood_down = 0;
   std::vector<HANDLE> threads;
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
   if (snapshot == INVALID_HANDLE_VALUE) return false;
@@ -1870,6 +1882,12 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
         }
       }
     }
+    for (size_t index = 0; index < effect_update::SITE_COUNT; ++index) {
+      const auto start = reinterpret_cast<uintptr_t>(eu::sites[index].at);
+      if ((effect_changing >> index & 1) != 0 && context.Eip > start && context.Eip < start + eu::sites[index].size) {
+        clear = false;
+      }
+    }
     for (const auto& [cut, out] : cuts) {
       if (out && context.Eip >= reinterpret_cast<uintptr_t>(cut.begin) && context.Eip < reinterpret_cast<uintptr_t>(cut.end)) {
         clear = false;
@@ -1893,6 +1911,17 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
           stood[table] |= uint64_t{1} << index;
         }
       }
+    }
+    for (size_t index = 0; index < effect_update::SITE_COUNT; ++index) {
+      const eu::PatchedSite& site = eu::sites[index];
+      const auto& expected = ((eu::written >> index & 1) != 0 ? site.patch : site.game);
+      if ((effect_changing >> index & 1) != 0 && std::memcmp(site.at, expected.data(), site.size) != 0) {
+        effect_stood |= 1u << index;
+      }
+    }
+    // The sites go in whole or not at all: one site's bytes that are not the game's stand them all down.
+    if ((effect_stood & effect_changing & effect_patched) != 0) {
+      effect_stood |= effect_changing;
     }
     const std::array<uint64_t, 2> going_in = {changing[0] & wanted[0], changing[1] & wanted[1]};
     if ((stood[0] & JOB_SITES) != 0) stood[0] |= JOB_SITES & going_in[0];
@@ -1969,6 +1998,38 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
         if (!prepared_page) VirtualProtect(site.at, SITE_SIZE, protection, &protection);
       }
     }
+    // The effect update's sites: every page made writable first, and a failure going in puts back the ones made (none is written).
+    std::array<DWORD, effect_update::SITE_COUNT> effect_protection = {};
+    uint32_t effect_writable = 0;
+    const auto restore_effect_protections = [&]() {
+      for (size_t done = effect_update::SITE_COUNT; done-- > 0;) {
+        DWORD ignored;
+        if ((effect_writable >> done & 1) != 0) {
+          VirtualProtect(eu::sites[done].at, eu::sites[done].size, effect_protection[done], &ignored);
+        }
+      }
+    };
+    for (size_t index = 0; index < effect_update::SITE_COUNT; ++index) {
+      if (((effect_changing & ~effect_stood) >> index & 1) == 0) continue;
+      if (VirtualProtect(eu::sites[index].at, eu::sites[index].size, PAGE_EXECUTE_READWRITE, &effect_protection[index]) != FALSE) {
+        effect_writable |= 1u << index;
+        continue;
+      }
+      if ((effect_patched >> index & 1) != 0) {
+        restore_effect_protections();
+        effect_writable = 0;
+        effect_stood |= effect_changing;
+        break;
+      }
+      effect_stood |= 1u << index;
+    }
+    for (size_t index = 0; index < effect_update::SITE_COUNT; ++index) {
+      if ((effect_writable >> index & 1) == 0) continue;
+      const eu::PatchedSite& site = eu::sites[index];
+      const auto& bytes = ((effect_patched >> index & 1) != 0 ? site.patch : site.game);
+      std::memcpy(site.at, bytes.data(), site.size);
+    }
+    restore_effect_protections();
     restore_protections();
     FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
   }
@@ -1978,6 +2039,7 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
   }
   *stood_down = static_cast<uint32_t>(stood[0]);
   if (recording_stood_down != nullptr) *recording_stood_down = stood[1];
+  if (effect_stood_down != nullptr) *effect_stood_down = effect_stood;
   return clear;
 }
 
@@ -1998,17 +2060,17 @@ inline void SyncWorkerSlots(uint32_t live) {
   set(&worker_data->sweep_slot, (live & WORKER_SWEEP_BIT) != 0, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&pending_sweep::Arm)));
 }
 
-// A worker site that did not come out cleanly (a game thread kept running it, or another mod's bytes are over our jump
-// and its hook may still lead to our stub) keeps the stubs and this module's Dispatch and Arm reachable: the module
-// stays loaded for the life of the process (the pages are never freed either).
+// A worker or effect update site that did not come out cleanly (a game thread kept running it, or another mod's bytes
+// are over our jump and its hook may still lead to our stub) keeps the stubs and this module's Dispatch, Arm and handler
+// reachable: the module stays loaded for the life of the process (the pages are never freed either).
 inline void PinModule() {
   if (module_pinned) return;
   module_pinned = true;
   HMODULE ignored = nullptr;
   GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&PinModule), &ignored);
   renodx::utils::log::w(
-      "[Total War] Worker sites: one could not be taken out cleanly (a game thread kept running it, or another mod's hook may still "
-      "lead to our stub), so the module stays loaded.");
+      "[Total War] Sites that call into this module: one could not be taken out cleanly (a game thread kept running it, or another "
+      "mod's hook may still lead to our stub), so the module stays loaded.");
 }
 
 // Once: the routines found and checked, the stubs built in the page, each site's jump made (nothing written to the
@@ -2379,6 +2441,13 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     if (module == nullptr) return;
     internal::Prepare(module, internal::BUILDS[static_cast<size_t>(game)]);
   }
+  namespace eu = effect_update::internal;
+  if (worker_rows.effect_update && game == Game::ATTILA && !eu::prepared) {
+    if (HMODULE module = GetModuleHandleW(L"empire.retail.dll"); module != nullptr) {
+      effect_update::Prepare(module);
+    }
+  }
+  const uint32_t effect_wanted = (game == Game::ATTILA ? effect_update::Wanted(worker_rows.effect_update) : 0u);
 #if defined(TWATTILA_DRAW_RECORDING)
   if (draw_recording_groups != 0 && game == Game::ATTILA && !internal::recording_prepared) {
     if (HMODULE module = GetModuleHandleW(L"empire.retail.dll"); module != nullptr) {
@@ -2398,9 +2467,10 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
 #if defined(TWATTILA_ENGINE_PROBE)
   internal::probe::Tick(internal::written);
 #endif
-  if (wanted != internal::asked || recording_wanted != internal::recording_asked) {
+  if (wanted != internal::asked || recording_wanted != internal::recording_asked || effect_wanted != eu::asked) {
     internal::asked = wanted;
     internal::recording_asked = recording_wanted;
+    eu::asked = effect_wanted;
     internal::failed_writes = 0;
   }
   if (jobs && internal::prepared && (internal::found & internal::JOB_SITES) == 0 && !internal::job_missing_logged) {
@@ -2421,13 +2491,17 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   const uint32_t target = wanted & internal::found;
   const uint64_t recording_target = recording_wanted & internal::recording_found;
   internal::SyncWorkerSlots(internal::written & target);  // a site leaving: its word first
-  if ((target == internal::written && recording_target == internal::recording_written)
+  if (effect_wanted == 0 && eu::written != 0) {
+    effect_update::Disarm();  // the effect update's sites leaving: no thread enters a slow path from now on
+  }
+  if ((target == internal::written && recording_target == internal::recording_written && effect_wanted == eu::written)
       || internal::failed_writes >= internal::MAX_FAILED_WRITES) {
     return;
   }
   uint32_t stood_down = 0;
   uint64_t recording_stood_down = 0;
-  if (internal::PausedWrite(target, &stood_down, recording_target, &recording_stood_down)) {
+  uint32_t effect_stood_down = 0;
+  if (internal::PausedWrite(target, &stood_down, recording_target, &recording_stood_down, effect_wanted, &effect_stood_down)) {
     const uint32_t changing = target ^ internal::written;
     const uint32_t now = (internal::written & ~changing) | (target & changing & ~stood_down);
     const uint32_t changed = now ^ internal::written;
@@ -2437,6 +2511,21 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     }
     internal::written = now;
     internal::SyncWorkerSlots(now & target);  // a site that went in: its word now
+    // The effect update's sites (all found or none): a site that stood down on its way out may still chain to our thunk.
+    const uint32_t effect_changing = (effect_wanted ^ eu::written) & eu::found;
+    const uint32_t effect_now = (eu::written & ~effect_changing) | (effect_wanted & effect_changing & ~effect_stood_down);
+    if ((effect_stood_down & effect_changing & ~effect_wanted & eu::written) != 0) {
+      internal::PinModule();
+    }
+    if (effect_now != eu::written) {
+      renodx::utils::log::i("[Total War] Parallel Effect Update sites: ", (effect_now != 0 ? "in" : "out, the game's own code back"));
+    }
+    if (effect_stood_down != 0) {
+      renodx::utils::log::w("[Total War] Parallel Effect Update sites: left alone (their bytes changed since the start: another mod, ",
+                            "or a page that could not be made writable)");
+    }
+    eu::written = effect_now;
+    eu::found &= ~effect_stood_down;
 #if defined(TWATTILA_ENGINE_PROBE)
     internal::probe::LogSites(internal::sites, now);
 #endif
@@ -2499,6 +2588,13 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     if (recording_target != internal::recording_written) {
       renodx::utils::log::w("[Total War] Threaded Draw Recording: not written, a game thread kept running the code");
     }
+    if (effect_wanted != eu::written) {
+      renodx::utils::log::w("[Total War] Parallel Effect Update sites: not written, a game thread kept running the code");
+      // A site that cannot come out stays reachable.
+      if (((effect_wanted ^ eu::written) & eu::written) != 0) {
+        internal::PinModule();
+      }
+    }
   }
 }
 
@@ -2518,15 +2614,19 @@ inline const char* ModelDetailStatus(float model_detail) {
 // Addon detach: the game's bytes back. The page stays (a thread may still be in it), so the jumps are safe to leave in
 // the game's code if no attempt finds the threads clear: the stubs need nothing of this module.
 inline void Uninstall() {
+  namespace eu = effect_update::internal;
   internal::SyncWorkerSlots(0);
-  for (int attempt = 0; (internal::written != 0 || internal::recording_written != 0) && attempt < 100; ++attempt) {
+  effect_update::Disarm();
+  for (int attempt = 0; (internal::written != 0 || internal::recording_written != 0 || eu::written != 0) && attempt < 100; ++attempt) {
     uint32_t stood_down;
     uint64_t recording_stood_down;
-    if (internal::PausedWrite(0, &stood_down, 0, &recording_stood_down)) {
-      if ((stood_down & internal::written & internal::WORKER_SITES) != 0) {
+    uint32_t effect_stood_down;
+    if (internal::PausedWrite(0, &stood_down, 0, &recording_stood_down, 0, &effect_stood_down)) {
+      if ((stood_down & internal::written & internal::WORKER_SITES) != 0 || (effect_stood_down & eu::written) != 0) {
         internal::PinModule();
       }
       internal::written = 0;  // a site another mod changed is that mod's now
+      eu::written = 0;
       // The recording thunks need this module and Shared: a site left behind keeps them alive.
       if ((recording_stood_down & internal::recording_written) != 0) {
         internal::recording_left_in = true;
@@ -2536,8 +2636,8 @@ inline void Uninstall() {
       Sleep(1);
     }
   }
-  if (internal::written != 0) {
-    if ((internal::written & internal::WORKER_SITES) != 0) {
+  if (internal::written != 0 || eu::written != 0) {
+    if ((internal::written & internal::WORKER_SITES) != 0 || eu::written != 0) {
       internal::PinModule();
     }
     renodx::utils::log::w("[Total War] Faster Game CPU Code: left in at detach (a game thread kept running it)");

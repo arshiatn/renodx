@@ -109,6 +109,16 @@
 //    pinned, the stub alone and the whole function against the game's with the distance multiplied (every register, the flags, x87 / MXCSR / xmm, esp, the stack) at 14 sliders
 //    and any MXCSR, the slider moved with 4 threads calling, a parked thread at each byte, the status words, another mod's bytes, the pattern not found, CONTROLs (mutants of the stub
 //    and a restore left out) that must be seen, timing; `tests.exe <dll> quick lod` runs it alone.
+// 25. The Parallel Effect Update's 27 sites (src/games/twattila/effect_update_sites.hpp; engine_code.hpp PausedWrite's third table; effect_sites.inc; Attila only): the table and
+//    the whole code section scanned for a branch into a site, the sites in and out (whole or not at all, another mod's bytes), every thunk as built (the original path equal to the
+//    game's own instructions, the slow path's Frame, the state kept through a handler that clobbers xmm / x87 / MXCSR, the answers, the E8 sites' callee), the fast path's one word,
+//    the slow path's stack, the real sites with a handler, a parked thread at each byte, the count, 200 switches under 4 threads, CONTROLs (a torn low / high pair, no fxsave);
+//    `tests.exe <dll> quick effect` runs it alone.
+// 26. The Parallel Effect Update's scheduler (src/games/twattila/effect_update.hpp; effect_update.inc; Attila only): rounds on the real worker pool over a fake game (effects, a node
+//    table, instances whose update is a script of order-point operations, a sweep, forwarded calls into stubs on a fake image) against the game's loop: equal logs, shared words,
+//    vectors and table, no two direct units at once; each script, children and new types (late units and segments), tiny effects with children into the next (no deadlock),
+//    an allocation failure at every block, the serial reasons, the census, the watched words, the stack, CONTROLs (no order points, no enumeration wait, late child off,
+//    forwarding off, sweeps on workers, no epoch); `tests.exe <dll> quick effect_update` runs it alone.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -140,6 +150,7 @@
 #include <vector>
 
 #include "src/games/twattila/engine_code.hpp"
+#include "src/games/twattila/effect_update.hpp"
 
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (false)
 
@@ -2448,6 +2459,12 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
 // The pending list sweep's trace (part 24): the entry site's stub, the trace-only Arm.
 #include "pending_sweep_split.inc"
 
+// The effect update's sites (part 25): the table, the thunks as built, the fast path's word, the stack, parked threads, switching.
+#include "effect_sites.inc"
+
+// The effect update's scheduler (part 26): rounds against the game's loop on a fake game, the late units and segments, the failure order, the census, the controls.
+#include "effect_update.inc"
+
 #if defined(TWATTILA_ENGINE_PROBE)
 // The probe build (part 21, `probe` alone): the probe stubs in front of the production stubs, each alone, parts 19 and 20 through them.
 #include "engine_probe.inc"
@@ -2620,6 +2637,18 @@ int main(int argc, char** argv) {
     if (const int failed = RunAnimationRowsTests(build, game, patched, quick); failed != 0) return failed;
     if (const int failed = RunPendingSweepTests(build, game, patched, quick); failed != 0) return failed;
     std::printf("PASS (workers only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "effect") {
+    twattila::engine_code::Update(false);
+    if (const int failed = RunEffectSitesTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
+    std::printf("PASS (effect only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "effect_update") {
+    twattila::engine_code::Update(false);
+    if (const int failed = RunEffectUpdateTests(build, patched, quick); failed != 0) return failed;
+    std::printf("PASS (effect update only)\n");
     return 0;
   }
   if (argc > 3 && std::string(argv[3]) == "sweep" && build.code->sweep_rva != 0) {
@@ -3628,6 +3657,8 @@ int main(int argc, char** argv) {
   // 23. 24. The worker sites (Animation Rows on Workers, the Pending Sweep trace): the cut stubs, the cut rule, the pin, the pass-through and the trace-only Arm.
   if (const int failed = RunAnimationRowsTests(build, game, patched, quick); failed != 0) return failed;
   if (const int failed = RunPendingSweepTests(build, game, patched, quick); failed != 0) return failed;
+  if (const int failed = RunEffectSitesTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
+  if (const int failed = RunEffectUpdateTests(build, patched, quick); failed != 0) return failed;
 
   // 13. Another mod's bytes in a site after the start: that site is not touched, nothing that goes in on the strength of it is
   // (the three job sites; the half rows after the half function), the rest is, and the site is left alone from then on.
