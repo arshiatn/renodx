@@ -5196,6 +5196,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         test, reloc assert over all rows + test 27, report items, all stop conditions incl. Must 1) -> verbatim output ->
         COORDINATOR OK before S8-1b.
         Agents: t4i_, c3i_ (waiting on its run), hp1i_ (3 of 3).
+        hp1i_ S8-1a STOP 08:3x (THE STOP POINT WORKED; scan edit in tests\prepare_test.c UNCOMMITTED, keeps FAIL; scan
+        output scratchpad\scan1.out): the instances entry reset +0x189B9A0 has 4 rel32 callers, not 1: +0x1811736 (jmp
+        in thunk +0x1811730: add ecx,0xb38), +0x1811FCA (P3'), +0x1812426 + +0x18124E8 (one function: per-object list
+        clears). 0 relocated refs. Every other stop condition 0: interior branch hits 0 of 2350554, relocated dwords
+        into sites 0, relocs in the 26 old rows 0, P3 refs only 0x1CBFC50, walk callee only +0x192D2DA; the 10 new
+        rows 0 relocs (FNVs printed for S8-1b); test 27 control fails as it should. Options: (a) invalidate at the 3
+        sites, (b) move the invalidation into the reset +0x189B9A0 itself, (c) prove teardown-only and pin, or drop the
+        instances presort. hp1i_ RESUMED 08:3x: LOOK FURTHER first (function start of +0x1812426, callers +
+        relocated refs 2 levels up incl. .rdata vtable neighbourhood, the WEIGHTED reset's callers outside P3, a
+        per-frame vs teardown reading of each caller) -> then bd3o_ decides (a / b / c / drop) -> bd3r_ check.
+        t4i_ T4 ROUND 2 DONE 08:3x ("Round 2" in reports/t4i_handback.md; run_all 472 assertions, 0 failures): M1 one
+        crash budget + Q5 true + pinned continuation with part Off (lost segments logged), M2 restore_pending.txt
+        (+ backup_map.txt from the bench), M3 resumable stops vs final ends, M4 L_mem, M5 regexes on the real strings +
+        corpus.json (63 lines, 44 real) asserted, M6, S1-S7, nits, manifest fields, job_line map, WORKER_TRACE pair
+        check, presort placeholders + EARLY check rule. OPEN: real segments.json WARNs at prep 236a473 (EARLY / PROBE
+        parsed only) -> expected until S8 is in the frozen prep; if S8 stops, those segments change at T5.
+        ebr_ RESUMED 08:3x: re-check of T4 round 2.
+        Agents: hp1i_, c3i_ (waiting on its run), ebr_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
