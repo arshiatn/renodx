@@ -5797,6 +5797,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         bd1r_ RESUMED 16:2x: re-check -> append to reports/bd1r_c34_review.md -> merge rmt_c34.
         Agents: x0i_ (X0), b13r_ (B1.4 re-check), bd1r_ (C.3-4 re-check) (3 of 3). QUEUE: merges rmt_c34 + rmt_b14,
         t4i_ LOGX case + nit, ebr_ T4 confirm, B1.5 (c3i_, after both merges), ebr_ X0 review.
+        bd1r_ C.3-4 RE-CHECK DONE 16:5x (reports/bd1r_c34_review.md from line 216): MERGE c44c27ce4, no Musts / Shoulds.
+        groups_in deviation equivalent + safe (both config.loops readers get the mask; row bits kept for warning /
+        trace / SiteGroups); loop test 7 stack bug hid nothing (same counts); S1 table complete vs 05b9a5c; LOGX 3 forms
+        byte-exact, gates first-match: 7.0 / split / x87c -> INFO cpu_code_x87, one-byte controls -> ROWFAIL. Optional
+        nits R1-R5 (6e DispatchMesh half not decisive; 'sites out' trace reason; test 9 printf; groups_in default ~0u
+        not fail-safe; loop test 7 canary) -> [ ] c33i_ later, low priority.
+        MERGED 17:0x: rmt_c34 -> atn-mods 406fe6d16 (name_check 1587 ids / 63 generic + lua_State in a comment = Lua API;
+        engine_code.hpp + tw_engine_code/tests.cpp auto-merged with B1; gated x86 x3 + amd64 exit 0; pushed).
+        [ ] FULL on the merged tree: c3i_ runs it first in B1.5.
+        t4i_ RESUMED 17:0x: LOGX test_check / corpus cases (split + x87c -> INFO, old real line stays ROWFAIL) + ebr_
+        round 7 cosmetic nit -> ebr_ confirms T4 ready.
+        Agents: x0i_ (X0), b13r_ (B1.4 re-check), t4i_ (LOGX case) (3 of 3). QUEUE: merge rmt_b14, ebr_ T4 confirm, B1.5
+        (c3i_), ebr_ X0 review.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
