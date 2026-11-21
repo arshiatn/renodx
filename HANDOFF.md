@@ -6164,6 +6164,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: t4i_ (T3), c33i_ (part 2b), bd3r_ (R2 v3 re-check) (3 of 3). QUEUE: bd1r_ R-S3 re-check + merge
         rmt_rs2b, ebr_ T3 review, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, R-S5, S0 GPU review
         (filler), unified PT design.
+        bd3r_ R2 v3 RE-CHECK DONE 21:2x (reports/bd3r_review.md line 539): GO FOR R-S5, no Musts. All 10 v3 items right.
+        Start condition: part 2b's hook-up commit on rmt_rs2b (+ S2 tw_engine_code cases) merged first. For the R-S5
+        implementer: Should = the plain build (no TWATTILA_DRAW_RECORDING): stub rows, UNMAP_ENTRIES, UnmapEntry<k>, fold
+        group, fold_fill + the open under the macro, SITE_COUNT 4 without it, pinned by a static_assert or one plain
+        compile; Nits 1-4 (rmt_rs2b already has groups + stand_group_down: add the fold group, drop the break; Wanted's
+        loop skips the fold group, row_on = R1's group; test 4 uses control_fail_protect; names TouchesAny ->
+        VisitRanges, BranchesInto).
+        s0r_ (fresh Opus xHigh) STARTED 21:2x: S0 GPU plan filler = read-only review of plan_1117/gto_design.md (+
+        addendum) + plan.md FORGE'S INPUT -> plan_1117/s0r_review.md + 'questions ATN must answer before S1'.
+        Agents: t4i_ (T3), c33i_ (part 2b), s0r_ (S0 GPU review) (3 of 3). QUEUE: bd1r_ R-S3 re-check + merge rmt_rs2b,
+        ebr_ T3 review, R-S5 (c33i_, Sonnet High, serial, after rmt_rs2b merges) -> bd3r_ / Opus xHigh review, B1.6 (+
+        N5 real-routine tests + b13r_'s half-rows R2), X1, unified PT design (after S0).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
