@@ -5309,6 +5309,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         need a change) -> B1.3 Opus xHigh review of L1 (B1.2a + B1.2b). C.3-3 (draw_recording*.hpp +
         test/tw_draw_recording, + c32r_ S-1 / N-1..N-4; no engine_code.hpp, no addon.cpp) -> next free slot.
         Agents: c3i_ (B1.2b), hp1i_ (S8-1b), t4i_ (T1b) (3 of 3).
+        hp1i_ S8-1b DONE 09:2x (prep 36a7766 on 99a9a01, local; reports/hp1i_s8_1b_handback.md; +521 / -66 in 7 files):
+        patch_group both-or-neither, PS_SITES[3] + PS_CHECKS[10] (FNVs = the scan's), P3' +0x18124E8, three empty presort
+        functions + 96 B stub block, arena, events + timer thread with failure paths, heap-part-off refusal, pools.c
+        interlock (deferred release -1, pools_read_begin / _end / trims_deferred / odd_mmaps), heapfix.c passes pools on;
+        tests 24-26 / 28 + stub test + new poolslock_test (v1 case 9, Nit 8). build.bat test src_prep8 all passed,
+        prepare_test x6 exit 0, S8-1a stop check unchanged (0 / 0). Item-store chains printed: +0x1810800 <- jmp from
+        +0x1811DC0 (8 vtable slots) / +0x1811E50 / +0x18E6760; +0x1812580 = 10 vtable slots (3052-entry run).
+        RULE NOTE (for ATN's round report): hp1i_ compiled poolslock_test.exe once into Git-Bash /tmp\pl (outside
+        tools\tw\testbin; NOT run); the exe is still there (C:\Users\arshi\AppData\Local\Temp\pl), left for ATN.
+        bd3r_ RESUMED 09:2x: Opus xHigh review of S8-1 (236a473..36a7766) + (c) callers + address-uniqueness premise
+        (dis_at.py on the allocators, +0x17D42A0 / +0x17D4420, +0x1810800 / +0x1812580) -> reports/bd3r_s8_1_review.md
+        -> hp1i_ fixes -> S8-2.
+        Agents: c3i_ (B1.2b), t4i_ (T1b), bd3r_ (S8-1 review) (3 of 3). QUEUE next slot: C.3-3.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
