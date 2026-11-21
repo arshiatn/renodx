@@ -5027,6 +5027,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         stays out = S8a / S8) -> DLL prep5 -> bd3r_ short review. t4i_ got the 3 heapfix line classes.
         [ ] S0-ter (Opus xHigh, offline: instances key writer +0x48 / +0x4c + lifetime for the presort's on mode; B1's
         site list against P4) = next free slot, before S8a. Agents: t4i_, c3i_, hp1i_ (3 of 3).
+        c3i_ S2b FIXES DONE 04:4x (rmt_pool f17531633, local; reports/c3i_s2b_fixes_handback.md): fix 1 ArmTrace stores
+        trace_armed_frames + header pending, Tracing() only from the header Update (exactly N frames, ArmTrace(0)
+        ignored); fix 2 C's draw trace starts with each pool window (re-armable, in_window reset), env arm =
+        ArmTrace(max(frames, 1)) once, C values line "Threaded Draw Recording trace window N of F frames: ...", window 1
+        = tw_draw_recording.txt, n >= 2 = tw_draw_recording_<n>.txt, test DepthTraceWindows; fix 3 header prints
+        env_generation_applied; nits a-d (pin on any Stop refusal + neutral wording, spin clamp 1000 us, generation 77
+        held -> applied once after release). All 4 suites PASS, gated builds x86 x3 / x86 + DRAW_RECORDING / amd64 exit 0.
+        bd1r_ RESUMED 04:4x: diff check of f17531633 -> merge rmt_pool. Agents: t4i_, hp1i_, bd1r_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
