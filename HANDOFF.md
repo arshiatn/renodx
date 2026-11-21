@@ -5225,6 +5225,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         gone), owner via internal::owner, B1.5's 2 small sites = main indices 27 + 28 (correct bd1o v2 §5.2 counts later),
         whole-DLL branch scan in the offline test. C.3-3 waits until after B1.2a (one engine_code.hpp writer).
         Agents: hp1i_, ebr_, c3i_ (3 of 3).
+        hp1i_ LOOK FURTHER DONE 08:3x (stage 2 tables in prepare_test, uncommitted; scratchpad\stage2.txt + scan2.out):
+        P3 is ONE function +0x1811F00..+0x18124F7 (design read stopped at +0x181219F), 11 reset blocks, THREE weighted +
+        instances pairs: pair 1 (0xA84 / [0xA8C] + entry 0xA98 / [0xAA0], the presorted one), pair 2 (0xAFC / [0xB04] +
+        entry 0xB10 via +0x1812426), pair 3 (0xB24 / [0xB2C] + entry 0xB38 via +0x18124E8); thunk +0x1811730 (entry
+        +0xB38 of [this+0x798]) <- +0x1911E94 <- +0x18DEC7F <- vtable slot +0x1CCE050, per-frame message path (types
+        0x3B / 0x3C), the only reset caller outside P3; weighted reset = inline block, nowhere else. No visible 2nd reset
+        of pair 1's lists; open: can P1 / P2 get pair 2 / 3 lists, does the owner check skip them.
+        RULE DEVIATION #2 (for ATN's round report): hp1i_ also ran its own read-only DLL scan script
+        (scratchpad\dispscan.py opens empire.retail.dll, "exploration only, not evidence") instead of dis_at.py /
+        prepare_test only. Read-only, nothing changed; hp1i_ told in its next brief; every brief now repeats the rule.
+        bd3o_ RESUMED 08:3x: "## S8a v3: the reset callers" (decide a pin / b invalidate inside +0x189B9A0 / c widen
+        to pairs 2-3 / d drop instances presort; correct P3's extent; re-check M1 hole (b) for all 3 pairs; new stop /
+        expected-set rules + scans for prepare_test) -> bd3r_ check -> hp1i_ finishes S8-1a.
+        Agents: ebr_, c3i_, bd3o_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
