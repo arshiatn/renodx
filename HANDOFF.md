@@ -5628,6 +5628,37 @@ heading text are in HANDOFF_ARCHIVE.md)
         A/B segments / starts in segments.json + plan doc, analysis rows in ebo_analyze (on vs off per scene, noise
         band), tests; plus the crash-record segment nit -> ebr_ re-check. Leg placement: the leg that already runs
         W3 + D1 with the full MT build.
+        ebr_ x87 DESIGN REVIEW DONE 14:2x (reports/ebr_x87_review.md): design SOUND, X1 exact (CRT disassembly: steady
+        ecx 0x800A001F / edx 0x00020000, no fldcw / ldmxcsr, slow path identical). 1 Must, 7 Shoulds, 7 Nits.
+        M1 = LEG-1 BLOCKER (outside x87 work): heapfix (prep 05b9a5c + HFx) writes its split x87 form into the soldier
+        draw block +0x17f6515; the add-on knows only 7.0's form (engine_code.hpp :110, :2292) -> 'soldier draw rounding
+        ... not the game's code as expected' (seen in bench\runs\b3_REF_ATN_atn_201523) -> ROWFAIL row_left_alone_start
+        -> 'Faster Game CPU Code' resumable stop on EVERY prep / hfx start. ebr_ withdrew round 5's 'T4 ready'.
+        [ ] LOGX FIRST (coordinator decision: fix (a), not a gates fallback): c33i_ (Sonnet High) on a branch from
+        atn-mods AFTER rmt_c34 + rmt_b12a merge (both touch engine_code.hpp): recognize heapfix's split bytes (listed in
+        the review) -> INFO cpu_code_x87; unit test with the bytes -> bd1r_ review -> merge -> t4i_ test_check case
+        with the real line. Then ebr_ re-confirms T4 ready.
+        Verdicts: X0 go (walker model fixes S5; S7 DLL rule below); X1 go AFTER B1.5 on a branch cut after the rmt_b12a +
+        rmt_c34 merges (not 'a C gap'), site index 27 (26 taken), normal 5-byte site (S1); X2 go for proofs + own
+        variant folder (x87fix.c / gamerva.h identical HFx vs prep), jump fill EB 16 not EB 18 (S4); X2b hold until X0
+        proves +0x17f6515. +0xe80d1 'LIVE' = next block reuses this T slot as its C slot: real read, no real use
+        (tell the author 'written only by this block' is false but harmless). Estimates: X1 -0.08..-0.11 ms; X2 upper
+        bound only (-0.1..-0.15 if the hot block is proven, -0.02..-0.05 simple blocks).
+        COORDINATOR DECISIONS: T5 freezes prep at 05b9a5c for leg 1; X2 joins only if X0 + X2 are done AND reviewed
+        before the T5 freeze, else ebo_make leaves REF-X / WPR-X / D1-X out with a note. S7: NO new DLL rule from
+        me - X0's walker works only on dis_at.py output (a wrapper that only runs dis_at.py) and the X1 micro lives in
+        tw_engine_code / the C suites; if that is not enough, ask ATN. NOTE for ATN's report: the x87o_ design's probe
+        walk used its own slotwalk.py on the image = possible deviation #3 (check its date against ATN's rule).
+        S4 (x87fix revert vs our workers): torn write ~0 today (revert at frame start; pool jobs start + join inside
+        the frame) IF heapfix's main thread = the present thread and no job spans the frame entry (check rmt_b12a late
+        units). [ ] verify main = present thread offline from an existing ETL (X0 owner); [ ] one invariant comment in
+        worker_pool.hpp's header (logging / audit step); [ ] author package: propose paused_write suspends every thread
+        (gamerva.h :112, ~1 line), via ATN. S6: reverts DO happen (2 of 412 sessions, 1112 sites restored, one restore
+        11 s) -> t4i_ INFO gate.
+        [ ] x87o_ (Opus xHigh, design owner) folds S1-S7 + nits into x87o_design.md v2 before X0 starts.
+        t4i_ RESUMED 14:3x: heapfix A/B (ATN yes) + crash-record segment nit + S6 x87 revert INFO gate -> ebr_ re-check.
+        Agents: bd1r_ (C.3-4 review), b13r_ (B1.3 re-check), t4i_ (A/B + nits) (3 of 3). QUEUE: merges rmt_c34 /
+        rmt_b12a, LOGX (c33i_), x87o_ v2, ebr_ re-check of t4i_, B1.4 / B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
