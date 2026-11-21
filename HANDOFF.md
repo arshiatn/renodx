@@ -4980,6 +4980,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         + Tracing() with one header per window; addon.cpp worker_env_generation (nothing writes it yet -> T1b bumps it).
         All 4 test suites PASS, gated builds (x86 x3, x86 + TWATTILA_DRAW_RECORDING, amd64) exit 0 on both trees.
         bd1r_ RESUMED 04:2x: diff check of both -> then merge rmt_pool. Agents: bd3r_, t4i_, bd1r_ (3 of 3).
+        bd3r_ T2 REVIEW DONE 04:2x (reports/bd3r_t2_review.md): lane H may go on to S3 / S4 after small fixes. M1
+        THREADS=auto (keep auto_k, install line prints both); S1 read g_applying before g_mode (fix comment); S2 apply
+        after a cap of 30 boundaries, applied line says "after W boundaries" + cap hit; S3 presort gate = note for the
+        S3 / S4 brief (with PROBE window length + re-arming); S4 mode 3 mismatch -> coordinator chose OPTION 3 (reset
+        the combined list size to 0 + run g_orig = serial result; proven with control 11, stop and report if not
+        exact); S5 two-thread stress test (GEN bumps every few hundred us, quiet log); nits (reset bad, waiting = -1
+        sentinel, count game-code chains during a change, schedule-path comment, segment-before-applied test).
+        hp1i_ RESUMED 04:2x: the fixes as one prep commit + new DLL + sha256 -> then bd3r_ re-check -> S3 / S4 presort.
+        t4i_ NOTE 04:2x: ebo_analyze cuts heapfix / pool segments at their own applied lines (heapfix "generation G
+        applied at frame F ... after W boundaries", pool "limits and spin applied (env generation N)"), trims the
+        start when the applied line is > 1 s after SET, marks the segment invalid with no applied line; both forms are
+        INFO lines the switch-line check requires.
+        Agents: t4i_, bd1r_, hp1i_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
