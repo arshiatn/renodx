@@ -17,7 +17,9 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <csignal>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <exception>
@@ -106,6 +108,80 @@ static std::atomic_uint64_t last_present_tick = 0;
 static std::atomic_uint32_t present_thread = 0;
 static HANDLE watch_thread = nullptr;
 static HANDLE watch_stop = nullptr;  // that thread's own: a watch that could not be waited for keeps its event
+// Set by an add-on with more to say about a stall (its worker pool's job, say): appended to the stall line after "; ".
+static std::string (*stall_note)() = nullptr;
+
+// A hardware fault as the first vectored handler sees it (OnException), before any handler of the game's. In this
+// add-on's image it is a crash (nothing in its code handles one): logged at once. On the frame thread, anywhere, it is
+// kept for the stall line: the game's own code raises faults it handles itself (anti-tamper, guarded probes), so those
+// are not logged as they come. The tick is stored last.
+static void* fault_handler = nullptr;
+static uintptr_t own_image_begin = 0;
+static uintptr_t own_image_end = 0;
+static std::array<char, MAX_PATH> own_image_name = {};
+static std::atomic_bool fault_logged = false;
+// The logged line's text: the handler allocates nothing and keeps its stack small (a stack overflow comes here too).
+static std::array<char, 512> fault_line = {};
+static std::atomic_uint32_t frame_fault_code = 0;
+static std::atomic<uintptr_t> frame_fault_address = 0;
+static std::atomic_uint64_t frame_fault_tick = 0;
+static uint64_t frame_fault_said = 0;  // the stall line's: the tick of the fault it named
+static void(__cdecl* previous_abort_handler)(int) = SIG_DFL;
+
+// Always continues the search: the game's handlers see every exception as before.
+static LONG CALLBACK OnException(EXCEPTION_POINTERS* info) {
+  const EXCEPTION_RECORD& record = *info->ExceptionRecord;
+  switch (record.ExceptionCode) {
+    case EXCEPTION_ACCESS_VIOLATION:
+    case EXCEPTION_IN_PAGE_ERROR:
+    case EXCEPTION_ILLEGAL_INSTRUCTION:
+    case EXCEPTION_PRIV_INSTRUCTION:
+    case EXCEPTION_INT_DIVIDE_BY_ZERO:
+    case EXCEPTION_STACK_OVERFLOW:
+      break;
+    default:
+      // C++ exceptions, thread names, breakpoints and single steps (the Graphics watch's) are no faults.
+      return EXCEPTION_CONTINUE_SEARCH;
+  }
+  const auto address = reinterpret_cast<uintptr_t>(record.ExceptionAddress);
+  const DWORD thread = GetCurrentThreadId();
+  const bool on_frame_thread = thread == present_thread.load(std::memory_order_relaxed);
+  if (on_frame_thread) {
+    frame_fault_code.store(record.ExceptionCode, std::memory_order_relaxed);
+    frame_fault_address.store(address, std::memory_order_relaxed);
+    frame_fault_tick.store(GetTickCount64(), std::memory_order_release);
+  }
+  if (address - own_image_begin >= own_image_end - own_image_begin || fault_logged.exchange(true)) return EXCEPTION_CONTINUE_SEARCH;
+  const char* access = nullptr;
+  if ((record.ExceptionCode == EXCEPTION_ACCESS_VIOLATION || record.ExceptionCode == EXCEPTION_IN_PAGE_ERROR) && record.NumberParameters >= 2) {
+    switch (record.ExceptionInformation[0]) {
+      case 0:  access = "read"; break;
+      case 1:  access = "write"; break;
+      case 8:  access = "execute"; break;
+      default: access = "access"; break;
+    }
+  }
+  const char* thread_role = (on_frame_thread ? "the frame thread" : "another thread");
+  if (access != nullptr) {
+    std::snprintf(fault_line.data(), fault_line.size(), "[Total War] Fault 0x%08lX at %s+0x%zX (thread %lu, %s; %s at 0x%zX).",
+                  record.ExceptionCode, own_image_name.data(), address - own_image_begin, thread, thread_role, access,
+                  static_cast<size_t>(record.ExceptionInformation[1]));
+  } else {
+    std::snprintf(fault_line.data(), fault_line.size(), "[Total War] Fault 0x%08lX at %s+0x%zX (thread %lu, %s).", record.ExceptionCode,
+                  own_image_name.data(), address - own_image_begin, thread, thread_role);
+  }
+  reshade::log::message(reshade::log::level::error, fault_line.data());
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+
+// This add-on's own CRT's abort (it links the static CRT; the game's CRT is not touched), on any thread: std::terminate's
+// default (an exception left a noexcept function or a std::thread of this add-on) and a pure virtual call end here.
+// std::set_terminate would cover only the thread that called it: MSVC keeps that handler per thread. The abort goes on
+// as before once this returns.
+static void __cdecl OnAbort(int) {
+  reshade::log::message(reshade::log::level::error,
+                        "[Total War] The add-on's code called abort (an exception it did not catch, or a pure virtual call): the game ends.");
+}
 
 static bool GameInFront() {
   DWORD process = 0;
@@ -202,7 +278,22 @@ static void LogStall(uint64_t age_ms, bool dump) {
       ++added;
     }
   }
+  if (stall_note != nullptr) {
+    if (const std::string note = stall_note(); !note.empty()) {
+      line += "; " + note;
+    }
+  }
   renodx::utils::log::w(line);
+  // On every build: the 32-bit games have no dispatcher scan below, and a crash handler at work reads as a wait there.
+  if (const uint64_t fault_tick = frame_fault_tick.load(std::memory_order_acquire);
+      fault_tick != frame_fault_said && fault_tick >= last_present_tick.load(std::memory_order_relaxed)) {
+    frame_fault_said = fault_tick;
+    const uintptr_t fault_address = frame_fault_address.load(std::memory_order_relaxed);
+    const std::string place = code_place(fault_address);
+    renodx::utils::log::w(std::format("[Total War] The frame thread had an exception after its last frame: 0x{:08X} at {} ({} ms before this line).",
+                                      frame_fault_code.load(std::memory_order_relaxed), place.empty() ? std::format("0x{:X}", fault_address) : place,
+                                      GetTickCount64() - fault_tick));
+  }
 #if defined(_WIN64)
   // A fault's thread is inside ntdll's exception dispatcher, with the fault's registers right above that call and its
   // record 0x4F0 further (Windows 10 and 11). A game's own crash handler can work there for minutes: ATN's "hang" of
@@ -566,7 +657,20 @@ static void OnInitDevice(reshade::api::device* device) {
   devices.push_back({.device = native, .single_threaded = (native->GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED) != 0});
   if (watch_thread == nullptr) {
     watch_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    watch_thread = CreateThread(nullptr, 0, WatchLoop, watch_stop, 0, nullptr);
+    if (watch_stop != nullptr) {
+      watch_thread = CreateThread(nullptr, 0, WatchLoop, watch_stop, 0, nullptr);
+    }
+    if (watch_thread == nullptr) {
+      const DWORD error = GetLastError();
+      if (watch_stop != nullptr) {
+        CloseHandle(watch_stop);
+        watch_stop = nullptr;
+      }
+      static bool start_failure_logged = false;
+      if (!std::exchange(start_failure_logged, true)) {
+        renodx::utils::log::e(std::format("[Total War] Frame watch: could not start (error {}); a freeze leaves no line.", error));
+      }
+    }
   }
 }
 
@@ -763,6 +867,22 @@ static void Install() {
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(BeforeDestroyDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
+  // The fault line's module: this image.
+  HMODULE own_image = nullptr;
+  MODULEINFO own_info = {};
+  if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCWSTR>(&OnException), &own_image) != FALSE
+      && K32GetModuleInformation(GetCurrentProcess(), own_image, &own_info, sizeof(own_info)) != FALSE) {
+    std::array<char, MAX_PATH> path = {};
+    GetModuleFileNameA(own_image, path.data(), MAX_PATH);
+    const std::string_view file = path.data();
+    file.substr(file.find_last_of('\\') + 1).copy(own_image_name.data(), own_image_name.size() - 1);
+    own_image_begin = reinterpret_cast<uintptr_t>(own_info.lpBaseOfDll);
+    own_image_end = own_image_begin + own_info.SizeOfImage;
+  }
+  fault_handler = AddVectoredExceptionHandler(1, OnException);
+  if (const auto previous = std::signal(SIGABRT, OnAbort); previous != SIG_ERR) {
+    previous_abort_handler = previous;
+  }
 }
 
 // At the end of the addon's attach: after the swapchain mod's create_swapchain, and after every other destroy_device
@@ -773,6 +893,11 @@ static void InstallLast() {
 }
 
 static void Uninstall() {
+  std::signal(SIGABRT, previous_abort_handler);
+  if (fault_handler != nullptr) {
+    RemoveVectoredExceptionHandler(fault_handler);
+    fault_handler = nullptr;
+  }
   reshade::unregister_event<reshade::addon_event::create_swapchain>(AfterSwapchainMod);
   reshade::unregister_event<reshade::addon_event::create_swapchain>(BeforeSwapchainMod);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
