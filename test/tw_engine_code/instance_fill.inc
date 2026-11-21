@@ -201,7 +201,7 @@ int RunInstanceFillTests(const TestBuild& build, uint8_t* game, uint8_t* patched
         wrong += (fi::written != 0 || !game_is_back()) ? 1 : 0;
       }
     }
-    // A thread elsewhere in the game's code, and in this module's own dispatcher (no thread of the fill's own is running here: the bytes of a site's dispatcher are not a cut): free.
+    // A thread elsewhere in the game's code: free.
     wrong += (!try_row(patched + text_rva + 0x100, true)) ? 1 : 0;
     ec::failed_writes = 0;
     wrong += (!try_row(patched + text_rva + 0x100, false)) ? 1 : 0;
@@ -256,6 +256,20 @@ int RunInstanceFillTests(const TestBuild& build, uint8_t* game, uint8_t* patched
     twattila::engine_code::Uninstall();
     CHECK(fi::written == 0 && !fi::row_on.load() && game_is_back() && !ec::module_pinned);
     std::printf("29e. both tables in one window, in and out, the page as it was; Uninstall takes the sites out, the module not pinned\n");
+
+    // Another mod's byte over one of our calls at detach: that site stays (not ours to take out), the others come out, and the module is pinned
+    // (a game thread may still be on its way through our function).
+    CHECK(fill::Prepare(reinterpret_cast<HMODULE>(patched)) && fi::found == fill::ALL_SITES);
+    rows(true);
+    CHECK(fi::written == fill::ALL_SITES);
+    patched[fill::SITES[1].rva + 2] ^= 0x33;
+    ec::module_pinned = false;
+    twattila::engine_code::Uninstall();
+    CHECK(ec::module_pinned && fi::written == 0 && site_is(0, false) && !site_is(1, false) && !site_is(1, true) && site_is(2, false) && site_is(3, false));
+    std::memcpy(patched + fill::SITES[1].rva, fi::sites[1].game.data(), fill::SITE_SIZE);
+    ec::module_pinned = false;
+    CHECK(game_is_back());
+    std::printf("29e. another mod's byte over our call at detach: that site stays, the others come out, the module is pinned\n");
   }
   CHECK(fill::Prepare(reinterpret_cast<HMODULE>(patched)) && fi::found == fill::ALL_SITES);
   CHECK(ec::failed_writes == 0);

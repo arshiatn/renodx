@@ -51,10 +51,12 @@ namespace twattila::instance_fill {
 enum class Site : uint8_t { WEIGHTED_VISIBLE_FILL, WEIGHTED_DEPTH_FILL, WEIGHTED_COLOUR_FILL, FOLDED_FILL, COUNT };
 constexpr size_t SITE_COUNT = static_cast<size_t>(Site::COUNT);
 constexpr uint32_t ALL_SITES = (1u << SITE_COUNT) - 1;
-// The sites that are found, go in and stand down as one (a fill with a site missing would run the game's own call on the others'
-// ring): the 4 fills are one group. A later feature's sites are groups of their own, so that its stand-down never takes these.
+// The sites that are found, go in and stand down as one (a fill with a site missing would run the game's own call on
+// the others' ring): the 4 fills are one group. A later feature's sites are groups of their own, so that its stand-down
+// never takes these.
 constexpr std::array<uint32_t, 1> GROUPS = {ALL_SITES};
-constexpr uint32_t SITE_SIZE = 5;
+constexpr uint32_t SITE_SIZE = 5;       // a fill call (E8 rel32); SiteInfo::size says what a site writes
+constexpr uint32_t MAX_SITE_SIZE = 11;  // the most a site writes
 
 // The game's record copies (thiscall, ecx = the functor, one stack argument: the range; ret 4).
 enum class Copy : uint8_t { LIST_ITEMS, TRACKER_ITEMS, COUNT };
@@ -77,6 +79,7 @@ struct SiteInfo {
   std::string_view name;
   uint32_t rva = 0;     // the E8
   uint32_t before = 0;  // bytes of the pattern before it
+  uint32_t size = SITE_SIZE;  // the bytes it writes, from rva
   // The bytes around the call (`??`: its displacement), through the `add esp, 0xc` and the ring's flag test (`cmp byte
   // [ecx + 0x44], 0`) after it.
   std::string_view pattern;
@@ -116,17 +119,18 @@ constexpr std::array<SiteInfo, SITE_COUNT> SITES = {{
      .copy = Copy::TRACKER_ITEMS},
 }};
 
-// Each site's pattern has its call (E8) where `before` says, and no two sites' bytes overlap.
+// Each site's pattern has its call (E8) where `before` says, its written bytes fit MAX_SITE_SIZE, and no two sites'
+// written bytes overlap (their found-by patterns may share bytes: a later site's pattern can begin where an earlier
+// one ends).
 static_assert([] {
   for (size_t index = 0; index < SITE_COUNT; ++index) {
     const SiteInfo& info = SITES[index];
-    if (info.pattern.substr(info.before * 3, 2) != "E8" || info.before * 3 + 14 > info.pattern.size()) {
+    if (info.pattern.substr(info.before * 3, 2) != "E8" || info.before * 3 + 14 > info.pattern.size()
+        || info.size > MAX_SITE_SIZE) {
       return false;
     }
     for (size_t other = index + 1; other < SITE_COUNT; ++other) {
-      const SiteInfo& next = SITES[other];
-      if (effect_update::Overlaps(info.rva - info.before, static_cast<uint32_t>(PatternSize(info.pattern)),
-                                  next.rva - next.before, static_cast<uint32_t>(PatternSize(next.pattern)))) {
+      if (effect_update::Overlaps(info.rva, info.size, SITES[other].rva, SITES[other].size)) {
         return false;
       }
     }
@@ -134,14 +138,15 @@ static_assert([] {
   return true;
 }());
 
-// The byte ranges the sites own, one visit each (rva, size): what a site writes (`written`: the 5 bytes of each call), or what Prepare
-// reads to find the sites (the patterns, the links of each record copy's chain, the record copies' heads). The heapfix clearance
-// (engine_code.hpp) and the no-overlap checks against the other features' sites (test/tw_instance_fill) are built on it.
+// The byte ranges the sites own, one visit each (rva, size): what a site writes (`written`: each site's `size` bytes),
+// or what Prepare reads to find the sites (the patterns, the links of each record copy's chain, the record copies'
+// heads). The heapfix clearance (engine_code.hpp) and the no-overlap checks against the other features' sites
+// (test/tw_instance_fill) are built on it.
 template <typename Visit>
 constexpr void VisitRanges(bool written, Visit&& visit) {
   for (const SiteInfo& info : SITES) {
     if (written) {
-      visit(info.rva, SITE_SIZE);
+      visit(info.rva, info.size);
     } else {
       visit(info.rva - info.before, static_cast<uint32_t>(PatternSize(info.pattern)));
     }
@@ -246,8 +251,9 @@ inline void FillWork(void* context, uint32_t) {
 // function).
 struct PatchedSite {
   uint8_t* at = nullptr;
-  std::array<uint8_t, SITE_SIZE> game = {};
-  std::array<uint8_t, SITE_SIZE> patch = {};
+  uint32_t size = SITE_SIZE;
+  std::array<uint8_t, MAX_SITE_SIZE> game = {};
+  std::array<uint8_t, MAX_SITE_SIZE> patch = {};
 };
 
 namespace internal {
@@ -271,15 +277,17 @@ static std::array<GameFill, SITE_COUNT> game_fills = {};
 static std::array<RecordCopy, COPY_COUNT> record_copies = {};
 static const uint8_t* base = nullptr;
 static bool prepared = false;
-static uint32_t found = 0;    // ALL_SITES, or 0 (Prepare), then less as groups stand down: a group goes in whole or not at all
+// ALL_SITES, or 0 (Prepare), then less as groups stand down: a group goes in whole or not at all
+static uint32_t found = 0;
 static uint32_t written = 0;  // the sites holding their call's new target
 static uint32_t asked = 0;    // what the row last asked for
 // The row is on and the sites are found: the dispatcher does its own fill; otherwise it runs the game's call.
 static std::atomic<bool> row_on = false;
 // Threads inside the dispatcher (the sites' functions): PausedWrite lets the sites out only while it is 0. It is
 // counted from inside Dispatch: a thread between the retargeted call and the count is not seen, which row changes do
-// not need (the code stays in this module); fills run on the present thread, which is the thread that runs PausedWrite
-// and Uninstall.
+// not need (the code stays in this module). Fills run on the present thread, the thread that runs PausedWrite;
+// Uninstall runs on the detach path: at process exit no other game thread is left, and on a runtime unload a thread
+// between the retargeted call and the count is not seen (a window of a few instructions).
 static std::atomic<int32_t> active = 0;
 static bool check_enabled = false;  // RENODX_TW_FILL_CHECK=1, read once by Prepare
 static std::atomic<uint32_t> checked = 0;
@@ -447,7 +455,7 @@ inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rv
   return effect_update::internal::BranchesInto(
       code, first_rva, hits, relocated, short_branches, IGNORED_SOURCES, [](uint32_t target) {
         for (const SiteInfo& info : SITES) {
-          if (target > info.rva && effect_update::Overlaps(target, 1, info.rva, SITE_SIZE)) {
+          if (target > info.rva && effect_update::Overlaps(target, 1, info.rva, info.size)) {
             return true;
           }
         }
@@ -532,9 +540,10 @@ inline bool Prepare(HMODULE module) {
     const SiteInfo& info = SITES[index];
     PatchedSite& site = sites[index];
     site.at = const_cast<uint8_t*>(base) + info.rva;
-    std::memcpy(site.game.data(), site.at, SITE_SIZE);
+    site.size = info.size;
+    std::memcpy(site.game.data(), site.at, info.size);
     const auto entry = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(ENTRIES[index]));
-    const uint32_t displacement = entry - static_cast<uint32_t>(reinterpret_cast<uintptr_t>(site.at + SITE_SIZE));
+    const uint32_t displacement = entry - static_cast<uint32_t>(reinterpret_cast<uintptr_t>(site.at + info.size));
     site.patch[0] = 0xE8;
     std::memcpy(site.patch.data() + 1, &displacement, sizeof(displacement));
     game_fills[index] =
@@ -556,7 +565,7 @@ inline uint32_t Changing(uint32_t patched) { return (patched ^ internal::written
 inline bool ThreadInside(uintptr_t eip, uint32_t changing) {
   for (size_t index = 0; index < SITE_COUNT; ++index) {
     const auto start = reinterpret_cast<uintptr_t>(internal::sites[index].at);
-    if ((changing >> index & 1) != 0 && eip > start && eip < start + SITE_SIZE) {
+    if ((changing >> index & 1) != 0 && eip > start && eip < start + internal::sites[index].size) {
       return true;
     }
   }
@@ -575,7 +584,7 @@ inline uint32_t Rewrite(uint32_t patched) {
   uint32_t stood = 0;
   for (size_t index = 0; index < SITE_COUNT; ++index) {
     const auto& expected = ((written >> index & 1) != 0 ? sites[index].patch : sites[index].game);
-    if ((changing >> index & 1) != 0 && std::memcmp(sites[index].at, expected.data(), SITE_SIZE) != 0) {
+    if ((changing >> index & 1) != 0 && std::memcmp(sites[index].at, expected.data(), sites[index].size) != 0) {
       stood |= 1u << index;
     }
   }
@@ -606,11 +615,13 @@ inline uint32_t Rewrite(uint32_t patched) {
 #else
     constexpr bool forced_failure = false;
 #endif
-    if (!forced_failure && VirtualProtect(sites[index].at, SITE_SIZE, PAGE_EXECUTE_READWRITE, &protection[index]) != FALSE) {
+    if (!forced_failure
+        && VirtualProtect(sites[index].at, sites[index].size, PAGE_EXECUTE_READWRITE, &protection[index]) != FALSE) {
       writable |= 1u << index;
     } else if ((patched >> index & 1) != 0) {
+      // No break: the loop goes on, so that every changing site ends written or stood (Update's bookkeeping needs it
+      // when another group's sites change in the same window); the later sites of this group are skipped above.
       stand_group_down(index);
-      break;
     } else {
       stood |= 1u << index;
     }
@@ -620,14 +631,14 @@ inline uint32_t Rewrite(uint32_t patched) {
       continue;
     }
     const auto& bytes = ((patched >> index & 1) != 0 ? sites[index].patch : sites[index].game);
-    std::memcpy(sites[index].at, bytes.data(), SITE_SIZE);
+    std::memcpy(sites[index].at, bytes.data(), sites[index].size);
   }
   // Last made, first put back: the sites share pages, and a later site saw the earlier ones' writable state as its old
   // protection.
   for (size_t index = SITE_COUNT; index-- > 0;) {
     DWORD ignored;
     if ((writable >> index & 1) != 0) {
-      VirtualProtect(sites[index].at, SITE_SIZE, protection[index], &ignored);
+      VirtualProtect(sites[index].at, sites[index].size, protection[index], &ignored);
     }
   }
   FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
