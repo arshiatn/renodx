@@ -5003,6 +5003,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         include the x86 pool -> callback addon.cpp registers, bumps worker_env_generation (one counter for S6 / R-S1).
         c3i_ RESUMED 04:2x: fixes 1-3 + nits on rmt_pool -> bd1r_ diff check -> merge rmt_pool.
         Agents: t4i_, hp1i_, c3i_ (3 of 3).
+        hp1i_ T2 FIXES DONE 04:3x (prep 87492f5, local; reports/hp1i_t2fix_handback.md): M1 THREADS=auto (g_auto_k,
+        install line "start K n (auto K m)"); S1 g_open -> g_applying -> g_mode; S2 LIVE_WAIT_MAX 30, applied line
+        "after W boundaries (cap of 30 reached / not reached)"; S4 option 3 was NOT exact alone (re-sorting a sorted
+        list reorders equal keys: 14 / 23 radix, 11 / 23 introsort) -> keeps pre-merge copies (orig / item.orig,
+        pre_mesh), on a mismatch puts every list back + clears dirty state + runs g_orig: control 11 serial result 23 /
+        23 both sorts; not covered: check_sortfb mismatch path, "N lists could not be put back" fallback; S5 stress
+        700 / 700 chains, 455-497 generations, 0 missing / double applied lines, g_open 0 (gate never hit in stress);
+        nits done. build.bat test exit 0 (src_prep5), prepare_test x6 pass. DLL prep4_dinput8.dll sha256
+        a31d9ccb1fced21b8757733e046f88db70692905c04af4b1eab2888b35cf66c1. S3 brief notes: live_apply waits for a free
+        presort slot or aborts the job; PROBE window + re-arming; EARLY check serial result.
+        bd3r_ RESUMED 04:3x: re-check of 87492f5 (S4 put-back completeness + copy cost in modes 1-2, S2 cap with an
+        open chain, S5 forced overlap?) -> verdict for S3 / S4.
+        Agents: t4i_, c3i_, bd3r_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
