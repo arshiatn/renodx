@@ -5752,6 +5752,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         the list mode is an existing DLL reader, not a new one).
         Agents: c33i_ (C.3-4 fixes + LOGX), b13r_ (B1.4 review), ebr_ (x87 v2 re-check) (3 of 3). QUEUE: bd1r_ re-check,
         merge rmt_c34, t4i_ LOGX case + nit, ebr_ T4 confirm, c3i_ B1.4 fixes, B1.5, X0.
+        b13r_ B1.4 REVIEW DONE 15:5x (reports/b13r_b14_review.md): mergeable (dead until B1.6) but 2 Musts before B1.6;
+        spawn path EXACT vs dis_at (CPU has_free = (simroom - count) != 0 && count < cap -> c3i_'s budget right, design
+        wrong; merge reads only the 48 B at particle+0x2C; ahead answers exact; draw tag can't leave dword 1 -> leak
+        checks in trace windows OK). M1 L2 turns itself off in heavy scenes (one 4096-chunk block; > 4096 spawning
+        units -> staging full -> session off; stress ~34k instances -> batch would measure L1 as L2). M2 possible
+        crash in L1 rounds: pool watch reads [pool+0x18] before the game's take. Shoulds S1 RANDOM_TRIPLE not forced
+        slow, S2 node check, S3 always-on leak signal, S4 overflow random-state doc, S5 CPU sim words in L1. Re-runs
+        exit 0.
+        COORDINATOR: fix before merge (review cycle kept). c3i_ RESUMED 15:5x on rmt_b14: M1 + M2 + S1-S5 + N1-N3 ->
+        b13r_ re-check -> merge.
+        Agents: c33i_ (C.3-4 fixes + LOGX), ebr_ (x87 v2 re-check), c3i_ (B1.4 fixes) (3 of 3). QUEUE: bd1r_ re-check,
+        merge rmt_c34, t4i_ LOGX case + nit, ebr_ T4 confirm, b13r_ B1.4 re-check, B1.5, X0.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
