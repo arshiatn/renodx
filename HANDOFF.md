@@ -4852,6 +4852,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         ebr_ STARTED 03:3x (Opus xHigh, read-only): review of ebo_'s end batch plan (order reconciled, one replay per
         start, T1a). Agents: c3i_, bd3r_, ebr_ (3 of 3). QUEUE: gto_ review + addendum, x87 review, R2 addendum,
         bd1r_ re-check of the S2r fixes (takes c3i_'s slot).
+        c3i_ S2r FIXES DONE 03:4x (rmt_pool 84c1c2b11, local; reports/c3i_s2r_fixes_handback.md): M1 trace records (1024,
+        printed at Update), S1 pool missing at threads == 1, S2 Start / Stop busy exchange + refused ALL job completes on
+        the owner, S3 module pin, S4 refusals counted while traced (Settings.trace, 1-present lag), S5 row only with a
+        user, S6 stress / slow / empty-pool tests, N1-N9. 4 test suites PASS; gated builds x86 x3, x86 with
+        TWATTILA_DRAW_RECORDING, amd64 twattila exit 0. Note: the stress test does not catch a weakened Dekker pair on x86
+        (code review proof only). bd1r_ RESUMED 03:4x: re-check of the fixes -> then merge rmt_pool (name check + gated
+        builds + push). Agents: bd3r_, ebr_, bd1r_ (3 of 3). QUEUE: gto_ review + addendum, x87 review, R2 addendum,
+        C.3-3 (c3i_, after the merge), S3, B1.2a (serial on engine_code.hpp).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
