@@ -2718,7 +2718,13 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     }
     renodx::utils::log::w("[Total War] ", name, ": left alone (not the game's code as expected: another mod or build): ", names);
   }
-  const uint32_t target = wanted & internal::found;
+  // A group of sites that only work together is asked for only while all of them are found: one that stood down (another mod's bytes over our jump on the way out, a page that
+  // could not be made writable) leaves the others out too, and one that went in alone comes out. Cached Particle Count (the sum alone would answer the first value for the session)
+  // and the job sites (Stop's call keeps the pool's destruction safe).
+  uint32_t target = wanted & internal::found;
+  for (const uint32_t group : {internal::PARTICLE_COUNT_SITES, internal::JOB_SITES}) {
+    if ((internal::found & group) != group) target &= ~group;
+  }
   const uint64_t recording_target = recording_wanted & internal::recording_found;
   internal::SyncWorkerSlots(internal::written & target);  // a site leaving: its word first
   if (effect_wanted == 0 && eu::written != 0) {

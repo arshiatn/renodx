@@ -3721,6 +3721,11 @@ int main(int argc, char** argv) {
       off();
       CHECK(ec::written == 0 && holds(7, hook) && game_bytes(all & ~0b10000000u) && (ec::found & 0b10000000u) == 0);
       foreign(7, ec::sites[7].game);
+      // switched on again with the destructor's call out of found: the other two job sites do not go in alone
+      on();
+      CHECK((ec::written & ec::JOB_SITES) == 0 && game_bytes(ec::JOB_SITES));
+      off();
+      CHECK(ec::written == 0 && game_bytes(all));
       prepare_again();
     }
     if (build.code->half_rows_rva != 0) {
@@ -3763,6 +3768,18 @@ int main(int argc, char** argv) {
       CHECK(ec::written == 0 && (ec::found & ec::PARTICLE_COUNT_SITES) == 0 && holds(COUNT, hook) && holds(EPOCH, ec::sites[EPOCH].jump) && game_bytes(all & ~ec::PARTICLE_COUNT_SITES));
       foreign(COUNT, ec::sites[COUNT].game);
       foreign(EPOCH, ec::sites[EPOCH].game);
+      prepare_again();
+      // the epoch's jump overwritten (the game's bytes back, no chain) while the row is on: switching off leaves the epoch out of found, and switching on again does not put the
+      // sum in alone (it would answer the first value of each node for the session)
+      on();
+      CHECK(ec::written == all);
+      foreign(EPOCH, ec::sites[EPOCH].game);
+      off();
+      CHECK(ec::written == 0 && (ec::found & ec::PARTICLE_COUNT_SITES) == ec::PARTICLE_COUNT_BIT && game_bytes(all));
+      on();
+      CHECK((ec::written & ec::PARTICLE_COUNT_SITES) == 0 && game_bytes(ec::PARTICLE_COUNT_SITES));
+      off();
+      CHECK(ec::written == 0 && game_bytes(all));
       prepare_again();
     }
     // (d) the soldier rounding site changed while the rows are on: switching off leaves it, restores the others
