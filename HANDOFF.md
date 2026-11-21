@@ -6200,6 +6200,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: s0r_ (S0 GPU review), ebr_ (T3 review), bd1r_ (R-S4 re-check) (3 of 3). QUEUE: merge rmt_rs2b, merge
         rmt_t3, t4i_ §4.2 compare + flake fix, R-S5 (c33i_, after rmt_rs2b merges) -> Opus xHigh review, B1.6 (+ N5
         real-routine tests + b13r_'s half-rows R2), X1, unified PT design (after S0).
+        s0r_ S0 GPU REVIEW DONE 21:3x (plan_1117/s0r_review.md): GO WITH CHANGES. 10 Musts: M1 multiplicity rule for
+        per-pass verdicts; M2 FASTER needs the same job's picture result; M3 resident reset can't work as written
+        (LoadRecordingState refuses a scene with meshes) -> temporal-chunk reload; M4 two ~20 GB residents don't fit 32
+        GB; M5 report_check GPU lines only; M6 stale-lock takeover steals live locks -> one lock record format; M7 S1a
+        table proof vs a fresh run; M8 commit gate (git -C repo, merges, patch scripts); M9 spec.py id first + capped
+        output; M10 Forge item 8 'dead outputs' has no data source. 21 Shoulds (pbrt CPU estimate 5-20 h, not 1-4 h), 8
+        Nits.
+        [ ] ATN BEFORE GPU S1 (s0r_): Q8 ns_busy part (S1a's F4 line); Q12 hooks in principle (S1c part A now?); Q14
+        gate scope (+ new: all of src\ or only the TW helper); Q15 commit-time cite check; Q4b block WebSearch /
+        WebFetch for API facts. Fallback if ATN waits: S1c builds them as config rows that start Off. 3 new later
+        questions: dead-outputs source, T7 vs 'Nsight for every setting', lab dump deletes vs the keep rule.
+        gto_ (aecf24210ff0a2824) RESUMED 21:3x: v2 of the GPU tooling design from S0.
+        Agents: ebr_ (T3 review), bd1r_ (R-S4 re-check), gto_ (GPU v2) (3 of 3). QUEUE: merge rmt_rs2b, merge rmt_t3,
+        t4i_ §4.2 compare + flake fix, R-S5 (c33i_, after rmt_rs2b merges) -> Opus xHigh review, B1.6 (+ N5
+        real-routine tests + b13r_'s half-rows R2), X1, s0r_ re-check of GPU v2, unified PT design (after S0).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
