@@ -865,6 +865,212 @@ static std::vector<LogEntry> game_log;
 static bool strict_flush = true;
 static dr::Shared* g_shared = nullptr;
 
+// ---------------------------------------------------------------- the fold's rig (R2, parts 5 to 10)
+//
+// What the game does around a fold, made with fakes: the fill site (a fake fill of `chunks` chunks on the fold's job), the stub (it
+// notes the ring's Unmap in the fold, as instance_fill's stub does) and the game's Unmap (slot 4 of a fake buffer's vtable). The
+// callers of the dispatchers (DispatchPortion, RunBCalls) open a fold before each call when `mode` is set and check everything after
+// it. One order log holds the fill chunks' ends, the Unmap and the first runs on the real tracker (the fake flush, vf68 and
+// animation call).
+namespace fold_rig {
+
+enum class Event : uint8_t { OPEN, CHUNK_END, UNMAP, REAL_RUN };
+struct Buffer {
+  void* const* vtable;
+  int id;
+};
+struct Ring {
+  uint8_t pad0[0x10];
+  Buffer* buffer;
+  uint8_t pad1[0x44 - 0x14];
+  uint8_t flag;
+  uint8_t pad2[0x1B];
+};
+static_assert(offsetof(Ring, buffer) == 0x10 && offsetof(Ring, flag) == 0x44);
+
+constexpr uint32_t RECORD_BYTES = 16;
+static std::mutex order_mutex;
+static std::vector<std::pair<Event, uint32_t>> order;
+// Between a hook's open and its verify: the fakes that stand for the game's runs on the real tracker log.
+static bool armed = false;
+static uint32_t unmap_sleep_ms = 0;
+
+static void Log(Event event, uint32_t value = 0) {
+  const std::unique_lock lock(order_mutex);
+  order.emplace_back(event, value);
+}
+static void LogRealRun() {
+  if (armed) Log(Event::REAL_RUN);
+}
+
+static void __thiscall FakeUnmapBuffer(Buffer*, void*) {
+  if (unmap_sleep_ms != 0) Sleep(unmap_sleep_ms);
+  Log(Event::UNMAP);
+}
+static void* const buffer_vtable[5] = {nullptr, nullptr, nullptr, nullptr, reinterpret_cast<void*>(&FakeUnmapBuffer)};
+
+// The x87 and SSE rounding / precision a thread has when the fill's chunk or the record's loop runs (test 10).
+struct WordSample {
+  DWORD thread;
+  uint32_t x87;
+  uint32_t sse;
+};
+static bool probe_words = false;
+static std::mutex words_mutex;
+static std::vector<WordSample> loop_words;
+static std::vector<WordSample> chunk_words;
+static void Capture(std::vector<WordSample>* into) {
+  unsigned int x87 = 0;
+  unsigned int sse = 0;
+  __control87_2(0, 0, &x87, &sse);
+  const std::unique_lock lock(words_mutex);
+  into->push_back({GetCurrentThreadId(), x87 & (_MCW_RC | _MCW_PC), sse & (_MCW_RC | _MCW_DN)});
+}
+
+constexpr uint8_t ExpectedByte(uint32_t chunk, uint32_t i) { return static_cast<uint8_t>(chunk * 31 + i * 7 + 3); }
+
+struct Rig {
+  // What a test sets.
+  // 0: no fold. 1: the fill site's rule (FoldWorkers). 2: forced, whatever the state of the draw recording (the dispatcher must close
+  // a fold in every state it meets).
+  uint32_t mode = 0;
+  uint32_t chunks = 8;
+  bool gate = false;           // the first chunk a pool worker claims waits (200 ms at most) for `gate_open`
+  bool flip_detached = false;  // "detached" turns on between the fill site and the cut
+  bool decoy_key = false;      // the fold's key is not the call's tracker
+  bool flip_flag = false;      // the ring's flag changes between the stub and the close
+  bool round_up = false;       // the render thread's x87 / SSE rounding changes between the fill site and the cut
+  uint32_t sleep_ms = 0;       // the render thread's time between the fill site and the cut
+  uint32_t expected_mismatches = 0;
+  uint32_t expected_flag_changes = 0;
+  // What the runs leave.
+  std::atomic<uint32_t> next_chunk{0};
+  std::atomic<uint32_t> chunks_done{0};
+  std::atomic<uint32_t> incomplete{0};
+  std::atomic<uint32_t> gate_taken{0};
+  std::atomic<uint32_t> gate_open{0};
+  std::vector<uint8_t> bytes;
+  Buffer buffer = {buffer_vtable, 5};
+  Ring ring = {};
+  uint8_t decoy[8] = {};
+  uint32_t opens = 0;
+  uint32_t bad = 0;
+  std::array<unsigned int, 2> saved_words = {};
+};
+static Rig rig;
+
+static void FoldFillWork(void* context, uint32_t worker) {
+  auto& self = *static_cast<Rig*>(context);
+  for (uint32_t chunk = self.next_chunk.fetch_add(1); chunk < self.chunks; chunk = self.next_chunk.fetch_add(1)) {
+    if (self.gate && worker != 0 && self.gate_taken.exchange(1) == 0) {
+      const uint64_t until = wp::Qpc() + wp::qpc_frequency / 5;
+      while (self.gate_open.load() == 0 && wp::Qpc() < until) Sleep(1);
+    }
+    if (probe_words) Capture(&chunk_words);
+    for (uint32_t i = 0; i < RECORD_BYTES; ++i) self.bytes[chunk * RECORD_BYTES + i] = ExpectedByte(chunk, i);
+    Log(Event::CHUNK_END, chunk);
+    self.chunks_done.fetch_add(1);
+  }
+}
+
+static bool FoldOpen() { return di::fold.thread.load() == GetCurrentThreadId(); }
+
+static void Off() {
+  rig.mode = 0;
+  rig.gate = rig.flip_detached = rig.decoy_key = rig.flip_flag = rig.round_up = false;
+  rig.sleep_ms = 0;
+  rig.expected_mismatches = rig.expected_flag_changes = 0;
+  rig.chunks = 8;
+  unmap_sleep_ms = 0;
+  rig.opens = rig.bad = 0;
+}
+
+// The fill site and the stub: opens a fold for `tracker` (`groups`: the bits of the groups the site's cut records, mode 1) and notes
+// the ring's Unmap. False: no fold (the pool has no worker, or the fill site's rule says no).
+static bool OpenFor(void* tracker, uint32_t groups) {
+  if (rig.mode == 0 || FoldOpen()) return false;
+  const uint32_t workers = (rig.mode == 1 ? di::FoldWorkers(groups) : wp::Available(wp::User::DRAW_RECORDING));
+  if (workers == 0) return false;
+  rig.next_chunk.store(0);
+  rig.chunks_done.store(0);
+  rig.incomplete.store(0);
+  rig.gate_taken.store(0);
+  rig.gate_open.store(0);
+  rig.bytes.assign(static_cast<size_t>(rig.chunks) * RECORD_BYTES, 0);
+  rig.ring = {};
+  rig.ring.buffer = &rig.buffer;
+  {
+    const std::unique_lock lock(order_mutex);
+    order.clear();
+    order.emplace_back(Event::OPEN, 0);
+  }
+  void* const key = (rig.decoy_key ? static_cast<void*>(rig.decoy) : tracker);
+  if (!di::OpenFold(key, &rig.ring,
+                    {.work = &FoldFillWork, .context = &rig, .chunks_done = &rig.chunks_done, .chunks = rig.chunks, .incomplete = &rig.incomplete},
+                    workers)) {
+    return false;
+  }
+  // The stub: the game's flag test passed, the Unmap is only noted.
+  di::fold.unmap_buffer = rig.ring.buffer;
+  di::fold.unmap_argument = nullptr;
+  di::fold.unmap_pending = true;
+  armed = true;
+  ++rig.opens;
+  if (rig.flip_detached) di::detached.store(true);
+  if (rig.flip_flag) rig.ring.flag = 1;
+  if (rig.round_up) {
+    unsigned int ignored = 0;
+    __control87_2(0, 0, &rig.saved_words[0], &rig.saved_words[1]);
+    __control87_2(_PC_24 | _RC_UP, _MCW_RC | _MCW_PC, &ignored, nullptr);
+    __control87_2(_RC_UP, _MCW_RC, nullptr, &ignored);
+  }
+  if (rig.sleep_ms != 0) Sleep(rig.sleep_ms);
+  return true;
+}
+
+// After the dispatcher returned: the fold is closed, no job is left open, the ring holds what a serial fill makes, every chunk
+// ended before the Unmap and the Unmap came before any run on the real tracker, once; the faults are the expected ones. `bad`
+// counts what was not so; the gate is opened and a job a broken close left open is joined, so that the next run can start.
+static void Verify() {
+  bool good = !FoldOpen() && !wi::busy.load() && rig.chunks_done.load() == rig.chunks && rig.incomplete.load() == 0;
+  for (uint32_t chunk = 0; chunk < rig.chunks; ++chunk) {
+    for (uint32_t i = 0; i < RECORD_BYTES; ++i) good = good && rig.bytes[chunk * RECORD_BYTES + i] == ExpectedByte(chunk, i);
+  }
+  {
+    const std::unique_lock lock(order_mutex);
+    uint32_t unmaps = 0;
+    uint32_t chunk_ends = 0;
+    for (const auto& [event, value] : order) {
+      if (event == Event::CHUNK_END) {
+        good = good && unmaps == 0;
+        ++chunk_ends;
+      } else if (event == Event::UNMAP) {
+        ++unmaps;
+      } else if (event == Event::REAL_RUN) {
+        good = good && unmaps == 1;
+      }
+    }
+    good = good && chunk_ends == rig.chunks && unmaps == 1;
+  }
+  good = good && di::fold_net_closes == 0 && di::fold_key_mismatches == rig.expected_mismatches
+         && di::fold_flag_changes == rig.expected_flag_changes && di::fold_latched == (rig.expected_mismatches + rig.expected_flag_changes != 0);
+  rig.bad += (good ? 0 : 1);
+  di::fold_net_closes = di::fold_key_mismatches = di::fold_flag_changes = 0;
+  di::fold_latched = false;
+  di::detached.store(false);
+  armed = false;
+  rig.gate_open.store(1);
+  if (FoldOpen()) di::CloseFold(nullptr, [] {});
+  wp::Join();
+  if (rig.round_up) {
+    unsigned int ignored = 0;
+    __control87_2(rig.saved_words[0], _MCW_RC | _MCW_PC, &ignored, nullptr);
+    __control87_2(rig.saved_words[1], _MCW_RC | _MCW_DN, nullptr, &ignored);
+  }
+}
+
+}  // namespace fold_rig
+
 // What the test changes in the thunk rule (the controls).
 struct TestControls {
   bool drop_end_flush = false;
@@ -895,6 +1101,7 @@ static uint32_t injected_mesh = 0;
 // The real flush's tracker writes: the cursor +0x5c advances by count x stride, the +0x28 cache is written, the +0x69 byte is
 // read and cleared. The pointers in the arguments are the tracker's.
 static void __thiscall FakeFlush(void* mesh, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5, uint32_t a6, uint32_t a7, uint32_t a8, uint32_t a9) {
+  fold_rig::LogRealRun();
   // A flush of no instances returns at once (the colour loop can ask for one).
   if (a4 == 0) return;
   auto* m = static_cast<SynthMesh*>(mesh);
@@ -918,11 +1125,13 @@ static void __thiscall FakeFlush(void* mesh, uint32_t a0, uint32_t a1, uint32_t 
   }
 }
 static uint8_t __thiscall FakeVf68(void* mesh, uint32_t view, uint32_t zero) {
+  fold_rig::LogRealRun();
   const auto* m = static_cast<const SynthMesh*>(mesh);
   game_log.push_back({2, reinterpret_cast<uint32_t>(mesh), view, zero, 0, 0, 0, 0, 0, 0, 0, 0, m->view_tag, m->pass, 0});
   return static_cast<uint8_t>(m->kind & 1);
 }
 static void __thiscall FakeAnimCall(void* state, uint32_t value) {
+  fold_rig::LogRealRun();
   game_log.push_back({3, reinterpret_cast<uint32_t>(state), value, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
 }
 // The virtual call at a batch's first instance (0x17b09ce): a stub in the census classes; one of a class outside the census may
@@ -1145,6 +1354,7 @@ static void FactionSite(void* t, SynthItem* item, SynthNode* node, uint32_t stat
 static void __thiscall SynthDepthLoop(void* node, void* t, void* list_pointer, uint32_t begin, uint32_t end) {
   const auto* list = static_cast<const SynthList*>(list_pointer);
   if (list->count == 0) return;
+  if (fold_rig::probe_words && InArena(t)) fold_rig::Capture(&fold_rig::loop_words);
   int32_t anim = (InArena(t) ? static_cast<dr::Slot*>(t)->anim : g_shared->seed_anim);
   const uint32_t state = reinterpret_cast<uint32_t>(node) + 0x2950;
   for (uint32_t i = begin; i < end; ++i) {
@@ -1654,11 +1864,13 @@ static void SerialPortion(World* world, uint32_t begin, uint32_t end) {
 }
 
 static void DispatchPortion(World* world, uint32_t begin, uint32_t end) {
+  const bool folded = fold_rig::OpenFor(world->tracker.data(), 1u << static_cast<uint32_t>(world->colour ? dr::Group::COLOUR_A : dr::Group::DEPTH_A));
   if (world->colour) {
     dr::DispatchColour(&synth_node, nullptr, world->tracker.data(), &world->list, 0, begin, end);
   } else {
     dr::DispatchDepth(NODE, nullptr, world->tracker.data(), &world->list, begin, end);
   }
+  if (folded) fold_rig::Verify();
 }
 
 // The driver: portions of the list sized from the tracker's +0x50 (read after each portion), back to back on one tracker.
@@ -3554,7 +3766,9 @@ static Outcome RunBCalls(BWorld* world, bool tracing) {
   Outcome total = {};
   for (int pass = 0; pass < 2; ++pass) {
     BDriver(world, [&](uint32_t first, uint32_t last) {
+      const bool folded = fold_rig::OpenFor(world->tracker.data(), (1u << static_cast<uint32_t>(dr::Group::DEPTH_B)) | (1u << static_cast<uint32_t>(dr::Group::COLOUR_B)));
       dr::DispatchMesh(world->tracker.data(), B_DEVICE, &world->view, world->list_type, &synth_node, world->sorted.data(), first, last);
+      if (folded) fold_rig::Verify();
       ++total.portions;
       total.chunks += di::last_call.chunks;
       total.reruns += di::last_call.reruns;
@@ -4454,6 +4668,492 @@ static void Detach() {
   std::printf("detach: kept while sites are in or a dispatch is active; clean case frees the memory (the pool stopped first)\n");
 }
 
+// ---------------------------------------------------------------- the fold (R2): parts 5 to 10
+//
+// Every call the runs below make through DispatchPortion / RunBCalls is preceded by what the fill site and the stub do (fold_rig):
+// the fold opens, and the hook checks after the call that the fold is closed, the ring holds the serial fill's bytes, every fill chunk
+// ended before the Unmap and the Unmap before any run on the real tracker, once. The tests ask that the outcome equals the serial run's
+// and has the shape of the fold-off run of the same call (S5: every chunk replayed, no more reruns or direct calls than without the
+// fold). Each test body answers whether everything held (`report`: print and count the failures), so that a control can be required
+// to fail it.
+
+#define FOLD_CHECK(report, good, x) \
+  do { if (!(x)) { (good) = false; if (report) { std::printf("FAIL line %d: %s\n", __LINE__, #x); ++failures; } } } while (false)
+
+static bool SameShape(const Outcome& base, const Outcome& folded) {
+  return folded.chunks == base.chunks && folded.reruns == base.reruns && folded.replayed == base.replayed && folded.ops == base.ops
+         && folded.direct_calls == base.direct_calls && folded.direct_segments == base.direct_segments
+         && folded.entry_reruns == base.entry_reruns && folded.unknown_seeds == base.unknown_seeds;
+}
+
+// One call of the dispatcher (or of the serial loop) on an A world in its start state.
+static Outcome RunOneCall(World* world, uint32_t end, bool serial, dr::Stage stage = dr::Stage::WORKERS, uint32_t threads = 4,
+                          bool tracing = false) {
+  ResetWorld(world);
+  if (serial) {
+    SerialPortion(world, 0, end);
+    return Capture(world);
+  }
+  UpdateAt(threads, {.stage = stage, .loops = (world->colour ? 2u : 1u)});
+  di::trace.active = tracing;
+  di::trace.frames_left = 1u << 30;
+  di::trace.calls.clear();
+  DispatchPortion(world, 0, end);
+  di::trace.active = false;
+  Outcome outcome = Capture(world);
+  outcome.chunks = di::last_call.chunks;
+  outcome.reruns = di::last_call.reruns;
+  outcome.replayed = di::last_call.replayed;
+  outcome.ops = di::last_call.ops;
+  outcome.direct_calls = (di::last_call.direct ? 1 : 0);
+  return outcome;
+}
+
+// Test 5: the fold's life at the three fill sites' cuts, A and B, W = 1..8 workers, 512..20000 fill items: the picture, the shape and the
+// ring are the serial run's.
+static void FoldLife() {
+  uint32_t cases = 0;
+  uint32_t folds = 0;
+  const auto compare = [&](const Outcome& serial, const Outcome& base, const Outcome& folded, const char* label) {
+    CHECK(Equal(serial, folded, label));
+    CHECK(SameShape(base, folded));
+    CHECK(fold_rig::rig.bad == 0 && fold_rig::rig.opens == folded.portions);
+    folds += fold_rig::rig.opens;
+    ++cases;
+  };
+  // The fill site's rule: ONE_WORKER uses one worker, the others all that are free.
+  UpdateAt(5, {.stage = dr::Stage::WORKERS, .loops = 1});
+  CHECK(di::FoldWorkers(1) == 4);
+  UpdateAt(5, {.stage = dr::Stage::ONE_WORKER, .loops = 1});
+  CHECK(di::FoldWorkers(1) == 1 && di::FoldWorkers(2) == 0 && di::FoldWorkers(0) == 0);
+  UpdateAt(5, {.stage = dr::Stage::CHUNKED, .loops = 1});
+  CHECK(di::FoldWorkers(1) == 0);
+  for (const bool colour : {false, true}) {
+    cached_constants = 0;
+    const auto lists = (colour ? ColourLists() : Lists());
+    for (size_t index = 0; index < 2; ++index) {
+      const auto world = BuildWorld(lists[index].spec);
+      const Outcome serial = RunSerial(world.get());
+      for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::ONE_WORKER, dr::Stage::WORKERS}) {
+        for (uint32_t workers = 1; workers <= 8; ++workers) {
+          for (const uint32_t chunks : {8u, 79u, 313u}) {
+            fold_rig::Off();
+            const Outcome base = RunStaged(world.get(), stage, workers + 1);
+            // ONE_WORKER forced (mode 2): the fold has all the free workers, the record only one (the claim rule).
+            fold_rig::rig.mode = (stage == dr::Stage::ONE_WORKER ? 2 : 1);
+            fold_rig::rig.chunks = chunks;
+            const Outcome folded = RunStaged(world.get(), stage, workers + 1);
+            char label[160];
+            std::snprintf(label, sizeof(label), "fold, %s '%s', %s, %u workers, %u chunks", colour ? "colour" : "depth", lists[index].name,
+                          StageName(stage), workers, chunks);
+            compare(serial, base, folded, label);
+          }
+        }
+      }
+    }
+  }
+  test_controls.entry_site = true;
+  for (const bool colour : {false, true}) {
+    const auto lists = BLists(colour);
+    for (size_t index = 0; index < 2; ++index) {
+      const auto world = BuildBWorld(lists[index].second);
+      const Outcome serial = RunBSerial(world.get());
+      for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::ONE_WORKER, dr::Stage::WORKERS}) {
+        for (const uint32_t workers : {1u, 3u, 8u}) {
+          for (const uint32_t chunks : {8u, 313u}) {
+            fold_rig::Off();
+            const Outcome base = RunBStaged(world.get(), stage, workers + 1);
+            fold_rig::rig.mode = (stage == dr::Stage::ONE_WORKER ? 2 : 1);
+            fold_rig::rig.chunks = chunks;
+            const Outcome folded = RunBStaged(world.get(), stage, workers + 1);
+            char label[160];
+            std::snprintf(label, sizeof(label), "fold, B %s '%s', %s, %u workers, %u chunks", colour ? "colour" : "depth", lists[index].first,
+                          StageName(stage), workers, chunks);
+            compare(serial, base, folded, label);
+            CHECK(direct_on_slot == 0);
+          }
+        }
+      }
+    }
+  }
+  test_controls.entry_site = false;
+  fold_rig::Off();
+  std::printf("fold life: %u cases (depth, colour, depth B, colour B x 2 lists x 3 stages x W workers x fill sizes), %u folds: pictures, shapes (every chunk"
+              " replayed, no more reruns or direct calls than without the fold) and rings equal; every fold closed with one Unmap after the last chunk and before any"
+              " run on the real tracker\n", cases, folds);
+}
+
+// Test 6, the calls: every state the dispatchers meet with a fold open (forced: the fill site would not have opened it in most) closes
+// it before anything runs on the real tracker.
+static void FoldExits() {
+  uint32_t cases = 0;
+  uint32_t folds = 0;
+  fold_rig::Off();
+  fold_rig::rig.mode = 2;
+  const auto closed = [&](const Outcome& serial, const Outcome& run, const char* label) {
+    CHECK(Equal(serial, run, label));
+    CHECK(fold_rig::rig.bad == 0 && fold_rig::rig.opens > 0);
+    folds += fold_rig::rig.opens;
+    fold_rig::rig.opens = 0;
+    ++cases;
+  };
+  {
+    const auto world = BuildWorld({.items = 6000, .seed = 71, .max_run = 8});
+    const Outcome serial = RunSerial(world.get());
+    for (const dr::Stage stage : {dr::Stage::DIRECT, dr::Stage::TOUCH_AHEAD, dr::Stage::CHUNKED}) {
+      closed(serial, RunStaged(world.get(), stage, 4), "stage");
+    }
+    ResetWorld(world.get());
+    UpdateAt(4, {.stage = dr::Stage::WORKERS, .loops = 0});
+    closed(serial, RunCalls(world.get(), false), "loop off");
+    ResetWorld(world.get());
+    UpdateAt(4, {.stage = dr::Stage::WORKERS, .loops = 1});
+    di::latched_groups = 1;
+    closed(serial, RunCalls(world.get(), false), "latched group");
+    di::latched_groups = 0;
+    // "detached" turns on between the fill site and the cut (the one direct reason that changes without a window).
+    fold_rig::rig.flip_detached = true;
+    closed(serial, RunStaged(world.get(), dr::Stage::WORKERS, 4), "detached");
+    fold_rig::rig.flip_detached = false;
+    // A chunk's op buffer that overflows and one that is damaged: the dispatcher runs them again after its record close.
+    test_controls.overflow_chunk = 1;
+    closed(serial, RunStaged(world.get(), dr::Stage::WORKERS, 4), "overflow");
+    test_controls.overflow_chunk = -1;
+    test_controls.corrupt_chunk = 2;
+    closed(serial, RunStaged(world.get(), dr::Stage::WORKERS, 4), "damaged ops");
+    test_controls.corrupt_chunk = -1;
+  }
+  {
+    // Below the dispatcher's floor (a small call runs directly) and a continuation (its first item continues the tracker's mesh).
+    const auto few = BuildWorld({.items = 300, .seed = 72, .max_run = 8});
+    closed(RunSerial(few.get()), RunStaged(few.get(), dr::Stage::WORKERS, 4), "small call");
+    const auto continued = BuildWorld({.items = 6000, .seed = 73, .max_run = 10, .continuation = true});
+    closed(RunSerial(continued.get()), RunStaged(continued.get(), dr::Stage::WORKERS, 4), "continuation");
+    cached_constants = 0;
+    const auto unknown = BuildWorld({.items = 6000, .seed = 74, .max_run = 8, .colour = true, .unique_meshes = true, .foreign_percent = 30});
+    closed(RunSerial(unknown.get()), RunStaged(unknown.get(), dr::Stage::WORKERS, 4), "unknown class");
+  }
+  test_controls.entry_site = true;
+  for (const bool colour : {false, true}) {
+    const std::array<std::pair<const char*, BSpec>, 5> specs = {{{"direct meshes", {.seed = 2, .direct_percent = 6}},
+                                                                 {"many direct meshes", {.seed = 3, .direct_percent = 30}},
+                                                                 {"duplicate meshes", {.seed = 9, .duplicates = 20}},
+                                                                 {"every class", {.seed = 6, .direct_percent = 5, .all_classes = true}},
+                                                                 {"small round", {.meshes = 20, .seed = 10}}}};
+    for (const auto& [name, spec_in] : specs) {
+      BSpec spec = spec_in;
+      spec.colour = colour;
+      const auto world = BuildBWorld(spec);
+      const Outcome serial = RunBSerial(world.get());
+      for (const dr::Stage stage : {dr::Stage::CHUNKED, dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+        closed(serial, RunBStaged(world.get(), stage, 4), name);
+      }
+    }
+  }
+  test_controls.entry_site = false;
+  fold_rig::Off();
+  fold_rig::rig.mode = 2;
+
+  // The tracker of the call is not the fold's (the key proof broken): the dispatcher closes the fold at its entry, counts it and
+  // latches R2; the call itself runs as it would have.
+  {
+    const auto world = BuildWorld({.items = 6000, .seed = 75, .max_run = 8});
+    const Outcome serial = RunOneCall(world.get(), 4000, true);
+    fold_rig::rig.decoy_key = true;
+    fold_rig::rig.expected_mismatches = 1;
+    closed(serial, RunOneCall(world.get(), 4000, false), "key mismatch");
+    fold_rig::Off();
+    fold_rig::rig.mode = 2;
+  }
+
+  // The present's net: a fold still open at the present is closed, counted and latched, and Update writes one line.
+  {
+    static uint8_t net_tracker[16];
+    UpdateAt(4, {.stage = dr::Stage::WORKERS, .loops = 1});
+    CHECK(fold_rig::OpenFor(net_tracker, 1) && fold_rig::FoldOpen());
+    log_lines.clear();
+    dr::CloseFoldAtPresent();
+    CHECK(!fold_rig::FoldOpen() && di::fold_net_closes == 1 && di::fold_latched);
+    UpdateAt(4, {.stage = dr::Stage::WORKERS, .loops = 1});
+    CHECK(LogCount("open folds closed by a net") == 1 && di::fold_net_closes == 0);
+    uint32_t unmaps = 0;
+    for (const auto& event : fold_rig::order) unmaps += (event.first == fold_rig::Event::UNMAP ? 1 : 0);
+    CHECK(unmaps == 1);
+    di::fold_latched = false;
+    fold_rig::armed = false;
+    wp::Join();
+    // The detach (the add-on's order: the net, then the pool stops): a fold open on this thread is closed first, nothing hangs.
+    CHECK(fold_rig::OpenFor(net_tracker, 1));
+    {
+      const Watchdog watchdog(5, "the net and the pool's stop with a fold open");
+      dr::CloseFoldAtPresent();
+      wp::Stop();
+    }
+    CHECK(wi::created == 0 && !wi::busy.load());
+    di::fold_net_closes = 0;
+    di::fold_latched = false;
+    fold_rig::armed = false;
+    ++cases;
+  }
+  fold_rig::Off();
+  UpdateAt(4, {.stage = dr::Stage::WORKERS, .loops = 1});
+  std::printf("fold exits: %u cases, %u folds: stages, loop off, latched, detached after the open, overflow, damaged ops, small call, continuation,"
+              " unknown class, B direct / duplicate / every-class / small rounds, a key mismatch, the present's net and the detach: every fold closed, one Unmap each\n",
+              cases, folds);
+}
+
+// Test 6, the trace: in a trace frame the close's time (a fake Unmap of 2 ms) is the call's `fold_close`, not part of the phase the
+// close happened in (the direct run, or the record's chunk 0); every tick of the call is still accounted.
+static bool FoldTicksOk(bool report) {
+  bool good = true;
+  fold_rig::Off();
+  fold_rig::rig.mode = 2;
+  fold_rig::unmap_sleep_ms = 2;
+  const uint64_t two_ms = wp::qpc_frequency * 2 / 1000;
+  const auto few = BuildWorld({.items = 300, .seed = 76, .max_run = 8});
+  RunOneCall(few.get(), 300, false, dr::Stage::WORKERS, 4, true);
+  FOLD_CHECK(report, good, di::trace.calls.size() == 1);
+  if (!di::trace.calls.empty()) {
+    const di::CallTrace& call = di::trace.calls.back();
+    FOLD_CHECK(report, good, call.folded && !call.fold_with_record && call.fold_close >= two_ms * 9 / 10);
+    FOLD_CHECK(report, good, call.direct < call.fold_close && call.total + call.compare + call.run_scan == call.wall);
+  }
+  const auto big = BuildWorld({.items = 6000, .seed = 77, .max_run = 8});
+  RunOneCall(big.get(), 4000, false, dr::Stage::WORKERS, 4, true);
+  FOLD_CHECK(report, good, di::trace.calls.size() == 1);
+  if (!di::trace.calls.empty()) {
+    const di::CallTrace& call = di::trace.calls.back();
+    FOLD_CHECK(report, good, call.folded && call.fold_with_record && call.fold_close >= two_ms * 9 / 10 && call.chunk_zero > 0);
+    FOLD_CHECK(report, good, call.total + call.compare + call.run_scan + (call.stage == dr::Stage::CHUNKED ? call.warm_ups : 0) == call.wall);
+  }
+  FOLD_CHECK(report, good, fold_rig::rig.bad == 0);
+  fold_rig::Off();
+  return good;
+}
+
+// Test 7: a late worker (held between waking and counting itself in) does not hold the fold: the call returns without waiting, the
+// render thread takes the held worker's share, the picture and the ops are exact, and the held worker skips the closed job.
+static bool FoldLateOk(bool report, double* milliseconds = nullptr) {
+  bool good = true;
+  const auto world = BuildWorld({.items = 6000, .seed = 81, .max_run = 8});
+  const Outcome serial = RunOneCall(world.get(), 4000, true);
+  // The pool's threads and the held worker: the only worker (the render thread must record its share), and one of three.
+  for (const auto& [threads, late] : {std::pair<uint32_t, uint32_t>{2, 1}, std::pair<uint32_t, uint32_t>{4, 2}}) {
+    fold_rig::Off();
+    const Outcome base = RunOneCall(world.get(), 4000, false, dr::Stage::WORKERS, threads);
+    fold_rig::rig.mode = 1;
+    fold_rig::rig.chunks = 79;
+    wi::controls.late_worker = late;
+    wi::controls.late_parked = 0;
+    wi::controls.release_late = false;
+    std::thread releaser([] {
+      Sleep(400);
+      wi::controls.release_late = true;
+    });
+    const auto before = std::chrono::steady_clock::now();
+    const Outcome folded = RunOneCall(world.get(), 4000, false, dr::Stage::WORKERS, threads);
+    const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - before).count();
+    releaser.join();
+    for (int wait = 0; wait < 2000 && wi::entered.load() != 0; ++wait) Sleep(1);
+    Sleep(20);
+    FOLD_CHECK(report, good, Equal(serial, folded, "late worker", false) && SameShape(base, folded));
+    FOLD_CHECK(report, good, fold_rig::rig.bad == 0 && fold_rig::rig.opens == 1 && folded.replayed + folded.reruns == folded.chunks && folded.direct_calls == 0);
+    FOLD_CHECK(report, good, elapsed < 200 && wi::controls.late_parked == 1);
+    if (milliseconds != nullptr) *milliseconds = elapsed;
+    wi::controls.late_worker = 0;
+    wi::controls.release_late = true;
+  }
+  fold_rig::Off();
+  return good;
+}
+
+// Test 8: the render thread is slow to the cut (2 ms, 30 ms): the workers spin, then wait on the publish, wake on it, nothing hangs.
+static void FoldSlow() {
+  const Watchdog watchdog(5, "a slow publish");
+  const auto world = BuildWorld({.items = 6000, .seed = 82, .max_run = 8});
+  const Outcome serial = RunOneCall(world.get(), 4000, true);
+  uint32_t folds = 0;
+  for (const uint32_t sleep_ms : {2u, 30u}) {
+    for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+      fold_rig::Off();
+      fold_rig::rig.mode = 1;
+      fold_rig::rig.chunks = 313;
+      fold_rig::rig.sleep_ms = sleep_ms;
+      const Outcome folded = RunOneCall(world.get(), 4000, false, stage, 5);
+      CHECK(Equal(serial, folded, "slow publish", false) && fold_rig::rig.bad == 0 && fold_rig::rig.opens == 1);
+      folds += fold_rig::rig.opens;
+    }
+  }
+  fold_rig::Off();
+  std::printf("fold slow publish: render thread 2 ms and 30 ms late to the cut (%u folds): workers wait on the publish and wake, no hang\n", folds);
+}
+
+// Test 10: the fill's chunks run with the words of the fill site (Start's), the record's shares with the cut's (the publish's): the
+// render thread's rounding changes between the two, and every thread that records sees the cut's.
+static bool FoldWordsOk(bool report) {
+  bool good = true;
+  const auto world = BuildWorld({.items = 6000, .seed = 91, .max_run = 8});
+  const Outcome serial = RunOneCall(world.get(), 4000, true);
+  fold_rig::Off();
+  fold_rig::rig.mode = 1;
+  fold_rig::rig.chunks = 79;
+  fold_rig::rig.round_up = true;
+  fold_rig::probe_words = true;
+  fold_rig::loop_words.clear();
+  fold_rig::chunk_words.clear();
+  const Outcome folded = RunOneCall(world.get(), 4000, false, dr::Stage::WORKERS, 5);
+  fold_rig::probe_words = false;
+  FOLD_CHECK(report, good, Equal(serial, folded, "words", false) && fold_rig::rig.bad == 0 && fold_rig::rig.opens == 1);
+  const unsigned int site_x87 = fold_rig::rig.saved_words[0] & (_MCW_RC | _MCW_PC);
+  const unsigned int site_sse = fold_rig::rig.saved_words[1] & (_MCW_RC | _MCW_DN);
+  // The render thread's own record run: the cut's words (it set them itself).
+  const fold_rig::WordSample* cut = nullptr;
+  for (const fold_rig::WordSample& sample : fold_rig::loop_words) {
+    if (sample.thread == GetCurrentThreadId()) cut = &sample;
+  }
+  FOLD_CHECK(report, good, cut != nullptr && (cut->x87 != site_x87 || cut->sse != site_sse));
+  bool worker_recorded = false;
+  for (const fold_rig::WordSample& sample : fold_rig::loop_words) {
+    FOLD_CHECK(report, good, cut != nullptr && sample.x87 == cut->x87 && sample.sse == cut->sse);
+    worker_recorded = worker_recorded || sample.thread != GetCurrentThreadId();
+  }
+  FOLD_CHECK(report, good, worker_recorded);
+  bool worker_filled = false;
+  for (const fold_rig::WordSample& sample : fold_rig::chunk_words) {
+    if (sample.thread == GetCurrentThreadId()) continue;
+    worker_filled = true;
+    FOLD_CHECK(report, good, sample.x87 == site_x87 && sample.sse == site_sse);
+  }
+  FOLD_CHECK(report, good, worker_filled);
+  fold_rig::Off();
+  return good;
+}
+
+// Controls 1, 3, 10 and 13's tests: the pieces they break. Each answers whether the rule held.
+static bool FoldSmallCallOk(bool report) {
+  bool good = true;
+  fold_rig::Off();
+  fold_rig::rig.mode = 2;
+  const auto few = BuildWorld({.items = 300, .seed = 72, .max_run = 8});
+  const Outcome serial = RunOneCall(few.get(), 300, true);
+  const Outcome folded = RunOneCall(few.get(), 300, false);
+  FOLD_CHECK(report, good, Equal(serial, folded, "small call", false) && folded.direct_calls == 1 && fold_rig::rig.bad == 0 && fold_rig::rig.opens == 1);
+  fold_rig::Off();
+  return good;
+}
+
+// A fill chunk a worker holds (200 ms): the close must drain and join before the Unmap and before any run on the real tracker.
+static bool FoldGatedOk(bool report, bool decoy) {
+  bool good = true;
+  const auto world = BuildWorld({.items = 6000, .seed = 83, .max_run = 8});
+  const Outcome serial = RunOneCall(world.get(), 4000, true);
+  fold_rig::Off();
+  fold_rig::rig.mode = 1;
+  fold_rig::rig.chunks = 79;
+  fold_rig::rig.gate = true;
+  fold_rig::rig.decoy_key = decoy;
+  fold_rig::rig.expected_mismatches = (decoy ? 1 : 0);
+  const Outcome folded = RunOneCall(world.get(), 4000, false);
+  FOLD_CHECK(report, good, Equal(serial, folded, "gated chunk", false) && fold_rig::rig.bad == 0 && fold_rig::rig.opens == 1);
+  fold_rig::Off();
+  return good;
+}
+
+// The ring's flag changes between the stub and the close (S1): the Unmap is still made, once; the change is counted and latches R2.
+static bool FoldFlagOk(bool report) {
+  bool good = true;
+  const auto world = BuildWorld({.items = 6000, .seed = 84, .max_run = 8});
+  const Outcome serial = RunOneCall(world.get(), 4000, true);
+  fold_rig::Off();
+  fold_rig::rig.mode = 1;
+  fold_rig::rig.chunks = 79;
+  fold_rig::rig.flip_flag = true;
+  fold_rig::rig.expected_flag_changes = 1;
+  const Outcome folded = RunOneCall(world.get(), 4000, false);
+  FOLD_CHECK(report, good, Equal(serial, folded, "flag changed", false) && fold_rig::rig.bad == 0 && fold_rig::rig.opens == 1);
+  fold_rig::Off();
+  return good;
+}
+
+// ONE_WORKER with a fold of 3 workers (forced): the record has one share, so only that share runs once.
+static bool FoldOneWorkerOk(bool report) {
+  bool good = true;
+  const auto world = BuildWorld({.items = 6000, .seed = 85, .max_run = 8});
+  const Outcome serial = RunOneCall(world.get(), 4000, true);
+  fold_rig::Off();
+  const Outcome base = RunOneCall(world.get(), 4000, false, dr::Stage::ONE_WORKER, 4);
+  fold_rig::rig.mode = 2;
+  fold_rig::rig.chunks = 79;
+  const Outcome folded = RunOneCall(world.get(), 4000, false, dr::Stage::ONE_WORKER, 4);
+  FOLD_CHECK(report, good, Equal(serial, folded, "one worker", false) && SameShape(base, folded) && fold_rig::rig.bad == 0 && fold_rig::rig.opens == 1);
+  fold_rig::Off();
+  return good;
+}
+
+// The controls of the fold: each breaks one rule (compiled in with TWATTILA_DRAW_RECORDING_CONTROLS), and the test of the rule must
+// see it. The others of the plan (2, 7, 8, 15, 16, 17 in tw_instance_fill; 11, 12 in tw_draw_recording_loop).
+static void FoldControls() {
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  // Nothing set: every rule holds.
+  CHECK(FoldSmallCallOk(true) && FoldGatedOk(true, false) && FoldGatedOk(true, true) && FoldFlagOk(true) && FoldOneWorkerOk(true));
+  CHECK(FoldTicksOk(true) && FoldLateOk(true) && FoldWordsOk(true));
+  const auto sees = [&](const char* name, bool* control, bool (*test)()) {
+    *control = false;
+    const bool held = test();
+    *control = true;
+    if (held) std::printf("FAIL: the control '%s' was not seen\n", name);
+    CHECK(!held);
+  };
+  // 1: one direct path skips its close (the scope net fires; a run on the real tracker comes before the Unmap).
+  sees("fold_close_in_direct", &di::controls.fold_close_in_direct, [] { return FoldSmallCallOk(false); });
+  CHECK(FoldSmallCallOk(true));
+  // 3: the close returns without the drain and the join (a held chunk ends after the Unmap).
+  sees("fold_drain_and_join", &di::controls.fold_drain_and_join, [] { return FoldGatedOk(false, false); });
+  CHECK(FoldGatedOk(true, false));
+  // 4: the render thread runs only its own share (no claim of the leftovers), with a held late worker.
+  sees("fold_claim_shares", &di::controls.fold_claim_shares, [] { return FoldLateOk(false); });
+  CHECK(FoldLateOk(true));
+  // 5: every woken worker runs a share of its own index, claimed or not (ONE_WORKER with 3 workers).
+  sees("fold_claim_part", &di::controls.fold_claim_part, [] { return FoldOneWorkerOk(false); });
+  CHECK(FoldOneWorkerOk(true));
+  // 6: no control words in the publish.
+  sees("fold_control_words", &di::controls.fold_control_words, [] { return FoldWordsOk(false); });
+  CHECK(FoldWordsOk(true));
+  // 9: the fold's job joins every woken worker (ALL): the render thread waits for the held late worker (>= 300 ms).
+  {
+    double milliseconds = 0;
+    di::controls.fold_join_entered = false;
+    const bool held = FoldLateOk(false, &milliseconds);
+    di::controls.fold_join_entered = true;
+    CHECK(!held && milliseconds >= 300);
+  }
+  // 10: the close skips a noted Unmap when the flag changed.
+  sees("fold_unmap_regardless", &di::controls.fold_unmap_regardless, [] { return FoldFlagOk(false); });
+  CHECK(FoldFlagOk(true));
+  // 13: the dispatchers treat a fold of another tracker as not theirs (no entry check).
+  sees("fold_entry_key", &di::controls.fold_entry_key, [] { return FoldGatedOk(false, true); });
+  CHECK(FoldGatedOk(true, true));
+  // 14: the close's ticks stay in the phase it happened in.
+  sees("fold_move_ticks", &di::controls.fold_move_ticks, [] { return FoldTicksOk(false); });
+  CHECK(FoldTicksOk(true));
+  fold_rig::Off();
+  std::printf("fold controls: no net close in direct, no drain and join, no leftover claim, claim by index, no control words, join all, Unmap skipped on a flag change,"
+              " no entry key check, ticks left in the phase: each is seen\n");
+#else
+  std::printf("fold controls: skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
+#endif
+}
+
+static void FoldTests() {
+  FoldLife();
+  FoldExits();
+  CHECK(FoldTicksOk(true));
+  CHECK(FoldLateOk(true));
+  FoldSlow();
+  CHECK(FoldWordsOk(true));
+  FoldControls();
+}
+
 int main() {
   std::setvbuf(stdout, nullptr, _IONBF, 0);
   PoolStartStop();
@@ -4518,6 +5218,7 @@ int main() {
   BNested();
   BNestedSmallRound();
   BControls();
+  FoldTests();
   SiteGroupsSticky();
   test_controls.entry_site = false;
   Detach();

@@ -29,6 +29,13 @@
 //    game's block; B with the tracker outside the arena runs the thunk's direct path (log, tracker, frame, registers, cell equal); B
 //    with a slot's tracker runs the record path (one op, the tracker's first 0x14 bytes as the game writes them, esp, ebp, esi and
 //    the reloaded ebx as the game leaves them), and the replay of that op makes the game's calls.
+// 8. The recording does not touch the ring, nor what the fill reads (R2's test 9): every tracker's +0x48 (the ring's mapped memory, which
+//    a fold's fill writes while the record runs) holds the address of a PAGE_NOACCESS page and a first-chance vectored handler counts
+//    any fault in that page on any thread, then lets the page through so the run ends (the count must stay 0; every run's start puts
+//    the protection back);
+//    +0x44 and the +0x84 array of record pointers are the fill's sources, snapshotted with each item's record (+0x74) before every
+//    run and compared after (9b); no source range overlaps the mesh state the record writes and puts back. CONTROLs: a read of the page
+//    is counted by the handler; a fake that writes one byte of a record while recording makes the compare differ.
 // tests.exe [empire.retail.dll]
 #include <windows.h>
 
@@ -107,6 +114,35 @@ constexpr uint32_t FREE_RVA = 0xe98c0;
 constexpr uint32_t CACHE_FLAG_RVA = 0x1da661b;
 
 std::vector<uint8_t> file;
+
+// Test 9 (R2): the tracker's +0x48 holds the address of a page nothing may touch; the vectored handler sees any thread's fault there
+// first, counts it and opens the page so that the faulting access completes.
+uint8_t* no_access = nullptr;
+std::atomic<uint32_t> ring_faults = 0;
+// The fill's sources (9b): each item's record at +0x74 (RECORD_STRIDE bytes, the tracker's +0x44) reached through the tracker's +0x84 array.
+constexpr uint32_t RECORD_OFFSET = 0x74;
+constexpr uint32_t RECORD_STRIDE = 0x40;
+uint32_t source_changes = 0;
+// A control: a fake that runs while recording writes one byte of this record.
+bool control_write_record = false;
+uint8_t* control_record = nullptr;
+
+LONG CALLBACK CountRingFaults(EXCEPTION_POINTERS* info) {
+  const EXCEPTION_RECORD* record = info->ExceptionRecord;
+  if (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && record->NumberParameters >= 2
+      && record->ExceptionInformation[1] - reinterpret_cast<ULONG_PTR>(no_access) < 0x1000) {
+    ring_faults.fetch_add(1);
+    DWORD old = 0;
+    VirtualProtect(no_access, 0x1000, PAGE_READWRITE, &old);
+    return EXCEPTION_CONTINUE_EXECUTION;
+  }
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+
+void ProtectRing() {
+  DWORD old = 0;
+  VirtualProtect(no_access, 0x1000, PAGE_NOACCESS, &old);
+}
 
 uint32_t Read32(const uint8_t* at) {
   uint32_t value;
@@ -276,6 +312,7 @@ uint32_t __fastcall FakeStride(StrideObject* object, void*) {
 }
 uint32_t __fastcall FakeVf58(Mesh* mesh, void*) {
   Count(VF58);
+  if (control_write_record) control_record[0] = 0xA5;
   return 0x1000 + mesh->kind;
 }
 // The first argument is vf58's result: a wrong one makes a technique no kind has.
@@ -484,6 +521,8 @@ struct World {
   bool colour = false;
   uint8_t cache = 1;
   bool flag_portions = false;
+  // The fill's sources: each item's record pointer (the tracker's +0x84 array).
+  std::vector<uint8_t*> records;
 };
 
 std::unique_ptr<World> BuildWorld(const Spec& spec) {
@@ -616,6 +655,12 @@ std::unique_ptr<World> BuildWorld(const Spec& spec) {
   world->pointers.resize(spec.items);
   for (uint32_t k = 0; k < spec.items; ++k) world->pointers[k] = &world->items[k];
   world->list = {.count = spec.items, .data = world->pointers.data()};
+  world->records.resize(spec.items);
+  for (uint32_t k = 0; k < spec.items; ++k) {
+    auto* const record = reinterpret_cast<uint8_t*>(&world->items[k]) + RECORD_OFFSET;
+    for (uint32_t b = 0; b < RECORD_STRIDE; ++b) record[b] = static_cast<uint8_t>(k * 13 + b * 7 + spec.seed);
+    world->records[k] = record;
+  }
   return world;
 }
 
@@ -642,6 +687,11 @@ void ResetWorld(World* world) {
   Field<uint32_t>(t, 0x24) = 0xb0;
   Field<uint32_t>(t, 0x50) = 6;
   Field<uint32_t>(t, 0x64) = world->max_count;
+  // The ring the fill writes (+0x48, a page nothing may touch), its record size and the array it reads its sources through.
+  Field<uint32_t>(t, 0x44) = RECORD_STRIDE;
+  Field<uint32_t>(t, 0x48) = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(no_access));
+  ProtectRing();
+  Field<uint32_t>(t, 0x84) = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(world->records.data()));
   if (world->continuation || world->pending != 0 || world->change_mask != 0) {
     // A call that starts in the middle of a mesh whose state is another view's (or not this call's).
     Mesh* mesh = (world->continuation ? world->items[0].mesh : &world->meshes.back());
@@ -726,13 +776,25 @@ void CallLoop(uintptr_t loop, World* world, uint32_t begin, uint32_t end) {
   }
 }
 
+// What the fill reads (9b): each item's record, the tracker's +0x84 array of record pointers and the records it points to.
+std::vector<uint8_t> SourceBytes(const World* world) {
+  std::vector<uint8_t> bytes;
+  const auto* const array = reinterpret_cast<uint8_t* const*>(static_cast<uintptr_t>(Read32(world->tracker.data() + 0x84)));
+  const auto* const raw = reinterpret_cast<const uint8_t*>(array);
+  bytes.insert(bytes.end(), raw, raw + world->records.size() * sizeof(void*));
+  for (size_t k = 0; k < world->records.size(); ++k) bytes.insert(bytes.end(), array[k], array[k] + RECORD_STRIDE);
+  return bytes;
+}
+
 Outcome RunSerial(World* world) {
   Bind(world, game);
   ResetWorld(world);
   const uintptr_t loop = reinterpret_cast<uintptr_t>(game + (world->colour ? COLOUR_LOOP_RVA : LOOP_RVA));
+  const std::vector<uint8_t> sources = SourceBytes(world);
   for (int pass = 0; pass < 2; ++pass) {
     Driver(world, [&](uint32_t begin, uint32_t end) { CallLoop(loop, world, begin, end); });
   }
+  source_changes += (SourceBytes(world) != sources ? 1 : 0);
   return Capture(world);
 }
 
@@ -801,7 +863,10 @@ Outcome RunStaged(World* world, dr::Stage stage, uint32_t threads, bool tracing 
   // Traced calls compare every call (the game's own trace compares only its last frame).
   di::controls.compare_every_call = tracing;
   di::trace.calls.clear();
-  return RunCalls(world, tracing);
+  const std::vector<uint8_t> sources = SourceBytes(world);
+  Outcome outcome = RunCalls(world, tracing);
+  source_changes += (SourceBytes(world) != sources ? 1 : 0);
+  return outcome;
 }
 
 bool Equal(const Outcome& serial, const Outcome& staged, const char* label, bool print = true) {
@@ -1818,6 +1883,41 @@ void TestControls() {
   std::printf("5. CONTROLs: seed validation off, pointer translation off, any capture off, stride copied always, the depth init site's bytes put back to the game's, an unrecorded virtual call (vf64) answering differently in the recorded run: each run differs; the runs with the rule back are equal\n");
 }
 
+// Test 9: the trap works (a read of the page is counted by the handler: control 11), a fake that writes a record
+// while recording is seen by the sources' compare (control 12), and no fill source overlaps the mesh state the record writes and puts
+// back (+0x40 .. +0x47 of a mesh: the warm-up item's and the straddler's).
+void TestRingTrap() {
+  CHECK(ring_faults.load() == 0);
+  const volatile uint32_t value = *reinterpret_cast<volatile uint32_t*>(no_access);
+  CHECK(value == 0 && ring_faults.load() == 1);
+  ring_faults.store(0);
+  ProtectRing();
+
+  SetSites(ENTRY_MODE);
+  const auto world = BuildWorld({.items = 6000, .seed = 91, .max_run = 8});
+  const Outcome serial = RunSerial(world.get());
+  CHECK(source_changes == 0);
+  control_record = world->records[3];
+  REQUIRE(control_record[0] != 0xA5);
+  control_write_record = true;
+  RunStaged(world.get(), dr::Stage::WORKERS, 8);
+  control_write_record = false;
+  CHECK(source_changes > 0 && fake_calls[VF58].load() > 0);
+  source_changes = 0;
+  CHECK(Equal(serial, RunStaged(world.get(), dr::Stage::WORKERS, 8), "trap baseline") && source_changes == 0);
+  control_record = nullptr;
+  SetSites(0);
+
+  bool overlaps = false;
+  for (const Mesh& mesh : world->meshes) {
+    for (const uint8_t* record : world->records) {
+      overlaps |= (record < reinterpret_cast<const uint8_t*>(&mesh) + 0x48 && reinterpret_cast<const uint8_t*>(&mesh) + 0x40 < record + RECORD_STRIDE);
+    }
+  }
+  CHECK(!overlaps);
+  std::printf("ring trap: a read of the page is counted by the handler; a write to a record while recording is seen by the sources' compare\n");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1867,7 +1967,12 @@ int main(int argc, char** argv) {
   InstallFakes(game);
   InstallFakes(patched);
   FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+  no_access = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_NOACCESS));
+  REQUIRE(no_access != nullptr);
+  REQUIRE(AddVectoredExceptionHandler(1, &CountRingFaults) != nullptr);
 
+  TestRingTrap();
+  for (std::atomic<uint32_t>& calls : fake_calls) calls.store(0);
   TestImages();
   TestSerialRun();
   TestStages();
@@ -1882,6 +1987,10 @@ int main(int argc, char** argv) {
   TestMeshBeforePlan();
   TestGroupsIn();
   TestStateBlocks();
+  // Test 9: nothing above touched the ring's page (any thread) nor changed what the fill reads.
+  CHECK(ring_faults.load() == 0 && source_changes == 0);
+  std::printf("ring: every run above made with the tracker's +0x48 on a PAGE_NOACCESS page and the fill's sources snapshotted: no fault (%u), no source changed (%u)\n",
+              ring_faults.load(), source_changes);
   SetSites(0);
   CHECK(CheckWrittenSites(0) == 0 && CheckWrittenSites(0, true) == 0);  // the sites out: the game's own bytes again
   CHECK(std::memcmp(patched + LOOP_RVA, loop_bytes_b.data(), loop_bytes_b.size()) == 0);

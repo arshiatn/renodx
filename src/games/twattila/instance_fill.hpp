@@ -161,23 +161,23 @@ constexpr std::array<SiteInfo, SITE_COUNT> SITES = {{
      .rva = 0x17AE829,
      .before = 2,
      .size = 11,
-     .pattern = "75 0B 8B 49 10 FF 77 18 8B 01 FF 50 10",
      .key_rva = 0x17AE7F9,
-     .key = "89 7C 24 40"},
+     .key = "89 7C 24 40",
+     .pattern = "75 0B 8B 49 10 FF 77 18 8B 01 FF 50 10"},
     {.name = "colour unmap",
      .rva = 0x17AE8E9,
      .before = 2,
      .size = 11,
-     .pattern = "75 0B 8B 49 10 FF 77 18 8B 01 FF 50 10",
      .key_rva = 0x17AE8B9,
-     .key = "89 7C 24 58"},
+     .key = "89 7C 24 58",
+     .pattern = "75 0B 8B 49 10 FF 77 18 8B 01 FF 50 10"},
     {.name = "folded unmap",
      .rva = 0x17AED30,
      .before = 2,
      .size = 11,
-     .pattern = "75 0B 8B 49 10 FF 75 18 8B 01 FF 50 10 8A 44 24 78 C7 45 58 00 00 00 00 84 C0 75 42",
      .key_rva = 0x17AED04,
-     .key = "89 6C 24 40"},
+     .key = "89 6C 24 40",
+     .pattern = "75 0B 8B 49 10 FF 75 18 8B 01 FF 50 10 8A 44 24 78 C7 45 58 00 00 00 00 84 C0 75 42"},
 #endif
 }};
 
@@ -279,6 +279,10 @@ static bool control_unmap_at_once = false;
 static bool control_ignore_pixel_byte = false;
 // The stub of a key mismatch notes its Unmap in the fold and lets the close make it
 static bool control_note_on_mismatch = false;
+// Prepare's all-or-none runs over all the sites, not by group (a refused stub takes the fills with it)
+static bool control_all_or_none = false;
+// Wanted asks for the stubs whether or not their cut is in
+static bool control_stubs_without_cut = false;
 #else
 constexpr bool control_overlap = false;
 constexpr bool control_drop_last = false;
@@ -290,6 +294,8 @@ constexpr bool control_fold_no_reset = false;
 constexpr bool control_unmap_at_once = false;
 constexpr bool control_ignore_pixel_byte = false;
 constexpr bool control_note_on_mismatch = false;
+constexpr bool control_all_or_none = false;
+constexpr bool control_stubs_without_cut = false;
 #endif
 
 using RecordCopy = void(__thiscall*)(void* functor, Range* range);
@@ -747,6 +753,9 @@ inline bool Prepare(HMODULE module) {
   if (!stubs_refused.empty()) {
     renodx::utils::log::w("[Total War] Fill With Draw Recording: left alone (not the game's code as expected: another mod or build): ",
                           stubs_refused);
+    if (control_all_or_none) {
+      return false;
+    }
   } else if (branches_into(FOLD_SITES) != 0) {
     renodx::utils::log::w("[Total War] Fill With Draw Recording: left alone (the game jumps into the middle of a stub)");
   } else {
@@ -903,7 +912,7 @@ inline uint32_t Wanted(bool row, [[maybe_unused]] bool fold_row = false, [[maybe
   const bool fold_ready = (fold_row && wanted != 0 && (written & R1_SITES) == R1_SITES && (found & FOLD_SITES) == FOLD_SITES);
   fold_on.store(fold_ready, std::memory_order_relaxed);
   if (fold_ready) {
-    wanted |= (cuts_written & cuts_target) << FILL_SITE_COUNT & FOLD_SITES;
+    wanted |= (control_stubs_without_cut ? ~0u : cuts_written & cuts_target) << FILL_SITE_COUNT & FOLD_SITES;
   }
 #endif
   const uint32_t records = std::min<uint32_t>(trace_count.exchange(0, std::memory_order_relaxed), TRACE_RECORDS);
