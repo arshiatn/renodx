@@ -4930,6 +4930,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         T1b after the rmt_pool merge. [ ] ebr_ quick read of the addendum (optional, coordinator's call).
         bd3r_ RESUMED 03:5x: re-check of heapfix fixes d7ebe3b. Agents: c3i_, gto_, bd3r_ (3 of 3). QUEUE: T3 (Opus
         High, frame_trace.hpp), T4 (bench scripts), unified PT design, x87 review, R2 addendum.
+        ATN 04:0x: (1) the 8 ebo_run.ps1 rules are ADDED (checked: 8 lines in settings.local.json). (2) KEEP 3 AGENTS
+        BUSY: when render_mt can't fill 3 slots, take GPU plan steps (plan_1117). (3) Forge's items are now a section
+        "FORGE'S INPUT" at the end of plan_1117/plan.md (tooling, enforcement, metrics, box, unified PT mode, PTLAS,
+        papers), first in the GPU plan. (4) Our RT features use separate rays / reservoirs today (not one reservoir).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
