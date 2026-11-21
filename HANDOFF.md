@@ -5154,7 +5154,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         + reviewed before the ONE end batch; S8-3 behind FAMILIES / INST_KEYS_PROVEN 0, measured as its own segments.
         bd3o_ RESUMED 05:5x: "## S8a v2" appended to bd3o_design_S8a.md -> bd3r_ re-check -> hp1i_ S8-1.
         Agents: t4i_, bd1r_, bd3o_ (3 of 3).
-        06:0x: USAGE LIMIT hit (5-hour limit, reset 08:00 Europe/Berlin): t4i_ (mid test_leg rewrite) and bd3o_ (mid S8a
+        05:5x: USAGE LIMIT hit (5-hour limit, reset 08:00 Europe/Berlin): t4i_ (mid test_leg rewrite) and bd3o_ (mid S8a
         v2) stopped; c3i_ had already finished. ATN's "continue" came after the reset.
         bd1r_ S3 REVIEW DONE (reports/bd1r_s3_review.md): MERGE, no Musts. Shoulds with owners: S4 tests (sweep threads
         in the 200-switch loop, park threads at the worker sites' +1..+4), S6 trace format (print only §11's numbers,
