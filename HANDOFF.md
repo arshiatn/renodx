@@ -5503,6 +5503,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         the final bench). [ ] t4i_ reports which of those patches can switch within a session and what an On / Off A/B
         with the full MT build would cost in the end batch -> coordinator + ATN decide whether to add the A/Bs.
         Memory: project_heapfix_author.md.
+        c3i_ B1.2b DONE 10:5x (rmt_b12a c01d341a8 on 55f9ac1e2, local; +2408 / -10 in 5 files; reports/c3i_b12b_handback.md):
+        effect_update.hpp (scheduler: rounds, G = 1 claims, frontier, late units, sweeps, mailbox, epoch waits) + part 26
+        (809 cases, 806976 units, controls NoOrderPoints / NoEnumerationWait / LateChildOff / RigidOnWorker /
+        SweepOnWorker / NoEpoch) + the ASLR relocated-word skip in B1.2a's scan. tw_engine_code FULL PASS, part 26 full
+        4 / 4 + quick 40 / 40, C suites + gated builds x86 x3 / DRAW_RECORDING / amd64 exit 0. Deferrals: synthetic-game
+        tests, StackHighWater not for the real tree, ClaimFour not built (G = 1), most v1 controls not built; not
+        wired in addon.cpp (B1.6).
+        b13r_ STARTED 11:0x (NEW Opus xHigh agent): B1.3 review of L1 (276f1efcb..c01d341a8; thunks byte level,
+        PausedWrite third table, jump scan + ASLR fix, FULL heapfix clearance incl. the 36 check rows + loopfetch /
+        batchfix + whether heapfix can re-check after us, scheduler deadlock freedom, deferrals) ->
+        reports/b13r_l1_review.md -> c3i_ fixes -> b13r_ re-check -> merge.
+        Agents: bd1r_ (C.3-3 review), t4i_ (T1b follow-ups + ebo_ lane), b13r_ (B1.3 review) (3 of 3). QUEUE: C.3-4
+        (after C.3-3's review), c3i_ B1.3 fixes, B1.4 / B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
