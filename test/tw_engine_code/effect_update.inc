@@ -14,7 +14,9 @@
 //    round: serial; in the round: the units drained, the rest serial); PrivateWritesOnly (15): the scheduler's reads of the game's structures with those pages read-only;
 //    the serial reasons, the census (a render thread hit outside a unit, a foreign thread), the watched words, Update's gates; the handler writes Frame.eax only where it
 //    answers; the scheduler's stack high-water;
-// 26e. CONTROLs: no order points, no enumeration wait, a late child left out (LateChildOff), forwarding off (RigidOnWorker), sweeps on workers, no epoch: each must be seen.
+// 26e. CONTROLs: no order points, no enumeration wait, a late child left out (LateChildOff), forwarding off (RigidOnWorker), sweeps on workers, no epoch, a sweep before its
+//    units (SweepEarly), a unit that waits for the frontier to pass it (WaitOnLater: the hang detector), a sweep thunk with a wrong frame (SweepFrameWrong): each must be seen.
+//    The serial reasons and the foreign-thread count are taken only in a trace window: those cases open one.
 // Not here: test 13 (RegisterStateKept) is 25c's; ClaimFour (G = 4) is not built, the code has G = 1 only. The real routines on fake object graphs (the design's tests 2, 4, 5, 6, 7,
 // 9 and 15 on the game's own functions) are not run: the scripts stand in for them; `tests.exe <dll> quick effect_update` runs this part alone.
 // ====================================================================================================================
@@ -141,7 +143,8 @@ bool Touch(eu::Site site, uint32_t ecx = 0, uint32_t first = 0, uint32_t second 
   if ((walk ? data->walk_armed : data->walk_active).load() == 0) return false;
   volatile uint32_t marker = 0;
   const bool asks_always = (eu::SITES[static_cast<size_t>(site)].kind != eu::Kind::ORDER || eu::AsksAlways(site));  // the walk's call, the appends, the forwarded and enumeration sites
-  if (!asks_always && data->direct_high.load() - Address(const_cast<uint32_t*>(&marker)) < data->limit.load()) return false;
+  const uint32_t direct_high = data->direct_high.load();
+  if (!asks_always && direct_high != 0 && direct_high - Address(const_cast<uint32_t*>(&marker)) < data->limit.load()) return false;
   struct {
     uint32_t regs[9];
     uint32_t stack[8];
@@ -447,6 +450,13 @@ void GameWalk(World& w, int hook) {
     }
     if (hook == 1 && slot == 2 * w.slots_per_effect + 1) Touch(eu::Site::SPAWN_QUERY);  // the render thread, in a round, outside a unit
     if (hook == 2 && slot == 2 * w.slots_per_effect + 1) std::thread([] { Touch(eu::Site::SPAWN_QUERY); }).join();  // a thread that runs no unit
+    if (hook == 3 && slot == 2 * w.slots_per_effect + 1) {
+      // The walk's call and end from a thread that is not the render thread, in the middle of the walk.
+      std::thread([] {
+        Touch(eu::Site::WALK_CALL);
+        Touch(eu::Site::WALK_END);
+      }).join();
+    }
     struct {
       uint32_t regs[9];
       uint32_t stack[8];
@@ -580,6 +590,7 @@ void ResetScheduler() {
   ei::last_node = 0;
   ei::small_round_presents = 0;
   ei::event_count = 0;
+  for (auto& said : ei::events_said) said = 0;
   for (auto& counter : ei::counters) counter = 0;
   for (auto& counter : ei::serial_rounds) counter = 0;
   ei::controls = {};
@@ -727,6 +738,16 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
     return wp::Available(wp::User::EFFECT_UPDATE);
   };
   CHECK(pool(4) == 3);
+  // A trace window for the counts that only a window takes (the serial reasons, the foreign-thread hits).
+  const auto trace_open = [&](uint32_t frames, uint32_t threads) {
+    wp::ArmTrace(frames);
+    wp::Update({.threads = threads, .in_use = true});
+    return wp::Tracing();
+  };
+  const auto trace_close = [&](uint32_t threads) {
+    for (int present = 0; present < 400 && wp::Tracing(); ++present) wp::Update({.threads = threads, .in_use = true});
+    return !wp::Tracing();
+  };
 
   // 26a. The sweep thunk (Prepare's, in image B): the game's own sweep, the second half of the per-effect function, called alone as thiscall(effect) on fake effects: the
   // flagged entries (a byte at +0x6E of the instance) swapped out of the vector from the back and counted off, as the same loop modelled here; the callee-saved registers
@@ -773,6 +794,22 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       wrong += same ? 0 : 1;
     }
     CHECK(wrong == 0 && flagged_total > 1000);
+    // The frame the thunk builds: as many zero arguments as the sweep's `ret` pops (read from the image). CONTROL SweepFrameWrong: a thunk with one too few is seen by the same check
+    // (it is never run: its `ret 0xC` would pop what is not its own).
+    const auto pushed_bytes = [](const uint8_t* thunk) {
+      uint32_t bytes = 0;
+      while (thunk[bytes / 2] == 0x6A && thunk[bytes / 2 + 1] == 0x00) bytes += 4;
+      return bytes;
+    };
+    const uint32_t popped_bytes = patched[eu::SWEEP_CHECKS[1].rva + 8];
+    CHECK(popped_bytes == eu::SWEEP_ARGUMENT_BYTES && pushed_bytes(ei::sweep) == popped_bytes);
+    VirtualFree(ei::page, 0, MEM_RELEASE);
+    eu::control_sweep_frame_wrong = true;
+    CHECK(eu::Prepare(reinterpret_cast<HMODULE>(patched)) && ei::sweep != nullptr);
+    eu::control_sweep_frame_wrong = false;
+    const uint32_t wrong_pushed = pushed_bytes(ei::sweep);
+    CHECK(wrong_pushed != popped_bytes);
+    std::printf("26a. CONTROL SweepFrameWrong: a sweep thunk that pushes %u bytes of arguments where the sweep pops %u: seen\n", wrong_pushed, popped_bytes);
     // Prepare took the module's base and the site state: all of it back, the fake image's base first.
     VirtualFree(ei::page, 0, MEM_RELEASE);
     ei::page = saved_page;
@@ -967,15 +1004,9 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
   // Frame.eax and the sites: every call so far wrote eax only where it answered (counted in Touch); the answers 1 came at forwarded sites and the walk's call only.
   CHECK(eax_violations.load() == 0);
 
-  // 26d. AllocationFailure: a failure injected at every block, before the round (serial for the walk) and inside it (the units drained, the rest serial).
+  // 26d. AllocationFailure: a failure injected at every block, before the round (serial for the walk) and inside it (the units drained, the rest serial). The second shape
+  // registers new effect types in the walk: a unit that runs after the failure must not make a late segment (the walk's rest takes that effect the game's way).
   {
-    Shape shape;
-    shape.ops = "R";
-    shape.max_ops = 2;
-    shape.effects = 90;
-    shape.min_units = 99;
-    shape.max_units = 101;
-    shape.busy = 20;
     // Blocks: the scheduler's tables are rebuilt from nothing each time so that the allocations of a round are counted.
     const auto clear_blocks = [] {
       for (uint32_t block = 0; block < ei::units.capacity / ei::BLOCK_SIZE; ++block) delete[] ei::units.blocks[block];
@@ -983,44 +1014,70 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       ei::units = {};
       ei::segments = {};
     };
-    CHECK(pool(4) == 3);
-    clear_blocks();
-    ei::controls.fail_allocation_at = 0xFFFFFFFF;  // counting only
-    {
-      auto serial = Build(31, shape);
-      auto parallel = Build(31, shape);
-      Walk(*serial, false);
-      Walk(*parallel, true);
-      CHECK(Equal(*serial, *parallel, &why));
-    }
-    const uint32_t clean_allocations = ei::controls.allocations;
-    CHECK(clean_allocations >= 3);
-    uint32_t drained = 0;
-    uint32_t before_round = 0;
-    for (uint32_t failing = 1; failing <= clean_allocations + 1; ++failing) {
+    const auto failure_sweep = [&](const Shape& shape, uint64_t seed, const char* name) -> int {
+      CHECK(pool(4) == 3);
+      CHECK(trace_open(60, 4));
       clear_blocks();
-      ResetScheduler();
-      ei::controls.fail_allocation_at = failing;
-      auto serial = Build(31, shape);
-      auto parallel = Build(31, shape);
-      ei::event_count = 0;
-      Walk(*serial, false);
-      Walk(*parallel, true);
-      if (!Equal(*serial, *parallel, &why)) {
-        std::printf("   failure at allocation %u: %s\n", failing, why.c_str());
-        return 1;
+      ei::controls.fail_allocation_at = 0xFFFFFFFF;  // counting only
+      {
+        auto serial = Build(seed, shape);
+        auto parallel = Build(seed, shape);
+        Walk(*serial, false);
+        Walk(*parallel, true);
+        CHECK(Equal(*serial, *parallel, &why));
       }
-      CHECK(finish_round_checks(*parallel) && data->walk_armed.load() == 0);
-      const bool failed_in_round = ei::counters[static_cast<size_t>(ei::Counter::FAILED_ROUNDS)].load() != 0;
-      const bool serial_walk = ei::serial_rounds[static_cast<size_t>(ei::SerialReason::ALLOCATION)].load() != 0;
-      drained += failed_in_round ? 1 : 0;
-      before_round += serial_walk ? 1 : 0;
-      CHECK(failing > clean_allocations || failed_in_round || serial_walk);
+      const uint32_t clean_allocations = ei::controls.allocations;
+      CHECK(clean_allocations >= 3);
+      uint32_t drained = 0;
+      uint32_t before_round = 0;
+      for (uint32_t failing = 1; failing <= clean_allocations + 1; ++failing) {
+        clear_blocks();
+        ResetScheduler();
+        ei::controls.fail_allocation_at = failing;
+        auto serial = Build(seed, shape);
+        auto parallel = Build(seed, shape);
+        ei::event_count = 0;
+        Walk(*serial, false);
+        Walk(*parallel, true);
+        if (!Equal(*serial, *parallel, &why)) {
+          std::printf("   %s: failure at allocation %u: %s\n", name, failing, why.c_str());
+          return 1;
+        }
+        CHECK(finish_round_checks(*parallel) && data->walk_armed.load() == 0);
+        const bool failed_in_round = ei::counters[static_cast<size_t>(ei::Counter::FAILED_ROUNDS)].load() != 0;
+        const bool serial_walk = ei::serial_rounds[static_cast<size_t>(ei::SerialReason::ALLOCATION)].load() != 0;
+        drained += failed_in_round ? 1 : 0;
+        before_round += serial_walk ? 1 : 0;
+        CHECK(failing > clean_allocations || failed_in_round || serial_walk);
+      }
+      ResetScheduler();
+      CHECK(trace_close(4));
+      std::printf("26d. AllocationFailure (%s): a failure at each of the %u block allocations of a round and one past: %u before the round (serial), %u inside it (drained, the rest serial); the "
+                  "result equal to the game's loop every time\n", name, clean_allocations, before_round, drained);
+      CHECK(before_round + drained == clean_allocations);
+      return 0;
+    };
+    {
+      Shape shape;
+      shape.ops = "R";
+      shape.max_ops = 2;
+      shape.effects = 90;
+      shape.min_units = 99;
+      shape.max_units = 101;
+      shape.busy = 20;
+      if (failure_sweep(shape, 31, "plain") != 0) return 1;
     }
-    ResetScheduler();
-    std::printf("26d. AllocationFailure: a failure at each of the %u block allocations of a round and one past: %u before the round (serial), %u inside it (drained, the rest serial); the "
-                "result equal to the game's loop every time\n", clean_allocations, before_round, drained);
-    CHECK(before_round + drained == clean_allocations);
+    {
+      Shape shape;
+      shape.ops = "YR";
+      shape.max_ops = 3;
+      shape.effects = 60;
+      shape.min_units = 70;
+      shape.max_units = 80;
+      shape.busy = 20;
+      shape.gap = 4;
+      if (failure_sweep(shape, 33, "new types") != 0) return 1;
+    }
   }
 
   // The serial reasons: too few units last round, a new node, no workers, the session off. Each walk equals the game's loop and leaves the gate closed.
@@ -1029,6 +1086,7 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
     shape.ops = "R";
     shape.effects = 6;
     shape.max_units = 20;
+    CHECK(trace_open(60, 4));
     const auto reason_case = [&](const char* name, ei::SerialReason reason, uint32_t workers, auto&& setup) -> int {
       ResetScheduler();
       CHECK(pool(workers + 1) == workers);
@@ -1052,6 +1110,40 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
     if (reason_case("a new node", ei::SerialReason::NEW_NODE, 3, [](World&) { ei::last_node = 0x1234; }) != 0) return 1;
     if (reason_case("no workers", ei::SerialReason::NO_WORKERS, 0, [](World&) {}) != 0) return 1;
     if (reason_case("the session is off", ei::SerialReason::SESSION_OFF, 3, [](World&) { ei::session_off = true; }) != 0) return 1;
+    // Outside a trace window the reasons are not counted: the same walk, the gate closed all the same.
+    CHECK(trace_close(4));
+    {
+      ResetScheduler();
+      CHECK(pool(4) == 3);
+      auto serial = Build(41, shape);
+      auto parallel = Build(41, shape);
+      Walk(*serial, false);
+      world = parallel.get();
+      ei::entries.random_state = &parallel->lcg;
+      ei::row_on = true;
+      ei::last_round_units = 10;
+      ei::last_node = Address(parallel->node);
+      data->walk_armed.store(1);
+      GameWalk(*parallel, false);
+      data->walk_armed.store(0);
+      CHECK(Equal(*serial, *parallel, &why) && ei::serial_rounds[static_cast<size_t>(ei::SerialReason::SMALL)].load() == 0 && finish_round_checks(*parallel));
+      // The window's own counts are printed by the first present after it; presents after that print nothing: no counter line, no serial reason.
+      ei::written = eu::ALL_SITES;
+      eu::Update(true);
+      {
+        const std::unique_lock lock(log_mutex);
+        log_lines.clear();
+      }
+      for (int present = 0; present < 5; ++present) eu::Update(true);
+      ei::written = 0;
+      size_t printed = 0;
+      {
+        const std::unique_lock lock(log_mutex);
+        for (const std::string& line : log_lines) printed += (line.find("Parallel Effect Update") != std::string::npos) ? 1 : 0;
+      }
+      CHECK(printed == 0);
+      std::printf("26d. serial reasons outside a trace window: not counted, five presents print nothing\n");
+    }
     ResetScheduler();
   }
 
@@ -1081,6 +1173,8 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
     shape.ops = "R";
     shape.effects = 8;
     shape.max_units = 25;
+    CHECK(pool(4) == 3);
+    CHECK(trace_open(60, 4));
     for (const int hook : {1, 2}) {
       ResetScheduler();
       CHECK(pool(4) == 3);
@@ -1091,12 +1185,24 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       CHECK(Equal(*serial, *parallel, &why) && finish_round_checks(*parallel) && ei::last_round_units != SENTINEL_UNITS);
       const auto counter = [](ei::Counter which) { return ei::counters[static_cast<size_t>(which)].load(); };
       if (hook == 1) {
-        CHECK(counter(ei::Counter::CENSUS_ERRORS) == 1 && counter(ei::Counter::FOREIGN_HITS) == 0 && ei::session_off);
-        std::printf("26d. census: the render thread at a site outside a unit in a round: counted once, answered 0, B1 off for the session, the walk equal to the game's loop\n");
+        CHECK(counter(ei::Counter::CENSUS_ERRORS) == 1 && counter(ei::Counter::FOREIGN_HITS) == 0 && counter(ei::Counter::FAILED_ROUNDS) == 1 && ei::session_off);
+        CHECK(ei::event_count.load() == 2);  // the census error and the failed round, once each
+        std::printf("26d. census: the render thread at a site outside a unit in a round: counted once, answered 0, the round ended (drained, the rest of the walk the game's way), B1 off for the session, "
+                    "the walk equal to the game's loop\n");
       } else {
-        CHECK(counter(ei::Counter::FOREIGN_HITS) == 1 && counter(ei::Counter::CENSUS_ERRORS) == 0 && !ei::session_off);
-        std::printf("26d. census: a thread that runs no unit at a site while a round is open: counted once, answered 0, the walk equal to the game's loop\n");
+        CHECK(counter(ei::Counter::FOREIGN_HITS) == 1 && counter(ei::Counter::CENSUS_ERRORS) == 0 && !ei::session_off && ei::event_count.load() == 0);
+        std::printf("26d. census: a thread that runs no unit at a site while a round is open: counted once (in the trace window, no log line), answered 0, the walk equal to the game's loop\n");
       }
+    }
+    CHECK(trace_close(4));
+    ResetScheduler();
+    // A walk's call or end from a worker thread inside an open round: a census error, answered 0 (the render thread's walk goes on).
+    {
+      CHECK(pool(4) == 3);
+      auto parallel = Build(62, shape);
+      Walk(*parallel, true, 3);
+      CHECK(ei::counters[static_cast<size_t>(ei::Counter::CENSUS_ERRORS)].load() == 2 && ei::session_off && finish_round_checks(*parallel));
+      std::printf("26d. census: a walk call and a walk end from another thread in an open round: counted, answered 0, B1 off for the session\n");
     }
     ResetScheduler();
   }
@@ -1120,7 +1226,8 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*parallel));
       seen = ei::counters[static_cast<size_t>(ei::Counter::WATCHED_MISMATCHES)].load();
     }
-    CHECK(seen != 0 && ei::session_off && ei::event_count.load() == seen);
+    const uint32_t stored_events = ei::event_count.load();  // once per site (the last direct unit's site): at most one per mismatch
+    CHECK(seen != 0 && ei::session_off && stored_events != 0 && stored_events <= seen);
     {
       const std::unique_lock lock(log_mutex);
       log_lines.clear();
@@ -1136,14 +1243,30 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
         said_changed += (line.find("watched word changed") != std::string::npos) ? 1 : 0;
       }
     }
-    CHECK(said_off == 1 && said_changed == seen && data->walk_armed.load() == 0);
-    std::printf("26d. watched words: %u rogue changes seen, B1 off for the session after the walk; Update printed the events once and said \"off\" once, and arms no more\n", seen);
+    CHECK(said_off == 1 && said_changed == stored_events && data->walk_armed.load() == 0);
+    std::printf("26d. watched words: %u rogue changes seen, B1 off for the session after the walk; Update printed the %u events (one per site) once and said \"off\" once, and arms no more\n", seen,
+                stored_events);
+    // An event kind and site is stored once per session.
     ResetScheduler();
+    ei::Note(ei::EventKind::HANG, 3, 1);
+    ei::Note(ei::EventKind::HANG, 3, 2);
+    ei::Note(ei::EventKind::HANG, 4, 3);
+    ei::Note(ei::EventKind::CENSUS_ERROR, 3, 4);
+    CHECK(ei::event_count.load() == 3);
+    ResetScheduler();
+    // The gate arms only with the whole set of sites written.
+    eu::Update(true);
+    CHECK(data->walk_armed.load() == 0);
+    ei::written = eu::ALL_SITES & ~(1u << 5);
+    eu::Update(true);
+    CHECK(data->walk_armed.load() == 0);
+    ei::written = eu::ALL_SITES;
     eu::Update(true);
     CHECK(data->walk_armed.load() == 1);
     eu::Update(false);
     CHECK(data->walk_armed.load() == 0 && data->walk_active.load() == 0);
-    std::printf("26d. Update: the row on arms the walk's gate, off disarms it\n");
+    ei::written = 0;
+    std::printf("26d. Update: the row on arms the walk's gate when every site is written, never with a site missing; off disarms it\n");
   }
 
   // The scheduler's stack: the deepest committed page of each pool thread and the render thread after everything above (the nesting is one wait inside one unit; the thunk's
@@ -1247,6 +1370,31 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       if (shown("SweepOnWorker (a sweep on a worker thread)", shape, 6, 200, [] { ei::controls.sweep_on_worker = true; }, off_render) != 0) return 1;
     }
     {
+      // SweepEarly: the render thread sweeps an effect as soon as enumeration is done: the flagged instances are not flagged yet, the log of removals and the vectors differ.
+      Shape shape;
+      shape.ops = "R";
+      shape.effects = 8;
+      shape.min_units = 20;
+      shape.max_units = 30;
+      shape.max_ops = 2;
+      shape.busy = 400;
+      shape.dead_percent = 60;
+      if (shown("SweepEarly (a sweep before its effect's units are done)", shape, 4, 60, [] { ei::controls.sweep_early = true; }, differs) != 0) return 1;
+    }
+    {
+      // WaitOnLater: a unit waits for the frontier to pass it, which only its own end can do: nothing moves, and the hang detector trips (the control lets the round go on after the
+      // first hang, so the round still ends and equals the game's loop).
+      Shape shape;
+      shape.ops = "RN";
+      shape.effects = 5;
+      shape.min_units = 6;
+      shape.max_units = 9;
+      shape.max_ops = 3;
+      shape.busy = 100;
+      const auto hung = [&](const World&, const World&) { return ei::counters[static_cast<size_t>(ei::Counter::HANGS)].load() != 0 && ei::event_count.load() != 0; };
+      if (shown("WaitOnLater (a unit waits for the frontier to pass it: a hang)", shape, 3, 2, [] { ei::controls.wait_on_later = true; }, hung) != 0) return 1;
+    }
+    {
       // NoEpoch: the units' waits are never woken: they end by their 50 ms timeout. A trace window counts the timeouts; the same rounds with the epoch have none.
       Shape shape;
       shape.ops = "RRR";
@@ -1281,7 +1429,7 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       CHECK(with_epoch == 0 && without_epoch != 0 && without_epoch != 0xFFFFFFFFu);
     }
   }
-  std::printf("26. not built: ClaimFour (the code has G = 1 only); test 13 is 25c's\n");
+  std::printf("26. not built: ClaimFour (the code has G = 1 only); the pool count and min/max words (the spawn objects' fields, L2); test 13 is 25c's\n");
 
   wp::Update({});
   ResetScheduler();

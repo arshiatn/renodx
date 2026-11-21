@@ -314,6 +314,9 @@ int RunEffectSitesTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
     const std::array<uint32_t, 2> relocated = {first - 2, first + 0x11};
     planted_hits.clear();
     CHECK(ei::BranchesIntoSites(window, first, &planted_hits, relocated) == 1 && planted_hits[0] == first + 0x20);
+    // CONTROL: the rel32 forms only (Prepare's scan): the short jump is not looked at, the other two are found.
+    planted_hits.clear();
+    CHECK(ei::BranchesIntoSites(window, first, &planted_hits, {}, false) == 2 && planted_hits[0] == first + 0x10 && planted_hits[1] == first + 0x20);
   }
   {
     // Every relocated pointer of the image: none into a site (a jump table or a vtable would be one).
@@ -380,6 +383,8 @@ int RunEffectSitesTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
     if (expect_refused(patched + eu::SITES[static_cast<size_t>(eu::Site::SPAWN_WRITE)].rva + 1, 0x90, "another mod's byte in a site") != 0) return 1;
     if (expect_refused(patched + eu::HOOKED_ENTRIES[0], 0xE9, "an entry hooked by another tool") != 0) return 1;
     if (expect_refused(patched + eu::SITES[static_cast<size_t>(eu::Site::CHILD_APPEND_A)].rva + 1, 0x00, "an append call's target changed") != 0) return 1;
+    if (expect_refused(patched + eu::SWEEP_CHECKS[0].rva + 3, 0x90, "another mod's byte in the sweep") != 0) return 1;
+    if (expect_refused(patched + eu::SWEEP_CHECKS[1].rva + 8, 0x08, "the sweep's epilogue popping another count") != 0) return 1;
     CHECK(eu::Prepare(reinterpret_cast<HMODULE>(patched)) && ei::found == eu::ALL_SITES);
     // The entry hooked after Prepare (at the turn-on): the feature stands down for the session.
     patched[eu::HOOKED_ENTRIES[1]] = 0xE9;
@@ -430,9 +435,12 @@ int RunEffectSitesTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
       if (&site != &victim) CHECK(std::memcmp(site.at, site.game.data(), site.size) == 0);
     }
     CHECK(victim.at[3] == (victim.patch[3] ^ 0x33));  // the other mod's bytes are left as they were
+    // The row back on with that site gone from `found`: nothing goes in again (no partial set), whatever the row asks.
+    rows(true);
+    CHECK(ei::written == 0 && eu::Wanted(true) == 0);
     std::memcpy(victim.at, victim.game.data(), victim.size);
     CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
-    std::printf("25b. another mod's bytes in a site on the way out: left alone, the rest out, the module pinned\n");
+    std::printf("25b. another mod's bytes in a site on the way out: left alone, the rest out, the module pinned, and no partial set goes in again\n");
   }
   CHECK(eu::Prepare(reinterpret_cast<HMODULE>(patched)) && ei::found == eu::ALL_SITES);
 
@@ -600,6 +608,11 @@ int RunEffectSitesTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
             gates(&harness, 1, 1, top_a, stack_limit);
             if (thunk_run(&harness, index, x87_value, *on).calls != 1) fail("a direct stack below this thread's");
           }
+        }
+        if (order) {
+          // No direct thread (0) and a limit past any distance: `0 - esp` is below it for every stack (as it would for a stack at the top of the address space): the slow path.
+          gates(&harness, 1, 1, 0, 0xFFFFFFFFu);
+          if (thunk_run(&harness, index, x87_value, *on).calls != 1) fail("no direct thread, a huge limit");
         }
         // The gates alone: the walk's call asks while `walk_armed` is set; the others while `walk_active` is; both clear: the original path.
         for (const uint32_t armed : {0u, 1u}) {

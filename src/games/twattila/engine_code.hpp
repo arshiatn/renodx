@@ -2026,7 +2026,8 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
     for (size_t index = 0; index < effect_update::SITE_COUNT; ++index) {
       if ((effect_writable >> index & 1) == 0) continue;
       const eu::PatchedSite& site = eu::sites[index];
-      std::memcpy(site.at, ((effect_patched >> index & 1) != 0 ? site.patch : site.game).data(), site.size);
+      const auto& bytes = ((effect_patched >> index & 1) != 0 ? site.patch : site.game);
+      std::memcpy(site.at, bytes.data(), site.size);
     }
     restore_effect_protections();
     restore_protections();

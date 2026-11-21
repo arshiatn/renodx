@@ -177,6 +177,19 @@ constexpr std::array<SiteInfo, SITE_COUNT> SITES = {{
 // The game's sweep of one effect (after its instances' updates): the second half of the per-effect function, from here to its epilogue.
 constexpr uint32_t SWEEP_RVA = 0x18933EB;
 
+// What the sweep thunk relies on, checked by Prepare (the thunk builds the frame the sweep's epilogue pops: a zero-argument `ret 0xC`, four
+// saved registers and 0x20 bytes of locals): the sweep's first instructions (edi is the effect, the count is read from it), and its epilogue.
+struct ByteCheck {
+  std::string_view name;
+  uint32_t rva;
+  std::string_view pattern;
+};
+constexpr std::array<ByteCheck, 2> SWEEP_CHECKS = {{
+    {.name = "sweep", .rva = SWEEP_RVA, .pattern = "8B 4F 18 8D 59 FF 3B D9 73 6D"},
+    {.name = "sweep epilogue", .rva = 0x1893462, .pattern = "5E 5D 5B 5F 83 C4 20 C2 0C 00"},
+}};
+constexpr uint32_t SWEEP_ARGUMENT_BYTES = 0xC;  // the sweep's `ret` operand: the thunk pushes this many bytes of zero arguments
+
 // The heap fix's presort owns +0x192D2DA .. +0x192D2DE (its fourth patch): no site of ours may touch it.
 constexpr uint32_t PRESORT_BEGIN = 0x192D2DA;
 constexpr uint32_t PRESORT_END = 0x192D2DF;
@@ -245,6 +258,7 @@ inline uint32_t __cdecl PassThrough(Frame*, uint32_t) { return 0; }
 // The controls of test/tw_engine_code: thunks built wrong on purpose, which the tests must catch.
 static bool control_no_vector_save = false;  // no fxsave / fxrstor around the handler
 static bool control_torn_pair = false;       // the stack's range as a low and a high word, read separately
+static bool control_sweep_frame_wrong = false;  // the sweep thunk with one zero argument too few (its `ret 0xC` pops what is not its own)
 #endif
 
 namespace internal {
@@ -313,36 +327,34 @@ class Assembler {
   bool fits_ = true;
 };
 
-// The slow path: from the first push to the handler's return and the count's decrement; `counted`: the count was raised by
-// the caller (the E8 thunks, before they call the game's function). The action is in ebx afterwards (callee saved, and
-// popad has not run yet).
-inline void EmitSlowPath(Assembler* assembler, const Data* data, Site site, bool counted) {
-  assembler->Bytes({0x9C, 0x60});  // pushfd; pushad
-  if (!counted) assembler->BytesAndOperand({0xF0, 0xFF, 0x05}, Address(&data->active));  // lock inc [active]
-  assembler->Bytes({0x8B, 0xEC, 0x83, 0xE4, 0xF0});                                      // mov ebp, esp; and esp, -16
-  assembler->BytesAndOperand({0x81, 0xEC}, 512);                                         // sub esp, 512
-#if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
-  const bool save_vector_state = !control_no_vector_save;
-#else
-  constexpr bool save_vector_state = true;
-#endif
-  if (save_vector_state) assembler->Bytes({0x0F, 0xAE, 0x04, 0x24});                      // fxsave [esp]
-  assembler->BytesAndOperand({0x68}, static_cast<uint32_t>(site));                        // push the site
-  assembler->Bytes({0x55});                                                              // push ebp: the Frame
-  assembler->BytesAndOperand({0xFF, 0x15}, Address(&data->handler));                     // call [handler]
-  assembler->Bytes({0x83, 0xC4, 0x08, 0x8B, 0xD8});                                      // add esp, 8; mov ebx, eax
-  if (save_vector_state) assembler->Bytes({0x0F, 0xAE, 0x0C, 0x24});                      // fxrstor [esp]
-  assembler->Bytes({0x8B, 0xE5});                                                        // mov esp, ebp
-  assembler->BytesAndOperand({0xF0, 0xFF, 0x0D}, Address(&data->active));                // lock dec [active]
-}
-
-
 // The thunk of site `index` for the game's code at `at`; `callee` the call's target (the E8 sites and the walk end),
 // `resume` the code after the replaced instructions. Returns the thunk's first byte.
 inline uint8_t* EmitThunk(Assembler* assembler, size_t index, const Data* data, const uint8_t* at, const uint8_t* callee,
                           const uint8_t* resume) {
   const SiteInfo& info = SITES[index];
   const Site site = static_cast<Site>(index);
+  // The slow path: from the first push to the handler's return and the count's decrement; `counted`: the count was raised by the
+  // caller (the E8 thunks, before they call the game's function). The action is in ebx afterwards (callee saved, and popad has not
+  // run yet).
+  const auto emit_slow_path = [&](bool counted) {
+    assembler->Bytes({0x9C, 0x60});  // pushfd; pushad
+    if (!counted) assembler->BytesAndOperand({0xF0, 0xFF, 0x05}, Address(&data->active));  // lock inc [active]
+    assembler->Bytes({0x8B, 0xEC, 0x83, 0xE4, 0xF0});                                      // mov ebp, esp; and esp, -16
+    assembler->BytesAndOperand({0x81, 0xEC}, 512);                                         // sub esp, 512
+#if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
+    const bool save_vector_state = !control_no_vector_save;
+#else
+    constexpr bool save_vector_state = true;
+#endif
+    if (save_vector_state) assembler->Bytes({0x0F, 0xAE, 0x04, 0x24});   // fxsave [esp]
+    assembler->BytesAndOperand({0x68}, static_cast<uint32_t>(site));     // push the site
+    assembler->Bytes({0x55});                                            // push ebp: the Frame
+    assembler->BytesAndOperand({0xFF, 0x15}, Address(&data->handler));   // call [handler]
+    assembler->Bytes({0x83, 0xC4, 0x08, 0x8B, 0xD8});                    // add esp, 8; mov ebx, eax
+    if (save_vector_state) assembler->Bytes({0x0F, 0xAE, 0x0C, 0x24});   // fxrstor [esp]
+    assembler->Bytes({0x8B, 0xE5});                                      // mov esp, ebp
+    assembler->BytesAndOperand({0xF0, 0xFF, 0x0D}, Address(&data->active));  // lock dec [active]
+  };
   uint8_t* const entry = assembler->Cursor();
   const uint32_t gate = Address(info.kind == Kind::WALK_CALL ? &data->walk_armed : &data->walk_active);
   assembler->BytesAndOperand({0x83, 0x3D}, gate);  // cmp dword ptr [gate], 0
@@ -356,7 +368,7 @@ inline uint8_t* EmitThunk(Assembler* assembler, size_t index, const Data* data, 
     assembler->Bytes({0x51, 0xFF, 0x74, 0x24, 0x08});                         // push ecx; push dword ptr [esp + 8]
     assembler->Relative(0xE8, callee);
     assembler->Bytes({0x59});  // pop ecx
-    EmitSlowPath(assembler, data, site, true);
+    emit_slow_path(true);
     assembler->Bytes({0x61, 0x9D, 0xC2, 0x04, 0x00});  // popad; popfd; ret 4
     assembler->Bind(to_original[0]);
     assembler->Relative(0xE9, callee);
@@ -375,17 +387,18 @@ inline uint8_t* EmitThunk(Assembler* assembler, size_t index, const Data* data, 
     } else
 #endif
     {
-      // push eax; mov eax, [high]; sub eax, esp; cmp eax, [limit]; pop eax (pop keeps the flags); jb original
+      // push eax; mov eax, [high]; test eax, eax; jz done; sub eax, esp; cmp eax, [limit]; done: pop eax (pop keeps the flags); jb
+      // original. No direct thread (0) leaves CF clear: with the zero a stack in the top of the address space would read as direct.
       assembler->Bytes({0x50});
       assembler->BytesAndOperand({0xA1}, Address(&data->direct_high));
-      assembler->Bytes({0x2B, 0xC4});
+      assembler->Bytes({0x85, 0xC0, 0x74, 0x08, 0x2B, 0xC4});
       assembler->BytesAndOperand({0x3B, 0x05}, Address(&data->limit));
       assembler->Bytes({0x58});
       to_original[1] = assembler->Branch(0x82);
     }
   }
 
-  EmitSlowPath(assembler, data, site, false);
+  emit_slow_path(false);
   const bool answers = (info.return_bytes >= 0);
   uint8_t* to_answer = nullptr;
   if (answers) {
@@ -452,9 +465,10 @@ static uint32_t asked = 0;    // what the row last asked for
 // boundaries, so a byte of another instruction that looks like a branch is a hit too (the sources the shipped build
 // has are listed in IGNORED_SOURCES, each one read in the disassembly; the bytes of a relocated word are skipped).
 // A thread that jumped into a range would run the middle of our jump: the shipped build has none (test/tw_engine_code scans the
-// whole code section, Prepare the 2 KB around each site).
-// +17F94C5 and +1819284 / +1819333: the immediate of a `push` (0x78; the 0xE0 of 0x12A5EDE0); +181A95C: the address operand of an
-// `imul` (0x11DA7408); +192D661: the displacement of the call at +192D65E (inside the walk end's own site).
+// whole code section, Prepare the 2 KB around each site, the rel32 forms only).
+// +17F94C5: the immediate of a `push` (0x78); +192D661: the displacement of the call at +192D65E (inside the walk end's own site).
+// +1819284 and +1819333 (the 0xE0 of the relocated `push 0x12A5EDE0`) and +181A95C (the 0x74 of the relocated address operand of
+// an `imul`, 0x11DA7408) lie in relocated words, which the scan skips anyway; they stay listed for a scan without the table.
 constexpr std::array<uint32_t, 5> IGNORED_SOURCES = {0x17F94C5, 0x1819284, 0x1819333, 0x181A95C, 0x192D661};
 
 // The RVAs of the image's relocated 32-bit words, sorted: the loader rewrites them to the load address (ASLR), so a branch-like
@@ -476,8 +490,11 @@ inline std::vector<uint32_t> RelocatedWords(const uint8_t* module) {
   return words;
 }
 
+// `short_branches` false: only the rel32 forms (E8, E9, 0F 8x). Prepare scans like that: the short forms of the shipped build are all
+// known (the whole-section scan of test/tw_engine_code), and the bytes of another tool's patch around a site (a rel32 whose high bytes
+// change from run to run) would read as short branches with random targets.
 inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rva, std::vector<uint32_t>* hits,
-                                std::span<const uint32_t> relocated = {}) {
+                                std::span<const uint32_t> relocated = {}, bool short_branches = true) {
   size_t count = 0;
   const auto read32 = [&](size_t at) {
     uint32_t value;
@@ -494,7 +511,7 @@ inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rv
     } else if (opcode == 0x0F && at + 6 <= code.size() && (code[at + 1] & 0xF0) == 0x80) {
       length = 6;
       displacement = static_cast<int32_t>(read32(at + 2));
-    } else if ((opcode == 0xEB || (opcode & 0xF0) == 0x70 || (opcode >= 0xE0 && opcode <= 0xE3)) && at + 2 <= code.size()) {
+    } else if (short_branches && (opcode == 0xEB || (opcode & 0xF0) == 0x70 || (opcode >= 0xE0 && opcode <= 0xE3)) && at + 2 <= code.size()) {
       length = 2;
       displacement = static_cast<int8_t>(code[at + 1]);
     } else {
@@ -573,6 +590,9 @@ inline bool Prepare(HMODULE module) {
     }
     if (!good) refuse(info.name);
   }
+  for (const ByteCheck& check : SWEEP_CHECKS) {
+    if (!holds(base + check.rva, check.pattern)) refuse(check.name);
+  }
   if (!refused_names.empty() || !EntriesFree()) {
     renodx::utils::log::w("[Total War] Parallel Effect Update: left alone (not the game's code as expected: another mod or build)",
                           (refused_names.empty() ? ": an entry hooked by another tool" : ": "), refused_names);
@@ -588,7 +608,7 @@ inline bool Prepare(HMODULE module) {
       if (at < begin || at >= begin + memory.size()) continue;
       const uint8_t* from = std::max(begin, at - 0x800);
       const uint8_t* to = std::min(begin + memory.size(), at + 0x800);
-      branches += BranchesIntoSites({from, to}, static_cast<uint32_t>(from - base), nullptr, relocated);
+      branches += BranchesIntoSites({from, to}, static_cast<uint32_t>(from - base), nullptr, relocated, false);
     }
   }
   if (branches != 0) {
@@ -613,8 +633,13 @@ inline bool Prepare(HMODULE module) {
   // The sweep thunk: three zero arguments, a call to a copy of the game's prologue that jumps into the sweep, so the sweep's own
   // epilogue (`ret 0xC`) pops them; the sweep reads no locals of its own (it uses edi, the effect, only).
   const uint8_t* const sweep_thunk = assembler.Cursor();
-  assembler.Bytes({0x6A, 0x00, 0x6A, 0x00, 0x6A, 0x00});
-  assembler.Relative(0xE8, sweep_thunk + 12);
+#if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
+  const uint32_t sweep_arguments = (control_sweep_frame_wrong ? SWEEP_ARGUMENT_BYTES / 4 - 1 : SWEEP_ARGUMENT_BYTES / 4);
+#else
+  constexpr uint32_t sweep_arguments = SWEEP_ARGUMENT_BYTES / 4;
+#endif
+  for (uint32_t argument = 0; argument < sweep_arguments; ++argument) assembler.Bytes({0x6A, 0x00});
+  assembler.Relative(0xE8, sweep_thunk + 2 * sweep_arguments + 6);
   assembler.Bytes({0xC3, 0x83, 0xEC, 0x20, 0x57, 0x8B, 0xF9, 0x53, 0x55, 0x56});
   assembler.Relative(0xE9, base + SWEEP_RVA);
   DWORD protection;
@@ -644,11 +669,12 @@ inline bool Prepare(HMODULE module) {
   return true;
 }
 
-// The row's wish for the sites: all of them (found) while it is on, none otherwise. Going in with an entry hooked by
-// another tool (started since Prepare) stands the feature down for the session.
+// The row's wish for the sites: all of them (found) while it is on, none otherwise. A site that stood down on its way out (its
+// bytes are another tool's now) takes `found` below ALL_SITES: the rest never go in again, no partial set. Going in with an entry
+// hooked by another tool (started since Prepare) stands the feature down for the session.
 inline uint32_t Wanted(bool row) {
   using namespace internal;
-  if (!row || refused) return 0;
+  if (!row || refused || found != ALL_SITES) return 0;
   if ((found & ~written) != 0 && !EntriesFree()) {
     found &= written;
     refused = true;

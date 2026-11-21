@@ -52,9 +52,10 @@
 //              walk's vectors and table) waits for the enumeration to end, also when its unit is direct already (those sites
 //              and the forwarded ones have no fast path in their thunks).
 //
-// The safety checks (a word the game changed between two direct units, a site hit by a thread that runs no unit, a render
-// thread hit outside a unit) are always on and stored; Update prints them at the next present (no log call inside game code).
-// The other counters run only in a worker pool trace window.
+// The safety checks (a word the game changed between two direct units, a render thread hit outside a unit, a walk call or end out
+// of place, a late overflow, a failed round, a hang) are always on and stored; Update logs each kind once per site and session at
+// the next present (no log call inside game code). Every other count (the serial reasons, the sites a thread without a unit hit,
+// the waits) is taken only in a worker pool trace window, and printed at the window's presents.
 namespace twattila::effect_update {
 
 #if !defined(_WIN64)
@@ -103,7 +104,7 @@ enum class SerialReason : uint8_t { SESSION_OFF, SMALL, NEW_NODE, NO_WORKERS, ST
 constexpr std::array<std::string_view, static_cast<size_t>(SerialReason::COUNT)> SERIAL_REASON_NAMES = {
     "session off", "too few units last round", "new node", "no workers", "start refused", "allocation"};
 
-// Counters: the first block only in a trace window, the second (from HANGS) always: the safety checks.
+// Counters: the first block (up to FOREIGN_HITS) only in a trace window, the second (from HANGS) always: the safety checks.
 enum class Counter : uint8_t {
   UNITS,
   EFFECTS,
@@ -115,9 +116,9 @@ enum class Counter : uint8_t {
   FORWARDED,
   ORDER_POINTS,
   ROUNDS,
+  FOREIGN_HITS,
   HANGS,
   WATCHED_MISMATCHES,
-  FOREIGN_HITS,
   CENSUS_ERRORS,
   LATE_OVERFLOWS,
   FAILED_ROUNDS,
@@ -125,11 +126,11 @@ enum class Counter : uint8_t {
 };
 constexpr std::array<std::string_view, static_cast<size_t>(Counter::COUNT)> COUNTER_NAMES = {
     "units",  "effects", "late units", "late segments", "waits",     "nested runs",    "wake timeouts", "forwarded calls",
-    "order points", "rounds", "hangs", "watched mismatches", "foreign hits", "census errors", "late overflows", "failed rounds"};
+    "order points", "rounds", "foreign hits", "hangs", "watched mismatches", "census errors", "late overflows", "failed rounds"};
 
-enum class EventKind : uint8_t { WATCHED_MISMATCH, FOREIGN_HIT, CENSUS_ERROR, LATE_OVERFLOW, HANG };
-constexpr std::array<std::string_view, 5> EVENT_NAMES = {"watched word changed", "site hit by a thread without a unit",
-                                                         "site hit by the render thread outside a unit", "late overflow", "hang"};
+enum class EventKind : uint8_t { WATCHED_MISMATCH, CENSUS_ERROR, LATE_OVERFLOW, HANG, FAILED_ROUND };
+constexpr std::array<std::string_view, 5> EVENT_NAMES = {"watched word changed", "site hit where the census has none", "late overflow", "hang",
+                                                         "round failed"};
 struct EventRecord {
   EventKind kind = EventKind::WATCHED_MISMATCH;
   uint32_t site = 0;
@@ -175,11 +176,14 @@ struct Controls {
   bool no_enumeration_wait = false;  // the sites that wait for enumeration to end do not
   bool no_epoch = false;             // nothing bumps the epoch or wakes
   bool late_child_off = false;       // an append into a later effect makes no late unit
+  bool sweep_early = false;          // the render thread sweeps an effect as soon as enumeration is done, before its units are
+  bool wait_on_later = false;        // a unit waits for the frontier to pass it (never: until the hang detector has fired once)
 };
 static Controls controls;
 #endif
 
-// Append-only storage in blocks that never move: a reader holding a pointer is safe while a block is added.
+// Append-only storage in blocks that never move: a reader holding a pointer is safe while a block is added. The blocks are never freed
+// (at most MAX_BLOCKS of each kind, the size the biggest round needed; the process owns them for its life).
 template <typename T>
 struct Blocks {
   std::array<T*, MAX_BLOCKS> blocks = {};
@@ -223,7 +227,8 @@ struct alignas(64) Round {
   bool open = false;
   bool tracing = false;
   bool type_added = false;
-  bool violation = false;
+  bool failed = false;                    // an allocation failed or the census broke: the walk's rest goes the game's way (no late segment)
+  std::atomic<bool> violation = false;    // a safety check failed: B1 is off for the session after the walk (the render thread and units write it)
   DWORD owner = 0;
   uint32_t node = 0;
   uint32_t arguments[3] = {};
@@ -263,6 +268,7 @@ static std::array<std::atomic<uint32_t>, SITE_COUNT> order_point_hits = {};
 static std::array<std::atomic<uint32_t>, SITE_COUNT> first_point_hits = {};
 static std::array<EventRecord, 64> events = {};
 static std::atomic<uint32_t> event_count = 0;
+static std::array<std::atomic<uint32_t>, EVENT_NAMES.size()> events_said = {};  // by kind: the sites already stored (once per site and session)
 static std::atomic<uint64_t> longest_wait_ticks = 0;
 static std::atomic<uint64_t> handover_ticks = 0;
 static std::atomic<uint32_t> handovers = 0;
@@ -283,6 +289,8 @@ inline void Count(Counter counter, uint32_t amount = 1) {
 }
 
 inline void Note(EventKind kind, uint32_t site, uint32_t value) {
+  const uint32_t site_bit = 1u << site;
+  if ((events_said[static_cast<size_t>(kind)].fetch_or(site_bit, std::memory_order_relaxed) & site_bit) != 0) return;
   const uint32_t index = event_count.fetch_add(1, std::memory_order_relaxed);
   if (index < events.size()) {
     events[index] = {.kind = kind, .site = site, .thread = GetCurrentThreadId(), .value = value};
@@ -297,48 +305,6 @@ inline Unit* LateUnit(const Segment& segment, uint32_t index) {
   uint32_t at = segment.late_head;
   for (; index != 0; --index) at = units[at].next_late;
   return &units[at];
-}
-
-inline uint32_t& Bucket(uint32_t effect) { return current_round.buckets[((effect >> 4) * 2654435761u >> 20) & (BUCKETS - 1)]; }
-
-// The segment of an effect (NONE: not in this round).
-inline uint32_t FindSegment(uint32_t effect) {
-  for (uint32_t id = Bucket(effect); id != NONE; id = segments[id].map_next) {
-    if (segments[id].effect == effect) return id;
-  }
-  return NONE;
-}
-
-// A segment `id` for `effect`, after `previous` in the order (NONE: first) and before `next`, hashed, with a unit for each of the
-// effect's `count` instances from `first_unit` (late units: a segment that came after its effect was due). Not yet published.
-inline void AddSegment(uint32_t id, uint32_t effect, uint32_t rank, uint32_t first_unit, uint32_t count, uint32_t previous, uint32_t next, bool late) {
-  Segment& segment = segments[id];
-  segment.id = id;
-  segment.effect = effect;
-  segment.rank = rank;
-  segment.first_unit = first_unit;
-  segment.units = count;
-  segment.next = next;
-  segment.previous = previous;
-  segment.late_head = NONE;
-  segment.late_tail = NONE;
-  segment.late_count.store(0, std::memory_order_relaxed);
-  segment.sweep.store(0, std::memory_order_relaxed);
-  uint32_t& bucket = Bucket(effect);
-  segment.map_next = bucket;
-  bucket = id;
-  const uint32_t entries_at = Read(effect + EFFECT_ENTRIES_OFFSET);
-  for (uint32_t position = 0; position < count; ++position) {
-    Unit& unit = units[first_unit + position];
-    unit.instance = Read(entries_at + 8 * position);
-    unit.segment = id;
-    unit.position = position;
-    unit.next_late = NONE;
-    unit.done.store(0, std::memory_order_relaxed);
-    unit.claimed.store(0, std::memory_order_relaxed);
-    unit.late = late;
-    unit.direct = false;
-  }
 }
 
 // The address-wait calls, found in kernelbase so that the add-on needs no import library for them (an old system without them falls
@@ -418,7 +384,8 @@ inline Unit* ClaimNext() {
     Unit* best = nullptr;
     uint64_t best_key = ~0ull;
     const uint32_t total = round.published_units.load(std::memory_order_acquire);
-    for (uint32_t index = 0; index < total; ++index) {
+    // The late units come after the walk's own (a late unit is made only once enumeration is done).
+    for (uint32_t index = round.enqueued_units; index < total; ++index) {
       Unit& unit = units[index];
       if (!unit.late || unit.claimed.load(std::memory_order_acquire) != 0) continue;
       const uint64_t key = Pack(segments[unit.segment].rank, unit.position);
@@ -436,26 +403,6 @@ inline Unit* ClaimNext() {
     }
   }
   return nullptr;
-}
-
-// The unit the frontier points at, or the segment whose sweep it is (the render thread's to run), after advancing it.
-inline void Frontier(Unit** unit, Segment** sweep) {
-  *unit = nullptr;
-  *sweep = nullptr;
-  AdvanceFrontier();
-  const uint64_t at = current_round.frontier.load(std::memory_order_acquire);
-  const uint32_t segment_id = static_cast<uint32_t>(at >> 32);
-  const uint32_t position = static_cast<uint32_t>(at);
-  if (segment_id == NONE || segment_id >= current_round.segment_count.load(std::memory_order_acquire)) return;
-  Segment& segment = segments[segment_id];
-  const uint32_t late = segment.late_count.load(std::memory_order_acquire);
-  if (position < segment.units) {
-    *unit = &units[segment.first_unit + position];
-  } else if (position - segment.units < late) {
-    *unit = LateUnit(segment, position - segment.units);
-  } else {
-    *sweep = &segment;
-  }
 }
 
 inline void ThreadStackLimits() {
@@ -535,7 +482,7 @@ inline void WaitUntil(Ready&& ready, bool render) {
       }
     }
   }
-  if (blocked) {
+  if (blocked && round.tracing) {
     Count(Counter::WAITS);
     const uint64_t ticks = worker_pool::Qpc() - start;
     uint64_t longest = longest_wait_ticks.load(std::memory_order_relaxed);
@@ -571,9 +518,33 @@ inline bool Serve(bool render) {
     Wake();
     return true;
   }
+  // The unit the frontier points at, or the segment whose sweep it is (the render thread's to run), after advancing it.
   Unit* unit = nullptr;
   Segment* sweep = nullptr;
-  Frontier(&unit, &sweep);
+  AdvanceFrontier();
+  const uint64_t at = round.frontier.load(std::memory_order_acquire);
+  const uint32_t segment_id = static_cast<uint32_t>(at >> 32);
+  const uint32_t position = static_cast<uint32_t>(at);
+  if (segment_id != NONE && segment_id < round.segment_count.load(std::memory_order_acquire)) {
+    Segment& segment = segments[segment_id];
+    const uint32_t late = segment.late_count.load(std::memory_order_acquire);
+    if (position < segment.units) {
+      unit = &units[segment.first_unit + position];
+    } else if (position - segment.units < late) {
+      unit = LateUnit(segment, position - segment.units);
+    } else {
+      sweep = &segment;
+    }
+  }
+#if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
+  if (controls.sweep_early && sweeps && round.enumeration_done.load(std::memory_order_acquire)) {
+    unit = nullptr;
+    sweep = nullptr;
+    for (uint32_t id = 0; id < round.segment_count.load(std::memory_order_acquire) && sweep == nullptr; ++id) {
+      if (segments[id].sweep.load(std::memory_order_acquire) == 0) sweep = &segments[id];
+    }
+  }
+#endif
   if (unit != nullptr) {
     if (!Claim(unit)) return false;
     RunUnit(unit);
@@ -618,38 +589,7 @@ inline void CheckWatched() {
     Count(Counter::WATCHED_MISMATCHES);
     Note(EventKind::WATCHED_MISMATCH, round.last_site, Address(word.address));
     word.value = now;
-    round.violation = true;
-  }
-}
-
-// The thread runs a unit and is at an order point: wait until it is the oldest (and, for the sites that change what the render
-// thread reads while it enumerates, until enumeration is done), then it is the direct unit.
-inline void BecomeOldest(Unit* unit, uint32_t site, bool wait_for_enumeration) {
-  Round& round = current_round;
-#if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
-  wait_for_enumeration = wait_for_enumeration && !controls.no_enumeration_wait;
-#endif
-  if (unit->direct && (!wait_for_enumeration || round.enumeration_done.load(std::memory_order_acquire))) return;
-  const uint64_t mine = Pack(unit->segment, unit->position);
-  // A direct unit that reaches a site that needs enumeration to be done waits for that only: it is the oldest already.
-  WaitUntil(
-      [&] {
-        if (!unit->direct) AdvanceFrontier();
-        return (unit->direct || round.frontier.load(std::memory_order_acquire) == mine) && (!wait_for_enumeration || round.enumeration_done.load(std::memory_order_acquire));
-      },
-      GetCurrentThreadId() == round.owner);
-  if (unit->direct) return;
-  CheckWatched();
-  round.last_site = site;
-  ThreadStackLimits();
-  data->direct_high.store(this_thread.stack_high, std::memory_order_release);
-  unit->direct = true;
-  if (round.tracing) {
-    const uint64_t last = round.last_done_ticks.load(std::memory_order_relaxed);
-    if (last != 0) {
-      handover_ticks.fetch_add(worker_pool::Qpc() - last, std::memory_order_relaxed);
-      handovers.fetch_add(1, std::memory_order_relaxed);
-    }
+    round.violation.store(true, std::memory_order_relaxed);
   }
 }
 
@@ -658,6 +598,7 @@ inline void BecomeOldest(Unit* unit, uint32_t site, bool wait_for_enumeration) {
 // effects after a failure go the game's way: the handler answers 0 for them (the armed gate is off).
 inline void FinishRound(bool failed) {
   Round& round = current_round;
+  if (failed) round.failed = true;  // before enumeration is done: a unit that waited for that reads it after
   round.enumeration_done.store(true, std::memory_order_seq_cst);
   Wake();
   for (;;) {
@@ -682,10 +623,11 @@ inline void FinishRound(bool failed) {
   data->direct_high.store(0, std::memory_order_seq_cst);
   last_round_units = round.enqueued_units;
   small_round_presents = 0;
-  if (round.violation) session_off = true;
+  if (round.violation.load(std::memory_order_relaxed)) session_off = true;
   if (failed) {
     data->walk_armed.store(0, std::memory_order_seq_cst);
     Count(Counter::FAILED_ROUNDS);
+    Note(EventKind::FAILED_ROUND, round.last_site, round.segment_total);
   }
   Count(Counter::ROUNDS);
   Count(Counter::EFFECTS, round.segment_total);
@@ -714,46 +656,114 @@ inline void WorkerEntry(void*, uint32_t) {
   }
 }
 
-// A unit's thread appends a late unit to `segment` (a child appended to the effect of a later segment: serial walks it as that
-// effect's last instance), or a late segment: false when there is no room (a late overflow).
-inline bool AppendLate(Segment& segment, uint32_t segment_id, uint32_t instance) {
-  Round& round = current_round;
-  const uint32_t index = round.published_units.load(std::memory_order_relaxed);
-  if (!units.Reserve(index + 1)) return false;
-  Unit& unit = units[index];
-  unit.instance = instance;
-  unit.segment = segment_id;
-  unit.position = segment.units + segment.late_count.load(std::memory_order_relaxed);
-  unit.next_late = NONE;
-  unit.done.store(0, std::memory_order_relaxed);
-  unit.claimed.store(0, std::memory_order_relaxed);
-  unit.late = true;
-  unit.direct = false;
-  if (segment.late_head == NONE) {
-    segment.late_head = index;
-  } else {
-    units[segment.late_tail].next_late = index;
-  }
-  segment.late_tail = index;
-  round.late_unclaimed.fetch_add(1, std::memory_order_relaxed);
-  round.published_units.store(index + 1, std::memory_order_release);
-  segment.late_count.fetch_add(1, std::memory_order_release);
-  Count(Counter::LATE_UNITS);
-  Wake();
-  return true;
-}
-
 // The handler the thunks call: a switch over the sites. WALK_CALL starts or continues a round (answer 1: the walk's call is done,
 // 0: the game's own call), WALK_END ends it, CHILD_APPEND reports a child appended to an effect's vector, every other site is an
 // order point of the unit this thread runs.
 inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
   Round& round = current_round;
   const auto word = [&](size_t index) { return (&frame->stack[0])[index]; };
+  const auto census_error = [&](uint32_t site) {
+    Count(Counter::CENSUS_ERRORS);
+    Note(EventKind::CENSUS_ERROR, site, 0);
+    round.violation.store(true, std::memory_order_relaxed);
+  };
+  // A site hit by a thread that runs no unit. The render thread: the census has no such site there, so the round ends (the units
+  // in flight drained, the rest of the walk the game's own way) and B1 is off for the session after it. Another thread (a game
+  // thread at a shared site, a sound thread): it goes on as the original, counted in a trace window.
+  const auto outside_unit = [&](uint32_t site) {
+    if (GetCurrentThreadId() == round.owner) {
+      census_error(site);
+      FinishRound(true);
+    } else {
+      Count(Counter::FOREIGN_HITS);
+    }
+    return 0u;
+  };
+  // The effects of a round by address: a hash of the effect to the ids of its segments (a segment is an effect's place in the order).
+  const auto bucket = [&](uint32_t effect) { return &round.buckets[((effect >> 4) * 2654435761u >> 20) & (BUCKETS - 1)]; };
+  const auto find_segment = [&](uint32_t effect) {
+    for (uint32_t id = *bucket(effect); id != NONE; id = segments[id].map_next) {
+      if (segments[id].effect == effect) return id;
+    }
+    return NONE;
+  };
+  // A segment `id` for `effect`, after `previous` in the order (NONE: first) and before `next`, hashed, with a unit for each of the
+  // effect's `count` instances from `first_unit` (late units: a segment that came after its effect was due). Not yet published.
+  const auto add_segment = [&](uint32_t id, uint32_t effect, uint32_t rank, uint32_t first_unit, uint32_t count, uint32_t previous, uint32_t next, bool late) {
+    Segment& segment = segments[id];
+    segment.id = id;
+    segment.effect = effect;
+    segment.rank = rank;
+    segment.first_unit = first_unit;
+    segment.units = count;
+    segment.next = next;
+    segment.previous = previous;
+    segment.late_head = NONE;
+    segment.late_tail = NONE;
+    segment.late_count.store(0, std::memory_order_relaxed);
+    segment.sweep.store(0, std::memory_order_relaxed);
+    uint32_t* const chain = bucket(effect);
+    segment.map_next = *chain;
+    *chain = id;
+    const uint32_t entries_at = Read(effect + EFFECT_ENTRIES_OFFSET);
+    for (uint32_t position = 0; position < count; ++position) {
+      Unit& unit = units[first_unit + position];
+      unit.instance = Read(entries_at + 8 * position);
+      unit.segment = id;
+      unit.position = position;
+      unit.next_late = NONE;
+      unit.done.store(0, std::memory_order_relaxed);
+      unit.claimed.store(0, std::memory_order_relaxed);
+      unit.late = late;
+      unit.direct = false;
+    }
+  };
+  // The thread runs a unit and is at an order point: wait until it is the oldest (and, for the sites that change what the render
+  // thread reads while it enumerates, until enumeration is done), then it is the direct unit.
+  const auto become_oldest = [&](Unit* unit, uint32_t site, bool wait_for_enumeration) {
+#if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
+    wait_for_enumeration = wait_for_enumeration && !controls.no_enumeration_wait;
+#endif
+    if (unit->direct && (!wait_for_enumeration || round.enumeration_done.load(std::memory_order_acquire))) return;
+    const uint64_t mine = Pack(unit->segment, unit->position);
+    // A direct unit that reaches a site that needs enumeration to be done waits for that only: it is the oldest already.
+    WaitUntil(
+        [&] {
+          if (!unit->direct) AdvanceFrontier();
+          bool oldest = (unit->direct || round.frontier.load(std::memory_order_acquire) == mine);
+#if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
+          if (controls.wait_on_later && !unit->direct && counters[static_cast<size_t>(Counter::HANGS)].load(std::memory_order_relaxed) == 0) {
+            oldest = (round.frontier.load(std::memory_order_acquire) > mine);
+          }
+#endif
+          return oldest && (!wait_for_enumeration || round.enumeration_done.load(std::memory_order_acquire));
+        },
+        GetCurrentThreadId() == round.owner);
+    if (unit->direct) return;
+    CheckWatched();
+    round.last_site = site;
+    ThreadStackLimits();
+    data->direct_high.store(this_thread.stack_high, std::memory_order_release);
+    unit->direct = true;
+    if (round.tracing) {
+      const uint64_t last = round.last_done_ticks.load(std::memory_order_relaxed);
+      if (last != 0) {
+        handover_ticks.fetch_add(worker_pool::Qpc() - last, std::memory_order_relaxed);
+        handovers.fetch_add(1, std::memory_order_relaxed);
+      }
+    }
+  };
+
   switch (static_cast<Site>(site_index)) {
     case Site::WALK_CALL: {
+      if (round.open && (GetCurrentThreadId() != round.owner || this_thread.current != nullptr)) {
+        // The walk's call from a worker, a unit or a game thread in an open round: it would enqueue beside the render thread's.
+        census_error(site_index);
+        return 0;
+      }
       if (!round.open) {
         const auto serial = [](SerialReason reason) {
-          serial_rounds[static_cast<size_t>(reason)].fetch_add(1, std::memory_order_relaxed);
+          if (worker_pool::Tracing()) serial_rounds[static_cast<size_t>(reason)].fetch_add(1, std::memory_order_relaxed);
           data->walk_armed.store(0, std::memory_order_seq_cst);
           return 0u;
         };
@@ -773,7 +783,8 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
         round.open = true;
         round.tracing = worker_pool::Tracing();
         round.type_added = false;
-        round.violation = false;
+        round.failed = false;
+        round.violation.store(false, std::memory_order_relaxed);
         round.owner = worker_pool::internal::owner.load(std::memory_order_relaxed);
         round.node = node;
         round.arguments[0] = word(1);
@@ -817,9 +828,11 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
         FinishRound(true);
         return 0;
       }
-      AddSegment(id, effect, round.segment_total * RANK_STEP, first, count, round.tail, NONE, false);
+      add_segment(id, effect, round.segment_total * RANK_STEP, first, count, round.tail, NONE, false);
       round.published_units.store(first + count, std::memory_order_release);
-      round.segment_count.store(id + 1, std::memory_order_release);
+      // seq_cst: this store and the waiters load in Wake are the two halves of a store-load pair (a waiter that registers after the
+      // load sees the segment).
+      round.segment_count.store(id + 1, std::memory_order_seq_cst);
       if (round.tail != NONE) segments[round.tail].next = id;
       round.tail = id;
       round.segment_total += 1;
@@ -828,30 +841,57 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
       return 1;
     }
     case Site::WALK_END:
+      if (GetCurrentThreadId() != round.owner || this_thread.current != nullptr) {
+        census_error(site_index);
+        return 0;
+      }
       FinishRound(false);
       return 0;
     case Site::CHILD_APPEND_A:
     case Site::CHILD_APPEND_B: {
+      if (this_thread.serving) return 0;
       Unit* const unit = this_thread.current;
-      if (unit == nullptr) {
-        Count(Counter::FOREIGN_HITS);
-        Note(EventKind::FOREIGN_HIT, site_index, 0);
-        return 0;
-      }
-      BecomeOldest(unit, site_index, true);
+      if (unit == nullptr) return outside_unit(site_index);
+      become_oldest(unit, site_index, true);
       const uint32_t effect = frame->ecx - APPEND_VECTOR_OFFSET;
       const uint32_t child = Read(word(1));
       const Segment& current = segments[unit->segment];
-      const uint32_t target = FindSegment(effect);
+      const uint32_t target = find_segment(effect);
 #if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
       if (controls.late_child_off) return 0;
 #endif
       if (target != NONE) {
-        if (segments[target].rank > current.rank && !AppendLate(segments[target], target, child)) {
+        // A child appended to the effect of a later segment: serial walks it as that effect's last instance, a late unit of the
+        // segment. The current or an earlier segment gets nothing (its instances were copied, the game's own loop does not see it).
+        Segment& later = segments[target];
+        if (later.rank <= current.rank) return 0;
+        const uint32_t index = round.published_units.load(std::memory_order_relaxed);
+        if (!units.Reserve(index + 1)) {
           Count(Counter::LATE_OVERFLOWS);
           Note(EventKind::LATE_OVERFLOW, site_index, target);
-          round.violation = true;
+          round.violation.store(true, std::memory_order_relaxed);
+          return 0;
         }
+        Unit& late_unit = units[index];
+        late_unit.instance = child;
+        late_unit.segment = target;
+        late_unit.position = later.units + later.late_count.load(std::memory_order_relaxed);
+        late_unit.next_late = NONE;
+        late_unit.done.store(0, std::memory_order_relaxed);
+        late_unit.claimed.store(0, std::memory_order_relaxed);
+        late_unit.late = true;
+        late_unit.direct = false;
+        if (later.late_head == NONE) {
+          later.late_head = index;
+        } else {
+          units[later.late_tail].next_late = index;
+        }
+        later.late_tail = index;
+        round.late_unclaimed.fetch_add(1, std::memory_order_relaxed);
+        round.published_units.store(index + 1, std::memory_order_release);
+        later.late_count.fetch_add(1, std::memory_order_release);
+        Count(Counter::LATE_UNITS);
+        Wake();
         return 0;
       }
       if (!round.type_added) return 0;
@@ -868,9 +908,15 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
       const uint32_t target_slot = slot_of(effect);
       const uint32_t current_slot = slot_of(current.effect);
       if (target_slot == NONE || current_slot == NONE || target_slot <= current_slot) return 0;
+      // After a failure the game's own loop goes on from the slot after the last enqueued effect and takes a type whose slot is there
+      // itself; only the slots the enumeration passed already need a late segment.
+      if (round.failed) {
+        const uint32_t tail_slot = (round.tail == NONE ? NONE : slot_of(segments[round.tail].effect));
+        if (tail_slot == NONE || target_slot > tail_slot) return 0;
+      }
       uint32_t before = NONE;
       for (uint32_t slot = target_slot + 1; slot < capacity && before == NONE; ++slot) {
-        if (const uint32_t other = Read(slots + slot * SLOT_SIZE + SLOT_EFFECT_OFFSET); other != 0) before = FindSegment(other);
+        if (const uint32_t other = Read(slots + slot * SLOT_SIZE + SLOT_EFFECT_OFFSET); other != 0) before = find_segment(other);
       }
       const uint32_t previous = (before == NONE ? round.tail : segments[before].previous);
       const uint32_t lower = segments[previous].rank;
@@ -882,13 +928,13 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
       if (upper - lower < 2 || !segments.Reserve(id + 1) || !units.Reserve(first + count)) {
         Count(Counter::LATE_OVERFLOWS);
         Note(EventKind::LATE_OVERFLOW, site_index, id);
-        round.violation = true;
+        round.violation.store(true, std::memory_order_relaxed);
         return 0;
       }
-      AddSegment(id, effect, rank, first, count, previous, before, true);
+      add_segment(id, effect, rank, first, count, previous, before, true);
       round.late_unclaimed.fetch_add(count, std::memory_order_relaxed);
       round.published_units.store(first + count, std::memory_order_release);
-      round.segment_count.store(id + 1, std::memory_order_release);
+      round.segment_count.store(id + 1, std::memory_order_seq_cst);
       segments[previous].next = id;
       if (before != NONE) {
         segments[before].previous = id;
@@ -907,26 +953,13 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
   // An order point.
   if (this_thread.serving) return 0;
   Unit* const unit = this_thread.current;
-  if (unit == nullptr) {
-    if (GetCurrentThreadId() == round.owner) {
-      // The render thread, in a round, outside a unit: a site the census did not expect there. It goes on as the original (the units
-      // in flight may overlap what it does: draining them first could wait for the enumeration this very thread is in the middle
-      // of), and B1 is off for the session after the walk.
-      Count(Counter::CENSUS_ERRORS);
-      Note(EventKind::CENSUS_ERROR, site_index, 0);
-      round.violation = true;
-    } else {
-      Count(Counter::FOREIGN_HITS);
-      Note(EventKind::FOREIGN_HIT, site_index, 0);
-    }
-    return 0;
-  }
+  if (unit == nullptr) return outside_unit(site_index);
 #if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
   if (controls.no_order_points) return 0;
 #endif
   const Site site = static_cast<Site>(site_index);
   const bool first_point = !unit->direct;
-  BecomeOldest(unit, site_index, WaitsForEnumeration(site));
+  become_oldest(unit, site_index, WaitsForEnumeration(site));
   if (round.tracing) {
     order_point_hits[site_index].fetch_add(1, std::memory_order_relaxed);
     if (first_point) first_point_hits[site_index].fetch_add(1, std::memory_order_relaxed);
@@ -964,6 +997,7 @@ inline void Update(bool row) {
   if (data == nullptr) return;
   if (current_round.open) {
     FinishRound(true);
+    session_off = true;  // the walk never ended: something broke inside it
     renodx::utils::log::w("[Total War] Parallel Effect Update: a round was still open at the present; closed.");
   }
   if (entries.update_instance == nullptr) {
@@ -983,35 +1017,45 @@ inline void Update(bool row) {
     last_round_units = MIN_ROUND_UNITS;
     small_round_presents = 0;
   }
-  data->walk_armed.store(row && !session_off ? 1 : 0, std::memory_order_seq_cst);
+  // Every site the walk's gate opens needs all 27 in the game's code: a partial set (a site that stood down) never arms.
+  data->walk_armed.store((row && !session_off && written == ALL_SITES ? 1 : 0), std::memory_order_seq_cst);
 
+  // What a trace window counted (nothing else is counted outside one, but the safety counters): one line for its presents. The
+  // safety counters ride along; alone they print nothing (their events are logged once, below).
   std::string line;
+  bool traced = false;
   for (size_t index = 0; index < counters.size(); ++index) {
     if (const uint32_t value = counters[index].exchange(0, std::memory_order_relaxed); value != 0) {
       line += std::format(" {} {},", COUNTER_NAMES[index], value);
+      traced |= (index < static_cast<size_t>(Counter::HANGS));
     }
   }
   for (size_t index = 0; index < serial_rounds.size(); ++index) {
     if (const uint32_t value = serial_rounds[index].exchange(0, std::memory_order_relaxed); value != 0) {
       line += std::format(" serial ({}) {},", SERIAL_REASON_NAMES[index], value);
+      traced = true;
     }
   }
   for (size_t index = 0; index < SITE_COUNT; ++index) {
     if (const uint32_t value = order_point_hits[index].exchange(0, std::memory_order_relaxed); value != 0) {
       line += std::format(" {} {} ({} first),", SITES[index].name, value, first_point_hits[index].exchange(0, std::memory_order_relaxed));
+      traced = true;
     }
   }
   if (const uint32_t count = handovers.exchange(0, std::memory_order_relaxed); count != 0) {
     line += std::format(" handover {:.0f} ns,", static_cast<double>(handover_ticks.exchange(0, std::memory_order_relaxed)) * 1e9
                                                     / static_cast<double>(worker_pool::qpc_frequency) / count);
+    traced = true;
   }
   if (const uint64_t longest = longest_wait_ticks.exchange(0, std::memory_order_relaxed); longest != 0) {
     line += std::format(" longest wait {:.1f} us,", static_cast<double>(longest) * 1e6 / static_cast<double>(worker_pool::qpc_frequency));
+    traced = true;
   }
   if (const uint64_t ticks = forward_wait_ticks.exchange(0, std::memory_order_relaxed); ticks != 0) {
     line += std::format(" forwarded wait {:.1f} us,", static_cast<double>(ticks) * 1e6 / static_cast<double>(worker_pool::qpc_frequency));
+    traced = true;
   }
-  if (!line.empty()) {
+  if (traced) {
     line.pop_back();
     renodx::utils::log::i("[Total War] Parallel Effect Update (trace window ", worker_pool::TraceWindow(), "):", line);
   }
