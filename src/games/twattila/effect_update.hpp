@@ -404,12 +404,6 @@ inline void Count(Counter counter, uint32_t amount = 1) {
   }
 }
 
-inline void Note(EventKind kind, uint32_t site, uint32_t value);
-// L2 off for the rest of the session, with its reason (stored once; Update logs it).
-inline void TurnSpawnsOff(SpawnsOffReason reason) {
-  spawns_off = true;
-  Note(EventKind::SPAWNS_OFF, 0, static_cast<uint32_t>(reason));
-}
 inline void Note(EventKind kind, uint32_t site, uint32_t value) {
   const uint32_t site_bit = 1u << site;
   if ((events_said[static_cast<size_t>(kind)].fetch_or(site_bit, std::memory_order_relaxed) & site_bit) != 0) return;
@@ -417,6 +411,12 @@ inline void Note(EventKind kind, uint32_t site, uint32_t value) {
   if (index < events.size()) {
     events[index] = {.kind = kind, .site = site, .thread = GetCurrentThreadId(), .value = value};
   }
+}
+
+// L2 off for the rest of the session, with its reason (stored once; Update logs it).
+inline void TurnSpawnsOff(SpawnsOffReason reason) {
+  spawns_off = true;
+  Note(EventKind::SPAWNS_OFF, 0, static_cast<uint32_t>(reason));
 }
 
 inline uint32_t Read(uint32_t address) { return *reinterpret_cast<const uint32_t*>(address); }

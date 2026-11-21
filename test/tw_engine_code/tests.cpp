@@ -3734,6 +3734,37 @@ int main(int argc, char** argv) {
       CHECK(ec::written == 0 && game_bytes(all));
       prepare_again();
     }
+    if (build.code->particle_count_rva != 0) {
+      // (n) Cached Particle Count's pair: the epoch changed before the row goes in: the sum does not go in either (it would answer the first value for the session); our sum's jump
+      // changed while the row is on: switching off leaves it, and the epoch's jump stays in with it (its bump keeps the cache honest for a hook that chains to our sum's stub)
+      constexpr size_t EPOCH = ec::PARTICLE_EPOCH_INDEX;
+      constexpr size_t COUNT = ec::PARTICLE_COUNT_INDEX;
+      foreign(EPOCH, hook);
+      on();
+      CHECK((ec::found & ec::PARTICLE_COUNT_SITES) == 0 && (ec::written & ec::PARTICLE_COUNT_SITES) == 0 && ec::written == ec::found && holds(EPOCH, hook)
+            && game_bytes(ec::PARTICLE_COUNT_BIT));
+      foreign(EPOCH, ec::sites[EPOCH].game);
+      off();
+      CHECK(ec::written == 0 && game_bytes(all));
+      prepare_again();
+      foreign(COUNT, hook);  // the sum's bytes changed before the row goes in
+      on();
+      CHECK((ec::found & ec::PARTICLE_COUNT_SITES) == 0 && (ec::written & ec::PARTICLE_COUNT_SITES) == 0 && ec::written == ec::found && holds(COUNT, hook)
+            && game_bytes(ec::PARTICLE_EPOCH_BIT));
+      foreign(COUNT, ec::sites[COUNT].game);
+      off();
+      CHECK(ec::written == 0 && game_bytes(all));
+      prepare_again();
+      on();
+      CHECK(ec::written == all && holds(EPOCH, ec::sites[EPOCH].jump) && holds(COUNT, ec::sites[COUNT].jump));
+      foreign(COUNT, hook);
+      off();
+      // like every site that stands down on the way out, both count as another mod's now (written 0, found without them); the epoch's jump is still in the game's code
+      CHECK(ec::written == 0 && (ec::found & ec::PARTICLE_COUNT_SITES) == 0 && holds(COUNT, hook) && holds(EPOCH, ec::sites[EPOCH].jump) && game_bytes(all & ~ec::PARTICLE_COUNT_SITES));
+      foreign(COUNT, ec::sites[COUNT].game);
+      foreign(EPOCH, ec::sites[EPOCH].game);
+      prepare_again();
+    }
     // (d) the soldier rounding site changed while the rows are on: switching off leaves it, restores the others
     on();
     CHECK(ec::written == all);

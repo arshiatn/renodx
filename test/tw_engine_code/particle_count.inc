@@ -118,7 +118,7 @@ int RunParticleCountTests(const TestBuild& build, uint8_t* game, uint8_t* patche
     CHECK(std::memcmp(trampoline, game + count_rva, ec::PARTICLE_COUNT_HEAD) == 0 && trampoline[5] == 0xE9);
     CHECK(trampoline + 10 + static_cast<int32_t>(Read32(trampoline + 6)) == patched + count_rva + ec::PARTICLE_COUNT_HEAD && trampoline + 10 == count_stub);
     CHECK(ec::sites[ec::PARTICLE_EPOCH_INDEX].game[0] == game[epoch_rva] && ec::sites[ec::PARTICLE_COUNT_INDEX].game[0] == game[count_rva]);
-    CHECK(ei::sibling_page.data() == ec::page && ei::sibling_page.size() == ec::PAGE_SIZE);
+    CHECK(ei::sibling_entries[0].rva == epoch_rva && ei::sibling_entries[0].stub == epoch_stub && ei::sibling_entries[1].rva == count_rva && ei::sibling_entries[1].stub == count_stub);
   }
   rows(true, true);
   CHECK(ec::written == ec::PARTICLE_COUNT_SITES && ec::count_data->check == 1);
@@ -132,6 +132,25 @@ int RunParticleCountTests(const TestBuild& build, uint8_t* game, uint8_t* patche
   CHECK(ec::written == 0 && std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   std::printf("28a. row on: B differs from A only in the two jumps, into the stubs, the game's bytes in the stubs; the check word follows; off: the game's bytes back\n");
 
+  // The generation moves when the pair goes in (the epoch did not run while the row was off, so a cache of the earlier time is of an older update); not on a row that stays on.
+  {
+    rows(true, false);
+    ec::count_data->node = 0x1000;
+    ec::count_data->cached_generation = ec::count_data->generation;
+    ec::count_data->value = 7;
+    const uint32_t generation = ec::count_data->generation;
+    rows(true, true);
+    CHECK(ec::count_data->generation == generation);
+    rows(false, false);
+    CHECK(ec::count_data->generation == generation && ec::written == 0);
+    rows(true, false);
+    CHECK(ec::written == ec::PARTICLE_COUNT_SITES && ec::count_data->generation != ec::count_data->cached_generation);
+    ec::count_data->cached_generation = 0;
+    rows(false, false);
+    CHECK(ec::written == 0);
+    std::printf("28a. row off and on again: the generation moved, the old cache is not served\n");
+  }
+
   // The effect update accepts an E9 into the stubs' page at the two entries (this row's), and still refuses another tool's.
   {
     rows(true, false);
@@ -140,15 +159,27 @@ int RunParticleCountTests(const TestBuild& build, uint8_t* game, uint8_t* patche
     CHECK(!eu::Prepare(reinterpret_cast<HMODULE>(patched)) && ei::found == 0);
     patched[eu::HOOKED_ENTRIES[0]] = unpatched[eu::HOOKED_ENTRIES[0] - text_rva];
     CHECK(eu::Prepare(reinterpret_cast<HMODULE>(patched)) && ei::found == eu::ALL_SITES);
-    // CONTROL: without the page (no sibling known) the same two jumps are another tool's hooks: refused.
-    const std::span<const uint8_t> sibling = ei::sibling_page;
-    ei::sibling_page = {};
+    // CONTROL: without the entries (no sibling known) the same two jumps are another tool's hooks: refused.
+    const auto siblings = ei::sibling_entries;
+    ei::sibling_entries = {};
     CHECK(!eu::Prepare(reinterpret_cast<HMODULE>(patched)) && ei::found == 0);
-    ei::sibling_page = sibling;
+    ei::sibling_entries = siblings;
     CHECK(eu::Prepare(reinterpret_cast<HMODULE>(patched)) && ei::found == eu::ALL_SITES);
+    // CONTROLs: a foreign E9 at one of the two entries (a target outside the page), and our jump with the other entry's stub, are refused too.
+    for (const uint32_t rva : {epoch_rva, count_rva}) {
+      uint8_t* const entry = patched + rva;
+      const uint32_t ours = Read32(entry + 1);
+      Write32(entry + 1, 0x1000);
+      CHECK(!eu::Prepare(reinterpret_cast<HMODULE>(patched)) && ei::found == 0);
+      const uint8_t* const other_stub = (rva == epoch_rva ? ei::sibling_entries[1].stub : ei::sibling_entries[0].stub);
+      Write32(entry + 1, Address(other_stub) - Address(entry + 5));
+      CHECK(!eu::Prepare(reinterpret_cast<HMODULE>(patched)) && ei::found == 0);
+      Write32(entry + 1, ours);
+      CHECK(eu::Prepare(reinterpret_cast<HMODULE>(patched)) && ei::found == eu::ALL_SITES);
+    }
     rows(false, false);
     CHECK(ec::written == 0);
-    std::printf("28a. the effect update takes this row's E9 at its two entries as ours (and an E9 elsewhere still refuses it)\n");
+    std::printf("28a. the effect update takes this row's E9 at its two entries, to its own stubs, as ours (an E9 elsewhere, a foreign target at either entry, the other entry's stub: refused)\n");
   }
 
   // Another mod's byte in one of the two sites: neither goes in (both or neither), and the row is named once.

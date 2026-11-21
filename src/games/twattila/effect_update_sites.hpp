@@ -125,7 +125,9 @@ struct SiteInfo {
 };
 
 constexpr size_t MAX_SITE_SIZE = 11;
-constexpr size_t SizeOf(const SiteInfo& info) { return (info.pattern.size() + 1) / 3; }
+// The byte count of a pattern ("AA BB ??": three characters a byte, the last without its space).
+constexpr size_t PatternSize(std::string_view pattern) { return (pattern.size() + 1) / 3; }
+constexpr size_t SizeOf(const SiteInfo& info) { return PatternSize(info.pattern); }
 
 // The Steam build's RVAs (nothing else is supported: another build fails the bytes check and B1 stays out).
 constexpr std::array<SiteInfo, SITE_COUNT> SITES = {{
@@ -544,11 +546,16 @@ inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rv
   return count;
 }
 
-// The page of the stubs that engine_code writes into two of these entries (Cached Particle Count: +0x192D290 and +0x1929E60), set by its Prepare.
-static std::span<const uint8_t> sibling_page;
+// The two entries that engine_code writes a jump into (Cached Particle Count: +0x192D290 and +0x1929E60) and the stub each jump leads to, set by its
+// Prepare (null stubs: none written).
+struct SiblingEntry {
+  uint32_t rva = 0;
+  const uint8_t* stub = nullptr;
+};
+static std::array<SiblingEntry, 2> sibling_entries = {};
 
-// No entry of the list starts with an E9 that is not one of our own sites' (or into engine_code's page: that tool's hook runs on a stack and in
-// registers that workers would share).
+// No entry of the list starts with an E9 that is not one of our own sites' (or one of engine_code's two, leading to its stub: any other jump's hook runs
+// on a stack and in registers that workers would share).
 inline bool EntriesFree() {
   for (const uint32_t rva : HOOKED_ENTRIES) {
     if (base[rva] != 0xE9) continue;
@@ -556,11 +563,13 @@ inline bool EntriesFree() {
     for (size_t index = 0; index < SITE_COUNT; ++index) {
       ours |= (sites[index].at == base + rva && (written >> index & 1) != 0);
     }
-    // Or a jump into the page of engine_code's stubs (Cached Particle Count writes one at two of these entries).
+    // Or engine_code's jump at this entry, to its own stub (Cached Particle Count).
     int32_t displacement;
     std::memcpy(&displacement, base + rva + 1, sizeof(displacement));
     const uint8_t* const target = base + rva + 5 + displacement;
-    ours |= (target >= sibling_page.data() && target < sibling_page.data() + sibling_page.size());
+    for (const SiblingEntry& entry : sibling_entries) {
+      ours |= (entry.stub != nullptr && entry.rva == rva && entry.stub == target);
+    }
     if (!ours) return false;
   }
   return true;
