@@ -105,16 +105,25 @@ constexpr std::array<uint8_t, 44> TruncationStub(uint8_t control, uint8_t roundi
   };
 }
 constexpr std::array<uint8_t, 44> TRUNCATION_STUB = TruncationStub(0x18, 0x1C, 0x20, 0x2C);
-// The same bytes as the Attila CPU Performance Fix's x87 fix leaves them (its x87fix.c, on the block at +14): both fldcw
-// a 4-byte nop, fistp fisttp. Left to that mod as any other mod's code; only named in the log.
-constexpr auto X87_FIX_TRUNCATION = [] {
-  std::array<char, TRUNCATION.size()> pattern = {};
-  std::ranges::copy(TRUNCATION, pattern.begin());
-  const auto put = [&](size_t offset, std::string_view bytes) { std::ranges::copy(bytes, pattern.begin() + 3 * offset); };
-  put(37, "0F 1F 40 00");  // fldcw word ptr [esp + 0x1c]
-  put(42, "4C");           // fistp dword ptr [esp + 0x2c] -> fisttp
-  put(45, "0F 1F 40 00");  // fldcw word ptr [esp + 0x18]
-  return pattern;
+// The same bytes as the Attila CPU Performance Fix's x87 fix leaves them (its x87fix.c, on the block at +14): the form of
+// 7.0 (both fldcw a 4-byte nop, fistp fisttp) and the split form of the later builds (the control word reload split: the
+// fwait through the fistp are 30 bytes of integer code, with fisttp and no control word loads). Left to that mod as any
+// other mod's code; only named in the log.
+constexpr auto X87_FIX_TRUNCATIONS = [] {
+  std::array<std::array<char, TRUNCATION.size()>, 2> patterns = {};
+  for (std::array<char, TRUNCATION.size()>& pattern : patterns) {
+    std::ranges::copy(TRUNCATION, pattern.begin());
+  }
+  const auto put = [&](size_t form, size_t offset, std::string_view bytes) {
+    std::ranges::copy(bytes, patterns[form].begin() + 3 * offset);
+  };
+  put(0, 37, "0F 1F 40 00");  // fldcw word ptr [esp + 0x1c]
+  put(0, 42, "4C");           // fistp dword ptr [esp + 0x2c] -> fisttp
+  put(0, 45, "0F 1F 40 00");  // fldcw word ptr [esp + 0x18]
+  // movzx eax, word ptr [esp + 0x1a]; fstcw [esp + 0x18]; shl eax, 0x10; mov ax, [esp + 0x18]; or eax, 0xc00;
+  // mov [esp + 0x1c], eax; fisttp dword ptr [esp + 0x2c]
+  put(1, 19, "0F B7 44 24 1A D9 7C 24 18 C1 E0 10 66 8B 44 24 18 0D 00 0C 00 00 89 44 24 1C DB 4C 24 2C");
+  return patterns;
 }();
 
 // 2. float to half (+0x169a220, 98 callers; the sprite soldiers' instance rows, 20 a row: ~4.3 ms a frame): uint16_t
@@ -2307,8 +2316,11 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   std::string left;
   std::string x87_fixed;
   // Attila's truncation block rewritten by the Attila CPU Performance Fix is named as such, not as an unknown mod.
-  const bool truncation_x87_fixed = (sites[0].at == nullptr && build.truncation_rva == TRUNCATION_RVA
-                                     && holds(base + TRUNCATION_RVA, {X87_FIX_TRUNCATION.data(), X87_FIX_TRUNCATION.size()}));
+  const bool truncation_x87_fixed =
+      (sites[0].at == nullptr && build.truncation_rva == TRUNCATION_RVA
+       && std::ranges::any_of(X87_FIX_TRUNCATIONS, [&](const auto& pattern) {
+            return holds(base + TRUNCATION_RVA, {pattern.data(), pattern.size()});
+          }));
   // A site the build doesn't have (rva 0) isn't named.
   const uint32_t reload_rva = (sse4_1 ? build.float4_reload_rva : 0);
   const uint32_t rows_rva = (sse4_1 ? build.soldier_rows_rva : 0);
