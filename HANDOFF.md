@@ -5909,6 +5909,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: c33i_ (R-S1 + R-S2), c3i_ (B1.5 fixes), ebr_ (X0 re-check) (3 of 3). QUEUE: b13r_ B1.5 re-check + merge
         rmt_b15fix, t4i_ gate row refresh, c33i_'s engine_code / addon.cpp commit, R-S3 review, R-S5a addendum, B1.6 (+ N5
         real-routine tests), X1, X2.
+        c33i_ R-S1 + R-S2 DONE 19:0x (reports/c33i_rs12_handback.md): rmt_rs1 c110df529 (3de8656be header, 8e3bb072d
+        test, c110df529 int32 counter; only instance_fill.hpp + test/tw_instance_fill, +1354). 4 sites (0x17AE71C /
+        0x17AE818 / 0x17AE8D8 / 0x17AED1F), exact patterns + 3-link chain to the record copy; E8 retarget straight to
+        cdecl Entry<N> (no thunk page); dispatcher on worker_pool (>= 512 items, n / 384 workers, 64-record chunks,
+        SFENCE + release count); trace + RENODX_TW_FILL_CHECK=1 check mode; IGNORED_SOURCES {0x17AE6FA} (a 0x7C data
+        byte read as jl). Tests: 832 + 150 fills 0 differ, 6 controls seen; clearance vs heapfix + 113 sites clean.
+        HOOK-UP HELD on rmt_rs1_hookup (9becd7755: engine_code.hpp PausedWrite / Update / Uninstall + addon.cpp row
+        'Parallel Instance Fill (Experimental)', default Off, DRAW_RECORDING block); conflicts with rmt_b15fix ->
+        re-apply after the B1.5 fixes merge. Builds x86 x3 / DRAW_RECORDING / amd64 + suites exit 0 on the hook-up branch.
+        Deferred: BranchesIntoSites duplicates B1's scan (cleanup later), Rewrite VirtualProtect failure untested, R2.
+        bd1r_ STARTED R-S3 19:1x (Opus xHigh) on rmt_rs1 + rmt_rs1_hookup -> reports/bd1r_rs3_review.md.
+        Agents: c3i_ (B1.5 fixes), ebr_ (X0 re-check), bd1r_ (R-S3) (3 of 3). QUEUE: b13r_ B1.5 re-check + merge
+        rmt_b15fix, t4i_ gate row refresh, c33i_ R-S4 fixes + hook-up re-apply on the merged fixes, R-S5a addendum, B1.6
+        (+ N5 real-routine tests), X1, X2.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
