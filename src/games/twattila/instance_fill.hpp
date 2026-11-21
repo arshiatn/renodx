@@ -252,7 +252,7 @@ static uint32_t asked = 0;    // what the row last asked for
 // The row is on and the sites are found: the dispatcher does its own fill; otherwise it runs the game's call.
 static std::atomic<bool> row_on = false;
 // Threads inside the dispatcher (the sites' functions): PausedWrite lets the sites out only while it is 0.
-static std::atomic<uint32_t> active = 0;
+static std::atomic<int32_t> active = 0;
 static bool check_enabled = false;  // RENODX_TW_FILL_CHECK=1, read once by Prepare
 static std::atomic<uint32_t> checked = 0;
 static std::atomic<uint32_t> check_mismatches = 0;
