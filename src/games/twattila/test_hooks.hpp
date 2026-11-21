@@ -7,8 +7,10 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
+#include <charconv>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -43,14 +45,27 @@
 // next to the exe (the frame traces' on-demand marker), the key "memory" logs the address space (free, the largest free
 // block: one walk) and, when the add-on defines RENODX_TEST_HOOKS_MEMORY (a function returning text) before including
 // this, its own reservations (Attila: the constant buffer ring's).
+// RENODX_TW_SET_FILE=<path>: the same entries from a file, one "<seconds>:<key>=<value>;" per line in time order, without
+// RENODX_TW_SET's 8 KB limit (with both set, neither is used). Two keys need the add-on's LiveHooks: "env.<NAME>" sets
+// that process variable (an empty value clears it) and bumps the add-on's env generation, "mt_trace" opens one trace
+// window of that many presents.
 // A game that restarts itself through Steam (Tales of Arise's SteamStub) doesn't inherit the launching shell's
 // environment: the same NAME=value lines in renodx_test_hooks.txt next to the exe set them for the process (and the helper
 // it starts). The first present deletes the file, so a stub process that relaunches leaves it for the game and the next
 // start runs without it.
 namespace twattila::test_hooks {
 
+// What the set keys "env." and "mt_trace" reach in the add-on (Attila: its worker pool, which this header shared with
+// the other games cannot include). Without them those keys change nothing.
+struct LiveHooks {
+  // Called after an "env." key changed the process environment; returns the add-on's new env generation.
+  uint32_t (*env_changed)() = nullptr;
+  void (*arm_trace)(uint32_t frames) = nullptr;
+};
+
 namespace internal {
 static renodx::utils::settings::Settings* settings = nullptr;
+static LiveHooks live_hooks = {};
 static bool clock_at_first_present = true;
 static std::atomic_uint64_t clock_start = 0;
 // The log lines' prefix.
@@ -117,9 +132,35 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
   }();
   static const uint64_t profile_ms = seconds("RENODX_TW_PROFILE");
   static std::string changes = [] {
-    std::array<char, 8192> value = {};
-    const DWORD length = GetEnvironmentVariableA("RENODX_TW_SET", value.data(), static_cast<DWORD>(value.size()));
-    return std::string(value.data(), length < value.size() ? length : 0);
+    const DWORD path_size = GetEnvironmentVariableA("RENODX_TW_SET_FILE", nullptr, 0);
+    if (path_size == 0) {
+      std::array<char, 8192> value = {};
+      const DWORD length = GetEnvironmentVariableA("RENODX_TW_SET", value.data(), static_cast<DWORD>(value.size()));
+      return std::string(value.data(), length < value.size() ? length : 0);
+    }
+    // Two lists would interleave by time only by chance: a run that sets both is a script's mistake.
+    if (GetEnvironmentVariableA("RENODX_TW_SET", nullptr, 0) != 0) {
+      renodx::utils::log::e(std::format("{} Test: RENODX_TW_SET and RENODX_TW_SET_FILE are both set; neither is used.", log_name));
+      return std::string();
+    }
+    std::string path(path_size, '\0');
+    path.resize(GetEnvironmentVariableA("RENODX_TW_SET_FILE", path.data(), path_size));
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+      renodx::utils::log::e(std::format("{} Test: RENODX_TW_SET_FILE {} could not be read; no set entries.", log_name, path));
+      return std::string();
+    }
+    std::string list;
+    int entries = 0;
+    for (std::string line; std::getline(file, line);) {
+      line.resize(std::min(line.find(';'), line.size()));
+      if (!line.empty() && line.back() == '\r') line.pop_back();
+      if (line.empty()) continue;
+      list += line + ';';
+      ++entries;
+    }
+    renodx::utils::log::i(std::format("{} Test: RENODX_TW_SET_FILE {} read ({} entries).", log_name, path, entries));
+    return list;
   }();
   static int taken = 0;
   static bool profiled = false;
@@ -132,6 +173,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
        colon != std::string::npos && equals > colon && equals != std::string::npos
        && now >= started + (std::strtoull(changes.c_str(), nullptr, 10) * 1000ull);
        colon = changes.find(':'), equals = changes.find('=')) {
+    const size_t next = changes.find(';');
     if (const std::string key = changes.substr(colon + 1, equals - colon - 1); key == "shot") {
       runtime->save_screenshot("auto");
       renodx::utils::log::i(std::format("{} Test: shot pressed.", log_name));
@@ -144,10 +186,42 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
       line += RENODX_TEST_HOOKS_MEMORY();
 #endif
       renodx::utils::log::i(line + ".");
+    } else if (key == "mt_trace") {
+      const std::string text = changes.substr(equals + 1, next - equals - 1);
+      uint32_t frames = 0;
+      const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), frames);
+      if (live_hooks.arm_trace == nullptr) {
+        renodx::utils::log::w(std::format("{} Test: mt_trace: no trace window in this add-on, nothing armed.", log_name));
+      } else if (error != std::errc() || end != text.data() + text.size() || frames == 0) {
+        renodx::utils::log::w(std::format("{} Test: mt_trace={} is not a frame count, nothing armed.", log_name, text));
+      } else {
+        live_hooks.arm_trace(frames);
+        // The pool numbers the window in its own header line at the next present.
+        renodx::utils::log::i(std::format("{} Test: mt_trace armed {} frames.", log_name, frames));
+      }
+    } else if (key.starts_with("env.")) {
+      const std::string name = key.substr(4);
+      const std::string value = changes.substr(equals + 1, next - equals - 1);
+      if (live_hooks.env_changed == nullptr) {
+        renodx::utils::log::w(std::format("{} Test: env {}: no live env in this add-on, nothing changed.", log_name, name));
+      } else {
+        // An empty value unsets the variable; clearing one that was never set is no failure.
+        const bool clear = value.empty();
+        const DWORD error = (SetEnvironmentVariableA(name.c_str(), clear ? nullptr : value.c_str()) != 0) ? ERROR_SUCCESS : GetLastError();
+        if (error == ERROR_SUCCESS || (clear && error == ERROR_ENVVAR_NOT_FOUND)) {
+          const uint32_t generation = live_hooks.env_changed();
+          if (clear) {
+            renodx::utils::log::i(std::format("{} Test: env {} cleared (generation {}).", log_name, name, generation));
+          } else {
+            renodx::utils::log::i(std::format("{} Test: env {} set to {} (generation {}).", log_name, name, value, generation));
+          }
+        } else {
+          renodx::utils::log::w(std::format("{} Test: env {} could not be set (error {}), nothing changed.", log_name, name, error));
+        }
+      }
     } else {
       Change(key, std::strtof(changes.c_str() + equals + 1, nullptr));
     }
-    const size_t next = changes.find(';');
     changes.erase(0, (next == std::string::npos) ? next : next + 1);
   }
   if (shot_ms == 0 || taken >= shot_count || now < started + shot_ms + (taken * shot_gap_ms)) return;
@@ -163,7 +237,8 @@ inline void StartClock() {
   internal::clock_start.compare_exchange_strong(not_started, GetTickCount64());
 }
 
-inline void Install(renodx::utils::settings::Settings* settings, bool clock_at_first_present, const char* log_name = "[Total War]") {
+inline void Install(renodx::utils::settings::Settings* settings, bool clock_at_first_present, const char* log_name = "[Total War]",
+                    const LiveHooks& live_hooks = {}) {
   std::wstring exe(32768, L'\0');
   exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
   internal::exe_folder = std::filesystem::path(exe).parent_path();
@@ -179,10 +254,11 @@ inline void Install(renodx::utils::settings::Settings* settings, bool clock_at_f
     renodx::utils::log::i(std::format("{} Test: renodx_test_hooks.txt read ({} lines).", log_name, lines));
   }
   if (GetEnvironmentVariableA("RENODX_TW_SHOT", nullptr, 0) == 0 && GetEnvironmentVariableA("RENODX_TW_PROFILE", nullptr, 0) == 0
-      && GetEnvironmentVariableA("RENODX_TW_SET", nullptr, 0) == 0) {
+      && GetEnvironmentVariableA("RENODX_TW_SET", nullptr, 0) == 0 && GetEnvironmentVariableA("RENODX_TW_SET_FILE", nullptr, 0) == 0) {
     return;
   }
   internal::settings = settings;
+  internal::live_hooks = live_hooks;
   internal::clock_at_first_present = clock_at_first_present;
   internal::log_name = log_name;
   reshade::register_event<reshade::addon_event::reshade_present>(internal::OnReshadePresent);

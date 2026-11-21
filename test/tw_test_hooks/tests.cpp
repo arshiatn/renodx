@@ -3,6 +3,9 @@
 // made, the game's own runtime answers as before. The hooks read their environment once: one mode per run (proxy,
 // noproxy, failed). `control`: the proxy's expectations without a proxy, so the game's runtime answers; it must fail.
 // A button by its label presses every button with it, by "<group>/<label>" only that group's.
+// RENODX_TW_SET_FILE (modes setfile, bothset, nohooks, nofile): the entries from a file (CRLF, one per line, past SET's
+// 8 KB), the live "env." and "mt_trace" keys through the add-on's LiveHooks, and the refusals: both lists set, no hooks,
+// a file that cannot be read.
 #include <windows.h>
 
 #include <algorithm>
@@ -13,6 +16,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 static int profiles = 0;
 static void CountProfile() { ++profiles; }
@@ -25,12 +29,17 @@ static void CountProfile() { ++profiles; }
 extern "C" __declspec(dllexport) const char* const NAME = "tw_test_hooks";
 
 static std::map<std::pair<std::string, std::string>, std::string> ini;
+static std::vector<std::string> logged;
+static bool print_logs = true;
 static void* registered_present = nullptr;
 
 extern "C" {
 __declspec(dllexport) bool ReShadeRegisterAddon(void*, uint32_t) { return true; }
 __declspec(dllexport) void ReShadeUnregisterAddon(void*) {}
-__declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) { std::printf("  log: %s\n", message); }
+__declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) {
+  logged.emplace_back(message);
+  if (print_logs) std::printf("  log: %s\n", message);
+}
 __declspec(dllexport) void ReShadeRegisterEvent(reshade::addon_event event, void* callback) {
   if (event == reshade::addon_event::reshade_present) registered_present = callback;
 }
@@ -208,8 +217,82 @@ static renodx::utils::settings::Settings rows = {
                                          .group = "ao-presets", .on_change = [] { ++ao_resets; }},
 };
 
+static uint32_t env_generation = 0;
+static std::vector<uint32_t> armed;
+
+static int RunSetFile(const std::string& mode) {
+  const auto count = [](const std::string& line) { return std::count(logged.begin(), logged.end(), line); };
+  const auto env = [](const char* name) {
+    std::string value(256, '\0');
+    const DWORD length = GetEnvironmentVariableA(name, value.data(), static_cast<DWORD>(value.size()));
+    return (length == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND) ? std::string("<unset>") : value.substr(0, length);
+  };
+  // Next to the test exe (the test folder), never in the repository.
+  std::string path(MAX_PATH, '\0');
+  path.resize(GetModuleFileNameA(nullptr, path.data(), static_cast<DWORD>(path.size())));
+  path = path.substr(0, path.find_last_of('\\') + 1) + ((mode == "nofile") ? "missing_set_file.txt" : "set_file.txt");
+  std::remove(path.c_str());
+  if (mode != "nofile") {
+    std::string text = "0:bloom=0.5;\r\n0:env.RENODX_TEST_ENV=1:4,2:2;\r\n0:mt_trace=20;\r\n\r\n";
+    // Past RENODX_TW_SET's 8 KB: every line is read.
+    for (int index = 0; index < 800; ++index) text += "0:bloom=0.5;\r\n";
+    text += "1:env.RENODX_TEST_ENV=;\r\n1:mt_trace=x;\r\n1:env.RENODX_TEST_NEVER_SET=;\r\n1:bloom=1.5";
+    FILE* file = std::fopen(path.c_str(), "wb");
+    CHECK(file != nullptr);
+    std::fwrite(text.data(), 1, text.size(), file);
+    std::fclose(file);
+  }
+  SetEnvironmentVariableA("RENODX_TW_SET_FILE", path.c_str());
+  if (mode == "bothset") SetEnvironmentVariableA("RENODX_TW_SET", "0:bloom=0.25");
+  print_logs = false;
+
+  mock::Device device;
+  device.native = 0x9000;
+  mock::Runtime runtime;
+  runtime.owner = &device;
+  proxy::use_device_proxy = false;
+  const hooks::LiveHooks live = {.env_changed = [] { return ++env_generation; }, .arm_trace = [](uint32_t frames) { armed.push_back(frames); }};
+  hooks::Install(&rows, true, "[Test]", (mode == "nohooks") ? hooks::LiveHooks{} : live);
+  // SET_FILE alone installs the hooks.
+  CHECK(registered_present == reinterpret_cast<void*>(&hooks::internal::OnReshadePresent));
+  hooks::internal::OnReshadePresent(&runtime);
+  if (mode == "setfile") {
+    CHECK(count("[Test] Test: RENODX_TW_SET_FILE " + path + " read (807 entries).") == 1);
+    CHECK(bloom == 0.5f && count("[Test] Test: bloom set to 0.5.") == 801);
+    CHECK(env("RENODX_TEST_ENV") == "1:4,2:2" && count("[Test] Test: env RENODX_TEST_ENV set to 1:4,2:2 (generation 1).") == 1);
+    CHECK(armed.size() == 1 && armed[0] == 20 && count("[Test] Test: mt_trace armed 20 frames.") == 1);
+    CHECK(env_generation == 1);
+    hooks::internal::clock_start.store(GetTickCount64() - 2000);
+    hooks::internal::OnReshadePresent(&runtime);
+    CHECK(env("RENODX_TEST_ENV") == "<unset>" && count("[Test] Test: env RENODX_TEST_ENV cleared (generation 2).") == 1);
+    CHECK(armed.size() == 1 && count("[Test] Test: mt_trace=x is not a frame count, nothing armed.") == 1);
+    CHECK(count("[Test] Test: env RENODX_TEST_NEVER_SET cleared (generation 3).") == 1 && env_generation == 3);
+    CHECK(bloom == 1.5f);
+  } else if (mode == "bothset") {
+    CHECK(count("[Test] Test: RENODX_TW_SET and RENODX_TW_SET_FILE are both set; neither is used.") == 1);
+    hooks::internal::clock_start.store(GetTickCount64() - 2000);
+    hooks::internal::OnReshadePresent(&runtime);
+    CHECK(bloom == 1.f && env_generation == 0 && armed.empty() && env("RENODX_TEST_ENV") == "<unset>");
+  } else if (mode == "nohooks") {
+    CHECK(bloom == 0.5f && env("RENODX_TEST_ENV") == "<unset>" && env_generation == 0 && armed.empty());
+    CHECK(count("[Test] Test: env RENODX_TEST_ENV: no live env in this add-on, nothing changed.") == 1);
+    CHECK(count("[Test] Test: mt_trace: no trace window in this add-on, nothing armed.") == 1);
+  } else {
+    CHECK(count("[Test] Test: RENODX_TW_SET_FILE " + path + " could not be read; no set entries.") == 1 && bloom == 1.f);
+  }
+  hooks::Uninstall();
+  CHECK(registered_present == nullptr);
+  std::remove(path.c_str());
+  for (const auto& line : logged) {
+    if (line.find(" set to 0.5.") == std::string::npos) std::printf("  log: %s\n", line.c_str());
+  }
+  std::printf("PASS %s: RENODX_TW_SET_FILE, env. and mt_trace keys\n", mode.c_str());
+  return 0;
+}
+
 int main(int argc, char** argv) {
   const std::string mode = (argc > 1) ? argv[1] : "proxy";
+  if (mode == "setfile" || mode == "bothset" || mode == "nohooks" || mode == "nofile") return RunSetFile(mode);
   // A D3D9 game behind the proxy, the case the filter is for; the control expects it without the proxy.
   const bool expect_proxy = (mode == "proxy" || mode == "control");
   SetEnvironmentVariableA("RENODX_TW_SET", "0:bloom=0.5;0:shot=1;0:page-presets/Reset=1;0:Reset=1");
