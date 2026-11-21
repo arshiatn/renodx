@@ -5707,6 +5707,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         t4i_ RESUMED 15:1x: round 6 fixes (S1-S4 + nits 1-4) -> ebr_ round 7.
         Agents: c3i_ (B1.4), c33i_ (C.3-4 fixes + LOGX), t4i_ (round 6 fixes) (3 of 3). QUEUE: bd1r_ re-check, merge
         rmt_c34, t4i_ LOGX test_check case, ebr_ round 7, x87o_ v2, b13r_ B1.4 review, B1.5.
+        t4i_ ROUND 6 DONE 15:2x (tools\tw only; reports/t4i_round6_handback.md; backups scratchpad\t4i_bak\r6): S1
+        floors in segments.json ab_reports (W3 0.2 / D1 0.1 ms), 'no result' / 'no verdict' wording, missing floor =
+        PROBLEM; S2 HF ABBA = last 8 starts of leg 4 after SIEGE; S3 site-1 stub note; S4 b1_refused_hooked INFO
+        (stop_if_planned list B1L1 / B1L2 / B1Cached) + code_rows 'Parallel Effect Update' parts; nits (c_refused_hooked
+        rename, pause cut, ~40 min, pass time wording + heapfix-exact addon=off match). run_all 726 / 726.
+        ebr_ RESUMED 15:2x: round 7 re-check.
+        Agents: c3i_ (B1.4), c33i_ (C.3-4 fixes + LOGX), ebr_ (round 7) (3 of 3). QUEUE: bd1r_ re-check, merge rmt_c34,
+        t4i_ LOGX test_check case, x87o_ v2, b13r_ B1.4 review, B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
