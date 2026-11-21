@@ -5388,6 +5388,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         0x17b1520, thunk / dispatcher decode, compile-time overlap check (no overlap by hand; nearest 0x17b10f7 vs
         batchfix 0x17b1117), RECORDING_CODE_SIZE may need 0x2000.
         c33i_ RESUMED 10:0x: full C.3-3.
+        bd3r_ CHECK OF S8a v4 DONE 10:0x (appended to bd3r_s8a_review.md from line 318; dis_at.py only): exactness proof
+        SOUND (key bytes +0x68 / +0x6C match sortfix, nothing between merge and sort, both sortfix paths stable), memory
+        safety HOLDS (chunk frees go through the game's free = pool_free; VirtualFree only behind the exclusive
+        try-lock); new: slot 0x12C's list clear 0x11810D30 also frees the per-thread buffers' data (already read via
+        read_ok). Two TEXT Musts: 1 kp_sort contract (pairs only, per-thread arena scratch, no grow / fallback, never
+        reads through p); 2 measurable kill rules (frame-parity A/B in PROBE; EARLY 0 / 1 A B A B in one session -> ebo_
+        lane). Shoulds: per-frame wall gain before ~900 lines (< ~0.3 ms -> stop after S8-1c), PRESORT_MIN_N, DROP S8-3
+        (park the row), test 45 edges, scratch text, S8-1c scan points + PIN row 0x11810D30. 2 nits.
+        bd3o_ RESUMED 10:0x: "## S8a v4.1" (Musts 1-2, wall-gain go / stop, PRESORT_MIN_N, S8-3 park, final S8-1c / S8-2
+        rows) -> bd3r_ quick re-check -> hp1i_ S8-1c (+ S8-2 if GO).
+        Agents: c3i_ (B1.2b), c33i_ (C.3-3), bd3o_ (v4.1) (3 of 3). QUEUE: t4i_ T1b follow-ups + ebo_ lane (+ the A B A B
+        EARLY segments); hp1i_ S8-1c after the v4.1 re-check.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
