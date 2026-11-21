@@ -544,7 +544,10 @@ inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rv
   return count;
 }
 
-// No entry of the list starts with an E9 that is not one of our own sites' (that tool's hook runs on a stack and in
+// The page of the stubs that engine_code writes into two of these entries (Cached Particle Count: +0x192D290 and +0x1929E60), set by its Prepare.
+static std::span<const uint8_t> sibling_page;
+
+// No entry of the list starts with an E9 that is not one of our own sites' (or into engine_code's page: that tool's hook runs on a stack and in
 // registers that workers would share).
 inline bool EntriesFree() {
   for (const uint32_t rva : HOOKED_ENTRIES) {
@@ -553,6 +556,11 @@ inline bool EntriesFree() {
     for (size_t index = 0; index < SITE_COUNT; ++index) {
       ours |= (sites[index].at == base + rva && (written >> index & 1) != 0);
     }
+    // Or a jump into the page of engine_code's stubs (Cached Particle Count writes one at two of these entries).
+    int32_t displacement;
+    std::memcpy(&displacement, base + rva + 1, sizeof(displacement));
+    const uint8_t* const target = base + rva + 5 + displacement;
+    ours |= (target >= sibling_page.data() && target < sibling_page.data() + sibling_page.size());
     if (!ours) return false;
   }
   return true;

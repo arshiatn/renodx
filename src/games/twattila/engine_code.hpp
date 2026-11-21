@@ -67,11 +67,22 @@ enum class Game : uint8_t { ATTILA, THRONES, ROME2 };
 // What the worker sites are asked for (Update's last argument): the animation update's call of the animation texture
 // fill goes through animation_rows::Dispatch while `animation` is not OFF; the pending list sweep's entry goes through
 // pending_sweep::Arm while `pending_sweep_trace` is set (a bench's RENODX_TW_WORKER_TRACE, never a player's); the effect
-// update's 27 sites (effect_update_sites.hpp: their own table, written in the same window) while `effect_update` is set.
+// update's 27 sites (effect_update_sites.hpp: their own table, written in the same window) while `effect_update` is set; the
+// two sites of Cached Particle Count while `particle_count` is set (`particle_count_check`: the game's sum is also computed
+// on every call and compared with the cache, a bench's RENODX_TW_COUNT_CHECK, never a player's).
 struct WorkerRows {
   animation_rows::Stage animation = animation_rows::Stage::OFF;
   bool pending_sweep_trace = false;
   bool effect_update = false;
+  bool particle_count = false;
+  bool particle_count_check = false;
+};
+
+// What the cache of Cached Particle Count counted (the check's mismatches are what the row's end-of-soak line reports).
+struct ParticleCountStats {
+  uint32_t hits = 0;
+  uint32_t misses = 0;
+  uint32_t mismatches = 0;
 };
 
 #if !defined(_WIN64)
@@ -1480,12 +1491,87 @@ constexpr std::array<uint8_t, 48> SWEEP_ENTRY_STUB = {
 };
 // The words the cut stubs use, on the allocation's second page (read-write, never executable), a cache line for the
 // count and one for the slots.
+// 28. Cached Particle Count (the effect update's small item, Attila; its own row): the effects render's visible particle sum (+0x1929E60, a thiscall on the scene node
+// with no stack argument and a plain `ret`) walks every effect once per view. Two stubs cache it per node and per update of the node. The epoch (+0x192D290, the
+// node's update, entered once per update) bumps a generation word and runs the game's own `sub esp, 0xBC`. The sum's entry answers from the cache when the node and the
+// generation are the cached ones, else runs the game's body (a call of the trampoline: the five bytes the jump took, then a jump into the body) and keeps the result.
+// With `check` set the body also runs on a hit and its result is compared with the cache (a mismatch is counted, the game's sum is returned).
+constexpr uint32_t PARTICLE_EPOCH_RVA = 0x192D290;
+constexpr std::string_view PARTICLE_EPOCH = "81 EC BC 00 00 00 53 55 56 57 8D 44 24 3C C7 44 24 70 00 00 00 00 50 8D 44 24 74 C7 44 24 78 00 00 00 00 8B D9";
+constexpr size_t PARTICLE_EPOCH_SIZE = 6;  // `sub esp, 0xBC`: the jump takes 5 of its bytes, the stub runs it whole and goes on after it
+constexpr uint32_t PARTICLE_COUNT_RVA = 0x1929E60;
+constexpr std::string_view PARTICLE_COUNT = "83 EC 50 56 57 8B F1 33 FF E8 ?? ?? ?? ?? 84 C0 74 0F 8B 86 80 01 00 00 5F 5E 8B 40 0C 83 C4 50 C3";
+constexpr size_t PARTICLE_COUNT_HEAD = 5;  // sub esp, 0x50; push esi; push edi: the trampoline's copy
+// The cache's words (the data page): one node's sum for one generation of the update.
+struct CountData {
+  uint32_t generation = 1;         // bumped by the epoch stub; the cache is good for one value of it
+  uint32_t node = 0;               // the node the cached sum is of
+  uint32_t cached_generation = 0;  // 0: nothing cached
+  uint32_t value = 0;
+  uint32_t check = 0;  // set by Update: the game's body also runs on a hit and is compared
+  uint32_t hits = 0;
+  uint32_t misses = 0;
+  uint32_t mismatches = 0;
+  uint32_t last_fresh = 0;  // the last mismatch: the game's sum and the cached one
+  uint32_t last_cached = 0;
+};
+
+// The two stubs of Cached Particle Count and the trampoline into the game's body, assembled at the cursor: `epoch_site` and `count_site` the game's code, the stubs' entries
+// out. The stubs run on the render thread only (one caller of each, per frame).
+inline void BuildParticleCount(effect_update::internal::Assembler* assembler, CountData* data, const uint8_t* epoch_site, const uint8_t* count_site, uint8_t** epoch_stub,
+                               uint8_t** count_stub) {
+  const auto field = [](const uint32_t* word) { return effect_update::internal::Address(word); };
+  *epoch_stub = assembler->Cursor();
+  assembler->BytesAndOperand({0xFF, 0x05}, field(&data->generation));  // inc dword ptr [generation]
+  assembler->Copy(epoch_site, PARTICLE_EPOCH_SIZE);                    // sub esp, 0xBC
+  assembler->Relative(0xE9, epoch_site + PARTICLE_EPOCH_SIZE);
+  const uint8_t* const original = assembler->Cursor();
+  assembler->Copy(count_site, PARTICLE_COUNT_HEAD);
+  assembler->Relative(0xE9, count_site + PARTICLE_COUNT_HEAD);
+  *count_stub = assembler->Cursor();
+  assembler->BytesAndOperand({0x3B, 0x0D}, field(&data->node));  // cmp ecx, [node]
+  uint8_t* const wrong_node = assembler->Branch(0x85);           // jne miss
+  assembler->BytesAndOperand({0xA1}, field(&data->generation));  // mov eax, [generation]
+  assembler->BytesAndOperand({0x3B, 0x05}, field(&data->cached_generation));
+  uint8_t* const wrong_generation = assembler->Branch(0x85);
+  assembler->BytesAndOperand({0x83, 0x3D}, field(&data->check));  // cmp dword ptr [check], 0
+  assembler->Bytes({0x00});
+  uint8_t* const checking = assembler->Branch(0x85);
+  assembler->BytesAndOperand({0xFF, 0x05}, field(&data->hits));
+  assembler->BytesAndOperand({0xA1}, field(&data->value));  // mov eax, [value]
+  assembler->Bytes({0xC3});
+  assembler->Bind(checking);
+  assembler->BytesAndOperand({0xFF, 0x35}, field(&data->value));  // push dword ptr [value]
+  assembler->Bytes({0x51});                                       // push ecx
+  assembler->Relative(0xE8, original);
+  assembler->Bytes({0x59, 0x5A, 0x3B, 0xC2});  // pop ecx; pop edx (the cached sum); cmp eax, edx
+  uint8_t* const same = assembler->Branch(0x84);
+  assembler->BytesAndOperand({0xFF, 0x05}, field(&data->mismatches));
+  assembler->BytesAndOperand({0xA3}, field(&data->last_fresh));
+  assembler->BytesAndOperand({0x89, 0x15}, field(&data->last_cached));
+  assembler->Bind(same);
+  assembler->BytesAndOperand({0xFF, 0x05}, field(&data->hits));
+  assembler->Bytes({0xC3});
+  assembler->Bind(wrong_node);
+  assembler->Bind(wrong_generation);
+  assembler->Bytes({0x51});  // push ecx
+  assembler->Relative(0xE8, original);
+  assembler->Bytes({0x59});  // pop ecx
+  assembler->BytesAndOperand({0x89, 0x0D}, field(&data->node));
+  assembler->BytesAndOperand({0x8B, 0x15}, field(&data->generation));  // mov edx, [generation]
+  assembler->BytesAndOperand({0x89, 0x15}, field(&data->cached_generation));
+  assembler->BytesAndOperand({0xA3}, field(&data->value));
+  assembler->BytesAndOperand({0xFF, 0x05}, field(&data->misses));
+  assembler->Bytes({0xC3});
+}
+
 struct WorkerData {
   alignas(64) std::atomic<int32_t> cut_active = 0;  // +0x00: the threads in a cut stub past its first test
   alignas(64) std::atomic<uint32_t> fill_slot = 0;   // +0x40: animation_rows::Dispatch while on, else 0
   std::atomic<uint32_t> sweep_slot = 0;              // +0x44: pending_sweep::Arm while on, else 0
 };
-static_assert(offsetof(WorkerData, fill_slot) == 0x40 && offsetof(WorkerData, sweep_slot) == 0x44 && sizeof(WorkerData) <= 0x1000);
+static_assert(offsetof(WorkerData, fill_slot) == 0x40 && offsetof(WorkerData, sweep_slot) == 0x44 && sizeof(WorkerData) <= 0x80);
+constexpr size_t COUNT_DATA_AT = 0x80;  // Cached Particle Count's words, in the data page after WorkerData
 
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half, fmod and the
 // ready check the same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots
@@ -1537,6 +1623,8 @@ struct Build {
   uint32_t pick_lod_rva;        // the LOD pick (PICK_LOD's first byte)
   uint32_t fill_call_rva;       // the animation update's call of the animation texture fill: FILL_CALL_CONTEXT's first byte (rva 0: not looked for)
   uint32_t fill_rva;            // the fill (FILL_HEAD's first byte): the call's target
+  uint32_t particle_count_rva;  // the visible particle sum (PARTICLE_COUNT's first byte; rva 0: not looked for)
+  uint32_t particle_epoch_rva;  // the node's update (PARTICLE_EPOCH's first byte)
 };
 constexpr Build ATTILA_BUILD = {
     .truncation_rva = TRUNCATION_RVA,
@@ -1566,6 +1654,8 @@ constexpr Build ATTILA_BUILD = {
     .pick_lod_rva = 0x183d570,
     .fill_call_rva = 0x1893d14,
     .fill_rva = 0x182e080,
+    .particle_count_rva = PARTICLE_COUNT_RVA,
+    .particle_epoch_rva = PARTICLE_EPOCH_RVA,
 };
 constexpr Build THRONES_BUILD = {
     .truncation_rva = THRONES_TRUNCATION_RVA,
@@ -1618,6 +1708,8 @@ constexpr size_t FMOD_PAGE = 0x180;
 constexpr size_t LIST_PUSH_PAGE = 0x240;
 constexpr size_t READY_CHECK_PAGE = 0x280;
 constexpr size_t JOB_PAGE = 0x300;
+constexpr size_t PARTICLE_COUNT_PAGE = 0x420;  // Cached Particle Count's two stubs and the trampoline of 28.
+constexpr size_t PARTICLE_COUNT_SIZE = 0xE0;
 constexpr size_t HALF_ROWS_PAGE = 0x500;
 constexpr size_t FLOAT4_RELOAD_PAGE = 0xB20;    // one stub for each of the two reloads, a stride apart
 constexpr size_t FLOAT4_RELOAD_STRIDE = 0x30;
@@ -1639,7 +1731,8 @@ static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the thre
               && FMOD_PAGE + FMOD_STUB.size() <= LIST_PUSH_PAGE
               && LIST_PUSH_PAGE + LIST_PUSH_STUB.size() <= READY_CHECK_PAGE
               && READY_CHECK_PAGE + READY_CHECK_STUB.size() <= JOB_PAGE
-              && JOB_PAGE + JOB_STUB.size() <= HALF_ROWS_PAGE
+              && JOB_PAGE + JOB_STUB.size() <= PARTICLE_COUNT_PAGE
+              && PARTICLE_COUNT_PAGE + PARTICLE_COUNT_SIZE <= HALF_ROWS_PAGE
               && HALF_ROWS_PAGE + HALF_ROWS_CONSTANTS_AT + sizeof(HALF_ROWS_CONSTANTS) <= FLOAT4_RELOAD_PAGE
               && FLOAT4_RELOAD_STUB.size() <= FLOAT4_RELOAD_STRIDE
               && FLOAT4_RELOAD_PAGE + FLOAT4_RELOAD_AT.size() * FLOAT4_RELOAD_STRIDE <= PARTICLE_PREFETCH_PAGE
@@ -1675,6 +1768,9 @@ constexpr size_t MODEL_DETAIL_INDEX = 24;  // the LOD pick's scale (after the sw
 constexpr uint32_t MODEL_DETAIL_BIT = 1u << MODEL_DETAIL_INDEX;  // Model Detail Distance: its own row, on while the slider is above 1x
 constexpr size_t WORKER_FILL_INDEX = 25;   // the animation update's call of the animation texture fill (after the LOD pick)
 constexpr size_t WORKER_SWEEP_INDEX = 26;  // the pending list sweep's entry
+constexpr size_t PARTICLE_EPOCH_INDEX = 27;  // the node's update (Cached Particle Count: the generation's bump)
+constexpr size_t PARTICLE_COUNT_INDEX = 28;  // the visible particle sum (Cached Particle Count: the cache)
+constexpr uint32_t PARTICLE_COUNT_SITES = (1u << PARTICLE_EPOCH_INDEX) | (1u << PARTICLE_COUNT_INDEX);  // Cached Particle Count: its own row, both sites or neither
 constexpr uint32_t WORKER_FILL_BIT = 1u << WORKER_FILL_INDEX;    // Animation Rows on Workers: its own row
 constexpr uint32_t WORKER_SWEEP_BIT = 1u << WORKER_SWEEP_INDEX;  // Pending Sweep Trace: its own row, a bench's
 constexpr uint32_t WORKER_SITES = WORKER_FILL_BIT | WORKER_SWEEP_BIT;  // the cut sites: they come out only under PausedWrite's cut rule
@@ -1690,11 +1786,11 @@ constexpr uint32_t EMITTER_PREFETCH_BIT = 1u << EMITTER_PREFETCH_INDEX;  // Fast
 constexpr uint32_t ENTRY_PREFETCH_BIT = 1u << ENTRY_PREFETCH_INDEX;      // Faster Particle Prefetch: its own row
 constexpr uint32_t PREFETCH_SITES = CHILD_SUM_BIT | PARTICLE_PREFETCH_BIT;  // Faster Effect Prefetch: the child sum, the particle loop
 constexpr uint32_t ALL_PREFETCH_SITES = PREFETCH_SITES | EMITTER_PREFETCH_BIT | ENTRY_PREFETCH_BIT | SWEEP_PREFETCH_BIT;  // every prefetch row's sites
-constexpr uint32_t NAMED_ONCE_SITES = ALL_PREFETCH_SITES | WORKER_SITES;  // the sites named once by their row when asked for and not found
+constexpr uint32_t NAMED_ONCE_SITES = ALL_PREFETCH_SITES | WORKER_SITES | PARTICLE_COUNT_SITES;  // the sites named once by their row when asked for and not found
 constexpr uint32_t HALF_FUNCTION_BIT = 0b10;  // the half function, which the half rows' stub calls as the game does
 constexpr uint32_t HALF_ROWS_BIT = 0b100000000;
 // The rows by name, for the log lines.
-constexpr std::array<std::pair<uint32_t, std::string_view>, 10> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
+constexpr std::array<std::pair<uint32_t, std::string_view>, 11> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
                                                                          {LIST_SITES, "Faster Render Lists"},
                                                                          {JOB_SITES, "Faster Job Wake-Ups"},
                                                                          {PREFETCH_SITES, "Faster Effect Prefetch"},
@@ -1703,7 +1799,8 @@ constexpr std::array<std::pair<uint32_t, std::string_view>, 10> ROWS = {{{CPU_CO
                                                                          {SWEEP_PREFETCH_BIT, "Faster Sweep Prefetch"},
                                                                          {MODEL_DETAIL_BIT, "Model Detail Distance"},
                                                                          {WORKER_FILL_BIT, "Animation Rows on Workers"},
-                                                                         {WORKER_SWEEP_BIT, "Pending Sweep Trace"}}};
+                                                                         {WORKER_SWEEP_BIT, "Pending Sweep Trace"},
+                                                                         {PARTICLE_COUNT_SITES, "Cached Particle Count"}}};
 
 // The first instruction (or two or three, whole) of each site: 5 bytes that become a jump into the page (the render list
 // push's: a 4-byte instruction and the first byte of the next, both run by its stub).
@@ -1717,7 +1814,7 @@ struct Site {
   uint8_t opcode = 0xE9;  // jmp; the worker destructor's call of Stop stays a call (E8)
 };
 
-static std::array<Site, 27> sites = {{{.name = "soldier draw rounding"},
+static std::array<Site, 29> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half floats"},
                                      {.name = "fmod"},
                                      {.name = "render list pushes"},
@@ -1743,13 +1840,16 @@ static std::array<Site, 27> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "sweep chain prefetch"},
                                      {.name = "model detail"},
                                      {.name = "animation fill call", .opcode = 0xE8},
-                                     {.name = "pending sweep entry"}}};
+                                     {.name = "pending sweep entry"},
+                                     {.name = "particle count epoch"},
+                                     {.name = "particle count"}}};
 // The reload rows' sites follow each other; every site has a bit of the uint32_t masks.
 static_assert(SOLDIER_ROWS_FIRST_SITE + SOLDIER_ROWS_STUBS.size() == MATRIX_PRODUCT_FIRST_SITE
               && MATRIX_PRODUCT_FIRST_SITE + MATRIX_PRODUCT_STUBS.size() == ENTRY_PREFETCH_INDEX
               && ENTRY_PREFETCH_INDEX + 1 == ITEM_PUSH_FIRST_SITE && ITEM_PUSH_FIRST_SITE + 2 == SWEEP_PREFETCH_INDEX
               && SWEEP_PREFETCH_INDEX + 1 == MODEL_DETAIL_INDEX && MODEL_DETAIL_INDEX + 1 == WORKER_FILL_INDEX
-              && WORKER_FILL_INDEX + 1 == WORKER_SWEEP_INDEX && WORKER_SWEEP_INDEX + 1 == std::tuple_size_v<decltype(sites)>
+              && WORKER_FILL_INDEX + 1 == WORKER_SWEEP_INDEX && WORKER_SWEEP_INDEX + 1 == PARTICLE_EPOCH_INDEX
+              && PARTICLE_EPOCH_INDEX + 1 == PARTICLE_COUNT_INDEX && PARTICLE_COUNT_INDEX + 1 == std::tuple_size_v<decltype(sites)>
               && std::tuple_size_v<decltype(sites)> <= 32);
 // Every site belongs to exactly one row: the rows' masks are disjoint and cover every site.
 static_assert([] {
@@ -1773,6 +1873,8 @@ static uint8_t* job_table = nullptr;
 static std::atomic<uint32_t>* model_detail_scale = nullptr;  // the stub's float (18.), as bits; null: the site isn't there
 static uint8_t* page = nullptr;
 static WorkerData* worker_data = nullptr;  // the allocation's second page
+static CountData* count_data = nullptr;    // Cached Particle Count's words (the second page, COUNT_DATA_AT)
+static bool count_mismatch_logged = false;
 static CutRange worker_cut;                // the worker sites' stubs, up to the end of the stubs' page
 static bool module_pinned = false;
 static bool prepared = false;
@@ -1819,6 +1921,51 @@ constexpr uint32_t MAX_FAILED_WRITES = 30;
 // The bytes of the game's code the Attila CPU Performance Fix patches or checks: every feature that writes into the
 // game's code keeps clear of them.
 #include "heapfix_ranges.hpp"
+// The Parallel Effect Update's sites and Cached Particle Count's clear heapfix's rows (one table for every feature): what a site writes touches no row that heapfix patches
+// or checks, and what it reads (the bytes it is found by, a callee's head, the sweep's span, which it jumps into) touches no patched one; ranges that only touch each other are
+// clear (Touches is half-open: the epoch's 6 bytes end where heapfix's check row +0x192D296 starts). A timing hook on one of our own entries is refused at run time (the
+// effect update's EntriesFree, in Prepare and at every turn-on), so it is not held against the entry.
+constexpr bool EffectSitesClearOfHeapfix() {
+  namespace eu = effect_update;
+  const auto own_entry = [](uint32_t rva) {
+    for (const eu::SiteInfo& info : eu::SITES) {
+      if (info.rva == rva) return true;
+    }
+    return rva == PARTICLE_EPOCH_RVA || rva == PARTICLE_COUNT_RVA;
+  };
+  const auto patched = [&](uint32_t rva, uint32_t size) {
+    for (const HeapfixRange& range : HEAPFIX_PATCHED) {
+      if (Touches(rva, size, range)) return true;
+    }
+    for (const HeapfixRange& range : HEAPFIX_TIMING_HOOKS) {
+      if (Touches(rva, size, range) && !own_entry(range.rva)) return true;
+    }
+    return false;
+  };
+  const auto checked = [](uint32_t rva, uint32_t size) {
+    for (const HeapfixRange& range : HEAPFIX_CHECKED) {
+      if (Touches(rva, size, range)) return true;
+    }
+    return false;
+  };
+  for (const eu::SiteInfo& info : eu::SITES) {
+    const uint32_t size = static_cast<uint32_t>(eu::SizeOf(info));
+    if (patched(info.rva, size) || checked(info.rva, size) || patched(info.callee_rva, static_cast<uint32_t>(PatternSize(info.callee_head)))) return false;
+  }
+  const uint32_t sweep_end = eu::SWEEP_CHECKS[1].rva + static_cast<uint32_t>(PatternSize(eu::SWEEP_CHECKS[1].pattern));
+  if (patched(eu::SWEEP_RVA, sweep_end - eu::SWEEP_RVA)) return false;
+  for (const eu::ByteCheck& check : eu::SWEEP_CHECKS) {
+    if (patched(check.rva, static_cast<uint32_t>(PatternSize(check.pattern)))) return false;
+  }
+  // Cached Particle Count: the bytes the jump replaces (the epoch's whole instruction) and the bytes each is found by.
+  const auto found_site = [&](uint32_t rva, uint32_t size, std::string_view pattern) {
+    return !patched(rva, static_cast<uint32_t>(PatternSize(pattern))) && !checked(rva, size);
+  };
+  if (!found_site(PARTICLE_EPOCH_RVA, PARTICLE_EPOCH_SIZE, PARTICLE_EPOCH) || !found_site(PARTICLE_COUNT_RVA, PARTICLE_COUNT_HEAD, PARTICLE_COUNT)) return false;
+  return true;
+}
+static_assert(EffectSitesClearOfHeapfix());
+static_assert(!Touches(PARTICLE_EPOCH_RVA, PARTICLE_EPOCH_SIZE, {0x192D296, 73}) && Touches(PARTICLE_EPOCH_RVA, PARTICLE_EPOCH_SIZE + 1, {0x192D296, 73}));
 #if defined(TWATTILA_ENGINE_PROBE)
 // 17. The probe build (private, compiled only with TWATTILA_ENGINE_PROBE, no row): a histogram stub in front of each probed site's production stub.
 #include "engine_probe.hpp"
@@ -2162,6 +2309,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   // nothing is ever both.
   page = static_cast<uint8_t*>(VirtualAlloc(nullptr, 2 * PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
   worker_data = (page != nullptr ? new (page + PAGE_SIZE) WorkerData : nullptr);
+  count_data = (page != nullptr ? new (page + PAGE_SIZE + COUNT_DATA_AT) CountData : nullptr);
   worker_cut = (page != nullptr ? CutRange{page + WORKER_FILL_PAGE, page + PAGE_SIZE, &worker_data->cut_active} : CutRange{});
   std::array<uint8_t*, std::tuple_size_v<decltype(sites)>> stubs = {};
   // The stub `code` of a site (8. to 13.: a loop's bottom, or a float4 reload) at `stub` for the site at `site`: its last
@@ -2355,6 +2503,21 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
         resolve(page + MODEL_DETAIL_PAGE, MODEL_DETAIL_STUB.size(), std::array<const uint8_t*, 1>{static_cast<const uint8_t*>(cell)}, nullptr, {});
       }
     }
+    // Cached Particle Count: the sum's entry and the node's update, found by their bytes: both or neither (the cache is only ever invalidated by the epoch's bump).
+    if (build.particle_count_rva != 0) {
+      uint8_t* const epoch = find(PARTICLE_EPOCH, build.particle_epoch_rva);
+      uint8_t* const count = find(PARTICLE_COUNT, build.particle_count_rva);
+      if (epoch != nullptr && count != nullptr) {
+        effect_update::internal::Assembler assembler(std::span<uint8_t>(page + PARTICLE_COUNT_PAGE, PARTICLE_COUNT_SIZE));
+        BuildParticleCount(&assembler, count_data, epoch, count, &stubs[PARTICLE_EPOCH_INDEX], &stubs[PARTICLE_COUNT_INDEX]);
+        if (assembler.Fits()) {
+          sites[PARTICLE_EPOCH_INDEX].at = epoch;
+          sites[PARTICLE_COUNT_INDEX].at = count;
+        } else {
+          stubs[PARTICLE_EPOCH_INDEX] = stubs[PARTICLE_COUNT_INDEX] = nullptr;
+        }
+      }
+    }
     DWORD protection;
     if (VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection) == FALSE) {
       // As if there were no page (nothing is written to the game yet): a site's jump would lead into memory that cannot run.
@@ -2363,11 +2526,13 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       VirtualFree(page, 0, MEM_RELEASE);
       page = nullptr;
       worker_data = nullptr;
+      count_data = nullptr;
       worker_cut = {};
       if (job_table != nullptr) VirtualFree(job_table, 0, MEM_RELEASE);
       job_table = nullptr;
     } else {
       FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
+      effect_update::internal::sibling_page = {page, PAGE_SIZE};  // an E9 into it at one of the effect update's entries is ours
     }
   }
   if (page == nullptr) {
@@ -2394,9 +2559,9 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   const uint32_t product_rva = (sse4_1 ? build.matrix_product_rva : 0);
   // The worker sites aren't listed either (like the other sites of their own rows): NAMED_ONCE_SITES names them when
   // their row asks.
-  const std::array<uint32_t, 27> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
+  const std::array<uint32_t, 29> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
                                          0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva, 0, 0, rows_rva, rows_rva, rows_rva,
-                                         product_rva, product_rva, product_rva, 0, build.push_loop_a_rva, build.push_loop_b_rva, 0, 0, 0, 0};
+                                         product_rva, product_rva, product_rva, 0, build.push_loop_a_rva, build.push_loop_b_rva, 0, 0, 0, 0, 0, 0};
   static_assert(std::tuple_size_v<decltype(rvas)> == std::tuple_size_v<decltype(sites)>);
 #if defined(TWATTILA_ENGINE_PROBE)
   // The probe build: each probed site's jump goes to its probe stub first (a copy of the probe's bytes with the counters' addresses put in), whose last jump goes on
@@ -2470,7 +2635,8 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
                           | (particle_prefetch ? internal::ENTRY_PREFETCH_BIT : 0u) | (sweep_prefetch ? internal::SWEEP_PREFETCH_BIT : 0u)
                           | (model_detail != 1.f ? internal::MODEL_DETAIL_BIT : 0u)
                           | (worker_rows.animation != animation_rows::Stage::OFF ? internal::WORKER_FILL_BIT : 0u)
-                          | (worker_rows.pending_sweep_trace ? internal::WORKER_SWEEP_BIT : 0u);
+                          | (worker_rows.pending_sweep_trace ? internal::WORKER_SWEEP_BIT : 0u)
+                          | (worker_rows.particle_count ? internal::PARTICLE_COUNT_SITES : 0u);
   if (wanted != 0 && !internal::prepared) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;
@@ -2493,6 +2659,14 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
 #else
   const uint64_t recording_wanted = 0;
 #endif
+  if (internal::count_data != nullptr) {
+    internal::count_data->check = (worker_rows.particle_count_check ? 1u : 0u);
+    if (internal::count_data->mismatches != 0 && !internal::count_mismatch_logged) {
+      internal::count_mismatch_logged = true;
+      renodx::utils::log::w("[Total War] Cached Particle Count: the cached sum differed from the game's ", internal::count_data->mismatches, " times (the last: the game's ",
+                            internal::count_data->last_fresh, ", the cache's ", internal::count_data->last_cached, ").");
+    }
+  }
   if (internal::model_detail_scale != nullptr) {
     const uint32_t bits = std::bit_cast<uint32_t>(1.f / (model_detail * model_detail));
     if (internal::model_detail_scale->load(std::memory_order_relaxed) != bits) {
@@ -2633,6 +2807,12 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   }
 }
 
+// What Cached Particle Count's stubs counted since the sites went in (all zero while the row was never on).
+inline ParticleCountStats ParticleCount() {
+  const internal::CountData* data = internal::count_data;
+  return (data == nullptr ? ParticleCountStats{} : ParticleCountStats{.hits = data->hits, .misses = data->misses, .mismatches = data->mismatches});
+}
+
 // True while any site of Threaded Draw Recording is written or may still be reached (one that stood down on its way
 // out, or that Uninstall gave up on): draw_recording::Update and Uninstall take it as `sites_in` and then keep their
 // memory and module.
@@ -2702,6 +2882,7 @@ inline void ProbeArm(uint32_t presents) { internal::probe::Arm(presents); }
 
 inline void Update(bool, Game = Game::ATTILA, bool = false, bool = false, bool = false, bool = false, bool = false, bool = false, float = 1.f,
                    uint32_t = 0, const WorkerRows& = {}) {}
+inline ParticleCountStats ParticleCount() { return {}; }
 inline bool DrawRecordingSitesIn() { return false; }
 inline uint32_t DrawRecordingGroupsIn() { return 0; }
 inline const char* ModelDetailStatus(float) { return nullptr; }

@@ -61,8 +61,11 @@
 // except where the budget (the room in the buffer) fills while units run ahead: those frames are counted (an overflow) and the merge drops what does not fit. An overflow frame's
 // difference lasts: the units that ran ahead did creates that serial skips, which moved the emitters' own random state and (through the draws they deferred) the global one, so the
 // random sequence differs from serial from that frame on, while the merged buffer itself is serial's. A comparison with the serial walk needs runs with no spawn overflow.
-// The records are staged in one pool per round, sized by the budget (the room in the buffer plus a margin): a unit's staged records can pass the room only by overflowing it, so a
-// full pool is an overflow too (counted as one, the record is dropped); the next round is a guard round and the one after it has a pool grown to what the full one needed.
+// The records are staged in one pool per round, sized by the budget (the room in the buffer, a quarter of it and a margin): a unit's staged records can pass the room only by
+// overflowing it, so a full pool is an overflow too (counted as one). The one exception to "the merged buffer is serial's": the record a full pool drops is the one that came last
+// in time, not in the serial order, so that frame's merged buffer can differ from serial's (the frame is counted, like every overflow). The next round is a guard round, and the
+// one after it has a pool grown to what the full one asked for, up to 4 times the budget's pool; L2 goes off for the session (with its reason, logged once) only when a pool at
+// that cap is full, when the pool cannot be reserved, or on a tag leak.
 //
 // The safety checks (a word the game changed between two direct units, a render thread hit outside a unit, a walk call or end out
 // of place, a late overflow, a failed round, a hang) are always on and stored; Update logs each kind once per site and session at
@@ -114,6 +117,7 @@ constexpr uint32_t SPAWN_SLOT_OFFSET = 0x1C;
 constexpr uint32_t RECORD_DWORDS = 12;
 constexpr uint32_t RECORD_DRAW_INDEX = 1;  // the dword (record + 4) the create path's first drawn value lands in
 constexpr uint32_t STAGE_MARGIN = 256;  // records past the budget's quarter in a round's pool
+constexpr uint64_t STAGE_CAP_FACTOR = 4;  // the pool grows to at most this many times the budget's pool
 constexpr uint32_t MIN_SPAWN_BUDGET = 512;  // a round with less room than this does not stage (the guard)
 // A deferred draw's outputs: a quiet NaN whose low 22 bits are the draw's number in its unit (from 1).
 constexpr uint32_t TAG_BASE = 0x7FC00000;
@@ -168,9 +172,14 @@ constexpr std::array<std::string_view, static_cast<size_t>(Counter::COUNT)> COUN
     "order points", "rounds", "merged spawns", "deferred draws", "spawn rounds", "guard rounds", "foreign hits", "hangs", "watched mismatches", "census errors",
     "late overflows", "failed rounds", "spawn overflows", "tag leaks", "stage full"};
 
-enum class EventKind : uint8_t { WATCHED_MISMATCH, CENSUS_ERROR, LATE_OVERFLOW, HANG, FAILED_ROUND, SPAWN_OVERFLOW, TAG_LEAK, STAGE_FULL };
-constexpr std::array<std::string_view, 8> EVENT_NAMES = {"watched word changed", "site hit where the census has none", "late overflow", "hang",
-                                                         "round failed", "spawn budget overflow", "deferred draw outside its record", "spawn staging full"};
+enum class EventKind : uint8_t { WATCHED_MISMATCH, CENSUS_ERROR, LATE_OVERFLOW, HANG, FAILED_ROUND, SPAWN_OVERFLOW, TAG_LEAK, STAGE_FULL, SPAWNS_OFF };
+constexpr std::array<std::string_view, 9> EVENT_NAMES = {"watched word changed", "site hit where the census has none", "late overflow", "hang",
+                                                         "round failed", "spawn budget overflow", "deferred draw outside its record", "spawn staging full",
+                                                         "spawns off for the session"};
+// Why L2 went off for the session (the SPAWNS_OFF event's value).
+enum class SpawnsOffReason : uint8_t { RESERVATION, TAG_LEAK, CAP_REACHED };
+constexpr std::array<std::string_view, 3> SPAWNS_OFF_REASONS = {"the staging pool could not be reserved", "a deferred draw's value went outside its record",
+                                                                "a staging pool at its cap was full"};
 struct EventRecord {
   EventKind kind = EventKind::WATCHED_MISMATCH;
   uint32_t site = 0;
@@ -345,7 +354,8 @@ struct alignas(64) Round {
   Unit* merge_tail = nullptr;
   std::atomic<uint32_t> record_next = 0;       // the records asked for (past the pool's capacity: dropped)
   std::atomic<bool> stage_full = false;       // the pool was full: the next round does not stage
-  bool grown = false;                         // the pool was grown after a full one
+  bool at_cap = false;                        // the pool is at its cap (4 times the budget's): a full one cannot grow
+  uint32_t pool_cap = 0;                      // that cap, in records
   std::atomic<bool> spawn_violation = false;  // a staging check failed: L2 is off for the session after the walk
   std::array<uint32_t, 3> pools = {};         // the slot pools seen at SLOT_TAKE / SLOT_RETURN this round (their words are watched)
   uint32_t pool_count = 0;
@@ -394,6 +404,12 @@ inline void Count(Counter counter, uint32_t amount = 1) {
   }
 }
 
+inline void Note(EventKind kind, uint32_t site, uint32_t value);
+// L2 off for the rest of the session, with its reason (stored once; Update logs it).
+inline void TurnSpawnsOff(SpawnsOffReason reason) {
+  spawns_off = true;
+  Note(EventKind::SPAWNS_OFF, 0, static_cast<uint32_t>(reason));
+}
 inline void Note(EventKind kind, uint32_t site, uint32_t value) {
   const uint32_t site_bit = 1u << site;
   if ((events_said[static_cast<size_t>(kind)].fetch_or(site_bit, std::memory_order_relaxed) & site_bit) != 0) return;
@@ -867,13 +883,16 @@ inline void FinishRound(bool failed) {
     // The staged spawns are committed and merged before the walk is closed (also when it failed: the walk's rest goes the game's way and finds the buffer as serial left it).
     CommitDone();
     Merge();
-    if (round.spawn_violation.load(std::memory_order_relaxed)) spawns_off = true;
+    if (round.spawn_violation.load(std::memory_order_relaxed)) TurnSpawnsOff(SpawnsOffReason::TAG_LEAK);
     if (round.stage_full.load(std::memory_order_relaxed)) {
-      // A full pool: this frame is an overflow (counted by the commits). The next round does not stage and the one after has a pool that fits what this one asked for; a pool that
-      // was grown already and is full again means the scene is not what the budget says: off for the session.
+      // A full pool: this frame is an overflow (counted by the commits). The next round does not stage and the one after has a pool that fits what this one asked for, up to the
+      // cap; a pool at the cap that is full means the scene is not what the budget says: off for the session.
       const uint32_t asked = round.record_next.load(std::memory_order_relaxed);
-      if (round.grown) spawns_off = true;
-      stage_grow = std::max(stage_grow, asked + asked / 4 + 1);
+      if (round.at_cap) {
+        TurnSpawnsOff(SpawnsOffReason::CAP_REACHED);
+      } else {
+        stage_grow = std::min(std::max(stage_grow, asked + asked / 4 + 1), round.pool_cap);
+      }
       stage_skip = true;
     }
   }
@@ -1064,9 +1083,12 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
         const bool l2 = (asks_l2 && !stage_skip && query_limit >= MIN_SPAWN_BUDGET && static_cast<uint64_t>(last_round_spawned) * 2 < query_limit);
         if (asks_l2) stage_skip = false;
         if (!units.Reserve(std::max(last_round_units + last_round_units / 4, BLOCK_SIZE)) || !segments.Reserve(BLOCK_SIZE)) return serial(SerialReason::ALLOCATION);
-        // The pool: the budget and a margin (staged records past the budget are an overflow), or what a full pool asked for.
-        if (l2 && !records.Reserve(std::max(query_limit + query_limit / 4 + STAGE_MARGIN, stage_grow))) {
-          spawns_off = true;
+        // The pool: the budget, a quarter of it and a margin (staged records past the budget are an overflow), or what a full pool asked for, at most 4 times the budget's pool.
+        const uint32_t budget_pool = query_limit + query_limit / 4 + STAGE_MARGIN;
+        const uint32_t pool_cap = static_cast<uint32_t>(std::min<uint64_t>(STAGE_CAP_FACTOR * budget_pool, 0xFFFFFFFFull));
+        const uint32_t pool_size = std::min(std::max(budget_pool, stage_grow), pool_cap);
+        if (l2 && !records.Reserve(pool_size)) {
+          TurnSpawnsOff(SpawnsOffReason::RESERVATION);
           return serial(SerialReason::ALLOCATION);
         }
         ThreadStackLimits();
@@ -1116,7 +1138,8 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
         round.merge_tail = nullptr;
         round.record_next.store(0, std::memory_order_relaxed);
         round.stage_full.store(false, std::memory_order_relaxed);
-        round.grown = (stage_grow != 0);
+        round.at_cap = (records.capacity >= pool_cap);
+        round.pool_cap = pool_cap;
         round.spawn_violation.store(false, std::memory_order_relaxed);
         round.l2 = l2;
         if (round.tracing && asks_l2) Count(l2 ? Counter::SPAWN_ROUNDS : Counter::GUARD_ROUNDS);
@@ -1466,6 +1489,10 @@ inline void Update(bool row, bool spawns = false) {
   const uint32_t stored = std::min<uint32_t>(event_count.exchange(0, std::memory_order_relaxed), static_cast<uint32_t>(events.size()));
   for (uint32_t index = 0; index < stored; ++index) {
     const EventRecord& event = events[index];
+    if (event.kind == EventKind::SPAWNS_OFF) {
+      renodx::utils::log::w("[Total War] Parallel Effect Spawns: off for the session (", SPAWNS_OFF_REASONS[event.value], ").");
+      continue;
+    }
     renodx::utils::log::w("[Total War] Parallel Effect Update: ", EVENT_NAMES[static_cast<size_t>(event.kind)], " (site ", SITES[event.site].name, ", thread ",
                           event.thread, ", value 0x", std::format("{:X}", event.value), ")");
   }
