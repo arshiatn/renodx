@@ -1489,8 +1489,6 @@ constexpr std::array<uint8_t, 48> SWEEP_ENTRY_STUB = {
     0x8D, 0x58, 0xFF,                          // lea ebx, [eax - 1]
     0xE9, 0x11, 0x5A, 0x5A, 0x5A,              // jmp the sweep's cmp
 };
-// The words the cut stubs use, on the allocation's second page (read-write, never executable), a cache line for the
-// count and one for the slots.
 // 28. Cached Particle Count (the effect update's small item, Attila; its own row): the effects render's visible particle sum (+0x1929E60, a thiscall on the scene node
 // with no stack argument and a plain `ret`) walks every effect once per view. Two stubs cache it per node and per update of the node. The epoch (+0x192D290, the
 // node's update, entered once per update) bumps a generation word and runs the game's own `sub esp, 0xBC`. The sum's entry answers from the cache when the node and the
@@ -1517,7 +1515,8 @@ struct CountData {
 };
 
 // The two stubs of Cached Particle Count and the trampoline into the game's body, assembled at the cursor: `epoch_site` and `count_site` the game's code, the stubs' entries
-// out. The stubs run on the render thread only (one caller of each, per frame).
+// out. The stubs run on the render thread only: the node's update (the epoch: two call sites, one call per update, none inside a render) and the effects render (the sum:
+// called from render paths only), so the cache's words need no atomics.
 inline void BuildParticleCount(effect_update::internal::Assembler* assembler, CountData* data, const uint8_t* epoch_site, const uint8_t* count_site, uint8_t** epoch_stub,
                                uint8_t** count_stub) {
   const auto field = [](const uint32_t* word) { return effect_update::internal::Address(word); };
@@ -1565,6 +1564,8 @@ inline void BuildParticleCount(effect_update::internal::Assembler* assembler, Co
   assembler->Bytes({0xC3});
 }
 
+// The words the cut stubs use, on the allocation's second page (read-write, never executable), a cache line for the
+// count and one for the slots.
 struct WorkerData {
   alignas(64) std::atomic<int32_t> cut_active = 0;  // +0x00: the threads in a cut stub past its first test
   alignas(64) std::atomic<uint32_t> fill_slot = 0;   // +0x40: animation_rows::Dispatch while on, else 0
@@ -1770,7 +1771,9 @@ constexpr size_t WORKER_FILL_INDEX = 25;   // the animation update's call of the
 constexpr size_t WORKER_SWEEP_INDEX = 26;  // the pending list sweep's entry
 constexpr size_t PARTICLE_EPOCH_INDEX = 27;  // the node's update (Cached Particle Count: the generation's bump)
 constexpr size_t PARTICLE_COUNT_INDEX = 28;  // the visible particle sum (Cached Particle Count: the cache)
-constexpr uint32_t PARTICLE_COUNT_SITES = (1u << PARTICLE_EPOCH_INDEX) | (1u << PARTICLE_COUNT_INDEX);  // Cached Particle Count: its own row, both sites or neither
+constexpr uint32_t PARTICLE_EPOCH_BIT = 1u << PARTICLE_EPOCH_INDEX;
+constexpr uint32_t PARTICLE_COUNT_BIT = 1u << PARTICLE_COUNT_INDEX;
+constexpr uint32_t PARTICLE_COUNT_SITES = PARTICLE_EPOCH_BIT | PARTICLE_COUNT_BIT;  // Cached Particle Count: its own row, both sites or neither
 constexpr uint32_t WORKER_FILL_BIT = 1u << WORKER_FILL_INDEX;    // Animation Rows on Workers: its own row
 constexpr uint32_t WORKER_SWEEP_BIT = 1u << WORKER_SWEEP_INDEX;  // Pending Sweep Trace: its own row, a bench's
 constexpr uint32_t WORKER_SITES = WORKER_FILL_BIT | WORKER_SWEEP_BIT;  // the cut sites: they come out only under PausedWrite's cut rule
@@ -1965,7 +1968,15 @@ constexpr bool EffectSitesClearOfHeapfix() {
   return true;
 }
 static_assert(EffectSitesClearOfHeapfix());
-static_assert(!Touches(PARTICLE_EPOCH_RVA, PARTICLE_EPOCH_SIZE, {0x192D296, 73}) && Touches(PARTICLE_EPOCH_RVA, PARTICLE_EPOCH_SIZE + 1, {0x192D296, 73}));
+// The check row that starts where the epoch's instruction ends is clear of the 6 bytes and touched by a seventh.
+static_assert([] {
+  for (const HeapfixRange& range : HEAPFIX_CHECKED) {
+    if (range.rva == PARTICLE_EPOCH_RVA + PARTICLE_EPOCH_SIZE) {
+      return !Touches(PARTICLE_EPOCH_RVA, PARTICLE_EPOCH_SIZE, range) && Touches(PARTICLE_EPOCH_RVA, PARTICLE_EPOCH_SIZE + 1, range);
+    }
+  }
+  return false;
+}());
 #if defined(TWATTILA_ENGINE_PROBE)
 // 17. The probe build (private, compiled only with TWATTILA_ENGINE_PROBE, no row): a histogram stub in front of each probed site's production stub.
 #include "engine_probe.hpp"
@@ -2090,6 +2101,12 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
     const std::array<uint64_t, 2> going_in = {changing[0] & wanted[0], changing[1] & wanted[1]};
     if ((stood[0] & JOB_SITES) != 0) stood[0] |= JOB_SITES & going_in[0];
     if ((stood[0] & HALF_FUNCTION_BIT) != 0) stood[0] |= HALF_ROWS_BIT & going_in[0];
+    // Cached Particle Count: the epoch and the sum go in and stay in together (the sum alone would answer the first value for the session). One that stands down going in
+    // keeps the other out; the sum that stands down going out (another mod's bytes over our jump) keeps the epoch in (its stub needs nothing of the module).
+    if ((stood[0] & PARTICLE_COUNT_SITES) != 0) {
+      stood[0] |= PARTICLE_COUNT_SITES & going_in[0];
+      if ((stood[0] & PARTICLE_COUNT_BIT) != 0) stood[0] |= PARTICLE_EPOCH_BIT & changing[0];
+    }
     // The recording sites that go in stand down by group; the entry hook is every group's, so it takes them all, and
     // with no group left it is no use alone.
     const uint64_t entry_in = going_in[1] & recording_entry_bit;
@@ -2532,7 +2549,11 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       job_table = nullptr;
     } else {
       FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
-      effect_update::internal::sibling_page = {page, PAGE_SIZE};  // an E9 into it at one of the effect update's entries is ours
+      // The effect update takes an E9 at these two of its entries, to these stubs, as ours.
+      effect_update::internal::sibling_entries =
+          (sites[PARTICLE_EPOCH_INDEX].at != nullptr && sites[PARTICLE_COUNT_INDEX].at != nullptr
+               ? std::array<effect_update::internal::SiblingEntry, 2>{{{PARTICLE_EPOCH_RVA, stubs[PARTICLE_EPOCH_INDEX]}, {PARTICLE_COUNT_RVA, stubs[PARTICLE_COUNT_INDEX]}}}
+               : std::array<effect_update::internal::SiblingEntry, 2>{});
     }
   }
   if (page == nullptr) {
@@ -2710,6 +2731,9 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   uint32_t stood_down = 0;
   uint64_t recording_stood_down = 0;
   uint32_t effect_stood_down = 0;
+  // Cached Particle Count going in: the epoch did not run while the row was off, so what the cache holds is of an older update; no stub runs yet, so a plain bump
+  // (a failed write bumps again: harmless).
+  if (internal::count_data != nullptr && (target & ~internal::written & internal::PARTICLE_COUNT_SITES) != 0) ++internal::count_data->generation;
   if (internal::PausedWrite(target, &stood_down, recording_target, &recording_stood_down, effect_wanted, &effect_stood_down)) {
     const uint32_t changing = target ^ internal::written;
     const uint32_t now = (internal::written & ~changing) | (target & changing & ~stood_down);
