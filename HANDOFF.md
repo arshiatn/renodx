@@ -5035,6 +5035,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         env_generation_applied; nits a-d (pin on any Stop refusal + neutral wording, spin clamp 1000 us, generation 77
         held -> applied once after release). All 4 suites PASS, gated builds x86 x3 / x86 + DRAW_RECORDING / amd64 exit 0.
         bd1r_ RESUMED 04:4x: diff check of f17531633 -> merge rmt_pool. Agents: t4i_, hp1i_, bd1r_ (3 of 3).
+        bd1r_ DIFF CHECK OF f17531633 DONE 04:4x (appended to reports/s2r_review.md): fixes 1-3 + nits done; MERGE
+        AFTER ONE SMALL COMMIT, no new review (c3i_'s tests + gated builds suffice): the pool numbers its windows
+        (header "window w", accessor; C's line + file name use it, no drift on OFF-stage windows), ArmTrace ignored
+        while a window is open / pending (C ends with the pool), drop Settings::trace + addon.cpp pool_trace (no extra
+        counted frame). Env unset: only the one "limits and spin applied (env generation 0)" line at first present.
+        c3i_ RESUMED 04:4x: that commit -> coordinator's merge gate. t4i_ note: trace files tw_draw_recording(_w).txt
+        are MOVED (exact regex, no wildcard delete) into each start's ebo data folder; leftovers -> ebo\stale\.
+        Agents: t4i_, hp1i_, c3i_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
