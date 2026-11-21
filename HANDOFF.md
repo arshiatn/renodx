@@ -5715,6 +5715,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         ebr_ RESUMED 15:2x: round 7 re-check.
         Agents: c3i_ (B1.4), c33i_ (C.3-4 fixes + LOGX), ebr_ (round 7) (3 of 3). QUEUE: bd1r_ re-check, merge rmt_c34,
         t4i_ LOGX test_check case, x87o_ v2, b13r_ B1.4 review, B1.5.
+        c3i_ B1.4 DONE 15:2x (rmt_b14 838ae755b from 676cda27f; +831 / -51 in effect_update*.hpp + 2 .inc, engine_code.hpp
+        untouched; reports/c3i_b14_handback.md): merged tree 676cda27f checked first (FULL + 3 C suites exit 0). L2
+        Parallel Effect Spawns (own Off row): budget L, has_free while ahead, staged 48 B records, quiet-NaN draw tags
+        patched at commit (game's own draw in serial unit order), merge at walk end via slot 7 (query_limit; design's
+        CPU cap corrected), guard rounds, session-off on tag leak / staging full; NM3; S10 pool words learned at
+        SLOT_TAKE / RETURN (watched 4 -> 16); R1; N9; 4 L2 controls. FULL 905 cases PASS, 3 C suites, gated x86 x3 /
+        DRAW_RECORDING / amd64, header checks exit 0. Limits: tag leaks only seen in trace windows; S10 per round.
+        b13r_ STARTED B1.4 review 15:3x -> reports/b13r_b14_review.md.
+        Agents: c33i_ (C.3-4 fixes + LOGX), ebr_ (round 7), b13r_ (B1.4 review) (3 of 3). QUEUE: bd1r_ re-check, merge
+        rmt_c34, t4i_ LOGX test_check case, x87o_ v2, c3i_ B1.4 fixes, B1.5 (after rmt_c34: S4 shared table Must).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
