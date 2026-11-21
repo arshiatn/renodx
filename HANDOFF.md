@@ -6012,6 +6012,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         ebr_ STARTED round 9 review 20:1x -> reports/ebr_t1b_review.md '## Round 9'.
         Agents: c3i_ (R1), c33i_ (R-S4 part 2a), ebr_ (round 9 review) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_
         part 2b, bd1r_ R-S3 re-check, x0i_ S-X2r-2 + nits, R-S5a addendum, B1.6 (+ N5 real-routine tests), X1.
+        c33i_ PART 2a DONE 20:2x: rmt_rs2 f0c2c5958 from 404258f02 (cherry-picks 274b30df5 / aef978727 / 0c67a1511 /
+        07e7ccad4, content = rmt_rs1; f0c2c5958 uses effect_update::PatternSize). tw_instance_fill x86 x3 PASS (115
+        other sites); gated x86 / DRAW_RECORDING / amd64 exit 0. N4 for 2b: B1's BranchesIntoSites is tied to its own
+        SITES -> needs a shared scanner (ranges + ignored sources as parameters); heapfix_ranges.hpp's Touches has no
+        namespace -> a shared Overlaps helper. c33i_ IDLE until R1 merges (then 2b).
+        x0i_ STARTED 20:2x (filler while c33i_ waits): S-X2r-2 2^32 sweep behind a switch + X2 nits 1 / 3 / 4 / 5 / 7.
+        Agents: c3i_ (R1), ebr_ (round 9 review), x0i_ (X2 nits) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_ part
+        2b (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, R-S5a addendum, B1.6 (+ N5
+        real-routine tests), X1.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
