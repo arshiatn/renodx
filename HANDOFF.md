@@ -5950,6 +5950,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: bd1r_ (R-S3), x0i_ (S-X0r + X2), b13r_ (B1.5 re-check) (3 of 3). QUEUE: merge rmt_b15fix, t4i_ gate row
         refresh, c33i_ R-S4 fixes + hook-up re-apply on the merged fixes, R-S5a addendum, B1.6 (+ N5 real-routine
         tests), X1, X2 review.
+        x0i_ X2 DONE 19:4x (reports/x0i_x2_handback.md; variant x87c 4062cff: heapfix.c, x87fix.c, x87c_list.h,
+        tests\x87fix_test.c, X87C_AUTHOR_NOTES.md; +783 / -45; no origin, prep clone untouched). Part A: S-X0r-1 (+ P1
+        control), S-X0r-2, both read-back gaps; self-test 35 / 35; list 89 / 67 / 9 byte-identical. Part B: ini [fixes]
+        x87c=1 (default 0); Steam stamp 69CE1786, SSE1, CW / MXCSR masks; run-time .reloc parse (586 fields); relocation-cut
+        FNV-1a guard per range set, ALL guards before any write; per-block log line + summary; form 50 F3 0F 2C 44 24 A 89
+        44 24 R 58 EB 16 + 22 x CC; x87c sites never reverted by x87fix_frame. Tests: 89 x 2740 inputs identical (result,
+        EAX, ECX, XMM0), mutant caught; guards at 3 relocation deltas; order proof; 2 wrong-hash controls; 5 condition
+        cases. Not done: exhaustive 2^32 comparison, any measurement.
+        ebr_ STARTED X2 review 19:4x -> reports/ebr_x87_review.md '## X2 review'.
+        Agents: bd1r_ (R-S3), b13r_ (B1.5 re-check), ebr_ (X2 review) (3 of 3). QUEUE: merge rmt_b15fix, t4i_ gate row
+        refresh, c33i_ R-S4 fixes + hook-up re-apply on the merged fixes, R-S5a addendum, B1.6 (+ N5 real-routine
+        tests), X1, x0i_ X2 fixes.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
