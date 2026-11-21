@@ -6056,6 +6056,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: c3i_ (R1), bd3o_ (R-S5a), t4i_ (round 10) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_ part 2b
         (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, x0i_ X2 notes, B1.6 (+ N5
         real-routine tests), X1, R-S5.
+        t4i_ ROUND 10 DONE 20:3x (reports/t4i_round10_handback.md; backups scratchpad	4i_bak10): x87c_summary to the
+        6593a8f text, N == M == 89 else ROWFAIL with both counts; old 4062cff summary -> x87c_other; corpus 6593a8f text +
+        stamp 69CE1786 + 24 '::' srcs fixed; 2 new test_check cases; gates line numbers; b1_refused_hooked :710; Nit 2
+        x87c lines out of the INFO count. run_all 789 / 789.
+        ebr_ STARTED round 10 re-check 20:4x -> reports/ebr_t1b_review.md '## Round 10'.
+        Agents: c3i_ (R1), bd3o_ (R-S5a), ebr_ (round 10) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_ part 2b
+        (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, x0i_ X2 notes, B1.6 (+ N5
+        real-routine tests), X1, R-S5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
