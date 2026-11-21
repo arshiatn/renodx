@@ -6310,6 +6310,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: c33i_ (R-S5), gto_ (GPU v3.1), t4i_ (T3c) (3 of 3). QUEUE: ebr_ T3c re-check -> merge rmt_t3b, R-S5 review,
         my W1 / W2 check, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, unified PT design
         (after S0).
+        gto_ GPU v3.1 DONE 23:2x (gto_design.md 1433 lines, '## v3.1 (change list)'; hand-back
+        plan_1117/gto_v31_handback.md; v3 copy scratchpad\gto_v31_v3_backup.md): W1 placed_instances_0/1 + placed_state
+        + placed_last / _capacity / _written temporal, index rule + static_assert, test vs a fresh load played to the
+        snapshot point; W2 launcher `python -I -c` exists check + runpy.run_path (missing file = exit 0) + test; X1
+        snapshot at the end of loop 1; X2 c_AA own, default 8 lifetimes per arm (4 only at sigma <= 0.01 ms); X3 new
+        S3r Opus review; X4 Q26 before S1; Nits done. Total E 78-118 h.
+        MY W1 / W2 CHECK 23:2x: CLOSED. W1 lines verified (rt_d3d12.hpp:1183-1185 fields, 6621 written, 6635 UAV, 6677
+        flip); build_rows_ is bound as a UAV in the same pass (6634) but rt_place.cs_6_5.hlsl only reads it (226-228,
+        294) -> structural is right. W2 launcher form read in A.7 (four hooks). GPU DESIGN = GO; S1 may start as a
+        filler (before-S1 ATN questions Q8 / Q12 / Q14 / Q15 / Q4b / Q26 start Off if unanswered).
+        upt_ (a336eb101e16e3a79, fresh Opus xHigh) STARTED 23:2x: UNIFIED PT MODE design -> plan_1117/designs/
+        unified_pt.md (FORGE'S INPUT 5 / 5b route table, U2 starvation answer, Volumetric ReSTIR fog, RR inputs, cost,
+        rows, steps, ATN questions) -> Opus xHigh review.
+        Agents: c33i_ (R-S5), t4i_ (T3c), upt_ (unified PT design) (3 of 3). QUEUE: ebr_ T3c re-check -> merge rmt_t3b,
+        R-S5 review, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, unified PT review, GPU S1.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
