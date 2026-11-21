@@ -1369,43 +1369,28 @@ constexpr std::array<uint64_t, static_cast<size_t>(draw_recording::Group::COUNT)
 constexpr uint64_t RECORDING_ENTRY_BIT = RecordingBit(RecordingSite::FLUSH_ENTRY);
 static_assert(RECORDING_SITE_COUNT == RECORDING_SITES);
 
-// The bytes the CPU Performance Fix (heapfix) patches, or checks (the loops' batch and fetch fixes, the effect update's presort and
-// list resets, the instances rows), by RVA. No site's bytes (what it writes and the instructions it covers) may touch any of
-// them, and none of the bytes a site, its callee or its exit is found by may touch a patched one (it may be in when Prepare
-// runs). The ranges of the ROWS (checked, not written) are read by our own pieces (the accessor, the list helper): those
+// The bytes heapfix patches or checks are in heapfix_ranges.hpp. No site's bytes (what it writes and the instructions it covers) may
+// touch any of them, and none of the bytes a site, its callee or its exit is found by may touch a patched one (it may be in when
+// Prepare runs). The ranges of the ROWS (checked, not written) are read by our own pieces (the accessor, the list helper): those
 // may lie in them.
-struct HeapfixRange {
-  uint32_t rva;
-  uint32_t size;
-};
-constexpr std::array<HeapfixRange, 24> HEAPFIX_PATCHED = {{
-    // The six sites: the instance prepare, the two sort calls, the list reset and its last call, the effect walk's call.
-    {0x17B92D0, 5}, {0x17B9297, 5}, {0x17B9197, 5}, {0x1811F00, 5}, {0x18124E8, 5}, {0x192D2DA, 5},
-    // loopfetch: the loops' fetch of the next item, the animation batching and the two record copies.
-    {0x17B1840, 9}, {0x17B0450, 6}, {0x17B1560, 6}, {0x17B0FC0, 6}, {0x17B0065, 6}, {0x17AFCE2, 6}, {0x17AF7F5, 6},
-    {0x182E0DA, 9}, {0x17DAB90, 8}, {0x182C9A3, 8},
-    // batchfix, per loop: the compare (6 bytes patched) and the reset (7).
-    {0x17B0466, 6}, {0x17B04BF, 7}, {0x17B0FD9, 6}, {0x17B1032, 7}, {0x17B12A9, 6}, {0x17B1302, 7}, {0x17B1579, 6}, {0x17B15D2, 7},
-}};
-// The bytes checked and not patched: the instances rows and the effect rows of S8a (the old 26, then the 10 new ones), and
-// batchfix's checks beside its patches (the compare's other 17 bytes, the 2 after the reset, the item load, the field load).
-constexpr std::array<HeapfixRange, 52> HEAPFIX_CHECKED = {{
-    {0x17B92D0, 171}, {0x17B9270, 53}, {0x17B92B0, 19}, {0x182C810, 17}, {0x186BC80, 94}, {0x186BDC0, 25}, {0x183E430, 69},
-    {0x184BAF0, 21}, {0x178FD90, 264}, {0xD3420, 144}, {0xCFBB0, 4}, {0xCFCD0, 4}, {0x1719160, 13}, {0x17B9170, 53},
-    {0x17B90F0, 53}, {0x17B9130, 53}, {0x17B91F0, 53}, {0x186BD20, 25}, {0x186BD60, 25}, {0x186BCE0, 25}, {0x186BD00, 25},
-    {0x186BD40, 25}, {0x1906300, 27}, {0x1906320, 21}, {0xC46B0, 3}, {0x183E3F0, 54},
-    {0x1811F0C, 1500}, {0x189B9A0, 180}, {0x192D296, 73}, {0x1870BD0, 56}, {0x17AE420, 89}, {0x176CED0, 241}, {0x17AE370, 89},
-    {0x17F8355, 127}, {0x1833DC0, 194}, {0x1833D00, 158},
-    {0x17B046C, 0x11}, {0x17B04C6, 2}, {0x17B0456, 3}, {0x17B05A3, 6},
-    {0x17B0FDF, 0x11}, {0x17B1039, 2}, {0x17B0FCB, 3}, {0x17B1117, 3},
-    {0x17B12AF, 0x11}, {0x17B1309, 2}, {0x17B129B, 3}, {0x17B13E7, 3},
-    {0x17B157F, 0x11}, {0x17B15D9, 2}, {0x17B156B, 3}, {0x17B16AD, 3},
-}};
-
-constexpr bool Touches(uint32_t rva, uint32_t size, const HeapfixRange& range) {
-  return rva < range.rva + range.size && range.rva < rva + size;
-}
 constexpr size_t PatternSize(std::string_view pattern) { return (pattern.size() + 1) / 3; }
+// The timing hooks on our own entries (HOOKED_ENTRIES) are refused at run time (RecordingEntriesFree, in Prepare and every turn-on),
+// so they are not held against the sites; every other timing hook is.
+constexpr std::array<bool, HEAPFIX_TIMING_HOOKS.size()> TIMING_HOOK_REFUSED = [] {
+  std::array<bool, HEAPFIX_TIMING_HOOKS.size()> refused = {};
+  for (size_t row = 0; row < refused.size(); ++row) {
+    for (const uint32_t entry : HOOKED_ENTRIES) {
+      refused[row] |= (entry == HEAPFIX_TIMING_HOOKS[row].rva);
+    }
+  }
+  return refused;
+}();
+constexpr bool TouchesTimingHook(uint32_t rva, uint32_t size) {
+  for (size_t row = 0; row < HEAPFIX_TIMING_HOOKS.size(); ++row) {
+    if (!TIMING_HOOK_REFUSED[row] && Touches(rva, size, HEAPFIX_TIMING_HOOKS[row])) return true;
+  }
+  return false;
+}
 // A site clears heapfix when its bytes touch no range and the bytes it is found by touch no patched range.
 constexpr bool SiteClearOfHeapfix(const RecordingSiteInfo& info) {
   const uint32_t site_size = std::max<uint32_t>(info.covered, SITE_SIZE);
@@ -1418,6 +1403,10 @@ constexpr bool SiteClearOfHeapfix(const RecordingSiteInfo& info) {
     for (const auto& window : found_by) {
       if (window[1] != 0 && Touches(window[0], window[1], range)) return false;
     }
+  }
+  if (TouchesTimingHook(info.rva, site_size)) return false;
+  for (const auto& window : found_by) {
+    if (window[1] != 0 && TouchesTimingHook(window[0], window[1])) return false;
   }
   for (const HeapfixRange& range : HEAPFIX_CHECKED) {
     if (Touches(info.rva, site_size, range)) return false;
@@ -1437,7 +1426,7 @@ static_assert([] {
     for (const HeapfixRange& range : HEAPFIX_PATCHED) {
       if (Touches(rva, size, range)) return true;
     }
-    return false;
+    return TouchesTimingHook(rva, size);
   };
   const auto checked = [](uint32_t rva, uint32_t size) {
     for (const HeapfixRange& range : HEAPFIX_CHECKED) {

@@ -2151,13 +2151,17 @@ void TestJumpScan() {
               instructions, targets.size(), static_cast<unsigned long long>(candidates), hits, relocated, relocated_hits);
 }
 
-// The heapfix clearance: the nearest range heapfix patches or checks to each of the B sites (the table's compile-time check is the
-// proof; this prints the distances, and re-checks them against the real table).
+// The heapfix clearance: the nearest range heapfix patches or checks to each site (the table's compile-time check is the proof; this
+// prints the distances of the B sites, and re-checks them against the real tables).
 void TestHeapfixClearance() {
   const auto gap = [](uint32_t rva, uint32_t size, const ec::HeapfixRange& range) {
     return range.rva >= rva + size ? range.rva - (rva + size) : rva - (range.rva + range.size);
   };
+  const auto hooked_entry = [](const ec::HeapfixRange& range) {
+    return std::find(ec::HOOKED_ENTRIES.begin(), ec::HOOKED_ENTRIES.end(), range.rva) != ec::HOOKED_ENTRIES.end();
+  };
   uint32_t smallest = 0xFFFFFFFF;
+  uint32_t on_entries = 0;
   std::string report;
   for (const ec::RecordingSiteInfo& site_info : ec::RECORDING_INFO) {
     const uint32_t size = std::max<uint32_t>(site_info.covered, ec::SITE_SIZE);
@@ -2165,13 +2169,22 @@ void TestHeapfixClearance() {
     uint32_t checked_gap = 0xFFFFFFFF;
     const ec::HeapfixRange* patched_near = nullptr;
     const ec::HeapfixRange* checked_near = nullptr;
-    for (const ec::HeapfixRange& range : ec::HEAPFIX_PATCHED) {
-      CHECK(!ec::Touches(site_info.rva, size, range));
-      if (gap(site_info.rva, size, range) < patched_gap) {
-        patched_gap = gap(site_info.rva, size, range);
-        patched_near = &range;
+    // The patched ranges, the timing hooks among them: a timing hook may touch a site only on one of our entries (refused at run time).
+    const auto scan_patched = [&](const auto& table, bool timing) {
+      for (const ec::HeapfixRange& range : table) {
+        if (ec::Touches(site_info.rva, size, range)) {
+          CHECK(timing && hooked_entry(range));
+          ++on_entries;
+          continue;
+        }
+        if (gap(site_info.rva, size, range) < patched_gap) {
+          patched_gap = gap(site_info.rva, size, range);
+          patched_near = &range;
+        }
       }
-    }
+    };
+    scan_patched(ec::HEAPFIX_PATCHED, false);
+    scan_patched(ec::HEAPFIX_TIMING_HOOKS, true);
     for (const ec::HeapfixRange& range : ec::HEAPFIX_CHECKED) {
       CHECK(!ec::Touches(site_info.rva, size, range));
       if (gap(site_info.rva, size, range) < checked_gap) {
@@ -2188,8 +2201,30 @@ void TestHeapfixClearance() {
       report += line;
     }
   }
-  std::printf("9. heapfix clearance: no site of the %zu touches a range heapfix patches (%zu) or checks (%zu), and none of the bytes a site, its callee or its exit is found by touches a patched one; smallest gap of any site %u bytes; the B sites' nearest ranges:\n%s",
-              ec::RECORDING_SITE_COUNT, ec::HEAPFIX_PATCHED.size(), ec::HEAPFIX_CHECKED.size(), smallest, report.c_str());
+  // The rows of every heapfix module that writes into or checks the game's code (heapfix_ranges.hpp), by their module's names: the
+  // patched ones, the timing hooks and the checked ones.
+  struct Row {
+    uint32_t rva;
+    uint32_t size;
+  };
+  constexpr std::array<Row, 14> PATCHED_ROWS = {{{0x18F9150, 6}, {0xD79AC8, 36}, {0xD79B12, 36}, {0x189B363, 36}, {0x174A8BD, 86}, {0x18E8390, 5}, {0x17AD5D0, 5},
+                                                 {0x17ACB50, 5}, {0x174CD88, 5}, {0x1A27CA0, 6}, {0xC1950, 10}, {0x17DABAF, 5}, {0x182E0DA, 9}, {0x17DAB90, 8}}};
+  constexpr std::array<Row, 6> TIMING_ROWS = {{{0x17FA310, 6}, {0x186BE70, 10}, {0x1893CC0, 6}, {0x1722420, 7}, {0x176A450, 5}, {0x177BB10, 5}}};
+  constexpr std::array<Row, 7> CHECKED_ROWS = {{{0x18E8390, 0x342}, {0x192EEE0, 0x22A}, {0x17AD5D0, 630}, {0x17ACB50, 630}, {0x174CCA0, 0xED}, {0x174CC20, 0x27}, {0x175D5D0, 0xEC}}};
+  const auto present = [](const auto& table, const std::span<const Row> rows) {
+    for (const Row& row : rows) {
+      CHECK(std::any_of(table.begin(), table.end(), [&](const ec::HeapfixRange& range) { return range.rva == row.rva && range.size == row.size; }));
+    }
+  };
+  present(ec::HEAPFIX_PATCHED, PATCHED_ROWS);
+  present(ec::HEAPFIX_TIMING_HOOKS, TIMING_ROWS);
+  present(ec::HEAPFIX_CHECKED, CHECKED_ROWS);
+  // Heapfix's timing hooks sit on the entries our groups read (the flush, the two loops, the bodies): 12 of the 13 guarded entries
+  // have a row (the depth body at +0x17B0CB0 is guarded at run time though no timing hook is there).
+  CHECK(std::count_if(ec::HEAPFIX_TIMING_HOOKS.begin(), ec::HEAPFIX_TIMING_HOOKS.end(), hooked_entry) == 12 && ec::HOOKED_ENTRIES.size() == 13);
+  std::printf("9. heapfix clearance: no site of the %zu touches a range heapfix patches (%zu rows of every module) or checks (%zu) or a timing hook (%zu rows: %u touches, all on our own hooked entries, which a run refuses), and none of the bytes a site, its callee or its exit is found by touches a patched one; smallest gap of any site %u bytes; the B sites' nearest ranges:\n%s",
+              ec::RECORDING_SITE_COUNT, ec::HEAPFIX_PATCHED.size(), ec::HEAPFIX_CHECKED.size(), ec::HEAPFIX_TIMING_HOOKS.size(), on_entries, smallest,
+              report.c_str());
 }
 
 // ---------------------------------------------------------------- 7. the assembler's bounds

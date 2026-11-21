@@ -1799,6 +1799,8 @@ static int32_t recording_fail_protect = -1;
 // Presents with a thread inside a site before giving up (until the row changes); each try snapshots the system's threads
 // (~0.1 s with some antivirus hooks; 3 of 200 writes waited once in the test, four threads running the sites nonstop).
 constexpr uint32_t MAX_FAILED_WRITES = 30;
+// The bytes of the game's code the Attila CPU Performance Fix patches or checks: every feature that writes into the game's code keeps clear of them.
+#include "heapfix_ranges.hpp"
 #if defined(TWATTILA_ENGINE_PROBE)
 // 17. The probe build (private, compiled only with TWATTILA_ENGINE_PROBE, no row): a histogram stub in front of each probed site's production stub.
 #include "engine_probe.hpp"
