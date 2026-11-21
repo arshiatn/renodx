@@ -5464,6 +5464,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         bd3r_ RESUMED 10:4x: re-check of S8-1c fixes -> S8 lane closed for T5.
         Agents: c3i_ (B1.2b finish), c33i_ (C.3-3), bd3r_ (S8-1c re-check) (3 of 3). QUEUE: t4i_ T1b follow-ups +
         ebo_ lane (per-kind budget, presort segments out, W_w logging, new presort line).
+        c33i_ C.3-3 DONE 10:4x (rmt_c33: fb325a4d6 RECORDING_SITES 23 -> 39 alone + aa1ac3016 +1190 / -79 in
+        draw_recording*.hpp + 3 C test dirs; reports/c33i_c33_handback.md): cut 0x17aed4a (BuildMeshCut, lock inc / dec
+        active, exit 0x17aee68), 15 Depth B sites (BuildSharedStateCall B form), 8 dispatchers + thunks + 23
+        ROUTED_CLASSES decoded (new ROUTED_VF54_ALT for 0x1cc19d0 / 0x1cbf5b8), RECORDING_OWN (COLOUR_B 0 until C.3-4),
+        compile-time heapfix clearance (21 patched + 52 checked ranges; smallest gap 13 B), jump scan (1592 instr, 1.0 M
+        rel32, 482184 relocs: 0 hits), c32r_ S-1 / N-1..N-4 done; code 2543 of 4096 B. All C suites + tw_engine_code
+        FULL + gated builds x86 x3 / x86 DRAW_RECORDING / amd64 exit 0. Process: some python heredoc text edits
+        (reviewer checks for collapsed backslashes). A foreign engine_code.exe pid 40440 was running (not c33i_'s;
+        likely c3i_'s FULL run).
+        bd1r_ RESUMED 10:4x: Opus xHigh review of C.3-3 -> reports/bd1r_c33_review.md -> c33i_ fixes -> merge.
+        Agents: c3i_ (B1.2b finish), bd3r_ (S8-1c re-check), bd1r_ (C.3-3 review) (3 of 3). QUEUE: t4i_ T1b follow-ups
+        + ebo_ lane (per-kind budget, presort segments out, W_w logging, new presort line); C.3-4 after C.3-3's review.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
