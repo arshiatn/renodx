@@ -6146,6 +6146,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: t4i_ (T3), bd3r_ (R2 review), c33i_ (part 2b) (3 of 3). QUEUE: bd1r_ R-S3 re-check + merge rmt_rs2b,
         ebr_ T3 review, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, R-S5, S0 GPU review (filler),
         unified PT design.
+        bd3r_ R2 ADDENDUM REVIEW DONE 21:1x (reports/bd3r_review.md line 404): GO WITH CHANGES. 2 Musts (text): M1 ring
+        mismatch at the stub -> CloseFold, then the game's Unmap on the stub's own ring; M2 static fold_fill FillJob
+        resets next_chunk / chunks_done before each Start. Shoulds S1-S5 (buffer capture, frame in UnmapEntry<k>, tie =
+        R1 written and wanted + no break in the protection loop, 9b snapshots, controls fail by order + last_call); 11
+        Nits. Sites, stub bytes, key stores, B frame, branch sweep, the fill's reads, NM5, ENTERED + publish, heapfix
+        clearance verified. Step table stands (+~25 code / +40 test lines). Nothing for ATN.
+        bd3o_ RESUMED 21:1x: v3 from bd3r_'s review -> bd3r_ short re-check -> R-S5 after rmt_rs2b merges.
+        Agents: t4i_ (T3), c33i_ (part 2b), bd3o_ (R2 v3) (3 of 3). QUEUE: bd1r_ R-S3 re-check + merge rmt_rs2b, ebr_ T3
+        review, bd3r_ R2 v3 re-check, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, R-S5, S0 GPU review
+        (filler), unified PT design.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
