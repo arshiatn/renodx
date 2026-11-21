@@ -1343,8 +1343,8 @@ float keep_render_core_row = 0.f;
 // Worker Threads (Experimental): the threads, the render thread included, that worker_pool.hpp's users may use. The row is
 // compiled only where a pool user is (today the private draw recording build).
 float worker_threads_row = 4.f;
-// The env generation: the pool reads RENODX_TW_WORKER_LIMITS and RENODX_TW_POOL_SPIN_US again when it changes (the bench
-// bumps it after it sets them).
+// The env generation: the pool reads RENODX_TW_WORKER_LIMITS and RENODX_TW_POOL_SPIN_US again when it changes (test_hooks'
+// "env." set keys bump it after they set a variable).
 std::atomic<uint32_t> worker_env_generation = 0;
 // A bench's RENODX_TW_WORKER_TRACE, read once at the start: engine_code puts the pending list sweep's trace site in only then, never for a player.
 const bool worker_trace_env = (GetEnvironmentVariableA("RENODX_TW_WORKER_TRACE", nullptr, 0) != 0);
@@ -2425,7 +2425,10 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
-  twattila::test_hooks::Install(&settings, true);
+  // A bench's live env keys bump the pool's env generation; its mt_trace key opens one pool trace window.
+  twattila::test_hooks::Install(&settings, true, "[Total War]",
+                                {.env_changed = [] { return worker_env_generation.fetch_add(1, std::memory_order_relaxed) + 1; },
+                                 .arm_trace = twattila::worker_pool::ArmTrace});
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
