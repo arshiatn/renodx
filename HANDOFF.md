@@ -4804,6 +4804,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         Nits: S-5 in_use release on every exit, sentinel value named, 3.11 / 3.8 / 5.2 wording, one controls-macro rule,
         S9-T copies the loop's exit test against a fresh end(). bd2r_ RESUMED 03:2x: re-check of bd2o_ B1 v2.
         Agents: hp1i_, gto_, c3i_, bd2r_ (4 of 4).
+        ATN 03:2x: (1) MAX 3 SUBAGENTS until ATN says otherwise (the 4 running finished their steps; no refill above 3).
+        (2) DOWNLOAD OK for Microsoft's D3D12 + HLSL specs -> done 03:3x into tools\specs\sources\ (DirectX-Specs
+        ba0b51c, CC-BY-4.0 docs + MIT code, 43 MB; hlsl-specs 47563f7, MIT, 3.2 MB; shallow clones, reference only,
+        nothing copied into src). DXC docs (DXIL.rst) NOT asked -> not downloaded. (3) Bitdefender quarantined
+        round_notes\plan_1117\night1118\scratchpad_copy\r4_make_repro.ps1 (CMD:Heur...Boxter): an archived copy of an
+        old script, nothing runs it -> nothing blocked; no new excluded folder asked; scripts are never moved into
+        testbin to dodge scans. (4) FORGE INPUT 2: enforce, don't trust memory / skills: (a) read-before-edit gate =
+        Claude Code hook that refuses Edit / Write on D3D / HLSL code until the agent ran the spec lookup in its session
+        (and src C++ until docs/CXX_STYLE.md was read), with exact spec cites checked at merge; (b) a separate GPU
+        reference renderer with known scenes (Cornell box + our hard cases) to compare our RT / PT passes against a
+        converged reference. Both -> gto_ addendum (queued); hooks are settings = ATN adds them or OKs the exact text.
+        gto_ GPU TOOLING DESIGN DONE 03:2x (plan_1117/gto_design.md, 292 lines): resident replayer (recorder build
+        `serve`, D3D12 timestamps, A / A' / B interleaved), SQLite trace index, measurement gate (A/A, Latin square,
+        noise threshold, gate ids), budgets + per-phase deadlines, spec index + cite check, pitfall registries; steps
+        S0 review, S1a-c offline tools, S2 resident, S3 lab, S3c first GPU session, S4 in-process Nsight, S5 hooks.
+        11 ATN questions (Q1 lab rules, Q3 idle VRAM, Q4 hooks, Q8 lock in atn_harness_runs, Q9 first session ...) wait
+        for its Opus xHigh review; S1a-c need none. FIX-NOW items F1-F6: F5 DONE 03:3x (t3_drive.ps1 no longer deletes
+        .ngfx-gputrace files); F1 (ns_trace_run.py closes ngfx stdin) must be fixed BEFORE any new ngfx trace; F2 F3 F4
+        F6 in S1a. [ ] gto_ design review (Opus xHigh) + addendum for Forge input 2 (owner coordinator, next free slot).
+        hp1i_ HEAPFIX S1 + S2 DONE 03:2x (prep 5da9e06, local; reports/hp1i_s1s2_handback.md): prepare.c weighted part,
+        modes 0-3, 12 clean test runs, 0 differences, all controls fail as they should; DLL testbin\heapfix_pf\dlls\
+        prep_dinput8.dll sha256 bf5d49fe...7461. A crashed prepare_test.exe (PID 33924) is a zombie until ATN's next
+        reboot (not ours to kill). bd3r_ RESUMED 03:3x: Opus xHigh review of S1 + S2.
+        Agents: c3i_, bd2r_, bd3r_ (3 of 3). QUEUE: gto_ review + addendum, x87 review, ebo_ review, R2 addendum.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
