@@ -5610,6 +5610,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         in the FROZEN T5 heapfix build? If yes C refuses in the end batch -> fix or ATN decision.
         Agents: c3i_ (B1.3 fixes), ebr_ (x87 review), bd1r_ (C.3-4 review) (3 of 3). QUEUE: t4i_ crash-record nit,
         b13r_ re-check, c33i_ C.3-4 fixes, B1.4 / B1.5.
+        c3i_ B1.3 FIXES DONE 14:0x (rmt_b12a c561d5ae8 on c01d341a8, 5 files; reports/c3i_b13fix_handback.md): M1 trace
+        counters only in trace windows, events once per (kind, site), no lines outside windows; M2 all-or-nothing
+        (Wanted / walk_armed need ALL_SITES); S1 test eax,eax; S2 census error + FinishRound(true); S3 rel32-only run
+        time; S5 SWEEP_CHECKS span + epilogue (callee head NOT extended: 53 55 56 are synthesized); S6-S9; S8 refined
+        (late segments up to tail_slot after a failure; plain skip lost effects); S11 controls defined by c3i_; N1-N8.
+        FULL + part 26 + 3 C suites + gated x86 x3 / DRAW_RECORDING / amd64 + header check exit 0. Deferred: S4 (B1.5),
+        S10 (B1.4). Process: c3i_ handed back early twice while its test ran (told to wait with Monitor).
+        b13r_ RESUMED 14:1x: re-check -> append to reports/b13r_l1_review.md -> merge rmt_b12a.
+        Agents: ebr_ (x87 review), bd1r_ (C.3-4 review), b13r_ (B1.3 re-check) (3 of 3). QUEUE: t4i_ crash-record nit,
+        c33i_ C.3-4 fixes, merges (rmt_c34, rmt_b12a), B1.4 / B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
