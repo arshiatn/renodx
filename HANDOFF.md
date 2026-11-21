@@ -5043,6 +5043,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         c3i_ RESUMED 04:4x: that commit -> coordinator's merge gate. t4i_ note: trace files tw_draw_recording(_w).txt
         are MOVED (exact regex, no wildcard delete) into each start's ebo data folder; leftovers -> ebo\stale\.
         Agents: t4i_, hp1i_, c3i_ (3 of 3).
+        c3i_ DONE 04:5x (rmt_pool c36e300f7; reports/c3i_s2b_fixes2_handback.md): pool numbers its windows (header
+        "trace window w", TraceWindow(); C's line + file use it), ArmTrace ignored while open / pending (one line per
+        ignored arm), Settings::trace + pool_trace gone; tests PoolArmTrace rewrite, DepthTraceSkippedWindows,
+        PoolRefusals via a window. All 4 suites PASS, gated builds exit 0.
+        MERGED rmt_pool -> atn-mods 96a49351d 05:0x (name check: 54 generic words only; gated builds x86 twattila
+        twrome2 twthronesofbritannia + amd64 twattila exit 0), pushed. The shared worker pool is in.
+        c3i_ RESUMED 05:0x: B3 design step S3 (bd1o_design_B3_v2.md §10 row S3, §4.1, §5.1-5.2, §6 S3, §13) on NEW
+        branch rmt_s3 from 96a49351d in worktree rmt_c3: 2-page RX / RW, shared CutRange, slots, B3b call site +
+        pass-through stub, B4 trace-only Arm (only with RENODX_TW_WORKER_TRACE), WorkerRows, 25 -> 27 sites, owner
+        check via internal::owner, B4 window via Tracing() / TraceWindow() -> Opus xHigh review -> merge. Then C.3-3.
+        hp1i_ DONE 05:0x (prep 0e54de7 + 236a473, local; reports/hp1i_s7_handback.md): A = check_sortfb put-back
+        (control 12: 23 / 23 serial), capped applies 27-39 per stress run, bad THREADS at start logs, HEAPFIX_TEST-only
+        2 ms forced overlap every 4th generation (gated 494-542, 700 / 700), mode 3 cost in segment + install lines;
+        B = S7 instances family: 7 (0x130, 0xd8) pairs (pool takes 2), 13 more FNV rows, P2' +0x17B9197 sharing
+        sort_skipped, three-site install, instances path without combined list (prefix-sum indices), inst_side on the
+        task thread, three-slot priority, NEW HEAPFIX_PREPARE_FAMILIES (weighted | instances | both, default weighted,
+        start + live + schedule field 3; not asked -> review judges). Task-thread lists not put back on a mismatch
+        (mixed sorts stable when re-sorted, 0 / 297; review judges). Matrix 0 differences, both families at once 0.
+        Lines 207 / 304 vs plan 180 / 150. build.bat test exit 0 (src_prep6), prepare_test 6 / 6. DLL prep5_dinput8.dll
+        sha256 42fa6d6cb117c13eeeb432291d5160f531ed8786b1f52baca4dec132abfd22d0.
+        bd3r_ RESUMED 05:0x: S7 short review (A diff check + B vs design / NM4, FAMILIES switch, task-thread put-back,
+        line count, S8 needs). t4i_ got the FAMILIES env + new line fields.
+        Agents: t4i_, c3i_, bd3r_ (3 of 3). QUEUE: S0-ter, T3, x87 review, R2 addendum, S0 GPU design review, unified PT
+        design; after S3: B1.2a, T1b.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
