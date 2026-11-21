@@ -6133,6 +6133,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: b13r_ (R1 re-check), t4i_ (T3), bd3r_ (R2 review) (3 of 3). QUEUE: merge rmt_b15r1, c33i_ part 2b
         (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, ebr_ T3 review, B1.6 (+ N5
         real-routine tests), X1, R-S5, S0 GPU review (filler), unified PT design.
+        b13r_ R1 RE-CHECK DONE 21:0x (reports/b13r_b15_review.md '## R1 re-check'): MERGE. Both groups right; the job
+        group fixes a real hazard (WakeAll + Sleep without Stop = use after free when the pool is destroyed); all-or-none
+        loses nothing; b13r_'s own mutants fail at :3726 / :3780. NEW R2 (low): half function -> half rows has the same
+        gap one way (foreign hook at the half function, off, on -> half rows go in; no crash, the other mod sees 1 of 20
+        calls) -> one line after the group loop + 13(c) case -> COORDINATOR: folded into B1.6 (c3i_), not now.
+        MERGED 21:0x: rmt_b15r1 -> atn-mods c36498621 (name_check 99 ids / 2 generic; gated x86 x3 + amd64 exit 0;
+        pushed).
+        c33i_ STARTED part 2b 21:0x on rmt_rs2b (from c36498621 + rmt_rs2's 5 commits): hook-up re-apply with S3 rules
+        (R2-extendable), S2 tw_engine_code cases, N4 shared branch scanner + namespaced Overlaps (may edit
+        effect_update_sites.hpp / heapfix_ranges.hpp / engine_code.hpp / addon.cpp), N9 -> bd1r_ re-check.
+        Agents: t4i_ (T3), bd3r_ (R2 review), c33i_ (part 2b) (3 of 3). QUEUE: bd1r_ R-S3 re-check + merge rmt_rs2b,
+        ebr_ T3 review, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, R-S5, S0 GPU review (filler),
+        unified PT design.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
