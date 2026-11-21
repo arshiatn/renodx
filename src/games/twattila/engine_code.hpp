@@ -1767,7 +1767,7 @@ static bool job_missing_logged = false;
 static uint32_t prefetch_logged = 0;  // the prefetch and worker sites already named as left alone: each is named once
 // Threaded Draw Recording's table (draw_recording_sites.hpp, compiled only with TWATTILA_DRAW_RECORDING): the same window writes it
 // with the 27 sites above, its masks have 64 bits. Without the feature nothing is ever found in it.
-constexpr size_t RECORDING_SITES = 23;
+constexpr size_t RECORDING_SITES = 39;
 static std::array<Site, RECORDING_SITES> recording_sites = {};
 static bool recording_prepared = false;
 static uint64_t recording_found = 0;
