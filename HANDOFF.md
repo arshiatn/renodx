@@ -5940,6 +5940,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: c3i_ (B1.5 fixes), bd1r_ (R-S3), x0i_ (S-X0r + X2) (3 of 3). QUEUE: b13r_ B1.5 re-check + merge
         rmt_b15fix, t4i_ gate row refresh, c33i_ R-S4 fixes + hook-up re-apply on the merged fixes, R-S5a addendum, B1.6
         (+ N5 real-routine tests), X1, X2 review.
+        c3i_ B1.5 FIXES DONE 19:3x (reports/c3i_b15fix_handback.md): rmt_b15fix 3f0f0c581 from c3f89865b (6 files +121 /
+        -27). M1 ++generation when the pair goes in (28a line, mutation-checked); M2 epoch + count both-or-neither going
+        in, epoch kept in when the sum stands down going out (test 13 (n), 3 cases); S1 comment; N1 / N2; N3
+        sibling_entries (exact stub per entry, foreign-target controls); N4 HEAPFIX_CHECKED lookup; N5 one PatternSize.
+        FULL + quick all x2 + part 28 x3 + 3 C suites + gated builds (x86 x3, DRAW_RECORDING, amd64) exit 0. (git
+        switch -c failed on a junction -> branch + symbolic-ref + reset; junctions untouched, status clean.)
+        b13r_ STARTED B1.5 re-check 19:3x -> reports/b13r_b15_review.md '## Re-check'.
+        Agents: bd1r_ (R-S3), x0i_ (S-X0r + X2), b13r_ (B1.5 re-check) (3 of 3). QUEUE: merge rmt_b15fix, t4i_ gate row
+        refresh, c33i_ R-S4 fixes + hook-up re-apply on the merged fixes, R-S5a addendum, B1.6 (+ N5 real-routine
+        tests), X1, X2 review.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
