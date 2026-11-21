@@ -5410,7 +5410,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         render thread still waiting >= ~1.1 ms / frame on the weighted chain in a CPU-bound battle (G ~ 0.28 x W_w).
         COORDINATOR DECISION 10:1x (default until ATN answers): S8-2 PARKED, S8-3 DROPPED, S8-1c built now. bd3r_'s
         v4.1 re-check folded into its S8-1c review (the text Musts only matter for S8-2).
-        [ ] ATN Q3: park S8-2 (presort ~0.3 ms / frame at best, 0 GPU-bound) until the end batch shows W_w >= 1.1 ms, or
+        [x] ATN Q3 (ANSWERED 10:5x: keep parked; send to the author only if the end batch shows it): park S8-2 (presort
+        ~0.3 ms / frame at best, 0 GPU-bound) until the end batch shows W_w >= 1.1 ms, or
         build it anyway? Also: put the dormant presort code (gate off) into the heapfix author package or keep it out?
         [ ] ebo_ lane (owner t4i_): with S8-2 parked, take the presort segments (EARLY / PROBE / B2:early) OUT of the
         batch plan + gates; make sure the batch logs W_w (render thread's wait on the weighted chain) per CPU-bound
@@ -5492,6 +5493,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         segment with the revive-trigger flag -> ebr_ re-check.
         Agents: c3i_ (B1.2b finish), bd1r_ (C.3-3 review), t4i_ (T1b follow-ups + ebo_ lane) (3 of 3). QUEUE: C.3-4
         after C.3-3's review; B1.3 review after B1.2b.
+        ATN 10:5x (heapfix author): presort goes to the author ONLY if the end batch shows it is worth it; the full
+        author package is built only after everything is fully done. ATN sent the author
+        C:\Users\arshi\Downloads\AttilaCPUPerfFix_7.0_notes_2026-11-15.zip (README + 3 notes on 7.0 + the sort
+        prefetch: 1 loopfetch animation +0x182E0DA ON (proposal), 2 memfast 65-128 B (info, not proposed), 3 soldier
+        draw x87 block (info: keep x87fix); bench tables + timing program). ATN: MT may change what those are worth
+        (bigger / 0 / minus) -> [ ] the final package gives the author a keep / revert line with MT-on numbers for each
+        item he already knows (sort prefetch, notes 1-3) + the pool_munmap hardening note (owner coordinator, after
+        the final bench). [ ] t4i_ reports which of those patches can switch within a session and what an On / Off A/B
+        with the full MT build would cost in the end batch -> coordinator + ATN decide whether to add the A/Bs.
+        Memory: project_heapfix_author.md.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
