@@ -1346,6 +1346,8 @@ float worker_threads_row = 4.f;
 // The env generation: the pool reads RENODX_TW_WORKER_LIMITS and RENODX_TW_POOL_SPIN_US again when it changes (the bench
 // bumps it after it sets them).
 std::atomic<uint32_t> worker_env_generation = 0;
+// A bench's RENODX_TW_WORKER_TRACE, read once at the start: engine_code puts the pending list sweep's trace site in only then, never for a player.
+const bool worker_trace_env = (GetEnvironmentVariableA("RENODX_TW_WORKER_TRACE", nullptr, 0) != 0);
 // Where the game's own threads start (the job workers in the engine's DLL); the rest is the driver's, audio's, etc.
 constexpr std::array<const wchar_t*, 2> GAME_THREAD_MODULES = {nullptr, L"empire.retail.dll"};
 // Faster Emitter Prefetch (Experimental, off): engine_code.hpp's emitter update loop site, a row of its own so that a bench
@@ -1651,7 +1653,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                  .env_generation = worker_env_generation.load(std::memory_order_relaxed)});
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
                                 job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,
-                                particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale, recording_groups);
+                                particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale, recording_groups,
+                                {.pending_sweep_trace = worker_trace_env});
 #if defined(TWATTILA_DRAW_RECORDING)
   // After the engine code's Update: the sites are in or out for this present.
   twattila::draw_recording::Update(recording);

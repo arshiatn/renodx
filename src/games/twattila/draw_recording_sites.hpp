@@ -1108,7 +1108,7 @@ inline bool PrepareRecording(HMODULE module) {
       }
       built |= uint64_t{1} << index;
     }
-    if (pass == 0) recording_cut_end = assembler.Cursor();
+    if (pass == 0) recording_cut.end = assembler.Cursor();
   }
   DWORD protection;
   if (recording_page == nullptr || !assembler.Fits()
@@ -1117,7 +1117,7 @@ inline bool PrepareRecording(HMODULE module) {
     const bool page_failed = shared_ok;
     if (recording_page != nullptr) VirtualFree(recording_page, 0, MEM_RELEASE);
     recording_page = nullptr;
-    recording_cut_end = nullptr;
+    recording_cut = {};
     recording_page_end = nullptr;
     draw_recording::SetGame({});
     if (page_failed) {
@@ -1158,7 +1158,8 @@ inline bool PrepareRecording(HMODULE module) {
   }
   calls.usable = (calls.usable_groups != 0);
   draw_recording::SetGame(calls);
-  recording_active = &shared->active;
+  recording_cut.begin = recording_page;
+  recording_cut.active = &shared->active;
   recording_arena_size = &shared->arena_size;
   if (shared->arena_size != 0) recording_arena_size_value = shared->arena_size;  // 0 while no site is in
   renodx::utils::log::i("[Total War] Threaded Draw Recording: ", std::popcount(built), " of ", RECORDING_SITE_COUNT,

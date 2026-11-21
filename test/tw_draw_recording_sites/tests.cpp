@@ -171,7 +171,7 @@ size_t DifferingBytes() {
 void TestRealBytes() {
   REQUIRE(Prepare());
   CHECK(ec::recording_found == ALL_SITES);
-  CHECK(ec::recording_prepared && ec::recording_page != nullptr && ec::recording_cut_end > ec::recording_page);
+  CHECK(ec::recording_prepared && ec::recording_page != nullptr && ec::recording_cut.end > ec::recording_page);
   MEMORY_BASIC_INFORMATION info = {};
   VirtualQuery(ec::recording_page, &info, sizeof(info));
   CHECK(info.Protect == PAGE_EXECUTE_READ);
@@ -221,7 +221,7 @@ void TestRealBytes() {
   for (size_t index = 0; index < ec::WEIGHTED_CLASSES.size(); ++index) {
     CHECK(calls.weighted_vtables[index] == ec::Address(Rva(ec::WEIGHTED_CLASSES[index].vtable)));
   }
-  CHECK(ec::recording_active == &dr::SharedPage()->active && *ec::recording_arena_size == dr::SLOT_COUNT * dr::SLOT_SIZE);
+  CHECK(ec::recording_cut.active == &dr::SharedPage()->active && *ec::recording_arena_size == dr::SLOT_COUNT * dr::SLOT_SIZE);
   CHECK(LogHas("23 of 23 sites found") && !LogHas("left alone"));
   // The colour loop's pieces, decoded from the code: the call targets, the faction block's default and the cache flag.
   CHECK(calls.loops[static_cast<size_t>(dr::Group::COLOUR_A)] == ec::Address(Rva(ec::COLOUR_LOOP_RVA)));
@@ -634,7 +634,7 @@ void TestThreadInThunks() {
   UpdateWith(Groups());
   CHECK(ec::recording_written == in);
   uint8_t* const flush_thunk = ThunkOf(ec::RecordingSite::FLUSH_ENTRY);
-  REQUIRE(flush_thunk >= ec::recording_cut_end && flush_thunk + 4 <= ec::recording_page_end);
+  REQUIRE(flush_thunk >= ec::recording_cut.end && flush_thunk + 4 <= ec::recording_page_end);
   Parked parked = Park(flush_thunk);
   // Partial: the entry hook alone comes out (the call Update makes for it); the thread is not in a cut stub.
   uint32_t stood_down = 0;
