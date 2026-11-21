@@ -5598,6 +5598,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         heapfix B2 threads: how real, smallest fix + owner) -> reports/ebr_x87_review.md.
         Agents: c33i_ (C.3-4 + shared table), c3i_ (B1.3 fixes), ebr_ (x87 review) (3 of 3). QUEUE: t4i_ crash-record
         nit, bd1r_ C.3-4 review, b13r_ re-check, B1.4 / B1.5.
+        c33i_ C.3-4 + SHARED TABLE DONE 14:0x (rmt_c34: edf35684d fixes, 0743e9896 sites 39 -> 59, 13c1e6a59 Colour B,
+        2bd22fed7 heapfix_ranges.hpp; +1005 / -157 in 6 files; reports/c33i_c34_handback.md): 20 rows (15 calls + 5
+        STATE blocks, 5 operand variants), shared state-call thunk, RECORDING_OWN COLOUR_B on, PausedWrite stand-down
+        fixpoint (beyond brief), test 5 = 15000 cases vs the game's bytes; code 2889 / 4096 B (page stays 0x1000).
+        Shared table: 36 patched, 54 passtime timing hooks, 68 checked. FINDING: heapfix's passtime dev timing hooks
+        sit exactly on our HOOKED_ENTRIES (flush +0x1778390, loop cut / anim windows) -> split table, clearance ignores
+        them there (RecordingEntriesFree refuses an E9). All gated builds + C suites + FULL exit 0; one flaky
+        tw_draw_recording:614 wait-ticks check (2 re-runs passed).
+        bd1r_ RESUMED 14:0x: review of edf35684d..2bd22fed7 -> reports/bd1r_c34_review.md. KEY: is passtime installed
+        in the FROZEN T5 heapfix build? If yes C refuses in the end batch -> fix or ATN decision.
+        Agents: c3i_ (B1.3 fixes), ebr_ (x87 review), bd1r_ (C.3-4 review) (3 of 3). QUEUE: t4i_ crash-record nit,
+        b13r_ re-check, c33i_ C.3-4 fixes, B1.4 / B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
