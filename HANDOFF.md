@@ -6493,7 +6493,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         per arm 98.2 %, 4 per arm only 21-54 % (rec: always 8). Deviations: Qn instead of MAD, shared Theil-Sen detrend,
         stricter c / c_AA, report_check reads joined units + scopes bench / CPU headings, ASCII gate lines, exit codes
         0-4. Sent to gtv_ as '## S1b' after S1a.
-        Agents (9): bd3r_ + bd1r_ (R-S5 review), gtp_ (GPU S1c), gtv_ (S1r), upt_ (v2.2 notes), lgf1_ +
+        gtp_ GPU S1c DONE 00:5x (plan_1117/gtp_s1c_handback.md; all new files, nothing installed): tools/specs
+        (sources.json 27 sources, spec_index.py FTS5 index 120 MB, spec.py lookups, spec_cite_check.py, NVAPI .chm
+        decompiled with hh.exe for indexing), tools/tw/gates (gate_hook.py, gates.tsv, mode.txt = shadow,
+        block_rows.tsv T01 / T04 / T06 / T09 / T11, gate_override.ps1 parse-checked only, INSTALL_FOR_ATN.md),
+        tools/tw/pitfalls (27 seed rows, pitfall_check.py). 123 / 123 tests; hook median 0.06-0.07 s per call. 12
+        deviations (core rows start on but shadow + not installed; warn mode real; spec gate fails open alone; commit
+        check sees git add && commit / -a / untracked; build SDK 28000). Open: spec.py / spec_index.py / sources.json not
+        protected (Q26 = ATN's step); T11 vs run habits before enforce.
+        gtw_ (a0b03d68655ebfcaf, fresh Opus xHigh) STARTED 00:5x: S1r review of S1c + part A ->
+        plan_1117/gtw_s1c_review.md (sandbox copies only; hook never installed). gtv_ keeps S1a + S1b.
+        [ ] ATN: install the hook (INSTALL_FOR_ATN.md) only after gtw_'s fixes; Q12 / Q26 decide mode + protection.
+        Agents (9): bd3r_ + bd1r_ (R-S5 review), gtv_ (S1r S1a / S1b), gtw_ (S1r S1c), lgf1_ +
         lgf2_ (logging fixes). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6, X1, logging group 3, lga_ re-checks,
         S1r S1b / S1c, bulk index, H0, T5 freeze, T6 dry run, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
