@@ -450,6 +450,7 @@ int RunEffectSitesTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
     harness->data->walk_active.store(0);
     harness->data->direct_high.store(0);
     harness->data->limit.store(0);
+    harness->data->staging.store(0);
   };
   Random random = {.state = 0xE1F00DD1CEull};
   uint8_t* scratch = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x10000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
@@ -699,6 +700,36 @@ int RunEffectSitesTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
     CHECK(kept.calls == 1 && SiteVectorEqual(kept.fx_out, kept.fx_in, true));
     gates(&harness, 0, 0, 0, 0);
     std::printf("25d. the direct stack's one word: own stack fast; another stack, none, no limit, a limit 4 bytes short: slow; a torn low / high pair is taken wrongly by the control, not by the build; no fxsave: the clobber shows\n");
+  }
+
+  // 25d (2). The staging word (L2): the three spawn sites have no fast path while it is set (the direct thread's pass asks the handler too); no other site is changed by it, and
+  // with the gates closed it does nothing.
+  {
+    harness.data->handler.store(harness.handler_plain);
+    int bad = 0;
+    size_t checked = 0;
+    for (size_t index = 0; index < eu::SITE_COUNT; ++index) {
+      const eu::SiteInfo& info = eu::SITES[index];
+      if (info.kind != eu::Kind::ORDER) continue;
+      const bool stages = eu::StagesSpawns(static_cast<eu::Site>(index));
+      for (const uint32_t staging : {0u, 1u}) {
+        gates(&harness, 1, 1, top_b, stack_limit);
+        harness.data->staging.store(staging);
+        const uint32_t direct_calls = thunk_run(&harness, index, false, stack_b).calls;  // the direct thread's own stack
+        const uint32_t other_calls = thunk_run(&harness, index, false, stack_a).calls;   // another thread's: always asks
+        const bool asks_always = eu::AsksAlways(static_cast<eu::Site>(index));
+        bad += (direct_calls != ((stages && staging != 0) || asks_always ? 1u : 0u));
+        bad += (other_calls != 1);
+        gates(&harness, 1, 0, top_b, stack_limit);  // no round: the original path, staging or not
+        harness.data->staging.store(staging);
+        bad += (thunk_run(&harness, index, false, stack_b).calls != 0 && !asks_always && info.kind != eu::Kind::WALK_CALL);
+        ++checked;
+      }
+    }
+    CHECK(bad == 0);
+    gates(&harness, 0, 0, 0, 0);
+    harness.data->staging.store(0);
+    std::printf("25d. the staging word: the 3 spawn sites ask the handler from the direct thread's stack while it is set, no other site changes, the closed gates stay closed (%zu runs)\n", checked);
   }
 
   // 25e. The stack a slow path uses (a pattern-filled stack, the handler touches none): the budget the scheduler's handler adds to.
