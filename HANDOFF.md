@@ -6469,6 +6469,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents (9): bd3r_ + bd1r_ (R-S5 review), gtb_ (GPU S1b), gtp_ (GPU S1c), gtv_ (S1r), upt_ (unified PT v2.1),
         lgf1_ + lgf2_ (logging fixes). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6, X1, logging group 3, lga_
         re-checks, upr_ spot-check, S1r S1b / S1c, bulk index, H0, T5 freeze, T6 dry run, end batch.
+        upt_ UNIFIED PT v2.1 DONE 00:4x (766 lines, change list lines 11-52; hand-back designs/upt_v21_handback.md; v2
+        copy scratchpad\upt_v2_backup.md): H0 hash = Pcg4d (RefPcg4d's body moved to rt_scene.hlsli; RefRandom keeps
+        lane .x bit-identical, estimators lane .y as the salt), chi-square + alias-pair tests, every Random( site (grep);
+        threshold 0.09 default, never above; R3-R7; order U0 lab -> H0 -> U0 PT DI gate -> U1; cost -0.9..+0.4 ms;
+        required path 92 h. upr_ STARTED 00:4x: v2.1 spot-check -> '## v2.1 spot-check'.
+        Agents (9): bd3r_ + bd1r_ (R-S5 review), gtb_ (GPU S1b), gtp_ (GPU S1c), gtv_ (S1r), upr_ (unified PT spot-check),
+        lgf1_ + lgf2_ (logging fixes). QUEUE unchanged (minus upt_).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
