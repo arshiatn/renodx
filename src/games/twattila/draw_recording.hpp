@@ -61,8 +61,8 @@ struct Settings {
   DWORD context_hooks_thread = 0;
   // The B groups' dispatcher families (bit f: family f may record; a clear bit makes its classes direct segments).
   uint32_t b_families = 0xff;
-  // The groups whose own sites and flush path are all written (engine_code); a group not in it runs the game's loop even
-  // when its row is on. All by default (a test that drives the dispatcher without sites).
+  // The groups whose own sites and flush path are all written (engine_code); a group not in it runs the game's loop
+  // even when its row is on. All by default (a test that drives the dispatcher without sites).
   uint32_t groups_in = ~0u;
 };
 
@@ -635,7 +635,8 @@ inline void __fastcall Record(Slot* slot, Frame* frame) noexcept {
         std::memcpy(slot->tracker.data() + 0x08, &block.normal, 4);
       }
       if ((block.writes & STATE_WRITE_FACTION) != 0) {
-        const int32_t mask_index = (block.mask != 0 ? *reinterpret_cast<const int32_t*>(static_cast<uintptr_t>(block.mask) + 4) : -1);
+        const int32_t mask_index =
+            (block.mask != 0 ? *reinterpret_cast<const int32_t*>(static_cast<uintptr_t>(block.mask) + 4) : -1);
         std::memcpy(slot->tracker.data() + 0x00, &block.faction, 4);
         std::memcpy(slot->tracker.data() + 0x0c, &mask_index, 4);
       }
@@ -1067,9 +1068,15 @@ inline Slot* PrepareSlot(uint32_t index, uint32_t group_index, void* tracker, ui
 
 // A colour body's state block, replayed: its calls in the block's order.
 inline void ReplayState(const StateBlock& block, CallTrace* trace_call = nullptr) {
-  if ((block.parts & STATE_SNOW) != 0) ReplayConst(block.snow_object, block.snow_bits, 1);
-  if ((block.parts & STATE_DIFFUSE) != 0) ReplaySrv(block.diffuse_slot, block.diffuse);
-  if ((block.parts & STATE_NORMAL) != 0) ReplaySrv(block.normal_slot, block.normal);
+  if ((block.parts & STATE_SNOW) != 0) {
+    ReplayConst(block.snow_object, block.snow_bits, 1);
+  }
+  if ((block.parts & STATE_DIFFUSE) != 0) {
+    ReplaySrv(block.diffuse_slot, block.diffuse);
+  }
+  if ((block.parts & STATE_NORMAL) != 0) {
+    ReplaySrv(block.normal_slot, block.normal);
+  }
   if ((block.parts & STATE_FACTION) != 0) {
     ReplayFaction(block.faction, block.mask, block.node, block.state, trace_call);
   }

@@ -1799,7 +1799,8 @@ static int32_t recording_fail_protect = -1;
 // Presents with a thread inside a site before giving up (until the row changes); each try snapshots the system's threads
 // (~0.1 s with some antivirus hooks; 3 of 200 writes waited once in the test, four threads running the sites nonstop).
 constexpr uint32_t MAX_FAILED_WRITES = 30;
-// The bytes of the game's code the Attila CPU Performance Fix patches or checks: every feature that writes into the game's code keeps clear of them.
+// The bytes of the game's code the Attila CPU Performance Fix patches or checks: every feature that writes into the
+// game's code keeps clear of them.
 #include "heapfix_ranges.hpp"
 #if defined(TWATTILA_ENGINE_PROBE)
 // 17. The probe build (private, compiled only with TWATTILA_ENGINE_PROBE, no row): a histogram stub in front of each probed site's production stub.
@@ -1906,8 +1907,8 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
     if ((stood[1] & entry_in) != 0) {
       stood[1] |= going_in[1];
     } else {
-      // A group with a site stood down stands down whole, except the sites another group that stays in needs (the per-mesh cut
-      // is both B groups'; when the cut itself is the stood site both groups stand down).
+      // A group with a site stood down stands down whole, except the sites another group that stays in needs (the
+      // per-mesh cut is both B groups'; when the cut itself is the stood site both groups stand down).
       for (bool again = true; again;) {
         again = false;
         for (const uint64_t group_sites : recording_group_sites) {
@@ -1923,6 +1924,9 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
           again |= (standing != 0);
         }
       }
+      // (A lone cut with the entry hook may stay written with no group when one B group goes out in the present another
+      // goes in with a stood site: harmless, RecordingGroupsIn keeps the dispatcher off it, and both come out with the
+      // rows or the stage.)
       if (entry_in != 0 && (staying_in() & ~recording_entry_bit) == 0) {
         stood[1] |= entry_in;
       }
@@ -2521,8 +2525,8 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
 // memory and module.
 inline bool DrawRecordingSitesIn() { return internal::recording_written != 0 || internal::recording_left_in; }
 
-// The loop groups (bits of draw_recording::Group) whose sites and flush path are all written now (draw_recording::Settings::
-// groups_in): the dispatcher runs the rounds of these groups only.
+// The loop groups (bits of draw_recording::Group) whose sites and flush path are all written now
+// (draw_recording::Settings::groups_in): the dispatcher runs the rounds of these groups only.
 inline uint32_t DrawRecordingGroupsIn() { return internal::RecordingGroupsIn(); }
 
 // The Advanced status's words for the LOD pick's site, for the slider `model_detail` now; null: not decided yet (Prepare has not run).

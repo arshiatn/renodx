@@ -1525,7 +1525,7 @@ constexpr std::array<BlockOperands, 5> BLOCKS = {{
 // The frame bytes a block writes besides what the thunk replaces (the default colours it builds, the faction list's out pointer, the
 // gather's vector): the scratch the game's code after the block never reads (checked on the game's bytes: no esp-relative access to
 // them after the block's end in any of the 5 bodies). Inclusive ranges of esp offsets.
-constexpr std::array<std::array<uint32_t, 2>, 2> NARROW_SCRATCH = {{{0x28, 0x2b}, {0x40, 0x7f}}};
+constexpr std::array<std::array<uint32_t, 2>, 3> NARROW_SCRATCH = {{{0x28, 0x2b}, {0x34, 0x37}, {0x40, 0x7f}}};
 constexpr std::array<std::array<uint32_t, 2>, 7> WIDE_SCRATCH = {{{0x14, 0x17}, {0x2c, 0x33}, {0x38, 0x67}, {0x70, 0x73}, {0x7c, 0x7f}, {0x88, 0x8b}, {0x94, 0x97}}};
 
 // Registers in x86 order.
@@ -1692,8 +1692,9 @@ void TestStateBlocks() {
         BlockRun result = {.log = game_log, .cell = block_cell, .out = run_out};
         std::memcpy(result.tracker.data(), tracker, dr::TRACKER_SIZE);
         std::memcpy(result.frame.data(), frame_at, frame.size());
-        // The gather's vector (a local of the blocks that have a mask) holds a heap address that differs from run to run.
-        std::memset(result.frame.data() + 0x34, 0, 4);
+        // The gather's vector (a local of the wide variants, the ones that gather an item's faction colours) holds a heap address
+        // that differs from run to run.
+        if (operands.wide) std::memset(result.frame.data() + 0x34, 0, 4);
         return result;
       };
       std::memcpy(tracker_plain, tracker_initial, sizeof(tracker_plain));
@@ -1717,7 +1718,7 @@ void TestStateBlocks() {
       CHECK(std::memcmp(recorded.tracker.data(), reference.tracker.data(), 0x14) == 0);
       // The thunk leaves the frame as it was; the game's block changes it only in its scratch.
       std::array<uint8_t, BLOCK_FRAME_SIZE> unchanged = frame;
-      std::memset(unchanged.data() + 0x34, 0, 4);
+      if (operands.wide) std::memset(unchanged.data() + 0x34, 0, 4);
       CHECK(recorded.frame == unchanged);
       for (uint32_t at = 0; at < BLOCK_FRAME_SIZE; ++at) {
         if (reference.frame[at] == unchanged[at]) continue;

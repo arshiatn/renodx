@@ -578,7 +578,7 @@ void TestWindow() {
   const uint32_t saved_dispatch = shared->dispatch_depth;
   shared->dispatch_depth = ec::Address(reinterpret_cast<const void*>(&FakeDispatch));
   DWORD protection;
-  VirtualProtect(ec::recording_page, 0x1000, PAGE_EXECUTE_READWRITE, &protection);
+  VirtualProtect(ec::recording_page, ec::RECORDING_CODE_SIZE, PAGE_EXECUTE_READWRITE, &protection);
   uint16_t original_pair;
   std::memcpy(&original_pair, ec::recording_page, 2);
   const uint16_t spin = 0xFEEB;
@@ -595,7 +595,7 @@ void TestWindow() {
   CHECK(WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0);
   CloseHandle(thread);
   CHECK(fake_dispatches == 1 && shared->active.load() == 0);
-  VirtualProtect(ec::recording_page, 0x1000, PAGE_EXECUTE_READ, &protection);
+  VirtualProtect(ec::recording_page, ec::RECORDING_CODE_SIZE, PAGE_EXECUTE_READ, &protection);
   shared->dispatch_depth = saved_dispatch;
   UpdateWith(0);
   CHECK(ec::recording_written == 0 && DifferingBytes() == 0);
@@ -2172,7 +2172,10 @@ void TestHeapfixClearance() {
   uint32_t on_entries = 0;
   std::string report;
   for (const ec::RecordingSiteInfo& site_info : ec::RECORDING_INFO) {
-    const uint32_t size = std::max<uint32_t>(site_info.covered, ec::SITE_SIZE);
+    // A colour state block's bytes run to its exit (the record path skips them all).
+    const bool state_block = (site_info.record_site == dr::Site::COLOUR_B_STATE);
+    const uint32_t size = (state_block ? site_info.exit_rva - site_info.rva : std::max<uint32_t>(site_info.covered, ec::SITE_SIZE));
+    CHECK(!state_block || size > 100);
     uint32_t patched_gap = 0xFFFFFFFF;
     uint32_t checked_gap = 0xFFFFFFFF;
     const ec::HeapfixRange* patched_near = nullptr;
@@ -2215,10 +2218,14 @@ void TestHeapfixClearance() {
     uint32_t rva;
     uint32_t size;
   };
-  constexpr std::array<Row, 14> PATCHED_ROWS = {{{0x18F9150, 6}, {0xD79AC8, 36}, {0xD79B12, 36}, {0x189B363, 36}, {0x174A8BD, 86}, {0x18E8390, 5}, {0x17AD5D0, 5},
-                                                 {0x17ACB50, 5}, {0x174CD88, 5}, {0x1A27CA0, 6}, {0xC1950, 10}, {0x17DABAF, 5}, {0x182E0DA, 9}, {0x17DAB90, 8}}};
+  constexpr std::array<Row, 20> PATCHED_ROWS = {{{0x18F9150, 6}, {0xD79AC8, 36}, {0xD79B12, 36}, {0x189B363, 36}, {0x174A8BD, 86}, {0x18E8390, 5}, {0x17AD5D0, 5},
+                                                 {0x17ACB50, 5}, {0x174CD88, 5}, {0x1A27CA0, 6}, {0xC1950, 10}, {0x17DABAF, 5}, {0x182E0DA, 9}, {0x17DAB90, 8},
+                                                 {0x112D80, 10}, {0x112730, 8}, {0x113040, 5}, {0x1126E0, 7}, {0x7B6F60, 5}, {0x7B7070, 5}}};
   constexpr std::array<Row, 6> TIMING_ROWS = {{{0x17FA310, 6}, {0x186BE70, 10}, {0x1893CC0, 6}, {0x1722420, 7}, {0x176A450, 5}, {0x177BB10, 5}}};
-  constexpr std::array<Row, 7> CHECKED_ROWS = {{{0x18E8390, 0x342}, {0x192EEE0, 0x22A}, {0x17AD5D0, 630}, {0x17ACB50, 630}, {0x174CCA0, 0xED}, {0x174CC20, 0x27}, {0x175D5D0, 0xEC}}};
+  constexpr std::array<Row, 21> CHECKED_ROWS = {{{0x18E8390, 0x342}, {0x192EEE0, 0x22A}, {0x17AD5D0, 630}, {0x17ACB50, 630}, {0x174CCA0, 0xED}, {0x174CC20, 0x27}, {0x175D5D0, 0xEC},
+                                                 {0x1626190, 10}, {0x16238A0, 6}, {0x112D80, 12}, {0x112730, 12}, {0x113040, 12}, {0x1126E0, 12},
+                                                 {0x7B6F60, 267}, {0x7B6800, 308}, {0x7B6E40, 279}, {0x7B6A80, 310}, {0x7B7070, 311}, {0x7B6BC0, 311}, {0x7B6D00, 309},
+                                                 {0x7B6940, 309}}};
   const auto present = [](const auto& table, const std::span<const Row> rows) {
     for (const Row& row : rows) {
       CHECK(std::any_of(table.begin(), table.end(), [&](const ec::HeapfixRange& range) { return range.rva == row.rva && range.size == row.size; }));
