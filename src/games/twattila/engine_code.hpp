@@ -29,6 +29,7 @@
 #include "../twrome2/engine_tweaks.hpp"
 #include "./animation_rows.hpp"
 #include "./effect_update_sites.hpp"
+#include "./instance_fill.hpp"
 #include "./pending_sweep.hpp"
 #if defined(TWATTILA_DRAW_RECORDING)
 #include "./draw_recording.hpp"
@@ -69,13 +70,15 @@ enum class Game : uint8_t { ATTILA, THRONES, ROME2 };
 // pending_sweep::Arm while `pending_sweep_trace` is set (a bench's RENODX_TW_WORKER_TRACE, never a player's); the effect
 // update's 27 sites (effect_update_sites.hpp: their own table, written in the same window) while `effect_update` is set; the
 // two sites of Cached Particle Count while `particle_count` is set (`particle_count_check`: the game's sum is also computed
-// on every call and compared with the cache, a bench's RENODX_TW_COUNT_CHECK, never a player's).
+// on every call and compared with the cache, a bench's RENODX_TW_COUNT_CHECK, never a player's); the 4 fill sites of Parallel
+// Instance Fill (instance_fill.hpp: their own table too) while `instance_fill` is set.
 struct WorkerRows {
   animation_rows::Stage animation = animation_rows::Stage::OFF;
   bool pending_sweep_trace = false;
   bool effect_update = false;
   bool particle_count = false;
   bool particle_count_check = false;
+  bool instance_fill = false;
 };
 
 // What the cache of Cached Particle Count counted (the check's mismatches are what the row's end-of-soak line reports).
@@ -1924,6 +1927,23 @@ constexpr uint32_t MAX_FAILED_WRITES = 30;
 // The bytes of the game's code the Attila CPU Performance Fix patches or checks: every feature that writes into the
 // game's code keeps clear of them.
 #include "heapfix_ranges.hpp"
+// Whether [rva, rva + size) touches a row heapfix patches or a timing hook of it (but not the hook of an entry `own_entry` names), or a row it only checks.
+template <typename OwnEntry>
+constexpr bool TouchesPatched(uint32_t rva, uint32_t size, OwnEntry own_entry) {
+  for (const HeapfixRange& range : HEAPFIX_PATCHED) {
+    if (Touches(rva, size, range)) return true;
+  }
+  for (const HeapfixRange& range : HEAPFIX_TIMING_HOOKS) {
+    if (Touches(rva, size, range) && !own_entry(range.rva)) return true;
+  }
+  return false;
+}
+constexpr bool TouchesChecked(uint32_t rva, uint32_t size) {
+  for (const HeapfixRange& range : HEAPFIX_CHECKED) {
+    if (Touches(rva, size, range)) return true;
+  }
+  return false;
+}
 // The Parallel Effect Update's sites and Cached Particle Count's clear heapfix's rows (one table for every feature): what a site writes touches no row that heapfix patches
 // or checks, and what it reads (the bytes it is found by, a callee's head, the sweep's span, which it jumps into) touches no patched one; ranges that only touch each other are
 // clear (Touches is half-open: the epoch's 6 bytes end where heapfix's check row +0x192D296 starts). A timing hook on one of our own entries is refused at run time (the
@@ -1936,21 +1956,8 @@ constexpr bool EffectSitesClearOfHeapfix() {
     }
     return rva == PARTICLE_EPOCH_RVA || rva == PARTICLE_COUNT_RVA;
   };
-  const auto patched = [&](uint32_t rva, uint32_t size) {
-    for (const HeapfixRange& range : HEAPFIX_PATCHED) {
-      if (Touches(rva, size, range)) return true;
-    }
-    for (const HeapfixRange& range : HEAPFIX_TIMING_HOOKS) {
-      if (Touches(rva, size, range) && !own_entry(range.rva)) return true;
-    }
-    return false;
-  };
-  const auto checked = [](uint32_t rva, uint32_t size) {
-    for (const HeapfixRange& range : HEAPFIX_CHECKED) {
-      if (Touches(rva, size, range)) return true;
-    }
-    return false;
-  };
+  const auto patched = [&](uint32_t rva, uint32_t size) { return TouchesPatched(rva, size, own_entry); };
+  const auto checked = TouchesChecked;
   for (const eu::SiteInfo& info : eu::SITES) {
     const uint32_t size = static_cast<uint32_t>(eu::SizeOf(info));
     if (patched(info.rva, size) || checked(info.rva, size) || patched(info.callee_rva, static_cast<uint32_t>(PatternSize(info.callee_head)))) return false;
@@ -1968,6 +1975,16 @@ constexpr bool EffectSitesClearOfHeapfix() {
   return true;
 }
 static_assert(EffectSitesClearOfHeapfix());
+// Parallel Instance Fill's sites (instance_fill.hpp) the same way: what a site writes touches no patched or checked row, and what it is found by (the
+// patterns, the links of each record copy's chain, the record copies' heads) touches no patched one. It has no timing hook of its own.
+constexpr bool FillSitesClearOfHeapfix() {
+  bool clear = true;
+  const auto no_entry = [](uint32_t) { return false; };
+  instance_fill::VisitRanges(true, [&](uint32_t rva, uint32_t size) { clear &= !TouchesPatched(rva, size, no_entry) && !TouchesChecked(rva, size); });
+  instance_fill::VisitRanges(false, [&](uint32_t rva, uint32_t size) { clear &= !TouchesPatched(rva, size, no_entry); });
+  return clear;
+}
+static_assert(FillSitesClearOfHeapfix());
 // The check row that starts where the epoch's instruction ends is clear of the 6 bytes and touched by a seventh.
 static_assert([] {
   for (const HeapfixRange& range : HEAPFIX_CHECKED) {
@@ -2000,8 +2017,12 @@ static_assert([] {
 // is in flight and no thread is about to start one; the last ones to come out also wait for every thread to be out of
 // the thunks' page (the arena size, 0 once none is in, sends every thunk the direct way). The worker sites (WORKER_SITES) are
 // cut sites too: one comes out only while no call through its stub is in flight and no thread is in the stubs.
+// Parallel Instance Fill's sites (`fill_patched` / `fill_stood_down`, instance_fill.hpp) are written in the same window, last: a group of
+// them goes in whole or not at all, and comes out only while no thread is inside the dispatcher (the cut on its `active` count) or past the
+// first byte of a site.
 inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recording_patched = 0,
-                        uint64_t* recording_stood_down = nullptr, uint32_t effect_patched = 0, uint32_t* effect_stood_down = nullptr) {
+                        uint64_t* recording_stood_down = nullptr, uint32_t effect_patched = 0, uint32_t* effect_stood_down = nullptr,
+                        uint32_t fill_patched = 0, uint32_t* fill_stood_down = nullptr) {
   namespace eu = effect_update::internal;
   const std::array<std::span<Site>, 2> tables = {std::span<Site>(sites), std::span<Site>(recording_sites)};
   const std::array<uint64_t, 2> wanted = {patched, recording_patched};
@@ -2011,19 +2032,25 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
   // The effect update's sites: their own table (sites of up to 11 bytes), whole or not at all.
   const uint32_t effect_changing = (effect_patched ^ eu::written) & eu::found;
   const bool effect_out = (effect_changing & ~effect_patched) != 0;
+  // Parallel Instance Fill's sites: their own table (instance_fill.hpp), whole or not at all; its dispatcher counts the threads in it.
+  const uint32_t fill_changing = instance_fill::Changing(fill_patched);
+  const bool fill_out = (fill_changing & ~fill_patched) != 0;
   // The cuts with a site coming out. The thunks' direct paths run on every flush of the game, on any thread, and
   // draw_recording frees its memory and releases its module after the last removal: a thread anywhere in the page then
   // is not clear. A partial removal only waits for the cut stubs.
   // The effect update's thunks count the threads in their slow paths (and in the game's calls they make), and any thread
   // anywhere in the page may be about to enter one: the whole page.
-  const std::array<std::pair<CutRange, bool>, 3> cuts = {{
+  const std::array<std::pair<CutRange, bool>, 4> cuts = {{
       {worker_cut, (changing[0] & ~wanted[0] & WORKER_SITES) != 0},
       {{recording_cut.begin, (recording_patched == 0 ? recording_page_end : recording_cut.end), recording_cut.active}, recording_out},
-      {{eu::page, eu::page_end, (eu::data != nullptr ? &eu::data->active : nullptr)}, effect_out}}};
+      {{eu::page, eu::page_end, (eu::data != nullptr ? &eu::data->active : nullptr)}, effect_out},
+      {{nullptr, nullptr, &instance_fill::internal::active}, fill_out}}};
   std::array<uint64_t, 2> stood = {};
   uint32_t effect_stood = 0;
+  uint32_t fill_stood = 0;
   *stood_down = 0;
   if (effect_stood_down != nullptr) *effect_stood_down = 0;
+  if (fill_stood_down != nullptr) *fill_stood_down = 0;
   std::vector<HANDLE> threads;
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
   if (snapshot == INVALID_HANDLE_VALUE) return false;
@@ -2062,6 +2089,9 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
       if ((effect_changing >> index & 1) != 0 && context.Eip > start && context.Eip < start + eu::sites[index].size) {
         clear = false;
       }
+    }
+    if (instance_fill::ThreadInside(context.Eip, fill_changing)) {
+      clear = false;
     }
     for (const auto& [cut, out] : cuts) {
       if (out && context.Eip >= reinterpret_cast<uintptr_t>(cut.begin) && context.Eip < reinterpret_cast<uintptr_t>(cut.end)) {
@@ -2227,6 +2257,7 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
     }
     restore_effect_protections();
     restore_protections();
+    fill_stood = instance_fill::Rewrite(fill_patched);
     FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
   }
   for (size_t index = 0; index < threads.size(); ++index) {
@@ -2236,6 +2267,7 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
   *stood_down = static_cast<uint32_t>(stood[0]);
   if (recording_stood_down != nullptr) *recording_stood_down = stood[1];
   if (effect_stood_down != nullptr) *effect_stood_down = effect_stood;
+  if (fill_stood_down != nullptr) *fill_stood_down = fill_stood;
   return clear;
 }
 
@@ -2669,7 +2701,14 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
       effect_update::Prepare(module);
     }
   }
+  namespace fi = instance_fill::internal;
+  if (worker_rows.instance_fill && game == Game::ATTILA && !fi::prepared) {
+    if (HMODULE module = GetModuleHandleW(L"empire.retail.dll"); module != nullptr) {
+      instance_fill::Prepare(module);
+    }
+  }
   const uint32_t effect_wanted = (game == Game::ATTILA ? effect_update::Wanted(worker_rows.effect_update) : 0u);
+  const uint32_t fill_wanted = (game == Game::ATTILA ? instance_fill::Wanted(worker_rows.instance_fill) : 0u);
 #if defined(TWATTILA_DRAW_RECORDING)
   if (draw_recording_groups != 0 && game == Game::ATTILA && !internal::recording_prepared) {
     if (HMODULE module = GetModuleHandleW(L"empire.retail.dll"); module != nullptr) {
@@ -2697,10 +2736,12 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
 #if defined(TWATTILA_ENGINE_PROBE)
   internal::probe::Tick(internal::written);
 #endif
-  if (wanted != internal::asked || recording_wanted != internal::recording_asked || effect_wanted != eu::asked) {
+  if (wanted != internal::asked || recording_wanted != internal::recording_asked || effect_wanted != eu::asked
+      || fill_wanted != fi::asked) {
     internal::asked = wanted;
     internal::recording_asked = recording_wanted;
     eu::asked = effect_wanted;
+    fi::asked = fill_wanted;
     internal::failed_writes = 0;
   }
   if (jobs && internal::prepared && (internal::found & internal::JOB_SITES) == 0 && !internal::job_missing_logged) {
@@ -2730,7 +2771,8 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   if (effect_wanted == 0 && eu::written != 0) {
     effect_update::Disarm();  // the effect update's sites leaving: no thread enters a slow path from now on
   }
-  if ((target == internal::written && recording_target == internal::recording_written && effect_wanted == eu::written)
+  if ((target == internal::written && recording_target == internal::recording_written && effect_wanted == eu::written
+       && fill_wanted == fi::written)
       || internal::failed_writes >= internal::MAX_FAILED_WRITES) {
     return;
   }
@@ -2740,7 +2782,9 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   // Cached Particle Count going in: the epoch did not run while the row was off, so what the cache holds is of an older update; no stub runs yet, so a plain bump
   // (a failed write bumps again: harmless).
   if (internal::count_data != nullptr && (target & ~internal::written & internal::PARTICLE_COUNT_SITES) != 0) ++internal::count_data->generation;
-  if (internal::PausedWrite(target, &stood_down, recording_target, &recording_stood_down, effect_wanted, &effect_stood_down)) {
+  uint32_t fill_stood_down = 0;
+  if (internal::PausedWrite(target, &stood_down, recording_target, &recording_stood_down, effect_wanted, &effect_stood_down, fill_wanted,
+                            &fill_stood_down)) {
     const uint32_t changing = target ^ internal::written;
     const uint32_t now = (internal::written & ~changing) | (target & changing & ~stood_down);
     const uint32_t changed = now ^ internal::written;
@@ -2765,6 +2809,21 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     }
     eu::written = effect_now;
     eu::found &= ~effect_stood_down;
+    // The fill's sites (a group whole or not at all): a site that stood down on its way out may still call into this module.
+    const uint32_t fill_changing = instance_fill::Changing(fill_wanted);
+    const uint32_t fill_now = (fi::written & ~fill_changing) | (fill_wanted & fill_changing & ~fill_stood_down);
+    if ((fill_stood_down & fill_changing & ~fill_wanted & fi::written) != 0) {
+      internal::PinModule();
+    }
+    if (fill_now != fi::written) {
+      renodx::utils::log::i("[Total War] Parallel Instance Fill sites: ", (fill_now != 0 ? "in" : "out, the game's own code back"));
+    }
+    if (fill_stood_down != 0) {
+      renodx::utils::log::w("[Total War] Parallel Instance Fill sites: left alone (their bytes changed since the start: another mod, ",
+                            "or a page that could not be made writable)");
+    }
+    fi::written = fill_now;
+    fi::found &= ~fill_stood_down;
 #if defined(TWATTILA_ENGINE_PROBE)
     internal::probe::LogSites(internal::sites, now);
 #endif
@@ -2870,18 +2929,24 @@ inline const char* ModelDetailStatus(float model_detail) {
 // the game's code if no attempt finds the threads clear: the stubs need nothing of this module.
 inline void Uninstall() {
   namespace eu = effect_update::internal;
+  namespace fi = instance_fill::internal;
   internal::SyncWorkerSlots(0);
   effect_update::Disarm();
-  for (int attempt = 0; (internal::written != 0 || internal::recording_written != 0 || eu::written != 0) && attempt < 100; ++attempt) {
+  instance_fill::Wanted(false);  // the fill's sites run the game's own call from now on
+  for (int attempt = 0;
+       (internal::written != 0 || internal::recording_written != 0 || eu::written != 0 || fi::written != 0) && attempt < 100; ++attempt) {
     uint32_t stood_down;
     uint64_t recording_stood_down;
     uint32_t effect_stood_down;
-    if (internal::PausedWrite(0, &stood_down, 0, &recording_stood_down, 0, &effect_stood_down)) {
-      if ((stood_down & internal::written & internal::WORKER_SITES) != 0 || (effect_stood_down & eu::written) != 0) {
+    uint32_t fill_stood_down;
+    if (internal::PausedWrite(0, &stood_down, 0, &recording_stood_down, 0, &effect_stood_down, 0, &fill_stood_down)) {
+      if ((stood_down & internal::written & internal::WORKER_SITES) != 0 || (effect_stood_down & eu::written) != 0
+          || (fill_stood_down & fi::written) != 0) {
         internal::PinModule();
       }
       internal::written = 0;  // a site another mod changed is that mod's now
       eu::written = 0;
+      fi::written = 0;
       // The recording thunks need this module and Shared: a site left behind keeps them alive.
       if ((recording_stood_down & internal::recording_written) != 0) {
         internal::recording_left_in = true;
@@ -2896,6 +2961,10 @@ inline void Uninstall() {
       internal::PinModule();
     }
     renodx::utils::log::w("[Total War] Faster Game CPU Code: left in at detach (a game thread kept running it)");
+  }
+  if (fi::written != 0) {
+    internal::PinModule();
+    renodx::utils::log::w("[Total War] Parallel Instance Fill: left in at detach (a game thread kept running it)");
   }
   if (internal::recording_written != 0) {
     internal::recording_left_in = true;
