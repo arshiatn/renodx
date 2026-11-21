@@ -5184,6 +5184,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         bd3r_ RESUMED 08:1x: re-check of S8a v2 -> verdict for S8-1a. t4i_ got the presort line forms (LATCH "PRESORT
         CHECK MISMATCH", "; presort:" clause, probe lines) + EARLY check needs MODE 3.
         Agents: t4i_, c3i_ (waiting on its run), bd3r_ (3 of 3).
+        bd3r_ RE-CHECK OF S8a v2 DONE 08:1x (appended to reports/bd3r_s8a_review.md): S8-1a MAY START with one Must in
+        its brief: two more stop conditions (relocated dword into any site's interior; any caller / relocated ref of
+        0x1189B9A0 other than +0x1811FCA). P3' bytes, callee, registers, flags, XMM verified; arena halves Dekker pair
+        correct; M2 row ends verified; M3 pair + order correct. Shoulds for S8-1b / S8-2: keep the S == C / 2 rule beside
+        dirty-0; pick one rule for a late P1 in the users step; instances guard checks the mesh's owner field (+0x538
+        main kind, +0x3E8 0x186BD60 kind); S8-1a prints site bytes + new-row reloc check; batch: a PRESORT CHECK MISMATCH
+        in segment 1 switches the presort off for the session -> segments 2-4 stop and report or a new start. pool_munmap:
+        safe as is (author note only; hardening = per-region clear after VirtualFree succeeds).
+        hp1i_ RESUMED 08:1x (Sonnet High): S8-1a TESTS ONLY on prep (scans (a) / (b) / (c) in prepare_test via build.bat
+        test, reloc assert over all rows + test 27, report items, all stop conditions incl. Must 1) -> verbatim output ->
+        COORDINATOR OK before S8-1b.
+        Agents: t4i_, c3i_ (waiting on its run), hp1i_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
