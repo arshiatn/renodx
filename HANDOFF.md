@@ -5400,6 +5400,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         rows) -> bd3r_ quick re-check -> hp1i_ S8-1c (+ S8-2 if GO).
         Agents: c3i_ (B1.2b), c33i_ (C.3-3), bd3o_ (v4.1) (3 of 3). QUEUE: t4i_ T1b follow-ups + ebo_ lane (+ the A B A B
         EARLY segments); hp1i_ S8-1c after the v4.1 re-check.
+        bd3o_ S8a v4.1 DONE 10:1x (appended to bd3o_design_S8a.md; text only): GAIN G = s_w x r/s x h / (K+1): day1
+        CPU-bound 0.21-0.32 ms (range 0.09-0.47), stress 0.31 ms (0.17-0.50), GPU-bound 4K 0 (upper bounds; h = 0.8 is a
+        guess) vs ~950 lines + 2 reviews + 7 batch segments -> RECOMMEND STOP AFTER S8-1c, PARK S8-2, DROP S8-3. Musts 1-2
+        written (kp_sort contract; 64-frame parity A/B in PROBE + P0 / A1 B1 A2 B2 A3 B3 segments), PRESORT_MIN_N = 64.
+        S8-1c: compile gate HEAPFIX_PRESORT (off in release: no stubs / reservation / thread, P3 / P3' / P4 unpatched;
+        left: one uncontended try-lock in pool_munmap + unused exports), read-depth counter + lock invariant + test 51,
+        PIN rows, S8-1 nits 1-5; src +40, tests +150. REVIVE TRIGGER for S8-2: the end batch's S1-S7 data shows the
+        render thread still waiting >= ~1.1 ms / frame on the weighted chain in a CPU-bound battle (G ~ 0.28 x W_w).
+        COORDINATOR DECISION 10:1x (default until ATN answers): S8-2 PARKED, S8-3 DROPPED, S8-1c built now. bd3r_'s
+        v4.1 re-check folded into its S8-1c review (the text Musts only matter for S8-2).
+        [ ] ATN Q3: park S8-2 (presort ~0.3 ms / frame at best, 0 GPU-bound) until the end batch shows W_w >= 1.1 ms, or
+        build it anyway? Also: put the dormant presort code (gate off) into the heapfix author package or keep it out?
+        [ ] ebo_ lane (owner t4i_): with S8-2 parked, take the presort segments (EARLY / PROBE / B2:early) OUT of the
+        batch plan + gates; make sure the batch logs W_w (render thread's wait on the weighted chain) per CPU-bound
+        segment for the revive trigger.
+        hp1i_ RESUMED 10:1x: S8-1c (src_prep10, build.bat test both gate configs, prepare_test x6, commit) -> bd3r_
+        review of S8-1c + the v4.1 text.
+        Agents: c3i_ (B1.2b), c33i_ (C.3-3), hp1i_ (S8-1c) (3 of 3). QUEUE: t4i_ T1b follow-ups + ebo_ lane; bd3r_ after
+        S8-1c.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
