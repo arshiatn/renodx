@@ -1365,6 +1365,9 @@ std::array<float, 4> draw_recording_group_rows = {};
 float draw_recording_families_row = 255.f;
 // Parallel Instance Fill (Experimental, off): instance_fill.hpp, the ring buffer fills of the draw passes on the worker pool.
 float instance_fill_row = 0.f;
+// Fill With Draw Recording (Experimental, off): the fill's job stays open to the draw dispatcher's cut (instance_fill.hpp's stubs,
+// draw_recording.hpp's fold).
+float fill_fold_row = 0.f;
 
 // One of the four group rows: its key and label, the tooltip's loop.
 renodx::utils::settings::Setting* DrawRecordingGroupRow(const char* key, const char* label, size_t group, const char* tooltip) {
@@ -1634,6 +1637,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // Any user of the worker pool is in a stage that wakes workers.
   bool pool_in_use = false;
   bool instance_fill_on = false;
+  bool fill_fold_on = false;
 #if defined(TWATTILA_DRAW_RECORDING)
   twattila::draw_recording::Settings recording = {
       .stage = static_cast<twattila::draw_recording::Stage>(draw_recording_stage_row),
@@ -1651,7 +1655,10 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                  || recording.stage == twattila::draw_recording::Stage::ONE_WORKER
                  || recording.stage == twattila::draw_recording::Stage::WORKERS);
   instance_fill_on = (instance_fill_row != 0.f);
+  fill_fold_on = (fill_fold_row != 0.f);
   pool_in_use |= instance_fill_on;
+  // A fold still open here (a path that did not close it) would make the pool's Update wait for workers parked on its publish.
+  twattila::draw_recording::CloseFoldAtPresent();
 #endif
   // Before the users' own Updates.
   twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use,
@@ -1659,7 +1666,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
                                 job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,
                                 particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale, recording_groups,
-                                {.pending_sweep_trace = worker_trace_env, .instance_fill = instance_fill_on});
+                                {.pending_sweep_trace = worker_trace_env, .instance_fill = instance_fill_on, .fill_fold = fill_fold_on});
 #if defined(TWATTILA_DRAW_RECORDING)
   // After the engine code's Update: the sites are in or out for this present, and only the groups whose sites all are
   // in run.
@@ -2189,6 +2196,17 @@ void ConfigureAddon() {
           .tooltip = "Copies the instance data of each draw pass on the add-on's worker threads. Same picture.",
           .labels = {"Off", "On"},
       },
+      new renodx::utils::settings::Setting{
+          .key = "FillWithDrawRecording",
+          .binding = &fill_fold_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Fill With Draw Recording (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Copies a pass's instance data on the worker threads while the draws are recorded. Needs Parallel Instance Fill"
+                     " and a Threaded Draw Recording stage that uses workers. Same picture.",
+          .labels = {"Off", "On"},
+      },
 #endif
       new renodx::utils::settings::Setting{
           .key = "RayTracedSkipShadowPass",
@@ -2574,6 +2592,10 @@ void DetachAddon() {
   twattila::engine_tests::StopAtStart(&at_start_stop);
   tw::engine_tweaks::Uninstall(graphics_options);
   twattila::engine_code::Uninstall();
+#if defined(TWATTILA_DRAW_RECORDING)
+  // A fold still open on this thread is closed before the pool stops (its workers wait for the publish).
+  twattila::draw_recording::CloseFoldAtPresent();
+#endif
   // Before the users' Uninstall frees their memory and the module reference: a job open on another thread keeps the pool (and
   // the users keep their memory then).
   twattila::worker_pool::Stop();

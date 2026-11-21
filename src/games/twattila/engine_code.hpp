@@ -71,7 +71,8 @@ enum class Game : uint8_t { ATTILA, THRONES, ROME2 };
 // update's 27 sites (effect_update_sites.hpp: their own table, written in the same window) while `effect_update` is set; the
 // two sites of Cached Particle Count while `particle_count` is set (`particle_count_check`: the game's sum is also computed
 // on every call and compared with the cache, a bench's RENODX_TW_COUNT_CHECK, never a player's); the 4 fill sites of Parallel
-// Instance Fill (instance_fill.hpp: their own table too) while `instance_fill` is set.
+// Instance Fill (instance_fill.hpp: their own table too) while `instance_fill` is set, and (private build) its 3 Unmap stubs while
+// `fill_fold` is set too.
 struct WorkerRows {
   animation_rows::Stage animation = animation_rows::Stage::OFF;
   bool pending_sweep_trace = false;
@@ -79,6 +80,7 @@ struct WorkerRows {
   bool particle_count = false;
   bool particle_count_check = false;
   bool instance_fill = false;
+  bool fill_fold = false;
 };
 
 // What the cache of Cached Particle Count counted (the check's mismatches are what the row's end-of-soak line reports).
@@ -2708,7 +2710,6 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     }
   }
   const uint32_t effect_wanted = (game == Game::ATTILA ? effect_update::Wanted(worker_rows.effect_update) : 0u);
-  const uint32_t fill_wanted = (game == Game::ATTILA ? instance_fill::Wanted(worker_rows.instance_fill) : 0u);
 #if defined(TWATTILA_DRAW_RECORDING)
   if (draw_recording_groups != 0 && game == Game::ATTILA && !internal::recording_prepared) {
     if (HMODULE module = GetModuleHandleW(L"empire.retail.dll"); module != nullptr) {
@@ -2719,6 +2720,22 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
 #else
   const uint64_t recording_wanted = 0;
 #endif
+  const uint64_t recording_target = recording_wanted & internal::recording_found;
+  // The fill's Wanted after the recording's target is known: the fold's stubs follow their cut (a stub is asked for only with its
+  // cut written before this window and still wanted), all read before the window.
+  uint32_t cuts_written = 0;
+  uint32_t cuts_target = 0;
+#if defined(TWATTILA_DRAW_RECORDING)
+  const std::array<uint64_t, 3> fold_cuts = {internal::RecordingBit(internal::RecordingSite::DEPTH_CUT),
+                                             internal::RecordingBit(internal::RecordingSite::COLOUR_CUT),
+                                             internal::RecordingBit(internal::RecordingSite::DEPTH_B_CUT)};
+  for (size_t stub = 0; stub < fold_cuts.size(); ++stub) {
+    cuts_written |= ((internal::recording_written & fold_cuts[stub]) != 0 ? 1u : 0u) << stub;
+    cuts_target |= ((recording_target & fold_cuts[stub]) != 0 ? 1u : 0u) << stub;
+  }
+#endif
+  const uint32_t fill_wanted =
+      (game == Game::ATTILA ? instance_fill::Wanted(worker_rows.instance_fill, worker_rows.fill_fold, cuts_written, cuts_target) : 0u);
   if (internal::count_data != nullptr) {
     internal::count_data->check = (worker_rows.particle_count_check ? 1u : 0u);
     if (internal::count_data->mismatches != 0 && !internal::count_mismatch_logged) {
@@ -2766,7 +2783,6 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   for (const uint32_t group : {internal::PARTICLE_COUNT_SITES, internal::JOB_SITES}) {
     if ((internal::found & group) != group) target &= ~group;
   }
-  const uint64_t recording_target = recording_wanted & internal::recording_found;
   internal::SyncWorkerSlots(internal::written & target);  // a site leaving: its word first
   if (effect_wanted == 0 && eu::written != 0) {
     effect_update::Disarm();  // the effect update's sites leaving: no thread enters a slow path from now on
