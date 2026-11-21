@@ -6103,6 +6103,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: b13r_ (R1 re-check), bd3o_ (R2 v2), x0i_ (X2 notes) (3 of 3). QUEUE: merge rmt_b15r1, c33i_ part 2b
         (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, bd3r_ R2 re-check, B1.6 (+ N5
         real-routine tests), X1, R-S5.
+        x0i_ X2 NOTES DONE 20:4x: variant x87c 0b1ad4a (tests + author notes only, no log wording change): S-X2n-1
+        sentence, real wrap control (6 .reloc controls), mutant == 1 << 20 exactly, campfix's 4 live sites clear, sweep
+        scope note. --x2 --sweep exit 0, 0 mismatches over 2^32 (23.7 s). X2 COMPLETE for the author package (measure
+        later, ATN decides).
+        ebr_ STARTED 20:5x: short final check of 0b1ad4a -> reports/ebr_x87_review.md '## X2 final check'.
+        Agents: b13r_ (R1 re-check), bd3o_ (R2 v2), ebr_ (X2 final check) (3 of 3). QUEUE: merge rmt_b15r1, c33i_ part
+        2b (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, bd3r_ R2 re-check, B1.6 (+ N5
+        real-routine tests), X1, R-S5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
