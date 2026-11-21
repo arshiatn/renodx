@@ -4948,6 +4948,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         04:1x into tools\refcode\papers\restir_1121\: lin2026 ReSTIR PT Enhanced (+ supplemental), lin2021 Volumetric
         ReSTIR, lin2022 GRIS (ReSTIR PT), wyman2023 Gentle Introduction to ReSTIR; tools\refcode\flip = NVIDIA FLIP
         d3ab02a (BSD-3). The unified PT design + gto_ part B read them. ATN went to bed 04:1x.
+        hp1i_ T2 DONE 04:1x (prep 7836fe6, local; reports/hp1i_t2_handback.md): live re-read by HEAPFIX_PREPARE_GEN at
+        frame boundaries, only with HEAPFIX_PREPARE_LIVE=1 at start (then installed even in mode 0, pool of MAX_THREADS);
+        safe point g_applying / g_open locked exchange, change waits for a boundary with no chain open; MODE + THREADS
+        applied, FAMILIES / EARLY / EARLY_THREADS / PROBE parsed + logged "not built"; applied line, bad values once,
+        nothing per frame; bd3r_'s 3 nits (control 5 = 57 of 100, CBARRIER data -> size, restore VirtualProtect logged).
+        Full build.bat test exit 0 (src_prep4); DLL prep3_dinput8.dll sha256 71245afb...98e0. Not proven: live change
+        under real concurrent threads (one-thread test). hp1i_ asked to stop its leftover background work.
+        bd3r_ RESUMED 04:1x: review of T2. Agents: c3i_, gto_, bd3r_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
