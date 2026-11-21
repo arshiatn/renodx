@@ -5779,6 +5779,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         control + failing control, proof table, X0-T callers of +0xC1950, block micro -> ebr_ X0 review.
         Agents: c33i_ (C.3-4 fixes + LOGX), c3i_ (B1.4 fixes), x0i_ (X0) (3 of 3). QUEUE: bd1r_ re-check, merge rmt_c34,
         t4i_ LOGX case + nit, ebr_ T4 confirm, b13r_ B1.4 re-check, B1.5, ebr_ X0 review.
+        c3i_ B1.4 FIXES DONE 16:1x (rmt_b14 664f80a87): M1 one record pool per round (1.25 x query_limit + 256, or
+        stage_grow), full pool = overflow + guard round + grow, session-off only on a re-full grown pool / tag leak /
+        failed reservation (tests > 4096 units + full pool, CPU + GPU); M2 limits guard; S1 RANDOM_TRIPLE not forced
+        slow; S2 node check; S3 always-on TAG_LEAK; S4 doc; S5 sim words only in staging rounds; N1 / N3. FULL + C
+        suites + gated builds + header checks exit 0. Notes: > ~800k room records exceeds MAX_BLOCKS -> L2 off; the
+        last_round_spawned * 2 guard keeps an always-full buffer on L1; S1 / S2 paths untested.
+        b13r_ RESUMED 16:1x: re-check (incl. whether the guard hides L2 in stress scenes) -> merge rmt_b14.
+        Agents: c33i_ (C.3-4 fixes + LOGX), x0i_ (X0), b13r_ (B1.4 re-check) (3 of 3). QUEUE: bd1r_ re-check, merge
+        rmt_c34, t4i_ LOGX case + nit, ebr_ T4 confirm, merge rmt_b14, B1.5, ebr_ X0 review.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
