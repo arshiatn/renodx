@@ -5115,8 +5115,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         draw-trace window check, C rows + group names) + verbatim corpus test; M6 FAIL segments whose EARLY / PROBE is
         "parsed only" in the DLL. Shoulds S1-S7, 8 nits. COORDINATOR DEFAULTS (stricter, ATN asked on return): ONE
         shared crash budget (any 2nd crash ends the batch); a pinned crash gets ONE continuation with the part Off
-        (its part-needing segments logged lost). [ ] ATN Q1 (one budget or one per kind?) + Q2 (continuation of the
-        crashed start with the part Off, or only later starts?) - defaults above run until ATN answers.
+        (its part-needing segments logged lost). [x] ATN Q1 (one budget or one per kind?) + Q2 (continuation of the
+        crashed start with the part Off, or only later starts?) - ANSWERED 11-21 10:4x, see "ATN ANSWERS 10:4x".
         T1b BRIEF NOTES (ebr_ S7): empty env value = clear the env + log "Test: env NAME cleared (generation N)."; no
         "(window N)" in the mt_trace armed line (the pool numbers at the next header); set file one <s>:<key>=<value>;
         per line, cut at ;, trim CR. If a hang / not-restored end ever happens: hold GPU jobs until that game is gone.
@@ -5440,6 +5440,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         hp1i_ RESUMED 10:3x: Must 1 fix (a) + nits (src_prep12, build.bat test, prepare_test x6, commit) -> bd3r_
         re-check -> S8 lane closed for T5.
         Agents: c3i_ (B1.2b), c33i_ (C.3-3), hp1i_ (S8-1c fixes) (3 of 3). QUEUE: t4i_ T1b follow-ups + ebo_ lane.
+        ATN ANSWERS 10:4x: Q1 = ONE CRASH BUDGET PER KIND ("but we need to find out why and fix it after that"): leak
+        crash 1 (Q-B: go on once with that start cut shorter), pinned crash 1 (Q5: go on once with the part Off); a 2nd
+        crash of the SAME kind ends the batch; an unpinned non-leak crash still ends it (no part to turn off) unless
+        ATN says otherwise. Q2 = the default (continuation of the crashed start with the part Off, lost segments
+        logged). Presort question: moot (S8-2 parked, not in the batch; v4's commit falls back to the game's own sort
+        on any difference, so a "check fail" there is a counted fallback, the latch only catches our own bugs).
+        [ ] ebo_ lane (owner t4i_): per-kind crash budget in ebo_leg.ps1 + batch.json (crashes by kind) + tests.
+        [ ] NEW PLAN STEP (ATN 10:4x): after the end batch, every crash gets a root-cause analysis (crash log, dump,
+        pin) and a fix BEFORE the final bench; owner coordinator + the part's implementer / reviewer.
+        c3i_ B1.2b INTERIM 10:4x (uncommitted in rmt_c3; effect_update.hpp ~1030 lines + test part 26): found + fixed
+        an ASLR bug in B1.2a's branch scan (relocated 32-bit words scanned as instructions -> ~25 % false "game jumps
+        into a site" -> feature off; fail-safe) via RelocatedWords skip + control; part 26 quick 40 / 40 after it.
+        Final builds + FULL not yet run on the final sources -> c3i_ told to finish + commit. B1.3 review must read
+        the relocation fix and the behaviour changes (AsksAlways sites without fast path, late-rank midpoint,
+        WaitOnAddress via GetProcAddress, Update counter lines, census no longer drains).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
