@@ -3247,13 +3247,14 @@ void CaptureAnyDraw(Context& command, const void*) {
   if (native != nullptr && shader.hash != 0u && host.scene_draw(native, &shader)) Capture(command, shader);
 }
 
-// A frame's trace not made, and why: logged when the reason changes, else at most every 5 s (ATN 2026-10-28: every
-// effect magenta in the Debug View, so no trace was made).
+// A frame's trace not made, and why (ATN 2026-10-28: every effect magenta in the Debug View, so no trace was made):
+// logged when the reason changes, a steady one again only with Log Details, at most once a minute (the bridge's rule for
+// its ray tracing line).
 inline void NotTraced(const std::string& reason) {
   static std::string last;
   static uint64_t logged = 0;
   const uint64_t now = GetTickCount64();
-  if (last == reason && now < logged + 5000) return;
+  if (last == reason && (!dlaa_bridge::bridge.details || now < logged + 60000)) return;
   last = reason;
   logged = now;
   renodx::utils::log::i("[Total War] Ray tracing: no trace this frame (", reason, ").");

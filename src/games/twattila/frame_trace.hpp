@@ -2127,8 +2127,14 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
     internal::UseEvents(false);
     const auto path = state.folder / L"tw_frame_trace.txt";
     const std::lock_guard lock(state.mutex);
-    std::ofstream(path, std::ios::binary | std::ios::trunc) << state.text;
-    renodx::utils::log::i("[Total War] Frame trace: ", state.lines, " lines saved to ", path.string());
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    file << state.text;
+    file.close();
+    if (file.good()) {
+      renodx::utils::log::i("[Total War] Frame trace: ", state.lines, " lines saved to ", path.string());
+    } else {
+      renodx::utils::log::w("[Total War] Frame trace: ", state.lines, " lines could not be written to ", path.string());
+    }
     state.text.clear();
   };
   if (state.reads && state.next_frame.exchange(false)) {
