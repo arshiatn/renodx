@@ -4944,10 +4944,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 04:1x: fog shadows can use ReSTIR too (Volumetric ReSTIR) and every RT feature goes into the unified PT
         mode -> plan_1117/plan.md FORGE'S INPUT items 5b (feature-by-feature routes) + 8 (wasted GPU work: stalls,
         cache misses, dead outputs in the trace index); the unified PT design brief must cover 5b.
-        ATN 04:2x: papers + free code may be downloaded and read whenever a design needs them (memory). DOWNLOADED
+        ATN 04:1x: papers + free code may be downloaded and read whenever a design needs them (memory). DOWNLOADED
         04:2x into tools\refcode\papers\restir_1121\: lin2026 ReSTIR PT Enhanced (+ supplemental), lin2021 Volumetric
         ReSTIR, lin2022 GRIS (ReSTIR PT), wyman2023 Gentle Introduction to ReSTIR; tools\refcode\flip = NVIDIA FLIP
-        d3ab02a (BSD-3). The unified PT design + gto_ part B read them. ATN went to bed 04:2x.
+        d3ab02a (BSD-3). The unified PT design + gto_ part B read them. ATN went to bed 04:1x.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
