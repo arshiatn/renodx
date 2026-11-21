@@ -63,9 +63,9 @@ namespace twattila::engine_code {
 // Whose build of the routines to look for.
 enum class Game : uint8_t { ATTILA, THRONES, ROME2 };
 
-// What the worker sites are asked for (Update's last argument): the animation update's call of the animation texture fill goes through
-// animation_rows::Dispatch while `animation` is not OFF; the pending list sweep's entry goes through pending_sweep::Arm while
-// `pending_sweep_trace` is set (a bench's RENODX_TW_WORKER_TRACE, never a player's).
+// What the worker sites are asked for (Update's last argument): the animation update's call of the animation texture
+// fill goes through animation_rows::Dispatch while `animation` is not OFF; the pending list sweep's entry goes through
+// pending_sweep::Arm while `pending_sweep_trace` is set (a bench's RENODX_TW_WORKER_TRACE, never a player's).
 struct WorkerRows {
   animation_rows::Stage animation = animation_rows::Stage::OFF;
   bool pending_sweep_trace = false;
@@ -1406,21 +1406,24 @@ constexpr std::array<uint8_t, 47> MODEL_DETAIL_STUB = {
     0xE9, 0x00, 0x00, 0x00, 0x00,              // jmp PickLod + 6 (patched in Prepare)
 };
 
-// 19. Animation Rows on Workers (Attila only; animation_rows.hpp) and 20. the Pending Sweep trace (pending_sweep.hpp): the two cut sites.
-// 19. is the animation update's call of the animation texture fill (+0x1893d2a, `call` with seven arguments on the stack, the cache in ecx, the callee pops them:
-// `ret 0x1c`); the pattern is the instructions around it, and its target must be the build's fill with the head below. 20. is the pending list sweep's first
-// instructions (+0x18932a5 in SWEEP: `mov eax, [esi + 0x18]; push ebx` and the first byte of `lea ebx, [eax - 1]`, run again by the stub; the sweep goes on at the
-// `cmp`; no branch of the game lands in between). Both stubs read their function from a word of the data page (0: the row is off, or the site is leaving),
-// raise `cut_active` around the call and read the word again after raising it: a turn-off zeroes the word, then waits for `cut_active` to be 0 and for every
-// thread to be out of the stubs (PausedWrite's cut rule) before the site is written back, so no thread is ever in a function of this module with the site gone.
-// A stack unwind through a stub (an exception from the game's fill) leaves `cut_active` raised: the site then never comes out and the module is pinned.
+// 19. Animation Rows on Workers (Attila only; animation_rows.hpp) and 20. the Pending Sweep trace (pending_sweep.hpp):
+// the two cut sites. 19. is the animation update's call of the animation texture fill (+0x1893d2a, `call` with seven
+// arguments on the stack, the cache in ecx, the callee pops them: `ret 0x1c`); the pattern is the instructions around
+// it, and its target must be the build's fill with the head below. 20. is the pending list sweep's first instructions
+// (+0x18932a5 in SWEEP: `mov eax, [esi + 0x18]; push ebx` and the first byte of `lea ebx, [eax - 1]`, run again by the
+// stub; the sweep goes on at the `cmp`; no branch of the game lands in between). Both stubs read their function from a
+// word of the data page (0: the row is off, or the site is leaving), raise `cut_active` around the call and read the
+// word again after raising it: a turn-off zeroes the word, then waits for `cut_active` to be 0 and for every thread to
+// be out of the stubs (PausedWrite's cut rule) before the site is written back, so no thread is ever in a function of
+// this module with the site gone. A stack unwind through a stub (an exception from the game's fill) leaves `cut_active`
+// raised: the site then never comes out and the module is pinned.
 constexpr std::string_view FILL_CALL_CONTEXT = "8D 44 24 10 8B CE 50 53 55 57 FF 74 24 30 FF 74 24 30 FF 74 24 30 E8 ?? ?? ?? ?? 84 C0 74 3D 39 5D 00";
 constexpr size_t FILL_CALL_AT = 22;  // the call's E8 in the pattern
 constexpr std::string_view FILL_HEAD = "83 EC 30 53 8B 5C 24 48 55 56 8B 74 24 54 2B 33 57 8B F9";
 constexpr size_t SWEEP_ENTRY_AT = 21;       // in SWEEP: the first of the three instructions
 constexpr size_t SWEEP_ENTRY_RESUME = 28;   // in SWEEP: the `cmp` after them
-// The data page's words, as fields of the stubs: STUB_FIELD_SENTINEL + 0 the count, + 1 the fill's word, + 2 the sweep's; the callee (sentinel + 0) is the game's
-// fill, or the sweep's `cmp`.
+// The data page's words, as fields of the stubs: STUB_FIELD_SENTINEL + 0 the count, + 1 the fill's word, + 2 the
+// sweep's; the callee (sentinel + 0) is the game's fill, or the sweep's `cmp`.
 constexpr std::array<uint8_t, 77> FILL_CALL_STUB = {
     0xA1, 0x02, 0x5A, 0x5A, 0x5A,              // mov eax, dword ptr [fill word]
     0x85, 0xC0,                                // test eax, eax
@@ -1458,7 +1461,8 @@ constexpr std::array<uint8_t, 48> SWEEP_ENTRY_STUB = {
     0x8D, 0x58, 0xFF,                          // lea ebx, [eax - 1]
     0xE9, 0x11, 0x5A, 0x5A, 0x5A,              // jmp the sweep's cmp
 };
-// The words the cut stubs use, on the allocation's second page (read-write, never executable), a cache line for the count and one for the slots.
+// The words the cut stubs use, on the allocation's second page (read-write, never executable), a cache line for the
+// count and one for the slots.
 struct WorkerData {
   alignas(64) std::atomic<int32_t> cut_active = 0;  // +0x00: the threads in a cut stub past its first test
   alignas(64) std::atomic<uint32_t> fill_slot = 0;   // +0x40: animation_rows::Dispatch while on, else 0
@@ -1741,8 +1745,8 @@ static_assert([] {
 }());
 // The loop stubs of the effect update (8., 10., 11.) go on at the instruction after their 5-byte site.
 static_assert(CHILD_SUM_RESUME == CHILD_SUM_SITE + SITE_SIZE && PARTICLE_LOOP_EXIT == PARTICLE_LOOP_SITE + SITE_SIZE);
-// A page's cut stubs (a stub that calls into this module or into other code that may run long): a site of a cut comes out only while `*active` is 0 and no
-// thread is between `begin` and `end` (PausedWrite).
+// A page's cut stubs (a stub that calls into this module or into other code that may run long): a site of a cut comes
+// out only while `*active` is 0 and no thread is between `begin` and `end` (PausedWrite).
 struct CutRange {
   const uint8_t* begin = nullptr;
   const uint8_t* end = nullptr;
@@ -1825,9 +1829,9 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
   const std::array<uint64_t, 2> changing = {(patched ^ written) & found,
                                             (recording_patched ^ recording_written) & recording_found};
   const bool recording_out = (changing[1] & ~wanted[1]) != 0;
-  // The cuts with a site coming out. The thunks' direct paths run on every flush of the game, on any thread, and draw_recording
-  // frees its memory and releases its module after the last removal: a thread anywhere in the page then is not clear. A partial
-  // removal only waits for the cut stubs.
+  // The cuts with a site coming out. The thunks' direct paths run on every flush of the game, on any thread, and
+  // draw_recording frees its memory and releases its module after the last removal: a thread anywhere in the page then
+  // is not clear. A partial removal only waits for the cut stubs.
   const std::array<std::pair<CutRange, bool>, 2> cuts = {{
       {worker_cut, (changing[0] & ~wanted[0] & WORKER_SITES) != 0},
       {{recording_cut.begin, (recording_patched == 0 ? recording_page_end : recording_cut.end), recording_cut.active}, recording_out}}};
@@ -1873,7 +1877,9 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
     }
   }
   for (const auto& [cut, out] : cuts) {
-    if (clear && out && cut.active != nullptr && cut.active->load(std::memory_order_acquire) != 0) {
+    // The stubs raise the count and then read their slot; Update stores the slot (seq_cst) and then PausedWrite loads
+    // the count (seq_cst).
+    if (clear && out && cut.active != nullptr && cut.active->load() != 0) {
       clear = false;
     }
   }
@@ -1975,27 +1981,34 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
   return clear;
 }
 
-// The cut stubs' words for the worker sites in `live` (bits by index: sites that hold their jump and that the rows still ask for): the function
-// while live, else 0. A site leaving gets its word zeroed first (a stub that sees 0 runs the game's own code), and one going in gets its word after
-// its jump is written; the zeroing is the sequentially consistent store the stubs' raise-then-read pairs with (PausedWrite reads `cut_active` after it).
+// The cut stubs' words for the worker sites in `live` (bits by index: sites that hold their jump and that the rows
+// still ask for): the function while live, else 0. A site leaving gets its word zeroed first (a stub that sees 0 runs
+// the game's own code), and one going in gets its word after its jump is written; the zeroing is the sequentially
+// consistent store the stubs' raise-then-read pairs with (PausedWrite's sequentially consistent load of `cut_active`
+// follows it).
 inline void SyncWorkerSlots(uint32_t live) {
   if (worker_data == nullptr) return;
   const auto set = [](std::atomic<uint32_t>* slot, bool on, uint32_t function) {
     const uint32_t value = (on ? function : 0);
-    if (slot->load(std::memory_order_relaxed) != value) slot->store(value);
+    if (slot->load(std::memory_order_relaxed) != value) {
+      slot->store(value);
+    }
   };
   set(&worker_data->fill_slot, (live & WORKER_FILL_BIT) != 0, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&animation_rows::Dispatch)));
   set(&worker_data->sweep_slot, (live & WORKER_SWEEP_BIT) != 0, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&pending_sweep::Arm)));
 }
 
-// A worker site that stays in the game's code (it could not come out, or another mod's hook may chain to our jump) keeps the stubs and
-// this module's Dispatch and Arm reachable: the module stays loaded for the life of the process (the pages are never freed either).
+// A worker site that did not come out cleanly (a game thread kept running it, or another mod's bytes are over our jump
+// and its hook may still lead to our stub) keeps the stubs and this module's Dispatch and Arm reachable: the module
+// stays loaded for the life of the process (the pages are never freed either).
 inline void PinModule() {
   if (module_pinned) return;
   module_pinned = true;
   HMODULE ignored = nullptr;
   GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&PinModule), &ignored);
-  renodx::utils::log::w("[Total War] Worker sites: left in the game's code, so the module stays loaded.");
+  renodx::utils::log::w(
+      "[Total War] Worker sites: one could not be taken out cleanly (a game thread kept running it, or another mod's hook may still "
+      "lead to our stub), so the module stays loaded.");
 }
 
 // Once: the routines found and checked, the stubs built in the page, each site's jump made (nothing written to the
@@ -2051,7 +2064,8 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     }
   };
 
-  // Two pages: the stubs, made read-execute once built, and the cut stubs' words (WorkerData), read-write for good: nothing is ever both.
+  // Two pages: the stubs, made read-execute once built, and the cut stubs' words (WorkerData), read-write for good:
+  // nothing is ever both.
   page = static_cast<uint8_t*>(VirtualAlloc(nullptr, 2 * PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
   worker_data = (page != nullptr ? new (page + PAGE_SIZE) WorkerData : nullptr);
   worker_cut = (page != nullptr ? CutRange{page + WORKER_FILL_PAGE, page + PAGE_SIZE, &worker_data->cut_active} : CutRange{});
@@ -2230,8 +2244,8 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       place_stub(SWEEP_PREFETCH_INDEX, match + SWEEP_SITE, SWEEP_SIZE, SWEEP_STUB, page + SWEEP_PAGE);
       place_cut_stub(WORKER_SWEEP_INDEX, match + SWEEP_ENTRY_AT, SWEEP_ENTRY_STUB, page + WORKER_SWEEP_PAGE, match + SWEEP_ENTRY_RESUME);
     }
-    // The animation update's call of the animation texture fill, found by the bytes around it: its target must be the build's fill, with the head the stub's
-    // own jump (the game's call) expects.
+    // The animation update's call of the animation texture fill, found by the bytes around it: its target must be the
+    // build's fill, with the head the stub's own jump (the game's call) expects.
     if (uint8_t* match = (build.fill_call_rva != 0 ? find(FILL_CALL_CONTEXT, build.fill_call_rva) : nullptr); match != nullptr) {
       const uint8_t* fill = target(match + FILL_CALL_AT);
       if (fill == base + build.fill_rva && holds(fill, FILL_HEAD)) {
@@ -2281,9 +2295,11 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   const uint32_t reload_rva = (sse4_1 ? build.float4_reload_rva : 0);
   const uint32_t rows_rva = (sse4_1 ? build.soldier_rows_rva : 0);
   const uint32_t product_rva = (sse4_1 ? build.matrix_product_rva : 0);
+  // The worker sites aren't listed either (like the other sites of their own rows): NAMED_ONCE_SITES names them when
+  // their row asks.
   const std::array<uint32_t, 27> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
                                          0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva, 0, 0, rows_rva, rows_rva, rows_rva,
-                                         product_rva, product_rva, product_rva, 0, build.push_loop_a_rva, build.push_loop_b_rva, 0, 0, build.fill_call_rva, build.sweep_rva};
+                                         product_rva, product_rva, product_rva, 0, build.push_loop_a_rva, build.push_loop_b_rva, 0, 0, 0, 0};
   static_assert(std::tuple_size_v<decltype(rvas)> == std::tuple_size_v<decltype(sites)>);
 #if defined(TWATTILA_ENGINE_PROBE)
   // The probe build: each probed site's jump goes to its probe stub first (a copy of the probe's bytes with the counters' addresses put in), whose last jump goes on
@@ -2416,7 +2432,9 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     const uint32_t now = (internal::written & ~changing) | (target & changing & ~stood_down);
     const uint32_t changed = now ^ internal::written;
     // A worker site that stood down on its way out (another mod's bytes over our jump) may still chain to our stub.
-    if ((stood_down & changing & ~target & internal::written & internal::WORKER_SITES) != 0) internal::PinModule();
+    if ((stood_down & changing & ~target & internal::written & internal::WORKER_SITES) != 0) {
+      internal::PinModule();
+    }
     internal::written = now;
     internal::SyncWorkerSlots(now & target);  // a site that went in: its word now
 #if defined(TWATTILA_ENGINE_PROBE)
@@ -2475,7 +2493,9 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
       }
     }
     // A worker site that cannot come out stays reachable.
-    if (((target ^ internal::written) & internal::written & internal::WORKER_SITES) != 0) internal::PinModule();
+    if (((target ^ internal::written) & internal::written & internal::WORKER_SITES) != 0) {
+      internal::PinModule();
+    }
     if (recording_target != internal::recording_written) {
       renodx::utils::log::w("[Total War] Threaded Draw Recording: not written, a game thread kept running the code");
     }
@@ -2503,7 +2523,9 @@ inline void Uninstall() {
     uint32_t stood_down;
     uint64_t recording_stood_down;
     if (internal::PausedWrite(0, &stood_down, 0, &recording_stood_down)) {
-      if ((stood_down & internal::written & internal::WORKER_SITES) != 0) internal::PinModule();
+      if ((stood_down & internal::written & internal::WORKER_SITES) != 0) {
+        internal::PinModule();
+      }
       internal::written = 0;  // a site another mod changed is that mod's now
       // The recording thunks need this module and Shared: a site left behind keeps them alive.
       if ((recording_stood_down & internal::recording_written) != 0) {
@@ -2515,7 +2537,9 @@ inline void Uninstall() {
     }
   }
   if (internal::written != 0) {
-    if ((internal::written & internal::WORKER_SITES) != 0) internal::PinModule();
+    if ((internal::written & internal::WORKER_SITES) != 0) {
+      internal::PinModule();
+    }
     renodx::utils::log::w("[Total War] Faster Game CPU Code: left in at detach (a game thread kept running it)");
   }
   if (internal::recording_written != 0) {
