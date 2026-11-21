@@ -5332,6 +5332,36 @@ heading text are in HANDOFF_ARCHIVE.md)
         logged even when the pool ignores the arm (ArmTrace void); Tales frame_trace.hpp:402 doesn't read SET_FILE.
         ebr_ RESUMED 09:3x: Opus xHigh review of T1b -> reports/ebr_t1b_review.md -> t4i_ fixes -> merge (addon.cpp token).
         Agents: c3i_ (B1.2b), bd3r_ (S8-1 review), ebr_ (T1b review) (3 of 3). QUEUE next slot: C.3-3.
+        ebr_ T1b REVIEW DONE 09:4x (reports/ebr_t1b_review.md; run_all 609 / 0 + tw_test_hooks x86 / amd64 7 modes re-run):
+        MERGE, no Musts; relaxed fetch_add is enough (bump + pool load on the same thread in one Present); worker_pool
+        needs no change. -> MERGED atn-mods c0668c24d 09:4x (name check: 17 generic words; gated builds x86 x3 + amd64
+        exit 0), pushed.
+        [ ] T1b follow-ups (owner t4i_, branch from c0668c24d, then ebr_ re-check): Should S1 an ignored mt_trace arm is
+        invisible to ebo_check (gates row for the pool's "... is ignored." line as a NOTE marking the trace missing; pair
+        every mt_trace switch line with the pool's "trace window w" header within 1 s; optional: ebo_make refuses two
+        mt_trace entries < 2 s apart); Nits 1 braces, 2 no SetEnvironmentVariableA in a ternary condition, 3 LiveHooks
+        by value, 4 value substring once, 5 hand-edited set files (second entry on a line / BOM / UTF-16), 7 addendum
+        section 6(c) "(window w)" text, 8 PROBLEM stop text + corpus "error 203" -> 87. Nit 6 FORWARD NOTE for S6 / R-S1:
+        a reader of worker_env_generation off the present thread needs release / acquire. Nit 9: Tales
+        talesofarise_dlss/frame_trace.hpp:402 reads only SET / SHOT -> add SET_FILE if a non-Attila run ever uses it.
+        Nit 10 = round-3 nit 4 (T5).
+        bd3r_ S8-1 REVIEW DONE 09:4x (reports/bd3r_s8_1_review.md; build.bat test src_prep9 all passed): S8-2 MAY BUILD ON
+        S8-1, no code Musts. ADDRESS-UNIQUENESS PREMISE DOES NOT HOLD: slot 0x128 rewinds a whole family store
+        (0x1810800 instances / 0x1812580 weighted), slot 0x12C frees its chunks, mid-frame path 0x18DEBF0 -> 0x1911E70 ->
+        thunk -> 0x189B9A0 -> "same addresses, other keys" possible. Six Musts on S8-2's design (lemma text, key re-check
+        at commit (b) as exactness basis, every read through read_ok inside pools_read_begin / _end, rewind + free-reuse
+        tests with controls, "keys changed" count, scan rows for the 0x128 / 0x12C entries). (c) table: 18 key writers
+        pass, INST_KEYS_PROVEN stays 0, compare STORED keys only, instances items from >= 6 stores. Shoulds 1-7 (install
+        only when mode on, ResetEvent, read_ok assert, pin 0x176CED0 callers, odd_mmaps guard, (c) table + Storage
+        lifetime text, v3 carry-overs); 5 nits.
+        bd3o_ RESUMED 09:5x: "## S8a v4: item stores are reused within a generation" (commit rule, exactness proof,
+        cost vs gain: keep / weighted only / drop, Shoulds placement, new S8-2 row) -> bd3r_ check -> hp1i_ S8-1 fixes +
+        S8-2.
+        c33i_ STARTED 09:5x (NEW Sonnet High agent): C.3-3 = B cut + Depth B (15 sites) + family / class tables + c32r_
+        S-1 / N-1..N-4 (not N-5) on NEW worktree .claude\worktrees\rmt_c33, branch rmt_c33 from c0668c24d (junctions);
+        draw_recording*.hpp + test/tw_draw_recording only; compile-time refusal of any overlap with heapfix's sites and
+        36 check rows -> Opus xHigh review.
+        Agents: c3i_ (B1.2b), bd3o_ (S8a v4), c33i_ (C.3-3) (3 of 3). QUEUE: t4i_ T1b follow-ups; hp1i_ after v4.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
