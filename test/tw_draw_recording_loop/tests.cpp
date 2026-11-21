@@ -24,6 +24,11 @@
 //    found). Some items carry a faction mask: the loop's gather runs the game's vector push_back and free, faked in both copies like
 //    the vector constructor. What stays synthetic-only (test/tw_draw_recording, test/tw_draw_recording_sites): the batchfix
 //    continuation bytes.
+// 7. The colour bodies' 5 state blocks (B group, Colour B) on their real bytes, entered at the site and left at the block's end by a
+//    jump the test writes in both copies: random registers, locals, tracker and constants cell (3000 cases per block). A runs the
+//    game's block; B with the tracker outside the arena runs the thunk's direct path (log, tracker, frame, registers, cell equal); B
+//    with a slot's tracker runs the record path (one op, the tracker's first 0x14 bytes as the game writes them, esp, ebp, esi and
+//    the reloaded ebx as the game leaves them), and the replay of that op makes the game's calls.
 // tests.exe [empire.retail.dll]
 #include <windows.h>
 
@@ -1327,9 +1332,10 @@ void TestColourStages() {
   CHECK(reruns_seen > 0);
   CHECK(compares_equal > 0);
   CHECK(conflicts > 0);
-  std::printf("6b. the real colour loop through the dispatcher: %u cases (10 lists x 4 stages x K 4 / 16 x trace off / on; the flush entry's hook and the call-site fallbacks; DispatchColour and the cut thunk): log (flushes, virtual calls, animation calls, constants' dirty calls, binds, faction colours) and tracker equal the serial run; %u chunks run in all, %u run again, %u of the unsorted list's meshes' chunks left to the direct run (the owner check); %u compare runs equal; recorded at K 4: %u flush, %u vf68, %u animation, %u constant, %u bind, %u faction ops; every fake reached (dirty %u, bind %u, faction colours %u, faction list %u, batch size %u)\n",
+  std::printf("6b. the real colour loop through the dispatcher: %u cases (10 lists x 4 stages x K 4 / 16 x trace off / on; the flush entry's hook and the call-site fallbacks; DispatchColour and the cut thunk): log (flushes, virtual calls, animation calls, constants' dirty calls, binds, faction colours) and tracker equal the serial run; %u chunks run in all, %u run again, %u of the unsorted list's meshes' chunks left to the direct run (the owner check); %u compare runs equal; recorded at K 4: %u flush, %u vf68, %u animation, %u constant, %u bind, %u faction ops; every fake reached (dirty %u, bind %u, faction colours %u, faction list %u, batch size %u, vector init %u, push_back %u, free %u)\n",
               cases, chunks_seen, reruns_seen, conflicts, compares_equal, ops[0], ops[1], ops[2], ops[3], ops[4], ops[5], colour_calls[DIRTY].load(), colour_calls[SRV].load(),
-              colour_calls[FACTION_COLOURS].load(), colour_calls[FACTION_LIST].load(), colour_calls[VF6C].load());
+              colour_calls[FACTION_COLOURS].load(), colour_calls[FACTION_LIST].load(), colour_calls[VF6C].load(), colour_calls[VECTOR_INIT].load(), colour_calls[PUSH_BACK].load(),
+              colour_calls[FREE].load());
 }
 
 void TestColourControls() {
@@ -1393,7 +1399,8 @@ void TestColourControls() {
 // SetGame found from the DLL's bytes, here the real code in B): a zero pointer would crash, and the meshes must be visited in order.
 std::vector<uint32_t> mesh_visits;
 void __fastcall FakeMeshBody(uint32_t* mesh, void*, void*, void*, void*, uint32_t, void*) { mesh_visits.push_back(mesh[1]); }
-uint32_t __fastcall FakeViewType(void*, void*) { return 0x60; }
+uint32_t fake_view_type = 0x60;
+uint32_t __fastcall FakeViewType(void*, void*) { return fake_view_type; }
 
 void TestMeshBeforePlan() {
   REQUIRE(di::game_calls.accessor != 0 && di::game_calls.vf64_stub != 0);
@@ -1429,6 +1436,323 @@ void TestMeshBeforePlan() {
     }
   }
   std::printf("6d. a B round run directly before it is planned (stage direct, or the dispatcher not usable) visits the sorted list's meshes in order through the accessor SetGame found (%u cases)\n", cases);
+}
+
+// M1: the per-mesh cut is both B groups'. With Depth B's sites, the cut and the flush entry hook written and Colour B's 20 sites out
+// (a stand-down, a failed write), both rows on: the groups the engine code says are in are Depth B (and A when they are), the
+// dispatcher takes only those rows, and a colour round runs directly (the fakes would flag a logging call off the main thread, and a
+// recorded round would run the body with no sites on workers).
+void TestGroupsIn() {
+  const size_t depth_b = static_cast<size_t>(dr::Group::DEPTH_B);
+  const size_t colour_b = static_cast<size_t>(dr::Group::COLOUR_B);
+  const uint64_t depth_b_mode = ec::RECORDING_OWN[depth_b] | ec::RECORDING_ENTRY_BIT | ec::RecordingBit(ec::RecordingSite::DEPTH_B_CUT);
+  REQUIRE((depth_b_mode & ec::RECORDING_OWN[colour_b]) == ec::RecordingBit(ec::RecordingSite::DEPTH_B_CUT));
+  std::array<uint32_t, 0x140 / 4> mesh_vtable = {};
+  mesh_vtable[0x138 / 4] = reinterpret_cast<uint32_t>(&FakeMeshBody);
+  std::array<std::array<uint32_t, 2>, 6> meshes = {};
+  std::array<uint32_t, 6> slots = {};
+  for (uint32_t i = 0; i < meshes.size(); ++i) {
+    meshes[i] = {reinterpret_cast<uint32_t>(mesh_vtable.data()), i};
+    slots[i] = reinterpret_cast<uint32_t>(&meshes[i]);
+  }
+  struct Sorted {
+    uint32_t pad[3];
+    const uint32_t* data;
+  } sorted = {{0, 0, 0}, slots.data()};
+  std::array<uint32_t, 0x40> view_vtable = {};
+  view_vtable[0x3c / 4] = reinterpret_cast<uint32_t>(&FakeViewType);
+  const struct {
+    const uint32_t* vtable;
+  } view = {view_vtable.data()};
+  alignas(16) uint8_t tracker[dr::TRACKER_SIZE] = {};
+  uint32_t cases = 0;
+  for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
+    for (const uint32_t colour_view : {0x10u, 0x20u}) {
+      SetSites(depth_b_mode);
+      CHECK(twattila::engine_code::DrawRecordingGroupsIn() == 1u << depth_b);
+      // The Colour B row is on, and its sites are not: the dispatcher's loops mask has Depth B only.
+      UpdateAt(4, {.stage = stage, .loops = 0xc, .groups_in = twattila::engine_code::DrawRecordingGroupsIn()});
+      CHECK(di::config.loops == 1u << depth_b);
+      REQUIRE(shared->arena_size != 0);
+      fake_view_type = colour_view;
+      mesh_visits.clear();
+      di::last_call = {};
+      dr::DispatchMesh(tracker, nullptr, const_cast<void*>(static_cast<const void*>(&view)), 0, nullptr, &sorted, 1, 4);
+      CHECK((mesh_visits == std::vector<uint32_t>{1, 2, 3, 4}));
+      CHECK(di::last_call.direct);
+      ++cases;
+    }
+  }
+  fake_view_type = 0x60;
+  // Both B groups' sites written: both are in; Colour B's flush path is the same entry hook.
+  SetSites(depth_b_mode | ec::RECORDING_OWN[colour_b]);
+  CHECK(twattila::engine_code::DrawRecordingGroupsIn() == (1u << depth_b | 1u << colour_b));
+  UpdateAt(4, {.stage = dr::Stage::WORKERS, .loops = 0xc, .groups_in = twattila::engine_code::DrawRecordingGroupsIn()});
+  CHECK(di::config.loops == 0xc);
+  SetSites(0);
+  CHECK(twattila::engine_code::DrawRecordingGroupsIn() == 0);
+  std::printf("6e. a B group whose sites are out (Colour B's 20 out, Depth B's, the cut and the entry hook in, both rows on) is not in the groups-in mask, "
+              "the dispatcher's loops are Depth B's only, and a colour round runs directly (%u cases); with both in, both rows run\n", cases);
+}
+
+// ---------------------------------------------------------------- 7. the colour bodies' state blocks (B group)
+
+// What a block reads, as the game's own code has it (decoded from its bytes here, not from engine_code's table): stack operands are
+// esp-relative bytes at the site, -1 is a register or "none" as the comment says.
+struct BlockOperands {
+  ec::RecordingSite site;
+  int snow_flag;      // a stack byte; -1: bh
+  int snow_value;     // 0: the constant 0, 1: ah, 2: bl, 3: cl
+  uint32_t cfg;       // the local that holds the colour state
+  int diffuse_flag;   // -1: the block has no textures
+  int diffuse;
+  int normal_flag;
+  int normal;
+  int faction_flag;   // a stack byte; -1: the old faction instead (the default colours when it is not -1)
+  int old_faction;    // a local; -1: edi
+  int faction;        // the item's faction (a local)
+  int item;           // a local; -1: ebx, which the game also keeps in [esp + 0x1c]
+  bool reloaded;      // the block's exit reloads ebx: the test's exit stub is 4 bytes on
+  bool wide;          // which of the two scratch sets the block writes (below)
+};
+constexpr std::array<BlockOperands, 5> BLOCKS = {{
+    {ec::RecordingSite::COLOUR_B0_STATE, 0x0f, 0, 0x10, -1, -1, -1, -1, -1, -1, 0, -1, false, false},
+    {ec::RecordingSite::COLOUR_B1_STATE, 0x11, 1, 0x18, -1, -1, -1, -1, 0x13, -1, 0x20, -1, true, true},
+    {ec::RecordingSite::COLOUR_B2_STATE, -1, 2, 0x18, 0x13, 0x24, 0x10, 0x1c, 0x11, -1, 0x28, 0x20, false, true},
+    {ec::RecordingSite::COLOUR_B3_STATE, 0x0e, 3, 0x10, -1, -1, -1, -1, -1, 0x1c, 0, -1, false, false},
+    {ec::RecordingSite::COLOUR_B4_STATE, 0x11, 1, 0x18, -1, -1, -1, -1, 0x13, -1, 0x20, -1, true, true},
+}};
+// The frame bytes a block writes besides what the thunk replaces (the default colours it builds, the faction list's out pointer, the
+// gather's vector): the scratch the game's code after the block never reads (checked on the game's bytes: no esp-relative access to
+// them after the block's end in any of the 5 bodies). Inclusive ranges of esp offsets.
+constexpr std::array<std::array<uint32_t, 2>, 3> NARROW_SCRATCH = {{{0x28, 0x2b}, {0x34, 0x37}, {0x40, 0x7f}}};
+constexpr std::array<std::array<uint32_t, 2>, 7> WIDE_SCRATCH = {{{0x14, 0x17}, {0x2c, 0x33}, {0x38, 0x67}, {0x70, 0x73}, {0x7c, 0x7f}, {0x88, 0x8b}, {0x94, 0x97}}};
+
+// Registers in x86 order.
+enum Reg { EAX, ECX, EDX, EBX, ESP, EBP, ESI, EDI };
+using Registers = std::array<uint32_t, 8>;
+Registers run_in = {};
+Registers run_out = {};
+uint32_t run_saved_esp = 0;
+uint32_t run_entry = 0;
+uint32_t block_cell = 0;  // the snow constant's cell the colour state points at
+
+// A cdecl void() that loads run_in, jumps to run_entry (the game's block or its thunk) and, at `exit` (where a jump is written in
+// the block's end, in both images), saves the registers into run_out and returns.
+struct BlockHarness {
+  void(__cdecl* run)();
+  const uint8_t* exit;
+};
+BlockHarness BuildBlockHarness() {
+  auto* const page = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+  ec::Assembler assembler(std::span<uint8_t>(page, 0x1000));
+  const auto memory = [&](uint8_t opcode, uint32_t reg, const void* where) {
+    assembler.BytesAndOperand({opcode, static_cast<uint8_t>(0x05 | reg << 3)}, ec::Address(where));
+  };
+  BlockHarness harness = {reinterpret_cast<void(__cdecl*)()>(assembler.Cursor()), nullptr};
+  assembler.Bytes({0x55, 0x53, 0x56, 0x57});  // push ebp, ebx, esi, edi
+  memory(0x89, ESP, &run_saved_esp);
+  memory(0x8B, ESP, &run_in[ESP]);
+  for (const uint32_t reg : {EAX, ECX, EDX, EBX, EBP, ESI, EDI}) memory(0x8B, reg, &run_in[reg]);
+  assembler.BytesAndOperand({0xFF, 0x25}, ec::Address(&run_entry));
+  harness.exit = assembler.Cursor();
+  for (uint32_t reg = EAX; reg <= EDI; ++reg) memory(0x89, reg, &run_out[reg]);
+  memory(0x8B, ESP, &run_saved_esp);
+  assembler.Bytes({0x5F, 0x5E, 0x5B, 0x5D, 0xC3});
+  REQUIRE(assembler.Fits());
+  return harness;
+}
+
+uint32_t block_random_state = 0x2545F491;
+uint32_t BlockRandom() {
+  block_random_state ^= block_random_state << 13;
+  block_random_state ^= block_random_state >> 17;
+  block_random_state ^= block_random_state << 5;
+  return block_random_state;
+}
+uint32_t BlockRandom(uint32_t count) { return BlockRandom() % count; }
+
+// An item as the block reads it: its faction mask at +0x34.
+struct BlockItem {
+  uint8_t pad[0x34];
+  uint32_t mask;
+  uint8_t pad2[0x40];
+};
+
+constexpr uint32_t BLOCK_FRAME_SIZE = 0xb0;
+
+// What one run of a block leaves that the game's code after it can see.
+struct BlockRun {
+  std::vector<LogEntry> log;
+  std::array<uint8_t, dr::TRACKER_SIZE> tracker = {};
+  std::array<uint8_t, BLOCK_FRAME_SIZE> frame = {};
+  uint32_t cell = 0;
+  Registers out = {};
+};
+
+void TestStateBlocks() {
+  const uint64_t mode = ec::RECORDING_OWN[static_cast<size_t>(dr::Group::COLOUR_B)] | ec::RECORDING_ENTRY_BIT;
+  SetSites(mode);
+  CheckWrittenSites(mode);
+  // The thunks' slot test needs the arena (a slot's tracker is in it, the game's own is not).
+  UpdateAt(4, {.stage = dr::Stage::WORKERS, .loops = 2u});
+  REQUIRE(shared->arena_size != 0);
+  const BlockHarness harness = BuildBlockHarness();
+  // The fakes run on this stack below the frame (esp is the frame's start): room for the heap and the log, not the 0x180 bytes that
+  // once let a deep call write into the neighbouring statics.
+  alignas(16) static uint8_t frame_memory[0x2400];
+  alignas(16) static uint32_t ebp_block[8];
+  ebp_block[4] = reinterpret_cast<uint32_t>(&colour_node);
+  alignas(16) static uint8_t tracker_plain[dr::TRACKER_SIZE];
+  alignas(16) static uint8_t tracker_initial[dr::TRACKER_SIZE];
+  static std::array<BlockItem, 3> items = {};
+  items[1].mask = reinterpret_cast<uint32_t>(&masks[1]);
+  items[2].mask = reinterpret_cast<uint32_t>(&masks[3]);
+  uint8_t* const cfg = state_owner + STATE_OFFSET;
+  Write32(cfg + 0x2ac + 0x14, reinterpret_cast<uint32_t>(&block_cell));
+  uint8_t* const frame_at = frame_memory + 0x2000;
+  const uint32_t esp = reinterpret_cast<uint32_t>(frame_at);
+  uint32_t cases = 0;
+  std::array<uint32_t, 4> parts_seen = {};  // the cases with a snow constant, a texture bind, the default colours, the item's colours
+  uint32_t masked = 0;
+  std::array<uint32_t, 3> calls_seen = {};  // dirty calls, binds, faction colour calls the game made
+  for (const BlockOperands& operands : BLOCKS) {
+    const ec::RecordingSiteInfo& info = ec::RECORDING_INFO[static_cast<size_t>(operands.site)];
+    const uint32_t exit_rva = info.exit_rva + (operands.reloaded ? 4 : 0);
+    std::array<std::array<uint8_t, 5>, 2> saved = {};
+    std::memcpy(saved[0].data(), game + exit_rva, 5);
+    std::memcpy(saved[1].data(), patched + exit_rva, 5);
+    JumpTo(game + exit_rva, harness.exit);
+    JumpTo(patched + exit_rva, harness.exit);
+    FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+    for (uint32_t index = 0; index < 3000; ++index) {
+      // The inputs: the frame random but for the operands the block reads, which the test gives in the game's own types.
+      std::array<uint8_t, BLOCK_FRAME_SIZE> frame = {};
+      for (uint8_t& byte : frame) byte = static_cast<uint8_t>(BlockRandom());
+      Registers regs = {BlockRandom(), BlockRandom(), BlockRandom(), BlockRandom(), 0, 0, 0, BlockRandom()};
+      const auto poke8 = [&](int offset, uint32_t value) { frame[static_cast<size_t>(offset)] = static_cast<uint8_t>(value); };
+      const auto poke32 = [&](int offset, uint32_t value) { std::memcpy(frame.data() + offset, &value, 4); };
+      const auto flag = [] { return BlockRandom(2) == 0 ? 0u : 1 + BlockRandom(255); };
+      const uint8_t snow_byte = static_cast<uint8_t>(BlockRandom());
+      const uint32_t snow = flag();
+      if (operands.snow_flag >= 0) {
+        poke8(operands.snow_flag, snow);
+      } else {
+        regs[EBX] = (regs[EBX] & 0xFFFF00FF) | snow << 8;
+      }
+      if (operands.snow_value == 1) regs[EAX] = (regs[EAX] & 0xFFFF00FF) | snow_byte << 8;
+      if (operands.snow_value == 2) regs[EBX] = (regs[EBX] & 0xFFFFFF00) | snow_byte;
+      if (operands.snow_value == 3) regs[ECX] = (regs[ECX] & 0xFFFFFF00) | snow_byte;
+      poke32(static_cast<int>(operands.cfg), reinterpret_cast<uint32_t>(cfg));
+      if (operands.diffuse_flag >= 0) {
+        poke8(operands.diffuse_flag, flag());
+        poke32(operands.diffuse, reinterpret_cast<uint32_t>(&textures[BlockRandom(static_cast<uint32_t>(textures.size()))]));
+        poke8(operands.normal_flag, flag());
+        poke32(operands.normal, reinterpret_cast<uint32_t>(&textures[BlockRandom(static_cast<uint32_t>(textures.size()))]));
+      }
+      const uint32_t item = reinterpret_cast<uint32_t>(&items[BlockRandom(3)]);
+      constexpr uint32_t FACTIONS[] = {0xFFFFFFFF, 0xFFFFFFFF, 0, 1, 2, 3, 4, 9};
+      if (operands.faction_flag >= 0) {
+        poke8(operands.faction_flag, flag());
+        poke32(operands.faction, FACTIONS[BlockRandom(8)]);
+        if (operands.item < 0) {
+          regs[EBX] = item;
+          poke32(0x1c, item);
+        } else {
+          poke32(operands.item, item);
+        }
+      } else {
+        // The old faction: -1 (no default colours) or another value (the default colours).
+        const uint32_t old_faction = (BlockRandom(2) == 0 ? 0xFFFFFFFF : FACTIONS[2 + BlockRandom(6)]);
+        if (operands.old_faction < 0) {
+          regs[EDI] = old_faction;
+        } else {
+          poke32(operands.old_faction, old_faction);
+        }
+      }
+      // The snow constant's cell: the value the block will give it, or not.
+      const float snow_value = (operands.snow_value == 0 ? 0.0f : static_cast<float>(snow_byte));
+      uint32_t cell = BlockRandom();
+      if (BlockRandom(3) == 0) std::memcpy(&cell, &snow_value, 4);
+      const uint8_t cache = static_cast<uint8_t>(BlockRandom(2));
+      for (uint8_t& byte : tracker_initial) byte = static_cast<uint8_t>(BlockRandom());
+
+      // One run: the game's block in A, B's thunk on a tracker outside the arena (esi = tracker_plain) or on a slot's (esi in it).
+      const auto run = [&](uint8_t* image, uint8_t* tracker) {
+        game[CACHE_FLAG_RVA] = patched[CACHE_FLAG_RVA] = cache;
+        block_cell = cell;
+        std::memcpy(frame_at, frame.data(), frame.size());
+        run_in = regs;
+        run_in[ESP] = esp;
+        run_in[EBP] = reinterpret_cast<uint32_t>(ebp_block);
+        run_in[ESI] = reinterpret_cast<uint32_t>(tracker);
+        run_entry = reinterpret_cast<uint32_t>(image + info.rva);
+        game_log.clear();
+        harness.run();
+        BlockRun result = {.log = game_log, .cell = block_cell, .out = run_out};
+        std::memcpy(result.tracker.data(), tracker, dr::TRACKER_SIZE);
+        std::memcpy(result.frame.data(), frame_at, frame.size());
+        // The gather's vector (a local of the wide variants, the ones that gather an item's faction colours) holds a heap address
+        // that differs from run to run.
+        if (operands.wide) std::memset(result.frame.data() + 0x34, 0, 4);
+        return result;
+      };
+      std::memcpy(tracker_plain, tracker_initial, sizeof(tracker_plain));
+      const BlockRun reference = run(game, tracker_plain);
+      std::memcpy(tracker_plain, tracker_initial, sizeof(tracker_plain));
+      const BlockRun direct = run(patched, tracker_plain);
+      CHECK(direct.log == reference.log && direct.tracker == reference.tracker && direct.frame == reference.frame
+            && direct.cell == reference.cell && direct.out == reference.out);
+      // The block writes the tracker's first 0x14 bytes and nothing past them; the registers it leaves that the game's code after
+      // it relies on are esp, ebp, esi and, where the game reloads it, ebx.
+      CHECK(std::memcmp(reference.tracker.data() + 0x14, tracker_initial + 0x14, dr::TRACKER_SIZE - 0x14) == 0);
+      CHECK(reference.out[ESP] == esp && reference.out[EBP] == reinterpret_cast<uint32_t>(ebp_block));
+      if (operands.reloaded) CHECK(reference.out[EBX] == Read32(frame_at + 0x1c));
+      // On a slot: Record lays one op and writes the tracker's first 0x14 bytes as the game does; the replay makes the game's calls.
+      uint32_t op_used = 0;
+      dr::Slot* const slot = di::PrepareSlot(0, static_cast<uint32_t>(dr::Group::COLOUR_B), tracker_initial, 4096, &op_used);
+      const BlockRun recorded = run(patched, slot->tracker.data());
+      CHECK(slot->flags == 0 && slot->ops_cursor - slot->ops_begin == 1 + di::STATE_PAYLOAD
+            && (slot->ops_begin[0] & 0xffff) == static_cast<uint32_t>(di::OpKind::STATE) && (slot->ops_begin[0] >> 16) == 1 + di::STATE_PAYLOAD);
+      CHECK(recorded.log.empty() && recorded.cell == cell);  // nothing is called while recording
+      CHECK(std::memcmp(recorded.tracker.data(), reference.tracker.data(), 0x14) == 0);
+      // The thunk leaves the frame as it was; the game's block changes it only in its scratch.
+      std::array<uint8_t, BLOCK_FRAME_SIZE> unchanged = frame;
+      if (operands.wide) std::memset(unchanged.data() + 0x34, 0, 4);
+      CHECK(recorded.frame == unchanged);
+      for (uint32_t at = 0; at < BLOCK_FRAME_SIZE; ++at) {
+        if (reference.frame[at] == unchanged[at]) continue;
+        const auto in_range = [at](const auto& range) { return at >= range[0] && at <= range[1]; };
+        CHECK(operands.wide ? std::any_of(WIDE_SCRATCH.begin(), WIDE_SCRATCH.end(), in_range)
+                            : std::any_of(NARROW_SCRATCH.begin(), NARROW_SCRATCH.end(), in_range));
+      }
+      CHECK(recorded.out[ESP] == esp && recorded.out[EBP] == reinterpret_cast<uint32_t>(ebp_block) && recorded.out[ESI] == reinterpret_cast<uint32_t>(slot->tracker.data()));
+      if (operands.reloaded) CHECK(recorded.out[EBX] == Read32(frame_at + 0x1c));
+      dr::StateBlock block = {};
+      std::memcpy(&block, slot->ops_begin + 1, sizeof(block));
+      game_log.clear();
+      block_cell = cell;
+      game[CACHE_FLAG_RVA] = patched[CACHE_FLAG_RVA] = cache;
+      di::ReplayState(block);
+      CHECK(game_log == reference.log && block_cell == reference.cell);
+      ++cases;
+      parts_seen[0] += ((block.parts & dr::STATE_SNOW) != 0 ? 1 : 0);
+      parts_seen[1] += ((block.parts & (dr::STATE_DIFFUSE | dr::STATE_NORMAL)) != 0 ? 1 : 0);
+      parts_seen[2] += ((block.parts & dr::STATE_FACTION) != 0 && block.faction == -1 ? 1 : 0);
+      parts_seen[3] += ((block.parts & dr::STATE_FACTION) != 0 && block.faction != -1 ? 1 : 0);
+      masked += ((block.parts & dr::STATE_FACTION) != 0 && block.mask != 0 ? 1 : 0);
+      for (const LogEntry& entry : reference.log) {
+        if (entry[0] >= 4 && entry[0] <= 6) ++calls_seen[entry[0] - 4];
+      }
+    }
+    std::memcpy(game + exit_rva, saved[0].data(), 5);
+    std::memcpy(patched + exit_rva, saved[1].data(), 5);
+  }
+  FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+  CHECK(parts_seen[0] > 1000 && parts_seen[1] > 300 && parts_seen[2] > 100 && parts_seen[3] > 100 && masked > 50);
+  CHECK(calls_seen[0] > 300 && calls_seen[1] > 300 && calls_seen[2] > 300);
+  std::printf("7. colour B state blocks, the game's own bytes against the thunk and the replay: %u random cases over the 5 variants (snow constant in %u, shader resources in %u, the default colours in %u, an item's faction in %u, %u of them with a mask; the game made %u constant, %u bind and %u faction calls): the thunk with the tracker outside the arena equals the game (log, tracker, frame, registers, cell); on a slot it records one op, Record writes the tracker's first 0x14 bytes as the game does, nothing is called, and the replay's calls and cell equal the game's; esp, ebp and esi as they were, ebx as the game reloads it\n",
+              cases, parts_seen[0], parts_seen[1], parts_seen[2], parts_seen[3], masked, calls_seen[0], calls_seen[1], calls_seen[2]);
 }
 
 // ---------------------------------------------------------------- 5. controls
@@ -1556,6 +1880,8 @@ int main(int argc, char** argv) {
   TestColourStages();
   TestColourControls();
   TestMeshBeforePlan();
+  TestGroupsIn();
+  TestStateBlocks();
   SetSites(0);
   CHECK(CheckWrittenSites(0) == 0 && CheckWrittenSites(0, true) == 0);  // the sites out: the game's own bytes again
   CHECK(std::memcmp(patched + LOOP_RVA, loop_bytes_b.data(), loop_bytes_b.size()) == 0);

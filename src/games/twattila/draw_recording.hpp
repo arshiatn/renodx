@@ -61,6 +61,9 @@ struct Settings {
   DWORD context_hooks_thread = 0;
   // The B groups' dispatcher families (bit f: family f may record; a clear bit makes its classes direct segments).
   uint32_t b_families = 0xff;
+  // The groups whose own sites and flush path are all written (engine_code); a group not in it runs the game's loop
+  // even when its row is on. All by default (a test that drives the dispatcher without sites).
+  uint32_t groups_in = ~0u;
 };
 
 #if !defined(_WIN64)
@@ -632,7 +635,8 @@ inline void __fastcall Record(Slot* slot, Frame* frame) noexcept {
         std::memcpy(slot->tracker.data() + 0x08, &block.normal, 4);
       }
       if ((block.writes & STATE_WRITE_FACTION) != 0) {
-        const int32_t mask_index = (block.mask != 0 ? *reinterpret_cast<const int32_t*>(static_cast<uintptr_t>(block.mask) + 4) : -1);
+        const int32_t mask_index =
+            (block.mask != 0 ? *reinterpret_cast<const int32_t*>(static_cast<uintptr_t>(block.mask) + 4) : -1);
         std::memcpy(slot->tracker.data() + 0x00, &block.faction, 4);
         std::memcpy(slot->tracker.data() + 0x0c, &mask_index, 4);
       }
@@ -979,7 +983,9 @@ inline void ReplayFaction(int32_t faction, uint32_t mask, uint32_t node, uint32_
   // do not prove for every node (the class is not named by them). A call that left it alone has no list here: nothing is
   // sent (the game would read a stale stack slot).
   if (list == 0) {
-    if (trace_call != nullptr) ++trace_call->faction_lists_unwritten;
+    if (trace_call != nullptr) {
+      ++trace_call->faction_lists_unwritten;
+    }
     return;
   }
   const auto* const list_bytes = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(list));
@@ -1062,10 +1068,18 @@ inline Slot* PrepareSlot(uint32_t index, uint32_t group_index, void* tracker, ui
 
 // A colour body's state block, replayed: its calls in the block's order.
 inline void ReplayState(const StateBlock& block, CallTrace* trace_call = nullptr) {
-  if ((block.parts & STATE_SNOW) != 0) ReplayConst(block.snow_object, block.snow_bits, 1);
-  if ((block.parts & STATE_DIFFUSE) != 0) ReplaySrv(block.diffuse_slot, block.diffuse);
-  if ((block.parts & STATE_NORMAL) != 0) ReplaySrv(block.normal_slot, block.normal);
-  if ((block.parts & STATE_FACTION) != 0) ReplayFaction(block.faction, block.mask, block.node, block.state, trace_call);
+  if ((block.parts & STATE_SNOW) != 0) {
+    ReplayConst(block.snow_object, block.snow_bits, 1);
+  }
+  if ((block.parts & STATE_DIFFUSE) != 0) {
+    ReplaySrv(block.diffuse_slot, block.diffuse);
+  }
+  if ((block.parts & STATE_NORMAL) != 0) {
+    ReplaySrv(block.normal_slot, block.normal);
+  }
+  if ((block.parts & STATE_FACTION) != 0) {
+    ReplayFaction(block.faction, block.mask, block.node, block.state, trace_call);
+  }
 }
 
 // The four loop groups' names, as the rows call them (the logs).
@@ -2481,7 +2495,7 @@ inline void Update(const Settings& settings) {
     trace.in_window = false;
   }
 
-  config = {.stage = stage, .loops = settings.loops, .families = settings.b_families};
+  config = {.stage = stage, .loops = settings.loops & settings.groups_in, .families = settings.b_families};
 }
 
 // The `groups` the engine code's Update takes (bits of Group), from this present's stage and live loops mask: none while the

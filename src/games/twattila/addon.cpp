@@ -1656,7 +1656,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                 particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale, recording_groups,
                                 {.pending_sweep_trace = worker_trace_env});
 #if defined(TWATTILA_DRAW_RECORDING)
-  // After the engine code's Update: the sites are in or out for this present.
+  // After the engine code's Update: the sites are in or out for this present, and only the groups whose sites all are
+  // in run.
+  recording.groups_in = twattila::engine_code::DrawRecordingGroupsIn();
   twattila::draw_recording::Update(recording);
 #endif
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, twattila::engine_code::ModelDetailStatus(object_detail.scale), &graphics_found,

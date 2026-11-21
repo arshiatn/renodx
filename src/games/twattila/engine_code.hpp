@@ -108,16 +108,30 @@ constexpr std::array<uint8_t, 44> TruncationStub(uint8_t control, uint8_t roundi
   };
 }
 constexpr std::array<uint8_t, 44> TRUNCATION_STUB = TruncationStub(0x18, 0x1C, 0x20, 0x2C);
-// The same bytes as the Attila CPU Performance Fix's x87 fix leaves them (its x87fix.c, on the block at +14): both fldcw
-// a 4-byte nop, fistp fisttp. Left to that mod as any other mod's code; only named in the log.
-constexpr auto X87_FIX_TRUNCATION = [] {
-  std::array<char, TRUNCATION.size()> pattern = {};
-  std::ranges::copy(TRUNCATION, pattern.begin());
-  const auto put = [&](size_t offset, std::string_view bytes) { std::ranges::copy(bytes, pattern.begin() + 3 * offset); };
-  put(37, "0F 1F 40 00");  // fldcw word ptr [esp + 0x1c]
-  put(42, "4C");           // fistp dword ptr [esp + 0x2c] -> fisttp
-  put(45, "0F 1F 40 00");  // fldcw word ptr [esp + 0x18]
-  return pattern;
+// The same bytes as the Attila CPU Performance Fix's x87 fix leaves them (its x87fix.c, on the block at +14): the form of
+// 7.0 (both fldcw a 4-byte nop, fistp fisttp), the split form of the later builds (the control word reload split: the
+// fwait through the fistp are 30 bytes of integer code, with fisttp and no control word loads) and the form of its x87c
+// (the whole 36-byte block: push eax, cvttss2si, the store, pop eax, a short jump over 22 int3). Left to that mod as any
+// other mod's code; only named in the log.
+constexpr auto X87_FIX_TRUNCATIONS = [] {
+  std::array<std::array<char, TRUNCATION.size()>, 3> patterns = {};
+  for (std::array<char, TRUNCATION.size()>& pattern : patterns) {
+    std::ranges::copy(TRUNCATION, pattern.begin());
+  }
+  const auto put = [&](size_t form, size_t offset, std::string_view bytes) {
+    std::ranges::copy(bytes, patterns[form].begin() + 3 * offset);
+  };
+  put(0, 37, "0F 1F 40 00");  // fldcw word ptr [esp + 0x1c]
+  put(0, 42, "4C");           // fistp dword ptr [esp + 0x2c] -> fisttp
+  put(0, 45, "0F 1F 40 00");  // fldcw word ptr [esp + 0x18]
+  // movzx eax, word ptr [esp + 0x1a]; fstcw [esp + 0x18]; shl eax, 0x10; mov ax, [esp + 0x18]; or eax, 0xc00;
+  // mov [esp + 0x1c], eax; fisttp dword ptr [esp + 0x2c]
+  put(1, 19, "0F B7 44 24 1A D9 7C 24 18 C1 E0 10 66 8B 44 24 18 0D 00 0C 00 00 89 44 24 1C DB 4C 24 2C");
+  put(2, 14, "50 F3 0F 2C 44 24 20 89 44 24 2C 58 EB 16");
+  for (size_t offset = 28; offset < 50; ++offset) {
+    put(2, offset, "CC");
+  }
+  return patterns;
 }();
 
 // 2. float to half (+0x169a220, 98 callers; the sprite soldiers' instance rows, 20 a row: ~4.3 ms a frame): uint16_t
@@ -1770,7 +1784,7 @@ static bool job_missing_logged = false;
 static uint32_t prefetch_logged = 0;  // the prefetch and worker sites already named as left alone: each is named once
 // Threaded Draw Recording's table (draw_recording_sites.hpp, compiled only with TWATTILA_DRAW_RECORDING): the same window writes it
 // with the 27 sites above, its masks have 64 bits. Without the feature nothing is ever found in it.
-constexpr size_t RECORDING_SITES = 39;
+constexpr size_t RECORDING_SITES = 59;
 static std::array<Site, RECORDING_SITES> recording_sites = {};
 static bool recording_prepared = false;
 static uint64_t recording_found = 0;
@@ -1802,6 +1816,9 @@ static int32_t recording_fail_protect = -1;
 // Presents with a thread inside a site before giving up (until the row changes); each try snapshots the system's threads
 // (~0.1 s with some antivirus hooks; 3 of 200 writes waited once in the test, four threads running the sites nonstop).
 constexpr uint32_t MAX_FAILED_WRITES = 30;
+// The bytes of the game's code the Attila CPU Performance Fix patches or checks: every feature that writes into the
+// game's code keeps clear of them.
+#include "heapfix_ranges.hpp"
 #if defined(TWATTILA_ENGINE_PROBE)
 // 17. The probe build (private, compiled only with TWATTILA_ENGINE_PROBE, no row): a histogram stub in front of each probed site's production stub.
 #include "engine_probe.hpp"
@@ -1933,11 +1950,26 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
     if ((stood[1] & entry_in) != 0) {
       stood[1] |= going_in[1];
     } else {
-      for (const uint64_t group_sites : recording_group_sites) {
-        if ((stood[1] & going_in[1] & group_sites) != 0) {
-          stood[1] |= going_in[1] & group_sites;
+      // A group with a site stood down stands down whole, except the sites another group that stays in needs (the
+      // per-mesh cut is both B groups'; when the cut itself is the stood site both groups stand down).
+      for (bool again = true; again;) {
+        again = false;
+        for (const uint64_t group_sites : recording_group_sites) {
+          if ((stood[1] & going_in[1] & group_sites) == 0) continue;
+          uint64_t needed = 0;
+          for (const uint64_t other : recording_group_sites) {
+            if ((stood[1] & going_in[1] & other) == 0 && (going_in[1] & other & ~group_sites) != 0) {
+              needed |= going_in[1] & other;
+            }
+          }
+          const uint64_t standing = going_in[1] & group_sites & ~needed & ~stood[1];
+          stood[1] |= standing;
+          again |= (standing != 0);
         }
       }
+      // (A lone cut with the entry hook may stay written with no group when one B group goes out in the present another
+      // goes in with a stood site: harmless, RecordingGroupsIn keeps the dispatcher off it, and both come out with the
+      // rows or the stage.)
       if (entry_in != 0 && (staying_in() & ~recording_entry_bit) == 0) {
         stood[1] |= entry_in;
       }
@@ -2351,8 +2383,11 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   std::string left;
   std::string x87_fixed;
   // Attila's truncation block rewritten by the Attila CPU Performance Fix is named as such, not as an unknown mod.
-  const bool truncation_x87_fixed = (sites[0].at == nullptr && build.truncation_rva == TRUNCATION_RVA
-                                     && holds(base + TRUNCATION_RVA, {X87_FIX_TRUNCATION.data(), X87_FIX_TRUNCATION.size()}));
+  const bool truncation_x87_fixed =
+      (sites[0].at == nullptr && build.truncation_rva == TRUNCATION_RVA
+       && std::ranges::any_of(X87_FIX_TRUNCATIONS, [&](const auto& pattern) {
+            return holds(base + TRUNCATION_RVA, {pattern.data(), pattern.size()});
+          }));
   // A site the build doesn't have (rva 0) isn't named.
   const uint32_t reload_rva = (sse4_1 ? build.float4_reload_rva : 0);
   const uint32_t rows_rva = (sse4_1 ? build.soldier_rows_rva : 0);
@@ -2603,6 +2638,16 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
 // memory and module.
 inline bool DrawRecordingSitesIn() { return internal::recording_written != 0 || internal::recording_left_in; }
 
+// The loop groups (bits of draw_recording::Group) whose sites and flush path are all written now
+// (draw_recording::Settings::groups_in): the dispatcher runs the rounds of these groups only.
+inline uint32_t DrawRecordingGroupsIn() {
+#if defined(TWATTILA_DRAW_RECORDING)
+  return internal::RecordingGroupsIn();
+#else
+  return 0;
+#endif
+}
+
 // The Advanced status's words for the LOD pick's site, for the slider `model_detail` now; null: not decided yet (Prepare has not run).
 inline const char* ModelDetailStatus(float model_detail) {
   if ((internal::written & internal::MODEL_DETAIL_BIT) != 0) return "object detail hooked";
@@ -2658,6 +2703,7 @@ inline void ProbeArm(uint32_t presents) { internal::probe::Arm(presents); }
 inline void Update(bool, Game = Game::ATTILA, bool = false, bool = false, bool = false, bool = false, bool = false, bool = false, float = 1.f,
                    uint32_t = 0, const WorkerRows& = {}) {}
 inline bool DrawRecordingSitesIn() { return false; }
+inline uint32_t DrawRecordingGroupsIn() { return 0; }
 inline const char* ModelDetailStatus(float) { return nullptr; }
 inline void Uninstall() {}
 #if defined(TWATTILA_ENGINE_PROBE)
