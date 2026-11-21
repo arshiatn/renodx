@@ -5239,6 +5239,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         to pairs 2-3 / d drop instances presort; correct P3's extent; re-check M1 hole (b) for all 3 pairs; new stop /
         expected-set rules + scans for prepare_test) -> bd3r_ check -> hp1i_ finishes S8-1a.
         Agents: ebr_, c3i_, bd3o_ (3 of 3).
+        ebr_ RE-CHECK OF T4 ROUND 2 DONE 08:3x (appended to reports/ebr_t4_review.md; tests re-run 472 / 0): decisions as
+        stated, regexes match the real strings, safety passes. NOT READY for T5 yet: R1 count a crash before the
+        resumable stop; R2 real legs act on ebo_make WARNs (opening Make -> return 2, per-start Make -> resumable).
+        Shoulds S-R1 leak not pinned by timing, S-R2 equal resolved states = invalid compare, S-R3 classify the "measured
+        nothing" lines, S-R4 L_mem cuts -Seconds, S-R5 (COORDINATOR: narrow kill "B2:early" on a presort mismatch),
+        S-R6 EARLY 2 without instances = PROBLEM + early_regex TO REFRESH. 7 nits. WARN guard for "parsed only" knobs
+        agreed (T5 fills built from the frozen DLL itself).
+        t4i_ RESUMED 08:3x: round 3 -> ebr_ re-check.
+        Agents: c3i_ (B1.2a), bd3o_ (S8a v3), t4i_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
