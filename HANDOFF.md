@@ -5688,6 +5688,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         + unit test) -> bd1r_ re-check -> merge. t4i_ also takes bd1r_ S3 (gates class + FrameBridge pre-check).
         Agents: t4i_ (A/B + nits + S3), c3i_ (B1.4), c33i_ (C.3-4 fixes + LOGX) (3 of 3). QUEUE: bd1r_ re-check, merge
         rmt_c34, x87o_ v2, ebr_ re-check of t4i_ (+ T4 ready again after LOGX), b13r_ B1.4 review, B1.5.
+        t4i_ ROUND 5 DONE 14:5x (tools\tw only; reports/t4i_round5_handback.md; backups scratchpad\t4i_bak\r5): heapfix
+        A/B built = leg 4 after D1-OFF-b, ABBA W3 + D1, 8 starts x 180 s ~36 min (four_on / four_off write all 4 keys;
+        ebo_check wants each 'switched off' line for 0 keys; ab_report per scene on / off / diff vs noise band, cut at
+        the first x87 revert, 'single-fix A/Bs worth it' line + gate heapfix_ab); crash record keeps the segment; x87
+        revert INFO rows (marks, never a stop); c_left_alone row (resumable when C planned); FrameBridge / pass time
+        preflight + lean-mode check. run_all 705 assertions 0 failed. Plan total ~5.6 h.
+        ebr_ RESUMED 15:0x: round 6 re-check -> reports/ebr_t1b_review.md.
+        Agents: c3i_ (B1.4), c33i_ (C.3-4 fixes + LOGX), ebr_ (round 6) (3 of 3). QUEUE: bd1r_ re-check, merge rmt_c34,
+        t4i_ LOGX test_check case, x87o_ v2, b13r_ B1.4 review, B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
