@@ -1343,6 +1343,9 @@ float keep_render_core_row = 0.f;
 // Worker Threads (Experimental): the threads, the render thread included, that worker_pool.hpp's users may use. The row is
 // compiled only where a pool user is (today the private draw recording build).
 float worker_threads_row = 4.f;
+// The env generation: the pool reads RENODX_TW_WORKER_LIMITS and RENODX_TW_POOL_SPIN_US again when it changes (the bench
+// bumps it after it sets them).
+std::atomic<uint32_t> worker_env_generation = 0;
 // Where the game's own threads start (the job workers in the engine's DLL); the rest is the driver's, audio's, etc.
 constexpr std::array<const wchar_t*, 2> GAME_THREAD_MODULES = {nullptr, L"empire.retail.dll"};
 // Faster Emitter Prefetch (Experimental, off): engine_code.hpp's emitter update loop site, a row of its own so that a bench
@@ -1646,7 +1649,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   pool_trace = twattila::draw_recording::internal::trace.active;
 #endif
   // Before the users' own Updates.
-  twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use, .trace = pool_trace});
+  twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use, .trace = pool_trace,
+                                 .env_generation = worker_env_generation.load(std::memory_order_relaxed)});
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
                                 job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,
                                 particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale, recording_groups);

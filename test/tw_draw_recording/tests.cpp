@@ -624,41 +624,126 @@ static void PoolOpenAtUpdate() {
   std::printf("pool: a job open at Update is joined, logged once\n");
 }
 
-// RENODX_TW_WORKER_LIMITS and RENODX_TW_POOL_SPIN_US, read once; a limit of 1 is the render thread alone.
+// RENODX_TW_WORKER_LIMITS and RENODX_TW_POOL_SPIN_US: read at the first present and again at a new env generation, with the pool
+// running and no job open; a limit of 1 is the render thread alone; one line says what was applied; a bad entry is said once.
 static void PoolEnvironment() {
-  const auto read_again = [](const char* limits, const char* spin) {
-    // The workers read the spin knob: stopped before it is read again.
-    wp::Update({.in_use = false});
+  wp::Update({.in_use = false});
+  uint32_t generation = 0;
+  const auto set_env = [](const char* limits, const char* spin) {
     SetEnvironmentVariableA("RENODX_TW_WORKER_LIMITS", limits);
     SetEnvironmentVariableA("RENODX_TW_POOL_SPIN_US", spin);
-    wi::environment_read = false;
   };
-  read_again("recording:1,effects:3,ring:99,bogus:2,animation:x,sweep", "50");
-  wp::Update({.threads = 8, .in_use = true});
+  const auto update = [&](uint32_t threads) { wp::Update({.threads = threads, .in_use = true, .env_generation = generation}); };
+  const auto ticks_of = [](uint64_t microseconds) { return static_cast<uint32_t>(wp::qpc_frequency * microseconds / 1000000); };
+  set_env("recording:1,effects:3,ring:99,bogus:2,animation:x,sweep,sweep:4q", "50");
+  generation = 1;
+  update(8);
   CHECK(wp::Available(wp::User::DRAW_RECORDING) == 0);
   CHECK(wp::Available(wp::User::EFFECT_UPDATE) == 2);
   CHECK(wp::Available(wp::User::ANIMATION_ROWS) == 7);
   CHECK(wp::Available(wp::User::PENDING_SWEEP) == 7);
   CHECK(wp::Available(wp::User::RING_FILL) == 7);
-  CHECK(wi::spin_ticks == wp::qpc_frequency * 50 / 1000000);
+  CHECK(wi::spin_ticks.load() == ticks_of(50));
+  // The applied line: the values actually used (the ring limit clamped to 16, the entries that did not parse left at 16).
+  CHECK(LogHas("limits and spin applied (env generation 1): recording 1 effects 3 animation 16 sweep 16 ring 16, spin 50 us."));
+  for (const char* entry : {"\"bogus:2\"", "\"animation:x\"", "\"sweep\"", "\"sweep:4q\""}) {
+    CHECK(LogCount(std::string("RENODX_TW_WORKER_LIMITS entry ") + entry + " does not parse") == 1);
+  }
   // The limit and the row: the smaller wins.
-  wp::Update({.threads = 2, .in_use = true});
+  update(2);
   CHECK(wp::Available(wp::User::EFFECT_UPDATE) == 1 && wp::Available(wp::User::RING_FILL) == 1);
-  // The environment is read once: a change after that is not seen.
-  SetEnvironmentVariableA("RENODX_TW_WORKER_LIMITS", "recording:6");
-  wp::Update({.threads = 8, .in_use = true});
-  CHECK(wp::Available(wp::User::DRAW_RECORDING) == 0);
+  update(8);
+  // Same generation: a change of the variables is not seen.
+  set_env("recording:6", nullptr);
+  update(8);
+  CHECK(wp::Available(wp::User::DRAW_RECORDING) == 0 && wi::spin_ticks.load() == ticks_of(50));
+  // A new generation, the pool running: read again.
+  CHECK(wi::created == 7);
+  generation = 2;
+  update(8);
+  CHECK(wi::created == 7 && wp::Available(wp::User::DRAW_RECORDING) == 5 && wp::Available(wp::User::EFFECT_UPDATE) == 7);
+  CHECK(wi::spin_ticks.load() == ticks_of(wi::DEFAULT_SPIN_US));
+  CHECK(LogHas("(env generation 2): recording 6 effects 16 animation 16 sweep 16 ring 16, spin 3 us."));
   // 1 is allowed and the work still runs, on the render thread alone.
+  set_env("recording:1", nullptr);
+  generation = 3;
+  update(8);
   ResetReports();
   RunReport(wp::Available(wp::User::DRAW_RECORDING));
   CHECK(!wp::Start({.work = ReportWork, .user = wp::User::DRAW_RECORDING}, wp::Available(wp::User::DRAW_RECORDING)));
   for (const WorkerReport& report : reports) CHECK(report.runs == 0);
-  read_again(nullptr, nullptr);
-  wp::Update({.threads = 8, .in_use = true});
+  // The same bad entries again, and a bad spin: each said once in all.
+  set_env("bogus:2,sweep", "fast");
+  generation = 4;
+  update(8);
+  generation = 5;
+  update(8);
+  CHECK(LogCount("RENODX_TW_WORKER_LIMITS entry \"bogus:2\" does not parse") == 1);
+  CHECK(LogCount("RENODX_TW_WORKER_LIMITS entry \"sweep\" does not parse") == 1);
+  CHECK(LogCount("RENODX_TW_POOL_SPIN_US=fast does not parse") == 1);
+  CHECK(wi::spin_ticks.load() == ticks_of(wi::DEFAULT_SPIN_US));
+  // A job open when the generation changes is joined first; the read then happens.
+  Gate gate;
+  gate.word = 1;
+  set_env("ring:2", nullptr);
+  generation = 6;
+  REQUIRE(wp::Start({.work = GatedWork, .context = &gate, .user = wp::User::EFFECT_UPDATE, .join = wp::JoinRule::ENTERED}, 1));
+  update(8);
+  CHECK(!wi::busy.load() && wp::Available(wp::User::RING_FILL) == 1 && wp::Available(wp::User::EFFECT_UPDATE) == 7);
+  // No tear while idle workers spin: the spin is one 32-bit word, changed between two values at every present.
+  const uint32_t low = ticks_of(3);
+  const uint32_t high = ticks_of(1000000);
+  std::atomic<bool> sampling{true};
+  std::atomic<uint32_t> torn{0};
+  std::thread sampler([&] {
+    while (sampling.load()) {
+      const uint32_t seen = wi::spin_ticks.load();
+      if (seen != low && seen != high) torn.fetch_add(1);
+    }
+  });
+  for (int round = 0; round < 1500; ++round) {
+    set_env(nullptr, (round % 2 == 0 ? "1000000" : "3"));
+    ++generation;
+    update(8);
+    RunReport(7);
+  }
+  sampling = false;
+  sampler.join();
+  CHECK(torn == 0);
+  // Back to the defaults at generation 0, the one the other tests run with.
+  set_env(nullptr, nullptr);
+  generation = 0;
+  update(8);
   for (size_t user = 0; user < static_cast<size_t>(wp::User::COUNT); ++user) CHECK(wp::Available(static_cast<wp::User>(user)) == 7);
-  CHECK(wi::spin_ticks == wp::qpc_frequency * wi::DEFAULT_SPIN_US / 1000000);
+  CHECK(wi::spin_ticks.load() == ticks_of(wi::DEFAULT_SPIN_US));
   wp::Update({.in_use = false});
-  std::printf("pool: env limits per user (1 = render thread alone, bad entries left out, clamped, smaller of row and limit), spin knob, read once\n");
+  std::printf("pool: env limits and spin read again at a new generation with the pool running, the applied line, bad entries said once, no tear of the spin\n");
+}
+
+// ArmTrace: a header line at the next present (time and the pool's values), refusals counted and Tracing() true for the window.
+static void PoolArmTrace() {
+  wp::Update({.threads = 4, .in_use = true});
+  const size_t headers = LogCount("Worker pool trace window");
+  for (auto& count : wi::refused) count = 0;
+  CHECK(!wp::Tracing());
+  wp::ArmTrace(2);
+  CHECK(wp::Tracing());
+  const auto refused_ring = [] {
+    std::thread other([] { wp::Available(wp::User::RING_FILL); });
+    other.join();
+    return wi::refused[static_cast<size_t>(wp::User::RING_FILL)].load();
+  };
+  wp::Update({.threads = 4, .in_use = true});
+  CHECK(LogCount("Worker pool trace window") == headers + 1 && LogHas("window of 2 presents") && LogHas("workers ready 3 of 3"));
+  CHECK(LogHas("spin 3 us, env generation 0, limits recording 16 effects 16"));
+  CHECK(wp::Tracing() && refused_ring() == 1);
+  wp::Update({.threads = 4, .in_use = true});
+  CHECK(wp::Tracing() && LogHas("ring 1"));
+  wp::Update({.threads = 4, .in_use = true});
+  CHECK(!wp::Tracing() && LogCount("Worker pool trace window") == headers + 1);
+  CHECK(refused_ring() == 0);
+  wp::Update({.in_use = false});
+  std::printf("pool: ArmTrace: one header line, counting and Tracing() for the window, then off\n");
 }
 
 // ---------------------------------------------------------------- part 2: the synthetic game
@@ -4202,6 +4287,7 @@ int main() {
   PoolSlowWork();
   PoolOpenAtUpdate();
   PoolEnvironment();
+  PoolArmTrace();
   Setup();
   RecordRules();
   DepthStages();

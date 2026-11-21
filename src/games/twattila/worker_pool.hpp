@@ -63,8 +63,11 @@
 // Update prints the records, and the refusals counted while Settings::trace is on, at the next present.
 //
 // Per-user limits are batch-only: RENODX_TW_WORKER_LIMITS=recording:4,effects:8,animation:2,sweep:4,ring:4 (threads, the
-// render thread included, 1 to 16; 1 = the render thread alone), read once. RENODX_TW_POOL_SPIN_US (default 3, read once) is
-// how long an idle worker spins for its next job before it waits. No CPU pinning of our own: each pool thread gets the sets
+// render thread included, 1 to 16; 1 = the render thread alone). RENODX_TW_POOL_SPIN_US (default 3) is how long an idle worker
+// spins for its next job before it waits. Both are read with GetEnvironmentVariableA at the first present and again whenever
+// Settings::env_generation changes (the bench sets the variables, then bumps the generation), at an Update with no job open;
+// one line says what was applied, and an entry that does not parse is said once. ArmTrace(frames) opens one trace window with
+// a header line (time and the pool's values) for a bench trace. No CPU pinning of our own: each pool thread gets the sets
 // cpu_sets published (Keep Render Core Free) and nothing else. x86 only: on x64 everything is an empty stub.
 namespace twattila::worker_pool {
 
@@ -98,6 +101,8 @@ struct Settings {
   bool in_use = false;
   // A trace frame is running: calls that were refused (a job open, not the owner) are counted for the trace lines.
   bool trace = false;
+  // The add-on's env generation: the limits and the spin are read again when it changes.
+  uint32_t env_generation = 0;
 };
 
 #if !defined(_WIN64)
@@ -178,13 +183,21 @@ static uint32_t failed_target = ~0u;
 // The generation of cpu_sets' published sets the pool threads were given (all ones: none yet).
 static uint32_t given_generation = ~0u;
 static uint32_t generation = 0;
-static bool environment_read = false;
+// The env generation the limits and the spin were read at (all ones: not yet).
+static uint32_t env_generation_applied = ~0u;
+// The entries and values that did not parse and were said already.
+static std::vector<std::string> bad_said;
+// A trace window: presents left, and the header line still to be written; the first present's time for it.
+static std::atomic<uint32_t> trace_frames = 0;
+static bool trace_header_pending = false;
+static uint64_t first_update_ticks = 0;
 static bool open_logged = false;
 static bool other_open_logged = false;
 static bool pinned = false;
 // The most threads, the render thread included, each user may use.
 static std::array<uint32_t, USER_COUNT> limits = {};
-static uint64_t spin_ticks = 0;
+// QPC ticks an idle worker spins: one 32-bit word, so a read on a worker is never torn by an Update that changes it.
+static std::atomic<uint32_t> spin_ticks = 0;
 static std::atomic<DWORD> owner = 0;
 // The thread that started the open job: only it may close it.
 static std::atomic<DWORD> starter = 0;
@@ -218,7 +231,7 @@ static DWORD WINAPI WorkerMain(void* context) {
     uint32_t ticket = self.ticket.load(std::memory_order_acquire);
     if (ticket == last) {
       const uint64_t start = Qpc();
-      while (ticket == last && Qpc() - start < spin_ticks) {
+      while (ticket == last && Qpc() - start < spin_ticks.load(std::memory_order_relaxed)) {
         _mm_pause();
         ticket = self.ticket.load(std::memory_order_acquire);
       }
@@ -267,6 +280,17 @@ static DWORD WINAPI WorkerMain(void* context) {
 }
 
 }  // namespace internal
+
+// Opens one trace window of `frames` presents: the next Update writes a header line (time, the row, the ready workers, the
+// limits, the spin, the env generation), and Tracing() is true until the window ends. A bench trace of any user arms it.
+inline void ArmTrace(uint32_t frames) {
+  using namespace internal;
+  trace_header_pending = true;
+  trace_frames.store(frames, std::memory_order_relaxed);
+}
+
+// A trace window is open: users set Job::trace from it (and their own trace output).
+inline bool Tracing() { return internal::trace_frames.load(std::memory_order_relaxed) != 0; }
 
 // Workers this user may use now (0: run alone). 0 when the caller is not the owner (pool threads and game threads), when a job
 // is open or when the pool is empty; otherwise the ready workers, up to the user's limit less the render thread. While a trace
@@ -424,35 +448,9 @@ inline void Stop() {
 inline void Update(const Settings& settings) {
   using namespace internal;
   owner.store(GetCurrentThreadId(), std::memory_order_relaxed);
-  if (!environment_read) {
-    environment_read = true;
-    limits.fill(MAX_WORKERS + 1);
-    spin_ticks = qpc_frequency * DEFAULT_SPIN_US / 1000000;
-    std::array<char, 128> text = {};
-    const auto read = [&](const char* name) {
-      const DWORD length = GetEnvironmentVariableA(name, text.data(), static_cast<DWORD>(text.size()));
-      return (length != 0 && length < text.size() ? std::string_view(text.data(), length) : std::string_view());
-    };
-    uint32_t microseconds = 0;
-    if (const std::string_view spin = read("RENODX_TW_POOL_SPIN_US");
-        !spin.empty() && std::from_chars(spin.data(), spin.data() + spin.size(), microseconds).ec == std::errc()) {
-      spin_ticks = qpc_frequency * microseconds / 1000000;
-    }
-    // recording:4,effects:8,...: entries that don't parse are left out.
-    for (std::string_view rest = read("RENODX_TW_WORKER_LIMITS"); !rest.empty();) {
-      const size_t comma = rest.find(',');
-      const std::string_view entry = rest.substr(0, comma);
-      rest = (comma == std::string_view::npos ? std::string_view() : rest.substr(comma + 1));
-      const size_t colon = entry.find(':');
-      const auto key = std::ranges::find(USER_KEYS, entry.substr(0, colon));
-      uint32_t threads = 0;
-      if (colon != std::string_view::npos && key != USER_KEYS.end()
-          && std::from_chars(entry.data() + colon + 1, entry.data() + entry.size(), threads).ec == std::errc()) {
-        limits[static_cast<size_t>(key - USER_KEYS.begin())] = std::clamp<uint32_t>(threads, 1, MAX_WORKERS + 1);
-      }
-    }
+  if (first_update_ticks == 0) {
+    first_update_ticks = Qpc();
   }
-
   // A job still open here is joined first (only the thread that started it can: another thread's stays open and is said once).
   if (busy.load(std::memory_order_acquire)) {
     Join();
@@ -463,6 +461,55 @@ inline void Update(const Settings& settings) {
                                        : "[Total War] Worker pool: a job was still open at the present; joined.");
     }
     logged = true;
+  }
+
+  // The limits and the spin, at the first present and when the env generation changed; not while a job is open (it is tried
+  // again at the next present).
+  if (!busy.load(std::memory_order_acquire) && settings.env_generation != env_generation_applied) {
+    env_generation_applied = settings.env_generation;
+    limits.fill(MAX_WORKERS + 1);
+    uint32_t microseconds = DEFAULT_SPIN_US;
+    const auto read = [](const char* name) {
+      std::string text(GetEnvironmentVariableA(name, nullptr, 0), '\0');
+      text.resize(GetEnvironmentVariableA(name, text.data(), static_cast<DWORD>(text.size())));
+      return text;
+    };
+    const auto parse = [](std::string_view text, uint32_t* value) {
+      const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), *value);
+      return error == std::errc() && end == text.data() + text.size();
+    };
+    // Said once each: the same entry in a later read is not said again.
+    const auto complain = [](const std::string& what) {
+      if (std::ranges::find(bad_said, what) == bad_said.end()) {
+        bad_said.push_back(what);
+        renodx::utils::log::w("[Total War] Worker pool: " + what + " does not parse; left out.");
+      }
+    };
+    if (const std::string spin = read("RENODX_TW_POOL_SPIN_US"); !spin.empty() && !parse(spin, &microseconds)) {
+      microseconds = DEFAULT_SPIN_US;
+      complain("RENODX_TW_POOL_SPIN_US=" + spin);
+    }
+    spin_ticks.store(static_cast<uint32_t>(std::min<uint64_t>(qpc_frequency * microseconds / 1000000, ~0u)), std::memory_order_relaxed);
+    // recording:4,effects:8,...
+    const std::string list = read("RENODX_TW_WORKER_LIMITS");
+    for (std::string_view rest = list; !rest.empty();) {
+      const size_t comma = rest.find(',');
+      const std::string_view entry = rest.substr(0, comma);
+      rest = (comma == std::string_view::npos ? std::string_view() : rest.substr(comma + 1));
+      const size_t colon = entry.find(':');
+      const auto key = std::ranges::find(USER_KEYS, entry.substr(0, colon));
+      uint32_t threads = 0;
+      if (colon != std::string_view::npos && key != USER_KEYS.end() && parse(entry.substr(colon + 1), &threads)) {
+        limits[static_cast<size_t>(key - USER_KEYS.begin())] = std::clamp<uint32_t>(threads, 1, MAX_WORKERS + 1);
+      } else if (!entry.empty()) {
+        complain("RENODX_TW_WORKER_LIMITS entry \"" + std::string(entry) + "\"");
+      }
+    }
+    std::string applied = std::format("[Total War] Worker pool: limits and spin applied (env generation {}):", settings.env_generation);
+    for (size_t user = 0; user < USER_COUNT; ++user) {
+      applied += std::format(" {} {}", USER_KEYS[user], limits[user]);
+    }
+    renodx::utils::log::i(applied + std::format(", spin {} us.", microseconds));
   }
 
   // The trace lines of the last present's jobs, and the refusals counted since the last ones (not while a job is open: the
@@ -496,7 +543,26 @@ inline void Update(const Settings& settings) {
   if (!refusals.empty()) {
     renodx::utils::log::i("[Total War] Worker pool trace: starts and Available() calls refused (a job open, or not the owner):" + refusals);
   }
-  counting.store(settings.trace, std::memory_order_relaxed);
+  // A trace window: the header at its first present, one present counted off at each later one.
+  if (trace_header_pending) {
+    trace_header_pending = false;
+    SYSTEMTIME now = {};
+    GetLocalTime(&now);
+    std::string header = std::format(
+        "[Total War] Worker pool trace window of {} presents at {:02}:{:02}:{:02}.{:03} ({:.1f} ms after the first present): threads {}, "
+        "workers ready {} of {}, spin {} us, env generation {}, limits",
+        trace_frames.load(std::memory_order_relaxed), now.wHour, now.wMinute, now.wSecond, now.wMilliseconds,
+        static_cast<double>(Qpc() - first_update_ticks) * 1000.0 / static_cast<double>(qpc_frequency), settings.threads,
+        ready.load(std::memory_order_relaxed), created,
+        static_cast<uint64_t>(spin_ticks.load(std::memory_order_relaxed)) * 1000000 / qpc_frequency, settings.env_generation);
+    for (size_t user = 0; user < USER_COUNT; ++user) {
+      header += std::format(" {} {}", USER_KEYS[user], limits[user]);
+    }
+    renodx::utils::log::i(header);
+  } else if (trace_frames.load(std::memory_order_relaxed) != 0) {
+    trace_frames.fetch_sub(1, std::memory_order_relaxed);
+  }
+  counting.store(settings.trace || trace_frames.load(std::memory_order_relaxed) != 0, std::memory_order_relaxed);
 
   if (!settings.in_use) {
     Stop();
@@ -562,6 +628,8 @@ inline bool Start(const Job&, uint32_t) { return false; }
 inline JoinResult Join() { return {}; }
 inline void Update(const Settings&) {}
 inline void Stop() {}
+inline void ArmTrace(uint32_t) {}
+inline bool Tracing() { return false; }
 
 #endif
 
