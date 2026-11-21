@@ -14,8 +14,13 @@
 //    round: serial; in the round: the units drained, the rest serial); PrivateWritesOnly (15): the scheduler's reads of the game's structures with those pages read-only;
 //    the serial reasons, the census (a render thread hit outside a unit, a foreign thread), the watched words, Update's gates; the handler writes Frame.eax only where it
 //    answers; the scheduler's stack high-water;
+// 26f. L2 (Parallel Effect Spawns): SpawnEqualsSerial (the create path's three sites staged and merged in the serial order: CPU and GPU pipelines, with and without events, the other
+//    callers of the draw), OverflowDetected (a buffer that fills: counted, the merged buffer is serial's), the guard (a budget below the minimum, the last round's spawns past half),
+//    the slot pool's words watched (S10), a walk call from a thread that is not the render thread with no round open (N9); AllocationFailure with L2 (the drain commits and merges);
+//    AllocationFailure with new types right after the failing effect (R1);
 // 26e. CONTROLs: no order points, no enumeration wait, a late child left out (LateChildOff), forwarding off (RigidOnWorker), sweeps on workers, no epoch, a sweep before its
 //    units (SweepEarly), a unit that waits for the frontier to pass it (WaitOnLater: the hang detector), a sweep thunk with a wrong frame (SweepFrameWrong): each must be seen.
+//    The L2 controls: CommitReversed, MergeByCompletion, OverflowIgnored, DeferAnyCaller (a deferred draw's tag outside its record: a leak).
 //    The serial reasons and the foreign-thread count are taken only in a trace window: those cases open one.
 // Not here: test 13 (RegisterStateKept) is 25c's; ClaimFour (G = 4) is not built, the code has G = 1 only. The real routines on fake object graphs (the design's tests 2, 4, 5, 6, 7,
 // 9 and 15 on the game's own functions) are not run: the scripts stand in for them; `tests.exe <dll> quick effect_update` runs this part alone.
@@ -77,6 +82,9 @@ struct Shape {
   uint32_t dead_percent = 20;
   uint32_t enumerate_delay = 0;  // microseconds between two effects of the walk
   uint32_t max_types = 8;        // new effect types a world takes in all
+  uint32_t spawn_room = 0;       // the fake pipeline's room for spawns (0: the node has no pipeline)
+  bool gpu = false;              // the GPU pipeline (else the CPU's)
+  bool types_near = false;       // a new type takes the free slot right after its unit's effect (a type that lands between the enqueued effects and the one that failed)
 };
 
 struct World {
@@ -108,6 +116,20 @@ struct World {
   std::atomic<uint32_t> inside = 0;
   std::atomic<uint32_t> overlap = 0;
   std::atomic<uint32_t> updates = 0;
+  // What the ops write beside the arena (the arena goes read-only in one test): the pipeline's buffer, the slot pool, the emitters.
+  std::vector<uint8_t> aux = std::vector<uint8_t>(0x4000);
+  size_t aux_used = 0;
+  uint32_t pipeline = 0, buffer = 0, pool = 0, pool_limits = 0, emitter_plain = 0, emitter_events = 0;
+  bool gpu = false;
+  bool types_near = false;
+  std::vector<std::array<uint32_t, 12>> spawn_buffer;
+
+  uint8_t* Aux(size_t bytes) {
+    aux_used = (aux_used + 15) & ~static_cast<size_t>(15);
+    uint8_t* at = aux.data() + aux_used;
+    aux_used += bytes;
+    return at;
+  }
 
   ~World() {
     if (arena != nullptr) VirtualFree(arena, 0, MEM_RELEASE);
@@ -121,6 +143,10 @@ struct World {
 };
 
 static World* world = nullptr;
+
+uint8_t* At(uint32_t address) { return reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(address)); }
+uint32_t Word(uint32_t address) { return Read32(At(address)); }
+void SetWord(uint32_t address, uint32_t value) { Write32(At(address), value); }
 static std::atomic<uint32_t> eax_violations = 0;
 static std::atomic<uint32_t> forwarded_calls = 0;
 static DWORD render_thread = 0;
@@ -137,22 +163,23 @@ struct Shared {
 
 // What a thunk does at an order point for the calling thread: the gate, the direct thread's fast path (one word), else the slow path through the handler with a Frame. True: the
 // handler answered for the function (eax in *eax). The handler may write Frame.eax only where it answers.
-bool Touch(eu::Site site, uint32_t ecx = 0, uint32_t first = 0, uint32_t second = 0, uint32_t* eax = nullptr) {
+bool Touch(eu::Site site, uint32_t ecx = 0, uint32_t first = 0, uint32_t second = 0, uint32_t* eax = nullptr, uint32_t esi = 0, uint32_t return_address = 0x0BADBAD0) {
   eu::Data* const data = ei::data;
   const bool walk = (site == eu::Site::WALK_CALL);
   if ((walk ? data->walk_armed : data->walk_active).load() == 0) return false;
   volatile uint32_t marker = 0;
   const bool asks_always = (eu::SITES[static_cast<size_t>(site)].kind != eu::Kind::ORDER || eu::AsksAlways(site));  // the walk's call, the appends, the forwarded and enumeration sites
   const uint32_t direct_high = data->direct_high.load();
-  if (!asks_always && direct_high != 0 && direct_high - Address(const_cast<uint32_t*>(&marker)) < data->limit.load()) return false;
+  if (!asks_always && !(eu::StagesSpawns(site) && data->staging.load() != 0) && direct_high != 0 && direct_high - Address(const_cast<uint32_t*>(&marker)) < data->limit.load()) return false;
   struct {
     uint32_t regs[9];
     uint32_t stack[8];
   } frame = {};
   static_assert(offsetof(eu::Frame, stack) == sizeof(frame.regs));
+  frame.regs[1] = esi;
   frame.regs[6] = ecx;
   frame.regs[7] = SENTINEL_EAX;
-  frame.stack[0] = 0x0BADBAD0;
+  frame.stack[0] = return_address;
   frame.stack[1] = first;
   frame.stack[2] = second;
   const auto handler = reinterpret_cast<eu::Handler>(static_cast<uintptr_t>(data->handler.load()));
@@ -203,6 +230,71 @@ uint32_t PickTarget(World& w, const Instance& me, Random* rng) {
   return w.child_reach == 0 ? rng->Next() % size : (me.effect + 1 + rng->Next() % w.child_reach) % size;
 }
 
+// The slot pool's words as the scheduler watches them: the free list's count at +0x10, the minimum and maximum in the object at +0x18.
+void PoolSync(World& w) { SetWord(w.pool + 0x10, static_cast<uint32_t>(w.free_slots.size())); }
+void PoolTake(World& w, uint32_t slot) {
+  SetWord(w.pool_limits + 0x50, std::min(Word(w.pool_limits + 0x50), slot));
+  SetWord(w.pool_limits + 0x54, std::max(Word(w.pool_limits + 0x54), slot));
+}
+
+// The game's functions of the spawn path on the fake pipeline (CPU: the buffer at +0x10 with its count at +0x28 and capacity at +8, the simulation's room from two words; GPU:
+// the buffer at +0x14, count +0x14, capacity +0xC). The has_free and the spawn are the game's own rules; the draw moves the world's random state three steps and writes floats in
+// [1, 2) (never a tag).
+bool HasFree(const World& w) {
+  const uint32_t count = Word(w.buffer + (w.gpu ? 0x14 : 0x28));
+  const uint32_t capacity = Word(w.buffer + (w.gpu ? 0xC : 8));
+  if (w.gpu) return count < capacity;
+  const int32_t room = static_cast<int32_t>(Word(Word(w.pipeline + 0x14) + 8)) - static_cast<int32_t>(Word(Word(w.pipeline + 0x18) + 0xC)) - static_cast<int32_t>(count);
+  return room != 0 && count < capacity;
+}
+
+uint32_t __cdecl DrawEntry(float* out) {
+  World& w = *world;
+  const Shared shared(w);
+  auto* bits = reinterpret_cast<uint32_t*>(out);
+  for (int step = 0; step < 3; ++step) {
+    w.lcg = w.lcg * 1664525u + 1013904223u;
+    bits[step] = 0x3F800000u | (w.lcg >> 9);
+  }
+  return Address(out);
+}
+
+uint8_t __thiscall SpawnEntry(uint32_t, uint32_t particle) {
+  World& w = *world;
+  const Shared shared(w);
+  const uint32_t count_at = w.buffer + (w.gpu ? 0x14 : 0x28);
+  if (Word(count_at) >= Word(w.buffer + (w.gpu ? 0xC : 8))) return 0;
+  std::array<uint32_t, 12> record;
+  std::memcpy(record.data(), At(particle + eu::internal::SPAWN_RECORD_OFFSET), sizeof(record));
+  w.spawn_buffer.push_back(record);
+  SetWord(count_at, Word(count_at) + 1);
+  return 1;
+}
+
+// One create: "is there room", the three-step draw, the spawn, each preceded by what its thunk does. `create_path`: the draw's return address is the create path's (else another
+// caller's); `events`: the emitter raises events; `value_dword`: where the drawn value goes in the record (the census says dword 1 on the create path).
+void SpawnPath(World& w, Instance& me, bool events, bool create_path, uint32_t value_dword) {
+  if (w.pipeline == 0) return;
+  uint32_t has = 0;
+  if (!Touch(eu::Site::SPAWN_QUERY, Address(w.node), 0, 0, &has)) has = HasFree(w) ? 1 : 0;  // (the serial walk's call: the game's own function)
+  if ((has & 0xFF) == 0) return;
+  std::array<uint32_t, 11 + 12> particle = {};  // the spawn takes 48 bytes at +0x2C of the particle
+  std::array<uint32_t, 3> out = {};
+  uint32_t drawn = 0;
+  const uint32_t return_address = create_path ? Address(ei::base) + eu::internal::CREATE_DRAW_RETURN_RVA : 0x0BADBAD0;
+  if (Touch(eu::Site::RANDOM_TRIPLE, 0, Address(out.data()), 0, &drawn, events ? w.emitter_events : w.emitter_plain, return_address)) {
+    if (drawn != Address(out.data())) eax_violations.fetch_add(1);
+  } else {
+    DrawEntry(reinterpret_cast<float*>(out.data()));
+  }
+  particle[11] = me.id;
+  particle[11 + value_dword] = out[0];
+  particle[11 + 2] = me.updates;
+  uint32_t wrote = 0;
+  if (!Touch(eu::Site::SPAWN_WRITE, Address(w.node), Address(particle.data()), 0, &wrote)) wrote = SpawnEntry(w.pipeline, Address(particle.data()));
+  me.private_value += wrote & 1;
+}
+
 void DoOp(World& w, Instance& me, char op, Random* rng, uint32_t* held_slot) {
   const auto log = [&](char what, uint32_t value) { w.log.push_back({me.id, static_cast<uint32_t>(what), value}); };
   uint32_t result = 0;
@@ -240,16 +332,31 @@ void DoOp(World& w, Instance& me, char op, Random* rng, uint32_t* held_slot) {
       }
       break;
     case 'S':
-      Touch(eu::Site::SLOT_TAKE);
+      Touch(eu::Site::SLOT_TAKE, w.pool);
       {
         const Shared shared(w);
         if (*held_slot == NO_SLOT && !w.free_slots.empty()) {
           *held_slot = w.free_slots.back();
           w.free_slots.pop_back();
           me.private_value += *held_slot;
+          PoolTake(w, *held_slot);
+          PoolSync(w);
         }
         log('S', *held_slot);
       }
+      break;
+    case 'L':
+      SpawnPath(w, me, false, true, eu::internal::RECORD_DRAW_INDEX);
+      break;
+    case 'E':
+      SpawnPath(w, me, true, true, eu::internal::RECORD_DRAW_INDEX);
+      break;
+    case 'M':
+      SpawnPath(w, me, false, false, 3);
+      break;
+    case 'W':
+      // A rogue: the slot pool's count written with no order point.
+      SetWord(w.pool + 0x10, Word(w.pool + 0x10) ^ 0x100);
       break;
     case 'N':
       for (const eu::Site site : {eu::Site::SOUND_START, eu::Site::SOUND_HANDLE, eu::Site::SOUND_PLAY, eu::Site::SOUND_EMITTER}) {
@@ -348,7 +455,9 @@ void DoOp(World& w, Instance& me, char op, Random* rng, uint32_t* held_slot) {
           if (w.slots[slot].effect == 0) free[free_count++] = slot;
         }
         if (w.types_left != 0 && free_count != 0 && w.effects.size() < w.effects.capacity() && w.used + 2 * (sizeof(Effect) + 16 + 8 * sizeof(Entry)) < w.arena_size) {
-          const uint32_t slot = free[rng->Next() % free_count];
+          uint32_t slot = free[rng->Next() % free_count];
+          const uint32_t after = 1 + me.effect * w.slots_per_effect + 1;
+          if (w.types_near && after < w.table_slots && w.slots[after].effect == 0) slot = after;
           --w.types_left;
           auto* effect = new (w.Take(sizeof(Effect))) Effect;
           auto* entries = static_cast<Entry*>(w.Take(sizeof(Entry) * 8));
@@ -396,9 +505,10 @@ void UpdateImpl(Instance& me) {
     Busy(me, w.busy / 2);
   }
   if (held_slot != NO_SLOT) {
-    Touch(eu::Site::SLOT_RETURN);
+    Touch(eu::Site::SLOT_RETURN, w.pool);
     const Shared shared(w);
     w.free_slots.push_back(held_slot);
+    PoolSync(w);
     w.log.push_back({me.id, 's', held_slot});
   }
   if (rng.Next() % 100 < w.dead_percent) me.dead = 1;
@@ -523,6 +633,49 @@ std::unique_ptr<World> Build(uint64_t seed, const Shape& shape) {
     w->effects.push_back(effect);
     w->slots[1 + index * shape.gap].effect = Address(effect);
   }
+  // The slot pool, the emitters (a gate byte pair at +0x298 / +0x5C of the object two pointers away) and the node's pipeline.
+  w->pool = Address(w->Aux(0x40));
+  w->pool_limits = Address(w->Aux(0x60));
+  SetWord(w->pool + 0x18, w->pool_limits);
+  SetWord(w->pool_limits + 0x50, 0xFFFFFFFFu);
+  PoolSync(*w);
+  w->types_near = shape.types_near;
+  for (uint32_t* emitter : {&w->emitter_plain, &w->emitter_events}) {
+    *emitter = Address(w->Aux(0x20));
+    const uint32_t owner = Address(w->Aux(0x80));
+    const uint32_t settings = Address(w->Aux(0x300));
+    SetWord(*emitter + 0x10, owner);
+    SetWord(owner + 0x78, settings);
+    if (emitter == &w->emitter_events) {
+      At(settings)[0x298] = 1;
+      At(settings)[0x5C] = 1;
+    }
+  }
+  if (shape.spawn_room != 0) {
+    w->gpu = shape.gpu;
+    w->buffer = Address(w->Aux(0x40));
+    w->pipeline = Address(w->Aux(0x40));
+    constexpr uint32_t COUNT0 = 10;
+    const uint32_t capacity = COUNT0 + shape.spawn_room;
+    if (shape.gpu) {
+      SetWord(w->pipeline, Address(ei::base) + eu::internal::GPU_PIPELINE_VTABLE_RVA);
+      SetWord(w->pipeline + 0x14, w->buffer);
+      SetWord(w->buffer + 0xC, capacity);
+      SetWord(w->buffer + 0x14, COUNT0);
+    } else {
+      const uint32_t simulation = Address(w->Aux(0x20));
+      const uint32_t used = Address(w->Aux(0x20));
+      SetWord(w->pipeline, Address(ei::base) + eu::internal::CPU_PIPELINE_VTABLE_RVA);
+      SetWord(w->pipeline + 0x10, w->buffer);
+      SetWord(w->pipeline + 0x14, simulation);
+      SetWord(w->pipeline + 0x18, used);
+      SetWord(w->buffer + 8, capacity);
+      SetWord(w->buffer + 0x28, COUNT0);
+      SetWord(simulation + 8, capacity - shape.spawn_room / 8);  // the simulation's room is a little smaller than the buffer's
+      SetWord(used + 0xC, 0);
+    }
+    Write32(w->node + eu::internal::PIPELINE_OFFSET, w->pipeline);
+  }
   return w;
 }
 
@@ -555,6 +708,11 @@ bool Equal(const World& a, const World& b, std::string* why) {
     return fail("a shared word");
   }
   if (a.effects.size() != b.effects.size() || a.instances.size() != b.instances.size()) return fail("effects or instances counted");
+  if (a.spawn_buffer != b.spawn_buffer) return fail("the spawn buffer");
+  if (a.pipeline != 0 && Word(a.buffer + (a.gpu ? 0x14 : 0x28)) != Word(b.buffer + (b.gpu ? 0x14 : 0x28))) return fail("the spawn count");
+  if (Word(a.pool + 0x10) != Word(b.pool + 0x10) || Word(a.pool_limits + 0x50) != Word(b.pool_limits + 0x50) || Word(a.pool_limits + 0x54) != Word(b.pool_limits + 0x54)) {
+    return fail("the slot pool's words");
+  }
   for (size_t index = 0; index < a.effects.size(); ++index) {
     const Effect& x = *a.effects[index];
     const Effect& y = *b.effects[index];
@@ -589,11 +747,22 @@ void ResetScheduler() {
   ei::last_round_units = ei::MIN_ROUND_UNITS;
   ei::last_node = 0;
   ei::small_round_presents = 0;
+  ei::spawns_row = false;
+  ei::spawns_off = false;
+  ei::last_round_spawned = 0;
+  ei::stage_grow = 0;
+  ei::stage_skip = false;
   ei::event_count = 0;
   for (auto& said : ei::events_said) said = 0;
   for (auto& counter : ei::counters) counter = 0;
   for (auto& counter : ei::serial_rounds) counter = 0;
   ei::controls = {};
+}
+
+// The spawn records' blocks given back (a test that wants the first L2 round to reserve its pool, or counts the allocations).
+void FreeRecords() {
+  for (uint32_t block = 0; block < ei::records.capacity / ei::BLOCK_SIZE; ++block) delete[] ei::records.blocks[block];
+  ei::records = {};
 }
 
 // One walk of a world: serial (the gates closed) or a round (armed, the preconditions met).
@@ -729,7 +898,9 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
                  .render_switch = reinterpret_cast<decltype(ei::entries.render_switch)>(&RenderSwitch),
                  .render_switch_object = fake,
                  .sweep = reinterpret_cast<decltype(ei::entries.sweep)>(&SweepEffect),
-                 .random_state = nullptr};
+                 .random_state = nullptr,
+                 .draw = &DrawEntry,
+                 .spawn = &SpawnEntry};
   render_thread = GetCurrentThreadId();
   ResetScheduler();
   const Watchdog watchdog;
@@ -956,6 +1127,208 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
     std::printf("26c. NewType (a type registered in the walk, its first child; slots before and after the current effect): %llu cases equal\n", static_cast<unsigned long long>(cases - before));
   }
 
+  // 26f. L2.
+  {
+    const auto counter = [](ei::Counter which) { return ei::counters[static_cast<size_t>(which)].load(); };
+    ResetScheduler();
+    ei::spawns_row = true;
+    CHECK(trace_open(60, 4));
+    Shape shape;
+    shape.ops = "LLENMS";
+    shape.max_ops = 5;
+    shape.effects = 14;
+    shape.max_units = 30;
+    shape.spawn_room = 100000;
+    const uint64_t before = cases;
+    for (const bool gpu : {false, true}) {
+      shape.gpu = gpu;
+      for (uint32_t workers : {2u, 3u, 5u, 7u}) {
+        for (uint32_t seed = 1; seed <= 3 * scale; ++seed) {
+          shape.busy = (seed & 1) != 0 ? 60 : 600;
+          if (run_case(shape, 5000 + seed * 29 + workers + (gpu ? 500 : 0), 2, workers) != 0) return 1;
+        }
+      }
+    }
+    CHECK(counter(ei::Counter::STAGED_SPAWNS) > 0 && counter(ei::Counter::DEFERRED_DRAWS) > 0 && counter(ei::Counter::SPAWN_ROUNDS) >= cases - before
+          && counter(ei::Counter::SPAWN_OVERFLOWS) == 0 && counter(ei::Counter::TAG_LEAKS) == 0 && counter(ei::Counter::GUARD_ROUNDS) == 0);
+    std::printf("26f. SpawnEqualsSerial (CPU and GPU pipelines; the create path with and without events, the draw's other callers, sound and slots): %llu cases equal to the serial walk "
+                "(the buffer, its count, the random state, the pool's words): %u spawns merged, %u draws deferred, no overflow, no tag leak\n",
+                static_cast<unsigned long long>(cases - before), counter(ei::Counter::STAGED_SPAWNS), counter(ei::Counter::DEFERRED_DRAWS));
+    CHECK(trace_close(4));
+
+    // The buffer fills while units run ahead: the overflow is counted and the merged buffer is the serial one (its first records).
+    for (const bool gpu : {false, true}) {
+      ResetScheduler();
+      ei::spawns_row = true;
+      CHECK(pool(4) == 3);
+      Shape over;
+      over.ops = "LL";
+      over.max_ops = 5;
+      over.effects = 14;
+      over.min_units = 20;
+      over.max_units = 30;
+      over.busy = 50;
+      over.spawn_room = 700;
+      over.gpu = gpu;
+      auto serial = Build(6001, over);
+      auto parallel = Build(6001, over);
+      Walk(*serial, false);
+      Walk(*parallel, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*parallel));
+      const size_t kept = gpu ? 700 : 613;  // the buffer's room; the CPU pipeline's simulation room is a little smaller
+      CHECK(serial->spawn_buffer.size() == kept && serial->spawn_buffer == parallel->spawn_buffer);
+      CHECK(counter(ei::Counter::SPAWN_OVERFLOWS) >= 1 && ei::event_count.load() >= 1 && !ei::session_off && parallel->overlap.load() == 0);
+    }
+    std::printf("26f. OverflowDetected (CPU and GPU): a buffer of 700 / 613 records that fills while units run ahead: the overflow counted and stored, the merged buffer equal to the serial one\n");
+
+    // M1: the pool is sized by the budget, not by the units. The first L2 round (no pool yet) with more spawning units than one block of the old per-unit chunks held: staged whole,
+    // equal to the serial walk, nothing full, L2 stays on.
+    CHECK(trace_open(60, 4));
+    for (const bool gpu : {false, true}) {
+      ResetScheduler();
+      FreeRecords();
+      ei::spawns_row = true;
+      CHECK(pool(4) == 3);
+      Shape many;
+      many.ops = "LL";
+      many.max_ops = 3;
+      many.effects = 90;
+      many.min_units = 99;
+      many.max_units = 101;
+      many.busy = 20;
+      many.spawn_room = 100000;
+      many.gpu = gpu;
+      auto serial = Build(6101, many);
+      auto parallel = Build(6101, many);
+      Walk(*serial, false);
+      Walk(*parallel, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*parallel) && Equal(*serial, *parallel, &why));
+      CHECK(counter(ei::Counter::STAGED_SPAWNS) > 2 * ei::BLOCK_SIZE && ei::last_round_units > ei::BLOCK_SIZE && counter(ei::Counter::STAGE_FULLS) == 0
+            && counter(ei::Counter::SPAWN_OVERFLOWS) == 0 && counter(ei::Counter::TAG_LEAKS) == 0 && !ei::spawns_off && !ei::session_off && !ei::stage_skip);
+    }
+    CHECK(trace_close(4));
+    std::printf("26f. M1 (CPU and GPU): the first L2 round, a pool sized by the budget, more than 4096 units spawning: staged whole, equal to the serial walk, no full pool, L2 stays on\n");
+
+    // A pool that is full (the budget is small, the units stage more than the pool holds): an overflow, counted; the next round does not stage and equals the serial walk; the round
+    // after has a pool grown to what the full one asked for and merges the serial buffer; a full pool right after a grown one turns L2 off.
+    CHECK(trace_open(60, 4));
+    for (const bool gpu : {false, true}) {
+      ResetScheduler();
+      FreeRecords();
+      ei::spawns_row = true;
+      CHECK(pool(4) == 3);
+      Shape full;
+      full.ops = "LL";
+      full.max_ops = 3;
+      full.effects = 90;
+      full.min_units = 99;
+      full.max_units = 101;
+      full.busy = 20;
+      full.spawn_room = 700;
+      full.gpu = gpu;
+      auto first = Build(6102, full);
+      Walk(*first, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*first));
+      CHECK(counter(ei::Counter::STAGE_FULLS) > 0 && counter(ei::Counter::SPAWN_OVERFLOWS) > 0 && ei::stage_skip && ei::stage_grow > ei::BLOCK_SIZE && !ei::spawns_off && !ei::session_off);
+      const uint32_t fulls = counter(ei::Counter::STAGE_FULLS);
+      // The round after: a guard round.
+      ei::last_round_spawned = 0;
+      auto serial = Build(6102, full);
+      auto second = Build(6102, full);
+      Walk(*serial, false);
+      Walk(*second, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*second) && Equal(*serial, *second, &why));
+      CHECK(counter(ei::Counter::GUARD_ROUNDS) == 1 && !ei::stage_skip && counter(ei::Counter::STAGE_FULLS) == fulls);
+      // The round after that: the pool fits, the buffer is the serial one.
+      ei::last_round_spawned = 0;
+      auto third = Build(6102, full);
+      Walk(*third, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*third));
+      CHECK(counter(ei::Counter::STAGE_FULLS) == fulls && counter(ei::Counter::SPAWN_OVERFLOWS) > 0 && serial->spawn_buffer == third->spawn_buffer && !ei::spawns_off && !ei::session_off);
+      // A pool that was grown already and is full again: L2 off for the session.
+      ResetScheduler();
+      FreeRecords();
+      ei::spawns_row = true;
+      ei::stage_grow = 1;
+      auto fourth = Build(6102, full);
+      Walk(*fourth, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*fourth) && counter(ei::Counter::STAGE_FULLS) > 0 && ei::spawns_off && !ei::session_off);
+    }
+    CHECK(trace_close(4));
+    std::printf("26f. full pool (CPU and GPU): an overflow counted, not an off for the session; the next round a guard round equal to the serial walk, the one after with a grown pool and the "
+                "serial buffer; a full pool right after a grown one turns L2 off (B1 stays on)\n");
+
+    // The guard: less room than the minimum, or the last round's spawns past half of it: a round that does not stage (the order-point path, equal to the serial walk).
+    CHECK(trace_open(60, 4));
+    for (const uint32_t mode : {0u, 1u}) {
+      ResetScheduler();
+      ei::spawns_row = true;
+      CHECK(pool(4) == 3);
+      Shape guarded = shape;
+      guarded.spawn_room = (mode == 0 ? 300 : 1000);
+      auto serial = Build(6002, guarded);
+      auto parallel = Build(6002, guarded);
+      Walk(*serial, false);
+      if (mode == 1) ei::last_round_spawned = 600;
+      Walk(*parallel, true);
+      CHECK(Equal(*serial, *parallel, &why) && finish_round_checks(*parallel) && ei::last_round_units != SENTINEL_UNITS);
+      CHECK(counter(ei::Counter::STAGED_SPAWNS) == 0 && counter(ei::Counter::SPAWN_ROUNDS) == 0 && counter(ei::Counter::GUARD_ROUNDS) == 1 && ei::event_count.load() == 0);
+    }
+    CHECK(trace_close(4));
+    std::printf("26f. guard: a room of 300 (below the minimum) and a round after one that spawned 600 of 1000: no staging, the order-point path, equal to the serial walk, each counted\n");
+
+    // S10: the slot pool's words are watched from the round's first slot site: a rogue write to the count is seen at the next direct unit or the walk's end.
+    {
+      Shape pool_shape;
+      pool_shape.ops = "SWSN";
+      pool_shape.effects = 10;
+      pool_shape.min_units = 20;
+      pool_shape.max_units = 40;
+      pool_shape.max_ops = 6;
+      pool_shape.busy = 100;
+      CHECK(pool(4) == 3);
+      uint32_t seen = 0;
+      bool pool_word = false;
+      for (uint32_t seed = 1; seed <= 30 && seen == 0; ++seed) {
+        ResetScheduler();
+        auto parallel = Build(7000 + seed, pool_shape);
+        Walk(*parallel, true);
+        CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*parallel));
+        seen = counter(ei::Counter::WATCHED_MISMATCHES);
+        for (uint32_t event = 0; event < std::min<uint32_t>(ei::event_count.load(), static_cast<uint32_t>(ei::events.size())); ++event) {
+          pool_word = pool_word || (ei::events[event].kind == ei::EventKind::WATCHED_MISMATCH && ei::events[event].value == parallel->pool + 0x10);
+        }
+      }
+      CHECK(seen != 0 && pool_word && ei::session_off);
+      ResetScheduler();
+      // M2: a pool that never gave a slot has no limits object ([pool+0x18] null): the round must not read through it (the min / max words are left out).
+      {
+        Shape bare_shape = pool_shape;
+        bare_shape.ops = "SN";
+        auto bare = Build(7100, bare_shape);
+        SetWord(bare->pool + 0x18, 0);
+        Walk(*bare, true);
+        CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*bare));
+        ResetScheduler();
+      }
+      std::printf("26f. slot pool words (S10): a rogue write to the pool's count with no order point: seen (%u), the event names the word, B1 off for the session; the legal changes of the many other rounds never were\n", seen);
+    }
+
+    // N9: a walk call from a thread that is not the render thread, no round open: answered 0, nothing written (the gate, the node and the counters stay).
+    {
+      ResetScheduler();
+      CHECK(pool(4) == 3);
+      ei::row_on = true;
+      ei::last_node = 0x1234;
+      data->walk_armed.store(1);
+      std::thread([] { Touch(eu::Site::WALK_CALL, 0, 0, 0x4321); }).join();
+      CHECK(ei::last_node == 0x1234 && data->walk_armed.load() == 1 && !ei::current_round.open && counter(ei::Counter::CENSUS_ERRORS) == 0 && eax_violations.load() == 0);
+      data->walk_armed.store(0);
+      ResetScheduler();
+      std::printf("26f. walk call from another thread with no round open: answered 0, the gate, the node and the counters untouched (N9)\n");
+    }
+  }
+
   // 26d. NoDeadlock: tiny effects, children into the next ones, K = 2 to 8, delays between the effects; a watchdog ends the process if a round hangs.
   {
     std::atomic<bool> done = false;
@@ -1011,13 +1384,15 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
     const auto clear_blocks = [] {
       for (uint32_t block = 0; block < ei::units.capacity / ei::BLOCK_SIZE; ++block) delete[] ei::units.blocks[block];
       for (uint32_t block = 0; block < ei::segments.capacity / ei::BLOCK_SIZE; ++block) delete[] ei::segments.blocks[block];
+      FreeRecords();
       ei::units = {};
       ei::segments = {};
     };
-    const auto failure_sweep = [&](const Shape& shape, uint64_t seed, const char* name) -> int {
+    const auto failure_sweep = [&](const Shape& shape, uint64_t seed, const char* name, bool spawns = false) -> int {
       CHECK(pool(4) == 3);
       CHECK(trace_open(60, 4));
       clear_blocks();
+      ei::spawns_row = spawns;
       ei::controls.fail_allocation_at = 0xFFFFFFFF;  // counting only
       {
         auto serial = Build(seed, shape);
@@ -1033,6 +1408,7 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       for (uint32_t failing = 1; failing <= clean_allocations + 1; ++failing) {
         clear_blocks();
         ResetScheduler();
+        ei::spawns_row = spawns;
         ei::controls.fail_allocation_at = failing;
         auto serial = Build(seed, shape);
         auto parallel = Build(seed, shape);
@@ -1077,6 +1453,35 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       shape.busy = 20;
       shape.gap = 4;
       if (failure_sweep(shape, 33, "new types") != 0) return 1;
+    }
+    {
+      // The failure's drain commits and merges the staged spawns before the walk is closed; the walk's rest (the game's own loop) finds the buffer as serial left it.
+      Shape shape;
+      shape.ops = "LLNS";
+      shape.max_ops = 2;
+      shape.effects = 90;
+      shape.min_units = 99;
+      shape.max_units = 101;
+      shape.busy = 20;
+      shape.spawn_room = 12000;
+      if (failure_sweep(shape, 35, "L2 spawns", true) != 0) return 1;
+      shape.gpu = true;
+      if (failure_sweep(shape, 36, "L2 spawns, GPU", true) != 0) return 1;
+    }
+    {
+      // R1: a type registered in the drain takes the free slot right after its unit's effect, between the last enqueued effect and the one whose walk call failed: the game's
+      // own loop is past that slot, so the type needs a late segment (its first child is updated in this walk as serial does).
+      Shape shape;
+      shape.ops = "YR";
+      shape.max_ops = 3;
+      shape.effects = 60;
+      shape.min_units = 70;
+      shape.max_units = 80;
+      shape.busy = 20;
+      shape.gap = 4;
+      shape.types_near = true;
+      shape.max_types = 60;
+      if (failure_sweep(shape, 37, "new types right after the failing effect") != 0) return 1;
     }
   }
 
@@ -1428,8 +1833,50 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       std::printf("26e. CONTROL NoEpoch: %u wait timeouts with the epoch, %u without (the round still completes, equal, by timeouts)\n", with_epoch, without_epoch);
       CHECK(with_epoch == 0 && without_epoch != 0 && without_epoch != 0xFFFFFFFFu);
     }
+    {
+      // The L2 controls: each rule left out shows in the merged buffer, the random state or the counters.
+      const auto room_shape = [](const char* ops, uint32_t room) {
+        Shape shape;
+        shape.ops = ops;
+        shape.max_ops = 5;
+        shape.effects = 14;
+        shape.min_units = 20;
+        shape.max_units = 30;
+        shape.busy = 50;
+        shape.spawn_room = room;
+        return shape;
+      };
+      if (shown("CommitReversed (the commits' draws in the reverse of the serial order)", room_shape("L", 100000), 3, 4, [] { ei::spawns_row = true; ei::controls.commit_reversed = true; },
+                differs) != 0) {
+        return 1;
+      }
+      if (shown("MergeByCompletion (the staged records merged in the reverse of the serial order)", room_shape("L", 100000), 3, 4, [] { ei::spawns_row = true; ei::controls.merge_by_completion = true; },
+                differs) != 0) {
+        return 1;
+      }
+      const auto unreported = [&](const World&, const World& b) {
+        return ei::counters[static_cast<size_t>(ei::Counter::SPAWN_OVERFLOWS)].load() == 0 && b.spawn_buffer.size() == 613;  // the buffer filled and dropped, nothing said
+      };
+      if (shown("OverflowIgnored (a full buffer with units that ran ahead: no overflow counted)", room_shape("LL", 700), 3, 6, [] { ei::spawns_row = true; ei::controls.overflow_ignored = true; },
+                unreported) != 0) {
+        return 1;
+      }
+      const auto leaked = [&](const World&, const World&) { return ei::counters[static_cast<size_t>(ei::Counter::TAG_LEAKS)].load() != 0; };
+      if (shown("DeferAnyCaller (the draw of a caller that is not the create path deferred: its tag lands outside the record's draw dword)", room_shape("M", 100000), 3, 4,
+                [] {
+                  ei::spawns_row = true;
+                  ei::controls.defer_any_caller = true;
+                  wp::ArmTrace(8);
+                  wp::Update({.threads = 4, .in_use = true});
+                },
+                leaked) != 0) {
+        return 1;
+      }
+      for (int present = 0; present < 9; ++present) wp::Update({.threads = 4, .in_use = true});
+      CHECK(!wp::Tracing());
+    }
   }
-  std::printf("26. not built: ClaimFour (the code has G = 1 only); the pool count and min/max words (the spawn objects' fields, L2); test 13 is 25c's\n");
+  std::printf("26. not built: ClaimFour (the code has G = 1 only); test 13 is 25c's\n");
 
   wp::Update({});
   ResetScheduler();

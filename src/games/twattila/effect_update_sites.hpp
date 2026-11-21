@@ -43,7 +43,8 @@
 //             the direct thread's stack, `limit` the smallest stack reservation of any thread that may be direct: stacks
 //             never overlap, so for any other thread the difference is past `limit`, and 0 means nobody is direct); the
 //             sites for which AsksAlways is true have no fast path (the forwarded calls, and the sites that wait for the
-//             enumeration to end: a direct unit passes them through the slow path), and neither do the E8 sites;
+//             enumeration to end: a direct unit passes them through the slow path), and neither do the E8 sites; the sites
+//             StagesSpawns takes the slow path too while the `staging` word is set (a round that stages the spawns);
 //   slow:     everything else calls `Handler` in a frame of its own (pushfd, pushad, a 16-aligned fxsave of the vector
 //             state, the frame's address and the site id on the stack, cdecl). The handler returns an action: 0 runs the
 //             original path, 1 returns from the function with the Frame's eax (only the sites with a `return_bytes`).
@@ -99,6 +100,9 @@ constexpr bool WaitsForEnumeration(Site site) {
          || site == Site::ATTACH_PAIR || site == Site::ATTACH_LIST || site == Site::TRACKED_CHILD;
 }
 constexpr bool AsksAlways(Site site) { return Forwards(site) || WaitsForEnumeration(site); }
+// The sites the spawn staging answers on the direct thread too (L2): while `staging` is set their thunks ask the handler from the direct thread's stack as well (a direct unit
+// stages its spawns: they are merged in the serial order at the walk's end). The random draw is not one: a direct unit's draw is the game's.
+constexpr bool StagesSpawns(Site site) { return site == Site::SPAWN_QUERY || site == Site::SPAWN_WRITE; }
 constexpr uint32_t ALL_SITES = (1u << SITE_COUNT) - 1;
 static_assert(SITE_COUNT == 27);
 
@@ -243,12 +247,13 @@ struct Data {
   std::atomic<uint32_t> walk_active = 0;             // +0x44: a round is open: the order points are live
   std::atomic<uint32_t> limit = 0;                   // +0x48: the smallest stack reservation of any thread that may be direct
   std::atomic<uint32_t> handler = 0;                 // +0x4C: the Handler
+  std::atomic<uint32_t> staging = 0;                 // +0x50: the round stages the spawns (the StagesSpawns sites have no fast path)
   alignas(64) std::atomic<uint32_t> direct_high = 0;  // +0x80: the direct thread's stack HighLimit; 0: none
 #if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
   std::atomic<uint32_t> direct_low = 0;  // +0x84: the control's low word
 #endif
 };
-static_assert(offsetof(Data, walk_armed) == 0x40 && offsetof(Data, handler) == 0x4C && offsetof(Data, direct_high) == 0x80
+static_assert(offsetof(Data, walk_armed) == 0x40 && offsetof(Data, handler) == 0x4C && offsetof(Data, staging) == 0x50 && offsetof(Data, direct_high) == 0x80
               && sizeof(Data) <= 0x1000);
 
 // The handler a thunk has until a scheduler is installed: the original path.
@@ -375,7 +380,13 @@ inline uint8_t* EmitThunk(Assembler* assembler, size_t index, const Data* data, 
     return entry;
   }
 
+  uint8_t* to_staging = nullptr;
   if (info.kind == Kind::ORDER && !AsksAlways(site)) {
+    if (StagesSpawns(site)) {
+      assembler->BytesAndOperand({0x83, 0x3D}, Address(&data->staging));  // cmp dword ptr [staging], 0
+      assembler->Bytes({0x00});
+      to_staging = assembler->Branch(0x85);  // jne slow
+    }
 #if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
     if (control_torn_pair) {
       // The first design's two loads: a thread preempted between them can see a low and a high of two different threads.
@@ -398,6 +409,7 @@ inline uint8_t* EmitThunk(Assembler* assembler, size_t index, const Data* data, 
     }
   }
 
+  assembler->Bind(to_staging);
   emit_slow_path(false);
   const bool answers = (info.return_bytes >= 0);
   uint8_t* to_answer = nullptr;
