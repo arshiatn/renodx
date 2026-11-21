@@ -5923,6 +5923,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: c3i_ (B1.5 fixes), ebr_ (X0 re-check), bd1r_ (R-S3) (3 of 3). QUEUE: b13r_ B1.5 re-check + merge
         rmt_b15fix, t4i_ gate row refresh, c33i_ R-S4 fixes + hook-up re-apply on the merged fixes, R-S5a addendum, B1.6
         (+ N5 real-routine tests), X1, X2.
+        ebr_ X0 RE-CHECK DONE 19:2x (reports/ebr_x87_review.md line 525): 89-PROVEN LIST SOUND, X2 GO (ATN decides the
+        measurement). No Musts, 4 Shoulds, 2 Nits. S-X0r-1 W5 clause wider than v2 (pushes that outlive the call) -> only
+        when the call releases them, P1 control; S-X0r-2 search hole (take the largest candidate below) - neither changes
+        the 89. +15D4xx losses real (pairs of wrong cleanups cancel), not hot. Hash cut checked independently (586
+        dwords = 2344 B). S-X2-1 verify every guard before the first write (52 / 89 ranges hold other x87 blocks); S-X2-2
+        our patch sites inside proven ranges (B17F6515 rows 1 / 12 / 18, B169A3B2 row 3) -> author notes, re-check per
+        new row. Estimate -0.1..-0.15 ms W3, mostly block 1; measure later by the block-sample rule, not in T5.
+        [ ] ROUND REPORT: ebr_ put the shared scratchpad on sys.path once; ec4s_'s old scratchpad dis.py (11-18, reads
+        the DLL through pe_xref) shadowed stdlib dis and failed in its numpy import before any DLL code (no DLL read).
+        Old *dis.py DLL readers from earlier rounds stay in the scratchpad (ec4s_ dis.py, p2ph_ / p2s2_ / p2sm_ / ru_ /
+        rym5_); not run this segment; deletion only on ATN's yes. Briefs now say: never put the scratchpad on sys.path.
+        x0i_ STARTED 19:2x: A = S-X0r-1 + S-X0r-2 (+ optional read-back gaps), list must stay 89; B = X2 in the x87c
+        variant (89 proven blocks, relocation-cut guards all checked before any write, per-block log line, author notes
+        S-X2-2, C-suite tests + wrong-hash control; no measurement) -> X2 review.
+        Agents: c3i_ (B1.5 fixes), bd1r_ (R-S3), x0i_ (S-X0r + X2) (3 of 3). QUEUE: b13r_ B1.5 re-check + merge
+        rmt_b15fix, t4i_ gate row refresh, c33i_ R-S4 fixes + hook-up re-apply on the merged fixes, R-S5a addendum, B1.6
+        (+ N5 real-routine tests), X1, X2 review.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
