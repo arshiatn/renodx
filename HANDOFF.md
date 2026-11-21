@@ -5135,6 +5135,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         pinned), INST_KEYS_PROVEN 0, refuses without the heap part. Size ~+450 / +15 / +500.
         bd3r_ RESUMED 05:3x: review of S8a (+ told its own DLL scan does not count; dis_at.py only).
         Agents: c3i_ (FULL run), t4i_, bd3r_ (3 of 3).
+        c3i_ S3 DONE 05:5x (rmt_c_s3 a196e6d43 from 96a49351d, local; reports/c3i_s3_handback.md; 9 files +1003 / -42):
+        tw_engine_code FULL PASS, tw_draw_recording x86 + amd64 stubs, _loop, _sites EXIT 0; parts 23 + 24 quick PASS;
+        2 cut-rule mutations caught; gated builds x86 x3 / x86 + DRAW_RECORDING / amd64 exit 0. Env unset: nothing
+        written / logged except 2 more names in the one-time found line. No clash with B1's 27 sites or P3 / P4.
+        bd1r_ RESUMED 05:5x (Opus xHigh): review of S3 -> c3i_ fixes -> bd1r_ re-check -> merge (name check + gated
+        builds). Then c3i_ C.3-3; B1.2a + T1b after the S3 merge.
+        Agents: t4i_, bd3r_, bd1r_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
