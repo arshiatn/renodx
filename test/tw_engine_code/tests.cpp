@@ -119,6 +119,10 @@
 //    vectors and table, no two direct units at once; each script, children and new types (late units and segments), tiny effects with children into the next (no deadlock),
 //    an allocation failure at every block, the serial reasons, the census, the watched words, the stack, CONTROLs (no order points, no enumeration wait, late child off,
 //    forwarding off, sweeps on workers, no epoch); `tests.exe <dll> quick effect_update` runs it alone.
+// 29. Parallel Instance Fill's hook-up (src/games/twattila/instance_fill.hpp; engine_code.hpp PausedWrite's fourth table; instance_fill.inc; Attila only): the 4 call sites as Prepare made them, the row on and off,
+//    another mod's bytes going in (the group stands down, found 0) and over our call going out (that site stays, the rest out, the module pinned), a page that cannot be made writable
+//    (the control: going in none is written, going out only that site stays; the protection as it was), a parked thread at each byte of each site, the dispatcher's count above 0 and stuck at
+//    Uninstall, both tables of one window, Uninstall; `tests.exe <dll> quick fill` runs it alone.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -2468,6 +2472,9 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
 // Cached Particle Count (part 28): its two sites in the game's code, the stubs on a fake game, the cache against the fresh sum, the controls.
 #include "particle_count.inc"
 
+// Parallel Instance Fill's hook-up (part 29): its 4 sites in PausedWrite's fourth table, Update's bookkeeping, another mod's bytes, a page that cannot be made writable, a parked thread, the dispatcher's count, Uninstall.
+#include "instance_fill.inc"
+
 #if defined(TWATTILA_ENGINE_PROBE)
 // The probe build (part 21, `probe` alone): the probe stubs in front of the production stubs, each alone, parts 19 and 20 through them.
 #include "engine_probe.inc"
@@ -2657,6 +2664,12 @@ int main(int argc, char** argv) {
     twattila::engine_code::Update(false);
     if (const int failed = RunEffectUpdateTests(build, patched, quick); failed != 0) return failed;
     std::printf("PASS (effect update only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "fill") {
+    twattila::engine_code::Update(false);
+    if (const int failed = RunInstanceFillTests(build, game, patched, text_rva, text_size); failed != 0) return failed;
+    std::printf("PASS (instance fill only)\n");
     return 0;
   }
   if (argc > 3 && std::string(argv[3]) == "count") {
@@ -3674,6 +3687,7 @@ int main(int argc, char** argv) {
   if (const int failed = RunEffectSitesTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
   if (const int failed = RunEffectUpdateTests(build, patched, quick); failed != 0) return failed;
   if (const int failed = RunParticleCountTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
+  if (const int failed = RunInstanceFillTests(build, game, patched, text_rva, text_size); failed != 0) return failed;
 
   // 13. Another mod's bytes in a site after the start: that site is not touched, nothing that goes in on the strength of it is
   // (the three job sites; the half rows after the half function), the rest is, and the site is left alone from then on.

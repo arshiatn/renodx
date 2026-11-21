@@ -96,7 +96,7 @@ constexpr std::array<HeapfixRange, 82> HEAPFIX_CHECKED = {{
 }};
 
 constexpr bool Touches(uint32_t rva, uint32_t size, const HeapfixRange& range) {
-  return rva < range.rva + range.size && range.rva < rva + size;
+  return effect_update::Overlaps(rva, size, range.rva, range.size);
 }
 using effect_update::PatternSize;  // the byte count of a pattern (the effect update's sites own the formula)
 // Every row is filled in (a short list would leave empty rows at the end).

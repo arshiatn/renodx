@@ -1363,6 +1363,8 @@ float sweep_prefetch_row = 0.f;
 float draw_recording_stage_row = 0.f;
 std::array<float, 4> draw_recording_group_rows = {};
 float draw_recording_families_row = 255.f;
+// Parallel Instance Fill (Experimental, off): instance_fill.hpp, the ring buffer fills of the draw passes on the worker pool.
+float instance_fill_row = 0.f;
 
 // One of the four group rows: its key and label, the tooltip's loop.
 renodx::utils::settings::Setting* DrawRecordingGroupRow(const char* key, const char* label, size_t group, const char* tooltip) {
@@ -1631,6 +1633,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   uint32_t recording_groups = 0;
   // Any user of the worker pool is in a stage that wakes workers.
   bool pool_in_use = false;
+  bool instance_fill_on = false;
 #if defined(TWATTILA_DRAW_RECORDING)
   twattila::draw_recording::Settings recording = {
       .stage = static_cast<twattila::draw_recording::Stage>(draw_recording_stage_row),
@@ -1647,6 +1650,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   pool_in_use = (recording.stage == twattila::draw_recording::Stage::TOUCH_AHEAD
                  || recording.stage == twattila::draw_recording::Stage::ONE_WORKER
                  || recording.stage == twattila::draw_recording::Stage::WORKERS);
+  instance_fill_on = (instance_fill_row != 0.f);
+  pool_in_use |= instance_fill_on;
 #endif
   // Before the users' own Updates.
   twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use,
@@ -1654,7 +1659,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
                                 job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,
                                 particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale, recording_groups,
-                                {.pending_sweep_trace = worker_trace_env});
+                                {.pending_sweep_trace = worker_trace_env, .instance_fill = instance_fill_on});
 #if defined(TWATTILA_DRAW_RECORDING)
   // After the engine code's Update: the sites are in or out for this present, and only the groups whose sites all are
   // in run.
@@ -2173,6 +2178,16 @@ void ConfigureAddon() {
           .tooltip = "The per-mesh dispatchers that may record (bit f: dispatcher f). A clear bit runs its meshes directly.",
           .min = 0.f,
           .max = 255.f,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ParallelInstanceFill",
+          .binding = &instance_fill_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Parallel Instance Fill (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Copies the instance data of each draw pass on the add-on's worker threads. Same picture.",
+          .labels = {"Off", "On"},
       },
 #endif
       new renodx::utils::settings::Setting{
