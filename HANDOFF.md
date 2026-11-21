@@ -6003,6 +6003,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         part 2b (hook-up re-apply + S2 tw_engine_code cases + N9) after c3i_'s R1 merges -> bd1r_ re-check.
         Agents: t4i_ (round 9), c3i_ (R1), c33i_ (R-S4 part 2a) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_ part
         2b, bd1r_ R-S3 re-check, x0i_ S-X2r-2 + nits, R-S5a addendum, B1.6 (+ N5 real-routine tests), X1.
+        t4i_ ROUND 9 DONE 20:1x (reports/t4i_round9_handback.md; backups scratchpad\t4i_bak\r9): [x] SPAWNS_OFF gate row
+        current (wording unchanged at c3f89865b). [x] S-X2r-1: 4 INFO rows x87c_summary / _reason / _block / _other;
+        ebo_check vs the start-level x87c flag (no x87c start: any x87c line = ROWFAIL; x87c start: reason line, N < 89
+        or no summary = ROWFAIL; resumable stops); segments.json key [fixes] x87c; corpus + 6 test_check cases. BUG FOUND
+        + FIXED: check.json classes.ROWFAIL copied before late ROWFAILs -> refreshed after the x87c check. run_all 783 /
+        783. (Deleted its own ebo_analyze .pyc cache.)
+        ebr_ STARTED round 9 review 20:1x -> reports/ebr_t1b_review.md '## Round 9'.
+        Agents: c3i_ (R1), c33i_ (R-S4 part 2a), ebr_ (round 9 review) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_
+        part 2b, bd1r_ R-S3 re-check, x0i_ S-X2r-2 + nits, R-S5a addendum, B1.6 (+ N5 real-routine tests), X1.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
