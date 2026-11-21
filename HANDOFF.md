@@ -5589,6 +5589,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         ebr_ RESUMED 13:5x: round 5 re-check -> verdict T4 ready for leg 1.
         Agents: c33i_ (C.3-4 + shared table), c3i_ (B1.3 fixes), ebr_ (round 5) (3 of 3). QUEUE: bd1r_ C.3-4 review,
         b13r_ re-check, B1.4 / B1.5.
+        ebr_ ROUND 5 RE-CHECK DONE 14:0x (reports/ebr_t1b_review.md line 225): T4 READY FOR LEG 1 - no Musts, no
+        Shoulds, 1 Nit; run_all 644 / 644. [ ] t4i_ (when a slot frees, before leg 1): the crash record reads the
+        segment from the current plan.json, which ebo_make rewrites -> copy plan.json next to check_crash<n>.json or
+        store the segment in the record.
+        ebr_ x87 DESIGN REVIEW STARTED 14:0x (read-only): reports/x87o_design.md (X0 walker, X1 FPU reset fast path
+        +0x103620, X2 x87c fisttp -> cvttss2si, X2b, LOGX) + its own round 4 S4 (x87fix revert skips our pool workers /
+        heapfix B2 threads: how real, smallest fix + owner) -> reports/ebr_x87_review.md.
+        Agents: c33i_ (C.3-4 + shared table), c3i_ (B1.3 fixes), ebr_ (x87 review) (3 of 3). QUEUE: t4i_ crash-record
+        nit, bd1r_ C.3-4 review, b13r_ re-check, B1.4 / B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
