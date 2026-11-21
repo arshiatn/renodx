@@ -268,6 +268,74 @@ state.
 - Keep lock scope small and never invoke unknown callbacks while holding a lock
   unless the API explicitly guarantees that behavior.
 
+## Failures and invariants
+
+- Do not use `(void)` casts to discard results or suppress unused-variable or
+  parameter warnings. Call functions directly when their result can be ignored;
+  use `[[maybe_unused]]` or omit unused parameter names as appropriate. Mark
+  functions `[[nodiscard]]` when callers must inspect the result, and handle
+  results that are required for correct operation.
+- Log the concrete failure when a required invariant or core operation fails;
+  use debug output when normal logging is not yet available. A fatal error
+  describes the failure of the affected operation or feature, not an automatic
+  requirement to terminate the host process. Propagate a defined failure result,
+  reject initialization, or stop the affected operation safely. Do not hide the
+  failure with silent returns, indefinite retries, or partially initialized
+  state presented to callers as usable.
+- Process termination is a rare, context-specific last resort, not the default
+  fatal-error policy. Use it only with a concrete justification that safe failure
+  handling or containment is impossible. Logging a fatal error does not imply
+  calling `std::terminate`, `abort`, or a process-exit API. Also account for
+  implicit termination from escaping exceptions during global initialization or
+  across `noexcept` boundaries; handle failures at an appropriate boundary.
+- Assert programmer invariants and unexpected failures, including unexpected
+  API failures, required initialization, valid ownership, queue identity, and
+  call ordering. An operational failure is not automatically an expected outcome;
+  log and assert when it violates the operation's expected contract. Do not add defensive guards for
+  states excluded by the established contract merely because they can be
+  imagined. Identify a reachable failure and its actual consequence before
+  adding recovery or lifetime machinery.
+- Trust established internal developer contracts. Prefer construction/setup
+  validation or debug assertions over repeated hot-path validation of unchanged
+  relationships. Cheap checks on already-available values may be appropriate,
+  but low cost alone does not justify duplicated failure state or a recovery
+  protocol. Do not add COM queries, allocations, locks, or wrapper discovery on
+  each operation solely to re-prove a caller invariant. Diagnose a shared failure
+  at its responsible boundary rather than duplicating catches and poison flags
+  throughout callers without a distinct caller-owned response.
+- Distinguish true fatal failures from expected operational outcomes, such as
+  unsupported optional capabilities during setup. Handle an expected outcome
+  explicitly only when there is a valid fallback or a clean decision not to
+  enable the optional feature. Silently disabling a required core feature is
+  not recovery.
+- Assertions may be compiled out. Keep required operations and logging outside
+  assert expressions. Pure diagnostic queries used only to check programmer
+  invariants may be debug-only; their absence must not skip required work or
+  change valid program behavior. Assertions diagnose programmer invariants and unexpected
+  failures in builds without NDEBUG; they are compiled out when NDEBUG is defined.
+  Do not assert on expected outcomes or explicitly accepted API sentinel values.
+  Debug assertions are separate from unconditional process termination policy.
+  In Release, keep the diagnostic and propagate the existing failure result or
+  stop the affected operation; do not report success or proceed with dependent
+  work. This is error propagation, not a requirement to recover, keep rendering,
+  or implement a new teardown path. Expected recoverable outcomes still require
+  an explicit, valid response under the pre-edit gate.
+- **Fatal-failure stopping rule:** device removal/loss is fatal to rendering on
+  that device. Log/assert at the responsible origin and stop or propagate failure
+  through the existing boundary. That satisfies this guide's local failure
+  obligation; do not attempt to salvage the removed device or require proof of
+  graceful GPU retirement before accepting this response. Device recreation or
+  recovery is separate work requiring an explicit request or an established
+  application contract. Fatal to rendering does not mean terminate the host.
+- Do not add synthetic retirement values (such as an unsignaled UINT64_MAX),
+  duplicate poison flags, caller catch layers, indefinite resource retention,
+  retry/drain logic, or a teardown subsystem merely to support continued execution
+  after a fatal graphics failure. Do not turn an unresolved hypothetical failure
+  into a recovery requirement. A failed API call alone does not prove device
+  removal: preserve the actual diagnostic and classify only what the evidence
+  establishes. These rules do not permit reporting pending work as complete or
+  weakening normal-operation resource lifetime contracts.
+
 ## Cross-addon safety
 
 Each RenoDX add-on is a separate module with its own C++ runtime state. Memory
