@@ -6276,6 +6276,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         gto_ STARTED 23:0x: v3 (V1-V3 + Shoulds / Nits + one total) -> s0r_ re-check of V1-V3.
         Agents: ebr_ (T3b re-check), c33i_ (R-S5), gto_ (GPU v3) (3 of 3). QUEUE: merge rmt_t3b, R-S5 review, s0r_ V1-V3
         re-check, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, unified PT design (after S0).
+        gto_ GPU v3 DONE 23:1x (plan_1117/gto_design.md, 1380 lines, '## v3 after the v2 re-check (change list)';
+        hand-back plan_1117/gto_v3_handback.md; v2 copy scratchpad\gto_v3_v2_backup.md): V1 mirror-pair A/A ({1, 8} vs
+        {4, 5}; 16 = {1, 16, 5, 12} vs {4, 13, 8, 9}) + drift / warm-up simulation + power target >= 90 % at +0.1 ms;
+        V2 ReloadTemporal by made_by / history / output / written_by tags, structural pools never re-uploaded,
+        static_assert over resources, structure change = full reload, 2 fake tests; V3 BaseException catch, spec
+        checks pass first, block rows -> protected tools\tw\gates\block_rows.tsv via check_cmd() (protection, hook
+        install, mode flips = ATN's steps). R1-R8 + 3 Nits all taken; one grand total 76-115 h (70-106 agent-h + 6-9 h
+        reviews). §10 v3: Q12 install after S1r's hook fixes, Q15 = cite part only, NEW Q26 block rows in the
+        protected gates folder (rec yes). I fixed six he / his for ATN to they / their in the design (23:1x).
+        s0r_ STARTED 23:1x: re-check of V1-V3 (+ spot-check R1-R8, Nits, total, Q26) -> s0r_review.md '## v3 re-check'.
+        Agents: ebr_ (T3b re-check), c33i_ (R-S5), s0r_ (GPU v3 re-check) (3 of 3). QUEUE: merge rmt_t3b, R-S5 review,
+        B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, unified PT design (after S0).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
