@@ -5214,6 +5214,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         parsed only) -> expected until S8 is in the frozen prep; if S8 stops, those segments change at T5.
         ebr_ RESUMED 08:2x: re-check of T4 round 2.
         Agents: hp1i_, c3i_ (waiting on its run), ebr_ (3 of 3).
+        c3i_ S3 NITS DONE 08:2x (rmt_c_s3n 2279e90b9; engine_code.hpp + pending_sweep.hpp, +61 / -37): pin text, found
+        line RVA 0 for both worker sites, braces, seq_cst cut_active load, rewrap, inline bytes; all 5 suites EXIT 0,
+        gated builds exit 0. Coordinator diff check OK -> MERGED atn-mods 276f1efcb 08:2x (name check: 15 generic words;
+        gated builds x86 x3 + amd64 exit 0), pushed.
+        c3i_ RESUMED 08:2x: B1.2a (bd2o_design_B1_v2.md §9 row + §3.1; effect_update_sites.hpp 27 sites + PausedWrite's
+        third table + tests 13 / 16 / 17 / site tests / NoFxsave) on NEW branch rmt_b12a from 276f1efcb. Binding: NM1 one
+        word fast path, NM2 tail-jump thunks, presort rule (heapfix owns +0x192D2DA..2DE: EPOCH pattern ends by 2D9,
+        WALK_* start after 2DF, the site scan refuses overlap), NM4 = in_use only + Tracing() / TraceWindow() (pool_trace
+        gone), owner via internal::owner, B1.5's 2 small sites = main indices 27 + 28 (correct bd1o v2 §5.2 counts later),
+        whole-DLL branch scan in the offline test. C.3-3 waits until after B1.2a (one engine_code.hpp writer).
+        Agents: hp1i_, ebr_, c3i_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
