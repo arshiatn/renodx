@@ -5430,6 +5430,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         bd3r_ RESUMED 10:2x: review of S8-1c + v4.1 text Musts -> reports/bd3r_s8_1c_review.md (S8 lane closed for T5, or
         Musts).
         Agents: c3i_ (B1.2b), c33i_ (C.3-3), bd3r_ (S8-1c review) (3 of 3). QUEUE: t4i_ T1b follow-ups + ebo_ lane.
+        bd3r_ S8-1c REVIEW DONE 10:3x (reports/bd3r_s8_1c_review.md; build.bat test src_prep11 all passed): gate, Shoulds
+        3 / 4, nits 1-5, PIN rows (125 slot calls), test 51 all correct; v4.1 Musts adequate for a revival. ONE MUST:
+        pool_munmap's try-lock also makes two WRITERS refuse each other in release (second trim returns -1, segment kept
+        until the next trim; 7.0 would release it) -> fix (a): compile the try-lock out unless HEAPFIX_PRESORT ||
+        HEAPFIX_TEST (revival needs (b) a writers' g_release_lock + a two-writer test + a pool_trim after deferring read
+        sections). Nits: "presort: off in this build", RX VirtualProtect failure path test, failed-install comment.
+        New fact: 0x176CED0 has a third caller +0x172397A (inlined push of 0x44-byte records, harmless under (b)).
+        hp1i_ RESUMED 10:3x: Must 1 fix (a) + nits (src_prep12, build.bat test, prepare_test x6, commit) -> bd3r_
+        re-check -> S8 lane closed for T5.
+        Agents: c3i_ (B1.2b), c33i_ (C.3-3), hp1i_ (S8-1c fixes) (3 of 3). QUEUE: t4i_ T1b follow-ups + ebo_ lane.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
