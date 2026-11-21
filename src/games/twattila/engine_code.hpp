@@ -1904,9 +1904,21 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
     if ((stood[1] & entry_in) != 0) {
       stood[1] |= going_in[1];
     } else {
-      for (const uint64_t group_sites : recording_group_sites) {
-        if ((stood[1] & going_in[1] & group_sites) != 0) {
-          stood[1] |= going_in[1] & group_sites;
+      // A group with a site stood down stands down whole, except the sites another group that stays in needs (the per-mesh cut
+      // is both B groups'; when the cut itself is the stood site both groups stand down).
+      for (bool again = true; again;) {
+        again = false;
+        for (const uint64_t group_sites : recording_group_sites) {
+          if ((stood[1] & going_in[1] & group_sites) == 0) continue;
+          uint64_t needed = 0;
+          for (const uint64_t other : recording_group_sites) {
+            if ((stood[1] & going_in[1] & other) == 0 && (going_in[1] & other & ~group_sites) != 0) {
+              needed |= going_in[1] & other;
+            }
+          }
+          const uint64_t standing = going_in[1] & group_sites & ~needed & ~stood[1];
+          stood[1] |= standing;
+          again |= (standing != 0);
         }
       }
       if (entry_in != 0 && (staying_in() & ~recording_entry_bit) == 0) {

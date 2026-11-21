@@ -32,8 +32,11 @@
 // The B groups (the per-mesh loops of the folded driver) have no call-site fallback: they need the entry hook. Their cut is
 // one E9 in DispatchMesh (the 8 covered bytes are the game's two loads; the thunk's DispatchMesh runs inside `active`).
 // The depth and colour bodies' shared-state calls are the same thunk as A's without the vtable check (vf68 `ret 8`, vf64
-// `ret 0xc`): the planner chose the class. The class table is decoded from the slot-0x138 thunks and the dispatchers.
-// Colour B has no site yet.
+// `ret 0xc`): the planner chose the class, and the thunks of one form are one thunk. The class table is decoded from the
+// slot-0x138 thunks and the dispatchers. The colour bodies have the same three calls and a state block each (the snow
+// constant, the shader resources, the faction colours: an E9 whose record path lays the block's operands on the stack for
+// Record and goes on after the block; the direct path is the game's covered instructions). Colour B needs the cut and the
+// entry hook as well.
 
 enum class RecordingSite : uint8_t {
   FLUSH_ENTRY,
@@ -77,6 +80,27 @@ enum class RecordingSite : uint8_t {
   DEPTH_B4_VF68,
   DEPTH_B4_VARIATION,
   DEPTH_B4_VF64,
+  // Colour B's: the colour bodies' shared-state calls, slot-0x64 call and state block (per body).
+  COLOUR_B0_VF68,
+  COLOUR_B0_VARIATION,
+  COLOUR_B0_VF64,
+  COLOUR_B0_STATE,
+  COLOUR_B1_VF68,
+  COLOUR_B1_VARIATION,
+  COLOUR_B1_VF64,
+  COLOUR_B1_STATE,
+  COLOUR_B2_VF68,
+  COLOUR_B2_VARIATION,
+  COLOUR_B2_VF64,
+  COLOUR_B2_STATE,
+  COLOUR_B3_VF68,
+  COLOUR_B3_VARIATION,
+  COLOUR_B3_VF64,
+  COLOUR_B3_STATE,
+  COLOUR_B4_VF68,
+  COLOUR_B4_VARIATION,
+  COLOUR_B4_VF64,
+  COLOUR_B4_STATE,
   COUNT,
 };
 constexpr size_t RECORDING_SITE_COUNT = static_cast<size_t>(RecordingSite::COUNT);
@@ -279,6 +303,30 @@ constexpr std::string_view DEPTH_B_VF64_STACK_CONTEXT =
     "FF 74 24 18 FF 76 1C 8B 01 FF 76 18 8B 40 64 FF D0 08 46 69 8B 7E 58";
 constexpr std::string_view DEPTH_B_VF64_EBP_CONTEXT =
     "8B 4E 6C 55 FF 76 1C 8B 01 FF 76 18 8B 40 64 FF D0 08 46 69 8B 7E 58";
+// The colour bodies' calls: the same three of the mesh's vtable (the first form after `lea ebx, [esi + 0x69]`, the variation with
+// the previous mesh in [esi + 0x70], the slot-0x64 call after `mov ecx, [esi + 0x6c]` or three pushes); the bodies differ in
+// what follows the `or`, and in the stack local pushed by the slot-0x64 call (wildcarded: Record reads the pushed arguments).
+constexpr std::string_view COLOUR_B_VF68_CONTEXT =
+    "8D 5E 69 8B 07 8B CF 6A 00 FF 76 1C 8B 40 68 FF D0 08 03 8B 4D 14 8B 7E 58";
+constexpr std::string_view COLOUR_B_VF68_VARIATION_CONTEXT = "8B 4E 70 89 46 74 6A 00 FF 76 1C 8B 01 8B 40 68 FF D0 08 ??";
+constexpr std::string_view COLOUR_B_VF64_STACK_CONTEXT =
+    "FF 74 24 ?? FF 76 1C 8B 01 FF 76 18 8B 40 64 FF D0 08 46 69 8D 5E 69 8B 7E 58";
+constexpr std::string_view COLOUR_B_VF64_REGISTER_CONTEXT =
+    "8B 4E 6C 53 FF 76 1C 8B 01 FF 76 18 8B 40 64 FF D0 08 46 69 8D 5E 69 8B 7E 58";
+// The state blocks: the cmp (or test) that starts each, found by the flush call before it and the instructions after; the
+// record path goes on at the block's end, whose first bytes are the exit.
+constexpr std::string_view COLOUR_B0_STATE_CONTEXT =
+    "E8 ?? ?? ?? ?? C7 46 58 00 00 00 00 C6 07 01 8B 7C 24 18 89 5E 78 80 7C 24 0F 00 74 31 8B 4C 24 10 81 C1 AC 02 00 00";
+constexpr std::string_view COLOUR_B1_STATE_CONTEXT =
+    "E8 ?? ?? ?? ?? 8A 64 24 12 C7 46 58 00 00 00 00 89 7E 78 C6 46 69 01 80 7C 24 11 00 74 35 8B 4C 24 18 88 66 10";
+constexpr std::string_view COLOUR_B2_STATE_CONTEXT =
+    "FF 76 18 E8 ?? ?? ?? ?? C7 46 58 00 00 00 00 89 7E 78 C6 46 69 01 84 FF 74 3A 88 5E 10 80 3D ?? ?? ?? ?? 00 0F B6 C3 8B 5C 24 18 "
+    "8B 93 C0 02 00 00";
+constexpr std::string_view COLOUR_B3_STATE_CONTEXT =
+    "E8 ?? ?? ?? ?? C7 46 58 00 00 00 00 8A 4C 24 0F 89 5E 78 C6 07 01 80 7C 24 0E 00 74 35 88 4E 10 0F B6 C1 8B 4C 24 10 81 C1 AC 02 00 00";
+// Bodies 1 and 4 are the same code.
+constexpr std::string_view COLOUR_B_STATE_EXIT = "8B 7E 58 85 FF 75 25 80 7E 68 00 74 1F 8B 4E 6C";
+constexpr std::string_view COLOUR_B_STATE_RELOAD_EXIT = "8B 5C 24 1C 8B 7E 58 85 FF 75 22 80 7E 68 00";
 constexpr std::array<uint32_t, 5> DEPTH_B_BODIES = {0x17b09f0, 0x17b0cb0, 0x17b0f80, 0x17b1250, 0x17b1520};
 constexpr std::array<uint32_t, 5> COLOUR_B_BODIES = {0x17aef40, 0x17af2b0, 0x17af720, 0x17afc10, 0x17aff90};
 
@@ -383,18 +431,45 @@ struct RecordingSiteInfo {
   draw_recording::Site record_site;
 };
 
-// A shared-state call of a depth body (`mov eax, [eax + 0x68 | 0x64]; call eax`): 5 bytes after 12 of context.
-constexpr RecordingSiteInfo DepthBodyCall(std::string_view name, uint32_t rva, std::string_view context,
-                                          draw_recording::Site record_site) {
+// A shared-state call of a depth or colour body (`mov eax, [eax + 0x68 | 0x64]; call eax`): 5 bytes after 12 of context (13 in
+// the colour variation).
+constexpr RecordingSiteInfo BodyCall(draw_recording::Group group, std::string_view name, uint32_t rva, std::string_view context,
+                                     draw_recording::Site record_site, uint32_t context_offset = 12) {
   return {.name = name,
-          .group = draw_recording::Group::DEPTH_B,
+          .group = group,
           .kind = RecordingKind::OWN,
           .rva = rva,
           .context = context,
-          .context_offset = 12,
+          .context_offset = context_offset,
           .opcode = 0xE8,
           .covered = 5,
           .record_site = record_site};
+}
+constexpr RecordingSiteInfo DepthCall(std::string_view name, uint32_t rva, std::string_view context,
+                                      draw_recording::Site record_site) {
+  return BodyCall(draw_recording::Group::DEPTH_B, name, rva, context, record_site);
+}
+constexpr RecordingSiteInfo ColourCall(std::string_view name, uint32_t rva, std::string_view context,
+                                       draw_recording::Site record_site, uint32_t context_offset = 12) {
+  return BodyCall(draw_recording::Group::COLOUR_B, name, rva, context, record_site, context_offset);
+}
+
+// A colour body's state block: the instruction(s) its first 5 bytes (the cmp, or for body 2 the test, its short jump and the
+// store) stand for, found by the bytes before; the exit is the block's end.
+constexpr RecordingSiteInfo ColourStateBlock(std::string_view name, uint32_t rva, std::string_view context,
+                                             uint32_t context_offset, uint32_t covered, uint32_t exit_rva,
+                                             std::string_view exit_head) {
+  return {.name = name,
+          .group = draw_recording::Group::COLOUR_B,
+          .kind = RecordingKind::OWN,
+          .rva = rva,
+          .context = context,
+          .context_offset = context_offset,
+          .opcode = 0xE9,
+          .covered = covered,
+          .exit_rva = exit_rva,
+          .exit_head = exit_head,
+          .record_site = draw_recording::Site::COLOUR_B_STATE};
 }
 
 constexpr std::array<RecordingSiteInfo, RECORDING_SITE_COUNT> RECORDING_INFO = {{
@@ -653,26 +728,53 @@ constexpr std::array<RecordingSiteInfo, RECORDING_SITE_COUNT> RECORDING_INFO = {
      .exit_rva = DEPTH_B_CUT_EXIT_RVA,
      .exit_head = DEPTH_B_CUT_EXIT,
      .record_site = draw_recording::Site::COUNT},
-    DepthBodyCall("depth body 0 shared-state call", 0x17b0b6b, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
-    DepthBodyCall("depth body 0 variation shared-state call", 0x17b0c06, DEPTH_B_VF68_VARIATION_CONTEXT,
+    DepthCall("depth body 0 shared-state call", 0x17b0b6b, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
+    DepthCall("depth body 0 variation shared-state call", 0x17b0c06, DEPTH_B_VF68_VARIATION_CONTEXT,
                   draw_recording::Site::DEPTH_B_VF68),
-    DepthBodyCall("depth body 0 slot-0x64 call", 0x17b0c97, DEPTH_B_VF64_STACK_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
-    DepthBodyCall("depth body 1 shared-state call", 0x17b0e2b, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
-    DepthBodyCall("depth body 1 variation shared-state call", 0x17b0ed2, DEPTH_B_VF68_VARIATION_CONTEXT,
+    DepthCall("depth body 0 slot-0x64 call", 0x17b0c97, DEPTH_B_VF64_STACK_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
+    DepthCall("depth body 1 shared-state call", 0x17b0e2b, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
+    DepthCall("depth body 1 variation shared-state call", 0x17b0ed2, DEPTH_B_VF68_VARIATION_CONTEXT,
                   draw_recording::Site::DEPTH_B_VF68),
-    DepthBodyCall("depth body 1 slot-0x64 call", 0x17b0f62, DEPTH_B_VF64_EBP_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
-    DepthBodyCall("depth body 2 shared-state call", 0x17b10f7, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
-    DepthBodyCall("depth body 2 variation shared-state call", 0x17b11a2, DEPTH_B_VF68_VARIATION_CONTEXT,
+    DepthCall("depth body 1 slot-0x64 call", 0x17b0f62, DEPTH_B_VF64_EBP_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
+    DepthCall("depth body 2 shared-state call", 0x17b10f7, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
+    DepthCall("depth body 2 variation shared-state call", 0x17b11a2, DEPTH_B_VF68_VARIATION_CONTEXT,
                   draw_recording::Site::DEPTH_B_VF68),
-    DepthBodyCall("depth body 2 slot-0x64 call", 0x17b1233, DEPTH_B_VF64_STACK_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
-    DepthBodyCall("depth body 3 shared-state call", 0x17b13c7, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
-    DepthBodyCall("depth body 3 variation shared-state call", 0x17b1472, DEPTH_B_VF68_VARIATION_CONTEXT,
+    DepthCall("depth body 2 slot-0x64 call", 0x17b1233, DEPTH_B_VF64_STACK_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
+    DepthCall("depth body 3 shared-state call", 0x17b13c7, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
+    DepthCall("depth body 3 variation shared-state call", 0x17b1472, DEPTH_B_VF68_VARIATION_CONTEXT,
                   draw_recording::Site::DEPTH_B_VF68),
-    DepthBodyCall("depth body 3 slot-0x64 call", 0x17b1503, DEPTH_B_VF64_STACK_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
-    DepthBodyCall("depth body 4 shared-state call", 0x17b169b, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
-    DepthBodyCall("depth body 4 variation shared-state call", 0x17b1742, DEPTH_B_VF68_VARIATION_CONTEXT,
+    DepthCall("depth body 3 slot-0x64 call", 0x17b1503, DEPTH_B_VF64_STACK_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
+    DepthCall("depth body 4 shared-state call", 0x17b169b, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
+    DepthCall("depth body 4 variation shared-state call", 0x17b1742, DEPTH_B_VF68_VARIATION_CONTEXT,
                   draw_recording::Site::DEPTH_B_VF68),
-    DepthBodyCall("depth body 4 slot-0x64 call", 0x17b17d2, DEPTH_B_VF64_EBP_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
+    DepthCall("depth body 4 slot-0x64 call", 0x17b17d2, DEPTH_B_VF64_EBP_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
+    ColourCall("colour body 0 shared-state call", 0x17aefe7, COLOUR_B_VF68_CONTEXT, draw_recording::Site::COLOUR_B_VF68),
+    ColourCall("colour body 0 variation shared-state call", 0x17af0ab, COLOUR_B_VF68_VARIATION_CONTEXT,
+               draw_recording::Site::COLOUR_B_VF68, 13),
+    ColourCall("colour body 0 slot-0x64 call", 0x17af241, COLOUR_B_VF64_STACK_CONTEXT, draw_recording::Site::COLOUR_B_VF64),
+    ColourStateBlock("colour body 0 state block", 0x17af139, COLOUR_B0_STATE_CONTEXT, 22, 5, 0x17af225, COLOUR_B_STATE_EXIT),
+    ColourCall("colour body 1 shared-state call", 0x17af362, COLOUR_B_VF68_CONTEXT, draw_recording::Site::COLOUR_B_VF68),
+    ColourCall("colour body 1 variation shared-state call", 0x17af42a, COLOUR_B_VF68_VARIATION_CONTEXT,
+               draw_recording::Site::COLOUR_B_VF68, 13),
+    ColourCall("colour body 1 slot-0x64 call", 0x17af6af, COLOUR_B_VF64_REGISTER_CONTEXT, draw_recording::Site::COLOUR_B_VF64),
+    ColourStateBlock("colour body 1 state block", 0x17af4e4, COLOUR_B1_STATE_CONTEXT, 23, 5, 0x17af692,
+                     COLOUR_B_STATE_RELOAD_EXIT),
+    ColourCall("colour body 2 shared-state call", 0x17af7d2, COLOUR_B_VF68_CONTEXT, draw_recording::Site::COLOUR_B_VF68),
+    ColourCall("colour body 2 variation shared-state call", 0x17af88e, COLOUR_B_VF68_VARIATION_CONTEXT,
+               draw_recording::Site::COLOUR_B_VF68, 13),
+    ColourCall("colour body 2 slot-0x64 call", 0x17afba1, COLOUR_B_VF64_STACK_CONTEXT, draw_recording::Site::COLOUR_B_VF64),
+    ColourStateBlock("colour body 2 state block", 0x17af986, COLOUR_B2_STATE_CONTEXT, 22, 7, 0x17afb85, COLOUR_B_STATE_EXIT),
+    ColourCall("colour body 3 shared-state call", 0x17afcbf, COLOUR_B_VF68_CONTEXT, draw_recording::Site::COLOUR_B_VF68),
+    ColourCall("colour body 3 variation shared-state call", 0x17afd7b, COLOUR_B_VF68_VARIATION_CONTEXT,
+               draw_recording::Site::COLOUR_B_VF68, 13),
+    ColourCall("colour body 3 slot-0x64 call", 0x17aff23, COLOUR_B_VF64_STACK_CONTEXT, draw_recording::Site::COLOUR_B_VF64),
+    ColourStateBlock("colour body 3 state block", 0x17afe15, COLOUR_B3_STATE_CONTEXT, 22, 5, 0x17aff07, COLOUR_B_STATE_EXIT),
+    ColourCall("colour body 4 shared-state call", 0x17b0042, COLOUR_B_VF68_CONTEXT, draw_recording::Site::COLOUR_B_VF68),
+    ColourCall("colour body 4 variation shared-state call", 0x17b010a, COLOUR_B_VF68_VARIATION_CONTEXT,
+               draw_recording::Site::COLOUR_B_VF68, 13),
+    ColourCall("colour body 4 slot-0x64 call", 0x17b038f, COLOUR_B_VF64_REGISTER_CONTEXT, draw_recording::Site::COLOUR_B_VF64),
+    ColourStateBlock("colour body 4 state block", 0x17b01c4, COLOUR_B1_STATE_CONTEXT, 23, 5, 0x17b0372,
+                     COLOUR_B_STATE_RELOAD_EXIT),
 }};
 
 // The sites a group's rows write: its own, and its fallback flush (the entry hook is every group's otherwise).
@@ -1009,6 +1111,185 @@ inline uint8_t* BuildFaction(Assembler* assembler, const draw_recording::Shared*
   return entry;
 }
 
+// Where an operand of a colour body's state block is at its site: one of the game's stack locals (esp-relative at the site), or
+// the thunk's own frame (a word of a register the game holds: edi 4, ebx 20, ecx 28, eax 32; its second byte is bh / ah).
+struct StateSource {
+  bool frame;
+  uint8_t offset;
+};
+// The operands of one colour body's block, decoded from the game's bytes. The block sets the snow constant (when its flag is on,
+// from a byte: the tracker's flag byte and the constant's float), the shader resources (body 2), and the faction colours (the
+// default ones when the body's old faction is not -1, or the item's faction when its flag is on); `cfg` is the game's stack local
+// that holds the colour state the constants, resources and colours go to.
+struct StateVariant {
+  StateSource snow_flag;
+  bool has_snow_value;
+  StateSource snow_value;
+  uint8_t cfg;
+  bool has_textures;
+  StateSource diffuse_flag;
+  StateSource diffuse;
+  StateSource normal_flag;
+  StateSource normal;
+  bool faction_flagged;
+  StateSource faction_test;
+  StateSource faction_value;
+  StateSource item;
+};
+constexpr uint32_t STATE_SNOW_OBJECT = 0x2ac;
+constexpr std::array<StateVariant, 5> STATE_VARIANTS = {{
+    {.snow_flag = {false, 0x0f}, .has_snow_value = false, .cfg = 0x10, .faction_test = {true, 4}},
+    {.snow_flag = {false, 0x11},
+     .has_snow_value = true,
+     .snow_value = {true, 33},
+     .cfg = 0x18,
+     .faction_flagged = true,
+     .faction_test = {false, 0x13},
+     .faction_value = {false, 0x20},
+     .item = {true, 20}},
+    {.snow_flag = {true, 21},
+     .has_snow_value = true,
+     .snow_value = {true, 20},
+     .cfg = 0x18,
+     .has_textures = true,
+     .diffuse_flag = {false, 0x13},
+     .diffuse = {false, 0x24},
+     .normal_flag = {false, 0x10},
+     .normal = {false, 0x1c},
+     .faction_flagged = true,
+     .faction_test = {false, 0x11},
+     .faction_value = {false, 0x28},
+     .item = {false, 0x20}},
+    {.snow_flag = {false, 0x0e}, .has_snow_value = true, .snow_value = {true, 28}, .cfg = 0x10, .faction_test = {false, 0x1c}},
+    {.snow_flag = {false, 0x11},
+     .has_snow_value = true,
+     .snow_value = {true, 33},
+     .cfg = 0x18,
+     .faction_flagged = true,
+     .faction_test = {false, 0x13},
+     .faction_value = {false, 0x20},
+     .item = {true, 20}},
+}};
+static_assert(static_cast<size_t>(RecordingSite::COLOUR_B4_STATE) - static_cast<size_t>(RecordingSite::COLOUR_B0_STATE)
+              == 4 * (STATE_VARIANTS.size() - 1));
+
+// A colour body's state block (the site's covered instructions start it). The direct path is the game's covered instructions
+// and on. The record path lays the block's operands on the stack above the frame for Record (a draw_recording::StateBlock: which
+// parts are on, what the tracker takes, what the replay calls with) and goes on at the block's end (`resume`); the registers it
+// leaves are the site's, which the game's code after the block does not read (it rewrites each first, checked per body). The
+// game's esp is in ebx, the frame's words are esp-relative; eax is the scratch.
+inline uint8_t* BuildState(Assembler* assembler, const draw_recording::Shared* shared, const StateVariant& variant,
+                           const uint8_t* at, uint32_t covered, const uint8_t* resume) {
+  using draw_recording::StateBlock;
+  constexpr uint8_t BLOCK = 40;  // the block's place above the frame (the xmm0 word, 8 registers, eflags)
+  constexpr uint8_t BLOCK_SIZE = sizeof(StateBlock);
+  const auto field = [](size_t offset) { return static_cast<uint8_t>(BLOCK + offset); };
+  // `opcode`, then the operand (ModRM with `reg`) at the source.
+  const auto operand = [&](std::initializer_list<uint8_t> opcode, uint8_t reg, const StateSource& source) {
+    assembler->Bytes(opcode);
+    if (source.frame) {
+      assembler->Bytes({static_cast<uint8_t>(0x44 | reg << 3), 0x24, source.offset});
+    } else {
+      assembler->Bytes({static_cast<uint8_t>(0x43 | reg << 3), source.offset});
+    }
+  };
+  const auto set_bits = [&](size_t offset, uint8_t bits) { assembler->Bytes({0x83, 0x4C, 0x24, field(offset), bits}); };
+  const auto store = [&](size_t offset) { assembler->Bytes({0x89, 0x44, 0x24, field(offset)}); };
+  // eax = the colour state + `add`, stored.
+  const auto store_cfg = [&](size_t offset, uint32_t add) {
+    operand({0x8B}, 0, {false, variant.cfg});
+    assembler->BytesAndOperand({0x05}, add);
+    store(offset);
+  };
+  uint8_t* const entry = assembler->Cursor();
+  EmitSlotTest(assembler, shared, 2, {0x8B, 0xD6});
+  uint8_t* const to_record = assembler->Short(0x72);
+  if (covered == 5) {
+    assembler->Copy(at, covered);
+  } else {
+    // test bh, bh; its short je (made long); mov [esi + 0x10], bl
+    assembler->Copy(at, 2);
+    assembler->Bytes({0x0F});
+    assembler->Relative(0x84, at + 4 + static_cast<int8_t>(at[3]));
+    assembler->Copy(at + 4, 3);
+  }
+  assembler->Relative(0xE9, at + covered);
+  assembler->Bind(to_record);
+  assembler->Bytes({0x83, 0xEC, BLOCK_SIZE});
+  EmitFrameOpen(assembler);
+  // lea ebx, [esp + the game's esp]; the block zeroed (lea edi; xor eax, eax; mov ecx, 13; rep stosd).
+  assembler->Bytes({0x8D, 0x5C, 0x24, static_cast<uint8_t>(BLOCK + BLOCK_SIZE)});
+  assembler->Bytes({0x8D, 0x7C, 0x24, BLOCK, 0x33, 0xC0, 0xB9, BLOCK_SIZE / 4, 0x00, 0x00, 0x00, 0xF3, 0xAB});
+  // The snow constant: the tracker's flag byte and the constant's float are the byte (none: 0).
+  operand({0x80}, 7, variant.snow_flag);
+  assembler->Bytes({0x00});
+  uint8_t* const no_snow = assembler->Short(0x74);
+  set_bits(offsetof(StateBlock, parts), draw_recording::STATE_SNOW);
+  set_bits(offsetof(StateBlock, writes), draw_recording::STATE_WRITE_FLAGS);
+  if (variant.has_snow_value) {
+    operand({0x0F, 0xB6}, 0, variant.snow_value);
+    store(offsetof(StateBlock, flags));
+    // cvtsi2ss xmm0, eax; movss [snow_bits], xmm0
+    assembler->Bytes({0xF3, 0x0F, 0x2A, 0xC0, 0xF3, 0x0F, 0x11, 0x44, 0x24, field(offsetof(StateBlock, snow_bits))});
+  }
+  store_cfg(offsetof(StateBlock, snow_object), STATE_SNOW_OBJECT);
+  assembler->Bind(no_snow);
+  if (variant.has_textures) {
+    // The tracker takes both textures when either is bound: the one that is not keeps the tracker's.
+    assembler->Bytes({0x8B, 0x46, 0x04});
+    store(offsetof(StateBlock, diffuse));
+    assembler->Bytes({0x8B, 0x46, 0x08});
+    store(offsetof(StateBlock, normal));
+    const auto texture = [&](const StateSource& flag, const StateSource& value, uint8_t part, size_t slot_field, size_t value_field,
+                             draw_recording::Site slot_site) {
+      operand({0x80}, 7, flag);
+      assembler->Bytes({0x00});
+      uint8_t* const unbound = assembler->Short(0x74);
+      set_bits(offsetof(StateBlock, parts), part);
+      set_bits(offsetof(StateBlock, writes), draw_recording::STATE_WRITE_TEXTURES);
+      operand({0x8B}, 0, value);
+      store(value_field);
+      store_cfg(slot_field, draw_recording::internal::SITES[static_cast<size_t>(slot_site)].operand);
+      assembler->Bind(unbound);
+    };
+    texture(variant.diffuse_flag, variant.diffuse, draw_recording::STATE_DIFFUSE, offsetof(StateBlock, diffuse_slot),
+            offsetof(StateBlock, diffuse), draw_recording::Site::COLOUR_SRV_DIFFUSE);
+    texture(variant.normal_flag, variant.normal, draw_recording::STATE_NORMAL, offsetof(StateBlock, normal_slot),
+            offsetof(StateBlock, normal), draw_recording::Site::COLOUR_SRV_NORMAL);
+  }
+  // The faction colours: the default ones (faction -1) when the old faction is not -1, or the item's faction when its flag is on.
+  if (variant.faction_flagged) {
+    operand({0x80}, 7, variant.faction_test);
+    assembler->Bytes({0x00});
+  } else {
+    operand({0x83}, 7, variant.faction_test);
+    assembler->Bytes({0xFF});
+  }
+  uint8_t* const no_faction = assembler->Short(0x74);
+  set_bits(offsetof(StateBlock, parts), draw_recording::STATE_FACTION);
+  set_bits(offsetof(StateBlock, writes), draw_recording::STATE_WRITE_FACTION);
+  if (variant.faction_flagged) {
+    operand({0x8B}, 0, variant.faction_value);
+    store(offsetof(StateBlock, faction));
+    // The item's mask: mov eax, [item + 0x34]; the node: mov eax, [ebp + 0x10]
+    operand({0x8B}, 0, variant.item);
+    assembler->Bytes({0x8B, 0x40, 0x34});
+    store(offsetof(StateBlock, mask));
+    assembler->Bytes({0x8B, 0x45, 0x10});
+    store(offsetof(StateBlock, node));
+  } else {
+    assembler->Bytes({0xC7, 0x44, 0x24, field(offsetof(StateBlock, faction)), 0xFF, 0xFF, 0xFF, 0xFF});
+  }
+  store_cfg(offsetof(StateBlock, state), 0);
+  assembler->Bind(no_faction);
+  assembler->BytesAndOperand({0xBA}, static_cast<uint32_t>(draw_recording::Site::COLOUR_B_STATE));
+  assembler->Bytes({0x8B, 0xCE});
+  EmitRecordCall(assembler, shared);
+  assembler->Bytes({0x83, 0xC4, BLOCK_SIZE});
+  assembler->Relative(0xE9, resume);
+  return entry;
+}
+
 // A call of the texture lookup (thiscall, ecx the texture): the direct path is a jump to it; the record path records the
 // shader resource bind (the state in ebx, the texture in ecx), drops the call's return address and goes on after the bind.
 inline uint8_t* BuildTextureCall(Assembler* assembler, const draw_recording::Shared* shared, const uint8_t* lookup,
@@ -1071,14 +1352,13 @@ inline uint8_t* BuildMeshCut(Assembler* assembler, const draw_recording::Shared*
 constexpr uint64_t RECORDING_CUTS = RecordingBit(RecordingSite::DEPTH_CUT) | RecordingBit(RecordingSite::COLOUR_CUT)
                                     | RecordingBit(RecordingSite::DEPTH_B_CUT);
 
-// The group's own sites and its fallback flush sites, by draw_recording::Group. Colour B has none yet: with a non-zero mask it
-// would be usable without its shared-state and state sites, which workers would run in the colour bodies (the per-mesh cut,
-// which both B groups share, is Depth B's until Colour B's sites are in).
+// The group's own sites and its fallback flush sites, by draw_recording::Group. The per-mesh cut is both B groups' (it is
+// written when either is on, and stands down with both).
 constexpr std::array<uint64_t, static_cast<size_t>(draw_recording::Group::COUNT)> RECORDING_OWN = {
     GroupSites(draw_recording::Group::DEPTH_A, RecordingKind::OWN),
     GroupSites(draw_recording::Group::COLOUR_A, RecordingKind::OWN),
     GroupSites(draw_recording::Group::DEPTH_B, RecordingKind::OWN),
-    GroupSites(draw_recording::Group::COLOUR_B, RecordingKind::OWN),
+    GroupSites(draw_recording::Group::COLOUR_B, RecordingKind::OWN) | RecordingBit(RecordingSite::DEPTH_B_CUT),
     0};
 constexpr std::array<uint64_t, static_cast<size_t>(draw_recording::Group::COUNT)> RECORDING_FALLBACK = {
     GroupSites(draw_recording::Group::DEPTH_A, RecordingKind::FALLBACK),
@@ -1400,6 +1680,15 @@ inline bool PrepareRecording(HMODULE module) {
   }
   Assembler assembler(std::span<uint8_t>(recording_page, recording_page == nullptr ? 0 : RECORDING_CODE_SIZE));
   std::array<const uint8_t*, RECORDING_SITE_COUNT> thunks = {};
+  // The B groups' shared-state calls of one form (a slot, the bytes it returns with, the id Record gets) are one thunk.
+  std::array<const uint8_t*, static_cast<size_t>(draw_recording::Site::COUNT)> shared_state_thunks = {};
+  const auto shared_state_call = [&](uint8_t slot, uint8_t return_bytes, draw_recording::Site site) {
+    const uint8_t*& thunk = shared_state_thunks[static_cast<size_t>(site)];
+    if (thunk == nullptr) {
+      thunk = BuildSharedStateCall(&assembler, shared, nullptr, slot, return_bytes, site);
+    }
+    return thunk;
+  };
   uint64_t built = 0;
   for (int pass = 0; pass < 2 && recording_page != nullptr; ++pass) {
     for (size_t index = 0; index < RECORDING_SITE_COUNT; ++index) {
@@ -1411,7 +1700,8 @@ inline bool PrepareRecording(HMODULE module) {
       if (!holds(base + info.rva - info.context_offset, info.context)
           || (info.callee_rva != 0 && (target(at) != callee || !holds(callee, info.callee_head)))
           || (info.exit_rva != 0 && !holds(landing, info.exit_head))
-          || (info.group == draw_recording::Group::COLOUR_A && info.kind == RecordingKind::OWN && !colour_ok)
+          || ((info.group == draw_recording::Group::COLOUR_A || info.group == draw_recording::Group::COLOUR_B)
+              && info.kind == RecordingKind::OWN && !colour_ok)
           || ((info.group == draw_recording::Group::DEPTH_B || info.group == draw_recording::Group::COLOUR_B) && !b_ok)) {
         refuse(info.name);
         continue;
@@ -1448,14 +1738,38 @@ inline bool PrepareRecording(HMODULE module) {
         case RecordingSite::DEPTH_B3_VARIATION:
         case RecordingSite::DEPTH_B4_VF68:
         case RecordingSite::DEPTH_B4_VARIATION:
-          thunks[index] = BuildSharedStateCall(&assembler, shared, nullptr, 0x68, 8, info.record_site);
+        case RecordingSite::COLOUR_B0_VF68:
+        case RecordingSite::COLOUR_B0_VARIATION:
+        case RecordingSite::COLOUR_B1_VF68:
+        case RecordingSite::COLOUR_B1_VARIATION:
+        case RecordingSite::COLOUR_B2_VF68:
+        case RecordingSite::COLOUR_B2_VARIATION:
+        case RecordingSite::COLOUR_B3_VF68:
+        case RecordingSite::COLOUR_B3_VARIATION:
+        case RecordingSite::COLOUR_B4_VF68:
+        case RecordingSite::COLOUR_B4_VARIATION:
+          thunks[index] = shared_state_call(0x68, 8, info.record_site);
           break;
         case RecordingSite::DEPTH_B0_VF64:
         case RecordingSite::DEPTH_B1_VF64:
         case RecordingSite::DEPTH_B2_VF64:
         case RecordingSite::DEPTH_B3_VF64:
         case RecordingSite::DEPTH_B4_VF64:
-          thunks[index] = BuildSharedStateCall(&assembler, shared, nullptr, 0x64, 0xc, info.record_site);
+        case RecordingSite::COLOUR_B0_VF64:
+        case RecordingSite::COLOUR_B1_VF64:
+        case RecordingSite::COLOUR_B2_VF64:
+        case RecordingSite::COLOUR_B3_VF64:
+        case RecordingSite::COLOUR_B4_VF64:
+          thunks[index] = shared_state_call(0x64, 0xc, info.record_site);
+          break;
+        case RecordingSite::COLOUR_B0_STATE:
+        case RecordingSite::COLOUR_B1_STATE:
+        case RecordingSite::COLOUR_B2_STATE:
+        case RecordingSite::COLOUR_B3_STATE:
+        case RecordingSite::COLOUR_B4_STATE:
+          thunks[index] = BuildState(
+              &assembler, shared, STATE_VARIANTS[(index - static_cast<size_t>(RecordingSite::COLOUR_B0_STATE)) / 4], at,
+              info.covered, landing);
           break;
         case RecordingSite::DEPTH_ANIM:
         case RecordingSite::COLOUR_ANIM:
