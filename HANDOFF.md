@@ -6429,6 +6429,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN's next reboot (no restart unless ATN asks); then those testbin folders may be deleted (testbin clean-up).
         Agents (7): bd3r_ + bd1r_ (R-S5 review), gti_ (GPU S1a), gtb_ (GPU S1b), gtp_ (GPU S1c), lga_ (logging audit), upr_
         (unified PT v2 re-check). c33i_ idle until the reviews. QUEUE unchanged.
+        gti_ GPU S1a DONE 00:4x (plan_1117/gti_s1a_handback.md; backups scratchpad\gti_bak): nsight\ns_index.py (SQLite
+        per trace, keyed by content SHA-256, MCP answer cache, low-priority bulk with deadline / watchdog / resume) +
+        ns_query.py; gpu_trace_table.py / ns_metrics.py read through the index (--live skips it); lab\gpu_lock.py +
+        GpuLock.psm1 (lock v1, R8 takeover); F1 ns_trace_run.py Watch() kills a prompting child, exit 5 'TOOL FAULT';
+        F2 UTF-8 no BOM; F3 lock in gpu_trace.ps1 + ns_locked.sh (winpid); F4 ns_busy row map_replay OFF (Q8); F6
+        EndRun leaves nothing. Tests: equality 177 / 177 + set b, weighting 81 / 81 + 80 / 80 (HW Rays Cast removed,
+        6.6 % off), invalidation 6 / 6, lock 16 / 16, trace_run 9 / 9. 8 deviations (MCP cache by tool + args; series
+        only for count / rate metrics, others via MCP with ~). [ ] bulk index of all 385 traces (~1-2 h, low priority:
+        python -I ns_index.py --bulk) AFTER S1r's S1a verdict. F1 / F6 built: close their boxes after S1r OK.
+        gtv_ (a8d7f11d4bf3551d9, Opus xHigh) STARTED 00:4x: S1r review, S1a first -> plan_1117/gtv_s1r_review.md '##
+        S1a'; S1b / S1c sent when they hand back.
+        upr_ UNIFIED PT v2 RE-CHECK DONE 00:4x (designs/unified_pt_review.md '## v2 re-check'; hand-back
+        designs/upr_v2_handback.md): GO WITH CHANGES; M1-M3 / M6-M8 closed; new R1 H0's nested pcg adds the dimension
+        after the last hash (use pcg4d = RefPcg4d), test vs chance + chi-square, missed sites (rt_path 396 / 409 / 694 /
+        480 / 503 / 983 / 990, rt_bounce 44-45, rt_sharc_update 25 / 36 / 57 / 66 / 70), salt vs RefRandom; R2 specular
+        threshold never above 0.09. Shoulds R3-R7; cost -0.9..+0.4 ms. upt_ RESUMED 00:4x: v2.1 -> upr_ spot-check.
+        Agents (8): bd3r_ + bd1r_ (R-S5 review), gtb_ (GPU S1b), gtp_ (GPU S1c), lga_ (logging audit), gtv_ (S1r), upt_
+        (unified PT v2.1). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6, X1, logging fixes, upr_ spot-check, S1r
+        S1b / S1c, bulk index, H0, T5 freeze, T6 dry run, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
