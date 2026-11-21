@@ -6111,6 +6111,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: b13r_ (R1 re-check), bd3o_ (R2 v2), ebr_ (X2 final check) (3 of 3). QUEUE: merge rmt_b15r1, c33i_ part
         2b (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, bd3r_ R2 re-check, B1.6 (+ N5
         real-routine tests), X1, R-S5.
+        ebr_ X2 FINAL CHECK DONE 20:5x (reports/ebr_x87_review.md line 922): all done, X2 ready to measure later. [x] X2
+        CLOSED (variant x87c 0b1ad4a; measurement later, ATN decides; nits 2 / 6 after an in-game x87c run).
+        DROPPED-ITEM CHECK 20:5x (coordinator): three queue items fell off the QUEUE lines after 05:3x (line ~5097):
+        T3, the S0 GPU design review and the unified PT design. T3 IS NEEDED: segments.json PAUSE-W3 already uses the
+        multi-window RENODX_TW_MAP_TRACE form, the add-on has only the one-window form. -> round report item.
+        t4i_ STARTED T3 20:5x on rmt_t3 (worktree rmt_t1b, from origin/atn-mods): up to 6 map-trace windows, own file
+        each, old form unchanged (frame_trace.hpp, + context_hooks.hpp only if needed), parser tests, bench file names +
+        corpus, ebr_'s 2 round-10 text nits -> ebr_ review.
+        [ ] S0 Opus xHigh review of plan_1117/gto_design.md + both addenda (GPU plan filler slot; owner coordinator,
+        next free slot). [ ] unified PT design (GPU plan, after S0; owner coordinator).
+        Agents: b13r_ (R1 re-check), bd3o_ (R2 v2), t4i_ (T3) (3 of 3). QUEUE: merge rmt_b15r1, c33i_ part 2b (hook-up +
+        S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, bd3r_ R2 re-check, ebr_ T3 review, B1.6 (+
+        N5 real-routine tests), X1, R-S5, S0 GPU review (filler), unified PT design.
+        bd3o_ R2 v2 DONE 20:5x (reports/bd3o_design_R2_addendum.md, 504 lines, change list at the top): fold owned by its
+        thread, key checks (3 key stores 0x17AE7F9 / 0x17AE8B9 / 0x17AED04 = found-by bytes); group masks R1 0x0F / FOLD
+        0x70, per-group all-or-none; Wanted gets recording_written + the cut bits; noexcept close (count only, warn at
+        present); fold_close trace field + 'fold:' line; one incomplete-fill counter; publish order; tests 9 / 9b +
+        controls 12-15; R-S5 ~425 + 360 lines, one serial Sonnet High implementer after R-S4 part 2.
+        bd3r_ (a51cff43e35495556) STARTED 20:5x: R2 addendum review -> reports/bd3r_review.md '## R2 addendum review'.
+        Agents: b13r_ (R1 re-check), t4i_ (T3), bd3r_ (R2 review) (3 of 3). QUEUE: merge rmt_b15r1, c33i_ part 2b
+        (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, ebr_ T3 review, B1.6 (+ N5
+        real-routine tests), X1, R-S5, S0 GPU review (filler), unified PT design.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
