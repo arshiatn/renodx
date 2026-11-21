@@ -4974,6 +4974,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         t4i_ STARTED 04:2x (Opus High): T4 end batch bench scripts (constantinople_bench.ps1 + new ebo_run / ebo_make /
         ebo_check / ebo_analyze, data in render_mt\ebo\), offline tests only, never runs ebo_run.ps1.
         Agents: c3i_, bd3r_, t4i_ (3 of 3). QUEUE: T3, x87 review, R2 addendum, S0 GPU design review, unified PT design.
+        c3i_ DONE 04:2x (rmt_pool, local; reports/c3i_s2b_handback.md): bfd7cf8e3 = bd1r_'s 3 fixes + nits + test
+        PoolStopHoldsBusy (Controls::hold_exit; catches a missing starter = 0); d6ec96678 = S2b / T1a: Settings::
+        env_generation, re-read only when !busy, spin_ticks 32-bit atomic, strict parsing, applied line, ArmTrace(frames)
+        + Tracing() with one header per window; addon.cpp worker_env_generation (nothing writes it yet -> T1b bumps it).
+        All 4 test suites PASS, gated builds (x86 x3, x86 + TWATTILA_DRAW_RECORDING, amd64) exit 0 on both trees.
+        bd1r_ RESUMED 04:2x: diff check of both -> then merge rmt_pool. Agents: bd3r_, t4i_, bd1r_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
