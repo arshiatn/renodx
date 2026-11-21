@@ -5555,7 +5555,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         t4i_ deleted one test-created __pycache__ .pyc.
         HEAPFIX A/B (t4i_ table): none of sortfix / loopfetch / memfast / x87fix switches live; each is a heapfix.ini
         key per start; prefetch alone + animation site alone need builds. Cost: ABBA 4 x 180 s ~22 min per scene per
-        fix; cheapest = 'all four off' vs 'all on' on W3 + D1 ~45 min. [ ] ATN decides whether the end batch adds it.
+        fix; cheapest = 'all four off' vs 'all on' on W3 + D1 ~45 min. [x] ATN 14:1x: YES, add it (see below).
         Notes for the author package: our engine_code cut moves the animation fill (loopfetch +0x182E0DA's loop) onto
         our workers; memfast 65-128 B not built (<= 64 B here).
         [ ] x87 review item (t4i_): heapfix's x87 watcher / paused_write skip threads that do not start in the game
@@ -5620,6 +5620,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         b13r_ RESUMED 14:1x: re-check -> append to reports/b13r_l1_review.md -> merge rmt_b12a.
         Agents: ebr_ (x87 review), bd1r_ (C.3-4 review), b13r_ (B1.3 re-check) (3 of 3). QUEUE: t4i_ crash-record nit,
         c33i_ C.3-4 fixes, merges (rmt_c34, rmt_b12a), B1.4 / B1.5.
+        ATN 14:1x (phone, Remote Control; back tonight): YES - the end batch adds the heapfix A/B: 'all four on' vs
+        'all four off' (sortfix render_list_sorts, loopfetch render_loop_prefetch, memfast small_memory_copies, x87fix
+        x87_rounding), ABBA, W3 + D1, MT build on, ~45 min; single-fix A/Bs only if it moves. Purpose: the keep /
+        revert lines with MT-on numbers for heapfix's author.
+        [ ] t4i_ (next free slot, before leg 1): per-start heapfix.ini [fixes] field in ebo_make (today only x87c), the
+        A/B segments / starts in segments.json + plan doc, analysis rows in ebo_analyze (on vs off per scene, noise
+        band), tests; plus the crash-record segment nit -> ebr_ re-check. Leg placement: the leg that already runs
+        W3 + D1 with the full MT build.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
