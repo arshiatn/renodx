@@ -5788,6 +5788,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         b13r_ RESUMED 16:1x: re-check (incl. whether the guard hides L2 in stress scenes) -> merge rmt_b14.
         Agents: c33i_ (C.3-4 fixes + LOGX), x0i_ (X0), b13r_ (B1.4 re-check) (3 of 3). QUEUE: bd1r_ re-check, merge
         rmt_c34, t4i_ LOGX case + nit, ebr_ T4 confirm, merge rmt_b14, B1.5, ebr_ X0 review.
+        c33i_ C.3-4 FIXES + LOGX DONE 16:2x (rmt_c34 HEAD c44c27ce4, 6 commits on 2bd22fed7, +407 / -145 in 9 files;
+        reports/c33i_c34fix_handback.md): d341c9ede M1 (RecordingGroupsIn / DrawRecordingGroupsIn; DEVIATION: mask via
+        Settings::groups_in inside Update, not in addon.cpp) + test 6e + a latent loop-test-7 stack overflow fixed
+        (frame_memory 0x2400); ef7166bce S1 (42 patched / 82 checked), S2, nits, code page 0x2000 (2864 / 8192);
+        e670af5c0 :614 QPC bound; 7c8ebaa74 compile fix; 1bc4ddf03 LOGX (X87_FIX_TRUNCATIONS 7.0 + split, test 7b);
+        c44c27ce4 x87c form (test 7c + control). All C suites + FULL + gated builds exit 0.
+        bd1r_ RESUMED 16:2x: re-check -> append to reports/bd1r_c34_review.md -> merge rmt_c34.
+        Agents: x0i_ (X0), b13r_ (B1.4 re-check), bd1r_ (C.3-4 re-check) (3 of 3). QUEUE: merges rmt_c34 + rmt_b14,
+        t4i_ LOGX case + nit, ebr_ T4 confirm, B1.5 (c3i_, after both merges), ebr_ X0 review.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
