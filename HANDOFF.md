@@ -6476,6 +6476,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         required path 92 h. upr_ STARTED 00:4x: v2.1 spot-check -> '## v2.1 spot-check'.
         Agents (9): bd3r_ + bd1r_ (R-S5 review), gtb_ (GPU S1b), gtp_ (GPU S1c), gtv_ (S1r), upr_ (unified PT spot-check),
         lgf1_ + lgf2_ (logging fixes). QUEUE unchanged (minus upt_).
+        upr_ v2.1 SPOT-CHECK 00:5x: UNIFIED PT DESIGN = GO (designs/unified_pt_review.md '## v2.1 spot-check', hand-back
+        designs/upr_v21_handback.md). Lane .y vs RefRandom's .x independent on 4.19 M equal inputs (corr -0.0003, chi z
+        1.33); RefRandom bit-identical; site list = grep. H0 Shoulds T1 numeric dimension table (stride 32, own bases for
+        line 1361 / 1265), T2 rt_reference.cs_6_5.hlsl:136-141 into H0, T3 delete Random(uint3) (check DXC uint3 -> uint4
+        widening). upt_ RESUMED 00:5x: v2.2 folds T1-T3 (no re-check). BUILD after render_mt + PT DI steps 0-4 + the gto
+        lab; ATN's 15 questions (Q1, Q2, Q4, Q6-Q10, NQ1-NQ6) in the design.
+        Agents (9): bd3r_ + bd1r_ (R-S5 review), gtb_ (GPU S1b), gtp_ (GPU S1c), gtv_ (S1r), upt_ (v2.2 notes), lgf1_ +
+        lgf2_ (logging fixes). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6, X1, logging group 3, lga_ re-checks,
+        S1r S1b / S1c, bulk index, H0, T5 freeze, T6 dry run, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
