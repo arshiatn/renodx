@@ -5167,6 +5167,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         branch rmt_c_s3n from c9123dea5 -> coordinator diff check + merge; then C.3-3).
         Agents: t4i_, bd3o_, c3i_ (3 of 3). NEXT after these: B1.2a (engine_code.hpp chain after the S3 nits merge),
         T1b, bd3r_ re-check of S8a v2, ebr_ re-check of T4.
+        c3i_ 08:1x INTERIM: S3 nits a / b / c / d / f / g edited + staged on rmt_c_s3n (HEAD still c9123dea5), not
+        committed; its run scratchpad\all2.ps1 (FULL ~1 h + 4 suites + 3 gated builds) -> all2_done.txt ALLDONE ->
+        commit -> coordinator diff check + merge. C.3-3 not started.
+        bd3o_ S8a v2 DONE 08:1x (appended to bd3o_design_S8a.md): M1 = 6th site P3' (reset's instances call
+        +0x1811FCA -> 0x1189B9A0; node joins the set only after both waits + resets; also closes a 2nd hole: a timeout
+        post copying lists before the reset) + two 8 MB arena halves {job, users} with a Dekker pair; M2 reset row
+        from +0x1811F0C, 10 new rows, reloc assert over all rows; M3 frame = generation counted by P3', only a current
+        P1 sets g_p1_gen, busy CAS vs mark Dekker pair. Split: S8-1a TESTS ONLY = §1.5 scans + reloc assert on the real
+        DLL, verbatim output, STOP before any src if a stop condition holds (coordinator OK needed for S8-1b); S8-1b
+        patch group P3 / P3' / P4 + rows + arena + timer + heap-off refusal + pools.c interlock; S8-2 weighted presort
+        end to end; S8-3 instances check-only (EARLY 2 / check, commit only in MODE 3). Batch order: EARLY 1 under MODE 3,
+        EARLY 1 + PROBE in MODE 1 / 2, EARLY 2, EARLY check under MODE 3. INST_KEYS_PROVEN stays 0.
+        [ ] HEAPFIX AUTHOR NOTE (via ATN, in the S5 author package): 7.0's pool_munmap clears its ownership bytes before it
+        knows the release worked; safe only because every pool mapping is one 64 KB allocation (bd3o_ S8a v2).
+        bd3r_ RESUMED 08:1x: re-check of S8a v2 -> verdict for S8-1a. t4i_ got the presort line forms (LATCH "PRESORT
+        CHECK MISMATCH", "; presort:" clause, probe lines) + EARLY check needs MODE 3.
+        Agents: t4i_, c3i_ (waiting on its run), bd3r_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
