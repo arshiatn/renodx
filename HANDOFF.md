@@ -5284,6 +5284,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         changed; the line stays as data in corpus.json / gates.json like every row. Not worked around.
         ebr_ RESUMED 09:0x: re-check of T4 round 3 (verdict READY for T5 or Musts).
         Agents: c3i_ (B1.2a), hp1i_ (S8-1b), ebr_ (T4 re-check) (3 of 3).
+        ebr_ RE-CHECK OF T4 ROUND 3 DONE 09:1x (appended to reports/ebr_t4_review.md from line 287; run_all re-run 584
+        / 0): READY FOR T5, no Musts, no Shoulds. Nits: 1 a "not written" interval can stay open too long (safe side);
+        2 the :2352 summary can name Faster Render Lists' sites under Faster Game CPU Code (harmless, both base rows);
+        3 L_mem edges (start with no kept segment, WPR window past the new end); 4 corpus _about names 96a49351d (T5).
+        The AMSI-removed case leaves no gap that matters (corpus + test_leg :250 cover it; one path checked by reading).
+        t4i_ RESUMED 09:1x: T1b (plan section 6 + ebr_ M6 / S7 / set-file format) on NEW worktree .claude\worktrees\rmt_t1b,
+        branch rmt_t1b from 56c99055d (external\* + bin junctions): SET_FILE in Install()'s early return, one
+        time-sorted list, both-set error, env.<NAME>= keys via an addon.cpp callback that bumps worker_env_generation,
+        "env ... cleared" line, no "(window N)"; tw_test_hooks extended; gated builds of the 11 includers; then T4
+        switch_lines / gates / corpus to the built strings + ebr_ nits 1-3 (nit 4 at T5) -> ebr_ Opus xHigh review.
+        addon.cpp token: T1b now (c3i_'s B1.2a does not touch addon.cpp / test_hooks.hpp).
+        Agents: c3i_ (B1.2a), hp1i_ (S8-1b), t4i_ (T1b) (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
