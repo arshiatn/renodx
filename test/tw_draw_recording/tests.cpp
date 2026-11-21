@@ -491,8 +491,43 @@ static void PoolStopWithOpenJob() {
   std::printf("pool: Stop with a job open on another thread keeps the pool, pins the module; the owner's Join completes the job\n");
 }
 
-// The Dekker pair on close, under stress (property of ENTERED): short jobs at K 2 to 16 where the owner drains the units alone
-// and flags the context right after Join; a work function that sees the flag at its start or end ran past the Join.
+// Stop on another thread holds `busy` while it waits for a worker that is slow to leave. The owner's Update, Join and Stop must not
+// release it (a stale starter from an earlier job), must not grow the pool, and the threads end exactly once.
+static void PoolStopHoldsBusy() {
+#if defined(TWATTILA_WORKER_POOL_CONTROLS)
+  const uint32_t baseline = ProcessThreadCount();
+  wp::Update({.threads = 4, .in_use = true});
+  // A job that ran on this thread before: its thread must not stay as the starter.
+  RunReport(3);
+  CHECK(wi::created == 3 && wi::starter.load() == 0 && ProcessThreadCount() == baseline + 3);
+  wi::controls.hold_exit = true;
+  std::thread stopper([] { wp::Stop(); });
+  for (int wait = 0; wait < 2000 && !wi::stopping.load(); ++wait) Sleep(1);
+  REQUIRE(wi::stopping.load() && wi::busy.load());
+  wp::Update({.threads = 16, .in_use = true});
+  CHECK(wi::busy.load() && wi::stopping.load() && wi::created == 3);
+  CHECK(wp::Join().wait_ticks == 0 && wi::busy.load());
+  wp::Stop();
+  CHECK(wi::busy.load() && wi::created == 3);
+  CHECK(wp::Available(wp::User::DRAW_RECORDING) == 0);
+  CHECK(LogHas("a job is open on another thread"));
+  wi::controls.hold_exit = false;
+  stopper.join();
+  CHECK(wi::created == 0 && !wi::busy.load() && !wi::stopping.load() && wi::pool[0].thread == nullptr);
+  CHECK(ProcessThreadCount() == baseline);
+  // The pool starts again afterwards.
+  wp::Update({.threads = 3, .in_use = true});
+  CHECK(wi::created == 2 && wp::Available(wp::User::DRAW_RECORDING) == 2);
+  wp::Update({.in_use = false});
+  std::printf("pool: Stop on another thread keeps busy through the owner's Update / Join / Stop; no growth meanwhile, threads end once\n");
+#else
+  std::printf("pool: Stop holding busy skipped (TWATTILA_WORKER_POOL_CONTROLS not defined)\n");
+#endif
+}
+
+// ENTERED stress: short jobs at K 2 to 16 where the owner drains the units alone and flags the context right after Join; a work
+// function that sees the flag at its start or end ran past the Join. It tests the job logic and the generation handling (a late
+// worker skipping, the contexts reused every 64 jobs), not the memory ordering: no x86 test can show a weaker order.
 struct StressJob {
   std::atomic<uint32_t> next{0};
   std::atomic<bool> joined{false};
@@ -4162,6 +4197,7 @@ int main() {
   PoolRefusals();
   PoolRefusedAllCompletes();
   PoolStopWithOpenJob();
+  PoolStopHoldsBusy();
   PoolEnteredStress();
   PoolSlowWork();
   PoolOpenAtUpdate();

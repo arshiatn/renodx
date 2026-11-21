@@ -43,7 +43,8 @@
 //   RING_FILL       ENTERED  Run, min(K, n / 384)                          64-record chunks
 //
 // ALL: pre-partitioned work. Every woken worker runs, and Join waits for all of them; a Run whose Start was refused runs the
-// workers' parts on the owner, so an ALL job always completes. ENTERED: claimed units. The owner claims until none is left,
+// workers' parts on the owner, one after the other, so an ALL job always completes. For that, an ALL work function never waits
+// for another worker (only for what the owner publishes, property (a)). ENTERED: claimed units. The owner claims until none is left,
 // and Join waits only for the workers already inside: a worker that wakes late finds the job closed and skips it. What a work
 // function may do:
 //  (a) wait in the middle of a job (a bounded spin, then an atomic wait) on a word the owner publishes between Start and Join,
@@ -160,6 +161,8 @@ struct Controls {
   uint32_t late_worker = 0;
   std::atomic<bool> release_late{true};
   std::atomic<uint32_t> late_parked{0};
+  // A worker told to stop waits here until it is cleared (Stop stays inside its wait for the threads).
+  std::atomic<bool> hold_exit{false};
 };
 static Controls controls;
 static uint32_t thread_attempts = 0;
@@ -177,6 +180,7 @@ static uint32_t given_generation = ~0u;
 static uint32_t generation = 0;
 static bool environment_read = false;
 static bool open_logged = false;
+static bool other_open_logged = false;
 static bool pinned = false;
 // The most threads, the render thread included, each user may use.
 static std::array<uint32_t, USER_COUNT> limits = {};
@@ -224,7 +228,12 @@ static DWORD WINAPI WorkerMain(void* context) {
       }
     }
     last = ticket;
-    if (stopping.load(std::memory_order_acquire)) return 0;
+    if (stopping.load(std::memory_order_acquire)) {
+#if defined(TWATTILA_WORKER_POOL_CONTROLS)
+      while (controls.hold_exit.load(std::memory_order_acquire)) Sleep(1);
+#endif
+      return 0;
+    }
 #if defined(TWATTILA_WORKER_POOL_CONTROLS)
     if (controls.late_worker == index) {
       controls.late_parked.fetch_add(1, std::memory_order_relaxed);
@@ -334,6 +343,8 @@ inline JoinResult Join() {
   if (current.join == JoinRule::ALL) {
     wait_until(done, current.workers);
   }
+  // Do not weaken this store (seq_cst) or the first `entered` load in wait_until: they are the owner's half of the Dekker pair
+  // with the worker's `entered` add and `open` load, and no test on x86 can catch a weaker order.
   open.store(0, std::memory_order_seq_cst);
   wait_until(entered, 0);
   const JoinResult result = {.wait_ticks = Qpc() - start, .ran = done.load(std::memory_order_acquire)};
@@ -347,6 +358,8 @@ inline JoinResult Join() {
   } else if (current.trace) {
     ++record_drops;
   }
+  // No job: a `busy` that Stop holds later never matches a stale starter.
+  starter.store(0, std::memory_order_relaxed);
   busy.store(false, std::memory_order_release);
   return result;
 }
@@ -440,25 +453,40 @@ inline void Update(const Settings& settings) {
     }
   }
 
-  // The trace lines of the last present's jobs, and the refusals counted since the last ones.
-  const double microseconds = 1e6 / static_cast<double>(qpc_frequency);
-  for (uint32_t index = 0; index < record_count; ++index) {
-    const TraceRecord& record = records[index];
-    std::string line = std::format("[Total War] Worker pool trace ({}): {} of {} workers ran, join wait {:.1f} us",
-                                   USER_KEYS[static_cast<size_t>(record.user)], record.ran, record.workers,
-                                   static_cast<double>(record.wait_ticks) * microseconds);
-    for (uint32_t i = 0; i < record.workers; ++i) {
-      if (record.entry[i] == 0) continue;
-      line += std::format(", worker {} on CPU {}:{} at +{:.1f} us", i + 1, record.cpu[i] >> 8, record.cpu[i] & 0xff,
-                          static_cast<double>(record.entry[i] - 1) * microseconds);
+  // A job still open here is joined first (only the thread that started it can: another thread's stays open and is said once).
+  if (busy.load(std::memory_order_acquire)) {
+    Join();
+    const bool still_open = busy.load(std::memory_order_acquire);
+    bool& logged = (still_open ? other_open_logged : open_logged);
+    if (!logged) {
+      renodx::utils::log::w(still_open ? "[Total War] Worker pool: a job is open on another thread."
+                                       : "[Total War] Worker pool: a job was still open at the present; joined.");
     }
-    renodx::utils::log::i(line);
+    logged = true;
   }
-  if (record_drops != 0) {
-    renodx::utils::log::w(std::format("[Total War] Worker pool trace: {} records dropped (the array is full).", record_drops));
+
+  // The trace lines of the last present's jobs, and the refusals counted since the last ones (not while a job is open: the
+  // starting thread may be writing a record).
+  if (!busy.load(std::memory_order_acquire)) {
+    const double microseconds = 1e6 / static_cast<double>(qpc_frequency);
+    for (uint32_t index = 0; index < record_count; ++index) {
+      const TraceRecord& record = records[index];
+      std::string line = std::format("[Total War] Worker pool trace ({}): {} of {} workers ran, join wait {:.1f} us",
+                                     USER_KEYS[static_cast<size_t>(record.user)], record.ran, record.workers,
+                                     static_cast<double>(record.wait_ticks) * microseconds);
+      for (uint32_t i = 0; i < record.workers; ++i) {
+        if (record.entry[i] == 0) continue;
+        line += std::format(", worker {} on CPU {}:{} at +{:.1f} us", i + 1, record.cpu[i] >> 8, record.cpu[i] & 0xff,
+                            static_cast<double>(record.entry[i] - 1) * microseconds);
+      }
+      renodx::utils::log::i(line);
+    }
+    if (record_drops != 0) {
+      renodx::utils::log::w(std::format("[Total War] Worker pool trace: {} records dropped (the array is full).", record_drops));
+    }
+    record_count = 0;
+    record_drops = 0;
   }
-  record_count = 0;
-  record_drops = 0;
   std::string refusals;
   for (size_t user = 0; user < USER_COUNT; ++user) {
     if (const uint32_t count = refused[user].exchange(0, std::memory_order_relaxed); count != 0) {
@@ -470,17 +498,13 @@ inline void Update(const Settings& settings) {
   }
   counting.store(settings.trace, std::memory_order_relaxed);
 
-  if (busy.load(std::memory_order_acquire)) {
-    if (!open_logged) {
-      renodx::utils::log::w("[Total War] Worker pool: a job was still open at the present; joined.");
-    }
-    open_logged = true;
-    Join();
-  }
   if (!settings.in_use) {
     Stop();
     return;
   }
+  // Growth and the CPU sets change `created` and the threads' handles, which Stop (another thread, at detach) also changes: only
+  // with `busy`, else this present is skipped.
+  if (busy.exchange(true, std::memory_order_acquire)) return;
   target = std::min(std::max<uint32_t>(settings.threads, 1) - 1, MAX_WORKERS);
   if (target != failed_target) {
     failed_target = ~0u;
@@ -518,6 +542,7 @@ inline void Update(const Settings& settings) {
     }
     given_generation = applied_generation;
   }
+  busy.store(false, std::memory_order_release);
 }
 
 #else
