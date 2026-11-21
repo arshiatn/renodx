@@ -1105,13 +1105,19 @@ int main() {
   draw();
   frame_trace::OnPresent(false);
   CHECK(map_trace.tracing.load() && map_trace.presents.size() == 2);
+  int64_t boundary = 0;
   {
     const std::unique_lock lock(map_trace.mutex);
+    boundary = map_trace.presents[1];
     auto tie = map_trace.draws.back();
     tie.sequence = map_trace.sequence++;
-    tie.qpc = map_trace.presents[1];
-    tie.done = map_trace.presents[1];
+    tie.qpc = boundary;
+    tie.done = boundary;
     map_trace.draws.push_back(tie);
+  }
+  // The frame-1 draw a tick after the present (the game has ReShade's present work and the real Present between):
+  // otherwise it too can land in the present's tick and, by the same rule, in frame 0.
+  while (Qpc() <= boundary) {
   }
   draw();
   CHECK(SUCCEEDED(context->Map(dynamic_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
