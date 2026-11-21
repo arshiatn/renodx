@@ -5096,7 +5096,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         t4i_'s questions 2-5, not-done list) -> t4i_ fixes -> ebr_ re-check.
         Agents: c3i_, bd3o_, ebr_ (3 of 3). QUEUE: T3, x87 review, R2 addendum, S0 GPU design review, unified PT design;
         after S3: B1.2a, T1b; after S8a: S8 (hp1i_ + the S7 nits) -> bd3r_ review.
-        c3i_ S3 INTERIM 05:2x: code written + staged on branch rmt_c_s3 (rmt_s3 = the old S1 track's branch) at
+        c3i_ S3 INTERIM 05:3x: code written + staged on branch rmt_c_s3 (rmt_s3 = the old S1 track's branch) at
         96a49351d in worktree rmt_c3, not committed: 2-page RX stubs / RW WorkerData, CutRange + worker_cut, sites 25 ->
         27 (animation fill call, pending sweep entry), ROWS 8 -> 10, stubs, SyncWorkerSlots, PinModule, Update(const
         WorkerRows&), new animation_rows.hpp (pass-through Dispatch) + pending_sweep.hpp (trace-only Arm, owner check
