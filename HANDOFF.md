@@ -5296,6 +5296,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         switch_lines / gates / corpus to the built strings + ebr_ nits 1-3 (nit 4 at T5) -> ebr_ Opus xHigh review.
         addon.cpp token: T1b now (c3i_'s B1.2a does not touch addon.cpp / test_hooks.hpp).
         Agents: c3i_ (B1.2a), hp1i_ (S8-1b), t4i_ (T1b) (3 of 3).
+        c3i_ B1.2a DONE 09:1x (rmt_b12a 55f9ac1e2, local; reports/c3i_b12a_handback.md): effect_update_sites.hpp 627 lines
+        (27 sites, presort guard + static_assert, Frame / Data, NM1 one-word fast path, NM2 tail-jump thunks, jump scan
+        with 5 IGNORED_SOURCES checked by dis_at.py as mid-instruction bytes, 35 HOOKED_ENTRIES); engine_code.hpp
+        PausedWrite third cut (thunk page + active counter, per-site EIP rule, all-or-none); test part 25 (898 lines:
+        whole-DLL branch scan + planted control, 482184 relocs, 594 thunk runs, NM1 boundary, torn-pair / no-fxsave
+        controls, slow frame 572 B stack, parked threads at every site byte, 200 switches x 4 threads 0 wrong). All
+        tests + gated builds exit 0. Deferred: StackHighWater of the real tree (B1.2b), NM4 / B1.6 wiring, B1.5's 2
+        small sites. Notes: B1.5 must exempt 0x1929E60 / 0x192D290 in the E9 check; Assembler duplicated with
+        draw_recording_sites.hpp (unify later); Prepare page leaked on re-Prepare (test-only).
+        c3i_ RESUMED 09:1x: B1.2b on rmt_b12a (B1's own files only; stop + report if worker_pool.hpp / engine_code.hpp
+        need a change) -> B1.3 Opus xHigh review of L1 (B1.2a + B1.2b). C.3-3 (draw_recording*.hpp +
+        test/tw_draw_recording, + c32r_ S-1 / N-1..N-4; no engine_code.hpp, no addon.cpp) -> next free slot.
+        Agents: c3i_ (B1.2b), hp1i_ (S8-1b), t4i_ (T1b) (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
