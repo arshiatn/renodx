@@ -6064,6 +6064,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: c3i_ (R1), bd3o_ (R-S5a), ebr_ (round 10) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_ part 2b
         (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, x0i_ X2 notes, B1.6 (+ N5
         real-routine tests), X1, R-S5.
+        c3i_ R1 DONE 20:4x (reports/c3i_r1_handback.md): rmt_b15r1 ed8ec8dc9 from 404258f02 (engine_code.hpp +7 / -1,
+        tests.cpp +17). Update clears a group not fully found from target, groups {PARTICLE_COUNT_SITES, JOB_SITES}. JOB
+        SITES HAD THE SAME SPLIT (site 7 Stop out of found -> WakeAll + Sleep went in alone on the next on) -> fixed by
+        the same rule. Tests 13(n) + 13(b), both mutation-checked; FULL + 3 C suites + gated builds exit 0.
+        b13r_ STARTED R1 re-check 20:4x -> reports/b13r_b15_review.md '## R1 re-check'.
+        Agents: bd3o_ (R-S5a), ebr_ (round 10), b13r_ (R1 re-check) (3 of 3). QUEUE: merge rmt_b15r1, c33i_ part 2b
+        (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, x0i_ X2 notes, B1.6 (+ N5
+        real-routine tests), X1, R-S5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
