@@ -1403,7 +1403,6 @@ static_assert(RECORDING_SITE_COUNT == RECORDING_SITES);
 // it covers) may touch any of them, and none of the bytes a site, its callee or its exit is found by may touch a
 // patched one (it may be in when Prepare runs). The ranges of the ROWS (checked, not written) are read by our own
 // pieces (the accessor, the list helper): those may lie in them.
-constexpr size_t PatternSize(std::string_view pattern) { return (pattern.size() + 1) / 3; }
 // The timing hooks on our own entries (HOOKED_ENTRIES) are refused at run time (RecordingEntriesFree, in Prepare and
 // every turn-on), so they are not held against the sites; every other timing hook is.
 constexpr std::array<bool, HEAPFIX_TIMING_HOOKS.size()> TIMING_HOOK_REFUSED = [] {

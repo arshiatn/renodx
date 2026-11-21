@@ -98,6 +98,8 @@ constexpr std::array<HeapfixRange, 82> HEAPFIX_CHECKED = {{
 constexpr bool Touches(uint32_t rva, uint32_t size, const HeapfixRange& range) {
   return rva < range.rva + range.size && range.rva < rva + size;
 }
+// The byte count of a pattern ("AA BB ??": three characters a byte, the last without its space).
+constexpr size_t PatternSize(std::string_view pattern) { return (pattern.size() + 1) / 3; }
 // Every row is filled in (a short list would leave empty rows at the end).
 static_assert([] {
   for (const HeapfixRange& range : HEAPFIX_PATCHED) {

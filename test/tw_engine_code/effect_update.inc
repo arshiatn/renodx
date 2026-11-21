@@ -1209,8 +1209,8 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
     CHECK(trace_close(4));
     std::printf("26f. M1 (CPU and GPU): the first L2 round, a pool sized by the budget, more than 4096 units spawning: staged whole, equal to the serial walk, no full pool, L2 stays on\n");
 
-    // A pool that is full (the budget is small, the units stage more than the pool holds): an overflow, counted; the next round does not stage and equals the serial walk; the round
-    // after has a pool grown to what the full one asked for and merges the serial buffer; a full pool right after a grown one turns L2 off.
+    // A pool that is full (the units stage more than the pool holds): an overflow, counted; the next round does not stage and equals the serial walk; the round after has a pool grown
+    // to what the full one asked for and merges the serial buffer.
     CHECK(trace_open(60, 4));
     for (const bool gpu : {false, true}) {
       ResetScheduler();
@@ -1224,7 +1224,7 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       full.min_units = 99;
       full.max_units = 101;
       full.busy = 20;
-      full.spawn_room = 700;
+      full.spawn_room = 3000;
       full.gpu = gpu;
       auto first = Build(6102, full);
       Walk(*first, true);
@@ -1239,24 +1239,73 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       Walk(*second, true);
       CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*second) && Equal(*serial, *second, &why));
       CHECK(counter(ei::Counter::GUARD_ROUNDS) == 1 && !ei::stage_skip && counter(ei::Counter::STAGE_FULLS) == fulls);
-      // The round after that: the pool fits, the buffer is the serial one.
+      // The round after that: the pool fits, the buffer is the serial one, L2 still on.
       ei::last_round_spawned = 0;
       auto third = Build(6102, full);
       Walk(*third, true);
       CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*third));
       CHECK(counter(ei::Counter::STAGE_FULLS) == fulls && counter(ei::Counter::SPAWN_OVERFLOWS) > 0 && serial->spawn_buffer == third->spawn_buffer && !ei::spawns_off && !ei::session_off);
-      // A pool that was grown already and is full again: L2 off for the session.
+    }
+    CHECK(trace_close(4));
+    std::printf("26f. full pool (CPU and GPU): an overflow counted, no off for the session; the next round a guard round equal to the serial walk, the one after with a grown pool and the "
+                "serial buffer\n");
+
+    // Whether the stored events hold the SPAWNS_OFF event with this reason.
+    const auto spawns_off_reason = [](ei::SpawnsOffReason reason) {
+      for (uint32_t event = 0; event < std::min<uint32_t>(ei::event_count.load(), static_cast<uint32_t>(ei::events.size())); ++event) {
+        if (ei::events[event].kind == ei::EventKind::SPAWNS_OFF && ei::events[event].value == static_cast<uint32_t>(reason)) return true;
+      }
+      return false;
+    };
+    // The cap: a pool at 4 times the budget's pool that is full turns L2 off for the session, with its reason stored once (B1 stays on); a pool that cannot be reserved does too.
+    for (const bool gpu : {false, true}) {
       ResetScheduler();
       FreeRecords();
       ei::spawns_row = true;
-      ei::stage_grow = 1;
-      auto fourth = Build(6102, full);
-      Walk(*fourth, true);
-      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*fourth) && counter(ei::Counter::STAGE_FULLS) > 0 && ei::spawns_off && !ei::session_off);
+      CHECK(pool(4) == 3);
+      Shape capped;
+      capped.ops = "LL";
+      capped.max_ops = 3;
+      capped.effects = 90;
+      capped.min_units = 99;
+      capped.max_units = 101;
+      capped.busy = 20;
+      capped.spawn_room = 600;  // the cap (4 x the budget's pool: 4024) is less than one block (4096): the first pool is at it
+      capped.gpu = gpu;
+      auto world = Build(6103, capped);
+      Walk(*world, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*world) && ei::spawns_off && !ei::session_off && ei::stage_skip);
+      CHECK(spawns_off_reason(ei::SpawnsOffReason::CAP_REACHED));
+      // Off for good: the next round does not stage (not a guard round either: the row is not asked for any more) and equals the serial walk.
+      auto serial = Build(6103, capped);
+      auto next = Build(6103, capped);
+      Walk(*serial, false);
+      Walk(*next, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*next) && Equal(*serial, *next, &why));
     }
-    CHECK(trace_close(4));
-    std::printf("26f. full pool (CPU and GPU): an overflow counted, not an off for the session; the next round a guard round equal to the serial walk, the one after with a grown pool and the "
-                "serial buffer; a full pool right after a grown one turns L2 off (B1 stays on)\n");
+    {
+      // A round that ran, so the units and segments are reserved: only the pool's block is allocated next, and that fails.
+      ResetScheduler();
+      FreeRecords();
+      ei::spawns_row = true;
+      CHECK(pool(4) == 3);
+      Shape reserved = shape;
+      reserved.spawn_room = 100000;
+      auto warm = Build(6104, reserved);
+      Walk(*warm, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*warm) && !ei::spawns_off);
+      FreeRecords();
+      ei::controls.allocations = 0;
+      ei::controls.fail_allocation_at = 1;
+      auto serial = Build(6104, reserved);
+      auto failing = Build(6104, reserved);
+      Walk(*serial, false);
+      Walk(*failing, true);
+      ei::controls.fail_allocation_at = 0;
+      CHECK(finish_round_checks(*failing) && Equal(*serial, *failing, &why) && ei::spawns_off && !ei::session_off);
+      CHECK(spawns_off_reason(ei::SpawnsOffReason::RESERVATION));
+    }
+    std::printf("26f. L2 off for the session: a full pool at its cap, a pool that cannot be reserved: the event with its reason, the walk equal to the serial one, B1 stays on\n");
 
     // The guard: less room than the minimum, or the last round's spawns past half of it: a round that does not stage (the order-point path, equal to the serial walk).
     CHECK(trace_open(60, 4));

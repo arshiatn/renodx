@@ -2465,6 +2465,9 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
 // The effect update's scheduler (part 26): rounds against the game's loop on a fake game, the late units and segments, the failure order, the census, the controls.
 #include "effect_update.inc"
 
+// Cached Particle Count (part 28): its two sites in the game's code, the stubs on a fake game, the cache against the fresh sum, the controls.
+#include "particle_count.inc"
+
 #if defined(TWATTILA_ENGINE_PROBE)
 // The probe build (part 21, `probe` alone): the probe stubs in front of the production stubs, each alone, parts 19 and 20 through them.
 #include "engine_probe.inc"
@@ -2517,6 +2520,8 @@ int main(int argc, char** argv) {
   CHECK(Matches(game + text_rva, text_size, ec::ITEM_PUSH_B) == (build.code->push_loop_b_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::SWEEP) == (build.code->sweep_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::PICK_LOD) == 1);
+  CHECK(Matches(game + text_rva, text_size, ec::PARTICLE_EPOCH) == (build.code->particle_epoch_rva != 0 ? 1u : 0u));
+  CHECK(Matches(game + text_rva, text_size, ec::PARTICLE_COUNT) == (build.code->particle_count_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, build.code->soldier_rows) == 1);
   CHECK(Matches(game + text_rva, text_size, ec::SOLDIER_ROWS) + Matches(game + text_rva, text_size, ec::ROME2_SOLDIER_ROWS) == 1);
   CHECK(Matches(game + text_rva, text_size, ec::MATRIX_PRODUCT) == 1);
@@ -2538,6 +2543,8 @@ int main(int argc, char** argv) {
   CHECK(ec::sites[ec::ITEM_PUSH_FIRST_SITE + 1].at == (build.code->push_loop_b_rva != 0 ? patched + build.code->push_loop_b_rva + ec::ITEM_PUSH_SITE : nullptr));
   CHECK(ec::sites[ec::SWEEP_PREFETCH_INDEX].at == (build.code->sweep_rva != 0 ? patched + build.code->sweep_rva + ec::SWEEP_SITE : nullptr));
   CHECK(ec::sites[ec::MODEL_DETAIL_INDEX].at == patched + build.code->pick_lod_rva);
+  CHECK(ec::sites[ec::PARTICLE_EPOCH_INDEX].at == (build.code->particle_epoch_rva != 0 ? patched + build.code->particle_epoch_rva : nullptr));
+  CHECK(ec::sites[ec::PARTICLE_COUNT_INDEX].at == (build.code->particle_count_rva != 0 ? patched + build.code->particle_count_rva : nullptr));
   CHECK(ec::sites[ec::WORKER_FILL_INDEX].at == (build.code->fill_call_rva != 0 ? patched + build.code->fill_call_rva + ec::FILL_CALL_AT : nullptr)
         && ec::sites[ec::WORKER_FILL_INDEX].opcode == 0xE8);
   CHECK(ec::sites[ec::WORKER_SWEEP_INDEX].at == (build.code->sweep_rva != 0 ? patched + build.code->sweep_rva + ec::SWEEP_ENTRY_AT : nullptr));
@@ -2547,7 +2554,7 @@ int main(int argc, char** argv) {
   }
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true, true, true, true);
-  CHECK(ec::written == (ec::found & ~ec::JOB_SITES & ~ec::MODEL_DETAIL_BIT & ~ec::WORKER_SITES)  // the LOD pick's row is asked for by the slider (part 22), the worker rows by part 23
+  CHECK(ec::written == (ec::found & ~ec::JOB_SITES & ~ec::MODEL_DETAIL_BIT & ~ec::WORKER_SITES & ~ec::PARTICLE_COUNT_SITES)  // the LOD pick's row is asked for by the slider (part 22), the worker rows by part 23, Cached Particle Count by part 28
         && ec::found == (ec::MODEL_DETAIL_BIT | 0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.ready_check_rva != 0 ? 0b10000u : 0u)
                          | (build.code->job_wake_all_rva != 0 ? ec::JOB_SITES : 0u) | (build.code->half_rows_rva != 0 ? 0b100000000u : 0u)
                          | (build.code->child_sum_rva != 0 ? ec::CHILD_SUM_BIT : 0u) | (build.code->particle_loop_rva != 0 ? ec::PARTICLE_PREFETCH_BIT : 0u)
@@ -2556,7 +2563,8 @@ int main(int argc, char** argv) {
                          | (build.code->push_loop_a_rva != 0 ? ec::ITEM_PUSH_SITES : 0u)
                          | (build.code->sweep_rva != 0 ? ec::SWEEP_PREFETCH_BIT | ec::WORKER_SWEEP_BIT : 0u)
                          | (build.code->fill_call_rva != 0 ? ec::WORKER_FILL_BIT : 0u)
-                         | (build.code->float4_reload_rva != 0 ? ec::FLOAT4_RELOAD_SITES : 0u) | ec::SOLDIER_ROWS_SITES | ec::MATRIX_PRODUCT_SITES));
+                         | (build.code->float4_reload_rva != 0 ? ec::FLOAT4_RELOAD_SITES : 0u) | ec::SOLDIER_ROWS_SITES | ec::MATRIX_PRODUCT_SITES
+                         | (build.code->particle_count_rva != 0 ? ec::PARTICLE_COUNT_SITES : 0u)));
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
     if (unpatched[at - text_rva] == patched[at]) continue;
@@ -2649,6 +2657,12 @@ int main(int argc, char** argv) {
     twattila::engine_code::Update(false);
     if (const int failed = RunEffectUpdateTests(build, patched, quick); failed != 0) return failed;
     std::printf("PASS (effect update only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "count") {
+    twattila::engine_code::Update(false);
+    if (const int failed = RunParticleCountTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
+    std::printf("PASS (particle count only)\n");
     return 0;
   }
   if (argc > 3 && std::string(argv[3]) == "sweep" && build.code->sweep_rva != 0) {
@@ -3068,7 +3082,7 @@ int main(int argc, char** argv) {
   // 8. The render lists' push.
   if (build.list_push_function_rva != 0) {
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
-    CHECK(ec::written == (ec::found & ~(ec::JOB_SITES | ec::PREFETCH_SITES | ec::EMITTER_PREFETCH_BIT | ec::ENTRY_PREFETCH_BIT | ec::SWEEP_PREFETCH_BIT | ec::MODEL_DETAIL_BIT | ec::WORKER_SITES)));
+    CHECK(ec::written == (ec::found & ~(ec::JOB_SITES | ec::PREFETCH_SITES | ec::EMITTER_PREFETCH_BIT | ec::ENTRY_PREFETCH_BIT | ec::SWEEP_PREFETCH_BIT | ec::MODEL_DETAIL_BIT | ec::WORKER_SITES | ec::PARTICLE_COUNT_SITES)));
     const uint32_t game_push = Address(game + build.list_push_function_rva);
     const uint32_t patched_push = Address(patched + build.list_push_function_rva);
     const auto start = std::chrono::steady_clock::now();
@@ -3659,6 +3673,7 @@ int main(int argc, char** argv) {
   if (const int failed = RunPendingSweepTests(build, game, patched, quick); failed != 0) return failed;
   if (const int failed = RunEffectSitesTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
   if (const int failed = RunEffectUpdateTests(build, patched, quick); failed != 0) return failed;
+  if (const int failed = RunParticleCountTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
 
   // 13. Another mod's bytes in a site after the start: that site is not touched, nothing that goes in on the strength of it is
   // (the three job sites; the half rows after the half function), the rest is, and the site is left alone from then on.
@@ -3680,7 +3695,7 @@ int main(int argc, char** argv) {
     const uint32_t all = ec::found;
     const auto on = [&] {
       twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, true, true, true, true, true, 2.f, 0,
-                                    {.animation = twattila::animation_rows::Stage::ON, .pending_sweep_trace = true});
+                                    {.animation = twattila::animation_rows::Stage::ON, .pending_sweep_trace = true, .particle_count = true});
     };
     const auto off = [&] { twattila::engine_code::Update(false); };
     const auto game_bytes = [&](uint32_t mask) {  // every site of `mask` holds the game's bytes
