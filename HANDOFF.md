@@ -5962,6 +5962,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: bd1r_ (R-S3), b13r_ (B1.5 re-check), ebr_ (X2 review) (3 of 3). QUEUE: merge rmt_b15fix, t4i_ gate row
         refresh, c33i_ R-S4 fixes + hook-up re-apply on the merged fixes, R-S5a addendum, B1.6 (+ N5 real-routine
         tests), X1, x0i_ X2 fixes.
+        bd1r_ R-S3 DONE 19:5x (reports/bd1r_rs3_review.md): FIX. M1 Rewrite restores protections in the same order -> page
+        +0x17AE000 (4 fill + 6 recording sites) stays RWX for the session (probe: 0x20 -> 0x40) -> reverse order + test
+        with an RX page. S1 ENTERED join + chunks_done != chunks have no real control. S2 hook-up untested, TestRewrite
+        models Update wrongly. S3 re-apply rules on rmt_b15fix (Rewrite inside if (clear), assert idiom, PausedWrite 8
+        args -> next table brings a struct). N1-N10. Sound: sites + chain, IGNORED_SOURCES, no missed branch, no live
+        register, dispatcher, check mode, stand-down, heapfix clearance, row.
+        c33i_ STARTED R-S4 part 1 19:5x on rmt_rs1 (M1, S1, S2 test, nits in its files); part 2 (hook-up re-apply + S2
+        tw_engine_code cases + N4 / N9) after rmt_b15fix merges -> bd1r_ re-check.
+        Agents: b13r_ (B1.5 re-check), ebr_ (X2 review), c33i_ (R-S4 part 1) (3 of 3). QUEUE: merge rmt_b15fix, c33i_
+        R-S4 part 2, bd1r_ R-S3 re-check, t4i_ gate row refresh, R-S5a addendum, B1.6 (+ N5 real-routine tests), X1,
+        x0i_ X2 fixes.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
