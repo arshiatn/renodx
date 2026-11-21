@@ -5016,6 +5016,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         bd3r_ RESUMED 04:3x: re-check of 87492f5 (S4 put-back completeness + copy cost in modes 1-2, S2 cap with an
         open chain, S5 forced overlap?) -> verdict for S3 / S4.
         Agents: t4i_, c3i_, bd3r_ (3 of 3).
+        bd3r_ RE-CHECK OF 87492f5 DONE 04:3x (appended to reports/bd3r_t2_review.md): LANE H MAY GO ON AS IS. S4 full
+        serial replay judged complete (every list, mesh input, owner + buffer dirty state) and better than option 3;
+        copies cost nothing in modes 1-2 (only pre_mesh 1 KB stack), mode 3 arena 8 B / entry = 0.24-0.8 MB a chain;
+        S2 cap with an open chain keeps per-chain correctness; single-thread test enough for the gated path. SHOULD
+        before T5: check_sortfb mismatch path also runs the put-back. Nits: capped-apply count in stress output, bad
+        THREADS at start logs, forced-overlap test delay. T4: "could not be put back" = STOP, new applied-line form INFO.
+        hp1i_ RESUMED 04:3x: commit A = Should + nits + mode 3 cost line; commit B = S7 instances family (guard set,
+        P2' 0x17b9197 + thread rule, mixed-thunk full path, three-slot priority, NM4 (0x130, 0xd8) pairs + FNV; presort
+        stays out = S8a / S8) -> DLL prep5 -> bd3r_ short review. t4i_ got the 3 heapfix line classes.
+        [ ] S0-ter (Opus xHigh, offline: instances key writer +0x48 / +0x4c + lifetime for the presort's on mode; B1's
+        site list against P4) = next free slot, before S8a. Agents: t4i_, c3i_, hp1i_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
