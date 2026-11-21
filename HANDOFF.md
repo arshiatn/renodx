@@ -4909,6 +4909,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         DESIGN = YES NOW: "quality metrics (relMSE / SMAPE / FLIP, flicker / temporal covariance, disocclusion) +
         Cornell-type scene vs pbrt-v4 + unified PT mode (DI shadows, GI AO)" at the next free slot (Opus xHigh,
         read-only, plan_1117/designs/); build after render_mt. [ ] owner coordinator.
+        hp1i_ HEAPFIX REVIEW FIXES DONE 03:5x (prep d7ebe3b, local; reports/hp1i_fixes_handback.md): M1 both sites
+        writable or neither (caught its own same-page bug), S2 control 5 now 58 of 100 (all seeds that reach the barrier),
+        S3a-d failure logs, S4 parse_schedule + install variants + R_TOOMANY (300 meshes exact), N1 / N2 / N3 / N7 done.
+        Full build.bat test exit 0 (src_prep3); DLL testbin\heapfix_pf\dlls\prep2_dinput8.dll sha256 32888076...418f.
+        Still unproven offline: game allocator on pool threads, real pool creation failure, ini read, real
+        VirtualProtect failure, real mesh count. [ ] bd3r_ re-check of d7ebe3b (next free slot).
+        gto_ RESUMED 03:5x: addendum "quality and enforcement" (A read-before-edit / CXX_STYLE / cite gates as hook
+        proposals for ATN; B per-pixel error + temporal + disocclusion metrics on full frames; C known-answer scenes
+        incl. a Cornell-type scene vs pbrt-v4). [ ] UNIFIED PT MODE design (fresh Opus xHigh: DI shadows, GI AO, one
+        reservoir path, ReSTIR PT Enhanced; reads designs/pt_di_rtxdi*.md, tools/tw/restir_unified) at a later slot.
+        Agents: c3i_, ebo_, gto_ (3 of 3). QUEUE: bd3r_ re-check, unified PT design, x87 review, R2 addendum, T3.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
