@@ -6189,6 +6189,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: c33i_ (part 2b), s0r_ (S0 GPU review), ebr_ (T3 review) (3 of 3). QUEUE: bd1r_ R-S3 re-check + merge
         rmt_rs2b, merge rmt_t3, t4i_ §4.2 compare + flake fix, R-S5 (c33i_, after rmt_rs2b merges) -> Opus xHigh review,
         B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, unified PT design (after S0).
+        c33i_ PART 2b DONE 21:3x (reports/c33i_rs4p2b_handback.md): rmt_rs2b 4eb38b0e3 on c36498621 (10 files +1994 /
+        -40): 5 cherry-picks + a9c9cdb1a N4 (effect_update::Overlaps, internal::BranchesInto, VisitRanges,
+        TouchesPatched / TouchesChecked; groups; control_fail_protect) + 1752324b5 hook-up (PausedWrite 4th table + cut
+        on active + ThreadInside, Update bookkeeping, Uninstall pin; addon.cpp row 'Parallel Instance Fill
+        (Experimental)' default Off in the DRAW_RECORDING block) + 4eb38b0e3 part 29a-e. R2-ready (GROUPS). N9: Rewrite /
+        ThreadInside stay in instance_fill (reason in a comment). tw_engine_code only -Quick (bd1r_ runs FULL); other
+        suites + gated builds exit 0.
+        bd1r_ STARTED R-S4 re-check 21:3x -> reports/bd1r_rs3_review.md '## R-S4 re-check'.
+        Agents: s0r_ (S0 GPU review), ebr_ (T3 review), bd1r_ (R-S4 re-check) (3 of 3). QUEUE: merge rmt_rs2b, merge
+        rmt_t3, t4i_ §4.2 compare + flake fix, R-S5 (c33i_, after rmt_rs2b merges) -> Opus xHigh review, B1.6 (+ N5
+        real-routine tests + b13r_'s half-rows R2), X1, unified PT design (after S0).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
