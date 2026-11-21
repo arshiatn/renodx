@@ -5096,6 +5096,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         t4i_'s questions 2-5, not-done list) -> t4i_ fixes -> ebr_ re-check.
         Agents: c3i_, bd3o_, ebr_ (3 of 3). QUEUE: T3, x87 review, R2 addendum, S0 GPU design review, unified PT design;
         after S3: B1.2a, T1b; after S8a: S8 (hp1i_ + the S7 nits) -> bd3r_ review.
+        c3i_ S3 INTERIM 05:2x: code written + staged on branch rmt_c_s3 (rmt_s3 = the old S1 track's branch) at
+        96a49351d in worktree rmt_c3, not committed: 2-page RX stubs / RW WorkerData, CutRange + worker_cut, sites 25 ->
+        27 (animation fill call, pending sweep entry), ROWS 8 -> 10, stubs, SyncWorkerSlots, PinModule, Update(const
+        WorkerRows&), new animation_rows.hpp (pass-through Dispatch) + pending_sweep.hpp (trace-only Arm, owner check
+        via internal::owner, Tracing() / TraceWindow()), recording_cut CutRange, tests parts 23 + 24 (quick PASS, 124 M
+        whole updates 0 wrong, 2 mutations caught). No overlap with B1's 27 sites. Cut off before FULL tests / builds /
+        commit -> c3i_ RESUMED to finish (no overlapping runs, logs readable by Windows tools, found-line lists the new
+        sites, env-unset check).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
