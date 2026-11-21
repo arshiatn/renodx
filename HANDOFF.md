@@ -6028,7 +6028,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         stay. Nits 4 / 5 author notes (prepare.c's 4 read-only hash rows hit proven ranges). Nits 2 / 6 'later'.
         [ ] ebr_ re-check of 6593a8f (after round 9), incl. the notes' 'one differing case'. [ ] t4i_ next round: corpus
         line with ', 0 not found' + use the not-found count.
-        bd3o_ (a0a4cc10c7b5c4d4a) RESUMED 20:3x: R-S5a R2 addendum (Opus xHigh, design only) ->
+        bd3o_ (a179380ae40d59da3; first sent to bd1o_ a0a4cc10c7b5c4d4a by mistake, it declined, no files) RESUMED 20:3x:
+        R-S5a R2 addendum (Opus xHigh, design only) ->
         reports/bd3o_design_R2_addendum.md + open questions for C's owner (c33i_).
         Agents: c3i_ (R1), ebr_ (round 9 review), bd3o_ (R-S5a) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_ part
         2b (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, ebr_ X2 nits re-check, B1.6 (+
