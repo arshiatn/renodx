@@ -4870,6 +4870,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         N6 ~10 MB of 32-bit address space for 6 threads' sortfix scratch + pools cache -> NM3 / memwatch budget; N5 watch
         p95 for the owner's Sleep(1). hp1i_ RESUMED 03:4x: the fixes (one new prep commit, new DLL + sha256), then bd3r_
         re-checks. Agents: ebr_, bd1r_, hp1i_ (3 of 3).
+        bd1r_ RE-CHECK OF THE S2r FIXES DONE 03:4x (appended to reports/s2r_review.md): MERGE AFTER SMALL FIXES. All
+        items fixed (S1 / S4 differently, soundly); 1-present lag OK; ONE_WORKER idle threads OK; Dekker pair proven by
+        code only (no x86 test can catch it). New hole: Join closes a job that does not exist when Stop on another thread
+        holds busy (stale starter) -> fix 1 starter = 0 before busy = false + test; fix 2 Update growth / CPU sets only
+        under busy.exchange; fix 3 Update forced Join first, records only if !busy, honest log. Nits: ALL no-worker-wait
+        rule in header, "do not weaken" comments, stress test comment. After fixes: a diff check is enough (bd1r_ or the
+        implementer's own review). S3 OWNER CHECK: read worker_pool::internal::owner (relaxed) == GetCurrentThreadId()
+        with a comment, no new public API (CXX_STYLE). B1 row: the Worker Threads #if gets B1's guard when B1 lands.
+        c3i_ RESUMED 03:4x: fixes 1-3 + nits on rmt_pool. Agents: ebr_, hp1i_, c3i_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
