@@ -6215,6 +6215,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: ebr_ (T3 review), bd1r_ (R-S4 re-check), gto_ (GPU v2) (3 of 3). QUEUE: merge rmt_rs2b, merge rmt_t3,
         t4i_ §4.2 compare + flake fix, R-S5 (c33i_, after rmt_rs2b merges) -> Opus xHigh review, B1.6 (+ N5
         real-routine tests + b13r_'s half-rows R2), X1, s0r_ re-check of GPU v2, unified PT design (after S0).
+        ebr_ T3 REVIEW DONE 21:4x (reports/ebr_t1b_review.md line 521): MERGE. No Musts, 2 Shoulds, 6 Nits; 12 / 12
+        amd64 runs + run_all 843 / 843. FLAKE ROOT-CAUSED: OnPresent's frame_of uses upper_bound, so a call in the same
+        QPC tick as the present lands in the next frame (also in game) -> S-T3-1 lower_bound, before T5's build. S-T3-2
+        §4.2 compare confirmed not built anywhere -> spec in the review (OFF / OFF control / C / ALL, per-frame draws +
+        bound state + unmap hashes, preconditions, first difference).
+        MERGED 21:4x: rmt_t3 -> atn-mods df70c75e3 (name_check 373 ids / 16 generic; gated x86 x3 + amd64 exit 0;
+        pushed).
+        t4i_ STARTED 21:4x on rmt_t3b (from df70c75e3): S-T3-1 lower_bound + nits 1-6 + S-T3-2 §4.2 compare (bench, tests
+        on synthetic files) -> ebr_ re-check.
+        Agents: bd1r_ (R-S4 re-check), gto_ (GPU v2), t4i_ (T3 follow-ups) (3 of 3). QUEUE: merge rmt_rs2b, R-S5 (c33i_,
+        after rmt_rs2b merges) -> Opus xHigh review, ebr_ T3b re-check, B1.6 (+ N5 real-routine tests + b13r_'s
+        half-rows R2), X1, s0r_ re-check of GPU v2, unified PT design (after S0).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
