@@ -5871,6 +5871,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: ebr_ (T4 confirm + X0 review), c33i_ (R-S1 + R-S2), b13r_ (B1.5 review) (3 of 3). QUEUE: merge rmt_b15,
         c33i_'s engine_code / addon.cpp commit after B1.5, R-S3 review, R-S5a addendum, B1.6 (+ N5 real-routine tests),
         X1, X2 (if ebr_ says go).
+        ebr_ ROUND 8 DONE 18:3x: T4 READY FOR LEG 1 (reports/ebr_t1b_review.md '## Round 8: T4 confirm'; corpus lines
+        verbatim; run_all 738 / 738; no Musts / Shoulds / Nits). [x] x87 M1 closed.
+        ebr_ X0 REVIEW DONE 18:3x (reports/ebr_x87_review.md line 343): X0 SOUND, no Musts, 3 Shoulds, 6 Nits. x0i_'s extra
+        parent-frame rule sound; 5 PROVEN spot checks correct; 2 LIVE spot checks = false LIVEs (callee out-parameter
+        writes). HOT BLOCK PROVABLE: the -724 'escape' is mov edx,esp after 4 argument pushes (v2 W5 clause missing in the
+        walker) -> S-X0-1; ebr_'s re-run with it: 98 / 58 / 9 (+0x17f6515 + +0x1423bd1 -> PROVEN). S-X0-2 cleanup
+        candidates miss push levels around inner calls. S-X0-3 the DLL is relocated at load -> hash over absolute
+        operands never matches (fails safe) -> cut HIGHLOW reloc dwords. X0-T CLOSED (static chain + captures: chain
+        functions only on the main = present thread) -> x87fix torn-write hazard ~0.
+        COORDINATOR: T5 = Way B (prep frozen at 05b9a5c, no x87c in the end batch; LOGX already knows the x87c form). X2
+        after X0's re-check, in the x87c variant, reviewed, measured later (final bench or a later heapfix run, ATN
+        decides then); proven-list-only gain -0.02..-0.05 ms alone would be an author proposal only.
+        x0i_ RESUMED 18:3x: S-X0-1 + S-X0-2 + S-X0-3 + nits, re-run -> ebr_ re-check.
+        Agents: c33i_ (R-S1 + R-S2), b13r_ (B1.5 review), x0i_ (X0 fixes) (3 of 3). QUEUE: merge rmt_b15, c33i_'s
+        engine_code / addon.cpp commit after B1.5, R-S3 review, R-S5a addendum, B1.6 (+ N5 real-routine tests), X1,
+        ebr_ X0 re-check, X2.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
