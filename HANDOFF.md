@@ -5476,6 +5476,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         bd1r_ RESUMED 10:4x: Opus xHigh review of C.3-3 -> reports/bd1r_c33_review.md -> c33i_ fixes -> merge.
         Agents: c3i_ (B1.2b finish), bd3r_ (S8-1c re-check), bd1r_ (C.3-3 review) (3 of 3). QUEUE: t4i_ T1b follow-ups
         + ebo_ lane (per-kind budget, presort segments out, W_w logging, new presort line); C.3-4 after C.3-3's review.
+        bd3r_ RE-CHECK OF S8-1c FIXES DONE 10:4x (appended to reports/bd3r_s8_1c_review.md; build.bat test src_prep13 all
+        passed): NO MUSTS -> S8 LANE CLOSED FOR T5 at prep 05b9a5c (release pool_munmap = 7.0's 15 lines exactly; lock
+        + read sections not compiled in release; pools_odd_mmaps kept). Nit (revival only): HEAPFIX_PRESORT defaults in
+        two translation units -> a revival defines it with -D for both (fix (b) removes the case anyway).
+        ATN 10:4x: deleted the stray C:\Users\arshi\AppData\Local\Temp\pl\poolslock_test.exe themself. Asked whether the
+        presort was the heapfix author's: NO - heapfix 7.0 = 4057eb8 (author); 5d837b6 = our earlier patches (sortfix
+        hsort, x87fix, memwatch lowwater, loopfetch); prepare.c (1352 lines, S1-S8) + the pools.c additions are ours.
+        COORDINATOR SUGGESTION (waits for ATN): leave the presort OUT of the author package entirely (strip, not just
+        gated); package = the earlier patches + parallel prepare S1-S7 only if the end batch proves it + the
+        pool_munmap hardening note; build it after the final bench so every patch carries measured numbers; the
+        presort stays in our private prep branch for a revival.
+        t4i_ RESUMED 10:4x: branch rmt_t1bn (worktree rmt_t1b) - T1b Should S1 + nits 1-5 / 7 / 8, per-kind crash budget
+        + crash list for the root-cause step, presort segments out + "; presort: off in this build" line + W_w per
+        segment with the revive-trigger flag -> ebr_ re-check.
+        Agents: c3i_ (B1.2b finish), bd1r_ (C.3-3 review), t4i_ (T1b follow-ups + ebo_ lane) (3 of 3). QUEUE: C.3-4
+        after C.3-3's review; B1.3 review after B1.2b.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
