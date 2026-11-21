@@ -53,6 +53,24 @@ enum class RecordingSite : uint8_t {
   COLOUR_SRV_DIFFUSE,
   COLOUR_SRV_NORMAL,
   COLOUR_FACTION,
+  // The B groups' (the per-mesh loops of the folded driver): the cut, then the five depth bodies' three shared-state calls each
+  // (the first form, the variation, the slot-0x64 call).
+  DEPTH_B_CUT,
+  DEPTH_B0_VF68,
+  DEPTH_B0_VARIATION,
+  DEPTH_B0_VF64,
+  DEPTH_B1_VF68,
+  DEPTH_B1_VARIATION,
+  DEPTH_B1_VF64,
+  DEPTH_B2_VF68,
+  DEPTH_B2_VARIATION,
+  DEPTH_B2_VF64,
+  DEPTH_B3_VF68,
+  DEPTH_B3_VARIATION,
+  DEPTH_B3_VF64,
+  DEPTH_B4_VF68,
+  DEPTH_B4_VARIATION,
+  DEPTH_B4_VF64,
   COUNT,
 };
 constexpr size_t RECORDING_SITE_COUNT = static_cast<size_t>(RecordingSite::COUNT);
@@ -146,7 +164,8 @@ constexpr std::string_view COLOUR_SETUP_CONTEXT =
 constexpr std::string_view COLOUR_SETUP_EXIT = "83 7E 74 00 0F 84 ?? ?? ?? ??";
 constexpr uint32_t COLOUR_SETUP_EXIT_RVA = 0x17b058b;
 constexpr uint32_t COLOUR_VF68_SETUP_RVA = 0x17b0583;
-constexpr std::string_view COLOUR_VF68_SETUP_CONTEXT =
+// The first form of the shared-state call (the colour loop's after its mesh setup, and the first of each depth body).
+constexpr std::string_view VF68_FIRST_CONTEXT =
     "89 46 50 8B CB 8B 03 6A 00 FF 76 1C 8B 40 68 FF D0 08 46 69 83 7E 74 00";
 constexpr uint32_t COLOUR_VF68_VARIATION_RVA = 0x17b0633;
 constexpr std::string_view COLOUR_VF68_VARIATION_CONTEXT =
@@ -227,6 +246,113 @@ constexpr std::array<ColourPieceInfo, static_cast<size_t>(ColourPiece::COUNT)> C
 constexpr uint32_t ACCESSOR_RVA = 0x1719160;
 constexpr std::string_view ACCESSOR_HEAD = "8B 49 0C 8B 44 24 04 8D 04 81 C2 04 00";
 constexpr std::string_view VF64_STUB_HEAD = "32 C0 C2 0C 00";
+constexpr uint32_t WEIGHTED_VF64 = 0x170060;  // xor al, al; ret 0xc: the do-nothing virtual call (slot 0x64) of nearly every class
+
+// The B groups' cut: the folded driver's loop over a round's meshes (`for ebx = first .. edi = last: mesh = *accessor(sorted, ebx);
+// mesh->vf138(tracker = ebp, device, view, list type = esi, node)`), right after its `test al, al; jne` over the pixel-selection
+// path. The site is the loop's first two loads (8 bytes, 5 written); the thunk runs the round through DispatchMesh and leaves
+// as the loop does (esi the list type, edi the last mesh, ebx past it), at the game's code after the loop.
+constexpr uint32_t DEPTH_B_CUT_RVA = 0x17aed4a;
+constexpr std::string_view DEPTH_B_CUT_CONTEXT =
+    "75 42 8B 5C 24 34 8B 7C 24 1C 3B DF 0F 87 12 01 00 00 8B 74 24 10 66 90 8B 4C 24 28 53 E8 ?? ?? ?? ?? "
+    "FF 74 24 30 56 8B 08 FF 74 24 7C FF 74 24 7C 8B 01 55 FF 90 38 01 00 00 43 3B DF 76 D9 E9 DC 00 00 00";
+constexpr uint32_t DEPTH_B_CUT_OFFSET = 2;
+constexpr uint32_t DEPTH_B_CUT_COVERED = 8;
+// Where the game goes on after the loop (its `mov al, [esp + 0x78]`), and where its `ja` for an empty round lands (4 bytes on).
+constexpr uint32_t DEPTH_B_CUT_EXIT_RVA = 0x17aee68;
+constexpr std::string_view DEPTH_B_CUT_EXIT = "8A 44 24 78 80 7C 24 24 00 0F 85 21 FD FF FF 8B 5C 24 74 89 7C 24 34 E9 BC FC FF FF";
+constexpr uint32_t DEPTH_B_CUT_EMPTY_OFFSET = 4;
+
+// The five depth bodies (thiscall, ecx the mesh: tracker, list, begin, end): every one has the same three calls of the mesh's
+// vtable, which record on a slot. Each is the call `mov eax, [eax + 0x68 | 0x64]; call eax` (5 bytes, replaced by a call of a
+// thunk with the callee's stack: 2 arguments (vf68) or 3 (vf64)).
+constexpr std::string_view DEPTH_B_VF68_VARIATION_CONTEXT =
+    "8B 4E 70 89 46 74 57 FF 76 1C 8B 01 8B 40 68 FF D0 08 46 69 8B 7E 58";
+// The slot-0x64 call, after a `push [esp + 0x18]` or after `mov ecx, [esi + 0x6c]; push ebp`.
+constexpr std::string_view DEPTH_B_VF64_STACK_CONTEXT =
+    "FF 74 24 18 FF 76 1C 8B 01 FF 76 18 8B 40 64 FF D0 08 46 69 8B 7E 58";
+constexpr std::string_view DEPTH_B_VF64_EBP_CONTEXT =
+    "8B 4E 6C 55 FF 76 1C 8B 01 FF 76 18 8B 40 64 FF D0 08 46 69 8B 7E 58";
+constexpr std::array<uint32_t, 5> DEPTH_B_BODIES = {0x17b09f0, 0x17b0cb0, 0x17b0f80, 0x17b1250, 0x17b1520};
+constexpr std::array<uint32_t, 5> COLOUR_B_BODIES = {0x17aef40, 0x17af2b0, 0x17af720, 0x17afc10, 0x17aff90};
+
+// The 8 dispatchers (families 0..7 in address order, DISPATCHER_STRIDE apart) the slot-0x138 thunks call: the view's type picks
+// the visibility body (0x49), the depth body ({0, 0x55, 0x60}) or the colour body; the list is `mesh + base + 32 * list type`
+// plus 4 (the helper 0xcfbb0), the slice the mesh's +0xac / +0xb0. The 4 calls are at +0x2c (the list), +0x52 (visibility), +0x67
+// (depth), +0x7c (colour).
+constexpr uint32_t DISPATCHER_FIRST_RVA = 0x17b5a90;
+constexpr uint32_t DISPATCHER_STRIDE = 0x90;
+constexpr uint32_t DISPATCHER_COUNT = 8;
+constexpr std::string_view DISPATCHER_BYTES =
+    "53 55 8B 6C 24 14 56 57 8B F9 8B CD 8B 45 00 FF 50 3C 8B F0 85 F6 74 0E 83 FE 55 74 09 83 FE 60 74 04 32 DB EB 02 B3 01 "
+    "8B 4C 24 24 E8 ?? ?? ?? ?? 8B 97 B0 00 00 00 85 D2 74 46 8B 8F AC 00 00 00 03 D1 52 51 8B CF 83 FE 49 75 12 55 50 FF 74 24 24 "
+    "E8 ?? ?? ?? ?? 5F 5E 5D 5B C2 14 00 84 DB 74 11 50 FF 74 24 20 E8 ?? ?? ?? ?? 5F 5E 5D 5B C2 14 00 "
+    "FF 74 24 28 50 FF 74 24 24 E8 ?? ?? ?? ?? 5F 5E 5D 5B C2 14 00";
+constexpr uint32_t DISPATCHER_LIST_CALL = 0x2c;
+constexpr uint32_t DISPATCHER_DEPTH_CALL = 0x67;
+constexpr uint32_t DISPATCHER_COLOUR_CALL = 0x7c;
+constexpr uint32_t LIST_HELPER_RVA = 0xcfbb0;
+constexpr std::string_view LIST_HELPER_HEAD = "8D 41 04 C3";
+// The thunks: the standard one (the list's base operand at +8, the dispatcher call at +0x1f) and the one class that sends its
+// colour rounds to a loop of its own (the base at +47, the call to the dispatcher for the depth types at +0x4c).
+constexpr std::string_view SLOT138_THUNK =
+    "8B 44 24 10 C1 E0 05 05 ?? ?? ?? ?? 03 C1 50 FF 74 24 18 FF 74 24 14 FF 74 24 14 FF 74 24 14 E8 ?? ?? ?? ?? C2 14 00";
+constexpr uint32_t SLOT138_THUNK_BASE = 8;
+constexpr uint32_t SLOT138_THUNK_CALL = 0x1f;
+constexpr std::string_view SLOT138_SPECIAL_THUNK =
+    "53 56 57 8B 7C 24 18 8B F1 8B CF 8B 07 FF 50 3C 85 C0 74 13 83 F8 49 74 0E 83 F8 55 74 09 83 F8 60 74 04 32 C9 EB 02 B1 01 "
+    "8B 44 24 1C 8D 9E ?? ?? ?? ?? C1 E0 05 03 D8 84 C9 74 1B 53 FF 74 24 24 8B CE 57 FF 74 24 20 FF 74 24 20 E8 ?? ?? ?? ?? "
+    "5F 5E 5B C2 14 00";
+constexpr uint32_t SLOT138_SPECIAL_BASE = 47;
+constexpr uint32_t SLOT138_SPECIAL_CALL = 0x4c;
+constexpr uint32_t MESH_VF138 = 0x138;
+
+// The 23 routed classes (the meshes the dispatchers hand to a body): each vtable's slots as the game builds them (a class whose
+// slot differs, or whose thunk or dispatcher is not as decoded, is left out and its meshes run directly). vf54 is the same in
+// all but two, vf6c in all; a technique-pass slot (vf60) that is the do-nothing call and a shared-state slot (vf68) that is the
+// no-op are the classes with no technique; `depth` / `colour` are the groups the class records in (the classes whose technique
+// calls reach objects the census could not clear run directly in both).
+constexpr uint32_t ROUTED_VF54 = 0x18559c0;
+constexpr uint32_t ROUTED_VF54_ALT = 0x18559e0;  // the same call, for two classes
+constexpr uint32_t ROUTED_VF6C = 0x174ebd0;
+constexpr uint32_t ROUTED_NO_TECHNIQUE = 0x449760;
+constexpr uint32_t ROUTED_NO_SHARED_STATE = 0x29ecb0;
+struct RoutedClass {
+  uint32_t vtable;
+  uint32_t thunk;
+  uint32_t vf58;
+  uint32_t vf60;
+  uint32_t vf68;
+  uint32_t vf54 = ROUTED_VF54;
+  uint32_t vf64 = WEIGHTED_VF64;
+  bool depth = true;
+  bool colour = true;
+};
+constexpr std::array<RoutedClass, 23> ROUTED_CLASSES = {{
+    {.vtable = 0x1cbdb38, .thunk = 0x1827830, .vf58 = 0x188fc40, .vf60 = ROUTED_NO_TECHNIQUE, .vf68 = ROUTED_NO_SHARED_STATE},
+    {.vtable = 0x1cbdc84, .thunk = 0x1827830, .vf58 = 0x18901d0, .vf60 = 0x1843f90, .vf68 = 0x1885aa0, .depth = false, .colour = false},
+    {.vtable = 0x1cbddd0, .thunk = 0x1827830, .vf58 = 0x188ffd0, .vf60 = 0x1843ef0, .vf68 = 0x1885770, .depth = false, .colour = false},
+    {.vtable = 0x1cbdf34, .thunk = 0x1827860, .vf58 = 0x188fc40, .vf60 = ROUTED_NO_TECHNIQUE, .vf68 = ROUTED_NO_SHARED_STATE},
+    {.vtable = 0x1cbe080, .thunk = 0x1827860, .vf58 = 0x188ff60, .vf60 = 0x1843ed0, .vf68 = 0x1885680},
+    {.vtable = 0x1cbf71c, .thunk = 0x1827890, .vf58 = 0x188fc40, .vf60 = ROUTED_NO_TECHNIQUE, .vf68 = ROUTED_NO_SHARED_STATE},
+    {.vtable = 0x1cbf868, .thunk = 0x1827890, .vf58 = 0x1890400, .vf60 = 0x1843ff0, .vf68 = 0x1885cb0, .vf64 = 0x188a070},
+    {.vtable = 0x1cbd34c, .thunk = 0x18278c0, .vf58 = 0x188fc40, .vf60 = ROUTED_NO_TECHNIQUE, .vf68 = ROUTED_NO_SHARED_STATE},
+    {.vtable = 0x1cbd498, .thunk = 0x18278c0, .vf58 = 0x188fc40, .vf60 = 0x1844120, .vf68 = 0x18867c0},
+    {.vtable = 0x1cbd5e0, .thunk = 0x18278c0, .vf58 = 0x188fc40, .vf60 = 0x18440d0, .vf68 = 0x18864a0},
+    {.vtable = 0x1cc19d0, .thunk = 0x1827a10, .vf58 = 0x1890470, .vf60 = 0x18441c0, .vf68 = 0x1886ca0, .vf54 = ROUTED_VF54_ALT},
+    {.vtable = 0x1cbd888, .thunk = 0x18278f0, .vf58 = 0x188fc40, .vf60 = ROUTED_NO_TECHNIQUE, .vf68 = ROUTED_NO_SHARED_STATE},
+    {.vtable = 0x1cbd9d4, .thunk = 0x1827980, .vf58 = 0x18900c0, .vf60 = 0x1843f60, .vf68 = 0x18858a0, .colour = false},
+    {.vtable = 0x1cbca34, .thunk = 0x1827920, .vf58 = 0x188fc40, .vf60 = ROUTED_NO_TECHNIQUE, .vf68 = ROUTED_NO_SHARED_STATE},
+    {.vtable = 0x1cbcb80, .thunk = 0x1827920, .vf58 = 0x1890560, .vf60 = 0x1844390, .vf68 = 0x1887240, .depth = false, .colour = false},
+    {.vtable = 0x1cbcccc, .thunk = 0x1827920, .vf58 = 0x188fc40, .vf60 = 0x1844010, .vf68 = 0x1885e30, .vf64 = 0x188a120},
+    {.vtable = 0x1cbce14, .thunk = 0x1827920, .vf58 = 0x188fc40, .vf60 = 0x1844060, .vf68 = 0x1886140},
+    {.vtable = 0x1cbcf5c, .thunk = 0x1827920, .vf58 = 0x1890460, .vf60 = 0x18440b0, .vf68 = 0x1886450},
+    {.vtable = 0x1cbd0a4, .thunk = 0x1827920, .vf58 = 0x188fc40, .vf60 = 0x1844080, .vf68 = 0x18862a0},
+    {.vtable = 0x1cbd1ec, .thunk = 0x1827920, .vf58 = 0x188fc40, .vf60 = 0x1843fc0, .vf68 = 0x1885b40},
+    {.vtable = 0x1cbd728, .thunk = 0x1827920, .vf58 = 0x188fc40, .vf60 = 0x1844170, .vf68 = 0x1886a10},
+    {.vtable = 0x1cbe1e4, .thunk = 0x1827920, .vf58 = 0x188fc40, .vf60 = ROUTED_NO_TECHNIQUE, .vf68 = ROUTED_NO_SHARED_STATE},
+    {.vtable = 0x1cbf5b8, .thunk = 0x1827950, .vf58 = 0x18902f0, .vf60 = 0x1843f20, .vf68 = 0x1885810, .vf54 = ROUTED_VF54_ALT},
+}};
 
 struct RecordingSiteInfo {
   std::string_view name;
@@ -250,6 +376,20 @@ struct RecordingSiteInfo {
   // The id Record gets for it.
   draw_recording::Site record_site;
 };
+
+// A shared-state call of a depth body (`mov eax, [eax + 0x68 | 0x64]; call eax`): 5 bytes after 12 of context.
+constexpr RecordingSiteInfo DepthBodyCall(std::string_view name, uint32_t rva, std::string_view context,
+                                          draw_recording::Site record_site) {
+  return {.name = name,
+          .group = draw_recording::Group::DEPTH_B,
+          .kind = RecordingKind::OWN,
+          .rva = rva,
+          .context = context,
+          .context_offset = 12,
+          .opcode = 0xE8,
+          .covered = 5,
+          .record_site = record_site};
+}
 
 constexpr std::array<RecordingSiteInfo, RECORDING_SITE_COUNT> RECORDING_INFO = {{
     {.name = "flush entry",
@@ -412,7 +552,7 @@ constexpr std::array<RecordingSiteInfo, RECORDING_SITE_COUNT> RECORDING_INFO = {
      .group = draw_recording::Group::COLOUR_A,
      .kind = RecordingKind::OWN,
      .rva = COLOUR_VF68_SETUP_RVA,
-     .context = COLOUR_VF68_SETUP_CONTEXT,
+     .context = VF68_FIRST_CONTEXT,
      .context_offset = 12,
      .opcode = 0xE8,
      .covered = 5,
@@ -496,6 +636,37 @@ constexpr std::array<RecordingSiteInfo, RECORDING_SITE_COUNT> RECORDING_INFO = {
      .exit_rva = COLOUR_FACTION_EXIT_RVA,
      .exit_head = COLOUR_FACTION_EXIT,
      .record_site = draw_recording::Site::COLOUR_FACTION},
+    {.name = "per-mesh loop cut",
+     .group = draw_recording::Group::DEPTH_B,
+     .kind = RecordingKind::OWN,
+     .rva = DEPTH_B_CUT_RVA,
+     .context = DEPTH_B_CUT_CONTEXT,
+     .context_offset = DEPTH_B_CUT_OFFSET,
+     .opcode = 0xE9,
+     .covered = DEPTH_B_CUT_COVERED,
+     .exit_rva = DEPTH_B_CUT_EXIT_RVA,
+     .exit_head = DEPTH_B_CUT_EXIT,
+     .record_site = draw_recording::Site::COUNT},
+    DepthBodyCall("depth body 0 shared-state call", 0x17b0b6b, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
+    DepthBodyCall("depth body 0 variation shared-state call", 0x17b0c06, DEPTH_B_VF68_VARIATION_CONTEXT,
+                  draw_recording::Site::DEPTH_B_VF68),
+    DepthBodyCall("depth body 0 slot-0x64 call", 0x17b0c97, DEPTH_B_VF64_STACK_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
+    DepthBodyCall("depth body 1 shared-state call", 0x17b0e2b, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
+    DepthBodyCall("depth body 1 variation shared-state call", 0x17b0ed2, DEPTH_B_VF68_VARIATION_CONTEXT,
+                  draw_recording::Site::DEPTH_B_VF68),
+    DepthBodyCall("depth body 1 slot-0x64 call", 0x17b0f62, DEPTH_B_VF64_EBP_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
+    DepthBodyCall("depth body 2 shared-state call", 0x17b10f7, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
+    DepthBodyCall("depth body 2 variation shared-state call", 0x17b11a2, DEPTH_B_VF68_VARIATION_CONTEXT,
+                  draw_recording::Site::DEPTH_B_VF68),
+    DepthBodyCall("depth body 2 slot-0x64 call", 0x17b1233, DEPTH_B_VF64_STACK_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
+    DepthBodyCall("depth body 3 shared-state call", 0x17b13c7, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
+    DepthBodyCall("depth body 3 variation shared-state call", 0x17b1472, DEPTH_B_VF68_VARIATION_CONTEXT,
+                  draw_recording::Site::DEPTH_B_VF68),
+    DepthBodyCall("depth body 3 slot-0x64 call", 0x17b1503, DEPTH_B_VF64_STACK_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
+    DepthBodyCall("depth body 4 shared-state call", 0x17b169b, VF68_FIRST_CONTEXT, draw_recording::Site::DEPTH_B_VF68),
+    DepthBodyCall("depth body 4 variation shared-state call", 0x17b1742, DEPTH_B_VF68_VARIATION_CONTEXT,
+                  draw_recording::Site::DEPTH_B_VF68),
+    DepthBodyCall("depth body 4 slot-0x64 call", 0x17b17d2, DEPTH_B_VF64_EBP_CONTEXT, draw_recording::Site::DEPTH_B_VF64),
 }};
 
 // The sites a group's rows write: its own, and its fallback flush (the entry hook is every group's otherwise).
@@ -532,7 +703,6 @@ constexpr std::array<WeightedClass, 10> WEIGHTED_CLASSES = {{
     {0x1cbf1c4, 0x1890650, 0x18444c0, 0x1887930},
 }};
 constexpr uint32_t WEIGHTED_VF54 = 0x1855aa0;
-constexpr uint32_t WEIGHTED_VF64 = 0x170060;  // xor al, al; ret 0xc
 constexpr uint32_t WEIGHTED_VF6C = 0x174ebd0;
 
 // The entries of the functions that passtime (the CPU Performance Fix's dev timing) hooks with an E9 and a stack of its
@@ -687,32 +857,36 @@ inline uint8_t* BuildFlushCall(Assembler* assembler, const draw_recording::Share
 }
 
 // The shared-state virtual call (`mov eax, [eax + 0x68]; call eax` with eax the mesh's vtable, replaced by a call of
-// this thunk: the callee's stack, `ret 8`): the 10 classes' vtables are checked in the record path; another one is a
-// site id Record does not know, which flags the chunk (it is run again). `site` is the loop's site id.
+// this thunk: the callee's stack, `ret return_bytes`; the weighted loops' slot 0x68 and the depth bodies' 0x68 and 0x64). With
+// `vtables` (group A) the 10 classes' vtables are checked in the record path; another one is a site id Record does not know,
+// which flags the chunk (it is run again). With none (the B groups: the planner has already chosen the classes) Record takes the
+// call as it is. `site` is the loop's site id.
 inline uint8_t* BuildSharedStateCall(Assembler* assembler, const draw_recording::Shared* shared,
-                                     const std::array<uint32_t, WEIGHTED_CLASSES.size()>& vtables,
-                                     draw_recording::Site site) {
+                                     const std::array<uint32_t, WEIGHTED_CLASSES.size()>* vtables, uint8_t slot,
+                                     uint8_t return_bytes, draw_recording::Site site) {
   uint8_t* const entry = assembler->Cursor();
   EmitSlotTest(assembler, shared, 2, {0x8B, 0xD6});
   uint8_t* const to_record = assembler->Short(0x72);
-  assembler->Bytes({0x8B, 0x40, 0x68, 0xFF, 0xE0});
+  assembler->Bytes({0x8B, 0x40, slot, 0xFF, 0xE0});
   assembler->Bind(to_record);
   EmitFrameOpen(assembler);
   assembler->BytesAndOperand({0xBA}, static_cast<uint32_t>(site));
-  std::array<uint8_t*, WEIGHTED_CLASSES.size()> known = {};
-  for (size_t index = 0; index < vtables.size(); ++index) {
-    assembler->BytesAndOperand({0x3D}, vtables[index]);
-    known[index] = assembler->Short(0x74);
-  }
-  assembler->BytesAndOperand({0xBA}, static_cast<uint32_t>(draw_recording::Site::COUNT));
-  // The saved eax (above xmm0 and the 8 registers of pushad): 0, so that the loop's `or [esi + 0x69], al` adds nothing.
-  assembler->Bytes({0xC7, 0x44, 0x24, 0x20, 0x00, 0x00, 0x00, 0x00});
-  for (uint8_t* const displacement : known) {
-    assembler->Bind(displacement);
+  if (vtables != nullptr) {
+    std::array<uint8_t*, WEIGHTED_CLASSES.size()> known = {};
+    for (size_t index = 0; index < vtables->size(); ++index) {
+      assembler->BytesAndOperand({0x3D}, (*vtables)[index]);
+      known[index] = assembler->Short(0x74);
+    }
+    assembler->BytesAndOperand({0xBA}, static_cast<uint32_t>(draw_recording::Site::COUNT));
+    // The saved eax (above xmm0 and the 8 registers of pushad): 0, so that the loop's `or [esi + 0x69], al` adds nothing.
+    assembler->Bytes({0xC7, 0x44, 0x24, 0x20, 0x00, 0x00, 0x00, 0x00});
+    for (uint8_t* const displacement : known) {
+      assembler->Bind(displacement);
+    }
   }
   assembler->Bytes({0x8B, 0xCE});
   EmitRecordCall(assembler, shared);
-  assembler->Bytes({0xC2, 0x08, 0x00});
+  assembler->Bytes({0xC2, return_bytes, 0x00});
   return entry;
 }
 
@@ -865,11 +1039,35 @@ inline uint8_t* BuildCut(Assembler* assembler, const draw_recording::Shared* sha
   return entry;
 }
 
+// The B groups' cut (the folded driver's per-mesh loop): the loop's two loads (`covered`, 8 bytes, 5 written over), the game's
+// empty-round test (`ja` to `empty`), then DispatchMesh with the 8 values the loop calls each mesh with (right to left, each
+// offset at the site's esp and shifted by the pushes before it), and the game's state after its loop (esi the list type, edi the
+// last mesh, ebx past it) at `after_loop`.
+inline uint8_t* BuildMeshCut(Assembler* assembler, const draw_recording::Shared* shared, const uint8_t* covered,
+                             size_t covered_size, const uint8_t* empty, const uint8_t* after_loop) {
+  uint8_t* const entry = assembler->Cursor();
+  assembler->Copy(covered, covered_size);
+  assembler->Bytes({0x3B, 0xDF, 0x0F});
+  assembler->Relative(0x87, empty);
+  assembler->BytesAndOperand({0xF0, 0xFF, 0x05}, Address(&shared->active));
+  // push edi (the last), ebx (the first), the sorted list, the node, the list type, the view, the device, the tracker (ebp).
+  assembler->Bytes({0x57, 0x53, 0xFF, 0x74, 0x24, 0x30, 0xFF, 0x74, 0x24, 0x3C, 0xFF, 0x74, 0x24, 0x20});
+  assembler->Bytes({0xFF, 0xB4, 0x24, 0x88, 0x00, 0x00, 0x00, 0xFF, 0xB4, 0x24, 0x88, 0x00, 0x00, 0x00, 0x55});
+  assembler->BytesAndOperand({0xFF, 0x15}, Address(&shared->dispatch_mesh));
+  assembler->BytesAndOperand({0xF0, 0xFF, 0x0D}, Address(&shared->active));
+  assembler->Bytes({0x8B, 0x74, 0x24, 0x10, 0x8B, 0x7C, 0x24, 0x1C, 0x8D, 0x5F, 0x01});
+  assembler->Relative(0xE9, after_loop);
+  return entry;
+}
+
 // The loop groups' cuts are built first, at the start of the page: a removal waits while a thread is in it (it is about to run
 // the dispatcher, whose chunks need the flush hook).
-constexpr uint64_t RECORDING_CUTS = RecordingBit(RecordingSite::DEPTH_CUT) | RecordingBit(RecordingSite::COLOUR_CUT);
+constexpr uint64_t RECORDING_CUTS = RecordingBit(RecordingSite::DEPTH_CUT) | RecordingBit(RecordingSite::COLOUR_CUT)
+                                    | RecordingBit(RecordingSite::DEPTH_B_CUT);
 
-// The group's own sites and its fallback flush sites, by draw_recording::Group.
+// The group's own sites and its fallback flush sites, by draw_recording::Group. Colour B has none yet: with a non-zero mask it
+// would be usable without its shared-state and state sites, which workers would run in the colour bodies (the per-mesh cut,
+// which both B groups share, is Depth B's until Colour B's sites are in).
 constexpr std::array<uint64_t, static_cast<size_t>(draw_recording::Group::COUNT)> RECORDING_OWN = {
     GroupSites(draw_recording::Group::DEPTH_A, RecordingKind::OWN),
     GroupSites(draw_recording::Group::COLOUR_A, RecordingKind::OWN),
@@ -885,7 +1083,82 @@ constexpr std::array<uint64_t, static_cast<size_t>(draw_recording::Group::COUNT)
 constexpr uint64_t RECORDING_ENTRY_BIT = RecordingBit(RecordingSite::FLUSH_ENTRY);
 static_assert(RECORDING_SITE_COUNT == RECORDING_SITES);
 
+// The bytes the CPU Performance Fix (heapfix) patches, or checks (the loops' batch and fetch fixes, the effect update's presort and
+// list resets, the instances rows), by RVA. No site's bytes (what it writes and the instructions it covers) may touch any of
+// them, and none of the bytes a site, its callee or its exit is found by may touch a patched one (it may be in when Prepare
+// runs). The ranges of the ROWS (checked, not written) are read by our own pieces (the accessor, the list helper): those
+// may lie in them.
+struct HeapfixRange {
+  uint32_t rva;
+  uint32_t size;
+};
+constexpr std::array<HeapfixRange, 21> HEAPFIX_PATCHED = {{
+    // The six sites: the instance prepare, the two sort calls, the list reset and its last call, the effect walk's call.
+    {0x17B92D0, 5}, {0x17B9297, 5}, {0x17B9197, 5}, {0x1811F00, 5}, {0x18124E8, 5}, {0x192D2DA, 5},
+    // loopfetch: the fetch of the loops' next item.
+    {0x17B1840, 9}, {0x17B0450, 6}, {0x17B1560, 6}, {0x17B0FC0, 6}, {0x17B0065, 6}, {0x17AFCE2, 6}, {0x17AF7F5, 6},
+    // batchfix, per loop: the compare (6 bytes patched) and the reset (7).
+    {0x17B0466, 6}, {0x17B04BF, 7}, {0x17B0FD9, 6}, {0x17B1032, 7}, {0x17B12A9, 6}, {0x17B1302, 7}, {0x17B1579, 6}, {0x17B15D2, 7},
+}};
+// The bytes checked and not patched: the instances rows and the effect rows of S8a (the old 26, then the 10 new ones), and
+// batchfix's checks beside its patches (the compare's other 17 bytes, the 2 after the reset, the item load, the field load).
+constexpr std::array<HeapfixRange, 52> HEAPFIX_CHECKED = {{
+    {0x17B92D0, 171}, {0x17B9270, 53}, {0x17B92B0, 19}, {0x182C810, 17}, {0x186BC80, 94}, {0x186BDC0, 25}, {0x183E430, 69},
+    {0x184BAF0, 21}, {0x178FD90, 264}, {0xD3420, 144}, {0xCFBB0, 4}, {0xCFCD0, 4}, {0x1719160, 13}, {0x17B9170, 53},
+    {0x17B90F0, 53}, {0x17B9130, 53}, {0x17B91F0, 53}, {0x186BD20, 25}, {0x186BD60, 25}, {0x186BCE0, 25}, {0x186BD00, 25},
+    {0x186BD40, 25}, {0x1906300, 27}, {0x1906320, 21}, {0xC46B0, 3}, {0x183E3F0, 54},
+    {0x1811F0C, 1500}, {0x189B9A0, 180}, {0x192D296, 73}, {0x1870BD0, 56}, {0x17AE420, 89}, {0x176CED0, 241}, {0x17AE370, 89},
+    {0x17F8355, 127}, {0x1833DC0, 194}, {0x1833D00, 158},
+    {0x17B046C, 0x11}, {0x17B04C6, 2}, {0x17B0456, 3}, {0x17B05A3, 6},
+    {0x17B0FDF, 0x11}, {0x17B1039, 2}, {0x17B0FCB, 3}, {0x17B1117, 3},
+    {0x17B12AF, 0x11}, {0x17B1309, 2}, {0x17B129B, 3}, {0x17B13E7, 3},
+    {0x17B157F, 0x11}, {0x17B15D9, 2}, {0x17B156B, 3}, {0x17B16AD, 3},
+}};
+
+constexpr bool Touches(uint32_t rva, uint32_t size, const HeapfixRange& range) {
+  return rva < range.rva + range.size && range.rva < rva + size;
+}
+constexpr size_t PatternSize(std::string_view pattern) { return (pattern.size() + 1) / 3; }
+// A site clears heapfix when its bytes touch no range and the bytes it is found by touch no patched range.
+constexpr bool SiteClearOfHeapfix(const RecordingSiteInfo& info) {
+  const uint32_t site_size = std::max<uint32_t>(info.covered, SITE_SIZE);
+  const uint32_t found_by[3][2] = {
+      {info.rva - info.context_offset, static_cast<uint32_t>(PatternSize(info.context))},
+      {info.callee_rva, static_cast<uint32_t>(PatternSize(info.callee_head))},
+      {info.exit_rva, static_cast<uint32_t>(PatternSize(info.exit_head))}};
+  for (const HeapfixRange& range : HEAPFIX_PATCHED) {
+    if (Touches(info.rva, site_size, range)) return false;
+    for (const auto& window : found_by) {
+      if (window[1] != 0 && Touches(window[0], window[1], range)) return false;
+    }
+  }
+  for (const HeapfixRange& range : HEAPFIX_CHECKED) {
+    if (Touches(info.rva, site_size, range)) return false;
+  }
+  return true;
+}
+constexpr bool SitesClearOfHeapfix() {
+  for (const RecordingSiteInfo& info : RECORDING_INFO) {
+    if (!SiteClearOfHeapfix(info)) return false;
+  }
+  return true;
+}
+static_assert(SitesClearOfHeapfix());
+// The slot-0x138 thunks and the dispatchers the class tables are decoded from: bytes nobody patches or checks.
+constexpr bool DecodedPiecesClearOfHeapfix() {
+  for (const HeapfixRange& range : HEAPFIX_PATCHED) {
+    if (Touches(0x1827830, 0x1827a40 - 0x1827830, range) || Touches(DISPATCHER_FIRST_RVA, DISPATCHER_COUNT * DISPATCHER_STRIDE, range)) return false;
+  }
+  for (const HeapfixRange& range : HEAPFIX_CHECKED) {
+    if (Touches(0x1827830, 0x1827a40 - 0x1827830, range) || Touches(DISPATCHER_FIRST_RVA, DISPATCHER_COUNT * DISPATCHER_STRIDE, range)) return false;
+  }
+  return true;
+}
+static_assert(DecodedPiecesClearOfHeapfix());
+
 static const uint8_t* recording_base = nullptr;
+// The bytes of the page the thunks take (the test reads it: RECORDING_CODE_SIZE must hold with room to spare).
+static size_t recording_code_used = 0;
 
 // No entry that the Attila CPU Performance Fix's dev timing (passtime) hooks carries an E9: it would run on a stack of
 // its own that workers would share. `flush_hooked`: the flush entry's E9 is our own hook.
@@ -984,11 +1257,10 @@ inline bool PrepareRecording(HMODULE module) {
     shared_ok = false;
     refuse("an entry hooked by another tool");
   }
-  // The B groups' two helpers (the sorted list's accessor, the do-nothing virtual call): needed by every dispatcher, whichever
-  // group it runs for.
-  if (shared_ok && !(holds(base + ACCESSOR_RVA, ACCESSOR_HEAD) && holds(base + WEIGHTED_VF64, VF64_STUB_HEAD))) {
+  // The virtual call that does nothing: the weighted classes' vf64, and the B classes' (it stays shared: group A needs it).
+  if (shared_ok && !holds(base + WEIGHTED_VF64, VF64_STUB_HEAD)) {
     shared_ok = false;
-    refuse("the sorted list's accessor or the virtual call that does nothing");
+    refuse("the virtual call that does nothing");
   }
   std::array<uint32_t, WEIGHTED_CLASSES.size()> vtables = {};
   for (size_t index = 0; index < WEIGHTED_CLASSES.size() && shared_ok; ++index) {
@@ -1033,6 +1305,61 @@ inline bool PrepareRecording(HMODULE module) {
     }
   }
 
+  // The B groups: the sorted list's accessor (every dispatcher walks its meshes with it, its direct run included) and the table of
+  // the routed classes, decoded from the slot-0x138 thunks and the dispatchers they call (the list's base from the thunk, the
+  // family from the dispatcher's place, its depth and colour bodies from its calls). A class whose vtable, thunk or dispatcher is
+  // not as expected is left out (its meshes run directly) and named; the B sites go in only with the accessor and at least one
+  // class that records in depth.
+  bool b_ok = shared_ok;
+  if (b_ok && !holds(base + ACCESSOR_RVA, ACCESSOR_HEAD)) {
+    b_ok = false;
+    refuse("the sorted list's accessor");
+  }
+  uint32_t depth_classes = 0;
+  const auto is_body = [&](const uint8_t* call, const std::array<uint32_t, 5>& bodies) {
+    return std::ranges::find(bodies, static_cast<uint32_t>(target(call) - base)) != bodies.end();
+  };
+  for (const RoutedClass& routed : ROUTED_CLASSES) {
+    if (!b_ok) break;
+    const uint8_t* const vtable = base + routed.vtable;
+    const auto slot = [&](uint32_t offset) { return read32(vtable + offset); };
+    const auto at = [&](uint32_t rva) { return Address(base + rva); };
+    const uint8_t* const thunk = base + routed.thunk;
+    const bool standard = holds(thunk, SLOT138_THUNK);
+    const bool decodable = standard || holds(thunk, SLOT138_SPECIAL_THUNK);
+    const uint8_t* const dispatcher =
+        (decodable ? target(thunk + (standard ? SLOT138_THUNK_CALL : SLOT138_SPECIAL_CALL)) : nullptr);
+    const uint32_t offset = Address(dispatcher) - Address(base + DISPATCHER_FIRST_RVA);
+    const uint32_t list_base = (decodable ? read32(thunk + (standard ? SLOT138_THUNK_BASE : SLOT138_SPECIAL_BASE)) : 0);
+    const bool dispatcher_ok =
+        decodable && offset % DISPATCHER_STRIDE == 0 && offset / DISPATCHER_STRIDE < DISPATCHER_COUNT
+        && holds(dispatcher, DISPATCHER_BYTES)
+        && target(dispatcher + DISPATCHER_LIST_CALL) == base + LIST_HELPER_RVA
+        && holds(base + LIST_HELPER_RVA, LIST_HELPER_HEAD)
+        && is_body(dispatcher + DISPATCHER_DEPTH_CALL, DEPTH_B_BODIES)
+        && is_body(dispatcher + DISPATCHER_COLOUR_CALL, COLOUR_B_BODIES);
+    if (!dispatcher_ok || list_base >= 0x400 || vtable + MESH_VF138 + 4 > image_end || slot(0x54) != at(routed.vf54)
+        || slot(0x58) != at(routed.vf58) || slot(0x60) != at(routed.vf60) || slot(0x64) != at(routed.vf64)
+        || slot(0x68) != at(routed.vf68) || slot(0x6c) != at(ROUTED_VF6C) || slot(MESH_VF138) != at(routed.thunk)
+        || calls.class_count >= calls.classes.size()) {
+      refuse(std::format("class {:#x}", routed.vtable + 0x10000000));
+      continue;
+    }
+    calls.classes[calls.class_count++] = {.vtable = Address(vtable),
+                                          .base = list_base,
+                                          .depth_body = Address(target(dispatcher + DISPATCHER_DEPTH_CALL)),
+                                          .colour_body = Address(target(dispatcher + DISPATCHER_COLOUR_CALL)),
+                                          .family = offset / DISPATCHER_STRIDE,
+                                          .depth = routed.depth,
+                                          .colour = routed.colour};
+    depth_classes += (routed.depth ? 1 : 0);
+  }
+  if (b_ok && depth_classes == 0) {
+    b_ok = false;
+    refuse("the routed classes");
+  }
+  if (!b_ok) calls.class_count = 0;
+
   recording_page = nullptr;
   if (shared_ok) {
     recording_page = static_cast<uint8_t*>(
@@ -1051,7 +1378,8 @@ inline bool PrepareRecording(HMODULE module) {
       if (!holds(base + info.rva - info.context_offset, info.context)
           || (info.callee_rva != 0 && (target(at) != callee || !holds(callee, info.callee_head)))
           || (info.exit_rva != 0 && !holds(landing, info.exit_head))
-          || (info.group == draw_recording::Group::COLOUR_A && info.kind == RecordingKind::OWN && !colour_ok)) {
+          || (info.group == draw_recording::Group::COLOUR_A && info.kind == RecordingKind::OWN && !colour_ok)
+          || ((info.group == draw_recording::Group::DEPTH_B || info.group == draw_recording::Group::COLOUR_B) && !b_ok)) {
         refuse(info.name);
         continue;
       }
@@ -1072,7 +1400,29 @@ inline bool PrepareRecording(HMODULE module) {
         case RecordingSite::DEPTH_VF68:
         case RecordingSite::COLOUR_VF68_SETUP:
         case RecordingSite::COLOUR_VF68_VARIATION:
-          thunks[index] = BuildSharedStateCall(&assembler, shared, vtables, info.record_site);
+          thunks[index] = BuildSharedStateCall(&assembler, shared, &vtables, 0x68, 8, info.record_site);
+          break;
+        case RecordingSite::DEPTH_B_CUT:
+          thunks[index] = BuildMeshCut(&assembler, shared, at, info.covered, landing + DEPTH_B_CUT_EMPTY_OFFSET, landing);
+          break;
+        case RecordingSite::DEPTH_B0_VF68:
+        case RecordingSite::DEPTH_B0_VARIATION:
+        case RecordingSite::DEPTH_B1_VF68:
+        case RecordingSite::DEPTH_B1_VARIATION:
+        case RecordingSite::DEPTH_B2_VF68:
+        case RecordingSite::DEPTH_B2_VARIATION:
+        case RecordingSite::DEPTH_B3_VF68:
+        case RecordingSite::DEPTH_B3_VARIATION:
+        case RecordingSite::DEPTH_B4_VF68:
+        case RecordingSite::DEPTH_B4_VARIATION:
+          thunks[index] = BuildSharedStateCall(&assembler, shared, nullptr, 0x68, 8, info.record_site);
+          break;
+        case RecordingSite::DEPTH_B0_VF64:
+        case RecordingSite::DEPTH_B1_VF64:
+        case RecordingSite::DEPTH_B2_VF64:
+        case RecordingSite::DEPTH_B3_VF64:
+        case RecordingSite::DEPTH_B4_VF64:
+          thunks[index] = BuildSharedStateCall(&assembler, shared, nullptr, 0x64, 0xc, info.record_site);
           break;
         case RecordingSite::DEPTH_ANIM:
         case RecordingSite::COLOUR_ANIM:
@@ -1130,6 +1480,7 @@ inline bool PrepareRecording(HMODULE module) {
   }
   FlushInstructionCache(GetCurrentProcess(), recording_page, RECORDING_CODE_SIZE);
   recording_page_end = recording_page + RECORDING_CODE_SIZE;
+  recording_code_used = static_cast<size_t>(assembler.Cursor() - recording_page);
   for (size_t index = 0; index < RECORDING_SITE_COUNT; ++index) {
     if ((built >> index & 1) == 0) continue;
     Site& site = recording_sites[index];
@@ -1142,9 +1493,9 @@ inline bool PrepareRecording(HMODULE module) {
   recording_found = built;
   calls.flush = Address(flush);
   calls.weighted_vtables = vtables;
-  // The B groups' dispatcher runs the game's meshes through the accessor on every path, its own direct one included: every
-  // address its code calls is set here (the class table follows with the B sites).
-  calls.accessor = Address(base + ACCESSOR_RVA);
+  // The B groups' dispatcher runs the game's meshes through the accessor on every path, its own direct one included: it is set
+  // with the class table, only when the B sites can go in (their cut is the only way to it).
+  calls.accessor = (b_ok ? Address(base + ACCESSOR_RVA) : 0);
   calls.vf64_stub = Address(base + WEIGHTED_VF64);
   calls.module_shift = Address(base) - 0x10000000;
   // A group is usable with all of its own sites and its flush path (the entry hook, else its call sites): the others

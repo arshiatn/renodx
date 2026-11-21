@@ -132,12 +132,14 @@ uint32_t Read32(const uint8_t* at) {
   return value;
 }
 
-constexpr uint32_t ALL_SITES = (1u << ec::RECORDING_SITE_COUNT) - 1;
+constexpr uint64_t ALL_SITES = (uint64_t{1} << ec::RECORDING_SITE_COUNT) - 1;
 constexpr uint64_t DEPTH_A_SITES = ec::RECORDING_OWN[static_cast<size_t>(dr::Group::DEPTH_A)] | ec::RECORDING_ENTRY_BIT;
 constexpr uint64_t DEPTH_A_FALLBACK = ec::RECORDING_OWN[static_cast<size_t>(dr::Group::DEPTH_A)] | ec::RECORDING_FALLBACK[static_cast<size_t>(dr::Group::DEPTH_A)];
 constexpr uint64_t COLOUR_A_OWN = ec::RECORDING_OWN[static_cast<size_t>(dr::Group::COLOUR_A)];
 constexpr uint64_t COLOUR_A_SITES = COLOUR_A_OWN | ec::RECORDING_ENTRY_BIT;
 constexpr uint64_t COLOUR_A_FALLBACK = COLOUR_A_OWN | ec::RECORDING_FALLBACK[static_cast<size_t>(dr::Group::COLOUR_A)];
+constexpr uint64_t DEPTH_B_OWN = ec::RECORDING_OWN[static_cast<size_t>(dr::Group::DEPTH_B)];
+constexpr uint64_t DEPTH_B_SITES = DEPTH_B_OWN | ec::RECORDING_ENTRY_BIT;
 
 // The positions of the non-wildcard bytes of a pattern.
 std::vector<size_t> FixedBytes(std::string_view pattern) {
@@ -222,7 +224,8 @@ void TestRealBytes() {
     CHECK(calls.weighted_vtables[index] == ec::Address(Rva(ec::WEIGHTED_CLASSES[index].vtable)));
   }
   CHECK(ec::recording_cut.active == &dr::SharedPage()->active && *ec::recording_arena_size == dr::SLOT_COUNT * dr::SLOT_SIZE);
-  CHECK(LogHas("23 of 23 sites found") && !LogHas("left alone"));
+  for (const std::string& line : log_lines) std::printf("   log: %s\n", line.c_str());
+  CHECK(LogHas("39 of 39 sites found") && !LogHas("left alone"));
   // The colour loop's pieces, decoded from the code: the call targets, the faction block's default and the cache flag.
   CHECK(calls.loops[static_cast<size_t>(dr::Group::COLOUR_A)] == ec::Address(Rva(ec::COLOUR_LOOP_RVA)));
   CHECK(calls.dirty_call == ec::Address(Rva(0x191d960)) && calls.srv_call == ec::Address(Rva(0x18d2b60)));
@@ -232,7 +235,68 @@ void TestRealBytes() {
   CHECK(calls.accessor == ec::Address(Rva(ec::ACCESSOR_RVA)) && calls.vf64_stub == ec::Address(Rva(ec::WEIGHTED_VF64)));
   CHECK(calls.module_shift == ec::Address(image) - 0x10000000);
   CHECK((calls.usable_groups & 3) == 3);
-  std::printf("1. 23 sites found on the real bytes (7 flush call sites, the entry hook, the 2 cuts, the 2 inits, 3 shared-state calls, 2 animation calls, setup, 2 constants, 2 textures, faction)\n");
+  // The B groups: Depth B usable (the cut and 15 calls), Colour B not yet (its sites are the next step's).
+  CHECK(std::popcount(DEPTH_B_OWN) == 16 && ((calls.usable_groups >> static_cast<size_t>(dr::Group::DEPTH_B)) & 1) == 1);
+  CHECK(ec::RECORDING_OWN[static_cast<size_t>(dr::Group::COLOUR_B)] == 0 && ((calls.usable_groups >> static_cast<size_t>(dr::Group::COLOUR_B)) & 1) == 0);
+  CHECK(calls.loops[static_cast<size_t>(dr::Group::DEPTH_B)] == 0);
+  constexpr std::array<uint8_t, 5> VF68_BYTES = {0x8B, 0x40, 0x68, 0xFF, 0xD0};
+  constexpr std::array<uint8_t, 5> VF64_BYTES = {0x8B, 0x40, 0x64, 0xFF, 0xD0};
+  constexpr std::array<uint8_t, 5> CUT_BYTES = {0x8B, 0x5C, 0x24, 0x34, 0x8B};  // mov ebx, [esp + 0x34]; the first byte of mov edi, [esp + 0x1c]
+  size_t b_calls = 0;
+  for (size_t index = 0; index < ec::RECORDING_SITE_COUNT; ++index) {
+    const ec::RecordingSiteInfo& site_info = ec::RECORDING_INFO[index];
+    if (site_info.group != dr::Group::DEPTH_B) continue;
+    ++b_calls;
+    const ec::Site& site = ec::recording_sites[index];
+    if (site_info.record_site == dr::Site::COUNT) {
+      CHECK(site_info.opcode == 0xE9 && site_info.covered == 8 && std::memcmp(site.game.data(), CUT_BYTES.data(), 5) == 0);
+    } else {
+      const bool vf68 = (site_info.record_site == dr::Site::DEPTH_B_VF68);
+      CHECK(site_info.opcode == 0xE8 && site_info.covered == 5 && (vf68 || site_info.record_site == dr::Site::DEPTH_B_VF64));
+      CHECK(std::memcmp(site.game.data(), (vf68 ? VF68_BYTES : VF64_BYTES).data(), 5) == 0);
+    }
+  }
+  CHECK(b_calls == 16 && ec::RecordingBit(ec::RecordingSite::DEPTH_B_CUT) == (DEPTH_B_OWN & ec::RECORDING_CUTS));
+  // The cut is built after the A groups' (page order), inside the cut range a removal waits on.
+  const uint8_t* const b_cut_thunk = ec::recording_sites[static_cast<size_t>(ec::RecordingSite::DEPTH_B_CUT)].at + 5
+                                     + static_cast<int32_t>(Read32(ec::recording_sites[static_cast<size_t>(ec::RecordingSite::DEPTH_B_CUT)].jump.data() + 1));
+  CHECK(b_cut_thunk > ec::recording_page && b_cut_thunk < ec::recording_cut.end);
+  // The family and class tables, decoded from the thunks and dispatchers, against the census (design 3.2 and 3.3), written out here
+  // on its own: thunk, list base, family, depth body, colour body.
+  struct ExpectedFamily {
+    uint32_t thunk, base, family, depth_body, colour_body;
+  };
+  constexpr std::array<ExpectedFamily, 9> EXPECTED = {{{0x1827830, 0x244, 0, 0x17b09f0, 0x17aef40},
+                                                       {0x1827860, 0x244, 1, 0x17b09f0, 0x17aef40},
+                                                       {0x1827890, 0x244, 2, 0x17b0cb0, 0x17af2b0},
+                                                       {0x18278c0, 0x244, 3, 0x17b0f80, 0x17af720},
+                                                       {0x1827a10, 0x10c, 4, 0x17b1250, 0x17afc10},
+                                                       {0x18278f0, 0x244, 5, 0x17b09f0, 0x17aef40},
+                                                       {0x1827920, 0x244, 6, 0x17b1520, 0x17aff90},
+                                                       {0x1827950, 0x108, 6, 0x17b1520, 0x17aff90},
+                                                       {0x1827980, 0x244, 5, 0x17b09f0, 0x17aef40}}};
+  REQUIRE(calls.class_count == ec::ROUTED_CLASSES.size() && ec::ROUTED_CLASSES.size() == 23);
+  uint32_t depth_direct = 0;
+  uint32_t colour_direct = 0;
+  for (size_t index = 0; index < ec::ROUTED_CLASSES.size(); ++index) {
+    const ec::RoutedClass& routed = ec::ROUTED_CLASSES[index];
+    const dr::MeshClass& decoded = calls.classes[index];
+    const auto expected = std::find_if(EXPECTED.begin(), EXPECTED.end(), [&](const ExpectedFamily& family) { return family.thunk == routed.thunk; });
+    REQUIRE(expected != EXPECTED.end());
+    CHECK(decoded.vtable == ec::Address(Rva(routed.vtable)) && decoded.base == expected->base && decoded.family == expected->family);
+    CHECK(decoded.depth_body == ec::Address(Rva(expected->depth_body)) && decoded.colour_body == ec::Address(Rva(expected->colour_body)));
+    // The flags: the three classes that run direct in both, the one that does in colour only (M3), the rest record.
+    const uint32_t listing = routed.vtable + 0x10000000;
+    const bool direct_both = (listing == 0x11cbdc84 || listing == 0x11cbddd0 || listing == 0x11cbcb80);
+    CHECK(decoded.depth == !direct_both && decoded.colour == !(direct_both || listing == 0x11cbd9d4));
+    depth_direct += (decoded.depth ? 0 : 1);
+    colour_direct += (decoded.colour ? 0 : 1);
+    CHECK(Read32(Rva(routed.vtable + ec::MESH_VF138)) == ec::Address(Rva(routed.thunk)));
+  }
+  CHECK(depth_direct == 3 && colour_direct == 4);
+  CHECK(calls.accessor == ec::Address(Rva(ec::ACCESSOR_RVA)));
+  std::printf("1. 39 sites found on the real bytes (7 flush call sites, the entry hook, the 2 A cuts, the 2 inits, 3 shared-state calls, 2 animation calls, setup, 2 constants, 2 textures, faction, the B cut and 15 depth-body calls); 23 routed classes decoded (depth direct %u, colour direct %u); %zu of %zu code bytes used\n",
+              depth_direct, colour_direct, ec::recording_code_used, ec::RECORDING_CODE_SIZE);
 }
 
 // ---------------------------------------------------------------- 2. what a group asks for
@@ -243,7 +307,11 @@ void TestWanted() {
   CHECK(ec::RecordingWanted(1u << static_cast<uint32_t>(dr::Group::DEPTH_A)) == DEPTH_A_SITES);
   CHECK(ec::RecordingWanted(1u << static_cast<uint32_t>(dr::Group::COLOUR_A)) == COLOUR_A_SITES);
   CHECK(ec::RecordingWanted(0b11) == (DEPTH_A_SITES | COLOUR_A_SITES));
-  CHECK(ec::RecordingWanted(1u << static_cast<uint32_t>(dr::Group::DEPTH_B)) == 0);  // the B groups' own sites are later steps
+  // Depth B: the cut and its 15 calls with the entry hook (it has no fallback); Colour B asks for nothing until its sites are in.
+  CHECK(ec::RecordingWanted(1u << static_cast<uint32_t>(dr::Group::DEPTH_B)) == DEPTH_B_SITES);
+  CHECK(ec::RecordingWanted(1u << static_cast<uint32_t>(dr::Group::COLOUR_B)) == 0);
+  CHECK(ec::RecordingWanted(0b0101) == (DEPTH_A_SITES | DEPTH_B_SITES));
+  CHECK(ec::RECORDING_FALLBACK[static_cast<size_t>(dr::Group::DEPTH_B)] == 0);
   CHECK((DEPTH_A_SITES & DEPTH_A_FALLBACK & ec::RECORDING_ENTRY_BIT) == 0);
   CHECK((COLOUR_A_SITES & COLOUR_A_FALLBACK & ec::RECORDING_ENTRY_BIT) == 0);
   CHECK((DEPTH_A_FALLBACK & ec::RECORDING_ENTRY_BIT) == 0 && std::popcount(DEPTH_A_FALLBACK) == 4 + 3);
@@ -262,6 +330,13 @@ void TestWanted() {
     CHECK(depth == (((DEPTH_A_FALLBACK >> index) & 1) != 0 ? uint64_t{0} : DEPTH_A_FALLBACK));
     CHECK(colour == (((COLOUR_A_FALLBACK >> index) & 1) != 0 ? uint64_t{0} : COLOUR_A_FALLBACK));
   }
+  // Depth B has no call-site fallback: without the hook, or with any of its 16 sites missing, it asks for nothing.
+  for (size_t index = 0; index < ec::RECORDING_SITE_COUNT; ++index) {
+    ec::recording_found = (found | ec::RECORDING_ENTRY_BIT) & ~(uint64_t{1} << index);
+    CHECK(ec::RecordingWanted(1u << static_cast<uint32_t>(dr::Group::DEPTH_B)) == (((DEPTH_B_SITES >> index) & 1) != 0 ? uint64_t{0} : DEPTH_B_SITES));
+  }
+  ec::recording_found = found;
+  CHECK(ec::RecordingWanted(1u << static_cast<uint32_t>(dr::Group::DEPTH_B)) == 0);
   ec::recording_found = found | ec::RECORDING_ENTRY_BIT;
   std::printf("2. group A asks for the entry hook and its 4 own sites, colour A for the hook and its 11; the call sites only without the hook\n");
 }
@@ -315,17 +390,17 @@ void TestFlips() {
     // The shared pieces take the whole feature: the flush's head and exit, the `je` between them, the vtables' slots.
     bool shared_piece = is_fixed(ec::FLUSH_HEAD, ec::FLUSH_RVA, at) || is_fixed(ec::FLUSH_EMPTY, ec::FLUSH_EMPTY_RVA, at)
                         || (at >= ec::FLUSH_RVA + ec::FLUSH_EMPTY_JUMP + 2 && at < ec::FLUSH_RVA + ec::FLUSH_EMPTY_JUMP + 6)
-                        || is_fixed(ec::ACCESSOR_HEAD, ec::ACCESSOR_RVA, at) || is_fixed(ec::VF64_STUB_HEAD, ec::WEIGHTED_VF64, at);
+                        || is_fixed(ec::VF64_STUB_HEAD, ec::WEIGHTED_VF64, at);
     for (const ec::WeightedClass& weighted : ec::WEIGHTED_CLASSES) {
       for (const uint32_t slot : SLOTS) shared_piece |= (at >= weighted.vtable + slot && at < weighted.vtable + slot + 4);
     }
-    uint32_t expected = ALL_SITES;
+    uint64_t expected = ALL_SITES;
     for (size_t index = 0; index < ec::RECORDING_SITE_COUNT; ++index) {
       const ec::RecordingSiteInfo& site_info = ec::RECORDING_INFO[index];
       if (is_fixed(site_info.context, site_info.rva - site_info.context_offset, at)
           || (site_info.callee_rva != 0 && (is_fixed(site_info.callee_head, site_info.callee_rva, at) || (at > site_info.rva && at < site_info.rva + 5)))
           || (site_info.exit_rva != 0 && is_fixed(site_info.exit_head, site_info.exit_rva, at))) {
-        expected &= ~(1u << index);
+        expected &= ~(uint64_t{1} << index);
       }
     }
     // A colour piece (or the constants' two flag operands, which must be one address) takes the colour loop's own sites.
@@ -335,7 +410,9 @@ void TestFlips() {
       colour_piece |= (piece.callee_rva != 0 && (is_fixed(piece.callee_head, piece.callee_rva, at) || (at > piece.rva && at < piece.rva + 5)));
     }
     for (const uint32_t flag_site : {ec::COLOUR_CONST1_RVA, ec::COLOUR_CONST2_RVA}) colour_piece |= (at >= flag_site + 2 && at < flag_site + 6);
-    if (colour_piece) expected &= ~static_cast<uint32_t>(COLOUR_A_OWN);
+    if (colour_piece) expected &= ~COLOUR_A_OWN;
+    // The accessor is the B groups' alone: its bytes take their sites out, not the feature.
+    if (is_fixed(ec::ACCESSOR_HEAD, ec::ACCESSOR_RVA, at)) expected &= ~DEPTH_B_OWN;
     *Rva(at) ^= 0xFF;
     const bool ok = Prepare();
     CHECK(ec::recording_found == (shared_piece ? 0 : expected));
@@ -400,6 +477,15 @@ void UpdateWith(uint32_t groups) { ecp::Update(false, ecp::Game::ATTILA, false, 
 bool SiteHolds(size_t index, bool jump) {
   const ec::Site& site = ec::recording_sites[index];
   return std::memcmp(site.at, (jump ? site.jump : site.game).data(), ec::SITE_SIZE) == 0;
+}
+
+// Every site is as it should be (a jump if in `in`, else the game's), but the ones in `skip`.
+bool AllHold(uint64_t in, uint64_t skip = 0) {
+  bool holds = true;
+  for (size_t index = 0; index < ec::RECORDING_SITE_COUNT; ++index) {
+    holds = holds && (((skip >> index) & 1) != 0 || SiteHolds(index, ((in >> index) & 1) != 0));
+  }
+  return holds;
 }
 
 // A one-step fake of the dispatcher, for the thread parked in the cut stub.
@@ -757,14 +843,6 @@ void TestColourGroup() {
   REQUIRE(Prepare());
   dr::Shared* const shared = dr::SharedPage();
   const uint32_t arena_size = ec::recording_arena_size_value;
-  // Every site is as it should be (a jump if in `in`, else the game's), but the ones in `skip`.
-  const auto all_hold = [](uint64_t in, uint64_t skip = 0) {
-    bool holds = true;
-    for (size_t index = 0; index < ec::RECORDING_SITE_COUNT; ++index) {
-      holds = holds && (((skip >> index) & 1) != 0 || SiteHolds(index, ((in >> index) & 1) != 0));
-    }
-    return holds;
-  };
   // The bytes that differ from the game's outside the sites written (a site's 5 bytes).
   const auto differing_outside_written = [] {
     size_t count = 0;
@@ -779,16 +857,16 @@ void TestColourGroup() {
     return count;
   };
   UpdateWith(colour_row);
-  CHECK(ec::recording_written == COLOUR_A_SITES && shared->arena_size == arena_size && all_hold(COLOUR_A_SITES));
+  CHECK(ec::recording_written == COLOUR_A_SITES && shared->arena_size == arena_size && AllHold(COLOUR_A_SITES));
   CHECK(std::popcount(ec::recording_written) == 12 && ecp::DrawRecordingSitesIn());
   UpdateWith(colour_row | depth_row);
-  CHECK(ec::recording_written == (COLOUR_A_SITES | DEPTH_A_SITES) && all_hold(COLOUR_A_SITES | DEPTH_A_SITES));
+  CHECK(ec::recording_written == (COLOUR_A_SITES | DEPTH_A_SITES) && AllHold(COLOUR_A_SITES | DEPTH_A_SITES));
   // The row of one off: its own sites come out, the entry hook stays for the other, the arena size too.
   UpdateWith(depth_row);
-  CHECK(ec::recording_written == DEPTH_A_SITES && shared->arena_size == arena_size && all_hold(DEPTH_A_SITES));
+  CHECK(ec::recording_written == DEPTH_A_SITES && shared->arena_size == arena_size && AllHold(DEPTH_A_SITES));
   UpdateWith(colour_row | depth_row);
   UpdateWith(colour_row);
-  CHECK(ec::recording_written == COLOUR_A_SITES && all_hold(COLOUR_A_SITES));
+  CHECK(ec::recording_written == COLOUR_A_SITES && AllHold(COLOUR_A_SITES));
   UpdateWith(0);
   CHECK(ec::recording_written == 0 && shared->arena_size == 0 && !ecp::DrawRecordingSitesIn() && DifferingBytes() == 0);
   // Another mod's bytes on one colour site: the colour group stays out, the depth group goes in, the log names the site.
@@ -798,7 +876,7 @@ void TestColourGroup() {
   log_lines.clear();
   UpdateWith(colour_row | depth_row);
   const uint64_t modded_bit = ec::RecordingBit(ec::RecordingSite::COLOUR_CONST2);
-  CHECK(ec::recording_written == DEPTH_A_SITES && (ec::recording_found & COLOUR_A_OWN) == 0 && all_hold(DEPTH_A_SITES, modded_bit));
+  CHECK(ec::recording_written == DEPTH_A_SITES && (ec::recording_found & COLOUR_A_OWN) == 0 && AllHold(DEPTH_A_SITES, modded_bit));
   CHECK(LogHas("colour loop second constant") && !LogHas("depth loop") && differing_outside_written() == 1);
   modded[0] ^= 0x55;
   UpdateWith(0);
@@ -809,7 +887,7 @@ void TestColourGroup() {
   depth_modded[0] ^= 0x55;
   UpdateWith(colour_row | depth_row);
   CHECK(ec::recording_written == COLOUR_A_SITES && (ec::recording_found & DEPTH_A_SITES & ~ec::RECORDING_ENTRY_BIT) == 0);
-  CHECK(all_hold(COLOUR_A_SITES, ec::RecordingBit(ec::RecordingSite::DEPTH_ANIM)) && differing_outside_written() == 1);
+  CHECK(AllHold(COLOUR_A_SITES, ec::RecordingBit(ec::RecordingSite::DEPTH_ANIM)) && differing_outside_written() == 1);
   depth_modded[0] ^= 0x55;
   UpdateWith(0);
   CHECK(ec::recording_written == 0 && DifferingBytes() == 0);
@@ -1051,7 +1129,7 @@ void TestThunks() {
     fake_vtables[index][0x68 / 4] = ec::Address(reinterpret_cast<const void*>(&FakeVf68));
     if (index < known.size()) known[index] = ec::Address(fake_vtables[index].data());
   }
-  const uint8_t* const vf68_thunk = ec::BuildSharedStateCall(&assembler, shared, known, dr::Site::DEPTH_VF68);
+  const uint8_t* const vf68_thunk = ec::BuildSharedStateCall(&assembler, shared, &known, 0x68, 8, dr::Site::DEPTH_VF68);
   for (const uint32_t tracker : {outside, outsides[0], outsides[1]}) {
     CHECK(Call(harness2, tracker, vf68_thunk, {0x11, 0x22}, 0xBEEF, ec::Address(fake_vtables[10].data())) == 0x6868);
     CHECK(seen.calls == 0 && direct_calls == 1 && direct_ecx == 0xBEEF && direct_args[0] == 0x11 && direct_args[1] == 0x22);
@@ -1367,7 +1445,7 @@ void TestColourThunks() {
     known[index] = ec::Address(fake_vtables[index].data());
   }
   for (const dr::Site site : {dr::Site::COLOUR_VF68_SETUP, dr::Site::COLOUR_VF68_VARIATION}) {
-    const uint8_t* const vf68_thunk = ec::BuildSharedStateCall(&assembler, shared, known, site);
+    const uint8_t* const vf68_thunk = ec::BuildSharedStateCall(&assembler, shared, &known, 0x68, 8, site);
     REQUIRE(assembler.Fits());
     for (const uint32_t tracker : outsides) {
       CHECK(Call(harness2, tracker, vf68_thunk, {0x11, 0x22}, 0xBEEF, known[3]) == 0x6868);
@@ -1410,6 +1488,601 @@ void TestColourThunks() {
   shared->record = saved_record;
   VirtualFree(test_code, 0, MEM_RELEASE);
   std::printf("6b. colour thunks on the game's covered bytes: setup (go on / skip), both constants (flags, xmm0), faction, both textures, animation, shared-state calls, init\n");
+}
+
+// ---------------------------------------------------------------- 5g. the B groups: class table and Depth B
+
+// The family and class tables are decoded from the game's bytes: every byte they read, flipped one at a time, takes out exactly the
+// classes it belongs to (a vtable slot: that class; a thunk's bytes: the classes that go through it; a dispatcher's: its family's
+// classes; the list helper's head: all of them, and with the last depth class the B sites); the A groups never notice.
+void TestClassTable() {
+  REQUIRE(Prepare());
+  const dr::GameCalls reference = dr::internal::game_calls;
+  REQUIRE(reference.class_count == ec::ROUTED_CLASSES.size());
+  const size_t class_count = ec::ROUTED_CLASSES.size();
+  uint32_t flips = 0;
+  // `out`: the classes (by index in the table) that must be left out. `base_xor`: what the list base of the others must change by.
+  const auto flip = [&](uint32_t at, const std::vector<size_t>& out, uint32_t base_xor = 0, uint32_t base_thunk = 0) {
+    *Rva(at) ^= 0xFF;
+    REQUIRE(Prepare());
+    const dr::GameCalls& calls = dr::internal::game_calls;
+    std::vector<size_t> kept;
+    for (size_t index = 0; index < class_count; ++index) {
+      if (std::find(out.begin(), out.end(), index) == out.end()) kept.push_back(index);
+    }
+    const bool depth_left = std::any_of(kept.begin(), kept.end(), [](size_t index) { return ec::ROUTED_CLASSES[index].depth; });
+    CHECK(calls.class_count == (depth_left ? kept.size() : 0));
+    for (size_t position = 0; depth_left && position < kept.size() && position < calls.class_count; ++position) {
+      const dr::MeshClass& decoded = calls.classes[position];
+      const dr::MeshClass& expected = reference.classes[kept[position]];
+      CHECK(decoded.vtable == expected.vtable && decoded.family == expected.family && decoded.depth_body == expected.depth_body);
+      CHECK(decoded.base == (ec::ROUTED_CLASSES[kept[position]].thunk == base_thunk ? expected.base ^ base_xor : expected.base));
+    }
+    // The B sites go in with the accessor and a class that records in depth; without one they stay out. The A groups' never move.
+    CHECK(((ec::recording_found & DEPTH_B_OWN) == DEPTH_B_OWN) == depth_left && (depth_left || (ec::recording_found & DEPTH_B_OWN) == 0));
+    CHECK((calls.accessor != 0) == depth_left && (((calls.usable_groups >> static_cast<size_t>(dr::Group::DEPTH_B)) & 1) != 0) == depth_left);
+    CHECK((ec::recording_found & (DEPTH_A_SITES | COLOUR_A_SITES)) == (DEPTH_A_SITES | COLOUR_A_SITES) && (calls.usable_groups & 3) == 3);
+    CHECK(out.empty() || LogHas("class 0x") || !depth_left);
+    CHECK(!out.empty() || base_xor != 0 || !LogHas("left alone"));
+    *Rva(at) ^= 0xFF;
+    ++flips;
+  };
+  // A class's vtable slots (the technique and shared-state slots, the common ones, and the slot the thunk is in).
+  constexpr std::array<uint32_t, 7> SLOTS = {0x54, 0x58, 0x60, 0x64, 0x68, 0x6c, ec::MESH_VF138};
+  for (size_t index = 0; index < class_count; ++index) {
+    for (const uint32_t slot : SLOTS) {
+      for (uint32_t byte = 0; byte < 4; ++byte) flip(ec::ROUTED_CLASSES[index].vtable + slot + byte, {index});
+    }
+  }
+  // The thunks: their fixed bytes, the dispatcher call's displacement and the list base's bytes (the lowest byte changes the base
+  // the class is decoded with, a higher one makes it absurd and the class is left out).
+  std::set<uint32_t> thunks;
+  for (const ec::RoutedClass& routed : ec::ROUTED_CLASSES) thunks.insert(routed.thunk);
+  CHECK(thunks.size() == 9);
+  for (const uint32_t thunk : thunks) {
+    const bool special = (thunk == 0x1827980);
+    std::vector<size_t> out;
+    for (size_t index = 0; index < class_count; ++index) {
+      if (ec::ROUTED_CLASSES[index].thunk == thunk) out.push_back(index);
+    }
+    const uint32_t call = (special ? ec::SLOT138_SPECIAL_CALL : ec::SLOT138_THUNK_CALL);
+    const uint32_t base_at = thunk + (special ? ec::SLOT138_SPECIAL_BASE : ec::SLOT138_THUNK_BASE);
+    for (const size_t fixed : FixedBytes(special ? ec::SLOT138_SPECIAL_THUNK : ec::SLOT138_THUNK)) flip(thunk + static_cast<uint32_t>(fixed), out);
+    for (uint32_t byte = 1; byte < 5; ++byte) flip(thunk + call + byte, out);
+    for (uint32_t byte = 1; byte < 4; ++byte) flip(base_at + byte, out);
+    flip(base_at, {}, 0xFF, thunk);
+  }
+  // The dispatchers: bytes, the three calls the tables read (the list helper, the depth body, the colour body); the visibility
+  // call's displacement is read by nothing, and family 7 has no class.
+  for (uint32_t family = 0; family < ec::DISPATCHER_COUNT; ++family) {
+    const uint32_t dispatcher = ec::DISPATCHER_FIRST_RVA + family * ec::DISPATCHER_STRIDE;
+    std::vector<size_t> out;
+    for (size_t index = 0; index < class_count; ++index) {
+      if (reference.classes[index].family == family) out.push_back(index);
+    }
+    CHECK(family == 7 ? out.empty() : !out.empty());
+    for (const size_t fixed : FixedBytes(ec::DISPATCHER_BYTES)) flip(dispatcher + static_cast<uint32_t>(fixed), out);
+    for (const uint32_t call : {ec::DISPATCHER_LIST_CALL, ec::DISPATCHER_DEPTH_CALL, ec::DISPATCHER_COLOUR_CALL}) {
+      for (uint32_t byte = 1; byte < 5; ++byte) flip(dispatcher + call + byte, out);
+    }
+    for (uint32_t byte = 1; byte < 5; ++byte) flip(dispatcher + 0x52 + byte, {});
+  }
+  // The list helper: every dispatcher's first call, so every class goes.
+  std::vector<size_t> all(class_count);
+  for (size_t index = 0; index < class_count; ++index) all[index] = index;
+  for (const size_t fixed : FixedBytes(ec::LIST_HELPER_HEAD)) flip(ec::LIST_HELPER_RVA + static_cast<uint32_t>(fixed), all);
+  CHECK(DifferingBytes() == 0);
+  REQUIRE(Prepare());
+  CHECK(dr::internal::game_calls.class_count == class_count && ec::recording_found == ALL_SITES);
+  std::printf("5g. class table: %u single-byte flips of the 23 classes' slots, the 9 thunks, the 8 dispatchers and the list helper: exactly the classes that read the byte are left out (named in the log), the B sites need the accessor and a depth class, the A groups never move\n", flips);
+}
+
+// Depth B goes in and out through the same window as the A groups: its cut and 15 calls with the entry hook, beside either A group;
+// a mismatch stands down only its own group; a thread in the B cut stub blocks the last removal.
+void TestBGroup() {
+  const uint32_t depth_row = 1u << static_cast<uint32_t>(dr::Group::DEPTH_A);
+  const uint32_t colour_row = 1u << static_cast<uint32_t>(dr::Group::COLOUR_A);
+  const uint32_t b_row = 1u << static_cast<uint32_t>(dr::Group::DEPTH_B);
+  const uint32_t colour_b_row = 1u << static_cast<uint32_t>(dr::Group::COLOUR_B);
+  REQUIRE(Prepare());
+  dr::Shared* const shared = dr::SharedPage();
+  const uint32_t arena_size = ec::recording_arena_size_value;
+  UpdateWith(b_row);
+  CHECK(ec::recording_written == DEPTH_B_SITES && std::popcount(ec::recording_written) == 17 && shared->arena_size == arena_size);
+  CHECK(AllHold(DEPTH_B_SITES) && ecp::DrawRecordingSitesIn());
+  CHECK(LogHas("sites in"));
+  UpdateWith(b_row | depth_row | colour_row);
+  CHECK(ec::recording_written == (DEPTH_B_SITES | DEPTH_A_SITES | COLOUR_A_SITES) && AllHold(DEPTH_B_SITES | DEPTH_A_SITES | COLOUR_A_SITES));
+  // One row off: its own sites come out, the entry hook and the arena size stay for the others.
+  UpdateWith(depth_row | colour_row);
+  CHECK(ec::recording_written == (DEPTH_A_SITES | COLOUR_A_SITES) && AllHold(DEPTH_A_SITES | COLOUR_A_SITES) && shared->arena_size == arena_size);
+  UpdateWith(b_row | depth_row);
+  CHECK(ec::recording_written == (DEPTH_B_SITES | DEPTH_A_SITES) && AllHold(DEPTH_B_SITES | DEPTH_A_SITES));
+  UpdateWith(b_row);
+  CHECK(ec::recording_written == DEPTH_B_SITES && AllHold(DEPTH_B_SITES) && shared->arena_size == arena_size);
+  // Colour B has no site yet: its row writes nothing, and with Depth B's it changes nothing.
+  UpdateWith(b_row | colour_b_row);
+  CHECK(ec::recording_written == DEPTH_B_SITES);
+  UpdateWith(colour_b_row);
+  CHECK(ec::recording_written == 0 && shared->arena_size == 0 && DifferingBytes() == 0);
+  // Another mod's bytes on one of the 15 calls, or on the cut: Depth B stays out whole, the A groups go in, the log names the site.
+  for (const ec::RecordingSite modded_site : {ec::RecordingSite::DEPTH_B2_VARIATION, ec::RecordingSite::DEPTH_B4_VF64, ec::RecordingSite::DEPTH_B_CUT}) {
+    REQUIRE(Prepare());
+    uint8_t* const modded = SiteAt(modded_site);
+    modded[0] ^= 0x55;
+    log_lines.clear();
+    UpdateWith(b_row | depth_row);
+    CHECK(ec::recording_written == DEPTH_A_SITES && (ec::recording_found & DEPTH_B_OWN) == 0 && AllHold(DEPTH_A_SITES, ec::RecordingBit(modded_site)));
+    CHECK(LogHas(ec::RECORDING_INFO[static_cast<size_t>(modded_site)].name.data()) && !LogHas("depth loop"));
+    modded[0] ^= 0x55;
+    UpdateWith(0);
+    CHECK(ec::recording_written == 0 && DifferingBytes() == 0);
+  }
+  // And the other way: a depth A site changed by another mod, Depth B goes in alone with the entry hook.
+  REQUIRE(Prepare());
+  uint8_t* const depth_modded = SiteAt(ec::RecordingSite::DEPTH_ANIM);
+  depth_modded[0] ^= 0x55;
+  UpdateWith(b_row | depth_row);
+  CHECK(ec::recording_written == DEPTH_B_SITES && AllHold(DEPTH_B_SITES, ec::RecordingBit(ec::RecordingSite::DEPTH_ANIM)));
+  depth_modded[0] ^= 0x55;
+  UpdateWith(0);
+  CHECK(ec::recording_written == 0 && DifferingBytes() == 0);
+  // Coming out with one B site changed since: the others go back, the arena size is 0, the feature stays reachable.
+  REQUIRE(Prepare());
+  UpdateWith(b_row);
+  CHECK(ec::recording_written == DEPTH_B_SITES);
+  uint8_t* const vf64 = SiteAt(ec::RecordingSite::DEPTH_B3_VF64);
+  vf64[1] ^= 0x55;
+  log_lines.clear();
+  UpdateWith(0);
+  CHECK(ec::recording_written == 0 && shared->arena_size == 0 && ecp::DrawRecordingSitesIn() && LogHas("depth body 3 slot-0x64 call"));
+  CHECK(DifferingOutside(vf64) == 0);
+  std::memcpy(vf64, &pristine[0x17b1503], ec::SITE_SIZE);
+  // A thread in the B cut stub (it is about to dispatch): the last removal waits, then goes.
+  REQUIRE(Prepare());
+  UpdateWith(b_row);
+  CHECK(ec::recording_written == DEPTH_B_SITES);
+  uint8_t* const b_cut_stub = ThunkOf(ec::RecordingSite::DEPTH_B_CUT);
+  REQUIRE(b_cut_stub >= ec::recording_page && b_cut_stub + 4 <= ec::recording_cut.end);
+  Parked parked = Park(b_cut_stub);
+  ec::failed_writes = 0;
+  UpdateWith(0);
+  CHECK(ec::recording_written == DEPTH_B_SITES && ec::failed_writes == 1 && shared->arena_size == arena_size && AllHold(DEPTH_B_SITES));
+  Release(&parked);
+  UpdateWith(0);
+  CHECK(ec::recording_written == 0 && DifferingBytes() == 0 && shared->arena_size == 0);
+  // A dispatch in flight: the same.
+  UpdateWith(b_row);
+  shared->active.store(1);
+  UpdateWith(0);
+  CHECK(ec::recording_written == DEPTH_B_SITES);
+  shared->active.store(0);
+  UpdateWith(0);
+  CHECK(ec::recording_written == 0 && DifferingBytes() == 0);
+  std::printf("5h. Depth B: the cut, 15 calls and the hook in and out beside both A groups, Colour B asks for nothing, a mismatch stands down its own group (a call or the cut), a changed site coming out, a thread in the B cut stub, a dispatch in flight\n");
+}
+
+// ---------------------------------------------------------------- 6c. the B thunks
+
+uint32_t __fastcall FakeVf64(void* ecx, void* edx, uint32_t a1, uint32_t a2, uint32_t a3) {
+  ++direct_calls;
+  direct_ecx = reinterpret_cast<uint32_t>(ecx);
+  direct_edx = reinterpret_cast<uint32_t>(edx);
+  direct_flags = __readeflags();
+  direct_args = {a1, a2, a3};
+  return 0x6464;
+}
+
+// What the per-mesh cut hands DispatchMesh, and where the game's code goes on afterwards.
+struct CutSeen {
+  uint32_t calls = 0;
+  uint32_t active = 0;
+  std::array<uint32_t, 8> args = {};
+};
+CutSeen cut_seen;
+struct CutOut {
+  uint32_t esi = 0;
+  uint32_t edi = 0;
+  uint32_t ebx = 0;
+  uint32_t ebp = 0;
+  uint32_t esp = 0;
+  uint32_t path = 0;
+};
+CutOut cut_out;
+uint32_t cut_saved_esp = 0;
+uint32_t cut_tracker = 0;
+void __stdcall FakeDispatchMesh(void* tracker, void* device, void* view, uint32_t list_type, void* node, void* sorted, uint32_t first, uint32_t last) {
+  ++cut_seen.calls;
+  cut_seen.active = static_cast<uint32_t>(dr::SharedPage()->active.load());
+  cut_seen.args = {reinterpret_cast<uint32_t>(tracker), reinterpret_cast<uint32_t>(device), reinterpret_cast<uint32_t>(view), list_type,
+                   reinterpret_cast<uint32_t>(node), reinterpret_cast<uint32_t>(sorted), first, last};
+}
+
+void TestBThunks() {
+  REQUIRE(Prepare());
+  dr::Shared* const shared = dr::SharedPage();
+  shared->arena_size = ec::recording_arena_size_value;
+  const uint32_t saved_record = shared->record;
+  shared->record = ec::Address(reinterpret_cast<const void*>(&FakeRecord));
+  const uint32_t saved_dispatch = shared->dispatch_mesh;
+  shared->dispatch_mesh = ec::Address(reinterpret_cast<const void*>(&FakeDispatchMesh));
+  const uint32_t arena = shared->arena;
+  const uint32_t arena_size = shared->arena_size;
+  test_code = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x4000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+  ec::Assembler assembler(std::span<uint8_t>(test_code, 0x4000));
+  const HarnessFn harness2 = BuildHarness(&assembler, 2, 2);
+  const HarnessFn harness3 = BuildHarness(&assembler, 3, 3);
+  std::array<uint8_t, 0x200> local_tracker = {};
+  const uint32_t outside = reinterpret_cast<uint32_t>(local_tracker.data());
+  const std::array<uint32_t, 3> outsides = {outside, arena - 1, arena + arena_size};
+  const std::array<uint32_t, 3> insides = {arena, arena + 5 * dr::SLOT_SIZE + 0x40, arena + arena_size - dr::SLOT_SIZE};
+
+  // The depth bodies' shared-state call (2 arguments, `ret 8`) and slot-0x64 call (3 arguments, `ret 0xc`): the direct path is
+  // the game's `mov eax, [eax + slot]; jmp eax`; the record path asks Record whatever the vtable is (the planner chose the class)
+  // and Record's answer is the call's.
+  std::array<uint32_t, 0x20> fake_vtable = {};
+  fake_vtable[0x68 / 4] = ec::Address(reinterpret_cast<const void*>(&FakeVf68));
+  fake_vtable[0x64 / 4] = ec::Address(reinterpret_cast<const void*>(&FakeVf64));
+  const uint32_t vtable = ec::Address(fake_vtable.data());
+  const uint8_t* const vf68_thunk = ec::BuildSharedStateCall(&assembler, shared, nullptr, 0x68, 8, dr::Site::DEPTH_B_VF68);
+  const uint8_t* const vf64_thunk = ec::BuildSharedStateCall(&assembler, shared, nullptr, 0x64, 0xc, dr::Site::DEPTH_B_VF64);
+  REQUIRE(assembler.Fits());
+  for (const uint32_t tracker : outsides) {
+    CHECK(Call(harness2, tracker, vf68_thunk, {0x11, 0x22}, 0xBEEF, vtable) == 0x6868);
+    CHECK(seen.calls == 0 && direct_calls == 1 && direct_ecx == 0xBEEF && direct_args[0] == 0x11 && direct_args[1] == 0x22);
+    CheckDirect();
+    CHECK(Call(harness3, tracker, vf64_thunk, {0x31, 0x32, 0x33}, 0xBEEF, vtable) == 0x6464);
+    CHECK(seen.calls == 0 && direct_calls == 1 && direct_ecx == 0xBEEF && direct_args[0] == 0x31 && direct_args[1] == 0x32 && direct_args[2] == 0x33);
+    CheckDirect();
+  }
+  for (const uint32_t tracker : insides) {
+    for (const uint32_t eax : {vtable, 0u, 0x12345678u}) {
+      CHECK(Call(harness2, tracker, vf68_thunk, {0x11, 0x22}, 0xBEEF, eax) == 0x600D);
+      CHECK(seen.calls == 1 && direct_calls == 0 && seen.site == static_cast<uint32_t>(dr::Site::DEPTH_B_VF68) && reinterpret_cast<uint32_t>(seen.slot) == tracker);
+      CHECK(seen.ecx == 0xBEEF && seen.stack[1] == 0x11 && seen.stack[2] == 0x22);
+      CheckRecordFrame(tracker);
+      CHECK(Call(harness3, tracker, vf64_thunk, {0x31, 0x32, 0x33}, 0xBEEF, eax) == 0x600D);
+      CHECK(seen.calls == 1 && direct_calls == 0 && seen.site == static_cast<uint32_t>(dr::Site::DEPTH_B_VF64) && reinterpret_cast<uint32_t>(seen.slot) == tracker);
+      CHECK(seen.ecx == 0xBEEF && seen.stack[1] == 0x31 && seen.stack[2] == 0x32 && seen.stack[3] == 0x33);
+      CheckRecordFrame(tracker);
+    }
+  }
+
+  // The per-mesh cut on the game's own covered bytes: a frame the harness builds with the loop's locals at the game's offsets (the
+  // other words are marked: a thunk that reads another place hands DispatchMesh a mark). The game's code after the loop is a stand-in
+  // that notes esi, edi, ebx and ebp and leaves; the empty round goes to another one.
+  const auto build_tail = [&](uint32_t path) {
+    uint8_t* const tail = assembler.Cursor();
+    assembler.BytesAndOperand({0x89, 0x35}, ec::Address(&cut_out.esi));
+    assembler.BytesAndOperand({0x89, 0x3D}, ec::Address(&cut_out.edi));
+    assembler.BytesAndOperand({0x89, 0x1D}, ec::Address(&cut_out.ebx));
+    assembler.BytesAndOperand({0x89, 0x2D}, ec::Address(&cut_out.ebp));
+    assembler.BytesAndOperand({0x89, 0x25}, ec::Address(&cut_out.esp));
+    assembler.BytesAndOperand({0xC7, 0x05}, ec::Address(&cut_out.path));
+    assembler.Bytes({static_cast<uint8_t>(path), 0, 0, 0});
+    assembler.BytesAndOperand({0x8B, 0x25}, ec::Address(&cut_saved_esp));
+    assembler.Bytes({0x5F, 0x5B, 0x5E, 0x5D, 0xC3});
+    return tail;
+  };
+  const uint8_t* const loop_tail = build_tail(1);
+  const uint8_t* const empty_tail = build_tail(2);
+  const ec::RecordingSiteInfo& cut = ec::RECORDING_INFO[static_cast<size_t>(ec::RecordingSite::DEPTH_B_CUT)];
+  const uint8_t* const cut_thunk = ec::BuildMeshCut(&assembler, shared, Rva(cut.rva), cut.covered, empty_tail, loop_tail);
+  // cdecl void(const uint32_t* frame): push ebp esi ebx edi, make a 0x90-byte frame of the 36 words at the argument, ebp the tracker,
+  // marks in the other registers, jump to the thunk.
+  uint8_t* const cut_harness = assembler.Cursor();
+  assembler.Bytes({0x55, 0x56, 0x53, 0x57, 0x8B, 0x74, 0x24, 0x14});
+  assembler.BytesAndOperand({0x89, 0x25}, ec::Address(&cut_saved_esp));
+  assembler.Bytes({0x81, 0xEC, 0x90, 0x00, 0x00, 0x00, 0x8B, 0xFC, 0xB9, 0x24, 0x00, 0x00, 0x00, 0xFC, 0xF3, 0xA5});
+  assembler.BytesAndOperand({0x8B, 0x2D}, ec::Address(&cut_tracker));
+  assembler.BytesAndOperand({0xBE}, 0x5151);
+  assembler.BytesAndOperand({0xBF}, 0xD1D1);
+  assembler.BytesAndOperand({0xBB}, 0xB1B1);
+  assembler.Relative(0xE9, cut_thunk);
+  REQUIRE(assembler.Fits());
+  const auto run_cut = reinterpret_cast<void(__cdecl*)(const uint32_t*)>(cut_harness);
+  const auto cut_round = [&](uint32_t first, uint32_t last) {
+    std::array<uint32_t, 36> frame = {};
+    for (uint32_t word = 0; word < frame.size(); ++word) frame[word] = 0xBAD00000 + word;
+    frame[0x34 / 4] = first;
+    frame[0x1c / 4] = last;
+    frame[0x28 / 4] = 0x50A7ED;  // the sorted list
+    frame[0x30 / 4] = 0x40DE;    // the node
+    frame[0x10 / 4] = 0x1157;    // the list type
+    frame[0x74 / 4] = 0x71E3;    // the view
+    frame[0x70 / 4] = 0xDE71CE;  // the device
+    cut_tracker = 0x7AC4E5;
+    cut_seen = {};
+    cut_out = {};
+    cut_saved_esp = 0;
+    run_cut(frame.data());
+  };
+  for (const std::array<uint32_t, 2> round : {std::array<uint32_t, 2>{3, 9}, {0, 0}, {7, 7}, {0, 0x7FFFFFFF}}) {
+    cut_round(round[0], round[1]);
+    CHECK(cut_seen.calls == 1 && cut_seen.active == 1 && shared->active.load() == 0);
+    CHECK((cut_seen.args == std::array<uint32_t, 8>{0x7AC4E5, 0xDE71CE, 0x71E3, 0x1157, 0x40DE, 0x50A7ED, round[0], round[1]}));
+    // The game's state after its loop: esi the list type, edi the last mesh, ebx past it, ebp and the stack as they were.
+    CHECK(cut_out.path == 1 && cut_out.esi == 0x1157 && cut_out.edi == round[1] && cut_out.ebx == round[1] + 1 && cut_out.ebp == 0x7AC4E5);
+    CHECK(cut_out.esp == cut_saved_esp - 0x90);
+  }
+  // An empty round (first past last): the game's own `ja`, esi untouched, nothing dispatched, active never raised.
+  cut_round(5, 4);
+  CHECK(cut_seen.calls == 0 && cut_out.path == 2 && cut_out.esi == 0x5151 && cut_out.edi == 4 && cut_out.ebx == 5 && cut_out.esp == cut_saved_esp - 0x90);
+  cut_round(0x80000000u, 0x7FFFFFFFu);  // unsigned: the first is past the last
+  CHECK(cut_seen.calls == 0 && cut_out.path == 2);
+  shared->dispatch_mesh = saved_dispatch;
+  shared->record = saved_record;
+  VirtualFree(test_code, 0, MEM_RELEASE);
+  std::printf("6c. B thunks: the shared-state call (ret 8) and the slot-0x64 call (ret 0xc), direct and record; the per-mesh cut on the game's covered bytes hands DispatchMesh its 8 values from the loop's own places and leaves as the loop does (esi, edi, ebx), an empty round takes the game's `ja`\n");
+}
+
+// ---------------------------------------------------------------- 8. no branch lands in a B site
+
+// The length of one 32-bit x86 instruction (0: an opcode this decoder does not know: the scan fails rather than guess) and the
+// relative branch it makes (its displacement's size, 0 for none).
+struct Decoded {
+  uint32_t length = 0;
+  uint32_t displacement = 0;
+};
+
+uint32_t ModrmSize(const uint8_t* at) {
+  const uint32_t mod = at[0] >> 6;
+  const uint32_t rm = at[0] & 7;
+  uint32_t size = 1;
+  if (mod != 3 && rm == 4) {
+    ++size;
+    if (mod == 0 && (at[1] & 7) == 5) size += 4;
+  }
+  if (mod == 0 && rm == 5) {
+    size += 4;
+  } else if (mod == 1) {
+    size += 1;
+  } else if (mod == 2) {
+    size += 4;
+  }
+  return size;
+}
+
+Decoded Decode(const uint8_t* at) {
+  uint32_t length = 0;
+  bool operand16 = false;
+  for (;; ++length) {
+    const uint8_t prefix = at[length];
+    if (prefix == 0x66) {
+      operand16 = true;
+    } else if (prefix != 0xF0 && prefix != 0xF2 && prefix != 0xF3 && prefix != 0x2E && prefix != 0x36 && prefix != 0x3E && prefix != 0x26
+               && prefix != 0x64 && prefix != 0x65) {
+      break;
+    }
+  }
+  const uint8_t op = at[length++];
+  const uint32_t immediate_z = (operand16 ? 2 : 4);
+  uint32_t modrm = 0;
+  uint32_t immediate = 0;
+  uint32_t displacement = 0;
+  if (op == 0x0F) {
+    const uint8_t op2 = at[length++];
+    if (op2 >= 0x80 && op2 <= 0x8F) {
+      displacement = 4;
+    } else if (op2 == 0x38) {
+      ++length;
+      modrm = ModrmSize(at + length);
+    } else if (op2 == 0x3A) {
+      ++length;
+      modrm = ModrmSize(at + length);
+      immediate = 1;
+    } else if ((op2 >= 0x40 && op2 <= 0x4F) || (op2 >= 0x90 && op2 <= 0x9F) || (op2 >= 0x10 && op2 <= 0x17) || (op2 >= 0x28 && op2 <= 0x2F)
+               || (op2 >= 0x50 && op2 <= 0x6F) || op2 == 0x7E || op2 == 0x7F || op2 == 0x1F || op2 == 0xA3 || op2 == 0xAB || op2 == 0xAF
+               || op2 == 0xB0 || op2 == 0xB1 || op2 == 0xB3 || op2 == 0xB6 || op2 == 0xB7 || op2 == 0xBB || op2 == 0xBC || op2 == 0xBD
+               || op2 == 0xBE || op2 == 0xBF || op2 == 0xC0 || op2 == 0xC1 || op2 == 0x18 || op2 == 0x0D || op2 == 0xAE || op2 >= 0xD0) {
+      modrm = ModrmSize(at + length);
+    } else if (op2 == 0x70 || op2 == 0x71 || op2 == 0x72 || op2 == 0x73 || op2 == 0xA4 || op2 == 0xAC || op2 == 0xBA || op2 == 0xC2
+               || op2 == 0xC4 || op2 == 0xC5 || op2 == 0xC6) {
+      modrm = ModrmSize(at + length);
+      immediate = 1;
+    } else if (op2 != 0x31 && op2 != 0xA2 && op2 != 0x0B && !(op2 >= 0xC8 && op2 <= 0xCF)) {
+      return {};
+    }
+  } else if (op < 0x40) {
+    if ((op & 7) < 4) {
+      modrm = ModrmSize(at + length);
+    } else if ((op & 7) == 4) {
+      immediate = 1;
+    } else if ((op & 7) == 5) {
+      immediate = immediate_z;
+    }  // 6 and 7: push / pop of a segment register, or a prefix / decimal-adjust: one byte
+  } else if (op < 0x60 || op == 0x60 || op == 0x61 || (op >= 0x90 && op <= 0x99) || (op >= 0x9B && op <= 0x9F) || (op >= 0xA4 && op <= 0xA7)
+             || (op >= 0xAA && op <= 0xAF) || op == 0xC3 || op == 0xC9 || op == 0xCB || op == 0xCC || op == 0xCE || op == 0xCF || op == 0xD6
+             || op == 0xD7 || (op >= 0xEC && op <= 0xEF) || op == 0xF1 || op == 0xF4 || op == 0xF5 || (op >= 0xF8 && op <= 0xFD)
+             || (op >= 0x6C && op <= 0x6F)) {
+    // one byte
+  } else if (op == 0x62 || op == 0x63 || (op >= 0x84 && op <= 0x8F) || op == 0xC4 || op == 0xC5 || (op >= 0xD0 && op <= 0xD3)
+             || (op >= 0xD8 && op <= 0xDF) || op == 0xFE || op == 0xFF) {
+    modrm = ModrmSize(at + length);
+  } else if (op == 0x68) {
+    immediate = immediate_z;
+  } else if (op == 0x69) {
+    modrm = ModrmSize(at + length);
+    immediate = immediate_z;
+  } else if (op == 0x6A) {
+    immediate = 1;
+  } else if (op == 0x6B) {
+    modrm = ModrmSize(at + length);
+    immediate = 1;
+  } else if (op >= 0x70 && op <= 0x7F) {
+    displacement = 1;
+  } else if (op == 0x80 || op == 0x82 || op == 0x83 || op == 0xC0 || op == 0xC1 || op == 0xC6) {
+    modrm = ModrmSize(at + length);
+    immediate = 1;
+  } else if (op == 0x81 || op == 0xC7) {
+    modrm = ModrmSize(at + length);
+    immediate = immediate_z;
+  } else if (op >= 0xA0 && op <= 0xA3) {
+    immediate = 4;
+  } else if (op == 0xA8 || (op >= 0xB0 && op <= 0xB7) || op == 0xCD || op == 0xD4 || op == 0xD5 || (op >= 0xE4 && op <= 0xE7)) {
+    immediate = 1;
+  } else if (op == 0xA9 || (op >= 0xB8 && op <= 0xBF)) {
+    immediate = immediate_z;
+  } else if (op == 0xC2 || op == 0xCA) {
+    immediate = 2;
+  } else if (op == 0xC8) {
+    immediate = 3;
+  } else if (op == 0xE8 || op == 0xE9) {
+    displacement = 4;
+  } else if (op == 0xEB || (op >= 0xE0 && op <= 0xE3)) {
+    displacement = 1;
+  } else if (op == 0xF6 || op == 0xF7) {
+    modrm = ModrmSize(at + length);
+    immediate = (((at[length] >> 3) & 7) < 2 ? (op == 0xF6 ? 1 : immediate_z) : 0);
+  } else {
+    return {};
+  }
+  return {.length = length + modrm + immediate + displacement, .displacement = displacement};
+}
+
+// The bytes at `rva` that a branch in the game could land inside a B site (its first byte excluded: a call or jump to the site itself
+// is the game's own entry into the instruction the thunk stands for).
+void TestJumpScan() {
+  REQUIRE(Prepare());
+  // The functions that hold the B sites, swept from their entries to the end of their code (the padding after the last return, or the
+  // driver's jump tables): an instruction-aligned sweep, so that a branch is a real one. The end each must reach is checked.
+  struct Function {
+    uint32_t begin;
+    uint32_t end;
+  };
+  constexpr std::array<Function, 6> FUNCTIONS = {{{0x17ae940, 0x17aee84},
+                                                  {0x17b09f0, 0x17b0cab},
+                                                  {0x17b0cb0, 0x17b0f78},
+                                                  {0x17b0f80, 0x17b124d},
+                                                  {0x17b1250, 0x17b151d},
+                                                  {0x17b1520, 0x17b17e8}}};
+  std::set<uint32_t> starts;
+  std::set<uint32_t> targets;
+  uint32_t instructions = 0;
+  for (const Function& function : FUNCTIONS) {
+    uint32_t rva = function.begin;
+    while (rva < function.end && image[rva] != 0xCC) {
+      const Decoded decoded = Decode(image + rva);
+      if (decoded.length == 0) {
+        std::printf("   unknown opcode %02X at +0x%X\n", image[rva], rva);
+        REQUIRE(false);
+      }
+      starts.insert(rva);
+      if (decoded.displacement != 0) {
+        const uint32_t at = rva + decoded.length;
+        const int32_t displacement = (decoded.displacement == 1 ? static_cast<int8_t>(image[at - 1]) : static_cast<int32_t>(Read32(image + at - 4)));
+        targets.insert(at + displacement);
+      }
+      rva += decoded.length;
+      ++instructions;
+    }
+    CHECK(rva == function.end);
+  }
+  uint32_t sites = 0;
+  for (size_t index = 0; index < ec::RECORDING_SITE_COUNT; ++index) {
+    const ec::RecordingSiteInfo& site_info = ec::RECORDING_INFO[index];
+    if (site_info.group != dr::Group::DEPTH_B) continue;
+    const uint32_t site = site_info.rva;
+    const uint32_t covered = std::max<uint32_t>(site_info.covered, ec::SITE_SIZE);
+    ++sites;
+    // The site starts an instruction and the covered bytes end on an instruction's end.
+    CHECK(starts.contains(site) && starts.contains(site + covered));
+    for (uint32_t inside = site + 1; inside < site + covered; ++inside) {
+      CHECK(!targets.contains(inside));
+    }
+  }
+  CHECK(sites == 16);
+  // Beyond the swept functions: every byte offset of every executable section read as a rel32 call, jump or conditional jump, and every
+  // relocated dword (the jump tables' entries among them): none points into a site's covered bytes.
+  const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS32*>(image + reinterpret_cast<const IMAGE_DOS_HEADER*>(image)->e_lfanew);
+  uint32_t lowest = 0xFFFFFFFF;
+  uint32_t highest = 0;
+  std::vector<std::pair<uint32_t, uint32_t>> windows;
+  for (size_t index = 0; index < ec::RECORDING_SITE_COUNT; ++index) {
+    const ec::RecordingSiteInfo& site_info = ec::RECORDING_INFO[index];
+    if (site_info.group != dr::Group::DEPTH_B) continue;
+    windows.emplace_back(site_info.rva + 1, site_info.rva + std::max<uint32_t>(site_info.covered, ec::SITE_SIZE));
+    lowest = std::min(lowest, windows.back().first);
+    highest = std::max(highest, windows.back().second);
+  }
+  const auto in_window = [&](uint32_t target) {
+    return target >= lowest && target < highest && std::any_of(windows.begin(), windows.end(), [&](const std::pair<uint32_t, uint32_t>& window) { return target >= window.first && target < window.second; });
+  };
+  uint64_t candidates = 0;
+  uint32_t hits = 0;
+  const auto* section = IMAGE_FIRST_SECTION(nt);
+  for (WORD index = 0; index < nt->FileHeader.NumberOfSections; ++index, ++section) {
+    if ((section->Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0) continue;
+    const uint32_t end = section->VirtualAddress + std::min<uint32_t>(section->Misc.VirtualSize, section->SizeOfRawData);
+    for (uint32_t at = section->VirtualAddress; at + 6 < end; ++at) {
+      const uint8_t first = image[at];
+      if (first == 0xE8 || first == 0xE9) {
+        ++candidates;
+        hits += (in_window(at + 5 + Read32(image + at + 1)) ? 1 : 0);
+      } else if (first == 0x0F && (image[at + 1] & 0xF0) == 0x80) {
+        ++candidates;
+        hits += (in_window(at + 6 + Read32(image + at + 2)) ? 1 : 0);
+      }
+    }
+  }
+  CHECK(hits == 0);
+  const IMAGE_DATA_DIRECTORY& relocations = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
+  uint32_t relocated = 0;
+  uint32_t relocated_hits = 0;
+  for (uint32_t offset = 0; offset < relocations.Size;) {
+    const auto* block = reinterpret_cast<const IMAGE_BASE_RELOCATION*>(image + relocations.VirtualAddress + offset);
+    const auto* entries = reinterpret_cast<const uint16_t*>(block + 1);
+    for (uint32_t entry = 0; entry < (block->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / 2; ++entry) {
+      if ((entries[entry] >> 12) != IMAGE_REL_BASED_HIGHLOW) continue;
+      ++relocated;
+      relocated_hits += (in_window(Read32(image + block->VirtualAddress + (entries[entry] & 0xFFF)) - ec::Address(image)) ? 1 : 0);
+    }
+    offset += block->SizeOfBlock;
+  }
+  CHECK(relocated_hits == 0);
+  std::printf("8. jump scan: the cut and the 15 depth-body calls (16 sites): %u instructions swept in the driver and the 5 bodies (each sweep ends at its function's end), %zu branch targets, none inside a site's bytes after its first and each site starts an instruction; %llu rel32 call / jump / conditional jump candidates over every byte of the executable sections, %u hit; %u relocated dwords, %u hit\n",
+              instructions, targets.size(), static_cast<unsigned long long>(candidates), hits, relocated, relocated_hits);
+}
+
+// The heapfix clearance: the nearest range heapfix patches or checks to each of the B sites (the table's compile-time check is the
+// proof; this prints the distances, and re-checks them against the real table).
+void TestHeapfixClearance() {
+  const auto gap = [](uint32_t rva, uint32_t size, const ec::HeapfixRange& range) {
+    return range.rva >= rva + size ? range.rva - (rva + size) : rva - (range.rva + range.size);
+  };
+  uint32_t smallest = 0xFFFFFFFF;
+  std::string report;
+  for (const ec::RecordingSiteInfo& site_info : ec::RECORDING_INFO) {
+    const uint32_t size = std::max<uint32_t>(site_info.covered, ec::SITE_SIZE);
+    uint32_t patched_gap = 0xFFFFFFFF;
+    uint32_t checked_gap = 0xFFFFFFFF;
+    const ec::HeapfixRange* patched_near = nullptr;
+    const ec::HeapfixRange* checked_near = nullptr;
+    for (const ec::HeapfixRange& range : ec::HEAPFIX_PATCHED) {
+      CHECK(!ec::Touches(site_info.rva, size, range));
+      if (gap(site_info.rva, size, range) < patched_gap) {
+        patched_gap = gap(site_info.rva, size, range);
+        patched_near = &range;
+      }
+    }
+    for (const ec::HeapfixRange& range : ec::HEAPFIX_CHECKED) {
+      CHECK(!ec::Touches(site_info.rva, size, range));
+      if (gap(site_info.rva, size, range) < checked_gap) {
+        checked_gap = gap(site_info.rva, size, range);
+        checked_near = &range;
+      }
+    }
+    smallest = std::min({smallest, patched_gap, checked_gap});
+    CHECK(ec::SiteClearOfHeapfix(site_info));
+    if (site_info.group == dr::Group::DEPTH_B) {
+      char line[220];
+      std::snprintf(line, sizeof(line), "   +0x%X (%u bytes) %-42s patched +0x%X/%u gap %u, checked +0x%X/%u gap %u\n", site_info.rva, size, std::string(site_info.name).c_str(),
+                    patched_near->rva, patched_near->size, patched_gap, checked_near->rva, checked_near->size, checked_gap);
+      report += line;
+    }
+  }
+  std::printf("9. heapfix clearance: no site of the %zu touches a range heapfix patches (%zu) or checks (%zu), and none of the bytes a site, its callee or its exit is found by touches a patched one; smallest gap of any site %u bytes; the B sites' nearest ranges:\n%s",
+              ec::RECORDING_SITE_COUNT, ec::HEAPFIX_PATCHED.size(), ec::HEAPFIX_CHECKED.size(), smallest, report.c_str());
 }
 
 // ---------------------------------------------------------------- 7. the assembler's bounds
@@ -1466,8 +2139,13 @@ int main(int argc, char** argv) {
   TestStandDown();
   TestRefusedTurnOn();
   TestColourGroup();
+  TestClassTable();
+  TestBGroup();
   TestThunks();
   TestColourThunks();
+  TestBThunks();
+  TestJumpScan();
+  TestHeapfixClearance();
   TestAssembler();
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);
   return failures == 0 ? 0 : 1;
