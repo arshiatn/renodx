@@ -399,7 +399,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Bench variants M1 (er4o_): heapfix_b6.json + night1118.json have no heapfix_line ... | coordinator, with the bench tool fixes before the next bench
 - RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go fa4o_ DONE (night1118/final_bench_f
 - OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 08:08: 64-bit decisions = coordinator's reco
-- NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | ATN, when ATN brings it up again
+- NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | coordinator -> a hybrid bug-fix step in the GPU plan after r
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -6333,6 +6333,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         ebr_ STARTED 23:4x: T3c re-check -> reports/ebr_t1b_review.md '## T3c re-check' (MERGE / FIX).
         Agents: c33i_ (R-S5), upt_ (unified PT design), ebr_ (T3c re-check) (3 of 3). QUEUE: merge rmt_t3b, R-S5 review,
         B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, unified PT review, GPU S1.
+        upt_ UNIFIED PT DESIGN DONE 23:5x (plan_1117/designs/unified_pt.md, 405 lines; hand-back designs/upt_handback.md,
+        saved from the subagents\ transcript because the task .output was empty): every 5b row routed (sun ray in a new
+        rt_pt_primary pass with shared SunRay; torches from PT DI's RTXDI reservoir; GI with P26 fixes; SO from bounce
+        rays; reflections = specular lobe with Eq. 5 footprint + GRIS pairwise MIS; fog torches -> Volumetric ReSTIR).
+        Starvation answer: shared path setup + candidates, one estimator per output (sun fixed stratum, torches own
+        reservoir) + test T-starve. Cost E net -0.3..-1.3 ms (mostly SO rays). 9 steps U0-U8 (+ optional U9) ~82 agent-h
+        + 12-16 GPU-h; U0 needs PT DI steps 0-4 merged + the gto lab; bit RT_DI_UNIFIED = 2 in bridge v32 rt_di_flags.
+        ATN Q1-Q10 (rec in the design; Q1 RR required, Q2 VRAM + no checkerboard, Q3 SO Experimental first ...).
+        [ ] F1 (upt_, verified by upt_, re-check by upr_): random-number aliasing in rt_path.hlsli (path rays
+        frame*64 + path*8 + vertex*2 at 4+ bounces / 9+ samples; reflections frame*16 + sample*2 + 3072 at 9+ samples);
+        defaults (1 bounce, 1 reflection sample) not hit; fix = frame and dimension as separate hash inputs to Random
+        (rt_scene.hlsli:462). Owner: coordinator -> a hybrid bug-fix step in the GPU plan after render_mt (U1 inside the
+        mode).
+        upr_ (a968d878bfb06b65e, fresh Opus xHigh) STARTED 23:5x: review -> designs/unified_pt_review.md (GO / GO WITH
+        CHANGES / NO-GO; F1 verdict) -> upt_ fixes -> upr_ re-check.
+        Agents: c33i_ (R-S5), ebr_ (T3c re-check), upr_ (unified PT review) (3 of 3). QUEUE: merge rmt_t3b, R-S5 review,
+        B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, GPU S1, F1 fix.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
