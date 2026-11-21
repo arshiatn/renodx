@@ -13,7 +13,7 @@ Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
 & 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 -Wno-deprecated-declarations /I $repairRoot /I $testRoot /I "$external\reshade" /I "$external\reshade\include" /I "$external\frozen\include" /I "$external\Detours\include" /I "$external\gtl\include" "$testRoot\tests.cpp" /Fe:test_hooks.exe /link /OPT:REF /OPT:ICF user32.lib d3d11.lib d3d12.lib dxgi.lib
 if ($LASTEXITCODE -ne 0) { throw 'Test hooks test compile failed' }
-foreach ($mode in 'proxy', 'noproxy', 'failed', 'setfile', 'bothset', 'nohooks', 'nofile') {
+foreach ($mode in 'proxy', 'noproxy', 'failed', 'setfile', 'bothset', 'nohooks', 'nofile', 'bom', 'utf16') {
   & (Join-Path $testBuild 'test_hooks.exe') $mode
   if ($LASTEXITCODE -ne 0) { throw "Test hooks test failed ($mode)" }
 }

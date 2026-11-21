@@ -7,7 +7,6 @@
 
 #include <windows.h>
 
-#include <algorithm>
 #include <array>
 #include <atomic>
 #include <charconv>
@@ -152,9 +151,23 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     }
     std::string list;
     int entries = 0;
+    int number = 0;
     for (std::string line; std::getline(file, line);) {
-      line.resize(std::min(line.find(';'), line.size()));
-      if (!line.empty() && line.back() == '\r') line.pop_back();
+      ++number;
+      if (!line.empty() && line.back() == '\r') {
+        line.pop_back();
+      }
+      // PowerShell 5.1 writes utf8 with a byte order mark and Unicode as UTF-16: either would garble times and keys.
+      if (line.starts_with("\xEF\xBB\xBF") || line.find('\0') != std::string::npos) {
+        renodx::utils::log::e(std::format("{} Test: RENODX_TW_SET_FILE {} is not plain text (a byte order mark or UTF-16); no set entries.", log_name, path));
+        return std::string();
+      }
+      if (const size_t end = line.find(';'); end != std::string::npos) {
+        if (line.find_first_not_of(" \t", end + 1) != std::string::npos) {
+          renodx::utils::log::w(std::format("{} Test: RENODX_TW_SET_FILE {} line {} has text after its entry's ';', which is not used.", log_name, path, number));
+        }
+        line.resize(end);
+      }
       if (line.empty()) continue;
       list += line + ';';
       ++entries;
@@ -174,6 +187,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
        && now >= started + (std::strtoull(changes.c_str(), nullptr, 10) * 1000ull);
        colon = changes.find(':'), equals = changes.find('=')) {
     const size_t next = changes.find(';');
+    const std::string value = changes.substr(equals + 1, next - equals - 1);
     if (const std::string key = changes.substr(colon + 1, equals - colon - 1); key == "shot") {
       runtime->save_screenshot("auto");
       renodx::utils::log::i(std::format("{} Test: shot pressed.", log_name));
@@ -187,13 +201,12 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
 #endif
       renodx::utils::log::i(line + ".");
     } else if (key == "mt_trace") {
-      const std::string text = changes.substr(equals + 1, next - equals - 1);
       uint32_t frames = 0;
-      const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), frames);
+      const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), frames);
       if (live_hooks.arm_trace == nullptr) {
         renodx::utils::log::w(std::format("{} Test: mt_trace: no trace window in this add-on, nothing armed.", log_name));
-      } else if (error != std::errc() || end != text.data() + text.size() || frames == 0) {
-        renodx::utils::log::w(std::format("{} Test: mt_trace={} is not a frame count, nothing armed.", log_name, text));
+      } else if (error != std::errc() || end != value.data() + value.size() || frames == 0) {
+        renodx::utils::log::w(std::format("{} Test: mt_trace={} is not a frame count, nothing armed.", log_name, value));
       } else {
         live_hooks.arm_trace(frames);
         // The pool numbers the window in its own header line at the next present.
@@ -201,13 +214,13 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
       }
     } else if (key.starts_with("env.")) {
       const std::string name = key.substr(4);
-      const std::string value = changes.substr(equals + 1, next - equals - 1);
       if (live_hooks.env_changed == nullptr) {
         renodx::utils::log::w(std::format("{} Test: env {}: no live env in this add-on, nothing changed.", log_name, name));
       } else {
         // An empty value unsets the variable; clearing one that was never set is no failure.
         const bool clear = value.empty();
-        const DWORD error = (SetEnvironmentVariableA(name.c_str(), clear ? nullptr : value.c_str()) != 0) ? ERROR_SUCCESS : GetLastError();
+        const bool set = SetEnvironmentVariableA(name.c_str(), clear ? nullptr : value.c_str()) != 0;
+        const DWORD error = set ? ERROR_SUCCESS : GetLastError();
         if (error == ERROR_SUCCESS || (clear && error == ERROR_ENVVAR_NOT_FOUND)) {
           const uint32_t generation = live_hooks.env_changed();
           if (clear) {
@@ -220,7 +233,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
         }
       }
     } else {
-      Change(key, std::strtof(changes.c_str() + equals + 1, nullptr));
+      Change(key, std::strtof(value.c_str(), nullptr));
     }
     changes.erase(0, (next == std::string::npos) ? next : next + 1);
   }
@@ -238,14 +251,16 @@ inline void StartClock() {
 }
 
 inline void Install(renodx::utils::settings::Settings* settings, bool clock_at_first_present, const char* log_name = "[Total War]",
-                    const LiveHooks& live_hooks = {}) {
+                    LiveHooks live_hooks = {}) {
   std::wstring exe(32768, L'\0');
   exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
   internal::exe_folder = std::filesystem::path(exe).parent_path();
   if (std::ifstream file(internal::exe_folder / internal::HOOKS_FILE); file) {
     int lines = 0;
     for (std::string line; std::getline(file, line);) {
-      if (!line.empty() && line.back() == '\r') line.pop_back();
+      if (!line.empty() && line.back() == '\r') {
+        line.pop_back();
+      }
       const size_t equals = line.find('=');
       if (!line.starts_with("RENODX_TW_") || equals == std::string::npos) continue;
       SetEnvironmentVariableA(line.substr(0, equals).c_str(), line.substr(equals + 1).c_str());
