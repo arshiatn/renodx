@@ -5142,6 +5142,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         bd1r_ RESUMED 05:5x (Opus xHigh): review of S3 -> c3i_ fixes -> bd1r_ re-check -> merge (name check + gated
         builds). Then c3i_ C.3-3; B1.2a + T1b after the S3 merge.
         Agents: t4i_, bd3r_, bd1r_ (3 of 3).
+        bd3r_ S8a REVIEW DONE 05:5x (reports/bd3r_s8a_review.md; dis_at.py via a run-only wrapper): GO WITH CHANGES,
+        fold in before S8. Musts: M1 record / arena lifetime vs a late P1 still committing (P3 arms the waiter before
+        the game's wait) -> per-job P1 user count or two arenas; M2 FNV row 0x1811F05.. holds a relocated dword
+        (+0x1811F07) -> start at +0x1811F0C + prepare_test asserts no .reloc in any FN_CHECKS row; M3 late post after
+        P1 began -> "P1 entered" mark + Dekker pair, counted late. Shoulds 1-10 (pool_owns <= 64 KB bound, g_open exits,
+        waiter creation failure, join cap, frame identity, 0x17F46A0 = MAIN kind + initializer level + 0x17F4C30 twin in
+        the caller scan, INST_KEYS_PROVEN = 1 only after table read + MODE 3 soak, 8 more tests, LATCH row, split), 12
+        nits. SPLIT: S8-1 scan first + stop point / patch group / reloc assert / interlock (~120 + 200); S8-2 weighted
+        presort + live keys + PROBE (~300 + 250); S8-3 instances + EARLY=check (~60 + 80). Coordinator: all three built
+        + reviewed before the ONE end batch; S8-3 behind FAMILIES / INST_KEYS_PROVEN 0, measured as its own segments.
+        bd3o_ RESUMED 05:5x: "## S8a v2" appended to bd3o_design_S8a.md -> bd3r_ re-check -> hp1i_ S8-1.
+        Agents: t4i_, bd1r_, bd3o_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
