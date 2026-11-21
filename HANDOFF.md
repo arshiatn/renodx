@@ -5275,6 +5275,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         hp1i_ RESUMED 08:5x: OK for S8-1b (v2.7 row + P3' at +0x18124E8 + row 0x1811F0C len 0x5DC + printed caller
         chains of the two store functions; src_prep8, prepare_test x6, commit if clean) -> bd3r_ review -> S8-2.
         Agents: c3i_ (B1.2a), t4i_ (T4 round 3), hp1i_ (S8-1b) (3 of 3).
+        t4i_ T4 ROUND 3 DONE 09:0x ("Round 3" in reports/t4i_handback.md from line 284; run_all 584 assertions, 0
+        failures; offline only): R1 crash counted before the resumable stop + stop texts name it; R2 opening-Make WARN
+        -> leg returns 2 before locks, per-start-Make WARN -> resumable stop; S-R1..S-R6 (S-R5 "B2:early" kills only
+        hfearly != 0 segments), 7 nits (game hashes before every start, B2FAIL live gate, FREEZE? boundary), corpus 90
+        lines. ANTIVIRUS BLOCK (for ATN's round report): AMSI blocked test_check.ps1 at parse time on one new case with
+        heapfix.c:241's "VirtualProtect failed ... GAME STATE UNSAFE" line inline; t4i_ removed that case, nothing else
+        changed; the line stays as data in corpus.json / gates.json like every row. Not worked around.
+        ebr_ RESUMED 09:0x: re-check of T4 round 3 (verdict READY for T5 or Musts).
+        Agents: c3i_ (B1.2a), hp1i_ (S8-1b), ebr_ (T4 re-check) (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
