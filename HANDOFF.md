@@ -4770,6 +4770,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         Q6 full B4 + its row to a later round (rec. yes).
         gto_ STARTED 03:1x (Opus xHigh, read-only): GPU measurement tooling design from Forge's ideas -> plan_1117/
         gto_design.md. Agents: x87o_, hp1i_, bd1r_, gto_ (4 of 4).
+        ATN 03:2x ANSWERS (end batch): Q1 YES, the batch may start by itself once everything is built, reviewed and the
+        dry run is clean (= ATN's go for THIS batch); Q2 no blocked hours (ATN messages if ATN wants to play); Q3 yes
+        (campaign leg with claude1.save); Q4 ATN's siege (big city, burning houses, many artillery + fire archers) only
+        if ATN finds time - the batch never waits for it; Q5 yes (once, with the part Off); Q6 yes (full B4 + row later).
+        ATN NOTE: the game leaks memory; with 40k+ soldiers 1-3 stress replays in ONE game start will likely crash ->
+        the batch keeps ONE replay per start (-Rounds 1, fresh start each time; check ebo_'s continuation starts do the
+        same) and logs the game's memory / free address space every 60 s, so the leak rate per minute comes out of the
+        batch for free -> later item: find + fix the replay memory leak (owner coordinator, after render_mt).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
