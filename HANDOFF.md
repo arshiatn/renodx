@@ -6482,6 +6482,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         line 1361 / 1265), T2 rt_reference.cs_6_5.hlsl:136-141 into H0, T3 delete Random(uint3) (check DXC uint3 -> uint4
         widening). upt_ RESUMED 00:5x: v2.2 folds T1-T3 (no re-check). BUILD after render_mt + PT DI steps 0-4 + the gto
         lab; ATN's 15 questions (Q1, Q2, Q4, Q6-Q10, NQ1-NQ6) in the design.
+        upt_ v2.2 DONE 00:5x (unified_pt.md 834 lines; v2.1 copy scratchpad/upt_v21_backup.md): H0 dimension table as
+        numbers (33 kinds, (kind << 12) | index, path stride 32, reflections 16 + s, reservoir texel 32) + exact
+        distinctness test; rt_reference.cs 136-141 renamed (bit-identical); Random(uint3) deleted (H0 checks DXC rejects
+        a uint3 call). Unified PT design CLOSED until its build slot.
         Agents (9): bd3r_ + bd1r_ (R-S5 review), gtb_ (GPU S1b), gtp_ (GPU S1c), gtv_ (S1r), upt_ (v2.2 notes), lgf1_ +
         lgf2_ (logging fixes). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6, X1, logging group 3, lga_ re-checks,
         S1r S1b / S1c, bulk index, H0, T5 freeze, T6 dry run, end batch.
