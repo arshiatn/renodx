@@ -6227,6 +6227,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: bd1r_ (R-S4 re-check), gto_ (GPU v2), t4i_ (T3 follow-ups) (3 of 3). QUEUE: merge rmt_rs2b, R-S5 (c33i_,
         after rmt_rs2b merges) -> Opus xHigh review, ebr_ T3b re-check, B1.6 (+ N5 real-routine tests + b13r_'s
         half-rows R2), X1, s0r_ re-check of GPU v2, unified PT design (after S0).
+        gto_ GPU v2 DONE 21:5x (plan_1117/gto_design.md, 1251 lines, '## v2 after S0 (change list)'; v1 copy
+        scratchpad\gto_v2_v1_backup.md): 10 Musts folded (M1 only job.json's 'decide' rows get verdicts, c set by
+        simulation; M2 every A/B dumps + rec_compare / rec_scan, 'picture SAME / DIFF / not checked'; M3 ReloadTemporal;
+        M4 VRAM over budget = INVALID, 32 warm frames, ABBA rotation; M5; M6 lock record v1; M7; M8; M9; M10 dead outputs
+        -> S2 / S3c), 21 Shoulds taken (3 other options), 8 Nits. Effort 52-78 agent-h + 6-9 h reviews; addendum 37-56.
+        FINAL ATN LIST in §10 (with recommendations): before S1 Q8 (a) ns_busy counts map_replay (b) lock wait in
+        atn_harness_runs.ps1; Q12 hooks in shadow mode, ATN writes enforce later; Q14 (a)-(d) gate scope (rec: TW only
+        first for the spec gate); Q15; Q4b. Later: Q1-Q3, Q6, Q7 (rec no), Q9-Q11, Q13, Q16-Q22, new Q23 (dead outputs
+        -> S2 / S3c), Q24 (T7 timestamps + one Nsight trace per setting value), Q25 (lab deletes its own dumps in the
+        job's dump folder). [ ] ATN answers (before GPU S1; each starts Off if unanswered).
+        USAGE LIMIT ~21:5x stopped t4i_ (T3 follow-ups, at the §4.2 synthetic tests) + bd1r_ (R-S4 re-check, waiting for
+        its FULL run); RESUMED 23:0x. s0r_ STARTED 23:0x: re-check of GPU v2 -> plan_1117/s0r_review.md '## v2 re-check'.
+        Agents: bd1r_ (R-S4 re-check), t4i_ (T3 follow-ups), s0r_ (GPU v2 re-check) (3 of 3). QUEUE: merge rmt_rs2b, R-S5
+        (c33i_, after rmt_rs2b merges) -> Opus xHigh review, ebr_ T3b re-check, B1.6 (+ N5 real-routine tests + b13r_'s
+        half-rows R2), X1, unified PT design (after S0).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
