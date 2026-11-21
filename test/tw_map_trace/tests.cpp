@@ -3,7 +3,8 @@
 // calls and then calls the registered callbacks as ReShade's D3D11 layer does (a map's after Map returned, an unmap's
 // before Unmap, a copy's before the copy).
 // 1. Off (no variable): nothing registered, no file. Malformed variables (junk after the delay or the frame count, a
-//    third field other than `hash`, a frame count outside 1-100, a negative delay): off too, nothing registered.
+//    third field other than `hash`, a frame count outside 1-100, a negative delay, windows not in rising order): off
+//    too, nothing registered.
 // 2. RENODX_TW_MAP_TRACE=0.15,2 under a comma-decimal C locale (the parse ignores it): the callbacks registered at
 //    Install, gated off: a map before the trace's start is not in the file; the first present after 0.15 s starts two
 //    frames; after them the callbacks stay registered (until Uninstall) and record nothing. tw_map_trace.txt next to
@@ -57,6 +58,14 @@
 //     first_drop_seq from there (a later draw cbs=? vbs=?).
 // 11. A call on the hooked context from another thread while a trace runs: tw_map_trace.txt native_hook=foreign_thread,
 //     the v3 header hook=foreign_thread, the draw before it with its bindings, the draws after it cbs=? vbs=?.
+// 12. Windows (<s>[,<frames>[,hash]];...): a value refused whole, its reason logged (an empty window, a bad second
+//     window, a seventh window, a window not after the one before it, over 255 characters), nothing registered; six
+//     windows armed, the log naming each window's files.
+// 13. The window schedule (0,1;0.2,1,hash;0.3,2): each window at its own time with its own files (tw_map_trace.txt,
+//     tw_map_trace_2.txt, tw_map_trace_3.txt and their _v3 files: setting, frames, hash, draws), started and saved in
+//     the log, the presents between windows not traced, armed until the last window's files. A late window (0,2;0.01,1:
+//     its time comes while window 1 runs) starts at the first present after window 1's files (its start line says when);
+//     its v1 file not writable (a folder at its .part): the log says which files could not be written.
 #include <windows.h>
 #include <d3d11_1.h>
 #include <wrl/client.h>
@@ -947,6 +956,143 @@ int main() {
         && Field(foreign_draws[1], "vbs") == "?" && Field(foreign_draws[2], "cbs") == "?");
   std::printf("11. another thread's call while the trace runs: native_hook=foreign_thread, hook=foreign_thread, the draws after it"
               " cbs=? vbs=?\n");
+
+  // 12. Windows refused whole, each with its reason; six windows armed.
+  auto& map_trace = frame_trace::internal::map_trace;
+  const auto log_count = [](std::string_view text) {
+    return std::ranges::count_if(log_lines, [text](const std::string& line) { return line.find(text) != std::string::npos; });
+  };
+  const auto last_log_has = [](std::string_view text) { return !log_lines.empty() && log_lines.back().find(text) != std::string::npos; };
+  const std::wstring too_long(300, L'1');
+  const std::array<std::pair<const wchar_t*, const char*>, 9> refused_windows = {{
+      {L"5;", "window 2 \"\" is not <seconds after the first present, 0-86400>[,<frames 1-100>[,hash]]: off."},
+      {L";5", "window 1 \"\" is not"},
+      {L"5,3;6,0", "window 2 \"6,0\" is not"},
+      {L"5,3,hash;6,3,hsh", "window 2 \"6,3,hsh\" is not"},
+      {L"1;2;3;4;5;6;7", "more than 6 windows: off."},
+      {L"95;3", "window 2 at 3 s does not come after window 1 at 95 s (windows in rising order of their seconds): off."},
+      {L"5,2;5,3", "window 2 at 5 s does not come after window 1 at 5 s"},
+      {L"1;2.5;2.25", "window 3 at 2.25 s does not come after window 2 at 2.5 s"},
+      {too_long.c_str(), "RENODX_TW_MAP_TRACE=: longer than 255 characters: off."},
+  }};
+  for (const auto& [value, reason] : refused_windows) {
+    SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", value);
+    log_lines.clear();
+    frame_trace::Install();
+    frame_trace::OnPresent(false);
+    CHECK(Registered() == 0 && !map_trace.armed.load());
+    CHECK(last_log_has("[Total War] Map trace: RENODX_TW_MAP_TRACE=") && last_log_has(reason));
+    frame_trace::Uninstall();
+  }
+  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"1;2;3;4;5;6,100,hash");
+  log_lines.clear();
+  frame_trace::Install();
+  CHECK(Registered() == 16 && map_trace.armed.load() && map_trace.windows.size() == 6);
+  CHECK(last_log_has("): 6 windows after the first present: 1: 3 frames from 1 s into tw_map_trace.txt and tw_map_trace_v3.txt; 2: 3 frames"
+                     " from 2 s into tw_map_trace_2.txt and tw_map_trace_v3_2.txt;")
+        && last_log_has("; 6: 100 frames from 6 s into tw_map_trace_6.txt and tw_map_trace_v3_6.txt, contents hashed."));
+  frame_trace::Uninstall();
+  CHECK(Registered() == 0);
+  std::printf("12. %zu window values refused whole, each reason logged; six windows armed\n", refused_windows.size());
+
+  // 13. Three windows, each at its own time with its own files; then a late window whose files cannot be written.
+  for (const char* name : {"tw_map_trace_2.txt", "tw_map_trace_v3_2.txt", "tw_map_trace_3.txt", "tw_map_trace_v3_3.txt"}) {
+    std::filesystem::remove(folder / name);
+  }
+  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,1;0.2,1,hash;0.3,2");
+  log_lines.clear();
+  frame_trace::Install();
+  present_event();
+  frame_trace::OnPresent(false);
+  CHECK(map_trace.tracing.load() && map_trace.window == 0);
+  draw();
+  frame_trace::OnPresent(false);
+  CHECK(!map_trace.tracing.load() && map_trace.armed.load() && map_trace.window == 1 && hook_state.hooks.empty());
+  CHECK(std::filesystem::exists(trace_path) && std::filesystem::exists(v3_path) && !std::filesystem::exists(folder / "tw_map_trace_2.txt"));
+  // Between windows: presents and draws not traced.
+  frame_trace::OnPresent(false);
+  draw();
+  CHECK(!map_trace.tracing.load() && map_trace.draws.empty());
+  Sleep(250);
+  frame_trace::OnPresent(false);
+  CHECK(map_trace.tracing.load() && map_trace.window == 1 && hook_state.hooks.size() == hooks::internal::MEASURE_BODIES);
+  draw();
+  frame_trace::OnPresent(false);
+  CHECK(!map_trace.tracing.load() && map_trace.armed.load() && map_trace.window == 2);
+  Sleep(100);
+  frame_trace::OnPresent(false);
+  CHECK(map_trace.tracing.load() && map_trace.window == 2);
+  draw();
+  frame_trace::OnPresent(false);
+  draw();
+  draw();
+  frame_trace::OnPresent(false);
+  CHECK(!map_trace.tracing.load() && !map_trace.armed.load() && map_trace.window == 2 && hook_state.hooks.empty());
+  CHECK(map_trace.draws.capacity() == 0 && map_trace.buffers.capacity() == 0);
+  frame_trace::OnPresent(false);
+  CHECK(!map_trace.tracing.load() && Registered() == 16);
+  struct WindowFiles {
+    const char* trace;
+    const char* v3;
+    const char* setting;
+    const char* frames;
+    const char* hash;
+    size_t draws;
+  };
+  for (const WindowFiles& files : {WindowFiles{"tw_map_trace.txt", "tw_map_trace_v3.txt", "0,1", "1", "off", 1},
+                                   WindowFiles{"tw_map_trace_2.txt", "tw_map_trace_v3_2.txt", "0.2,1,hash", "1", "on", 1},
+                                   WindowFiles{"tw_map_trace_3.txt", "tw_map_trace_v3_3.txt", "0.3,2", "2", "off", 3}}) {
+    const auto header = Lines(folder / files.trace, "trace");
+    const auto v3 = Lines(folder / files.v3, "v3");
+    CHECK(header.size() == 1 && Field(header[0], "setting") == files.setting && Field(header[0], "frames") == files.frames
+          && Field(header[0], "draws") == std::to_string(files.draws) && Field(header[0], "native_hook") == "on");
+    CHECK(v3.size() == 1 && Field(v3[0], "setting") == files.setting && Field(v3[0], "frames") == files.frames && Field(v3[0], "hash") == files.hash
+          && Field(v3[0], "hook") == "on" && Lines(folder / files.v3, "draw").size() == files.draws);
+    CHECK(!std::filesystem::exists(folder / std::format("{}.part", files.trace)) && !std::filesystem::exists(folder / std::format("{}.part", files.v3)));
+    CHECK(log_count(std::format(" saved to {} and {} next to the exe (", files.trace, files.v3)) == 1);
+  }
+  CHECK(log_count("[Total War] Map trace window 1 of 3: started ") == 1 && log_count("[Total War] Map trace window 2 of 3: started ") == 1
+        && log_count("[Total War] Map trace window 3 of 3: started ") == 1 && log_count("(asked 0.3 s).") == 1
+        && log_count("[Total War] Map trace window 3 of 3: 2 frames, 3 draws, ") == 1);
+  frame_trace::Uninstall();
+  CHECK(Registered() == 0);
+  std::printf("13. three windows: tw_map_trace.txt, _2, _3 (and their _v3 files) each with its own setting, frames, hash and draws\n");
+
+  const auto late_part = folder / "tw_map_trace_2.txt.part";
+  std::filesystem::remove(folder / "tw_map_trace_2.txt");
+  CHECK(std::filesystem::create_directory(late_part));
+  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,2;0.01,1");
+  log_lines.clear();
+  frame_trace::Install();
+  present_event();
+  frame_trace::OnPresent(false);
+  Sleep(20);
+  frame_trace::OnPresent(false);
+  draw();
+  frame_trace::OnPresent(false);
+  CHECK(!map_trace.tracing.load() && map_trace.window == 1);
+  frame_trace::OnPresent(false);
+  CHECK(map_trace.tracing.load() && map_trace.window == 1);
+  draw();
+  frame_trace::OnPresent(false);
+  CHECK(!map_trace.armed.load() && hook_state.hooks.empty());
+  constexpr std::string_view LATE_START = "[Total War] Map trace window 2 of 2: started ";
+  const auto started = std::ranges::find_if(log_lines, [&](const std::string& line) { return line.starts_with(LATE_START); });
+  CHECK(started != log_lines.end() && started->ends_with(" s after the first present (asked 0.01 s)."));
+  const double late_seconds = std::stod(started->substr(LATE_START.size()));
+  CHECK(late_seconds >= 0.02);
+  CHECK(log_count("[Total War] Map trace window 1 of 2: 2 frames, 1 draws, ") == 1
+        && log_count("[Total War] Map trace window 2 of 2: tw_map_trace_2.txt or tw_map_trace_v3_2.txt next to the exe could not be written.") == 1);
+  CHECK(Field(Lines(trace_path, "trace")[0], "setting") == "0,2" && !std::filesystem::exists(folder / "tw_map_trace_2.txt"));
+  frame_trace::Uninstall();
+  CHECK(Registered() == 0);
+  CHECK(std::filesystem::remove(late_part));
+  for (const char* name : {"tw_map_trace_v3_2.txt", "tw_map_trace_3.txt", "tw_map_trace_v3_3.txt"}) {
+    std::filesystem::remove(folder / name);
+  }
+  std::printf("13. a late window: started %.3f s after the first present (asked 0.01 s), right after window 1's files; its unwritable"
+              " files logged\n",
+              late_seconds);
 
   // Part 2's trace back in its place for run.ps1.
   std::filesystem::remove(trace_path);

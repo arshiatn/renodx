@@ -75,6 +75,13 @@
 // only: every call goes on to the native body unchanged (a swap settles d3d11's table inside its hook,
 // context_hooks.hpp). A v1 map's gap on that context then holds the hook's own time too (its callers' scan, an unmap's
 // hash). Each file is written to <name>.part and renamed when whole.
+// Windows: up to MAX_MAP_WINDOWS of those settings with `;` between them (<s>[,<frames>[,hash]];...), in rising order
+// of their seconds, each with its own files: window 1 tw_map_trace.txt and tw_map_trace_v3.txt (the one-window form is
+// window 1 alone), window w >= 2 tw_map_trace_<w>.txt and tw_map_trace_v3_<w>.txt. A window whose time comes while the
+// one before it is traced starts at the first present after that one's files are written (its start line in the log
+// says when). Every window's v3 file holds the constant buffers made since Install, as a one-window trace at its
+// seconds would. A value with any window not in this form, out of order or past MAX_MAP_WINDOWS is refused whole
+// (logged).
 namespace twattila::frame_trace {
 
 // `count` values of a buffer from `offset` bytes on, read back (it waits for the GPU: for traced frames); empty: past the
@@ -598,9 +605,10 @@ inline void UseEvents(bool use) {
 
 constexpr uint32_t MAP_TRACE_FRAMES = 3;
 constexpr uint32_t MAX_MAP_TRACE_FRAMES = 100;
+constexpr size_t MAX_MAP_WINDOWS = 6;
 // Each kind's storage: <frames> x a frame's room (W2's stress frame: ~4,200 draws, ~1,780 maps and as many unmaps; W3:
-// ~6,330 native map and unmap records), capped (8 frames of native calls fit). Reserved at Install (armed) and held
-// until the trace's file is written; x86 bytes a record: draw 32, event 144, native call 112 (12 frames: 3.1 + 9.4 +
+// ~6,330 native map and unmap records), capped (8 frames of native calls fit). Reserved at Install (armed: <frames>
+// the longest window's) and held until the last window's files are written; x86 bytes a record: draw 32, event 144, native call 112 (12 frames: 3.1 + 9.4 +
 // 7.3 MB at the caps; 3 frames: about 6.2 MB). A record past its room is counted as dropped.
 constexpr size_t MAP_DRAWS_A_FRAME = 8192;
 constexpr size_t MAP_EVENTS_A_FRAME = 6144;
@@ -733,14 +741,21 @@ struct MapCode {
   size_t module = 0;
 };
 
-struct MapTrace {
-  std::shared_mutex mutex;
-  std::atomic_bool armed = false;    // RENODX_TW_MAP_TRACE set, its file not yet written
-  std::atomic_bool tracing = false;  // inside the traced frames (the callbacks' gate)
-  bool registered = false;           // the callbacks (Install's, when armed)
+// One window of RENODX_TW_MAP_TRACE: its own text (its files' setting=), its start, frames and content hashes.
+struct MapWindow {
   std::string setting;
   double delay_seconds = 0.;
   uint32_t frames = MAP_TRACE_FRAMES;
+  bool hash_contents = false;  // the third field `hash`: the unmaps' content hashes
+};
+
+struct MapTrace {
+  std::shared_mutex mutex;
+  std::atomic_bool armed = false;    // RENODX_TW_MAP_TRACE set, its last window's files not yet written
+  std::atomic_bool tracing = false;  // inside a window's traced frames (the callbacks' gate)
+  bool registered = false;           // the callbacks (Install's, when armed)
+  std::vector<MapWindow> windows;    // in rising order of their seconds; set at Install
+  size_t window = 0;                 // the one traced or next
   int64_t first_present = 0;
   std::array<int64_t, MAP_RECENT_PRESENTS> recent_presents = {};
   size_t recent_count = 0;
@@ -764,7 +779,6 @@ struct MapTrace {
   // The sequence from which a map or unmap was dropped (UINT64_MAX: none): v3's contents from it on are not known (maps
   // change no binding).
   uint64_t first_native_drop = UINT64_MAX;
-  bool hash_contents = false;  // RENODX_TW_MAP_TRACE's third field `hash`: the unmaps' content hashes
   // The game's immediate context below ReShade's proxy (the present callback's while armed), the context hooks' target.
   // Each context has its own table inside the context object, which d3d11.dll rewrites at every SwapDeviceContextState:
   // hence the hooks on the bodies, not the table.
@@ -779,6 +793,50 @@ struct MapTrace {
   void(WINAPI* stack_limits)(PULONG_PTR, PULONG_PTR) = GetCurrentThreadStackLimits;
 };
 static MapTrace map_trace;
+
+// A window's records cleared, their storage kept (Install's, reused by every window), under the trace's lock: at
+// Install and after each window's files but the last. The constant buffers made while armed stay (Install clears them).
+inline void ClearMapRecords() {
+  map_trace.tracing.store(false);
+  map_trace.recent_count = 0;
+  map_trace.presents.clear();
+  map_trace.draws.clear();
+  map_trace.events.clear();
+  map_trace.native_calls.clear();
+  map_trace.binds.clear();
+  map_trace.bind_slots.clear();
+  map_trace.modules.clear();
+  map_trace.code.clear();
+  map_trace.dropped_draws = 0;
+  map_trace.dropped_events = 0;
+  map_trace.dropped_native_calls = 0;
+  map_trace.dropped_binds = 0;
+  map_trace.sequence = 0;
+  map_trace.first_drop = UINT64_MAX;
+  map_trace.first_native_drop = UINT64_MAX;
+  map_trace.native_hook = "no_context";
+  map_trace.waited_for_context = false;
+}
+
+// The storage given back (no memory for it at Install, or the last window's files written): std::exchange with an empty
+// one, as `= {}` (the initializer-list assignment) keeps the capacity.
+inline void ReleaseMapStorage() {
+  std::exchange(map_trace.presents, {});
+  std::exchange(map_trace.draws, {});
+  std::exchange(map_trace.events, {});
+  std::exchange(map_trace.native_calls, {});
+  std::exchange(map_trace.binds, {});
+  std::exchange(map_trace.bind_slots, {});
+  std::exchange(map_trace.buffers, {});
+  std::exchange(map_trace.live_buffers, {});
+}
+
+// Window `window`'s files (from 0): tw_map_trace.txt and tw_map_trace_v3.txt, then tw_map_trace_<w>.txt and
+// tw_map_trace_v3_<w>.txt for window w >= 2.
+inline std::array<std::string, 2> MapTraceFiles(size_t window) {
+  if (window == 0) return {"tw_map_trace.txt", "tw_map_trace_v3.txt"};
+  return {std::format("tw_map_trace_{}.txt", window + 1), std::format("tw_map_trace_v3_{}.txt", window + 1)};
+}
 
 inline bool IsDispatch(MapDrawKind kind) {
   return kind == MapDrawKind::DISPATCH || kind == MapDrawKind::DISPATCH_INDIRECT;
@@ -1205,50 +1263,59 @@ inline void Install(Options options = {}) {
     reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
     renodx::utils::log::i("[Total War] Frame trace: the draw reads on (FrameTraceReads).");
   }
-  // The map trace: <seconds after the first present>[,<frames>[,hash]], parsed without the C runtime's locale.
-  std::array<char, 64> setting = {};
+  // The map trace: windows of <seconds after the first present>[,<frames>[,hash]] with `;` between them, parsed without
+  // the C runtime's locale.
+  std::array<char, 256> setting = {};
   const DWORD setting_length =
       GetEnvironmentVariableA("RENODX_TW_MAP_TRACE", setting.data(), static_cast<DWORD>(setting.size()));
   if (setting_length != 0) {
-    const char* setting_end = setting.data() + std::min<size_t>(setting_length, setting.size() - 1);
-    double delay_seconds = -1.;
-    uint32_t frames = internal::MAP_TRACE_FRAMES;
-    bool hash_contents = false;
-    const auto [delay_end, delay_error] = std::from_chars(setting.data(), setting_end, delay_seconds);
-    bool valid = setting_length < setting.size() && delay_error == std::errc{} && delay_seconds >= 0.
-                 && delay_seconds <= 86400. && (delay_end == setting_end || *delay_end == ',');
-    if (valid && delay_end != setting_end) {
-      const auto [frames_end, frames_error] = std::from_chars(delay_end + 1, setting_end, frames);
-      hash_contents = (std::string_view(frames_end, setting_end) == ",hash");
-      valid = frames_error == std::errc{} && (frames_end == setting_end || hash_contents) && frames >= 1
-              && frames <= internal::MAX_MAP_TRACE_FRAMES;
+    // Too long: the buffer not filled.
+    const std::string_view value(setting.data(), (setting_length < setting.size() ? setting_length : 0));
+    std::vector<internal::MapWindow> windows;
+    std::string refused;
+    if (setting_length >= setting.size()) {
+      refused = std::format("longer than {} characters", setting.size() - 1);
+    }
+    for (size_t begin = 0; refused.empty() && begin <= value.size();) {
+      const size_t end = std::min(value.find(';', begin), value.size());
+      const std::string_view window_text = value.substr(begin, end - begin);
+      const char* text_end = window_text.data() + window_text.size();
+      internal::MapWindow window = {.setting = std::string(window_text), .delay_seconds = -1.};
+      const auto [delay_end, delay_error] = std::from_chars(window_text.data(), text_end, window.delay_seconds);
+      bool valid = delay_error == std::errc{} && window.delay_seconds >= 0. && window.delay_seconds <= 86400.
+                   && (delay_end == text_end || *delay_end == ',');
+      if (valid && delay_end != text_end) {
+        const auto [frames_end, frames_error] = std::from_chars(delay_end + 1, text_end, window.frames);
+        window.hash_contents = (std::string_view(frames_end, text_end) == ",hash");
+        valid = frames_error == std::errc{} && (frames_end == text_end || window.hash_contents) && window.frames >= 1
+                && window.frames <= internal::MAX_MAP_TRACE_FRAMES;
+      }
+      if (!valid) {
+        refused = std::format(
+            "window {} \"{}\" is not <seconds after the first present, 0-86400>[,<frames 1-{}>[,hash]]",
+            windows.size() + 1, window_text, internal::MAX_MAP_TRACE_FRAMES);
+      } else if (windows.size() == internal::MAX_MAP_WINDOWS) {
+        refused = std::format("more than {} windows", internal::MAX_MAP_WINDOWS);
+      } else if (!windows.empty() && window.delay_seconds <= windows.back().delay_seconds) {
+        refused = std::format(
+            "window {} at {} s does not come after window {} at {} s (windows in rising order of their seconds)",
+            windows.size() + 1, window.delay_seconds, windows.size(), windows.back().delay_seconds);
+      } else {
+        windows.push_back(std::move(window));
+      }
+      begin = end + 1;
     }
     auto& trace = internal::map_trace;
-    if (valid) {
+    bool armed = refused.empty();
+    if (armed) {
       const std::unique_lock lock(trace.mutex);
-      // Its storage now, not inside a present.
-      trace.tracing.store(false);
-      trace.presents.clear();
-      trace.draws.clear();
-      trace.events.clear();
-      trace.native_calls.clear();
-      trace.binds.clear();
-      trace.bind_slots.clear();
+      internal::ClearMapRecords();
       trace.buffers.clear();
       trace.live_buffers.clear();
-      trace.modules.clear();
-      trace.code.clear();
-      trace.dropped_draws = 0;
-      trace.dropped_events = 0;
-      trace.dropped_native_calls = 0;
-      trace.dropped_binds = 0;
       trace.dropped_buffers = 0;
-      trace.sequence = 0;
-      trace.first_drop = UINT64_MAX;
-      trace.first_native_drop = UINT64_MAX;
-      trace.native_hook = "no_context";
-      trace.waited_for_context = false;
       trace.immediate_context.store(nullptr);
+      // Its storage now, not inside a present: the longest window's, reused by every window.
+      const uint32_t frames = std::ranges::max(windows, {}, &internal::MapWindow::frames).frames;
       try {
         trace.presents.reserve(frames + 1);
         trace.draws.reserve(std::min(internal::MAX_MAP_DRAWS, frames * internal::MAP_DRAWS_A_FRAME));
@@ -1258,34 +1325,39 @@ inline void Install(Options options = {}) {
         trace.bind_slots.reserve(std::min(internal::MAX_BIND_SLOTS, frames * internal::BIND_SLOTS_A_FRAME));
         trace.buffers.reserve(internal::MAX_MAP_BUFFERS);
       } catch (const std::bad_alloc&) {
-        trace.presents = {};
-        trace.draws = {};
-        trace.events = {};
-        trace.native_calls = {};
-        trace.binds = {};
-        trace.bind_slots = {};
-        trace.buffers = {};
-        valid = false;
+        internal::ReleaseMapStorage();
+        armed = false;
         renodx::utils::log::w("[Total War] Map trace: no memory for its storage: off.");
       }
-      if (valid) {
-        trace.setting = setting.data();
-        trace.delay_seconds = delay_seconds;
-        trace.frames = frames;
-        trace.hash_contents = hash_contents;
+      if (armed) {
+        trace.windows = std::move(windows);
+        trace.window = 0;
         trace.first_present = 0;
-        trace.recent_count = 0;
         trace.registered = true;
         trace.armed.store(true);
-        renodx::utils::log::i("[Total War] Map trace (RENODX_TW_MAP_TRACE=", trace.setting, "): ", frames, " frames from ",
-                              delay_seconds, " s after the first present, into tw_map_trace.txt and tw_map_trace_v3.txt",
-                              (hash_contents ? ", constant buffer contents hashed." : "."));
+        if (trace.windows.size() == 1) {
+          const internal::MapWindow& window = trace.windows.front();
+          renodx::utils::log::i("[Total War] Map trace (RENODX_TW_MAP_TRACE=", value, "): ", window.frames,
+                                " frames from ", window.delay_seconds,
+                                " s after the first present, into tw_map_trace.txt and tw_map_trace_v3.txt",
+                                (window.hash_contents ? ", constant buffer contents hashed." : "."));
+        } else {
+          std::string windows_text;
+          for (size_t index = 0; index < trace.windows.size(); ++index) {
+            const internal::MapWindow& window = trace.windows[index];
+            const auto files = internal::MapTraceFiles(index);
+            windows_text += std::format("{}{}: {} frames from {} s into {} and {}{}", (index == 0 ? "" : "; "),
+                                        index + 1, window.frames, window.delay_seconds, files[0], files[1],
+                                        (window.hash_contents ? ", contents hashed" : ""));
+          }
+          renodx::utils::log::i("[Total War] Map trace (RENODX_TW_MAP_TRACE=", value, "): ", trace.windows.size(),
+                                " windows after the first present: ", windows_text, ".");
+        }
       }
     } else {
-      renodx::utils::log::w("[Total War] Map trace: RENODX_TW_MAP_TRACE=", setting.data(),
-                            " is not <seconds after the first present>[,<frames 1-100>[,hash]]: off.");
+      renodx::utils::log::w("[Total War] Map trace: RENODX_TW_MAP_TRACE=", value, ": ", refused, ": off.");
     }
-    if (valid) {
+    if (armed) {
       internal::UseMapEvents(true);
     }
   }
@@ -1341,8 +1413,9 @@ inline void Mark(std::string_view text) {
 
 // Every present (`scaled`: the DLSS render scale ran this frame; `view_3d`: the 3D view drew, at any scale): ends a
 // traced frame (writes the file; with the draw reads after the frame after it); starts one after SCALED_PRESENTS scaled
-// presents (at_100: of the 3D view), or at once when the marker is there (on_demand). The map trace: starts at the first
-// present its delay after the first one, ends its frames later (its file written then).
+// presents (at_100: of the 3D view), or at once when the marker is there (on_demand). The map trace: a window starts at
+// the first present its delay after the first one (or after the window before it ended), ends its frames later (its
+// files written then).
 inline void OnPresent(bool scaled, bool view_3d = false) {
   auto& state = internal::state;
   if (auto& trace = internal::map_trace; trace.armed.load(std::memory_order_relaxed)) {
@@ -1362,12 +1435,13 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
     LARGE_INTEGER frequency = {};
     QueryPerformanceFrequency(&frequency);
     std::unique_lock lock(trace.mutex);
+    const internal::MapWindow& window = trace.windows[trace.window];
     if (!trace.tracing.load(std::memory_order_relaxed)) {
       if (trace.first_present == 0) {
         trace.first_present = now;
       }
-      const bool before_start =
-          static_cast<double>(now - trace.first_present) < trace.delay_seconds * static_cast<double>(frequency.QuadPart);
+      const double seconds = static_cast<double>(now - trace.first_present) / static_cast<double>(frequency.QuadPart);
+      const bool before_start = seconds < window.delay_seconds;
       // No context yet at the start (Attila's own present callback, this one's caller, runs before the map trace's
       // present callback that gives it): one present later, once.
       const bool waiting_for_context = !before_start && !trace.waited_for_context
@@ -1411,18 +1485,31 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
         trace.native_hook = (context == nullptr ? "no_context" : "failed");
         trace.presents.assign(1, now);
         trace.tracing.store(true, std::memory_order_release);
+        if (trace.windows.size() > 1) {
+          renodx::utils::log::i("[Total War] Map trace window ", trace.window + 1, " of ", trace.windows.size(),
+                                ": started ", std::format("{:.3f}", seconds), " s after the first present (asked ",
+                                window.delay_seconds, " s).");
+        }
         // The context hooks on the game's immediate context (the present callback's), after the lock: their seeds come
         // through OnNativeCall, which takes it.
         lock.unlock();
-        if (context != nullptr && context_hooks::Install(context, internal::OnNativeCall, trace.hash_contents)) {
+        if (context != nullptr && context_hooks::Install(context, internal::OnNativeCall, window.hash_contents)) {
           trace.native_hook = "on";
         }
       }
     } else {
       trace.presents.push_back(now);
-      if (trace.presents.size() > trace.frames) {
+      if (trace.presents.size() > window.frames) {
+        const bool last_window = (trace.window + 1 == trace.windows.size());
+        const auto files = internal::MapTraceFiles(trace.window);
+        const std::string label =
+            (trace.windows.size() == 1
+                 ? std::string("Map trace")
+                 : std::format("Map trace window {} of {}", trace.window + 1, trace.windows.size()));
         trace.tracing.store(false);
-        trace.armed.store(false);
+        if (last_window) {
+          trace.armed.store(false);
+        }
         // A call from another thread switched the hooks to pass-through (logged): the header says so.
         if (std::string_view(trace.native_hook) == "on"
             && context_hooks::internal::state.foreign_qpc.load(std::memory_order_relaxed) != 0) {
@@ -1471,7 +1558,7 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
           std::ofstream file;
           std::string text;
           uint32_t parts = 0;
-          const auto open_file = [&](const wchar_t* name) {
+          const auto open_file = [&](const std::string& name) {
             path = state.folder / name;
             part_path = path;
             part_path += L".part";
@@ -1495,13 +1582,13 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
             }
             return file && !renamed;
           };
-          open_file(L"tw_map_trace.txt");
+          open_file(files[0]);
           text = std::format(
               "trace setting={} qpc_frequency={} frames={} end_qpc={} draws={} events={} dropped_draws={}"
               " dropped_events={} native_calls={} dropped_native_calls={} native_hook={}\n",
-              trace.setting, frequency.QuadPart, frames, trace.presents.back(), trace.draws.size(), trace.events.size(),
-              trace.dropped_draws, trace.dropped_events, trace.native_calls.size(), trace.dropped_native_calls,
-              trace.native_hook);
+              window.setting, frequency.QuadPart, frames, trace.presents.back(), trace.draws.size(),
+              trace.events.size(), trace.dropped_draws, trace.dropped_events, trace.native_calls.size(),
+              trace.dropped_native_calls, trace.native_hook);
           for (const auto& module : trace.modules) {
             text += std::format("module name={} base=0x{:x}\n", module.name, module.base);
           }
@@ -1806,7 +1893,7 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
           //     hooks or in a state not seen yet); -: none changed. From first_drop_seq on, and after the foreign
           //     thread's call, cbs=? vbs=?: a dropped or passed-on bind makes every later binding unknown. From
           //     first_native_drop_seq on, no #<content>: a dropped unmap leaves every later content unknown.
-          open_file(L"tw_map_trace_v3.txt");
+          open_file(files[1]);
           std::vector<int64_t> hash_ticks(frames, 0);
           for (const auto& call : trace.native_calls) {
             hash_ticks[frame_of(call.qpc)] += call.hash_ticks;
@@ -1819,11 +1906,11 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
               "v3 setting={} qpc_frequency={} frames={} end_qpc={} hook={} native_calls={} dropped_native_calls={}"
               " binds={} dropped_binds={} draws={} dropped_draws={} buffers={} dropped_buffers={} first_drop_seq={}"
               " hash={} hash_ms={} first_native_drop_seq={}\n",
-              trace.setting, frequency.QuadPart, frames, trace.presents.back(), trace.native_hook,
+              window.setting, frequency.QuadPart, frames, trace.presents.back(), trace.native_hook,
               trace.native_calls.size(), trace.dropped_native_calls, trace.binds.size(), trace.dropped_binds,
               trace.draws.size(), trace.dropped_draws, trace.buffers.size(), trace.dropped_buffers,
               (trace.first_drop == UINT64_MAX ? std::string("-") : std::to_string(trace.first_drop)),
-              (trace.hash_contents ? "on" : "off"), hash_ms,
+              (window.hash_contents ? "on" : "off"), hash_ms,
               (trace.first_native_drop == UINT64_MAX ? std::string("-") : std::to_string(trace.first_native_drop)));
           for (const int64_t present : trace.presents) {
             text += std::format("present qpc={}\n", present);
@@ -1997,25 +2084,24 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
             }
           }
           if (close_file() && written) {
-            renodx::utils::log::i("[Total War] Map trace: ", frames, " frames, ", trace.draws.size(), " draws, ",
+            renodx::utils::log::i("[Total War] ", label, ": ", frames, " frames, ", trace.draws.size(), " draws, ",
                                   trace.events.size(), " events, ", trace.native_calls.size(), " native calls, ",
-                                  trace.binds.size(),
-                                  " binds saved to tw_map_trace.txt and tw_map_trace_v3.txt next to the exe (", parts,
-                                  " parts).");
+                                  trace.binds.size(), " binds saved to ", files[0], " and ", files[1],
+                                  " next to the exe (", parts, " parts).");
           } else {
-            renodx::utils::log::w("[Total War] Map trace: tw_map_trace.txt or tw_map_trace_v3.txt next to the exe could not be"
-                                  " written.");
+            renodx::utils::log::w("[Total War] ", label, ": ", files[0], " or ", files[1],
+                                  " next to the exe could not be written.");
           }
         } catch (const std::exception& error) {
-          renodx::utils::log::w("[Total War] Map trace: not written (", error.what(), ").");
+          renodx::utils::log::w("[Total War] ", label, ": ", files[0], " and ", files[1], " not written (",
+                                error.what(), ").");
         }
-        trace.draws = {};
-        trace.events = {};
-        trace.native_calls = {};
-        trace.binds = {};
-        trace.bind_slots = {};
-        trace.buffers = {};
-        trace.live_buffers = {};
+        if (last_window) {
+          internal::ReleaseMapStorage();
+        } else {
+          internal::ClearMapRecords();
+          ++trace.window;
+        }
       }
     }
   }
