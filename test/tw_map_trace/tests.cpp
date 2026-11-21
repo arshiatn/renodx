@@ -61,11 +61,14 @@
 // 12. Windows (<s>[,<frames>[,hash]];...): a value refused whole, its reason logged (an empty window, a bad second
 //     window, a seventh window, a window not after the one before it, over 255 characters), nothing registered; six
 //     windows armed, the log naming each window's files.
-// 13. The window schedule (0,1;0.2,1,hash;0.3,2): each window at its own time with its own files (tw_map_trace.txt,
+// 13. The window schedule (0,1;1,1,hash;1.1,2): each window at its own time with its own files (tw_map_trace.txt,
 //     tw_map_trace_2.txt, tw_map_trace_3.txt and their _v3 files: setting, frames, hash, draws), started and saved in
 //     the log, the presents between windows not traced, armed until the last window's files. A late window (0,2;0.01,1:
 //     its time comes while window 1 runs) starts at the first present after window 1's files (its start line says when);
 //     its v1 file not writable (a folder at its .part): the log says which files could not be written.
+// 14. A call in its frame's ending present's QPC tick (a draw given that present's time, as when both reads land in one
+//     100 ns tick): that frame's (frame=0, the next index), not the next frame's; the next frame's first draw index=0 and
+//     its map's draw=1 (the tie draw not counted in frame 1); the frame lines' draw counts 2 and 1.
 #include <windows.h>
 #include <d3d11_1.h>
 #include <wrl/client.h>
@@ -999,7 +1002,7 @@ int main() {
   for (const char* name : {"tw_map_trace_2.txt", "tw_map_trace_v3_2.txt", "tw_map_trace_3.txt", "tw_map_trace_v3_3.txt"}) {
     std::filesystem::remove(folder / name);
   }
-  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,1;0.2,1,hash;0.3,2");
+  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,1;1,1,hash;1.1,2");
   log_lines.clear();
   frame_trace::Install();
   present_event();
@@ -1013,7 +1016,7 @@ int main() {
   frame_trace::OnPresent(false);
   draw();
   CHECK(!map_trace.tracing.load() && map_trace.draws.empty());
-  Sleep(250);
+  Sleep(1050);
   frame_trace::OnPresent(false);
   CHECK(map_trace.tracing.load() && map_trace.window == 1 && hook_state.hooks.size() == hooks::internal::MEASURE_BODIES);
   draw();
@@ -1040,8 +1043,8 @@ int main() {
     size_t draws;
   };
   for (const WindowFiles& files : {WindowFiles{"tw_map_trace.txt", "tw_map_trace_v3.txt", "0,1", "1", "off", 1},
-                                   WindowFiles{"tw_map_trace_2.txt", "tw_map_trace_v3_2.txt", "0.2,1,hash", "1", "on", 1},
-                                   WindowFiles{"tw_map_trace_3.txt", "tw_map_trace_v3_3.txt", "0.3,2", "2", "off", 3}}) {
+                                   WindowFiles{"tw_map_trace_2.txt", "tw_map_trace_v3_2.txt", "1,1,hash", "1", "on", 1},
+                                   WindowFiles{"tw_map_trace_3.txt", "tw_map_trace_v3_3.txt", "1.1,2", "2", "off", 3}}) {
     const auto header = Lines(folder / files.trace, "trace");
     const auto v3 = Lines(folder / files.v3, "v3");
     CHECK(header.size() == 1 && Field(header[0], "setting") == files.setting && Field(header[0], "frames") == files.frames
@@ -1052,7 +1055,7 @@ int main() {
     CHECK(log_count(std::format(" saved to {} and {} next to the exe (", files.trace, files.v3)) == 1);
   }
   CHECK(log_count("[Total War] Map trace window 1 of 3: started ") == 1 && log_count("[Total War] Map trace window 2 of 3: started ") == 1
-        && log_count("[Total War] Map trace window 3 of 3: started ") == 1 && log_count("(asked 0.3 s).") == 1
+        && log_count("[Total War] Map trace window 3 of 3: started ") == 1 && log_count("(asked 1.1 s).") == 1
         && log_count("[Total War] Map trace window 3 of 3: 2 frames, 3 draws, ") == 1);
   frame_trace::Uninstall();
   CHECK(Registered() == 0);
@@ -1093,6 +1096,41 @@ int main() {
   std::printf("13. a late window: started %.3f s after the first present (asked 0.01 s), right after window 1's files; its unwritable"
               " files logged\n",
               late_seconds);
+
+  // 14. A draw in the QPC tick of the present that ends its frame: that frame's.
+  SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,2");
+  frame_trace::Install();
+  present_event();
+  frame_trace::OnPresent(false);
+  draw();
+  frame_trace::OnPresent(false);
+  CHECK(map_trace.tracing.load() && map_trace.presents.size() == 2);
+  {
+    const std::unique_lock lock(map_trace.mutex);
+    auto tie = map_trace.draws.back();
+    tie.sequence = map_trace.sequence++;
+    tie.qpc = map_trace.presents[1];
+    tie.done = map_trace.presents[1];
+    map_trace.draws.push_back(tie);
+  }
+  draw();
+  CHECK(SUCCEEDED(context->Map(dynamic_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+  Invoke<api_event::map_buffer_region>(static_cast<reshade::api::device*>(&mock_device), Handle(dynamic_buffer.Get()), uint64_t{0}, UINT64_MAX,
+                                       reshade::api::map_access::write_discard, &mapped.pData);
+  Invoke<api_event::unmap_buffer_region>(static_cast<reshade::api::device*>(&mock_device), Handle(dynamic_buffer.Get()));
+  context->Unmap(dynamic_buffer.Get(), 0);
+  frame_trace::OnPresent(false);
+  CHECK(!map_trace.tracing.load());
+  frame_trace::Uninstall();
+  CHECK(Registered() == 0);
+  const auto tie_draws = Lines(v3_path, "draw");
+  CHECK(tie_draws.size() == 3 && Field(tie_draws[0], "frame") == "0" && Field(tie_draws[0], "index") == "0" && Field(tie_draws[1], "frame") == "0"
+        && Field(tie_draws[1], "index") == "1" && Field(tie_draws[2], "frame") == "1" && Field(tie_draws[2], "index") == "0");
+  const auto tie_frames = Lines(trace_path, "frame");
+  CHECK(tie_frames.size() == 2 && Field(tie_frames[0], "draws") == "2" && Field(tie_frames[1], "draws") == "1");
+  const auto tie_maps = Lines(trace_path, "map");
+  CHECK(tie_maps.size() == 1 && Field(tie_maps[0], "frame") == "1" && Field(tie_maps[0], "draw") == "1");
+  std::printf("14. a draw in its frame's ending present's QPC tick: frame 0 index 1; frame 1's draw index 0, its map after draw 1\n");
 
   // Part 2's trace back in its place for run.ps1.
   std::filesystem::remove(trace_path);
