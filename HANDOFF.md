@@ -5543,6 +5543,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         loopfetch) -> bd1r_ reviews all 4 commits. [ ] B1.5: c3i_ switches B1 to the shared header (S4 Must).
         Agents: c33i_ (C.3-4 + shared table), t4i_ (T1b follow-ups + ebo_ lane), c3i_ (B1.3 fixes) (3 of 3). b13r_,
         bd1r_ idle until hand-backs. QUEUE: bd1r_ C.3-4 review, b13r_ re-check, B1.4 / B1.5.
+        t4i_ T1b FOLLOW-UPS + ebo_ LANE DONE 13:1x (rmt_t1bn d3def8a16, local; reports/t4i_t1bfollow_handback.md):
+        S1 (pool_trace_ignored INFO, mt_trace <-> pool window pairing within 1 s, trace_missing, 2 s rule in ebo_make),
+        nits 1-5 / 7 / 8 (BOM / UTF-16 set file = one ERROR + no entries; text after ';' = WARN); per-kind crash budget
+        crashes_by_kind {leak, pinned, unpinned} + crash_list.json / .txt (log tails, dumps); presort fully out of
+        segments / gates / check, ebo_make refuses presort env, '; presort: off in this build' expected per prep start
+        (missing = resumable); W_w = UPPER BOUND only (N x chain avg / frames; heapfix never times the waiter) + S8-2
+        revive flag for cpu replay scenes. Tests: tw_test_hooks x86 + amd64 9 modes, run_all 0 failed (lib 311, make
+        57, check 102, leg 116, analyze 51); gated x86 x3 + amd64 all 16 includers exit 0. Process notes for the
+        report: branch made with symbolic-ref + reset -q (switch -c failed on the DLSS junction; no junction touched);
+        t4i_ deleted one test-created __pycache__ .pyc.
+        HEAPFIX A/B (t4i_ table): none of sortfix / loopfetch / memfast / x87fix switches live; each is a heapfix.ini
+        key per start; prefetch alone + animation site alone need builds. Cost: ABBA 4 x 180 s ~22 min per scene per
+        fix; cheapest = 'all four off' vs 'all on' on W3 + D1 ~45 min. [ ] ATN decides whether the end batch adds it.
+        Notes for the author package: our engine_code cut moves the animation fill (loopfetch +0x182E0DA's loop) onto
+        our workers; memfast 65-128 B not built (<= 64 B here).
+        [ ] x87 review item (t4i_): heapfix's x87 watcher / paused_write skip threads that do not start in the game
+        module (our pool workers, heapfix's prepare threads) -> a one-way x87fix revert could rewrite a block while a
+        worker is inside it (MT-on only; rounding itself holds: the pool copies control words per job).
+        [ ] heapfix W_w true measurement (proposal, heapfix NOT edited, prep frozen): QPC pair around the render
+        thread's prepare wait + 2 counters, one more clause in the segment line - only if a revival needs it.
+        ebr_ RESUMED 13:1x: round 4 re-check of t4i_'s work -> reports/ebr_t1b_review.md -> merge rmt_t1bn.
+        Agents: c33i_ (C.3-4 + shared table), c3i_ (B1.3 fixes), ebr_ (t4i_ re-check) (3 of 3). QUEUE: bd1r_ C.3-4
+        review, b13r_ re-check, B1.4 / B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
