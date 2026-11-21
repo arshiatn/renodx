@@ -6325,6 +6325,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         rows, steps, ATN questions) -> Opus xHigh review.
         Agents: c33i_ (R-S5), t4i_ (T3c), upt_ (unified PT design) (3 of 3). QUEUE: ebr_ T3c re-check -> merge rmt_t3b,
         R-S5 review, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, unified PT review, GPU S1.
+        t4i_ T3C DONE 23:4x (reports/t4i_t3c_handback.md): rmt_t3b 6d60c9f57 (M-T3b-1 spin past presents[1]; amd64 exe
+        0 / 30, run.ps1 x86 + amd64 PASS). Bench (backups t4i_bak\r13): ebo_mapcmp.py rewritten (first OFF = reference,
+        later OFF = controls; M-T3b-2 / M-T3b-3 not-comparable rules; per-place / slot / buffer masks; masked match
+        NOTE), DIFFERS = leg PROBLEM in ebo_analyze, not comparable = NOTE; 6th window 820,8,hash in segments.json
+        PAUSE-W3 + plan rows; nits. test_analyze 101 / 101; run_all green.
+        ebr_ STARTED 23:4x: T3c re-check -> reports/ebr_t1b_review.md '## T3c re-check' (MERGE / FIX).
+        Agents: c33i_ (R-S5), upt_ (unified PT design), ebr_ (T3c re-check) (3 of 3). QUEUE: merge rmt_t3b, R-S5 review,
+        B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, unified PT review, GPU S1.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
