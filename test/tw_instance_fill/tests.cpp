@@ -308,7 +308,7 @@ bool TouchesAny(const Ranges& ranges, bool written) {
 void TestSites() {
   REQUIRE(fill::Prepare(reinterpret_cast<HMODULE>(patched)));
   CHECK(fi::found == fill::ALL_SITES);
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     const uint32_t rva = fill::SITES[site].rva;
     CHECK(fi::sites[site].at == patched + rva);
     CHECK(std::memcmp(fi::sites[site].game.data(), game + rva, fill::SITE_SIZE) == 0);
@@ -392,7 +392,7 @@ void TestSites() {
       ++failures;
     }
   };
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     const fill::SiteInfo& info = fill::SITES[site];
     refuses(info.rva - info.before, 0x01, "a changed byte before the call");
     refuses(info.rva + 1, 0x10, "a call to another function");
@@ -452,48 +452,48 @@ void TestRewrite() {
   };
   const auto find_again = [&] {
     REQUIRE(fill::Prepare(reinterpret_cast<HMODULE>(patched)));
-    CHECK(fi::found == fill::ALL_SITES && fill::Wanted(true) == fill::ALL_SITES);
+    CHECK(fi::found == fill::ALL_SITES && fill::Wanted(true) == fill::R1_SITES);
   };
-  CHECK(fill::Changing(fill::ALL_SITES) == fill::ALL_SITES && fill::Changing(0) == 0);
-  CHECK(rewrite(fill::ALL_SITES) == 0);
-  fi::written = fill::ALL_SITES;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  CHECK(fill::Changing(fill::R1_SITES) == fill::R1_SITES && fill::Changing(0) == 0);
+  CHECK(rewrite(fill::R1_SITES) == 0);
+  fi::written = fill::R1_SITES;
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     CHECK(bytes_of(site, true));
   }
-  CHECK(fill::Changing(fill::ALL_SITES) == 0 && fill::Changing(0) == fill::ALL_SITES);
+  CHECK(fill::Changing(fill::R1_SITES) == 0 && fill::Changing(0) == fill::R1_SITES);
   // Out again: the game's own bytes.
   CHECK(rewrite(0) == 0);
   fi::written = 0;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     CHECK(bytes_of(site, false));
   }
   CHECK(std::memcmp(patched + 0x17AE700, game + 0x17AE700, 0x20) == 0 && std::memcmp(patched + 0x17AED00, game + 0x17AED00, 0x40) == 0);
 
   // A site that is another tool's: every site stands down going in, and nothing is written.
   patched[fill::SITES[2].rva + 1] ^= 0x04;
-  const uint32_t stood_in = rewrite(fill::ALL_SITES);
-  CHECK(stood_in == fill::ALL_SITES);
+  const uint32_t stood_in = rewrite(fill::R1_SITES);
+  CHECK(stood_in == fill::R1_SITES);
   patched[fill::SITES[2].rva + 1] ^= 0x04;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     CHECK(bytes_of(site, false));
   }
   stand_down(stood_in);
   find_again();
   // Going out: only the changed site stays (it is the other tool's), the others come out.
-  CHECK(rewrite(fill::ALL_SITES) == 0);
-  fi::written = fill::ALL_SITES;
+  CHECK(rewrite(fill::R1_SITES) == 0);
+  fi::written = fill::R1_SITES;
   patched[fill::SITES[1].rva + 2] ^= 0x04;
   const uint32_t stood_out = rewrite(0);
   CHECK(stood_out == 1u << 1);
   patched[fill::SITES[1].rva + 2] ^= 0x04;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     CHECK(bytes_of(site, site == 1));
   }
   stand_down(stood_out);
   // The other tool's bytes stay there; the game's come back for the rest of the test.
   std::memcpy(patched + fill::SITES[1].rva, fi::sites[1].game.data(), fill::SITE_SIZE);
   find_again();
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     CHECK(bytes_of(site, false));
   }
 
@@ -526,7 +526,7 @@ void TestFills() {
   fi::row_on.store(true);
   for (uint32_t threads = 1; threads <= 8; ++threads) {
     UpdatePool(threads);
-    for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+    for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
       for (const uint32_t n : COUNTS) {
         for (const bool write_combined : {false, true}) {
           const uint32_t stride = STRIDES[random() % STRIDES.size()];
@@ -546,7 +546,7 @@ void TestFills() {
   size_t random_bad = 0;
   UpdatePool(4);
   for (int run = 0; run < 150; ++run) {
-    const size_t site = random() % fill::SITE_COUNT;
+    const size_t site = random() % fill::FILL_SITE_COUNT;
     random_bad += (RunExact(site, 1 + random() % 6000, STRIDES[random() % STRIDES.size()], random() % 3000, (random() & 1) != 0, &random) ? 0 : 1);
   }
   CHECK(random_bad == 0);
@@ -576,7 +576,7 @@ Count RunCounting(size_t site, uint32_t n, uint32_t begin0) {
 void TestPartition() {
   UpdatePool(5);
   bool any_workers = false;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     for (const uint32_t n : {1u, 100u, 511u, 512u, 513u, 1000u, 2000u, 20000u}) {
       const uint32_t begin0 = (fill::SITES[site].copy == fill::Copy::LIST_ITEMS ? 3000 : 0);
       const Count count = RunCounting(site, n, begin0);
@@ -599,7 +599,7 @@ void TestPartition() {
   CHECK(game_call.calls == 1 && game_call.range == &range && game_call.functor == &scenario->functors[0] && game_call.manager == nullptr);
   CHECK(std::all_of(scenario->destinations[0], scenario->destinations[0] + scenario->destination_bytes, [](uint8_t byte) { return byte == SENTINEL; }));
   fi::game_fills = original;
-  CHECK(fill::Wanted(true) == fill::ALL_SITES);
+  CHECK(fill::Wanted(true) == fill::R1_SITES);
   CHECK(fi::row_on.load());
 
   const auto alone_equal = [&](size_t site, uint32_t n, const char* what) {
@@ -685,7 +685,7 @@ bool CountingSeesDifference(bool* control, Where where) {
   UpdatePool(4);
   bool different = false;
   *control = true;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     const uint32_t begin0 = (fill::SITES[site].copy == fill::Copy::LIST_ITEMS ? 3000 : 0);
     ResetHits();
     UseFakeCopy(&CountingCopy);
@@ -709,7 +709,7 @@ bool AllExact() {
   UpdatePool(4);
   std::mt19937 random(99);
   bool exact = true;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     exact &= RunExact(site, 3000, 64, 500, false, &random);
   }
   return exact;
@@ -764,7 +764,7 @@ void TestControls() {
   {
     fi::incomplete_fills.store(0);
     CHECK(CountingSeesDifference(&fill::control_skip_chunk, Where::SAME_THREAD));
-    CHECK(fi::incomplete_fills.load() == fill::SITE_COUNT);
+    CHECK(fi::incomplete_fills.load() == fill::FILL_SITE_COUNT);
     log_lines.clear();
     fill::Wanted(true);
     size_t said_not_done = 0;
@@ -806,7 +806,7 @@ void TestCheckMode() {
   fi::check_mismatches.store(0);
   fi::check_skipped.store(0);
   std::mt19937 random(7);
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     CHECK(RunExact(site, 3000, 64, 12, false, &random));
   }
   CHECK(fi::checked.load() == 4 && fi::check_mismatches.load() == 0 && fi::check_skipped.load() == 0);
