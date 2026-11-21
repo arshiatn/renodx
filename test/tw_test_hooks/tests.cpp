@@ -3,9 +3,10 @@
 // made, the game's own runtime answers as before. The hooks read their environment once: one mode per run (proxy,
 // noproxy, failed). `control`: the proxy's expectations without a proxy, so the game's runtime answers; it must fail.
 // A button by its label presses every button with it, by "<group>/<label>" only that group's.
-// RENODX_TW_SET_FILE (modes setfile, bothset, nohooks, nofile): the entries from a file (CRLF, one per line, past SET's
-// 8 KB), the live "env." and "mt_trace" keys through the add-on's LiveHooks, and the refusals: both lists set, no hooks,
-// a file that cannot be read.
+// RENODX_TW_SET_FILE (modes setfile, bothset, nohooks, nofile, bom, utf16): the entries from a file (CRLF, one per line,
+// past SET's 8 KB, a second entry on a line warned about and not used), the live "env." and "mt_trace" keys through the
+// add-on's LiveHooks, and the refusals: both lists set, no hooks, a file that cannot be read, a UTF-8 byte order mark or
+// a UTF-16 file (one error, no entries).
 #include <windows.h>
 
 #include <algorithm>
@@ -38,13 +39,19 @@ __declspec(dllexport) bool ReShadeRegisterAddon(void*, uint32_t) { return true; 
 __declspec(dllexport) void ReShadeUnregisterAddon(void*) {}
 __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) {
   logged.emplace_back(message);
-  if (print_logs) std::printf("  log: %s\n", message);
+  if (print_logs) {
+    std::printf("  log: %s\n", message);
+  }
 }
 __declspec(dllexport) void ReShadeRegisterEvent(reshade::addon_event event, void* callback) {
-  if (event == reshade::addon_event::reshade_present) registered_present = callback;
+  if (event == reshade::addon_event::reshade_present) {
+    registered_present = callback;
+  }
 }
 __declspec(dllexport) void ReShadeUnregisterEvent(reshade::addon_event event, void* callback) {
-  if (event == reshade::addon_event::reshade_present && callback == registered_present) registered_present = nullptr;
+  if (event == reshade::addon_event::reshade_present && callback == registered_present) {
+    registered_present = nullptr;
+  }
 }
 __declspec(dllexport) bool ReShadeGetConfigValue(void*, void*, const char* section, const char* key, char* value, size_t* size) {
   const auto found = ini.find({section, key});
@@ -233,17 +240,32 @@ static int RunSetFile(const std::string& mode) {
   path = path.substr(0, path.find_last_of('\\') + 1) + ((mode == "nofile") ? "missing_set_file.txt" : "set_file.txt");
   std::remove(path.c_str());
   if (mode != "nofile") {
-    std::string text = "0:bloom=0.5;\r\n0:env.RENODX_TEST_ENV=1:4,2:2;\r\n0:mt_trace=20;\r\n\r\n";
+    // Blanks after an entry's ';' are no second entry; line 805's second entry is warned about and not used.
+    std::string text = "0:bloom=0.5; \r\n0:env.RENODX_TEST_ENV=1:4,2:2;\r\n0:mt_trace=20;\r\n\r\n";
     // Past RENODX_TW_SET's 8 KB: every line is read.
-    for (int index = 0; index < 800; ++index) text += "0:bloom=0.5;\r\n";
-    text += "1:env.RENODX_TEST_ENV=;\r\n1:mt_trace=x;\r\n1:env.RENODX_TEST_NEVER_SET=;\r\n1:bloom=1.5";
+    for (int index = 0; index < 800; ++index) {
+      text += "0:bloom=0.5;\r\n";
+    }
+    text += "0:bloom=0.5;1:bloom=2;\r\n1:env.RENODX_TEST_ENV=;\r\n1:mt_trace=x;\r\n1:env.RENODX_TEST_NEVER_SET=;\r\n1:bloom=1.5";
+    if (mode == "bom") {
+      text.insert(0, "\xEF\xBB\xBF");
+    } else if (mode == "utf16") {
+      std::string wide = "\xFF\xFE";
+      for (const char character : text) {
+        wide += character;
+        wide += '\0';
+      }
+      text = wide;
+    }
     FILE* file = std::fopen(path.c_str(), "wb");
     CHECK(file != nullptr);
     std::fwrite(text.data(), 1, text.size(), file);
     std::fclose(file);
   }
   SetEnvironmentVariableA("RENODX_TW_SET_FILE", path.c_str());
-  if (mode == "bothset") SetEnvironmentVariableA("RENODX_TW_SET", "0:bloom=0.25");
+  if (mode == "bothset") {
+    SetEnvironmentVariableA("RENODX_TW_SET", "0:bloom=0.25");
+  }
   print_logs = false;
 
   mock::Device device;
@@ -257,8 +279,10 @@ static int RunSetFile(const std::string& mode) {
   CHECK(registered_present == reinterpret_cast<void*>(&hooks::internal::OnReshadePresent));
   hooks::internal::OnReshadePresent(&runtime);
   if (mode == "setfile") {
-    CHECK(count("[Test] Test: RENODX_TW_SET_FILE " + path + " read (807 entries).") == 1);
-    CHECK(bloom == 0.5f && count("[Test] Test: bloom set to 0.5.") == 801);
+    CHECK(count("[Test] Test: RENODX_TW_SET_FILE " + path + " read (808 entries).") == 1);
+    CHECK(count("[Test] Test: RENODX_TW_SET_FILE " + path + " line 805 has text after its entry's ';', which is not used.") == 1);
+    CHECK(std::count_if(logged.begin(), logged.end(), [](const std::string& line) { return line.find("has text after") != std::string::npos; }) == 1);
+    CHECK(bloom == 0.5f && count("[Test] Test: bloom set to 0.5.") == 802);
     CHECK(env("RENODX_TEST_ENV") == "1:4,2:2" && count("[Test] Test: env RENODX_TEST_ENV set to 1:4,2:2 (generation 1).") == 1);
     CHECK(armed.size() == 1 && armed[0] == 20 && count("[Test] Test: mt_trace armed 20 frames.") == 1);
     CHECK(env_generation == 1);
@@ -277,6 +301,11 @@ static int RunSetFile(const std::string& mode) {
     CHECK(bloom == 0.5f && env("RENODX_TEST_ENV") == "<unset>" && env_generation == 0 && armed.empty());
     CHECK(count("[Test] Test: env RENODX_TEST_ENV: no live env in this add-on, nothing changed.") == 1);
     CHECK(count("[Test] Test: mt_trace: no trace window in this add-on, nothing armed.") == 1);
+  } else if (mode == "bom" || mode == "utf16") {
+    CHECK(count("[Test] Test: RENODX_TW_SET_FILE " + path + " is not plain text (a byte order mark or UTF-16); no set entries.") == 1);
+    hooks::internal::clock_start.store(GetTickCount64() - 2000);
+    hooks::internal::OnReshadePresent(&runtime);
+    CHECK(logged.size() == 1 && bloom == 1.f && env_generation == 0 && armed.empty() && env("RENODX_TEST_ENV") == "<unset>");
   } else {
     CHECK(count("[Test] Test: RENODX_TW_SET_FILE " + path + " could not be read; no set entries.") == 1 && bloom == 1.f);
   }
@@ -284,7 +313,9 @@ static int RunSetFile(const std::string& mode) {
   CHECK(registered_present == nullptr);
   std::remove(path.c_str());
   for (const auto& line : logged) {
-    if (line.find(" set to 0.5.") == std::string::npos) std::printf("  log: %s\n", line.c_str());
+    if (line.find(" set to 0.5.") == std::string::npos) {
+      std::printf("  log: %s\n", line.c_str());
+    }
   }
   std::printf("PASS %s: RENODX_TW_SET_FILE, env. and mt_trace keys\n", mode.c_str());
   return 0;
@@ -292,7 +323,7 @@ static int RunSetFile(const std::string& mode) {
 
 int main(int argc, char** argv) {
   const std::string mode = (argc > 1) ? argv[1] : "proxy";
-  if (mode == "setfile" || mode == "bothset" || mode == "nohooks" || mode == "nofile") return RunSetFile(mode);
+  if (mode == "setfile" || mode == "bothset" || mode == "nohooks" || mode == "nofile" || mode == "bom" || mode == "utf16") return RunSetFile(mode);
   // A D3D9 game behind the proxy, the case the filter is for; the control expects it without the proxy.
   const bool expect_proxy = (mode == "proxy" || mode == "control");
   SetEnvironmentVariableA("RENODX_TW_SET", "0:bloom=0.5;0:shot=1;0:page-presets/Reset=1;0:Reset=1");
