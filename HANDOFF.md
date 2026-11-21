@@ -5986,6 +5986,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         t4i_ STARTED round 9 20:0x: SPAWNS_OFF gate row refresh vs merged c3f89865b + S-X2r-1.
         Agents: b13r_ (B1.5 re-check), c33i_ (R-S4 part 1), t4i_ (round 9) (3 of 3). QUEUE: merge rmt_b15fix, c33i_ R-S4
         part 2, bd1r_ R-S3 re-check, x0i_ S-X2r-2 + nits, R-S5a addendum, B1.6 (+ N5 real-routine tests), X1.
+        b13r_ B1.5 RE-CHECK DONE 20:0x (reports/b13r_b15_review.md '## Re-check'): MERGE. M1 / M2 / S1 / N1-N5 right; M2
+        leftover state (epoch jump stays in, both leave found) safe; b13r_ mutation-checked both M2 lines (fail at
+        tests.cpp:3745 / :3763). NEW R1 (Should, before B1.6): the pair can still split (foreign overwrite of our epoch
+        jump, or a protect failure going in) -> one line in Update (target drops a half pair) + 13(n) case. Side note
+        (unchecked): the job sites may have the same shape (13(b) never switches on again after site 7 stood down).
+        MERGED 20:0x: rmt_b15fix -> atn-mods 404258f02 (name_check 288 ids / 11 generic; gated x86 x3 + amd64 exit 0;
+        pushed).
+        c3i_ STARTED R1 20:0x on rmt_b15r1 (from 404258f02) + look at the job-site side note -> b13r_ re-check.
+        c33i_ R-S4 PART 1 DONE 20:0x (reports/c33i_rs4p1_handback.md): rmt_rs1 6f8ed5df5 (instance_fill.hpp +
+        tests.cpp). M1 reverse restore, TestRewrite on an RX page + VirtualQuery (old loop fails 'page is 40'); S1
+        control_all_join (late worker held 400 ms: ENTERED < 200 ms, ALL >= 300 ms) + control_skip_chunk
+        (incomplete_fills == 4); S2 test mirrors Update; N1-N3, N5-N8, N10. tw_instance_fill x86 x6 PASS; gated x86 /
+        DRAW_RECORDING / amd64 exit 0.
+        c33i_ STARTED part 2a 20:0x: rmt_rs2 from 404258f02 (cherry-picks rmt_rs1) + N4 DRY inside instance_fill.hpp only;
+        part 2b (hook-up re-apply + S2 tw_engine_code cases + N9) after c3i_'s R1 merges -> bd1r_ re-check.
+        Agents: t4i_ (round 9), c3i_ (R1), c33i_ (R-S4 part 2a) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_ part
+        2b, bd1r_ R-S3 re-check, x0i_ S-X2r-2 + nits, R-S5a addendum, B1.6 (+ N5 real-routine tests), X1.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
