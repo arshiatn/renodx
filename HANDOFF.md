@@ -5859,6 +5859,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         + mask + addon.cpp row in ONE separate last commit (B1.5 merges first) -> R-S3 Opus review.
         Agents: c3i_ (B1.5), ebr_ (T4 confirm + X0 review), c33i_ (R-S1 + R-S2) (3 of 3). QUEUE: b13r_ B1.5 review,
         R-S3 review, R-S5a addendum (Opus xHigh with C's owner), B1.6, X1, X2 (if ebr_ says go).
+        c3i_ B1.5 DONE 18:1x (rmt_b15 20d048cd4 from 3b1e9aa76, 8 files +649 / -45; reports/c3i_b15_handback.md): merged
+        tree 3b1e9aa76 FULL + 3 C suites exit 0 first. Cached Particle Count sites 27 (epoch +0x192D290 / 6) + 28 (sum
+        +0x1929E60 / 5), one-slot cache (node + generation), trampoline, check mode, own Off row (WorkerRows; addon.cpp
+        wiring = B1.6), test part 28 + control (16922 mismatches without epoch); S4 EffectSitesClearOfHeapfix
+        static_asserts on heapfix_ranges.hpp (touching = clear, pinned at +0x192D296), PatternSize moved there; S6 pool
+        cap 4 x, SPAWNS_OFF (CAP_REACHED / RESERVATION / TAG_LEAK) once each; N4. DESIGN NOTE: sibling_page (an E9 at a
+        HOOKED_ENTRIES entry into engine_code's stub page = ours). All tests + gated builds exit 0. N5 waits for the
+        real-routine tests before B1.6.
+        b13r_ STARTED B1.5 review 18:2x -> reports/b13r_b15_review.md.
+        Agents: ebr_ (T4 confirm + X0 review), c33i_ (R-S1 + R-S2), b13r_ (B1.5 review) (3 of 3). QUEUE: merge rmt_b15,
+        c33i_'s engine_code / addon.cpp commit after B1.5, R-S3 review, R-S5a addendum, B1.6 (+ N5 real-routine tests),
+        X1, X2 (if ebr_ says go).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
