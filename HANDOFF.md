@@ -4902,7 +4902,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         forms (cube, open sky, furnace box) + xcheck vs pbrt-v4 / Falcor per function; missing: an image-level Cornell
         scene vs pbrt-v4 (independent code). Recommend ONE design (Opus xHigh) "quality metrics + known-answer scenes +
         unified PT mode" when a slot is free; builds after render_mt. Agents: hp1i_, c3i_, ebo_ (3 of 3).
-        ATN 03:5x ANSWERS: A = ATN ADDS the 8 rules himself (lines given 03:5x, same form as the atn_harness_runs rules:
+        ATN 03:5x ANSWERS: A = ATN ADDS the 8 rules (lines given 03:5x, same form as the atn_harness_runs rules:
         tools\tw\bench\ebo_run.ps1 -Leg 1..4, each also -Leg N -DryRun) -> T4 must create ebo_run.ps1 at EXACTLY that
         path with exactly those switches; check the rules exist before T6 (never write them ourselves). B = YES: after
         a leak crash not pinned to one part, the batch goes on ONCE with that start cut shorter; a second one ends it.
