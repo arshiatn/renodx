@@ -5082,6 +5082,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         plan incl. branch scan in prepare_test); dis_at.py only.
         Agents: t4i_, c3i_, bd3o_ (3 of 3). QUEUE: T3, x87 review, R2 addendum, S0 GPU design review, unified PT design;
         after S3: B1.2a, T1b; after S8a: S8 (hp1i_ + the S7 nits) -> bd3r_ review.
+        t4i_ T4 DONE 05:1x (reports/t4i_handback.md; offline tests run_all.ps1 251 checks, 0 failing; never ran
+        ebo_run.ps1): constantinople_bench.ps1 (backup .bak_t4: -WprNoProbes, keys_at + P key, -Campaign, set-file,
+        heapfix_ini, live log watcher with line classes) + new bench\ebo_lib / ebo_make / ebo_check / ebo_analyze.py /
+        ebo_leg / ebo_run (only -Leg 1-4 [-DryRun]); data render_mt\ebo\ (segments.json with live_env owner table +
+        hffam, gates.json TO REFRESH at T5, overrides.json). Keys only to the game window, CAMP save backup + hash
+        restore, memory guard CloseMainWindow own pid (exit 4 -> continuation), no force kill (HANG left for ATN),
+        WPR disk gate clean stop, locks legs 1-4, crash pinning rules 1-3, numeric L_end / volley, dry run returns
+        before BenchStart. Not done: WPR ETL attribution (b2b_cpusegs.py), caps_limits, placeholders (T5 / audit),
+        L_end re-lay, paused-ring blocks vs a real leg 1. COORDINATOR: q5_pinned_continue was left false -> MUST be
+        true (ATN answered Q5 03:2x: go on once with the part Off).
+        ebr_ RESUMED 05:2x (Opus xHigh): review of T4 (Q5, HANG end, safety list, line classes vs real sources,
+        t4i_'s questions 2-5, not-done list) -> t4i_ fixes -> ebr_ re-check.
+        Agents: c3i_, bd3o_, ebr_ (3 of 3). QUEUE: T3, x87 review, R2 addendum, S0 GPU design review, unified PT design;
+        after S3: B1.2a, T1b; after S8a: S8 (hp1i_ + the S7 nits) -> bd3r_ review.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
