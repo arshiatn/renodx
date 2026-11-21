@@ -5764,6 +5764,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         b13r_ re-check -> merge.
         Agents: c33i_ (C.3-4 fixes + LOGX), ebr_ (x87 v2 re-check), c3i_ (B1.4 fixes) (3 of 3). QUEUE: bd1r_ re-check,
         merge rmt_c34, t4i_ LOGX case + nit, ebr_ T4 confirm, b13r_ B1.4 re-check, B1.5, X0.
+        ebr_ x87 v2 RE-CHECK DONE 16:0x (reports/ebr_x87_review.md from line 181): no Musts; X0 GO (with S-v2-1 /
+        S-v2-2 as walker rules + S-v2-4 settled), X1 GO at site 29 after rmt_c34 + B1.4 + R-S1 + B1.5 merge, X2 GO after
+        X0's review (Way A only if X0 + X2 reviewed before T5 AND the add-on's x87c pattern is pinned to X2's bytes,
+        S-v2-3; recommendation for leg 1 stays Way B), X2b HOLD. Present half of main = present thread confirmed on 6
+        captures. c33i_'s x87c pattern was still UNCOMMITTED in its worktree at the time (on top of 1bc4ddf03 = split
+        form) -> check it is in commit 8 at hand-back. 9 Nits (plan chain line :864 lacks C.3-4 / LOGX; worker_pool.hpp
+        invariant comment either way; ...).
+        COORDINATOR S-v2-4 (within ATN's rule 'C-suite offline tests may read the DLL', same as the prepare_test
+        precedent): X0's new scans (function entries, +0xC1950 callers / stored pointers incl. relocs, campfix site
+        list, guard hash) live ONLY in the x87c variant's x87fix_test.c list mode, read-only; X0's review checks that.
+        x0i_ (a98f31e4e0fbb6509, NEW Sonnet High) STARTED 16:0x: X0 = x87c variant folder from 05b9a5c (prep clone
+        untouched), list mode, dis_at.py-only walker with S-v2-1 / S-v2-2 / W1 / W4 / flow-through rules, +0xe80d1
+        control + failing control, proof table, X0-T callers of +0xC1950, block micro -> ebr_ X0 review.
+        Agents: c33i_ (C.3-4 fixes + LOGX), c3i_ (B1.4 fixes), x0i_ (X0) (3 of 3). QUEUE: bd1r_ re-check, merge rmt_c34,
+        t4i_ LOGX case + nit, ebr_ T4 confirm, b13r_ B1.4 re-check, B1.5, ebr_ X0 review.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
