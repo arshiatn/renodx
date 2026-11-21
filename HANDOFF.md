@@ -5362,6 +5362,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         draw_recording*.hpp + test/tw_draw_recording only; compile-time refusal of any overlap with heapfix's sites and
         36 check rows -> Opus xHigh review.
         Agents: c3i_ (B1.2b), bd3o_ (S8a v4), c33i_ (C.3-3) (3 of 3). QUEUE: t4i_ T1b follow-ups; hp1i_ after v4.
+        bd3o_ S8a v4 DONE 09:5x (appended to bd3o_design_S8a.md, sections v4.1-v4.7; dis_at.py only): v3 premise
+        WITHDRAWN (lemma: item addresses don't identify items within a frame). Commit rule: job keeps {key, pointer}
+        pairs A (keys read once via read_ok in a read section), B = kp_sort(A) (sortfix core, exported); at P1 after the
+        game's merge, size == n -> compare every pointer AND stored key inside pools_read_begin / _end -> all equal =
+        memcpy(B), else the game's sort, counted (items changed / keys changed / not pool memory / store moved back).
+        Store-position guard (a) = early refusal + telemetry, weighted only. COST (E): saving drops to ~4 ns / item
+        (30-67 % of the sort, ~48 % with items in L3). Weighted KEEP with new kill rules (re-check / sort > 0.8, or
+        EARLY 1 not below EARLY 0 by 2x A/A noise); instances = MODE 3 measurement only (gain <= ~0.5 ms).
+        Order: S8-1c fix commit (Shoulds 3 + 4, scan rows for rewind / free entries + chunk walkers, pinned list of
+        call / jmp [r32+0x128] / [r32+0x12C] sites, nits 1-5; src +25, tests +130) -> review -> S8-2 (+ Shoulds 1 / 2 /
+        5 / 7, tests 38-48; prepare.c +400, sortfix.c +15, tests +480) -> S8-3 (MODE 3 only, owner-field guard
+        +0x538 / +0x3E8, Should 6; src +45, tests +110).
+        [ ] ebo_ lane (owner t4i_, with the T1b follow-ups): ebo_analyze reads the new per-family presort INFO counts
+        beside the PRESORT CHECK MISMATCH LATCH row; a latch in segment 1 switches the presort off for the session ->
+        later presort segments stop or run in a new session; the two new weighted kill rules.
+        bd3r_ RESUMED 09:5x: check of S8a v4 -> hp1i_ S8-1c -> S8-2.
+        Agents: c3i_ (B1.2b), c33i_ (C.3-3), bd3r_ (v4 check) (3 of 3). QUEUE: t4i_ T1b follow-ups + ebo_ lane;
+        hp1i_ S8-1c after the v4 check.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
