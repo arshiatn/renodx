@@ -4902,6 +4902,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         forms (cube, open sky, furnace box) + xcheck vs pbrt-v4 / Falcor per function; missing: an image-level Cornell
         scene vs pbrt-v4 (independent code). Recommend ONE design (Opus xHigh) "quality metrics + known-answer scenes +
         unified PT mode" when a slot is free; builds after render_mt. Agents: hp1i_, c3i_, ebo_ (3 of 3).
+        ATN 03:5x ANSWERS: A = ATN ADDS the 8 rules himself (lines given 03:5x, same form as the atn_harness_runs rules:
+        tools\tw\bench\ebo_run.ps1 -Leg 1..4, each also -Leg N -DryRun) -> T4 must create ebo_run.ps1 at EXACTLY that
+        path with exactly those switches; check the rules exist before T6 (never write them ourselves). B = YES: after
+        a leak crash not pinned to one part, the batch goes on ONCE with that start cut shorter; a second one ends it.
+        DESIGN = YES NOW: "quality metrics (relMSE / SMAPE / FLIP, flicker / temporal covariance, disocclusion) +
+        Cornell-type scene vs pbrt-v4 + unified PT mode (DI shadows, GI AO)" at the next free slot (Opus xHigh,
+        read-only, plan_1117/designs/); build after render_mt. [ ] owner coordinator.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
