@@ -4778,6 +4778,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         the batch keeps ONE replay per start (-Rounds 1, fresh start each time; check ebo_'s continuation starts do the
         same) and logs the game's memory / free address space every 60 s, so the leak rate per minute comes out of the
         batch for free -> later item: find + fix the replay memory leak (owner coordinator, after render_mt).
+        bd1r_ S2r REVIEW DONE 03:2x (reports/s2r_review.md): MERGE AFTER FIXES. M1 Join logs on every traced C job inside
+        game code -> records in a static array, printed at the next Update; S1 "pool missing" back for TOUCH_AHEAD /
+        WORKERS when threads == 1; S2 Stop / Start race (busy exchange in Stop, owner check first in Start, ALL job always
+        completes in Run, ready atomic); S3 pin the module when Stop leaves threads alive; S4 count refusals in
+        Available() (trace-armed only); S5 the Worker Threads row only where a pool user is compiled; S6 ENTERED stress /
+        slow-work / empty-pool tests; N1-N9. Pool core (Dekker, joins, wake-ups, growth, CPU sets, x64) checked right.
+        c3i_ RESUMED 03:2x: S2r fixes on rmt_pool. bd1r_ RESUMED 03:2x: re-check of bd1o_ B3b v2 (then re-checks S2).
+        x87o_ DESIGN DONE 03:2x (reports/x87o_design.md): rounding-switch blocks mostly done already (heapfix 1282 +
+        site 1); X1 add-on engine_code site 26 = the game's FPU-state reset +0x103620 fast path, exact, E -0.10..-0.12 ms
+        render (row "Faster FPU Reset", Off); X2 heapfix x87c = fisttp blocks with proven-dead CW slots ->
+        cvttss2si, E -0.05..-0.2 ms W3 (needs the offline slot walker; one block +0xe80d1 may be LIVE -> tell the
+        author); X2b site 1 dead-slot stub (no heapfix); 64-bit truncation + roundss + transcendentals dropped. Steps X0
+        (walker + micro, tools only, parallel OK), X1 + X2b + LOGX (C's files, serial in a C gap), X2 (heapfix variant
+        folder). No ATN questions. Needs an Opus xHigh review (queued). QUEUE for free slots: bd2r_ re-check of B1 v2,
+        x87 design review, ebo_ plan review, R2 addendum (R-S5a). Agents: hp1i_, gto_, c3i_, bd1r_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
