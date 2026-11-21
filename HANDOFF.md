@@ -6288,6 +6288,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         s0r_ STARTED 23:1x: re-check of V1-V3 (+ spot-check R1-R8, Nits, total, Q26) -> s0r_review.md '## v3 re-check'.
         Agents: ebr_ (T3b re-check), c33i_ (R-S5), s0r_ (GPU v3 re-check) (3 of 3). QUEUE: merge rmt_t3b, R-S5 review,
         B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, unified PT design (after S0).
+        s0r_ GPU v3 RE-CHECK DONE 23:1x (plan_1117/s0r_review.md line 310, hand-back plan_1117/s0r_v3_handback.md): GO
+        WITH CHANGES. V1 closed; V2 / V3 partly. New Musts: W1 (§2, before S2) placed_instances_0/1 + placed_state are
+        per-frame (rt_d3d12.hpp:6621 / 6635) -> temporal class; rule 'a buffer and its index fields share a class';
+        fake test vs a fresh load. W2 (A.7, before A0) missing gate_hook.py = Python exit 2 = every call blocked ->
+        launcher exits 0 when missing + test. Shoulds X1 snapshot after the first loop, X2 AA's own c / honest power,
+        X3 Opus review for S3 (+2-3 h), X4 Q26 before S1; 4 Nits. No new review round: I check W1 / W2.
+        gto_ STARTED 23:1x: v3.1 (W1, W2, X1-X4, Nits) -> my check of W1 / W2.
+        Agents: ebr_ (T3b re-check), c33i_ (R-S5), gto_ (GPU v3.1) (3 of 3). QUEUE: merge rmt_t3b, R-S5 review, my W1 / W2
+        check, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, unified PT design (after S0).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
