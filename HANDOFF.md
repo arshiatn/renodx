@@ -4756,6 +4756,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         other TW games' shared pieces; upstream src/utils only for real bugs) runs after the render_mt builds and BEFORE
         the end batch, so a freeze / crash in the batch leaves its reason in ReShade.log (failure logs only, once, no
         per-frame logs); (4) the helper's "restart once after device loss" STAYS (established contract).
+        ebo_ END BATCH PLAN DONE 03:1x (reports/ebo_end_batch_plan.md, 500 lines): 23 starts (+1 optional siege) in 4 legs
+        (leg 1 check starts + gate, leg 2 traces / C attribution, leg 3 W3 measures, leg 4 other scenes), E 5.0 h (6 h if
+        stress is short), 0 reboots in the batch; final bench after ATN's reboot 31 starts E 3 h. Needs tool steps T1a
+        (live env re-read + one ArmTrace in the pool; S2 is built without it -> add in S2's fixes), T1b (test_hooks env.
+        keys + RENODX_TW_SET_FILE, 8 KB SET limit), T2 (heapfix live GEN re-read), T3 (map-trace windows), T4 (bench
+        scripts: P key, keys_at, WprNoProbes, campaign + save_games hash, set file, live log stop, generator, analysis), T5
+        (frame-pointer build + manifest), T6 (dry run + Opus read). Its step table assumed C.3-3/3-4 before S2 (S2 is
+        built) -> coordinator reconciles. Needs an Opus xHigh review before T-steps start. QUESTIONS FOR ATN (sent 03:1x):
+        Q1 may the batch start by itself while ATN is away once all is built + dry run clean (rec. yes; PC busy ~5-6 h);
+        Q2 hours it must not run (rec. none); Q3 campaign leg loads claude1.save ~18 min, no saving, hash-checked (rec.
+        yes); Q4 ATN's siege replay (optional); Q5 after a crash pinned to one part, go on once with it Off (rec. yes);
+        Q6 full B4 + its row to a later round (rec. yes).
+        gto_ STARTED 03:1x (Opus xHigh, read-only): GPU measurement tooling design from Forge's ideas -> plan_1117/
+        gto_design.md. Agents: x87o_, hp1i_, bd1r_, gto_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
