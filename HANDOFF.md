@@ -5810,6 +5810,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         round 7 cosmetic nit -> ebr_ confirms T4 ready.
         Agents: x0i_ (X0), b13r_ (B1.4 re-check), t4i_ (LOGX case) (3 of 3). QUEUE: merge rmt_b14, ebr_ T4 confirm, B1.5
         (c3i_), ebr_ X0 review.
+        b13r_ B1.4 RE-CHECK DONE 17:0x (appended to reports/b13r_b14_review.md): MERGE 664f80a87. M1 / M2 / S1-S5 / N1 /
+        N3 fixed. MAX_BLOCKS ceiling safe (failed reservation needs a room >= ~838.6k; the game's own spawn vector
+        would be >= 40 MB); our pool ~1.35 x the game's spawn vector, ~4.2 MB per 64k room (-> end batch memory note).
+        Guard (last frame spawned >= half the room -> L1) not sticky but hides L2 in saturated scenes. New S6 (before
+        B1.6): round.grown wrong when the room grows; session-off on a 2nd full pool adds nothing; spawns_off silent.
+        N4 header exception; N5 S1 / S2 tests with the real-routine tests.
+        MERGED 17:0x: rmt_b14 -> atn-mods 3b1e9aa76 (name_check 875 ids / 50 generic; gated x86 x3 + amd64 exit 0;
+        pushed).
+        [ ] t4i_ (after the LOGX case): end batch records SPAWN_ROUNDS / GUARD_ROUNDS / SPAWN_OVERFLOWS / STAGE_FULLS
+        per scene (trace windows where B1L2 is on) + the analysis flags a scene whose rounds are mostly guard rounds
+        ('not L2'); + the memory note. [ ] ATN only IF guard rounds dominate a stress scene: a variant without the
+        half-room rule?
+        c3i_ STARTED B1.5 17:1x on rmt_b15 (from 3b1e9aa76; FULL on the merged tree first): Cached Particle Count (sites
+        27 / 28, trampoline, check mode, test 18, own Off row) + S4 Must (B1 on heapfix_ranges.hpp, touching ranges =
+        clear) + S6 (coordinator: no session-off on a full pool, grow to 4 x cap, SPAWNS_OFF event with reason) + N4 ->
+        b13r_ review.
+        Agents: x0i_ (X0), t4i_ (LOGX case), c3i_ (B1.5) (3 of 3). QUEUE: ebr_ T4 confirm, t4i_ L2 counters, b13r_ B1.5
+        review, B1.6, X1, ebr_ X0 review.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
