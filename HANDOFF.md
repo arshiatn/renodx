@@ -4879,6 +4879,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         implementer's own review). S3 OWNER CHECK: read worker_pool::internal::owner (relaxed) == GetCurrentThreadId()
         with a comment, no new public API (CXX_STYLE). B1 row: the Worker Threads #if gets B1's guard when B1 lands.
         c3i_ RESUMED 03:4x: fixes 1-3 + nits on rmt_pool. Agents: ebr_, hp1i_, c3i_ (3 of 3).
+        ebr_ END BATCH PLAN REVIEW DONE 03:5x (reports/ebr_review.md): READY FOR T-STEPS AFTER FIXES (no v2; ebo_
+        addendum v1.1). Musts: M1 memory every 60 s in ALL starts (17 of 24 had none) + bench -Sample; M2 live address-
+        space guard (largest block < 128 MB or free < 768 MB -> close own pid, rest = continuation start); M3 log-line
+        classes LATCH / STOP / INFO; M4 T1a = S2b (c3i_, rmt_pool, before S3 / B1.2a / R-S1); M5 table of live env names
+        -> owner steps; M6 T1b fixes (SET_FILE in the early-return check, one time-sorted list, env. log line, 11
+        includers' gated builds); M7 x87 X1 / X2 runs (+15-25 min); M8 CAMP backup + hash-checked restore of save_games;
+        M9 key-down only when the game is in front; M10 = ATN QUESTION A (8 exact ebo_run.ps1 -Leg 1..4 [-DryRun] lines
+        as rules; no unattended start before). QUESTION B: after a leak crash not pinned to a part, go on once (rec. yes).
+        Shoulds S1-S14 (WPR disk gate ~95 GB, numeric L_end, scriptable crash pinning, locks held legs 1-4, dry-run
+        checklist, stop flag ...). E 5.5-6 h (6.5-7 h if stress < 8 min); final bench 3 h. T1a + T3 may start now.
+        Reconciled order + serial chains (engine_code.hpp: S3 -> B1.2a -> R-S1 -> B1.5 -> X1 -> audit) in the review.
+        c3i_: T1a / S2b queued after its 3 fixes (separate commit). ebo_ RESUMED 03:5x: addendum v1.1 (read-only).
+        FORGE INPUT 4 (03:4x, ATN asks if planned): (a) UNIFY = GI + DI in one reservoir / one path setup, shadows come
+        free from DI's visibility rays, AO from GI (ReSTIR PT Enhanced). Plan has PT DI (RTXDI, designs/pt_di_rtxdi.md)
+        and "one reservoir for DI + GI (lin2026)" as a later line; our U2 unified try (tools/tw/restir_unified) starved
+        light samples. NOT planned: in PT mode drop the separate RT shadow + RT AO passes (DI supplies shadows, GI supplies
+        AO); hybrid RT mode keeps them. -> design item for the GPU plan after PT DI. (b) QUALITY METRICS: ref_compare
+        checks bias (sum ratios per mask, CIs, closed forms incl. furnace box + open sky) on full frames; NOT measured:
+        per-pixel error of the real-time output (relMSE / SMAPE / FLIP), temporal stability (flicker, temporal
+        covariance), disocclusion recovery -> design item. (c) BOX: harness already has synthetic scenes with closed
+        forms (cube, open sky, furnace box) + xcheck vs pbrt-v4 / Falcor per function; missing: an image-level Cornell
+        scene vs pbrt-v4 (independent code). Recommend ONE design (Opus xHigh) "quality metrics + known-answer scenes +
+        unified PT mode" when a slot is free; builds after render_mt. Agents: hp1i_, c3i_, ebo_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
