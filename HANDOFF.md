@@ -6350,6 +6350,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         CHANGES / NO-GO; F1 verdict) -> upt_ fixes -> upr_ re-check.
         Agents: c33i_ (R-S5), ebr_ (T3c re-check), upr_ (unified PT review) (3 of 3). QUEUE: merge rmt_t3b, R-S5 review,
         B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, GPU S1, F1 fix.
+        ebr_ T3c RE-CHECK DONE 23:5x (reports/ebr_t1b_review.md line 735, hand-back reports/ebr_t3c_handback.md): MERGE.
+        No Musts / Shoulds; amd64 exe 20 / 20, run.ps1 x86 + amd64 PASS, run_all 0 failed (analyze 101). The PROBLEM line
+        can't fire on masked or control-only differences (probed). 'Any non-timing why' = right rule for leg 2 (errs to
+        'not proven'; a PAUSE-W3 re-run is allowed). Nits: [ ] t4i_ next round: plan's PAUSE-W3 section (:593) lists
+        the 820 s drift window; optional 'drift not covered' NOTE; 775 s C window has a draw trace at 774 s (check its
+        readbacks first if C DIFFERS only in v1 counts / unmaps); show() small values in hex.
+        MERGED 23:5x: rmt_t3b -> atn-mods 047deaafc (name_check 200 ids / 9 generic; gated x86 x3 + amd64 exit 0;
+        pushed). Bench side (ebo_mapcmp.py, ebo_analyze, segments.json 6 windows) is live in tools\tw\bench.
+        gti_ (a272177238e117bff, Opus High) STARTED 23:5x: GPU plan S1a (ns_index / ns_query, index readers, lab
+        gpu_lock lock record v1 + R8 takeover limited to testbin processes matching PID + start time, F1 / F2 / F3 / F6,
+        ns_busy row Off until Q8; no GPU; backups scratchpad\gti_bak) -> S1r after S1a-c.
+        Agents: c33i_ (R-S5), upr_ (unified PT review), gti_ (GPU S1a) (3 of 3). QUEUE: R-S5 review, B1.6 (+ N5
+        real-routine tests + b13r_'s half-rows R2), X1, logging audit, GPU S1b / S1c, F1 fix.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
