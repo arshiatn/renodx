@@ -6297,6 +6297,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         gto_ STARTED 23:1x: v3.1 (W1, W2, X1-X4, Nits) -> my check of W1 / W2.
         Agents: ebr_ (T3b re-check), c33i_ (R-S5), gto_ (GPU v3.1) (3 of 3). QUEUE: merge rmt_t3b, R-S5 review, my W1 / W2
         check, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, unified PT design (after S0).
+        ebr_ T3b RE-CHECK DONE 23:2x (reports/ebr_t1b_review.md line 617, hand-back reports/ebr_t3b_handback.md): FIX.
+        x86 PASS; amd64 3 / 41 fail at tests.cpp:1128 (section 14: frame-1 draw in the same QPC tick as presents[1], the
+        new rule counts it in frame 0; test-only, can't happen in game); run_all 0 failed. M-T3b-1 spin past
+        presents[1] before the draw; M-T3b-2 OFF pair differing in draw_count / structure or no fields left = 'not
+        comparable', never 'match'; M-T3b-3 parts from what ran (segment why / start_eff), not check.json's planned
+        parts_on. Shoulds: per-place / slot masks, NOTE naming masked fields, optional 6th window 820,8,hash as drift
+        control; 3 Nits. DECIDED (ebr_ + me): C / ALL DIFFERS on fields the OFF pair agrees on = leg PROBLEM; 'not
+        comparable' / 'no result' = NOTE '§4.2 not proven: <why>'.
+        t4i_ STARTED 23:2x on rmt_t3b + bench (backups t4i_bak\r13): M-T3b-1..3 + PROBLEM rule + Shoulds 1-3 + Nits ->
+        ebr_ re-check.
+        Agents: c33i_ (R-S5), gto_ (GPU v3.1), t4i_ (T3c) (3 of 3). QUEUE: ebr_ T3c re-check -> merge rmt_t3b, R-S5 review,
+        my W1 / W2 check, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging audit, unified PT design
+        (after S0).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
