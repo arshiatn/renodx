@@ -4920,6 +4920,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         incl. a Cornell-type scene vs pbrt-v4). [ ] UNIFIED PT MODE design (fresh Opus xHigh: DI shadows, GI AO, one
         reservoir path, ReSTIR PT Enhanced; reads designs/pt_di_rtxdi*.md, tools/tw/restir_unified) at a later slot.
         Agents: c3i_, ebo_, gto_ (3 of 3). QUEUE: bd3r_ re-check, unified PT design, x87 review, R2 addendum, T3.
+        ebo_ ADDENDUM v1.1 DONE 03:5x (appended to reports/ebo_end_batch_plan.md; the addendum wins): 26 starts (+ SIEGE)
+        incl. REF-X / WPR-X / D1-X for x87c and X1 inside WPR-W3-3 (X2b deferred); memory lines in every start + -Sample;
+        live memory guard (block < 128 MB / free < 768 MB; after one leak crash 256 MB / 1 GB); line classes LATCH /
+        STOP / GUARD / INFO; scriptable crash pinning; live env owner table (S2b, S6, R-S1, B1.5 / B1.6, T2); T1b spec;
+        T4 spec (ebo_run / ebo_make / ebo_check / ebo_analyze, stop.flag, keys only with the game in front, CAMP backup,
+        L_end + volley detectors, WPR disk gate ~112 GB, locks legs 1-4); T5 manifest + T6 "dry run clean" checklist;
+        E 5.8-6.1 h. A + B now answered by ATN (03:5x: A = ATN adds the 8 lines, B = yes once). T3 + T4 may start;
+        T1b after the rmt_pool merge. [ ] ebr_ quick read of the addendum (optional, coordinator's call).
+        bd3r_ RESUMED 03:5x: re-check of heapfix fixes d7ebe3b. Agents: c3i_, gto_, bd3r_ (3 of 3). QUEUE: T3 (Opus
+        High, frame_trace.hpp), T4 (bench scripts), unified PT design, x87 review, R2 addendum.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
