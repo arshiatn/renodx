@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -404,35 +405,85 @@ void TestSites() {
 
 void TestRewrite() {
   const auto bytes_of = [&](size_t site, bool patched_bytes) {
-    return std::memcmp(patched + fill::SITES[site].rva, (patched_bytes ? fi::sites[site].patch : fi::sites[site].game).data(), fill::SITE_SIZE) == 0;
+    return std::memcmp(patched + fill::SITES[site].rva, (patched_bytes ? fi::sites[site].patch : fi::sites[site].game).data(),
+                       fill::SITE_SIZE) == 0;
+  };
+  // The 4 sites share one page (with 6 recording sites): Rewrite makes it writable once per site and must leave it as it found
+  // it, which it does only if the protections go back in the reverse order (a later site saw the earlier ones' writable state as
+  // its old protection). Every call runs on a read and execute page, and the page is checked after it; the test's own edits
+  // need it writable in between.
+  uint8_t* const page = patched + (fill::SITES[0].rva & ~0xFFFu);
+  for (const auto& info : fill::SITES) {
+    CHECK((info.rva & ~0xFFFu) == (fill::SITES[0].rva & ~0xFFFu) && (info.rva + fill::SITE_SIZE - 1 & ~0xFFFu) == (info.rva & ~0xFFFu));
+  }
+  const auto protect_page = [&](DWORD protection) {
+    DWORD ignored;
+    return VirtualProtect(page, 0x1000, protection, &ignored) != FALSE;
+  };
+  const auto rewrite = [&](uint32_t to) {
+    REQUIRE(protect_page(PAGE_EXECUTE_READ));
+    const uint32_t stood = fill::Rewrite(to);
+    MEMORY_BASIC_INFORMATION info = {};
+    REQUIRE(VirtualQuery(page, &info, sizeof(info)) != 0);
+    if (info.Protect != PAGE_EXECUTE_READ) {
+      std::printf("FAIL: the page is %lX after Rewrite(%X), not read and execute\n", info.Protect, to);
+      ++failures;
+    }
+    REQUIRE(protect_page(PAGE_EXECUTE_READWRITE));
+    return stood;
+  };
+  // What Update does with a Rewrite's answer: nothing is ours any more (`written` 0), and the sites that stood down leave `found`.
+  const auto stand_down = [&](uint32_t stood) {
+    fi::written = 0;
+    fi::found &= ~stood;
+    CHECK(fill::Wanted(true) == 0);
+  };
+  const auto find_again = [&] {
+    REQUIRE(fill::Prepare(reinterpret_cast<HMODULE>(patched)));
+    CHECK(fi::found == fill::ALL_SITES && fill::Wanted(true) == fill::ALL_SITES);
   };
   CHECK(fill::Changing(fill::ALL_SITES) == fill::ALL_SITES && fill::Changing(0) == 0);
-  CHECK(fill::Rewrite(fill::ALL_SITES) == 0);
+  CHECK(rewrite(fill::ALL_SITES) == 0);
   fi::written = fill::ALL_SITES;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) CHECK(bytes_of(site, true));
+  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+    CHECK(bytes_of(site, true));
+  }
   CHECK(fill::Changing(fill::ALL_SITES) == 0 && fill::Changing(0) == fill::ALL_SITES);
   // Out again: the game's own bytes.
-  CHECK(fill::Rewrite(0) == 0);
+  CHECK(rewrite(0) == 0);
   fi::written = 0;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) CHECK(bytes_of(site, false));
+  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+    CHECK(bytes_of(site, false));
+  }
   CHECK(std::memcmp(patched + 0x17AE700, game + 0x17AE700, 0x20) == 0 && std::memcmp(patched + 0x17AED00, game + 0x17AED00, 0x40) == 0);
 
   // A site that is another tool's: every site stands down going in, and nothing is written.
   patched[fill::SITES[2].rva + 1] ^= 0x04;
-  CHECK(fill::Rewrite(fill::ALL_SITES) == fill::ALL_SITES);
+  const uint32_t stood_in = rewrite(fill::ALL_SITES);
+  CHECK(stood_in == fill::ALL_SITES);
   patched[fill::SITES[2].rva + 1] ^= 0x04;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) CHECK(bytes_of(site, false));
+  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+    CHECK(bytes_of(site, false));
+  }
+  stand_down(stood_in);
+  find_again();
   // Going out: only the changed site stays (it is the other tool's), the others come out.
-  CHECK(fill::Rewrite(fill::ALL_SITES) == 0);
+  CHECK(rewrite(fill::ALL_SITES) == 0);
   fi::written = fill::ALL_SITES;
   patched[fill::SITES[1].rva + 2] ^= 0x04;
-  CHECK(fill::Rewrite(0) == 1u << 1);
+  const uint32_t stood_out = rewrite(0);
+  CHECK(stood_out == 1u << 1);
   patched[fill::SITES[1].rva + 2] ^= 0x04;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) CHECK(bytes_of(site, site == 1));
-  fi::written = 1u << 1;  // what Update leaves: the stood-down site stays written
-  CHECK(fill::Rewrite(0) == 0);  // the site is ours again (its bytes are what Rewrite left)
-  fi::written = 0;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) CHECK(bytes_of(site, false));
+  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+    CHECK(bytes_of(site, site == 1));
+  }
+  stand_down(stood_out);
+  // The other tool's bytes stay there; the game's come back for the rest of the test.
+  std::memcpy(patched + fill::SITES[1].rva, fi::sites[1].game.data(), fill::SITE_SIZE);
+  find_again();
+  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+    CHECK(bytes_of(site, false));
+  }
 
   // A thread is inside a site only past its first byte.
   const auto start = reinterpret_cast<uintptr_t>(patched + fill::SITES[3].rva);
@@ -487,6 +538,7 @@ void TestFills() {
     random_bad += (RunExact(site, 1 + random() % 6000, STRIDES[random() % STRIDES.size()], random() % 3000, (random() & 1) != 0, &random) ? 0 : 1);
   }
   CHECK(random_bad == 0);
+  CHECK(fi::incomplete_fills.load() == 0);
   std::printf("fills: 150 random runs, %zu different\n", random_bad);
 }
 
@@ -651,6 +703,43 @@ bool AllExact() {
   return exact;
 }
 
+#if defined(TWATTILA_INSTANCE_FILL_CONTROLS) && defined(TWATTILA_WORKER_POOL_CONTROLS)
+struct LateRun {
+  double milliseconds;      // how long the call took
+  bool exact_after_call;    // every item once when it returned
+  bool exact_after_late;    // and still once after the late worker was let go
+  uint32_t late_parked;     // the times the late worker was held
+};
+
+// A fill of 6000 items on 4 threads with worker 1 held between waking and counting itself in, and let go after `hold_ms`.
+LateRun RunWithLateWorker(uint32_t hold_ms) {
+  UpdatePool(4);
+  ResetHits();
+  UseFakeCopy(&CountingCopy);
+  const auto scenario = Build(1, 6000, 16, 0, false, &shared_random);
+  fill::Range range = scenario->Range();
+  wp::internal::controls.late_parked.store(0);
+  wp::internal::controls.late_worker = 1;
+  wp::internal::controls.release_late.store(false);
+  std::thread releaser([&] {
+    Sleep(hold_ms);
+    wp::internal::controls.release_late.store(true);
+  });
+  const auto before = std::chrono::steady_clock::now();
+  CallSite(1, &range, &scenario->functors[0]);
+  LateRun run = {};
+  run.milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - before).count();
+  run.exact_after_call = HitsExactly(0, 6000);
+  releaser.join();
+  Sleep(100);  // the late worker finds the job closed and skips it
+  run.exact_after_late = HitsExactly(0, 6000);
+  run.late_parked = wp::internal::controls.late_parked.load();
+  wp::internal::controls.late_worker = 0;
+  RestoreCopies();
+  return run;
+}
+#endif
+
 void TestControls() {
 #if defined(TWATTILA_INSTANCE_FILL_CONTROLS)
   // Nothing set: no difference.
@@ -659,6 +748,32 @@ void TestControls() {
   CHECK(CountingSeesDifference(&fill::control_drop_last, Where::SAME_THREAD));
   CHECK(CountingSeesDifference(&fill::control_early_return, Where::JOIN_AFTER));
   CHECK(CountingSeesDifference(&fill::control_refused_skips_part, Where::OTHER_THREAD));
+  // A chunk claimed and not copied: the dispatcher sees the chunks not done, counts the fill and says so at the next present.
+  {
+    fi::incomplete_fills.store(0);
+    CHECK(CountingSeesDifference(&fill::control_skip_chunk, Where::SAME_THREAD));
+    CHECK(fi::incomplete_fills.load() == fill::SITE_COUNT);
+    log_lines.clear();
+    fill::Wanted(true);
+    size_t said_not_done = 0;
+    for (const std::string& line : log_lines) {
+      said_not_done += (line.find("4 fills ended with chunks not done") != std::string::npos);
+    }
+    CHECK(said_not_done == 1 && fi::incomplete_fills.load() == 0);
+  }
+#if defined(TWATTILA_WORKER_POOL_CONTROLS)
+  // The join waits only for the workers that entered the job: a worker still asleep when the fill is done is left behind, and
+  // skips the closed job when it wakes (the late worker, held for 400 ms here). Joining every woken worker waits for it.
+  {
+    const LateRun entered = RunWithLateWorker(400);
+    CHECK(entered.milliseconds < 200 && entered.exact_after_call && entered.exact_after_late && entered.late_parked == 1);
+    fill::control_all_join = true;
+    const LateRun all = RunWithLateWorker(400);
+    fill::control_all_join = false;
+    CHECK(all.milliseconds >= 300 && all.exact_after_call && all.exact_after_late);
+    CHECK(AllExact());
+  }
+#endif
   fill::control_wrong_copy = true;
   CHECK(!AllExact());
   fill::control_wrong_copy = false;
