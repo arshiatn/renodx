@@ -4860,6 +4860,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         (code review proof only). bd1r_ RESUMED 03:4x: re-check of the fixes -> then merge rmt_pool (name check + gated
         builds + push). Agents: bd3r_, ebr_, bd1r_ (3 of 3). QUEUE: gto_ review + addendum, x87 review, R2 addendum,
         C.3-3 (c3i_, after the merge), S3, B1.2a (serial on engine_code.hpp).
+        bd3r_ REVIEW OF HEAPFIX S1+S2 DONE 03:4x (reports/bd3r_hp1_review.md): MERGE TO PREP AFTER FIXES; barrier,
+        Dekker, exact fallbacks, install order right; chain_full span fix = the real cause (no-barrier control only).
+        M1 patch() ignores VirtualProtect (both or neither); S2 control 5 weak by test build (delay workers on weight > 0
+        items); S3 failure logs (pool creation, no frame hook, dropped schedule, span alloc under R_ALLOC); S4 unit checks
+        parse_schedule + R_TOOMANY; N1 already-patched check before FNV; N2 first R_POST logged; N3 clamp g_k; N7 opt.
+        LATER (no code now): S1 MAX_MESH 256 -> read R_TOOMANY in the first in-game segment, heap-size it if > 0; FIRST
+        IN-GAME RUN = a mode 3 (check) segment before mode 2 (the game's own allocator on pool threads is untested);
+        N6 ~10 MB of 32-bit address space for 6 threads' sortfix scratch + pools cache -> NM3 / memwatch budget; N5 watch
+        p95 for the owner's Sleep(1). hp1i_ RESUMED 03:4x: the fixes (one new prep commit, new DLL + sha256), then bd3r_
+        re-checks. Agents: ebr_, bd1r_, hp1i_ (3 of 3).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
