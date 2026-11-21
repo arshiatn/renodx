@@ -5578,6 +5578,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         S4 (ebr_) = the x87 review box above (also heapfix's own B2 threads).
         Agents: c33i_ (C.3-4 + shared table), c3i_ (B1.3 fixes), t4i_ (ebr_ round 4 fixes) (3 of 3). QUEUE: bd1r_
         C.3-4 review, b13r_ re-check, ebr_ round 5, B1.4 / B1.5.
+        t4i_ ROUND 4 FIXES DONE 13:4x (tools\tw only; reports/t4i_round4_handback.md; backups scratchpad\t4i_bak\r4):
+        S1 check_crash<n>.json + batch.json crash_records (crash_list reads them first); S2 gap = ceil(frames / 20 fps)
+        min 1 s, PAUSE-W3 trace_at [2,3,4] restored; S3 'weighted chain time per frame, an estimate of W_w', screen
+        0.8 ms -> check the WPR-W3-2 ETL, W_w_est_avg_ms; nits 1 / 2 / 4-7 (crash list + segment in force + build
+        hashes, corpus src lines). run_all 644 assertions 0 failed. Nit 3: loopfetch = 9 sites; a live writer for
+        g_loopfetch_on (env at heapfix's GEN apply, heapfix lane) = cheapest A/B (2 segments in one start) - prep is
+        frozen at 05b9a5c, so only if ATN wants the A/B and the freeze is reopened.
+        x87 box owner: the x87 review (queued) takes it.
+        ebr_ RESUMED 13:5x: round 5 re-check -> verdict T4 ready for leg 1.
+        Agents: c33i_ (C.3-4 + shared table), c3i_ (B1.3 fixes), ebr_ (round 5) (3 of 3). QUEUE: bd1r_ C.3-4 review,
+        b13r_ re-check, B1.4 / B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
