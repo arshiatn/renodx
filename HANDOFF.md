@@ -5154,6 +5154,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         + reviewed before the ONE end batch; S8-3 behind FAMILIES / INST_KEYS_PROVEN 0, measured as its own segments.
         bd3o_ RESUMED 05:5x: "## S8a v2" appended to bd3o_design_S8a.md -> bd3r_ re-check -> hp1i_ S8-1.
         Agents: t4i_, bd1r_, bd3o_ (3 of 3).
+        06:0x: USAGE LIMIT hit (5-hour limit, reset 08:00 Europe/Berlin): t4i_ (mid test_leg rewrite) and bd3o_ (mid S8a
+        v2) stopped; c3i_ had already finished. ATN's "continue" came after the reset.
+        bd1r_ S3 REVIEW DONE (reports/bd1r_s3_review.md): MERGE, no Musts. Shoulds with owners: S4 tests (sweep threads
+        in the 200-switch loop, park threads at the worker sites' +1..+4), S6 trace format (print only §11's numbers,
+        not the up-to-57 KB pair list). Notes: B1's two small sites now take indices 27 + 28 (S9 check call 29, S9-T
+        30) -> B1.2a brief + correct bd1o v2 §5.2 counts; RENODX_TW_WORKER_TRACE routes every sweep through the stub, so
+        set it on both sides of an A/B (t4i_ told). Nits a-g.
+        MERGED rmt_c_s3 -> atn-mods c9123dea5 08:0x (name check: 42 generic words only; gated builds x86 twattila
+        twrome2 twthronesofbritannia + amd64 twattila exit 0), pushed. S3 is in.
+        08:0x RESUMED: t4i_ (continue T4 fixes), bd3o_ (continue S8a v2), c3i_ (S3 nits a / b / c / d / f / g on new
+        branch rmt_c_s3n from c9123dea5 -> coordinator diff check + merge; then C.3-3).
+        Agents: t4i_, bd3o_, c3i_ (3 of 3). NEXT after these: B1.2a (engine_code.hpp chain after the S3 nits merge),
+        T1b, bd3r_ re-check of S8a v2, ebr_ re-check of T4.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
