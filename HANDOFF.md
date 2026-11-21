@@ -6021,6 +6021,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: c3i_ (R1), ebr_ (round 9 review), x0i_ (X2 nits) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_ part
         2b (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, R-S5a addendum, B1.6 (+ N5
         real-routine tests), X1.
+        x0i_ X2 NITS DONE 20:3x (reports/x0i_x2n_handback.md; variant x87c 6593a8f: x87fix.c, tests, author notes):
+        S-X2r-2 2^32 SWEEP on +0x17F6515: 0 mismatches (16 threads, 26.3 s; --x2 --sweep), cvtss2si mutant caught. Nit 1
+        summary gets ', 0 not found' (old text is a prefix, t4i_'s regex still matches). Nit 3 no-wrap check, execute-only
+        fails, 5 malformed .reloc controls. Nit 7 x87fix_frame after an x87c install: 1116 roundss reverted, 89 x87c + x87b
+        stay. Nits 4 / 5 author notes (prepare.c's 4 read-only hash rows hit proven ranges). Nits 2 / 6 'later'.
+        [ ] ebr_ re-check of 6593a8f (after round 9), incl. the notes' 'one differing case'. [ ] t4i_ next round: corpus
+        line with ', 0 not found' + use the not-found count.
+        bd3o_ (a0a4cc10c7b5c4d4a) RESUMED 20:3x: R-S5a R2 addendum (Opus xHigh, design only) ->
+        reports/bd3o_design_R2_addendum.md + open questions for C's owner (c33i_).
+        Agents: c3i_ (R1), ebr_ (round 9 review), bd3o_ (R-S5a) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_ part
+        2b (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, ebr_ X2 nits re-check, B1.6 (+
+        N5 real-routine tests), X1, R-S5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
