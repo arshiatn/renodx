@@ -5848,6 +5848,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         flag, SPAWNS_OFF marks, memory note.
         Agents: c3i_ (B1.5), ebr_ (T4 confirm + X0 review), t4i_ (L2 counters) (3 of 3). QUEUE: b13r_ B1.5 review, B1.6,
         X1, X2 (if ebr_ says go).
+        t4i_ ROUND 8 DONE 18:2x (reports/t4i_round8_handback.md; backups scratchpad\t4i_bak\r8): L2 counters are
+        trace-window counters -> gates b1_trace_window / b1_l2_counters; ebo_make PROBLEM for a measured B1L2 segment
+        without an mt_trace arm -> WPR-D1 seq got 'mt_trace=10' (as WPR-W3-5; coordinator: accepted); ebo_analyze l2 per
+        segment / scene, 'not an L2 number' when L2 off / no B1 trace line / guard > spawn rounds; b1_spawns_off INFO
+        marks 'L2 off'; x87_reverts keeps only x87 marks; memory note in plan §3. run_all 752 / 752. [ ] SPAWNS_OFF
+        wording taken from c3i_'s UNCOMMITTED rmt_b15 -> re-check the gate row when B1.5 merges (status 'TO REFRESH').
+        c33i_ STARTED 18:2x on rmt_rs1 (from 3b1e9aa76): R-S1 instance_fill.hpp (own 4-site table, dispatcher,
+        FillWork, trace, check, row; clear of heapfix_ranges.hpp) + R-S2 test/tw_instance_fill; engine_code.hpp include
+        + mask + addon.cpp row in ONE separate last commit (B1.5 merges first) -> R-S3 Opus review.
+        Agents: c3i_ (B1.5), ebr_ (T4 confirm + X0 review), c33i_ (R-S1 + R-S2) (3 of 3). QUEUE: b13r_ B1.5 review,
+        R-S3 review, R-S5a addendum (Opus xHigh with C's owner), B1.6, X1, X2 (if ebr_ says go).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
