@@ -6363,6 +6363,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         ns_busy row Off until Q8; no GPU; backups scratchpad\gti_bak) -> S1r after S1a-c.
         Agents: c33i_ (R-S5), upr_ (unified PT review), gti_ (GPU S1a) (3 of 3). QUEUE: R-S5 review, B1.6 (+ N5
         real-routine tests + b13r_'s half-rows R2), X1, logging audit, GPU S1b / S1c, F1 fix.
+        WEEKLY LIMIT (Max) ~00:0x 11-22 stopped upr_ (unified PT review); c33i_ + gti_ kept running.
+        ATN 00:1x 11-22: UPGRADED TO ULTRA, 'use as many subagents as you need' -> NO AGENT CAP (memory
+        feedback_usage_saving updated). Still one writer per set of files; game runs hold all agents; model / effort
+        rules unchanged.
+        upr_ RESUMED 00:1x. STARTED 00:2x (parallel, separate files):
+        - lga_ (a79b29466efe05b8c, Opus xHigh, read-only): LOGGING / NO-SILENT-FAILURE AUDIT (twattila add-on, bridge,
+          helper, other TW games' shared pieces, upstream utils for real bugs only) -> reports/lga_logging_audit.md;
+          findings in R-S5 / B1.6 / X1 files marked re-check; incl. the worker_pool.hpp invariant comment. Fixes after,
+          one implementer per file set, before the end batch.
+        - gtb_ (a1e8d25cae5012c60, Opus High): GPU S1b (lab budget.py / Budget.psm1 / gpu_gate.py + --quality /
+          report_check.py, resident_protocol.md + schemas; no GPU; backups scratchpad\gtb_bak).
+        - gtp_ (a3db35f3686570bd6, Opus High): GPU S1c (pitfalls, gates with gate_hook.py / check_cmd() /
+          block_rows.tsv / gates.tsv Off / shadow mode, spec index + cite check, part A files; hook text for ATN in
+          tools\tw\gates\INSTALL_FOR_ATN.md, nothing installed; backups scratchpad\gtp_bak).
+        Agents (6): c33i_ (R-S5), gti_ (GPU S1a), upr_ (unified PT review), lga_ (logging audit), gtb_ (GPU S1b), gtp_
+        (GPU S1c). QUEUE: R-S5 review, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging fixes, S1r
+        (after S1a-c), F1 fix (after upr_'s verdict), T5 freeze, T6 dry run, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
