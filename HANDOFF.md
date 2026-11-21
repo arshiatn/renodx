@@ -4793,6 +4793,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         (walker + micro, tools only, parallel OK), X1 + X2b + LOGX (C's files, serial in a C gap), X2 (heapfix variant
         folder). No ATN questions. Needs an Opus xHigh review (queued). QUEUE for free slots: bd2r_ re-check of B1 v2,
         x87 design review, ebo_ plan review, R2 addendum (R-S5a). Agents: hp1i_, gto_, c3i_, bd1r_ (4 of 4).
+        bd1r_ RE-CHECK OF B3b v2 DONE 03:2x (appended to reports/bd1r_review.md): v2 SOUND; S3 may start once S2 + the S2r
+        fixes are merged (serial with C on engine_code.hpp / draw_recording_sites.hpp / test/tw_engine_code / addon.cpp).
+        Open: S-11 owner query not in the pool API, S-16 waits on S2r S4. Shoulds: Check = batch env or private-build row
+        (public row Off / On); bound w = min(Available(), blocks - 1) (same for B4); B3b / B4 trace records print at
+        Update. S3 BRIEF MUST CARRY: (1) the owner check decision (read worker_pool's owner or make it public); (2)
+        engine_code::Update gains const WorkerRows& (addon.cpp line in S3 or a default until S6); (3) the B3b call site +
+        Dispatch stay out until S6's row, the B4 trace site only with RENODX_TW_WORKER_TRACE; (4) the §6 S3 tests
+        (relocated base, VirtualQuery RX / RW, a thread parked at each cut-stub byte, cut_active > 0, foreign bytes, pin).
+        Nits: S-5 in_use release on every exit, sentinel value named, 3.11 / 3.8 / 5.2 wording, one controls-macro rule,
+        S9-T copies the loop's exit test against a fresh end(). bd2r_ RESUMED 03:2x: re-check of bd2o_ B1 v2.
+        Agents: hp1i_, gto_, c3i_, bd2r_ (4 of 4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
