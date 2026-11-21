@@ -5067,6 +5067,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         line count, S8 needs). t4i_ got the FAMILIES env + new line fields.
         Agents: t4i_, c3i_, bd3r_ (3 of 3). QUEUE: S0-ter, T3, x87 review, R2 addendum, S0 GPU design review, unified PT
         design; after S3: B1.2a, T1b.
+        bd3r_ S7 REVIEW DONE 05:1x (reports/bd3r_s7_review.md): BOTH COMMITS STAY, LANE H MAY GO ON TO S8a / S8; no Must,
+        no Should. FAMILIES kept (it is in v2's env table; batch ALL = MODE 2 + both). No put-back of task-thread lists
+        proven (the three mixed sorts are MSVC introsort: a sorted range moves nothing). Pair guard = exactness
+        precondition, not policy. Line count justified. Nits for S8: pair-guard comment wording, FNV rows for
+        0x17AC2D0 / 0x17AC910 / 0xDA6B0. S8 needs list (8 items) in the review.
+        RULE DEVIATION (for ATN's round report): bd3r_ read empire.retail.dll's bytes with its own read-only scan
+        script (bd3r\s7scan.py, branches into the patched sites; also in its v2 re-check) instead of dis_at.py only.
+        Read-only, nothing changed. Coordinator: the scan does not count as an allowed route; whole-DLL branch scans
+        go into prepare_test (heapfix's offline test, which already reads the DLL via build.bat test) in S8; bd3r_
+        told in its next brief.
+        bd3o_ RESUMED 05:1x (Opus xHigh): S0-ter + S8a presort addendum -> NEW reports/bd3o_design_S8a.md (NM1-NM3,
+        S8a Shoulds, S7 review §5, live EARLY / EARLY_THREADS / PROBE wiring + presort-slot gate, line classes, S8 test
+        plan incl. branch scan in prepare_test); dis_at.py only.
+        Agents: t4i_, c3i_, bd3o_ (3 of 3). QUEUE: T3, x87 review, R2 addendum, S0 GPU design review, unified PT design;
+        after S3: B1.2a, T1b; after S8a: S8 (hp1i_ + the S7 nits) -> bd3r_ review.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
