@@ -6422,6 +6422,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents (8): bd3r_ + bd1r_ (R-S5 review), c33i_ (answering), gti_ (GPU S1a), gtb_ (GPU S1b), gtp_ (GPU S1c), lga_
         (logging audit), upr_ (unified PT v2 re-check). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6 (+ N5 + b13r_'s
         half-rows R2), X1, logging fixes, S1r (after S1a-c), F1 hybrid fix (H0), T5 freeze, T6 dry run, end batch.
+        c33i_ ANSWER 00:3x: its leftover was a Monitor 'sleep 600' placeholder (stopped); all its runs had finished.
+        7 ZOMBIE test processes of c33i_'s (0 threads, no CPU; Stop-Process 'Access is denied', a handle held elsewhere,
+        maybe the antivirus - not touched): draw_recording_loop.exe PIDs 36064 / 2828 / 26920 / 25080 / 17732, seh.exe
+        PIDs 36396 / 3308 (started 00:04-00:09). They lock testbin\c33i_rs5_loop, _loop2, _loop_<n>, _seh. [ ] clear at
+        ATN's next reboot (no restart unless ATN asks); then those testbin folders may be deleted (testbin clean-up).
+        Agents (7): bd3r_ + bd1r_ (R-S5 review), gti_ (GPU S1a), gtb_ (GPU S1b), gtp_ (GPU S1c), lga_ (logging audit), upr_
+        (unified PT v2 re-check). c33i_ idle until the reviews. QUEUE unchanged.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
