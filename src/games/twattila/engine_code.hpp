@@ -2527,7 +2527,13 @@ inline bool DrawRecordingSitesIn() { return internal::recording_written != 0 || 
 
 // The loop groups (bits of draw_recording::Group) whose sites and flush path are all written now
 // (draw_recording::Settings::groups_in): the dispatcher runs the rounds of these groups only.
-inline uint32_t DrawRecordingGroupsIn() { return internal::RecordingGroupsIn(); }
+inline uint32_t DrawRecordingGroupsIn() {
+#if defined(TWATTILA_DRAW_RECORDING)
+  return internal::RecordingGroupsIn();
+#else
+  return 0;
+#endif
+}
 
 // The Advanced status's words for the LOD pick's site, for the slider `model_detail` now; null: not decided yet (Prepare has not run).
 inline const char* ModelDetailStatus(float model_detail) {
