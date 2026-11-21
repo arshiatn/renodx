@@ -128,6 +128,10 @@ constexpr size_t MAX_SITE_SIZE = 11;
 // The byte count of a pattern ("AA BB ??": three characters a byte, the last without its space).
 constexpr size_t PatternSize(std::string_view pattern) { return (pattern.size() + 1) / 3; }
 constexpr size_t SizeOf(const SiteInfo& info) { return PatternSize(info.pattern); }
+// Whether the byte ranges [a_rva, a_rva + a_size) and [b_rva, b_rva + b_size) share a byte (half-open: ranges that only touch each other do not).
+constexpr bool Overlaps(uint32_t a_rva, uint32_t a_size, uint32_t b_rva, uint32_t b_size) {
+  return a_rva < b_rva + b_size && b_rva < a_rva + a_size;
+}
 
 // The Steam build's RVAs (nothing else is supported: another build fails the bytes check and B1 stays out).
 constexpr std::array<SiteInfo, SITE_COUNT> SITES = {{
@@ -504,11 +508,14 @@ inline std::vector<uint32_t> RelocatedWords(const uint8_t* module) {
   return words;
 }
 
-// `short_branches` false: only the rel32 forms (E8, E9, 0F 8x). Prepare scans like that: the short forms of the shipped build are all
-// known (the whole-section scan of test/tw_engine_code), and the bytes of another tool's patch around a site (a rel32 whose high bytes
-// change from run to run) would read as short branches with random targets.
-inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rva, std::vector<uint32_t>* hits,
-                                std::span<const uint32_t> relocated = {}, bool short_branches = true) {
+// The branches of `code` (the game's bytes from `first_rva`) whose target `inside` (a predicate on the target's RVA) takes for a place past a
+// patched range's first byte, by the branch's RVA (`ignored`: the sources read in the disassembly and found not to be branches). The forms: rel32 jmp,
+// call and jcc, and with `short_branches` the rel8 ones (jmp, jcc, loop). No byte pattern knows the instruction boundaries, so a byte of another
+// instruction that looks like a branch is a hit too; the bytes of a relocated word (`relocated`: their RVAs, sorted) are data and never read as one.
+// The effect update's sites and Parallel Instance Fill's each give their own ranges and ignored sources.
+template <typename Inside>
+inline size_t BranchesInto(std::span<const uint8_t> code, uint32_t first_rva, std::vector<uint32_t>* hits, std::span<const uint32_t> relocated,
+                           bool short_branches, std::span<const uint32_t> ignored, Inside&& inside) {
   size_t count = 0;
   const auto read32 = [&](size_t at) {
     uint32_t value;
@@ -534,16 +541,33 @@ inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rv
     const uint32_t source = first_rva + static_cast<uint32_t>(at);
     // Bytes of a relocated word: data (its value follows the load address), not a branch.
     const auto word = std::ranges::lower_bound(relocated, source - 3);
-    if (word != relocated.end() && *word < source + length) continue;
-    const uint32_t target = source + static_cast<uint32_t>(length) + static_cast<uint32_t>(displacement);
-    for (const SiteInfo& info : SITES) {
-      if (target <= info.rva || target >= info.rva + SizeOf(info)) continue;
-      if (std::ranges::find(IGNORED_SOURCES, source) != IGNORED_SOURCES.end()) continue;
-      ++count;
-      if (hits != nullptr) hits->push_back(source);
+    if (word != relocated.end() && *word < source + length) {
+      continue;
+    }
+    if (std::ranges::find(ignored, source) != ignored.end() || !inside(source + static_cast<uint32_t>(length) + static_cast<uint32_t>(displacement))) {
+      continue;
+    }
+    ++count;
+    if (hits != nullptr) {
+      hits->push_back(source);
     }
   }
   return count;
+}
+
+// `short_branches` false: only the rel32 forms (E8, E9, 0F 8x). Prepare scans like that: the short forms of the shipped build are all
+// known (the whole-section scan of test/tw_engine_code), and the bytes of another tool's patch around a site (a rel32 whose high bytes
+// change from run to run) would read as short branches with random targets.
+inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rva, std::vector<uint32_t>* hits,
+                                std::span<const uint32_t> relocated = {}, bool short_branches = true) {
+  return BranchesInto(code, first_rva, hits, relocated, short_branches, IGNORED_SOURCES, [](uint32_t target) {
+    for (const SiteInfo& info : SITES) {
+      if (target > info.rva && Overlaps(target, 1, info.rva, static_cast<uint32_t>(SizeOf(info)))) {
+        return true;
+      }
+    }
+    return false;
+  });
 }
 
 // The two entries that engine_code writes a jump into (Cached Particle Count: +0x192D290 and +0x1929E60) and the stub each jump leads to, set by its

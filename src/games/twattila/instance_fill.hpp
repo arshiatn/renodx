@@ -51,6 +51,9 @@ namespace twattila::instance_fill {
 enum class Site : uint8_t { WEIGHTED_VISIBLE_FILL, WEIGHTED_DEPTH_FILL, WEIGHTED_COLOUR_FILL, FOLDED_FILL, COUNT };
 constexpr size_t SITE_COUNT = static_cast<size_t>(Site::COUNT);
 constexpr uint32_t ALL_SITES = (1u << SITE_COUNT) - 1;
+// The sites that are found, go in and stand down as one (a fill with a site missing would run the game's own call on the others'
+// ring): the 4 fills are one group. A later feature's sites are groups of their own, so that its stand-down never takes these.
+constexpr std::array<uint32_t, 1> GROUPS = {ALL_SITES};
 constexpr uint32_t SITE_SIZE = 5;
 
 // The game's record copies (thiscall, ecx = the functor, one stack argument: the range; ret 4).
@@ -122,7 +125,8 @@ static_assert([] {
     }
     for (size_t other = index + 1; other < SITE_COUNT; ++other) {
       const SiteInfo& next = SITES[other];
-      if (info.rva - info.before < next.rva + SITE_SIZE && next.rva - next.before < info.rva + SITE_SIZE) {
+      if (effect_update::Overlaps(info.rva - info.before, static_cast<uint32_t>(PatternSize(info.pattern)),
+                                  next.rva - next.before, static_cast<uint32_t>(PatternSize(next.pattern)))) {
         return false;
       }
     }
@@ -130,40 +134,27 @@ static_assert([] {
   return true;
 }());
 
-// Whether a byte a site writes (`written`: the 5 bytes of each call) or Prepare reads to find the sites (the patterns,
-// the links of each record copy's chain, the record copies' heads) lies in a range of `ranges`: rows with `.rva` and
-// `.size`, as heapfix_ranges.hpp's tables and the other features' sites are. The heapfix clearance (engine_code.hpp,
-// test/tw_instance_fill) and the no-overlap checks against the other sites tables are built on it.
-template <typename Ranges>
-constexpr bool TouchesAny(const Ranges& ranges, bool written) {
-  const auto touches = [&](uint32_t rva, uint32_t size) {
-    for (const auto& range : ranges) {
-      if (rva < range.rva + range.size && range.rva < rva + size) {
-        return true;
-      }
-    }
-    return false;
-  };
+// The byte ranges the sites own, one visit each (rva, size): what a site writes (`written`: the 5 bytes of each call), or what Prepare
+// reads to find the sites (the patterns, the links of each record copy's chain, the record copies' heads). The heapfix clearance
+// (engine_code.hpp) and the no-overlap checks against the other features' sites (test/tw_instance_fill) are built on it.
+template <typename Visit>
+constexpr void VisitRanges(bool written, Visit&& visit) {
   for (const SiteInfo& info : SITES) {
-    if (touches(written ? info.rva : info.rva - info.before,
-                written ? SITE_SIZE : static_cast<uint32_t>(PatternSize(info.pattern)))) {
-      return true;
+    if (written) {
+      visit(info.rva, SITE_SIZE);
+    } else {
+      visit(info.rva - info.before, static_cast<uint32_t>(PatternSize(info.pattern)));
     }
   }
   if (written) {
-    return false;
+    return;
   }
   for (const CopyInfo& copy : COPIES) {
     for (const Link& link : copy.chain) {
-      if (touches(link.from, 5)) {
-        return true;
-      }
+      visit(link.from, 5);
     }
-    if (touches(copy.chain[2].to, static_cast<uint32_t>(PatternSize(copy.head)))) {
-      return true;
-    }
+    visit(copy.chain[2].to, static_cast<uint32_t>(PatternSize(copy.head)));
   }
-  return false;
 }
 
 // What the game's calls and the record copies take: the range {first item, one past the last, the job grain}.
@@ -206,6 +197,8 @@ static bool control_refused_skips_part = false;
 static bool control_all_join = false;
 // chunk 1 is claimed and neither copied nor counted
 static bool control_skip_chunk = false;
+// Rewrite's n-th page made writable fails (0: the first; -1: none)
+static int32_t control_fail_protect = -1;
 #else
 constexpr bool control_overlap = false;
 constexpr bool control_drop_last = false;
@@ -278,7 +271,7 @@ static std::array<GameFill, SITE_COUNT> game_fills = {};
 static std::array<RecordCopy, COPY_COUNT> record_copies = {};
 static const uint8_t* base = nullptr;
 static bool prepared = false;
-static uint32_t found = 0;    // ALL_SITES, or 0: the sites go in whole or not at all
+static uint32_t found = 0;    // ALL_SITES, or 0 (Prepare), then less as groups stand down: a group goes in whole or not at all
 static uint32_t written = 0;  // the sites holding their call's new target
 static uint32_t asked = 0;    // what the row last asked for
 // The row is on and the sites are found: the dispatcher does its own fill; otherwise it runs the game's call.
@@ -451,44 +444,15 @@ constexpr std::array<uint32_t, 1> IGNORED_SOURCES = {0x17AE6FA};
 // short branches with random targets); test/tw_instance_fill scans the whole code section with both.
 inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rva, std::span<const uint32_t> relocated,
                                 bool short_branches, std::vector<uint32_t>* hits = nullptr) {
-  size_t count = 0;
-  for (size_t at = 0; at < code.size(); ++at) {
-    const uint8_t opcode = code[at];
-    size_t length = 0;
-    int32_t displacement = 0;
-    if ((opcode == 0xE8 || opcode == 0xE9) && at + 5 <= code.size()) {
-      length = 5;
-      std::memcpy(&displacement, code.data() + at + 1, sizeof(displacement));
-    } else if (opcode == 0x0F && at + 6 <= code.size() && (code[at + 1] & 0xF0) == 0x80) {
-      length = 6;
-      std::memcpy(&displacement, code.data() + at + 2, sizeof(displacement));
-    } else if (short_branches && at + 2 <= code.size()
-               && (opcode == 0xEB || (opcode & 0xF0) == 0x70 || (opcode >= 0xE0 && opcode <= 0xE3))) {
-      length = 2;
-      displacement = static_cast<int8_t>(code[at + 1]);
-    } else {
-      continue;
-    }
-    const uint32_t source = first_rva + static_cast<uint32_t>(at);
-    const auto word = std::ranges::lower_bound(relocated, source - 3);
-    if (word != relocated.end() && *word < source + length) {
-      continue;
-    }
-    const uint32_t target = source + static_cast<uint32_t>(length) + static_cast<uint32_t>(displacement);
-    if (std::ranges::find(IGNORED_SOURCES, source) != IGNORED_SOURCES.end()) {
-      continue;
-    }
-    for (const SiteInfo& info : SITES) {
-      if (target <= info.rva || target >= info.rva + SITE_SIZE) {
-        continue;
-      }
-      ++count;
-      if (hits != nullptr) {
-        hits->push_back(source);
-      }
-    }
-  }
-  return count;
+  return effect_update::internal::BranchesInto(
+      code, first_rva, hits, relocated, short_branches, IGNORED_SOURCES, [](uint32_t target) {
+        for (const SiteInfo& info : SITES) {
+          if (target > info.rva && effect_update::Overlaps(target, 1, info.rva, SITE_SIZE)) {
+            return true;
+          }
+        }
+        return false;
+      });
 }
 
 // Once: each site found by its bytes and its call's target, each record copy by its chain and its head, no branch of
@@ -601,8 +565,10 @@ inline bool ThreadInside(uintptr_t eip, uint32_t changing) {
 
 // PausedWrite, with every other thread suspended and none inside a site: the changing sites get the new target (or the
 // game's bytes back). A site whose bytes are not what this module left or found (another tool's) stands every changing
-// site down, and so does a page that cannot be made writable (a site going in); nothing is written then. The sites that
-// stood down, by bit.
+// site of its group down, and so does a page that cannot be made writable (a site going in); nothing is written then.
+// The sites that stood down, by bit. Kept as functions of this module (not inline in PausedWrite, as the effect table's
+// are): test/tw_instance_fill runs Rewrite alone on a read and execute page, and the stub sites that join this table
+// later change their own size in one place.
 inline uint32_t Rewrite(uint32_t patched) {
   using namespace internal;
   const uint32_t changing = Changing(patched);
@@ -613,8 +579,18 @@ inline uint32_t Rewrite(uint32_t patched) {
       stood |= 1u << index;
     }
   }
-  if ((stood & patched) != 0) {
-    stood = changing;
+  // The sites go in whole or not at all, by group: one whose bytes are not the game's stands its group down.
+  const auto stand_group_down = [&](size_t site) {
+    for (const uint32_t group : GROUPS) {
+      if ((group >> site & 1) != 0) {
+        stood |= changing & group;
+      }
+    }
+  };
+  for (const uint32_t group : GROUPS) {
+    if ((stood & patched & group) != 0) {
+      stood |= changing & group;
+    }
   }
   std::array<DWORD, SITE_COUNT> protection = {};
   uint32_t writable = 0;
@@ -622,10 +598,18 @@ inline uint32_t Rewrite(uint32_t patched) {
     if (((changing & ~stood) >> index & 1) == 0) {
       continue;
     }
-    if (VirtualProtect(sites[index].at, SITE_SIZE, PAGE_EXECUTE_READWRITE, &protection[index]) != FALSE) {
+#if defined(TWATTILA_INSTANCE_FILL_CONTROLS)
+    const bool forced_failure = (control_fail_protect == 0);
+    if (control_fail_protect >= 0) {
+      --control_fail_protect;
+    }
+#else
+    constexpr bool forced_failure = false;
+#endif
+    if (!forced_failure && VirtualProtect(sites[index].at, SITE_SIZE, PAGE_EXECUTE_READWRITE, &protection[index]) != FALSE) {
       writable |= 1u << index;
     } else if ((patched >> index & 1) != 0) {
-      stood = changing;
+      stand_group_down(index);
       break;
     } else {
       stood |= 1u << index;
@@ -650,13 +634,18 @@ inline uint32_t Rewrite(uint32_t patched) {
   return stood;
 }
 
-// Every present, with the row: the sites to ask for (all of them while the row is on and they are found, none
+// Every present, with the row: the sites to ask for (each group whole while the row is on and the group is found, none
 // otherwise), the dispatcher's own fill on or off at once (a site still in while the row is off runs the game's call),
 // and what a trace window kept (one line per fill call) or check mode counted since the last present.
 inline uint32_t Wanted(bool row) {
   using namespace internal;
-  const bool wanted = (row && found == ALL_SITES);
-  row_on.store(wanted, std::memory_order_relaxed);
+  uint32_t wanted = 0;
+  for (const uint32_t group : GROUPS) {
+    if (row && (found & group) == group) {
+      wanted |= group;
+    }
+  }
+  row_on.store(wanted != 0, std::memory_order_relaxed);
   const uint32_t records = std::min<uint32_t>(trace_count.exchange(0, std::memory_order_relaxed), TRACE_RECORDS);
   const double microseconds = 1e6 / static_cast<double>(worker_pool::qpc_frequency);
   for (uint32_t index = 0; index < records; ++index) {
@@ -682,7 +671,7 @@ inline uint32_t Wanted(bool row) {
   if (const uint32_t incomplete = incomplete_fills.exchange(0, std::memory_order_relaxed); incomplete != 0) {
     renodx::utils::log::w("[Total War] Parallel Instance Fill: ", incomplete, " fills ended with chunks not done");
   }
-  return (wanted ? ALL_SITES : 0u);
+  return wanted;
 }
 
 #endif  // !defined(_WIN64)

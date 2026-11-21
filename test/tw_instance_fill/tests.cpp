@@ -293,6 +293,18 @@ struct Row {
   uint32_t size;
 };
 
+// Whether a byte the sites write (`written`) or are found by lies in a range of `ranges` (rows with `.rva` and `.size`).
+template <typename Ranges>
+bool TouchesAny(const Ranges& ranges, bool written) {
+  bool touches = false;
+  fill::VisitRanges(written, [&](uint32_t rva, uint32_t size) {
+    for (const auto& range : ranges) {
+      touches |= twattila::effect_update::Overlaps(rva, size, range.rva, range.size);
+    }
+  });
+  return touches;
+}
+
 void TestSites() {
   REQUIRE(fill::Prepare(reinterpret_cast<HMODULE>(patched)));
   CHECK(fi::found == fill::ALL_SITES);
@@ -315,17 +327,17 @@ void TestSites() {
         && fill::SITES[2].copy == fill::Copy::LIST_ITEMS && fill::SITES[3].copy == fill::Copy::TRACKER_ITEMS);
 
   // No overlap with heapfix's tables (the shared ones of engine_code.hpp), nor with the other features' sites.
-  CHECK(!fill::TouchesAny(ec::HEAPFIX_PATCHED, true) && !fill::TouchesAny(ec::HEAPFIX_PATCHED, false));
-  CHECK(!fill::TouchesAny(ec::HEAPFIX_TIMING_HOOKS, true) && !fill::TouchesAny(ec::HEAPFIX_TIMING_HOOKS, false));
-  CHECK(!fill::TouchesAny(ec::HEAPFIX_CHECKED, true));
+  CHECK(!TouchesAny(ec::HEAPFIX_PATCHED, true) && !TouchesAny(ec::HEAPFIX_PATCHED, false));
+  CHECK(!TouchesAny(ec::HEAPFIX_TIMING_HOOKS, true) && !TouchesAny(ec::HEAPFIX_TIMING_HOOKS, false));
+  CHECK(!TouchesAny(ec::HEAPFIX_CHECKED, true));
   const std::array<ec::HeapfixRange, 1> over_site = {{{fill::SITES[2].rva + 4, 8}}};
   const std::array<ec::HeapfixRange, 1> over_context = {{{fill::SITES[3].rva - 3, 1}}};
   const std::array<ec::HeapfixRange, 1> over_chain = {{{0x17BA78F + 2, 1}}};
   const std::array<ec::HeapfixRange, 1> over_head = {{{0x17DB270 + 9, 4}}};
-  CHECK(fill::TouchesAny(over_site, true) && fill::TouchesAny(over_site, false));
-  CHECK(!fill::TouchesAny(over_context, true) && fill::TouchesAny(over_context, false));
-  CHECK(!fill::TouchesAny(over_chain, true) && fill::TouchesAny(over_chain, false));
-  CHECK(!fill::TouchesAny(over_head, true) && fill::TouchesAny(over_head, false));
+  CHECK(TouchesAny(over_site, true) && TouchesAny(over_site, false));
+  CHECK(!TouchesAny(over_context, true) && TouchesAny(over_context, false));
+  CHECK(!TouchesAny(over_chain, true) && TouchesAny(over_chain, false));
+  CHECK(!TouchesAny(over_head, true) && TouchesAny(over_head, false));
 
   std::vector<Row> others;
   ec::Prepare(reinterpret_cast<HMODULE>(patched), ec::BUILDS[static_cast<size_t>(twattila::engine_code::Game::ATTILA)]);
@@ -347,7 +359,7 @@ void TestSites() {
     others.push_back({info.rva, static_cast<uint32_t>(twattila::effect_update::SizeOf(info))});
   }
   CHECK(engine_rows >= 20 && recording_rows == ec::RECORDING_SITE_COUNT && others.size() == engine_rows + recording_rows + twattila::effect_update::SITE_COUNT);
-  CHECK(!fill::TouchesAny(others, true) && !fill::TouchesAny(others, false));
+  CHECK(!TouchesAny(others, true) && !TouchesAny(others, false));
   // Our written bytes against the other tables' find-by windows.
   for (const fill::SiteInfo& info : fill::SITES) {
     for (const Row& window : context_windows) {
