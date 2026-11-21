@@ -4748,6 +4748,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         job is open elsewhere; dropped tests; row in all builds; entered = finished workers) -> reviewer. No script under
         tools says DrawRecordingThreads (only report text). bd1r_ RESUMED 03:0x: S2r review -> reports/s2r_review.md.
         Agents: ebo_, x87o_, hp1i_, bd1r_ (4 of 4).
+        ATN 03:1x: (1) Forge's "fix broken tooling right away, never defer" = TAKEN (memory feedback_fix_tooling_now; limits:
+        safety / permission / antivirus stops are reported, a new harness switch needs ATN's rule); (2) the GPU tooling
+        design runs NOW, at the next free agent slot (Opus xHigh, read-only) -> reports in plan_1117; (3) Shortfuse's
+        "Failures and invariants" section ADDED to docs/CXX_STYLE.md (verbatim, before Cross-addon safety); a LOGGING /
+        NO-SILENT-FAILURE AUDIT of our shared code (twattila engine_code / draw_recording / worker_pool, bridge, helper,
+        other TW games' shared pieces; upstream src/utils only for real bugs) runs after the render_mt builds and BEFORE
+        the end batch, so a freeze / crash in the batch leaves its reason in ReShade.log (failure logs only, once, no
+        per-frame logs); (4) the helper's "restart once after device loss" STAYS (established contract).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
