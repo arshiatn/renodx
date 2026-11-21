@@ -4934,6 +4934,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         BUSY: when render_mt can't fill 3 slots, take GPU plan steps (plan_1117). (3) Forge's items are now a section
         "FORGE'S INPUT" at the end of plan_1117/plan.md (tooling, enforcement, metrics, box, unified PT mode, PTLAS,
         papers), first in the GPU plan. (4) Our RT features use separate rays / reservoirs today (not one reservoir).
+        bd3r_ RE-CHECK OF HEAPFIX FIXES DONE 04:0x (appended to reports/bd3r_hp1_review.md): ALL TEN FIXED, prep may go
+        on to T2 as is. M1 both-or-neither on the shared page right (reverse restore), N7 fin snapshot exact with the
+        barrier and still fails (no overrun) without it; control 5 = every seed that reaches the barrier. Nits: test
+        world line 169 over-counts (control 5 -> 57 of 100), CBARRIER between data and size stores, log a failed restore
+        VirtualProtect. hp1i_ RESUMED 04:0x: T2 (live GEN re-read) + the 3 nits, one prep commit + new DLL.
+        Agents: c3i_, gto_, hp1i_ (3 of 3). QUEUE: T3 (Opus High), T4 (bench scripts), unified PT design, x87 review,
+        R2 addendum; GPU plan steps fill any free slot (ATN 04:0x).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
