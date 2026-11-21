@@ -388,6 +388,9 @@ static std::atomic<uint64_t> forward_wait_ticks = 0;
 static bool row_on = false;
 static bool session_off = false;
 static bool off_said = false;
+// The units' or segments' blocks could not grow (no memory, or MAX_BLOCKS of them): a store on the walk's thread, the line at the present.
+static std::atomic<bool> allocation_failed = false;
+static bool allocation_said = false;
 static uint32_t last_round_units = MIN_ROUND_UNITS;
 static uint32_t last_node = 0;
 static uint32_t small_round_presents = 0;
@@ -1082,7 +1085,10 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
         const bool asks_l2 = (spawns_row && !spawns_off && count_word != nullptr);
         const bool l2 = (asks_l2 && !stage_skip && query_limit >= MIN_SPAWN_BUDGET && static_cast<uint64_t>(last_round_spawned) * 2 < query_limit);
         if (asks_l2) stage_skip = false;
-        if (!units.Reserve(std::max(last_round_units + last_round_units / 4, BLOCK_SIZE)) || !segments.Reserve(BLOCK_SIZE)) return serial(SerialReason::ALLOCATION);
+        if (!units.Reserve(std::max(last_round_units + last_round_units / 4, BLOCK_SIZE)) || !segments.Reserve(BLOCK_SIZE)) {
+          allocation_failed.store(true, std::memory_order_relaxed);
+          return serial(SerialReason::ALLOCATION);
+        }
         // The pool: the budget, a quarter of it and a margin (staged records past the budget are an overflow), or what a full pool asked for, at most 4 times the budget's pool.
         const uint32_t budget_pool = query_limit + query_limit / 4 + STAGE_MARGIN;
         const uint32_t pool_cap = static_cast<uint32_t>(std::min<uint64_t>(STAGE_CAP_FACTOR * budget_pool, 0xFFFFFFFFull));
@@ -1439,6 +1445,11 @@ inline void Update(bool row, bool spawns = false) {
   if (session_off && !off_said) {
     off_said = true;
     renodx::utils::log::w("[Total War] Parallel Effect Update: off for the session (a safety check failed; see the lines above).");
+  }
+  if (!allocation_said && allocation_failed.load(std::memory_order_relaxed)) {
+    allocation_said = true;
+    renodx::utils::log::w(std::format("[Total War] Parallel Effect Update: no memory for its records ({} unit and {} segment blocks of {}); its rounds run serially.",
+                                      units.capacity / BLOCK_SIZE, segments.capacity / BLOCK_SIZE, MAX_BLOCKS));
   }
   if (row && last_round_units < MIN_ROUND_UNITS && ++small_round_presents >= SMALL_ROUND_RETRY_PRESENTS) {
     last_round_units = MIN_ROUND_UNITS;
