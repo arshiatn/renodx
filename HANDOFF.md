@@ -6400,6 +6400,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents (6): c33i_ (R-S5), gti_ (GPU S1a), upt_ (unified PT v2), lga_ (logging audit), gtb_ (GPU S1b), gtp_ (GPU
         S1c). QUEUE: R-S5 review, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, logging fixes, S1r (after
         S1a-c), upr_ re-check, F1 hybrid fix, T5 freeze, T6 dry run, end batch.
+        c33i_ R-S5 DONE 00:3x (reports/c33i_rs5_handback.md): rmt_rs5 on 14ec1d954, 6 commits: 571c5326f bd1r_'s R-S4
+        items (no break, written-bytes assert, per-site SITE_SIZE, G1, comments); f7801e30c R-S5.1 ApplyControlWords;
+        effdc31b7 R-S5.2 the fold in draw_recording.hpp; f9b67d841 R-S5.3 3 Unmap stubs + key stores, per-group
+        Prepare, plain build keeps SITE_COUNT 4 (bd3r_'s Should) + Nits 1-4; d573ca1e8 R-S5.4 row 'Fill With Draw
+        Recording'; b102610cd R-S5.5 tests (2108+ / 145- over 10 files). tw_engine_code FULL x86, tw_instance_fill x3,
+        tw_draw_recording x3 (fold life 360 cases / 3708 folds), _loop, _sites PASS; gated x86 plain + DRAW_RECORDING /
+        twrome2 / twthrones + amd64 exit 0. 11 changes from the addendum (incl. test 9 vectored handler: clang-cl x86
+        __try never caught an AV). Note: a crashed test exe stays a zombie holding the exe -> fresh testbin folder.
+        Asked c33i_ what background work it left running (app said 'waiting on its own background work').
+        R-S5 REVIEW STARTED 00:3x, split in two (Opus xHigh): bd3r_ fold side (addendum conformance, worker_pool,
+        draw_recording, engine_code / addon, tw_draw_recording + _loop) -> reports/bd3r_review.md '## R-S5 review (fold
+        side)'; bd1r_ instance_fill side (571c5326f, instance_fill.hpp, tw_instance_fill, instance_fill.inc) ->
+        reports/bd1r_rs3_review.md '## R-S5 review (instance_fill side)'. Then c33i_ fixes both, same reviewers re-check.
+        upt_ UNIFIED PT v2 DONE 00:3x (674 lines; hand-back designs/upt_v2_handback.md; v1 copy scratchpad\
+        upt_v1_backup.md): 8 Musts / 14 Shoulds / 8 Nits taken; new H0 = F1 hybrid fix (pcg4d / nested pcg, every Random
+        site) before U1; U4 split a (no-ray PT Reflection Occlusion first) / b (offline check) / c (top-up ray, only if
+        NQ1 = c); [RR-4K] checks blocked until NQ6; honest cost -0.8..+0.4 ms on day1 (v1 claimed a saving); required path
+        ~90 h + U4c 10 + U9 14 + reviews 8; GPU 12-16 h. ATN list 15 questions (Q1, Q2, Q4, Q6-Q10, NQ1-NQ6).
+        upr_ STARTED 00:3x: v2 re-check -> designs/unified_pt_review.md '## v2 re-check'.
+        Agents (8): bd3r_ + bd1r_ (R-S5 review), c33i_ (answering), gti_ (GPU S1a), gtb_ (GPU S1b), gtp_ (GPU S1c), lga_
+        (logging audit), upr_ (unified PT v2 re-check). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6 (+ N5 + b13r_'s
+        half-rows R2), X1, logging fixes, S1r (after S1a-c), F1 hybrid fix (H0), T5 freeze, T6 dry run, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
