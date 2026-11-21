@@ -6156,6 +6156,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: t4i_ (T3), c33i_ (part 2b), bd3o_ (R2 v3) (3 of 3). QUEUE: bd1r_ R-S3 re-check + merge rmt_rs2b, ebr_ T3
         review, bd3r_ R2 v3 re-check, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, R-S5, S0 GPU review
         (filler), unified PT design.
+        bd3o_ R2 v3 DONE 21:2x (reports/bd3o_design_R2_addendum.md, '## v3 after bd3r_'s review', 10 items): M1 close
+        then the game's Unmap on the stub's own ring (test 2 two logging rings, control 17); M2 fold_fill counters zeroed
+        before Start (test 5 back to back, control 16); S1-S5 + nits 1-9 folded, 10-11 for the implementer; §9 starts
+        from rmt_rs2b; ~450 + 400 lines, controls 1-17.
+        bd3r_ STARTED 21:2x: short v3 re-check -> reports/bd3r_review.md '## R2 addendum v3 re-check'.
+        Agents: t4i_ (T3), c33i_ (part 2b), bd3r_ (R2 v3 re-check) (3 of 3). QUEUE: bd1r_ R-S3 re-check + merge
+        rmt_rs2b, ebr_ T3 review, B1.6 (+ N5 real-routine tests + b13r_'s half-rows R2), X1, R-S5, S0 GPU review
+        (filler), unified PT design.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
