@@ -5092,7 +5092,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         before BenchStart. Not done: WPR ETL attribution (b2b_cpusegs.py), caps_limits, placeholders (T5 / audit),
         L_end re-lay, paused-ring blocks vs a real leg 1. COORDINATOR: q5_pinned_continue was left false -> MUST be
         true (ATN answered Q5 03:2x: go on once with the part Off).
-        ebr_ RESUMED 05:2x (Opus xHigh): review of T4 (Q5, HANG end, safety list, line classes vs real sources,
+        ebr_ RESUMED 05:1x (Opus xHigh): review of T4 (Q5, HANG end, safety list, line classes vs real sources,
         t4i_'s questions 2-5, not-done list) -> t4i_ fixes -> ebr_ re-check.
         Agents: c3i_, bd3o_, ebr_ (3 of 3). QUEUE: T3, x87 review, R2 addendum, S0 GPU design review, unified PT design;
         after S3: B1.2a, T1b; after S8a: S8 (hp1i_ + the S7 nits) -> bd3r_ review.
