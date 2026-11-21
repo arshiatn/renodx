@@ -5566,6 +5566,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         ebr_ RESUMED 13:1x: round 4 re-check of t4i_'s work -> reports/ebr_t1b_review.md -> merge rmt_t1bn.
         Agents: c33i_ (C.3-4 + shared table), c3i_ (B1.3 fixes), ebr_ (t4i_ re-check) (3 of 3). QUEUE: bd1r_ C.3-4
         review, b13r_ re-check, B1.4 / B1.5.
+        ebr_ ROUND 4 RE-CHECK DONE 13:3x (reports/ebr_t1b_review.md from line 101): MERGE d3def8a16; T4 side no Musts,
+        4 Shoulds, 7 Nits. run_all 637 assertions 0 failed, tw_test_hooks x86 + amd64 9 modes. Holds: S1 + nits fixed,
+        per-kind crash budget = ATN's rule, presort fully out (LIVE=1 every prep start), A/B table + x87 note correct.
+        MERGED 13:3x: rmt_t1bn -> atn-mods 9cda47ada (name_check 178 ids / 9 generic; gated x86 x3 + amd64 exit 0;
+        pushed).
+        t4i_ RESUMED 13:3x (before leg 1, not blocking T5): S1 crash record survives a resumable re-run + test; S2
+        (coordinator decision) mt_trace gap = first window frames / 20 fps, min 1 s, PAUSE-W3 C sweeps back to
+        trace_at [2,3,4]; S3 W_w = ESTIMATE (screen >= 0.8 ms -> 'check the WPR-W3-2 ETL', ETL decides; rename
+        W_w_max_ms; true W_w needs a hook at the game's own wait site, not QPC + 2 counters); nits 1-3 / 5-7 -> ebr_.
+        S4 (ebr_) = the x87 review box above (also heapfix's own B2 threads).
+        Agents: c33i_ (C.3-4 + shared table), c3i_ (B1.3 fixes), t4i_ (ebr_ round 4 fixes) (3 of 3). QUEUE: bd1r_
+        C.3-4 review, b13r_ re-check, ebr_ round 5, B1.4 / B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
