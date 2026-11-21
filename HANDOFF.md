@@ -5526,6 +5526,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         variants, COLOUR_B OWN on) + Should 3 (code size headroom; page 0x2000 if > ~3600 B) -> bd1r_ review.
         Agents: c33i_ (C.3-4), t4i_ (T1b follow-ups + ebo_ lane), b13r_ (B1.3 review) (3 of 3). QUEUE: c3i_ B1.3 fixes,
         bd1r_ C.3-4 review, B1.4 / B1.5.
+        USAGE LIMIT ~11:3x stopped all 3 agents; RESUMED 13:0x. c33i_ had rmt_c34 edf35684d (C.3-3 review fixes) +
+        0743e9896 (RECORDING_SITES 39 -> 59 alone), C.3-4 next; t4i_ had uncommitted test_hooks / tw_test_hooks edits;
+        b13r_ review not yet written.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
