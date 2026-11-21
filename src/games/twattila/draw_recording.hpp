@@ -27,6 +27,7 @@
 #include <new>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "../../utils/log.hpp"
@@ -452,6 +453,25 @@ struct Controls {
   bool any_join = true;
   // A dispatcher call made inside a round runs directly (S-2).
   bool nested_guard = true;
+  // The fold (Parallel Instance Fill's R2). Each of these breaks one rule of it; the tests must see the difference.
+  // A direct path closes the fold before its first run on the real tracker (the scope net still catches a miss).
+  bool fold_close_in_direct = true;
+  // The close drains the fill's chunks and joins the job (off: it returns after the publish and the Unmap).
+  bool fold_drain_and_join = true;
+  // The render thread claims the record shares the workers did not take (off: it runs only its own).
+  bool fold_claim_shares = true;
+  // A worker runs only the shares it claimed (off: it runs its own index, claimed or not).
+  bool fold_claim_part = true;
+  // The publish carries the cut-time x87 and MXCSR words, and the workers apply them.
+  bool fold_control_words = true;
+  // The fold's job is JoinRule::ENTERED (off: ALL, so a late worker holds the close).
+  bool fold_join_entered = true;
+  // The close makes the Unmap the stub noted whatever the ring's flag says (off: it tests the flag again and skips it).
+  bool fold_unmap_regardless = true;
+  // A dispatcher closes a fold of this thread that holds another tracker (off: it treats it as not its own).
+  bool fold_entry_key = true;
+  // The close's ticks leave the phase the lap closes and go to the call's `fold_close`.
+  bool fold_move_ticks = true;
 };
 #if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
 static Controls controls;
@@ -783,6 +803,15 @@ struct CallTrace {
   uint64_t replay = 0;
   uint64_t rerun = 0;
   uint64_t total = 0;
+  // The fold (the fill's job opened at the fill site, closed in this call): whether the call took it, what its close cost (the
+  // part that is the render thread's record share is in chunk_zero), the record shares the render thread took, and the ticks from
+  // the fill site to the publish and from the stub's noted Unmap to the Unmap.
+  bool folded = false;
+  bool fold_with_record = false;
+  uint32_t fold_shares = 0;
+  uint64_t fold_close = 0;
+  uint64_t fold_publish_delay = 0;
+  uint64_t fold_unmap_delay = 0;
   // Trace frames only.
   uint64_t compare = 0;
   uint64_t run_scan = 0;
@@ -885,7 +914,235 @@ using worker_pool::Qpc;
 
 inline Slot* SlotAt(uint32_t index) { return reinterpret_cast<Slot*>(arena + static_cast<size_t>(index) * SLOT_SIZE); }
 
+// The fold (Parallel Instance Fill's R2, instance_fill.hpp): at a fill site where a draw dispatcher's cut follows, the fill's pool
+// job (User::DRAW_RECORDING, JoinRule::ENTERED) stays open across the game's code to the cut. The workers claim the fill's
+// chunks, wait for the publish, then claim the cut's record shares; the game's ring Unmap, between the fill and the cut, is only
+// noted (instance_fill's stub). CloseFold, on the render thread, publishes, runs its own part, drains what is left, joins and
+// makes the Unmap: every exit of a dispatcher closes the fold before anything reads or maps the ring.
+
+// What instance_fill hands the fold: its chunk claimer and job, and where the close checks and counts the fill.
+struct FoldFill {
+  void (*work)(void* context, uint32_t worker) = nullptr;
+  void* context = nullptr;
+  const std::atomic<uint32_t>* chunks_done = nullptr;
+  uint32_t chunks = 0;
+  std::atomic<uint32_t>* incomplete = nullptr;  // instance_fill's incomplete_fills: one counter, one line
+};
+
+// One fold at a time, owned by the thread that opened it.
+struct Fold {
+  std::atomic<DWORD> thread{0};         // 0: no fold. Other threads read it relaxed; only this thread reads the rest.
+  std::atomic<void*> tracker{nullptr};  // the dispatchers' key check, read relaxed on every thread
+  void* ring = nullptr;                 // the stub's key check: [tracker + 0x24]
+  uint32_t workers = 0;                 // what Start got; the dispatchers' thread count is this + 1
+  FoldFill fill;
+  void* unmap_buffer = nullptr;    // noted by the stub: *(ring + 0x10), read when the game's +0x44 test had passed
+  void* unmap_argument = nullptr;  // noted by the stub with the buffer
+  bool unmap_pending = false;
+  uint64_t opened_ticks = 0;  // trace frames only
+  uint64_t unmap_ticks = 0;
+  const Descriptor* record = nullptr;  // written before `published` (release), read after it (acquire)
+  uint32_t x87 = 0;
+  uint32_t sse = 0;
+  alignas(64) std::atomic<uint32_t> published{0};
+  alignas(64) std::atomic<uint32_t> next_part{1};  // the record's participant shares 1..record->workers, claimed
+};
+
+// The render thread's: a fault of the fold's rules latches R2 off for the session, and each count is written at the next present.
+static Fold fold;
+static bool fold_latched = false;
+static uint32_t fold_net_closes = 0;
+static uint32_t fold_key_mismatches = 0;
+static uint32_t fold_flag_changes = 0;
+// What a close leaves for the next lap of the call's trace (render thread only, trace frames only).
+struct FoldTrace {
+  uint64_t close_ticks = 0;
+  uint64_t publish_delay = 0;
+  uint64_t unmap_delay = 0;
+  uint32_t shares = 0;
+};
+static FoldTrace fold_trace;
+
+inline void FoldFault(uint32_t* count) noexcept {
+  ++*count;
+  fold_latched = true;
+}
+
+// The game's ring Unmap: slot 4 of the buffer's vtable (thiscall; the game pops nothing after it).
+inline void GameUnmap(void* buffer, void* argument) noexcept {
+  const auto vtable = *static_cast<void* const* const*>(buffer);
+  reinterpret_cast<void(__thiscall*)(void*, void*)>(vtable[4])(buffer, argument);
+}
+
+// RecordWork runs the game's loops, which close the fold (RunLoop), which runs RecordWork's shares: a recursive dependency.
+inline void RecordWork(void* context, uint32_t worker);
+
+// The pool's work function of the fold (worker 1..n): the fill's chunks, then (bounded spin, then an atomic wait) the publish,
+// then the record's shares by claim. The shares are claimed, so each runs once on whichever thread gets it first.
+inline void FoldWork(void* context, uint32_t worker) {
+  auto& job = *static_cast<Fold*>(context);
+  job.fill.work(job.fill.context, worker);
+  const uint64_t start = Qpc();
+  const uint64_t spin_ticks = qpc_frequency * 50 / 1000000;
+  while (job.published.load(std::memory_order_acquire) == 0 && Qpc() - start < spin_ticks) {
+    _mm_pause();
+  }
+  while (job.published.load(std::memory_order_acquire) == 0) {
+    job.published.wait(0);
+  }
+  if (job.record == nullptr) return;
+  if (controls.fold_control_words) {
+    worker_pool::ApplyControlWords(job.x87, job.sse);
+  }
+  if (!controls.fold_claim_part) {
+    RecordWork(const_cast<Descriptor*>(job.record), worker);
+    return;
+  }
+  for (uint32_t part = job.next_part.fetch_add(1); part <= job.record->workers; part = job.next_part.fetch_add(1)) {
+    RecordWork(const_cast<Descriptor*>(job.record), part);
+  }
+}
+
+// Opens the fold (the fill site, render thread): false when the pool refused the job (nothing is open, the fill runs as R1's).
+inline bool OpenFold(void* tracker, void* ring, const FoldFill& fill, uint32_t workers) noexcept {
+  fold.tracker.store(tracker, std::memory_order_relaxed);
+  fold.ring = ring;
+  fold.workers = workers;
+  fold.fill = fill;
+  fold.unmap_pending = false;
+  fold.record = nullptr;
+  fold.opened_ticks = (trace.active ? Qpc() : 0);
+  fold.published.store(0, std::memory_order_relaxed);
+  fold.next_part.store(1, std::memory_order_relaxed);
+  fold.thread.store(GetCurrentThreadId(), std::memory_order_relaxed);
+  const bool started = worker_pool::Start(
+      {.work = &FoldWork,
+       .context = &fold,
+       .user = worker_pool::User::DRAW_RECORDING,
+       .join = (controls.fold_join_entered ? worker_pool::JoinRule::ENTERED : worker_pool::JoinRule::ALL),
+       .trace = trace.active},
+      workers);
+  if (!started) {
+    fold.thread.store(0, std::memory_order_relaxed);
+    fold.tracker.store(nullptr, std::memory_order_relaxed);
+  }
+  return started;
+}
+
+// Closes the fold (render thread): publishes the record (or none) with the cut-time control words, runs `part` (the render
+// thread's own record share), then the shares and the fill's chunks the workers left, joins, and makes the Unmap the stub noted.
+// It never allocates, formats, logs or throws (the dispatchers are noexcept); the faults are counted and Update writes them.
+template <typename Part>
+inline worker_pool::JoinResult CloseFold(const Descriptor* record, Part&& part) noexcept {
+  const bool tracing = trace.active;
+  uint64_t start = (tracing ? Qpc() : 0);
+  fold.record = record;
+  __control87_2(0, 0, &fold.x87, &fold.sse);
+  fold.published.store(1, std::memory_order_release);
+  fold.published.notify_all();
+  if (tracing) {
+    fold_trace.publish_delay += (fold.opened_ticks != 0 ? start - fold.opened_ticks : 0);
+    fold_trace.close_ticks += Qpc() - start;
+  }
+  part();
+  if (tracing) {
+    start = Qpc();
+  }
+  if (record != nullptr && controls.fold_claim_shares) {
+    for (uint32_t share = fold.next_part.fetch_add(1); share <= record->workers; share = fold.next_part.fetch_add(1)) {
+      RecordWork(const_cast<Descriptor*>(record), share);
+      ++fold_trace.shares;
+    }
+  }
+  worker_pool::JoinResult joined = {};
+  if (controls.fold_drain_and_join) {
+    fold.fill.work(fold.fill.context, 0);
+    joined = worker_pool::Join();
+    if (fold.fill.chunks_done->load(std::memory_order_acquire) != fold.fill.chunks) {
+      fold.fill.incomplete->fetch_add(1, std::memory_order_relaxed);
+      fold_latched = true;
+    }
+  }
+  if (fold.unmap_pending) {
+    // The stub decided on the game's flag test; a flag that changed since means the fold's premise broke: counted, latched,
+    // and the Unmap the game would have made is still made (a skipped one leaves the buffer mapped for the next Map).
+    const bool flag_changed = (*(static_cast<const uint8_t*>(fold.ring) + 0x44) != 0);
+    if (flag_changed) {
+      FoldFault(&fold_flag_changes);
+    }
+    if (controls.fold_unmap_regardless || !flag_changed) {
+      GameUnmap(fold.unmap_buffer, fold.unmap_argument);
+    }
+    if (tracing) {
+      fold_trace.unmap_delay += (fold.unmap_ticks != 0 ? Qpc() - fold.unmap_ticks : 0);
+    }
+  }
+  fold.thread.store(0, std::memory_order_relaxed);
+  fold.tracker.store(nullptr, std::memory_order_relaxed);
+  if (tracing) {
+    fold_trace.close_ticks += Qpc() - start;
+  }
+  return joined;
+}
+
+// The fold on this thread is for `tracker`: the dispatchers' entry. A fold of this thread with another key is closed at once,
+// counted and latched, and the call goes on as if there were none.
+inline bool FoldIsOurs(void* tracker) noexcept {
+  if (fold.thread.load(std::memory_order_relaxed) != GetCurrentThreadId()) return false;
+  if (fold.tracker.load(std::memory_order_relaxed) == tracker) return true;
+  if (controls.fold_entry_key) {
+    CloseFold(nullptr, [] {});
+    FoldFault(&fold_key_mismatches);
+  }
+  return false;
+}
+
+// The first statement of both dispatchers: a fold of this thread for this tracker that is still open when the call returns is
+// closed and counted (every path closes it already; this fires only after a wrong edit).
+struct FoldNet {
+  void* tracker;
+  ~FoldNet() noexcept {
+    if (fold.tracker.load(std::memory_order_relaxed) == tracker && fold.thread.load(std::memory_order_relaxed) == GetCurrentThreadId()) {
+      CloseFold(nullptr, [] {});
+      FoldFault(&fold_net_closes);
+      fold_trace = {};
+    }
+  }
+};
+
+// Moves what a close left (the ticks of the lap's close, its shares and delays) from the render-thread static into the call's trace;
+// the ticks are what the lap takes out of the phase it closes.
+inline uint64_t TakeFoldTrace(CallTrace* trace_call) noexcept {
+  const FoldTrace taken = std::exchange(fold_trace, FoldTrace{});
+  if (!controls.fold_move_ticks) return 0;
+  trace_call->fold_close += taken.close_ticks;
+  trace_call->fold_shares += taken.shares;
+  trace_call->fold_publish_delay += taken.publish_delay;
+  trace_call->fold_unmap_delay += taken.unmap_delay;
+  return taken.close_ticks;
+}
+
+// Every present, before worker_pool::Update (which would wait for workers parked on the publish): a fold still open here is closed,
+// counted and latched. Also the detach's.
+inline void CloseFoldAtPresent() noexcept {
+  if (fold.thread.load(std::memory_order_relaxed) == GetCurrentThreadId()) {
+    CloseFold(nullptr, [] {});
+    FoldFault(&fold_net_closes);
+    fold_trace = {};
+  }
+}
+
+// A run on the real tracker closes the fold first (a slot or worker tracker never equals it, so the thread id is read only on
+// the fold's own tracker).
+inline void CloseFoldFor(void* tracker) noexcept {
+  if (controls.fold_close_in_direct && tracker == fold.tracker.load(std::memory_order_relaxed)
+      && fold.thread.load(std::memory_order_relaxed) == GetCurrentThreadId()) {
+    CloseFold(nullptr, [] {});
+  }
+}
+
 inline void RunLoop(const Call& call, void* tracker, uint32_t begin, uint32_t end) {
+  CloseFoldFor(tracker);
   switch (call.group) {
     case Group::DEPTH_A:
       reinterpret_cast<DepthLoopFn>(static_cast<uintptr_t>(call.loop))(call.node, tracker, call.list, begin, end);
@@ -914,6 +1171,7 @@ static std::array<PlannedMesh, MAX_ROUND_MESHES> planned;
 static std::array<uint32_t, MAX_ROUND_MESHES> duplicate_scan;
 
 inline void RunMesh(const MeshRound& round, void* tracker, uint32_t mesh) noexcept {
+  CloseFoldFor(tracker);
   const auto vtable = *reinterpret_cast<const uint32_t* const*>(static_cast<uintptr_t>(mesh));
   reinterpret_cast<MeshVf138Fn>(static_cast<uintptr_t>(vtable[0x138 / 4]))(
       reinterpret_cast<void*>(static_cast<uintptr_t>(mesh)), tracker, round.device, round.view, round.list_type, round.node);
@@ -1331,15 +1589,31 @@ inline void NoteSeed(CallTrace* trace_call, const Slot* slot, const void* real_t
   trace_call->seed_miss_fields[SEED_FIELDS.size()] += static_cast<uint32_t>(slot->seed_anim != last_anim);
 }
 
+// What the fold may use this call (the fill site): 0 unless a record is possible here (the stage records on slots, the site's
+// group is on, not latched and usable, no fold fault so far, the present thread and no round open).
+inline uint32_t FoldWorkers(uint32_t groups) noexcept {
+  if (!game_calls.usable || detached.load(std::memory_order_relaxed) || shared == nullptr || shared->arena_size == 0
+      || fold_latched || config.stage < Stage::RECORDED
+      || (groups & config.loops & game_calls.usable_groups & ~latched_groups) == 0
+      || GetCurrentThreadId() != present_thread.load(std::memory_order_relaxed) || in_round) {
+    return 0;
+  }
+  const uint32_t available = worker_pool::Available(worker_pool::User::DRAW_RECORDING);
+  return (config.stage == Stage::ONE_WORKER ? std::min(available, 1u) : available);
+}
+
 // The shared implementation of the loop dispatchers (one per group).
 inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_t unused, uint32_t begin, uint32_t end) {
+  const FoldNet fold_net{tracker};
   const Config settings = config;
+  const bool nested = InRound();
+  // A call inside a round (a slot's tracker) is never the fold's. Inside the open fold Available() is 0: the fold's own workers.
+  const bool fold_ours = (!nested && FoldIsOurs(tracker));
   // The threads that scan, the render thread included: what the pool offers this call.
-  const uint32_t threads = worker_pool::Available(worker_pool::User::DRAW_RECORDING) + 1;
+  const uint32_t threads = (fold_ours ? fold.workers : worker_pool::Available(worker_pool::User::DRAW_RECORDING)) + 1;
   const uint32_t group_index = static_cast<uint32_t>(group);
   const Call call = {.group = group, .loop = game_calls.loops[group_index], .node = node, .list = list, .unused = unused};
   const uint32_t items = (end > begin ? end - begin : 0);
-  const bool nested = InRound();
   // Trace-only (noexcept: an allocation failure here ends the process; Update reserves room when the trace arms). A nested call
   // adds no entry: the round it is in holds a pointer to its own.
   CallTrace* const trace_call = (trace.active && !nested ? &trace.calls.emplace_back() : nullptr);
@@ -1350,16 +1624,21 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   uint64_t trace_only_ticks = 0;
   // Adds the time since the last lap to a phase of the trace.
   const auto lap = [&](uint64_t CallTrace::* phase, bool trace_only = false) {
-    if (trace_call == nullptr) return;
+    if (trace_call == nullptr) {
+      fold_trace = {};
+      return;
+    }
     const uint64_t now = Qpc();
-    trace_call->*phase += now - last_lap;
+    const uint64_t ticks = now - last_lap - TakeFoldTrace(trace_call);
+    trace_call->*phase += ticks;
     if (trace_only) {
-      trace_only_ticks += now - last_lap;
+      trace_only_ticks += ticks;
     }
     last_lap = now;
   };
   if (trace_call != nullptr) {
     trace_call->group = group;
+    trace_call->folded = fold_ours;
     trace_call->items = items;
     trace_call->threads = threads;
     trace_call->stage = settings.stage;
@@ -1620,6 +1899,9 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     for (uint32_t k = 0; k < chunks; ++k) {
       RunLoop(call, SlotAt(k), cuts[k], cuts[k + 1]);
     }
+    if (fold_ours) {
+      CloseFold(nullptr, [] {});
+    }
   } else {
     descriptor.kind = WorkKind::RECORD_LOOP;
     descriptor.call = call;
@@ -1628,11 +1910,17 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
     descriptor.cuts = cuts;
     const uint32_t workers = (settings.stage == Stage::ONE_WORKER ? 1 : chunks - 1);
     descriptor.workers = workers;
-    const worker_pool::JoinResult joined = worker_pool::Run(
-        {.work = RecordWork, .context = &descriptor, .user = worker_pool::User::DRAW_RECORDING, .join = worker_pool::JoinRule::ALL,
-         .trace = (trace_call != nullptr)},
-        workers, [&] { RunLoop(call, SlotAt(0), cuts[0], cuts[1]); });
+    const auto record_zero = [&] { RunLoop(call, SlotAt(0), cuts[0], cuts[1]); };
+    const worker_pool::JoinResult joined =
+        (fold_ours ? CloseFold(&descriptor, record_zero)
+                   : worker_pool::Run({.work = RecordWork,
+                                       .context = &descriptor,
+                                       .user = worker_pool::User::DRAW_RECORDING,
+                                       .join = worker_pool::JoinRule::ALL,
+                                       .trace = (trace_call != nullptr)},
+                                      workers, record_zero));
     if (trace_call != nullptr) {
+      trace_call->fold_with_record = fold_ours;
       trace_call->join_wait += joined.wait_ticks;
     }
   }
@@ -1712,6 +2000,8 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
 }
 
 }  // namespace internal
+
+using internal::CloseFoldAtPresent;
 
 inline void __fastcall DispatchDepth(void* node, void*, void* tracker, void* list, uint32_t begin, uint32_t end) {
   internal::Dispatch(Group::DEPTH_A, node, tracker, list, 0, begin, end);
@@ -1848,12 +2138,15 @@ inline const char* PlanRound(const MeshRound& round, bool colour, uint32_t famil
 inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint32_t list_type, void* node, void* sorted, uint32_t first,
                                    uint32_t last) noexcept {
   using namespace internal;
+  const FoldNet fold_net{tracker};
   if (first > last) return;
   const Config settings = config;
-  // The threads that scan, the render thread included: what the pool offers this call.
-  const uint32_t threads = worker_pool::Available(worker_pool::User::DRAW_RECORDING) + 1;
-  const MeshRound round = {.device = device, .view = view, .list_type = list_type, .node = node, .sorted = sorted};
   const bool nested = InRound();
+  // A call inside a round (a slot's tracker) is never the fold's. Inside the open fold Available() is 0: the fold's own workers.
+  const bool fold_ours = (!nested && FoldIsOurs(tracker));
+  // The threads that scan, the render thread included: what the pool offers this call.
+  const uint32_t threads = (fold_ours ? fold.workers : worker_pool::Available(worker_pool::User::DRAW_RECORDING)) + 1;
+  const MeshRound round = {.device = device, .view = view, .list_type = list_type, .node = node, .sorted = sorted};
   // Trace-only (noexcept: an allocation failure here ends the process; Update reserves room when the trace arms). A nested call
   // adds no entry: the round it is in holds a pointer to its own.
   CallTrace* const trace_call = (trace.active && !nested ? &trace.calls.emplace_back() : nullptr);
@@ -1863,11 +2156,15 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   // Work only trace frames do: left out of the call's total.
   uint64_t trace_only_ticks = 0;
   const auto lap = [&](uint64_t CallTrace::* phase, bool trace_only = false) {
-    if (trace_call == nullptr) return;
+    if (trace_call == nullptr) {
+      fold_trace = {};
+      return;
+    }
     const uint64_t now = Qpc();
-    trace_call->*phase += now - last_lap;
+    const uint64_t ticks = now - last_lap - TakeFoldTrace(trace_call);
+    trace_call->*phase += ticks;
     if (trace_only) {
-      trace_only_ticks += now - last_lap;
+      trace_only_ticks += ticks;
     }
     last_lap = now;
   };
@@ -1885,6 +2182,7 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     }
   };
   if (trace_call != nullptr) {
+    trace_call->folded = fold_ours;
     trace_call->threads = threads;
     trace_call->stage = settings.stage;
     trace_call->compared = compare_now;
@@ -2132,6 +2430,9 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     for (uint32_t c = 0; c < chunks; ++c) {
       RunMeshes(round, SlotAt(c), mesh_begin[c], mesh_end[c]);
     }
+    if (fold_ours) {
+      CloseFold(nullptr, [] {});
+    }
   } else {
     descriptor.kind = WorkKind::RECORD_MESHES;
     descriptor.meshes = round;
@@ -2140,15 +2441,21 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
     descriptor.mesh_begin = mesh_begin;
     descriptor.mesh_end = mesh_end;
     descriptor.workers = std::min(participants, chunks) - 1;
-    const worker_pool::JoinResult joined = worker_pool::Run(
-        {.work = RecordWork, .context = &descriptor, .user = worker_pool::User::DRAW_RECORDING, .join = worker_pool::JoinRule::ALL,
-         .trace = (trace_call != nullptr)},
-        descriptor.workers, [&] {
-          for (uint32_t c = 0; c < chunks; c += participants) {
-            RunMeshes(round, SlotAt(c), mesh_begin[c], mesh_end[c]);
-          }
-        });
+    const auto record_zero = [&] {
+      for (uint32_t c = 0; c < chunks; c += participants) {
+        RunMeshes(round, SlotAt(c), mesh_begin[c], mesh_end[c]);
+      }
+    };
+    const worker_pool::JoinResult joined =
+        (fold_ours ? CloseFold(&descriptor, record_zero)
+                   : worker_pool::Run({.work = RecordWork,
+                                       .context = &descriptor,
+                                       .user = worker_pool::User::DRAW_RECORDING,
+                                       .join = worker_pool::JoinRule::ALL,
+                                       .trace = (trace_call != nullptr)},
+                                      descriptor.workers, record_zero));
     if (trace_call != nullptr) {
+      trace_call->fold_with_record = fold_ours;
       trace_call->join_wait += joined.wait_ticks;
     }
   }
@@ -2319,6 +2626,16 @@ inline void SetGame(const GameCalls& calls) { internal::game_calls = calls; }
 inline void Update(const Settings& settings) {
   using namespace internal;
   present_thread.store(GetCurrentThreadId(), std::memory_order_relaxed);
+  // The fold's faults (counted inside the game's calls, written here): each line once, with the count since the last present.
+  if (const uint32_t closes = std::exchange(fold_net_closes, 0); closes != 0) {
+    renodx::utils::log::w("[Total War] Fill With Draw Recording: ", closes, " open folds closed by a net (a path did not close it): off for the session.");
+  }
+  if (const uint32_t mismatches = std::exchange(fold_key_mismatches, 0); mismatches != 0) {
+    renodx::utils::log::w("[Total War] Fill With Draw Recording: ", mismatches, " folds closed for a tracker or ring that was not the fold's: off for the session.");
+  }
+  if (const uint32_t changes = std::exchange(fold_flag_changes, 0); changes != 0) {
+    renodx::utils::log::w("[Total War] Fill With Draw Recording: the ring's flag changed in ", changes, " folds between the stub and the close: off for the session.");
+  }
   Stage stage = settings.stage;
   if (stage != Stage::OFF && !Allocate()) {
     stage = Stage::DIRECT;
@@ -2428,13 +2745,20 @@ inline void Update(const Settings& settings) {
             "\n  ops: flush {} vf68 {} vf64 {} anim {} const {} (repeats {}) srv {} faction {} (list stayed 0: {}) state {} bytes {} (buffer {});"
             " seeds hit {} miss {} (by field: {}); overflow {} unknown {} conflict {} rerun {}\n"
             "  ms: direct {:.3f} cut {:.3f} warm-ups {:.3f} chunk0 {:.3f} join {:.3f} replay {:.3f} rerun {:.3f} total {:.3f}"
-            " (trace only: compare {:.3f} run scan {:.3f}; wall {:.3f})\n  compare: ",
+            " (trace only: compare {:.3f} run scan {:.3f}; wall {:.3f})\n",
             call.ops[1], call.ops[2], call.ops[7], call.ops[3], call.ops[4], call.constant_repeats, call.ops[5], call.ops[6], call.faction_lists_unwritten,
             call.ops[8], call.op_bytes, call.op_buffer_bytes, call.seed_hits, call.seed_misses, miss_fields, call.overflows, call.unknown_classes,
             call.conflicts, call.reruns,
             milliseconds(call.direct), milliseconds(call.cut), milliseconds(call.warm_ups), milliseconds(call.chunk_zero),
             milliseconds(call.join_wait), milliseconds(call.replay), milliseconds(call.rerun), milliseconds(call.total),
             milliseconds(call.compare), milliseconds(call.run_scan), milliseconds(call.wall));
+        if (call.folded) {
+          text += std::format("  fold: closed {} (render thread took {} record shares); publish after {:.3f} ms, Unmap after {:.3f} ms,"
+                              " close {:.3f} ms\n",
+                              (call.fold_with_record ? "with the record" : "with no record"), call.fold_shares,
+                              milliseconds(call.fold_publish_delay), milliseconds(call.fold_unmap_delay), milliseconds(call.fold_close));
+        }
+        text += "  compare: ";
         if (call.compare_result == CompareResult::DIFFERS) {
           text += std::format("differs at op {} of run {} (kind {}) in chunk {}", call.compare_op, call.compare_run, call.compare_kind,
                               call.compare_chunk);
@@ -2543,6 +2867,7 @@ inline void SetGame(const GameCalls&) {}
 inline uint32_t SiteGroups(Stage, uint32_t) { return 0; }
 inline void Update(const Settings&) {}
 inline void Uninstall(bool) {}
+inline void CloseFoldAtPresent() {}
 
 #endif
 
