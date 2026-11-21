@@ -5516,6 +5516,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         reports/b13r_l1_review.md -> c3i_ fixes -> b13r_ re-check -> merge.
         Agents: bd1r_ (C.3-3 review), t4i_ (T1b follow-ups + ebo_ lane), b13r_ (B1.3 review) (3 of 3). QUEUE: C.3-4
         (after C.3-3's review), c3i_ B1.3 fixes, B1.4 / B1.5.
+        bd1r_ C.3-3 REVIEW DONE 11:0x (reports/bd1r_c33_review.md): MERGE, no Musts; 4 Shoulds (1 loopfetch's other 3
+        PATCHED rows, 2 PATCHED-only check over every code byte C reads, 3 watch RECORDING_CODE_SIZE in C.3-4, 4 file
+        comment) + 8 Nits. name_check 1478 ids / 52 generic hits (accepted kind).
+        MERGED 11:09: rmt_c33 -> atn-mods 887466e89 (gated builds x86 twattila twrome2 twthronesofbritannia + amd64
+        twattila exit 0; pushed).
+        c33i_ RESUMED 11:1x on rmt_c34 (from 887466e89): commit 1 = Shoulds 1 / 2 / 4 + Nits 1-8; commit 2 = engine_code.hpp
+        RECORDING_SITES 39 -> 59 alone (pre-approved); commit 3 = C.3-4 Colour B (20 sites, STATE decoding, test 5 for 5
+        variants, COLOUR_B OWN on) + Should 3 (code size headroom; page 0x2000 if > ~3600 B) -> bd1r_ review.
+        Agents: c33i_ (C.3-4), t4i_ (T1b follow-ups + ebo_ lane), b13r_ (B1.3 review) (3 of 3). QUEUE: c3i_ B1.3 fixes,
+        bd1r_ C.3-4 review, B1.4 / B1.5.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
