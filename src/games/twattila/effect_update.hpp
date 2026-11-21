@@ -54,11 +54,15 @@
 //              and the forwarded ones have no fast path in their thunks).
 //
 // L2, Parallel Effect Spawns (its own row, on top of L1): the three sites of the particle spawn path stop being order points. A unit asks "is there room" (answered true
-// while it runs ahead, exactly once it is direct), "spawn" (the 48-byte record is staged in the unit's chunks) and, on the create path only, the three-step random draw (deferred:
+// while it runs ahead, exactly once it is direct), "spawn" (the 48-byte record is staged in the unit's chain of records) and, on the create path only, the three-step random draw (deferred:
 // the draw's three outputs are a quiet NaN that carries the draw's number, and the value lands in the staged record, the only place the census says it goes). The units are
 // committed in the serial order when a unit becomes direct (and at the walk's end): each unit's deferred draws are made then by the game's own function, so the random state moves as
 // in serial, and the staged records are merged into the game's spawn buffer in the serial order at the walk's end through the pipeline's own spawn. It matches the serial walk
-// except where the budget (the room in the buffer) fills while units run ahead: those frames are counted (an overflow) and the merge drops what does not fit.
+// except where the budget (the room in the buffer) fills while units run ahead: those frames are counted (an overflow) and the merge drops what does not fit. An overflow frame's
+// difference lasts: the units that ran ahead did creates that serial skips, which moved the emitters' own random state and (through the draws they deferred) the global one, so the
+// random sequence differs from serial from that frame on, while the merged buffer itself is serial's. A comparison with the serial walk needs runs with no spawn overflow.
+// The records are staged in one pool per round, sized by the budget (the room in the buffer plus a margin): a unit's staged records can pass the room only by overflowing it, so a
+// full pool is an overflow too (counted as one, the record is dropped); the next round is a guard round and the one after it has a pool grown to what the full one needed.
 //
 // The safety checks (a word the game changed between two direct units, a render thread hit outside a unit, a walk call or end out
 // of place, a late overflow, a failed round, a hang) are always on and stored; Update logs each kind once per site and session at
@@ -109,7 +113,7 @@ constexpr uint32_t SPAWN_RECORD_OFFSET = 0x2C;
 constexpr uint32_t SPAWN_SLOT_OFFSET = 0x1C;
 constexpr uint32_t RECORD_DWORDS = 12;
 constexpr uint32_t RECORD_DRAW_INDEX = 1;  // the dword (record + 4) the create path's first drawn value lands in
-constexpr uint32_t CHUNK_RECORDS = 16;
+constexpr uint32_t STAGE_MARGIN = 256;  // records past the budget's quarter in a round's pool
 constexpr uint32_t MIN_SPAWN_BUDGET = 512;  // a round with less room than this does not stage (the guard)
 // A deferred draw's outputs: a quiet NaN whose low 22 bits are the draw's number in its unit (from 1).
 constexpr uint32_t TAG_BASE = 0x7FC00000;
@@ -179,7 +183,7 @@ struct alignas(64) Unit {
   uint32_t segment = 0;
   uint32_t position = 0;
   uint32_t next_late = NONE;  // the segment's next late unit (an index of the units)
-  // L2 (touched by the thread that runs the unit, then by the one committer): the unit's staged records in its chunks, its deferred draws, how many records it had staged at its last
+  // L2 (touched by the thread that runs the unit, then by the one committer): the unit's staged records (a chain in the round's pool), its deferred draws, how many records it had staged at its last
   // answer "there is room" given while it ran ahead, the next unit with staged records in the serial order.
   Unit* next_staged = nullptr;
   uint32_t stage_head = NONE;
@@ -192,6 +196,7 @@ struct alignas(64) Unit {
   bool late = false;
   bool direct = false;  // touched only by the thread that runs it
   bool ahead = false;   // L2: answered "there is room" while it ran ahead
+  bool stage_full = false;  // L2: a record of this unit was dropped, the pool was full
   bool pseudo = false;  // a sweep's stand-in (no instance, no staging)
 
   void Reset(uint32_t instance_, uint32_t segment_, uint32_t position_, bool late_) {
@@ -210,15 +215,15 @@ struct alignas(64) Unit {
     late = late_;
     direct = false;
     ahead = false;
+    stage_full = false;
     pseudo = false;
   }
 };
 
-// A unit's staged spawn records, 16 to a chunk (the spawn's 48 bytes each), chained.
-struct Chunk {
+// A staged spawn record (the spawn's 48 bytes) and the next record of its unit.
+struct Record {
   uint32_t next;
-  uint32_t count;
-  uint32_t records[CHUNK_RECORDS][RECORD_DWORDS];
+  uint32_t dwords[RECORD_DWORDS];
 };
 
 struct Segment {
@@ -259,7 +264,7 @@ static Controls controls;
 #endif
 
 // Append-only storage in blocks that never move: a reader holding a pointer is safe while a block is added. The blocks are never freed
-// (at most MAX_BLOCKS of each kind, the size the biggest round needed; the process owns them for its life).
+// (at most MAX_BLOCKS of each kind, the size the biggest round needed; the process owns them for its life: the records' are bounded by the room in the game's spawn buffer).
 template <typename T>
 struct Blocks {
   std::array<T*, MAX_BLOCKS> blocks = {};
@@ -328,7 +333,7 @@ struct alignas(64) Round {
   std::array<Watched, 16> watched = {};
   uint32_t watched_count = 0;
   // L2. The pipeline, the game's spawn count word and its value at the round's start, the room for has_free answers (query_limit; a create needs it, so no unit's spawns pass it)
-  // and for a direct spawn that has no has_free before it (cap_limit, the buffer's), the records committed so far, the commit cursor (a segment id << 32 | position), the units with staged records in the serial order, the next chunk.
+  // and for a direct spawn that has no has_free before it (cap_limit, the buffer's), the records committed so far, the commit cursor (a segment id << 32 | position), the units with staged records in the serial order, the next record.
   uint32_t pipeline = 0;
   const uint32_t* count_at = nullptr;
   uint32_t count0 = 0;
@@ -338,7 +343,9 @@ struct alignas(64) Round {
   uint64_t commit_at = 0;
   Unit* merge_head = nullptr;
   Unit* merge_tail = nullptr;
-  std::atomic<uint32_t> chunk_next = 0;
+  std::atomic<uint32_t> record_next = 0;       // the records asked for (past the pool's capacity: dropped)
+  std::atomic<bool> stage_full = false;       // the pool was full: the next round does not stage
+  bool grown = false;                         // the pool was grown after a full one
   std::atomic<bool> spawn_violation = false;  // a staging check failed: L2 is off for the session after the walk
   std::array<uint32_t, 3> pools = {};         // the slot pools seen at SLOT_TAKE / SLOT_RETURN this round (their words are watched)
   uint32_t pool_count = 0;
@@ -354,7 +361,7 @@ struct ThreadState {
 static Round current_round;
 static Blocks<Unit> units;
 static Blocks<Segment> segments;
-static Blocks<Chunk> chunks;
+static Blocks<Record> records;
 static thread_local ThreadState this_thread;
 static std::array<std::atomic<uint32_t>, static_cast<size_t>(Counter::COUNT)> counters = {};
 static std::array<std::atomic<uint32_t>, static_cast<size_t>(SerialReason::COUNT)> serial_rounds = {};
@@ -377,7 +384,8 @@ static uint32_t small_round_presents = 0;
 static bool spawns_row = false;
 static bool spawns_off = false;
 static uint32_t last_round_spawned = 0;
-static uint32_t last_round_chunks = 0;
+static uint32_t stage_grow = 0;   // the records the last full pool needed (and a quarter): the pool's size from then on, when that is more than the budget's
+static bool stage_skip = false;   // the next round does not stage (it follows a full pool)
 
 // A counter: the trace counters only in a trace window, the safety ones (from HANGS) always.
 inline void Count(Counter counter, uint32_t amount = 1) {
@@ -518,20 +526,14 @@ inline void ResolveDraws(Unit* unit) {
   ThreadState& state = this_thread;
   const bool was_serving = state.serving;
   state.serving = true;  // the draw's site answers 0: the game's function runs
-  uint32_t chunk_index = unit->stage_head;
-  uint32_t record_index = 0;
+  uint32_t cursor = unit->stage_head;
   // The record that holds `tag`: from the last hit on, then from the unit's first record.
   const auto find = [&](uint32_t tag) {
-    for (int pass = 0; pass < 2; ++pass) {
-      uint32_t at = (pass == 0 ? chunk_index : unit->stage_head);
-      uint32_t from = (pass == 0 ? record_index : 0);
-      for (; at != NONE; at = chunks[at].next, from = 0) {
-        for (uint32_t record = from; record < chunks[at].count; ++record) {
-          if (chunks[at].records[record][RECORD_DRAW_INDEX] == tag) {
-            chunk_index = at;
-            record_index = record + 1;
-            return &chunks[at].records[record][RECORD_DRAW_INDEX];
-          }
+    for (uint32_t pass = 0; pass < 2; ++pass) {
+      for (uint32_t at = (pass == 0 ? cursor : unit->stage_head); at != NONE; at = records[at].next) {
+        if (records[at].dwords[RECORD_DRAW_INDEX] == tag) {
+          cursor = records[at].next;
+          return &records[at].dwords[RECORD_DRAW_INDEX];
         }
       }
     }
@@ -540,7 +542,14 @@ inline void ResolveDraws(Unit* unit) {
   for (uint32_t draw = 1; draw <= unit->draws; ++draw) {
     std::array<float, 3> out = {};
     entries.draw(out.data());
-    if (uint32_t* const slot = find(TAG_BASE | draw)) *slot = std::bit_cast<uint32_t>(out[0]);
+    if (uint32_t* const slot = find(TAG_BASE | draw)) {
+      *slot = std::bit_cast<uint32_t>(out[0]);
+    } else if (!unit->stage_full) {
+      // Every deferred draw is followed by one staged record (the create's emit always spawns): a value that is in none of them went somewhere else.
+      Count(Counter::TAG_LEAKS);
+      Note(EventKind::TAG_LEAK, current_round.last_site, draw);
+      current_round.spawn_violation.store(true, std::memory_order_relaxed);
+    }
   }
   unit->draws = 0;
   state.serving = was_serving;
@@ -573,7 +582,8 @@ inline void CommitUnit(Unit* unit) {
 }
 
 // L2: commits every unit that is done from the commit cursor on, in the serial order, up to the first that is not. Called where a unit becomes direct (everything before it is done),
-// before a sweep runs and at the walk's end: one thread at a time by construction (the direct unit, the sweep, or the finisher once all is done).
+// before a sweep runs and at the walk's end: one thread at a time by construction (the direct unit, the sweep, or the finisher once all is done). It reads `segment.next` as
+// AdvanceFrontier does while the render thread may still link the tail: the link is stored after the seq_cst `segment_count` store and the cursor reads that first (a formal race, correct on x86).
 inline void CommitDone() {
   Round& round = current_round;
 #if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
@@ -619,10 +629,8 @@ inline void Merge() {
   uint32_t merged = 0;
   const auto merge_unit = [&](const Unit* unit) {
     uint32_t left = unit->staged;
-    for (uint32_t at = unit->stage_head; at != NONE && left != 0; at = chunks[at].next) {
-      for (uint32_t record = 0; record < chunks[at].count && left != 0; ++record, --left) {
-        merged += (spawn(round.pipeline, Address(chunks[at].records[record]) - SPAWN_RECORD_OFFSET) != 0 ? 1 : 0);
-      }
+    for (uint32_t at = unit->stage_head; at != NONE && left != 0; at = records[at].next, --left) {
+      merged += (spawn(round.pipeline, Address(records[at].dwords) - SPAWN_RECORD_OFFSET) != 0 ? 1 : 0);
     }
   };
 #if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
@@ -860,7 +868,14 @@ inline void FinishRound(bool failed) {
     CommitDone();
     Merge();
     if (round.spawn_violation.load(std::memory_order_relaxed)) spawns_off = true;
-    last_round_chunks = std::min(round.chunk_next.load(std::memory_order_relaxed), static_cast<uint32_t>(chunks.capacity));
+    if (round.stage_full.load(std::memory_order_relaxed)) {
+      // A full pool: this frame is an overflow (counted by the commits). The next round does not stage and the one after has a pool that fits what this one asked for; a pool that
+      // was grown already and is full again means the scene is not what the budget says: off for the session.
+      const uint32_t asked = round.record_next.load(std::memory_order_relaxed);
+      if (round.grown) spawns_off = true;
+      stage_grow = std::max(stage_grow, asked + asked / 4 + 1);
+      stage_skip = true;
+    }
   }
   if (round.count_at != nullptr) last_round_spawned = *round.count_at - round.count0;
   worker_pool::Join();
@@ -1046,9 +1061,12 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
           if (simulation_room >= static_cast<int32_t>(count0)) query_limit = std::min(cap_limit, static_cast<uint32_t>(simulation_room) - count0);
         }
         const bool asks_l2 = (spawns_row && !spawns_off && count_word != nullptr);
-        const bool l2 = (asks_l2 && query_limit >= MIN_SPAWN_BUDGET && static_cast<uint64_t>(last_round_spawned) * 2 < query_limit);
-        if (!units.Reserve(std::max(last_round_units + last_round_units / 4, BLOCK_SIZE)) || !segments.Reserve(BLOCK_SIZE)
-            || (l2 && !chunks.Reserve(last_round_chunks + last_round_chunks / 4 + 1))) {
+        const bool l2 = (asks_l2 && !stage_skip && query_limit >= MIN_SPAWN_BUDGET && static_cast<uint64_t>(last_round_spawned) * 2 < query_limit);
+        if (asks_l2) stage_skip = false;
+        if (!units.Reserve(std::max(last_round_units + last_round_units / 4, BLOCK_SIZE)) || !segments.Reserve(BLOCK_SIZE)) return serial(SerialReason::ALLOCATION);
+        // The pool: the budget and a margin (staged records past the budget are an overflow), or what a full pool asked for.
+        if (l2 && !records.Reserve(std::max(query_limit + query_limit / 4 + STAGE_MARGIN, stage_grow))) {
+          spawns_off = true;
           return serial(SerialReason::ALLOCATION);
         }
         ThreadStackLimits();
@@ -1081,7 +1099,8 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
         watch(reinterpret_cast<const uint32_t*>(node + TABLE_OFFSET), "table base");
         watch(reinterpret_cast<const uint32_t*>(node + TABLE_OFFSET + 4), "table capacity");
         if (count_word != nullptr) watch(count_word, "spawn count");
-        if (cpu_pipeline) {
+        if (cpu_pipeline && l2) {
+          // (the budget's inputs: only a round that stages uses them; an L1 round does not stop for a simulation that moves them on another thread)
           watch(reinterpret_cast<const uint32_t*>(Read(pipeline + 0x14) + 8), "simulation room");
           watch(reinterpret_cast<const uint32_t*>(Read(pipeline + 0x18) + 0xC), "simulation count");
         }
@@ -1095,7 +1114,9 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
         round.commit_at = 0;
         round.merge_head = nullptr;
         round.merge_tail = nullptr;
-        round.chunk_next.store(0, std::memory_order_relaxed);
+        round.record_next.store(0, std::memory_order_relaxed);
+        round.stage_full.store(false, std::memory_order_relaxed);
+        round.grown = (stage_grow != 0);
         round.spawn_violation.store(false, std::memory_order_relaxed);
         round.l2 = l2;
         if (round.tracing && asks_l2) Count(l2 ? Counter::SPAWN_ROUNDS : Counter::GUARD_ROUNDS);
@@ -1241,12 +1262,13 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
       // the order-point way below.
       Unit* const unit = this_thread.current;
       if (!round.l2 || this_thread.serving || unit == nullptr) break;
-      if (unit->pseudo) {
-        // A sweep (destructors) at the spawn path: the census has none, and the buffer lacks what the units before it staged.
+      if (unit->pseudo && site_index != static_cast<uint32_t>(Site::RANDOM_TRIPLE)) {
+        // A sweep (destructors) at the room or spawn site: the census has none, and the buffer lacks what the units before it staged. (Its draw is the game's, after the commits.)
         census_error(site_index);
         return 0;
       }
       const Site site = static_cast<Site>(site_index);
+      if (site != Site::RANDOM_TRIPLE && frame->ecx != round.node) break;  // another node's pipeline: the order point (direct and exact), nothing of this round's
       if (site == Site::SPAWN_QUERY) {
         // Room: exact once the unit is direct (the units before it are committed, spawn_total is the serial count), true while it runs ahead (the commit checks it).
         if (unit->direct) {
@@ -1263,32 +1285,28 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
           frame->eax = 0;  // the game's spawn refuses a full buffer
           return 1;
         }
-        Chunk* tail = (unit->stage_tail == NONE ? nullptr : &chunks[unit->stage_tail]);
-        if (tail == nullptr || tail->count == CHUNK_RECORDS) {
-          const uint32_t index = round.chunk_next.fetch_add(1, std::memory_order_relaxed);
-          if (index >= chunks.capacity) {
-            Count(Counter::STAGE_FULLS);
-            Note(EventKind::STAGE_FULL, site_index, index);
-            round.spawn_violation.store(true, std::memory_order_relaxed);
-            frame->eax = 0;
-            return 1;
-          }
-          chunks[index].next = NONE;
-          chunks[index].count = 0;
-          if (tail == nullptr) {
-            unit->stage_head = index;
-          } else {
-            tail->next = index;
-          }
-          unit->stage_tail = index;
-          tail = &chunks[index];
+        const uint32_t index = round.record_next.fetch_add(1, std::memory_order_relaxed);
+        if (index >= records.capacity) {
+          // The pool is the budget and more: what does not fit is an overflow (the commits count it), and the pool is grown for the round after next.
+          Count(Counter::STAGE_FULLS);
+          if (!round.stage_full.exchange(true, std::memory_order_relaxed)) Note(EventKind::STAGE_FULL, site_index, index);
+          unit->stage_full = true;
+          frame->eax = 0;
+          return 1;
         }
-        uint32_t* const record = tail->records[tail->count++];
-        std::memcpy(record, reinterpret_cast<const void*>(word(1) + SPAWN_RECORD_OFFSET), sizeof(tail->records[0]));
+        Record& record = records[index];
+        record.next = NONE;
+        if (unit->stage_tail == NONE) {
+          unit->stage_head = index;
+        } else {
+          records[unit->stage_tail].next = index;
+        }
+        unit->stage_tail = index;
+        std::memcpy(record.dwords, reinterpret_cast<const void*>(word(1) + SPAWN_RECORD_OFFSET), sizeof(record.dwords));
         if (round.tracing) {
           // A deferred draw's tag anywhere but where the census says its value goes is a leak: the value would be used before it is known.
           for (uint32_t dword = 0; dword < RECORD_DWORDS; ++dword) {
-            if (dword != RECORD_DRAW_INDEX && (record[dword] & TAG_MASK) == TAG_BASE && (record[dword] & MAX_DRAWS) != 0) {
+            if (dword != RECORD_DRAW_INDEX && (record.dwords[dword] & TAG_MASK) == TAG_BASE && (record.dwords[dword] & MAX_DRAWS) != 0) {
               Count(Counter::TAG_LEAKS);
               Note(EventKind::TAG_LEAK, site_index, dword);
               round.spawn_violation.store(true, std::memory_order_relaxed);
@@ -1341,10 +1359,13 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
       && std::find(round.pools.begin(), round.pools.begin() + round.pool_count, frame->ecx) == round.pools.begin() + round.pool_count) {
     // The slot pool (`this`): its free list's count and the minimum and maximum in the object it points to are only changed by these sites: watched from the first hit.
     round.pools[round.pool_count++] = frame->ecx;
+    // (the game loads the object after a successful take only: a pool that never gave one may have none)
     const uint32_t limits = Read(frame->ecx + 0x18);
     watch(reinterpret_cast<const uint32_t*>(frame->ecx + 0x10), "pool count");
-    watch(reinterpret_cast<const uint32_t*>(limits + 0x50), "pool minimum");
-    watch(reinterpret_cast<const uint32_t*>(limits + 0x54), "pool maximum");
+    if (limits != 0) {
+      watch(reinterpret_cast<const uint32_t*>(limits + 0x50), "pool minimum");
+      watch(reinterpret_cast<const uint32_t*>(limits + 0x54), "pool maximum");
+    }
   }
   bool forwarded = Forwards(site) && GetCurrentThreadId() != round.owner;
 #if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)

@@ -100,9 +100,9 @@ constexpr bool WaitsForEnumeration(Site site) {
          || site == Site::ATTACH_PAIR || site == Site::ATTACH_LIST || site == Site::TRACKED_CHILD;
 }
 constexpr bool AsksAlways(Site site) { return Forwards(site) || WaitsForEnumeration(site); }
-// The sites the spawn staging answers (L2): while `staging` is set their thunks ask the handler from the direct thread's stack too (a direct unit stages its spawns as well: they
-// are merged in the serial order at the walk's end).
-constexpr bool StagesSpawns(Site site) { return site == Site::SPAWN_QUERY || site == Site::SPAWN_WRITE || site == Site::RANDOM_TRIPLE; }
+// The sites the spawn staging answers on the direct thread too (L2): while `staging` is set their thunks ask the handler from the direct thread's stack as well (a direct unit
+// stages its spawns: they are merged in the serial order at the walk's end). The random draw is not one: a direct unit's draw is the game's.
+constexpr bool StagesSpawns(Site site) { return site == Site::SPAWN_QUERY || site == Site::SPAWN_WRITE; }
 constexpr uint32_t ALL_SITES = (1u << SITE_COUNT) - 1;
 static_assert(SITE_COUNT == 27);
 

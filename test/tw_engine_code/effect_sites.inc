@@ -702,7 +702,7 @@ int RunEffectSitesTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
     std::printf("25d. the direct stack's one word: own stack fast; another stack, none, no limit, a limit 4 bytes short: slow; a torn low / high pair is taken wrongly by the control, not by the build; no fxsave: the clobber shows\n");
   }
 
-  // 25d (2). The staging word (L2): the three spawn sites have no fast path while it is set (the direct thread's pass asks the handler too); no other site is changed by it, and
+  // 25d (2). The staging word (L2): the room and spawn sites have no fast path while it is set (the direct thread's pass asks the handler too); no other site is changed by it, and
   // with the gates closed it does nothing.
   {
     harness.data->handler.store(harness.handler_plain);
@@ -729,7 +729,7 @@ int RunEffectSitesTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
     CHECK(bad == 0);
     gates(&harness, 0, 0, 0, 0);
     harness.data->staging.store(0);
-    std::printf("25d. the staging word: the 3 spawn sites ask the handler from the direct thread's stack while it is set, no other site changes, the closed gates stay closed (%zu runs)\n", checked);
+    std::printf("25d. the staging word: the room and spawn sites ask the handler from the direct thread's stack while it is set (the random draw does not), no other site changes, the closed gates stay closed (%zu runs)\n", checked);
   }
 
   // 25e. The stack a slow path uses (a pattern-filled stack, the handler touches none): the budget the scheduler's handler adds to.

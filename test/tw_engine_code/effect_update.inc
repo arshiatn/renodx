@@ -750,12 +750,19 @@ void ResetScheduler() {
   ei::spawns_row = false;
   ei::spawns_off = false;
   ei::last_round_spawned = 0;
-  ei::last_round_chunks = 0;
+  ei::stage_grow = 0;
+  ei::stage_skip = false;
   ei::event_count = 0;
   for (auto& said : ei::events_said) said = 0;
   for (auto& counter : ei::counters) counter = 0;
   for (auto& counter : ei::serial_rounds) counter = 0;
   ei::controls = {};
+}
+
+// The spawn records' blocks given back (a test that wants the first L2 round to reserve its pool, or counts the allocations).
+void FreeRecords() {
+  for (uint32_t block = 0; block < ei::records.capacity / ei::BLOCK_SIZE; ++block) delete[] ei::records.blocks[block];
+  ei::records = {};
 }
 
 // One walk of a world: serial (the gates closed) or a round (armed, the preconditions met).
@@ -1174,6 +1181,83 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
     }
     std::printf("26f. OverflowDetected (CPU and GPU): a buffer of 700 / 613 records that fills while units run ahead: the overflow counted and stored, the merged buffer equal to the serial one\n");
 
+    // M1: the pool is sized by the budget, not by the units. The first L2 round (no pool yet) with more spawning units than one block of the old per-unit chunks held: staged whole,
+    // equal to the serial walk, nothing full, L2 stays on.
+    CHECK(trace_open(60, 4));
+    for (const bool gpu : {false, true}) {
+      ResetScheduler();
+      FreeRecords();
+      ei::spawns_row = true;
+      CHECK(pool(4) == 3);
+      Shape many;
+      many.ops = "LL";
+      many.max_ops = 3;
+      many.effects = 90;
+      many.min_units = 99;
+      many.max_units = 101;
+      many.busy = 20;
+      many.spawn_room = 100000;
+      many.gpu = gpu;
+      auto serial = Build(6101, many);
+      auto parallel = Build(6101, many);
+      Walk(*serial, false);
+      Walk(*parallel, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*parallel) && Equal(*serial, *parallel, &why));
+      CHECK(counter(ei::Counter::STAGED_SPAWNS) > 2 * ei::BLOCK_SIZE && ei::last_round_units > ei::BLOCK_SIZE && counter(ei::Counter::STAGE_FULLS) == 0
+            && counter(ei::Counter::SPAWN_OVERFLOWS) == 0 && counter(ei::Counter::TAG_LEAKS) == 0 && !ei::spawns_off && !ei::session_off && !ei::stage_skip);
+    }
+    CHECK(trace_close(4));
+    std::printf("26f. M1 (CPU and GPU): the first L2 round, a pool sized by the budget, more than 4096 units spawning: staged whole, equal to the serial walk, no full pool, L2 stays on\n");
+
+    // A pool that is full (the budget is small, the units stage more than the pool holds): an overflow, counted; the next round does not stage and equals the serial walk; the round
+    // after has a pool grown to what the full one asked for and merges the serial buffer; a full pool right after a grown one turns L2 off.
+    CHECK(trace_open(60, 4));
+    for (const bool gpu : {false, true}) {
+      ResetScheduler();
+      FreeRecords();
+      ei::spawns_row = true;
+      CHECK(pool(4) == 3);
+      Shape full;
+      full.ops = "LL";
+      full.max_ops = 3;
+      full.effects = 90;
+      full.min_units = 99;
+      full.max_units = 101;
+      full.busy = 20;
+      full.spawn_room = 700;
+      full.gpu = gpu;
+      auto first = Build(6102, full);
+      Walk(*first, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*first));
+      CHECK(counter(ei::Counter::STAGE_FULLS) > 0 && counter(ei::Counter::SPAWN_OVERFLOWS) > 0 && ei::stage_skip && ei::stage_grow > ei::BLOCK_SIZE && !ei::spawns_off && !ei::session_off);
+      const uint32_t fulls = counter(ei::Counter::STAGE_FULLS);
+      // The round after: a guard round.
+      ei::last_round_spawned = 0;
+      auto serial = Build(6102, full);
+      auto second = Build(6102, full);
+      Walk(*serial, false);
+      Walk(*second, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*second) && Equal(*serial, *second, &why));
+      CHECK(counter(ei::Counter::GUARD_ROUNDS) == 1 && !ei::stage_skip && counter(ei::Counter::STAGE_FULLS) == fulls);
+      // The round after that: the pool fits, the buffer is the serial one.
+      ei::last_round_spawned = 0;
+      auto third = Build(6102, full);
+      Walk(*third, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*third));
+      CHECK(counter(ei::Counter::STAGE_FULLS) == fulls && counter(ei::Counter::SPAWN_OVERFLOWS) > 0 && serial->spawn_buffer == third->spawn_buffer && !ei::spawns_off && !ei::session_off);
+      // A pool that was grown already and is full again: L2 off for the session.
+      ResetScheduler();
+      FreeRecords();
+      ei::spawns_row = true;
+      ei::stage_grow = 1;
+      auto fourth = Build(6102, full);
+      Walk(*fourth, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*fourth) && counter(ei::Counter::STAGE_FULLS) > 0 && ei::spawns_off && !ei::session_off);
+    }
+    CHECK(trace_close(4));
+    std::printf("26f. full pool (CPU and GPU): an overflow counted, not an off for the session; the next round a guard round equal to the serial walk, the one after with a grown pool and the "
+                "serial buffer; a full pool right after a grown one turns L2 off (B1 stays on)\n");
+
     // The guard: less room than the minimum, or the last round's spawns past half of it: a round that does not stage (the order-point path, equal to the serial walk).
     CHECK(trace_open(60, 4));
     for (const uint32_t mode : {0u, 1u}) {
@@ -1217,6 +1301,16 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       }
       CHECK(seen != 0 && pool_word && ei::session_off);
       ResetScheduler();
+      // M2: a pool that never gave a slot has no limits object ([pool+0x18] null): the round must not read through it (the min / max words are left out).
+      {
+        Shape bare_shape = pool_shape;
+        bare_shape.ops = "SN";
+        auto bare = Build(7100, bare_shape);
+        SetWord(bare->pool + 0x18, 0);
+        Walk(*bare, true);
+        CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*bare));
+        ResetScheduler();
+      }
       std::printf("26f. slot pool words (S10): a rogue write to the pool's count with no order point: seen (%u), the event names the word, B1 off for the session; the legal changes of the many other rounds never were\n", seen);
     }
 
@@ -1290,10 +1384,9 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
     const auto clear_blocks = [] {
       for (uint32_t block = 0; block < ei::units.capacity / ei::BLOCK_SIZE; ++block) delete[] ei::units.blocks[block];
       for (uint32_t block = 0; block < ei::segments.capacity / ei::BLOCK_SIZE; ++block) delete[] ei::segments.blocks[block];
-      for (uint32_t block = 0; block < ei::chunks.capacity / ei::BLOCK_SIZE; ++block) delete[] ei::chunks.blocks[block];
+      FreeRecords();
       ei::units = {};
       ei::segments = {};
-      ei::chunks = {};
     };
     const auto failure_sweep = [&](const Shape& shape, uint64_t seed, const char* name, bool spawns = false) -> int {
       CHECK(pool(4) == 3);
@@ -1370,7 +1463,7 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       shape.min_units = 99;
       shape.max_units = 101;
       shape.busy = 20;
-      shape.spawn_room = 100000;
+      shape.spawn_room = 12000;
       if (failure_sweep(shape, 35, "L2 spawns", true) != 0) return 1;
       shape.gpu = true;
       if (failure_sweep(shape, 36, "L2 spawns, GPU", true) != 0) return 1;
