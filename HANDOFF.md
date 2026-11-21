@@ -4732,6 +4732,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         R2 (publish carries cut-time x87 / MXCSR). LANE H S1 MAY START: hp1i_ STARTED 00:1x (Sonnet High): S1 prepare.c
         weighted prepass / full / check + S2 prepare_test.c, in a NEW clone heapfix\AttilaCPUPerfFix_prep (branch prep,
         from HFx 5d837b6), local commits only. Agents: ebo_, x87o_, c3i_, hp1i_ (4 of 4).
+        03:0x: all 4 agents stopped on the usage limit 00:2x and were resumed 03:01 from where they stopped.
+        ATN 03:1x (going to sleep, then away 1-2 days): (1) when render_mt is built and only waits for ATN's end batch,
+        CONTINUE WITH THE GPU PLAN (plan_1117) without waiting, no lost time; (2) Forge's Nsight ideas (5 Discord shots in
+        the game folder debug45\1-5.png): design better GPU measurement tooling for the GPU plan (resident replayer
+        holding a trace, cached / indexed trace export, A/A noise control in every number, run time budgets with
+        deadlines + per-phase timing logs, pitfall files, local spec references); (3) Shortfuse's "Failures and
+        invariants" text (ATN's Downloads\message (1).txt, not in docs/CXX_STYLE.md or upstream yet): coordinator
+        suggests a CXX_STYLE.md section, not a skill - waiting for ATN's answer.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
