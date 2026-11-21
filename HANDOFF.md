@@ -5887,6 +5887,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: c33i_ (R-S1 + R-S2), b13r_ (B1.5 review), x0i_ (X0 fixes) (3 of 3). QUEUE: merge rmt_b15, c33i_'s
         engine_code / addon.cpp commit after B1.5, R-S3 review, R-S5a addendum, B1.6 (+ N5 real-routine tests), X1,
         ebr_ X0 re-check, X2.
+        x0i_ X0 FIXES DONE 18:5x (reports/x0i_x0fix_handback.md; variant x87c a9ba0cb, only tests\x87fix_test.c): final
+        89 PROVEN / 67 UNPROVEN / 9 LIVE (165 blocks); S-X0-1-only ablation = ebr_'s 98 / 58 / 9; HOT BLOCK +0x17f6515 +
+        +0x1423bd1 PROVEN; hot blocks 4 + 5 PROVEN, 3 UNPROVEN (real lea -52), 6 LIVE. S-X0-2 backtracking search, cap
+        800 runs = UNPROVEN (4 x +15D4xx lost, still UNPROVEN at 6000). Nit 3 read-back rule: 5 blocks lost (+141D877
+        kept). S-X0-3 relocation-cut FNV-1a hash (HIGHLOW dwords skipped), --hashtest PASS (EF6202CD, 58495 B, 2344 reloc
+        bytes cut; 78 / 89 blocks base-dependent without the cut). Self-test 80 instr + 33 / 33 synthetic PASS; +0xe80d1
+        control PROVEN. Scripts read the DLL only via dis_at.py (checked). x0i_build.ps1 (gated_build.ps1 cannot build
+        heapfix's build.bat tests; same slot files + lock gate).
+        b13r_ B1.5 REVIEW DONE 18:5x (reports/b13r_b15_review.md): MERGE. Cached count exact in play (all count inputs
+        change inside 0x192D290, both callers through the epoch stub); S4 / S6 / N4 / sibling_page sound; SPAWNS_OFF
+        wording matches t4i_'s gate regex. M1 (before B1.6): cache survives a row off -> on -> ++generation when the pair
+        goes in. M2 (before B1.6): PausedWrite stand-down must keep epoch + count both-or-neither. S1 comment; N1-N5.
+        MERGED 19:0x: rmt_b15 -> atn-mods c3f89865b (name_check 836 ids / 39 generic; gated x86 x3 + amd64 exit 0;
+        pushed).
+        c3i_ STARTED 19:0x on rmt_b15fix (from c3f89865b): M1 + M2 + S1 + N1-N5 -> b13r_ re-check.
+        ebr_ STARTED 19:0x: X0 re-check (S-X0-1..3, search completeness + cap, read-back rule, run-time hash, X2 go /
+        no-go on the 89-proven list) -> reports/ebr_x87_review.md '## X0 re-check'.
+        c33i_ TOLD: hold the engine_code.hpp / addon.cpp commit until the B1.5 fixes merge (c3i_ edits engine_code.hpp).
+        [ ] t4i_: refresh the SPAWNS_OFF gate row status ('TO REFRESH (B1.5)') against merged c3f89865b.
+        Agents: c33i_ (R-S1 + R-S2), c3i_ (B1.5 fixes), ebr_ (X0 re-check) (3 of 3). QUEUE: b13r_ B1.5 re-check + merge
+        rmt_b15fix, t4i_ gate row refresh, c33i_'s engine_code / addon.cpp commit, R-S3 review, R-S5a addendum, B1.6 (+ N5
+        real-routine tests), X1, X2.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
