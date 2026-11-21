@@ -608,8 +608,9 @@ constexpr uint32_t MAX_MAP_TRACE_FRAMES = 100;
 constexpr size_t MAX_MAP_WINDOWS = 6;
 // Each kind's storage: <frames> x a frame's room (W2's stress frame: ~4,200 draws, ~1,780 maps and as many unmaps; W3:
 // ~6,330 native map and unmap records), capped (8 frames of native calls fit). Reserved at Install (armed: <frames>
-// the longest window's) and held until the last window's files are written; x86 bytes a record: draw 32, event 144, native call 112 (12 frames: 3.1 + 9.4 +
-// 7.3 MB at the caps; 3 frames: about 6.2 MB). A record past its room is counted as dropped.
+// the longest window's) and held until the last window's files are written; x86 bytes a record: draw 32, event 144,
+// native call 112 (12 frames: 3.1 + 9.4 + 7.3 MB at the caps; 3 frames: about 6.2 MB). A record past its room is
+// counted as dropped.
 constexpr size_t MAP_DRAWS_A_FRAME = 8192;
 constexpr size_t MAP_EVENTS_A_FRAME = 6144;
 constexpr size_t NATIVE_CALLS_A_FRAME = 8192;
@@ -1269,7 +1270,8 @@ inline void Install(Options options = {}) {
   const DWORD setting_length =
       GetEnvironmentVariableA("RENODX_TW_MAP_TRACE", setting.data(), static_cast<DWORD>(setting.size()));
   if (setting_length != 0) {
-    // Too long: the buffer not filled.
+    // Too long: GetEnvironmentVariableA returns the size it needs and leaves a buffer that is too small unfilled, so
+    // the refusal shows an empty value.
     const std::string_view value(setting.data(), (setting_length < setting.size() ? setting_length : 0));
     std::vector<internal::MapWindow> windows;
     std::string refused;
@@ -1520,9 +1522,13 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
         try {
           const double ms_per_tick = 1000. / static_cast<double>(frequency.QuadPart);
           const size_t frames = trace.presents.size() - 1;
-          // An event timed just after the last present but recorded before the present took the lock: the last frame's.
+          // A call's frame: the one whose ending present comes at or after it. A present's time is read first thing in
+          // OnPresent, after every render-thread call of the frame it ends, so a call in the same QPC tick is that
+          // frame's (the render thread's next call comes microseconds later). An event timed just after the last
+          // present but recorded before the present took the lock: the last frame's.
           const auto frame_of = [&](int64_t qpc) {
-            const auto after = static_cast<size_t>(std::ranges::upper_bound(trace.presents, qpc) - trace.presents.begin());
+            const auto after =
+                static_cast<size_t>(std::ranges::lower_bound(trace.presents, qpc) - trace.presents.begin());
             return std::clamp(after, size_t{1}, frames) - 1;
           };
           // Each thread's draws in order, for an event's draw index, last draw and gap.
@@ -1667,7 +1673,9 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
               const auto& list = draws->second;
               const auto draw_qpc = [](const internal::MapDraw* draw) { return draw->qpc; };
               const auto after = std::ranges::upper_bound(list, event.qpc, {}, draw_qpc);
-              const auto frame_start = std::ranges::lower_bound(list, trace.presents[frame], {}, draw_qpc);
+              // The frame's first draw by frame_of's rule: a draw in its starting present's tick is the frame before's.
+              const auto frame_start =
+                  (frame == 0 ? list.begin() : std::ranges::upper_bound(list, trace.presents[frame], {}, draw_qpc));
               draw_index = static_cast<uint32_t>(after - frame_start);
               if (after != list.begin()) {
                 const auto& draw = **(after - 1);
