@@ -8323,8 +8323,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         left: two separate one-arm jobs with different fields could still be fed together = the v1.2 config hash.
         LAB S2-S5 + KIND DUMP REFERENCE MODE CLOSED. -> gtl_ v1.2 CONFIG HASH STARTED (lab side first: define the
         hash + write it in played.json; gtq_'s builder check after).
+        c3i_ B1 REAL-ROUTINE TESTS DONE 08:0x (render_mt/reports/c3i_b1_real_routine_handback.md): rmt_b1rt (local,
+        worktree rmt_c3, from f512acab4): 3ea4a6721 BUG FIX effect_update L2 - CommitDone for a sweep crossed into
+        later segments and committed later effects' finished units before the sweep ran -> the sweep's
+        destructor draws (random triple) out of order, L2 serial vs parallel random values differed (only matters
+        if the game's destructors draw; not proven in game; test fails without / passes with); fix
+        CommitDone(sweep_segment). atn-mods (d03d098b5) HAS the bug, L2 = Parallel Effect Spawns, default off, not
+        released. 158bbdfdd 26f N5 (sweeps whose destructors draw + a second node's spawns, L1 / L2, CPU / GPU);
+        f63460794 N4 braces + single VirtualQuery + 29f unmapping jthread + stop_callback; 39e63e6ef 26g real-routine
+        group (worlds with an image: the game's own code on game-laid objects, image A shipped serial vs image B
+        thunks + production Handle / Merge; random triple, spawn query / write CPU + GPU, slot take / return run
+        for real; 432 cases FULL; staging + overflow checks; 3 CONTROLs seen; mutants commitdone caught, othernode
+        failed (where not captured), nocreatepath caught by 26f first - 26g attribution of the last two NOT proven)
+        + 26f bound < 1024. Not testable offline: burst / sound / creators / tracked child / attach / rigid add /
+        random fill, the real particle path 0x1893470, the real create routine, the real game sweep, the slot
+        allocator's grow path, any GPU / game run. FULL PASS, -DrawRecording / instance_fill / draw_recording /
+        _loop / _sites PASS, gated builds -Owner c3i_ x86 3 + DR + amd64 exit 0. 8 orphaned engine_code.exe (01:50-
+        03:36, not c3i_'s) left alone (reboot box). -> b13r_ REVIEW STARTED (xHigh; incl. the bug fix + isolating the
+        2 mutants on 26g).
         Agents (8): upr_ (h0i_ H0 analysis re-check), gtl_ (v1.2 config hash, lab side), gtp_ (round 12: hg1 +
-        Section 8 + kind()), gtb_ (wrapped build check + hg2), ebr_ (t4i_ r24 re-check), c3i_
+        Section 8 + kind()), gtb_ (wrapped build check + hg2), ebr_ (t4i_ r24 re-check), b13r_ (c3i_ rmt_b1rt
+        review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
