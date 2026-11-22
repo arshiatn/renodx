@@ -1332,6 +1332,7 @@ void ReflectPixel(uint2 id) {
   float3 gathered = 0.f;
   float weights = 0.f;
   float distances = 0.f;  // of the samples that met a surface
+  float nearest = SKY_HIT_DISTANCE;  // the nearest of them (NRD's NRD_FrontEnd_SpecHitDistAveraging)
   uint met = 0u;
   // The shares (met, open) are of the samples' G2 / G1 weights, the lobe's own (0 below the horizon: the lobe has none
   // there). Of the sample count they were the lobe's share above the horizon: an open plane's specular occlusion 0.965 to
@@ -1371,6 +1372,7 @@ void ReflectPixel(uint2 id) {
         gathered += ThroughFog(sample_light, origin, origin + direction * first_distance) * weight;
         weights += weight;
         distances += first_distance;
+        nearest = min(nearest, first_distance);
         ++met;
       }
     } else if (occlusion && !Occluded(origin, direction, reflection_range, NO_GRASS_SMOKE)) {
@@ -1402,6 +1404,7 @@ void ReflectPixel(uint2 id) {
       weights = 1.f;
       if (bounce_chosen) {
         distances += hit_distance;
+        nearest = min(nearest, hit_distance);
         ++met;
         met_weights += lobe / samples;
       }
@@ -1496,7 +1499,8 @@ void ReflectPixel(uint2 id) {
   // Ray Reconstruction's specular hit distance: the mean distance to what the samples met (the sky's where none did, as
   // where none were traced: the game's reflection is the sky's or a cube map's).
   if ((path_flags & PATH_RAW) != 0u) specular_hit_distance[id] = (met != 0u) ? distances / met : SKY_HIT_DISTANCE;
-  if ((path_flags & PATH_NRD) != 0u) nrd_reflection[id] = float4(current.rgb * current.a, (met != 0u) ? distances / met : SKY_HIT_DISTANCE);
+  // NRD's: the nearest (its SpecHitDistAveraging; the mean is farther, and REBLUR blurred more near contact).
+  if ((path_flags & PATH_NRD) != 0u) nrd_reflection[id] = float4(current.rgb * current.a, nearest);
   // Mirrors keep no history; rougher lobes up to MAX_SPECULAR_FRAMES (last frame's where it saw this surface).
   float4 previous = 0.f;
   float2 previous_meta = float2(1.f, 0.f);
