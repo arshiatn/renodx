@@ -1819,7 +1819,7 @@ constexpr auto OnDepthPrepass = []<DrawCommand Command>(Command&) -> renodx::uti
 };
 
 // Bend's screen-space shadows (ue_screen_space_shadows.hpp) from the sun shadow mask's scene depth (t0), sun (its b0,
-// ue_sss_setup.cs_5_0.hlsl) and View (b1), at t41 for the HDR part's sunshadow00, which multiplies 1 - them into the sun's
+// host_sss_setup.cs_5_0.hlsl) and View (b1), at t41 for the HDR part's sunshadow00, which multiplies 1 - them into the sun's
 // shadowing; unbound after it with the rays' (t40).
 constexpr UINT SCREEN_SPACE_SHADOWS_SLOT = 41;
 

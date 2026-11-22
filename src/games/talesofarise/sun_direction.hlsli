@@ -7,7 +7,7 @@
 #define SRC_GAMES_TALESOFARISE_SUN_DIRECTION_HLSLI_
 
 // The direction toward the sun at Bandai's sun shadow mask (cs 0x2084C889), for the ray tracing (0x7A1E0D12) and the
-// screen-space shadows (ue_sss_setup): the world direction along which a point keeps its place on the game's shadow
+// screen-space shadows (host_sss_setup): the world direction along which a point keeps its place on the game's shadow
 // map, toward lower shadow depth, from the mask's ScreenToShadow (its b0 c28-c30: x, y and z of the shadow map from
 // screen position x depth, depth, 1) and the View's ScreenToWorld rows 0-2 (c44-c46). ScreenToWorld is affine (world =
 // s.x r0 + s.y r1 + s.z r2 + r3), so a world direction d has the screen direction (d.k0, d.k1, d.k2) with k0 = r1 x r2 /
