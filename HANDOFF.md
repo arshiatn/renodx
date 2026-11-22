@@ -446,6 +446,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_ (optional, after its 4 suites pass): a light_anim iq job launches its own r ... | ?
 - grs_ + gtl_ (moments only, later): the "full size is its active size" protocol l ... | ?
 - coordinator (route before T5): end-batch placeholders that never match (no shipp ... | ?
+- gtl_ + gtq_ (v1.2): played.json carries a config hash (flags, fields, micromap l ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -7939,13 +7940,43 @@ heading text are in HANDOFF_ARCHIVE.md)
         CORRECTION 06:5x: t4i_ r23 NOT started yet - ebr_ is re-checking r22 on the same files (gates.json /
         corpus / tests); r23 (c3i_'s two lines) goes to t4i_ together with ebr_'s r22 verdict. Sent b13r_ (re-check)
         and c3i_ (real-routine tests on rmt_b1rt from f512acab4).
-        Agents (7): gtp_ (gtw_ re-check 9 Shoulds + re-seed), gtv_ (gtq_ fixes + gtl_ iq_refs re-check), gtb_
-        (s1a-s1c), ebr_ (t4i_ r22 re-check), b13r_ (c3i_ B1.6 follow-ups re-check), t4i_ (r23 after ebr_'s r22
-        verdict), c3i_ (B1 real-routine tests). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake
-        to testbin + R1), gpp_, gbc_, gpr_ (re-checks gtb_ s1a-s1c), gti_ (after H0: R1), grs_, gtk_, gtw_
-        (re-check 10 after gtp_), gtl_ (after H0: its 4 suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator,
-        since 05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends; gtv_'s held lab tests
-        + race probe after H0.
+        gtb_ S1A-S1C DONE 07:0x (plan_1117/gtb_s1a_s1c_handback.md; backup scratchpad\gtb_bak16; budget.py live via
+        os.replace): test_budget 3 x 34 OK, watch --selftest 3 x 0. s1a record at ~3 s held 5 s, run_s < 6.5 +
+        wait_s 2.5-8.0 (all runs wait 4.0 / run 4.2) = proves the wait is not run time; s1b fake ns_busy logs its
+        args, HANG writes the child pid, every left-out pid asserted to be the child's / grandchild's (W1 test
+        bites: left-outs non-empty, all in the tree); s1c _own_price_rows strict decode, {} on UnicodeDecodeError,
+        tested via both the hook copy and the fallback. Open question: gate_rows' own reader (gates.tsv / mode.txt)
+        still decodes with 'replace' -> gpr_ to judge. -> gpr_ RE-CHECK STARTED.
+        gtv_ GTQ_ FIXES + IQ_REFS RE-CHECK = BOTH OK 07:0x (plan_1117/gtv_gtq_fixes_iqrefs_recheck_handback.md;
+        gtv_iq_review.md "## gtq_ fixes + iq_refs re-check"): fix7 backup = last reviewed state; test_iq_frames 14 /
+        14 + test_lab_unit 26 / 26; RNG answer checks out (seed = pure frame offset; shaders taken on gtq_'s word);
+        2000 enough today (shared keys only < 5 x span apart; 985 gap holds up to 197-frame recordings, today 2-8)
+        but NOTHING ties it to a future raise (game recordings have no length cap for iq; iq_seeds 16 a plain
+        constant). Junction = the link alone (os.rmdir in the test's TemporaryDirectory, target asserted empty).
+        Shoulds: S2 (lab) validator check before any GPU time: W = 5 x span, K = iq seeds -> refuse unless K - 1 + W
+        < 1000 and 1000 + K - 1 + W < lowest reference seed (+ unit test with a long fake recording); S3 (new with
+        dump_frames N > 1) neighbouring seeds share N - 1 keys -> truth / floor 2000 / 2001 floor too low (safe side),
+        arms 0..K-1 give K correlated values (gate spread too small, either way) -> builder refuses reference seeds
+        closer than N apart, lab plays seeds base + i x N. COORDINATOR DECISION: keep the constants (A' base 1000,
+        REFERENCE_SEEDS 2000); the S2 validator uses the strided ranges (K x N + W < 1000 and 1000 + K x N + W <
+        lowest reference seed) and refuses jobs that do not fit (today K 16, W ~40 -> N up to ~60); revisit with gto_
+        only if a real job needs more. Note: played.json has no config hash (flags / fields / micromap level) -> v1.2
+        item. Nits gtq_: 1 recording.txt now written BEFORE manifest.json (a failed .partial looks valid to
+        lab.py:512-524) -> write it last again; 2 `reference --out` silently ignored -> refuse; 3 error path untested;
+        4 mock.patch.object instead of swapping time.strftime; 5 a refused build can leave an empty group folder.
+        Nit gtl_: test_delete_refuses_iq_refs's first case is refused by the earlier own-dump check (ROOT base\run vs
+        IQ_REFS base\quality) -> assert its reason or drop it. Belt for nit 1 -> gtl_: the lab refuses a reference
+        inside IQ_REFS that ends in .partial or has no manifest.json. -> gtq_ + gtl_ FIXES STARTED (separate file
+        sets); gtv_ re-checks; its 4 held lab suites + race probe need a new run after H0.
+        - [ ] gtl_ + gtq_ (v1.2): played.json carries a config hash (flags, fields, micromap level) so two configs with
+            the same stems / env cannot form one reference.
+        Agents (8): gtp_ (gtw_ re-check 9 Shoulds + re-seed), gtq_ (gtv_'s S3 builder + nits 1-5), gtl_ (gtv_'s S2
+        + S3 lab + test nit + .partial belt), gpr_ (gtb_ s1a-s1c re-check), ebr_ (t4i_ r22 re-check), b13r_ (c3i_
+        B1.6 follow-ups re-check), t4i_ (r23 after ebr_'s r22 verdict), c3i_ (B1 real-routine tests). Idle: bd1r_,
+        lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, gbc_, gtb_ (waits gpr_), gti_
+        (after H0: R1), grs_, gtk_, gtw_ (re-check 10 after gtp_), gtv_ (re-checks gtq_ + gtl_; held lab tests +
+        race probe after H0). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
+        map_replay-named process until H0 ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
