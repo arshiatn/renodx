@@ -577,7 +577,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - skills: game-port-method/SKILL.md:126 still names the deleted rr_d3d12.hpp (SKIL ... | ?
 - shared twattila/effect_brightness.hpp for D1 + Troy (+ D2 next) (g06_ m3): owner ... | ?
 - D1 trace requests (g06_ m5): (1) one sun-shadow PCSS 0x8F114E47 draw with its VS ... | ?
-- b3t_ merges rmt_b3s into rmt_b3t, then gated builds macro off (x86 3 targets + a ... | ?
 - b3t_ tests after the merge: T1 (23v S-2 stop exact), T3 (ordered mode X >= block ... | ?
 - engine_code owner, later hardening: N1 push rel32 check next to FILL_HEAD (same ... | ?
 - NITs for later: `allocate` lambda with one call site; "C lag" prints 0 for bulk ... | ?
@@ -654,6 +653,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the batch: m1 + NIT 5 (b3t_: animation_rows.hpp:505-508 logs the requested ... | ?
 - ATN box (gpr_): with shell_heredoc OFF, python heredoc edits of real code pass, ... | ?
 - gtp_ round 24 also: gtw_'s R23-2 speed fix (blocks the mirror suite) + R23-1 OPE ... | ?
+- b3t_ after the batch: T1, T3, T2, T6, which part runs 12e, R6 (see the B3b test ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12141,7 +12141,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         1 MAJOR (merge step: rmt_b3s fc36bf57f holds rmt_b3t only up to 38d2def38; merge rmt_b3t tip b6c593a9c too, or the
         S5 tests drop and instance_fill.inc stays on the old park with the heap-lock deadlock), 2 MINOR (tests), 4 NIT; the
         shipped code needs no change. b3s_'s R1 / R2 verified (the shipped build counts nothing outside a trace window).
-        - [ ] b3t_ merges rmt_b3s into rmt_b3t, then gated builds macro off (x86 3 targets + amd64) + ONE full run.ps1 macro
+        - [x] (DONE 22:5x, MERGED 45fb2ca36) b3t_ merges rmt_b3s into rmt_b3t, then gated builds macro off (x86 3 targets + amd64) + ONE full run.ps1 macro
         on (stream + bulk) + probe to its end on the merged tree (slot 1) -> "b3t_ merged" -> coord merges rmt_b3t ->
         END REVIEW.
         - [ ] b3t_ tests after the merge: T1 (23v S-2 stop exact), T3 (ordered mode X >= block 2, texels_per_row 0x55555555),
@@ -12487,6 +12487,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         commit); every new row's file:line still holds. 3 optional NITs -> t4i_ (sent, "t4i_ nits"): r2_left_alone text;
         draw_recording_sites.hpp:1902 partial line needs code_rows "Threaded Draw Recording" {parts: [C]} (else a resumable
         stop in every start); tests for the partner-not-in-leg NOTE + the L_end-30 bound.
+        rmt_b3t MERGED 22:5x: 45fb2ca36 (render_mt/reports/b3t_merged_handback.md): merge 61a2ccc81 (only conflict
+        test/tw_engine_code/run.ps1 defines: both kept) + a2b100c6a (23x's slow calls go on until RING_BUSY is met; test only).
+        Gated x86 twattila / twrome2 / thrones + amd64 twattila exit 0 (peak job 11142 MB); full run.ps1 run 1 FAIL at 23x
+        (timing, kept as merged_full_run1_FAIL23x.log), run 2 on a2b100c6a PASS (bulk + stream, 23z seen); -Probe full PASS.
+        b3t_'s worktree got 8 external\* junctions (read-only links to D:\Dev\renodx\external): delete them alone first.
+        lg3_ told to merge 45fb2ca36 into rmt_er5.
+        - [ ] b3t_ after the batch: T1, T3, T2, T6, which part runs 12e, R6 (see the B3b test box above) + er5o_ m1 / NIT 5.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
