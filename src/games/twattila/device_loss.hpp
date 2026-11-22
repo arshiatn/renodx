@@ -40,6 +40,7 @@
 #include "../../utils/log.hpp"
 #include "../../utils/vtable.hpp"
 #include "./output_encoding.hpp"
+#include "./worker_pool.hpp"
 
 // A Total War game after a GPU reset. It builds a new device and swap chain for the same window, in one of two orders:
 // - The old device alive (WH3, ATN's log 2026-11-05): a chain whose back buffer's view is bound or held keeps the
@@ -444,6 +445,9 @@ static void LogStall(uint64_t age_ms, bool dump) {
       line += " " + place;
       ++added;
     }
+  }
+  if (const std::string job = worker_pool::Describe(); !job.empty()) {
+    line += "; worker pool: " + job;
   }
   if (stall_note != nullptr) {
     if (const std::string note = stall_note(); !note.empty()) {
