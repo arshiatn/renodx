@@ -453,7 +453,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gti_ (batched with any H0 item h0i_ routes to it; test_gpu_lock.py lives in lab\ ... | ?
 - ATN: lab_gtl_stage (tools\tw\lab_gtl_stage, gtl_'s staged copy) may be deleted a ... | ?
 - c3i_ (on rmt_b1rt, with the real-routine tests): b13r_'s N4 braces at effect_upd ... | ?
-- gtp_ (with gtw_'s re-check 11 findings): hg1 rows() -> {'price': 'shadow'} on an ... | ?
 - gtb_ (optional, batched): hg2 name the unreadable file in watch's stderr / facts ... | ?
 - ATN (morning report): test fixtures remove the sandbox world / testbin folders t ... | ?
 - helper / bridge owner (grs_): a cold shader cache after an update may miss the f ... | ?
@@ -463,7 +462,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coordinator after upr_'s OK: H0 re-run (full, ~84 min, ATN's rule) in a gap; ATN ... | ?
 - who owns the build env: gated_build's stderr shows `'vswhere.exe' is not recogni ... | ?
 - gtb_ (low): end-to-end slot-wait test - both sandbox slots held, one freed at ~8 ... | ?
-- gtp_ (low): kind() doesn't normalise target spelling ('twattila' vs 'renodx-twat ... | ?
 - gtb_ / gti_ (low): watch's load is always `unknown` while nothing refreshes busy ... | ?
 - t4i_ (low): add -B in run_all.ps1 line 9 + test_analyze.py run_analyze, after eb ... | ?
 - ATN (cleanup list): tools\tw\h0\__pycache__ (07:42) may be deleted (upr_ 08:3x). | ?
@@ -472,6 +470,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_ (nit): Resident has no `cfg` until config() runs - self.cfg = None in __ini ... | ?
 - gtl_: jobs fixture test_iq_kinds gate-phase deadline 12.5 s failed under load tw ... | ?
 - lab owner (later, optional): record `dxr12` (machine state from config's answer) ... | ?
+- gtp_ (nit): the 5 ms kind() timing check failed once under parallel load (5.9 ms ... | ?
+- ATN (morning report): player risk - a cold shader cache (driver update / new rel ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8245,7 +8245,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         missing = not installed). hg2 NIT (gtb_, optional): gate_rows could call the hook's gate_file() to name the
         unreadable file in watch's stderr / facts. Wording: one reason text, drop the hook's nested parentheses.
         -> hg1 to gtp_ TOGETHER WITH gtw_'s re-check 11 verdict (gtw_ told now, so one fix round); hg2 batched.
-        - [ ] gtp_ (with gtw_'s re-check 11 findings): hg1 rows() -> {'price': 'shadow'} on an unreadable gates.tsv
+        - [x] gtp_ (DONE round 12) (with gtw_'s re-check 11 findings): hg1 rows() -> {'price': 'shadow'} on an unreadable gates.tsv
             + one reason text; gtw_ + gpr_ re-check end to end.
         - [ ] gtb_ (optional, batched): hg2 name the unreadable file in watch's stderr / facts via the hook's
             gate_file().
@@ -8409,7 +8409,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtb_ (low): end-to-end slot-wait test - both sandbox slots held, one freed at ~8 s, `watch --limit 6`
             -> exit 0, locked y, wait_s >= 8, run_s <= 6; control 124; needs a test-only dry-run hold >= 5 s in
             gated_build.ps1 (default off, assert locked y) + optional pass interval (gpr_ 08:2x).
-        - [ ] gtp_ (low): kind() doesn't normalise target spelling ('twattila' vs 'renodx-twattila.addon64' = two
+        - [x] gtp_ (low, DONE round 12 build_key()): kind() doesn't normalise target spelling ('twattila' vs 'renodx-twattila.addon64' = two
             keys; 77 of 264 seed target words long form) - normalise + re-key price_seed.tsv / watch_runs.tsv in one
             go (gpr_ 08:2x).
         - [ ] gtb_ / gti_ (low): watch's load is always `unknown` while nothing refreshes busy_count.json (05:50,
@@ -8495,9 +8495,51 @@ heading text are in HANDOFF_ARCHIVE.md)
             whether a looser deadline is right (gtv_ 08:3x).
         - [ ] lab owner (later, optional): record `dxr12` (machine state from config's answer) in played.json;
             iq gate could check A' = A by config_sha256 (gtv_ 08:3x).
-        Agents (9): h0i_ (H0 F1-F4), gtq_ (S6 + cross test), gtl_ (golden hex + cfg nit + jobs deadline), gtp_ (round
-        12: hg1 + Section 8 + kind() + target spelling), gtb_ (slot-wait test + load), t4i_ (-B edits), b13r_
-        (c3i_ rmt_b1rt review), grs_ (bridge first-frame miss design), lga_ (release regression look)
+        gtp_ ROUND 12 DONE + LIVE (SHADOW) 08:4x (plan_1117/gtp_round12_handback.md; backups scratchpad\gtp_bak16
+        live files, gtp_bak17 prices / seed / watch_runs before re-key): mirror 723 / 723, live final 723 / 723 (one
+        live run 722: "kind() 8 KB well under 5 ms" took 5.9 ms beside gtb_'s test_budget; ~2.5 ms alone). (1) hg1:
+        rows() {'price': 'shadow'} on gate_file None, missing = {}, mode shadow; INSTALL sec 3 says so. (2) reason =
+        watch's words (`UnicodeError: NUL in text - UTF-16 without a BOM? ...`). (3) watch end-to-end in the suite
+        (sandbox copies of budget.py + gpu_lock.py, fake ns_busy, `watch --limit 2` over a sleep(4)): SHADOW for
+        UTF-16LE / BE no BOM, bad bytes, UTF-16 mode.txt; 124 for price on + enforce, missing gates.tsv, UTF-16LE
+        with --phase dump. (4) FAULT rate: gate_faults.json mtime_ns:size per file (one row per state, broken
+        marker fails open). (5) `TOOL FAULT inner_commands parser`. (6) nits refused: cat | tee chains, uv
+        --with*, bunx / bun x / bun add (bun run build passes), self.fetch only in node / deno / bun; corpus 15,119:
+        0 differ before re-seed (291 refused both), after 259 vs 262 (3 = long-spelling gated_build now priced).
+        (7) kind() keeps all --target / -t / --target= targets (commas, stops at flag / redirect; `< /dev/null`
+        bug fixed) + arch; re-seed 103,941 seeds / 400 transcripts / 6,920 price rows; gated_build p50: x86 3
+        targets 76.9 s, x86 twattila 63.6, amd64 twattila 67.5. (8) Section 8 rewritten: RECOMMENDATION NOW A (wrap
+        in watch; works today, slot wait outside the clock, first 10 wrapped runs per kind = flags only); B's text
+        fixed (-Agent = hook's 8-hex tag). gpr_ add-on: build_key() one spelling (renodx- / .addon32 / .addon64
+        dropped, lower, dedup, sorted) + test; prices_state 0 kinds to change; watch_runs.tsv not written (row
+        already short, gtb_ watch running). Live: gates\gate_hook.py, tests\run_tests.py, INSTALL_FOR_ATN.md,
+        price_seed.tsv, prices.tsv, prices_state.json. -> gtw_ RE-CHECK 12 + gpr_ CHECK STARTED.
+        - [ ] gtp_ (nit): the 5 ms kind() timing check failed once under parallel load (5.9 ms) - a load-tolerant
+            bound or a relative check (gtp_ 08:4x; 3rd load-only test flake today).
+        grs_ FIRST-FRAME DESIGN DONE 08:4x (plan_1117/designs/grs_first_frame.md + grs_first_frame_handback.md;
+        read-only log script scratchpad\open_times.py): PLAYERS CAN HIT IT - the first DLAA frame's waited request
+        opens NGX RR, the RT scene (D3D12 device, 38 compute PSOs one by one (+ DXR 1.1 set if 1.2 fails), 2 SER
+        state objects, OMM baker) and Streamline / DLSS-G on the helper's single loop; only NVIDIA's DXCache, cold
+        after a driver update / any add-on DXIL change (most releases) / cache clear / cache off; Answer(20000) ->
+        timeout latches watchdog.failed = DLAA / RR / RT / FG off for the session after a 20 s freeze. H0 cold
+        open 21-22 s on the 5090; ATN's logs only warm (2.67-3.25 s start -> "Ray tracing ready", 6 TW folders, no
+        misses); no open times in the helper logs. 2nd exposure: NRD pipelines made lazily inside a steady request.
+        Options a / a' / b / b2 (rejected) / b3 / c (= d') / d / d'. RECOMMENDATION: (1) d' add-on side: on a
+        non-steady timeout enter "opening" instead of latching - frames pass through (TAA, NotTraced, no FG) and
+        poll with 0 ms; the late answer's result is discarded and the next request of each kind waited; process
+        exit / wrong value fail closed; past OPEN_BUDGET_MS (180 s proposed) latch as today; ~60-100 lines in
+        dlaa_bridge.hpp, no Shared / protocol change; (2) b3 parallel PSOs in RtScene12::Initialize; (3) NRD pipeline
+        creation into open_scene; (4) one log line per open with RR / scene / FG / NRD ms. Order 4 + 1, 3, 2. Open
+        for review: budget, 20 s first block -> 5-10 s?, how shared writes skip while opening, PublishEmptySet.
+        Lab proposal: H0's harness uses the same bridge - under d' it must count a passed-through first frame as
+        "not answered yet" or warm up first (check before the add-on change lands). -> OPUS xHIGH REVIEW (ffr_)
+        STARTED.
+        - [ ] ATN (morning report): player risk - a cold shader cache (driver update / new release) can freeze
+            the first DLAA frame ~20 s and then turn DLAA / RR / RT / FG off for the session; grs_'s fix design
+            under review (grs_ 08:4x).
+        Agents (10): h0i_ (H0 F1-F4), gtq_ (S6 + cross test), gtl_ (golden hex + cfg nit + jobs deadline), gtw_ +
+        gpr_ (gtp_ round 12 re-check), gtb_ (slot-wait test + load), t4i_ (-B edits), b13r_ (c3i_ rmt_b1rt
+        review), ffr_ (grs_ first-frame design review), lga_ (release regression look)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
