@@ -481,7 +481,7 @@ class Resident {
       } else if (flag == L"--no-dred") {
         options->dred = false;
       } else {
-        *why = std::format("unknown flag {} (only --nsight, --no-dred)", std::filesystem::path(flag).string());
+        *why = std::format("unknown flag {} (only --nsight, --no-dred)", Utf8(flag));
         return false;
       }
     }
@@ -624,15 +624,17 @@ class Resident {
 
  private:
   static constexpr uint64_t SEED_ROOM = uint64_t{1} << 20;
+  static constexpr uint32_t SETTLE_LOOPS = 5;  // Load's most loops before the snapshot
   static constexpr std::array<std::string_view, 9> COMMANDS = {"config", "run", "dump", "trace", "moments", "seed", "light_anim", "status", "stop"};
+  // `wide` as UTF-8 (never throws; unpaired surrogates become U+FFFD).
+  static std::string Utf8(std::wstring_view wide) {
+    std::string text(WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), text.data(), static_cast<int>(text.size()), nullptr, nullptr);
+    return text;
+  }
   // The process's RENODX_TW_* variables (names in upper case: Windows' ignore it) into `env`, fail closed: false (`why`
   // says which) with RENODX_TW_RECORD (the journal's cost in every request) or a RENODX_TW_TEST_* set.
   static bool CheckEnvironment(std::map<std::string, std::string>* env, std::string* why) {
-    const auto narrow = [](std::wstring_view wide) {
-      std::string text(WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr), '\0');
-      WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), text.data(), static_cast<int>(text.size()), nullptr, nullptr);
-      return text;
-    };
     env->clear();
     if (wchar_t* variables = GetEnvironmentStringsW(); variables != nullptr) {
       for (const wchar_t* entry = variables; *entry != L'\0'; entry += std::wcslen(entry) + 1) {
@@ -640,7 +642,7 @@ class Resident {
         const size_t equals = variable.find(L'=');
         std::wstring name(variable.substr(0, equals));
         std::ranges::transform(name, name.begin(), [](wchar_t letter) { return static_cast<wchar_t>(std::towupper(letter)); });
-        if (name.starts_with(L"RENODX_TW_")) (*env)[narrow(name)] = narrow(variable.substr(std::min(equals + 1, variable.size())));
+        if (name.starts_with(L"RENODX_TW_")) (*env)[Utf8(name)] = Utf8(variable.substr(std::min(equals + 1, variable.size())));
       }
       FreeEnvironmentStringsW(variables);
     }
@@ -771,7 +773,7 @@ class Resident {
   }
 
   // The recording on a new scene (the last one let go first, LetGo), DRED on unless --no-dred (a lost device's report says
-  // where the GPU stopped), its first loop played (more while it has not settled, at most 5), the snapshot taken (in video memory when
+  // where the GPU stopped), its first loop played (more while it has not settled, at most SETTLE_LOOPS), the snapshot taken (in video memory when
   // twice its size is free, else read back), the config's stems and burn in it, the seed's offset on it. False: `why` says
   // why.
   bool Load(std::string* why) {
@@ -818,8 +820,8 @@ class Resident {
     position_ = 0;
     std::string settling;
     for (loops_ = 0; loops_ == 0 || !scene_->Settled(&settling); ++loops_) {
-      if (loops_ == 5) {
-        *why = "not settled after 5 loops: " + settling;
+      if (loops_ == SETTLE_LOOPS) {
+        *why = std::format("not settled after {} loops: {}", SETTLE_LOOPS, settling);
         return false;
       }
       for (size_t frame = 0; frame < frames_.size(); ++frame) {
@@ -927,10 +929,12 @@ class Resident {
     }
     return true;
   }
-  // `played` frames after a reset with offset `seed` stay below 2^24 (the radiance cache's float stamps are exact there).
+  // `played` frames after a reset with offset `seed` stay below 2^24 (the radiance cache's float stamps are exact there),
+  // with the most loops a full reload may settle in (the offset after the snapshot is loops x span, the frames played
+  // since add one loop per recorded loop and one partly played).
   [[nodiscard]] bool BelowFrameLimit(uint64_t seed, uint64_t played) const {
     const uint64_t frames = std::max<size_t>(frames_.size(), 1);
-    return last_frame_ + (uint64_t{span_} * (loops_ + 1 + (played / frames))) + seed < (uint64_t{1} << 24);
+    return last_frame_ + (uint64_t{span_} * (SETTLE_LOOPS + 1 + (played / frames))) + seed < (uint64_t{1} << 24);
   }
   // A path argument: as given when absolute, else in the control folder.
   [[nodiscard]] std::filesystem::path ControlPath(const std::string& path) const {
@@ -1076,8 +1080,12 @@ class Resident {
     // trace (S4): frames played with Nsight Graphics' frame boundary before each trace, never timed.
     if (!options_.nsight) return {.status = "REFUSED", .error = "not an injected (--nsight) resident"};
     if (!OnlyKeys(args, {"frames"}, &why)) return {.status = "REFUSED", .error = why};
+    const auto trace_frames = args.at("frames").get<uint32_t>();
+    if (seed_ != 0 && !BelowFrameLimit(seed_, uint64_t{position_} + trace_frames)) {
+      return {.status = "REFUSED", .error = std::format("with seed {} these frames would take played frames to 2^24", seed_)};
+    }
     tracing_ = true;
-    for (uint32_t frame = 0; frame < args.at("frames").get<uint32_t>(); ++frame) {
+    for (uint32_t frame = 0; frame < trace_frames; ++frame) {
       if (!Advance(nullptr, &why)) {
         tracing_ = false;
         return Failed(why);
