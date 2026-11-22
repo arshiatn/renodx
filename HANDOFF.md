@@ -450,7 +450,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ (after gtw_ re-check 10): the hook's own rows() / mode() raise on a corrupt ... | ?
 - h0i_ + upr_: every H0 FAIL of 20261122_054906 root-caused (tool / pre-existing / ... | ?
 - gtl_ (after its 4 suites): S4 seed-number check + span < 1 + real() nits, then t ... | ?
-- gtq_: catch any Exception in build_reference's error path (same message, .partia ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8049,7 +8048,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         its 4 suites + S4; gtv_ reviews.
         - [ ] gtl_ (after its 4 suites): S4 seed-number check + span < 1 + real() nits, then the kind dump
             reference mode; gtv_ re-checks.
-        - [ ] gtq_: catch any Exception in build_reference's error path (same message, .partial kept); gtv_ checks.
+        - [x] gtq_ (DONE 07:2x, gtv_ checks): catch any Exception in build_reference's error path (same message, .partial kept).
         gtb_ GATE_ROWS STRICT DONE 07:1x (plan_1117/gtb_gate_rows_strict_handback.md; backup scratchpad\gtb_bak17;
         budget.py live via os.replace): strict UTF-16 BOM / UTF-8; on a decode error gates.tsv = `price shadow`,
         mode.txt = shadow, one `renodx-watch FAULT <file> unreadable (...): read as shadow` line + facts cell; lab
@@ -8057,12 +8056,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         test_corrupt_gates_files_read_as_shadow, end to end --limit 2 not killed, --phase dump killed 124), selftest
         3 x 3; gpr_'s probe: price-shadow + bad mode.txt cases not killed, no-price-row killed as before.
         -> gpr_ RE-CHECK STARTED.
+        gtq_ EXCEPTION NIT DONE 07:2x (plan_1117/gtq_exception_nit_handback.md; backup scratchpad\gtq_backup_fix9):
+        catch (OSError, ValueError) -> Exception (KeyboardInterrupt still stops), same exit 2 REFUSED message; new
+        case mocks finite raising TypeError (exit 2, reason, .partial named + kept with seed_2003 / _2005, no
+        Traceback); test_iq_frames 14 / 14. -> gtv_ CHECK STARTED (its held lab suites + race probe still after
+        gtl_'s 4 suites).
         Agents (10): gtw_ (S1c re-check 10), h0i_ (H0 analysis + fake to testbin + R1), gti_ (R1), gtl_ (its 4
-        held suites), gtq_ (Exception nit), gpr_ (gtb_ gate_rows re-check), t4i_ (r23), b13r_ (c3i_ B1.6
-        follow-ups re-check), c3i_ (B1 real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_, lgf2_,
-        c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), grs_, gtk_, gtp_ (waits gtw_), ebr_
-        (re-checks t4i_ r23), gtv_ (held lab suites + race probe AFTER gtl_'s 4 suites: the fakes' names would
-        cross each other's busy checks). GPU: free (rec_verify waits ATN; H0 re-run after the analysis).
+        held suites), gtv_ (gtq_ Exception nit check), gpr_ (gtb_ gate_rows re-check), t4i_ (r23), b13r_ (c3i_
+        B1.6 follow-ups re-check), c3i_ (B1 real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_,
+        lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), grs_, gtk_, gtp_ (waits gtw_),
+        ebr_ (re-checks t4i_ r23), gtq_ (waits gtv_). gtv_'s held lab suites + race probe AFTER gtl_'s 4 suites
+        (the fakes' names would cross each other's busy checks). GPU: free (rec_verify waits ATN; H0 re-run after
+        the analysis).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
