@@ -2662,7 +2662,7 @@ int main(int argc, char** argv) {
   }
   if (argc > 3 && std::string(argv[3]) == "effect_update") {
     twattila::engine_code::Update(false);
-    if (const int failed = RunEffectUpdateTests(build, patched, quick); failed != 0) return failed;
+    if (const int failed = RunEffectUpdateTests(build, game, patched, quick); failed != 0) return failed;
     std::printf("PASS (effect update only)\n");
     return 0;
   }
@@ -3685,7 +3685,7 @@ int main(int argc, char** argv) {
   if (const int failed = RunAnimationRowsTests(build, game, patched, quick); failed != 0) return failed;
   if (const int failed = RunPendingSweepTests(build, game, patched, quick); failed != 0) return failed;
   if (const int failed = RunEffectSitesTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
-  if (const int failed = RunEffectUpdateTests(build, patched, quick); failed != 0) return failed;
+  if (const int failed = RunEffectUpdateTests(build, game, patched, quick); failed != 0) return failed;
   if (const int failed = RunParticleCountTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
   if (const int failed = RunInstanceFillTests(build, game, patched, text_rva, text_size); failed != 0) return failed;
 

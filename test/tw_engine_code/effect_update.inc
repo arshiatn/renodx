@@ -22,8 +22,12 @@
 //    units (SweepEarly), a unit that waits for the frontier to pass it (WaitOnLater: the hang detector), a sweep thunk with a wrong frame (SweepFrameWrong): each must be seen.
 //    The L2 controls: CommitReversed, MergeByCompletion, OverflowIgnored, DeferAnyCaller (a deferred draw's tag outside its record: a leak).
 //    The serial reasons and the foreign-thread count are taken only in a trace window: those cases open one.
-// Not here: test 13 (RegisterStateKept) is 25c's; ClaimFour (G = 4) is not built, the code has G = 1 only. The real routines on fake object graphs (the design's tests 2, 4, 5, 6, 7,
-// 9 and 15 on the game's own functions) are not run: the scripts stand in for them; `tests.exe <dll> quick effect_update` runs this part alone.
+// 26g. The game's own routines (the design's tests 2, 3, 8 and 12 on the real code that runs on a fake object graph): the random triple, the create path's call of it, the spawn
+//    query and write on the real CPU and GPU pipelines (their vtables), the second node's pipeline, the slot take and return on a real pool; the serial walk calls them in image A
+//    (the game as it ships), the round in image B (the thunks in, the production handler), the shared words and the real memory compared; the controls on them.
+// Not here: test 13 (RegisterStateKept) is 25c's; ClaimFour (G = 4) is not built, the code has G = 1 only. The routines that need the game's own graphs (the burst, the sound start,
+// the creators, the tracked child, the attach, the rigid add, the particle path with its emitter, the per-instance update) are stood in for by the scripts (26a to 26f);
+// `tests.exe <dll> quick effect_update` runs this part alone.
 // ====================================================================================================================
 
 namespace eut {
@@ -87,6 +91,7 @@ struct Shape {
   bool types_near = false;       // a new type takes the free slot right after its unit's effect (a type that lands between the enqueued effects and the one that failed)
   bool sweep_draws = false;      // the sweep's destructors draw the game's random triple (a dead instance's, in the render thread's ordered pseudo-unit)
   uint32_t other_room = 0;       // not 0: a second node with a pipeline of its own of this room, which the 'O' operation spawns into (the first node's is the round's)
+  bool real = false;             // 26g: the operations call the game's own routines in image A (the serial walk) and B (the round) on objects laid out as the game lays them out
 };
 
 struct World {
@@ -127,11 +132,23 @@ struct World {
   bool sweep_draws = false;
   uint32_t other_node = 0, other_capacity = 0, other_count = 0, other_answered = 0;  // the second node: its spawn count, and the answers a handler wrongly gave for it
   std::vector<std::array<uint32_t, 12>> spawn_buffer;
+  // 26g: the image whose routines the operations call (null: the fake operations), the second node's pipeline, and the memory of the pipelines' arrays.
+  uint8_t* image = nullptr;
+  uint32_t other_pipeline = 0, other_buffer = 0;
+  bool other_gpu = false;
+  std::vector<uint8_t> big;
+  size_t big_used = 0;
 
   uint8_t* Aux(size_t bytes) {
     aux_used = (aux_used + 15) & ~static_cast<size_t>(15);
     uint8_t* at = aux.data() + aux_used;
     aux_used += bytes;
+    return at;
+  }
+  uint8_t* Big(size_t bytes) {
+    big_used = (big_used + 15) & ~static_cast<size_t>(15);
+    uint8_t* at = big.data() + big_used;
+    big_used += bytes;
     return at;
   }
 
@@ -192,6 +209,93 @@ bool Touch(eu::Site site, uint32_t ecx = 0, uint32_t first = 0, uint32_t second 
   if ((answer == 1 && !may_answer) || (!(answer == 1) && frame.regs[7] != SENTINEL_EAX)) eax_violations.fetch_add(1);
   if (answer == 1 && may_answer && eax != nullptr) *eax = frame.regs[7];
   return answer == 1 && may_answer;
+}
+
+// 26g: the game's own routines on the worlds' objects. A world with an image calls them there: image A (the game as it ships) for the serial walk, image B (the thunks in) for
+// the round. The objects are laid out as the game's routines read them; Harvest copies what they left into the fields Equal compares.
+static uint8_t* real_game = nullptr;
+static uint8_t* real_patched = nullptr;
+constexpr uint32_t COUNT0 = 10;           // the spawn buffer's count before the world's first spawn
+constexpr uint32_t CREATE_STUB_BYTES = 14;  // the create path's call of the draw, replayed (PlantCreateDraw): the bytes before the return address it pushes
+using RealQuery = uint8_t(__thiscall*)(uint32_t);
+using RealWrite = uint8_t(__thiscall*)(uint32_t, uint32_t);
+using RealPool = uint8_t(__thiscall*)(uint32_t, uint32_t*);
+
+uint8_t* RealSite(const World& w, eu::Site site) { return w.image + eu::SITES[static_cast<size_t>(site)].rva; }
+uint32_t RealState(const World& w) { return Read32(w.image + ei::RANDOM_STATE_RVA); }
+
+// The game's three-step draw. `emitter` not 0: the call the create path makes (a stub planted before the create path's return address in the image: the return address the
+// handler tests, the emitter in esi); else a call from the test's code (every other caller of the draw).
+void RealDraw(const World& w, std::array<uint32_t, 3>* out, uint32_t emitter = 0) {
+  auto* floats = reinterpret_cast<float*>(out->data());
+  if (emitter != 0) {
+    reinterpret_cast<uint32_t(__cdecl*)(float*, uint32_t)>(w.image + ei::CREATE_DRAW_RETURN_RVA - CREATE_STUB_BYTES)(floats, emitter);
+  } else {
+    reinterpret_cast<uint32_t(__cdecl*)(float*)>(RealSite(w, eu::Site::RANDOM_TRIPLE))(floats);
+  }
+}
+
+// push esi; mov esi, [esp + 12]; push [esp + 8]; call draw  <- the return address pushed here is the create path's; add esp, 4; pop esi; ret. cdecl (out, emitter).
+std::array<uint8_t, CREATE_STUB_BYTES + 5> CreateDrawStub() {
+  const int32_t relative = static_cast<int32_t>(eu::SITES[static_cast<size_t>(eu::Site::RANDOM_TRIPLE)].rva) - static_cast<int32_t>(ei::CREATE_DRAW_RETURN_RVA);
+  std::array<uint8_t, CREATE_STUB_BYTES + 5> code = {0x56, 0x8B, 0x74, 0x24, 0x0C, 0xFF, 0x74, 0x24, 0x08, 0xE8, 0, 0, 0, 0, 0x83, 0xC4, 0x04, 0x5E, 0xC3};
+  std::memcpy(&code[10], &relative, 4);
+  return code;
+}
+
+// A pipeline as the game lays it out (CPU: the buffer at +0x10 with its count at +0x28, capacity at +8 and three arrays of 16-byte elements at +0xC / +0x18 / +0x24, the
+// simulation's room from two words; GPU: the pool at +0x14 with the count at +0x14, capacity at +0xC and the 48-byte elements at +0x10). Its vtable is the image's (the game's
+// own has_free and spawn) when the world has one, else the fake image's; the arrays exist for the game's spawn only.
+uint32_t MakePipeline(World& w, uint32_t* buffer_out, bool gpu, uint32_t room, uint32_t count0) {
+  const uint32_t capacity = count0 + room;
+  const uint32_t buffer = Address(w.Aux(0x40));
+  const uint32_t pipeline = Address(w.Aux(0x40));
+  const uint32_t vtable_base = Address(w.image != nullptr ? w.image : ei::base);
+  if (gpu) {
+    SetWord(pipeline, vtable_base + ei::GPU_PIPELINE_VTABLE_RVA);
+    SetWord(pipeline + 0x14, buffer);
+    SetWord(buffer + 0xC, capacity);
+    SetWord(buffer + 0x14, count0);
+    if (w.image != nullptr) SetWord(buffer + 0x10, Address(w.Big(48 * capacity)));
+  } else {
+    const uint32_t simulation = Address(w.Aux(0x20));
+    const uint32_t used = Address(w.Aux(0x20));
+    SetWord(pipeline, vtable_base + ei::CPU_PIPELINE_VTABLE_RVA);
+    SetWord(pipeline + 0x10, buffer);
+    SetWord(pipeline + 0x14, simulation);
+    SetWord(pipeline + 0x18, used);
+    SetWord(buffer + 8, capacity);
+    SetWord(buffer + 0x28, count0);
+    SetWord(simulation + 8, capacity - room / 8);  // the simulation's room is a little smaller than the buffer's
+    SetWord(used + 0xC, 0);
+    if (w.image != nullptr) {
+      for (uint32_t part = 0; part < 3; ++part) SetWord(buffer + 0xC + 0xC * part, Address(w.Big(16 * capacity)));
+    }
+  }
+  *buffer_out = buffer;
+  return pipeline;
+}
+
+// What the game's routines left in a world with an image, in the fields Equal compares: the random state, the spawn buffer's records past its first elements, the second node's
+// count, the slot pool's free list.
+void Harvest(World& w) {
+  w.lcg = RealState(w);
+  w.spawn_buffer.clear();
+  if (w.pipeline != 0) {
+    const uint32_t count = Word(w.buffer + (w.gpu ? 0x14 : 0x28));
+    for (uint32_t index = COUNT0; index < count; ++index) {
+      std::array<uint32_t, 12> record = {};
+      if (w.gpu) {
+        std::memcpy(record.data(), At(Word(w.buffer + 0x10)) + 48 * index, 48);
+      } else {
+        for (uint32_t part = 0; part < 3; ++part) std::memcpy(record.data() + 4 * part, At(Word(w.buffer + 0xC + 0xC * part)) + 16 * index, 16);
+      }
+      w.spawn_buffer.push_back(record);
+    }
+  }
+  w.other_count = (w.other_pipeline != 0 ? Word(w.other_buffer + (w.other_gpu ? 0x14 : 0x28)) : 0);
+  w.free_slots.clear();
+  for (uint32_t index = 0, count = Word(w.pool + 0x10); index < count; ++index) w.free_slots.push_back(reinterpret_cast<const uint16_t*>(At(Word(w.pool + 0x14)))[index]);
 }
 
 void Busy(Instance& me, uint32_t loops) {
@@ -279,6 +383,18 @@ uint8_t __thiscall SpawnEntry(uint32_t, uint32_t particle) {
 // caller's); `events`: the emitter raises events; `value_dword`: where the drawn value goes in the record (the census says dword 1 on the create path).
 void SpawnPath(World& w, Instance& me, bool events, bool create_path, uint32_t value_dword) {
   if (w.pipeline == 0) return;
+  if (w.image != nullptr) {
+    // The game's own functions: the query and the write through the node's pipeline (its vtable), the draw (the create path's own call of it, or another caller's).
+    if (reinterpret_cast<RealQuery>(RealSite(w, eu::Site::SPAWN_QUERY))(Address(w.node)) == 0) return;
+    std::array<uint32_t, 11 + 12> particle = {};
+    std::array<uint32_t, 3> out = {};
+    RealDraw(w, &out, create_path ? (events ? w.emitter_events : w.emitter_plain) : 0);
+    particle[11] = me.id;
+    particle[11 + value_dword] = out[0];
+    particle[11 + 2] = me.updates;
+    me.private_value += reinterpret_cast<RealWrite>(RealSite(w, eu::Site::SPAWN_WRITE))(Address(w.node), Address(particle.data())) & 1;
+    return;
+  }
   uint32_t has = 0;
   if (!Touch(eu::Site::SPAWN_QUERY, Address(w.node), 0, 0, &has)) has = HasFree(w) ? 1 : 0;  // (the serial walk's call: the game's own function)
   if ((has & 0xFF) == 0) return;
@@ -304,6 +420,13 @@ void DoOp(World& w, Instance& me, char op, Random* rng, uint32_t* held_slot) {
   uint32_t result = 0;
   switch (op) {
     case 'R':
+      if (w.image != nullptr) {
+        std::array<uint32_t, 3> out = {};
+        RealDraw(w, &out);
+        const Shared shared(w);
+        log('R', RealState(w) ^ out[0]);
+        break;
+      }
       Touch(eu::Site::RANDOM_TRIPLE);
       {
         const Shared shared(w);
@@ -336,6 +459,19 @@ void DoOp(World& w, Instance& me, char op, Random* rng, uint32_t* held_slot) {
       }
       break;
     case 'S':
+      if (w.image != nullptr) {
+        // The game's own take on the real pool (a list of 16-bit ids, the minimum and maximum in the object at +0x18); a unit that holds one only passes the order point.
+        bool took = false;
+        if (*held_slot == NO_SLOT) {
+          took = reinterpret_cast<RealPool>(RealSite(w, eu::Site::SLOT_TAKE))(w.pool, held_slot) != 0;
+        } else {
+          Touch(eu::Site::SLOT_TAKE, w.pool);
+        }
+        const Shared shared(w);
+        if (took) me.private_value += *held_slot;
+        log('S', *held_slot);
+        break;
+      }
       Touch(eu::Site::SLOT_TAKE, w.pool);
       {
         const Shared shared(w);
@@ -361,6 +497,22 @@ void DoOp(World& w, Instance& me, char op, Random* rng, uint32_t* held_slot) {
     case 'O': {
       // The spawn functions of a node that is not the round's (ecx is another node): never staged, never answered, in the serial order like any order point.
       if (w.other_node == 0) break;
+      if (w.image != nullptr) {
+        // The game's own functions on the second node's pipeline (the kind the round's is not): the thunks never answer them, the unit waits its turn.
+        const uint8_t has_room = reinterpret_cast<RealQuery>(RealSite(w, eu::Site::SPAWN_QUERY))(w.other_node);
+        const uint32_t count_at = w.other_buffer + (w.other_gpu ? 0x14 : 0x28);
+        {
+          const Shared shared(w);
+          log('o', Word(count_at));
+        }
+        if (has_room == 0) break;
+        std::array<uint32_t, 11 + 12> particle = {};
+        particle[11] = me.id;
+        reinterpret_cast<RealWrite>(RealSite(w, eu::Site::SPAWN_WRITE))(w.other_node, Address(particle.data()));
+        const Shared shared(w);
+        log('p', Word(count_at));
+        break;
+      }
       uint32_t has = 0;
       const bool query_answered = Touch(eu::Site::SPAWN_QUERY, w.other_node, 0, 0, &has);
       bool room = false;
@@ -529,11 +681,18 @@ void UpdateImpl(Instance& me) {
     Busy(me, w.busy / 2);
   }
   if (held_slot != NO_SLOT) {
-    Touch(eu::Site::SLOT_RETURN, w.pool);
+    const uint32_t id = held_slot;
+    if (w.image != nullptr) {
+      reinterpret_cast<RealPool>(RealSite(w, eu::Site::SLOT_RETURN))(w.pool, &held_slot);  // the game's own return: the id back on the list, the variable set to -1
+    } else {
+      Touch(eu::Site::SLOT_RETURN, w.pool);
+    }
     const Shared shared(w);
-    w.free_slots.push_back(held_slot);
-    PoolSync(w);
-    w.log.push_back({me.id, 's', held_slot});
+    if (w.image == nullptr) {
+      w.free_slots.push_back(id);
+      PoolSync(w);
+    }
+    w.log.push_back({me.id, 's', id});
   }
   if (rng.Next() % 100 < w.dead_percent) me.dead = 1;
 }
@@ -553,9 +712,15 @@ void SweepImpl(Effect& effect) {
       w.log.push_back({instance->id, '~', effect.index});
       if (w.sweep_draws) {
         // The destructor's random triple: the game's own draw, after every unit before the sweep (the pseudo-unit is direct; the handler never answers or stages it).
-        Touch(eu::Site::RANDOM_TRIPLE);
-        w.lcg = w.lcg * 1664525u + 1013904223u;
-        w.log.push_back({instance->id, 'd', w.lcg});
+        if (w.image != nullptr) {
+          std::array<uint32_t, 3> out = {};
+          RealDraw(w, &out);
+          w.log.push_back({instance->id, 'd', RealState(w) ^ out[0]});
+        } else {
+          Touch(eu::Site::RANDOM_TRIPLE);
+          w.lcg = w.lcg * 1664525u + 1013904223u;
+          w.log.push_back({instance->id, 'd', w.lcg});
+        }
       }
     } else {
       if (kept != index) entries[kept] = entries[index];
@@ -615,8 +780,10 @@ void GameWalk(World& w, int hook) {
   if (ei::data->walk_active.load() != 0) Touch(eu::Site::WALK_END);
 }
 
-std::unique_ptr<World> Build(uint64_t seed, const Shape& shape) {
+std::unique_ptr<World> Build(uint64_t seed, const Shape& shape, uint8_t* image = nullptr) {
   auto w = std::make_unique<World>();
+  w->image = image;
+  if (image != nullptr) w->big.resize(48 * (COUNT0 + shape.spawn_room + shape.other_room) + 256);
   Random rng = {.state = seed | 1};
   std::vector<uint32_t> counts(shape.effects);
   uint32_t total = 0;
@@ -669,11 +836,23 @@ std::unique_ptr<World> Build(uint64_t seed, const Shape& shape) {
   SetWord(w->pool + 0x18, w->pool_limits);
   SetWord(w->pool_limits + 0x50, 0xFFFFFFFFu);
   PoolSync(*w);
+  if (image != nullptr) {
+    // The game's list: the capacity at +0xC (the return never grows it), the ids as 16-bit words behind the pointer at +0x14.
+    SetWord(w->pool + 0xC, 256);
+    auto* ids = reinterpret_cast<uint16_t*>(w->Aux(512));
+    for (uint32_t index = 0; index < 64; ++index) ids[index] = static_cast<uint16_t>(w->free_slots[index]);
+    SetWord(w->pool + 0x14, Address(ids));
+  }
   w->types_near = shape.types_near;
   w->sweep_draws = shape.sweep_draws;
   if (shape.other_room != 0) {
-    w->other_node = Address(w->Aux(0x100));
+    w->other_node = Address(w->Aux(0x200));
     w->other_capacity = shape.other_room;
+    if (image != nullptr) {
+      w->other_gpu = !shape.gpu;  // the kind the round's pipeline is not
+      w->other_pipeline = MakePipeline(*w, &w->other_buffer, w->other_gpu, shape.other_room, 0);
+      Write32(At(w->other_node) + eu::internal::PIPELINE_OFFSET, w->other_pipeline);
+    }
   }
   for (uint32_t* emitter : {&w->emitter_plain, &w->emitter_events}) {
     *emitter = Address(w->Aux(0x20));
@@ -688,27 +867,7 @@ std::unique_ptr<World> Build(uint64_t seed, const Shape& shape) {
   }
   if (shape.spawn_room != 0) {
     w->gpu = shape.gpu;
-    w->buffer = Address(w->Aux(0x40));
-    w->pipeline = Address(w->Aux(0x40));
-    constexpr uint32_t COUNT0 = 10;
-    const uint32_t capacity = COUNT0 + shape.spawn_room;
-    if (shape.gpu) {
-      SetWord(w->pipeline, Address(ei::base) + eu::internal::GPU_PIPELINE_VTABLE_RVA);
-      SetWord(w->pipeline + 0x14, w->buffer);
-      SetWord(w->buffer + 0xC, capacity);
-      SetWord(w->buffer + 0x14, COUNT0);
-    } else {
-      const uint32_t simulation = Address(w->Aux(0x20));
-      const uint32_t used = Address(w->Aux(0x20));
-      SetWord(w->pipeline, Address(ei::base) + eu::internal::CPU_PIPELINE_VTABLE_RVA);
-      SetWord(w->pipeline + 0x10, w->buffer);
-      SetWord(w->pipeline + 0x14, simulation);
-      SetWord(w->pipeline + 0x18, used);
-      SetWord(w->buffer + 8, capacity);
-      SetWord(w->buffer + 0x28, COUNT0);
-      SetWord(simulation + 8, capacity - shape.spawn_room / 8);  // the simulation's room is a little smaller than the buffer's
-      SetWord(used + 0xC, 0);
-    }
+    w->pipeline = MakePipeline(*w, &w->buffer, shape.gpu, shape.spawn_room, COUNT0);
     Write32(w->node + eu::internal::PIPELINE_OFFSET, w->pipeline);
   }
   return w;
@@ -804,7 +963,12 @@ void FreeRecords() {
 // One walk of a world: serial (the gates closed) or a round (armed, the preconditions met).
 void Walk(World& w, bool round, int hook = 0) {
   world = &w;
-  ei::entries.random_state = &w.lcg;
+  if (w.image != nullptr) {
+    Write32(w.image + ei::RANDOM_STATE_RVA, w.lcg);  // the game's state is the image's (the round watches B's)
+    ei::entries.random_state = reinterpret_cast<const uint32_t*>(real_patched + ei::RANDOM_STATE_RVA);
+  } else {
+    ei::entries.random_state = &w.lcg;
+  }
   if (round) {
     ei::row_on = true;
     ei::session_off = false;
@@ -816,6 +980,7 @@ void Walk(World& w, bool round, int hook = 0) {
   }
   GameWalk(w, round ? hook : 0);
   ei::data->walk_armed.store(0);
+  if (w.image != nullptr) Harvest(w);
   progress.fetch_add(1);
 }
 
@@ -906,7 +1071,7 @@ struct Watchdog {
 
 }  // namespace eut
 
-int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
+int RunEffectUpdateTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick) {
   using namespace eut;
   namespace ec = twattila::engine_code::internal;
   if (build.code != &ec::ATTILA_BUILD) {
@@ -1035,15 +1200,15 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
 
   std::string why;
   const auto finish_round_checks = [&](const World& w) {
-    return data->walk_active.load() == 0 && data->direct_high.load() == 0 && data->active.load() == 0 && !ei::current_round.open && w.inside.load() == 0;
+    return ei::data->walk_active.load() == 0 && ei::data->direct_high.load() == 0 && ei::data->active.load() == 0 && !ei::current_round.open && w.inside.load() == 0;
   };
   // One case: the same world twice, the game's loop and rounds, `rounds` walks each; every shared result equal, no overlap, no event, no hang.
   uint64_t cases = 0;
   uint64_t units_in_rounds = 0;
   const auto run_case = [&](const Shape& shape, uint64_t seed, int rounds, uint32_t workers) -> int {
     CHECK(pool(workers + 1) == workers);
-    auto serial = Build(seed, shape);
-    auto parallel = Build(seed, shape);
+    auto serial = Build(seed, shape, shape.real ? real_game : nullptr);
+    auto parallel = Build(seed, shape, shape.real ? real_patched : nullptr);
     for (int round = 0; round < rounds; ++round) {
       ei::event_count = 0;
       Walk(*serial, false);
@@ -1212,7 +1377,7 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
           kilobytes = static_cast<uint32_t>(std::stoul(line.substr(at + 15)));
         }
       }
-      CHECK(printed == 1 && kilobytes > 0 && kilobytes < 1024 * 1024);
+      CHECK(printed == 1 && kilobytes > 0 && kilobytes < 1024);
       std::printf("26f. the trace window's stack headroom: one line, %u KB\n", kilobytes);
     }
 
@@ -2049,14 +2214,276 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       CHECK(!wp::Tracing());
     }
   }
+  // 26g. The game's own routines on objects laid out as the game lays them out: image B has the thunks in (the row on, the production handler), image A is the game as it ships.
+  eu::Data* real_data = nullptr;
+  const uint8_t* real_base = nullptr;
+  {
+    const auto rows = [&](bool on) {
+      twattila::engine_code::Update(false, twattila::engine_code::Game::ATTILA, false, false, false, false, false, false, 1.f, 0, {.effect_update = on});
+    };
+    real_game = game;
+    real_patched = patched;
+    // The create path's call of the draw is replayed in both images by a stub before the return address the handler tests (the game's create routine itself never runs here):
+    // no site and nothing else the tests use lies there.
+    const auto stub = CreateDrawStub();
+    const uint32_t stub_at = ei::CREATE_DRAW_RETURN_RVA - CREATE_STUB_BYTES;
+    for (size_t index = 0; index < eu::SITE_COUNT; ++index) {
+      const eu::SiteInfo& info = eu::SITES[index];
+      CHECK(info.rva + eu::SizeOf(info) <= stub_at || info.rva >= stub_at + stub.size());
+    }
+    std::array<uint8_t, stub.size()> saved_game_code, saved_patched_code;
+    std::memcpy(saved_game_code.data(), game + stub_at, stub.size());
+    std::memcpy(saved_patched_code.data(), patched + stub_at, stub.size());
+    for (uint8_t* image : {game, patched}) {
+      std::memcpy(image + stub_at, stub.data(), stub.size());
+      FlushInstructionCache(GetCurrentProcess(), image + stub_at, stub.size());
+    }
+    CHECK(eu::Prepare(reinterpret_cast<HMODULE>(patched)) && ei::found == eu::ALL_SITES);  // (the sets the sites part leaves are Prepare's to take again)
+    rows(true);
+    CHECK(ei::written == eu::ALL_SITES && ei::data != nullptr && ei::base == patched);
+    real_data = ei::data;
+    real_base = ei::base;
+    eu::SetHandler(&ei::Handle);
+    ei::entries.draw = reinterpret_cast<decltype(ei::entries.draw)>(patched + ei::DRAW_RVA);
+    ei::entries.spawn = nullptr;  // the merge calls the pipeline's own spawn (its vtable)
+    ResetScheduler();
+    CHECK(pool(4) == 3);
+
+    // The game's routines take the objects: the query and the write on the CPU and the GPU pipeline (the simulation's room ends the query first on the CPU's; the buffer's capacity
+    // ends the write), the second node's, the slot pool's take and return, the create path's call equal to a plain call; in A and in B with the gates closed.
+    for (uint8_t* image : {game, patched}) {
+      for (const bool gpu : {false, true}) {
+        Shape shape;
+        shape.real = true;
+        shape.spawn_room = 100;
+        shape.other_room = 5;
+        shape.gpu = gpu;
+        for (const bool second : {false, true}) {
+          auto probe = Build(11, shape, image);
+          const uint32_t pipeline_node = second ? probe->other_node : Address(probe->node);
+          const bool kind_gpu = second ? probe->other_gpu : gpu;
+          const uint32_t room = second ? shape.other_room : shape.spawn_room;
+          const uint32_t query_room = (kind_gpu ? room : room - room / 8);
+          const auto query = [&] { return reinterpret_cast<RealQuery>(RealSite(*probe, eu::Site::SPAWN_QUERY))(pipeline_node); };
+          const auto write = [&](const std::array<uint32_t, 11 + 12>& particle) {
+            return reinterpret_cast<RealWrite>(RealSite(*probe, eu::Site::SPAWN_WRITE))(pipeline_node, Address(particle.data()));
+          };
+          uint32_t spawned = 0;
+          std::array<uint32_t, 11 + 12> particle = {};
+          const auto fill = [&] {
+            for (uint32_t part = 0; part < 12; ++part) particle[11 + part] = (spawned + (second ? 5000 : 0)) * 16 + part;
+          };
+          while (query() != 0 && spawned < 1000) {
+            fill();
+            CHECK(write(particle) == 1);
+            ++spawned;
+          }
+          CHECK(spawned == query_room);
+          while (spawned < room) {
+            fill();
+            CHECK(write(particle) == 1);
+            ++spawned;
+          }
+          fill();
+          CHECK(write(particle) == 0);  // the buffer is full: refused
+          Harvest(*probe);
+          if (second) {
+            CHECK(probe->other_count == room);
+          } else {
+            CHECK(probe->spawn_buffer.size() == room && probe->spawn_buffer[7][5] == 7 * 16 + 5 && probe->spawn_buffer[room - 1][11] == (room - 1) * 16 + 11);
+          }
+        }
+        // The slot pool: the game's take pops the end of the list and sets the minimum and maximum; its return pushes the id back and sets the variable to -1; -1 is ignored.
+        auto probe = Build(12, shape, image);
+        const auto take = [&](uint32_t* slot) { return reinterpret_cast<RealPool>(RealSite(*probe, eu::Site::SLOT_TAKE))(probe->pool, slot); };
+        const auto give = [&](uint32_t* slot) { reinterpret_cast<RealPool>(RealSite(*probe, eu::Site::SLOT_RETURN))(probe->pool, slot); };
+        uint32_t first = NO_SLOT, second = NO_SLOT;
+        CHECK(take(&first) == 1 && first == 1063 && take(&second) == 1 && second == 1062 && Word(probe->pool + 0x10) == 62);
+        CHECK(Word(probe->pool_limits + 0x50) == 1062 && Word(probe->pool_limits + 0x54) == 1063);
+        give(&first);
+        CHECK(first == NO_SLOT && Word(probe->pool + 0x10) == 63);
+        give(&first);
+        CHECK(first == NO_SLOT && Word(probe->pool + 0x10) == 63);
+        uint32_t again = NO_SLOT;
+        CHECK(take(&again) == 1 && again == 1063);
+        for (uint32_t index = 0; index < 62; ++index) {
+          uint32_t slot = NO_SLOT;
+          CHECK(take(&slot) == 1);
+        }
+        uint32_t none = 0;
+        CHECK(take(&none) == 0 && none == NO_SLOT && Word(probe->pool + 0x10) == 0);
+        // The create path's call of the draw equals a plain call (the stub, the gates closed).
+        auto draws = Build(13, shape, image);
+        std::array<uint32_t, 3> plain = {}, created = {};
+        Write32(image + ei::RANDOM_STATE_RVA, 0x2468ACE);
+        RealDraw(*draws, &plain);
+        const uint32_t state_plain = RealState(*draws);
+        Write32(image + ei::RANDOM_STATE_RVA, 0x2468ACE);
+        RealDraw(*draws, &created, draws->emitter_plain);
+        CHECK(plain == created && RealState(*draws) == state_plain && state_plain != 0x2468ACE);
+      }
+    }
+    std::printf("26g. the game's own routines on the real layouts (A and B, CPU and GPU): spawn query / write (full buffers refused, the simulation's room on the CPU's), the second node, "
+                "slot take / return, the create path's call of the draw equal to a plain call\n");
+
+    // The rounds: the serial walk in image A, the round in image B through the real thunks and the production handler. L1 and L2, CPU and GPU, 2 to 7 workers.
+    struct Recipe {
+      const char* ops;
+      uint32_t room;
+      uint32_t max_ops;
+      uint32_t max_units;
+      bool sweep_draws;
+      uint32_t other_room;
+    };
+    const std::array<Recipe, 5> recipes = {{
+        {"RMRS", 3000, 4, 25, true, 0},     // plain draws, the other callers' spawns, the slot pool, the sweep's draws
+        {"LELSR", 3000, 4, 25, true, 0},    // the create path (plain and with events), the deferred draws
+        {"LEOOMS", 3000, 5, 25, false, 90}, // the second node: its own pipeline, never answered, in the serial order
+        {"LLLL", 600, 6, 40, false, 0},     // a buffer that fills (L1 only: in L2 the units that ran ahead drew for creates serial would not make; the buffer is checked below)
+        {"EL", 3000, 5, 25, true, 0},       // dying instances draw in the sweep between spawning units
+    }};
+    uint64_t real_cases = 0;
+    for (const bool spawns : {false, true}) {
+      for (const bool gpu : {false, true}) {
+        for (const uint32_t workers : {2u, 4u, 7u}) {
+          for (uint32_t seed = 1; seed <= 2 * scale; ++seed) {
+            for (size_t recipe_index = 0; recipe_index < recipes.size(); ++recipe_index) {
+              const Recipe& recipe = recipes[recipe_index];
+              if (spawns && recipe.room == 600) continue;
+              ResetScheduler();
+              ei::spawns_row = spawns;
+              Shape shape;
+              shape.real = true;
+              shape.ops = recipe.ops;
+              shape.max_ops = recipe.max_ops;
+              shape.effects = 12;
+              shape.max_units = recipe.max_units;
+              shape.dead_percent = 45;
+              shape.spawn_room = recipe.room;
+              shape.sweep_draws = recipe.sweep_draws;
+              shape.other_room = recipe.other_room;
+              shape.gpu = gpu;
+              shape.busy = (seed & 1) != 0 ? 60 : 400;
+              if (run_case(shape, 30000 + seed * 43 + workers * 7 + recipe_index * 1009 + (gpu ? 700 : 0) + (spawns ? 80000 : 0), 2, workers) != 0) return 1;
+              ++real_cases;
+            }
+          }
+        }
+      }
+    }
+    // The cases did what they claim, in a round that staged: the draws deferred and made at the commits, the records merged by the game's own spawn, the second node full, the sweep
+    // drawing.
+    for (const bool gpu : {false, true}) {
+      ResetScheduler();
+      ei::spawns_row = true;
+      CHECK(trace_open(8, 5));
+      Shape shape;
+      shape.real = true;
+      shape.ops = "LELOOMS";
+      shape.max_ops = 5;
+      shape.effects = 12;
+      shape.max_units = 25;
+      shape.dead_percent = 45;
+      shape.spawn_room = 3000;
+      shape.other_room = 30;
+      shape.sweep_draws = true;
+      shape.gpu = gpu;
+      auto serial = Build(31337, shape, game);
+      auto parallel = Build(31337, shape, patched);
+      Walk(*serial, false);
+      Walk(*parallel, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*parallel) && Equal(*serial, *parallel, &why));
+      size_t sweep_draws = 0;
+      for (const LogEntry& entry : serial->log) sweep_draws += (entry.op == 'd' ? 1 : 0);
+      CHECK(sweep_draws > 0 && parallel->other_count == (parallel->other_gpu ? shape.other_room : shape.other_room - shape.other_room / 8) && serial->spawn_buffer.size() > 100 && parallel->spawn_buffer == serial->spawn_buffer);
+      CHECK(ei::counters[static_cast<size_t>(ei::Counter::DEFERRED_DRAWS)].load() > 0 && ei::last_round_spawned == serial->spawn_buffer.size() && ei::event_count.load() == 0);
+      const uint32_t deferred = ei::counters[static_cast<size_t>(ei::Counter::DEFERRED_DRAWS)].load();
+      CHECK(trace_close(5));
+      std::printf("26g. a round that staged (%s pipeline): %zu spawns merged by the game's own spawn, %u draws deferred, %zu sweep draws, the second node full (%u): equal to the serial walk\n",
+                  gpu ? "GPU" : "CPU", serial->spawn_buffer.size(), deferred, sweep_draws, parallel->other_count);
+    }
+    // A buffer that fills in L2 (OverflowDetected on the game's own spawn): the merged buffer is serial's whatever the units that ran ahead drew; counted.
+    for (const bool gpu : {false, true}) {
+      ResetScheduler();
+      ei::spawns_row = true;
+      CHECK(pool(5) == 4);
+      Shape shape;
+      shape.real = true;
+      shape.ops = "LLLL";
+      shape.max_ops = 6;
+      shape.effects = 12;
+      shape.max_units = 40;
+      shape.spawn_room = 600;
+      shape.gpu = gpu;
+      auto serial = Build(4242, shape, game);
+      auto parallel = Build(4242, shape, patched);
+      Walk(*serial, false);
+      Walk(*parallel, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*parallel) && parallel->spawn_buffer == serial->spawn_buffer && !serial->spawn_buffer.empty());
+      CHECK(Word(parallel->buffer + (gpu ? 0x14 : 0x28)) == Word(serial->buffer + (gpu ? 0x14 : 0x28)) && ei::counters[static_cast<size_t>(ei::Counter::SPAWN_OVERFLOWS)].load() > 0);
+      std::printf("26g. a buffer that fills in L2 (%s pipeline): %zu spawns, the merged buffer equal to the serial walk's, the overflow counted\n", gpu ? "GPU" : "CPU", serial->spawn_buffer.size());
+    }
+    std::printf("26g. the real routines: %llu cases (5 scripts, L1 and L2, CPU and GPU, 2 / 4 / 7 workers, 2 rounds each): the draws, the spawns, the pool, the image's random state and "
+                "every shared word equal to the serial walk in the game's own image\n", static_cast<unsigned long long>(real_cases));
+
+    // CONTROLs: each rule left out must show on the real routines too.
+    const auto must_differ = [&](const char* name, const Shape& shape, uint32_t workers, int rounds, auto&& arm) -> int {
+      ResetScheduler();
+      CHECK(pool(workers + 1) == workers);
+      arm();
+      bool detected = false;
+      int ran = 0;
+      for (int round = 0; round < rounds && !detected; ++round, ++ran) {
+        auto serial = Build(900 + round, shape, game);
+        auto parallel = Build(900 + round, shape, patched);
+        Walk(*serial, false);
+        Walk(*parallel, true);
+        std::string reason;
+        detected = !Equal(*serial, *parallel, &reason);
+      }
+      ResetScheduler();
+      std::printf("26g. CONTROL %s: %s after %d round%s\n", name, detected ? "seen" : "NOT SEEN", ran, ran == 1 ? "" : "s");
+      CHECK(detected);
+      return 0;
+    };
+    {
+      Shape shape;
+      shape.real = true;
+      shape.ops = "RMS";
+      shape.effects = 6;
+      shape.min_units = 40;
+      shape.max_units = 60;
+      shape.max_ops = 4;
+      shape.busy = 150;
+      shape.spawn_room = 3000;
+      if (must_differ("NoOrderPoints (the game's draws, spawns and slots run on the workers)", shape, 4, 30, [] { ei::controls.no_order_points = true; }) != 0) return 1;
+    }
+    {
+      Shape shape;
+      shape.real = true;
+      shape.ops = "L";
+      shape.effects = 12;
+      shape.max_units = 25;
+      shape.max_ops = 4;
+      shape.spawn_room = 3000;
+      if (must_differ("CommitReversed (the real draws made at the commits in the reverse of the serial order)", shape, 4, 6, [] { ei::spawns_row = true; ei::controls.commit_reversed = true; }) != 0) return 1;
+      if (must_differ("MergeByCompletion (the records merged by the game's own spawn in the order the units finished)", shape, 4, 6, [] { ei::spawns_row = true; ei::controls.merge_by_completion = true; }) != 0) return 1;
+    }
+    rows(false);
+    CHECK(ei::written == 0);
+    std::memcpy(game + stub_at, saved_game_code.data(), stub.size());
+    std::memcpy(patched + stub_at, saved_patched_code.data(), stub.size());
+    for (uint8_t* image : {game, patched}) FlushInstructionCache(GetCurrentProcess(), image + stub_at, stub.size());
+    ResetScheduler();
+  }
   std::printf("26. not built: ClaimFour (the code has G = 1 only); test 13 is 25c's\n");
 
   wp::Update({});
   ResetScheduler();
-  ei::data = saved_data;
-  ei::base = saved_base;
+  ei::data = (saved_data != nullptr ? saved_data : real_data);
+  ei::base = (saved_base != nullptr ? saved_base : real_base);
   ei::entries = saved_entries;
-  if (saved_data != nullptr) eu::SetHandler(&eu::PassThrough);
+  if (ei::data != nullptr) eu::SetHandler(&eu::PassThrough);
   VirtualFree(fake, 0, MEM_RELEASE);
   delete data;
   std::printf("26. effect update scheduler: %llu cases, %llu units in rounds, no overlap, no Frame.eax written where the handler did not answer\n", static_cast<unsigned long long>(cases),
