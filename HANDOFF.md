@@ -494,7 +494,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - leaf / micromap owner (optional): run pre 4x on fast_leaves + micromaps_leaf_str ... | ?
 - coordinator: all_modes pass on the combined tree after rmt_h0 + ff_s12 + grs_xes ... | ?
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
-- gtv_: lab-suite load run NOW (GPU free 14:07) (coord 14:07). | ?
 - gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-che ... | ?
 - coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
 - grs_: dead outputs (a) resident log_uses + (d) store-skipping stem builder + (3) ... | ?
@@ -506,6 +505,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gti_: ReadLog closes the log file (with open) (coord 15:10). | ?
 - grs_: 64-frame dumps (warm frames / dump without reset) in the resident protocol ... | ?
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
+- gtl_: stage + FIRST_BEAT_S 15 / load extra 15 + end_world "left behind" (coord 1 ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10222,7 +10222,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (base twice DIFFERENT, known). gpu_s2 merge conditions met (gtv_ MERGE-READY 05:4x + H0 re-run + rec_verify).
         gpu_s2 d336c55d3 (base c3ea4925f; helper build.ps1, main.cpp, rt_burn.hlsl, rt_d3d12.hpp +1307, rt_moments.hlsl,
         rt_serve.h new; 2430 + / 254 -): git merge-tree vs atn-mods clean -> MERGE GATE NOW.
-        - [ ] gtv_: lab-suite load run NOW (GPU free 14:07) (coord 14:07).
+        - [x] gtv_ (DONE 15:02, timeouts only, no wrong verdict): lab-suite load run NOW (GPU free 14:07) (coord 14:07).
         gtw_ RE-CHECK 18 = ROUND 18 OK + ROUND 19 LIST 14:09 (plan_1117/gtw_recheck18_handback.md; gtw_s1c_review.md "## S1c
         re-check 18" line 1931): suite 1078/1078; corpus 15,119: r17 = live 252 refused, 0 diff, 0 errors; 43 keys changed
         (gtp_'s classes); 36 price exemptions same. N8 fixed (unclosed $( 256 KB 0.09 s vs 15.2 s). Round 19 (shadow, gate
@@ -10362,9 +10362,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gti_: ReadLog closes the log file (with open) (coord 15:10).
         - [ ] grs_: 64-frame dumps (warm frames / dump without reset) in the resident protocol, with dead uses (coord 15:10).
         - [ ] ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json.proposed v1.1 (coord 15:10).
-        Agents (4): gtp_ (gate round 19), gtv_ (lab load run, then gtl_ stage review), grs_ (dead uses + 64-frame dumps),
-        gti_ (ReadLog close); GPU order: gtv_ load run -> all_modes run (coord, ~40-45 min) -> S3c part 1 (coord,
-        gpu_lab.ps1 per s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
+        gtv_ LOAD RUN 15:02 = FAILS ON TIME LIMITS ONLY (plan_1117/gtv_load_run_handback.md; gtv_iq_review.md "## Load run
+        (point 4)"; runner testbin\scratch\gtv_\run4.ps1 + fx4\): 32 normal-priority busy loops, suites below normal,
+        fakes only. keeper 1694 s 27 ran / 4 F / 20 E; jobs 914 s 32 ran / 17 F; unit 34 OK; ps1 5 OK. Causes: 27 SLOW lock
+        vs 20 s deadline (keepers > 30 s to start; end_world killed 13); jobs cascade from test_a_calibrate_both_ways SLOW
+        lock (10 Calibrated refused "no calibration"); 2 tests with own 10.25 s lock deadline; 2 x 15 s waits; 2 never
+        reached checks. ONE false first-beat stop (test_stop_vram "wrote no heartbeat in 8 s", fake loads 0.2 s =
+        starvation); no false heartbeat-stopped / hung; NO WRONG VERDICT, no lab bug; real keeper hash unchanged, 54 live
+        files same. Skew: below-normal threads ran only on starvation lifts (~4 s); gtl_ stage runs, upr_ selftest, gti_
+        checks shared them (their 14:16-15:02 timings unreliable both ways). No real gpu_job / quiet_run lock appeared.
+        gtv_ deleted 1 left-behind world by exact path (scratchpad\gtl_keeper_ydet7he2, no reparse). Proposals for gtl_:
+        (1) fixture deadline extra 'load': 15.0 (load ~25 s) + FIRST_BEAT_S 8 -> 15 (HUNG_S 6, BEAT_S 8 stay); (2) lock: no
+        fixed value covers 32 loops + other suites = stress bound outside fixture scope; optional 16-loop run (asks first);
+        (3) end_world rmtree(ignore_errors) -> print "left behind" like end_suite.
+        COORD 15:1x: lab is fit for S3c (fails closed, no wrong verdict; S3c runs without stress load). gtl_ takes 1 + 3 into
+        the stage (lands with it after S3c part 1); 16-loop run later, optional. gtv_ -> S3c stage review now. ALL_MODES RUN
+        STARTS NOW (GPU free, no locks).
+        - [ ] gtl_: stage + FIRST_BEAT_S 15 / load extra 15 + end_world "left behind" (coord 15:1x).
+        Agents (5): gtp_ (gate round 19), gtv_ (gtl_ stage review), grs_ (dead uses + 64-frame dumps), gti_ (ReadLog
+        close), gtl_ (stage + load-run proposals 1 / 3); GPU: all_modes run RUNNING (coord, 15:1x, ~40-45 min) -> S3c part
+        1 (coord, gpu_lab.ps1 per s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
