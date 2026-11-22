@@ -433,6 +433,15 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   static bool more_rt = false;
   static Values page_defaults;
 
+  // The traced Global Illumination's sliders at RT/PT's values for Reset and a first start too (ATN 2026-11-22: the paths
+  // 6.50 -> 2.82 ms); the games with SetRaysPresetDefaults had them already.
+  constexpr std::array<std::string_view, 4> TRACED_GI_SLIDERS = {"RayTracedLightBounceRays", "RayTracedLightBounceResolution",
+                                                                 "RayTracedLightBounceRange", "PathTracingBounces"};
+  for (Setting* setting : *settings) {
+    if (std::ranges::find(TRACED_GI_SLIDERS, setting->key) == TRACED_GI_SLIDERS.end()) continue;
+    setting->default_value = std::ranges::find(RAYS_PRESET, setting->key, &Values::value_type::first)->second;
+  }
+
   // Faster Smoke Shadow Build, every game's (shown where Smoke Shadows are installed): placed under Smoke Shadow Quality below.
   settings->push_back(rt_scene::SmokeFastBuildRow(b.rt, b.aa));
   const auto always = [] { return true; };
