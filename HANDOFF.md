@@ -7493,11 +7493,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         up to 5 loops (check allows 1); 2 ParseFlags' path(flag).string() throws on a non-ANSI flag (crash, not exit
         1) -> use CheckEnvironment's UTF-8 conversion. Then gtv_ re-checks; gpu_s2 merges after H0's re-run + ATN's
         GPU check go.
-        Agents (7): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtw_ (gtp_ re-check 8), grs_ (N1 leftovers 1-2),
-        gtl_ (S1b tests, then v1.1 + dred writes), gpr_ (gti_ ns_busy, then gtb_ y1 / y2 / z + dred). Idle: bd1r_,
-        lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, ebr_, t4i_ (r21 after b13r_), gtq_,
-        gbc_, gti_ (waits gpr_), gtb_ (waits gpr_), gtv_ (waits grs_ / gtl_), gtk_, gtp_ (waits gtw_). GPU: free (H0
-        stopped); harness-named fakes allowed until I announce the H0 re-run (checked empty).
+        h0i_ F2 DONE 05:3x (plan_1117/h0i_f2_handback.md; backups tools\tw\h0\backups\20261122_052357_f2): Get-Busy asks
+        Win32_Process for a tool-named process with no Get-Process path; under builds\ = ours, elsewhere = busy; no
+        path from either = settle 1 / s up to 10 s (gone = not busy, still there = busy "(path unreadable)"); start
+        line calls it once. Offline 6 cases 0 / 6 BAD (new busystay; pass shows a 3 s pathless fake settled away);
+        guard OK at cfe71d301, $PostRev 42c081bd6. RULE NOTE: the fake h0fake-dlaa64.exe was built by Add-Type into
+        tools\tw\h0\offline\fakes\busy, OUTSIDE tools\tw\testbin (ATN's Bitdefender exclusion) -> after upr_'s
+        verdict h0i_ builds it under testbin; the old exe stays in place (no delete, [ ] ATN). -> upr_ F2 RE-CHECK
+        STARTED; on RUN the H0 re-run (gtl_'s fakes paused first).
+        Agents (7): upr_ (h0i_ F2 re-check), b13r_ (c3i_ B1.6 review), gtw_ (gtp_ re-check 8), grs_ (N1 leftovers
+        1-2), gtl_ (S1b tests, then v1.1 + dred writes), gpr_ (gti_ ns_busy, then gtb_ y1 / y2 / z + dred). Idle:
+        bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, h0i_ (waits upr_, then fake to testbin), gpp_, ebr_,
+        t4i_ (r21 after b13r_), gtq_, gbc_, gti_ (waits gpr_), gtb_ (waits gpr_), gtv_ (waits grs_ / gtl_), gtk_,
+        gtp_ (waits gtw_). GPU: free (H0 stopped); harness-named fakes allowed until I announce the H0 re-run.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
