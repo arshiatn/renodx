@@ -2596,11 +2596,11 @@ void ConfigureAddon() {
   }
   twattila::feature_settings::SetTints({}, engine_sections);
 
-  // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
-  // Mode's pages. Fog Shadows keep their 0 (Experimental: no game run has shown the fog's rays yet; RT/PT turns them on, as
-  // ATN's list does, as Pharaoh's), Smoke Shadows (Experimental) theirs (no game run has shown them yet), Water Caustics its
-  // 0 (untested here), Sprite Soldier and Far Tree Shadows theirs (Experimental: no game run has shown Rome II's cards in the
-  // rays yet).
+  // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave (RT/PT sets the
+  // rows below as Attila's does, ATN 2026-11-22), then Settings Mode's pages. Fog Shadows keep their 0 (Experimental: no
+  // game run has shown the fog's rays yet; RT/PT turns them on, as ATN's list does, as Pharaoh's), Smoke Shadows
+  // (Experimental) theirs (no game run has shown them yet), Water Caustics its 0 (untested here), Sprite Soldier and Far
+  // Tree Shadows theirs (Experimental: no game run has shown Rome II's cards in the rays yet).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedSmokeShadows" || setting->key == "WaterCaustics"
@@ -2665,6 +2665,7 @@ void ConfigureAddon() {
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .banner_light_tested = false,
+                                             .rays_preset_as_attila = true,
                                              .lights_own_row = true,
                                              .rays_multiply_maps = RAYS_REPLACE_MAPS == 0.f});
   // Faster Game CPU Code (engine_code_row) Experimental, off.
