@@ -447,7 +447,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - grs_ + gtl_ (moments only, later): the "full size is its active size" protocol l ... | ?
 - coordinator (route before T5): end-batch placeholders that never match (no shipp ... | ?
 - gtl_ + gtq_ (v1.2): played.json carries a config hash (flags, fields, micromap l ... | ?
-- gtp_ (after gtw_ re-check 10): the hook's own rows() / mode() raise on a corrupt ... | ?
 - h0i_ + upr_: every H0 FAIL of 20261122_054906 root-caused (tool / pre-existing / ... | ?
 - gtl_ (after its 4 suites): S4 seed-number check + span < 1 + real() nits, then t ... | ?
 - ATN (morning report): once the price gate goes on, everyday gated_build builds h ... | ?
@@ -8013,7 +8012,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         UnicodeDecodeError gates.tsv = installed but unreadable, price + mode.txt read as shadow, one FAULT line
         "gates.tsv unreadable (...): read as shadow" (stderr + facts cell); lab phases still kill; missing file =
         not installed. -> gtb_ STARTED, gpr_ re-checks.
-        - [ ] gtp_ (after gtw_ re-check 10): the hook's own rows() / mode() raise on a corrupt gates.tsv / mode.txt -
+        - [x] gtp_ (DONE round 11 07:4x, gtw_ re-checks): the hook's own rows() / mode() raise on a corrupt gates.tsv / mode.txt -
             decide whether the hook reads that as shadow + a FAULT line (gpr_'s note 07:0x); plus grs1: a NUL in
             gate_hook.read_text()'s decoded gates.tsv / mode.txt = unreadable (gpr_ 07:2x; gtb_ does watch's half).
         gtq_ S3 + NITS 1-5 DONE 07:0x (plan_1117/gtq_s3_nits_handback.md; backup scratchpad\gtq_backup_fix8): 32 iq
@@ -8184,9 +8183,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         byte-compared; live unit 29 / 29, ps1 5 / 5, keeper 24 / 24, jobs 32 / 32. lab_gtl_stage kept with
         README.txt ("safe to delete with ATN's yes") + a __pycache__. -> gtv_ RE-CHECK of S4 + nits + kind dump
         reference mode STARTED.
-        Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (gtl_ S4 + reference mode re-check), gtp_
-        (O2 order + corrupt files + nits + gated_build proposal), gtb_ (grs1b test nit), ebr_ (t4i_ r23
-        re-check), c3i_
+        gtp_ ROUND 11 DONE 07:4x (plan_1117/gtp_round11_handback.md; backups scratchpad\gtp_bak15): live, mode SHADOW,
+        suite 692 / 692 (+34, 1 expectation changed on purpose); no gate_errors rows, no override.json / prices.lock;
+        proposals, tool_prices, gates.tsv, gated_build.ps1 untouched. 1 O2: top-level OVERRIDE_RUN test first,
+        inner_commands() in its own try (raise = empty inner list + one TOOL FAULT row, other gates still check the
+        top level). 2 corrupt files: gate_file() reads gates.tsv / mode.txt; decode error or NUL = unreadable ->
+        shadow + one `TOOL FAULT <file> unreadable (...): read as shadow` row, rows() {}; missing = not installed,
+        no row (grs1 hook half DONE). 3 nits W5 (timeout / env / nice skipped, pipe decides only after a data
+        head, bash heredoc body checked as bash), W6 (uv tool run, uv run --with=, npm exec / x, pnpm / yarn dlx),
+        N9 (globalThis / window / self .fetch), W7 (every JSON url / origin counts without a Tab Context); corpus
+        15,119: 0 commands refused differently (both 297: price 121, shell 124, override 36, files 19, pitfall 1,
+        web 0). 4 PROPOSAL in INSTALL_FOR_ATN.md "## 8. PROPOSAL": A wrap every build in budget.py watch (risk:
+        watch's clock counts the slot wait); B RECOMMENDED one line in gated_build.ps1 (run the cmake step under
+        watch once the slot is held) + one hook line (a gated_build call counts as wrapped), only after ATN's OK;
+        C leave builds out (not recommended). Price stays shadow until ATN decides. -> gtw_ RE-CHECK 11 STARTED.
+        Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (gtl_ S4 + reference mode re-check), gtw_ (gtp_
+        round 11 re-check), gtb_ (grs1b test nit), ebr_ (t4i_ r23 re-check), c3i_
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
