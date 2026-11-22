@@ -1317,6 +1317,10 @@ void ReflectPixel(uint2 id) {
   }
   const float3 normal = PixelNormalOf(id, position, guide, neighbours);
   const float3 surface_normal = SurfaceNormalOf(int2(id), position, neighbours);
+  // Only where the depth's plane is a real one (water, the ground): at corners and silhouettes the depth's normal mixes two
+  // faces, and a ray toward the wall folded off it came back open (the reference: concave edges 1.35x its open share,
+  // traced reflections leaking at the bases of walls).
+  const bool fold = PlanarOf(position, surface_normal, neighbours);
   const float3 view = normalize(Camera() - position.xyz);
   const float n_dot_v = max(dot(normal, view), 1e-3f);
   const float3 origin = RayOrigin(position, normal, PlanarOf(position, normal, neighbours));
@@ -1365,7 +1369,9 @@ void ReflectPixel(uint2 id) {
     lobe += weight;
     // A normal map can turn a ray into its own surface: on waves, the more the view grazes them (the sides of the screen),
     // the riverbed under the water showed in them (ATN's debug36). Such a ray bounces off the surface, as off the next wave.
-    direction -= 2.f * min(dot(direction, surface_normal), 0.f) * surface_normal;
+    if (fold) {
+      direction -= 2.f * min(dot(direction, surface_normal), 0.f) * surface_normal;
+    }
     if (traced) {
       float first_distance;
       float3 first_normal;
