@@ -519,6 +519,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_: S3c PART 2 jobs + run sheet section (dead outputs on R3; log_uses / dump_f ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
+- gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
 - b3s_ (Sonnet High, worktree): B3b S4 -> S5 -> S6 per bd1o_design_B3_v2.md §10 -> ... | ?
 - t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 BUT keep B3b (re ... | ?
@@ -11197,6 +11198,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         "proposed" mentions -> gtv_ re-checks.
         - [ ] coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no commits / HANDOFF patches / index
         rebuilds; timing sessions go to the quietest window (fewest agents).
+        SAFETY STOP 19:19: the harness flagged gtp_ (round 22): "Blocked by classifier" on one of its actions. Coord told
+        gtp_: stop that path, no retry or workaround; report the exact action, any partial state, and what it did after;
+        if the live swap is the blocked part, leave live at bak28 and hand back the staged files for ATN.
+        - [ ] gtp_: report the classifier-blocked action (exact command, purpose, partial state) -> coord reports to ATN.
         ATN 19:0x (sick; in-game tests out for 1-2 days; wants a plan coord can run almost without him): "please continue";
         Q1 BUILD B3b (S4-S7; multiple subagents if possible) -> COORD: before the end batch (ATN is out 1-2 days anyway, one
         batch measures all; ATN may still say after); Q2 group 3 BEFORE the batch = yes; Q3 the B1L1-only pair (~7 min) =
