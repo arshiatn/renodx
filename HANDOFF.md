@@ -477,6 +477,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtb_ (low, batched): busy_refresh `-1 <= age` (a read within 50 ms of a write is ... | ?
 - gti_ (low, batched): count r1b's skipped checks from the block instead of a type ... | ?
 - ATN (morning report): ruse_bridge.exe / ruse_replay.exe are counted by nothing i ... | ?
+- gtl_ (low, after H0 - the fixture suite starts lab jobs): make the gate_s check ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9398,8 +9399,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         clean (GPU jobs / games 0, Committed 28.2 GB, 206 modes, estimate ~83 min = ends ~11:25-11:40); pre atn-mods
         bc7a60d91, post 42c081bd6 (base c3ea4925f), harness pdi1_ FFD6BA42A8C5. No builds / harness-named
         processes / GPU lock by agents until it ends (told gtl_, gtv_, gpr_, lga_, b13r_, gtw_).
-        Agents (6): lga_ (release_check RC-1 + nits), gtw_ (round 14 re-check), gpr_ (round 14 re-check), ebr_ (t4i_
-        option (a) re-check), b13r_ (c3i_ rmt_b1log review), gtv_ (gtl_ lows check); H0 run (background, ~11:30)
+        gtv_ GTL_ LOWS CHECK = PRICE + LIMITS OK, 1 LOW 10:0x (plan_1117/gtv_gtl_lows_check_handback.md; gtv_iq_review.md
+        "## gtl_ lows check"; unit suite 34 OK + a fixture-world probe only, because of H0): gate expected time =
+        median of the last 10 gate_s rows (seed 1.0); deadline max(2.5 x expected + 10, 120); only gates that beat
+        their deadline record (a slow one stops before finish()), so the 120 s floor wins until the median passes
+        44 s; nothing else reads gate_s. No limit changed (GATE_FLOOR_S 120, formula, 300 s tool timeout, MAX
+        values, render_cpu +30 / score +60); fixture gate deadline 180 -> 120 s (2.5 x 48.6 s). LOW: test_iq_kinds'
+        assertIn('gate_s', read_model()) can never fail (the fixture's seed model already holds gate_s 1.0) ->
+        count gate_s rows before / after the iq job (+1) or find this job's row; the A/B gate path has no check
+        (add one in the Calibrated class, the 'cal' job's 2 gates). Nit: lab.py comment "GATE_FLOOR_S may follow"
+        -> the deadline follows gate_s, the floor is a constant. gtv_ stopped its own long recursive grep.
+        - [ ] gtl_ (low, after H0 - the fixture suite starts lab jobs): make the gate_s check fail without the lab.py
+            change (row count +1 or this job's row), add an A/B gate check in the Calibrated class, fix the
+            "GATE_FLOOR_S may follow" comment; gtv_ re-checks (gtv_ 10:0x).
+        Agents (5): lga_ (release_check RC-1 + nits), gtw_ (round 14 re-check), gpr_ (round 14 re-check), ebr_ (t4i_
+        option (a) re-check), b13r_ (c3i_ rmt_b1log review); H0 run (background, ~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
