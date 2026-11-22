@@ -475,7 +475,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - c3i_ F2: a log line (Note() event kind) when the slot list grows on a worker (t4 ... | ?
 - ATN (morning report): add a B1L1-only volley pair to the end batch? ~7 min (L1-o ... | ?
 - T5 build step: write the real manifest.json with these rows / row_values / env ( ... | ?
-- gti_ (with r1a / r1b): ns_busy.ps1's game list lacks Divinity (EoCApp), Expediti ... | ?
 - gtl_ (low): record gate_s in lab.py's model so GATE_FLOOR_S can follow data late ... | ?
 - ATN (morning report): with the load refresh, the gate hook's fix-now rule can fi ... | ?
 - ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its ow ... | ?
@@ -8917,7 +8916,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         show`; N8 settle before releasing the lock after a TDR. COORDINATOR on S3: both - record per job + OPEN
         beside a build, and the real run goes in a held window. -> lga_ FIXES STARTED (S1-S4 + N1-N5, N7, N8); gtw_
         re-checks.
-        - [ ] gti_ (with r1a / r1b): ns_busy.ps1's game list lacks Divinity (EoCApp), Expeditions Rome and RUSE
+        - [x] gti_ (with r1a / r1b, DONE 09:5x live, atomic swap): ns_busy.ps1's game list lacks Divinity (EoCApp), Expeditions Rome and RUSE
             (gtw_ 09:2x).
         gpr_ GTB_ ROUND = ALL 4 OK 09:2x (plan_1117/designs/gpr_gtb_round_handback.md; gpr_review.md "## gtb_
         slot-wait / gate floor / R12-1 mirror / load proposal re-check"; probe scratchpad\gpr_gb_env_probe.ps1, log
@@ -9212,9 +9211,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         h0_rng_check.py, h0_gpu_runs.ps1 (S5 line + comments), offline\h0_offline_test.ps1,
         offline\fakes\fake_harness.py. Time unchanged (~83 min est, plan 95-100). -> upr_ RE-CHECKS (short), then
         the H0 run in the next quiet window.
+        gti_ LOWS PART 1 DONE 09:5x (plan_1117/gti_lows_part1_handback.md; backup scratchpad\gti_bak12): ns_busy.ps1
+        game names + EoCApp (Divinity 1 Shipping + Divinity 2 Classic / DefEd bin), ExpeditionsRome.* (launcher +
+        Binaries\Win64\ExpeditionsRome-Win64-Shipping.exe), RUSE (RUSE.exe); names checked by folder listing
+        only; count only with threads, like the others; BusyState('', 30) unchanged otherwise. One atomic replace
+        (no lock / H0 / gpu_lock.py process right before, live == backup). r1a: test_ns_busy.py's live injected
+        record pid 999993 + injected EoCApp / ExpeditionsRome-Win64-Shipping / RUSE with threads = 3, EoCApp
+        without threads = 0 (odd pids only). test_ns_busy 20 / 20 staged + live. gti_'s live ns_busy printed 1
+        once; COORDINATOR 09:5x re-ran it = 0 and no matching process (transient: another agent's sandbox fake or
+        test exe). PART 2 (r1b skip count "N of M passed, K skipped (in use: ...)" + optional injected-copy pair
+        cases, test_gpu_lock.py only) held by gti_ for the H0 start -> GO now (10-15 min, ends before H0).
+        Machine 09:51: c3i_'s FULL engine_code suite done, its gated builds running (clang-cl), CPU 22 %.
         Agents (10): upr_ (h0i_ M1 + S1-S5 re-check), gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gtb_
         load refresh re-check), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), grs_ (design v5 text),
-        fcr_ (patch v2 re-check), gtl_ (fixture +60 s + gate_s), gti_ (r1a / r1b + ns_busy games)
+        fcr_ (patch v2 re-check), gtl_ (fixture +60 s + gate_s), gti_ (lows part 2: r1b + pair cases)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
