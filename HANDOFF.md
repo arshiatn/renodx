@@ -7030,9 +7030,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         in the child's tree (lock files every 2 s), R2 --limit = exact deadline + --phase always killed, R3-R11 +
         Na-Nh in §E's owner briefs; build order gtb_ 4-6 h + gti_ 0.3 h now, gtp_ 8-11 h after its parser round. gpr_ v3
         LOOK STARTED -> then gtb_ / gti_ build.
+        gtp_ M5 M6 DONE + LIVE 03:4x (plan_1117/gtp_m5m6_handback.md, backups scratchpad\gtp_bak9): M5 no slow pattern
+        left (40k '(' 0.03 s; old hook 162 s) + inner-text size budget; M6 every wrapper + PS_VALUE switches; S-a multi-
+        line -m; S-b commit gate per inner command; S-c overhead vs bare python (+0.04 s); run_tests 277 / 277 live;
+        swapped in with os.replace, shadow, fail open. gtw_ S1c RE-CHECK 6 STARTED.
         Agents (12): bd1r_ (N6 re-check), t4i_ (r18), upr_ (v2.5 re-check), gpr_ (price + web v3 look), grs_ (S2), gtl_
-        (S3 fixes), gtp_ (M5 / M6), gtk_ (C1 fixes), gtq_ (B1 fixes), h0i_ (ps1:439 + real-path tests). Idle: lga_,
-        lgf2_, c33i_, upt_, gpp_, ebr_, gtw_ (waits gtp_), gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_.
+        (S3 fixes), gtw_ (S1c re-check 6), gtk_ (C1 fixes), gtq_ (B1 fixes), h0i_ (ps1:439 + real-path tests). Idle:
+        lga_, lgf2_, c33i_, upt_, gpp_, gtp_, ebr_, gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
