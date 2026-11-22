@@ -8163,8 +8163,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         MERGE rmt_b16n -> atn-mods d03d098b5 07:3x (name_check: 221 new identifiers, 8 generic Linux-token words);
         gated builds x86 3 games + amd64 twattila running (coordinator, -Owner coord; first try had a quoting
         error and built nothing).
-        Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (held lab suites + race probe), gtp_ (O2 order
-        + corrupt files + nits + gated_build proposal), gpr_ (gtb_ grs1 re-check), ebr_ (t4i_ r23 re-check), c3i_
+        gtv_ HELD LAB SUITES + RACE PROBE = ALL OK 07:3x (plan_1117/gtv_held_suites_race_handback.md; gtv_s3r_review.md
+        "### Held suites + race probe"): 29 lab files + ns_busy + iq_frames hashed before / during / after =
+        unchanged (the stage never reached live); unit 28 / 28, ps1 5 / 5, keeper 24 / 24, jobs 31 / 31 (no FAIL /
+        ERROR / busy fact / SLOW); race probe gtv_rc_race2.py 31 trials 0-1200 ms: no stop fact from our own helper,
+        6 double reads in one tick gave no fact; bulk index never seen. It reports the testbin gtl_test_* /
+        gtv_rcrace_* folders "removed" (to ask: test teardown or a manual delete). Lab v1.1 CLOSED (incl. the held
+        suites). -> gtl_ SWAP-OK-TO-TEST + SWAP sent (staged jobs suite, then swap 6 files, then all 4 suites live;
+        lab_gtl_stage stays); gtv_ re-checks S4 after.
+        Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtl_ (staged jobs suite + swap + 4 live suites), gtp_
+        (O2 order + corrupt files + nits + gated_build proposal), gpr_ (gtb_ grs1 re-check), ebr_ (t4i_ r23
+        re-check), c3i_
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
