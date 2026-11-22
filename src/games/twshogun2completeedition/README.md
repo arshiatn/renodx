@@ -16,6 +16,7 @@
   rays, half, 10 m, 2 bounces).
 - New: a reset icon on the **Custom** render scale slider.
 - Cosmetic: log lines say [Shogun 2] (no longer [Shogun 2 DLSS]); the water and ocean shaders' -pi exact to the bit.
+- Proof level B: the game's tone-map constants from data.pack (every battle map's curve), not traced in game.
 - Proven offline: test/tw_shogun2_romer_toe (WARP, the add-on's 0xEF060C7C): the shipped values within 4.3 % of the
   game's SDR below 15 nits and the fit's best; CONTROLS Musa's own fails (521.9 %), HDR (Extended) the game's grey
   (0.00 %). The winter map (bos_japan) sits x0.74..x0.79 of its SDR below 15 nits (was x1.34..x8.22).

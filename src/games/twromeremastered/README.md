@@ -9,7 +9,10 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastere
 - Changed: Modded Auto Exposure **Sensitivity** default 1 (was 2; ATN).
 - Changed: the **Fog Shadows** row hidden (this game has no fog the rays shade).
 - PsychoV35's V35 fit (report, defaults unchanged): Contrast 1.00 / Shadows 1.30 / Saturation 1.00 / Highlight
-  Contrast 1.00 reaches 9.1 % of the game's SDR below 15 nits (Musa's own x0.89..x0.92, colour the same).
+  Contrast 1.00 reaches 9.1 % of the game's SDR below 15 nits (Musa's own x0.89..x0.92, colour the same). Level B:
+  Hable's white 11.2 assumed (it follows the auto exposure), not traced.
+- Fixed: **FXAA** (fxaa00 / fxaa01) as the game's: their gather read red, the game's alpha / green, and the edge blend's
+  last step lost its offset (WARP: 0 texels apart from the game's shaders, 637 before).
 
 ### Next round (2026-11-16 tw3_; built only, not run in game)
 
