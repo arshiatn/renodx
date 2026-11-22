@@ -502,10 +502,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU ... | ?
 - gtc_ (runner, Low): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x). | ?
 - gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ... | ?
-- grs_: G1 + G2 / G3 / G4 (+ nits) on grs_dead_uses; fcr_ re-checks (coord 15:55). | ?
 - gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land- ... | ?
 - h0i_: M6_OUTPUTS_LEFT_OUT + M6_KNOWN in h0_rng_check.py + selftest + closing che ... | ?
 - grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal ... | ?
+- fcr_: re-check grs_ aa42b6374 + gti_ T1-T4 (dead_outputs.py) as one piece -> MER ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10539,7 +10539,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         named struct, List11, other-slot check, SER on hides all). S3c part 2 notes (gtl_): first log_uses run vs plain +
         resident.log NVAPI refusals; log >= 1 loop + 1 frame, SER off; confirm vs A/A floor minus own history; no frame_ms
         from log_uses runs; seed spacing > 1 loop right only on contiguous recordings.
-        - [ ] grs_: G1 + G2 / G3 / G4 (+ nits) on grs_dead_uses; fcr_ re-checks (coord 15:55).
+        - [x] grs_ (DONE 16:07 aa42b6374): G1 + G2 / G3 / G4 (+ nits) on grs_dead_uses; fcr_ re-checks (coord 15:55).
         - [x] gti_ (DONE 15:57, T4 asked): T1 + T2 / T3 in dead_outputs.py; fcr_ re-checks (coord 15:55).
         gti_ DEAD OUTPUTS FIXES 15:57 (plan_1117/gti_dead_outputs_fixes_handback.md; backup scratchpad\gti_bak15): T1 slot ->
         set of resources per (stem, span); T2 unread copy_dst / clear = own verdict COPY NOT READ (counted apart, "no
@@ -10615,9 +10615,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal device-removal recovery = 2
         paths -> 2 NRD states; find what carries across the removal (NRD history start / frame or sample index), make it
         one result or keep the allowlist; players see at most the noise phase after a real GPU reset (coord 16:06).
-        Agents (5): gtp_ (gate round 20), grs_ (dead uses G1-G4), h0i_ (M6 exclusions + closing check), gtl_ (stage 3
-        small items, no suites), gtc_ (S3c part 1 runner); gtv_ / gti_ / upr_ idle; GPU: S3c PART 1 RUNNING (15:52, E 45-60
-        min); one GPU job at a time; CPU work below normal, no builds at normal priority, no lab suites during S3c
+        grs_ DEAD USES FIXES 16:07 (plan_1117/grs_dead_uses_fixes_handback.md): grs_dead_uses aa42b6374 on df06d4e9b (not
+        pushed). G1: UseNames nvapi flag, StopUses marks every NVAPI cluster / PTLAS buffer external (clas, clas_addresses,
+        cluster_blases_<n>, cluster_destination / scratch / indices / args, templates, template_destinations / geometry,
+        sway_arguments / lists / counts, ptlas_buffers_<n>, ptlas_scratch, slot<i>_ptlas_device); BuildRaytracingAS hook logs
+        BLAS vertices / indices / Transform3x4 / AABBs + OMM index buffer + micromap array + OMM array InputBuffer / PerOmmDescs
+        as copy_src; bake inputs + GPU baker mask + placed-room growth copies external; unnamed buffer keeps buffer#<hex> name
+        when later found by address; test_uses_log 9 / 9. G2 StopUses after every serve command. G3 store_skip absolute
+        config path + N3 other-slot check covers variant slots; test_store_skip 3 / 3 with relative --out. G4
+        grs_uses_log.md (CRLF, externals, copy_src, naming), resident_protocol.md.proposed line 140 "1 to 64, over loops";
+        job_schema.json "at most one loop" (live lines 56 / 68 + gtl_'s stage copies) NOT edited -> gtl_'s staged
+        .proposed. Nits braces + RootView struct; mutex kept (never contended); List11 padding not done. Builds
+        testbin\scratch\grs_: plain 5,689,856 B = base, rec 6,770,176 B; .text 99 B in 64 runs = source lines
+        (text_diff.py); added_guards.py: only `made` + #endif lines outside guards. New limit: reused address range under an
+        unseen unnamed buffer keeps old name (errs to more reads, safe).
+        gtl_ STAGE EDITS DONE 16:07 (plan_1117/gtl_stage_edits_done_handback.md): keeper saves session.json before the
+        fence note; stage dead_outputs.py (62f892d1) + resident_protocol.md.proposed re-synced from live; reset_ms on a
+        no-reset block = ToolFault (+ test); land_list.tsv refreshed 16:06 (lab.py, lab_keeper.py, test_lab_unit.py new
+        hashes; live originals match); NEW testbin\scratch\gtl_\landed_suite.sh (build = live lab + gates / reference /
+        nsight + land list on top, refuses on changed originals / hash mismatch; refuses while gpu_job.lock). Waits for
+        "S3c done". + job_schema.json.proposed "at most one loop" text -> "1 to 64, over loops" (coord asks).
+        - [ ] fcr_: re-check grs_ aa42b6374 + gti_ T1-T4 (dead_outputs.py) as one piece -> MERGE-READY (coord 16:07).
+        Agents (4): gtp_ (gate round 20), h0i_ (M6 exclusions + closing check), fcr_ (dead-output re-check), gtc_ (S3c part
+        1 runner); gtl_ waits for S3c done; gtv_ / gti_ / upr_ / grs_ idle; GPU: S3c PART 1 RUNNING (15:52, E 45-60 min);
+        one GPU job at a time; CPU work below normal, no builds at normal priority, no lab suites during S3c
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
