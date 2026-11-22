@@ -6698,8 +6698,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         shared ns_busy reader); S1b FIX: Must 3 sentence split on 'e.g.' / 'vs.', Must 4 NaN passes the gate + Shoulds
         6 / 8 -> gtb_ RESUMED. lgf1_ FOLLOW-UP DONE 02:0x: rmt_lg1 9ae4b8419 (S1 overflow events, N1, N2 exact x86
         record, N4); tests PASS both, builds exit 0 -> lga_ look after group 2.
-        [ ] ATN: gto §10 open questions before later steps (Q1 lab rules, Q2, Q3, Q6, Q7 no, Q9-Q11, Q13, Q16-Q25) asked
-        02:1x.
+        [x] ATN 02:1x: gto §10 = ALL YES AS RECOMMENDED, Q7 (locked clocks) NO. Q1 the three lab rules gpu_lab.ps1 -Job /
+        -Trace / -Stop (ATN adds them after S3r), Q2 old run forms stay until the lab replaces them, Q3 lab may hold the
+        lock + ~20 GB VRAM idle, Q6 in-process Nsight trace only, Q9 first GPU session, Q10 player = our helper for
+        Nsight, Q11 coordinator refuses GPU numbers without gate ids, Q13 spec.py allow rules (INSTALL), Q16 FLIP-tool.exe
+        from the local copy into testbin\flip (BSD-3, no PyPI), Q17 one game slot / 2 sequences, Q18 recorder saves depth
+        + motion (S2), Q19 reference GPU hours, Q20 pbrt-v4 + submodules CPU build in testbin (no OptiX / CUDA), Q21
+        HARNESS_SCENE + 4K harness build, Q22 DXC + MS D3D12 / D3D11 docs (reference only), Q23 dead outputs into S2 /
+        S3c, Q24 every setting value timestamps + one Nsight trace, Q25 lab deletes only its own scored dumps.
+        ATN 02:1x GPU WORK ORDER = 3 KINDS: (a) quick correctness checks (dumps, NaN scans, register counts) run as soon
+        as their rule exists (they gate merges); (b) timing / Nsight cost runs batched in held windows, agents paused;
+        (c) in-game runs last, with ATN's go. Sent 02:1x: gtq_ Q16, gtk_ Q20 / Q21 (C2 after C1), gtl_ Q1 / Q3 / Q6 /
+        Q7 / Q24 / Q25, upt_ PTLAS arm + 'optimise every reuse pass / filter' step (Forge's numbers). TODO: gtp_ Q22
+        docs, S2 brief Q18 + Q23.
         gtp_ S1c SMALL FIXES DONE 02:0x (plan_1117/gtp_s1c_fix2_handback.md, backups scratchpad\gtp_bak2): F1 comma
         scopes split in gate_override.ps1; I1 A0 step in INSTALL §2 (chained PowerShell must ask, else drop the 4
         PowerShell rules); I2; F2 writes count only when the protected path is in the write call (new limit: a path in a
@@ -6710,8 +6721,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         everything LOST; S-r16-2 suspects back on in a retried start's next continuation; S-r16-3 the stopping crash gets
         no crash_list / box; 7 nits; x87c plan text a-d. StallDump OK (any 20 s present gap = dump + FAIL; none in 147
         logs since 11-17). 15 / 16 mutants killed. t4i_ RESUMED 02:1x (r17), then ebr_ re-check.
-        Agents (11): c33i_ (R-S5 fixes), gtw_ (S1c re-check 2), t4i_ (r17 fixes), lga_ (group 2 re-check 2), h0i_ (H0
-        run script), upt_ (unified PT v2.3), gti_ (S1a Must 4), gtb_ (S1b Musts 3-4), gtl_ (S3), gtq_ (B1), gtk_ (C1).
+        c33i_ R-S5 FIXES DONE 02:1x (render_mt/reports/c33i_rs5_fix_handback.md): rmt_rs5 tip b25de8189 (683e28977 M1 +
+        N1-N5, 5d853a2bd bd3r_ nits 1-4, b25de8189 S1 part 29f + nit 5 Uninstall waits 100 ms for a fold open, else keeps
+        the stubs + pins). All tests + 5 gated builds exit 0; bd1r_'s 3 mutants + 5 own caught. 29f only in the DR
+        compile (run.ps1 -DrawRecording). bd1r_ + bd3r_ RE-CHECKS STARTED 02:1x.
+        gti_ S1a FIXES 2 DONE 02:1x (plan_1117/gti_s1a_fix2_handback.md): Must 4 (exit 7 = no new trace; gpu_trace tables
+        only after exit 0), Shoulds 7-10, Nit 7, shared reader gpu_lock.BusyState (fault = busy; Busy() removed). Suites
+        28 + 21 + 4 + 3 + 10 pass. Open by design: a prompt > 4 s after ngfx exits. gtb_ S1b FIXES 2 DONE 02:1x
+        (plan_1117/gtb_s1b_fix2_handback.md). gtb_ RESUMED for Should 7 (probe() -> BusyState); gtv_ S1b re-check 2 then
+        S1a re-check 2 then Should 7.
+        Agents (12): bd1r_ + bd3r_ (R-S5 re-checks), gtw_ (S1c re-check 2), t4i_ (r17 fixes), lga_ (group 2 re-check 2),
+        h0i_ (H0 run script), upt_ (unified PT v2.3), gtv_ (S1b re-check 2, S1a re-check 2), gtb_ (S1b Should 7), gtl_
+        (S3), gtq_ (B1), gtk_ (C1 + C2).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
