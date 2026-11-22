@@ -3079,11 +3079,12 @@ bool AttachAddon() {
   // Rows saved at an old default, cleared once: Smoke Shadows and Sprite Soldier Shadows were saved hidden at RT/PT's 1
   // (SetRaysPresetDefaults) until they showed, Experimental and off. Rays Replace Shadow Maps was saved at its old
   // Experimental 0; the row is gone since (the rays always replace) and nothing reads the key. Sky Debanding was saved at its old Medium (default, Reset and every Recommended);
-  // now off in every preset, as Attila's.
+  // now off in every preset, as Attila's. Shadow Casters Out of View was saved at its old 0 (on since 545b99ced, ATN 31).
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedSmokeShadows"});
   twattila::graphics_page::ClearSavedRows(2, {"RayTracedSpriteShadows"});
   twattila::graphics_page::ClearSavedRows(3, {"RayTracedReplaceShadowMaps"});
   twattila::graphics_page::ClearSavedRows(4, {"sky_deband"});
+  twattila::graphics_page::ClearSavedRows(5, {"RayTracedUnitsOutOfView"});
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 

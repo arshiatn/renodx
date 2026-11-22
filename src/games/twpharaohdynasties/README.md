@@ -16,7 +16,8 @@
   top). At 100 % both are the game's.
 - Changed: Smooth Banner Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
 - Changed (ATN): **Shadow Casters Out of View on by default** (no longer Experimental), in RT/PT too: with ray-traced sun
-  shadows, trees, buildings and units behind the camera keep their shadows. A saved Off stays until a preset.
+  shadows, trees, buildings and units behind the camera keep their shadows. A saved Off is cleared once (ATN): every
+  player starts with it on.
 - Changed (ATN): **PsychoV35's defaults follow the game's SDR picture**: Contrast 1.10, Shadows 1.39, Saturation
   0.97, Highlight Contrast 0.87 (were Musa's own 1; fitted on WARP, `test/tw_troy_pharaoh_v35`). Below 15 nits its
   grey is within 7 % of the game's (was up to 25 % brighter), its highlights within 7 % of Musa's own at
