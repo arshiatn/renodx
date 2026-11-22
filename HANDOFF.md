@@ -7022,9 +7022,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         gpr_ v2 RE-CHECK = GO WITH FIXES (designs/gpr_v2_handback.md; gpr_review.md l.305-475): R1 watch clock never
         starts for piped gated_build calls, R2 lab phases lose their deadline kill (MUST, design first); R3-R11 into the
         owners' briefs; live shadow logs answered the open probes. gpp_ RESUMED for v3; build after gtp_'s M5 / M6.
-        Agents (12): bd1r_ (N6 re-check), t4i_ (r18), upt_ (v2.5), gpp_ (price + web v3), grs_ (S2), gtl_ (S3 fixes),
-        gtp_ (M5 / M6), gtk_ (C1 fixes), gtq_ (B1 fixes), h0i_ (ps1:439 + real-path tests). Idle: lga_, lgf2_, c33i_,
-        gpr_, upr_, ebr_, gtw_ (waits gtp_), gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_.
+        upt_ v2.5 DONE 03:4x (plan_1117/designs/upt_v25_handback.md; unified_pt.md 1540 lines, v2.4 copy scratchpad\
+        upt_v24_backup.md): R1 demodulated torch pair (rt_di_ok value 32), R2 late point = first standard sun draw +
+        order flag, early-torch arm gone, R3 wording, nits (+ rt_light_count.w '!= 0u' find); 296 agent-h. upr_ v2.5
+        RE-CHECK STARTED.
+        Agents (12): bd1r_ (N6 re-check), t4i_ (r18), upr_ (v2.5 re-check), gpp_ (price + web v3), grs_ (S2), gtl_ (S3
+        fixes), gtp_ (M5 / M6), gtk_ (C1 fixes), gtq_ (B1 fixes), h0i_ (ps1:439 + real-path tests). Idle: lga_, lgf2_,
+        c33i_, upt_, gpr_, ebr_, gtw_ (waits gtp_), gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
