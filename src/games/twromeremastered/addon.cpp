@@ -143,7 +143,7 @@ void ApplyResetPreset() {
       {"vignette", 1.f},
       {"distortion", 1.f},
       {"auto_exposure_highlight_protection", 0.f},
-      {"auto_exposure_highlight_headroom_stops", 2.f},
+      {"auto_exposure_highlight_headroom_stops", 1.f},
       // {"chromaticaberration", 1.f},
       // {"sharpening", 1.f},
       // {"some_indicators", 1.f},
@@ -1419,7 +1419,7 @@ void BuildRuntimeData() {
     new renodx::utils::settings::Setting{
         .key = "auto_exposure_highlight_headroom_stops",
         .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
-        .default_value = 2.f,
+        .default_value = 1.f,
         .label = "Modded Auto Exposure: Sensitivity",
         .section = "Extra",
         .tooltip = "How far above the picture's average brightness a bright area still counts, in stops.\n"
@@ -2052,6 +2052,7 @@ void ConfigureAddon() {
                                              .rays_preset_as_attila = true,
                                              .has_path_ambient = false,
                                              .has_reflections = false,
+                                             .has_fog_shadows = false,
                                              .rays_multiply_maps = true,
                                              .has_gtvbao = false,
                                              .has_gi = false,
