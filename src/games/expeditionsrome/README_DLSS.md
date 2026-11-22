@@ -11,6 +11,18 @@ Performance and Custom upscaling**, not frame generation or a finished release. 
 game's actual 1–100% Screen Percentage; native 100% uses DLAA. Temporal
 Upscaling must be on below 100%. The Temporal Upscaling-off path is not enabled.
 
+### Open items G09 (2026-11-22; built only, not run in game)
+
+- New: a WARP test (`tests/sun_light_texel.cpp`) runs the game's sun light shader (0xC38C91CD) and proves the sun light
+  the rays get (colour x output scale / pi) gives the game's diffuse sun to 1e-4.
+- Changed: **Auto Thickness** (GT-VBAO and GT-VBGI) is on by default and no longer Experimental; saved value cleared once
+  (`[renodx] SettingsRevision 4`).
+- Fixed: the colour-grading shaders (lutbuilder + lut00-04) used -3.141593 where the game has -pi to the bit: now
+  -3.14159274, the game's constant.
+- Changed: the fog-shadows row stays hidden (`has_fog_shadows = false`).
+- Unchanged (ATN 11-22): "Brightness 40" stays the in-game line, ray-traced shadows stay min(the game's map, the rays),
+  the ten TAA hooks stay.
+
 ### Specular Occlusion with other rays (2026-11-18; built only, not run in game)
 
 - Changed: **Ray-Traced Specular Occlusion** works only with another ray-traced effect on (shadows, AO, Light Bounce,

@@ -11,6 +11,19 @@ ReShade addon (DX11, x64), separate from the HDR addon (`talesofarise`):
   blur and the tonemapper run at the output size, so nothing after DLSS is upscaled again.
 - **Graphics settings** beyond the game's menu, applied live: preset buttons and one choice per setting.
 
+### Open items G09 (2026-11-22; built only, not run in game)
+
+- Changed: **Auto Thickness** (GT-VBAO and GT-VBGI) is on by default and no longer Experimental (ATN 11-22: bug fixes
+  and same-look rows on); players' saved value is cleared once (`[renodx] SettingsRevision 4`).
+- Changed: **Game's GI Under the Open Sky** is on by default with GT-VBGI and no longer Experimental (ATN 11-22, option
+  2); saved value cleared once with the same revision.
+- Fixed: the colour-grading shaders (lutbuilder + lut00-04) used -3.141593 where the game has -pi to the bit
+  (0xc0490fdb): the decompile printed it one ulp off. Now -3.14159274, the game's constant.
+- Changed: the fog-shadows row stays hidden (no fog the rays shade here; `has_fog_shadows = false`).
+- Internal: the screen-space shadows' dispatch-list glue is shared (`talesofarise_dlss/bend_dispatch_setup.hlsli`, the
+  includer gives viewport size, light projection and light depth); the GT-VBGI and SSS wrappers are named
+  `host_light_bounce_*` / `host_sss_*`; the unused `rr_d3d12.hpp` is gone.
+
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 
 - **Ray-Traced AO replaces the game's AO and GT-VBAO** (ATN: never on top of them): the six lighting passes
