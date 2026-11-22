@@ -439,7 +439,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after gtw_ OK: INSTALL_FOR_ATN.md to ATN (he installs the hook himself; nothing ... | ?
 - ATN: the 3 gpu_lab.ps1 rules after S3r. | ?
 - ATN: a MISSING key / empty value in heapfix.ini -> NOTE instead of PROBLEM? heap ... | ?
-- ATN (INSTALL_FOR_ATN.md item 12, sections 1 / 3 / 7): replace the hook JSON (mat ... | ?
+- ATN (INSTALL_FOR_ATN.md item 12, sections 1 / 3 / 7) - READY (gtw_ re-check 9 OK ... | ?
 - c3i_ B1 real-routine tests (design 5: tests 1-9, 12, 14, 15) + N5's second-node ... | ?
 - ATN (after gtv_'s re-check OK): adopt the lab proposals - copy cmd.schema.json.p ... | ?
 - c3i_ (with the B1.6 follow-ups or right after): b1_stack_headroom gate has no sh ... | ?
@@ -7513,9 +7513,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         = would-deny + TOOL FAULT rows (shadow). Proposals ONLY: web_allow.proposed.tsv, gate_override.proposed.ps1;
         nothing installed, no settings / gates.tsv / web_allow.tsv touched. dred cross-job check: not the hook's job ->
         gtb_'s report_check.py / result.schema (routed). -> gtw_ RE-CHECK 8 STARTED.
-        - [ ] ATN (INSTALL_FOR_ATN.md item 12, sections 1 / 3 / 7): replace the hook JSON (matchers *, + SessionStart,
-            SubagentStop, Notification); add the six C.1 rows to gates.tsv; copy web_allow.proposed.tsv ->
-            web_allow.tsv and gate_override.proposed.ps1 -> gate_override.ps1 - AFTER gtw_'s re-check 8 says OK.
+        - [ ] ATN (INSTALL_FOR_ATN.md item 12, sections 1 / 3 / 7) - READY (gtw_ re-check 9 OK 06:5x): replace the
+            hook JSON (matchers *, + SessionStart, SubagentStop, Notification); add the six C.1 rows to gates.tsv;
+            MOVE web_allow.proposed.tsv -> web_allow.tsv and gate_override.ps1.proposed -> gate_override.ps1
+            (section 7, Move-Item -Force; the proposal was renamed); do P-2 / P-4 while mode + rows are shadow.
         grs_ N1 NITS DONE 05:3x (plan_1117/grs_n1_nits_handback.md): gpu_s2 d68954a39 on 8c19a953f (local).
         BelowFrameLimit(seed, played) for seed / run / moments (refused before any reset; seed 0 always taken);
         RestoreResources keeps UploadRecorded's reason (untestable offline: needs a device); ParseFlags accepts only
@@ -7903,12 +7904,32 @@ heading text are in HANDOFF_ARCHIVE.md)
             b3b_mismatch (B3b / S6 owner), LATCH fill_check_mismatch (R-S1 / R1 instance-fill owner), probes
             effect_instances (B1 author) / draws / overflow / c_render_us (draw-recording / R1 author) / part_calls
             (feeds paused_runs) - each gets its shipped line or the gate is dropped; b1_stack_headroom waits c3i_.
-        Agents (6): gtw_ (S1c re-check 9), gtv_ (gtq_ fixes + gtl_ iq_refs re-check), gtb_ (s1a-s1c), ebr_ (t4i_
-        r22 re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_,
-        h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r23 after c3i_), gbc_, gpr_ (re-checks gtb_ s1a-s1c),
-        gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (after H0: its 4
-        suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
-        map_replay-named process until H0 ends; gtv_'s held lab tests + race probe after H0.
+        gtw_ S1c RE-CHECK 9 = OK 06:5x (plan_1117/gtw_s1c_recheck9_handback.md; gtw_s1c_review.md line 794): no Must;
+        O1 fixed (every runnable form refused: -File new + old name, bash, &, Move-Item, Copy-Item, iex, bash -c,
+        wildcard copy; a content run has an empty $PSScriptRoot = writes nothing; INSTALL Move-Item); naming the
+        proposal blocks nothing needed (OVERRIDE_RUN 33 -> 34 corpus refusals, all reviewers' cat / ls). Suite
+        617 / 617, F24 passed; real gates folder: only gtw_'s own shadow rows + a detached prices rebuild 06:31. Web +
+        price on: 22 / 15,119 refused, all right (seeded test-script runs = refusal (a)); bak13 would refuse 68;
+        price_shell + shell_web median 9.27 -> 2.00 ms. -> ATN's INSTALL ITEM 12 IS READY (box above updated).
+        Shoulds for gtp_ (before enforce; shadow means none refuses or opens a gap now): O2 OVERRIDE_RUN tests only
+        the top-level text (-EncodedCommand / --bash-b64 carrying the name pass) -> test [c] + inner_commands; W5
+        prefixed interpreter heredocs (timeout 60 python - <<EOF, VAR= python -, cat <<EOF | python -); W6
+        regression `dotnet tool install -g x` passes (only the first verb read) + never caught npm --prefix x
+        install / conda env create / pipx run / uv run --with; W7 PAGE_URL misses the real Claude_Browser forms
+        (get_page_text `URL: <url>`, `Tab Context ... ("<url>")`, javascript_tool `captured at origin <url>`; gtw_'s
+        r8 probes used made-up formats) - low urgency; re-seed price_seed.tsv / prices.tsv (46 gated_build rows with
+        old redirect keys; fails safe) -> tool_prices.py seed then build. F24 test: pair a bare start per hook run,
+        median of paired differences, re-measure the base on retry (+0.082 s under load vs 0.1 s bound). Nits: git
+        push -u origin $b refused (-u in GIT_VALUE); N9 `(?<![.\w])fetch\s*\(` (Python .fetch( false refusal); N3
+        deny text "run it alone (no cd, pipe or &&)"; I1 do P-2 / P-4 while shadow; empty lock = stale (benign).
+        -> gtp_ FIXES STARTED, then gtw_ re-check 10.
+        Agents (6): gtp_ (gtw_ re-check 9 Shoulds + re-seed), gtv_ (gtq_ fixes + gtl_ iq_refs re-check), gtb_
+        (s1a-s1c), ebr_ (t4i_ r22 re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_,
+        lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r23 after c3i_), gbc_, gpr_
+        (re-checks gtb_ s1a-s1c), gti_ (after H0: R1), grs_, gtk_, gtw_ (re-check 10 after gtp_), b13r_
+        (re-checks c3i_), gtl_ (after H0: its 4 suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator, since
+        05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends; gtv_'s held lab tests + race
+        probe after H0.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
