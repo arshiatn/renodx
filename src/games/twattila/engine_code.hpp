@@ -2108,6 +2108,15 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
       clear = false;
     }
   }
+#if defined(TWATTILA_DRAW_RECORDING)
+  // A fold open on another thread (a render thread between a fill site and its cut) has workers filling the ring and the game's Unmap
+  // noted for its close: the fill sites and stubs going out would let that thread make the game's own Unmap under the fill, and a cut
+  // going out would leave the fold nothing to close it. Read here, with every thread stopped, beside the dispatcher's count above.
+  if (clear && (fill_out || recording_out)) {
+    const DWORD fold_owner = draw_recording::internal::fold.thread.load();
+    clear = (fold_owner == 0 || fold_owner == GetCurrentThreadId());
+  }
+#endif
   if (clear) {
     for (size_t table = 0; table < tables.size(); ++table) {
       const uint64_t now = (table == 0 ? written : recording_written);
@@ -2949,49 +2958,31 @@ inline void Uninstall() {
   internal::SyncWorkerSlots(0);
   effect_update::Disarm();
   instance_fill::Wanted(false);  // the fill's sites run the game's own call from now on
-  // The fold's stubs and cuts: a fold open on another thread (a render thread between a fill site and its cut; this thread's own is closed
-  // by CloseFoldAtPresent, right after this) has workers filling the ring and the game's Unmap noted for its close. The stubs coming out
-  // now would let that thread make the game's own Unmap under the fill, and the cut coming out would leave the fold nothing to close it:
-  // it gets a moment (100 ms) to close, and one still open keeps the stubs and the recording sites in (the module then stays pinned
-  // below: that thread still runs them; the cut's dispatcher closes the fold and makes the noted Unmap, draw_recording::Uninstall keeps
-  // Shared). Without the private build there are no stubs to keep.
-  uint32_t fill_keep = 0;
-  uint64_t recording_keep = 0;
-#if defined(TWATTILA_DRAW_RECORDING)
-  namespace dr = draw_recording::internal;
-  const auto fold_elsewhere = [] {
-    const DWORD owner = dr::fold.thread.load(std::memory_order_relaxed);
-    return owner != 0 && owner != GetCurrentThreadId();
-  };
-  for (const uint64_t until = GetTickCount64() + 100; fold_elsewhere() && GetTickCount64() < until;) {
-    Sleep(1);
-  }
-  if (fold_elsewhere()) {
-    fill_keep = fi::written & instance_fill::FOLD_SITES;
-    recording_keep = internal::recording_written;
-  }
-#endif
+  // A fold open on another thread (a render thread between a fill site and its cut; this thread's own is closed by CloseFoldAtPresent,
+  // right after this) refuses the attempt in PausedWrite while the fill or recording sites go out (the stubs and cuts that fold needs
+  // stay in until it has closed): one that closes within the attempts lets the sites out, one still open leaves every site in below
+  // (the module pinned, recording_left_in set: the cut's dispatcher closes the fold and makes the noted Unmap, and
+  // draw_recording::Uninstall keeps Shared).
   for (int attempt = 0;
-       (internal::written != 0 || (internal::recording_written & ~recording_keep) != 0 || eu::written != 0 || (fi::written & ~fill_keep) != 0)
-       && attempt < 100;
+       (internal::written != 0 || internal::recording_written != 0 || eu::written != 0 || fi::written != 0) && attempt < 100;
        ++attempt) {
     uint32_t stood_down;
     uint64_t recording_stood_down;
     uint32_t effect_stood_down;
     uint32_t fill_stood_down;
-    if (internal::PausedWrite(0, &stood_down, recording_keep, &recording_stood_down, 0, &effect_stood_down, fill_keep, &fill_stood_down)) {
+    if (internal::PausedWrite(0, &stood_down, 0, &recording_stood_down, 0, &effect_stood_down, 0, &fill_stood_down)) {
       if ((stood_down & internal::written & internal::WORKER_SITES) != 0 || (effect_stood_down & eu::written) != 0
           || (fill_stood_down & fi::written) != 0) {
         internal::PinModule();
       }
       internal::written = 0;  // a site another mod changed is that mod's now
       eu::written = 0;
-      fi::written = fill_keep;
+      fi::written = 0;
       // The recording thunks need this module and Shared: a site left behind keeps them alive.
       if ((recording_stood_down & internal::recording_written) != 0) {
         internal::recording_left_in = true;
       }
-      internal::recording_written = recording_keep;  // kept: the final lines below set recording_left_in and say so
+      internal::recording_written = 0;
     } else {
       Sleep(1);
     }

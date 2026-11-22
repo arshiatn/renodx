@@ -24,7 +24,8 @@
 //   takes all three, the fills' row off everything; a cut back in is followed by its stub one present later;
 // - a thread parked at each byte of each stub (11 bytes): refused strictly inside, going in and going out;
 // - a thread inside the game's Unmap through a stub (the stub's `active` count): the stubs stay in, then come out;
-// - Uninstall takes the stubs out, the module not pinned; a fold open on another thread keeps them in (and pins the module) unless it closes within the wait.
+// - Uninstall takes the stubs out, the module not pinned; a fold open on another thread (also one that opens after Uninstall started) refuses
+//   the removal of the stubs and the cuts: every site stays in, the module pinned and recording_left_in set, unless it closes within the attempts.
 int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
   namespace ec = twattila::engine_code::internal;
   namespace fill = twattila::instance_fill;
@@ -197,8 +198,30 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
   twattila::engine_code::Uninstall();
   CHECK(fi::written == 0 && ec::recording_written == 0 && game_is_back() && !ec::module_pinned && !ec::recording_left_in);
   CHECK(said("left in at detach") == 0);
-  // A fold open on another thread at detach (a render thread between a fill site and its stub): it closes within the wait, the stubs come out;
-  // one that stays open keeps the stubs in and pins the module (taking them out would let that thread's game Unmap run under the fill's workers).
+  // A fold open on another thread at detach (a render thread between a fill site and its cut): PausedWrite refuses the attempt while the
+  // fill or recording sites go out. One that closes within the attempts lets everything out; one that stays open leaves every site in (the
+  // module pinned, recording_left_in set, a left-in line for each table that kept sites): taking the stubs or the cuts out under it would let
+  // that thread make the game's own Unmap under the fill's workers, or leave the fold nothing to close it.
+  namespace eu = twattila::effect_update::internal;
+  const auto stay_in_checks = [&](uint32_t written_before, uint32_t effect_before, uint64_t recording_before) -> int {
+    CHECK(fi::written == fill::ALL_SITES && ec::written == written_before && eu::written == effect_before && ec::recording_written == recording_before);
+    CHECK(ec::module_pinned && ec::recording_left_in && twattila::engine_code::DrawRecordingSitesIn());
+    const size_t lines = 2 + (((written_before | effect_before) != 0) ? 1 : 0);
+    CHECK(said("left in at detach") == lines && said("Parallel Instance Fill: left in at detach") == 1 && said("Threaded Draw Recording: left in at detach") == 1);
+    for (size_t stub = 0; stub < STUBS; ++stub) CHECK(stub_is(stub, true) && cut_in(stub));
+    for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) CHECK(!std::memcmp(fi::sites[site].at, fi::sites[site].patch.data(), fi::sites[site].size));
+    for (size_t index = 0; index < ec::recording_sites.size(); ++index) {
+      if ((recording_before >> index & 1) != 0) CHECK(!std::memcmp(ec::recording_sites[index].at, ec::recording_sites[index].jump.data(), ec::SITE_SIZE));
+    }
+    return 0;
+  };
+  const auto put_back = [&]() -> int {
+    ec::module_pinned = false;
+    ec::recording_left_in = false;
+    update(0, false, false);
+    CHECK(fi::written == 0 && ec::recording_written == 0 && game_is_back());
+    return 0;
+  };
   {
     update(ALL_GROUPS, true, true);
     update(ALL_GROUPS, true, true);
@@ -215,33 +238,53 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
     });
     twattila::engine_code::Uninstall();
     closer.join();
-    CHECK(fi::written == 0 && game_is_back() && !ec::module_pinned);
+    CHECK(fi::written == 0 && ec::recording_written == 0 && game_is_back() && !ec::module_pinned && !ec::recording_left_in);
     update(ALL_GROUPS, true, true);
     update(ALL_GROUPS, true, true);
     CHECK(fi::written == fill::ALL_SITES);
-    dr::fold.thread.store(other_id);
+    const uint32_t written_before = ec::written;
+    const uint32_t effect_before = eu::written;
     const uint64_t recording_before = ec::recording_written;
+    CHECK(recording_before != 0);
+    dr::fold.thread.store(other_id);
     log_lines.clear();
     twattila::engine_code::Uninstall();
-    CHECK(fi::written == fill::FOLD_SITES && ec::module_pinned && said("left in at detach") == 2 && said("Threaded Draw Recording: left in at detach") == 1);
-    for (size_t stub = 0; stub < STUBS; ++stub) CHECK(stub_is(stub, true));
-    // The recording sites stay in with them, the cuts among them (the cut's dispatcher closes the fold and makes the noted Unmap), and the
-    // sites are marked left in so draw_recording::Uninstall keeps Shared.
-    CHECK(recording_before != 0 && ec::recording_written == recording_before && ec::recording_left_in && twattila::engine_code::DrawRecordingSitesIn());
-    for (size_t stub = 0; stub < STUBS; ++stub) CHECK(cut_in(stub));
-    for (size_t index = 0; index < ec::recording_sites.size(); ++index) {
-      if ((recording_before >> index & 1) != 0) CHECK(!std::memcmp(ec::recording_sites[index].at, ec::recording_sites[index].jump.data(), ec::SITE_SIZE));
-    }
-    for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) CHECK(!std::memcmp(fi::sites[site].at, fi::sites[site].game.data(), fi::sites[site].size));
+    if (stay_in_checks(written_before, effect_before, recording_before) != 0) return 1;
     dr::fold.thread.store(0);
     stop = true;
     other.join();
-    ec::module_pinned = false;
-    ec::recording_left_in = false;
-    update(0, false, false);
-    CHECK(fi::written == 0 && ec::recording_written == 0 && game_is_back());
+    if (put_back() != 0) return 1;
   }
-  std::printf("29f. Uninstall takes the stubs out, the module not pinned; a fold open on another thread keeps the stubs and the recording sites (the cuts) in, pins the module and marks them left in, unless it closes within the wait\n");
+  // A fold that opens on another thread while Uninstall runs (that thread inside Dispatch, past the fold_on load: its count holds the first
+  // attempts): the stubs and the cuts must not come out under it once it is open.
+  {
+    update(ALL_GROUPS, true, true);
+    update(ALL_GROUPS, true, true);
+    CHECK(fi::written == fill::ALL_SITES);
+    const uint32_t written_before = ec::written;
+    const uint32_t effect_before = eu::written;
+    const uint64_t recording_before = ec::recording_written;
+    std::atomic<bool> stop = false;
+    std::thread other([&] {
+      while (!stop.load()) Sleep(1);
+    });
+    const DWORD other_id = GetThreadId(other.native_handle());
+    fi::active.store(1);
+    std::thread opener([&] {
+      Sleep(5);
+      dr::fold.thread.store(other_id);
+      fi::active.store(0);
+    });
+    log_lines.clear();
+    twattila::engine_code::Uninstall();
+    opener.join();
+    if (stay_in_checks(written_before, effect_before, recording_before) != 0) return 1;
+    dr::fold.thread.store(0);
+    stop = true;
+    other.join();
+    if (put_back() != 0) return 1;
+  }
+  std::printf("29f. a fold open on another thread at detach refuses the removal of the stubs and the cuts (closing within the attempts: everything out; staying open, or opening after Uninstall started: every site left in, the module pinned, recording_left_in set, one left-in line per table)\n");
   return 0;
 }
 #endif
