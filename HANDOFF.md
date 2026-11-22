@@ -496,16 +496,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
 - coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
 - ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job fi ... | ?
-- review (Opus xHigh): grs_dead_uses + dead_outputs.py together, after grs_'s hand ... | ?
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
-- gtl_: stage H1 + H2 + M1 / M2 / M2b / M3 / M4 + L1 / L2 + nits; gtv_ re-checks; ... | ?
 - coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU ... | ?
 - gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ... | ?
-- gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land- ... | ?
 - grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal ... | ?
-- fcr_: re-check grs_ aa42b6374 + gti_ T1-T4 (dead_outputs.py) as one piece -> MER ... | ?
 - gtv_ (Opus xHigh, read only): root cause of S3c part 1's 3 failed calibrations ( ... | ?
 - coord: S3c part 1 RE-RUN (calibrate -> A/A -> rotation -> trace) after gtv_'s fi ... | ?
+- gtl_: land-time unit + jobs re-run on the LIVE lab (coord 16:23). | ?
+- grs_ (low, bundle with gtv_'s resident fixes if any): fcr_ nit R1 set_pool exter ... | ?
+- coord: S3c part 2 (dead outputs on R3, M10) after gtv_'s root cause; recorder bu ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10340,7 +10339,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         copy_src / copy_dst / clear / external; slot u15:0), only ReadLog parses it; (2) log must list external resources
         (shared textures, presented, dumped, read back); (3) stem name = stem actually used (swaps); (4) conservative:
         atomic = read, same-span read counts, cbuffer-gated store = written; (5) SER library out of v1.
-        - [ ] review (Opus xHigh): grs_dead_uses + dead_outputs.py together, after grs_'s hand-back (coord 14:48).
+        - [x] review (DONE 16:18 by fcr_, MERGE-READY): grs_dead_uses + dead_outputs.py together, after grs_'s hand-back (coord 14:48).
         gtl_ S3C STAGE 15:10 (plan_1117/gtl_s3c_stage_handback.md; stage testbin\scratch\gtl_\stage\tw\lab\; live lab
         untouched, no GPU, gpu_job.lock absent each run): item 2 GpuSampler log -> <job>\gpu_samples.tsv (time pid image
         pct own; own pids re-read <= 1 / s; image(pid) cache replaces static dwm()), block() -> blocks.tsv; items 5 / 6 / 7
@@ -10459,7 +10458,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         committed GB before step 6 (16 starts check vs 45 GB; no big builds during it), idle exit after 10 min (compare A9(a)
         budgets one side of R1's exit), no R1 GPU rows in step 6 gpu_samples.tsv (stage-only file: in part 1 use the live
         sampler's flag / keeper.log instead). If any fails: rotation ends kept residents first, keeping the session.
-        - [ ] gtl_: stage H1 + H2 + M1 / M2 / M2b / M3 / M4 + L1 / L2 + nits; gtv_ re-checks; lands after S3c part 1 by
+        - [x] gtl_ (LANDED 16:23 by coord, 10 files): stage H1 + H2 + M1 / M2 / M2b / M3 / M4 + L1 / L2 + nits; gtv_ re-checks; lands after S3c part 1 by
         copying (coord 15:40).
         - [ ] coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU use) (coord 15:40). NOT TAKEN
         16:15 (step 6 skipped) -> carry to the S3c part 1 re-run.
@@ -10566,7 +10565,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         gti_ T4 15:59 (plan_1117/gti_t4_handback.md; backup scratchpad\gti_bak16): a read in ANY later logged frame keeps a
         write live ("a later frame: a history"); unplaceable handles make earlier writes UNDECIDED from any later frame; last
         frame UNDECIDED; tests 21 / 21. -> fcr_ re-checks gti_ with grs_'s G1-G4 when those land.
-        - [ ] gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land-list hashes (coord 15:59). GO
+        - [x] gtl_ (DONE 16:22, all suites OK): keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land-list hashes (coord 15:59). GO
         SENT 16:1x.
         - [x] gtv_ (DONE 16:05: GO to land after S3c part 1): re-check gtl_'s stage review fixes (read + unit / analyze only during S3c; keeper / jobs after)
         (coord 15:59).
@@ -10637,7 +10636,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         hashes; live originals match); NEW testbin\scratch\gtl_\landed_suite.sh (build = live lab + gates / reference /
         nsight + land list on top, refuses on changed originals / hash mismatch; refuses while gpu_job.lock). Waits for
         "S3c done". + job_schema.json.proposed "at most one loop" text -> "1 to 64, over loops" (coord asks).
-        - [ ] fcr_: re-check grs_ aa42b6374 + gti_ T1-T4 (dead_outputs.py) as one piece -> MERGE-READY (coord 16:07).
+        - [x] fcr_ (DONE 16:18 MERGE-READY; merged 17676b1e4): re-check grs_ aa42b6374 + gti_ T1-T4 (dead_outputs.py) as one piece -> MERGE-READY (coord 16:07).
         gtl_ PROPOSAL TEXT 16:08 (plan_1117/gtl_proposal_text_handback.md): staged job_schema.json.proposed 3 dump_frames
         descriptions -> "resident v1.1 dump frames: 1 to 64 over loops, a frame of loop j named its recorded frame + span x
         j" (top-level, seed_runs.dump_frames, iq.dump_frames); parses; live job_schema.json untouched; land list 16:08
@@ -10687,9 +10686,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         resident's own idle stop). A7 PASS: 123 config / dump commands, max 1 s (whole-second stamps). A9(b) PASS []. A10
         FLAG: settle_all R1 0 (frame 1152), R2 1 (449), R3 0 (512). A11 snapshot R1 2106 / R2 2106 / R3 1864 MB VRAM (no
         budget.py observe; coord decides after gtv_). A6 + A10 sent to gtv_.
-        Agents (4): gtp_ (gate round 20), fcr_ (dead-output re-check), gtl_ (stage re-run: keeper + jobs suites), gtv_
-        (S3c calibration + trace root cause, read only); gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c
-        part 1 done); one GPU job at a time
+        fcr_ DEAD OUTPUTS RE-CHECK 16:18 = MERGE-READY (plan_1117/fcr_dead_outputs_recheck_handback.md;
+        fcr_dead_outputs_review.md "## re-check"; scratch testbin\scratch\fcr_\du2): G1 external list complete for every
+        output that could read DEAD (all root UAVs external incl. rt_omm_uvs' index write; 16 NVAPI table buffers
+        rt_d3d12.hpp:1451-1465 + slot<i>_ptlas_device; BLAS / TLAS / OMM inputs copy_src; bake inputs + room growth external;
+        CPU-written uploads never logged); release unchanged (pe_compare .text 99 B, 64 runs = line numbers, added_guards
+        clean); T1-T4 probe_classify2.py 7 / 7 (planted dead still DEAD); test_uses_log 9 / 9, test_store_skip 3 / 3,
+        test_dead_outputs 21 / 21. Nits left: R1 grs_ set_pool not external (copies write :6255, NVAPI template builds read
+        :2250 / :6436; worst = COPY NOT READ, never DEAD; fix = uses_->External("set_pool") in StopUses); R2 grs_ stale
+        use_unnamed_ ranges (safe side); R3 gti_ note: T4 makes earlier writes UNDECIDED when a later frame has a block.
+        MERGED grs_dead_uses 16:19 = 17676b1e4 (name_check 56 generic tokens; x86 twattila / twrome2 / twthronesofbritannia
+        + amd64 twattila exit 0; helper plain 5,689,856 B = base (testbin\scratch\coord_\helper_du); recorder 6,769,664 B in
+        D:\Dev\renodx\build\helper_du_rec (16:22, for S3c part 2)); pushed.
+        gtl_ STAGE RE-RUN 16:22 (plan_1117/gtl_stage_rerun_handback.md; testbin\scratch\gtl_\runs\land_*.txt): landed
+        sandbox unit 37 / analyze 4 / ps1 5 / keeper 28 (test_s3c_logs incl.) / jobs 34 all OK; no live original changed;
+        land_list.tsv refreshed 16:21. LANDED BY COORD 16:23 (testbin\scratch\coord_\land_stage.py: all hashes checked
+        first; backup testbin\scratch\coord_\lab_bak_20261122_1623): lab.py 74d42971, lab_keeper.py 098b565e,
+        fake_resident.py a1a40374, NEW lab_analyze.py 5ce54b66, NEW job_schema.json.proposed 92258203 (proposal only; live
+        job_schema.json unchanged), tests/test_lab_{fixture,keeper,unit,jobs}.py, NEW tests/test_lab_analyze.py.
+        - [ ] gtl_: land-time unit + jobs re-run on the LIVE lab (coord 16:23).
+        - [ ] grs_ (low, bundle with gtv_'s resident fixes if any): fcr_ nit R1 set_pool external in StopUses (coord 16:23).
+        - [ ] coord: S3c part 2 (dead outputs on R3, M10) after gtv_'s root cause; recorder build build\helper_du_rec.
+        Agents (3): gtp_ (gate round 20), gtl_ (land-time unit + jobs on live lab), gtv_ (S3c calibration + trace root
+        cause, read only); fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU
+        job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
