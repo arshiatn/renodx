@@ -6677,8 +6677,32 @@ heading text are in HANDOFF_ARCHIVE.md)
         -Scope spec,cxx fails under -File, I1 A0 check that chained PowerShell still asks (else drop the 4 PowerShell
         rules), I2 status lines. Also: F2 protection refuses writes outside protected files (-Value, copies out), I3 T07
         as a commented row, T04 text. gtp_ RESUMED 01:5x, then gtw_ short re-check, then INSTALL to ATN.
-        Agents (8): c33i_ (R-S5 fixes), gtp_ (S1c small fixes), ebr_ (r16 review), lga_ (group 2 re-check 2), lgf1_ (group 1
-        follow-up), gtv_ (S1a + S1b re-check), h0i_ (H0 run script), upt_ (unified PT v2.3). QUEUE: R-S5 re-checks
+        ATN 02:0x: UNIFIED PT: NQ1 build (a) + (c) (+ (b)), keep / drop with reasons + numbers, ATN decides at the end;
+        NQ5 everything now; Q6 build + measure EVERY new row / arm in the GPU runs (Nsight cost + quality); Q7 U9 yes;
+        Q8 build, reasons at the end; NQ4 'reservoir everywhere if not noisier and faster' -> on by default when noise at
+        equal time is lower and the reference shows no blur; NQ2 / NQ3 yes; Q1 AMD / Intel routes YES (Ray Regeneration
+        is NOT in our code yet: new step; hybrid RX 9000 question to ATN). Sent to upt_ (v2.3).
+        ATN 02:0x: FORGE ITEMS NOW + BOTH PLANS IN PARALLEL (render_mt + GPU plan, any number of agents; don't lose
+        hand-backs over compaction = every hand-back saved to a file + logged here before acting). GPU / in-game work
+        batched late: my suggestion sent (3 classes, see reply). STARTED 02:0x (Opus High, offline, no GPU):
+        - gtl_ (aba349d4c2a351268) S3 lab + kinds iq / pbrt / scene: tools\tw\lab\gpu_lab.ps1, lab.py, lab_keeper.py,
+          job_schema.json, fake_resident.py, phase_model.tsv (fakes only; ATN's Q1 lab rules not there yet);
+        - gtq_ (ac536ecbdfc8b75a6) B1 quality metrics: tools\tw\reference\iq_frames.py, masks.py, iq_map.tsv, FLIP
+          wrapper (FLIP exe waits on Q16);
+        - gtk_ (a79d46cc1e1b2f479) C1 the box: tools\tw\scenes\*, rt_harness\scene_mode.hpp, scene_to_pbrt.py (pbrt
+          waits on Q20 / C2).
+        S2 (grs_, helper owner) starts when rmt_lg2 merges. Bulk index STARTED 02:0x (coordinator, below-normal,
+        deadline 180 min; log scratchpad\coord_bulk_index.log).
+        gtv_ S1a / S1b RE-CHECK 02:0x (plan_1117/gtv_s1ab_recheck_handback.md): S1a OK (bulk may start) + new Must 4
+        (ns_trace_run exits 0 with no new trace -> gpu_trace tables the OLD trace) + Shoulds 7-10 -> gti_ RESUMED (+ one
+        shared ns_busy reader); S1b FIX: Must 3 sentence split on 'e.g.' / 'vs.', Must 4 NaN passes the gate + Shoulds
+        6 / 8 -> gtb_ RESUMED. lgf1_ FOLLOW-UP DONE 02:0x: rmt_lg1 9ae4b8419 (S1 overflow events, N1, N2 exact x86
+        record, N4); tests PASS both, builds exit 0 -> lga_ look after group 2.
+        [ ] ATN: gto §10 open questions before later steps (Q1 lab rules, Q2, Q3, Q6, Q7 no, Q9-Q11, Q13, Q16-Q25) asked
+        02:1x.
+        Agents (11): c33i_ (R-S5 fixes), gtp_ (S1c small fixes), ebr_ (r16 review), lga_ (group 2 re-check 2), h0i_ (H0
+        run script), upt_ (unified PT v2.3), gti_ (S1a Must 4), gtb_ (S1b Musts 3-4), gtl_ (S3), gtq_ (B1), gtk_ (C1).
+        QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
         rmt_h0, Mega Geometry 4K run (after rmt_lg2), B1.6, X1, logging group 3, PT DI steps 0-4 (after rmt_lg2 + H0), S2
