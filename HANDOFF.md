@@ -6863,7 +6863,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         gti_ NITS 8 / 10 / 11 DONE 02:5x (plan_1117/gti_nit8_handback.md, backups scratchpad\gti_bak5): wrapped error
         records joined; REFUSED carries the exception; SystemExit checks; test_gpu_lock 34 / 34, test_harness_runs_lock
         9 / 9. gtv_ SHORT RE-CHECK STARTED.
-        Agents (10): bd3r_ (nit 5 re-check), lga_ (r3 re-check), ebr_ (r17 re-check), gtw_ (S1c re-check 4), upt_
+        gtw_ S1c RE-CHECK 4 02:5x = OK (plan_1117/gtw_s1c_recheck4_handback.md): T1b guard, sdk-api download (official,
+        pinned, nothing run inside), rank change (own page first, others keep order, 0.125 s), run_tests 242 / 242. S1c
+        CLOSED. 3 nits (T1b vs fixed real folder + MSYS paths, one rank test passes on the old spec.py, own-page cite
+        line after the front matter) -> gtp_ RESUMED.
+        bd3r_ NIT 5 RE-CHECK 02:5x = OK at f1913c83c (render_mt/reports/bd3r_nit5_recheck_handback.md; review
+        bd3r_review.md :731). N6 (bd1r_'s): real, both reviewers say do it now (complete check under the suspension,
+        removes fill_keep / recording_keep / lambda / 100 ms wait) -> c33i_ RESUMED 02:5x (one commit on f1913c83c);
+        then bd1r_ re-check -> merge rmt_rs5.
+        Agents (10): c33i_ (N6), lga_ (r3 re-check), ebr_ (r17 re-check), gtp_ (S1c nits), upt_
         (v2.4), h0i_ (H0 script fixes), gtv_ (Nit 8 re-check), gtl_ (S3), gbc_ (C1 + C2, then B1 review), gpr_ (price +
         web review).
         QUEUE: R-S5 re-checks
