@@ -6969,9 +6969,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         clean, SHaRC pin OK, gated builds exit 0. Junctions left: worktree agent-a89c9abe637f2c4c2\bin, scratchpad\
         h0i_rtree (bin, include, external, build\downloads) -> delete the links alone first. upr_ H0 r2 QUEUED after
         its v2.4 re-check; then the coordinator runs -DryRun (ATN's rule), then the real run in a gap.
-        Agents (10): c33i_ (N6), ebr_ (r17 re-check), upr_ (v2.4 re-check, then H0 r2), gpp_ (price + web v2), grs_
-        (S2), gtl_ (S3 fixes), gtw_ (S1c re-check 5), gbc_ (C1 + C2, then B1 review). Idle: lga_, lgf2_, h0i_, gtv_
-        (waits gtl_), gtq_ / gtk_ (wait gbc_), gti_, gtb_, gtp_.
+        gpp_ v2 DONE 03:2x (plan_1117/designs/gpp_v2_handback.md; design 666 lines, item map at the top): all 7 MUST +
+        13 SHOULD + 10 NIT answered, no new ATN question. Hook never touches timeouts (moved = censored), budget.py watch
+        the only kill; background prices from watch_runs.tsv + declared deadlines; unpriced never killed; gated_build
+        slots as v1 lock records; fix-now only after 2 priced faults in a row; cause() into gate_hook; licensed repos:
+        permissive SPDX -> code_repos.tsv, GPL / NC / ND / none -> ask ATN. Owners: gtp_ 8-11 h, gtb_ 3-5 h, gti_ 0.2 h;
+        27 tests (fakes). gpr_ v2 RE-CHECK STARTED.
+        Agents (10): c33i_ (N6), ebr_ (r17 re-check), upr_ (v2.4 re-check, then H0 r2), gpr_ (price + web v2 re-check),
+        grs_ (S2), gtl_ (S3 fixes), gtw_ (S1c re-check 5), gbc_ (C1 + C2, then B1 review). Idle: lga_, lgf2_, h0i_,
+        gpp_, gtv_ (waits gtl_), gtq_ / gtk_ (wait gbc_), gti_, gtb_, gtp_.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
