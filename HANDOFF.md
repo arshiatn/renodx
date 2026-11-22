@@ -484,6 +484,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (morning report): add a B1L1-only volley pair to the end batch? ~7 min (L1-o ... | ?
 - T5 build step: write the real manifest.json with these rows / row_values / env ( ... | ?
 - t4i_ (after ebr_ T5): option (a) = an arm every 10 s in the soak starts' L2 time ... | ?
+- gti_ (with r1a / r1b): ns_busy.ps1's game list lacks Divinity (EoCApp), Expediti ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8894,9 +8895,34 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] t4i_ (after ebr_ T5): option (a) = an arm every 10 s in the soak starts' L2 time outside measured
             windows (~+525, not PAUSE-W3); check the runner's file moves + ebo_check's file-per-window rule cope
             (t4i_ 09:2x).
+        gtw_ RELEASE_CHECK REVIEW = SAFE, FIX VERDICT FIRST 09:2x (plan_1117/gtw_release_check_review_handback.md;
+        probes scratchpad\gtw_rc_imports.py + gtw_rc_diff.py; dry run dryrun_20261122_091749 OK): starts only cmd /
+        taskkill / python gpu_lock / ns_busy + the harness from the 2 testbin folders (helper path = harness folder,
+        PE imports system DLLs only); kills only its own cmd tree after 600 s; lock released in finally (Ctrl-C after
+        the running job; killed PS = dead pid, next acquirer takes over); TDR line = clean stop; Committed Bytes +
+        busy refusal OK; -DryRun starts nothing. Diff vs h0_gpu_runs.ps1: shared functions identical. Parsers right
+        for both stacks. SHOULDS: S1 verdict mislabels mixed results - ENVIRONMENT needs new ~ old (paired |new -
+        old| <= 10 ms in 3 of 4), CODE needs old near 11-16 (all <= 65) + new - old >= 15-20 in 3 of 4, RUN
+        CONDITIONS must not ignore a sub-75 gap (55 vs 72), a job whose release never fired counts only with both
+        PASS lines ("ray tracing's memory released", "the addon told of the release") + one scene line, else
+        OPEN (noise: 11-16 fix 52-57, H0 smoke 66-78); S2 cold shader cache in round 1 (new exe paths) -> one
+        warm-up job per stack outside the verdict (~2 min) or h0's one-retry rule; S3 no load check (build_job*.lock,
+        quiet_run.lock, CPU load) -> record per job + OPEN beside a build, and/or a held window; S4 a TDR without a
+        log line is missed -> stop on exit codes other than 0 / 1 / 124 (+ optional System event Display 4101 /
+        nvlddmkm since the job start). Run time 7.5-9 min (-WithRelease 11-13); run it in the BACKGROUND (a
+        foreground kill mid-job leaves a stale lock + orphan harness). Nits N1 copy the helper log after
+        Wait-OursGone + try/catch so an error still writes summary.txt; N2 wait before the final release; N3 dry
+        run flags unexpected extra files (e.g. sl.interposer.dll); N4 RUN CONDITIONS text names no HARNESS_DUMP +
+        the FSR / XeSS / FG DLLs; N5 header: helpers write logs / .dmp in testbin too; N6 ns_busy.ps1's game list
+        lacks Divinity (EoCApp), Expeditions Rome, RUSE (owner gti_); N7 dry run prints python path + `gpu_lock.py
+        show`; N8 settle before releasing the lock after a TDR. COORDINATOR on S3: both - record per job + OPEN
+        beside a build, and the real run goes in a held window. -> lga_ FIXES STARTED (S1-S4 + N1-N5, N7, N8); gtw_
+        re-checks.
+        - [ ] gti_ (with r1a / r1b): ns_busy.ps1's game list lacks Divinity (EoCApp), Expeditions Rome and RUSE
+            (gtw_ 09:2x).
         Agents (7): upr_ (h0i_ F1-F4 re-check), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gpr_
-        (gtb_ slot-wait / floor / R12-1 + load proposal check), grs_ (first-frame v3 + steps 1-2), gtw_
-        (release_check.ps1 review), ebr_ (t4i_ T5 review), c3i_ (B1 F1 + F2 logging)
+        (gtb_ slot-wait / floor / R12-1 + load proposal check), grs_ (first-frame v3 + steps 1-2), lga_
+        (release_check fixes), ebr_ (t4i_ T5 review), c3i_ (B1 F1 + F2 logging)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
