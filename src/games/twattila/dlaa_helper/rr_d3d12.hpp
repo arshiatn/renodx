@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <format>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <nvsdk_ngx.h>
@@ -137,15 +138,19 @@ class RayReconstruction12 {
     const wchar_t* paths[] = {folder.c_str()};
     const NVSDK_NGX_FeatureCommonInfo common_info = {.PathListInfo = {.Path = paths, .Length = 1}};
     int available = 0;
-    if (NVSDK_NGX_FAILED(NVSDK_NGX_D3D12_Init_with_ProjectID(talesofarise::dlss::PROJECT_ID, NVSDK_NGX_ENGINE_TYPE_CUSTOM, "1.0",
-                                                             cache.c_str(), device_.Get(), &common_info))) {
-      return Fail("Ray Reconstruction: NVIDIA's D3D12 runtime did not start");
+    if (const NVSDK_NGX_Result started = NVSDK_NGX_D3D12_Init_with_ProjectID(talesofarise::dlss::PROJECT_ID, NVSDK_NGX_ENGINE_TYPE_CUSTOM, "1.0",
+                                                                             cache.c_str(), device_.Get(), &common_info);
+        NVSDK_NGX_FAILED(started)) {
+      return Fail(std::format("Ray Reconstruction: NVIDIA's D3D12 runtime did not start (0x{:08X})", static_cast<uint32_t>(started)));
     }
     initialized_ = true;
-    if (NVSDK_NGX_FAILED(NVSDK_NGX_D3D12_GetCapabilityParameters(&parameters_)) || parameters_ == nullptr
-        || NVSDK_NGX_FAILED(NVSDK_NGX_Parameter_GetI(parameters_, NVSDK_NGX_Parameter_SuperSamplingDenoising_Available, &available))
-        || available == 0) {
-      return Fail("Ray Reconstruction unavailable (nvngx_dlssd.dll next to nvngx_dlss.dll?)");
+    NVSDK_NGX_Result asked = NVSDK_NGX_D3D12_GetCapabilityParameters(&parameters_);
+    if (NVSDK_NGX_SUCCEED(asked) && parameters_ != nullptr) {
+      asked = NVSDK_NGX_Parameter_GetI(parameters_, NVSDK_NGX_Parameter_SuperSamplingDenoising_Available, &available);
+    }
+    if (NVSDK_NGX_FAILED(asked) || parameters_ == nullptr || available == 0) {
+      return Fail(std::format("Ray Reconstruction unavailable (0x{:08X}, available {}; nvngx_dlssd.dll next to nvngx_dlss.dll?)",
+                              static_cast<uint32_t>(asked), available));
     }
     status_ = "Ray Reconstruction ready";
     return true;
@@ -237,9 +242,9 @@ class RayReconstruction12 {
     uint64_t value = 0;  // own_fence_'s value after its last use
   };
 
-  bool Fail(const char* status) {
+  bool Fail(std::string status) {
     failed_ = true;
-    status_ = status;
+    status_ = std::move(status);
     return false;
   }
 
@@ -311,10 +316,13 @@ class RayReconstruction12 {
           .InFeatureCreateFlags = request.create_flags,
           .InEnableOutputSubrects = false,
       };
-      if (NVSDK_NGX_FAILED(NGX_D3D12_CREATE_DLSSD_EXT(list, 1, 1, &feature_, parameters_, &create)) || feature_ == nullptr) {
+      if (const NVSDK_NGX_Result created = NGX_D3D12_CREATE_DLSSD_EXT(list, 1, 1, &feature_, parameters_, &create);
+          NVSDK_NGX_FAILED(created) || feature_ == nullptr) {
         list->Close();
         feature_ = nullptr;
-        status_ = "Ray Reconstruction could not be created";
+        status_ = std::format("Ray Reconstruction could not be created (0x{:08X}; {} x {} to {} x {}, quality {}, flags 0x{:X})",
+                              static_cast<uint32_t>(created), create.InWidth, create.InHeight, create.InTargetWidth, create.InTargetHeight,
+                              static_cast<int>(quality), static_cast<uint32_t>(request.create_flags));
         return false;
       }
       width_ = request.width;
@@ -378,12 +386,17 @@ class RayReconstruction12 {
         .InExposureScale = 1.f,
         .pInTransparencyLayer = extra[PARTICLE_LAYER],
     };
-    evaluated_ = NVSDK_NGX_SUCCEED(NGX_D3D12_EVALUATE_DLSSD_EXT(list, feature_, parameters_, &parameters));
+    const NVSDK_NGX_Result evaluation = NGX_D3D12_EVALUATE_DLSSD_EXT(list, feature_, parameters_, &parameters);
+    evaluated_ = NVSDK_NGX_SUCCEED(evaluation);
     for (auto& barrier : barriers) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
     list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
     if (FAILED(list->Close())) return Fail("Ray Reconstruction: D3D12 stopped");
     first_frame_ = false;
-    status_ = evaluated_ ? "DLSS Ray Reconstruction active (D3D12)" : "Ray Reconstruction evaluation failed";
+    if (evaluated_) {
+      status_ = "DLSS Ray Reconstruction active (D3D12)";
+    } else {
+      status_ = std::format("Ray Reconstruction evaluation failed (0x{:08X})", static_cast<uint32_t>(evaluation));
+    }
     return true;
   }
 

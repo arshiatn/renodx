@@ -33,6 +33,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "../dlaa_bridge.h"
@@ -315,12 +316,14 @@ class RtScene12 {
         timestamps_.Reset();
       }
     }
-    if (FAILED(device_->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(queue_.GetAddressOf())))
-        || FAILED(device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(own_fence_.GetAddressOf())))) {
-      return Fail("Ray tracing: no D3D12 queue");
+    if (const HRESULT made = device_->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(queue_.GetAddressOf())); FAILED(made)) {
+      return Fail(std::format("Ray tracing: no D3D12 queue (0x{:08X})", static_cast<uint32_t>(made)));
+    }
+    if (const HRESULT made = device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(own_fence_.GetAddressOf())); FAILED(made)) {
+      return Fail(std::format("Ray tracing: no D3D12 fence (0x{:08X})", static_cast<uint32_t>(made)));
     }
     event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (event_ == nullptr) return Fail("Ray tracing: no completion event");
+    if (event_ == nullptr) return Fail(std::format("Ray tracing: no completion event (error {})", GetLastError()));
     for (Slot& slot : slots_) {
       slot.instances = Buffer(uint64_t{MAX_INSTANCES} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC), D3D12_HEAP_TYPE_UPLOAD,
                               D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -335,18 +338,20 @@ class RtScene12 {
                          D3D12_RESOURCE_STATE_GENERIC_READ);
       slot.left_out = Buffer(LEFT_OUT_BYTES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
       slot.left_out_readback = Buffer(LEFT_OUT_BYTES + sizeof(uint32_t), D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
-      if (FAILED(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.allocator.GetAddressOf())))
-          || FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr,
-                                               IID_PPV_ARGS(slot.list.GetAddressOf())))
-          || FAILED(slot.list->Close())
-          || !slot.instances || !slot.table || !slot.sizes || !slot.readback || !slot.rows_readback || !slot.jobs
-          || !slot.left_out || !slot.left_out_readback
-          || FAILED(slot.left_out_readback->Map(0, nullptr, reinterpret_cast<void**>(&slot.left_out_data)))
-          || FAILED(slot.instances->Map(0, nullptr, reinterpret_cast<void**>(&slot.instance_data)))
-          || FAILED(slot.table->Map(0, nullptr, reinterpret_cast<void**>(&slot.table_data)))
-          || FAILED(slot.jobs->Map(0, nullptr, reinterpret_cast<void**>(&slot.jobs_data)))) {
-        return Fail("Ray tracing: no D3D12 command lists");
+      if (!slot.instances || !slot.table || !slot.sizes || !slot.readback || !slot.rows_readback || !slot.jobs || !slot.left_out
+          || !slot.left_out_readback) {
+        return Fail("Ray tracing: no memory for its slots' buffers");
       }
+      HRESULT made = device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.allocator.GetAddressOf()));
+      if (SUCCEEDED(made)) {
+        made = device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr, IID_PPV_ARGS(slot.list.GetAddressOf()));
+      }
+      if (SUCCEEDED(made)) made = slot.list->Close();
+      if (SUCCEEDED(made)) made = slot.left_out_readback->Map(0, nullptr, reinterpret_cast<void**>(&slot.left_out_data));
+      if (SUCCEEDED(made)) made = slot.instances->Map(0, nullptr, reinterpret_cast<void**>(&slot.instance_data));
+      if (SUCCEEDED(made)) made = slot.table->Map(0, nullptr, reinterpret_cast<void**>(&slot.table_data));
+      if (SUCCEEDED(made)) made = slot.jobs->Map(0, nullptr, reinterpret_cast<void**>(&slot.jobs_data));
+      if (FAILED(made)) return Fail(std::format("Ray tracing: no D3D12 command lists (0x{:08X})", static_cast<uint32_t>(made)));
       slot.list->SetName(std::format(L"slot {}", &slot - slots_.data()).c_str());
     }
     // The vertex copy (BLAS inputs), the records and pools, the TLAS and its instances' room (PlacedRoom).
@@ -1081,6 +1086,12 @@ class RtScene12 {
   // behind): main.cpp keeps the scene until Idle instead of freeing it under that work (the destructor's wait would end
   // the helper), and does not count it as a failed request.
   [[nodiscard]] bool TimedOut() const { return timed_out_; }
+  // The last wait that timed out: this queue's fence then and the value it waited for.
+  struct Stall {
+    uint64_t completed = 0;
+    uint64_t wanted = 0;
+  };
+  [[nodiscard]] const Stall& LastStall() const { return stall_; }
   // Nothing submitted can still run (done, or the device removed). Read with no request in flight.
   [[nodiscard]] bool Idle() const { return !own_fence_ || own_fence_->GetCompletedValue() >= own_value_; }
 
@@ -3114,9 +3125,12 @@ class RtScene12 {
       list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
       Stamp(list, slot_index * STAMPS + 5);
       Resolve(list, slot_index);
-      recorded = SUCCEEDED(list->Close());
-      if (!recorded) {
+      if (const HRESULT closed = list->Close(); FAILED(closed)) {
+        recorded = false;
         request_failed_ = true;
+        status_ = std::format("Ray tracing: a request failed (0x{:08X})", static_cast<uint32_t>(closed));
+        slow_report_ += std::format("{}[TW ray tracing] {} {} could not be recorded (0x{:08X}); its passes: {}.", slow_report_.empty() ? "" : "\n",
+                                    reflections ? "Reflections" : "Light Bounce", own_value_ + 1, static_cast<uint32_t>(closed), Passes(slot));
       }
     }
     LARGE_INTEGER submit_start;
@@ -3866,9 +3880,9 @@ class RtScene12 {
     bool gpu = false;  // baked on the GPU (BakeMicromapsOnGpu), else read back for the CPU
   };
 
-  bool Fail(const char* status) {
+  bool Fail(std::string status) {
     failed_ = true;
-    status_ = status;
+    status_ = std::move(status);
     return false;
   }
 
@@ -3880,6 +3894,7 @@ class RtScene12 {
     if (WaitForGpu(own_fence_.Get(), event_, value, FENCE_TIMEOUT)) return true;
     timed_out_ = true;
     request_failed_ = true;
+    stall_ = {.completed = own_fence_->GetCompletedValue(), .wanted = value};
     return false;
   }
 
@@ -5006,6 +5021,16 @@ class RtScene12 {
     for (Slot& slot : slots_) {
       if (slot.list.Get() == list) slot.marks.push_back(pass);
     }
+  }
+
+  // A slot's passes by Mark's names ("none" without Log Details): a request whose list could not be closed.
+  static std::string Passes(const Slot& slot) {
+    std::string passes;
+    for (const wchar_t* pass : slot.marks) {
+      passes += passes.empty() ? "" : ", ";
+      for (; *pass != L'\0'; ++pass) passes += static_cast<char>(*pass);
+    }
+    return passes.empty() ? "none" : passes;
   }
 
   static D3D12_RESOURCE_BARRIER Transition(ID3D12Resource* resource, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) {
@@ -6765,7 +6790,9 @@ class RtScene12 {
         };
         const NVAPI_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PARAMS params = {.version = NVAPI_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PARAMS_VER,
                                                                                 .pDesc = &desc};
-        if (NvAPI_D3D12_BuildRaytracingPartitionedTlasIndirect(list, &params) != NVAPI_OK) return skip("Ray tracing: the partitioned TLAS failed");
+        if (const NvAPI_Status built = NvAPI_D3D12_BuildRaytracingPartitionedTlasIndirect(list, &params); built != NVAPI_OK) {
+          return skip(std::format("Ray tracing: the partitioned TLAS failed (NvAPI {})", static_cast<int>(built)));
+        }
         const auto to_copy = Transition(slot->ptlas_device.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
         list->ResourceBarrier(1, &to_copy);
         ptlas_current_ = 1 - ptlas_current_;
@@ -7125,15 +7152,10 @@ class RtScene12 {
       status_ = std::format("Ray tracing: a request failed (0x{:08X})", static_cast<uint32_t>(closed));
       // Which passes it held (the one-off E_INVALIDARG of debug32 recorded in 0.01 ms; with RENODX_TW_D3D12_DEBUG the
       // debug layer's messages follow).
-      std::string passes;
-      for (const wchar_t* pass : slot->marks) {
-        passes += passes.empty() ? "" : ", ";
-        for (; *pass != L'\0'; ++pass) passes += static_cast<char>(*pass);
-      }
       slow_report_ += std::format("{}[TW ray tracing] Trace {} could not be recorded (0x{:08X}; {} captures, {} compact draws, {} placements, {} GPU "
                                   "bakes); its passes: {}.",
                                   slow_report_.empty() ? "" : "\n", own_value_ + 1, static_cast<uint32_t>(closed), shared.rt_capture_count,
-                                  shared.rt_compact_count, shared.rt_placement_count, slot->gpu_bakes, passes.empty() ? "none" : passes);
+                                  shared.rt_compact_count, shared.rt_placement_count, slot->gpu_bakes, Passes(*slot));
       return false;
     }
     // Meshes unseen for long give their BLAS (and micromaps, record, pool ranges) back once the GPU is past this request.
@@ -9113,6 +9135,7 @@ class RtScene12 {
   bool failed_ = false;
   std::atomic_bool request_failed_ = false;  // Lost (the worker sets it, main.cpp reads it)
   std::atomic_bool timed_out_ = false;       // TimedOut (likewise)
+  Stall stall_;                              // LastStall (the worker's, read after its drain)
   bool details_ = false;  // the addon's Log Details or profile (this request's): GPU times, markers, the status, the log's lines
   void NoteNrd(uint32_t signal, bool ran) {
     if (ran) {
