@@ -616,6 +616,18 @@ void TestRewrite() {
   all_bytes(fill::R1_SITES);
   restore_game_bytes();
 #endif
+  // A window that changes both groups with another tool's byte in one of them: that group stands down alone, the other's change
+  // is made (Rewrite's compare rule is per group; Wanted never asks for such a window, so this is the only place that pins it).
+  for (const uint32_t foreign_group : {fill::R1_SITES, fill::FOLD_SITES}) {
+    const size_t foreign_site = (foreign_group == fill::R1_SITES ? 2 : 5);
+    patched[fill::SITES[foreign_site].rva + 1] ^= 0x04;
+    CHECK(settle(fill::ALL_SITES) == foreign_group);
+    patched[fill::SITES[foreign_site].rva + 1] ^= 0x04;
+    const uint32_t other_group = fill::ALL_SITES & ~foreign_group;
+    CHECK(fi::written == other_group && fi::found == other_group);
+    all_bytes(other_group);
+    restore_game_bytes();
+  }
   // A stub that is another tool's going in stands down the stubs alone (the fills stay in and found).
   CHECK(settle(fill::R1_SITES) == 0);
   patched[fill::SITES[5].rva + 7] ^= 0x04;
@@ -947,16 +959,30 @@ void TestStubs() {
   REQUIRE(fill::Prepare(reinterpret_cast<HMODULE>(patched)));
   CHECK(fi::found == fill::ALL_SITES);
   CHECK(WantedOk(true));
+  const auto close_lines = [] {
+    fill::Wanted(true);
+    size_t lines = 0;
+    for (const std::string& line : log_lines) {
+      lines += (line.find("Fill With Draw Recording (trace window") != std::string::npos && line.find("closed at the stub") != std::string::npos);
+    }
+    return lines;
+  };
+  // Outside a trace window a close at a stub keeps no record and writes no line (the folded driver's pixel path and empty rounds
+  // close there every frame).
   uint32_t stub_closes = 0;
+  UpdatePool(4);
+  CHECK(!wp::Tracing());
   log_lines.clear();
   CHECK(StubCasesOk(true, &stub_closes));
-  // The closes at a stub are kept for the trace like the fills' calls: one line each, with the reason.
-  fill::Wanted(true);
-  size_t close_lines = 0;
-  for (const std::string& line : log_lines) {
-    close_lines += (line.find("Fill With Draw Recording (trace window") != std::string::npos && line.find("closed at the stub") != std::string::npos);
-  }
-  CHECK(stub_closes == 5 && close_lines == stub_closes);
+  CHECK(fi::trace_count.load() == 0);
+  CHECK(stub_closes == 5 && close_lines() == 0);
+  // In a window they are kept for the trace like the fills' calls: one line each, with the reason.
+  wp::ArmTrace(1);
+  log_lines.clear();
+  CHECK(StubCasesOk(true, &stub_closes));
+  CHECK(fi::trace_count.load() == stub_closes);
+  CHECK(stub_closes == 5 && close_lines() == stub_closes);
+  UpdatePool(4);
   fi::found = fill::ALL_SITES;
   CHECK(FillsSurviveBrokenStub());
   CHECK(FoldDispatchOk(true));

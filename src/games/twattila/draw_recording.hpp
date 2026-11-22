@@ -929,14 +929,20 @@ struct FoldFill {
   std::atomic<uint32_t>* incomplete = nullptr;  // instance_fill's incomplete_fills: one counter, one line
 };
 
+// The game's ring, as the fold reaches it (the fill site, the stubs' key proof and the close): the tracker's ring pointer, the ring's
+// buffer (the object the game unmaps) and the ring's flag byte (the game's Unmap block runs only while it is 0).
+constexpr uint32_t TRACKER_RING = 0x24;
+constexpr uint32_t RING_BUFFER = 0x10;
+constexpr uint32_t RING_FLAG = 0x44;
+
 // One fold at a time, owned by the thread that opened it.
 struct Fold {
   std::atomic<DWORD> thread{0};         // 0: no fold. Other threads read it relaxed; only this thread reads the rest.
   std::atomic<void*> tracker{nullptr};  // the dispatchers' key check, read relaxed on every thread
-  void* ring = nullptr;                 // the stub's key check: [tracker + 0x24]
+  void* ring = nullptr;                 // the stub's key check: [tracker + TRACKER_RING]
   uint32_t workers = 0;                 // what Start got; the dispatchers' thread count is this + 1
   FoldFill fill;
-  void* unmap_buffer = nullptr;    // noted by the stub: *(ring + 0x10), read when the game's +0x44 test had passed
+  void* unmap_buffer = nullptr;    // noted by the stub: *(ring + RING_BUFFER), read when the game's RING_FLAG test had passed
   void* unmap_argument = nullptr;  // noted by the stub with the buffer
   bool unmap_pending = false;
   uint64_t opened_ticks = 0;  // trace frames only
@@ -1066,7 +1072,7 @@ inline worker_pool::JoinResult CloseFold(const Descriptor* record, Part&& part) 
   if (fold.unmap_pending) {
     // The stub decided on the game's flag test; a flag that changed since means the fold's premise broke: counted, latched,
     // and the Unmap the game would have made is still made (a skipped one leaves the buffer mapped for the next Map).
-    const bool flag_changed = (*(static_cast<const uint8_t*>(fold.ring) + 0x44) != 0);
+    const bool flag_changed = (*(static_cast<const uint8_t*>(fold.ring) + RING_FLAG) != 0);
     if (flag_changed) {
       FoldFault(&fold_flag_changes);
     }

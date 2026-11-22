@@ -45,15 +45,15 @@
 // A site is an E8 (the call) whose displacement is rewritten: the new target is a plain cdecl function of this module
 // (`(range*, functor*, manager)`, the caller pops 12 bytes; it keeps ebx, esi, edi and ebp, and the game reads nothing
 // else after the call). There is no thunk page: a site comes out the same way it goes in, while no thread is inside its
-// 5 bytes (PausedWrite), and the functions stay in this module. While the row is off, or no worker is free, a site's
-// function runs the game's own call.
+// bytes (PausedWrite; 5, or 11 for an Unmap stub), and the functions stay in this module. While the row is off, or no
+// worker is free, a site's function runs the game's own call.
 //
-// Fill With Draw Recording (the fold, private build: TWATTILA_DRAW_RECORDING; draw_recording.hpp): where a draw dispatcher's cut
-// follows a fill (the depth and colour passes and the folded driver), the fill's job stays open to the cut and the workers go on
-// to record the dispatcher's chunks. The game's ring Unmap, between the fill and the cut, is a 3-site stub (sites 4 to 6, an
-// 11-byte block each: the push, a nop and a call whose return address is the block's end) that only notes it; the dispatcher's
-// close makes it after the fill is done. The stubs are a group of their own (FOLD_SITES): found, wanted and stood down as one,
-// never taking R1's sites with them.
+// Fill With Draw Recording (the fold, private build: TWATTILA_DRAW_RECORDING; draw_recording.hpp): where a draw
+// dispatcher's cut follows a fill (the depth and colour passes and the folded driver), the fill's job stays open to the
+// cut and the workers go on to record the dispatcher's chunks. The game's ring Unmap, between the fill and the cut, is
+// a 3-site stub (sites 4 to 6, an 11-byte block each: the push, a nop and a call whose return address is the block's
+// end) that only notes it; the dispatcher's close makes it after the fill is done. The stubs are a group of their own
+// (FOLD_SITES): found, wanted and stood down as one, never taking R1's sites with them.
 namespace twattila::instance_fill {
 
 #if !defined(_WIN64)
@@ -77,12 +77,18 @@ constexpr size_t SITE_COUNT = static_cast<size_t>(Site::COUNT);
 constexpr size_t FILL_SITE_COUNT = static_cast<size_t>(Site::FOLDED_FILL) + 1;
 constexpr uint32_t ALL_SITES = (1u << SITE_COUNT) - 1;
 // The sites that are found, go in and stand down as one (a fill with a site missing would run the game's own call on
-// the others' ring): the 4 fills are one group (R1), the Unmap stubs another (the fold), so that a stand-down of one never
-// takes the other's.
+// the others' ring): the 4 fills are one group (R1), the Unmap stubs another (the fold), so that a stand-down of one
+// never takes the other's.
 constexpr uint32_t R1_SITES = (1u << FILL_SITE_COUNT) - 1;
 #if defined(TWATTILA_DRAW_RECORDING)
 constexpr uint32_t FOLD_SITES = ALL_SITES & ~R1_SITES;
 constexpr std::array<uint32_t, 2> GROUPS = {R1_SITES, FOLD_SITES};
+// Stub k (the depth, colour and folded Unmap) follows the fill FIRST_STUBBED_FILL + k: every fill but the visibility
+// one has one.
+constexpr size_t FIRST_STUBBED_FILL = static_cast<size_t>(Site::WEIGHTED_DEPTH_FILL);
+constexpr size_t FIRST_UNMAP = static_cast<size_t>(Site::DEPTH_UNMAP);
+constexpr size_t FOLDED_STUB = static_cast<size_t>(Site::FOLDED_UNMAP) - FIRST_UNMAP;
+static_assert(FIRST_UNMAP == FILL_SITE_COUNT && FOLDED_STUB == SITE_COUNT - FILL_SITE_COUNT - 1);
 #else
 static_assert(SITE_COUNT == FILL_SITE_COUNT, "the plain build has the 4 fill sites only");
 constexpr std::array<uint32_t, 1> GROUPS = {R1_SITES};
@@ -112,8 +118,8 @@ struct SiteInfo {
   uint32_t rva = 0;     // the E8
   uint32_t before = 0;  // bytes of the pattern before it
   uint32_t size = SITE_SIZE;  // the bytes it writes, from rva
-  // The fold's stubs: the key store (a store of the tracker into the fill's functor) that pins the stub's ecx and esp, found
-  // by its bytes too. Empty for the fill sites.
+  // The fold's stubs: the key store (a store of the tracker into the fill's functor) that pins the stub's ecx and esp,
+  // found by its bytes too. Empty for the fill sites.
   uint32_t key_rva = 0;
   std::string_view key;
   // The bytes around the call (`??`: its displacement), through the `add esp, 0xc` and the ring's flag test (`cmp byte
@@ -154,9 +160,9 @@ constexpr std::array<SiteInfo, SITE_COUNT> SITES = {{
      .pattern = "0F 47 CE 50 89 4C 24 54 E8 ?? ?? ?? ?? 8B 4D 24 83 C4 0C 80 79 44 00 75 0B",
      .copy = Copy::TRACKER_ITEMS},
 #if defined(TWATTILA_DRAW_RECORDING)
-    // The stubs: `mov ecx,[ecx+0x10]; push [reg+0x18]; mov eax,[ecx]; call [eax+0x10]` behind the fill's flag test (`jne` over
-    // it). Found by the jne and the block (the fill's own pattern ends at the jne), the folded one also by the tail that clears
-    // +0x58 and tests the pixel-selection byte the stub reads.
+    // The stubs: `mov ecx,[ecx+0x10]; push [reg+0x18]; mov eax,[ecx]; call [eax+0x10]` behind the fill's flag test
+    // (`jne` over it). Found by the jne and the block (the fill's own pattern ends at the jne), the folded one also by
+    // the tail that clears +0x58 and tests the pixel-selection byte the stub reads.
     {.name = "depth unmap",
      .rva = 0x17AE829,
      .before = 2,
@@ -181,9 +187,9 @@ constexpr std::array<SiteInfo, SITE_COUNT> SITES = {{
 #endif
 }};
 
-// Each fill site's pattern has its call (E8) where `before` says; every site's pattern covers its written bytes, which fit
-// MAX_SITE_SIZE, and no two sites' written bytes overlap (their found-by patterns may share bytes: a stub's pattern begins
-// where its fill's ends).
+// Each fill site's pattern has its call (E8) where `before` says; every site's pattern covers its written bytes, which
+// fit MAX_SITE_SIZE, and no two sites' written bytes overlap (their found-by patterns may share bytes: a stub's pattern
+// begins where its fill's ends).
 static_assert([] {
   for (size_t index = 0; index < SITE_COUNT; ++index) {
     const SiteInfo& info = SITES[index];
@@ -203,9 +209,9 @@ static_assert([] {
 }());
 
 // The byte ranges the sites own, one visit each (rva, size): what a site writes (`written`: each site's `size` bytes),
-// or what Prepare reads to find the sites (the patterns, the stubs' key stores, the links of each record copy's chain, the
-// record copies' heads). The heapfix clearance (engine_code.hpp) and the no-overlap checks against the other features' sites
-// (test/tw_instance_fill) are built on it.
+// or what Prepare reads to find the sites (the patterns, the stubs' key stores, the links of each record copy's chain,
+// the record copies' heads). The heapfix clearance (engine_code.hpp) and the no-overlap checks against the other
+// features' sites (test/tw_instance_fill) are built on it.
 template <typename Visit>
 constexpr void VisitRanges(bool written, Visit&& visit) {
   for (const SiteInfo& info : SITES) {
@@ -394,8 +400,10 @@ static std::atomic<uint32_t> trace_count = 0;
 #if defined(TWATTILA_DRAW_RECORDING)
 // The draw_recording groups (bits of draw_recording::Group) a fold of fill site 1, 2, 3 records.
 constexpr std::array<uint32_t, 3> FOLD_GROUPS = {
-    1u << static_cast<uint32_t>(draw_recording::Group::DEPTH_A), 1u << static_cast<uint32_t>(draw_recording::Group::COLOUR_A),
-    (1u << static_cast<uint32_t>(draw_recording::Group::DEPTH_B)) | (1u << static_cast<uint32_t>(draw_recording::Group::COLOUR_B))};
+    1u << static_cast<uint32_t>(draw_recording::Group::DEPTH_A),
+    1u << static_cast<uint32_t>(draw_recording::Group::COLOUR_A),
+    (1u << static_cast<uint32_t>(draw_recording::Group::DEPTH_B))
+        | (1u << static_cast<uint32_t>(draw_recording::Group::COLOUR_B))};
 #endif
 
 inline void KeepTrace(const TraceRecord& record) {
@@ -526,15 +534,17 @@ inline void Dispatch(size_t site, Range* range, void* functor, void* manager) {
       }
       bool folded = false;
 #if defined(TWATTILA_DRAW_RECORDING)
-      // The fold: the fill's job stays open to the cut that follows (fill sites 1 to 3 have a stub, 4 to 6). The fill's functor
-      // starts with the tracker, whose +0x24 is the ring; the game's own flag test (`[ring + 0x44]`) decides that its Unmap
-      // block runs, so a fold opens only when it will.
-      if (site != 0 && fold_on.load(std::memory_order_relaxed) && (written >> (FILL_SITE_COUNT + site - 1) & 1) != 0) {
+      // The fold: the fill's job stays open to the cut that follows (the fills with a stub). The fill's functor starts
+      // with the tracker, whose ring the game's own flag test decides that its Unmap block runs for, so a fold opens
+      // only when it will.
+      const size_t stub = site - FIRST_STUBBED_FILL;  // meaningful for the stubbed fills only (the test below)
+      if (site >= FIRST_STUBBED_FILL && fold_on.load(std::memory_order_relaxed)
+          && (written >> (FIRST_UNMAP + stub) & 1) != 0) {
         namespace dr = draw_recording::internal;
         void* const tracker = *static_cast<void**>(functor);
-        void* const ring = *reinterpret_cast<void**>(static_cast<uint8_t*>(tracker) + 0x24);
-        const uint32_t fold_workers = dr::FoldWorkers(FOLD_GROUPS[site - 1]);
-        if (fold_workers != 0 && *(static_cast<const uint8_t*>(ring) + 0x44) == 0) {
+        void* const ring = *reinterpret_cast<void**>(static_cast<uint8_t*>(tracker) + dr::TRACKER_RING);
+        const uint32_t fold_workers = dr::FoldWorkers(FOLD_GROUPS[stub]);
+        if (fold_workers != 0 && *(static_cast<const uint8_t*>(ring) + dr::RING_FLAG) == 0) {
           fold_fill.copy = copy;
           fold_fill.functor = functor;
           fold_fill.begin = range->begin;
@@ -576,24 +586,28 @@ void __cdecl Entry(Range* range, void* functor, void* manager) {
 constexpr std::array<GameFill, FILL_SITE_COUNT> ENTRIES = {&Entry<0>, &Entry<1>, &Entry<2>, &Entry<3>};
 
 #if defined(TWATTILA_DRAW_RECORDING)
-// What a stub does (`stub` 0 to 2: the depth, colour and folded Unmap). `frame` is the caller's esp before the block's push:
-// the folded driver's locals sit at fixed places from it (the pixel-selection byte at +0x78, the round's first mesh at +0x34
-// and last at +0x1C, the values the cut's covered bytes load with the same esp).
+// What a stub does (`stub` 0 to 2: the depth, colour and folded Unmap). `frame` is the caller's esp before the block's
+// push: the folded driver's locals sit at fixed places from it (the pixel-selection byte at +0x78, the round's first
+// mesh at +0x34 and last at +0x1C, the values the cut's covered bytes load with the same esp).
 inline void Unmap(size_t stub, void* ring, void* argument, const uint8_t* frame) {
   namespace dr = draw_recording::internal;
   active.fetch_add(1);
-  void* const buffer = *reinterpret_cast<void**>(static_cast<uint8_t*>(ring) + 0x10);
+  void* const buffer = *reinterpret_cast<void**>(static_cast<uint8_t*>(ring) + dr::RING_BUFFER);
   const auto close_at_the_stub = [&](TraceRecord::StubClose why) {
     dr::CloseFold(nullptr, [] {});
     dr::fold_trace = {};
-    KeepTrace({.site = static_cast<uint8_t>(FILL_SITE_COUNT + stub), .stub_close = why});
+    // Only a trace window keeps (and Wanted logs) a record: the folded driver's pixel path and empty rounds close here
+    // every frame.
+    if (worker_pool::Tracing()) {
+      KeepTrace({.site = static_cast<uint8_t>(FIRST_UNMAP + stub), .stub_close = why});
+    }
   };
   if (dr::fold.thread.load(std::memory_order_relaxed) != GetCurrentThreadId()) {
     // No fold of this thread: the game's own Unmap, at once.
     dr::GameUnmap(buffer, argument);
   } else if (dr::fold.ring != ring) {
-    // A fold of this thread for another ring (it cannot happen by the key proof): the fold closes with its own state, then this
-    // stub's ring is unmapped with its own argument.
+    // A fold of this thread for another ring (it cannot happen by the key proof): the fold closes with its own state,
+    // then this stub's ring is unmapped with its own argument.
     if (control_note_on_mismatch) {
       dr::fold.unmap_buffer = buffer;
       dr::fold.unmap_argument = argument;
@@ -611,9 +625,9 @@ inline void Unmap(size_t stub, void* ring, void* argument, const uint8_t* frame)
     dr::fold.unmap_argument = argument;
     dr::fold.unmap_pending = true;
     dr::fold.unmap_ticks = (dr::trace.active ? worker_pool::Qpc() : 0);
-    if (stub == 2 && !control_ignore_pixel_byte) {
-      // The folded driver's cut runs the round's meshes unless the pixel-selection path or an empty round skips it (the thunk's
-      // own `ja`, compared unsigned): the fold is closed here then, with no record.
+    if (stub == FOLDED_STUB && !control_ignore_pixel_byte) {
+      // The folded driver's cut runs the round's meshes unless the pixel-selection path or an empty round skips it (the
+      // thunk's own `ja`, compared unsigned): the fold is closed here then, with no record.
       uint32_t first;
       uint32_t last;
       std::memcpy(&first, frame + 0x34, sizeof(first));
@@ -628,9 +642,9 @@ inline void Unmap(size_t stub, void* ring, void* argument, const uint8_t* frame)
   active.fetch_sub(1);
 }
 
-// The stubs' functions: fastcall `(ring, unused, the block's pushed argument)`, the callee pops it. The frame is computed here,
-// in the function's own body (a helper would read its own return address): the return address, then the argument, then the
-// caller's esp.
+// The stubs' functions: fastcall `(ring, unused, the block's pushed argument)`, the callee pops it. The frame is
+// computed here, in the function's own body (a helper would read its own return address): the return address, then the
+// argument, then the caller's esp.
 template <size_t Stub>
 void __fastcall UnmapEntry(void* ring, void*, void* argument) {
   Unmap(Stub, ring, argument, static_cast<const uint8_t*>(_AddressOfReturnAddress()) + 2 * sizeof(void*));
@@ -652,12 +666,14 @@ constexpr std::array<uint32_t, 1> IGNORED_SOURCES = {0x17AE6FA};
 // scans the 2 KB around each site, the rel32 forms only (the bytes of another tool's patch next to a site would read as
 // short branches with random targets); test/tw_instance_fill scans the whole code section with both.
 inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rva, std::span<const uint32_t> relocated,
-                                bool short_branches, std::vector<uint32_t>* hits = nullptr, uint32_t sites = ALL_SITES) {
+                                bool short_branches, std::vector<uint32_t>* hits = nullptr,
+                                uint32_t sites = ALL_SITES) {
   return effect_update::internal::BranchesInto(
       code, first_rva, hits, relocated, short_branches, IGNORED_SOURCES, [sites](uint32_t target) {
         for (size_t index = 0; index < SITE_COUNT; ++index) {
           const SiteInfo& info = SITES[index];
-          if ((sites >> index & 1) != 0 && target > info.rva && effect_update::Overlaps(target, 1, info.rva, info.size)) {
+          if ((sites >> index & 1) != 0 && target > info.rva
+              && effect_update::Overlaps(target, 1, info.rva, info.size)) {
             return true;
           }
         }
@@ -665,10 +681,10 @@ inline size_t BranchesIntoSites(std::span<const uint8_t> code, uint32_t first_rv
       });
 }
 
-// Once: each fill site found by its bytes and its call's target, each record copy by its chain and its head, no branch of
-// the game into a site, each site's new bytes made (nothing written to the game). One log line. The fill sites are all
-// found or none (false: none). The fold's stubs (private build) are found only when the fills are, by their bytes and key
-// stores, all or none, with a line of their own: a stub refused leaves the fills as they are.
+// Once: each fill site found by its bytes and its call's target, each record copy by its chain and its head, no branch
+// of the game into a site, each site's new bytes made (nothing written to the game). One log line. The fill sites are
+// all found or none (false: none). The fold's stubs (private build) are found only when the fills are, by their bytes
+// and key stores, all or none, with a line of their own: a stub refused leaves the fills as they are.
 inline bool Prepare(HMODULE module) {
   using namespace internal;
   prepared = true;
@@ -751,13 +767,15 @@ inline bool Prepare(HMODULE module) {
     }
   }
   if (!stubs_refused.empty()) {
-    renodx::utils::log::w("[Total War] Fill With Draw Recording: left alone (not the game's code as expected: another mod or build): ",
-                          stubs_refused);
+    renodx::utils::log::w(
+        "[Total War] Fill With Draw Recording: left alone (not the game's code as expected: another mod or build): ",
+        stubs_refused);
     if (control_all_or_none) {
       return false;
     }
   } else if (branches_into(FOLD_SITES) != 0) {
-    renodx::utils::log::w("[Total War] Fill With Draw Recording: left alone (the game jumps into the middle of a stub)");
+    renodx::utils::log::w(
+        "[Total War] Fill With Draw Recording: left alone (the game jumps into the middle of a stub)");
   } else {
     to_build |= FOLD_SITES;
     renodx::utils::log::i("[Total War] Fill With Draw Recording: ", SITE_COUNT - FILL_SITE_COUNT, " stubs found");
@@ -775,20 +793,20 @@ inline bool Prepare(HMODULE module) {
     site.at = const_cast<uint8_t*>(base) + info.rva;
     site.size = info.size;
     std::memcpy(site.game.data(), site.at, info.size);
-    // The call goes at the end of the site: its return address is then the game's next instruction, a place a thread can
-    // return to whether this site is in or out. A stub (11 bytes) puts the block's own push (bytes 3 to 5 of the block) and a
-    // 3-byte nop before it, so that the call's argument is what the block pushed.
+    // The call goes at the end of the site: its return address is then the game's next instruction, a place a thread
+    // can return to whether this site is in or out. A stub (11 bytes) puts the block's own push (bytes 3 to 5 of the
+    // block) and a 3-byte nop before it, so that the call's argument is what the block pushed.
     const size_t call_at = info.size - SITE_SIZE;
     if (call_at != 0) {
       constexpr std::array<uint8_t, 3> NOP = {0x0F, 0x1F, 0x00};
       std::memcpy(site.patch.data(), site.game.data() + 3, 3);
       std::memcpy(site.patch.data() + 3, NOP.data(), NOP.size());
     }
-    uintptr_t entry = reinterpret_cast<uintptr_t>(ENTRIES[index % FILL_SITE_COUNT]);
 #if defined(TWATTILA_DRAW_RECORDING)
-    if (index >= FILL_SITE_COUNT) {
-      entry = reinterpret_cast<uintptr_t>(UNMAP_ENTRIES[index - FILL_SITE_COUNT]);
-    }
+    const uintptr_t entry = (index >= FIRST_UNMAP ? reinterpret_cast<uintptr_t>(UNMAP_ENTRIES[index - FIRST_UNMAP])
+                                                  : reinterpret_cast<uintptr_t>(ENTRIES[index]));
+#else
+    const uintptr_t entry = reinterpret_cast<uintptr_t>(ENTRIES[index]);
 #endif
     const uint32_t displacement =
         static_cast<uint32_t>(entry) - static_cast<uint32_t>(reinterpret_cast<uintptr_t>(site.at + info.size));
@@ -824,10 +842,9 @@ inline bool ThreadInside(uintptr_t eip, uint32_t changing) {
 
 // PausedWrite, with every other thread suspended and none inside a site: the changing sites get the new target (or the
 // game's bytes back). A site whose bytes are not what this module left or found (another tool's) stands every changing
-// site of its group down, and so does a page that cannot be made writable (a site going in); nothing is written then.
-// The sites that stood down, by bit. Kept as functions of this module (not inline in PausedWrite, as the effect table's
-// are): test/tw_instance_fill runs Rewrite alone on a read and execute page, and the stub sites that join this table
-// later change their own size in one place.
+// site of its group down, and so does a page that cannot be made writable (a site going in); nothing of that group is
+// written then. Returns the sites that stood down, by bit. Kept as functions of this module (not inline in PausedWrite,
+// as the effect table's are): test/tw_instance_fill runs Rewrite alone on a read and execute page.
 inline uint32_t Rewrite(uint32_t patched) {
   using namespace internal;
   const uint32_t changing = Changing(patched);
@@ -838,8 +855,8 @@ inline uint32_t Rewrite(uint32_t patched) {
       stood |= 1u << index;
     }
   }
-  // The sites go in whole or not at all, by group: one whose bytes are not the game's stands its group down (R1's fills and
-  // the fold's stubs never take each other).
+  // The sites go in whole or not at all, by group: one whose bytes are not the game's stands its group down (R1's fills
+  // and the fold's stubs never take each other).
   const auto stand_group_down = [&](size_t site) {
     for (const uint32_t group : GROUPS) {
       if ((group >> site & 1) != 0) {
@@ -896,20 +913,21 @@ inline uint32_t Rewrite(uint32_t patched) {
   return stood;
 }
 
-// Every present, with the row: the sites to ask for (the fills whole while the row is on and they are found, none otherwise),
-// the dispatcher's own fill on or off at once (a site still in while the row is off runs the game's call), and what a trace
-// window kept (one line per fill call) or check mode counted since the last present.
-// The fold (private build): its stubs, a group of their own, are asked for only in a present after the fills were written and
-// are still wanted (never in their window) and only as far as their cut is in (`cuts_written`, bit k for stub k, read before the
-// window) and stays in (`cuts_target`): a cut or the fills going out takes their stubs out in the same window, a stub going in
-// follows them by one present.
+// Every present, with the row: the sites to ask for (the fills whole while the row is on and they are found, none
+// otherwise), the dispatcher's own fill on or off at once (a site still in while the row is off runs the game's call),
+// and what a trace window kept (one line per fill call) or check mode counted since the last present. The fold (private
+// build): its stubs, a group of their own, are asked for only in a present after the fills were written and are still
+// wanted (never in their window) and only as far as their cut is in (`cuts_written`, bit k for stub k, read before the
+// window) and stays in (`cuts_target`): a cut or the fills going out takes their stubs out in the same window, a stub
+// going in follows them by one present.
 inline uint32_t Wanted(bool row, [[maybe_unused]] bool fold_row = false, [[maybe_unused]] uint32_t cuts_written = 0,
                        [[maybe_unused]] uint32_t cuts_target = 0) {
   using namespace internal;
   uint32_t wanted = ((row && (found & R1_SITES) == R1_SITES) ? R1_SITES : 0u);
   row_on.store(wanted != 0, std::memory_order_relaxed);
 #if defined(TWATTILA_DRAW_RECORDING)
-  const bool fold_ready = (fold_row && wanted != 0 && (written & R1_SITES) == R1_SITES && (found & FOLD_SITES) == FOLD_SITES);
+  const bool fold_ready =
+      (fold_row && wanted != 0 && (written & R1_SITES) == R1_SITES && (found & FOLD_SITES) == FOLD_SITES);
   fold_on.store(fold_ready, std::memory_order_relaxed);
   if (fold_ready) {
     wanted |= (control_stubs_without_cut ? ~0u : cuts_written & cuts_target) << FILL_SITE_COUNT & FOLD_SITES;
@@ -920,10 +938,12 @@ inline uint32_t Wanted(bool row, [[maybe_unused]] bool fold_row = false, [[maybe
   for (uint32_t index = 0; index < records; ++index) {
     const TraceRecord& record = trace_records[index];
     if (record.stub_close != TraceRecord::StubClose::NONE) {
-      constexpr std::array<const char*, 4> WHY = {"", "the pixel-selection path", "an empty round", "another fold's ring"};
-      renodx::utils::log::i(std::format("[Total War] Fill With Draw Recording (trace window {}): {}: closed at the stub ({})",
-                                        worker_pool::TraceWindow(), SITES[record.site].name,
-                                        WHY[static_cast<size_t>(record.stub_close)]));
+      constexpr std::array<const char*, 4> WHY = {"", "the pixel-selection path", "an empty round",
+                                                  "another fold's ring"};
+      renodx::utils::log::i(
+          std::format("[Total War] Fill With Draw Recording (trace window {}): {}: closed at the stub ({})",
+                      worker_pool::TraceWindow(), SITES[record.site].name,
+                      WHY[static_cast<size_t>(record.stub_close)]));
       continue;
     }
     const std::string head = std::format("[Total War] Parallel Instance Fill (trace window {}): {}, {} items, ",
