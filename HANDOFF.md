@@ -526,6 +526,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - H2 GPU A/B (needs an ATN rule or a lab kind: test\tw_ruse_bridge\run.ps1 is not ... | ?
 - rvd_ review of ho_g05 (+ the live ru_scene_patches.py edit) QUEUED (queued_spawn ... | ?
 - device_loss.hpp: the NTSTATUS / DWORD switch narrowing (include order) -> lg3_ ( ... | ?
+- coord: BUILD WINDOW OPEN after gtc_'s session 1 (then session 2 needs its own qu ... | ?
+- ho_g19 (after rvb_): AntiAliasingTextureLodBias is_enabled also when lod_bias_at ... | ?
+- GPU plan: a helper path-shader flag for Shogun 2's unseen-lights row (item 7b, E ... | ?
+- Rome II battle trace (in-game batch): RT shadows on at each Shadows setting + sh ... | ?
+- shared helper for the V35_GAME_RESPONSE -> row defaults loop (Shogun 2 + Rome II ... | ?
+- rvd_ (queued) now = g04_ + g01_ + g05_ (queued_spawns.md). | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11713,6 +11719,41 @@ heading text are in HANDOFF_ARCHIVE.md)
         310.9.16), each into a fresh testbin -Build folder; compare the "H2 dlss: flat background / foreground" lines.
         - [ ] rvd_ review of ho_g05 (+ the live ru_scene_patches.py edit) QUEUED (queued_spawns.md).
         - [ ] device_loss.hpp: the NTSTATUS / DWORD switch narrowing (include order) -> lg3_ (sent 20:48, with its fixes).
+        gtl_ REC2 READY 20:5x (plan_1117/gtl_rec2_ready_handback.md): D:\Dev\renodx\build\helper_du_rec2 = recorder build of
+        e7eff346c (build.ps1 + RENODX_TW_RECORDER_BUILD=1 via its slot wrapper; exe sha 1d1fab7705539a23...; helper_du_rec
+        untouched); jobs_part2 regenerated (0 refused, 1221 s) + new job 00 smoke; stage3 guard: use rows in EVERY frame
+        (fake_resident "first_frame" mode); suites landed3c all OK (gpu_lock 58 / 60, 2 skipped by its own busy guard);
+        sheet Part 2: first session 1 S-110976 VOID (dumps stay, never used), new Smoke section + uses_check.py, checks 2-4
+        updated; L3 outputs saved (+ an Execute-on-WARP test: rows kept in all 3 frames). L2 = proposal for grs_.
+        BUILD WINDOW CLOSED 20:52 (messages to g02_ g03_ g06_ g09_ g10_ g13_ g20_ g21_ g22_ gbf_ b3s_ b3t_ lg3_; brief
+        updated) -> gtc_ (ae2f864b7c4e9bc8c) sent 20:5x: wait for the 4 slots to free, smoke + checks 1-3, session 1 (P1,
+        P1b, P2, S), offline checks 1-7, hand back "gtc_ part2 s1", STOP before session 2.
+        - [ ] coord: BUILD WINDOW OPEN after gtc_'s session 1 (then session 2 needs its own quiet window + the D: moves).
+        g14_ FIXES 20:5x (handoff_plan/handbacks/g14_fixes_handback.md): ho_g14 + 8acdbfd33, 02bbd31f1, 2898fa2ff; all
+        g14r_ findings but n11 (no Markdown linter; own table / link script clean). ho_g14 MUST MERGE AFTER ho_g21 (SKILL.md
+        line 9's consumer grep). -> g14r_ re-check (sent).
+        g04_ PART 20:5x (handoff_plan/handbacks/g04_part_handback.md): ho_g04 11 commits 0764607b1..20ab8ef5b (cosmetics,
+        -pi to the bit in 8 water shaders, Auto Thickness on + SettingsRevision 2 clear, traced GI defaults = RAYS_PRESET,
+        AutoHDR 0.2, Rome Remastered no fog shadows + MAE Sensitivity 1 + texture_lod_bias wired + lod_bias_at_game_scale
+        (9581a6256 NEEDS ho_g19 d655c6ddc), V35 fit 1.50 / 1.07 / 0.94 / 0.80, READMEs); builds clean, romer_toe WARP PASS.
+        V35 vs SDR: grey 0.05-1 nits x2.53..6.22 -> x0.976..1.040; highlights +13.6 % at 1000 / 203; winter map 25 % darker
+        below 15 nits. Recipe update -> group_brief.md UPDATE 20:5x + sent to g01_ g02_ g03_ g06_ g09_. Not done: item 3 not
+        needed (SSAO still runs under PT AO), item 4 (Shogun 2 smoke map host + ASSAO t13 trace), 7b (helper flag). ATN list
+        13-16.
+        - [ ] ho_g19 (after rvb_): AntiAliasingTextureLodBias is_enabled also when lod_bias_at_game_scale; move
+        ClearSavedRows to settings_pages.hpp (Shogun 2 drops its copy); later: Rome Remastered lod_bias_trilinear binding.
+        - [ ] GPU plan: a helper path-shader flag for Shogun 2's unseen-lights row (item 7b, Experimental off).
+        g01_ DONE 20:5x (handoff_plan/handbacks/g01_done_handback.md): ho_g01 62498bc44 (Rome II sun Replace by default:
+        sun_replace_maps.hpp per-hash routes COMPARED / DEPTH / LIGHT, 40-shader table from scan_atlas_reads.py,
+        RAYS_REPLACE_MAPS 1, Shadow Map Size hidden), b7c136ee4 (AA frame gamma), 7876857b6 (rays_preset_as_attila;
+        Thrones Steady Bounce Light + 128 torch lights at own defaults + SettingsRevision 3), 581a00400 (Rome II V35 1.00 /
+        0.99 / 0.80 / 1.03, worst 0.22 % vs 22.67 %; Thrones = Musa's own), 3dd175e7b. Sharp RT Reflections: nothing to port
+        in Rome II. RR Fresnel already in Rome II + Thrones (tick audit wrong: EnvBRDFApprox2 constants in both .cso).
+        WARP sun_rome2_test P1-P3 0 over 2.6M values, controls caught. ATN list 17-19.
+        - [ ] Rome II battle trace (in-game batch): RT shadows on at each Shadows setting + shader model: all 40 atlas draws
+        swapped, no lit band at cascade ends, baked far shadows as before; + the A4 trace line; Faster Game CPU Code save.
+        - [ ] shared helper for the V35_GAME_RESPONSE -> row defaults loop (Shogun 2 + Rome II; psycho35_settings.hpp, wave 2).
+        - [ ] rvd_ (queued) now = g04_ + g01_ + g05_ (queued_spawns.md).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
