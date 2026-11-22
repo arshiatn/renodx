@@ -10002,7 +10002,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         analyze 132).
         - [x] coordinator (DONE 12:1x: leg 166/166, analyze 132/132, 0 files failed; render_mt/reports/ebr_gap_recheck_final_handback.md): read the last two lines of testbin\scratch\ebr_\ebr_gap_runall.txt (leg 166, analyze 132)
             (coord 12:13).
-        gtl_ EDITS READY 12:2x (status message, no tests run, py_compile OK; backups testbin\scratch\gtl_\backup_labfix_121800;
+        gtl_ EDITS READY 12:2x (plan_1117/gtl_lab_edits_ready_handback.md; no tests run, py_compile OK; backups
+        testbin\scratch\gtl_\backup_labfix_121800;
         lab_keeper.py 41d07cf4 unchanged): (b) lab.py Session.request: a quiet close first makes the session folder (a slow
         keeper's take_lock reads requests before Acquire -> ends without the lock; SLOW raised as normal) + new
         test_close_before_keeper_folder; (a) keeper tests' clock() probe_fn=lab.slow_probe; (nit) gap test waits alive.json
