@@ -9065,9 +9065,34 @@ heading text are in HANDOFF_ARCHIVE.md)
         (fades). Low: kind() makes odd keys from a leading redirect (`sh 2>`, `sh tools/tw/2>`, `exe 2>/dev/null/...`).
         (4) 15 short seeds: no fix. -> gtp_ gets (a)-(d) + the redirect low together with gtw_'s re-check 13.
         - [ ] gtp_ (with gtw_'s re-check 13): Section 8 text fixes (a)-(d) + kind() leading-redirect keys (gpr_ 09:3x).
-        Agents (7): upr_ (h0i_ F1-F4 re-check), gtw_ (round 13 re-check, then lga_ release_check re-check), gtb_
-        (load refresh + (12, 99) tighten), t4i_ (option (a) + disk gate + ebr_ nits), c3i_ (B1 F1 + F2 logging),
-        ffr_ (grs_ v4 re-check), fcr_ (ff_s12 steps 1-2 patch review)
+        upr_ F1-F4 RE-CHECK = GO FOR THE GPU RE-RUN, 1 CHECK RULE (M1) 09:3x (plan_1117/upr_f1f4_recheck_handback.md;
+        unified_pt_review.md "## F1-F4 re-check" line 1840; offline only): diffs vs backups\20261122_083624_f1f4;
+        selftest 0 wrong (52 ok); both ps1 parse, param([switch]$DryRun) + path unchanged; helper paths at aede44281
+        = c3ea4925f, include closure (43 files) inside $HelperPaths. R = 2 in run3-ref: KEEP (no R = 4, no Welch):
+        r3_refl_s16's shift is real (reflect reference byte-identical pre / post, so its noise cancels; -0.000089 =
+        23 replicate SE / 62 batch SE) but ~1/110 of ref_compare's 1 % tolerance, invisible. M1 (PRE-REGISTERED
+        NOW, before the run): a mask counts as moved only when |shift| > 3 x hypot(SE) AND |shift| > 0.001; same
+        limit for the NOISY -> BIAS test; shifts < 0.1 % stay NUMBER lines; selftest 0.0005 at 10 SE PASS, 0.0020
+        FAIL; floor not at the data's edge (largest kept-run shift 0.074 % = 0.9 SE; r3_refl_s16 0.009 %). upr_'s
+        own earlier "all small at 0.59 x hypot(CI)" was wrong (up to ~7.5 SE at R = 2). SD = max(analytic, 4
+        starts' spread) sound (6 dof; false FAIL <= 0.13 % / test, 1.2 % if the analytic SD is low, ~4 % over 6
+        tests; real effects would read e1 ~5.8 SD, e6 ~9 SD). e2 / e3 negative bias^2 harmless (corr1 equal both
+        sides, cancels; analytic SD conservative there). Post-built refs "both = FAIL, one = OPEN" safe;
+        PRE-REGISTERED: e1 OPEN -> CPU model decides ("QUALITY reference against the CPU model" lines in
+        refs\sun08.txt + post_sun08.txt, then a paired per-pixel test on *_ref.pfm / *_model.pfm: post further
+        from truth by > 3 SE = FAIL (c) for H0, pre further = PASS + note, else OPEN + box); e6 OPEN -> stays OPEN
+        + box (no CPU torch model), owner H0; both up = FAIL. F1 / F3 right (x1.877 at 1 % catches a true x1.9 only
+        52 % -> S3); Copy-Item of the open helper log tested OK. pre_b OK (~24 modes, ~2 min). SHOULDS (check side):
+        S1 a missing pre_b output = OPEN, not class (b); S2 rawbias NUMBER lines print noise + corr1 / corr16; S3
+        run4-history OPEN at p < 0.05 (above x1.55); S4 SE without the reference term when both refs are
+        byte-equal; S5 NUMBER line with the first run-1 job's frame-0 ms for pre_a / post_a. Time ~83 min est,
+        plan 95-100. Keep release_check.ps1 out of the H0 window (Get-Busy would stop H0). COORDINATOR 09:3x:
+        c3i_'s FULL engine_code suite is on ~12 cores now (+ gated builds next) = not a quiet window, so h0i_
+        puts M1 + S1-S5 in BEFORE the start (offline, ~10-20 min), upr_ re-checks, then the run goes in the next
+        quiet window (ATN's rule, background).
+        Agents (7): h0i_ (M1 + S1-S5 before the H0 re-run), gtw_ (round 13 re-check, then lga_ release_check
+        re-check), gtb_ (load refresh + (12, 99) tighten), t4i_ (option (a) + disk gate + ebr_ nits), c3i_ (B1 F1
+        + F2 logging), ffr_ (grs_ v4 re-check), fcr_ (ff_s12 steps 1-2 patch review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
