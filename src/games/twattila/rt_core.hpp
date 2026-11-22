@@ -389,7 +389,9 @@ struct SceneShader {
 };
 
 // The main view's camera as ray tracing needs it: its view-projection and inverse (rows acting on column vectors; with
-// the jitter, as its depth was drawn) and its position.
+// the jitter, as its depth was drawn) and its position. rt_positions unprojects the depth at D3D11's texel centres, so a
+// host gives the matrices the depth was drawn with: the draws' jitter in them, and a game with other pixel centres moved
+// onto D3D11's (D3D9's lie half a pixel left of and above them: R.U.S.E.'s rays started under the ground without it).
 struct Camera {
   std::array<float, 16> view_projection = {};
   std::array<float, 16> inverse_view_projection = {};
@@ -3571,17 +3573,16 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     if (lights_in_bounce) std::erase_if(candidates, [](const LocalLight& light) { return light.shadows_only; });
     // The shadow ratio covers the lights the bounce samples: the first 32.
     const size_t count = std::min<size_t>({candidates.size(), runtime.settings.light_count, light_ratio ? dlaa_bridge::RT_MAX_LIGHTS : dlaa_bridge::RT_ALL_LIGHTS});
-    // Each light scored once, with its place (scoring both sides of every comparison cost 0.23 ms a frame, day1
-    // 2026-11-18). partial_sort's moves follow its comparisons alone, so the same lights land in the same places, ties
-    // and NaN too (the scores SSE floats, the same bits each time; std::max({...}) kept: the STL's vectorized max_element
-    // picks among NaN and -0 / +0 otherwise than std::max of std::max). lights_last takes that whole order only when the
-    // helper does not take the trace (below): it is tried again this frame from there.
+    // Each light scored once, with its place. partial_sort's moves follow its comparisons alone, so the same lights land
+    // in the same places, ties and NaN too (the scores SSE floats, the same bits each time; std::max({...}) kept: the
+    // STL's vectorized max_element picks among NaN and -0 / +0 otherwise than std::max of std::max). lights_last takes
+    // that whole order only when the helper does not take the trace (below): it is tried again this frame from there.
     auto& ranks = runtime.light_ranks;
     ranks.resize(candidates.size());
     for (uint32_t index = 0; index < ranks.size(); ++index) {
       const LocalLight& light = candidates[index];
-      ranks[index] = {.score = std::max({light.colour[0], light.colour[1], light.colour[2]}) * light.light[3] * light.light[3]
-                               / std::max(distance_squared(light), 1.f),
+      ranks[index] = {.score = std::max({light.colour[0], light.colour[1], light.colour[2]}) * light.light[3]
+                               * light.light[3] / std::max(distance_squared(light), 1.f),
                       .index = index};
     }
     std::partial_sort(ranks.begin(), ranks.begin() + static_cast<ptrdiff_t>(count), ranks.end(),
@@ -3698,10 +3699,14 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   }
   if (!traced) NotTraced("the helper did not trace: " + dlaa_bridge::TraceStatus());
   // Not taken: lights_last in the pick's whole order, as partial_sort of the lights themselves left it before (a trace
-  // again this frame starts from there; a taken trace's lights_last goes at the frame's end). No lights picked: in its order.
+  // again this frame starts from there). Taken: left filtered, not reordered, which is exact only because nothing reads
+  // it before Update swaps in the next frame's lights (both Trace overloads return once traced_frame is this frame).
+  // No lights picked: in its order.
   if (!traced && lights) {
     runtime.lights_ranked.clear();
-    for (const Runtime::LightRank& rank : runtime.light_ranks) runtime.lights_ranked.push_back(runtime.lights_last[rank.index]);
+    for (const Runtime::LightRank& rank : runtime.light_ranks) {
+      runtime.lights_ranked.push_back(runtime.lights_last[rank.index]);
+    }
     std::swap(runtime.lights_last, runtime.lights_ranked);
   }
   runtime.lights_traced = traced && lights;
