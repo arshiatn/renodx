@@ -8634,6 +8634,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtl_ (nit): end_world never undoes the fixture's budget.deadline wrap (gate 180 s instead of 120 s
             in the same process after the unit suite; test_budget l.136 would fail only after a fixture suite in
             one process) - undo it in end_world (gtv_ 08:5x).
+        gtp_ R12-1 PLAN 08:5x (plan_1117/gtp_r12_1_plan_handback.md; nothing edited, waits for gtw_'s re-check 12 =
+        one round 13): confirmed on the live prices.tsv (gate_hook.py l.1225 returns at the first key with rows).
+        Merge rule: non-build key = exact rows; build key = exact rows first, each missing set filled from that
+        set's `warm?` row (exact wins per set) -> `amd64 twattila warm` = {watch exact n 1, fg warm? n 10};
+        watch_price reads only `watch` (no watch-set seeds, limit unchanged). table(): drop a warm? (kind, set) seed
+        row only when BOTH warm and cold keys have real rows in that set (the warm? row serves both). Ingest class
+        from the key's first word when it is a known class (else stored, else script) -> the watch row = build
+        (floor 120, S6). Tests listed. Section 8 wording + R12-1 note + gpr_'s 2 A / B points; recommendation stays
+        A. 5 ms check = best of 5 batches of 20. Lows folded in: build_key splits on whitespace + commas;
+        --clean-first = cold; old `2>` samples re-keyed (backup first). COORDINATOR: gtp_'s table() variant
+        accepted; the 15 seeds < 15 s stay. Merge rule forwarded to gtb_ for budget.py _own_price_rows.
         Agents (8): h0i_ (H0 F1-F4), gtq_ + gtl_ (v1.2 nits), gtw_ (gtp_ round 12 re-check), gtb_ (slot-wait test +
         load + gate seed + R12-1 half), ffr_ (grs_ first-frame design review), lga_ (release regression look), t4i_
         (T5 manifest rows + B1 risks)
