@@ -142,7 +142,7 @@ const std::vector<std::pair<std::string, float>> EXT_FIRE_OPTION_2 = {
     {"ext_fire_hue", -0.05f},
     {"ext_fire_hue_focus", 0.75f},
 };
-// Recommended, also under its deeper shadows twin (ATN 2026-11-12: PsychoV35, its sliders at their defaults).
+// Recommended (ATN 2026-11-12: PsychoV35, its sliders at their defaults).
 const std::vector<std::pair<std::string, float>> LESS_POST_PROCESSING = {
     {"tonemapper", 3.f},
     {"film_grain", 0.f},
@@ -649,19 +649,6 @@ void BuildRuntimeData() {
                      "no motion blur, no chromatic aberration. Sharpening at 0.25, depth of field at 2, Video AutoHDR at 0.25.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() { ApplyRecommendedPreset(); },
-      },
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-          .label = "Recommended (with Deeper Shadows)",
-          .section = "Presets",
-          .group = "preset-line-1",
-          .tooltip = "As Recommended, with deeper shadows closer to the game's in PsychoV31\n"
-                     "(Shadows 0.75, Flare 0.25). PsychoV35 follows the game's shadows already.",
-          .on_change = []() {
-            ApplyResetPreset();
-            renodx::utils::settings::UpdateSettings(LESS_POST_PROCESSING);
-            renodx::utils::settings::UpdateSettings({{"shadows", 0.75f}, {"flare", 0.25f}});
-          },
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
