@@ -9564,9 +9564,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         instance_fill, gated builds. Did not run b13r_'s driver. For t4i_: the totals line is the only complete
         number (window + outside lines do not add up to it); line 1 can carry by-design names.
         -> b13r_ RE-CHECKS by reading now (no runs); c3i_ runs the held suites after H0; then merge gate.
-        Agents (4): lga_ (release_check R-RC1-1 / -2 + nits), gtp_ (round 15), b13r_ (c3i_ b1log fixes re-check, reading),
-        t4i_ (probes for the 3 new B1 lines, then ebr_'s G1 / G2 / N-a / N-b); c3i_ waits for H0's end; H0 run
-        (background, ~11:30)
+        gtp_ ROUND 15 LIVE 10:26 SHADOW (plan_1117/gtp_round15_handback.md; backups scratchpad\gtp_bak20; mirror + live
+        812 / 812; new tests vs bak20: 23 fail, controls pass; all below normal via scratchpad\gtp_lowprio.py, no
+        harness / GPU lock): R14-1 one no_redirects() for kind() + lead_words() (also &>x, < in.txt; bare operator
+        drops the next word), no split at the & of >& / &> -> `2>/dev/null curl`, `2>&1 curl`, `&>/dev/null curl`,
+        `2>&1 pip install`, `2>/dev/null bash <<EOF`, `cat <<EOF | 2>/dev/null bash`, `2>&1 python - <<EOF` refused;
+        `git status 2>&1`, `2>/dev/null git log` pass; `2>&1 python -I tools/x.py` keys `py tools/x.py`. R14-2
+        PowerShell: a prefix of -Command / -File / -EncodedCommand (-ec) = code flag first, then -w or a 3+ char
+        PS_VALUE prefix takes a value -> `-exec bypass -Command -`, `-NoP -Exec Bypass`, `pwsh -ex bypass -c -`,
+        `-WindowS Hidden`, `pwsh -w hidden` refused; `pwsh -ex bypass -f y.ps1`, `powershell -c Get-Date` pass.
+        R14-N1 bash clusters with s = stdin script, with c = code text; -s stop for bash / sh only (`bash -es a b`,
+        `bash -xs -- a` refused; `bash -ec true` passes). R14-N2 bun / deno `run` skipped anywhere + BUN_VALUE list
+        (`bun --cwd app run -`, `deno run --config x -`, `-c x -` refused; `deno run --config x y.ts` passes). Corpus
+        246 / 246, 0 changed. Keys: ~65 calls `sh 1` -> real light head; re-seeded 105,566 seeds / 7,082 price rows;
+        one real `sh 1` ring sample stays (n 1, prunes in 7 days). budget.py untouched, no override script.
+        -> gtw_ + gpr_ RE-CHECK ROUND 15.
+        Agents (5): lga_ (release_check R-RC1-1 / -2 + nits), gtw_ (round 15 re-check), gpr_ (round 15 re-check, price
+        side), b13r_ (c3i_ b1log fixes re-check, reading), t4i_ (probes for the 3 new B1 lines, then ebr_'s G1 / G2 /
+        N-a / N-b); c3i_ waits for H0's end; H0 run (background, ~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
