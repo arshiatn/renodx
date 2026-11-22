@@ -1305,6 +1305,7 @@ void ConfigureAddon() {
                                              .has_screen_space_shadows = false,
                                              .has_gtvbgi = false,
                                              .rays_tested = false,
+                                             .has_fog_shadows = false,
                                              .every_row = false});
   // Settings Mode's pages: Simple and Advanced the HDR rows (and the output's), Graphics the page's; About on every
   // page.
