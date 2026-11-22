@@ -7875,12 +7875,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         left, source inside IQ_REFS refused; byte copies into <name>.partial, rename at the end, nothing deleted on
         error; manifest.json (schema renodx-iq-reference v1, sources + played.json, sha256 per file, re-hashed in the
         test). -> gtv_ RE-CHECK STARTED (with gtl_'s iq_refs keep).
-        Agents (6): gtw_ (S1c re-check 9), gtv_ (gtq_ fixes + gtl_ iq_refs re-check), gpr_ (gtb_ S1 + N11
-        re-check), t4i_ (r22: ebr_'s r21 fixes), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_,
-        lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_ r22), gbc_,
-        gtb_ (waits gpr_), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (after
-        H0: its 4 suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper /
-        fg / map_replay-named process until H0 ends; gtv_'s held lab tests + race probe after H0.
+        H0 PROGRESS 06:48: run 1 at mode 165 / 206 (post_b), ~13 min left of run 1, whole run ~07:35.
+        gpr_ GTB_ S1-N11 RE-CHECK = OK 06:5x (plan_1117/designs/gpr_gtb_s1_n11_handback.md; gpr_review.md "## gtb_ S1
+        + N11 re-check"): test_budget 34 OK, selftest 3 / 3 x 2 (grandchild line "exit 124, grandchild <pid>, marker
+        True"), test_gpu_gate 30 + 1 skipped, test_report_check 9; grandchild --limit 6 and the clock test lose
+        nothing; N11 probe 304 keys on a scratch copy of the real prices.tsv (6,754 lines, CRLF / UTF-16 / BOM
+        copies) = 0 differences (only the literal key "kind" = header). Small, not blocking -> gtb_ now: s1a the
+        selftest lock case no longer proves wait != run time (add run_s <= 5.8, or record at ~3 s + run_s < 6.5);
+        s1b no test checks WHICH pids are left out (fake ns_busy logs -ExcludePids, HANG writes the child's pid,
+        assert every left-out pid is the child's / grandchild's; the code already guarantees no foreign pid,
+        l.870); s1c fallback decodes with 'replace' and prices 201 / 304 keys on a corrupt file while the hook gives
+        {} -> decode strictly, {} on UnicodeDecodeError. Sandbox test touches nothing real.
+        Agents (6): gtw_ (S1c re-check 9), gtv_ (gtq_ fixes + gtl_ iq_refs re-check), gtb_ (s1a-s1c), t4i_ (r22:
+        ebr_'s r21 fixes), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_,
+        upr_, h0i_ (after H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_ r22), gbc_, gpr_ (re-checks gtb_
+        s1a-s1c), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (after H0: its 4
+        suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
+        map_replay-named process until H0 ends; gtv_'s held lab tests + race probe after H0.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
