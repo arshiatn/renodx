@@ -516,7 +516,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_ (low, AFTER S3c): stale "proposed" mentions (resident_protocol.md l.7 + l.1 ... | ?
 - ATN (later, not urgent): the 4 adopted .proposed copies are unused now (nothing ... | ?
 - gtp_ ROUND 22 (coord 18:3x): gpr-R21-1 + gtw-R21-1..6 (below); then gtw_ + gpr_ ... | ?
-- gtv_: step 2b go / no-go on S-40992 + s3c2_r1_settle (coord 18:39). | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -11108,7 +11107,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         settle_frame 321, settle_all 1, settle_row 0 for all 20 rows. SLIP: step 0 had `; "exit $LASTEXITCODE"` appended after
         the exact rule command (rule text itself unchanged) -> told gtc_: rule commands alone, character for character.
         -> gtv_ step 2b go / no-go (rc_period + lab_analyze bursts).
-        - [ ] gtv_: step 2b go / no-go on S-40992 + s3c2_r1_settle (coord 18:39).
+        - [x] gtv_ (DONE 18:40, GO): step 2b go / no-go on S-40992 + s3c2_r1_settle (coord 18:39).
+        gtv_ 2b GO 18:40 (plan_1117/gtv_rerun_2b_handback.md): lab_analyze bursts exit 0: 5 settle windows (64 frames,
+        18:38:19-18:38:26) 0 bursts, 0 dwm samples; ns_busy once per window, 5 / 5 clean (F1 holds); gtv_rc_period.py over
+        320 frames (~28.1 ms wall each) no bursts, no gaps; settle rows as gtc_ said; only the 6 retired rows marked.
+        -> gtc_ steps 3-19 (coord 18:40).
         Agents (5): gtc_ (S3c RE-RUN, GPU), gtp_ (gate round 22, below normal), ebq_ (end batch readiness), hts_
         (open-items plan synthesis), gtv_ (on call for step 2b); gtl_ / hta_..htd_ / gtw_ / gpr_ / fcr_ / gti_ / grs_ / h0i_
         / upr_ idle; GPU: S3c RE-RUN (gtc_) from 18:3x; other agents' CPU work below normal; one GPU job at a time
