@@ -516,7 +516,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - lg3_ (Sonnet High, own worktree, branch rmt_lg3 from atn-mods HEAD): logging gro ... | ?
 - t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 (coord 18:4x); t ... | ?
 - ATN: review handoff_plan\plan.md -> OK / changes; NOTHING from it starts or gets ... | ?
-- gtv_: R1 burst verdict (calibrate / toggle / L1A) -> S3c part 1 PASS or what to ... | ?
+- gtl_: S3c PART 2 jobs + run sheet section (dead outputs on R3; log_uses / dump_f ... | ?
+- gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
+- coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
 - b3s_ (Sonnet High, worktree): B3b S4 -> S5 -> S6 per bd1o_design_B3_v2.md §10 -> ... | ?
 - t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 BUT keep B3b (re ... | ?
@@ -11176,7 +11178,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         R3 1864 MB. BURSTS FLAG ON R1 ONLY: res_183750 8 of 59 runs (calibrate 4 at 18:40:45-18:41:29, toggle 4 at
         18:42:37-18:42:46; 4-14 frames; each with an ns_busy run inside, dwm 0); rotation L1A 1 of 3 (18:43:54); R2 + R3 0
         of 58 each. (lab_analyze bursts prints the whole res folder whatever --job.) -> gtv_ verdict on R1's bursts.
-        - [ ] gtv_: R1 burst verdict (calibrate / toggle / L1A) -> S3c part 1 PASS or what to re-run (coord 19:1x).
+        - [x] gtv_ (DONE 19:18, PASS): R1 burst verdict (calibrate / toggle / L1A) -> S3c part 1 PASS or what to re-run (coord 19:1x).
+        gtv_ R1 BURSTS 19:18 (plan_1117/gtv_r1_bursts_handback.md; gtv_iq_review.md "## gtv_ R1 bursts" l.1230; script
+        testbin\scratch\gtv_\s3c\rc\gtv_r1_align.py): S3C PART 1 = PASS, no re-run. Cause = our own desktop: GPU use by the
+        Claude app (claude.exe 31360) + dwm.exe (2856) while agents worked (bursty runs dwm peak median 0.29 % / claude 0.30 %
+        vs clean 0.04 / 0.04; the 8 highest dwm samples all inside burst runs, max 3.45 % 18:42:44; rotation burst next to
+        claude 0.275 % 18:43:56). NOT ns_busy (inside all 51 clean runs too; F1 holds, no F1b), not periodic, not git
+        itself. R1 numbers unmoved (calibrate +0.33 / -0.34 = R2 / R3; toggle +0.005; rotation 1 of 48 blocks). Optional
+        clean R1: jobs_rerun 03 + 04 only. F2b (gtl_, Medium): the sampler writes '' for dwm.exe (lab.py ~1953, name not
+        readable) -> bursts' "dwm samples 0" never had data -> names without opening the process + print each run's top
+        non-resident GPU user. Low: bursts --job keeps only the job's runs. Quiet rule for timing: coord + agents hold git /
+        HANDOFF / index / streaming output while a timing job measures (or ATN minimizes the Claude app); optional: the lab
+        re-measures bursty blocks.
+        - [ ] gtl_: S3c PART 2 jobs + run sheet section (dead outputs on R3; log_uses / dump_frames; grs_ store-skip stems;
+        gti_ dead_outputs.py; gtl_'s part 2 notes) -> gtv_ reads -> gtc_ runs (coord 19:2x).
+        - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
+        bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
+        "proposed" mentions -> gtv_ re-checks.
+        - [ ] coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no commits / HANDOFF patches / index
+        rebuilds; timing sessions go to the quietest window (fewest agents).
         ATN 19:0x (sick; in-game tests out for 1-2 days; wants a plan coord can run almost without him): "please continue";
         Q1 BUILD B3b (S4-S7; multiple subagents if possible) -> COORD: before the end batch (ATN is out 1-2 days anyway, one
         batch measures all; ATN may still say after); Q2 group 3 BEFORE the batch = yes; Q3 the B1L1-only pair (~7 min) =
