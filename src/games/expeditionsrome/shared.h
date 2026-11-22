@@ -68,7 +68,8 @@ struct ShaderInjectData {
 // PsychoV35's slider defaults here: the game's own response (the film curve's toe below mid gray, its colour at equal
 // lightness), Highlight Contrast keeping PsychoV35's highlights. Minimax-fitted on WARP against the game's SDR through
 // lut00 at Unreal 4.23's default film settings (level B: no trace has the game's; tests/v35_fit.cpp); the other
-// PsychoV35 sliders keep Musa's defaults. Musa's own (1) until the fit's run in the build window writes its result here.
+// PsychoV35 sliders keep Musa's defaults. Musa's own (1) for now: the 2026-11-22 run found no fit within 5 % that keeps
+// the highlights within 15 % at 1000 / 203 (the shared rule); the test prints the 20 % fit as an option for ATN.
 #define EXR_V35_CONTRAST           1.f
 #define EXR_V35_SHADOWS            1.f
 #define EXR_V35_SATURATION         1.f

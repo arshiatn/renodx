@@ -20,6 +20,13 @@ Upscaling must be on below 100%. The Temporal Upscaling-off path is not enabled.
 - Fixed: the colour-grading shaders (lutbuilder + lut00-04) used -3.141593 where the game has -pi to the bit: now
   -3.14159274, the game's constant.
 - Changed: the fog-shadows row stays hidden (`has_fog_shadows = false`).
+- New: a WARP test (`tests/v35_fit.cpp`, level B: Unreal 4.23's default film settings, no trace has the game's) fits
+  PsychoV35's Contrast / Shadows / Saturation / Highlight Contrast to the game's SDR (lut00). Unchanged: the defaults stay
+  Musa's own. Musa's own vs the game's SDR: grey x5.43..x20.5 (0.05 - 1 nits), x1.43..x4.28 (1 - 15), x0.90..x1.29
+  (15 - 100); colour x0.81 (1 - 30 nits), x1.38 (30 - 150). No fit within 5 % keeps the highlights within 15 % at
+  1000 / 203 (the shared rule; 10 %: 282 % off, 15 %: 82 %, both at the Shadows bound 0.3). Only at 20 % does one fit
+  (1.47 / 0.43 / 0.87 / 0.73): grey x0.96..x1.00 / x1.00..x1.04 / x0.99..x1.10, colour x1.02 / x1.23, highlights 19.8 %
+  at 1000 / 203, 29.1 % at 2500 / 275. A question for ATN; the HDR (Extended) control is 0.04 % off.
 - Unchanged (ATN 11-22): "Brightness 40" stays the in-game line, ray-traced shadows stay min(the game's map, the rays),
   the ten TAA hooks stay.
 

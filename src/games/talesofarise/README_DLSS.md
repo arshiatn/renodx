@@ -20,6 +20,8 @@ ReShade addon (DX11, x64), separate from the HDR addon (`talesofarise`):
 - Fixed: the colour-grading shaders (lutbuilder + lut00-04) used -3.141593 where the game has -pi to the bit
   (0xc0490fdb): the decompile printed it one ulp off. Now -3.14159274, the game's constant.
 - Changed: the fog-shadows row stays hidden (no fog the rays shade here; `has_fog_shadows = false`).
+- Unchanged: PsychoV35's defaults are not fitted to the game here. Tales' SDR runs Unreal's legacy tone curve, whose
+  constants the CPU computes and no trace has yet (CombineLUTs' cb0 of 0x876F0F03, one frame).
 - Internal: the screen-space shadows' dispatch-list glue is shared (`talesofarise_dlss/bend_dispatch_setup.hlsli`, the
   includer gives viewport size, light projection and light depth); the GT-VBGI and SSS wrappers are named
   `host_light_bounce_*` / `host_sss_*`; the unused `rr_d3d12.hpp` is gone.

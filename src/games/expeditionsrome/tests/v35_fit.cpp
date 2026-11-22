@@ -15,10 +15,11 @@
  * lightness where SDR is 1 - 30 and 30 - 150 nits). The V35 FIT: Contrast 0.8 - 2, Shadows 0.3 - 1.5, Saturation 0.7 -
  * 1.3, Highlight Contrast 0.6 - 1.2, coarse to fine (0.1, 0.05, 0.01), minimax of grey 0.05 - 1 / 1 - 15 nits and chroma
  * 1 - 30 nits; a candidate counts only if it keeps PsychoV35's highlights at 1000 / 203 (grey within 10, 15 or 20 % of
- * Musa's own from 100 nits to 95 % of Peak: three fits, the smallest tolerance whose best is within 5 % is the one).
- * Checks: shared.h EXR_V35_* within 5 % and within 0.5 % of that fit's best, the highlight guard at 1000 / 203 within its
- * tolerance, 2500 / 275 reported and within 20 %; controls: Musa's own sliders must fail the 5 %, HDR (UE Extended: the
- * film curve below mid grey) must be the game's grey within 0.5 %; the grey ramps rise, SDR reaches 150 nits.
+ * Musa's own from 100 nits to 95 % of Peak: three fits; the smallest tolerance up to 15 % whose best is within 5 % is
+ * the one, coord 20:5x). Checks: shared.h EXR_V35_* within 5 % and within 0.5 % of that fit's best, the highlight guard at
+ * 1000 / 203 within its tolerance, 2500 / 275 reported and within 20 %; with no such fit, shared.h keeps Musa's own and
+ * the 20 % fit is reported (numbers for ATN); controls: Musa's own sliders must fail the 5 %, HDR (UE Extended: the film
+ * curve below mid grey) must be the game's grey within 0.5 %; the grey ramps rise, SDR reaches 150 nits.
  * Built and run by test/tw_expeditions_unit/run.ps1 (after the expeditionsrome target); -Tests v35_fit.
  */
 
@@ -426,6 +427,8 @@ int wmain() {
   Values best = {1.f, 1.f, 1.f, 1.f};
   float best_score = 1e9f;
   float tolerance = 0.f;
+  Values option = {1.f, 1.f, 1.f, 1.f};
+  float option_guard = 0.f;
   for (const float guard : {0.1f, 0.15f, 0.2f}) {
     Values fit = {1.f, 1.f, 1.f, 1.f};
     float fit_score = 1e9f;
@@ -465,35 +468,54 @@ int wmain() {
                 100.f * guard, fit[0], fit[1], fit[2], fit[3], 100.f * fit_score,
                 100.f * highlights(Run(with(own, fit)), own_ramp, NITS, 1000.f), candidates,
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
-    if (tolerance == 0.f && fit_score < 0.05f) {
+    // The shipped rule (coord 20:5x): the guard at 1000 / 203 at most 15 %; a looser fit is printed for ATN only.
+    if (guard <= 0.15f + 1e-4f && tolerance == 0.f && fit_score < 0.05f) {
       best = fit;
       best_score = fit_score;
       tolerance = guard;
     }
+    if (guard > 0.15f + 1e-4f && tolerance == 0.f && fit_score < 0.05f) {
+      option = fit;
+      option_guard = guard;
+    }
   }
-  CHECK(tolerance != 0.f, "no fit within 5 %% at any highlight tolerance: keep Musa's own and report it");
-  std::printf("   the fit: guard %.0f %% (the smallest within 5 %%)\n", 100.f * tolerance);
 
-  const Injection shipped = with(own, {EXR_V35_CONTRAST, EXR_V35_SHADOWS, EXR_V35_SATURATION, EXR_V35_HIGHLIGHT_CONTRAST});
+  const Values shipped_values = {EXR_V35_CONTRAST, EXR_V35_SHADOWS, EXR_V35_SATURATION, EXR_V35_HIGHLIGHT_CONTRAST};
   const float own_score = below_white(Compare(sdr, own_ramp));
-  const auto shipped_ramp = Run(shipped);
+  const auto shipped_ramp = Run(with(own, shipped_values));
   const float shipped_score = below_white(Compare(sdr, shipped_ramp));
   std::printf("   shared.h EXR_V35_* (%.2f / %.2f / %.2f / %.2f): worst %.1f %%; Musa's own (control, must fail 5 %%): %.1f %%\n",
-              EXR_V35_CONTRAST, EXR_V35_SHADOWS, EXR_V35_SATURATION, EXR_V35_HIGHLIGHT_CONTRAST, 100.f * shipped_score,
-              100.f * own_score);
-  CHECK(shipped_score < 0.05f, "the V35 defaults miss the game by %.1f %%", 100.f * shipped_score);
-  CHECK(shipped_score <= best_score + 0.005f, "the V35 defaults (%.1f %%) are not the fit's best (%.1f %%)", 100.f * shipped_score,
-        100.f * best_score);
+              shipped_values[0], shipped_values[1], shipped_values[2], shipped_values[3], 100.f * shipped_score, 100.f * own_score);
   CHECK(own_score > 0.05f, "control: Musa's own sliders pass (%.1f %%): the measure sees nothing", 100.f * own_score);
-  Report("Expeditions: Rome V35 defaults (after the fit)", sdr, shipped_ramp);
-  for (const auto& [peak, paper_white, bound] : {std::tuple{1000.f, 203.f, tolerance}, std::tuple{2500.f, 275.f, 0.2f}}) {
-    const float worst = highlights(Run(with(Settings(3.f, peak, paper_white), {EXR_V35_CONTRAST, EXR_V35_SHADOWS, EXR_V35_SATURATION,
-                                                                                EXR_V35_HIGHLIGHT_CONTRAST})),
-                                   Run(Settings(3.f, peak, paper_white)), paper_white, peak);
-    std::printf("   highlights, Peak %.0f / Paper White %.0f: grey within %.1f %% of Musa's own (100 nits - 95 %% of Peak)\n", peak,
-                paper_white, 100.f * worst);
-    CHECK(worst <= bound + 1e-4f, "the V35 defaults move PsychoV35's highlights by %.1f %% at %.0f / %.0f (bound %.0f %%)", 100.f * worst,
-          peak, paper_white, 100.f * bound);
+  // The highlights of a candidate against Musa's own at both displays: 1000 / 203 within bound_1000, 2500 / 275 within 20 %
+  // (checked for the shipped defaults; an option's only printed).
+  const auto check_highlights = [&](const Values& values, float bound_1000, bool enforce) {
+    for (const auto& [peak, paper_white, bound] : {std::tuple{1000.f, 203.f, bound_1000}, std::tuple{2500.f, 275.f, 0.2f}}) {
+      const float worst = highlights(Run(with(Settings(3.f, peak, paper_white), values)), Run(Settings(3.f, peak, paper_white)),
+                                     paper_white, peak);
+      std::printf("   highlights, Peak %.0f / Paper White %.0f: grey within %.1f %% of Musa's own (100 nits - 95 %% of Peak)\n", peak,
+                  paper_white, 100.f * worst);
+      CHECK(!enforce || worst <= bound + 1e-4f, "highlights moved by %.1f %% at %.0f / %.0f (bound %.0f %%)", 100.f * worst, peak, paper_white,
+            100.f * bound);
+    }
+  };
+  if (tolerance != 0.f) {
+    std::printf("   the fit: guard %.0f %% (the smallest within 5 %%)\n", 100.f * tolerance);
+    CHECK(shipped_score < 0.05f, "the V35 defaults miss the game by %.1f %%", 100.f * shipped_score);
+    CHECK(shipped_score <= best_score + 0.005f, "the V35 defaults (%.1f %%) are not the fit's best (%.1f %%)", 100.f * shipped_score,
+          100.f * best_score);
+    Report("Expeditions: Rome V35 defaults (after the fit)", sdr, shipped_ramp);
+    check_highlights(shipped_values, tolerance, true);
+  } else {
+    // No fit within 5 % at a 15 % guard: Musa's own stays (coord 20:5x), the looser fit only reported.
+    std::printf("   no fit within 5 %% at a highlight guard of 15 %%: Musa's own kept\n");
+    CHECK(shipped_values == (Values{1.f, 1.f, 1.f, 1.f}), "no fit at a 15 %% guard, but shared.h EXR_V35_* is not Musa's own");
+    if (option_guard != 0.f) {
+      std::printf("   option for ATN (guard %.0f %%: %.2f / %.2f / %.2f / %.2f):\n", 100.f * option_guard, option[0], option[1],
+                  option[2], option[3]);
+      Report("Expeditions: Rome V35 option", sdr, Run(with(own, option)));
+      check_highlights(option, option_guard, false);
+    }
   }
   // The measure's own check: HDR (UE Extended) is the game's film curve below mid grey (every grey band here), so a
   // wrong decode, white or binding would show.
