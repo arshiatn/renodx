@@ -662,6 +662,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - g02_ next wave: r1 (if the hook can't run in PsychoV35, b4 keeps the game's last ... | ?
 - lg3_ / engine_code owner after the batch (er5o_ m3): engine stubs page = plain A ... | ?
 - coord at READY: checklist done -> READY message -> `shutdown /s /t 60` (one-time ... | ?
+- t4i_ after T6: ebo_check.ps1 job line from $lines (not $log); optional: the Unha ... | ?
+- ATN at READY / power-on: the manifest's game hashes (empire.retail.dll + Attila. ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12567,6 +12569,35 @@ heading text are in HANDOFF_ARCHIVE.md)
         tree 2eaaec733; FP add-on via sym_build_head -FramePointers + CL=/DTWATTILA_DRAW_RECORDING; heapfix Way B prep
         05b9a5c + HFx, new DLL name; final1118 helper; manifest.json per s10 + ebr_ conditions 1-2; placeholders box
         report; no T6 yet; gates / corpus / ebo_check untouched until er5o_ answers).
+        er5o_ T4I RECHECK 23:4x (render_mt/reports/er5o_t4i_recheck_handback.md): GO for T6. job_line tied to the crash's
+        thread (heapfix exception Groups[5] = same decimal id); the Unhandled line (top-level filter, once, only unhandled)
+        pairs with heapfix's last EXCEPTION line on that thread; overflow logs no Unhandled (old path). The Unhandled-alone
+        trigger is safe (one $crash per start, INFO rows, first-chance text does not match). Gain: a pool worker's
+        stub-page fault is pinned by rule 2 through the Unhandled line's job. s7 clause fix done by t4i_ in T5.
+        - [ ] t4i_ after T6: ebo_check.ps1 job line from $lines (not $log); optional: the Unhandled line alone counts only
+        when the start ended early (no valid line / non-zero exit).
+        t4i_ T5 DONE 00:0x (render_mt/reports/t4i_t5_handback.md): frozen tree = 2eaaec733 (HEAD 577f61690, HANDOFF-only
+        after; inputs unchanged before / after). ebr_ condition 1 holds (AnimationRowsWorkers {Off, On, Check} under
+        TWATTILA_DRAW_RECORDING addon.cpp:2197-2210; worker_env_read_generation :1679-1683 reads COUNT_CHECK + ANIMATION_CHECK;
+        pool lines worker_pool.hpp:482 / :524; code_ranges.hpp:73 / :76; device_loss.hpp:184).
+        Add-on (batch binary, unstamped, FP + DRAW_RECORDING): testbin\cpu1_addons\t5_1122b\renodx-twattila.addon32 sha256
+        2fabff4f...19f3 (pdb 715f155f...78f1). heapfix Way B: prep 05b9a5c (checkout untouched, built from a git archive)
+        testbin\heapfix_pf\dlls\t5prep_dinput8.dll 18472a6c...38f4 (7.0, parallel prepare, no x87c); HFx 323bf407...4407.
+        Helper final1118 38db7a5d...e531. manifest.json render_mt\ebo (accf7873...051b): batch binary, 75 rows, 14
+        row_values with labels, env live / start as ebr_ c2, defines, optional R2 true / x87c false / X1 false. ebo_make -Dry
+        legs 1-4: 0 PROBLEM / 0 WARN. Placeholders box: b3b_mismatch / fill_check_mismatch / b1_stack_headroom / probes
+        effect_instances / overflow / part_calls matched by shipped lines; draws + c_render_us dropped earlier (NOTEs).
+        Leftover: cpu2_sym\build32_sym_t5_1122 (failed configure from Git Bash, CMakeCache only; not deleted).
+        GAME HASHES NOT FILLED: the auto-mode classifier REFUSED t4i_'s `sha256sum "<Attila folder>/empire.retail.dll"
+        "<Attila folder>/Attila.exe"` (22:50Z, [Unauthorized Access]). Not worked around; the manifest keeps 64 zeros +
+        _todo; the dry runs will show it as one PROBLEM.
+        - [ ] ATN at READY / power-on: the manifest's game hashes (empire.retail.dll + Attila.exe). Choices: ATN hashes them
+        himself (Get-FileHash), OR one unchanged retry of t4i_'s command on ATN's go, OR drop the game check (ebr Q3: a Steam
+        update). Then one dry run again.
+        T6 SENT 00:1x to t4i_ (test_names -Ref 2eaaec733 -Waiting @(), corpus / gates line swap, the 4 -DryRun rules exactly,
+        s10 checklist). Then ebr_ (a41704a31fb3d6080) Opus read of the variants. Coord: helper120 + Attila v169 + WH3 v68 at
+        the tip, stamp + install (the batch puts the manifest's add-on / helper in per start, so the install does not touch
+        it); one last dry run after the install.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
