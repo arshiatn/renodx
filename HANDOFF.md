@@ -643,6 +643,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - F5 real motion into IN_MV: the add-on writes this frame's motion before the trac ... | ?
 - ATN (later): G1 histories in frames, not seconds; the RR 1-ray numbers; the r3 o ... | ?
 - gtp_ round 24 (next wave): .inc in CODE; VCToolsInstallDir check + toolset on th ... | ?
+- ATN 15 Shogun 2 per-map fit FIRST in the next wave (g04_): run scratch explore2 ... | ?
+- psycho35.hlsli owner: an ApplyPsychoV35 overload with a float4 knob scale (g04_ ... | ?
+- g04_ item 4 trace (MI8): Shogun 2 smoke battle (vfxoverlay00 draws' VS / IA / st ... | ?
+- g04_ item 7 (unseen-lights row) needs a helper flag (GPU plan's files). | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12382,6 +12386,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         Coord's picks (gtp_'s questions): `shell_heredoc` row stays ABSENT / off (it would refuse ~660 normal agent edits);
         `.inc` goes into CODE in round 24.
         - [ ] gtp_ round 24 (next wave): .inc in CODE; VCToolsInstallDir check + toolset on the build exit line (rvc_ G17).
+        g04_ PART (handbacks/g04_part_handback.md): ho_g04 tip 6bce79e7f: 2684d11d1 (needs ho_g21 7d31e5fef), 7b175a45d
+        MI6, 3dba5ac7f, 6158abd36 + 0f63f0ebd (need ho_g19 b8cb841d1), 9cc985336 fxaa00 / fxaa01 decompile fix (bug fix,
+        WARP 0 texels vs the game's, old 637), 0a54aae21 / 932fda89f / 42c09cc85 rvd_ N1-N4 / MI9, 89783dd05 ATN 16 Rome
+        Remastered Exposure 5th knob (1.00 / 1.07 / 1.00 / 0.92 / 1.10, <15 nits within 1.0 % of SDR, highlights 7.6 %),
+        6bce79e7f tests. tw_shogun2_romer_toe PASS. rvd_ re-check sent 22:3x ("rvd_ g04 recheck").
+        ATN list 35 (Shogun 2 highlights 20.04 % at 2500 / 275, bound 20 %; 13.6 % at 1000 / 203): coord's pick accept.
+        - [ ] ATN 15 Shogun 2 per-map fit FIRST in the next wave (g04_): run scratch explore2 (bos_japan A / B / C tuples
+        from data_fots.pack), slope table in shared.h, tonemap.hlsli scales the player's sliders by fit(slope) /
+        fit(0.88), v35_map_response field, a shipped check per tuple, before -> after per map. Until then bos_japan B / C
+        are darker than SDR.
+        - [ ] psycho35.hlsli owner: an ApplyPsychoV35 overload with a float4 knob scale (g04_ request, for the per-map fit).
+        - [ ] g04_ item 4 trace (MI8): Shogun 2 smoke battle (vfxoverlay00 draws' VS / IA / stride / positions / camera cb,
+        order vs sun draws, a free t-slot in sss00 / 01, smoke buffer size); Rome Remastered ASSAO PSApply 6A73BA10 (t13
+        format / size, forward readers, b8 projection, depth).
+        - [ ] g04_ item 7 (unseen-lights row) needs a helper flag (GPU plan's files).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
