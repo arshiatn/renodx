@@ -6663,11 +6663,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         upt_ RESUMED 01:5x -> v2.3, then upr_ spot-check. ATN asked 'did we do everything from Forge': status given
         (rules + metrics scorer + Nsight columns + unified design done; S1 tooling + hook in review; S2-S5, the box /
         pbrt-v4, full-4K FLIP / lag metrics, unified build, dead outputs (Q23), PTLAS re-measure after render_mt).
-        Agents (7): c33i_ (R-S5 fixes), gtw_ (S1c re-check), ebr_ (r16 review), lga_ (group 2 re-check 2), lgf1_ (group 1
-        follow-up), gtv_ (S1a + S1b re-check), h0i_ (H0 Shoulds), upt_ (v2.3). QUEUE: R-S5 re-checks -> merge rmt_rs5, lga_ group 1 re-check
-        2 + group 2 re-check 2 -> merge rmt_lg1 / rmt_lg2, gtw_ S1c re-check, bulk index (after S1a OK), Q8(b) lock wait,
-        H0 fixes / harness runs -> merge rmt_h0, B1.6, X1, logging group 3, PT DI steps 0-4 (after rmt_lg2 + H0), S2
-        (after rmt_lg2), T5 / T6, end batch. ATN: unified PT 14 answers pending.
+        h0i_ H0 SHOULDS DONE 01:5x: rmt_h0 519c66f1e (probe clamp 1..94 at rt_path.hlsli:975; overflow starts at 96).
+        tools\tw\h0\h0i_test.py is a real guard now: all 28 .hlsl / .hlsli, Random / Pcg4d / carrier seeds checked, frame
+        lane asserted, caps parsed from host clamps + shader constants, 18 negative fixtures; 63 / 63; pre-H0 sources in
+        tools\tw\h0\h0i_base. Helper build clean, gated twattila amd64 + x86 build32 exit 0. upr_ SHOULDS RE-CHECK
+        STARTED 01:5x. Run 6 now safe at any probe ray count.
+        Agents (8): c33i_ (R-S5 fixes), gtw_ (S1c re-check), ebr_ (r16 review), lga_ (group 2 re-check 2), lgf1_ (group 1
+        follow-up), gtv_ (S1a + S1b re-check), upr_ (H0 Shoulds re-check), upt_ (unified PT v2.3). QUEUE: R-S5 re-checks
+        -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
+        re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
+        rmt_h0, Mega Geometry 4K run (after rmt_lg2), B1.6, X1, logging group 3, PT DI steps 0-4 (after rmt_lg2 + H0), S2
+        (after rmt_lg2), T5 / T6, end batch. ATN: 5 open unified PT points (AMD / Intel routes, NQ1, Q6, Q8, NQ4).
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
