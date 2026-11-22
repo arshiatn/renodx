@@ -465,6 +465,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtb_ (low): end-to-end slot-wait test - both sandbox slots held, one freed at ~8 ... | ?
 - gtp_ (low): kind() doesn't normalise target spelling ('twattila' vs 'renodx-twat ... | ?
 - gtb_ / gti_ (low): watch's load is always `unknown` while nothing refreshes busy ... | ?
+- t4i_ (low): add -B in run_all.ps1 line 9 + test_analyze.py run_analyze, after eb ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8413,6 +8414,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         ebo_analyze.cpython-314.pyc, single file) - told to use python -B and delete nothing; added to the
         teardown question for ATN. Mutant folder t4i_p4_mut stays (scratchpad). -> ebr_ QUICK CHECK STARTED; T5
         manifest rows wait for rmt_b1rt.
+        t4i_ NO-DELETE ACK 08:2x (render_mt/reports/t4i_no_delete_ack_handback.md): runs python -I -B from now on;
+        two spots still start python without -B (run_all.ps1 line 9 test_analyze.py; test_analyze.py run_analyze
+        -> ebo_analyze imports ebo_mapcmp, can write bench\__pycache__ .pyc; the "no ebo_mapcmp .pyc left" check
+        passes, reason unconfirmed).
+        - [ ] t4i_ (low): add -B in run_all.ps1 line 9 + test_analyze.py run_analyze, after ebr_'s P4 check (one
+            writer on test_analyze.py), with the T5 work (t4i_ 08:2x).
         Agents (8): upr_ (h0i_ H0 analysis re-check), gtv_ (v1.2 config hash review, lab + builder), gtp_ (round 12:
         hg1 + Section 8 + kind() + target spelling), gtb_ (slot-wait test + load), ebr_ (t4i_ P4 quick check),
         b13r_ (c3i_ rmt_b1rt review)
