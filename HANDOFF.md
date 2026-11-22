@@ -9605,9 +9605,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         quiet record is checked before each job + after the last. Time ~9 min (518 s) / ~13 with -WithRelease +
         any build wait. Not tested: real locks, a real build. lga_release_regression.md Runner paragraph updated.
         -> gtw_ RE-CHECKS RC-2 (after round 15).
+        c3i_ B1LOG N5 + N6 DONE 10:34 (render_mt/reports/c3i_b1log_n5_handback.md; rmt_b1log a03911fde on 4edac6a83,
+        local): effect_update.hpp:1595 `if (session_used) { LogSessionTotals(); }` (Detach's guard) + 26h case (window
+        with the row never on -> 0 totals lines, <= 1 headroom line; mutant n5_noguard fails, file restored); N6
+        comment + printf fixed. Quick effect_update part PASS (below normal), git diff --check clean; log texts
+        unchanged. HELD for H0's end: FULL suite, -DrawRecording, instance_fill, gated builds (x86 x3, DRAW_RECORDING,
+        amd64, -Owner c3i_) via scratchpad\c3i_log_full.ps1 / c3i_log_suites16.ps1 / c3i_log_gated15.ps1.
+        H0 10:34: still run 1 (HARNESS_DUMP, smoke passed on every side).
         Agents (3): gtw_ (round 15 re-check, then lga_ RC-2 re-check), gpr_ (round 15 re-check, price side), t4i_ (probes
-        for the 3 new B1 lines, then ebr_'s G1 / G2 / N-a / N-b); c3i_ (N5 + N6, then waits for H0's end); H0 run
-        (background, ~11:30)
+        for the 3 new B1 lines, then ebr_'s G1 / G2 / N-a / N-b); c3i_ waits for H0's end (then suites + builds ->
+        rmt_b1log merge gate); H0 run (background, ~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
