@@ -138,6 +138,15 @@ struct ShaderInjectData {
   float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
 };
 
+// PsychoV35's slider defaults here: the game's own response below white (its grey already is the game's curve; the
+// game's SDR colour at equal lightness is x0.81 of Musa's at 1 - 30 nits), Highlight Contrast keeping PsychoV35's
+// highlights. Minimax-fitted on WARP against the game's SDR (test/tw_rome2_thrones_v35, V35 FIT: 0.22 %, Musa's own 22.7 %;
+// the black and white points assumed: 10^-4, 1); the other PsychoV35 sliders keep Musa's defaults.
+#define ROME2_V35_CONTRAST           1.f
+#define ROME2_V35_SHADOWS            0.99f
+#define ROME2_V35_SATURATION         0.8f
+#define ROME2_V35_HIGHLIGHT_CONTRAST 1.03f
+
 #define SI shader_injection
 // Output SDR has no Paper White (as Attila).
 #define SDR_PAPER_WHITE ((SI.swap_chain_encoding == 2.f) ? 1.f : SI.diffuse_white_nits / SI.graphics_white_nits)

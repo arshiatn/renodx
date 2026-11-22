@@ -15,6 +15,15 @@ Fixed:
 - DLAA / DLSS and CMAA2 blend in the frame's own curve: 2.2 with Gamma Correction on (as Attila's and Thrones' since
   11-16); before, at 2.0 while the frame is shown at 2.2 (slightly lighter or darker edges and dark gradients).
 
+Changed:
+- PsychoV35's defaults follow the game's own SDR colour (the V35 fit, level B: black / white points assumed 10^-4 / 1):
+  Saturation 0.8, Shadows 0.99, Highlight Contrast 1.03 (Contrast 1; `shared.h` ROME2_V35_*). Its grey already was the
+  game's curve (x1.000 above the SDR black floor); its colour at equal lightness was x1.227 the game's at 1 - 30 nits and
+  x1.282 at 30 - 150 nits, now x0.998 and x1.081; highlights within 5.1 % of Musa's own at 1000 / 203, 6.8 % at
+  2500 / 275. The game's SDR raises black (1.4 nits here; no V35 slider makes it): PsychoV35 keeps true black there.
+  Reset and Recommended start from these. `test/tw_rome2_thrones_v35` (WARP).
+- RT/PT sets the rows the untested flags leave out as Attila's does (ATN 2026-11-22).
+
 Checked:
 - Sharp Ray-Traced Reflections: nothing to port. Rome II has no ssr00 / ssr01 (environment_specular_light) family and no
   reflection blur; its only reflections are the water's (waterreflection00 7C9C8ECF into a 1-mip target the water reads
