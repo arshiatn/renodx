@@ -109,10 +109,8 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
 
   // A thread parked at each byte of each stub (SuspendThread / SetThreadContext, as 29d): refused strictly inside, going in and going out.
   {
-    std::jthread parked([](std::stop_token token) {  // joins on every way out of the block: a failing CHECK exits 1, not std::terminate
-      while (!token.stop_requested()) Sleep(1);
-    });
-    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
+    ParkedThread parked;  // joins on every way out of the block: a failing CHECK exits 1, not std::terminate
+    HANDLE thread = parked.Open();
     CHECK(thread != nullptr);
     int wrong = 0;
     int checked = 0;
@@ -146,8 +144,7 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
         wrong += (fi::written != fill::ALL_SITES) ? 1 : 0;
       }
     }
-    parked.request_stop();
-    parked.join();
+    parked.Stop();
     CloseHandle(thread);
     CHECK(wrong == 0 && fi::written == fill::ALL_SITES);
     std::printf("29f. a thread parked at %d places (each byte of each 11-byte stub and the byte after, going in and going out): refused strictly inside, free at the ends\n", checked);
@@ -481,11 +478,8 @@ int RunInstanceFillTests(const TestBuild& build, uint8_t* game, uint8_t* patched
 
   // 29d. A thread at each byte of each site; the dispatcher's count.
   {
-    std::atomic<bool> stop = false;
-    std::thread parked([&] {
-      while (!stop.load()) Sleep(1);
-    });
-    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
+    ParkedThread parked;
+    HANDLE thread = parked.Open();
     CHECK(thread != nullptr);
     int wrong = 0;
     int checked = 0;
@@ -525,8 +519,7 @@ int RunInstanceFillTests(const TestBuild& build, uint8_t* game, uint8_t* patched
     wrong += (!try_row(patched + text_rva + 0x100, true)) ? 1 : 0;
     ec::failed_writes = 0;
     wrong += (!try_row(patched + text_rva + 0x100, false)) ? 1 : 0;
-    stop = true;
-    parked.join();
+    parked.Stop();
     CloseHandle(thread);
     ec::failed_writes = 0;
     CHECK(wrong == 0 && fi::written == 0 && game_is_back());
@@ -596,12 +589,9 @@ int RunInstanceFillTests(const TestBuild& build, uint8_t* game, uint8_t* patched
   {
     CHECK(fill::Prepare(reinterpret_cast<HMODULE>(patched)) && fi::found == fill::ALL_SITES);
     rows(false);
-    std::atomic<bool> stop = false;
-    std::thread parked([&] {
-      while (!stop.load()) Sleep(1);
-    });
-    const DWORD parked_id = GetThreadId(parked.native_handle());
-    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, parked_id);
+    ParkedThread parked;
+    const DWORD parked_id = GetThreadId(parked.thread.native_handle());
+    HANDLE thread = parked.Open();
     CHECK(thread != nullptr);
     // `body` runs with the thread stopped at `where` (and its context put back after).
     const auto parked_at = [&](uintptr_t where, const auto& body) {
@@ -698,8 +688,7 @@ int RunInstanceFillTests(const TestBuild& build, uint8_t* game, uint8_t* patched
     CHECK(fi::written == fill::ALL_SITES);
     rows(false);
     CHECK(fi::written == 0 && game_is_back());
-    stop = true;
-    parked.join();
+    parked.Stop();
     CloseHandle(thread);
     // The stubs' page that cannot be allocated or made executable: the line says which, with the error. The state Prepare leaves is put back.
     {

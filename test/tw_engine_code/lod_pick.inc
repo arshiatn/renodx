@@ -568,11 +568,8 @@ int RunLodTests(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32_
 
   // 22e. A parked thread at each byte of the site (refused at +1 .. +4, written at the others) and of the stub (written at each).
   {
-    std::atomic<bool> stop = false;
-    std::thread parked([&] {
-      while (!stop.load()) Sleep(1);
-    });
-    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
+    ParkedThread parked;
+    HANDLE thread = parked.Open();
     CHECK(thread != nullptr);
     CHECK(LodSlider(1.f));
     int wrong = 0;
@@ -599,8 +596,7 @@ int RunLodTests(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32_
     }
     for (size_t offset = 0; offset < ec::MODEL_DETAIL_STUB.size(); ++offset) wrong += toggle_with_thread_at(page_stub() + offset) ? 0 : 1;
     CHECK(LodSlider(1.f));
-    stop = true;
-    parked.join();
+    parked.Stop();
     CloseHandle(thread);
     CHECK(thread_ok && wrong == 0);
     std::printf("22e. a parked thread at the site -1 .. +7: refused at +1 .. +4 and written at the others; at each of the stub's %zu bytes: written\n", ec::MODEL_DETAIL_STUB.size());
