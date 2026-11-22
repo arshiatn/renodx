@@ -11389,6 +11389,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         a5e65f77a870c6515. bd1r_ = ac36089e263ea390f. The app caps at 20 running agents.
         - [ ] coord: spawn the QUEUED groups as slots free: G02, G03 (+ 99164788 / DB53BDDC), G06, G09, G11, G20, G21, G22
         (same prompts); then each group's Opus xHigh review on its hand-back; forward g04_'s V35 pilot recipe.
+        20:2x STARTED: g06_ a427ca37300f6f998, g09_ aa8acb41ea086f2a6, g11_ aaf2c70cc503b4cf7. STILL QUEUED (wave 2): G20,
+        G21 (tell coord when the SSS move is done -> g14_ updates SKILL.md line 9), G22.
         - [x] coord (SENT 20:03, commit 29.3 GB, lab idle while gtl_ diagnoses uses.tsv): send "BUILD WINDOW OPEN" after S3c part 2 (or between its sessions when commit < 30 GB).
         - [ ] coord: send "BUILD WINDOW CLOSED" to every writing group before gtc_ runs part 2 again.
         - [ ] ATN (optional): raise CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS (20 now) if he wants all 22 groups at once.
