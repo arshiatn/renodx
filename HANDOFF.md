@@ -445,6 +445,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtq_: read gtl_'s iq_input note (output_sizes per arm, dump_frames > 1, dred set ... | ?
 - c3i_ (with the B1.6 follow-ups or right after): b1_stack_headroom gate has no sh ... | ?
 - T5 owner (end batch, before leg 1): the REAL manifest must carry rows ParallelEf ... | ?
+- gtl_ (optional, after its 4 suites pass): a light_anim iq job launches its own r ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -7764,12 +7765,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         adopted. 2 protocol proposal says "tool fault" (also for true-vs-false arms) + the iq-ends-resident note. 3
         test_reuse_needs_a_dred_label with a stub session. -> gtv_ short RE-CHECK STARTED (unit only); after H0:
         gtl_ runs all four suites, gtv_ its held tests + race probe.
-        Agents (7): gtp_ (gtw_ re-check 8 fixes, O1 first), gtv_ (gtl_ nits re-check), gtq_ (iq_input note +
-        reference played.json, offline), gtb_ (selftest flake S1), ebr_ (t4i_ r21 re-check), c3i_ (B1.6
-        follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to
-        testbin + R1), gpp_, t4i_ (r22 after c3i_), gbc_, gpr_ (re-checks gtb_ S1), gti_ (after H0: R1), grs_,
-        gtk_, gtw_ (re-check 9 after gtp_), b13r_ (re-checks c3i_), gtl_ (after H0: its 4 suites). GPU: H0 RE-RUN
-        (coordinator, since 05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends.
+        gtv_ GTL_ NITS RE-CHECK = OK 06:1x (plan_1117/gtv_gtl_nits_recheck_handback.md; gtv_s3r_review.md "### Nits
+        re-check"): unit 25 / 25 (06:13); the light_anim finally-stop is right (stop works after a failed loop,
+        nothing after the loop uses res, gate calibration is per session); cost: a reused kept resident ends too
+        (next job reloads); the no-label test catches a regression. LAB v1.1 = OK pending gtl_'s jobs / keeper / ps1
+        suites after H0.
+        - [ ] gtl_ (optional, after its 4 suites pass): a light_anim iq job launches its own resident instead of
+            reusing a kept one; positive-control unit test for reuse (stub with dred true + pid + idle alive.json).
+        Agents (6): gtp_ (gtw_ re-check 8 fixes, O1 first), gtq_ (iq_input note + reference played.json,
+        offline), gtb_ (selftest flake S1), ebr_ (t4i_ r21 re-check), c3i_ (B1.6 follow-ups + stack headroom
+        line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r22
+        after c3i_), gbc_, gpr_ (re-checks gtb_ S1), gti_ (after H0: R1), grs_, gtk_, gtw_ (re-check 9 after
+        gtp_), b13r_ (re-checks c3i_), gtl_ (after H0: its 4 suites), gtv_ (after H0: held tests + race probe;
+        re-checks gtq_). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
+        map_replay-named process until H0 ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
