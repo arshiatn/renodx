@@ -168,8 +168,8 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
       const D3D11_BUFFER_DESC desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
       device->CreateBuffer(&desc, nullptr, runtime.buffer.GetAddressOf());
     }
-    if (!runtime.buffer) return {};
-    if (runtime.uploaded != runtime.brightness) {
+    // Without our buffer cb7 is bound null, never left at another draw's: the patched shaders read 0, the game's colour.
+    if (runtime.buffer && runtime.uploaded != runtime.brightness) {
       const std::array<float, 4> value = {runtime.brightness - 1.f, 0.f, 0.f, 0.f};
       native->UpdateSubresource(runtime.buffer.Get(), 0, nullptr, value.data(), 0, 0);
       runtime.uploaded = runtime.brightness;
