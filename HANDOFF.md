@@ -496,9 +496,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
 - gtv_: lab-suite load run NOW (GPU free 14:07) (coord 14:07). | ?
 - gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-che ... | ?
-- gtl_: S3c run sheet (coord 14:11). | ?
 - coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
 - h0i_: Set-StrictMode -Version 1 (line 26) + dry run + offline test -> then the r ... | ?
+- gtl_: re-run s3c_jobs.py on the merged recorder build testbin\scratch\coord_\hel ... | ?
+- grs_: dead outputs (a) resident log_uses + (d) store-skipping stem builder + (3) ... | ?
+- gti_: dead outputs (c) dead_outputs.py with DXIL reflection, planted-fake proof ... | ?
+- gtv_ / gtb_: judge S3c sheet items 10 (strict second loop) + 11 (kept R1 residen ... | ?
+- ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job fi ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10239,7 +10243,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         only (fg_proxy_d3d12.hpp Presented(): "Without XeSS's SDK an XeSS object never starts (Initialize fails): its
         most stays 2, as with the SDK before a chain is made."), diff checked by coord = fcr_'s wording; merges after the
         gpu_s2 builds (+ helper build). grs_'s worktree now on grs_xess_nit.
-        - [ ] gtl_: S3c run sheet (coord 14:11).
+        - [x] gtl_ (DONE 14:33): S3c run sheet (coord 14:11).
         - [ ] coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12).
         gpu_s2 BUILDS PASS 14:13 (x86 x3, amd64 twattila, helper 5,689,856 B = same size: the resident is in the
         RENODX_TW_RECORDER_BUILD build only) -> pushed bd19d5cda. grs_xess_nit merged locally f54613dea; recorder-build
@@ -10279,9 +10283,41 @@ heading text are in HANDOFF_ARCHIVE.md)
         (release modes, switching), repeat PASS. Selftest 87 ok / 0 wrong. NOTE: upr_'s scratch went to the scratchpad,
         not testbin\scratch\upr_ (rule since 11:45; nothing was blocked).
         - [ ] h0i_: Set-StrictMode -Version 1 (line 26) + dry run + offline test -> then the real all_modes run (coord 14:24).
-        Agents (4): gtp_ (gate round 19), h0i_ (StrictMode 1 + dry / offline), gtl_ (S3c run sheet), gtv_ (lab load run);
-        then all_modes run (~40-45 min, GPU, ATN's rule in) after gtv_'s load run, then S3c (gpu_lab.ps1 per gtl_'s
-        sheet); one GPU job at a time
+        gtl_ S3C SHEET 14:33 (plan_1117/gtl_s3c_sheet_handback.md; plan_1117/s3c_run_sheet.md; testbin\scratch\gtl_\s3c\
+        s3c_jobs.py + jobs\; no GPU, no lock, real lab\job.json untouched): 18 jobs, lab.load_job + lab.price 0 refused on
+        a STAND-IN build (grs_'s rec_grs_rec3), priced 2065 s (34 min, cold model) + 11 min idle-exit wait = E 45-60 min.
+        R1 night1_low\frame_1780 (rotation 8 / arm A/A + -Trace step 7 + serve + idle exit + -Stop), R2 day1_battle\
+        frame_936, R3 sea1_wide\frame_1643; rows trace + total, burn {trace, 64 loops}; per recording fresh dump X,
+        settle, calibrate (burn both ways), A/A toggle, dump Y after many frames; write-backs via budget.py observe
+        (reset_s, snapshot_mb, process sigma, 3D bar) + 11 offline analyses. Each step: copy job file -> job.json, lab.py
+        check, one of ATN's 3 gpu_lab.ps1 commands. CAN'T YET (S3c runs without): (1) dead outputs = (a) resident
+        log_uses ("not in this build", grs_), (b) lab job field + multi-arm 64-frame dumps (gtl_), (c) dead_outputs.py +
+        DXIL reflection (gti_), (d) store-skipping stem builder (grs_) -> S3c PART 2 (E 20-30 min); (2) 3D idle bar:
+        GpuSampler keeps no samples -> bar stays 5 % (gtl_ 30 min); (3) reset cost direct: no reset time in the answer,
+        frame_ms includes resets (prices count twice) -> grs_ via ans.schema.json.proposed + gtl_; S3c derives it from the
+        rotation; (4) 4 vs 8 lifetimes / arm: schema + kind_ab + ROTATION_ALLOWED allow 8 / 16 only -> sigma reported at 8;
+        4 needs gtb_'s sigma-floor proof + ATN OK (schema); (5) nit 4 ns_busy timestamps (gtl_ 20 min); (6) nit 8 fence
+        stand-still log (gtl_ 20 min); (7) adapter-level VRAM freed (gtl_ 20 min); (8) timestamps vs Nsight ranking script
+        (gtl_ 20 min / by hand); (9) one burn per pass under the debug layer: env allowlist has no debug-layer switch = ATN
+        question; (10) strict "second loop, no reset": dump always resets first -> S3c compares a fresh lifetime's first
+        dump (grs_ only if gtv_ wants strict); (11) kept R1 resident (~4 GB idle) stays during rotation (-Stop drops
+        calibrations) -> gtv_ / gtb_ judge.
+        COORD DECISION 14:3x: S3c PART 1 runs as the sheet says right after the all_modes run, on the reviewed lab (no
+        lab edits while it runs). gtl_ items 2 / 5 / 6 / 7 (+ 8 script) now in a STAGE copy, gtv_ reviews, land after S3c
+        part 1, measured in S3c part 2 with dead outputs. Schema / allowlist widenings (item 1b job field, 3 answer field,
+        4 lifetimes, 9 debug switch) = .proposed files for ATN (same as the lab proposals), never live without ATN.
+        - [ ] gtl_: re-run s3c_jobs.py on the merged recorder build testbin\scratch\coord_\helper_gpus2_rec (f54613dea,
+        RENODX_TW_RECORDER_BUILD=1) -> 0 refused; then items 2 / 5 / 6 / 7 / 8 + 1b in a stage copy (coord 14:3x).
+        - [ ] grs_: dead outputs (a) resident log_uses + (d) store-skipping stem builder + (3) reset time in the answer
+        (recorder-only; branch from atn-mods; ans / cmd schema parts as .proposed) (coord 14:3x).
+        - [ ] gti_: dead outputs (c) dead_outputs.py with DXIL reflection, planted-fake proof (M10) (coord 14:3x).
+        - [ ] gtv_ / gtb_: judge S3c sheet items 10 (strict second loop) + 11 (kept R1 resident during rotation) (coord
+        14:3x).
+        - [ ] ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job field, reset time in answer,
+        4 lifetimes per arm (after gtb_ proof), debug-layer env switch (coord 14:3x).
+        Agents (6): gtp_ (gate round 19), h0i_ (StrictMode 1 + dry / offline), gtv_ (lab load run), gtl_ (S3c build check
+        + stage items), grs_ (dead-output resident parts), gti_ (dead_outputs.py); GPU order: gtv_ load run -> all_modes
+        run (~40-45 min, ATN's rule in) -> S3c part 1 (gpu_lab.ps1 per s3c_run_sheet.md); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
