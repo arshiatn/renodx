@@ -46,8 +46,8 @@
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/shadow_pass.hpp"
 #include "../twattila/smoke_map.hpp"
-#include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/ssr_hiz.hpp"
+#include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
 #include "./more_tests.h"
@@ -1904,8 +1904,9 @@ constexpr std::array<uint32_t, 15> SHADOW_READER_SHADERS = {
     0x809D7997, 0xB4BAD934, 0xD627B33B, 0xF5A1526C,  // battle sea, 5.0 / 4.1 high and ultra
 };
 
-// The rays replace the per-frame atlas's sun shadow, always (one method, as Warhammer II's / Troy's / Pharaoh's; ATN
-// 2026-11-22: Replace by default): the sun draws reading the atlas (g_tShadowBuffer_SM50 / g_tHardShadowBuffer_SM41 /
+// The rays replace the per-frame atlas's sun shadow (one method, as Warhammer II's / Troy's / Pharaoh's; ATN 2026-11-22:
+// Replace by default once the WARP proof and a trace pass are in; the proof is, the trace pass is not: 0 until then, the
+// rays multiply the maps as before): the sun draws reading the atlas (g_tShadowBuffer_SM50 / g_tHardShadowBuffer_SM41 /
 // sHardShadowBuffer; 8192 square R32) through s1 (slm) or s0 (skinlm), that sampler's only reads, read it as lit where the
 // rays' shadow is bound at t49 (twattila/sun_replace_maps.hpp): the 5.0 builds compare by the sampler (gather4_c: an
 // ALWAYS sampler); the 4.1 / 3.0 gather, fetch4 and software builds by hand (`lt depth, map`: an empty map), the
@@ -1913,7 +1914,7 @@ constexpr std::array<uint32_t, 15> SHADOW_READER_SHADERS = {
 // sBakedShadowBuffer_30, its own sampler) stays the game's, and so do the atlas's other readers (SHADOW_READER_SHADERS).
 // Census: tools\tw\rome2\sun_test\scan_atlas_reads.py (atlas_reads.tsv); WARP: sun_rome2_test P. The game's MSAA builds
 // (*_ms) never have the rays bound (MSAA keeps them off) and are listed for the day it doesn't.
-constexpr float RAYS_REPLACE_MAPS = 1.f;  // sun_replace_maps' row, always on
+constexpr float RAYS_REPLACE_MAPS = 0.f;  // sun_replace_maps' row: 1 always on after the Rome II trace pass
 using twattila::sun_replace_maps::AtlasRead;
 constexpr std::array<twattila::sun_replace_maps::AtlasSunShader, 40> ATLAS_SUN_SHADERS = {{
     {.hash = 0x0AF04E16, .sampler_slot = 1, .read = AtlasRead::DEPTH, .texture_slot = 9},  // hardware_gather_4_1_sm_4_1_ps30_slm_highdef
@@ -2126,9 +2127,9 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 
 namespace {
 
-// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows replace the game's per-frame
-// shadow maps (ATLAS_SUN_SHADERS), the rays' AO multiplies the game's SSAO; no ray-traced reflections (FidelityFX SSSR on
-// the water), no fog hooked.
+// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow
+// maps (replace them with RAYS_REPLACE_MAPS 1: the shadow tooltip then too), the rays' AO multiplies the game's SSAO; no
+// ray-traced reflections (FidelityFX SSSR on the water), no fog hooked.
 // The game's MSAA keeps the anti-aliasing's DLAA / DLSS and with them every ray-traced effect off (anti_aliasing.hpp).
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
@@ -2142,7 +2143,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
-                      "DXR: DirectX Raytracing, the sun's shadow from rays in place of the game's shadow maps and of Bend's.\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
                       "Needs an upscaler.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
@@ -2684,7 +2685,7 @@ void ConfigureAddon() {
                                              .banner_light_tested = false,
                                              .rays_preset_as_attila = true,
                                              .lights_own_row = true,
-                                             .rays_multiply_maps = RAYS_REPLACE_MAPS == 0.f});
+                                             .rays_multiply_maps = (RAYS_REPLACE_MAPS == 0.f)});
   // Faster Game CPU Code (engine_code_row) Experimental, off.
   for (auto* setting : settings) {
     if (setting->key != "FasterGameCpuCode") continue;

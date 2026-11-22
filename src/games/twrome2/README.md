@@ -2,10 +2,10 @@
 
 ### Open items G01 (2026-11-22; built only, not run in game)
 
-New:
-- Ray-traced sun shadows now **replace** the game's per-frame shadow maps (one method, as Warhammer II's, Troy's and
-  Pharaoh's; ATN 2026-11-22: Replace by default): Softness shows in full, no double shadow where the game's map and the
-  rays disagree. The baked far map (from about 200 m), smoke, clouds and the water's shadows stay the game's. Shadow Map
+New (off until the Rome II trace pass: `RAYS_REPLACE_MAPS` 0, the rays multiply the maps as before):
+- Ray-traced sun shadows can **replace** the game's per-frame shadow maps (one method, as Warhammer II's, Troy's and
+  Pharaoh's; ATN 2026-11-22: Replace by default once the proof and a trace pass are in): Softness shows in full, no
+  double shadow where the game's map and the rays disagree. The baked far map (from about 200 m), smoke, clouds and the water's shadows stay the game's. Shadow Map
   Size hides under the rays. Every shadow method and shader model the game has: the 5.0 builds (their map read lit
   through an ALWAYS comparison sampler at s1 / s0), the 4.1 / 3.0 gather, fetch4 and software builds (an empty map at the
   atlas's slot) and the hardware_pcf builds (a map of 1): 40 sun shaders, `twattila/sun_replace_maps.hpp`.
