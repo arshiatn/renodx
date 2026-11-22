@@ -244,7 +244,7 @@ struct Bindings {
   // false: GT-VBAO, Bend Screen-Space and GT-VBGI named Experimental (no game run has shown them in this game yet), their
   // rows' defaults the game's to set; No RT/PT (Recommended) still turns all three on (ATN: as Attila's).
   bool screen_space_tested = true;
-  bool has_gi = true;     // Global Illumination's section; false: none, the rows it would hold kept hidden (Rome Remastered)
+  bool has_gi = true;      // Global Illumination's section; false: none, the rows it would hold kept hidden (Rome Remastered)
   // A fog the rays shade (rt_scene::InstallFogShadows or the game's own hook); false: the Fog Shadows row kept hidden and
   // left out of RT/PT (Divinity 2).
   bool has_fog_shadows = true;
