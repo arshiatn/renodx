@@ -521,8 +521,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the batch (render_mt): reserve the 32 MB draw-recording op arena at attach ... | ?
 - t4i_ (with lg3_'s texts): memory=1 lines at each battle start in the end-batch s ... | ?
 - ATN's go (in-game batch): restart A/B (3 restarts, with / without RenoDX, Unit D ... | ?
-- gbf_ (Opus High, QUEUED at the cap; prompt in handoff_plan/queued_spawns.md): th ... | ?
+- gbf_ (Opus High, STARTED 20:48 abbb04cc6b11ea037; prompt in handoff_plan/queued_ ... | ?
 - rvc_ (Opus xHigh, QUEUED): review of the read-only groups g15_ + g16_ + g17_ (qu ... | ?
+- H2 GPU A/B (needs an ATN rule or a lab kind: test\tw_ruse_bridge\run.ps1 is not ... | ?
+- rvd_ review of ho_g05 (+ the live ru_scene_patches.py edit) QUEUED (queued_spawn ... | ?
+- device_loss.hpp: the NTSTATUS / DWORD switch narrowing (include order) -> lg3_ ( ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11691,10 +11694,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         twice, F7 jitter in UV, F8 AO open share (look); G1 frames not seconds, G2 sky part in Light Bounce. (4) GT-VBAO
         A/B: bitmask pass 1.462 of 1.613 ms at 4K, ALU bound, 98 registers; V1 / V2 same picture (-10..18 %), V3 / V4 look
         change (-25..35 %) -> g20_ told V1 / V2 now (faster + same picture = on), V3 / V4 wait. ATN list 7-10.
-        - [ ] gbf_ (Opus High, QUEUED at the cap; prompt in handoff_plan/queued_spawns.md): the helper BUG FIXES (always on)
+        - [ ] gbf_ (Opus High, STARTED 20:48 abbb04cc6b11ea037; prompt in handoff_plan/queued_spawns.md): the helper BUG FIXES (always on)
         in rt_path.hlsli / rt_nrd_front.hlsl / rt_d3d12.hpp / nrd_d3d12.hpp + ReSTIR bisection dev switches; GPU checks as
         requests after S3c part 2; merge after the end batch freeze; gate references re-made.
         - [ ] rvc_ (Opus xHigh, QUEUED): review of the read-only groups g15_ + g16_ + g17_ (queued_spawns.md).
+        g05_ PART 20:4x (handoff_plan/handbacks/g05_part_handback.md): ho_g05 6f89ac5e6 (UI scale on census copies
+        412D2D43 + 9C69F169; UI count 28), c8aaa34ca (V35 fit on WARP: 1.00 / 1.00 / 1.00 / 0.99, worst 0.0 % = Musa's own
+        sliders stay; RUSE_V35_* defines + plumbing dropped, v35_fit.cpp = regression check), 99979cc36 (A21 two-site
+        patch: GROUND_AMBIENT / LIGHT / GUIDE 110 / 112, 10 new guides, 4 albedo fixes, OBJECT_LIGHT 543 / 603 byte-same;
+        SM3 interpreter pass, D3D9 873 / 873; O1 1AD365A4 = mask pre-pass, no patch), 7e99ef2a3 (H2 per-tone diagnostics).
+        HDR-only snapshot check offline: page dump = g13_'s except the date; every helper path gated on HelperInstalled; the
+        snapshot ships ../twattila ../mods ../shaders ../utils. Not done: combined O1 variant (M), RR + Attila rows (M-L),
+        V31 one mode (S-M) -> ATN list 11 / 12. C1: A40F493A / 2B19A028 / D32F5B29 stay native (none drawn in U1). H2 flat
+        / edge FAIL: most likely nvngx_dlss 310.9.16's default preset (rrf_'s pass used 310.7.0); no bridge diff explains it.
+        g05_ edited the LIVE tools/nontw/ruse/scripts/ru_scene_patches.py (backups .bak_g05; not in g12_'s land list).
+        - [ ] H2 GPU A/B (needs an ATN rule or a lab kind: test\tw_ruse_bridge\run.ps1 is not one of ATN's rule commands):
+        (A) -Helper D:\Dev\renodx\build\tw_dlaa_helper (310.7.0) vs (B) a helper folder without nvngx_dlss.dll (SDK
+        310.9.16), each into a fresh testbin -Build folder; compare the "H2 dlss: flat background / foreground" lines.
+        - [ ] rvd_ review of ho_g05 (+ the live ru_scene_patches.py edit) QUEUED (queued_spawns.md).
+        - [ ] device_loss.hpp: the NTSTATUS / DWORD switch narrowing (include order) -> lg3_ (sent 20:48, with its fixes).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
