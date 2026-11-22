@@ -496,7 +496,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
 - coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
 - ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job fi ... | ?
-- coord: real all_modes run (ATN's rule) after gtv_'s load run; then S3c part 1 (c ... | ?
 - review (Opus xHigh): grs_dead_uses + dead_outputs.py together, after grs_'s hand ... | ?
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
 - fcr_ (Opus xHigh): review grs_dead_uses df06d4e9b + rt_uses.h vtable copy safety ... | ?
@@ -504,6 +503,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtw_ + gpr_: re-check round 19 (gate + price) (coord 15:3x). | ?
 - gtl_: stage H1 + H2 + M1 / M2 / M2b / M3 / M4 + L1 / L2 + nits; gtv_ re-checks; ... | ?
 - coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU ... | ?
+- h0i_: analyse all_modes M6 8 changed (a != b) on the CPU -> flaky vs regression ... | ?
+- gtc_ (runner, Low): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x). | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10326,7 +10327,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         errors; -DryRun exit 0 no PROBLEM (all_modes_dryrun_strict1.txt; runs\dryrun_all_20261122_142546.txt; hashes match,
         206 x 2, ~36 min est); offline test ok (offline\20261122_142719_allmodes: census / checks / dumps PASS, m6 FAIL 8 of
         1469 undrawn_gone as planted, repeat OPEN as planted; 12.4 min vs 2 min = machine busy). ALL_MODES = GO (upr_).
-        - [ ] coord: real all_modes run (ATN's rule) after gtv_'s load run; then S3c part 1 (coord 14:4x).
+        - [x] coord (all_modes DONE 15:51; S3c part 1 next): real all_modes run (ATN's rule) after gtv_'s load run; then S3c part 1 (coord 14:4x).
         gti_ DEAD OUTPUTS 14:48 (plan_1117/gti_dead_outputs_handback.md; tool tools\tw\lab\dead_outputs.py, test testbin\
         scratch\gti_\test_dead_outputs.py 17 / 17; offline): --log uses.tsv --dxil <dirs> [--external] [--all] [--json];
         stem dump = <stem>.txt / .dxil / .cso / .h (ns_header_bin + dxc -dumpbin); follows createHandle /
@@ -10474,9 +10475,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         RENODX_LAB_BUSY_COUNT (gate_hook.py:812 keeps -m, drops module); NEW Low gtp_lowprio.py -b -i pools 12 suite runs + 2
         tool_prices.py seed runs on one row (n 13, p50 18 s; > 30 s would refuse only the seeds) -> key a wrapper's child.
         -> gtp_ ROUND 20 = R19-1 (+ $env:NAME) + 3 Lows, sent together with gtw_'s re-check 19 when it lands.
-        Agents (4): gtw_ + gpr_ (round 19 re-checks), fcr_ (dead-output piece review), gtl_ (stage reset_ms, then gtv_'s
-        H1 / H2 list); GPU: all_modes run RUNNING (15:12, ~40-45 min, b4pmp185v) -> S3c part 1 (coord, gpu_lab.ps1 per
-        s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
+        ALL_MODES RUN DONE 15:51 (task b4pmp185v exit 0; h0\runs\all_20261122_151249\summary.txt; commit d257cb28c; plain
+        exe 863F466CBEE1 52 headers, lab D61777D58307 61; GPU part 38 min): census PASS (a + b clean), checks PASS (179 of
+        179 all_modes.sh modes pass both runs), dumps PASS (0 problems / 1509), M6 FAIL 8 of 1469 changed + repeat OPEN on
+        THE SAME 8 (repeated in the baseline, not now = a != b now): cloth_folds_smooth_micromaps bounce + reflection,
+        leaf_storm bounce + occlusion, micromaps_leaf_light bounce + reflection, nrd_all_removal occlusion + visibility
+        (all micromap / leaf / NRD modes, like the known non-repeaters: 22 left out or non-repeating in the baseline too).
+        1479 of 1509 same on a and b. Release longest answers all < 75 ms (release_smoke b 73.0 highest; rr_ao_reblur_release
+        63.2 / 54.3, release 57.4 / 56.2, release_rr 53.6 / 52.7, release_nrd 56.0 / 53.2). Helper longest first request
+        2710 / 2384 ms. JUNCTIONS: builds\all\20261122_151249\tree\{bin,include,external,build\downloads} -> main checkout
+        (delete links alone first). COORD READ: release code unchanged (upr_: 0 lines after removing recorder blocks), a !=
+        b on exactly these 8 = run-to-run nondeterminism in modes that repeated in the baseline by chance OR a real new
+        nondeterminism -> h0i_ analyses on the CPU (diff sizes, a / b vs baseline, these modes' repeat history in kept runs,
+        timing / load dependence: gtl_'s stage suites ran 15:14-15:18 beside it) -> upr_ verdict. S3c part 1 does not wait
+        (lab calibration on real recordings, independent of these harness modes).
+        - [ ] h0i_: analyse all_modes M6 8 changed (a != b) on the CPU -> flaky vs regression (coord 15:5x).
+        - [ ] gtc_ (runner, Low): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x).
+        Agents (6): gtw_ (round 19 re-check), fcr_ (dead-output review), gtl_ (stage fixes), h0i_ (all_modes 8-change
+        analysis), gtc_ (S3c part 1 runner); GPU: S3c PART 1 RUNNING (15:5x, E 45-60 min); then gtp_ round 20 after
+        gtw_; one GPU job at a time; agents' CPU work below normal, no builds at normal priority during S3c
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
