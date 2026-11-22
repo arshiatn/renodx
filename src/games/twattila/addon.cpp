@@ -1350,6 +1350,10 @@ float particle_count_row = 0.f;
 // Worker Threads (Experimental): the threads, the render thread included, that worker_pool.hpp's users may use. The row is
 // compiled wherever a pool user is (the effect update, and the private draw recording build's users).
 float worker_threads_row = 4.f;
+// Animation Rows on Workers (Experimental, off): animation_rows.hpp, the game's animation texture fill on the worker pool. 0 Off, 1 On, 2
+// Check (the private build's row only; a bench's RENODX_TW_ANIMATION_CHECK, read with the env generation, makes On a Check too).
+float animation_rows_row = 0.f;
+bool animation_check_env = false;
 // The env generation: the pool reads RENODX_TW_WORKER_LIMITS and RENODX_TW_POOL_SPIN_US again when it changes (test_hooks'
 // "env." set keys bump it after they set a variable).
 std::atomic<uint32_t> worker_env_generation = 0;
@@ -1675,13 +1679,22 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (env_generation != particle_count_check_generation) {
     particle_count_check_generation = env_generation;
     particle_count_check_env = (GetEnvironmentVariableA("RENODX_TW_COUNT_CHECK", nullptr, 0) != 0);
+    animation_check_env = (GetEnvironmentVariableA("RENODX_TW_ANIMATION_CHECK", nullptr, 0) != 0);
   }
+  const twattila::animation_rows::Stage animation_stage =
+      (animation_rows_row == 0.f ? twattila::animation_rows::Stage::OFF
+                                 : (animation_rows_row == 2.f || animation_check_env ? twattila::animation_rows::Stage::CHECK
+                                                                                     : twattila::animation_rows::Stage::ON));
+  pool_in_use |= (animation_stage != twattila::animation_rows::Stage::OFF);
   // Before the users' own Updates.
   twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use, .env_generation = env_generation});
+  // Before the engine code's: its site goes out after the stage is off, and goes in after the stage is on.
+  twattila::animation_rows::Update(animation_stage, env_generation);
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
                                 job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,
                                 particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale, recording_groups,
-                                {.pending_sweep_trace = worker_trace_env,
+                                {.animation = animation_stage,
+                                 .pending_sweep_trace = worker_trace_env,
                                  .effect_update = (effect_update_row != 0.f),
                                  .particle_count = (particle_count_row != 0.f),
                                  .particle_count_check = particle_count_check_env,
@@ -2180,6 +2193,20 @@ void ConfigureAddon() {
           .tooltip = "How many threads the multi-threaded engine options may use, the render thread included.",
           .labels = {"2", "4", "6", "8", "12", "16"},
           .parse = [](float value) { return std::array<float, 6>{2.f, 4.f, 6.f, 8.f, 12.f, 16.f}[static_cast<size_t>(value)]; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "AnimationRowsWorkers",
+          .binding = &animation_rows_row,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Animation Rows on Workers (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Animation setup on several threads. Same picture.",
+#if defined(TWATTILA_DRAW_RECORDING)
+          .labels = {"Off", "On", "Check"},
+#else
+          .labels = {"Off", "On"},
+#endif
       },
       new renodx::utils::settings::Setting{
           .key = "ParallelEffectUpdate",
