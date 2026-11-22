@@ -473,8 +473,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - B1 owner (static, low): do the game's destructors draw (callers of 0x190B780 rea ... | ?
 - gtp_ + gtb_ R12-1 (Should, not blocking in shadow): price_rows() falls back to " ... | ?
 - gtp_ (lows): quoted multi-target word not split before normalising (one seed kin ... | ?
-- gtq_ (nit): the reference folder is named from the --recording spelling, not the ... | ?
 - gtl_ (nit): end_world never undoes the fixture's budget.deadline wrap (gate 180 ... | ?
+- gtv_: tiny check of gtq_'s folder nit + gtl_'s wrap nit together (when gtl_ hand ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8628,7 +8628,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         that side's golden + the cross test, other side passes. (4) fixture +60 s hides no check (only 'SLOW lock'
         checks exist). test_lab_unit 33, test_iq_frames 16; 54 live files unchanged by hash; real iq_refs absent.
         V1.2 CONFIG HASH + S6 CLOSED. Nits -> gtq_ / gtl_.
-        - [ ] gtq_ (nit): the reference folder is named from the --recording spelling, not the realpath
+        - [x] gtq_ (nit, DONE 08:5x): the reference folder is named from the --recording spelling, not the realpath
             (`...\frame_7\x\..` -> `x_.._2e05...`, same hash) - one recording's references could split across
             two folders; name it from the realpath (gtv_ 08:5x).
         - [ ] gtl_ (nit): end_world never undoes the fixture's budget.deadline wrap (gate 180 s instead of 120 s
@@ -8645,9 +8645,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         A. 5 ms check = best of 5 batches of 20. Lows folded in: build_key splits on whitespace + commas;
         --clean-first = cold; old `2>` samples re-keyed (backup first). COORDINATOR: gtp_'s table() variant
         accepted; the 15 seeds < 15 s stay. Merge rule forwarded to gtb_ for budget.py _own_price_rows.
-        Agents (8): h0i_ (H0 F1-F4), gtq_ + gtl_ (v1.2 nits), gtw_ (gtp_ round 12 re-check), gtb_ (slot-wait test +
-        load + gate seed + R12-1 half), ffr_ (grs_ first-frame design review), lga_ (release regression look), t4i_
-        (T5 manifest rows + B1 risks)
+        gtp_ R12-1 ACK 08:5x (plan_1117/gtp_r12_1_ack_handback.md): plan noted, no edits until gtw_'s re-check 12.
+        gtq_ FOLDER NIT DONE 08:5x (plan_1117/gtq_folder_nit_handback.md; backup scratchpad\gtq_backup_fix12):
+        build_reference computes normcase(realpath(--recording)) once for the S6 check + the folder name
+        `<parent>_<name>_<hash12>` (so `x\..` and capitals land in one rec_frame_7_<hash12>; folder names are
+        lower case now); recording.txt + manifest recording.path hold realpath (case kept). Test: two spellings ->
+        one folder, recording.txt resolved. test_iq_frames 16 / 16. -> gtv_ tiny check with gtl_'s wrap nit.
+        - [ ] gtv_: tiny check of gtq_'s folder nit + gtl_'s wrap nit together (when gtl_ hands back).
+        Agents (7): h0i_ (H0 F1-F4), gtl_ (wrap nit), gtw_ (gtp_ round 12 re-check), gtb_ (slot-wait test + load +
+        gate seed + R12-1 half), ffr_ (grs_ first-frame design review), lga_ (release regression look), t4i_ (T5
+        manifest rows + B1 risks)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
