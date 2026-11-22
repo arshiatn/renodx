@@ -141,9 +141,9 @@ struct ShaderInjectData {
 // PsychoV35's slider defaults here: the game's own response below white (its grey already is the game's curve; the
 // game's SDR colour at equal lightness is x0.81 of Musa's at 1 - 30 nits), Highlight Contrast keeping PsychoV35's
 // highlights. Minimax-fitted on WARP against the game's SDR (test/tw_rome2_thrones_v35, V35 FIT; the black and white
-// points assumed: 10^-4, 1): the 10 % guard's best has Highlight Contrast 1.05 (0.20 %); 1.03 ships (0.22 %, within the
-// fit's 0.5 %) because PsychoV35's highlights move less: 5.1 / 6.8 % at 1000 / 203 and 2500 / 275, against 8.6 / 11.5 %
-// (Musa's own 22.7 %). The other PsychoV35 sliders keep Musa's defaults.
+// points assumed: 10^-4, 1): the 10 % guard's best has Highlight Contrast 1.05 (0.20 %); 1.03 ships, ATN's choice
+// (2026-11-22): the same score within the fit's 0.5 % (0.22 %) and PsychoV35's highlights move less, 5.1 / 6.8 % at
+// 1000 / 203 and 2500 / 275 against 8.6 / 11.5 % (Musa's own 22.7 %). The other PsychoV35 sliders keep Musa's defaults.
 #define ROME2_V35_CONTRAST           1.f
 #define ROME2_V35_SHADOWS            0.99f
 #define ROME2_V35_SATURATION         0.8f

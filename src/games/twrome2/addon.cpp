@@ -2618,11 +2618,13 @@ void ConfigureAddon() {
   // rows below as Attila's does, ATN 2026-11-22), then Settings Mode's pages. Fog Shadows keep their 0 (Experimental: no
   // game run has shown the fog's rays yet; RT/PT turns them on, as ATN's list does, as Pharaoh's), Smoke Shadows
   // (Experimental) theirs (no game run has shown them yet), Water Caustics its 0 (untested here), Sprite Soldier and Far
-  // Tree Shadows theirs (Experimental: no game run has shown Rome II's cards in the rays yet).
+  // Tree Shadows theirs (Experimental: no game run has shown Rome II's cards in the rays yet), Steady Bounce Light and Torch
+  // and Fire Shadow Lights at their own rows' defaults (both Experimental: off, 32; ATN 2026-11-22, as Thrones').
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedSmokeShadows" || setting->key == "WaterCaustics"
-        || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows") {
+        || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows"
+        || setting->key == "RayTracedPathKeptCube" || setting->key == "RayTracedLightCount") {
       setting->default_value = 0.f;
     }
     // Torch and fire light in the fog (no particle shader reads it here): off, Experimental (PAGE_TEXTS), as Fog Shadows.
@@ -2726,8 +2728,9 @@ bool AttachAddon() {
 
   // Rows saved at an old default, cleared once per revision. 1: Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden
   // here until what they act on is hooked: they show then at ATN's values. 2 (parity round): rows saved hidden at
-  // SetRaysPresetDefaults' or the shared row's value, shown now at a default of their own here (Experimental, off).
-  constexpr int SETTINGS_REVISION = 3;
+  // SetRaysPresetDefaults' or the shared row's value, shown now at a default of their own here (Experimental, off). 4:
+  // Steady Bounce Light and Torch and Fire Shadow Lights saved at SetRaysPresetDefaults' on and 128, off and 32 now.
+  constexpr int SETTINGS_REVISION = 4;
   if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
     const auto clear = [](std::initializer_list<const char*> keys) {
       for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
@@ -2750,6 +2753,9 @@ bool AttachAddon() {
           reshade::set_config_value(nullptr, preset, "auto_exposure_highlight_headroom_stops", decades * 3.32192809f);
         }
       }
+    }
+    if (revision < 4) {
+      clear({"RayTracedPathKeptCube", "RayTracedLightCount"});
     }
     reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
   }
