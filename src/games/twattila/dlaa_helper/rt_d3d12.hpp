@@ -345,6 +345,12 @@ class RtScene12 {
           || !slot.left_out_readback) {
         return Fail("Ray tracing: no memory for its slots' buffers");
       }
+#if defined(RENODX_NRD)
+      slot.sun_readback = Buffer(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+      if (!slot.sun_readback || FAILED(slot.sun_readback->Map(0, nullptr, reinterpret_cast<void**>(&slot.sun_data)))) {
+        return Fail("Ray tracing: no memory for its slots' buffers");
+      }
+#endif
       HRESULT made = device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.allocator.GetAddressOf()));
       if (SUCCEEDED(made)) {
         made = device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr, IID_PPV_ARGS(slot.list.GetAddressOf()));
@@ -3318,6 +3324,13 @@ class RtScene12 {
     LARGE_INTEGER cpu_waited;
     QueryPerformanceCounter(&cpu_waited);
     cpu_marks_.clear();
+#if defined(RENODX_NRD)
+    // The sun's direction this slot's last trace copied (done: SIGMA's light direction a few traces late, the sun moves slowly).
+    if (slot.sun_copied) {
+      slot.sun_copied = false;
+      if (slot.sun_data[3] != 0.f) sun_toward_ = {slot.sun_data[0], slot.sun_data[1], slot.sun_data[2]};
+    }
+#endif
     // The last trace's placed instances (it is done: its slot's readback).
     if (placed_slot_ != SLOTS) {
       placed_written_ = slots_[placed_slot_].left_out_data[LEFT_OUT_BYTES / 4];
@@ -4563,6 +4576,13 @@ class RtScene12 {
     ComPtr<ID3D12Resource> left_out;
     ComPtr<ID3D12Resource> left_out_readback;
     uint32_t* left_out_data = nullptr;
+#if defined(RENODX_NRD)
+    // The sun texture's first texel (toward the sun) copied for the CPU in a trace NRD's SIGMA ran in, read when the slot
+    // comes round (SigmaSettings::lightDirection).
+    ComPtr<ID3D12Resource> sun_readback;
+    float* sun_data = nullptr;
+    bool sun_copied = false;
+#endif
     std::vector<uint64_t> capture_keys;
     std::vector<uint32_t> capture_flags;
     std::string status;  // its request's (a slow one's report)
@@ -8084,8 +8104,23 @@ class RtScene12 {
       list->ResourceBarrier(1, &uav_barrier);
     }
     if (nrd_sun) {
+      // SIGMA's light direction (toward the sun, world space; else an isotropic blur, softer and blotchier from a low sun):
+      // the sun texture's for a later trace.
+      auto to_copy = Transition(sun_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
+      list->ResourceBarrier(1, &to_copy);
+      const D3D12_TEXTURE_COPY_LOCATION sun_copy = {
+          .pResource = slot->sun_readback.Get(),
+          .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+          .PlacedFootprint = {.Footprint = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .Width = 1, .Height = 1, .Depth = 1, .RowPitch = D3D12_TEXTURE_DATA_PITCH_ALIGNMENT}},
+      };
+      const D3D12_TEXTURE_COPY_LOCATION sun_texture = {.pResource = sun_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+      const D3D12_BOX toward_texel = {.left = 0, .top = 0, .front = 0, .right = 1, .bottom = 1, .back = 1};
+      list->CopyTextureRegion(&sun_copy, 0, 0, 0, &sun_texture, &toward_texel);
+      std::swap(to_copy.Transition.StateBefore, to_copy.Transition.StateAfter);
+      list->ResourceBarrier(1, &to_copy);
+      slot->sun_copied = true;
       Mark(list, L"NRD SIGMA");
-      const nrd::SigmaSettings sigma = {};
+      const nrd::SigmaSettings sigma = {.lightDirection = {sun_toward_[0], sun_toward_[1], sun_toward_[2]}};
       nrd_denoised = nrd_sun_.denoiser->Run(list, static_cast<UINT>(slot_index), shared.rt_view_projection, frame, shared.rt_width, shared.rt_height, &sigma);
       if (nrd_denoised) {
         nrd_sun_.denoiser->Finish(list, nrd::ResourceType::OUT_SHADOW_TRANSLUCENCY, positions_.Get(), POSITIONS_VIEW, visibility_.Get(), DXGI_FORMAT_R8_UNORM);
@@ -10116,6 +10151,7 @@ class RtScene12 {
   NrdSignal nrd_bounce_;
   NrdSignal nrd_reflections_;
   ComPtr<ID3D12Resource> nrd_bounce_hit_distance_;
+  std::array<float, 3> sun_toward_ = {};  // the last sun direction read back (Slot::sun_readback; 0: none yet)
 #endif
   ComPtr<ID3D12PipelineState> scene_data_pipeline_;
   ComPtr<ID3D12DescriptorHeap> descriptors_;
