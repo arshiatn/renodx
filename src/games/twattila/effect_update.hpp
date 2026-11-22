@@ -381,6 +381,8 @@ static std::array<EventRecord, 64> events = {};
 static std::atomic<uint32_t> event_count = 0;
 static std::array<std::atomic<uint32_t>, EVENT_NAMES.size()> events_said = {};  // by kind: the sites already stored (once per site and session)
 static std::atomic<uint64_t> longest_wait_ticks = 0;
+static std::atomic<uint32_t> stack_headroom_low = ~0u;  // the least, over a trace window, of what a thread's stack has left below its deepest committed page (bytes)
+static uint32_t stack_window = 0;                       // the trace window whose headroom is being taken (0: none open)
 static std::atomic<uint64_t> handover_ticks = 0;
 static std::atomic<uint32_t> handovers = 0;
 static std::atomic<uint64_t> forward_wait_ticks = 0;
@@ -674,6 +676,26 @@ inline void ThreadStackLimits() {
   this_thread.stack_size = static_cast<uint32_t>(high - low);
 }
 
+// What this thread's stack has left below the deepest page it has committed (the guard page is the next one down), kept as the window's least. The walk's thread and each
+// worker take it once at the end of a round in a trace window; a stack with no guard page left (all of it committed) says nothing.
+inline void NoteStackHeadroom() {
+  MEMORY_BASIC_INFORMATION info = {};
+  uint8_t marker = 0;
+  if (VirtualQuery(&marker, &info, sizeof(info)) == 0) return;
+  ULONG_PTR low = 0;
+  ULONG_PTR high = 0;
+  GetCurrentThreadStackLimits(&low, &high);
+  uint8_t* const base = static_cast<uint8_t*>(info.AllocationBase);
+  for (uint8_t* at = base; at < reinterpret_cast<uint8_t*>(high) && VirtualQuery(at, &info, sizeof(info)) != 0; at += info.RegionSize) {
+    if ((info.Protect & PAGE_GUARD) == 0) continue;
+    const uint32_t headroom = static_cast<uint32_t>(static_cast<uint8_t*>(info.BaseAddress) - base);
+    uint32_t seen = stack_headroom_low.load(std::memory_order_relaxed);
+    while (headroom < seen && !stack_headroom_low.compare_exchange_weak(seen, headroom, std::memory_order_relaxed)) {
+    }
+    return;
+  }
+}
+
 // The unit runs: the game's instance update on this thread with the walk's three arguments. A unit that became direct clears the
 // direct stack before it is done (a later unit on this thread must not ride the fast path), records the watched words, and
 // hands over.
@@ -882,6 +904,7 @@ inline void FinishRound(bool failed) {
         true);
   }
   CheckWatched();
+  if (round.tracing) NoteStackHeadroom();
   if (round.l2) {
     // The staged spawns are committed and merged before the walk is closed (also when it failed: the walk's rest goes the game's way and finds the buffer as serial left it).
     CommitDone();
@@ -928,6 +951,7 @@ inline void WorkerEntry(void*, uint32_t) {
     }
     if (round.enumeration_done.load(std::memory_order_acquire) && round.late_unclaimed.load(std::memory_order_relaxed) == 0
         && round.cursor.load(std::memory_order_relaxed) >= round.published_units.load(std::memory_order_acquire)) {
+      if (round.tracing) NoteStackHeadroom();
       return;
     }
     WaitUntil(
@@ -1496,6 +1520,15 @@ inline void Update(bool row, bool spawns = false) {
   if (traced) {
     line.pop_back();
     renodx::utils::log::i("[Total War] Parallel Effect Update (trace window ", worker_pool::TraceWindow(), "):", line);
+  }
+  // The window's stack headroom, once, at the first present after it.
+  if (worker_pool::Tracing()) {
+    stack_window = worker_pool::TraceWindow();
+  } else if (stack_window != 0) {
+    if (const uint32_t least = stack_headroom_low.exchange(~0u, std::memory_order_relaxed); least != ~0u) {
+      renodx::utils::log::i("[Total War] Parallel Effect Update (trace window ", stack_window, "): stack headroom ", least / 1024, " KB.");
+    }
+    stack_window = 0;
   }
   const uint32_t stored = std::min<uint32_t>(event_count.exchange(0, std::memory_order_relaxed), static_cast<uint32_t>(events.size()));
   for (uint32_t index = 0; index < stored; ++index) {
