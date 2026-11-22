@@ -7006,9 +7006,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         S-a multi-line -m breaks the commit / merge parser (live faults 03:05 + 03:28, fail open); S-b commit gate on
         inner commands; S-c latency tests vs a bare python baseline. Prototype + probes in scratchpad\gtw_t04_*. gtp_
         RESUMED (M5 / M6 / S-a..c / nit, then live). cite_since still set-on-install [ ] ATN (optional).
-        Agents (11): bd1r_ (N6 re-check), t4i_ (r18), upt_ (v2.5), gpr_ (price + web v2 re-check), grs_ (S2), gtl_ (S3
-        fixes), gtp_ (M5 / M6), gtk_ (C1 fixes), gtq_ (B1 fixes). Coordinator: H0 run (~72 min). Idle: lga_, lgf2_,
-        h0i_, c33i_, gpp_, upr_, ebr_, gtw_ (waits gtp_), gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_.
+        H0 REAL RUN 03:29:52 FAILED at 03:32 (tooling bug, stamp 20261122_032952): builds OK (52 / 61 headers), lock
+        taken, run 1's first 3 modes passed on all 3 sides with dumps, then the smoke step died: 'Argument types do not
+        match' ps1:439 (@($modes)[0..2] on a List[object] in PS 5.1). Lock released, nothing left running; the run folder
+        stays as the record. The dry run never runs the real-only branches -> h0i_ RESUMED: fix 439 + exercise every
+        real-run-only path offline under PS 5.1 with fakes; then upr_ short look -> coordinator re-runs.
+        Agents (12): bd1r_ (N6 re-check), t4i_ (r18), upt_ (v2.5), gpr_ (price + web v2 re-check), grs_ (S2), gtl_ (S3
+        fixes), gtp_ (M5 / M6), gtk_ (C1 fixes), gtq_ (B1 fixes), h0i_ (ps1:439 + real-path tests). Idle: lga_, lgf2_,
+        c33i_, gpp_, upr_, ebr_, gtw_ (waits gtp_), gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
