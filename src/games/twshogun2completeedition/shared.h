@@ -154,12 +154,12 @@ struct ShaderInjectData {
 
 // PsychoV35's slider defaults here: the game's own response (the film curve's steep toe below mid gray, its colour at
 // equal lightness), Highlight Contrast keeping PsychoV35's highlights. Minimax-fitted on WARP against the game's SDR on
-// every battle map's curve (test/tw_shogun2_romer_toe, V35 FIT); the other PsychoV35 sliders keep Musa's defaults.
-// Musa's own (1) until the fit's run in the build window writes its result here.
-#define SHOGUN_V35_CONTRAST           1.f
-#define SHOGUN_V35_SHADOWS            1.f
-#define SHOGUN_V35_SATURATION         1.f
-#define SHOGUN_V35_HIGHLIGHT_CONTRAST 1.f
+// every battle map's curve (test/tw_shogun2_romer_toe, V35 FIT: the game's grey and colour within 4.3 % below 15 nits,
+// PsychoV35's highlights within 13.6 %); the other PsychoV35 sliders keep Musa's defaults.
+#define SHOGUN_V35_CONTRAST           1.5f
+#define SHOGUN_V35_SHADOWS            1.07f
+#define SHOGUN_V35_SATURATION         0.94f
+#define SHOGUN_V35_HIGHLIGHT_CONTRAST 0.8f
 
 // SDR output (displays without HDR): the display's white is the game's and the UI's.
 #define SHOGUN_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)

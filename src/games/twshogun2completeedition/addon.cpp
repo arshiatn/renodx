@@ -1166,16 +1166,16 @@ void BuildRuntimeData() {
           .label = "Recommended (SDR-like Contrast/Saturation)",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Recommended, with contrast and saturation closer to the game's SDR.\n"
-                     "Keeps Peak, Paper White, UI and output.",
+          .tooltip = "Recommended, with PsychoV31's contrast and saturation closer to the game's SDR (PsychoV35 follows it\n"
+                     "already) and highlights that compress sooner. Keeps Peak, Paper White, UI and output.",
           .on_change = []() {
             ApplyRecommendedPreset();
+            // PsychoV35's contrast stays the fitted one (V35_GAME_RESPONSE): 1.3 here would sit below the game's toe.
             renodx::utils::settings::UpdateSettings({
                 {"highlights", 1.00f},
                 {"cone_response_exponent", 1.3f},
                 {"highlight_saturation", 1.00f},
                 {"roll_off", 2.00f},
-                {"v35_contrast", 1.3f},
                 {"v35_roll_off", 2.00f},
             });
           },
