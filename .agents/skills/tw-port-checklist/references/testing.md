@@ -49,6 +49,7 @@ Rules:
 - A runner script starts a windows-subsystem exe (the frame recorder's player, `renodx-tw-dlaa64.exe 0 play`) with `Start-Process -Wait`: a bare `&` returns at once, the script drops `gpu_job.lock` and the exe runs on beside the next GPU job.
 - Before a harness or Nsight trace, wait for Committed Bytes below 32 GB: builds push it past the trace runner's 55 GB guard (`nsight/ns_trace_run.py`), which ends the run.
 - A GPU timing line in a report (a helper pass, "GPU", a gpu-ms column with a delta) carries its gate id `[G-...]` / `[Q-...]` or says `(old, no gate)`, and the report ends with `New pitfalls: <ids> | none`: `python -I lab/report_check.py <md>` exits 1 otherwise. PresentMon, bench and WPR lines are outside it.
+- A lab session starts on a calm machine: no TW game, bench or Nsight run, no `gpu_job.lock` or `quiet_run.lock`, nothing else on the GPU (GPU Engine counters; `dwm.exe` aside), Committed Bytes under the guard, HAGS on, and no agent's build or long script beside it.
 - `game-port-method`'s run-counts rule; a second game once failed silently.
 - Rows that depend on each other: every combination a player can set gets a case (page-dump state, harness mode or scorer line), not only the defaults and presets ([shaders-ui.md](shaders-ui.md) section 3).
 - Every replaced shader gets a vanilla-exact test against the game's bytes ([hdr-review-rules.md](../../game-port-method/references/hdr-review-rules.md)'s Vanilla exact first). Give WARP tests the game's real ranges, and a control that must fail.

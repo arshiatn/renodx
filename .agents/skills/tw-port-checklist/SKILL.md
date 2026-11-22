@@ -132,6 +132,7 @@ Inventory and traps in [testing.md](references/testing.md). In short:
 - Outside it, in the maintainer's `tools/tw`: `all_modes.sh` (compare by mode name), `rt_harness`, `fg_child/fg_bridge_test`, `warp_tests`, `page_dump`, the sun patch test, the scale and census scripts.
 - The harness covers the bridge, the helper and part of the D3D11 capture. It doesn't run a game's passes or its CPU cost at game scale: say so in the report.
 - `tools/tw/check_logs.py <folder>` flags a run without a new log or without its "ready" / "applied" lines, and the known-bad lines (the data-run scripts print it at their end).
+- A helper change's GPU time comes from the GPU lab (`tools/tw/lab/gpu_lab.ps1`, a `G-` gate id, A/A and the picture in the same job); Nsight explains it.
 - What only the game can prove goes on the test list.
 - Costs and frame times come from measurements (`game-port-method`'s Measurement section): the harness and Nsight for the helper, Time Each Pass and frame traces for the game's passes, PresentMon and WPR for the CPU. Attila's fixed scene: `tools/tw/bench/constantinople_bench.ps1`, the Constantinople siege after its scripted camera move, the CPU fix's prefetch build as the baseline, with the maintainer's standing OK.
 
