@@ -638,6 +638,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rve_ G06 NITs: 9a7c1e3d4 title says "not built"; the V35 fit is a local search ( ... | ?
 - stale "rr_d3d12.hpp" names: gpu_completion.hpp:66, dlaa_helper/rr_d3d12.hpp:33 ( ... | ?
 - Expeditions V35 fifth knob (Shadow Contrast or Exposure; Shadows pinned 0.3): ne ... | ?
+- gbf_ Opus xHigh review (NEW agent -> next wave, after the end batch), then merge ... | ?
+- gbf_ GPU jobs (after the review, one at a time): (1) ReSTIR scorer 1 / 4 / 16 ra ... | ?
+- F5 real motion into IN_MV: the add-on writes this frame's motion before the trac ... | ?
+- ATN (later): G1 histories in frames, not seconds; the RR 1-ray numbers; the r3 o ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12355,6 +12359,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] stale "rr_d3d12.hpp" names: gpu_completion.hpp:66, dlaa_helper/rr_d3d12.hpp:33 (helper owner), SKILL.md:126
         "deleted" (skills owner).
         - [ ] Expeditions V35 fifth knob (Shadow Contrast or Exposure; Shadows pinned 0.3): needs coord's OK, next wave.
+        gbf_ DONE (plan_1117/gbf_done_handback.md): ho_gbf c06631267 (25c02e411 ContactShade re-eval, 65de76271 planar-only
+        fold, a8c251a14 F1, 30da0ebb2 F2, 8faf059b7 F4 + F3, 92a973278 F7, ff3d2ccc1 + 3700dcfd2 bisection switches incl.
+        rvc_ 3, 60820f9fa ATN 7 RR 1-ray cap (bug fix, no row), c06631267 ATN 9 comment). F6 checked, no change. Helper
+        builds exit 0 (plain + PROBE+REFERENCE+RECORDER); tw_rt_open_sky -Expect exact ALL PASSED (-Expect now stale after
+        hfix_ 53da7b6e8). gbf_ reported its earlier rm -f of its own clang crash files in %TEMP% (logged before; not repeated).
+        - [ ] gbf_ Opus xHigh review (NEW agent -> next wave, after the end batch), then merge ho_gbf.
+        - [ ] gbf_ GPU jobs (after the review, one at a time): (1) ReSTIR scorer 1 / 4 / 16 rays default + each switch alone
+        (bar: bias + signed masks not worse than base; ground vs g15_'s 0.997 -> 0.994); (2) RR + Light Bounce Rays 4 = RR + 1;
+        (3) r3_refl gate + same_start (edge ~1.018, boxes ~1.0025; report the edge for ATN 8); (4) debug36 water (non-planar
+        crests no longer fold); (5) NRD roughness ramp blur width before / after F1; (6) low-sun SIGMA F3 + F4; (7) NRD_SUN 1
+        vs 4 rays; (8) timings. Re-make the r3_refl, ReSTIR / paths scorer, NRD (reflections, SIGMA, jitter) and RR Light
+        Bounce references (PathConstants grew by reuse_tests).
+        - [ ] F5 real motion into IN_MV: the add-on writes this frame's motion before the trace requests (anti_aliasing.hpp
+        writes bridge.motion at the AA pass, only with an upscaler) -> G18 / G20 next wave.
+        - [ ] ATN (later): G1 histories in frames, not seconds; the RR 1-ray numbers; the r3 offset.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
