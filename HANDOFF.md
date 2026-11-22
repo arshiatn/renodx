@@ -641,7 +641,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gbf_ GPU jobs (after the review, one at a time): (1) ReSTIR scorer 1 / 4 / 16 ra ... | ?
 - F5 real motion into IN_MV: the add-on writes this frame's motion before the trac ... | ?
 - ATN (later): G1 histories in frames, not seconds; the RR 1-ray numbers; the r3 o ... | ?
-- gtp_ round 24 (next wave): .inc in CODE; VCToolsInstallDir check + toolset on th ... | ?
+- gtp_ round 24 (next wave): .inc + .s in CODE; VCToolsInstallDir check + toolset ... | ?
 - ATN 15 Shogun 2 per-map fit FIRST in the next wave (g04_): run scratch explore2 ... | ?
 - psycho35.hlsli owner: an ApplyPsychoV35 overload with a float4 knob scale (g04_ ... | ?
 - g04_ item 4 trace (MI8): Shogun 2 smoke battle (vfxoverlay00 draws' VS / IA / st ... | ?
@@ -652,6 +652,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - g04_ MINORs: R-MI1 check + report Rome Remastered's 2500 / 275 highlights (copy ... | ?
 - M1 MAJOR (coord's pick = fix (a)): §7 crash rules 1 + 2 had no lines (AddCodeRan ... | ?
 - after the batch: m1 + NIT 5 (b3t_: animation_rows.hpp:505-508 logs the requested ... | ?
+- ATN box (gpr_): with shell_heredoc OFF, python heredoc edits of real code pass, ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12390,7 +12391,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         (files 277 -> 139, shell 745 -> 815), slowest call 0.047 s. gtw_ + gpr_ re-checks sent 22:3x.
         Coord's picks (gtp_'s questions): `shell_heredoc` row stays ABSENT / off (it would refuse ~660 normal agent edits);
         `.inc` goes into CODE in round 24.
-        - [ ] gtp_ round 24 (next wave): .inc in CODE; VCToolsInstallDir check + toolset on the build exit line (rvc_ G17).
+        - [ ] gtp_ round 24 (next wave): .inc + .s in CODE; VCToolsInstallDir check + toolset on the build exit line (rvc_ G17);
+        gpr_'s R23-1..5 (below); then the mirror suite once.
         g04_ PART (handbacks/g04_part_handback.md): ho_g04 tip 6bce79e7f: 2684d11d1 (needs ho_g21 7d31e5fef), 7b175a45d
         MI6, 3dba5ac7f, 6158abd36 + 0f63f0ebd (need ho_g19 b8cb841d1), 9cc985336 fxaa00 / fxaa01 decompile fix (bug fix,
         WARP 0 texels vs the game's, old 637), 0a54aae21 / 932fda89f / 42c09cc85 rvd_ N1-N4 / MI9, 89783dd05 ATN 16 Rome
@@ -12456,6 +12458,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] after the batch: m1 + NIT 5 (b3t_: animation_rows.hpp:505-508 logs the requested stage after the Check latch;
         single-use allocate lambda), NIT 3 (static heapfix clearance assert for the B3b / sweep sites), NIT 6
         (twrome2/engine_tweaks.hpp:260-265 never retries Write after a logged failure, incl. the Uninstall restore).
+        gpr_ R23 RE-CHECK 22:4x: NOT GO for the mirror suite (plan_1117/gpr_r23_recheck_handback.md; designs/gpr_review.md
+        line 3070). R22-1..4 fixed, replay equal to gtp_'s; 3 new holes bak28 refused: R23-1 (Medium) quoted / heredoc text
+        a shell still runs (bash <<<, source <(...), trap, $SHELL -c, execSync, Start-Process -ArgumentList, script
+        indirection) -> fix: a quoted redirect / tee / Set-Content / WriteAll target counts when it names a protected path or
+        a gated code file; R23-3 (Medium, a real window call) (Resolve-Path X).Path targets -> strip to X; R23-2 (Medium)
+        list words {a,b} / a,b count as scratch -> scratch only if every element is. Old gaps: R23-4 8.3 short names
+        (SETTIN~1.JSO, GetLongPathNameW in full()), R23-5 copy into a src FOLDER (test dest/basename), mklink /J + ln -s
+        (add to PROT_MUTATE), two-line python, node writeFileSync, $PWD, patch-file targets. Agrees: shell_heredoc off, .inc
+        into CODE (+ .s; 329 harness .inc under tools/tw become Edit-only while tools_tw is on).
+        - [ ] ATN box (gpr_): with shell_heredoc OFF, python heredoc edits of real code pass, as on bak28 (seen: expeditionsrome
+        addon.cpp, heapfix prepare.c, rmt_c33 tests.cpp). Keep off, or turn on later?
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
