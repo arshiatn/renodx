@@ -12,7 +12,8 @@
 // 2. Hue Clip alone (twattila/psycho35.hlsli's HueClip, every game's): fire orange and sky blue move their middle
 //    channel toward the clip's place, the smallest and largest channel keep their ratio, BT.709 luminance is kept; grey
 //    and strength 0 unchanged; a negative channel keeps its sign; a dark colour (far below the clip) about unchanged.
-// 3. PsychoV35 through the real chain (Attila t00 -> t01, WH3 t00), an exposure ramp of 64 colours, 2^-8 to 2^12 of the
+// 3. PsychoV35 through the real chain (Attila t00 -> t01, WH3 t00; WH1 D275C403 -> 10759AE3 and WH2 2333E142 -> 187C9C6D
+//    at burn 0.3, this tree alone), an exposure ramp of 64 colours, 2^-8 to 2^12 of the
 //    game's white, at 203 / 1000 and 203 / 400 nits and SDR output, every V35 slider at its ends: finite; BT.2020 within Peak
 //    (SDR: BT.709 within 1) with Gamut Compression 1, luminance within Peak always (Gamut Compression 0: within 1%);
 //    grey's ramp never darker as it rises.
@@ -20,7 +21,7 @@
 //    reaches its clip, for fire, sky blue and 48 hues, Hue Clip 0 to 1 (sky to 2): what the default comes from. Rome II's
 //    own chain too (t00 EE1DA45C -> t01 850AEE44, Rendering Mode 3: its SDR curve is on xyY luminance, then each channel
 //    clipped, not Attila's curve per channel; an identity curve as Attila's, black 10^-4, white 1), and Thrones of
-//    Britannia's (its t00 8BF6B657 -> t01 D0FAF089, Thrones' builds).
+//    Britannia's (its t00 8BF6B657 -> t01 D0FAF089, Thrones' builds), and WH1's / WH2's real chains (as part 3).
 // 5. The same for the other games' kinds of stock curve (hue_curves.hlsl: a luminance curve then each channel clipped,
 //    or a curve on each channel), PsychoV35 right after Hue Clip as their shaders call it. Its WH3 form agrees with part
 //    4's WH3 (1.00); WH2's own t00 (curve 6: its anchored handoff, at burns 0.1, 0.3 and 0.5) too (1.00); WH1's tone
@@ -42,7 +43,7 @@
 // 7. Gamma Correction in every mode (Rome II, Warhammer I / II / III, Troy, Pharaoh: twattila/frame_gamma.hlsli) on each
 //    one's hdr_to_screen t01 (WH3: t00) against 242d6101's: off and Rendering Mode SDR the same picture, on the 2.2
 //    display's decode within Peak (TestGammaCorrection). WH3 at the game's gamma 2.0.
-// 8. Report: PsychoV35's toe against Vanilla below white (Attila, Thrones of Britannia, Rome II, Warhammer III):
+// 8. Report: PsychoV35's toe against Vanilla below white (Attila, Thrones of Britannia, Rome II, Warhammer I / II / III):
 //    Recommended against Rendering Mode SDR, grey in shadows and mid tones and colour at equal lightness (ReportToe).
 #include <windows.h>
 #include <d3d11.h>
@@ -574,6 +575,88 @@ static Bindings Wh3ToneMapper(const std::vector<Float4>& scene, bool identity_gr
   return b;
 }
 
+// Warhammer's t00 (D275C403: Attila's tone mapper plus the stock whiteout), black and white points 0 / 1, the identity
+// or AttilaSCurve's S-curve; whiteout from 0 to 10 (its bloom_buffer in ATN's 2026-11-14 battle traces; his campaign's
+// 0.144 / 10).
+static Bindings Wh1ToneMapper(const std::vector<Float4>& scene, bool identity_curve, float whiteout_start = 0.f) {
+  Bindings b;
+  b.views["g_hdr_rgb_texture"] = Texture2D(WIDTH, HEIGHT, scene);
+  b.views["g_hdr_rgb_bloom_texture"] = Texture2D(1, 1, {Float4{}});
+  b.views["g_black_and_white_points"] = Texture2D(1, 1, {Float4{0.f, 1.f, 0.f, 0.f}});
+  b.views["g_scurve_texture"] = AttilaSCurve(identity_curve);
+  b.words["g_screen_size"] = ScreenSize();
+  b.words["g_viewport_dimensions"] = ScreenSize();
+  b.words["g_whiteout_start"] = F({whiteout_start});
+  b.words["g_whiteout_end"] = F({10.f});
+  return b;
+}
+
+// Warhammer II's t00 (2333E142: Extended Reinhard on the luminance, white 1 / burn - 0.999), brightness 1 and a map's
+// burn (0.1 - 0.5, part 5).
+static Bindings Wh2ToneMapper(const std::vector<Float4>& scene, float burn) {
+  Bindings b;
+  b.views["g_hdr_rgb_texture"] = Texture2D(WIDTH, HEIGHT, scene);
+  b.views["g_hdr_rgb_bloom_texture"] = Texture2D(1, 1, {Float4{}});
+  b.words["g_screen_size"] = ScreenSize();
+  b.words["g_viewport_dimensions"] = ScreenSize();
+  b.words["g_tone_mapping_brightness"] = F({1.f});
+  b.words["g_tone_mapping_burn"] = F({burn});
+  return b;
+}
+
+// t01's inputs: the scene at its frame, an identity grade (colour matrix, LUTs), no fog of war, god rays or glow, in-game
+// gamma 2.0 (the games' default 20); Troy's and Pharaoh's post-processing bypassed (their tone mapper on the raw handoff).
+static Bindings GammaBindings(const std::vector<Float4>& scene) {
+  Bindings b = AttilaHdrToScreen(scene, true);
+  const auto zero = Texture2D(WIDTH, HEIGHT, std::vector<Float4>(WIDTH * HEIGHT, Float4{}));
+  b.views["god_rays_sampler"] = zero;
+  b.views["frame_texture"] = b.views["frame_sampler"];
+  b.views["gbuffer_channel_4_texture"] = b.views["gbuffer_channel_4_sampler"];
+  b.views["t_fog_of_war_mask"] = b.views["s_fog_of_war_mask"];
+  b.views["distortion_texture"] = zero;
+  for (const char* name : {"god_rays_texture", "glow_texture1", "grain_texture", "rain_texture", "t_shroud_clouds"}) b.views[name] = zero;
+  const auto lut = IdentityLut3D(32);
+  for (const char* name : {"lut_texture", "lut_texture_1", "lut_texture_2", "lut_texture_3"}) b.views[name] = lut;
+  b.words["lut_weights"] = F({1, 0, 0, 0, 0, 0, 0, 0, 0});
+  b.words["lut_strength"] = F({1.f});
+  b.words["overscan"] = F({1.f});
+  b.words["disable_post_processing"] = F({1.f});
+  b.words["post_processing_strength"] = F({1.f});
+  return b;
+}
+
+// The TW add-ons' defaults where a game has the slider (Hue Clip 0.7); Extended's grading at identity.
+template <typename T>
+static T TwInjection(float mode, float encoding, float correction, float peak) {
+  T si = {};
+  si.peak_white_nits = peak;
+  si.diffuse_white_nits = 203.f;
+  si.graphics_white_nits = 203.f;
+  si.gamma_correction = correction;
+  si.swap_chain_encoding = encoding;
+  si.hdr = mode;
+  si.bloom = 1.f;
+  si.vignette = 1.f;
+  si.exposure = si.highlights = si.shadows = si.contrast = si.saturation = si.cone_response_exponent = 1.f;
+  si.hue_shift = 1.f;
+  si.v31_exposure = si.v31_highlights = si.v31_shadows = si.v31_contrast = 1.f;
+  si.v31_highlight_contrast = si.v31_shadow_contrast = si.v31_saturation = 1.f;
+  si.v31_highlight_saturation = 0.7f;
+  si.v31_roll_off = si.v31_gamut_compression = si.v31_gamut_compression_mode = 1.f;
+  si.v31_highlight_hue_shift = 0.04f;
+  si.v35_exposure = si.v35_highlights = si.v35_shadows = si.v35_contrast = 1.f;
+  si.v35_highlight_contrast = si.v35_shadow_contrast = si.v35_saturation = si.v35_highlight_saturation = 1.f;
+  si.v35_roll_off = si.v35_gamut_compression = 1.f;
+  si.hue_clip = 0.7f;
+  if constexpr (requires(T t) { t.godrays; }) {
+    si.godrays = 1.f;
+  }
+  if constexpr (requires(T t) { t.exposure_tpm; }) {
+    si.exposure_tpm = si.highlights_tpm = si.shadows_tpm = si.contrast_tpm = si.saturation_tpm = 1.f;
+  }
+  return si;
+}
+
 // The tone mappers' outputs as linear BT.709 relative to the UI's white, decoded in their frame's gamma (FrameGamma).
 static Float3 Decode(const Float4& o, float gamma) {
   Float3 c;
@@ -948,6 +1031,10 @@ struct Chain {
   const Shader* ruse_post;  // parts 3, 4 and 6
   const Pair* thrones_tone_mapper;  // parts 4 and 8
   const Pair* thrones_hdr_to_screen;
+  const Shader* wh1_tone_mapper;  // parts 3, 4 and 8 (this tree alone)
+  const Shader* wh1_hdr_to_screen;
+  const Shader* wh2_tone_mapper;
+  const Shader* wh2_hdr_to_screen;
 };
 
 // Linear BT.709 in units of the UI's white (x graphics nits = nits) of PsychoV35's (or the SDR mode's) output; the
@@ -990,6 +1077,19 @@ static std::vector<Float3> RunWh3(const Chain& chain, const std::vector<Float4>&
   const float frame_gamma = FrameGamma(si.hdr, si.swap_chain_encoding, si.gamma_correction);
   std::vector<Float3> linear;
   for (const auto& o : output) linear.push_back(Decode(o, frame_gamma));
+  return linear;
+}
+
+// Warhammer's or Warhammer II's t00 (`first`: Wh1ToneMapper / Wh2ToneMapper) -> its t01 (part 7's bindings), decoded as
+// RunAttila's.
+template <typename T>
+static std::vector<Float3> RunWarhammer(const Shader& tone_mapper, const Shader& hdr_to_screen, Bindings first, const T& si) {
+  first.injection = Bytes(si);
+  Bindings second = GammaBindings(Draw(tone_mapper, first));
+  second.injection = Bytes(si);
+  const float frame_gamma = FrameGamma(si.hdr, si.swap_chain_encoding, si.gamma_correction);
+  std::vector<Float3> linear;
+  for (const auto& o : Draw(hdr_to_screen, second)) linear.push_back(Decode(o, frame_gamma));
   return linear;
 }
 
@@ -1108,7 +1208,8 @@ static std::vector<Float3> RunRuse(const Shader& post, const std::vector<Float4>
   return linear;
 }
 
-// WH3's white in the scene: where its Extended Reinhard reaches 1 (exposure 1): x = sqrt(W), W = 1 / burn - 0.999.
+// WH3's (and WH2's t00's) white in the scene: where its Extended Reinhard reaches 1 (exposure 1): x = sqrt(W),
+// W = 1 / burn - 0.999.
 static float Wh3White(float burn) { return std::sqrt(1.f / burn - 0.999f); }
 
 static void CheckRamp(const char* label, const std::vector<Float3>& linear, float peak_nits, float ui_nits, bool sdr, bool gamut_fit,
@@ -1177,22 +1278,30 @@ static void TestPsychoV35(const Chain& chain) {
       std::snprintf(settings, sizeof(settings), "%.0f nits %s, sliders %.2f %.2f %.2f %.2f %.2f %.2f %.2f hue %.1f own %.2f %.2f %.2f %.2f %.2f",
                     peak, encoding == 2.f ? "SDR" : (encoding == 0.f ? "HDR10" : "scRGB"), s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7],
                     e[0], e[1], e[2], e[3], e[4]);
+      const auto move_sliders = [&s, &e](auto* si) {
+        si->v35_exposure = s[0];
+        si->v35_highlights = s[1];
+        si->v35_shadows = s[2];
+        si->v35_contrast = s[3];
+        si->v35_saturation = s[4];
+        si->v35_roll_off = s[5];
+        si->v35_gamut_compression = s[6];
+        si->hue_clip = s[7];
+        si->v35_highlight_contrast = e[0];
+        si->v35_shadow_contrast = e[1];
+        si->v35_flare = e[2];
+        si->v35_dechroma = e[3];
+        si->v35_highlight_saturation = e[4];
+      };
       auto a = AttilaInjection(3.f, encoding);
       auto w = Wh3Injection(4.f, encoding);
+      auto w1 = TwInjection<wh1::ShaderInjectData>(3.f, encoding, 1.f, peak);
+      auto w2 = TwInjection<wh2::ShaderInjectData>(4.f, encoding, 1.f, peak);
       a.peak_white_nits = w.peak_white_nits = peak;
-      a.v35_exposure = w.v35_exposure = s[0];
-      a.v35_highlights = w.v35_highlights = s[1];
-      a.v35_shadows = w.v35_shadows = s[2];
-      a.v35_contrast = w.v35_contrast = s[3];
-      a.v35_saturation = w.v35_saturation = s[4];
-      a.v35_roll_off = w.v35_roll_off = s[5];
-      a.v35_gamut_compression = w.v35_gamut_compression = s[6];
-      a.hue_clip = w.hue_clip = s[7];
-      a.v35_highlight_contrast = w.v35_highlight_contrast = e[0];
-      a.v35_shadow_contrast = w.v35_shadow_contrast = e[1];
-      a.v35_flare = w.v35_flare = e[2];
-      a.v35_dechroma = w.v35_dechroma = e[3];
-      a.v35_highlight_saturation = w.v35_highlight_saturation = e[4];
+      move_sliders(&a);
+      move_sliders(&w);
+      move_sliders(&w1);
+      move_sliders(&w2);
       const bool sdr = (encoding == 2.f);
       const bool fit = (s[6] == 1.f);
       // V35's own Highlights under 0.5 bends white back toward mid gray (0: white at mid gray): not monotonic there.
@@ -1202,24 +1311,20 @@ static void TestPsychoV35(const Chain& chain) {
       // WH3's Output SDR: Peak, Paper White and UI all the display's white (shared.h's OutputShaderInjection).
       CheckRamp((std::string("WH3 ") + settings).c_str(), RunWh3(chain, Scene(columns, -8.f, 20.f / 47.f, Wh3White(0.3f)), w, 0.3f),
                 peak, 203.f, sdr, fit, monotonic, &failures_in_ramp);
+      // Warhammer's and Warhammer II's t00 -> t01 (WH2 at burn 0.3).
+      CheckRamp((std::string("WH1 ") + settings).c_str(),
+                RunWarhammer(*chain.wh1_tone_mapper, *chain.wh1_hdr_to_screen, Wh1ToneMapper(Scene(columns, -8.f, 20.f / 47.f, 1.f), true), w1),
+                peak, 203.f, sdr, fit, monotonic, &failures_in_ramp);
+      CheckRamp((std::string("WH2 ") + settings).c_str(),
+                RunWarhammer(*chain.wh2_tone_mapper, *chain.wh2_hdr_to_screen,
+                             Wh2ToneMapper(Scene(columns, -8.f, 20.f / 47.f, Wh3White(0.3f)), 0.3f), w2),
+                peak, 203.f, sdr, fit, monotonic, &failures_in_ramp);
       // R.U.S.E.'s Output SDR: Peak, Paper White and UI all the back buffer's 203-nit white (addon.cpp's LatchFrameInjection).
       auto r = RuseInjection(3.f);
       r.peak_white_nits = (sdr ? 203.f : peak);
       r.diffuse_white_nits = r.graphics_white_nits = 203.f;
       r.swap_chain_encoding = encoding;
-      r.v35_exposure = s[0];
-      r.v35_highlights = s[1];
-      r.v35_shadows = s[2];
-      r.v35_contrast = s[3];
-      r.v35_saturation = s[4];
-      r.v35_roll_off = s[5];
-      r.v35_gamut_compression = s[6];
-      r.hue_clip = s[7];
-      r.v35_highlight_contrast = e[0];
-      r.v35_shadow_contrast = e[1];
-      r.v35_flare = e[2];
-      r.v35_dechroma = e[3];
-      r.v35_highlight_saturation = e[4];
+      move_sliders(&r);
       CheckRamp((std::string("RUSE ") + settings).c_str(),
                 RunRuse(*chain.ruse_post, Scene(columns, -8.f, 20.f / 47.f, 1.f), RUSE_MEDIAN_GRADE, 1.f, r), peak, 203.f, sdr, fit,
                 monotonic, &failures_in_ramp);
@@ -1250,6 +1355,7 @@ static void ReportHue(const Chain& chain) {
   struct Game {
     const char* name;
     std::function<std::vector<Float3>(float mode, float hue_clip)> run;
+    float v35_mode = 3.f;  // PsychoV35's Rendering Mode
   };
   std::vector<Game> games = {
       {"Attila", [&](float mode, float hue_clip) {
@@ -1276,7 +1382,26 @@ static void ReportHue(const Chain& chain) {
                        auto si = Wh3Injection(mode, 1.f);
                        si.hue_clip = hue_clip;
                        return RunWh3(chain, Scene(columns, first_stop, stops_per_row, Wh3White(burn)), si, burn);
-                     }});
+                     },
+                     4.f});
+  }
+  // Warhammer's and Warhammer II's real t00 -> t01 (part 5 has their curves' stand-ins): WH1 at the battle traces'
+  // whiteout, the identity S-curve; WH2 at two of its maps' burns.
+  games.push_back({"WH1 (D275C403 -> 10759AE3), whiteout 0 to 10", [&](float mode, float hue_clip) {
+                     auto si = TwInjection<wh1::ShaderInjectData>(mode, 1.f, 1.f, 1000.f);
+                     si.hue_clip = hue_clip;
+                     return RunWarhammer(*chain.wh1_tone_mapper, *chain.wh1_hdr_to_screen,
+                                         Wh1ToneMapper(Scene(columns, first_stop, stops_per_row, 1.f), true), si);
+                   }});
+  for (const float burn : {0.1f, 0.5f}) {
+    games.push_back({burn == 0.1f ? "WH2 (2333E142 -> 187C9C6D), burn 0.1" : "WH2 (2333E142 -> 187C9C6D), burn 0.5",
+                     [&, burn](float mode, float hue_clip) {
+                       auto si = TwInjection<wh2::ShaderInjectData>(mode, 1.f, 1.f, 1000.f);
+                       si.hue_clip = hue_clip;
+                       return RunWarhammer(*chain.wh2_tone_mapper, *chain.wh2_hdr_to_screen,
+                                           Wh2ToneMapper(Scene(columns, first_stop, stops_per_row, Wh3White(burn)), burn), si);
+                     },
+                     4.f});
   }
   // 5. The other games: their kind of stock curve (hue_curves.hlsl), PsychoV35 at its defaults, white at 1.
   const char* const curve_names[] = {"5. Luminance Reinhard + clip (WH2)", "5. Luminance Hable + clip (Rome Remastered)",
@@ -1317,7 +1442,6 @@ static void ReportHue(const Chain& chain) {
                      }});
   }
   for (const auto& game : games) {
-    const bool wh3_game = std::string(game.name).starts_with("WH3");
     const auto sdr = game.run(0.f, 0.f);
     std::printf("4. %s: |hue difference| (OkLab degrees) of PsychoV35 against the game's SDR where SDR reaches its clip (the\n"
                 "   brightest channel at 0.95 or more, both chroma 0.04 or more); signed mean in brackets (+ = toward yellow\n"
@@ -1325,7 +1449,7 @@ static void ReportHue(const Chain& chain) {
                 game.name);
     std::printf("   hue clip   fire               sky blue           all hues           below the clip\n");
     for (const float strength : strengths) {
-      const auto hdr = game.run(wh3_game ? 4.f : 3.f, strength);
+      const auto hdr = game.run(game.v35_mode, strength);
       double sums[3] = {}, signed_sums[3] = {}, counts[3] = {}, below_sum = 0, below_count = 0;
       for (UINT y = 0; y < HEIGHT; ++y) {
         for (UINT x = 0; x < WIDTH; ++x) {
@@ -1402,6 +1526,31 @@ static void ReportToe(const Chain& chain) {
          auto si = Wh3Injection(mode, 1.f);
          si.hue_clip = 1.f;
          return RunWh3(chain, Scene(columns, -10.f, 0.25f, Wh3White(0.3f)), si, 0.3f);
+       },
+       4.f},
+      // Warhammer's Recommended: Hue Clip 0.4 (HUE_CLIP_DEFAULT 40); the battle traces' whiteout (0 to 10) and the
+      // campaign's (0.144 to 10).
+      {"Warhammer, identity S-curve, battle whiteout", [&](float mode) {
+         auto si = TwInjection<wh1::ShaderInjectData>(mode, 1.f, 1.f, 1000.f);
+         si.hue_clip = 0.4f;
+         return RunWarhammer(*chain.wh1_tone_mapper, *chain.wh1_hdr_to_screen, Wh1ToneMapper(scene, true), si);
+       }},
+      {"Warhammer, identity S-curve, campaign whiteout", [&](float mode) {
+         auto si = TwInjection<wh1::ShaderInjectData>(mode, 1.f, 1.f, 1000.f);
+         si.hue_clip = 0.4f;
+         return RunWarhammer(*chain.wh1_tone_mapper, *chain.wh1_hdr_to_screen, Wh1ToneMapper(scene, true, 0.144f), si);
+       }},
+      {"Warhammer, S-shaped S-curve, battle whiteout", [&](float mode) {
+         auto si = TwInjection<wh1::ShaderInjectData>(mode, 1.f, 1.f, 1000.f);
+         si.hue_clip = 0.4f;
+         return RunWarhammer(*chain.wh1_tone_mapper, *chain.wh1_hdr_to_screen, Wh1ToneMapper(scene, false), si);
+       }},
+      // Warhammer II's Recommended: Hue Clip 1 (HUE_CLIP_DEFAULT 100), Rendering Mode 4.
+      {"Warhammer II, burn 0.3", [&](float mode) {
+         auto si = TwInjection<wh2::ShaderInjectData>(mode, 1.f, 1.f, 1000.f);
+         si.hue_clip = 1.f;
+         return RunWarhammer(*chain.wh2_tone_mapper, *chain.wh2_hdr_to_screen,
+                             Wh2ToneMapper(Scene(columns, -10.f, 0.25f, Wh3White(0.3f)), 0.3f), si);
        },
        4.f},
   };
@@ -1656,57 +1805,9 @@ struct GammaGame {
   Bindings bindings;
 };
 
-// The add-ons' defaults where a game has the slider; Extended's grading at identity; in-game gamma 2.0 (GammaBindings).
 template <typename T>
 static std::vector<uint8_t> GammaInjection(float mode, float encoding, float correction, float peak) {
-  T si = {};
-  si.peak_white_nits = peak;
-  si.diffuse_white_nits = 203.f;
-  si.graphics_white_nits = 203.f;
-  si.gamma_correction = correction;
-  si.swap_chain_encoding = encoding;
-  si.hdr = mode;
-  si.bloom = 1.f;
-  si.vignette = 1.f;
-  si.exposure = si.highlights = si.shadows = si.contrast = si.saturation = si.cone_response_exponent = 1.f;
-  si.hue_shift = 1.f;
-  si.v31_exposure = si.v31_highlights = si.v31_shadows = si.v31_contrast = 1.f;
-  si.v31_highlight_contrast = si.v31_shadow_contrast = si.v31_saturation = 1.f;
-  si.v31_highlight_saturation = 0.7f;
-  si.v31_roll_off = si.v31_gamut_compression = si.v31_gamut_compression_mode = 1.f;
-  si.v31_highlight_hue_shift = 0.04f;
-  si.v35_exposure = si.v35_highlights = si.v35_shadows = si.v35_contrast = 1.f;
-  si.v35_highlight_contrast = si.v35_shadow_contrast = si.v35_saturation = si.v35_highlight_saturation = 1.f;
-  si.v35_roll_off = si.v35_gamut_compression = 1.f;
-  si.hue_clip = 0.7f;
-  if constexpr (requires(T t) { t.godrays; }) {
-    si.godrays = 1.f;
-  }
-  if constexpr (requires(T t) { t.exposure_tpm; }) {
-    si.exposure_tpm = si.highlights_tpm = si.shadows_tpm = si.contrast_tpm = si.saturation_tpm = 1.f;
-  }
-  return Bytes(si);
-}
-
-// t01's inputs: the scene at its frame, an identity grade (colour matrix, LUTs), no fog of war, god rays or glow, in-game
-// gamma 2.0 (the games' default 20); Troy's and Pharaoh's post-processing bypassed (their tone mapper on the raw handoff).
-static Bindings GammaBindings(const std::vector<Float4>& scene) {
-  Bindings b = AttilaHdrToScreen(scene, true);
-  const auto zero = Texture2D(WIDTH, HEIGHT, std::vector<Float4>(WIDTH * HEIGHT, Float4{}));
-  b.views["god_rays_sampler"] = zero;
-  b.views["frame_texture"] = b.views["frame_sampler"];
-  b.views["gbuffer_channel_4_texture"] = b.views["gbuffer_channel_4_sampler"];
-  b.views["t_fog_of_war_mask"] = b.views["s_fog_of_war_mask"];
-  b.views["distortion_texture"] = zero;
-  for (const char* name : {"god_rays_texture", "glow_texture1", "grain_texture", "rain_texture", "t_shroud_clouds"}) b.views[name] = zero;
-  const auto lut = IdentityLut3D(32);
-  for (const char* name : {"lut_texture", "lut_texture_1", "lut_texture_2", "lut_texture_3"}) b.views[name] = lut;
-  b.words["lut_weights"] = F({1, 0, 0, 0, 0, 0, 0, 0, 0});
-  b.words["lut_strength"] = F({1.f});
-  b.words["overscan"] = F({1.f});
-  b.words["disable_post_processing"] = F({1.f});
-  b.words["post_processing_strength"] = F({1.f});
-  return b;
+  return Bytes(TwInjection<T>(mode, encoding, correction, peak));
 }
 
 // WH3's t00 (its tone mapper and hdr_to_screen in one), burn 0.3, at the game's gamma 2.0 as the others (its g_gamma_output
@@ -2220,8 +2321,11 @@ int main(int argc, char** argv) {
   }
   const Shader curves = LoadPixelShader(after / "hue_curves.cso");
   const Shader ruse_post = LoadPixelShader(after / "ruse_post.cso");
+  const Shader wh1_tone_mapper = LoadPixelShader(after / "w1_t00.cso");
+  const Shader wh2_tone_mapper = LoadPixelShader(after / "w2_t00.cso");
   const Chain chain = {&shaders["a_t00"], &shaders["a_t01"], &shaders["w_t00"], &curves, &shaders["r_t00"], &shaders["r_t01"], &ruse_post,
-                       &shaders["th_t00"], &shaders["th_t01"]};
+                       &shaders["th_t00"], &shaders["th_t01"], &wh1_tone_mapper, &shaders["g_wh1"].after, &wh2_tone_mapper,
+                       &shaders["g_wh2"].after};
   if (!report_only) TestPsychoV35(chain);
   if (!report_only) TestEdges(before, after, chain);
   ReportHue(chain);
