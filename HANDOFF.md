@@ -7449,11 +7449,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         started suspended = empty Path), test_gpu_lock 58 / 58; test_trace_run not run (F6 spawns helper-named fakes).
         Open: the unreadable start-time case untested (no way to fake it); busy checks up to 10 s longer only then.
         -> gpr_ RE-CHECK STARTED (gti_'s reviewer; gtb_ z after).
-        Agents (8): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtp_ (K1-K3 + next round), grs_ (N1 nits 1-3),
-        gtl_ (S1b tests, then v1.1), gtb_ (z: bash & + wrappers), gpr_ (gti_ ns_busy re-check). Idle: bd1r_, lga_,
-        lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, ebr_, t4i_ (r21 after b13r_), gtq_, gbc_,
-        gti_ (waits gpr_), gtv_ (waits grs_ / gtl_), gtk_, gtw_ (waits gtp_). GPU: free (H0 stopped); harness-named
-        fakes allowed until I announce the H0 re-run (checked empty before it starts).
+        gtb_ z DONE 05:3x (plan_1117/gtb_z_handback.md; backups scratchpad\gtb_bak11): bash / sh split by BASH_COMPOUND
+        (single & ends the first command; &&, 2>&1, &>, >&2 don't; PowerShell keeps &); WRAPPED env / timeout / nice /
+        ionice / nohup / start skip their own words and read the wrapped command; env -S or a bare wrapper = no
+        deadline; UNREAD_WRAPPERS (wsl, sudo, runas, psexec, ssh, xargs, time, ...) = no declared deadline, also as a
+        shell string's first command (first_command()); docstring known limits now only safe cases. 33 OK, selftest 0,
+        21 new head_args cases. -> gpr_ re-checks y1 / y2 / z after its gti_ ns_busy re-check.
+        Agents (7): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtp_ (K1-K3 + next round), grs_ (N1 nits 1-3),
+        gtl_ (S1b tests, then v1.1), gpr_ (gti_ ns_busy, then gtb_ y1 / y2 / z). Idle: bd1r_, lga_, lgf2_, c33i_,
+        c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, ebr_, t4i_ (r21 after b13r_), gtq_, gbc_, gti_ (waits
+        gpr_), gtb_ (waits gpr_), gtv_ (waits grs_ / gtl_), gtk_, gtw_ (waits gtp_). GPU: free (H0 stopped);
+        harness-named fakes allowed until I announce the H0 re-run (checked empty before it starts).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
