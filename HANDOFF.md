@@ -12401,6 +12401,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         order vs sun draws, a free t-slot in sss00 / 01, smoke buffer size); Rome Remastered ASSAO PSApply 6A73BA10 (t13
         format / size, forward readers, b8 projection, depth).
         - [ ] g04_ item 7 (unseen-lights row) needs a helper flag (GPU plan's files).
+        rvc_ G09 RE-CHECK 22:4x (reviews/rvc_g09_recheck_handback.md): ho_g09 9f652d3b6 GO; the set with ho_g07 NOT GO
+        (ho_g07 still "fixes first": MA1 not run, nothing built, cb80bad3c Shadow Map Size WIP unreviewed). Coord's pick =
+        rvc_ option 2: after ho_g19, merge ho_g09 WITH ho_g07's f1924d506 cherry-picked (the only ho_g07 commit it needs,
+        applies cleanly); build D2 / Tales / Expeditions / ue-extended + tw_expeditions_unit / tw_tales_unit / tw_ue_sss_gi;
+        ho_g07 merges later after rvb_'s re-check. Optional NIT: a "-pi is -3.14159274" note in the ue-extended lutbuilders.
+        g21_ FIXES (handbacks/g21_fixes_handback.md): ho_g21 cc349d79b (M1 gather 4.1 builds, bug fix on: WH1 24 / 24, WH2
+        18 / 18 bit-identical on WARP; m2 all 80 moved-include shaders same bytes). G10 counts: 832 differ (WH1 276, WH2
+        546, Attila 5 + Thrones 5 forward gather 4.1 shaders, rule off for forward = no runtime change). rvf_ re-check sent.
+        G02 requests: WH1 ATLAS_SUN_SHADERS + 27AF3D62 A359A234 7BC58986 8A72EA4D 0EADBE7E 110884BF; WH2 far-plane list +
+        A03688A3 DF7EA1A3 488C845F 6257DF22 8D1F7560 CBA032CA.
+        g03_ MERGE + BUILD (handbacks/g03_build_handback.md): Troy + Pharaoh addon64 build clean at 39d9a53fa (slot2;
+        .fog_shadows_defaulted_on stripped for the build only, needs ho_g19). Pharaoh's 4-argument sun_replace_maps::Install
+        compiles; Troy keeps the game's baked far map until the far-field check; Pharaoh's far map is replaced, same check
+        before it counts as done.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
