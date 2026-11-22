@@ -7326,10 +7326,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         the docstring. test_budget 33 OK, selftest 3 ok. Same busy-0 filter still in slow_report() budget.py:281 ->
         gtb_ told to fix it too (same bug), then gpr_ re-checks x1-x4 + :281. Note: a missing gate_hook.py now prints
         FAULT lines from every budget.py use (expected in sandboxes).
-        Agents (7): c3i_ (B1.6), ebr_ (t4i_ r20 re-check), gtp_ (K1-K3 + next round), gbc_ (gtq_ B2 re-check), gtv_
-        (grs_ S2r re-check, then gtl_ S3r S1), gtb_ (slow_report :281). Coordinator: H0 real run (bhe3fx2sg, ~72
-        min). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_, gpp_, gpr_ (waits gtb_), t4i_ (waits ebr_), gtq_
-        (waits gbc_), gti_, grs_ (waits gtv_), gtl_ (waits gtv_), gtk_, gtw_ (waits gtp_).
+        H0 REAL RUN 05:0x: builds pre / post plain + lab exit 0, GPU lock taken 04:59:14, run 1 smoke PASSED (3 modes,
+        dumps written). Its start line saw 1 foreign GPU job: a fake renodx-tw-dlaa64.exe from testbin\gtl_test_60524
+        (gtl_'s lab tests) -> every running agent told: until H0 ends (~06:10) start no harness- / helper-named
+        process (tw_rt_harness*, renodx-tw-dlaa*, map_replay*, fakes too), since the per-job busy check stops the run.
+        BULK NSIGHT INDEX ended 05:05 (exit 0, 180-min deadline): 202 indexed, 3 FAILED (OSError Errno 22: two
+        at the 600 s cap fix1_ns637_fix1_rd4_2 / fix1_ns637b_fix1_rdet4_1, one rbkpre_night1_low_l5_2 at 72 s), 180
+        not checked. [ ] coordinator: resume the bulk index AFTER H0 (not beside run 7's Nsight); the 3 failures to
+        ns_index's owner.
+        c3i_ B1.6 DONE 05:0x (render_mt/reports/c3i_b16_handback.md): rmt_b16 (from 838bd848f, local) 7d602b35b B1.6
+        rows (ParallelEffectUpdate, ParallelEffectSpawns greyed unless the first, CachedParticleCount; all default off,
+        Graphics (Experimental)), B1 OR-ed into worker_pool's in_use only, Worker Threads row wherever B1 is;
+        particle_count_check = env RENODX_TW_COUNT_CHECK (no row) + d3eb4842d R2 (half rows wait for the half
+        function; 13(c) second case, mutant fails at tests.cpp:3762), N7 PausedWrite header, N8 two 29f blocks
+        (own_thread + fill_out_only mutants now fail). N5 S1 / S2 tests not done (need the real-routine tests, accepted
+        untested by b13r_). tw_engine_code FULL PASS, -DrawRecording PASS, instance_fill / draw_recording* PASS; gated
+        builds x86 3 games + x86 DRAW_RECORDING + amd64 exit 0. -> b13r_ B1.6 REVIEW STARTED (Opus xHigh). [ ] t4i_
+        r21 (after ebr_'s r20): ebo/segments.json CachedParticleCount = Off / On BOOLEAN, check = env
+        RENODX_TW_COUNT_CHECK, B1 keys ParallelEffectUpdate / ParallelEffectSpawns.
+        Agents (7): b13r_ (c3i_ B1.6 review), ebr_ (t4i_ r20 re-check), gtp_ (K1-K3 + next round), gbc_ (gtq_ B2
+        re-check), gtv_ (grs_ S2r re-check, then gtl_ S3r S1), gtb_ (slow_report :281). Coordinator: H0 real run
+        (bhe3fx2sg, ~72 min). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_, h0i_, gpp_, gpr_
+        (waits gtb_), t4i_ (waits ebr_, then r21), gtq_ (waits gbc_), gti_, grs_ (waits gtv_), gtl_ (waits gtv_),
+        gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
