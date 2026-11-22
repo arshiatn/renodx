@@ -517,11 +517,16 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 (coord 18:4x); t ... | ?
 - ATN: review handoff_plan\plan.md -> OK / changes; NOTHING from it starts or gets ... | ?
 - gtl_: part 2 sheet disk rule (move dumps to D:, C: floor) -> then STAGE3 (coord ... | ?
-- gtv_: read the part 2 sheet + jobs (go / no-go for gtc_) (coord 19:3x). | ?
 - G05 / R.U.S.E. owner (tke_ LOST, from 11935 rur2_): test/tw_ruse_bridge H2 DLSS ... | ?
 - ATN (do / drop each; tkj_ LOST, ATN asked for these and they were skipped withou ... | ?
 - coord: sweep every "[~]" box in HANDOFF + HANDOFF_ARCHIVE for undone parts (tkj_ ... | ?
 - ATN later (loose leftovers, keep or drop; tkj_): pines + rigidcampaigntrees capt ... | ?
+- G05 / R.U.S.E. owner (tkc_ LOST, 1668 U5): 5 C1 copy shaders left "target unknow ... | ?
+- ATN (do / drop; tkc_ LOST 2211): Expeditions LOD bias when the game's TAAU runs ... | ?
+- Attila add-on owner, wave 3 (tkc_ LOST 3114 APIPE bind cache bb47d8b82): review ... | ?
+- tki_ LOST CODE TO-DOS (fold into the open-items groups): (1) RR Fresnel specular ... | ?
+- ATN (decide; tki_ LOST, never asked): (4) trunk rows look: No Black Patches on T ... | ?
+- causes never found (tki_ LOST; owner per game, GPU plan where RT): (18) lone bla ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11213,7 +11218,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         far below the end batch's 160 GB floor -> sheet gets a rule: dumps MOVED to D: (264 GB free) after their offline use,
         and C: must stay >= 160 GB + the next session's dumps before each session (moving is OK; nothing deleted).
         - [ ] gtl_: part 2 sheet disk rule (move dumps to D:, C: floor) -> then STAGE3 (coord 19:3x).
-        - [ ] gtv_: read the part 2 sheet + jobs (go / no-go for gtc_) (coord 19:3x).
+        - [x] gtv_ (DONE 19:36, GO with Option A after R1 + R2): read the part 2 sheet + jobs (go / no-go for gtc_) (coord 19:3x).
         gtl_ DISK RULE 19:33 (plan_1117/gtl_disk_rule_handback.md; s3c_run_sheet.md "## Part 2" ### Disk): at 179 GB free
         the rule (160 GB + planned dumps) fits session 1 (1.5 GB) but 0 variants in session 2. Option A (keeps 64 frames):
         coord moves each session-2 job's dumps to D:\RenoDX_LabDumps\s3c_part2\<session>\ right after the job (< 1 min, inside
@@ -11246,6 +11251,44 @@ heading text are in HANDOFF_ARCHIVE.md)
         close-up soldier (3643); plain 1-spp reflection accumulation too dark (3811); Fast Leaf Shadows per instance (3461,
         idea); Astra F10 / F11 + archive 1344 never-run tests (game run, real GPU reset, real unload / reload, FG SDR / HDR
         check; L12299 covers only the first freeze); no RTX 20 / 30 or AMD card ever tested (1854).
+        gtv_ PART 2 SHEET 19:36 (plan_1117/gtv_part2_sheet_handback.md; gtv_iq_review.md "## gtv_ part 2 sheet" l.1255): GO
+        with OPTION A (moves keep M10's 64-frame check; B's 8 frames would miss readers that run every N frames -> not M10)
+        after gtl_'s R1: CONFIRMED DEAD = rec_compare exit 0 only (lab dumps hold only trace / bounce / reflections + a
+        digest, no histories, so the "own history" clause never applies) and R2: store_skip.py prints `config: {...}` but
+        s3c_jobs --confirm reads only lines starting with `{` -> 0 variants silently -> accept the prefix + print the variant
+        count. S1 (should): rec_compare P3a P3b with no floor (byte-equal over 64 frames). S2 (optional): a P1b plain dump
+        before P2, rec_compare P1 P2 --floor P1b. gtl_'s (a)-(c) accepted; P5 vs P3a with floor P3b sound; no timing step.
+        COORD 19:3x: Option A (coord moves each session-2 job's dumps to D:\RenoDX_LabDumps\s3c_part2\ right after the job,
+        verified copy then source removed, no reparse points); R1 + R2 + S1 + S2 to gtl_ before gtc_ runs.
+        TICK AUDIT RESULTS (2): tkc_ 19:36 (tick_audit/tkc_handback.md): live 1668-6892: 114 boxes: 109 DONE, 2
+        DONE-ELSEWHERE, 3 PARTIAL = 3 LOST; every named commit / merged branch in atn-mods. tki_ 19:36 (tick_audit/
+        tki_handback.md): archive 1284-1841: 141 boxes: 107 DONE, 4 DONE-ELSEWHERE, 2 DROPPED, 28 PARTIAL -> 25 boxes / 23
+        LOST items (14 code to-dos, 9 decisions / causes never asked).
+        - [ ] G05 / R.U.S.E. owner (tkc_ LOST, 1668 U5): 5 C1 copy shaders left "target unknown (U1 trace)": 412D2D43,
+        A40F493A, 2B19A028, 9C69F169, D32F5B29 (none in src/games/ruse); the U1 trace u1_trace_200820 exists -> use it.
+        - [ ] ATN (do / drop; tkc_ LOST 2211): Expeditions LOD bias when the game's TAAU runs with our mode Off (tpa_ called
+        it low value on its own).
+        - [ ] Attila add-on owner, wave 3 (tkc_ LOST 3114 APIPE bind cache bb47d8b82): review L4 (static_checks: bumps
+        inside the lock, writable details pointer, new bind-info callbacks), L5 (every Create*State empties every
+        thread's cache), style S1 + S3, in-game hit-rate check (_CHECK=1 + a MEMO=0 A/B), x86 hit-path disassembly. (M1 =
+        11458 with S2 / S4.)
+        - [ ] tki_ LOST CODE TO-DOS (fold into the open-items groups): (1) RR Fresnel specular guide port to Rome II /
+        Thrones / WH1 / WH2 / Troy land (bare F0 today); (2) live-write crash check of the 430 engine flags in Rome II /
+        WH1 / WH2 / Troy / Pharaoh + Attila's new_shadows / terrain_enable_shadows / cindy_shadows unproven + OOM
+        exceptions still leave our callbacks; (3) 1405BFB4 8-layer unit cut-outs + dissolve shaders into the rays; (5)
+        Light Bounce rays + reflection starts past placed trunks; (6) Fog in Reflections gaps (water pixels in the fit,
+        one fog light colour a frame, 5 fog light shaders write no numbers); (7) moved / vanished casters stay until seen +
+        Skip the Shadow Maps' real ms; (8) DOF Guide below 100 % + DLSS L 1.5-2.7 % shimmer brightness fix; (9) far-tree
+        cards FA844DB5 + trees past 150 m cast no ray shadow; (10) path / reflection nearest-surface rays pass cut-outs of
+        unknown micromap state; (11) hit distance in the pixel trace, longer grass, stale ini keys stripped at install;
+        (12) diffuse hit distance for RR; (13) spot lights in the rays; (14) Rays a Pixel never reached reflection samples /
+        fog rays / spot lights; (23) Particle Trails flags one-texel blades.
+        - [ ] ATN (decide; tki_ LOST, never asked): (4) trunk rows look: No Black Patches on Trunks vs Tree Trunks as Drawn;
+        (15) fog light limit; (16) marching banners' motion + B5 M4 (sway bones and rows); (17) FG keeps +64 MiB per on /
+        off beside DLSS / RR (holder not found) + "FG in its own process"; (22) smoke shadows' camera-distance fade (look).
+        - [ ] causes never found (tki_ LOST; owner per game, GPU plan where RT): (18) lone black pixels at 50 % render scale;
+        (19) why the GPU reset happened with the rows on (1421); (20) far mountains' black triangles; (21) black spots on
+        buildings, darker with SSS.
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
