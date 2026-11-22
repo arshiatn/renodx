@@ -6567,9 +6567,32 @@ heading text are in HANDOFF_ARCHIVE.md)
         Sent: gtp_ the gate defaults + narrow Q4b; gti_ Q8 (a) row ON; t4i_ RESUMED 01:2x: crash budget in the legs +
         StallDump in T6 (backup / set / restore ReShade.ini) + x87c A/B plan (existing ebo_run rules or exact new line
         for ATN).
-        Agents (10): bd1r_ (R-S5 review), gti_ + gtb_ (S1a / S1b fixes), gtp_ (S1c fixes), t4i_ (batch rules), lga_ (group 1
-        re-check), h0i_ (H0), lgf2_ (helper + bridge logging). QUEUE: c33i_ R-S5 nits -> merge, B1.6, X1, logging group 3,
-        gtv_ re-check, PT DI steps 0-4 (after lgf2_ + H0), S2 (after lgf2_), T5 / T6, end batch.
+        lga_ GROUP 1 RE-CHECK 01:2x = FIX (lga_logging_audit.md '## Group 1 re-check'; hand-back
+        reports/lga_g1_recheck_handback.md). OK: VEH filter / CONTINUE_SEARCH / once guard, SIGABRT over set_terminate,
+        stall_note, A-S5 / S8 / S9 / S10 / S11, A-N4 / N6, D-S1; no risk for the other 15 add-ons. MUST R1 (lga_'s own
+        omission): no line for a crash outside our image (pool worker in the game's fill / draw code, uncaught C++ throw)
+        -> chained SetUnhandledExceptionFilter at the first present, Uninstall restores or pins. SHOULD R2 FP / integer
+        codes, R3 stall line names a handled fault (KiUserExceptionDispatcher on the stack), R4 stack overflow logged on
+        the overflowed stack. NIT R5 Detours 4 addresses, R6 engine_tweaks retries, R7 NotTraced 1 s floor. Plus
+        device_loss::AddCodeRange (4 slots) now, callers in group 3. lgf1_ RESUMED 01:2x on rmt_lg1 -> lga_ re-check 2.
+        [ ] until R1 lands: after any crash read Windows' Application log (event 1000).
+        lgf2_ GROUP 2 DONE 01:2x (reports/lgf2_handback.md): rmt_lg2 f6e881b4c (462c43b75 helper, 91d92497f bridge,
+        f6e881b4c tw_helper_lifetime defines NAME for utils/settings.hpp:60). Exit codes once (dlaa_bridge.h:619-670 +
+        HelperExitMeaning); B-M4 rescue step + value, B-M5 RT Off reasons, B-M6 CRT ends (terminate / SIGABRT / purecall /
+        invalid parameter); C-M3 watcher logs the exit code. Bridge v32 unchanged. Builds x86 3 + amd64 14 + helper exit
+        0; tw_helper_lifetime 20/20 x86 + amd64; testbin\lgf2_exit_codes ALL PASS. lga_ group 2 re-check STARTED 01:2x.
+        gti_ S1a FIX DONE 01:2x (plan_1117/gti_s1a_fix_handback.md, backups scratchpad\gti_bak2): 3 Musts + Shoulds
+        1-6 + Nits 1-4 fixed with tests; Q8(a) map_replay ON. Open: ngfx exits up to ~4 s longer; a child prompting > 4 s
+        after ngfx exits not caught; bulk index may take > 2 h.
+        gtb_ S1b FIX DONE 01:2x (plan_1117/gtb_s1b_fix_handback.md, backups scratchpad\gtb_bak): 3 Musts + 5 Shoulds +
+        3 Nits; rotation 8 / 16 per arm only; calibration ids tied to session; exit codes 0-5. Open: analysis_p0a
+        report.md:31 real gate-less GPU number; two ns_busy readers. gtv_ S1a then S1b re-check STARTED 01:2x.
+        ATN 01:2x: Q4b narrow form OK -> gtp_ row ON (shadow mode). Asked for the unified PT question list: 14 (not 15:
+        Q1, Q2, NQ1, Q4, NQ5, Q6, Q7, Q8, NQ4, Q9, Q10, NQ2, NQ3, NQ6) sent with my suggestions; waiting for his answers.
+        Agents (7): bd1r_ (R-S5 review), gtp_ (S1c fixes), t4i_ (batch rules), h0i_ (H0), lgf1_ (group 1 R1-R7), lga_
+        (group 2 re-check), gtv_ (S1a + S1b re-check). QUEUE: c33i_ R-S5 nits -> merge, lga_ group 1 re-check 2 -> merge
+        rmt_lg1, merge rmt_lg2, gtw_ S1c re-check, bulk index (after S1a OK), Q8(b) lock wait, B1.6, X1, logging group 3,
+        PT DI steps 0-4 (after rmt_lg2 + H0), S2 (after rmt_lg2), T5 / T6, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
