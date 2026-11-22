@@ -7477,11 +7477,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         aligned4, base vs aligned4 99 .text bytes, 52 headers same. GPU command now uses rec_grs_new4 / aligned4 /
         rec4 (hand-back). -> gtv_ short RE-CHECK STARTED. dred for gtb_: missing = unknown (resident ran DRED off
         before f6a371d32) -> refuse true vs false, FLAG known vs unknown.
-        Agents (8): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtw_ (gtp_ re-check 8), gtv_ (grs_ N1 nits
-        re-check), gtl_ (S1b tests, then v1.1), gpr_ (gti_ ns_busy, then gtb_ y1 / y2 / z), gtb_ (dred in
-        report_check / result.schema). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_),
-        gpp_, ebr_, t4i_ (r21 after b13r_), gtq_, gbc_, gti_ (waits gpr_), grs_ (waits gtv_), gtk_, gtp_ (waits
-        gtw_). GPU: free (H0 stopped); harness-named fakes allowed until I announce the H0 re-run (checked empty).
+        gtb_ DRED DONE 05:3x (plan_1117/gtb_dred_handback.md; backups scratchpad\gtb_bak12): in gpu_gate.py (where a
+        number meets its calibration / floor and gets its G- / Q- id; report_check only reads text): optional dred
+        (bool or null) in result.schema arm entries + iq.schema arms / reference (schema stays v1); dred_of() /
+        check_dred(): true vs false REFUSED naming both, known vs unknown = flag, unknown vs unknown passes; checked
+        per arm vs A, job vs every accepted calibration (G- id), iq job vs its reference floor. test_gpu_gate 30 OK + 1
+        skipped, test_report_check 9 OK. Needs gtl_: lab.py must WRITE the resident's dred into every arm of
+        result.json / iq.json and the iq reference (check_played holds it) -> added to gtl_'s v1.1. Old calibrations
+        stay unknown (flags until re-calibrated). -> gpr_ re-checks with y1 / y2 / z.
+        Agents (7): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtw_ (gtp_ re-check 8), gtv_ (grs_ N1 nits
+        re-check), gtl_ (S1b tests, then v1.1 + dred writes), gpr_ (gti_ ns_busy, then gtb_ y1 / y2 / z + dred).
+        Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, ebr_, t4i_ (r21 after
+        b13r_), gtq_, gbc_, gti_ (waits gpr_), gtb_ (waits gpr_), grs_ (waits gtv_), gtk_, gtp_ (waits gtw_). GPU:
+        free (H0 stopped); harness-named fakes allowed until I announce the H0 re-run (checked empty).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
