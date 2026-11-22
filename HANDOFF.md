@@ -7105,9 +7105,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         rec_grs_new rec_grs_aligned rec_grs_rec` (HARNESS_DUMP, rec_locked.sh per run, ~235 runs ~100 min) was DENIED
         by the auto-mode classifier [Unauthorized Access]; not retried, no workaround. [ ] ATN: allow it (a rule) or say
         'run it' for the one unchanged retry. Meanwhile gtv_ S2r (offline review) queued after its S3r re-check.
-        Agents (10): upr_ (H0 439 look, then v2.7), c3i_ (B1.6), ebr_ (r18 re-check), gtk_ (R-S1..3), gtp_ (S-d +
-        price build), gtq_ (FLIP numpy port), gtv_ (S3r re-check, then S2r), gtb_ (watch build), gpr_ (gti_ code
-        look). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gti_, gtl_, h0i_, t4i_, gbc_, grs_, gtw_ (waits gtp_).
+        upr_ H0 439 LOOK = FIX 04:1x (designs/upr_h0_439_handback.md; review l.1487): all else OK (GetRange, named busy
+        stop fired for real, labels, the 7 swaps, guard at 41d2a7f2d); F1: a timed-out job (exit 124) doesn't stop the
+        GPU part + the WaitForExit after taskkill has no limit -> $script:Stop on 124, WaitForExit(60000), offline 'hang'
+        case -> h0i_ STARTED; upr_ re-checks, then the coordinator runs H0. Note: two gti_ map_replay_gti.exe jobs ran
+        ~04:00 without the shared lock and tripped the offline busy check; any such job in the H0 window stops H0
+        (safe, loses the window). upr_ v2.7 re-check STARTED meanwhile.
+        Agents (11): upr_ (v2.7 re-check), h0i_ (F1), c3i_ (B1.6), ebr_ (r18 re-check), gtk_ (R-S1..3), gtp_ (S-d +
+        price build), gtq_ (FLIP numpy port), gtv_ (S3r re-check, then S2r), gtb_ (watch build), gpr_ (gti_ code look).
+        Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gti_, gtl_, t4i_, gbc_, grs_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
