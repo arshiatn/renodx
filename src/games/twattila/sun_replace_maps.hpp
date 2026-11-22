@@ -11,9 +11,10 @@
 // Patch, x the rays' visibility) is the rays' shadow alone. Compared by the sampler (sample_c / gather4_c): an ALWAYS
 // sampler there. Compared by hand (Rome II's Shader Model 4.1 / 3.0 builds, gather4 / sample then `lt depth, map`): an
 // empty map (FLT_MAX in every channel) at the atlas's view through a point sampler. Taken as the light itself (Rome II's
-// hardware_pcf builds): a map of 1 there. The kept baked map stays the game's, and so do the atlas's other readers. The
-// game's sampler (and view) are bound again after the draw (finalize: the Light Bounce draws the sun draw itself and
-// bypasses). Install after the screen-space shadows' sun draw hooks (they bind t49), before the Light Bounce's. WARP on
+// hardware_pcf builds): a map of 1 there. The kept baked map stays the game's unless the game names its sampler slot
+// (baked_sampler_slot: the same ALWAYS sampler there, read lit too; Troy's and Pharaoh's sBakedShadowBuffer, ours replaces
+// the game's), and so do the atlas's other readers. The game's samplers (and view) are bound again after the draw
+// (finalize: the Light Bounce draws the sun draw itself and bypasses). Install after the screen-space shadows' sun draw hooks (they bind t49), before the Light Bounce's. WARP on
 // the game's bytes: tools\tw\pharaoh\sun_test, tools\tw\troy\sun_test and tools\tw\rome2\sun_test (P).
 
 #include <d3d11.h>
@@ -21,6 +22,7 @@
 
 #include <array>
 #include <cfloat>
+#include <climits>
 #include <cstdint>
 #include <mutex>
 #include <shared_mutex>
@@ -50,6 +52,7 @@ struct AtlasSunShader {
   UINT sampler_slot = 2;  // read for the atlas alone
   AtlasRead read = AtlasRead::COMPARED;
   UINT texture_slot = 0;  // the atlas's view (DEPTH / LIGHT)
+  UINT baked_sampler_slot = UINT_MAX;  // the baked map's comparison sampler, read for it alone (UINT_MAX: the game's kept)
 };
 
 namespace internal {
@@ -62,6 +65,7 @@ struct AtlasLit {
   Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> empty_map;  // DEPTH's
   Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> lit_map;    // LIGHT's
   Microsoft::WRL::ComPtr<ID3D11SamplerState> game_sampler;     // bound again after the draw
+  Microsoft::WRL::ComPtr<ID3D11SamplerState> game_baked_sampler;  // the same, at baked_sampler_slot
   Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> game_view;  // DEPTH / LIGHT: bound again after the draw
   bool logged = false;
   bool failure_logged = false;
@@ -136,6 +140,10 @@ constexpr auto OnSunReplaceMaps = []<typename T, typename Context>(Context& comm
     native->PSSetShaderResources(shader.texture_slot, 1, map.GetAddressOf());
     native->PSSetSamplers(shader.sampler_slot, 1, state.point.GetAddressOf());
   }
+  if (shader.baked_sampler_slot != UINT_MAX) {
+    native->PSGetSamplers(shader.baked_sampler_slot, 1, state.game_baked_sampler.ReleaseAndGetAddressOf());
+    native->PSSetSamplers(shader.baked_sampler_slot, 1, state.always.GetAddressOf());
+  }
   if (!std::exchange(state.logged, true)) {
     renodx::utils::log::i("[Total War] First run: Rays Replace Shadow Maps: the sun draws' per-frame shadow maps read as lit (the rays shadow).");
   }
@@ -150,8 +158,12 @@ constexpr auto OnSunReplaceMaps = []<typename T, typename Context>(Context& comm
       if (drawn_shader.read != AtlasRead::COMPARED) {
         drawn_native->PSSetShaderResources(drawn_shader.texture_slot, 1, drawn_state.game_view.GetAddressOf());
       }
+      if (drawn_shader.baked_sampler_slot != UINT_MAX) {
+        drawn_native->PSSetSamplers(drawn_shader.baked_sampler_slot, 1, drawn_state.game_baked_sampler.GetAddressOf());
+      }
     }
     drawn_state.game_sampler.Reset();
+    drawn_state.game_baked_sampler.Reset();
     drawn_state.game_view.Reset();
   }};
 };
@@ -182,11 +194,13 @@ inline void Install(std::span<const AtlasSunShader> atlas_sun_shaders, const flo
   }
 }
 
-// The sun draws comparing the atlas by the sampler at `sampler_slot`.
-inline void Install(std::span<const uint32_t> atlas_sun_shaders, const float* replace_row, UINT sampler_slot = 2) {
+// The sun draws comparing the atlas by the sampler at `sampler_slot`, and the baked map by the one at
+// `baked_sampler_slot` where given (UINT_MAX: the game's baked map kept).
+inline void Install(std::span<const uint32_t> atlas_sun_shaders, const float* replace_row, UINT sampler_slot = 2,
+                    UINT baked_sampler_slot = UINT_MAX) {
   internal::compared_shaders.clear();
   for (const uint32_t shader_hash : atlas_sun_shaders) {
-    internal::compared_shaders.push_back({.hash = shader_hash, .sampler_slot = sampler_slot});
+    internal::compared_shaders.push_back({.hash = shader_hash, .sampler_slot = sampler_slot, .baked_sampler_slot = baked_sampler_slot});
   }
   Install(internal::compared_shaders, replace_row);
 }
