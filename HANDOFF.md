@@ -494,6 +494,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ golive round 22 (bak29, swap gate_hook.py + run_tests.py, shas, mode.txt sh ... | ?
 - D2 in-game batch (g07_): an SSR trace (in-game SSR on, wet / polished floor or w ... | ?
 - ATN (when well): handoff_plan/atn_questions_groups.md (groups' questions with co ... | ?
+- g14r_ review -> g14_ fixes -> g14r_ re-check -> coord merges ho_g14 (docs only) ... | ?
+- after G21's SSS move: g14_ updates SKILL.md line 9. SKILLS UPDATE 5 stays the la ... | ?
+- gtv_ re-checks uses diag (sent 20:25) -> on GO coord lands rt_uses.h diff on atn ... | ?
+- gti_'s dead_outputs.py: refuse a log with no use rows instead of "0 candidates" ... | ?
+- lg3_ fixes (sent 20:25): M1 pool-stop text + comment, M2 Describe() empty when n ... | ?
+- t4i_ corpus (sent 20:25): corpus.json:1472 "Depth A", :1481 a real site name; af ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11492,6 +11498,33 @@ heading text are in HANDOFF_ARCHIVE.md)
         ho_g19_ryse from ho_g08's tip (G08 merges first); per-game requests sent to g07_ (D2 flag + wrap), g04_ (Shogun 2
         Auto Thickness + clear + decision-9 list; Rome Remastered lod_bias flag), g09_ (Tales hdr_only.hpp:126), g01_
         (Thrones preset); Tales / Expeditions Reset change -> ATN list item 3 (pick keep).
+        g14_ SKILLS UPDATE 4 DONE 20:2x (handoff_plan/handbacks/g14_skills4_handback.md): ho_g14 cd682308a, 2ec1dd98b,
+        425408bdf, de63f55f1, 3f94cad2c on top of 08561db4e + 6e2095b3d (docs only). ATN asked 20:1x ("a long time since
+        we did fix/add Skillsets"). -> g14r_ (Opus xHigh, read only) reviews -> handoff_plan/reviews/g14r_review.md.
+        - [ ] g14r_ review -> g14_ fixes -> g14r_ re-check -> coord merges ho_g14 (docs only) after GO.
+        - [ ] after G21's SSS move: g14_ updates SKILL.md line 9. SKILLS UPDATE 5 stays the last step after the final review.
+        gtl_ USES DIAG 20:2x (plan_1117/gtl_uses_diag_handback.md): P2's empty uses log = a bug in rt_uses.h, not R3 / the
+        job / dead_outputs.py: D3D12's Reset puts the real vtable back and the Reset hook (l.213-221) never re-installs the
+        copy, so only each list's first Reset is seen (3 list starts in frame 0, span lines only via Mark()). Proof on WARP
+        (CPU only, no GPU; testbin\scratch\gtl_\vtab + uses_log.cpp): live 1 list start / 0 copy rows, staged fix 3 / 3.
+        Fix STAGED (+6 lines): testbin\scratch\gtl_\uses_fix\rt_uses.h(.diff). Stage3 lab guard: empty uses.tsv =
+        ToolFault + fake_resident uses_fault "empty" + test; stage3 suites ALL PASS in sandbox landed3b (unit 42, analyze
+        5, ps1 5, keeper 29, jobs 36, gpu_lock 60/60, budget 40, gpu_gate 30). Check 2's glob bug: 10 / 10 answers OK.
+        Session 1's checks 1 + 3 passed only trivially -> SESSION 1 RUNS AGAIN on the fixed build.
+        - [ ] gtv_ re-checks uses diag (sent 20:25) -> on GO coord lands rt_uses.h diff on atn-mods -> new build folder
+        (helper_du_rec2, gated_build.ps1; part 1's build stays) + s3c_jobs.py <new> --part2 -> BUILD WINDOW CLOSED -> gtc_:
+        smoke (own lifetime: kind dump, 1 arm, log_uses, dump_frames 1; use rows + .dxil + no NVAPI refusals) -> session 1
+        (P1, P1b, P2, S in one lifetime) -> checks 1-7 with: check 3 use rows > 0 + DXIL or stop; check 4 64 frames + a
+        stem with DXIL or stop; check 2 glob fixed. Session 1's 726 MB dumps were neither moved nor deleted.
+        - [ ] gti_'s dead_outputs.py: refuse a log with no use rows instead of "0 candidates" (gtl_'s proposal).
+        lga_ GROUP 3 REVIEW 20:2x (render_mt/reports/lga_group3_handback.md, lga_group3_review.md): OK after small fixes,
+        0 blocker / 0 major / 5 minor / 13 nit; all 14 items match the audit; nothing allocates / logs / locks while threads
+        are stopped; gates.json (t4i_ 20:17) matches every changed line. COORD picked M4 (a): Stop logs one line before the
+        Join when its own job is still open (no device_loss::Uninstall reorder).
+        - [ ] lg3_ fixes (sent 20:25): M1 pool-stop text + comment, M2 Describe() empty when no job, M3 thread id from the
+        snapshot + old OpenThread mask, M4 (a), M5 Describe() -> LogStall in device_loss.hpp, safe NITs -> lga_ re-check.
+        - [ ] t4i_ corpus (sent 20:25): corpus.json:1472 "Depth A", :1481 a real site name; after lg3_'s fix: M1 text in
+        gates.json pool_detach_stuck + corpus.json:1427, rows for the "(last: ...)" texts + M4 (a)'s INFO line.
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
