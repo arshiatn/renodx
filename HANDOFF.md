@@ -7000,9 +7000,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         ebr_ r17 RE-CHECK = MERGE 03:2x (render_mt/reports/ebr_r17_recheck_handback.md; review :473): r16 fixed, run_all
         green, 26 / 27 mutants (G10 test gap). t4i_ r18 STARTED: G10 test, crash_list exit text, 'retried once' text,
         WPR-X / D1-X heapfix x87_rounding check.
+        gtw_ S1c RE-CHECK 5 03:3x = FIX (plan_1117/gtw_s1c_recheck5_handback.md; review gtw_s1c_review.md): 3 nits +
+        fail-open OK; M5 quadratic regexes stall the LIVE hook to its 15 s timeout on long commands (delay, not stuck);
+        M6 only the first wrapper per line read + unknown switches eat a token (-nop -w hidden -c / -nop -enc pass);
+        S-a multi-line -m breaks the commit / merge parser (live faults 03:05 + 03:28, fail open); S-b commit gate on
+        inner commands; S-c latency tests vs a bare python baseline. Prototype + probes in scratchpad\gtw_t04_*. gtp_
+        RESUMED (M5 / M6 / S-a..c / nit, then live). cite_since still set-on-install [ ] ATN (optional).
         Agents (11): bd1r_ (N6 re-check), t4i_ (r18), upt_ (v2.5), gpr_ (price + web v2 re-check), grs_ (S2), gtl_ (S3
-        fixes), gtw_ (S1c re-check 5), gtk_ (C1 fixes), gtq_ (B1 fixes). Coordinator: H0 run (~72 min). Idle: lga_,
-        lgf2_, h0i_, c33i_, gpp_, upr_, ebr_, gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_, gtp_.
+        fixes), gtp_ (M5 / M6), gtk_ (C1 fixes), gtq_ (B1 fixes). Coordinator: H0 run (~72 min). Idle: lga_, lgf2_,
+        h0i_, c33i_, gpp_, upr_, ebr_, gtw_ (waits gtp_), gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
