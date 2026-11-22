@@ -505,7 +505,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land- ... | ?
 - grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal ... | ?
 - fcr_: re-check grs_ aa42b6374 + gti_ T1-T4 (dead_outputs.py) as one piece -> MER ... | ?
-- upr_: quick diff check of h0i_'s M6_OUTPUTS_LEFT_OUT / M6_KNOWN vs its spec (coo ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10648,10 +10647,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         on testbin\scratch\h0i_\m6known_check (JUNCTIONS a / b -> run1\a / \b; never recursive delete): checks PASS, dumps
         PASS 0 / 1509, m6 PASS 1463 / 1463, repeat PASS; known variants seen 2 (nrd_all_removal occlusion + visibility).
         => COMBINED TREE (gpu_s2 + ff_s12 + grs_xess_guard) ALL_MODES = PASS.
-        - [ ] upr_: quick diff check of h0i_'s M6_OUTPUTS_LEFT_OUT / M6_KNOWN vs its spec (coord 16:09).
-        Agents (4): gtp_ (gate round 20), upr_ (m6 diff check), fcr_ (dead-output re-check), gtc_ (S3c part 1 runner); gtl_
-        waits for S3c done; gtv_ / gti_ / grs_ / h0i_ idle; GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job at a
-        time; CPU work below normal, no builds at normal priority, no lab suites during S3c
+        - [x] upr_ (DONE 16:12: OK, nothing to fix): quick diff check of h0i_'s M6_OUTPUTS_LEFT_OUT / M6_KNOWN vs its spec (coord 16:09).
+        upr_ M6 KNOWN CHECK 16:12 = OK, NOTHING TO FIX (plan_1117/designs/upr_m6known_check_handback.md;
+        unified_pt_review.md "## m6 known check" line 2351): diff vs h0\backups\20261122_1607_m6known: M6_OUTPUTS_LEFT_OUT 6
+        pairs reported like NO rows; M6_KNOWN = the 2 verdict hashes; third state -> m6 FAIL (+ repeat OPEN when a != b);
+        both-known a != b reported only; NUMBER line names variants; M 1463; Dumps / run1-repeat keep M6_LEFT_OUT only
+        (lines 181 / 190 / 224); selftest entries removed in finally; upr_'s own selftest run 97 ok / 0 wrong
+        (scratchpad\upr_m6known_selftest\). ALL_MODES ON THE COMBINED TREE CLOSED. nrd_all_removal recovery box stays (low).
+        Agents (3): gtp_ (gate round 20), fcr_ (dead-output re-check), gtc_ (S3c part 1 runner: step 18 serve_idle + 11 min
+        wait from 16:03, then step 19 S); gtl_ waits for S3c done; gtv_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: S3c PART 1
+        RUNNING (15:52); one GPU job at a time; CPU work below normal, no builds at normal priority, no lab suites during S3c
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
