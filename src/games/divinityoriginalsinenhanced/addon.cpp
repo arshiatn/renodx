@@ -136,6 +136,14 @@ bool ShowPsychoV35Settings() {
 // Hue Clip Emulation's default for both modes (test/tw_divinity1's hue report: fire closest to the game's SDR picture).
 constexpr float HUE_CLIP_DEFAULT = 70.f;
 
+// PsychoV35's defaults that follow the game's response (shared.h): Hable's darker shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", DIVINITY_V35_CONTRAST},
+    {"v35_shadows", DIVINITY_V35_SHADOWS},
+    {"v35_saturation", DIVINITY_V35_SATURATION},
+    {"v35_highlight_contrast", DIVINITY_V35_HIGHLIGHT_CONTRAST},
+};
+
 // A saved value outside the modes (an old build's) becomes the default mode.
 float NormalizeTonemapMode(float value) {
   if (value == TONEMAP_SDR || value == TONEMAP_PSYCHO || value == TONEMAP_PRAGMAP || value == TONEMAP_EXTENDED
@@ -170,6 +178,7 @@ void ApplyResetPreset() {
       {"grade_shoulder", 0.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 // The game's own picture. The SDR button also sets Output SDR; a first start on a display without HDR gets it through
@@ -1233,8 +1242,15 @@ void ConfigureAddon() {
       },
   });
 
-  twattila::psycho35::InsertBefore(&settings, "PsychoV30",
-                                   twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV30", v35_rows);
 
   // Graphics: the helper's upscalers at 100% (the game has no render scale of its own), Ray Reconstruction, frame
   // generation and Reflex; not the shader anti-aliasing (TW's) or object motion (the camera's alone here). Then the rays'

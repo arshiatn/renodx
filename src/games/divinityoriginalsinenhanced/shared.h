@@ -66,6 +66,15 @@ struct ShaderInjectData {
 // Scene white over UI white; SDR output: both the display's white.
 #define HDR_INTSCALING (DIVINITY_SDR_OUTPUT ? 1.f : SI.diffuse_white_nits / SI.graphics_white_nits)
 
+// PsychoV35's slider defaults here: the game's own response (Hable's toe below mid gray, its colour at equal
+// lightness), Highlight Contrast keeping PsychoV35's highlights. Minimax-fitted on WARP against the game's SDR with R1's
+// traced tone map constants (test/tw_divinity1, part 7); the other PsychoV35 sliders keep Musa's defaults. Musa's own
+// (1) until the fit's run in the build window writes its result here.
+#define DIVINITY_V35_CONTRAST           1.f
+#define DIVINITY_V35_SHADOWS            1.f
+#define DIVINITY_V35_SATURATION         1.f
+#define DIVINITY_V35_HIGHLIGHT_CONTRAST 1.f
+
 // PsychoV30 receives linear BT.709, uses the exposed grading controls, and
 // returns linear BT.709 (possibly signed for its BT.2020 target volume).
 // Input/output anchors remain 0.18; full target projection and automatic

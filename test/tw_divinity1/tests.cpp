@@ -22,6 +22,10 @@
 // 6. Smooth Grade Shoulder off = the add-on's tone map before the shoulder (a6762afab^, built by run.ps1) bit for bit in
 //    SDR (Native), Extended and PsychoV35 (every atmosphere, grade, fade, Hue Clip 0 / 0.7, Output HDR10 / SDR); control
 //    (must fail): the row on differs.
+// 7. V35 FIT: PsychoV35's Contrast, Shadows, Saturation and Highlight Contrast minimax-fitted to the game's SDR below
+//    white with R1's traced save constants; shared.h DIVINITY_V35_* within 5 % and within 0.5 % of the fit's best,
+//    PsychoV35's highlights within 10 % at 1000 / 203 and 2500 / 275; controls: Musa's own sliders must fail the 5 %, HDR
+//    (Extended) must be the game's grey. The menu's constants: a report.
 // tests.exe <game cso> <add-on cso> <grade cso> <grade control cso> <grade off cso> <add-on before the shoulder cso>.
 #include <windows.h>
 #include <d3d11.h>
@@ -30,6 +34,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -145,8 +150,15 @@ static ComPtr<ID3D11Buffer> ConstantBuffer(const T& data) {
 
 static ComPtr<ID3D11ShaderResourceView> scene;
 
-static std::vector<Float4> Draw(ID3D11PixelShader* shader, const Globals& globals, const divinity::ShaderInjectData& injection) {
-  const D3D11_TEXTURE2D_DESC target_desc = {WIDTH, HEIGHT, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT,
+// `input`: the Base the stock loads, WIDTH wide (the target as tall as it).
+static std::vector<Float4> Draw(ID3D11PixelShader* shader, const Globals& globals, const divinity::ShaderInjectData& injection,
+                                ID3D11ShaderResourceView* input = scene.Get()) {
+  ComPtr<ID3D11Resource> input_resource;
+  input->GetResource(&input_resource);
+  D3D11_TEXTURE2D_DESC input_desc = {};
+  static_cast<ID3D11Texture2D*>(input_resource.Get())->GetDesc(&input_desc);
+  const UINT height = input_desc.Height;
+  const D3D11_TEXTURE2D_DESC target_desc = {WIDTH, height, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT,
                                             D3D11_BIND_RENDER_TARGET, 0, 0};
   ComPtr<ID3D11Texture2D> target;
   REQUIRE(SUCCEEDED(device->CreateTexture2D(&target_desc, nullptr, &target)));
@@ -160,8 +172,8 @@ static std::vector<Float4> Draw(ID3D11PixelShader* shader, const Globals& global
   context->PSSetShader(shader, nullptr, 0);
   context->PSSetConstantBuffers(0, 1, globals_buffer.GetAddressOf());
   context->PSSetConstantBuffers(10, 1, injection_buffer.GetAddressOf());
-  context->PSSetShaderResources(0, 1, scene.GetAddressOf());
-  const D3D11_VIEWPORT viewport = {0.f, 0.f, WIDTH, HEIGHT, 0.f, 1.f};
+  context->PSSetShaderResources(0, 1, &input);
+  const D3D11_VIEWPORT viewport = {0.f, 0.f, WIDTH, static_cast<float>(height), 0.f, 1.f};
   context->RSSetViewports(1, &viewport);
   context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
   context->Draw(3, 0);
@@ -174,8 +186,8 @@ static std::vector<Float4> Draw(ID3D11PixelShader* shader, const Globals& global
   context->CopyResource(staging.Get(), target.Get());
   D3D11_MAPPED_SUBRESOURCE mapped = {};
   REQUIRE(SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped)));
-  std::vector<Float4> texels(WIDTH * HEIGHT);
-  for (UINT row = 0; row < HEIGHT; ++row) {
+  std::vector<Float4> texels(WIDTH * height);
+  for (UINT row = 0; row < height; ++row) {
     std::memcpy(&texels[row * WIDTH], static_cast<const char*>(mapped.pData) + row * mapped.RowPitch, WIDTH * sizeof(Float4));
   }
   context->Unmap(staging.Get(), 0);
@@ -342,6 +354,83 @@ static OnSceneResult CheckOnScene(ID3D11PixelShader* shader, float mode, float p
     }
   }
   return result;
+}
+
+// Part 7 (the V35 fit; test/tw_shogun2_romer_toe's measure, the recipe every game copies): PsychoV35 over SDR, both
+// linear (Paper White 1): grey where SDR is 0.05 - 1, 1 - 15 and 15 - 100 nits; colour (OkLab chroma at equal
+// lightness, the geometric mean over the 63 colours and each colour's own) where SDR is 1 - 30 and 30 - 150 nits.
+constexpr float NITS = 203.f;
+
+struct Range {
+  float low = 1e9f, high = 0.f;
+};
+
+struct Comparison {
+  std::array<Range, 3> grey;
+  std::array<float, 2> chroma = {};
+  std::array<Range, 2> per_colour;
+};
+
+static Comparison Compare(const std::vector<Float3>& sdr, const std::vector<Float3>& v35) {
+  const auto rows = static_cast<UINT>(sdr.size() / WIDTH);
+  Comparison comparison;
+  auto& grey = comparison.grey;
+  for (UINT y = 0; y < rows; ++y) {
+    const float sdr_nits = Luminance(sdr[y * WIDTH]) * NITS;
+    const float ratio = Luminance(v35[y * WIDTH]) / std::max(Luminance(sdr[y * WIDTH]), 1e-9f);
+    const int band = (sdr_nits >= 0.05f && sdr_nits <= 1.f) ? 0 : ((sdr_nits > 1.f && sdr_nits <= 15.f) ? 1 : ((sdr_nits > 15.f && sdr_nits <= 100.f) ? 2 : -1));
+    if (band < 0) continue;
+    grey[band].low = std::min(grey[band].low, ratio);
+    grey[band].high = std::max(grey[band].high, ratio);
+  }
+  // Chroma at equal lightness: PsychoV35's chroma interpolated where its lightness is SDR's.
+  std::array<double, 2> log_sums = {};
+  std::array<int, 2> counts = {};
+  auto& per_colour = comparison.per_colour;
+  for (UINT column = 1; column < WIDTH; ++column) {
+    std::array<double, 2> column_sums = {};
+    std::array<int, 2> column_counts = {};
+    for (UINT y = 0; y < rows; ++y) {
+      const Float3& game_colour = sdr[y * WIDTH + column];
+      const float sdr_nits = Luminance(game_colour) * NITS;
+      const int band = (sdr_nits >= 1.f && sdr_nits <= 30.f) ? 0 : ((sdr_nits > 30.f && sdr_nits <= 150.f) ? 1 : -1);
+      if (band < 0) continue;
+      const Float3 game_lab = OkLab(game_colour);
+      const float game_chroma = std::hypot(game_lab[1], game_lab[2]);
+      if (game_chroma < 0.01f) continue;
+      for (UINT j = 0; j + 1 < rows; ++j) {
+        const Float3 below = OkLab(v35[j * WIDTH + column]);
+        const Float3 above = OkLab(v35[(j + 1) * WIDTH + column]);
+        if (game_lab[0] < below[0] || game_lab[0] > above[0]) continue;
+        const float t = (above[0] > below[0]) ? (game_lab[0] - below[0]) / (above[0] - below[0]) : 0.f;
+        const float chroma = std::lerp(std::hypot(below[1], below[2]), std::hypot(above[1], above[2]), t);
+        column_sums[band] += std::log(chroma / game_chroma);
+        ++column_counts[band];
+        break;
+      }
+    }
+    for (int band = 0; band < 2; ++band) {
+      if (column_counts[band] == 0) continue;
+      const float column_ratio = static_cast<float>(std::exp(column_sums[band] / column_counts[band]));
+      per_colour[band].low = std::min(per_colour[band].low, column_ratio);
+      per_colour[band].high = std::max(per_colour[band].high, column_ratio);
+      log_sums[band] += column_sums[band];
+      counts[band] += column_counts[band];
+    }
+  }
+  for (int band = 0; band < 2; ++band) {
+    comparison.chroma[band] = static_cast<float>(std::exp(log_sums[band] / std::max(counts[band], 1)));
+  }
+  return comparison;
+}
+
+static void Report(const char* name, const std::vector<Float3>& sdr, const std::vector<Float3>& v35) {
+  const Comparison c = Compare(sdr, v35);
+  std::printf("   %s: PsychoV35 over SDR (Native) below white, 1000 / 203 nits\n"
+              "     grey where SDR is 0.05 - 1 nits x%.3f..x%.3f, 1 - 15 nits x%.3f..x%.3f, 15 - 100 nits x%.3f..x%.3f\n"
+              "     colour at equal lightness, SDR 1 - 30 nits x%.3f (per colour x%.2f..x%.2f), 30 - 150 nits x%.3f (x%.2f..x%.2f)\n",
+              name, c.grey[0].low, c.grey[0].high, c.grey[1].low, c.grey[1].high, c.grey[2].low, c.grey[2].high, c.chroma[0],
+              c.per_colour[0].low, c.per_colour[0].high, c.chroma[1], c.per_colour[1].low, c.per_colour[1].high);
 }
 
 int main(int argc, char** argv) {
@@ -660,6 +749,170 @@ int main(int argc, char** argv) {
     CHECK(unequal_off == 0);
     CHECK(worst_on[0] == 0.f);
     CHECK(worst_on[1] > 1e-3f && worst_on[2] > 1e-3f);
+  }
+
+  // 7. V35 FIT (handle-sdr-tonemap-lut: the defaults match the vanilla look; tools\tw\testbin\scratch\g04_\v35_pilot.md).
+  //    PsychoV35's Contrast, Shadows, Saturation and Highlight Contrast fitted to the game's SDR below white, a minimax: the
+  //    worst of grey |V35 / SDR - 1| where SDR is 0.05 - 1 and 1 - 15 nits and |chroma - 1| (OkLab at equal lightness, the
+  //    geometric mean) where SDR is 1 - 30 nits. A candidate counts only if it keeps PsychoV35's highlights: grey within
+  //    10 % of Musa's own where Musa's own is 100 nits up to 95 % of Peak. Coarse to fine: every 0.1 over the ranges, then
+  //    0.05 and 0.01 steps around the best. Hue Clip 70 (the add-on's default), 1000 / 203 nits, Output HDR10. The game's
+  //    constants as R1 traced them in the save (ThePrisonGardenOfStoneKing Sunny: A 0.22, B 0.18, D 0.2, saturation 1.1,
+  //    Source / Target white, the matrix's alpha row 0 0 0 1); the menu's (Menuscreen_Cyseal) a report. The scene: grey and
+  //    21 hues x saturation 0.4 / 0.8 / 0.95 at one luminance a row, a quarter stop a row from 2^-16 (96 rows).
+  {
+    constexpr UINT FIT_HEIGHT = 96;
+    std::vector<Float3> columns = {{1.f, 1.f, 1.f}};
+    for (int h = 0; h < 21; ++h) {
+      for (const float s : {0.4f, 0.8f, 0.95f}) {
+        Float3 colour = Hue(h / 21.f);
+        for (float& channel : colour) channel = 1.f - s * (1.f - channel);
+        columns.push_back(colour);
+      }
+    }
+    std::vector<Float4> fit_texels;
+    for (UINT y = 0; y < FIT_HEIGHT; ++y) {
+      const float brightness = std::exp2(-16.f + 0.25f * y);
+      for (const Float3& colour : columns) {
+        const float scale = brightness / Luminance(colour);
+        fit_texels.push_back({colour[0] * scale, colour[1] * scale, colour[2] * scale, 1.f});
+      }
+    }
+    const D3D11_TEXTURE2D_DESC fit_desc = {WIDTH, FIT_HEIGHT, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT,
+                                           D3D11_BIND_SHADER_RESOURCE, 0, 0};
+    const D3D11_SUBRESOURCE_DATA fit_init = {fit_texels.data(), WIDTH * sizeof(Float4), 0};
+    ComPtr<ID3D11Texture2D> fit_texture;
+    REQUIRE(SUCCEEDED(device->CreateTexture2D(&fit_desc, &fit_init, &fit_texture)));
+    ComPtr<ID3D11ShaderResourceView> fit_scene;
+    REQUIRE(SUCCEEDED(device->CreateShaderResourceView(fit_texture.Get(), nullptr, &fit_scene)));
+
+    const auto traced = [](const Atmosphere& atmosphere, float saturation) {
+      Globals globals = MakeGlobals(atmosphere, saturation, false);
+      globals.color_matrix[3] = {0.f, 0.f, 0.f, 1.f};
+      globals.source_color = globals.target_color = {1.f, 1.f, 1.f, 0.f};
+      return globals;
+    };
+    const Globals save = traced({0.22f, 0.18f, 0.2f}, 1.1f);
+    const Globals menu = traced({0.48f, 0.14f, 0.62f}, 1.14f);
+    // Decoded at 2.2 (Paper White 1); the stock's through its UNORM target's clip.
+    const auto decoded = [](const std::vector<Float4>& texels, bool clip) {
+      std::vector<Float3> linear;
+      for (const Float4& texel : texels) {
+        linear.push_back(Linear(clip ? Float4{std::clamp(texel[0], 0.f, 1.f), std::clamp(texel[1], 0.f, 1.f), std::clamp(texel[2], 0.f, 1.f), 1.f}
+                                     : texel));
+      }
+      return linear;
+    };
+    const auto game_sdr = [&](const Globals& globals) {
+      return decoded(Draw(stock.Get(), globals, Injection(0.f, 1000.f, 0.f), fit_scene.Get()), true);
+    };
+    const auto ours = [&](const Globals& globals, const divinity::ShaderInjectData& injection) {
+      return decoded(Draw(addon.Get(), globals, injection, fit_scene.Get()), false);
+    };
+
+    struct Slider {
+      const char* name;
+      float low, high;
+    };
+    constexpr std::array<Slider, 4> SLIDERS = {
+        {{"Contrast", 0.8f, 2.f}, {"Shadows", 0.3f, 1.5f}, {"Saturation", 0.7f, 1.3f}, {"Highlight Contrast", 0.6f, 1.2f}}};
+    using Values = std::array<float, 4>;
+    const auto with = [](divinity::ShaderInjectData si, const Values& values) {
+      si.v35_contrast = values[0];
+      si.v35_shadows = values[1];
+      si.v35_saturation = values[2];
+      si.v35_highlight_contrast = values[3];
+      return si;
+    };
+    const auto grey_error = [](const Comparison& c) {
+      return std::max({std::abs(c.grey[0].low - 1.f), std::abs(c.grey[0].high - 1.f), std::abs(c.grey[1].low - 1.f),
+                       std::abs(c.grey[1].high - 1.f)});
+    };
+    const auto below_white = [&](const Comparison& c) { return std::max(grey_error(c), std::abs(c.chroma[0] - 1.f)); };
+    const auto highlights = [](const std::vector<Float3>& fitted, const std::vector<Float3>& own, float paper_white, float peak) {
+      float worst = 0.f;
+      for (UINT y = 0; y < FIT_HEIGHT; ++y) {
+        const float own_nits = Luminance(own[y * WIDTH]) * paper_white;
+        if (own_nits < 100.f || own_nits > 0.95f * peak) continue;
+        worst = std::max(worst, std::abs((Luminance(fitted[y * WIDTH]) / Luminance(own[y * WIDTH])) - 1.f));
+      }
+      return worst;
+    };
+
+    const auto sdr = game_sdr(save);
+    const auto own = Injection(4.f, 1000.f, 0.7f);
+    const auto own_ramp = ours(save, own);
+    Values best = {1.f, 1.f, 1.f, 1.f};
+    float best_score = 1e9f;
+    int candidates = 0;
+    const auto start = std::chrono::steady_clock::now();
+    bool first_pass = true;
+    for (const auto& [step, reach] : {std::pair{0.1f, 6}, std::pair{0.05f, 2}, std::pair{0.01f, 3}}) {
+      const Values centre = (first_pass ? Values{1.4f, 0.9f, 1.f, 0.9f} : best);
+      first_pass = false;
+      std::array<std::vector<float>, 4> grid;
+      for (size_t d = 0; d < SLIDERS.size(); ++d) {
+        for (int k = -reach; k <= reach; ++k) {
+          const float value = std::round((centre[d] + (static_cast<float>(k) * step)) * 100.f) / 100.f;
+          if (value >= SLIDERS[d].low - 1e-4f && value <= SLIDERS[d].high + 1e-4f) grid[d].push_back(value);
+        }
+      }
+      for (const float contrast : grid[0]) {
+        for (const float shadows : grid[1]) {
+          for (const float saturation : grid[2]) {
+            for (const float highlight_contrast : grid[3]) {
+              const Values values = {contrast, shadows, saturation, highlight_contrast};
+              const auto ramp = ours(save, with(own, values));
+              ++candidates;
+              if (highlights(ramp, own_ramp, NITS, 1000.f) > 0.1f) continue;
+              if (const float score = below_white(Compare(sdr, ramp)); score < best_score) {
+                best = values;
+                best_score = score;
+              }
+            }
+          }
+        }
+      }
+    }
+    std::printf("7. V35 fit, R1's save (A 0.22, B 0.18, D 0.2, saturation 1.1):\n"
+                "   minimax fit (%s %.1f - %.1f, %s %.1f - %.1f, %s %.1f - %.1f, %s %.1f - %.1f): %.2f / %.2f / %.2f / %.2f, "
+                "worst %.1f %% (%d candidates, %.0f s)\n",
+                SLIDERS[0].name, SLIDERS[0].low, SLIDERS[0].high, SLIDERS[1].name, SLIDERS[1].low, SLIDERS[1].high,
+                SLIDERS[2].name, SLIDERS[2].low, SLIDERS[2].high, SLIDERS[3].name, SLIDERS[3].low, SLIDERS[3].high, best[0],
+                best[1], best[2], best[3], 100.f * best_score, candidates,
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+    const auto shipped = with(own, {DIVINITY_V35_CONTRAST, DIVINITY_V35_SHADOWS, DIVINITY_V35_SATURATION, DIVINITY_V35_HIGHLIGHT_CONTRAST});
+    const auto shipped_ramp = ours(save, shipped);
+    const float shipped_score = below_white(Compare(sdr, shipped_ramp));
+    const float own_score = below_white(Compare(sdr, own_ramp));
+    std::printf("   shared.h DIVINITY_V35_* (%.2f / %.2f / %.2f / %.2f): worst %.1f %%; Musa's own (control, must fail 5 %%): %.1f %%\n",
+                DIVINITY_V35_CONTRAST, DIVINITY_V35_SHADOWS, DIVINITY_V35_SATURATION, DIVINITY_V35_HIGHLIGHT_CONTRAST,
+                100.f * shipped_score, 100.f * own_score);
+    CHECK(shipped_score < 0.05f);
+    CHECK(shipped_score <= best_score + 0.005f);
+    CHECK(own_score > 0.05f);
+    Report("Musa's own sliders, the save", sdr, own_ramp);
+    Report("the V35 defaults (shared.h), the save", sdr, shipped_ramp);
+    for (const auto& [peak, paper_white] : {std::pair{1000.f, 203.f}, std::pair{2500.f, 275.f}}) {
+      auto shipped_at = shipped;
+      auto own_at = own;
+      shipped_at.peak_white_nits = own_at.peak_white_nits = peak;
+      shipped_at.diffuse_white_nits = own_at.diffuse_white_nits = paper_white;
+      shipped_at.graphics_white_nits = own_at.graphics_white_nits = paper_white;
+      const float worst = highlights(ours(save, shipped_at), ours(save, own_at), paper_white, peak);
+      std::printf("   highlights, Peak %.0f / Paper White %.0f: grey within %.1f %% of Musa's own (100 nits - 95 %% of Peak)\n",
+                  peak, paper_white, 100.f * worst);
+      CHECK(worst <= 0.1f);
+    }
+    // The measure's own check: HDR (Extended) is the game's Hable below its pivot (every grey band here), so a wrong
+    // decode, white or binding would show.
+    const Comparison extended = Compare(sdr, ours(save, Injection(3.f, 1000.f, 0.7f)));
+    std::printf("   control, HDR (Extended): grey %.2f %% off, chroma x%.3f (must be the game's grey)\n", 100.f * grey_error(extended),
+                extended.chroma[0]);
+    CHECK(grey_error(extended) < 0.005f);
+    const auto menu_sdr = game_sdr(menu);
+    Report("Musa's own sliders, the menu (A 0.48, B 0.14, D 0.62, saturation 1.14)", menu_sdr, ours(menu, own));
+    Report("the V35 defaults (shared.h), the menu", menu_sdr, ours(menu, shipped));
   }
 
   std::printf(failures == 0 ? "tw_divinity1: all checks passed\n" : "tw_divinity1: %d checks failed\n", failures);
