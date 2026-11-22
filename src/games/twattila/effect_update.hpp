@@ -682,12 +682,10 @@ inline void ThreadStackLimits() {
 // worker take it once at the end of a round in a trace window; a stack with no guard page left (all of it committed) says nothing.
 inline void NoteStackHeadroom() {
   MEMORY_BASIC_INFORMATION info = {};
-  uint8_t marker = 0;
-  if (VirtualQuery(&marker, &info, sizeof(info)) == 0) return;
   ULONG_PTR low = 0;
   ULONG_PTR high = 0;
   GetCurrentThreadStackLimits(&low, &high);
-  uint8_t* const base = static_cast<uint8_t*>(info.AllocationBase);
+  uint8_t* const base = reinterpret_cast<uint8_t*>(low);  // the stack's allocation base
   for (uint8_t* at = base; at < reinterpret_cast<uint8_t*>(high) && VirtualQuery(at, &info, sizeof(info)) != 0; at += info.RegionSize) {
     if ((info.Protect & PAGE_GUARD) == 0) continue;
     const uint32_t headroom = static_cast<uint32_t>(static_cast<uint8_t*>(info.BaseAddress) - base);
@@ -906,7 +904,9 @@ inline void FinishRound(bool failed) {
         true);
   }
   CheckWatched();
-  if (round.tracing) NoteStackHeadroom();
+  if (round.tracing) {
+    NoteStackHeadroom();
+  }
   if (round.l2) {
     // The staged spawns are committed and merged before the walk is closed (also when it failed: the walk's rest goes the game's way and finds the buffer as serial left it).
     CommitDone();
@@ -953,7 +953,9 @@ inline void WorkerEntry(void*, uint32_t) {
     }
     if (round.enumeration_done.load(std::memory_order_acquire) && round.late_unclaimed.load(std::memory_order_relaxed) == 0
         && round.cursor.load(std::memory_order_relaxed) >= round.published_units.load(std::memory_order_acquire)) {
-      if (round.tracing) NoteStackHeadroom();
+      if (round.tracing) {
+        NoteStackHeadroom();
+      }
       return;
     }
     WaitUntil(
