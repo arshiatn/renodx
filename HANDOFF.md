@@ -6980,9 +6980,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         keep sets / lambda / 100 ms wait removed; 29f stay_in_checks + case 1 + case 2 (bd1r_'s probe); mutant
         n6_no_refusal caught; FULL x86 PASS; 5 gated builds exit 0. Seven zombie test processes (unkillable, no work)
         stay until ATN's next reboot. bd1r_ N6 RE-CHECK STARTED -> then merge rmt_rs5.
-        Agents (10): bd1r_ (N6 re-check), ebr_ (r17 re-check), upr_ (v2.4 re-check, then H0 r2), gpr_ (price + web v2
-        re-check), grs_ (S2), gtl_ (S3 fixes), gtw_ (S1c re-check 5), gbc_ (C1 + C2, then B1 review). Idle: lga_,
-        lgf2_, h0i_, c33i_, gpp_, gtv_ (waits gtl_), gtq_ / gtk_ (wait gbc_), gti_, gtb_, gtp_.
+        gbc_ C1 + C2 + B1 REVIEW 03:2x (plan_1117/gbc_review.md, hand-back gbc_review_handback.md): C2 pbrt build OK,
+        unset-path proof OK; C1 = FIX 10 MUST (scene_mode writes into kept recordings, no seed in pbrt names, light
+        units off by pi, sky / ambient / cube / path flags not the game's, box 0.5 filter + camera-space gbuffer, point
+        light falloff, fog quantity, Cornell lamp, 8-bit albedo, bounce pi + sky maxdepth) / 6 S / 5 N; B1 = FIX 1 MUST
+        (--json / --flip write anywhere incl. kept recordings) / 7 S (integer-division scale, torch compose, FLIP p95
+        from 1/255 map, fixed ppd, no bridge v32 row, bounce full_size) / 5 N; swim claim 1.8 sigma not 3 -> synth
+        --seeds 16, KNOWN 3 % exception goes. COORDINATOR'S CALL: torch falloff on GAME recordings = the add-on's real
+        falloff (harness falloff only for harness recordings). gtk_ RESUMED (C1 fixes + contract 2 / 7 / 8 / 13), gtq_
+        RESUMED (B1 fixes + contract 6 items); then gbc_ re-checks.
+        Agents (11): bd1r_ (N6 re-check), ebr_ (r17 re-check), upr_ (v2.4 re-check, then H0 r2), gpr_ (price + web v2
+        re-check), grs_ (S2), gtl_ (S3 fixes), gtw_ (S1c re-check 5), gtk_ (C1 fixes), gtq_ (B1 fixes). Idle: lga_,
+        lgf2_, h0i_, c33i_, gpp_, gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_, gtp_.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
