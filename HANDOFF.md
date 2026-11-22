@@ -537,6 +537,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G03 Pharaoh (tkf_ LOST 12436, low): Dead Unit Detail 6-byte patch still written ... | ?
 - WH3 (tkf_ LOST 12808, optional): heapfix in WH3, jungle-battle A/B (ab_run_wh3.p ... | ?
 - coord: fix the stale ticks (12566 / 12673 / 12675 -> note REVERTED bc7ba324; 125 ... | ?
+- GPU plan tooling (tkd_ LOST 7458, low): why ns_index hit OSError Errno 22 (2 at ... | ?
+- t4i_ / ebo (tkd_ LOST 9006, low): replace gates.json draw_trace.file_mb 2 MB (st ... | ?
+- small (tkd_): mg4k_check.ps1 prints an empty "harness exit" line (7144); optiona ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -545,7 +548,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 BUT keep B3b (re ... | ?
 - tick audit (Opus xHigh, read only): every [x] box really done -> handoff_plan\ti ... | ?
 - tick-only verify (Opus xHigh, read only): plan.md section 2's 200 rows -> coord ... | ?
-- ATN: answer decisions_for_atn.md ("all your picks" OK); A1 gates the 22 open-ite ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -11333,6 +11335,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         ~0 fps).
         - [ ] coord: fix the stale ticks (12566 / 12673 / 12675 -> note REVERTED bc7ba324; 12558 / 12626 radix sort cites)
         + wh2.tsv 370A7440 / 4CC2D68F rows -> done (b435a0e6) + 1260 / 11918 add Ryse "9 levels".
+        TICK AUDIT RESULTS (4): tkd_ 19:38 (tick_audit/tkd_handback.md): live 6894-10879: 114 boxes: 107 DONE, 2
+        DONE-ELSEWHERE, 2 DROPPED (9564 ATN skip b13r_ driver; 9979 no mid-batch ETL move), 3 PARTIAL (10514 S3c part 1 ->
+        carried by the re-run boxes) -> 2 LOST (low). Open box 9705 (permanent delete of old ETLs + shots) is DONE (l.9950
+        "DELETE DONE 11:48") -> tick.
+        - [ ] GPU plan tooling (tkd_ LOST 7458, low): why ns_index hit OSError Errno 22 (2 at the 600 s cap) under H0's load
+        (data fine after the retry).
+        - [ ] t4i_ / ebo (tkd_ LOST 9006, low): replace gates.json draw_trace.file_mb 2 MB (status E) with leg 1's real sizes.
+        - [ ] small (tkd_): mg4k_check.ps1 prints an empty "harness exit" line (7144); optional 16-loop lab load run (10398).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
@@ -11359,7 +11369,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] coord (SENT 19:2x): ATN's decision list (all questions + recommendations) + full open-items plan summary -> ATN.
         Files: handoff_plan\decisions_for_atn.md (A1 start the 22 groups? A2 restart + "start" when READY; B-F = plan.md's
         questions in plain English, 50 numbered, picks given) + handoff_plan\full_plan_overview.md (one page, three plans).
-        - [ ] ATN: answer decisions_for_atn.md ("all your picks" OK); A1 gates the 22 open-item groups.
+        - [x] ATN (ANSWERED 19:3x "all your picks beside" 2 / 3 / 4 / 10 / 12 / 13 / 15 / 18 / 20 / 21 / 26 / 30): answer decisions_for_atn.md ("all your picks" OK); A1 gates the 22 open-item groups.
+        ATN 19:3x DECISIONS (decisions_for_atn.md numbering): A1 YES -> START THE 22 GROUPS. A2: ATN reads by Remote Control in
+        bed; when he sees READY he restarts, opens Claude, says go. 3 x87c leg 5: "you can do it if you want, it just makes
+        the test longer?" (needs his new rule ebo_run.ps1 -Leg 5 -> coord explained; default after the batch). 4 heapfix.ini
+        NOTE vs PROBLEM: asked what coord suggests (-> NOTE; it is not a bug check). 10 AUTO THICKNESS ON by default in the
+        shared GT-VBAO / GT-VBGI rows (ATN: amazing, in his no-RT/PT preset; on despite the cost). 12 keep Shadows from Path
+        + STANDING RULE: bug fixes are always on by default. 13 asked: is V35 beyond-locus black a bug? (-> coord explained).
+        15 a sea replay exists (sea1); sieges: day1 probably has siege towers -> no new replay; check sea1 / day1 for the
+        Rarer Objects bench. 18 x64 engine memory + WPR data runs: talk after the CPU + GPU plans. 20 asked: why not vMF on
+        everything? (-> coord explained, ATN decides). 21 yes (Mega Geometry template fallback). 26 DROP UI 4K Mod
+        Compatibility (no such mod; the games have in-game UI scaling). 30 DROP game-TAA work for the other games (DLSS / FSR
+        / XeSS are better): no TAA 2.0-frame patch for Troy / Pharaoh, no other game-TAA items. All other picks = yes.
         STARTED 19:1x-19:2x: lg3_ a89ff094c60c1b7cf (Sonnet High, worktree, branch rmt_lg3: group 3; addon.cpp only after
         asking); b3s_ ad0d4c962a4677665 (Sonnet High, worktree, rmt_b3s: B3b S4 -> S5 -> S6 implementation, owns
         animation_rows.hpp + pending_sweep.hpp, addon.cpp in S6 after coord's OK; api_notes.md in testbin\scratch\b3s_);
