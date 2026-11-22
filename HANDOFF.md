@@ -506,12 +506,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtb_ (when active): OK gtl_'s test_budget.py conhost allowance (coord OK'd 17:1x ... | ?
 - ATN (later, before any ENFORCE): a hook that times out (pre hook 15 s) does not ... | ?
 - gtl_: landed-sandbox suites again with the ADOPTED live schemas (any test that e ... | ?
-- hta_ / htb_ / htc_ / htd_: HANDOFF triage TSVs + summaries (coord 18:0x). | ?
 - coord: synthesis agent -> handoff_plan\plan.md (parallel groups) -> SHOW ATN FIR ... | ?
 - gtl_: the 4 stale schema tests -> live schemas accept the new fields; suites gre ... | ?
 - coord: before ATN's restart, confirm the end batch is READY (everything built + ... | ?
 - gtw_ + gpr_: re-check gtp_ round 21 (incl. GO FOR ENFORCE question) (coord 18:1x ... | ?
 - ebq_: end batch readiness list (coord 18:2x). | ?
+- hts_: handoff_plan\plan.md + plan_groups.tsv (coord 18:2x) -> show ATN. | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10921,7 +10921,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         UNCLEAR, files, depends, model, size, now Y/N): hta_ a3e737309d9d61bf9 (1-205 + 648-667), htb_ ad02d93afd3ec8e01
         (668-4600), htc_ a7c4cea8ea0937a1d (4601-8600), htd_ a0580631c62b59e7c (8601-end); then one synthesis (Opus xHigh)
         -> handoff_plan\plan.md with parallel groups (one writer per file set, GPU one job at a time, game only on ATN's go).
-        - [ ] hta_ / htb_ / htc_ / htd_: HANDOFF triage TSVs + summaries (coord 18:0x).
+        - [x] hta_ / htb_ / htc_ / htd_ (DONE 18:20): HANDOFF triage TSVs + summaries (coord 18:0x).
         - [ ] coord: synthesis agent -> handoff_plan\plan.md (parallel groups) -> SHOW ATN FIRST (ATN 18:1x: "before starting
         working on it, let me check it out here too"); tick DONE-UNTICKED boxes + start groups only after ATN's OK.
         gtv_ B1 RE-CHECK 17:57 = GO ON CODE, 18 JOBS + ANSWERS; 4 STALE TESTS BLOCK LANDING (plan_1117/gtv_b1_recheck_handback.md;
@@ -11006,9 +11006,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         READY yes / no, ordered missing list, decisions (group 3 before / after, X1, placeholders, T5 build step, re-freeze,
         T6 dry run), ATN questions; coord tells ATN before the restart.
         - [ ] ebq_: end batch readiness list (coord 18:2x).
-        Agents (6): gtl_ (adopted-schema suites + 4 stale tests), gtw_ + gpr_ (gate round 21 re-checks), htb_ (triage),
-        ebq_ (end batch readiness, read only); hta_ / htc_ / htd_ / gtp_ / gtv_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_
-        idle; GPU: FREE since 16:15; one GPU job at a time
+        htb_ TRIAGE 18:20 (handoff_plan/htb_handback.md, htb_triage.tsv + htb_summary.md; numbers at 06f8c384e, +1 at
+        f141fe881): 192 boxes: INGAME 46, DONE-UNTICKED 39, SUPERSEDED 23, CPU-CODE 23, CPU-TOOL 20, ATN 18, GPU 10, BLOCKED
+        10, DESIGN 3; 62 tick-only; 28 now = Y (6 partly). RYSE DLSS SQRT (l.2495) = DONE-UNTICKED (72f20d75c 11-16 23:11;
+        graphics.hpp:2101-2103; in-game look L / M still under the Ryse run; l.1259 AutoExposure question unanswered).
+        Top now = Y: Streamline sl.* 2.14.16 + NVIDIA licence + Detours licence into release_zip.py / player_zip.py;
+        shared shaders (Shogun 2 upscale_output / bend / pcss) into twattila; delete unused talesofarise_dlss/rr_d3d12.hpp;
+        settings_pages lighting_settings include + Ryse switch; C4 Rome II sun Replace (= hta_ 26, one owner); B3
+        leftovers; device_proxy.hpp removed-device path + R.U.S.E. O1; R.U.S.E. AO patch; Divinity 2 next round; V35 fit
+        remaining games (Shogun 2 first); graphics_page untested flag (one writer with l.1973 / 2323); WH1 / WH2 psychov35;
+        Divinity 1 offline from R1 traces; x86 root-signature suite 3 / 3 fail; A2d page dumps. Conflicts: render_mt owns
+        twattila addon.cpp / engine_code / rt_core / effect_update / mods/shader.hpp / twwarhammer3/addon.cpp / bench; GPU
+        plan owns dlaa_helper / lab / gates / reference iq_* / nsight; deferred by ATN: l.2469, 2487, 2535.
+        SYNTHESIS 18:2x: hts_ add6eb92396961a31 (Opus xHigh, read only) -> handoff_plan\plan.md + plan_groups.tsv (In short,
+        tick list, ATN questions by game, parallel groups now, later queues, conflicts) -> ATN REVIEWS before any work.
+        - [ ] hts_: handoff_plan\plan.md + plan_groups.tsv (coord 18:2x) -> show ATN.
+        Agents (5): gtl_ (adopted-schema suites + 4 stale tests), gtw_ + gpr_ (gate round 21 re-checks), ebq_ (end batch
+        readiness), hts_ (open-items plan synthesis); hta_ / htb_ / htc_ / htd_ / gtp_ / gtv_ / fcr_ / gtc_ / gti_ / grs_ /
+        h0i_ / upr_ idle; GPU: FREE since 16:15; one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
