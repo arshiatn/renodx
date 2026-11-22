@@ -445,7 +445,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - c3i_ (with the B1.6 follow-ups or right after): b1_stack_headroom gate has no sh ... | ?
 - T5 owner (end batch, before leg 1): the REAL manifest must carry rows ParallelEf ... | ?
 - gtl_ (optional, after its 4 suites pass): a light_anim iq job launches its own r ... | ?
-- gtb_ (after its selftest flake S1): N11 from gtp_ - budget.py's exact price look ... | ?
 - grs_ + gtl_ (moments only, later): the "full size is its active size" protocol l ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
@@ -7784,8 +7783,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         item 12 says price_probe / updated_input do nothing yet + names P-2 / P-4. Nits N1-N10 + N12 done, price_rows
         via str.find. N11 is gtb_'s (box). F24 WebFetch latency failed once under H0 load, rerun passed; A/B old
         0.173 s vs new 0.136 s. -> gtw_ RE-CHECK 9 STARTED.
-        - [ ] gtb_ (after its selftest flake S1): N11 from gtp_ - budget.py's exact price lookup ignores the hook's
-            `warm?` build seeds; then gpr_ re-checks.
+        - [x] gtb_ N11 (warm? build seeds) - DONE 06:4x (gtb_n11_handback.md), gpr_ re-checks.
         gtq_ V1.1 INPUTS DONE 06:2x (plan_1117/gtq_v11_inputs_handback.md; backups scratchpad\gtq_backup_fix6 -
         SLIP: iq_frames.py was edited before its backup; the pre-round copy is rebuilt by undoing this round's edits,
         diff vs gtq_backup_fix4 = only gbc_'s reviewed B2 changes): 32 / 32 iq tests (314 s, CPU, below-normal),
@@ -7854,13 +7852,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         names "iq references"; the folder itself not created; fixture keeps REAL_KEEP_FOREVER + world IQ_REFS; new
         test_delete_refuses_iq_refs; unit 26 / 26. jobs / keeper / ps1 still HELD (3 rounds of jobs tests now wait).
         -> gtv_ re-checks it with gtq_'s fixes.
-        Agents (6): gtw_ (S1c re-check 9), gtq_ (gtv_'s S1 + nits + iq_refs guard + dump size), gtb_ (N11 warm?
-        seeds), t4i_ (r22: ebr_'s r21 fixes), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_,
-        lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_ r22), gbc_,
-        gpr_ (re-checks gtb_ S1 + N11), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks
-        c3i_), gtl_ (after H0: its 4 suites), gtv_ (re-checks gtq_ + gtl_ iq_refs; held lab tests + race probe
-        after H0). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg / map_replay-named
-        process until H0 ends.
+        gtb_ N11 DONE 06:4x (plan_1117/gtb_n11_handback.md; backup scratchpad\gtb_bak15; budget.py live via
+        os.replace, no gates file edited): watch_price() gets rows from gate_hook's own price_rows(key) via hook_call
+        (same keys + seeds as the hook, incl. later changes); fallback _own_price_rows(key) = exact key, then a build
+        key's warm? seed, first key with rows wins (exact fg-only rows do not fall through), columns by header,
+        UTF-16 too; P2: budget.py passes the child text to the hook's kind() (no own key builder). Tests: test_budget
+        3 x 34 OK (new test loads a sandbox copy of gate_hook.py without bytecode, pure calls), watch --selftest 0,
+        test_gpu_gate 30 OK + 1 skipped, test_report_check 9 OK. -> gpr_ RE-CHECK STARTED (S1 selftest + N11).
+        Agents (6): gtw_ (S1c re-check 9), gtq_ (gtv_'s S1 + nits + iq_refs guard + dump size), gpr_ (gtb_ S1 +
+        N11 re-check), t4i_ (r22: ebr_'s r21 fixes), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_,
+        lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_ r22),
+        gbc_, gtb_ (waits gpr_), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_
+        (after H0: its 4 suites), gtv_ (re-checks gtq_ + gtl_ iq_refs; held lab tests + race probe after H0).
+        GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg / map_replay-named process until H0
+        ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
