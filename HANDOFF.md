@@ -500,11 +500,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU ... | ?
 - gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ... | ?
 - grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal ... | ?
-- gtv_ (Opus xHigh, read only): root cause of S3c part 1's 3 failed calibrations ( ... | ?
 - coord: S3c part 1 RE-RUN (calibrate -> A/A -> rotation -> trace) after gtv_'s fi ... | ?
 - grs_ (low, bundle with gtv_'s resident fixes if any): fcr_ nit R1 set_pool exter ... | ?
 - coord: S3c part 2 (dead outputs on R3, M10) after gtv_'s root cause; recorder bu ... | ?
 - gtl_ (with the post-gtv_ calibrate fixes): -B in the fixture's keeper child argv ... | ?
+- gtl_ (Opus High): F1 + F2 + F3 + F4 + F5 + fixture -B in the stage + tests; unit ... | ?
+- gtv_: re-check gtl_'s F1-F5 by reading + the detached fake-keeper probe (after g ... | ?
+- gtl_ / coord: new S3c re-run job files (s3c_r1_trace2 loops >= 586 or a new sett ... | ?
+- gtb_ / ATN (optional, later): F6 total on trimmed_mean or sum of pass-row median ... | ?
+- grs_ / nsight owner (optional, low): skip loop-0 dumps under -Trace; gpu_trace.p ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10674,7 +10678,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Step-6 checks not taken (no rotation). Sigma rows / other_gpu / full_reloads not printed (they come from A/A steps).
         COORD 16:1x: gtl_ GO for the stage re-run; gtv_ root-causes the 3 calibrations + the trace (read only); gtc_ runs
         offline A1 / A2 / A6 / A7 / A9b / A10 / A11 (A3 / A4 / A5 / A8 / X2 need steps 4 / 6 / 7 -> re-run).
-        - [ ] gtv_ (Opus xHigh, read only): root cause of S3c part 1's 3 failed calibrations (R1 / R2 MDE vs 0.32 ms
+        - [x] gtv_ (DONE 16:42: the keeper's console windows): root cause of S3c part 1's 3 failed calibrations (R1 / R2 MDE vs 0.32 ms
         burn, R3 A/A ~= burn) + the ngfx trace timeout; fixes + owners + what the re-run needs (coord 16:1x).
         - [x] gtc_ (DONE 16:18): S3c part 1 offline analyses A1 / A2 / A6 / A7 / A9b / A10 / A11 per sheet section 3 (coord 16:1x).
         - [ ] coord: S3c part 1 RE-RUN (calibrate -> A/A -> rotation -> trace) after gtv_'s fixes land.
@@ -10713,8 +10717,53 @@ heading text are in HANDOFF_ARCHIVE.md)
         lab / lab_keeper .pyc rewritten 16:24 (pycs there since 02:06) -> one-line -B in the fixture child argv, bundled
         with gtl_'s post-gtv_ fixes.
         - [ ] gtl_ (with the post-gtv_ calibrate fixes): -B in the fixture's keeper child argv (coord 16:28).
-        Agents (2): gtp_ (gate round 20), gtv_ (S3c calibration + trace root cause, read only); gtl_ / fcr_ / gtc_ / gti_ /
-        grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
+        gtl_ noted 16:28 (plan_1117/gtl_noted_b_handback.md): -B bundled with post-gtv_ fixes; nothing deleted.
+        gtv_ S3c ROOT CAUSE 16:42 (plan_1117/gtv_s3c_root_cause_handback.md; gtv_iq_review.md "## S3c part 1 root cause"
+        line 964; scratch testbin\scratch\gtv_\s3c\rc\): ONE CAUSE FOR ALL 3 CALIBRATIONS = THE LAB'S OWN KEEPER. Burn +
+        labels correct (trace +0.317..+0.339 ms, A/A <= 0.013 in all 6 gates; burn_runs 64 on burned arms only; config
+        resent per block; no leak / swap). total = sum of rows per frame; raw_<n>.bin show BURSTS (9-14 frames, +0.5..5 ms
+        over big passes) in PAIRS 0.36-0.45 s apart every ~2.6 s, same wall pattern in R1 / R2 / R3 = outside the
+        resident. Source: keeper started DETACHED_PROCESS (old lab.py:108 / 798, no console) runs powershell ns_busy.ps1
+        each tick with no creationflags (gpu_lock.py:213 via old lab_keeper.py:222) -> TICK 2 s + ~0.5 s PowerShell = 2.6 s,
+        0.4 s = one PowerShell life; likely a new console window per call -> DWM / terminal draws (not proven); old
+        sampler skips dwm.exe -> other_gpu False in all 108 blocks. Only total fails: PT heavy every 3rd frame (~34 %), a
+        burst pair pushes a block past 50 % heavy -> total median +0.3..0.7 ms; pass rows unmoved (MDE 0.006-0.041). R3
+        A' always wide = phase (1.45 s blocks vs 2.6 s cycle) -> INVALID correct; R1 2.3 s blocks drift -> sigma 0.2-0.4;
+        R2 G-1122-3 missed by 0.01, G-1122-4 luck. What-if (burst-free frames, diagnostic only): all 6 PASS, A/A <= 0.009,
+        detects 0.013-0.034 ms. Not a gate / resident bug. Keep burn 64 loops. A10: same bursts (player inputs ~+10 %,
+        total ~3 %) break the settle rule; known settle returns unsettled [] (new lab.py:1204-1207). A6: timer race the
+        keeper always wins (resident's own stop exists, old rt_serve.h:549-551, clock from Load 16:03:49; keeper clock
+        from start request 16:03:39, loading not work -> 600 s at 16:13:40 + 5 s wait -> kill 16:13:47, 2 s early).
+        TRACE exit 7: NOT a missing frame boundary ("frame boundaries on (result 0)" 15:57:15); trace_plan started at
+        the settle frame (--start-after-frames 1152) but the job had loops 300 x 2-frame recording = 600 frames -> player
+        ended 15:57:47 ("1800 requests played (300 passes)"), ngfx lost the session. 42.2 GB commit peak = loop 0 (2.9
+        GB loop-0 dumps + Nsight 4.3 GB buffer + load), under 55 GB, not the old leak. Q2: lab fails closed (no false
+        PASS), not fit to time totals until F1. FIXES (live files): F1 HIGH gtl_ no console windows: keeper with
+        CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW, no DETACHED_PROCESS (lab.py:804-805, flag :108), CREATE_NO_WINDOW at
+        gpu_lock.py:213, lab_keeper.py:109 / :120, lab.py:321 / :1903, budget.py:868 / :908 / :969 + tests (patched
+        subprocess flags; detached fake-keeper probe children GetConsoleWindow() == 0). F1b only if bursts stay and line
+        up with ns_busy.tsv. F2 MEDIUM gtl_ per-block burst count in lab_analyze.py (raw_<n>.bin vs ns_busy.tsv / dwm in
+        gpu_samples.tsv; result flag = result.schema.json.proposed later). F3 LOW gtl_ finish() idle wait 30 s not 5 s
+        (new lab_keeper.py:376-377 / :319-320), loading not work, sheet A6 rule. F4 HIGH gtl_ trace_plan (new lab.py:
+        2039-2064) refuses loops x span < start + frames + 16; job loops >= 586 for start 1152; new name s3c_r1_trace2
+        (runs\s3c_r1_trace stays). F5 MEDIUM gtl_ phase_model.tsv lines 9-10 (R1) / 91-92 (R3) measured in bursts;
+        settle jobs measure again + retire those rows. F6 optional gtb_ / ATN: total on trimmed_mean or sum of pass-row
+        medians. Optional grs_: skip loop-0 dumps under -Trace; optional nsight owner: gpu_trace.ps1 warns when start
+        frame > frames played. RE-RUN PLAN: gtl_ F1 / F3 / F4 / F5 (+ F2) + tests -> gtv_ re-check + fake-keeper probe ->
+        new job files (trace loops + name) -> quiet machine -> steps 0-2 (settle measured again) -> ~2 min CPU pause: gtv_
+        gtv_rc_period.py on step 2 windows + ns_busy.tsv + gpu_samples.tsv (go = no burst pairs + settle all; no-go = stop,
+        F1b or ATN if dwm only) -> step 3 PASS both ways or stop -> 4-19 -> offline A1-A11 + F2 burst count 0. E 34 + 11 +
+        ~2 min + pause. COORD: lab sessions run under ATN's gpu_lab.ps1 rules like part 1 (not in-game); gtl_ F1-F5 + -B
+        now in the stage.
+        - [ ] gtl_ (Opus High): F1 + F2 + F3 + F4 + F5 + fixture -B in the stage + tests; unit / analyze / keeper / jobs
+        suites; then coord lands (coord 16:4x).
+        - [ ] gtv_: re-check gtl_'s F1-F5 by reading + the detached fake-keeper probe (after gtl_'s hand-back).
+        - [ ] gtl_ / coord: new S3c re-run job files (s3c_r1_trace2 loops >= 586 or a new settle frame; settle jobs
+        measure again) + the sheet's re-run section (steps 0-2, pause check, 3, 4-19).
+        - [ ] gtb_ / ATN (optional, later): F6 total on trimmed_mean or sum of pass-row medians.
+        - [ ] grs_ / nsight owner (optional, low): skip loop-0 dumps under -Trace; gpu_trace.ps1 start-frame warning.
+        Agents (2): gtp_ (gate round 20), gtl_ (S3c fixes F1-F5 in the stage); gtv_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ /
+        upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
