@@ -483,6 +483,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (morning report, info + yes / no): the gate hook suite's `fix` group (155 te ... | ?
 - ATN (morning report): safety stop 10:10 - b13r_'s mutant driver scratchpad\b13r_ ... | ?
 - end batch leg 1 analysis: foreign hits outside trace windows in normal play? non ... | ?
+- ATN (morning report): C: has ~83-88 GB free; end batch leg 3 needs ~102 GB (WPR ... | ?
+- t4i_: CHK-W3 scan-assert case in test_make (kills S1 + S6b), N-a skip t when a r ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9525,8 +9527,34 @@ heading text are in HANDOFF_ARCHIVE.md)
         the 3 new lines now (offline).
         - [ ] end batch leg 1 analysis: foreign hits outside trace windows in normal play? nonzero = move them to
             by-design in effect_update.hpp (b13r_ S1, 10:2x).
-        Agents (5): lga_ (release_check R-RC1-1 / -2 + nits), gtp_ (round 15), ebr_ (t4i_ option (a) re-check), c3i_
-        (b1log S1 (b) + S2 + nits), t4i_ (probes for the 3 new B1 lines); H0 run (background, ~11:30)
+        SENT 10:2x: lga_ (R-RC1-1 / -2 + N1 / N2, hand back "lga_ RC-2"), c3i_ (S1 (b) + S2 + N1-N4 + 26h cases
+        foreign hits alone / h7 capacity watch / h8 Detach leftovers; code now, full suite + builds after H0; not
+        b13r_'s denied driver), t4i_ (probes for the 3 new B1 lines + stale notes).
+        ebr_ OPTION (a) RE-CHECK = MERGE-READY, 2 TEST GAPS + 2 NITS 10:27 (render_mt/reports/
+        ebr_opta_recheck_handback.md; offline, scratchpad\ebr_opta_*): run_all lib 483 / make 90 / check 166 / leg 166
+        / analyze 122, 0 failed. 501 scan arms = t4i_'s 34 plans exactly (CHK-W3 83, CHK-D1 90, CAMP 107, FT-W3a 7,
+        FT-W3b 22, KNOB-W3 53, FT-D1 18, ATN-FT 20, R1-FT 11, LQ-W3 90); per leg arms / files 341/339, 118/105,
+        159/125, 237/207 = 0.67 / 0.23 / 0.31 / 0.46 GB; every arm B1 rows 1, not paused, outside [at, at+3) +
+        measured windows, >= 3 s from a planned arm, >= 10 s apart, 10 frames; nothing old lost; B1L2 or B1L1 off
+        = 0 arms. G1 (gap): test_make checks only KNOB-W3 (no pause) -> mutant S1 (pause check removed) passes 90 /
+        90 but adds 8 paused arms (CHK-W3 335-365, ATN-FT 624-654). G2 (gap): mutant S6b (no ParallelEffectUpdate
+        check) passes, adds CHK-W3 543 -> a CHK-W3 scan-assert case closes both. N-a: 60 arms 1 s before a row /
+        env change (old >= 2 s), below 10 fps the window runs into it (no FAIL; line can land in the next segment)
+        -> skip t when a change falls in (t, t+2). N-b: CHK-W3 370 arm = the unpause second (P key races) ->
+        toggle at t blocks. Disk gate math right: leg needs 20.7 / 61.2 / 102.3 / 73.4 GB free (old 0 / 61.0 /
+        102.3 / 73.3); only leg 1 new (20 GB floor). Earlier nits N1 (10 names pinned), STAGE_FULL text,
+        b1_rounds share all right. Mutants 34: 25 killed, S2 / S7 / R2 / Y5 equivalent, R4 low risk.
+        DISK (not from option (a)): C: 88 GB free at ebr_'s check, 83 GB at 10:27 (H0 writing); leg 3 needs 102.3
+        GB at its own dry run (old + new gate), ETLs stay on C: -> leg 3 refused unless space is freed; whole batch
+        ~151 GB from the start if nothing moves off C:.
+        - [ ] ATN (morning report): C: has ~83-88 GB free; end batch leg 3 needs ~102 GB (WPR ETLs on C:), whole
+            batch ~151 GB. Free space on C: yourself, or OK a list of my cleanup candidates (closed-batch shots,
+            old WPRs, testbin DLL copies; never reference runs / Nsight traces)? (ebr_ 10:27)
+        COORDINATOR: G1 + G2 + N-a + N-b -> t4i_ after its probes job (same files); ebr_ re-checks.
+        - [ ] t4i_: CHK-W3 scan-assert case in test_make (kills S1 + S6b), N-a skip t when a row / env change is in
+            (t, t+2), N-b a toggle at t blocks; ebr_ re-checks (ebr_ 10:27).
+        Agents (4): lga_ (release_check R-RC1-1 / -2 + nits), gtp_ (round 15), c3i_ (b1log S1 (b) + S2 + nits), t4i_
+        (probes for the 3 new B1 lines, then ebr_'s G1 / G2 / N-a / N-b); H0 run (background, ~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
