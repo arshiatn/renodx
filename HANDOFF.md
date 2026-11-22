@@ -500,12 +500,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
 - gtl_: stage H1 + H2 + M1 / M2 / M2b / M3 / M4 + L1 / L2 + nits; gtv_ re-checks; ... | ?
 - coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU ... | ?
-- h0i_: analyse all_modes M6 8 changed (a != b) on the CPU -> flaky vs regression ... | ?
 - gtc_ (runner, Low): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x). | ?
 - gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ... | ?
 - grs_: G1 + G2 / G3 / G4 (+ nits) on grs_dead_uses; fcr_ re-checks (coord 15:55). | ?
 - gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land- ... | ?
 - gtv_: re-check gtl_'s stage review fixes (read + unit / analyze only during S3c; ... | ?
+- upr_: verdict on h0i_'s m6 analysis (per-output exclusions vs nrd_all_removal ha ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10490,7 +10490,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         nondeterminism -> h0i_ analyses on the CPU (diff sizes, a / b vs baseline, these modes' repeat history in kept runs,
         timing / load dependence: gtl_'s stage suites ran 15:14-15:18 beside it) -> upr_ verdict. S3c part 1 does not wait
         (lab calibration on real recordings, independent of these harness modes).
-        - [ ] h0i_: analyse all_modes M6 8 changed (a != b) on the CPU -> flaky vs regression (coord 15:5x).
+        - [x] h0i_ (DONE 16:01: FLAKY, old; upr_ verdict): analyse all_modes M6 8 changed (a != b) on the CPU -> flaky vs regression (coord 15:5x).
         - [ ] gtc_ (runner, Low): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x).
         gtc_ S3c PART 1 RUNNER SPAWNED 15:52 (Low; steps 0-19 per s3c_run_sheet.md, outputs testbin\scratch\gtc_\step_NN.txt,
         exact ATN rules only, stops on 1 / 2 / 6 / any block; step 6 extra checks committed GB / R1 idle-exit side / R1
@@ -10568,9 +10568,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land-list hashes (coord 15:59).
         - [ ] gtv_: re-check gtl_'s stage review fixes (read + unit / analyze only during S3c; keeper / jobs after)
         (coord 15:59).
-        Agents (6): gtp_ (gate round 20), grs_ (dead uses G1-G4), gtv_ (stage fixes re-check), h0i_ (all_modes 8-change
-        analysis), gtc_ (S3c part 1 runner); gtl_ + gti_ idle; GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job at
-        a time; agents' CPU work below normal, no builds at normal priority, no lab suites (keeper / jobs) during S3c
+        gtl_ waiting 16:00 (plan_1117/gtl_waiting_handback.md): idle until coord says S3c part 1 done.
+        h0i_ M6 ANALYSIS 16:01 = FLAKY, OLD, NOT A REGRESSION (plan_1117/h0i_m6_analysis_handback.md; testbin\scratch\h0i_\
+        h0i_m6_{analysis,timing,overlap}.py + .txt; CPU only): 7 of 8 b = baseline exactly; every off output = a state the
+        same H0 post code 42c081bd6 already produced, or a mode that failed to repeat before. cloth_folds_smooth_micromaps
+        bounce 526 / 57600 (max abs 0.090), reflection 8432 / 230400 (0.45); micromaps_leaf_light a = 100100 post_b, b =
+        054906 post_b (>= 4 distinct states; failed to repeat in 3 of 4 earlier pairs); leaf_storm bounce a = 054906 post_a
+        exactly (2 texels), occlusion 4 texels off by 1 / 255; nrd_all_removal visibility a = 100100 pre_a exactly (5995
+        texels, rows 162..359, max 7), occlusion new (1318 texels right side, max 6) - its posts always repeated before,
+        forced device removal -> recovery timing suspected (WEAKEST). Means same to 5-6 digits (scattered flips, no bias);
+        cloth + micromaps_leaf_light flips overlap (317 / 446, 6558 / 8006, same max) = one micromap / leaf race (as
+        M6_LEFT_OUT names for fast_leaves / micromaps_leaf_stress). Load window 15:14-15:18: 2 of 4 modes in it (the two
+        flakiest), job times normal, nrd_all_removal + leaf_storm outside -> no load evidence. Recommendation: exclude only
+        the 8 (mode, output) pairs (M6_LEFT_OUT per output; fast_leaves / micromaps_leaf_stress stay whole-mode); option for
+        nrd_all_removal: allowlist of known variant hashes. Nothing changed yet.
+        - [ ] upr_: verdict on h0i_'s m6 analysis (per-output exclusions vs nrd_all_removal hash allowlist) (coord 16:0x).
+        Agents (6): gtp_ (gate round 20), grs_ (dead uses G1-G4), gtv_ (stage fixes re-check), upr_ (m6 verdict), gtc_
+        (S3c part 1 runner); gtl_ + gti_ + h0i_ idle; GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job at a time;
+        agents' CPU work below normal, no builds at normal priority, no lab suites (keeper / jobs) during S3c
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
