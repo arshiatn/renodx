@@ -489,7 +489,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord after the restart: lg3_'s zombie engine_code.exe in testbin\scratch\lg3_\e ... | ?
 - coord: land g12_'s land_list.md after `sha256sum -c base_hashes.txt` (merge by h ... | ?
 - render_mt (g12_): twattila/test_hooks.hpp: stable-sort RENODX_TW_SET / SET_FILE ... | ?
-- ATN (g12_, recommend yes): turn off Always On Top for the Claude window before P ... | ?
 - coord: Opus xHigh review of g12_'s staged diff (tools, review per group). | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -11440,7 +11439,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         1297 after the retire rows land; optional: the 5 other identical pm_summary.py copies.
         - [ ] render_mt (g12_): twattila/test_hooks.hpp: stable-sort RENODX_TW_SET / SET_FILE entries by time when read (or
         WARN on an out-of-order entry), so a step can't silently wait.
-        - [ ] ATN (g12_, recommend yes): turn off Always On Top for the Claude window before PresentMon runs (an on-top
+        - [x] ATN (ANSWERED 20:1x: "claude's window isn't on always on top"; the D2 R1 case was a PowerToys window; the runner
+        now detects + marks NOT ALONE) (g12_, recommend yes): turn off Always On Top for the Claude window before PresentMon runs (an on-top
         window makes every capture NOT ALONE; runners never touch other windows).
         - [ ] coord: Opus xHigh review of g12_'s staged diff (tools, review per group).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
