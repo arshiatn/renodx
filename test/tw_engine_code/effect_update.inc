@@ -92,6 +92,7 @@ struct Shape {
   bool sweep_draws = false;      // the sweep's destructors draw the game's random triple (a dead instance's, in the render thread's ordered pseudo-unit)
   uint32_t other_room = 0;       // not 0: a second node with a pipeline of its own of this room, which the 'O' operation spawns into (the first node's is the round's)
   bool real = false;             // 26g: the operations call the game's own routines in image A (the serial walk) and B (the round) on objects laid out as the game lays them out
+  uint32_t pool_capacity = 4096; // the slot list's capacity word (the list never grows in a fake world; 26h sets it to the count a held slot leaves, so a return would grow it)
 };
 
 struct World {
@@ -685,10 +686,11 @@ void UpdateImpl(Instance& me) {
     if (w.image != nullptr) {
       reinterpret_cast<RealPool>(RealSite(w, eu::Site::SLOT_RETURN))(w.pool, &held_slot);  // the game's own return: the id back on the list, the variable set to -1
     } else {
-      Touch(eu::Site::SLOT_RETURN, w.pool);
+      Touch(eu::Site::SLOT_RETURN, w.pool, Address(&held_slot));
     }
     const Shared shared(w);
     if (w.image == nullptr) {
+      if (Word(w.pool + 0x10) >= Word(w.pool + 0xC)) SetWord(w.pool + 0xC, 2 * Word(w.pool + 0xC));  // the game's push grows the array when the count has reached the capacity
       w.free_slots.push_back(id);
       PoolSync(w);
     }
@@ -836,9 +838,9 @@ std::unique_ptr<World> Build(uint64_t seed, const Shape& shape, uint8_t* image =
   SetWord(w->pool + 0x18, w->pool_limits);
   SetWord(w->pool_limits + 0x50, 0xFFFFFFFFu);
   PoolSync(*w);
+  SetWord(w->pool + 0xC, (image != nullptr ? 256 : shape.pool_capacity));
   if (image != nullptr) {
-    // The game's list: the capacity at +0xC (the return never grows it), the ids as 16-bit words behind the pointer at +0x14.
-    SetWord(w->pool + 0xC, 256);
+    // The game's list: the ids as 16-bit words behind the pointer at +0x14 (the capacity above: the real return never grows it).
     auto* ids = reinterpret_cast<uint16_t*>(w->Aux(512));
     for (uint32_t index = 0; index < 64; ++index) ids[index] = static_cast<uint16_t>(w->free_slots[index]);
     SetWord(w->pool + 0x14, Address(ids));
@@ -951,6 +953,11 @@ void ResetScheduler() {
   for (auto& said : ei::events_said) said = 0;
   for (auto& counter : ei::counters) counter = 0;
   for (auto& counter : ei::serial_rounds) counter = 0;
+  ei::session_totals = {};
+  ei::unreported_counts = {};
+  ei::fault_unreported = false;
+  ei::counts_line_ticks = 0;
+  ei::session_used = false;
   ei::controls = {};
 }
 
@@ -2214,6 +2221,146 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* game, uint8_t* patched
       CHECK(!wp::Tracing());
     }
   }
+  // 26h. B1 logging. F1: the always-counted counters outside trace windows (session totals, one line when a fault is among them, at most one a second, a window's line followed by
+  // the totals, the detach's totals); F2: a slot list growth on a worker is noted once.
+  {
+    const auto clear_log = [] {
+      const std::unique_lock lock(log_mutex);
+      log_lines.clear();
+    };
+    const auto lines_with = [](const char* text) {
+      const std::unique_lock lock(log_mutex);
+      size_t found = 0;
+      for (const std::string& line : log_lines) found += (line.find(text) != std::string::npos ? 1 : 0);
+      return found;
+    };
+    const auto add = [](ei::Counter counter, uint32_t amount) { ei::counters[static_cast<size_t>(counter)].fetch_add(amount); };
+    ei::written = eu::ALL_SITES;
+    eu::Update(true);  // (what the windows before counted and nobody printed yet)
+    ResetScheduler();
+    clear_log();
+    ei::current_round.tracing = false;
+    // Outside a window: a fault among the counts prints one line (the by-design ones and the slow-path ones ride along); the trace-only counters are not counted.
+    ei::Count(ei::Counter::UNITS, 9);
+    ei::Count(ei::Counter::HANGS, 2);
+    ei::Count(ei::Counter::SPAWN_OVERFLOWS, 5);
+    ei::Count(ei::Counter::FOREIGN_HITS, 1);
+    ei::Count(ei::Counter::WAKE_TIMEOUTS, 4);
+    eu::Update(true);
+    CHECK(lines_with("Parallel Effect Update (safety counts outside trace windows): wake timeouts 4, foreign hits 1, hangs 2, spawn overflows 5") == 1);
+    CHECK(lines_with("session totals") == 0 && ei::counters[static_cast<size_t>(ei::Counter::UNITS)].load() == 0);
+    // Another fault within a second: no line (the count waits); the totals hold it.
+    ei::Count(ei::Counter::HANGS, 1);
+    eu::Update(true);
+    CHECK(lines_with("safety counts outside trace windows") == 1);
+    // After the second: the waiting count and the new one in one line; by-design counts alone print nothing.
+    Sleep(1100);
+    ei::Count(ei::Counter::CENSUS_ERRORS, 1);
+    eu::Update(true);
+    CHECK(lines_with("Parallel Effect Update (safety counts outside trace windows): hangs 1, census errors 1") == 1);
+    Sleep(1100);
+    ei::Count(ei::Counter::SPAWN_OVERFLOWS, 3);
+    ei::Count(ei::Counter::STAGE_FULLS, 2);
+    ei::Count(ei::Counter::WAKE_TIMEOUTS, 1);
+    eu::Update(true);
+    CHECK(lines_with("safety counts outside trace windows") == 2);
+    // The detach: what was counted since the last present joins the totals, which are printed once.
+    ei::Count(ei::Counter::TAG_LEAKS, 1);
+    eu::Detach();
+    CHECK(lines_with("Parallel Effect Update (session totals): wake timeouts 5, foreign hits 1, hangs 3, watched mismatches 0, census errors 1, late overflows 0, failed rounds 0, "
+                     "spawn overflows 8, tag leaks 1, stage full 2") == 1);
+    std::printf("26h. F1: counts outside trace windows: one line when a fault is among them (not for spawn overflows, stage full or wake timeouts alone; one a second at most), the session totals at the detach\n");
+
+    // In a window: its line carries the always-counted counts and the session's totals follow it at once.
+    ResetScheduler();
+    clear_log();
+    CHECK(trace_open(8, 4));
+    {
+      Shape shape;
+      shape.ops = "RN";
+      shape.effects = 6;
+      shape.max_units = 20;
+      shape.max_ops = 3;
+      if (run_case(shape, 6161, 1, 3) != 0) return 1;
+    }
+    add(ei::Counter::HANGS, 1);
+    add(ei::Counter::SPAWN_OVERFLOWS, 2);
+    eu::Update(true);
+    {
+      const std::unique_lock lock(log_mutex);
+      size_t at = 0;
+      while (at < log_lines.size() && log_lines[at].find("Parallel Effect Update (trace window") == std::string::npos) ++at;
+      CHECK(at + 1 < log_lines.size() && log_lines[at].find("hangs 1") != std::string::npos);
+      CHECK(log_lines[at + 1].find("Parallel Effect Update (session totals): ") != std::string::npos && log_lines[at + 1].find("hangs 1,") != std::string::npos
+            && log_lines[at + 1].find("spawn overflows 2,") != std::string::npos);
+    }
+    CHECK(lines_with("safety counts outside trace windows") == 0);
+    CHECK(trace_close(4));
+    std::printf("26h. F1: a trace window's line carries them, the session totals follow it\n");
+
+    // F2: the game's push of an id onto the slot list grows its array when the count has reached the capacity: a unit that ran on a worker and left the capacity word changed is
+    // noted once (kind and site), the new capacity the value; a unit on the render thread (the game's own thread) is not.
+    ResetScheduler();
+    clear_log();
+    {
+      uint32_t capacity_word = 63;
+      ei::current_round.watched = {};
+      ei::current_round.watched[0] = {.address = &capacity_word, .name = "pool capacity", .value = 63, .pool_capacity = true};
+      ei::current_round.watched_count = 1;
+      ei::current_round.owner = GetCurrentThreadId();
+      capacity_word = 126;
+      ei::RefreshWatched();
+      CHECK(ei::event_count.load() == 0 && ei::current_round.watched[0].value == 126);  // the owner's unit: the game's normal growth
+      capacity_word = 252;
+      std::thread([] { ei::RefreshWatched(); }).join();
+      CHECK(ei::event_count.load() == 1 && ei::events[0].kind == ei::EventKind::SLOT_GROWTH && ei::events[0].site == static_cast<uint32_t>(eu::Site::SLOT_RETURN)
+            && ei::events[0].value == 252 && ei::events[0].thread != GetCurrentThreadId());
+      capacity_word = 504;
+      std::thread([] { ei::RefreshWatched(); }).join();
+      CHECK(ei::event_count.load() == 1);  // once per kind and site
+      ei::current_round.watched_count = 0;
+      ei::current_round.owner = 0;
+      eu::Update(true);
+      CHECK(lines_with("Parallel Effect Update: slot list growth on a worker (site slot return, thread ") == 1 && lines_with("value 0xFC)") == 1);
+    }
+    // The same in a round: units that return a slot while the list is full, on workers (the render thread may run the first, so rounds are walked until a worker's is seen).
+    ResetScheduler();
+    clear_log();
+    ei::spawns_row = false;
+    CHECK(pool(5) == 4);
+    {
+      Shape shape;
+      shape.ops = "S";
+      shape.effects = 8;
+      shape.max_units = 20;
+      shape.max_ops = 2;
+      shape.dead_percent = 10;
+      shape.pool_capacity = 63;  // a unit that holds a slot has taken the list to its capacity
+      bool seen = false;
+      for (uint32_t seed = 0; seed < 12 && !seen; ++seed) {
+        auto serial = Build(7171 + seed, shape);
+        auto parallel = Build(7171 + seed, shape);
+        Walk(*serial, false);
+        CHECK(ei::event_count.load() == 0);
+        Walk(*parallel, true);
+        CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*parallel) && Equal(*serial, *parallel, &why));
+        CHECK(Word(parallel->pool + 0xC) == Word(serial->pool + 0xC) && Word(serial->pool + 0xC) == 126);
+        seen = (ei::event_count.load() == 1);
+        CHECK(ei::event_count.load() <= 1);
+        if (seen) {
+          CHECK(ei::events[0].kind == ei::EventKind::SLOT_GROWTH && ei::events[0].site == static_cast<uint32_t>(eu::Site::SLOT_RETURN) && ei::events[0].value == 126
+                && ei::events[0].thread != render_thread);
+        }
+      }
+      CHECK(seen);
+      eu::Update(true);
+      CHECK(lines_with("Parallel Effect Update: slot list growth on a worker (site slot return, thread ") == 1 && lines_with("value 0x7E)") == 1);
+    }
+    ei::written = 0;
+    ResetScheduler();
+    std::printf("26h. F2: a slot list growth on a worker (the capacity word changed by a unit that ran there): one event line (site slot return, value = the new capacity), once per site; on the render thread: none\n");
+  }
+
   // 26g. The game's own routines on objects laid out as the game lays them out: image B has the thunks in (the row on, the production handler), image A is the game as it ships.
   eu::Data* real_data = nullptr;
   const uint8_t* real_base = nullptr;
