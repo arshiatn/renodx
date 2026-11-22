@@ -505,13 +505,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - grs_ / nsight owner (optional, low): skip loop-0 dumps under -Trace; gpu_trace.p ... | ?
 - gtb_ (when active): OK gtl_'s test_budget.py conhost allowance (coord OK'd 17:1x ... | ?
 - ATN (later, before any ENFORCE): a hook that times out (pre hook 15 s) does not ... | ?
-- gtl_: landed-sandbox suites again with the ADOPTED live schemas (any test that e ... | ?
 - coord: synthesis agent -> handoff_plan\plan.md (parallel groups) -> SHOW ATN FIR ... | ?
-- gtl_: the 4 stale schema tests -> live schemas accept the new fields; suites gre ... | ?
 - coord: before ATN's restart, confirm the end batch is READY (everything built + ... | ?
 - gtw_ + gpr_: re-check gtp_ round 21 (incl. GO FOR ENFORCE question) (coord 18:1x ... | ?
 - ebq_: end batch readiness list (coord 18:2x). | ?
 - hts_: handoff_plan\plan.md + plan_groups.tsv (coord 18:2x) -> show ATN. | ?
+- gtl_: live lab check after landing (all suites + 18 jobs check on live) + does t ... | ?
+- gtv_: read the post-B1 test-only diffs (4 schema tests, left_out conhost, titles ... | ?
+- owner of schema_check.py (gtl_ / gtb_): support "maximum" (cmd dump frames <= 64 ... | ?
+- gtc_ (Low): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl_'s live check: ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10911,7 +10913,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         ans.schema.json a1cbe346 -> 7636a1db (reset_ms, uses description), resident_protocol.md f616714b -> be894b33 (v1.1
         additions). JSON parses; .proposed files left beside (equal to live now); titles still say PROPOSED (nit, gtl_ next
         stage). -> gtl_ re-runs the landed suites with the adopted schemas before stage2 lands.
-        - [ ] gtl_: landed-sandbox suites again with the ADOPTED live schemas (any test that expected the old schema?) +
+        - [x] gtl_ (DONE 18:24): landed-sandbox suites again with the ADOPTED live schemas (any test that expected the old schema?) +
         titles without "PROPOSED" in the next stage (coord 17:5x).
         ATN 18:0x: "what is lab?" + "you are doing only GPU stuffs right now? anything in both plans that can run at the
         same time? or the remaining HANDOFF stuff / stuff planned for later? put those in their own plan and check what can
@@ -10936,7 +10938,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         schemas refuse v1.1 / S3c 1b fields (unit test_proposed_schemas + test_s3c_dump_fields; jobs
         test_s3c_uses_and_dump_frames + test_v11_no_dred_and_dump_frames now exit 0) -> assert the LIVE schema files accept
         the fields (not the .proposed copies) + refresh land_list.tsv. land6: analyze 5 / 5, unit 38 / 40 (only these).
-        - [ ] gtl_: the 4 stale schema tests -> live schemas accept the new fields; suites green; land list (coord 17:5x).
+        - [x] gtl_ (DONE 18:24, LANDED 18:25): the 4 stale schema tests -> live schemas accept the new fields; suites green; land list (coord 17:5x).
         ATN 18:1x: (1) the game test (render_mt CPU MT end batch) may run, but WAIT until the GPU fixes + the ~1 h S3c
         re-run end, maybe the triage too; then ATN restarts the PC and tells coord to start (no start before that). (2) The
         new open-items plan: ATN checks it here before any work on it. (3) Asked: PT DI / unified PT done? what is left in
@@ -11021,9 +11023,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         SYNTHESIS 18:2x: hts_ add6eb92396961a31 (Opus xHigh, read only) -> handoff_plan\plan.md + plan_groups.tsv (In short,
         tick list, ATN questions by game, parallel groups now, later queues, conflicts) -> ATN REVIEWS before any work.
         - [ ] hts_: handoff_plan\plan.md + plan_groups.tsv (coord 18:2x) -> show ATN.
-        Agents (5): gtl_ (adopted-schema suites + 4 stale tests), gtw_ + gpr_ (gate round 21 re-checks), ebq_ (end batch
-        readiness), hts_ (open-items plan synthesis); hta_ / htb_ / htc_ / htd_ / gtp_ / gtv_ / fcr_ / gtc_ / gti_ / grs_ /
-        h0i_ / upr_ idle; GPU: FREE since 16:15; one GPU job at a time
+        gtl_ ADOPTED SCHEMAS 18:24 (plan_1117/gtl_adopted_schemas_handback.md; patches testbin\scratch\gtl_\stage2_patch_adopted.py
+        + stage2_patch_conhost2.py; runs\s3cl_*.txt): 4 tests now read the LIVE schemas (test_adopted_schemas: cmd accepts
+        dump frames 2 + histories, light_anim null, v1 dump; refuses frames 0 + moments k 2; ans block accepts reset_ms 5.0 /
+        null, refuses -1; test_s3c_dump_fields refuses dump_frames 0 + non-boolean log_uses; jobs tests run with live
+        schemas); proposed_schemas() helper gone. FINDING: schema_check.py does not read "maximum" -> cmd.schema dump
+        frames <= 64 not enforced by the schema; guards = lab.rules (dump_frames 65 refused) + the resident's own REFUSED.
+        2nd F1 conhost race (test_priced_kill_ends_tree) -> one shared left_out() drops pids the fake ns_busy saw as conhost;
+        line 829 back to out <= tree; exclude_pids <= 3. Titles without PROPOSED (protocol body l.7 + l.119 heading still
+        say proposed). Suites 18:12-18:23: unit 40, analyze 5, ps1 5, keeper 29, jobs 35, test_gpu_lock 60 / 60,
+        test_budget 40 x2, test_gpu_gate 30 OK. 18 jobs 0 refused, 1982 s (runs\s3c2_jobs_adopted.txt). Land list 15 files.
+        STAGE2 LANDED BY COORD 18:25 (testbin\scratch\coord_\land_stage2.py; no lab process ([]), no lock, lab\running empty;
+        backup testbin\scratch\coord_\lab_bak_20261122_1825 incl. phase_model.tsv): lab.py b2ef75e4, lab_keeper.py 49536340,
+        gpu_lock.py dfaaacff, budget.py e7257203, lab_analyze.py 833ffe52, tests (fixture d45506e0, unit bda2133c, keeper
+        78fc2d60, jobs aa676650, analyze 055c76ce, budget 678263d5), job_schema.json da28e351, cmd.schema.json 69a12121,
+        ans.schema.json 385b779f, resident_protocol.md 9d78a0df. RETIRED 18:26 (retire_rows.py, 6 rows -> lines 9 / 10 / 50
+        / 51 / 91 / 92 "retired:", exit 0; diff vs backup = only those 6). Leftover lab\run\trace_pending.json (15:57, job
+        s3c_r1_trace) -> gtl_ says if it matters.
+        - [ ] gtl_: live lab check after landing (all suites + 18 jobs check on live) + does trace_pending.json matter (coord 18:2x).
+        - [ ] gtv_: read the post-B1 test-only diffs (4 schema tests, left_out conhost, titles) (coord 18:2x).
+        - [ ] owner of schema_check.py (gtl_ / gtb_): support "maximum" (cmd dump frames <= 64) (low).
+        - [ ] gtc_ (Low): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl_'s live check: steps 0-2, STOP at 2b for gtv_'s
+        go, then 3-19 (coord).
+        Agents (6): gtl_ (live lab check), gtv_ (test diffs read), gtw_ + gpr_ (gate round 21 re-checks), ebq_ (end batch
+        readiness), hts_ (open-items plan synthesis); gtc_ (S3c re-run next) / hta_..htd_ / gtp_ / fcr_ / gti_ / grs_ / h0i_
+        / upr_ idle; GPU: FREE (S3c re-run next); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
