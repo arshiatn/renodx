@@ -480,7 +480,7 @@ already). The bias's level stays the player's; the row set off by hand stays off
 Open items (g08_, 2026-11-22; not built yet, not run in game):
 New: one log line per render target the resource upgrades take (`[Ryse] upgrade 0x<handle> <width>x<height>
 <format> -> <format> view clone`, at most 256), for the census of the upgraded targets' readers: the handle is the
-game's resource, which the frame trace prints as "original" behind a RenoDX clone view (once the trace prints it).
+game's resource, which the frame trace prints as `clone of <handle>` for a RenoDX clone view.
 New: Recommended (with Deeper Shadows) removed (ATN: after the V35 fit it changed PsychoV31 only); both Recommended
 presets set Video AutoHDR 0.2 (was 0.25; ATN: the porting rules' 0.2).
 Fixed: the back buffer check after Present (back_buffer_fix::CheckBound) runs before RenoDX's draw callbacks: it ran

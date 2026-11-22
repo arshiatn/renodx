@@ -2102,8 +2102,8 @@ void OnDestroyDevice(reshade::api::device* device) {
 }  // namespace back_buffer_fix
 
 // One log line per render target the resource upgrades take (all view clones). The handle is the game's resource, the
-// one the frame trace prints as "original" behind a RenoDX clone view, so the reader census can match the two. Runs
-// after RenoDX's init_resource, which marks the targets; capped so a game recreating targets can't fill the log.
+// one the frame trace prints as "clone of <handle>" for a RenoDX clone view, so the reader census can match the two.
+// Runs after RenoDX's init_resource, which marks the targets; capped so a game recreating targets can't fill the log.
 constexpr int MAX_UPGRADE_LOG_LINES = 256;
 std::atomic_int upgrade_log_lines = 0;
 
@@ -2115,7 +2115,9 @@ void OnInitResourceLogUpgrade(
   if (upgrade_log_lines.load(std::memory_order_relaxed) > MAX_UPGRADE_LOG_LINES) return;
   reshade::api::format new_format = reshade::api::format::unknown;
   renodx::utils::resource::GetResourceInfo(resource, [&](const renodx::utils::resource::ResourceInfo& info) {
-    if (info.clone_target != nullptr) new_format = info.clone_target->new_format;
+    if (info.clone_target != nullptr) {
+      new_format = info.clone_target->new_format;
+    }
   });
   if (new_format == reshade::api::format::unknown) return;
   const int line_index = upgrade_log_lines.fetch_add(1, std::memory_order_relaxed);
