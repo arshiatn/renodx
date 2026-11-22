@@ -7094,9 +7094,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         test_lab_unit.py (~l.278-296) writes a fake fault into the REAL busy_count.json (once 03:53, overwritten 04:02)
         -> gtl_ queue (point BUSY_COUNT / the env var at a temp file); gtv_ told for its test runs. -> gpr_ CODE LOOK
         of gti_'s part STARTED.
-        Agents (10): upr_ (H0 439 look, then v2.7), c3i_ (B1.6), ebr_ (r18 re-check), grs_ (S2), gtp_ (S-d + price
-        build), gtq_ (FLIP numpy port), gbc_ (C1 re-check), gtv_ (S3r re-check), gtb_ (watch build), gpr_ (gti_ code
-        look). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gti_, gtl_, h0i_, t4i_, gtk_, gtw_ (waits gtp_).
+        gbc_ C1 RE-CHECK = OK 04:0x (plan_1117/gbc_c1_recheck_handback.md): all fixed; Imath / libdeflate licences right
+        (no separate ATN OK needed, report it); new R-S1 (finishing trace: reset / restart / 20 s timeout gaps), R-S2
+        (RECORD_FRAMES must equal measured), R-S3 (_s0 -> _noseed) + NOTICE additions -> gtk_ STARTED. gto_design.md
+        C.3 lines 1333 / 1334 / 1338 / 1339 + the softness line + the C.4 fetched-libraries line APPLIED by the
+        coordinator (copy before: scratchpad\gto_design_before_c3.md). grs_ S2 DONE 04:06 (plan_1117/grs_s2_handback.md):
+        branch gpu_s2 7c4b970da + b64803d55 from c3ea4925f (resident serve, burn / moments shaders, W1 snapshot + reset,
+        protocol v1.1 proposals: dump frames + moments TWMO taken); offline tests 0 failures, G4 offline ALL SECTIONS
+        SAME. SAFETY STOP 04:08: the coordinator's GPU check `sh tools/tw/reference/rec_verify.sh grs_s2 rec_grs_base ""
+        rec_grs_new rec_grs_aligned rec_grs_rec` (HARNESS_DUMP, rec_locked.sh per run, ~235 runs ~100 min) was DENIED
+        by the auto-mode classifier [Unauthorized Access]; not retried, no workaround. [ ] ATN: allow it (a rule) or say
+        'run it' for the one unchanged retry. Meanwhile gtv_ S2r (offline review) queued after its S3r re-check.
+        Agents (10): upr_ (H0 439 look, then v2.7), c3i_ (B1.6), ebr_ (r18 re-check), gtk_ (R-S1..3), gtp_ (S-d +
+        price build), gtq_ (FLIP numpy port), gtv_ (S3r re-check, then S2r), gtb_ (watch build), gpr_ (gti_ code
+        look). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gti_, gtl_, h0i_, t4i_, gbc_, grs_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
