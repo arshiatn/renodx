@@ -6730,9 +6730,33 @@ heading text are in HANDOFF_ARCHIVE.md)
         28 + 21 + 4 + 3 + 10 pass. Open by design: a prompt > 4 s after ngfx exits. gtb_ S1b FIXES 2 DONE 02:1x
         (plan_1117/gtb_s1b_fix2_handback.md). gtb_ RESUMED for Should 7 (probe() -> BusyState); gtv_ S1b re-check 2 then
         S1a re-check 2 then Should 7.
-        Agents (12): bd1r_ + bd3r_ (R-S5 re-checks), gtw_ (S1c re-check 2), t4i_ (r17 fixes), lga_ (group 2 re-check 2),
-        h0i_ (H0 run script), upt_ (unified PT v2.3), gtv_ (S1b re-check 2, S1a re-check 2), gtb_ (S1b Should 7), gtl_
-        (S3), gtq_ (B1), gtk_ (C1 + C2).
+        lga_ GROUP 2 RE-CHECK 2 02:1x = MERGE (render_mt/reports/lga_g2_recheck2_handback.md; audit :737 + group 1
+        follow-up :865 OK): R1 template-refusal path OK on all 4 points. MERGED 02:2x: ecfb7d286 (rmt_lg1 follow-up
+        9ae4b8419) + f4c95ae14 (rmt_lg2 eb2c451b4); gated x86 twattila / twrome2 / twthronesofbritannia + amd64 twattila
+        exit 0; pushed. Left (not blocking): T1 tw_helper_lifetime tests.cpp:740 flaky on x86 (poll 5 s), N7 'units and
+        smoke' -> 'units and grass', T2 dlaa_helper\build.ps1 exits 0 on failed builds (unchecked clang-cl / dxc, old exe
+        kept) -> lgf2_ RESUMED 02:2x (rmt_lg2, r3). [ ] ATN later: N6 fallback after one template refusal (units + grass
+        stay out of RT for the session if the driver always refuses). [ ] 4K harness Mega Geometry run (after lgf2_ r3).
+        S2 (grs_) starts after lgf2_ r3 (same helper files).
+        bd3r_ R-S5 NITS RE-CHECK 02:2x (render_mt/reports/bd3r_rs5_recheck_handback.md): nits 1-4 OK, nit 5 FIX:
+        Uninstall's still-open case keeps the stubs but takes the draw-recording sites out incl. the fold's cut, so the
+        fold never closes -> keep the recording sites too (recording_written as target, recording_left_in), 29f asserts
+        it, comment order (CloseFoldAtPresent runs AFTER engine_code::Uninstall, addon.cpp:2594 / 2597). To c33i_ with
+        bd1r_'s re-check.
+        gtb_ S1b SHOULD 7 DONE 02:2x (plan_1117/gtb_s1b_should7_handback.md): probe() -> gpu_lock.BusyState; gtv_ told
+        (gtv_probe_fail.py must point at gpu_lock.NS_BUSY).
+        gtw_ S1c RE-CHECK 2 02:2x = FIX (plan_1117/gtw_s1c_recheck2_handback.md): F1 / I1 / I2 / I3 / T04 OK; F3 = F2's
+        fix opened write holes (open(file=..), Path / joinpath write_text, shutil.copy2(dst=..), cd + relative writes, sc /
+        ac, Tee-Object, -Path:, robocopy) -> gtp_ RESUMED with gtw_'s tested prototype (49 / 50) + robocopy, T1 (its
+        test ran the REAL gate_override.ps1 in a copied tree), INSTALL item 3 + line 6 texts. STRAY FILES from that
+        mistake: tools\tw\gates\override.json (warn spec+cxx until 04:14, 'by arshi') + gates_log.tsv (1 row) ->
+        [ ] ATN: may they be deleted? (no hook installed, nothing gated).
+        ATN 02:2x: (1) web only for papers etc. (no reddit / forums); (2) 'why don't we price everything?' -> gpp_
+        (a9e29c4790d1b18aa, Opus xHigh) STARTED 02:2x: design plan_1117/designs/gpp_price_web_design.md (web domain
+        allow-list for WebSearch / WebFetch / shell downloads; a price + stop for every tool call, agents' budgets).
+        Agents (11): bd1r_ (R-S5 re-check), lgf2_ (r3: T1 / N7 / T2), gtp_ (F3), t4i_ (r17 fixes), h0i_ (H0 run script),
+        upt_ (unified PT v2.3), gtv_ (S1b re-check 2, S1a re-check 2, Should 7), gtl_ (S3), gtq_ (B1), gtk_ (C1 + C2),
+        gpp_ (price + web design).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
