@@ -61,8 +61,15 @@ if ($env:RENODX_TW_REFERENCE_BUILD) {
   }
 }
 # RENODX_TW_RECORDER_BUILD set: the bridge recorder and its player too (rt_d3d12.hpp RENODX_RECORDER, tests only; a released helper has none).
-Remove-Item "$out\rt_recorder_build.h" -ErrorAction SilentlyContinue
-if ($env:RENODX_TW_RECORDER_BUILD) { Set-Content -Path "$out\rt_recorder_build.h" -Value '#pragma once' -Encoding ascii }
+Remove-Item "$out\rt_recorder_build.h", "$out\rt_burn.h", "$out\rt_moments.h" -ErrorAction SilentlyContinue
+$recorder_include = @()
+if ($env:RENODX_TW_RECORDER_BUILD) {
+  Set-Content -Path "$out\rt_recorder_build.h" -Value '#pragma once' -Encoding ascii
+  # The resident's (rt_serve.h): its burn and moments passes, nlohmann's JSON for its control files.
+  Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_burn.h" -Vn RT_BURN "$PSScriptRoot\rt_burn.hlsl"
+  Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_moments.h" -Vn RT_MOMENTS "$PSScriptRoot\rt_moments.hlsl"
+  $recorder_include = @("-imsvc$root\external\json\single_include")
+}
 Dxc -nologo -T cs_6_0 -E main -O3 -Fh "$out\fg_ui.h" -Vn FG_UI "$PSScriptRoot\fg_ui.cs_6_0.hlsl"
 # Path Tracing SER's paths built as the compute ones: the general build and the one of one ray a texel.
 Dxc -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -Fh "$out\rt_path_ser.h" -Vn RT_PATH_SER "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
@@ -161,7 +168,7 @@ if (Test-Path "$nrd\_Bin\NRD.lib") {
 # Graphics, nothing without it.
 & "C:\Program Files\LLVM\bin\clang-cl.exe" /nologo -std:c++20 /O2 /MT /EHsc /DWIN32 /D_WINDOWS -DNOMINMAX `
   -D_ITERATOR_DEBUG_LEVEL=0 "-imsvc$root\include" "-imsvc$root\external\reshade" "-imsvc$root\external\DLSS\include" `
-  "-imsvc$root\external\Streamline\include" @nvapi_include @omm_include @fsr_include @xess_include @nrd_include "/I$out" `
+  "-imsvc$root\external\Streamline\include" @nvapi_include @omm_include @fsr_include @xess_include @nrd_include @recorder_include "/I$out" `
   "$PSScriptRoot\main.cpp" /Ferenodx-tw-dlaa64.exe /link /SUBSYSTEM:WINDOWS `
   "$root\external\DLSS\lib\Windows_x86_64\x64\nvsdk_ngx_s.lib" @nvapi_library @nrd_library d3d11.lib d3d12.lib dxgi.lib shell32.lib version.lib user32.lib advapi32.lib wintrust.lib crypt32.lib dbghelp.lib `
   delayimp.lib /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:d3d12.dll
