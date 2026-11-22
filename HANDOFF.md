@@ -469,13 +469,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stac ... | ?
 - gtb_ / gti_ (low): load-flake bounds in unchanged code - gated_build "both slots ... | ?
 - ATN (cleanup list): tools\tw\h0\selftest_check15 (empty folder, h0i_ 09:1x) + se ... | ?
-- c3i_ F1: session totals for the B1 safety counters (print when any fault counter ... | ?
-- c3i_ F2: a log line (Note() event kind) when the slot list grows on a worker (t4 ... | ?
 - ATN (morning report): add a B1L1-only volley pair to the end batch? ~7 min (L1-o ... | ?
 - T5 build step: write the real manifest.json with these rows / row_values / env ( ... | ?
 - ATN (morning report): with the load refresh, the gate hook's fix-now rule can fi ... | ?
 - ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its ow ... | ?
-- gtp_ (round 14, STARTED 09:4x): Section 8 text fixes (a)-(d) + kind() leading-re ... | ?
 - bridge owner (next bridge change): move the FG backend-name table to dlaa_bridge ... | ?
 - gtb_ (low, batched): busy_refresh `-1 <= age` (a read within 50 ms of a write is ... | ?
 - gti_ (low, batched): count r1b's skipped checks from the block instead of a type ... | ?
@@ -8870,10 +8867,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         log line (only the 3 watched words at :1415-1424). COORDINATOR: F1 + F2 -> c3i_ (small logging, engine-code
         rule: Sonnet High + Opus xHigh review); (c) timing starts stay without windows (timing purity); (b) a
         B1L1-only volley pair / picture compare = an ATN plan-time decision -> t4i_ estimates the minutes.
-        - [ ] c3i_ F1: session totals for the B1 safety counters (print when any fault counter > 0 outside a
+        - [x] c3i_ F1 (DONE 10:0x rmt_b1log 5ff6fa6d0, b13r_ reviews): session totals for the B1 safety counters (print when any fault counter > 0 outside a
             window, rate-limited, + a session total line on the next window / shutdown) - no per-frame print
             (t4i_ 09:1x).
-        - [ ] c3i_ F2: a log line (Note() event kind) when the slot list grows on a worker (t4i_ 09:1x).
+        - [x] c3i_ F2 (DONE 10:0x rmt_b1log, b13r_ reviews): a log line (Note() event kind) when the slot list grows on a worker (t4i_ 09:1x).
         - [ ] ATN (morning report): add a B1L1-only volley pair to the end batch? ~7 min (L1-only W3 start ~320 s,
             3 more shot pairs) or ~12 min (full 620 s, frame time vs REF-P too); no existing W3 start can take it
             (t4i_ 09:2x). An automated B1 picture compare is NOT possible today (shots on the add-on clock, not a
@@ -9064,7 +9061,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         gated_build seeds 163 before + after); by design one call can count real + seed while a set has < 10 real
         (fades). Low: kind() makes odd keys from a leading redirect (`sh 2>`, `sh tools/tw/2>`, `exe 2>/dev/null/...`).
         (4) 15 short seeds: no fix. -> gtp_ gets (a)-(d) + the redirect low together with gtw_'s re-check 13.
-        - [ ] gtp_ (round 14, STARTED 09:4x): Section 8 text fixes (a)-(d) + kind() leading-redirect keys (gpr_ 09:3x).
+        - [x] gtp_ (round 14, DONE 09:56 live): Section 8 text fixes (a)-(d) + kind() leading-redirect keys (gpr_ 09:3x).
         upr_ F1-F4 RE-CHECK = GO FOR THE GPU RE-RUN, 1 CHECK RULE (M1) 09:3x (plan_1117/upr_f1f4_recheck_handback.md;
         unified_pt_review.md "## F1-F4 re-check" line 1840; offline only): diffs vs backups\20261122_083624_f1f4;
         selftest 0 wrong (52 ok); both ps1 parse, param([switch]$DryRun) + path unchanged; helper paths at aede44281
@@ -9363,8 +9360,46 @@ heading text are in HANDOFF_ARCHIVE.md)
         fault event takes the 124 branch first (:277) = no settle, event not named; RC-N4 ABBA (new first in round
         2); RC-N5 (optional) stop after a second non-first-frame exit 1. -> lga_ FIXES RC-1 + RC-N1..N5; gtw_
         re-checks; then the ATN rule box.
-        Agents (5): lga_ (release_check RC-1 + nits), gtp_ (round 14), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1
-        + F2 logging, gated builds), gtv_ (gtl_ lows check)
+        c3i_ B1 LOGGING DONE 10:0x (render_mt/reports/c3i_b1log_handback.md; worktree .claude\worktrees\rmt_b1log from
+        atn-mods 37aa01136; local commits 5ff6fa6d0 effect_update.hpp + addon.cpp, 52dda24f9 tests 26h; not pushed):
+        F1 always-counted counters kept as session totals (hangs .. stage full + foreign hits + wake timeouts, the
+        last 2 were window-only, both rare slow-path); a present outside a window that finds a fault (hangs,
+        watched mismatches, census errors, late overflows, failed rounds, tag leaks, foreign hits) prints one line
+        of what was taken since the last line, <= 1 / s; by-design counts (spawn overflows, stage full, wake
+        timeouts) ride along + appear in totals; totals line after each trace window line + once at
+        effect_update::Detach() (addon.cpp, before engine_code::Uninstall). F2: a direct unit's later order points
+        never reach the handler (thunk fast path), so the slot-return-site check can't work -> the pool's capacity
+        word (+0xC) is watched with the other pool words; RefreshWatched at the end of a direct unit notes a
+        capacity change on a non-owner thread once as new event kind SLOT_GROWTH (site slot return, value = new
+        capacity); owner silent (game's normal growth); watched array 16 -> 20. New texts (for t4i_): warning
+        `[Total War] Parallel Effect Update (safety counts outside trace windows): <name> <n>, ...` (nonzero only,
+        counter order: wake timeouts, foreign hits, hangs, watched mismatches, census errors, late overflows,
+        failed rounds, spawn overflows, tag leaks, stage full; no period); info `... (session totals): wake
+        timeouts N, ... stage full N` (all 10, zeros too); warning `[Total War] Parallel Effect Update: slot list
+        growth on a worker (site slot return, thread <id>, value 0x<capacity hex>)`. Tests 26h (outside-window
+        fault line + rate limit + by-design silent + detach totals; window + totals; F2 function-level + fake
+        pools growing like the game's push); 6 mutants caught. FULL engine_code PASS; instance_fill /
+        draw_recording / _loop / _sites / -DrawRecording PASS; gated builds (-Owner c3i_) x86 twattila / twrome2 /
+        twthronesofbritannia / DRAW_RECORDING + amd64 twattila exit 0; diff --check clean. -> b13r_ REVIEWS (Opus
+        xHigh, engine-code rule); merge gate after H0 (no builds in the H0 window); then t4i_ probes the new lines.
+        gtp_ ROUND 14 LIVE 09:56, SHADOW (plan_1117/gtp_round14_handback.md; backups scratchpad\gtp_bak19; scripts
+        gtp_r14_*.py): mirror + live 782 / 782; 19 new tests fail on bak19 (control). R13-1 value flags skipped
+        per head (PS all 12 PS_VALUE; bash / sh `[-+][a-z]*o` + --rcfile / --init-file, leading + = flag; node /
+        bun / deno NODE_VALUE -r / --require / --import / --loader / --experimental-loader / --input-type /
+        --conditions + -C; python -X / -W) -> gtw_'s cases + `bash -euo pipefail -s` / `-` refused; data controls
+        pass (bash -euo pipefail x.sh, node -r x y.js, pwsh -wd C:/x -File y.ps1). R13-N1 package verbs with the
+        PKG_VALUE skip once per statement (bun --cwd app add / install refused, --cwd app run build passes).
+        gpr_'s low: redirect words dropped before the kind wherever they stand (bare > / 2> also drops the next
+        word); old gated_build filter + cmake redirect stop removed; no ring key had one (no re-key); 5 odd seed
+        rows gone after re-seed (105,240 seeds / 7,054 rows); not fixed: a leading `2>&1 cmd` still splits at &
+        (older). Section 8 (a)-(d) in (12 both places). Corpus 15,119: bak19 vs new both refuse 246 (price 79,
+        shell 101, override 39, files 28, pitfall 1), 0 changed. -> gtw_ + gpr_ RE-CHECK 14.
+        H0 RE-RUN STARTED 10:01:00 (stamp 20261122_100100; ATN's rule, background task b75092g2z): dry run 10:00:39
+        clean (GPU jobs / games 0, Committed 28.2 GB, 206 modes, estimate ~83 min = ends ~11:25-11:40); pre atn-mods
+        bc7a60d91, post 42c081bd6 (base c3ea4925f), harness pdi1_ FFD6BA42A8C5. No builds / harness-named
+        processes / GPU lock by agents until it ends (told gtl_, gtv_, gpr_, lga_, b13r_, gtw_).
+        Agents (6): lga_ (release_check RC-1 + nits), gtw_ (round 14 re-check), gpr_ (round 14 re-check), ebr_ (t4i_
+        option (a) re-check), b13r_ (c3i_ rmt_b1log review), gtv_ (gtl_ lows check); H0 run (background, ~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
