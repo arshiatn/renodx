@@ -8263,8 +8263,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         assert added. Sweep of other measured-window uses: none counts trace lines (PresentMon frames / replay
         window / A-B window are frame timing; probes per start; ebo_check / ebo_mapcmp / ebo_make already use [at,
         at + len)). -> ebr_ RE-CHECK STARTED.
-        Agents (7): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (gtl_ S5 re-check), gtw_ (gtp_ round 11
-        re-check + hg1), ebr_ (t4i_ r24 re-check), c3i_
+        gtw_ S1C RE-CHECK 11 = FIX 08:0x (plan_1117/gtw_s1c_recheck11_handback.md; gtw_s1c_review.md line 963):
+        suite 692 / 692; O2 OK (changed expectation right + stronger); hook side of corrupt files OK (only
+        gate_file() reads them); all 11 re-check-10 "still passes" now refused; corpus reproduced (0 of 15,119
+        differ, 299 both); Section 8 safe as a proposal, item 12 unchanged. MUST hg1 confirmed independently (bak15:
+        bad-byte cases SHADOW; live: all 4 killed; live + gpr_'s fix: all SHADOW, controls still killed; fix neutral
+        for the hook's own gates over 3,000 commands). While gates.tsv is unreadable every on/off row reads off.
+        Section 8 corrections: A's "catch" is wrong (watch already starts a gated_build clock only once the slot
+        is held: LOCK_HEADS + lock_holder() + Enter-GpuLock; selftest checks it -> A works today, gtb_ confirms
+        with one real wrapped build); prices.tsv has 0 watch rows (first 10 wrapped runs per kind = flags only);
+        B's `--agent $Owner` passes the readable tag, not the hook's 8-hex agent tag; kind() keeps only the first
+        --target word (1-target / 3-target / addon32 builds share one price) -> fix kind() + re-seed. Nits: new
+        false refusal `self.fetch(` in Python (0 corpus); still passing `cat | tee x | python -`, `uv run
+        --with-requirements`, `bunx`; one FAULT row per hook process (gate_errors can grow by thousands a day);
+        inner_commands fault row labelled "block rows"; add a watch end-to-end test. gtw_ slip: briefly copied
+        web_allow.proposed.tsv into gtp_bak15, removed after a byte-compare. -> gtp_ ROUND 12 STARTED (hg1 + reason
+        text + watch e2e test + Section 8 corrections + kind() --target + re-seed + nits); gtb_ STARTED (one real
+        wrapped gated build to confirm A + hg2).
+        Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (gtl_ S5 re-check), gtp_ (round 12: hg1 +
+        Section 8 + kind()), gtb_ (wrapped build check + hg2), ebr_ (t4i_ r24 re-check), c3i_
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
