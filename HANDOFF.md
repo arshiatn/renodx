@@ -511,6 +511,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - test/tw_cluster_rewrite (owner?): a Map-marks-nothing case + its run.ps1 builds ... | ?
 - Tales alpha factor: trace check first (masked materials with cb1[N].c != 1); if ... | ?
 - ATN-approved delete later: g19_'s source copies testbin\scratch\g19_\base (74 MB ... | ?
+- ebr_ reviews the refresh (sent 20:3x) -> t4i_ fixes; later deltas: b3s_ S6 (row ... | ?
+- Tales sun shadows = darker of maps and rays (dlss_graphics.hpp:3036): replace af ... | ?
+- Rome Remastered rays multiply the cascades (addon.cpp:2055): battle trace FrameT ... | ?
+- gtp_ (between builds): gated_build.ps1 vswhere -requires VC.Tools + exit 4 (slot ... | ?
+- g14_ (with g14r_ fixes): ao-gi.md rule 6 (rays_replace_ao false no longer stacks ... | ?
+- later: fold the three "Skip the Game's Reflection Passes" rows into one graphics ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11610,6 +11616,37 @@ heading text are in HANDOFF_ARCHIVE.md)
         base. No CMake Ryse build (the dump links addon.cpp with clang-cl). MERGE ORDER: ho_g08 -> ho_g19 -> ho_g19_ryse.
         - [ ] ATN-approved delete later: g19_'s source copies testbin\scratch\g19_\base (74 MB), base_ry (74 MB),
         base_ry.tar (66 MB) (not reference runs; on ATN's yes, with the delete-list care).
+        t4i_ REFRESH DONE 20:3x (render_mt/reports/t4i_refresh_handback.md): run_all green (test_lib 551, names 5, make
+        107, check 166, leg 166, analyze 136; testbin\scratch\t4i_\t4i_refresh_runall3.txt); backups scratchpad\t4i_bak\
+        refresh. B3b kept: row AnimationRowsWorkers 0/1/2 + env RENODX_TW_ANIMATION_SCHEDULE (needs_row: a frozen build
+        without the row = one PROBLEM, B3b dropped); new start VOL-L1 (W3, L1 alone, ~320 s, 3 shot pairs); R1 / R2 names;
+        C = the 4 DrawRecording group rows; Ccheck + X1 out; FILL_CHECK start-only; new gates for lg3_'s texts + a missing
+        LATCH fill_sites_stood_down; draws / c_render_us dropped with NOTE fallbacks (bestKC = 4 is an estimate);
+        test_names.ps1 greps 130 names in atn-mods + heapfix. COORD decided its 2 questions: NO extra full-W3 bulk Check
+        start (bulk = env only); YES one paused B3b-alone vs OFF shot pair inside an existing start (no new start).
+        - [ ] ebr_ reviews the refresh (sent 20:3x) -> t4i_ fixes; later deltas: b3s_ S6 (row values, Check form,
+        b3b_mismatch + applied line), lg3_'s fix texts (M1 / N3 / N4 / M4a), overrides.json _parts_off still names X1.
+        g17_ DONE 20:3x (handoff_plan/handbacks/g17_done_handback.md; reports in handoff_plan/reports/g17_*.md): read only.
+        (1) Replace re-audit: since 04cb0dd5c rays_replace_ao false no longer stacks (memory fixed); rays_multiply_maps
+        still stacks in Rome II / Rome Remastered / Tales / Expeditions. (2) Troy / Pharaoh height pyramid Design A (26
+        dispatches out instead of 22) -> g03_. (3) Skips parity census plan (P0 skips.tsv + skip: ledger rows -> g13_;
+        order: Skip the Shadow Maps on where every reader takes the rays, Rome II CPU set, cost-only passes, reach, Attila
+        Experimental CPU rows after ATN's stress test, 64-bit ports after both plans). (4) vswhere: VsDevCmd's bare
+        vswhere.exe is not found with NoDefaultCurrentDirectoryInExePath=1 (cosmetic, VSCMD_VER 17.0); real gap: an empty
+        $vsRoot lets cmake run without the dev shell. COORD: ATN's 11-16 rule (ours replaces, never stack) answers g17_'s
+        two questions: Troy's far map is replaced like Pharaoh (g03_, look-risk numbers for ATN's eye); Tales sun min stays
+        until a replace proof (like Expeditions #37). Sent: g03_ (Design A + Troy far map), g01_ (sun_replace_maps.hpp:8
+        comment, A4 trace line), g02_ (WH2 README:57), g13_ (skips.tsv P0).
+        - [ ] Tales sun shadows = darker of maps and rays (dlss_graphics.hpp:3036): replace after a proof (G09, no code now).
+        - [ ] Rome Remastered rays multiply the cascades (addon.cpp:2055): battle trace FrameTraceReads=1 (coord, in-game
+        batch) then G04 replaces.
+        - [ ] gtp_ (between builds): gated_build.ps1 vswhere -requires VC.Tools + exit 4 (slot freed in finally) when no VS
+        / no VCToolsInstallDir + header comment; no new parameters (gate_hook keys stay); dry-run test.
+        - [ ] g14_ (with g14r_ fixes): ao-gi.md rule 6 (rays_replace_ao false no longer stacks) + rows 65-66 (Pharaoh AO
+        in place, maps replaced); maybe a generic pass_readers.py.
+        - [ ] later: fold the three "Skip the Game's Reflection Passes" rows into one graphics_page binding if identical
+        (G19 + G02 + render_mt for WH3); render_mt wave 3: WH3's 23 dispatches before the march (0ED84C3D) + WH3 Skip
+        the Shadow Maps readers; A4 box: Rome II one method done in code (close with g01_'s trace line).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
