@@ -499,10 +499,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
 - gtl_: re-run s3c_jobs.py on the merged recorder build testbin\scratch\coord_\hel ... | ?
 - grs_: dead outputs (a) resident log_uses + (d) store-skipping stem builder + (3) ... | ?
-- gti_: dead outputs (c) dead_outputs.py with DXIL reflection, planted-fake proof ... | ?
 - gtv_ / gtb_: judge S3c sheet items 10 (strict second loop) + 11 (kept R1 residen ... | ?
 - ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job fi ... | ?
 - coord: real all_modes run (ATN's rule) after gtv_'s load run; then S3c part 1 (c ... | ?
+- review (Opus xHigh): grs_dead_uses + dead_outputs.py together, after grs_'s hand ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10310,7 +10310,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         RENODX_TW_RECORDER_BUILD=1) -> 0 refused; then items 2 / 5 / 6 / 7 / 8 + 1b in a stage copy (coord 14:3x).
         - [ ] grs_: dead outputs (a) resident log_uses + (d) store-skipping stem builder + (3) reset time in the answer
         (recorder-only; branch from atn-mods; ans / cmd schema parts as .proposed) (coord 14:3x).
-        - [ ] gti_: dead outputs (c) dead_outputs.py with DXIL reflection, planted-fake proof (M10) (coord 14:3x).
+        - [x] gti_ (DONE 14:48, review after grs_'s log format): dead outputs (c) dead_outputs.py with DXIL reflection, planted-fake proof (M10) (coord 14:3x).
         - [ ] gtv_ / gtb_: judge S3c sheet items 10 (strict second loop) + 11 (kept R1 resident during rotation) (coord
         14:3x).
         - [ ] ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job field, reset time in answer,
@@ -10326,8 +10326,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         206 x 2, ~36 min est); offline test ok (offline\20261122_142719_allmodes: census / checks / dumps PASS, m6 FAIL 8 of
         1469 undrawn_gone as planted, repeat OPEN as planted; 12.4 min vs 2 min = machine busy). ALL_MODES = GO (upr_).
         - [ ] coord: real all_modes run (ATN's rule) after gtv_'s load run; then S3c part 1 (coord 14:4x).
-        Agents (5): gtp_ (gate round 19), gtv_ (lab load run), gtl_ (stage items), grs_ (dead-output resident parts), gti_
-        (dead_outputs.py); GPU order: gtv_ load run -> all_modes run (coord, ~40-45 min) -> S3c part 1 (coord, gpu_lab.ps1
+        gti_ DEAD OUTPUTS 14:48 (plan_1117/gti_dead_outputs_handback.md; tool tools\tw\lab\dead_outputs.py, test testbin\
+        scratch\gti_\test_dead_outputs.py 17 / 17; offline): --log uses.tsv --dxil <dirs> [--external] [--all] [--json];
+        stem dump = <stem>.txt / .dxil / .cso / .h (ns_header_bin + dxc -dumpbin); follows createHandle /
+        createHandleFromBinding / annotateHandle / phi / select; written = stores + atomics + copy_dst / clear; read = other
+        dx.op (not getDimensions) + copy_src; unplaceable handle -> earlier writes UNDECIDED; DEAD = not read later same
+        frame / next frame / not external; last frame UNDECIDED; bound-never-stored UAV = NOT WRITTEN note; stem without
+        DXIL = all bound read. M10 proof: planted DEAD, history LIVE, bound UAV note; real stems rt_reflect_filter + rt_trace_omm
+        (cs_6_9) place every handle. OPEN: (1) log format ASSUMED TSV `frame span stem kind slot resource` (kind uav / srv /
+        copy_src / copy_dst / clear / external; slot u15:0), only ReadLog parses it; (2) log must list external resources
+        (shared textures, presented, dumped, read back); (3) stem name = stem actually used (swaps); (4) conservative:
+        atomic = read, same-span read counts, cbuffer-gated store = written; (5) SER library out of v1.
+        - [ ] review (Opus xHigh): grs_dead_uses + dead_outputs.py together, after grs_'s hand-back (coord 14:48).
+        Agents (4): gtp_ (gate round 19), gtv_ (lab load run), gtl_ (stage items), grs_ (dead-output resident parts, has
+        gti_'s format); GPU order: gtv_ load run -> all_modes run (coord, ~40-45 min) -> S3c part 1 (coord, gpu_lab.ps1
         per s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
