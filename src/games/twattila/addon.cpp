@@ -1362,7 +1362,7 @@ const bool worker_trace_env = (GetEnvironmentVariableA("RENODX_TW_WORKER_TRACE",
 // A bench's RENODX_TW_COUNT_CHECK (set at all), read again when the env generation changes: Cached Particle Count also runs the game's
 // sum on every call and compares it with its cache; never a player's.
 bool particle_count_check_env = false;
-uint32_t particle_count_check_generation = ~0u;
+uint32_t worker_env_read_generation = ~0u;
 // Where the game's own threads start (the job workers in the engine's DLL); the rest is the driver's, audio's, etc.
 constexpr std::array<const wchar_t*, 2> GAME_THREAD_MODULES = {nullptr, L"empire.retail.dll"};
 // Faster Emitter Prefetch (Experimental, off): engine_code.hpp's emitter update loop site, a row of its own so that a bench
@@ -1676,8 +1676,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   twattila::draw_recording::CloseFoldAtPresent();
 #endif
   const uint32_t env_generation = worker_env_generation.load(std::memory_order_relaxed);
-  if (env_generation != particle_count_check_generation) {
-    particle_count_check_generation = env_generation;
+  if (env_generation != worker_env_read_generation) {
+    worker_env_read_generation = env_generation;
     particle_count_check_env = (GetEnvironmentVariableA("RENODX_TW_COUNT_CHECK", nullptr, 0) != 0);
     animation_check_env = (GetEnvironmentVariableA("RENODX_TW_ANIMATION_CHECK", nullptr, 0) != 0);
   }
