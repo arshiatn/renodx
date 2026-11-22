@@ -7485,11 +7485,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         skipped, test_report_check 9 OK. Needs gtl_: lab.py must WRITE the resident's dred into every arm of
         result.json / iq.json and the iq reference (check_played holds it) -> added to gtl_'s v1.1. Old calibrations
         stay unknown (flags until re-calibrated). -> gpr_ re-checks with y1 / y2 / z.
-        Agents (7): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtw_ (gtp_ re-check 8), gtv_ (grs_ N1 nits
-        re-check), gtl_ (S1b tests, then v1.1 + dred writes), gpr_ (gti_ ns_busy, then gtb_ y1 / y2 / z + dred).
-        Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, ebr_, t4i_ (r21 after
-        b13r_), gtq_, gbc_, gti_ (waits gpr_), gtb_ (waits gpr_), grs_ (waits gtv_), gtk_, gtp_ (waits gtw_). GPU:
-        free (H0 stopped); harness-named fakes allowed until I announce the H0 re-run (checked empty).
+        gtv_ N1 NITS RE-CHECK = MERGE-READY (pending the GPU check) 05:3x (plan_1117/gtv_n1_nits_recheck_handback.md):
+        BelowFrameLimit right (rt_serve.h:914, covers the cache's frame + 1), run / moments checked before any reset,
+        dump already bounded; UploadRecorded's reason kept; ParseFlags exits 1 before the Resident is built; tests 0
+        failures, rows SAME, G4 new4 = aligned4 (+2 lines -> 99 .text bytes), 52 / 52 headers. Leftovers -> grs_ now:
+        1 `trace` (Nsight only) plays without the frame-limit check, and a reset that becomes a full reload may settle
+        up to 5 loops (check allows 1); 2 ParseFlags' path(flag).string() throws on a non-ANSI flag (crash, not exit
+        1) -> use CheckEnvironment's UTF-8 conversion. Then gtv_ re-checks; gpu_s2 merges after H0's re-run + ATN's
+        GPU check go.
+        Agents (7): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtw_ (gtp_ re-check 8), grs_ (N1 leftovers 1-2),
+        gtl_ (S1b tests, then v1.1 + dred writes), gpr_ (gti_ ns_busy, then gtb_ y1 / y2 / z + dred). Idle: bd1r_,
+        lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, ebr_, t4i_ (r21 after b13r_), gtq_,
+        gbc_, gti_ (waits gpr_), gtb_ (waits gpr_), gtv_ (waits grs_ / gtl_), gtk_, gtp_ (waits gtw_). GPU: free (H0
+        stopped); harness-named fakes allowed until I announce the H0 re-run (checked empty).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
