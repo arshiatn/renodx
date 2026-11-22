@@ -6750,7 +6750,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         ac, Tee-Object, -Path:, robocopy) -> gtp_ RESUMED with gtw_'s tested prototype (49 / 50) + robocopy, T1 (its
         test ran the REAL gate_override.ps1 in a copied tree), INSTALL item 3 + line 6 texts. STRAY FILES from that
         mistake: tools\tw\gates\override.json (warn spec+cxx until 04:14, 'by arshi') + gates_log.tsv (1 row) ->
-        [ ] ATN: may they be deleted? (no hook installed, nothing gated).
+        [x] ATN 02:3x: YES -> both DELETED 02:32 by the coordinator (checked: plain files, not links).
+        ATN 02:3x: NO in-game / Nsight / GPU timing runs yet (not shortly). Never pause busy agents for a GPU window
+        (their 5-min caches expire -> each re-writes 100-380k tokens on resume); held windows only in a natural gap,
+        ATN asked first.
         ATN 02:2x: (1) web only for papers etc. (no reddit / forums); (2) 'why don't we price everything?' -> gpp_
         (a9e29c4790d1b18aa, Opus xHigh) STARTED 02:2x: design plan_1117/designs/gpp_price_web_design.md (web domain
         allow-list for WebSearch / WebFetch / shell downloads; a price + stop for every tool call, agents' budgets).
