@@ -487,7 +487,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_ (tooling): the lab fixture's 1.5 s hang timeout flakes under build load ("r ... | ?
 - worktree cleanup (ATN): grs_'s worktree build\downloads_min (6 junctions - links ... | ?
 - grs_ (after rec_verify): fg_proxy_d3d12.hpp Presented() comment -> fcr_'s exact ... | ?
-- t4i_: copy ebr_'s scenarios A / B / D (scratchpad\ebr_pr_scen) into test_analyze ... | ?
 - gtp_: R16-1 (here-string key + seed() strips tabs / newlines; clean the 11 broke ... | ?
 - gpr_: re-check round 14's exe moves (tools/ + scratch exe keys) with production ... | ?
 - coordinator: H0 re-run after gtv_'s keeper runs end (no lab fixture / keeper tes ... | ?
@@ -495,6 +494,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ round 17: gtw-R16-1..10 (Should first: R16-5, R16-6, R16-1, R16-2 perl, R16 ... | ?
 - c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate le ... | ?
 - gtl_: lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap ... | ?
+- coordinator: read the last two lines of testbin\scratch\ebr_\ebr_gap_runall.txt ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9871,7 +9871,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         that line is lost), T14 (only outside lines -> no entry) pass test_analyze; ebr_'s scenarios A, B, D catch them
         (today's code right). Nit: "tag leaks 1 (session total 0)" after a later outside line -> "(last session total
         0, printed before this line)".
-        - [ ] t4i_: copy ebr_'s scenarios A / B / D (scratchpad\ebr_pr_scen) into test_analyze (kill T10 / T13 / T14) +
+        - [x] t4i_ (DONE 11:5x, ebr_ OK 12:13): copy ebr_'s scenarios A / B / D (scratchpad\ebr_pr_scen) into test_analyze (kill T10 / T13 / T14) +
             the NOTE wording; ebr_ re-checks (ebr_ 11:31).
         c3i_ B1LOG VERIFY = ALL GREEN 11:36 (render_mt/reports/c3i_b1log_verify_handback.md; a03911fde clean tree, diff
         --check clean): FULL engine_code x86 EXIT 0 PASS (scratchpad\c3i_log_full.txt, 11:36); instance_fill,
@@ -9992,8 +9992,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtl_: lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap test nit (:156) + the 11.2 s
             keeper-start deadline under load + lab fakes named like the harness (H0 stop); NO lab / keeper / fixture runs
             until the coordinator says H0 is done; gtv_ re-checks (gtv_ 12:08).
-        Agents (3): gtp_ (round 17: gpr's R16-1 / R16-2 + gtw-R16-1..10), ebr_ (t4i_ analyze gap re-check), gtl_ (lab.py
-        wait_ready + test fixes, edits only until H0 ends); H0 re-run NOW (12:09); ff_s12 + grs_xess_guard after H0
+        ebr_ GAP RE-CHECK = t4i_'s FIX RIGHT, ACCEPTED 12:13 (render_mt/reports/ebr_gap_recheck_handback.md; files in
+        testbin\scratch\ebr_): scenarios A / B / D / E / F copied exactly (same lines, times, totals; expectations same or
+        stricter, full NOTE lists); ebo_analyze diff vs t4i_bak\gap = 3 small changes (late reset per start + cleared at
+        each totals line, after_totals = sorted(late) or [], NOTE order "no line" / "last session total N, printed before
+        this line" / "session total N"); counts, classes, totals-only rule, gate sums unchanged. Own wording cases W1-W7
+        on the real bench 14/14. 27 mutants: control lib 495, analyze 132, scen 14; gap mutants W1-W3, W5-W7 die; T10 /
+        T13 / T14 now die in test_analyze (130 / 131 / 131); T1-T6, T8, T9, T11, T12, T15, P1-P3, P5, P6 die; T7 equivalent.
+        ebr_'s run_all (still running at hand-back): parse 0, lib 495, make 97, check 166 so far (t4i_'s run: leg 166,
+        analyze 132).
+        - [ ] coordinator: read the last two lines of testbin\scratch\ebr_\ebr_gap_runall.txt (leg 166, analyze 132)
+            (coord 12:13).
+        Agents (2): gtp_ (round 17: gpr's R16-1 / R16-2 + gtw-R16-1..10), gtl_ (lab.py wait_ready + test fixes, edits
+        only until H0 ends); H0 re-run NOW (12:09); ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
