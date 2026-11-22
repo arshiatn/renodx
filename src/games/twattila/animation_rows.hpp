@@ -153,6 +153,9 @@ struct Controls {
   uint32_t allocate_delay_ms = 0;
   // Streaming: a scatter claim pauses this many times between its check and its CAS (S-3: it still never scatters a block that is not published).
   uint32_t claim_gap_spins = 0;
+  // A hook the render thread runs after each block it allocated (and published or scattered): the re-entry test calls Dispatch from it.
+  void (*after_block)(uint32_t block, void* context) = nullptr;
+  void* after_block_context = nullptr;
   // Streaming: a scatter unit takes a gathered block before B has published it (stale texel words); it may also hang the call, so a test
   // gives it a timeout.
   bool scatter_ignores_publish = false;
@@ -214,6 +217,10 @@ struct LastCall {
   uint32_t workers = 0;  // asked for
   bool ordered = false;  // a texel of 0xFFFFFFFF switched the scatter to item order
   bool streaming = false;
+#if defined(TWATTILA_WORKER_CONTROLS)
+  uint32_t gathered_items = 0;   // the items phase A read in the call
+  uint32_t gathered_blocks = 0;  // the blocks phase A started (a block cut short by B's stop counts)
+#endif
 };
 static LastCall last_call;
 
@@ -277,6 +284,11 @@ struct Call {
   alignas(64) std::atomic<uint32_t> scatter_limit = ~0u;
   // Scatter units finished (the blocks before scatter_limit).
   alignas(64) std::atomic<uint32_t> parallel_done = 0;
+#if defined(TWATTILA_WORKER_CONTROLS)
+  // Test counters (LastCall): what phase A read.
+  alignas(64) std::atomic<uint32_t> gathered_items = 0;
+  alignas(64) std::atomic<uint32_t> gathered_blocks = 0;
+#endif
 };
 
 // The next unit of the open phase: NONE when there is none now (or the CAS lost), DONE when the call is over.
@@ -313,7 +325,13 @@ inline bool Gather(Call* call, uint32_t block) {
   }
 #endif
   for (uint32_t i = 0; i < count; ++i) {
-    if ((i & 63) == 0 && call->stopped.load(std::memory_order_relaxed)) return false;
+    if ((i & 63) == 0 && call->stopped.load(std::memory_order_relaxed)) {
+#if defined(TWATTILA_WORKER_CONTROLS)
+      call->gathered_items.fetch_add(i, std::memory_order_relaxed);
+      call->gathered_blocks.fetch_add(1, std::memory_order_relaxed);
+#endif
+      return false;
+    }
     const uint32_t item_index = first + i;
     // Two levels ahead: the instance's line holding +0x60 and +0x70 for the item 16 on; the animation's lines for the item 8 on.
     if (item_index + 16 < call->total) {
@@ -342,6 +360,10 @@ inline bool Gather(Call* call, uint32_t block) {
       call->captures[item_index].old_texel = std::atomic_ref<uint32_t>(Word(item.instance, 0xA4)).load(std::memory_order_relaxed);
     }
   }
+#if defined(TWATTILA_WORKER_CONTROLS)
+  call->gathered_items.fetch_add(count, std::memory_order_relaxed);
+  call->gathered_blocks.fetch_add(1, std::memory_order_relaxed);
+#endif
   slot.gathered.store(block + 1, std::memory_order_release);
   return true;
 }
@@ -771,6 +793,11 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
         }
 #endif
         allocate(chosen);
+#if defined(TWATTILA_WORKER_CONTROLS)
+        if (controls.after_block != nullptr) {
+          controls.after_block(chosen, controls.after_block_context);
+        }
+#endif
       }
       if (!scatter_first) {
         call.finished_items = finished;
@@ -823,6 +850,11 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       } else if (ordered_from == ~0u && !stopped) {
         call.b_items.store(finished, std::memory_order_release);
       }
+#if defined(TWATTILA_WORKER_CONTROLS)
+      if (controls.after_block != nullptr) {
+        controls.after_block(block, controls.after_block_context);
+      }
+#endif
     }
     call.stop_items = finished;
     call.stopped.store(true, std::memory_order_release);
@@ -851,6 +883,10 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   paths[static_cast<size_t>(Path::OURS)].fetch_add(1, std::memory_order_relaxed);
   last_items = finished;
   last_call = {.items = finished, .records = records[1], .rounds = rounds, .workers = workers, .ordered = (ordered_from != ~0u), .streaming = call.streaming};
+#if defined(TWATTILA_WORKER_CONTROLS)
+  last_call.gathered_items = call.gathered_items.load(std::memory_order_relaxed);
+  last_call.gathered_blocks = call.gathered_blocks.load(std::memory_order_relaxed);
+#endif
   const uint32_t stop_at = first + finished;
   *row = stop_at;
   TraceCall* trace = nullptr;
