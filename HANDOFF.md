@@ -479,7 +479,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (morning report): ruse_bridge.exe / ruse_replay.exe are counted by nothing i ... | ?
 - gtl_ (low, after H0 - the fixture suite starts lab jobs): make the gate_s check ... | ?
 - x87c A/B owner (after the end batch): run tools\tw\testbin\heapfix_hf\xw\x87fix_ ... | ?
-- gtp_ (low, batched): a leading `2>&1 cmd` still splits at & into a light stateme ... | ?
+- gtp_ (low, in round 15 = R14-1): a leading `2>&1 cmd` still splits at & into a l ... | ?
+- ATN (morning report, info + yes / no): the gate hook suite's `fix` group (155 te ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9427,10 +9428,33 @@ heading text are in HANDOFF_ARCHIVE.md)
         consistent (the refused kind has no call in the newest 15,119).
         - [ ] x87c A/B owner (after the end batch): run tools\tw\testbin\heapfix_hf\xw\x87fix_test.exe under
             lab watch (its kind now crosses refusal (a): n 10, p95 182 s) (gpr_ 10:0x).
-        - [ ] gtp_ (low, batched): a leading `2>&1 cmd` still splits at & into a light statement `1 ...` (a
+        - [ ] gtp_ (low, in round 15 = R14-1): a leading `2>&1 cmd` still splits at & into a light statement `1 ...` (a
             leading `2>&1 cmake` keys as 'sh 1', build unseen) (gtp_ / gpr_ 10:0x).
-        Agents (4): lga_ (release_check RC-1 + nits), gtw_ (round 14 re-check), ebr_ (t4i_ option (a) re-check), b13r_
-        (c3i_ rmt_b1log review); H0 run (background, ~11:30)
+        gtw_ RE-CHECK 14 = OK, 2 OLDER SHOULDS + 2 NITS 10:1x (plan_1117/gtw_recheck14_handback.md; gtw_s1c_review.md
+        "## S1c re-check 14" line 1426; scripts scratchpad\gtw_r14_*): R13-1 closed (21 value-flag cases refused
+        live; data controls pass incl. git commit -F -, cat > x.py); R13-N1 closed (+ `bun -c bunfig.toml add`
+        refused); redirect filter: corpus 246 / 246, 0 changed, 57 new kind keys none changes a refusal; nothing
+        refused before passes; `2>/dev/null gated_build` / cmake now keyed (gain); re-seed lossless (115 gone rows
+        were seeds moved to new aN keys), amd64 build still refused. Suite 627 / 627 by group; the `fix` group
+        (155) skipped: its T1 runs a SANDBOX COPY of gate_override.ps1 (gtw_'s rule: no override script in any
+        form); gtw_'s earlier full runs (r12 / r13) did include it and it wrote only override.json + gates_log.tsv
+        inside the suite's own sandbox. R14-1 (Should, older): lead_words (gate_hook.py:1089-1105) keeps redirect
+        words and STATEMENT :588 / WEB_STATEMENT :877 split at the & of >& -> a leading redirect hides the head:
+        `2>/dev/null curl https://evil...`, `2>&1 curl`, `>/dev/null 2>&1 curl`, `2> e.log curl`, `< in.txt curl`,
+        `2>/dev/null pip install`, `2>&1 pip install`, `2>/dev/null bash <<EOF` (curl), `cat <<EOF | 2>/dev/null
+        bash`, `2>/dev/null python - <<EOF` (urlopen) pass in r13 + live (NET_CODE / pitfall / override text
+        gates still refuse) -> kind()'s redirect loop (:726-731) in lead_words + no split at N>&M / &> (also closes
+        the `2>&1 cmd` low). R14-2 (Should, since r13, :1131): PowerShell accepts flag prefixes, the R13-1 check
+        matches PS_VALUE exactly -> `powershell -exec bypass -Command - <<EOF`, `-NoP -Exec Bypass`, `pwsh -ex
+        bypass -c -`, `-WindowS Hidden`, `pwsh -w hidden` pass (r12 refused) -> take a value when any(v.startswith(a)
+        for v in PS_VALUE) after the code-flag test, + pwsh -w. Nits: R14-N1 bash clusters with s (`bash -es a b
+        <<EOF`, `bash -xs -- a`) pass; R14-N2 (older) `bun --cwd app run - <<EOF`, `deno run --config x` / `-c x -
+        <<EOF` pass. -> gtp_ ROUND 15 (R14-1 + R14-2 + N1 + N2).
+        - [ ] ATN (morning report, info + yes / no): the gate hook suite's `fix` group (155 tests) runs a sandbox
+            copy of gate_override.ps1 inside its own sandbox (writes only the sandbox's override.json +
+            gates_log.tsv); gtw_ skips it under "no override script in any form". OK for test sandboxes? (gtw_ 10:1x)
+        Agents (4): lga_ (release_check RC-1 + nits), gtp_ (round 15), ebr_ (t4i_ option (a) re-check), b13r_ (c3i_
+        rmt_b1log review); H0 run (background, ~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
