@@ -8,6 +8,8 @@ $root = Resolve-Path "$PSScriptRoot\..\..\..\.."
 $out = if ($args.Count -gt 0) { $args[0] } else { Join-Path $root "build\tw_dlaa_helper" }
 New-Item -ItemType Directory -Force $out | Out-Null
 Set-Location $out
+# Any failed step ends the script with exit 1 (a failed -ErrorAction Stop copy alone would only end its statement).
+trap { break }
 # The old exe goes first: a failed build (a shader's or the helper's) leaves none and fails the script.
 Remove-Item "$out\renodx-tw-dlaa64.exe" -ErrorAction SilentlyContinue
 if (Test-Path "$out\renodx-tw-dlaa64.exe") { throw "$out\renodx-tw-dlaa64.exe could not be deleted (still running?)" }
@@ -116,7 +118,7 @@ $omm = Join-Path $root "build\downloads\omm\extracted"
 $omm_include = @()
 if (Test-Path "$omm\include\omm.h") {
   $omm_include = @("-imsvc$omm\include")
-  Copy-Item "$omm\bin\omm-lib.dll" $out -Force
+  Copy-Item "$omm\bin\omm-lib.dll" $out -Force -ErrorAction Stop
 }
 # AMD's FSR SDK (github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK: tag v2.4.0) when it sits in build\downloads\fsr\extracted:
 # loaded at run time, its DLLs next to the helper (else none: the helper builds without it). Its Kits\FidelityFX\docs\license.md
@@ -126,7 +128,7 @@ $fsr = Join-Path $root "build\downloads\fsr\extracted\FidelityFX-SDK-2.4.0\Kits\
 $fsr_include = @()
 if (Test-Path "$fsr\api\include\ffx_api.h") {
   $fsr_include = @("-imsvc$fsr\api\include", "-imsvc$fsr\upscalers\include", "-imsvc$fsr\framegeneration\include")
-  Copy-Item "$fsr\signedbin\amd_fidelityfx_loader_dx12.dll", "$fsr\signedbin\amd_fidelityfx_upscaler_dx12.dll", "$fsr\signedbin\amd_fidelityfx_framegeneration_dx12.dll" $out -Force
+  Copy-Item "$fsr\signedbin\amd_fidelityfx_loader_dx12.dll", "$fsr\signedbin\amd_fidelityfx_upscaler_dx12.dll", "$fsr\signedbin\amd_fidelityfx_framegeneration_dx12.dll" $out -Force -ErrorAction Stop
 }
 # Intel's XeSS SDK (Intel Simplified Software License, github.com/intel/xess: its 3.0.2 release) when it sits in
 # build\downloads\xess\extracted: loaded at run time, its libxess.dll, libxess_fg.dll and libxell.dll next to the helper.
@@ -134,7 +136,7 @@ $xess = Join-Path $root "build\downloads\xess\extracted"
 $xess_include = @()
 if (Test-Path "$xess\inc\xess\xess_d3d12.h") {
   $xess_include = @("-imsvc$xess\inc")
-  Copy-Item "$xess\bin\libxess.dll", "$xess\bin\libxess_fg.dll", "$xess\bin\libxell.dll" $out -Force
+  Copy-Item "$xess\bin\libxess.dll", "$xess\bin\libxess_fg.dll", "$xess\bin\libxell.dll" $out -Force -ErrorAction Stop
 }
 # NVIDIA's NRD (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/NRD: tag v4.18.0, source only) for the Denoiser setting when it
 # sits built in build\downloads\nrd\NRD: git clone --recursive --branch v4.18.0, then cmake -S . -B _Build -G Ninja
