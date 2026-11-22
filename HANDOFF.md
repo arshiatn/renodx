@@ -563,7 +563,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gti_: dead_outputs.py reports "no store (null view)" for such rows instead of un ... | ?
 - gtl_ optional Low items (later stage): L1 Toolhelp snapshot keeps only the asked ... | ?
 - g05_ fixes (new commits on ho_g05): one full run of the final ru_scene_patches.p ... | ?
-- g01_ fixes -> rvd_ re-check -> merge ho_g01 (wave 1). - [ ] g04_ fixes -> rvd_ r ... | ?
 - Rome II trace (g01_ writes the request): proves the Replace route, then RAYS_REP ... | ?
 - g03_ / g06_ / g13_ fixes -> rve_ re-check. Order: G13 (with / after G14) ; G06 ; ... | ?
 - G13 land (coord, ONE commit): skips.tsv never before the ledgers' skip: lines; p ... | ?
@@ -585,6 +584,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - engine_code owner, later hardening: N1 push rel32 check next to FILL_HEAD (same ... | ?
 - NITs for later: `allocate` lambda with one call site; "C lag" prints 0 for bulk ... | ?
 - next Tales trace: one frame of CombineLUTs cb0 (ps 0x876F0F03) for the Tales V35 ... | ?
+- Rome II trace (g01_'s request, handbacks/g01_fixes_handback.md): RT sun shadows ... | ?
+- Rome II baked far map replaced too ("ours replaces the game's"; rvd_ MI3, coord' ... | ?
+- DRY (g01_ MI8): the rows-default loop copied again in twrome2/addon.cpp (psycho3 ... | ?
+- merge set (after rvf_ re-checks): ho_g21 (+ M1) + ho_g02 (+ M1 / M2) + g10_'s Te ... | ?
+- T6: test_names with `-Ref <frozen> -Waiting @()` (B3b WAITING lines go away afte ... | ?
+- battle-start memory line (g16_ memory=1): needs an anchor; the add-on could log ... | ?
+- g03_ next round: Design A's 8-case CPU decision test + WARP bit-equal test, then ... | ?
+- Pharaoh Dust Shadows slider (ATN 20) BLOCKED on a trace: one desert battle with ... | ?
+- Troy far-field check (rvc_ m3): battle on a hilly map, camera high + far, sun fr ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -11988,7 +11996,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         and ho_g21 >= 7d31e5fef, then build both games; 9 MINOR -> g04_); G01 fixes first, then wave 1 BEFORE ho_g03
         (MA1 RAYS_REPLACE_MAPS 1 -> 0 until the Rome II trace, MI1 build Rome II addon32 + WH2 / Troy / Pharaoh, MI2 baked slot
         == sampler slot guard, MI3 ATN question baked far map under rays -> g01_).
-        - [ ] g01_ fixes -> rvd_ re-check -> merge ho_g01 (wave 1). - [ ] g04_ fixes -> rvd_ re-check.
+        - [x] g01_ fixes -> rvd_ re-check -> merge ho_g01 (wave 1) -> MERGED 05b0fb6ae 22:1x. - [ ] g04_ fixes -> rvd_ re-check.
         - [ ] Rome II trace (g01_ writes the request): proves the Replace route, then RAYS_REPLACE_MAPS back to 1.
         rve_ REVIEWS (reviews/rve_handback.md): G03 fixes first (M1 Design A tests missing: keep the HEIGHTS hooks out of
         Install until the CPU + WARP tests pass; M2 line-sweep AO 16A457D0 / 6CF96BAF stacks under RT / PT AO at SSAO 1-2);
@@ -12083,6 +12091,42 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 21:5x: 22 keep the restart ("sounds good"); 30-33 = coord's picks (30 D1 5th shadow-only knob -> g06_, 31 clear
         Pharaoh Casters Out of View once -> g03_, 32 Expeditions Musa's own, 33 Tales trace); autocompact verdict: keep 40 %.
         - [ ] next Tales trace: one frame of CombineLUTs cb0 (ps 0x876F0F03) for the Tales V35 fit (ATN 33).
+        ho_g01 MERGED 22:1x: 05b0fb6ae (rvd_ re-check GO, reviews/rvd_g01_recheck_handback.md; g01_ fixes 1584d7f68 MA1
+        RAYS_REPLACE_MAPS 0 + old tooltip, bf80c9a8b baked-slot guard, 861f34eaf, 516b311aa ATN 18 / 24 (SettingsRevision 4),
+        425414a45 colour above Paper White; Rome II + Thrones addon32, Rome II / WH2 / Troy / Pharaoh / Thrones addon64 exit 0;
+        V35 PASS). Attila does not include sun_replace_maps.hpp (render_mt unaffected). g03_ told to merge atn-mods for bcad7b8f5.
+        - [ ] Rome II trace (g01_'s request, handbacks/g01_fixes_handback.md): RT sun shadows on, every Shadows setting x shader
+        model 5.0 / 4.1 / 3.0 at 4K; all 40 ATLAS_SUN_SHADERS swap (8 COMPARED / 24 DEPTH / 8 LIGHT), no lit band at cascade ends,
+        baked far shadows as before, forward readers keep the game's map -> then RAYS_REPLACE_MAPS 1 + tooltip (also box A4).
+        - [ ] Rome II baked far map replaced too ("ours replaces the game's"; rvd_ MI3, coord's call): after the Replace trace,
+        5.0 builds first (check their baked read is sampler-compared), 4.1 / 3.0 need a view swap.
+        - [ ] DRY (g01_ MI8): the rows-default loop copied again in twrome2/addon.cpp (psycho35_settings.hpp owner);
+        test/tw_rome2_thrones_v35 copies ~30 lines of tw_psychov35 RunRome2 + the fit (G10); Thrones' clears -> ClearSavedRows
+        after ho_g19. NITs: sun_replace_maps.hpp:9 141 columns, twrome2/README.md:8, empty-band print.
+        ATN list 34 (Rome II colour above Paper White x0.746 with Saturation 0.8; pick: by eye in the next Rome II run).
+        rvf_ REVIEWS (reviews/rvf_handback.md): G21 fixes first (M1 the gather 4.1 sun builds, 6 per game, g_tHardShadowBuffer_SM41
+        + gather4, unpatched; MINOR prove the Bend / PCSS / upscale move keeps the DXBC; Ryse README:250 / :319 -> g08_); G02 fixes
+        first (M1 the same 12 builds into both far-plane lists + comments; M2 own CLAMP sampler at s1 for the SM 4.1 lists +
+        restore; m1 ship WH2's 10 % fit 1.01 / 0.57 / 0.91 / 0.93; m2 WH1 sensitivity check). Routed to g21_ / g02_ / g08_.
+        - [ ] merge set (after rvf_ re-checks): ho_g21 (+ M1) + ho_g02 (+ M1 / M2) + g10_'s TestSharedBytes counts (once, after
+        M1) + tw_warhammer_shaders_g02.patch in ONE step; build WH1 / WH2 / Attila / Shogun 2 / Ryse / Tales / Expeditions / D2
+        + the full tw_warhammer_shaders. ho_g09 then: take ho_g21's comment at ue_screen_space_shadows.hpp:24. Wave-2 order:
+        G18 -> G19 -> G21 + G02 -> G20 -> G22; then the path / comment commits of G04, G07, G09, G14, G08.
+        t4i_ REFRESH2 (render_mt/reports/t4i_refresh2.md): run_all green (test_lib 589 / 589, test_check 168, test_leg 166,
+        test_analyze 142, test_make 116, test_names 6); ebr_ fixes 1-4, NITs N1-N7 + N9, S6 B3b map / Check / acheck knob,
+        lg3_ rows, PAUSE-W3 +B3b, b3s_'s new texts; gates.json frame_stall text tidied. -> ebr_ re-check ("ebr_ refresh2 recheck").
+        - [ ] T6: test_names with `-Ref <frozen> -Waiting @()` (B3b WAITING lines go away after the rmt_b3t merge).
+        - [ ] battle-start memory line (g16_ memory=1): needs an anchor; the add-on could log AddressSpace at the battle's first
+        frame -> mem_'s study decides.
+        g03_ FIXES (handbacks/g03_fixes_handback.md): c06de4e39 Design A hooks gated off (EARLY_DECISION false), bd94a1b7c,
+        ef628ce3d ATN 29 V35 shipped, 033e430bf Troy null cb7, ce2a0411b ATN 31 clear, 02ff0de22 test/tw_pharaoh_fog,
+        8692cef23, 726312f05 M2 ClearInsteadOfLineSweepBlur (16A457D0 / 6CF96BAF) + Troy baked far map back to the game's;
+        Troy + Pharaoh build clean (ho_g19 field stripped for the build only), V35 + fog PASS. -> rve_ re-check.
+        - [ ] g03_ next round: Design A's 8-case CPU decision test + WARP bit-equal test, then EARLY_DECISION on.
+        - [ ] Pharaoh Dust Shadows slider (ATN 20) BLOCKED on a trace: one desert battle with a cavalry charge (dust) and a
+        burning building (smoke), RT/PT + Smoke Shadows on, FrameTraceReads of 109B79CE + 3F1B86E1 with t8 EMITTER_CONSTANTS_PS.
+        - [ ] Troy far-field check (rvc_ m3): battle on a hilly map, camera high + far, sun from the side, paused; (a) far map
+        replaced vs (b) today; number = share of pixels past 200 m shadowed in (b), lit in (a).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
