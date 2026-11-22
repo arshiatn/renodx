@@ -495,15 +495,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coordinator: all_modes pass on the combined tree after rmt_h0 + ff_s12 + grs_xes ... | ?
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
 - coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
-- gtv_ / gtb_: judge S3c sheet items 10 (strict second loop) + 11 (kept R1 residen ... | ?
 - ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job fi ... | ?
 - coord: real all_modes run (ATN's rule) after gtv_'s load run; then S3c part 1 (c ... | ?
 - review (Opus xHigh): grs_dead_uses + dead_outputs.py together, after grs_'s hand ... | ?
-- gtv_: review gtl_'s S3c stage (after its load run) -> lands after S3c part 1 (co ... | ?
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
 - fcr_ (Opus xHigh): review grs_dead_uses df06d4e9b + rt_uses.h vtable copy safety ... | ?
 - gtl_: stage block() subtracts answer reset_ms when present (+ fake_resident send ... | ?
 - gtw_ + gpr_: re-check round 19 (gate + price) (coord 15:3x). | ?
+- gtl_: stage H1 + H2 + M1 / M2 / M2b / M3 / M4 + L1 / L2 + nits; gtv_ re-checks; ... | ?
+- coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10312,7 +10312,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] grs_ (DONE 15:26 df06d4e9b): dead outputs (a) resident log_uses + (d) store-skipping stem builder + (3) reset time in the answer
         (recorder-only; branch from atn-mods; ans / cmd schema parts as .proposed) (coord 14:3x).
         - [x] gti_ (DONE 14:48, review after grs_'s log format): dead outputs (c) dead_outputs.py with DXIL reflection, planted-fake proof (M10) (coord 14:3x).
-        - [ ] gtv_ / gtb_: judge S3c sheet items 10 (strict second loop) + 11 (kept R1 resident during rotation) (coord
+        - [x] gtv_ (DONE 15:40: 10 not needed, 11 OK + 3 checks): judge S3c sheet items 10 (strict second loop) + 11 (kept R1 resident during rotation) (coord
         14:3x).
         - [ ] ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job field, reset time in answer,
         4 lifetimes per arm (after gtb_ proof), debug-layer env switch (coord 14:3x).
@@ -10356,7 +10356,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         proposals; (4) keeper.log already has dedicated memory before / after each resident end (A9 can use now); (5) S2
         still refuses log_uses until grs_'s M10 build. TO LAND after S3c part 1 + gtv_ review: lab.py, lab_keeper.py,
         fake_resident.py, lab_analyze.py (new), tests test_lab_fixture / keeper / unit / jobs + test_lab_analyze.py (new).
-        - [ ] gtv_: review gtl_'s S3c stage (after its load run) -> lands after S3c part 1 (coord 15:10).
+        - [x] gtv_ (DONE 15:40: OK after H1 + H2): review gtl_'s S3c stage (after its load run) -> lands after S3c part 1 (coord 15:10).
         - [x] gti_ (DONE 15:12): ReadLog closes the log file (with open) (coord 15:10).
         - [x] grs_ (DONE 15:26, warm frames): 64-frame dumps (warm frames / dump without reset) in the resident protocol, with dead uses (coord 15:10).
         - [ ] ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json.proposed v1.1 (coord 15:10).
@@ -10434,9 +10434,35 @@ heading text are in HANDOFF_ARCHIVE.md)
         GATES_SUITE needs tools/tw/gates. Optional: cap 16 -> 64 texts within size budget (not joined: open quote would
         swallow). OPEN Low: nested escaped backticks; unclosed PS here-string hides the rest (PS runs none of it).
         - [ ] gtw_ + gpr_: re-check round 19 (gate + price) (coord 15:3x).
-        Agents (5): gtw_ + gpr_ (round 19 re-checks), gtv_ (gtl_ stage review incl. load fixes), fcr_ (dead-output piece
-        review), gtl_ (stage reset_ms); GPU: all_modes run RUNNING (15:12, ~40-45 min, b4pmp185v) -> S3c part 1 (coord,
-        gpu_lab.ps1 per s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
+        gtv_ S3C STAGE REVIEW 15:40 = OK TO LAND AFTER S3c PART 1 ONCE H1 + H2 FIXED (plan_1117/gtv_s3c_stage_review_handback.md;
+        gtv_iq_review.md "## S3c stage review"; probes + land1 / land2 sandboxes testbin\scratch\gtv_\s3c\; stage as of
+        15:29 incl. gtl_'s reset_ms + uses path): live behaviour unchanged with fields off (18 S3c jobs same job / plan /
+        price; kind_dump same commands; block() without reset_ms same); fields fail closed (live schema refuses both, even
+        false; proposed refuses 0 / true / 2.0 / 65 / "true" / with seed_runs / on ab or calibrate; no uses log = TOOL
+        FAULT; S2 = REFUSED); job_schema.json.proposed stays a proposal (lab.py reads only job_schema.json line 57). H1 FAILS
+        OPEN: any exception in the sampler thread's new log write / own-pid read ends the thread -> samples stop, later
+        blocks' other-GPU flag False (foreign 50 % probe: live 20 / 20 flagged; log folder gone / own_fn TypeError / file
+        held unshared -> 1 / 20, not flagged) -> catch in log part, stop logging, keep sampling, one lab.log line; flag()
+        ToolFault once reader thread ended (covers Get-Counter exit). H2: block() takes reset_ms unchecked (5000 vs 300 ms
+        block -> frame_ms -58.75; -50 -> reset_s -0.05; "x" TypeError) -> ToolFault unless finite 0..1000 x block time.
+        M1 keeper dedicated memory read before take_lock / after Release (other holder's memory hides leaks) -> move inside;
+        M2 own-pid except never fires (state() returns None) -> own_fn None, read() keeps last; M2b lab_analyze bar = max at
+        A/A counts (37 samples + one misclassified 98 % -> 147 % bar) -> print N + top 5, no observe line above cap ~20 %;
+        M3 land job_schema.json.proposed in tools\tw\lab (tests need it; proposal, not live); M4 reset_ms covers full
+        reloads -> full_reload_s, not reset_s. L1 missing uses path only logged -> isfile ToolFault; L2 cadence joins on
+        tag, calibrate repeats tags -> A/A only or refuse dups; nits: tabs in ns_busy fault text, no test for no-uses fault /
+        still_max_s; land by COPYING stage files (patch scripts no longer reproduce). Item 10: strict second loop NOT
+        needed for part 1 (X == Y catches missing accumulating state; ask grs_ for a "no reset" dump flag only if A1 FLAG /
+        FAIL or part 2 finds read-before-write outside the snapshot). Item 11 OK (idle, same both arms) with 3 checks:
+        committed GB before step 6 (16 starts check vs 45 GB; no big builds during it), idle exit after 10 min (compare A9(a)
+        budgets one side of R1's exit), no R1 GPU rows in step 6 gpu_samples.tsv (stage-only file: in part 1 use the live
+        sampler's flag / keeper.log instead). If any fails: rotation ends kept residents first, keeping the session.
+        - [ ] gtl_: stage H1 + H2 + M1 / M2 / M2b / M3 / M4 + L1 / L2 + nits; gtv_ re-checks; lands after S3c part 1 by
+        copying (coord 15:40).
+        - [ ] coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU use) (coord 15:40).
+        Agents (4): gtw_ + gpr_ (round 19 re-checks), fcr_ (dead-output piece review), gtl_ (stage reset_ms, then gtv_'s
+        H1 / H2 list); GPU: all_modes run RUNNING (15:12, ~40-45 min, b4pmp185v) -> S3c part 1 (coord, gpu_lab.ps1 per
+        s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
