@@ -7065,9 +7065,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (render_mt/reports/t4i_r18_handback.md; run_all green lib 428 / make 79 / check 148 / leg 152 / analyze 109):
         G10 two ini pairs, crash_list exit text, continuation-limit text, x87_rounding: heapfix_fixes four_on for WPR-X /
         REF-X / D1-X + compare sides (adds the four =1 keys to leg 3 / 4 starts) -> ebr_ r18 RE-CHECK STARTED.
-        Agents (10): upr_ (H0 439 look), upt_ (v2.7), ebr_ (r18 re-check), grs_ (S2), gtw_ (S1c re-check 6), gtq_
-        (FLIP unpatched), gbc_ (C1 re-check), gtv_ (S3r re-check), gtb_ (watch build), gti_ (poll build). Idle: bd1r_,
-        lga_, lgf2_, c33i_, gpp_, gpr_, gtl_, h0i_, t4i_, gtk_, gtp_ (waits gtw_).
+        upt_ v2.7 DONE 04:0x (designs/upt_v27_handback.md; 1612 lines, v2.6 copy scratchpad\upt_v26_backup.md): F1 arm
+        sum = albedo x history x (strength x share - bounces x weight) >= 0, whole term without Multi-Bounce; nit
+        fixed -> upr_ v2.7 re-check after its H0 look. B1.6 STARTED 04:0x: c3i_ (a77126f3fada50077) NEW branch rmt_b16
+        from 838bd848f: NM4 in_use + Tracing() / TraceWindow(), Worker Threads row wherever B1 compiles, b13r_ S6 / N4 /
+        N5, b13r_ R2 (half rows), bd1r_'s R-S5 N7 (PausedWrite comment) + N8 (2 tests); review b13r_. Then X1, then
+        logging group 3 (same files: one writer).
+        Agents (10): upr_ (H0 439 look, then v2.7), c3i_ (B1.6), ebr_ (r18 re-check), grs_ (S2), gtw_ (S1c re-check
+        6), gtq_ (FLIP unpatched), gbc_ (C1 re-check), gtv_ (S3r re-check), gtb_ (watch build), gti_ (poll build).
+        Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gpr_, gtl_, h0i_, t4i_, gtk_, gtp_ (waits gtw_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
