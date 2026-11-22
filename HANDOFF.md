@@ -483,6 +483,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_ (with option (a)): count the draw-trace files in the leg's disk gate (estim ... | ?
 - ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its ow ... | ?
 - gtp_ (with gtw_'s re-check 13): Section 8 text fixes (a)-(d) + kind() leading-re ... | ?
+- bridge owner (next bridge change): move the FG backend-name table to dlaa_bridge ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9090,9 +9091,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         c3i_'s FULL engine_code suite is on ~12 cores now (+ gated builds next) = not a quiet window, so h0i_
         puts M1 + S1-S5 in BEFORE the start (offline, ~10-20 min), upr_ re-checks, then the run goes in the next
         quiet window (ATN's rule, background).
+        fcr_ FF_S12 REVIEW = OK, NO MUST / SHOULD, 9 NITS 09:4x (plan_1117/designs/fcr_ff_s12_review.md +
+        fcr_ff_s12_review_handback.md; copies scratchpad\fcr_\orig + patched): step 1 lines print once per real
+        event, never per frame or on a failed / retried open (refused RR silent, refusal still once; no RT line
+        when off / stalled / replayable; FG bounded by real resets); per-set line once per set at both answer
+        sites after SetEvent(done), reads only locals; steady_clock ms, split never negative; no lock held while
+        logging, SetEvent order unchanged. Step 2: release_idle's 2 callers (idle loop now, request
+        last_request), all 4 comparisons on the reference; a release can only come later, waits one request /
+        idle second, nothing kept for good. Threading: new lines on the main request thread; ms_since also on the
+        joined scene-release thread (captureless lambda, safe). No tools\tw parser reads the old / new texts.
+        Checked: syntax.ps1 on the patched copy exit 0 with NRD on; git apply --check clean on a copy; CRLF, no
+        whitespace errors. NITS: N1 RR success + refusal one if / else if (main.cpp:760-767); N2 single-use local
+        `age` -> inline ms_since(last_request) (:949, AGENTS.md rule); N3 rename `reference` (e.g. as_of) +
+        simpler comment (:886-888); N4 one new_set bool + clearer set_opens name (:1038 / 1044); N5 optional
+        one log site without the lambda; N6 backend-name table duplicates graphics_page.hpp:629 -> dlaa_bridge.h
+        when the bridge is next touched (not here); N7 / N8 / N9 design text (FG time covers the whole open incl.
+        a lost Streamline restart + earlier backends; per-set time starts at the helper's wake; S3 delays any
+        release due inside a request, not only > 10 s). -> grs_ updates the patch file (N1-N5) + design text
+        (N7-N9); fcr_ re-checks; applying it still waits for ATN (box above).
+        - [ ] bridge owner (next bridge change): move the FG backend-name table to dlaa_bridge.h, used by both
+            main.cpp and graphics_page.hpp:629 (fcr_ N6, 09:4x).
         Agents (7): h0i_ (M1 + S1-S5 before the H0 re-run), gtw_ (round 13 re-check, then lga_ release_check
         re-check), gtb_ (load refresh + (12, 99) tighten), t4i_ (option (a) + disk gate + ebr_ nits), c3i_ (B1 F1
-        + F2 logging), ffr_ (grs_ v4 re-check), fcr_ (ff_s12 steps 1-2 patch review)
+        + F2 logging), ffr_ (grs_ v4 re-check), grs_ (patch nits N1-N5 + text N7-N9)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
