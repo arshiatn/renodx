@@ -96,6 +96,23 @@ constexpr uint32_t WARNING_TINT = 0xFF5050;
 constexpr uint32_t NOTICE_TINT = 0xFFE066;
 using credits::FULL_DOWNLOAD_NOTE;
 
+// Rows saved at an old default (a preset saves every row, hidden ones too), cleared once: `keys` out of the three presets
+// where `revision_key` (the game's SettingsRevision unless named) is below `revision`, which it becomes; a preset for
+// which `keep` (given its ini section) is true keeps them. In order of revision, before settings::Use.
+inline void ClearSavedRows(int revision, std::initializer_list<const char*> keys, const char* revision_key = "SettingsRevision",
+                           const std::function<bool(const std::string&)>& keep = {}) {
+  const std::string& global = renodx::utils::settings::global_name;
+  if (int saved = 0; reshade::get_config_value(nullptr, global.c_str(), revision_key, saved) && saved >= revision) return;
+  for (const char* suffix : {"-preset1", "-preset2", "-preset3"}) {
+    const std::string preset = global + suffix;
+    if (keep && keep(preset)) continue;
+    for (const char* key : keys) {
+      reshade::set_config_value(nullptr, preset.c_str(), key, static_cast<const char*>(nullptr));
+    }
+  }
+  reshade::set_config_value(nullptr, global.c_str(), revision_key, revision);
+}
+
 inline renodx::utils::settings::Setting* Note(const std::string& label, const std::string& section, uint32_t tint, std::function<bool()> shown) {
   return new renodx::utils::settings::Setting{.value_type = renodx::utils::settings::SettingValueType::TEXT,
                                               .label = label,

@@ -55,20 +55,7 @@ inline void SetRaysPresetDefaults(std::vector<Setting*>* settings) {
   }
 }
 
-// Rows saved at an old default (a preset saves every row, hidden ones too), cleared once: `keys` out of the three presets
-// where the game's SettingsRevision is below `revision`, which it becomes. In order of revision, before settings::Use.
-inline void ClearSavedRows(int revision, std::initializer_list<const char*> keys) {
-  const std::string& global = renodx::utils::settings::global_name;
-  if (int saved = 0; reshade::get_config_value(nullptr, global.c_str(), "SettingsRevision", saved) && saved >= revision) return;
-  for (const char* preset : {"-preset1", "-preset2", "-preset3"}) {
-    for (const char* key : keys) {
-      reshade::set_config_value(nullptr, (global + preset).c_str(), key, static_cast<const char*>(nullptr));
-    }
-  }
-  reshade::set_config_value(nullptr, global.c_str(), "SettingsRevision", revision);
-}
-
-// The page's sections and colours, Note, EmptyLine and MoreOptions: settings_pages.hpp.
+// The page's sections and colours, ClearSavedRows, Note, EmptyLine and MoreOptions: settings_pages.hpp.
 
 // What the page says that is true of one game only.
 struct Texts {
@@ -248,7 +235,10 @@ struct Bindings {
   // A fog the rays shade (rt_scene::InstallFogShadows or the game's own hook); false: the Fog Shadows row kept hidden and
   // left out of RT/PT (Divinity 2).
   bool has_fog_shadows = true;
-  bool every_row = true;   // false: a row this page lists that the game lacks is no mistake, no log line (Rome Remastered)
+  // Fog Shadows and Specular Occlusion defaulted to 1 here before 2026-11-16 (f41f04fd0: SetRaysPresetDefaults in Thrones,
+  // Rome Remastered, Warhammer III, Pharaoh, Troy): presets that saved them with no ray-traced method on are cleared once.
+  bool fog_shadows_defaulted_on = false;
+  bool every_row = true;  // false: a row this page lists that the game lacks is no mistake, no log line (Rome Remastered)
 };
 
 enum AoMethod : int { AO_GAME, AO_GTVBAO, AO_RAYS, AO_PATHS };
@@ -443,28 +433,20 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   }
 
   // Rows saved at an old default of this page or lighting_settings.hpp (a preset saves every row, hidden ones too),
-  // cleared once in every game under a revision of their own (a game's SettingsRevision counts its own rows): Texture LOD
-  // Bias on All Textures off, Auto Thickness off (on since ATN 2026-11-22), and in a preset without a ray-traced method,
-  // Fog Shadows and Specular Occlusion on (SetRaysPresetDefaults' before they left it; alone they trace or do nothing).
-  // Before settings::Use, as ClearSavedRows.
-  constexpr int PAGE_REVISION = 1;
-  const std::string& global = renodx::utils::settings::global_name;
-  if (int saved = 0; !reshade::get_config_value(nullptr, global.c_str(), "GraphicsPageRevision", saved) || saved < PAGE_REVISION) {
-    constexpr std::array<const char*, 4> RAY_METHODS = {"RayTracedSunShadows", "RayTracedAmbientOcclusion", "RayTracedLightBounce",
-                                                        "RayTracedReflections"};
-    for (const char* suffix : {"-preset1", "-preset2", "-preset3"}) {
-      const std::string preset = global + suffix;
-      const bool traced = std::ranges::any_of(RAY_METHODS, [&preset](const char* key) {
+  // cleared once in every game under revisions of their own (a game's SettingsRevision counts its own rows): Texture LOD
+  // Bias on All Textures off and Auto Thickness off (on since ATN 2026-11-22); where they defaulted to 1
+  // (fog_shadows_defaulted_on), Fog Shadows and Specular Occlusion on in a preset without a ray-traced method (alone they
+  // trace or do nothing).
+  ClearSavedRows(1, {"AntiAliasingTextureLodBiasTrilinear", "ssao_auto_thickness", "light_bounce_auto_thickness"}, "GraphicsPageRevision");
+  if (b.fog_shadows_defaulted_on) {
+    ClearSavedRows(1, {"RayTracedFogShadows", "RayTracedSpecularOcclusion"}, "GraphicsPageFogRevision", [](const std::string& preset) {
+      constexpr std::array<const char*, 5> TRACED_METHODS = {"RayTracedSunShadows", "RayTracedAmbientOcclusion", "RayTracedPathAmbient",
+                                                             "RayTracedLightBounce", "RayTracedReflections"};
+      return std::ranges::any_of(TRACED_METHODS, [&preset](const char* key) {
         float value = 0.f;
         return reshade::get_config_value(nullptr, preset.c_str(), key, value) && value != 0.f;
       });
-      std::vector<const char*> keys = {"AntiAliasingTextureLodBiasTrilinear", "ssao_auto_thickness", "light_bounce_auto_thickness"};
-      if (!traced) keys.insert(keys.end(), {"RayTracedFogShadows", "RayTracedSpecularOcclusion"});
-      for (const char* key : keys) {
-        reshade::set_config_value(nullptr, preset.c_str(), key, static_cast<const char*>(nullptr));
-      }
-    }
-    reshade::set_config_value(nullptr, global.c_str(), "GraphicsPageRevision", PAGE_REVISION);
+    });
   }
 
   // Faster Smoke Shadow Build, every game's (shown where Smoke Shadows are installed): placed under Smoke Shadow Quality below.
