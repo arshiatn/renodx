@@ -708,7 +708,7 @@ void main(
   r1.x = r1.y ? r1.x : 0;
   r0.x = r0.x * r0.z + r1.x;
   r0.z = cmp(r2.x < -r2.x);
-  r0.z = r0.z ? -3.141593 : 0;
+  r0.z = r0.z ? -3.14159274 : 0;  // the game's l(0xc0490fdb): -pi to the bit (the decompile printed -3.141593, one ulp off)
   r0.x = r0.x + r0.z;
   r0.z = min(r2.z, r2.x);
   r1.x = max(r2.z, r2.x);
