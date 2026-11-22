@@ -7180,9 +7180,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         gtk_ RS-M1 DONE 04:2x (plan_1117/gtk_rsm1_handback.md; backups scratchpad\gtk_backup_rsm1): settle wait ends at
         2 s still or 6 s, finishing trace always sent; RS-N1 per-file file_size; RS-N3 NOTICE names OpenEXR's
         lib_common.h edit; unset path same, scene_test 89 PASS -> gbc_ short RS-M1 re-check queued after its B1.
-        Agents (9): h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gtw_ (re-check 7), gbc_ (B1 re-check, then
-        RS-M1), gtl_ (S3r M1r / M2r), gtv_ (S2r), gpr_ (gtb_ watch look, then gti_ F1). Idle: bd1r_, lga_, lgf2_,
-        c33i_, upt_, upr_ (waits h0i_), gpp_, gtb_, ebr_, gtq_, gti_, grs_, gtk_, gtp_ (waits gtw_).
+        gpr_ gtb_ LOOK = FIX 04:2x (designs/gpr_gtb_look_handback.md; gpr_review.md l.637-727): gated_build.ps1 OK (keep
+        using it; nit: only bare targets or one -Targets x work with -File - header note); watch W1 proc.wait(30)
+        TimeoutExpired after a kill (GPU process stuck in the driver) -> exit 1 + traceback, no SLOW -> catch, marker,
+        SLOW row, exit 124; W2 gate_hook rows() / mode() / cause() / committed_gb() unguarded -> one try / except next to
+        hook_fn with watch's own copies; nits (_resume failure, kill-on-close clear failure, stop BusyState excludes all
+        testbin, wait 0 / run 0 rows, --deadline-min in a compound command, backstop + 120 s) -> gtb_ STARTED (keep
+        _own_cause / _own_committed_gb as the W2 fallback). gpr_ next: gti_ F1 re-check.
+        Agents (10): h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gtw_ (re-check 7), gbc_ (B1 re-check, then
+        RS-M1), gtl_ (S3r M1r / M2r), gtv_ (S2r), gtb_ (W1 / W2), gpr_ (gti_ F1 re-check). Idle: bd1r_, lga_, lgf2_,
+        c33i_, upt_, upr_ (waits h0i_), gpp_, ebr_, gtq_, gti_, grs_, gtk_, gtp_ (waits gtw_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
