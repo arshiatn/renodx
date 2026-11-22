@@ -150,7 +150,7 @@ const std::vector<std::pair<std::string, float>> LESS_POST_PROCESSING = {
     {"motion_blur_object", 0.f},
     {"sharpening", 0.25f},
     {"depth_of_field", 2.f},
-    {"video_highlights", 0.25f},
+    {"video_highlights", 0.2f},
 };
 
 void ApplyResetPreset() {
@@ -623,7 +623,7 @@ void BuildRuntimeData() {
           .section = "Presets",
           .group = "preset-line-1",
           .tooltip = "Recommended look: HDR (PsychoV35), with all vanilla post processing, \n"
-                     "hidden chromatic aberration, sharpening at 0.5, depth of field at 2 and Video AutoHDR at 0.25.\n"
+                     "hidden chromatic aberration, sharpening at 0.5, depth of field at 2 and Video AutoHDR at 0.2.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
             ApplyResetPreset();
@@ -636,7 +636,7 @@ void BuildRuntimeData() {
                 {"depth_of_field", 2.f},
                 {"sharpening", 0.5f},
                 // {"sun_shafts", 0.5f},
-                {"video_highlights", 0.25f},
+                {"video_highlights", 0.2f},
             });
           },
       },
@@ -646,7 +646,7 @@ void BuildRuntimeData() {
           .section = "Presets",
           .group = "preset-line-1",
           .tooltip = "Recommended look: HDR (PsychoV35) with the game's shadows and colours, no film grain,\n"
-                     "no motion blur, no chromatic aberration. Sharpening at 0.25, depth of field at 2, Video AutoHDR at 0.25.\n"
+                     "no motion blur, no chromatic aberration. Sharpening at 0.25, depth of field at 2, Video AutoHDR at 0.2.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() { ApplyRecommendedPreset(); },
       },
