@@ -106,7 +106,8 @@ static std::atomic<Stage> stage = Stage::OFF;
 static std::atomic<bool> failed = false;
 // The ring is one for the process: a call takes it before any path touches it (re-entry, a second thread).
 static std::atomic<bool> ring_in_use = false;
-static Schedule schedule = Schedule::STREAM;
+// Written by Update on the present thread, read by Dispatch on the render thread.
+static std::atomic<Schedule> schedule = Schedule::STREAM;
 // The env generation the schedule was read at (all ones: not yet).
 static uint32_t env_generation_applied = ~0u;
 static std::array<std::atomic<uint32_t>, static_cast<size_t>(Path::COUNT)> paths = {};
@@ -456,9 +457,10 @@ inline void Update(Stage requested, uint32_t env_generation = 0) {
     constexpr const char* NAME = "RENODX_TW_ANIMATION_SCHEDULE";
     std::string text(GetEnvironmentVariableA(NAME, nullptr, 0), '\0');
     text.resize(GetEnvironmentVariableA(NAME, text.data(), static_cast<DWORD>(text.size())));
-    schedule = (text == "bulk" ? Schedule::BULK : Schedule::STREAM);
+    const Schedule chosen = (text == "bulk" ? Schedule::BULK : Schedule::STREAM);
+    schedule.store(chosen, std::memory_order_relaxed);
     if (!text.empty()) {
-      renodx::utils::log::i(std::format("[Total War] Animation Rows on Workers: schedule {}{}.", (schedule == Schedule::BULK ? "bulk" : "stream"),
+      renodx::utils::log::i(std::format("[Total War] Animation Rows on Workers: schedule {}{}.", (chosen == Schedule::BULK ? "bulk" : "stream"),
                                         (text == "bulk" || text == "stream" ? "" : " (the env value does not parse; stream used)")));
     }
   }
@@ -552,7 +554,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
                .texture = texture,
                .total = total,
                .blocks = blocks,
-               .streaming = (workers != 0 && schedule == Schedule::STREAM),
+               .streaming = (workers != 0 && schedule.load(std::memory_order_relaxed) == Schedule::STREAM),
                .captures = (stage_now == Stage::CHECK ? check.captures.data() : nullptr)};
   if (call.streaming) {
     for (uint32_t slot = 0; slot < std::min(blocks, RING_SLOTS); ++slot) {
