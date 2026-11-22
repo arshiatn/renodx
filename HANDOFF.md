@@ -657,6 +657,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - WH2 V35 later: a 0.25 knot or a continuity-constrained fit for burns 0.16-0.25 ( ... | ?
 - G10 requests (g02_): part 29 adds gather 4.1 builds 27AF3D62 + A03688A3 with a C ... | ?
 - WH filter kind (gather 4.1 / software / pcf) is chosen in engine code, not a pre ... | ?
+- drain check note: 9 exited engine_code.exe (0 MB, no image, 01:50-19:39, other a ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12508,6 +12509,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] G10 requests (g02_): part 29 adds gather 4.1 builds 27AF3D62 + A03688A3 with a CLAMP sampler; tw_psychov35
         GammaBindings' zero distortion texture shifts the game-bytes read by 0.01 UV (the fit binds 128/255).
         - [ ] WH filter kind (gather 4.1 / software / pcf) is chosen in engine code, not a preference (M1.5): note only.
+        lg3_ ER5 FIXES 23:1x (render_mt/reports/lg3_er5_fixes_handback.md): rmt_er5 from a2b100c6a: 9cb9c1c73 m2 (high-water
+        scratch, bad_alloc / busy -> check_skipped) + 8fefc871b M1 + NIT 1 / 2 (new code_ranges.hpp; AddPartRange for B3b
+        engine_stubs / B1 effect_thunks / C recording_page with "[Total War] render_mt range: <part> stub <name>+0x0..+0x<size>
+        (0x<begin>..0x<end>)"; Worker.id from CreateThread; FormatFault "crash on pool worker K in {user}'s job"). Gated
+        x86 + amd64 + DRAW_RECORDING + x86 3 targets exit 0; tw_fault_watch / tw_device_loss x86 + amd64, tw_instance_fill,
+        tw_engine_code -Quick (+ -DrawRecording) PASS; static_checks 0; part_range / job_line hit unchanged. Open: rule 1 from
+        heapfix's raw-address EXCEPTION line. er5o_ re-check sent ("er5o_ recheck").
+        - [ ] drain check note: 9 exited engine_code.exe (0 MB, no image, 01:50-19:39, other agents' tests) are held by
+        handles; not ours to kill; the restart clears them.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
