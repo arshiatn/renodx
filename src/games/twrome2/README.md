@@ -1,5 +1,29 @@
 # Total War: ROME II - Emperor Edition (RenoDX HDR, ATN)
 
+### Open items G01 (2026-11-22; built only, not run in game)
+
+New:
+- Ray-traced sun shadows now **replace** the game's per-frame shadow maps (one method, as Warhammer II's, Troy's and
+  Pharaoh's; ATN 2026-11-22: Replace by default): Softness shows in full, no double shadow where the game's map and the
+  rays disagree. The baked far map (from about 200 m), smoke, clouds and the water's shadows stay the game's. Shadow Map
+  Size hides under the rays. Every shadow method and shader model the game has: the 5.0 builds (their map read lit
+  through an ALWAYS comparison sampler at s1 / s0), the 4.1 / 3.0 gather, fetch4 and software builds (an empty map at the
+  atlas's slot) and the hardware_pcf builds (a map of 1): 40 sun shaders, `twattila/sun_replace_maps.hpp`.
+  Census: tools\tw\rome2\sun_test\scan_atlas_reads.py (atlas_reads.tsv); WARP: sun_rome2_test P.
+
+Fixed:
+- DLAA / DLSS and CMAA2 blend in the frame's own curve: 2.2 with Gamma Correction on (as Attila's and Thrones' since
+  11-16); before, at 2.0 while the frame is shown at 2.2 (slightly lighter or darker edges and dark gradients).
+
+Checked:
+- Sharp Ray-Traced Reflections: nothing to port. Rome II has no ssr00 / ssr01 (environment_specular_light) family and no
+  reflection blur; its only reflections are the water's (waterreflection00 7C9C8ECF into a 1-mip target the water reads
+  at once), where the rays' reflection already arrives unblurred.
+- Ray Reconstruction's specular guide already takes Fresnel (aa_rr_guides includes Attila's: rr_specular.hlsli).
+
+In game: a battle with RT shadows at each in-game Shadows setting: no lit band at the cascades' ends, the far baked
+shadows from about 200 m as before; Gamma Correction on, DLSS and CMAA2: edges and dark gradients as without the AA.
+
 ### Model Detail Distance at any time (2026-11-18; built only, not run in game)
 
 - Faster: at **Model Detail Distance 1x** (the default) the game runs its own LOD code (the hook shared with Attila and Thrones

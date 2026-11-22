@@ -58,6 +58,7 @@
 #include "./rt_particle_quads_18FE5E2B_gs.h"
 #include "./rt_particle_quads_B5D63E8A_gs.h"
 #include "./shared.h"
+#include "../twattila/frame_gamma.hlsli"
 
 constexpr char BUILD_DATE[] = __DATE__;
 constexpr char BUILD_TIME[] = __TIME__;
@@ -2063,6 +2064,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
+  // DLAA's and CMAA2's passes in the frame's own curve (the swap chain proxy's decode: 2.2 with Gamma Correction on).
+  aa_settings.frame_gamma = TW_FRAME_GAMMA;
   if (game_msaa) {
     aa_settings.frame_generation = 0;
   }
