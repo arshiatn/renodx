@@ -485,6 +485,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_ "uses diag" (sent 20:02): why the uses log has no stem rows (resident's use ... | ?
 - gtl_ stage3 suites in the sandbox (GO 20:02, lock free); landing only after ALL ... | ?
 - coord: Opus xHigh reviews for g08_ + g14_ when slots free (queued groups first). | ?
+- render_mt (lg3_ notes, out of scope): wire Describe() to device_loss::stall_note ... | ?
+- coord after the restart: lg3_'s zombie engine_code.exe in testbin\scratch\lg3_\e ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11409,6 +11411,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         (WON'T GET rows for UI 4K + game TAA) sent to g13_. Started: g02_ a13305db694dc581f, g03_ a3e079d4fbf87c2c1 (+
         99164788 / DB53BDDC). Still queued: G06 G09 G11 G20 G21 G22.
         - [ ] coord: Opus xHigh reviews for g08_ + g14_ when slots free (queued groups first).
+        lg3_ GROUP 3 DONE 20:05 (render_mt/reports/lg3_group3_handback.md): branch rmt_lg3 (worktree agent-a89ff094c60c1b7cf)
+        d96a8fab8 (worker_pool / draw_recording / instance_fill + their tests) + 85de93155 (engine_code.hpp + tw_engine_code
+        29g): A-S6 Stop 5 s timeout + pin, A-S7 Describe, invariants comment, A-S4 commit failure said at the next present,
+        A-N2 / A-N3 named pieces + offsets, A-S3 cumulative incomplete fills (FoldFill fn pointer) once + detach total, A-N5
+        check line per trace window, A-M2 fill give-up + pin, A-S1 snapshot line, A-S2 blocked thread / eip suffix "(last:
+        ...)", A-N1 page step; 14 changed lines listed. Suites: draw_recording x86 + amd64, instance_fill, engine_code
+        FULL x86 PASS; gated x86 twattila / twrome2 / thrones + amd64 twattila + DRAW_RECORDING exit 0. -> lga_ (Opus
+        xHigh) reviews (lga_group3_review.md); t4i_ told the changed texts (gates / corpus).
+        - [ ] render_mt (lg3_ notes, out of scope): wire Describe() to device_loss::stall_note (addon.cpp / device_loss);
+        device_loss::AddCodeRange for the stub pages (engine_code page, eu::page, draw-recording thunks).
+        - [ ] coord after the restart: lg3_'s zombie engine_code.exe in testbin\scratch\lg3_\ec_x86 (could not be killed;
+        harmless); lg3_'s worktree still links bin + build\downloads (remove the links alone before any cleanup).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
