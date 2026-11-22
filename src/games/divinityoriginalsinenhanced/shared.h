@@ -69,12 +69,13 @@ struct ShaderInjectData {
 
 // PsychoV35's slider defaults here: the game's own response (Hable's toe below mid gray, its colour at equal
 // lightness), Highlight Contrast keeping PsychoV35's highlights. Minimax-fitted on WARP against the game's SDR with R1's
-// traced tone map constants (test/tw_divinity1, part 7); the other PsychoV35 sliders keep Musa's defaults. No fit of
-// these four reaches 5 % (the best 20.6 %), so they stay Musa's own (1).
+// traced tone map constants (test/tw_divinity1, part 7), with Shadow Contrast as a fifth; the other PsychoV35 sliders
+// keep Musa's defaults. No fit reaches 5 % (four 20.6 %, five 18.3 %), so they stay Musa's own (1).
 #define DIVINITY_V35_CONTRAST           1.f
 #define DIVINITY_V35_SHADOWS            1.f
 #define DIVINITY_V35_SATURATION         1.f
 #define DIVINITY_V35_HIGHLIGHT_CONTRAST 1.f
+#define DIVINITY_V35_SHADOW_CONTRAST    1.f
 
 // PsychoV30 receives linear BT.709, uses the exposed grading controls, and
 // returns linear BT.709 (possibly signed for its BT.2020 target volume).

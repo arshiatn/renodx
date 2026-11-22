@@ -90,7 +90,9 @@ Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); 
   SDR below white (grey 0.05 - 1 and 1 - 15 nits, OkLab chroma at equal lightness 1 - 30 nits) with R1's traced save
   constants (level A), PsychoV35's highlights kept within 15 % at 1000 / 203 (20 % at 2500 / 275). A fit within 5 %
   would ship as shared.h DIVINITY_V35_* (Reset and Recommended start from them); none reaches it, so they stay Musa's
-  own (1). WARP: the best 1.29 / 1.42 / 0.76 / 0.81 misses by 20.6 % (10 % guard 28.9 %, 20 % guard 22.2 %); Musa's
+  own (1). WARP: the best 1.29 / 1.42 / 0.76 / 0.81 misses by 20.6 % (10 % guard 28.9 %, 20 % guard 22.2 %); with
+  Shadow Contrast (below mid gray only) as a fifth, seeded from the four's best, 1.27 / 1.44 / 0.78 / 0.81 / 1.15
+  misses by 18.3 % (10 % guard 16.0 %, 20 % guard 17.1 %; grey 0.05 - 1 nits x0.82..x1.18 and chroma 1 - 30 nits x0.83); Musa's
   own misses by 148.4 % (grey x2.07..x2.48 at 0.05 - 1 nits, x1.13..x2.01 at 1 - 15 nits, chroma x0.86 at 1 - 30
   nits); the menu's Musa's own x3.28..x6.85 / x1.14..x2.96. Controls: Musa's own must miss by over 5 %, Extended is
   the game's grey (0.00 %).

@@ -22,7 +22,7 @@
 // 6. Smooth Grade Shoulder off = the add-on's tone map before the shoulder (a6762afab^, built by run.ps1) bit for bit in
 //    SDR (Native), Extended and PsychoV35 (every atmosphere, grade, fade, Hue Clip 0 / 0.7, Output HDR10 / SDR); control
 //    (must fail): the row on differs.
-// 7. V35 FIT: PsychoV35's Contrast, Shadows, Saturation and Highlight Contrast minimax-fitted to the game's SDR below
+// 7. V35 FIT: PsychoV35's Contrast, Shadows, Saturation, Highlight Contrast and Shadow Contrast minimax-fitted to the game's SDR below
 //    white with R1's traced save constants; shared.h DIVINITY_V35_* within 5 % and within 0.5 % of the fit's best,
 //    PsychoV35's highlights within 15 % at 1000 / 203 (the guard) and 20 % at 2500 / 275; controls: Musa's own sliders must fail the 5 %, HDR
 //    (Extended) must be the game's grey. The menu's constants: a report.
@@ -814,14 +814,17 @@ int main(int argc, char** argv) {
       const char* name;
       float low, high;
     };
-    constexpr std::array<Slider, 4> SLIDERS = {
-        {{"Contrast", 0.8f, 2.f}, {"Shadows", 0.3f, 1.5f}, {"Saturation", 0.7f, 1.3f}, {"Highlight Contrast", 0.6f, 1.2f}}};
-    using Values = std::array<float, 4>;
+    // The fifth, Shadow Contrast (coord's OK 2026-11-22): only below mid gray (its weight is 0 from mid gray up), the
+    // shape of the toe, where the four-slider fit's worst sits (grey 0.05 - 1 nits x0.80..x1.21).
+    constexpr std::array<Slider, 5> SLIDERS = {{{"Contrast", 0.8f, 2.f}, {"Shadows", 0.3f, 1.5f}, {"Saturation", 0.7f, 1.3f},
+                                                {"Highlight Contrast", 0.6f, 1.2f}, {"Shadow Contrast", 0.5f, 2.f}}};
+    using Values = std::array<float, 5>;
     const auto with = [](divinity::ShaderInjectData si, const Values& values) {
       si.v35_contrast = values[0];
       si.v35_shadows = values[1];
       si.v35_saturation = values[2];
       si.v35_highlight_contrast = values[3];
+      si.v35_shadow_contrast = values[4];
       return si;
     };
     const auto grey_error = [](const Comparison& c) {
@@ -852,21 +855,32 @@ int main(int argc, char** argv) {
     const auto own = Injection(4.f, 1000.f, 0.7f);
     const auto own_ramp = ours(save, own);
     struct Fit {
-      Values values = {1.f, 1.f, 1.f, 1.f};
+      Values values = {1.f, 1.f, 1.f, 1.f, 1.f};
       float score = 1e9f;
       float highlights = 0.f;
     };
-    const auto fit = [&](float highlight_tolerance) {
-      Fit best;
+    // `seed` null: the first 4 sliders (Shadow Contrast at 1, the pilot's passes). Else all 5 from the four-slider fit's
+    // best at the same guard (so five never do worse than four), Shadow Contrast's first pass twice as wide.
+    const auto fit = [&](float highlight_tolerance, const Fit* seed) {
+      const size_t sliders = (seed == nullptr ? 4 : 5);
+      Fit best = (seed == nullptr ? Fit{} : *seed);
       int candidates = 0;
       const auto start = std::chrono::steady_clock::now();
       bool first_pass = true;
-      for (const auto& [step, reach] : {std::pair{0.1f, 6}, std::pair{0.05f, 2}, std::pair{0.01f, 3}}) {
-        const Values centre = (first_pass ? Values{1.4f, 0.9f, 1.f, 0.9f} : best.values);
+      const auto passes = (seed == nullptr ? std::vector<std::pair<float, int>>{{0.1f, 6}, {0.05f, 2}, {0.01f, 3}}
+                                           : std::vector<std::pair<float, int>>{{0.1f, 3}, {0.05f, 2}, {0.02f, 2}, {0.01f, 1}});
+      for (const auto& [step, reach] : passes) {
+        const Values centre = (first_pass && seed == nullptr ? Values{1.4f, 0.9f, 1.f, 0.9f, 1.f} : best.values);
+        const int shadow_contrast_reach = (first_pass ? 2 * reach : reach);
         first_pass = false;
-        std::array<std::vector<float>, 4> grid;
+        std::array<std::vector<float>, SLIDERS.size()> grid;
         for (size_t d = 0; d < SLIDERS.size(); ++d) {
-          for (int k = -reach; k <= reach; ++k) {
+          if (d >= sliders) {
+            grid[d] = {1.f};
+            continue;
+          }
+          const int dimension_reach = (d == 4 ? shadow_contrast_reach : reach);
+          for (int k = -dimension_reach; k <= dimension_reach; ++k) {
             const float value = std::round((centre[d] + (static_cast<float>(k) * step)) * 100.f) / 100.f;
             if (value >= SLIDERS[d].low - 1e-4f && value <= SLIDERS[d].high + 1e-4f) grid[d].push_back(value);
           }
@@ -875,39 +889,46 @@ int main(int argc, char** argv) {
           for (const float shadows : grid[1]) {
             for (const float saturation : grid[2]) {
               for (const float highlight_contrast : grid[3]) {
-                const Values values = {contrast, shadows, saturation, highlight_contrast};
-                const auto ramp = ours(save, with(own, values));
-                ++candidates;
-                const float score = below_white(Compare(sdr, ramp));
-                if (score >= best.score) continue;
-                const float moved = highlights(ramp, own_ramp, DISPLAYS[0].second, DISPLAYS[0].first);
-                if (moved > highlight_tolerance) continue;
-                best = {.values = values, .score = score, .highlights = moved};
+                for (const float shadow_contrast : grid[4]) {
+                  const Values values = {contrast, shadows, saturation, highlight_contrast, shadow_contrast};
+                  const auto ramp = ours(save, with(own, values));
+                  ++candidates;
+                  const float score = below_white(Compare(sdr, ramp));
+                  if (score >= best.score) continue;
+                  const float moved = highlights(ramp, own_ramp, DISPLAYS[0].second, DISPLAYS[0].first);
+                  if (moved > highlight_tolerance) continue;
+                  best = {.values = values, .score = score, .highlights = moved};
+                }
               }
             }
           }
         }
       }
-      std::printf("   minimax fit, highlights within %.0f %% (%s %.1f - %.1f, %s %.1f - %.1f, %s %.1f - %.1f, %s %.1f - %.1f): "
-                  "%.2f / %.2f / %.2f / %.2f, worst %.1f %% below white, highlights %.1f %% (%d candidates, %.0f s)\n",
-                  100.f * highlight_tolerance, SLIDERS[0].name, SLIDERS[0].low, SLIDERS[0].high, SLIDERS[1].name, SLIDERS[1].low,
-                  SLIDERS[1].high, SLIDERS[2].name, SLIDERS[2].low, SLIDERS[2].high, SLIDERS[3].name, SLIDERS[3].low,
-                  SLIDERS[3].high, best.values[0], best.values[1], best.values[2], best.values[3], 100.f * best.score,
-                  100.f * best.highlights, candidates, std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+      std::printf("   minimax fit, %zu sliders, highlights within %.0f %%: %.2f / %.2f / %.2f / %.2f / %.2f, worst %.1f %% below white, "
+                  "highlights %.1f %% (%d candidates, %.0f s)\n",
+                  sliders, 100.f * highlight_tolerance, best.values[0], best.values[1], best.values[2], best.values[3], best.values[4],
+                  100.f * best.score, 100.f * best.highlights, candidates,
+                  std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
       return best;
     };
-    std::printf("7. V35 fit, R1's save (A 0.22, B 0.18, D 0.2, saturation 1.1):\n");
-    const Fit best = fit(HIGHLIGHT_TOLERANCE[0]);
-    for (const float tolerance : {0.1f, 0.2f}) fit(tolerance);
-    const auto shipped = with(own, {DIVINITY_V35_CONTRAST, DIVINITY_V35_SHADOWS, DIVINITY_V35_SATURATION, DIVINITY_V35_HIGHLIGHT_CONTRAST});
+    std::printf("7. V35 fit, R1's save (A 0.22, B 0.18, D 0.2, saturation 1.1); sliders %s, %s, %s, %s, %s:\n", SLIDERS[0].name,
+                SLIDERS[1].name, SLIDERS[2].name, SLIDERS[3].name, SLIDERS[4].name);
+    for (const auto& slider : SLIDERS) std::printf("   %s %.1f - %.1f\n", slider.name, slider.low, slider.high);
+    const Fit four = fit(HIGHLIGHT_TOLERANCE[0], nullptr);
+    const Fit best = fit(HIGHLIGHT_TOLERANCE[0], &four);
+    for (const float tolerance : {0.1f, 0.2f}) {
+      const Fit four_at = fit(tolerance, nullptr);
+      fit(tolerance, &four_at);
+    }
+    const auto shipped = with(own, {DIVINITY_V35_CONTRAST, DIVINITY_V35_SHADOWS, DIVINITY_V35_SATURATION, DIVINITY_V35_HIGHLIGHT_CONTRAST,
+                                    DIVINITY_V35_SHADOW_CONTRAST});
     const auto shipped_ramp = ours(save, shipped);
     const float shipped_score = below_white(Compare(sdr, shipped_ramp));
     const float own_score = below_white(Compare(sdr, own_ramp));
-    std::printf("   shared.h DIVINITY_V35_* (%.2f / %.2f / %.2f / %.2f): worst %.1f %%; Musa's own (control, must fail 5 %%): %.1f %%\n",
+    std::printf("   shared.h DIVINITY_V35_* (%.2f / %.2f / %.2f / %.2f / %.2f): worst %.1f %%; Musa's own (control, must fail 5 %%): %.1f %%\n",
                 DIVINITY_V35_CONTRAST, DIVINITY_V35_SHADOWS, DIVINITY_V35_SATURATION, DIVINITY_V35_HIGHLIGHT_CONTRAST,
-                100.f * shipped_score, 100.f * own_score);
-    // A fit within 5 % ships (the defaults its result); none: the defaults stay Musa's own (the pilot's rule, no fifth
-    // slider without the coordinator). R1's save: the best 20.6 %, so Musa's own.
+                DIVINITY_V35_SHADOW_CONTRAST, 100.f * shipped_score, 100.f * own_score);
+    // A five-slider fit within 5 % ships (the defaults its result); none: the defaults stay Musa's own (the pilot's rule).
     if (best.score < 0.05f) {
       CHECK(shipped_score < 0.05f);
       CHECK(shipped_score <= best.score + 0.005f);
@@ -917,7 +938,8 @@ int main(int argc, char** argv) {
     }
     CHECK(own_score > 0.05f);
     Report("Musa's own sliders, the save", sdr, own_ramp);
-    Report("the 15 % fit's best, the save (not shipped unless within 5 %)", sdr, ours(save, with(own, best.values)));
+    Report("the four-slider 15 % fit's best, the save", sdr, ours(save, with(own, four.values)));
+    Report("the five-slider 15 % fit's best, the save (not shipped unless within 5 %)", sdr, ours(save, with(own, best.values)));
     Report("the V35 defaults (shared.h), the save", sdr, shipped_ramp);
     for (size_t i = 0; i < DISPLAYS.size(); ++i) {
       const auto& [peak, paper_white] = DISPLAYS[i];

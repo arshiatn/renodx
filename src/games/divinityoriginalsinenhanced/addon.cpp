@@ -147,6 +147,7 @@ const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
     {"v35_shadows", DIVINITY_V35_SHADOWS},
     {"v35_saturation", DIVINITY_V35_SATURATION},
     {"v35_highlight_contrast", DIVINITY_V35_HIGHLIGHT_CONTRAST},
+    {"v35_shadow_contrast", DIVINITY_V35_SHADOW_CONTRAST},
 };
 
 // A saved value outside the modes (an old build's) becomes the default mode.
