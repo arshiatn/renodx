@@ -481,6 +481,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - end batch leg 1 analysis: foreign hits outside trace windows in normal play? non ... | ?
 - t4i_: CHK-W3 scan-assert case in test_make (kills S1 + S6b), N-a skip t when a r ... | ?
 - gtp_ round 16: R15-1 (cmd /c|/k + -Command take only the quoted word; web case ` ... | ?
+- ATN: permanent delete of (1) old WPR ETLs 33.3 GB + (3) old shots 5.5 GB (dsk_ 1 ... | ?
+- dsk_: refined testbin list (2) - only old DLL / obj copies no test, pin or tool ... | ?
+- t4i_ (after the scan gaps): end batch moves each finished leg's ETLs to a D: fol ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9648,9 +9651,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         ORDER AFTER H0 (one GPU job at a time): upr_ analysis (offline) || c3i_ suites + gated builds -> rmt_b1log
         merge gate || ff_s12 helper build + tests; then release_check (~9-13 min, GPU) -> rec_verify.sh (~100 min)
         -> merge gpu_s2 -> first lab session S3c (gpu_lab.ps1, after gtl_'s gate_s low).
+        dsk_ CLEANUP LIST 10:5x (render_mt/reports/dsk_cleanup_candidates_1122.md + dsk_cleanup_handback.md; read-only):
+        C: 81-82 GB free (D: 171 GB). Safe ~55 GB: (1) tools\tw\bench\runs\*.etl 33.3 GB = old WPR ETLs of closed
+        batches b1 / b2 / b2b / b3 / final1119 (11-19..11-20; result files beside them stay); (2) tools\tw\testbin files
+        > 24 h ~16 GB (old DLL / obj / exe copies; .dump / .tar unsure) - NEEDS A REFINED LIST (keep testbin\flip,
+        pbrt build, heapfix_hf\xw\x87fix_test.exe, anything a current test / harness pin uses); (3) tools\tw\
+        test_scripts\shots 5.5 GB (11-03 closed-batch shots). Unsure / not candidates: recordings\live_proof2 76.2 +
+        live_proof 27.6 GB (may be RT recordings = never deleted), rest of bench\runs ~8.4, bugs_1117 1.4. Info:
+        this session's scratchpad 54 GB, reference 76.7, h0 67.2, nsight 12.1. ATN's own 11-20 clean-up kinds = old
+        WPRs, testbin DLL copies, closed-batch shots -> (1) + (3) = 38.8 GB asked now (permanent delete, ATN's yes).
+        NOTE: ebr_'s gate = ~151 GB free at the batch start if nothing moves off C: -> even 55 GB is not enough ->
+        t4i_: after each leg's analysis MOVE that leg's ETLs to D: (never delete; analysis paths follow).
+        - [ ] ATN: permanent delete of (1) old WPR ETLs 33.3 GB + (3) old shots 5.5 GB (dsk_ 10:5x).
+        - [ ] dsk_: refined testbin list (2) - only old DLL / obj copies no test, pin or tool uses (read-only).
+        - [ ] t4i_ (after the scan gaps): end batch moves each finished leg's ETLs to a D: folder before the next
+            leg's disk gate (move, never delete; ebo_analyze reads the new path); ebr_ re-checks (coordinator 10:5x).
         Agents (3): gtw_ (round 15 re-check incl. R15-1 web side, then lga_ RC-2 re-check), t4i_ (probes for the 3 new
-        B1 lines, then ebr_'s G1 / G2 / N-a / N-b), dsk_ (C: cleanup list, read-only); c3i_ waits for H0's end (then
-        suites + builds -> rmt_b1log merge gate); ff_s12 build after H0; H0 run (background, ~11:30)
+        B1 lines, then ebr_'s G1 / G2 / N-a / N-b, then ETL move to D:), dsk_ (refined testbin list, read-only); c3i_
+        waits for H0's end (then suites + builds -> rmt_b1log merge gate); ff_s12 build after H0; H0 run (~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
