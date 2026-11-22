@@ -7059,9 +7059,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         map via FLIP's own output (+ imgtool), patched build kept unused (nothing deleted); then gbc_ B1 re-check.
         Queued for gtl_ after gtv_'s S3r: HARNESS_SUN_SOFTNESS=0 in LAB_ENV for pbrt-compare recordings (gtk_), the
         fake iq_frames 'FLIP' metric -> 'FLIP mean / p95 / p99' (gtq_). gtb_ got iq.schema.json output_sizes.
-        Agents (10): t4i_ (r18), upr_ (v2.6 look, then H0 439 look), grs_ (S2), gtw_ (S1c re-check 6), gtq_ (FLIP
-        unpatched), gbc_ (C1 re-check), gtv_ (S3r re-check), gtb_ (watch build), gti_ (poll build), gtk_ (FYI reply).
-        Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gpr_, gtl_, h0i_, gtp_ (waits gtw_), ebr_ (waits t4i_).
+        upr_ v2.6 = GO WITH FIXES 03:5x (designs/upr_v26_handback.md; review l.1439): F1 the bounce history holds the
+        sky, so 'arm adds the sky only' double-counts -> arm adds albedo x history x (strength x share - bounces x
+        weight) >= 0; nit change-list S2 wording -> upt_ v2.7 STARTED; upr_ H0 439 LOOK STARTED. t4i_ r18 DONE 03:53
+        (render_mt/reports/t4i_r18_handback.md; run_all green lib 428 / make 79 / check 148 / leg 152 / analyze 109):
+        G10 two ini pairs, crash_list exit text, continuation-limit text, x87_rounding: heapfix_fixes four_on for WPR-X /
+        REF-X / D1-X + compare sides (adds the four =1 keys to leg 3 / 4 starts) -> ebr_ r18 RE-CHECK STARTED.
+        Agents (10): upr_ (H0 439 look), upt_ (v2.7), ebr_ (r18 re-check), grs_ (S2), gtw_ (S1c re-check 6), gtq_
+        (FLIP unpatched), gbc_ (C1 re-check), gtv_ (S3r re-check), gtb_ (watch build), gti_ (poll build). Idle: bd1r_,
+        lga_, lgf2_, c33i_, gpp_, gpr_, gtl_, h0i_, t4i_, gtk_, gtp_ (waits gtw_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
