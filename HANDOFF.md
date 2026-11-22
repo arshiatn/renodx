@@ -647,6 +647,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - psycho35.hlsli owner: an ApplyPsychoV35 overload with a float4 knob scale (g04_ ... | ?
 - g04_ item 4 trace (MI8): Shogun 2 smoke battle (vfxoverlay00 draws' VS / IA / st ... | ?
 - g04_ item 7 (unseen-lights row) needs a helper flag (GPU plan's files). | ?
+- BEFORE THE RESTART: copy the coord scratchpad (incl. t4i_bak, r3_08NN patches, h ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12415,6 +12416,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         .fog_shadows_defaulted_on stripped for the build only, needs ho_g19). Pharaoh's 4-argument sun_replace_maps::Install
         compiles; Troy keeps the game's baked far map until the far-field check; Pharaoh's far map is replaced, same check
         before it counts as done.
+        t4i_ GATES 22:4x (render_mt/reports/t4i_gates_handback.md): G1 r2_off_session LATCH R2 + 3 corpus lines; G2
+        r1_left_alone / r2_left_alone / c_left_alone_start INFO stop_if_planned (+ the "not the game's code" forms, before
+        row_left_alone_start) + 6 corpus lines; NITs krcf_stand_down + pool_records_dropped notes, volley 150 s .. L_end-30,
+        pair_void checks REF-P, ebo_make labels NOTE. run_all green (lib 621, names 6, make 117, check 181, leg 166,
+        analyze 144). Backups *.pre_gates in the coord scratchpad t4i_bak\refresh2. ebr_ re-check sent ("ebr_ gates recheck").
+        - [ ] BEFORE THE RESTART: copy the coord scratchpad (incl. t4i_bak, r3_08NN patches, helpers) to
+        round_notes\handoff_plan\scratchpad_copy_1122 (a reboot can clear it).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
