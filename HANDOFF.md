@@ -442,7 +442,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (INSTALL_FOR_ATN.md item 12, sections 1 / 3 / 7) - READY (gtw_ re-check 9 OK ... | ?
 - c3i_ B1 real-routine tests (design 5: tests 1-9, 12, 14, 15) + N5's second-node ... | ?
 - ATN (after gtv_'s re-check OK): adopt the lab proposals - copy cmd.schema.json.p ... | ?
-- c3i_ (with the B1.6 follow-ups or right after): b1_stack_headroom gate has no sh ... | ?
 - T5 owner (end batch, before leg 1): the REAL manifest must carry rows ParallelEf ... | ?
 - gtl_ (optional, after its 4 suites pass): a light_anim iq job launches its own r ... | ?
 - grs_ + gtl_ (moments only, later): the "full size is its active size" protocol l ... | ?
@@ -7701,7 +7700,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         shipped line (only tests.cpp StackHighWater) -> stays a never-matching placeholder -> c3i_ (box). Tests:
         CHK-W3 rows 0 / 1, COUNT_CHECK only '1' / '', B1L2-without-L1 NOTE, countcheck '0' PROBLEM, differed 4 =
         LATCH, 0 = pass, watched-word STOP. -> ebr_ RE-CHECK STARTED.
-        - [ ] c3i_ (with the B1.6 follow-ups or right after): b1_stack_headroom gate has no shipped line - ship a
+        - [x] c3i_ (DONE f512acab4, see 06:5x): b1_stack_headroom gate has no shipped line - ship a
             StackHighWater line in the pool trace window (then t4i_ r22 adds its regex with S2's) or say the gate
             should go; t4i_ also fixes b1_refused_hooked's status text (:710 -> :734) in r22.
         - [ ] T5 owner (end batch, before leg 1): the REAL manifest must carry rows ParallelEffectUpdate /
@@ -7923,13 +7922,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         push -u origin $b refused (-u in GIT_VALUE); N9 `(?<![.\w])fetch\s*\(` (Python .fetch( false refusal); N3
         deny text "run it alone (no cd, pipe or &&)"; I1 do P-2 / P-4 while shadow; empty lock = stale (benign).
         -> gtp_ FIXES STARTED, then gtw_ re-check 10.
-        Agents (6): gtp_ (gtw_ re-check 9 Shoulds + re-seed), gtv_ (gtq_ fixes + gtl_ iq_refs re-check), gtb_
-        (s1a-s1c), ebr_ (t4i_ r22 re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_,
-        lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r23 after c3i_), gbc_, gpr_
-        (re-checks gtb_ s1a-s1c), gti_ (after H0: R1), grs_, gtk_, gtw_ (re-check 10 after gtp_), b13r_
-        (re-checks c3i_), gtl_ (after H0: its 4 suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator, since
-        05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends; gtv_'s held lab tests + race
-        probe after H0.
+        c3i_ B1.6 FOLLOW-UPS DONE 06:5x (render_mt/reports/c3i_b16_followups_handback.md): rmt_b16n from c54e3e589
+        (local): f60910e9c N3 Spawns tooltip, 87303e18b N2 29f threads = std::jthread + stop_token (fill_out_only
+        mutant now exit 1 at line 317, own_thread exit 1 at 293; one plain std::thread `unmapping` left in the 29f
+        "thread inside the game's Unmap" block - a jthread would hang there, left as is), cfffd46cf N1 braces + S2
+        `[Total War] Cached Particle Count (trace window N): H hits, M misses.` (window delta, only when H + M != 0;
+        test 28a + mutants print_always / no_reset fail), f512acab4 `[Total War] Parallel Effect Update (trace
+        window N): stack headroom K KB.` (least headroom below the deepest committed page via VirtualQuery of the
+        guard page, taken once at a round's end in a trace window by the walk's thread + each worker; matches the
+        existing b1_stack_headroom regex; suite run printed 496 KB; 26f check one line per window, mutant fails).
+        tw_engine_code FULL PASS (06:33-06:55; an earlier FULL failed c3i_'s own new 26f check, fixed), -DrawRecording
+        PASS, instance_fill PASS, draw_recording / _loop / _sites PASS; gated builds -Owner c3i_ x86 3 games + x86
+        DRAW_RECORDING + amd64 exit 0. -> b13r_ RE-CHECK STARTED; t4i_ R23 STARTED (S2 regex `\[Total War\] Cached
+        Particle Count \(trace window (\d+)\): (\d+) hits, (\d+) misses\.`, b1_stack_headroom now real); c3i_
+        starts the B1 real-routine tests box on a new branch from f512acab4 (fixes from b13r_ first if any).
+        Agents (8): gtp_ (gtw_ re-check 9 Shoulds + re-seed), gtv_ (gtq_ fixes + gtl_ iq_refs re-check), gtb_
+        (s1a-s1c), ebr_ (t4i_ r22 re-check), b13r_ (c3i_ B1.6 follow-ups re-check), t4i_ (r23: c3i_'s two
+        lines), c3i_ (B1 real-routine tests). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake
+        to testbin + R1), gpp_, gbc_, gpr_ (re-checks gtb_ s1a-s1c), gti_ (after H0: R1), grs_, gtk_, gtw_
+        (re-check 10 after gtp_), gtl_ (after H0: its 4 suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator,
+        since 05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends; gtv_'s held lab tests
+        + race probe after H0.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
