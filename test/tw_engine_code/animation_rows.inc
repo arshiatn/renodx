@@ -1773,15 +1773,8 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
 
   // 23c. The cut rule with a parked thread at each byte of each stub.
   {
-    std::atomic<bool> stop = false;
-    std::atomic<bool> running = false;
-    std::thread parked([&] {
-      running = true;
-      while (!stop.load()) Sleep(1);
-    });
-    while (!running.load()) Sleep(1);
-    Sleep(20);  // past the thread's start: frozen inside its start (holding the heap's lock) it would block the next allocation of this thread for good
-    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
+    ParkedThread parked;
+    HANDLE thread = parked.Open();
     CHECK(thread != nullptr);
     int wrong = 0;
     int checked = 0;
@@ -1808,8 +1801,7 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
     for (size_t offset = 0; offset < ec::SWEEP_ENTRY_STUB.size(); ++offset) try_off(sweep_stub() + offset, true);
     try_off(fill_stub() - 1, false);           // the byte before the stubs: another stub's
     try_off(ec::page + ec::PAGE_SIZE, false);  // the data page's first byte
-    stop = true;
-    parked.join();
+    parked.Stop();
     CloseHandle(thread);
     CHECK(wrong == 0);
     update_rows(false, false);
@@ -1868,15 +1860,8 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
     CHECK((ec::written & ec::WORKER_SITES) == ec::WORKER_SITES);
 
     // A thread kept in the stub for MAX_FAILED_WRITES presents: pinned, the sites still in.
-    std::atomic<bool> stop = false;
-    std::atomic<bool> running = false;
-    std::thread parked([&] {
-      running = true;
-      while (!stop.load()) Sleep(1);
-    });
-    while (!running.load()) Sleep(1);
-    Sleep(20);  // past the thread's start: frozen inside its start (holding the heap's lock) it would block the next allocation of this thread for good
-    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
+    ParkedThread parked;
+    HANDLE thread = parked.Open();
     CHECK(thread != nullptr && SuspendThread(thread) != static_cast<DWORD>(-1));
     CONTEXT saved = {.ContextFlags = CONTEXT_CONTROL};
     CHECK(GetThreadContext(thread, &saved) != FALSE);
@@ -1888,8 +1873,7 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
     CHECK(ec::module_pinned && ec::failed_writes == ec::MAX_FAILED_WRITES && (ec::written & ec::WORKER_SITES) == ec::WORKER_SITES);
     CHECK(SetThreadContext(thread, &saved) != FALSE);
     ResumeThread(thread);
-    stop = true;
-    parked.join();
+    parked.Stop();
     CloseHandle(thread);
     ec::module_pinned = false;
     update_rows(true, true);  // the rows asked for again: the count starts over
@@ -1912,15 +1896,8 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
   // 23e0. A thread parked at each byte of each worker site's own five bytes (SuspendThread / SetThreadContext, as 29d): refused strictly inside (the group stands down), free at
   // the first byte and the byte after, going in and going out. The sweep entry is the only site whose five bytes hold three instruction starts (the review's Should 1b).
   {
-    std::atomic<bool> stop = false;
-    std::atomic<bool> running = false;
-    std::thread parked([&] {
-      running = true;
-      while (!stop.load()) Sleep(1);
-    });
-    while (!running.load()) Sleep(1);
-    Sleep(20);  // past the thread's start: frozen inside its start (holding the heap's lock) it would block the next allocation of this thread for good
-    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
+    ParkedThread parked;
+    HANDLE thread = parked.Open();
     CHECK(thread != nullptr);
     const uint32_t all = (has_fill ? ec::WORKER_SITES : ec::WORKER_SWEEP_BIT);
     int wrong = 0;
@@ -1958,8 +1935,7 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
         wrong += ((ec::written & ec::WORKER_SITES) != 0 || fill_slot() != 0 || sweep_slot() != 0) ? 1 : 0;
       }
     }
-    stop = true;
-    parked.join();
+    parked.Stop();
     CloseHandle(thread);
     ec::failed_writes = 0;
     CHECK(wrong == 0 && (ec::written & ec::WORKER_SITES) == 0 && !ec::module_pinned);
