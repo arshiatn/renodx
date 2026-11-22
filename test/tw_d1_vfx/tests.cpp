@@ -1,10 +1,10 @@
 // Divinity: Original Sin EE's VFX Brightness (src/games/divinityoriginalsinenhanced/vfx_brightness.hpp) on the game's
 // own effect shaders (the census's csos, read by run.ps1 outside the repo), each of HASHES patched by Patch:
 // 1. The program (D3DDisassemble): the game's with every o0 written into one temporary more (o0 -> rT, dcl_temps + 1),
-//    before each ret "mad o0.xyz, rT.xyzx, cb7[0].xxxx, rT.xyzx" and "mov o0.w, rT.w", and dcl_constantbuffer CB7[1]
+//    before each ret "mad o0.xyz, rT.xyzx, cb7[0].xxxx, rT.xyzx" and "mov o0.w, rT.wwww", and dcl_constantbuffer CB7[1]
 //    before dcl_temps; nothing else.
 // 2. On WARP (both shaders created; every texture, sampler and constant buffer the game's reflection names filled with
-//    fixed noise, 0 - 1 and a second set with constants 0 - 16; the interpolants fixed functions of the position): cb7
+//    fixed noise, 0 - 1, a set with constants 0 - 16, and sets of -8 - 8 until one draws; the interpolants fixed functions of the position): cb7
 //    unbound and at the slider's 1 (cb7.x 0) the game's bits wherever the game's colour is finite; at 2 (cb7.x 1) its rgb
 //    twice the game's, exact in float, its alpha the game's bits. Controls: a pixel drawn (not discarded) in each shader,
 //    and at 2 the colour off the game's somewhere.
@@ -48,7 +48,7 @@ static int failures = 0;
     }                                                  \
   } while (false)
 
-constexpr UINT SIZE = 64;
+constexpr UINT TEXTURE_SIZE = 64;
 constexpr float SENTINEL = -12345.f;  // the target's clear: a discarded pixel keeps it
 
 static ComPtr<ID3D11Device> device;
@@ -100,7 +100,7 @@ static ComPtr<ID3D11Buffer> MakeConstants(const void* data, UINT bytes) {
   return buffer;
 }
 
-static Inputs MakeInputs(std::span<const uint8_t> game, float constant_scale, uint32_t seed) {
+static Inputs MakeInputs(std::span<const uint8_t> game, float constant_low, float constant_scale, uint32_t seed) {
   Inputs inputs;
   ComPtr<ID3D11ShaderReflection> reflection;
   if (FAILED(D3DReflect(game.data(), game.size(), IID_PPV_ARGS(&reflection)))) {
@@ -151,11 +151,11 @@ static Inputs MakeInputs(std::span<const uint8_t> game, float constant_scale, ui
         return inputs;
       }
       const UINT slices = cube ? 6u : 1u;
-      std::vector<float> texels(SIZE * SIZE * 4 * slices);
+      std::vector<float> texels(TEXTURE_SIZE * TEXTURE_SIZE * 4 * slices);
       for (float& texel : texels) texel = Noise(&state);
       std::vector<D3D11_SUBRESOURCE_DATA> init(slices);
-      for (UINT slice = 0; slice < slices; ++slice) init[slice] = {&texels[slice * SIZE * SIZE * 4], SIZE * 4 * sizeof(float), 0};
-      const D3D11_TEXTURE2D_DESC desc = {SIZE, SIZE, 1, slices, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT,
+      for (UINT slice = 0; slice < slices; ++slice) init[slice] = {&texels[slice * TEXTURE_SIZE * TEXTURE_SIZE * 4], TEXTURE_SIZE * 4 * sizeof(float), 0};
+      const D3D11_TEXTURE2D_DESC desc = {TEXTURE_SIZE, TEXTURE_SIZE, 1, slices, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT,
                                          D3D11_BIND_SHADER_RESOURCE, 0, (cube ? static_cast<UINT>(D3D11_RESOURCE_MISC_TEXTURECUBE) : 0u)};
       ComPtr<ID3D11Texture2D> texture;
       ComPtr<ID3D11ShaderResourceView> view;
@@ -186,7 +186,7 @@ static Inputs MakeInputs(std::span<const uint8_t> game, float constant_scale, ui
       D3D11_SHADER_BUFFER_DESC buffer_desc = {};
       reflection->GetConstantBufferByName(bind.Name)->GetDesc(&buffer_desc);
       std::vector<float> values(buffer_desc.Size / 4);
-      for (float& value : values) value = Noise(&state) * constant_scale;
+      for (float& value : values) value = constant_low + Noise(&state) * constant_scale;
       inputs.constants.emplace_back(bind.BindPoint, MakeConstants(values.data(), buffer_desc.Size));
     } else {
       inputs.skipped = std::format("binding {} of type {}", name, static_cast<int>(bind.Type));
@@ -198,7 +198,7 @@ static Inputs MakeInputs(std::span<const uint8_t> game, float constant_scale, ui
 
 // `brightness`: cb7's x (null: cb7 unbound).
 static std::vector<Texel> Draw(ID3D11PixelShader* shader, const Inputs& inputs, const float* brightness) {
-  const D3D11_TEXTURE2D_DESC target_desc = {SIZE, SIZE, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET, 0, 0};
+  const D3D11_TEXTURE2D_DESC target_desc = {TEXTURE_SIZE, TEXTURE_SIZE, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET, 0, 0};
   ComPtr<ID3D11Texture2D> target;
   ComPtr<ID3D11RenderTargetView> target_view;
   device->CreateTexture2D(&target_desc, nullptr, &target);
@@ -207,7 +207,7 @@ static std::vector<Texel> Draw(ID3D11PixelShader* shader, const Inputs& inputs, 
   const FLOAT clear[4] = {SENTINEL, SENTINEL, SENTINEL, SENTINEL};
   context->ClearRenderTargetView(target_view.Get(), clear);
   context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
-  const D3D11_VIEWPORT viewport = {0, 0, SIZE, SIZE, 0, 1};
+  const D3D11_VIEWPORT viewport = {0, 0, TEXTURE_SIZE, TEXTURE_SIZE, 0, 1};
   context->RSSetViewports(1, &viewport);
   context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   context->VSSetShader(inputs.vertex_shader.Get(), nullptr, 0);
@@ -221,15 +221,15 @@ static std::vector<Texel> Draw(ID3D11PixelShader* shader, const Inputs& inputs, 
     context->PSSetConstantBuffers(divinity::vfx_brightness::SLOT, 1, buffer.GetAddressOf());
   }
   context->Draw(3, 0);
-  const D3D11_TEXTURE2D_DESC staging_desc = {SIZE, SIZE, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_STAGING, 0, D3D11_CPU_ACCESS_READ, 0};
+  const D3D11_TEXTURE2D_DESC staging_desc = {TEXTURE_SIZE, TEXTURE_SIZE, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_STAGING, 0, D3D11_CPU_ACCESS_READ, 0};
   ComPtr<ID3D11Texture2D> staging;
   device->CreateTexture2D(&staging_desc, nullptr, &staging);
   context->CopyResource(staging.Get(), target.Get());
   D3D11_MAPPED_SUBRESOURCE mapped = {};
   context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
-  std::vector<Texel> texels(SIZE * SIZE);
-  for (UINT row = 0; row < SIZE; ++row) {
-    std::memcpy(&texels[row * SIZE], static_cast<const uint8_t*>(mapped.pData) + row * mapped.RowPitch, SIZE * sizeof(Texel));
+  std::vector<Texel> texels(TEXTURE_SIZE * TEXTURE_SIZE);
+  for (UINT row = 0; row < TEXTURE_SIZE; ++row) {
+    std::memcpy(&texels[row * TEXTURE_SIZE], static_cast<const uint8_t*>(mapped.pData) + row * mapped.RowPitch, TEXTURE_SIZE * sizeof(Texel));
   }
   context->Unmap(staging.Get(), 0);
   return texels;
@@ -273,13 +273,15 @@ int main(int argc, char** argv) {
       for (size_t at = line.find("o0."); at != std::string::npos; at = line.find("o0.", at + temp.size())) line.replace(at, 2, temp);
       if (line == "ret") {
         instructions.push_back("mad o0.xyz, " + temp + ".xyzx, cb" + slot + "[0].xxxx, " + temp + ".xyzx");
-        instructions.push_back("mov o0.w, " + temp + ".w");
+        instructions.push_back("mov o0.w, " + temp + ".wwww");
       }
       instructions.push_back(line);
     }
     CHECK(!temp.empty() && after[0] == declarations, "%s: declarations (the game's, cb7, dcl_temps + 1)", name.c_str());
-    CHECK(after[1] == instructions, "%s: instructions (the game's with o0 -> %s, the brightness before each ret)", name.c_str(),
-          temp.c_str());
+    const auto [expected_line, patched_line] = std::ranges::mismatch(instructions, after[1]);
+    CHECK(after[1] == instructions, "%s: instructions (the game's with o0 -> %s, the brightness before each ret): '%s' where '%s'",
+          name.c_str(), temp.c_str(), (patched_line == after[1].end() ? "(end)" : patched_line->c_str()),
+          (expected_line == instructions.end() ? "(end)" : expected_line->c_str()));
 
     // 2. On WARP.
     ComPtr<ID3D11PixelShader> game_shader;
@@ -294,8 +296,10 @@ int main(int argc, char** argv) {
     size_t off_two = 0;
     size_t changed_two = 0;
     size_t infinite = 0;
-    for (const auto& [constant_scale, seed] : {std::pair{1.f, 0x1234567u}, std::pair{16.f, 0x2468ACEu}}) {
-      const Inputs inputs = MakeInputs(game, constant_scale, seed ^ hash);
+    // Constants 0 - 1 and 0 - 16, then sets of -8 - 8 (decals: inside their box and facing their normal), at least two,
+    // more until one draws and changes at 2 (at most 64).
+    for (uint32_t set = 0; set < 66 && (set < 4 || drawn == 0 || changed_two == 0); ++set) {
+      const Inputs inputs = MakeInputs(game, (set >= 2 ? -8.f : 0.f), (set == 0 ? 1.f : 16.f), (0x1234567u + set * 0x9E3779B9u) ^ hash);
       CHECK(inputs.skipped.empty(), "%s: not drawn (%s)", name.c_str(), inputs.skipped.c_str());
       if (!inputs.skipped.empty()) break;
       constexpr float AT_ONE = 0.f;
