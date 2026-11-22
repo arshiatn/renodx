@@ -569,7 +569,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - boxes rve_ asked for: PathTracedReflectionOcclusion for the non-WH games; the P1 ... | ?
 - DRY owner (after wave 2): the V35 rows-default loop (4 games) + 4 copies of the ... | ?
 - 5: no ReShade.log from Astra; the END REVIEW checks the 3 left freeze causes (ob ... | ?
-- 6: mem_ STUDY (Opus xHigh, read only + offline tests): RenoDX per-battle + alt-t ... | ?
 - 23: ReShade SDK headers 6.7.3 -> 6.8 (external/reshade submodule, ATN's OK 21:48 ... | ?
 - 25: H2 A/B (R.U.S.E. DLSS 310.9.16 vs 310.7.0): ATN's rule `powershell -NoProfil ... | ?
 - 26: D1 / D2 act.ps1 -PM one Alt tap right before the game takes focus: OK'd by A ... | ?
@@ -626,6 +625,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RELEASE NOTES (g19_ MI5, coord at release): every TW game "New: AO and Light Bou ... | ?
 - fog_shadows_defaulted_on still missing: Thrones (G01, next wave) and WH3 (render ... | ?
 - Shogun 2 (g04_, rvb_ MI6): the shared ClearSavedRows + AntiAliasingTextureLodBia ... | ?
+- F4-F6 BUG FIX, on (next wave, rt_core owner G18, Opus High + Opus xHigh review): ... | ?
+- L1-L5 address-space log lines (device_end::AddressSpace() text): fake_fullscreen ... | ?
+- alt-tab fix after the L-line split: F1a skip / post WM_SIZE when already the rig ... | ?
+- F7 erase destroyed utils::resource store entries (Opus design first, shared upst ... | ?
+- mem_ CONFIRM RUN (needs ATN's go, one in-game): 2 arms (RenoDX / add-on file out ... | ?
+- heapfix author (via ATN only): 64 KB piece pinning, returning empty pieces, out- ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12062,7 +12067,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         1.10 / 1.39 / 0.97 / 0.87), g06_ (21, 22), g02_ (27 per-map V35 from the game's files, no trace; 28).
         - [ ] 5: no ReShade.log from Astra; the END REVIEW checks the 3 left freeze causes (object motion stream output +
         compute, 32-bit address space, driver / his effects) on the final code.
-        - [ ] 6: mem_ STUDY (Opus xHigh, read only + offline tests): RenoDX per-battle + alt-tab memory (fake-fullscreen
+        - [x] 6: mem_ STUDY (DONE 22:2x, reports/mem_study.md) (Opus xHigh, read only + offline tests): RenoDX per-battle + alt-tab memory (fake-fullscreen
         +113 MB, rvc_ G16 M1), helper VRAM, the game's side via dis_at; fixes + offline tests; at most ONE in-game confirm
         -> reports/mem_study.md. Replaces Q6's restart A/B plan.
         - [ ] 23: ReShade SDK headers 6.7.3 -> 6.8 (external/reshade submodule, ATN's OK 21:48): coord, AFTER the render_mt
@@ -12294,6 +12299,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         are cleared once." (Ryse's already in 8748f72ae).
         - [ ] fog_shadows_defaulted_on still missing: Thrones (G01, next wave) and WH3 (render_mt, after the freeze).
         - [ ] Shogun 2 (g04_, rvb_ MI6): the shared ClearSavedRows + AntiAliasingTextureLodBiasTrilinear.
+        mem_ STUDY DONE 22:2x (reports/mem_study.md, handbacks/mem_study_handback.md; A measured / B code / C guess): no
+        multi-battle Attila va.csv exists, so "after battles" items are B / C; a ~60 s alt-tab costs +91 MB address space
+        at the largest block's bottom that never returns (A, RenoDX's; fake fullscreen's WM_SIZE or the first trace after the
+        helper's idle release, 0.1 s apart; that trace blocks 2331 ms); heapfix's 64 KB pieces pin the edge (A / B); rt_core
+        holds cluster_meshes + atlas_slices 3600 frames into the next load, cut_out_textures never emptied (raw pointers,
+        reused address = wrong RT holes, C); utils::resource store never erases destroyed entries (B); the game's own 110 MB
+        focus release is not a leak (A); helper VRAM returns fully at idle release (A). Sent to er5o_ for freeze cause 2.
+        - [ ] F4-F6 BUG FIX, on (next wave, rt_core owner G18, Opus High + Opus xHigh review): at SCENE_GONE_FRAMES whatever
+        keep_placed is, clear cluster_meshes + index_buffer_sets (index_buffers_held false), free + clear atlas_slices,
+        clear cut_out_textures (today inside keep_placed, rt_core.hpp:4656-4661). Offline test T2 (WARP D3D11, refcounts +
+        reused-address cut-out).
+        - [ ] L1-L5 address-space log lines (device_end::AddressSpace() text): fake_fullscreen_pending set, before / after
+        ApplyFakeFullscreen, after the first trace's Answer once captured again, the next 10-s report; T3 (window messages
+        in 3 states), T4 (focus_steps.py parses the confirm run).
+        - [ ] alt-tab fix after the L-line split: F1a skip / post WM_SIZE when already the right size (shared swapchain /
+        windowing, Opus design first) or F1b keep the helper's scene while out of front (removes the 2.3 s hitch; ~11.5 GB
+        VRAM held while alt-tabbed -> ATN sets the hold time).
+        - [ ] F7 erase destroyed utils::resource store entries (Opus design first, shared upstream code, list every reader of
+        `destroyed`; low until T1 sizes it). F8 keep the Mega Geometry room across the idle release (faster, same picture = on).
+        - [ ] mem_ CONFIRM RUN (needs ATN's go, one in-game): 2 arms (RenoDX / add-on file out), battle + one 60 s alt-tab +
+        3 restarts + campaign + battle; va_probe2 1 s + memory.csv + the L lines; limits in the report.
+        - [ ] heapfix author (via ATN only): 64 KB piece pinning, returning empty pieces, out-of-front growth.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
