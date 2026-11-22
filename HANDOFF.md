@@ -446,6 +446,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - c3i_ (with the B1.6 follow-ups or right after): b1_stack_headroom gate has no sh ... | ?
 - T5 owner (end batch, before leg 1): the REAL manifest must carry rows ParallelEf ... | ?
 - gtl_ (optional, after its 4 suites pass): a light_anim iq job launches its own r ... | ?
+- gtb_ (after its selftest flake S1): N11 from gtp_ - budget.py's exact price look ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -7772,13 +7773,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         suites after H0.
         - [ ] gtl_ (optional, after its 4 suites pass): a light_anim iq job launches its own resident instead of
             reusing a kept one; positive-control unit test for reuse (stub with dred true + pid + idle alive.json).
-        Agents (6): gtp_ (gtw_ re-check 8 fixes, O1 first), gtq_ (iq_input note + reference played.json,
-        offline), gtb_ (selftest flake S1), ebr_ (t4i_ r21 re-check), c3i_ (B1.6 follow-ups + stack headroom
-        line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r22
-        after c3i_), gbc_, gpr_ (re-checks gtb_ S1), gti_ (after H0: R1), grs_, gtk_, gtw_ (re-check 9 after
-        gtp_), b13r_ (re-checks c3i_), gtl_ (after H0: its 4 suites), gtv_ (after H0: held tests + race probe;
-        re-checks gtq_). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
-        map_replay-named process until H0 ends.
+        gtp_ RE-CHECK 8 FIXES DONE 06:2x (plan_1117/gtp_recheck8_fixes_handback.md; backups scratchpad\gtp_bak13):
+        live in tools\tw\gates, mode SHADOW, suite 617 / 617 (was 541, +76 checks); no override.json, no new
+        gate_errors rows, nothing installed, no settings / gates.tsv / web_allow.tsv touched, the override script
+        never ran. O1: proposal renamed gate_override.ps1.proposed (live + mirror), OVERRIDE_RUN
+        `gate_override[\w.-]*\.ps1` refuses -File / bash / Move-Item / the old name (and any agent naming the
+        proposal - moving it is ATN's step), INSTALL section 7 = Move-Item -Force, no Copy-Item left. G1 print +
+        flush first, log in a try (failed write = one TOOL FAULT row). W1 nested archive refused; W2 licence = file
+        views only + full-name regex, code / archive extensions out; W3 gtw_'s heredoc regex; W4 git $ only at the
+        remote / URL position; W5 python / node heredoc bodies like -c, shell bodies like commands, cat = data; W6
+        ci / wheel / sync / restore / update / upgrade / fetch; W7 browser_out from page-URL fields only, a later
+        local page clears it; P1 VERIFY vs the kind key; P2 redirect words dropped from gated_build keys; I1 INSTALL
+        item 12 says price_probe / updated_input do nothing yet + names P-2 / P-4. Nits N1-N10 + N12 done, price_rows
+        via str.find. N11 is gtb_'s (box). F24 WebFetch latency failed once under H0 load, rerun passed; A/B old
+        0.173 s vs new 0.136 s. -> gtw_ RE-CHECK 9 STARTED.
+        - [ ] gtb_ (after its selftest flake S1): N11 from gtp_ - budget.py's exact price lookup ignores the hook's
+            `warm?` build seeds; then gpr_ re-checks.
+        Agents (6): gtw_ (S1c re-check 9), gtq_ (iq_input note + reference played.json, offline), gtb_ (selftest
+        flake S1, then N11), ebr_ (t4i_ r21 re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_,
+        lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r22 after c3i_), gbc_,
+        gpr_ (re-checks gtb_ S1), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_),
+        gtl_ (after H0: its 4 suites), gtv_ (after H0: held tests + race probe; re-checks gtq_). GPU: H0 RE-RUN
+        (coordinator, since 05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
