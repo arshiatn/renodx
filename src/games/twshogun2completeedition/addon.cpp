@@ -1166,8 +1166,8 @@ void BuildRuntimeData() {
           .label = "Recommended (SDR-like Contrast/Saturation)",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Recommended, with PsychoV31's contrast and saturation closer to the game's SDR (PsychoV35 follows it\n"
-                     "already) and highlights that compress sooner. Keeps Peak, Paper White, UI and output.",
+          .tooltip = "Recommended, with PsychoV31's contrast and saturation closer to the game's SDR (PsychoV35 already\n"
+                     "matches it) and highlights that compress sooner. Keeps Peak, Paper White, UI and output.",
           .on_change = []() {
             ApplyRecommendedPreset();
             // PsychoV35's contrast stays the fitted one (V35_GAME_RESPONSE): 1.3 here would sit below the game's toe.
@@ -1600,10 +1600,30 @@ void BuildRuntimeData() {
             ImGui::SliderInt("Custom render scale", &percent, 1, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp);
             dragging = ImGui::IsItemActive();
             const bool released = ImGui::IsItemDeactivatedAfterEdit();
-            // The reset icon the other sliders have (renodx::utils::settings draws it only for its own slider types).
+            // The reset icon the other sliders have, in their style (renodx::utils::settings draws it only for its own
+            // slider types): small font, round, grey at the default.
             ImGui::SameLine();
-            ImGui::BeginDisabled(aa_sliders.render_scale == CUSTOM_RENDER_SCALE_DEFAULT);
-            const bool reset = ImGui::SmallButton(renodx::utils::icons::View(renodx::utils::icons::UNDO));
+            const bool at_default = aa_sliders.render_scale == CUSTOM_RENDER_SCALE_DEFAULT;
+            ImGui::BeginDisabled(at_default);
+            if (at_default) {
+              ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(ImColor::HSV(0, 0, 0.6f)));
+              ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(ImColor::HSV(0, 0, 0.7f)));
+              ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(ImColor::HSV(0, 0, 0.8f)));
+            }
+            const float previous_font_size = ImGui::GetFontSize();
+            ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.75f);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, ImGui::GetFontSize() * 2);
+            ImVec2 cursor = ImGui::GetCursorPos();
+            cursor.y += (previous_font_size - ImGui::GetFontSize()) * 0.5f;
+            ImGui::SetCursorPos(cursor);
+            ImGui::PushID("##ResetRenderScaleCustom");
+            const bool reset = ImGui::Button(renodx::utils::icons::View(renodx::utils::icons::UNDO));
+            ImGui::PopID();
+            if (at_default) {
+              ImGui::PopStyleColor(3);
+            }
+            ImGui::PopStyleVar();
+            ImGui::PopFont();
             ImGui::EndDisabled();
             if (reset) {
               percent = static_cast<int>(CUSTOM_RENDER_SCALE_DEFAULT);
