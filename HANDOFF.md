@@ -8757,8 +8757,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         nothing busy; h0\release_runs\dryrun_20261122_0906* / 0907*). Parsers tested on kept logs (release_rr
         93.5 ms, scene 123, RR 93); lock / launch / wait untested (need the real run). Stage 2 not in yet. ->
         gtw_ REVIEW STARTED (before ATN's rule); ATN box updated with the command lines.
+        grs_ FIRST-FRAME v2 DONE 09:0x (plan_1117/designs/grs_first_frame.md v2 + grs_first_frame_v2_handback.md;
+        design only): line numbers now atn-mods (main.cpp / rt_d3d12.hpp; bridge / anti_aliasing / rt_core / fg / nrd
+        identical to gpu_s2); "no AA at native size" not TAA. M3 Answer -> ANSWERED / BUSY / FAILED, may-open
+        timeout returns BUSY before 686; 180 s deadline (QueryUnbiasedInterruptTime) + process exit set
+        watchdog.failed; waited before deferred. M1 Release(true) while opening drops add-on objects, skips Answer +
+        PublishEmptySet, marks orphaned + empty set owed; present hook `|| Opening()` keeps polling (idempotent).
+        M2 survives Release(false); orphaned late answer sets nothing; Prepare poll after 840, before 848-849;
+        Shutdown resets. M5 no skipping (Request polls after 1106, before 1111). M4 harness REQUIRED: Sleep +
+        retry while Opening() up to budget, RESULT opened_late + open_ms, RENODX_TW_OPEN_BUDGET_MS=0 latches as
+        today, no straddling A/B (tools\tw\rt_harness proposal only). S1 5 s may-open / 20 s else; S2 reset flag
+        (1425 / 1489); S3 release_idle(reference = last_request, main.cpp:949) stand-alone; S4 NRD move dropped,
+        EnsureNrd ms (rt_d3d12.hpp:4809); S5 b3 (1.2 parallel, 1.1 on failure, SER Map / Unmap around join, slowest
+        first, half the cores max 6-8, serial fallback, MakeGpuBaker serial); S6 notes; S7 hide the FG window
+        (FindWindowExW + ShowWindowAsync SW_HIDE); S8 fallback only. ORDER: 1 open-time log lines (alone, no player
+        change); 2 S3 (alone, slight); 3 harness wait + RESULT + switch with Opening() false (alone, harness
+        owner's OK); 4 d' (only with 3 + no straddling A/B; player: 5 s block, no AA / RT frames, then on, instead
+        of 20 s freeze + off); 5 b3 (after a cold-cache timed open); 6 NRD only if 1's numbers call for it;
+        fallback S8. Open for ffr_: budget + 5 / 20 split re-tune after step 1, FG hide vs rare frozen frame,
+        switch name. -> ffr_ RE-CHECK STARTED.
         Agents (6): h0i_ (H0 F1-F4), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gtb_ (slot-wait
-        test + load + gate seed + R12-1 half), grs_ (first-frame design revision), gtw_ (release_check.ps1
+        test + load + gate seed + R12-1 half), ffr_ (grs_ first-frame v2 re-check), gtw_ (release_check.ps1
         review), t4i_ (T5 manifest rows + B1 risks)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
