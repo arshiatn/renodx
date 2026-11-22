@@ -7380,11 +7380,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         the job report + iq / pbrt headers; only a format version change belongs in the key; re-recording = ATN's
         call. Optional for gtb_: sample CPU at each phase start. -> gtl_ STARTED (edits now; its lab tests spawn
         harness-named fakes -> run them after H0, ~06:10). gtv_ held its lab tests + race probe for the same reason.
-        Agents (8): b13r_ (c3i_ B1.6 review), ebr_ (t4i_ r20 re-check), gtp_ (K1-K3 + next round), gbc_ (B3-N1
-        re-check), grs_ (S2r N1 + nits), gtl_ (S3r S1 Should + nits + scene.builds), gpr_ (gtb_ x1-x4 + slow 0
-        re-check). Coordinator: H0 real run (bhe3fx2sg, ~72 min). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits
-        b13r_), upt_, upr_, h0i_, gpp_, gtb_ (waits gpr_), t4i_ (waits ebr_, then r21), gtq_ (waits gbc_), gti_,
-        gtv_ (waits grs_ / gtl_; held lab tests until after H0), gtk_, gtw_ (waits gtp_).
+        gbc_ B3-N1 RE-CHECK = OK 05:1x (plan_1117/gbc_b3n1_recheck_handback.md): only the CLI block changed, stand-in +
+        finally + empty assert; no file under refcode\flip newer than the run, git status clean; test_iq_flip 6 / 6.
+        GTQ_ QUALITY METRICS (B1 + B2 + B3) DONE; gbc_'s B1 / C1 / RS reviews closed. Open from it: [ ] gtq_flip_src
+        keep / delete (ATN).
+        Agents (7): b13r_ (c3i_ B1.6 review), ebr_ (t4i_ r20 re-check), gtp_ (K1-K3 + next round), grs_ (S2r N1 +
+        nits), gtl_ (S3r S1 Should + nits + scene.builds), gpr_ (gtb_ x1-x4 + slow 0 re-check). Coordinator: H0 real
+        run (bhe3fx2sg, ~72 min). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_, h0i_, gpp_, gtb_
+        (waits gpr_), t4i_ (waits ebr_, then r21), gtq_, gbc_, gti_, gtv_ (waits grs_ / gtl_; held lab tests until
+        after H0), gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
