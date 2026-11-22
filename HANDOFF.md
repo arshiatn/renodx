@@ -6963,8 +6963,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         child = foreign + orphaned (Job Object per process). S1-S7 (empty block_rows passes all; caller env leaks into
         residents; de-DE VRAM None; ...) + 10 nits. Safety focus points 1-6 otherwise OK. gtl_ RESUMED 03:1x: S3 fix
         round = gtv_'s + gtq_'s 8 + gtk_'s items + gtb_'s dead lines + the test_lab_jobs flake; then gtv_ re-checks.
-        Agents (11): c33i_ (N6), ebr_ (r17 re-check), h0i_ (N1 + rebase), upr_ (v2.4 re-check), gpp_ (price + web v2),
-        grs_ (S2), gtl_ (S3 fixes), gtw_ (S1c re-check 5), gbc_ (C1 + C2, then B1 review). Idle: lga_, lgf2_, gtv_
+        h0i_ N1 + REBASE DONE 03:2x (plan_1117/h0i_n1_rebase_handback.md): N1 fixed + selftest reads the script's own
+        run 7 line (old order -> 1 wrong); 5 nits; rmt_h0 rebased onto c3ea4925f -> tip 42c081bd6 (local only), $PostRev
+        42c081bd6, merge-base c3ea4925f, 61 lab headers byte-equal to the pre-rebase build, headers PASS, include closure
+        clean, SHaRC pin OK, gated builds exit 0. Junctions left: worktree agent-a89c9abe637f2c4c2\bin, scratchpad\
+        h0i_rtree (bin, include, external, build\downloads) -> delete the links alone first. upr_ H0 r2 QUEUED after
+        its v2.4 re-check; then the coordinator runs -DryRun (ATN's rule), then the real run in a gap.
+        Agents (10): c33i_ (N6), ebr_ (r17 re-check), upr_ (v2.4 re-check, then H0 r2), gpp_ (price + web v2), grs_
+        (S2), gtl_ (S3 fixes), gtw_ (S1c re-check 5), gbc_ (C1 + C2, then B1 review). Idle: lga_, lgf2_, h0i_, gtv_
         (waits gtl_), gtq_ / gtk_ (wait gbc_), gti_, gtb_, gtp_.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
