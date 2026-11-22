@@ -8318,8 +8318,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] release / lifetime owner (gpu3_ A1g, lga_): 5 release modes 77-122 ms vs the 75 ms limit, both sides.
         - [ ] coordinator after upr_'s OK: H0 re-run (full, ~84 min, ATN's rule) in a gap; ATN: optional new rule
             for h0i_'s proposed `-Only` switch.
-        Agents (8): upr_ (h0i_ H0 analysis re-check), gtv_ (gtl_ S5 re-check), gtp_ (round 12: hg1 + Section 8 +
-        kind()), gtb_ (wrapped build check + hg2), ebr_ (t4i_ r24 re-check), c3i_
+        gtv_ GTL_ S5 RE-CHECK = OK, NO FINDINGS 08:0x (plan_1117/gtv_gtl_s5_recheck_handback.md): unit 30, ps1 5, keeper
+        24, jobs 32 at 10 % load; one-arm refusal, echo required (folder left without played.json), addCleanup OK;
+        left: two separate one-arm jobs with different fields could still be fed together = the v1.2 config hash.
+        LAB S2-S5 + KIND DUMP REFERENCE MODE CLOSED. -> gtl_ v1.2 CONFIG HASH STARTED (lab side first: define the
+        hash + write it in played.json; gtq_'s builder check after).
+        Agents (8): upr_ (h0i_ H0 analysis re-check), gtl_ (v1.2 config hash, lab side), gtp_ (round 12: hg1 +
+        Section 8 + kind()), gtb_ (wrapped build check + hg2), ebr_ (t4i_ r24 re-check), c3i_
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
