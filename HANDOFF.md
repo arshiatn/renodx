@@ -8009,9 +8009,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         not installed. -> gtb_ STARTED, gpr_ re-checks.
         - [ ] gtp_ (after gtw_ re-check 10): the hook's own rows() / mode() raise on a corrupt gates.tsv / mode.txt -
             decide whether the hook reads that as shadow + a FAULT line (gpr_'s note 07:0x).
-        Agents (8): gtw_ (S1c re-check 10), gtq_ (gtv_'s S3 builder + nits 1-5), gtv_ (gtl_ S2 + S3 re-check),
-        t4i_ (r23), gtb_ (gate_rows strict decode), b13r_ (c3i_ B1.6 follow-ups re-check), c3i_ (B1 real-routine
-        tests). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, gbc_,
+        gtq_ S3 + NITS 1-5 DONE 07:0x (plan_1117/gtq_s3_nits_handback.md; backup scratchpad\gtq_backup_fix8): 32 iq
+        tests OK (316 s, CPU, below normal). S3 build_reference refuses sorted seeds closer than N (dump_frames) apart
+        (d apart share N - d keys; tested 2003 / 2004 at N 2); nit 1 recording.txt written last (after manifest,
+        before the rename; manifest text built before open); nit 2 `reference --out` / `--json` refused; nit 3 error
+        path tested (mocked finite raises -> exit 2, .partial kept without recording.txt / manifest, no target, later
+        build works); nit 4 mock.patch.object for time + IQ_REFS (restore asserted); nit 5 all checks before any
+        folder is made (refusals leave no iq_refs). Real iq_refs still not created. -> gtv_ re-check now covers gtq_
+        + gtl_ together (sent as an addendum).
+        Agents (7): gtw_ (S1c re-check 10), gtv_ (gtl_ S2 + S3 + gtq_ S3 + nits re-check), t4i_ (r23), gtb_
+        (gate_rows strict decode), b13r_ (c3i_ B1.6 follow-ups re-check), c3i_ (B1 real-routine tests). Idle:
+        bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, gbc_, gtq_ (waits gtv_),
         gpr_ (re-checks gtb_), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), gtl_ (after H0: its 4 suites),
         ebr_ (re-checks t4i_ r23). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
         map_replay-named process until H0 ends; gtv_'s held lab tests + race probe after H0.
