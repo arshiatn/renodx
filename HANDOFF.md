@@ -484,6 +484,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: permanent delete of (1) old WPR ETLs 33.3 GB + (3) old shots 5.5 GB (dsk_ 1 ... | ?
 - dsk_: refined testbin list (2) - only old DLL / obj copies no test, pin or tool ... | ?
 - t4i_ (after the scan gaps): end batch moves each finished leg's ETLs to a D: fol ... | ?
+- ATN (antivirus): scratchpad\t4i_etl_tests.py (t4i_'s ETL-move test, written 10:5 ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9699,9 +9700,35 @@ heading text are in HANDOFF_ARCHIVE.md)
         the v1 check, cache key, log. Sandbox test scratchpad\lga_rc3_test.ps1 agrees with gated_build on 5 slots;
         rc2 test 31 / 31, verdict 10 / 10; dry run ~10:58 exit 0. release_check READY (rule in) -> first real run
         after H0 + builds. H0 10:58: run 1 pre_b (17 modes).
-        Agents (3): gtp_ (round 16), t4i_ (probes for the 3 new B1 lines, then ebr_'s G1 / G2 / N-a / N-b, then ETL
-        move to D:), dsk_ (refined testbin list, read-only); c3i_ waits for H0's end (then suites + builds ->
-        rmt_b1log merge gate); ff_s12 build after H0; H0 run (~11:30)
+        t4i_ B1LOG PROBES + SCAN GAPS DONE, ETL MOVE STOPPED (ANTIVIRUS) 11:01 (render_mt/reports/
+        t4i_b1log_scan_etl_handback.md; run_all scratchpad\t4i_b1log_runall.txt: lib 495 / make 97 / check 166 / leg 166 /
+        analyze 127, 0 failed; backups t4i_bak\b1log, \scan, \etl): (1) gates.json probes b1_outside (:1583),
+        b1_session_totals (:1486), b1_event + "slot list growth on a worker" (:1605); the unanchored b1_safety_counters
+        regex runs only on a line one exclusive probe matched; window + outside lines summed apart, session total = the
+        LAST totals line, never summed; outside faults NOTE with the session total; by-design names never faults; a
+        fault only in totals (total > window + outside, N4) NOTE by comparison; slot growth INFO row b1_slot_growth +
+        analyze NOTE; STOP / LATCH unchanged; stale notes fixed; 3 corpus lines; tests. (2) G1 + G2 scan asserts on
+        KNOB-W3 + CHK-W3 (+ an assert that CHK-W3 has both cases); N-a segments.json scan_clear 2; N-b a P key at t
+        blocks; mutants S1 / S6b / N-a / N-b all die, control 97 / 97. Scan arms 501 -> 442 (CHK-W3 83 (13 moved),
+        CHK-D1 90, CAMP 107, FT-W3a 6, FT-W3b 8, KNOB-W3 31, FT-D1 8, ATN-FT 12, R1-FT 7, LQ-W3 90); per leg arms / files
+        341/339, 118/105, 122/90, 215/188 = 0.67 / 0.23 / 0.24 / 0.42 GB; dry makes clean. (3) ETL MOVE NOT IN: t4i_'s
+        new test file scratchpad\t4i_etl_tests.py (14,223 bytes, 10:59) cannot be opened right after writing
+        (Errno 13 / EPERM in python, head and Read; looks like Bitdefender); t4i_ did NOT retry under another name;
+        source part put back from t4i_bak\etl (byte-compared, run_all green); applied versions in
+        t4i_bak\etl_applied, patch scratchpad\t4i_etl_patch.py (readable). Coordinator: file still listed (ls only,
+        not opened), not touched. Design (not live): Move-EboEtl copy -> .partial, size + SHA256, rename, only then
+        remove the source (the one Remove-Item in ebo_lib); store overrides.json etl_store D:\RenoDX_end_batch_etl\
+        <batch>\leg<N>\<start>\, etl.json record; moved after each start's check + partial analysis and at leg start;
+        a failed move = LEG STOPPED (resumable, nothing deleted); store needs ETL + 5 GB before a WPR start; C: needs
+        per leg 20.7 / 61.2 / 67.7 / 61.0 GB (fits 82 GB), D: 107.7 GB over the batch (171 free). Edge: a re-run WPR
+        start's old ETL stays on C:.
+        - [ ] ATN (antivirus): scratchpad\t4i_etl_tests.py (t4i_'s ETL-move test, written 10:59) cannot be opened
+            (EPERM, looks like Bitdefender). Please check Bitdefender's log / quarantine yourself and exclude or
+            restore it if it's a false positive; then t4i_ re-applies the ETL move + its tests (t4i_ 11:01).
+        -> ebr_ RE-CHECKS the probes + scan gaps now; ETL move waits for ATN's antivirus answer.
+        Agents (3): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check), dsk_ (refined testbin list, read-only);
+        t4i_ ETL move waits for ATN (antivirus); c3i_ waits for H0's end (then suites + builds -> rmt_b1log merge
+        gate); ff_s12 build after H0; H0 run (~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
