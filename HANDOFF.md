@@ -631,6 +631,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - F7 erase destroyed utils::resource store entries (Opus design first, shared upst ... | ?
 - mem_ CONFIRM RUN (needs ATN's go, one in-game): 2 arms (RenoDX / add-on file out ... | ?
 - heapfix author (via ATN only): 64 KB piece pinning, returning empty pieces, out- ... | ?
+- D1 V35 next knob (g06_, coord's OK needed): a low-light chroma hold (grey toe + ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12321,6 +12322,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] mem_ CONFIRM RUN (needs ATN's go, one in-game): 2 arms (RenoDX / add-on file out), battle + one 60 s alt-tab +
         3 restarts + campaign + battle; va_probe2 1 s + memory.csv + the L lines; limits in the report.
         - [ ] heapfix author (via ATN only): 64 KB piece pinning, returning empty pieces, out-of-front growth.
+        g06_ FIXES DONE (handbacks/g06_fixes_done_handback.md): ho_g06 9a7c1e3d4 (M1 Ground Marker Brightness row, 14
+        INDICATOR_HASHES via cb7.y, default 1 = the game's; m1 null cb7 at slot 7; m2 per-draw cb7; m4 vfx_hashes.py; title
+        says "not built yet" but it is built) + d9350ce34 (ATN 30 fifth slider Shadow Contrast: best 18.3 % at the 15 %
+        guard, no fit within 5 % -> DIVINITY_V35_* stay 1.f = Musa's own). D1 Release build clean, tw_d1_vfx PASS (258
+        shaders, bit-equal controls), tw_divinity1 PASS. rve_ re-check sent 22:2x ("rve_ g06 recheck").
+        - [ ] D1 V35 next knob (g06_, coord's OK needed): a low-light chroma hold (grey toe + low chroma both ~17-18 %).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
