@@ -680,6 +680,19 @@ int RunInstanceFillTests(const TestBuild& build, uint8_t* game, uint8_t* patched
     for (int present = 0; present < 3; ++present) rows(true);
     ec::control_fail_snapshot = false;
     CHECK(fi::written == 0 && said(std::format("Engine code: the thread list could not be read (error {}); its sites wait.", ERROR_ACCESS_DENIED)) == 1);
+    // The give-up after it says why (no thread can be named).
+    ec::failed_writes = ec::MAX_FAILED_WRITES - 1;
+    ec::control_fail_snapshot = true;
+    rows(true);
+    ec::control_fail_snapshot = false;
+    CHECK(said("Parallel Instance Fill sites: not written, a game thread kept running the code (last: the thread list could not be read)") == 1);
+    // A thread whose context cannot be read stops the write too: named by id, with no place.
+    ec::control_fail_context = true;
+    ec::failed_writes = ec::MAX_FAILED_WRITES - 1;
+    log_lines.clear();
+    rows(true);
+    ec::control_fail_context = false;
+    CHECK(said("Parallel Instance Fill sites: not written, a game thread kept running the code (last: thread ") == 1 && said(", its context could not be read)") == 1);
     ec::failed_writes = 0;
     rows(true);
     CHECK(fi::written == fill::ALL_SITES);

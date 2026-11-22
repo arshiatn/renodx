@@ -1895,10 +1895,12 @@ static uint32_t asked = 0;    // the sites the rows last asked for
 static uint32_t failed_writes = 0;
 // The thread that last kept PausedWrite from writing, and where it was stopped (0: none was found inside a site).
 static DWORD blocked_thread = 0;
-static uintptr_t blocked_eip = 0;
+static uintptr_t blocked_eip = 0;   // 0 with a thread: its context could not be read
+static bool blocked_snapshot = false;  // the last attempt could not read the thread list
 static bool snapshot_failure_logged = false;
 #if defined(TWATTILA_ENGINE_CODE_CONTROLS)
 static bool control_fail_snapshot = false;  // the thread list cannot be read
+static bool control_fail_context = false;   // a thread's context cannot be read
 static uint32_t control_fail_page = 0;      // Prepare's page: 1 cannot be allocated, 2 cannot be made executable
 #endif
 static bool job_missing_logged = false;
@@ -2067,17 +2069,22 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
   if (effect_stood_down != nullptr) *effect_stood_down = 0;
   if (fill_stood_down != nullptr) *fill_stood_down = 0;
   std::vector<HANDLE> threads;
+  std::vector<DWORD> ids;  // the thread ids from the snapshot, beside the handles
   blocked_thread = 0;
   blocked_eip = 0;
+  blocked_snapshot = false;
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
 #if defined(TWATTILA_ENGINE_CODE_CONTROLS)
   if (control_fail_snapshot) {
-    if (snapshot != INVALID_HANDLE_VALUE) CloseHandle(snapshot);
+    if (snapshot != INVALID_HANDLE_VALUE) {
+      CloseHandle(snapshot);
+    }
     snapshot = INVALID_HANDLE_VALUE;
     SetLastError(ERROR_ACCESS_DENIED);
   }
 #endif
   if (snapshot == INVALID_HANDLE_VALUE) {
+    blocked_snapshot = true;
     if (!snapshot_failure_logged) {
       snapshot_failure_logged = true;
       renodx::utils::log::w(
@@ -2088,8 +2095,9 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
   THREADENTRY32 entry = {.dwSize = sizeof(THREADENTRY32)};
   for (BOOL more = Thread32First(snapshot, &entry); more != FALSE; more = Thread32Next(snapshot, &entry)) {
     if (entry.th32OwnerProcessID != GetCurrentProcessId() || entry.th32ThreadID == GetCurrentThreadId()) continue;
-    if (HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ThreadID); thread != nullptr) {
+    if (HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT, FALSE, entry.th32ThreadID); thread != nullptr) {
       threads.push_back(thread);
+      ids.push_back(entry.th32ThreadID);
     }
   }
   CloseHandle(snapshot);
@@ -2101,11 +2109,19 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
       CloseHandle(threads[suspended]);
       threads[suspended] = threads.back();
       threads.pop_back();
+      ids[suspended] = ids.back();
+      ids.pop_back();
       continue;
     }
     // GetThreadContext also waits until the suspension has taken effect.
     CONTEXT context = {.ContextFlags = CONTEXT_CONTROL};
     clear = (GetThreadContext(threads[suspended], &context) != FALSE);
+#if defined(TWATTILA_ENGINE_CODE_CONTROLS)
+    if (control_fail_context) {
+      clear = false;
+      context.Eip = 0;
+    }
+#endif
     ++suspended;
     for (size_t table = 0; table < tables.size(); ++table) {
       for (size_t index = 0; index < tables[table].size(); ++index) {
@@ -2131,7 +2147,7 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
     }
     // Which thread stopped the write, and where (a thread id and a word: nothing here may allocate or log).
     if (!clear) {
-      blocked_thread = GetThreadId(threads[suspended - 1]);
+      blocked_thread = ids[suspended - 1];
       blocked_eip = context.Eip;
     }
   }
@@ -2973,8 +2989,11 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     }
   } else if (++internal::failed_writes == internal::MAX_FAILED_WRITES) {
     // The thread that stopped the last attempt: its id and where it was (the module and offset when the address is in one).
-    std::string last = " (last: no thread was found inside a site)";
-    if (internal::blocked_thread != 0) {
+    std::string last = (internal::blocked_snapshot ? " (last: the thread list could not be read)"
+                                                   : " (last: no thread was found inside a site)");
+    if (internal::blocked_thread != 0 && internal::blocked_eip == 0) {
+      last = std::format(" (last: thread {}, its context could not be read)", internal::blocked_thread);
+    } else if (internal::blocked_thread != 0) {
       HMODULE owner = nullptr;
       std::array<char, MAX_PATH> path = {};
       if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
