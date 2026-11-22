@@ -492,8 +492,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate le ... | ?
 - gtl_: lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap ... | ?
 - gtp_ round 18: gtw N8, N1, N3, N2, N4 (Should) + N5-N7 (Low) + VERIFY on the kin ... | ?
-- upr_: H0 verdict from run 20261122_120946 (run3-noise pre-existing?, run6-probe ... | ?
 - coordinator: ff_s12 (3c77a0c86) + grs_xess_guard (29a55acad) merge gate AFTER up ... | ?
+- h0i_: h0_rng_check.py: 0 -> 0 reads as equal (run6-probe); re-check run 20261122 ... | ?
+- PT GI / ReSTIR owner: 16 rays noisier than 8 on both builds (run3-noise 1.194 / ... | ?
+- leaf / micromap owner (optional): run pre 4x on fast_leaves + micromaps_leaf_str ... | ?
+- coordinator: all_modes pass on the combined tree after rmt_h0 + ff_s12 + grs_xes ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10088,12 +10091,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         in the checker (both builds 0) -> tool artifact, h0i_ fix (0 -> 0 = equal) unless upr_ says unseen_local must be
         > 0. OPEN run1-repeat: post-only nondeterminism fast_leaves, micromaps_leaf_stress (pre does not repeat either in
         16 modes: micromaps*, nrd_*, paths_sharc_leaf_stress, release_nrd) -> upr_ judges.
-        - [ ] upr_: H0 verdict from run 20261122_120946 (run3-noise pre-existing?, run6-probe 0 / 0, run1-repeat post-only
+        - [x] upr_ (DONE 13:31: MERGE YES): H0 verdict from run 20261122_120946 (run3-noise pre-existing?, run6-probe 0 / 0, run1-repeat post-only
             fast_leaves + micromaps_leaf_stress) -> H0 merge yes / no / re-run (coord 13:26).
         - [ ] coordinator: ff_s12 (3c77a0c86) + grs_xess_guard (29a55acad) merge gate AFTER upr_'s H0 verdict (a helper
             merge makes H0's checks refuse a re-run) (coord 13:26).
-        Agents (3): gtp_ (round 18), gtl_ (lab suites now, H0 done), upr_ (H0 verdict); ff_s12 + grs_xess_guard after
-        upr_'s verdict
+        upr_ H0 VERDICT = MERGE 42c081bd6 YES, NO MORE GPU RUNS 13:31 (plan_1117/designs/upr_h0_verdict_handback.md;
+        unified_pt_review.md "## H0 verdict" line 2028): unchanged jobs bit-identical to 05:49; e1_sun_raw chance (+1.5 /
+        +1.8 SD over 4 starts, spread 0.123 ~ analytic 0.109); e6_torch_raw chance (spread 4x analytic, kept "+4.5 SD" ~1
+        SD, -0.1 SD vs post's ref); run4-history: H0 doesn't change per-seed reuse error (R = 16 x1.024 s1, x0.923 s4);
+        e3_pt_raw +2.4 SD = at most 0.25 % RMS / pixel, note only. run3-noise = H0 claim not shown, not a regression (pre
+        1.194 already; post +4 % from 12 / 16-ray rows, one realization; through RR still noise 1.50 -> 1.35 % at 8 rays,
+        1.97 -> 1.87 % at 16, moving rRMSE drops, raw variance x1.001). run6-probe = checker 0 / 0 (probe scene has no
+        local lights; emitted 0.29339 = unseen_sun 0.2934 + 0). run1-repeat too small (fast_leaves 155 bounce + 3,677
+        reflection values, mean |d| <= 8e-6 of mean; micromaps_leaf_stress 12 values <= 6e-5; likely leaf / micromap
+        streaming race with post's 1-2 % slower passes). Cost: post 1-2 % slower per traced pass (~0.014 ms / frame at
+        ATN's 1 ray), registers same, spills lower. After the 3 helper merges the combined tree needs the usual all_modes
+        pass (H0's checks refuse from then on).
+        - [ ] h0i_: h0_rng_check.py: 0 -> 0 reads as equal (run6-probe); re-check run 20261122_120946 on the CPU; add
+            fast_leaves + micromaps_leaf_stress to M6's left-out outputs (upr_ 13:31).
+        - [ ] PT GI / ReSTIR owner: 16 rays noisier than 8 on both builds (run3-noise 1.194 / 1.242, pre-existing) (upr_
+            13:31).
+        - [ ] leaf / micromap owner (optional): run pre 4x on fast_leaves + micromaps_leaf_stress with the kept
+            h0\builds\pre\20261122_120946\plain harness (~1 min, needs an allowed run path) (upr_ 13:31).
+        - [ ] coordinator: all_modes pass on the combined tree after rmt_h0 + ff_s12 + grs_xess_guard (upr_ 13:31).
+        Agents (2): gtp_ (round 18), gtl_ (lab suites); MERGE GATE NOW: rmt_h0 (42c081bd6) + ff_s12 (3c77a0c86) +
+        grs_xess_guard (29a55acad) -> gated builds + helper build -> push -> all_modes pass
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
