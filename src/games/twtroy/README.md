@@ -6,6 +6,9 @@
   paths are the occlusion there, so its four passes are left out and the sun draws read an open AO, as under Ray-Traced AO
   (shared with Pharaoh: `twattila/ao_readers.hpp` ClearInsteadOfGenerate). The sun's sky-cube reflection is no longer
   darkened by the game's SSAO under the paths (as in Attila).
+- Fixed: **Ray Reconstruction's specular guide has its Fresnel** (as Attila's and Warhammer III's): the specular colour as
+  F0, pre-integrated at the view and roughness (NVIDIA's DLSS-RR guide 4.2.1, `twattila/rr_specular.hlsli`), not bare F0,
+  so grazing reflections on stone, metal and wet ground keep their strength under RR. Water stays at its 0.02.
 - Changed: Smooth Sail Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
 - Changed (ATN): **Hue Clip 70** (was 80: the fire's hue error 0.82 degrees against 1.99, `test/tw_psychov35`) and
   PsychoV31's **Highlight Hue Shift 0.04** (was 0.10), in the defaults and Reset. Saved values stay until a preset.
