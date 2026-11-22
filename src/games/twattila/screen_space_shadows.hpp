@@ -168,8 +168,8 @@ constexpr float SOFT_RADIUS_2160 = 32.f;
 // - Else (Troy, Pharaoh, Warhammer: their shadow ends differently in each shader): after each shadow map comparison
 //   (sample_c, sample_c_lz, gather4_c, gather4_po_c) mul rX.mask, rX.xyzw, rT.xxxx: the shadow is their filtered
 //   average, so it is scaled the same.
-// - Warhammer's Shader Model 4.1 builds (no comparison; software: sample_l and their own `lt receiver, stored`; hardware
-//   pcf: the sample itself as the lit share): after the first mov_sat rN.c, rN.c past the last read of g_tShadowBuffer
+// - Warhammer's and Warhammer II's software / hardware pcf builds (Warhammer's Shader Model 4.1 ones; no comparison:
+//   sample_l and their own `lt receiver, stored`, or the sample itself as the lit share): after the first mov_sat rN.c, rN.c past the last read of g_tShadowBuffer
 //   (where both cascades and their fades end), mul_sat rN.c, rN.c, rT.xxxx as Attila's.
 // - With lighting_VS_PS (the RDEF's slot for it; its sun colour at c`colour_register`, Attila's and the others' c1,
 //   Pharaoh's c3): every read of that register from rC (one more temp), the colour x the filter at t50 (Coloured Shadows:
@@ -381,8 +381,8 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
   }
   // A shader reading t_shadow has its shadow there: a joined pair in it is its ambient occlusion (Warhammer III).
   if (forward || mask_slot != UINT32_MAX) saturate_at = 0;
-  // Warhammer's Shader Model 4.1 sun builds (no comparison: software sample_l with their own `lt receiver, stored`, or
-  // hardware pcf's sample as the lit share): their shadow ends at the first mov_sat rN.c, rN.c after the atlas's last read.
+  // Warhammer's and Warhammer II's software / hardware pcf sun builds (no comparison): their shadow ends at the first
+  // mov_sat rN.c, rN.c after the atlas's last read.
   if (saturate_at == 0 && comparisons.empty() && mask_slot == UINT32_MAX && !forward) {
     saturate_at = atlas_saturate_at;
   }
