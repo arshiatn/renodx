@@ -133,12 +133,12 @@ void main(uint3 id : SV_DispatchThreadID) {
   uint4 words[4] = {ref_digest_input.Load4(id.x * 64u), ref_digest_input.Load4(id.x * 64u + 16u), ref_digest_input.Load4(id.x * 64u + 32u),
                     ref_digest_input.Load4(id.x * 64u + 48u)};
   if (ref_word == 0u) words[3].zw = 0u;
-  uint4 hash = RefPcg4d(words[0] ^ uint4(ref_word, 0x85EBCA6Bu, 0xC2B2AE35u, 0x27D4EB2Fu));
-  hash = RefPcg4d(hash ^ words[1]);
-  hash = RefPcg4d(hash ^ words[2]);
-  hash = RefPcg4d(hash ^ words[3]);
+  uint4 hash = Pcg4d(words[0] ^ uint4(ref_word, 0x85EBCA6Bu, 0xC2B2AE35u, 0x27D4EB2Fu));
+  hash = Pcg4d(hash ^ words[1]);
+  hash = Pcg4d(hash ^ words[2]);
+  hash = Pcg4d(hash ^ words[3]);
   // Records keep their place: InstanceID + geometry index names one.
-  if (ref_word != 0u) hash = RefPcg4d(hash ^ id.x);
+  if (ref_word != 0u) hash = Pcg4d(hash ^ id.x);
   InterlockedAdd(ref_state[REF_STATE_DIGEST], hash.x);
   InterlockedXor(ref_state[REF_STATE_DIGEST + 1u], hash.y);
   InterlockedAdd(ref_state[REF_STATE_DIGEST + 2u], hash.z);

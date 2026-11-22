@@ -41,8 +41,8 @@ void main(uint3 id : SV_DispatchThreadID) {
   float hit_sum = 0.f;
   [loop]
   for (uint index = 0; index < rays; ++index) {
-    const float3 direction = CosineDirection(normal, Random(uint3(id.xy, frame * 32u + index * 2u)),
-                                             Random(uint3(id.xy, frame * 32u + index * 2u + 1u)));
+    const float3 direction = CosineDirection(normal, Random(uint4(id.xy, frame, DIM_BOUNCE_DIRECTION + index * 2u)),
+                                             Random(uint4(id.xy, frame, DIM_BOUNCE_DIRECTION + index * 2u + 1u)));
     RayDesc ray;
     ray.Origin = origin;
     ray.Direction = direction;

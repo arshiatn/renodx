@@ -312,7 +312,7 @@ void main(uint3 id : SV_DispatchThreadID) {
         const float2 disk = ((flags & NRD_SUN) != 0u)
                                 ? float2(InterleavedGradientNoise(float2(id.xy) + 5.588238f * float(frame & 7u) + float(ray) * 17.f),
                                          InterleavedGradientNoise(float2(id.yx) + 9.f + 7.137f * float(frame & 7u) + float(ray) * 29.f))
-                                : float2(Random(uint3(id.xy, frame * 16u + 1000u + ray * 2u)), Random(uint3(id.xy, frame * 16u + 1001u + ray * 2u)));
+                                : float2(Random(uint4(id.xy, frame, DIM_SUN_DISK + ray * 2u)), Random(uint4(id.xy, frame, DIM_SUN_DISK + ray * 2u + 1u)));
         toward = normalize(toward + DiskPoint(toward, sun_cone, disk));
       }
       const float3 spot = (rays > 1u && planar) ? PixelSpot(int2(id.xy), SpotOf(ray, turn)) : 0.f;
@@ -370,7 +370,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     // last, the set turned per pixel by interleaved gradient noise and jittered within the bands. Less noise than
     // independent rays (Ray Reconstruction left ~20% of theirs), and what is left settles faster.
     const float turn = InterleavedGradientNoise(float2(id.xy));
-    const float band_jitter = Random(uint3(id.xy, frame * 16u));
+    const float band_jitter = Random(uint4(id.xy, frame, DIM_AO_JITTER));
     uint escaped = 0u;
     [loop]
     for (uint ray = 0; ray < ambient_rays; ++ray) {

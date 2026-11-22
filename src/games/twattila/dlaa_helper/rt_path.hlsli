@@ -391,9 +391,10 @@ float3 SunLit(float3 surface, float3 behind, float3 normal, float3 albedo, float
 #define TORCH_LIGHT_IN_PATHS ((lights_in_bounce & LIGHTS_IN_PATHS) != 0u)
 #endif
 
-// The local lights' light on a surface: two of them picked (less noise from fires and torches than one) by `seed`.
-float3 LocalLights(float3 surface, float3 normal, uint3 seed) {
-  return 0.5f * (LocalLight(surface, normal, Random(seed + uint3(0u, 0u, 16384u))) + LocalLight(surface, normal, Random(seed + uint3(0u, 0u, 24576u))));
+// The local lights' light on a surface: two of them picked (less noise from fires and torches than one) by `seed`, Random's
+// lanes (the second pick's dimension + 1).
+float3 LocalLights(float3 surface, float3 normal, uint4 seed) {
+  return 0.5f * (LocalLight(surface, normal, Random(seed)) + LocalLight(surface, normal, Random(seed + uint4(0u, 0u, 0u, 1u))));
 }
 
 // The light a surface the screen never saw sends back (its base colour lit): the sun's (SunLit) and the local lights'
@@ -402,11 +403,11 @@ float3 LocalLights(float3 surface, float3 normal, uint3 seed) {
 // seen, the torches' share (the paths' probe, 640 x 360 at ATN's rows: the unseen route x1.17 the seen route's light over
 // the screen's surfaces, x1.77 where the lights gave 30% of it, x0.98 without them; ATN 2026-11-16: wall corners out of
 // sight too bright until seen, the radiance cache keeping their light).
-float3 UnseenLight(float3 surface, float3 behind, float3 normal, float3 albedo, float transmittance, uint2 seed, uint light_seed) {
+float3 UnseenLight(float3 surface, float3 behind, float3 normal, float3 albedo, float transmittance, uint4 light_seed) {
   float3 emitted = SunLit(surface, behind, normal, albedo, transmittance, -1.f);
   const bool seen_without_lights = SunLightGiven() && (path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == PATH_LIGHT
                                    && !TORCH_LIGHT_IN_PATHS;
-  if ((path_flags & PATH_LOCAL_LIGHTS) != 0u && !seen_without_lights) emitted += albedo * LocalLights(surface, normal, uint3(seed, light_seed));
+  if ((path_flags & PATH_LOCAL_LIGHTS) != 0u && !seen_without_lights) emitted += albedo * LocalLights(surface, normal, light_seed);
   return emitted;
 }
 
@@ -473,7 +474,7 @@ float3 ScreenSky(float3 world, float3 normal) {
 // start: taken as the light a surface sends everywhere, the faces in shade came out 14 to 22% brighter seen from a view
 // toward the sun than from beside it (harness HARNESS_PEDESTAL; ATN 2026-11-13). With Torch Light in Path-Traced GI
 // (LIGHTS_IN_PATHS) the local lights' too, as an unseen surface's (LocalLights by `light_seed`).
-float3 SeenDiffuseLight(uint2 pixel, float3 world, float3 normal, float3 albedo, uint3 light_seed) {
+float3 SeenDiffuseLight(uint2 pixel, float3 world, float3 normal, float3 albedo, uint4 light_seed) {
   const float visibility = ((path_flags & PATH_SUN_TRACED) != 0u) ? traced_visibility[pixel] : -1.f;
   const float3 surface = world + normal * SurfaceOffset(distance(world, Camera()));
   float3 light_leaving = SunLit(surface, world, normal, albedo, 0.f, visibility) + albedo * ScreenSky(world, normal);
@@ -499,8 +500,9 @@ bool HitLight(float3 hit, float3 hit_normal, out float3 light_there, bool cached
     }
     const float3 albedo = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : HitAlbedo(hit, hit_normal);
     if (SunLightGiven()) {
-      // The lights picked by the hit's own position: Validate's look at a reservoir's surface picks what its path did.
-      light_there = SeenDiffuseLight(pixel, hit, hit_normal, albedo, asuint(hit));
+      // The lights picked by the hit's own position (no frame): Validate's look at a reservoir's surface picks what its
+      // path did.
+      light_there = SeenDiffuseLight(pixel, hit, hit_normal, albedo, uint4(asuint(hit), DIM_SEEN_LIGHTS));
     } else {
       // Path-Traced Ambient took the game's ambient away from the screen's light: the surface's base colour x the kept
       // shade (as an unseen surface's) in its place (walls a path met brought back almost nothing: ATN's debug29, dark).
@@ -589,8 +591,8 @@ bool ProbeScreen(uint vertex) {
 #endif
 
 // The light arriving along a ray (`first_distance`: how far its first surface is, 1e30: none; `first_normal` its normal;
-// `sky_calibration`: SkyCalibration's, for the sky it meets first; `may_relearn`: CACHE_RELEARN of its hits leave the cache
-// out).
+// `sky_calibration`: SkyCalibration's, for the sky it meets first; `path`: its path id, rt_scene.hlsli DIM_*; `may_relearn`:
+// CACHE_RELEARN of its hits leave the cache out).
 float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_calibration, uint2 seed, uint path, bool may_relearn,
                     out float first_distance, out float3 first_normal) {
   first_distance = 1e30f;
@@ -660,7 +662,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     // kept them until it was dropped, as only a path that found no light there adds to it. The light from out of sight never
     // followed a change, the count of bounces among them (ATN: Bounces showed nothing). Not the reflections': a mirror's one
     // ray a frame, no history, no filter, showed each re-rolled hit as a warm dot jumping about a paused picture (ATN: water).
-    const bool relearn = may_relearn && Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 49152u)) < CACHE_RELEARN;
+    const bool relearn = may_relearn && Random(uint4(seed, frame, DIM_PATH_RELEARN + path * 32u + vertex * 2u)) < CACHE_RELEARN;
     // No cached answer for a ray shorter than its cell (as SHaRC's): the cell may be the ray's own start's.
     if (PROBE_SCREEN(vertex) && HitLight(position, normal, light_there, PROBE_CACHE() && !relearn && query.CommittedRayT() >= CacheCellSize(position))) {
       radiance += throughput * light_there;
@@ -691,7 +693,8 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     const uint record_flags = records[record_index].z >> 16;
     const float transmittance = ((record_flags & (RECORD_MASKED | RECORD_GRASS)) == RECORD_MASKED) ? LEAF_TRANSMITTANCE : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f);
     const float3 behind = position - normal * offset;
-    const float3 emitted = UnseenLight(surface, behind, normal, albedo, transmittance, seed, frame * 64u + path * 8u + vertex * 2u);
+    const float3 emitted = UnseenLight(surface, behind, normal, albedo, transmittance,
+                                       uint4(seed, frame, DIM_PATH_LIGHTS + path * 32u + vertex * 2u));
 #if defined(PATH_PROBE)
     if (vertex == 0u) {
       probe_emitted += throughput * emitted;
@@ -718,11 +721,11 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     }
     radiance += throughput * emitted;
     throughput *= albedo;
-    const bool through = transmittance > 0.f && Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 32768u)) < transmittance;
+    const bool through = transmittance > 0.f && Random(uint4(seed, frame, DIM_PATH_THROUGH + path * 32u + vertex * 2u)) < transmittance;
     origin = through ? behind : surface;
     leaving_normal = through ? -normal : normal;
-    direction = CosineDirection(leaving_normal, Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 8192u)),
-                                Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 8193u)));
+    direction = CosineDirection(leaving_normal, Random(uint4(seed, frame, DIM_PATH_DIRECTION + path * 32u + vertex * 2u)),
+                                Random(uint4(seed, frame, DIM_PATH_DIRECTION + path * 32u + vertex * 2u + 1u)));
   }
   // The first unseen surface's light feeds the cache once the sun's light is known (the game's, or learned).
 #if defined(REFLECT_ONE_SAMPLE)
@@ -896,14 +899,17 @@ void PathTraceTexel(uint2 id) {
   const bool sky_apart = (path_flags & PATH_SKY_APART) != 0u;
   const bool sky_samples = (path_flags & PATH_AMBIENT) != 0u && !sky_apart;
   const float turn = InterleavedGradientNoise(float2(id));
-  const float band_jitter = Random(uint3(id, frame * 16u + 1024u));
+  const float band_jitter = Random(uint4(id, frame, DIM_BAND_JITTER));
   float3 sky = 0.f;
   float3 arriving = 0.f;
   float hit_sum = 0.f;
   [loop]
   for (uint path = 0u; path < samples; ++path) {
-    const float3 direction = CosineDirection(normal, sky_apart ? ((float)path + band_jitter) / (float)samples : Random(uint3(id, frame * 16u + path * 2u + 1024u)),
-                                             sky_apart ? frac(turn + (float)path * 0.618034f) : Random(uint3(id, frame * 16u + path * 2u + 1025u)));
+    const float3 direction = CosineDirection(normal,
+                                             sky_apart ? ((float)path + band_jitter) / (float)samples
+                                                       : Random(uint4(id, frame, DIM_FIRST_DIRECTION + path * 2u)),
+                                             sky_apart ? frac(turn + (float)path * 0.618034f)
+                                                       : Random(uint4(id, frame, DIM_FIRST_DIRECTION + path * 2u + 1u)));
     float first_distance;
     float3 first_normal;
     const float3 sample_light = PathRadiance(origin, direction, first_range, sky_calibration, id, path, true, first_distance, first_normal)
@@ -919,7 +925,7 @@ void PathTraceTexel(uint2 id) {
     candidate.count = 1.f;
     candidate.weight = 0.f;
     Merge(reservoir, candidate, (first_distance < 1e29f || sky_samples) ? 3.14159265f * Luminance(sample_light) : 0.f,
-          Random(uint3(id, frame * 16u + path * 2u + 5120u)));
+          Random(uint4(id, frame, DIM_FIRST_MERGE + path * 2u)));
   }
   if (sky_kept) own_sky[sky_set][id] = float4(sky / samples, 1.f);
   if (!reuse) {
@@ -941,7 +947,7 @@ void PathTraceTexel(uint2 id) {
     if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) invalidity = Validate(previous, origin, true);
     previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)) * samples);
     Merge(reservoir, previous, ReuseTarget(origin, normal, previous) * previous.weight * previous.count,
-          Random(uint3(id, frame * 16u + 6144u)));
+          Random(uint4(id, frame, DIM_HISTORY_MERGE)));
   }
   Finish(reservoir, ReuseTarget(origin, normal, reservoir));
   // REUSE_W_CLAMP in this receiver's units (W x cos / pi): a cosine ray's own W is pi / cos, so W <= 10 alone cut every
@@ -965,7 +971,8 @@ void ProbeTexel(uint2 id) {
     return;
   }
   const uint kind = probe_mode & 0xFFu;
-  const uint rays = max(probe_mode >> 8, 1u);
+  // At most 94 rays: their path ids (33 + ray) x 32 stay inside Random's 4096 indices a kind.
+  const uint rays = clamp(probe_mode >> 8, 1u, 94u);
   const uint2 pixel = min(id * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u);
   const float3 base = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : UNSEEN_ALBEDO;
   if (kind >= PROBE_SEEN_SUN) {
@@ -980,14 +987,14 @@ void ProbeTexel(uint2 id) {
       value = 0.f;
       [loop]
       for (uint ray = 0u; ray < rays && (path_flags & PATH_LOCAL_LIGHTS) != 0u; ++ray) {
-        value += UnseenLight(surface, position.xyz, normal, base, 0.f, id, frame * 4096u + ray * 2u) - SunLit(surface, position.xyz, normal, base, 0.f, -1.f);
+        value += UnseenLight(surface, position.xyz, normal, base, 0.f, uint4(id, frame, DIM_PROBE_LIGHTS + ray * 2u)) - SunLit(surface, position.xyz, normal, base, 0.f, -1.f);
       }
       value /= rays;
     }
     if (kind == PROBE_LIGHTS_PICKED) {
       value = 0.f;
       [loop]
-      for (uint ray = 0u; ray < rays; ++ray) value += base * LocalLights(surface, normal, uint3(id, frame * 4096u + ray * 2u));
+      for (uint ray = 0u; ray < rays; ++ray) value += base * LocalLights(surface, normal, uint4(id, frame, DIM_PROBE_LIGHTS + ray * 2u));
       value /= rays;
     }
     if (kind == PROBE_LIGHTS_ALL) {
@@ -1020,12 +1027,12 @@ void ProbeTexel(uint2 id) {
     float first_distance;
     float3 first_normal;
     if (camera_rays) {
-      const float3 direction = CosineDirection(normal, Random(uint3(id, frame * 4096u + ray * 2u + 40960u)), Random(uint3(id, frame * 4096u + ray * 2u + 40961u)));
-      sum += PathRadiance(origin, direction, first_range, sky_calibration, id, ray, true, first_distance, first_normal) * ContactShade(first_distance);
+      const float3 direction = CosineDirection(normal, Random(uint4(id, frame, DIM_PROBE_DIRECTION + ray * 2u)), Random(uint4(id, frame, DIM_PROBE_DIRECTION + ray * 2u + 1u)));
+      sum += PathRadiance(origin, direction, first_range, sky_calibration, id, 33u + ray, true, first_distance, first_normal) * ContactShade(first_distance);
       valid += 1.f;
       continue;
     }
-    const float3 light_leaving = PathRadiance(position.xyz + normal * 0.05f, -normal, 0.1f, 1.f, id, ray, true, first_distance, first_normal);
+    const float3 light_leaving = PathRadiance(position.xyz + normal * 0.05f, -normal, 0.1f, 1.f, id, 33u + ray, true, first_distance, first_normal);
     const bool met = first_distance > 0.03f && first_distance < 0.07f;
     if (!met || (kind == PROBE_SEEN && !probe_seen) || (kind != PROBE_SEEN && probe_seen)) continue;
     valid += 1.f;
@@ -1059,11 +1066,11 @@ void ReuseTexel(uint2 id) {
   const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
   const Reservoir own = LoadReservoir(reuse_samples[set], reuse_data[set], id);
   Reservoir combined = (Reservoir)0;
-  Merge(combined, own, ReuseTarget(origin, normal, own) * own.weight * own.count, Random(uint3(id, frame * 16u + 7168u)));
+  Merge(combined, own, ReuseTarget(origin, normal, own) * own.weight * own.count, Random(uint4(id, frame, DIM_REUSE_OWN)));
   [loop]
   for (uint neighbour = 0u; neighbour < REUSE_NEIGHBOURS; ++neighbour) {
-    const float angle = 6.2831853f * Random(uint3(id, frame * 16u + neighbour * 2u + 7200u));
-    const float radius = REUSE_RADIUS * sqrt(Random(uint3(id, frame * 16u + neighbour * 2u + 7201u)));
+    const float angle = 6.2831853f * Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + neighbour * 2u));
+    const float radius = REUSE_RADIUS * sqrt(Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + neighbour * 2u + 1u)));
     const int2 texel = int2(id) + int2(round(float2(cos(angle), sin(angle)) * radius));
     if (any(texel < 0) || texel.x >= (int)bounce_width || texel.y >= (int)bounce_height || all(texel == int2(id))) continue;
 #if defined(REUSE_LEAN)
@@ -1085,7 +1092,7 @@ void ReuseTexel(uint2 id) {
     const float jacobian = ReuseJacobian(other, other_origin, origin);
     if (!(jacobian > 0.1f && jacobian < 10.f)) continue;
     Merge(combined, other, ReuseTarget(origin, normal, other) * other.weight * other.count * jacobian,
-          Random(uint3(id, frame * 16u + neighbour + 7300u)));
+          Random(uint4(id, frame, DIM_REUSE_MERGE + neighbour)));
   }
   Finish(combined, ReuseTarget(origin, normal, combined));
   // The chosen surface in view of this one (no light through walls); the integrand over its density.
@@ -1112,7 +1119,7 @@ void ReuseTexel(uint2 id) {
     [loop]
     for (uint index = 0u; index < light_total; ++index) total += Luminance(LightArriving(index, origin, normal, direction, light_distance));
     if (total > 0.f) {
-      const float next = Random(uint3(id, frame * 16u + 7400u)) * total;
+      const float next = Random(uint4(id, frame, DIM_REUSE_LIGHT)) * total;
       float running = 0.f;
       uint picked = 0u;
       float3 picked_light = 0.f;
@@ -1126,7 +1133,7 @@ void ReuseTexel(uint2 id) {
       }
       float3 to_lamp = lights[picked].xyz - origin;
       if (light_size > 0.f) {
-        to_lamp += DiskPoint(normalize(to_lamp), light_size, float2(Random(uint3(id, frame * 16u + 7401u)), Random(uint3(id, frame * 16u + 7402u))));
+        to_lamp += DiskPoint(normalize(to_lamp), light_size, float2(Random(uint4(id, frame, DIM_REUSE_LIGHT + 1u)), Random(uint4(id, frame, DIM_REUSE_LIGHT + 2u))));
       }
       const float lamp_distance = length(to_lamp);
       lit = lamp_distance > 1e-3f && !Occluded(origin, to_lamp / lamp_distance, lamp_distance - min(LIGHT_CLEARANCE, 0.5f * lamp_distance), NO_GRASS_SMOKE);
@@ -1258,11 +1265,11 @@ void ReflectReservoirTexel(uint2 id) {
   const float alpha = ReflectAlpha(roughness);
   const float3x3 basis = Basis(normal);
   const float3 direction = GgxDirection(basis, view, float3(dot(view, basis[0]), dot(view, basis[1]), n_dot_v), alpha,
-                                        float2(Random(uint3(pixel, frame * 16u + 9216u)), Random(uint3(pixel, frame * 16u + 9217u))));
+                                        float2(Random(uint4(pixel, frame, DIM_TEXEL_DIRECTION)), Random(uint4(pixel, frame, DIM_TEXEL_DIRECTION + 1u))));
   if (dot(normal, direction) > 0.f) {
     float first_distance;
     float3 first_normal;
-    const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, 1.f, pixel, 24u, false, first_distance, first_normal);
+    const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, 1.f, pixel, 32u, false, first_distance, first_normal);
     if (first_distance < 1e29f) {
       Reservoir candidate;
       candidate.hit = origin + direction * first_distance;
@@ -1270,7 +1277,7 @@ void ReflectReservoirTexel(uint2 id) {
       candidate.light = sample_light;
       candidate.count = 1.f;
       candidate.weight = 0.f;
-      Merge(reservoir, candidate, Luminance(sample_light), Random(uint3(pixel, frame * 16u + 9218u)));
+      Merge(reservoir, candidate, Luminance(sample_light), Random(uint4(pixel, frame, DIM_TEXEL_MERGE)));
     }
   }
   uint2 previous_pixel;
@@ -1282,7 +1289,7 @@ void ReflectReservoirTexel(uint2 id) {
     if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) invalidity = Validate(previous, origin, false);
     previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)));
     if (LobeDensity(origin, normal, view, alpha, previous.hit) > 0.f) {
-      Merge(reservoir, previous, previous.weight * previous.count, Random(uint3(pixel, frame * 16u + 9219u)));
+      Merge(reservoir, previous, previous.weight * previous.count, Random(uint4(pixel, frame, DIM_TEXEL_MERGE + 1u)));
     }
   }
   reservoir.weight = (reservoir.count > 0.f) ? reservoir.weight / reservoir.count : 0.f;
@@ -1337,16 +1344,16 @@ void ReflectPixel(uint2 id) {
   for (uint sample = 0u; sample < samples; ++sample) {
     float3 direction = mirror ? reflect(-view, normal)
                               : GgxDirection(basis, view, view_local, alpha,
-                                             float2(Random(uint3(id, frame * 16u + sample * 2u + 3072u)),
-                                                    Random(uint3(id, frame * 16u + sample * 2u + 3073u))));
+                                             float2(Random(uint4(id, frame, DIM_GGX + sample * 2u)),
+                                                    Random(uint4(id, frame, DIM_GGX + sample * 2u + 1u))));
     float n_dot_l = dot(normal, direction);
     // A draw below the horizon drawn again, twice at most: the draws kept above it have the lobe's distribution there, so
     // the weighted shares stay exact (at the default lobe at most 4e-5 of the samples still below).
     [loop]
     for (uint redraw = 1u; redraw <= 2u && n_dot_l <= 0.f; ++redraw) {
       direction = GgxDirection(basis, view, view_local, alpha,
-                               float2(Random(uint3(id, frame * 16u + sample * 2u + 12288u + redraw * 1024u)),
-                                      Random(uint3(id, frame * 16u + sample * 2u + 12289u + redraw * 1024u))));
+                               float2(Random(uint4(id, frame, DIM_GGX + redraw * 32u + sample * 2u)),
+                                      Random(uint4(id, frame, DIM_GGX + redraw * 32u + sample * 2u + 1u))));
       n_dot_l = dot(normal, direction);
     }
     if (n_dot_l <= 0.f) continue;
@@ -1358,7 +1365,7 @@ void ReflectPixel(uint2 id) {
     if (traced) {
       float first_distance;
       float3 first_normal;
-      const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, 1.f, id, sample + 4u, false, first_distance, first_normal);
+      const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, 1.f, id, 16u + sample, false, first_distance, first_normal);
       if (first_distance < 1e29f) {
         gathered += ThroughFog(sample_light, origin, origin + direction * first_distance) * weight;
         weights += weight;
@@ -1387,7 +1394,7 @@ void ReflectPixel(uint2 id) {
     const float own_weight = Luminance(own);
     const float total = own_weight + bounce_weight;
     if (total > 0.f) {
-      const bool bounce_chosen = Random(uint3(id, frame * 16u + 3584u)) * total < bounce_weight
+      const bool bounce_chosen = Random(uint4(id, frame, DIM_REFLECT_CHOICE)) * total < bounce_weight
                                  && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE);
       const float3 chosen = bounce_chosen ? bounce_light : own;
       gathered = chosen / max(Luminance(chosen), 1e-6f) * (0.5f * total);
@@ -1427,8 +1434,8 @@ void ReflectPixel(uint2 id) {
       receiver_alphas[neighbour] = alpha;
       int2 texel = int2(id / 2u);
       if (neighbour != 0u) {
-        const float angle = 6.2831853f * Random(uint3(id, frame * 16u + neighbour * 2u + 9300u));
-        const float radius = max(REFLECT_RADIUS * roughness, 1.f) * sqrt(Random(uint3(id, frame * 16u + neighbour * 2u + 9301u)));
+        const float angle = 6.2831853f * Random(uint4(id, frame, DIM_REFLECT_NEIGHBOUR + neighbour * 2u));
+        const float radius = max(REFLECT_RADIUS * roughness, 1.f) * sqrt(Random(uint4(id, frame, DIM_REFLECT_NEIGHBOUR + neighbour * 2u + 1u)));
         texel += int2(round(float2(cos(angle), sin(angle)) * radius));
       }
       if (any(texel < 0) || any(texel >= int2((uint2(width, height) + 1u) / 2u))) continue;
@@ -1468,7 +1475,7 @@ void ReflectPixel(uint2 id) {
       }
       if (densities <= 0.f) continue;
       const float ratio = LobeDensity(origin, normal, view, alpha, other.hit) * jacobian * total_count / densities;
-      Merge(combined, other, other.weight * other.count * min(ratio, REUSE_W_CLAMP), Random(uint3(id, frame * 16u + index + 9400u)));
+      Merge(combined, other, other.weight * other.count * min(ratio, REUSE_W_CLAMP), Random(uint4(id, frame, DIM_REFLECT_MERGE + index)));
       weight_sum += other.weight * other.count;
       counted += other.count;
     }
