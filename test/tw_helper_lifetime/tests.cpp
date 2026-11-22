@@ -737,6 +737,9 @@ int main(int argc, char** argv) {
     Check(!RequestAs(game, bridge_api::EVALUATE, FENCELESS), "nothing evaluated by a fence-less helper");
     game.QueueTail();
     Check(game.TailWithin(8000), "the game's GPU gets past the steady request's wait");
+    // The ended helper's fence (all ones on the software adapter) can free the wait before the watcher starts the
+    // recovery: up to 5 s for it.
+    for (const ULONGLONG until = GetTickCount64() + 5000; processes_created.load() == 0 && GetTickCount64() < until;) Sleep(1);
     Check(bridge.watchdog.failed.load() && bridge.failed && processes_created.load() == 1, "the fence-less answer is no answer: one recovery");
     Check(bridge.status.find("answered a steady request with 3, wanted 4") != std::string::npos, "said as a low answer, with both values");
   }
