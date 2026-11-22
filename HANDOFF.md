@@ -593,6 +593,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - g03_ next round: Design A's 8-case CPU decision test + WARP bit-equal test, then ... | ?
 - Pharaoh Dust Shadows slider (ATN 20) BLOCKED on a trace: one desert battle with ... | ?
 - Troy far-field check (rvc_ m3): battle on a hilly map, camera high + far, sun fr ... | ?
+- drain check before READY: every agent handed back, no build slot held, no agent ... | ?
+- merge set: ho_g19 -> ho_g09 + ho_g07 together (no push between), then build D2 / ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12127,6 +12129,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         burning building (smoke), RT/PT + Smoke Shadows on, FrameTraceReads of 109B79CE + 3F1B86E1 with t8 EMITTER_CONSTANTS_PS.
         - [ ] Troy far-field check (rvc_ m3): battle on a hilly map, camera high + far, sun from the side, paused; (a) far map
         replaced vs (b) today; number = share of pixels past 200 m shadowed in (b), lit in (a).
+        DRAIN 22:1x (ATN "Yes, drain now"): NO NEW AGENTS (only the render_mt END REVIEW, which READY needs; running reviewers
+        still re-check). Every running agent finishes its current loop or hands back "<prefix> part" with progress.md; coord
+        merges what is GO; then render_mt: b3t_ merged suite -> merge rmt_b3t -> END REVIEW -> fixes -> T5 freeze -> T6 dry
+        runs -> install -> READY -> ATN restarts + "go" -> end batch (nothing beside it) -> the next wave (one-writer rule).
+        Drain message sent 22:1x to g02_ g04_ g05_ g06_ g07_ g08_ g09_ g10_ g13_ g18_ g19_ g20_ g21_ g22_ gbf_ gtp_ mem_ b3t_.
+        - [ ] drain check before READY: every agent handed back, no build slot held, no agent process running (gtp_lowprio
+        / clang / test exes), lab idle.
+        rvc_ G09 (reviews/rvc_g09_review.md, rvc_g09_handback.md): GO as ONE set with ho_g07, after / with ho_g19; MA1 D2 builds
+        on neither branch alone (ue_light_bounce embed names); mi1 Auto Thickness needs ho_g19 first (else ClearSavedRows(4) resets
+        players to off), then drop the duplicate keys (G09, G07); mi3 tw_tales_unit = missing NAME in helper_kept.cpp:27 /
+        helper_rays.cpp:35 (G09). -pi sweep verified exact (0xC0490FDB, 360 lines, no upstream files). Fixes -> g09_ / g07_.
+        - [ ] merge set: ho_g19 -> ho_g09 + ho_g07 together (no push between), then build D2 / Tales / Expeditions / ue-extended,
+        tw_expeditions_unit, tw_ue_sss_gi, tw_tales_unit; check D2 has no ue_light_bounce_* / ue_sss_*.cs_5_0.hlsl left.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
