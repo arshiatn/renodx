@@ -6871,7 +6871,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         bd3r_review.md :731). N6 (bd1r_'s): real, both reviewers say do it now (complete check under the suspension,
         removes fill_keep / recording_keep / lambda / 100 ms wait) -> c33i_ RESUMED 02:5x (one commit on f1913c83c);
         then bd1r_ re-check -> merge rmt_rs5.
-        Agents (10): c33i_ (N6), lga_ (r3 re-check), ebr_ (r17 re-check), gtp_ (S1c nits), upt_
+        lga_ r3 RE-CHECK 02:5x = OK (render_mt/reports/lga_r3_recheck_handback.md; audit :894): T2 no stale exe / header
+        (forced late dxc failure -> exit 1, no exe), T1 4 / 4, N7, F4 (lga_ read the licence too: MIT holds). Nit: the
+        omm / FSR / XeSS DLL Copy-Items don't stop on failure -> lgf2_ r4 (-ErrorAction Stop) BEFORE the merge, so the
+        helper sources change once before the H0 rebase.
+        Agents (10): c33i_ (N6), lgf2_ (r4 nit), ebr_ (r17 re-check), gtp_ (S1c nits), upt_
         (v2.4), h0i_ (H0 script fixes), gtv_ (Nit 8 re-check), gtl_ (S3), gbc_ (C1 + C2, then B1 review), gpr_ (price +
         web review).
         QUEUE: R-S5 re-checks
