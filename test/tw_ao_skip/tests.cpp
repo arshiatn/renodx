@@ -1,5 +1,6 @@
 // twattila/ao_skip.hpp: SkipGameSsao, the one rule for leaving the game's SSAO chain out under Ray-Traced AO (Warhammer,
-// Warhammer II, Warhammer III, Troy), over rt_scene's runtime as its Update / Trace leave it.
+// Warhammer II, Warhammer III; Troy's moved to rt_scene::AmbientReplaced in ho_g03), over rt_scene's runtime as its
+// Update / Trace leave it. ClearOpen (the clear) needs a command list: the add-ons' own tests (Warhammer part 15).
 // 1. Ray-Traced AO on, the bridge tracing, traced this frame or the last: skipped (frames 0, 1, 5 and 2^40).
 // 2. CONTROLS (the game's SSAO stays): traced two frames ago or earlier; Ray-Traced AO off; Path-Traced Ambient alone; the
 //    bridge not tracing; nothing traced yet (traced_frame UINT64_MAX) at frame 0 and later.
