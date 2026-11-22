@@ -9866,9 +9866,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         0, printed before this line)".
         - [ ] t4i_: copy ebr_'s scenarios A / B / D (scratchpad\ebr_pr_scen) into test_analyze (kill T10 / T13 / T14) +
             the NOTE wording; ebr_ re-checks (ebr_ 11:31).
-        Agents (5): gtw_ (round 16 re-check), gpr_ (round 16 price re-check), t4i_ (ebr_'s scenarios into test_analyze),
-        c3i_ (FULL suite running, detached), gtl_ (fixture hang timeout); t4i_ ETL move waits for ATN (antivirus);
-        rmt_b1log merge after the FULL suite; then release_check -> H0 re-run; ff_s12 + grs_xess_guard after H0
+        c3i_ B1LOG VERIFY = ALL GREEN 11:36 (render_mt/reports/c3i_b1log_verify_handback.md; a03911fde clean tree, diff
+        --check clean): FULL engine_code x86 EXIT 0 PASS (scratchpad\c3i_log_full.txt, 11:36); instance_fill,
+        draw_recording, _loop, _sites, engine_code -DrawRecording x86 exit 0; gated x86 x3, x86 DRAW_RECORDING, amd64 exit
+        0. MERGE GATE rmt_b1log: name_check 17 generic words; merged --no-ff = 8cfea9113 (3 files +265 / -18); gated
+        x86 x3 + amd64 twattila running (task bcylfyqfl, -Owner coord_b1log) -> push after both exit 0.
+        Agents (4): gtw_ (round 16 re-check), gpr_ (round 16 price re-check), t4i_ (ebr_'s scenarios into test_analyze),
+        gtl_ (fixture hang timeout); t4i_ ETL move waits for ATN (antivirus); merge-gate builds (coordinator) ->
+        push -> release_check -> H0 re-run; ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
