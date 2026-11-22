@@ -87,7 +87,9 @@ Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); 
   facing each axis (1.2e-7), the pass from PerFrame without the ambient bit-equal to it from R1's zeroed, the bounce's
   apply against the pass's ambient (2.4e-7); each with a control that must fail.
 - `test/tw_d1_post/run.ps1`: 22 replaced passes Vanilla exact against the game's census bytes, each with a wrong copy
-  that must fail; the light rows at 2 give twice the game's light.
+  that must fail; the light rows at 2 give twice the game's light. The PCSS sun shadows (0x8F114E47) also with R1 save
+  T1's traced PerShadow / PerView (`pcss_r1_cb0.txt`, `pcss_r1_cb12.txt`; the cascades' projection, not in the trace,
+  orthographic from their widths and far planes).
 - `test/tw_d1_swapchain`, `test/tw_device_loss`, `test/tw_output_encoding`: the window's chains, device loss, Output.
 - `test/tw_psychov30_nan/run.ps1`: PsychoV30's NaN / infinity guards live against a copy without them.
 
@@ -105,6 +107,23 @@ The Steam exe, 21,605,888 bytes, SHA-256 f7c759e7...33d88, ASLR on (addresses at
   settings apply (0x140820990, vtable slot 0x141064570). On a change it creates SSR (0x140820040) or releases it
   (0x14081FEB0). So SSR can only be turned on by writing that byte in the game's memory (the Game's Screen-Space
   Reflections row).
+
+## Frame facts (R1's traces: the menu and the Act 2 / 3 save)
+
+- Upgraded RGBA8 targets: the tone map's and EoCFog's outputs, SMAA's edges and weights (each read only by a replaced,
+  Vanilla-exact pass) and the back buffer. In the save the half-size SSAO targets were RGBA16F (in the menu RGBA8):
+  DeferredSSAO (0x385DCF3C) writes unsaturated, its blurs (0x0524EF64, 0xB887004F) saturate, so the sun pass and the
+  forward materials see the game's range at 16-bit precision. The G-buffer, the shadow mask and the UI layer stay RGBA8.
+- Clamps: the 9 census candidates did not draw in R0 or R1. The 7 material emissive clamps are authored in the
+  material graphs, bloom 0x921AE8C3's saturate is in its source, DOF 0x95B9D5E8 saturates only its CoC: the
+  developers' look, left as it is.
+- Tone map (0x30A1D40D): the ColorMatrix is a saturation matrix with weights 0.3086 / 0.6094 / 0.0820 (save 1.1, menu
+  1.14); Params A / B / D and PPHDRExposure's (min, max) are atmospheres.tsv's: the save's ThePrisonGardenOfStoneKing
+  Sunny (A 0.22, B 0.18, D 0.2, exposure 1 / 1.5), the menu's Menuscreen_Cyseal (A 0.48, B 0.14, D 0.62, 0.85 / 1.5).
+  Source / Target colour were white in both: a scene with coloured ones (the beach, Black Cove) is not traced yet.
+- Fire 0xED93F883 (alpha blend): (texture x 0.5 + 0.5) x vertex colour, fogged; candles 0x93AEBB93 (additive): texture x
+  vertex colour x Brightness x fades. Their and the lights' constants are not in R1's traces (the frame trace has them
+  since this build).
 
 ## Credits
 

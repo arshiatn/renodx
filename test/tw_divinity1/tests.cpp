@@ -214,10 +214,10 @@ static float HueDegrees(const Float3& color) {
 
 static Globals MakeGlobals(const Atmosphere& atmosphere, float saturation, bool black_cove) {
   Globals globals = {.params = {atmosphere.a, atmosphere.b, atmosphere.d, 0.f}};
-  // Saturation in gamma space about BT.709 luminance (a stand-in: the engine's own matrix is not known offline).
+  // Saturation in gamma space about the engine's weights (R1's traced ColorMatrix: saturation 1.1 / 1.14 with these).
   for (int r = 0; r < 3; ++r) {
     for (int c = 0; c < 3; ++c) {
-      const float weight = std::array<float, 3>{0.2126f, 0.7152f, 0.0722f}[c];
+      const float weight = std::array<float, 3>{0.3086f, 0.6094f, 0.0820f}[c];
       globals.color_matrix[r][c] = (1.f - saturation) * weight + (r == c ? saturation : 0.f);
     }
   }
