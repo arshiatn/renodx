@@ -5575,7 +5575,7 @@ class RtScene12 {
       // back, so a later request builds them again.
       if (templates_built != NVAPI_OK) {
         templates_refused = true;
-        say_refused(1, std::format("the templates' build was refused (NvAPI {}; {} templates of {} sets): units and smoke not traced this frame.",
+        say_refused(1, std::format("the templates' build was refused (NvAPI {}; {} templates of {} sets): units and grass not traced this frame.",
                                    static_cast<int>(templates_built), template_builds, new_templated_sets.size()));
         for (ClusterSet* set : new_templated_sets) {
           pending_set_frees_.push_back({.value = own_value_ + 1, .template_first = set->template_first, .templates = set->clusters});
@@ -6324,7 +6324,7 @@ class RtScene12 {
           list->ResourceBarrier(1, &uav_barrier);
           clas_built = (instantiated == NVAPI_OK);
           if (!clas_built) {
-            say_refused(2, std::format("the CLAS instantiate was refused (NvAPI {}; {} clusters, {} from templates): units and smoke not traced this frame.",
+            say_refused(2, std::format("the CLAS instantiate was refused (NvAPI {}; {} clusters, {} from templates): units and grass not traced this frame.",
                                        static_cast<int>(instantiated), cluster_count, templated_clusters));
           }
         }
@@ -6333,7 +6333,7 @@ class RtScene12 {
           list->ResourceBarrier(1, &uav_barrier);
           clas_built = (clas_status == NVAPI_OK);
           if (!clas_built) {
-            say_refused(4, std::format("the CLAS build was refused (NvAPI {}; {} clusters, {} from templates): units and smoke not traced this frame.",
+            say_refused(4, std::format("the CLAS build was refused (NvAPI {}; {} clusters, {} from templates): units and grass not traced this frame.",
                                        static_cast<int>(clas_status), cluster_count, templated_clusters));
           }
         }
@@ -6382,7 +6382,7 @@ class RtScene12 {
             const NvAPI_Status blas_status = build_blases(arg, 1);
             cluster_built[arg_blases[arg]] = (blas_status == NVAPI_OK);
             if (blas_status != NVAPI_OK) {
-              say_refused(8, std::format("a cluster BLAS's build was refused (NvAPI {}; cluster BLAS {} of {}): its units or smoke not traced.",
+              say_refused(8, std::format("a cluster BLAS's build was refused (NvAPI {}; cluster BLAS {} of {}): its units or grass not traced.",
                                          static_cast<int>(blas_status), arg_blases[arg], CLUSTER_BLASES));
             }
           }

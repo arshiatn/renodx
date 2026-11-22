@@ -8,22 +8,30 @@ $root = Resolve-Path "$PSScriptRoot\..\..\..\.."
 $out = if ($args.Count -gt 0) { $args[0] } else { Join-Path $root "build\tw_dlaa_helper" }
 New-Item -ItemType Directory -Force $out | Out-Null
 Set-Location $out
-& "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_trace.h" -Vn RT_TRACE "$PSScriptRoot\rt_trace.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_trace_omm.h" -Vn RT_TRACE_OMM "$PSScriptRoot\rt_trace.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_lights.h" -Vn RT_LIGHTS "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_lights_omm.h" -Vn RT_LIGHTS_OMM "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_fog.h" -Vn RT_FOG "$PSScriptRoot\rt_fog.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_fog_omm.h" -Vn RT_FOG_OMM "$PSScriptRoot\rt_fog.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_bounce.h" -Vn RT_BOUNCE "$PSScriptRoot\rt_bounce.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_bounce_omm.h" -Vn RT_BOUNCE_OMM "$PSScriptRoot\rt_bounce.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_path.h" -Vn RT_PATH "$PSScriptRoot\rt_path.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_path_omm.h" -Vn RT_PATH_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D REFLECT -Fh "$out\rt_reflect.h" -Vn RT_REFLECT "$PSScriptRoot\rt_path.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REFLECT -D OPACITY_MICROMAPS -Fh "$out\rt_reflect_omm.h" -Vn RT_REFLECT_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D REUSE -Fh "$out\rt_reuse.h" -Vn RT_REUSE "$PSScriptRoot\rt_path.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REUSE -D OPACITY_MICROMAPS -Fh "$out\rt_reuse_omm.h" -Vn RT_REUSE_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D REFLECT_RESERVOIR -Fh "$out\rt_reflect_reservoir.h" -Vn RT_REFLECT_RESERVOIR "$PSScriptRoot\rt_path.cs_6_5.hlsl"
-& "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REFLECT_RESERVOIR -D OPACITY_MICROMAPS -Fh "$out\rt_reflect_reservoir_omm.h" -Vn RT_REFLECT_RESERVOIR_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+# The old exe goes first: a failed build (a shader's or the helper's) leaves none and fails the script.
+Remove-Item "$out\renodx-tw-dlaa64.exe" -ErrorAction SilentlyContinue
+if (Test-Path "$out\renodx-tw-dlaa64.exe") { throw "$out\renodx-tw-dlaa64.exe could not be deleted (still running?)" }
+# A shader that fails to compile fails the build (no helper with an older shader header).
+function Dxc {
+  & "$root\bin\dxc.exe" @args
+  if ($LASTEXITCODE -ne 0) { throw "dxc failed (exit $LASTEXITCODE): $($args -join ' ')" }
+}
+Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_trace.h" -Vn RT_TRACE "$PSScriptRoot\rt_trace.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_trace_omm.h" -Vn RT_TRACE_OMM "$PSScriptRoot\rt_trace.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_lights.h" -Vn RT_LIGHTS "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_lights_omm.h" -Vn RT_LIGHTS_OMM "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_fog.h" -Vn RT_FOG "$PSScriptRoot\rt_fog.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_fog_omm.h" -Vn RT_FOG_OMM "$PSScriptRoot\rt_fog.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_bounce.h" -Vn RT_BOUNCE "$PSScriptRoot\rt_bounce.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_bounce_omm.h" -Vn RT_BOUNCE_OMM "$PSScriptRoot\rt_bounce.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_path.h" -Vn RT_PATH "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_path_omm.h" -Vn RT_PATH_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_5 -E main -O3 -D REFLECT -Fh "$out\rt_reflect.h" -Vn RT_REFLECT "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_9 -E main -O3 -D REFLECT -D OPACITY_MICROMAPS -Fh "$out\rt_reflect_omm.h" -Vn RT_REFLECT_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_5 -E main -O3 -D REUSE -Fh "$out\rt_reuse.h" -Vn RT_REUSE "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_9 -E main -O3 -D REUSE -D OPACITY_MICROMAPS -Fh "$out\rt_reuse_omm.h" -Vn RT_REUSE_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_5 -E main -O3 -D REFLECT_RESERVOIR -Fh "$out\rt_reflect_reservoir.h" -Vn RT_REFLECT_RESERVOIR "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+Dxc -nologo -T cs_6_9 -E main -O3 -D REFLECT_RESERVOIR -D OPACITY_MICROMAPS -Fh "$out\rt_reflect_reservoir_omm.h" -Vn RT_REFLECT_RESERVOIR_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 # Builds used only with their switches (the builds above stay as without them): Torch and Fire Light in the Light Bounce
 # (TORCHES_IN_BOUNCE: the reuse with a local light's sample a bounce texel, the local lights' trace that leaves them to it)
 # Lean Reuse (REUSE_LEAN: the reuse's neighbours with fewer fetches), Near Reuse (REUSE_NEAR: fewer, nearer neighbours),
@@ -33,30 +41,30 @@ foreach ($variant in @(@('rt_path', 'TORCHES_IN_BOUNCE REUSE', 'rt_reuse_lights'
                        @('rt_path', 'REUSE_LEAN REUSE', 'rt_reuse_lean', 'RT_REUSE_LEAN'), @('rt_path', 'REUSE_NEAR REUSE', 'rt_reuse_near', 'RT_REUSE_NEAR'),
                        @('rt_path', 'REFLECT_ONE_SAMPLE REFLECT', 'rt_reflect_one', 'RT_REFLECT_ONE'), @('rt_path', 'PATH_ONE_SAMPLE', 'rt_path_one', 'RT_PATH_ONE'))) {
   $defines = $variant[1].Split(' ') | ForEach-Object { '-D', $_ }
-  & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 @defines -Fh "$out\$($variant[2]).h" -Vn $variant[3] "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
-  & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 @defines -D OPACITY_MICROMAPS -Fh "$out\$($variant[2])_omm.h" -Vn "$($variant[3])_OMM" "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
+  Dxc -nologo -T cs_6_5 -E main -O3 @defines -Fh "$out\$($variant[2]).h" -Vn $variant[3] "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
+  Dxc -nologo -T cs_6_9 -E main -O3 @defines -D OPACITY_MICROMAPS -Fh "$out\$($variant[2])_omm.h" -Vn "$($variant[3])_OMM" "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
 }
 # RENODX_TW_PATH_PROBE_BUILD set: the paths' probe build too (rt_path.hlsli ProbeTexel, tests only; a player's helper has none).
 Remove-Item "$out\rt_path_probe.h", "$out\rt_path_probe_omm.h" -ErrorAction SilentlyContinue
 if ($env:RENODX_TW_PATH_PROBE_BUILD) {
-  & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D PATH_PROBE -Fh "$out\rt_path_probe.h" -Vn RT_PATH_PROBE "$PSScriptRoot\rt_path.cs_6_5.hlsl"
-  & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D PATH_PROBE -D OPACITY_MICROMAPS -Fh "$out\rt_path_probe_omm.h" -Vn RT_PATH_PROBE_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+  Dxc -nologo -T cs_6_5 -E main -O3 -D PATH_PROBE -Fh "$out\rt_path_probe.h" -Vn RT_PATH_PROBE "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+  Dxc -nologo -T cs_6_9 -E main -O3 -D PATH_PROBE -D OPACITY_MICROMAPS -Fh "$out\rt_path_probe_omm.h" -Vn RT_PATH_PROBE_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 }
 # RENODX_TW_REFERENCE_BUILD set: the reference build's passes too (rt_reference.hlsli, tests only; a player's helper has none).
 $reference_passes = @('accumulate', 'census', 'digest', 'group', 'paths', 'reflect', 'state')
 foreach ($pass in $reference_passes) { Remove-Item "$out\rt_reference_$pass.h" -ErrorAction SilentlyContinue }
 if ($env:RENODX_TW_REFERENCE_BUILD) {
   foreach ($pass in $reference_passes) {
-    & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D "REF_$($pass.ToUpper())" -Fh "$out\rt_reference_$pass.h" -Vn "RT_REFERENCE_$($pass.ToUpper())" "$PSScriptRoot\rt_reference.cs_6_5.hlsl"
+    Dxc -nologo -T cs_6_5 -E main -O3 -D "REF_$($pass.ToUpper())" -Fh "$out\rt_reference_$pass.h" -Vn "RT_REFERENCE_$($pass.ToUpper())" "$PSScriptRoot\rt_reference.cs_6_5.hlsl"
   }
 }
 # RENODX_TW_RECORDER_BUILD set: the bridge recorder and its player too (rt_d3d12.hpp RENODX_RECORDER, tests only; a released helper has none).
 Remove-Item "$out\rt_recorder_build.h" -ErrorAction SilentlyContinue
 if ($env:RENODX_TW_RECORDER_BUILD) { Set-Content -Path "$out\rt_recorder_build.h" -Value '#pragma once' -Encoding ascii }
-& "$root\bin\dxc.exe" -nologo -T cs_6_0 -E main -O3 -Fh "$out\fg_ui.h" -Vn FG_UI "$PSScriptRoot\fg_ui.cs_6_0.hlsl"
+Dxc -nologo -T cs_6_0 -E main -O3 -Fh "$out\fg_ui.h" -Vn FG_UI "$PSScriptRoot\fg_ui.cs_6_0.hlsl"
 # Path Tracing SER's paths built as the compute ones: the general build and the one of one ray a texel.
-& "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -Fh "$out\rt_path_ser.h" -Vn RT_PATH_SER "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
-& "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -D PATH_ONE_SAMPLE -Fh "$out\rt_path_ser_one.h" -Vn RT_PATH_SER_ONE "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
+Dxc -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -Fh "$out\rt_path_ser.h" -Vn RT_PATH_SER "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
+Dxc -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -D PATH_ONE_SAMPLE -Fh "$out\rt_path_ser_one.h" -Vn RT_PATH_SER_ONE "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
 # NVIDIA's SHaRC 1.8.3 (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/SHARC: its untagged main commit 4e21b585 "v1.8.3";
 # 1.6.5 was a release) for SHaRC Radiance Cache: fetched into build\downloads\sharc\extracted\NVIDIA-RTX-SHARC-4e21b585 when
 # missing, unmodified with NVIDIA's licence (never committed here), its headers compiled into the paths' SHaRC variants
@@ -84,14 +92,13 @@ if (Test-Path "$sharc\include\SharcCommon.h") {
   foreach ($sharc_shader in @(@('rt_path.cs_6_5', 'SHARC_QUERY=1', 'rt_path_sharc', 'RT_PATH_SHARC'), @('rt_path.cs_6_5', 'SHARC_QUERY=1 PATH_ONE_SAMPLE', 'rt_path_sharc_one', 'RT_PATH_SHARC_ONE'),
                               @('rt_sharc_update', 'SHARC_UPDATE=1 SHARC_PROPAGATION_DEPTH=2', 'rt_sharc_update', 'RT_SHARC_UPDATE'), @('rt_sharc_resolve', '', 'rt_sharc_resolve', 'RT_SHARC_RESOLVE'))) {
     $defines = $sharc_shader[1].Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { '-D', $_ }
-    & "$root\bin\dxc.exe" @sharc_flags @defines -Fh "$out\$($sharc_shader[2]).h" -Vn $sharc_shader[3] "$PSScriptRoot\$($sharc_shader[0]).hlsl"
-    if ($LASTEXITCODE -ne 0) { throw "SHaRC shader $($sharc_shader[2]) failed" }
+    Dxc @sharc_flags @defines -Fh "$out\$($sharc_shader[2]).h" -Vn $sharc_shader[3] "$PSScriptRoot\$($sharc_shader[0]).hlsl"
   }
 }
 foreach ($shader in @(@('rt_soft', 'RT_SOFT'), @('rt_scene_data', 'RT_SCENE_DATA'), @('rt_compact', 'RT_COMPACT'), @('rt_place', 'RT_PLACE'),
                       @('rt_cache_fill', 'RT_CACHE_FILL'), @('rt_cache_resolve', 'RT_CACHE_RESOLVE'), @('rt_reflect_filter', 'RT_REFLECT_FILTER'),
                       @('rt_omm_uvs', 'RT_OMM_UVS'), @('rt_sway', 'RT_SWAY'))) {
-  & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\$($shader[0]).h" -Vn $shader[1] "$PSScriptRoot\$($shader[0]).cs_6_5.hlsl"
+  Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\$($shader[0]).h" -Vn $shader[1] "$PSScriptRoot\$($shader[0]).cs_6_5.hlsl"
 }
 # NVIDIA's NVAPI (MIT, github.com/NVIDIA/nvapi) for RTX Mega Geometry when it sits in build\downloads\nvapi (else the
 # helper builds without it).
@@ -143,8 +150,8 @@ if (Test-Path "$nrd\_Bin\NRD.lib") {
   $nrd_include = @("-imsvc$nrd\Include")
   $nrd_library = @("$nrd\_Bin\NRD.lib", "$nrd\_Build\_deps\shadermake-build\ShaderMakeBlob.lib")
   foreach ($signal in $nrd_signals) {
-    & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -I "$nrd\Shaders" -D "NRD_FRONT_$signal" -Fh "$out\rt_nrd_front_$signal.h" -Vn "RT_NRD_FRONT_$signal" "$PSScriptRoot\rt_nrd_front.hlsl"
-    & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -I "$nrd\Shaders" -D "NRD_FINISH_$signal" -Fh "$out\rt_nrd_finish_$signal.h" -Vn "RT_NRD_FINISH_$signal" "$PSScriptRoot\rt_nrd_finish.hlsl"
+    Dxc -nologo -T cs_6_5 -E main -O3 -I "$nrd\Shaders" -D "NRD_FRONT_$signal" -Fh "$out\rt_nrd_front_$signal.h" -Vn "RT_NRD_FRONT_$signal" "$PSScriptRoot\rt_nrd_front.hlsl"
+    Dxc -nologo -T cs_6_5 -E main -O3 -I "$nrd\Shaders" -D "NRD_FINISH_$signal" -Fh "$out\rt_nrd_finish_$signal.h" -Vn "RT_NRD_FINISH_$signal" "$PSScriptRoot\rt_nrd_finish.hlsl"
   }
 }
 # NVIDIA's Nsight Graphics SDK headers (Apache 2.0, include\nsight_graphics_sdk): main.cpp's frame boundaries for Nsight
@@ -155,3 +162,4 @@ if (Test-Path "$nrd\_Bin\NRD.lib") {
   "$PSScriptRoot\main.cpp" /Ferenodx-tw-dlaa64.exe /link /SUBSYSTEM:WINDOWS `
   "$root\external\DLSS\lib\Windows_x86_64\x64\nvsdk_ngx_s.lib" @nvapi_library @nrd_library d3d11.lib d3d12.lib dxgi.lib shell32.lib version.lib user32.lib advapi32.lib wintrust.lib crypt32.lib dbghelp.lib `
   delayimp.lib /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:d3d12.dll
+if ($LASTEXITCODE -ne 0) { throw "renodx-tw-dlaa64.exe failed to build (clang-cl exit $LASTEXITCODE)" }
