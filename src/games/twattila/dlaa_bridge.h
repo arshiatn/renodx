@@ -643,7 +643,7 @@ constexpr uint32_t HELPER_EXIT_ENDED_BY_ADDON = 0xE0000010;  // the addon's Term
 constexpr const char* HelperExitMeaning(uint32_t code) {
   switch (code) {
     case HELPER_EXIT_DONE:               return "ended normally";
-    case HELPER_EXIT_COMMAND_LINE:       return "a bad command line";
+    case HELPER_EXIT_COMMAND_LINE:       return "a bad command line (or an older helper's start-up failure)";
     case HELPER_EXIT_NOT_FOUND:          return "the game's process, shared memory or events not found";
     case HELPER_EXIT_VERSION:            return "another bridge version";
     case HELPER_EXIT_NO_D3D11:           return "no D3D11.4 device on the game's GPU";

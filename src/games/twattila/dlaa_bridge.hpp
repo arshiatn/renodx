@@ -510,7 +510,8 @@ inline bool Start(ID3D11Device* device) {
       // The sets whose fences one rescue frees (the open one and those retired before the game's GPU got to them).
       constexpr size_t RESCUED_SETS = 16;
       // Out of memory in here must not end the game: the watcher goes instead. Up to the rescue's start only the log lines
-      // allocate, each in a try of its own (a 32-bit game short of address space with a stuck helper keeps its recovery).
+      // allocate, each in a try of its own (a 32-bit game short of address space with a stuck helper keeps its recovery);
+      // only the line of the watcher's own failed wait relies on the outer one (the watcher ends there, rescuing nothing).
       try {
         const std::array<HANDLE, 2> stop_or_exit = {bridge.watcher_stop, bridge.process};
         uint64_t completed = 0;
@@ -552,11 +553,21 @@ inline bool Start(ID3D11Device* device) {
         }
         // Its own end's reason (a crash's code, a start-up exit, its stop on unfinished GPU work), also with nothing to
         // free; before `failed`, which the game's thread then reports.
-        DWORD exit_code = 0;
-        GetExitCodeProcess(bridge.process, &exit_code);
+        // STILL_ACTIVE: only after the 5 s the watcher gave the helper it ended (the loop's other way out is its end).
+        DWORD exit_code = STILL_ACTIVE;
+        DWORD exit_error = 0;
+        if (!GetExitCodeProcess(bridge.process, &exit_code)) {
+          exit_error = GetLastError();
+        }
         try {
-          renodx::utils::log::w(std::format("[Total War] DLAA: the helper ended (exit code 0x{:08X}: {}{}).", exit_code, HelperExitMeaning(exit_code),
-                                            (ending_polls != 0) ? ", ended by the watcher" : ""));
+          if (exit_error != 0) {
+            renodx::utils::log::w("[Total War] DLAA: the helper ended (its exit code not read: error ", exit_error, ").");
+          } else if (exit_code == STILL_ACTIVE) {
+            renodx::utils::log::w("[Total War] DLAA: the helper did not end within 5 s after the watcher ended it.");
+          } else {
+            renodx::utils::log::w(std::format("[Total War] DLAA: the helper ended (exit code 0x{:08X}: {}{}).", exit_code, HelperExitMeaning(exit_code),
+                                              (ending_polls != 0) ? ", ended by the watcher" : ""));
+          }
         } catch (const std::exception&) {
           // No-op: out of memory costs this line, not the recovery below.
         }
@@ -596,9 +607,10 @@ inline bool Start(ID3D11Device* device) {
           const DWORD rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, 15000);
           switch (rescue_woken) {
             case WAIT_OBJECT_0 + 1: {
-              DWORD result = HELPER_EXIT_ENDED_BY_ADDON;
-              GetExitCodeProcess(rescue.hProcess, &result);
-              if (result != HELPER_EXIT_DONE) {
+              DWORD result = STILL_ACTIVE;
+              if (!GetExitCodeProcess(rescue.hProcess, &result)) {
+                not_freed = std::format("the rescue's exit code not read (error {})", GetLastError());
+              } else if (result != HELPER_EXIT_DONE) {
                 not_freed = std::format("the rescue's exit code 0x{:08X}: {}; renodx-tw-dlaa64.log", result, HelperExitMeaning(result));
               }
               break;

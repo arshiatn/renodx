@@ -19,6 +19,10 @@ bool fail_resume = false;
 bool fail_duplicate = false;
 bool fail_stop_event = false;
 bool helper_writes_during_transfer = false;
+// The bridge's next exit-code read: STILL_ACTIVE (a helper not gone 5 s after the watcher ended it); the one after a
+// fake_still_active read, or the next one: failed.
+std::atomic<bool> fake_still_active = false;
+std::atomic<bool> fail_exit_read = false;
 std::atomic<unsigned> processes_created = 0;
 std::atomic<unsigned> warnings = 0;
 HANDLE child_witness = nullptr;
@@ -30,6 +34,7 @@ HANDLE WINAPI TestCreateEventW(LPSECURITY_ATTRIBUTES attributes, BOOL manual, BO
 BOOL WINAPI TestCreateProcessW(LPCWSTR application, LPWSTR command, LPSECURITY_ATTRIBUTES process_attributes,
                               LPSECURITY_ATTRIBUTES thread_attributes, BOOL inherit, DWORD flags, LPVOID environment,
                               LPCWSTR directory, LPSTARTUPINFOW startup, LPPROCESS_INFORMATION information);
+BOOL WINAPI TestGetExitCodeProcess(HANDLE process, LPDWORD code);
 }
 
 #define AssignProcessToJobObject TestAssignProcessToJobObject
@@ -37,30 +42,35 @@ BOOL WINAPI TestCreateProcessW(LPCWSTR application, LPWSTR command, LPSECURITY_A
 #define DuplicateHandle TestDuplicateHandle
 #define CreateEventW TestCreateEventW
 #define CreateProcessW TestCreateProcessW
+#define GetExitCodeProcess TestGetExitCodeProcess
 #include "src/games/twattila/dlaa_bridge.hpp"
 #undef AssignProcessToJobObject
 #undef ResumeThread
 #undef DuplicateHandle
 #undef CreateEventW
 #undef CreateProcessW
+#undef GetExitCodeProcess
 #include "src/games/twattila/dlaa_helper/gpu_completion.hpp"
 
 // The add-on's name, which utils/settings.hpp's overlay title reads (an add-on defines it in its addon.cpp).
 extern "C" __declspec(dllexport) const char* const NAME = "TW helper lifetime test";
 
 // ReShade's log, counted: a failure is said once, not at every call after it. The watcher's line with the helper's exit
-// code is counted apart (its thread's, beside the game thread's line for the same end), the last one kept.
+// code is counted apart (its thread's, beside the game thread's line for the same end), the last one kept, and the
+// recovery's last line too.
 std::atomic<unsigned> exit_lines = 0;
 std::mutex exit_line_mutex;
 std::string last_exit_line;
+std::string last_rescue_line;
 extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int level, const char* message) {
-  if (std::strstr(message, "the helper ended (exit code") != nullptr) {
-    {
-      const std::unique_lock lock(exit_line_mutex);
-      last_exit_line = message;
-    }
+  const std::unique_lock lock(exit_line_mutex);
+  if (std::strstr(message, "the helper ended (") != nullptr || std::strstr(message, "the helper did not end within 5 s") != nullptr) {
+    last_exit_line = message;
     ++exit_lines;
     return;
+  }
+  if (std::strstr(message, "what the game's GPU waited for from it") != nullptr) {
+    last_rescue_line = message;
   }
   if (level <= 2) ++warnings;
 }
@@ -197,6 +207,18 @@ BOOL WINAPI TestCreateProcessW(LPCWSTR application, LPWSTR command, LPSECURITY_A
   ++processes_created;
   return CreateProcessW(application, command, process_attributes, thread_attributes, inherit, flags, environment, directory,
                         startup, information);
+}
+
+BOOL WINAPI TestGetExitCodeProcess(HANDLE process, LPDWORD code) {
+  if (fake_still_active.exchange(false)) {
+    *code = STILL_ACTIVE;
+    return TRUE;
+  }
+  if (fail_exit_read.exchange(false)) {
+    SetLastError(ERROR_ACCESS_DENIED);
+    return FALSE;
+  }
+  return GetExitCodeProcess(process, code);
 }
 
 void CheckClosed() {
@@ -624,6 +646,9 @@ int main(int argc, char** argv) {
     warnings_before = warnings.load();
     const unsigned exits_before = exit_lines.load();
     processes_created = 0;
+    // The silent helper's end read as not gone after the watcher's 5 s, then the rescue's exit code not read.
+    fake_still_active = (test.mode == SILENT);
+    fail_exit_read = (test.mode == SILENT);
     Check(RequestAs(game, test.kind, test.mode), "request sent");
     if (test.mode == SILENT) {
       Check(!bridge_api::internal::Answer(200) && bridge.status.find("did not answer a steady request in 200 ms") != std::string::npos,
@@ -650,6 +675,12 @@ int main(int argc, char** argv) {
     // A helper that ended by itself: its own code; one the watcher ended: the watcher's.
     if (test.mode == EXITS_AFTER_ANSWER) {
       Check(ExitLogged(exits_before, "exit code 0x00000000: ended normally", false), "the helper's own end logged once");
+    } else if (test.mode == SILENT) {
+      Check(ExitLogged(exits_before, "the helper did not end within 5 s after the watcher ended it.", false), "STILL_ACTIVE said as not ended");
+      Check(!fake_still_active && !fail_exit_read, "both exit-code reads were the bridge's");
+      const std::unique_lock lock(exit_line_mutex);
+      Check(last_rescue_line.find("was not freed (the rescue's exit code not read (error 5))") != std::string::npos,
+            "the rescue's unread exit code said as such, not as the addon's end");
     } else {
       Check(ExitLogged(exits_before, "exit code 0xE0000010: ended by the addon", true), "the watcher's end logged once");
     }
