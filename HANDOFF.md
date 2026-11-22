@@ -502,9 +502,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal ... | ?
 - gtv_ (Opus xHigh, read only): root cause of S3c part 1's 3 failed calibrations ( ... | ?
 - coord: S3c part 1 RE-RUN (calibrate -> A/A -> rotation -> trace) after gtv_'s fi ... | ?
-- gtl_: land-time unit + jobs re-run on the LIVE lab (coord 16:23). | ?
 - grs_ (low, bundle with gtv_'s resident fixes if any): fcr_ nit R1 set_pool exter ... | ?
 - coord: S3c part 2 (dead outputs on R3, M10) after gtv_'s root cause; recorder bu ... | ?
+- gtl_ (with the post-gtv_ calibrate fixes): -B in the fixture's keeper child argv ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10704,12 +10704,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         first; backup testbin\scratch\coord_\lab_bak_20261122_1623): lab.py 74d42971, lab_keeper.py 098b565e,
         fake_resident.py a1a40374, NEW lab_analyze.py 5ce54b66, NEW job_schema.json.proposed 92258203 (proposal only; live
         job_schema.json unchanged), tests/test_lab_{fixture,keeper,unit,jobs}.py, NEW tests/test_lab_analyze.py.
-        - [ ] gtl_: land-time unit + jobs re-run on the LIVE lab (coord 16:23).
+        - [x] gtl_ (DONE 16:28, all OK): land-time unit + jobs re-run on the LIVE lab (coord 16:23).
         - [ ] grs_ (low, bundle with gtv_'s resident fixes if any): fcr_ nit R1 set_pool external in StopUses (coord 16:23).
         - [ ] coord: S3c part 2 (dead outputs on R3, M10) after gtv_'s root cause; recorder build build\helper_du_rec.
-        Agents (3): gtp_ (gate round 20), gtl_ (land-time unit + jobs on live lab), gtv_ (S3c calibration + trace root
-        cause, read only); fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU
-        job at a time
+        gtl_ LIVE LAB CHECK 16:28 (plan_1117/gtl_live_lab_check_handback.md; testbin\scratch\gtl_\runs\live_*.txt): 10
+        landed files = stage_sha256; live unit 37 / analyze 4 / ps1 5 / keeper 28 / jobs 34 all OK (16:23:57-16:27:48);
+        lock free, fixture lock paths only, no GPU. Old habit: fixture keeper children run without -B -> lab\__pycache__
+        lab / lab_keeper .pyc rewritten 16:24 (pycs there since 02:06) -> one-line -B in the fixture child argv, bundled
+        with gtl_'s post-gtv_ fixes.
+        - [ ] gtl_ (with the post-gtv_ calibrate fixes): -B in the fixture's keeper child argv (coord 16:28).
+        Agents (2): gtp_ (gate round 20), gtv_ (S3c calibration + trace root cause, read only); gtl_ / fcr_ / gtc_ / gti_ /
+        grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
