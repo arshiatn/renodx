@@ -39,6 +39,7 @@ cbuffer Bounce : register(b2) {
   uint bounce_padding;
 };
 #elif defined(NRD_FRONT_REFLECT)
+#include "./rt_camera.hlsli"  // path_flags (b3, the reflections' request's): ReflectAlpha
 Texture2D<float4> guide_normals : register(t12);  // world normals (x 0: none)
 Texture2D<float> guide_roughness : register(t14);
 RWTexture2D<float> view_z : register(u48);
@@ -76,7 +77,10 @@ void main(uint3 id : SV_DispatchThreadID) {
 #if defined(NRD_FRONT_REFLECT)
   const float3 guide = guide_normals[pixel].xyz;
   const float3 normal = (dot(guide, guide) > 0.5f) ? normalize(guide) : SurfaceNormal(pixel, position);
-  const float roughness = saturate(guide_roughness[pixel]);
+  // The traced lobe's linear roughness, sqrt(alpha) (0: a mirror's delta), not the G-buffer's: REBLUR took the default
+  // lobe's reflections for 2-3 times rougher, blurred sharp ones and kept them longer.
+  const float gbuffer_roughness = saturate(guide_roughness[pixel]);
+  const float roughness = (gbuffer_roughness < MIRROR_ROUGHNESS) ? 0.f : sqrt(ReflectAlpha(gbuffer_roughness));
   const float4 traced = signal[id.xy];
   signal[id.xy] = REBLUR_FrontEnd_PackRadianceAndNormHitDist(traced.rgb, REBLUR_FrontEnd_GetNormHitDist(traced.a, position.w, HIT_DISTANCE_PARAMETERS, roughness), true);
 #else

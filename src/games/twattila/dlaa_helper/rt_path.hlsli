@@ -98,7 +98,6 @@ static const uint PATH_REFLECT_OWN = 8388608u;          // Own ReSTIR: the refle
 static const uint PATH_REFLECT_OWN_HISTORY = 16777216u; // last frame's are last frame's
 static const uint PATH_REFLECT_PARITY = 33554432u;      // this frame's set: 1 (else 0)
 static const uint PATH_LIGHT_FINAL = 67108864u;         // a reflections request's: `light` is the light buffer the game's pass reads
-static const uint PATH_SQUARED_LOBE = 536870912u;       // reflections: alpha = roughness^2 (ReflectAlpha)
 static const uint PATH_NRD = 268435456u;                // NVIDIA's REBLUR denoises this request's light (rt_nrd_front.hlsl)
 static const uint PATH_SKY_APART = 134217728u;          // Own Sky Rays: Path-Traced AO's sky past the reservoirs
 static const uint PATH_REFLECT_FOG = 16384u;            // reflections: the game's fog between a pixel and what its rays met
@@ -1233,14 +1232,6 @@ float LobeDensity(float3 receiver, float3 normal, float3 view, float alpha, floa
   return GgxReflectionDensity(max(dot(normal, view), 1e-3f), saturate(dot(normal, normalize(view + direction))), alpha);
 }
 
-// A reflection's lobe by the G-buffer's roughness (1 - gloss): GGX as wide as the game's own lights' highlight on it (a
-// Gaussian whose share within 0.5 degrees is gloss^2).
-float ReflectAlpha(float roughness) {
-  if ((path_flags & PATH_SQUARED_LOBE) != 0u) return max(roughness * roughness, 0.0064f);
-  const float gloss = 1.f - roughness;
-  return 0.0064f / max(gloss * gloss, 0.0625f);
-}
-
 // The render pixel an Own ReSTIR texel stands for this frame: one of its 2 x 2, a different one each frame.
 uint2 ReservoirPixel(uint2 texel) {
   return min(texel * 2u + uint2(frame & 1u, (frame >> 1) & 1u), uint2(width, height) - 1u);
@@ -1326,7 +1317,7 @@ void ReflectPixel(uint2 id) {
   const float3 origin = RayOrigin(position, normal, PlanarOf(position, normal, neighbours));
   const float roughness = saturate(raw_roughness);
   const float alpha = ReflectAlpha(roughness);
-  const bool mirror = roughness < 0.05f;
+  const bool mirror = roughness < MIRROR_ROUGHNESS;
   const bool traced = (path_flags & PATH_REFLECTIONS) != 0u && roughness <= ROUGH_LIMIT;
   const bool occlusion = (path_flags & PATH_SPECULAR_OCCLUSION) != 0u && !traced;
 #if defined(REFLECT_ONE_SAMPLE)

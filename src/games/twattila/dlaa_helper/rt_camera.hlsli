@@ -83,6 +83,17 @@ bool SeenByLastTrace(float3 world, out uint2 seen_pixel) {
   return seen.w > 0.f && distance(seen.xyz, world) < 0.030005185f + 0.01f * seen.w;
 }
 
+static const uint PATH_SQUARED_LOBE = 536870912u;  // reflections: alpha = roughness^2 (ReflectAlpha)
+static const float MIRROR_ROUGHNESS = 0.05f;       // smoother reflections are traced as mirrors (one ray, a delta lobe)
+
+// A reflection's lobe by the G-buffer's roughness (1 - gloss): GGX as wide as the game's own lights' highlight on it (a
+// Gaussian whose share within 0.5 degrees is gloss^2). The reflections' rays and NRD's guide (rt_nrd_front.hlsl) both.
+float ReflectAlpha(float roughness) {
+  if ((path_flags & PATH_SQUARED_LOBE) != 0u) return max(roughness * roughness, 0.0064f);
+  const float gloss = 1.f - roughness;
+  return 0.0064f / max(gloss * gloss, 0.0625f);
+}
+
 #endif  // SRC_GAMES_TWATTILA_DLAA_HELPER_RT_CAMERA_HLSLI_
 
 // How far along the way to the camera StartPast looks (metres): more than a trunk's difference, less than a wall's thickness matters.
