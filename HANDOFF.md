@@ -495,8 +495,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coordinator: all_modes pass on the combined tree after rmt_h0 + ff_s12 + grs_xes ... | ?
 - gtw_ + gpr_: re-check round 18 (gate + price) (coord 13:5x). | ?
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
-- upr_: review all_modes_check.ps1 + h0_gpu_runs.ps1's 4 new functions + h0_rng_ch ... | ?
 - ATN: allow rule for all_modes_check.ps1 (plain + -DryRun) after upr_ GO (coord 1 ... | ?
+- h0i_: MUST 1-2 + SHOULD 3-4 + offline test / selftest updates; upr_ re-checks (u ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10187,10 +10187,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         offline\20261122_134706_allmodes kept. h0_offline_test.ps1 can no longer run (read-only checks stop it post-merge).
         Rule lines for ATN (after upr_ GO): powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\arshi\.claude\
         projects\D--Dev-renodx\tools\tw\h0\all_modes_check.ps1 (+ the same with -DryRun).
-        - [ ] upr_: review all_modes_check.ps1 + h0_gpu_runs.ps1's 4 new functions + h0_rng_check.py changes (coord 13:5x).
+        - [x] upr_ (DONE 14:0x: NO-GO until MUST 1-2): review all_modes_check.ps1 + h0_gpu_runs.ps1's 4 new functions + h0_rng_check.py changes (coord 13:5x).
         - [ ] ATN: allow rule for all_modes_check.ps1 (plain + -DryRun) after upr_ GO (coord 13:5x).
-        Agents (2): gtw_ (round 18 gate re-check), upr_ (all_modes tool review); gtv_ waits for load-run go; rec_verify
-        RUNNING (13:35, ~100 min) -> grs_ reads it -> merge gpu_s2 -> S3c; all_modes run waits for upr_ GO + ATN rule
+        upr_ ALL_MODES REVIEW = NO-GO UNTIL 2 CPU-ONLY FIXES 14:0x (plan_1117/designs/upr_allmodes_review_handback.md;
+        unified_pt_review.md "## all_modes review" line 2091): merge changed only CPU code in the helper (ff_s12 log
+        lines + release_idle judges idle from last_request; grs_ #if guard, same value) -> kept H0 post run is a good
+        baseline, expected dump change = zero. MUST 1: single output vanish / appear / size change not caught (offline
+        sandbox wrote 4 of 8 output kinds, 752 of 1509 missing, still "allmodes-dumps PASS"; bytes column unread) ->
+        every baseline (mode, output) row on a and b at baseline size; output not in baseline = problem. MUST 2: no value
+        compare (M6 unified_pt.md:1133 "0 changed outputs") -> RESULT allmodes-m6: every yes row outside M6_LEFT_OUT has
+        a and b = baseline sha256 (1481 outputs, 216 in gpu3 rows), FAIL with list + count; an intended change later =
+        new baseline, not a looser check. SHOULD 3: rr_ao_reblur_release + release_nrd (exactly ff_s12's code) are
+        report-only (baseline post_b 80.7 / 76.9 ms vs 75) -> passed once in baseline + fails both now = OPEN, count line
+        with longest answer a / b vs baseline (optional: largest "first request answered in N ms" from helper logs).
+        SHOULD 4: $HarnessSources falls back to ref2_nwcos silently if the pdi1_ worktree goes -> PROBLEM before builds when
+        the harness hash differs from FFD6BA42A8C5. OK: guards / stops are H0's own code, lock, fail-closed on partial
+        runs, AST loading (13 names + 4 constants exactly once), free-variable scan clean, h0_gpu_runs.ps1 behaviour =
+        11:11 backup, probe 0 -> 0 x1 / 0 -> x inf / NaN FAIL, M6_LEFT_OUT right, selftest 0 wrong. NIT: no
+        Set-StrictMode. After the fixes: offline fake harness copies the kept run's post_a dumps; selftest m6 file real
+        sha256; new selftest cases (gone on both, a = b size != baseline, same new bytes both, baseline-flaky mode fails
+        both); then upr_ diff re-check -> GO.
+        - [ ] h0i_: MUST 1-2 + SHOULD 3-4 + offline test / selftest updates; upr_ re-checks (upr_ 14:0x).
+        Agents (2): gtw_ (round 18 gate re-check), h0i_ (all_modes MUST 1-2 + SHOULD 3-4); gtv_ waits for load-run go;
+        rec_verify RUNNING (13:35, ~100 min) -> grs_ reads it -> merge gpu_s2 -> S3c; all_modes run waits for upr_ GO +
+        ATN rule
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
