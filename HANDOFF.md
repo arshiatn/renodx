@@ -6765,9 +6765,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         build.ps1:114 calls the FSR signed DLLs 'MIT' (SDK: binary-only redistribution with notice, no reverse
         engineering) -> lgf2_ fixes the comment in r3 + lists every shipped notice that says MIT; [ ] tell ATN. upr_
         v2.3 SPOT-CHECK STARTED 02:2x.
+        h0i_ H0 RUN SCRIPT DONE 02:2x (plan_1117/h0i_gpu_runs_script_handback.md; not run, not even -DryRun):
+        tools\tw\h0\h0_gpu_runs.ps1 (532 lines, -DryRun) + h0_rng_check.py (selftest 24 / 24); runs 1-8 ~2.7 GPU-h,
+        5-15 GB disk; builds from git archive into tools\tw\h0\builds (junctions: delete links alone first); refuses
+        when atn-mods' helper sources differ from H0's base 86b2a79cf -> [ ] rebase rmt_h0 after lgf2_ r3 merges + edit
+        the post revision. Rule choices: registers FAIL only above both 96 and pre; run 4 = reference suite lights
+        scene. Leftovers kept: tools\tw\h0\selftest_check1..5. upr_ COVERAGE CHECK QUEUED (after v2.3). [ ] ATN rule
+        lines (after upr_): '... -File C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\h0\h0_gpu_runs.ps1'
+        and the same with -DryRun.
+        gtv_ RE-CHECKS 02:2x (plan_1117/gtv_s1ab_recheck2_handback.md): S1a re-check 2 = OK (S1a CLOSED; residual: a
+        prompt > 4 s after ngfx exits, accepted); S1b re-check 2 = OK + Should 7 OK; left Should 8 (delta words only
+        before a number; gtv_'s regex 8 / 8, 0 added) -> gtb_ RESUMED; Nit 8 (BusyState fault text cut to the path) ->
+        gti_ RESUMED + Q8(b) lock wait inside bench\analysis_b2\replay\atn_harness_runs.ps1 (same lines, no switch;
+        fakes only).
         Agents (12): bd1r_ (R-S5 re-check), c33i_ (nit 5), lgf2_ (r3: T1 / N7 / T2 / F4), gtp_ (F3), t4i_ (r17 fixes),
-        h0i_ (H0 run script), upr_ (v2.3 spot-check), gtv_ (S1b re-check 2, S1a re-check 2, Should 7), gtl_ (S3), gtq_
-        (B1), gtk_ (C1 + C2), gpp_ (price + web design).
+        upr_ (v2.3 spot-check, then H0 script), gtb_ (Should 8), gti_ (Nit 8 + Q8(b)), gtl_ (S3), gtq_ (B1), gtk_ (C1 +
+        C2), gpp_ (price + web design).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
