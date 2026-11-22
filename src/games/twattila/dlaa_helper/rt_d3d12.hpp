@@ -658,7 +658,9 @@ class RtScene12 {
       const D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {.pRootSignature = root_signature_.Get(), .CS = {.pShaderBytecode = code, .BytecodeLength = bytes}};
       const bool made = SUCCEEDED(device_->CreateComputePipelineState(&desc, IID_PPV_ARGS(state->GetAddressOf())));
 #if defined(RENODX_RECORDER)
-      if (made) KeepCode(state->Get(), code, bytes);
+      if (made) {
+        KeepCode(state->Get(), code, bytes);
+      }
 #endif
       return made;
     };
@@ -1373,6 +1375,7 @@ class RtScene12 {
     using Member = ComPtr<ID3D12Resource>* (*)(RtScene12*);
     const auto nrd = [](const char* name, UINT descriptor) { return UseName{.name = name, .descriptor = descriptor}; };
     const auto buffer = [](const char* name, Member member, UINT sets = 1) { return UseName{.name = name, .member = member, .sets = sets}; };
+    const auto nvapi = [](const char* name, Member member, UINT sets = 1) { return UseName{.name = name, .member = member, .sets = sets, .nvapi = true}; };
     return std::array{
         UseName{"positions", POSITIONS, [](RtScene12* scene) { return std::addressof(scene->positions_); }},
         UseName{"sun", SUN, [](RtScene12* scene) { return std::addressof(scene->sun_); }},
@@ -1445,21 +1448,21 @@ class RtScene12 {
         buffer("placed_scratch", [](RtScene12* scene) { return std::addressof(scene->placed_scratch_); }),
         buffer("units_blas", [](RtScene12* scene) { return std::addressof(scene->units_blas_); }),
         buffer("smoke_blas", [](RtScene12* scene) { return std::addressof(scene->smoke_blas_); }),
-        buffer("clas", [](RtScene12* scene) { return std::addressof(scene->clas_); }),
-        buffer("clas_addresses", [](RtScene12* scene) { return std::addressof(scene->clas_addresses_); }),
-        buffer("cluster_blases", [](RtScene12* scene) { return scene->cluster_blases_.data(); }, CLUSTER_BLASES),
-        buffer("cluster_destination", [](RtScene12* scene) { return std::addressof(scene->cluster_destination_); }),
-        buffer("cluster_scratch", [](RtScene12* scene) { return std::addressof(scene->cluster_scratch_); }),
-        buffer("cluster_indices", [](RtScene12* scene) { return std::addressof(scene->cluster_indices_); }),
-        buffer("cluster_args", [](RtScene12* scene) { return std::addressof(scene->cluster_args_); }),
-        buffer("templates", [](RtScene12* scene) { return std::addressof(scene->templates_); }),
-        buffer("template_destinations", [](RtScene12* scene) { return std::addressof(scene->template_destinations_); }),
-        buffer("template_geometry", [](RtScene12* scene) { return std::addressof(scene->template_geometry_); }),
-        buffer("sway_arguments", [](RtScene12* scene) { return std::addressof(scene->sway_arguments_); }),
-        buffer("sway_lists", [](RtScene12* scene) { return std::addressof(scene->sway_lists_); }),
-        buffer("sway_counts", [](RtScene12* scene) { return std::addressof(scene->sway_counts_); }),
-        buffer("ptlas_buffers", [](RtScene12* scene) { return scene->ptlas_buffers_.data(); }, 2),
-        buffer("ptlas_scratch", [](RtScene12* scene) { return std::addressof(scene->ptlas_scratch_); }),
+        nvapi("clas", [](RtScene12* scene) { return std::addressof(scene->clas_); }),
+        nvapi("clas_addresses", [](RtScene12* scene) { return std::addressof(scene->clas_addresses_); }),
+        nvapi("cluster_blases", [](RtScene12* scene) { return scene->cluster_blases_.data(); }, CLUSTER_BLASES),
+        nvapi("cluster_destination", [](RtScene12* scene) { return std::addressof(scene->cluster_destination_); }),
+        nvapi("cluster_scratch", [](RtScene12* scene) { return std::addressof(scene->cluster_scratch_); }),
+        nvapi("cluster_indices", [](RtScene12* scene) { return std::addressof(scene->cluster_indices_); }),
+        nvapi("cluster_args", [](RtScene12* scene) { return std::addressof(scene->cluster_args_); }),
+        nvapi("templates", [](RtScene12* scene) { return std::addressof(scene->templates_); }),
+        nvapi("template_destinations", [](RtScene12* scene) { return std::addressof(scene->template_destinations_); }),
+        nvapi("template_geometry", [](RtScene12* scene) { return std::addressof(scene->template_geometry_); }),
+        nvapi("sway_arguments", [](RtScene12* scene) { return std::addressof(scene->sway_arguments_); }),
+        nvapi("sway_lists", [](RtScene12* scene) { return std::addressof(scene->sway_lists_); }),
+        nvapi("sway_counts", [](RtScene12* scene) { return std::addressof(scene->sway_counts_); }),
+        nvapi("ptlas_buffers", [](RtScene12* scene) { return scene->ptlas_buffers_.data(); }, 2),
+        nvapi("ptlas_scratch", [](RtScene12* scene) { return std::addressof(scene->ptlas_scratch_); }),
         buffer("cache_owners", [](RtScene12* scene) { return std::addressof(scene->cache_owners_); }),
         buffer("vertices_copy", [](RtScene12* scene) { return std::addressof(scene->vertices_); }),
         buffer("path_ser_table", [](RtScene12* scene) { return std::addressof(scene->path_ser_table_); }),
@@ -2988,6 +2991,7 @@ class RtScene12 {
               << "# frame\tspan\tstem\tkind\tslot\tresource\n";
     use_folder_ = folder;
     use_written_.clear();
+    use_unnamed_.clear();
     std::vector<ID3D12GraphicsCommandList4*> lists;
     for (const Slot& slot : slots_) lists.push_back(slot.list.Get());
     uses_ = std::make_unique<uses::Log<RtScene12>>(this);
@@ -3005,14 +3009,22 @@ class RtScene12 {
     uses_->Frame(frame);
   }
   // The log off, its last rows and the external resources written: the shared outputs (the game reads them, dump writes
-  // them), NRD's inputs (NRD's own root signature reads them). False: no log, or uses.tsv not written.
+  // them), NRD's inputs (NRD's own root signature reads them), what NVAPI's cluster and partitioned TLAS operations read.
+  // False: no log, or uses.tsv not written.
   bool StopUses() {
     if (!uses_) return false;
     for (const ResourceRow& row : ResourceRows()) {
-      if (row.output) uses_->External(row.name);
+      if (row.output) {
+        uses_->External(row.name);
+      }
     }
     for (const UseName& entry : UseNames()) {
-      if (entry.member == nullptr) uses_->External(entry.name);
+      for (UINT set = 0; (entry.member == nullptr || entry.nvapi) && set < entry.sets; ++set) {
+        uses_->External(UseSetName(entry, set));
+      }
+    }
+    for (size_t index = 0; index < slots_.size(); ++index) {
+      uses_->External(std::format("slot{}_ptlas_device", index));
     }
     use_file_ << uses_->TakeRows() << uses_->ExternalRows();
     uses_.reset();
@@ -3071,11 +3083,15 @@ class RtScene12 {
     return std::format("{}{}:{}", (root.ParameterType == D3D12_ROOT_PARAMETER_TYPE_UAV) ? 'u' : 't', root.Descriptor.ShaderRegister, root.Descriptor.RegisterSpace);
   }
   // A resource's name: its ResourceRows or UseNames name, a slot's buffer's slot<n>_<field>, else buffer#<address> /
-  // texture#<address> (a buffer by GPU address: the one holding it, else va:<address>).
+  // texture#<address> (a buffer by GPU address: the one holding it, an unnamed one seen by pointer before, else va:<address>).
   std::string UseResource(ID3D12Resource* resource) {
     if (resource == nullptr) return "null";
     if (std::string name = UseFind([&](ID3D12Resource* candidate) { return candidate == resource; }); !name.empty()) return name;
-    return std::format("{}#{:x}", (resource->GetDesc().Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) ? "buffer" : "texture", reinterpret_cast<uintptr_t>(resource));
+    const D3D12_RESOURCE_DESC desc = resource->GetDesc();
+    if (desc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER) return std::format("texture#{:x}", reinterpret_cast<uintptr_t>(resource));
+    std::string name = std::format("buffer#{:x}", reinterpret_cast<uintptr_t>(resource));
+    use_unnamed_.insert_or_assign(resource->GetGPUVirtualAddress(), std::pair{desc.Width, name});
+    return name;
   }
   std::string UseAddress(D3D12_GPU_VIRTUAL_ADDRESS address) {
     if (std::string name = UseFind([&](ID3D12Resource* candidate) {
@@ -3084,6 +3100,9 @@ class RtScene12 {
         });
         !name.empty()) {
       return name;
+    }
+    if (const auto after = use_unnamed_.upper_bound(address); after != use_unnamed_.begin() && address < std::prev(after)->first + std::prev(after)->second.first) {
+      return std::prev(after)->second.second;
     }
     return std::format("va:{:x}", address);
   }
@@ -6019,6 +6038,13 @@ class RtScene12 {
             Transition(made->state.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
         };
         list->ResourceBarrier(static_cast<UINT>(carried_back.size()), carried_back.data());
+#if defined(RENODX_RECORDER)
+        // The new room's copies: read under its placed names from here on.
+        if (uses_) {
+          uses_->External(UseResource(carried));
+          uses_->External(UseResource(made->state.Get()));
+        }
+#endif
         UsePlacedRoom(made.get());
         if (details_) {
           slow_report_ += std::format("{}[TW ray tracing] Room for {} placed instances now ({} written).", (slow_report_.empty() ? "" : "\n"), placed_capacity_, placed_written_);
@@ -7462,6 +7488,21 @@ class RtScene12 {
             list->CopyBufferRegion(uvs.Get(), uvs_at, uvs_.Get(), uint64_t{read.uv_offset} * 4, uint64_t{read.triangles} * 12);
             uvs_at = Align(uvs_at + (uint64_t{read.triangles} * 12), 256);
           }
+#if defined(RENODX_RECORDER)
+          // The bake's inputs: read by its BLAS rebuild frames later, by the GPU baker or the CPU (not logged).
+          if (uses_) {
+            for (ID3D12Resource* input : {bake->positions.Get(), bake->uvs.Get(), bake->mask.Get()}) {
+              if (input != nullptr) {
+                uses_->External(UseResource(input));
+              }
+            }
+#if defined(RENODX_OMM_SDK)
+            if (bake->gpu) {
+              uses_->External(UseResource(omm_gpu_.masks[bake->mask_index].Get()));
+            }
+#endif
+          }
+#endif
           micromap_reads_.push_back(std::move(bake));
         }
         for (auto& barrier : to_source) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
@@ -9185,7 +9226,11 @@ class RtScene12 {
     UINT descriptor = NO_DESCRIPTOR;
     ComPtr<ID3D12Resource>* (*member)(RtScene12*) = nullptr;
     UINT sets = 1;
+    bool nvapi = false;  // read by NVAPI's cluster and partitioned TLAS operations (not logged: external)
   };
+  static std::string UseSetName(const UseName& entry, UINT set) {
+    return (entry.sets > 1) ? std::format("{}_{}", entry.name, set) : std::string(entry.name);
+  }
   // The first named resource `found` takes (ResourceRows, UseNames, the slots' buffers), its name; empty: none.
   template <typename Found>
   std::string UseFind(const Found& found) {
@@ -9194,7 +9239,7 @@ class RtScene12 {
     }
     for (const UseName& entry : UseNames()) {
       for (UINT set = 0; entry.member != nullptr && set < entry.sets; ++set) {
-        if (found(entry.member(this)[set].Get())) return (entry.sets > 1) ? std::format("{}_{}", entry.name, set) : std::string(entry.name);
+        if (found(entry.member(this)[set].Get())) return UseSetName(entry, set);
       }
     }
     for (size_t index = 0; index < slots_.size(); ++index) {
@@ -9537,7 +9582,9 @@ class RtScene12 {
   }
   // Mark()'s pass for the resident: its timestamp (SERVE_TIMING_PASSES), then the burn when it is the burn's pass.
   void ServeMark(ID3D12GraphicsCommandList* list, const wchar_t* pass) {
-    if (uses_) uses_->Span(list, pass);
+    if (uses_) {
+      uses_->Span(list, pass);
+    }
     if (serve_timing_ == SERVE_TIMING_PASSES) ServeStamp(list, SERVE_MARK, pass);
     if (burn_loops_ == 0 || burn_pass_ != pass) return;
     ++burn_runs_;
@@ -10318,6 +10365,7 @@ class RtScene12 {
   std::filesystem::path use_folder_;
   std::ofstream use_file_;
   std::unordered_set<std::string> use_written_;
+  std::map<D3D12_GPU_VIRTUAL_ADDRESS, std::pair<uint64_t, std::string>> use_unnamed_;  // unnamed buffers by address: size, name
 #endif
 };
 

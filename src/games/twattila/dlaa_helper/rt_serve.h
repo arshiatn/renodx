@@ -587,6 +587,10 @@ class Resident {
         if (scene_) scene_->StopMoments();
         reply = Failed(std::format("{} failed: {}", name, failed.what()));
       }
+      // A log a thrown command left on: off (its hooks out of the lists, its rows written).
+      if (scene_) {
+        scene_->StopUses();
+      }
       if (stuck_) {
         Answer(n, name, started, {.status = "FAILED", .error = "the GPU did not finish a scene's work (the device not removed), STOP", .lost = false});
         return 4;

@@ -62,9 +62,13 @@ class Log {
   Log& operator=(const Log&) = delete;
   ~Log() {
     for (ID3D12GraphicsCommandList4* list : hooked_) {
-      if (*reinterpret_cast<void***>(list) == table_.data()) *reinterpret_cast<void***>(list) = original_;
+      if (*reinterpret_cast<void***>(list) == table_.data()) {
+        *reinterpret_cast<void***>(list) = original_;
+      }
     }
-    if (active_ == this) active_ = nullptr;
+    if (active_ == this) {
+      active_ = nullptr;
+    }
   }
 
   // `lists` (one kind's: one vtable) logged until the log is destroyed. False: `why` says why.
@@ -142,17 +146,24 @@ class Log {
   std::string ExternalRows() {
     const std::lock_guard lock(mutex_);
     std::string rows;
-    for (const std::string& resource : externals_) rows += std::format("-\t-\t-\texternal\t-\t{}\n", resource);
+    for (const std::string& resource : externals_) {
+      rows += std::format("-\t-\t-\texternal\t-\t{}\n", resource);
+    }
     return rows;
   }
 
  private:
+  // A root SRV or UAV.
+  struct RootView {
+    D3D12_GPU_VIRTUAL_ADDRESS address = 0;
+    bool uav = false;
+  };
   // A list's state as D3D12 keeps it (Reset clears it, a new root signature its arguments) and its span.
   struct ListState {
     ID3D12PipelineState* pipeline = nullptr;
     ID3D12RootSignature* root = nullptr;
     std::map<UINT, D3D12_GPU_DESCRIPTOR_HANDLE> tables;
-    std::map<UINT, std::pair<D3D12_GPU_VIRTUAL_ADDRESS, bool>> views;  // a root SRV's or UAV's (true) address
+    std::map<UINT, RootView> views;
     uint32_t span = 0;
   };
 
@@ -162,11 +173,20 @@ class Log {
   }
   void Row(const ListState& state, std::string_view stem, std::string_view kind, std::string_view slot, const std::string& resource) {
     std::string row = std::format("{}\t{}\t{}\t{}\t{}\t{}\n", frame_, state.span, stem, kind, slot, resource);
-    if (seen_.insert(row).second) rows_ += row;
+    if (seen_.insert(row).second) {
+      rows_ += row;
+    }
+  }
+  void Read(const ListState& state, D3D12_GPU_VIRTUAL_ADDRESS address) {
+    if (address != 0) {
+      Row(state, "-", "copy_src", "-", scene_->UseAddress(address));
+    }
   }
   void Wrote(const ListState& state, const std::string& resource, bool external) {
     Row(state, "-", "copy_dst", "-", resource);
-    if (external) externals_.insert(resource);
+    if (external) {
+      externals_.insert(resource);
+    }
   }
   // A dispatch's bindings (another root signature's: none): its tables' views, its root SRVs and UAVs. A root UAV's
   // buffer is external: NVAPI's cluster and partitioned TLAS operations read the geometry passes' outputs there (not logged).
@@ -176,9 +196,11 @@ class Log {
       scene_->UseTable(table, [&](std::string_view kind, std::string_view slot, const std::string& resource) { Row(state, stem, kind, slot, resource); });
     }
     for (const auto& [parameter, view] : state.views) {
-      const std::string resource = scene_->UseAddress(view.first);
-      Row(state, stem, view.second ? "uav" : "srv", scene_->UseRootSlot(parameter), resource);
-      if (view.second) externals_.insert(resource);
+      const std::string resource = scene_->UseAddress(view.address);
+      Row(state, stem, view.uav ? "uav" : "srv", scene_->UseRootSlot(parameter), resource);
+      if (view.uav) {
+        externals_.insert(resource);
+      }
     }
   }
 
@@ -263,14 +285,14 @@ class Log {
   static void STDMETHODCALLTYPE SetComputeRootShaderResourceView(ID3D12GraphicsCommandList4* self, UINT parameter, D3D12_GPU_VIRTUAL_ADDRESS address) {
     {
       const std::lock_guard lock(active_->mutex_);
-      State(self).views[parameter] = {address, false};
+      State(self).views[parameter] = {.address = address, .uav = false};
     }
     Original<SET_COMPUTE_ROOT_SHADER_RESOURCE_VIEW>(&SetComputeRootShaderResourceView)(self, parameter, address);
   }
   static void STDMETHODCALLTYPE SetComputeRootUnorderedAccessView(ID3D12GraphicsCommandList4* self, UINT parameter, D3D12_GPU_VIRTUAL_ADDRESS address) {
     {
       const std::lock_guard lock(active_->mutex_);
-      State(self).views[parameter] = {address, true};
+      State(self).views[parameter] = {.address = address, .uav = true};
     }
     Original<SET_COMPUTE_ROOT_UNORDERED_ACCESS_VIEW>(&SetComputeRootUnorderedAccessView)(self, parameter, address);
   }
@@ -281,25 +303,50 @@ class Log {
       const ListState& state = State(self);
       active_->Bound(state, active_->scene_->UseStem(state.pipeline));
       active_->Row(state, "-", "copy_src", "-", active_->scene_->UseResource(arguments));
-      if (count != nullptr) active_->Row(state, "-", "copy_src", "-", active_->scene_->UseResource(count));
+      if (count != nullptr) {
+        active_->Row(state, "-", "copy_src", "-", active_->scene_->UseResource(count));
+      }
     }
     Original<EXECUTE_INDIRECT>(&ExecuteIndirect)(self, signature, most, arguments, arguments_offset, count, count_offset);
   }
-  // A build reads its source and a TLAS's instances, writes its destination (external: BLASes are read through the TLAS's
-  // instances, a TLAS by ray queries) and its postbuild info. A BLAS's geometry is not logged (the root UAVs' buffers).
+  // A build reads its source and its inputs (a TLAS's instances; a BLAS's vertices, indices, transforms and micromap
+  // links; a micromap array's data and descs), writes its destination (external: BLASes are read through the TLAS's
+  // instances, a TLAS by ray queries, micromap arrays by BLASes) and its postbuild info.
   static void STDMETHODCALLTYPE BuildRaytracingAccelerationStructure(ID3D12GraphicsCommandList4* self, const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC* desc,
                                                                      UINT infos, const D3D12_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO_DESC* info) {
     {
       const std::lock_guard lock(active_->mutex_);
       const ListState& state = State(self);
-      if (desc->Inputs.Type == D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL && desc->Inputs.NumDescs != 0) {
-        active_->Row(state, "-", "copy_src", "-", active_->scene_->UseAddress(desc->Inputs.InstanceDescs));
+      const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS& inputs = desc->Inputs;
+      if (inputs.Type == D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL && inputs.NumDescs != 0) {
+        active_->Read(state, inputs.InstanceDescs);
       }
-      if (desc->SourceAccelerationStructureData != 0) {
-        active_->Row(state, "-", "copy_src", "-", active_->scene_->UseAddress(desc->SourceAccelerationStructureData));
+      if (inputs.Type == D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_ARRAY) {
+        active_->Read(state, inputs.pOpacityMicromapArrayDesc->InputBuffer);
+        active_->Read(state, inputs.pOpacityMicromapArrayDesc->PerOmmDescs.StartAddress);
       }
+      for (UINT index = 0; inputs.Type == D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL && index < inputs.NumDescs; ++index) {
+        const D3D12_RAYTRACING_GEOMETRY_DESC& geometry =
+            (inputs.DescsLayout == D3D12_ELEMENTS_LAYOUT_ARRAY) ? inputs.pGeometryDescs[index] : *inputs.ppGeometryDescs[index];
+        if (geometry.Type == D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS) {
+          active_->Read(state, geometry.AABBs.AABBs.StartAddress);
+          continue;
+        }
+        const bool omm = geometry.Type == D3D12_RAYTRACING_GEOMETRY_TYPE_OMM_TRIANGLES;
+        const D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC& triangles = omm ? *geometry.OmmTriangles.pTriangles : geometry.Triangles;
+        active_->Read(state, triangles.VertexBuffer.StartAddress);
+        active_->Read(state, triangles.IndexBuffer);
+        active_->Read(state, triangles.Transform3x4);
+        if (omm && geometry.OmmTriangles.pOmmLinkage != nullptr) {
+          active_->Read(state, geometry.OmmTriangles.pOmmLinkage->OpacityMicromapIndexBuffer.StartAddress);
+          active_->Read(state, geometry.OmmTriangles.pOmmLinkage->OpacityMicromapArray);
+        }
+      }
+      active_->Read(state, desc->SourceAccelerationStructureData);
       active_->Wrote(state, active_->scene_->UseAddress(desc->DestAccelerationStructureData), true);
-      for (UINT index = 0; index < infos; ++index) active_->Wrote(state, active_->scene_->UseAddress(info[index].DestBuffer), false);
+      for (UINT index = 0; index < infos; ++index) {
+        active_->Wrote(state, active_->scene_->UseAddress(info[index].DestBuffer), false);
+      }
     }
     Original<BUILD_RAYTRACING_ACCELERATION_STRUCTURE>(&BuildRaytracingAccelerationStructure)(self, desc, infos, info);
   }
@@ -308,7 +355,7 @@ class Log {
     {
       const std::lock_guard lock(active_->mutex_);
       const ListState& state = State(self);
-      active_->Row(state, "-", "copy_src", "-", active_->scene_->UseAddress(source));
+      active_->Read(state, source);
       active_->Wrote(state, active_->scene_->UseAddress(destination), true);
     }
     Original<COPY_RAYTRACING_ACCELERATION_STRUCTURE>(&CopyRaytracingAccelerationStructure)(self, destination, source, mode);
