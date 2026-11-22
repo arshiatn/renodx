@@ -9315,9 +9315,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         gate times; test_iq_kinds checks it. Suites jobs 32 / 32 x3, unit 34 / 34, ps1 5 / 5, keeper 24 / 24 (below
         normal, -I -B), ended 09:56:23; nothing of gtl_'s running. Changed lab.py, tests\test_lab_fixture.py,
         tests\test_lab_jobs.py. -> gtv_ CHECKS (code + unit only while H0 runs).
-        Agents (7): gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gti_ r1a / r1b check, no process tests
-        during H0), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), grs_ (design v6 text X1-X4), gtv_
-        (gtl_ lows check)
+        grs_ V6 DONE 09:5x (plan_1117/designs/grs_v6_handback.md; grs_first_frame.md v6 = FINAL DESIGN): X1 `internal::
+        Answer(200, false) == FAILED`; X2 the deadline test moves bridge.opening.since back by the budget; X3 checkers
+        allow `opened_late` fewer frames (one per opening); X4 S3 has no effect on H0 only for opens < 10 s (a
+        one-sided step-2 H0 reads a 10-20 s cold-open difference as S3's effect); header / 3.9 now name patch v3
+        (texts same as v2). FIRST-FRAME DESIGN CLOSED (ffr_ v5 OK + X1-X4 in). Next code steps: apply v3 (ATN box),
+        then steps 3-6 by the section 4 order (Opus High implementer + Opus xHigh review), helper suites + H0 need
+        ATN's harness rule.
+        H0 START still waits 09:57: c3i_'s gated builds (4 targets) running.
+        Agents (6): gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gti_ r1a / r1b check, no process tests
+        during H0), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging, gated builds), gtv_ (gtl_ lows check)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
