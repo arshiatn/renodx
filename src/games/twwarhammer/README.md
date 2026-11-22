@@ -1,5 +1,22 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Open-items round (2026-11-22, g02_; built only, not run in game)
+
+- New: **Path-Traced Reflection Occlusion** (0 - 1, default 1, under Path-Traced Ambient without Specular Occlusion or
+  the rays' reflections), Attila's row: reflections darken where something blocks the sky, from the traced specular
+  occlusion in place of the game's screen-space AO (ours replaces the game's). 0: the game's AO as before. With the
+  rays' reflections on nothing changes. WARP (test/tw_warhammer_shaders part 32, g02_ patch): strength 1 bit-identical
+  to the resolve before the row in 28672 of 28672 texels (7 runs), 0 / 0.5 as expected.
+- Fixed: **DLAA / DLSS and CMAA2** work in the frame's own curve (2.2 with Gamma Correction on), as Attila and Pharaoh.
+- Changed: **Ray Reconstruction's specular guide** is the view-dependent albedo (Attila's Fresnel, RrSpecularAlbedo);
+  water keeps its bare colour. WARP (part 33): 24 of 24 within 1e-4 (largest 7e-06), other guides bit-identical.
+- PsychoV35's sliders now start from the game's response (V35_GAME_RESPONSE, shared.h WH1_V35_*): still Musa's own (1)
+  until the WARP fit has run.
+- Corrected: **Smooth Banner Shadows** has been on by default since 2026-11-17 (the lines below that say Experimental /
+  off are history).
+- In game: under Path-Traced Ambient a dark doorway or forest edge (no bright sky in it; at 0 as before); Gamma Correction
+  on with DLAA and CMAA2 (no darker or brighter edges than off).
+
 ### Specular Occlusion with other rays (2026-11-18; built only, not run in game)
 
 - Changed: **Ray-Traced Specular Occlusion** works only with another ray-traced effect on, as Attila's; alone it is off
@@ -155,7 +172,7 @@ needs a trace 7, won't get 14, each with its proof).
 - **Fog Shadows (Experimental, off)**: the battle fog's sun-lit colour x the rays' sun visibility along the view, plus the
   torches' and fires' light in it (Attila's rt_fog, test part 16). Off by default, on with RT/PT as Attila's.
 - **Depth of Field** (Extra): the blur size x the row in the four hdr_to_screen shaders with depth of field.
-- **Smooth Banner Shadows (Experimental, off)**: Attila's row (rays_sheets_unselfed).
+- **Smooth Banner Shadows (Experimental, off then; on by default since 2026-11-17)**: Attila's row (rays_sheets_unselfed).
 - **Smoke Shadows (Experimental, off, left out of RT/PT)**: the lit particles (ps_main_high_quality 122F218C with
   vs50_main_instancing 9FD3EC63, drawn in 34 of 36 traces) streamed out for the rays: Warhammer II's quad shader at
   122F218C's slots (its disassembly line for line Warhammer II's with the three slots renamed).

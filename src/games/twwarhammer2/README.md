@@ -1,5 +1,26 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
+### Open-items round (2026-11-22, g02_; built only, not run in game)
+
+- New: **Path-Traced Reflection Occlusion** (0 - 1, default 1, under Path-Traced Ambient without Specular Occlusion or
+  the rays' reflections), Attila's row: reflections darken where something blocks the sky, from the traced specular
+  occlusion in place of the game's screen-space AO (ours replaces the game's). 0: the game's AO as before. With the
+  rays' reflections on nothing changes. WARP (test/tw_warhammer_shaders part 32, g02_ patch): strength 1 bit-identical
+  to the resolve before the row in 32768 of 32768 texels (8 runs), 0 the same as t46 alone, 0.5
+  the mean.
+- Fixed: **DLAA / DLSS and CMAA2** work in the frame's own curve (2.2 with Gamma Correction on), as Attila and Pharaoh.
+- Changed: **Ray Reconstruction's specular guide** is the view-dependent albedo (Attila's Fresnel, RrSpecularAlbedo);
+  water keeps its bare colour. WARP (part 33): 24 of 24 within 1e-4 (largest 7e-06), other guides bit-identical.
+- Fixed: **FXAA** (fxaa00 CE9EA4E8) is the game's again: the end-of-edge offset (an int-cast decompile bug cut it
+  to 0) and its luma gathers (green, the decompile read red), as Troy's. WARP (scratch fxaa_check, 96 x 96 edges):
+  0 apart from the game's bytes (before 517 texels apart, worst 0.125).
+- PsychoV35's sliders now start from the game's response (V35_GAME_RESPONSE, shared.h WH2_V35_*): still Musa's own (1)
+  until the WARP fit has run.
+- Corrected: **Smooth Banner Shadows** has been on by default since 2026-11-17 (the lines below that say Experimental /
+  off are history).
+- In game: under Path-Traced Ambient a dark doorway or forest edge (no bright sky in it; at 0 as before); Gamma Correction
+  on with DLAA and CMAA2 (no darker or brighter edges than off); FXAA on a sharp roof line (as the game's own).
+
 ### Specular Occlusion with other rays (2026-11-18; built only, not run in game)
 
 - Changed: **Ray-Traced Specular Occlusion** works only with another ray-traced effect on, as Attila's; alone it is off
@@ -54,7 +75,8 @@
 - In game: a river or lava with RT/PT (reflections from the surface, not the bed); a city's wet stone with Specular Occlusion
   (reflections darker only once); Modded Auto Exposure on a sunny map; Time Each Pass with GT-VBAO and with the rays'
   reflections (the skipped passes' time).
-- Not done: Rays Replace Shadow Maps stays Experimental (no offline proof of the replace path yet).
+- Not done then: Rays Replace Shadow Maps was Experimental (no offline proof of the replace path yet). Since 2026-11-16 the
+  rays always replace the shadow maps' sun shadow (one method, no row; WARP test/tw_warhammer_shaders part 29).
 
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 
@@ -104,7 +126,8 @@ The first round's doable leftovers (table: `tools/tw/wh2/parity_1114.md`).
   `twattila/rt_core.hpp` (`SceneShader::held_row`, null as before).
 - **New: Depth of Field (Extra, 0-2, 1 = the game's, 0 off)** on its circle of confusion (C337D8E3, 91B4F89A).
 - **New: Fog & Sky Smoothing (Extra, Off-High + Strength)**, as Warhammer's and Attila's, on the legacy battle fog's sky.
-- **New: Smooth Banner Shadows (Experimental)**, Attila's row, now that sails are in the rays (on in RT/PT as Attila's).
+- **New: Smooth Banner Shadows (Experimental then; on by default since 2026-11-17)**, Attila's row, now that sails are in
+  the rays (on in RT/PT as Attila's).
 - **Every graphics level** (ATN: not everyone plays at highest settings): Fog Strength also on the fog's low-quality, PCF and
   shader model 4.1 permutations and the legacy fog; Grass Height Distance on the MSAA pre-pass, the clipped and MSAA
   G-buffer and the grass's shadow; Indicator Brightness on the indicators' forward, overlay and grid-border shaders. Each
