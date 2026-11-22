@@ -21,7 +21,7 @@
 
 // Screen-space shadows (Experimental): Bend Studio's screen-space shadows (Apache 2.0, Copyright 2023 Sony Interactive
 // Entertainment; the Total War games' passes twattila/sss_bend.cs_5_0.hlsl and sss_blur.cs_5_0.hlsl as they are, their
-// core twshogun2completeedition/shaders/bend_sss_gpu.hlsli) on an Unreal game's sun, in place of the game's own contact
+// core twattila/bend_sss_gpu.hlsli) on an Unreal game's sun, in place of the game's own contact
 // shadows, before the game's sun reads its shadowing: the scene depth as 1 - device Z (host_sss_depth: the standard depth,
 // far 1, those passes take), the dispatch list for the View's camera and the game's sun (each game's host_sss_setup, on the
 // GPU as the game's constants are; it also writes the View's render size into the settings, copied into the constant

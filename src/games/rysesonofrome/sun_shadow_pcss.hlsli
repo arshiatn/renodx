@@ -4,7 +4,7 @@
  */
 
 // Sun Shadow Softness (SI.sun_shadow_softness, degrees): contact-hardening sun shadows (PCSS,
-// twshogun2completeedition/shaders/pcss.hlsli) in CryEngine's sun shadow mask passes (sunshadow00-04: one cascade
+// twattila/pcss.hlsli) in CryEngine's sun shadow mask passes (sunshadow00-04: one cascade
 // each, an orthographic map of its own). Their constants give the screen's basis in the cascade's space
 // (CShadowUtils::ProjectScreenToWorldExpansionBasis: one pixel right, one down, the ray to the top-left far corner,
 // each normalized with its length in vBasisMagnitudes), not the world's scale. That comes from the orthographic map
@@ -14,7 +14,7 @@
 #ifndef SRC_GAMES_RYSESONOFROME_SUN_SHADOW_PCSS_HLSLI_
 #define SRC_GAMES_RYSESONOFROME_SUN_SHADOW_PCSS_HLSLI_
 
-#include "../twshogun2completeedition/shaders/pcss.hlsli"
+#include "../twattila/pcss.hlsli"
 
 // The penumbra's widest (and the blocker search's reach), in texels.
 static const float RYSE_PCSS_MAX_TEXELS = 32.f;

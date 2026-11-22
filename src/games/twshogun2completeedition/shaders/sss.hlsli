@@ -85,9 +85,9 @@ RWTexture2D<unorm float> t_rw_shadow : register(u0);
 #endif
 
 #ifndef SSS_PASSTHROUGH
-#include "./bend_sss_gpu.hlsli"
+#include "../../twattila/bend_sss_gpu.hlsli"
 #endif
-#include "./pcss.hlsli"
+#include "../../twattila/pcss.hlsli"
 
 #ifdef SSS_SHADOW_CASCADES
 // sm5shadows.hlsl, verbatim //////////////////////////////////////////////////////////////////////////////////////////

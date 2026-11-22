@@ -40,7 +40,7 @@
 #include "./view_share.hpp"
 
 // Screen-space shadows (Experimental): Bend Studio's screen-space shadows (Apache 2.0, Copyright 2023 Sony Interactive
-// Entertainment; sss_setup.cs_5_0.hlsl, twshogun2completeedition/shaders/bend_sss_gpu.hlsli) on the sun's light.
+// Entertainment; sss_setup.cs_5_0.hlsl, bend_sss_gpu.hlsli) on the sun's light.
 // The game's shadowed sun light shaders are patched as they are created (their bytecode, on top of the render scale's
 // patch (view_share.hpp): after their shadow's saturate, x 1 - t49 at the pixel; t49 unbound reads 0, the game's
 // light), so the sun's direct light, and nothing else, gets the screen-space shadow. At the frame's first patched sun
