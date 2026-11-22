@@ -8979,7 +8979,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         rebuild. -> ffr_ RE-CHECKS v3; fcr_ (new, Opus xHigh) REVIEWS THE PATCH read only.
         - [ ] ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its own worktree) and asked
             me to apply its steps 1-2 patch; I did not. May I (or a new implementer started in ff_s12) apply +
-            build it after the review? (grs_ 09:2x)
+            build it? REVIEWED: fcr_ OK on v3 (plan_1117/designs/grs_ff_s12_steps12_v3.patch, 09:5x) (grs_ 09:2x).
         - [x] gpr_ (with re-check 13, DONE 09:3x: no fix - 1-2 per main kind, limits unchanged, dropping them flips 2
             refusals both ways = noise): do the 15 gated_build seeds < 15 s matter (gtp_ lows, not in round 13)?
         ebr_ T5 REVIEW = OK, NO FIX, 2 NITS 09:2x (render_mt/reports/ebr_t5_review_handback.md; outputs scratchpad
@@ -9302,9 +9302,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         read such a difference as S3's effect. X1 / X2 with step 4, X3 with step 3, X4 before the next H0 that
         includes step 2 (today's H0 re-run has no ff_s12 code on either side, so X4 does not touch it). -> grs_ v6
         TEXT (X1-X4, last design touch).
-        Agents (8): gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gti_ r1a / r1b check, no process tests
-        during H0), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), grs_ (design v6 text X1-X4), fcr_
-        (patch v3 check), gtl_ (fixture +60 s + gate_s)
+        fcr_ V3 CHECK = OK 09:5x (plan_1117/designs/fcr_v3_check_handback.md; fcr_ff_s12_review.md "## v3 check";
+        copies scratchpad\fcr_\v3): v2 -> v3 touches only logged_release (`took` back, the one-line
+        ReShadeLogMessage passes it); every other hunk byte-identical; applies clean + git apply --check;
+        main.cpp differs from v2 only at 882-883 (= v1); rt_d3d12.hpp identical; syntax.ps1 exit 0 with NRD on;
+        CRLF. STEPS 1-2 PATCH FINAL + REVIEWED (v3); applying + building in ff_s12 waits for ATN (box above).
+        Then: gated helper build, code merge gate, and the helper suites need ATN's harness rule (they start
+        renodx-tw-dlaa64).
+        Agents (7): gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gti_ r1a / r1b check, no process tests
+        during H0), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), grs_ (design v6 text X1-X4), gtl_
+        (fixture +60 s + gate_s)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
