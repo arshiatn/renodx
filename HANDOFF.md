@@ -494,7 +494,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_: lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap ... | ?
 - gtw_: re-check round 17 gate side (corpus, probe shapes, comment-free view can't ... | ?
 - gpr_: re-check round 17 price side (re-key, re-seed, VERIFY exemption scope) (co ... | ?
-- gtl_: confirm / object to gtp_'s VERIFY exemption of tests/test_lab_*.py via gtl ... | ?
+- gtp_ (round 18, Low): VERIFY lab-test match only when the test file is the scrip ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10033,7 +10033,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtw_: re-check round 17 gate side (corpus, probe shapes, comment-free view can't let anything through) (coord
             12:5x).
         - [ ] gpr_: re-check round 17 price side (re-key, re-seed, VERIFY exemption scope) (coord 12:5x).
-        - [ ] gtl_: confirm / object to gtp_'s VERIFY exemption of tests/test_lab_*.py via gtl_lowrun (coord 12:5x).
+        - [x] gtl_ (CONFIRMED 12:5x, plan_1117/gtl_verify_answer_handback.md): gtl_lowrun.py only sets below-normal
+            priority and runpy's the given test file. Caveat (not new): gate_hook.py:1378 matches anywhere in the
+            command line, so a slow script taking a tests\test_lab_*.py path as an argument is exempt too (the older
+            lab[\\/]+tests[\\/] part already allows that); tighter = the test file must be the script python /
+            gtl_lowrun.py runs.
+        - [ ] gtp_ (round 18, Low): VERIFY lab-test match only when the test file is the script run (gtl_ caveat
+            12:5x); gtw_ judges in its round 17 re-check.
         Agents (3): gtw_ (round 17 gate re-check), gpr_ (round 17 price re-check), gtl_ (edits ready, suites after H0;
         VERIFY answer); H0 re-run NOW (12:09) -> tell gtl_ H0 done; ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
