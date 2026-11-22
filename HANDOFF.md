@@ -450,7 +450,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - h0i_ + upr_: every H0 FAIL of 20261122_054906 root-caused (tool / pre-existing / ... | ?
 - gtl_ (after its 4 suites): S4 seed-number check + span < 1 + real() nits, then t ... | ?
 - ATN (morning report): once the price gate goes on, everyday gated_build builds h ... | ?
-- gti_ (batched with any H0 item h0i_ routes to it; test_gpu_lock.py lives in lab\ ... | ?
 - ATN: lab_gtl_stage (tools\tw\lab_gtl_stage, gtl_'s staged copy) may be deleted a ... | ?
 - c3i_ (on rmt_b1rt, with the real-routine tests): b13r_'s N4 braces at effect_upd ... | ?
 - gtb_ (optional, batched): hg2 name the unreadable file in watch's stderr / facts ... | ?
@@ -8152,7 +8151,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         pid 999992 is a multiple of 4 (use 999993); r1b test_gpu_lock prints "56 of 56 passed" when its block is
         skipped -> "56 of 58 passed, 2 skipped (in use: ...)"; optional: move the 2-pair / malformed-pair /
         parity cases onto the injected copy (no guard needed). R1 CLOSED.
-        - [ ] gti_ (batched with any H0 item h0i_ routes to it; test_gpu_lock.py lives in lab\tests, so after
+        - [x] gti_ (DONE 09:5x, gpr_ checks; batched with any H0 item h0i_ routes to it; test_gpu_lock.py lives in lab\tests, so after
             gtv_'s lab run): r1a pid 999993, r1b skip count in the summary, optional injected-copy cases; gpr_ checks.
         gtl_ S4 STAGED 07:3x (plan_1117/gtl_s4_staged_handback.md; backups scratchpad\gtl_backup_s4; unit log
         scratchpad\gtl_runs6\unit.txt): stage = tools\tw\lab_gtl_stage (sibling of lab, not scratchpad: tests
@@ -9257,9 +9256,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         10.7 s pre / 13.6 s post on the 5090 vs the 20 s watchdog = ~1.5x margin; slower machines are the open
         question. -> H0 RE-RUN NEXT (ATN's rule, background) once gti_ part 2 + c3i_'s builds are done (cold
         first frames are CPU-bound shader compiles, so keep builds out of the window).
-        Agents (10): upr_ (idle, H0 GO), gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gtb_
-        load refresh re-check), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), ffr_ (grs_ v5 check),
-        grs_ (patch v3: S1 `took`), gtl_ (fixture +60 s + gate_s), gti_ (lows part 2: r1b + pair cases)
+        grs_ PATCH V3 DONE 09:5x (plan_1117/designs/grs_patch_v3_handback.md; grs_ff_s12_steps12_v3.patch, v1 + v2
+        kept): `const auto took = ms_since(started);` back in logged_release, nothing else differs from v2; fresh
+        copies (scratchpad\ff_s12\check3) apply clean + byte-identical, CRLF, diff --check silent, syntax.ps1
+        exit 0 with NRD on. -> fcr_ CHECKS v3 (one line).
+        gti_ LOWS PART 2 DONE 09:5x (plan_1117/gti_lows_part2_handback.md; backup scratchpad\gti_bak13;
+        test_gpu_lock.py only): r1b summary "N of M passed, K skipped (in use: ...)" when the guarded
+        exclude_pids block is skipped (exit code follows the checks that ran; skip text checked by running the
+        summary code alone); injected pair cases on a sandbox ns_busy copy counting only gti_busyfake_* + odd pids
+        999993 / 999995: none / one pair / wrong start / two pairs / empty start = [2, 1, 2, 0, 2]; good + malformed
+        pair = BusyState fault (busy); the copy fails loudly if its changed line leaves ns_busy.ps1. 60 / 60.
+        Nothing of gti_'s running. -> gpr_ checks (queued after its load refresh re-check).
+        H0 START WAITS 09:54: c3i_'s gated build running (ninja, build_job.lock 09:52:47), CPU 19 %; H0 starts when
+        c3i_'s builds end. Merge builds for rmt_b1log wait until H0 ends (no builds in the H0 window).
+        Agents (8): gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gtb_ load refresh re-check, then gti_
+        r1a / r1b), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), ffr_ (grs_ v5 check), fcr_ (patch v3
+        check), gtl_ (fixture +60 s + gate_s)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
