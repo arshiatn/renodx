@@ -6921,9 +6921,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         ms 4K Quality / 4.1-4.4 ms 4K Performance (torch late), hybrid ~7.4 / ~3.9 ms. upr_'s fixes in (U11h, U11
         tests, rt_di_ok bits, PTLAS wording + cites, U12a / new U12d, U13 Q-gates); F4 withdrawn. 294 agent-h + ~16 h
         reviews + 30-45 GPU-h. upr_ v2.4 RE-CHECK QUEUED after its H0 re-check.
-        Agents (11): c33i_ (N6), lga_ (r4 re-check), ebr_ (r17 re-check), gtp_ (T04), upr_ (H0 script re-check, then
-        v2.4 re-check), gtv_ (S3r), gtb_ (lab phases), gti_ (-ExcludePids), gtk_ (lab contract check), gbc_ (C1 + C2,
-        then B1 review), gpr_ (price + web review).
+        gtk_ LAB CONTRACT 03:0x (plan_1117/gtk_lab_contract_handback.md) = DOES NOT MATCH YET: pbrt kind fails at once
+        (scene_to_pbrt takes an out DIR, not --out file) and would render identical noise for every seed (the file's
+        Sampler seed beats --seed, samplers.cpp:73); scene kind exits 0 with nothing recorded (needs RENODX_TW_RECORD_AT
+        = FRAME0 + WARM = 64). gtk_ items 2 / 7 refusal / 8 / 13 (mask hashes) -> its gbc_ fix round; gtl_ items 1 / 3 /
+        4 / 7 LAB_ENV / 9 / 10 (exe tw_rt_harness_scene_4k.exe) / 11 (helper DLLs) / 12 (temp folder + rename on
+        success, real done check) -> gtl_'s S3r fix round, with gtq_'s 8; gtb_ told render_cpu_s_per_kspp 1500 V.
+        Then rerun test_lab_jobs + test_scenes.py.
+        Agents (10): c33i_ (N6), lga_ (r4 re-check), ebr_ (r17 re-check), gtp_ (T04), upr_ (H0 script re-check, then
+        v2.4 re-check), gtv_ (S3r), gtb_ (lab phases), gti_ (-ExcludePids), gbc_ (C1 + C2, then B1 review), gpr_
+        (price + web review).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
