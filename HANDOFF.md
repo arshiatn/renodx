@@ -8081,10 +8081,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         (Python utf-16-le, .NET without preamble; PS 5.1 writes a BOM). Fix: a NUL in the decoded text = unreadable
         (shadow + FAULT) in gate_rows' reader (gtb_) and gate_hook.read_text() for gates.tsv / mode.txt (gtp_).
         Probe scratchpad\gpr_gates_corrupt2_probe.py. -> gtb_ grs1 STARTED; gtp_'s half joins its corrupt-file box.
-        Agents (9): gtw_ (S1c re-check 10), h0i_ (H0 analysis + fake to testbin + R1), gtl_ (its 4 held suites),
-        gpr_ (gti_ R1 re-check), gtb_ (grs1 NUL check), t4i_ (r23), b13r_ (c3i_ B1.6 follow-ups re-check), c3i_
-        (B1 real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (re-checks
-        h0i_), gpp_, gbc_, gti_ (waits gpr_), grs_, gtk_, gtp_ (waits gtw_), ebr_ (re-checks t4i_ r23), gtq_, gtv_
+        gtl_ FOUR SUITES = ALL PASS 07:23 (plan_1117/gtl_four_suites_handback.md; logs scratchpad\gtl_runs5): jobs
+        31 / 31 (113 s; first run of every jobs test since the gtv_ fixes round), keeper 24 / 24, ps1 5 / 5, unit 28
+        / 28; sandbox, fakes only from testbin, no lab edits; the bulk index never showed in a busy check; nothing
+        left running. Lab v1.1 suites CLOSED. -> gtv_ GO: its 4 held lab suites + gtv_rc_race probe STARTED; gtl_ S4
+        round STARTED in a staged copy (no live swap until gtv_'s run ends).
+        Agents (10): gtw_ (S1c re-check 10), h0i_ (H0 analysis + fake to testbin + R1), gtv_ (held lab suites +
+        race probe), gtl_ (S4 + nits + kind dump reference mode, staged), gpr_ (gti_ R1 re-check), gtb_ (grs1 NUL
+        check), t4i_ (r23), b13r_ (c3i_ B1.6 follow-ups re-check), c3i_ (B1 real-routine tests) + coordinator bulk
+        index. Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gti_ (waits gpr_), grs_,
+        gtk_, gtp_ (waits gtw_), ebr_ (re-checks t4i_ r23), gtq_
         (go after gtl_). gtv_'s held lab suites + race probe AFTER gtl_'s 4 suites
         (the fakes' names would cross each other's busy checks). GPU: free (rec_verify waits ATN; H0 re-run after
         the analysis).
