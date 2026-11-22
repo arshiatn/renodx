@@ -7301,10 +7301,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         skipped; N4 flip_tool CLI uses new_folder + kept_folders. iq 30 / 30 (378 s), FLIP numbers unchanged;
         flip_numpy.py unchanged, nothing patched in NVIDIA files. Note: ppd <= ~1 gives FLIP.h's own 0/0 (smallest
         real grid ppd 8.4). -> gbc_ B2 RE-CHECK STARTED.
-        Agents (8): c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gbc_ (gtq_ B2 re-check), gtl_
-        (S3r S1 + nits), gtv_ (grs_ S2r re-check), gtb_ (x1-x4). Coordinator: H0 real run (bhe3fx2sg, ~72 min).
-        Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_, gpp_, gpr_ (waits gtb_), ebr_ (waits t4i_), gtq_ (waits
-        gbc_), gti_, grs_ (waits gtv_), gtk_, gtw_ (waits gtp_).
+        gtl_ S3r S1 DONE 05:0x (plan_1117/gtl_s3r_s1_handback.md; backups scratchpad\gtl_backup_s3s1): scene settings =
+        {scene_sha256, harness_args, env} (the env the harness really gets, minus the two path-only keys); folder
+        <name>_<hash12>_<settings sha8>[_path][_sun0]; mismatching scene.hash / leftover .partial still refused. Test
+        nit: fixture-only +30 s on render_cpu's deadline (below_normal kept). SLOW probes now carry "system CPU N %".
+        unit 21, ps1 5, keeper 24, jobs 24 (88 s), offline, real lab files untouched. Open (gtv_ / ATN): scene
+        settings still leave out the harness + recorder builds, so a rebuilt harness counts "up to date" with an
+        older recording (recordings meant as stable references) - one more field if wanted. grs_ v1.1 inputs noted,
+        waits for gtv_'s S2r verdict (a toggle INVALID rerun must get its own dump folder). -> gtv_ S3r S1 RE-CHECK
+        queued after its S2r re-check.
+        Agents (7): c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gbc_ (gtq_ B2 re-check), gtv_
+        (grs_ S2r re-check, then gtl_ S3r S1), gtb_ (x1-x4). Coordinator: H0 real run (bhe3fx2sg, ~72 min). Idle:
+        bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_, gpp_, gpr_ (waits gtb_), ebr_ (waits t4i_), gtq_ (waits gbc_),
+        gti_, grs_ (waits gtv_), gtl_ (waits gtv_), gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
