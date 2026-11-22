@@ -7310,9 +7310,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         older recording (recordings meant as stable references) - one more field if wanted. grs_ v1.1 inputs noted,
         waits for gtv_'s S2r verdict (a toggle INVALID rerun must get its own dump folder). -> gtv_ S3r S1 RE-CHECK
         queued after its S2r re-check.
-        Agents (7): c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gbc_ (gtq_ B2 re-check), gtv_
+        t4i_ r20 DONE 05:0x (render_mt/reports/t4i_r20_handback.md; backups scratchpad\t4i_bak\r20): the heapfix.ini /
+        *_off.txt check also runs at the real leg's start (PROBLEM -> "LEG NOT STARTED", exit 2, before locks and
+        starts; read only); on = '^0*1$' or on / true / yes (no int64 cast; missing / empty stays PROBLEM); N6 whole
+        compare-name lines asserted; N7 first occurrence wins tested; plan section 10 bullet updated. run_all green
+        (leg 165 / 165). -> ebr_ r20 RE-CHECK STARTED.
+        RULE BREACH (self-reported, t4i_): `rm -rf` on its own two fresh probe output folders (tests\out\t4i_probe_x87,
+        t4i_probe_pf); no junctions, nothing else touched. Recursive deletes are not allowed without ATN's yes ->
+        t4i_ told: never again, leave outputs in place. [ ] ATN: noted in the morning report.
+        Agents (7): c3i_ (B1.6), ebr_ (t4i_ r20 re-check), gtp_ (K1-K3 + next round), gbc_ (gtq_ B2 re-check), gtv_
         (grs_ S2r re-check, then gtl_ S3r S1), gtb_ (x1-x4). Coordinator: H0 real run (bhe3fx2sg, ~72 min). Idle:
-        bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_, gpp_, gpr_ (waits gtb_), ebr_ (waits t4i_), gtq_ (waits gbc_),
+        bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_, gpp_, gpr_ (waits gtb_), t4i_ (waits ebr_), gtq_ (waits gbc_),
         gti_, grs_ (waits gtv_), gtl_ (waits gtv_), gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
