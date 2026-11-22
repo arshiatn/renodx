@@ -536,7 +536,14 @@ class ProxyFrameGeneration12 {
   [[nodiscard]] bool Making() const { return making_.load(); }
   // Shared::fg_presented: the frames it last presented per rendered frame, the most it presents here (FSR: one generated frame).
   [[nodiscard]] uint32_t Presented() const {
-    return presented_ | ((backend_ == dlaa_bridge::FG_BACKEND_XESS ? std::min(xefg_most_ + 1u, 255u) : 2u) << 8);
+    uint32_t most = 2u;
+    // Without XeSS's SDK the backend is never XeSS.
+#if defined(RENODX_XESS_FG)
+    if (backend_ == dlaa_bridge::FG_BACKEND_XESS) {
+      most = std::min(xefg_most_ + 1u, 255u);
+    }
+#endif
+    return presented_ | (most << 8);
   }
   // It gave up on this device or driver (its chain could not be made, ...).
   [[nodiscard]] bool Failed() const { return failed_; }
