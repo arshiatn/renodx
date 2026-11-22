@@ -20,6 +20,7 @@
 #include <cmath>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -107,6 +108,14 @@ bool IsPsychoV35Mode() {
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, the ACES fit).
 constexpr float HUE_CLIP_DEFAULT = 80.f;
 
+// PsychoV35's defaults that follow the game's response (shared.h): its ACES fit's shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", PHARAOH_V35_CONTRAST},
+    {"v35_shadows", PHARAOH_V35_SHADOWS},
+    {"v35_saturation", PHARAOH_V35_SATURATION},
+    {"v35_highlight_contrast", PHARAOH_V35_HIGHLIGHT_CONTRAST},
+};
+
 bool IsModdedAutoExposureEnabled() {
   return shader_injection.auto_exposure_highlight_protection == 1.f && IsHDRMode();
 }
@@ -177,6 +186,7 @@ void ApplyResetPreset() {
       {"filmgrain", 0.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 // SDR: the game's own tonemapper and look, every other control at its default; video AutoHDR is already off in Reset.
@@ -1555,7 +1565,15 @@ void BuildRuntimeData() {
     //     },
     // },
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
 }
 
 // Graphics (Experimental): engine values x the sliders (their tweaks are filled in ConfigureAddon).

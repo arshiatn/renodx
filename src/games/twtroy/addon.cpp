@@ -15,6 +15,7 @@
 #include <cmath>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -106,6 +107,14 @@ bool IsPsychoV35Mode() {
 // 70, the fire's lowest hue error (0.82 degrees, 1.99 at 80; ATN 2026-11-22).
 constexpr float HUE_CLIP_DEFAULT = 70.f;
 
+// PsychoV35's defaults that follow the game's response (shared.h): its ACES fit's shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", TROY_V35_CONTRAST},
+    {"v35_shadows", TROY_V35_SHADOWS},
+    {"v35_saturation", TROY_V35_SATURATION},
+    {"v35_highlight_contrast", TROY_V35_HIGHLIGHT_CONTRAST},
+};
+
 // bool IsModdedAutoExposureEnabled() {
 //   return shader_injection.auto_exposure_highlight_protection == 1.f;
 // }
@@ -173,6 +182,7 @@ void ApplyResetPreset() {
       {"filmgrain", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 void ApplyPsychoRecommended() {
@@ -1468,7 +1478,15 @@ void BuildRuntimeData() {
     //     },
     // },
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
 }
 
 
