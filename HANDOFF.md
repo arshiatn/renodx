@@ -495,6 +495,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - leaf / micromap owner (optional): run pre 4x on fast_leaves + micromaps_leaf_str ... | ?
 - coordinator: all_modes pass on the combined tree after rmt_h0 + ff_s12 + grs_xes ... | ?
 - gtw_ + gpr_: re-check round 18 (gate + price) (coord 13:5x). | ?
+- gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10143,6 +10144,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         design for N8); 17th $( ) (cap 16, views 40); cosmetic trailing-backtick key; python -m py_compile + RENODX_LAB_
         env keys harness (old harness-env rule).
         - [ ] gtw_ + gpr_: re-check round 18 (gate + price) (coord 13:5x).
+        gtv_ LAB FIXES RE-CHECK = OK ON 1-3 + NIT + a + FIRST_BEAT_S 13:5x (plan_1117/gtv_lab_fixes_recheck_handback.md;
+        gtv_iq_review.md "## gtl_ lab fixes re-check"): real keeper in-process in a fixture world: the lab's quiet close
+        -> timeout + req_1.json; keeper starts in that folder (exist_ok), reads the close in take_lock before Acquire, run()
+        0, "stopped (closed by lab.py)", lock never taken (finish frees only its own record, lab_keeper.py 356-357); a
+        stale close can't reach the next session (folder S-<pid>-<start>, no session.json -> skipped). Keeper unchanged
+        (41d07cf4). gtl_fake_ copies: argv gated before exec_argv (lab_keeper.py 404 / 422), copies beside their exe,
+        own vs foreign by (pid, start); H0 guard (h0_gpu_runs.ps1 208) + ns_busy.ps1 (23) anchored -> skip them. Quiet
+        runs unit 34, ps1 5, keeper 27, jobs 32; 54 live files unchanged. Optional Low: a keeper-side test for "reads the
+        close before the lock". Slip: its own probe ended itself -> 3 own sandboxes left (testbin\gtl_test_70600 = a
+        pbrt.exe text stub; scratchpad\gtl_gtvclose_keugk9q6, gtl_lab_0pihxlu_) -> gtv_ removes them (tests' own
+        sandboxes, ATN 10:4x). Point 4 (32-busy-loop load run) waits for rec_verify to end; risk: FIRST_BEAT_S 8 s under
+        load (keeper start up to 16.6 s) -> if false "no heartbeat", slow load_gbps seed + higher FIRST_BEAT_S.
+        - [ ] gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13:5x).
         Agents (4): gtw_ (round 18 gate re-check), gpr_ (round 18 price re-check), gtv_ (gtl_ lab fixes re-check), h0i_
         (checker 0 / 0 + all_modes tool); rec_verify RUNNING (13:35, ~100 min) -> grs_ reads it -> merge gpu_s2 -> S3c;
         all_modes on the combined tree waits for an ATN rule
