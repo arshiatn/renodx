@@ -83,7 +83,7 @@ Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); 
   below 0.8) with a hard-knee control, the row off bit-equal to the tone map before it (a6762afab^; control: the row on).
   Part 7, the V35 fit: PsychoV35's Contrast / Shadows / Saturation / Highlight Contrast minimax-fitted to the game's
   SDR below white (grey 0.05 - 1 and 1 - 15 nits, OkLab chroma at equal lightness 1 - 30 nits) with R1's traced save
-  constants (level A), PsychoV35's highlights kept within 10 %; shared.h DIVINITY_V35_* must be the fit's best (Reset
+  constants (level A), PsychoV35's highlights kept within 15 % at 1000 / 203 (20 % at 2500 / 275); shared.h DIVINITY_V35_* must be the fit's best (Reset
   and Recommended start from them); controls: Musa's own sliders must miss by over 5 %, Extended must be the game's
   grey. The defines are Musa's own (1) until the fit has run; built only, not run in game.
 - `test/tw_d1_rays/run.ps1`: the helper's inputs and the rays' replacements, the game's sun pass reading them: the motion

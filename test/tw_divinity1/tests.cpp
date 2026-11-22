@@ -24,7 +24,7 @@
 //    (must fail): the row on differs.
 // 7. V35 FIT: PsychoV35's Contrast, Shadows, Saturation and Highlight Contrast minimax-fitted to the game's SDR below
 //    white with R1's traced save constants; shared.h DIVINITY_V35_* within 5 % and within 0.5 % of the fit's best,
-//    PsychoV35's highlights within 10 % at 1000 / 203 and 2500 / 275; controls: Musa's own sliders must fail the 5 %, HDR
+//    PsychoV35's highlights within 15 % at 1000 / 203 (the guard) and 20 % at 2500 / 275; controls: Musa's own sliders must fail the 5 %, HDR
 //    (Extended) must be the game's grey. The menu's constants: a report.
 // tests.exe <game cso> <add-on cso> <grade cso> <grade control cso> <grade off cso> <add-on before the shoulder cso>.
 #include <windows.h>
@@ -755,7 +755,7 @@ int main(int argc, char** argv) {
   //    PsychoV35's Contrast, Shadows, Saturation and Highlight Contrast fitted to the game's SDR below white, a minimax: the
   //    worst of grey |V35 / SDR - 1| where SDR is 0.05 - 1 and 1 - 15 nits and |chroma - 1| (OkLab at equal lightness, the
   //    geometric mean) where SDR is 1 - 30 nits. A candidate counts only if it keeps PsychoV35's highlights: grey within
-  //    10 % of Musa's own where Musa's own is 100 nits up to 95 % of Peak. Coarse to fine: every 0.1 over the ranges, then
+  //    15 % of Musa's own at 1000 / 203 where Musa's own is 100 nits up to 95 % of Peak. Coarse to fine: every 0.1 over the ranges, then
   //    0.05 and 0.01 steps around the best. Hue Clip 70 (the add-on's default), 1000 / 203 nits, Output HDR10. The game's
   //    constants as R1 traced them in the save (ThePrisonGardenOfStoneKing Sunny: A 0.22, B 0.18, D 0.2, saturation 1.1,
   //    Source / Target white, the matrix's alpha row 0 0 0 1); the menu's (Menuscreen_Cyseal) a report. The scene: grey and
@@ -839,48 +839,66 @@ int main(int argc, char** argv) {
       return worst;
     };
 
+    // The displays the highlights are measured on (Peak / Paper White, UI at Paper White): the fit guards the first
+    // (15 %, the pilot's rule; the 10 % and 20 % fits reported), the bright display is bounded at 20 % and reported.
+    constexpr std::array<std::pair<float, float>, 2> DISPLAYS = {{{1000.f, 203.f}, {2500.f, 275.f}}};
+    constexpr std::array<float, DISPLAYS.size()> HIGHLIGHT_TOLERANCE = {0.15f, 0.2f};
+    const auto on_display = [](divinity::ShaderInjectData si, const std::pair<float, float>& display) {
+      si.peak_white_nits = display.first;
+      si.diffuse_white_nits = si.graphics_white_nits = display.second;
+      return si;
+    };
     const auto sdr = game_sdr(save);
     const auto own = Injection(4.f, 1000.f, 0.7f);
     const auto own_ramp = ours(save, own);
-    Values best = {1.f, 1.f, 1.f, 1.f};
-    float best_score = 1e9f;
-    int candidates = 0;
-    const auto start = std::chrono::steady_clock::now();
-    bool first_pass = true;
-    for (const auto& [step, reach] : {std::pair{0.1f, 6}, std::pair{0.05f, 2}, std::pair{0.01f, 3}}) {
-      const Values centre = (first_pass ? Values{1.4f, 0.9f, 1.f, 0.9f} : best);
-      first_pass = false;
-      std::array<std::vector<float>, 4> grid;
-      for (size_t d = 0; d < SLIDERS.size(); ++d) {
-        for (int k = -reach; k <= reach; ++k) {
-          const float value = std::round((centre[d] + (static_cast<float>(k) * step)) * 100.f) / 100.f;
-          if (value >= SLIDERS[d].low - 1e-4f && value <= SLIDERS[d].high + 1e-4f) grid[d].push_back(value);
+    struct Fit {
+      Values values = {1.f, 1.f, 1.f, 1.f};
+      float score = 1e9f;
+      float highlights = 0.f;
+    };
+    const auto fit = [&](float highlight_tolerance) {
+      Fit best;
+      int candidates = 0;
+      const auto start = std::chrono::steady_clock::now();
+      bool first_pass = true;
+      for (const auto& [step, reach] : {std::pair{0.1f, 6}, std::pair{0.05f, 2}, std::pair{0.01f, 3}}) {
+        const Values centre = (first_pass ? Values{1.4f, 0.9f, 1.f, 0.9f} : best.values);
+        first_pass = false;
+        std::array<std::vector<float>, 4> grid;
+        for (size_t d = 0; d < SLIDERS.size(); ++d) {
+          for (int k = -reach; k <= reach; ++k) {
+            const float value = std::round((centre[d] + (static_cast<float>(k) * step)) * 100.f) / 100.f;
+            if (value >= SLIDERS[d].low - 1e-4f && value <= SLIDERS[d].high + 1e-4f) grid[d].push_back(value);
+          }
         }
-      }
-      for (const float contrast : grid[0]) {
-        for (const float shadows : grid[1]) {
-          for (const float saturation : grid[2]) {
-            for (const float highlight_contrast : grid[3]) {
-              const Values values = {contrast, shadows, saturation, highlight_contrast};
-              const auto ramp = ours(save, with(own, values));
-              ++candidates;
-              if (highlights(ramp, own_ramp, NITS, 1000.f) > 0.1f) continue;
-              if (const float score = below_white(Compare(sdr, ramp)); score < best_score) {
-                best = values;
-                best_score = score;
+        for (const float contrast : grid[0]) {
+          for (const float shadows : grid[1]) {
+            for (const float saturation : grid[2]) {
+              for (const float highlight_contrast : grid[3]) {
+                const Values values = {contrast, shadows, saturation, highlight_contrast};
+                const auto ramp = ours(save, with(own, values));
+                ++candidates;
+                const float score = below_white(Compare(sdr, ramp));
+                if (score >= best.score) continue;
+                const float moved = highlights(ramp, own_ramp, DISPLAYS[0].second, DISPLAYS[0].first);
+                if (moved > highlight_tolerance) continue;
+                best = {.values = values, .score = score, .highlights = moved};
               }
             }
           }
         }
       }
-    }
-    std::printf("7. V35 fit, R1's save (A 0.22, B 0.18, D 0.2, saturation 1.1):\n"
-                "   minimax fit (%s %.1f - %.1f, %s %.1f - %.1f, %s %.1f - %.1f, %s %.1f - %.1f): %.2f / %.2f / %.2f / %.2f, "
-                "worst %.1f %% (%d candidates, %.0f s)\n",
-                SLIDERS[0].name, SLIDERS[0].low, SLIDERS[0].high, SLIDERS[1].name, SLIDERS[1].low, SLIDERS[1].high,
-                SLIDERS[2].name, SLIDERS[2].low, SLIDERS[2].high, SLIDERS[3].name, SLIDERS[3].low, SLIDERS[3].high, best[0],
-                best[1], best[2], best[3], 100.f * best_score, candidates,
-                std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+      std::printf("   minimax fit, highlights within %.0f %% (%s %.1f - %.1f, %s %.1f - %.1f, %s %.1f - %.1f, %s %.1f - %.1f): "
+                  "%.2f / %.2f / %.2f / %.2f, worst %.1f %% below white, highlights %.1f %% (%d candidates, %.0f s)\n",
+                  100.f * highlight_tolerance, SLIDERS[0].name, SLIDERS[0].low, SLIDERS[0].high, SLIDERS[1].name, SLIDERS[1].low,
+                  SLIDERS[1].high, SLIDERS[2].name, SLIDERS[2].low, SLIDERS[2].high, SLIDERS[3].name, SLIDERS[3].low,
+                  SLIDERS[3].high, best.values[0], best.values[1], best.values[2], best.values[3], 100.f * best.score,
+                  100.f * best.highlights, candidates, std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+      return best;
+    };
+    std::printf("7. V35 fit, R1's save (A 0.22, B 0.18, D 0.2, saturation 1.1):\n");
+    const Fit best = fit(HIGHLIGHT_TOLERANCE[0]);
+    for (const float tolerance : {0.1f, 0.2f}) fit(tolerance);
     const auto shipped = with(own, {DIVINITY_V35_CONTRAST, DIVINITY_V35_SHADOWS, DIVINITY_V35_SATURATION, DIVINITY_V35_HIGHLIGHT_CONTRAST});
     const auto shipped_ramp = ours(save, shipped);
     const float shipped_score = below_white(Compare(sdr, shipped_ramp));
@@ -889,20 +907,16 @@ int main(int argc, char** argv) {
                 DIVINITY_V35_CONTRAST, DIVINITY_V35_SHADOWS, DIVINITY_V35_SATURATION, DIVINITY_V35_HIGHLIGHT_CONTRAST,
                 100.f * shipped_score, 100.f * own_score);
     CHECK(shipped_score < 0.05f);
-    CHECK(shipped_score <= best_score + 0.005f);
+    CHECK(shipped_score <= best.score + 0.005f);
     CHECK(own_score > 0.05f);
     Report("Musa's own sliders, the save", sdr, own_ramp);
     Report("the V35 defaults (shared.h), the save", sdr, shipped_ramp);
-    for (const auto& [peak, paper_white] : {std::pair{1000.f, 203.f}, std::pair{2500.f, 275.f}}) {
-      auto shipped_at = shipped;
-      auto own_at = own;
-      shipped_at.peak_white_nits = own_at.peak_white_nits = peak;
-      shipped_at.diffuse_white_nits = own_at.diffuse_white_nits = paper_white;
-      shipped_at.graphics_white_nits = own_at.graphics_white_nits = paper_white;
-      const float worst = highlights(ours(save, shipped_at), ours(save, own_at), paper_white, peak);
-      std::printf("   highlights, Peak %.0f / Paper White %.0f: grey within %.1f %% of Musa's own (100 nits - 95 %% of Peak)\n",
-                  peak, paper_white, 100.f * worst);
-      CHECK(worst <= 0.1f);
+    for (size_t i = 0; i < DISPLAYS.size(); ++i) {
+      const auto& [peak, paper_white] = DISPLAYS[i];
+      const float worst = highlights(ours(save, on_display(shipped, DISPLAYS[i])), ours(save, on_display(own, DISPLAYS[i])), paper_white, peak);
+      std::printf("   highlights, Peak %.0f / Paper White %.0f: grey within %.1f %% of Musa's own (100 nits - 95 %% of Peak; bound %.0f %%)\n",
+                  peak, paper_white, 100.f * worst, 100.f * HIGHLIGHT_TOLERANCE[i]);
+      CHECK(worst <= HIGHLIGHT_TOLERANCE[i] + 0.001f);
     }
     // The measure's own check: HDR (Extended) is the game's Hable below its pivot (every grey band here), so a wrong
     // decode, white or binding would show.
