@@ -464,8 +464,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtb_ (low): end-to-end slot-wait test - both sandbox slots held, one freed at ~8 ... | ?
 - gtb_ / gti_ (low): watch's load is always `unknown` while nothing refreshes busy ... | ?
 - ATN (cleanup list): tools\tw\h0\__pycache__ (07:42) may be deleted (upr_ 08:3x). | ?
-- gtq_ S6 (Should): seed runs played on recording 2 built with --recording naming ... | ?
-- gtq_ (Should): permanent cross test - a builder test that writes played.json wit ... | ?
 - lab owner (later, optional): record `dxr12` (machine state from config's answer) ... | ?
 - gtp_ (nit): the 5 ms kind() timing check failed once under parallel load (5.9 ms ... | ?
 - ATN (morning report): player risk - a cold shader cache (driver update / new rel ... | ?
@@ -8483,10 +8481,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         then 32 / 32 (test_iq_kinds gate --quality 48.6 s vs 12.5 s deadline under other agents' load = 2nd
         load-only jobs fail today). Live files unchanged except gtb_'s test_budget.py (08:31). V1.2 CONFIG HASH OK.
         -> gtq_ S6 + cross test; gtl_ golden hex + nit + jobs deadline look.
-        - [ ] gtq_ S6 (Should): seed runs played on recording 2 built with --recording naming recording 1 (same
+        - [x] gtq_ (DONE 08:4x) S6 (Should): seed runs played on recording 2 built with --recording naming recording 1 (same
             frame numbers) -> exit 0; refuse unless every config.recording == normcase(realpath(--recording))
             (also closes gtv_'s older "runs came from the given recording" nit) (gtv_ 08:3x).
-        - [ ] gtq_ (Should): permanent cross test - a builder test that writes played.json with the real lab.py
+        - [x] gtq_ (DONE 08:4x) (Should): permanent cross test - a builder test that writes played.json with the real lab.py
             keep_played (gtv_ 08:3x); gtl_: one golden hex in the lab suite too.
         - [x] gtl_ (DONE 08:4x) (nit): Resident has no `cfg` until config() runs - self.cfg = None in __init__ + a ToolFault in
             played_config, not an AttributeError (gtv_ 08:3x).
@@ -8555,9 +8553,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         re-indented to 4 spaces (CRLF kept); run_all green (lib 470, make 87, check 166, leg 165, analyze 119);
         bench\__pycache__ holds only bench_summary's .pyc (Nov 19), no new .pyc. t4i_ idle until rmt_b1rt merges
         (T5 manifest rows).
-        Agents (8): h0i_ (H0 F1-F4), gtq_ (S6 + cross test), gtw_ + gpr_ (gtp_ round 12 re-check), gtb_ (slot-wait
-        test + load + gate seed), b13r_ (c3i_ rmt_b1rt review), ffr_ (grs_ first-frame design review), lga_
-        (release regression look)
+        gtq_ S6 + CROSS TEST DONE 08:4x (plan_1117/gtq_s6_handback.md; backup scratchpad\gtq_backup_fix11): (1) S6:
+        each run's config.recording must equal normcase(realpath(--recording)) (lab's form), else refused naming
+        both paths ("same frame numbers prove nothing"); test with a 2nd synthetic recording, same frame numbers.
+        (2) test_reference_from_the_real_lab_played_json: imports the real lab.py read-only (-I -B, busy count +
+        IQ_REFS in the test's temp world), played.json via lab.played_config + keep_played: non-ASCII env, float,
+        2^40, "\u00fc" field -> same hash, real build, manifest hash = lab's; differing fields refused; other
+        recording refused; one reference built; IQ_REFS restored. (3) test_config_hash_golden: gtl_'s exact
+        config + acb120e2... passes the hash check (stops at the recording check), last digit changed -> "not its
+        config's hash" = both suites share one golden value. Full iq suite 33 / 33 (314 s, before the golden
+        test), test_iq_frames 16 / 16. Real iq_refs absent. -> gtv_ QUICK RE-CHECK (gtq_ S6 + cross + golden, gtl_
+        follow-ups) STARTED.
+        Agents (8): h0i_ (H0 F1-F4), gtv_ (gtq_ S6 + gtl_ follow-ups quick re-check), gtw_ + gpr_ (gtp_ round 12
+        re-check), gtb_ (slot-wait test + load + gate seed), b13r_ (c3i_ rmt_b1rt review), ffr_ (grs_ first-frame
+        design review), lga_ (release regression look)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
