@@ -6629,8 +6629,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         kept + logged by WatchLoop; R5 4 places, 'first chance'; AddCodeRange 4 slots, no callers yet) + 7a18d3ec3 (R6
         engine_tweaks no retries, R7 NotTraced 1 s floor). tw_fault_watch PASS x86 + amd64; builds x86 3 + amd64 16 exit
         0. lga_ GROUP 1 RE-CHECK 2 STARTED 01:4x.
+        upr_ H0 CODE REVIEW 01:4x = MERGE in the code, after GPU run 7 (designs/unified_pt_review.md '## H0 code
+        review', hand-back designs/upr_h0_handback.md). Own rebuild of both trees + 11 DXC variants: site list complete,
+        no overflow at the real maxima (largest index 4049 / 4096), digest DXIL byte-identical, +2.4 % rt_path / +2.9 %
+        rt_reflect static; registers / spills only on the GPU (rt_reflect_one already 96 + spills). Shoulds: probe-ray
+        clamp (rt_path.hlsli:974, min 94) and h0i_test.py as a real guard (all files, fail on unparsed sites, lanes,
+        caps from the code). Before merge: build32 .addon32. h0i_ RESUMED 01:4x for these.
+        [ ] H0 harness list additions: (a) rec_scan NaN / Inf on run 1's dumps; (b) run 2 AT FLOOR needs the gto lab:
+        if not built, name the gate used + keep a box; (c) run 3 pass rule: after H0 still-camera temporal variance
+        at 16 rays < 8 rays, before H0 16 ~ 8, single-frame variance unchanged; (d) run 6 with <= 94 probe rays.
+        Run 7 (Nsight registers / spills rt_reflect_one) gates the merge; if it costs: Random2 (lanes .y / .z) or the
+        nested-pcg fallback. NQ3 covers every TW game on the shared helper (tell ATN).
         Agents (7): c33i_ (R-S5 fixes), gtp_ (S1c fixes), ebr_ (r16 review), lga_ (group 1 re-check 2), lgf2_ (group 2 R1 +
-        N1-N5), gtv_ (S1a + S1b re-check), upr_ (H0 review). QUEUE: R-S5 re-checks -> merge rmt_rs5, lga_ group 1 re-check
+        N1-N5), gtv_ (S1a + S1b re-check), h0i_ (H0 Shoulds). QUEUE: R-S5 re-checks -> merge rmt_rs5, lga_ group 1 re-check
         2 + group 2 re-check 2 -> merge rmt_lg1 / rmt_lg2, gtw_ S1c re-check, bulk index (after S1a OK), Q8(b) lock wait,
         H0 fixes / harness runs -> merge rmt_h0, B1.6, X1, logging group 3, PT DI steps 0-4 (after rmt_lg2 + H0), S2
         (after rmt_lg2), T5 / T6, end batch. ATN: unified PT 14 answers pending.
