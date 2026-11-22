@@ -7824,12 +7824,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         c_render_us / part_calls) -> list them with a status, each [ ] for its owner. ebr_ deleted one .pyc it made.
         -> t4i_ R22 STARTED (FIX 1-2, S4 + G6 tests, Shoulds, nits); c3i_'s two new lines (S2 count + stack
         headroom) go into r22 if they land first, else r23.
-        Agents (6): gtw_ (S1c re-check 9), gtv_ (gtq_ v1.1 inputs re-check), gtb_ (selftest flake S1, then N11),
-        t4i_ (r22: ebr_'s r21 fixes), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_,
-        c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_ r22), gbc_, gpr_
-        (re-checks gtb_ S1), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_
-        (after H0: its 4 suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness /
-        helper / fg / map_replay-named process until H0 ends; gtv_'s held tests + race probe after H0.
+        gtb_ S1 SELFTEST DONE 06:3x (plan_1117/gtb_s1_selftest_handback.md; backup scratchpad\gtb_bak14; budget.py
+        live via os.replace - watch logic unchanged, only watch_selftest + test_budget): final round test_budget 5
+        runs x 33 OK, watch --selftest 3 x 3 ok (3 rounds; under H0's load 3 more timing flakes showed). Lock case:
+        record ~1 s, held 5 s, --limit 8, wait_s 0.5-6.0 (slow python start). Found + fixed (tests only): selftest
+        "child + grandchild past --limit" -> --limit 6 and the line now names exit code / grandchild pid / marker;
+        test_priced_kill_ends_tree accepts exclude_pids <= 2 (a tree process still ending was rightly left out; the
+        own-pid guarantee now rests on x2's code only); test_clock_starts_at_the_tree_s_v1_record record held 5 s,
+        --limit 8, wait_s 4-16 + new run_s < 7.5. Other `took < N` bounds left (no failure in 15 runs). -> gtb_ N11
+        NOW (warm? build seeds), then gpr_ re-checks S1 + N11 together.
+        Agents (6): gtw_ (S1c re-check 9), gtv_ (gtq_ v1.1 inputs re-check), gtb_ (N11 warm? seeds), t4i_ (r22:
+        ebr_'s r21 fixes), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_,
+        upr_, h0i_ (after H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_ r22), gbc_, gpr_ (re-checks gtb_
+        S1 + N11), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (after H0:
+        its 4 suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg
+        / map_replay-named process until H0 ends; gtv_'s held tests + race probe after H0.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
