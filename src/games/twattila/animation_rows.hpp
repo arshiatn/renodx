@@ -894,7 +894,8 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       differ("record", i * 4 + word, check.records[i][word], game_records[i * 4 + word]);
     }
   }
-  if (our_records < our_capacity) {
+  // Only while the game's vector is still our buffer (its growth frees it, and a large block may be unmapped).
+  if (what.empty() && our_records < our_capacity) {
     differ("record after the last", 0, 0xFFFFFFFFu, game_records[our_records * 4]);
   }
   for (uint32_t i = 0; i < finished && what.empty(); ++i) {
