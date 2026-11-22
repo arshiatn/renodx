@@ -10002,8 +10002,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         analyze 132).
         - [x] coordinator (DONE 12:1x: leg 166/166, analyze 132/132, 0 files failed; render_mt/reports/ebr_gap_recheck_final_handback.md): read the last two lines of testbin\scratch\ebr_\ebr_gap_runall.txt (leg 166, analyze 132)
             (coord 12:13).
-        Agents (2): gtp_ (round 17: gpr's R16-1 / R16-2 + gtw-R16-1..10), gtl_ (lab.py wait_ready + test fixes, edits
-        only until H0 ends); H0 re-run NOW (12:09); ff_s12 + grs_xess_guard after H0
+        gtl_ EDITS READY 12:2x (status message, no tests run, py_compile OK; backups testbin\scratch\gtl_\backup_labfix_121800;
+        lab_keeper.py 41d07cf4 unchanged): (b) lab.py Session.request: a quiet close first makes the session folder (a slow
+        keeper's take_lock reads requests before Acquire -> ends without the lock; SLOW raised as normal) + new
+        test_close_before_keeper_folder; (a) keeper tests' clock() probe_fn=lab.slow_probe; (nit) gap test waits alive.json
+        > 3 s old, 'ready', new beat, 'ready'; FIRST_BEAT_S fixture 15 -> 8 s (order like production) + test_stop_no_first_beat;
+        fixture lock deadline 11.25 -> 20 s (MODEL_SEED lock_s 0.5 -> 4.0, KEEPER_START_S dropped -> lab's 30 s); H0 clash:
+        fake side, unguarded(exe) copies lab_sleep.exe as gtl_fake_<name> (H0 pattern doesn't match; h0_gpu_runs.ps1
+        unchanged). Waits for the coordinator's H0-done message before its suites.
+        Agents (2): gtp_ (round 17: gpr's R16-1 / R16-2 + gtw-R16-1..10), gtl_ (edits ready, suites after H0); H0 re-run
+        NOW (12:09) -> tell gtl_ H0 done; ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
