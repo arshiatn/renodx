@@ -9164,9 +9164,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         %)". Dry makes: leg 1 341 arms / 339 files / <= 0.67 GB, leg 2 118 / 105 / 0.23, leg 3 159 / 125 / 0.31,
         leg 4 237 / 207 / 0.46; no arm lost, none in a settle second or measured window, smallest gap slack 2 s.
         -> ebr_ RE-CHECKS option (a).
-        Agents (10): h0i_ (M1 + S1-S5 before the H0 re-run), gtw_ (lga_ release_check re-check), gtp_ (round 14),
-        gpr_ (gtb_ load refresh re-check), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), ffr_ (grs_
-        v4 re-check), grs_ (patch nits N1-N5), gtl_ (fixture +60 s + gate_s), gti_ (r1a / r1b + ns_busy games)
+        ffr_ V4 RE-CHECK = OK, READY TO IMPLEMENT, 3 SHOULDS + 2 NITS 09:4x (plan_1117/designs/ffr_v4_recheck_handback.md;
+        ffr_first_frame_review.md "## v4 re-check"): R1-R3 fixed; 25 sites right (ffr_'s v3 list summed to 24,
+        missed Evaluate 4585). W1 (step 4): the poll in Attila's anti_aliasing::Update (anti_aliasing.hpp:1531-1535)
+        covers 7 add-ons; WH3 taa_dlss.hpp:1264-1268, Rome Remastered dlaa.hpp:313-315, Divinity 2
+        dlaa.hpp:324-326 call Release(true) themselves with nothing polling after -> DLAA off during a cold
+        opening = owed empty set never sent + 180 s deadline never checked, helper keeps the old set's handles +
+        DLSS feature until DLAA is on again (dlaa_bridge.hpp:1567); claim at grs_first_frame.md:174 true only for
+        Attila's family -> put the poll at the top of frame_generation::OnReshadePresent (frame_generation.hpp:167,
+        before the D3D11 check at 169; all 16 bridge add-ons register it via Install :512); optional Release(true)
+        runs one PollOpening() first. W2 (step 3): Release(true) calls need wait_open() too (tw_rt_harness.cpp:633
+        / 3014 / 4580, fg_bridge_test.cpp:115, restir_unified harness 615 / 2946 / 4478), else the "Release(true)
+        answered" checks at 636 / 4583 fail falsely; Release() / Shutdown need nothing. W3 (step 4):
+        test/tw_helper_lifetime/tests.cpp includes the bridge (:46) and uses internal::Answer(200) as a bool (:654) ->
+        the tri-state Answer changes it; it is also the offline home for the opening cases (silent first request,
+        late answer, Release(true) while opening, deadline, RENODX_TW_OPEN_LATCH); section 4 (:314) needs a test row.
+        Nits: a cold run's opening call counts one fewer evaluated frame (RESULT opened_late explains); a resize
+        inside an opening says "helper is gone" in R.U.S.E. / Divinity 1 / Ryse / Rome Remastered / Divinity 2
+        (optional Opening() check). Other bridge users: only fg_bridge_test.cpp:29 + restir_unified harness :38;
+        7 archived copies in night1118\scratchpad_copy (V5 rule if rebuilt); 16 add-ons share the header. -> grs_
+        v5 TEXT (W1-W3 + nits + fcr_'s N7-N9) after its patch v2.
+        Agents (9): h0i_ (M1 + S1-S5 before the H0 re-run), gtw_ (lga_ release_check re-check), gtp_ (round 14),
+        gpr_ (gtb_ load refresh re-check), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), grs_ (patch
+        v2 N1-N5, then design v5 text), gtl_ (fixture +60 s + gate_s), gti_ (r1a / r1b + ns_busy games)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
