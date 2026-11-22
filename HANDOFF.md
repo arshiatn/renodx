@@ -6589,10 +6589,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         report.md:31 real gate-less GPU number; two ns_busy readers. gtv_ S1a then S1b re-check STARTED 01:2x.
         ATN 01:2x: Q4b narrow form OK -> gtp_ row ON (shadow mode). Asked for the unified PT question list: 14 (not 15:
         Q1, Q2, NQ1, Q4, NQ5, Q6, Q7, Q8, NQ4, Q9, Q10, NQ2, NQ3, NQ6) sent with my suggestions; waiting for his answers.
-        Agents (7): bd1r_ (R-S5 review), gtp_ (S1c fixes), t4i_ (batch rules), h0i_ (H0), lgf1_ (group 1 R1-R7), lga_
-        (group 2 re-check), gtv_ (S1a + S1b re-check). QUEUE: c33i_ R-S5 nits -> merge, lga_ group 1 re-check 2 -> merge
-        rmt_lg1, merge rmt_lg2, gtw_ S1c re-check, bulk index (after S1a OK), Q8(b) lock wait, B1.6, X1, logging group 3,
-        PT DI steps 0-4 (after rmt_lg2 + H0), S2 (after rmt_lg2), T5 / T6, end batch.
+        lga_ GROUP 2 RE-CHECK 01:3x = nearly OK (lga_logging_audit.md '## Group 2 re-check'; hand-back
+        reports/lga_g2_recheck_handback.md): no MUST left; tw_helper_lifetime re-run 20/20 x86 + amd64. SHOULD R1 Mega
+        Geometry builds fail silently (rt_d3d12.hpp:6301 / 6305 / 6351; template build 5560 ignores its result while
+        the sets stay marked -> possible device loss later): latched line per kind + clear template_first + status in
+        *why at 2028. NITs N1-N5. lgf2_ RESUMED 01:3x on rmt_lg2.
+        [ ] after lgf2_'s R1: one 4K harness Mega Geometry run (coordinator, held window, ATN's harness rules).
+        bd1r_ R-S5 REVIEW (instance_fill side) 01:3x = FIX (bd1r_rs3_review.md line 372, hand-back
+        reports/bd1r_rs5_handback.md): M1 close_at_the_stub KeepTrace outside trace windows -> a per-frame log line on
+        the render thread; S1 no suite runs the stubs through engine_code Update / PausedWrite / Uninstall (part 29f);
+        N1-N5. All R-S4 items closed; f9b67d841's stub bytes / key stores / heapfix clearance checked with dis_at.py;
+        21 mutants, 18 fail as they should. c33i_ RESUMED 01:3x: bd1r_'s M1 / S1 / N1-N5 + bd3r_'s 5 Nits on rmt_rs5,
+        then bd1r_ + bd3r_ re-check.
+        Agents (7): c33i_ (R-S5 fixes), gtp_ (S1c fixes), t4i_ (batch rules), h0i_ (H0), lgf1_ (group 1 R1-R7), lgf2_
+        (group 2 R1 + N1-N5), gtv_ (S1a + S1b re-check). QUEUE: R-S5 re-checks -> merge rmt_rs5, lga_ group 1 re-check 2
+        + group 2 re-check 2 -> merge rmt_lg1 / rmt_lg2, gtw_ S1c re-check, bulk index (after S1a OK), Q8(b) lock wait,
+        B1.6, X1, logging group 3, PT DI steps 0-4 (after rmt_lg2 + H0), S2 (after rmt_lg2), T5 / T6, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
