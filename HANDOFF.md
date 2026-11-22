@@ -7566,12 +7566,32 @@ heading text are in HANDOFF_ARCHIVE.md)
             (all in tools\tw\lab); until then dump_frames stays 1.
         [ ] gtq_: read gtl_'s iq_input note (output_sizes per arm, dump_frames > 1, dred set by the lab) and say
             whether iq_frames should copy dred itself; after gtv_'s review.
-        Agents (6): upr_ (h0i_ F2 re-check), gtw_ (gtp_ re-check 8), gtv_ (grs_ N1 leftovers re-check, then gtl_
-        S1b + v1.1), gpr_ (gtb_ y1 / y2 / z + dred, then gti_ z1 / z2), t4i_ (r21), c3i_ (B1.6 follow-ups).
-        Idle: bd1r_, lga_, lgf2_, c33i_, upt_, h0i_ (waits upr_, then fake to testbin), gpp_, ebr_ (re-checks
-        t4i_), gtq_ (iq note after gtv_), gbc_, gtb_ (waits gpr_), gti_ (waits gpr_), grs_ (waits gtv_), gtk_,
-        gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (waits gtv_). GPU: free (H0 stopped); no harness-named
-        fakes running; H0 re-run on upr_'s RUN.
+        gtv_ N1 LEFTOVERS RE-CHECK = MERGE-READY (pending the GPU check) 05:4x
+        (plan_1117/gtv_n1_leftovers_recheck_handback.md; gtv_s2r_review.md "## N1 leftovers re-check"): trace base +
+        seed right (no reset, checked before any frame, a restart inside trace answers FAILED); SETTLE_LOOPS 5 = the
+        real worst case (every full reload goes through Load's settle loop, settle loops play unseeded), cost a few
+        thousand of 15.7 M frames; Utf8() cannot throw (U+FFFD, "" on failure); G4 new5 = aligned5, .text / .rdata /
+        .data hashes = new4 / aligned4, 52 headers, rows SAME vs c3ea4925f AND atn-mods, tests 0 failures. Nothing
+        left on gtv_'s side. gpu_s2 (d336c55d3) merges after H0's re-run + the rec_verify.sh GPU check (ATN's go;
+        command with rec_grs_new5 / aligned5 / rec5).
+        upr_ F2 RE-CHECK = RUN 05:4x (plan_1117/designs/upr_f2_recheck_handback.md; unified_pt_review.md "## F2
+        re-check" line 1648): path rule, settle (fails closed, WMI error = no path), one Get-Busy call at ps1:343
+        (gpu_lock --busy stays the start gate), per-job check ps1:215-216 unchanged (125); offline pass / busystay
+        test the new paths, nothing real written; guard clean after the rmt_b16 merge (merge-base still c3ea4925f,
+        helper diff 0, include closure 43 files inside $HelperPaths). 05:16 = our own helper (post_b
+        nrd_sun_no_dxr12 ALL PASSED 05:16:19) just after its harness ended. z1 here = at most a 10 s delay once,
+        harmless for H0. R1 (not blocking): treat tool-named processes with 0 threads as ended (15 zero-thread
+        draw_recording_loop / engine_code / seh test exes 00:04-03:36 on this machine, parents gone, no path from
+        either source; not tool-named, so they do not hold H0) -> h0i_ (h0_gpu_runs.ps1) + gti_ (ns_busy.ps1) AFTER
+        H0 ends; if the re-run stops on "renodx-tw-dlaa64 <pid> (path unreadable)" R1 is the fix. Nit: h0i_'s
+        "Win32_Process often still answers" not shown. 05:43 gtl_'s fake tw_rt_harness_scene_4k (gtl_test_69152)
+        was running, ended by 05:46. -> H0 RE-RUN NOW (hold announced to running agents; h0i_'s testbin fake waits
+        for H0's end).
+        Agents (5): gtw_ (gtp_ re-check 8), gtv_ (gtl_ S1b + v1.1 review), gpr_ (gtb_ y1 / y2 / z + dred, then
+        gti_ z1 / z2), t4i_ (r21), c3i_ (B1.6 follow-ups). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_
+        (after H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_), gtq_ (iq note after gtv_), gbc_, gtb_
+        (waits gpr_), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (waits
+        gtv_). GPU: H0 RE-RUN (coordinator); no harness / helper / fg / map_replay-named process until H0 ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
