@@ -9906,6 +9906,13 @@ heading text are in HANDOFF_ARCHIVE.md)
             re-seed, no hand edit) + R16-2 (Start-Process keys); decide gtl_lowrun.py refusal (a) with gtl_ (shadow);
             gpr_ re-checks (gpr_ 11:43).
         - [ ] gpr_: re-check round 14's exe moves (tools/ + scratch exe keys) with production paths (gpr_ 11:43).
+        BITDEFENDER 11:45 (ATN's screenshots): 5 quarantines in 35 min, all restored by ATN, all open again (checked):
+        scratchpad\t4i_etl_tests.py, scratchpad\r4_make_repro.ps1 (old, 11-18), scratchpad\gtw_r16_corpus_out.txt,
+        tasks\b0li2ixz8.output + tasks\b4df6x212.output (gtw_'s gate-hook corpus runs: text full of command lines).
+        NEW RULE (ATN: "run them from our safe folder"): agents write new scratch scripts + outputs under
+        tools\tw\testbin\scratch\<prefix>\, big output into a file there (not the task output); a restored file may be
+        copied there under the same name; never rename / alter to dodge; still blocked = stop + report. Told gtw_ (re-run
+        anything cut while held), gtp_, gpr_, t4i_, gtv_. Memory feedback_bitdefender_test_exes updated.
         Agents (5): gtw_ (round 16 re-check), gtp_ (R16-1 / R16-2), gpr_ (round 14 re-check, production paths), t4i_
         (ebr_'s scenarios into test_analyze, then ETL move), gtv_ (gtl_ fixture timeout re-check); release_check RUNNING
         (task bhyagz3c2, 11:43, dry run ready) -> H0 re-run; ff_s12 + grs_xess_guard after H0
