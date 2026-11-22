@@ -6547,8 +6547,6 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents (10): bd1r_ (R-S5 review), gti_ + gtb_ (S1a / S1b fixes), gtw_ (S1r S1c), t4i_ (nit), lga_ (group 1
         re-check), h0i_ (H0), lgf2_ (helper + bridge logging). QUEUE: c33i_ R-S5 nits -> merge, B1.6, X1, logging group 3,
         gtv_ re-check, PT DI steps 0-4 (after lgf2_ + H0), S2 (after lgf2_), T5 / T6, end batch.
-        lgf2_ (logging fixes). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6, X1, logging group 3, lga_ re-checks,
-        S1r S1b / S1c, bulk index, H0, T5 freeze, T6 dry run, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
