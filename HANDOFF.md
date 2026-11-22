@@ -6754,9 +6754,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 02:2x: (1) web only for papers etc. (no reddit / forums); (2) 'why don't we price everything?' -> gpp_
         (a9e29c4790d1b18aa, Opus xHigh) STARTED 02:2x: design plan_1117/designs/gpp_price_web_design.md (web domain
         allow-list for WebSearch / WebFetch / shell downloads; a price + stop for every tool call, agents' budgets).
-        Agents (11): bd1r_ (R-S5 re-check), lgf2_ (r3: T1 / N7 / T2), gtp_ (F3), t4i_ (r17 fixes), h0i_ (H0 run script),
-        upt_ (unified PT v2.3), gtv_ (S1b re-check 2, S1a re-check 2, Should 7), gtl_ (S3), gtq_ (B1), gtk_ (C1 + C2),
-        gpp_ (price + web design).
+        c33i_ RESUMED 02:2x for bd3r_'s nit 5 (new commit on top of b25de8189 while bd1r_ re-checks it).
+        upt_ UNIFIED PT v2.3 DONE 02:2x (plan_1117/designs/upt_v23_handback.md; unified_pt.md 1304 lines, v2.2 copy
+        scratchpad\upt_v22_backup.md): ATN's 14 answers in §9; §5 one denoiser per route (RR / FSR Ray Regeneration 1.2.1
+        U11 22 h / NRD); §4.7 PTLAS arms U12a Whole Battle Scene (Experimental, off), U12b PTLAS 20 h, U12c control (our
+        culling stays, TLAS 0.1-0.4 ms today) + default rule; U13 optimise every reuse pass / filter (24 h + 8-12 GPU-h);
+        §6.1 measurement matrix. 272 agent-h (+6 U11h) + ~16 h reviews + 30-45 GPU-h. New ATN questions: [ ] Q11 Ray
+        Regeneration or NRD default on RX 9000, [ ] Q12 one scripted game run (+ siege + Whole Battle Scene recordings),
+        [ ] Q13 Ray Regeneration in today's hybrid mode (upt_: yes, NRD stays default, +6 h). F4 LICENCE: helper
+        build.ps1:114 calls the FSR signed DLLs 'MIT' (SDK: binary-only redistribution with notice, no reverse
+        engineering) -> lgf2_ fixes the comment in r3 + lists every shipped notice that says MIT; [ ] tell ATN. upr_
+        v2.3 SPOT-CHECK STARTED 02:2x.
+        Agents (12): bd1r_ (R-S5 re-check), c33i_ (nit 5), lgf2_ (r3: T1 / N7 / T2 / F4), gtp_ (F3), t4i_ (r17 fixes),
+        h0i_ (H0 run script), upr_ (v2.3 spot-check), gtv_ (S1b re-check 2, S1a re-check 2, Should 7), gtl_ (S3), gtq_
+        (B1), gtk_ (C1 + C2), gpp_ (price + web design).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
