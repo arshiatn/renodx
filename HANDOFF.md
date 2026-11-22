@@ -6799,6 +6799,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         HLSLOptions.td (915bf4f, NCSA) and MicrosoftDocs/win32 direct3d12 + direct3d11 (bc82a65, CC-BY-4.0 / MIT) in
         tools\specs\sources, indexed (index 124 -> 130 MB), 6 sample lookups hit; per-method pages missing (in
         MicrosoftDocs/sdk-api) -> gtp_ sdk-api sparse add queued after T1b.
+        ATN 02:4x (to bed): RUN GPU HARNESS WORK IN NATURAL GAPS (Mega Geometry 4K check and similar, existing rules,
+        GPU lock, no game, never pause busy agents); never sit idle when agents are done. F4: FIX the FSR 'MIT' notices
+        (lgf2_ told: fix per the SDK's own licence, list files outside its set + already-released packages). ATN asked
+        me to install the gate hook myself -> kept with ATN (a guard the agent can install can also be removed by it;
+        INSTALL also adds permission allow rules = self-granting): made easy for the morning [ ] ATN.
+        Keep-awake ON (session_idle) 02:4x.
         Agents (11): bd1r_ (R-S5 re-check), c33i_ (nit 5), lgf2_ (r3: T1 / N7 / T2 / F4), gtp_ (T1b + INSTALL line 6,
         sdk-api docs), t4i_ (r17 fixes), upr_ (v2.3 spot-check, then H0 script), gtv_ (Should 8, then Q8(b)), gtl_ (S3),
         gtq_ (B1), gtk_ (C1 + C2), gpp_ (price + web design).
