@@ -498,13 +498,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job fi ... | ?
 - review (Opus xHigh): grs_dead_uses + dead_outputs.py together, after grs_'s hand ... | ?
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
-- fcr_ (Opus xHigh): review grs_dead_uses df06d4e9b + rt_uses.h vtable copy safety ... | ?
 - gtl_: stage block() subtracts answer reset_ms when present (+ fake_resident send ... | ?
 - gtl_: stage H1 + H2 + M1 / M2 / M2b / M3 / M4 + L1 / L2 + nits; gtv_ re-checks; ... | ?
 - coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU ... | ?
 - h0i_: analyse all_modes M6 8 changed (a != b) on the CPU -> flaky vs regression ... | ?
 - gtc_ (runner, Low): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x). | ?
 - gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ... | ?
+- grs_: G1 + G2 / G3 / G4 (+ nits) on grs_dead_uses; fcr_ re-checks (coord 15:55). | ?
+- gti_: T1 + T2 / T3 in dead_outputs.py; fcr_ re-checks (coord 15:55). | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10416,7 +10417,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         plain_check (base + only the pipeline lambda's `made`) ALL SECTIONS SAME. Limits: unknown resources buffer# /
         texture# / va:<hex> per run; NVAPI cluster / PTLAS, NRD passes, OMM baker, BLAS inputs, input-copy / readback lists,
         reference frozen table not logged (external rows cover reads); log_uses run timings include log CPU cost.
-        - [ ] fcr_ (Opus xHigh): review grs_dead_uses df06d4e9b + rt_uses.h vtable copy safety + store_skip.py +
+        - [x] fcr_ (DONE 15:55: 2 Musts): review grs_dead_uses df06d4e9b + rt_uses.h vtable copy safety + store_skip.py +
         dead_outputs.py (gti_) + the 2 .proposed schemas as one piece (coord 15:2x).
         - [ ] gtl_: stage block() subtracts answer reset_ms when present (+ fake_resident sends it) (coord 15:2x).
         gtp_ ROUND 19 LIVE 15:31 (plan_1117/gtp_round19_handback.md; SHADOW): gates\gate_hook.py 8fe7b6bab77b, tests/
@@ -10520,9 +10521,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         gtw_ FOLLOW-UP 15:54 (plan_1117/gtw_recheck19_followup_handback.md): all its runs were below normal, CPU time first;
         nothing of gtw_'s running since 15:52; ID CLASH -> gtw_'s items go to gtp_ as gtw-R19-1..gtw-R19-7, gpr_'s as
         gpr-R19-1; gtw_ did not test gpr_'s $VAR folder point. gtp_ ROUND 20 SENT 15:5x with those IDs.
-        Agents (6): gtp_ (gate round 20), fcr_ (dead-output review), gtl_ (stage fixes), h0i_ (all_modes 8-change
-        analysis), gtc_ (S3c part 1 runner); GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job at a time;
-        agents' CPU work below normal, no builds at normal priority during S3c
+        fcr_ DEAD OUTPUTS REVIEW = NOT MERGE-READY, 2 SMALL MUSTS 15:55 (plan_1117/fcr_dead_outputs_review_handback.md;
+        plan_1117/fcr_dead_outputs_review.md; checks testbin\scratch\fcr_\du, all before the quiet note): uses 8 / 8,
+        store_skip 3 cases same, gti_ 17 / 17, 53 real stems parse (2 SER libs = ser_library), 104 headers -> 53 distinct
+        signed digests. Release UNCHANGED (only the `made` lambda outside guards; plain_check ALL SECTIONS SAME; 97 B = 64
+        source_location spots). rt_uses.h vtable copy SAFE today (lists outlive log, made once, restored on stop / device
+        loss / scene destroy, serve thread only, List4..10 lengths right, can't leak into release); open: exception between
+        StartUses / StopUses leaves hooks (G2), NVAPI with swapped vtable pointer unproven (L1 = one GPU check). 64-frame
+        loops right (X1 / M3), names collision-free; reset_ms right; format = ReadLog exact (uses.tsv is CRLF); schemas
+        widen nothing live. MUST G1 (grs_): copy outputs only NVAPI / BLAS build / OMM baker read show DEAD
+        (cluster_destination, template_destinations, cluster_indices, slot<i>_ptlas_device, micromap bake copies) -> NVAPI-read
+        buffers external, BLAS / OMM build inputs copy_src, GPU baker inputs external. MUST T1 (gti_): Classify keeps one
+        resource per slot per span -> rebinding stem loses a read (probe: read output DEAD; sway rebinds t8 but external)
+        -> slot -> set. SHOULD G2 StopUses in serve loop's catch; G3 store_skip absolute path in config line; G4 docs (CRLF,
+        "at most one loop" in resident_protocol.md.proposed + job_schema.json); T2 unread copy outputs reported apart; T3
+        NOT WRITTEN only for slots the stem declares (~40 notes / stem otherwise). Nits in file (CXX_STYLE braces, lock,
+        named struct, List11, other-slot check, SER on hides all). S3c part 2 notes (gtl_): first log_uses run vs plain +
+        resident.log NVAPI refusals; log >= 1 loop + 1 frame, SER off; confirm vs A/A floor minus own history; no frame_ms
+        from log_uses runs; seed spacing > 1 loop right only on contiguous recordings.
+        - [ ] grs_: G1 + G2 / G3 / G4 (+ nits) on grs_dead_uses; fcr_ re-checks (coord 15:55).
+        - [ ] gti_: T1 + T2 / T3 in dead_outputs.py; fcr_ re-checks (coord 15:55).
+        Agents (7): gtp_ (gate round 20), grs_ (dead uses G1-G4), gti_ (dead outputs T1-T3), gtl_ (stage fixes), h0i_
+        (all_modes 8-change analysis), gtc_ (S3c part 1 runner); GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job
+        at a time; agents' CPU work below normal, no builds at normal priority during S3c
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
