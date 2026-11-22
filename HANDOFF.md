@@ -463,7 +463,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - who owns the build env: gated_build's stderr shows `'vswhere.exe' is not recogni ... | ?
 - gtb_ (low): end-to-end slot-wait test - both sandbox slots held, one freed at ~8 ... | ?
 - gtb_ / gti_ (low): watch's load is always `unknown` while nothing refreshes busy ... | ?
-- t4i_ (low): add -B in run_all.ps1 line 9 + test_analyze.py run_analyze, after eb ... | ?
 - ATN (cleanup list): tools\tw\h0\__pycache__ (07:42) may be deleted (upr_ 08:3x). | ?
 - gtq_ S6 (Should): seed runs played on recording 2 built with --recording naming ... | ?
 - gtq_ (Should): permanent cross test - a builder test that writes played.json wit ... | ?
@@ -8428,7 +8427,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         two spots still start python without -B (run_all.ps1 line 9 test_analyze.py; test_analyze.py run_analyze
         -> ebo_analyze imports ebo_mapcmp, can write bench\__pycache__ .pyc; the "no ebo_mapcmp .pyc left" check
         passes, reason unconfirmed).
-        - [ ] t4i_ (low): add -B in run_all.ps1 line 9 + test_analyze.py run_analyze, after ebr_'s P4 check (one
+        - [x] t4i_ (low, DONE 08:4x): add -B in run_all.ps1 line 9 + test_analyze.py run_analyze, after ebr_'s P4 check (one
             writer on test_analyze.py), with the T5 work (t4i_ 08:2x).
         t4i_ .PYC REASON 08:3x (render_mt/reports/t4i_pyc_reason_handback.md, read only): ebo_analyze.py l.50 and
         ebo_mapcmp.py l.34 set sys.dont_write_bytecode before their imports (why the mapcmp check passes); the
@@ -8551,9 +8550,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtb_: budget.py SEEDS gate_s 1.0 caps a real job's gate phase at 12.5 s until learned - raise the
             seed or keep (gtl_ 08:4x; gtv_ saw 48.6 s under other agents' load).
         - [ ] gtv_: quick re-check of gtl_'s v1.2 follow-ups (golden hex, cfg None, fixture +60 s) with gtq_ S6.
-        Agents (9): h0i_ (H0 F1-F4), gtq_ (S6 + cross test), gtw_ + gpr_ (gtp_ round 12 re-check), gtb_ (slot-wait
-        test + load + gate seed), t4i_ (-B edits), b13r_ (c3i_ rmt_b1rt review), ffr_ (grs_ first-frame design
-        review), lga_ (release regression look)
+        t4i_ -B DONE 08:4x (render_mt/reports/t4i_b_flag_handback.md; log scratchpad\t4i_b_runall.txt; backups
+        t4i_bak\b; patch t4i_b_patch.py): run_all.ps1 l.9 `python -I -B`, run_analyze `-I -B`, ebr_'s placement loop
+        re-indented to 4 spaces (CRLF kept); run_all green (lib 470, make 87, check 166, leg 165, analyze 119);
+        bench\__pycache__ holds only bench_summary's .pyc (Nov 19), no new .pyc. t4i_ idle until rmt_b1rt merges
+        (T5 manifest rows).
+        Agents (8): h0i_ (H0 F1-F4), gtq_ (S6 + cross test), gtw_ + gpr_ (gtp_ round 12 re-check), gtb_ (slot-wait
+        test + load + gate seed), b13r_ (c3i_ rmt_b1rt review), ffr_ (grs_ first-frame design review), lga_
+        (release regression look)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
