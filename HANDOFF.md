@@ -480,10 +480,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ (low, in round 15 = R14-1): a leading `2>&1 cmd` still splits at & into a l ... | ?
 - end batch leg 1 analysis: foreign hits outside trace windows in normal play? non ... | ?
 - t4i_: CHK-W3 scan-assert case in test_make (kills S1 + S6b), N-a skip t when a r ... | ?
-- gtp_ round 16: R15-1 (cmd /c|/k + -Command take only the quoted word; web case ` ... | ?
+- gtp_ round 16 (SENT 10:5x; NOT "only the quoted word" - see gtw_ 10:55): R15-1 ( ... | ?
 - ATN: permanent delete of (1) old WPR ETLs 33.3 GB + (3) old shots 5.5 GB (dsk_ 1 ... | ?
 - dsk_: refined testbin list (2) - only old DLL / obj copies no test, pin or tool ... | ?
 - t4i_ (after the scan gaps): end batch moves each finished leg's ETLs to a D: fol ... | ?
+- lga_ (low): RC2-N1 whitespace-only slot older than 3 h counts as stale (untrimme ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9634,7 +9635,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         quoted word (unwrapped); tests the 3 keys + the curl case + unchanged no-tail cases; re-seed + re-run the 246
         corpus (refusals can rise).
         COORDINATOR: R15-1 waits for gtw_'s round 15 re-check (gtw_ told, web side), then gtp_ ROUND 16 with both.
-        - [ ] gtp_ round 16: R15-1 (cmd /c|/k + -Command take only the quoted word; web case `cmd /c "curl ..." 2>&1
+        - [ ] gtp_ round 16 (SENT 10:5x; NOT "only the quoted word" - see gtw_ 10:55): R15-1 ( web case `cmd /c "curl ..." 2>&1
             | tail` passes today) + gtw_'s round 15 items; re-seed + corpus; gtw_ + gpr_ re-check (gpr_ 10:36).
         ATN 10:4x (awake, sick, back to bed soon) ANSWERS: (1) rec_verify.sh retry = yes, asked what he must do ->
         exact allow rule given (he adds it); (2) b13r_ driver = skip (asked why double tests: the reviewer's own mutant
@@ -9666,9 +9667,37 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] dsk_: refined testbin list (2) - only old DLL / obj copies no test, pin or tool uses (read-only).
         - [ ] t4i_ (after the scan gaps): end batch moves each finished leg's ETLs to a D: folder before the next
             leg's disk gate (move, never delete; ebo_analyze reads the new path); ebr_ re-checks (coordinator 10:5x).
-        Agents (3): gtw_ (round 15 re-check incl. R15-1 web side, then lga_ RC-2 re-check), t4i_ (probes for the 3 new
-        B1 lines, then ebr_'s G1 / G2 / N-a / N-b, then ETL move to D:), dsk_ (refined testbin list, read-only); c3i_
-        waits for H0's end (then suites + builds -> rmt_b1log merge gate); ff_s12 build after H0; H0 run (~11:30)
+        gtw_ RE-CHECK 15 = ROUND 15 RIGHT + RC-2 OK 10:55 (plan_1117/gtw_recheck15_rc2_handback.md; gtw_s1c_review.md
+        "## S1c re-check 15" line 1556, "### Addendum" 1627, "## RC-2 re-check" 1631; offline sandboxes): suite 812 / 812
+        (fix group 155 / 155 in its own sandbox after ATN's OK); corpus 15,119: 247 refused r14 + live, 0 changed; 22
+        gtp_ forms refused live, 25 controls pass, `python -s x.py <<EOF` over-refusal gone; 106 old probes: 15 pass ->
+        refused, 0 the other way; re-seed only `sh 1` keys. NEW (all older, in bak20): R15-2 (Should) redirects still
+        hiding the head: `>& log curl`, `>& 2 curl`, `<& 0`, `>| f`, `<> f`, `<<< x`, `<< EOF curl`, `10>f curl`, `{fd}>f
+        curl`, `2>'a b' curl` -> no_redirects handles these operators, multi-digit fds, {name}, quote glued to a word.
+        R15-3 (Should) PS 5.1 runs stdin with -o / -i / -of / -if Text -> any 2+ letter PS_VALUE prefix takes a value
+        + add -of / -if. R15-4 (Low) `deno run --ext ts -`, `--seed 1 -`, `bun --env-file x run -`, `bun --define a:b
+        run -` -> a word is the script only if it looks like a file. Older shapes pass: `dash <<EOF`, `dash -c`, `perl
+        <<EOF`, `cmd <<EOF`, `command curl`. R15-1 web side: only the WEB gate (files / pitfall / override refuse
+        through every wrapper); any text after the closing quote (redirect, pipe, &&, ;, one word) hides it: 196 holes
+        (same in r14): cmd /c|/k (+ /d /s, start /b) every payload, powershell -c / -Command / bare only URL-less
+        payloads (pip, npm, uv, winget, gh api), wsl all forms; bash -c / sh -c fine. R15-1b (Should): never unwrapped:
+        cmd //c, //k, //r, /r, glued /ccurl (`cmd //c curl -s URL` passes; from Git Bash //c is the only working form);
+        PS 5.1 /Command + //Command (`powershell //c "pip install x"` passes). Corpus: PowerShell `cmd /c` 49 (36 with
+        text after), Bash `powershell -c "..."` + text 53, Bash `cmd //c` 15. gpr_'s "only the next quoted word" is
+        WRONG: PS + cmd join the rest (`powershell -Command "Write-Output" x` prints x) -> `powershell -c "pip"
+        install x` would pass; USE the quoted word unwrapped + the rest of the line (gtw_'s sketch closes all R15-1,
+        keeps split-word refused, data controls pass); + /c|/k|/r one or two slashes, any case, glued; PS /x and //x
+        = -x; same for wsl; corpus + re-seed. RC-2: all 4 fixed, no deadlock / left lock; stale rule = gpu_lock +
+        gated_build (sym slot live 2.9 h, stale 3.1 h); reused-pid right; a bench record is never moved (7 tricky
+        records all refused); build re-check race covered; every exit releases. Nit RC2-N1: whitespace-only slot > 3 h
+        (gated_build takes over, release_check waits + exit 4) -> test the untrimmed text. .stale-* files left for ATN.
+        Leftover: gtw_suite15_cite_103627 work dir (left).
+        -> gtp_ ROUND 16 (R15-1 gtw_'s shape + R15-1b + R15-2 + R15-3 + R15-4 + older shapes); release_check READY to
+        run after H0 (rule in); RC2-N1 -> lga_ (low).
+        - [ ] lga_ (low): RC2-N1 whitespace-only slot older than 3 h counts as stale (untrimmed text test) (gtw_ 10:55).
+        Agents (4): gtp_ (round 16), t4i_ (probes for the 3 new B1 lines, then ebr_'s G1 / G2 / N-a / N-b, then ETL
+        move to D:), dsk_ (refined testbin list, read-only), lga_ (RC2-N1); c3i_ waits for H0's end (then suites +
+        builds -> rmt_b1log merge gate); ff_s12 build after H0; H0 run (~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
