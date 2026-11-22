@@ -496,14 +496,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
 - gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-che ... | ?
 - coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
-- grs_: dead outputs (a) resident log_uses + (d) store-skipping stem builder + (3) ... | ?
 - gtv_ / gtb_: judge S3c sheet items 10 (strict second loop) + 11 (kept R1 residen ... | ?
 - ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job fi ... | ?
 - coord: real all_modes run (ATN's rule) after gtv_'s load run; then S3c part 1 (c ... | ?
 - review (Opus xHigh): grs_dead_uses + dead_outputs.py together, after grs_'s hand ... | ?
 - gtv_: review gtl_'s S3c stage (after its load run) -> lands after S3c part 1 (co ... | ?
-- grs_: 64-frame dumps (warm frames / dump without reset) in the resident protocol ... | ?
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
+- fcr_ (Opus xHigh): review grs_dead_uses df06d4e9b + rt_uses.h vtable copy safety ... | ?
+- gtl_: stage block() subtracts answer reset_ms when present (+ fake_resident send ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10309,7 +10309,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         4 lifetimes, 9 debug switch) = .proposed files for ATN (same as the lab proposals), never live without ATN.
         - [x] gtl_ (DONE 15:10, build moved to build\): re-run s3c_jobs.py on the merged recorder build testbin\scratch\coord_\helper_gpus2_rec (f54613dea,
         RENODX_TW_RECORDER_BUILD=1) -> 0 refused; then items 2 / 5 / 6 / 7 / 8 + 1b in a stage copy (coord 14:3x).
-        - [ ] grs_: dead outputs (a) resident log_uses + (d) store-skipping stem builder + (3) reset time in the answer
+        - [x] grs_ (DONE 15:26 df06d4e9b): dead outputs (a) resident log_uses + (d) store-skipping stem builder + (3) reset time in the answer
         (recorder-only; branch from atn-mods; ans / cmd schema parts as .proposed) (coord 14:3x).
         - [x] gti_ (DONE 14:48, review after grs_'s log format): dead outputs (c) dead_outputs.py with DXIL reflection, planted-fake proof (M10) (coord 14:3x).
         - [ ] gtv_ / gtb_: judge S3c sheet items 10 (strict second loop) + 11 (kept R1 resident during rotation) (coord
@@ -10358,7 +10358,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         fake_resident.py, lab_analyze.py (new), tests test_lab_fixture / keeper / unit / jobs + test_lab_analyze.py (new).
         - [ ] gtv_: review gtl_'s S3c stage (after its load run) -> lands after S3c part 1 (coord 15:10).
         - [x] gti_ (DONE 15:12): ReadLog closes the log file (with open) (coord 15:10).
-        - [ ] grs_: 64-frame dumps (warm frames / dump without reset) in the resident protocol, with dead uses (coord 15:10).
+        - [x] grs_ (DONE 15:26, warm frames): 64-frame dumps (warm frames / dump without reset) in the resident protocol, with dead uses (coord 15:10).
         - [ ] ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json.proposed v1.1 (coord 15:10).
         gtv_ LOAD RUN 15:02 = FAILS ON TIME LIMITS ONLY (plan_1117/gtv_load_run_handback.md; gtv_iq_review.md "## Load run
         (point 4)"; runner testbin\scratch\gtv_\run4.ps1 + fx4\): 32 normal-priority busy loops, suites below normal,
@@ -10394,9 +10394,33 @@ heading text are in HANDOFF_ARCHIVE.md)
         OPENs, if any, read with that in mind). Told gtl_: never bypass a tool's own guard without asking coord first.
         gtl_ RULE NOTED 15:19 (plan_1117/gtl_rule_noted_handback.md): won't bypass a tool's own guard again (asks coord);
         deleted its own copy testbin\scratch\gtl_\stage_suite_beside.sh; stage_suite.sh unchanged; idle, waits for gtv_.
-        Agents (3): gtp_ (gate round 19), gtv_ (gtl_ stage review incl. load fixes), grs_ (dead uses + 64-frame dumps);
-        GPU: all_modes run RUNNING (15:12, ~40-45 min, b4pmp185v) -> S3c part 1 (coord, gpu_lab.ps1 per s3c_run_sheet.md,
-        build\helper_gpus2_rec); one GPU job at a time
+        grs_ DEAD USES 15:26 (plan_1117/grs_dead_uses_handback.md; format note plan_1117/designs/grs_uses_log.md): branch
+        grs_dead_uses df06d4e9b from 4ff560134 (not pushed), rt_d3d12.hpp +324, rt_serve.h 36, NEW rt_uses.h 340, all
+        RENODX_RECORDER. (a) rt_uses.h: per-slot command list gets its own vtable copy, 14 methods logged, pointer same
+        (NVAPI / NRD / ExecuteCommandLists see the real object), vtable restored on stop; StartUses / UsesFrame / StopUses,
+        UseNames, stem naming, KeepCode keeps every pipeline's DXIL. Format = gti_'s ReadLog exactly (+ `# frame span pass`
+        comments, external rows `- - - external - <name>`: shared outputs, NRD inputs, root-UAV buffers, AS destinations,
+        readback copies); stems <stem>[_omm] (SwapStem's 13), <stem>[_omm].<digest> when swapped, dxil.<digest> others,
+        ser_library (no DXIL, conservative); uses_<n>/<stem>.dxil; clear never written (no UAV clears). (3) answer
+        reset_ms (null when none) -> lab.py block() subtracts it. 64-frame dumps = WARM FRAMES OVER LOOPS after the reset
+        (fits X1 / M3 snapshot start; names recorded frame + span x loop; dump-without-reset rejected: depends on earlier
+        jobs). Schemas PROPOSED only: lab\cmd.schema.json.proposed v1.1 extended (dump frames max 64), NEW
+        lab\ans.schema.json.proposed (reset_ms + uses description); resident_protocol.md.proposed untouched. (d) NEW
+        tools\tw\reference\store_skip.py: base rebuild must match build header byte for byte, -Zi listing finds slot stores
+        -> `{}`, signed variant, checks no store left on the slot + others unchanged, prints `config {stems}` line; refuses
+        shared / non-own statements; SwapStem's 13 only. Tests: test_uses_log.py + uses_test.cpp 8 / 8 (M10 fake through real
+        rt_uses.h: dead_tex DEAD, history LIVE, bound_tex NOT WRITTEN, final / readback LIVE); test_store_skip.py 3 / 3 (rt_soft
+        u0 4 stores, rt_trace_omm u35 by digest, u28 refused = parity-shared statement). Builds testbin\scratch\grs_: plain
+        5,689,856 B = base; rec 6,757,888 B; pe_compare plain vs base .text 97 B (source_location line numbers);
+        plain_check (base + only the pipeline lambda's `made`) ALL SECTIONS SAME. Limits: unknown resources buffer# /
+        texture# / va:<hex> per run; NVAPI cluster / PTLAS, NRD passes, OMM baker, BLAS inputs, input-copy / readback lists,
+        reference frozen table not logged (external rows cover reads); log_uses run timings include log CPU cost.
+        - [ ] fcr_ (Opus xHigh): review grs_dead_uses df06d4e9b + rt_uses.h vtable copy safety + store_skip.py +
+        dead_outputs.py (gti_) + the 2 .proposed schemas as one piece (coord 15:2x).
+        - [ ] gtl_: stage block() subtracts answer reset_ms when present (+ fake_resident sends it) (coord 15:2x).
+        Agents (4): gtp_ (gate round 19), gtv_ (gtl_ stage review incl. load fixes), fcr_ (dead-output piece review),
+        gtl_ (stage reset_ms); GPU: all_modes run RUNNING (15:12, ~40-45 min, b4pmp185v) -> S3c part 1 (coord,
+        gpu_lab.ps1 per s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
