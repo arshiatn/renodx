@@ -7648,11 +7648,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         lab.py:914 Resident.reuse `lab.get('dred', True)` reads a label without dred as ON -> `lab.get('dred') ==
         job['dred']`. lab.py now writes dred (l.1323 / 1496 / 1503), so new jobs flag "dred unknown on calibration
         G-..." until a calibration is re-run.
-        Agents (5): gtw_ (gtp_ re-check 8), gtv_ (gtl_ S1b + v1.1 review, + lab.py:914), gtb_ (yz1 / yz2), t4i_
-        (r21), c3i_ (B1.6 follow-ups). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to
-        testbin + R1), gpp_, ebr_ (re-checks t4i_), gtq_ (iq note after gtv_), gbc_, gpr_ (re-checks gtb_), gti_
-        (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (waits gtv_). GPU: H0 RE-RUN
-        (coordinator, since 05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends.
+        gtb_ YZ1-YZ2 DONE 05:5x (plan_1117/gtb_yz1yz2_handback.md; backup scratchpad\gtb_bak13; live via os.replace):
+        yz1 bash branch covers sh / zsh / dash / ksh, --rcfile / --init-file skip their file; yz2 start DROPPED from
+        WRAPPED (start as the child = no declared deadline; inside a cmd string still read as the first command),
+        wrong docstring line removed; yz3 (beyond my note-only ask, safe side): a nested budget.py watch child = no
+        declared deadline (the inner watch holds its child's limit) - accepted. gpr_'s probe 31 / 31; test_budget
+        33 OK + PSM1, watch --selftest 0, test_gpu_gate 30 OK + 1 skipped, test_report_check 9 OK; 10 new / changed
+        cases (start /b /wait ... --deadline-s 8 now none). Nothing real written. -> gpr_ RE-CHECK STARTED.
+        Agents (5): gtw_ (gtp_ re-check 8), gtv_ (gtl_ S1b + v1.1 review, + lab.py:914), gpr_ (gtb_ yz1 / yz2
+        re-check), t4i_ (r21), c3i_ (B1.6 follow-ups). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after
+        H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_), gtq_ (iq note after gtv_), gbc_, gtb_ (waits gpr_),
+        gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (waits gtv_). GPU: H0
+        RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
