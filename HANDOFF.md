@@ -522,7 +522,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 BUT keep B3b (re ... | ?
 - tick audit (Opus xHigh, read only): every [x] box really done -> handoff_plan\ti ... | ?
 - tick-only verify (Opus xHigh, read only): plan.md section 2's 200 rows -> coord ... | ?
-- coord: ATN's decision list (all questions + recommendations) + full open-items p ... | ?
+- ATN: answer decisions_for_atn.md ("all your picks" OK); A1 gates the 22 open-ite ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -11191,7 +11191,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         ~7 min B1L1 pair -> ebr_ re-check (coord 19:1x).
         - [ ] tick audit (Opus xHigh, read only): every [x] box really done -> handoff_plan\tick_audit\*.tsv (coord 19:1x).
         - [ ] tick-only verify (Opus xHigh, read only): plan.md section 2's 200 rows -> coord ticks the confirmed ones.
-        - [ ] coord: ATN's decision list (all questions + recommendations) + full open-items plan summary -> ATN.
+        - [x] coord (SENT 19:2x): ATN's decision list (all questions + recommendations) + full open-items plan summary -> ATN.
+        Files: handoff_plan\decisions_for_atn.md (A1 start the 22 groups? A2 restart + "start" when READY; B-F = plan.md's
+        questions in plain English, 50 numbered, picks given) + handoff_plan\full_plan_overview.md (one page, three plans).
+        - [ ] ATN: answer decisions_for_atn.md ("all your picks" OK); A1 gates the 22 open-item groups.
         STARTED 19:1x-19:2x: lg3_ a89ff094c60c1b7cf (Sonnet High, worktree, branch rmt_lg3: group 3; addon.cpp only after
         asking); b3s_ ad0d4c962a4677665 (Sonnet High, worktree, rmt_b3s: B3b S4 -> S5 -> S6 implementation, owns
         animation_rows.hpp + pending_sweep.hpp, addon.cpp in S6 after coord's OK; api_notes.md in testbin\scratch\b3s_);
