@@ -906,10 +906,18 @@ int main(int argc, char** argv) {
     std::printf("   shared.h DIVINITY_V35_* (%.2f / %.2f / %.2f / %.2f): worst %.1f %%; Musa's own (control, must fail 5 %%): %.1f %%\n",
                 DIVINITY_V35_CONTRAST, DIVINITY_V35_SHADOWS, DIVINITY_V35_SATURATION, DIVINITY_V35_HIGHLIGHT_CONTRAST,
                 100.f * shipped_score, 100.f * own_score);
-    CHECK(shipped_score < 0.05f);
-    CHECK(shipped_score <= best.score + 0.005f);
+    // A fit within 5 % ships (the defaults its result); none: the defaults stay Musa's own (the pilot's rule, no fifth
+    // slider without the coordinator). R1's save: the best 20.6 %, so Musa's own.
+    if (best.score < 0.05f) {
+      CHECK(shipped_score < 0.05f);
+      CHECK(shipped_score <= best.score + 0.005f);
+    } else {
+      std::printf("   no fit within 5 %%: the defaults stay Musa's own\n");
+      CHECK(shipped_score == own_score);
+    }
     CHECK(own_score > 0.05f);
     Report("Musa's own sliders, the save", sdr, own_ramp);
+    Report("the 15 % fit's best, the save (not shipped unless within 5 %)", sdr, ours(save, with(own, best.values)));
     Report("the V35 defaults (shared.h), the save", sdr, shipped_ramp);
     for (size_t i = 0; i < DISPLAYS.size(); ++i) {
       const auto& [peak, paper_white] = DISPLAYS[i];

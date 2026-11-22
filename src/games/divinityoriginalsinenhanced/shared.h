@@ -69,8 +69,8 @@ struct ShaderInjectData {
 
 // PsychoV35's slider defaults here: the game's own response (Hable's toe below mid gray, its colour at equal
 // lightness), Highlight Contrast keeping PsychoV35's highlights. Minimax-fitted on WARP against the game's SDR with R1's
-// traced tone map constants (test/tw_divinity1, part 7); the other PsychoV35 sliders keep Musa's defaults. Musa's own
-// (1) until the fit's run in the build window writes its result here.
+// traced tone map constants (test/tw_divinity1, part 7); the other PsychoV35 sliders keep Musa's defaults. No fit of
+// these four reaches 5 % (the best 20.6 %), so they stay Musa's own (1).
 #define DIVINITY_V35_CONTRAST           1.f
 #define DIVINITY_V35_SHADOWS            1.f
 #define DIVINITY_V35_SATURATION         1.f
