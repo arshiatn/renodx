@@ -497,6 +497,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
 - ATN: allow rule for all_modes_check.ps1 (plain + -DryRun) after upr_ GO (coord 1 ... | ?
 - h0i_: MUST 1-2 + SHOULD 3-4 + offline test / selftest updates; upr_ re-checks (u ... | ?
+- gtv_: lab-suite load run NOW (GPU free 14:07) (coord 14:07). | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10208,9 +10209,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         sha256; new selftest cases (gone on both, a = b size != baseline, same new bytes both, baseline-flaky mode fails
         both); then upr_ diff re-check -> GO.
         - [ ] h0i_: MUST 1-2 + SHOULD 3-4 + offline test / selftest updates; upr_ re-checks (upr_ 14:0x).
-        Agents (2): gtw_ (round 18 gate re-check), h0i_ (all_modes MUST 1-2 + SHOULD 3-4); gtv_ waits for load-run go;
-        rec_verify RUNNING (13:35, ~100 min) -> grs_ reads it -> merge gpu_s2 -> S3c; all_modes run waits for upr_ GO +
-        ATN rule
+        rec_verify grs_s2r = PASS 14:07 (task b2h7mhp0m exit 0; reference\runs\verify_grs_s2r): "outputs the base repeats
+        and a new folder changes: 0 (outputs the base does not repeat: 3)" = nrd_bounce_reuse / _sharc / _ser bounce.bin
+        (base twice DIFFERENT, known). gpu_s2 merge conditions met (gtv_ MERGE-READY 05:4x + H0 re-run + rec_verify).
+        gpu_s2 d336c55d3 (base c3ea4925f; helper build.ps1, main.cpp, rt_burn.hlsl, rt_d3d12.hpp +1307, rt_moments.hlsl,
+        rt_serve.h new; 2430 + / 254 -): git merge-tree vs atn-mods clean -> MERGE GATE NOW.
+        - [ ] gtv_: lab-suite load run NOW (GPU free 14:07) (coord 14:07).
+        Agents (3): gtw_ (round 18 gate re-check), h0i_ (all_modes MUST 1-2 + SHOULD 3-4), gtv_ (lab load run); gpu_s2
+        merge gate NOW -> builds -> push -> S3c (gpu_lab.ps1); all_modes run waits for upr_ GO + ATN rule (combined tree
+        incl. gpu_s2)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
