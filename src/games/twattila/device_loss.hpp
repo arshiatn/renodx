@@ -251,23 +251,23 @@ static void FormatFault(std::span<char> line, const char* kind, const EXCEPTION_
 static LONG CALLBACK OnException(EXCEPTION_POINTERS* info) {
   const EXCEPTION_RECORD& record = *info->ExceptionRecord;
   switch (record.ExceptionCode) {
-    case EXCEPTION_ACCESS_VIOLATION:
-    case EXCEPTION_IN_PAGE_ERROR:
-    case EXCEPTION_ILLEGAL_INSTRUCTION:
-    case EXCEPTION_PRIV_INSTRUCTION:
-    case EXCEPTION_INT_DIVIDE_BY_ZERO:
-    case EXCEPTION_INT_OVERFLOW:
-    case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
-    case EXCEPTION_FLT_DENORMAL_OPERAND:
-    case EXCEPTION_FLT_DIVIDE_BY_ZERO:
-    case EXCEPTION_FLT_INEXACT_RESULT:
-    case EXCEPTION_FLT_INVALID_OPERATION:
-    case EXCEPTION_FLT_OVERFLOW:
-    case EXCEPTION_FLT_STACK_CHECK:
-    case EXCEPTION_FLT_UNDERFLOW:
+    case static_cast<DWORD>(EXCEPTION_ACCESS_VIOLATION):
+    case static_cast<DWORD>(EXCEPTION_IN_PAGE_ERROR):
+    case static_cast<DWORD>(EXCEPTION_ILLEGAL_INSTRUCTION):
+    case static_cast<DWORD>(EXCEPTION_PRIV_INSTRUCTION):
+    case static_cast<DWORD>(EXCEPTION_INT_DIVIDE_BY_ZERO):
+    case static_cast<DWORD>(EXCEPTION_INT_OVERFLOW):
+    case static_cast<DWORD>(EXCEPTION_ARRAY_BOUNDS_EXCEEDED):
+    case static_cast<DWORD>(EXCEPTION_FLT_DENORMAL_OPERAND):
+    case static_cast<DWORD>(EXCEPTION_FLT_DIVIDE_BY_ZERO):
+    case static_cast<DWORD>(EXCEPTION_FLT_INEXACT_RESULT):
+    case static_cast<DWORD>(EXCEPTION_FLT_INVALID_OPERATION):
+    case static_cast<DWORD>(EXCEPTION_FLT_OVERFLOW):
+    case static_cast<DWORD>(EXCEPTION_FLT_STACK_CHECK):
+    case static_cast<DWORD>(EXCEPTION_FLT_UNDERFLOW):
     case 0xC00002B4:  // STATUS_FLOAT_MULTIPLE_FAULTS (SSE)
     case 0xC00002B5:  // STATUS_FLOAT_MULTIPLE_TRAPS (SSE)
-    case EXCEPTION_STACK_OVERFLOW:
+    case static_cast<DWORD>(EXCEPTION_STACK_OVERFLOW):
       break;
     default:
       // C++ exceptions, thread names, breakpoints and single steps (the Graphics watch's) are no faults.
