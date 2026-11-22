@@ -654,6 +654,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN box (gpr_): with shell_heredoc OFF, python heredoc edits of real code pass, ... | ?
 - gtp_ round 24 also: gtw_'s R23-2 speed fix (blocks the mirror suite) + R23-1 OPE ... | ?
 - b3t_ after the batch: T1, T3, T2, T6, which part runs 12e, R6 (see the B3b test ... | ?
+- WH2 V35 later: a 0.25 knot or a continuity-constrained fit for burns 0.16-0.25 ( ... | ?
+- G10 requests (g02_): part 29 adds gather 4.1 builds 27AF3D62 + A03688A3 with a C ... | ?
+- WH filter kind (gather 4.1 / software / pcf) is chosen in engine code, not a pre ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12494,6 +12497,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         b3t_'s worktree got 8 external\* junctions (read-only links to D:\Dev\renodx\external): delete them alone first.
         lg3_ told to merge 45fb2ca36 into rmt_er5.
         - [ ] b3t_ after the batch: T1, T3, T2, T6, which part runs 12e, R6 (see the B3b test box above) + er5o_ m1 / NIT 5.
+        g02_ FIXES + PER-MAP (handbacks/g02_fixes_permap_handback.md): ho_g02 c319afc05 (rvf_ M1 the 6 gather 4.1 builds per
+        game on the far-plane lists, M2 own point CLAMP s1 for the sampled lists + restore, n3, m1 WH2 HC 0.93 = 10 % guard,
+        m2 WH1 wrong control misses 33.1 %, n1, n5) + 91f97b2ca (ATN 27 per-map V35 from the game's files, no trace: t00
+        2333E142 b1 burn + brightness copied on the GPU to a 16-byte buffer bound at b4 for t01-t08; 11-knot table; 26 / 35
+        pack burns < 5 %, all nearer than Musa's own; burns 0.16-0.25 5.4-8.5 %, 0.8 / 0.83 11.9 / 13.3 %; highlights 9.9 %
+        / 13.0 %; controls exact). WH1 + WH2 amd64 build, v35_fit PASS. rvf_ re-check sent 23:0x ("rvf_ g02 recheck").
+        WH1 per-map not needed (Musa's own within 0.3 % / 3 %).
+        - [ ] WH2 V35 later: a 0.25 knot or a continuity-constrained fit for burns 0.16-0.25 (optimum jumps).
+        - [ ] G10 requests (g02_): part 29 adds gather 4.1 builds 27AF3D62 + A03688A3 with a CLAMP sampler; tw_psychov35
+        GammaBindings' zero distortion texture shifts the game-bytes read by 0.01 UV (the fit binds 128/255).
+        - [ ] WH filter kind (gather 4.1 / software / pcf) is chosen in engine code, not a preference (M1.5): note only.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
