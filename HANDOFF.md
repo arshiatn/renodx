@@ -6822,9 +6822,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         gtb_); Q8(b) lock wait = OK (start lines unchanged, Ctrl+C 3 / 3 real console, REFUSED clean, -Busy right);
         Nit 8 FIX (PS 5.1 wraps the error record at 120 columns, long TEMP -> empty message; test 28 / 29) + optional
         Nits 10 / 11 -> gti_ RESUMED.
-        Agents (12): bd1r_ (R-S5 re-check), c33i_ (nit 5), lgf2_ (r3: T1 / N7 / T2 / F4), gtp_ (spec.py rank
-        fix), t4i_ (r17 fixes), upr_ (v2.3 spot-check, then H0 script), gti_ (Nit 8), gtb_ (Nit 9), gtl_ (S3),
-        gtq_ (B1), gtk_ (C1 + C2), gpr_ (price + web review).
+        gtb_ Nit 9 DONE 02:4x (docstring lists 'dropped to / down to / reduced from' as not caught).
+        lgf2_ r3 DONE 02:4x (render_mt/reports/lgf2_r3_handback.md): rmt_lg2 6ae4dc4f5 (T2 build.ps1 fails properly:
+        old exe deleted first, Dxc throws, clang-cl checked; N7 'units and grass'), 73db91fb4 (T1 poll 5 s; x86 5 / 5,
+        amd64 3 / 3), 6248d816c (F4 comments). F4 = FALSE ALARM: the local FidelityFX-SDK-2.4.0 license.md lists the
+        signedbin DLLs (:649-658) + API headers under MIT (:986-992; coordinator, lgf2_ and upr_ all read it),
+        binary-only covers only files not named; release_zip.py already ships the SDK licence as FSR_SDK_LICENSE.md;
+        credits.hpp:73 'MIT' is right. Nothing released was wrong. lga_ r3 RE-CHECK STARTED; then merge rmt_lg2 ->
+        rebase rmt_h0, Mega Geometry 4K run (gap), S2 grs_.
+        gtk_ C1 + C2 DONE 02:4x (plan_1117/gtk_c1_c2_handback.md): HARNESS_SCENE mode (rt_harness\scene_mode.hpp, 3
+        hooks in tw_rt_harness.cpp, original kept), 7 scenes, CPU model (BVH 0 differ, furnace -0.02 % / -0.08 %, control
+        fails), unset path = original code (asm diff only __LINE__), pbrt-v4 20e41fd CPU build in testbin\pbrt (Apache-2.0),
+        19 .pbrt parse, ~1.4 s / spp at 4K. Never run on the GPU. gbc_ (a182e1ee424693754, Opus xHigh) REVIEW STARTED
+        (C1 + C2 now, B1 when gtq_ hands back).
+        upr_ 02:4x (designs/upr_v23_h0script_handback.md): v2.3 = GO WITH FIXES: Ray Regeneration cost WRONG (fixed per
+        context: 3 contexts ~15-17 ms 1440p / ~34-40 ms 4K; hybrid ~11-12 ms 1440p), U12a not 'no new mechanism' for
+        Attila, U13 precision levers need Q-gates, ~12 cites moved, F4 wrong -> upt_ RESUMED (v2.4) + [ ] re-ask ATN Q11 /
+        Q13 with the corrected ms. H0 script = FIX 3 Musts (M1 directx.hpp missing from the archived trees, M2 run 4
+        lag rule two-sided, M3 registers at the 8-register step + NaN passes) + Shoulds -> h0i_ RESUMED (also: cut GPU
+        time where proof allows; ATN asked why 2.7 h).
+        gtp_ RANK DONE 02:4x (plan_1117/gtp_rank_handback.md): symbol's own sdk-api page first, run_tests 242 / 242,
+        0.13 s. gtw_ S1c re-check 4 (T1b + sdk-api + rank) STARTED. INSTALL guide SENT to ATN 02:4x (file card).
+        Agents (12): bd1r_ (R-S5 re-check), c33i_ (nit 5), lga_ (r3 re-check), gtw_ (S1c re-check 4), t4i_ (r17
+        fixes), upt_ (v2.4), h0i_ (H0 script fixes), gti_ (Nit 8), gtl_ (S3), gtq_ (B1), gbc_ (C1 + C2 review), gpr_
+        (price + web review).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
