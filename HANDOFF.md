@@ -487,13 +487,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_ (tooling): the lab fixture's 1.5 s hang timeout flakes under build load ("r ... | ?
 - worktree cleanup (ATN): grs_'s worktree build\downloads_min (6 junctions - links ... | ?
 - grs_ (after rec_verify): fg_proxy_d3d12.hpp Presented() comment -> fcr_'s exact ... | ?
-- gtp_: R16-1 (here-string key + seed() strips tabs / newlines; clean the 11 broke ... | ?
 - gpr_: re-check round 14's exe moves (tools/ + scratch exe keys) with production ... | ?
 - coordinator: H0 re-run after gtv_'s keeper runs end (no lab fixture / keeper tes ... | ?
 - gtl_ (later, Low): lab fakes are named like the real harness -> H0's guard stops ... | ?
-- gtp_ round 17: gtw-R16-1..10 (Should first: R16-5, R16-6, R16-1, R16-2 perl, R16 ... | ?
 - c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate le ... | ?
 - gtl_: lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap ... | ?
+- gtw_: re-check round 17 gate side (corpus, probe shapes, comment-free view can't ... | ?
+- gpr_: re-check round 17 price side (re-key, re-seed, VERIFY exemption scope) (co ... | ?
+- gtl_: confirm / object to gtp_'s VERIFY exemption of tests/test_lab_*.py via gtl ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9906,7 +9907,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         inner command (ps1 scratch:<name>:<h8>). Probe note: rounds 12-15 box probes keyed tools/ + scratch paths
         unlike production (TEMP in scratchpad); round 15 holds (light keys only); round 14 exe moves may be
         under-checked -> gpr_ re-checks round 14 with production paths.
-        - [ ] gtp_: R16-1 (here-string key + seed() strips tabs / newlines; clean the 11 broken price_seed.tsv lines by
+        - [x] gtp_ (DONE 12:4x round 17): R16-1 (here-string key + seed() strips tabs / newlines; clean the 11 broken price_seed.tsv lines by
             re-seed, no hand edit) + R16-2 (Start-Process keys); decide gtl_lowrun.py refusal (a) with gtl_ (shadow);
             gpr_ re-checks (gpr_ 11:43).
         - [ ] gpr_: re-check round 14's exe moves (tools/ + scratch exe keys) with production paths (gpr_ 11:43).
@@ -9960,7 +9961,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         quoted cmd switch, inline code reading stdin (design limit). Round 17 re-runs the corpus (R16-5 / R16-6). For
         gpr_: odd WORD keys (empty, fragments) likely the same cause as gtw-R16-6. Bitdefender: gtw_ re-ran b0li2ixz8's cut
         step into testbin\scratch\gtw_ (same result: 37 R misses, 1 P over).
-        - [ ] gtp_ round 17: gtw-R16-1..10 (Should first: R16-5, R16-6, R16-1, R16-2 perl, R16-3, R16-4) + gpr's R16-1 /
+        - [x] gtp_ round 17 (DONE 12:4x, live, re-checks out): gtw-R16-1..10 (Should first: R16-5, R16-6, R16-1, R16-2 perl, R16-3, R16-4) + gpr's R16-1 /
             R16-2; corpus re-run; gtw_ + gpr_ re-check (coord 12:05).
         gpr_ ROUND 14 RE-CHECK = HOLDS, 1 CORRECTION 11:4x (plan_1117/designs/gpr_round14_recheck_handback.md): production
         keys (bak19 vs bak20, PROJECT + real TEMP), 88,128 calls: 471 key changes (467 exe arg-bucket); refusal (a) flips
@@ -10011,8 +10012,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         fixture lock deadline 11.25 -> 20 s (MODEL_SEED lock_s 0.5 -> 4.0, KEEPER_START_S dropped -> lab's 30 s); H0 clash:
         fake side, unguarded(exe) copies lab_sleep.exe as gtl_fake_<name> (H0 pattern doesn't match; h0_gpu_runs.ps1
         unchanged). Waits for the coordinator's H0-done message before its suites.
-        Agents (2): gtp_ (round 17: gpr's R16-1 / R16-2 + gtw-R16-1..10), gtl_ (edits ready, suites after H0); H0 re-run
-        NOW (12:09) -> tell gtl_ H0 done; ff_s12 + grs_xess_guard after H0
+        gtp_ ROUND 17 = LIVE, SHADOW 12:4x (plan_1117/gtp_round17_handback.md; backup testbin\scratch\gtp_\gtp_bak22, mirror
+        gtp_mirror6, outputs gtp_r17_*): suite mirror 997/997, live 997/997; control (old hook) 64 failures all in new
+        families. gpr-R16-1: @' / @" / @( statement keys "sh @", kind() + seed() turn tab / newline into spaces -> 0 broken
+        seed lines (11 before). gpr-R16-2: Start-Process without -Wait -> light; with -Wait the ArgumentList is joined and
+        the inner command keyed (ps1 tools/tw/h0_gpu_runs.ps1, build cmake amd64 twtroy warm); quoted @('a','b') = one value
+        (also fixed gated_build -Targets @(...) keys); limit: -PassThru + WaitForExit keys light (1 call). gtl_lowrun:
+        EXEMPTED (VERIFY matches tests/test_lab_*.py run from lab/; same wrapper on another slow script still refused) ->
+        gtl_ to confirm. gtw-R16-1..10 all done (stdin paths = code; perl -I/-M/-m, bun -l/--loader, unknown node/bun/deno
+        --long takes the next word; glued redirects cut; if / while / until / { } skipped; $( ) + Bash backticks scanned
+        (not quoted heredoc bodies / code texts); a second comment-free view scanned beside the original, kind() keys from
+        it; command -p / --, time -p, env -u/-C/-S, stdbuf, xargs, find -exec; quotes / \ removed from network / PKG heads;
+        quoted cmd switch unwrapped; -c / -e text running stdin makes the heredoc code, stdin as data stays data); probe 67
+        shapes all as wanted (old hook missed all but env -i); ~75 new tests. Corpus 15,119: old 252 -> new 250 refused, 4
+        differ (3 gtl_lowrun test_lab_jobs runs pass = VERIFY decision; 1 new refusal = gtw_'s probe-editing python -c with
+        evil.example inside, by design); a false hit (backticks in a python heredoc body) fixed before go-live. Keys: 548
+        of 88,292 change (452 light -> light, sh $f -> sh $; 39 heavy -> light intended); regression kind() dropping \" in
+        quotes (cmd //c "\"clang-cl.exe\"") caught + fixed. Re-seed 106,323 seeds, 7,198 price rows. Live swap atomic after
+        live = bak22: gate_hook.py, tool_prices.py (seed key fix), tests/run_tests.py; INSTALL_FOR_ATN.md unchanged.
+        - [ ] gtw_: re-check round 17 gate side (corpus, probe shapes, comment-free view can't let anything through) (coord
+            12:5x).
+        - [ ] gpr_: re-check round 17 price side (re-key, re-seed, VERIFY exemption scope) (coord 12:5x).
+        - [ ] gtl_: confirm / object to gtp_'s VERIFY exemption of tests/test_lab_*.py via gtl_lowrun (coord 12:5x).
+        Agents (3): gtw_ (round 17 gate re-check), gpr_ (round 17 price re-check), gtl_ (edits ready, suites after H0;
+        VERIFY answer); H0 re-run NOW (12:09) -> tell gtl_ H0 done; ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
