@@ -624,6 +624,7 @@ class Resident {
 
  private:
   static constexpr uint64_t SEED_ROOM = uint64_t{1} << 20;
+  static constexpr uint32_t DUMP_FRAMES = 64;  // dump's most frames (M10: a store-skipping stem's dumps over 64 frames)
   static constexpr uint32_t SETTLE_LOOPS = 5;  // Load's most loops before the snapshot
   static constexpr std::array<std::string_view, 9> COMMANDS = {"config", "run", "dump", "trace", "moments", "seed", "light_anim", "status", "stop"};
   // `wide` as UTF-8 (never throws; unpaired surrogates become U+FFFD).
@@ -1016,16 +1017,18 @@ class Resident {
       if (!OnlyKeys(args, {"folder", "frames", "histories"}, &why) || !ControlFolder(args.at("folder").get<std::string>(), &folder, &why)) {
         return {.status = "REFUSED", .error = why};
       }
-      // `frames` (gtl_'s v1.1 proposal a; 1 without it): the first frames after the reset, named as recorded (their played
-      // frames are their offset later), within one loop. `histories` (v1.1; off without it): the last frame's histories
-      // too (~2.5 GB at 4K).
+      // `frames` (gtl_'s v1.1 proposal a; 1 without it): the first frames after the reset, up to DUMP_FRAMES over loops,
+      // named as recorded plus a loop's span per loop played (their played frames are their offset later; the same names
+      // after every reset). `histories` (v1.1; off without it): the last frame's histories too (~2.5 GB at 4K).
       const auto count = args.value("frames", 1u);
-      if (count == 0 || count > frames_.size()) return {.status = "REFUSED", .error = std::format("dump frames {} is not 1 to {}", count, frames_.size())};
+      if (count == 0 || count > DUMP_FRAMES) return {.status = "REFUSED", .error = std::format("dump frames {} is not 1 to {}", count, DUMP_FRAMES)};
       std::string mode;
       if (!Reset(&mode, &why)) return Failed(why);
       const uint32_t offset = span_ * loops_ + seed_;
-      scene_->RecordFrames(folder, scene_->PlaybackHeader(frames_.front().front()).frame + offset, scene_->PlaybackHeader(frames_[count - 1].front()).frame + offset,
-                           false, args.value("histories", false), offset);
+      const auto recorded = static_cast<uint32_t>(frames_.size());
+      scene_->RecordFrames(folder, scene_->PlaybackHeader(frames_.front().front()).frame + offset,
+                           scene_->PlaybackHeader(frames_[(count - 1) % recorded].front()).frame + (span_ * ((count - 1) / recorded)) + offset, false,
+                           args.value("histories", false), offset);
       bool played = true;
       for (uint32_t frame = 0; frame < count && played; ++frame) played = Advance(nullptr, &why);
       const std::string summary = scene_->FinishRecording();
@@ -1166,18 +1169,31 @@ class Resident {
     const auto warm = args.at("warm").get<uint32_t>();
     const std::string timing = args.at("timing").get<std::string>();
     if (frames == 0 || (timing != "passes" && timing != "total")) return {.status = "REFUSED", .error = "frames below 1, or timing not passes / total"};
-    if (args.at("log_uses").get<bool>()) return {.status = "REFUSED", .error = "log_uses: the resource-use log (M10) is not in this build"};
     if (options_.nsight) return {.status = "REFUSED", .error = "no timing in an injected (--nsight) resident"};
     const bool reset = args.at("reset").get<bool>() || loaded_level_ != config_.micromap_level;
     if (const uint32_t seed = reset ? pending_seed_ : seed_; seed != 0 && !BelowFrameLimit(seed, uint64_t{reset ? 0u : position_} + warm + frames)) {
       return {.status = "REFUSED", .error = std::format("with seed {} these frames would take played frames to 2^24", seed)};
     }
     std::string mode = "none";
+    // reset_ms: the reset's (or full reload's) wall time, which the measured frames do not hold.
+    const auto reset_start = std::chrono::steady_clock::now();
     if (reset && !Reset(&mode, &why)) return Failed(why);
+    const double reset_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - reset_start).count();
     for (uint32_t frame = 0; frame < warm; ++frame) {
       if (!Advance(nullptr, &why)) return Failed(why);
     }
     if (!scene_->ServeTiming((timing == "passes") ? RtScene12::SERVE_TIMING_PASSES : RtScene12::SERVE_TIMING_TOTAL)) return Failed("no GPU timestamps");
+    // log_uses: the measured frames' resource-use log in uses_<n>/ (uses.tsv and the stems' DXIL; rt_uses.h), its CPU
+    // cost in the frames' times.
+    const std::string uses = std::format("uses_{}", n);
+    if (args.at("log_uses").get<bool>()) {
+      std::error_code error;
+      std::filesystem::create_directories(options_.control / uses, error);
+      if (error || !scene_->StartUses(options_.control / uses, &why)) {
+        scene_->ServeTiming(RtScene12::SERVE_TIMING_OFF);
+        return Failed(error ? std::format("{} could not be made", uses) : why);
+      }
+    }
     const uint32_t burnt = scene_->BurnRuns();
     std::vector<std::pair<std::string, std::vector<double>>> table;  // each row's ms a frame (NaN: not in it)
     std::vector<double> clocks;
@@ -1185,7 +1201,9 @@ class Resident {
     double budget = 0.0;
     for (uint32_t frame = 0; frame < frames; ++frame) {
       std::vector<std::pair<std::string, double>> rows;
+      scene_->UsesFrame(frame);
       if (!Advance(&rows, &why)) {
+        scene_->StopUses();
         scene_->ServeTiming(RtScene12::SERVE_TIMING_OFF);
         return Failed(why);
       }
@@ -1199,6 +1217,7 @@ class Resident {
       usage = std::max(usage, static_cast<double>(memory.CurrentUsage) / (1 << 20));
       budget = static_cast<double>(memory.Budget) / (1 << 20);
     }
+    const bool uses_written = scene_->StopUses();
     scene_->ServeTiming(RtScene12::SERVE_TIMING_OFF);
     if (clocks.empty()) return {.status = "FAILED", .error = "no GPU clock (NVAPI)"};
     nlohmann::json rows = nlohmann::json::object();
@@ -1225,7 +1244,8 @@ class Resident {
                    {"frames", frames},
                    {"warm", warm},
                    {"raw", raw_written ? nlohmann::json(raw) : nlohmann::json(nullptr)},
-                   {"uses", nullptr},
+                   {"uses", uses_written ? nlohmann::json(uses + "/uses.tsv") : nlohmann::json(nullptr)},
+                   {"reset_ms", (mode != "none") ? nlohmann::json(reset_ms) : nlohmann::json(nullptr)},
                    {"tag", args.at("tag")},
                    {"burn_runs", (config_.burn_loops != 0) ? nlohmann::json(scene_->BurnRuns() - burnt) : nlohmann::json(nullptr)},
                    {"resolution", {size[0], size[1]}}});
