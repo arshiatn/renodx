@@ -467,11 +467,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (cleanup list): tools\tw\h0\__pycache__ (07:42) may be deleted (upr_ 08:3x). | ?
 - gtq_ S6 (Should): seed runs played on recording 2 built with --recording naming ... | ?
 - gtq_ (Should): permanent cross test - a builder test that writes played.json wit ... | ?
-- gtl_ (nit): Resident has no `cfg` until config() runs - self.cfg = None in __ini ... | ?
-- gtl_: jobs fixture test_iq_kinds gate-phase deadline 12.5 s failed under load tw ... | ?
 - lab owner (later, optional): record `dxr12` (machine state from config's answer) ... | ?
 - gtp_ (nit): the 5 ms kind() timing check failed once under parallel load (5.9 ms ... | ?
 - ATN (morning report): player risk - a cold shader cache (driver update / new rel ... | ?
+- gtb_: budget.py SEEDS gate_s 1.0 caps a real job's gate phase at 12.5 s until le ... | ?
+- gtv_: quick re-check of gtl_'s v1.2 follow-ups (golden hex, cfg None, fixture +6 ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8489,9 +8489,9 @@ heading text are in HANDOFF_ARCHIVE.md)
             (also closes gtv_'s older "runs came from the given recording" nit) (gtv_ 08:3x).
         - [ ] gtq_ (Should): permanent cross test - a builder test that writes played.json with the real lab.py
             keep_played (gtv_ 08:3x); gtl_: one golden hex in the lab suite too.
-        - [ ] gtl_ (nit): Resident has no `cfg` until config() runs - self.cfg = None in __init__ + a ToolFault in
+        - [x] gtl_ (DONE 08:4x) (nit): Resident has no `cfg` until config() runs - self.cfg = None in __init__ + a ToolFault in
             played_config, not an AttributeError (gtv_ 08:3x).
-        - [ ] gtl_: jobs fixture test_iq_kinds gate-phase deadline 12.5 s failed under load twice today - look
+        - [x] gtl_ (DONE 08:4x): jobs fixture test_iq_kinds gate-phase deadline 12.5 s failed under load twice today - look
             whether a looser deadline is right (gtv_ 08:3x).
         - [ ] lab owner (later, optional): record `dxr12` (machine state from config's answer) in played.json;
             iq gate could check A' = A by config_sha256 (gtv_ 08:3x).
@@ -8537,9 +8537,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN (morning report): player risk - a cold shader cache (driver update / new release) can freeze
             the first DLAA frame ~20 s and then turn DLAA / RR / RT / FG off for the session; grs_'s fix design
             under review (grs_ 08:4x).
-        Agents (10): h0i_ (H0 F1-F4), gtq_ (S6 + cross test), gtl_ (golden hex + cfg nit + jobs deadline), gtw_ +
-        gpr_ (gtp_ round 12 re-check), gtb_ (slot-wait test + load), t4i_ (-B edits), b13r_ (c3i_ rmt_b1rt
-        review), ffr_ (grs_ first-frame design review), lga_ (release regression look)
+        gtl_ V1.2 FOLLOW-UPS DONE 08:4x (plan_1117/gtl_v12_followups_handback.md; backups scratchpad\gtl_backup_v12f;
+        logs gtl_runs10; runner gtl_lowrun.py): unit 33 / 33, jobs 32 / 32, ps1 5, keeper 24 (below-normal, -I -B,
+        budget.py / test_budget.py untouched). (1) test_config_hash_golden: one fixed config (non-ASCII scene_key
+        "Zo\u00eb") through keep_played -> acb120e25c2ecab0f8265fdd1001fac908fa669005f6df59d27abed5f9bd28d9; also
+        checks played_config gives exactly the 13 documented keys; same pair sent to gtq_ for the cross test. (2)
+        Resident self.cfg = None; played_config raises ToolFault "a dump before any config was sent" +
+        test_config_before_any_dump. (3) jobs fixture: gate + score deadlines +60 s (fixture only; 12.5 s came from
+        the fixture's TIMINGS gate_s 1.0 x 2.5 + 10; no lab test checks a gate / score SLOW; price refusals use
+        expected seconds). REPORT: budget.py SEEDS gate_s is also 1.0 -> a real job's gate phase is capped at 12.5
+        s until real gate times are learned; heavy CPU beside a real job could SLOW-stop it = gtb_'s call. -> gtv_
+        quick re-check together with gtq_ S6; gtb_ told (seed).
+        - [ ] gtb_: budget.py SEEDS gate_s 1.0 caps a real job's gate phase at 12.5 s until learned - raise the
+            seed or keep (gtl_ 08:4x; gtv_ saw 48.6 s under other agents' load).
+        - [ ] gtv_: quick re-check of gtl_'s v1.2 follow-ups (golden hex, cfg None, fixture +60 s) with gtq_ S6.
+        Agents (9): h0i_ (H0 F1-F4), gtq_ (S6 + cross test), gtw_ + gpr_ (gtp_ round 12 re-check), gtb_ (slot-wait
+        test + load + gate seed), t4i_ (-B edits), b13r_ (c3i_ rmt_b1rt review), ffr_ (grs_ first-frame design
+        review), lga_ (release regression look)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
