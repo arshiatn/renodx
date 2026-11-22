@@ -1087,10 +1087,14 @@ void ReuseTexel(uint2 id) {
     if (other_surface.w <= 0.f || abs(other_surface.w - position.w) > 0.1f * position.w || dot(surface_normal[uint2(texel)].xyz, normal) < 0.9f) continue;
     const float3 other_origin = other_surface.xyz;
 #endif
-    const Reservoir other = LoadReservoir(reuse_samples[set], reuse_data[set], uint2(texel));
+    Reservoir other = LoadReservoir(reuse_samples[set], reuse_data[set], uint2(texel));
     if (other.count <= 0.f) continue;
     const float jacobian = ReuseJacobian(other, other_origin, origin);
     if (!(jacobian > 0.1f && jacobian < 10.f)) continue;
+    // Its light carries ContactShade at the neighbour's distance to the hit: this receiver's instead (a sample beside the
+    // neighbour's start, far from this one, stayed dark here; one beside this start lit it as if far).
+    const float contact_there = ContactShade(distance(other.hit, other_origin));
+    if (contact_there > 1e-3f) other.light *= ContactShade(distance(other.hit, origin)) / contact_there;
     Merge(combined, other, ReuseTarget(origin, normal, other) * other.weight * other.count * jacobian,
           Random(uint4(id, frame, DIM_REUSE_MERGE + neighbour)));
   }
