@@ -505,7 +505,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtv_: re-check gtl_'s F1-F5 by reading + the detached fake-keeper probe (after g ... | ?
 - gtb_ / ATN (optional, later): F6 total on trimmed_mean or sum of pass-row median ... | ?
 - grs_ / nsight owner (optional, low): skip loop-0 dumps under -Trace; gpu_trace.p ... | ?
-- gtl_: F1 follow-ups (test_budget conhost-only extra pid, F1c kind cpu flags, job ... | ?
 - gtw_ + gpr_: re-check gtp_ round 20 (gtw-R19-1..7 + GATES_SUITE / gpr-R19-1 + Lo ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
@@ -10786,7 +10785,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         A1-A11 + bursts 0; E 50-65 min). Not in scope: kind cpu tools the keeper starts stay DETACHED. COORD 17:1x: keep
         the flag; gtl_ makes test_budget line 829 precise (extra pids allowed only when conhost.exe; gtb_ not active, coord
         OK) + F1c kind cpu tools to KEEPER_FLAGS + job files on build\helper_du_rec (merged tree); then gtv_ re-checks.
-        - [ ] gtl_: F1 follow-ups (test_budget conhost-only extra pid, F1c kind cpu flags, job files on helper_du_rec) +
+        - [x] gtl_ (DONE 17:24, all suites OK): F1 follow-ups (test_budget conhost-only extra pid, F1c kind cpu flags, job files on helper_du_rec) +
         test_budget / test_gpu_lock / suites (coord 17:1x).
         gtp_ ROUND 20 17:12 = LIVE, hook still SHADOW (plan_1117/gtp_round20_handback.md; work copy
         testbin\scratch\gtp_\gtp_mirror9; outputs gtp_r20_*): gate_hook.py + tests/run_tests.py swapped atomically after
@@ -10810,8 +10809,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         32 / 64 KB (fallback, 8 KB cap). Sandboxes removed (no reparse points); hook logs untouched.
         - [ ] gtw_ + gpr_: re-check gtp_ round 20 (gtw-R19-1..7 + GATES_SUITE / gpr-R19-1 + Lows; the 1 web_allow
         over-refusal, unpriced pooled child keys, price_shell 0.19 s shape) (coord 17:1x).
-        Agents (3): gtl_ (S3c F1 follow-ups in stage2), gtw_ + gpr_ (gate round 20 re-checks); gtv_ (re-check next) / gtp_ /
-        fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
+        gtl_ F1 FOLLOW-UPS 17:24 (plan_1117/gtl_f1_followups_handback.md; runs testbin\scratch\gtl_\runs\s3ch_*.txt): (1)
+        flag kept on budget watch Popen; test_budget fake ns_busy writes "<pid> <ProcessName>" to busy_names.txt per
+        -ExcludePids (read while the tree lives); old line 829 -> left-out pids non-empty + each is child / grandchild or
+        image conhost (case-insensitive), any other extra pid FAILS; subset direction kept. (2) F1c keeper launch =
+        (DETACHED if resident else KEEPER_FLAGS) | CREATE_SUSPENDED | below normal; test_no_console_windows calls real
+        Keeper.launch for a kind cpu start (Popen patched) -> flags exactly KEEPER_FLAGS | CREATE_SUSPENDED. (3) 18 job
+        files regenerated on D:\Dev\renodx\build\helper_du_rec: 0 refused, 1907 s (price keys not per build); rotation A + B
+        both helper_du_rec; sheet Re-run "Before 3" names it + all calibrations new. Final suites 17:17-17:24: unit 40,
+        analyze 5, ps1 5, keeper 29, jobs 35, test_gpu_lock 60 / 60, test_budget 40 OK. Land list stage2 11 files (+
+        tests/test_budget.py); live hashes match; phase_model.tsv via retire_rows.py only. -> gtv_ re-check now.
+        Agents (3): gtv_ (re-check gtl_'s stage2 S3c fixes), gtw_ + gpr_ (gate round 20 re-checks); gtl_ / gtp_ / fcr_ /
+        gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
