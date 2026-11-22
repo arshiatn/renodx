@@ -9245,7 +9245,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         microseconds, but release_check.ps1 parses these numbers and CXX_STYLE names a value when order matters)
         -> put back `const auto took = ms_since(started);`. Applies clean, CRLF, rt_d3d12.hpp = v1, syntax.ps1
         exit 0 with NRD on. -> grs_ PATCH v3 (S1 only); fcr_ checks.
-        Agents (10): upr_ (h0i_ M1 + S1-S5 re-check), gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gtb_
+        upr_ M1 RE-CHECK = GO 09:5x (plan_1117/upr_m1_recheck_handback.md; unified_pt_review.md "## M1 re-check" line
+        1967; offline): diffs vs backups\20261122_0935_m1 (= what upr_ reviewed); selftest 0 wrong / 63 ok; both ps1
+        parse; offline 0 / 2 BAD. M1 placed right (moved only at > 3 SE AND > 0.1 % with neither side NOISY; NOISY
+        -> BIAS same limit, rank rule still counts a real move); S4 right (reference term left out only when both
+        sides' ref_mean.bin + ref_m2.bin are byte-equal; s16 ground 23.1 SE; run2's path gates byte-equal, run4's
+        not); S1 / S2 / S3 / e1-e6 text as asked. Notes (not blocking): a verdict rank flip still counts whatever
+        the shift (intended); e1 text "pre further = PASS" means by > 3 SE ("anything else OPEN" covers it).
+        h0_gpu_runs.ps1: only comments + the S5 line (in the checks part, inside if (-not $DryRun), reads run 1's
+        logs); param + path unchanged, CRLF on all 749 lines, ASCII. S5 for the bridge box: plain-build first frame
+        10.7 s pre / 13.6 s post on the 5090 vs the 20 s watchdog = ~1.5x margin; slower machines are the open
+        question. -> H0 RE-RUN NEXT (ATN's rule, background) once gti_ part 2 + c3i_'s builds are done (cold
+        first frames are CPU-bound shader compiles, so keep builds out of the window).
+        Agents (10): upr_ (idle, H0 GO), gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gtb_
         load refresh re-check), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), ffr_ (grs_ v5 check),
         grs_ (patch v3: S1 `took`), gtl_ (fixture +60 s + gate_s), gti_ (lows part 2: r1b + pair cases)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
