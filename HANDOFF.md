@@ -7088,9 +7088,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         shell would-deny rows are false refusals (CODE_TOKEN's (?![\w.]) lets 'x.cpp:' / 'x.cpp/' count as file
         args) -> end it with (?=$|[\s"'|&;<>)]) + both live commands as tests. -> gtp_ STARTED: S-d first, then its
         price + web build (gpp_ v3 §E + gpr_ v3: kind(), cause(), committed_gb(), load tag with exclude_pids).
+        gti_ POLL DONE 04:02 (plan_1117/gti_poll_handback.md; backups scratchpad\gti_bak7): BusyState writes
+        lab\busy_count.json (RENODX_LAB_BUSY_COUNT override; load tag 'game' = busy and < 300 s old), Enter-GpuLock
+        -PollS / -SettleS (defaults unchanged 10 s / 3 s); test_gpu_lock 54 / 54, harness_runs_lock 9 / 9. Found: gtl_'s
+        test_lab_unit.py (~l.278-296) writes a fake fault into the REAL busy_count.json (once 03:53, overwritten 04:02)
+        -> gtl_ queue (point BUSY_COUNT / the env var at a temp file); gtv_ told for its test runs. -> gpr_ CODE LOOK
+        of gti_'s part STARTED.
         Agents (10): upr_ (H0 439 look, then v2.7), c3i_ (B1.6), ebr_ (r18 re-check), grs_ (S2), gtp_ (S-d + price
-        build), gtq_ (FLIP numpy port), gbc_ (C1 re-check), gtv_ (S3r re-check), gtb_ (watch build), gti_ (poll
-        build). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gpr_, gtl_, h0i_, t4i_, gtk_, gtw_ (waits gtp_).
+        build), gtq_ (FLIP numpy port), gbc_ (C1 re-check), gtv_ (S3r re-check), gtb_ (watch build), gpr_ (gti_ code
+        look). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gti_, gtl_, h0i_, t4i_, gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
