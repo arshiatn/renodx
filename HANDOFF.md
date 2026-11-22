@@ -661,6 +661,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G10 BEFORE the wave-2 G21 + G02 merge: part 29 list renames + CLAMP + TestShared ... | ?
 - g02_ next wave: r1 (if the hook can't run in PsychoV35, b4 keeps the game's last ... | ?
 - lg3_ / engine_code owner after the batch (er5o_ m3): engine stubs page = plain A ... | ?
+- coord at READY: checklist done -> READY message -> `shutdown /s /t 60` (one-time ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12551,6 +12552,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] lg3_ / engine_code owner after the batch (er5o_ m3): engine stubs page = plain AddCodeRange (no page-wide
         part_range); per-stub sub-ranges for the render_mt parts only; then rule 1 may be wired (raw-address regex for
         effect_thunks / recording_page, or the add-on's Fault lines).
+        ATN 23:35: at READY SHUT DOWN the PC instead of restarting (he hears it go off, powers on later, opens Claude,
+        says go). Same checklist first; `shutdown /s /t 60` (plain /s = full shutdown, a clean boot like a restart).
+        Saved: memory feedback_shutdown_when_done + resume_point.md s1 step 1.
+        - [ ] coord at READY: checklist done -> READY message -> `shutdown /s /t 60` (one-time, this end batch).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
