@@ -7384,11 +7384,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         finally + empty assert; no file under refcode\flip newer than the run, git status clean; test_iq_flip 6 / 6.
         GTQ_ QUALITY METRICS (B1 + B2 + B3) DONE; gbc_'s B1 / C1 / RS reviews closed. Open from it: [ ] gtq_flip_src
         keep / delete (ATN).
-        Agents (7): b13r_ (c3i_ B1.6 review), ebr_ (t4i_ r20 re-check), gtp_ (K1-K3 + next round), grs_ (S2r N1 +
-        nits), gtl_ (S3r S1 Should + nits + scene.builds), gpr_ (gtb_ x1-x4 + slow 0 re-check). Coordinator: H0 real
-        run (bhe3fx2sg, ~72 min). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_, h0i_, gpp_, gtb_
-        (waits gpr_), t4i_ (waits ebr_, then r21), gtq_, gbc_, gti_, gtv_ (waits grs_ / gtl_; held lab tests until
-        after H0), gtk_, gtw_ (waits gtp_).
+        ebr_ r20 RE-CHECK = MERGE-READY 05:1x (render_mt/reports/ebr_r20_recheck_handback.md; ebr_t4_review.md l.716):
+        run_all 0 failed (leg 165); real-leg check before locks / legs_started / BenchStart, read only; on rule '^0*1$'
+        or on / true / yes (23 digits = PROBLEM, no throw); 13 / 13 mutants killed (N6, N7 now too; new N10-N13). New
+        safe-side difference: "1abc" / "1 ; note" = PROBLEM (heapfix's _wtoi reads 1). END BATCH SCRIPTS r20
+        MERGE-READY. Missing key / empty value box (above) still ATN's. Outputs left in scratchpad\ebr_r20_* +
+        ebr_r19_mut \ ebr_r19_probe; ebo\tests\out folders renamed aside, never deleted. t4i_ r21 (segments.json for
+        the B1.6 keys) waits for b13r_'s verdict so the key names are final.
+        Agents (6): b13r_ (c3i_ B1.6 review), gtp_ (K1-K3 + next round), grs_ (S2r N1 + nits), gtl_ (S3r S1 Should +
+        nits + scene.builds), gpr_ (gtb_ x1-x4 + slow 0 re-check). Coordinator: H0 real run (bhe3fx2sg, ~72 min).
+        Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_, h0i_, gpp_, gtb_ (waits gpr_), ebr_, t4i_
+        (r21 after b13r_), gtq_, gbc_, gti_, gtv_ (waits grs_ / gtl_; held lab tests until after H0), gtk_, gtw_
+        (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
