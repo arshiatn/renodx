@@ -31,7 +31,7 @@
 
 // Global Illumination's GT-VBGI (Light Bounce, Experimental) on an Unreal game: the Total War games' passes
 // (twattila/light_bounce_*.hlsli, game-neutral; the trace is GT-VBGI's visibility bitmask) on Unreal's G-buffer and View
-// (ue_light_bounce.hlsli, each game's ue_light_bounce_*.hlsl wrappers), from the scene as the game's lights left it: the
+// (ue_light_bounce.hlsli, each game's host_light_bounce_*.hlsl wrappers), from the scene as the game's lights left it: the
 // prepare (that light, at 1 / scale of the render size, with its depth and normal) and its levels, the trace, the
 // resolve with the last frames' bounce (the View's Prev* rows: where each point was), the optional denoiser, then the
 // apply (the bounce brought up to each render pixel along surfaces, x its diffuse colour x Strength) added to the game's
@@ -207,9 +207,9 @@ inline bool CreateShaders(ID3D11Device* device) {
   };
   objects.failed = !dlss::MakeContextState(device, &objects.private_state)
                    || FAILED(device->CreateVertexShader(__light_bounce_vs.data(), __light_bounce_vs.size(), nullptr, objects.full_screen.GetAddressOf()))
-                   || !pixel(__ue_light_bounce_prepare, &objects.prepare) || !pixel(__light_bounce_levels, &objects.levels)
-                   || !pixel(__ue_light_bounce_trace, &objects.trace) || !pixel(__ue_light_bounce_resolve, &objects.resolve)
-                   || !pixel(__ue_light_bounce_denoise, &objects.denoise) || !pixel(__ue_light_bounce_apply, &objects.apply)
+                   || !pixel(__host_light_bounce_prepare, &objects.prepare) || !pixel(__light_bounce_levels, &objects.levels)
+                   || !pixel(__host_light_bounce_trace, &objects.trace) || !pixel(__host_light_bounce_resolve, &objects.resolve)
+                   || !pixel(__host_light_bounce_denoise, &objects.denoise) || !pixel(__host_light_bounce_apply, &objects.apply)
                    || FAILED(device->CreateBlendState(&add_desc, objects.add_blend.GetAddressOf()))
                    || FAILED(device->CreateRasterizerState(&rasterizer_desc, objects.rasterizer.GetAddressOf()))
                    || FAILED(device->CreateBuffer(&constants_desc, nullptr, objects.constants.GetAddressOf()));
