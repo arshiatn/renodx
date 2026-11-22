@@ -2949,11 +2949,14 @@ inline void Uninstall() {
   internal::SyncWorkerSlots(0);
   effect_update::Disarm();
   instance_fill::Wanted(false);  // the fill's sites run the game's own call from now on
-  // The fold's stubs: a fold open on another thread (a render thread between a fill site and its stub; this thread's own was closed by
-  // CloseFoldAtPresent) has workers filling the ring and the game's Unmap noted for its close. The stubs coming out now would let that
-  // thread make the game's own Unmap under the fill: it gets a moment (100 ms) to close, and one still open keeps the stubs in (the
-  // module then stays pinned below: that thread still runs them). Without the private build there are no stubs to keep.
+  // The fold's stubs and cuts: a fold open on another thread (a render thread between a fill site and its cut; this thread's own is closed
+  // by CloseFoldAtPresent, right after this) has workers filling the ring and the game's Unmap noted for its close. The stubs coming out
+  // now would let that thread make the game's own Unmap under the fill, and the cut coming out would leave the fold nothing to close it:
+  // it gets a moment (100 ms) to close, and one still open keeps the stubs and the recording sites in (the module then stays pinned
+  // below: that thread still runs them; the cut's dispatcher closes the fold and makes the noted Unmap, draw_recording::Uninstall keeps
+  // Shared). Without the private build there are no stubs to keep.
   uint32_t fill_keep = 0;
+  uint64_t recording_keep = 0;
 #if defined(TWATTILA_DRAW_RECORDING)
   namespace dr = draw_recording::internal;
   const auto fold_elsewhere = [] {
@@ -2965,16 +2968,18 @@ inline void Uninstall() {
   }
   if (fold_elsewhere()) {
     fill_keep = fi::written & instance_fill::FOLD_SITES;
+    recording_keep = internal::recording_written;
   }
 #endif
   for (int attempt = 0;
-       (internal::written != 0 || internal::recording_written != 0 || eu::written != 0 || (fi::written & ~fill_keep) != 0) && attempt < 100;
+       (internal::written != 0 || (internal::recording_written & ~recording_keep) != 0 || eu::written != 0 || (fi::written & ~fill_keep) != 0)
+       && attempt < 100;
        ++attempt) {
     uint32_t stood_down;
     uint64_t recording_stood_down;
     uint32_t effect_stood_down;
     uint32_t fill_stood_down;
-    if (internal::PausedWrite(0, &stood_down, 0, &recording_stood_down, 0, &effect_stood_down, fill_keep, &fill_stood_down)) {
+    if (internal::PausedWrite(0, &stood_down, recording_keep, &recording_stood_down, 0, &effect_stood_down, fill_keep, &fill_stood_down)) {
       if ((stood_down & internal::written & internal::WORKER_SITES) != 0 || (effect_stood_down & eu::written) != 0
           || (fill_stood_down & fi::written) != 0) {
         internal::PinModule();
@@ -2986,7 +2991,7 @@ inline void Uninstall() {
       if ((recording_stood_down & internal::recording_written) != 0) {
         internal::recording_left_in = true;
       }
-      internal::recording_written = 0;
+      internal::recording_written = recording_keep;  // kept: the final lines below set recording_left_in and say so
     } else {
       Sleep(1);
     }

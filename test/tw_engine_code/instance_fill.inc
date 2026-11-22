@@ -220,19 +220,28 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
     update(ALL_GROUPS, true, true);
     CHECK(fi::written == fill::ALL_SITES);
     dr::fold.thread.store(other_id);
+    const uint64_t recording_before = ec::recording_written;
     log_lines.clear();
     twattila::engine_code::Uninstall();
-    CHECK(fi::written == fill::FOLD_SITES && ec::module_pinned && said("left in at detach") == 1);
+    CHECK(fi::written == fill::FOLD_SITES && ec::module_pinned && said("left in at detach") == 2 && said("Threaded Draw Recording: left in at detach") == 1);
     for (size_t stub = 0; stub < STUBS; ++stub) CHECK(stub_is(stub, true));
+    // The recording sites stay in with them, the cuts among them (the cut's dispatcher closes the fold and makes the noted Unmap), and the
+    // sites are marked left in so draw_recording::Uninstall keeps Shared.
+    CHECK(recording_before != 0 && ec::recording_written == recording_before && ec::recording_left_in && twattila::engine_code::DrawRecordingSitesIn());
+    for (size_t stub = 0; stub < STUBS; ++stub) CHECK(cut_in(stub));
+    for (size_t index = 0; index < ec::recording_sites.size(); ++index) {
+      if ((recording_before >> index & 1) != 0) CHECK(!std::memcmp(ec::recording_sites[index].at, ec::recording_sites[index].jump.data(), ec::SITE_SIZE));
+    }
     for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) CHECK(!std::memcmp(fi::sites[site].at, fi::sites[site].game.data(), fi::sites[site].size));
     dr::fold.thread.store(0);
     stop = true;
     other.join();
     ec::module_pinned = false;
+    ec::recording_left_in = false;
     update(0, false, false);
-    CHECK(fi::written == 0 && game_is_back());
+    CHECK(fi::written == 0 && ec::recording_written == 0 && game_is_back());
   }
-  std::printf("29f. Uninstall takes the stubs out, the module not pinned; a fold open on another thread keeps them in and pins the module unless it closes within the wait\n");
+  std::printf("29f. Uninstall takes the stubs out, the module not pinned; a fold open on another thread keeps the stubs and the recording sites (the cuts) in, pins the module and marks them left in, unless it closes within the wait\n");
   return 0;
 }
 #endif
