@@ -7248,10 +7248,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         $deadline + 120; gated_build.ps1 header (bare targets / one -Targets). test_budget 32 OK (was 28), selftest 0,
         PSM1 OK, nothing real written. -> gpr_ RE-CHECK STARTED; gtp_ told L1 landed (fix-now unblocked) + watch_kind
         is now (cls, key).
-        Agents (9): h0i_ (F1), c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gtq_ (B2-S1 + N1-N4),
-        gtv_ (S3r re-check 2), grs_ (S2r fixes), gpr_ (gtb_ W1 W2 re-check). Idle: bd1r_, lga_, lgf2_, c33i_, upt_,
-        upr_ (waits h0i_), gpp_, gtb_ (waits gpr_), ebr_ (waits t4i_), gbc_ (waits gtq_), gti_, gtl_, gtk_, gtw_
-        (waits gtp_).
+        h0i_ F1 DONE 04:4x (plan_1117/h0i_f1_handback.md): Invoke-Gpu exit 124 -> $script:Stop "timeout (N s) in
+        <title>" (stops all later GPU work); Invoke-Logged WaitForExit(60000) after taskkill, still alive -> logged +
+        124 anyway; the removal check still wins. Offline set dry / pass / smoke / tdr / hang 0 of 5 BAD (new hang case:
+        fake sleeps 600 s, cut at 5 s, no fake left); every case its own busy_count.json via RENODX_LAB_BUSY_COUNT (the
+        real lab file untouched since ~04:31); offline copies skip the per-job busy check (foreign map_replay_gti.exe /
+        renodx-tw-dlaa64 stopped 3 runs = the real busy stop works). h0_gpu_runs.ps1 never passes --poll / --settle.
+        Guard: atn-mods 9057b2807, merge-base still c3ea4925f, helper paths unchanged, $PostRev 42c081bd6 (local). Left:
+        offline\20261122_042455_pass\gpu_test.lock (case-local) + 8 junctions per case folder (JUNCTIONS.txt; rmdir
+        the links alone first). -> upr_ F1 RE-CHECK STARTED; then the H0 dry run + real run (ATN's rule).
+        Agents (9): upr_ (h0i_ F1 re-check), c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gtq_
+        (B2-S1 + N1-N4), gtv_ (S3r re-check 2), grs_ (S2r fixes), gpr_ (gtb_ W1 W2 re-check). Idle: bd1r_, lga_,
+        lgf2_, c33i_, upt_, h0i_ (waits upr_), gpp_, gtb_ (waits gpr_), ebr_ (waits t4i_), gbc_ (waits gtq_), gti_,
+        gtl_, gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
