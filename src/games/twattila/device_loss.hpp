@@ -40,6 +40,7 @@
 #include "../../utils/log.hpp"
 #include "../../utils/vtable.hpp"
 #include "./output_encoding.hpp"
+#include "./worker_pool.hpp"
 
 // A Total War game after a GPU reset. It builds a new device and swap chain for the same window, in one of two orders:
 // - The old device alive (WH3, ATN's log 2026-11-05): a chain whose back buffer's view is bound or held keeps the
@@ -110,8 +111,6 @@ static std::atomic_uint64_t last_present_tick = 0;
 static std::atomic_uint32_t present_thread = 0;
 static HANDLE watch_thread = nullptr;
 static HANDLE watch_stop = nullptr;  // that thread's own: a watch that could not be waited for keeps its event
-// Set by an add-on with more to say about a stall (its worker pool's job, say): appended to the stall line after "; ".
-static std::string (*stall_note)() = nullptr;
 
 // The add-on's own code: its image (set by Install) and up to 4 pages outside it (AddCodeRange). A range is published by
 // its `end`, stored last: a handler on any thread reads `end` first and skips a range without one.
@@ -250,23 +249,23 @@ static void FormatFault(std::span<char> line, const char* kind, const EXCEPTION_
 static LONG CALLBACK OnException(EXCEPTION_POINTERS* info) {
   const EXCEPTION_RECORD& record = *info->ExceptionRecord;
   switch (record.ExceptionCode) {
-    case EXCEPTION_ACCESS_VIOLATION:
-    case EXCEPTION_IN_PAGE_ERROR:
-    case EXCEPTION_ILLEGAL_INSTRUCTION:
-    case EXCEPTION_PRIV_INSTRUCTION:
-    case EXCEPTION_INT_DIVIDE_BY_ZERO:
-    case EXCEPTION_INT_OVERFLOW:
-    case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
-    case EXCEPTION_FLT_DENORMAL_OPERAND:
-    case EXCEPTION_FLT_DIVIDE_BY_ZERO:
-    case EXCEPTION_FLT_INEXACT_RESULT:
-    case EXCEPTION_FLT_INVALID_OPERATION:
-    case EXCEPTION_FLT_OVERFLOW:
-    case EXCEPTION_FLT_STACK_CHECK:
-    case EXCEPTION_FLT_UNDERFLOW:
+    case static_cast<DWORD>(EXCEPTION_ACCESS_VIOLATION):
+    case static_cast<DWORD>(EXCEPTION_IN_PAGE_ERROR):
+    case static_cast<DWORD>(EXCEPTION_ILLEGAL_INSTRUCTION):
+    case static_cast<DWORD>(EXCEPTION_PRIV_INSTRUCTION):
+    case static_cast<DWORD>(EXCEPTION_INT_DIVIDE_BY_ZERO):
+    case static_cast<DWORD>(EXCEPTION_INT_OVERFLOW):
+    case static_cast<DWORD>(EXCEPTION_ARRAY_BOUNDS_EXCEEDED):
+    case static_cast<DWORD>(EXCEPTION_FLT_DENORMAL_OPERAND):
+    case static_cast<DWORD>(EXCEPTION_FLT_DIVIDE_BY_ZERO):
+    case static_cast<DWORD>(EXCEPTION_FLT_INEXACT_RESULT):
+    case static_cast<DWORD>(EXCEPTION_FLT_INVALID_OPERATION):
+    case static_cast<DWORD>(EXCEPTION_FLT_OVERFLOW):
+    case static_cast<DWORD>(EXCEPTION_FLT_STACK_CHECK):
+    case static_cast<DWORD>(EXCEPTION_FLT_UNDERFLOW):
     case 0xC00002B4:  // STATUS_FLOAT_MULTIPLE_FAULTS (SSE)
     case 0xC00002B5:  // STATUS_FLOAT_MULTIPLE_TRAPS (SSE)
-    case EXCEPTION_STACK_OVERFLOW:
+    case static_cast<DWORD>(EXCEPTION_STACK_OVERFLOW):
       break;
     default:
       // C++ exceptions, thread names, breakpoints and single steps (the Graphics watch's) are no faults.
@@ -445,10 +444,8 @@ static void LogStall(uint64_t age_ms, bool dump) {
       ++added;
     }
   }
-  if (stall_note != nullptr) {
-    if (const std::string note = stall_note(); !note.empty()) {
-      line += "; " + note;
-    }
+  if (const std::string job = worker_pool::Describe(); !job.empty()) {
+    line += "; worker pool: " + job;
   }
   renodx::utils::log::w(line);
   // A thread inside an exception's handling holds a return address into ntdll's exception dispatcher on its stack (+0x2E

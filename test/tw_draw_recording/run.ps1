@@ -1,7 +1,8 @@
 # Threaded Draw Recording (twattila/draw_recording.hpp, tests.cpp): the pool, the types and the depth path on a synthetic loop.
 # x86 only (the header is empty stubs on x64); `-Architecture amd64` only proves that the stubs compile. Runs in its own process;
 # nothing outside it changes. Test programs only in the maintainer's excluded folder.
-param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86')
+param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86',
+      [string]$BuildFolder = '')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_draw_recording'
@@ -9,7 +10,7 @@ $external = Join-Path $repairRoot 'external'
 if (-not (Get-ChildItem -LiteralPath (Join-Path $external 'reshade') -Force -ErrorAction SilentlyContinue)) { $external = 'D:\Dev\renodx\external' }
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation
-$testBuild = Join-Path $env:USERPROFILE ".claude\projects\D--Dev-renodx\tools\tw\testbin\tw_draw_recording_$Architecture"
+$testBuild = if ($BuildFolder -ne '') { $BuildFolder } else { Join-Path $env:USERPROFILE ".claude\projects\D--Dev-renodx\tools\tw\testbin\tw_draw_recording_$Architecture" }
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }

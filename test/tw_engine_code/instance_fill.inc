@@ -591,6 +591,150 @@ int RunInstanceFillTests(const TestBuild& build, uint8_t* game, uint8_t* patched
     CHECK(game_is_back());
     std::printf("29e. another mod's byte over our call at detach: that site stays, the others come out, the module is pinned\n");
   }
+  // 29g. What the give-ups and failures say (the logging audit): the fill's give-up line (it had none) and its pin, the blocker named in every
+  // give-up line, the thread list that cannot be read, the stubs' page that cannot be made, the total of the incomplete fills at detach.
+  {
+    CHECK(fill::Prepare(reinterpret_cast<HMODULE>(patched)) && fi::found == fill::ALL_SITES);
+    rows(false);
+    std::atomic<bool> stop = false;
+    std::thread parked([&] {
+      while (!stop.load()) Sleep(1);
+    });
+    const DWORD parked_id = GetThreadId(parked.native_handle());
+    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, parked_id);
+    CHECK(thread != nullptr);
+    // `body` runs with the thread stopped at `where` (and its context put back after).
+    const auto parked_at = [&](uintptr_t where, const auto& body) {
+      SuspendThread(thread);
+      CONTEXT saved = {.ContextFlags = CONTEXT_CONTROL};
+      GetThreadContext(thread, &saved);
+      CONTEXT moved = saved;
+      moved.Eip = static_cast<DWORD>(where);
+      SetThreadContext(thread, &moved);
+      body();
+      SetThreadContext(thread, &saved);
+      ResumeThread(thread);
+    };
+    // Going in with a thread inside a site: after MAX_FAILED_WRITES presents the line is said once, with the thread (not in a module: its address), and the
+    // module is not pinned (nothing of ours is in the game's code).
+    ec::module_pinned = false;
+    log_lines.clear();
+    size_t said_early = 0;
+    uint32_t failed_at_give_up = 0;
+    parked_at(Address(fi::sites[0].at + 1), [&] {
+      for (uint32_t present = 0; present < ec::MAX_FAILED_WRITES - 1; ++present) rows(true);
+      said_early = said("Parallel Instance Fill sites: not written");
+      rows(true);
+      failed_at_give_up = ec::failed_writes;
+      rows(true);
+    });
+    CHECK(said_early == 0 && failed_at_give_up == ec::MAX_FAILED_WRITES);
+    CHECK(said("Parallel Instance Fill sites: not written, a game thread kept running the code") == 1
+          && said(std::format("Parallel Instance Fill sites: not written, a game thread kept running the code (last: thread {} at 0x", parked_id)) == 1);
+    CHECK(fi::written == 0 && !ec::module_pinned && said("Sites that call into this module") == 0 && game_is_back());
+    // Going out with a call still in the dispatcher: the line, with no thread found, and the pin (our call stays in the game's code).
+    ec::failed_writes = 0;
+    rows(true);
+    CHECK(fi::written == fill::ALL_SITES);
+    fi::active.store(1);
+    rows(false);
+    ec::failed_writes = ec::MAX_FAILED_WRITES - 1;
+    log_lines.clear();
+    rows(false);
+    CHECK(said("Parallel Instance Fill sites: not written, a game thread kept running the code (last: no thread was found inside a site)") == 1);
+    CHECK(fi::written == fill::ALL_SITES && ec::module_pinned && said("Sites that call into this module") == 1);
+    fi::active.store(0);
+    ec::module_pinned = false;
+    ec::failed_writes = 0;
+    rows(false);
+    CHECK(fi::written == 0 && game_is_back());
+    // A thread inside a module (the effect update's cut moved onto kernel32's Sleep): the line names the module and the offset.
+    CHECK(eu::Prepare(reinterpret_cast<HMODULE>(patched)) && ei::found == eu::ALL_SITES);
+    CHECK(rows_on_rx_page(false, true) && ei::written == eu::ALL_SITES);
+    {
+      const auto sleep_at = reinterpret_cast<uintptr_t>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "Sleep"));
+      uint8_t* const real_page = ei::page;
+      uint8_t* const real_end = ei::page_end;
+      ei::page = reinterpret_cast<uint8_t*>(sleep_at);
+      ei::page_end = ei::page + 16;
+      log_lines.clear();
+      parked_at(sleep_at, [&] {
+        ec::failed_writes = 0;
+        rows(false, false);
+        ec::failed_writes = ec::MAX_FAILED_WRITES - 1;
+        rows(false, false);
+      });
+      ei::page = real_page;
+      ei::page_end = real_end;
+      CHECK(ei::written == eu::ALL_SITES && ec::module_pinned && said("Parallel Effect Update sites: not written, a game thread kept running the code (last: thread") == 1);
+      CHECK(said(std::format("(last: thread {} at ", parked_id)) == 1 && said("+0x") == 1 && said(" at 0x") == 0 && said("Parallel Instance Fill sites: not written") == 0);
+      ec::module_pinned = false;
+      ec::failed_writes = 0;
+      rows(false, false);
+      CHECK(ei::written == 0 && fi::written == 0 && game_is_back());
+    }
+    // The thread list cannot be read: said once (with the error), the sites wait.
+    ec::control_fail_snapshot = true;
+    ec::snapshot_failure_logged = false;
+    log_lines.clear();
+    for (int present = 0; present < 3; ++present) rows(true);
+    ec::control_fail_snapshot = false;
+    CHECK(fi::written == 0 && said(std::format("Engine code: the thread list could not be read (error {}); its sites wait.", ERROR_ACCESS_DENIED)) == 1);
+    // The give-up after it says why (no thread can be named).
+    ec::failed_writes = ec::MAX_FAILED_WRITES - 1;
+    ec::control_fail_snapshot = true;
+    rows(true);
+    ec::control_fail_snapshot = false;
+    CHECK(said("Parallel Instance Fill sites: not written, a game thread kept running the code (last: the thread list could not be read)") == 1);
+    // A thread whose context cannot be read stops the write too: named by id, with no place.
+    ec::control_fail_context = true;
+    ec::failed_writes = ec::MAX_FAILED_WRITES - 1;
+    log_lines.clear();
+    rows(true);
+    ec::control_fail_context = false;
+    CHECK(said("Parallel Instance Fill sites: not written, a game thread kept running the code (last: thread ") == 1 && said(", its context could not be read)") == 1);
+    ec::failed_writes = 0;
+    rows(true);
+    CHECK(fi::written == fill::ALL_SITES);
+    rows(false);
+    CHECK(fi::written == 0 && game_is_back());
+    stop = true;
+    parked.join();
+    CloseHandle(thread);
+    // The stubs' page that cannot be allocated or made executable: the line says which, with the error. The state Prepare leaves is put back.
+    {
+      const bool job_missing = ec::job_missing_logged;
+      const uint32_t prefetch = ec::prefetch_logged;
+      const auto prepare_again = [&] {
+        for (ec::Site& site : ec::sites) site.at = nullptr;
+        ec::prepared = false;
+        ec::written = 0;
+        ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
+      };
+      log_lines.clear();
+      ec::control_fail_page = 1;
+      prepare_again();
+      CHECK(said(std::format("Faster Game CPU Code: left alone (the stubs' page could not be allocated, error {})", ERROR_NOT_ENOUGH_MEMORY)) == 1);
+      ec::control_fail_page = 2;
+      prepare_again();
+      CHECK(said(std::format("Faster Game CPU Code: left alone (the stubs' page could not be made executable, error {})", ERROR_ACCESS_DENIED)) == 1);
+      ec::control_fail_page = 0;
+      prepare_again();
+      CHECK(ec::page != nullptr && said("the stubs' page could not be") == 2);
+      ec::job_missing_logged = job_missing;
+      ec::prefetch_logged = prefetch;
+    }
+    // Detach says the total of the fills that ended with chunks not done (nothing when there were none).
+    log_lines.clear();
+    twattila::engine_code::Uninstall();
+    CHECK(said("fills ended with chunks not done") == 0);
+    fi::incomplete_fills.store(3);
+    twattila::engine_code::Uninstall();
+    CHECK(said("Parallel Instance Fill: 3 fills ended with chunks not done this run.") == 1);
+    fi::incomplete_fills.store(0);
+    ec::module_pinned = false;
+    std::printf("29g. the fill's give-up line and pin, the blocker named (thread, module and offset), the thread list that cannot be read, the page that cannot be made (which, error), the incomplete fills' total at detach\n");
+  }
   CHECK(fill::Prepare(reinterpret_cast<HMODULE>(patched)) && fi::found == fill::ALL_SITES);
   CHECK(ec::failed_writes == 0);
   (void)game;
