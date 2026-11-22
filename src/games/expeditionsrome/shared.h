@@ -65,6 +65,15 @@ struct ShaderInjectData {
 #define SI  shader_injection
 #define HDR SI.hdr
 
+// PsychoV35's slider defaults here: the game's own response (the film curve's toe below mid gray, its colour at equal
+// lightness), Highlight Contrast keeping PsychoV35's highlights. Minimax-fitted on WARP against the game's SDR through
+// lut00 at Unreal 4.23's default film settings (level B: no trace has the game's; tests/v35_fit.cpp); the other
+// PsychoV35 sliders keep Musa's defaults. Musa's own (1) until the fit's run in the build window writes its result here.
+#define EXR_V35_CONTRAST           1.f
+#define EXR_V35_SHADOWS            1.f
+#define EXR_V35_SATURATION         1.f
+#define EXR_V35_HIGHLIGHT_CONTRAST 1.f
+
 // SDR output: gamma 2.2 as the game's, white = the display's (no Peak, Paper White or UI nits).
 #define EXR_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
 // Peak relative to Paper White.
