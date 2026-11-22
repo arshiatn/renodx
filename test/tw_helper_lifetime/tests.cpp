@@ -45,6 +45,9 @@ BOOL WINAPI TestCreateProcessW(LPCWSTR application, LPWSTR command, LPSECURITY_A
 #undef CreateProcessW
 #include "src/games/twattila/dlaa_helper/gpu_completion.hpp"
 
+// The add-on's name, which utils/settings.hpp's overlay title reads (an add-on defines it in its addon.cpp).
+extern "C" __declspec(dllexport) const char* const NAME = "TW helper lifetime test";
+
 // ReShade's log, counted: a failure is said once, not at every call after it. The watcher's line with the helper's exit
 // code is counted apart (its thread's, beside the game thread's line for the same end), the last one kept.
 std::atomic<unsigned> exit_lines = 0;
