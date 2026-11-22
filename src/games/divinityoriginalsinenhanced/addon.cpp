@@ -51,6 +51,7 @@
 #include "./ray_tracing.hpp"
 #include "./shared.h"
 #include "./upscaling.hpp"
+#include "./vfx_brightness.hpp"
 
 const std::string build_date = __DATE__;
 const std::string build_time = __TIME__;
@@ -71,6 +72,8 @@ float no_gtvbao = 0.f;
 float game_ssr = 0.f;
 // Installed when an effect is on at launch (the scene's shaders are kept from the game's start) and the helper is there.
 bool ray_tracing_installed = false;
+// Installed when VFX Brightness is not 1 at launch (its shaders are patched as the game creates them).
+bool vfx_brightness_installed = false;
 
 // The page's texts (graphics_page.hpp Texts): the game's FXAA / SMAA, the helper's upscalers at 100% (the tone mapper's
 // input), the rays' sun shadows and AO in place of the game's.
@@ -176,6 +179,7 @@ void ApplyResetPreset() {
       {"playerLightRadius", 1.f},
       {"sun_shadow_softness", 1.f},
       {"grade_shoulder", 0.f},
+      {"vfx_base_brightness", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
   renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
@@ -892,6 +896,20 @@ renodx::utils::settings::Settings settings = {
         .is_visible = ShowHDRSettings,
     },
     new renodx::utils::settings::Setting{
+        .key = "vfx_base_brightness",
+        .binding = &shader_injection.vfx_brightness,
+        .default_value = 1.f,
+        .label = "VFX Brightness (Experimental)",
+        .section = "Extra",
+        .tooltip = "Brightness of fire, spells, particles and ground markers (HDR only). 1.00: the game's.\n"
+                   "Restart the game after first moving it from 1.",
+        .min = 0.f,
+        .max = 10.f,
+        .format = "%.2f",
+        .is_enabled = IsHDR,
+        .is_visible = ShowHDRSettings,
+    },
+    new renodx::utils::settings::Setting{
         .key = "vignette",
         .binding = &shader_injection.vignette,
         .default_value = 1.f,
@@ -1042,6 +1060,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (aa_sliders.method == 5.f && twattila::dlaa_bridge::gpu_vendor != 0 && !twattila::dlaa_bridge::OnNvidia()) {
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
+  if (vfx_brightness_installed) divinity::vfx_brightness::Update(VFX_BRIGHTNESS);
   const auto aa = twattila::feature_settings::AaSettings(aa_sliders);
   const bool upscaling = twattila::feature_settings::Upscaling(aa_sliders) && twattila::dlaa_bridge::HelperInstalled();
   auto rays = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, divinity::ray_tracing::light_bounce_strength);
@@ -1371,6 +1390,7 @@ bool AttachAddon() {
   // their Debug View over the tone mapper's output.
   ray_tracing_installed = twattila::dlaa_bridge::HelperInstalled()
                           && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.light_bounce != 0.f);
+  vfx_brightness_installed = shader_injection.vfx_brightness != 1.f;
   if (ray_tracing_installed) {
     custom_shaders[0x30A1D40D].on_drawn = [](reshade::api::command_list* cmd_list) { twattila::rt_scene::OnTonemapDrawn(cmd_list); };
   }
@@ -1387,6 +1407,10 @@ bool AttachAddon() {
   // the game's presents.
   divinity::upscaling::Install();
   if (ray_tracing_installed) divinity::ray_tracing::Install();
+  if (vfx_brightness_installed) {
+    divinity::vfx_brightness::Install();
+    reshade::register_event<reshade::addon_event::destroy_device>(divinity::vfx_brightness::OnDestroyDevice);
+  }
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10, 10);
   twattila::reflex::Install();
@@ -1403,6 +1427,10 @@ void DetachAddon() {
   twattila::reflex::Uninstall();
   twattila::frame_generation::Uninstall();
   if (ray_tracing_installed) divinity::ray_tracing::Uninstall();
+  if (vfx_brightness_installed) {
+    reshade::unregister_event<reshade::addon_event::destroy_device>(divinity::vfx_brightness::OnDestroyDevice);
+    divinity::vfx_brightness::Uninstall();
+  }
   divinity::upscaling::Uninstall();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);

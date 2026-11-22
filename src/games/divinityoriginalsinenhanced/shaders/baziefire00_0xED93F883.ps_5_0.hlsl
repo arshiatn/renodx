@@ -85,6 +85,8 @@ void main(
     o0.g *= 6.0f / 2.0f;
     o0.b *= 6.0f / 2.5f;
   }
+  // VFX Brightness (Experimental; HDR).
+  o0.rgb *= VFX_BRIGHTNESS;
 
   return;
 }

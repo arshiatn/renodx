@@ -27,7 +27,11 @@ All four keep Peak, Paper White, UI, Settings Mode and Output (SDR also sets Out
 - General: Peak, Paper White, UI, Rendering Mode. Page 1 says to keep the game's Gamma Correction at 1: no shader of
   the game reads it (its value goes to a renderer method as 1 / value; the tone map encodes a fixed 1 / 2.2).
 - Extended: Hue Clip Emulation. PsychoV30 / Pragmap rows only in their modes (Advanced).
-- Extra: Bloom, Vignette, Godrays. Game-Specific: UI, Player Light Intensity (lights with shadows: point and spot
+- Extra: Bloom, VFX Brightness (Experimental, 1 the game's, HDR; restart after first moving it from 1: the effects'
+  colour x the row, `vfx_brightness.hpp`: 258 unlit effect shaders patched as the game creates them, the slider minus 1
+  at cb7 on their draws, the add-on's fire and particle shaders by shared.h; the effects that read the scene's colour
+  (refraction, heat haze, shields, water: 21) and those lit by the sun's shadows and SSAO (effect surfaces: 49) are
+  left out), Vignette, Godrays. Game-Specific: UI, Player Light Intensity (lights with shadows: point and spot
   shadow passes), Local Light Intensity (lights without), Sun Shadow Softness (Experimental: the PCSS light size x
   the row, Ultra shadows), Smooth Grade Shoulder (Experimental, off; Extended and PsychoV35), Game's Screen-Space
   Reflections (Experimental, off, restart: writes the settings object's SSR byte at swap chain creation, see Engine
@@ -95,6 +99,9 @@ Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); 
   that must fail; the light rows at 2 give twice the game's light. The PCSS sun shadows (0x8F114E47) also with R1 save
   T1's traced PerShadow / PerView (`pcss_r1_cb0.txt`, `pcss_r1_cb12.txt`; the cascades' projection, not in the trace,
   orthographic from their widths and far planes).
+- `test/tw_d1_vfx/run.ps1`: VFX Brightness's patch on each of the 258 effect shaders' census bytes: the program the
+  game's plus the brightness (D3DDisassemble), and on WARP the game's bits with cb7 unbound and at 1, rgb x 2 at 2;
+  controls: a pixel drawn, the colour changed at 2.
 - `test/tw_d1_swapchain`, `test/tw_device_loss`, `test/tw_output_encoding`: the window's chains, device loss, Output.
 - `test/tw_psychov30_nan/run.ps1`: PsychoV30's NaN / infinity guards live against a copy without them.
 
