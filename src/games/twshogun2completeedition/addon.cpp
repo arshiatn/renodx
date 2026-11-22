@@ -2779,17 +2779,9 @@ void ConfigureAddon() {
     reshade::set_config_value(nullptr, global.c_str(), "SettingsRevision", 1);
     if (copied != 0) renodx::utils::log::i(std::format("[Shogun 2] Settings: {} of the DLSS add-on's ([Shogun 2 DLSS]) copied into the presets.", copied));
   }
-  // Rows saved at an old default (a preset saves every row) cleared out of the presets once, then SettingsRevision 2
-  // (twattila/graphics_page.hpp ClearSavedRows's rule; that header includes rt_scene.hpp, which this add-on can't): Auto
-  // Thickness on by default (ATN 2026-11-22) and Texture LOD bias on all textures (on since 2026-11-16, decision 11).
-  if (int revision = 0; !reshade::get_config_value(nullptr, global.c_str(), "SettingsRevision", revision) || revision < 2) {
-    for (const char* preset : {"-preset1", "-preset2", "-preset3"}) {
-      for (const char* key : {"AmbientOcclusionAutoThickness", "LightBounceAutoThickness", "AntiAliasingTextureLodBiasTrilinear"}) {
-        reshade::set_config_value(nullptr, (global + preset).c_str(), key, static_cast<const char*>(nullptr));
-      }
-    }
-    reshade::set_config_value(nullptr, global.c_str(), "SettingsRevision", 2);
-  }
+  // Rows saved at an old default cleared once (SettingsRevision 2): Auto Thickness on by default (ATN 2026-11-22) and
+  // Texture LOD bias on all textures (on since 2026-11-16, decision 11).
+  twattila::graphics_page::ClearSavedRows(2, {"AmbientOcclusionAutoThickness", "LightBounceAutoThickness", "AntiAliasingTextureLodBiasTrilinear"});
 
   configured = true;
 }
