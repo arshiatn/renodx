@@ -96,6 +96,8 @@ void main(uint3 id : SV_DispatchThreadID) {
 #elif defined(NRD_FRONT_BOUNCE)
   signal[id.xy] = REBLUR_FrontEnd_PackRadianceAndNormHitDist(bounce[id.xy].rgb, REBLUR_FrontEnd_GetNormHitDist(hit_distance[id.xy], position.w, HIT_DISTANCE_PARAMETERS, 1.f), true);
 #elif defined(NRD_FRONT_AMBIENT)
+  // On purpose (ATN 11-22): the open share, not NRD's mean of min(hit, range) / range, so every blocked ray counts as a
+  // contact: the AO NRD shows is the one the built-in denoisers show (NRD's own is lighter near far blockers).
   signal[id.xy] = ambient[id.xy];
 #endif
 }
