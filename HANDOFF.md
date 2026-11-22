@@ -7128,9 +7128,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         STARTED (small).
         upt_ v2.7 NOTE DONE 04:13 (designs/upt_v27_note_handback.md; unified_pt.md 1617 lines, copy scratchpad\
         upt_v27_backup.md).
-        Agents (11): h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gtk_ (R-S1..3), gtp_ (S-d + price build), gtq_
-        (FLIP numpy port), gtl_ (S3r M1r / M2r), gtv_ (S2r), gtb_ (watch build), gpr_ (gti_ code look). Idle: bd1r_,
-        lga_, lgf2_, c33i_, upt_, upr_ (waits h0i_), gpp_, gti_, ebr_, gbc_, grs_, gtw_ (waits gtp_).
+        gtk_ R-S DONE 04:1x (plan_1117/gtk_rs_handback.md; backups scratchpad\gtk_backup_rs): R-S1 size-settle wait
+        (2 s still, 120 s cap) before the finishing trace + exactly one frame_<AT> with complete.txt before ALL PASSED;
+        R-S2 RECORD_FRAMES must equal measured; R-S3 _noseed; R-N1 NOTICE (two libdeflate copies + commits, Imath,
+        PATENTS, MPL-2.0, offline rebuild from tools\refcode\pbrt-v4_20e41fd_fetched proven by a configure-only run);
+        R-N2..4; scene_test 89 PASS, unset path same -> gbc_ R-S RE-CHECK STARTED.
+        gpr_ gti_ LOOK = FIX (tests only) 04:1x (designs/gpr_gti_look_handback.md; gpr_review.md l.544-635): code right
+        (answer can't change, no temp left, 0 garbled reads in ~8000 under 3 writers, defaults unchanged, H0 uses the
+        gpu_lock.py CLI directly); F1 test_gpu_lock's -SettleS / two-slot timing checks compare two powershell launches
+        (53 / 54 under load) -> Stopwatch inside one PowerShell; nits: thread id in the temp name, ValidateRange on
+        -PollS / -SettleS, the test's fake map_replay_gti.exe (counted by ns_busy + H0's busy check) must SKIP while a
+        GPU run is live -> gti_ STARTED. For gtp_'s load tag: a fault reads 'unknown' (not 'game'); a count taken
+        with exclusions that says not busy reads 'unknown' (not idle) -> sent to gtp_. [ ] round clean-up: old
+        busy_count.json.*.tmp files (ATN's yes).
+        Agents (11): h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gbc_ (R-S re-check), gtp_ (S-d + price build),
+        gtq_ (FLIP numpy port), gtl_ (S3r M1r / M2r), gtv_ (S2r), gtb_ (watch build), gti_ (test F1 + nits). Idle:
+        bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (waits h0i_), gpp_, gpr_, ebr_, gtk_, grs_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
