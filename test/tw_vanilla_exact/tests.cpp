@@ -646,13 +646,13 @@ static Setup MakeSetup(const Shader& game, const Shader& addon, const Settings& 
 // and in the game's slot's place, so the add-on's read in place of the game's input is checked against the game reading
 // the same. Uniform: the interpolants here are not texel centres (VertexShaderFor), so a varied texture would compare
 // an add-on's Load with the game's filtered Sample; the scene's own input there is varied, so the bind still acts.
-// `t<slot>~scene`: the scene ramp (its bright rows past 2) at alpha 1, in the game's and the add-on's slot both, for an
-// input whose name gives a 0 - 1 mask (Warhammer II's FXAA: the add-on writes alpha 1, the game its input's);
-// `t<slot>~scene_inf`: with its last texel's rgb +infinity, for a pass that guards non-finite values (Divinity 2's
-// autoexposure00: the control's swap lands on that guard); `t<slot>~srgb`: the scene ramp clipped to 0 - 1, sRGB-encoded
-// to 8 bits, the game's slot an sRGB view of it (the hardware decodes), the add-on's the same codes / 255 in a float
-// texture (the FP16 clone of an upgraded sRGB target holds the encoded values; the add-on decodes by hand: Ryse's TAA,
-// upscale and post).
+// The scene ramp at alpha 1 in the game's and the add-on's slot both, for an input whose name gives a 0 - 1 mask:
+// `t<slot>~sdr` clipped to 0 - 1, as an 8-bit target holds it (Warhammer II's FXAA: the add-on writes alpha 1, the game
+// its input's); `t<slot>~scene_inf` unclipped (its bright rows past 2) with its last texel's rgb +infinity, for a pass
+// that guards non-finite values (Divinity 2's autoexposure00: the control's swap lands on that guard); `t<slot>~srgb`
+// clipped, sRGB-encoded to 8 bits, the game's slot an sRGB view of it (the hardware decodes), the add-on's the same
+// codes / 255 in a float texture (the FP16 clone of an upgraded sRGB target holds the encoded values; the add-on
+// decodes by hand: Ryse's TAA and upscale).
 constexpr float BIND_VALUE = 0.37f;
 struct Binds {
   std::vector<std::pair<UINT, ComPtr<ID3D11ShaderResourceView>>> addon;  // added to the add-on's bindings
@@ -680,16 +680,16 @@ static Binds MakeBinds(const std::string& text) {
     const size_t tilde = entry.find('~');
     if (tilde != std::string::npos) {
       const bool srgb = entry.ends_with("~srgb");
+      const bool unclipped = entry.ends_with("~scene_inf");
       std::vector<float> texels;
       std::vector<uint8_t> codes;
       for (UINT y = 0; y < HEIGHT; ++y) {
         for (UINT x = 0; x < WIDTH; ++x) {
           const Float4 texel = Texel(Kind::SCENE, x, y, 0, WIDTH, HEIGHT);
           for (UINT c = 0; c < 4; ++c) {
-            float value = (c == 3) ? 1.f : texel[c];
+            float value = (c == 3) ? 1.f : (unclipped ? texel[c] : std::clamp(texel[c], 0.f, 1.f));
             if (srgb) {
-              const float clipped = std::clamp(value, 0.f, 1.f);
-              const float encoded = (clipped <= 0.0031308f) ? 12.92f * clipped : 1.055f * std::pow(clipped, 1.f / 2.4f) - 0.055f;
+              const float encoded = (value <= 0.0031308f) ? 12.92f * value : 1.055f * std::pow(value, 1.f / 2.4f) - 0.055f;
               codes.push_back(static_cast<uint8_t>(std::lround(encoded * 255.f)));
               value = codes.back() / 255.f;
             }
@@ -697,7 +697,7 @@ static Binds MakeBinds(const std::string& text) {
           }
         }
       }
-      if (entry.ends_with("_inf")) std::fill(texels.end() - 4, texels.end() - 1, INFINITY);
+      if (unclipped) std::fill(texels.end() - 4, texels.end() - 1, INFINITY);
       const auto view = BindTexture(DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), 16);
       const UINT slot = static_cast<UINT>(std::stoul(entry.substr(1, tilde - 1)));
       binds.addon.emplace_back(slot, view);
