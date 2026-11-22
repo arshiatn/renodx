@@ -7111,9 +7111,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         case -> h0i_ STARTED; upr_ re-checks, then the coordinator runs H0. Note: two gti_ map_replay_gti.exe jobs ran
         ~04:00 without the shared lock and tripped the offline busy check; any such job in the H0 window stops H0
         (safe, loses the window). upr_ v2.7 re-check STARTED meanwhile.
-        Agents (11): upr_ (v2.7 re-check), h0i_ (F1), c3i_ (B1.6), ebr_ (r18 re-check), gtk_ (R-S1..3), gtp_ (S-d +
-        price build), gtq_ (FLIP numpy port), gtv_ (S3r re-check, then S2r), gtb_ (watch build), gpr_ (gti_ code look).
-        Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gti_, gtl_, t4i_, gbc_, grs_, gtw_ (waits gtp_).
+        upr_ v2.7 RE-CHECK = GO 04:1x (designs/upr_v27_handback.md; review l.1581): UNIFIED PT DESIGN v2.7 DONE (text;
+        ATN's 5 open points stay open). U11 note (not a fix): `share` is one value per sun draw (light_bounce_apply
+        .hlsli:86), the arm needs the share of the lighting model that drew the seen pixel -> upt_ adds it under
+        'U11 sets the exact weights (E)'. upr_ next: short re-check of h0i_'s F1.
+        gtv_ S3r RE-CHECK = FIX 04:1x (plan_1117/gtv_s3r_recheck_handback.md; gtv_s3r_review.md l.251): fixes hold
+        (Job Objects, M1, M3, M4 under de-DE, .partial check, reuse race), 72 / 72; M1r ns_busy can count the scene
+        harness's own helper started between the members() snapshot and ns_busy (1 of 12 trials) -> stops its own
+        record + leaves .partial; M2r the fixture runs the real BusyState into the real busy_count.json; nits 1-4 ->
+        gtl_ STARTED with M1r / M2r / nits + the queue (pbrt --spp naming, HARNESS_SUN_SOFTNESS=0 in LAB_ENV, fake
+        'FLIP' metric names). gtv_ S2r (grs_'s resident, offline) STARTED.
+        ebr_ r18 RE-CHECK = MERGE-READY 04:1x (render_mt/reports/ebr_r18_recheck_handback.md; ebr_t4_review.md :564):
+        run_all 0 failed, 6 / 6 mutants killed; four_on changes nothing for today's leg 3 / 4 starts (ATN's heapfix.ini
+        already has the four keys at 1, no *_off.txt). Should: explicit four_on starts vs starts that rely on ATN's file
+        (D1-OFF vs D1-ALL, WPR-W3-2 / REF-P vs other W3) -> the T6 dry run flags any of the four keys not at 1 -> t4i_
+        STARTED (small).
+        Agents (12): upt_ (U11 note), h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gtk_ (R-S1..3), gtp_ (S-d +
+        price build), gtq_ (FLIP numpy port), gtl_ (S3r M1r / M2r), gtv_ (S2r), gtb_ (watch build), gpr_ (gti_ code
+        look). Idle: bd1r_, lga_, lgf2_, c33i_, upr_ (waits h0i_), gpp_, gti_, ebr_, gbc_, grs_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
