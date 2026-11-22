@@ -7014,9 +7014,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 03:3x (going to bed): "Can you run it yourself please?" = the Mega Geometry 4K check -> the ONE unchanged
         retry of mg4k_check.ps1 STARTED 03:36 (background bwr5ktd30; GPU lock, no game). If the classifier stops it
         again, that path ends until ATN decides. Nothing else needed from ATN tonight (cite_since optional).
-        Agents (12): bd1r_ (N6 re-check), t4i_ (r18), upt_ (v2.5), gpr_ (price + web v2 re-check), grs_ (S2), gtl_ (S3
-        fixes), gtp_ (M5 / M6), gtk_ (C1 fixes), gtq_ (B1 fixes), h0i_ (ps1:439 + real-path tests). Idle: lga_, lgf2_,
-        c33i_, gpp_, upr_, ebr_, gtw_ (waits gtp_), gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_.
+        MEGA GEOMETRY 4K CHECK PASSED 03:37 (retry ran, no classifier stop): build\coord_mg4k (c3ea4925f helper +
+        scene4k harness), mg4k_out.txt 30 PASS / 0 FAIL, ALL PASSED; helper log: DXR 1.2 (OMM, SER, SHaRC), Agility SDK,
+        Mega Geometry room 262144 clusters a frame (up to 1048576, 196608 from templates of 3968 bytes, 2514 MB), no
+        refusal line; the one garbage-triangle line is the harness's deliberate test (tw_rt_harness.cpp:1675). Lock freed.
+        Nit: the script's 'harness exit' prints empty (Start-Process ExitCode after a timed WaitForExit). [x] lgf2_ R1.
+        gpr_ v2 RE-CHECK = GO WITH FIXES (designs/gpr_v2_handback.md; gpr_review.md l.305-475): R1 watch clock never
+        starts for piped gated_build calls, R2 lab phases lose their deadline kill (MUST, design first); R3-R11 into the
+        owners' briefs; live shadow logs answered the open probes. gpp_ RESUMED for v3; build after gtp_'s M5 / M6.
+        Agents (12): bd1r_ (N6 re-check), t4i_ (r18), upt_ (v2.5), gpp_ (price + web v3), grs_ (S2), gtl_ (S3 fixes),
+        gtp_ (M5 / M6), gtk_ (C1 fixes), gtq_ (B1 fixes), h0i_ (ps1:439 + real-path tests). Idle: lga_, lgf2_, c33i_,
+        gpr_, upr_, ebr_, gtw_ (waits gtp_), gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
