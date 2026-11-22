@@ -11481,6 +11481,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] D2 in-game batch (g07_): an SSR trace (in-game SSR on, wet / polished floor or water): DeferredSSR (EB5998CF)
         writes (size, format) + DeferredSSRCombine (0FA22D5A) t1 / t2 reads; render-scale trace; R2 A/B for VFX half-res.
         - [ ] ATN (when well): handoff_plan/atn_questions_groups.md (groups' questions with coord's picks; 2 so far).
+        g19_ PART 20:2x (handoff_plan/handbacks/g19_part_handback.md): ho_g19 a5f8608fb..40e030621: settings_pages without
+        the lighting_settings include (AO / GI sections + tints moved, same namespace); Bindings::screen_space_tested
+        (false = "(Experimental)" method labels + No RT/PT writes ssao_mode 1 per ATN's 150e41174 rule) +
+        lod_bias_at_game_scale; torch tooltips "Needs ... ReSTIR GI"; decision 9 traced-GI Reset defaults from RAYS_PRESET
+        in every Apply game (Attila changes: Rays 4 -> 1, Res 1 -> Full, Range 10 -> 50, Bounces 2 -> 1); Auto Thickness rows
+        ON + label; one-time clear (GraphicsPageRevision=1: LOD-bias trilinear + both Auto Thickness keys always; Fog
+        Shadows / Specular Occlusion only where no RT method is saved on). Page dumps of 13 add-ons: only the intended rows
+        differ (d1 dump fails to link on Detours = tool gap -> g13_). COORD: Ryse handed to g19_ on a new branch
+        ho_g19_ryse from ho_g08's tip (G08 merges first); per-game requests sent to g07_ (D2 flag + wrap), g04_ (Shogun 2
+        Auto Thickness + clear + decision-9 list; Rome Remastered lod_bias flag), g09_ (Tales hdr_only.hpp:126), g01_
+        (Thrones preset); Tales / Expeditions Reset change -> ATN list item 3 (pick keep).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
