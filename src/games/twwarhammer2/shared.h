@@ -174,14 +174,20 @@ struct ShaderInjectData {
 // ray-tracing copies. At 1 the same bits; settings not yet written (0) leave the game's.
 #define GRASS_INV_DISTANCE(game) ((SI.grass_height_distance > 0.f) ? (game) / SI.grass_height_distance : (game))
 
-// PsychoV35's slider defaults here: the game's own response (its Extended Reinhard's darker shadows below mid gray, its
-// colour at equal lightness), Highlight Contrast keeping PsychoV35's highlights; minimax-fitted on WARP against the game's
-// SDR through t00 2333E142 -> t01 187C9C6D at burn 0.3 (the V35 fit recipe, its 10 % highlight guard; level B: no trace
-// holds a map's burn); the other PsychoV35 sliders keep Musa's defaults.
-#define WH2_V35_CONTRAST           1.01f
-#define WH2_V35_SHADOWS            0.57f
-#define WH2_V35_SATURATION         0.91f
-#define WH2_V35_HIGHLIGHT_CONTRAST 0.93f
+// PsychoV35 at the game's own response per map: its Extended Reinhard's shadows below mid gray and its colour at equal
+// lightness depend on the map's burn (each weather\battle and campaign lighting .environment's tone_mapping burn, 0 -
+// 0.83 in the packs; its brightness is an exposure both modes share). Contrast / Shadows / Saturation / Highlight
+// Contrast minimax-fitted on WARP against the game's SDR through t00 2333E142 -> t01 187C9C6D at each burn below (the V35
+// fit recipe, its highlight guard ladder), Highlight Contrast keeping PsychoV35's highlights; hdr_to_screen.hlsli interpolates
+// them at the bound burn and multiplies the rows by them (the rows' 1: the game's response; Musa's own where the copy is
+// missing). Burn 0.5 is Musa's own (1 everywhere); at burn 0.2 (best 5.7 %) and 0.83 (best 13.3 %) no highlight guard
+// reaches 5 %: the 10 % guard's fit, as near as the four sliders get.
+#define WH2_V35_BURNS               0.f, 0.02f, 0.05f, 0.1f, 0.15f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.83f
+#define WH2_V35_CONTRASTS           1.09f, 1.10f, 1.10f, 1.10f, 1.10f, 1.10f, 1.01f, 1.00f, 1.00f, 0.99f, 0.90f
+#define WH2_V35_SHADOWS             0.52f, 0.58f, 0.62f, 0.69f, 0.79f, 0.95f, 0.57f, 0.69f, 1.00f, 1.27f, 1.34f
+#define WH2_V35_SATURATIONS         0.84f, 0.87f, 0.87f, 0.87f, 0.87f, 0.90f, 0.91f, 0.97f, 1.00f, 1.01f, 0.99f
+#define WH2_V35_HIGHLIGHT_CONTRASTS 0.87f, 0.87f, 0.87f, 0.87f, 0.87f, 0.90f, 0.93f, 0.97f, 1.00f, 0.97f, 1.07f
+#define WH2_V35_KNOTS               11
 
 // FOR VFX AND EXTRA STUFF
 #define HDR                       SI.hdr
@@ -229,9 +235,17 @@ cbuffer shader_injection : register(b13) {
   ShaderInjectData shader_injection : packoffset(c0);
 }
 
+// PsychoV35's game response at the map's burn (hdr_to_screen.hlsli sets it right before PsychoV35): Contrast, Shadows,
+// Saturation, Highlight Contrast x the rows. 1 everywhere else (the same bits).
+static float4 wh2_v35_response = 1.f;
+
 // SDR output (Output: SDR, displays without HDR): Peak, Paper White and UI white are all the display's white, so every
 // tone mapper and paper white scale lands in SDR; the proxy encodes gamma 2.2.
 ShaderInjectData OutputShaderInjection(ShaderInjectData data) {
+  data.v35_contrast *= wh2_v35_response.x;
+  data.v35_shadows *= wh2_v35_response.y;
+  data.v35_saturation *= wh2_v35_response.z;
+  data.v35_highlight_contrast *= wh2_v35_response.w;
   [flatten]
   if (data.swap_chain_encoding == 2.f) {
     data.peak_white_nits = 100.f;

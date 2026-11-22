@@ -13,18 +13,21 @@
 - Fixed: **FXAA** (fxaa00 CE9EA4E8) is the game's again: the end-of-edge offset (an int-cast decompile bug cut it
   to 0) and its luma gathers (green, the decompile read red), as Troy's. WARP (scratch fxaa_check, 96 x 96 edges):
   0 apart from the game's bytes (before 517 texels apart, worst 0.125).
-- Changed: **PsychoV35's defaults follow the game's own shadows and colour**: Contrast 1.01, Shadows 0.57, Saturation 0.91,
-  Highlight Contrast 0.93 (V35_GAME_RESPONSE, shared.h WH2_V35_*; Reset and Recommended start from them). WARP fit (the V35
-  recipe, its 10 % highlight guard) against Rendering Mode SDR through t00 2333E142 -> t01 187C9C6D at burn 0.3 (level B:
-  no trace holds a map's burn), 1000 / 203 nits, as SDR over it:
-  - grey 0.05 - 1 nits x1.25..x1.58 -> x0.97..x1.02; 1 - 15 nits x1.02..x1.22 -> x1.00..x1.04; 15 - 100 nits
-    x1.00..x1.06 -> x1.00..x1.03;
-  - colour at equal lightness 1 - 30 nits x1.000 -> x0.965; 30 - 150 nits x1.13 -> x1.00;
-  - PsychoV35's highlights within 9.9 % of Musa's own at 1000 / 203 (the fit's guard, 10 %), 13.0 % at 2500 / 275;
-  - burn 0.1 brighter than SDR still (shadows x1.50..x2.27 -> x1.22..x1.48), burn 0.5 the other way: Musa's own was the
-    game's there (x1.00), now 0.05 - 1 nits x0.64..x0.79 and 1 - 15 nits x0.80..x0.99.
-  The control (Musa's own) misses by 58.1 %; Rendering Mode SDR is the game's bytes (0.00 %) and HDR (Extended) the game's
-  grey (0.00 %).
+- Changed: **PsychoV35 follows the game's own shadows and colour per map**: the game's Extended Reinhard depends on the
+  map's burn (each weather\battle and campaign lighting .environment's tone_mapping, read from the packs: 280 files,
+  burn 0 - 0.83; 0.05 in 78, 0.1 in 89, 0.5 in 16). The add-on copies t00's tone_mapping on the GPU to hdr_to_screen
+  (b4, PsychoV35 only, nothing read back), which interpolates shared.h's per-burn table (11 burns) and multiplies
+  Contrast / Shadows / Saturation / Highlight Contrast by it; the rows are back at 1 (= the game's response; Musa's own
+  where no copy is bound). No map list, no trace. WARP fit per burn (the V35 recipe, its highlight guard ladder) against
+  Rendering Mode SDR through t00 2333E142 -> t01 187C9C6D, 1000 / 203 nits, worst error below white (Musa's own before):
+  - burn 0 - 0.15: 3.9 - 4.8 % (110 - 165 %); burn 0.3 - 0.6: 2.9 - 4.3 % (25 - 58 %); burn 0.5 is Musa's own (0.3 %);
+  - burn 0.16 - 0.25 (20 files, around the 0.2 knot: its best 5.7 %, no slider set nearer): 5.4 - 8.5 % (75 - 106 %);
+    burn 0.8 / 0.83 (2 files): 11.9 / 13.3 % (63 / 68 %), no slider set nearer at 0.83;
+  - the packs' 35 burns: 26 of them under 5 %, every one nearer the game than Musa's own;
+  - PsychoV35's highlights within 9.9 % of Musa's own at 1000 / 203, 13.0 % at 2500 / 275 (bound 20 %);
+  - burn 0.1 grey 0.05 - 1 nits x1.50..x2.27 -> x0.96..x1.04, 1 - 15 nits x1.05..x1.44 -> x0.96..x0.97.
+  Controls: Rendering Mode SDR is the game's bytes at every burn (0.00 %), HDR (Extended) the game's grey (0.00 %),
+  the copy bound with the table at 1 gives Musa's own exactly.
 - Fixed: **Bend Screen-Space Shadows and the rays' sun shadows now reach the software / hardware pcf shadow builds**
   (with the screen-space shadows' patch of them, f7fb7a901): under the rays' sun shadows those builds take the rays'
   shadow alone (their 12 sun shaders on Warhammer's far-plane route at the atlas's t1: the ALWAYS sampler at s1 does
