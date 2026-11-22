@@ -118,9 +118,10 @@ if (Test-Path "$omm\include\omm.h") {
   $omm_include = @("-imsvc$omm\include")
   Copy-Item "$omm\bin\omm-lib.dll" $out -Force
 }
-# AMD's FSR SDK (its signed DLLs and API headers: MIT, github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK: tag v2.4.0) when it
-# sits in build\downloads\fsr\extracted: loaded at run time, its DLLs next to the helper (else none: the helper builds
-# without it).
+# AMD's FSR SDK (github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK: tag v2.4.0) when it sits in build\downloads\fsr\extracted:
+# loaded at run time, its DLLs next to the helper (else none: the helper builds without it). Its Kits\FidelityFX\docs\license.md
+# names the files under MIT (its notice ships with them), among them the signedbin DLLs used here and the api, upscalers and
+# framegeneration include headers; the files it does not name are under AMD's binary-only licence (no reverse engineering).
 $fsr = Join-Path $root "build\downloads\fsr\extracted\FidelityFX-SDK-2.4.0\Kits\FidelityFX"
 $fsr_include = @()
 if (Test-Path "$fsr\api\include\ffx_api.h") {

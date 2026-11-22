@@ -26,8 +26,9 @@
 #include "../dlaa_bridge.h"
 #include "./fg_d3d12.hpp"
 #include "./gpu_completion.hpp"
-// AMD's FSR SDK (its signed DLLs and these headers: MIT; build.ps1 adds them when build\downloads\fsr holds it): loaded at
-// run time, amd_fidelityfx_loader_dx12.dll and amd_fidelityfx_framegeneration_dx12.dll next to the helper.
+// AMD's FSR SDK (build.ps1 adds it when build\downloads\fsr holds it): loaded at run time, amd_fidelityfx_loader_dx12.dll
+// and amd_fidelityfx_framegeneration_dx12.dll next to the helper. Its Kits\FidelityFX\docs\license.md names these headers
+// and its signedbin DLLs under MIT (the files it does not name: AMD's binary-only licence); it ships with the DLLs.
 #if __has_include(<ffx_framegeneration.h>)
 #include <dx12/ffx_api_dx12.h>
 #include <dx12/ffx_api_framegeneration_dx12.h>
