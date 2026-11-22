@@ -223,7 +223,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (code already b454641ef (RENODX_TW_CVARS applied once the game's TAA is seen); t ... | next Ryse round
 - (rys2_ 11-16 analysis: frame minus GPU busy DLAA 4.72, DLSS Q 2.53, FSR Q 1.01, ... | next Ryse round
 - (rys2_ 11-16: Ryse-only (Expeditions / Tales pace evenly): game frames 18 / 8 ms ... | next Ryse round
-- tools/ingame/deploy.py:30 (_dlss zip entry) and tools/ryse/fg_camera_check.py (r ... | coordinator, release round
 - (rys2_ 11-16: WARP DONE d29bf211f + 4ca336eb8 (0.17 % at occlusion 0.55, 0.08 % ... | next Ryse round
 - (rys2_ 11-16: tiled lighting 0x488BF732 / 0xCDB59F36 hooked 35c2a45f8 (level B); ... | next Ryse round (after R0)
 - (shs2_ b726824c3: Host::leaf_cutoff a865ee387 + scaled-UV SceneCoverage 8862c74f ... | next UE round
@@ -548,6 +547,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - trace requests from the groups (in-game batch): D1 beach / Black Cove + torch sc ... | ?
 - RELEASE GATE: wave 1 (ho_g08, ho_g09 + G07's light-bounce rename, ho_g07 to 67d4 ... | ?
 - merge notes: G09 93c4627c1 = G21 57ae8ed10 (same patch-id, applies once); ho_g19 ... | ?
+- merge ho_g08 (+ the nits commit) together with ho_g09's e54c34c60 (frame trace p ... | ?
+- next D1 / D2 PresentMon run: act.ps1 -PM sends one Alt tap to the window in fron ... | ?
+- g12_'s optional NITs: pass_pairs.py:4 163-char docstring line; D2 common.ps1:17 ... | ?
+- set fog_shadows_defaulted_on: g01_ Thrones, g03_ Pharaoh + Troy (after g19_'s ha ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -1299,7 +1302,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [x] DONE rys2_ 6183e6bde (the contact-hardening edge mask, level A: skipped under Sun Shadow Softness, back for good if a near-mask permutation draws; part 2 0 of 4096 under PCSS, control 4096; ~0.05 ms unmeasured) Ryse: port 0x292F2865 (half-res shadow, every start). Owner: next Ryse round (with the families box)
       - [x] DONE (installs 12:10 / 13:5x / 17:37 used it): tw_install.py's Ryse entry (helper + rename aside of the old _dlss add-on by exact name; rym_ patched it,
         .bak_rym): dry run. Owner: coordinator at the install
-      - [ ] tools/ingame/deploy.py:30 (_dlss zip entry) and tools/ryse/fg_camera_check.py (removed camera math):
+      - [x] tools/ingame/deploy.py:30 (_dlss zip entry) and tools/ryse/fg_camera_check.py (removed camera math): -> RETIRED 21:15 (g12_ rows 19-20: moved to tools\retired\ingame + retired\ryse).
         obsolete, update or retire. Owner: coordinator, release round
       - [x] (row DONE rys2_ d39434650: "Dark tones for L / M" Experimental off; ATN decides, C line at the top) ATN DECIDES: Ryse's helper DLSS presets L/M get the sqrt feed (Attila's dark-tone fix) or stay linear; the
         helper's AutoExposure where Ryse gave exposure 1. Owner: ATN after R0
@@ -11879,6 +11882,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         g08_ / g13_ / g07_ / g05_ / g04_: no builds ran before the wrapper fix (slots busy); all re-sent 21:12. g13_'s staged
         dump_any.py D1 Detours link + page_dump_d2_body.h untested until its dumps runs 2-3 (rve_ told).
         headers 6.8, 24 Rome II Highlight Contrast 1.03, 25 a rule for the R.U.S.E. H2 A/B.
+        rva_ RE-CHECK (handoff_plan/reviews/rva_recheck_handback.md): G08 GO after the gated build (build PASSED 21:13,
+        136 / 136, N5 not needed; 2 optional NITs R1 braces at addon.cpp:2118, R2 "clone of" wording -> g08_ "nits"); G11 GO
+        to land; G12 GO to land.
+        - [ ] merge ho_g08 (+ the nits commit) together with ho_g09's e54c34c60 (frame trace prints `clone of <handle>`).
+        G11 LANDED 21:14: merge 63b410b02 (ho_g11 a9b74b708 docs/licenses/NVIDIA_NOTICE.txt), then release_zip.py,
+        player_zip.py, repack_game.py from testbin\scratch\g11_\stage\tw (originals matched base_hashes; backups in
+        testbin\scratch\coord_\landed_backup\g11_; all 3 compile). Divinity 2 releases with release_zip.py --helper.
+        G12 LANDED 21:15: 21 staged files (rows 1-18 + 21-23; all 21 originals matched base_hashes; backups in
+        testbin\scratch\coord_\landed_backup\g12_) + moves 19-20 (ingame\deploy.py, ryse\fg_camera_check.py -> tools\retired\).
+        - [ ] next D1 / D2 PresentMon run: act.ps1 -PM sends one Alt tap to the window in front before focusing the game
+        (outside the game): needs ATN's OK (list 26), not coord's.
+        - [ ] g12_'s optional NITs: pass_pairs.py:4 163-char docstring line; D2 common.ps1:17 use $PASS_TIMING (later tools pass).
+        g08_ BUILD PASSED (handbacks: g08_ build log testbin\scratch\g08_\build64.log); Git Bash turned `cmd /c` into a path
+        on the first try (MSYS_NO_PATHCONV=1 fixed it).
+        g19_ b8cb841d1 (ho_g19): shared ClearSavedRows(revision, keys, revision_key, keep) in settings_pages.hpp +
+        Bindings::fog_shadows_defaulted_on; the Fog Shadows / Specular Occlusion clear runs only where a game sets it:
+        Thrones (g01_), Rome Remastered (g04_), Pharaoh + Troy (g03_), WH3 (render_mt's addon.cpp, after the freeze). Hash sent
+        to g04_ (MI3 + Rome Remastered flag). "g19_ fixes" follows.
+        - [ ] set fog_shadows_defaulted_on: g01_ Thrones, g03_ Pharaoh + Troy (after g19_'s hand-back), WH3 after the freeze.
+        SECURITY FLAG 21:1x (harness: "Security Weaken" on g22_): reviewed by coord. g22_ hit "running scripts is disabled"
+        on its own scratch suites.ps1 and re-ran it as `powershell -NoProfile -ExecutionPolicy Bypass -File` (per process,
+        through gtp_lowprio.py), and its script calls the worktree tests the same way. That is the form ATN's own allowed
+        rules use for test\tw_* and worktree scripts; no system or policy setting changed (Get-ExecutionPolicy -List all
+        Undefined). Not stopped; reported to ATN.
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
