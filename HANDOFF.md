@@ -8981,9 +8981,25 @@ heading text are in HANDOFF_ARCHIVE.md)
             me to apply its steps 1-2 patch; I did not. May I (or a new implementer started in ff_s12) apply +
             build it after the review? (grs_ 09:2x)
         - [ ] gpr_ (with re-check 13): do the 15 gated_build seeds < 15 s matter (gtp_ lows, not in round 13)?
+        ebr_ T5 REVIEW = OK, NO FIX, 2 NITS 09:2x (render_mt/reports/ebr_t5_review_handback.md; outputs scratchpad
+        ebr_t5_*): run_all green (lib 480, make 87, check 166, leg 165, analyze 122); only ebo_analyze / gates /
+        segments (4 texts) / corpus (6 lines) / test_lib / test_analyze changed. Probes match the merged formats at
+        552ecaef7 (byte-identical to t4i_t5_src): b1_safety_counters reads exactly the 10 names, no site hit / L2
+        name; b1_event 8 kinds x 29 sites (SPAWNS_OFF has its own line); window lines never print outside windows.
+        NOTE vs STOP right (watched word / hang / round still open = STOP; census error + late overflow -> "off for
+        the session" STOP; tag leak LATCH B1L2; no memory LATCH B1L1; failed round = INFO + NOTE = designed
+        fallback; STOP coverage does not need F1). Coverage numbers reproduce exactly (fresh dry makes); caveats:
+        1840 frames ~1.5 min only at 20 fps, PAUSE-W3's paused seconds count as L2 on. ResolveDraws leak check
+        (:568-572) runs every round, so timing starts are not leak-blind. Decisions (c) / F1-F2 to c3i_ / (b) =
+        ATN / manifest values: sound; without a B1L1-only pair a volley difference cannot be pinned on B1L1.
+        Mutants 9 + control: 7 killed; N1 (probe without hangs) survives = nit (no test line carries hangs /
+        watched / late overflow / tag leak / wake timeouts); Y5 survives harmless. Nits: corpus STAGE_FULL text says
+        "spawn query", code raises it at spawn write; the failed-round NOTE could show failed rounds vs rounds.
+        Optional (declined, (c) stands): a scan arm at ~176 s in the HF starts. -> t4i_ NOW: option (a) + disk gate
+        + ebr_'s 3 nits.
         Agents (9): upr_ (h0i_ F1-F4 re-check), gtw_ (round 13 re-check), gpr_ (round 13 re-check), gtb_ (load
-        refresh + (12, 99) tighten), lga_ (release_check fixes), ebr_ (t4i_ T5 review), c3i_ (B1 F1 + F2 logging),
-        ffr_ (grs_ v3 re-check), fcr_ (ff_s12 steps 1-2 patch review)
+        refresh + (12, 99) tighten), lga_ (release_check fixes), t4i_ (option (a) + disk gate + ebr_ nits), c3i_
+        (B1 F1 + F2 logging), ffr_ (grs_ v3 re-check), fcr_ (ff_s12 steps 1-2 patch review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
