@@ -161,6 +161,8 @@ def page_dump(args, letter, tools):
 def match(line_key, key, attila_row):
     if line_key == key:
         return True
+    if key.startswith('skip:'):  # a skip line by its own key only, never a glob or section line
+        return False
     if line_key.startswith('section:'):
         return attila_row is not None and attila_row.get('section', '') == line_key[8:].strip()
     return '*' in line_key and fnmatch.fnmatchcase(key, line_key)
@@ -249,10 +251,9 @@ def check_game(args, letter, tools, attila_rows, out):
     # Attila's skips (Attila's own record is skips.tsv itself).
     skips_path = os.path.join(tools, 'parity', 'skips.tsv')
     if letter != 'a' and os.path.exists(skips_path):
-        for skip in open(skips_path, encoding='utf-8'):
-            if not skip.strip() or skip.startswith('#'):
-                continue
-            key = 'skip:' + skip.split('\t')[0].strip()
+        with open(skips_path, encoding='utf-8') as skips:
+            skip_keys = ['skip:' + skip.split('\t')[0].strip() for skip in skips if skip.strip() and not skip.startswith('#')]
+        for key in skip_keys:
             line = find(key)
             if line is None:
                 opened.append(f'{key}\tAttila skip without a ledger line')
