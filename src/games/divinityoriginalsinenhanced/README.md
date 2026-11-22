@@ -28,10 +28,11 @@ All four keep Peak, Paper White, UI, Settings Mode and Output (SDR also sets Out
   the game reads it (its value goes to a renderer method as 1 / value; the tone map encodes a fixed 1 / 2.2).
 - Extended: Hue Clip Emulation. PsychoV30 / Pragmap rows only in their modes (Advanced).
 - Extra: Bloom, VFX Brightness (Experimental, 1 the game's, HDR; restart after first moving it from 1: the effects'
-  colour x the row, `vfx_brightness.hpp`: 258 unlit effect shaders patched as the game creates them, the slider minus 1
-  at cb7 on their draws, the add-on's fire and particle shaders by shared.h; the effects that read the scene's colour
+  colour x the row, `vfx_brightness.hpp`: 244 unlit effect shaders patched as the game creates them, the slider minus 1
+  at cb7.x on their draws, the add-on's fire and particle shaders by shared.h; the effects that read the scene's colour
   (refraction, heat haze, shields, water: 21) and those lit by the sun's shadows and SSAO (effect surfaces: 49) are
-  left out), Vignette, Godrays. Game-Specific: UI, Player Light Intensity (lights with shadows: point and spot
+  left out), Ground Marker Brightness (1 the game's, HDR, the same restart; the 14 marker shaders, target / range / selection /
+  perception, at cb7.y; the lists from the census by `test/tw_d1_vfx/vfx_hashes.py`), Vignette, Godrays. Game-Specific: UI, Player Light Intensity (lights with shadows: point and spot
   shadow passes), Local Light Intensity (lights without), Sun Shadow Softness (Experimental: the PCSS light size x
   the row, Ultra shadows), Smooth Grade Shoulder (Experimental, off; Extended and PsychoV35), Game's Screen-Space
   Reflections (Experimental, off, restart: writes the settings object's SSR byte at swap chain creation, see Engine
@@ -104,9 +105,10 @@ Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); 
   orthographic from their widths and far planes). Its output stays one value with them too: the harness's
   interpolants (not the game's view rays) put every pixel's receiver in front of the cascades, so the filter's branch
   is still not reached offline (the game's vertex shader and a traced GBuffer1 would be needed).
-- `test/tw_d1_vfx/run.ps1`: VFX Brightness's patch on each of the 258 effect shaders' census bytes: the program the
-  game's plus the brightness (D3DDisassemble), and on WARP the game's bits with cb7 unbound and at 1, rgb x 2 at 2;
-  controls: a pixel drawn, the colour changed at 2.
+- `test/tw_d1_vfx/run.ps1`: VFX and Ground Marker Brightness's patch on each of the 258 effect / marker shaders' census
+  bytes: the program the game's plus its row's brightness (D3DDisassemble), and on WARP the game's bits with cb7
+  unbound, both rows at 1 and the other row alone at 2, rgb x 2 with its own row alone at 2; controls: a pixel drawn,
+  the colour changed at 2.
 - `test/tw_d1_swapchain`, `test/tw_device_loss`, `test/tw_output_encoding`: the window's chains, device loss, Output.
 - `test/tw_psychov30_nan/run.ps1`: PsychoV30's NaN / infinity guards live against a copy without them.
 

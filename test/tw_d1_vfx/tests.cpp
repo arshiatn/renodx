@@ -1,13 +1,15 @@
 // Divinity: Original Sin EE's VFX Brightness (src/games/divinityoriginalsinenhanced/vfx_brightness.hpp) on the game's
-// own effect shaders (the census's csos, read by run.ps1 outside the repo), each of HASHES patched by Patch:
+// own effect shaders (the census's csos, read by run.ps1 outside the repo), each of EFFECT_HASHES (row x) and
+// INDICATOR_HASHES (row y, the markers) patched by Patch with its row:
 // 1. The program (D3DDisassemble): the game's with every o0 written into one temporary more (o0 -> rT, dcl_temps + 1),
-//    before each ret "mad o0.xyz, rT.xyzx, cb7[0].xxxx, rT.xyzx" and "mov o0.w, rT.wwww", and dcl_constantbuffer CB7[1]
-//    before dcl_temps; nothing else.
+//    before each ret "mad o0.xyz, rT.xyzx, cb7[0].<row x 4>, rT.xyzx" and "mov o0.w, rT.wwww", and dcl_constantbuffer
+//    CB7[1] before dcl_temps; nothing else.
 // 2. On WARP (both shaders created; every texture, sampler and constant buffer the game's reflection names filled with
-//    fixed noise, 0 - 1, a set with constants 0 - 16, and sets of -8 - 8 until one draws; the interpolants fixed functions of the position): cb7
-//    unbound and at the slider's 1 (cb7.x 0) the game's bits wherever the game's colour is finite; at 2 (cb7.x 1) its rgb
-//    twice the game's, exact in float, its alpha the game's bits. Controls: a pixel drawn (not discarded) in each shader,
-//    and at 2 the colour off the game's somewhere.
+//    fixed noise, 0 - 1, a set with constants 0 - 16, and sets of -8 - 8 until one draws; the interpolants fixed
+//    functions of the position): cb7 unbound, both sliders at 1 (cb7 0, 0) and only the other row's slider at 2 the
+//    game's bits wherever the game's colour is finite; its own row's slider alone at 2 its rgb twice the game's, exact in
+//    float, its alpha the game's bits. Controls: a pixel drawn (not discarded) in each shader, and at 2 the colour off the
+//    game's somewhere.
 // tests.exe <the census's cso folder>; exit code 0 when every check holds.
 #include <windows.h>
 #include <d3d11.h>
@@ -196,8 +198,8 @@ static Inputs MakeInputs(std::span<const uint8_t> game, float constant_low, floa
   return inputs;
 }
 
-// `brightness`: cb7's x (null: cb7 unbound).
-static std::vector<Texel> Draw(ID3D11PixelShader* shader, const Inputs& inputs, const float* brightness) {
+// `brightness`: cb7[0] (null: cb7 unbound).
+static std::vector<Texel> Draw(ID3D11PixelShader* shader, const Inputs& inputs, const Texel* brightness) {
   const D3D11_TEXTURE2D_DESC target_desc = {TEXTURE_SIZE, TEXTURE_SIZE, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET, 0, 0};
   ComPtr<ID3D11Texture2D> target;
   ComPtr<ID3D11RenderTargetView> target_view;
@@ -216,8 +218,7 @@ static std::vector<Texel> Draw(ID3D11PixelShader* shader, const Inputs& inputs, 
   for (const auto& [slot, sampler] : inputs.samplers) context->PSSetSamplers(slot, 1, sampler.GetAddressOf());
   for (const auto& [slot, buffer] : inputs.constants) context->PSSetConstantBuffers(slot, 1, buffer.GetAddressOf());
   if (brightness != nullptr) {
-    const std::array<float, 4> value = {*brightness, 0.f, 0.f, 0.f};
-    const auto buffer = MakeConstants(value.data(), sizeof(value));
+    const auto buffer = MakeConstants(brightness->data(), sizeof(Texel));
     context->PSSetConstantBuffers(divinity::vfx_brightness::SLOT, 1, buffer.GetAddressOf());
   }
   context->Draw(3, 0);
@@ -245,12 +246,17 @@ int main(int argc, char** argv) {
   size_t checked = 0;
   size_t pixels_total = 0;
   size_t infinite_total = 0;
-  for (const uint32_t hash : divinity::vfx_brightness::HASHES) {
+  std::vector<std::pair<uint32_t, uint32_t>> shaders;  // hash, row
+  for (const uint32_t hash : divinity::vfx_brightness::EFFECT_HASHES) shaders.emplace_back(hash, 0u);
+  for (const uint32_t hash : divinity::vfx_brightness::INDICATOR_HASHES) shaders.emplace_back(hash, 1u);
+  std::array<size_t, 2> checked_rows = {};
+  for (const auto [hash, row] : shaders) {
     const std::string name = std::format("0x{:08X}", hash);
+    CHECK(divinity::vfx_brightness::Row(hash) == static_cast<int>(row), "%s: in one list only", name.c_str());
     const auto game = ReadFile(folder / (name + ".ps_5_0.cso"));
     CHECK(!game.empty(), "%s: the game's cso", name.c_str());
     if (game.empty()) continue;
-    const auto patched = divinity::vfx_brightness::Patch(game);
+    const auto patched = divinity::vfx_brightness::Patch(game, row);
     CHECK(!patched.empty(), "%s: not patched", name.c_str());
     if (patched.empty()) continue;
 
@@ -272,7 +278,7 @@ int main(int argc, char** argv) {
     for (std::string line : before[1]) {
       for (size_t at = line.find("o0."); at != std::string::npos; at = line.find("o0.", at + temp.size())) line.replace(at, 2, temp);
       if (line == "ret") {
-        instructions.push_back("mad o0.xyz, " + temp + ".xyzx, cb" + slot + "[0].xxxx, " + temp + ".xyzx");
+        instructions.push_back("mad o0.xyz, " + temp + ".xyzx, cb" + slot + "[0]." + std::string(4, "xy"[row]) + ", " + temp + ".xyzx");
         instructions.push_back("mov o0.w, " + temp + ".wwww");
       }
       instructions.push_back(line);
@@ -293,6 +299,7 @@ int main(int argc, char** argv) {
     size_t drawn = 0;
     size_t off_unbound = 0;
     size_t off_one = 0;
+    size_t off_other = 0;
     size_t off_two = 0;
     size_t changed_two = 0;
     size_t infinite = 0;
@@ -302,12 +309,16 @@ int main(int argc, char** argv) {
       const Inputs inputs = MakeInputs(game, (set >= 2 ? -8.f : 0.f), (set == 0 ? 1.f : 16.f), (0x1234567u + set * 0x9E3779B9u) ^ hash);
       CHECK(inputs.skipped.empty(), "%s: not drawn (%s)", name.c_str(), inputs.skipped.c_str());
       if (!inputs.skipped.empty()) break;
-      constexpr float AT_ONE = 0.f;
-      constexpr float AT_TWO = 1.f;
+      constexpr Texel AT_ONE = {0.f, 0.f, 0.f, 0.f};
+      Texel at_two = AT_ONE;  // its own row's slider at 2
+      at_two[row] = 1.f;
+      Texel other_at_two = AT_ONE;  // the other row's
+      other_at_two[1 - row] = 1.f;
       const auto reference = Draw(game_shader.Get(), inputs, nullptr);
       const auto unbound = Draw(patched_shader.Get(), inputs, nullptr);
       const auto one = Draw(patched_shader.Get(), inputs, &AT_ONE);
-      const auto two = Draw(patched_shader.Get(), inputs, &AT_TWO);
+      const auto other = Draw(patched_shader.Get(), inputs, &other_at_two);
+      const auto two = Draw(patched_shader.Get(), inputs, &at_two);
       for (size_t i = 0; i < reference.size(); ++i) {
         const Texel& game_texel = reference[i];
         if (game_texel[3] != SENTINEL || game_texel[0] != SENTINEL) ++drawn;
@@ -318,6 +329,7 @@ int main(int argc, char** argv) {
         }
         off_unbound += (std::memcmp(&unbound[i], &game_texel, sizeof(Texel)) != 0) ? 1 : 0;
         off_one += (std::memcmp(&one[i], &game_texel, sizeof(Texel)) != 0) ? 1 : 0;
+        off_other += (std::memcmp(&other[i], &game_texel, sizeof(Texel)) != 0) ? 1 : 0;
         const bool discarded = game_texel[0] == SENTINEL && game_texel[3] == SENTINEL;
         bool doubled = std::bit_cast<uint32_t>(two[i][3]) == std::bit_cast<uint32_t>(game_texel[3]);
         for (int c = 0; c < 3; ++c) {
@@ -329,15 +341,19 @@ int main(int argc, char** argv) {
       }
     }
     CHECK(drawn > 0, "%s: CONTROL: no pixel drawn (every input set discards)", name.c_str());
-    CHECK(off_unbound == 0 && off_one == 0, "%s: %zu pixels off the game's with cb7 unbound, %zu at 1", name.c_str(), off_unbound, off_one);
+    CHECK(off_unbound == 0 && off_one == 0 && off_other == 0, "%s: %zu pixels off the game's with cb7 unbound, %zu at 1, %zu with the other row at 2",
+          name.c_str(), off_unbound, off_one, off_other);
     CHECK(off_two == 0, "%s: %zu pixels at 2 not rgb x 2 / the game's alpha", name.c_str(), off_two);
     CHECK(changed_two > 0, "%s: CONTROL: at 2 nothing changed", name.c_str());
     ++checked;
+    ++checked_rows[row];
     pixels_total += drawn;
     infinite_total += infinite;
   }
-  std::printf("VFX Brightness: %zu of %zu effect shaders patched and checked (%zu pixels drawn, %zu with an infinite game colour left out)\n",
-              checked, divinity::vfx_brightness::HASHES.size(), pixels_total, infinite_total);
+  std::printf("VFX Brightness: %zu of %zu effect shaders (%zu of %zu, markers %zu of %zu) patched and checked (%zu pixels drawn, %zu with an "
+              "infinite game colour left out)\n",
+              checked, shaders.size(), checked_rows[0], divinity::vfx_brightness::EFFECT_HASHES.size(), checked_rows[1],
+              divinity::vfx_brightness::INDICATOR_HASHES.size(), pixels_total, infinite_total);
   std::printf(failures == 0 ? "tw_d1_vfx: all checks passed\n" : "tw_d1_vfx: %d checks failed\n", failures);
   return failures == 0 ? 0 : 1;
 }
