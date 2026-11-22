@@ -3123,7 +3123,9 @@ bool AttachAddon() {
   twattila::contact_shadows_off::Install(LIGHT_BOUNCE_DRAWS);
   // The rays replace the atlas's sun shadow: also after the screen-space shadows' and before the Light Bounce's. Skip the
   // Shadow Maps through Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
-  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &RAYS_REPLACE_MAPS);
+  // The baked far map too (s1 sBakedShadowBuffer: in all 12 sun draws only its 10 comparisons of t1; ATN #30, "ours
+  // replaces the game's").
+  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &RAYS_REPLACE_MAPS, 2, 1);
   twattila::rt_scene::InstallShadowsOnly();
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also
   // at 100% (twattila/frame_trace.hpp). The sun light draws' (standard and skin) and the tone mapper's constants once

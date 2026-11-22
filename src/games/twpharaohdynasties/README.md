@@ -20,6 +20,9 @@
 - Changed: **Ray-Traced Water Reflections also leave out the game's height pyramid** (4 more passes of its
   screen-space reflections, decided one pass earlier with the last frame's light): the same picture, a little faster.
   The first frame, after a load and under MSAA as before.
+- Changed (ATN): **the game's baked far shadow map is replaced by the rays too** with ray-traced sun shadows (before,
+  it multiplied with them beyond the per-frame maps' range): one sun shadow method, far terrain and buildings
+  shadowed by the rays alone.
 - In game: a battle with RT/PT, the camera turned: shadows from behind the camera stay. Ray-Traced AO in a battle with a building pool: corners and the pool as before, a little faster; RT/PT with
   Path-Traced AO: no darker double shade in corners.
 
