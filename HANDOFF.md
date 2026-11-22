@@ -467,6 +467,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtb_ / gti_ (low): watch's load is always `unknown` while nothing refreshes busy ... | ?
 - t4i_ (low): add -B in run_all.ps1 line 9 + test_analyze.py run_analyze, after eb ... | ?
 - ATN (cleanup list): tools\tw\h0\__pycache__ (07:42) may be deleted (upr_ 08:3x). | ?
+- gtq_ S6 (Should): seed runs played on recording 2 built with --recording naming ... | ?
+- gtq_ (Should): permanent cross test - a builder test that writes played.json wit ... | ?
+- gtl_ (nit): Resident has no `cfg` until config() runs - self.cfg = None in __ini ... | ?
+- gtl_: jobs fixture test_iq_kinds gate-phase deadline 12.5 s failed under load tw ... | ?
+- lab owner (later, optional): record `dxr12` (machine state from config's answer) ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8467,9 +8472,32 @@ heading text are in HANDOFF_ARCHIVE.md)
         119 / 119. (3) `to` case unchanged (arm_off 21, same state + values; ebo_analyze.py byte-identical). Nit:
         the new loop indents 2 / 6 spaces, not 4. END BATCH SCRIPTS P4 CLOSED. -> t4i_ -B edits + indent nit now;
         T5 manifest rows after rmt_b1rt merges.
-        Agents (8): h0i_ (H0 F1-F4), gtv_ (v1.2 config hash review, lab + builder), gtp_ (round 12: hg1 + Section 8
-        + kind() + target spelling), gtb_ (slot-wait test + load), t4i_ (-B edits), b13r_ (c3i_ rmt_b1rt review),
-        grs_ (bridge first-frame miss design), lga_ (release regression look)
+        gtv_ V1.2 REVIEW = OK 08:3x (plan_1117/gtv_v12_review_handback.md; gtv_iq_review.md "## v1.2 config hash
+        review"; probe scratchpad\gtv\v12\gtv_v12_cross.py + cross.out): canonical form identical (UTF-8 round trip
+        exact) but no permanent test links the halves (each suite recomputes with its own copy); cross probe: real
+        lab.played_config + keep_played -> real iq_frames reference build, exit 0, manifest hash matches (non-ASCII
+        env, 0.1+0.2, 2^40 flag OK; temp world, real iq_refs never made). Left-out fields right (burn xorshift
+        never 0; dred / output_sizes compared as own keys); "last sent" = effective config (Configure resets
+        un-sent stems); env complete (ENV_SCRUB + check_played); stems = resident's DXIL sha; recording + scene_key
+        fair. Refusals on real lab-written files OK (tamper, zero hash, v1.1, keys named fields / build,
+        micromap_level / stems / env / command). Suites unit 31, ps1 5, keeper 24, iq 32 / 32 (445 s), jobs 31 / 32
+        then 32 / 32 (test_iq_kinds gate --quality 48.6 s vs 12.5 s deadline under other agents' load = 2nd
+        load-only jobs fail today). Live files unchanged except gtb_'s test_budget.py (08:31). V1.2 CONFIG HASH OK.
+        -> gtq_ S6 + cross test; gtl_ golden hex + nit + jobs deadline look.
+        - [ ] gtq_ S6 (Should): seed runs played on recording 2 built with --recording naming recording 1 (same
+            frame numbers) -> exit 0; refuse unless every config.recording == normcase(realpath(--recording))
+            (also closes gtv_'s older "runs came from the given recording" nit) (gtv_ 08:3x).
+        - [ ] gtq_ (Should): permanent cross test - a builder test that writes played.json with the real lab.py
+            keep_played (gtv_ 08:3x); gtl_: one golden hex in the lab suite too.
+        - [ ] gtl_ (nit): Resident has no `cfg` until config() runs - self.cfg = None in __init__ + a ToolFault in
+            played_config, not an AttributeError (gtv_ 08:3x).
+        - [ ] gtl_: jobs fixture test_iq_kinds gate-phase deadline 12.5 s failed under load twice today - look
+            whether a looser deadline is right (gtv_ 08:3x).
+        - [ ] lab owner (later, optional): record `dxr12` (machine state from config's answer) in played.json;
+            iq gate could check A' = A by config_sha256 (gtv_ 08:3x).
+        Agents (9): h0i_ (H0 F1-F4), gtq_ (S6 + cross test), gtl_ (golden hex + cfg nit + jobs deadline), gtp_ (round
+        12: hg1 + Section 8 + kind() + target spelling), gtb_ (slot-wait test + load), t4i_ (-B edits), b13r_
+        (c3i_ rmt_b1rt review), grs_ (bridge first-frame miss design), lga_ (release regression look)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
