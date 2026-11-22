@@ -9036,9 +9036,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         Exit codes 0 done / 2 checks failed / 3 lock refused / 4 stopped; output h0\release_runs\<stamp>\. Dry
         run 09:31 exit 0, 20 hashes OK, Committed 28.7 GB, lock free. Nothing deleted / committed, no src edits.
         -> gtw_ RE-CHECK (queued after its round 13 re-check).
+        grs_ V4 DONE 09:3x (plan_1117/designs/grs_v4_handback.md; design grs_first_frame.md v4; design only): R1
+        one wait_open() before every bridge call that can send / publish (PollOpening() + 10 ms sleep up to the
+        budget, never repeats the call, counts the opening, keeps last_open_ms); grep finds 25 sites, not 23:
+        Prepare 229 / 607 / 652 / 3027 / 3492 / 4549 / 4565 / 4568 / 4586, Evaluate 312 / 487 / 3508 / 3558 / 3647 /
+        4541 / 4585, TraceScene 610 / 849 / 1206 / 3190 / 4590, TraceBounce 865 / 1224 / 3388, TraceReflections
+        3408 (no PresentFrame; TraceStatus sends nothing). NEW: 2 more live-bridge users v3 missed -
+        fg_bridge_test.cpp (PresentFrame 164 / 231, Prepare 169, Evaluate 196) needs wait_open(), and
+        restir_unified\harness\tw_rt_harness.cpp needs it or a pin to a pre-step-4 tree. Step 3 lands with
+        Opening() / PollOpening() stubs (false / nothing) until step 4. R2 PollOpening(bool set_follows): Prepare
+        passes true; busy = owe_empty kept; only the answered path clears it (Prepare publishes a set right
+        after). R3 read was_presenting before PresentFrame; hide FG once on !presented && was_presenting &&
+        Opening() with a hidden_for_opening flag cleared when Opening() is false. Section 4 table updated. ->
+        ffr_ RE-CHECKS v4.
         Agents (8): upr_ (h0i_ F1-F4 re-check), gtw_ (round 13 re-check, then lga_ release_check re-check), gpr_
         (round 13 re-check), gtb_ (load refresh + (12, 99) tighten), t4i_ (option (a) + disk gate + ebr_ nits),
-        c3i_ (B1 F1 + F2 logging), grs_ (first-frame v4: R1-R3), fcr_ (ff_s12 steps 1-2 patch review)
+        c3i_ (B1 F1 + F2 logging), ffr_ (grs_ v4 re-check), fcr_ (ff_s12 steps 1-2 patch review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
