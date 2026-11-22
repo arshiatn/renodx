@@ -487,6 +487,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - worktree cleanup (ATN): ff_s12\build\downloads is now a JUNCTION (delete the lin ... | ?
 - gtl_ (tooling): the lab fixture's 1.5 s hang timeout flakes under build load ("r ... | ?
 - worktree cleanup (ATN): grs_'s worktree build\downloads_min (6 junctions - links ... | ?
+- grs_ (after rec_verify): fg_proxy_d3d12.hpp Presented() comment -> fcr_'s exact ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9823,10 +9824,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         Select-String` -> cmake build (was underpriced), quote-split `exe files/llvm` -> git show, Wait-Process -> wait,
         AST ParseFile of h0_gpu_runs.ps1 -> light); one rough key (Start-Process -ArgumentList comma list -> stable
         odd ps1 key, no decision change). Re-seed 105,837 seeds / 7,166 price rows. -> gtw_ + gpr_ RE-CHECK ROUND 16.
-        Agents (7): gtw_ (round 16 re-check), gpr_ (round 16 price re-check), ebr_ (t4i_ probes + scan gaps re-check),
-        upr_ (H0 copy fix read), c3i_ (b1log verify runs, detached), gtl_ (fixture hang timeout), fcr_ (XeSS guard
-        review); t4i_ ETL move waits for ATN (antivirus); rmt_b1log merge after c3i_'s runs; ff_s12 + grs_xess_guard
-        after H0
+        fcr_ XESS GUARD REVIEW = OK, 1 COMMENT NIT 11:25 (plan_1117/designs/fcr_xess_guard_handback.md; scanner
+        scratchpad\fcr_\guard_scan.py, read only): value identical with the SDK for every backend (FSR / unknown /
+        initial 2, XeSS min(xefg_most_ + 1, 255)); without the SDK an XeSS object still gets backend_ = XESS (:64),
+        Initialize fails -> 2 = an SDK build's never-started object (xefg_most_ starts 1); add-on reads it only for the
+        multiplier cap + one overlay line hidden while FG failed. #if-aware scanner over every helper source + ngx_backend
+        / dlaa_bridge.h: flags exactly :539 pre-fix, nothing for XeSS / NVAPI after; FSR / OMM / NRD / SHaRC unguarded
+        hits are our own or D3D12 names (SHaRC gated by sharc_path_pipeline_, null without it; covers SHaRC-absent).
+        Nit: comment + commit text "the backend is never XeSS" not exact -> "Without XeSS's SDK an XeSS object never
+        starts (Initialize fails): its most stays 2, as with the SDK before a chain is made."
+        COORDINATOR: merge 29a55acad after H0 as is; the comment nit follows (grs_'s worktree stays on gpu_s2 for
+        rec_verify).
+        - [ ] grs_ (after rec_verify): fg_proxy_d3d12.hpp Presented() comment -> fcr_'s exact wording (fcr_ 11:25).
+        Agents (6): gtw_ (round 16 re-check), gpr_ (round 16 price re-check), ebr_ (t4i_ probes + scan gaps re-check),
+        upr_ (H0 copy fix read), c3i_ (b1log verify runs, detached), gtl_ (fixture hang timeout); t4i_ ETL move waits
+        for ATN (antivirus); rmt_b1log merge after c3i_'s runs; ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
