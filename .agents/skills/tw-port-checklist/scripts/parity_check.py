@@ -1,14 +1,16 @@
 """Parity check: for every Total War game, what of Attila's package it still lacks (the Nothing dropped rule's gate).
 
-Per game, three sources against one ledger:
+Per game, four sources against one ledger:
   page rows   the game's page dump against Attila's (rows by key, as the maintainer's page_dump/games_compare.py reads them):
               keys only in Attila (each needs a ledger line) and keys only in the game (rows that should go back to Attila:
               the Two ways rule; listed, not open)
   casters     caster_census.py --whole-dump over the game's decompiler dump: every NOT HELD vertex shader needs a ledger line
   ledger      <tools>/parity/<game>.tsv: key or hash <TAB> status <TAB> owner, scene or proof [<TAB> source]; '#' starts a comment.
               The key column holds one or more page keys or 8-digit hashes (space-separated: one row of a parity table), a
-              glob (Audio*), section:<Attila section> (every Attila-only key of that section), or feature:<words> (a feature
-              without a row, checked on its own).
+              glob (Audio*), section:<Attila section> (every Attila-only key of that section), feature:<words> (a feature
+              without a row, checked on its own), or skip:<key> (one of Attila's pass skips / CPU wins).
+  skips       <tools>/parity/skips.tsv, Attila's canonical skip list (key <TAB> kind <TAB> Attila file:line <TAB> default <TAB>
+              proof): every key needs a skip:<key> line in each game's ledger.
 Statuses: HAVE, DONE, AS ATTILA (Attila lacks it too), WON'T GET (needs its proof), NEEDS A TRACE (needs its scene), SHARED STEP
 (needs its owner), DO NOW (always open). Printed as
   OPEN     an Attila-only key or NOT HELD caster without a ledger line; DO NOW; NEEDS A TRACE without a scene, WON'T GET without
@@ -104,7 +106,7 @@ def read_ledger(path):
             continue
         cells = line.rstrip('\n').split('\t') + ['', '', '']
         key = cells[0].strip()
-        keys = [key] if key.startswith(('section:', 'feature:')) else key.replace(',', ' ').split()
+        keys = [key] if key.startswith(('section:', 'feature:', 'skip:')) else key.replace(',', ' ').split()
         lines.append({'key': key, 'keys': [k.upper() if re.fullmatch(r'[0-9A-Fa-f]{8}', k) else k for k in keys],
                       'status': cells[1].strip().upper(), 'note': cells[2].strip(), 'source': cells[3].strip(), 'line': number})
     return lines
@@ -244,14 +246,27 @@ def check_game(args, letter, tools, attila_rows, out):
         else:
             take(subject, line)
 
-    # Ledger lines nothing above used: features, and keys / hashes the tree may have made moot.
+    # Attila's skips (Attila's own record is skips.tsv itself).
+    skips_path = os.path.join(tools, 'parity', 'skips.tsv')
+    if letter != 'a' and os.path.exists(skips_path):
+        for skip in open(skips_path, encoding='utf-8'):
+            if not skip.strip() or skip.startswith('#'):
+                continue
+            key = 'skip:' + skip.split('\t')[0].strip()
+            line = find(key)
+            if line is None:
+                opened.append(f'{key}\tAttila skip without a ledger line')
+            else:
+                take(key, line)
+
+    # Ledger lines nothing above used: features, skips, and keys / hashes the tree may have made moot.
     for index, line in enumerate(ledger):
         if index in used:
             continue
         keys = line['keys']
         if all(key in rows or (key in verdicts and verdicts[key]['verdict'] != 'NOT HELD') for key in keys):
             settled['moot (on the page / held now)'] += 1
-        elif keys[0].startswith('feature:') or line['status'] in WAITING or line['status'] == 'DO NOW':
+        elif keys[0].startswith(('feature:', 'skip:')) or line['status'] in WAITING or line['status'] == 'DO NOW':
             take(line['key'][:80], line)
         else:
             settled['not in this tree\'s gaps'] += 1
