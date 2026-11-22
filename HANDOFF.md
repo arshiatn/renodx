@@ -6601,10 +6601,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         N1-N5. All R-S4 items closed; f9b67d841's stub bytes / key stores / heapfix clearance checked with dis_at.py;
         21 mutants, 18 fail as they should. c33i_ RESUMED 01:3x: bd1r_'s M1 / S1 / N1-N5 + bd3r_'s 5 Nits on rmt_rs5,
         then bd1r_ + bd3r_ re-check.
-        Agents (7): c33i_ (R-S5 fixes), gtp_ (S1c fixes), t4i_ (batch rules), h0i_ (H0), lgf1_ (group 1 R1-R7), lgf2_
-        (group 2 R1 + N1-N5), gtv_ (S1a + S1b re-check). QUEUE: R-S5 re-checks -> merge rmt_rs5, lga_ group 1 re-check 2
-        + group 2 re-check 2 -> merge rmt_lg1 / rmt_lg2, gtw_ S1c re-check, bulk index (after S1a OK), Q8(b) lock wait,
-        B1.6, X1, logging group 3, PT DI steps 0-4 (after rmt_lg2 + H0), S2 (after rmt_lg2), T5 / T6, end batch.
+        h0i_ H0 DONE 01:3x (plan_1117/h0i_handback.md): rmt_h0 0d8ce6adc on 86b2a79cf, worktree agent-a89c9abe637f2c4c2;
+        shaders only. Pcg4d in rt_scene.hlsli, Random(uint4) = (Pcg4d.y >> 8) / 2^24, 34 DIM_* kinds (kind << 12), old
+        Random(uint3) deleted. Deviations: DIM_CACHE_LIGHTS 34 (rt_cache_fill:77, missed by the spec's grep), probe path
+        ids 33 + ray, path ids 1271 = 32u / 1367 = 16u + sample. CPU test tools\tw\h0\h0i_test.py 39/39 (0 collisions,
+        old hash 100 % equal on every alias pair, new 0; chi-square 23 tests p > 0.01; RefRandom bit-identical over
+        31.4 M). Helper build clean, amd64 twattila exit 0; static DXIL +2.6 % rt_path, +3.1 % rt_reflect; registers not
+        measured. Every setting incl. ATN's preset gets new noise (same mean). upr_ H0 CODE REVIEW STARTED 01:3x ->
+        designs/unified_pt_review.md '## H0 code review'.
+        [ ] H0 harness runs (coordinator, held window, after upr_ OK): 1 HARNESS_DUMP all modes vs a pre-H0 dump (24
+        unchanged headers byte-equal); 2 E1-E7 AT FLOOR at defaults + ATN's preset; 3 Light Bounce Rays 16 + Match Output
+        Balanced / Perf / Ultra Perf, still + moving (still-camera temporal variance ~half); reflections at Samples x
+        Rays >= 9; 4 Validate replay (Torch Light in PT GI, reuse, still: invalidity / history unchanged); 5 reference
+        digest equal, REF paths byte-equal with torch light off, G3; 6 SHaRC + probe build means; 7 Nsight per pass 4K
+        ATN preset + 16 rays (registers <= 96, spills <= today); 8 M6 post-H0 baseline. NQ3 (on by default) = ATN's.
+        Agents (7): c33i_ (R-S5 fixes), gtp_ (S1c fixes), t4i_ (batch rules), lgf1_ (group 1 R1-R7), lgf2_ (group 2 R1 +
+        N1-N5), gtv_ (S1a + S1b re-check), upr_ (H0 review). QUEUE: R-S5 re-checks -> merge rmt_rs5, lga_ group 1 re-check
+        2 + group 2 re-check 2 -> merge rmt_lg1 / rmt_lg2, gtw_ S1c re-check, bulk index (after S1a OK), Q8(b) lock wait,
+        H0 fixes / harness runs -> merge rmt_h0, B1.6, X1, logging group 3, PT DI steps 0-4 (after rmt_lg2 + H0), S2
+        (after rmt_lg2), T5 / T6, end batch. ATN: unified PT 14 answers pending.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
         links made: remove them alone before any cleanup): context_hooks.hpp (17 measure-only bodies, quiescent install,
         one-device rule, re-entry guard, seeding) + map trace v3 (env-armed only) + test/tw_context_hooks. Parallel:
