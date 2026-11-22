@@ -646,16 +646,23 @@ static Setup MakeSetup(const Shader& game, const Shader& addon, const Settings& 
 // and in the game's slot's place, so the add-on's read in place of the game's input is checked against the game reading
 // the same. Uniform: the interpolants here are not texel centres (VertexShaderFor), so a varied texture would compare
 // an add-on's Load with the game's filtered Sample; the scene's own input there is varied, so the bind still acts.
+// `t<slot>~scene`: the scene ramp (its bright rows past 2) at alpha 1, in the game's and the add-on's slot both, for an
+// input whose name gives a 0 - 1 mask (Warhammer II's FXAA: the add-on writes alpha 1, the game its input's);
+// `t<slot>~scene_inf`: with its last texel's rgb +infinity, for a pass that guards non-finite values (Divinity 2's
+// autoexposure00: the control's swap lands on that guard); `t<slot>~srgb`: the scene ramp clipped to 0 - 1, sRGB-encoded
+// to 8 bits, the game's slot an sRGB view of it (the hardware decodes), the add-on's the same codes / 255 in a float
+// texture (the FP16 clone of an upgraded sRGB target holds the encoded values; the add-on decodes by hand: Ryse's TAA,
+// upscale and post).
 constexpr float BIND_VALUE = 0.37f;
 struct Binds {
   std::vector<std::pair<UINT, ComPtr<ID3D11ShaderResourceView>>> addon;  // added to the add-on's bindings
   std::vector<std::pair<UINT, ComPtr<ID3D11ShaderResourceView>>> game;   // in place of the game's at these slots
 };
 
-static ComPtr<ID3D11ShaderResourceView> FloatTexture(float value) {
-  const std::vector<float> texels(size_t{WIDTH} * HEIGHT * 4, value);
-  const D3D11_TEXTURE2D_DESC desc = {WIDTH, HEIGHT, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0};
-  const D3D11_SUBRESOURCE_DATA init = {texels.data(), WIDTH * 16, 0};
+// A WIDTH x HEIGHT texture of `texels` (texel_bytes each).
+static ComPtr<ID3D11ShaderResourceView> BindTexture(DXGI_FORMAT format, const void* texels, UINT texel_bytes) {
+  const D3D11_TEXTURE2D_DESC desc = {WIDTH, HEIGHT, 1, 1, format, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0};
+  const D3D11_SUBRESOURCE_DATA init = {texels, WIDTH * texel_bytes, 0};
   ComPtr<ID3D11Texture2D> texture;
   REQUIRE(SUCCEEDED(device->CreateTexture2D(&desc, &init, &texture)));
   ComPtr<ID3D11ShaderResourceView> view;
@@ -670,12 +677,39 @@ static Binds MakeBinds(const std::string& text) {
     if (entry.size() < 3 || entry[0] != 't') continue;
     const size_t alias = entry.find(">t");
     const size_t equals = entry.find('=');
-    if (alias != std::string::npos) {
-      const auto view = FloatTexture(BIND_VALUE);
+    const size_t tilde = entry.find('~');
+    if (tilde != std::string::npos) {
+      const bool srgb = entry.ends_with("~srgb");
+      std::vector<float> texels;
+      std::vector<uint8_t> codes;
+      for (UINT y = 0; y < HEIGHT; ++y) {
+        for (UINT x = 0; x < WIDTH; ++x) {
+          const Float4 texel = Texel(Kind::SCENE, x, y, 0, WIDTH, HEIGHT);
+          for (UINT c = 0; c < 4; ++c) {
+            float value = (c == 3) ? 1.f : texel[c];
+            if (srgb) {
+              const float clipped = std::clamp(value, 0.f, 1.f);
+              const float encoded = (clipped <= 0.0031308f) ? 12.92f * clipped : 1.055f * std::pow(clipped, 1.f / 2.4f) - 0.055f;
+              codes.push_back(static_cast<uint8_t>(std::lround(encoded * 255.f)));
+              value = codes.back() / 255.f;
+            }
+            texels.push_back(value);
+          }
+        }
+      }
+      if (entry.ends_with("_inf")) std::fill(texels.end() - 4, texels.end() - 1, INFINITY);
+      const auto view = BindTexture(DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), 16);
+      const UINT slot = static_cast<UINT>(std::stoul(entry.substr(1, tilde - 1)));
+      binds.addon.emplace_back(slot, view);
+      binds.game.emplace_back(slot, srgb ? BindTexture(DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, codes.data(), 4) : view);
+    } else if (alias != std::string::npos) {
+      const std::vector<float> texels(size_t{WIDTH} * HEIGHT * 4, BIND_VALUE);
+      const auto view = BindTexture(DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), 16);
       binds.addon.emplace_back(static_cast<UINT>(std::stoul(entry.substr(1, alias - 1))), view);
       binds.game.emplace_back(static_cast<UINT>(std::stoul(entry.substr(alias + 2))), view);
     } else if (equals != std::string::npos) {
-      binds.addon.emplace_back(static_cast<UINT>(std::stoul(entry.substr(1, equals - 1))), FloatTexture(std::stof(entry.substr(equals + 1))));
+      const std::vector<float> texels(size_t{WIDTH} * HEIGHT * 4, std::stof(entry.substr(equals + 1)));
+      binds.addon.emplace_back(static_cast<UINT>(std::stoul(entry.substr(1, equals - 1))), BindTexture(DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), 16));
     }
   }
   return binds;
