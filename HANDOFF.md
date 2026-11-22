@@ -8365,9 +8365,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         like the real one (+ missing import re). Suites jobs 32, unit 31, ps1 5, keeper 24. The builder already
         refuses (config differs in the all-but-seed / reset compare). -> gtq_ BUILDER CHECK STARTED (name the
         differing config keys, require + recompute config_sha256); gtv_ reviews both after.
+        ebr_ r24 RE-CHECK = MERGE-READY 08:1x (render_mt/reports/ebr_r24_recheck_handback.md; ebr_t4_review.md line
+        1064): run_all green (470 / 87 / 166 / 165 / 116); window probe on the real data: 113 of 132 B1Cached / B1L2
+        segments have an arm whose lines land inside, the other 19 have no arm by plan; end to end on legs 1-4
+        with synthetic lines: every armed segment counted, all 86 leg 3-4 segments, no "not measured". Rank 5
+        moves only 5 arms inside their own seconds, nothing else in 34 plans; ebr_'s own r23 nit was wrong (the
+        pool opens a window at the next present, so an own-second arm already opened under the new config) -
+        rank 5 harmless, stays; shots / trace marker need no move. Mutants P1-P3, A3, K1, K2 killed; P4 (in_seg
+        from `from`) survives = optional nit: a D1-style case with the arm at `at`. END BATCH SCRIPTS r24 OK. ->
+        t4i_ P4 test (small); T5 manifest rows + env after rmt_b1rt merges (B1 code final first).
         Agents (8): upr_ (h0i_ H0 analysis re-check), gtq_ (v1.2 config hash, builder side), gtp_ (round 12: hg1 +
-        Section 8 + kind()), gpr_ (gtb_ wrapped build + hg2 check), ebr_ (t4i_ r24 re-check), b13r_ (c3i_ rmt_b1rt
-        review)
+        Section 8 + kind()), gpr_ (gtb_ wrapped build + hg2 check), t4i_ (P4 test), b13r_ (c3i_ rmt_b1rt review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
