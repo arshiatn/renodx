@@ -475,7 +475,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtb_ (low, batched): busy_refresh `-1 <= age` (a read within 50 ms of a write is ... | ?
 - gti_ (low, batched): count r1b's skipped checks from the block instead of a type ... | ?
 - ATN (morning report): ruse_bridge.exe / ruse_replay.exe are counted by nothing i ... | ?
-- gtl_ (low, after H0 - the fixture suite starts lab jobs): make the gate_s check ... | ?
 - x87c A/B owner (after the end batch): run tools\tw\testbin\heapfix_hf\xw\x87fix_ ... | ?
 - gtp_ (low, in round 15 = R14-1): a leading `2>&1 cmd` still splits at & into a l ... | ?
 - end batch leg 1 analysis: foreign hits outside trace windows in normal play? non ... | ?
@@ -9420,7 +9419,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         count gate_s rows before / after the iq job (+1) or find this job's row; the A/B gate path has no check
         (add one in the Calibrated class, the 'cal' job's 2 gates). Nit: lab.py comment "GATE_FLOOR_S may follow"
         -> the deadline follows gate_s, the floor is a constant. gtv_ stopped its own long recursive grep.
-        - [ ] gtl_ (low, after H0 - the fixture suite starts lab jobs): make the gate_s check fail without the lab.py
+        - [x] gtl_ (DONE 11:14, gtv_ re-checks; low, after H0 - the fixture suite starts lab jobs): make the gate_s check fail without the lab.py
             change (row count +1 or this job's row), add an A/B gate check in the Calibrated class, fix the
             "GATE_FLOOR_S may follow" comment; gtv_ re-checks (gtv_ 10:0x).
         gpr_ ROUND 14 RE-CHECK = OK 10:0x (plan_1117/designs/gpr_round14_recheck_handback.md; gpr_review.md "## gtp_
@@ -9765,9 +9764,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         scratchpad\ff_s12_helper_build2.txt). Design 4 table: steps 1 + 2 land alone, helper only, no test of their own
         (step 4's tw_helper_lifetime cases come with step 4; tw_helper_lifetime uses a fake helper). -> merge gate for
         ff_s12 after c3i_'s builds end (name_check, --no-ff, gated x86 x3 + amd64; helper build already done).
+        gtl_ GATE_S LOW DONE 11:14 (plan_1117/gtl_gate_s_low_handback.md; backups scratchpad\gtl_backup_gates; logs
+        gtl_runs13): test helper gate_rows(job); test_iq_kinds counts the job's gate_s rows (+1 exactly);
+        Calibrated test_a_calibrate_both_ways expects 2 gate_s rows for 'cal'; lab.py comment fixed (deadline follows
+        gate_s, GATE_FLOOR_S a constant floor). Without the change both fail (0 != 2, 0 != 1; neg_old_lab.txt, in
+        lab_gtl_stage, restored after). Live suites: jobs 32 / 32 (149 s at 100 % CPU beside c3i_'s builds), unit 34,
+        ps1 5, keeper 24. Changed: lab.py (comment), tests\test_lab_jobs.py. lab_gtl_stage left for ATN. -> gtv_
+        RE-CHECKS.
         Agents (6): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check), h0i_ (H0 copy fix), c3i_ (b1log
-        verify runs, detached), gtl_ (gate_s low), grs_ (XeSS guard); t4i_ ETL move waits for ATN (antivirus); merge
-        gates rmt_b1log + ff_s12 after c3i_'s runs (task bi2vq35fh)
+        verify runs, detached), gtv_ (gtl_ gate_s re-check), grs_ (XeSS guard); t4i_ ETL move waits for ATN
+        (antivirus); merge gates rmt_b1log + ff_s12 after c3i_'s runs (task bi2vq35fh)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
