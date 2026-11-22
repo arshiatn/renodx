@@ -94,6 +94,14 @@ bool IsPsychoV35Mode() {
 // game's SDR picture at 80-90 (test/tw_psychov35 part 5 curve 7).
 constexpr float HUE_CLIP_DEFAULT = 40.f;
 
+// PsychoV35's defaults that follow the game's response (shared.h): the tone mapper's shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", WH1_V35_CONTRAST},
+    {"v35_shadows", WH1_V35_SHADOWS},
+    {"v35_saturation", WH1_V35_SATURATION},
+    {"v35_highlight_contrast", WH1_V35_HIGHLIGHT_CONTRAST},
+};
+
 bool IsModdedAutoExposureEnabled() {
   return shader_injection.auto_exposure_highlight_protection == 1.f;
 }
@@ -192,6 +200,7 @@ void ApplyResetPreset() {
   // No Extended mode here: Reset in PsychoV35 (ATN 2026-11-12).
   renodx::utils::settings::UpdateSettings({{"tonemapper", 3.f}, {"video_autohdr", 0.f}});
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 // Recommended (ATN 2026-11-12: every recommended preset in PsychoV35): Reset, PsychoV35, Video AutoHDR 0.20.
@@ -1519,7 +1528,15 @@ void BuildRuntimeData() {
     //     },
     // },
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
 }
 
 

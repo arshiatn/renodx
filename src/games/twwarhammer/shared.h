@@ -164,6 +164,14 @@ struct ShaderInjectData {
 #define AutoExposureHighlightProtection     SI.auto_exposure_highlight_protection
 #define AutoExposureHighlightHeadroomStops  SI.auto_exposure_highlight_headroom_stops
 
+// PsychoV35's slider defaults here: the game's own response (its tone mapper's shadows below mid gray, its colour at
+// equal lightness), Highlight Contrast keeping PsychoV35's highlights; minimax-fitted on WARP against the game's SDR
+// (the tone mappers D275C403 and kin, test/tw_psychov35 part 5's curve 7); the other PsychoV35 sliders keep Musa's defaults. Musa's own (1) until the fit has run.
+#define WH1_V35_CONTRAST           1.f
+#define WH1_V35_SHADOWS            1.f
+#define WH1_V35_SATURATION         1.f
+#define WH1_V35_HIGHLIGHT_CONTRAST 1.f
+
 // FOR VFX AND EXTRA STUFF
 #define HDR                       SI.hdr
 // #define SOMEINDICATORS            SI.someindicators

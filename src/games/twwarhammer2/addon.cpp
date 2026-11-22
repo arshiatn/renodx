@@ -107,6 +107,14 @@ bool IsPsychoV35Mode() {
 // 0.3 and 0.5; fire's hue within 1.3 degrees of the game's SDR picture on average, the row's top).
 constexpr float HUE_CLIP_DEFAULT = 100.f;
 
+// PsychoV35's defaults that follow the game's response (shared.h): the tone mapper's shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", WH2_V35_CONTRAST},
+    {"v35_shadows", WH2_V35_SHADOWS},
+    {"v35_saturation", WH2_V35_SATURATION},
+    {"v35_highlight_contrast", WH2_V35_HIGHLIGHT_CONTRAST},
+};
+
 bool IsModdedAutoExposureEnabled() {
   return shader_injection.auto_exposure_highlight_protection == 1.f;
 }
@@ -170,6 +178,7 @@ void ApplyResetPreset() {
       {"some_indicators", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 void ApplyPsychoRecommended() {
@@ -1652,7 +1661,15 @@ void BuildRuntimeData() {
     //     },
     // },
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
 }
 
 // Graphics (Experimental): engine values x the sliders (their tweaks are filled in ConfigureAddon).
