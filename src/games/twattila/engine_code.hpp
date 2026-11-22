@@ -1887,6 +1887,11 @@ static uint32_t count_window = 0;  // the pool trace window whose hits and misse
 static uint32_t count_window_hits = 0;
 static uint32_t count_window_misses = 0;
 static CutRange worker_cut;                // the worker sites' stubs, up to the end of the stubs' page
+#if defined(TWATTILA_WORKER_CONTROLS)
+// Test switch: the next removal that would wait for a cut's `active` count goes on regardless (once; the control "a cut site removed
+// while cut_active > 0").
+static std::atomic<bool> bypass_cut_active_once = false;
+#endif
 static bool module_pinned = false;
 static bool prepared = false;
 static uint32_t found = 0;    // the sites found (bits by index)
@@ -2111,6 +2116,9 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
     // the count (seq_cst).
     if (clear && out && cut.active != nullptr && cut.active->load() != 0) {
       clear = false;
+#if defined(TWATTILA_WORKER_CONTROLS)
+      clear = bypass_cut_active_once.exchange(false);
+#endif
     }
   }
 #if defined(TWATTILA_DRAW_RECORDING)
