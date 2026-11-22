@@ -111,6 +111,11 @@ static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // a sample's weight at most this many times one ray's (kajiya's RESTIR_RESERVOIR_W_CLAMP; the bounce's: W x cos / pi)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
+// reuse_tests (RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY, rt_d3d12.hpp; the bisection of the bias rising with
+// the rays): ReuseTexel merges no neighbours; PathTraceTexel validates no history; ReuseTexel leaves Own Sky Rays' sky out.
+static const uint REUSE_TEST_NO_SPATIAL = 1u;
+static const uint REUSE_TEST_NO_VALIDATE = 2u;
+static const uint REUSE_TEST_NO_SKY = 4u;
 #if defined(REUSE_NEAR)
 // Near ReSTIR Reuse (only its rt_reuse_near build): three neighbours within half the reach (Lean Reuse's test with these
 // scored better, its pass about half the cost).
@@ -943,7 +948,9 @@ void PathTraceTexel(uint2 id) {
     // Last frame's reservoir was made for a surface facing about the same way (else a new history starts).
     if (dot(LoadReceiverNormal(reuse_data[1u - set], previous_texel), normal) < 0.8f) previous.count = 0.f;
     float invalidity = 0.f;
-    if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) invalidity = Validate(previous, origin, true);
+    if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u && (reuse_tests & REUSE_TEST_NO_VALIDATE) == 0u) {
+      invalidity = Validate(previous, origin, true);
+    }
     previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)) * samples);
     Merge(reservoir, previous, ReuseTarget(origin, normal, previous) * previous.weight * previous.count,
           Random(uint4(id, frame, DIM_HISTORY_MERGE)));
@@ -1066,8 +1073,9 @@ void ReuseTexel(uint2 id) {
   const Reservoir own = LoadReservoir(reuse_samples[set], reuse_data[set], id);
   Reservoir combined = (Reservoir)0;
   Merge(combined, own, ReuseTarget(origin, normal, own) * own.weight * own.count, Random(uint4(id, frame, DIM_REUSE_OWN)));
+  const uint neighbours = ((reuse_tests & REUSE_TEST_NO_SPATIAL) != 0u) ? 0u : REUSE_NEIGHBOURS;
   [loop]
-  for (uint neighbour = 0u; neighbour < REUSE_NEIGHBOURS; ++neighbour) {
+  for (uint neighbour = 0u; neighbour < neighbours; ++neighbour) {
     const float angle = 6.2831853f * Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + neighbour * 2u));
     const float radius = REUSE_RADIUS * sqrt(Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + neighbour * 2u + 1u)));
     const int2 texel = int2(id) + int2(round(float2(cos(angle), sin(angle)) * radius));
@@ -1109,7 +1117,7 @@ void ReuseTexel(uint2 id) {
   // point of its disk under Ray Reconstruction (light_size: the helper sets it then, as rt_lights' rays), stopping short
   // of its lamp.
   const uint lights_mode = lights_in_bounce & LIGHTS_MODE;
-  float3 arriving = ((path_flags & PATH_SKY_APART) != 0u && lights_mode != 2u) ? bounce[id].rgb : 0.f;
+  float3 arriving = ((path_flags & PATH_SKY_APART) != 0u && (reuse_tests & REUSE_TEST_NO_SKY) == 0u && lights_mode != 2u) ? bounce[id].rgb : 0.f;
   if (lights_mode != 2u && combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
     arriving += combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
   }
@@ -1159,7 +1167,7 @@ void ReuseTexel(uint2 id) {
     light_ratio[written][id] = float4(lerp(kept.xy, float2(lit ? total : 0.f, total), 1.f / frames), frames, position.w);
   }
 #else
-  float3 arriving = ((path_flags & PATH_SKY_APART) != 0u) ? bounce[id].rgb : 0.f;
+  float3 arriving = ((path_flags & PATH_SKY_APART) != 0u && (reuse_tests & REUSE_TEST_NO_SKY) == 0u) ? bounce[id].rgb : 0.f;
   if (combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
     arriving += combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
   }

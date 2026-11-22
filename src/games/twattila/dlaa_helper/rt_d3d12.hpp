@@ -3803,7 +3803,9 @@ class RtScene12 {
         if (reuse) {
           flags |= PATH_REUSE | (reuse_parity_ != 0 ? PATH_REUSE_PARITY : 0u);
           if ((requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0) flags |= PATH_PERMUTE;
-          if (history_valid_ && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 == frame && reuse_size_ == reuse_size) {
+          // RENODX_TW_REUSE_NO_TEMPORAL (tests): no history merged.
+          static const bool no_temporal = GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_TEMPORAL", nullptr, 0) != 0;
+          if (history_valid_ && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 == frame && reuse_size_ == reuse_size && !no_temporal) {
             flags |= PATH_REUSE_HISTORY;
           }
         }
@@ -3854,6 +3856,10 @@ class RtScene12 {
           }
           return false;
         }();
+        // RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY (tests, read once): ReSTIR GI's parts left out.
+        static const uint32_t reuse_tests = (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_SPATIAL", nullptr, 0) != 0 ? REUSE_TEST_NO_SPATIAL : 0u)
+                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_VALIDATE", nullptr, 0) != 0 ? REUSE_TEST_NO_VALIDATE : 0u)
+                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_SKY", nullptr, 0) != 0 ? REUSE_TEST_NO_SKY : 0u);
         PathConstants constants = {
             .bounce_width = render_pixels ? width : shared.rt_bounce_width,
             .bounce_height = render_pixels ? height : shared.rt_bounce_height,
@@ -3873,6 +3879,7 @@ class RtScene12 {
                                 | ((ratio_written && history_valid_ && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame && ratio_size_ == reuse_size) ? 32u : 0u)
                                 | (ratio_follows ? 64u : 0u)
                                 | ((path_traced && light_count != 0 && (requested & dlaa_bridge::RT_PATH_TORCH_LIGHT) != 0) ? LIGHTS_IN_PATHS : 0u),
+            .reuse_tests = reuse ? reuse_tests : 0u,
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
@@ -4442,6 +4449,10 @@ class RtScene12 {
   static constexpr uint32_t PATH_SKY_PARITY = 1048576;  // rt_path.hlsli (the trace's PATH_TINT)
   static constexpr uint32_t PATH_SUN_LIGHT = 2097152;   // rt_path.hlsli (the trace's PATH_TINT_GUIDES)
   static constexpr uint32_t PATH_START_PAST = 2147483648;  // rt_camera.hlsli
+  // PathConstants::reuse_tests (tests: the bisection of ReSTIR GI's bias rising with the rays; rt_path.hlsli).
+  static constexpr uint32_t REUSE_TEST_NO_SPATIAL = 1;
+  static constexpr uint32_t REUSE_TEST_NO_VALIDATE = 2;
+  static constexpr uint32_t REUSE_TEST_NO_SKY = 4;
   static constexpr uint32_t LIGHTS_IN_PATHS = 128;  // rt_camera.hlsli (PathConstants::lights_in_bounce)
   static constexpr uint32_t LIGHTS_RATIO_BITS = 256;  // rt_camera.hlsli: a trace's, the addon reads flagged bits (RT_SCENE_LIGHT_BITS)
   static constexpr UINT LIGHT_KEPT_TEXELS = 5;  // rt_path.hlsli light_kept
@@ -4462,6 +4473,7 @@ class RtScene12 {
     uint32_t previous_square_root = 0;  // RT_PATH_COLOR_SQUARE_ROOT
     uint32_t previous_positions_slice = 0;  // kept_positions_' slice with last frame's
     uint32_t lights_in_bounce = 0;  // rt_camera.hlsli LIGHTS_*: the mode (RT_PATH_LIGHTS_IN_BOUNCE 1, with RT_PATH_LIGHT_RATIO 3), the ratio's set and validity
+    uint32_t reuse_tests = 0;  // REUSE_TEST_* (tests; 0: none)
 #if defined(RENODX_PATH_PROBE)
     uint32_t probe_mode = 0;  // RENODX_TW_PATH_PROBE: rt_path.hlsli ProbeTexel's mode | its rays a texel << 8
 #endif
