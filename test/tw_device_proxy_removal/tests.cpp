@@ -181,7 +181,9 @@ static int Run() {
   proxy::proxy_swap_chain = chain.Detach();
 
   mock::Device host;
-  mock::Swapchain host_chain = {.owner = &host, .window = window};
+  mock::Swapchain host_chain;  // virtual bases: no aggregate
+  host_chain.owner = &host;
+  host_chain.window = window;
   const auto present = [&host_chain]() {
     proxy::OnPresent(nullptr, &host_chain, nullptr, nullptr, 0, nullptr);
   };
