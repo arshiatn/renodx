@@ -664,7 +664,7 @@ inline const std::array<PatchedShader, 642> OBJECT_SHADOW_SHADERS = {{
 }};
 
 // s14: the ambient occlusion.
-inline const std::array<PatchedShader, 108> GROUND_AMBIENT_SHADERS = {{
+inline const std::array<PatchedShader, 110> GROUND_AMBIENT_SHADERS = {{
     {0x02D5FDC4, __rt_ambient_02D5FDC4},
     {0x0383F2E3, __rt_ambient_0383F2E3},
     {0x0653874F, __rt_ambient_0653874F},
@@ -699,6 +699,7 @@ inline const std::array<PatchedShader, 108> GROUND_AMBIENT_SHADERS = {{
     {0x46F15049, __rt_ambient_46F15049},
     {0x470F7963, __rt_ambient_470F7963},
     {0x47AC572D, __rt_ambient_47AC572D},
+    {0x4B1D1523, __rt_ambient_4B1D1523},
     {0x4C825DE6, __rt_ambient_4C825DE6},
     {0x4E0F468A, __rt_ambient_4E0F468A},
     {0x4F132323, __rt_ambient_4F132323},
@@ -735,6 +736,7 @@ inline const std::array<PatchedShader, 108> GROUND_AMBIENT_SHADERS = {{
     {0xAD7BDCC3, __rt_ambient_AD7BDCC3},
     {0xAF8E8B08, __rt_ambient_AF8E8B08},
     {0xAFCF621C, __rt_ambient_AFCF621C},
+    {0xAFFF53E4, __rt_ambient_AFFF53E4},
     {0xB00C6956, __rt_ambient_B00C6956},
     {0xB172C996, __rt_ambient_B172C996},
     {0xB36DA92B, __rt_ambient_B36DA92B},
@@ -776,7 +778,7 @@ inline const std::array<PatchedShader, 108> GROUND_AMBIENT_SHADERS = {{
 }};
 
 // s14: the ambient occlusion (x) and the bounced light (yzw).
-inline const std::array<PatchedShader, 108> GROUND_LIGHT_SHADERS = {{
+inline const std::array<PatchedShader, 110> GROUND_LIGHT_SHADERS = {{
     {0x02D5FDC4, __ground_light_02D5FDC4},
     {0x0383F2E3, __ground_light_0383F2E3},
     {0x0653874F, __ground_light_0653874F},
@@ -811,6 +813,7 @@ inline const std::array<PatchedShader, 108> GROUND_LIGHT_SHADERS = {{
     {0x46F15049, __ground_light_46F15049},
     {0x470F7963, __ground_light_470F7963},
     {0x47AC572D, __ground_light_47AC572D},
+    {0x4B1D1523, __ground_light_4B1D1523},
     {0x4C825DE6, __ground_light_4C825DE6},
     {0x4E0F468A, __ground_light_4E0F468A},
     {0x4F132323, __ground_light_4F132323},
@@ -847,6 +850,7 @@ inline const std::array<PatchedShader, 108> GROUND_LIGHT_SHADERS = {{
     {0xAD7BDCC3, __ground_light_AD7BDCC3},
     {0xAF8E8B08, __ground_light_AF8E8B08},
     {0xAFCF621C, __ground_light_AFCF621C},
+    {0xAFFF53E4, __ground_light_AFFF53E4},
     {0xB00C6956, __ground_light_B00C6956},
     {0xB172C996, __ground_light_B172C996},
     {0xB36DA92B, __ground_light_B36DA92B},
@@ -1008,7 +1012,7 @@ inline const std::array<PatchedShader, 116> WATER_REFLECTION_SHADERS = {{
 }};
 
 // s14: the ambient occlusion (x) and the bounced light (yzw); oC1 / oC2 the guides.
-inline const std::array<PatchedShader, 100> GROUND_LIGHT_GUIDE_SHADERS = {{
+inline const std::array<PatchedShader, 110> GROUND_LIGHT_GUIDE_SHADERS = {{
     {0x02D5FDC4, __ground_guide_02D5FDC4},
     {0x0383F2E3, __ground_guide_0383F2E3},
     {0x0653874F, __ground_guide_0653874F},
@@ -1027,7 +1031,10 @@ inline const std::array<PatchedShader, 100> GROUND_LIGHT_GUIDE_SHADERS = {{
     {0x211D996D, __ground_guide_211D996D},
     {0x238F5096, __ground_guide_238F5096},
     {0x23CE4A5A, __ground_guide_23CE4A5A},
+    {0x260797E3, __ground_guide_260797E3},
     {0x2742BB0A, __ground_guide_2742BB0A},
+    {0x28A27A33, __ground_guide_28A27A33},
+    {0x2E22AC5F, __ground_guide_2E22AC5F},
     {0x30305D89, __ground_guide_30305D89},
     {0x31797DE7, __ground_guide_31797DE7},
     {0x322A8593, __ground_guide_322A8593},
@@ -1040,6 +1047,7 @@ inline const std::array<PatchedShader, 100> GROUND_LIGHT_GUIDE_SHADERS = {{
     {0x46F15049, __ground_guide_46F15049},
     {0x470F7963, __ground_guide_470F7963},
     {0x47AC572D, __ground_guide_47AC572D},
+    {0x4B1D1523, __ground_guide_4B1D1523},
     {0x4C825DE6, __ground_guide_4C825DE6},
     {0x4E0F468A, __ground_guide_4E0F468A},
     {0x4F132323, __ground_guide_4F132323},
@@ -1051,6 +1059,7 @@ inline const std::array<PatchedShader, 100> GROUND_LIGHT_GUIDE_SHADERS = {{
     {0x560C4F8C, __ground_guide_560C4F8C},
     {0x5AD9EDE4, __ground_guide_5AD9EDE4},
     {0x5D123F33, __ground_guide_5D123F33},
+    {0x6B884638, __ground_guide_6B884638},
     {0x6F16DB3A, __ground_guide_6F16DB3A},
     {0x6F287742, __ground_guide_6F287742},
     {0x6FABAE35, __ground_guide_6FABAE35},
@@ -1075,6 +1084,7 @@ inline const std::array<PatchedShader, 100> GROUND_LIGHT_GUIDE_SHADERS = {{
     {0xAD7BDCC3, __ground_guide_AD7BDCC3},
     {0xAF8E8B08, __ground_guide_AF8E8B08},
     {0xAFCF621C, __ground_guide_AFCF621C},
+    {0xAFFF53E4, __ground_guide_AFFF53E4},
     {0xB00C6956, __ground_guide_B00C6956},
     {0xB172C996, __ground_guide_B172C996},
     {0xB36DA92B, __ground_guide_B36DA92B},
@@ -1084,6 +1094,7 @@ inline const std::array<PatchedShader, 100> GROUND_LIGHT_GUIDE_SHADERS = {{
     {0xB8F6D834, __ground_guide_B8F6D834},
     {0xBCCF4F54, __ground_guide_BCCF4F54},
     {0xBE60A40E, __ground_guide_BE60A40E},
+    {0xBEE66EF2, __ground_guide_BEE66EF2},
     {0xC140EA9C, __ground_guide_C140EA9C},
     {0xC21EA357, __ground_guide_C21EA357},
     {0xD02A9AE1, __ground_guide_D02A9AE1},
@@ -1096,7 +1107,10 @@ inline const std::array<PatchedShader, 100> GROUND_LIGHT_GUIDE_SHADERS = {{
     {0xDFE5E18E, __ground_guide_DFE5E18E},
     {0xE202FC70, __ground_guide_E202FC70},
     {0xE598B655, __ground_guide_E598B655},
+    {0xE746950C, __ground_guide_E746950C},
+    {0xE8564409, __ground_guide_E8564409},
     {0xE8E8F9DB, __ground_guide_E8E8F9DB},
+    {0xED69EAF9, __ground_guide_ED69EAF9},
     {0xF09F1BE9, __ground_guide_F09F1BE9},
     {0xF13DF8AE, __ground_guide_F13DF8AE},
     {0xF1CF0950, __ground_guide_F1CF0950},
