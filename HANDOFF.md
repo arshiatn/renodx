@@ -6511,7 +6511,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         thread during a fold window (engine_code.hpp:2951-2958): write the assumption down or wait ~100 ms + keep FOLD_SITES
         pinned. All suites + gated plain / DRAW_RECORDING / amd64 exit 0. Waiting for bd1r_'s instance_fill side.
         t4i_ RESUMED 01:0x: ebr_'s 4 T3c nits (bench; backups t4i_bak14).
-        Agents (9): bd1r_ (R-S5 review), gtv_ (S1r S1a / S1b), gtw_ (S1r S1c), t4i_ (bench nits), lgf1_ +
+        t4i_ T3d DONE 01:1x (bench only; backups t4i_bak14): plan PAUSE-W3 lists OFF 755 / OFF 765 control / C 775 /
+        ALL 805 / OFF 820 drift; nit 2 TAKEN: a not-comparable drift control -> NOTE '§4.2 drift not covered', pairs still
+        checked vs window 3 (a differing drift control still blocks all pairs); v1-only DIFFERS hint (trace at 774 s);
+        show() hex. run_all green (analyze 106). ebr_ RESUMED 01:1x: short check of nit 2 -> '## T3d check'.
+        ATN 01:1x asked (phone) for issues / questions / my own decisions since yesterday -> answered in chat.
+        Agents (9): bd1r_ (R-S5 review), gtv_ (S1r S1a / S1b), gtw_ (S1r S1c), ebr_ (T3d check), lgf1_ +
         lgf2_ (logging fixes). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6, X1, logging group 3, lga_ re-checks,
         S1r S1b / S1c, bulk index, H0, T5 freeze, T6 dry run, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
