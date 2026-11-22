@@ -174,7 +174,11 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
     for (size_t stub = 0; stub < STUBS; ++stub) {
       inside_unmap.store(false);
       let_go.store(false);
-      std::thread unmapping([&] { fi::UNMAP_ENTRIES[stub](ring.data(), nullptr, nullptr); });
+      // (a failed CHECK returns: the callback lets the hook go, the destructor joins)
+      std::jthread unmapping([&](std::stop_token token) {
+        std::stop_callback release(token, [] { let_go.store(true); });
+        fi::UNMAP_ENTRIES[stub](ring.data(), nullptr, nullptr);
+      });
       while (!inside_unmap.load()) Sleep(1);
       CHECK(fi::active.load() == 1);
       update(ALL_GROUPS, true, false);

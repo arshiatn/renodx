@@ -605,7 +605,9 @@ inline void CommitUnit(Unit* unit) {
 // L2: commits every unit that is done from the commit cursor on, in the serial order, up to the first that is not. Called where a unit becomes direct (everything before it is done),
 // before a sweep runs and at the walk's end: one thread at a time by construction (the direct unit, the sweep, or the finisher once all is done). It reads `segment.next` as
 // AdvanceFrontier does while the render thread may still link the tail: the link is stored after the seq_cst `segment_count` store and the cursor reads that first (a formal race, correct on x86).
-inline void CommitDone() {
+// A sweep commits only up to the end of its own segment (`sweep_segment`): the units of the segments after it that ran ahead and are done come after the sweep's destructors in the serial
+// order, and the destructors may draw the random triple themselves.
+inline void CommitDone(uint32_t sweep_segment = NONE) {
   Round& round = current_round;
 #if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
   std::vector<Unit*> held;
@@ -621,7 +623,7 @@ inline void CommitDone() {
       unit = &units[segment.first_unit + position];
     } else if (position - segment.units < late) {
       unit = LateUnit(segment, position - segment.units);
-    } else if (segment.next != NONE) {
+    } else if (segment_id != sweep_segment && segment.next != NONE) {
       round.commit_at = Pack(segment.next, 0);
       continue;
     } else {
@@ -680,12 +682,10 @@ inline void ThreadStackLimits() {
 // worker take it once at the end of a round in a trace window; a stack with no guard page left (all of it committed) says nothing.
 inline void NoteStackHeadroom() {
   MEMORY_BASIC_INFORMATION info = {};
-  uint8_t marker = 0;
-  if (VirtualQuery(&marker, &info, sizeof(info)) == 0) return;
   ULONG_PTR low = 0;
   ULONG_PTR high = 0;
   GetCurrentThreadStackLimits(&low, &high);
-  uint8_t* const base = static_cast<uint8_t*>(info.AllocationBase);
+  uint8_t* const base = reinterpret_cast<uint8_t*>(low);  // the stack's allocation base
   for (uint8_t* at = base; at < reinterpret_cast<uint8_t*>(high) && VirtualQuery(at, &info, sizeof(info)) != 0; at += info.RegionSize) {
     if ((info.Protect & PAGE_GUARD) == 0) continue;
     const uint32_t headroom = static_cast<uint32_t>(static_cast<uint8_t*>(info.BaseAddress) - base);
@@ -840,8 +840,8 @@ inline bool Serve(bool render) {
   // serial order, as the direct unit.
   CheckWatched();
   if (round.l2) {
-    // The sweep is a direct stand-in: the random state must be where the serial walk has it (every unit before it committed).
-    CommitDone();
+    // The sweep is a direct stand-in: the random state must be where the serial walk has it (every unit before it committed, none after it).
+    CommitDone(sweep->id);
     RefreshWatched();
   }
   Unit pseudo;
@@ -904,7 +904,9 @@ inline void FinishRound(bool failed) {
         true);
   }
   CheckWatched();
-  if (round.tracing) NoteStackHeadroom();
+  if (round.tracing) {
+    NoteStackHeadroom();
+  }
   if (round.l2) {
     // The staged spawns are committed and merged before the walk is closed (also when it failed: the walk's rest goes the game's way and finds the buffer as serial left it).
     CommitDone();
@@ -951,7 +953,9 @@ inline void WorkerEntry(void*, uint32_t) {
     }
     if (round.enumeration_done.load(std::memory_order_acquire) && round.late_unclaimed.load(std::memory_order_relaxed) == 0
         && round.cursor.load(std::memory_order_relaxed) >= round.published_units.load(std::memory_order_acquire)) {
-      if (round.tracing) NoteStackHeadroom();
+      if (round.tracing) {
+        NoteStackHeadroom();
+      }
       return;
     }
     WaitUntil(
