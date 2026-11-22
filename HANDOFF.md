@@ -6857,8 +6857,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         the suspension in PausedWrite and refuse the attempt (then fill_keep / recording_keep / 100 ms wait can go).
         Zombie engine_code.exe pid 13612 (0 threads, can't be stopped) holds testbin\bd1r_rs5r_mut_if_unmap_uncounted.
         Waiting: c33i_ nit 5 hand-back -> bd3r_ re-check -> merge rmt_rs5.
-        Agents (10): c33i_ (nit 5), lga_ (r3 re-check), ebr_ (r17 re-check), gtw_ (S1c re-check 4), upt_ (v2.4), h0i_
-        (H0 script fixes), gti_ (Nit 8), gtl_ (S3), gbc_ (C1 + C2, then B1 review), gpr_ (price + web review).
+        c33i_ NIT 5 DONE 02:5x (render_mt/reports/c33i_nit5_handback.md): f1913c83c keeps every recording site with the
+        stubs in the still-open case (recording_left_in, Shared kept); 29f asserts it; mutant nit5b caught; FULL PASS,
+        5 gated builds exit 0. bd3r_ NIT 5 RE-CHECK STARTED (+ its view on bd1r_'s optional N6).
+        gti_ NITS 8 / 10 / 11 DONE 02:5x (plan_1117/gti_nit8_handback.md, backups scratchpad\gti_bak5): wrapped error
+        records joined; REFUSED carries the exception; SystemExit checks; test_gpu_lock 34 / 34, test_harness_runs_lock
+        9 / 9. gtv_ SHORT RE-CHECK STARTED.
+        Agents (10): bd3r_ (nit 5 re-check), lga_ (r3 re-check), ebr_ (r17 re-check), gtw_ (S1c re-check 4), upt_
+        (v2.4), h0i_ (H0 script fixes), gtv_ (Nit 8 re-check), gtl_ (S3), gbc_ (C1 + C2, then B1 review), gpr_ (price +
+        web review).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
