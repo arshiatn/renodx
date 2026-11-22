@@ -468,12 +468,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ (nit): the 5 ms kind() timing check failed once under parallel load (5.9 ms ... | ?
 - ATN (morning report): player risk - a cold shader cache (driver update / new rel ... | ?
 - gtb_: budget.py SEEDS gate_s 1.0 caps a real job's gate phase at 12.5 s until le ... | ?
-- gtv_: quick re-check of gtl_'s v1.2 follow-ups (golden hex, cfg None, fixture +6 ... | ?
 - c3i_ (nits, optional): N1 26g header lists test 8 (RigidAddOrder, not in 26g) + ... | ?
 - end batch owner (t4i_ / ebr_): b13r_'s B1 risks - (a) thread affinity of order-p ... | ?
 - B1 owner (static, low): do the game's destructors draw (callers of 0x190B780 rea ... | ?
 - gtp_ + gtb_ R12-1 (Should, not blocking in shadow): price_rows() falls back to " ... | ?
 - gtp_ (lows): quoted multi-target word not split before normalising (one seed kin ... | ?
+- gtq_ (nit): the reference folder is named from the --recording spelling, not the ... | ?
+- gtl_ (nit): end_world never undoes the fixture's budget.deadline wrap (gate 180 ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8552,7 +8553,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         quick re-check together with gtq_ S6; gtb_ told (seed).
         - [ ] gtb_: budget.py SEEDS gate_s 1.0 caps a real job's gate phase at 12.5 s until learned - raise the
             seed or keep (gtl_ 08:4x; gtv_ saw 48.6 s under other agents' load).
-        - [ ] gtv_: quick re-check of gtl_'s v1.2 follow-ups (golden hex, cfg None, fixture +60 s) with gtq_ S6.
+        - [x] gtv_ (DONE 08:5x, OK): quick re-check of gtl_'s v1.2 follow-ups (golden hex, cfg None, fixture +60 s) with gtq_ S6.
         t4i_ -B DONE 08:4x (render_mt/reports/t4i_b_flag_handback.md; log scratchpad\t4i_b_runall.txt; backups
         t4i_bak\b; patch t4i_b_patch.py): run_all.ps1 l.9 `python -I -B`, run_analyze `-I -B`, ebr_'s placement loop
         re-indented to 4 spaces (CRLF kept); run_all green (lib 470, make 87, check 166, leg 165, analyze 119);
@@ -8618,9 +8619,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         commit FIX (no longer buggy). BULK NSIGHT INDEX DONE 08:51 (exit 0, coord_bulk_index2.log): 183 indexed,
         202 already fresh, 0 failed, of 385 - the 3 earlier OSError traces indexed ok this time. -> t4i_ T5
         manifest rows + b13r_'s B1 risks into the end batch plan STARTED.
-        Agents (7): h0i_ (H0 F1-F4), gtv_ (gtq_ S6 + gtl_ follow-ups quick re-check), gtw_ (gtp_ round 12
-        re-check), gtb_ (slot-wait test + load + gate seed), ffr_ (grs_ first-frame design review), lga_ (release
-        regression look), t4i_ (T5 manifest rows + B1 risks)
+        gtv_ QUICK RE-CHECK = OK 08:5x (plan_1117/gtv_v12f_quick_recheck_handback.md; gtv_iq_review.md "## v1.2
+        follow-ups quick re-check"; probe scratchpad\gtv\v12f\gtv_v12f_probe.py, outputs gtv\rc8): (1) S6 closed -
+        old case 11 now exit 2 naming both paths; one run on the other recording / swapped / missing / empty
+        config.recording refused; upper case + `x\..` spellings build (no false refusal). (2) cross test runs the
+        real lab (asserts lab.__file__, ran not skipped, IQ_REFS restored). (3) both golden tests pin the same
+        literal + hex; json-proxy mutants (sort_keys off / ensure_ascii off / spaced separators) per side fail
+        that side's golden + the cross test, other side passes. (4) fixture +60 s hides no check (only 'SLOW lock'
+        checks exist). test_lab_unit 33, test_iq_frames 16; 54 live files unchanged by hash; real iq_refs absent.
+        V1.2 CONFIG HASH + S6 CLOSED. Nits -> gtq_ / gtl_.
+        - [ ] gtq_ (nit): the reference folder is named from the --recording spelling, not the realpath
+            (`...\frame_7\x\..` -> `x_.._2e05...`, same hash) - one recording's references could split across
+            two folders; name it from the realpath (gtv_ 08:5x).
+        - [ ] gtl_ (nit): end_world never undoes the fixture's budget.deadline wrap (gate 180 s instead of 120 s
+            in the same process after the unit suite; test_budget l.136 would fail only after a fixture suite in
+            one process) - undo it in end_world (gtv_ 08:5x).
+        Agents (8): h0i_ (H0 F1-F4), gtq_ + gtl_ (v1.2 nits), gtw_ (gtp_ round 12 re-check), gtb_ (slot-wait test +
+        load + gate seed + R12-1 half), ffr_ (grs_ first-frame design review), lga_ (release regression look), t4i_
+        (T5 manifest rows + B1 risks)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
