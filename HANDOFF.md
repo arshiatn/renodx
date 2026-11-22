@@ -9553,8 +9553,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORDINATOR: G1 + G2 + N-a + N-b -> t4i_ after its probes job (same files); ebr_ re-checks.
         - [ ] t4i_: CHK-W3 scan-assert case in test_make (kills S1 + S6b), N-a skip t when a row / env change is in
             (t, t+2), N-b a toggle at t blocks; ebr_ re-checks (ebr_ 10:27).
-        Agents (4): lga_ (release_check R-RC1-1 / -2 + nits), gtp_ (round 15), c3i_ (b1log S1 (b) + S2 + nits), t4i_
-        (probes for the 3 new B1 lines, then ebr_'s G1 / G2 / N-a / N-b); H0 run (background, ~11:30)
+        c3i_ B1LOG FIXES (INTERIM) 10:29 (render_mt/reports/c3i_b1log_fixes_interim_handback.md; rmt_b1log 4edac6a83 on
+        52dda24f9, local): S1 foreign hits stay a fault (comment on fault_unreported) + 26h case foreign hits alone
+        (line carries waiting by-design counts too: `wake timeouts 1, foreign hits 1, spawn overflows 3, stage
+        full 2`); S2 totals once at the first present after a window, after `(trace window N): stack headroom K
+        KB.`, + once at detach (test: none inside, exactly one after, holds the window's counts); N1 comments
+        (Watched, POOL_CAPACITY_OFFSET); N2 static_assert 6 + 4 per pool vs 20; N3 counts_line_ticks = 0; N4
+        comment; h7 caught by the in-round F2 test, h8 by the detach totals check. Quick effect_update part only
+        (below normal): passes, 10 mutants each fail. HELD until H0 ends: FULL suite, -DrawRecording,
+        instance_fill, gated builds. Did not run b13r_'s driver. For t4i_: the totals line is the only complete
+        number (window + outside lines do not add up to it); line 1 can carry by-design names.
+        -> b13r_ RE-CHECKS by reading now (no runs); c3i_ runs the held suites after H0; then merge gate.
+        Agents (4): lga_ (release_check R-RC1-1 / -2 + nits), gtp_ (round 15), b13r_ (c3i_ b1log fixes re-check, reading),
+        t4i_ (probes for the 3 new B1 lines, then ebr_'s G1 / G2 / N-a / N-b); c3i_ waits for H0's end; H0 run
+        (background, ~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
