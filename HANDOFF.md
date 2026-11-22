@@ -505,7 +505,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtc_ (runner, Low): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x). | ?
 - gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ... | ?
 - grs_: G1 + G2 / G3 / G4 (+ nits) on grs_dead_uses; fcr_ re-checks (coord 15:55). | ?
-- gti_: T1 + T2 / T3 in dead_outputs.py; fcr_ re-checks (coord 15:55). | ?
+- gti_: T4 any later logged frame counts as a read + test; then fcr_ re-checks wit ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10540,10 +10540,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         resident.log NVAPI refusals; log >= 1 loop + 1 frame, SER off; confirm vs A/A floor minus own history; no frame_ms
         from log_uses runs; seed spacing > 1 loop right only on contiguous recordings.
         - [ ] grs_: G1 + G2 / G3 / G4 (+ nits) on grs_dead_uses; fcr_ re-checks (coord 15:55).
-        - [ ] gti_: T1 + T2 / T3 in dead_outputs.py; fcr_ re-checks (coord 15:55).
-        Agents (7): gtp_ (gate round 20), grs_ (dead uses G1-G4), gti_ (dead outputs T1-T3), gtl_ (stage fixes), h0i_
-        (all_modes 8-change analysis), gtc_ (S3c part 1 runner); GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job
-        at a time; agents' CPU work below normal, no builds at normal priority during S3c
+        - [x] gti_ (DONE 15:57, T4 asked): T1 + T2 / T3 in dead_outputs.py; fcr_ re-checks (coord 15:55).
+        gti_ DEAD OUTPUTS FIXES 15:57 (plan_1117/gti_dead_outputs_fixes_handback.md; backup scratchpad\gti_bak15): T1 slot ->
+        set of resources per (stem, span); T2 unread copy_dst / clear = own verdict COPY NOT READ (counted apart, "no
+        store-skip check: check the consumer"); T3 NOT WRITTEN only for DXIL-declared slots; T5 docstring (SER off, T1-T3);
+        tests 20 / 20 (-W error::ResourceWarning; new from fcr_'s probes: rebind LIVE, cluster_destination COPY NOT READ, 40
+        bound UAVs -> 1 note). T4 (fcr_ Nit: a read in ANY later logged frame, not only the next) left to coord -> COORD:
+        YES (conservative: fewer false candidates; candidates are only candidates, the GPU store-skip confirms) -> gti_.
+        - [ ] gti_: T4 any later logged frame counts as a read + test; then fcr_ re-checks with grs_'s fixes (coord 15:58).
+        Agents (7): gtp_ (gate round 20), grs_ (dead uses G1-G4), gti_ (T4), gtl_ (stage fixes), h0i_ (all_modes
+        8-change analysis), gtc_ (S3c part 1 runner); GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job at a
+        time; agents' CPU work below normal, no builds at normal priority during S3c
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
