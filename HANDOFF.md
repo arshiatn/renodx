@@ -428,7 +428,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (unified PT, not blocking now): Q1-Q10 of the design + NQ1 rough SO route (r ... | ?
 - F1 HYBRID FIX (GPU plan, after render_mt; needs a harness window with agents hel ... | ?
 - ATN (end batch): '[Total War] StallDump=1' in ReShade.ini so the first stall wri ... | ?
-- group 3 after R-S5 / B1.6 / X1 land: engine_code A-M2 / A-S1 / A-S2 / A-N1, inst ... | ?
+- group 3 (lg3_ STARTED 18:4x; the X1 wait is stale, X1 out of this batch) after R ... | ?
 - ATN: install the hook (INSTALL_FOR_ATN.md) only after gtw_'s fixes; Q12 / Q26 de ... | ?
 - ATN. (5) = YES to my suggestions: unpinned non-leak crash -> retry the start onc ... | ?
 - until R1 lands: after any crash read Windows' Application log (event 1000). | ?
@@ -507,7 +507,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (later, before any ENFORCE): a hook that times out (pre hook 15 s) does not ... | ?
 - coord: synthesis agent -> handoff_plan\plan.md (parallel groups) -> SHOW ATN FIR ... | ?
 - coord: before ATN's restart, confirm the end batch is READY (everything built + ... | ?
-- ebq_: end batch readiness list (coord 18:2x). | ?
 - hts_: handoff_plan\plan.md + plan_groups.tsv (coord 18:2x) -> show ATN. | ?
 - gtb_ (owner of schema_check.py per gtb_s1b_fix2_handback.md; AFTER S3c): support ... | ?
 - gtc_ (Low; STARTED 18:3x): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl ... | ?
@@ -516,6 +515,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_ (low, AFTER S3c): stale "proposed" mentions (resident_protocol.md l.7 + l.1 ... | ?
 - ATN (later, not urgent): the 4 adopted .proposed copies are unused now (nothing ... | ?
 - gtp_ ROUND 22 (coord 18:3x): gpr-R21-1 + gtw-R21-1..6 (below); then gtw_ + gpr_ ... | ?
+- lg3_ (Sonnet High, own worktree, branch rmt_lg3 from atn-mods HEAD): logging gro ... | ?
+- t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 (coord 18:4x); t ... | ?
+- ATN: Q1 end batch without B3b? Q2 group 3 before the batch? Q3 the B1L1-only vol ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -6578,7 +6580,8 @@ heading text are in HANDOFF_ARCHIVE.md)
           A-S8 / A-N6, anti_aliasing A-S10, rt_core A-S11, frame_trace A-N4, twrome2 engine_tweaks D-S1;
         - lgf2_ (a2e927f66592ef97f) rmt_lg2: all of helper B + bridge C (exit codes defined once; no bridge bump unless
           needed, then stop and ask).
-        - [ ] group 3 after R-S5 / B1.6 / X1 land: engine_code A-M2 / A-S1 / A-S2 / A-N1, instance_fill A-S3 / A-N5,
+        - [ ] group 3 (lg3_ STARTED 18:4x; the X1 wait is stale, X1 out of this batch) after R-S5 / B1.6 / X1 land:
+          engine_code A-M2 / A-S1 / A-S2 / A-N1, instance_fill A-S3 / A-N5,
           draw_recording A-S4 / A-N2 / A-N3, worker_pool A-S6 + Describe() half of A-S7 + the invariant comment.
         Then lga_ re-checks each branch.
         Agents (9): bd3r_ + bd1r_ (R-S5 review), gtb_ (GPU S1b), gtp_ (GPU S1c), gtv_ (S1r), upt_ (unified PT v2.1),
@@ -11009,7 +11012,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         END BATCH READINESS 18:2x: ebq_ ae1653fda3621f434 (Opus xHigh, read only) -> render_mt/reports/ebq_readiness.md:
         READY yes / no, ordered missing list, decisions (group 3 before / after, X1, placeholders, T5 build step, re-freeze,
         T6 dry run), ATN questions; coord tells ATN before the restart.
-        - [ ] ebq_: end batch readiness list (coord 18:2x).
+        - [x] ebq_ (DONE 18:41, NOT READY): end batch readiness list (coord 18:2x).
         htb_ TRIAGE 18:20 (handoff_plan/htb_handback.md, htb_triage.tsv + htb_summary.md; numbers at 06f8c384e, +1 at
         f141fe881): 192 boxes: INGAME 46, DONE-UNTICKED 39, SUPERSEDED 23, CPU-CODE 23, CPU-TOOL 20, ATN 18, GPU 10, BLOCKED
         10, DESIGN 3; 62 tick-only; 28 now = Y (6 partly). RYSE DLSS SQRT (l.2495) = DONE-UNTICKED (72f20d75c 11-16 23:11;
@@ -11112,9 +11115,41 @@ heading text are in HANDOFF_ARCHIVE.md)
         18:38:19-18:38:26) 0 bursts, 0 dwm samples; ns_busy once per window, 5 / 5 clean (F1 holds); gtv_rc_period.py over
         320 frames (~28.1 ms wall each) no bursts, no gaps; settle rows as gtc_ said; only the 6 retired rows marked.
         -> gtc_ steps 3-19 (coord 18:40).
-        Agents (5): gtc_ (S3c RE-RUN, GPU), gtp_ (gate round 22, below normal), ebq_ (end batch readiness), hts_
-        (open-items plan synthesis), gtv_ (on call for step 2b); gtl_ / hta_..htd_ / gtw_ / gpr_ / fcr_ / gti_ / grs_ / h0i_
-        / upr_ idle; GPU: S3c RE-RUN (gtc_) from 18:3x; other agents' CPU work below normal; one GPU job at a time
+        ebq_ READINESS 18:41 = NOT READY (render_mt/reports/ebq_readiness.md 220 lines + ebq_readiness_handback.md; probes
+        testbin\scratch\ebq_\). Blockers: (1) logging group 3 not built (A-M2 MUST; T6 needs every Must closed); (2) no
+        frozen build + no manifest.json (T5 build step; ebo_leg refuses without it); (3) NEW: B3b (Animation Rows on
+        Workers) never built: S3 stub only (a196e6d43), S4-S7 fell out of the queue after 11-21 08:0x with no decision
+        line; addon.cpp has no AnimationRowsStage and nothing reads RENODX_TW_ANIMATION_SCHEDULE, yet 11 of 35 starts use
+        B3b / sched= with no needs gate; (4) NEW: segments.json / gates.json vs the real build: R1 = ParallelInstanceFill
+        (not InstanceFillRing), R2 = FillWithDrawRecording (not InstanceFillRecord), DrawRecordingCompare / FasterFpuReset
+        do not exist (dry run flags these); SILENT: C's rows are DrawRecordingDepthA / ColourA / DepthB / ColourB (default
+        0, addon.cpp :1384 / :1661) but segments.json + ebo_make :159 set DrawRecordingFamilies -> C measures nothing;
+        fill_check_mismatch matches the per-present summary "N fills compared, 0 mismatches so far" (instance_fill.hpp
+        :963) -> LATCHes R1 off from CHK-W3 for the whole batch, the real line (:522) matches nothing (regex_probe.py);
+        part_calls never matches -> paused_runs unset -> ebo_make :243 PROBLEM only when not dry -> real leg 2 refuses after
+        a clean dry run; RENODX_TW_FILL_CHECK is read once at Prepare (:821) but treated as live; (5) T6 not run. T5
+        facts: the frame-pointer build must define TWATTILA_DRAW_RECORDING (CL=/DTWATTILA_DRAW_RECORDING, fresh -Name,
+        check DrawRecordingStage string in the binary); prep 05b9a5c DLL not built yet (tools\tw\heapfix\
+        AttilaCPUPerfFix_prep clean at 05b9a5c, no output). Machine: commit 27.1 GB (gate 45); C: 188 GB free, batch ~151
+        GB (keep >= 160); 15 zombie test exes (clear at restart); heapfix.ini 4 keys = 1, no *_off.txt; no -Leg 5 rule.
+        Order: 0 decisions + ATN message; 1 group 3 (Sonnet High, own worktree) || 2 tools refresh (t4i_, bench\ebo_* +
+        render_mt\ebo\*); 3 lga_ reviews 1; 4 ebr_ re-checks 2; 5 same Sonnet fixes, lga_ re-checks (one cycle; a SHOULD
+        that fails goes after the batch, A-M2 / A-S6 stay); 6 merge group 3 + gated builds incl. DRAW_RECORDING; 7 t4i_
+        code_not_written "Parallel Instance Fill sites" + merged line texts into gates.json / corpus.json; 8 T5 build step
+        (t4i_; hold merges); 9 T6 four -DryRun legs (no lab job open) + Opus xHigh read of the variants (C group rows,
+        paused_runs source); 10 restart checklist (copy the scratchpad to a durable folder); 11 ATN restarts + "start".
+        READY ~01:00-02:00 11-23 with group 3 before (~22:00-23:00 if after, A-M2 open).
+        COORD DECISIONS 18:4x: X1 OUT of this batch (stale, never started; batch data copes: needs "X1" + wpr_without_X1;
+        do it after the batch with the x87c A/B); group 3 CODE starts now either way (A-M2 is a MUST before or after);
+        tools refresh starts now (needed either way); B3b removal from the starts = its own commit (ATN's Q1); no leg 5
+        tonight. Group 3 tests / builds only after the S3c window.
+        - [ ] lg3_ (Sonnet High, own worktree, branch rmt_lg3 from atn-mods HEAD): logging group 3 (coord 18:4x).
+        - [ ] t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 (coord 18:4x); then ebr_ re-checks.
+        - [ ] ATN: Q1 end batch without B3b? Q2 group 3 before the batch? Q3 the B1L1-only volley pair (~7 min)? (rec. yes
+        x3; asked 18:4x). Later: Q6 delete testbin\c33i_rs5_loop* after the restart.
+        Agents (6): gtc_ (S3c RE-RUN, GPU), gtp_ (gate round 22, below normal), hts_ (open-items plan synthesis), lg3_
+        (logging group 3 code), t4i_ (ebo tools refresh); gtv_ / gtl_ / ebq_ / hta_..htd_ / gtw_ / gpr_ / fcr_ / gti_ / grs_
+        / h0i_ / upr_ idle; GPU: S3c RE-RUN (gtc_) from 18:3x; other agents' CPU work below normal; one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
