@@ -497,12 +497,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtv_: lab-suite load run NOW (GPU free 14:07) (coord 14:07). | ?
 - gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-che ... | ?
 - coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
-- h0i_: Set-StrictMode -Version 1 (line 26) + dry run + offline test -> then the r ... | ?
 - gtl_: re-run s3c_jobs.py on the merged recorder build testbin\scratch\coord_\hel ... | ?
 - grs_: dead outputs (a) resident log_uses + (d) store-skipping stem builder + (3) ... | ?
 - gti_: dead outputs (c) dead_outputs.py with DXIL reflection, planted-fake proof ... | ?
 - gtv_ / gtb_: judge S3c sheet items 10 (strict second loop) + 11 (kept R1 residen ... | ?
 - ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job fi ... | ?
+- coord: real all_modes run (ATN's rule) after gtv_'s load run; then S3c part 1 (c ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10282,7 +10282,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         in resource names (DRED). EXPECTED: census / dumps / m6 PASS (1469 of 1469), checks PASS or OPEN on timing only
         (release modes, switching), repeat PASS. Selftest 87 ok / 0 wrong. NOTE: upr_'s scratch went to the scratchpad,
         not testbin\scratch\upr_ (rule since 11:45; nothing was blocked).
-        - [ ] h0i_: Set-StrictMode -Version 1 (line 26) + dry run + offline test -> then the real all_modes run (coord 14:24).
+        - [x] h0i_ (DONE 14:4x; real run = coord after gtv_): Set-StrictMode -Version 1 (line 26) + dry run + offline test -> then the real all_modes run (coord 14:24).
         gtl_ S3C SHEET 14:33 (plan_1117/gtl_s3c_sheet_handback.md; plan_1117/s3c_run_sheet.md; testbin\scratch\gtl_\s3c\
         s3c_jobs.py + jobs\; no GPU, no lock, real lab\job.json untouched): 18 jobs, lab.load_job + lab.price 0 refused on
         a STAND-IN build (grs_'s rec_grs_rec3), priced 2065 s (34 min, cold model) + 11 min idle-exit wait = E 45-60 min.
@@ -10315,9 +10315,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         14:3x).
         - [ ] ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job field, reset time in answer,
         4 lifetimes per arm (after gtb_ proof), debug-layer env switch (coord 14:3x).
-        Agents (6): gtp_ (gate round 19), h0i_ (StrictMode 1 + dry / offline), gtv_ (lab load run), gtl_ (S3c build check
-        + stage items), grs_ (dead-output resident parts), gti_ (dead_outputs.py); GPU order: gtv_ load run -> all_modes
-        run (~40-45 min, ATN's rule in) -> S3c part 1 (gpu_lab.ps1 per s3c_run_sheet.md); one GPU job at a time
+        gtl_ S3C BUILD CHECK 14:39 (plan_1117/gtl_s3c_build_check_handback.md): all 18 refused only on the build folder
+        (lab.py build_ok: D:\Dev\renodx\build\<x> or a worktree's build\<x>; testbin\scratch not allowed, widening = ATN
+        question, nothing changed). -> coord built the recorder helper INTO D:\Dev\renodx\build\helper_gpus2_rec (new folder,
+        RENODX_TW_RECORDER_BUILD=1, tree 4ff560134 = code f54613dea, 6,703,104 B, 14:41) and re-ran s3c_jobs.py: 0 REFUSED,
+        priced 2065 s (testbin\scratch\coord_\s3c_check_buildroot.txt); jobs\ now hold the build-folder path. S3c's build A
+        (and rotation B) = build\helper_gpus2_rec.
+        h0i_ STRICT 1 14:4x (plan_1117/h0i_strict1_handback.md): line 26 Set-StrictMode -Version 1 (comment why), parses 0
+        errors; -DryRun exit 0 no PROBLEM (all_modes_dryrun_strict1.txt; runs\dryrun_all_20261122_142546.txt; hashes match,
+        206 x 2, ~36 min est); offline test ok (offline\20261122_142719_allmodes: census / checks / dumps PASS, m6 FAIL 8 of
+        1469 undrawn_gone as planted, repeat OPEN as planted; 12.4 min vs 2 min = machine busy). ALL_MODES = GO (upr_).
+        - [ ] coord: real all_modes run (ATN's rule) after gtv_'s load run; then S3c part 1 (coord 14:4x).
+        Agents (5): gtp_ (gate round 19), gtv_ (lab load run), gtl_ (stage items), grs_ (dead-output resident parts), gti_
+        (dead_outputs.py); GPU order: gtv_ load run -> all_modes run (coord, ~40-45 min) -> S3c part 1 (coord, gpu_lab.ps1
+        per s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
