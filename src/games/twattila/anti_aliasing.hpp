@@ -140,7 +140,7 @@ struct ShaderSettings {
 };
 
 // aa.hlsli's aa_taa: the cameras in the game's register layout.
-// aa_rr_guides' b0: which way each pixel looks (Attila's and Pharaoh's guides read it; the others ignore it).
+// aa_rr_guides' b0: which way each pixel looks (the guides of Attila, Pharaoh, Troy and Warhammer II read it; the others ignore it).
 struct GuidesCamera {
   std::array<float, 16> inverse_view_projection = {};
   std::array<float, 3> position = {};
