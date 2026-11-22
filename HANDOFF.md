@@ -7071,8 +7071,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         from 838bd848f: NM4 in_use + Tracing() / TraceWindow(), Worker Threads row wherever B1 compiles, b13r_ S6 / N4 /
         N5, b13r_ R2 (half rows), bd1r_'s R-S5 N7 (PausedWrite comment) + N8 (2 tests); review b13r_. Then X1, then
         logging group 3 (same files: one writer).
+        gtq_ FLIP UNPATCHED DONE 03:57 (plan_1117/gtq_flip_unpatched_handback.md): unpatched v17 exe back (sha256
+        00e09a9d..), patched build kept as gtq_flip_src\FLIP-tool.patched-unused.exe + README (nothing deleted; [ ] ATN
+        decides on gtq_flip_src); the tool can't save a float map, so p95 / p99 use the grey map (1/255 steps) for now;
+        tests 4 / 4 + 27 / 27. COORDINATOR CALL: route (a) = our own numpy port of FLIP from tools\refcode\flip's
+        pytorch flip_loss.py (BSD-3, notice kept, no NVIDIA file changed, nothing downloaded), accepted only if it
+        matches the tool's mean ~1e-6 + rounded map == correct_*flip_cpp.png -> gtq_ STARTED; then gbc_ B1 re-check.
         Agents (10): upr_ (H0 439 look, then v2.7), c3i_ (B1.6), ebr_ (r18 re-check), grs_ (S2), gtw_ (S1c re-check
-        6), gtq_ (FLIP unpatched), gbc_ (C1 re-check), gtv_ (S3r re-check), gtb_ (watch build), gti_ (poll build).
+        6), gtq_ (FLIP numpy port), gbc_ (C1 re-check), gtv_ (S3r re-check), gtb_ (watch build), gti_ (poll build).
         Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gpr_, gtl_, h0i_, t4i_, gtk_, gtp_ (waits gtw_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
