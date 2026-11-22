@@ -8162,7 +8162,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         until gtp_'s hook half lands (probe 2). -> gpr_ RE-CHECK STARTED.
         MERGE rmt_b16n -> atn-mods d03d098b5 07:3x (name_check: 221 new identifiers, 8 generic Linux-token words);
         gated builds x86 3 games + amd64 twattila running (coordinator, -Owner coord; first try had a quoting
-        error and built nothing).
+        error and built nothing). BUILDS 07:34: x86 build32 exit 0 (3 addon32) + amd64 exit 0 (61 warnings as
+        before) -> PUSHED. B1.6 + follow-ups now on atn-mods; open: c3i_ real-routine tests + N4 (rmt_b1rt).
         gtv_ HELD LAB SUITES + RACE PROBE = ALL OK 07:3x (plan_1117/gtv_held_suites_race_handback.md; gtv_s3r_review.md
         "### Held suites + race probe"): 29 lab files + ns_busy + iq_frames hashed before / during / after =
         unchanged (the stage never reached live); unit 28 / 28, ps1 5 / 5, keeper 24 / 24, jobs 31 / 31 (no FAIL /
