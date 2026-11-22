@@ -217,7 +217,13 @@ class Log {
       state = {.pipeline = pipeline};
       active_->Begin(&state, "(list start)");
     }
-    return Original<RESET>(&Reset)(self, allocator, pipeline);
+    const HRESULT result = Original<RESET>(&Reset)(self, allocator, pipeline);
+    // D3D12's Reset puts the list's own vtable pointer back (Windows' runtime and the Agility SDK, DRED on or off;
+    // Close keeps it): the copy goes back in, or the log ends at each list's first Reset.
+    if (*reinterpret_cast<void***>(self) == original_) {
+      *reinterpret_cast<void***>(self) = active_->table_.data();
+    }
+    return result;
   }
   static void STDMETHODCALLTYPE Dispatch(ID3D12GraphicsCommandList4* self, UINT x, UINT y, UINT z) {
     {
