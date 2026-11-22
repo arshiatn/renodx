@@ -8353,7 +8353,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         3. -> gpr_ CHECK STARTED; Section 8's A text -> gtp_ (in its round 12).
         - [ ] who owns the build env: gated_build's stderr shows `'vswhere.exe' is not recognized` (amd64 build OK)
             - check whether a vswhere lookup silently falls back (gtb_ 08:1x).
-        Agents (8): upr_ (h0i_ H0 analysis re-check), gtl_ (v1.2 config hash, lab side), gtp_ (round 12: hg1 +
+        gtl_ V1.2 CONFIG HASH (LAB) DONE 08:1x (plan_1117/gtl_v12_config_hash_handback.md; backups
+        scratchpad\gtl_backup_cfghash; logs gtl_runs9 *_3): every played.json (dumps, kind dump seed runs, iq arms)
+        carries `config` + `config_sha256` = sha256 of json.dumps(config, sort_keys, (',', ':'), ensure_ascii).
+        Fields: schema "renodx-lab-config v1", trace_flags, path_flags, micromap_level, fields (as last sent; burn
+        left out = timing only), stems {stem: sha256}, light_anim, env (upper-cased names, string values), build
+        (build_hash, +rt<sha8> for a lab copy), recording (normcase realpath), scene_key (scene.hash), resolution,
+        command ({dump, frames} / {moments, k, outputs}); never seed / reset / time / folders / dred /
+        output_sizes. test_config_hash (14 one-key changes all distinct; seed / reset / burn same; recompute from
+        played.json). Fixture: the fake rec_compare compared played.json too -> now only output_*.bin + digest_*.txt
+        like the real one (+ missing import re). Suites jobs 32, unit 31, ps1 5, keeper 24. The builder already
+        refuses (config differs in the all-but-seed / reset compare). -> gtq_ BUILDER CHECK STARTED (name the
+        differing config keys, require + recompute config_sha256); gtv_ reviews both after.
+        Agents (8): upr_ (h0i_ H0 analysis re-check), gtq_ (v1.2 config hash, builder side), gtp_ (round 12: hg1 +
         Section 8 + kind()), gpr_ (gtb_ wrapped build + hg2 check), ebr_ (t4i_ r24 re-check), b13r_ (c3i_ rmt_b1rt
         review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
