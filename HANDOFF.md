@@ -502,7 +502,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: real all_modes run (ATN's rule) after gtv_'s load run; then S3c part 1 (c ... | ?
 - review (Opus xHigh): grs_dead_uses + dead_outputs.py together, after grs_'s hand ... | ?
 - gtv_: review gtl_'s S3c stage (after its load run) -> lands after S3c part 1 (co ... | ?
-- gti_: ReadLog closes the log file (with open) (coord 15:10). | ?
 - grs_: 64-frame dumps (warm frames / dump without reset) in the resident protocol ... | ?
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
 - gtl_: stage + FIRST_BEAT_S 15 / load extra 15 + end_world "left behind" (coord 1 ... | ?
@@ -10359,7 +10358,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         still refuses log_uses until grs_'s M10 build. TO LAND after S3c part 1 + gtv_ review: lab.py, lab_keeper.py,
         fake_resident.py, lab_analyze.py (new), tests test_lab_fixture / keeper / unit / jobs + test_lab_analyze.py (new).
         - [ ] gtv_: review gtl_'s S3c stage (after its load run) -> lands after S3c part 1 (coord 15:10).
-        - [ ] gti_: ReadLog closes the log file (with open) (coord 15:10).
+        - [x] gti_ (DONE 15:12): ReadLog closes the log file (with open) (coord 15:10).
         - [ ] grs_: 64-frame dumps (warm frames / dump without reset) in the resident protocol, with dead uses (coord 15:10).
         - [ ] ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json.proposed v1.1 (coord 15:10).
         gtv_ LOAD RUN 15:02 = FAILS ON TIME LIMITS ONLY (plan_1117/gtv_load_run_handback.md; gtv_iq_review.md "## Load run
@@ -10379,9 +10378,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         the stage (lands with it after S3c part 1); 16-loop run later, optional. gtv_ -> S3c stage review now. ALL_MODES RUN
         STARTS NOW (GPU free, no locks).
         - [ ] gtl_: stage + FIRST_BEAT_S 15 / load extra 15 + end_world "left behind" (coord 15:1x).
-        Agents (5): gtp_ (gate round 19), gtv_ (gtl_ stage review), grs_ (dead uses + 64-frame dumps), gti_ (ReadLog
-        close), gtl_ (stage + load-run proposals 1 / 3); GPU: all_modes run RUNNING (coord, 15:1x, ~40-45 min) -> S3c part
-        1 (coord, gpu_lab.ps1 per s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
+        gti_ READLOG 15:12 (plan_1117/gti_readlog_handback.md; backup scratchpad\gti_bak14): dead_outputs.py ReadLog +
+        LoadStem use with open; nsight\ns_header_bin.py HeaderBytes same leak fixed (same bytes; ns_replay_variants.py
+        unaffected); test 17 / 17 under -W error::ResourceWarning.
+        ALL_MODES RUN STARTED 15:12:49 (task b4pmp185v; ATN's exact rule; stamp 20261122_151249; commit d257cb28c; harness
+        pdi1_harness FFD6BA42A8C5 / 7175EBE8ABFE; 206 modes x 2; baseline runs\20261122_120946\run1; Committed 25.9 GB;
+        0 GPU jobs / games; builds h0\builds\all\20261122_151249). Expected (upr_): census / dumps / m6 PASS 1469 of 1469,
+        checks PASS or OPEN on timing only, repeat PASS.
+        Agents (4): gtp_ (gate round 19), gtv_ (gtl_ stage review), grs_ (dead uses + 64-frame dumps), gtl_ (stage +
+        load-run proposals 1 / 3); GPU: all_modes run RUNNING (15:12, ~40-45 min, b4pmp185v) -> S3c part 1 (coord,
+        gpu_lab.ps1 per s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
