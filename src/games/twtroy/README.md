@@ -12,6 +12,9 @@
 - Changed: Smooth Sail Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
 - Changed (ATN): **Hue Clip 70** (was 80: the fire's hue error 0.82 degrees against 1.99, `test/tw_psychov35`) and
   PsychoV31's **Highlight Hue Shift 0.04** (was 0.10), in the defaults and Reset. Saved values stay until a preset.
+- Changed: **Ray-Traced Water Reflections also leave out the game's height pyramid** (4 more passes of its
+  screen-space reflections, decided one pass earlier with the last frame's light): the same picture, a little faster.
+  The first frame, after a load and under MSAA as before.
 - In game: RT/PT in a battle, Path-Traced AO: corners as with the paths before, no darker double shade. A burning battle at
   Recommended: fire orange / yellow as the game's SDR.
 

@@ -17,6 +17,9 @@
 - Changed: Smooth Banner Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
 - Changed (ATN): **Shadow Casters Out of View on by default** (no longer Experimental), in RT/PT too: with ray-traced sun
   shadows, trees, buildings and units behind the camera keep their shadows. A saved Off stays until a preset.
+- Changed: **Ray-Traced Water Reflections also leave out the game's height pyramid** (4 more passes of its
+  screen-space reflections, decided one pass earlier with the last frame's light): the same picture, a little faster.
+  The first frame, after a load and under MSAA as before.
 - In game: a battle with RT/PT, the camera turned: shadows from behind the camera stay. Ray-Traced AO in a battle with a building pool: corners and the pool as before, a little faster; RT/PT with
   Path-Traced AO: no darker double shade in corners.
 
