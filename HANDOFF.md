@@ -7417,11 +7417,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         same. GPU command (rec_grs_new3 / aligned3 / rec3) + first-smoke checks (M2 TLAS count, N1 live cache_keys,
         M1 moments after micromap_level, 9b) in the hand-back; still waits for ATN (safety stop 04:08). -> gtv_ N1
         RE-CHECK STARTED (offline).
+        gtl_ S3r S1b EDITS DONE, TESTS NOT RUN 05:2x (plan_1117/gtl_s3r_s1b_edits_handback.md; backups scratchpad\
+        gtl_backup_s3s1b): inputs {mask: sha256} in the key (unreadable mask refused); mismatched-scene.hash test back;
+        job_schema text; RECORDING_FORMAT 1 / MAGIC TWRC in the key, state.bin header checked after a record (else
+        .partial); scene.builds (harness sha8, recorder sha8 + rt8, format, bridge_version, layout, helper) + "recorded
+        with other builds" in job log / iq / pbrt headers; same_dred() refuses a job whose arms mix DRED on / off.
+        Not covered: comparisons against stored calibrations / reference floors from other jobs -> [ ] dred in the arm
+        entry (gtb_'s result.schema) or the gate (gtp_), routed to gtp_'s round. -> gtl_ GO to run its 4 lab test
+        files NOW (GPU free, H0 stopped; fakes OK until I restart H0, which waits for them + gtv_'s held tests).
         Agents (7): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtp_ (K1-K3 + next round), gtv_ (grs_ N1
-        re-check), gtl_ (S3r S1 Should + nits + scene.builds), gtb_ (y1 / y2), gti_ (ns_busy.ps1:18). Idle: bd1r_,
-        lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, gpr_ (waits gtb_), ebr_, t4i_ (r21
-        after b13r_), gtq_, gbc_, grs_ (waits gtv_), gtk_, gtw_ (waits gtp_). GPU: free (H0 stopped); the
-        harness-name hold stays until H0's re-run ends.
+        re-check), gtl_ (S1b tests), gtb_ (y1 / y2), gti_ (ns_busy.ps1:18). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_
+        (waits b13r_), upt_, upr_ (waits h0i_), gpp_, gpr_ (waits gtb_), ebr_, t4i_ (r21 after b13r_), gtq_, gbc_,
+        grs_ (waits gtv_), gtk_, gtw_ (waits gtp_). GPU: free (H0 stopped); harness-named fakes allowed until I
+        announce the H0 re-run (checked empty before it starts).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
