@@ -12556,6 +12556,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         says go). Same checklist first; `shutdown /s /t 60` (plain /s = full shutdown, a clean boot like a restart).
         Saved: memory feedback_shutdown_when_done + resume_point.md s1 step 1.
         - [ ] coord at READY: checklist done -> READY message -> `shutdown /s /t 60` (one-time, this end batch).
+        t4i_ ER5O FIXES DONE 23:3x (render_mt/reports/t4i_er5o_fixes_handback.md): gates.json crash.job_line
+        `(?i)\(thread (\d+), crash on pool worker (\d+) in (\w+)'s job` + new key unhandled (device_loss.hpp:294);
+        ebo_check.ps1: the add-on's Unhandled line picks heapfix's EXCEPTION line of its thread (a handled first chance
+        no longer counts), a job line counts only on the crash's thread, user = Groups[3]; ADDITION: the Unhandled line
+        alone counts as a crash; check.json crash.thread / unhandled / job_line. 4 corpus lines + 6 test_check cases.
+        Addendum s7 text: rule 1 not in this batch (m3), rule 2 fires, others unpinned unless rule 3. run_all green
+        (lib 629, names 6, make 117, check 189, leg 166, analyze 146); backups *.pre_er5. Rule 1 not wired; WARNs INFO.
+        23:4x SENT: er5o_ "er5o_ t4i recheck" (read only, incl. the Unhandled-alone addition) || t4i_ "t4i_ T5" (frozen
+        tree 2eaaec733; FP add-on via sym_build_head -FramePointers + CL=/DTWATTILA_DRAW_RECORDING; heapfix Way B prep
+        05b9a5c + HFx, new DLL name; final1118 helper; manifest.json per s10 + ebr_ conditions 1-2; placeholders box
+        report; no T6 yet; gates / corpus / ebo_check untouched until er5o_ answers).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
