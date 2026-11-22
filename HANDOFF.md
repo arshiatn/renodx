@@ -7408,10 +7408,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         `bash -o pipefail -c 'a.sh; b.sh --deadline-min 50'` reads the whole argv (option value breaks the loop) = the
         w5 bug again -> skip the word after -o / +o / -O / +O; docstring: pwsh 7 bare first word = -File;
         --deadline-s 0: don't refuse (child's own arg), add a row note "declared deadline 0 ignored". -> gtb_ STARTED.
-        Agents (7): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtp_ (K1-K3 + next round), grs_ (S2r N1 + nits),
-        gtl_ (S3r S1 Should + nits + scene.builds), gtb_ (y1 / y2), gti_ (ns_busy.ps1:18). Idle: bd1r_, lga_,
-        lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, gpr_ (waits gtb_), ebr_, t4i_ (r21 after
-        b13r_), gtq_, gbc_, gtv_ (waits grs_ / gtl_), gtk_, gtw_ (waits gtp_). GPU: free (H0 stopped); the
+        grs_ S2r N1 DONE 05:2x (plan_1117/grs_s2r_n1_handback.md): gpu_s2 8c19a953f on f6a371d32 (local). N1
+        ShiftCacheStamps (radiance w > 0 as uint + shift, albedo y != 0; ~24 MB read-back in the same pass, only on a
+        seeded reset); seed refused when played frames could reach 2^24 (2^20 room, 15728638 taken / 15728639
+        refused, 0 always taken); StartMoments refusal names "after the reset"; RENODX_TW_* upper-cased before
+        matching; Played() carries env; --no-dred (default on), real dred value reported. Offline 0 failures, rows
+        SAME (53); G4 new3 vs aligned3 ALL SECTIONS SAME, base vs aligned3 99 .text line-number bytes, 52 headers
+        same. GPU command (rec_grs_new3 / aligned3 / rec3) + first-smoke checks (M2 TLAS count, N1 live cache_keys,
+        M1 moments after micromap_level, 9b) in the hand-back; still waits for ATN (safety stop 04:08). -> gtv_ N1
+        RE-CHECK STARTED (offline).
+        Agents (7): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtp_ (K1-K3 + next round), gtv_ (grs_ N1
+        re-check), gtl_ (S3r S1 Should + nits + scene.builds), gtb_ (y1 / y2), gti_ (ns_busy.ps1:18). Idle: bd1r_,
+        lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, gpr_ (waits gtb_), ebr_, t4i_ (r21
+        after b13r_), gtq_, gbc_, grs_ (waits gtv_), gtk_, gtw_ (waits gtp_). GPU: free (H0 stopped); the
         harness-name hold stays until H0's re-run ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
