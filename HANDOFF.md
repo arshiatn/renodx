@@ -478,6 +478,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_ (low): the jobs fixture's +60 s on the gate now sits on top of GATE_FLOOR_S ... | ?
 - gtb_ (after gtp_'s round 13): tighten test_budget's 3rd hook case to (12, 99) on ... | ?
 - gtb_ / gti_ (low): load-flake bounds in unchanged code - gated_build "both slots ... | ?
+- ATN (cleanup list): tools\tw\h0\selftest_check15 (empty folder, h0i_ 09:1x) may ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8802,8 +8803,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtb_ (after gtp_'s round 13): tighten test_budget's 3rd hook case to (12, 99) only (gtb_ 09:1x).
         - [ ] gtb_ / gti_ (low): load-flake bounds in unchanged code - gated_build "both slots held" check 4 s
             (saw 6.8 s), selftest lock case (11.7 s) (gtb_ 09:1x).
-        Agents (6): h0i_ (H0 F1-F4), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gpr_ (gtb_
-        slot-wait / floor / R12-1 + load proposal check), ffr_ (grs_ first-frame v2 re-check), gtw_
+        h0i_ F1-F4 DONE 09:1x (plan_1117/h0i_f1f4_handback.md; h0i_handback.md "## H0 F1-F4"; backups
+        tools\tw\h0\backups\20261122_083624_f1f4): selftest 0 wrong, offline 0 / 7 BAD (+ dry / pass re-run 0 / 2),
+        ATN's plain -DryRun clean (runs\dryrun_20261122_085332 + _090927), helper sources still = H0's base;
+        estimate ~83 min -> plan ~95-100 (last run x1.17). F1 run4-history: batch-variance rule reverted, R = 16 a
+        side, FAIL on a one-sided F 1 % (ratio > 1.877), batch SE + chi2 reported, e4_atn info only. F2
+        run2-rawbias: unclipped bias^2, 4 frame starts (FRAME0 100000-400000) for e1 / e6 (+ e2 / e3), FAIL at
+        post - pre > 3 SD (SD = max(analytic, starts' spread)), e1 / e6 also vs post-built refs (post_sun08 /
+        post_torch25): both = FAIL, one = OPEN. F3: 20000 ms in the notes, answers.tsv with frame-0 ms,
+        run-firstframe RESULT (OPEN when post > pre), helper log + .old per lab / 4K job. F4: every "no mask
+        worse" gate FAILs at |shift| > 3 x hypot(SE), SE = ci / t(R-1), BIAS -> BIAS too. Optional done: pre_b re-runs
+        ~24 non-repeated modes (~2 min, run1-repeat); run5-lights-info NUMBER line. h0_gpu_runs.ps1 CRLF again; no
+        new switches. KEPT RUN UNDER NEW RULES: run4-history PASS (s1 x1.870 p 0.166; post batch SE x2.40 p
+        0.00061 -> R = 16 settles); run4-ref PASS; run2-ref <= 1.8 SE; run3-ref FAIL (r3_refl_s16 BIAS -> BIAS 4.3 /
+        7.4 / 4.8 / 4.3 SE but ratio moves ~0.00007; R = 2 = 1 dof per SE, fragile -> h0i_ proposes R = 4 for e5_q /
+        e5_q_def / r3_refl_s9 / s16, +~1.6 min, or Welch-t; rule left as prescribed); run2-rawbias FAIL on e6 (+4.5
+        SD; e1 +2.9 under 3) -> e6 stays a (c) candidate in 9e4d23e3a until 4 starts + post ref. Note: empty folder
+        h0\selftest_check15 made by mistake (stays). -> upr_ RE-CHECK STARTED (F1-F4 + the R = 2 question) before
+        the real re-run.
+        - [ ] ATN (cleanup list): tools\tw\h0\selftest_check15 (empty folder, h0i_ 09:1x) may be deleted.
+        Agents (6): upr_ (h0i_ F1-F4 re-check), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gpr_
+        (gtb_ slot-wait / floor / R12-1 + load proposal check), ffr_ (grs_ first-frame v2 re-check), gtw_
         (release_check.ps1 review), t4i_ (T5 manifest rows + B1 risks)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
