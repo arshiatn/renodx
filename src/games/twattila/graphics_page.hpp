@@ -206,6 +206,7 @@ struct Bindings {
   // The upscaling mode, render scale, LOD bias, effects' resolution, object motion; false: the game owns its scale.
   bool has_scale_rows = true;
   bool has_object_motion = false;  // Without the scale rows: Object Motion Vectors still has an effect.
+  bool lod_bias_at_game_scale = false;  // Without the scale rows: Texture LOD Bias follows the game's own scale.
   bool has_foliage_light = true;  // Screen-space shadows know grass and leaves.
   bool foliage_light_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
   bool smoke_map_tested = true;  // false: the smoke's shadows without rays Experimental, off by default (as foliage_light_tested)
@@ -240,7 +241,10 @@ struct Bindings {
   // false: the rays' and paths' methods of Shadows, Ambient Occlusion and Global Illumination named Experimental (no game
   // run has shown them in this game yet; the Unreal games).
   bool rays_tested = true;
-  bool has_gi = true;      // Global Illumination's section; false: none, the rows it would hold kept hidden (Rome Remastered)
+  // false: GT-VBAO, Bend Screen-Space and GT-VBGI named Experimental (no game run has shown them in this game yet), their
+  // rows' defaults the game's to set; No RT/PT (Recommended) still turns all three on (ATN: as Attila's).
+  bool screen_space_tested = true;
+  bool has_gi = true;     // Global Illumination's section; false: none, the rows it would hold kept hidden (Rome Remastered)
   // A fog the rays shade (rt_scene::InstallFogShadows or the game's own hook); false: the Fog Shadows row kept hidden and
   // left out of RT/PT (Divinity 2).
   bool has_fog_shadows = true;
@@ -439,7 +443,12 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     if (!b.rays_tested) label.insert(label.size() - 1, ", Experimental");
     return label;
   };
+  // A screen-space method's name ("GT-VBAO"), "(Experimental)" after it where they are untested (screen_space_tested).
+  const auto screen_space_label = [&b](const std::string& label) { return b.screen_space_tested ? label : label + " (Experimental)"; };
   const auto below_100_rows = [b] { return (b.has_scale_rows || b.upscaling_mode != nullptr) && feature_settings::Upscaling(*b.aa); };
+  const auto lod_bias_rows = [b] {
+    return (b.has_scale_rows || b.upscaling_mode != nullptr || b.lod_bias_at_game_scale) && feature_settings::Upscaling(*b.aa);
+  };
   const auto no_upscaler = [b] { return !feature_settings::Upscaling(*b.aa); };
   const auto dlss = [b] { return b.aa->method == 5.f; };
   const auto nvidia = [] { return dlaa_bridge::OnNvidia(); };
@@ -648,7 +657,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracingRaysReflections", .section = section, .shown = more(&more_aa, [b, extra_rays] { return b.has_reflections && extra_rays(); })});
     page.Take({.match = "RayTracingRaysPaths", .section = section, .shown = more_rays, .tooltip = b.texts->rays_a_pixel_paths_tooltip});
     page.Take({.match = "AntiAliasingExtraSharpness", .section = section, .shown = more(&more_aa, cmaa), .label = "Extra Sharpness"});
-    page.Take({.match = "AntiAliasingTextureLodBias", .section = section, .shown = more(&more_aa, below_100_rows),
+    page.Take({.match = "AntiAliasingTextureLodBias", .section = section, .shown = more(&more_aa, lod_bias_rows),
                .tooltip = "How sharp textures are while the upscaler renders below 100%.\n"
                           "Matched: as sharp as at your display's resolution. Sharper / Sharpest: one / two steps more\n"
                           "(more detail, can shimmer)."});
@@ -662,7 +671,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .section = section,
           .tooltip = "Texture LOD Bias also on the textures the game filters without anisotropy (terrain, buildings).\n"
                      "Off: those stay blurrier while the upscaler renders below 100%.",
-          .is_visible = more(&more_aa, below_100_rows),
+          .is_visible = more(&more_aa, lod_bias_rows),
       });
     }
     page.Take({.match = "AntiAliasingEffectsAtOutput", .section = section, .shown = more(&more_aa, below_100_rows), .label = "Effects at Output Resolution",
@@ -746,8 +755,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     };
     page.Add(preset_button("Reset", b.texts->reset_tooltip,
                            {{"ssao_mode", 0.f}, {"ssr_hierarchical", 0.f}, {"WaterClarity", 1.f}, {"WaterCaustics", 0.f}}));
-    page.Add(preset_button("No RT/PT (Recommended)", b.texts->no_rays_tooltip,
-                           {{"ScreenSpaceShadows", 1.f}, {"ScreenSpaceShadowsLength", 3.f}, {"light_bounce_strength", 1.f}}));
+    Values no_rays_values = {{"ScreenSpaceShadows", 1.f}, {"ScreenSpaceShadowsLength", 3.f}, {"light_bounce_strength", 1.f}};
+    // Untested there, GT-VBAO's row defaults to the game's AO: this button turns it on all the same.
+    if (!b.screen_space_tested && b.has_gtvbao) no_rays_values.emplace_back("ssao_mode", 1.f);
+    page.Add(preset_button("No RT/PT (Recommended)", b.texts->no_rays_tooltip, no_rays_values));
     Values rays_values = RAYS_PRESET;
     // No paths for the sky's light here: ray-traced AO, over the game's.
     if (!b.has_path_ambient || !b.path_ambient_tested) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
@@ -782,7 +793,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     std::vector<int> shadow_methods = {SHADOW_GAME};
     if (b.has_screen_space_shadows) shadow_methods.push_back(SHADOW_SCREEN);
     shadow_methods.push_back(SHADOW_RAYS);
-    const std::array<std::string, 3> shadow_labels = {"Game's Shadow Maps", "Bend Screen-Space", rays_label("Ray-Traced (DXR)")};
+    const std::array<std::string, 3> shadow_labels = {"Game's Shadow Maps", screen_space_label("Bend Screen-Space"), rays_label("Ray-Traced (DXR)")};
     std::vector<std::string> shadow_places;
     for (const int method : shadow_methods) shadow_places.push_back(shadow_labels[method]);
     page.Add(MethodSlider(section, b.texts->shadow_tooltip, std::move(shadow_places),
@@ -1176,7 +1187,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     if (b.has_gtvbao) methods.push_back(AO_GTVBAO);
     methods.push_back(AO_RAYS);
     if (b.has_path_ambient) methods.push_back(AO_PATHS);
-    const std::array<std::string, 4> method_labels = {"Game's SSAO", "GT-VBAO", rays_label("Ray-Traced (RTAO)"), rays_label(b.texts->ao_paths_label)};
+    const std::array<std::string, 4> method_labels = {"Game's SSAO", screen_space_label("GT-VBAO"), rays_label("Ray-Traced (RTAO)"),
+                                                      rays_label(b.texts->ao_paths_label)};
     std::vector<std::string> labels;
     for (const int method : methods) labels.push_back(method_labels[method]);
     page.Add(MethodSlider(section, b.texts->ao_tooltip, std::move(labels),
@@ -1232,7 +1244,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     std::vector<int> gi_methods = {GI_OFF};
     if (b.has_gtvbgi) gi_methods.push_back(GI_GTVBGI);
     gi_methods.insert(gi_methods.end(), {GI_RAYS, GI_PATHS});
-    const std::array<std::string, 4> gi_labels = {"Off", "GT-VBGI", rays_label("Ray-Traced (One Bounce)"), rays_label("Path-Traced (ReSTIR GI)")};
+    const std::array<std::string, 4> gi_labels = {"Off", screen_space_label("GT-VBGI"), rays_label("Ray-Traced (One Bounce)"),
+                                                  rays_label("Path-Traced (ReSTIR GI)")};
     std::vector<std::string> gi_places;
     for (const int method : gi_methods) gi_places.push_back(gi_labels[method]);
     page.Add(MethodSlider(section,
