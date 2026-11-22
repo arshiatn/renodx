@@ -8681,9 +8681,36 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stack, after the runner
             + dry run are ready) - decides whether the release gate failures are Windows KB5132061 or our code
             (lga_ 09:0x).
+        ffr_ FIRST-FRAME REVIEW = OK WITH FIXES 09:0x (plan_1117/designs/ffr_first_frame_review.md + _handback.md;
+        Opus xHigh, offline): d' is the right direction, 5 holes. Claims: players plausible not proven (H0's 21-22 s
+        = lab / 4K sets; item 4's log line settles it); all heavy opens in the Evaluate after Prepare confirmed
+        (main.cpp:1035-1103); only 813 / 1151 are non-steady waits (848 / 1115 / 1524 = pending steady); opening
+        frames are the game's frame with NO AA at native size, not TAA. MUST: M1 Release(true) while opening must
+        not block (up to 160 s on the present thread under runtime.mutex, anti_aliasing.hpp:1528-1535) or call
+        PublishEmptySet (rewrites shared.value the helper reads at main.cpp:1334) -> owe an empty set, send after
+        the late answer; M2 a late answer after Release(false) must not set deferred (null fence at 1118 / 1179),
+        opening survives Release(false), Prepare's check after the same-params return at 840, Shutdown resets; M3
+        branch the non-steady timeout off BEFORE Answer's watchdog.failed at 686, deadline + process exit set
+        watchdog.failed (else a hung helper is never ended), store waited before deferred (as 1155); M4 harness
+        (tw_rt_harness.cpp:39 includes the live bridge, TraceScene retry loop 3188): cold miss would become
+        traced=false frames from torn frame-0 captures with no miss line -> Opening() query, harness waits +
+        counts late opens in RESULT, optional latch switch, no A/B straddling the change; M5 don't skip shared
+        writes (or one poll per frame at present). SHOULD: S1 first block 5 s for may-open requests, 20 s else;
+        S2 force reset on the first Evaluate + present after opening (applied_frame advances on unresolved frames,
+        1088 / 1323); S3 HELPER: release_idle at main.cpp:1147 can release the scene / RR a >10 s cold open just
+        made (rt_used / rr_used 757 / 771) -> refresh after the set block; S4 NRD move not right (off by default,
+        size-bound) -> measure EnsureNrd first (ms on line 5495), then a helper thread + built-in fallback if it
+        matters; S5 b3 safe + worth it (map / unmap SER table around the join, slowest PSOs first, ~half the cores,
+        measure once with the cache cleared); S6 other steady-request opens (refused-RR retry, Streamline restart,
+        RR-lost restart); S7 FG child window may stay frozen over the game (rare); S8 stop-gap (a) = one line
+        `Answer(bridge.answered ? 20000 : 120000)` + item 4. Late-result discard safe for every kind (RT heals,
+        rt_core.hpp:3707-3715). Answers: budget 180 s non-blocking, clock not counting sleep; PublishEmptySet keeps
+        the latch, never called while opening; harness change REQUIRED with the add-on change. Nits in the file
+        (stale comments; line numbers are gpu_s2's, atn-mods main.cpp ~27 lower; FSR / XeSS already async). ->
+        grs_ REVISES the design (M1-M5 + S1-S8), ffr_ re-checks; no code yet.
         Agents (7): h0i_ (H0 F1-F4), gtv_ (gtq_ folder + gtl_ wrap tiny check), gtw_ (gtp_ round 12 re-check), gtb_
-        (slot-wait test + load + gate seed + R12-1 half), ffr_ (grs_ first-frame design review), lga_ (release
-        check runner, dry run only), t4i_ (T5 manifest rows + B1 risks)
+        (slot-wait test + load + gate seed + R12-1 half), grs_ (first-frame design revision), lga_ (release check
+        runner, dry run only), t4i_ (T5 manifest rows + B1 risks)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
