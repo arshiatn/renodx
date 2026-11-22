@@ -470,7 +470,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stac ... | ?
 - gtl_ (low): the jobs fixture's +60 s on the gate now sits on top of GATE_FLOOR_S ... | ?
 - gtb_ / gti_ (low): load-flake bounds in unchanged code - gated_build "both slots ... | ?
-- ATN (cleanup list): tools\tw\h0\selftest_check15 (empty folder, h0i_ 09:1x) may ... | ?
+- ATN (cleanup list): tools\tw\h0\selftest_check15 (empty folder, h0i_ 09:1x) + se ... | ?
 - c3i_ F1: session totals for the B1 safety counters (print when any fault counter ... | ?
 - c3i_ F2: a log line (Note() event kind) when the slot list grows on a worker (t4 ... | ?
 - ATN (morning report): add a B1L1-only volley pair to the end batch? ~7 min (L1-o ... | ?
@@ -8825,7 +8825,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         SD; e1 +2.9 under 3) -> e6 stays a (c) candidate in 9e4d23e3a until 4 starts + post ref. Note: empty folder
         h0\selftest_check15 made by mistake (stays). -> upr_ RE-CHECK STARTED (F1-F4 + the R = 2 question) before
         the real re-run.
-        - [ ] ATN (cleanup list): tools\tw\h0\selftest_check15 (empty folder, h0i_ 09:1x) may be deleted.
+        - [ ] ATN (cleanup list): tools\tw\h0\selftest_check15 (empty folder, h0i_ 09:1x) + selftest_check17b (a
+            second selftest copy by mistake, h0i_ 09:4x) may be deleted.
         ffr_ v2 RE-CHECK = OK WITH FIXES 09:1x (plan_1117/designs/ffr_first_frame_review.md "## v2 re-check" +
         ffr_v2_recheck_handback.md; vs atn-mods 3ab42c59a): M2-M5 + every Should / nit closed; 2 new small MUSTS:
         V1 the present-hook condition `(existing) || Opening()` is wrong - the existing term starts with
@@ -9194,9 +9195,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         (scratchpad\ff_s12): applies cleanly to 1294f29b0 files, byte-identical to grs_'s copies; all CRLF, no
         trailing spaces; git diff --no-index --check silent; syntax.ps1 exit 0 + an #error probe proves NRD on.
         -> fcr_ RE-CHECKS v2; grs_ writes design v5 text (W1-W3 + nits + N7-N9).
-        Agents (10): h0i_ (M1 + S1-S5 before the H0 re-run), gtw_ (lga_ release_check re-check), gtp_ (round 14),
-        gpr_ (gtb_ load refresh re-check), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), grs_ (design
-        v5 text), fcr_ (patch v2 re-check), gtl_ (fixture +60 s + gate_s), gti_ (r1a / r1b + ns_busy games)
+        h0i_ M1 + S1-S5 DONE 09:4x (plan_1117/h0i_m1_handback.md; h0i_handback.md "## H0 M1 + S1-S5"; backups
+        h0\backups\20261122_0935_m1; patch h0i_patch_m1.py): M1 (> 3 SE AND > 0.1 %, same for NOISY -> BIAS;
+        smaller = NUMBER "not counted (M1)"; R = 2 kept); S1 run1-repeat OPEN on a missing pre_b output or a
+        mode pre_b never ran; S2 noise + corr1 / corr16 on rawbias NUMBER lines; S3 run4-history OPEN at p < 0.05
+        (x1.55), FAIL at 1 % (x1.877); S4 no reference term when both refs are byte-equal; S5 "NUMBER
+        run1-firstframe"; upr_'s e1 / e6 OPEN text in run2-rawbias + notes, both up = FAIL. Kept run
+        20261122_054906 now (recheck_20261122_054906\m1_*.txt): run3-ref PASS (was FAIL; r3_refl_s16 23.1 SE but
+        0.009 % = not counted; other s16 masks 13-23 SE / 0.006-0.007 %), run4-ref PASS, run4-history PASS (s1
+        x1.870 p 0.166, e4_atn x2.261 p 0.107), run2-ref FAIL only for e3_open's missing result (needs the GPU),
+        run2-rawbias FAIL on e6 (+4.5 SD, one start; e1 +2.9 SD; corr equal both sides). S5 on the kept run:
+        first job's frame 0 = pre_a 10739 ms, post_a 13564 ms, post_b 2755 ms (cold first frames 11-14 s vs the
+        bridge's 20 s first-frame wait = the grs_ first-frame risk, real numbers). Tests: selftest_check17 0 wrong
+        / 63 ok (second copy selftest_check17b by mistake, left = cleanup list); both ps1 parse, param + path
+        unchanged, CRLF kept; offline dry + pass 0 / 2 BAD (offline\20261122_094449_*). Changed:
+        h0_rng_check.py, h0_gpu_runs.ps1 (S5 line + comments), offline\h0_offline_test.ps1,
+        offline\fakes\fake_harness.py. Time unchanged (~83 min est, plan 95-100). -> upr_ RE-CHECKS (short), then
+        the H0 run in the next quiet window.
+        Agents (10): upr_ (h0i_ M1 + S1-S5 re-check), gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gtb_
+        load refresh re-check), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), grs_ (design v5 text),
+        fcr_ (patch v2 re-check), gtl_ (fixture +60 s + gate_s), gti_ (r1a / r1b + ns_busy games)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
