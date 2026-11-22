@@ -7176,9 +7176,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         text; web_allow.tsv (the design says ATN's, protected) and the gate_override.ps1 change (it lifts gates) only
         as PROPOSALS (web_allow.proposed.tsv, gate_override.proposed.ps1) for ATN to copy. [ ] ATN: copy them when
         ready. gtb_ may delete _own_cause / _own_committed_gb after gpr_'s look.
-        Agents (10): h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gtk_ (RS-M1), gtw_ (re-check 7), gbc_ (B1
-        re-check), gtl_ (S3r M1r / M2r), gtv_ (S2r), gpr_ (gtb_ watch look, then gti_ F1). Idle: bd1r_, lga_, lgf2_,
-        c33i_, upt_, upr_ (waits h0i_), gpp_, gtb_, ebr_, gtq_, gti_, grs_, gtp_ (waits gtw_).
+        gtp_ ack (plan_1117/gtp_ownership_ack_handback.md): files untouched since the price swap; waits for the go.
+        gtk_ RS-M1 DONE 04:2x (plan_1117/gtk_rsm1_handback.md; backups scratchpad\gtk_backup_rsm1): settle wait ends at
+        2 s still or 6 s, finishing trace always sent; RS-N1 per-file file_size; RS-N3 NOTICE names OpenEXR's
+        lib_common.h edit; unset path same, scene_test 89 PASS -> gbc_ short RS-M1 re-check queued after its B1.
+        Agents (9): h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gtw_ (re-check 7), gbc_ (B1 re-check, then
+        RS-M1), gtl_ (S3r M1r / M2r), gtv_ (S2r), gpr_ (gtb_ watch look, then gti_ F1). Idle: bd1r_, lga_, lgf2_,
+        c33i_, upt_, upr_ (waits h0i_), gpp_, gtb_, ebr_, gtq_, gti_, grs_, gtk_, gtp_ (waits gtw_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
