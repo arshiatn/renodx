@@ -10517,6 +10517,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ($VAR folders + $env:NAME,
         key diff) + gpr_'s 3 Lows (key a wrapper's child: sh scratch:, -m module, gtp_lowprio -b -i); gtw_ + gpr_ re-check
         (coord 15:5x).
+        gtw_ FOLLOW-UP 15:54 (plan_1117/gtw_recheck19_followup_handback.md): all its runs were below normal, CPU time first;
+        nothing of gtw_'s running since 15:52; ID CLASH -> gtw_'s items go to gtp_ as gtw-R19-1..gtw-R19-7, gpr_'s as
+        gpr-R19-1; gtw_ did not test gpr_'s $VAR folder point. gtp_ ROUND 20 SENT 15:5x with those IDs.
         Agents (6): gtp_ (gate round 20), fcr_ (dead-output review), gtl_ (stage fixes), h0i_ (all_modes 8-change
         analysis), gtc_ (S3c part 1 runner); GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job at a time;
         agents' CPU work below normal, no builds at normal priority during S3c
