@@ -1511,7 +1511,7 @@ inline void Update(bool row, bool spawns = false) {
 
 #else
 
-inline void Update(bool) {}
+inline void Update(bool, bool = false) {}
 
 #endif  // !defined(_WIN64)
 

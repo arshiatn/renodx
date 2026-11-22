@@ -44,6 +44,7 @@
 #include "./cpu_sets.hpp"
 #include "./device_loss.hpp"
 #include "./draw_dispatch.hpp"
+#include "./effect_update.hpp"
 #include "./engine_code.hpp"
 #include "./engine_tests.hpp"
 #include "./feature_settings.hpp"
@@ -1340,14 +1341,24 @@ float fewer_driver_waits_row = 0.f;
 float effect_prefetch_row = 0.f;
 // Keep Render Core Free (Experimental, off): cpu_sets.hpp.
 float keep_render_core_row = 0.f;
+// Parallel Effect Update (Experimental, off): effect_update.hpp, the game's effect update on the worker pool. Parallel Effect Spawns
+// (off, needs the row above): its particle spawns on the pool too. Cached Particle Count (off): engine_code.hpp's visible particle sum
+// once per update of a node instead of once per view.
+float effect_update_row = 0.f;
+float effect_spawns_row = 0.f;
+float particle_count_row = 0.f;
 // Worker Threads (Experimental): the threads, the render thread included, that worker_pool.hpp's users may use. The row is
-// compiled only where a pool user is (today the private draw recording build).
+// compiled wherever a pool user is (the effect update, and the private draw recording build's users).
 float worker_threads_row = 4.f;
 // The env generation: the pool reads RENODX_TW_WORKER_LIMITS and RENODX_TW_POOL_SPIN_US again when it changes (test_hooks'
 // "env." set keys bump it after they set a variable).
 std::atomic<uint32_t> worker_env_generation = 0;
 // A bench's RENODX_TW_WORKER_TRACE, read once at the start: engine_code puts the pending list sweep's trace site in only then, never for a player.
 const bool worker_trace_env = (GetEnvironmentVariableA("RENODX_TW_WORKER_TRACE", nullptr, 0) != 0);
+// A bench's RENODX_TW_COUNT_CHECK (set at all), read again when the env generation changes: Cached Particle Count also runs the game's
+// sum on every call and compares it with its cache; never a player's.
+bool particle_count_check_env = false;
+uint32_t particle_count_check_generation = ~0u;
 // Where the game's own threads start (the job workers in the engine's DLL); the rest is the driver's, audio's, etc.
 constexpr std::array<const wchar_t*, 2> GAME_THREAD_MODULES = {nullptr, L"empire.retail.dll"};
 // Faster Emitter Prefetch (Experimental, off): engine_code.hpp's emitter update loop site, a row of its own so that a bench
@@ -1635,7 +1646,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (!at_start_done.load()) return;
   uint32_t recording_groups = 0;
   // Any user of the worker pool is in a stage that wakes workers.
-  bool pool_in_use = false;
+  bool pool_in_use = (effect_update_row != 0.f);
   bool instance_fill_on = false;
   bool fill_fold_on = false;
 #if defined(TWATTILA_DRAW_RECORDING)
@@ -1651,22 +1662,33 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     recording.loops |= (draw_recording_group_rows[group] != 0.f ? 1u << group : 0u);
   }
   recording_groups = twattila::draw_recording::SiteGroups(recording.stage, recording.loops);
-  pool_in_use = (recording.stage == twattila::draw_recording::Stage::TOUCH_AHEAD
-                 || recording.stage == twattila::draw_recording::Stage::ONE_WORKER
-                 || recording.stage == twattila::draw_recording::Stage::WORKERS);
+  pool_in_use |= (recording.stage == twattila::draw_recording::Stage::TOUCH_AHEAD
+                  || recording.stage == twattila::draw_recording::Stage::ONE_WORKER
+                  || recording.stage == twattila::draw_recording::Stage::WORKERS);
   instance_fill_on = (instance_fill_row != 0.f);
   fill_fold_on = (fill_fold_row != 0.f);
   pool_in_use |= instance_fill_on;
   // A fold still open here (a path that did not close it) would make the pool's Update wait for workers parked on its publish.
   twattila::draw_recording::CloseFoldAtPresent();
 #endif
+  const uint32_t env_generation = worker_env_generation.load(std::memory_order_relaxed);
+  if (env_generation != particle_count_check_generation) {
+    particle_count_check_generation = env_generation;
+    particle_count_check_env = (GetEnvironmentVariableA("RENODX_TW_COUNT_CHECK", nullptr, 0) != 0);
+  }
   // Before the users' own Updates.
-  twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use,
-                                 .env_generation = worker_env_generation.load(std::memory_order_relaxed)});
+  twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use, .env_generation = env_generation});
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
                                 job_wakeups_row != 0.f, effect_prefetch_row != 0.f, emitter_prefetch_row != 0.f,
                                 particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale, recording_groups,
-                                {.pending_sweep_trace = worker_trace_env, .instance_fill = instance_fill_on, .fill_fold = fill_fold_on});
+                                {.pending_sweep_trace = worker_trace_env,
+                                 .effect_update = (effect_update_row != 0.f),
+                                 .particle_count = (particle_count_row != 0.f),
+                                 .particle_count_check = particle_count_check_env,
+                                 .instance_fill = instance_fill_on,
+                                 .fill_fold = fill_fold_on});
+  // After the engine code's Update (the sites are in or out for this present) and the pool's.
+  twattila::effect_update::Update(effect_update_row != 0.f, effect_spawns_row != 0.f);
 #if defined(TWATTILA_DRAW_RECORDING)
   // After the engine code's Update: the sites are in or out for this present, and only the groups whose sites all are
   // in run.
@@ -2148,7 +2170,6 @@ void ConfigureAddon() {
                      "them, while it works on the current one. May lower the CPU waiting in big battles. Same results.",
           .labels = {"Off", "On"},
       },
-#if defined(TWATTILA_DRAW_RECORDING)
       new renodx::utils::settings::Setting{
           .key = "WorkerThreads",
           .binding = &worker_threads_row,
@@ -2160,6 +2181,39 @@ void ConfigureAddon() {
           .labels = {"2", "4", "6", "8", "12", "16"},
           .parse = [](float value) { return std::array<float, 6>{2.f, 4.f, 6.f, 8.f, 12.f, 16.f}[static_cast<size_t>(value)]; },
       },
+      new renodx::utils::settings::Setting{
+          .key = "ParallelEffectUpdate",
+          .binding = &effect_update_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Parallel Effect Update (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Updates the game's effects on several threads. Same picture.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ParallelEffectSpawns",
+          .binding = &effect_spawns_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Parallel Effect Spawns (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Lets effect particles start on worker threads too. Same picture unless the particle budget fills.\n"
+                     "Needs Parallel Effect Update.",
+          .labels = {"Off", "On"},
+          .is_enabled = [] { return effect_update_row != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "CachedParticleCount",
+          .binding = &particle_count_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Cached Particle Count (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Counts visible particles once a frame instead of once per view. Same picture.",
+          .labels = {"Off", "On"},
+      },
+#if defined(TWATTILA_DRAW_RECORDING)
       new renodx::utils::settings::Setting{
           .key = "DrawRecordingStage",
           .binding = &draw_recording_stage_row,
