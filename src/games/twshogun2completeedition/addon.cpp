@@ -628,13 +628,13 @@ const Values GRAPHICS_RESET = {
 const Values AO_DEFAULTS = {
     {"AmbientOcclusion", 1.f}, {"AmbientOcclusionStrength", 1.f}, {"AmbientOcclusionRadius", 12.5f}, {"AmbientOcclusionThickness", 0.1f},
     {"AmbientOcclusionQuality", 2.f}, {"AmbientOcclusionDirections", 0.f}, {"AmbientOcclusionResolution", 0.f},
-    {"AmbientOcclusionAutoThickness", 0.f}, {"AmbientOcclusionExactDepth", 0.f}, {"ssao_temporal", 0.f}, {"ssao_edge_fix", 0.f},
+    {"AmbientOcclusionAutoThickness", 1.f}, {"AmbientOcclusionExactDepth", 0.f}, {"ssao_temporal", 0.f}, {"ssao_edge_fix", 0.f},
     {"ssao_denoise", 0.f},
 };
 const Values GI_DEFAULTS = {
     {"LightBounceStrength", 0.f}, {"LightBounceRadius", 20.f}, {"LightBounceResolution", 2.f}, {"LightBounceQuality", 3.f},
     {"LightBounceDirections", 0.f}, {"LightBounceTemporal", 1.f}, {"LightBounceDenoise", 1.f}, {"LightBounceMultiBounce", 0.f},
-    {"LightBounceCheckerboard", 1.f}, {"LightBounceBackFace", 0.f}, {"LightBounceAutoThickness", 0.f},
+    {"LightBounceCheckerboard", 1.f}, {"LightBounceBackFace", 0.f}, {"LightBounceAutoThickness", 1.f},
 };
 const std::string RAYS_SECTION = "Ray Tracing (Experimental, restart after turning on)";
 constexpr uint32_t RAYS_TINT = 0x6BE0D8;
@@ -2005,7 +2005,7 @@ void BuildRuntimeData() {
              "Directions searched around each pixel. More: less noise, heavier.", {"1", "2", "4", "8"}, ao_on),
       choice("AmbientOcclusionResolution", &shader_injection.ssao_resolution, 0.f, "Resolution", ao_section,
              "Lower: faster, softer; thin things (grass, spears) get less shading.", {"Full", "Half"}, ao_on),
-      choice("AmbientOcclusionAutoThickness", &shader_injection.ssao_auto_thickness, 0.f, "Auto Thickness (Experimental)", ao_section,
+      choice("AmbientOcclusionAutoThickness", &shader_injection.ssao_auto_thickness, 1.f, "Auto Thickness", ao_section,
              "Guesses each object's thickness from its width, Thickness as the least:\n"
              "spears stay thin, walls and hills block fully.",
              off_on, ao_on),
@@ -2071,7 +2071,7 @@ void BuildRuntimeData() {
              off_on, [] { return shader_injection.light_bounce_strength > 0.f && shader_injection.light_bounce_temporal != 0.f; }),
       choice("LightBounceBackFace", &shader_injection.light_bounce_backface, 0.f, "Back-Face Rejection (Experimental)", gi_section,
              "Ignores light from surfaces seen from behind. Heavier; not always better.", off_on, gi_on),
-      choice("LightBounceAutoThickness", &shader_injection.light_bounce_auto_thickness, 0.f, "Auto Thickness (Experimental)", gi_section,
+      choice("LightBounceAutoThickness", &shader_injection.light_bounce_auto_thickness, 1.f, "Auto Thickness", gi_section,
              "Guesses each object's thickness from its width, Thickness as the least:\n"
              "spears stay thin, walls and hills block fully.",
              off_on, gi_on),
@@ -2778,6 +2778,17 @@ void ConfigureAddon() {
     }
     reshade::set_config_value(nullptr, global.c_str(), "SettingsRevision", 1);
     if (copied != 0) renodx::utils::log::i(std::format("[Shogun 2] Settings: {} of the DLSS add-on's ([Shogun 2 DLSS]) copied into the presets.", copied));
+  }
+  // Auto Thickness on by default (ATN 2026-11-22): the two rows saved at their old 0 (a preset saves every row) cleared
+  // out of the presets once, then SettingsRevision 2 (twattila/graphics_page.hpp ClearSavedRows's rule; that header
+  // includes rt_scene.hpp, which this add-on can't).
+  if (int revision = 0; !reshade::get_config_value(nullptr, global.c_str(), "SettingsRevision", revision) || revision < 2) {
+    for (const char* preset : {"-preset1", "-preset2", "-preset3"}) {
+      for (const char* key : {"AmbientOcclusionAutoThickness", "LightBounceAutoThickness"}) {
+        reshade::set_config_value(nullptr, (global + preset).c_str(), key, static_cast<const char*>(nullptr));
+      }
+    }
+    reshade::set_config_value(nullptr, global.c_str(), "SettingsRevision", 2);
   }
 
   configured = true;
