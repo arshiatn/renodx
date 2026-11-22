@@ -8104,11 +8104,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         cheap nits + a PROPOSAL for the gated_build refusal (a) case; gtw_ re-checks.
         - [ ] ATN (morning report): once the price gate goes on, everyday gated_build builds hit refusal (a) unless
             run under renodx-watch (gtw_ 07:2x) - read gtp_'s proposal before switching price on.
+        t4i_ R23 DONE 07:3x (render_mt/reports/t4i_r23_handback.md; backups scratchpad\t4i_bak\r23; log
+        scratchpad\t4i_r23_runall.txt): run_all green (lib 470, make 86, check 166, leg 165, analyze 112, 0 files
+        failed). Shipped formats checked read-only in rmt_c3 (engine_code.hpp:2771 Cached, effect_update.hpp:1529
+        headroom). 1 probe cached_trace_window -> ebo_analyze: per B1Cached segment {hits, misses, lines,
+        not_cached} (count check ran / no line / 0 hits), per scene sums, comparisons print "Cached not measured";
+        high miss rate reported, not flagged. 2 b1_stack_headroom verified (corpus 100 KB LATCH / 256 KB / 496 KB
+        INFO); FIX found: old b1_trace_window probe also matched the headroom line -> `\):(?! stack headroom)`. 3
+        LATCH rows b1_sites_stood_down / b1_no_memory / b1_stack_headroom -> part B1L1 (STOP + crash job_parts stay
+        B1, asserted); test: Cached-only S4 stays valid, B1L1 + B1L2 S5 invalid. Patch 1 stopped at the corpus step
+        (a line without 'text'), patch2 fixed + ran. Open: T5 manifest rows + env; non-B1 placeholders (owners
+        listed); gates.json _status wording stale (T5 / T6). -> ebr_ RE-CHECK STARTED.
         Agents (10): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (held lab suites + race probe), gtl_ (S4 +
         nits + kind dump reference mode, staged), gtp_ (O2 order + corrupt files + nits + gated_build proposal),
-        gpr_ (gti_ R1 re-check), gtb_ (grs1 NUL check), t4i_ (r23), b13r_ (c3i_ B1.6 follow-ups re-check), c3i_
-        (B1 real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (re-checks
-        h0i_), gpp_, gbc_, gti_ (waits gpr_), grs_, gtk_, gtw_ (re-checks gtp_), ebr_ (re-checks t4i_ r23), gtq_
+        gpr_ (gti_ R1 re-check), gtb_ (grs1 NUL check), ebr_ (t4i_ r23 re-check), b13r_ (c3i_ B1.6 follow-ups
+        re-check), c3i_ (B1 real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_, lgf2_, c33i_, upt_,
+        upr_ (re-checks h0i_), gpp_, gbc_, gti_ (waits gpr_), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits
+        ebr_), gtq_
         (go after gtl_). gtv_'s held lab suites + race probe AFTER gtl_'s 4 suites
         (the fakes' names would cross each other's busy checks). GPU: free (rec_verify waits ATN; H0 re-run after
         the analysis).
