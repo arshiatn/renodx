@@ -473,8 +473,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - B1 owner (static, low): do the game's destructors draw (callers of 0x190B780 rea ... | ?
 - gtp_ + gtb_ R12-1 (Should, not blocking in shadow): price_rows() falls back to " ... | ?
 - gtp_ (lows): quoted multi-target word not split before normalising (one seed kin ... | ?
-- gtl_ (nit): end_world never undoes the fixture's budget.deadline wrap (gate 180 ... | ?
 - gtv_: tiny check of gtq_'s folder nit + gtl_'s wrap nit together (when gtl_ hand ... | ?
+- ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stac ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8333,7 +8333,10 @@ heading text are in HANDOFF_ARCHIVE.md)
             every ray count (one start each), and with reuse the scorer's "bias" also counts long-lived error.
         - [ ] reflection owner: r3_refl boxes +0.45 % / edge +3.1 % bias, already before H0 (h0i_ 08:0x).
         - [ ] release / lifetime owner (gpu3_ A1g, lga_): 5 release modes 77-122 ms vs the 75 ms limit, both sides;
-            upr_ 08:3x: a REAL atn-mods regression (11-16 measured 52-56 ms) - find the change.
+            upr_ 08:3x: a REAL atn-mods regression (11-16 measured 52-56 ms) - find the change. lga_ 09:0x: NOT
+            provable from code (release-path helper code = 48803f808 apart from failure-path logs); 11-16 had a
+            baseline for only 2 of 5 modes; top suspect = Windows KB5132061 (11-19, dxgkrnl 26100.9974) -> needs
+            lga_'s 9-min old-vs-new stack check (needs an ATN run rule).
         - [ ] coordinator after upr_'s OK: H0 re-run (full, ~84 min, ATN's rule) in a gap; ATN: optional new rule
             for h0i_'s proposed `-Only` switch.
         gtv_ GTL_ S5 RE-CHECK = OK, NO FINDINGS 08:0x (plan_1117/gtv_gtl_s5_recheck_handback.md): unit 30, ps1 5, keeper
@@ -8631,7 +8634,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] gtq_ (nit, DONE 08:5x): the reference folder is named from the --recording spelling, not the realpath
             (`...\frame_7\x\..` -> `x_.._2e05...`, same hash) - one recording's references could split across
             two folders; name it from the realpath (gtv_ 08:5x).
-        - [ ] gtl_ (nit): end_world never undoes the fixture's budget.deadline wrap (gate 180 s instead of 120 s
+        - [x] gtl_ (nit, DONE 08:5x): end_world never undoes the fixture's budget.deadline wrap (gate 180 s instead of 120 s
             in the same process after the unit suite; test_budget l.136 would fail only after a fixture suite in
             one process) - undo it in end_world (gtv_ 08:5x).
         gtp_ R12-1 PLAN 08:5x (plan_1117/gtp_r12_1_plan_handback.md; nothing edited, waits for gtw_'s re-check 12 =
@@ -8652,9 +8655,35 @@ heading text are in HANDOFF_ARCHIVE.md)
         lower case now); recording.txt + manifest recording.path hold realpath (case kept). Test: two spellings ->
         one folder, recording.txt resolved. test_iq_frames 16 / 16. -> gtv_ tiny check with gtl_'s wrap nit.
         - [ ] gtv_: tiny check of gtq_'s folder nit + gtl_'s wrap nit together (when gtl_ hands back).
-        Agents (7): h0i_ (H0 F1-F4), gtl_ (wrap nit), gtw_ (gtp_ round 12 re-check), gtb_ (slot-wait test + load +
-        gate seed + R12-1 half), ffr_ (grs_ first-frame design review), lga_ (release regression look), t4i_ (T5
-        manifest rows + B1 risks)
+        gtl_ WRAP NIT DONE 08:5x (plan_1117/gtl_wrap_nit_handback.md; backups scratchpad\gtl_backup_wrap; logs
+        gtl_runs11): fixture records budget.py's own deadline + committed_gb at import (REAL_BUDGET); end_world
+        restores both + drops real_* attrs (committed_gb had the same leak); test_end_world_undoes_budget_wraps
+        (identity checks, not seconds); unit 34 / 34, jobs 32 / 32; budget.py / test_budget.py untouched. -> gtv_
+        tiny check (gtq_ folder + gtl_ wrap) STARTED.
+        lga_ RELEASE LOOK DONE 09:0x (plan_1117/lga_release_regression.md + lga_release_handback.md; scratch lga_*):
+        NOT an atn-mods regression from the code. Timed = one bridge::Evaluate (harness 4520-4558, same in 11-16 +
+        H0), the longest of ~750 calls vs 75 ms; it waits for the helper's answer to the request where release_idle
+        ran (main.cpp:1120): rt_drain, scene to its thread (frees ~5.2 GB beside requests), new empty scene +
+        ++rt_device, RR release in the loop, DLSS eval on the helper's D3D11 device while freeing. H0: release
+        119 / 113 / 122, release_rr 94 / 86 / 88, release_nrd 82 / 86 / 78, smoke 78 / 77 / 66, rr_ao_reblur 78 /
+        64 / 77 ms (pre_a / post_a / post_b), 5589 -> 387 MiB. 11-16 baseline 48803f808 (path_probe\runs\
+        release_1116, testbin gpu3_fix + gpu3_harness, bridge v31): fix smoke 55.7 / 57.3 / 52.3, release_rr 51.9 /
+        56.7 (base 124.7 / 108.2 / 92.3, 93.4) - ONLY 2 OF 5 MODES had a baseline (upr_'s "52-56" = those 2).
+        Suspects: (1) HIGH Windows KB5132061 11-19 15:21 (26200.9711 -> .9974, dxgkrnl 10.0.26100.9974; driver
+        595.79, Agility 1.619.6, DLSS / RR 310.7.0 unchanged); (2) med-low H0 run conditions (HARNESS_DUMP, 206 x 3,
+        extra FSR / XeSS / FG DLLs); (3) low-med more teardown objects (34 rt_d3d12.hpp commits, same bytes); (4)
+        low bridge v32; (5) ruled out by reading: helper release-path code (main.cpp same apart from failure logs
+        462c43b75 / 59adf491e). PROPOSED CHECK (stage 1, 8 jobs ~9 min): testbin\lga_rel_old (gpu3_fix + nvngx
+        dlss / dlssd 310.7.0) vs testbin\lga_rel_new (H0 pre plain, no FSR / XeSS / FG DLLs), smoke + rr as in
+        gpu3_chain6.sh, alternating, 2 rounds, no HARNESS_DUMP, GPU lock per job, helper log per job; old >= 75 =
+        environment, old 52-57 + new >= 75 = code (stage 2, 4 jobs ~5 min), both < 75 = H0 conditions. NO ATN RULE
+        COVERS THIS RUN -> lga_ prepares a runner with -DryRun (no GPU), I propose the rule to ATN.
+        - [ ] ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stack, after the runner
+            + dry run are ready) - decides whether the release gate failures are Windows KB5132061 or our code
+            (lga_ 09:0x).
+        Agents (7): h0i_ (H0 F1-F4), gtv_ (gtq_ folder + gtl_ wrap tiny check), gtw_ (gtp_ round 12 re-check), gtb_
+        (slot-wait test + load + gate seed + R12-1 half), ffr_ (grs_ first-frame design review), lga_ (release
+        check runner, dry run only), t4i_ (T5 manifest rows + B1 risks)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
