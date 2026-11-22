@@ -551,6 +551,16 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - next D1 / D2 PresentMon run: act.ps1 -PM sends one Alt tap to the window in fron ... | ?
 - g12_'s optional NITs: pass_pairs.py:4 163-char docstring line; D2 common.ps1:17 ... | ?
 - set fog_shadows_defaulted_on: g01_ Thrones, g03_ Pharaoh + Troy (after g19_'s ha ... | ?
+- lg3_'s worktree has a REAL bin copy; check build\downloads is a junction, delete ... | ?
+- zombie engine_code.exe PID 110276 (lg3_'s, Access denied, dead + held): leave fo ... | ?
+- ATN (list, to add): Troy / Pharaoh V35: Musa's own, the 4-knob fit at 6.6 % (dar ... | ?
+- g03_ bcad7b8f5 far map (Troy + Pharaoh sun_replace_maps::Install) needs ho_g01 b ... | ?
+- merge ho_g02 a015262e6 TOGETHER with ho_g21 f7fb7a901 (shared atlas_far_plane.hp ... | ?
+- g02_ trace requests: WH1 CDCF1ADD far campaign terrain; WH2 snow / rain VFX rows ... | ?
+- WH1 / WH2 failed-trace edge: fix is in rt_scene.hpp -> g18_ (request routed). | ?
+- Rome Remastered fxaa gather check (GatherGreen like WH2 / Troy) -> g04_. | ?
+- grs_: record null-view rows at rt_d3d12.hpp:3071 (after gbf_'s rt_d3d12.hpp work ... | ?
+- gti_: dead_outputs.py reports "no store (null view)" for such rows instead of un ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11906,6 +11916,38 @@ heading text are in HANDOFF_ARCHIVE.md)
         through gtp_lowprio.py), and its script calls the worktree tests the same way. That is the form ATN's own allowed
         rules use for test\tw_* and worktree scripts; no system or policy setting changed (Get-ExecutionPolicy -List all
         Undefined). Not stopped; reported to ATN.
+        rmt_lg3 MERGED 21:2x: 45144611f (Attila logging group 3, tip b07df6997; lga_ final GO, no findings left; lg3_ builds:
+        gated x86 + amd64 twattila exit 0, tw_device_loss + tw_fault_watch PASS x86 / amd64, tw_draw_recording pass). Reports:
+        render_mt/reports/lga_group3_final.md, lg3_builds.md. Told b3t_ (instance_fill.inc:485 -> shared parked-thread helper,
+        from atn-mods), b3s_ (ca2247b53 overlaps engine_code.hpp: coord keeps both #if blocks whole at the rmt_b3s merge),
+        t4i_ (gates.json:73 frame_stall text still names stall_note: tidy in refresh2).
+        - [ ] lg3_'s worktree has a REAL bin copy; check build\downloads is a junction, delete that link alone first, then the
+        worktree (on ATN's yes, with the other worktree clean-up).
+        - [ ] zombie engine_code.exe PID 110276 (lg3_'s, Access denied, dead + held): leave for ATN's next reboot; never kill.
+        g03_ BUILDS (handbacks/g03_builds_handback.md): ho_g03 at 014302723 compiles clean (Troy + Pharaoh amd64); WARP PASS:
+        Pharaoh battle fog (99164788 / 0CB1C821 / DB53BDDC exact at 100 %, 33 % = 100 %, controls differ); Troy / Pharaoh V35
+        best fit 1.10 / 1.39 / 0.97 / 0.87 = 6.6 % (misses 5 %): Musa's own stays (defines 1.f), 3f55c09a4 encodes the rule.
+        Request C (Sharp RT Reflections): nothing to patch (no ssr00 / ssr01 in either dump; rays read t_rt_reflection directly).
+        - [ ] ATN (list, to add): Troy / Pharaoh V35: Musa's own, the 4-knob fit at 6.6 % (darks x1.22 -> x0.94..x1.07), or a
+        5-knob fit (Shadow Contrast).
+        - [ ] g03_ bcad7b8f5 far map (Troy + Pharaoh sun_replace_maps::Install) needs ho_g01 bf5056b85 merged first; build after.
+        Look risk: past the baked map's start the shadow is the rays' alone; no distance number without cb2[48].y -> trace request.
+        g02_ DONE (handbacks/g02_done_handback.md): ho_g02 8 commits on 7f5c29c56 (fdf233005 PT Reflection Occlusion, 6d7725a91
+        AA frame gamma, 98f8155e0 WH2 fxaa00 int-AND + GatherGreen fix (0 apart from the game), 40248cbb3 RR Fresnel, e84530ea6
+        V35 wiring, ce767d5f8 READMEs, a015262e6 far-plane route, ccbf727ee WH2 V35 fit 1.01 / 0.57 / 0.91 / 0.92); built amd64.
+        - [ ] merge ho_g02 a015262e6 TOGETHER with ho_g21 f7fb7a901 (shared atlas_far_plane.hpp); re-run part 29 after.
+        - [ ] g02_ trace requests: WH1 CDCF1ADD far campaign terrain; WH2 snow / rain VFX rows (in its hand-back).
+        - [ ] WH1 / WH2 failed-trace edge: fix is in rt_scene.hpp -> g18_ (request routed).
+        - [ ] Rome Remastered fxaa gather check (GatherGreen like WH2 / Troy) -> g04_.
+        rvf_ SPAWNED 21:1x (Opus xHigh, read only): review of g02_ + g21_. g09_ / g10_ / g20_ / g22_ / gbf_ get a review when
+        they hand back done. ATN list 27 (WH2 V35 fit, pick keep) + 28 (WH1 / WH2 PT Reflection Occlusion default 1, pick yes).
+        S3c u28-u30 UNDECIDED (ambient_history / ambient_positions under NRD ambient): bound to null, UseTable at
+        rt_d3d12.hpp:3071 skips null resources, so the sheet never sees a store. A recorder gap, not a dead output.
+        - [ ] grs_: record null-view rows at rt_d3d12.hpp:3071 (after gbf_'s rt_d3d12.hpp work lands).
+        - [ ] gti_: dead_outputs.py reports "no store (null view)" for such rows instead of undecided.
+        gtl_ STAGE3 READY (plan_1117/gtl_stage3_ready_handback.md): 8 suites OK in the fresh sandbox landed3d under
+        GTP_PROC_MB 3072 / GTP_JOB_MB 8192 (peak 1127 MB, gpu_gate); land list current (8 hashes). Sent to gtv_ for the re-check;
+        coord lands it only after gtv_ GO and while no lab session runs.
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
