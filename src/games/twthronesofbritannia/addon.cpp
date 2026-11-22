@@ -2390,12 +2390,14 @@ bool AttachAddon() {
           reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
         }
       }
-      for (const auto& [from, to] : std::initializer_list<std::pair<const char*, const char*>>{
-               {"GraphicsUnitAnimation", "GraphicsFacialAnimation"}, {"GraphicsUnitAnimation", "GraphicsHandAnimation"},
-               {"GraphicsCampaignDetail", "GraphicsCampaignPlants"}, {"GraphicsCampaignDetail", "GraphicsCampaignProps"}}) {
-        if (float value = 0.f, kept = 0.f; reshade::get_config_value(nullptr, preset, from, value)
-                                           && !reshade::get_config_value(nullptr, preset, to, kept)) {
-          reshade::set_config_value(nullptr, preset, to, value);
+      if (revision < 2) {
+        for (const auto& [from, to] : std::initializer_list<std::pair<const char*, const char*>>{
+                 {"GraphicsUnitAnimation", "GraphicsFacialAnimation"}, {"GraphicsUnitAnimation", "GraphicsHandAnimation"},
+                 {"GraphicsCampaignDetail", "GraphicsCampaignPlants"}, {"GraphicsCampaignDetail", "GraphicsCampaignProps"}}) {
+          if (float value = 0.f, kept = 0.f; reshade::get_config_value(nullptr, preset, from, value)
+                                             && !reshade::get_config_value(nullptr, preset, to, kept)) {
+            reshade::set_config_value(nullptr, preset, to, value);
+          }
         }
       }
     }
