@@ -171,10 +171,10 @@ struct ShaderInjectData {
 // its colour at equal lightness), Highlight Contrast keeping PsychoV35's highlights. Minimax-fitted on WARP against the
 // game's SDR (test/tw_troy_pharaoh_v35); the other PsychoV35 sliders keep Musa's defaults. Musa's own (1) until the fit's
 // run in the build window writes its result here.
-#define TROY_V35_CONTRAST           1.f
-#define TROY_V35_SHADOWS            1.f
-#define TROY_V35_SATURATION         1.f
-#define TROY_V35_HIGHLIGHT_CONTRAST 1.f
+#define TROY_V35_CONTRAST           1.10f
+#define TROY_V35_SHADOWS            1.39f
+#define TROY_V35_SATURATION         0.97f
+#define TROY_V35_HIGHLIGHT_CONTRAST 0.87f
 // #define SOMEINDICATORS            SI.someindicators
 // #define VfxBaseBrightness         SI.vfxbasebrightness
 // #define VfxWeatherBrightness      SI.vfxweather

@@ -12,6 +12,10 @@
 - Changed: Smooth Sail Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
 - Changed (ATN): **Hue Clip 70** (was 80: the fire's hue error 0.82 degrees against 1.99, `test/tw_psychov35`) and
   PsychoV31's **Highlight Hue Shift 0.04** (was 0.10), in the defaults and Reset. Saved values stay until a preset.
+- Changed (ATN): **PsychoV35's defaults follow the game's SDR picture**: Contrast 1.10, Shadows 1.39, Saturation
+  0.97, Highlight Contrast 0.87 (were Musa's own 1; fitted on WARP, `test/tw_troy_pharaoh_v35`). Below 15 nits its
+  grey is within 7 % of the game's (was up to 25 % brighter), its highlights within 7 % of Musa's own at
+  1000 / 203 nits. In the defaults and Reset; saved values stay until a preset.
 - Written, not on yet: Ray-Traced Water Reflections deciding one pass earlier (with the last frame's light) to also
   leave out the game's height pyramid (4 more passes). Off until its offline tests pass; nothing changes in game.
 - Changed (ATN): **the game's baked far shadow map is replaced by the rays too** with ray-traced sun shadows (before,

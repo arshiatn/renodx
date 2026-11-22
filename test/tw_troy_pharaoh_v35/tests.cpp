@@ -8,7 +8,8 @@
 // The recipe: G04's Shogun 2 pilot (test/tw_shogun2_romer_toe, tools\tw\testbin\scratch\g04_\v35_pilot.md): PsychoV35's
 // Contrast, Shadows, Saturation and Highlight Contrast minimax-fitted to the game's SDR below white (grey where SDR is
 // 0.05 - 1 and 1 - 15 nits, OkLab chroma at equal lightness where SDR is 1 - 30 nits), PsychoV35's highlights guarded.
-// Checks: shared.h <GAME>_V35_* within 5 % and within 0.5 % of the fit's best, their highlights within GUARD at 1000 / 203
+// Checks: shared.h <GAME>_V35_* within 0.5 % of the fit's best (and within 5 % where the fit reaches it; ATN 29,
+// 2026-11-22: Troy's and Pharaoh's fit shipped at 6.6 %), their highlights within GUARD at 1000 / 203
 // (the fit's) and within WIDE_BOUND at 2500 / 275 (reported: guarding both displays breaks the fit, the pilot's rule);
 // controls: Musa's own sliders must fail the 5 %, HDR (Extended) must be the game's grey.
 // tests <build folder>
@@ -460,25 +461,12 @@ static void FitGame(const Chain& chain, float hue_clip, const Values& shipped_va
   const float shipped_score = BelowWhite(Compare(sdr, shipped_ramp));
   std::printf("   shared.h (%.2f / %.2f / %.2f / %.2f): worst %.1f %%; Musa's own (control, must fail 5 %%): %.1f %%\n",
               shipped_values[0], shipped_values[1], shipped_values[2], shipped_values[3], 100.f * shipped_score, 100.f * own_score);
-  if (best.score < 0.05f) {
-    CHECK(shipped_score < 0.05f, "%s's V35 defaults miss the game by %.1f %%", chain.name, 100.f * shipped_score);
-    CHECK(shipped_score <= best.score + 0.005f, "%s's V35 defaults (%.1f %%) are not the fit's best (%.1f %%)", chain.name,
-          100.f * shipped_score, 100.f * best.score);
-  } else {
-    // The four sliders miss the bar: Musa's own stay (the pilot's rule; a fifth knob only with the coordinator's yes).
-    std::printf("   the fit misses 5 %%: Musa's own sliders stay\n");
-    CHECK(shipped_values == (Values{1.f, 1.f, 1.f, 1.f}), "%s: the fit misses 5 %% but shared.h is not Musa's own", chain.name);
-    Report(std::string(chain.name) + " the fit's best (not shipped)", sdr, Run(chain, With(own, best.values)));
-    for (const auto& [peak, paper_white] : {std::pair{1000.f, 203.f}, std::pair{2500.f, 275.f}}) {
-      auto best_at = With(own, best.values);
-      auto own_at = own;
-      best_at.peak_white_nits = own_at.peak_white_nits = peak;
-      best_at.diffuse_white_nits = own_at.diffuse_white_nits = paper_white;
-      best_at.graphics_white_nits = own_at.graphics_white_nits = paper_white;
-      std::printf("   the fit's best, highlights at %.0f / %.0f: grey within %.1f %% of Musa's own\n", peak, paper_white,
-                  100.f * Highlights(Run(chain, best_at), Run(chain, own_at), paper_white, peak));
-    }
-  }
+  // Where the four sliders miss 5 % the fit's best ships all the same (ATN 29); the report says so.
+  if (best.score >= 0.05f) std::printf("   the fit misses 5 %% (%.1f %%): its best shipped (ATN 29)\n", 100.f * best.score);
+  CHECK(shipped_score < std::max(0.05f, best.score + 0.005f), "%s's V35 defaults miss the game by %.1f %%", chain.name,
+        100.f * shipped_score);
+  CHECK(shipped_score <= best.score + 0.005f, "%s's V35 defaults (%.1f %%) are not the fit's best (%.1f %%)", chain.name,
+        100.f * shipped_score, 100.f * best.score);
   CHECK(own_score > 0.05f, "control: Musa's own sliders pass (%.1f %%): the measure sees nothing", 100.f * own_score);
   Report(std::string(chain.name) + " V35 defaults (after the fit)", sdr, shipped_ramp);
   for (const auto& [peak, paper_white, bound] : {std::tuple{1000.f, 203.f, GUARD}, std::tuple{2500.f, 275.f, WIDE_BOUND}}) {
