@@ -6813,8 +6813,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         only if probe P-1 works, else refuse clearly wrong timeouts; long runs via budget.py watch; agents flagged at 1x
         / 2x, never killed; no unchanged rerun after a TOOL FAULT; hook +0.15 s / call. 27 tests; owners gtp_ (7-10 h)
         + gtb_ (2-3 h). [ ] ATN: 13 questions (§G) in the morning. gpr_ (aa304b6e977350cc3, Opus xHigh) REVIEW STARTED.
-        Agents (11): bd1r_ (R-S5 re-check), c33i_ (nit 5), lgf2_ (r3: T1 / N7 / T2 / F4), gtp_ (T1b + INSTALL line 6,
-        sdk-api docs), t4i_ (r17 fixes), upr_ (v2.3 spot-check, then H0 script), gtv_ (Should 8, then Q8(b)), gtl_ (S3),
+        gtp_ T1b + SDK-API DONE 02:4x (plan_1117/gtp_t1b_sdkapi_handback.md, backups scratchpad\gtp_bak5): INSTALL line 6
+        = S1c re-check 3 OK -> INSTALL READY FOR ATN [ ] (morning, ATN installs); launcher tests guarded, run_tests 237 /
+        237; MicrosoftDocs/sdk-api 656e965 (d3d12, d3d11*, dxgi*; CC-BY-4.0 / MIT) indexed (index 138 MB);
+        D3D11_MAP_WRITE_NO_OVERWRITE hits; ResourceBarrier's own page only with --full -> gtp_ RESUMED for the rank fix
+        (method's own sdk-api page first), then gtw_ short check of T1b + sdk-api + rank.
+        Agents (11): bd1r_ (R-S5 re-check), c33i_ (nit 5), lgf2_ (r3: T1 / N7 / T2 / F4), gtp_ (spec.py rank
+        fix), t4i_ (r17 fixes), upr_ (v2.3 spot-check, then H0 script), gtv_ (Should 8, then Q8(b)), gtl_ (S3),
         gtq_ (B1), gtk_ (C1 + C2), gpr_ (price + web review).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
