@@ -7048,9 +7048,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         processes, offline test h0\offline\h0_offline_test.ps1 dry / pass / smoke / tdr all ok under PS 5.1; h0i_
         re-checks the helper guard vs 5ff6b1bfc, then upr_ H0 look, then the coordinator runs H0. t4i_ resumed (stopped
         waiting for run_all at 03:45).
-        Agents (10): t4i_ (r18), h0i_ (guard vs 5ff6b1bfc), upr_ (v2.6 look), grs_ (S2), gtw_ (S1c re-check 6), gtk_
-        (C1 fixes), gtq_ (B1 fixes), gtv_ (S3r re-check), gtb_ (watch build), gti_ (poll build). Idle: bd1r_, lga_,
-        lgf2_, c33i_, upt_, gpp_, gpr_, gtl_, gtp_ (waits gtw_), ebr_ (waits t4i_), gbc_ (waits gtk_ / gtq_).
+        rmt_rs5 gated builds x86 + amd64 exit 0; atn-mods PUSHED (0e819bdb1). h0i_ guard at 5ff6b1bfc PASSES
+        (plan_1117/h0i_guard_handback.md; helper paths untouched, $PostRev stays 42c081bd6) -> upr_ H0 439 LOOK queued
+        after its v2.6 look. gtk_ C1 fixes DONE 03:5x (plan_1117/gtk_c1_fixes_handback.md; 10 M / 6 S / 5 N, scene_test
+        89 PASS, M10 bounce verified with pbrt) -> gbc_ C1 RE-CHECK STARTED (+ the 3 gto_design.md C.3 text lines,
+        coordinator applies). [ ] ATN note: OpenEXR's CMake fetched Imath v3.1.12 + libdeflate v1.18 (BSD / MIT, not
+        among the 12 pinned submodules) into pbrt.exe; licences recorded, gbc_ checks them. gtq_ B1 fixes DONE 03:5x
+        (plan_1117/gtq_b1_fixes_handback.md; 28 / 28 iq tests) BUT it patched a copy of NVIDIA FLIP's source for the
+        float map = against ATN's 'patch NVIDIA files only for proven bugs' -> gtq_ RESUMED: unpatched exe back, float
+        map via FLIP's own output (+ imgtool), patched build kept unused (nothing deleted); then gbc_ B1 re-check.
+        Queued for gtl_ after gtv_'s S3r: HARNESS_SUN_SOFTNESS=0 in LAB_ENV for pbrt-compare recordings (gtk_), the
+        fake iq_frames 'FLIP' metric -> 'FLIP mean / p95 / p99' (gtq_). gtb_ got iq.schema.json output_sizes.
+        Agents (10): t4i_ (r18), upr_ (v2.6 look, then H0 439 look), grs_ (S2), gtw_ (S1c re-check 6), gtq_ (FLIP
+        unpatched), gbc_ (C1 re-check), gtv_ (S3r re-check), gtb_ (watch build), gti_ (poll build), gtk_ (FYI reply).
+        Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gpr_, gtl_, h0i_, gtp_ (waits gtw_), ebr_ (waits t4i_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
