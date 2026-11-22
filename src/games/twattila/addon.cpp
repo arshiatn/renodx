@@ -2645,6 +2645,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::grass_fade::OnDestroyDevice);
   twattila::engine_tests::StopAtStart(&at_start_stop);
   tw::engine_tweaks::Uninstall(graphics_options);
+  twattila::effect_update::Detach();
   twattila::engine_code::Uninstall();
 #if defined(TWATTILA_DRAW_RECORDING)
   // A fold still open on this thread is closed before the pool stops (its workers wait for the publish).
