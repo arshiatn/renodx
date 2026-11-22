@@ -6875,9 +6875,33 @@ heading text are in HANDOFF_ARCHIVE.md)
         (forced late dxc failure -> exit 1, no exe), T1 4 / 4, N7, F4 (lga_ read the licence too: MIT holds). Nit: the
         omm / FSR / XeSS DLL Copy-Items don't stop on failure -> lgf2_ r4 (-ErrorAction Stop) BEFORE the merge, so the
         helper sources change once before the H0 rebase.
-        Agents (10): c33i_ (N6), lgf2_ (r4 nit), ebr_ (r17 re-check), gtp_ (S1c nits), upt_
-        (v2.4), h0i_ (H0 script fixes), gtv_ (Nit 8 re-check), gtl_ (S3), gbc_ (C1 + C2, then B1 review), gpr_ (price +
-        web review).
+        ATN 02:5x: (a) gpp_'s 13 questions = ALL AS RECOMMENDED (-> gtp_ / gtb_ build after gpr_'s review); (b) AMD:
+        Ray Regeneration DEFAULT on every supporting AMD GPU (unified + hybrid), NRD second, FINAL; the cost estimate was
+        wrong in shape (AMD's table is per render resolution and ONE context denoises all 4 signals: 7.15 ms at 1440p,
+        3.74 ms at 1080p on a 9070 XT) -> upt_ told: one context, render-res cost. (c) ATN added the H0 rule lines but
+        WITHOUT the PowerShell(...) wrapper and with single backslashes: D:\Dev\renodx\.claude\settings.local.json NO
+        LONGER PARSES (Invalid \escape line 19) -> every rule in that file is off until ATN fixes it [ ] ATN (exact lines
+        given 02:5x; the coordinator never edits settings).
+        gtv_ NIT 8 RE-CHECK 03:0x = OK (plan_1117/gtv_nit8_recheck_handback.md; gtv_s1r_review.md :619): Nits 8 / 10 / 11,
+        ATN's start lines unchanged, Ctrl+C 3 / 3. Q8(b) CLOSED. gtv_ -> S3r.
+        lgf2_ r4 DONE 03:0x (render_mt/reports/lgf2_r4_handback.md): 5e8697ea0 on rmt_lg2, -ErrorAction Stop on the 3
+        DLL copies + a script-wide trap { break } (Stop alone didn't end the script); locked DLL -> exit 1, no exe.
+        lga_ r4 RE-CHECK STARTED (the trap is script-wide) -> then merge rmt_lg2.
+        gtp_ S1c NITS DONE 03:0x (plan_1117/gtp_s1c_nits_handback.md, backups scratchpad\gtp_bak7): T1b vs fixed real
+        folder + MSYS / case forms, rank tests fail on the old spec.py, own-page cite line skips front matter; run_tests
+        242 / 242. gtp_ -> T04 quoted inner commands (gtl_'s find); then gtw_ re-checks nits + T04 together.
+        gtl_ S3 DONE 03:0x (plan_1117/gtl_s3_handback.md): tools\tw\lab\ gpu_lab.ps1 (-Job / -Trace / -Stop), lab.py,
+        lab_keeper.py, job_schema.json, fake_resident.py, phase_model.tsv; 59 / 59 tests, fakes only. 11 deviations
+        (two-resident X form not built, other_gpu bar E 5 %, ...). gtv_ S3r STARTED. Cross-file asks routed: gtb_ lab
+        phases in budget.py, gti_ -ExcludePids, gtp_ T04, gtq_ / gtk_ contract checks (read-only until gbc_'s reviews),
+        grs_ S2: retry MoveFileExW on a sharing violation + resolution in the status answer (put in the S2 brief).
+        [ ] ATN: the 3 gpu_lab.ps1 rules after S3r.
+        ATN 03:0x asked for exact gate-hook steps -> merged file plan_1117\settings.local.proposed.json (his 15 old rules
+        unchanged + the 2 fixed H0 rules + 2 Bash spec rules (Bash-only: no chained-command risk, no check needed) +
+        the 4 hook events from INSTALL); ATN copies it himself [ ] ATN. Optional: cite_since date in gates.tsv.
+        Agents (13): c33i_ (N6), lga_ (r4 re-check), ebr_ (r17 re-check), gtp_ (T04), upt_ (v2.4), h0i_ (H0 script
+        fixes), gtv_ (S3r), gtb_ (lab phases), gti_ (-ExcludePids), gtq_ + gtk_ (lab contract checks), gbc_ (C1 + C2,
+        then B1 review), gpr_ (price + web review).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
