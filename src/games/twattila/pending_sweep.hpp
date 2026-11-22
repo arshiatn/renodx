@@ -11,6 +11,7 @@
 #include <cstdint>
 
 #if !defined(_WIN64)
+#include <algorithm>
 #include <array>
 #include <format>
 #include <string>
@@ -30,6 +31,10 @@ namespace twattila::pending_sweep {
 namespace internal {
 
 constexpr size_t MAX_CALLS = 4096;
+// The histogram's lower bounds (a sweep goes in the last bucket whose bound it reaches; the first bucket is the empty ones) and the size
+// from which a split sweep would pay (design 4.4).
+constexpr std::array<uint32_t, 7> BUCKET_LIMITS = {1, 16, 64, 256, 1024, 2048, 8192};
+constexpr uint32_t MIN_ENTRIES = 2048;
 
 struct Call {
   uintptr_t object = 0;     // the list being swept
@@ -73,9 +78,23 @@ inline void Update() {
     entries += calls[index].entries;
     list += std::format(" {:x}:{}", calls[index].object, calls[index].entries);
   }
+  uint64_t entries_in_large = 0;  // entries of the sweeps with at least MIN_ENTRIES
+  std::array<uint32_t, BUCKET_LIMITS.size() + 1> histogram = {};
+  for (uint32_t index = 0; index < call_count; ++index) {
+    const uint32_t count = calls[index].entries;
+    entries_in_large += (count >= MIN_ENTRIES ? count : 0);
+    ++histogram[std::upper_bound(BUCKET_LIMITS.begin(), BUCKET_LIMITS.end(), count) - BUCKET_LIMITS.begin()];
+  }
+  std::string buckets;
+  for (size_t bucket = 0; bucket < histogram.size(); ++bucket) {
+    buckets += std::format(" {}{}:{}", (bucket == 0 ? 0 : BUCKET_LIMITS[bucket - 1]), (bucket == BUCKET_LIMITS.size() ? "+" : ""), histogram[bucket]);
+  }
   renodx::utils::log::i(std::format(
       "[Total War] Pending Sweep Trace window {}: {} sweeps, {} entries, {} on other threads, {} over the limit; object:entries{}",
       worker_pool::TraceWindow(), call_count, entries, elsewhere, dropped, list));
+  renodx::utils::log::i(std::format("[Total War] Pending Sweep Histogram window {}: sweeps by entry count from:{}; {:.0f}% of the entries are in sweeps of {}+",
+                                    worker_pool::TraceWindow(), buckets,
+                                    (entries == 0 ? 0.0 : 100.0 * static_cast<double>(entries_in_large) / static_cast<double>(entries)), MIN_ENTRIES));
   call_count = 0;
   dropped = 0;
 }

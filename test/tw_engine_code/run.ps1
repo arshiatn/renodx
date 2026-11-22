@@ -25,7 +25,7 @@ New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 $testBuild = (Resolve-Path -LiteralPath $testBuild).Path  # a relative -BuildFolder is relative to where the script was started, not to itself
 Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
-$defines = @('/DNOMINMAX', '/DWIN32=1', '/DTWATTILA_EFFECT_UPDATE_CONTROLS', '/DTWATTILA_INSTANCE_FILL_CONTROLS', '/DTWATTILA_ENGINE_CODE_CONTROLS')
+$defines = @('/DNOMINMAX', '/DWIN32=1', '/DTWATTILA_EFFECT_UPDATE_CONTROLS', '/DTWATTILA_INSTANCE_FILL_CONTROLS', '/DTWATTILA_ENGINE_CODE_CONTROLS', '/DTWATTILA_WORKER_CONTROLS')
 if ($Probe) { $defines += '/DTWATTILA_ENGINE_PROBE' }
 if ($DrawRecording) { $defines += '/DTWATTILA_DRAW_RECORDING' }
 & 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT @defines -fms-extensions -Wno-deprecated-declarations /I $repairRoot /I $testRoot /I "$external\reshade" /I "$external\frozen\include" /I "$external\Detours\include" /I "$external\Detours\src" /I "$external\gtl\include" "$testRoot\tests.cpp" /Fe:engine_code.exe /link /OPT:REF /OPT:ICF user32.lib
