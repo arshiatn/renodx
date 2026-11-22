@@ -1,5 +1,25 @@
 # RenoDX — Total War: SHOGUN 2 Complete Edition (DX11)
 
+### Open items G04 (2026-11-22; built only, not run in game)
+
+- Changed: **PsychoV35's defaults follow the game's look**: Contrast 1.50, Shadows 1.07, Saturation 0.94, Highlight
+  Contrast 0.80 (minimax-fitted on WARP against Rendering Mode SDR on the battle maps' film curve; the other V35 rows
+  keep Musa's). Below white, PsychoV35 over the game's SDR: grey x2.53..x6.22 (0.05-1 nits) / x1.01..x2.29 (1-15 nits)
+  before, x0.98..x1.04 / x0.96..x1.00 now; colour at equal lightness x0.78 before, x1.01 now. Highlights within 13.6 %
+  of Musa's own at 1000 / 203 nits (20 % at 2500 / 275). Recommended and Reset apply it; rows you saved stay yours.
+- Changed: **SDR-like** no longer sets V35 Contrast 1.3 (V35 already follows the game); its V31 contrast and
+  saturation and the sooner roll-off stay.
+- Changed: Recommended's **Video AutoHDR** 0.2 (was 0.25).
+- Changed: **Auto Thickness** on by default in Ambient Occlusion and Global Illumination, no longer Experimental (ATN
+  2026-11-22); saved 0s cleared once.
+- Changed: **Ray-traced GI** defaults as the other games' RT/PT preset: 1 ray, full resolution, 50 m, 1 bounce (were 4
+  rays, half, 10 m, 2 bounces).
+- New: a reset icon on the **Custom** render scale slider.
+- Cosmetic: log lines say [Shogun 2] (no longer [Shogun 2 DLSS]); the water and ocean shaders' -pi exact to the bit.
+- Proven offline: test/tw_shogun2_romer_toe (WARP, the add-on's 0xEF060C7C): the shipped values within 4.3 % of the
+  game's SDR below 15 nits and the fit's best; CONTROLS Musa's own fails (521.9 %), HDR (Extended) the game's grey
+  (0.00 %). The winter map (bos_japan) sits x0.74..x0.79 of its SDR below 15 nits (was x1.34..x8.22).
+
 ### Specular Occlusion with other rays (2026-11-18; built only, not run in game)
 
 - Changed: **Ray-traced specular occlusion** works only with **Ray-traced reflections** on (here only they make the

@@ -2,6 +2,15 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+### Open items G04 (2026-11-22; built only, not run in game)
+
+- New: **Texture LOD Bias** at the game's own Resolution Scale: while DLSS / FSR / XeSS draw in Feral's upscaler's
+  place below 100%, textures as sharp as at the display's resolution (Matched) or one / two steps more (the page's row).
+- Changed: Modded Auto Exposure **Sensitivity** default 1 (was 2; ATN).
+- Changed: the **Fog Shadows** row hidden (this game has no fog the rays shade).
+- PsychoV35's V35 fit (report, defaults unchanged): Contrast 1.00 / Shadows 1.30 / Saturation 1.00 / Highlight
+  Contrast 1.00 reaches 9.1 % of the game's SDR below 15 nits (Musa's own x0.89..x0.92, colour the same).
+
 ### Next round (2026-11-16 tw3_; built only, not run in game)
 
 - New: **Modded Auto Exposure (Experimental, off)** and its Sensitivity (Extra, Advanced, HDR modes), as Attila's and
