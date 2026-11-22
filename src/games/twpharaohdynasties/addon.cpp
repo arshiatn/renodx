@@ -441,8 +441,8 @@ renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
 // GT-VBAO this frame: its setting, not under the rays' AO or the paths' (as Attila's rt_ambient_alone): the rays' AO stands
-// in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO stays
-// there, as when the page turned GT-VBAO off with them.
+// in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO is
+// left out (BuildRuntimeData), as when the page turned GT-VBAO off with them.
 bool bitmask_ao = false;
 
 void BuildRuntimeData() {
@@ -481,6 +481,14 @@ void BuildRuntimeData() {
     return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
                                                false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
   };
+  // The game's SSAO 2 (the HBAO at in-game SSAO 3) has no reader in the data run's 5 traces but the sun draws' t12 (phase 2's
+  // census by handle) and the building pools (AO_READERS, trace_12). So while ours stands in for it (the rays' AO, which the
+  // sun draws and the pools read, or Path-Traced Ambient) the chain doesn't run, the generate's target cleared to open in its
+  // place (twattila/ao_readers.hpp, Troy's way). Otherwise: the game's draws.
+  custom_shaders[0xB320992B] = {.crc32 = 0xB320992B, .on_inject = [](auto*) { return false; }, .on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); }};
+  custom_shaders[0xD42C3523].on_draw = [](auto* cmd_list) { return !twattila::ao_readers::ClearInsteadOfGenerate(cmd_list); };
+  custom_shaders[0x7F637259].on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); };
+  custom_shaders[0xBFD285BD].on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); };
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.

@@ -38,6 +38,7 @@
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_capture_imposter_gs.h"
 #include "../twattila/rt_scene.hpp"
+#include "../twattila/ao_readers.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
 #include "../twattila/engine_tests.hpp"
@@ -374,20 +375,9 @@ renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
 // GT-VBAO this frame: its setting, not under the rays' AO or the paths' (as Attila's rt_ambient_alone): the rays' AO stands
-// in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO stays
-// there, as when the page turned GT-VBAO off with them.
+// in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO is
+// left out (BuildRuntimeData), as when the page turned GT-VBAO off with them.
 bool bitmask_ao = false;
-// The game's SSAO 2 (ssao2: downsample B320992B, generate D42C3523, blur_x 7F637259, blur_y BFD285BD back into the generate's
-// target) has one reader in 27 traces, the sun draws' t_ssao: no draw, dispatch, copy or clear touches its three targets outside
-// the chain, none reads them before it (per frame), and t_ssao is declared by exactly the 24 sun shaders, each reading its red
-// once (their bytes). The rays' AO stands alone in the sun's slot (rt_ambient_combine), so while the rays feed it (this frame's
-// trace or the last: these draws come before it) the chain doesn't run and the generate's target, what the sun reads, is
-// cleared to open (Warhammer's way, test/tw_warhammer_shaders part 15). Rays off: the game's draws.
-bool SkipGameSsao() {
-  const auto& runtime = twattila::rt_scene::internal::runtime;
-  return runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
-         && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
-}
 
 void BuildRuntimeData() {
   custom_shaders = {
@@ -423,22 +413,15 @@ void BuildRuntimeData() {
     return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
                                                false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
   };
-  // SSAO 2 under the rays' AO (SkipGameSsao): left out, the generate's target cleared to open in its place.
-  custom_shaders[0xB320992B] = {.crc32 = 0xB320992B, .on_inject = [](auto*) { return false; }, .on_draw = [](auto*) { return !SkipGameSsao(); }};
-  custom_shaders[0xD42C3523].on_draw = [](auto* cmd_list) {
-    if (!SkipGameSsao()) return true;
-    auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
-    if (native == nullptr) return true;
-    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> output;
-    native->OMGetRenderTargets(1, output.GetAddressOf(), nullptr);
-    if (!output) return true;
-    constexpr std::array<float, 4> OPEN = {1.f, 1.f, 1.f, 1.f};
-    native->ClearRenderTargetView(output.Get(), OPEN.data());
-    return false;
-  };
-  custom_shaders[0x7F637259].on_draw = [](auto*) { return !SkipGameSsao(); };
-  custom_shaders[0xBFD285BD].on_draw = [](auto*) { return !SkipGameSsao(); };
+  // The game's SSAO 2 has one reader in 27 traces, the sun draws' t_ssao: no draw, dispatch, copy or clear touches its three
+  // targets outside the chain, none reads them before it (per frame), and t_ssao is declared by exactly the 24 sun shaders,
+  // each reading its red once (their bytes). So while ours stands in for it (the rays' AO alone in the sun's slot through
+  // rt_ambient_combine, or Path-Traced Ambient) the chain doesn't run, the generate's target cleared to open in its place
+  // (twattila/ao_readers.hpp; Warhammer's way, test/tw_warhammer_shaders part 15). Otherwise: the game's draws.
+  custom_shaders[0xB320992B] = {.crc32 = 0xB320992B, .on_inject = [](auto*) { return false; }, .on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); }};
+  custom_shaders[0xD42C3523].on_draw = [](auto* cmd_list) { return !twattila::ao_readers::ClearInsteadOfGenerate(cmd_list); };
+  custom_shaders[0x7F637259].on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); };
+  custom_shaders[0xBFD285BD].on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); };
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.

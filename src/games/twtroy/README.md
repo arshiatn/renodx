@@ -1,5 +1,14 @@
 # A Total War Saga: TROY (RenoDX HDR, ATN)
 
+### Open items round (2026-11-22; built only, not run in game)
+
+- Fixed: **the game's SSAO no longer runs under Path-Traced AO either** (ATN: ours replaces the game's, as Attila's): the
+  paths are the occlusion there, so its four passes are left out and the sun draws read an open AO, as under Ray-Traced AO
+  (shared with Pharaoh: `twattila/ao_readers.hpp` ClearInsteadOfGenerate). The sun's sky-cube reflection is no longer
+  darkened by the game's SSAO under the paths (as in Attila).
+- Changed: Smooth Sail Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
+- In game: RT/PT in a battle, Path-Traced AO: corners as with the paths before, no darker double shade.
+
 ### Shared round 2 (2026-11-17; built only, not run in game)
 
 - New: **Exact Depth Samples (Experimental, off)**, under GT-VBAO's More Options: each sample takes the depth at its own
@@ -84,7 +93,7 @@
 
 - Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's); Sprite Soldier Shadows (Experimental, off: the sprite soldiers in the rays through a geometry-shader capture, WARP test/tw_rays_captures); the campaign trees cut out in the rays at the game's 0.01, not 0.5 (needs the next helper, 114); Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are).
 - Round 2 (built only, not run in game): **Rarer Objects in the Rays (Experimental, off; the rays' More Options)**, as Attila's: the ropes (ships, siege equipment) cast ray-traced shadows, and with Shadow Casters Out of View also from out of view. Their shaders are Warhammer's instruction for instruction, so Warhammer's captures (`tools/tw/round_notes/p2sm_ropes_asm.txt`). Tessellated objects stay out: this game's dump holds no hull or domain shader.
-- Round 2 (built only, not run in game): **Smooth Sail Shadows (Experimental, off; RT/PT turns it on, as Attila's Smooth Banner Shadows)**: the sails don't shade themselves in the rays, no blocky triangles on them; shadows of other things stay.
+- Round 2 (built only, not run in game): **Smooth Sail Shadows (then Experimental, off; on by default since 2026-11-17, as Attila's Smooth Banner Shadows)**: the sails don't shade themselves in the rays, no blocky triangles on them; shadows of other things stay.
 - Round 2 (built only, not run in game): **Two Shadow Cascades Under Rays (Experimental, off; the rays' More Options, applies after a restart)**, as Attila's: with ray-traced shadows and Skip the Shadow Maps, the highest Shadows setting prepares 2 shadow cascades, as the lowest does (its tile and split distances too), instead of 4. Offline: `tw_troy_tweaks` part 4 over the game's image.
 
 Parity table against Attila's page: `tools/tw/troy/parity_1114.md` (have 20, done now 13, needs a trace 4, won't get 11 with

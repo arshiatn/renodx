@@ -1,5 +1,16 @@
 # Total War: PHARAOH DYNASTIES (RenoDX HDR, ATN)
 
+### Open items round (2026-11-22; built only, not run in game)
+
+- Fixed: **the game's SSAO no longer runs under Ray-Traced AO or Path-Traced AO** (ATN: ours replaces the game's): its
+  four passes (downsample, generate, two blurs) are left out and their target cleared open. Its readers are the sun draws
+  and the building pools, which both read the rays' AO (`twattila/ao_readers.hpp`, Troy's way); under the paths the open
+  AO is what Attila's white AO pass gives (the paths are the occlusion).
+- Fixed: two unit motion shaders (db1e / f8ff) add the game's exact -pi in their atan2 (the decompile's was one bit off).
+- Changed: Smooth Banner Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
+- In game: Ray-Traced AO in a battle with a building pool: corners and the pool as before, a little faster; RT/PT with
+  Path-Traced AO: no darker double shade in corners.
+
 ### Shared round 2 (2026-11-17; built only, not run in game)
 
 - New: **Exact Depth Samples (Experimental, off)**, under GT-VBAO's More Options: each sample takes the depth at its own
@@ -240,8 +251,8 @@ Rows other TW add-ons have, brought over where Pharaoh's own shaders were read. 
 - **New (Experimental, off): Smoke Shadows (no rays)**, Strength and Softness (Attila's smoke map): the smoke's lit particles
   dim the sun from a map seen from the sun, on any GPU; off while the rays' sun shadows are on (they have their own Smoke
   Shadows). It reads the same particle stream the ray-traced Smoke Shadows fill.
-- **New (Experimental, off; on in RT/PT as in every game): Smooth Banner Shadows**: the cloth and flags (always thin in the
-  rays) no longer shadow themselves.
+- **New (then Experimental, off; on by default since 2026-11-17, as in every game): Smooth Banner Shadows**: the cloth and
+  flags (always thin in the rays) no longer shadow themselves.
 - **New (with Far Tree Shadows): the campaign's far tree billboards cast** (CE5AA8D1, turned to the sun as the battle's far
   trees; Troy's capture at Pharaoh's card size). WARP (Troy's billboard test on Pharaoh's bytes): a level camera with the sun
   behind gives the game's own card, 4.3e-05 m apart, under the shroud too; 30 degrees off, 72 m (the control).
@@ -265,7 +276,7 @@ Test lines (the maintainer):
 3. Depth of Field 0 / 1 / 2, in-game Depth of Field on, a battle close-up: no blur / the game's / fuller.
 4. Smoke Shadows (Experimental) on, rays off, a burning siege: the smoke shadows the ground, softer with Softness.
 5. Texture LOD Bias on All Textures at DLSS Performance: ground and walls sharper, no shimmer added.
-6. Smooth Banner Shadows on, the siege: cloth and flags without self-shadow speckles.
+6. Smooth Banner Shadows (on by default), the siege: cloth and flags without self-shadow speckles.
 7. Campaign, Far Tree Shadows on: far forests cast; none from under the shroud; no billboards vanish.
 8. Campaign, Shadow Casters Out of View on, camera low over forests: trees just outside the view cast into it.
 9. Hue Clip 70 against 80 at a fire: the closer one to the SDR fire's hue.
