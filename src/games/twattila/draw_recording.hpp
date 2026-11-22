@@ -1057,7 +1057,9 @@ inline worker_pool::JoinResult CloseFold(const Descriptor* record, Part&& part) 
   if (record != nullptr && controls.fold_claim_shares) {
     for (uint32_t share = fold.next_part.fetch_add(1); share <= record->workers; share = fold.next_part.fetch_add(1)) {
       RecordWork(const_cast<Descriptor*>(record), share);
-      ++fold_trace.shares;
+      if (tracing) {
+        ++fold_trace.shares;
+      }
     }
   }
   worker_pool::JoinResult joined = {};
@@ -1099,6 +1101,7 @@ inline bool FoldIsOurs(void* tracker) noexcept {
   if (controls.fold_entry_key) {
     CloseFold(nullptr, [] {});
     FoldFault(&fold_key_mismatches);
+    fold_trace = {};  // the call's first lap starts after this close: its ticks are not that lap's to take out
   }
   return false;
 }
@@ -1631,7 +1634,10 @@ inline void Dispatch(Group group, void* node, void* tracker, void* list, uint32_
   // Adds the time since the last lap to a phase of the trace.
   const auto lap = [&](uint64_t CallTrace::* phase, bool trace_only = false) {
     if (trace_call == nullptr) {
-      fold_trace = {};
+      // A nested call (inside CloseFold's own record share) leaves what the outer call's close has kept so far for its laps.
+      if (!nested) {
+        fold_trace = {};
+      }
       return;
     }
     const uint64_t now = Qpc();
@@ -2163,7 +2169,10 @@ inline void __stdcall DispatchMesh(void* tracker, void* device, void* view, uint
   uint64_t trace_only_ticks = 0;
   const auto lap = [&](uint64_t CallTrace::* phase, bool trace_only = false) {
     if (trace_call == nullptr) {
-      fold_trace = {};
+      // A nested call (inside CloseFold's own record share) leaves what the outer call's close has kept so far for its laps.
+      if (!nested) {
+        fold_trace = {};
+      }
       return;
     }
     const uint64_t now = Qpc();

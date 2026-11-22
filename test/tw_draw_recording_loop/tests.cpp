@@ -35,7 +35,9 @@
 //    the protection back);
 //    +0x44 and the +0x84 array of record pointers are the fill's sources, snapshotted with each item's record (+0x74) before every
 //    run and compared after (9b); no source range overlaps the mesh state the record writes and puts back. CONTROLs: a read of the page
-//    is counted by the handler; a fake that writes one byte of a record while recording makes the compare differ.
+//    on the main thread is counted by the handler (a self-test of the trap: not a record-mode body reading through +0x48, which holds by
+//    construction, the slots' trackers being copies of the first 0xa0 bytes of the real one); a fake that writes one byte of a record
+//    while recording makes the compare differ.
 // tests.exe [empire.retail.dll]
 #include <windows.h>
 

@@ -4854,6 +4854,45 @@ static void FoldExits() {
   fold_rig::Off();
   fold_rig::rig.mode = 2;
 
+  // The other direct reasons a fold meets: the feature or the call's group not usable, no site of the thunks in, the entry state
+  // (pending instances) and the visibility view (B: the common path in the game, a round that never records). "Pool missing" cannot
+  // happen with a fold open (the fold's workers are the pool the dispatcher counts), and "no cut" is the B small round above.
+  {
+    const uint32_t arena_size = g_shared->arena_size;
+    const auto reasons = [&](const auto& world, const auto& serial_of, const auto& staged_of, dr::Group group, const char* name) {
+      const Outcome serial = serial_of(world.get());
+      dr::GameCalls partial = Game(true);
+      partial.usable_groups = ~(1u << static_cast<uint32_t>(group));
+      dr::SetGame(Game(false));
+      closed(serial, staged_of(world.get()), name);
+      dr::SetGame(partial);
+      closed(serial, staged_of(world.get()), name);
+      dr::SetGame(Game(true));
+      g_shared->arena_size = 0;
+      closed(serial, staged_of(world.get()), name);
+      g_shared->arena_size = arena_size;
+      world->pending = 5;
+      closed(serial_of(world.get()), staged_of(world.get()), name);
+      world->pending = 0;
+    };
+    reasons(BuildWorld({.items = 6000, .seed = 78, .max_run = 8}), [](World* world) { return RunSerial(world); },
+            [](World* world) { return RunStaged(world, dr::Stage::WORKERS, 4); }, dr::Group::DEPTH_A, "A not usable / sites out / entry state");
+    test_controls.entry_site = true;
+    for (const bool colour : {false, true}) {
+      BSpec spec = {.seed = 12};
+      spec.colour = colour;
+      reasons(BuildBWorld(spec), [](BWorld* world) { return RunBSerial(world); },
+              [](BWorld* world) { return RunBStaged(world, dr::Stage::WORKERS, 4); }, (colour ? dr::Group::COLOUR_B : dr::Group::DEPTH_B),
+              "B not usable / sites out / entry state");
+      spec.view_type = 0x49;
+      const auto visibility = BuildBWorld(spec);
+      closed(RunBSerial(visibility.get()), RunBStaged(visibility.get(), dr::Stage::WORKERS, 4), "B visibility view");
+    }
+    test_controls.entry_site = false;
+    fold_rig::Off();
+    fold_rig::rig.mode = 2;
+  }
+
   // The tracker of the call is not the fold's (the key proof broken): the dispatcher closes the fold at its entry, counts it and
   // latches R2; the call itself runs as it would have.
   {
@@ -4898,7 +4937,8 @@ static void FoldExits() {
   fold_rig::Off();
   UpdateAt(4, {.stage = dr::Stage::WORKERS, .loops = 1});
   std::printf("fold exits: %u cases, %u folds: stages, loop off, latched, detached after the open, overflow, damaged ops, small call, continuation,"
-              " unknown class, B direct / duplicate / every-class / small rounds, a key mismatch, the present's net and the detach: every fold closed, one Unmap each\n",
+              " unknown class, not usable (all, one group), sites out, entry state, B visibility view, B direct / duplicate / every-class / small rounds,"
+              " a key mismatch, the present's net and the detach: every fold closed, one Unmap each\n",
               cases, folds);
 }
 
@@ -4926,6 +4966,18 @@ static bool FoldTicksOk(bool report) {
     FOLD_CHECK(report, good, call.folded && call.fold_with_record && call.fold_close >= two_ms * 9 / 10 && call.chunk_zero > 0);
     FOLD_CHECK(report, good, call.total + call.compare + call.run_scan + (call.stage == dr::Stage::CHUNKED ? call.warm_ups : 0) == call.wall);
   }
+  // A key mismatch's close (at the dispatcher's entry, before the call's first lap) leaves none of its ticks for the call's laps: the call is
+  // not the fold's and no lap takes the close out of its phase.
+  fold_rig::rig.decoy_key = true;
+  fold_rig::rig.expected_mismatches = 1;
+  RunOneCall(big.get(), 4000, false, dr::Stage::WORKERS, 4, true);
+  FOLD_CHECK(report, good, di::trace.calls.size() == 1);
+  if (!di::trace.calls.empty()) {
+    const di::CallTrace& call = di::trace.calls.back();
+    FOLD_CHECK(report, good, !call.folded && call.fold_close == 0 && call.direct < call.wall && call.cut < call.wall);
+  }
+  fold_rig::rig.decoy_key = false;
+  fold_rig::rig.expected_mismatches = 0;
   FOLD_CHECK(report, good, fold_rig::rig.bad == 0);
   fold_rig::Off();
   return good;
