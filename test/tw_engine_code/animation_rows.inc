@@ -1866,12 +1866,14 @@ int RunAnimationRowsExactFor(const TestBuild& build, uint8_t* game, uint8_t* pat
       std::atomic<bool> stop = false;
       std::atomic<uint64_t> thread_wrong = 0;
       std::atomic<uint64_t> thread_calls = 0;
+      std::atomic<bool> ready = false;
       const std::array<uint32_t, 12> busy_before = ArReadPaths();
       std::thread other([&] {
         auto own = std::make_unique<ArContext>();
         const ArSpec spec = plain_world(seed_base + 140200, 6000, 20);
-        if (!ArBuild(own.get(), spec)) return;
-        while (!stop.load()) {
+        const bool built = ArBuild(own.get(), spec);
+        ready = true;
+        while (built && !stop.load()) {
           for (const bool update : {false, true}) {
             const ArCall call = {.update = update, .start = 0, .end = spec.items, .texture = 0};
             const uint8_t* const game_function = (call.update ? game + ANIMATION_UPDATE_RVA : game_fill);
@@ -1884,7 +1886,8 @@ int RunAnimationRowsExactFor(const TestBuild& build, uint8_t* game, uint8_t* pat
       uint64_t wrong = 0;
       const ArSpec outer_spec = plain_world(seed_base + 140100, 12000, 20);
       CHECK(ArBuild(context.get(), outer_spec));
-      for (int call_index = 0; call_index < 6; ++call_index) {
+      while (!ready.load()) Sleep(1);
+      for (int call_index = 0; call_index < 6 || (thread_calls.load() < 2 && call_index < 60); ++call_index) {
         wrong += compare({.update = false, .start = 0, .end = outer_spec.items, .texture = 0}).empty() ? 0 : 1;
         after_fault();
       }
@@ -1892,7 +1895,7 @@ int RunAnimationRowsExactFor(const TestBuild& build, uint8_t* game, uint8_t* pat
       other.join();
       const uint32_t busy = ArReadPaths()[static_cast<size_t>(ArPath::RING_BUSY)] - busy_before[static_cast<size_t>(ArPath::RING_BUSY)];
       reset_switches();
-      std::printf("23x. %s, %s: a second thread made %llu calls beside 6 slow calls of ours: %llu of its calls and %llu of ours differ, %u took the ring-busy path\n", streaming ? "stream" : "bulk",
+      std::printf("23x. %s, %s: a second thread made %llu calls beside slow calls of ours (6 or more): %llu of its calls and %llu of ours differ, %u took the ring-busy path\n", streaming ? "stream" : "bulk",
                   config.name, thread_calls.load(), thread_wrong.load(), wrong, busy);
       CHECK(wrong == 0 && thread_wrong.load() == 0 && thread_calls.load() > 0 && busy > 0);
     }
