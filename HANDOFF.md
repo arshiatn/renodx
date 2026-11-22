@@ -462,6 +462,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - release / lifetime owner (gpu3_ A1g, lga_): 5 release modes 77-122 ms vs the 75 ... | ?
 - coordinator after upr_'s OK: H0 re-run (full, ~84 min, ATN's rule) in a gap; ATN ... | ?
 - who owns the build env: gated_build's stderr shows `'vswhere.exe' is not recogni ... | ?
+- gtb_ (low): end-to-end slot-wait test - both sandbox slots held, one freed at ~8 ... | ?
+- gtp_ (low): kind() doesn't normalise target spelling ('twattila' vs 'renodx-twat ... | ?
+- gtb_ / gti_ (low): watch's load is always `unknown` while nothing refreshes busy ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8384,8 +8387,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         refused; old cases pass with v1.2 files (differing reset allowed). test_iq_frames 14 / 14 (full iq suite not
         run, builder only); lab read, not edited; real iq_refs still absent. -> gtv_ REVIEW STARTED (lab + builder
         halves together).
+        gpr_ GTB_ WRAPPED BUILD + HG2 = OK 08:2x (plan_1117/designs/gpr_gtb_wrapped_build_handback.md; gpr_review.md
+        "## gtb_ wrapped build + hg2 re-check"): test_budget 35 / 35 against the live 08:17 hook, selftest ok, probes
+        gpr_hg2_probe.py / gpr_kind12_probe.py; real watch_runs.tsv / busy_count.json / gates untouched. Option A:
+        the free-slot build proves the real path (2 s vs 82.5 s can't tell slot vs t0 apart), proven offline from
+        watch's fake-build test + gpu_lock.py Acquire O_CREAT|O_EXCL (no record while both slots held -> clock None).
+        Row kind: the same key from the 07:36 and round-12 hooks (8 variants), matches 10 seed rows. hg2 contract
+        fine; UTF-16-no-BOM gates.tsv: 07:36 hook 124 (hg1 kill), +hg1 / live 08:17 = exit 0 SHADOW, one FAULT line
+        + one TOOL FAULT row each. hg1 is LIVE (gate_hook.py 08:17:02). WRAPPED BUILD + HG2 CLOSED.
+        - [ ] gtb_ (low): end-to-end slot-wait test - both sandbox slots held, one freed at ~8 s, `watch --limit 6`
+            -> exit 0, locked y, wait_s >= 8, run_s <= 6; control 124; needs a test-only dry-run hold >= 5 s in
+            gated_build.ps1 (default off, assert locked y) + optional pass interval (gpr_ 08:2x).
+        - [ ] gtp_ (low): kind() doesn't normalise target spelling ('twattila' vs 'renodx-twattila.addon64' = two
+            keys; 77 of 264 seed target words long form) - normalise + re-key price_seed.tsv / watch_runs.tsv in one
+            go (gpr_ 08:2x).
+        - [ ] gtb_ / gti_ (low): watch's load is always `unknown` while nothing refreshes busy_count.json (05:50,
+            partial); decide whether watch / gated_build refreshes it or `unknown` stays (factor 1.0) (gpr_ 08:2x).
         Agents (8): upr_ (h0i_ H0 analysis re-check), gtv_ (v1.2 config hash review, lab + builder), gtp_ (round 12:
-        hg1 + Section 8 + kind()), gpr_ (gtb_ wrapped build + hg2 check), t4i_ (P4 test), b13r_ (c3i_ rmt_b1rt review)
+        hg1 + Section 8 + kind() + target spelling), gtb_ (slot-wait test + load), t4i_ (P4 test), b13r_ (c3i_
+        rmt_b1rt review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
