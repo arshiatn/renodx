@@ -109,9 +109,8 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
 
   // A thread parked at each byte of each stub (SuspendThread / SetThreadContext, as 29d): refused strictly inside, going in and going out.
   {
-    std::atomic<bool> stop = false;
-    std::thread parked([&] {
-      while (!stop.load()) Sleep(1);
+    std::jthread parked([](std::stop_token token) {  // joins on every way out of the block: a failing CHECK exits 1, not std::terminate
+      while (!token.stop_requested()) Sleep(1);
     });
     HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
     CHECK(thread != nullptr);
@@ -147,7 +146,7 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
         wrong += (fi::written != fill::ALL_SITES) ? 1 : 0;
       }
     }
-    stop = true;
+    parked.request_stop();
     parked.join();
     CloseHandle(thread);
     CHECK(wrong == 0 && fi::written == fill::ALL_SITES);
@@ -226,9 +225,8 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
     update(ALL_GROUPS, true, true);
     update(ALL_GROUPS, true, true);
     CHECK(fi::written == fill::ALL_SITES);
-    std::atomic<bool> stop = false;
-    std::thread other([&] {
-      while (!stop.load()) Sleep(1);
+    std::jthread other([](std::stop_token token) {  // joins on every way out of the block: a failing CHECK exits 1, not std::terminate
+      while (!token.stop_requested()) Sleep(1);
     });
     const DWORD other_id = GetThreadId(other.native_handle());
     dr::fold.thread.store(other_id);
@@ -251,7 +249,7 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
     twattila::engine_code::Uninstall();
     if (stay_in_checks(written_before, effect_before, recording_before) != 0) return 1;
     dr::fold.thread.store(0);
-    stop = true;
+    other.request_stop();
     other.join();
     if (put_back() != 0) return 1;
   }
@@ -264,9 +262,8 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
     const uint32_t written_before = ec::written;
     const uint32_t effect_before = eu::written;
     const uint64_t recording_before = ec::recording_written;
-    std::atomic<bool> stop = false;
-    std::thread other([&] {
-      while (!stop.load()) Sleep(1);
+    std::jthread other([](std::stop_token token) {  // joins on every way out of the block: a failing CHECK exits 1, not std::terminate
+      while (!token.stop_requested()) Sleep(1);
     });
     const DWORD other_id = GetThreadId(other.native_handle());
     fi::active.store(1);
@@ -280,7 +277,7 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
     opener.join();
     if (stay_in_checks(written_before, effect_before, recording_before) != 0) return 1;
     dr::fold.thread.store(0);
-    stop = true;
+    other.request_stop();
     other.join();
     if (put_back() != 0) return 1;
   }
@@ -301,9 +298,8 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
     update(ALL_GROUPS, true, true);
     update(ALL_GROUPS, true, true);
     CHECK(fi::written == fill::ALL_SITES);
-    std::atomic<bool> stop = false;
-    std::thread other([&] {
-      while (!stop.load()) Sleep(1);
+    std::jthread other([](std::stop_token token) {  // joins on every way out of the block: a failing CHECK exits 1, not std::terminate
+      while (!token.stop_requested()) Sleep(1);
     });
     const DWORD other_id = GetThreadId(other.native_handle());
     size_t refused_groups = 0;
@@ -323,7 +319,7 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
       ++refused_groups;
     }
     CHECK(refused_groups != 0);
-    stop = true;
+    other.request_stop();
     other.join();
     if (put_back() != 0) return 1;
   }
