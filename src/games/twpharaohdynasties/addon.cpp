@@ -485,8 +485,11 @@ void BuildRuntimeData() {
   // Ambient Occlusion: Visibility Bitmask in place of the AO's horizontal blur: the addon's own shader
   // (ao_bitmask_blur, twwarhammer2/line_sweep_ao.hpp) with the blur's bindings; the blur's replacement stays the game's
   // code (Game's costs what it did). The collect always runs: where no blur runs (Warhammer II at some settings), the
-  // game's AO stays, never an unwritten one.
+  // game's AO stays, never an unwritten one. While ours stands in for the game's AO (the rays' AO or Path-Traced
+  // Ambient) the blur's output is cleared open instead (twattila/ao_readers.hpp ClearInsteadOfLineSweepBlur): in-game
+  // SSAO 1 and 2 no longer multiply into the paths, as SSAO 2's chain below.
   custom_shaders[0x6CF96BAF].on_draw = [](auto* cmd_list) {
+    if (twattila::ao_readers::ClearInsteadOfLineSweepBlur(cmd_list)) return false;
     if (!bitmask_ao) return true;
     return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
                                                false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);

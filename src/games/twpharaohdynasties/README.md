@@ -2,6 +2,9 @@
 
 ### Open items round (2026-11-22; built only, not run in game)
 
+- Fixed: **in-game SSAO 1 and 2 (the game's line-sweep AO) no longer multiply into Path-Traced AO** (ATN: ours
+  replaces the game's), nor past the traced part under Ray-Traced AO: while ours stands in, its blur's output is
+  cleared open in its place, as SSAO 3's chain (`twattila/ao_readers.hpp` ClearInsteadOfLineSweepBlur).
 - Fixed: **the game's SSAO no longer runs under Ray-Traced AO or Path-Traced AO** (ATN: ours replaces the game's): its
   four passes (downsample, generate, two blurs) are left out and their target cleared open. Its readers are the sun draws
   and the building pools, which both read the rays' AO (`twattila/ao_readers.hpp`, Troy's way); under the paths the open
@@ -30,6 +33,16 @@
 - In game: a battle with RT/PT, the camera turned: shadows from behind the camera stay. Ray-Traced AO in a battle
   with a building pool: corners and the pool as before, a little faster; RT/PT with
   Path-Traced AO: no darker double shade in corners.
+- In game: in-game SSAO 1 and 2, each with Ray-Traced AO and with Path-Traced AO: no darker double shade in corners.
+  A building pool under Path-Traced AO against Ray-Traced AO: under the paths the pool reads the open AO (no game
+  AO and no rays' AO there), so it may look flatter than under the rays.
+- In game: Dead Unit Detail 0 and 2 in a battle with corpses: fewer / more bodies stay, no crash at the change.
+- In game: the battle fog at DLSS Performance (33 %) against 100 %: the same shadow bands in the fog, the sun's fog
+  light no longer fading at the view's left and top.
+- In game: Water Reflections: Time Each Pass as before (the early decision is off), ReShade.log's hooks line says
+  "heights_part1 ... not hooked".
+- In game: far terrain and buildings past ~200 m with RT/PT: shadowed by the rays alone (the baked far map is gone):
+  shadows the rays miss out there are gone too.
 
 ### Shared round 2 (2026-11-17; built only, not run in game)
 

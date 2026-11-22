@@ -2,6 +2,9 @@
 
 ### Open items round (2026-11-22; built only, not run in game)
 
+- Fixed: **in-game SSAO 1 and 2 (the game's line-sweep AO) no longer multiply into Path-Traced AO** (ATN: ours
+  replaces the game's), nor past the traced part under Ray-Traced AO: while ours stands in, its blur's output is
+  cleared open in its place, as SSAO 3's chain (`twattila/ao_readers.hpp` ClearInsteadOfLineSweepBlur).
 - Fixed: **the game's SSAO no longer runs under Path-Traced AO either** (ATN: ours replaces the game's, as Attila's): the
   paths are the occlusion there, so its four passes are left out and the sun draws read an open AO, as under Ray-Traced AO
   (shared with Pharaoh: `twattila/ao_readers.hpp` ClearInsteadOfGenerate). The sun's sky-cube reflection is no longer
@@ -18,11 +21,15 @@
   1000 / 203 nits. In the defaults and Reset; saved values stay until a preset.
 - Written, not on yet: Ray-Traced Water Reflections deciding one pass earlier (with the last frame's light) to also
   leave out the game's height pyramid (4 more passes). Off until its offline tests pass; nothing changes in game.
-- Changed (ATN): **the game's baked far shadow map is replaced by the rays too** with ray-traced sun shadows (before,
-  it multiplied with them beyond the per-frame maps' range): one sun shadow method, far terrain and buildings
-  shadowed by the rays alone.
+- Not yet: the game's baked far shadow map (past ~200 m) still multiplies with ray-traced sun shadows. Replacing it
+  (as Pharaoh's) waits for a far-field check that the rays shadow terrain and buildings out there.
 - In game: RT/PT in a battle, Path-Traced AO: corners as with the paths before, no darker double shade. A burning battle at
   Recommended: fire orange / yellow as the game's SDR.
+- In game: in-game SSAO 1 and 2, each with Ray-Traced AO and with Path-Traced AO: no darker double shade in corners.
+- In game: RT/PT with Ray Reconstruction: grazing reflections on wet stone and metal keep their strength.
+- In game: Water Reflections: Time Each Pass as before (the early decision is off), ReShade.log's hooks line says
+  "heights_part1 ... not hooked".
+- In game: far terrain and buildings past the per-frame maps with RT/PT: as before (the baked far map stays).
 
 ### Shared round 2 (2026-11-17; built only, not run in game)
 

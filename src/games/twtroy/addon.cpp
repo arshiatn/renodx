@@ -418,8 +418,11 @@ void BuildRuntimeData() {
   // Ambient Occlusion: Visibility Bitmask in place of the AO's horizontal blur: the addon's own shader
   // (ao_bitmask_blur, twwarhammer2/line_sweep_ao.hpp) with the blur's bindings; the blur's replacement stays the game's
   // code (Game's costs what it did). The collect always runs: where no blur runs (Warhammer II at some settings), the
-  // game's AO stays, never an unwritten one.
+  // game's AO stays, never an unwritten one. While ours stands in for the game's AO (the rays' AO or Path-Traced
+  // Ambient) the blur's output is cleared open instead (twattila/ao_readers.hpp ClearInsteadOfLineSweepBlur): in-game
+  // SSAO 1 and 2 no longer multiply into the paths, as SSAO 2's chain below.
   custom_shaders[0x16A457D0].on_draw = [](auto* cmd_list) {
+    if (twattila::ao_readers::ClearInsteadOfLineSweepBlur(cmd_list)) return false;
     if (!bitmask_ao) return true;
     return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
                                                false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
@@ -2435,9 +2438,9 @@ bool AttachAddon() {
   twattila::contact_shadows_off::Install(LIGHT_BOUNCE_DRAWS);
   // The rays replace the atlas's sun shadow: after the screen-space shadows' (t49) and before the Light Bounce's. Skip the
   // Shadow Maps through Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
-  // The baked far map too (s1 sBakedShadowBuffer: in all 12 sun draws only its 10 comparisons of t1; ATN #30, "ours
-  // replaces the game's").
-  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &RAYS_REPLACE_MAPS, 2, 1);
+  // The baked far map (s1 sBakedShadowBuffer: in all 12 sun draws only its 10 comparisons of t1) stays the game's until a
+  // far-field check (past ~200 m: terrain and buildings) shows the rays reach there (rvc_ m3); then baked_sampler_slot 1.
+  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &RAYS_REPLACE_MAPS);
   twattila::rt_scene::InstallShadowsOnly();
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's environment b0, camera b1 with
