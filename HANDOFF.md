@@ -7265,10 +7265,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         folder -> add both to the settings, name the folder by them (recordings\scenes doesn't exist yet). Test nit:
         the fake pbrt's 10 s floor starves under another agent's CPU job -> larger floor in the fixture (keep
         below_normal); SLOW line names the CPU load. -> gtl_ STARTED (S1 + nits); v1.1 lab changes still after grs_.
+        gpr_ gtb_ W1 W2 RE-CHECK = OK 04:5x (designs/gpr_gtb_w1w2_handback.md; gpr_review.md l.776): W1, W2, L1, R9a,
+        w1-w6 fixed; 32 OK + selftest 0; fake runs: L1 full count, W2 faults visible in facts (fallback hides nothing),
+        R9a prefixes / = form exit 2. NITs -> gtb_ STARTED: x1 one stderr "renodx-watch FAULT" line per distinct fault +
+        shorter row text (six faults filled the 300-char facts); x2 don't exclude watch's own pid (python.exe is never
+        counted; it makes busy_count.json read as partial = unknown), only the still-alive stopped tree; x3 head_args:
+        cmd single '&', PowerShell -Co... abbreviations, -EncodedCommand decode; x4 limits in the docstring.
+        (gtp_: its report should list rows whose facts contain "() failed".)
         Agents (9): upr_ (h0i_ F1 re-check), c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gtq_
-        (B2-S1 + N1-N4), gtl_ (S3r S1 + nits), grs_ (S2r fixes), gpr_ (gtb_ W1 W2 re-check). Idle: bd1r_, lga_,
-        lgf2_, c33i_, upt_, h0i_ (waits upr_), gpp_, gtb_ (waits gpr_), ebr_ (waits t4i_), gbc_ (waits gtq_), gti_,
-        gtv_ (waits grs_ / gtl_), gtk_, gtw_ (waits gtp_).
+        (B2-S1 + N1-N4), gtl_ (S3r S1 + nits), grs_ (S2r fixes), gtb_ (x1-x4). Idle: bd1r_, lga_, lgf2_, c33i_,
+        upt_, h0i_ (waits upr_), gpp_, gpr_ (waits gtb_), ebr_ (waits t4i_), gbc_ (waits gtq_), gti_, gtv_ (waits
+        grs_ / gtl_), gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
