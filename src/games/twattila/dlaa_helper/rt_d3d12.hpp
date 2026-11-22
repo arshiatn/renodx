@@ -2367,14 +2367,25 @@ class RtScene12 {
   }
 
   // The loaded playback's first and last recorded frames, its requests (in frame order), their headers (frame, kind) and
-  // its colour texture's size.
+  // its colour texture's size and the last request's active size (its block's rt_width x rt_height).
   [[nodiscard]] std::array<uint32_t, 2> PlaybackFrames() const { return {playback_.first_frame, playback_.last_frame}; }
   [[nodiscard]] size_t PlaybackRequests() const { return playback_.requests.size(); }
   [[nodiscard]] const recording::FileHeader& PlaybackHeader(size_t index) const { return playback_.requests[index].header; }
-  [[nodiscard]] std::array<uint32_t, 2> PlaybackSize() const {
+  [[nodiscard]] std::array<uint32_t, 4> PlaybackSize() const {
     const auto color = playback_.textures.find("color");
-    return (color == playback_.textures.end()) ? std::array<uint32_t, 2>{}
-                                               : std::array<uint32_t, 2>{static_cast<uint32_t>(color->second->GetDesc().Width), color->second->GetDesc().Height};
+    if (color == playback_.textures.end() || playback_.requests.empty()) return {};
+    const std::unique_ptr<dlaa_bridge::Shared> block = PlaybackBlock(playback_.requests.back(), 0);
+    return {static_cast<uint32_t>(color->second->GetDesc().Width), color->second->GetDesc().Height, block->rt_width, block->rt_height};
+  }
+  // The made outputs' sizes (ResourceRows' outputs).
+  [[nodiscard]] std::map<std::string, std::array<uint32_t, 2>> OutputSizes() {
+    std::map<std::string, std::array<uint32_t, 2>> sizes;
+    for (const ResourceRow& row : ResourceRows()) {
+      if (const ComPtr<ID3D12Resource>* made = row.member(this); row.output && *made) {
+        sizes[row.name] = {static_cast<uint32_t>((*made)->GetDesc().Width), (*made)->GetDesc().Height};
+      }
+    }
+    return sizes;
   }
 
   // The player's "play" (main.cpp): LoadPlayback, then each request (`before_trace` before each trace) with its inputs as
@@ -2510,8 +2521,20 @@ class RtScene12 {
     }
     return true;
   }
-  // `saved` (SaveResources' on this scene, its resources unchanged since: Structure) copied back. False: `why` says why.
-  bool RestoreResources(const std::vector<SavedResource>& saved, std::string* why) {
+  // rt_place's frame stamps in placed instance descs (the low 24 bits of each one's word at +52) `shift` frames later, as a
+  // frame played `shift` frames later writes them.
+  static void ShiftPlacedStamps(std::span<uint8_t> descs, uint32_t shift) {
+    for (size_t at = 52; at + sizeof(uint32_t) <= descs.size(); at += sizeof(D3D12_RAYTRACING_INSTANCE_DESC)) {
+      uint32_t word = 0;
+      std::memcpy(&word, descs.data() + at, sizeof(word));
+      word = ((word + shift) & 0xFFFFFFu) | (word & 0xFF000000u);
+      std::memcpy(descs.data() + at, &word, sizeof(word));
+    }
+  }
+  // `saved` (SaveResources' on this scene, its resources unchanged since: Structure) copied back, the placed instances'
+  // frame stamps `shift` frames later (the kept ones: from the placed state's CPU descs' end to the last trace's count).
+  // False: `why` says why.
+  bool RestoreResources(const std::vector<SavedResource>& saved, uint32_t shift, std::string* why) {
     ID3D12GraphicsCommandList4* list = RecorderList();
     std::vector<ComPtr<ID3D12Resource>> uploads;
     for (const SavedResource& resource : saved) {
@@ -2528,6 +2551,31 @@ class RtScene12 {
     }
     if (list == nullptr || !WaitFor(SubmitRecorderList(list))) {
       *why = "the reset's copies failed";
+      return false;
+    }
+    const uint64_t descs = uint64_t{std::min(placed_written_, placed_capacity_)} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
+    if (shift == 0 || !placed_state_ || descs == 0) return true;
+    ID3D12Resource* placed = placed_instances_[placed_last_].Get();
+    std::vector<Readback> readbacks;
+    std::array<std::vector<uint8_t>, 2> payloads;
+    list = RecorderList();
+    if (list != nullptr) {
+      CopyToReadback(list, "placed_state", placed_state_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &readbacks, 0, 16);
+      CopyToReadback(list, "placed", placed, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, &readbacks, 0, descs);
+    }
+    if (list == nullptr || !WaitFor(SubmitRecorderList(list)) || readbacks.size() != 2 || !ReadbackPayload(&readbacks[0], &payloads[0])
+        || !ReadbackPayload(&readbacks[1], &payloads[1])) {
+      *why = "the placed instances' frame stamps could not be read back";
+      return false;
+    }
+    uint32_t cpu_descs = 0;  // rt_place's STATE_CPU
+    std::memcpy(&cpu_descs, payloads[0].data() + sizeof(recording::BufferHeader) + 12, sizeof(cpu_descs));
+    ShiftPlacedStamps(std::span(payloads[1]).subspan(sizeof(recording::BufferHeader) + std::min(uint64_t{cpu_descs} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC), descs)),
+                      shift);
+    list = RecorderList();
+    if (list == nullptr || !UploadRecorded(list, "placed", placed, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, payloads[1], &uploads, why)
+        || !WaitFor(SubmitRecorderList(list))) {
+      *why = "the placed instances' frame stamps could not be written back";
       return false;
     }
     return true;
@@ -2624,8 +2672,7 @@ class RtScene12 {
     const auto row_reads = std::ranges::count_if(slots_, [](const Slot& slot) { return !slot.row_reads.empty(); });
 #if defined(RENODX_NVAPI_CLUSTERS)
     const bool growing = placed_growing_.valid() || cluster_growing_.valid();
-#endif
-#if !defined(RENODX_NVAPI_CLUSTERS)
+#else
     const bool growing = placed_growing_.valid();
 #endif
     if (bakes != 0 || row_reads != 0 || growing) {
@@ -2706,11 +2753,13 @@ class RtScene12 {
 
   // The burn (rt_burn.hlsl): `loops` dispatches of a fixed chain in `pass`'s span (after its Mark), a pass whose pipeline is
   // set right after its Mark with the scene's root signature bound (the burn's is the same: the bindings stay). 0: none.
-  // False: `why` says why (another pass, no pipeline).
+  // compact and place run only when a request has their work: BurnRuns counts the passes that burnt. False: `why` says why
+  // (another pass, no pipeline).
   bool SetBurn(std::string_view pass, uint32_t loops, std::string* why) {
     static constexpr std::array<std::string_view, 13> BURNABLE = {"trace", "local lights", "fog", "soft", "bounce", "radiance cache", "path tracing",
                                                                   "reuse", "reflection reservoirs", "reflections", "scene data", "compact", "place"};
     burn_loops_ = 0;
+    burn_runs_ = 0;
     if (loops == 0) return true;
     if (std::ranges::find(BURNABLE, pass) == BURNABLE.end()) {
       *why = std::format("the burn cannot run in pass \"{}\" (only: trace, local lights, fog, soft, bounce, radiance cache, path tracing, reuse, "
@@ -2727,6 +2776,7 @@ class RtScene12 {
     burn_loops_ = loops;
     return true;
   }
+  [[nodiscard]] uint32_t BurnRuns() const { return burn_runs_; }
 
   // A stem's pipeline from `code` (a compute shader's DXIL, checked by rt_serve.h; empty: the base build's again), made with
   // the scene's root signature: rt_trace, rt_bounce, rt_path, rt_reflect, rt_reuse, rt_reflect_reservoir, rt_fog, rt_lights
@@ -2769,9 +2819,11 @@ class RtScene12 {
   [[nodiscard]] ID3D12Fence* OwnFence() const { return own_fence_.Get(); }
 
   // B2's moments (rt_moments.hlsl): per texel of each named output's first subresource, fp32 Welford planes (MOMENT_PLANES:
-  // mean, M2, the first frame, the lag-1 co-moment about it, the last frame, the sum of |change|), one AddMoments a frame.
+  // the mean about the first frame, M2, the first frame, the lag-1 co-moment about it, the last frame, the sum of |change|), one AddMoments a frame.
   // StartMoments refuses an integer output, an unknown one, or more than `headroom` / 1.3 bytes.
   static constexpr uint32_t MOMENT_PLANES = 6;
+  // The moments let go (a failed command's).
+  void StopMoments() { moments_ = {}; }
   // A moments output (StartMoments): its texture and its planes.
   struct MomentOutput {
     std::string name;
@@ -2894,10 +2946,10 @@ class RtScene12 {
     return true;
   }
   // The moments read back and let go: each output's file (`file` makes it from the output, the frames added and its planes'
-  // float4s, rows from the top) into `folder`/moments_<output>.bin; `files` and `bytes` what was written. False: `why`.
+  // float4s, rows from the top) into `folder`/moments_<output>.bin. False: `why`.
   using MomentPlanes = std::array<std::vector<uint8_t>, MOMENT_PLANES>;
   bool WriteMoments(const std::filesystem::path& folder, const std::function<std::vector<uint8_t>(const MomentOutput&, uint32_t, const MomentPlanes&)>& file_of,
-                    std::vector<std::string>* files, uint64_t* bytes, std::string* why) {
+                    std::string* why) {
     ID3D12GraphicsCommandList4* list = RecorderList();
     std::vector<Readback> readbacks;
     for (const MomentOutput& output : moments_.outputs) {
@@ -2927,8 +2979,6 @@ class RtScene12 {
         moments_ = {};
         return false;
       }
-      files->push_back(name);
-      *bytes += file.size();
     }
     moments_ = {};
     return true;
@@ -9171,6 +9221,7 @@ class RtScene12 {
   void ServeMark(ID3D12GraphicsCommandList* list, const wchar_t* pass) {
     if (serve_timing_ == SERVE_TIMING_PASSES) ServeStamp(list, SERVE_MARK, pass);
     if (burn_loops_ == 0 || burn_pass_ != pass) return;
+    ++burn_runs_;
     const D3D12_RESOURCE_BARRIER uav_barrier = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
     list->SetPipelineState(burn_pipeline_.Get());
     for (uint32_t loop = 0; loop < burn_loops_; ++loop) {
@@ -9936,6 +9987,7 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> burn_pipeline_;
   std::wstring burn_pass_;
   uint32_t burn_loops_ = 0;
+  uint32_t burn_runs_ = 0;
   std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> base_pipelines_;
   Moments moments_;
 #endif

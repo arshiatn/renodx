@@ -12,6 +12,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
+#include <cwchar>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -120,8 +121,9 @@ bool TakeSnapshot(Scene* scene, bool vram, Snapshot<Scene>* snapshot, std::strin
 }
 
 enum class ResetResult { DONE, FULL_RELOAD, FAILED };
-// The scene back to `snapshot`, its frame fields `shift` frames later. FULL_RELOAD: a structural field or the structure
-// changed (`why` says which; nothing given back). FAILED: the copies failed.
+// The scene back to `snapshot`, its frame fields and the GPU's frame stamps (RestoreResources) `shift` frames later.
+// FULL_RELOAD: a structural field or the structure changed (`why` says which; nothing given back). FAILED: the copies
+// failed.
 template <typename Scene>
 ResetResult ResetTo(Scene* scene, const Snapshot<Scene>& snapshot, uint32_t shift, std::string* why) {
   const auto spans = scene->FieldSpans();
@@ -146,7 +148,7 @@ ResetResult ResetTo(Scene* scene, const Snapshot<Scene>& snapshot, uint32_t shif
       std::memcpy(bytes.data() + at, &frame, sizeof(frame));
     }
   }
-  if (!scene->RestoreResources(snapshot.resources, why)) return ResetResult::FAILED;
+  if (!scene->RestoreResources(snapshot.resources, shift, why)) return ResetResult::FAILED;
   scene->RestoreObjects(snapshot.objects, shift);
   return ResetResult::DONE;
 }
@@ -221,9 +223,9 @@ struct MomentsHeader {
   uint32_t planes = 0;
 };
 inline constexpr uint32_t MOMENTS_FILE_PLANES = 7;
-// A moments file from rt_moments.hlsl's planes after `frames` frames (mean, M2, the first frame s, C = sum over t >= 2 of
-// (x_t - s)(x_t-1 - s), the last frame, travel; the shift by s keeps fp32's sums small): with Sx = k (mean - s) and
-// Sy = Sx - (last - s) the pairs' sums about s, the co-moment is C - Sx Sy / (k - 1).
+// A moments file from rt_moments.hlsl's planes after `frames` frames (the mean about the first frame s, M2, s, C = sum
+// over t >= 2 of (x_t - s)(x_t-1 - s), the last frame, travel; the shift by s keeps fp32's sums small): with Sx = k (mean
+// - s) and Sy = Sx - (last - s) the pairs' sums about s, the co-moment is C - Sx Sy / (k - 1).
 inline std::vector<uint8_t> MomentsFile(MomentsHeader header, std::span<const std::vector<uint8_t>> planes) {
   header.planes = MOMENTS_FILE_PLANES;
   const size_t values = planes[0].size() / sizeof(float);
@@ -240,12 +242,11 @@ inline std::vector<uint8_t> MomentsFile(MomentsHeader header, std::span<const st
   };
   const double pairs = std::max<double>(header.frames, 2.0) - 1.0;
   for (size_t at = 0; at < values; ++at) {
-    const double mean = in(0, at);
     const double first = in(2, at);
     const double last = in(4, at);
-    const double sum_x = header.frames * (mean - first);
+    const double sum_x = header.frames * in(0, at);
     const double sum_y = sum_x - (last - first);
-    out(0, at, mean);
+    out(0, at, first + in(0, at));
     out(1, at, in(1, at));
     out(2, at, last);
     out(3, at, in(5, at));
@@ -331,9 +332,10 @@ inline std::string NowIso() {
                      (bias < 0) ? '-' : '+', std::abs(bias) / 60, std::abs(bias) % 60);
 }
 
-// A light animation's frame (light_anim; a v1.1 proposal: {"schema": "renodx-light-anim v1", "frames": [{"sun": [x, y, z] or
-// null, "lights": [{"index", "position", "intensity", "on"}]}]}): toward the sun, and lights changed by their place in the
-// block's list (position as given, colour times intensity, off: no reach and no colour).
+// A light animation's frame (light_anim; a v1.1 proposal: {"schema": "renodx-light-anim v1", "light_off": the first frame
+// with a light off (optional), "frames": [{"sun": [x, y, z] or null, "lights": [{"index", "position", "intensity", "on"}]}]}):
+// toward the sun, and lights changed by their place in the block's list (position as given, colour times intensity, off:
+// no reach and no colour).
 struct LightChange {
   uint32_t index = 0;
   std::optional<std::array<float, 3>> position;
@@ -344,8 +346,9 @@ struct LightFrame {
   std::optional<std::array<float, 3>> sun;
   std::vector<LightChange> lights;
 };
-// `text`'s frames. False: `why` says what does not fit the schema.
-inline bool ParseLightAnimation(std::string_view text, std::vector<LightFrame>* frames, std::string* why) {
+// `text`'s frames and the first frame with a light off (none: nullopt). False: `why` says what does not fit the schema
+// (a "light_off" that is not that frame too).
+inline bool ParseLightAnimation(std::string_view text, std::vector<LightFrame>* frames, std::optional<uint32_t>* light_off, std::string* why) {
   try {
     const nlohmann::json parsed = nlohmann::json::parse(text);
     if (parsed.at("schema") != "renodx-light-anim v1" || !parsed.at("frames").is_array() || parsed.at("frames").empty()) {
@@ -353,6 +356,7 @@ inline bool ParseLightAnimation(std::string_view text, std::vector<LightFrame>* 
       return false;
     }
     frames->clear();
+    *light_off = std::nullopt;
     for (const nlohmann::json& frame : parsed.at("frames")) {
       LightFrame& made = frames->emplace_back();
       if (frame.contains("sun") && !frame.at("sun").is_null()) made.sun = frame.at("sun").get<std::array<float, 3>>();
@@ -365,7 +369,13 @@ inline bool ParseLightAnimation(std::string_view text, std::vector<LightFrame>* 
           *why = std::format("light index {} is past {}", change.index, dlaa_bridge::RT_ALL_LIGHTS);
           return false;
         }
+        if (!change.on && !*light_off) *light_off = static_cast<uint32_t>(frames->size() - 1);
       }
+    }
+    if (parsed.contains("light_off") && (!*light_off || parsed.at("light_off").get<uint32_t>() != **light_off)) {
+      *why = std::format("light_off {} is not the first frame with a light off ({})", parsed.at("light_off").dump(),
+                         *light_off ? std::to_string(**light_off) : "none");
+      return false;
     }
   } catch (const nlohmann::json::exception& error) {
     *why = std::format("light animation: {}", error.what());
@@ -457,9 +467,18 @@ class Resident {
     std::function<void(ID3D12CommandQueue*)> frame_boundary;  // Nsight Graphics' (trace)
   };
   explicit Resident(Options options) : options_(std::move(options)) {}
+  ~Resident() { LetGo(); }
+  Resident(const Resident&) = delete;
+  Resident& operator=(const Resident&) = delete;
+  friend struct ResidentTests;  // tools/tw/resident_test's offline checks
 
-  // The exit code: 0 stopped or idle, 1 the recording could not be loaded, 4 the device lost twice.
+  // The exit code: 0 stopped or idle, 1 the recording could not be loaded or the environment refused, 4 the device lost
+  // twice, the scene could not be loaded again, or the GPU did not finish a scene's work.
   int Serve() {
+    if (std::string why; !CheckEnvironment(&env_, &why)) {
+      options_.log("[TW resident] FAILED: " + why);
+      return 1;
+    }
     FILETIME creation = {};
     FILETIME unused = {};
     GetProcessTimes(GetCurrentProcess(), &creation, &unused, &unused, &unused);
@@ -504,7 +523,10 @@ class Resident {
           }
         }
         if (later != UINT32_MAX) {
-          Answer(later, "status", NowIso(), {.status = "REFUSED", .error = std::format("cmd_{} skips {}", later, expect)});
+          std::ifstream skipped(options_.control / std::format("cmd_{}.json", later), std::ios::binary);
+          const std::string skipped_name = Text(nlohmann::json::parse(skipped, nullptr, false), "cmd");
+          Answer(later, Listed(COMMANDS, skipped_name) ? skipped_name : "status", NowIso(),
+                 {.status = "REFUSED", .error = std::format("cmd_{} skips {}", later, expect)});
           expect = later + 1;
           continue;
         }
@@ -532,12 +554,9 @@ class Resident {
         last_n_ = n;
         last_cmd_time_ = started;
       }
-      const auto text = [&](const char* key) {
-        return (command.is_object() && command.contains(key) && command[key].is_string()) ? command[key].get<std::string>() : std::string();
-      };
-      const std::string name = text("cmd");
+      const std::string name = Text(command, "cmd");
       const bool known = Listed(COMMANDS, name);
-      if (!known || text("protocol") != PROTOCOL || !command["n"].is_number_integer() || command["n"].get<int64_t>() != n || !command.contains("args")
+      if (!known || Text(command, "protocol") != PROTOCOL || !command["n"].is_number_integer() || command["n"].get<int64_t>() != n || !command.contains("args")
           || !command["args"].is_object()) {
         Answer(n, known ? name : "status", started, {.status = "REFUSED", .error = std::format("cmd_{} is not a {} command numbered {}", n, PROTOCOL, n)});
         continue;
@@ -549,21 +568,33 @@ class Resident {
       } catch (const nlohmann::json::exception& bad) {
         reply = {.status = "REFUSED", .error = std::format("bad args: {}", bad.what())};
       } catch (const std::exception& failed) {
+        if (scene_) scene_->StopMoments();
         reply = Failed(std::format("{} failed: {}", name, failed.what()));
       }
-      if (reply.lost) {
-        losses_.fetch_add(1);
-        options_.log(std::format("[TW resident] The device was lost at cmd_{} ({}): {}", n, name, reply.error));
+      if (stuck_) {
+        Answer(n, name, started, {.status = "FAILED", .error = "the GPU did not finish a scene's work (the device not removed), STOP", .lost = false});
+        return 4;
+      }
+      // A failure that left the scene unusable (the device removed, a request not recorded or timed out, a load that
+      // failed): the recording loaded again. Only a removal (DRED's report logged) counts toward "lost twice".
+      if (reply.status == "FAILED" && (!loaded_ || scene_->Lost())) {
+        const bool removed = scene_->Removed();
+        options_.log(std::format("[TW resident] cmd_{} ({}) left the scene unusable: {}", n, name, reply.error));
+        if (removed) {
+          options_.log(scene_->LostReport());
+          losses_.fetch_add(1);
+        }
         if (losses_.load() >= 2) {
           Answer(n, name, started, {.status = "FAILED", .error = "device lost twice, STOP", .lost = true});
           return 4;
         }
+        const std::string kind = removed ? "device lost" : "request failed";
         std::string restart;
         if (!Load(&restart)) {
-          Answer(n, name, started, {.status = "FAILED", .error = "device lost, the restart failed: " + restart, .lost = true});
+          Answer(n, name, started, {.status = "FAILED", .error = std::format("{}, the restart failed: {}", kind, restart), .lost = removed});
           return 4;
         }
-        reply = {.status = "FAILED", .error = "device lost, restarted", .lost = true};
+        reply = {.status = "FAILED", .error = removed ? "device lost, restarted" : std::format("request failed, restarted: {}", reply.error), .lost = removed};
       }
       Answer(n, name, started, reply);
       SetState("idle");
@@ -577,6 +608,35 @@ class Resident {
 
  private:
   static constexpr std::array<std::string_view, 9> COMMANDS = {"config", "run", "dump", "trace", "moments", "seed", "light_anim", "status", "stop"};
+  // The process's RENODX_TW_* variables into `env`, fail closed: false (`why` says which) with RENODX_TW_RECORD (the
+  // journal's cost in every request) or a RENODX_TW_TEST_* set.
+  static bool CheckEnvironment(std::map<std::string, std::string>* env, std::string* why) {
+    const auto narrow = [](std::wstring_view wide) {
+      std::string text(WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr), '\0');
+      WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), text.data(), static_cast<int>(text.size()), nullptr, nullptr);
+      return text;
+    };
+    env->clear();
+    if (wchar_t* variables = GetEnvironmentStringsW(); variables != nullptr) {
+      for (const wchar_t* entry = variables; *entry != L'\0'; entry += std::wcslen(entry) + 1) {
+        const std::wstring_view variable(entry);
+        const size_t equals = variable.find(L'=');
+        if (variable.starts_with(L"RENODX_TW_")) (*env)[narrow(variable.substr(0, equals))] = narrow(variable.substr(std::min(equals + 1, variable.size())));
+      }
+      FreeEnvironmentStringsW(variables);
+    }
+    for (const auto& [variable, value] : *env) {
+      if (variable == "RENODX_TW_RECORD" || variable.starts_with("RENODX_TW_TEST_")) {
+        *why = std::format("{} is set (the resident refuses RENODX_TW_RECORD and RENODX_TW_TEST_*)", variable);
+        return false;
+      }
+    }
+    return true;
+  }
+  // A command's string field (empty: none).
+  static std::string Text(const nlohmann::json& command, const char* key) {
+    return (command.is_object() && command.contains(key) && command[key].is_string()) ? command[key].get<std::string>() : std::string();
+  }
   // The lab's config (config): flags as played (none: as recorded), grass micromaps' level at load (-1: as recorded), Shared
   // fields, swapped stems (their DXIL and SHA-256), the burn.
   struct Config {
@@ -674,21 +734,42 @@ class Resident {
     return memory;
   }
 
-  // The recording on a new scene (the last one let go first), its first loop played (more while it has not settled, at most
-  // 5), the snapshot taken (in video memory when twice its size is free, else read back), the config's stems and burn in
-  // it, the seed's offset on it. False: `why` says why.
+  // The scene and its snapshot let go once nothing of theirs can still run (a timed-out request's work on a live device:
+  // waited for, at most a minute). False: it still runs; both are kept on purpose (freeing them under that work is not
+  // safe; main.cpp's unproven_gpu_completion is not set for the resident) and stuck_ set.
+  bool LetGo() {
+    for (int wait = 0; scene_ && !scene_->Removed() && !scene_->Idle() && wait < 6000; ++wait) Sleep(10);
+    if (scene_ && !scene_->Removed() && !scene_->Idle()) {
+      options_.log("[TW resident] The GPU did not finish the scene's work in a minute (the device not removed): the scene is kept.");
+      static_cast<void>(scene_.release());
+      static_cast<void>(new Snapshot<RtScene12>(std::move(snapshot_)));
+      stuck_ = true;
+      return false;
+    }
+    snapshot_ = {};
+    scene_.reset();
+    return true;
+  }
+
+  // The recording on a new scene (the last one let go first, LetGo), DRED on (a lost device's report says where the GPU
+  // stopped), its first loop played (more while it has not settled, at most 5), the snapshot taken (in video memory when
+  // twice its size is free, else read back), the config's stems and burn in it, the seed's offset on it. False: `why` says
+  // why.
   bool Load(std::string* why) {
+    loaded_ = false;
     {
       std::scoped_lock lock(mutex_);
       fence_.Reset();
       snapshot_kind_ = "none";
       snapshot_mb_ = 0.0;
     }
-    snapshot_ = {};
-    scene_.reset();
+    if (!LetGo()) {
+      *why = "the GPU did not finish the last scene's work";
+      return false;
+    }
     SetState("loading 0 %");
     scene_ = std::make_unique<RtScene12>();
-    if (!scene_->Initialize(adapter_.Get(), options_.helper_folder, false)) {
+    if (!scene_->Initialize(adapter_.Get(), options_.helper_folder, true)) {
       *why = scene_->Status();
       return false;
     }
@@ -745,8 +826,9 @@ class Resident {
     played_since_reset_ = 0;
     if (pending_seed_ != 0) {
       seed_ = pending_seed_;
-      return ResetTo(scene_.get(), snapshot_, seed_, why) == ResetResult::DONE;
+      if (ResetTo(scene_.get(), snapshot_, seed_, why) != ResetResult::DONE) return false;
     }
+    loaded_ = true;
     return true;
   }
 
@@ -813,8 +895,8 @@ class Resident {
     ++position_;
     return played;
   }
-  // A command's failure: the device lost (the scene's), or another.
-  Reply Failed(const std::string& why) { return {.status = "FAILED", .error = why, .lost = !scene_ || scene_->Lost()}; }
+  // A command's failure (device_lost: the device removed).
+  Reply Failed(const std::string& why) { return {.status = "FAILED", .error = why, .lost = scene_ && scene_->Removed()}; }
   // `args`' keys all among `keys` (the schema's additionalProperties false); else `why`.
   static bool OnlyKeys(const nlohmann::json& args, std::initializer_list<std::string_view> keys, std::string* why) {
     for (const auto& [key, value] : args.items()) {
@@ -825,86 +907,139 @@ class Resident {
     }
     return true;
   }
-  // A folder argument under the control folder (made). False: outside it.
+  // A path argument: as given when absolute, else in the control folder.
+  [[nodiscard]] std::filesystem::path ControlPath(const std::string& path) const {
+    return std::filesystem::path(path).is_absolute() ? std::filesystem::path(path) : options_.control / path;
+  }
+  // A folder argument under the control folder, empty (made). False: outside it, or files in it.
   bool ControlFolder(const std::string& folder, std::filesystem::path* path, std::string* why) const {
     std::error_code error;
     const std::filesystem::path control = std::filesystem::weakly_canonical(options_.control, error);
-    *path = std::filesystem::weakly_canonical(std::filesystem::path(folder).is_absolute() ? std::filesystem::path(folder) : options_.control / folder, error);
+    *path = std::filesystem::weakly_canonical(ControlPath(folder), error);
     const auto [end, rest] = std::ranges::mismatch(control, *path);
     if (error || end != control.end() || *path == control) {
       *why = std::format("folder {} is not under the control folder", folder);
       return false;
     }
     std::filesystem::create_directories(*path, error);
+    if (!std::filesystem::is_empty(*path, error) || error) {
+      *why = std::format("folder {} is not empty", folder);
+      return false;
+    }
     return true;
+  }
+  // What run, dump and moments played: the reset's mode, the seed, the light animation (its SHA-256, or null), the swapped
+  // stems, DRED (always on).
+  [[nodiscard]] nlohmann::json Played(const std::string& mode) const {
+    return {{"reset", mode},
+            {"seed", seed_},
+            {"light_anim", light_anim_},
+            {"stems", config_.stem_hashes},
+            {"dred", true}};
   }
 
   Reply Handle(const std::string& name, const nlohmann::json& args, uint32_t n) {
     std::string why;
     if (name == "status" || name == "stop") {
       if (!OnlyKeys(args, {}, &why)) return {.status = "REFUSED", .error = why};
-      return {.result = (name == "status") ? Alive() : nlohmann::json::object()};
+      if (name == "stop") return {};
+      // The heartbeat's fields, the RENODX_TW_* environment, Nsight's injection, DRED, the outputs' sizes (v1.1 proposals).
+      nlohmann::json status = Alive();
+      status.update({{"env", env_}, {"nsight", options_.nsight}, {"dred", true}, {"output_sizes", scene_->OutputSizes()}});
+      return {.result = status};
     }
     if (name == "seed") {
-      if (!OnlyKeys(args, {"offset"}, &why) || args.at("offset").get<int64_t>() < 0) return {.status = "REFUSED", .error = why.empty() ? "a negative offset" : why};
-      pending_seed_ = args.at("offset").get<uint32_t>();
+      if (!OnlyKeys(args, {"offset"}, &why)) return {.status = "REFUSED", .error = why};
+      const auto offset = args.at("offset").get<int64_t>();
+      if (offset < 0 || offset > UINT32_MAX) return {.status = "REFUSED", .error = std::format("offset {} is not 0 to {}", args.at("offset").dump(), UINT32_MAX)};
+      pending_seed_ = static_cast<uint32_t>(offset);
       return {};
     }
     if (name == "light_anim") {
       if (!OnlyKeys(args, {"path"}, &why)) return {.status = "REFUSED", .error = why};
-      const std::filesystem::path path = std::filesystem::path(args.at("path").get<std::string>()).is_absolute() ? std::filesystem::path(args.at("path").get<std::string>())
-                                                                                                               : options_.control / args.at("path").get<std::string>();
-      std::ifstream file(path, std::ios::binary);
-      const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
       std::vector<LightFrame> frames;
-      if (!file || !ParseLightAnimation(text, &frames, &why)) return {.status = "REFUSED", .error = why.empty() ? std::format("{} could not be read", path.string()) : why};
+      std::optional<uint32_t> light_off;
+      nlohmann::json hash = nullptr;
+      // path null: none again.
+      if (!args.at("path").is_null()) {
+        const std::filesystem::path path = ControlPath(args.at("path").get<std::string>());
+        std::ifstream file(path, std::ios::binary);
+        const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        if (!file || !ParseLightAnimation(text, &frames, &light_off, &why)) {
+          return {.status = "REFUSED", .error = why.empty() ? std::format("{} could not be read", path.string()) : why};
+        }
+        hash = Sha256(std::span(reinterpret_cast<const uint8_t*>(text.data()), text.size()));
+      }
       light_animation_ = std::move(frames);
-      return {};
+      light_anim_ = std::move(hash);
+      return {.result = {{"light_anim", light_anim_},
+                         {"frames", light_animation_.size()},
+                         {"light_off", light_off ? nlohmann::json(*light_off) : nlohmann::json(nullptr)}}};
     }
     if (name == "config") return Configure(args);
     if (name == "run") return Run(args, n);
     if (name == "dump") {
       std::filesystem::path folder;
-      if (!OnlyKeys(args, {"folder", "frames"}, &why) || !ControlFolder(args.at("folder").get<std::string>(), &folder, &why)) return {.status = "REFUSED", .error = why};
+      if (!OnlyKeys(args, {"folder", "frames", "histories"}, &why) || !ControlFolder(args.at("folder").get<std::string>(), &folder, &why)) {
+        return {.status = "REFUSED", .error = why};
+      }
       // `frames` (gtl_'s v1.1 proposal a; 1 without it): the first frames after the reset, named as recorded (their played
-      // frames are their offset later), within one loop.
+      // frames are their offset later), within one loop. `histories` (v1.1; off without it): the last frame's histories
+      // too (~2.5 GB at 4K).
       const auto count = args.value("frames", 1u);
       if (count == 0 || count > frames_.size()) return {.status = "REFUSED", .error = std::format("dump frames {} is not 1 to {}", count, frames_.size())};
       std::string mode;
       if (!Reset(&mode, &why)) return Failed(why);
       const uint32_t offset = span_ * loops_ + seed_;
       scene_->RecordFrames(folder, scene_->PlaybackHeader(frames_.front().front()).frame + offset, scene_->PlaybackHeader(frames_[count - 1].front()).frame + offset,
-                           false, true, offset);
+                           false, args.value("histories", false), offset);
       bool played = true;
       for (uint32_t frame = 0; frame < count && played; ++frame) played = Advance(nullptr, &why);
       const std::string summary = scene_->FinishRecording();
       if (!played) return Failed(why);
       options_.log(std::format("[TW resident] cmd_{} dump ({}): {}", n, mode, summary));
-      return {.result = FolderResult(folder)};
+      std::error_code error;
+      if (!std::filesystem::exists(folder / L"complete.txt", error)) return Failed("the dump is incomplete: " + summary);
+      nlohmann::json result = FolderResult(folder);
+      result.update(Played(mode));
+      result["output_sizes"] = scene_->OutputSizes();
+      return {.result = result};
     }
     if (name == "moments") {
       std::filesystem::path folder;
       if (!OnlyKeys(args, {"k", "outputs", "folder"}, &why) || !ControlFolder(args.at("folder").get<std::string>(), &folder, &why)) return {.status = "REFUSED", .error = why};
+      // k from 3: the lag-1 covariance is the co-moment / (k - 2).
       const auto k = args.at("k").get<uint32_t>();
-      const DXGI_QUERY_VIDEO_MEMORY_INFO memory = Memory();
-      if (k < 2 || !scene_->StartMoments(args.at("outputs").get<std::vector<std::string>>(), (memory.Budget > memory.CurrentUsage) ? memory.Budget - memory.CurrentUsage : 0,
-                                         &why)) {
-        return {.status = "REFUSED", .error = (k < 2) ? "k below 2" : why};
-      }
+      const auto outputs = args.at("outputs").get<std::vector<std::string>>();
+      if (k < 3) return {.status = "REFUSED", .error = std::format("k {} is below 3", k)};
+      // Started after the reset (a full reload makes a new scene) with the video memory then free; let go on any failure.
       std::string mode;
       if (!Reset(&mode, &why)) return Failed(why);
-      for (uint32_t frame = 0; frame < k; ++frame) {
-        if (!Advance(nullptr, &why) || !scene_->AddMoments(&why)) return Failed(why);
+      const DXGI_QUERY_VIDEO_MEMORY_INFO memory = Memory();
+      if (!scene_->StartMoments(outputs, (memory.Budget > memory.CurrentUsage) ? memory.Budget - memory.CurrentUsage : 0, &why)) {
+        return {.status = "REFUSED", .error = why};
       }
-      std::vector<std::string> files;
-      uint64_t bytes = 0;
-      const auto file_of = [](const RtScene12::MomentOutput& output, uint32_t frames, const RtScene12::MomentPlanes& planes) {
-        return MomentsFile({.frames = frames, .width = output.width, .height = output.height, .active_width = output.width, .active_height = output.height,
-                            .format = static_cast<uint32_t>(output.format)},
+      for (uint32_t frame = 0; frame < k; ++frame) {
+        if (!Advance(nullptr, &why) || !scene_->AddMoments(&why)) {
+          scene_->StopMoments();
+          return Failed(why);
+        }
+      }
+      // The active size: the last request's render size for an output at the shared textures' size, else the whole output.
+      const std::array<uint32_t, 4> size = scene_->PlaybackSize();
+      std::map<std::string, std::array<uint32_t, 2>> sizes;
+      const auto file_of = [&](const RtScene12::MomentOutput& output, uint32_t frames, const RtScene12::MomentPlanes& planes) {
+        const bool shared = output.width == size[0] && output.height == size[1];
+        sizes[output.name] = {output.width, output.height};
+        return MomentsFile({.frames = frames, .width = output.width, .height = output.height, .active_width = shared ? size[2] : output.width,
+                            .active_height = shared ? size[3] : output.height, .format = static_cast<uint32_t>(output.format)},
                            planes);
       };
-      if (!scene_->WriteMoments(folder, file_of, &files, &bytes, &why)) return Failed(why);
-      return {.result = {{"folder", folder.string()}, {"files", files}, {"bytes", bytes}}};
+      if (!scene_->WriteMoments(folder, file_of, &why)) return Failed(why);
+      nlohmann::json result = FolderResult(folder);
+      result.update(Played(mode));
+      result["output_sizes"] = sizes;
+      return {.result = result};
     }
     // trace (S4): frames played with Nsight Graphics' frame boundary before each trace, never timed.
     if (!options_.nsight) return {.status = "REFUSED", .error = "not an injected (--nsight) resident"};
@@ -920,7 +1055,7 @@ class Resident {
     return {};
   }
 
-  // dump's and moments' result: the folder, its files and their bytes.
+  // dump's and moments' results' start: the folder, its files and their bytes.
   static nlohmann::json FolderResult(const std::filesystem::path& folder) {
     std::vector<std::string> files;
     uint64_t bytes = 0;
@@ -940,7 +1075,10 @@ class Resident {
     Config made;
     if (!args.at("trace_flags").is_null()) made.trace_flags = args.at("trace_flags").get<uint32_t>();
     if (!args.at("path_flags").is_null()) made.path_flags = args.at("path_flags").get<uint32_t>();
-    if (!args.at("micromap_level").is_null()) made.micromap_level = std::clamp(args.at("micromap_level").get<int>(), 0, 12);
+    if (!args.at("micromap_level").is_null()) {
+      made.micromap_level = args.at("micromap_level").get<int>();
+      if (made.micromap_level < 0 || made.micromap_level > 12) return {.status = "REFUSED", .error = std::format("micromap_level {} is not 0 to 12", made.micromap_level)};
+    }
     for (const auto& [field, value] : args.at("fields").items()) {
       if (!ParseField(field, value.get<double>(), &made.fields.emplace_back(), &why)) return {.status = "REFUSED", .error = why};
     }
@@ -949,7 +1087,7 @@ class Resident {
         made.stems[stem] = {};  // the base build's (an unknown stem still refused below)
         continue;
       }
-      std::ifstream file(path.get<std::string>(), std::ios::binary);
+      std::ifstream file(ControlPath(path.get<std::string>()), std::ios::binary);
       std::vector<uint8_t> code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
       if (!file || !CheckStem(code, &why)) return {.status = "REFUSED", .error = std::format("stem {} ({}): {}", stem, path.get<std::string>(), why.empty() ? "unreadable" : why)};
       made.stem_hashes[stem] = Sha256(code);
@@ -989,12 +1127,14 @@ class Resident {
     const std::string timing = args.at("timing").get<std::string>();
     if (frames == 0 || (timing != "passes" && timing != "total")) return {.status = "REFUSED", .error = "frames below 1, or timing not passes / total"};
     if (args.at("log_uses").get<bool>()) return {.status = "REFUSED", .error = "log_uses: the resource-use log (M10) is not in this build"};
+    if (options_.nsight) return {.status = "REFUSED", .error = "no timing in an injected (--nsight) resident"};
     std::string mode = "none";
     if ((args.at("reset").get<bool>() || loaded_level_ != config_.micromap_level) && !Reset(&mode, &why)) return Failed(why);
     for (uint32_t frame = 0; frame < warm; ++frame) {
       if (!Advance(nullptr, &why)) return Failed(why);
     }
     if (!scene_->ServeTiming((timing == "passes") ? RtScene12::SERVE_TIMING_PASSES : RtScene12::SERVE_TIMING_TOTAL)) return Failed("no GPU timestamps");
+    const uint32_t burnt = scene_->BurnRuns();
     std::vector<std::pair<std::string, std::vector<double>>> table;  // each row's ms a frame (NaN: not in it)
     std::vector<double> clocks;
     double usage = 0.0;
@@ -1030,21 +1170,22 @@ class Resident {
     const std::vector<uint8_t> raw_bytes = RawFile(table, frames);
     const bool raw_written = static_cast<bool>(std::ofstream(options_.control / raw, std::ios::binary | std::ios::trunc)
                                                    .write(reinterpret_cast<const char*>(raw_bytes.data()), static_cast<std::streamsize>(raw_bytes.size())));
-    const std::array<uint32_t, 2> size = scene_->PlaybackSize();
-    return {.result = {{"rows", rows},
-                       {"gpu_clock_mhz", Summarize(clocks).median},
-                       {"vram_usage_mb", usage},
-                       {"vram_budget_mb", budget},
-                       {"reset", mode},
-                       {"timing", timing},
-                       {"frames", frames},
-                       {"warm", warm},
-                       {"raw", raw_written ? nlohmann::json(raw) : nlohmann::json(nullptr)},
-                       {"uses", nullptr},
-                       {"stems", config_.stem_hashes},
-                       {"tag", args.at("tag")},
-                       {"seed", seed_},
-                       {"resolution", {size[0], size[1]}}}};
+    const std::array<uint32_t, 4> size = scene_->PlaybackSize();
+    nlohmann::json result = Played(mode);
+    // burn_runs: the timed frames' passes that burnt (compact and place run only with work).
+    result.update({{"rows", rows},
+                   {"gpu_clock_mhz", Summarize(clocks).median},
+                   {"vram_usage_mb", usage},
+                   {"vram_budget_mb", budget},
+                   {"timing", timing},
+                   {"frames", frames},
+                   {"warm", warm},
+                   {"raw", raw_written ? nlohmann::json(raw) : nlohmann::json(nullptr)},
+                   {"uses", nullptr},
+                   {"tag", args.at("tag")},
+                   {"burn_runs", (config_.burn_loops != 0) ? nlohmann::json(scene_->BurnRuns() - burnt) : nlohmann::json(nullptr)},
+                   {"resolution", {size[0], size[1]}}});
+    return {.result = result};
   }
 
   Options options_;
@@ -1065,7 +1206,11 @@ class Resident {
   uint32_t pending_seed_ = 0;
   uint32_t played_since_reset_ = 0;  // the light animation's frame
   std::vector<LightFrame> light_animation_;
+  nlohmann::json light_anim_ = nullptr;  // its file's SHA-256 (null: none)
   bool tracing_ = false;
+  bool loaded_ = false;                     // Load done (else the scene is unusable)
+  bool stuck_ = false;                      // LetGo kept a scene the GPU did not finish
+  std::map<std::string, std::string> env_;  // RENODX_TW_* at the start
   std::atomic<uint32_t> losses_ = 0;
   uint64_t start_ = 0;
   std::string build_hash_;
