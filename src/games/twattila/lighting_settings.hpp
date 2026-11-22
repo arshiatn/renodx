@@ -14,18 +14,14 @@
 
 #include "../../utils/settings.hpp"
 #include "./light_bounce.hpp"
+#include "./settings_pages.hpp"
 
 // The ambient occlusion (GT-VBAO) and Global Illumination (GT-VBGI, the Light Bounce) settings of every Total War
-// addon: the same keys, presets and tooltips (each game's shader_injection names the bindings the same; its section
-// tints and settings mode use the section names here). ATN's presets: ambient occlusion Faster / Recommended / Heavier,
-// Global Illumination Faster (Recommended) / Heavier (More accurate); the defaults are the recommended ones (Global
+// addon: the same keys, presets and tooltips (each game's shader_injection names the bindings the same; their section
+// names and tints: settings_pages.hpp). ATN's presets: ambient occlusion Faster / Recommended / Heavier, Global
+// Illumination Faster (Recommended) / Heavier (More accurate); the defaults are the recommended ones (Global
 // Illumination off).
 namespace twattila::lighting_settings {
-
-constexpr const char* AO_SECTION = "Ambient Occlusion (GT-VBAO, Experimental, needs in-game SSAO)";
-constexpr const char* GI_SECTION = "Global Illumination (GT-VBGI, Experimental, no in-game SSAO needed)";
-constexpr uint32_t AO_TINT = 0x7FBFFF;
-constexpr uint32_t GI_TINT = 0xFFB86B;
 
 // Global Illumination's Fast MSAA: the games with MSAA have its setting.
 template <typename ShaderInjection>
