@@ -2275,7 +2275,7 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* game, uint8_t* patched
                      "spawn overflows 8, tag leaks 1, stage full 2") == 1);
     std::printf("26h. F1: counts outside trace windows: one line when a fault is among them (not for spawn overflows, stage full or wake timeouts alone; one a second at most), the session totals at the detach\n");
 
-    // In a window: its line carries the always-counted counts and the session's totals follow it at once.
+    // In a window: its line carries the always-counted counts; the session's totals are printed once, after the window (below).
     ResetScheduler();
     clear_log();
     CHECK(trace_open(8, 4));
@@ -2310,7 +2310,16 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* game, uint8_t* patched
       while (at < log_lines.size() && log_lines[at].find("Parallel Effect Update (session totals): ") == std::string::npos) ++at;
       CHECK(at < log_lines.size() && log_lines[at].find("hangs 1,") != std::string::npos && log_lines[at].find("spawn overflows 2,") != std::string::npos);
     }
-    std::printf("26h. F1: a trace window's line carries them; the session totals are printed once, at the first present after the window\n");
+    // A window with the row never on (session_used false): no totals line after it.
+    ResetScheduler();
+    clear_log();
+    CHECK(trace_open(8, 4));
+    eu::Update(false);
+    CHECK(trace_close(4));
+    eu::Update(false);
+    eu::Update(false);
+    CHECK(lines_with("(session totals)") == 0 && lines_with("stack headroom") <= 1);
+    std::printf("26h. F1: a trace window's line carries them; the session totals are printed once, at the first present after the window (none when the row was never on)\n");
 
     // F2: the game's push of an id onto the slot list grows its array when the count has reached the capacity: a unit that ran on a worker and left the capacity word changed is
     // noted once (kind and site), the new capacity the value; a unit on the render thread (the game's own thread) is not.

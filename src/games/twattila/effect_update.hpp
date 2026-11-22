@@ -1592,7 +1592,9 @@ inline void Update(bool row, bool spawns = false) {
     if (const uint32_t least = stack_headroom_low.exchange(~0u, std::memory_order_relaxed); least != ~0u) {
       renodx::utils::log::i("[Total War] Parallel Effect Update (trace window ", stack_window, "): stack headroom ", least / 1024, " KB.");
     }
-    LogSessionTotals();
+    if (session_used) {
+      LogSessionTotals();
+    }
     stack_window = 0;
   }
   const uint32_t stored = std::min<uint32_t>(event_count.exchange(0, std::memory_order_relaxed), static_cast<uint32_t>(events.size()));
