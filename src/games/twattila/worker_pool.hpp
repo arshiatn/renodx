@@ -11,6 +11,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <string>
 
 #if !defined(_WIN64)
 #include <emmintrin.h>
@@ -19,7 +20,6 @@
 
 #include <charconv>
 #include <format>
-#include <string>
 #include <string_view>
 #include <system_error>
 #include <vector>
@@ -55,6 +55,15 @@
 //      is 0, so any user the game's code reaches in between runs alone;
 //  (c) in an ALL job, claim shared units (an atomic counter) before its own partition: every woken worker runs, so the units
 //      are drained even when the owner's part has none left.
+//
+// Invariants:
+//  - The owner is the game's main thread, which is the present thread: Update runs there and stores it as `owner`; a user
+//    reached on any other thread (a worker, a game job thread) runs alone.
+//  - No job spans the frame entry: every job a user starts is joined before the frame's present (Update joins one still
+//    open and says so once, naming the user).
+//  - A job carries its starter's x87 and SSE control words (Start copies them; each worker loads them before the work
+//    function). heapfix's x87fix puts the game's x87 control word back at the frame start, so no job may be open across
+//    that revert, and the frame's first Start comes after it.
 //
 // Why a late worker is safe: Start publishes the generation in `open`, a worker counts itself in `entered`, then reads `open`
 // (both sides seq_cst, a Dekker pair): either it sees the job closed and skips it, or Join sees it inside and waits for it.
@@ -132,6 +141,8 @@ namespace internal {
 constexpr uint32_t WORKER_STACK_BYTES = 512 * 1024;
 constexpr uint32_t DEFAULT_SPIN_US = 3;
 constexpr uint32_t MAX_SPIN_US = 1000;
+// How long Stop waits for the threads to end.
+constexpr DWORD STOP_WAIT_MS = 5000;
 constexpr size_t USER_COUNT = static_cast<size_t>(User::COUNT);
 constexpr size_t MAX_RECORDS = 1024;
 // The user names of RENODX_TW_WORKER_LIMITS and of the trace lines, in the order of User.
@@ -427,20 +438,35 @@ inline JoinResult Run(const Job& job, uint32_t workers, Part&& part) {
   return (started ? Join() : JoinResult{});
 }
 
+// The open job as the stall line prints it (read on the frame watch's thread: atomics and the fields Start wrote before it opened
+// the job, no lock): the user, the workers asked for, those inside now and those done. Empty while no job was ever started.
+inline std::string Describe() {
+  using namespace internal;
+  if (current.work == nullptr) return {};
+  return std::format("{}, asked {}, entered {}, done {}", USER_KEYS[static_cast<size_t>(current.user)], current.workers,
+                     entered.load(std::memory_order_relaxed), done.load(std::memory_order_relaxed));
+}
+
 // Ends the threads and joins them (Update with no user on, detach; never under the loader lock). Users then run alone, so it
 // does not depend on any site coming out. A job still open is joined first (the starting thread only). One open on another
 // thread keeps the pool as it is (its owner joins it later) and pins the module (so does any Stop that finds the pool busy), so
 // a thread that is still inside the work function never runs in unmapped code. Stop holds `busy` while it ends the threads: a
-// Start meanwhile is refused.
+// Start meanwhile is refused. The threads get STOP_WAIT_MS to end: a worker that does not (stuck in the game's code, or held
+// by the loader lock) leaves the handles open, the pool busy for good and the module pinned, said once; Stop returns.
 inline void Stop() {
   using namespace internal;
   Join();
+  // The workers' code lives in this module: pinned (once) whenever a thread may still run it after Stop returns.
+  const auto pin_module = [] {
+    if (pinned) return false;
+    pinned = true;
+    HMODULE module = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&WorkerMain),
+                       &module);
+    return true;
+  };
   if (busy.exchange(true, std::memory_order_acquire)) {
-    if (!pinned) {
-      pinned = true;
-      HMODULE module = nullptr;
-      GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&WorkerMain),
-                         &module);
+    if (pin_module()) {
       renodx::utils::log::w(
           "[Total War] Worker pool: Stop found the pool busy (a job, a Stop or growth on another thread); the pool stays and the module "
           "is pinned.");
@@ -459,7 +485,16 @@ inline void Stop() {
       pool[i].ticket.fetch_add(1, std::memory_order_release);
       pool[i].ticket.notify_one();
     }
-    WaitForMultipleObjects(created, handles.data(), TRUE, INFINITE);
+    if (WaitForMultipleObjects(created, handles.data(), TRUE, STOP_WAIT_MS) == WAIT_TIMEOUT) {
+      uint32_t running = 0;
+      for (uint32_t i = 0; i < created; ++i) {
+        running += (WaitForSingleObject(handles[i], 0) == WAIT_TIMEOUT ? 1 : 0);
+      }
+      pin_module();
+      renodx::utils::log::w(std::format("[Total War] Worker pool: {} workers did not end in {} s at detach (job of {}); the add-on stays loaded.",
+                                        running, STOP_WAIT_MS / 1000, (current.work == nullptr ? "none" : USER_KEYS[static_cast<size_t>(current.user)])));
+      return;
+    }
     for (uint32_t i = 0; i < created; ++i) {
       CloseHandle(handles[i]);
       pool[i].thread = nullptr;
@@ -485,8 +520,12 @@ inline void Update(const Settings& settings) {
     const bool still_open = busy.load(std::memory_order_acquire);
     bool& logged = (still_open ? other_open_logged : open_logged);
     if (!logged) {
-      renodx::utils::log::w(still_open ? "[Total War] Worker pool: a job or Stop on another thread holds the pool."
-                                       : "[Total War] Worker pool: a job was still open at the present; joined.");
+      if (still_open) {
+        renodx::utils::log::w("[Total War] Worker pool: a job or Stop on another thread holds the pool.");
+      } else {
+        renodx::utils::log::w(std::format("[Total War] Worker pool: a job of {} was still open at the present; joined.",
+                                          USER_KEYS[static_cast<size_t>(current.user)]));
+      }
     }
     logged = true;
   }
@@ -659,6 +698,7 @@ inline bool Start(const Job&, uint32_t) { return false; }
 inline JoinResult Join() { return {}; }
 inline void Update(const Settings&) {}
 inline void Stop() {}
+inline std::string Describe() { return {}; }
 inline void ArmTrace(uint32_t) {}
 inline bool Tracing() { return false; }
 inline uint32_t TraceFramesLeft() { return 0; }

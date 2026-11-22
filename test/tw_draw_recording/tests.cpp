@@ -38,9 +38,11 @@
 #include <array>
 #include <atomic>
 #include <bit>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <memory>
@@ -535,6 +537,48 @@ static void PoolStopHoldsBusy() {
 #endif
 }
 
+// Stop does not wait for ever: workers that do not end in 5 s (here held by the control) leave the handles open, the pool busy and
+// the module pinned, with one line naming the count and the last job's user; a second Stop says nothing more.
+static void PoolStopTimesOut() {
+#if defined(TWATTILA_WORKER_POOL_CONTROLS)
+  const uint32_t baseline = ProcessThreadCount();
+  wp::Update({.threads = 4, .in_use = true});
+  RunReport(3);
+  CHECK(wi::created == 3 && ProcessThreadCount() == baseline + 3);
+  wi::pinned = false;
+  wi::controls.hold_exit = true;
+  const auto started = std::chrono::steady_clock::now();
+  wp::Stop();
+  const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+  CHECK(seconds >= 4.8 && seconds < 9.0);
+  CHECK(LogCount("[Total War] Worker pool: 3 workers did not end in 5 s at detach (job of recording); the add-on stays loaded.") == 1);
+  CHECK(wi::pinned && wi::busy.load() && wi::created == 3 && wi::pool[0].thread != nullptr && wi::pool[2].thread != nullptr);
+  CHECK(ProcessThreadCount() == baseline + 3 && wp::Available(wp::User::DRAW_RECORDING) == 0);
+  // Another Stop finds the pool busy with the module already pinned: it says nothing more.
+  const size_t lines = LogCount("did not end in 5 s");
+  const size_t busy_lines = LogCount("Stop found the pool busy");
+  wp::Stop();
+  CHECK(LogCount("did not end in 5 s") == lines && LogCount("Stop found the pool busy") == busy_lines);
+  // The workers let go end by themselves; the test puts the pool back as a Stop that had waited would.
+  wi::controls.hold_exit = false;
+  for (uint32_t i = 0; i < wi::created; ++i) {
+    CHECK(WaitForSingleObject(wi::pool[i].thread, 5000) == WAIT_OBJECT_0);
+    CloseHandle(wi::pool[i].thread);
+    wi::pool[i].thread = nullptr;
+  }
+  wi::created = 0;
+  wi::stopping.store(false);
+  wi::busy.store(false);
+  wp::Update({.threads = 2, .in_use = true});
+  CHECK(wi::created == 1 && wp::Available(wp::User::DRAW_RECORDING) == 1);
+  wp::Update({.in_use = false});
+  CHECK(ProcessThreadCount() == baseline);
+  std::printf("pool: Stop gives up after 5 s on workers that do not end: the line, the pin, the handles kept, the pool busy\n");
+#else
+  std::printf("pool: Stop's timeout skipped (TWATTILA_WORKER_POOL_CONTROLS not defined)\n");
+#endif
+}
+
 // ENTERED stress: short jobs at K 2 to 16 where the owner drains the units alone and flags the context right after Join; a work
 // function that sees the flag at its start or end ran past the Join. It tests the job logic and the generation handling (a late
 // worker skipping, the contexts reused every 64 jobs), not the memory ordering: no x86 test can show a weaker order.
@@ -644,9 +688,31 @@ static void PoolOpenAtUpdate() {
     CHECK(reports[1].runs == round + 1u && reports[2].runs == round + 1u && reports[3].runs == round + 1u);
     CHECK(wp::Available(wp::User::DRAW_RECORDING) == 3);
   }
-  CHECK(LogCount("a job was still open at the present") == 1);
+  CHECK(LogCount("a job of recording was still open at the present; joined.") == 1);
+  // The line names the job's user: another user's job open at a later present says it again only once per kind, with its own name.
+  wi::open_logged = false;
+  REQUIRE(wp::Start({.work = ReportWork, .user = wp::User::PENDING_SWEEP, .join = wp::JoinRule::ENTERED}, 2));
+  wp::Update({.threads = 4, .in_use = true});
+  CHECK(LogCount("a job of sweep was still open at the present; joined.") == 1 && LogCount("a job of recording was still open") == 1);
   wp::Update({.in_use = false});
-  std::printf("pool: a job open at Update is joined, logged once\n");
+  std::printf("pool: a job open at Update is joined, logged once, naming its user\n");
+}
+
+// Describe(): the stall line's words for the open job (user, workers asked, inside, done), from the pool's atomics.
+static void PoolDescribe() {
+  wp::Update({.threads = 5, .in_use = true});
+  Gate gate;
+  REQUIRE(wp::Start({.work = GatedWork, .context = &gate, .user = wp::User::EFFECT_UPDATE, .join = wp::JoinRule::ENTERED}, 4));
+  for (int wait = 0; wait < 2000 && wi::entered.load() != 4; ++wait) Sleep(1);
+  CHECK(wp::Describe() == "effects, asked 4, entered 4, done 0");
+  gate.word.store(1, std::memory_order_release);
+  gate.word.notify_all();
+  wp::Join();
+  CHECK(wp::Describe() == "effects, asked 4, entered 0, done 4");
+  wp::Run({.work = ReportWork, .user = wp::User::RING_FILL, .join = wp::JoinRule::ALL}, 2, [] {});
+  CHECK(wp::Describe() == "ring, asked 2, entered 0, done 2");
+  wp::Update({.in_use = false});
+  std::printf("pool: Describe names the user, the workers asked, inside and done\n");
 }
 
 // RENODX_TW_WORKER_LIMITS and RENODX_TW_POOL_SPIN_US: read at the first present and again at a new env generation, with the pool
@@ -958,6 +1024,7 @@ struct Rig {
   std::array<unsigned int, 2> saved_words = {};
 };
 static Rig rig;
+static void RigIncomplete(uint32_t) { rig.incomplete.fetch_add(1); }
 
 static void FoldFillWork(void* context, uint32_t worker) {
   auto& self = *static_cast<Rig*>(context);
@@ -1006,7 +1073,7 @@ static bool OpenFor(void* tracker, uint32_t groups) {
   }
   void* const key = (rig.decoy_key ? static_cast<void*>(rig.decoy) : tracker);
   if (!di::OpenFold(key, &rig.ring,
-                    {.work = &FoldFillWork, .context = &rig, .chunks_done = &rig.chunks_done, .chunks = rig.chunks, .incomplete = &rig.incomplete},
+                    {.work = &FoldFillWork, .context = &rig, .chunks_done = &rig.chunks_done, .chunks = rig.chunks, .incomplete = &RigIncomplete},
                     workers)) {
     return false;
   }
@@ -2650,6 +2717,14 @@ static void DepthNested() {
 static void DepthBadOps() {
   const auto world = BuildWorld({.items = 6000, .seed = 43, .max_run = 10});
   const Outcome serial = RunSerial(world.get());
+  // The line names the group, the chunk and where the bad header is, and is said once for the run.
+  di::bad_ops_logged = false;
+  const size_t damaged_lines = LogCount("a recorded op buffer is damaged (");
+  test_controls.corrupt_chunk = 2;
+  RunStaged(world.get(), dr::Stage::RECORDED, 4, true);
+  test_controls.corrupt_chunk = -1;
+  CHECK(LogCount("a recorded op buffer is damaged (") == damaged_lines + 1);
+  CHECK(LogCount("(group Depth A, chunk 2, bad header 0x") >= 1 && LogCount(" recorded); its calls run directly.") >= 1);
   for (const dr::Stage stage : {dr::Stage::RECORDED, dr::Stage::WORKERS}) {
     for (const uint32_t chunk : {1u, 2u, 3u}) {
       test_controls.corrupt_chunk = static_cast<int>(chunk);
@@ -2660,7 +2735,83 @@ static void DepthBadOps() {
       CHECK(staged.first_reason == "bad ops" && staged.replayed > 0);
     }
   }
-  std::printf("depth bad ops: a zero op header in one chunk makes that call run directly, logs equal the serial run\n");
+  CHECK(LogCount("a recorded op buffer is damaged (") == damaged_lines + 1);
+  std::printf("depth bad ops: a zero op header in one chunk makes that call run directly, logs equal the serial run; the line names group, chunk and header, once\n");
+}
+
+// A refused commit of the op memory: PrepareSlot only stores it (inside the game's code, nothing logged there); the next Update says it once,
+// with the committed size and the error; the slot gets no buffer (its chunk overflows and runs again). The control stands for a process out of commit.
+static void OpMemoryCommit() {
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  alignas(16) std::array<uint8_t, dr::TRACKER_SIZE> real = {};
+  di::op_commit_failed.store(false);
+  di::op_commit_said = false;
+  const size_t lines = LogCount("its op memory could not grow past");
+  // Earlier tests may have committed the whole arena: the commit is taken back to 64 KB (its pages stay committed, so a grant succeeds) and put back after.
+  const uint32_t saved_committed = di::op_committed;
+  di::op_committed = 64 * 1024;
+  const uint32_t committed = di::op_committed;
+  uint32_t used = committed;  // everything committed is used: the slot needs more
+  di::controls.commit_op_memory = false;
+  const dr::Slot* const slot = di::PrepareSlot(0, static_cast<uint32_t>(dr::Group::DEPTH_A), real.data(), 4096, &used);
+  CHECK(slot->ops_end == slot->ops_begin && di::op_committed == committed && used == committed);
+  CHECK(di::op_commit_failed.load() && di::op_commit_error.load() == ERROR_COMMITMENT_LIMIT && di::op_commit_kb.load() == committed / 1024);
+  CHECK(LogCount("its op memory could not grow past") == lines);
+  dr::Update({});
+  const std::string expected = std::format("[Total War] Threaded Draw Recording: its op memory could not grow past {} KB (error {}); chunks run again.",
+                                           committed / 1024, ERROR_COMMITMENT_LIMIT);
+  CHECK(LogCount(expected) == 1 && LogCount("its op memory could not grow past") == lines + 1);
+  // A second refusal and the next presents say nothing more.
+  di::PrepareSlot(1, static_cast<uint32_t>(dr::Group::DEPTH_A), real.data(), 4096, &used);
+  dr::Update({});
+  dr::Update({});
+  di::controls.commit_op_memory = true;
+  CHECK(LogCount("its op memory could not grow past") == lines + 1);
+  // The commit allowed again: the slot gets its buffer and the committed size grows.
+  used = committed;
+  const dr::Slot* const grown = di::PrepareSlot(2, static_cast<uint32_t>(dr::Group::DEPTH_A), real.data(), 4096, &used);
+  CHECK(grown->ops_end > grown->ops_begin && di::op_committed > committed);
+  di::op_committed = saved_committed;
+  di::op_commit_failed.store(false);
+  std::printf("op memory commit: a refused commit logs nothing in the game's call, one line at the next present (size, error), the slot is short; allowed again it grows\n");
+#else
+  std::printf("op memory commit: skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
+#endif
+}
+
+// The first allocation's pieces each name themselves and their error when they fail; the memory that was got is given back and the recording
+// stands down for good (one line).
+static void AllocationFailures() {
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  dr::Shared* const kept = di::shared;
+  di::shared = nullptr;
+  struct Case {
+    uint32_t pieces;
+    const char* text;
+  };
+  const std::array<Case, 5> cases = {{
+      {1, "stands down: its memory could not be allocated: its page (error 8)."},
+      {2 | 4, "stands down: its memory could not be allocated: the slots (error 8), the op address space (error 8)."},
+      {8, "stands down: its memory could not be allocated: the module reference (error 126)."},
+      {1 | 2 | 4 | 8, "stands down: its memory could not be allocated: its page (error 8), the slots (error 8), the op address space (error 8)."},
+      {4, "stands down: its memory could not be allocated: the op address space (error 8)."},
+  }};
+  for (const Case& test : cases) {
+    di::allocation_failed = false;
+    di::controls.fail_allocation = test.pieces;
+    const size_t lines = LogCount("stands down: its memory could not be allocated");
+    CHECK(!di::Allocate() && di::allocation_failed && di::shared == nullptr);
+    CHECK(LogCount(std::string("[Total War] Threaded Draw Recording: ") + test.text) == 1 && LogCount("stands down: its memory could not be allocated") == lines + 1);
+    // Said once: the next ask returns at once.
+    CHECK(!di::Allocate() && LogCount("stands down: its memory could not be allocated") == lines + 1);
+  }
+  di::controls.fail_allocation = 0;
+  di::allocation_failed = false;
+  di::shared = kept;
+  std::printf("allocation failures: each piece (page, slots, op address space, module reference) is named with its error, said once\n");
+#else
+  std::printf("allocation failures: skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
+#endif
 }
 
 // The chunk end's join of the "any" byte (+0x69) into the real tracker: a chunk that left nothing pending keeps what is there
@@ -5220,9 +5371,11 @@ int main() {
   PoolRefusedAllCompletes();
   PoolStopWithOpenJob();
   PoolStopHoldsBusy();
+  PoolStopTimesOut();
   PoolEnteredStress();
   PoolSlowWork();
   PoolOpenAtUpdate();
+  PoolDescribe();
   PoolEnvironment();
   PoolArmTrace();
   Setup();
@@ -5241,6 +5394,8 @@ int main() {
   DepthControls();
   DepthNested();
   DepthBadOps();
+  OpMemoryCommit();
+  AllocationFailures();
   AnyJoinControl();
   ColourRecordRules();
   ColourOpsEqual();

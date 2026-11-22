@@ -472,6 +472,10 @@ struct Controls {
   bool fold_entry_key = true;
   // The close's ticks leave the phase the lap closes and go to the call's `fold_close`.
   bool fold_move_ticks = true;
+  // PrepareSlot's commit of the op memory (off: it is refused, as when the process is out of commit).
+  bool commit_op_memory = true;
+  // The first allocation's pieces that fail (bits: 1 the page, 2 the slots, 4 the op address space, 8 the module reference).
+  uint32_t fail_allocation = 0;
 };
 #if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
 static Controls controls;
@@ -903,6 +907,11 @@ static Shared* shared = nullptr;
 static uint8_t* arena = nullptr;
 static uint8_t* op_memory = nullptr;
 static uint32_t op_committed = 0;
+// A refused commit of the op memory (PrepareSlot, inside the game's code: only stored): the first one's numbers, said by Update once.
+static std::atomic<uint32_t> op_commit_kb = 0;
+static std::atomic<DWORD> op_commit_error = 0;
+static std::atomic<bool> op_commit_failed = false;
+static bool op_commit_said = false;
 static HMODULE module_reference = nullptr;
 // The most op bytes a chunk may use (tests lower it to force overflows).
 static uint32_t op_buffer_limit = OP_ARENA_BYTES;
@@ -926,7 +935,9 @@ struct FoldFill {
   void* context = nullptr;
   const std::atomic<uint32_t>* chunks_done = nullptr;
   uint32_t chunks = 0;
-  std::atomic<uint32_t>* incomplete = nullptr;  // instance_fill's incomplete_fills: one counter, one line
+  // Called by the close (render thread, inside the game's code: it only stores) with the chunks done when the fill ended with chunks
+  // not done: instance_fill counts it and keeps the first one's details for its one line.
+  void (*incomplete)(uint32_t chunks_done) = nullptr;
 };
 
 // The game's ring, as the fold reaches it (the fill site, the stubs' key proof and the close): the tracker's ring pointer, the ring's
@@ -1066,8 +1077,9 @@ inline worker_pool::JoinResult CloseFold(const Descriptor* record, Part&& part) 
   if (controls.fold_drain_and_join) {
     fold.fill.work(fold.fill.context, 0);
     joined = worker_pool::Join();
-    if (fold.fill.chunks_done->load(std::memory_order_acquire) != fold.fill.chunks) {
-      fold.fill.incomplete->fetch_add(1, std::memory_order_relaxed);
+    const uint32_t chunks_done = fold.fill.chunks_done->load(std::memory_order_acquire);
+    if (chunks_done != fold.fill.chunks) {
+      fold.fill.incomplete(chunks_done);
       fold_latched = true;
     }
   }
@@ -1315,9 +1327,14 @@ inline Slot* PrepareSlot(uint32_t index, uint32_t group_index, void* tracker, ui
   uint32_t bytes = std::min({wanted_bytes + OP_SLACK_BYTES, op_buffer_limit, OP_ARENA_BYTES - *op_used}) & ~3u;
   if (*op_used + bytes > op_committed) {
     const uint32_t target = (*op_used + bytes + 4095) & ~4095u;
-    if (VirtualAlloc(op_memory + op_committed, target - op_committed, MEM_COMMIT, PAGE_READWRITE) != nullptr) {
+    if (controls.commit_op_memory && VirtualAlloc(op_memory + op_committed, target - op_committed, MEM_COMMIT, PAGE_READWRITE) != nullptr) {
       op_committed = target;
     } else {
+      if (!op_commit_failed.load(std::memory_order_relaxed)) {
+        op_commit_kb.store(op_committed / 1024, std::memory_order_relaxed);
+        op_commit_error.store((controls.commit_op_memory ? GetLastError() : ERROR_COMMITMENT_LIMIT), std::memory_order_relaxed);
+        op_commit_failed.store(true, std::memory_order_release);
+      }
       bytes = (op_committed - *op_used) & ~3u;
     }
   }
@@ -1361,7 +1378,10 @@ inline bool OpsWellFormed(const Slot* slot) {
   for (const uint32_t* op = slot->ops_begin; op < slot->ops_cursor; op += (*op >> 16)) {
     if ((*op >> 16) == 0 || (*op >> 16) > static_cast<size_t>(slot->ops_cursor - op)) {
       if (!bad_ops_logged) {
-        renodx::utils::log::w("[Total War] Threaded Draw Recording: a recorded op buffer is damaged; its calls run directly.");
+        renodx::utils::log::w(std::format(
+            "[Total War] Threaded Draw Recording: a recorded op buffer is damaged (group {}, chunk {}, bad header 0x{:08X} at byte {} of the {} recorded); its calls run directly.",
+            GROUP_NAMES[slot->group % GROUP_NAMES.size()], slot->chunk, *op, (op - slot->ops_begin) * sizeof(uint32_t),
+            (slot->ops_cursor - slot->ops_begin) * sizeof(uint32_t)));
       }
       bad_ops_logged = true;
       return false;
@@ -2597,19 +2617,45 @@ namespace internal {
 inline bool Allocate() {
   if (shared != nullptr) return true;
   if (allocation_failed) return false;
-  void* const page = VirtualAlloc(nullptr, 4096, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-  void* const slots = VirtualAlloc(nullptr, static_cast<size_t>(SLOT_COUNT) * SLOT_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-  void* const ops = VirtualAlloc(nullptr, OP_ARENA_BYTES, MEM_RESERVE, PAGE_READWRITE);
+  // What each piece of the allocation reports when it fails (page, slots, op address space, module reference), kept at its call.
+  std::array<DWORD, 4> errors = {};
+  const auto allocate = [&errors](size_t piece, size_t size, DWORD type) -> void* {
+    void* memory = nullptr;
+    if ((controls.fail_allocation >> piece & 1) != 0) {
+      SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+    } else {
+      memory = VirtualAlloc(nullptr, size, type, PAGE_READWRITE);
+    }
+    errors[piece] = (memory == nullptr ? GetLastError() : ERROR_SUCCESS);
+    return memory;
+  };
+  void* const page = allocate(0, 4096, MEM_RESERVE | MEM_COMMIT);
+  void* const slots = allocate(1, static_cast<size_t>(SLOT_COUNT) * SLOT_SIZE, MEM_RESERVE | MEM_COMMIT);
+  void* const ops = allocate(2, OP_ARENA_BYTES, MEM_RESERVE);
   HMODULE module = nullptr;
-  if (page == nullptr || slots == nullptr || ops == nullptr
-      || GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCWSTR>(&Record), &module) == FALSE) {
+  if (page != nullptr && slots != nullptr && ops != nullptr) {
+    if ((controls.fail_allocation & 8) != 0) {
+      SetLastError(ERROR_MOD_NOT_FOUND);
+    } else {
+      GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCWSTR>(&Record), &module);
+    }
+    errors[3] = (module == nullptr ? GetLastError() : ERROR_SUCCESS);
+  }
+  if (page == nullptr || slots == nullptr || ops == nullptr || module == nullptr) {
     for (void* memory : {page, slots, ops}) {
       if (memory != nullptr) {
         VirtualFree(memory, 0, MEM_RELEASE);
       }
     }
     allocation_failed = true;
-    renodx::utils::log::w("[Total War] Threaded Draw Recording: stands down: its memory could not be allocated.");
+    constexpr std::array<const char*, 4> PIECES = {"its page", "the slots", "the op address space", "the module reference"};
+    std::string failed;
+    for (size_t piece = 0; piece < errors.size(); ++piece) {
+      if (errors[piece] != ERROR_SUCCESS) {
+        failed += std::format("{}{} (error {})", (failed.empty() ? "" : ", "), PIECES[piece], errors[piece]);
+      }
+    }
+    renodx::utils::log::w(std::format("[Total War] Threaded Draw Recording: stands down: its memory could not be allocated: {}.", failed));
     return false;
   }
   arena = static_cast<uint8_t*>(slots);
@@ -2650,6 +2696,12 @@ inline void Update(const Settings& settings) {
   }
   if (const uint32_t changes = std::exchange(fold_flag_changes, 0); changes != 0) {
     renodx::utils::log::w("[Total War] Fill With Draw Recording: the ring's flag changed in ", changes, " folds between the stub and the close: off for the session.");
+  }
+  // A refused commit of the op memory (noted inside the game's calls): once, with the first one's numbers.
+  if (op_commit_failed.load(std::memory_order_acquire) && !op_commit_said) {
+    op_commit_said = true;
+    renodx::utils::log::w(std::format("[Total War] Threaded Draw Recording: its op memory could not grow past {} KB (error {}); chunks run again.",
+                                      op_commit_kb.load(std::memory_order_relaxed), op_commit_error.load(std::memory_order_relaxed)));
   }
   Stage stage = settings.stage;
   if (stage != Stage::OFF && !Allocate()) {

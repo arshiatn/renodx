@@ -390,10 +390,23 @@ static FillJob fold_fill;
 // between the retargeted call and the count is not seen (a window of a few instructions).
 static std::atomic<int32_t> active = 0;
 static bool check_enabled = false;  // RENODX_TW_FILL_CHECK=1, read once by Prepare
-static std::atomic<uint32_t> checked = 0;
+static std::atomic<uint32_t> checked = 0;  // the fills compared since the start
+static uint32_t check_window = 0;          // the pool trace window whose compared fills are being counted (0: none open)
+static uint32_t check_window_start = 0;
 static std::atomic<uint32_t> check_mismatches = 0;
 static std::atomic<uint32_t> check_skipped = 0;
+// The fills that ended with chunks not done since the start: the first one is said at the next present, the total at detach.
 static std::atomic<uint32_t> incomplete_fills = 0;
+struct IncompleteFill {
+  uint8_t site;
+  uint32_t count;
+  uint32_t chunks_done;
+  uint32_t chunks;
+  const char* join;
+};
+static IncompleteFill first_incomplete = {};
+static std::atomic<bool> first_incomplete_kept = false;
+static bool first_incomplete_said = false;
 static std::array<TraceRecord, TRACE_RECORDS> trace_records;
 static std::atomic<uint32_t> trace_count = 0;
 
@@ -404,6 +417,27 @@ constexpr std::array<uint32_t, 3> FOLD_GROUPS = {
     1u << static_cast<uint32_t>(draw_recording::Group::COLOUR_A),
     (1u << static_cast<uint32_t>(draw_recording::Group::DEPTH_B))
         | (1u << static_cast<uint32_t>(draw_recording::Group::COLOUR_B))};
+#endif
+
+// A fill that ended with chunks not done. It runs in the game's call: a count and the first one's numbers, no log, no allocation.
+inline void NoteIncomplete(const IncompleteFill& fill) {
+  if (incomplete_fills.fetch_add(1, std::memory_order_relaxed) == 0) {
+    first_incomplete = fill;
+    first_incomplete_kept.store(true, std::memory_order_release);
+  }
+}
+
+#if defined(TWATTILA_DRAW_RECORDING)
+static size_t fold_site = 0;  // the site whose fold is open
+
+// The fold's close found chunks not done (draw_recording's callback: the fold knows no site).
+inline void NoteFoldIncomplete(uint32_t chunks_done) {
+  NoteIncomplete({.site = static_cast<uint8_t>(fold_site),
+                  .count = fold_fill.end - fold_fill.begin,
+                  .chunks_done = chunks_done,
+                  .chunks = fold_fill.chunks,
+                  .join = "fold"});
+}
 #endif
 
 inline void KeepTrace(const TraceRecord& record) {
@@ -486,7 +520,11 @@ inline void Dispatch(size_t site, Range* range, void* functor, void* manager) {
                              workers, [&] { FillWork(&job, 0); });
         chunks_done = job.chunks_done.load(std::memory_order_acquire);
         if (chunks_done != chunks) {
-          incomplete_fills.fetch_add(1, std::memory_order_relaxed);
+          NoteIncomplete({.site = static_cast<uint8_t>(site),
+                          .count = count,
+                          .chunks_done = chunks_done,
+                          .chunks = chunks,
+                          .join = (control_all_join ? "ALL" : "ENTERED")});
         }
         return joined;
       };
@@ -545,6 +583,7 @@ inline void Dispatch(size_t site, Range* range, void* functor, void* manager) {
         void* const ring = *reinterpret_cast<void**>(static_cast<uint8_t*>(tracker) + dr::TRACKER_RING);
         const uint32_t fold_workers = dr::FoldWorkers(FOLD_GROUPS[stub]);
         if (fold_workers != 0 && *(static_cast<const uint8_t*>(ring) + dr::RING_FLAG) == 0) {
+          fold_site = site;
           fold_fill.copy = copy;
           fold_fill.functor = functor;
           fold_fill.begin = range->begin;
@@ -559,7 +598,7 @@ inline void Dispatch(size_t site, Range* range, void* functor, void* manager) {
                                  .context = &fold_fill,
                                  .chunks_done = &fold_fill.chunks_done,
                                  .chunks = chunks,
-                                 .incomplete = &incomplete_fills},
+                                 .incomplete = &NoteFoldIncomplete},
                                 fold_workers);
         }
       }
@@ -959,13 +998,27 @@ inline uint32_t Wanted(bool row, [[maybe_unused]] bool fold_row = false, [[maybe
                             record.render_ticks * microseconds));
     }
   }
-  if (const uint32_t compared = checked.exchange(0, std::memory_order_relaxed); compared != 0) {
-    renodx::utils::log::i("[Total War] Parallel Instance Fill check: ", compared, " fills compared, ",
-                          check_mismatches.load(std::memory_order_relaxed), " mismatches so far, ",
-                          check_skipped.load(std::memory_order_relaxed), " skipped so far");
+  // Check mode: one line per pool trace window (at the first present after it), not one per present.
+  if (worker_pool::Tracing()) {
+    if (check_window != worker_pool::TraceWindow()) {
+      check_window = worker_pool::TraceWindow();
+      check_window_start = checked.load(std::memory_order_relaxed);
+    }
+  } else if (check_window != 0) {
+    if (const uint32_t compared = checked.load(std::memory_order_relaxed) - check_window_start; compared != 0) {
+      renodx::utils::log::i("[Total War] Parallel Instance Fill check (trace window ", check_window, "): ", compared,
+                            " fills compared, ", check_mismatches.load(std::memory_order_relaxed), " mismatches so far, ",
+                            check_skipped.load(std::memory_order_relaxed), " skipped so far");
+    }
+    check_window = 0;
   }
-  if (const uint32_t incomplete = incomplete_fills.exchange(0, std::memory_order_relaxed); incomplete != 0) {
-    renodx::utils::log::w("[Total War] Parallel Instance Fill: ", incomplete, " fills ended with chunks not done");
+  if (first_incomplete_kept.load(std::memory_order_acquire) && !first_incomplete_said) {
+    first_incomplete_said = true;
+    renodx::utils::log::w(std::format(
+        "[Total War] Parallel Instance Fill: a fill ended with chunks not done ({}, {} items, chunks {}/{}, join rule {}); "
+        "no more of these lines this run, the total is said at detach.",
+        SITES[first_incomplete.site].name, first_incomplete.count, first_incomplete.chunks_done, first_incomplete.chunks,
+        first_incomplete.join));
   }
   return wanted;
 }
