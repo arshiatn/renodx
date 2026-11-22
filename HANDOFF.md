@@ -447,6 +447,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - grs_ + gtl_ (moments only, later): the "full size is its active size" protocol l ... | ?
 - coordinator (route before T5): end-batch placeholders that never match (no shipp ... | ?
 - gtl_ + gtq_ (v1.2): played.json carries a config hash (flags, fields, micromap l ... | ?
+- gtp_ (after gtw_ re-check 10): the hook's own rows() / mode() raise on a corrupt ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -7970,13 +7971,50 @@ heading text are in HANDOFF_ARCHIVE.md)
         sets); gtv_ re-checks; its 4 held lab suites + race probe need a new run after H0.
         - [ ] gtl_ + gtq_ (v1.2): played.json carries a config hash (flags, fields, micromap level) so two configs with
             the same stems / env cannot form one reference.
-        Agents (8): gtp_ (gtw_ re-check 9 Shoulds + re-seed), gtq_ (gtv_'s S3 builder + nits 1-5), gtl_ (gtv_'s S2
-        + S3 lab + test nit + .partial belt), gpr_ (gtb_ s1a-s1c re-check), ebr_ (t4i_ r22 re-check), b13r_ (c3i_
-        B1.6 follow-ups re-check), t4i_ (r23 after ebr_'s r22 verdict), c3i_ (B1 real-routine tests). Idle: bd1r_,
-        lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, gbc_, gtb_ (waits gpr_), gti_
-        (after H0: R1), grs_, gtk_, gtw_ (re-check 10 after gtp_), gtv_ (re-checks gtq_ + gtl_; held lab tests +
-        race probe after H0). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
-        map_replay-named process until H0 ends.
+        gtp_ RE-CHECK 9 SHOULDS DONE 07:0x (plan_1117/gtp_recheck9_shoulds_handback.md; backups scratchpad\gtp_bak14
+        incl. old price_seed / prices / prices_state): live, mode SHADOW, suite 658 / 658 (+41); no override.json, no
+        new gate_errors rows; INSTALL item 12 steps unchanged except the I1 wording. O2 override test on [c] +
+        inner_commands (-EncodedCommand / --bash-b64 / bash -c refused; INSTALL section 3 names the wildcard /
+        built-name limit); W5 lead_words() strips & . VAR= $env:X= PREFIX_WORDS `timeout <n>` (cat <<X | python - read
+        as python); W6 package-manager flag values skipped, sub-verbs for uv pip / uv tool / dotnet tool / conda env,
+        pipx run / uv run --with / uvx = installs (dotnet tool install regression fixed); W7 real Claude_Browser texts
+        (Tab Context list decides: any non-local tab locks, all-local clears; else navigated to / URL: / captured at
+        origin / JSON url); RE-SEED run on the live gates: 102,588 seeds / 400 transcripts, 6,775 price rows, 0
+        redirect gated_build seeds (2 thin n 1 rows from 05:41 prune after 7 days); F24 paired-median timing. Nits:
+        -u out of GIT_VALUE, N9 regex, N3 deny text, I1. -> gtw_ RE-CHECK 10 STARTED.
+        gtl_ S2 + S3 DONE 07:0x (plan_1117/gtl_s2_s3_handback.md; backups scratchpad\gtl_backup_spacing): lab.py
+        IQ_PRIME_BASE 1000 / REFERENCE_SEEDS 2000 (copy, unit test fails if iq_frames.py differs) / SETTLE_LOOPS 5;
+        S3 kind_iq plays base + i x N (one seeds list per arm feeds seed cmd, _s<seed> folders, echo check,
+        iq_input); S2 validator: span = last request_<frame> - state.bin frame + 1, W = 5 x span, refuse unless K x N +
+        W < 1000 and 1000 + K x N + W < 2000 (numbers in the line); no state.bin header / no request files =
+        refused (fails closed); fixture day1\frame_100 gains state.bin + request_100 / _101 (span 2); belt: IQ_REFS
+        reference with a .partial part or no manifest.json refused; test nit fixed. test_lab_unit 28 / 28; jobs /
+        keeper / ps1 suites still HELD (need a new gtl_ run after H0 = first jobs run since the gtv_ fixes round).
+        -> gtv_ RE-CHECK of gtl_ STARTED (gtq_'s S3 builder joins when gtq_ hands back).
+        ebr_ r22 RE-CHECK = MERGE-READY 07:0x (render_mt/reports/ebr_r22_recheck_handback.md; ebr_t4_review.md "## r22
+        re-check" line 881): run_all 0 failed (lib 463, make 86, check 164, leg 165, analyze 109); FIX 1 code_sites
+        + FIX 2 written / not_written exact vs c54e3e589; r21 mutants S4 + G6 killed; 13 new mutants, all killed but
+        S5 (harmless); Shoulds b1_left_alone / stood_down / no_memory / group LATCH / B1Cached drop OK. Should: the
+        new LATCH rows b1_sites_stood_down / b1_no_memory / b1_stack_headroom use part B1, whose group holds
+        B1Cached -> a rare B1 event kills every later Cached number. COORDINATOR DECISION: those three LATCH rows ->
+        part B1L1 (the lines come from the L1 / L2 sites; B1L2 requires B1L1); STOP rows b1_watched_word /
+        b1_safety and crash job_parts "effects": "B1" stay B1 (safe side = suspects Off, crash budget rule).
+        -> t4i_ R23 STARTED (c3i_'s S2 cached-count regex + real b1_stack_headroom + the B1L1 change).
+        gpr_ GTB_ S1A-S1C RE-CHECK = OK 07:0x (plan_1117/designs/gpr_gtb_s1a_s1c_handback.md; gpr_review.md "## gtb_
+        s1a-s1c re-check"): test_budget 34 OK, selftest 3 / 3 x 2. Open question answered: gate_rows' fallback
+        reader decodes 'replace' -> a garbled "price" key reads as no row = gates not installed = declared /
+        --limit kills (probe gpr_gates_corrupt_probe.py: killed exit 124). Fix -> gtb_: strict decode; on
+        UnicodeDecodeError gates.tsv = installed but unreadable, price + mode.txt read as shadow, one FAULT line
+        "gates.tsv unreadable (...): read as shadow" (stderr + facts cell); lab phases still kill; missing file =
+        not installed. -> gtb_ STARTED, gpr_ re-checks.
+        - [ ] gtp_ (after gtw_ re-check 10): the hook's own rows() / mode() raise on a corrupt gates.tsv / mode.txt -
+            decide whether the hook reads that as shadow + a FAULT line (gpr_'s note 07:0x).
+        Agents (8): gtw_ (S1c re-check 10), gtq_ (gtv_'s S3 builder + nits 1-5), gtv_ (gtl_ S2 + S3 re-check),
+        t4i_ (r23), gtb_ (gate_rows strict decode), b13r_ (c3i_ B1.6 follow-ups re-check), c3i_ (B1 real-routine
+        tests). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, gbc_,
+        gpr_ (re-checks gtb_), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), gtl_ (after H0: its 4 suites),
+        ebr_ (re-checks t4i_ r23). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
+        map_replay-named process until H0 ends; gtv_'s held lab tests + race probe after H0.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
