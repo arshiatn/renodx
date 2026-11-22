@@ -7936,9 +7936,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         DRAW_RECORDING + amd64 exit 0. -> b13r_ RE-CHECK STARTED; t4i_ R23 STARTED (S2 regex `\[Total War\] Cached
         Particle Count \(trace window (\d+)\): (\d+) hits, (\d+) misses\.`, b1_stack_headroom now real); c3i_
         starts the B1 real-routine tests box on a new branch from f512acab4 (fixes from b13r_ first if any).
-        Agents (8): gtp_ (gtw_ re-check 9 Shoulds + re-seed), gtv_ (gtq_ fixes + gtl_ iq_refs re-check), gtb_
-        (s1a-s1c), ebr_ (t4i_ r22 re-check), b13r_ (c3i_ B1.6 follow-ups re-check), t4i_ (r23: c3i_'s two
-        lines), c3i_ (B1 real-routine tests). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake
+        CORRECTION 06:5x: t4i_ r23 NOT started yet - ebr_ is re-checking r22 on the same files (gates.json /
+        corpus / tests); r23 (c3i_'s two lines) goes to t4i_ together with ebr_'s r22 verdict. Sent b13r_ (re-check)
+        and c3i_ (real-routine tests on rmt_b1rt from f512acab4).
+        Agents (7): gtp_ (gtw_ re-check 9 Shoulds + re-seed), gtv_ (gtq_ fixes + gtl_ iq_refs re-check), gtb_
+        (s1a-s1c), ebr_ (t4i_ r22 re-check), b13r_ (c3i_ B1.6 follow-ups re-check), t4i_ (r23 after ebr_'s r22
+        verdict), c3i_ (B1 real-routine tests). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake
         to testbin + R1), gpp_, gbc_, gpr_ (re-checks gtb_ s1a-s1c), gti_ (after H0: R1), grs_, gtk_, gtw_
         (re-check 10 after gtp_), gtl_ (after H0: its 4 suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator,
         since 05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends; gtv_'s held lab tests
