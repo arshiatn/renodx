@@ -12531,6 +12531,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         release: device check + lock like atlas_far_plane), r3 (between-knot check vs the worse neighbour + 0.5 %, a 0.25 knot
         or continuity-constrained fit); NITs ON_SUN_DRAW -> OnSunDraw, a test of the buffer copy, part 29 rig CLAMP.
         ATN list 36 (rvf_ r4: WH2 ships the nearer fit where no slider set reaches 5 %; coord's pick ship, like ATN 29).
+        t4i_ NITS DONE 23:2x (render_mt/reports/t4i_nits_handback.md): r2_left_alone status text (any refused stub leaves all
+        stubs out, R2 off; control_all_or_none takes R1 out too); gates.json code_rows "Threaded Draw Recording" {parts: [C]}
+        so C's partial line is a resumable stop only in a start that plans C (else a NOTE) + corpus line + test_check
+        c_partial_on / c_partial_off; test_analyze VOL-L1 without REF-P NOTE + late 70 ms peak past L_end - 30 not taken as
+        the volley. run_all green (lib 623, names 6, make 117, check 183, leg 166, analyze 146); backups *.pre_nits in
+        scratchpad\t4i_bak\refresh2. Tools only, nothing committed. lg3_ resent its er5 hand-back (same content, saved).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
