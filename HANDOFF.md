@@ -8403,9 +8403,19 @@ heading text are in HANDOFF_ARCHIVE.md)
             go (gpr_ 08:2x).
         - [ ] gtb_ / gti_ (low): watch's load is always `unknown` while nothing refreshes busy_count.json (05:50,
             partial); decide whether watch / gated_build refreshes it or `unknown` stays (factor 1.0) (gpr_ 08:2x).
+        t4i_ P4 DONE 08:2x (render_mt/reports/t4i_p4_handback.md; log scratchpad\t4i_p4_runall.txt; backups
+        scratchpad\t4i_bak\p4; patch t4i_p4_patch.py): ebr_'s D1 block in test_analyze.py now loops over 2 arm
+        placements (at `to` = at + 21 as before, and at `at` = offset 0 like CHK-W3's leg 1 own-second arms; header
+        +0.05 s, L2 +0.5 s, headroom + Cached +0.55 s): S2 counts the Cached window (5000 / 40, 1 line), the L2 line
+        and gives a measured compare for both. Mutant P4 (in_seg from `from`) in a copy scratchpad\t4i_p4_mut: the 3
+        new checks FAIL (116 / 119), unmutated 119 / 119. run_all green (lib 470, make 87, check 166, leg 165,
+        analyze 119). Only test_analyze.py changed. NOTE: t4i_ deleted one generated cache file (bench\__pycache__\
+        ebo_analyze.cpython-314.pyc, single file) - told to use python -B and delete nothing; added to the
+        teardown question for ATN. Mutant folder t4i_p4_mut stays (scratchpad). -> ebr_ QUICK CHECK STARTED; T5
+        manifest rows wait for rmt_b1rt.
         Agents (8): upr_ (h0i_ H0 analysis re-check), gtv_ (v1.2 config hash review, lab + builder), gtp_ (round 12:
-        hg1 + Section 8 + kind() + target spelling), gtb_ (slot-wait test + load), t4i_ (P4 test), b13r_ (c3i_
-        rmt_b1rt review)
+        hg1 + Section 8 + kind() + target spelling), gtb_ (slot-wait test + load), ebr_ (t4i_ P4 quick check),
+        b13r_ (c3i_ rmt_b1rt review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
