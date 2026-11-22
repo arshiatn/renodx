@@ -6754,6 +6754,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 02:3x: NO in-game / Nsight / GPU timing runs yet (not shortly). Never pause busy agents for a GPU window
         (their 5-min caches expire -> each re-writes 100-380k tokens on resume); held windows only in a natural gap,
         ATN asked first.
+        gti_ Q8(b) DONE 02:3x (plan_1117/gti_q8b_handback.md, backups scratchpad\gti_bak4): atn_harness_runs.ps1 takes the
+        GPU lock (-Busy, waits up to 30 min, REFUSED stops the batch, freed in finally), same command lines; test
+        lab	ests	est_harness_runs_lock.py 7 / 7 (fakes); Nit 8 fixed (test_gpu_lock 29 / 29). gtv_ review QUEUED (after
+        Should 8).
         ATN 02:2x: (1) web only for papers etc. (no reddit / forums); (2) 'why don't we price everything?' -> gpp_
         (a9e29c4790d1b18aa, Opus xHigh) STARTED 02:2x: design plan_1117/designs/gpp_price_web_design.md (web domain
         allow-list for WebSearch / WebFetch / shell downloads; a price + stop for every tool call, agents' budgets).
@@ -6765,7 +6769,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         §6.1 measurement matrix. 272 agent-h (+6 U11h) + ~16 h reviews + 30-45 GPU-h. New ATN questions: [x] Q11 Ray
         Regeneration or NRD default on RX 9000 (ATN 02:3x: RAY REGENERATION DEFAULT on RX 9000+ / every GPU that supports
         it, NRD second option), [x] Q12 one scripted game run (ATN 02:3x: YES) (+ siege + Whole Battle Scene recordings),
-        [ ] Q13 Ray Regeneration in today's hybrid mode (upt_: yes, NRD stays default, +6 h). F4 LICENCE: helper
+        [x] Q13 Ray Regeneration in today's hybrid mode (ATN 02:3x: YES, Ray Regeneration DEFAULT on every AMD GPU that
+        supports it, NRD second; U11h +6 h) [ ] Q11-Q13 to upt_ together with upr_'s v2.3 spot-check. F4 LICENCE: helper
         build.ps1:114 calls the FSR signed DLLs 'MIT' (SDK: binary-only redistribution with notice, no reverse
         engineering) -> lgf2_ fixes the comment in r3 + lists every shipped notice that says MIT; [ ] tell ATN. upr_
         v2.3 SPOT-CHECK STARTED 02:2x.
