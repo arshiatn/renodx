@@ -490,12 +490,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gpr_: re-check round 14's exe moves (tools/ + scratch exe keys) with production ... | ?
 - c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate le ... | ?
 - coordinator: ff_s12 (3c77a0c86) + grs_xess_guard (29a55acad) merge gate AFTER up ... | ?
-- h0i_: h0_rng_check.py: 0 -> 0 reads as equal (run6-probe); re-check run 20261122 ... | ?
 - PT GI / ReSTIR owner: 16 rays noisier than 8 on both builds (run3-noise 1.194 / ... | ?
 - leaf / micromap owner (optional): run pre 4x on fast_leaves + micromaps_leaf_str ... | ?
 - coordinator: all_modes pass on the combined tree after rmt_h0 + ff_s12 + grs_xes ... | ?
 - gtw_ + gpr_: re-check round 18 (gate + price) (coord 13:5x). | ?
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
+- upr_: review all_modes_check.ps1 + h0_gpu_runs.ps1's 4 new functions + h0_rng_ch ... | ?
+- ATN: allow rule for all_modes_check.ps1 (plain + -DryRun) after upr_ GO (coord 1 ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10106,7 +10107,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         streaming race with post's 1-2 % slower passes). Cost: post 1-2 % slower per traced pass (~0.014 ms / frame at
         ATN's 1 ray), registers same, spills lower. After the 3 helper merges the combined tree needs the usual all_modes
         pass (H0's checks refuse from then on).
-        - [ ] h0i_: h0_rng_check.py: 0 -> 0 reads as equal (run6-probe); re-check run 20261122_120946 on the CPU; add
+        - [x] h0i_ (DONE 13:5x, upr_ reviews): h0_rng_check.py: 0 -> 0 reads as equal (run6-probe); re-check run 20261122_120946 on the CPU; add
             fast_leaves + micromaps_leaf_stress to M6's left-out outputs (upr_ 13:31).
         - [ ] PT GI / ReSTIR owner: 16 rays noisier than 8 on both builds (run3-noise 1.194 / 1.242, pre-existing) (upr_
             13:31).
@@ -10157,9 +10158,39 @@ heading text are in HANDOFF_ARCHIVE.md)
         sandboxes, ATN 10:4x). Point 4 (32-busy-loop load run) waits for rec_verify to end; risk: FIRST_BEAT_S 8 s under
         load (keeper start up to 16.6 s) -> if false "no heartbeat", slow load_gbps seed + higher FIRST_BEAT_S.
         - [ ] gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13:5x).
-        Agents (4): gtw_ (round 18 gate re-check), gpr_ (round 18 price re-check), gtv_ (gtl_ lab fixes re-check), h0i_
-        (checker 0 / 0 + all_modes tool); rec_verify RUNNING (13:35, ~100 min) -> grs_ reads it -> merge gpu_s2 -> S3c;
-        all_modes on the combined tree waits for an ATN rule
+        gtv_ sandboxes removed 13:45 (plan_1117/gtv_sandboxes_removed_handback.md): testbin\gtl_test_70600, scratchpad\
+        gtl_gtvclose_keugk9q6, gtl_lab_0pihxlu_ (no reparse points; exact paths). gtv_ waits for the load-run go.
+        gpr_ ROUND 18 RE-CHECK = PRICE SIDE OK 13:5x (plan_1117/designs/gpr_round18_recheck_handback.md; gpr_review.md
+        "## gtp_ round 18 re-check"): control seeds 106,591 both; real 106,323 -> 106,509, 0 broken; build seeds 389 ->
+        388 (junk grep seed gone); 78 control rows differ, 5 priced (3 light, 2 ps1 rows lose a grep: draw_recording_loop
+        run.ps1 n 14 -> 13, release_check.ps1 12 -> 11); rings 2,434 -> 2,497 (99 rotation, none lost); watch_off 193;
+        dups 20 -> 19. Keys 88 of 88,498 change (= gtp_'s 86); heavy -> light right; 29 light -> heavy: none refused
+        (6 rc.exe n 9 p50 1.5 s, 13 ebr_ / t4i_ -PassThru runs n 1-2, hidden python -c / git / gtv_ probes); clang-cl
+        keys the same full path in Bash / PS & / cmd //c (pre-existing: bare clang-cl / ninja via PATH key light).
+        Decisions: 1 exempt -> REFUSED (gtp_lowprio on gtp_r16_keys.py, correct), 1 REFUSED -> exempt (gtp_lowprio running
+        run_tests.py, correct), 413 exempt <-> not refused (no effect); refused rows 16 =, log rows n >= 10 41 = (fix-now
+        same). Cosmetic Lows: sh scratch:upr_lock_hold.py` (3 calls, class sh not py); harness -m RENODX_LAB_BUSY_COUNT (4
+        py_compile calls, exempt; key drops the module name -> key the module or py_compile light).
+        h0i_ CHECKER + ALL_MODES TOOL 13:5x (plan_1117/h0i_checker_allmodes_handback.md; h0i_handback.md new section;
+        backups h0\backups\20261122_1500_checker + 20261122_1520_allmodes; no GPU): h0_rng_check.py probe 0 -> 0 =
+        equal (0 <-> non-zero still FAIL; 3 selftest cases; selftest 0 wrong); fast_leaves + micromaps_leaf_stress left
+        out of M6. CPU re-check of run 20261122_120946 (testbin\scratch\h0i_\recheck_120946): run6-probe PASS, run1-repeat
+        PASS (post-alone modes left out), run1-dumps + run8 PASS (1509 outputs, 1469 repeat). NEW h0\all_modes_check.ps1
+        (-DryRun, -Rev <commit> default atn-mods): builds plain + lab from git archive, under the GPU lock runs 206 modes
+        twice on plain with HARNESS_DUMP (smoke after 3), census per run, new checker command allmodes vs kept H0 run
+        20261122_120946 (checks: pass both baseline + fail both now = FAIL, one = OPEN; dumps missing / one-run / size =
+        FAIL; repeat lost = OPEN); reuses h0_gpu_runs.ps1 by parsing it (h0_gpu_runs.ps1 gained Get-Modes,
+        New-HelperBuild, Enter-GpuLock, Exit-GpuLock; its -DryRun unchanged + the expected PROBLEM since the merge). Dry
+        run clean (~36 min est, ~40-45 real; runs\dryrun_all_20261122_134542.txt); offline test (new
+        offline\all_modes_offline_test.ps1, fake harness, test lock) ok 1.7 min: real builds of 70ab62325 compile (52 /
+        61 headers), census / checks / dumps PASS, repeat OPEN on the planted case; first attempt's sandbox
+        offline\20261122_134706_allmodes kept. h0_offline_test.ps1 can no longer run (read-only checks stop it post-merge).
+        Rule lines for ATN (after upr_ GO): powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\arshi\.claude\
+        projects\D--Dev-renodx\tools\tw\h0\all_modes_check.ps1 (+ the same with -DryRun).
+        - [ ] upr_: review all_modes_check.ps1 + h0_gpu_runs.ps1's 4 new functions + h0_rng_check.py changes (coord 13:5x).
+        - [ ] ATN: allow rule for all_modes_check.ps1 (plain + -DryRun) after upr_ GO (coord 13:5x).
+        Agents (2): gtw_ (round 18 gate re-check), upr_ (all_modes tool review); gtv_ waits for load-run go; rec_verify
+        RUNNING (13:35, ~100 min) -> grs_ reads it -> merge gpu_s2 -> S3c; all_modes run waits for upr_ GO + ATN rule
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
