@@ -8061,11 +8061,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         case mocks finite raising TypeError (exit 2, reason, .partial named + kept with seed_2003 / _2005, no
         Traceback); test_iq_frames 14 / 14. -> gtv_ CHECK STARTED (its held lab suites + race probe still after
         gtl_'s 4 suites).
-        Agents (10): gtw_ (S1c re-check 10), h0i_ (H0 analysis + fake to testbin + R1), gti_ (R1), gtl_ (its 4
-        held suites), gtv_ (gtq_ Exception nit check), gpr_ (gtb_ gate_rows re-check), t4i_ (r23), b13r_ (c3i_
-        B1.6 follow-ups re-check), c3i_ (B1 real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_,
-        lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), grs_, gtk_, gtp_ (waits gtw_),
-        ebr_ (re-checks t4i_ r23), gtq_ (waits gtv_). gtv_'s held lab suites + race probe AFTER gtl_'s 4 suites
+        gtv_ GTQ_ EXCEPTION NIT = OK 07:2x (plan_1117/gtv_gtq_exception_nit_handback.md; gtv_iq_review.md "## gtq_
+        Exception nit check"): backup = reviewed state, other reference files unchanged; test_iq_frames 14 / 14. gtq_
+        reference builder v1.1 CLOSED for now. gtv_ waits for the "go" after gtl_'s 4 suites.
+        Agents (9): gtw_ (S1c re-check 10), h0i_ (H0 analysis + fake to testbin + R1), gti_ (R1), gtl_ (its 4
+        held suites), gpr_ (gtb_ gate_rows re-check), t4i_ (r23), b13r_ (c3i_ B1.6 follow-ups re-check), c3i_
+        (B1 real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (re-checks
+        h0i_), gpp_, gbc_, gtb_ (waits gpr_), grs_, gtk_, gtp_ (waits gtw_), ebr_ (re-checks t4i_ r23), gtq_, gtv_
+        (go after gtl_). gtv_'s held lab suites + race probe AFTER gtl_'s 4 suites
         (the fakes' names would cross each other's busy checks). GPU: free (rec_verify waits ATN; H0 re-run after
         the analysis).
         QUEUE: R-S5 re-checks
