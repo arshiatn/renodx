@@ -486,6 +486,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - grs_: helper builds without the optional XeSS / FSR / NVAPI SDKs (fg_proxy_d3d12 ... | ?
 - worktree cleanup (ATN): ff_s12\build\downloads is now a JUNCTION (delete the lin ... | ?
 - gtl_ (tooling): the lab fixture's 1.5 s hang timeout flakes under build load ("r ... | ?
+- worktree cleanup (ATN): grs_'s worktree build\downloads_min (6 junctions - links ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9781,9 +9782,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         next 3 passed. -> gtl_ (fix tooling now): fixture hang timeout tolerant under load.
         - [ ] gtl_ (tooling): the lab fixture's 1.5 s hang timeout flakes under build load ("resident heartbeat stopped
             2 s ago") - make the fixture's timeout load-tolerant without weakening the real keeper's (gtv_ 11:19).
-        Agents (6): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check), h0i_ (H0 copy fix), c3i_ (b1log
-        verify runs, detached), gtl_ (fixture hang timeout), grs_ (XeSS guard); t4i_ ETL move waits for ATN
-        (antivirus); merge gates rmt_b1log + ff_s12 after c3i_'s runs (task bi2vq35fh)
+        grs_ XESS GUARD DONE 11:20 (plan_1117/designs/grs_xess_guard_handback.md; 29a55acad on grs_xess_guard from atn-mods
+        50bd76f81, local): Presented() most = 2u, = min(xefg_most_ + 1, 255) only under RENODX_XESS_FG when the
+        backend is XeSS. /Zs with each optional SDK hidden: before only xess failed; after xess / fsr / nvapi / all
+        three / all five / none pass. build.ps1: xess+fsr+nvapi hidden exit 0 (5,561,344 bytes, only omm-lib.dll,
+        no nvapi / libxess / amd_fidelityfx strings) + all SDKs exit 0 (5,666,816). static_checks 0, diff --check
+        clean. SDKs hidden only in grs_'s worktree build\ (junction renamed downloads_all, a downloads of 6 junctions,
+        then renamed downloads_min, junction back); main build\downloads untouched. grs_'s worktree now on
+        grs_xess_guard (gpu_s2 d336c55d3 unchanged; plain git switch fails on the junctioned external\DLSS - grs_
+        used branch + symbolic-ref + reset --mixed). -> fcr_ REVIEWS (read only); grs_ switches back to gpu_s2
+        before rec_verify; merge after fcr_ + c3i_'s runs.
+        - [ ] worktree cleanup (ATN): grs_'s worktree build\downloads_min (6 junctions - links alone first),
+            build\grs_xess_min, build\grs_xess_full (grs_ 11:20).
+        Agents (7): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check), h0i_ (H0 copy fix), c3i_ (b1log
+        verify runs, detached), gtl_ (fixture hang timeout), fcr_ (XeSS guard review), grs_ (back to gpu_s2); t4i_
+        ETL move waits for ATN (antivirus); merge gates rmt_b1log + ff_s12 (+ grs_xess_guard) after c3i_'s runs
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
