@@ -496,7 +496,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
 - coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
 - ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job fi ... | ?
-- ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
 - coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU ... | ?
 - grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal ... | ?
 - coord: S3c part 1 RE-RUN (calibrate -> A/A -> rotation -> trace) after gtv_'s fi ... | ?
@@ -508,6 +507,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtb_ (when active): OK gtl_'s test_budget.py conhost allowance (coord OK'd 17:1x ... | ?
 - gtp_: ROUND 21 = gpr-R20-1 (8 KB caps per expanded value + statement, doubling-c ... | ?
 - ATN (later, before any ENFORCE): a hook that times out (pre hook 15 s) does not ... | ?
+- gtl_: landed-sandbox suites again with the ADOPTED live schemas (any test that e ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10319,7 +10319,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] gtv_ (DONE 15:40: 10 not needed, 11 OK + 3 checks): judge S3c sheet items 10 (strict second loop) + 11 (kept R1 resident during rotation) (coord
         14:3x).
         - [ ] ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job field, reset time in answer,
-        4 lifetimes per arm (after gtb_ proof), debug-layer env switch (coord 14:3x).
+        4 lifetimes per arm (after gtb_ proof), debug-layer env switch (coord 14:3x). log_uses + reset time ADOPTED 17:51;
+        open: 4 lifetimes per arm (after gtb_'s proof), debug-layer env switch (not proposed yet).
         gtl_ S3C BUILD CHECK 14:39 (plan_1117/gtl_s3c_build_check_handback.md): all 18 refused only on the build folder
         (lab.py build_ok: D:\Dev\renodx\build\<x> or a worktree's build\<x>; testbin\scratch not allowed, widening = ATN
         question, nothing changed). -> coord built the recorder helper INTO D:\Dev\renodx\build\helper_gpus2_rec (new folder,
@@ -10363,7 +10364,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] gtv_ (DONE 15:40: OK after H1 + H2): review gtl_'s S3c stage (after its load run) -> lands after S3c part 1 (coord 15:10).
         - [x] gti_ (DONE 15:12): ReadLog closes the log file (with open) (coord 15:10).
         - [x] grs_ (DONE 15:26, warm frames): 64-frame dumps (warm frames / dump without reset) in the resident protocol, with dead uses (coord 15:10).
-        - [ ] ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json.proposed v1.1 (coord 15:10).
+        - [x] ATN (ADOPTED 17:51, ATN "Yes, adopt them"): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json.proposed v1.1 (coord 15:10).
         gtv_ LOAD RUN 15:02 = FAILS ON TIME LIMITS ONLY (plan_1117/gtv_load_run_handback.md; gtv_iq_review.md "## Load run
         (point 4)"; runner testbin\scratch\gtv_\run4.ps1 + fx4\): 32 normal-priority busy loops, suites below normal,
         fakes only. keeper 1694 s 27 ran / 4 F / 20 E; jobs 914 s 32 ran / 17 F; unit 34 OK; ps1 5 OK. Causes: 27 SLOW lock
@@ -10898,8 +10899,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         tests/test_budget.py CRLF again (diffs 8 / 10 lines). 18 jobs on helper_du_rec, 0 refused, 1982 s (33.0 min; R2
         settle now unknown too), job 07 70 s (testbin\scratch\gtl_\runs\s3c2_jobs_du2.txt). Suites 17:40-17:47: unit 40,
         analyze 5, ps1 5, keeper 29, jobs 35, test_gpu_lock 60 / 60, test_budget 40 OK. Land list 11 files refreshed.
-        Agents (2): gtv_ (B1 + N2 / N3 / N6 quick re-check), gtp_ (gate round 21); gtl_ / gtw_ / gpr_ / fcr_ / gtc_ / gti_ /
-        grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
+        ATN 17:49 (woke): "Do I need to approve something or add new rules?" -> coord: no new rules; optional = the 4 lab
+        .proposed files. ATN 17:5x: "Yes, adopt them". ADOPTED 17:51 by coord (testbin\scratch\coord_\adopt_proposed.py;
+        no lab job / session / lock; diffs read first; backup testbin\scratch\coord_\schema_bak_20261122_1751): live
+        tools\tw\lab job_schema.json 4c2dd294 -> 92258203 (log_uses + top-level dump_frames, 1 to 64 over loops),
+        cmd.schema.json 9bf31095 -> 7c2c3929 (v1.1 dump frames 1-64 + histories, moments k >= 3, light_anim path null),
+        ans.schema.json a1cbe346 -> 7636a1db (reset_ms, uses description), resident_protocol.md f616714b -> be894b33 (v1.1
+        additions). JSON parses; .proposed files left beside (equal to live now); titles still say PROPOSED (nit, gtl_ next
+        stage). -> gtl_ re-runs the landed suites with the adopted schemas before stage2 lands.
+        - [ ] gtl_: landed-sandbox suites again with the ADOPTED live schemas (any test that expected the old schema?) +
+        titles without "PROPOSED" in the next stage (coord 17:5x).
+        Agents (3): gtv_ (B1 + N2 / N3 / N6 quick re-check), gtl_ (suites with adopted schemas), gtp_ (gate round 21);
+        gtw_ / gpr_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at
+        a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
