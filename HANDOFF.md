@@ -7431,11 +7431,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         "declared deadline 0 ignored". 33 OK, selftest 0. Two limits NOT SAFE (a later command's deadline can become
         the limit): bash's single & doesn't end the first command; wrappers (wsl, env, timeout, start) read as whole
         argv -> gtb_ told to fix both now (fix-now rule), then gpr_ re-checks y1 / y2 / z together.
-        Agents (7): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtp_ (K1-K3 + next round), gtv_ (grs_ N1
-        re-check), gtl_ (S1b tests), gtb_ (y1 / y2), gti_ (ns_busy.ps1:18). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_
-        (waits b13r_), upt_, upr_ (waits h0i_), gpp_, gpr_ (waits gtb_), ebr_, t4i_ (r21 after b13r_), gtq_, gbc_,
-        grs_ (waits gtv_), gtk_, gtw_ (waits gtp_). GPU: free (H0 stopped); harness-named fakes allowed until I
-        announce the H0 re-run (checked empty before it starts).
+        gtv_ N1 RE-CHECK = MERGE-READY (pending the GPU check) 05:2x (plan_1117/gtv_n1_recheck_handback.md;
+        gtv_s2r_review.md "## N1 re-check"): ShiftCacheStamps exact (age kept, offsets +12 / +4, one read-back list,
+        placed_state read only, seed 0 skips all); seed limit matches rt_serve.h:900; nits + --no-dred OK; tests 0
+        failures, rows SAME (c3ea4925f + atn-mods); G4 new3 = aligned3, base vs new3 99 .text bytes (+40 shift = the 40
+        recorder lines), 52 / 52 headers. Nits (fail-closed, -> grs_ now): 1 run {reset:false} can count past 2^24
+        with a seed near the limit -> refuse when seed != 0; 2 the generic "could not be written back" text hides
+        UploadRecorded's reason; 3 unknown flags after the control folder are ignored (misspelt --nsight allows run)
+        -> refuse unknown flags. S2 (gpu_s2) NOT merged yet: it changes helper paths, which would break H0's guard
+        (atn-mods vs c3ea4925f) -> merge after H0's re-run AND the rec_verify.sh GPU check (ATN). gtl_ v1.1 lab changes
+        unblocked: queued after its S1b tests (same files).
+        Agents (8): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtp_ (K1-K3 + next round), grs_ (N1 nits 1-3),
+        gtl_ (S1b tests, then v1.1), gtb_ (z: bash & + wrappers), gti_ (ns_busy.ps1:18). Idle: bd1r_, lga_, lgf2_,
+        c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, gpr_ (waits gtb_), ebr_, t4i_ (r21 after b13r_),
+        gtq_, gbc_, gtv_ (waits grs_ / gtl_), gtk_, gtw_ (waits gtp_). GPU: free (H0 stopped); harness-named fakes
+        allowed until I announce the H0 re-run (checked empty before it starts).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
