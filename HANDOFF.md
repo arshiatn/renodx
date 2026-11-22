@@ -10972,6 +10972,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         older lists same; 3 W-group R items refused; lab run + priced refused in all 3 orders; view v2 0 / 61 wrong; time2
         shell_web <= 0.078 s, price_shell <= 0.203 s. Sandboxes removed (no reparse points).
         - [ ] gtw_ + gpr_: re-check gtp_ round 21 (incl. GO FOR ENFORCE question) (coord 18:1x).
+        htd_ TRIAGE 18:16 (handoff_plan/htd_handback.md, htd_triage.tsv + htd_summary.md; line numbers from a 17:57 snapshot
+        of 12563 lines, match by title): 185 boxes: DONE-UNTICKED 43, CPU-CODE 29, ATN 27, INGAME 23, CPU-TOOL 20, GPU 20,
+        BLOCKED 13, SUPERSEDED 8, DESIGN 2; 14 active (GPU plan), 2 active (render_mt); 50 tick-only rows; 31 now = Y; 3
+        duplicate pairs (9461 / 9986, 11752 / 12256, 12286 / 11934). Top now = Y: shared writer-token helper in src/utils
+        (pipeline.hpp + resource.hpp); gpu_trace.ps1 -Env split + start-frame warning + testing.md runner rules (one agent);
+        Ryse / Tales / Expeditions parity ledgers + dump_any letters; Shogun 2 cosmetics; tw2_ shared steps (one shared
+        SkipGameSsao in 5 add-ons, -pi literal / int-AND sweep); WH1 SM 4.1 screen_space_shadows patch (WARP); PT
+        Reflection Occlusion twins WH1 / WH2 / WH3 / Shogun 2; Rome II Sharp RT Reflections + sun tools + sun_replace_maps;
+        non-TW path ambient (WriteSky missing); rt_core.hpp bundle (11142 / 11669 / 11733 / 12428, one writer); nrd_d3d12.hpp
+        review vs NRD's list; Astra first-freeze re-check; Attila 4 GB address-space design; B1 destructor-draw static
+        check; Replace audit re-audit. Conflicts: 15 rows on dlaa_helper (GPU plan's helper writer); 5 on lab / gates /
+        budget; engine_code.hpp = render_mt serial writer (8627, 10959, 11151, 11159, 11205); SkipGameSsao vs per-game
+        add-on rows; view_share uv rule once (11678 + 12034); worktree / h0 folder deletes (9786, 9818, 8859) = ATN's.
         Agents (7): gtl_ (adopted-schema suites + 4 stale tests), gtw_ + gpr_ (gate round 21 re-checks), htb_ / htc_ / htd_
         (HANDOFF triage, read only); hta_ / gtp_ / gtv_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since
         16:15; one GPU job at a time
