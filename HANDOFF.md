@@ -484,6 +484,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: permanent delete of (1) old WPR ETLs 33.3 GB + (3) old shots 5.5 GB (dsk_ 1 ... | ?
 - t4i_ (after the scan gaps): end batch moves each finished leg's ETLs to a D: fol ... | ?
 - ATN (antivirus): scratchpad\t4i_etl_tests.py (t4i_'s ETL-move test, written 10:5 ... | ?
+- grs_: helper builds without the optional XeSS / FSR / NVAPI SDKs (fg_proxy_d3d12 ... | ?
+- worktree cleanup (ATN): ff_s12\build\downloads is now a JUNCTION (delete the lin ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9745,9 +9747,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         failed on a Bash path-escape typo, nothing built).
         ORDER NOW: c3i_ builds + ff_s12 build (CPU) -> release_check (GPU, ~9-13 min) -> H0 re-run (~83 min) ->
         rec_verify.sh (~100 min) -> S3c; one GPU job at a time.
-        Agents (5): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check), h0i_ (H0 copy fix), c3i_ (b1log
-        verify: FULL + builds), gtl_ (gate_s low); t4i_ ETL move waits for ATN (antivirus); ff_s12 helper build
-        (coordinator, background)
+        c3i_ B1LOG VERIFY INTERIM 11:10 (render_mt/reports/c3i_b1log_verify_interim_handback.md): FULL (c3i_log_full.ps1),
+        suites16 (instance_fill, draw_recording x3, engine_code -DrawRecording) and gated15 (x86 x3, DRAW_RECORDING,
+        amd64) started 11:09 as 3 detached PowerShell processes; done markers scratchpad\c3i_log_*_done.txt (c3i_
+        removed its own old markers first); coordinator waits (task bi2vq35fh) before the merge gate / H0 re-run.
+        ff_s12 HELPER BUILD 11:11 FAILED (not the patch): fg_proxy_d3d12.hpp:539 Presented() uses xefg_most_, declared
+        only inside #if defined(RENODX_XESS_FG) (:785) -> any build without build\downloads\xess fails (`use of
+        undeclared identifier 'xefg_most_'`); since f3c4d3c5b 11-11; ff_s12 had no build\downloads link. Coordinator:
+        ff_s12\build\downloads (the build's own SHaRC fetch, 11:09) RENAMED to downloads.own_1109 (not deleted),
+        junction build\downloads -> D:\Dev\renodx\build\downloads (as agent worktrees); rebuild 11:1x (task
+        bt6v09x4p). -> grs_: guard + audit other optional-SDK names + a build without SDKs (branch from atn-mods).
+        - [ ] grs_: helper builds without the optional XeSS / FSR / NVAPI SDKs (fg_proxy_d3d12.hpp:539 guard + audit);
+            review + merge (coordinator 11:1x).
+        - [ ] worktree cleanup (ATN): ff_s12\build\downloads is now a JUNCTION (delete the link alone first) +
+            ff_s12\build\downloads.own_1109 (SHaRC copy) (coordinator 11:1x).
+        Agents (6): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check), h0i_ (H0 copy fix), c3i_ (b1log
+        verify runs, detached), gtl_ (gate_s low), grs_ (XeSS guard); t4i_ ETL move waits for ATN (antivirus); ff_s12
+        helper rebuild (coordinator, background)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
