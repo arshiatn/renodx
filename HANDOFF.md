@@ -453,6 +453,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (morning report): once the price gate goes on, everyday gated_build builds h ... | ?
 - gti_ (batched with any H0 item h0i_ routes to it; test_gpu_lock.py lives in lab\ ... | ?
 - ATN: lab_gtl_stage (tools\tw\lab_gtl_stage, gtl_'s staged copy) may be deleted a ... | ?
+- c3i_ (on rmt_b1rt, with the real-routine tests): b13r_'s N4 braces at effect_upd ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8140,6 +8141,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         delete -> NOT allowed (agents never delete recursively; deletions only on ATN's yes): the stage stays.
         - [ ] ATN: lab_gtl_stage (tools\tw\lab_gtl_stage, gtl_'s staged copy) may be deleted after the swap -
             your yes only (agents don't delete folders).
+        b13r_ B1.6 FOLLOW-UPS RE-CHECK = MERGE-READY f512acab4 07:3x
+        (render_mt/reports/b13r_b16_followups_recheck_handback.md; b13r_b16_review.md "## Follow-ups re-check"; all
+        from git archive copies): S2 correct (window delta, 0 = no window, worker_pool::Update before
+        engine_code::Update, ArmTrace refuses overlapping windows, 1 relaxed load + compare per present outside a
+        window); stack headroom right on WOW64 (free reserve below the guard page; per thread since creation,
+        conservative), 3 VirtualQuery per thread per traced round (~1-3 us, both A/B arms alike); N1-N3 done. Runs:
+        FULL exit 0 (1319 s, 26f 496 KB), -DrawRecording 0, instance_fill PASS, mutants print_always / nothing
+        recorded / fill_out_only fail as they must; gated builds -Owner b13r_ x86 3 + x86 DR + amd64 exit 0 (61
+        warnings as before). Fix list: N4 braces on the 2 new `if (round.tracing) NoteStackHeadroom();` lines
+        (effect_update.hpp:907 / :954, CXX_STYLE:24-28); optional: 26f bound `< 1024` not 1 GB, one VirtualQuery(low)
+        is enough, `unmapping` as jthread + stop_callback. -> COORDINATOR MERGE of rmt_b16n (f512acab4) STARTED; N4
+        + optionals go to c3i_ on rmt_b1rt (b13r_ reviews with the real-routine tests).
+        - [ ] c3i_ (on rmt_b1rt, with the real-routine tests): b13r_'s N4 braces at effect_update.hpp:907 / :954
+            + optionals (26f bound < 1024, one VirtualQuery(low), unmapping jthread + stop_callback).
         Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (held lab suites + race probe), gtp_ (O2 order
         + corrupt files + nits + gated_build proposal), gtb_ (grs1 NUL check), ebr_ (t4i_ r23 re-check), b13r_
         (c3i_ B1.6 follow-ups re-check), c3i_ (B1 real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_,
