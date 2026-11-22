@@ -495,11 +495,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coordinator: all_modes pass on the combined tree after rmt_h0 + ff_s12 + grs_xes ... | ?
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
 - ATN: allow rule for all_modes_check.ps1 (plain + -DryRun) after upr_ GO (coord 1 ... | ?
-- h0i_: MUST 1-2 + SHOULD 3-4 + offline test / selftest updates; upr_ re-checks (u ... | ?
 - gtv_: lab-suite load run NOW (GPU free 14:07) (coord 14:07). | ?
 - gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-che ... | ?
 - gtl_: S3c run sheet (coord 14:11). | ?
 - coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
+- upr_: re-check h0i_'s all_modes fixes vs backups 20261122_1600_allmodesfix (1469 ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10210,7 +10210,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Set-StrictMode. After the fixes: offline fake harness copies the kept run's post_a dumps; selftest m6 file real
         sha256; new selftest cases (gone on both, a = b size != baseline, same new bytes both, baseline-flaky mode fails
         both); then upr_ diff re-check -> GO.
-        - [ ] h0i_: MUST 1-2 + SHOULD 3-4 + offline test / selftest updates; upr_ re-checks (upr_ 14:0x).
+        - [x] h0i_ (DONE 14:14, upr_ re-checks): MUST 1-2 + SHOULD 3-4 + offline test / selftest updates; upr_ re-checks (upr_ 14:0x).
         rec_verify grs_s2r = PASS 14:07 (task b2h7mhp0m exit 0; reference\runs\verify_grs_s2r): "outputs the base repeats
         and a new folder changes: 0 (outputs the base does not repeat: 3)" = nrd_bounce_reuse / _sharc / _ser bounce.bin
         (base twice DIFFERENT, known). gpu_s2 merge conditions met (gtv_ MERGE-READY 05:4x + H0 re-run + rec_verify).
@@ -10242,9 +10242,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         gpu_s2 builds (+ helper build). grs_'s worktree now on grs_xess_nit.
         - [ ] gtl_: S3c run sheet (coord 14:11).
         - [ ] coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12).
-        Agents (3): gtp_ (gate round 19), h0i_ (all_modes MUST 1-2 + SHOULD 3-4), gtl_ (S3c run sheet); gpu_s2 builds
-        running -> push -> grs_xess_nit merge -> gtv_ load run -> S3c (gpu_lab.ps1 per gtl_'s sheet); all_modes run
-        waits for upr_ GO + ATN rule (combined tree incl. gpu_s2)
+        gpu_s2 BUILDS PASS 14:13 (x86 x3, amd64 twattila, helper 5,689,856 B = same size: the resident is in the
+        RENODX_TW_RECORDER_BUILD build only) -> pushed bd19d5cda. grs_xess_nit merged locally f54613dea; recorder-build
+        helper (helper_gpus2_rec) + plain helper (helper_nit) check running, push after.
+        h0i_ ALL_MODES FIXES 14:14 (plan_1117/h0i_allmodes_fixes_handback.md; h0i_handback.md "## h0i_ all_modes fixes";
+        backups h0\backups\20261122_1600_allmodesfix; CPU only, -DryRun only): h0_rng_check.py AllModes: MUST 1
+        m6_baseline.tsv (mode, output) -> sha256 / bytes / repeats, dumps FAIL on gone / size / not-in-baseline; MUST 2
+        RESULT allmodes-m6, M = 1469 (not 1481: 12 repeat rows are fast_leaves / micromaps_leaf_stress, left out of M6);
+        SHOULD 3 passed-once + fails both = OPEN, NUMBER "release: the longest answer" (baseline rr_ao_reblur_release 63.5 /
+        80.7, release_nrd 66.5 / 76.9) + longest "first request answered" from helper logs. all_modes_check.ps1: SHOULD 4
+        $HarnessHashes tw_rt_harness.exe FFD6BA42A8C5 + tw_rt_harness_4k.exe 7175EBE8ABFE (PROBLEM exit 2 before builds);
+        Set-StrictMode Latest. fake_harness.py OFFLINE_DUMP_SOURCE (copies kept dumps, plants undrawn_gone byte change).
+        Tests: selftest 0 wrong (selftest_1600, new cases); baseline vs itself (self_baseline_1600, JUNCTIONS a / b -> never
+        recursive delete) 1469 / 1469 equal, all PASS; offline test ok 2 min (offline\20261122_141120_allmodes: census /
+        checks / dumps PASS, m6 FAIL 8 of 1469 undrawn_gone only, repeat OPEN); wrong hash -> PROBLEM exit 2; real dry run
+        exit 0 (all_modes_dryrun_1600.txt). Leftover offline\fakes\__pycache__ (harmless, kept).
+        - [ ] upr_: re-check h0i_'s all_modes fixes vs backups 20261122_1600_allmodesfix (1469 vs 1481 too) -> GO / NO-GO
+        (coord 14:14).
+        Agents (3): gtp_ (gate round 19), upr_ (all_modes re-check), gtl_ (S3c run sheet); helper checks running ->
+        push nit -> gtv_ load run -> S3c (gpu_lab.ps1 per gtl_'s sheet); all_modes run waits for upr_ GO + ATN rule
+        (combined tree incl. gpu_s2)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
