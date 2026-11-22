@@ -2048,6 +2048,7 @@ void ConfigureAddon() {
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .has_scale_rows = false,
+                                             .lod_bias_at_game_scale = true,
                                              .has_foliage_light = false,
                                              .rays_preset_as_attila = true,
                                              .has_path_ambient = false,
