@@ -479,6 +479,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its ow ... | ?
 - gtp_ (round 14, STARTED 09:4x): Section 8 text fixes (a)-(d) + kind() leading-re ... | ?
 - bridge owner (next bridge change): move the FG backend-name table to dlaa_bridge ... | ?
+- gtb_ (low, batched): busy_refresh `-1 <= age` (a read within 50 ms of a write is ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9269,9 +9270,41 @@ heading text are in HANDOFF_ARCHIVE.md)
         Nothing of gti_'s running. -> gpr_ checks (queued after its load refresh re-check).
         H0 START WAITS 09:54: c3i_'s gated build running (ninja, build_job.lock 09:52:47), CPU 19 %; H0 starts when
         c3i_'s builds end. Merge builds for rmt_b1log wait until H0 ends (no builds in the H0 window).
-        Agents (8): gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gtb_ load refresh re-check, then gti_
-        r1a / r1b), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), ffr_ (grs_ v5 check), fcr_ (patch v3
-        check), gtl_ (fixture +60 s + gate_s)
+        gpr_ LOAD REFRESH RE-CHECK = OK 09:5x (plan_1117/designs/gpr_load_refresh_recheck_handback.md; gpr_review.md
+        "## gtb_ load refresh + R12-1 tightening re-check"; probe scratchpad\gpr_resident_probe.py, log
+        gpr_lr_tests.txt): test_budget 40 / 40 (134 s, below normal), watch --selftest 3 / 3; real busy_count.json +
+        watch_runs.tsv untouched. (1) all 3 conditions met (end count only after job.release() on runs not
+        stopped - release() clears kill-on-close, residents live on and are rightly counted: box test start 0 /
+        end 1 / load 'game' / resident alive after; rate limit 120 s faulted-partial / 240 s good; start count
+        before Job() / Popen / t0). (2) no refresh in lab phases = right (phase rows feed nothing: tool_prices skips
+        source 'lab', fix-now keys 'lab gpu_lab.ps1 -Job'; a refresh would tag the lab's own harness 'game' for 4-5
+        min). (3) tests OK; R12-1 full rows (12, 99), 0 live differences / 7,080 keys. (4) races harmless (atomic
+        replace). Lows: corrupt busy.json case + stopped-run case tests (optional); ns_busy hang = each watch
+        waits its own 30 s; BusyState rounds t to 0.1 s so a read within 50 ms looks "future" and counts once
+        more (`-1 <= age` avoids it); a lab's GPU wait writes partial every 10 s = loads 'unknown' (rate rule
+        working); hook pre rows 'unknown' after 5 min without a watch. Fix-now in shadow: would-deny rows need a
+        'log' kind >= 10 real samples + same agent stopped twice (SLOW + TOOL FAULT at idle) < 2 h apart, no edit;
+        idle = fresh count 0, no lock tags, no watch heartbeat 3 min, committed <= 40 GB -> rare; builds need 10
+        real wrapped runs first (1 today).
+        - [ ] gtb_ (low, batched): busy_refresh `-1 <= age` (a read within 50 ms of a write is not "future") +
+            optional tests: corrupt busy.json refreshes, a stopped run keeps only the stop's count (gpr_ 09:5x).
+        ffr_ V5 CHECK = OK, DESIGN FINAL, LOOP CLOSED 09:5x (plan_1117/designs/ffr_v5_check_handback.md;
+        ffr_first_frame_review.md "## v5 check"): no Must / Should. W1 checked: WH3 / Rome Remastered / Divinity 2
+        always call frame_generation::Install (twwarhammer3/addon.cpp:4419, twromeremastered/addon.cpp:2103,
+        divinity2originalsindefinitive/addon.cpp:1419); the poll runs on the PresentFrame thread
+        (frame_generation.hpp:279); a deadline latch inside Release(true)'s poll -> PublishEmptySet returns at once
+        on watchdog.failed (dlaa_bridge.hpp:799-802), no 20 s block; no second empty set (Release(true) needs width
+        != 0). W2 (7 sites) / W3 / N7-N9 / 3.9 table done. 4 text nits: X1 (:97-98) line 654 checks a failure ->
+        `internal::Answer(200, false) == FAILED` (not == ANSWERED); X2 (:371 case d) move bridge.opening.since
+        back by the budget instead of waiting 180 s (tests.cpp writes bridge fields at 605 / 645); X3 (:277-278)
+        checkers allow `opened_late` fewer frames (one per opening); X4 (:302-304) "no effect on H0" holds only
+        for opens < 10 s - on a 10-20 s cold open pre can release + reopen RR / FSR / FG, post (with step 2) not ->
+        read such a difference as S3's effect. X1 / X2 with step 4, X3 with step 3, X4 before the next H0 that
+        includes step 2 (today's H0 re-run has no ff_s12 code on either side, so X4 does not touch it). -> grs_ v6
+        TEXT (X1-X4, last design touch).
+        Agents (8): gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gti_ r1a / r1b check, no process tests
+        during H0), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), grs_ (design v6 text X1-X4), fcr_
+        (patch v3 check), gtl_ (fixture +60 s + gate_s)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
