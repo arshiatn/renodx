@@ -455,6 +455,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - c3i_ (on rmt_b1rt, with the real-routine tests): b13r_'s N4 braces at effect_upd ... | ?
 - gtp_ (with gtw_'s re-check 11 findings): hg1 rows() -> {'price': 'shadow'} on an ... | ?
 - gtb_ (optional, batched): hg2 name the unreadable file in watch's stderr / facts ... | ?
+- ATN (morning report): test fixtures remove the sandbox world / testbin folders t ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8232,8 +8233,25 @@ heading text are in HANDOFF_ARCHIVE.md)
             + one reason text; gtw_ + gpr_ re-check end to end.
         - [ ] gtb_ (optional, batched): hg2 name the unreadable file in watch's stderr / facts via the hook's
             gate_file().
-        Agents (7): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (gtl_ S4 + reference mode re-check), gtw_ (gtp_
-        round 11 re-check + hg1), t4i_ (r24 trace-window range), c3i_
+        gtv_ GTL_ S4 RE-CHECK = OK 07:5x (plan_1117/gtv_gtl_s4_recheck_handback.md; gtv_iq_review.md "## gtl_ S4
+        re-check"): S4 rule (repeat = gap 0 refused, same rule as the builder), span < 1, belt, kind dump reference
+        mode (fits the builder end to end; Q25 never deletes these runs), schema + proposal line, fixture all OK; no
+        frozen file changed. Suites unit 29, ps1 5, keeper 24, iq 14; jobs 28 / 32 first run under 100 % CPU (fake
+        heartbeats stalled 2-4 s, lock phase 11.4 s vs 11.2 s deadline; none touch seed_runs / S4) -> rerun at 13 %
+        load 32 / 32. budget.py / test_budget.py changed 07:37:27-28 during gtl_'s live jobs run = gtb_'s grs1b
+        (backup gtb_bak19 07:37:02; confirmed) -> gtl_'s run may have mixed versions; gtv_'s rerun on the final
+        version covers it. Deletions: the testbin / world folders were removed by the fixtures' own teardown
+        (end_world / end_suite shutil.rmtree of folders the same test process made); gtv_'s race probe also rmtree's
+        its keeper's session folder inside its own fresh world (gtv_ won't rerun it without an OK; a no-delete
+        version can be written). COORDINATOR: test teardown inside a test's own fresh sandbox world is treated as
+        allowed (not ATN data) - FOR ATN in the morning report to confirm or forbid. S5 (Should): kind dump allows
+        2 arms and played.json has no config hash -> A_s2000 + B_s2002 could form a mixed reference. COORDINATOR
+        DECISION: seed_runs takes ONE arm only now (the config hash stays the v1.2 box). Nits: require the seed echo
+        (no answer.get default); test_iq_seed_spacing restore via addCleanup. -> gtl_ STARTED; gtv_ re-checks.
+        - [ ] ATN (morning report): test fixtures remove the sandbox world / testbin folders they made themselves
+            (shutil.rmtree in end_world / end_suite; gtv_'s race probe in its own world) - OK, or forbid?
+        Agents (7): h0i_ (H0 analysis + fake to testbin + R1), gtl_ (S5 one arm + 2 nits), gtw_ (gtp_ round 11
+        re-check + hg1), t4i_ (r24 trace-window range), c3i_
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
