@@ -6909,9 +6909,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         run 3 = ATN's paths only, reflection s8 dropped). Not run, no commit, no rebase. upr_ RE-CHECK STARTED; rebase
         after rmt_lg2 merges, then 5 re-check items (header counts 52 / 61, UNCHANGED 24, Headers() 61, $PostRev,
         merge-base + include check).
-        Agents (12): c33i_ (N6), lga_ (r4 re-check), ebr_ (r17 re-check), gtp_ (T04), upt_ (v2.4), upr_ (H0 script
-        re-check), gtv_ (S3r), gtb_ (lab phases), gti_ (-ExcludePids), gtk_ (lab contract check), gbc_ (C1 + C2, then
-        B1 review), gpr_ (price + web review).
+        GATE HOOK INSTALLED by ATN 02:58 [x] ATN: settings.local.json == plan_1117\settings.local.proposed.json (byte-equal),
+        parses, 19 allow rules (the H0 rules fixed). Hook live in SHADOW: gates_probe.tsv + tool_times.tsv rows from
+        03:03 (main + subagents; agent_id present for subagents only), no gate_errors.tsv. Shadow days start 11-22;
+        then gtv_ reviews the would-deny rows -> ATN writes enforce. cite_since still set-on-install (optional, ATN).
+        upt_ v2.4 DONE 03:0x (plan_1117/designs/upt_v24_handback.md, unified_pt.md 1452 lines, v2.3 copy scratchpad\
+        upt_v23_backup.md): RR default final in §5 / §9; ONE context impossible (each dispatch passes every signal of
+        its context, denoising.md:320-332, and our frame has 2 points: sun early at the AO / first sun draw, paths
+        late from the lit image) -> 2 contexts (early sun, late everything else); torch light place = open arm U11
+        (late if the composite can move, else early +5 ms; tested with NRD on the 5090). RR est. 9070 XT: mode 7.7-8.2
+        ms 4K Quality / 4.1-4.4 ms 4K Performance (torch late), hybrid ~7.4 / ~3.9 ms. upr_'s fixes in (U11h, U11
+        tests, rt_di_ok bits, PTLAS wording + cites, U12a / new U12d, U13 Q-gates); F4 withdrawn. 294 agent-h + ~16 h
+        reviews + 30-45 GPU-h. upr_ v2.4 RE-CHECK QUEUED after its H0 re-check.
+        Agents (11): c33i_ (N6), lga_ (r4 re-check), ebr_ (r17 re-check), gtp_ (T04), upr_ (H0 script re-check, then
+        v2.4 re-check), gtv_ (S3r), gtb_ (lab phases), gti_ (-ExcludePids), gtk_ (lab contract check), gbc_ (C1 + C2,
+        then B1 review), gpr_ (price + web review).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
