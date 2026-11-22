@@ -481,8 +481,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (cleanup list): tools\tw\h0\selftest_check15 (empty folder, h0i_ 09:1x) may ... | ?
 - c3i_ F1: session totals for the B1 safety counters (print when any fault counter ... | ?
 - c3i_ F2: a log line (Note() event kind) when the slot list grows on a worker (t4 ... | ?
-- ATN (morning report): add a B1L1-only volley pair or an automated B1 picture com ... | ?
+- ATN (morning report): add a B1L1-only volley pair to the end batch? ~7 min (L1-o ... | ?
 - T5 build step: write the real manifest.json with these rows / row_values / env ( ... | ?
+- t4i_ (after ebr_ T5): option (a) = an arm every 10 s in the soak starts' L2 time ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8873,9 +8874,26 @@ heading text are in HANDOFF_ARCHIVE.md)
             window, rate-limited, + a session total line on the next window / shutdown) - no per-frame print
             (t4i_ 09:1x).
         - [ ] c3i_ F2: a log line (Note() event kind) when the slot list grows on a worker (t4i_ 09:1x).
-        - [ ] ATN (morning report): add a B1L1-only volley pair or an automated B1 picture compare to the end
-            batch? (cost from t4i_; today the only B1 picture A/B is ATN's eye on REF-P vs KNOB-W3) (t4i_ 09:1x).
+        - [ ] ATN (morning report): add a B1L1-only volley pair to the end batch? ~7 min (L1-only W3 start ~320 s,
+            3 more shot pairs) or ~12 min (full 620 s, frame time vs REF-P too); no existing W3 start can take it
+            (t4i_ 09:2x). An automated B1 picture compare is NOT possible today (shots on the add-on clock, not a
+            game tick; paused compares freeze the effect state) - it needs c3i_ code (effect-state hash at fixed
+            replay ticks) + a cross-run B1-off control proven in a game run (ATN's go).
         - [ ] T5 build step: write the real manifest.json with these rows / row_values / env (t4i_ 09:1x).
+        t4i_ B1 COST 09:2x (render_mt/reports/t4i_b1_cost_handback.md; probes scratchpad\t4i_b1cost.py +
+        t4i_t5_cover.py; read only): (1) B1L1-only volley pair ~7 / ~12 min (ATN box updated). (2) automated B1
+        picture compare not possible with today's tools (ATN box). (3) soak starts can open many more windows at
+        no extra minutes (arms are set-file entries outside measured windows): L2 on 6440 s in soak starts, 5126 s
+        outside measured windows, 165 arms today; (a) an arm every 10 s there (>= 3 s from existing arms) = ~+550
+        (+525 without PAUSE-W3; CAMP 107, CHK-D1 90, LQ-W3 90, CHK-W3 88, KNOB-W3 54, ATN-FT 28, FT-W3b 25); (b)
+        30-frame windows (gap rule 2 s). Scan share of L2 soak time at 20 fps: today ~1650 frames ~1.3 %, (a) ~7150
+        ~5.6 %, (a)+(b) ~21,450 ~17 %. Costs: one draw-trace file per window (runner moves more files), more
+        ReShade.log lines, windowed frames' own cost unmeasured (never measured frames). COORDINATOR: take (a), not
+        (b) (keeps window length + gap rule); t4i_ does it AFTER ebr_'s T5 review (one writer on segments /
+        plans), leaving PAUSE-W3's pauses + map-hash windows alone.
+        - [ ] t4i_ (after ebr_ T5): option (a) = an arm every 10 s in the soak starts' L2 time outside measured
+            windows (~+525, not PAUSE-W3); check the runner's file moves + ebo_check's file-per-window rule cope
+            (t4i_ 09:2x).
         Agents (7): upr_ (h0i_ F1-F4 re-check), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gpr_
         (gtb_ slot-wait / floor / R12-1 + load proposal check), grs_ (first-frame v3 + steps 1-2), gtw_
         (release_check.ps1 review), ebr_ (t4i_ T5 review), c3i_ (B1 F1 + F2 logging)
