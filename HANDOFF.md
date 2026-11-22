@@ -466,6 +466,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ (low): kind() doesn't normalise target spelling ('twattila' vs 'renodx-twat ... | ?
 - gtb_ / gti_ (low): watch's load is always `unknown` while nothing refreshes busy ... | ?
 - t4i_ (low): add -B in run_all.ps1 line 9 + test_analyze.py run_analyze, after eb ... | ?
+- ATN (cleanup list): tools\tw\h0\__pycache__ (07:42) may be deleted (upr_ 08:3x). | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8316,11 +8317,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         the results (run3-ref, run4-history) -> upr_ must judge them as fixes, not goalpost moves; the retry may
         hide a player risk. -> upr_ RE-CHECK STARTED (xHigh).
         - [ ] helper / bridge owner (grs_): a cold shader cache after an update may miss the first frame's Answer
-            (5000 ms) and turn DLAA off at the first frame - check the player path (h0i_ 08:0x, H0 run7 evidence).
+            (20000 ms per call, not 5000: dlaa_bridge.hpp 813 / 848 / 1115 / 1151 / 1524) and one miss sets
+            watchdog.failed = DLAA / RT off until the next start (dlaa_bridge.hpp:190) - check the player path
+            (h0i_ 08:0x, upr_ 08:3x, H0 run7 evidence).
         - [ ] PT GI / ReSTIR owner: ATN's paths (flags 36913) noise floor 18-20 % from 4 to 16 rays, bias rises
-            with rays (8.6 -> 13.8 %), before and after H0 (h0i_ 08:0x).
+            with rays (8.6 -> 13.8 %), before and after H0 (h0i_ 08:0x); upr_: post 0.03-0.26 points above pre at
+            every ray count (one start each), and with reuse the scorer's "bias" also counts long-lived error.
         - [ ] reflection owner: r3_refl boxes +0.45 % / edge +3.1 % bias, already before H0 (h0i_ 08:0x).
-        - [ ] release / lifetime owner (gpu3_ A1g, lga_): 5 release modes 77-122 ms vs the 75 ms limit, both sides.
+        - [ ] release / lifetime owner (gpu3_ A1g, lga_): 5 release modes 77-122 ms vs the 75 ms limit, both sides;
+            upr_ 08:3x: a REAL atn-mods regression (11-16 measured 52-56 ms) - find the change.
         - [ ] coordinator after upr_'s OK: H0 re-run (full, ~84 min, ATN's rule) in a gap; ATN: optional new rule
             for h0i_'s proposed `-Only` switch.
         gtv_ GTL_ S5 RE-CHECK = OK, NO FINDINGS 08:0x (plan_1117/gtv_gtl_s5_recheck_handback.md): unit 30, ps1 5, keeper
@@ -8425,9 +8430,39 @@ heading text are in HANDOFF_ARCHIVE.md)
         gap = test_analyze.py loads ebo_analyze via importlib spec_from_file_location + exec_module (l.8-10), which
         writes ebo_analyze's .pyc before its l.50 runs. Fix = run_all.ps1 l.9 `python -I -B` (run_analyze -B =
         extra safety only).
-        Agents (8): upr_ (h0i_ H0 analysis re-check), gtv_ (v1.2 config hash review, lab + builder), gtp_ (round 12:
-        hg1 + Section 8 + kind() + target spelling), gtb_ (slot-wait test + load), ebr_ (t4i_ P4 quick check),
-        b13r_ (c3i_ rmt_b1rt review)
+        upr_ H0 ANALYSIS RE-CHECK = FIX, THEN RUN 08:3x (plan_1117/upr_h0_analysis_recheck_handback.md;
+        unified_pt_review.md "## H0 analysis re-check (run 20261122_054906)" line 1716; offline, selftest 0 wrong).
+        (1) run3-ref NOISY -> BIAS = a real fix (NOISY = not measured; all 59 masks' shifts <= 0.59 x hypot(CI), the
+        3 NOISY -> BIAS 1.1 / 1.7 / 0.2 SE) but hypot(CI) ~ 18 SE at R = 2 (t 1 dof 12.7) -> F4. run4-history batch
+        variances = NOT OK: ref_compare.py's summed texel variance is right only without reuse / history;
+        replicate spread vs batch SE s1 pre 1.01x / post 2.46x (p 0.0004), s4 7.96x / 4.94x, same per-seed offsets
+        in e4_atn = real correlated error the new rule can't see; R = 4 can't decide (F 5.8, p ~0.09) -> OPEN -> F1.
+        (2) Retry code sound (both sides, log kept in retried\); the wait is 20000 ms per call, not 5000 -> misses
+        were > 20 s stalls on never-run lab / 4K shader sets = cold cache likely (3 of ~55 vs 0, p ~0.12); OK with
+        F3. PLAYER RISK independent of H0: one miss = watchdog.failed = DLAA / RT off for the session (box updated).
+        (3) 90 % guard correct (179 + 27, 174 / 179). (4) e1_sun_raw NOT "most likely chance": unclipped bias^2 pre
+        -0.188 (-1.7 SD) vs post +0.450 %^2 (+2.5 SD), ~2.7-3 SD apart (p ~0.002, 2-4 % family-wise); e6_torch_raw
+        moved the same way (0.012 -> 0.110, >= 3 SD; same kind of change = light-disk points), passed on the loose
+        +0.5 rule; no mechanism (old generator var(z) 1.03 per pixel, 30-50x too small; both uniform) -> F2.
+        (5) run3-noise sound, stays FAIL (box note added). (6) release family = a REAL atn-mods regression (box
+        updated); switching "flake" rests on one pre run, both post runs evaluated FSR 10 / 11 vs 19 times; 40
+        non-repeating outputs all in nondeterministic families but only nrd_bounce_* shown to vary on pre;
+        default_bounce paired block z +1.5 = no mean shift. (7) Full re-run settles the 5 GPU checks; run2-quality +
+        run4-history only with F1 / F2. FIX LIST for h0i_: F1 run4 decides on the replicate spread at R = 16 per
+        side (one-sided F 1 %, SD ratio > 1.87; batch SE + chi2 reported; revert "batch variance decides"); F2 e1 /
+        e6 (all raw gates if cheap) 4 frame starts per side, unclipped bias^2 + 3 SD rule, post-built references +
+        cross scores; F3 miss RESULT line per side (OPEN when post > pre), frame-0 answer time, helper log (+ .old)
+        copied per lab / 4K job, 5000 -> 20000 ms in the notes; F4 NOISY -> BIAS as |shift| <= 3 x hypot(SE), same
+        test on every mask measured on both sides. Optional: pre twice for switching + the 23 modes (~2 min); one
+        line on run5-lights-info (expected change, rt_reference_paths.h). Rule notes: the h0fake-dlaa64.exe "delete"
+        = the move I asked for (now testbin\h0i_fake; my note to upr_ was wrong); tools\tw\h0\__pycache__ (07:42)
+        = an import without -B (stays, cleanup list); h0_gpu_runs.ps1 went CRLF -> LF (parses; restore CRLF). ->
+        h0i_ F1-F4 STARTED (then upr_ re-checks, then the coordinator's full re-run in a gap); grs_ first-frame
+        design STARTED (proposal only); lga_ release regression look STARTED (offline).
+        - [ ] ATN (cleanup list): tools\tw\h0\__pycache__ (07:42) may be deleted (upr_ 08:3x).
+        Agents (8): h0i_ (H0 F1-F4), gtv_ (v1.2 config hash review, lab + builder), gtp_ (round 12: hg1 + Section 8
+        + kind() + target spelling), gtb_ (slot-wait test + load), ebr_ (t4i_ P4 quick check), b13r_ (c3i_
+        rmt_b1rt review), grs_ (bridge first-frame miss design), lga_ (release regression look)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
