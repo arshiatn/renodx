@@ -653,6 +653,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - M1 MAJOR (coord's pick = fix (a)): §7 crash rules 1 + 2 had no lines (AddCodeRan ... | ?
 - after the batch: m1 + NIT 5 (b3t_: animation_rows.hpp:505-508 logs the requested ... | ?
 - ATN box (gpr_): with shell_heredoc OFF, python heredoc edits of real code pass, ... | ?
+- gtp_ round 24 also: gtw_'s R23-2 speed fix (blocks the mirror suite) + R23-1 OPE ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12469,6 +12470,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         into CODE (+ .s; 329 harness .inc under tools/tw become Edit-only while tools_tw is on).
         - [ ] ATN box (gpr_): with shell_heredoc OFF, python heredoc edits of real code pass, as on bak28 (seen: expeditionsrome
         addon.cpp, heapfix prepare.c, rmt_c33 tests.cpp). Keep off, or turn on later?
+        gtw_ R23 RE-CHECK 22:5x: NOT GO as staged, GO after one speed fix (plan_1117/gtw_r23_recheck_handback.md;
+        gtw_s1c_review.md line 2648). R23-2 (blocks the suite): F24's 292 KB case, pre_shell CPU bak28 0.219 / stage22 0.266
+        / stage23 0.594 s (path_words: 73k statements x many inline regexes) -> precompile, skip statements with no write
+        sign, target <= 0.3 s + a test; GO check = F24 alone + gtw_r23_time.py part 2. R22-1..6 fixed (R22-4 [422] corner +
+        gpr_'s 20:42:53 row Low). R23-1 OPEN_NAME over-refuses (~20 of 29 hits normal; PS `2>$null` with cwd in tools/tw / src
+        = code write) -> round 24: $null in NOT_FILE, loop lists as values, folder destinations take source names, literal
+        Join-Path / Resolve-Path args. R23-3 Low over-refusals (cmd /c in heredoc bodies, "$(" spans, free_text cwd).
+        Suggests the files-deny message say `cd X; ...` keeps the old folder (use &&). Agrees shell_heredoc off (ATN before
+        enforce), .inc (+ .s, .glsl). gtw_ slip 22:36: a stray `diff >` file in tools\tw\ (its own output), deleted at once.
+        - [ ] gtp_ round 24 also: gtw_'s R23-2 speed fix (blocks the mirror suite) + R23-1 OPEN_NAME fixes + .glsl; the
+        files-deny message hint.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
