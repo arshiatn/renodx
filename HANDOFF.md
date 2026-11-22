@@ -488,6 +488,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - worktree cleanup (ATN): grs_'s worktree build\downloads_min (6 junctions - links ... | ?
 - grs_ (after rec_verify): fg_proxy_d3d12.hpp Presented() comment -> fcr_'s exact ... | ?
 - t4i_: copy ebr_'s scenarios A / B / D (scratchpad\ebr_pr_scen) into test_analyze ... | ?
+- gtp_: R16-1 (here-string key + seed() strips tabs / newlines; clean the 11 broke ... | ?
+- gpr_: re-check round 14's exe moves (tools/ + scratch exe keys) with production ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9882,9 +9884,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         2 s ago" (= gtv_'s flake, gtl_runs14\old_gap.txt); new limits under 32 busy loops at 100 % CPU: keeper 25/25,
         Calibrated 13/13; test_stop_heartbeat + test_stop_hung_fence still stop. Final: unit 34/34, ps1 5/5, jobs
         32/32, keeper 25/25 (11:41:14). Backups scratchpad\gtl_backup_hang\. -> gtv_ re-checks.
-        Agents (4): gtw_ (round 16 re-check), gpr_ (round 16 price re-check), t4i_ (ebr_'s scenarios into test_analyze),
-        gtv_ (gtl_ fixture timeout re-check); t4i_ ETL move waits for ATN (antivirus); release_check -> H0 re-run;
-        ff_s12 + grs_xess_guard after H0
+        ATN 11:4x: Bitdefender had held files; ATN restored them. scratchpad\t4i_etl_tests.py (14,223 B) and
+        b13r_b1log_runs.ps1 open again (checked 11:43) -> t4i_ does the ETL move after its analyze gap (same rule: a
+        new block = stop + report the file, never rename).
+        gpr_ ROUND 16 RE-CHECK = PRICE SIDE OK, 2 NEW LOWS 11:43 (plan_1117/designs/gpr_round16_recheck_handback.md;
+        gpr_review.md "## gtp_ round 16 re-check"): control seed bak21 vs live hook over one frozen 400-transcript
+        window: seeds 106,032 = 106,032, rings 2,031 -> 2,221 (108 gone = rotation, ~299 new), watch_off 193 = 193,
+        dups 21 = 21; build seeds 388 -> 389 (cmake amd64 twwarhammer3 warm, n 1); troy_vc.cmd cmake now keys as
+        itself (n 17, p50 57 s, p95 95 s; none crosses 120); refusal (a) flips 2 = test_lab_jobs.py (VERIFY exempt);
+        fix-now n >= 10 39 = 39, watch_runs.tsv 1 OK row -> cannot start. New activity: harness
+        scratch:gtl_lowrun.py RENODX_LAB_BUSY_COUNT crosses refusal (a) (n 15, p50_lb 83 s, p95 160 s; shadow).
+        R16-1 (Low): WORD tokenizer keeps @'...'@ across newlines -> 5 calls key with newlines, live price_seed.tsv has
+        11 broken lines / 5 junk n 1 rows (one kind ''); ring keys never match; no decision changes. Fix: here-string
+        start keys as @ (or cut at first newline) + seed() strips tabs / newlines like time_row.
+        R16-2 (Low): Start-Process key pools scripts (~36 calls, 120-char cut before the script name, 6 keys per shape
+        by quote style; string -ArgumentList -> light). Fix: no -Wait -> light; -Wait -> join ArgumentList, key the
+        inner command (ps1 scratch:<name>:<h8>). Probe note: rounds 12-15 box probes keyed tools/ + scratch paths
+        unlike production (TEMP in scratchpad); round 15 holds (light keys only); round 14 exe moves may be
+        under-checked -> gpr_ re-checks round 14 with production paths.
+        - [ ] gtp_: R16-1 (here-string key + seed() strips tabs / newlines; clean the 11 broken price_seed.tsv lines by
+            re-seed, no hand edit) + R16-2 (Start-Process keys); decide gtl_lowrun.py refusal (a) with gtl_ (shadow);
+            gpr_ re-checks (gpr_ 11:43).
+        - [ ] gpr_: re-check round 14's exe moves (tools/ + scratch exe keys) with production paths (gpr_ 11:43).
+        Agents (5): gtw_ (round 16 re-check), gtp_ (R16-1 / R16-2), gpr_ (round 14 re-check, production paths), t4i_
+        (ebr_'s scenarios into test_analyze, then ETL move), gtv_ (gtl_ fixture timeout re-check); release_check RUNNING
+        (task bhyagz3c2, 11:43, dry run ready) -> H0 re-run; ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
