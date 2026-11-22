@@ -10460,6 +10460,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtl_: stage H1 + H2 + M1 / M2 / M2b / M3 / M4 + L1 / L2 + nits; gtv_ re-checks; lands after S3c part 1 by
         copying (coord 15:40).
         - [ ] coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU use) (coord 15:40).
+        gpr_ ROUND 19 RE-CHECK = PRICE OK + 1 MEDIUM 15:44 (plan_1117/designs/gpr_round19_recheck_handback.md; gpr_review.md
+        "## gtp_ round 19 re-check"; testbin\scratch\gpr_\gpr_r19_*): keys 1 of 89,170 (py -c da39a3ee -> real hash), no
+        class / build key moves; kind() CPU 9.58 s -> 8.91 s, slowest < 16 ms; control seeds 107,428 both, builds 388, rows
+        7,327 (3 file rows differ = control method's mtime sort); real seeds 106,509 -> 107,321, rows 7,224 -> 7,323, 0 bad
+        / lost; rings 2,497 -> 2,760 none lost; refused rows 16 same; log rows n >= 10 45. R19-1 MEDIUM: exact lab-cwd rule
+        REFUSES a real gtl_ lab-suite run (`S=$TW/lab_gtl_stage; cd $S && ... gtl_lowrun.py tests/test_lab_jobs.py`): kind()
+        keeps S raw -> folder .../lab/$TW/lab_gtl_stage (round 18's tail match exempted by luck); key harness
+        scratch:gtl_lowrun.py RENODX_LAB_BUSY_COUNT is a refused row; 21 calls with unresolved $ folders, PS $x = "$tw\.."
+        junk keys. Sandbox fix (expand known vars in assignment values): R19-1 exempt, 83 calls to real keys, 3 rightly on
+        the refused x87fix_test a1 row, but 6 $env:USERPROFILE chains exe -> light (kind() doesn't read a $env: head) ->
+        full fix also resolves $env:NAME + key diff (gtp_). Lows open: sh scratch:upr_lock_hold.py class; -m
+        RENODX_LAB_BUSY_COUNT (gate_hook.py:812 keeps -m, drops module); NEW Low gtp_lowprio.py -b -i pools 12 suite runs + 2
+        tool_prices.py seed runs on one row (n 13, p50 18 s; > 30 s would refuse only the seeds) -> key a wrapper's child.
+        -> gtp_ ROUND 20 = R19-1 (+ $env:NAME) + 3 Lows, sent together with gtw_'s re-check 19 when it lands.
         Agents (4): gtw_ + gpr_ (round 19 re-checks), fcr_ (dead-output piece review), gtl_ (stage reset_ms, then gtv_'s
         H1 / H2 list); GPU: all_modes run RUNNING (15:12, ~40-45 min, b4pmp185v) -> S3c part 1 (coord, gpu_lab.ps1 per
         s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
