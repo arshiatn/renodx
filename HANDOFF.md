@@ -9591,9 +9591,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         lines being adjacent; "take the last totals line" holds. Still after H0: c3i_'s FULL suite,
         -DrawRecording, instance_fill, gated builds x86 + amd64; b13r_'s driver stays unrun.
         -> c3i_ N5 + N6 now (code only); t4i_ told (no adjacency).
-        Agents (4): lga_ (release_check R-RC1-1 / -2 + nits), gtw_ (round 15 re-check), gpr_ (round 15 re-check, price
-        side), t4i_ (probes for the 3 new B1 lines, then ebr_'s G1 / G2 / N-a / N-b); c3i_ (N5 + N6, then waits for
-        H0's end); H0 run (background, ~11:30)
+        lga_ RC-2 DONE 10:32 (plan_1117/lga_rc2_handback.md; backup h0\release_check.ps1.bak_rc2; test
+        scratchpad\lga_rc2_test.ps1 31 / 31, sandbox locks only; verdict test 10 / 10; dry run 10:32 ATN's form exit 0
+        "ready; nothing started" -> release_runs\dryrun_20261122_103200.txt): R-RC1-1 Get-Beside skips v1 slots
+        "owner dead" / "owner reused" (gpu_lock.py show --lock <slot>) + non-v1 slots older than 3 h (empty slot =
+        live, like gated_build); each named once in the log + summary.txt, never moved / removed; python only while a
+        slot file exists, verdict cached by slot text. R-RC1-2 Get-QuietHolder says alive / dead / reused / unknown;
+        a record with OUR owner text and a dead / reused pid -> moved to quiet_run.lock.stale-<yyyyMMdd_HHmmss>
+        (never deleted), lock taken; a bench record is never moved (60 s, exit 3, "(holder dead)"); dry run +
+        waiting line show the state. N1 any other quiet-lock error = refusal (line, GPU release, exit 3). N2 the
+        900 s build wait runs before any lock (exit 4 no lock); after both locks a re-check, a build that started
+        meanwhile waited once more (15 min, locks held), then stop. Get-Beside no longer reads quiet_run.lock; the
+        quiet record is checked before each job + after the last. Time ~9 min (518 s) / ~13 with -WithRelease +
+        any build wait. Not tested: real locks, a real build. lga_release_regression.md Runner paragraph updated.
+        -> gtw_ RE-CHECKS RC-2 (after round 15).
+        Agents (3): gtw_ (round 15 re-check, then lga_ RC-2 re-check), gpr_ (round 15 re-check, price side), t4i_ (probes
+        for the 3 new B1 lines, then ebr_'s G1 / G2 / N-a / N-b); c3i_ (N5 + N6, then waits for H0's end); H0 run
+        (background, ~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
