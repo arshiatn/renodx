@@ -490,6 +490,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_: copy ebr_'s scenarios A / B / D (scratchpad\ebr_pr_scen) into test_analyze ... | ?
 - gtp_: R16-1 (here-string key + seed() strips tabs / newlines; clean the 11 broke ... | ?
 - gpr_: re-check round 14's exe moves (tools/ + scratch exe keys) with production ... | ?
+- coordinator: H0 re-run after gtv_'s keeper runs end (no lab fixture / keeper tes ... | ?
+- gtl_ (later, Low): lab fakes are named like the real harness -> H0's guard stops ... | ?
+- ATN / coordinator: ETL move: drop it (batch fits on C: after the live_proof move ... | ?
+- gtp_ round 17: gtw-R16-1..10 (Should first: R16-5, R16-6, R16-1, R16-2 perl, R16 ... | ?
+- c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate le ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9913,9 +9918,60 @@ heading text are in HANDOFF_ARCHIVE.md)
         tools\tw\testbin\scratch\<prefix>\, big output into a file there (not the task output); a restored file may be
         copied there under the same name; never rename / alter to dodge; still blocked = stop + report. Told gtw_ (re-run
         anything cut while held), gtp_, gpr_, t4i_, gtv_. Memory feedback_bitdefender_test_exes updated.
-        Agents (5): gtw_ (round 16 re-check), gtp_ (R16-1 / R16-2), gpr_ (round 14 re-check, production paths), t4i_
-        (ebr_'s scenarios into test_analyze, then ETL move), gtv_ (gtl_ fixture timeout re-check); release_check RUNNING
-        (task bhyagz3c2, 11:43, dry run ready) -> H0 re-run; ff_s12 + grs_xess_guard after H0
+        DELETE DONE 11:48 (ATN "Yes, delete"): 12 old WPR ETLs in bench\runs (b1 / b2 / b2b / b3 / final1119, 35.70e9 B =
+        33.3 GiB, all <= 20.11) + 281 shots in test_scripts\shots (5.92e9 B, 31.10 - 03.11) + their 7 empty subfolders;
+        no reparse points on the paths or inside; shots folder kept. C: free 80.6 -> 122.2 GB. Drives: D: 182.3, E:
+        332.8 GB free. ATN 11:5x asks to move more off C: to D: (in progress: recordings\live_proof 29.7 + live_proof2
+        81.8 GB from 11-17 = the candidates; reference scan first).
+        RELEASE_CHECK = PASS 11:55 (h0\release_runs\20261122_114311; task bhyagz3c2 exit 0): RUN CONDITIONS both pass and
+        match outside H0's sequence (old 0 / 4 and new 0 / 4 at >= 75 ms, 3 / 4 pairs within 10 ms, 0 / 4 new >= 15 ms
+        above old, old at most 73.6 ms). Pairs new - old: smoke_1 -8.4, rr_1 +6.8, smoke_2 -1.1, rr_2 +12.2 ms; scene
+        release old 159 / 142 / 158 / 156, new 143 / 155 / 160 / 155 ms. -> H0's family again in the next H0.
+        H0 RE-RUN 20261122_120029 STOPPED 12:05 after 1 min (task b6xsccaa6 exit 3): builds pre e9133dfa4 / post 42c081bd6
+        all exit 0, headers PASS (24 equal / 37 changed), first-frame PASS; then "a TW game or another GPU job started
+        before run1 post_b removal: tw_rt_harness_scene_4k 90796 testbin\gtl_test_89604\keeper_5unfbf0w\lab_scene_idle"
+        = gtv_'s keeper re-check fakes (named like the harness). Rest = MISSING (not real FAILs). Re-run after gtv_.
+        - [ ] coordinator: H0 re-run after gtv_'s keeper runs end (no lab fixture / keeper tests during H0) (coord 12:05).
+        - [ ] gtl_ (later, Low): lab fakes are named like the real harness -> H0's guard stops on them; either fakes get
+            their own name or H0 ignores testbin\gtl_test_* (decide; coord 12:05).
+        t4i_ ANALYZE GAP = DONE 11:5x (render_mt/reports/t4i_analyze_gap_etl_block_handback.md): test_analyze leg of 5 fake
+        starts (A outside only, B detach totals only = D1-ALL / HF, D window fault + totals agree, E three rising totals,
+        F outside after last totals); NOTE "tag leaks 1 (last session total 0, printed before this line)" via
+        outside.after_totals; mutants T10 130/132 (D, E), T13 131 (B), T14 131 (A), W 131 (F), control 132/132;
+        run_all parse 0, lib 495, make 97, check 166, leg 166, analyze 132. Files: bench\ebo_analyze.py, ebo\tests\
+        test_analyze.py (backups scratchpad\t4i_bak\gap). -> ebr_ re-checks.
+        t4i_ ETL MOVE = NOT DONE, BITDEFENDER (AMSI) BLOCKED test_lib.ps1 11:49 (ATN's screenshot: "PowerShell tried to load
+        a malicious resource CMD:Heur.BZC.ZFV.Boxter.983.AD1CEF56"): ebo\tests\test_lib.ps1 with the new Move-EboEtl tests
+        (random bytes, hashes, Remove-Item check) refused to run; not quarantined. t4i_ stopped, renamed / re-created
+        nothing, put all 8 files back from scratchpad\t4i_bak\etl2 (byte-equal to the green run_all state). Patches
+        ready in testbin\scratch\t4i_. Design unchanged (per-start move after check, size + SHA256 before source goes,
+        resumable stop; C: per leg 20.7 / 61.2 / 67.7 / 61.0 GB, D: 107.7 GB). If live_proof moves off C: (ATN's ask),
+        C: ~233 GB free > the batch's ~151 GB -> no mid-batch move needed.
+        - [ ] ATN / coordinator: ETL move: drop it (batch fits on C: after the live_proof move) or exclude the ebo tests
+            folder (ATN only) (coord 12:05).
+        gtw_ RE-CHECK 16 = CORRECT 11:4x (plan_1117/gtw_recheck16_handback.md; gtw_s1c_review.md "## S1c re-check 16"
+        line 1696): suite 906/906 (first 903 = 3 F24 timing under load; webprice alone 529/529; paired timing no
+        slowdown); corpus 15,119: r15 252 = live 252 refused, 0 differ; 121 kind keys changed; re-seed seeds 105,566 ->
+        105,837, prices 7,082 -> 7,166, rings 746 -> 818, watch_off 193; wrapper hole matrix 196 -> 0; addendum all refused
+        but the quoted cmd switch; 31 pass controls pass. Safe-side over-refusals: powershell -v 2.0 <<EOF, python script
+        <<EOF with a URL in the data. Older gaps for round 17 (gtw-R16-1..10): stdin paths as script (/dev/stdin, fd/0),
+        flag value taken as script (perl -I, node / bun flags), redirect glued to the head (curl>/dev/null), if / while /
+        { } heads, command substitution $( ) + backticks (most common), apostrophe in a comment pairs a later quote
+        (Bash + PS), command -p / env -u -S / stdbuf / time -p / xargs / find -exec, quotes inside the head (c"url"),
+        quoted cmd switch, inline code reading stdin (design limit). Round 17 re-runs the corpus (R16-5 / R16-6). For
+        gpr_: odd WORD keys (empty, fragments) likely the same cause as gtw-R16-6. Bitdefender: gtw_ re-ran b0li2ixz8's cut
+        step into testbin\scratch\gtw_ (same result: 37 R misses, 1 P over).
+        - [ ] gtp_ round 17: gtw-R16-1..10 (Should first: R16-5, R16-6, R16-1, R16-2 perl, R16-3, R16-4) + gpr's R16-1 /
+            R16-2; corpus re-run; gtw_ + gpr_ re-check (coord 12:05).
+        gpr_ ROUND 14 RE-CHECK = HOLDS, 1 CORRECTION 11:4x (plan_1117/designs/gpr_round14_recheck_handback.md): production
+        keys (bak19 vs bak20, PROJECT + real TEMP), 88,128 calls: 471 key changes (467 exe arg-bucket); refusal (a) flips
+        12 = all x87fix_test.exe a2 -> a1 (round 14 said 0 recent calls: wrong, 13 older calls would be refused now in
+        shadow); scene_test a1 / engine_code a8 don't cross; control seeds 106,090 =, build 388 =, exe 1,271 =; fix-now
+        31 = 31.
+        - [ ] c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate leaves shadow (gpr_ 11:4x).
+        Agents (3): gtp_ (round 17: gpr's R16-1 / R16-2 + gtw-R16-1..10), gtv_ (gtl_ fixture timeout re-check), ebr_
+        (t4i_ analyze gap re-check); H0 re-run after gtv_; live_proof move to D: (ATN) before the H0 re-run if the
+        scan is clean; ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
