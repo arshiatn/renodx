@@ -317,7 +317,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
                         : std::array<float, 2>{});
     // The texture LOD bias for the next frames while DLSS / FSR / XeSS drew this frame in Feral's upscaler's place:
     // log2 of the render / output width, minus 1 (sharper) or 2.
-    const int choice = std::clamp(static_cast<int>(sliders.texture_lod_bias), 0, 3);
+    const int choice = twattila::feature_settings::AaSettings(sliders).texture_lod_bias;
     if (choice != 0 && state.upscaled_frame == state.frame && state.upscaler[0] > state.display[0] && state.display[0] != 0) {
       bias = std::log2(static_cast<float>(state.display[0]) / static_cast<float>(state.upscaler[0])) - static_cast<float>(choice - 1);
       view = (static_cast<uint64_t>(state.display[0]) << 32u) | state.display[1];
