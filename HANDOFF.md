@@ -488,11 +488,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - worktree cleanup (ATN): grs_'s worktree build\downloads_min (6 junctions - links ... | ?
 - grs_ (after rec_verify): fg_proxy_d3d12.hpp Presented() comment -> fcr_'s exact ... | ?
 - gpr_: re-check round 14's exe moves (tools/ + scratch exe keys) with production ... | ?
-- coordinator: H0 re-run after gtv_'s keeper runs end (no lab fixture / keeper tes ... | ?
 - gtl_ (later, Low): lab fakes are named like the real harness -> H0's guard stops ... | ?
 - c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate le ... | ?
 - gtl_: lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap ... | ?
 - gtp_ round 18: gtw N8, N1, N3, N2, N4 (Should) + N5-N7 (Low) + VERIFY on the kin ... | ?
+- upr_: H0 verdict from run 20261122_120946 (run3-noise pre-existing?, run6-probe ... | ?
+- coordinator: ff_s12 (3c77a0c86) + grs_xess_guard (29a55acad) merge gate AFTER up ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9929,7 +9930,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         all exit 0, headers PASS (24 equal / 37 changed), first-frame PASS; then "a TW game or another GPU job started
         before run1 post_b removal: tw_rt_harness_scene_4k 90796 testbin\gtl_test_89604\keeper_5unfbf0w\lab_scene_idle"
         = gtv_'s keeper re-check fakes (named like the harness). Rest = MISSING (not real FAILs). Re-run after gtv_.
-        - [ ] coordinator: H0 re-run after gtv_'s keeper runs end (no lab fixture / keeper tests during H0) (coord 12:05).
+        - [x] coordinator (DONE 13:26, run 20261122_120946): H0 re-run after gtv_'s keeper runs end (no lab fixture / keeper tests during H0) (coord 12:05).
         - [ ] gtl_ (later, Low): lab fakes are named like the real harness -> H0's guard stops on them; either fakes get
             their own name or H0 ignores testbin\gtl_test_* (decide; coord 12:05).
         t4i_ ANALYZE GAP = DONE 11:5x (render_mt/reports/t4i_analyze_gap_etl_block_handback.md): test_analyze leg of 5 fake
@@ -10076,8 +10077,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         stdin" and "runs code" separately. Round 18 re-runs the corpus.
         - [ ] gtp_ round 18: gtw N8, N1, N3, N2, N4 (Should) + N5-N7 (Low) + VERIFY on the kind statement + \.py end + gpr
             R17-1 + gpr Lows 1-4; corpus re-run; gtw_ + gpr_ re-check (coord 12:5x).
-        Agents (2): gtp_ (round 18), gtl_ (edits ready, suites after H0); H0 re-run NOW (12:09) -> tell gtl_ H0 done;
-        ff_s12 + grs_xess_guard after H0
+        H0 RE-RUN 20261122_120946 DONE 13:26 (h0\runs\20261122_120946\summary.txt; task bwwt0eb2s exit 0; pre atn-mods
+        868679895, post 42c081bd6; 75 min GPU part): 16 PASS, 2 FAIL, 1 OPEN. PASS: run1-headers (24 equal / 37 changed),
+        run-firstframe (0 misses pre 80 / post 78 jobs; frame-0 trace request max 8082 / 7720 ms), run1-dumps (no output
+        appears / vanishes, sizes equal), run8 (1509 outputs, 1481 repeat), run1-census, run2 / run3 / run4-ref (no mask
+        worse), run5-g3, run4-history, run5-bytes, run2-quality, run2-rawbias, run6-sharc, run7-atn, run7-atn16. No copy
+        NOTE stop (h0i_'s Copy-Fresh held).
+        FAIL run3-noise: 16 rays not below 8 after H0 (1.242) AND before H0 (1.194) = pre-existing premise miss (same
+        numbers as the 05:49 run); post +4 % -> upr_ judges. FAIL run6-probe: unseen_local mean 0 -> 0 (x nan) = 0 / 0
+        in the checker (both builds 0) -> tool artifact, h0i_ fix (0 -> 0 = equal) unless upr_ says unseen_local must be
+        > 0. OPEN run1-repeat: post-only nondeterminism fast_leaves, micromaps_leaf_stress (pre does not repeat either in
+        16 modes: micromaps*, nrd_*, paths_sharc_leaf_stress, release_nrd) -> upr_ judges.
+        - [ ] upr_: H0 verdict from run 20261122_120946 (run3-noise pre-existing?, run6-probe 0 / 0, run1-repeat post-only
+            fast_leaves + micromaps_leaf_stress) -> H0 merge yes / no / re-run (coord 13:26).
+        - [ ] coordinator: ff_s12 (3c77a0c86) + grs_xess_guard (29a55acad) merge gate AFTER upr_'s H0 verdict (a helper
+            merge makes H0's checks refuse a re-run) (coord 13:26).
+        Agents (3): gtp_ (round 18), gtl_ (lab suites now, H0 done), upr_ (H0 verdict); ff_s12 + grs_xess_guard after
+        upr_'s verdict
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
