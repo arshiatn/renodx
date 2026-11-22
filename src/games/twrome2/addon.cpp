@@ -47,6 +47,7 @@
 #include "../twattila/shadow_pass.hpp"
 #include "../twattila/smoke_map.hpp"
 #include "../twattila/ssr_hiz.hpp"
+#include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
 #include "./more_tests.h"
@@ -57,6 +58,7 @@
 #include "./rt_particle_quads_18FE5E2B_gs.h"
 #include "./rt_particle_quads_B5D63E8A_gs.h"
 #include "./shared.h"
+#include "../twattila/frame_gamma.hlsli"
 
 constexpr char BUILD_DATE[] = __DATE__;
 constexpr char BUILD_TIME[] = __TIME__;
@@ -90,6 +92,14 @@ bool IsHdrOutput() {
 
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, a luminance curve then the clip).
 constexpr float HUE_CLIP_DEFAULT = 80.f;
+
+// PsychoV35's defaults that follow the game's response (shared.h ROME2_V35_*, test/tw_rome2_thrones_v35): its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", ROME2_V35_CONTRAST},
+    {"v35_shadows", ROME2_V35_SHADOWS},
+    {"v35_saturation", ROME2_V35_SATURATION},
+    {"v35_highlight_contrast", ROME2_V35_HIGHLIGHT_CONTRAST},
+};
 
 // Modded Auto Exposure: Sensitivity's default, in stops above the frame average (Attila's).
 constexpr float AUTO_EXPOSURE_HEADROOM_DEFAULT = 4.f;
@@ -171,6 +181,7 @@ void ApplyHDRPreset(
       {"v31_highlight_saturation_shift", 0.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 // Reset's values in a rendering mode: PsychoV35 for the Reset button, SDR for the SDR preset.
@@ -1460,7 +1471,15 @@ void BuildRuntimeData() {
     //     },
     // },
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
 }
 
 // Graphics (Experimental): the sliders, through the LOD pick hook (model detail), Attila's unit hook
@@ -1885,6 +1904,61 @@ constexpr std::array<uint32_t, 15> SHADOW_READER_SHADERS = {
     0x809D7997, 0xB4BAD934, 0xD627B33B, 0xF5A1526C,  // battle sea, 5.0 / 4.1 high and ultra
 };
 
+// The rays replace the per-frame atlas's sun shadow (one method, as Warhammer II's / Troy's / Pharaoh's; ATN 2026-11-22:
+// Replace by default once the WARP proof and a trace pass are in; the proof is, the trace pass is not: 0 until then, the
+// rays multiply the maps as before): the sun draws reading the atlas (g_tShadowBuffer_SM50 / g_tHardShadowBuffer_SM41 /
+// sHardShadowBuffer; 8192 square R32) through s1 (slm) or s0 (skinlm), that sampler's only reads, read it as lit where the
+// rays' shadow is bound at t49 (twattila/sun_replace_maps.hpp): the 5.0 builds compare by the sampler (gather4_c: an
+// ALWAYS sampler); the 4.1 / 3.0 gather, fetch4 and software builds by hand (`lt depth, map`: an empty map), the
+// hardware_pcf builds take the map's value as the light (a map of 1). The kept baked map (g_tBakedShadowBuffer /
+// sBakedShadowBuffer_30, its own sampler) stays the game's, and so do the atlas's other readers (SHADOW_READER_SHADERS).
+// Census: tools\tw\rome2\sun_test\scan_atlas_reads.py (atlas_reads.tsv); WARP: sun_rome2_test P. The game's MSAA builds
+// (*_ms) never have the rays bound (MSAA keeps them off) and are listed for the day it doesn't.
+constexpr float RAYS_REPLACE_MAPS = 0.f;  // sun_replace_maps' row: 1 always on after the Rome II trace pass
+using twattila::sun_replace_maps::AtlasRead;
+constexpr std::array<twattila::sun_replace_maps::AtlasSunShader, 40> ATLAS_SUN_SHADERS = {{
+    {.hash = 0x0AF04E16, .sampler_slot = 1, .read = AtlasRead::DEPTH, .texture_slot = 9},  // hardware_gather_4_1_sm_4_1_ps30_slm_highdef
+    {.hash = 0x340CBE9D, .sampler_slot = 1},  // hardware_gather_5_0_sm_5_0_ps30_slm_highdef
+    {.hash = 0x4C4B1D0F, .sampler_slot = 1, .read = AtlasRead::DEPTH, .texture_slot = 4},  // hardware_fetch4_sm_3_0_ps30_slm_highdef
+    {.hash = 0x4CA464D1, .sampler_slot = 1, .read = AtlasRead::DEPTH, .texture_slot = 4},  // software_sm_3_0_ps30_slm_highdef
+    {.hash = 0x57E876C4, .sampler_slot = 1, .read = AtlasRead::DEPTH, .texture_slot = 9},  // hardware_gather_4_1_sm_4_1_ps30_slm_lowdef
+    {.hash = 0x6B22774C, .sampler_slot = 1, .read = AtlasRead::LIGHT, .texture_slot = 4},  // hardware_pcf_sm_3_0_ps30_slm_highdef
+    {.hash = 0x6FC5ECEA, .sampler_slot = 1},  // hardware_gather_5_0_sm_5_0_ps30_slm_lowdef
+    {.hash = 0x802A199A, .sampler_slot = 1, .read = AtlasRead::LIGHT, .texture_slot = 4},  // hardware_pcf_sm_3_0_ps30_slm_lowdef
+    {.hash = 0x81058A1E, .sampler_slot = 1, .read = AtlasRead::DEPTH, .texture_slot = 4},  // hardware_fetch4_sm_3_0_ps30_slm_lowdef
+    {.hash = 0xBA46D003, .sampler_slot = 1, .read = AtlasRead::DEPTH, .texture_slot = 4},  // software_sm_3_0_ps30_slm_lowdef
+    {.hash = 0x091A8FCC, .sampler_slot = 0, .read = AtlasRead::DEPTH, .texture_slot = 4},  // software_sm_3_0_ps30_skinlm_highdef
+    {.hash = 0x1A0532C0, .sampler_slot = 0},  // hardware_gather_5_0_sm_5_0_ps30_skinlm_highdef
+    {.hash = 0x1B6DC4CE, .sampler_slot = 0, .read = AtlasRead::DEPTH, .texture_slot = 4},  // hardware_fetch4_sm_3_0_ps30_skinlm_highdef
+    {.hash = 0x498A0B2F, .sampler_slot = 0, .read = AtlasRead::LIGHT, .texture_slot = 4},  // hardware_pcf_sm_3_0_ps30_skinlm_highdef
+    {.hash = 0x55568999, .sampler_slot = 0, .read = AtlasRead::DEPTH, .texture_slot = 4},  // hardware_fetch4_sm_3_0_ps30_skinlm_lowdef
+    {.hash = 0x56DCF011, .sampler_slot = 0, .read = AtlasRead::DEPTH, .texture_slot = 5},  // hardware_gather_4_1_sm_4_1_ps30_skinlm_lowdef
+    {.hash = 0x62AC2F63, .sampler_slot = 0, .read = AtlasRead::DEPTH, .texture_slot = 5},  // hardware_gather_4_1_sm_4_1_ps30_skinlm_highdef
+    {.hash = 0x86DAA88A, .sampler_slot = 0, .read = AtlasRead::DEPTH, .texture_slot = 4},  // software_sm_3_0_ps30_skinlm_lowdef
+    {.hash = 0xFB3FC293, .sampler_slot = 0},  // hardware_gather_5_0_sm_5_0_ps30_skinlm_lowdef
+    {.hash = 0xFC564308, .sampler_slot = 0, .read = AtlasRead::LIGHT, .texture_slot = 4},  // hardware_pcf_sm_3_0_ps30_skinlm_lowdef
+    {.hash = 0x006F587A, .sampler_slot = 1},  // hardware_gather_5_0_sm_5_0_ps41_slm_highdef_ms
+    {.hash = 0x362108F9, .sampler_slot = 1, .read = AtlasRead::DEPTH, .texture_slot = 5},  // hardware_gather_4_1_sm_4_1_ps41_slm_highdef_ms
+    {.hash = 0x7358C058, .sampler_slot = 1},  // hardware_gather_5_0_sm_5_0_ps41_slm_lowdef_ms
+    {.hash = 0x75650CEB, .sampler_slot = 1, .read = AtlasRead::DEPTH, .texture_slot = 0},  // hardware_fetch4_sm_4_1_ps41_slm_lowdef_ms
+    {.hash = 0x7B50CFB1, .sampler_slot = 1, .read = AtlasRead::DEPTH, .texture_slot = 0},  // software_sm_4_1_ps41_slm_lowdef_ms
+    {.hash = 0x84F99EA7, .sampler_slot = 1, .read = AtlasRead::DEPTH, .texture_slot = 0},  // software_sm_4_1_ps41_slm_highdef_ms
+    {.hash = 0x958EF5CE, .sampler_slot = 1, .read = AtlasRead::LIGHT, .texture_slot = 0},  // hardware_pcf_sm_4_1_ps41_slm_highdef_ms
+    {.hash = 0x99DEEE40, .sampler_slot = 1, .read = AtlasRead::DEPTH, .texture_slot = 5},  // hardware_gather_4_1_sm_4_1_ps41_slm_lowdef_ms
+    {.hash = 0xA250EBA2, .sampler_slot = 1, .read = AtlasRead::LIGHT, .texture_slot = 0},  // hardware_pcf_sm_4_1_ps41_slm_lowdef_ms
+    {.hash = 0xFA91A41F, .sampler_slot = 1, .read = AtlasRead::DEPTH, .texture_slot = 0},  // hardware_fetch4_sm_4_1_ps41_slm_highdef_ms
+    {.hash = 0x172ACDE3, .sampler_slot = 0, .read = AtlasRead::DEPTH, .texture_slot = 0},  // software_sm_4_1_ps41_skinlm_lowdef_ms
+    {.hash = 0x25DD62CD, .sampler_slot = 0, .read = AtlasRead::DEPTH, .texture_slot = 0},  // hardware_fetch4_sm_4_1_ps41_skinlm_highdef_ms
+    {.hash = 0x6CCDF7BA, .sampler_slot = 0, .read = AtlasRead::DEPTH, .texture_slot = 0},  // hardware_fetch4_sm_4_1_ps41_skinlm_lowdef_ms
+    {.hash = 0x89F739AF, .sampler_slot = 0, .read = AtlasRead::LIGHT, .texture_slot = 0},  // hardware_pcf_sm_4_1_ps41_skinlm_lowdef_ms
+    {.hash = 0x8B0E5CAA, .sampler_slot = 0, .read = AtlasRead::DEPTH, .texture_slot = 0},  // software_sm_4_1_ps41_skinlm_highdef_ms
+    {.hash = 0x95C02182, .sampler_slot = 0, .read = AtlasRead::LIGHT, .texture_slot = 0},  // hardware_pcf_sm_4_1_ps41_skinlm_highdef_ms
+    {.hash = 0xE3F77F6A, .sampler_slot = 0},  // hardware_gather_5_0_sm_5_0_ps41_skinlm_lowdef_ms
+    {.hash = 0xF6383D19, .sampler_slot = 0, .read = AtlasRead::DEPTH, .texture_slot = 1},  // hardware_gather_4_1_sm_4_1_ps41_skinlm_highdef_ms
+    {.hash = 0xFADD954D, .sampler_slot = 0, .read = AtlasRead::DEPTH, .texture_slot = 1},  // hardware_gather_4_1_sm_4_1_ps41_skinlm_lowdef_ms
+    {.hash = 0xFCD6C263, .sampler_slot = 0},  // hardware_gather_5_0_sm_5_0_ps41_skinlm_highdef_ms
+}};
+
 constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {{
     {.shader_hash = 0x0AF04E16, .standard = true, .sun_direction = 0},
     {.shader_hash = 0x2D77EEF9, .standard = true, .lighting_slot = 1, .sun_direction = 0},
@@ -2008,6 +2082,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
+  // DLAA's and CMAA2's passes in the frame's own curve (the swap chain proxy's decode: 2.2 with Gamma Correction on).
+  aa_settings.frame_gamma = TW_FRAME_GAMMA;
   if (game_msaa) {
     aa_settings.frame_generation = 0;
   }
@@ -2051,8 +2127,9 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 
 namespace {
 
-// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows and AO multiply the game's
-// shadow maps and SSAO; no ray-traced reflections (FidelityFX SSSR on the water), no fog hooked.
+// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow
+// maps (replace them with RAYS_REPLACE_MAPS 1: the shadow tooltip then too), the rays' AO multiplies the game's SSAO; no
+// ray-traced reflections (FidelityFX SSSR on the water), no fog hooked.
 // The game's MSAA keeps the anti-aliasing's DLAA / DLSS and with them every ray-traced effect off (anti_aliasing.hpp).
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
@@ -2537,15 +2614,17 @@ void ConfigureAddon() {
   }
   twattila::feature_settings::SetTints({}, engine_sections);
 
-  // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
-  // Mode's pages. Fog Shadows keep their 0 (Experimental: no game run has shown the fog's rays yet; RT/PT turns them on, as
-  // ATN's list does, as Pharaoh's), Smoke Shadows (Experimental) theirs (no game run has shown them yet), Water Caustics its
-  // 0 (untested here), Sprite Soldier and Far Tree Shadows theirs (Experimental: no game run has shown Rome II's cards in the
-  // rays yet).
+  // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave (RT/PT sets the
+  // rows below as Attila's does, ATN 2026-11-22), then Settings Mode's pages. Fog Shadows keep their 0 (Experimental: no
+  // game run has shown the fog's rays yet; RT/PT turns them on, as ATN's list does, as Pharaoh's), Smoke Shadows
+  // (Experimental) theirs (no game run has shown them yet), Water Caustics its 0 (untested here), Sprite Soldier and Far
+  // Tree Shadows theirs (Experimental: no game run has shown Rome II's cards in the rays yet), Steady Bounce Light and Torch
+  // and Fire Shadow Lights at their own rows' defaults (both Experimental: off, 32; ATN 2026-11-22, as Thrones').
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedSmokeShadows" || setting->key == "WaterCaustics"
-        || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows") {
+        || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows"
+        || setting->key == "RayTracedPathKeptCube" || setting->key == "RayTracedLightCount") {
       setting->default_value = 0.f;
     }
     // Torch and fire light in the fog (no particle shader reads it here): off, Experimental (PAGE_TEXTS), as Fog Shadows.
@@ -2606,8 +2685,9 @@ void ConfigureAddon() {
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .banner_light_tested = false,
+                                             .rays_preset_as_attila = true,
                                              .lights_own_row = true,
-                                             .rays_multiply_maps = true});
+                                             .rays_multiply_maps = (RAYS_REPLACE_MAPS == 0.f)});
   // Faster Game CPU Code (engine_code_row) Experimental, off.
   for (auto* setting : settings) {
     if (setting->key != "FasterGameCpuCode") continue;
@@ -2648,8 +2728,9 @@ bool AttachAddon() {
 
   // Rows saved at an old default, cleared once per revision. 1: Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden
   // here until what they act on is hooked: they show then at ATN's values. 2 (parity round): rows saved hidden at
-  // SetRaysPresetDefaults' or the shared row's value, shown now at a default of their own here (Experimental, off).
-  constexpr int SETTINGS_REVISION = 3;
+  // SetRaysPresetDefaults' or the shared row's value, shown now at a default of their own here (Experimental, off). 4:
+  // Steady Bounce Light and Torch and Fire Shadow Lights saved at SetRaysPresetDefaults' on and 128, off and 32 now.
+  constexpr int SETTINGS_REVISION = 4;
   if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
     const auto clear = [](std::initializer_list<const char*> keys) {
       for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
@@ -2672,6 +2753,9 @@ bool AttachAddon() {
           reshade::set_config_value(nullptr, preset, "auto_exposure_highlight_headroom_stops", decades * 3.32192809f);
         }
       }
+    }
+    if (revision < 4) {
+      clear({"RayTracedPathKeptCube", "RayTracedLightCount"});
     }
     reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
   }
@@ -2769,6 +2853,8 @@ bool AttachAddon() {
   twattila::shadow_pass::Install();
   twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
+  // After the screen-space shadows' sun draw hooks (they bind t49), before the Light Bounce's.
+  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &RAYS_REPLACE_MAPS);
   // Last of the sun draws' hooks: it draws the sun draws itself (no callback after it runs).
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
@@ -2814,6 +2900,7 @@ void DetachAddon() {
   SetShadowCascades(false);
   twattila::graphics_hooks::Uninstall();
   twattila::shadow_pass::Uninstall();
+  twattila::sun_replace_maps::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::ao_pass::Uninstall();
   twattila::rt_scene::Uninstall();
