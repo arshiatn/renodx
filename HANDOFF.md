@@ -12438,6 +12438,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] g04_ MINORs: R-MI1 check + report Rome Remastered's 2500 / 275 highlights (copy tests.cpp:561's loop); R-MI2 look
         number Rome 15-100 nits x1.015..x1.412 vs SDR (Musa's x0.922..x1.380) for ATN; NITs tests.cpp:546 0.205 -> 0.2005 +
         name the exception in the brief / pilot, fxaa output to a file; MI7 Rome's fifth rows-default loop copy -> DRY box.
+        rvf_ G21 RE-CHECK 22:4x (reviews/rvf_g21_recheck_handback.md): ho_g21 cc349d79b GO; the SET (ho_g21 + ho_g02 + G10's
+        counts) waits for g02_'s M1 + M2 and rvf_'s re-check (after the restart): cc349d79b patches WH1 / WH2's 12 gather
+        4.1 sun builds, so without G02 M1 the rays stack on the game's maps there; M2 matters more (gather4 on 1x1 reads the
+        border colour if s1 uses one; the rig's WRAP samplers hide it). rule_sim: only WH1 6 + WH2 6 change; the 10 Attila /
+        Thrones shaders are in no runtime list. G10's 832 counts are final.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
