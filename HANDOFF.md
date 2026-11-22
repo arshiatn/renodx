@@ -8010,7 +8010,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         "gates.tsv unreadable (...): read as shadow" (stderr + facts cell); lab phases still kill; missing file =
         not installed. -> gtb_ STARTED, gpr_ re-checks.
         - [ ] gtp_ (after gtw_ re-check 10): the hook's own rows() / mode() raise on a corrupt gates.tsv / mode.txt -
-            decide whether the hook reads that as shadow + a FAULT line (gpr_'s note 07:0x).
+            decide whether the hook reads that as shadow + a FAULT line (gpr_'s note 07:0x); plus grs1: a NUL in
+            gate_hook.read_text()'s decoded gates.tsv / mode.txt = unreadable (gpr_ 07:2x; gtb_ does watch's half).
         gtq_ S3 + NITS 1-5 DONE 07:0x (plan_1117/gtq_s3_nits_handback.md; backup scratchpad\gtq_backup_fix8): 32 iq
         tests OK (316 s, CPU, below normal). S3 build_reference refuses sorted seeds closer than N (dump_frames) apart
         (d apart share N - d keys; tested 2003 / 2004 at N 2); nit 1 recording.txt written last (after manifest,
@@ -8064,10 +8065,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         gtv_ GTQ_ EXCEPTION NIT = OK 07:2x (plan_1117/gtv_gtq_exception_nit_handback.md; gtv_iq_review.md "## gtq_
         Exception nit check"): backup = reviewed state, other reference files unchanged; test_iq_frames 14 / 14. gtq_
         reference builder v1.1 CLOSED for now. gtv_ waits for the "go" after gtl_'s 4 suites.
-        Agents (9): gtw_ (S1c re-check 10), h0i_ (H0 analysis + fake to testbin + R1), gti_ (R1), gtl_ (its 4
-        held suites), gpr_ (gtb_ gate_rows re-check), t4i_ (r23), b13r_ (c3i_ B1.6 follow-ups re-check), c3i_
+        gti_ R1 DONE 07:2x (plan_1117/gti_r1_handback.md; backup scratchpad\gti_bak11; ns_busy.ps1 live via
+        os.replace, checked: no gpu_job.lock / H0 process at the swap): Get-Kind returns 'skip' for a tool-named
+        process with 0 threads, after the name match + the -ExcludePids pair check, before the -Exclude path check
+        (z1 / z2 kept); a 0-thread process with a mismatched start time = not counted, no wait, no stderr.
+        test_ns_busy 18 / 18 on staged + live (injected process records; old file fails the 4 zero-thread cases);
+        test_gpu_lock 56 / 56 (its exclude_pids block skipped on its own guard: the real ns_busy counted 1 foreign
+        process at that moment). -> gpr_ RE-CHECK STARTED.
+        gpr_ GTB_ GATE_ROWS STRICT RE-CHECK = OK 07:2x (plan_1117/designs/gpr_gtb_gate_rows_strict_handback.md;
+        gpr_review.md): BOM UTF-16 / UTF-8 read clean, a stray byte = SHADOW + FAULT (UnicodeError also catches
+        truncation), --phase dump still 124, missing = not installed; probe: the 3 price-shadow + bad mode.txt cases
+        not killed; test_budget 35 OK, selftest 3 / 3. Small issue grs1: a gates.tsv saved UTF-16LE WITHOUT a BOM
+        decodes as valid UTF-8 with NULs -> keys garbled -> price row missing = not installed -> --limit kill with
+        no FAULT line (hook's read_text() has it too, so watch never reaches its own reader). Only unusual writers
+        (Python utf-16-le, .NET without preamble; PS 5.1 writes a BOM). Fix: a NUL in the decoded text = unreadable
+        (shadow + FAULT) in gate_rows' reader (gtb_) and gate_hook.read_text() for gates.tsv / mode.txt (gtp_).
+        Probe scratchpad\gpr_gates_corrupt2_probe.py. -> gtb_ grs1 STARTED; gtp_'s half joins its corrupt-file box.
+        Agents (9): gtw_ (S1c re-check 10), h0i_ (H0 analysis + fake to testbin + R1), gtl_ (its 4 held suites),
+        gpr_ (gti_ R1 re-check), gtb_ (grs1 NUL check), t4i_ (r23), b13r_ (c3i_ B1.6 follow-ups re-check), c3i_
         (B1 real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (re-checks
-        h0i_), gpp_, gbc_, gtb_ (waits gpr_), grs_, gtk_, gtp_ (waits gtw_), ebr_ (re-checks t4i_ r23), gtq_, gtv_
+        h0i_), gpp_, gbc_, gti_ (waits gpr_), grs_, gtk_, gtp_ (waits gtw_), ebr_ (re-checks t4i_ r23), gtq_, gtv_
         (go after gtl_). gtv_'s held lab suites + race probe AFTER gtl_'s 4 suites
         (the fakes' names would cross each other's busy checks). GPU: free (rec_verify waits ATN; H0 re-run after
         the analysis).
