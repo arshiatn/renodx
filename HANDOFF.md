@@ -8685,7 +8685,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         COVERS THIS RUN -> lga_ prepares a runner with -DryRun (no GPU), I propose the rule to ATN.
         - [ ] ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stack) - decides whether
             the release gate failures are Windows KB5132061 or our code (lga_ 09:0x). Runner READY 09:0x, dry run
-            OK, gtw_ reviewed, lga_ fixed S1-S4 09:3x (~9 / 13 min with warm-ups), gtw_ re-checks; rule lines:
+            OK, gtw_ reviewed, lga_ fixed S1-S4 09:3x (~9 / 13 min with warm-ups), gtw_ re-check 09:5x = OK TO
+            PROPOSE A RULE (lga_ adds RC-1 quiet_run.lock + nits first); rule lines:
             `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\arshi\
             .claude\projects\D--Dev-renodx\tools\tw\h0\release_check.ps1` (+ ` -DryRun`, + ` -WithRelease`).
         ffr_ FIRST-FRAME REVIEW = OK WITH FIXES 09:0x (plan_1117/designs/ffr_first_frame_review.md + _handback.md;
@@ -9341,7 +9342,28 @@ heading text are in HANDOFF_ARCHIVE.md)
             Shipping)?` instead of `ExpeditionsRome.*` (gpr_ 09:5x). After H0 (ns_busy is in use).
         - [ ] ATN (morning report): ruse_bridge.exe / ruse_replay.exe are counted by nothing in ns_busy; if they do
             GPU work like map_replay_*, add a ns_busy.tsv row? (gpr_ 09:5x)
-        Agents (5): gtw_ (lga_ release_check re-check), gtp_ (round 14), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1
+        gtw_ RELEASE_CHECK RE-CHECK = OK TO PROPOSE A RUN RULE 09:5x (plan_1117/gtw_release_check_recheck_handback.md;
+        gtw_s1c_review.md "## release_check re-check" line 1310; scripts scratchpad\gtw_rc2_*): S1-S4, N1-N5, N7,
+        N8 fixed. Exit codes: lga_ right, gtw_'s S4 was wrong (both harnesses `return failures == 0 ? 0 : 2`; 1 =
+        failed D3D12 CHECK / "Prepare failed" / helper stopped answering; 0 / 2 full runs) -> 0 / 1 / 2 allowed,
+        others stop; exit 1 never counts (first-frame miss retried once) -> OPEN naming the job; a device removal
+        as a plain CHECK exit 1 is caught by the System event read (609 nvlddmkm 153 events from the earlier
+        resets). Verdicts exclusive; lga_'s 10 mocks + gtw_'s 15 edge cases on the real code all right (old 66,
+        gaps 15 / 14.9, equal 10, 74.9, 2 of 4 each side, exit 1 / 3, 0 or 2 scene lines, missing job, failed
+        warm-up); both helpers (48803f808, 8f77a29a4) match the scene pattern + start a fresh log; PASS lines in the
+        11-16 c6 logs. S2 Move-Item never deletes; S3 works live (dry run 09:54 saw build_job.lock + cmake /
+        ninja); S4 read only, settle in finally before the lock release. Case clashes: 4 left, harmless. N3 flags a
+        stray folder / .ini / sl.interposer.dll / D3D12\extra.dll. Dry runs 09:54 both exit 0. RC-1 (Should, new):
+        S3 only records a build, so one gated build in the 9-13 min window turns jobs OPEN with the GPU lock held
+        for nothing -> after gpu_job.lock also hold tools\tw\quiet_run.lock for the run (finally; gated_build +
+        sym builds wait on it, like constantinople_bench) + a limited wait before the first job while a build lock
+        / tool is there. Nits: RC-N1 every harness start compiles the live tree's rt_smoke.cs_5_0.hlsl (pdi1_ :2098,
+        gpu3_ :2094) -> hash it in the dry run + at start / end, fix the header's "differ only in the helper and the
+        harness"; RC-N2 one running "since" for events (faults between jobs are missed); RC-N3 a timeout with a
+        fault event takes the 124 branch first (:277) = no settle, event not named; RC-N4 ABBA (new first in round
+        2); RC-N5 (optional) stop after a second non-first-frame exit 1. -> lga_ FIXES RC-1 + RC-N1..N5; gtw_
+        re-checks; then the ATN rule box.
+        Agents (5): lga_ (release_check RC-1 + nits), gtp_ (round 14), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1
         + F2 logging, gated builds), gtv_ (gtl_ lows check)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
