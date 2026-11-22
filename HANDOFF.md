@@ -7156,9 +7156,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         writer inside the 20 s answer: drains to ~26 s covered); nits RS-N1 per-file size query, RS-N3 NOTICE note on
         OpenEXR's lib_common.h edit. All else OK (pass rule, R-S2, _noseed, gtl_'s lab names, NOTICE, offline sources).
         -> gtk_ STARTED (RS-M1 + nits); gbc_ re-checks.
-        Agents (11): h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gtk_ (RS-M1), gtp_ (S-d + price build), gtq_
-        (FLIP numpy port), gtl_ (S3r M1r / M2r), gtv_ (S2r), gpr_ (gtb_ watch look), gti_ (test F1 + nits). Idle:
-        bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (waits h0i_), gpp_, gtb_, ebr_, gbc_, grs_, gtw_ (waits gtp_).
+        gtq_ FLIP NUMPY DONE 04:2x (plan_1117/gtq_flip_numpy_handback.md; backups scratchpad\gtq_backup_fix3): new
+        tools\tw\reference\flip_numpy.py (port of FLIP.h's CPU path, NVIDIA BSD-3 notice kept, numpy only, nothing
+        downloaded, refcode untouched): LDR / HDR means = the tool's, maps 0 pixels off correct_*flip_cpp.png; 4K 2 of
+        8.3M pixels 1 level off (rounding-boundary noise); evaluate cross-checks the tool's mean (1e-5, else refuse);
+        29 / 29 iq tests. -> gbc_ B1 RE-CHECK STARTED (B1 fixes + FLIP unpatched + numpy port).
+        gti_ F1 DONE 04:2x (plan_1117/gti_f1_handback.md; backups scratchpad\gti_bak8): Stopwatch timing in one
+        PowerShell (fixed bounds), thread id in the temp name, ValidateRange -PollS 0.1-86400 / -SettleS 0-3600 (CLI
+        exit 2), new gpu_lock.InUse() guard: fake-process tests SKIP while gpu_job.lock / quiet_run.lock exist or
+        BusyState is busy; fakes renamed gti_busyfake_* (not counted by ns_busy / H0's Get-Busy), 20 s life;
+        test_trace_run F4 / F6 (real-name fakes, ~8 s) under the same guard; 58 / 58 + 10 / 10 -> gpr_ re-check after
+        its gtb_ look.
+        gtp_ S-d + PRICE DONE + LIVE 04:2x (plan_1117/gtp_sd_price_handback.md; backups scratchpad\gtp_bak10 / bak11):
+        S-d CODE_TOKEN lookahead + 11 tests; kind() / load_tag() / cause() / committed_gb() exactly as gtb_ calls them,
+        busy_count rules in, R9 --bash-b64 decoded; live suite 370 / 370, shadow, fail open -> gtw_ RE-CHECK 7 STARTED.
+        Not built (files outside its brief): web_ok() + web rules, timing rows + agents_open\, refusal (a) incl. n7,
+        fix-now, tool_prices.py rebuild, gate_override.ps1 $known, INSTALL_FOR_ATN.md. COORDINATOR CALL on ownership:
+        gtp_ may write tool_prices.py, code_repos.tsv logic, the rest of gate_hook.py + tests and INSTALL_FOR_ATN.md
+        text; web_allow.tsv (the design says ATN's, protected) and the gate_override.ps1 change (it lifts gates) only
+        as PROPOSALS (web_allow.proposed.tsv, gate_override.proposed.ps1) for ATN to copy. [ ] ATN: copy them when
+        ready. gtb_ may delete _own_cause / _own_committed_gb after gpr_'s look.
+        Agents (10): h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gtk_ (RS-M1), gtw_ (re-check 7), gbc_ (B1
+        re-check), gtl_ (S3r M1r / M2r), gtv_ (S2r), gpr_ (gtb_ watch look, then gti_ F1). Idle: bd1r_, lga_, lgf2_,
+        c33i_, upt_, upr_ (waits h0i_), gpp_, gtb_, ebr_, gtq_, gti_, grs_, gtp_ (waits gtw_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
