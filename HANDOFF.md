@@ -9453,7 +9453,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN (morning report, info + yes / no): the gate hook suite's `fix` group (155 tests) runs a sandbox
             copy of gate_override.ps1 inside its own sandbox (writes only the sandbox's override.json +
             gates_log.tsv); gtw_ skips it under "no override script in any form". OK for test sandboxes? (gtw_ 10:1x)
-        Agents (4): lga_ (release_check RC-1 + nits), gtp_ (round 15), ebr_ (t4i_ option (a) re-check), b13r_ (c3i_
+        lga_ RC-1 + RC-N1..N5 DONE 10:1x (plan_1117/lga_rc1_handback.md; backup h0\release_check.ps1.bak_rc1; test
+        scratchpad\lga_rc1_test.ps1 26 / 26, sandbox locks only): RC-1 after gpu_job.lock takes tools\tw\
+        quiet_run.lock in constantinople_bench's Take-Locks format (CreateNew, "<owner>, pid <pid>, time", same
+        record 3 s later; owner "release_check lga_ (harness release timing, quiet window)", not counted by
+        ebo_run as its own; "ours" = owner + this pid); held by someone else -> 12 tries 5 s apart, then GPU lock
+        released + exit 3 (no deadlock with a bench waiting for our GPU lock); removed in finally only while it
+        holds this run's record, before the GPU lock; checked before each job. Build wait: before the first job
+        while a build lock / tool is there, up to 900 s every 10 s with both locks held, then stop (OPEN, exit
+        4). RC-N1 rt_smoke.cs_5_0.hlsl pinned 5757CE1506D1 (dry run, before the lock, before each job, after the
+        last; a change = PROBLEM / stop) + header fixed. RC-N2 one running "since" from the GPU lock + one more
+        read in finally. RC-N3 faults / TDR lines before the timeout branch; a plain timeout also gets the 30 s
+        settle (lga_'s addition). RC-N4 ABBA. RC-N5 stop after a second non-first-frame exit 1. Verdict test 10 /
+        10. Dry run 10:13 (ATN's form) exit 0 "ready" (showed H0 holding the GPU lock since 10:02 = info; quiet
+        lock free). Time ~9 / ~13 min + any build wait. Open: real lock take / release + a real build wait
+        untested; a killed runner leaves quiet_run.lock (blocks builds until removed by hand, same as the bench).
+        -> gtw_ RE-CHECKS RC-1.
+        Agents (4): gtw_ (lga_ RC-1 re-check), gtp_ (round 15), ebr_ (t4i_ option (a) re-check), b13r_ (c3i_
         rmt_b1log review); H0 run (background, ~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
