@@ -389,7 +389,7 @@ static FillJob fold_fill;
 // Uninstall runs on the detach path: at process exit no other game thread is left, and on a runtime unload a thread
 // between the retargeted call and the count is not seen (a window of a few instructions).
 static std::atomic<int32_t> active = 0;
-static bool check_enabled = false;  // RENODX_TW_FILL_CHECK=1, read once by Prepare
+static bool check_enabled = false;  // RENODX_TW_FILL_CHECK=1, read once by Prepare; its summary line needs a pool trace window (none: nothing is said)
 static std::atomic<uint32_t> checked = 0;  // the fills compared since the start
 static uint32_t check_window = 0;          // the pool trace window whose compared fills are being counted (0: none open)
 static uint32_t check_window_start = 0;
@@ -398,11 +398,11 @@ static std::atomic<uint32_t> check_skipped = 0;
 // The fills that ended with chunks not done since the start: the first one is said at the next present, the total at detach.
 static std::atomic<uint32_t> incomplete_fills = 0;
 struct IncompleteFill {
-  uint8_t site;
-  uint32_t count;
-  uint32_t chunks_done;
-  uint32_t chunks;
-  const char* join;
+  uint8_t site = 0;
+  uint32_t count = 0;
+  uint32_t chunks_done = 0;
+  uint32_t chunks = 0;
+  const char* join = "";
 };
 static IncompleteFill first_incomplete = {};
 static std::atomic<bool> first_incomplete_kept = false;
