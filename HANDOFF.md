@@ -660,6 +660,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - drain check note: 9 exited engine_code.exe (0 MB, no image, 01:50-19:39, other a ... | ?
 - G10 BEFORE the wave-2 G21 + G02 merge: part 29 list renames + CLAMP + TestShared ... | ?
 - g02_ next wave: r1 (if the hook can't run in PsychoV35, b4 keeps the game's last ... | ?
+- lg3_ / engine_code owner after the batch (er5o_ m3): engine stubs page = plain A ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12537,6 +12538,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         c_partial_on / c_partial_off; test_analyze VOL-L1 without REF-P NOTE + late 70 ms peak past L_end - 30 not taken as
         the volley. run_all green (lib 623, names 6, make 117, check 183, leg 166, analyze 146); backups *.pre_nits in
         scratchpad\t4i_bak\refresh2. Tools only, nothing committed. lg3_ resent its er5 hand-back (same content, saved).
+        er5o_ RECHECK 23:2x (render_mt/reports/er5o_recheck_handback.md; er5o_end_review.md "Re-check, 23:13-23:25"): GO
+        for T5 with rmt_er5 as is. m2 + NIT 1 / 2 closed; M1 add-on side correct (AddPartRange success path only, Worker.id
+        set at CreateThread / cleared in Stop, FaultWorker lock-free). Bench side: rule 2 works for pool-worker faults
+        inside an image (heapfix 'worker thread' + the add-on's job line); rule 1 cannot fire (ebo_check :353-362 reads
+        only heapfix's line; stub-page faults print a raw address -> no +0x match). NEW m3 MINOR (latent): engine_code.hpp
+        :2672 names the whole shared engine stubs page B3b (also FasterGameCpuCode / FasterRenderLists / wake-ups /
+        prefetch / LOD / particle / sweep / R1 cut stubs) -> do not wire rule 1 until fixed.
+        MERGED 23:2x: rmt_er5 -> atn-mods 2eaaec733 (9 files +222/-58), pushed. t4i_ sent "t4i_ er5o fixes": job line
+        tied to the crash (thread match, Groups[3] user, prefer the add-on's Unhandled line) + addendum s7 text; rule 1
+        not wired; lg3_'s 2 new WARNs stay INFO. Then T5 (t4i_, as planned) at the frozen tree 2eaaec733.
+        - [ ] lg3_ / engine_code owner after the batch (er5o_ m3): engine stubs page = plain AddCodeRange (no page-wide
+        part_range); per-stub sub-ranges for the render_mt parts only; then rule 1 may be wired (raw-address regex for
+        effect_thunks / recording_page, or the add-on's Fault lines).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
