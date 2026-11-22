@@ -177,7 +177,7 @@ void ApplyRecommendedPreset() {
       {"highlight_saturation", 0.75f},
       {"lens_flare", 0.f},
       {"foliage_glints", 0.15f},
-      {"video_autohdr", 0.25f},
+      {"video_autohdr", 0.2f},
       {"heat_haze", 0.1f},
       {"vfx_glow", 5.f},
       {"vfx_big_fire", 1.f},
