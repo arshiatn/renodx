@@ -473,7 +473,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - B1 owner (static, low): do the game's destructors draw (callers of 0x190B780 rea ... | ?
 - gtp_ + gtb_ R12-1 (Should, not blocking in shadow): price_rows() falls back to " ... | ?
 - gtp_ (lows): quoted multi-target word not split before normalising (one seed kin ... | ?
-- gtv_: tiny check of gtq_'s folder nit + gtl_'s wrap nit together (when gtl_ hand ... | ?
 - ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stac ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
@@ -8654,7 +8653,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         `<parent>_<name>_<hash12>` (so `x\..` and capitals land in one rec_frame_7_<hash12>; folder names are
         lower case now); recording.txt + manifest recording.path hold realpath (case kept). Test: two spellings ->
         one folder, recording.txt resolved. test_iq_frames 16 / 16. -> gtv_ tiny check with gtl_'s wrap nit.
-        - [ ] gtv_: tiny check of gtq_'s folder nit + gtl_'s wrap nit together (when gtl_ hands back).
+        - [x] gtv_ (DONE 09:0x, OK): tiny check of gtq_'s folder nit + gtl_'s wrap nit together (when gtl_ hands back).
         gtl_ WRAP NIT DONE 08:5x (plan_1117/gtl_wrap_nit_handback.md; backups scratchpad\gtl_backup_wrap; logs
         gtl_runs11): fixture records budget.py's own deadline + committed_gb at import (REAL_BUDGET); end_world
         restores both + drops real_* attrs (committed_gb had the same leak); test_end_world_undoes_budget_wraps
@@ -8708,9 +8707,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         the latch, never called while opening; harness change REQUIRED with the add-on change. Nits in the file
         (stale comments; line numbers are gpu_s2's, atn-mods main.cpp ~27 lower; FSR / XeSS already async). ->
         grs_ REVISES the design (M1-M5 + S1-S8), ffr_ re-checks; no code yet.
-        Agents (7): h0i_ (H0 F1-F4), gtv_ (gtq_ folder + gtl_ wrap tiny check), gtw_ (gtp_ round 12 re-check), gtb_
-        (slot-wait test + load + gate seed + R12-1 half), grs_ (first-frame design revision), lga_ (release check
-        runner, dry run only), t4i_ (T5 manifest rows + B1 risks)
+        gtv_ TINY CHECK = OK 09:0x (plan_1117/gtv_tiny_check_handback.md; gtv_iq_review.md "## Nit fixes tiny
+        check"; outputs scratchpad\gtv\rc9): 3 spellings -> one rec_frame_7_<h> folder; an old-style capitalised
+        folder is reused, no second one (NTFS + junction check ignore case); nothing looks folders up by built
+        name (both recording.txt readers resolve). After 8 fixture suites in one process deadline + committed_gb
+        are budget.py's own, gate back to 120 s (GATE_FLOOR_S). test_lab_unit 34, test_iq_frames 16. Seen: gtb_
+        changed lab\budget.py + tests\test_budget.py at 09:04:36 (after gtv_'s runs; functions + GATE_FLOOR_S
+        still there) - gtb_'s round, its own re-check. IQ / LAB V1.2 + ALL NITS CLOSED.
+        Agents (6): h0i_ (H0 F1-F4), gtw_ (gtp_ round 12 re-check), gtb_ (slot-wait test + load + gate seed + R12-1
+        half), grs_ (first-frame design revision), lga_ (release check runner, dry run only), t4i_ (T5 manifest
+        rows + B1 risks)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
