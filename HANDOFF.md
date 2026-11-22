@@ -500,6 +500,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gti_'s dead_outputs.py: refuse a log with no use rows instead of "0 candidates" ... | ?
 - lg3_ fixes (sent 20:25): M1 pool-stop text + comment, M2 Describe() empty when n ... | ?
 - t4i_ corpus (sent 20:25): corpus.json:1472 "Depth A", :1481 a real site name; af ... | ?
+- g07_ Opus xHigh review of ho_g07 (queued at the 20-agent cap) -> g07_ fixes -> r ... | ?
+- b3s_ fixes (sent 20:28) BEFORE S6 makes Check selectable: M1 ring released after ... | ?
+- b3t_: M7 = S3 Should 1 (animation_rows.inc tests) (sent 20:28). | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11525,6 +11528,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         snapshot + old OpenThread mask, M4 (a), M5 Describe() -> LogStall in device_loss.hpp, safe NITs -> lga_ re-check.
         - [ ] t4i_ corpus (sent 20:25): corpus.json:1472 "Depth A", :1481 a real site name; after lg3_'s fix: M1 text in
         gates.json pool_detach_stuck + corpus.json:1427, rows for the "(last: ...)" texts + M4 (a)'s INFO line.
+        g07_ PART 2 20:2x (handoff_plan/handbacks/g07_part2_handback.md): ho_g07 + 2af46f920 (g19_'s request:
+        screen_space_tested false, D2's No RT/PT label wrap gone; COMPILES ONLY AFTER ho_g19 d655c6ddc merges; not built).
+        vanilla_exact 5 / 5 EXACT (autoexposure, fog x2, vignette x2; the autoexposure control was not caught on the
+        generic input). Look-risk rows: MAE at Sensitivity 4 caps the meter 16x above the steady average; Fog 0-2 scales
+        height + distance fog. Graphics 2 of 2 = Shadow Map Size: read-only dis_at64.py on EoCApp.exe (not packed, .text
+        entropy 6.35): cascade table rva 0x204C3A4 {2048, 1024, 1024}, SwitchTo 0x12E5E40 accepts only 1024 / 2048 (else
+        int3), 12 shaders hardcode 1/4096 texels (4 replaced today); design in testbin\scratch\g07_\progress.md, no code
+        (needs a game run) -> ATN list item 4 (pick: build it off by default, check in his D2 run). Still waiting: SSSR /
+        clustered SO / render scale (trace / run), neutral names (G09 + G21 renames).
+        - [ ] g07_ Opus xHigh review of ho_g07 (queued at the 20-agent cap) -> g07_ fixes -> re-check; merge after ho_g19.
+        G21 STARTED 20:2x (g21_ abbb588748e50507a; SSS embed rename first, its own commit, note to coord -> g07_ + g14_).
+        G20 STARTED 20:29 (g20_ a29ceb3b0f45e3b5e). G22 STILL QUEUED at the cap; then the reviews g07_ / g08_ / g12_ /
+        g19_ as slots free.
+        bd1r_ B3b S3-S5 REVIEW 20:2x (render_mt/reports/bd1r_b3b_s4_handback.md, bd1r_b3b_s4_review.md): GO, S4 + S5
+        byte-exact with the game's fill (+0x182e080..+0x182e384, push +0x2a2f40, cvtpd2ps = same MXCSR / PE), race-free in
+        both schedules; B's lock-free publish stays. 0 blocker / 0 major / 7 minor / 11 nit. S6 edits not reviewed yet.
+        - [ ] b3s_ fixes (sent 20:28) BEFORE S6 makes Check selectable: M1 ring released after Check + last_items, M2
+        what.empty() guard, M3 Check allocations before Run in a bad_alloc catch (fall back to the game), M5 atomic
+        schedule; then M4 S-6 prefetch before timing, M6 smoke (no_count_check generator can't trip, smoke.cpp:255; "no
+        ordered_mode delay" under stream = must-fail), safe NITs, N7 comment -> bd1r_ re-checks fixes + reviews S6.
+        - [ ] b3t_: M7 = S3 Should 1 (animation_rows.inc tests) (sent 20:28).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
