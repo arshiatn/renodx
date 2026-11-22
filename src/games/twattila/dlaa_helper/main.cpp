@@ -207,7 +207,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // the helper's own log held shut until then (its open below fails instead of emptying it: the player logs into its own).
   const std::vector<std::wstring> play_arguments(arguments, arguments + argument_count);
   const bool play = play_arguments.size() >= 4 && play_arguments[2] == L"play";
-  // The resident: "<any> serve <recording>\frame_<N> <control folder> [--nsight]" (rt_serve.h), its log resident.log there.
+  // The resident: "<any> serve <recording>\frame_<N> <control folder> [--nsight] [--no-dred]" (rt_serve.h), its log resident.log there.
   const bool serve = play_arguments.size() >= 5 && play_arguments[2] == L"serve";
   const HANDLE kept_log = (play || serve) ? CreateFileW(log_path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr) : INVALID_HANDLE_VALUE;
 #endif
@@ -288,7 +288,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         .recording = play_arguments[3],
         .control = play_arguments[4],
         .helper_folder = folder,
-        .nsight = play_arguments.size() >= 6 && play_arguments[5] == L"--nsight",
+        .nsight = std::ranges::find(play_arguments.begin() + 5, play_arguments.end(), L"--nsight") != play_arguments.end(),
+        .dred = std::ranges::find(play_arguments.begin() + 5, play_arguments.end(), L"--no-dred") == play_arguments.end(),
         .log = [](const std::string& line) { LogWithTime(line.c_str()); },
         .frame_boundary =
             [](ID3D12CommandQueue* queue) {

@@ -1,5 +1,5 @@
 #pragma once
-// The resident (recorder builds only: main.cpp's "0 serve <recording>\frame_<N> <control folder> [--nsight]"): a loaded
+// The resident (recorder builds only: main.cpp's "0 serve <recording>\frame_<N> <control folder> [--nsight] [--no-dred]"): a loaded
 // recording kept on the GPU and played on the lab's commands, resident protocol v1 (tools/tw/lab/resident_protocol.md and
 // its schemas; gto_design §2 S2 and addendum B). After the first loop (more while bakes or rooms are on their way) the
 // scene's temporal state is kept (the snapshot); a reset gives it back, a structure change since loads the recording again.
@@ -13,6 +13,7 @@
 #include <condition_variable>
 #include <cstring>
 #include <cwchar>
+#include <cwctype>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -463,6 +464,7 @@ class Resident {
     std::filesystem::path control;
     std::wstring helper_folder;
     bool nsight = false;
+    bool dred = true;  // DRED's breadcrumbs (--no-dred: off)
     std::function<void(const std::string&)> log;
     std::function<void(ID3D12CommandQueue*)> frame_boundary;  // Nsight Graphics' (trace)
   };
@@ -607,9 +609,10 @@ class Resident {
   }
 
  private:
+  static constexpr int64_t SEED_ROOM = int64_t{1} << 20;
   static constexpr std::array<std::string_view, 9> COMMANDS = {"config", "run", "dump", "trace", "moments", "seed", "light_anim", "status", "stop"};
-  // The process's RENODX_TW_* variables into `env`, fail closed: false (`why` says which) with RENODX_TW_RECORD (the
-  // journal's cost in every request) or a RENODX_TW_TEST_* set.
+  // The process's RENODX_TW_* variables (names in upper case: Windows' ignore it) into `env`, fail closed: false (`why`
+  // says which) with RENODX_TW_RECORD (the journal's cost in every request) or a RENODX_TW_TEST_* set.
   static bool CheckEnvironment(std::map<std::string, std::string>* env, std::string* why) {
     const auto narrow = [](std::wstring_view wide) {
       std::string text(WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr), '\0');
@@ -621,7 +624,9 @@ class Resident {
       for (const wchar_t* entry = variables; *entry != L'\0'; entry += std::wcslen(entry) + 1) {
         const std::wstring_view variable(entry);
         const size_t equals = variable.find(L'=');
-        if (variable.starts_with(L"RENODX_TW_")) (*env)[narrow(variable.substr(0, equals))] = narrow(variable.substr(std::min(equals + 1, variable.size())));
+        std::wstring name(variable.substr(0, equals));
+        std::ranges::transform(name, name.begin(), [](wchar_t letter) { return static_cast<wchar_t>(std::towupper(letter)); });
+        if (name.starts_with(L"RENODX_TW_")) (*env)[narrow(name)] = narrow(variable.substr(std::min(equals + 1, variable.size())));
       }
       FreeEnvironmentStringsW(variables);
     }
@@ -751,8 +756,8 @@ class Resident {
     return true;
   }
 
-  // The recording on a new scene (the last one let go first, LetGo), DRED on (a lost device's report says where the GPU
-  // stopped), its first loop played (more while it has not settled, at most 5), the snapshot taken (in video memory when
+  // The recording on a new scene (the last one let go first, LetGo), DRED on unless --no-dred (a lost device's report says
+  // where the GPU stopped), its first loop played (more while it has not settled, at most 5), the snapshot taken (in video memory when
   // twice its size is free, else read back), the config's stems and burn in it, the seed's offset on it. False: `why` says
   // why.
   bool Load(std::string* why) {
@@ -769,7 +774,7 @@ class Resident {
     }
     SetState("loading 0 %");
     scene_ = std::make_unique<RtScene12>();
-    if (!scene_->Initialize(adapter_.Get(), options_.helper_folder, true)) {
+    if (!scene_->Initialize(adapter_.Get(), options_.helper_folder, options_.dred)) {
       *why = scene_->Status();
       return false;
     }
@@ -785,6 +790,7 @@ class Resident {
     loaded_level_ = config_.micromap_level;
     const auto [first_frame, last_frame] = scene_->PlaybackFrames();
     span_ = last_frame - first_frame + 1;
+    last_frame_ = last_frame;
     frames_.clear();
     for (size_t request = 0; request < scene_->PlaybackRequests(); ++request) {
       if (frames_.empty() || scene_->PlaybackHeader(frames_.back().front()).frame != scene_->PlaybackHeader(request).frame) frames_.emplace_back();
@@ -929,13 +935,14 @@ class Resident {
     return true;
   }
   // What run, dump and moments played: the reset's mode, the seed, the light animation (its SHA-256, or null), the swapped
-  // stems, DRED (always on).
+  // stems, DRED, the RENODX_TW_* environment.
   [[nodiscard]] nlohmann::json Played(const std::string& mode) const {
     return {{"reset", mode},
             {"seed", seed_},
             {"light_anim", light_anim_},
             {"stems", config_.stem_hashes},
-            {"dred", true}};
+            {"dred", options_.dred},
+            {"env", env_}};
   }
 
   Reply Handle(const std::string& name, const nlohmann::json& args, uint32_t n) {
@@ -945,13 +952,18 @@ class Resident {
       if (name == "stop") return {};
       // The heartbeat's fields, the RENODX_TW_* environment, Nsight's injection, DRED, the outputs' sizes (v1.1 proposals).
       nlohmann::json status = Alive();
-      status.update({{"env", env_}, {"nsight", options_.nsight}, {"dred", true}, {"output_sizes", scene_->OutputSizes()}});
+      status.update({{"env", env_}, {"nsight", options_.nsight}, {"dred", options_.dred}, {"output_sizes", scene_->OutputSizes()}});
       return {.result = status};
     }
     if (name == "seed") {
       if (!OnlyKeys(args, {"offset"}, &why)) return {.status = "REFUSED", .error = why};
+      // Played frames below 2^24 (the radiance cache's float stamps are exact there) with room for SEED_ROOM frames since a
+      // reset.
       const auto offset = args.at("offset").get<int64_t>();
-      if (offset < 0 || offset > UINT32_MAX) return {.status = "REFUSED", .error = std::format("offset {} is not 0 to {}", args.at("offset").dump(), UINT32_MAX)};
+      const int64_t limit = (int64_t{1} << 24) - SEED_ROOM - last_frame_ - (int64_t{span_} * (loops_ + 1));
+      if (offset < 0 || (offset != 0 && offset > limit)) {
+        return {.status = "REFUSED", .error = std::format("offset {} is not 0 to {} (played frames stay below 2^24)", args.at("offset").dump(), std::max<int64_t>(limit, 0))};
+      }
       pending_seed_ = static_cast<uint32_t>(offset);
       return {};
     }
@@ -1017,7 +1029,7 @@ class Resident {
       if (!Reset(&mode, &why)) return Failed(why);
       const DXGI_QUERY_VIDEO_MEMORY_INFO memory = Memory();
       if (!scene_->StartMoments(outputs, (memory.Budget > memory.CurrentUsage) ? memory.Budget - memory.CurrentUsage : 0, &why)) {
-        return {.status = "REFUSED", .error = why};
+        return {.status = "REFUSED", .error = std::format("{} (after the reset: {})", why, mode)};
       }
       for (uint32_t frame = 0; frame < k; ++frame) {
         if (!Advance(nullptr, &why) || !scene_->AddMoments(&why)) {
@@ -1204,6 +1216,7 @@ class Resident {
   uint32_t position_ = 0;                    // frames played since the snapshot or reset
   uint32_t seed_ = 0;                        // the offset in play (a reset takes the pending one)
   uint32_t pending_seed_ = 0;
+  uint32_t last_frame_ = 0;  // the recording's last frame
   uint32_t played_since_reset_ = 0;  // the light animation's frame
   std::vector<LightFrame> light_animation_;
   nlohmann::json light_anim_ = nullptr;  // its file's SHA-256 (null: none)

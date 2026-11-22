@@ -2531,9 +2531,25 @@ class RtScene12 {
       std::memcpy(descs.data() + at, &word, sizeof(word));
     }
   }
-  // `saved` (SaveResources' on this scene, its resources unchanged since: Structure) copied back, the placed instances'
-  // frame stamps `shift` frames later (the kept ones: from the placed state's CPU descs' end to the last trace's count).
-  // False: `why` says why.
+  // The radiance cache's frame stamps (rt_cache_resolve: frame + 1 in each cell's radiance w, a float, and albedo y; 0:
+  // none) `shift` frames later. Exact while frames stay below 2^24 (the resident's seed limit).
+  static void ShiftCacheStamps(std::span<uint8_t> radiance, std::span<uint8_t> albedo, uint32_t shift) {
+    for (size_t at = 12; at + sizeof(float) <= radiance.size(); at += 16) {
+      float stamp = 0.f;
+      std::memcpy(&stamp, radiance.data() + at, sizeof(stamp));
+      if (stamp > 0.f) stamp = static_cast<float>(static_cast<uint32_t>(stamp) + shift);
+      std::memcpy(radiance.data() + at, &stamp, sizeof(stamp));
+    }
+    for (size_t at = 4; at + sizeof(uint32_t) <= albedo.size(); at += 8) {
+      uint32_t stamp = 0;
+      std::memcpy(&stamp, albedo.data() + at, sizeof(stamp));
+      if (stamp != 0) stamp += shift;
+      std::memcpy(albedo.data() + at, &stamp, sizeof(stamp));
+    }
+  }
+  // `saved` (SaveResources' on this scene, its resources unchanged since: Structure) copied back, the GPU's frame stamps
+  // `shift` frames later: the placed instances' kept descs (from the placed state's CPU descs' end to the last trace's
+  // count) and the radiance cache's cells (read back, shifted, written again). False: `why` says why.
   bool RestoreResources(const std::vector<SavedResource>& saved, uint32_t shift, std::string* why) {
     ID3D12GraphicsCommandList4* list = RecorderList();
     std::vector<ComPtr<ID3D12Resource>> uploads;
@@ -2553,29 +2569,53 @@ class RtScene12 {
       *why = "the reset's copies failed";
       return false;
     }
+    if (shift == 0) return true;
+    // The stamped buffers' parts read back: the placed state's first 16 bytes and the kept descs, the cache's two pools.
+    struct Stamped {
+      const char* name;
+      ID3D12Resource* resource;
+      D3D12_RESOURCE_STATES state;
+      uint64_t bytes;  // 0: all of it
+    };
     const uint64_t descs = uint64_t{std::min(placed_written_, placed_capacity_)} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
-    if (shift == 0 || !placed_state_ || descs == 0) return true;
-    ID3D12Resource* placed = placed_instances_[placed_last_].Get();
-    std::vector<Readback> readbacks;
-    std::array<std::vector<uint8_t>, 2> payloads;
-    list = RecorderList();
-    if (list != nullptr) {
-      CopyToReadback(list, "placed_state", placed_state_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &readbacks, 0, 16);
-      CopyToReadback(list, "placed", placed, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, &readbacks, 0, descs);
+    const bool placed = placed_state_ && descs != 0;
+    const bool cached = cache_radiance_ && cache_albedo_;
+    std::vector<Stamped> stamped;
+    if (placed) {
+      stamped.push_back({"placed_state", placed_state_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 16});
+      stamped.push_back({"placed", placed_instances_[placed_last_].Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, descs});
     }
-    if (list == nullptr || !WaitFor(SubmitRecorderList(list)) || readbacks.size() != 2 || !ReadbackPayload(&readbacks[0], &payloads[0])
-        || !ReadbackPayload(&readbacks[1], &payloads[1])) {
-      *why = "the placed instances' frame stamps could not be read back";
+    if (cached) {
+      stamped.push_back({"cache_radiance", cache_radiance_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 0});
+      stamped.push_back({"cache_albedo", cache_albedo_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 0});
+    }
+    if (stamped.empty()) return true;
+    std::vector<Readback> readbacks;
+    std::vector<std::vector<uint8_t>> payloads(stamped.size());
+    list = RecorderList();
+    for (const Stamped& buffer : stamped) {
+      if (list != nullptr) CopyToReadback(list, buffer.name, buffer.resource, buffer.state, &readbacks, 0, buffer.bytes);
+    }
+    bool read = list != nullptr && WaitFor(SubmitRecorderList(list)) && readbacks.size() == stamped.size();
+    for (size_t index = 0; read && index < stamped.size(); ++index) read = ReadbackPayload(&readbacks[index], &payloads[index]);
+    if (!read) {
+      *why = "the GPU's frame stamps could not be read back";
       return false;
     }
-    uint32_t cpu_descs = 0;  // rt_place's STATE_CPU
-    std::memcpy(&cpu_descs, payloads[0].data() + sizeof(recording::BufferHeader) + 12, sizeof(cpu_descs));
-    ShiftPlacedStamps(std::span(payloads[1]).subspan(sizeof(recording::BufferHeader) + std::min(uint64_t{cpu_descs} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC), descs)),
-                      shift);
+    const auto body = [](std::vector<uint8_t>* payload) { return std::span(*payload).subspan(sizeof(recording::BufferHeader)); };
+    if (placed) {
+      uint32_t cpu_descs = 0;  // rt_place's STATE_CPU
+      std::memcpy(&cpu_descs, body(&payloads[0]).data() + 12, sizeof(cpu_descs));
+      ShiftPlacedStamps(body(&payloads[1]).subspan(std::min(uint64_t{cpu_descs} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC), descs)), shift);
+    }
+    if (cached) ShiftCacheStamps(body(&payloads[payloads.size() - 2]), body(&payloads.back()), shift);
     list = RecorderList();
-    if (list == nullptr || !UploadRecorded(list, "placed", placed, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, payloads[1], &uploads, why)
-        || !WaitFor(SubmitRecorderList(list))) {
-      *why = "the placed instances' frame stamps could not be written back";
+    bool written = list != nullptr;
+    for (size_t index = placed ? 1 : 0; written && index < stamped.size(); ++index) {
+      written = UploadRecorded(list, stamped[index].name, stamped[index].resource, stamped[index].state, payloads[index], &uploads, why);
+    }
+    if (list == nullptr || !WaitFor(SubmitRecorderList(list)) || !written) {
+      *why = "the GPU's frame stamps could not be written back";
       return false;
     }
     return true;
