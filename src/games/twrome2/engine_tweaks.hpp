@@ -250,12 +250,14 @@ inline void Find(const Sections& sections, std::span<Option*> options) {
 #endif
 }
 
-// `bits` into a float or integer tweak's value; false: its code could not be made writable (logged once a tweak).
+// `bits` into a float or integer tweak's value; false: its code could not be made writable (logged once a tweak, and
+// not tried again).
 inline bool Write(Tweak* tweak, uint32_t bits) {
   if (tweak->code_pattern.empty()) {
     std::memcpy(tweak->value, &bits, sizeof(bits));
     return true;
   }
+  if (tweak->write_failure_logged) return false;
   // Code: writable only while it is patched.
   DWORD protection;
   if (VirtualProtect(tweak->value, sizeof(bits), PAGE_EXECUTE_READWRITE, &protection) == FALSE) {
