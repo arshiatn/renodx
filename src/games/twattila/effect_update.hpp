@@ -114,6 +114,7 @@ constexpr uint32_t DRAW_RVA = 0x190B780;
 constexpr uint32_t CREATE_DRAW_RETURN_RVA = 0x181BECB;
 constexpr uint32_t SPAWN_RECORD_OFFSET = 0x2C;
 constexpr uint32_t POOL_CAPACITY_OFFSET = 0xC;  // the slot pool's list (capacity +0xC, count +0x10, ids at the pointer +0x14): its push grows the array when the count has reached the capacity
+                                                // (watched, like the count, from a pool's first slow-path hit at a slot site: see Watched)
 constexpr uint32_t SPAWN_SLOT_OFFSET = 0x1C;
 constexpr uint32_t RECORD_DWORDS = 12;
 constexpr uint32_t RECORD_DRAW_INDEX = 1;  // the dword (record + 4) the create path's first drawn value lands in
@@ -305,7 +306,8 @@ struct Watched {
   const uint32_t* address = nullptr;
   std::string_view name;
   uint32_t value = 0;
-  bool pool_capacity = false;  // a slot list's capacity: a change by a unit that ran on a worker is the game's push growing the array (noted, not a mismatch: the unit was direct)
+  bool pool_capacity = false;  // a slot list's capacity: a change by a unit that ran on a worker is the game's push growing the array (noted, not a mismatch: the unit was direct).
+                               // Only a pool that a slot site's handler saw is watched (a slow-path hit): one that only direct units' fast paths touch in a round has no watch.
 };
 
 // The one-slot mailbox of the calls only the render thread makes (the rigid add, the random texture fill).
@@ -374,6 +376,9 @@ struct ThreadState {
 };
 
 static Round current_round;
+// Words watched at most: the random state, the node's table base and capacity, the spawn count and the CPU pipeline's two room words, and per pool its count, capacity, minimum and
+// maximum. (The watch lambda drops a word past the array silently: a word added here must raise the array.)
+static_assert(6 + 4 * std::tuple_size_v<decltype(Round::pools)> <= std::tuple_size_v<decltype(Round::watched)>);
 static Blocks<Unit> units;
 static Blocks<Segment> segments;
 static Blocks<Record> records;
@@ -391,7 +396,9 @@ static uint32_t stack_window = 0;                       // the trace window whos
 // The always-counted counters (CountedAlways) over the session, and what Update took since the last line that carried it (the window's or the outside-window one). Update and Detach only.
 static std::array<uint64_t, static_cast<size_t>(Counter::COUNT)> session_totals = {};
 static std::array<uint32_t, static_cast<size_t>(Counter::COUNT)> unreported_counts = {};
-static bool fault_unreported = false;       // a fault counter (not spawn overflows, stage full, wake timeouts: those are by design) is in unreported_counts
+static bool fault_unreported = false;       // a fault counter is in unreported_counts. Not faults, by design: spawn overflows, stage full (the budget's answer), wake timeouts (a wait that ran out).
+                                            // A foreign thread's hit goes on as the game's own call, but it is a fault until real play shows it is routine (a sound or loading thread at a
+                                            // site during the walk): the first runs will say; then it moves to the by-design list in Update.
 static uint64_t counts_line_ticks = 0;      // when the last outside-window line was printed (at most one a second)
 static bool session_used = false;           // the row was on at a present
 static std::atomic<uint64_t> handover_ticks = 0;
@@ -1466,7 +1473,7 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
 
 }  // namespace internal
 
-// The session's totals of the always-counted counters, one line (a window's line is followed by it, and the detach prints it).
+// The session's totals of the always-counted counters, one line (once at the first present after a trace window, and at the detach).
 inline void LogSessionTotals() {
   using namespace internal;
   std::string totals;
@@ -1517,8 +1524,8 @@ inline void Update(bool row, bool spawns = false) {
   // Every site the walk's gate opens needs all 27 in the game's code: a partial set (a site that stood down) never arms.
   data->walk_armed.store((row && !session_off && written == ALL_SITES ? 1 : 0), std::memory_order_seq_cst);
 
-  // What a trace window counted (nothing else is counted outside one, but the always-counted counters): one line for its presents, followed by the session's totals. The
-  // always-counted ones ride along; outside a window they go into the totals and, when one is a fault, a line of what was taken since the last line (at most one a second).
+  // What a trace window counted (nothing else is counted outside one, but the always-counted counters): one line for its presents. The always-counted ones ride along; outside a
+  // window they go into the totals and, when one is a fault, a line of what was taken since the last line (at most one a second). The totals are printed once per window, below.
   std::string line;
   bool traced = false;
   for (size_t index = 0; index < counters.size(); ++index) {
@@ -1562,7 +1569,7 @@ inline void Update(bool row, bool spawns = false) {
   if (traced) {
     line.pop_back();
     renodx::utils::log::i("[Total War] Parallel Effect Update (trace window ", worker_pool::TraceWindow(), "):", line);
-    LogSessionTotals();
+    // (counts that waited under the second's limit have no line of their own now: they are in the totals)
     unreported_counts = {};
     fault_unreported = false;
   } else if (fault_unreported && worker_pool::Qpc() - counts_line_ticks >= worker_pool::qpc_frequency) {
@@ -1578,13 +1585,14 @@ inline void Update(bool row, bool spawns = false) {
     fault_unreported = false;
     counts_line_ticks = worker_pool::Qpc();
   }
-  // The window's stack headroom, once, at the first present after it.
+  // The window's stack headroom and the session's totals, once, at the first present after it.
   if (worker_pool::Tracing()) {
     stack_window = worker_pool::TraceWindow();
   } else if (stack_window != 0) {
     if (const uint32_t least = stack_headroom_low.exchange(~0u, std::memory_order_relaxed); least != ~0u) {
       renodx::utils::log::i("[Total War] Parallel Effect Update (trace window ", stack_window, "): stack headroom ", least / 1024, " KB.");
     }
+    LogSessionTotals();
     stack_window = 0;
   }
   const uint32_t stored = std::min<uint32_t>(event_count.exchange(0, std::memory_order_relaxed), static_cast<uint32_t>(events.size()));

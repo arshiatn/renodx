@@ -2254,20 +2254,24 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* game, uint8_t* patched
     eu::Update(true);
     CHECK(lines_with("safety counts outside trace windows") == 1);
     // After the second: the waiting count and the new one in one line; by-design counts alone print nothing.
-    Sleep(1100);
+    ei::counts_line_ticks = 0;  // (the second has passed)
     ei::Count(ei::Counter::CENSUS_ERRORS, 1);
     eu::Update(true);
     CHECK(lines_with("Parallel Effect Update (safety counts outside trace windows): hangs 1, census errors 1") == 1);
-    Sleep(1100);
+    ei::counts_line_ticks = 0;  // (the limit would let it print: it is the by-design counts that do not)
     ei::Count(ei::Counter::SPAWN_OVERFLOWS, 3);
     ei::Count(ei::Counter::STAGE_FULLS, 2);
     ei::Count(ei::Counter::WAKE_TIMEOUTS, 1);
     eu::Update(true);
     CHECK(lines_with("safety counts outside trace windows") == 2);
+    // A foreign thread's hit alone is a fault (until real play says otherwise): its line, with the by-design counts that waited.
+    ei::Count(ei::Counter::FOREIGN_HITS, 1);
+    eu::Update(true);
+    CHECK(lines_with("Parallel Effect Update (safety counts outside trace windows): wake timeouts 1, foreign hits 1, spawn overflows 3, stage full 2") == 1 && lines_with("safety counts outside trace windows") == 3);
     // The detach: what was counted since the last present joins the totals, which are printed once.
     ei::Count(ei::Counter::TAG_LEAKS, 1);
     eu::Detach();
-    CHECK(lines_with("Parallel Effect Update (session totals): wake timeouts 5, foreign hits 1, hangs 3, watched mismatches 0, census errors 1, late overflows 0, failed rounds 0, "
+    CHECK(lines_with("Parallel Effect Update (session totals): wake timeouts 5, foreign hits 2, hangs 3, watched mismatches 0, census errors 1, late overflows 0, failed rounds 0, "
                      "spawn overflows 8, tag leaks 1, stage full 2") == 1);
     std::printf("26h. F1: counts outside trace windows: one line when a fault is among them (not for spawn overflows, stage full or wake timeouts alone; one a second at most), the session totals at the detach\n");
 
@@ -2286,17 +2290,27 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* game, uint8_t* patched
     add(ei::Counter::HANGS, 1);
     add(ei::Counter::SPAWN_OVERFLOWS, 2);
     eu::Update(true);
+    eu::Update(true);
+    {
+      const std::unique_lock lock(log_mutex);
+      size_t window_lines = 0;
+      for (const std::string& line : log_lines) {
+        window_lines += (line.find("Parallel Effect Update (trace window") != std::string::npos && line.find("hangs 1") != std::string::npos ? 1 : 0);
+      }
+      CHECK(window_lines == 1);  // the window's line carries the counts
+    }
+    CHECK(lines_with("(session totals)") == 0 && lines_with("safety counts outside trace windows") == 0);  // none inside the window
+    CHECK(trace_close(4));
+    eu::Update(true);
+    eu::Update(true);
+    CHECK(lines_with("Parallel Effect Update (session totals): ") == 1);  // once, at the first present after it
     {
       const std::unique_lock lock(log_mutex);
       size_t at = 0;
-      while (at < log_lines.size() && log_lines[at].find("Parallel Effect Update (trace window") == std::string::npos) ++at;
-      CHECK(at + 1 < log_lines.size() && log_lines[at].find("hangs 1") != std::string::npos);
-      CHECK(log_lines[at + 1].find("Parallel Effect Update (session totals): ") != std::string::npos && log_lines[at + 1].find("hangs 1,") != std::string::npos
-            && log_lines[at + 1].find("spawn overflows 2,") != std::string::npos);
+      while (at < log_lines.size() && log_lines[at].find("Parallel Effect Update (session totals): ") == std::string::npos) ++at;
+      CHECK(at < log_lines.size() && log_lines[at].find("hangs 1,") != std::string::npos && log_lines[at].find("spawn overflows 2,") != std::string::npos);
     }
-    CHECK(lines_with("safety counts outside trace windows") == 0);
-    CHECK(trace_close(4));
-    std::printf("26h. F1: a trace window's line carries them, the session totals follow it\n");
+    std::printf("26h. F1: a trace window's line carries them; the session totals are printed once, at the first present after the window\n");
 
     // F2: the game's push of an id onto the slot list grows its array when the count has reached the capacity: a unit that ran on a worker and left the capacity word changed is
     // noted once (kind and site), the new capacity the value; a unit on the render thread (the game's own thread) is not.
