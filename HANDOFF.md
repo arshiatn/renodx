@@ -514,6 +514,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtv_: read the post-B1 test-only diffs (4 schema tests, left_out conhost, titles ... | ?
 - owner of schema_check.py (gtl_ / gtb_): support "maximum" (cmd dump frames <= 64 ... | ?
 - gtc_ (Low): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl_'s live check: ... | ?
+- gtp_ (bundle with any gtw_ round 21 items -> round 22): gpr-R21-1 refusal on eve ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -11045,9 +11046,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] owner of schema_check.py (gtl_ / gtb_): support "maximum" (cmd dump frames <= 64) (low).
         - [ ] gtc_ (Low): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl_'s live check: steps 0-2, STOP at 2b for gtv_'s
         go, then 3-19 (coord).
-        Agents (6): gtl_ (live lab check), gtv_ (test diffs read), gtw_ + gpr_ (gate round 21 re-checks), ebq_ (end batch
-        readiness), hts_ (open-items plan synthesis); gtc_ (S3c re-run next) / hta_..htd_ / gtp_ / fcr_ / gti_ / grs_ / h0i_
-        / upr_ idle; GPU: FREE (S3c re-run next); one GPU job at a time
+        gpr_ RE-CHECK 21 18:29 (plan_1117/designs/gpr_round21_recheck_handback.md; gpr_review.md round 21 section; scripts
+        testbin\scratch\gpr_\gpr_r21_*.py + boxes r21_bak27 / r21_live): GO + GO FOR ENFORCE (price side); hook stays
+        SHADOW. R20-1 caps: 16-40 level doubling chains / 600-statement fan / 800 $PATH uses 0.000-0.016 s (was 5.8 s);
+        kind() 9.52 s over 87,279 calls. R20-2: lab loops + test_budget_psm1.ps1 exempt; 4 bug4_census ${g} loops land on
+        their refused row. R20-3: outer_end tail -> sh echo; ranked guard refuses ./brand_new.exe && ./x87fix_test.exe; 9
+        newly refused = amd64 gated_build + x86 row (right). $PWD / ${PWD} / $pwd follow cd. Key diff 37 (= gtp_), 13 newly
+        refused, none lost; 325 refused of ~84.7k, all on the 16 refused rows. Re-seed drop = the 400-transcript window
+        moving (frozen window: same seeds, no refusal flips). gpr-R21-1 (Low, optional, no enforce block): price_shell checks
+        refusal on one key only -> 7 calls under-refuse (3 bug4_census heredoc edits + run, 2 instance_fill + 2 map_replay
+        run.ps1 behind their exe); fix = check refusal on every ranked key with a row, first refused wins.
+        - [ ] gtp_ (bundle with any gtw_ round 21 items -> round 22): gpr-R21-1 refusal on every ranked key (Low, optional).
+        Agents (5): gtl_ (live lab check), gtv_ (test diffs read), gtw_ (gate round 21 re-check), ebq_ (end batch
+        readiness), hts_ (open-items plan synthesis); gtc_ (S3c re-run next) / hta_..htd_ / gtp_ / gpr_ / fcr_ / gti_ / grs_
+        / h0i_ / upr_ idle; GPU: FREE (S3c re-run next); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
