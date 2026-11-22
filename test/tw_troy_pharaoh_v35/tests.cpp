@@ -460,9 +460,25 @@ static void FitGame(const Chain& chain, float hue_clip, const Values& shipped_va
   const float shipped_score = BelowWhite(Compare(sdr, shipped_ramp));
   std::printf("   shared.h (%.2f / %.2f / %.2f / %.2f): worst %.1f %%; Musa's own (control, must fail 5 %%): %.1f %%\n",
               shipped_values[0], shipped_values[1], shipped_values[2], shipped_values[3], 100.f * shipped_score, 100.f * own_score);
-  CHECK(shipped_score < 0.05f, "%s's V35 defaults miss the game by %.1f %%", chain.name, 100.f * shipped_score);
-  CHECK(shipped_score <= best.score + 0.005f, "%s's V35 defaults (%.1f %%) are not the fit's best (%.1f %%)", chain.name,
-        100.f * shipped_score, 100.f * best.score);
+  if (best.score < 0.05f) {
+    CHECK(shipped_score < 0.05f, "%s's V35 defaults miss the game by %.1f %%", chain.name, 100.f * shipped_score);
+    CHECK(shipped_score <= best.score + 0.005f, "%s's V35 defaults (%.1f %%) are not the fit's best (%.1f %%)", chain.name,
+          100.f * shipped_score, 100.f * best.score);
+  } else {
+    // The four sliders miss the bar: Musa's own stay (the pilot's rule; a fifth knob only with the coordinator's yes).
+    std::printf("   the fit misses 5 %%: Musa's own sliders stay\n");
+    CHECK(shipped_values == (Values{1.f, 1.f, 1.f, 1.f}), "%s: the fit misses 5 %% but shared.h is not Musa's own", chain.name);
+    Report(std::string(chain.name) + " the fit's best (not shipped)", sdr, Run(chain, With(own, best.values)));
+    for (const auto& [peak, paper_white] : {std::pair{1000.f, 203.f}, std::pair{2500.f, 275.f}}) {
+      auto best_at = With(own, best.values);
+      auto own_at = own;
+      best_at.peak_white_nits = own_at.peak_white_nits = peak;
+      best_at.diffuse_white_nits = own_at.diffuse_white_nits = paper_white;
+      best_at.graphics_white_nits = own_at.graphics_white_nits = paper_white;
+      std::printf("   the fit's best, highlights at %.0f / %.0f: grey within %.1f %% of Musa's own\n", peak, paper_white,
+                  100.f * Highlights(Run(chain, best_at), Run(chain, own_at), paper_white, peak));
+    }
+  }
   CHECK(own_score > 0.05f, "control: Musa's own sliders pass (%.1f %%): the measure sees nothing", 100.f * own_score);
   Report(std::string(chain.name) + " V35 defaults (after the fit)", sdr, shipped_ramp);
   for (const auto& [peak, paper_white, bound] : {std::tuple{1000.f, 203.f, GUARD}, std::tuple{2500.f, 275.f, WIDE_BOUND}}) {
