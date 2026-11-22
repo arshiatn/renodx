@@ -138,6 +138,693 @@ uint32_t __fastcall SlowDispatch(void* cache, void*, void* device, uint32_t forc
   return twattila::animation_rows::Dispatch(cache, nullptr, device, force, list, texture, row, end, out);
 }
 
+// ==== S4/S5 exactness part begin (b3t_) ====
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+// The exactness part (S4, S5): whole updates and single fill calls in the game's copy (A) and ours (B, through the stub and animation_rows::Dispatch) from equal
+// state, every byte of the world compared. The world is one block of memory (header, list entries, instances, animations, the records' buffer and the fake
+// allocator's arena); the game's own fill and record push run in both copies, with the game's allocator, free, texture getter, the texture's Map / Unmap and the
+// serial texture fill (the tail's) pointed at fakes that log their arguments.
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+constexpr uint32_t AR_ALLOC_RVA = 0xC6AE0;       // the game's allocator: cdecl (count of 16-byte records, 0), the record push's growth
+constexpr uint32_t AR_FREE_RVA = 0xE98C0;        // cdecl (block)
+constexpr uint32_t AR_TEXTURE_OF_RVA = 0x173CE80;  // thiscall (the texture) -> the device texture the tail maps
+constexpr uint32_t AR_SERIAL_FILL_RVA = 0x17DB0F0;  // thiscall (the map's description), one argument (the row range), callee pops
+constexpr uint32_t AR_TBB_TWEAK_RVA = 0x2A628E8;
+constexpr uint32_t AR_FILL_TWEAK_RVA = 0x2A61058;
+constexpr uint32_t AR_BLOCK_ITEMS = 512;
+constexpr uint32_t AR_INSTANCE_BYTES = 0xB0;      // +0x5c the texture, +0x60 the animation, +0x70 the record word, +0xa4 the texel's float bits
+constexpr uint32_t AR_ANIMATION_BYTES = 0x80;     // +4 n, +0xc the flag, +0x10 frame, +0x14 texture, +0x18 texel
+constexpr uint32_t AR_MAX_TEXTURES = 6;
+constexpr uint32_t AR_HEADER_BYTES = 0x1000;
+// The header's objects.
+constexpr uint32_t AR_CACHE = 0;            // +4 textures, +8 the texture array, +0x10 row size, +0x14 texels per row, +0x1c / +0x20 / +0x24 the records, +0x28 frame, +0x2c current
+constexpr uint32_t AR_LIST = 0x40;          // +4 count, +8 the entries
+constexpr uint32_t AR_ROW = 0x60;
+constexpr uint32_t AR_OUT = 0x64;
+constexpr uint32_t AR_DEVICE = 0x70;
+constexpr uint32_t AR_TEXTURE_ARRAY = 0x80;
+constexpr uint32_t AR_TEXTURES = 0xA0;      // 16 bytes each: the vtable, the height
+constexpr uint32_t AR_VTABLE = 0x100;       // 32 slots; slot 26 (+0x68) is the height
+constexpr uint32_t AR_DEVICE_TEXTURE = 0x180;
+constexpr uint32_t AR_DEVICE_VTABLE = 0x1A0;  // slot 9 (+0x24) Map, slot 10 (+0x28) Unmap
+constexpr uint32_t AR_MAPPED = 0x200;
+
+struct ArWorld {
+  uint8_t* base = nullptr;
+  size_t bytes = 0;
+  size_t items_at = 0;
+  size_t instances_at = 0;
+  size_t animations_at = 0;
+  size_t records_at = 0;
+  size_t arena_at = 0;
+  uint32_t arena_bytes = 0;
+  uint32_t arena_used = 0;
+  uint32_t entries = 0;
+  uint32_t distinct = 0;
+  uint32_t map_calls = 0;
+  uint32_t map_fails_at = ~0u;  // the Map call that answers 0
+  std::vector<uint32_t> log;
+  ArWorld() = default;
+  ArWorld(const ArWorld&) = delete;
+  ArWorld& operator=(const ArWorld&) = delete;
+  ~ArWorld() {
+    if (base != nullptr) VirtualFree(base, 0, MEM_RELEASE);
+  }
+};
+
+thread_local ArWorld* ar_current = nullptr;
+
+uint32_t* __cdecl ArAlloc(int32_t count, uint32_t) {
+  ArWorld* world = ar_current;
+  const uint32_t bytes = (count < 0 ? 0u : static_cast<uint32_t>(count) << 4);
+  world->log.push_back(0xA0000000u | (static_cast<uint32_t>(count) & 0x0FFFFFFF));
+  if (bytes > world->arena_bytes - world->arena_used) {
+    world->log.push_back(0xDEADA110u);
+    return nullptr;
+  }
+  world->log.push_back(world->arena_used);
+  uint8_t* block = world->base + world->arena_at + world->arena_used;
+  world->arena_used += bytes;
+  return reinterpret_cast<uint32_t*>(block);
+}
+
+void __cdecl ArFree(void* block) {
+  ArWorld* world = ar_current;
+  world->log.push_back(0xF0000000u);
+  world->log.push_back(Address(block) - Address(world->base));
+}
+
+uint32_t __fastcall ArHeight(void* texture, void*) { return Read32(static_cast<const uint8_t*>(texture) + 4); }
+
+void* __fastcall ArTextureOf(void* texture, void*) {
+  ArWorld* world = ar_current;
+  world->log.push_back(0xC0000000u | ((Address(texture) - Address(world->base) - AR_TEXTURES) >> 4));
+  return world->base + AR_DEVICE_TEXTURE;
+}
+
+uint32_t __fastcall ArMap(void*, void*, void* device, uint32_t first, uint32_t flags, uint32_t* pointer, uint32_t* pitch, uint32_t zero_a, uint32_t zero_b) {
+  ArWorld* world = ar_current;
+  world->log.push_back(0xD0000000u | world->map_calls);
+  world->log.push_back(Address(device) - Address(world->base));
+  world->log.push_back(first ^ flags ^ zero_a ^ zero_b);
+  if (world->map_calls++ == world->map_fails_at) return 0;
+  *pointer = Address(world->base + AR_MAPPED);
+  *pitch = 0x100;
+  return 1;
+}
+
+uint32_t __fastcall ArUnmap(void*, void*, void* device, uint32_t zero) {
+  ArWorld* world = ar_current;
+  world->log.push_back(0xE0000000u);
+  world->log.push_back(Address(device) - Address(world->base) + zero);
+  return 1;
+}
+
+// The serial texture fill: what the tail hands it (the map's description in ecx: the force byte, the cache, the mapped pointer, the pitch; the row range at the argument)
+// and a hash of the records [0, count) of the cache's vector.
+void __fastcall ArSerialFill(void* description, void*, const uint8_t* range) {
+  ArWorld* world = ar_current;
+  const auto* d = static_cast<const uint8_t*>(description);
+  const uint32_t count = Read32(range + 4);
+  const uint8_t* cache = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(Read32(d + 4)));
+  const uint8_t* data = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(Read32(cache + 0x24)));
+  uint32_t hash = 2166136261u;
+  for (uint32_t i = 0; i < count * 4; ++i) hash = (hash ^ Read32(data + 4 * i)) * 16777619u;
+  world->log.push_back(0xB0000000u | count);
+  world->log.push_back(hash);
+  world->log.push_back(Read32(range) + (d[0] << 8) + Read32(d + 8) - Address(world->base) + Read32(d + 0xC));
+}
+
+// What the tests need to run the game's fill: the five functions pointed at the fakes in both copies, put back at the end.
+struct ArHooks {
+  struct Saved {
+    uint8_t* at;
+    std::array<uint8_t, 5> bytes;
+  };
+  std::vector<Saved> saved;
+  void Hook(uint8_t* at, const void* to) {
+    saved.push_back({.at = at});
+    std::memcpy(saved.back().bytes.data(), at, 5);
+    JumpTo(at, to);
+  }
+  void Install(uint8_t* image) {
+    Hook(image + AR_ALLOC_RVA, reinterpret_cast<const void*>(&ArAlloc));
+    Hook(image + AR_FREE_RVA, reinterpret_cast<const void*>(&ArFree));
+    Hook(image + AR_TEXTURE_OF_RVA, reinterpret_cast<const void*>(&ArTextureOf));
+    Hook(image + AR_SERIAL_FILL_RVA, reinterpret_cast<const void*>(&ArSerialFill));
+  }
+  ~ArHooks() {
+    for (const Saved& hook : saved) std::memcpy(hook.at, hook.bytes.data(), 5);
+    FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+  }
+};
+
+// What the world is made of; every field has a default so a case names only what it changes.
+struct ArSpec {
+  uint64_t seed = 1;
+  uint32_t items = 0;               // the list's count
+  uint32_t extra_entries = 0;       // entries past the count (garbage pointers, or live instances with live_extra)
+  bool live_extra = false;
+  uint32_t textures = 1;
+  uint32_t current = 0;
+  uint32_t frame = 100;
+  uint32_t row_size = 1024;
+  uint32_t texels_per_row = 1000;
+  std::array<uint32_t, AR_MAX_TEXTURES> heights = {64, 64, 64, 64, 64, 64};
+  uint32_t need_min = 4;            // the animations' n
+  uint32_t need_max = 60;
+  uint32_t oversize_percent = 0;    // animations with n above the row size
+  uint32_t flag_percent = 50;
+  uint32_t share_percent = 50;      // entries that take one of the shared animations
+  uint32_t duplicate_percent = 0;   // list entries that repeat an earlier entry's instance
+  uint32_t pre_state = 0;           // 0 mixed, 1 valid, 2 stale frame, 3 other texture, 4 minus one words
+  uint32_t record_cap = 0;          // the records' buffer at the start
+  uint32_t initial_count = 0;       // records already in the vector (at most record_cap; the game's fill keeps pushing after them)
+  uint32_t null_instance_at = ~0u;  // list entries made null
+  uint32_t null_animation_at = ~0u;
+  uint32_t frame_offset = 0;        // a placement's frame that stands for "valid": the cache's frame plus this
+};
+
+// What one run does: a whole update (+0x1893cc0, the textures in turn) or one call of the fill.
+struct ArCall {
+  bool update = true;
+  uint32_t start = 0;
+  uint32_t end = 0;
+  uint32_t force = 0;
+  uint32_t texture = 0;
+  bool tweak = false;               // the tweak at +0x2a61058: the rotation and the tail's Map path
+  uint32_t map_fails_at = ~0u;
+  uint32_t rounding = 0;            // MXCSR's rounding control bits (0 nearest, 1 down, 2 up, 3 toward zero)
+};
+
+struct ArFault {
+  bool happened = false;
+  uint32_t address = 0;  // where, relative to the image the run was in (all ones: outside it)
+  uint32_t target = 0;   // the memory touched
+};
+
+struct ArResult {
+  uint32_t eax = 0;
+  uint32_t row = 0;
+  uint32_t out = 0;
+  uint32_t flags = 0;  // MXCSR's status flags after the run
+  uint32_t arena_used = 0;
+  ArFault fault;
+  std::vector<uint32_t> log;
+};
+
+struct ArContext {
+  ArWorld world;
+  std::vector<uint8_t> initial;
+  std::vector<uint8_t> after_game;
+  ArSpec spec;
+};
+
+uint8_t* ArAt(ArWorld* world, size_t offset) { return world->base + offset; }
+
+void ArFillRandom(uint8_t* at, size_t bytes, Random* random) {
+  for (size_t i = 0; i + 4 <= bytes; i += 4) Write32(at + i, random->Next());
+}
+
+// A spec's world: random bytes everywhere the game does not look, the fields the loop reads set from the spec. False if the memory is not to be had.
+bool ArBuild(ArContext* context, const ArSpec& spec) {
+  ArWorld* world = &context->world;
+  context->spec = spec;
+  Random random = {.state = (spec.seed * 0x9E3779B97F4A7C15ull) | 1};
+  for (int warm = 0; warm < 4; ++warm) random.Next();
+  const uint32_t entries = spec.items + spec.extra_entries;
+  const uint32_t distinct = std::max<uint32_t>(1, static_cast<uint32_t>(static_cast<uint64_t>(entries) * (100 - spec.share_percent) / 100));
+  size_t at = AR_HEADER_BYTES;
+  const auto take = [&](size_t bytes) {
+    const size_t where = at;
+    at += (bytes + 63) & ~static_cast<size_t>(63);
+    return where;
+  };
+  world->items_at = take(static_cast<size_t>(entries) * 4 + 64);
+  world->instances_at = take(static_cast<size_t>(entries) * AR_INSTANCE_BYTES);
+  world->animations_at = take(static_cast<size_t>(distinct) * AR_ANIMATION_BYTES);
+  world->records_at = take(static_cast<size_t>(spec.record_cap) * 16 + 64);
+  world->arena_bytes = static_cast<uint32_t>(std::max<size_t>(1 << 16, static_cast<size_t>(entries) * 96 + static_cast<size_t>(spec.record_cap) * 48));
+  world->arena_at = take(world->arena_bytes);
+  if (world->base == nullptr || world->bytes < at) {
+    if (world->base != nullptr) VirtualFree(world->base, 0, MEM_RELEASE);
+    world->base = static_cast<uint8_t*>(VirtualAlloc(nullptr, at, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    world->bytes = (world->base != nullptr ? at : 0);
+    if (world->base == nullptr) return false;
+  }
+  const size_t used = at;
+  world->bytes = used;
+  world->entries = entries;
+  world->distinct = distinct;
+  ArFillRandom(world->base, used, &random);
+  const uint32_t base_address = Address(world->base);
+  const auto word = [&](size_t offset) { return reinterpret_cast<uint32_t*>(world->base + offset); };
+  // Texture objects: the vtable at +0, the height at +4.
+  for (uint32_t i = 0; i < AR_MAX_TEXTURES; ++i) {
+    *word(AR_TEXTURES + 16 * i) = base_address + AR_VTABLE;
+    *word(AR_TEXTURES + 16 * i + 4) = spec.heights[i];
+    *word(AR_TEXTURE_ARRAY + 4 * i) = base_address + AR_TEXTURES + 16 * i;
+  }
+  for (uint32_t slot = 0; slot < 32; ++slot) *word(AR_VTABLE + 4 * slot) = 0;
+  *word(AR_VTABLE + 0x68) = Address(reinterpret_cast<const void*>(&ArHeight));
+  *word(AR_DEVICE_TEXTURE) = base_address + AR_DEVICE_VTABLE;
+  for (uint32_t slot = 0; slot < 16; ++slot) *word(AR_DEVICE_VTABLE + 4 * slot) = 0;
+  *word(AR_DEVICE_VTABLE + 0x24) = Address(reinterpret_cast<const void*>(&ArMap));
+  *word(AR_DEVICE_VTABLE + 0x28) = Address(reinterpret_cast<const void*>(&ArUnmap));
+  // The cache and the list.
+  *word(AR_CACHE + 4) = spec.textures;
+  *word(AR_CACHE + 8) = base_address + AR_TEXTURE_ARRAY;
+  *word(AR_CACHE + 0x10) = spec.row_size;
+  *word(AR_CACHE + 0x14) = spec.texels_per_row;
+  *word(AR_CACHE + 0x1c) = spec.record_cap;
+  *word(AR_CACHE + 0x20) = std::min(spec.initial_count, spec.record_cap);
+  *word(AR_CACHE + 0x24) = (spec.record_cap != 0 ? base_address + static_cast<uint32_t>(world->records_at) : 0);
+  *word(AR_CACHE + 0x28) = spec.frame;
+  *word(AR_CACHE + 0x2c) = spec.current;
+  *word(AR_LIST + 4) = spec.items;
+  *word(AR_LIST + 8) = base_address + static_cast<uint32_t>(world->items_at);
+  *word(AR_ROW) = 0;
+  *word(AR_OUT) = 0x77;
+
+  // The animations: n, the flag, the placement words. The slot's offset inside its bytes varies so that +0x10 .. +0x1b of the placement is on one cache line or across two.
+  std::vector<uint32_t> animation_address(distinct);
+  const std::array<uint32_t, 5> line_offsets = {0, 8, 40, 44, 56};
+  for (uint32_t k = 0; k < distinct; ++k) {
+    uint8_t* animation = world->base + world->animations_at + static_cast<size_t>(k) * AR_ANIMATION_BYTES + line_offsets[random.Next() % 5];
+    animation_address[k] = Address(animation);
+    uint32_t n = spec.need_min + random.Next() % (spec.need_max - spec.need_min + 1);
+    if (spec.oversize_percent != 0 && random.Next() % 100 < spec.oversize_percent) n = spec.row_size + random.Next() % (spec.row_size / 2 + 3);
+    Write32(animation + 4, n);
+    Write32(animation + 0xC, random.Next() % 100 < spec.flag_percent ? (random.Next() | 1) : 0);
+    uint32_t mode = spec.pre_state;
+    if (mode == 0) mode = 1 + random.Next() % 6;  // 1 valid, 2 stale, 3 other texture, 4 minus ones, 5 texel minus one, 6 random words
+    const uint32_t valid_frame = spec.frame + spec.frame_offset;
+    switch (mode) {
+      case 1:
+        Write32(animation + 0x10, valid_frame);
+        Write32(animation + 0x14, spec.current);
+        Write32(animation + 0x18, random.Next() & 0x7FFFFFFF);
+        break;
+      case 2:
+        Write32(animation + 0x10, spec.frame - 1 - random.Next() % 5);
+        Write32(animation + 0x14, spec.current);
+        Write32(animation + 0x18, random.Next() & 0x7FFFFFFF);
+        break;
+      case 3:
+        Write32(animation + 0x10, valid_frame);
+        Write32(animation + 0x14, spec.current + 1 + random.Next() % 3);
+        Write32(animation + 0x18, random.Next() & 0x7FFFFFFF);
+        break;
+      case 4:
+        Write32(animation + 0x10, valid_frame);
+        Write32(animation + 0x14, ~0u);
+        Write32(animation + 0x18, ~0u);
+        break;
+      case 5:
+        Write32(animation + 0x10, valid_frame);
+        Write32(animation + 0x14, spec.current);
+        Write32(animation + 0x18, ~0u);
+        break;
+      default:
+        break;
+    }
+  }
+  // The instances and the list entries (a duplicate entry repeats an earlier entry's pointer).
+  for (uint32_t e = 0; e < entries; ++e) {
+    uint8_t* instance = world->base + world->instances_at + static_cast<size_t>(e) * AR_INSTANCE_BYTES;
+    Write32(instance + 0x60, animation_address[spec.share_percent == 0 ? e : random.Next() % distinct]);
+    uint32_t pointer = Address(instance);
+    if (e < spec.items && e > 0 && random.Next() % 100 < spec.duplicate_percent) pointer = Read32(world->base + world->items_at + 4 * (random.Next() % e));
+    if (e >= spec.items && !spec.live_extra) pointer = 0x80000000u | random.Next();
+    Write32(world->base + world->items_at + 4 * e, pointer);
+  }
+  if (spec.null_instance_at < entries) Write32(world->base + world->items_at + 4 * spec.null_instance_at, 0);
+  if (spec.null_animation_at < entries) {
+    if (const uint32_t pointer = Read32(world->base + world->items_at + 4 * spec.null_animation_at); pointer != 0) {
+      Write32(reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(pointer)) + 0x60, 0);
+    }
+  }
+  context->initial.assign(world->base, world->base + world->bytes);
+  return true;
+}
+
+// Where in the world a byte is: for the first difference's message.
+std::string ArRegion(const ArWorld& world, size_t offset) {
+  if (offset < AR_HEADER_BYTES) return std::format("header +0x{:X}", offset);
+  if (offset < world.instances_at) return std::format("list entry {}", (offset - world.items_at) / 4);
+  if (offset < world.animations_at) {
+    return std::format("instance {} +0x{:X}", (offset - world.instances_at) / AR_INSTANCE_BYTES, (offset - world.instances_at) % AR_INSTANCE_BYTES);
+  }
+  if (offset < world.records_at) {
+    return std::format("animation {} +0x{:X}", (offset - world.animations_at) / AR_ANIMATION_BYTES, (offset - world.animations_at) % AR_ANIMATION_BYTES);
+  }
+  if (offset < world.arena_at) return std::format("the initial records' buffer +0x{:X}", offset - world.records_at);
+  return std::format("the arena +0x{:X} (record {} word {})", offset - world.arena_at, (offset - world.arena_at) / 16, ((offset - world.arena_at) / 4) % 4);
+}
+
+int ArFilter(EXCEPTION_POINTERS* information, ArFault* fault, const uint8_t* image) {
+  if (information->ExceptionRecord->ExceptionCode != EXCEPTION_ACCESS_VIOLATION) return EXCEPTION_CONTINUE_SEARCH;
+  const uint32_t where = Address(information->ExceptionRecord->ExceptionAddress);
+  fault->happened = true;
+  fault->address = (where >= Address(image) && where - Address(image) < 0x4000000u ? where - Address(image) : ~0u);
+  fault->target = static_cast<uint32_t>(information->ExceptionRecord->ExceptionInformation[1]);
+  return EXCEPTION_EXECUTE_HANDLER;
+}
+
+// One run of the update or the fill. Nothing with a destructor in this frame (it holds a __try).
+uint32_t ArInvoke(const ArCall& call, const void* function, ArWorld* world, ArFault* fault, const uint8_t* image) {
+  uint8_t* const base = world->base;
+  uint32_t* const row = reinterpret_cast<uint32_t*>(base + AR_ROW);
+  uint32_t* const out = reinterpret_cast<uint32_t*>(base + AR_OUT);
+  __try {
+    if (call.update) {
+      return reinterpret_cast<UpdateFunction>(const_cast<void*>(function))(base + AR_CACHE, nullptr, base + AR_DEVICE, call.force, base + AR_LIST, row, call.end);
+    }
+    return reinterpret_cast<FillFunction>(const_cast<void*>(function))(base + AR_CACHE, nullptr, base + AR_DEVICE, call.force, base + AR_LIST, call.texture, row, call.end, out);
+  } __except (ArFilter(GetExceptionInformation(), fault, image)) {
+    return 0xFA17FA17u;
+  }
+}
+
+// The world as the context's initial copy has it, the call run on `image` through `function`.
+void ArRunSide(ArContext* context, const uint8_t* image, const void* function, const ArCall& call, ArResult* result) {
+  ArWorld* world = &context->world;
+  std::memcpy(world->base, context->initial.data(), world->bytes);
+  world->arena_used = 0;
+  world->map_calls = 0;
+  world->map_fails_at = call.map_fails_at;
+  world->log.clear();
+  Write32(world->base + AR_ROW, call.start);
+  ar_current = world;
+  *result = {};
+  _mm_setcsr(0x1F80 | (call.rounding << 13));
+  result->eax = ArInvoke(call, function, world, &result->fault, image);
+  result->flags = _mm_getcsr() & 0x3F;
+  _mm_setcsr(0x1F80);
+  ar_current = nullptr;
+  result->row = Read32(world->base + AR_ROW);
+  result->out = Read32(world->base + AR_OUT);
+  result->arena_used = world->arena_used;
+  result->log = world->log;
+}
+
+// The two copies' tweaks: the rotation / the tail's Map path from the call, the parallel (TBB) fill always off.
+void ArSetTweaks(uint8_t* game, uint8_t* patched, bool tweak) {
+  for (uint8_t* image : {game, patched}) {
+    *reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(Address(image) + AR_FILL_TWEAK_RVA) + 0x48) = (tweak ? 1 : 0);
+    *reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(Address(image) + AR_TBB_TWEAK_RVA) + 0x48) = 0;
+  }
+}
+
+// What the cases add up.
+struct ArStats {
+  uint64_t runs = 0;
+  uint64_t items_stepped = 0;   // the game's own rise of the row, summed
+  uint64_t stopped_early = 0;   // runs that ended below `end`
+  uint64_t faults = 0;
+  uint64_t equal_faults = 0;
+  uint64_t tail_runs = 0;       // runs with a Map in the log
+  uint64_t allocations = 0;
+};
+ArStats ar_stats;
+
+// The game's copy against ours on one world and one call. Empty: equal in everything (the result, every byte of the world, the row, `out`, MXCSR's flags, the
+// allocator's and the tail's log, the fault's place and memory).
+std::string ArCompare(ArContext* context, uint8_t* game, const void* game_function, uint8_t* patched, const void* patched_function, const ArCall& call,
+                      ArResult* game_result = nullptr, ArResult* patched_result = nullptr) {
+  ArWorld* world = &context->world;
+  ArSetTweaks(game, patched, call.tweak);
+  ArResult a;
+  ArResult b;
+  ArRunSide(context, game, game_function, call, &a);
+  context->after_game.assign(world->base, world->base + world->bytes);
+  ArRunSide(context, patched, patched_function, call, &b);
+  ++ar_stats.runs;
+  ar_stats.items_stepped += (a.row >= call.start ? a.row - call.start : 0);
+  ar_stats.stopped_early += (a.row < call.end ? 1 : 0);
+  ar_stats.faults += (a.fault.happened ? 1 : 0);
+  ar_stats.equal_faults += (a.fault.happened && b.fault.happened ? 1 : 0);
+  ar_stats.allocations += a.arena_used != 0 ? 1 : 0;
+  for (uint32_t event : a.log) ar_stats.tail_runs += ((event & 0xF0000000u) == 0xD0000000u ? 1 : 0);
+  if (game_result != nullptr) *game_result = a;
+  if (patched_result != nullptr) *patched_result = b;
+  if (a.fault.happened != b.fault.happened) return std::format("the game {} and ours {}", a.fault.happened ? "faults" : "does not", b.fault.happened ? "faults" : "does not");
+  if (a.fault.happened && (a.fault.address != b.fault.address || a.fault.target != b.fault.target)) {
+    return std::format("the fault differs: game +0x{:X} memory {:08X}, ours +0x{:X} memory {:08X}", a.fault.address, a.fault.target, b.fault.address, b.fault.target);
+  }
+  if (a.eax != b.eax) return std::format("the result: game {:08X}, ours {:08X}", a.eax, b.eax);
+  if (a.row != b.row) return std::format("the row: game {}, ours {}", a.row, b.row);
+  if (a.out != b.out) return std::format("out: game {}, ours {}", a.out, b.out);
+  if (a.flags != b.flags) return std::format("MXCSR's flags: game {:02X}, ours {:02X}", a.flags, b.flags);
+  if (a.arena_used != b.arena_used) return std::format("the allocator's use: game {}, ours {}", a.arena_used, b.arena_used);
+  if (a.log != b.log) {
+    size_t at = 0;
+    while (at < a.log.size() && at < b.log.size() && a.log[at] == b.log[at]) ++at;
+    return std::format("the log of the allocator and the tail differs at event {} (game {:08X} of {}, ours {:08X} of {})", at, at < a.log.size() ? a.log[at] : 0u,
+                       a.log.size(), at < b.log.size() ? b.log[at] : 0u, b.log.size());
+  }
+  if (std::memcmp(world->base, context->after_game.data(), world->bytes) != 0) {
+    size_t at = 0;
+    while (world->base[at] == context->after_game[at]) ++at;
+    return std::format("the world at {}: game {:02X}, ours {:02X}", ArRegion(*world, at), context->after_game[at], world->base[at]);
+  }
+  return "";
+}
+
+// A spec of the random cases: the sizes are drawn so that every kind of call shows up (empty lists to `max_items`, a row size from one item to a few dozen, a height that
+// stops the call from a tenth of the list to well past it, no height at all and a huge one, every kind of pre-existing placement, growth from every capacity).
+ArSpec ArRandomSpec(Random* random, uint32_t max_items) {
+  ArSpec spec;
+  spec.seed = (static_cast<uint64_t>(random->Next()) << 32) | random->Next();
+  const uint32_t kind = random->Next() % 20;
+  if (kind == 0) {
+    spec.items = 0;
+  } else if (kind < 5) {
+    spec.items = 1 + random->Next() % 300;
+  } else if (kind < 12) {
+    spec.items = 300 + random->Next() % 4700;
+  } else {
+    spec.items = 5000 + random->Next() % (max_items - 5000 + 1);
+  }
+  spec.extra_entries = 64;
+  spec.live_extra = (random->Next() & 1) != 0;
+  spec.textures = 1 + random->Next() % AR_MAX_TEXTURES;
+  spec.current = random->Next() % spec.textures;
+  spec.frame = random->Next();
+  spec.need_max = 2 + random->Next() % 300;
+  spec.need_min = random->Next() % (spec.need_max + 1);
+  spec.row_size = spec.need_max * (1 + random->Next() % 30) + random->Next() % 64;
+  spec.oversize_percent = (random->Next() % 8 == 0 ? 1 + random->Next() % 20 : 0);
+  spec.flag_percent = std::array<uint32_t, 3>{0, 50, 100}[random->Next() % 3];
+  spec.share_percent = std::array<uint32_t, 4>{0, 10, 50, 100}[random->Next() % 4];
+  spec.duplicate_percent = std::array<uint32_t, 4>{0, 0, 5, 30}[random->Next() % 4];
+  spec.pre_state = (random->Next() % 10 < 6 ? 0 : 1 + random->Next() % 4);
+  switch (random->Next() % 6) {
+    case 0:
+      spec.texels_per_row = random->Next() % 100000;
+      break;
+    case 1:
+      spec.texels_per_row = (1u << 24) - 50 + random->Next() % 100;
+      break;
+    case 2:
+      spec.texels_per_row = 0x7FFFFF00u + random->Next() % 512;
+      break;
+    case 3:
+      spec.texels_per_row = 0xFFFFFFFEu - random->Next() % 4;
+      break;
+    default:
+      spec.texels_per_row = random->Next();
+      break;
+  }
+  const uint32_t records = (random->Next() % 5 == 0 ? 0 : spec.items / 4);
+  spec.record_cap = std::array<uint32_t, 12>{0, 1, 2, 3, 7, 8, 64, 100, 1000, records, records + 1, records > 0 ? records - 1 : 0}[random->Next() % 12];
+  // The height of each texture: from "stops about here" in the list.
+  const uint32_t fraction = std::array<uint32_t, 6>{10, 40, 80, 100, 150, 400}[random->Next() % 6];
+  const uint64_t average = (spec.need_min + spec.need_max) / 2 * 11 / 10 + 1;
+  const uint64_t rows = static_cast<uint64_t>(spec.items) * fraction / 100 * average / spec.row_size + 1;
+  for (uint32_t& height : spec.heights) {
+    const uint32_t roll = random->Next() % 12;
+    height = (roll == 0 ? 0 : roll == 1 ? 1000000 : static_cast<uint32_t>(std::max<uint64_t>(1, rows * (50 + random->Next() % 100) / 100)));
+  }
+  return spec;
+}
+
+ArCall ArRandomCall(const ArSpec& spec, Random* random) {
+  ArCall call;
+  call.update = (random->Next() % 3 != 0);
+  call.tweak = (random->Next() & 1) != 0;
+  call.end = (random->Next() % 100 < 63 ? spec.items : random->Next() % (spec.items + 1));
+  call.start = (random->Next() % 2 == 0 ? 0 : random->Next() % (call.end + 1));
+  if (random->Next() % 40 == 0 && spec.extra_entries != 0) call.end = spec.items + 1 + random->Next() % spec.extra_entries;
+  const uint32_t force_roll = random->Next() % 10;
+  call.force = (force_roll < 7 ? 0 : force_roll == 7 ? (random->Next() & 1 ? 0x100u : 0x200u) : force_roll == 8 ? 1u : random->Next());
+  call.texture = (random->Next() % 50 == 0 ? random->Next() % (spec.textures + 3) : spec.current);
+  call.rounding = (random->Next() % 5 == 0 ? random->Next() % 4 : 0);
+  call.map_fails_at = (random->Next() % 10 == 0 ? random->Next() % 4 : ~0u);
+  return call;
+}
+
+// The game's fill in the patched copy, for the dispatchers below that stand in for animation_rows::Dispatch.
+const uint8_t* ar_game_fill = nullptr;
+uint32_t ar_mutant = 0;
+
+// Mutants of the game's call: each changes one thing a whole update or a fill call leaves, so that the comparison must see it (the harness's own CONTROLs).
+uint32_t __fastcall ArMutantDispatch(void* cache, void* edx, void* device, uint32_t force, void* list, uint32_t texture, uint32_t* row, uint32_t end, uint32_t* out) {
+  const auto fill = reinterpret_cast<FillFunction>(const_cast<uint8_t*>(ar_game_fill));
+  const uint32_t start = *row;
+  uint32_t used_end = end;
+  if (ar_mutant == 1 && end - start > 3) used_end = end - 1;
+  const unsigned csr_before = _mm_getcsr();
+  if (ar_mutant == 7) _mm_setcsr(csr_before | (3 << 13));
+  if (ar_mutant == 8) ArAlloc(1, 0);
+  uint32_t result = fill(cache, edx, device, force, list, texture, row, used_end, out);
+  if (ar_mutant == 7) _mm_setcsr((_mm_getcsr() & ~0x6000u) | (csr_before & 0x6000u));
+  const auto cache_bytes = static_cast<uint8_t*>(cache);
+  const auto list_bytes = static_cast<uint8_t*>(list);
+  if (*row > start) {
+    const auto entries = reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(Read32(list_bytes + 8)));
+    auto* instance = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(entries[*row - 1]));
+    if (ar_mutant == 2) Write32(instance + 0x5C, Read32(instance + 0x5C) ^ 1);
+    if (ar_mutant == 9) {
+      auto* animation = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(Read32(instance + 0x60)));
+      Write32(animation + 0x18, Read32(animation + 0x18) ^ 0x100);
+    }
+    if (ar_mutant == 12) Write32(instance + 0xA4, Read32(instance + 0xA4) ^ 1);
+  }
+  if (ar_mutant == 3) *out += 1;
+  if (ar_mutant == 4 && Read32(cache_bytes + 0x1C) != 0 && Read32(cache_bytes + 0x24) != 0) {
+    auto* data = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(Read32(cache_bytes + 0x24)));
+    Write32(data + 4, Read32(data + 4) ^ 1);
+  }
+  if (ar_mutant == 5) result ^= 0x100;
+  if (ar_mutant == 6) Write32(cache_bytes + 0x28, Read32(cache_bytes + 0x28) + 1);
+  if (ar_mutant == 10) Write32(list_bytes + 4, Read32(list_bytes + 4) ^ 1);
+  if (ar_mutant == 11 && *row > start) *row -= 1;
+  return result;
+}
+
+// 23f. to 23x: the exactness of the animation fill (S4, S5). Called by RunAnimationRowsTests after its site and stub parts, with the game's own fill in both copies.
+int RunAnimationRowsExactTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick) {
+  namespace ec = twattila::engine_code::internal;
+  constexpr auto ATTILA_GAME = twattila::engine_code::Game::ATTILA;
+  using twattila::animation_rows::Stage;
+  const uint32_t fill_rva = build.code->fill_rva;
+  CHECK(fill_rva == 0x182E080);
+  const auto set_stage = [&](Stage stage) {
+    ec::failed_writes = 0;
+    twattila::engine_code::Update(false, ATTILA_GAME, false, false, false, false, false, false, 1.f, 0, {.animation = stage});
+  };
+  const uint32_t dispatch = Address(reinterpret_cast<const void*>(&twattila::animation_rows::Dispatch));
+  ArHooks hooks;
+  hooks.Install(game);
+  hooks.Install(patched);
+  ar_game_fill = patched + fill_rva;
+  const uint8_t* const game_fill = game + fill_rva;
+  const uint8_t* const stub = ec::page + ec::WORKER_FILL_PAGE;
+  auto context = std::make_unique<ArContext>();
+  uint64_t printed = 0;
+  const uint64_t seed_base = (std::getenv("AR_SEED") != nullptr ? std::strtoull(std::getenv("AR_SEED"), nullptr, 16) : 0x23F00D5EEDull);
+  const char* const only = std::getenv("AR_ONLY");
+  const auto selected = [&](const char* name) { return only == nullptr || std::strstr(only, name) != nullptr; };
+
+  const auto compare = [&](const ArCall& call, ArResult* game_result = nullptr, ArResult* patched_result = nullptr) {
+    const uint8_t* const game_function = (call.update ? game + ANIMATION_UPDATE_RVA : game_fill);
+    const uint8_t* const patched_function = (call.update ? patched + ANIMATION_UPDATE_RVA : stub);
+    return ArCompare(context.get(), game, game_function, patched, patched_function, call, game_result, patched_result);
+  };
+  // After a call that faulted through the stub: the stub's count stays raised (an unwind), which pins the module: back to 0 for the next call.
+  const auto after_fault = [&] { ec::worker_data->cut_active.store(0); };
+  const auto describe = [](const ArSpec& spec, const ArCall& call) {
+    return std::format("seed {:016X}, items {} start {} end {} {} force {:X} texture {}/{} tweak {} rounding {} caps {} pre {} share {} dup {}", spec.seed, spec.items,
+                       call.start, call.end, call.update ? "update" : "fill", call.force, call.texture, spec.textures, call.tweak ? 1 : 0, call.rounding,
+                       spec.record_cap, spec.pre_state, spec.share_percent, spec.duplicate_percent);
+  };
+  // One world, each of the calls on it; the number of calls that differ.
+  const auto run_case = [&](const char* label, uint64_t index, const ArSpec& spec, const std::vector<ArCall>& calls) -> uint64_t {
+    if (!ArBuild(context.get(), spec)) {
+      std::printf("   %s %llu: the world could not be made\n", label, index);
+      return 1;
+    }
+    uint64_t wrong = 0;
+    for (const ArCall& call : calls) {
+      const std::string what = compare(call);
+      after_fault();
+      if (what.empty()) continue;
+      ++wrong;
+      if (++printed <= 12) std::printf("   %s %llu: %s: %s\n", label, index, describe(spec, call).c_str(), what.c_str());
+    }
+    return wrong;
+  };
+
+  set_stage(Stage::ON);
+  CHECK((ec::written & ec::WORKER_FILL_BIT) != 0 && ec::worker_data->fill_slot.load() == dispatch);
+  ec::worker_data->cut_active.store(0);
+  const uint32_t max_items = (quick ? 30000 : 200000);
+  Random random = {.state = seed_base * 0x2545F4914F6CDD1Dull + 1};
+  std::printf("   S4/S5 seeds: base %llX (AR_SEED=<hex> AR_ONLY=<case names> to repeat), items up to %u\n", seed_base, max_items);
+
+  // The harness's own CONTROLs: a dispatcher that changes one thing (or nothing) after the game's own call, each of them seen by the comparison.
+  if (selected("self")) {
+    ArSpec spec = {.seed = 0x5E1F, .items = 4000, .textures = 2, .current = 1, .frame = 77, .row_size = 600, .texels_per_row = 0x01000001u,
+                   .need_min = 3, .need_max = 40, .flag_percent = 100, .share_percent = 20, .pre_state = 2, .record_cap = 0};
+    spec.heights = {200, 200, 200, 200, 200, 200};
+    CHECK(ArBuild(context.get(), spec));
+    const ArCall call = {.update = false, .start = 0, .end = 4000, .force = 0, .texture = 1, .tweak = true};
+    CHECK(compare(call).empty());
+    ec::worker_data->fill_slot.store(Address(reinterpret_cast<const void*>(&ArMutantDispatch)));
+    ar_mutant = 0;
+    CHECK(compare(call).empty());
+    const std::array<const char*, 13> names = {"nothing", "the end one short", "an instance's texture word", "out", "a record word", "the result's eax", "the cache's frame",
+                                               "MXCSR's rounding", "an extra allocation", "an animation's placement", "the list's count", "the row one short",
+                                               "an instance's texel word"};
+    int seen = 0;
+    for (uint32_t mutant = 1; mutant < names.size(); ++mutant) {
+      ar_mutant = mutant;
+      const std::string what = compare(call);
+      if (!what.empty()) ++seen;
+      std::printf("   control %u (%s): %s\n", mutant, names[mutant], what.empty() ? "NOT SEEN" : what.c_str());
+      CHECK(!what.empty());
+    }
+    // The same through a whole update (its fill calls go through the slot too).
+    // (`out` and the fill's result are the update's own locals and al: not seen through it.)
+    for (uint32_t mutant : {1u, 2u, 4u, 6u, 9u, 10u, 11u, 12u}) {
+      ar_mutant = mutant;
+      ArCall whole = call;
+      whole.update = true;
+      const std::string what = compare(whole);
+      if (what.empty()) std::printf("   control %u through a whole update: NOT SEEN\n", mutant);
+      CHECK(!what.empty());
+    }
+    ar_mutant = 0;
+    ec::worker_data->fill_slot.store(dispatch);
+    std::printf("23f. the comparison's own controls: the do-nothing dispatcher equal, each of %d changes seen (the call, and 8 of them through a whole update)\n", seen);
+  }
+
+  // 23g. Random worlds: lists of 0 to max_items, every kind of need, flag, row size, texels per row, height, pre-existing placement and records' capacity; the end below the count in
+  // 37 % of the calls, non-zero starts, force and texture values the fallbacks take, all four rounding modes in a fifth of the calls, the tweak on and off.
+  if (selected("random")) {
+    const uint64_t cases = (quick ? 250 : 800);
+    uint64_t wrong = 0;
+    const ArStats before = ar_stats;
+    for (uint64_t index = 0; index < cases; ++index) {
+      const ArSpec spec = ArRandomSpec(&random, max_items);
+      wrong += run_case("random", index, spec, {ArRandomCall(spec, &random), ArRandomCall(spec, &random)});
+    }
+    std::printf("23g. %llu random worlds, %llu calls (%llu stopped before their end, %llu stepped items in all, %llu with the tail's Map, %llu faults the same in both): %llu differ\n", cases,
+                ar_stats.runs - before.runs, ar_stats.stopped_early - before.stopped_early, ar_stats.items_stepped - before.items_stepped,
+                ar_stats.tail_runs - before.tail_runs, ar_stats.equal_faults - before.equal_faults, wrong);
+    CHECK(wrong == 0);
+  }
+
+  set_stage(Stage::OFF);
+  CHECK((ec::written & ec::WORKER_SITES) == 0 && ec::worker_data->fill_slot.load() == 0 && ec::worker_data->cut_active.load() == 0 && !ec::module_pinned);
+  ArSetTweaks(game, patched, false);
+  return 0;
+}
+
+// ==== S4/S5 exactness part end (b3t_) ====
+
 int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick) {
   namespace ec = twattila::engine_code::internal;
   constexpr auto ATTILA_GAME = twattila::engine_code::Game::ATTILA;
@@ -481,5 +1168,5 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
   restore_fill();
   AnimationRotate(game, false);
   AnimationRotate(patched, false);
-  return 0;
+  return RunAnimationRowsExactTests(build, game, patched, quick);
 }
