@@ -498,7 +498,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job fi ... | ?
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
 - coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU ... | ?
-- gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ... | ?
 - grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal ... | ?
 - coord: S3c part 1 RE-RUN (calibrate -> A/A -> rotation -> trace) after gtv_'s fi ... | ?
 - grs_ (low, bundle with gtv_'s resident fixes if any): fcr_ nit R1 set_pool exter ... | ?
@@ -507,6 +506,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtb_ / ATN (optional, later): F6 total on trimmed_mean or sum of pass-row median ... | ?
 - grs_ / nsight owner (optional, low): skip loop-0 dumps under -Trace; gpu_trace.p ... | ?
 - gtl_: F1 follow-ups (test_budget conhost-only extra pid, F1c kind cpu flags, job ... | ?
+- gtw_ + gpr_: re-check gtp_ round 20 (gtw-R19-1..7 + GATES_SUITE / gpr-R19-1 + Lo ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10517,7 +10517,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         bash, | nice bash, | command bash, | xargs -0 sh -c; iex('..'), Invoke-Expression -c, iex -Com, ('..') | iex ->
         lead_words after pipe + W5 arg walk, widen IEX / PIPED_PS. VERIFY lab anchored OK; GATES_SUITE not project-anchored
         (Low). Re-run list: corpus after R19-1, gtw_r19_probe / here3 / fallback / time2.
-        - [ ] gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ($VAR folders + $env:NAME,
+        - [x] gtp_ (DONE 17:12, live, SHADOW): ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ($VAR folders + $env:NAME,
         key diff) + gpr_'s 3 Lows (key a wrapper's child: sh scratch:, -m module, gtp_lowprio -b -i); gtw_ + gpr_ re-check
         (coord 15:5x).
         gtw_ FOLLOW-UP 15:54 (plan_1117/gtw_recheck19_followup_handback.md): all its runs were below normal, CPU time first;
@@ -10788,8 +10788,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         OK) + F1c kind cpu tools to KEEPER_FLAGS + job files on build\helper_du_rec (merged tree); then gtv_ re-checks.
         - [ ] gtl_: F1 follow-ups (test_budget conhost-only extra pid, F1c kind cpu flags, job files on helper_du_rec) +
         test_budget / test_gpu_lock / suites (coord 17:1x).
-        Agents (2): gtp_ (gate round 20), gtl_ (S3c F1 follow-ups in stage2); gtv_ (re-check next) / fcr_ / gtc_ / gti_ /
-        grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
+        gtp_ ROUND 20 17:12 = LIVE, hook still SHADOW (plan_1117/gtp_round20_handback.md; work copy
+        testbin\scratch\gtp_\gtp_mirror9; outputs gtp_r20_*): gate_hook.py + tests/run_tests.py swapped atomically after
+        live == gtp_bak26; tool_prices.py + INSTALL_FOR_ATN.md unchanged; seed redone 107,694 seeds / 400 transcripts, table
+        7,402 rows 0 broken; backup gtp_bak27 (gate_hook.py sha1 b4913444a940, run_tests.py 6e1a874d3be7). Suites mirror
+        1217 / 1217, live 1217 / 1217, control bak26 fails only new / changed tests. gtw-R19-1 one heredoc scan
+        (heredocs() / no_bodies(); <<<, $(( )) / (( )), quoted end word, <<- tabs, CR, several bodies, open body, heredocs
+        inside "$( )" via a double-quote stack -> fixes r17 P over-refusal); R19-2 $' in "" plain, $$ one token; R19-3
+        here-string opener + smart quotes on PowerShell; R19-4 both kind splits on fallback; R19-5 inner substitutions cut
+        as _, outside the 40-text cap, dedup, > 256 joined; R19-6 PIPED / PIPED_PS end at |, pipe-segment walk, one
+        shared W5 walk (runs_stdin), IEX / PIPED_PS widened, W5 caches; R19-7 price_shell prices the heaviest non-exempt
+        statement, RENODX env names per statement; GATES_SUITE anchored to the project c:/ form. gpr-R19-1 known vars
+        expanded in assignment values, $env:NAME from the environment; Lows (Start-Process quote strip, harness key 2nd
+        word for -m / -c / stdin, gtp_lowprio / gtl_lowrun keyed by child). Extra: 5000-heredoc line 15-19 s -> 0.1 s;
+        P1 test sandbox gates; VERIFY lab part lab/tests/test_*.py (no .bak). Corpus 15,119, 0 hook errors, refused 252 ->
+        249, 6 changed (1 [] -> web_allow: python - <<'PYEOF' body with "urlopen" in a string, an old hidden
+        over-refusal now visible; 3 price -> [] pooled gtp_lowprio rows keyed by unpriced child scripts; 2 price -> []
+        gtl_lowrun lab suites exempt by child key). Key diff 89,228 calls: 291 changed, none heavy -> light (14 harness ->
+        sh / py / ps1 per R19-7; 12 light -> exe $env:USERPROFILE; 3 sh -> py; 2 ps1 -> exe). Probes: older lists same; 27
+        r19 R items -> refused (expected); time2 shell_web <= 0.06 s, price_shell <= 0.19 s CPU on unterminated "\" at
+        32 / 64 KB (fallback, 8 KB cap). Sandboxes removed (no reparse points); hook logs untouched.
+        - [ ] gtw_ + gpr_: re-check gtp_ round 20 (gtw-R19-1..7 + GATES_SUITE / gpr-R19-1 + Lows; the 1 web_allow
+        over-refusal, unpriced pooled child keys, price_shell 0.19 s shape) (coord 17:1x).
+        Agents (3): gtl_ (S3c F1 follow-ups in stage2), gtw_ + gpr_ (gate round 20 re-checks); gtv_ (re-check next) / gtp_ /
+        fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
