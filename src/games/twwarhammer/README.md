@@ -10,8 +10,11 @@
 - Fixed: **DLAA / DLSS and CMAA2** work in the frame's own curve (2.2 with Gamma Correction on), as Attila and Pharaoh.
 - Changed: **Ray Reconstruction's specular guide** is the view-dependent albedo (Attila's Fresnel, RrSpecularAlbedo);
   water keeps its bare colour. WARP (part 33): 24 of 24 within 1e-4 (largest 7e-06), other guides bit-identical.
-- PsychoV35's sliders now start from the game's response (V35_GAME_RESPONSE, shared.h WH1_V35_*): still Musa's own (1)
-  until the WARP fit has run.
+- PsychoV35's sliders start from the game's response (V35_GAME_RESPONSE, shared.h WH1_V35_*). The WARP fit (g04_'s
+  recipe, minimax of Contrast / Shadows / Saturation / Highlight Contrast against Rendering Mode SDR through t00 D275C403
+  -> t01 10759AE3; level B: identity S-curve, black 0 / white 1, whiteout 0 / 10) finds Musa's own the best: grey within
+  0.3 % (0.21 - 1 nits x0.997..x1.003, 1 - 15 x0.999..x1.002, 15 - 100 x1.000), colour 1 - 30 nits x1.000; an S-shaped
+  S-curve the same (within 3 % up to 100 nits). They stay 1 (no change). Upper mid colour (30 - 150 nits) x1.27, not fitted.
 - Fixed: **Bend Screen-Space Shadows and the rays' sun shadows now reach the software / hardware pcf shadow builds**
   (with ho_g21 f7fb7a901's patch of them): under the rays' sun shadows those builds take the rays' shadow alone
   (the 12 Shader Model 4.1 sun shaders join the far-plane route at the atlas's t1), not the rays' times the game's shadow maps.

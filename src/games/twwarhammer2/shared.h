@@ -174,13 +174,14 @@ struct ShaderInjectData {
 // ray-tracing copies. At 1 the same bits; settings not yet written (0) leave the game's.
 #define GRASS_INV_DISTANCE(game) ((SI.grass_height_distance > 0.f) ? (game) / SI.grass_height_distance : (game))
 
-// PsychoV35's slider defaults here: the game's own response (its tone mapper's shadows below mid gray, its colour at
-// equal lightness), Highlight Contrast keeping PsychoV35's highlights; minimax-fitted on WARP against the game's SDR
-// (its t00 2333E142, test/tw_psychov35 part 5's curve 6); the other PsychoV35 sliders keep Musa's defaults. Musa's own (1) until the fit has run.
-#define WH2_V35_CONTRAST           1.f
-#define WH2_V35_SHADOWS            1.f
-#define WH2_V35_SATURATION         1.f
-#define WH2_V35_HIGHLIGHT_CONTRAST 1.f
+// PsychoV35's slider defaults here: the game's own response (its Extended Reinhard's darker shadows below mid gray, its
+// colour at equal lightness), Highlight Contrast keeping PsychoV35's highlights; minimax-fitted on WARP against the game's
+// SDR through t00 2333E142 -> t01 187C9C6D at burn 0.3 (g02_'s scratch v35_fit, g04_'s recipe; level B: no trace holds a
+// map's burn); the other PsychoV35 sliders keep Musa's defaults.
+#define WH2_V35_CONTRAST           1.01f
+#define WH2_V35_SHADOWS            0.57f
+#define WH2_V35_SATURATION         0.91f
+#define WH2_V35_HIGHLIGHT_CONTRAST 0.92f
 
 // FOR VFX AND EXTRA STUFF
 #define HDR                       SI.hdr

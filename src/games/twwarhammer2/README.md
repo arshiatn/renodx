@@ -6,16 +6,25 @@
   the rays' reflections), Attila's row: reflections darken where something blocks the sky, from the traced specular
   occlusion in place of the game's screen-space AO (ours replaces the game's). 0: the game's AO as before. With the
   rays' reflections on nothing changes. WARP (test/tw_warhammer_shaders part 32, g02_ patch): strength 1 bit-identical
-  to the resolve before the row in 32768 of 32768 texels (8 runs), 0 the same as t46 alone, 0.5
-  the mean.
+  to the resolve before the row in 32768 of 32768 texels (8 runs), 0 the same as t46 alone, 0.5 the mean.
 - Fixed: **DLAA / DLSS and CMAA2** work in the frame's own curve (2.2 with Gamma Correction on), as Attila and Pharaoh.
 - Changed: **Ray Reconstruction's specular guide** is the view-dependent albedo (Attila's Fresnel, RrSpecularAlbedo);
   water keeps its bare colour. WARP (part 33): 24 of 24 within 1e-4 (largest 7e-06), other guides bit-identical.
 - Fixed: **FXAA** (fxaa00 CE9EA4E8) is the game's again: the end-of-edge offset (an int-cast decompile bug cut it
   to 0) and its luma gathers (green, the decompile read red), as Troy's. WARP (scratch fxaa_check, 96 x 96 edges):
   0 apart from the game's bytes (before 517 texels apart, worst 0.125).
-- PsychoV35's sliders now start from the game's response (V35_GAME_RESPONSE, shared.h WH2_V35_*): still Musa's own (1)
-  until the WARP fit has run.
+- Changed: **PsychoV35's defaults follow the game's own shadows and colour**: Contrast 1.01, Shadows 0.57, Saturation 0.91,
+  Highlight Contrast 0.92 (V35_GAME_RESPONSE, shared.h WH2_V35_*; Reset and Recommended start from them). WARP fit (g04_'s
+  recipe) against Rendering Mode SDR through t00 2333E142 -> t01 187C9C6D at burn 0.3 (level B: no trace holds a map's
+  burn), 1000 / 203 nits, as SDR over it:
+  - grey 0.05 - 1 nits x1.25..x1.58 -> x0.97..x1.02; 1 - 15 nits x1.02..x1.22 -> x1.00..x1.04; 15 - 100 nits
+    x1.00..x1.06 -> x1.00..x1.02;
+  - colour at equal lightness 1 - 30 nits x1.000 -> x0.965; 30 - 150 nits x1.13 -> x0.99;
+  - PsychoV35's highlights within 11.5 % of Musa's own at 1000 / 203 (the fit's guard, 15 %), 15.1 % at 2500 / 275;
+  - burn 0.1 brighter than SDR still (shadows x1.50..x2.27 -> x1.22..x1.48), burn 0.5 the other way: Musa's own was the
+    game's there (x1.00), now 0.05 - 1 nits x0.64..x0.79 and 1 - 15 nits x0.80..x0.99.
+  The control (Musa's own) misses by 58.1 %; Rendering Mode SDR is the game's bytes (0.00 %) and HDR (Extended) the game's
+  grey (0.00 %).
 - Fixed: **Bend Screen-Space Shadows and the rays' sun shadows now reach the software / hardware pcf shadow builds**
   (with ho_g21 f7fb7a901's patch of them): under the rays' sun shadows those builds take the rays' shadow alone
   (their 12 sun shaders on Warhammer's far-plane route at the atlas's t1: the ALWAYS sampler at s1 does
