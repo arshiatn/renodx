@@ -3091,10 +3091,11 @@ bool AttachAddon() {
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
-  // Ray-Traced Water Reflections (twattila/water_reflections.hpp): traced at backward_ssr 9A55B7F2 (its inputs from t1); where
-  // they left from the water, the chain after it left out too (0B78827B, 55298A11, F49D4738) and our apply DE4F92CD drawn.
+  // Ray-Traced Water Reflections (twattila/water_reflections.hpp): traced at heights_part1 E3C49D93 (its depth at t1) with last
+  // frame's light, else at backward_ssr 9A55B7F2 (its inputs from t1); where they left from the water, the height pyramid and
+  // the chain after it left out too (0B78827B, 55298A11, F49D4738) and our apply DE4F92CD drawn.
   twattila::water_reflections::Install(&custom_shaders,
-                                       {.backward_ssr = 0x9A55B7F2, .inputs_slot = 1, .chain = {0x0B78827B, 0x55298A11, 0xF49D4738}, .apply = 0xDE4F92CD,
+                                       {.heights_part1 = 0xE3C49D93, .backward_ssr = 0x9A55B7F2, .inputs_slot = 1, .chain = {0x0B78827B, 0x55298A11, 0xF49D4738}, .apply = 0xDE4F92CD,
                                         .apply_code = __0xDE4F92CD},
                                        &rt_sliders);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);

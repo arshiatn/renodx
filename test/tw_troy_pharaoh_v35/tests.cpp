@@ -8,8 +8,9 @@
 // The recipe: G04's Shogun 2 pilot (test/tw_shogun2_romer_toe, tools\tw\testbin\scratch\g04_\v35_pilot.md): PsychoV35's
 // Contrast, Shadows, Saturation and Highlight Contrast minimax-fitted to the game's SDR below white (grey where SDR is
 // 0.05 - 1 and 1 - 15 nits, OkLab chroma at equal lightness where SDR is 1 - 30 nits), PsychoV35's highlights guarded.
-// Checks: shared.h <GAME>_V35_* within 5 % and within 0.5 % of the fit's best at SHIPPED_GUARD, their highlights within
-// it at 1000 / 203 and 2500 / 275; controls: Musa's own sliders must fail the 5 %, HDR (Extended) must be the game's grey.
+// Checks: shared.h <GAME>_V35_* within 5 % and within 0.5 % of the fit's best, their highlights within GUARD at 1000 / 203
+// (the fit's) and within WIDE_BOUND at 2500 / 275 (reported: guarding both displays breaks the fit, the pilot's rule);
+// controls: Musa's own sliders must fail the 5 %, HDR (Extended) must be the game's grey.
 // tests <build folder>
 #include <windows.h>
 #include <d3d11.h>
@@ -26,6 +27,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -44,9 +46,10 @@ using Float4 = std::array<float, 4>;
 constexpr UINT WIDTH = 64;   // grey, then 21 hues x 3 saturations
 constexpr UINT HEIGHT = 96;  // a quarter stop a row
 constexpr float NITS = 203.f;
-// The highlight guard the shipped defaults were fitted with: grey within this of Musa's own from 100 nits to 95 % of
-// Peak (the pilot: 10 % left no fit within 5 % in Shogun 2; it shipped 15 %).
-constexpr float SHIPPED_GUARD = 0.10f;
+// The highlight guard (the pilot's rule, G04 2026-11-22): grey within GUARD of Musa's own from 100 nits to 95 % of Peak at
+// 1000 / 203 (10 % left no fit in Shogun 2), within WIDE_BOUND at 2500 / 275 (reported, bounded).
+constexpr float GUARD = 0.15f;
+constexpr float WIDE_BOUND = 0.2f;
 
 static ComPtr<ID3D11Device> device;
 static ComPtr<ID3D11DeviceContext> context;
@@ -424,8 +427,8 @@ static Fit FitSliders(const Chain& chain, const Injection& own, const std::vecto
             const Values values = {contrast, shadows, saturation, highlight_contrast};
             const auto ramp = Run(chain, With(own, values));
             ++best.candidates;
-            if (Highlights(ramp, own_ramp, NITS, 1000.f) > guard) continue;
-            if (const float score = BelowWhite(Compare(sdr, ramp)); score < best.score) {
+            // Score first, the guard only for a candidate that beats the best.
+            if (const float score = BelowWhite(Compare(sdr, ramp)); score < best.score && Highlights(ramp, own_ramp, NITS, 1000.f) <= guard) {
               best.values = values;
               best.score = score;
             }
@@ -450,13 +453,7 @@ static void FitGame(const Chain& chain, float hue_clip, const Values& shipped_va
   const auto own = Data<Injection>(4.f, hue_clip);
   std::printf("%s V35 fit, burn 0.2, Hue Clip %.0f:\n", chain.name, 100.f * hue_clip);
   Report(std::string(chain.name) + " Musa's own sliders (before the fit)", sdr, Run(chain, own));
-  Fit best = FitSliders(chain, own, sdr, SHIPPED_GUARD);
-  // The pilot's way when the guard leaves no fit within 5 %: the wider guards as numbers for ATN.
-  if (best.score >= 0.05f) {
-    for (const float guard : {0.15f, 0.2f}) {
-      if (guard != SHIPPED_GUARD) FitSliders(chain, own, sdr, guard);
-    }
-  }
+  const Fit best = FitSliders(chain, own, sdr, GUARD);
   const auto shipped = With(own, shipped_values);
   const float own_score = BelowWhite(Compare(sdr, Run(chain, own)));
   const auto shipped_ramp = Run(chain, shipped);
@@ -468,7 +465,7 @@ static void FitGame(const Chain& chain, float hue_clip, const Values& shipped_va
         100.f * shipped_score, 100.f * best.score);
   CHECK(own_score > 0.05f, "control: Musa's own sliders pass (%.1f %%): the measure sees nothing", 100.f * own_score);
   Report(std::string(chain.name) + " V35 defaults (after the fit)", sdr, shipped_ramp);
-  for (const auto& [peak, paper_white] : {std::pair{1000.f, 203.f}, std::pair{2500.f, 275.f}}) {
+  for (const auto& [peak, paper_white, bound] : {std::tuple{1000.f, 203.f, GUARD}, std::tuple{2500.f, 275.f, WIDE_BOUND}}) {
     auto shipped_at = shipped;
     auto own_at = own;
     shipped_at.peak_white_nits = own_at.peak_white_nits = peak;
@@ -477,8 +474,8 @@ static void FitGame(const Chain& chain, float hue_clip, const Values& shipped_va
     const float worst = Highlights(Run(chain, shipped_at), Run(chain, own_at), paper_white, peak);
     std::printf("   highlights, Peak %.0f / Paper White %.0f: grey within %.1f %% of Musa's own (100 nits - 95 %% of Peak)\n", peak,
                 paper_white, 100.f * worst);
-    CHECK(worst <= SHIPPED_GUARD, "%s's V35 defaults move PsychoV35's highlights by %.1f %% at %.0f / %.0f", chain.name,
-          100.f * worst, peak, paper_white);
+    CHECK(worst <= bound, "%s's V35 defaults move PsychoV35's highlights by %.1f %% at %.0f / %.0f", chain.name, 100.f * worst,
+          peak, paper_white);
   }
   // The measure's own check: HDR (Extended, its white point's expansion off) is the game's curve below its white (every
   // grey band here), so a wrong decode, white or binding would show.

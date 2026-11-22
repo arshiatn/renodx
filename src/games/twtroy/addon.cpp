@@ -2394,12 +2394,13 @@ bool AttachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
   // Ray-Traced Water Reflections (twattila/water_reflections.hpp, Pharaoh's): the twins of Pharaoh's ssr_new chain, the same
-  // order in ATN's traces (the water's G-buffer after the sun draw, extract_mask 1CE9217F, then these). Traced at backward_ssr
-  // C1DC66B4 (its depth from t0: Troy's binds no mask before it; the light, R16G16B16A16F, at t2); where they left from the
-  // water, downsample C2017771 and its 10 downsample_mip 9877558C and 10 lute_mip F49D4738 left out and our apply 00645DA1
-  // drawn (shaders/ssrapply00; WARP tools\tw\troy\water\ssr_rays).
+  // order in ATN's traces (the water's G-buffer after the sun draw, extract_mask 1CE9217F, then these). Traced at heights_part1
+  // CAB8677B (its depth at t1) with last frame's light, else at backward_ssr C1DC66B4 (its depth from t0: Troy's binds no mask
+  // before it; the light, R16G16B16A16F, at t2); where they left from the water, the height pyramid, downsample C2017771 and
+  // its 10 downsample_mip 9877558C and 10 lute_mip F49D4738 left out and our apply 00645DA1 drawn (shaders/ssrapply00; WARP
+  // tools\tw\troy\water\ssr_rays).
   twattila::water_reflections::Install(&custom_shaders,
-                                       {.backward_ssr = 0xC1DC66B4, .inputs_slot = 0, .chain = {0xC2017771, 0x9877558C, 0xF49D4738}, .apply = 0x00645DA1,
+                                       {.heights_part1 = 0xCAB8677B, .backward_ssr = 0xC1DC66B4, .inputs_slot = 0, .chain = {0xC2017771, 0x9877558C, 0xF49D4738}, .apply = 0x00645DA1,
                                         .apply_code = __0x00645DA1},
                                        &rt_sliders);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
