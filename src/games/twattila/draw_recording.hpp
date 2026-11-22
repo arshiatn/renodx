@@ -907,10 +907,11 @@ static Shared* shared = nullptr;
 static uint8_t* arena = nullptr;
 static uint8_t* op_memory = nullptr;
 static uint32_t op_committed = 0;
-// A refused commit of the op memory (PrepareSlot, inside the game's code: only stored): the first one's numbers, said by Update once.
-static std::atomic<uint32_t> op_commit_kb = 0;
-static std::atomic<DWORD> op_commit_error = 0;
-static std::atomic<bool> op_commit_failed = false;
+// A refused commit of the op memory (PrepareSlot, inside the game's code: only stored; PrepareSlot and Update run on the render thread):
+// the first one's numbers, said by Update once.
+static uint32_t op_commit_kb = 0;
+static DWORD op_commit_error = 0;
+static bool op_commit_failed = false;
 static bool op_commit_said = false;
 static HMODULE module_reference = nullptr;
 // The most op bytes a chunk may use (tests lower it to force overflows).
@@ -1330,10 +1331,10 @@ inline Slot* PrepareSlot(uint32_t index, uint32_t group_index, void* tracker, ui
     if (controls.commit_op_memory && VirtualAlloc(op_memory + op_committed, target - op_committed, MEM_COMMIT, PAGE_READWRITE) != nullptr) {
       op_committed = target;
     } else {
-      if (!op_commit_failed.load(std::memory_order_relaxed)) {
-        op_commit_kb.store(op_committed / 1024, std::memory_order_relaxed);
-        op_commit_error.store((controls.commit_op_memory ? GetLastError() : ERROR_COMMITMENT_LIMIT), std::memory_order_relaxed);
-        op_commit_failed.store(true, std::memory_order_release);
+      if (!op_commit_failed) {
+        op_commit_kb = op_committed / 1024;
+        op_commit_error = (controls.commit_op_memory ? GetLastError() : ERROR_COMMITMENT_LIMIT);
+        op_commit_failed = true;
       }
       bytes = (op_committed - *op_used) & ~3u;
     }
@@ -1380,7 +1381,7 @@ inline bool OpsWellFormed(const Slot* slot) {
       if (!bad_ops_logged) {
         renodx::utils::log::w(std::format(
             "[Total War] Threaded Draw Recording: a recorded op buffer is damaged (group {}, chunk {}, bad header 0x{:08X} at byte {} of the {} recorded); its calls run directly.",
-            GROUP_NAMES[slot->group % GROUP_NAMES.size()], slot->chunk, *op, (op - slot->ops_begin) * sizeof(uint32_t),
+            GROUP_NAMES[slot->group], slot->chunk, *op, (op - slot->ops_begin) * sizeof(uint32_t),
             (slot->ops_cursor - slot->ops_begin) * sizeof(uint32_t)));
       }
       bad_ops_logged = true;
@@ -2621,7 +2622,7 @@ inline bool Allocate() {
   std::array<DWORD, 4> errors = {};
   const auto allocate = [&errors](size_t piece, size_t size, DWORD type) -> void* {
     void* memory = nullptr;
-    if ((controls.fail_allocation >> piece & 1) != 0) {
+    if (((controls.fail_allocation >> piece) & 1) != 0) {
       SetLastError(ERROR_NOT_ENOUGH_MEMORY);
     } else {
       memory = VirtualAlloc(nullptr, size, type, PAGE_READWRITE);
@@ -2698,10 +2699,10 @@ inline void Update(const Settings& settings) {
     renodx::utils::log::w("[Total War] Fill With Draw Recording: the ring's flag changed in ", changes, " folds between the stub and the close: off for the session.");
   }
   // A refused commit of the op memory (noted inside the game's calls): once, with the first one's numbers.
-  if (op_commit_failed.load(std::memory_order_acquire) && !op_commit_said) {
+  if (op_commit_failed && !op_commit_said) {
     op_commit_said = true;
     renodx::utils::log::w(std::format("[Total War] Threaded Draw Recording: its op memory could not grow past {} KB (error {}); chunks run again.",
-                                      op_commit_kb.load(std::memory_order_relaxed), op_commit_error.load(std::memory_order_relaxed)));
+                                      op_commit_kb, op_commit_error));
   }
   Stage stage = settings.stage;
   if (stage != Stage::OFF && !Allocate()) {

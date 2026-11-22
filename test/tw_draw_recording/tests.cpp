@@ -551,7 +551,7 @@ static void PoolStopTimesOut() {
   wp::Stop();
   const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
   CHECK(seconds >= 4.8 && seconds < 9.0);
-  CHECK(LogCount("[Total War] Worker pool: 3 workers did not end in 5 s at detach (job of recording); the add-on stays loaded.") == 1);
+  CHECK(LogCount("[Total War] Worker pool: 3 workers did not end in 5 s when the pool stopped (last job recording); the add-on stays loaded.") == 1);
   CHECK(wi::pinned && wi::busy.load() && wi::created == 3 && wi::pool[0].thread != nullptr && wi::pool[2].thread != nullptr);
   CHECK(ProcessThreadCount() == baseline + 3 && wp::Available(wp::User::DRAW_RECORDING) == 0);
   // Another Stop finds the pool busy with the module already pinned: it says nothing more.
@@ -577,6 +577,22 @@ static void PoolStopTimesOut() {
 #else
   std::printf("pool: Stop's timeout skipped (TWATTILA_WORKER_POOL_CONTROLS not defined)\n");
 #endif
+}
+
+// Stop with this thread's own job still open (the detach path): it says so before the Join, which has no timeout, then joins and stops.
+static void PoolStopOwnJob() {
+  wp::Update({.threads = 3, .in_use = true});
+  ResetReports();
+  REQUIRE(wp::Start({.work = ReportWork, .user = wp::User::RING_FILL, .join = wp::JoinRule::ENTERED}, 2));
+  const size_t lines = LogCount("a job of ring is still open at Stop; joining it (no timeout).");
+  wp::Stop();
+  CHECK(LogCount("a job of ring is still open at Stop; joining it (no timeout).") == lines + 1);
+  CHECK(!wi::busy.load() && wi::created == 0);
+  // No job open: no line.
+  wp::Update({.threads = 3, .in_use = true});
+  wp::Stop();
+  CHECK(LogCount("is still open at Stop") == lines + 1);
+  std::printf("pool: Stop with its own job open says so before the Join, once; no job open: no line\n");
 }
 
 // ENTERED stress: short jobs at K 2 to 16 where the owner drains the units alone and flags the context right after Join; a work
@@ -698,19 +714,20 @@ static void PoolOpenAtUpdate() {
   std::printf("pool: a job open at Update is joined, logged once, naming its user\n");
 }
 
-// Describe(): the stall line's words for the open job (user, workers asked, inside, done), from the pool's atomics.
+// Describe(): the stall line's words for the open job (user, open, workers asked, inside, done), from the pool's atomics; empty with no job open.
 static void PoolDescribe() {
   wp::Update({.threads = 5, .in_use = true});
   Gate gate;
   REQUIRE(wp::Start({.work = GatedWork, .context = &gate, .user = wp::User::EFFECT_UPDATE, .join = wp::JoinRule::ENTERED}, 4));
   for (int wait = 0; wait < 2000 && wi::entered.load() != 4; ++wait) Sleep(1);
-  CHECK(wp::Describe() == "effects, asked 4, entered 4, done 0");
+  CHECK(wp::Describe() == "effects, open, asked 4, entered 4, done 0");
   gate.word.store(1, std::memory_order_release);
   gate.word.notify_all();
   wp::Join();
-  CHECK(wp::Describe() == "effects, asked 4, entered 0, done 4");
+  // A closed job is not described (a stall after it is not its).
+  CHECK(wp::Describe().empty());
   wp::Run({.work = ReportWork, .user = wp::User::RING_FILL, .join = wp::JoinRule::ALL}, 2, [] {});
-  CHECK(wp::Describe() == "ring, asked 2, entered 0, done 2");
+  CHECK(wp::Describe().empty());
   wp::Update({.in_use = false});
   std::printf("pool: Describe names the user, the workers asked, inside and done\n");
 }
@@ -2744,7 +2761,7 @@ static void DepthBadOps() {
 static void OpMemoryCommit() {
 #if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
   alignas(16) std::array<uint8_t, dr::TRACKER_SIZE> real = {};
-  di::op_commit_failed.store(false);
+  di::op_commit_failed = false;
   di::op_commit_said = false;
   const size_t lines = LogCount("its op memory could not grow past");
   // Earlier tests may have committed the whole arena: the commit is taken back to 64 KB (its pages stay committed, so a grant succeeds) and put back after.
@@ -2755,7 +2772,7 @@ static void OpMemoryCommit() {
   di::controls.commit_op_memory = false;
   const dr::Slot* const slot = di::PrepareSlot(0, static_cast<uint32_t>(dr::Group::DEPTH_A), real.data(), 4096, &used);
   CHECK(slot->ops_end == slot->ops_begin && di::op_committed == committed && used == committed);
-  CHECK(di::op_commit_failed.load() && di::op_commit_error.load() == ERROR_COMMITMENT_LIMIT && di::op_commit_kb.load() == committed / 1024);
+  CHECK(di::op_commit_failed && di::op_commit_error == ERROR_COMMITMENT_LIMIT && di::op_commit_kb == committed / 1024);
   CHECK(LogCount("its op memory could not grow past") == lines);
   dr::Update({});
   const std::string expected = std::format("[Total War] Threaded Draw Recording: its op memory could not grow past {} KB (error {}); chunks run again.",
@@ -2772,7 +2789,7 @@ static void OpMemoryCommit() {
   const dr::Slot* const grown = di::PrepareSlot(2, static_cast<uint32_t>(dr::Group::DEPTH_A), real.data(), 4096, &used);
   CHECK(grown->ops_end > grown->ops_begin && di::op_committed > committed);
   di::op_committed = saved_committed;
-  di::op_commit_failed.store(false);
+  di::op_commit_failed = false;
   std::printf("op memory commit: a refused commit logs nothing in the game's call, one line at the next present (size, error), the slot is short; allowed again it grows\n");
 #else
   std::printf("op memory commit: skipped (TWATTILA_DRAW_RECORDING_CONTROLS not defined)\n");
@@ -5376,6 +5393,7 @@ int main() {
   PoolSlowWork();
   PoolOpenAtUpdate();
   PoolDescribe();
+  PoolStopOwnJob();
   PoolEnvironment();
   PoolArmTrace();
   Setup();

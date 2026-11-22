@@ -141,7 +141,7 @@ namespace internal {
 constexpr uint32_t WORKER_STACK_BYTES = 512 * 1024;
 constexpr uint32_t DEFAULT_SPIN_US = 3;
 constexpr uint32_t MAX_SPIN_US = 1000;
-// How long Stop waits for the threads to end.
+// How long Stop waits for the threads to end: an idle worker leaves within microseconds, so 5 s means one is held.
 constexpr DWORD STOP_WAIT_MS = 5000;
 constexpr size_t USER_COUNT = static_cast<size_t>(User::COUNT);
 constexpr size_t MAX_RECORDS = 1024;
@@ -439,11 +439,13 @@ inline JoinResult Run(const Job& job, uint32_t workers, Part&& part) {
 }
 
 // The open job as the stall line prints it (read on the frame watch's thread: atomics and the fields Start wrote before it opened
-// the job, no lock): the user, the workers asked for, those inside now and those done. Empty while no job was ever started.
+// the job, no lock): the user, whether the job is open or closing, the workers asked for, those inside now and those done. Empty
+// while no job is open (`starter` is set from Start to the end of Join).
 inline std::string Describe() {
   using namespace internal;
-  if (current.work == nullptr) return {};
-  return std::format("{}, asked {}, entered {}, done {}", USER_KEYS[static_cast<size_t>(current.user)], current.workers,
+  if (current.work == nullptr || starter.load(std::memory_order_relaxed) == 0) return {};
+  return std::format("{}, {}, asked {}, entered {}, done {}", USER_KEYS[static_cast<size_t>(current.user)],
+                     (open.load(std::memory_order_relaxed) != 0 ? "open" : "closing"), current.workers,
                      entered.load(std::memory_order_relaxed), done.load(std::memory_order_relaxed));
 }
 
@@ -451,10 +453,16 @@ inline std::string Describe() {
 // does not depend on any site coming out. A job still open is joined first (the starting thread only). One open on another
 // thread keeps the pool as it is (its owner joins it later) and pins the module (so does any Stop that finds the pool busy), so
 // a thread that is still inside the work function never runs in unmapped code. Stop holds `busy` while it ends the threads: a
-// Start meanwhile is refused. The threads get STOP_WAIT_MS to end: a worker that does not (stuck in the game's code, or held
-// by the loader lock) leaves the handles open, the pool busy for good and the module pinned, said once; Stop returns.
+// Start meanwhile is refused. The threads get STOP_WAIT_MS to end: a worker thread that does not (its exit held, for example by
+// the loader lock, or the thread suspended) leaves the handles open, the pool busy for good and the module pinned, said once;
+// Stop returns. The Join of an own job still open has no timeout (a worker cannot be stopped inside the game's code): Stop says
+// so first, so a hang there leaves a line.
 inline void Stop() {
   using namespace internal;
+  if (busy.load(std::memory_order_relaxed) && GetCurrentThreadId() == starter.load(std::memory_order_relaxed)) {
+    renodx::utils::log::w(std::format("[Total War] Worker pool: a job of {} is still open at Stop; joining it (no timeout).",
+                                      USER_KEYS[static_cast<size_t>(current.user)]));
+  }
   Join();
   // The workers' code lives in this module: pinned (once) whenever a thread may still run it after Stop returns.
   const auto pin_module = [] {
@@ -485,14 +493,18 @@ inline void Stop() {
       pool[i].ticket.fetch_add(1, std::memory_order_release);
       pool[i].ticket.notify_one();
     }
-    if (WaitForMultipleObjects(created, handles.data(), TRUE, STOP_WAIT_MS) == WAIT_TIMEOUT) {
+    if (const DWORD waited = WaitForMultipleObjects(created, handles.data(), TRUE, STOP_WAIT_MS); waited != WAIT_OBJECT_0) {
+      // A timeout, or a wait that failed (the handles may be live): both keep the handles.
+      const DWORD wait_error = (waited == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS);
       uint32_t running = 0;
       for (uint32_t i = 0; i < created; ++i) {
         running += (WaitForSingleObject(handles[i], 0) == WAIT_TIMEOUT ? 1 : 0);
       }
       pin_module();
-      renodx::utils::log::w(std::format("[Total War] Worker pool: {} workers did not end in {} s at detach (job of {}); the add-on stays loaded.",
-                                        running, STOP_WAIT_MS / 1000, (current.work == nullptr ? "none" : USER_KEYS[static_cast<size_t>(current.user)])));
+      renodx::utils::log::w(std::format(
+          "[Total War] Worker pool: {} workers did not end in {} s when the pool stopped (last job {}){}; the add-on stays loaded.",
+          running, STOP_WAIT_MS / 1000, (current.work == nullptr ? "none" : USER_KEYS[static_cast<size_t>(current.user)]),
+          (wait_error != ERROR_SUCCESS ? std::format(", wait error {}", wait_error) : "")));
       return;
     }
     for (uint32_t i = 0; i < created; ++i) {
