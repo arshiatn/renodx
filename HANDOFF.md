@@ -6792,9 +6792,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         exact lists; probes 50 / 50, run_tests 237 / 237; latency ~0.10-0.11 s before and after (loaded machine). gtw_
         RE-CHECK 3 STARTED 02:3x. gtp_ RESUMED 02:3x for Q22 (DXC + MS D3D12 / D3D11 docs into tools\specs\sources,
         pinned, indexed).
-        Agents (13): bd1r_ (R-S5 re-check), c33i_ (nit 5), lgf2_ (r3: T1 / N7 / T2 / F4), gtw_ (S1c re-check 3), gtp_
-        (Q22 docs), t4i_ (r17 fixes), upr_ (v2.3 spot-check, then H0 script), gtb_ (Should 8), gti_ (Nit 8 + Q8(b)), gtl_
-        (S3), gtq_ (B1), gtk_ (C1 + C2), gpp_ (price + web design).
+        gtw_ S1c RE-CHECK 3 02:3x = OK (plan_1117/gtw_s1c_recheck3_handback.md): F3 50 / 50, run_tests 237 / 237,
+        latency unchanged (0.106-0.108 s median both), T1 sound, real gates / specs untouched. Left nits: INSTALL line 6
+        text, T1b (launcher tests run_tests.py:312-337 swap paths unguarded) -> gtp_ queued; then [ ] INSTALL guide to
+        ATN (shadow mode). gtp_ Q22 DONE 02:3x (plan_1117/gtp_q22_handback.md, backups scratchpad\gtp_bak4): DXC docs +
+        HLSLOptions.td (915bf4f, NCSA) and MicrosoftDocs/win32 direct3d12 + direct3d11 (bc82a65, CC-BY-4.0 / MIT) in
+        tools\specs\sources, indexed (index 124 -> 130 MB), 6 sample lookups hit; per-method pages missing (in
+        MicrosoftDocs/sdk-api) -> gtp_ sdk-api sparse add queued after T1b.
+        Agents (11): bd1r_ (R-S5 re-check), c33i_ (nit 5), lgf2_ (r3: T1 / N7 / T2 / F4), gtp_ (T1b + INSTALL line 6,
+        sdk-api docs), t4i_ (r17 fixes), upr_ (v2.3 spot-check, then H0 script), gtv_ (Should 8, then Q8(b)), gtl_ (S3),
+        gtq_ (B1), gtk_ (C1 + C2), gpp_ (price + web design).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
