@@ -16,6 +16,10 @@
   0 apart from the game's bytes (before 517 texels apart, worst 0.125).
 - PsychoV35's sliders now start from the game's response (V35_GAME_RESPONSE, shared.h WH2_V35_*): still Musa's own (1)
   until the WARP fit has run.
+- Fixed: **Bend Screen-Space Shadows and the rays' sun shadows now reach the software / hardware pcf shadow builds**
+  (with ho_g21 f7fb7a901's patch of them): under the rays' sun shadows those builds take the rays' shadow alone
+  (their 12 sun shaders on Warhammer's far-plane route at the atlas's t1: the ALWAYS sampler at s1 does
+  not reach their sample_l / sample), not the rays' times the game's shadow maps.
 - Corrected: **Smooth Banner Shadows** has been on by default since 2026-11-17 (the lines below that say Experimental /
   off are history).
 - In game: under Path-Traced Ambient a dark doorway or forest edge (no bright sky in it; at 0 as before); Gamma Correction

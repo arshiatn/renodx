@@ -51,6 +51,7 @@
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/smoke_map.hpp"
 #include "../twattila/sun_replace_maps.hpp"
+#include "./atlas_far_plane.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
 #include "./more_tests.h"
@@ -442,6 +443,13 @@ constexpr std::array<twattila::rt_scene::SmokePixelShader, 3> SMOKE_PIXEL_SHADER
 // R32 map).
 constexpr std::array<uint32_t, 6> ATLAS_SUN_SHADERS = {0x1AB80044, 0x37237EC7, 0x060623DD, 0xD7990748, 0xCEEE8017, 0xDF071F9D};
 constexpr UINT ATLAS_SAMPLER_SLOT = 1;
+// The 12 software / hardware pcf builds (Shader Model 5.0, Warhammer's 4.1 builds' shape; the screen-space shadows' patch
+// since ho_g21 f7fb7a901): sample_l and their own `lt receiver, stored` or the read itself as the lit share, which an ALWAYS
+// sampler does not reach: Warhammer's far plane at the atlas's t1 instead (atlas_far_plane.hpp; WARP part 29's far-plane
+// route, g21_'s run: t49 0 / 1 bit for bit the game's lit / shadowing atlas in 12).
+constexpr std::array<uint32_t, 12> ATLAS_PCF_SUN_SHADERS = {0x2DCA8E30, 0xC960A275, 0x1494188B, 0x3115B6D3, 0x1ECDE63F, 0x53224BCB,
+                                                            0xDE50CFAD, 0xEB90E28A, 0x049A86C2, 0xB9663621, 0xB9FC954D, 0xC7D72E8C};
+constexpr UINT ATLAS_SLOT = 1;
 constexpr float RAYS_REPLACE_MAPS = 1.f;  // sun_replace_maps' row, always on
 float rays_skip_cascades_row = 0.f;
 // The shadow pass's casters in the rays' scene (SCENE_SHADERS' cascade_keep entries): Shadow Casters Out of View, and Hills Out of
@@ -2808,6 +2816,7 @@ bool AttachAddon() {
   // The rays replace the atlas's sun shadow: after the screen-space shadows' and before the Light Bounce's. Skip the Shadow
   // Maps through Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
   twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &RAYS_REPLACE_MAPS, ATLAS_SAMPLER_SLOT);
+  twwarhammer2::atlas_far_plane::Install(ATLAS_PCF_SUN_SHADERS, ATLAS_SLOT);
   twattila::rt_scene::InstallShadowsOnly();
   // The data run's frame traces (tools\tw\wh2\plan_1114.md; twattila/frame_trace.hpp): on demand (renodx_trace_now next to the
   // exe) and at 100% too. The camera's g_screen_size / g_viewport_dimensions at c27 / c29 as Attila's (the sun PS's camera RDEF).
@@ -2898,6 +2907,7 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(GoboSpotLightRays::OnDraw);
   renodx::utils::command_action::Unregister(FogRays::OnDraw);
   twattila::sun_replace_maps::Uninstall();
+  twwarhammer2::atlas_far_plane::Uninstall();
   twwarhammer2::sun_ambient::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(PointLightRays::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(SpotLightRays::OnDestroyDevice);

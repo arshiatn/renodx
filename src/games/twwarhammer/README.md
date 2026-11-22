@@ -12,6 +12,9 @@
   water keeps its bare colour. WARP (part 33): 24 of 24 within 1e-4 (largest 7e-06), other guides bit-identical.
 - PsychoV35's sliders now start from the game's response (V35_GAME_RESPONSE, shared.h WH1_V35_*): still Musa's own (1)
   until the WARP fit has run.
+- Fixed: **Bend Screen-Space Shadows and the rays' sun shadows now reach the software / hardware pcf shadow builds**
+  (with ho_g21 f7fb7a901's patch of them): under the rays' sun shadows those builds take the rays' shadow alone
+  (the 12 Shader Model 4.1 sun shaders join the far-plane route at the atlas's t1), not the rays' times the game's shadow maps.
 - Corrected: **Smooth Banner Shadows** has been on by default since 2026-11-17 (the lines below that say Experimental /
   off are history).
 - In game: under Path-Traced Ambient a dark doorway or forest edge (no bright sky in it; at 0 as before); Gamma Correction
@@ -39,8 +42,8 @@
 - **The rays always replace the shadow maps** (ATN: ours replaces the game's; "If it is on by default, then get rid of
   that slider"): under ray-traced sun shadows the hardware gather 5.0 sun shaders take the rays' shadow alone, not the
   rays' times the game's shadow maps; the Rays Replace Shadow Maps row is gone (a saved value is cleared once and never
-  read). The Shader Model 4.1 builds (software / hardware pcf shadows) keep the game's maps: the rays' shadow never
-  reaches them yet. WARP part 29: t49 0 / 1 bit for bit the game's lit / shadowing atlas; CONTROL the multiply differs.
+  read). The Shader Model 4.1 builds (software / hardware pcf shadows) kept the game's maps then; since 2026-11-22 they
+  take the rays' shadow alone too (Open-items round). WARP part 29: t49 0 / 1 bit for bit the game's lit / shadowing atlas; CONTROL the multiply differs.
 - **One occlusion a reflection** under Ray-Traced Specular Occlusion and the rays' reflections (as Attila's 6c6c7559): the
   SSR resolve now gets the AO the sun draws read (t45), so the scene's share of the cubes' light comes off as the sun
   draws put it in. WARP part 30: 4096 of 4096 as expected in every case; CONTROLS the resolve as it was 4096.
