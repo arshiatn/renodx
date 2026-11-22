@@ -7238,10 +7238,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         [ ] ATN: a MISSING key / empty value in heapfix.ini -> NOTE instead of PROBLEM? heapfix defaults it to 1 (same
             compares), the bench's own dry run already calls it a NOTE (constantinople_bench :635-636); no [fixes]
             section or no file stays a PROBLEM. Plan section 10 bullet changes with it. Kept as PROBLEM until ATN says.
+        gtb_ W1 W2 DONE 04:5x (plan_1117/gtb_w1w2_handback.md; backups scratchpad\gtb_bak7): W1 TimeoutExpired after
+        the kill -> SLOW marker + row "tree still alive after 30 s" + exit 124; W2 hook_call() falls back to watch's own
+        copy for kind / rows / mode / load_tag / committed_gb / cause, the fault goes into facts as TOOL FAULT; L1 stop
+        count = full BusyState('', exclude watch + the stopped tree's live pairs), no testbin exclude; R9a
+        allow_abbrev=False, --bash-b64=<b64> refused (exit 2, child never runs); w1 failed resume = FAIL row + exit 2;
+        w2 release() failure said in the row; w4 lock never got = wait_s whole run; w5 head_args() reads the deadline
+        from the first shell command only (limit: a ';' inside quotes cuts early -> flagged). Budget.psm1 backstop
+        $deadline + 120; gated_build.ps1 header (bare targets / one -Targets). test_budget 32 OK (was 28), selftest 0,
+        PSM1 OK, nothing real written. -> gpr_ RE-CHECK STARTED; gtp_ told L1 landed (fix-now unblocked) + watch_kind
+        is now (cls, key).
         Agents (9): h0i_ (F1), c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gtq_ (B2-S1 + N1-N4),
-        gtv_ (S3r re-check 2), grs_ (S2r fixes), gtb_ (W1 / W2 + L1). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_
-        (waits h0i_), gpp_, gpr_ (waits gtb_), ebr_ (waits t4i_), gbc_ (waits gtq_), gti_, gtl_, gtk_, gtw_ (waits
-        gtp_).
+        gtv_ (S3r re-check 2), grs_ (S2r fixes), gpr_ (gtb_ W1 W2 re-check). Idle: bd1r_, lga_, lgf2_, c33i_, upt_,
+        upr_ (waits h0i_), gpp_, gtb_ (waits gpr_), ebr_ (waits t4i_), gbc_ (waits gtq_), gti_, gtl_, gtk_, gtw_
+        (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
