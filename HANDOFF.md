@@ -6510,7 +6510,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         F2 UTF-8 no BOM; F3 lock in gpu_trace.ps1 + ns_locked.sh (winpid); F4 ns_busy row map_replay OFF (Q8); F6
         EndRun leaves nothing. Tests: equality 177 / 177 + set b, weighting 81 / 81 + 80 / 80 (HW Rays Cast removed,
         6.6 % off), invalidation 6 / 6, lock 16 / 16, trace_run 9 / 9. 8 deviations (MCP cache by tool + args; series
-        only for count / rate metrics, others via MCP with ~). [ ] bulk index of all 385 traces (~1-2 h, low priority:
+        only for count / rate metrics, others via MCP with ~). [x] bulk index of all 385 traces (DONE 08:51; ~1-2 h, low priority:
         python -I ns_index.py --bulk) AFTER S1r's S1a verdict. F1 / F6 built: close their boxes after S1r OK.
         gtv_ (a8d7f11d4bf3551d9, Opus xHigh) STARTED 00:4x: S1r review, S1a first -> plan_1117/gtv_s1r_review.md '##
         S1a'; S1b / S1c sent when they hand back.
@@ -7405,7 +7405,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         process (tw_rt_harness*, renodx-tw-dlaa*, map_replay*, fakes too), since the per-job busy check stops the run.
         BULK NSIGHT INDEX ended 05:05 (exit 0, 180-min deadline): 202 indexed, 3 FAILED (OSError Errno 22: two
         at the 600 s cap fix1_ns637_fix1_rd4_2 / fix1_ns637b_fix1_rdet4_1, one rbkpre_night1_low_l5_2 at 72 s), 180
-        not checked. [ ] coordinator: resume the bulk index AFTER H0 (not beside run 7's Nsight); the 3 failures to
+        not checked. [x] coordinator: resume the bulk index AFTER H0 (DONE 08:51, the 3 indexed ok) (not beside run 7's Nsight); the 3 failures to
         ns_index's owner.
         c3i_ B1.6 DONE 05:0x (render_mt/reports/c3i_b16_handback.md): rmt_b16 (from 838bd848f, local) 7d602b35b B1.6
         rows (ParallelEffectUpdate, ParallelEffectSpawns greyed unless the first, CachedParticleCount; all default off,
@@ -8612,9 +8612,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtp_ (lows): quoted multi-target word not split before normalising (one seed kind keeps
             .addon64 / renodx-); --clean-first keyed warm; 15 gated_build seeds < 15 s; 2 real fg samples under old
             `2>` keys could be re-keyed (gpr_ 08:5x).
+        MERGED rmt_b1rt = 552ecaef7 08:5x (name_check: 629 new identifiers, 35 generic-word matches only; merge
+        --no-ff clean; gated builds -Owner coord x86 twattila twrome2 twthronesofbritannia exit 0, amd64 twattila
+        exit 0, logs scratchpad\coord_b1rt_x86.log / coord_b1rt_amd64.log; pushed). atn-mods now has the L2 sweep
+        commit FIX (no longer buggy). BULK NSIGHT INDEX DONE 08:51 (exit 0, coord_bulk_index2.log): 183 indexed,
+        202 already fresh, 0 failed, of 385 - the 3 earlier OSError traces indexed ok this time. -> t4i_ T5
+        manifest rows + b13r_'s B1 risks into the end batch plan STARTED.
         Agents (7): h0i_ (H0 F1-F4), gtv_ (gtq_ S6 + gtl_ follow-ups quick re-check), gtw_ (gtp_ round 12
         re-check), gtb_ (slot-wait test + load + gate seed), ffr_ (grs_ first-frame design review), lga_ (release
-        regression look); coordinator: rmt_b1rt merge gate
+        regression look), t4i_ (T5 manifest rows + B1 risks)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
