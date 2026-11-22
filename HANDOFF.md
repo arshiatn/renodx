@@ -6843,9 +6843,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         time where proof allows; ATN asked why 2.7 h).
         gtp_ RANK DONE 02:4x (plan_1117/gtp_rank_handback.md): symbol's own sdk-api page first, run_tests 242 / 242,
         0.13 s. gtw_ S1c re-check 4 (T1b + sdk-api + rank) STARTED. INSTALL guide SENT to ATN 02:4x (file card).
-        Agents (12): bd1r_ (R-S5 re-check), c33i_ (nit 5), lga_ (r3 re-check), gtw_ (S1c re-check 4), t4i_ (r17
-        fixes), upt_ (v2.4), h0i_ (H0 script fixes), gti_ (Nit 8), gtl_ (S3), gtq_ (B1), gbc_ (C1 + C2 review), gpr_
-        (price + web review).
+        t4i_ r17 DONE 02:4x (render_mt/reports/t4i_r17_handback.md, backups scratchpad\t4i_bak\r17): M-r16-1 group names
+        expand (ebo_make $killed, ebo_leg lost_after), S-r16-1..3, nits, plan §7 / §8b a-d / §10; run_all green (lib 428,
+        make 76, check 148, leg 144, analyze 109). ebr_ r17 RE-CHECK STARTED. x87c leg 5 timing: proposed right after leg
+        4, before ATN's reboot [ ] ATN.
+        gtq_ B1 DONE 02:5x (plan_1117/gtq_b1_handback.md): iq_frames.py / masks.py / iq_map.tsv / flip_tool.py, FLIP-tool.exe
+        CPU build (BSD-3 beside it), 21 tests; closed forms within 0.1 %, FLIP test means exact, SYNTH 53 / 67 within 1 %
+        + 12 within 3 sigma + AR(1) swim 2.4 % (harness draw); smoke on wh3_forest_unit OK. Open: iq.json full_size for
+        quarter / bounce outputs (gtb_), dump <-> recording conventions (gtl_ / grs_), B2 moment format, block offsets
+        v31 only, FLIP single-threaded (OpenMP + libomp needs ATN). gbc_ piece 2 (B1) QUEUED.
+        bd1r_ R-S5 RE-CHECK 02:5x = OK (render_mt/reports/bd1r_rs5_recheck_handback.md; review bd1r_rs3_review.md :531):
+        M1 / S1 / N1-N5 + the Uninstall guard OK at f1913c83c (c33i_'s nit 5 commit); optional N6: read fold.thread under
+        the suspension in PausedWrite and refuse the attempt (then fill_keep / recording_keep / 100 ms wait can go).
+        Zombie engine_code.exe pid 13612 (0 threads, can't be stopped) holds testbin\bd1r_rs5r_mut_if_unmap_uncounted.
+        Waiting: c33i_ nit 5 hand-back -> bd3r_ re-check -> merge rmt_rs5.
+        Agents (10): c33i_ (nit 5), lga_ (r3 re-check), ebr_ (r17 re-check), gtw_ (S1c re-check 4), upt_ (v2.4), h0i_
+        (H0 script fixes), gti_ (Nit 8), gtl_ (S3), gbc_ (C1 + C2, then B1 review), gpr_ (price + web review).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
