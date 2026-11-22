@@ -479,6 +479,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtb_ (after gtp_'s round 13): tighten test_budget's 3rd hook case to (12, 99) on ... | ?
 - gtb_ / gti_ (low): load-flake bounds in unchanged code - gated_build "both slots ... | ?
 - ATN (cleanup list): tools\tw\h0\selftest_check15 (empty folder, h0i_ 09:1x) may ... | ?
+- c3i_ F1: session totals for the B1 safety counters (print when any fault counter ... | ?
+- c3i_ F2: a log line (Note() event kind) when the slot list grows on a worker (t4 ... | ?
+- ATN (morning report): add a B1L1-only volley pair or an automated B1 picture com ... | ?
+- T5 build step: write the real manifest.json with these rows / row_values / env ( ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8844,9 +8848,37 @@ heading text are in HANDOFF_ARCHIVE.md)
         slowest, never < 120); first block never > 5 s (Windows' hung-window mark), 3 s only if warm firsts all <
         2 s; 20 s else. FG hide: yes. Switch name RENODX_TW_OPEN_LATCH=1 (bridge owner names it). -> grs_ v3
         (V1-V9) STARTED; then steps 1 + 2 implementation.
-        Agents (6): upr_ (h0i_ F1-F4 re-check), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gpr_
-        (gtb_ slot-wait / floor / R12-1 + load proposal check), grs_ (first-frame v3), gtw_ (release_check.ps1
-        review), t4i_ (T5 manifest rows + B1 risks)
+        t4i_ T5 DONE 09:1x (render_mt/reports/t4i_t5_handback.md; backups scratchpad\t4i_bak\t5; probe
+        t4i_t5_cover.py + t4i_t5_probe; src copies t4i_t5_src): run_all green (lib 470 -> 480, make 87, check 166,
+        leg 165, analyze 119 -> 122). (1) NO real manifest.json yet (T5's build step writes it with the frozen
+        binaries' hashes); values checked at 552ecaef7: ParallelEffectUpdate (addon.cpp:2185) / ParallelEffectSpawns
+        (:2195, only with L1) / CachedParticleCount (:2207) BOOLEAN default 0; RENODX_TW_COUNT_CHECK live (re-read on
+        env generation change :1675-1677, any value = on); fixture manifest had them since r21; segments.json
+        statuses "again at 552ecaef7". (2) gates.json probes b1_safety_counters (COUNTER_NAMES :170-173, window
+        line :1526: foreign hits, hangs, watched mismatches, census errors, late overflows, failed rounds, spawn
+        overflows, tag leaks, stage full, wake timeouts) + b1_event (:1544, 8 kinds :176-178, with site); ebo_analyze
+        per start results[sid].b1_safety + leg totals, spawn overflows / stage full "by design: a count", fault
+        kinds > 0 = NOTE (STOP / LATCH stay ebo_check's). Coverage: (a) soak starts keep B1 on + open windows
+        (KNOB-W3 920 s / 28 windows, LQ-W3 900 / 27, CAMP 1065 / 20, CHK-W3 / D1, ATN-FT, R1-FT); (b) only B1
+        picture A/B = ATN's eye on volley shots REF-P (B1 off) vs KNOB-W3 (ALL with L2) at 292 / 300 / 308 s, no
+        automated compare, no L1-only pair; (c) 180 L2 arms / 1840 window frames, longest L2 stretch without a window
+        151 s; D1-ALL-a / -b + 8 HF-* timing starts run L2 with no windows (tag scan ~1.5 of ~147 min L2 time);
+        (d) nothing. CODE FINDINGS: F1 effect_update.hpp:1491-1527 zeroes every safety counter each present and
+        prints only on a window line -> outside windows the counts are lost (only the once-per-kind-and-site event
+        line, Note() :412-419) = no full-session SPAWN_OVERFLOWS / hang / census count; F2 slot-list growth has no
+        log line (only the 3 watched words at :1415-1424). COORDINATOR: F1 + F2 -> c3i_ (small logging, engine-code
+        rule: Sonnet High + Opus xHigh review); (c) timing starts stay without windows (timing purity); (b) a
+        B1L1-only volley pair / picture compare = an ATN plan-time decision -> t4i_ estimates the minutes.
+        - [ ] c3i_ F1: session totals for the B1 safety counters (print when any fault counter > 0 outside a
+            window, rate-limited, + a session total line on the next window / shutdown) - no per-frame print
+            (t4i_ 09:1x).
+        - [ ] c3i_ F2: a log line (Note() event kind) when the slot list grows on a worker (t4i_ 09:1x).
+        - [ ] ATN (morning report): add a B1L1-only volley pair or an automated B1 picture compare to the end
+            batch? (cost from t4i_; today the only B1 picture A/B is ATN's eye on REF-P vs KNOB-W3) (t4i_ 09:1x).
+        - [ ] T5 build step: write the real manifest.json with these rows / row_values / env (t4i_ 09:1x).
+        Agents (7): upr_ (h0i_ F1-F4 re-check), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gpr_
+        (gtb_ slot-wait / floor / R12-1 + load proposal check), grs_ (first-frame v3 + steps 1-2), gtw_
+        (release_check.ps1 review), ebr_ (t4i_ T5 review), c3i_ (B1 F1 + F2 logging)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
