@@ -475,13 +475,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - c3i_ F2: a log line (Note() event kind) when the slot list grows on a worker (t4 ... | ?
 - ATN (morning report): add a B1L1-only volley pair to the end batch? ~7 min (L1-o ... | ?
 - T5 build step: write the real manifest.json with these rows / row_values / env ( ... | ?
-- t4i_ (after ebr_ T5): option (a) = an arm every 10 s in the soak starts' L2 time ... | ?
 - gti_ (with r1a / r1b): ns_busy.ps1's game list lacks Divinity (EoCApp), Expediti ... | ?
 - gtl_ (low): record gate_s in lab.py's model so GATE_FLOOR_S can follow data late ... | ?
 - ATN (morning report): with the load refresh, the gate hook's fix-now rule can fi ... | ?
-- t4i_ (with option (a)): count the draw-trace files in the leg's disk gate (estim ... | ?
 - ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its ow ... | ?
-- gtp_ (with gtw_'s re-check 13): Section 8 text fixes (a)-(d) + kind() leading-re ... | ?
+- gtp_ (round 14, STARTED 09:4x): Section 8 text fixes (a)-(d) + kind() leading-re ... | ?
 - bridge owner (next bridge change): move the FG backend-name table to dlaa_bridge ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
@@ -8892,7 +8890,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         ReShade.log lines, windowed frames' own cost unmeasured (never measured frames). COORDINATOR: take (a), not
         (b) (keeps window length + gap rule); t4i_ does it AFTER ebr_'s T5 review (one writer on segments /
         plans), leaving PAUSE-W3's pauses + map-hash windows alone.
-        - [ ] t4i_ (after ebr_ T5): option (a) = an arm every 10 s in the soak starts' L2 time outside measured
+        - [x] t4i_ (after ebr_ T5, DONE 09:4x: 501 arms): option (a) = an arm every 10 s in the soak starts' L2 time outside measured
             windows (~+525, not PAUSE-W3); check the runner's file moves + ebo_check's file-per-window rule cope
             (t4i_ 09:2x).
         gtw_ RELEASE_CHECK REVIEW = SAFE, FIX VERDICT FIRST 09:2x (plan_1117/gtw_release_check_review_handback.md;
@@ -8959,7 +8957,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         missing-file FAIL if C ever skips a write. ReShade.log +2-3 MB / batch; +525 mt_trace set entries; a short
         hitch at each window end (std::ofstream on the render thread, never a measured frame); extra arms kept out
         of settle seconds [at, at+3). Option (a) waits for ebr_'s T5 review.
-        - [ ] t4i_ (with option (a)): count the draw-trace files in the leg's disk gate (estimate 55 MB - 1.1 GB);
+        - [x] t4i_ (with option (a), DONE 09:4x at 2 MB / file): count the draw-trace files in the leg's disk gate (estimate 55 MB - 1.1 GB);
             the first real leg's draw_trace folder sizes settle it (t4i_ 09:2x).
         grs_ V3 + STEPS 1-2 09:2x (plan_1117/designs/grs_v3_steps12_handback.md; design v3 in grs_first_frame.md;
         patch plan_1117/designs/grs_ff_s12_steps12.patch + scratchpad\ff_s12\ff_s12_steps12.patch): PART A v3 done -
@@ -9065,7 +9063,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         gated_build seeds 163 before + after); by design one call can count real + seed while a set has < 10 real
         (fades). Low: kind() makes odd keys from a leading redirect (`sh 2>`, `sh tools/tw/2>`, `exe 2>/dev/null/...`).
         (4) 15 short seeds: no fix. -> gtp_ gets (a)-(d) + the redirect low together with gtw_'s re-check 13.
-        - [ ] gtp_ (with gtw_'s re-check 13): Section 8 text fixes (a)-(d) + kind() leading-redirect keys (gpr_ 09:3x).
+        - [ ] gtp_ (round 14, STARTED 09:4x): Section 8 text fixes (a)-(d) + kind() leading-redirect keys (gpr_ 09:3x).
         upr_ F1-F4 RE-CHECK = GO FOR THE GPU RE-RUN, 1 CHECK RULE (M1) 09:3x (plan_1117/upr_f1f4_recheck_handback.md;
         unified_pt_review.md "## F1-F4 re-check" line 1840; offline only): diffs vs backups\20261122_083624_f1f4;
         selftest 0 wrong (52 ok); both ps1 parse, param([switch]$DryRun) + path unchanged; helper paths at aede44281
@@ -9132,10 +9130,43 @@ heading text are in HANDOFF_ARCHIVE.md)
         ~7,900 CPU s) = load flakes. Real busy_count.json untouched (05:50:47), watch_runs.tsv only the wrapped
         build's row; no GPU lock / ngfx. NOTE: loads can now be idle, so fix-now can fire (ATN box). -> gpr_
         RE-CHECKS the load refresh + the --phase choice; gtl_ + gti_ lows can start (lab files free).
-        Agents (9): h0i_ (M1 + S1-S5 before the H0 re-run), gtw_ (round 13 re-check, then lga_ release_check
-        re-check), gpr_ (gtb_ load refresh re-check), t4i_ (option (a) + disk gate + ebr_ nits), c3i_ (B1 F1 + F2
-        logging), ffr_ (grs_ v4 re-check), grs_ (patch nits N1-N5), gtl_ (fixture +60 s + gate_s), gti_ (r1a /
-        r1b + ns_busy games)
+        gtw_ RE-CHECK 13 = S1 / S2 / 5 ms / nits CLOSED, 1 NEW SHOULD + 1 NIT 09:4x (plan_1117/gtw_recheck13_handback.md;
+        gtw_s1c_review.md "## S1c re-check 13" line 1218; sandbox copies): S1 every evil bun / deno case refused in
+        Bash + PS (bun -e / --eval / -p, window. / self.fetch, bun run - <<EOF, bun <<EOF, cat | bun run -, deno
+        run - <<EOF); bun run build / test / x.ts / build / pm ls / --version pass; add / x / install / i / exec /
+        upgrade / bunx refused. S2 = exactly gtp_'s 12 (all build gated_build.ps1 amd64 twattila warm); bak16 vs
+        live 0 differ; gtw_'s 13th was never printed + left the window (does not matter). Price history 0 lost;
+        build_key right; 5 ms rule as written (run_tests.py:709-718, :806); nits work; corpus shell 99 / override
+        39 / files 26 / pitfall 1 / web 0 = r12; suite 759 / 759, live gates folder clean after. R13-1 (Should,
+        NEW, gate_hook.py:1119-1129): the heredoc-stdin test takes a flag's value as a script name -> passes
+        `bash -euo pipefail <<EOF` (curl), -o pipefail, sh -o, +o posix, -O extglob, --rcfile, even -euo
+        pipefail -s / -; node -r / --require / --import / --input-type module <<EOF (fetch); powershell -Version
+        5.1 -Command -, pwsh -WorkingDirectory / -wd <<EOF (r12 refused all; corpus has 0, but -euo pipefail is
+        common) -> skip value flags at :1129 (PS: PS_VALUE line 115, the loop has 5 of 12; bash / sh
+        `[-+][a-zA-Z]*[oO]` + --rcfile / --init-file; node -r / --require / --import / --loader /
+        --experimental-loader / --input-type / -C / --conditions) + one test per family. R13-N1 (nit, :1164):
+        bun's verb = first non-flag word -> `bun --cwd app add left-pad` / `bun --cwd app install` pass (r12
+        refused) -> use the PKG_VALUE skip of :1165. Not new (r12 + live): deno run https://..., bun run
+        https://..., python -c "exec(sys.stdin.read())" <<EOF, deno run --config x - <<EOF. -> gtp_ ROUND 14
+        (R13-1 + R13-N1 + gpr_'s Section 8 (a)-(d) + kind() redirect keys); gtw_ now re-checks release_check.
+        t4i_ OPTION (a) DONE 09:4x (render_mt/reports/t4i_opta_handback.md; backups scratchpad\t4i_bak\opta;
+        scripts t4i_opta_*.py, dry makes t4i_opta_probe): run_all green (parse 0, lib 483, make 90, check 166, leg
+        166, analyze 122). 501 new arms (not ~525: also out of settle seconds + paused time): CHK-W3 83, CHK-D1 90,
+        CAMP 107, FT-W3a 7, FT-W3b 22, KNOB-W3 53, FT-D1 18, ATN-FT 20, R1-FT 11, LQ-W3 90 via "scan_arms": 10 in
+        segments.json (an arm every 10 s while both B1 rows are on for the whole window, not paused, outside
+        settle + measured windows, >= 3 s from other arms); 10-frame windows, gap rule unchanged; PAUSE-W3 / WPR /
+        D1-ALL / HF untouched; B1L2 killed = no scan arms; NOTE per start; new test_make checks. Disk gate: ebo_leg
+        counts every mt_trace arm at gates.json draw_trace.file_mb = 2 MB (high on purpose; real guess 100-350
+        KB; the first real leg replaces it); every start keeps 20 GB free after ETLs + trace files; dry-run
+        "disk:" shows the trace total; new test 20.5 GB fails on trace files alone. ebr_ nits: N1 corpus line
+        carries all 10 names + test_lib asserts the probe = the 10 COUNTER_NAMES safety counters; STAGE_FULL text
+        "site spawn write"; new probe b1_rounds -> NOTE "failed rounds 1 of 8 rounds in its trace windows (12.5
+        %)". Dry makes: leg 1 341 arms / 339 files / <= 0.67 GB, leg 2 118 / 105 / 0.23, leg 3 159 / 125 / 0.31,
+        leg 4 237 / 207 / 0.46; no arm lost, none in a settle second or measured window, smallest gap slack 2 s.
+        -> ebr_ RE-CHECKS option (a).
+        Agents (10): h0i_ (M1 + S1-S5 before the H0 re-run), gtw_ (lga_ release_check re-check), gtp_ (round 14),
+        gpr_ (gtb_ load refresh re-check), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), ffr_ (grs_
+        v4 re-check), grs_ (patch nits N1-N5), gtl_ (fixture +60 s + gate_s), gti_ (r1a / r1b + ns_busy games)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
