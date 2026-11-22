@@ -595,6 +595,23 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Troy far-field check (rvc_ m3): battle on a hilly map, camera high + far, sun fr ... | ?
 - drain check before READY: every agent handed back, no build slot held, no agent ... | ?
 - merge set: ho_g19 -> ho_g09 + ho_g07 together (no push between), then build D2 / ... | ?
+- merge set (wave 2): ho_g19 -> ho_g03 -> ho_g20; build Troy + Pharaoh once at the ... | ?
+- land G13 as ONE coord commit with or after ho_g14: the 3 parity_check.py commits ... | ?
+- g13_ runs 2 + 3 (next wave): the D1 dump + Detours link, Ryse's helper-present p ... | ?
+- g13_ "needs box" lines: P1 census; Path-Traced Reflection Occlusion outside the ... | ?
+- g18_ before merge: one clean rebuild of chunks 1-2 (x86 Attila / Rome II / Thron ... | ?
+- Attila / Rome II / Thrones OnAmbientOcclusionDraw (g18_ finding): the post multi ... | ?
+- g18_ requests: tw_cluster_rewrite Map case + its testbin build folder (owner); r ... | ?
+- g22_ gated builds of EVERY add-on before the merge (x86 15, amd64 21; scratch/g2 ... | ?
+- G05 request (g22_): after a proxy removal R.U.S.E.'s bridge / replay / rays chec ... | ?
+- command_action_fast.hpp ~603-653: third copy of the token protocol -> AddProtoco ... | ?
+- g20_ next wave: tests1 (census, tw_view_share_changes -Base 6950e1fff, tw_gtvbao ... | ?
+- item 1 add-on lines (g20_ gives exact lines): WH1 + WH2 -> G02; WH3 -> render_mt ... | ?
+- Faster GT-VBAO row (ATN 10, Experimental, off): G20 next wave after render_mt's ... | ?
+- g07_ next wave: build D2, d2_passes plain + -TexelMutant, ve_g10 (MA1 autoexposu ... | ?
+- D2 VFX half resolution (rvb_ MI3) BLOCKED on R2: a VFX-heavy combat trace + Time ... | ?
+- twattila/output_encoding.hpp:36 comment still says D2 never configures it (g07_ ... | ?
+- D2 Shadow Map Size in-game list (8 checks) in handbacks/g07_part_handback.md, fo ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12142,6 +12159,67 @@ heading text are in HANDOFF_ARCHIVE.md)
         helper_rays.cpp:35 (G09). -pi sweep verified exact (0xC0490FDB, 360 lines, no upstream files). Fixes -> g09_ / g07_.
         - [ ] merge set: ho_g19 -> ho_g09 + ho_g07 together (no push between), then build D2 / Tales / Expeditions / ue-extended,
         tw_expeditions_unit, tw_ue_sss_gi, tw_tales_unit; check D2 has no ue_light_bounce_* / ue_sss_*.cs_5_0.hlsl left.
+        DRAIN HAND-BACKS 22:1x (handoff_plan/handbacks/, reviews/):
+        rve_ G03 RE-CHECK GO (reviews/rve_g03_recheck_handback.md, end of rve_g03_review.md): M1 met by the gate
+        (EARLY_DECISION false), M2 fixed in both games; m1 -> G20, m7 -> psycho35.hpp owner. 43bd0511b needs ho_g19 b8cb841d1's
+        fog_shadows_defaulted_on. 3 NITs (redundant first CHECK in the V35 test, fog test hard-codes the pack path, hand-back
+        omits the merge commit), no re-check needed.
+        - [ ] merge set (wave 2): ho_g19 -> ho_g03 -> ho_g20; build Troy + Pharaoh once at the merged tip (Pharaoh's
+        sun_replace_maps::Install(..., 2, 1) never compiled against atn-mods' sun_replace_maps). If G03 must land first,
+        revert 43bd0511b in that merge and re-apply it after G19.
+        rve_ G13 RE-CHECK GO to land with or after ho_g14 (end of rve_g13_review.md): ho_g13 832d92108, 0 open lines in 10
+        games; D2 25, Ryse 6, Tales 14, Expeditions 8, D1 134 (old dump). m1-m5, n1, n2 fixed; n3 in README.txt.
+        - [ ] land G13 as ONE coord commit with or after ho_g14: the 3 parity_check.py commits, dump_any.py + README.txt (drop
+        or reword page_ry_g13h.txt / page_d1_g13.txt, they exist only after run 2), skips.tsv together with the 15 ledgers
+        (never before), coord writes the tools/nontw/{ryse,tales,expeditions} stubs; HOLD page_dump_d2_body.h; the d1 Detours
+        line lands marked untested.
+        - [ ] g13_ runs 2 + 3 (next wave): the D1 dump + Detours link, Ryse's helper-present page, the D2 body.
+        - [ ] g13_ "needs box" lines: P1 census; Path-Traced Reflection Occlusion outside the ssr00 family; Sharp RT
+        Reflections in WH1 / WH2 / Shogun 2; the Ryse / Tales / Expeditions opens; D2 RayTracedPathTorchLight +
+        RayTracedSharpReflections have no ledger line (G07's boxes check).
+        g18_ DONE (handbacks/g18_done_handback.md): ho_g18 ec3160d13 item 1, 6018ae180 item 2 + ALPK N1-N3, a98ca9fb3 rvb_
+        MI1 / N1-N4 / INDEX_HOST_UPLOAD (L1 declined, invariant comment), 5c14cd20f G19 MI4 (RAYS_PRESET Light Bounce defaults
+        as rt_scene constants), ef926642b g02_'s fix (OnSunDraw combine uses this or the last trace). Hold ho_g18_sky
+        db7764312 (merges with the host lines: G09 Expeditions, G05 R.U.S.E.). All 3 chunks exit 0, but a stray second runner
+        built chunks 1-2 into the same folders at the same time. rvb_ re-check sent 22:1x ("rvb_ g18 recheck").
+        - [ ] g18_ before merge: one clean rebuild of chunks 1-2 (x86 Attila / Rome II / Thrones, amd64 Attila / R.U.S.E. /
+        WH1 / WH3 / Troy / Pharaoh) + re-run tw_native_context x86 + amd64.
+        - [ ] Attila / Rome II / Thrones OnAmbientOcclusionDraw (g18_ finding): the post multiply needs this frame's trace
+        while ssao00 writes open for the 30-frame AmbientReplaced window, so a failed trace leaves no AO. Coord's pick = bug
+        fix, on: use the last trace within the same window (like ef926642b). Owner G20 (shared AO rule), next wave.
+        - [ ] g18_ requests: tw_cluster_rewrite Map case + its testbin build folder (owner); rays_preset.hpp may use the new
+        rt_scene constants; G19 drops its loop. Item 4 (Tales alpha factor) waits for the GPU plan's per-capture factor;
+        item 6 waits for ATN's reset test (85).
+        g22_ PART (handbacks/g22_part_handback.md): ho_g22 086c841a7 (one writer-token helper in cross_addon.hpp, pipeline.hpp +
+        resource.hpp use it, -32 lines), 8bdbfa0a8 (device_proxy stops the proxy on a removed device, one error line, native
+        present), 5f858c8a7 (test mock); tw_pipeline_cache 22/22, tw_view_filter 17/17, tw_device_proxy_removal pass x86 +
+        amd64; static_checks 0.
+        - [ ] g22_ gated builds of EVERY add-on before the merge (x86 15, amd64 21; scratch/g22_/chunks.sh; read the "exit N"
+        lines, not the chunk codes); cross_addon.hpp rebuilds all, so after the end batch.
+        - [ ] G05 request (g22_): after a proxy removal R.U.S.E.'s bridge / replay / rays check device_proxy_creation_failed
+        / UseProxyRequested() before using proxy_device_reshade.
+        - [ ] command_action_fast.hpp ~603-653: third copy of the token protocol -> AddProtocolToken / RemoveProtocolToken.
+        g20_ PART (handbacks/g20_part_handback.md): ho_g20 df70f1b22 + 525f6d6d5 + fa049f6b6 (shared AO rule
+        twattila::rt_scene::AmbientReplaced() + ao_skip::ClearOpen), 7e7549696 (view_share contact march + OFFSET kind,
+        test/tw_view_share_changes), 6f5204125 + a4867d709 (GT-VBAO V1 / V2 behind BITMASK_VARIANT, default 0), 391b14502
+        (V3 Faster GT-VBAO shader + test/tw_gtvbao_variants). NOTHING BUILT OR RUN (scripts in scratch/g20_/jobs.py).
+        - [ ] g20_ next wave: tests1 (census, tw_view_share_changes -Base 6950e1fff, tw_gtvbao_variants, tw_ao_skip), sun
+        (sun_scale_g20), build64 / build32 (build_g20.cmd), ao_bitmask.cso byte check vs base; then review.
+        - [ ] item 1 add-on lines (g20_ gives exact lines): WH1 + WH2 -> G02; WH3 -> render_mt (also the 89AF6FF5 reflection
+        resolve CS bind like WH2's BindCompute); Troy / Pharaoh ClearInsteadOfGenerate -> G20 rebases on ho_g03 (fixes rve_'s
+        split); ao_readers.hpp CS readers need a CSGet / CSSet variant (G03).
+        - [ ] Faster GT-VBAO row (ATN 10, Experimental, off): G20 next wave after render_mt's rebase (Attila / Thrones / Rome II
+        addon.cpp + ao_pass.hpp + ao_bitmask01 copies). V1 / V2 on only if >= 3 % faster after the 5090 gate (GPU plan:
+        tw_gtvbao_variants -Hardware -Base 6950e1fff, g3a_ao_time V0-V3 alternating, g4_ao_nsight registers).
+        g07_ PART (handbacks/g07_part_handback.md): ho_g07 de6d9c9e2 (needs ho_g21), f1924d506 (MA2 host_light_bounce_*, with
+        ho_g09), f1346d9eb + e3e17035e (need ho_g19), ffae2ac60 N1 N2, cb80bad3c Shadow Map Size 4096 WIP (off, NOT built).
+        merge-tree ho_g07 + ho_g09 clean (883e2d25b). NOTHING BUILT.
+        - [ ] g07_ next wave: build D2, d2_passes plain + -TexelMutant, ve_g10 (MA1 autoexposure00 control incl.
+        Divinity2AEX), then rvb_ re-check; WriteBendDispatchList for host_sss_setup after ho_g09 + tw_d2_helper section 12.
+        - [ ] D2 VFX half resolution (rvb_ MI3) BLOCKED on R2: a VFX-heavy combat trace + Time Each Pass on the forward
+        section (70+ particle draws in 34 runs interleaved with meshes / decals). Owner: next D2 round.
+        - [ ] twattila/output_encoding.hpp:36 comment still says D2 never configures it (g07_ N3; owner).
+        - [ ] D2 Shadow Map Size in-game list (8 checks) in handbacks/g07_part_handback.md, for ATN's next D2 run.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
