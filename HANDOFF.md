@@ -6989,9 +6989,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         --seeds 16, KNOWN 3 % exception goes. COORDINATOR'S CALL: torch falloff on GAME recordings = the add-on's real
         falloff (harness falloff only for harness recordings). gtk_ RESUMED (C1 fixes + contract 2 / 7 / 8 / 13), gtq_
         RESUMED (B1 fixes + contract 6 items); then gbc_ re-checks.
-        Agents (11): bd1r_ (N6 re-check), ebr_ (r17 re-check), upr_ (v2.4 re-check, then H0 r2), gpr_ (price + web v2
-        re-check), grs_ (S2), gtl_ (S3 fixes), gtw_ (S1c re-check 5), gtk_ (C1 fixes), gtq_ (B1 fixes). Idle: lga_,
-        lgf2_, h0i_, c33i_, gpp_, gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_, gtp_.
+        upr_ v2.4 RE-CHECK = GO WITH FIXES + H0 r2 = OK TO RUN 03:2x (plan_1117/designs/upr_v24_h0r2_handback.md;
+        review :1126 / :1289). v2.4: two contexts = the practical floor (one only with a frame of lag, gain 0.57 / 0.36
+        ms); R1 PT DI's DI textures aren't demodulated (RR + NRD need demodulated diffuse + specular); R2 the torch is
+        already late with the Light Bounce on (drop 'move the composite' + the early-torch arm); R3 wording; nits.
+        upt_ RESUMED for v2.5. H0: N1 fixed (patch-id equal across the rebase), HANDOFF-only commits pass the guard.
+        H0 DRY RUN 03:29 clean (runs\dryrun_20261122_032920.txt: pre 8e194cec / post 42c081bd6, 43 sources, SHaRC
+        pinned, 206 modes, 25.9 GB, no game, est. ~72 min). H0 REAL RUN STARTED 03:30 (coordinator, ATN's rule,
+        background br09hcsht, GPU lock, no game) -> results in tools\tw\h0\runs\20261122_03*.
+        ebr_ r17 RE-CHECK = MERGE 03:2x (render_mt/reports/ebr_r17_recheck_handback.md; review :473): r16 fixed, run_all
+        green, 26 / 27 mutants (G10 test gap). t4i_ r18 STARTED: G10 test, crash_list exit text, 'retried once' text,
+        WPR-X / D1-X heapfix x87_rounding check.
+        Agents (11): bd1r_ (N6 re-check), t4i_ (r18), upt_ (v2.5), gpr_ (price + web v2 re-check), grs_ (S2), gtl_ (S3
+        fixes), gtw_ (S1c re-check 5), gtk_ (C1 fixes), gtq_ (B1 fixes). Coordinator: H0 run (~72 min). Idle: lga_,
+        lgf2_, h0i_, c33i_, gpp_, upr_, ebr_, gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_, gtp_.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
