@@ -6527,7 +6527,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         open).
         ebr_ T3d CHECK 01:1x: OK (reports/ebr_t1b_review.md line 803): no false match possible (a skipped control adds
         no masks); one nit -> t4i_ (PROBLEM line carries '(drift not covered ...)').
-        Agents (9): bd1r_ (R-S5 review), gti_ + gtb_ (S1a / S1b fixes), gtw_ (S1r S1c), t4i_ (nit), lgf1_ +
+        lgf1_ GROUP 1 DONE 01:1x (reports/lgf1_handback.md): rmt_lg1 a48572bba (device_loss.hpp VEH: 6 fault codes,
+        always CONTINUE_SEARCH, no allocation, once guard; frame-thread faults kept for the stall line on x86 too; SIGABRT
+        via std::signal instead of set_terminate (MSVC per-thread); Frame watch start failure line; stall_note hook for
+        set 3; new test/tw_fault_watch PASS x86 + amd64), 10e28a6f6 effect_update A-S5, b20966e3f engine_tests A-S8 / A-N6
+        + twrome2 D-S1, 85b8ac0c0 anti_aliasing A-S10 / rt_core A-S11 / frame_trace A-N4. Gated x86 x3 + amd64 16
+        add-ons exit 0. Gaps: uncaught C++ exceptions leaving through ReShade / game frames; stub pages (set 3); Detours'
+        own AV could use the once guard. Worktree links external / bin / downloads -> delete links alone first.
+        lga_ RESUMED 01:1x: group 1 re-check -> reports/lga_logging_audit.md '## Group 1 re-check'.
+        ATN 01:1x (phone): 'I AM A HE' -> he / him for ATN from now on (memory user_atn updated). 'Run any amount of
+        subagents to do both plans' (render_mt + GPU plan). Answers to my list: (1) StallDump=1 for the end batch = YES
+        ('why not?') -> [ ] set '[Total War] StallDump=1' in Attila's ReShade.ini at T6 with a fresh backup, restore
+        after; (2) hook install after the fixes = yes, asked why shadow mode first -> explained; (3/4) asked what the GPU
+        plan questions are -> explained in plain words, asked for one OK on all recommendations; unified PT 'will 100 %
+        be faster' -> keep it in the plan; (5) asked for my suggestions on the old questions -> given.
+        h0i_ (a89c9abe637f2c4c2, Opus High, worktree) STARTED 01:2x: H0 random-number fix (Pcg4d, dimension table,
+        every Random( site, Random(uint3) deleted; offline hash tests + shader compile; no GPU; not main.cpp /
+        rt_d3d12.hpp) -> harness runs by me later in a held window -> Opus xHigh review.
+        Agents (10): bd1r_ (R-S5 review), gti_ + gtb_ (S1a / S1b fixes), gtw_ (S1r S1c), t4i_ (nit), lga_ (group 1
+        re-check), h0i_ (H0), lgf2_ (helper + bridge logging). QUEUE: c33i_ R-S5 nits -> merge, B1.6, X1, logging group 3,
+        gtv_ re-check, PT DI steps 0-4 (after lgf2_ + H0), S2 (after lgf2_), T5 / T6, end batch.
         lgf2_ (logging fixes). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6, X1, logging group 3, lga_ re-checks,
         S1r S1b / S1c, bulk index, H0, T5 freeze, T6 dry run, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
