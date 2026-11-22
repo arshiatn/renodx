@@ -508,8 +508,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (later, before any ENFORCE): a hook that times out (pre hook 15 s) does not ... | ?
 - gtl_: landed-sandbox suites again with the ADOPTED live schemas (any test that e ... | ?
 - hta_ / htb_ / htc_ / htd_: HANDOFF triage TSVs + summaries (coord 18:0x). | ?
-- coord: synthesis agent -> handoff_plan\plan.md (parallel groups), then tick DONE ... | ?
+- coord: synthesis agent -> handoff_plan\plan.md (parallel groups) -> SHOW ATN FIR ... | ?
 - gtl_: the 4 stale schema tests -> live schemas accept the new fields; suites gre ... | ?
+- coord: before ATN's restart, confirm the end batch is READY (everything built + ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10920,7 +10921,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         (668-4600), htc_ a7c4cea8ea0937a1d (4601-8600), htd_ a0580631c62b59e7c (8601-end); then one synthesis (Opus xHigh)
         -> handoff_plan\plan.md with parallel groups (one writer per file set, GPU one job at a time, game only on ATN's go).
         - [ ] hta_ / htb_ / htc_ / htd_: HANDOFF triage TSVs + summaries (coord 18:0x).
-        - [ ] coord: synthesis agent -> handoff_plan\plan.md (parallel groups), then tick DONE-UNTICKED boxes + start groups.
+        - [ ] coord: synthesis agent -> handoff_plan\plan.md (parallel groups) -> SHOW ATN FIRST (ATN 18:1x: "before starting
+        working on it, let me check it out here too"); tick DONE-UNTICKED boxes + start groups only after ATN's OK.
         gtv_ B1 RE-CHECK 17:57 = GO ON CODE, 18 JOBS + ANSWERS; 4 STALE TESTS BLOCK LANDING (plan_1117/gtv_b1_recheck_handback.md;
         gtv_iq_review.md "## B1 re-check" line 1159 + adopted-schemas addendum 1178; sandboxes testbin\scratch\gtv_\s3c\land5
         (old schemas: unit 40 / analyze 5) + land6 (adopted, 17:56)): 18 jobs pass load_job under the adopted job_schema, 0
@@ -10934,6 +10936,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         test_s3c_uses_and_dump_frames + test_v11_no_dred_and_dump_frames now exit 0) -> assert the LIVE schema files accept
         the fields (not the .proposed copies) + refresh land_list.tsv. land6: analyze 5 / 5, unit 38 / 40 (only these).
         - [ ] gtl_: the 4 stale schema tests -> live schemas accept the new fields; suites green; land list (coord 17:5x).
+        ATN 18:1x: (1) the game test (render_mt CPU MT end batch) may run, but WAIT until the GPU fixes + the ~1 h S3c
+        re-run end, maybe the triage too; then ATN restarts the PC and tells coord to start (no start before that). (2) The
+        new open-items plan: ATN checks it here before any work on it. (3) Asked: PT DI / unified PT done? what is left in
+        all plans? do they work in every game or need code changes? -> coord: designs done + reviewed (PT DI pt_di_rtxdi.md,
+        unified PT v2.7 GO, vMF reviewed), NOT built (build after render_mt + the lab tooling: PT DI steps 0-4 first);
+        Attila first; the helper is shared by the TW games, so most code carries over, each game needs its host / hook
+        changes + a parity round + tests (plan_1117 Phase 3 item 5). The old QUEUE block below (R-S5 ... end batch) is
+        partly stale -> the triage (htd_) sorts what render_mt still needs before the end batch; coord tells ATN before
+        the restart if anything is missing.
+        - [ ] coord: before ATN's restart, confirm the end batch is READY (everything built + reviewed + dry run clean) from
+        the triage; else list what is missing (ATN 18:1x).
         Agents (6): gtl_ (adopted-schema suites + 4 stale tests), gtp_ (gate round 21), hta_ / htb_ / htc_ / htd_ (HANDOFF
         triage, read only); gtv_ / gtw_ / gpr_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15; one
         GPU job at a time
