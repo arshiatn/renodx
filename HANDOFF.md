@@ -9184,9 +9184,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         (optional Opening() check). Other bridge users: only fg_bridge_test.cpp:29 + restir_unified harness :38;
         7 archived copies in night1118\scratchpad_copy (V5 rule if rebuilt); 16 add-ons share the header. -> grs_
         v5 TEXT (W1-W3 + nits + fcr_'s N7-N9) after its patch v2.
-        Agents (9): h0i_ (M1 + S1-S5 before the H0 re-run), gtw_ (lga_ release_check re-check), gtp_ (round 14),
-        gpr_ (gtb_ load refresh re-check), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), grs_ (patch
-        v2 N1-N5, then design v5 text), gtl_ (fixture +60 s + gate_s), gti_ (r1a / r1b + ns_busy games)
+        grs_ PATCH V2 DONE 09:4x (plan_1117/designs/grs_patch_v2_handback.md; patch grs_ff_s12_steps12_v2.patch, old
+        kept; design untouched): N1 RR success + refusal one if / else if; N2 `age` inlined as
+        ms_since(last_request) (+ `took` in logged_release, same rule); N3 `reference` -> `as_of` + simpler
+        comment; N4 one new_set bool for the set-change if + log_first_answer (new_set && color != 0 &&
+        !replayable, replaces set_opens); N5 TAKEN: no lambda, one log site at the loop end (`if (!answered) {
+        ...; SetEvent(done); }` then `if (log_first_answer) LogWithTime(...)`), text unchanged, queued RT path
+        still answers first (its time now counts a few more lines, tiny); N6 not done. Checks on copies
+        (scratchpad\ff_s12): applies cleanly to 1294f29b0 files, byte-identical to grs_'s copies; all CRLF, no
+        trailing spaces; git diff --no-index --check silent; syntax.ps1 exit 0 + an #error probe proves NRD on.
+        -> fcr_ RE-CHECKS v2; grs_ writes design v5 text (W1-W3 + nits + N7-N9).
+        Agents (10): h0i_ (M1 + S1-S5 before the H0 re-run), gtw_ (lga_ release_check re-check), gtp_ (round 14),
+        gpr_ (gtb_ load refresh re-check), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), grs_ (design
+        v5 text), fcr_ (patch v2 re-check), gtl_ (fixture +60 s + gate_s), gti_ (r1a / r1b + ns_busy games)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
