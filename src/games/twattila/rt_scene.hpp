@@ -629,8 +629,12 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
       native->PSGetConstantBuffers(draw.camera_slot, 1, camera.GetAddressOf());
       internal::Trace(native, depth.Get(), camera.Get());
     }
+    // This frame's trace or the last's (bridge.rt_ambient keeps it): the hosts that skip the game's SSAO skip it in the same
+    // window (SkipGameSsao, GameAmbientReplaced) and clear its target to open, so a trace that fails right after a traced
+    // frame left the sun draws without AO.
     ComPtr<ID3D11ShaderResourceView> game_ao;
-    if (runtime.settings.ambient_occlusion && runtime.traced_frame == runtime.frame && draw.ao_slot != UINT_MAX) {
+    if (runtime.settings.ambient_occlusion && runtime.traced_frame != UINT64_MAX && runtime.traced_frame + 1 >= runtime.frame
+        && draw.ao_slot != UINT_MAX) {
       native->PSGetShaderResources(draw.ao_slot, 1, game_ao.GetAddressOf());
     }
     if (game_ao && runtime.combined_frame != runtime.frame) {
