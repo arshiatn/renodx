@@ -497,12 +497,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtv_: lab-suite load run NOW (GPU free 14:07) (coord 14:07). | ?
 - gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-che ... | ?
 - coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
-- gtl_: re-run s3c_jobs.py on the merged recorder build testbin\scratch\coord_\hel ... | ?
 - grs_: dead outputs (a) resident log_uses + (d) store-skipping stem builder + (3) ... | ?
 - gtv_ / gtb_: judge S3c sheet items 10 (strict second loop) + 11 (kept R1 residen ... | ?
 - ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job fi ... | ?
 - coord: real all_modes run (ATN's rule) after gtv_'s load run; then S3c part 1 (c ... | ?
 - review (Opus xHigh): grs_dead_uses + dead_outputs.py together, after grs_'s hand ... | ?
+- gtv_: review gtl_'s S3c stage (after its load run) -> lands after S3c part 1 (co ... | ?
+- gti_: ReadLog closes the log file (with open) (coord 15:10). | ?
+- grs_: 64-frame dumps (warm frames / dump without reset) in the resident protocol ... | ?
+- ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10306,7 +10309,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         lab edits while it runs). gtl_ items 2 / 5 / 6 / 7 (+ 8 script) now in a STAGE copy, gtv_ reviews, land after S3c
         part 1, measured in S3c part 2 with dead outputs. Schema / allowlist widenings (item 1b job field, 3 answer field,
         4 lifetimes, 9 debug switch) = .proposed files for ATN (same as the lab proposals), never live without ATN.
-        - [ ] gtl_: re-run s3c_jobs.py on the merged recorder build testbin\scratch\coord_\helper_gpus2_rec (f54613dea,
+        - [x] gtl_ (DONE 15:10, build moved to build\): re-run s3c_jobs.py on the merged recorder build testbin\scratch\coord_\helper_gpus2_rec (f54613dea,
         RENODX_TW_RECORDER_BUILD=1) -> 0 refused; then items 2 / 5 / 6 / 7 / 8 + 1b in a stage copy (coord 14:3x).
         - [ ] grs_: dead outputs (a) resident log_uses + (d) store-skipping stem builder + (3) reset time in the answer
         (recorder-only; branch from atn-mods; ans / cmd schema parts as .proposed) (coord 14:3x).
@@ -10338,9 +10341,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         (shared textures, presented, dumped, read back); (3) stem name = stem actually used (swaps); (4) conservative:
         atomic = read, same-span read counts, cbuffer-gated store = written; (5) SER library out of v1.
         - [ ] review (Opus xHigh): grs_dead_uses + dead_outputs.py together, after grs_'s hand-back (coord 14:48).
-        Agents (4): gtp_ (gate round 19), gtv_ (lab load run), gtl_ (stage items), grs_ (dead-output resident parts, has
-        gti_'s format); GPU order: gtv_ load run -> all_modes run (coord, ~40-45 min) -> S3c part 1 (coord, gpu_lab.ps1
-        per s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
+        gtl_ S3C STAGE 15:10 (plan_1117/gtl_s3c_stage_handback.md; stage testbin\scratch\gtl_\stage\tw\lab\; live lab
+        untouched, no GPU, gpu_job.lock absent each run): item 2 GpuSampler log -> <job>\gpu_samples.tsv (time pid image
+        pct own; own pids re-read <= 1 / s; image(pid) cache replaces static dwm()), block() -> blocks.tsv; items 5 / 6 / 7
+        (lab_keeper.py): ns_busy.tsv (start ms fact), still-fence keeper.log line >= FENCE_NOTE_S 5 s + still_max_s, dedicated
+        GPU memory start / after lines; item 8 NEW lab_analyze.py (stdlib, read-only): rank (Spearman >= 0.9 + top-3 vs
+        gpu_trace_table), bar (p50 / p99 / p99.9 / max, bar = max(2, 1.5 x p99.9), prints the budget.py observe line,
+        doesn't run it), cadence (blocks vs ns_busy overlap); item 1b lab.py fields log_uses (false) + dump_frames (1, max
+        64, dump only, not with seed_runs), plan() prices them, kind_dump uses run per arm (no `uses` in answer =
+        ToolFault), fake_resident.py writes uses_<n>.tsv in dead_outputs.py format + log_uses_refused option. Suites
+        (stage_suite.sh): analyze 4, unit 35, keeper 28 (101 s), jobs 33 (113 s), ps1 5: all OK. PROPOSAL for ATN: stage
+        job_schema.json.proposed (= live + log_uses bool + dump_frames int >= 1); dump_frames > 1 also needs existing
+        cmd.schema.json.proposed v1.1; cmd / ans schema already carry log_uses / uses. FINDINGS: (1) gti_'s ReadLog leaves
+        the log file open (ResourceWarning); (2) recordings have 2 frames per loop -> S2 resident dumps <= 2 frames; true
+        64-frame dumps need a grs_ protocol change (warm-frame dumps or dump without reset); (3) ATN decides both schema
+        proposals; (4) keeper.log already has dedicated memory before / after each resident end (A9 can use now); (5) S2
+        still refuses log_uses until grs_'s M10 build. TO LAND after S3c part 1 + gtv_ review: lab.py, lab_keeper.py,
+        fake_resident.py, lab_analyze.py (new), tests test_lab_fixture / keeper / unit / jobs + test_lab_analyze.py (new).
+        - [ ] gtv_: review gtl_'s S3c stage (after its load run) -> lands after S3c part 1 (coord 15:10).
+        - [ ] gti_: ReadLog closes the log file (with open) (coord 15:10).
+        - [ ] grs_: 64-frame dumps (warm frames / dump without reset) in the resident protocol, with dead uses (coord 15:10).
+        - [ ] ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json.proposed v1.1 (coord 15:10).
+        Agents (4): gtp_ (gate round 19), gtv_ (lab load run, then gtl_ stage review), grs_ (dead uses + 64-frame dumps),
+        gti_ (ReadLog close); GPU order: gtv_ load run -> all_modes run (coord, ~40-45 min) -> S3c part 1 (coord,
+        gpu_lab.ps1 per s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
