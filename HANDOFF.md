@@ -6778,9 +6778,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         before a number; gtv_'s regex 8 / 8, 0 added) -> gtb_ RESUMED; Nit 8 (BusyState fault text cut to the path) ->
         gti_ RESUMED + Q8(b) lock wait inside bench\analysis_b2\replay\atn_harness_runs.ps1 (same lines, no switch;
         fakes only).
-        Agents (12): bd1r_ (R-S5 re-check), c33i_ (nit 5), lgf2_ (r3: T1 / N7 / T2 / F4), gtp_ (F3), t4i_ (r17 fixes),
-        upr_ (v2.3 spot-check, then H0 script), gtb_ (Should 8), gti_ (Nit 8 + Q8(b)), gtl_ (S3), gtq_ (B1), gtk_ (C1 +
-        C2), gpp_ (price + web design).
+        gtp_ F3 DONE 02:2x (plan_1117/gtp_s1c_f3_handback.md, backups scratchpad\gtp_bak3): gtw_'s prototype + robocopy /
+        xcopy destination rule, T1 guard (test runs the INSTALL line only on the copy's path), INSTALL line 6 + item 3
+        exact lists; probes 50 / 50, run_tests 237 / 237; latency ~0.10-0.11 s before and after (loaded machine). gtw_
+        RE-CHECK 3 STARTED 02:3x. gtp_ RESUMED 02:3x for Q22 (DXC + MS D3D12 / D3D11 docs into tools\specs\sources,
+        pinned, indexed).
+        Agents (13): bd1r_ (R-S5 re-check), c33i_ (nit 5), lgf2_ (r3: T1 / N7 / T2 / F4), gtw_ (S1c re-check 3), gtp_
+        (Q22 docs), t4i_ (r17 fixes), upr_ (v2.3 spot-check, then H0 script), gtb_ (Should 8), gti_ (Nit 8 + Q8(b)), gtl_
+        (S3), gtq_ (B1), gtk_ (C1 + C2), gpp_ (price + web design).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
