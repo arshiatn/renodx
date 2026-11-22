@@ -493,11 +493,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT GI / ReSTIR owner: 16 rays noisier than 8 on both builds (run3-noise 1.194 / ... | ?
 - leaf / micromap owner (optional): run pre 4x on fast_leaves + micromaps_leaf_str ... | ?
 - coordinator: all_modes pass on the combined tree after rmt_h0 + ff_s12 + grs_xes ... | ?
-- gtw_ + gpr_: re-check round 18 (gate + price) (coord 13:5x). | ?
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
 - ATN: allow rule for all_modes_check.ps1 (plain + -DryRun) after upr_ GO (coord 1 ... | ?
 - h0i_: MUST 1-2 + SHOULD 3-4 + offline test / selftest updates; upr_ re-checks (u ... | ?
 - gtv_: lab-suite load run NOW (GPU free 14:07) (coord 14:07). | ?
+- gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-che ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10145,7 +10145,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         N7 done (all 12 N7 forms refused incl. bash -c 'cat | bash'). Open (Low): nested escaped backticks (no rescan, by
         design for N8); 17th $( ) (cap 16, views 40); cosmetic trailing-backtick key; python -m py_compile + RENODX_LAB_
         env keys harness (old harness-env rule).
-        - [ ] gtw_ + gpr_: re-check round 18 (gate + price) (coord 13:5x).
+        - [x] gtw_ + gpr_ (DONE: gpr_ OK 13:5x, gtw_ 14:09 round 19 list): re-check round 18 (gate + price) (coord 13:5x).
         gtv_ LAB FIXES RE-CHECK = OK ON 1-3 + NIT + a + FIRST_BEAT_S 13:5x (plan_1117/gtv_lab_fixes_recheck_handback.md;
         gtv_iq_review.md "## gtl_ lab fixes re-check"): real keeper in-process in a fixture world: the lab's quiet close
         -> timeout + req_1.json; keeper starts in that folder (exist_ok), reads the close in take_lock before Acquire, run()
@@ -10215,9 +10215,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         gpu_s2 d336c55d3 (base c3ea4925f; helper build.ps1, main.cpp, rt_burn.hlsl, rt_d3d12.hpp +1307, rt_moments.hlsl,
         rt_serve.h new; 2430 + / 254 -): git merge-tree vs atn-mods clean -> MERGE GATE NOW.
         - [ ] gtv_: lab-suite load run NOW (GPU free 14:07) (coord 14:07).
-        Agents (3): gtw_ (round 18 gate re-check), h0i_ (all_modes MUST 1-2 + SHOULD 3-4), gtv_ (lab load run); gpu_s2
-        merge gate NOW -> builds -> push -> S3c (gpu_lab.ps1); all_modes run waits for upr_ GO + ATN rule (combined tree
-        incl. gpu_s2)
+        gtw_ RE-CHECK 18 = ROUND 18 OK + ROUND 19 LIST 14:09 (plan_1117/gtw_recheck18_handback.md; gtw_s1c_review.md "## S1c
+        re-check 18" line 1931): suite 1078/1078; corpus 15,119: r17 = live 252 refused, 0 diff, 0 errors; 43 keys changed
+        (gtp_'s classes); 36 price exemptions same. N8 fixed (unclosed $( 256 KB 0.09 s vs 15.2 s). Round 19 (shadow, gate
+        hints only): R18-1 Should: apostrophe in unquoted cat <<EOF body hides $( ) / backticks after it (read unquoted
+        heredoc bodies as double-quoted). R18-2 Low: middle $( ) level lost (R18-1 removes trigger; emit every unclosed
+        level). R18-3 Low: HERESTR used on Bash too (@' ... '@ hides curl; HERESTR on PS only). R18-4 Should: N4 pipe forms
+        pass (| bash 2>&1, | sh > log, | bash -x, echo -e .. | sh, { ..; } | sh, | tee log | sh, | sh -s -- arg). R18-5
+        Should: iex '..' / iex ('..') / Invoke-Expression ".." / -Command '..' / @'..'@ | iex pass. R18-6 Low: source
+        /dev/stdin <<<, while read; eval, $(case ..), $'it\'s' hides from kind(), 2 contrived N7 over-refusals. R18-7 Should:
+        quadratic regexes (unterminated " + many \" 9.6 s at 32 KB; many @' openers 0.76 s at 64 KB) -> DQ_SH ends at \Z
+        possessive, here-strings by str.find. VERIFY: lab cwd test too wide (anchor tools/tw/lab or lab_<name>); GATES_SUITE
+        any gates folder (Low). Open Lows OK (escaped backticks = grep patterns; 17th $( ) -> join texts).
+        - [ ] gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-checks (corpus after R18-1/3/4,
+        gtw_r18_time2.py after R18-7) + gpr_ price re-check (coord 14:10).
+        Agents (3): gtp_ (gate round 19), h0i_ (all_modes MUST 1-2 + SHOULD 3-4), gtv_ (lab load run); gpu_s2 merge gate
+        NOW -> builds -> push -> S3c (gpu_lab.ps1); all_modes run waits for upr_ GO + ATN rule (combined tree incl.
+        gpu_s2)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
