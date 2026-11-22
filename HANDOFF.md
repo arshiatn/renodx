@@ -9794,9 +9794,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         before rec_verify; merge after fcr_ + c3i_'s runs.
         - [ ] worktree cleanup (ATN): grs_'s worktree build\downloads_min (6 junctions - links alone first),
             build\grs_xess_min, build\grs_xess_full (grs_ 11:20).
-        Agents (7): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check), h0i_ (H0 copy fix), c3i_ (b1log
+        h0i_ COPY FIX DONE 11:21 (plan_1117/h0i_copyfix_handback.md; h0i_handback.md "## H0 copy fix"; backup h0\backups\
+        20261122_1110_copyfix): the stop was NOT pre_b (all 17 done) but the copy right after run2 pre_e3_open_r0
+        passed. New Copy-Fresh (20 x 500 ms; then a NOTE in summary.txt + log naming file + job, run goes on) at all 4
+        copy / move sites of Invoke-GpuRetry; sandbox found a 2nd bug (Move-Item half-moves a folder with a held file,
+        then "already exists") -> moves = one .NET rename, a folder that cannot move stays and attempt 2 writes over
+        it. Unchanged: exe / DLL copies before GPU jobs, shared-read reads. Tests: h0\h0i_copyfresh_test.ps1 0 BAD (held
+        3 s -> ok after 3.1 s; held 15 s -> NOTE after 9.8 s, no stop), parse 0, dry run clean (runs\
+        dryrun_20261122_111243.txt, ~83 min), offline retry case 0 / 1 BAD. 100100 can't resume (finished: builds, run
+        1, quality refs + scores 2 / 3 / 6; missing: reference suite runs 2-4, run 6 probe, run 7 Nsight, checks) ->
+        fresh re-run ~95-100 min. Leftover: h0\h0i_copyfresh_20261122_111100 (half-moved folder, left).
+        COORDINATOR: H0's checks refuse when atn-mods' helper sources differ from its base c3ea4925f -> ff_s12
+        (3c77a0c86) and grs_xess_guard (29a55acad) merge only AFTER the H0 re-run; rmt_b1log (engine code, not helper
+        paths) may merge before. upr_ reads the copy fix before the re-run.
+        Agents (7): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check), upr_ (H0 copy fix read), c3i_ (b1log
         verify runs, detached), gtl_ (fixture hang timeout), fcr_ (XeSS guard review), grs_ (back to gpu_s2); t4i_
-        ETL move waits for ATN (antivirus); merge gates rmt_b1log + ff_s12 (+ grs_xess_guard) after c3i_'s runs
+        ETL move waits for ATN (antivirus); rmt_b1log merge after c3i_'s runs; ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
