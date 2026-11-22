@@ -453,6 +453,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gti_ (batched with any H0 item h0i_ routes to it; test_gpu_lock.py lives in lab\ ... | ?
 - ATN: lab_gtl_stage (tools\tw\lab_gtl_stage, gtl_'s staged copy) may be deleted a ... | ?
 - c3i_ (on rmt_b1rt, with the real-routine tests): b13r_'s N4 braces at effect_upd ... | ?
+- gtp_ (with gtw_'s re-check 11 findings): hg1 rows() -> {'price': 'shadow'} on an ... | ?
+- gtb_ (optional, batched): hg2 name the unreadable file in watch's stderr / facts ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8216,8 +8218,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         carries its expected FAULT reason + new case (BOM'd UTF-16 of odd length = UnicodeDecodeError, price
         shadow); NUL line hint "- UTF-16 without a BOM? re-save as UTF-8 / ASCII" (same shape); test_budget 3 x 35,
         selftest 3 x 3. -> gpr_ CHECK STARTED.
-        Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (gtl_ S4 + reference mode re-check), gtw_ (gtp_
-        round 11 re-check), gpr_ (gtb_ grs1b check), t4i_ (r24 trace-window range), c3i_
+        gpr_ GTB_ GRS1B = OK, END TO END = FIX 07:5x (plan_1117/designs/gpr_gtb_grs1b_hook_handback.md;
+        gpr_review.md): grs1b OK (test_budget 35, selftest 3 / 3). hg1 MUST (gtp_): with round 11's hook,
+        gate_file() returns None for an unreadable gates.tsv -> rows() {} + mode() shadow -> watch gets ({},
+        shadow) = "not installed" -> declared / --limit kills, no FAULT in watch (only the hook's gate_errors row):
+        UTF-16 no BOM / UTF-32 still killed AND bad UTF-8 byte cases killed again (REGRESSION vs before round 11;
+        no live effect: the real gates.tsv is clean ASCII). Fix: rows() returns {'price': 'shadow'} when
+        gate_file('gates.tsv') is None (proved in scratchpad\gpr_grs1_fix_probe.py: all exit 0, --phase dump 124,
+        missing = not installed). hg2 NIT (gtb_, optional): gate_rows could call the hook's gate_file() to name the
+        unreadable file in watch's stderr / facts. Wording: one reason text, drop the hook's nested parentheses.
+        -> hg1 to gtp_ TOGETHER WITH gtw_'s re-check 11 verdict (gtw_ told now, so one fix round); hg2 batched.
+        - [ ] gtp_ (with gtw_'s re-check 11 findings): hg1 rows() -> {'price': 'shadow'} on an unreadable gates.tsv
+            + one reason text; gtw_ + gpr_ re-check end to end.
+        - [ ] gtb_ (optional, batched): hg2 name the unreadable file in watch's stderr / facts via the hook's
+            gate_file().
+        Agents (7): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (gtl_ S4 + reference mode re-check), gtw_ (gtp_
+        round 11 re-check + hg1), t4i_ (r24 trace-window range), c3i_
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
