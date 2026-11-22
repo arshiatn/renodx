@@ -263,9 +263,9 @@ class RayReconstruction12 {
     };
     if (!WaitForGpu(own_fence_.Get(), event_, slot->value, FENCE_TIMEOUT)) return unfinished();
     ID3D12GraphicsCommandList* list = slot->list.Get();
-    if (FAILED(slot->allocator->Reset()) || FAILED(list->Reset(slot->allocator.Get(), nullptr))) {
-      return Fail("Ray Reconstruction: D3D12 stopped");
-    }
+    HRESULT list_reset = slot->allocator->Reset();
+    if (SUCCEEDED(list_reset)) list_reset = list->Reset(slot->allocator.Get(), nullptr);
+    if (FAILED(list_reset)) return Fail(std::format("Ray Reconstruction: D3D12 stopped (its list's reset 0x{:08X})", static_cast<uint32_t>(list_reset)));
     const bool upscaling = request.output_width > request.width;
     if (feature_ == nullptr || width_ != request.width || height_ != request.height || output_width_ != request.output_width
         || output_height_ != request.output_height || preset_ != request.preset || create_flags_ != request.create_flags) {
@@ -390,7 +390,9 @@ class RayReconstruction12 {
     evaluated_ = NVSDK_NGX_SUCCEED(evaluation);
     for (auto& barrier : barriers) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
     list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
-    if (FAILED(list->Close())) return Fail("Ray Reconstruction: D3D12 stopped");
+    if (const HRESULT closed = list->Close(); FAILED(closed)) {
+      return Fail(std::format("Ray Reconstruction: D3D12 stopped (its list's close 0x{:08X})", static_cast<uint32_t>(closed)));
+    }
     first_frame_ = false;
     if (evaluated_) {
       status_ = "DLSS Ray Reconstruction active (D3D12)";

@@ -2022,11 +2022,13 @@ class RtScene12 {
         };
         const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS templates_params = {
             .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &templates_desc};
-        const bool built = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &templates_params) == NVAPI_OK;
+        const NvAPI_Status built = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &templates_params);
         list->ResourceBarrier(1, &uav_barrier);
         template_builds = 0;
-        if (!built) *why = "the sets' templates could not be built";
-        return built && flush();
+        if (built != NVAPI_OK) {
+          *why = std::format("the sets' templates could not be built (NvAPI {})", static_cast<int>(built));
+        }
+        return built == NVAPI_OK && flush();
       };
       for (const auto& [key, set] : sets_) {
         if (set.template_first == UINT32_MAX) continue;
@@ -5436,6 +5438,14 @@ class RtScene12 {
     auto* template_args =
         reinterpret_cast<NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_TEMPLATE_ARGS*>(slot->compact_data + COMPACT_TEMPLATE_ARGS_OFFSET);
     auto* template_destinations = reinterpret_cast<uint64_t*>(slot->compact_data + COMPACT_TEMPLATE_DESTINATIONS_OFFSET);
+    std::vector<ClusterSet*> new_templated_sets;  // the sets given templates in this request (sets_ is not changed until its end)
+    bool templates_refused = false;
+    // A Mega Geometry call NvAPI refused: once a kind (its bit in cluster_refusals_said_) in the slow report.
+    const auto say_refused = [&](uint32_t kind, const std::string& line) {
+      if ((cluster_refusals_said_ & kind) != 0) return;
+      cluster_refusals_said_ |= kind;
+      slow_report_ += std::format("{}[TW ray tracing] Mega Geometry: {}", (slow_report_.empty() ? "" : "\n"), line);
+    };
 #endif
     for (const auto [templated_run, grass_run] : {std::pair{true, false}, std::pair{true, true}, std::pair{false, true}, std::pair{false, false}}) {
       if (templated_run && grass_run) grass_first = compact_clusters;
@@ -5452,6 +5462,7 @@ class RtScene12 {
           if (free_templates_.Take(set.clusters, &first_template)) {
             set.template_first = first_template;
             set.template_masked = masked;
+            new_templated_sets.push_back(&set);
             for (uint32_t cluster = 0; cluster < set.clusters; ++cluster) {
               const auto& [desc_vertex, desc_vertices, desc_triangle, desc_triangles] = set.descs[cluster];
               auto& arg = template_args[template_builds];
@@ -5557,9 +5568,20 @@ class RtScene12 {
       const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS templates_params = {
           .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &templates_desc};
       Mark(list, L"templates");
-      NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &templates_params);
+      const NvAPI_Status templates_built = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &templates_params);
       const D3D12_RESOURCE_BARRIER built_templates = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
       list->ResourceBarrier(1, &built_templates);
+      // Refused: this request instantiates none (its CLASes would read unwritten templates) and the new sets give theirs
+      // back, so a later request builds them again.
+      if (templates_built != NVAPI_OK) {
+        templates_refused = true;
+        say_refused(1, std::format("the templates' build was refused (NvAPI {}; {} templates of {} sets): units and smoke not traced this frame.",
+                                   static_cast<int>(templates_built), template_builds, new_templated_sets.size()));
+        for (ClusterSet* set : new_templated_sets) {
+          pending_set_frees_.push_back({.value = own_value_ + 1, .template_first = set->template_first, .templates = set->clusters});
+          set->template_first = UINT32_MAX;
+        }
+      }
     }
 #endif
     vertex_end = std::min(vertex_end, TRANSFER_VERTICES);
@@ -6296,14 +6318,24 @@ class RtScene12 {
         // Their build timed apart (a trace's slot leaves the paths' two stamps free).
         Mark(list, L"clusters");
         Stamp(list, slot_index * STAMPS + 4);
-        bool clas_built = true;
-        if (templated_clusters != 0) {
-          clas_built = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &instantiate_params) == NVAPI_OK;
+        bool clas_built = !templates_refused;
+        if (clas_built && templated_clusters != 0) {
+          const NvAPI_Status instantiated = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &instantiate_params);
           list->ResourceBarrier(1, &uav_barrier);
+          clas_built = (instantiated == NVAPI_OK);
+          if (!clas_built) {
+            say_refused(2, std::format("the CLAS instantiate was refused (NvAPI {}; {} clusters, {} from templates): units and smoke not traced this frame.",
+                                       static_cast<int>(instantiated), cluster_count, templated_clusters));
+          }
         }
-        if (cluster_count != templated_clusters) {
-          clas_built = clas_built && NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &clas_params) == NVAPI_OK;
+        if (clas_built && cluster_count != templated_clusters) {
+          const NvAPI_Status clas_status = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &clas_params);
           list->ResourceBarrier(1, &uav_barrier);
+          clas_built = (clas_status == NVAPI_OK);
+          if (!clas_built) {
+            say_refused(4, std::format("the CLAS build was refused (NvAPI {}; {} clusters, {} from templates): units and smoke not traced this frame.",
+                                       static_cast<int>(clas_status), cluster_count, templated_clusters));
+          }
         }
         // The sway's cluster BLASes' lists from the kept CLASes' addresses, counted in their arguments.
         if (sway) {
@@ -6347,7 +6379,12 @@ class RtScene12 {
           // The same scratch: a barrier between them.
           for (uint32_t arg = 0; arg < blas_arg_count; ++arg) {
             if (arg != 0) list->ResourceBarrier(1, &uav_barrier);
-            cluster_built[arg_blases[arg]] = (build_blases(arg, 1) == NVAPI_OK);
+            const NvAPI_Status blas_status = build_blases(arg, 1);
+            cluster_built[arg_blases[arg]] = (blas_status == NVAPI_OK);
+            if (blas_status != NVAPI_OK) {
+              say_refused(8, std::format("a cluster BLAS's build was refused (NvAPI {}; cluster BLAS {} of {}): its units or smoke not traced.",
+                                         static_cast<int>(blas_status), arg_blases[arg], CLUSTER_BLASES));
+            }
           }
         }
         list->ResourceBarrier(1, &uav_barrier);
@@ -8880,6 +8917,8 @@ class RtScene12 {
   // The driver refused the cluster BLASes' batched build: one call each (RENODX_TW_TEST_CLUSTER_BLASES_APART: from the
   // start, the GPU harness's check of that path).
   bool cluster_blases_apart_ = GetEnvironmentVariableW(L"RENODX_TW_TEST_CLUSTER_BLASES_APART", nullptr, 0) != 0;
+  // Record's refused Mega Geometry calls already in the log: templates 1, CLAS instantiate 2, CLAS build 4, a BLAS 8.
+  uint32_t cluster_refusals_said_ = 0;
   uint64_t templated_wanted_ = 0;          // and the clusters its runs wanted (fitting or not)
   uint64_t built_wanted_ = 0;
   uint32_t built_limit_ = MAX_CLUSTERS;    // of the room built from triangles (the rest instantiated from templates)

@@ -258,7 +258,9 @@ class Upscaler12 {
       }
 #endif
       ID3D12GraphicsCommandList* list = slot.list.Get();
-      if (FAILED(slot.allocator->Reset()) || FAILED(list->Reset(slot.allocator.Get(), nullptr))) return Fail("Upscaling: D3D12 stopped");
+      HRESULT list_reset = slot.allocator->Reset();
+      if (SUCCEEDED(list_reset)) list_reset = list->Reset(slot.allocator.Get(), nullptr);
+      if (FAILED(list_reset)) return Fail(std::format("Upscaling: D3D12 stopped (its list's reset 0x{:08X})", static_cast<uint32_t>(list_reset)));
       std::array<D3D12_RESOURCE_BARRIER, UPSCALE_INPUTS> barriers;
       for (size_t index = 0; index < UPSCALE_INPUTS; ++index) {
         barriers[index] = {
@@ -325,7 +327,9 @@ class Upscaler12 {
 #endif
       for (auto& barrier : barriers) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
       list->ResourceBarrier(UPSCALE_INPUTS, barriers.data());
-      if (FAILED(list->Close())) return Fail("Upscaling: D3D12 stopped");
+      if (const HRESULT closed = list->Close(); FAILED(closed)) {
+        return Fail(std::format("Upscaling: D3D12 stopped (its list's close 0x{:08X})", static_cast<uint32_t>(closed)));
+      }
       first_frame_ = false;
       last_width_ = request.width;
       last_height_ = request.height;
@@ -365,9 +369,9 @@ class Upscaler12 {
     uint64_t value = 0;  // own_fence_'s value after its last use
   };
 
-  bool Fail(const char* status) {
+  bool Fail(std::string status) {
     failed_ = true;
-    status_ = status;
+    status_ = std::move(status);
     return false;
   }
 
