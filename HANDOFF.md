@@ -658,6 +658,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G10 requests (g02_): part 29 adds gather 4.1 builds 27AF3D62 + A03688A3 with a C ... | ?
 - WH filter kind (gather 4.1 / software / pcf) is chosen in engine code, not a pre ... | ?
 - drain check note: 9 exited engine_code.exe (0 MB, no image, 01:50-19:39, other a ... | ?
+- G10 BEFORE the wave-2 G21 + G02 merge: part 29 list renames + CLAMP + TestShared ... | ?
+- g02_ next wave: r1 (if the hook can't run in PsychoV35, b4 keeps the game's last ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12518,6 +12520,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         heapfix's raw-address EXCEPTION line. er5o_ re-check sent ("er5o_ recheck").
         - [ ] drain check note: 9 exited engine_code.exe (0 MB, no image, 01:50-19:39, other agents' tests) are held by
         handles; not ours to kill; the restart clears them.
+        rvf_ G02 RE-CHECK 23:1x: the SET (ho_g21 cc349d79b + ho_g02 91f97b2ca + G10's tests) GO, no conflict, on ONE condition
+        (reviews/rvf_g02_recheck_handback.md): G10 updates part 29 to c319afc05's list names (WH1 ATLAS_GATHER_SUN_SHADERS +
+        ATLAS_SAMPLED_SUN_SHADERS on the far-plane route; WH2 ATLAS_SUN_SHADERS + ATLAS_SAMPLED_SUN_SHADERS; sampled with a
+        CLAMP sampler) and TestSharedBytes a81748428 548 -> 832, else tw_warhammer_shaders fails after the merge. M1 / M2 /
+        m1 / m2 / n1 / n3 / n5 fixed; the per-map V35 b1 copy / b4 slot / response wiring correct.
+        - [ ] G10 BEFORE the wave-2 G21 + G02 merge: part 29 list renames + CLAMP + TestSharedBytes 832.
+        - [ ] g02_ next wave: r1 (if the hook can't run in PsychoV35, b4 keeps the game's last buffer, e.g. the fog's, read as
+        brightness / burn -> 32-byte buffer with a fixed tag in c1 checked in the shader; bug fix, on), r2 (destroy_device
+        release: device check + lock like atlas_far_plane), r3 (between-knot check vs the worse neighbour + 0.5 %, a 0.25 knot
+        or continuity-constrained fit); NITs ON_SUN_DRAW -> OnSunDraw, a test of the buffer copy, part 29 rig CLAMP.
+        ATN list 36 (rvf_ r4: WH2 ships the nearer fit where no slider set reaches 5 %; coord's pick ship, like ATN 29).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
