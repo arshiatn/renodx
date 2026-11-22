@@ -1883,6 +1883,9 @@ static uint8_t* page = nullptr;
 static WorkerData* worker_data = nullptr;  // the allocation's second page
 static CountData* count_data = nullptr;    // Cached Particle Count's words (the second page, COUNT_DATA_AT)
 static bool count_mismatch_logged = false;
+static uint32_t count_window = 0;  // the pool trace window whose hits and misses are being counted (0: none open)
+static uint32_t count_window_hits = 0;
+static uint32_t count_window_misses = 0;
 static CutRange worker_cut;                // the worker sites' stubs, up to the end of the stubs' page
 static bool module_pinned = false;
 static bool prepared = false;
@@ -2754,6 +2757,21 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
       renodx::utils::log::w("[Total War] Cached Particle Count: the cached sum differed from the game's ", internal::count_data->mismatches, " times (the last: the game's ",
                             internal::count_data->last_fresh, ", the cache's ", internal::count_data->last_cached, ").");
     }
+    // One line per pool trace window (at the first present after it): what the cache answered and what it had to count in it.
+    if (worker_pool::Tracing()) {
+      if (internal::count_window != worker_pool::TraceWindow()) {
+        internal::count_window = worker_pool::TraceWindow();
+        internal::count_window_hits = internal::count_data->hits;
+        internal::count_window_misses = internal::count_data->misses;
+      }
+    } else if (internal::count_window != 0) {
+      const uint32_t hits = internal::count_data->hits - internal::count_window_hits;
+      const uint32_t misses = internal::count_data->misses - internal::count_window_misses;
+      if (hits + misses != 0) {
+        renodx::utils::log::i("[Total War] Cached Particle Count (trace window ", internal::count_window, "): ", hits, " hits, ", misses, " misses.");
+      }
+      internal::count_window = 0;
+    }
   }
   if (internal::model_detail_scale != nullptr) {
     const uint32_t bits = std::bit_cast<uint32_t>(1.f / (model_detail * model_detail));
@@ -2792,9 +2810,14 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   // and the job sites (Stop's call keeps the pool's destruction safe).
   uint32_t target = wanted & internal::found;
   for (const uint32_t group : {internal::PARTICLE_COUNT_SITES, internal::JOB_SITES}) {
-    if ((internal::found & group) != group) target &= ~group;
+    if ((internal::found & group) != group) {
+      target &= ~group;
+    }
   }
-  if ((internal::found & internal::HALF_FUNCTION_BIT) == 0) target &= ~internal::HALF_ROWS_BIT;  // the half rows call the half function: out of found (another mod's hook over it), they stay out
+  // The half rows call the half function: out of found (another mod's hook over it), they stay out.
+  if ((internal::found & internal::HALF_FUNCTION_BIT) == 0) {
+    target &= ~internal::HALF_ROWS_BIT;
+  }
   internal::SyncWorkerSlots(internal::written & target);  // a site leaving: its word first
   if (effect_wanted == 0 && eu::written != 0) {
     effect_update::Disarm();  // the effect update's sites leaving: no thread enters a slow path from now on

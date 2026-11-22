@@ -128,6 +128,37 @@ int RunParticleCountTests(const TestBuild& build, uint8_t* game, uint8_t* patche
     const twattila::engine_code::ParticleCountStats stats = twattila::engine_code::ParticleCount();
     CHECK(stats.hits == ec::count_data->hits && stats.misses == ec::count_data->misses && stats.mismatches == 0);
   }
+  // One line per pool trace window, at the first present after it, with the window's own hits and misses (none outside a window; none when it counted nothing).
+  {
+    const auto window_lines = [&] {
+      size_t count = 0;
+      for (const std::string& line : log_lines) count += (line.find("Cached Particle Count (trace window") != std::string::npos ? 1 : 0);
+      return count;
+    };
+    rows(true, false);
+    CHECK(window_lines() == 0);
+    ec::count_data->hits += 3;
+    twattila::worker_pool::ArmTrace(2);
+    twattila::worker_pool::Update({.in_use = false});  // the window opens
+    rows(true, false);
+    ec::count_data->hits += 5;
+    ec::count_data->misses += 2;
+    twattila::worker_pool::Update({.in_use = false});
+    rows(true, false);
+    CHECK(twattila::worker_pool::Tracing() && window_lines() == 0);
+    twattila::worker_pool::Update({.in_use = false});  // the window's last present is over
+    CHECK(!twattila::worker_pool::Tracing());
+    rows(true, false);
+    CHECK(window_lines() == 1 && log_lines.back() == std::format("[Total War] Cached Particle Count (trace window {}): 5 hits, 2 misses.", twattila::worker_pool::TraceWindow()));
+    rows(true, false);
+    CHECK(window_lines() == 1);
+    twattila::worker_pool::ArmTrace(1);  // a window that counted nothing prints nothing
+    twattila::worker_pool::Update({.in_use = false});
+    rows(true, false);
+    twattila::worker_pool::Update({.in_use = false});
+    rows(true, false);
+    CHECK(!twattila::worker_pool::Tracing() && window_lines() == 1);
+  }
   rows(false, false);
   CHECK(ec::written == 0 && std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   std::printf("28a. row on: B differs from A only in the two jumps, into the stubs, the game's bytes in the stubs; the check word follows; off: the game's bytes back\n");
