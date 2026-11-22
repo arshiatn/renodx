@@ -8250,7 +8250,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         (no answer.get default); test_iq_seed_spacing restore via addCleanup. -> gtl_ STARTED; gtv_ re-checks.
         - [ ] ATN (morning report): test fixtures remove the sandbox world / testbin folders they made themselves
             (shutil.rmtree in end_world / end_suite; gtv_'s race probe in its own world) - OK, or forbid?
-        Agents (7): h0i_ (H0 analysis + fake to testbin + R1), gtl_ (S5 one arm + 2 nits), gtw_ (gtp_ round 11
+        gtl_ S5 DONE 07:5x (plan_1117/gtl_s5_handback.md; backups scratchpad\gtl_backup_s5; logs gtl_runs8): seed_runs
+        refused unless exactly one arm (reason in the line; schema + protocol proposal say so); dump() requires the
+        seed echo (missing = ToolFault at the dump, new test_dump_seed_echo_required); test_iq_seed_spacing restore
+        via addCleanup. Suites on the final budget.py (07:37:28): unit 30, ps1 5, keeper 24, jobs 32 (CPU 4-10 %, no
+        deadline changed). -> gtv_ RE-CHECK STARTED.
+        Agents (7): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (gtl_ S5 re-check), gtw_ (gtp_ round 11
         re-check + hg1), t4i_ (r24 trace-window range), c3i_
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
