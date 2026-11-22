@@ -612,6 +612,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - D2 VFX half resolution (rvb_ MI3) BLOCKED on R2: a VFX-heavy combat trace + Time ... | ?
 - twattila/output_encoding.hpp:36 comment still says D2 never configures it (g07_ ... | ?
 - D2 Shadow Map Size in-game list (8 checks) in handbacks/g07_part_handback.md, fo ... | ?
+- t4i_ "gates" (sent 22:2x): G1 MAJOR LATCH R2 row for R2's 3 "off for the session ... | ?
+- g05_ stage to land (testbin/scratch/g05_/stage, land_list.md + base_hashes.txt): ... | ?
+- g05_ next wave: MI2 generator run (scratch/g05_/run_scripts), run MI3, then v31_ ... | ?
+- H2 A/B (coord, after the end batch, test\tw_* rule): the 2 run.ps1 commands in h ... | ?
+- ATN QUESTION (antivirus, g10_ stopped as the rule says): render_pass_behavior x8 ... | ?
+- g10_ next wave: re-measure TestSharedBytes (overlay ho_g02 + ho_g21 with M1) and ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12220,6 +12226,38 @@ heading text are in HANDOFF_ARCHIVE.md)
         section (70+ particle draws in 34 runs interleaved with meshes / decals). Owner: next D2 round.
         - [ ] twattila/output_encoding.hpp:36 comment still says D2 never configures it (g07_ N3; owner).
         - [ ] D2 Shadow Map Size in-game list (8 checks) in handbacks/g07_part_handback.md, for ATN's next D2 run.
+        ebr_ REFRESH2 RE-CHECK 22:2x: GO for T5 (render_mt/reports/ebr_refresh2_recheck_handback.md), 3 conditions:
+        (1) freeze the MERGED tree (rmt_b3s has B3b without lg3; atn-mods / rmt_b3t had lg3 without B3b): check
+        AnimationRowsWorkers {Off, On, Check}, the env block reads RENODX_TW_COUNT_CHECK + RENODX_TW_ANIMATION_CHECK
+        (worker_env_read_generation), lg3's pool lines; (2) the manifest carries the rows (AnimationRowsWorkers, the 4 C
+        rows, ParallelInstanceFill, FillWithDrawRecording), row_values WITH labels, env RENODX_TW_ANIMATION_CHECK /
+        _SCHEDULE live + RENODX_TW_FILL_CHECK start; (3) T6 test_names -Ref <frozen> -Waiting @() + corpus strings from the
+        frozen build. Fixes 1-4, S6, lg3 rows, PAUSE-W3, overrides.json checked right.
+        - [ ] t4i_ "gates" (sent 22:2x): G1 MAJOR LATCH R2 row for R2's 3 "off for the session" lines + 3 corpus lines;
+        G2 INFO rows stop_if_planned R1 / R2 / C for 3 install refusals (+ the "not the game's code" forms); NITs (KRCF
+        stand-down + pool "records dropped" note rows, volley window, pair_void REF-P, labels NOTE) -> run_all -> ebr_
+        re-check -> then T6.
+        er5o_ END REVIEW STARTED 22:2x (Opus xHigh, read only, ~90 min): render_mt CPU files d7445f40b..(atn-mods + rmt_b3t
+        61a2ccc81), cross-part / lifetime / silent-failure / defaults / 32-bit / no Linux material, static_checks, ATN 5's
+        3 freeze causes -> render_mt/reports/er5o_end_review.md; fixes by the owners, er5o_ re-checks.
+        g05_ PART (handbacks/g05_part_handback.md): ho_g05 e77242107 rvd_ fixes (MI3 V35 negative control, N2-N4; not run);
+        ho_g05_v31_wip d53d75423 ATN 11 one HDR (PsychoV31) mode, NOT built, DON'T merge; worktree HEAD is on the wip branch
+        (git switch fails on the external\DLSS junction; guard refused symbolic-ref; path stopped).
+        - [ ] g05_ stage to land (testbin/scratch/g05_/stage, land_list.md + base_hashes.txt): ru_scene_patches.py N1
+        (DP2ADD: 3) + plan.md rows 696 / 842; land TOGETHER with the MI2 generator run's scene_patches.tsv (next wave).
+        - [ ] g05_ next wave: MI2 generator run (scratch/g05_/run_scripts), run MI3, then v31_wip build / ps_3_0 slot check /
+        WARP / page dump / migration check / review; G10 request tw_psychov35_ruse.md lands with it. Open work: O1 combined
+        variant (139 shaders), RT/PT + upscaler rows + RR (trace, ATN 12).
+        - [ ] H2 A/B (coord, after the end batch, test\tw_* rule): the 2 run.ps1 commands in handbacks/g05_part_handback.md
+        (310.9.16 via testbin\g05_helper_sdk_dlss, 310.7.0 via build\tw_dlaa_helper), needs ho_g05's 7e99ef2a3 in build\ruse.include.
+        g10_ PART (handbacks/g10_part_handback.md): ho_g10 9 commits (x86 root-signature sampler pointer, psychov35 WH t00,
+        vanilla_exact per-input + Ryse EXACT, RunRome2 split, WH2FXAA needs ho_g02, tw_warhammer_shaders patch needs ho_g02,
+        TestSharedBytes counts need ho_g21 f7fb7a901 + RE-MEASURE after g21_'s M1, part 29 PCF list needs ho_g02 + ho_g21).
+        Suites amd64 PASS; x86 all but root-signature (known, 6.8 headers) + render_pass_behavior.
+        - [ ] ATN QUESTION (antivirus, g10_ stopped as the rule says): render_pass_behavior x86 stages its .addon32 in
+        %TEMP%\renodx_render_pass_*; ReShade logged error 32 and the file vanished (likely Bitdefender). Coord's pick: the
+        test stages under tools\tw\testbin like every other test output (ATN's folder rule), or ATN adds an exclusion.
+        - [ ] g10_ next wave: re-measure TestSharedBytes (overlay ho_g02 + ho_g21 with M1) and commit "needs ho_g21 <M1>".
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
