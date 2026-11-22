@@ -128,9 +128,16 @@ float4 BitmaskAmbientOcclusion(float4 v0)
       const float occluder_scale = exp2(2.f * frac(jitter + 0.5f + 0.754877666f * slice) - 1.f);
 
       uint occluded = 0u;
+#if BITMASK_VARIANT >= 1
+      // Until each side's sectors are covered (bitmask.hlsli BitmaskSideSectors: x the negative side's, y the positive's).
+      const uint2 reachable = BitmaskSideSectors(slice_info, slice_jitter);
+      [loop]
+      for (uint step = 0; step < steps && any((occluded & reachable) != reachable); ++step) {
+#else
       // Until every sector is covered (nothing farther can change it).
       [loop]
       for (uint step = 0; step < steps && occluded != 0xFFFFFFFFu; ++step) {
+#endif
         float distance = (step + frac(noises.y + 0.618034f * (step + slice * steps))) / steps;
         // Denser near the pixel; at least one AO pixel away (the centre itself is no occluder).
         distance = max(distance * distance, 1.f / radius_pixels);
@@ -138,6 +145,11 @@ float4 BitmaskAmbientOcclusion(float4 v0)
         const uint level = BitmaskSampleLevel(length(offset * depth_size), levels.count);
         [unroll]
         for (int side = -1; side <= 1; side += 2) {
+#if BITMASK_VARIANT >= 1
+          const uint side_sectors = (side > 0) ? reachable.y : reachable.x;
+          [branch]
+          if ((occluded & side_sectors) == side_sectors) continue;
+#endif
           const float2 sample_uv = uv + side * offset;
           // Past the view's edge (DLSS below 100%: stale texels there): nothing.
           if (any(sample_uv < 0.f) || any(sample_uv * AoViewScale() >= 1.f)) continue;
@@ -181,6 +193,18 @@ float4 BitmaskAmbientOcclusion(float4 v0)
           const float3 delta = sample_position - position;
           const float delta_length = length(delta);
           if (!(delta_length > 1e-4f) || delta_length > radius) continue;
+#if BITMASK_VARIANT >= 1
+          // The front's and the back's cosines to the view vector.
+          float2 cosines = float2(dot(delta, view) / delta_length, 0.f);
+          [branch]
+          if (SI.ssao_auto_thickness != 0.f) {
+            cosines.y = BitmaskOccluderBackCosine(occluder, delta, position, view, sample_thickness);
+          } else {
+            const float3 back = delta + normalize(sample_position) * thickness;
+            cosines.y = dot(back, view) * rsqrt(dot(back, back));
+          }
+          occluded |= BitmaskSectorsOfCosines(cosines, side, slice_info, slice_jitter);
+#else
           const float3 front = delta / delta_length;
           // Its thickness along its own camera ray (auto thickness: its occluder's).
           float3 back;
@@ -191,6 +215,7 @@ float4 BitmaskAmbientOcclusion(float4 v0)
             back = normalize(delta + normalize(sample_position) * thickness);
           }
           occluded |= BitmaskSectors(front, back, view, side, slice_info, slice_jitter);
+#endif
         }
       }
       visibility += 1.f - countbits(occluded) / (float)BITMASK_SECTORS;
