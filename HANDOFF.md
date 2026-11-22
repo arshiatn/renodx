@@ -6647,8 +6647,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         set-on-install, Q4b narrow ON (matcher + WebSearch|WebFetch), Q26 protection built. INSTALL_FOR_ATN.md
         rewritten (checklist 1-11 with recommendations). gtw_ S1c RE-CHECK STARTED 01:4x.
         [ ] after gtw_ OK: INSTALL_FOR_ATN.md to ATN (he installs the hook himself; nothing installed by agents).
-        Agents (7): c33i_ (R-S5 fixes), gtw_ (S1c re-check), ebr_ (r16 review), lga_ (group 1 re-check 2), lgf2_ (group 2 R1 +
-        N1-N5), gtv_ (S1a + S1b re-check), h0i_ (H0 Shoulds). QUEUE: R-S5 re-checks -> merge rmt_rs5, lga_ group 1 re-check
+        lga_ GROUP 1 RE-CHECK 2 01:4x = MERGE (reports/lga_g1_recheck2_handback.md); MERGED 3c4eb4397 (7a18d3ec3; name
+        check generic; pushed; gated builds x86 3 + amd64 twattila running). Follow-up S1 (overflow line can be lost:
+        SetEvent + 500 ms 'said' wait), N1 (GetModuleFileNameW), N2 (x86 exact record), N4 (re-entry guard) -> lgf1_
+        RESUMED on rmt_lg1; N3 for group 3 (log a refused AddCodeRange, count thunk pages first).
+        lgf2_ GROUP 2 R1 + N1-N5 DONE 01:4x (reports/lgf2_r2_handback.md): 59adf491e (Mega Geometry refusals latched per
+        kind, template refusal frees + skips the request) + eb2c451b4 (N1-N4); tests 20/20 both, builds exit 0. Note:
+        helper build.ps1 printed compile errors but exited 0 (tooling bug). lga_ GROUP 2 RE-CHECK 2 STARTED 01:5x.
+        ATN 01:5x UNIFIED PT ANSWERS: Q2 no checkerboard; Q4 as recommended; NQ5 NOT later: (i) 128 lights + (ii)
+        shadowed fog light into this design (Experimental, numbers + screenshots); Q7 BUILD U9 (required); Q9 / Q10 yes;
+        NQ2 per NVIDIA's guide; NQ3 yes; NQ6 (A) 4K now. 'Best and fastest unified PT ever; hours don't matter.' ATN asked
+        about AMD / Intel (Q1), NQ1, Q6 (blotches, the 3.25 %), Q8, NQ4: answered; proposed (pending ATN): denoiser routes
+        RR / AMD FSR Ray Regeneration 1.2.1 (local FidelityFX SDK 2.4.0, RX 9000+) / NRD (others incl. Intel), NQ1 build
+        (a) + (c) and keep the better, Q6 own bias measurement, Q8 build as Experimental, NQ4 widened set as a switch.
+        upt_ RESUMED 01:5x -> v2.3, then upr_ spot-check. ATN asked 'did we do everything from Forge': status given
+        (rules + metrics scorer + Nsight columns + unified design done; S1 tooling + hook in review; S2-S5, the box /
+        pbrt-v4, full-4K FLIP / lag metrics, unified build, dead outputs (Q23), PTLAS re-measure after render_mt).
+        Agents (7): c33i_ (R-S5 fixes), gtw_ (S1c re-check), ebr_ (r16 review), lga_ (group 2 re-check 2), lgf1_ (group 1
+        follow-up), gtv_ (S1a + S1b re-check), h0i_ (H0 Shoulds), upt_ (v2.3). QUEUE: R-S5 re-checks -> merge rmt_rs5, lga_ group 1 re-check
         2 + group 2 re-check 2 -> merge rmt_lg1 / rmt_lg2, gtw_ S1c re-check, bulk index (after S1a OK), Q8(b) lock wait,
         H0 fixes / harness runs -> merge rmt_h0, B1.6, X1, logging group 3, PT DI steps 0-4 (after rmt_lg2 + H0), S2
         (after rmt_lg2), T5 / T6, end batch. ATN: unified PT 14 answers pending.
