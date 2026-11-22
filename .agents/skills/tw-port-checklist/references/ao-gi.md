@@ -48,7 +48,7 @@ Shadow maps, SSAO, GI, the fog's shadow march, SSR: the same rules.
 6. **Replace the GI**: zero only the bounce through a constants copy at its dispatch; keep the sky passes; the engine's GI value left alone (rule 5); in game GI off and on twice in one battle.
 7. **Sky and PT AO**: calibrate against the branch in use, with the game's scale and formula and RTAO's range; sky in every resampler; learn after the battle settles; caches relearn.
 8. **Denoise**: Light History under RR, REBLUR optional, NRD fallbacks; Rays a Pixel must lower the noise.
-9. **Presets and switches**: a page dump of every preset button; every skip back the next frame; nothing kept skipped; bypass state restored in `finalize_callback`.
+9. **Presets and switches**: a page dump of every preset button, GT-VBAO's and GT-VBGI's Auto Thickness on in each (the maintainer's rule, 2026-11-22); every skip back the next frame; nothing kept skipped; bypass state restored in `finalize_callback`.
 10. **Close with the double-work table** (section 4).
 
 ## 4. The double-work table
