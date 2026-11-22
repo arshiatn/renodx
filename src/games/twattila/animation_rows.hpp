@@ -352,8 +352,8 @@ inline void Scatter(Call* call, uint32_t block, uint32_t items_end) {
 #endif
   for (uint32_t i = 0; i < count; ++i) {
     if (i + 16 < count) {
-      __builtin_prefetch(slot.items[i + 16].instance + 0x5C, 1);
-      __builtin_prefetch(slot.items[i + 16].instance + 0xA4, 1);
+      _mm_prefetch(reinterpret_cast<const char*>(slot.items[i + 16].instance) + 0x5C, _MM_HINT_T0);
+      _mm_prefetch(reinterpret_cast<const char*>(slot.items[i + 16].instance) + 0xA4, _MM_HINT_T0);
     }
     uint8_t* instance = slot.items[i].instance;
     uint32_t bits = slot.texels[i];
@@ -595,6 +595,17 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
     Slot& slot = ring[block % RING_SLOTS];
     const uint32_t block_first = block * BLOCK_ITEMS;
     const uint32_t count = std::min(BLOCK_ITEMS, total - block_first);
+    // The item `index` places on from this block's first: in this block, or in the next one once it is gathered (the acquire makes its
+    // items readable); null when there is none yet.
+    const auto item_at = [&](uint32_t index) -> const Item* {
+      if (index < count) return &slot.items[index];
+      const Slot& next = ring[(block + 1) % RING_SLOTS];
+      if (count == BLOCK_ITEMS && block + 1 < blocks && index - BLOCK_ITEMS < std::min(BLOCK_ITEMS, total - block_first - BLOCK_ITEMS)
+          && next.gathered.load(std::memory_order_acquire) == block + 2) {
+        return &next.items[index - BLOCK_ITEMS];
+      }
+      return nullptr;
+    };
     for (uint32_t i = 0; i < count; ++i) {
       const Item& item = slot.items[i];
       if (item.instance == nullptr || item.animation == nullptr) {
@@ -603,9 +614,18 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
         finished = block_first + i;
         return;
       }
-      if (i + 32 < count) {
-        __builtin_prefetch(slot.items[i + 32].animation + 0x10, 1);
-        __builtin_prefetch(slot.items[i + 32].animation + 0x1B, 1);
+      // The items' lines are Modified in a worker's L2 (the hardware prefetcher does not hide a fetch from another core): 64 items
+      // ahead; and the animation's cached placement 32 items ahead. The placement's three words end at +0x1b: the same line as
+      // +0x10 unless the animation straddles one, so +0x1b is asked for only then.
+      if (const Item* item_64 = item_at(i + 64); item_64 != nullptr) {
+        _mm_prefetch(reinterpret_cast<const char*>(item_64), _MM_HINT_T0);
+      }
+      if (const Item* item_32 = item_at(i + 32); item_32 != nullptr) {
+        const char* placement = reinterpret_cast<const char*>(item_32->animation) + 0x10;
+        _mm_prefetch(placement, _MM_HINT_T0);
+        if (((reinterpret_cast<uintptr_t>(placement) ^ reinterpret_cast<uintptr_t>(placement + 0xB)) >> 6) != 0) {
+          _mm_prefetch(placement + 0xB, _MM_HINT_T0);
+        }
       }
       uint32_t& placed_frame = Word(item.animation, 0x10);
       uint32_t& placed_texture = Word(item.animation, 0x14);
