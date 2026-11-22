@@ -67,11 +67,12 @@ uint2 TileWord(uint2 tile, uint word) {
 }
 
 // Whether a ray from `from` reaches local light `light`, stopping LIGHT_CLEARANCE short of its lamp; `soft`: to a point of
-// its disk (light_size), picked by `pixel` and `seed`.
-bool LightRayReaches(uint light, float3 from, bool soft, uint2 pixel, uint seed) {
+// its disk (light_size), picked by `pixel` and `index` (rt_scene.hlsli DIM_LIGHT_DISK's).
+bool LightRayReaches(uint light, float3 from, bool soft, uint2 pixel, uint index) {
   float3 to_light = lights[light].xyz - from;
   if (soft) {
-    to_light += DiskPoint(normalize(to_light), light_size, float2(Random(uint3(pixel, seed)), Random(uint3(pixel, seed + 1u))));
+    to_light += DiskPoint(normalize(to_light), light_size,
+                          float2(Random(uint4(pixel, frame, DIM_LIGHT_DISK + index)), Random(uint4(pixel, frame, DIM_LIGHT_DISK + index + 1u))));
   }
   const float light_distance = length(to_light);
   return !Occluded(from, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), NO_GRASS_SMOKE);
@@ -225,7 +226,7 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
       word = 0xFFFFFFFFu;
       [loop]
       for (uint slot = 0u; slot < size; ++slot) {
-        if (((bounce_slots >> slot) & 1u) != 0u && !LightRayReaches(ListLight(slot), light_origin, soft, id.xy, ((frame * 128u) + ListLight(slot)) * 16u)) {
+        if (((bounce_slots >> slot) & 1u) != 0u && !LightRayReaches(ListLight(slot), light_origin, soft, id.xy, ListLight(slot) * 16u)) {
           word &= ~(1u << slot);
         }
       }
@@ -279,7 +280,7 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
         if (((reached_slots >> slot) & 1u) != 0u) total += Luminance(LightArriving(ListLight(slot), light_origin, normal, direction, light_distance));
       }
       const float step = total / (float)LIGHT_IMPORTANCE_RAYS;
-      float next = Random(uint3(id.xy >> 3u, frame * 4u + 7u)) * step;
+      float next = Random(uint4(id.xy >> 3u, frame, DIM_LIGHT_IMPORTANCE)) * step;
       float running = 0.f;
       [loop]
       for (uint slot = 0u; slot < size && total > 0.f; ++slot) {
@@ -325,7 +326,7 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
     [loop]
     for (uint ray = 0u; ray < rays; ++ray) {
       const float3 from = light_origin + ((rays > 1u && planar) ? PixelSpot(int2(id.xy), SpotOf(ray, turn)) : 0.f);
-      if (LightRayReaches(light, from, soft, id.xy, ((frame * 128u) + light) * 16u + ray * 2u)) ++reached_rays;
+      if (LightRayReaches(light, from, soft, id.xy, light * 16u + ray * 2u)) ++reached_rays;
     }
     if ((float)reached_rays <= threshold * (float)rays) lit &= ~(1u << slot);
   }

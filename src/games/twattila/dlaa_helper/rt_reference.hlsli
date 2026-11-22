@@ -6,12 +6,13 @@
 // The helper's reference build (tests only: build.ps1 with RENODX_TW_REFERENCE_BUILD; a player's helper has none; the
 // design in tools/tw/round_notes/plan_1117/reference_suite.md). Brute-force integrals of the effects on frozen copies of a
 // frame's inputs, the candidate's own output accumulated beside them, a census of every output, a digest of the scene.
-// Its own code apart from the estimators': its own random numbers (pcg4d), its own sampling (concentric disk and Malley,
-// Duff et al.'s basis, Heitz 2018's visible normals), its own starts (Waechter and Binder 2019) and uncapped visibility
-// loops; shared with the helper only the scene (both TLASes, records, pools, the alpha atlas) and the model terms of the
-// design's table 1.1 (the ambient cube, OpenSky, LightArriving, HitAlbedo, ReflectAlpha). rt_d3d12.hpp binds the frozen
-// copies at the live registers for its slices (a second descriptor table), so every function here and every shared model
-// term reads the frozen frame and nothing the helper rewrites.
+// Its own code apart from the estimators': its own random stream (RefRandom's own inputs, lane .x of the shared Pcg4d in
+// rt_scene.hlsli; the estimators' Random reads lane .y), its own sampling (concentric disk and Malley, Duff et al.'s
+// basis, Heitz 2018's visible normals), its own starts (Waechter and Binder 2019) and uncapped visibility loops; shared
+// with the helper only the scene (both TLASes, records, pools, the alpha atlas) and the model terms of the design's table
+// 1.1 (the ambient cube, OpenSky, LightArriving, HitAlbedo, ReflectAlpha). rt_d3d12.hpp binds the frozen copies at the
+// live registers for its slices (a second descriptor table), so every function here and every shared model term reads
+// the frozen frame and nothing the helper rewrites.
 // World units: metres, y up.
 #ifndef SRC_GAMES_TWATTILA_DLAA_HELPER_RT_REFERENCE_HLSLI_
 #define SRC_GAMES_TWATTILA_DLAA_HELPER_RT_REFERENCE_HLSLI_
@@ -133,25 +134,10 @@ static const uint REF_MAX_VERTICES = 32u;  // a path's vertex cap (its paths cut
 static const uint REF_ROULETTE_FROM = 3u;  // Russian roulette after this many vertices
 static const uint REF_MAX_CANDIDATES = 4096u;  // a visibility loop's candidates at most (past it counted, and blocked)
 
-// pcg4d (Jarzynski and Olano 2020, "Hash Functions for GPU Rendering"): four 32-bit values from four.
-uint4 RefPcg4d(uint4 value) {
-  value = value * 1664525u + 1013904223u;
-  value.x += value.y * value.w;
-  value.y += value.z * value.x;
-  value.z += value.x * value.y;
-  value.w += value.y * value.z;
-  value ^= value >> 16u;
-  value.x += value.y * value.w;
-  value.y += value.z * value.x;
-  value.z += value.x * value.y;
-  value.w += value.y * value.z;
-  return value;
-}
-
 // A number in [0, 1) of a texel, a sample (its index over the whole reference: group and place in it), a dimension and the
 // run's seed: every texel's sequence its own (G3 checks that neighbours share no noise).
 float RefRandom(uint2 texel, uint sample_index, uint dimension) {
-  const uint4 hashed = RefPcg4d(uint4(texel, sample_index, dimension ^ (ref_e * 0x9E3779B9u)));
+  const uint4 hashed = Pcg4d(uint4(texel, sample_index, dimension ^ (ref_e * 0x9E3779B9u)));
   return (float)(hashed.x >> 8) * (1.f / 16777216.f);
 }
 

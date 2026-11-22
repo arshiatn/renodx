@@ -91,7 +91,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     fog[id.xy] = 1.f;
     return;
   }
-  const float jitter = Random(uint3(id.xy, frame));
+  const float jitter = Random(uint4(id.xy, frame, DIM_FOG_JITTER));
   float lit = 0.f;
   float3 glow = 0.f;
   float weights = 0.f;
@@ -103,7 +103,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     if (toward_sun.w != 0.f && !Occluded(at, toward_sun.xyz, FOG_SUN_RANGE, NO_GRASS_SMOKE)) {
       lit += along * SmokeTransmittance(at, toward_sun.xyz, FOG_SUN_RANGE, 2u);
     }
-    if (glowing) glow += along * FogLightAt(at, Random(uint3(id.xy, frame * 16u + index)));
+    if (glowing) glow += along * FogLightAt(at, Random(uint4(id.xy, frame, DIM_FOG_LIGHT + index)));
     weights += along;
   }
   fog[id.xy] = (weights > 0.f && toward_sun.w != 0.f) ? lit / weights : 1.f;

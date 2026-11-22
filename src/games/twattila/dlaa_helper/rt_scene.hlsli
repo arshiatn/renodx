@@ -458,12 +458,66 @@ float2 SpotOf(uint ray, float turn) {
   return frac(float2(0.5f, 0.5f) + (float)ray * float2(0.7548777f, 0.5698403f) + turn) - 0.5f;
 }
 
-// A per-pixel, per-frame, per-ray value in 0-1 (PCG hash).
-float Random(uint3 seed) {
-  uint value = seed.x * 1664525u + seed.y * 22695477u + seed.z * 2891336453u + 1013904223u;
-  value = value * 747796405u + 2891336453u;
-  value = ((value >> ((value >> 28u) + 4u)) ^ value) * 277803737u;
-  return ((value >> 22u) ^ value) / 4294967295.f;
+// pcg4d (Jarzynski and Olano 2020, "Hash Functions for GPU Rendering"): four 32-bit values from four. Its lanes multiply
+// each other, so no linear relation between the inputs (a frame against a dimension) gives equal results.
+uint4 Pcg4d(uint4 value) {
+  value = value * 1664525u + 1013904223u;
+  value.x += value.y * value.w;
+  value.y += value.z * value.x;
+  value.z += value.x * value.y;
+  value.w += value.y * value.z;
+  value ^= value >> 16u;
+  value.x += value.y * value.w;
+  value.y += value.z * value.x;
+  value.z += value.x * value.y;
+  value.w += value.y * value.z;
+  return value;
+}
+
+// Random's dimensions: a kind (DIM_*, shifted by 12) plus its index there, below 4096, given at the site. The frame is a
+// lane of its own, never in the dimension: a linear seed of frame x stride + dimension gave the rays past 8 last frame's
+// numbers. Path ids (PathRadiance's `path`): a bounce path's 0-15, a reflection sample's 16-31, the reflections'
+// reservoir texel's 32, the paths' probe's rays 33 on (up to 94 rays); a path's vertex numbers at path id x 32 + vertex x 2
+// (+ 1: a second number; vertices 0-8).
+static const uint DIM_PATH_DIRECTION = 1u << 12;     // rt_path.hlsli PathRadiance: a vertex's next direction
+static const uint DIM_PATH_THROUGH = 2u << 12;       // a vertex's pass through a leaf or cloth
+static const uint DIM_PATH_RELEARN = 3u << 12;       // a vertex's CACHE_RELEARN
+static const uint DIM_PATH_LIGHTS = 4u << 12;        // a vertex's LocalLights picks (+ 0 / 1)
+static const uint DIM_FIRST_DIRECTION = 5u << 12;    // PathTraceTexel: a path's first direction (path x 2 + 0 / 1)
+static const uint DIM_FIRST_MERGE = 6u << 12;        // its sample into the reservoir (path x 2)
+static const uint DIM_BAND_JITTER = 7u << 12;        // the sky rays' band jitter
+static const uint DIM_HISTORY_MERGE = 8u << 12;      // last frame's reservoir merged
+static const uint DIM_PROBE_DIRECTION = 9u << 12;    // ProbeTexel: a ray's direction (ray x 2 + 0 / 1)
+static const uint DIM_PROBE_LIGHTS = 10u << 12;      // its LocalLights picks (ray x 2 + 0 / 1)
+static const uint DIM_REUSE_OWN = 11u << 12;         // ReuseTexel: its own reservoir merged
+static const uint DIM_REUSE_NEIGHBOUR = 12u << 12;   // a neighbour's angle, radius (neighbour x 2 + 0 / 1)
+static const uint DIM_REUSE_MERGE = 13u << 12;       // a neighbour's reservoir merged (neighbour)
+static const uint DIM_REUSE_LIGHT = 14u << 12;       // a local light picked (0), a point of its disk (1, 2)
+static const uint DIM_TEXEL_DIRECTION = 15u << 12;   // ReflectReservoirTexel: its direction (0 / 1)
+static const uint DIM_TEXEL_MERGE = 16u << 12;       // its sample (0), last frame's reservoir (1) merged
+static const uint DIM_GGX = 17u << 12;               // ReflectPixel: a sample's direction (redraw x 32 + sample x 2 + 0 / 1)
+static const uint DIM_REFLECT_CHOICE = 18u << 12;    // the rays' light or the bounce's reservoir
+static const uint DIM_REFLECT_NEIGHBOUR = 19u << 12; // a neighbour's angle, radius (neighbour x 2 + 0 / 1)
+static const uint DIM_REFLECT_MERGE = 20u << 12;     // a neighbour's reservoir merged (index)
+static const uint DIM_SEEN_LIGHTS = 21u << 12;       // HitLight's SeenDiffuseLight picks (0 / 1): lanes the hit's bits, no frame
+static const uint DIM_SUN_DISK = 22u << 12;          // rt_trace: a ray's point of the sun's disk (ray x 2 + 0 / 1)
+static const uint DIM_AO_JITTER = 23u << 12;         // rt_trace: Ray-Traced AO's band jitter
+static const uint DIM_LIGHT_DISK = 24u << 12;        // rt_lights: a ray's point of a light's disk (light x 16 + ray x 2 + 0 / 1)
+static const uint DIM_LIGHT_IMPORTANCE = 25u << 12;  // rt_lights: the importance picks' start (lanes the 8 x 8 block's)
+static const uint DIM_FOG_JITTER = 26u << 12;        // rt_fog: the points' jitter
+static const uint DIM_FOG_LIGHT = 27u << 12;         // rt_fog: a point's light pick (point)
+static const uint DIM_BOUNCE_DIRECTION = 28u << 12;  // rt_bounce: a ray's direction (ray x 2 + 0 / 1)
+static const uint DIM_SHARC_PICK = 29u << 12;        // rt_sharc_update: the block's texel (0 / 1)
+static const uint DIM_SHARC_FIRST = 30u << 12;       // its first direction (0 / 1)
+static const uint DIM_SHARC_HIT = 31u << 12;         // a vertex's SharcUpdateHit (vertex x 2)
+static const uint DIM_SHARC_DIRECTION = 32u << 12;   // a vertex's next direction (vertex x 2 + 0 / 1)
+static const uint DIM_SHARC_LIGHTS = 33u << 12;      // a vertex's LocalLights picks (vertex x 2 + 0 / 1)
+static const uint DIM_CACHE_LIGHTS = 34u << 12;      // rt_cache_fill: a cell's SeenDiffuseLight picks (0 / 1)
+
+// A number in [0, 1) of lanes (x, y, frame, dimension): pcg4d's lane .y (the reference's RefRandom reads lane .x, a
+// stream of its own).
+float Random(uint4 lanes) {
+  return (float)(Pcg4d(lanes).y >> 8) * (1.f / 16777216.f);
 }
 
 // A cosine-weighted direction around `normal`.
