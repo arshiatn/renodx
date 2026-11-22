@@ -509,10 +509,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: before ATN's restart, confirm the end batch is READY (everything built + ... | ?
 - ebq_: end batch readiness list (coord 18:2x). | ?
 - hts_: handoff_plan\plan.md + plan_groups.tsv (coord 18:2x) -> show ATN. | ?
-- gtl_: live lab check after landing (all suites + 18 jobs check on live) + does t ... | ?
-- gtv_: read the post-B1 test-only diffs (4 schema tests, left_out conhost, titles ... | ?
-- owner of schema_check.py (gtl_ / gtb_): support "maximum" (cmd dump frames <= 64 ... | ?
-- gtc_ (Low): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl_'s live check: ... | ?
+- gtb_ (owner of schema_check.py per gtb_s1b_fix2_handback.md; AFTER S3c): support ... | ?
+- gtc_ (Low; STARTED 18:3x): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl ... | ?
+- gtl_ (AFTER S3c, no suites beside it): conhost race fix in test_priced_kill_ends ... | ?
+- gtl_ (AFTER S3c): lab.rules 64 cap for iq.dump_frames + seed_runs.dump_frames; s ... | ?
+- gtl_ (low, AFTER S3c): stale "proposed" mentions (resident_protocol.md l.7 + l.1 ... | ?
+- ATN (later, not urgent): the 4 adopted .proposed copies are unused now (nothing ... | ?
 - gtp_ ROUND 22 (coord 18:3x): gpr-R21-1 + gtw-R21-1..6 (below); then gtw_ + gpr_ ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
@@ -11040,11 +11042,37 @@ heading text are in HANDOFF_ARCHIVE.md)
         ans.schema.json 385b779f, resident_protocol.md 9d78a0df. RETIRED 18:26 (retire_rows.py, 6 rows -> lines 9 / 10 / 50
         / 51 / 91 / 92 "retired:", exit 0; diff vs backup = only those 6). Leftover lab\run\trace_pending.json (15:57, job
         s3c_r1_trace) -> gtl_ says if it matters.
-        - [ ] gtl_: live lab check after landing (all suites + 18 jobs check on live) + does trace_pending.json matter (coord 18:2x).
-        - [ ] gtv_: read the post-B1 test-only diffs (4 schema tests, left_out conhost, titles) (coord 18:2x).
-        - [ ] owner of schema_check.py (gtl_ / gtb_): support "maximum" (cmd dump frames <= 64) (low).
-        - [ ] gtc_ (Low): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl_'s live check: steps 0-2, STOP at 2b for gtv_'s
+        - [x] gtl_ (DONE 18:35): live lab check after landing (all suites + 18 jobs check on live) + does trace_pending.json matter (coord 18:2x).
+        - [x] gtv_ (DONE 18:35, GO): read the post-B1 test-only diffs (4 schema tests, left_out conhost, titles) (coord 18:2x).
+        - [ ] gtb_ (owner of schema_check.py per gtb_s1b_fix2_handback.md; AFTER S3c): support "maximum" beside "minimum"
+        (cmd dump frames <= 64; also checked in Resident.send, lab.py ~1044) (low).
+        - [ ] gtc_ (Low; STARTED 18:3x): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl_'s live check: steps 0-2, STOP at 2b for gtv_'s
         go, then 3-19 (coord).
+        gtv_ TEST DIFFS 18:35 (plan_1117/gtv_test_diffs_handback.md; gtv_iq_review.md "## gtv_ test diffs" l.1195; sandbox
+        testbin\scratch\gtv_\s3c\land7 + fx7): GO. 15 land-list files live = stage = list; code = the B1 stage gtv_ passed;
+        schema / protocol files differ from coord_'s backup only in the title line; retire = gtv_'s dry run. 4 schema tests
+        read only the live files; nothing reads .proposed any more. Stale "proposed" mentions: resident_protocol.md l.7 +
+        l.119 heading, fake_resident.py l.2 + l.26, lab.py docstring l.1337. Low: test_priced_kill_ends_tree conhost race
+        still flaky under load (4 / 13 here; the extra pid = the child's hidden conhost, already exited, so its name reads
+        empty); budget.py right. Low: schema_check skips "maximum"; lab.rules caps only the top-level dump_frames, so iq /
+        seed_runs dump_frames 65 pass every lab check and the resident refuses mid-job; seed > 2^32-1 caught only as a
+        played-seed mismatch. No re-run job uses those fields. Step 2b: gtv_ ready.
+        gtl_ LIVE CHECK 2 18:35 (plan_1117/gtl_live_check2_handback.md; runs\live2_*.txt, runs\s3c2_jobs_live.txt): live lab
+        READY for the re-run. Suites on live via stage_suite.sh (lock guard): unit 40, analyze 5, ps1 5, keeper 29, jobs 35,
+        test_gpu_lock 60 / 60, test_gpu_gate 30 OK; test_budget 39 / 40 (test_priced_kill_ends_tree, same conhost race, 1 in
+        3; test code only, not on the S3c path). 18 jobs on live: 0 refused, 1982 s; md5 of all 18 unchanged; job 07's
+        trace-plan needs step 2's new settle frame (loops 700 = 1400 frames cover settle <= 1280 + 20). trace_pending.json
+        does NOT block step 7: trace_plan rewrites it on every -Trace before trace_done reads it; a leftover is normal after
+        every trace -> it stays. schema_check.py owner = gtb_; the missing lab.rules caps are gtl_'s.
+        - [ ] gtl_ (AFTER S3c, no suites beside it): conhost race fix in test_priced_kill_ends_tree. COORD'S PICK: left_out()
+        also drops a pid only when that process has EXITED by the check (not merely an empty name); any live non-conhost
+        pid still fails; keep exclude_pids <= 3. gtl_'s Toolhelp32 own-conhost-pid idea only if this proves not enough.
+        gtv_ re-checks (repeat the test >= 12x under load).
+        - [ ] gtl_ (AFTER S3c): lab.rules 64 cap for iq.dump_frames + seed_runs.dump_frames; seed <= 2^32-1 check; tests.
+        - [ ] gtl_ (low, AFTER S3c): stale "proposed" mentions (resident_protocol.md l.7 + l.119, fake_resident.py l.2 +
+        l.26, lab.py l.1337 docstring).
+        - [ ] ATN (later, not urgent): the 4 adopted .proposed copies are unused now (nothing reads them) -> may they be
+        deleted? (delete only on ATN's yes).
         gpr_ RE-CHECK 21 18:29 (plan_1117/designs/gpr_round21_recheck_handback.md; gpr_review.md round 21 section; scripts
         testbin\scratch\gpr_\gpr_r21_*.py + boxes r21_bak27 / r21_live): GO + GO FOR ENFORCE (price side); hook stays
         SHADOW. R20-1 caps: 16-40 level doubling chains / 600-statement fan / 800 $PATH uses 0.000-0.016 s (was 5.8 s);
@@ -11072,9 +11100,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         gtw-R21-6 (Low, before web_allow on): cite / cxx block runs before shell_web, one 10 s checker per commit text, no
         shared deadline -> one checker per call, shell_web first. By design under enforce: gtp_'s live swaps + tool_prices.py
         seed / build refused (ATN's steps). Slip: one python -c sandbox copy outside gtw_low.py (scratch only).
-        Agents (5): gtl_ (live lab check), gtv_ (test diffs read), gtp_ (gate round 22), ebq_ (end batch readiness), hts_
-        (open-items plan synthesis); gtc_ (S3c re-run next) / hta_..htd_ / gtw_ / gpr_ / fcr_ / gti_ / grs_ / h0i_ / upr_
-        idle; GPU: FREE (S3c re-run next); one GPU job at a time
+        Agents (5): gtc_ (S3c RE-RUN, GPU), gtp_ (gate round 22, below normal), ebq_ (end batch readiness), hts_
+        (open-items plan synthesis), gtv_ (on call for step 2b); gtl_ / hta_..htd_ / gtw_ / gpr_ / fcr_ / gti_ / grs_ / h0i_
+        / upr_ idle; GPU: S3c RE-RUN (gtc_) from 18:3x; other agents' CPU work below normal; one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
