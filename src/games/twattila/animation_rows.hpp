@@ -45,10 +45,14 @@
 // second half on the state the game's loop would have left. Bit-exact with the game's own loop: Check mode runs both and
 // compares everything.
 //
-// Schedules: with workers, Bulk (one job per call, one wake: rounds, each A over the round's blocks, then B, then C over what
-// B finished; the barrier between the parts of a round is a counter of finished units); with no workers (not the owner thread,
-// a job open, the pool empty, the env limit `animation:1`, or fewer than two blocks), the same rounds of one block on this
-// thread. Every fallback runs the game's own fill unchanged.
+// Schedules (RENODX_TW_ANIMATION_SCHEDULE, a bench's env: stream, the default, or bulk), one job per call and one wake:
+//   Streaming: A, B and C overlap. B (the render thread) walks the blocks in order; the workers claim C units first (a block B
+//     finished), then A units (a block at most 16 ahead of B whose ring slot is free), until B is done. A's units, B's blocks and
+//     C's units meet in the ring's 64 slots through two flags per slot (gathered, scattered) and a few monotone counters.
+//   Bulk: rounds, each A over the round's blocks, then B, then C over what B finished; the barrier between the parts of a
+//     round is a counter of finished units. It is the schedule Check is proven on first.
+// With no workers (not the owner thread, a job open, the pool empty, the env limit `animation:1`, or fewer than two blocks), the
+// same rounds of one block on this thread. Every fallback runs the game's own fill unchanged.
 namespace twattila::animation_rows {
 
 // The row's stage.
@@ -62,6 +66,8 @@ constexpr uint32_t RECORD_PUSH_RVA = 0x2a2f40;
 // A block of items is the unit of a worker's claim: 512 items of 16 bytes and their texel words.
 constexpr uint32_t BLOCK_ITEMS = 512;
 constexpr uint32_t RING_SLOTS = 64;
+// Streaming: A runs at most this many blocks ahead of B.
+constexpr uint32_t LOOKAHEAD_BLOCKS = 16;
 // Calls with fewer items than this run the game's own loop (the wake and the join of a job cost more than they save).
 constexpr uint32_t MIN_ITEMS = 2048;
 // Bulk's first round covers at least this many items (and what the last call finished).
@@ -70,6 +76,9 @@ constexpr uint32_t FIRST_ROUND_ITEMS = 4096;
 // What a call of Dispatch did: ours, or the game's fill for the reason named. BAD_ITEM counts in addition to OURS.
 enum class Path : uint8_t { OURS, STAGE_OFF, FORCED, ROW_AT_END, FEW_ITEMS, END_PAST_LIST, TEXTURE_RANGE, VECTOR_NOT_EMPTY, NO_ROWS,
                             RING_BUSY, BAD_ITEM, COUNT };
+
+// The batch env's value (RENODX_TW_ANIMATION_SCHEDULE).
+enum class Schedule : uint8_t { STREAM, BULK };
 
 namespace internal {
 
@@ -88,6 +97,9 @@ static std::atomic<Stage> stage = Stage::OFF;
 static std::atomic<bool> failed = false;
 // The ring is one for the process: a call takes it before any path touches it (re-entry, a second thread).
 static std::atomic<bool> ring_in_use = false;
+static Schedule schedule = Schedule::STREAM;
+// The env generation the schedule was read at (all ones: not yet).
+static uint32_t env_generation_applied = ~0u;
 static std::array<std::atomic<uint32_t>, static_cast<size_t>(Path::COUNT)> paths = {};
 // Items the last call finished: Bulk's first round covers at least as many.
 static uint32_t last_items = 0;
@@ -118,6 +130,15 @@ struct Controls {
   // The scatter unit of this block (counted from the call's first item) waits this many milliseconds before it writes: the blocks after it land first.
   uint32_t scatter_delay_block = ~0u;
   uint32_t scatter_delay_ms = 0;
+  // The gather unit of this block waits this many milliseconds before it reads (the window stalls); B waits that long before it allocates its block.
+  uint32_t gather_delay_block = ~0u;
+  uint32_t gather_delay_ms = 0;
+  uint32_t allocate_delay_block = ~0u;
+  uint32_t allocate_delay_ms = 0;
+  // Streaming: a scatter claim pauses this many times between its check and its CAS (S-3: it still never scatters a block that is not published).
+  uint32_t claim_gap_spins = 0;
+  // Streaming: a scatter unit takes a gathered block before B has published it (stale texel words).
+  bool scatter_ignores_publish = false;
 };
 static Controls controls;
 #endif
@@ -139,6 +160,10 @@ static_assert(sizeof(Item) == 16);
 struct alignas(64) Slot {
   std::array<Item, BLOCK_ITEMS> items = {};
   std::array<uint32_t, BLOCK_ITEMS> texels = {};
+  // Streaming: the block number + 1 of the block that was gathered here (A, release), and of the block that was scattered here (C, release).
+  // A call resets the flags of the slots it uses.
+  alignas(64) std::atomic<uint32_t> gathered = 0;
+  alignas(64) std::atomic<uint32_t> scattered = 0;
 };
 static std::array<Slot, RING_SLOTS> ring;
 
@@ -171,6 +196,7 @@ struct LastCall {
   uint32_t rounds = 0;
   uint32_t workers = 0;  // asked for
   bool ordered = false;  // a texel of 0xFFFFFFFF switched the scatter to item order
+  bool streaming = false;
 };
 static LastCall last_call;
 
@@ -179,14 +205,34 @@ enum class Kind : uint8_t { NONE, GATHER, SCATTER, DONE };
 
 // The call's shared words. Bulk's claim word: kind (2 bits) | phase counter (14) | end of the phase's blocks (24) | next block
 // (24): a worker's claim is one CAS on it, so a worker that read an old phase cannot claim a block of a newer one.
+//
+// Streaming's words are monotone counters and flags, each on its own line and read alone: a deliberate exception to grouping
+// related atomics under one lock, because the protocol needs only each value's own order (a counter never goes back, a flag is
+// set once), and every pair that must be seen together is published with a release store and read with an acquire load.
 struct Call {
   const uint32_t* instances = nullptr;  // the list's instance pointers from the first item
   uint32_t texture = 0;
   uint32_t total = 0;                   // items in the call: end - first
+  uint32_t blocks = 0;
+  bool streaming = false;
   Capture* captures = nullptr;          // Check: per item, else null
-  uint32_t finished_items = 0;          // written by the render thread before it publishes a scatter phase
+  uint32_t finished_items = 0;          // Bulk: written by the render thread before it publishes a scatter phase
+  uint32_t stop_items = 0;              // Streaming: the items B finished, written before b_finished is set
   alignas(64) std::atomic<uint64_t> claim = 0;
   alignas(64) std::atomic<uint32_t> done_units = 0;
+  alignas(64) std::atomic<uint32_t> next_gather = 0;
+  alignas(64) std::atomic<uint32_t> next_scatter = 0;
+  // The items B finished, published after each block (release).
+  alignas(64) std::atomic<uint32_t> b_items = 0;
+  // The block B is on: A claims at most LOOKAHEAD_BLOCKS beyond it.
+  alignas(64) std::atomic<uint32_t> b_block = 0;
+  // B has stopped (or finished): A claims no more, and a gather unit leaves its block unfinished.
+  alignas(64) std::atomic<bool> stopped = false;
+  alignas(64) std::atomic<bool> b_finished = false;
+  // Ordered mode: the first block whose scatter B does itself, in item order (all ones: none). Set before b_items covers that block.
+  alignas(64) std::atomic<uint32_t> scatter_limit = ~0u;
+  // Scatter units finished (the blocks before scatter_limit).
+  alignas(64) std::atomic<uint32_t> parallel_done = 0;
 };
 
 // The next unit of the open phase: NONE when there is none now (or the CAS lost), DONE when the call is over.
@@ -210,12 +256,19 @@ inline uint32_t TexelBits(uint32_t texel) {
   return static_cast<uint32_t>(_mm_cvtsi128_si32(_mm_castps_si128(_mm_cvtpd_ps(exact))));
 }
 
-// A, one block: reads only. Called by Work (a worker's unit) and Dispatch (the render thread's own units).
-inline void Gather(Call* call, uint32_t block) {
+// A, one block: reads only. Called by Work (a worker's unit) and Dispatch (the render thread's own units). False when B stopped
+// meanwhile (checked every 64 items): the block is left unfinished and its flag is never set; B never needs a block after its stop.
+inline bool Gather(Call* call, uint32_t block) {
   Slot& slot = ring[block % RING_SLOTS];
   const uint32_t first = block * BLOCK_ITEMS;
   const uint32_t count = std::min(BLOCK_ITEMS, call->total - first);
+#if defined(TWATTILA_WORKER_CONTROLS)
+  if (controls.gather_delay_block == block) {
+    Sleep(controls.gather_delay_ms);
+  }
+#endif
   for (uint32_t i = 0; i < count; ++i) {
+    if ((i & 63) == 0 && call->stopped.load(std::memory_order_relaxed)) return false;
     const uint32_t item_index = first + i;
     // Two levels ahead: the instance's line holding +0x60 and +0x70 for the item 16 on; the animation's lines for the item 8 on.
     if (item_index + 16 < call->total) {
@@ -242,13 +295,16 @@ inline void Gather(Call* call, uint32_t block) {
       call->captures[item_index].old_texel = std::atomic_ref<uint32_t>(Word(item.instance, 0xA4)).load(std::memory_order_relaxed);
     }
   }
+  slot.gathered.store(block + 1, std::memory_order_release);
+  return true;
 }
 
-// C, one block: the instance words for the items B finished. Called by Work and Dispatch.
-inline void Scatter(Call* call, uint32_t block) {
-  const Slot& slot = ring[block % RING_SLOTS];
+// C, one block: the instance words for the items B finished (`items_end` of them from the call's first item). Called by Work and
+// Dispatch; the slot is free for a later block when it is done.
+inline void Scatter(Call* call, uint32_t block, uint32_t items_end) {
+  Slot& slot = ring[block % RING_SLOTS];
   const uint32_t first = block * BLOCK_ITEMS;
-  const uint32_t count = std::min(BLOCK_ITEMS, call->finished_items - first);
+  const uint32_t count = std::min(BLOCK_ITEMS, items_end - first);
 #if defined(TWATTILA_WORKER_CONTROLS)
   if (controls.scatter_delay_block == block) {
     Sleep(controls.scatter_delay_ms);
@@ -272,11 +328,60 @@ inline void Scatter(Call* call, uint32_t block) {
     std::atomic_ref<uint32_t>(Word(instance, 0x5C)).store(call->texture, std::memory_order_relaxed);
     std::atomic_ref<uint32_t>(Word(instance, 0xA4)).store(bits, std::memory_order_relaxed);
   }
+  slot.scattered.store(block + 1, std::memory_order_release);
+}
+
+// Streaming: claims the next block B has finished (and that is before the ordered-mode limit) and scatters it. The checks come before
+// the CAS and every one of them can only turn true (a published block stays published), so a claim never takes a block B has not
+// published. B stores scatter_limit before it publishes the block it applies to, and the limit is read after b_items. False when
+// there is no such block now. Called by Work, and by the render thread while it waits.
+inline bool TryScatter(Call* call) {
+  uint32_t block = call->next_scatter.load(std::memory_order_acquire);
+  const bool finished = call->b_finished.load(std::memory_order_acquire);
+  const uint32_t items = (finished ? call->stop_items : call->b_items.load(std::memory_order_acquire));
+  const uint32_t first = block * BLOCK_ITEMS;
+  uint32_t items_end = items;
+  bool ready = first < items && (finished || first + BLOCK_ITEMS <= items);
+#if defined(TWATTILA_WORKER_CONTROLS)
+  if (controls.scatter_ignores_publish) {
+    ready = first < call->total && ring[block % RING_SLOTS].gathered.load(std::memory_order_acquire) == block + 1;
+    items_end = std::min(call->total, first + BLOCK_ITEMS);
+  }
+#endif
+  if (!ready || block >= call->scatter_limit.load(std::memory_order_acquire)) return false;
+#if defined(TWATTILA_WORKER_CONTROLS)
+  for (uint32_t spin = 0; spin < controls.claim_gap_spins; ++spin) {
+    _mm_pause();
+  }
+#endif
+  if (!call->next_scatter.compare_exchange_strong(block, block + 1, std::memory_order_acq_rel)) return false;
+  Scatter(call, block, items_end);
+  call->parallel_done.fetch_add(1, std::memory_order_release);
+  return true;
 }
 
 // The pool's callback: claim units until the call is over. A worker runs no game code and no allocator, and it needs well under 4 KB of stack.
 inline void Work(void* context, uint32_t) {
   Call* call = static_cast<Call*>(context);
+  if (call->streaming) {
+    // C first (it frees ring slots), then A while B is not done and the block is within reach and its slot is free; leave when B is
+    // done and no scatter block is left to claim.
+    for (;;) {
+      if (TryScatter(call)) continue;
+      uint32_t block = call->next_gather.load(std::memory_order_acquire);
+      if (!call->stopped.load(std::memory_order_acquire) && block < call->blocks && block < call->b_block.load(std::memory_order_relaxed) + LOOKAHEAD_BLOCKS
+          && (block < RING_SLOTS || ring[block % RING_SLOTS].scattered.load(std::memory_order_acquire) == block - RING_SLOTS + 1)
+          && call->next_gather.compare_exchange_strong(block, block + 1, std::memory_order_acq_rel)) {
+        Gather(call, block);
+        continue;
+      }
+      if (call->b_finished.load(std::memory_order_acquire)
+          && call->next_scatter.load(std::memory_order_acquire) >= std::min((call->stop_items + BLOCK_ITEMS - 1) / BLOCK_ITEMS, call->scatter_limit.load(std::memory_order_acquire))) {
+        return;
+      }
+      _mm_pause();
+    }
+  }
   for (;;) {
     uint32_t block = 0;
     const Kind kind = Claim(call, &block);
@@ -288,7 +393,7 @@ inline void Work(void* context, uint32_t) {
     if (kind == Kind::GATHER) {
       Gather(call, block);
     } else {
-      Scatter(call, block);
+      Scatter(call, block, call->finished_items);
     }
     call->done_units.fetch_add(1, std::memory_order_release);
   }
@@ -302,8 +407,23 @@ inline void SetGame(const uint8_t* fill) {
   internal::game_push = reinterpret_cast<internal::Push>(const_cast<uint8_t*>(fill - FILL_RVA + RECORD_PUSH_RVA));
 }
 
-// Every present on the present thread (addon.cpp): the row's stage. A Check mismatch keeps it off.
-inline void Update(Stage requested) { internal::stage.store((internal::failed.load() ? Stage::OFF : requested), std::memory_order_relaxed); }
+// Every present on the present thread (addon.cpp): the row's stage (a Check mismatch keeps it off), and the batch env
+// RENODX_TW_ANIMATION_SCHEDULE (stream or bulk), read at the first present and again whenever `env_generation` changes.
+inline void Update(Stage requested, uint32_t env_generation = 0) {
+  using namespace internal;
+  if (env_generation != env_generation_applied) {
+    env_generation_applied = env_generation;
+    constexpr const char* NAME = "RENODX_TW_ANIMATION_SCHEDULE";
+    std::string text(GetEnvironmentVariableA(NAME, nullptr, 0), '\0');
+    text.resize(GetEnvironmentVariableA(NAME, text.data(), static_cast<DWORD>(text.size())));
+    schedule = (text == "bulk" ? Schedule::BULK : Schedule::STREAM);
+    if (!text.empty()) {
+      renodx::utils::log::i(std::format("[Total War] Animation Rows on Workers: schedule {}{}.", (schedule == Schedule::BULK ? "bulk" : "stream"),
+                                        (text == "bulk" || text == "stream" ? "" : " (the env value does not parse; stream used)")));
+    }
+  }
+  stage.store((failed.load(std::memory_order_relaxed) ? Stage::OFF : requested), std::memory_order_relaxed);
+}
 
 // The stub's target (engine_code.hpp): the stub pushes the seven arguments again and calls it with ecx = the cache, edx unused;
 // the callee pops them (ret 0x1c) as the game's own fill does, and the result is the game's (the animation update reads al).
@@ -349,7 +469,15 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   Call call = {.instances = *reinterpret_cast<const uint32_t* const*>(static_cast<uint8_t*>(list) + 8) + first,
                .texture = texture,
                .total = total,
+               .blocks = blocks,
+               .streaming = (workers != 0 && schedule == Schedule::STREAM),
                .captures = (stage_now == Stage::CHECK ? check.captures.data() : nullptr)};
+  if (call.streaming) {
+    for (uint32_t slot = 0; slot < std::min(blocks, RING_SLOTS); ++slot) {
+      ring[slot].gathered.store(0, std::memory_order_relaxed);
+      ring[slot].scattered.store(0, std::memory_order_relaxed);
+    }
+  }
   const uint32_t frame = Word(cache, 0x28);
   const uint32_t row_size = Word(cache, 0x10);
   const uint32_t texels_per_row = Word(cache, 0x14);
@@ -470,7 +598,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       if (claimed == Kind::GATHER) {
         Gather(&call, block);
       } else {
-        Scatter(&call, block);
+        Scatter(&call, block, call.finished_items);
       }
       call.done_units.fetch_add(1, std::memory_order_release);
     }
@@ -508,20 +636,74 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       const uint32_t parallel_end = std::clamp(ordered_from, low, scatter_end);
       run_phase(Kind::SCATTER, low, parallel_end);
       for (uint32_t block = parallel_end; block < scatter_end; ++block) {
-        Scatter(&call, block);
+        Scatter(&call, block, finished);
       }
     }
     call.claim.store(pack_claim(Kind::DONE, 0, 0, 0), std::memory_order_release);
   };
+  // Streaming's B: the blocks in order, each waited for (its own gather when nobody has it, else scatter units meanwhile), allocated,
+  // and published for C; B scatters itself from the first ordered-mode block, in item order, after the earlier scatter units are done.
+  const auto stream_part = [&] {
+    for (uint32_t block = 0; block < blocks && !stopped; ++block) {
+      call.b_block.store(block, std::memory_order_relaxed);
+      const Slot& slot = ring[block % RING_SLOTS];
+      while (slot.gathered.load(std::memory_order_acquire) != block + 1) {
+        uint32_t next = call.next_gather.load(std::memory_order_acquire);
+        if (next == block && (block < RING_SLOTS || slot.scattered.load(std::memory_order_acquire) == block - RING_SLOTS + 1)
+            && call.next_gather.compare_exchange_strong(next, next + 1, std::memory_order_acq_rel)) {
+          Gather(&call, block);
+        } else if (!TryScatter(&call)) {
+          _mm_pause();
+        }
+      }
+#if defined(TWATTILA_WORKER_CONTROLS)
+      if (controls.allocate_delay_block == block) {
+        Sleep(controls.allocate_delay_ms);
+      }
+#endif
+      allocate(block);
+      if (ordered_from != ~0u) {
+        call.scatter_limit.store(ordered_from, std::memory_order_release);
+      }
+      if (ordered_from != ~0u && finished > block * BLOCK_ITEMS) {
+        // B's own scatter: the earlier blocks' units first, so a later duplicate instance is written last.
+        while (call.parallel_done.load(std::memory_order_acquire) < ordered_from) {
+          if (!TryScatter(&call)) {
+            _mm_pause();
+          }
+        }
+        Scatter(&call, block, finished);
+      } else if (ordered_from == ~0u && !stopped) {
+        call.b_items.store(finished, std::memory_order_release);
+      }
+    }
+    call.stop_items = finished;
+    call.stopped.store(true, std::memory_order_release);
+    call.b_finished.store(true, std::memory_order_release);
+    for (;;) {
+      const uint32_t scatter_blocks = std::min((finished + BLOCK_ITEMS - 1) / BLOCK_ITEMS, call.scatter_limit.load(std::memory_order_acquire));
+      if (call.parallel_done.load(std::memory_order_acquire) >= scatter_blocks) break;
+      if (!TryScatter(&call)) {
+        _mm_pause();
+      }
+    }
+  };
   if (workers != 0) {
-    worker_pool::Run({.work = Work, .context = &call, .user = worker_pool::User::ANIMATION_ROWS, .join = worker_pool::JoinRule::ENTERED}, workers, part);
+    worker_pool::Run({.work = Work, .context = &call, .user = worker_pool::User::ANIMATION_ROWS, .join = worker_pool::JoinRule::ENTERED}, workers,
+                     [&] {
+                       if (call.streaming) {
+                         stream_part();
+                       } else {
+                         part();
+                       }
+                     });
   } else {
     part();
   }
   ring_in_use.store(false, std::memory_order_release);
   paths[static_cast<size_t>(Path::OURS)].fetch_add(1, std::memory_order_relaxed);
   last_items = finished;
-  last_call = {.items = finished, .records = records[1], .rounds = rounds, .workers = workers, .ordered = (ordered_from != ~0u)};
+  last_call = {.items = finished, .records = records[1], .rounds = rounds, .workers = workers, .ordered = (ordered_from != ~0u), .streaming = call.streaming};
   const uint32_t stop_at = first + finished;
   *row = stop_at;
   if (bad_item) {
@@ -621,7 +803,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
 
 #else
 
-inline void Update(Stage) {}
+inline void Update(Stage, uint32_t = 0) {}
 
 #endif
 
