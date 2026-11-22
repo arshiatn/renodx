@@ -605,7 +605,9 @@ inline void CommitUnit(Unit* unit) {
 // L2: commits every unit that is done from the commit cursor on, in the serial order, up to the first that is not. Called where a unit becomes direct (everything before it is done),
 // before a sweep runs and at the walk's end: one thread at a time by construction (the direct unit, the sweep, or the finisher once all is done). It reads `segment.next` as
 // AdvanceFrontier does while the render thread may still link the tail: the link is stored after the seq_cst `segment_count` store and the cursor reads that first (a formal race, correct on x86).
-inline void CommitDone() {
+// A sweep commits only up to the end of its own segment (`sweep_segment`): the units of the segments after it that ran ahead and are done come after the sweep's destructors in the serial
+// order, and the destructors may draw the random triple themselves.
+inline void CommitDone(uint32_t sweep_segment = NONE) {
   Round& round = current_round;
 #if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
   std::vector<Unit*> held;
@@ -621,7 +623,7 @@ inline void CommitDone() {
       unit = &units[segment.first_unit + position];
     } else if (position - segment.units < late) {
       unit = LateUnit(segment, position - segment.units);
-    } else if (segment.next != NONE) {
+    } else if (segment_id != sweep_segment && segment.next != NONE) {
       round.commit_at = Pack(segment.next, 0);
       continue;
     } else {
@@ -840,8 +842,8 @@ inline bool Serve(bool render) {
   // serial order, as the direct unit.
   CheckWatched();
   if (round.l2) {
-    // The sweep is a direct stand-in: the random state must be where the serial walk has it (every unit before it committed).
-    CommitDone();
+    // The sweep is a direct stand-in: the random state must be where the serial walk has it (every unit before it committed, none after it).
+    CommitDone(sweep->id);
     RefreshWatched();
   }
   Unit pseudo;
