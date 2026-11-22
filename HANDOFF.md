@@ -569,6 +569,17 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G13 land (coord, ONE commit): skips.tsv never before the ledgers' skip: lines; p ... | ?
 - boxes rve_ asked for: PathTracedReflectionOcclusion for the non-WH games; the P1 ... | ?
 - DRY owner (after wave 2): the V35 rows-default loop (4 games) + 4 copies of the ... | ?
+- 5: no ReShade.log from Astra; the END REVIEW checks the 3 left freeze causes (ob ... | ?
+- 6: mem_ STUDY (Opus xHigh, read only + offline tests): RenoDX per-battle + alt-t ... | ?
+- 23: ReShade SDK headers 6.7.3 -> 6.8 (external/reshade submodule, ATN's OK 21:48 ... | ?
+- 25: H2 A/B (R.U.S.E. DLSS 310.9.16 vs 310.7.0): ATN's rule `powershell -NoProfil ... | ?
+- 26: D1 / D2 act.ps1 -PM one Alt tap right before the game takes focus: OK'd by A ... | ?
+- gtp_ (after round 23): VCToolsInstallDir check + toolset on the build exit line ... | ?
+- dis_at read 0x1812650 / 0x181B910: the rigid-pool holder at [+0xE4] via 0xC69B0 ... | ?
+- tw_tales_unit link failure (undefined NAME via utils/settings.hpp overlay_title ... | ?
+- skills: game-port-method/SKILL.md:126 still names the deleted rr_d3d12.hpp (SKIL ... | ?
+- shared twattila/effect_brightness.hpp for D1 + Troy (+ D2 next) (g06_ m3): owner ... | ?
+- D1 trace requests (g06_ m5): (1) one sun-shadow PCSS 0x8F114E47 draw with its VS ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -11997,6 +12008,61 @@ heading text are in HANDOFF_ARCHIVE.md)
         and builds tw_rt_open_sky into the shared testbin\tw_rt_open_sky. Not stopped; told: no deletions outside its
         sandbox, check no other rt_open_sky.exe runs (its script now does). Reported to ATN.
         ATN list 29-31 added (Troy / Pharaoh V35 fit at 6.6 %, D1 V35 no fit, clear Pharaoh Casters Out of View once).
+        ATN ANSWERS 21:48 (handoff_plan/atn_answers_2148.md): "all your picks beside" 5, 6, 15, 20, 22, 25, 27 (his copy
+        had 1-29; 30-33 still open). Routed: g07_ (1, 2, 4 + D2 host_light_bounce_* rename merged WITH ho_g09), g19_ (3 +
+        lighting_settings.hpp:98 / 118 auto_thickness 1.f), gbf_ (7 cap ReSTIR GI at 1 ray under RR, 8, 9), g20_ (10 Faster
+        GT-VBAO Experimental row), g05_ (11 one HDR tone mode, 12 next round; H2 A/B command lines), g04_ (13, 14, 15 per-map
+        fit NOW, 16 Exposure 5th knob), g01_ (17, 18, 19, 24), g03_ (20 Pharaoh Dust Shadows slider 0..1, 29 ship V35
+        1.10 / 1.39 / 0.97 / 0.87), g06_ (21, 22), g02_ (27 per-map V35 from the game's files, no trace; 28).
+        - [ ] 5: no ReShade.log from Astra; the END REVIEW checks the 3 left freeze causes (object motion stream output +
+        compute, 32-bit address space, driver / his effects) on the final code.
+        - [ ] 6: mem_ STUDY (Opus xHigh, read only + offline tests): RenoDX per-battle + alt-tab memory (fake-fullscreen
+        +113 MB, rvc_ G16 M1), helper VRAM, the game's side via dis_at; fixes + offline tests; at most ONE in-game confirm
+        -> reports/mem_study.md. Replaces Q6's restart A/B plan.
+        - [ ] 23: ReShade SDK headers 6.7.3 -> 6.8 (external/reshade submodule, ATN's OK 21:48): coord, AFTER the render_mt
+        final bench (all add-ons rebuild; no TW game is affected by the 32-bit D3D12 field move).
+        - [ ] 25: H2 A/B (R.U.S.E. DLSS 310.9.16 vs 310.7.0): ATN's rule `powershell -NoProfile -ExecutionPolicy Bypass -File
+        D:\Dev\renodx\test\tw_*` covers test\tw_ruse_bridge\run.ps1: coord runs the 2 GPU runs in a quiet GPU window
+        (one GPU job), command lines from g05_.
+        - [ ] 26: D1 / D2 act.ps1 -PM one Alt tap right before the game takes focus: OK'd by ATN (runs still need his go).
+        rvc_ REVIEWS (reviews/rvc_handback.md): G15 needs changes (M1 Q7 premise: preset 1 is unbiased, preset 3 / slider
+        default 4 biased -> Q7 reworded; M2 Q8's +1 % premature, ~1.8 % predicted -> Q8 waits for gbf_'s measured number);
+        G16 holds (M1 +113 MB on back-to-front = fake-fullscreen -> mem_; MINOR vf 0 at [+0xE4] via 0xC69B0 needs one dis_at
+        read of 0x1812650 / 0x181B910); G17 holds (MINOR: gtp_ build scripts must check VCToolsInstallDir + print the
+        toolset; Design A compares by GetResource -> g03_; Troy far map only after a > 200 m coverage check -> g03_).
+        gbf_ got rvc_'s 4 checks (ContactShade signed masks at 1 / 4 / 16 rays, fold edge ~1.018, CONTACT_RANGE 0 switch, F1
+        blur width). ATN list Q5-Q10 reworded per rvc_ (picks unchanged).
+        - [ ] gtp_ (after round 23): VCToolsInstallDir check + toolset on the build exit line (rvc_ G17 MINOR).
+        - [ ] dis_at read 0x1812650 / 0x181B910: the rigid-pool holder at [+0xE4] via 0xC69B0 (rvc_ G16 MINOR) -> mem_ or
+        the end review.
+        g09_ DONE (handbacks/g09_done_handback.md): ho_g09 15 commits (host_light_bounce_* + host_sss_* names, Auto Thickness
+        on + ClearSavedRows(4), bend_dispatch_setup.hlsli, sun texel WARP test PASS, rr_d3d12.hpp deleted, -pi sweep 360
+        places / 139 files (127 ue-extended files are ATN's own, none upstream), has_fog_shadows false, Tales GI Open Sky on,
+        V35 Expeditions = Musa's own (20 % option reported), e54c34c60 frame trace); Tales / Expeditions / ue-extended build.
+        rvc_ reviews it (rvc_g09_review.md). ATN list 32 (Expeditions V35) + 33 (Tales CombineLUTs cb0 trace).
+        - [ ] tw_tales_unit link failure (undefined NAME via utils/settings.hpp overlay_title through ray_tracing.hpp ->
+        twattila/dlaa_bridge.hpp -> frame_trace.hpp): pre-existing; owner from rvc_'s review.
+        - [ ] skills: game-port-method/SKILL.md:126 still names the deleted rr_d3d12.hpp (SKILLS UPDATE 5).
+        g08_ NITS (handbacks/g08_nits_handback.md): b0bf0e748 braces + "clone of <handle>" wording; Ryse rebuild exit 0. g08_
+        now cherry-picks e54c34c60 onto ho_g08 and builds Ryse + D1 + D2 (shared frame_trace.hpp) -> coord merges ho_g08.
+        b3t_ S5 (render_mt/reports/b3t_s5.md): rmt_b3t 38d2def38 ParkedThread, 23t-23za S5 cases, merge of atn-mods,
+        5b6b2753e instance_fill.inc on ParkedThread (3 places); workers part quick + full under stream + bulk PASS, 11 parts
+        PASS; probe not run to its end (190 s timeout, 0 mismatches).
+        b3s_ FIXES S6 (render_mt/reports/b3s_fixes_s6.md): rmt_b3s fc36bf57f (merges rmt_b3t): R1 / R2 tracing-only
+        counters + QPC splits, R4 / R5 / R7 / R8 / S1; skipped N1 / R6 / wrapping / guard page with reasons; gated x86 + amd64
+        exit 0, full + quick suite PASS (macro on). Texts changed -> t4i_. bd1r_ re-checks both (b3s_ S6 + b3t_ S5) ->
+        "bd1r_ B3b final". Merge: only test/tw_engine_code/run.ps1 conflicts (keep both CONTROLS defines).
+        g06_ FIXES PART (handbacks/g06_fixes_part_handback.md): indicator row split (244 effects + 14 markers via cb7.y),
+        null cb7 on failure, game cb7 per draw, census script in test/tw_d1_vfx; WIP committed, build waits for a slot.
+        - [ ] shared twattila/effect_brightness.hpp for D1 + Troy (+ D2 next) (g06_ m3): owner after wave 2; dxbc.hpp should
+        export FirstInstruction / FirstOperand (g06_ NIT). Troy null-cb7 bug fix -> g03_.
+        - [ ] D1 trace requests (g06_ m5): (1) one sun-shadow PCSS 0x8F114E47 draw with its VS, interpolants, cb0 / cb12; (2)
+        one beach / Black Cove frame with the tone map 0x30A1D40D cb (Source / Target constants).
+        BUILD SLOTS 21:50: g18_ held 2 slots (slot2 + slot4) -> told one per group. b3s_ / b3t_ freed slot 1.
+        g18_ SECURITY FLAG 21:5x (harness "Interfere With Workloads"): reviewed by coord. g18_ had started its chunks.sh
+        twice (21:15:52 + 21:16:12, hence 2 slots); it killed its OWN duplicate runner (bash 103245) and its OWN build under
+        it (gtp_lowprio python 34956 -> its worktree build.ps1, already gone), then released its own slot4. Nothing of
+        another agent's or ATN's was touched. Not stopped; reported to ATN.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
