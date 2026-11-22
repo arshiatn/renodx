@@ -490,6 +490,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: land g12_'s land_list.md after `sha256sum -c base_hashes.txt` (merge by h ... | ?
 - render_mt (g12_): twattila/test_hooks.hpp: stable-sort RENODX_TW_SET / SET_FILE ... | ?
 - coord: Opus xHigh review of g12_'s staged diff (tools, review per group). | ?
+- gtw_ (a0b03d68655ebfcaf) + gpr_ (aa304b6e977350cc3) re-check round 22 on gtp_sta ... | ?
+- gtp_ golive round 22 (bak29, swap gate_hook.py + run_tests.py, shas, mode.txt sh ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11443,6 +11445,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         now detects + marks NOT ALONE) (g12_, recommend yes): turn off Always On Top for the Claude window before PresentMon runs (an on-top
         window makes every capture NOT ALONE; runners never touch other windows).
         - [ ] coord: Opus xHigh review of g12_'s staged diff (tools, review per group).
+        gtp_ ROUND 22 20:1x (plan_1117/gtp_round22_handback.md): all 7 items (gtw-R21-1..6 + gpr-R21-1) fixed + tested in
+        the mirror, NOT live (live = bak28 aa2306475bdb, mode shadow, no bak29). Staged: testbin\scratch\gtp_\gtp_stage22\
+        gate_hook.py sha256 eaf62869a886 + tests/run_tests.py 0b9d3ee66e7a. Suite 1328 / 1330: the 2 F24 timing tests fail
+        under load, and fail worse on a bak28-equal mirror at the same time (load, not the new code; direct CPU checks equal).
+        Diffs: corpus refused 249 -> 225, window 1414 -> 1256 (lost = reads / copies / scratch per the items; +28 newly
+        refused writes through variables the old hook missed; key changes 0). CLASSIFIER BLOCK: gtp_ found none in its
+        round 22 transcript (only 3 older subagent-hook rejects of update_plan); nothing partial; it may have been another
+        agent's.
+        - [ ] gtw_ (a0b03d68655ebfcaf) + gpr_ (aa304b6e977350cc3) re-check round 22 on gtp_stage22 (read only; gtw_ judges
+        the nested $d WriteAllText into testbin\heapfix_hf) when slots free.
+        - [ ] gtp_ golive round 22 (bak29, swap gate_hook.py + run_tests.py, shas, mode.txt shadow) only after both re-checks
+        GO and a green mirror suite on a QUIET machine (no builds; e.g. the T6 quiet window before the end batch).
+        - [x] gtp_ report of the classifier-blocked action -> none found in its round 22 transcript (see above).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
