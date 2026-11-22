@@ -51,6 +51,9 @@
 #include "./fg_proxy_d3d12.hpp"
 #include "./rr_d3d12.hpp"
 #include "./rt_d3d12.hpp"
+#if defined(RENODX_RECORDER)
+#include "./rt_serve.h"
+#endif
 #include "./upscale_d3d12.hpp"
 
 using Microsoft::WRL::ComPtr;
@@ -204,7 +207,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // the helper's own log held shut until then (its open below fails instead of emptying it: the player logs into its own).
   const std::vector<std::wstring> play_arguments(arguments, arguments + argument_count);
   const bool play = play_arguments.size() >= 4 && play_arguments[2] == L"play";
-  const HANDLE kept_log = play ? CreateFileW(log_path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr) : INVALID_HANDLE_VALUE;
+  // The resident: "<any> serve <recording>\frame_<N> <control folder> [--nsight]" (rt_serve.h), its log resident.log there.
+  const bool serve = play_arguments.size() >= 5 && play_arguments[2] == L"serve";
+  const HANDLE kept_log = (play || serve) ? CreateFileW(log_path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr) : INVALID_HANDLE_VALUE;
 #endif
   LocalFree(arguments);
   // The last helper's log kept (a second helper in the same run, a game started again after a crash): its last lines and
@@ -274,6 +279,24 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     if (const std::string reports = player->TakeReports(); !reports.empty()) ReShadeLogMessage(nullptr, 0, reports.c_str());
     LogWithTime(std::format("[TW player] {}: {}", played ? "Played" : "FAILED", report).c_str());
     return played ? 0 : 1;
+  }
+  if (serve) {
+    if (log_file != nullptr) fclose(log_file);
+    if (kept_log != INVALID_HANDLE_VALUE) CloseHandle(kept_log);
+    _wfopen_s(&log_file, (std::filesystem::path(play_arguments[4]) / L"resident.log").c_str(), L"w");
+    twattila::dlaa_helper::serve::Resident resident({
+        .recording = play_arguments[3],
+        .control = play_arguments[4],
+        .helper_folder = folder,
+        .nsight = play_arguments.size() >= 6 && play_arguments[5] == L"--nsight",
+        .log = [](const std::string& line) { LogWithTime(line.c_str()); },
+        .frame_boundary =
+            [](ID3D12CommandQueue* queue) {
+              NGFX_FrameBoundary_D3D12_Params boundary = {.version = NGFX_FrameBoundary_D3D12_Params_VER, .commandQueue = queue};
+              NGFX_FrameBoundary_D3D12(&boundary);
+            },
+    });
+    return resident.Serve();
   }
 #endif
   // RENODX_TW_REPLAYABLE (Nsight Graphics captures of the 4K harness, tools/tw/nsight): frames its replayer can make again.
