@@ -7391,11 +7391,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         MERGE-READY. Missing key / empty value box (above) still ATN's. Outputs left in scratchpad\ebr_r20_* +
         ebr_r19_mut \ ebr_r19_probe; ebo\tests\out folders renamed aside, never deleted. t4i_ r21 (segments.json for
         the B1.6 keys) waits for b13r_'s verdict so the key names are final.
-        Agents (6): b13r_ (c3i_ B1.6 review), gtp_ (K1-K3 + next round), grs_ (S2r N1 + nits), gtl_ (S3r S1 Should +
-        nits + scene.builds), gpr_ (gtb_ x1-x4 + slow 0 re-check). Coordinator: H0 real run (bhe3fx2sg, ~72 min).
-        Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_, h0i_, gpp_, gtb_ (waits gpr_), ebr_, t4i_
-        (r21 after b13r_), gtq_, gbc_, gti_, gtv_ (waits grs_ / gtl_; held lab tests until after H0), gtk_, gtw_
-        (waits gtp_).
+        H0 REAL RUN STOPPED 05:16:20 (exit 3; runs\20261122_045737\summary.txt): "a TW game or another GPU job started
+        before run1 pre_a nrd_sun_removal: renodx-tw-dlaa64 78924 " - EMPTY PATH (the 04:59 start line showed gtl_'s
+        fake WITH a path). Run 1 got ~73 of 206 modes per side (last nrd_sun_no_dxr12 post_b 05:16:19), later runs
+        skipped -> 2 PASS / 13 FAIL = incomplete, NOT a result; lock released (exit 0), no device removal. Cause = TOOL
+        BUG: Get-Busy (h0_gpu_runs.ps1:184) counts a helper-named process as foreign when $_.Path is null; a helper that
+        is exiting (very likely H0's own post_b helper) has no readable path. No agent command near 05:16 started a
+        helper (transcripts checked: gtp_ gate tests, b13r_ engine_code mutants, grs_ edits; grs_'s build began
+        05:17:09). nsight\ns_busy.ps1:18 has the same pattern ($Exclude -and $_.Path -like) -> same fault class.
+        -> h0i_ F2 STARTED (fix-now rule): a helper-named match with an unreadable path gets a settle re-check (gone
+        within ~10 s = not busy; still there = busy, named "path unreadable"), offline case for it; then upr_
+        re-check, then the H0 real run AGAIN (~72 min). gti_ told about ns_busy.ps1:18 (same fix, its owner).
+        gpr_ gtb_ x1-x4 RE-CHECK = OK 05:2x (designs/gpr_gtb_x1x4_handback.md; gpr_review.md "## gtb_ x1-x4 re-check"):
+        33 OK, selftest 3 / 3; x1 6 FAULT lines once each; x2 no exclude after a kill; busy 0 shown; x3 11 / 12. y1 the
+        300-char cut can drop fault names when probes are long -> cut the probe part to FACTS_MAX - len(tail) - 2; y2
+        `bash -o pipefail -c 'a.sh; b.sh --deadline-min 50'` reads the whole argv (option value breaks the loop) = the
+        w5 bug again -> skip the word after -o / +o / -O / +O; docstring: pwsh 7 bare first word = -File;
+        --deadline-s 0: don't refuse (child's own arg), add a row note "declared deadline 0 ignored". -> gtb_ STARTED.
+        Agents (7): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtp_ (K1-K3 + next round), grs_ (S2r N1 + nits),
+        gtl_ (S3r S1 Should + nits + scene.builds), gtb_ (y1 / y2), gti_ (ns_busy.ps1:18). Idle: bd1r_, lga_,
+        lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, gpr_ (waits gtb_), ebr_, t4i_ (r21 after
+        b13r_), gtq_, gbc_, gtv_ (waits grs_ / gtl_), gtk_, gtw_ (waits gtp_). GPU: free (H0 stopped); the
+        harness-name hold stays until H0's re-run ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
