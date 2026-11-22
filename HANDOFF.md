@@ -503,9 +503,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtc_ (runner, Low): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x). | ?
 - gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ... | ?
 - gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land- ... | ?
-- h0i_: M6_OUTPUTS_LEFT_OUT + M6_KNOWN in h0_rng_check.py + selftest + closing che ... | ?
 - grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal ... | ?
 - fcr_: re-check grs_ aa42b6374 + gti_ T1-T4 (dead_outputs.py) as one piece -> MER ... | ?
+- upr_: quick diff check of h0i_'s M6_OUTPUTS_LEFT_OUT / M6_KNOWN vs its spec (coo ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10610,7 +10610,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         OPEN; NUMBER line names variants); whole-mode fast_leaves / micromaps_leaf_stress stay; M 1469 -> 1463; selftest
         (left-out pair differs PASS, known variant PASS, third state FAIL); closing check h0_rng_check.py allmodes on
         all_20261122_151249\run1 -> RESULT allmodes-m6 PASS all 1463 + allmodes-repeat PASS.
-        - [ ] h0i_: M6_OUTPUTS_LEFT_OUT + M6_KNOWN in h0_rng_check.py + selftest + closing check on all_20261122_151249
+        - [x] h0i_ (DONE 16:09, upr_ diff check): M6_OUTPUTS_LEFT_OUT + M6_KNOWN in h0_rng_check.py + selftest + closing check on all_20261122_151249
         (coord 16:06).
         - [ ] grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal device-removal recovery = 2
         paths -> 2 NRD states; find what carries across the removal (NRD history start / frame or sample index), make it
@@ -10636,9 +10636,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         nsight + land list on top, refuses on changed originals / hash mismatch; refuses while gpu_job.lock). Waits for
         "S3c done". + job_schema.json.proposed "at most one loop" text -> "1 to 64, over loops" (coord asks).
         - [ ] fcr_: re-check grs_ aa42b6374 + gti_ T1-T4 (dead_outputs.py) as one piece -> MERGE-READY (coord 16:07).
-        Agents (4): gtp_ (gate round 20), h0i_ (M6 exclusions + closing check), fcr_ (dead-output re-check), gtc_ (S3c part
-        1 runner); gtl_ waits for S3c done; gtv_ / gti_ / upr_ / grs_ idle; GPU: S3c PART 1 RUNNING (15:52, E 45-60 min);
-        one GPU job at a time; CPU work below normal, no builds at normal priority, no lab suites during S3c
+        gtl_ PROPOSAL TEXT 16:08 (plan_1117/gtl_proposal_text_handback.md): staged job_schema.json.proposed 3 dump_frames
+        descriptions -> "resident v1.1 dump frames: 1 to 64 over loops, a frame of loop j named its recorded frame + span x
+        j" (top-level, seed_runs.dump_frames, iq.dump_frames); parses; live job_schema.json untouched; land list 16:08
+        (job_schema.json.proposed 92258203...). Waits for "S3c done".
+        h0i_ M6 KNOWN 16:09 (plan_1117/h0i_m6_known_handback.md; backup h0\backups\20261122_1607_m6known): h0_rng_check.py
+        M6_OUTPUTS_LEFT_OUT (6 pairs, reported like NO rows) + M6_KNOWN (2 nrd_all_removal hashes: equal when baseline or
+        known; a != b both known = reported not OPEN; NUMBER "M6_KNOWN variants seen"; third state m6 FAIL + repeat
+        OPEN); fast_leaves / micromaps_leaf_stress whole-mode stay; M 1469 -> 1463; only AllModes uses the new constants
+        (H0 Dumps / run1-repeat / run8 keep whole-mode M6_LEFT_OUT). Selftest 0 wrong (selftest_m6known.txt). CLOSING CHECK
+        on testbin\scratch\h0i_\m6known_check (JUNCTIONS a / b -> run1\a / \b; never recursive delete): checks PASS, dumps
+        PASS 0 / 1509, m6 PASS 1463 / 1463, repeat PASS; known variants seen 2 (nrd_all_removal occlusion + visibility).
+        => COMBINED TREE (gpu_s2 + ff_s12 + grs_xess_guard) ALL_MODES = PASS.
+        - [ ] upr_: quick diff check of h0i_'s M6_OUTPUTS_LEFT_OUT / M6_KNOWN vs its spec (coord 16:09).
+        Agents (4): gtp_ (gate round 20), upr_ (m6 diff check), fcr_ (dead-output re-check), gtc_ (S3c part 1 runner); gtl_
+        waits for S3c done; gtv_ / gti_ / grs_ / h0i_ idle; GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job at a
+        time; CPU work below normal, no builds at normal priority, no lab suites during S3c
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
