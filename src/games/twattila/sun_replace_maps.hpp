@@ -5,17 +5,19 @@
 
 #pragma once
 
-// The rays replace the per-frame shadow maps' sun shadow (always, one method: Pharaoh's, Troy's and Warhammer II's
-// directionallight.hlsl, Rome II's): the sun draws reading the per-frame atlas through their atlas sampler (its only reads
+// The rays replace the per-frame shadow maps' sun shadow (one method: Pharaoh's, Troy's and Warhammer II's
+// directionallight.hlsl always, Rome II's by its row): the sun draws reading the per-frame atlas through their atlas sampler (its only reads
 // of that sampler) read it as lit where the rays' shadow is bound at t49, so their patched shadow (screen_space_shadows.hpp
 // Patch, x the rays' visibility) is the rays' shadow alone. Compared by the sampler (sample_c / gather4_c): an ALWAYS
 // sampler there. Compared by hand (Rome II's Shader Model 4.1 / 3.0 builds, gather4 / sample then `lt depth, map`): an
 // empty map (FLT_MAX in every channel) at the atlas's view through a point sampler. Taken as the light itself (Rome II's
 // hardware_pcf builds): a map of 1 there. The kept baked map stays the game's unless the game names its sampler slot
 // (baked_sampler_slot: the same ALWAYS sampler there, read lit too; Troy's and Pharaoh's sBakedShadowBuffer, ours replaces
-// the game's), and so do the atlas's other readers. The game's samplers (and view) are bound again after the draw
-// (finalize: the Light Bounce draws the sun draw itself and bypasses). Install after the screen-space shadows' sun draw hooks (they bind t49), before the Light Bounce's. WARP on
-// the game's bytes: tools\tw\pharaoh\sun_test, tools\tw\troy\sun_test and tools\tw\rome2\sun_test (P).
+// the game's): a slot apart from the atlas's whose map is compared by the sampler (sample_c / gather4_c; a map compared by
+// hand would need its view swapped). The atlas's other readers stay the game's. The game's samplers (and view) are bound
+// again after the draw (finalize: the Light Bounce draws the sun draw itself and bypasses). Install after the screen-space
+// shadows' sun draw hooks (they bind t49), before the Light Bounce's. WARP on the game's bytes: tools\tw\pharaoh\sun_test,
+// tools\tw\troy\sun_test and tools\tw\rome2\sun_test (P).
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -59,7 +61,7 @@ namespace internal {
 
 struct AtlasLit {
   std::shared_mutex mutex;
-  ID3D11Device* device = nullptr;  // the objects' (compared only)
+  ID3D11Device* device = nullptr;  // the objects' (compared only); also a device they failed on (`always` null)
   Microsoft::WRL::ComPtr<ID3D11SamplerState> always;
   Microsoft::WRL::ComPtr<ID3D11SamplerState> point;            // DEPTH / LIGHT: no border can reach the 1x1 maps
   Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> empty_map;  // DEPTH's
@@ -126,10 +128,10 @@ constexpr auto OnSunReplaceMaps = []<typename T, typename Context>(Context& comm
       state.point.Reset();
       state.empty_map.Reset();
       state.lit_map.Reset();
-      return {};
     }
     state.device = device.Get();
   }
+  if (!state.always) return {};
   const auto& shader = command.template GetCallbackData<T>();
   native->PSGetSamplers(shader.sampler_slot, 1, state.game_sampler.ReleaseAndGetAddressOf());
   if (shader.read == AtlasRead::COMPARED) {
@@ -198,6 +200,11 @@ inline void Install(std::span<const AtlasSunShader> atlas_sun_shaders, const flo
 // `baked_sampler_slot` where given (UINT_MAX: the game's baked map kept).
 inline void Install(std::span<const uint32_t> atlas_sun_shaders, const float* replace_row, UINT sampler_slot = 2,
                     UINT baked_sampler_slot = UINT_MAX) {
+  // At the atlas's own slot the baked sampler's save would take ours and leave it bound after the draw.
+  if (baked_sampler_slot == sampler_slot) {
+    renodx::utils::log::w("[Total War] Rays Replace Shadow Maps: the baked map's sampler slot is the atlas's; the baked map stays the game's.");
+    baked_sampler_slot = UINT_MAX;
+  }
   internal::compared_shaders.clear();
   for (const uint32_t shader_hash : atlas_sun_shaders) {
     internal::compared_shaders.push_back({.hash = shader_hash, .sampler_slot = sampler_slot, .baked_sampler_slot = baked_sampler_slot});
