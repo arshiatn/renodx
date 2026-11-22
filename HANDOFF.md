@@ -9235,9 +9235,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         table = patch v2 (RR one if / else if, per-set line one site at the loop end; FG time = whole
         open_generation; per-set time from last_request; S3 delays any release due inside a request, ms normally).
         Current patch grs_ff_s12_steps12_v2.patch. -> ffr_ FINAL v5 CHECK (design loop closes on its OK).
+        fcr_ V2 RE-CHECK = OK WITH 1 SMALL FIX 09:5x (plan_1117/designs/fcr_v2_recheck_handback.md;
+        fcr_ff_s12_review.md "## v2 re-check"; copies scratchpad\fcr_\v2): N5 control flow same as v1 (the old
+        `if (answered) continue;` was the request loop's only continue and skipped exactly the 3 lines now in `if
+        (!answered)`; `answered` set only after the queued path's SetEvent (1222-1223), every other path reaches
+        the one SetEvent at 1340 = one answer per request; order unchanged); N1-N4 no behaviour change. S1: grs_'s
+        extra inline of `took` in logged_release (main.cpp:882-883) puts ms_since(started) and video_memory_mb() in
+        one call = unspecified order (clang-cl right to left -> the release ms also counts the 2nd memory query;
+        microseconds, but release_check.ps1 parses these numbers and CXX_STYLE names a value when order matters)
+        -> put back `const auto took = ms_since(started);`. Applies clean, CRLF, rt_d3d12.hpp = v1, syntax.ps1
+        exit 0 with NRD on. -> grs_ PATCH v3 (S1 only); fcr_ checks.
         Agents (10): upr_ (h0i_ M1 + S1-S5 re-check), gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gtb_
         load refresh re-check), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), ffr_ (grs_ v5 check),
-        fcr_ (patch v2 re-check), gtl_ (fixture +60 s + gate_s), gti_ (lows part 2: r1b + pair cases)
+        grs_ (patch v3: S1 `took`), gtl_ (fixture +60 s + gate_s), gti_ (lows part 2: r1b + pair cases)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
