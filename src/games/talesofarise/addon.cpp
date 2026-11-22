@@ -772,9 +772,9 @@ void ConfigureAddon() {
   talesofarise::ue_light_bounce::KeepSavedGiOff(2);
   // Bend and GT-VBGI on by default (ATN 2026-11-16): their rows saved at the old default (off) cleared once (SettingsRevision 3).
   twattila::graphics_page::ClearSavedRows(3, {"ScreenSpaceShadows", "ScreenSpaceShadowsLength", "light_bounce_strength"});
-  // Auto Thickness and Game's GI Under the Open Sky on by default (ATN 2026-11-22): their rows saved at the old default
-  // (off) cleared once (SettingsRevision 4).
-  twattila::graphics_page::ClearSavedRows(4, {"ssao_auto_thickness", "light_bounce_auto_thickness", "GlobalIlluminationGameOpenSky"});
+  // Game's GI Under the Open Sky on by default (ATN 2026-11-22): its row saved at the old default (off) cleared once
+  // (SettingsRevision 4). Auto Thickness's rows: graphics_page::Apply's GraphicsPageRevision clear, every game.
+  twattila::graphics_page::ClearSavedRows(4, {"GlobalIlluminationGameOpenSky"});
   BuildRuntimeData();
   // Without the helper (the HDR-only snapshot), after Settings Mode.
   settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote());

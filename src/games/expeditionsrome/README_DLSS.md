@@ -16,7 +16,7 @@ Upscaling must be on below 100%. The Temporal Upscaling-off path is not enabled.
 - New: a WARP test (`tests/sun_light_texel.cpp`) runs the game's sun light shader (0xC38C91CD) and proves the sun light
   the rays get (colour x output scale / pi) gives the game's diffuse sun to 1e-4.
 - Changed: **Auto Thickness** (GT-VBAO and GT-VBGI) is on by default and no longer Experimental; saved value cleared once
-  (`[renodx] SettingsRevision 4`).
+  (the graphics page's `GraphicsPageRevision`, every game).
 - Fixed: the colour-grading shaders (lutbuilder + lut00-04) used -3.141593 where the game has -pi to the bit: now
   -3.14159274, the game's constant.
 - Changed: the fog-shadows row stays hidden (`has_fog_shadows = false`).

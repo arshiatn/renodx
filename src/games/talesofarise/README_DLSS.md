@@ -14,9 +14,9 @@ ReShade addon (DX11, x64), separate from the HDR addon (`talesofarise`):
 ### Open items G09 (2026-11-22; built only, not run in game)
 
 - Changed: **Auto Thickness** (GT-VBAO and GT-VBGI) is on by default and no longer Experimental (ATN 11-22: bug fixes
-  and same-look rows on); players' saved value is cleared once (`[renodx] SettingsRevision 4`).
+  and same-look rows on); players' saved value is cleared once (the graphics page's `GraphicsPageRevision`, every game).
 - Changed: **Game's GI Under the Open Sky** is on by default with GT-VBGI and no longer Experimental (ATN 11-22, option
-  2); saved value cleared once with the same revision.
+  2); saved value cleared once (`[renodx] SettingsRevision 4`).
 - Fixed: the colour-grading shaders (lutbuilder + lut00-04) used -3.141593 where the game has -pi to the bit
   (0xc0490fdb): the decompile printed it one ulp off. Now -3.14159274, the game's constant.
 - Changed: the fog-shadows row stays hidden (no fog the rays shade here; `has_fog_shadows = false`).
