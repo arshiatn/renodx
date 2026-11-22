@@ -138,6 +138,7 @@ struct ShaderInjectData {
   float auto_exposure_highlight_protection;
   float auto_exposure_highlight_headroom_stops;
   float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
+  float reflection_game_ao;  // ssr00: the game's AO's share beside t46 (Path-Traced Reflection Occlusion: 1 - its strength; 0: t46 whole)
 };
 
 #define SI shader_injection

@@ -356,6 +356,7 @@ twattila::rt_scene::Sliders rt_sliders;
 // copy, the first of them, for the frame.
 float rays_skip_reflection_passes_row = 1.f;
 bool reflection_passes_skipped = false;
+float path_reflection_occlusion = 1.f;  // Path-Traced Reflection Occlusion (ssr00's reflection_game_ao: 1 - this)
 // The rays' AO in place of the game's SSAO and GT-VBAO, never on top of them (ATN 2026-11-16; Warhammer III's way, no row: a
 // saved RayTracedAOAlone is ignored). The SSAO's one reader is the sun draws' t_ssao red (the census; rt_ambient_combine
 // multiplies the rays' in): while the rays feed it (this frame's trace or the last: these passes come before it), its four
@@ -1864,6 +1865,12 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   twattila::smoke_map::Update(smoke_map_settings);
   rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
+  // Path-Traced Reflection Occlusion: the specular occlusion traced for the reflections under Path-Traced Ambient, in place
+  // of the game's AO (its own row keeps it whole); not with the rays' reflections (ssr00 keeps the game's AO for their misses).
+  const bool reflections_occluded = rt_settings.path_ambient && !rt_settings.specular_occlusion && !rt_settings.reflections
+                                    && path_reflection_occlusion > 0.f;
+  rt_settings.specular_occlusion = rt_settings.specular_occlusion || reflections_occluded;
+  shader_injection.reflection_game_ao = reflections_occluded ? (1.f - path_reflection_occlusion) : 0.f;
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = !IsHdrOutput();
@@ -2303,6 +2310,24 @@ void ConfigureAddon() {
       .section = twattila::feature_settings::AA_SECTION,
       .tooltip = "Leaves out the game's screen-space reflection passes the rays' reflections replace: the same picture,\n"
                  "a little faster.",
+  });
+  // Path-Traced Reflection Occlusion (Attila's row, on: ours in place of the game's AO): under Path-Traced Ambient ssr00's
+  // reflections take the traced specular occlusion at this strength in place of the game's screen-space AO (0: today's,
+  // nothing traced for it). The page shows it under Path-Traced Ambient (twattila/graphics_page.hpp).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "PathTracedReflectionOcclusion",
+      .binding = &path_reflection_occlusion,
+      .default_value = 1.f,
+      .label = "Path-Traced Reflection Occlusion",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Reflections darken where something blocks the sky: no bright sky in dark corners.\n"
+                 "0: off.",
+      .max = 1.f,
+      .format = "%.2f",
+      .is_visible = [] {
+        return rt_sliders.light_bounce == 2.f && rt_sliders.path_ambient != 0.f && rt_sliders.specular_occlusion == 0.f
+               && rt_sliders.reflections == 0.f && twattila::feature_settings::Upscaling(aa_sliders);
+      },
   });
 
   // Appended Settings (HDR10)

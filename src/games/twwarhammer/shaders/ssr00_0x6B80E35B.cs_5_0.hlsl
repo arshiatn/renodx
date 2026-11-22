@@ -56,6 +56,7 @@ RWTexture2D<float3> t_out_radiance : register(u0);
 Texture2D<float4> t_rt_sun_ao : register(t45);
 SamplerState s_rt_sun_ao_s : register(s5);
 
+#include "../shared.h"
 
 // 3Dmigoto declarations
 #define cmp -
@@ -213,8 +214,14 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     const float rt_sun_ao = rt_one_occlusion ? t_rt_sun_ao.SampleLevel(s_rt_sun_ao_s, rt_sun_uv, 0).x : 1.f;
     const float3 rt_environment = r5.xyz;
     const float3 rt_sun_environment = rt_environment * (1.f + r2.y * (rt_sun_ao - 1.f));
-    if (!rt_reflected) r5.xyz = RtOccludedEnvironment(rt_texel, r5.xyz);
     r0.w = (int)r1.w & 64;
+    // Path-Traced Reflection Occlusion (addon.cpp): under Path-Traced Ambient t46 is traced for these reflections alone and
+    // taken at the row's strength, the game's AO (the sun draws' share; water none) keeping the rest (SI 0: t46 alone, as
+    // Ray-Traced Specular Occlusion's own). Precise: a share of 0 keeps t46's bits.
+    const float3 rt_game_occluded = (r0.w == 0) ? rt_sun_environment : rt_environment;
+    const precise float3 rt_traced_occluded = rt_game_occluded * SI.reflection_game_ao
+                                              + RtOccludedEnvironment(rt_texel, rt_environment) * (1.f - SI.reflection_game_ao);
+    if (!rt_reflected) r5.xyz = rt_traced_occluded;
     if (rt_reflected && rt_one_occlusion && r0.w == 0) r5.xyz = rt_sun_environment;
     r2.xw = r0.ww ? float2(1,0) : float2(0,1);
     r6.xyz = r2.xxx * r5.xyz;
