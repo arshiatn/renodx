@@ -191,7 +191,7 @@ without gamma or Brightness: mid gray about 26 nits. Paper White about 300 match
 | `dofblur00_0x6449D186`, `dofblur01_0x32876DB2`, `dofblur02_0x6531CCC3` | summedareatable.hlsl cs_blur_hashed / cs_masked_blur_hashed / cs_blur_hashed_unorm (render scale: radius x scale, taps inside the rendered part). `dofblur.hlsli`. |
 | `ssrcopy00_0x962CEB71` | environment_specular_light ps40_copy (render scale: read at the pixel). |
 | `highlight00_0x5EAD0FF6` | gbuffer_highlight ps_main (render scale: read at the pixel). |
-| `sss00_0x34ECD06E`, `sss01_0x1B529672` | screen_space_shadows cs with / without the cascades (sun shadow mask: Bend screen-space shadows; render scale). `sss.hlsli`, `bend_sss_gpu.hlsli`. |
+| `sss00_0x34ECD06E`, `sss01_0x1B529672` | screen_space_shadows cs with / without the cascades (sun shadow mask: Bend screen-space shadows; render scale). `sss.hlsli`, `twattila/bend_sss_gpu.hlsli`. |
 | `sss02_0x78E88E1D` | screen_space_shadows cs_passthrough (screen-space shadows off: cascades only), the game's half-pixel double offset fixed. `sss.hlsli`. |
 | `ssrhiz00_0x97624E56`, `ssrray00_0x5C0AF498`, `ssrfilter00_0x13C66077`, `ssrfilter01_0x073A6CF3`, `ssrresolve00_0xF87ECE85` | the reflections' HiZ copy, raycast, hit blur x / y, resolve: SSR Resolution. `ssr.hlsli`. |
 | `ssao00_0xA00FE3A3` | ssao_3k cs50_new_sweep (render scale: view positions over the viewport, far depth outside). |
@@ -706,13 +706,13 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
 ## Zip v59 (2026-10-26): licence files
 
 - APACHE_LICENSE-2.0.txt in the zip: the screen-space shadows are Bend Studio's (Apache 2.0, as shipped in the game's
-  shaders.pack), changed by RenoDX (bend_sss_gpu.hlsli: the render scale); RENODX_LICENSE.txt as before.
+  shaders.pack), changed by RenoDX (twattila/bend_sss_gpu.hlsli: the render scale); RENODX_LICENSE.txt as before.
 
 ## v60 (2026-10-26): contact-hardening sun shadows (PCSS), untested in game
 
 - ATN: a licence-free PCSS. Percentage-closer soft shadows are R. Fernando's technique (NVIDIA, 2005, a public paper);
-  `shaders/pcss.hlsli` is written from the paper (RenoDX, MIT), no code from elsewhere. MIT / Apache code that would also
-  have been usable: AMD GPUOpen ShadowFX (MIT, D3D11 HLSL, contact-hardening kernels), Bevy (MIT / Apache 2.0, WGSL),
+  `twattila/pcss.hlsli` (Shogun 2's `shaders/` until 2026-11-22) is written from the paper (RenoDX, MIT), no code
+  from elsewhere. MIT / Apache code that would also have been usable: AMD GPUOpen ShadowFX (MIT, D3D11 HLSL, contact-hardening kernels), Bevy (MIT / Apache 2.0, WGSL),
   Filament (Apache 2.0).
 - In the sun's shadow mask pass (sss.hlsli SampleShadowSplit, every cascade): in place of the game's 3x3 filter, the
   blockers' average depth within 24 texels (texels the game's comparison sampler finds in shadow: either depth
@@ -721,8 +721,8 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   frame (shadow_noise_frame), settled by DLSS / TAA.
 - DLSS addon: Shadows > "Sun shadow softness (PCSS, experimental)", 0-5 degrees (the real sun 0.5), 0 the game's filter
   (default; in no preset). ReShade.ini [Shogun 2 DLSS] SunShadowSoftness.
-- GPU test (tools\shogun2\pcss_test.cpp): fully shadowed and fully lit away from a caster's edge; penumbra 3 texels
-  near the caster, 15 far from it; the same with reversed depth.
+- GPU test (tools\shogun2\pcss_test.cpp, run on the src\games\twattila folder): fully shadowed and fully lit away
+  from a caster's edge; penumbra 3 texels near the caster, 15 far from it; the same with reversed depth.
 
 ## v61: Remastered CE
 
