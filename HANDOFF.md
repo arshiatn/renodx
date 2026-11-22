@@ -8155,10 +8155,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         + optionals go to c3i_ on rmt_b1rt (b13r_ reviews with the real-routine tests).
         - [ ] c3i_ (on rmt_b1rt, with the real-routine tests): b13r_'s N4 braces at effect_update.hpp:907 / :954
             + optionals (26f bound < 1024, one VirtualQuery(low), unmapping jthread + stop_callback).
+        gtb_ GRS1 DONE 07:3x (plan_1117/gtb_grs1_handback.md; backup scratchpad\gtb_bak18; budget.py live via
+        os.replace): a NUL in gate_rows' decoded text raises UnicodeError('NUL in text') -> the unreadable path
+        (shadow + FAULT `<file> unreadable (UnicodeError: NUL in text): read as shadow`); 2 reader-only cases
+        (UTF-16LE no BOM gates.tsv / mode.txt); test_budget 3 x 35, selftest 3 x 3. End to end still killed (124)
+        until gtp_'s hook half lands (probe 2). -> gpr_ RE-CHECK STARTED.
+        MERGE rmt_b16n -> atn-mods d03d098b5 07:3x (name_check: 221 new identifiers, 8 generic Linux-token words);
+        gated builds x86 3 games + amd64 twattila running (coordinator, -Owner coord; first try had a quoting
+        error and built nothing).
         Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (held lab suites + race probe), gtp_ (O2 order
-        + corrupt files + nits + gated_build proposal), gtb_ (grs1 NUL check), ebr_ (t4i_ r23 re-check), b13r_
-        (c3i_ B1.6 follow-ups re-check), c3i_ (B1 real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_,
-        lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gpr_ (re-checks gtb_), gti_ (r1a / r1b nits,
+        + corrupt files + nits + gated_build proposal), gpr_ (gtb_ grs1 re-check), ebr_ (t4i_ r23 re-check), c3i_
+        (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
+        c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
         after gtv_'s lab run; gtv_ re-checks after)
         (go after gtl_). gtv_'s held lab suites + race probe AFTER gtl_'s 4 suites
