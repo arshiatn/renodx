@@ -485,6 +485,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (antivirus): scratchpad\t4i_etl_tests.py (t4i_'s ETL-move test, written 10:5 ... | ?
 - grs_: helper builds without the optional XeSS / FSR / NVAPI SDKs (fg_proxy_d3d12 ... | ?
 - worktree cleanup (ATN): ff_s12\build\downloads is now a JUNCTION (delete the lin ... | ?
+- gtl_ (tooling): the lab fixture's 1.5 s hang timeout flakes under build load ("r ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9771,8 +9772,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         lab_gtl_stage, restored after). Live suites: jobs 32 / 32 (149 s at 100 % CPU beside c3i_'s builds), unit 34,
         ps1 5, keeper 24. Changed: lab.py (comment), tests\test_lab_jobs.py. lab_gtl_stage left for ATN. -> gtv_
         RE-CHECKS.
+        gtv_ GATE_S RE-CHECK = LOW CLOSED 11:19 (plan_1117/gtv_gate_s_recheck_handback.md; gtv_iq_review.md "## gtl_ gate_s
+        low re-check"; probe scratchpad\gtv\gates\gtv_gates_probe.py, in-process, no file edited): one gate site off at a
+        time -> only its own test fails (A/B off: Calibrated 0 != 2; --quality off: test_iq_kinds 0 != 1); gate_rows
+        exact key + job (synthetic file: seed row, cal2, gate_s:x, extra column, GTL ignored; order-proof); fresh model
+        per world; only lab.py comment + test_lab_jobs.py changed. FLAKE (old): one baseline Calibrated run stopped
+        "resident heartbeat stopped 2 s ago" beside c3i_'s builds (the fixture's 1.5 s hang timeout under load); the
+        next 3 passed. -> gtl_ (fix tooling now): fixture hang timeout tolerant under load.
+        - [ ] gtl_ (tooling): the lab fixture's 1.5 s hang timeout flakes under build load ("resident heartbeat stopped
+            2 s ago") - make the fixture's timeout load-tolerant without weakening the real keeper's (gtv_ 11:19).
         Agents (6): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check), h0i_ (H0 copy fix), c3i_ (b1log
-        verify runs, detached), gtv_ (gtl_ gate_s re-check), grs_ (XeSS guard); t4i_ ETL move waits for ATN
+        verify runs, detached), gtl_ (fixture hang timeout), grs_ (XeSS guard); t4i_ ETL move waits for ATN
         (antivirus); merge gates rmt_b1log + ff_s12 after c3i_'s runs (task bi2vq35fh)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
