@@ -494,7 +494,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ round 17: gtw-R16-1..10 (Should first: R16-5, R16-6, R16-1, R16-2 perl, R16 ... | ?
 - c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate le ... | ?
 - gtl_: lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap ... | ?
-- coordinator: read the last two lines of testbin\scratch\ebr_\ebr_gap_runall.txt ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10001,7 +10000,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         T13 / T14 now die in test_analyze (130 / 131 / 131); T1-T6, T8, T9, T11, T12, T15, P1-P3, P5, P6 die; T7 equivalent.
         ebr_'s run_all (still running at hand-back): parse 0, lib 495, make 97, check 166 so far (t4i_'s run: leg 166,
         analyze 132).
-        - [ ] coordinator: read the last two lines of testbin\scratch\ebr_\ebr_gap_runall.txt (leg 166, analyze 132)
+        - [x] coordinator (DONE 12:1x: leg 166/166, analyze 132/132, 0 files failed; render_mt/reports/ebr_gap_recheck_final_handback.md): read the last two lines of testbin\scratch\ebr_\ebr_gap_runall.txt (leg 166, analyze 132)
             (coord 12:13).
         Agents (2): gtp_ (round 17: gpr's R16-1 / R16-2 + gtw-R16-1..10), gtl_ (lab.py wait_ready + test fixes, edits
         only until H0 ends); H0 re-run NOW (12:09); ff_s12 + grs_xess_guard after H0
