@@ -6,6 +6,9 @@
   four passes (downsample, generate, two blurs) are left out and their target cleared open. Its readers are the sun draws
   and the building pools, which both read the rays' AO (`twattila/ao_readers.hpp`, Troy's way); under the paths the open
   AO is what Attila's white AO pass gives (the paths are the occlusion).
+- Fixed: **Dead Unit Detail's patch of Pharaoh.exe goes in the safe way**, through Detours as the add-on's other code
+  hooks: the game's threads are stopped while its 6 bytes change (before, a soldier update running there at that moment
+  could crash). The same stub and slider as before.
 - Fixed: two unit motion shaders (db1e / f8ff) add the game's exact -pi in their atan2 (the decompile's was one bit off).
 - Changed: Smooth Banner Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
 - Changed (ATN): **Shadow Casters Out of View on by default** (no longer Experimental), in RT/PT too: with ray-traced sun
