@@ -7293,10 +7293,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         (one burn per pass under the debug layer = GPU smoke), 12 note (quarter fog / bounce grid active size = full).
         Proposals for frozen lab files (alive.schema env / nsight / dred; resident_protocol.md v1.1) -> gtl_ with v1.1.
         -> gtv_ S2r RE-CHECK STARTED (offline). The rec_verify.sh GPU check (safety stop 04:08) still waits for ATN.
-        Agents (8): c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gtq_ (B2-S1 + N1-N4), gtl_
+        gtq_ B2 FIXES DONE 05:0x (plan_1117/gtq_b2_fixes_handback.md; backups scratchpad\gtq_backup_fix4): B2-S1
+        refuse_kept = colon rule (any ':' after \\?\ / \\.\ + drive -> refused) + identity rule (os.stat samestat on
+        the target's existing ancestors vs each kept folder) + the old name rule; \\?\, \\localhost\C$\, :ads,
+        capitals, \\?\UNC\, \\.\ all refused (stand-in in scratch; real tw_recordings only check_new, no write); N1
+        doc line; N2 start / stop exposures + count cross-checked (5e-5 + 1e-7); N3 Inf / NaN / 1e39 reference ->
+        skipped; N4 flip_tool CLI uses new_folder + kept_folders. iq 30 / 30 (378 s), FLIP numbers unchanged;
+        flip_numpy.py unchanged, nothing patched in NVIDIA files. Note: ppd <= ~1 gives FLIP.h's own 0/0 (smallest
+        real grid ppd 8.4). -> gbc_ B2 RE-CHECK STARTED.
+        Agents (8): c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gbc_ (gtq_ B2 re-check), gtl_
         (S3r S1 + nits), gtv_ (grs_ S2r re-check), gtb_ (x1-x4). Coordinator: H0 real run (bhe3fx2sg, ~72 min).
-        Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_, gpp_, gpr_ (waits gtb_), ebr_ (waits t4i_), gbc_ (waits
-        gtq_), gti_, grs_ (waits gtv_), gtk_, gtw_ (waits gtp_).
+        Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_, gpp_, gpr_ (waits gtb_), ebr_ (waits t4i_), gtq_ (waits
+        gbc_), gti_, grs_ (waits gtv_), gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
