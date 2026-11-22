@@ -7676,12 +7676,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         rt_serve.h, dump folders, dump_frames, played.json + Q25. Tests: 2 / 2 new unit; jobs / keeper / ps1 HELD
         (harness-named fakes) until H0 ends. -> gtl_ FIXES STARTED (edits + unit tests now; jobs / keeper / ps1
         suites after H0), then gtv_ re-checks.
-        Agents (5): gtw_ (gtp_ re-check 8), gtl_ (gtv_'s S1b + v1.1 fixes), gpr_ (gtb_ yz1 / yz2 re-check), t4i_
+        gpr_ GTB_ YZ RE-CHECK = OK 06:0x (plan_1117/designs/gpr_gtb_yz_handback.md; gpr_review.md "## gtb_ yz1 / yz2
+        re-check"): probe 31 / 31; zsh / sh / --rcfile= / --init-file / full paths read the first command (ksh93 /
+        mksh = documented whole-argv case); start as child = none, inside cmd still the first command; 10 cases
+        match; nested-watch rule hides no deadline that matters (inner watch enforces it; only loses if a price row
+        were ever on + enforce - none today; false matches go to the safe side). S1 (test only, older flake) ->
+        gtb_ now: test_selftest "a lock kind waits for its slot record, then runs" failed 1 / 3 - record at ~4.2 s +
+        2 s sleep races watch's 2 s polls (repro scratchpad\gpr_selftest_lock.py) -> hold the lock >= 2 x POLL_S
+        + 1 s (record ~1 s, sleep 5 s, --limit 8, accept wait_s 0.5-3.5); no code change. Then gpr_ short re-check.
+        Agents (5): gtw_ (gtp_ re-check 8), gtl_ (gtv_'s S1b + v1.1 fixes), gtb_ (selftest flake S1), t4i_
         (r21), c3i_ (B1.6 follow-ups). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to
-        testbin + R1), gpp_, ebr_ (re-checks t4i_), gtq_ (box after gtl_'s fixes), gbc_, gtb_ (waits gpr_), gti_
-        (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtv_ (re-checks gtl_; held lab
-        tests + race probe after H0). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
-        map_replay-named process until H0 ends.
+        testbin + R1), gpp_, ebr_ (re-checks t4i_), gtq_ (box after gtl_'s fixes), gbc_, gpr_ (re-checks gtb_
+        S1), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtv_ (re-checks gtl_;
+        held lab tests + race probe after H0). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper
+        / fg / map_replay-named process until H0 ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
