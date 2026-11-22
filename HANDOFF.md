@@ -663,7 +663,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - lg3_ / engine_code owner after the batch (er5o_ m3): engine stubs page = plain A ... | ?
 - coord at READY: checklist done -> READY message -> `shutdown /s /t 60` (one-time ... | ?
 - t4i_ after T6: ebo_check.ps1 job line from $lines (not $log); optional: the Unha ... | ?
-- ATN at READY / power-on: the manifest's game hashes (empire.retail.dll + Attila. ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12591,13 +12590,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         GAME HASHES NOT FILLED: the auto-mode classifier REFUSED t4i_'s `sha256sum "<Attila folder>/empire.retail.dll"
         "<Attila folder>/Attila.exe"` (22:50Z, [Unauthorized Access]). Not worked around; the manifest keeps 64 zeros +
         _todo; the dry runs will show it as one PROBLEM.
-        - [ ] ATN at READY / power-on: the manifest's game hashes (empire.retail.dll + Attila.exe). Choices: ATN hashes them
+        - [x] (ATN 00:1x: "You allow the same command once more", go; DONE) ATN at READY / power-on: the manifest's game hashes (empire.retail.dll + Attila.exe). Choices: ATN hashes them
         himself (Get-FileHash), OR one unchanged retry of t4i_'s command on ATN's go, OR drop the game check (ebr Q3: a Steam
         update). Then one dry run again.
         T6 SENT 00:1x to t4i_ (test_names -Ref 2eaaec733 -Waiting @(), corpus / gates line swap, the 4 -DryRun rules exactly,
         s10 checklist). Then ebr_ (a41704a31fb3d6080) Opus read of the variants. Coord: helper120 + Attila v169 + WH3 v68 at
         the tip, stamp + install (the batch puts the manifest's add-on / helper in per start, so the install does not touch
         it); one last dry run after the install.
+        ATN 00:1x (in chat): "'You allow the same command once more.', go ahead please" -> coord ran t4i_'s refused command
+        ONCE, unchanged; it went through: empire.retail.dll 8a40cbcf...353d (32237568 B, Oct 8 14:33), Attila.exe
+        51b833d5...5bf5 (656008 B); HFx + final1118 helper match. Sent to t4i_ (manifest owner): fill the game entries,
+        drop _todo, backup *.pre_hash, the 4 dry runs on the filled manifest. No new permission rule needed.
+        INSTALL BUILDS 00:1x (coord, tip c8ff8cd0e, gated + bounded): Attila x86 + WH3 amd64 exit 0 (peak 3.9 / 3.7 GB),
+        helper120 build.ps1 exit 0 (build\tw_dlaa_helper120). tw_install dry run: attila v169 + helper120, wh3 v68 +
+        helper120, NOT STAMPED yet. Picture checks (vanilla-exact + psychov35, x86 + amd64) running; then --stamp /
+        --install with fresh backups. First loop broke on my own path escaping (exit 127, nothing ran); re-run from a file.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
