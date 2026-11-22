@@ -7746,12 +7746,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         (O1). With web_allow + price on, 66 / 15,119 corpus commands refused (37 P2, 22 test scripts, 3 P1, 2 W3, 2
         N10). -> gtp_ FIXES STARTED (O1 first, then G1 / W1-W7 / P1 / P2 / I1 + nits), then gtw_ re-check 9. ATN's
         install item 12 stays waiting for gtw_'s OK.
-        Agents (6): gtp_ (gtw_ re-check 8 fixes, O1 first), gtv_ (gtl_ fixes re-check), gtb_ (selftest flake S1),
-        ebr_ (t4i_ r21 re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_,
-        upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r22 after c3i_), gtq_ (box after gtv_'s
-        re-check), gbc_, gpr_ (re-checks gtb_ S1), gti_ (after H0: R1), grs_, gtk_, gtw_ (re-check 9 after gtp_),
-        b13r_ (re-checks c3i_), gtl_ (after H0: its 4 suites). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no
-        harness / helper / fg / map_replay-named process until H0 ends.
+        gtv_ GTL_ FIXES RE-CHECK = OK-PENDING-SUITES 06:1x (plan_1117/gtv_gtl_fixes_recheck_handback.md;
+        gtv_s3r_review.md "## gtl_ fixes re-check"): unit 24 / 24 (own run 06:09); Must 1 lab.py:915, Must 2
+        per-arm sets (result.json l.1345, iq.json l.1522) match gpu_gate; A / A_2 / B rename breaks nothing (compare
+        uses dict keys, Q25 deletes the root, gate reads result.json, iq_frames reads <arm>_s<seed>); seed 0 only
+        needed in resident_for; ToolFault agreed; protocol text = rt_serve.h d336c55d3 (BelowFrameLimit(offset,
+        SEED_ROOM)); N1 FLAG only catches a replaced file / lab format bump (resident checks real build compat at
+        load) - fine. Nits -> gtl_ now: 1 until null light_anim is adopted, a kept resident that played a light
+        animation makes every later reuse ToolFault (fails closed, needs a manual stop) -> end it after its iq job
+        or skip it in reuse; 2 protocol text says "refused", lab.py says tool fault -> fix the text; 3 Must 1 unit
+        test with a stub session (no session.json edit). jobs / keeper / ps1 + gtv_'s held tests + race probe after
+        H0. gtq_ box -> SENT now (offline part).
+        Agents (7): gtp_ (gtw_ re-check 8 fixes, O1 first), gtl_ (gtv_'s 3 nits, unit only; suites after H0),
+        gtq_ (iq_input note + reference played.json, offline), gtb_ (selftest flake S1), ebr_ (t4i_ r21
+        re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_,
+        h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r22 after c3i_), gbc_, gpr_ (re-checks gtb_ S1), gti_
+        (after H0: R1), grs_, gtk_, gtw_ (re-check 9 after gtp_), b13r_ (re-checks c3i_), gtv_ (after H0: held
+        tests + race probe; then gtl_'s suites + nits). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness /
+        helper / fg / map_replay-named process until H0 ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
