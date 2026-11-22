@@ -478,6 +478,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gti_ (low, batched): count r1b's skipped checks from the block instead of a type ... | ?
 - ATN (morning report): ruse_bridge.exe / ruse_replay.exe are counted by nothing i ... | ?
 - gtl_ (low, after H0 - the fixture suite starts lab jobs): make the gate_s check ... | ?
+- x87c A/B owner (after the end batch): run tools\tw\testbin\heapfix_hf\xw\x87fix_ ... | ?
+- gtp_ (low, batched): a leading `2>&1 cmd` still splits at & into a light stateme ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9412,8 +9414,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtl_ (low, after H0 - the fixture suite starts lab jobs): make the gate_s check fail without the lab.py
             change (row count +1 or this job's row), add an A/B gate check in the Calibrated class, fix the
             "GATE_FLOOR_S may follow" comment; gtv_ re-checks (gtv_ 10:0x).
-        Agents (5): lga_ (release_check RC-1 + nits), gtw_ (round 14 re-check), gpr_ (round 14 re-check), ebr_ (t4i_
-        option (a) re-check), b13r_ (c3i_ rmt_b1log review); H0 run (background, ~11:30)
+        gpr_ ROUND 14 RE-CHECK = OK 10:0x (plan_1117/designs/gpr_round14_recheck_handback.md; gpr_review.md "## gtp_
+        round 14 re-check (price / Section 8 side)"; probes scratchpad\gpr_r14_*; box copies, pure calls; all
+        87,461 seed-window commands through bak19 + live): Section 8 (a)-(d) in. Redirect fix right (odd keys
+        fixed; build keys, `python x.py < in.txt`, heredoc stdin, `3>&1 2>$null` unchanged); still open (low,
+        old): a leading `2>&1 cmake ...` keys as 'sh 1' (that build unseen). Nothing lost / double counted (2 odd
+        seed keys gone; build seeds 388 before + after; no ring key with a redirect; none of 177 changed old keys
+        has real ring samples; watch_off 193). Priced kinds: no build row changed; 434 exe calls re-bucket
+        (redirect words no longer arguments, e.g. fxc.exe a8 -> a4); ONE row now crosses refusal (a): `exe
+        tools/tw/testbin/heapfix_hf/xw/x87fix_test.exe a1` (was a1 n 1 + a2 n 9, now n 10, p50_lb 34 s, p95 182 s)
+        -> an unwrapped run of that test exe writes a would-deny in shadow; run it under watch. Corpus 246 / 246
+        consistent (the refused kind has no call in the newest 15,119).
+        - [ ] x87c A/B owner (after the end batch): run tools\tw\testbin\heapfix_hf\xw\x87fix_test.exe under
+            lab watch (its kind now crosses refusal (a): n 10, p95 182 s) (gpr_ 10:0x).
+        - [ ] gtp_ (low, batched): a leading `2>&1 cmd` still splits at & into a light statement `1 ...` (a
+            leading `2>&1 cmake` keys as 'sh 1', build unseen) (gtp_ / gpr_ 10:0x).
+        Agents (4): lga_ (release_check RC-1 + nits), gtw_ (round 14 re-check), ebr_ (t4i_ option (a) re-check), b13r_
+        (c3i_ rmt_b1log review); H0 run (background, ~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
