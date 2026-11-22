@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
 #include <ctime>
 #include <exception>
 #include <format>
@@ -168,6 +169,7 @@ static std::array<std::atomic<uintptr_t>, 4> said_fault_places = {};
 // The lines' text: the handlers allocate nothing and keep their stacks small.
 static std::array<char, 512> fault_line = {};
 static std::array<char, 512> unhandled_line = {};
+static std::array<wchar_t, MAX_PATH> unhandled_module_path = {};  // GetModuleFileNameW: no heap (the A form takes its lock)
 static std::array<char, MAX_PATH> unhandled_module = {};
 static std::atomic_bool unhandled_logged = false;
 static std::atomic_bool unhandled_filter_set = false;
@@ -177,19 +179,28 @@ static std::atomic<uintptr_t> frame_fault_address = 0;
 static std::atomic_uint64_t frame_fault_tick = 0;
 static uint64_t frame_fault_said = 0;  // the stall line's: the tick of the fault it named
 // A stack overflow is not logged on the overflowed stack (a few KB are left, and a second overflow ends the process
-// before the game's crash reporter runs): the frame watch logs it from its own.
+// before the game's crash reporter runs): the frame watch logs it from its own, woken at once, and the overflowed
+// thread waits up to 500 ms for it (a crash reporter or WerFault suspends every thread as it starts). The count is
+// stored last.
 static std::atomic<uintptr_t> overflow_address = 0;
 static std::atomic_uint32_t overflow_thread = 0;
 static std::atomic_bool overflow_unhandled = false;
-static std::atomic_uint64_t overflow_tick = 0;
-static uint64_t overflow_said = 0;  // the frame watch's
+static std::atomic_uint32_t overflow_count = 0;
+static uint32_t overflow_said = 0;  // the frame watch's
+static HANDLE overflow_kept = nullptr;  // auto-reset events, made by Install
+static HANDLE overflow_logged = nullptr;
+static std::atomic_bool watch_running = false;
 static void(__cdecl* previous_abort_handler)(int) = SIG_DFL;
 
 static void KeepOverflow(uintptr_t address, bool unhandled) {
   overflow_address.store(address, std::memory_order_relaxed);
   overflow_thread.store(GetCurrentThreadId(), std::memory_order_relaxed);
   overflow_unhandled.store(unhandled, std::memory_order_relaxed);
-  overflow_tick.store(GetTickCount64(), std::memory_order_release);
+  overflow_count.fetch_add(1, std::memory_order_release);
+  if (!watch_running.load(std::memory_order_acquire) || overflow_kept == nullptr || overflow_logged == nullptr) return;
+  ResetEvent(overflow_logged);
+  SetEvent(overflow_kept);
+  WaitForSingleObject(overflow_logged, 500);
 }
 
 // One exception's line into `line`, no allocation: `kind`, the place as `module`+offset from `start` (null: the raw
@@ -304,9 +315,15 @@ static LONG WINAPI OnUnhandled(EXCEPTION_POINTERS* info) {
     HMODULE other = nullptr;
     if (module == nullptr
         && GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCWSTR>(address), &other) != FALSE
-        && GetModuleFileNameA(other, unhandled_module.data(), static_cast<DWORD>(unhandled_module.size())) != 0) {
-      const char* separator = std::strrchr(unhandled_module.data(), '\\');
-      module = (separator != nullptr ? separator + 1 : unhandled_module.data());
+        && GetModuleFileNameW(other, unhandled_module_path.data(), static_cast<DWORD>(unhandled_module_path.size())) != 0) {
+      const wchar_t* separator = std::wcsrchr(unhandled_module_path.data(), L'\\');
+      const wchar_t* file = (separator != nullptr ? separator + 1 : unhandled_module_path.data());
+      size_t length = 0;
+      for (; file[length] != L'\0' && length + 1 < unhandled_module.size(); ++length) {
+        unhandled_module[length] = (file[length] < 0x80 ? static_cast<char>(file[length]) : '?');
+      }
+      unhandled_module[length] = '\0';
+      module = unhandled_module.data();
       start = reinterpret_cast<uintptr_t>(other);
     }
     FormatFault(unhandled_line, "Unhandled exception", record, module, start);
@@ -437,50 +454,50 @@ static void LogStall(uint64_t age_ms, bool dump) {
   // A thread inside an exception's handling holds a return address into ntdll's exception dispatcher on its stack (+0x2E
   // on x64, +0xF on x86 under WoW64, Windows 11); a thread that waits does not. A game's own crash handler can work there
   // for minutes: ATN's "hang" of 2026-11-06 was Warhammer III compressing its crash report.
+  // The exception's record and registers beside that address are checked, so a stale one left in a frame is no handling.
   const auto dispatcher = reinterpret_cast<uintptr_t>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "KiUserExceptionDispatcher"));
+  const auto* stack_data = reinterpret_cast<const uint8_t*>(stack.data());
+  const auto in_stack = [stack_bytes](size_t offset, size_t size) { return offset <= stack_bytes && size <= stack_bytes - offset; };
   bool handling = false;
-  for (size_t word = 0; dispatcher != 0 && !handling && word < stack_bytes / sizeof(uintptr_t); ++word) {
-    handling = stack[word] - dispatcher < 0x80;
-  }
-  // The fault OnException kept for the frame thread after its last frame: the cause, or one the thread handled and left.
-  const uint64_t fault_tick = frame_fault_tick.load(std::memory_order_acquire);
-  const bool fault_kept = fault_tick != 0 && fault_tick >= last_present_tick.load(std::memory_order_relaxed);
-  std::string kept_fault;
-  if (fault_kept) {
-    const uintptr_t fault_address = frame_fault_address.load(std::memory_order_relaxed);
-    const std::string place = CodePlace(fault_address);
-    kept_fault = std::format("0x{:08X} at {} ({} ms before this line)", frame_fault_code.load(std::memory_order_relaxed),
-                             place.empty() ? std::format("0x{:X}", fault_address) : place, GetTickCount64() - fault_tick);
-  }
-  if (!handling && fault_kept && fault_tick != frame_fault_said) {
-    frame_fault_said = fault_tick;
-    renodx::utils::log::w("[Total War] The frame thread had an exception after its last frame (handled; it went on): ", kept_fault, ".");
-  }
-#if !defined(_WIN64)
-  // x64 reads the exception's own record below.
-  if (handling) {
-    renodx::utils::log::w("[Total War] The frame thread is handling an exception now (a crash, not a wait: the game's crash handler or a debugger has it)",
-                          (fault_kept ? "; its last fault: " + kept_fault : std::string()), ".");
-  }
+  for (size_t word = 0; dispatcher != 0 && !handling && in_stack(word * sizeof(uintptr_t), sizeof(uintptr_t)); ++word) {
+    if (stack[word] - dispatcher >= 0x80) continue;
+#if defined(_WIN64)
+    // The registers lie right above the dispatcher's return address and the record 0x4F0 further (Windows 10 and 11).
+    const size_t context_offset = (word + 1) * sizeof(uintptr_t);
+    const size_t record_offset = context_offset + 0x4F0;
+    constexpr DWORD CONTEXT_ARCHITECTURE = CONTEXT_AMD64;
 #else
-  // The fault's registers lie right above the dispatcher's return address and its record 0x4F0 further (Windows 10 and 11).
-  constexpr size_t RECORD_OFFSET = 0x4F0;
-  for (size_t word = 0; (word + 1) * sizeof(uintptr_t) + RECORD_OFFSET + sizeof(EXCEPTION_RECORD) <= stack_bytes; ++word) {
-    if (dispatcher == 0 || stack[word] - dispatcher >= 0x80) continue;
+    // The dispatcher's two arguments lie right above its return address: the record's and the registers' addresses, on
+    // this stack.
+    if (!in_stack((word + 1) * sizeof(uintptr_t), 2 * sizeof(uintptr_t))) continue;
+    const size_t record_offset = stack[word + 1] - stack_top;
+    const size_t context_offset = stack[word + 2] - stack_top;
+    constexpr DWORD CONTEXT_ARCHITECTURE = CONTEXT_i386;
+#endif
+    if (!in_stack(record_offset, sizeof(EXCEPTION_RECORD)) || !in_stack(context_offset, sizeof(CONTEXT))) continue;
     CONTEXT fault = {};
     EXCEPTION_RECORD record = {};
-    std::memcpy(&fault, &stack[word + 1], sizeof(fault));
-    std::memcpy(&record, reinterpret_cast<const uint8_t*>(&stack[word + 1]) + RECORD_OFFSET, sizeof(record));
-    if ((fault.ContextFlags & ~0xFFul) != CONTEXT_AMD64 || record.NumberParameters > EXCEPTION_MAXIMUM_PARAMETERS) continue;
+    std::memcpy(&fault, stack_data + context_offset, sizeof(fault));
+    std::memcpy(&record, stack_data + record_offset, sizeof(record));
+    if ((fault.ContextFlags & ~0xFFul) != CONTEXT_ARCHITECTURE || record.NumberParameters > EXCEPTION_MAXIMUM_PARAMETERS) continue;
+    handling = true;
     const auto fault_address = reinterpret_cast<uintptr_t>(record.ExceptionAddress);
     const std::string place = CodePlace(fault_address);
     renodx::utils::log::w(std::format(
         "[Total War] The frame thread is handling an exception: 0x{:08X} at {} (a crash, not a wait: the game's crash handler or a debugger has it; the fault's registers are at 0x{:X} on that thread's stack).",
-        static_cast<uint32_t>(record.ExceptionCode), place.empty() ? std::format("0x{:X}", fault_address) : place,
-        stack_top + (word + 1) * sizeof(uintptr_t)));
-    break;
+        static_cast<uint32_t>(record.ExceptionCode), place.empty() ? std::format("0x{:X}", fault_address) : place, stack_top + context_offset));
   }
-#endif
+  // A fault OnException kept for the frame thread after its last frame, with no exception in handling now: one the
+  // thread handled and left, said once.
+  if (const uint64_t fault_tick = frame_fault_tick.load(std::memory_order_acquire);
+      !handling && fault_tick != 0 && fault_tick != frame_fault_said && fault_tick >= last_present_tick.load(std::memory_order_relaxed)) {
+    frame_fault_said = fault_tick;
+    const uintptr_t fault_address = frame_fault_address.load(std::memory_order_relaxed);
+    const std::string place = CodePlace(fault_address);
+    renodx::utils::log::w(std::format("[Total War] The frame thread had an exception after its last frame (handled; it went on): 0x{:08X} at {} ({} ms before this line).",
+                                      frame_fault_code.load(std::memory_order_relaxed), place.empty() ? std::format("0x{:X}", fault_address) : place,
+                                      GetTickCount64() - fault_tick));
+  }
   if (!dump) return;
 
   // The dump is written by hand. MiniDumpWriteDump stops every other thread of its own process and then allocates and
@@ -734,10 +751,15 @@ static DWORD WINAPI WatchLoop(void* stop) {
   uint32_t stall_samples = 0;
   uint32_t stall_dumps = 0;
   uint64_t awaited_ms = 0;
-  while (WaitForSingleObject(stop, WATCH_POLL_MS) == WAIT_TIMEOUT) {
+  watch_running.store(true, std::memory_order_release);
+  // Woken by the stop event, by an overflow kept (KeepOverflow) or by the poll.
+  const std::array<HANDLE, 2> wakers = {stop, overflow_kept};
+  const DWORD waker_count = (overflow_kept != nullptr ? 2 : 1);
+  while (true) {
+    const DWORD woken = WaitForMultipleObjects(waker_count, wakers.data(), FALSE, WATCH_POLL_MS);
+    if (woken != WAIT_TIMEOUT && woken != WAIT_OBJECT_0 + 1) break;
     try {
-      // Windows keeps an overflowed process for seconds (the game's crash reporter, WER): the next poll says it.
-      if (const uint64_t overflow = overflow_tick.load(std::memory_order_acquire); overflow != overflow_said) {
+      if (const uint32_t overflow = overflow_count.load(std::memory_order_acquire); overflow != overflow_said) {
         overflow_said = overflow;
         const uintptr_t address = overflow_address.load(std::memory_order_relaxed);
         const DWORD thread = overflow_thread.load(std::memory_order_relaxed);
@@ -745,6 +767,10 @@ static DWORD WINAPI WatchLoop(void* stop) {
         renodx::utils::log::e(std::format("[Total War] Stack overflow at {} (thread {}, {}; {}).", place.empty() ? std::format("0x{:X}", address) : place,
                                           thread, (thread == present_thread.load(std::memory_order_relaxed) ? "the frame thread" : "another thread"),
                                           (overflow_unhandled.load(std::memory_order_relaxed) ? "unhandled" : "first chance, in the add-on's code")));
+      }
+      if (woken != WAIT_TIMEOUT) {
+        SetEvent(overflow_logged);
+        continue;
       }
       {
         const std::unique_lock lock(devices_mutex);
@@ -804,6 +830,7 @@ static DWORD WINAPI WatchLoop(void* stop) {
       // No-op: the next poll goes on from here.
     }
   }
+  watch_running.store(false, std::memory_order_release);
   return 0;
 }
 
@@ -1057,6 +1084,8 @@ static void Install() {
     own_image_begin = reinterpret_cast<uintptr_t>(own_info.lpBaseOfDll);
     own_image_end = own_image_begin + own_info.SizeOfImage;
   }
+  overflow_kept = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  overflow_logged = CreateEventW(nullptr, FALSE, FALSE, nullptr);
   fault_handler = AddVectoredExceptionHandler(1, OnException);
   if (const auto previous = std::signal(SIGABRT, OnAbort); previous != SIG_ERR) {
     previous_abort_handler = previous;
@@ -1071,9 +1100,12 @@ static void InstallLast() {
 }
 
 static void Uninstall() {
-  if (unhandled_filter_set.exchange(false)) {
-    // A filter set over ours may pass exceptions on to it: that one goes back on top, and this image stays loaded.
-    if (const LPTOP_LEVEL_EXCEPTION_FILTER top = SetUnhandledExceptionFilter(previous_filter.load(std::memory_order_acquire)); top != OnUnhandled) {
+  if (unhandled_filter_set.load(std::memory_order_relaxed)) {
+    // A filter set over ours may pass exceptions on to it: that one goes back on top, and this image stays loaded. Ours stays
+    // marked as set, so a later attach of the kept image does not put it over that filter again (a loop between the two).
+    if (const LPTOP_LEVEL_EXCEPTION_FILTER top = SetUnhandledExceptionFilter(previous_filter.load(std::memory_order_acquire)); top == OnUnhandled) {
+      unhandled_filter_set.store(false, std::memory_order_relaxed);
+    } else {
       SetUnhandledExceptionFilter(top);
       HMODULE pinned = nullptr;
       GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&OnUnhandled), &pinned);
@@ -1093,6 +1125,12 @@ static void Uninstall() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(BeforeDestroyDevice);
   StopWatch();
+  // A watch that could not be waited for keeps the overflow events.
+  if (!watch_running.load(std::memory_order_acquire)) {
+    for (HANDLE* event : {&overflow_kept, &overflow_logged}) {
+      if (*event != nullptr) CloseHandle(std::exchange(*event, nullptr));
+    }
+  }
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   if (create_swapchain_slot.installed_address != nullptr) {
     try {
