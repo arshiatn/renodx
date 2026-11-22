@@ -484,3 +484,12 @@ New: Recommended (with Deeper Shadows) removed (ATN: after the V35 fit it change
 presets set Video AutoHDR 0.2 (was 0.25; ATN: the porting rules' 0.2).
 Fixed: the back buffer check after Present (back_buffer_fix::CheckBound) runs before RenoDX's draw callbacks: it ran
 after them, so a custom shader's callback on the first draw after Present saw the target Present had unbound.
+
+Settings rows (g19_, 2026-11-22; page dump only, not run in game):
+New: AO Auto Thickness and Light Bounce Auto Thickness on by default, without "(Experimental)" (ATN: on in every game).
+New: the Ray Tracing section's Reset and first start give the ray-traced Light Bounce and the paths RT/PT's values: Rays 1,
+Range 50 m, Resolution Full, Path Tracing Bounces 1 (were 4, 10 m, Half, 2; ATN: Reset as RT/PT).
+New: rows saved at the old defaults (both Auto Thickness rows off, Texture LOD Bias on All Textures off) cleared once
+(SettingsRevision 1).
+New: the Settings Mode pages, section colours and notes from the Total War add-ons' twattila/settings_pages.hpp (same pages
+and colours as before).
