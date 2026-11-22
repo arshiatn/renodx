@@ -498,14 +498,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job fi ... | ?
 - review (Opus xHigh): grs_dead_uses + dead_outputs.py together, after grs_'s hand ... | ?
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
-- gtl_: stage block() subtracts answer reset_ms when present (+ fake_resident send ... | ?
 - gtl_: stage H1 + H2 + M1 / M2 / M2b / M3 / M4 + L1 / L2 + nits; gtv_ re-checks; ... | ?
 - coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU ... | ?
 - h0i_: analyse all_modes M6 8 changed (a != b) on the CPU -> flaky vs regression ... | ?
 - gtc_ (runner, Low): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x). | ?
 - gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ... | ?
 - grs_: G1 + G2 / G3 / G4 (+ nits) on grs_dead_uses; fcr_ re-checks (coord 15:55). | ?
-- gti_: T4 any later logged frame counts as a read + test; then fcr_ re-checks wit ... | ?
+- gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land- ... | ?
+- gtv_: re-check gtl_'s stage review fixes (read + unit / analyze only during S3c; ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10419,7 +10419,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         reference frozen table not logged (external rows cover reads); log_uses run timings include log CPU cost.
         - [x] fcr_ (DONE 15:55: 2 Musts): review grs_dead_uses df06d4e9b + rt_uses.h vtable copy safety + store_skip.py +
         dead_outputs.py (gti_) + the 2 .proposed schemas as one piece (coord 15:2x).
-        - [ ] gtl_: stage block() subtracts answer reset_ms when present (+ fake_resident sends it) (coord 15:2x).
+        - [x] gtl_ (DONE 15:59): stage block() subtracts answer reset_ms when present (+ fake_resident sends it) (coord 15:2x).
         gtp_ ROUND 19 LIVE 15:31 (plan_1117/gtp_round19_handback.md; SHADOW): gates\gate_hook.py 8fe7b6bab77b, tests/
         run_tests.py d2ed1e9702e9 (tool_prices.py 097bb57a34f6 + INSTALL_FOR_ATN.md same; mode.txt shadow); backups
         testbin\scratch\gtp_\gtp_bak24 (round 18 live) / gtp_bak25 (round 19 live); mirror gtp_mirror8; live == bak24
@@ -10547,10 +10547,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         tests 20 / 20 (-W error::ResourceWarning; new from fcr_'s probes: rebind LIVE, cluster_destination COPY NOT READ, 40
         bound UAVs -> 1 note). T4 (fcr_ Nit: a read in ANY later logged frame, not only the next) left to coord -> COORD:
         YES (conservative: fewer false candidates; candidates are only candidates, the GPU store-skip confirms) -> gti_.
-        - [ ] gti_: T4 any later logged frame counts as a read + test; then fcr_ re-checks with grs_'s fixes (coord 15:58).
-        Agents (7): gtp_ (gate round 20), grs_ (dead uses G1-G4), gti_ (T4), gtl_ (stage fixes), h0i_ (all_modes
-        8-change analysis), gtc_ (S3c part 1 runner); GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job at a
-        time; agents' CPU work below normal, no builds at normal priority during S3c
+        - [x] gti_ (DONE 15:59): T4 any later logged frame counts as a read + test; then fcr_ re-checks with grs_'s fixes (coord 15:58).
+        gtl_ STAGE REVIEW FIXES 15:59 (plan_1117/gtl_stage_review_fixes_handback.md; stage testbin\scratch\gtl_\stage\tw\lab\;
+        land list testbin\scratch\gtl_\stage\land_list.tsv with stage + live-original sha256): item 3 reset_ms -> block()
+        subtracts + writes reset_s:<rk> (absent = today, null = nothing), fake option reset_ms, uses path uses_<n>/uses.tsv;
+        H1 sampler own-pid read + log write in try / except, log stops with one note, sampling goes on, flag() ToolFault
+        once reader ended; H2 reset_ms ToolFault unless None or finite non-bool 0..1000 x block time; M1 memory reads after
+        take_lock / before Release; M2 own() None when state() None, last set kept; M2b bar prints N + top 5, no observe +
+        exit 1 above BAR_CAP 20 % or "gpu_samples.tsv stopped"; M3 job_schema.json.proposed on land list; M4 full reload ->
+        full_reload_s:<rk>; L1 kind_dump ToolFault on uses None / missing; L2 cadence refuses duplicate tags; ns_busy fact
+        whitespace collapsed; keeper fence note also saves session.json (still_max_s was only in memory). Tests: unit 37 OK,
+        analyze 4 OK, ps1 5 OK; keeper 28 = 1 error (still_max_s KeyError, fixed since, NOT re-run); jobs 34 NOT RUN.
+        GOOD: gtl_ did NOT run keeper / jobs in S3c's lock gaps (lock check only at start; a 4-min suite would overlap the
+        next timed step) and asked -> coord: re-run after S3c part 1 (coord tells gtl_). Stage synced today's live
+        ans / cmd .proposed + dead_outputs.py (not on land list). Landing: each live original must still match its
+        live_sha256; after landing re-run unit + jobs in a landed sandbox.
+        gti_ T4 15:59 (plan_1117/gti_t4_handback.md; backup scratchpad\gti_bak16): a read in ANY later logged frame keeps a
+        write live ("a later frame: a history"); unplaceable handles make earlier writes UNDECIDED from any later frame; last
+        frame UNDECIDED; tests 21 / 21. -> fcr_ re-checks gti_ with grs_'s G1-G4 when those land.
+        - [ ] gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land-list hashes (coord 15:59).
+        - [ ] gtv_: re-check gtl_'s stage review fixes (read + unit / analyze only during S3c; keeper / jobs after)
+        (coord 15:59).
+        Agents (6): gtp_ (gate round 20), grs_ (dead uses G1-G4), gtv_ (stage fixes re-check), h0i_ (all_modes 8-change
+        analysis), gtc_ (S3c part 1 runner); gtl_ + gti_ idle; GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job at
+        a time; agents' CPU work below normal, no builds at normal priority, no lab suites (keeper / jobs) during S3c
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
