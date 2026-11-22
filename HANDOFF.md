@@ -8688,7 +8688,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         COVERS THIS RUN -> lga_ prepares a runner with -DryRun (no GPU), I propose the rule to ATN.
         - [ ] ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stack) - decides whether
             the release gate failures are Windows KB5132061 or our code (lga_ 09:0x). Runner READY 09:0x, dry run
-            OK, gtw_ reviewing; rule lines: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\arshi\
+            OK, gtw_ reviewed, lga_ fixed S1-S4 09:3x (~9 / 13 min with warm-ups), gtw_ re-checks; rule lines:
+            `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\arshi\
             .claude\projects\D--Dev-renodx\tools\tw\h0\release_check.ps1` (+ ` -DryRun`, + ` -WithRelease`).
         ffr_ FIRST-FRAME REVIEW = OK WITH FIXES 09:0x (plan_1117/designs/ffr_first_frame_review.md + _handback.md;
         Opus xHigh, offline): d' is the right direction, 5 holes. Claims: players plausible not proven (H0's 21-22 s
@@ -9012,9 +9013,32 @@ heading text are in HANDOFF_ARCHIVE.md)
         never sees Opening() if the present itself enters the opening -> use the value from before the call or a
         "hidden for this opening" flag. R1 before step 3 is written; R2 + R3 with step 4; steps 1-2 still safe
         alone. -> grs_ v4 (R1-R3) STARTED.
-        Agents (9): upr_ (h0i_ F1-F4 re-check), gtw_ (round 13 re-check), gpr_ (round 13 re-check), gtb_ (load
-        refresh + (12, 99) tighten), lga_ (release_check fixes), t4i_ (option (a) + disk gate + ebr_ nits), c3i_
-        (B1 F1 + F2 logging), grs_ (first-frame v4: R1-R3), fcr_ (ff_s12 steps 1-2 patch review)
+        lga_ RELEASE_CHECK FIXES DONE 09:3x (plan_1117/lga_release_check_fixes_handback.md; tests
+        scratchpad\lga_release_summary_test.ps1 + lga_release_parts_test.ps1; dry runs
+        h0\release_runs\dryrun_20261122_093126.txt / _093135.txt): S1-S4 + N1-N5, N7, N8 in tools\tw\h0\
+        release_check.ps1 (N6 = gti_). CHANGE vs spec S4: the harness exits 2 on failed checks (pdi1_ 4599, gpu3_
+        4585), 1 = trace failure -> allowed 0 / 1 / 2, stop on any other (124, crash codes); a job counts only
+        with 0 or 2. S1 verdict on smoke + rr pairs, rounds 1-2: a job counts with its answer line + both PASS
+        lines + exactly one scene line + exit 0 / 2 + no build beside it, else OPEN; ENVIRONMENT = both fail (2+
+        of 4 >= 75 ms) + 3 of 4 pairs within 10 ms; CODE = old <= 65 in all 4 + new >= old + 15 in 3 of 4 (catches
+        55 / 72); RUN CONDITIONS = both pass + 3 of 4 within 10 ms; else OPEN with counts; noise stated. S2 one
+        warm-up per stack outside the verdict + h0's one retry (first try renamed <job>.try1.*, starred). S3 every
+        2 s CPU load (recorded) + build_job*.lock / quiet_run.lock / build tools (cl, clang*, link, lld-link, dxc,
+        msbuild, ninja, cmake, rc, cvtres) -> job OPEN; CPU read 55-61 % now -> held window right. S4 System
+        events Display 4101 + nvlddmkm since job start (read only) or a device-removed line = stop + 30 s settle
+        (4127 Auto HDR hint ignored). N1 log copy after processes end, try/catch, summary always; N2 wait before
+        the final release; N3 dry run fails on extra folders / .dll .exe .sys .json .ini, 4K exes hash-checked;
+        N4 / N5 texts; N7 python path + `gpu_lock.py show` + build locks / tools / driver events 24 h. Own bugs
+        fixed: PowerShell case-insensitive names ($Pairs vs $pairs, $Equal vs $equal). Tests: 10 mock verdict
+        cases 0 wrong; real H0 run1 logs (post_b vs pre_a) read right, OPEN; parts test on pings (2 s sampling,
+        124 timeout, event reader, .try1 rename). Not tested: a real stray DLL (can't delete it again), the real
+        lock + launch. Time 10 jobs ~515 s (~9 min), -WithRelease 14 jobs ~735 s (~13 min), +55 s per retry.
+        Exit codes 0 done / 2 checks failed / 3 lock refused / 4 stopped; output h0\release_runs\<stamp>\. Dry
+        run 09:31 exit 0, 20 hashes OK, Committed 28.7 GB, lock free. Nothing deleted / committed, no src edits.
+        -> gtw_ RE-CHECK (queued after its round 13 re-check).
+        Agents (8): upr_ (h0i_ F1-F4 re-check), gtw_ (round 13 re-check, then lga_ release_check re-check), gpr_
+        (round 13 re-check), gtb_ (load refresh + (12, 99) tighten), t4i_ (option (a) + disk gate + ebr_ nits),
+        c3i_ (B1 F1 + F2 logging), grs_ (first-frame v4: R1-R3), fcr_ (ff_s12 steps 1-2 patch review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
