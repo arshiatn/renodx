@@ -480,8 +480,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - in-game lists (tdv1_): Near ReSTIR look + Divinity 2 V35 look (1861); ALIT "same ... | ?
 - wave 3 (tkb_): delete dead twattila/fg_camera.hpp (+ talesofarise_dlss/frame_gen ... | ?
 - coord: spawn the QUEUED groups as slots free: G02, G03 (+ 99164788 / DB53BDDC), ... | ?
-- coord: send "BUILD WINDOW OPEN" after S3c part 2 (or between its sessions when c ... | ?
+- coord: send "BUILD WINDOW CLOSED" to every writing group before gtc_ runs part 2 ... | ?
 - ATN (optional): raise CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS (20 now) if he wants ... | ?
+- gtl_ "uses diag" (sent 20:02): why the uses log has no stem rows (resident's use ... | ?
+- gtl_ stage3 suites in the sandbox (GO 20:02, lock free); landing only after ALL ... | ?
+- coord: Opus xHigh reviews for g08_ + g14_ when slots free (queued groups first). | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11379,8 +11382,33 @@ heading text are in HANDOFF_ARCHIVE.md)
         a5e65f77a870c6515. bd1r_ = ac36089e263ea390f. The app caps at 20 running agents.
         - [ ] coord: spawn the QUEUED groups as slots free: G02, G03 (+ 99164788 / DB53BDDC), G06, G09, G11, G20, G21, G22
         (same prompts); then each group's Opus xHigh review on its hand-back; forward g04_'s V35 pilot recipe.
-        - [ ] coord: send "BUILD WINDOW OPEN" after S3c part 2 (or between its sessions when commit < 30 GB).
+        - [x] coord (SENT 20:03, commit 29.3 GB, lab idle while gtl_ diagnoses uses.tsv): send "BUILD WINDOW OPEN" after S3c part 2 (or between its sessions when commit < 30 GB).
+        - [ ] coord: send "BUILD WINDOW CLOSED" to every writing group before gtc_ runs part 2 again.
         - [ ] ATN (optional): raise CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS (20 now) if he wants all 22 groups at once.
+        gtc_ PART 2 S1 DONE 20:02 (plan_1117/gtc_part2_busy_handback.md + gtc_part2_s1_done_handback.md): retry P1 exit 0
+        (calm 19:55), then my 36 GB bar counted the session's own resident (commit 42-43 GB) -> coord dropped the extra bar
+        (the lab's guards decide; dump compares, not timing); P1b + P2 exit 0 in one lifetime (resident 103104, session
+        S-110976-134398473471051134). Check 1 PASS (P1 vs P2 --floor P1b 33 same; P1 vs P1b 33 same), 2 PASS, 3 PASS.
+        Check 4 INVALID: dead_outputs.py read 0 frames / 0 stems: uses_8\uses.tsv = 1093 "#" span lines + 46 "external"
+        lines, NO stem / kind / slot rows, no DXIL (cmd_8 log_uses true, frames 64). Check 5 + --confirm not run. Dumps
+        726 MB each stay in res_195551_A_104048_51951 (no move needed; C: 175 GB).
+        - [ ] gtl_ "uses diag" (sent 20:02): why the uses log has no stem rows (resident's use logging / R3 pipelines / job
+        option / dead_outputs parser) -> staged fix + re-run steps -> gtv_ re-checks -> gtc_ re-runs session 1.
+        - [ ] gtl_ stage3 suites in the sandbox (GO 20:02, lock free); landing only after ALL of part 2.
+        gtl_ STAGE3 19:59 (plan_1117/gtl_stage3_handback.md): staged (land_list.tsv, 8 files): F2b names via Toolhelp32
+        snapshot (fixes dwm.exe '' = false other-process flags), bursts --job span + top other user, lab.block() re-measures
+        bursty runs (BURST_RETRIES 2, results remeasured / bursts), conhost race (<exited>), lab.rules 64 caps + seed <=
+        2^32-1, stale "proposed" text; landed_suite.sh deletes nothing now.
+        GROUPS 20:0x: g04_ V35 PILOT READY (ho_g04 0764607b1; recipe testbin\scratch\g04_\v35_pilot.md; Divinity 2's 4
+        sliders, minimax grey + OkLab chroma, highlight guard, ~11k WARP draws; defines stay 1.f until the build-window
+        fit) -> forwarded to g01_ / g02_ / g05_ + the brief (own commit per fit). g08_ DONE (handoff_plan/handbacks/
+        g08_done_handback.md; ho_g08 6 commits: upgrade log line, CheckBound callbacks before RenoDX's draw callbacks,
+        Deeper Shadows dropped, Video AutoHDR 0.2, dlss_capture comment, README; not built) -> Opus xHigh review. g14_ PART
+        (handbacks/g14_part_handback.md; ho_g14 08561db4e + 6e2095b3d: testing.md runner rules + 96 suites, ATN's 11-22
+        rules in SKILL.md / ao-gi / render-scale / sss; item 3 half waits for G21) -> Opus xHigh review; its parity ask
+        (WON'T GET rows for UI 4K + game TAA) sent to g13_. Started: g02_ a13305db694dc581f, g03_ a3e079d4fbf87c2c1 (+
+        99164788 / DB53BDDC). Still queued: G06 G09 G11 G20 G21 G22.
+        - [ ] coord: Opus xHigh reviews for g08_ + g14_ when slots free (queued groups first).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
