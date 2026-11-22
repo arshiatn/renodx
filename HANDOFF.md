@@ -9836,9 +9836,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORDINATOR: merge 29a55acad after H0 as is; the comment nit follows (grs_'s worktree stays on gpu_s2 for
         rec_verify).
         - [ ] grs_ (after rec_verify): fg_proxy_d3d12.hpp Presented() comment -> fcr_'s exact wording (fcr_ 11:25).
-        Agents (6): gtw_ (round 16 re-check), gpr_ (round 16 price re-check), ebr_ (t4i_ probes + scan gaps re-check),
-        upr_ (H0 copy fix read), c3i_ (b1log verify runs, detached), gtl_ (fixture hang timeout); t4i_ ETL move waits
-        for ATN (antivirus); rmt_b1log merge after c3i_'s runs; ff_s12 + grs_xess_guard after H0
+        upr_ COPY FIX = GO 11:26 (plan_1117/designs/upr_copyfix_handback.md; unified_pt_review.md "## Copy fix re-check"
+        line 2003; read only + parser): upr_'s own earlier "not real" was wrong (its test held FILE_SHARE_READ; the
+        helper's _wfopen_s(L"w") shares nothing; reference / quality modes return without ending the helper, the job
+        kill is async -> the log is held right after the harness exits = the stop). A NOTE cannot hide a result: the
+        miss is decided + answers.tsv written before any copy; cmd's > empties the log for attempt 2; a folder that
+        did not move -> good attempt 2 overwrites what ref_compare reads, bad attempt 2 has no meta.json -> FAIL, never
+        a stale PASS; nothing reads the copied helper logs; no other lock stop (helper started without inherited
+        handles, dlaa_bridge.hpp:487). Known gap (not a stop): Get-Busy counts a still-ending builds\ helper as ours
+        -> > 10 s to end lets the next job start beside it (refused start = miss, retried). Watch: extra time per ref
+        job; many NOTE lines = helpers slow to end.
+        c3i_ RUNS 11:26: gated15 DONE (x86 x3 exit 0, x86 DRAW_RECORDING exit 0, amd64 exit 0) + suites16 DONE (instance
+        fill, draw_recording x3, engine_code -DrawRecording: all PASS / exit 0, end 11:13:25); FULL suite still
+        running (engine_code.exe since 11:09:47; its log is written at the end). H0 re-run + release_check wait for
+        it (CPU-heavy, would skew timing).
+        Agents (5): gtw_ (round 16 re-check), gpr_ (round 16 price re-check), ebr_ (t4i_ probes + scan gaps re-check),
+        c3i_ (FULL suite running, detached), gtl_ (fixture hang timeout); t4i_ ETL move waits for ATN (antivirus);
+        rmt_b1log merge after the FULL suite; then release_check -> H0 re-run; ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
