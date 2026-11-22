@@ -511,6 +511,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_: the 4 stale schema tests -> live schemas accept the new fields; suites gre ... | ?
 - coord: before ATN's restart, confirm the end batch is READY (everything built + ... | ?
 - gtw_ + gpr_: re-check gtp_ round 21 (incl. GO FOR ENFORCE question) (coord 18:1x ... | ?
+- ebq_: end batch readiness list (coord 18:2x). | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10985,9 +10986,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         check; Replace audit re-audit. Conflicts: 15 rows on dlaa_helper (GPU plan's helper writer); 5 on lab / gates /
         budget; engine_code.hpp = render_mt serial writer (8627, 10959, 11151, 11159, 11205); SkipGameSsao vs per-game
         add-on rows; view_share uv rule once (11678 + 12034); worktree / h0 folder deletes (9786, 9818, 8859) = ATN's.
-        Agents (7): gtl_ (adopted-schema suites + 4 stale tests), gtw_ + gpr_ (gate round 21 re-checks), htb_ / htc_ / htd_
-        (HANDOFF triage, read only); hta_ / gtp_ / gtv_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since
-        16:15; one GPU job at a time
+        htc_ TRIAGE 18:18 (handoff_plan/htc_handback.md, htc_triage.tsv + htc_summary.md; live numbering at 16f7aad04 = brief
+        +3): 62 boxes + 56 MID-LINE "[ ]" boxes (suffix i; handoff_index.py misses them; 36 done) = 118 rows: DONE-UNTICKED
+        76, SUPERSEDED 9, ATN 18, BLOCKED 5, CPU-TOOL 6, CPU-CODE 2, DESIGN 2. Box 6672 "- [ ] ATN." = a 05:50 conversion
+        fragment (Q4b OK'd 01:2x). BEFORE THE END BATCH, still open: (1) 6576 LOGGING GROUP 3 NOT BUILT (A-M2 MUST: Parallel
+        Instance Fill gives up with no line; A-S6 worker_pool::Stop waits forever); its wait on R-S5 / B1.6 / X1 is stale
+        (R-S5 5ff6b1bfc + B1.6 c54e3e589 merged, X1 never built) -> build into the freeze or after the batch (decide);
+        (2) 7967 placeholder gates never match (LATCH b3b_mismatch, fill_check_mismatch; probes effect_instances / draws /
+        overflow / c_render_us / part_calls; t4i_r24_handback.md:37) -> ship a line each or drop from gates.json; (3) 6735
+        + 6959i x87c leg 5 needs ATN's new rule ebo_run.ps1 -Leg 5 [-DryRun] (A/B is after the batch anyway); (4) 7348
+        heapfix.ini missing key / empty value NOTE vs PROBLEM (ATN). Also open: "T5 build step: write the real
+        manifest.json" (t4i_ 09:1x) + ATN's B1L1-only volley pair (~7 / ~12 min). Other now = Y: 8371 ReSTIR GI noise floor
+        study, 8368 r3_refl bias study (DESIGN read only; fixes in the helper later); 8411 gated_build.ps1 vswhere silent
+        fallback (read-only check); ATN tick / delete questions (6044 *dis.py, 8510 h0 __pycache__, 7185i gtq_flip_src,
+        7252i busy_count tmp, 7118i cite_since, 7165i pbrt Imath / libdeflate, 7430i t4i_ rm -rf, 6848i Mega Geometry N6);
+        8580 cold-shader-cache player risk (v6 steps 3-6 open). Conflicts: engine files one writer (6576, 5916i, 7967, X1)
+        + any change after the T5 freeze = re-freeze + new dry run; lab / gates / gated_build.ps1 = GPU plan.
+        END BATCH READINESS 18:2x: ebq_ ae1653fda3621f434 (Opus xHigh, read only) -> render_mt/reports/ebq_readiness.md:
+        READY yes / no, ordered missing list, decisions (group 3 before / after, X1, placeholders, T5 build step, re-freeze,
+        T6 dry run), ATN questions; coord tells ATN before the restart.
+        - [ ] ebq_: end batch readiness list (coord 18:2x).
+        Agents (6): gtl_ (adopted-schema suites + 4 stale tests), gtw_ + gpr_ (gate round 21 re-checks), htb_ (triage),
+        ebq_ (end batch readiness, read only); hta_ / htc_ / htd_ / gtp_ / gtv_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_
+        idle; GPU: FREE since 16:15; one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
