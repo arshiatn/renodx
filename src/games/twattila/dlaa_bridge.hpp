@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cassert>
 #include <cfloat>
 #include <cmath>
 #include <cstdlib>
@@ -410,7 +411,7 @@ inline void StopSession() {
     CloseHandle(std::exchange(bridge.job, nullptr));
   }
   if (bridge.process != nullptr) {
-    TerminateProcess(bridge.process, 0);
+    TerminateProcess(bridge.process, HELPER_EXIT_ENDED_BY_ADDON);
     // The names are the next start's: it refuses them while this helper holds them.
     if (WaitForSingleObject(bridge.process, 5000) != WAIT_OBJECT_0) {
       renodx::utils::log::w("[Total War] DLAA: the helper is still ending (the next start may be refused).");
@@ -508,8 +509,8 @@ inline bool Start(ID3D11Device* device) {
       constexpr uint32_t ENDING_POLLS = 5000 / POLL_MS;
       // The sets whose fences one rescue frees (the open one and those retired before the game's GPU got to them).
       constexpr size_t RESCUED_SETS = 16;
-      // Out of memory in here must not end the game: the watcher goes instead. Up to the rescue's start nothing allocates
-      // (a 32-bit game short of address space with a stuck helper keeps its recovery), and no log line comes before it.
+      // Out of memory in here must not end the game: the watcher goes instead. Up to the rescue's start only the log lines
+      // allocate, each in a try of its own (a 32-bit game short of address space with a stuck helper keeps its recovery).
       try {
         const std::array<HANDLE, 2> stop_or_exit = {bridge.watcher_stop, bridge.process};
         uint64_t completed = 0;
@@ -520,7 +521,11 @@ inline bool Start(ID3D11Device* device) {
         while (ending_polls < ENDING_POLLS) {
           const DWORD woken = WaitForMultipleObjects(2, stop_or_exit.data(), FALSE, POLL_MS);
           if (woken == WAIT_OBJECT_0 + 1) break;
-          if (woken != WAIT_TIMEOUT) return;
+          if (woken == WAIT_OBJECT_0) return;
+          if (woken != WAIT_TIMEOUT) {
+            renodx::utils::log::w("[Total War] DLAA: the helper watcher stopped (wait error ", GetLastError(), "); a stuck helper is not ended.");
+            return;
+          }
           if (!bridge.watchdog.failed.load()) {
             // The fence as the helper last read it (v30: each request, each second without one): behind what the game's
             // GPU waits for and not moving.
@@ -535,7 +540,7 @@ inline bool Start(ID3D11Device* device) {
           }
           // Stuck, or without an answer on the game's thread (Answer): ended.
           if (ending_polls++ == 0) {
-            TerminateProcess(bridge.process, 0);
+            TerminateProcess(bridge.process, HELPER_EXIT_ENDED_BY_ADDON);
             if (ended_as_stuck) {
               try {
                 renodx::utils::log::w("[Total War] DLAA: the helper's GPU work did not move for 30 s (the helper is ended).");
@@ -544,6 +549,16 @@ inline bool Start(ID3D11Device* device) {
               }
             }
           }
+        }
+        // Its own end's reason (a crash's code, a start-up exit, its stop on unfinished GPU work), also with nothing to
+        // free; before `failed`, which the game's thread then reports.
+        DWORD exit_code = 0;
+        GetExitCodeProcess(bridge.process, &exit_code);
+        try {
+          renodx::utils::log::w(std::format("[Total War] DLAA: the helper ended (exit code 0x{:08X}: {}{}).", exit_code, HelperExitMeaning(exit_code),
+                                            (ending_polls != 0) ? ", ended by the watcher" : ""));
+        } catch (const std::exception&) {
+          // No-op: out of memory costs this line, not the recovery below.
         }
         bridge.watchdog.failed.store(true);
         // What the game's GPU may still wait for from the helper, freed once: its exe again in its rescue mode (its own
@@ -574,23 +589,38 @@ inline bool Start(ID3D11Device* device) {
         if (copy_count == 0) return;
         STARTUPINFOW rescue_startup = {.cb = sizeof(STARTUPINFOW)};
         PROCESS_INFORMATION rescue = {};
-        bool freed = false;
+        std::string not_freed;
         if (CreateProcessW(path.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &rescue_startup, &rescue)) {
           const std::array<HANDLE, 2> stop_or_done = {bridge.watcher_stop, rescue.hProcess};
-          DWORD result = 1;
           // A new D3D12 device after a GPU fault can take seconds.
-          if (WaitForMultipleObjects(2, stop_or_done.data(), FALSE, 15000) == WAIT_OBJECT_0 + 1) {
-            GetExitCodeProcess(rescue.hProcess, &result);
-          } else {
-            TerminateProcess(rescue.hProcess, 1);
+          const DWORD rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, 15000);
+          switch (rescue_woken) {
+            case WAIT_OBJECT_0 + 1: {
+              DWORD result = HELPER_EXIT_ENDED_BY_ADDON;
+              GetExitCodeProcess(rescue.hProcess, &result);
+              if (result != HELPER_EXIT_DONE) {
+                not_freed = std::format("the rescue's exit code 0x{:08X}: {}; renodx-tw-dlaa64.log", result, HelperExitMeaning(result));
+              }
+              break;
+            }
+            case WAIT_TIMEOUT:  not_freed = "the rescue did not end in 15 s"; break;
+            case WAIT_OBJECT_0: not_freed = "the unload ended the rescue"; break;
+            default:            not_freed = std::format("the rescue's wait failed (error {})", GetLastError()); break;
           }
-          freed = result == 0;
+          if (rescue_woken != WAIT_OBJECT_0 + 1) {
+            TerminateProcess(rescue.hProcess, HELPER_EXIT_ENDED_BY_ADDON);
+          }
           CloseHandle(rescue.hThread);
           CloseHandle(rescue.hProcess);
+        } else {
+          not_freed = std::format("the rescue did not start (error {})", GetLastError());
         }
         for (size_t index = 0; index < copy_count; ++index) CloseHandle(copies[index]);
-        renodx::utils::log::w("[Total War] DLAA: the helper stopped; what the game's GPU waited for from it was ",
-                              (freed ? "freed." : "not freed."));
+        if (not_freed.empty()) {
+          renodx::utils::log::w("[Total War] DLAA: the helper stopped; what the game's GPU waited for from it was freed.");
+        } else {
+          renodx::utils::log::w("[Total War] DLAA: the helper stopped; what the game's GPU waited for from it was not freed (", not_freed, ").");
+        }
       } catch (const std::exception&) {
         bridge.watchdog.failed.store(true);
       }
@@ -635,13 +665,28 @@ inline bool Answer(DWORD timeout = 5000) {
   LARGE_INTEGER started;
   LARGE_INTEGER ended;
   QueryPerformanceCounter(&started);
-  const bool answered = WaitForMultipleObjects(2, handles.data(), FALSE, timeout) == WAIT_OBJECT_0
-                        && shared.done_value >= bridge.value + (steady ? 1u : 0u);
+  const DWORD woken = WaitForMultipleObjects(2, handles.data(), FALSE, timeout);
+  const DWORD wait_error = (woken == WAIT_FAILED) ? GetLastError() : 0u;
+  const uint64_t wanted = bridge.value + (steady ? 1u : 0u);
   QueryPerformanceCounter(&ended);
   bridge.answer_ticks += ended.QuadPart - started.QuadPart;
-  if (!answered) {
+  if (woken != WAIT_OBJECT_0 || shared.done_value < wanted) {
     bridge.watchdog.failed.store(true);
-    return Fail("DLAA: the helper did not answer (off).");
+    const char* request = (steady ? "a steady request" : "a request");
+    switch (woken) {
+      case WAIT_OBJECT_0:
+        return Fail(std::format("DLAA: the helper answered {} with {}, wanted {} (off).", request, shared.done_value, wanted));
+      case WAIT_OBJECT_0 + 1: {
+        DWORD exit_code = 0;
+        GetExitCodeProcess(bridge.process, &exit_code);
+        return Fail(std::format("DLAA: the helper ended before it answered {} (exit code 0x{:08X}: {}; off).", request, exit_code,
+                                HelperExitMeaning(exit_code)));
+      }
+      case WAIT_TIMEOUT:
+        return Fail(std::format("DLAA: the helper did not answer {} in {} ms (off).", request, timeout));
+      default:
+        return Fail(std::format("DLAA: the wait for the helper's answer failed (error {}; off).", wait_error));
+    }
   }
   bridge.answered = true;
   // The value it signalled after its work (one higher; also after a failure, so the next request starts above it).
@@ -840,13 +885,19 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
     release_prepared();
   };
   const std::unique_ptr<void, decltype(rollback)> rollback_guard(&bridge, rollback);
+  // The last failed transfer's error (0: none), for the failure's line.
+  DWORD transfer_error = 0;
   const auto transfer = [&](HANDLE handle) {
+    // The table holds every handle a set has (SharedSet's).
+    assert(transferred_count < transferred.size());
     if (transferred_count == transferred.size()) {
       CloseHandle(handle);
       return uint64_t{0};
     }
     const uint64_t remote = internal::ShareWithHelper(handle);
-    if (remote != 0) {
+    if (remote == 0) {
+      transfer_error = GetLastError();
+    } else {
       transferred[transferred_count++] = remote;
     }
     return remote;
@@ -984,11 +1035,13 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
       return false;
     }
     internal::PublishEmptySet();
-    if (!retryable || bridge.texture_failures == TEXTURE_RETRIES) return internal::Fail(status);
+    const std::string reason = (transfer_error != 0) ? std::format("{} A handle could not go to the helper (error {}).", status, transfer_error)
+                                                     : std::string(status);
+    if (!retryable || bridge.texture_failures == TEXTURE_RETRIES) return internal::Fail(reason);
     ++bridge.texture_failures;
     bridge.texture_retry_ms = GetTickCount64() + TEXTURE_RETRY_MS;
     bridge.texture_failed_size = {width, height};
-    bridge.status = std::format("{} Tried again at the next resize or in 30 s ({} of {}).", status,
+    bridge.status = std::format("{} Tried again at the next resize or in 30 s ({} of {}).", reason,
                                 bridge.texture_failures, TEXTURE_RETRIES);
     renodx::utils::log::w("[Total War] ", bridge.status);
     return false;
