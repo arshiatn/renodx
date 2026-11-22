@@ -7034,9 +7034,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         left (40k '(' 0.03 s; old hook 162 s) + inner-text size budget; M6 every wrapper + PS_VALUE switches; S-a multi-
         line -m; S-b commit gate per inner command; S-c overhead vs bare python (+0.04 s); run_tests 277 / 277 live;
         swapped in with os.replace, shadow, fail open. gtw_ S1c RE-CHECK 6 STARTED.
-        Agents (12): bd1r_ (N6 re-check), t4i_ (r18), upr_ (v2.5 re-check), gpr_ (price + web v3 look), grs_ (S2), gtl_
-        (S3 fixes), gtw_ (S1c re-check 6), gtk_ (C1 fixes), gtq_ (B1 fixes), h0i_ (ps1:439 + real-path tests). Idle:
-        lga_, lgf2_, c33i_, upt_, gpp_, gtp_, ebr_, gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_.
+        bd1r_ N6 = MERGE (render_mt/reports/bd1r_n6_recheck_handback.md) -> rmt_rs5 MERGED 03:4x as 5ff6b1bfc (name check
+        97 generic words); gated builds x86 + amd64 running (-Owner coord_rs5). upr_ v2.5 = GO WITH FIXES
+        (designs/upr_v25_handback.md: S1 bounce-off hook not in OnSunDraw's pre callback, S2 gap 2 = bounce + sky, nits)
+        -> upt_ v2.6 DONE 03:5x (designs/upt_v26_handback.md; 1589 lines, v2.5 copy scratchpad\upt_v25_backup.md; one E
+        point: does the bounce history hold the sky) -> upr_ v2.6 LOOK STARTED. gtl_ S3 fixes DONE 03:4x
+        (plan_1117/gtl_s3_fixes_handback.md; M1-M6, S1-S7, nits, gtq_ / gtk_ / gtb_ items; Job Objects; reuse-race
+        flake fixed; 72 / 72 offline; backups scratchpad\gtl_backup_s3) -> gtv_ S3r RE-CHECK STARTED; grs_ got gtl_'s
+        protocol v1.1 proposals (dump frames, moments file), gtk_ the lab facts (RECORD_AT 64). gpr_ v3 = BUILD
+        (designs/gpr_v3_handback.md; gpr_review.md l.477-542; B1 getattr fallback for gate_hook's names, B2 Job Object
+        child + try/finally kill + backstop, n1-n8) -> gtb_ (watch) + gti_ (poll) BUILD STARTED; gtp_ after gtw_'s
+        re-check 6. h0i_ 439 DONE 03:5x (plan_1117/h0i_439_handback.md): GetRange(0, 3), busy stop names the
+        processes, offline test h0\offline\h0_offline_test.ps1 dry / pass / smoke / tdr all ok under PS 5.1; h0i_
+        re-checks the helper guard vs 5ff6b1bfc, then upr_ H0 look, then the coordinator runs H0. t4i_ resumed (stopped
+        waiting for run_all at 03:45).
+        Agents (10): t4i_ (r18), h0i_ (guard vs 5ff6b1bfc), upr_ (v2.6 look), grs_ (S2), gtw_ (S1c re-check 6), gtk_
+        (C1 fixes), gtq_ (B1 fixes), gtv_ (S3r re-check), gtb_ (watch build), gti_ (poll build). Idle: bd1r_, lga_,
+        lgf2_, c33i_, upt_, gpp_, gpr_, gtl_, gtp_ (waits gtw_), ebr_ (waits t4i_), gbc_ (waits gtk_ / gtq_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
