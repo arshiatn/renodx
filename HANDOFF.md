@@ -7203,9 +7203,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         complete.txt + 2.5 GB histories per dump + no folder clear, S5 light_anim can't be cleared; v1.1: light_off
         top-level key, output_sizes in dump / moments results, active size, k < 3 refused; 14 nits -> grs_ STARTED.
         The HARNESS_DUMP GPU check (safety stop 04:08) waits for grs_'s fixes AND ATN.
+        gtl_ S3r FIXES 2 DONE 04:3x (plan_1117/gtl_s3r_fixes2_handback.md; backups scratchpad\gtl_backup_s3r2): M1r
+        option (a) (lab_processes() before members(), second reading only with new members), M2r fixture redirects
+        busy_count, nits 1-3 (NtResumeProcess checked, rename retried, cpu deadline_s cap), pbrt names (--spp to
+        scene_to_pbrt, <stem>_s<S>), pbrt_compare -> HARNESS_SUN_SOFTNESS=0 + _sun0 folder, scene.hash holds frames +
+        path (a still / path folder mix-up fixed), score phase carries flip; 21 / 24 / 24 / 5 green; one load flake
+        (fake pbrt starved by c3i_'s engine_code.exe). v1.1 lab changes listed, built after grs_'s S2r fixes. -> gtv_
+        S3r RE-CHECK 2 STARTED. Note: h0i_'s offline H0 test (pid 54836) writes the REAL lab\busy_count.json -> h0i_ told.
         Agents (9): h0i_ (F1), c3i_ (B1.6), ebr_ (r19 re-check), gtw_ (re-check 7), gbc_ (B1 re-check, then RS-M1),
-        gtl_ (S3r M1r / M2r), grs_ (S2r fixes), gtb_ (W1 / W2). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (waits h0i_),
-        gpp_, gpr_ (waits gtb_), t4i_, gtq_, gti_, gtv_ (waits gtl_ / grs_), gtk_, gtp_ (waits gtw_).
+        gtv_ (S3r re-check 2), grs_ (S2r fixes), gtb_ (W1 / W2). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (waits
+        h0i_), gpp_, gpr_ (waits gtb_), t4i_, gtq_, gti_, gtl_, gtk_, gtp_ (waits gtw_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
