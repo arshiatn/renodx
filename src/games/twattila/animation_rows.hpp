@@ -53,6 +53,11 @@
 //     round is a counter of finished units. It is the schedule Check is proven on first.
 // With no workers (not the owner thread, a job open, the pool empty, the env limit `animation:1`, or fewer than two blocks), the
 // same rounds of one block on this thread. Every fallback runs the game's own fill unchanged.
+//
+// Trace (a pool trace window, RENODX_TW_WORKER_TRACE): each call of ours inside the window leaves one record (sizes, rows, records,
+// the items that took the fast path, blocks, workers, the waits of B, microseconds of the whole call, the join and the game's tail),
+// and the window's calls that took the game's own fill are counted by reason; `Update` prints both at the next present. No counter
+// runs outside a window.
 namespace twattila::animation_rows {
 
 // The row's stage.
@@ -76,6 +81,10 @@ constexpr uint32_t FIRST_ROUND_ITEMS = 4096;
 // What a call of Dispatch did: ours, or the game's fill for the reason named. BAD_ITEM counts in addition to OURS.
 enum class Path : uint8_t { OURS, STAGE_OFF, FORCED, ROW_AT_END, FEW_ITEMS, END_PAST_LIST, TEXTURE_RANGE, VECTOR_NOT_EMPTY, NO_ROWS,
                             RING_BUSY, BAD_ITEM, COUNT };
+
+// The reason names the trace prints (by Path).
+constexpr std::array<const char*, static_cast<size_t>(Path::COUNT)> PATH_NAMES = {
+    "ours", "stage off", "forced", "row at end", "few items", "end past list", "texture range", "vector not empty", "no rows", "ring busy", "bad item"};
 
 // The batch env's value (RENODX_TW_ANIMATION_SCHEDULE).
 enum class Schedule : uint8_t { STREAM, BULK };
@@ -199,6 +208,33 @@ struct LastCall {
   bool streaming = false;
 };
 static LastCall last_call;
+
+// One call of ours inside a trace window.
+struct TraceCall {
+  uint32_t items = 0;      // end - first
+  uint32_t finished = 0;
+  uint32_t rows = 0;       // rows used (the game's row index + 1)
+  uint32_t records = 0;
+  uint32_t fast = 0;       // items whose animation was placed already
+  uint32_t blocks = 0;
+  uint32_t workers = 0;    // asked for
+  uint32_t ran = 0;        // that ran the job
+  uint32_t waits = 0;      // B's pauses while it waited for A or C
+  uint64_t call_ticks = 0;  // Dispatch's part (gather, allocate, scatter, join)
+  uint64_t join_ticks = 0;
+  uint64_t tail_ticks = 0;  // the game's fill after ours
+  bool streaming = false;
+  bool ordered = false;
+};
+constexpr uint32_t TRACE_MAX = 128;
+static std::array<TraceCall, TRACE_MAX> trace_calls;
+static uint32_t trace_count = 0;      // the owner thread's (Dispatch, Update)
+static uint32_t trace_dropped = 0;    // calls over TRACE_MAX
+static std::atomic<uint32_t> trace_elsewhere = 0;  // calls of ours on other threads while a window was open, not recorded
+static std::array<uint32_t, static_cast<size_t>(Path::COUNT)> paths_printed = {};
+static bool trace_was_open = false;
+// The stage Update said last.
+static Stage stage_said = Stage::OFF;
 
 // What a unit of Bulk's claim word is: the parts of a round, or the end of the call.
 enum class Kind : uint8_t { NONE, GATHER, SCATTER, DONE };
@@ -411,6 +447,10 @@ inline void SetGame(const uint8_t* fill) {
 // RENODX_TW_ANIMATION_SCHEDULE (stream or bulk), read at the first present and again whenever `env_generation` changes.
 inline void Update(Stage requested, uint32_t env_generation = 0) {
   using namespace internal;
+  if (requested != stage_said) {
+    stage_said = requested;
+    renodx::utils::log::i(std::format("[Total War] Animation Rows on Workers: {}.", (requested == Stage::OFF ? "off" : (requested == Stage::CHECK ? "Check" : "on"))));
+  }
   if (env_generation != env_generation_applied) {
     env_generation_applied = env_generation;
     constexpr const char* NAME = "RENODX_TW_ANIMATION_SCHEDULE";
@@ -423,6 +463,41 @@ inline void Update(Stage requested, uint32_t env_generation = 0) {
     }
   }
   stage.store((failed.load(std::memory_order_relaxed) ? Stage::OFF : requested), std::memory_order_relaxed);
+
+  // The trace window's calls (the present after the window's last frame prints that frame's too).
+  const bool tracing = worker_pool::Tracing();
+  const uint32_t elsewhere = trace_elsewhere.exchange(0, std::memory_order_relaxed);
+  if (!tracing && !trace_was_open && trace_count == 0 && trace_dropped == 0 && elsewhere == 0) {
+    for (size_t path = 0; path < paths.size(); ++path) {
+      paths_printed[path] = paths[path].load(std::memory_order_relaxed);
+    }
+    return;
+  }
+  trace_was_open = tracing;
+  std::string game_paths;
+  for (size_t path = 1; path < paths.size(); ++path) {
+    const uint32_t now = paths[path].load(std::memory_order_relaxed);
+    if (now != paths_printed[path]) {
+      game_paths += std::format(" {} {}", PATH_NAMES[path], now - paths_printed[path]);
+    }
+    paths_printed[path] = now;
+  }
+  paths_printed[0] = paths[0].load(std::memory_order_relaxed);
+  const double microseconds = 1000000.0 / static_cast<double>(worker_pool::qpc_frequency);
+  std::string calls;
+  for (uint32_t index = 0; index < trace_count; ++index) {
+    const TraceCall& call = trace_calls[index];
+    calls += std::format(
+        "\n  call {}: {} items, {} finished, {} rows, {} records, {} fast, {} blocks, {} workers ({} ran), {}{}, B waited {}, call {:.0f} us, join {:.0f} us, tail {:.0f} us",
+        index + 1, call.items, call.finished, call.rows, call.records, call.fast, call.blocks, call.workers, call.ran,
+        (call.streaming ? "stream" : "bulk"), (call.ordered ? ", ordered" : ""), call.waits, static_cast<double>(call.call_ticks) * microseconds,
+        static_cast<double>(call.join_ticks) * microseconds, static_cast<double>(call.tail_ticks) * microseconds);
+  }
+  renodx::utils::log::i(std::format(
+      "[Total War] Animation Rows Trace window {}: {} calls of ours, {} over the limit, {} on other threads; the game's own fill:{}{}",
+      worker_pool::TraceWindow(), trace_count, trace_dropped, elsewhere, (game_paths.empty() ? " none" : game_paths), calls));
+  trace_count = 0;
+  trace_dropped = 0;
 }
 
 // The stub's target (engine_code.hpp): the stub pushes the seven arguments again and calls it with ecx = the cache, edx unused;
@@ -458,6 +533,13 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   const uint32_t limit = std::min(reinterpret_cast<Height>((*reinterpret_cast<uintptr_t**>(texture_object))[0x68 / 4])(texture_object), total);
   if (limit == 0) return game(Path::NO_ROWS);
   if (ring_in_use.exchange(true, std::memory_order_acquire)) return game(Path::RING_BUSY);
+  // A call of ours inside a trace window, on the pool's owner thread, leaves a record; on another thread it is counted.
+  bool traced = worker_pool::Tracing();
+  if (traced && worker_pool::internal::owner.load(std::memory_order_relaxed) != GetCurrentThreadId()) {
+    trace_elsewhere.fetch_add(1, std::memory_order_relaxed);
+    traced = false;
+  }
+  const uint64_t call_start = (traced ? worker_pool::Qpc() : 0);
 
   const uint32_t blocks = total / BLOCK_ITEMS + (total % BLOCK_ITEMS != 0 ? 1 : 0);
   const uint32_t workers = std::min(worker_pool::Available(worker_pool::User::ANIMATION_ROWS), blocks - 1);
@@ -490,6 +572,8 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   bool stopped = false;
   bool bad_item = false;
   uint32_t ordered_from = ~0u;
+  uint32_t fast_items = 0;
+  uint32_t waits = 0;
 
   // B over one block: the game's loop word for word (the fast path of an animation placed already, the next-fit row, the
   // record, the placement), on the game's memory.
@@ -513,7 +597,9 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       uint32_t& placed_texture = Word(item.animation, 0x14);
       uint32_t& placed_texel = Word(item.animation, 0x18);
       uint32_t texel = placed_texel;
-      if (!(placed_frame == frame && placed_texture != ~0u && placed_texture == texture && placed_texel != ~0u)) {
+      if (placed_frame == frame && placed_texture != ~0u && placed_texture == texture && placed_texel != ~0u) {
+        ++fast_items;
+      } else {
         bool next_row = item.need > row_size - used;
 #if defined(TWATTILA_WORKER_CONTROLS)
         if (controls.wide_room) {
@@ -592,6 +678,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       uint32_t block = 0;
       const Kind claimed = Claim(&call, &block);
       if (claimed == Kind::NONE) {
+        ++waits;
         _mm_pause();
         continue;
       }
@@ -653,6 +740,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
             && call.next_gather.compare_exchange_strong(next, next + 1, std::memory_order_acq_rel)) {
           Gather(&call, block);
         } else if (!TryScatter(&call)) {
+          ++waits;
           _mm_pause();
         }
       }
@@ -669,6 +757,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
         // B's own scatter: the earlier blocks' units first, so a later duplicate instance is written last.
         while (call.parallel_done.load(std::memory_order_acquire) < ordered_from) {
           if (!TryScatter(&call)) {
+            ++waits;
             _mm_pause();
           }
         }
@@ -684,19 +773,21 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       const uint32_t scatter_blocks = std::min((finished + BLOCK_ITEMS - 1) / BLOCK_ITEMS, call.scatter_limit.load(std::memory_order_acquire));
       if (call.parallel_done.load(std::memory_order_acquire) >= scatter_blocks) break;
       if (!TryScatter(&call)) {
+        ++waits;
         _mm_pause();
       }
     }
   };
+  worker_pool::JoinResult joined = {};
   if (workers != 0) {
-    worker_pool::Run({.work = Work, .context = &call, .user = worker_pool::User::ANIMATION_ROWS, .join = worker_pool::JoinRule::ENTERED}, workers,
-                     [&] {
-                       if (call.streaming) {
-                         stream_part();
-                       } else {
-                         part();
-                       }
-                     });
+    joined = worker_pool::Run({.work = Work, .context = &call, .user = worker_pool::User::ANIMATION_ROWS, .join = worker_pool::JoinRule::ENTERED, .trace = traced},
+                              workers, [&] {
+                                if (call.streaming) {
+                                  stream_part();
+                                } else {
+                                  part();
+                                }
+                              });
   } else {
     part();
   }
@@ -706,13 +797,39 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   last_call = {.items = finished, .records = records[1], .rounds = rounds, .workers = workers, .ordered = (ordered_from != ~0u), .streaming = call.streaming};
   const uint32_t stop_at = first + finished;
   *row = stop_at;
+  TraceCall* trace = nullptr;
+  if (traced) {
+    if (trace_count < TRACE_MAX) {
+      trace = &trace_calls[trace_count++];
+      *trace = {.items = total,
+                .finished = finished,
+                .rows = row_index + 1,
+                .records = records[1],
+                .fast = fast_items,
+                .blocks = blocks,
+                .workers = workers,
+                .ran = joined.ran,
+                .waits = waits,
+                .call_ticks = worker_pool::Qpc() - call_start,
+                .join_ticks = joined.wait_ticks,
+                .streaming = call.streaming,
+                .ordered = (ordered_from != ~0u)};
+    } else {
+      ++trace_dropped;
+    }
+  }
   if (bad_item) {
     // The game's own loop, from the bad item, faults on it the way it always does.
     paths[static_cast<size_t>(Path::BAD_ITEM)].fetch_add(1, std::memory_order_relaxed);
     return game_fill(cache, device, force, list, texture, row, end, out);
   }
   if (stage_now != Stage::CHECK) {
-    return game_fill(cache, device, force, list, texture, row, stop_at, out);
+    const uint64_t tail_start = (trace != nullptr ? worker_pool::Qpc() : 0);
+    const uint32_t result = game_fill(cache, device, force, list, texture, row, stop_at, out);
+    if (trace != nullptr) {
+      trace->tail_ticks = worker_pool::Qpc() - tail_start;
+    }
+    return result;
   }
 
   // Check: ours aside, the state put back, the game's own fill on it, then everything compared.
