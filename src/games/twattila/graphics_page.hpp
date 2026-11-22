@@ -423,15 +423,6 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   static bool more_rt = false;
   static Values page_defaults;
 
-  // The traced Global Illumination's sliders at RT/PT's values for Reset and a first start too (ATN 2026-11-22: the paths
-  // 6.50 -> 2.82 ms); the games with SetRaysPresetDefaults had them already.
-  constexpr std::array<std::string_view, 4> TRACED_GI_SLIDERS = {"RayTracedLightBounceRays", "RayTracedLightBounceResolution",
-                                                                 "RayTracedLightBounceRange", "PathTracingBounces"};
-  for (Setting* setting : *settings) {
-    if (std::ranges::find(TRACED_GI_SLIDERS, setting->key) == TRACED_GI_SLIDERS.end()) continue;
-    setting->default_value = std::ranges::find(RAYS_PRESET, setting->key, &Values::value_type::first)->second;
-  }
-
   // Rows saved at an old default of this page or lighting_settings.hpp (a preset saves every row, hidden ones too),
   // cleared once in every game under revisions of their own (a game's SettingsRevision counts its own rows): Texture LOD
   // Bias on All Textures off and Auto Thickness off (on since ATN 2026-11-22); where they defaulted to 1
