@@ -485,6 +485,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - end batch leg 1 analysis: foreign hits outside trace windows in normal play? non ... | ?
 - ATN (morning report): C: has ~83-88 GB free; end batch leg 3 needs ~102 GB (WPR ... | ?
 - t4i_: CHK-W3 scan-assert case in test_make (kills S1 + S6b), N-a skip t when a r ... | ?
+- gtp_ round 16: R15-1 (cmd /c|/k + -Command take only the quoted word; web case ` ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9612,9 +9613,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         unchanged. HELD for H0's end: FULL suite, -DrawRecording, instance_fill, gated builds (x86 x3, DRAW_RECORDING,
         amd64, -Owner c3i_) via scratchpad\c3i_log_full.ps1 / c3i_log_suites16.ps1 / c3i_log_gated15.ps1.
         H0 10:34: still run 1 (HARNESS_DUMP, smoke passed on every side).
-        Agents (3): gtw_ (round 15 re-check, then lga_ RC-2 re-check), gpr_ (round 15 re-check, price side), t4i_ (probes
-        for the 3 new B1 lines, then ebr_'s G1 / G2 / N-a / N-b); c3i_ waits for H0's end (then suites + builds ->
-        rmt_b1log merge gate); H0 run (background, ~11:30)
+        gpr_ ROUND 15 RE-CHECK = PRICE SIDE OK, 1 OLDER SHOULD 10:36 (plan_1117/designs/gpr_round15_recheck_handback.md;
+        gpr_review.md "## gtp_ round 15 re-check"; box copies, pure calls; probes scratchpad\gpr_r15_*): leading
+        redirects key right (`2>&1 cmake` -> build key, `>/dev/null 2>&1 powershell -File gated_build` -> build key,
+        `2>&1 python -I tools/x.py` -> py) - old low closed; 66 keys light -> light (sh 1 -> sh echo 24 /
+        select-string 17 / tail 8); seeds 105,240 -> 105,566, rows 7,054 -> 7,082 (0 lost, 28 new activity); build
+        seeds 388 = 388; 124 gone ring samples rotated out of full rings, offsets forward, watch_off 193; refusal (a)
+        0 flips, fix-now unaffected; the `sh 1` ring sample came in with the 10:26 re-seed (n 1, censored, prices
+        nothing). R15-1 (Should, already in bak20): cmd /c|/k + powershell -Command take the rest of the line and
+        unwrap() strips quotes only for a single quoted word -> a redirect / pipe after the quoted code hides the
+        wrapped command: `cmd /c "cmake --build ... twtroy" 2>&1 | Select-String` keys 'sh select-string',
+        `powershell -Command "& 'hl1s_build.ps1' ..." > out.txt 2>&1` keys light sh; ~116 calls (none refusable
+        today); WEB: `cmd /c "curl https://example.com/x"` refused, + `2>&1 | tail -5` / `| Select-Object` PASSES
+        (-Command form + bare curl with a pipe still refused) -> fix: for cmd /c|/k and -Command take only the next
+        quoted word (unwrapped); tests the 3 keys + the curl case + unchanged no-tail cases; re-seed + re-run the 246
+        corpus (refusals can rise).
+        COORDINATOR: R15-1 waits for gtw_'s round 15 re-check (gtw_ told, web side), then gtp_ ROUND 16 with both.
+        - [ ] gtp_ round 16: R15-1 (cmd /c|/k + -Command take only the quoted word; web case `cmd /c "curl ..." 2>&1
+            | tail` passes today) + gtw_'s round 15 items; re-seed + corpus; gtw_ + gpr_ re-check (gpr_ 10:36).
+        Agents (2): gtw_ (round 15 re-check incl. R15-1 web side, then lga_ RC-2 re-check), t4i_ (probes for the 3 new
+        B1 lines, then ebr_'s G1 / G2 / N-a / N-b); c3i_ waits for H0's end (then suites + builds -> rmt_b1log merge
+        gate); H0 run (background, ~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
