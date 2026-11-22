@@ -516,7 +516,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - lg3_ (Sonnet High, own worktree, branch rmt_lg3 from atn-mods HEAD): logging gro ... | ?
 - t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 (coord 18:4x); t ... | ?
 - ATN: review handoff_plan\plan.md -> OK / changes; NOTHING from it starts or gets ... | ?
-- gtl_: S3c PART 2 jobs + run sheet section (dead outputs on R3; log_uses / dump_f ... | ?
+- gtl_: part 2 sheet disk rule (move dumps to D:, C: floor) -> then STAGE3 (coord ... | ?
+- gtv_: read the part 2 sheet + jobs (go / no-go for gtc_) (coord 19:3x). | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11191,8 +11192,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         non-resident GPU user. Low: bursts --job keeps only the job's runs. Quiet rule for timing: coord + agents hold git /
         HANDOFF / index / streaming output while a timing job measures (or ATN minimizes the Claude app); optional: the lab
         re-measures bursty blocks.
-        - [ ] gtl_: S3c PART 2 jobs + run sheet section (dead outputs on R3; log_uses / dump_frames; grs_ store-skip stems;
+        - [x] gtl_ (DONE 19:30): S3c PART 2 jobs + run sheet section (dead outputs on R3; log_uses / dump_frames; grs_ store-skip stems;
         gti_ dead_outputs.py; gtl_'s part 2 notes) -> gtv_ reads -> gtc_ runs (coord 19:2x).
+        gtl_ PART 2 SHEET 19:30 (plan_1117/gtl_part2_sheet_handback.md; s3c_run_sheet.md "## Part 2"; jobs
+        testbin\scratch\gtl_\s3c\jobs_part2\ from s3c_jobs.py helper_du_rec --part2: 0 refused, 1131 s): session 1 = S, P1
+        01_s3c3_r3_plain (3-frame dump), P2 02_s3c3_r3_uses (log_uses 64 frames + the same dump), S; offline checks 1-7 (P1
+        = P2 byte-equal, no NvAPI / Mega Geometry refusals, no ser_library / unknown_pipeline rows, dead_outputs.py JSON
+        (0 DEAD = done), store_skip.py per candidate, --confirm jobs (<= 6 variants), disk check (3 + variants) x 15.4 GB +
+        40 GB); session 2 one lifetime: P3 03_s3c3_r3_floor (A = B), P4 per variant, P5 end, S; verdict rec_compare <P3 A>
+        <P4 A> --floor <P3 B> (CONFIRMED DEAD = only the candidate's own resource above the floor; P5 vs P3 must pass). No
+        timing step (all kind dump). Real GPU time E 10-20 min. SLIP (repaired): a failed patch let s3c_jobs.py rewrite part
+        1's jobs\ with helper_du_rec; regenerated with part 1's build helper_gpus2_rec (code unchanged; no byte proof; times
+        19:2x). Open for gtv_: SER off from the setting's default (check 3 enforces); P1 vs P2 across two jobs relies on part
+        1's A1; <P2> output must be under tools\tw (testbin\scratch\gtc_\s3c_part2). Leftover scratchpad\gtl_p2test.
+        DISK (coord 19:3x): C: 180 GB free now; part 2 with 6 variants = up to ~139 GB of dumps on C: -> would leave ~41 GB,
+        far below the end batch's 160 GB floor -> sheet gets a rule: dumps MOVED to D: (264 GB free) after their offline use,
+        and C: must stay >= 160 GB + the next session's dumps before each session (moving is OK; nothing deleted).
+        - [ ] gtl_: part 2 sheet disk rule (move dumps to D:, C: floor) -> then STAGE3 (coord 19:3x).
+        - [ ] gtv_: read the part 2 sheet + jobs (go / no-go for gtc_) (coord 19:3x).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
