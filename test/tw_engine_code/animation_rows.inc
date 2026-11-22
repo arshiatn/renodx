@@ -171,7 +171,7 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
   CHECK(VirtualQuery(ec::page, &code_info, sizeof(code_info)) == sizeof(code_info) && VirtualQuery(ec::page + ec::PAGE_SIZE, &data_info, sizeof(data_info)) == sizeof(data_info));
   CHECK(code_info.Protect == PAGE_EXECUTE_READ && code_info.RegionSize == ec::PAGE_SIZE && data_info.Protect == PAGE_READWRITE && data_info.RegionSize == ec::PAGE_SIZE
         && code_info.AllocationBase == ec::page && data_info.AllocationBase == ec::page && reinterpret_cast<uint8_t*>(ec::worker_data) == ec::page + ec::PAGE_SIZE);
-  CHECK(Address(&ec::worker_data->fill_slot) == Address(ec::worker_data) + 0x40 && Address(&ec::worker_data->sweep_slot) == Address(ec::worker_data) + 0x44);
+  CHECK(::Address(&ec::worker_data->fill_slot) == ::Address(ec::worker_data) + 0x40 && ::Address(&ec::worker_data->sweep_slot) == ::Address(ec::worker_data) + 0x44);
   const auto no_sentinel = [](const uint8_t* stub, size_t size) {
     for (size_t at = 0; at + 3 <= size; ++at) {
       if (stub[at] == 0x5A && stub[at + 1] == 0x5A && stub[at + 2] == 0x5A) return false;
