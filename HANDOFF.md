@@ -6759,8 +6759,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         scratchpad\upt_v22_backup.md): ATN's 14 answers in §9; §5 one denoiser per route (RR / FSR Ray Regeneration 1.2.1
         U11 22 h / NRD); §4.7 PTLAS arms U12a Whole Battle Scene (Experimental, off), U12b PTLAS 20 h, U12c control (our
         culling stays, TLAS 0.1-0.4 ms today) + default rule; U13 optimise every reuse pass / filter (24 h + 8-12 GPU-h);
-        §6.1 measurement matrix. 272 agent-h (+6 U11h) + ~16 h reviews + 30-45 GPU-h. New ATN questions: [ ] Q11 Ray
-        Regeneration or NRD default on RX 9000, [ ] Q12 one scripted game run (+ siege + Whole Battle Scene recordings),
+        §6.1 measurement matrix. 272 agent-h (+6 U11h) + ~16 h reviews + 30-45 GPU-h. New ATN questions: [x] Q11 Ray
+        Regeneration or NRD default on RX 9000 (ATN 02:3x: RAY REGENERATION DEFAULT on RX 9000+ / every GPU that supports
+        it, NRD second option), [x] Q12 one scripted game run (ATN 02:3x: YES) (+ siege + Whole Battle Scene recordings),
         [ ] Q13 Ray Regeneration in today's hybrid mode (upt_: yes, NRD stays default, +6 h). F4 LICENCE: helper
         build.ps1:114 calls the FSR signed DLLs 'MIT' (SDK: binary-only redistribution with notice, no reverse
         engineering) -> lgf2_ fixes the comment in r3 + lists every shipped notice that says MIT; [ ] tell ATN. upr_
