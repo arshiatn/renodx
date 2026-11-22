@@ -443,6 +443,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - c3i_ B1 real-routine tests (design 5: tests 1-9, 12, 14, 15) + N5's second-node ... | ?
 - ATN (after gtv_'s re-check OK): adopt the lab proposals - copy cmd.schema.json.p ... | ?
 - gtq_: read gtl_'s iq_input note (output_sizes per arm, dump_frames > 1, dred set ... | ?
+- c3i_ (with the B1.6 follow-ups or right after): b1_stack_headroom gate has no sh ... | ?
+- T5 owner (end batch, before leg 1): the REAL manifest must carry rows ParallelEf ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -7684,12 +7686,33 @@ heading text are in HANDOFF_ARCHIVE.md)
         gtb_ now: test_selftest "a lock kind waits for its slot record, then runs" failed 1 / 3 - record at ~4.2 s +
         2 s sleep races watch's 2 s polls (repro scratchpad\gpr_selftest_lock.py) -> hold the lock >= 2 x POLL_S
         + 1 s (record ~1 s, sleep 5 s, --limit 8, accept wait_s 0.5-3.5); no code change. Then gpr_ short re-check.
-        Agents (5): gtw_ (gtp_ re-check 8), gtl_ (gtv_'s S1b + v1.1 fixes), gtb_ (selftest flake S1), t4i_
-        (r21), c3i_ (B1.6 follow-ups). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to
-        testbin + R1), gpp_, ebr_ (re-checks t4i_), gtq_ (box after gtl_'s fixes), gbc_, gpr_ (re-checks gtb_
-        S1), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtv_ (re-checks gtl_;
-        held lab tests + race probe after H0). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper
-        / fg / map_replay-named process until H0 ends.
+        t4i_ R21 DONE 06:0x (render_mt/reports/t4i_r21_handback.md; backups scratchpad\t4i_bak\r21; patch scripts
+        t4i_r21_patch.py / t4i_r21_tests.py): run_all green (parse 0, lib 436, make 84, check 151, leg 165, analyze
+        109, files failed 0); offline, H0 hold kept, nothing committed / deleted. segments.json: L1 =
+        ParallelEffectUpdate, L2 = ParallelEffectSpawns, Cached = CachedParticleCount, all BOOLEAN 0 / 1 default 0;
+        knob countcheck = env.RENODX_TW_COUNT_CHECK values ['', '1'] (a '0' = PROBLEM in ebo_make), live_env;
+        B1Cached off / on / check = (0,'') / (1,'') / (1,'1'); B1L2 "requires": "B1L1" (not counted on + NOTE when
+        L1 off). gates.json vs shipped c54e3e589: cached_check_mismatch S1 regex, LATCH only N > 0; THREE MORE rows
+        could never trip, fixed: b1_watched_word (STOP, "watched word changed (site "), b1_safety (STOP, "off for
+        the session (a safety check failed" / "a round was still open at the present" / "hang (site "), l2_tag_leak
+        (LATCH B1L2, "deferred draw outside its record (site "); new code_rows "Cached Particle Count" (else its
+        ROWFAIL counted as planned); confirmed b1_spawns_off / b1_refused_hooked (now effect_update_sites.hpp:734,
+        status text says :710) / b1_trace_window / b1_l2_counters; corpus lines verbatim. b1_stack_headroom has NO
+        shipped line (only tests.cpp StackHighWater) -> stays a never-matching placeholder -> c3i_ (box). Tests:
+        CHK-W3 rows 0 / 1, COUNT_CHECK only '1' / '', B1L2-without-L1 NOTE, countcheck '0' PROBLEM, differed 4 =
+        LATCH, 0 = pass, watched-word STOP. -> ebr_ RE-CHECK STARTED.
+        - [ ] c3i_ (with the B1.6 follow-ups or right after): b1_stack_headroom gate has no shipped line - ship a
+            StackHighWater line in the pool trace window (then t4i_ r22 adds its regex with S2's) or say the gate
+            should go; t4i_ also fixes b1_refused_hooked's status text (:710 -> :734) in r22.
+        - [ ] T5 owner (end batch, before leg 1): the REAL manifest must carry rows ParallelEffectUpdate /
+            ParallelEffectSpawns, CachedParticleCount 0..1, and env RENODX_TW_COUNT_CHECK as live, else ebo_make
+            raises PROBLEMs (t4i_ r21).
+        Agents (5): gtw_ (gtp_ re-check 8), gtl_ (gtv_'s S1b + v1.1 fixes), gtb_ (selftest flake S1), ebr_ (t4i_
+        r21 re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_,
+        h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r22 after c3i_), gtq_ (box after gtl_'s fixes), gbc_,
+        gpr_ (re-checks gtb_ S1), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_),
+        gtv_ (re-checks gtl_; held lab tests + race probe after H0). GPU: H0 RE-RUN (coordinator, since
+        05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
