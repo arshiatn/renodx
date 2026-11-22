@@ -827,11 +827,8 @@ int RunEffectSitesTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
     std::printf("25f. the real sites (B): gates closed = the game's results; open: 1000 random triples, the spawn query and write through the slow path equal A's (state, floats); answering 1: returns at once\n");
 
     // 25f (2). A thread parked at each byte of each site, in the thunk page, past it; a thread inside the handler; the count above 0.
-    std::atomic<bool> stop = false;
-    std::thread parked([&] {
-      while (!stop.load()) Sleep(1);
-    });
-    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
+    ParkedThread parked;
+    HANDLE thread = parked.Open();
     CHECK(thread != nullptr);
     int checked = 0;
     wrong = 0;
@@ -861,8 +858,7 @@ int RunEffectSitesTests(const TestBuild& build, uint8_t* game, uint8_t* patched,
     try_off(ei::page_end - 1, true);
     for (size_t index = 0; index < eu::SITE_COUNT; ++index) try_off(ei::thunks[index] + 3, true);
     try_off(reinterpret_cast<const uint8_t*>(ei::data), false);  // the data page: not code
-    stop = true;
-    parked.join();
+    parked.Stop();
     CloseHandle(thread);
     CHECK(wrong == 0);
     std::printf("25f. a parked thread at %d places (each byte of each site and the byte after: refused strictly inside; the thunk page's first, last and each thunk's 4th byte: refused; the data page: allowed)\n", checked);

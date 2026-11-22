@@ -298,6 +298,31 @@ struct Random {
   uint32_t NextUnmapped() { return 0x80000000u | Next(); }
 };
 
+// A thread that sleeps until stopped, for the parts that park it at chosen bytes (SuspendThread, SetThreadContext). The constructor returns once the thread runs its loop and has had time to
+// leave its start: frozen inside the start it can hold the heap's or the loader's lock, and the next allocation of the thread that froze it would wait for it for good. Stop (or the
+// destructor, on every way out of a part, a failing CHECK included) joins it.
+struct ParkedThread {
+  std::atomic<bool> stop = false;
+  std::atomic<bool> running = false;
+  std::thread thread;
+  ParkedThread()
+      : thread([this] {
+          running = true;
+          while (!stop.load()) Sleep(1);
+        }) {
+    while (!running.load()) Sleep(1);
+    Sleep(20);
+  }
+  ParkedThread(const ParkedThread&) = delete;
+  ParkedThread& operator=(const ParkedThread&) = delete;
+  ~ParkedThread() { Stop(); }
+  HANDLE Open() { return OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(thread.native_handle())); }
+  void Stop() {
+    stop = true;
+    if (thread.joinable()) thread.join();
+  }
+};
+
 // A call with every register set: in (eax ecx edx ebx esi edi ebp), out after, esp as the callee left it (cdecl: at the
 // argument; a callee popping it, thiscall or stdcall: past it).
 struct RegisterCall {
@@ -2392,11 +2417,8 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
   // 12e. A parked thread whose saved Eip is each byte of the site (and the jne after it): the row switched, the site changes only
   // with Eip at the site's first byte or outside it (the random switches above hardly ever meet a thread inside the 5 bytes).
   {
-    std::atomic<bool> stop = false;
-    std::thread parked([&] {
-      while (!stop.load()) Sleep(1);
-    });
-    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
+    ParkedThread parked;
+    HANDLE thread = parked.Open();
     CHECK(thread != nullptr);
     const uint8_t* site = patched + function_rva + ec::CHILD_SUM_SITE;
     bool on = (ec::written >> ec::CHILD_SUM_INDEX & 1) != 0;
@@ -2421,8 +2443,7 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
       twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
       on = (ec::written >> ec::CHILD_SUM_INDEX & 1) != 0;
     }
-    stop = true;
-    parked.join();
+    parked.Stop();
     CloseHandle(thread);
     CHECK(wrong == 0 && on);
     std::printf("   a parked thread at site -1 .. +6: the site is refused at +1 .. +4 and written at the others\n");
