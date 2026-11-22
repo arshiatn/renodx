@@ -3037,7 +3037,9 @@ void ConfigureAddon() {
                                              .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
                                              .sprites_tested = false,
-                                             .lights_own_row = true});
+                                             .lights_own_row = true,
+                                             // Fog Shadows / Specular Occlusion defaulted to 1 here before f41f04fd0.
+                                             .fog_shadows_defaulted_on = true});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;

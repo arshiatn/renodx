@@ -2335,7 +2335,9 @@ void ConfigureAddon() {
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .rays_preset_as_attila = true,
-                                             .lights_own_row = true});
+                                             .lights_own_row = true,
+                                             // Fog Shadows / Specular Occlusion defaulted to 1 here before f41f04fd0.
+                                             .fog_shadows_defaulted_on = true});
   // Smooth Banner Shadows (on, as Attila's): the sails are this game's thin cloth in the
   // rays (its unit banners are not in them), so the row names them.
   for (auto* setting : settings) {
