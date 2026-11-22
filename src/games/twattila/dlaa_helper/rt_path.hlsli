@@ -111,11 +111,15 @@ static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // a sample's weight at most this many times one ray's (kajiya's RESTIR_RESERVOIR_W_CLAMP; the bounce's: W x cos / pi)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
-// reuse_tests (RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY, rt_d3d12.hpp; the bisection of the bias rising with
-// the rays): ReuseTexel merges no neighbours; PathTraceTexel validates no history; ReuseTexel leaves Own Sky Rays' sky out.
+// reuse_tests (RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY / _NO_CONTACT / _SEEN_LIGHTS_FRAME, rt_d3d12.hpp; the
+// bisection of ReSTIR GI's bias rising with the rays): ReuseTexel merges no neighbours; PathTraceTexel validates no history;
+// ReuseTexel leaves Own Sky Rays' sky out; ContactShade 1 (CONTACT_RANGE 0, the raw paths' too); HitLight's
+// SeenDiffuseLight picks keyed by the frame as well.
 static const uint REUSE_TEST_NO_SPATIAL = 1u;
 static const uint REUSE_TEST_NO_VALIDATE = 2u;
 static const uint REUSE_TEST_NO_SKY = 4u;
+static const uint REUSE_TEST_NO_CONTACT = 8u;
+static const uint REUSE_TEST_SEEN_LIGHTS_FRAME = 16u;
 #if defined(REUSE_NEAR)
 // Near ReSTIR Reuse (only its rt_reuse_near build): three neighbours within half the reach (Lean Reuse's test with these
 // scored better, its pass about half the cost).
@@ -505,8 +509,8 @@ bool HitLight(float3 hit, float3 hit_normal, out float3 light_there, bool cached
     const float3 albedo = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : HitAlbedo(hit, hit_normal);
     if (SunLightGiven()) {
       // The lights picked by the hit's own position (no frame): Validate's look at a reservoir's surface picks what its
-      // path did.
-      light_there = SeenDiffuseLight(pixel, hit, hit_normal, albedo, uint4(asuint(hit), DIM_SEEN_LIGHTS));
+      // path did (REUSE_TEST_SEEN_LIGHTS_FRAME, tests: keyed by the frame too).
+      light_there = SeenDiffuseLight(pixel, hit, hit_normal, albedo, uint4(asuint(hit.xy), asuint(hit.z) ^ (((reuse_tests & REUSE_TEST_SEEN_LIGHTS_FRAME) != 0u) ? frame * 2654435769u : 0u), DIM_SEEN_LIGHTS));
     } else {
       // Path-Traced Ambient took the game's ambient away from the screen's light: the surface's base colour x the kept
       // shade (as an unseen surface's) in its place (walls a path met brought back almost nothing: ATN's debug29, dark).
@@ -806,6 +810,7 @@ void StoreReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 
 // know: the underside of a dead body saw the ground under it as lit as the open ground, the body's lower edges glowed in
 // the shade and no contact shadow showed (ATN's debug36 list).
 float ContactShade(float hit_distance) {
+  if ((reuse_tests & REUSE_TEST_NO_CONTACT) != 0u) return 1.f;
   return saturate(hit_distance / CONTACT_RANGE);
 }
 

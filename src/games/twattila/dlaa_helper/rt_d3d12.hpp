@@ -3856,10 +3856,13 @@ class RtScene12 {
           }
           return false;
         }();
-        // RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY (tests, read once): ReSTIR GI's parts left out.
+        // RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY / _NO_CONTACT / _SEEN_LIGHTS_FRAME (tests, read once): ReSTIR GI's
+        // parts left out (the last two the raw paths' too).
         static const uint32_t reuse_tests = (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_SPATIAL", nullptr, 0) != 0 ? REUSE_TEST_NO_SPATIAL : 0u)
                                             | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_VALIDATE", nullptr, 0) != 0 ? REUSE_TEST_NO_VALIDATE : 0u)
-                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_SKY", nullptr, 0) != 0 ? REUSE_TEST_NO_SKY : 0u);
+                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_SKY", nullptr, 0) != 0 ? REUSE_TEST_NO_SKY : 0u)
+                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_CONTACT", nullptr, 0) != 0 ? REUSE_TEST_NO_CONTACT : 0u)
+                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_SEEN_LIGHTS_FRAME", nullptr, 0) != 0 ? REUSE_TEST_SEEN_LIGHTS_FRAME : 0u);
         PathConstants constants = {
             .bounce_width = render_pixels ? width : shared.rt_bounce_width,
             .bounce_height = render_pixels ? height : shared.rt_bounce_height,
@@ -3879,7 +3882,7 @@ class RtScene12 {
                                 | ((ratio_written && history_valid_ && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame && ratio_size_ == reuse_size) ? 32u : 0u)
                                 | (ratio_follows ? 64u : 0u)
                                 | ((path_traced && light_count != 0 && (requested & dlaa_bridge::RT_PATH_TORCH_LIGHT) != 0) ? LIGHTS_IN_PATHS : 0u),
-            .reuse_tests = reuse ? reuse_tests : 0u,
+            .reuse_tests = reuse_tests,
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
@@ -4453,6 +4456,8 @@ class RtScene12 {
   static constexpr uint32_t REUSE_TEST_NO_SPATIAL = 1;
   static constexpr uint32_t REUSE_TEST_NO_VALIDATE = 2;
   static constexpr uint32_t REUSE_TEST_NO_SKY = 4;
+  static constexpr uint32_t REUSE_TEST_NO_CONTACT = 8;
+  static constexpr uint32_t REUSE_TEST_SEEN_LIGHTS_FRAME = 16;
   static constexpr uint32_t LIGHTS_IN_PATHS = 128;  // rt_camera.hlsli (PathConstants::lights_in_bounce)
   static constexpr uint32_t LIGHTS_RATIO_BITS = 256;  // rt_camera.hlsli: a trace's, the addon reads flagged bits (RT_SCENE_LIGHT_BITS)
   static constexpr UINT LIGHT_KEPT_TEXELS = 5;  // rt_path.hlsli light_kept
