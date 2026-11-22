@@ -476,3 +476,11 @@ nearest texel's depth as before. `tw_gtvbao_exact` (WARP): ssdo00-02 off the bui
 Texture LOD bias (bug3_, 2026-11-17; built only, not run in game): the Ray Tracing presets RT/PT, No RT/PT and Reset
 also turn Texture LOD Bias on All Textures on (ATN: the LOD bias for everything on in every game; on by default
 already). The bias's level stays the player's; the row set off by hand stays off until a preset is pressed.
+
+Open items (g08_, 2026-11-22; not built yet, not run in game):
+New: one log line per render target the resource upgrades take (`[Ryse] upgrade 0x<handle> <width>x<height>
+<format> -> <format> in place / view clone`, at most 256), for the census of the upgraded targets' readers.
+New: Recommended (with Deeper Shadows) removed (ATN: after the V35 fit it changed PsychoV31 only); both Recommended
+presets set Video AutoHDR 0.2 (was 0.25; ATN: the porting rules' 0.2).
+Fixed: the back buffer check after Present (back_buffer_fix::CheckBound) runs before RenoDX's draw callbacks: it ran
+after them, so a custom shader's callback on the first draw after Present saw the target Present had unbound.
