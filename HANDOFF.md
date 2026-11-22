@@ -7455,11 +7455,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         deadline; UNREAD_WRAPPERS (wsl, sudo, runas, psexec, ssh, xargs, time, ...) = no declared deadline, also as a
         shell string's first command (first_command()); docstring known limits now only safe cases. 33 OK, selftest 0,
         21 new head_args cases. -> gpr_ re-checks y1 / y2 / z after its gti_ ns_busy re-check.
-        Agents (7): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtp_ (K1-K3 + next round), grs_ (N1 nits 1-3),
-        gtl_ (S1b tests, then v1.1), gpr_ (gti_ ns_busy, then gtb_ y1 / y2 / z). Idle: bd1r_, lga_, lgf2_, c33i_,
-        c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, ebr_, t4i_ (r21 after b13r_), gtq_, gbc_, gti_ (waits
-        gpr_), gtb_ (waits gpr_), gtv_ (waits grs_ / gtl_), gtk_, gtw_ (waits gtp_). GPU: free (H0 stopped);
-        harness-named fakes allowed until I announce the H0 re-run (checked empty before it starts).
+        gtp_ K + WEB DONE 05:3x (plan_1117/gtp_k_web_handback.md; backups scratchpad\gtp_bak12): live in tools\tw\gates,
+        mode.txt still SHADOW, suite 541 / 541 (was 370). K1 heredoc bodies before inner_commands(), K2 verb-only
+        <sub>, K3 fast HEREDOC, R9a --bash-b64=<b64>. Built: web_ok() + rules, code_repos.tsv only from raw licence
+        output, daily tool_times_<day>.tsv (30 days) + agents_open\, refusal (a) incl. n7, fix-now, pre-marking,
+        hourly rebuild + stale-prices TOOL FAULT, tool_prices.py (report lists "() failed" rows), webprice tests
+        F1-F27 (164 checks). Bugs found + fixed: time_row overwrote tool_use_id, seed-only kinds had no price row,
+        shell_web 0.46 s -> 6 ms on 292 KB. Live: seed + build ran (101,519 seeds from 400 transcripts, 6,653 price
+        rows), report "0 TOOL FAULT, 0 EXTERNAL". Latency: ~0.055 s per normal call; a 292 KB command's whole hook
+        < 0.5 s (design's 0.3 s not met there; S1c gates ~0.26 s of it). Until ATN copies web_allow.tsv an unknown host
+        = would-deny + TOOL FAULT rows (shadow). Proposals ONLY: web_allow.proposed.tsv, gate_override.proposed.ps1;
+        nothing installed, no settings / gates.tsv / web_allow.tsv touched. dred cross-job check: not the hook's job ->
+        gtb_'s report_check.py / result.schema (routed). -> gtw_ RE-CHECK 8 STARTED.
+        [ ] ATN (INSTALL_FOR_ATN.md item 12, sections 1 / 3 / 7): replace the hook JSON (matchers *, + SessionStart,
+            SubagentStop, Notification); add the six C.1 rows to gates.tsv; copy web_allow.proposed.tsv ->
+            web_allow.tsv and gate_override.proposed.ps1 -> gate_override.ps1 - AFTER gtw_'s re-check 8 says OK.
+        Agents (8): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtw_ (gtp_ re-check 8), grs_ (N1 nits 1-3),
+        gtl_ (S1b tests, then v1.1), gpr_ (gti_ ns_busy, then gtb_ y1 / y2 / z), gtb_ (dred in report_check /
+        result.schema). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, ebr_,
+        t4i_ (r21 after b13r_), gtq_, gbc_, gti_ (waits gpr_), gtv_ (waits grs_ / gtl_), gtk_, gtp_ (waits gtw_).
+        GPU: free (H0 stopped); harness-named fakes allowed until I announce the H0 re-run (checked empty first).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
