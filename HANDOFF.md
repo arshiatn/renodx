@@ -482,7 +482,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_: CHK-W3 scan-assert case in test_make (kills S1 + S6b), N-a skip t when a r ... | ?
 - gtp_ round 16 (SENT 10:5x; NOT "only the quoted word" - see gtw_ 10:55): R15-1 ( ... | ?
 - ATN: permanent delete of (1) old WPR ETLs 33.3 GB + (3) old shots 5.5 GB (dsk_ 1 ... | ?
-- dsk_: refined testbin list (2) - only old DLL / obj copies no test, pin or tool ... | ?
 - t4i_ (after the scan gaps): end batch moves each finished leg's ETLs to a D: fol ... | ?
 - ATN (antivirus): scratchpad\t4i_etl_tests.py (t4i_'s ETL-move test, written 10:5 ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
@@ -9664,7 +9663,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         NOTE: ebr_'s gate = ~151 GB free at the batch start if nothing moves off C: -> even 55 GB is not enough ->
         t4i_: after each leg's analysis MOVE that leg's ETLs to D: (never delete; analysis paths follow).
         - [ ] ATN: permanent delete of (1) old WPR ETLs 33.3 GB + (3) old shots 5.5 GB (dsk_ 10:5x).
-        - [ ] dsk_: refined testbin list (2) - only old DLL / obj copies no test, pin or tool uses (read-only).
+        - [x] dsk_: refined testbin list (2) - only old DLL / obj copies no test, pin or tool uses (read-only). DONE 11:06.
         - [ ] t4i_ (after the scan gaps): end batch moves each finished leg's ETLs to a D: folder before the next
             leg's disk gate (move, never delete; ebo_analyze reads the new path); ebr_ re-checks (coordinator 10:5x).
         gtw_ RE-CHECK 15 = ROUND 15 RIGHT + RC-2 OK 10:55 (plan_1117/gtw_recheck15_rc2_handback.md; gtw_s1c_review.md
@@ -9726,9 +9725,17 @@ heading text are in HANDOFF_ARCHIVE.md)
             (EPERM, looks like Bitdefender). Please check Bitdefender's log / quarantine yourself and exclude or
             restore it if it's a false positive; then t4i_ re-applies the ETL move + its tests (t4i_ 11:01).
         -> ebr_ RE-CHECKS the probes + scan gaps now; ETL move waits for ATN's antivirus answer.
-        Agents (3): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check), dsk_ (refined testbin list, read-only);
-        t4i_ ETL move waits for ATN (antivirus); c3i_ waits for H0's end (then suites + builds -> rmt_b1log merge
-        gate); ff_s12 build after H0; H0 run (~11:30)
+        dsk_ TESTBIN REFINED 11:06 (render_mt/reports/dsk_testbin_refined_handback.md; "## testbin refined" appended to
+        dsk_cleanup_candidates_1122.md, its first table still says ~16 / ~55 GB): under the rules almost nothing in
+        testbin is safe - scripts in tools\tw name 260 testbin entries (shs 2.65 GB, cpu1_addons, final1118,
+        heapfix_pf, ec4s_*, g5_* ...; many in closed-batch scripts); clear candidate only testbin\gpu_page 0.09 GB;
+        unsure 122 loose top-level .dll / .obj / .pdb / .exe 1.21 GB (> 72 h). Script search hit its time limit
+        (safe direction); no hash compare. Safe total ~39 GB (ETLs 33.3 + shots 5.5 + 0.1). COORDINATOR: with
+        t4i_'s per-start ETL move C: needs at most 67.7 GB (fits 82 GB) -> the cleanup is a buffer, not a must;
+        no wider testbin rule asked.
+        Agents (2): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check); t4i_ ETL move waits for ATN
+        (antivirus); c3i_ waits for H0's end (then suites + builds -> rmt_b1log merge gate); ff_s12 build after H0;
+        H0 run (~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
