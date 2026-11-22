@@ -11481,7 +11481,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         round 22 transcript (only 3 older subagent-hook rejects of update_plan); nothing partial; it may have been another
         agent's.
         - [ ] gtw_ (a0b03d68655ebfcaf) + gpr_ (aa304b6e977350cc3) re-check round 22 on gtp_stage22 (read only; gtw_ judges
-        the nested $d WriteAllText into testbin\heapfix_hf) when slots free.
+        the nested $d WriteAllText into testbin\heapfix_hf): BOTH SENT 20:38 (slots freed).
         - [ ] gtp_ golive round 22 (bak29, swap gate_hook.py + run_tests.py, shas, mode.txt shadow) only after both re-checks
         GO and a green mirror suite on a QUIET machine (no builds; e.g. the T6 quiet window before the end batch).
         - [x] gtp_ report of the classifier-blocked action -> none found in its round 22 transcript (see above).
@@ -11606,7 +11606,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         SKILL.md line 9 = host_sss_depth / host_sss_setup).
         G22 STARTED 20:3x (g22_ a02d241f7f1356663): ALL 22 GROUPS STARTED. rva_ STARTED 20:33 (a79f9e19bc8bf2c6d, Opus
         xHigh, read only): g12_ + g11_ + g08_ reviews (handoff_plan/reviews/rva_g1N_review.md). rvb_ = g19_ + g18_ + g07_
-        QUEUED at the cap (prompt: review in that order; G07's 2af46f920 needs ho_g19 d655c6ddc).
+        STARTED 20:36 (af9596f8f90c1c5f7; review in that order; G07's 2af46f920 needs ho_g19 d655c6ddc).
         g19_ DONE 20:3x (handoff_plan/handbacks/g19_done_handback.md): ho_g19 unchanged; NEW ho_g19_ryse from ho_g08
         90b4fd6d7: be0b3c07b (cherry-pick of a5f8608fb), e0abc7b65 (AssignPages treats "SettingsAdvanced" like
         "SettingsMode"; no TW add-on has the key), 8748f72ae (Ryse on the shared pages + SetTints, About gold / AA purple
