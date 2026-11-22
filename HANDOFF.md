@@ -487,6 +487,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: Opus xHigh reviews for g08_ + g14_ when slots free (queued groups first). | ?
 - render_mt (lg3_ notes, out of scope): wire Describe() to device_loss::stall_note ... | ?
 - coord after the restart: lg3_'s zombie engine_code.exe in testbin\scratch\lg3_\e ... | ?
+- coord: land g12_'s land_list.md after `sha256sum -c base_hashes.txt` (merge by h ... | ?
+- render_mt (g12_): twattila/test_hooks.hpp: stable-sort RENODX_TW_SET / SET_FILE ... | ?
+- ATN (g12_, recommend yes): turn off Always On Top for the Claude window before P ... | ?
+- coord: Opus xHigh review of g12_'s staged diff (tools, review per group). | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11423,6 +11427,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         device_loss::AddCodeRange for the stub pages (engine_code page, eu::page, draw-recording thunks).
         - [ ] coord after the restart: lg3_'s zombie engine_code.exe in testbin\scratch\lg3_\ec_x86 (could not be killed;
         harmless); lg3_'s worktree still links bin + build\downloads (remove the links alone before any cleanup).
+        ATN 20:1x: "it has been a long time since we did fix/add Skillsets (last week) ... planned before the final code
+        review": last skills commit 11-17; SKILLS UPDATE 4 + 5 open. COORD 20:1x: g14_ (owns .agents/skills/ now) does
+        SKILLS UPDATE 4 now on ho_g14 (lessons 11-17..11-22, the lab in the skills = tkp_'s gto_ S6, tick-audit lessons);
+        SKILLS UPDATE 5 stays the last step after the final review.
+        g12_ DONE 20:1x (handoff_plan/handbacks/g12_done_handback.md): tools outside git -> staged in testbin\scratch\g12_\
+        stage\ + land_list.md (20 rows) + base_hashes.txt: A1d cause (RENODX_TW_SET list out of time order -> the +300 s
+        trace waited behind 1722 s), Divinity pass-timing copies + PresentMon front-window checks + pm_summary "alone / NOT
+        ALONE", Tales ue_back / gi_back timed, UE pass pairs (pass_pairs.py min of two frames), R.U.S.E. run notes, item 49
+        retire = move to tools\retired\.
+        - [ ] coord: land g12_'s land_list.md after `sha256sum -c base_hashes.txt` (merge by hand if changed); tick 230 /
+        1297 after the retire rows land; optional: the 5 other identical pm_summary.py copies.
+        - [ ] render_mt (g12_): twattila/test_hooks.hpp: stable-sort RENODX_TW_SET / SET_FILE entries by time when read (or
+        WARN on an out-of-order entry), so a step can't silently wait.
+        - [ ] ATN (g12_, recommend yes): turn off Always On Top for the Claude window before PresentMon runs (an on-top
+        window makes every capture NOT ALONE; runners never touch other windows).
+        - [ ] coord: Opus xHigh review of g12_'s staged diff (tools, review per group).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
