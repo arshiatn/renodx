@@ -46,7 +46,12 @@ float2 AoViewScale()
 float3 AoViewPositionOf(float2 uv, float depth, float2 tan_half_fov)
 {
   const float4 ndc = float4(uv * AoViewScale() * float2(2.f, -2.f) + float2(-1.f, 1.f), depth, 1.f);
+#if BITMASK_VARIANT >= 2
+  // A perspective projection's inverse (jittered too) has 0 at x / y in its z and w columns: z from the depth alone.
+  const float z = (depth * inv_projection._m22 + inv_projection._m32) / (depth * inv_projection._m23 + inv_projection._m33);
+#else
   const float z = dot(ndc, inv_projection._m02_m12_m22_m32) / dot(ndc, inv_projection._m03_m13_m23_m33);
+#endif
   return float3(ndc.xy * tan_half_fov * z, z);
 }
 
@@ -131,6 +136,7 @@ float4 BitmaskAmbientOcclusion(float4 v0)
 #if BITMASK_VARIANT >= 1
       // Until each side's sectors are covered (bitmask.hlsli BitmaskSideSectors: x the negative side's, y the positive's).
       const uint2 reachable = BitmaskSideSectors(slice_info, slice_jitter);
+      const BitmaskShareTerms share_terms = BitmaskShareTermsOf(slice_info);
       [loop]
       for (uint step = 0; step < steps && any((occluded & reachable) != reachable); ++step) {
 #else
@@ -203,7 +209,7 @@ float4 BitmaskAmbientOcclusion(float4 v0)
             const float3 back = delta + normalize(sample_position) * thickness;
             cosines.y = dot(back, view) * rsqrt(dot(back, back));
           }
-          occluded |= BitmaskSectorsOfCosines(cosines, side, slice_info, slice_jitter);
+          occluded |= BitmaskSectorsOfCosines(cosines, side, slice_info, share_terms, slice_jitter);
 #else
           const float3 front = delta / delta_length;
           // Its thickness along its own camera ray (auto thickness: its occluder's).

@@ -19,8 +19,9 @@ static const uint BITMASK_SECTORS = 32;
 
 // GT-VBAO's per-sample math (G15's A/B, handoff_plan/reports/g15_gtvbao_ab.md), the same picture: 0 today's; 1 the
 // cosine domain (BitmaskSectorsOfCosines, BitmaskOccluderBackCosine: no normalized vectors) and each side's early stop
-// (BitmaskSideSectors). The default until the 5090's same-picture gate and timing pass: 0 (its bytes unchanged). An
-// includer or the build may set it first.
+// (BitmaskSideSectors); 2 that and BitmaskCosineShare's per-slice terms hoisted (BitmaskShareTermsOf) and the depth's view
+// z in 2 terms (bitmask_ssao.hlsli). The default until the 5090's same-picture gate and timing pass: 0 (its bytes
+// unchanged). An includer or the build may set it first.
 #ifndef BITMASK_VARIANT
 #define BITMASK_VARIANT 0
 #endif
@@ -161,6 +162,34 @@ float BitmaskCosineShare(float x, float normal_angle, float cos_normal, bool pos
   return share / (4.f * (cos_normal + angle * sin_angle));
 }
 
+// BitmaskCosineShare's terms that stay the same over a slice (BITMASK_VARIANT 2): sin(angle), each side's constant
+// (n0 x cos_normal + (n2 x angle + pi) x sin_angle: x the negative side, y the positive) and the denominator's
+// reciprocal; per edge then one cosine and one multiply-add.
+struct BitmaskShareTerms {
+  float angle;
+  float sin_angle;
+  float2 constant;
+  float scale;
+};
+
+BitmaskShareTerms BitmaskShareTermsOf(BitmaskSlice slice) {
+  BitmaskShareTerms terms;
+  terms.angle = -slice.normal_angle;
+  terms.sin_angle = sin(terms.angle);
+  terms.constant = float2(slice.cos_normal + BITMASK_PI * terms.sin_angle,
+                          3.f * slice.cos_normal + (4.f * terms.angle + BITMASK_PI) * terms.sin_angle);
+  terms.scale = 1.f / (4.f * (slice.cos_normal + terms.angle * terms.sin_angle));
+  return terms;
+}
+
+// BitmaskCosineShare from the slice's terms.
+float BitmaskCosineShareOf(float x, BitmaskShareTerms terms, bool positive) {
+  if (x <= 0.f || x >= 1.f) return x;
+  const float phi = x * BITMASK_PI - 0.5f * BITMASK_PI;
+  const float n1 = positive ? -1.f : 1.f;
+  return ((positive ? terms.constant.y : terms.constant.x) + n1 * (cos(terms.angle - 2.f * phi) + 2.f * phi * terms.sin_angle)) * terms.scale;
+}
+
 // The sectors each side's samples can reach (BITMASK_VARIANT 1's early stop): x the negative side's (below the view
 // vector's edge), y the positive side's (from it), each a sector wider (the two sides' shares at the pole agree but for
 // rounding). A sample on one side covers sectors of its side's alone: once they are all covered, that side's later
@@ -228,14 +257,20 @@ uint BitmaskSectors(float3 front, float3 back, float3 view_direction, float side
   return low & high;
 }
 
-// BitmaskSectors from the cosines of the sample's front and back to the view vector (`cosines`, BITMASK_VARIANT 1). Once
-// the gate passes it replaces BitmaskSectors in every includer (one function again).
-uint BitmaskSectorsOfCosines(float2 cosines, float side, BitmaskSlice slice, float jitter) {
+// BitmaskSectors from the cosines of the sample's front and back to the view vector (`cosines`, BITMASK_VARIANT 1), the
+// cosine shares from the slice's `terms` (BITMASK_VARIANT 2). Once the gate passes it replaces BitmaskSectors in every
+// includer (one function again).
+uint BitmaskSectorsOfCosines(float2 cosines, float side, BitmaskSlice slice, BitmaskShareTerms terms, float jitter) {
   float2 angles = side * float2(BitmaskAcos(cosines.x), BitmaskAcos(cosines.y));
   angles = saturate((angles - slice.normal_angle + 0.5f * BITMASK_PI) / BITMASK_PI);
   float2 shares = float2(min(angles.x, angles.y), max(angles.x, angles.y));
+#if BITMASK_VARIANT >= 2
+  shares.x = BitmaskCosineShareOf(shares.x, terms, side > 0.f);
+  shares.y = BitmaskCosineShareOf(shares.y, terms, side > 0.f);
+#else
   shares.x = BitmaskCosineShare(shares.x, slice.normal_angle, slice.cos_normal, side > 0.f);
   shares.y = BitmaskCosineShare(shares.y, slice.normal_angle, slice.cos_normal, side > 0.f);
+#endif
   const uint2 edges = uint2(floor(saturate(shares + jitter / BITMASK_SECTORS) * BITMASK_SECTORS));
   const uint low = (edges.x < BITMASK_SECTORS) ? (0xFFFFFFFFu << edges.x) : 0u;
   const uint high = (edges.y != 0u) ? (0xFFFFFFFFu >> (BITMASK_SECTORS - edges.y)) : 0u;
