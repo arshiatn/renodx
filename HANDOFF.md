@@ -6668,8 +6668,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         lane asserted, caps parsed from host clamps + shader constants, 18 negative fixtures; 63 / 63; pre-H0 sources in
         tools\tw\h0\h0i_base. Helper build clean, gated twattila amd64 + x86 build32 exit 0. upr_ SHOULDS RE-CHECK
         STARTED 01:5x. Run 6 now safe at any probe ray count.
-        Agents (8): c33i_ (R-S5 fixes), gtw_ (S1c re-check), ebr_ (r16 review), lga_ (group 2 re-check 2), lgf1_ (group 1
-        follow-up), gtv_ (S1a + S1b re-check), upr_ (H0 Shoulds re-check), upt_ (unified PT v2.3). QUEUE: R-S5 re-checks
+        MERGED TREE BUILT 01:5x: 3c4eb4397 gated x86 twattila / twrome2 / twthronesofbritannia + amd64 twattila exit 0.
+        upr_ H0 SHOULDS RE-CHECK 01:5x = MERGE (designs/upr_h0s_handback.md; 63 / 63 + own 8 mutants all caught; nit: the
+        scan doesn't follow #include out of the folder, e.g. ../rt_leg_fog.hlsli). Merge waits on the GPU runs: they need
+        ATN's exact rule -> h0i_ RESUMED 01:5x: writes tools\tw\h0\h0_gpu_runs.ps1 (+ -DryRun; runs 1-8 + (a)-(d),
+        pre / post helper builds, GPU lock, Nsight run 7) and the rule line; upr_ checks coverage; then ATN adds the rule.
+        gtw_ S1c RE-CHECK 01:5x = FIX small (plan_1117/gtw_s1c_recheck_handback.md): all Musts hold. Before INSTALL: F1
+        -Scope spec,cxx fails under -File, I1 A0 check that chained PowerShell still asks (else drop the 4 PowerShell
+        rules), I2 status lines. Also: F2 protection refuses writes outside protected files (-Value, copies out), I3 T07
+        as a commented row, T04 text. gtp_ RESUMED 01:5x, then gtw_ short re-check, then INSTALL to ATN.
+        Agents (8): c33i_ (R-S5 fixes), gtp_ (S1c small fixes), ebr_ (r16 review), lga_ (group 2 re-check 2), lgf1_ (group 1
+        follow-up), gtv_ (S1a + S1b re-check), h0i_ (H0 run script), upt_ (unified PT v2.3). QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
         rmt_h0, Mega Geometry 4K run (after rmt_lg2), B1.6, X1, logging group 3, PT DI steps 0-4 (after rmt_lg2 + H0), S2
