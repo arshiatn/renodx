@@ -3752,6 +3752,18 @@ int main(int argc, char** argv) {
       off();
       CHECK(ec::written == 0 && game_bytes(all));
       prepare_again();
+      // the half function changed while the half rows are on: switching off leaves it (a foreign hook) and takes the half rows out; switched on again the half rows do not go in alone
+      on();
+      CHECK((ec::written & ec::HALF_ROWS_BIT) != 0 && ec::written == all);
+      foreign(1, hook);
+      off();
+      CHECK(ec::written == 0 && holds(1, hook) && game_bytes(all & ~ec::HALF_FUNCTION_BIT) && (ec::found & ec::HALF_FUNCTION_BIT) == 0);
+      on();
+      CHECK((ec::written & ec::HALF_ROWS_BIT) == 0 && holds(1, hook) && game_bytes(ec::HALF_ROWS_BIT));
+      foreign(1, ec::sites[1].game);
+      off();
+      CHECK(ec::written == 0 && game_bytes(all));
+      prepare_again();
     }
     if (build.code->particle_count_rva != 0) {
       // (n) Cached Particle Count's pair: the epoch changed before the row goes in: the sum does not go in either (it would answer the first value for the session); our sum's jump

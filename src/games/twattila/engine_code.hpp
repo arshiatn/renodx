@@ -2021,7 +2021,9 @@ static_assert([] {
 // cut sites too: one comes out only while no call through its stub is in flight and no thread is in the stubs.
 // Parallel Instance Fill's sites (`fill_patched` / `fill_stood_down`, instance_fill.hpp) are written in the same window, last: a group of
 // them goes in whole or not at all, and comes out only while no thread is inside the dispatcher (the cut on its `active` count) or past the
-// first byte of a site.
+// first byte of a site. In the private draw recording build, a fold open on a thread other than the caller's (a render thread between a fill site and
+// its cut: workers fill the ring and the game's Unmap is noted for its close) refuses every attempt in which the fill's or the recording's sites
+// go out, read with every thread stopped; the caller's own fold does not (that thread closes it).
 inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recording_patched = 0,
                         uint64_t* recording_stood_down = nullptr, uint32_t effect_patched = 0, uint32_t* effect_stood_down = nullptr,
                         uint32_t fill_patched = 0, uint32_t* fill_stood_down = nullptr) {
@@ -2792,6 +2794,7 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   for (const uint32_t group : {internal::PARTICLE_COUNT_SITES, internal::JOB_SITES}) {
     if ((internal::found & group) != group) target &= ~group;
   }
+  if ((internal::found & internal::HALF_FUNCTION_BIT) == 0) target &= ~internal::HALF_ROWS_BIT;  // the half rows call the half function: out of found (another mod's hook over it), they stay out
   internal::SyncWorkerSlots(internal::written & target);  // a site leaving: its word first
   if (effect_wanted == 0 && eu::written != 0) {
     effect_update::Disarm();  // the effect update's sites leaving: no thread enters a slow path from now on

@@ -284,6 +284,49 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
     other.join();
     if (put_back() != 0) return 1;
   }
+  // A fold open on the caller's own thread does not refuse: that thread is the one that closes it, and it is here. Uninstall takes everything out.
+  {
+    update(ALL_GROUPS, true, true);
+    update(ALL_GROUPS, true, true);
+    CHECK(fi::written == fill::ALL_SITES && ec::recording_written != 0);
+    dr::fold.thread.store(GetCurrentThreadId());
+    log_lines.clear();
+    twattila::engine_code::Uninstall();
+    dr::fold.thread.store(0);
+    CHECK(fi::written == 0 && ec::recording_written == 0 && game_is_back() && !ec::module_pinned && !ec::recording_left_in);
+    CHECK(said("left in at detach") == 0);
+  }
+  // Recording sites going out alone (a group leaving that holds no cut: the fill's sites stay in) are refused too while a fold is open on another thread, as the fill's are.
+  {
+    update(ALL_GROUPS, true, true);
+    update(ALL_GROUPS, true, true);
+    CHECK(fi::written == fill::ALL_SITES);
+    std::atomic<bool> stop = false;
+    std::thread other([&] {
+      while (!stop.load()) Sleep(1);
+    });
+    const DWORD other_id = GetThreadId(other.native_handle());
+    size_t refused_groups = 0;
+    for (size_t group = 0; group < ec::RECORDING_OWN.size(); ++group) {
+      const uint32_t groups = ALL_GROUPS & ~(1u << group);
+      const uint64_t recording_before = ec::recording_written;
+      update(groups, true, true);
+      const bool recording_only = (ec::recording_written != recording_before && fi::written == fill::ALL_SITES);
+      update(ALL_GROUPS, true, true);
+      update(ALL_GROUPS, true, true);
+      CHECK(ec::recording_written == recording_before && fi::written == fill::ALL_SITES);
+      if (!recording_only) continue;
+      dr::fold.thread.store(other_id);
+      update(groups, true, true);
+      CHECK(ec::recording_written == recording_before && fi::written == fill::ALL_SITES);
+      dr::fold.thread.store(0);
+      ++refused_groups;
+    }
+    CHECK(refused_groups != 0);
+    stop = true;
+    other.join();
+    if (put_back() != 0) return 1;
+  }
   std::printf("29f. a fold open on another thread at detach refuses the removal of the stubs and the cuts (closing within the attempts: everything out; staying open, or opening after Uninstall started: every site left in, the module pinned, recording_left_in set, one left-in line per table)\n");
   return 0;
 }
