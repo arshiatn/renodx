@@ -5,11 +5,18 @@
 
 #pragma once
 
+#include <windows.h>
+
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <mutex>
+#include <optional>
+#include <shared_mutex>
+#include <span>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -247,6 +254,72 @@ inline void InvokeModuleCallback(auto&& callback, Data& data) {
   }
 }
 
+// Writer protocols (utils::resource's view filter, utils::pipeline's bind cache): a reader trusts a shared map only while
+// every module writing it follows the protocol. The protocol's own block starts with the frozen fields
+// {std::shared_mutex mutex; std::array<ModuleToken, N> modules; size_t module_count; ...}: the tokens of the modules built
+// with it. A module adds its token before its record in the map's control block turns active and removes it after the
+// record turns inactive, so an active record without a token is a module writing without the protocol (an add-on built
+// before it).
+
+// False when every slot is taken: the token stays out, and the caller turns its protocol off.
+template <typename Block>
+[[nodiscard]] inline bool AddProtocolToken(Block* block) {
+  const auto token = GetModuleToken();
+  const std::unique_lock lock(block->mutex);
+  const auto modules = std::span(block->modules.data(), block->module_count);
+  if (std::ranges::find(modules, token) != modules.end()) return true;
+  if (block->module_count == block->modules.size()) return false;
+  block->modules[block->module_count++] = token;
+  return true;
+}
+
+template <typename Block>
+inline void RemoveProtocolToken(Block* block) {
+  const std::unique_lock lock(block->mutex);
+  const auto modules = std::span(block->modules.data(), block->module_count);
+  if (const auto mine = std::ranges::find(modules, GetModuleToken()); mine != modules.end()) {
+    *mine = modules.back();
+    --block->module_count;
+  }
+}
+
+// The file of the first active module in `writers` without its token in `block` ("?" when its module is not found).
+template <typename Block, typename Data>
+inline std::optional<std::string> FindModuleWithoutProtocolToken(Block* block, const ControlBlock<Data>& writers) {
+  ModuleToken missing = nullptr;
+  {
+    const std::shared_lock lock(block->mutex);
+    const auto modules = std::span(block->modules.data(), block->module_count);
+    // Records are never freed: the walk is memory-safe while modules attach.
+    for (const auto* module = writers.modules; module != nullptr && missing == nullptr; module = module->next) {
+      if (module->active && std::ranges::find(modules, module->token) == modules.end()) {
+        missing = module->token;
+      }
+    }
+  }
+  if (missing == nullptr) return std::nullopt;
+  std::array<char, MAX_PATH> file = {'?'};
+  if (HMODULE module = nullptr;
+      ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           static_cast<const char*>(missing), &module)) {
+    ::GetModuleFileNameA(module, file.data(), static_cast<DWORD>(file.size()));
+  }
+  return std::string(file.data());
+}
+
+// A protocol's environment switch (RENODX_*_MEMO, RENODX_*_MEMO_CHECK): '0', '1', or '\0' when unset or longer.
+inline char ProtocolSwitch(const char* name) {
+  std::array<char, 2> value = {};
+  return (::GetEnvironmentVariableA(name, value.data(), static_cast<DWORD>(value.size())) == 1u) ? value[0] : '\0';
+}
+
+// Fibonacci hashing of a 16-byte-aligned handle (D3D11 / D3D12 objects) into `bits` bits. The view filter's shared bits
+// are indexed by it, so every module must hash alike: a change takes ViewFilterData a new uuid.
+inline uint32_t HandleIndex(uint64_t handle, uint32_t bits) {
+  const auto folded = static_cast<uint32_t>((handle >> 4u) ^ (handle >> 36u));
+  return (folded * 0x9E3779B1u) >> (32u - bits);
+}
+
 }  // namespace internal
 
 template <typename Data>
@@ -260,6 +333,12 @@ class Shared {
     if (current_control == nullptr || current_module == nullptr) return false;
 
     return current_module->active && current_control->event_handler == current_module;
+  }
+
+  // The module records a writer protocol's check walks (FindModuleWithoutProtocolToken); null until the first
+  // RegisterModule opens the process's control block.
+  [[nodiscard]] const internal::ControlBlock<Data>* Control() const {
+    return control;
   }
 
   bool RegisterModule() {

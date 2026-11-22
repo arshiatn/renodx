@@ -223,8 +223,6 @@ static cross_addon::Shared<BindCacheData> bind_cache;
 // table needs no synchronization and no lookup to find it (D3D11 deferred contexts and D3D12 lists record on their own
 // threads: a table each). Made at the thread's first cached bind, freed at its exit.
 static thread_local std::unique_ptr<BindCacheTable> bind_cache_table;
-// pipeline::internal::shared's control block: the modules attached to the pipeline map (CheckBindCacheWriters).
-static const cross_addon::internal::ControlBlock<SharedData>* bind_cache_writers = nullptr;
 static bool bind_cache_token = false;     // this module's token is in BindCacheData::modules
 static bool bind_cache_checking = false;  // this module opted in: it checks the writers at init_device and present
 // RENODX_PIPELINE_MEMO_CHECK=1: the handler module's counts (plain loads and stores: a check mode for tests and runs).
@@ -259,19 +257,7 @@ static void RegisterBindCacheToken() {
   auto* cache = internal::bind_cache.data;
   if (cache == nullptr) return;
   internal::bind_cache_token = true;
-  const auto token = cross_addon::internal::GetModuleToken();
-  bool table_full = false;
-  {
-    const std::unique_lock lock(cache->mutex);
-    const auto modules = std::span(cache->modules.data(), cache->module_count);
-    if (std::ranges::find(modules, token) == modules.end()) {
-      table_full = (cache->module_count == BIND_CACHE_MAX_MODULES);
-      if (!table_full) {
-        cache->modules[cache->module_count++] = token;
-      }
-    }
-  }
-  if (table_full) {
+  if (!cross_addon::internal::AddProtocolToken(cache)) {
     TurnOffBindCache("all module slots taken");
   }
 }
@@ -1014,9 +1000,7 @@ static void OnBindPipeline(
     auto* cache = internal::bind_cache.data;
     const size_t control = (cache != nullptr ? cache->control.load() : 0u);
     if ((control & (BIND_CACHE_USE | BIND_CACHE_OFF)) == BIND_CACHE_USE && pipeline.handle != 0u) {
-      // Fibonacci hashing of the handle (D3D11 / D3D12 objects: 16-byte aligned pointers).
-      const auto folded = static_cast<uint32_t>((pipeline.handle >> 4u) ^ (pipeline.handle >> 36u));
-      const uint32_t index = (folded * 0x9E3779B1u) >> (32u - BIND_CACHE_INDEX_BITS);
+      const uint32_t index = cross_addon::internal::HandleIndex(pipeline.handle, BIND_CACHE_INDEX_BITS);
       if (internal::bind_cache_table == nullptr) {
         internal::bind_cache_table = std::make_unique<BindCacheTable>();
       }
@@ -1189,25 +1173,11 @@ static void OnDestroyDevice(reshade::api::device* device) {
 // a late add-on is never the pipeline or shader event handler, so its init / destroy events do not run.
 static void CheckBindCacheWriters() {
   auto* cache = internal::bind_cache.data;
-  if (cache == nullptr || internal::bind_cache_writers == nullptr || (cache->control.load() & BIND_CACHE_OFF) != 0u) return;
-  cross_addon::internal::ModuleToken missing = nullptr;
-  {
-    const std::shared_lock lock(cache->mutex);
-    const auto modules = std::span(cache->modules.data(), cache->module_count);
-    // Records are never freed: the walk is memory-safe while modules attach.
-    for (const auto* module = internal::bind_cache_writers->modules; module != nullptr && missing == nullptr; module = module->next) {
-      if (module->active && std::ranges::find(modules, module->token) == modules.end()) {
-        missing = module->token;
-      }
-    }
+  const auto* writers = internal::shared.Control();
+  if (cache == nullptr || writers == nullptr || (cache->control.load() & BIND_CACHE_OFF) != 0u) return;
+  if (const auto file = cross_addon::internal::FindModuleWithoutProtocolToken(cache, *writers); file.has_value()) {
+    TurnOffBindCache("a module writes the pipeline map without its protocol: " + *file);
   }
-  if (missing == nullptr) return;
-  std::array<char, MAX_PATH> file = {'?'};
-  if (HMODULE module = nullptr; ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                                                       static_cast<const char*>(missing), &module)) {
-    ::GetModuleFileNameA(module, file.data(), static_cast<DWORD>(file.size()));
-  }
-  TurnOffBindCache(std::string("a module writes the pipeline map without its protocol: ") + file.data());
 }
 
 static void OnBindCacheInitDevice(reshade::api::device* device) {
@@ -1345,12 +1315,7 @@ static void Use(DWORD fdw_reason) {
 
       auto* cache = internal::bind_cache.data;
       if (cache == nullptr) break;
-      // '0', '1' or 0 (unset).
-      const auto environment_switch = [](const char* name) {
-        std::array<char, 2> value = {};
-        return (::GetEnvironmentVariableA(name, value.data(), static_cast<DWORD>(value.size())) == 1u) ? value[0] : '\0';
-      };
-      const char memo = environment_switch("RENODX_PIPELINE_MEMO");
+      const char memo = cross_addon::internal::ProtocolSwitch("RENODX_PIPELINE_MEMO");
       if (memo == '0') {
         // The A/B base: said as information (check_logs.py fails a run on the cache's warnings).
         TurnOffBindCache("RENODX_PIPELINE_MEMO=0");
@@ -1361,21 +1326,7 @@ static void Use(DWORD fdw_reason) {
       }
       if (!use_bind_cache && memo != '1') break;
 
-      if (internal::bind_cache_writers == nullptr) {
-        // The slot's view closes again; the control block stays for the process.
-        auto slot = platform::OpenProcessSharedSlot<cross_addon::internal::ControlBlock<internal::SharedData>>(
-            __uuidof(internal::SharedData), [](auto*&) {});
-        if (slot.value != nullptr) {
-          internal::bind_cache_writers = *slot.value;
-        }
-        if (slot.view != nullptr) {
-          ::UnmapViewOfFile(slot.view);
-        }
-        if (slot.handle != nullptr) {
-          ::CloseHandle(slot.handle);
-        }
-      }
-      if (environment_switch("RENODX_PIPELINE_MEMO_CHECK") == '1') {
+      if (cross_addon::internal::ProtocolSwitch("RENODX_PIPELINE_MEMO_CHECK") == '1') {
         cache->control.fetch_or(BIND_CACHE_CHECK);
       }
       {
@@ -1387,7 +1338,7 @@ static void Use(DWORD fdw_reason) {
       reshade::register_event<reshade::addon_event::present>(OnBindCachePresent);
       internal::bind_cache_checking = true;
       CheckBindCacheWriters();
-      if (internal::bind_cache_writers == nullptr) {
+      if (internal::shared.Control() == nullptr) {
         TurnOffBindCache("the pipeline map's module records not found");
       }
       if ((cache->control.load() & BIND_CACHE_OFF) != 0u) {
@@ -1428,15 +1379,7 @@ static void Use(DWORD fdw_reason) {
       // order reversed), whatever UnregisterModule returned, as the attach added it whatever RegisterModule returned. The
       // generation and control stay: the module's later writes still bump.
       if (internal::bind_cache_token) {
-        auto* cache = internal::bind_cache.data;  // set before the token
-        {
-          const std::unique_lock lock(cache->mutex);
-          const auto modules = std::span(cache->modules.data(), cache->module_count);
-          if (const auto mine = std::ranges::find(modules, cross_addon::internal::GetModuleToken()); mine != modules.end()) {
-            *mine = modules.back();
-            --cache->module_count;
-          }
-        }
+        cross_addon::internal::RemoveProtocolToken(internal::bind_cache.data);  // set before the token
         internal::bind_cache.UnregisterModule();
         internal::bind_cache_token = false;
       }
