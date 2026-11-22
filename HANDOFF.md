@@ -7356,11 +7356,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         os.stat follows it); N1-N4 OK. New B3-N1 for gtq_: its CLI test aims refusals at tools\refcode\flip\images\x
         (NVIDIA's local copy) - point FLIP_SOURCE at a temp stand-in for those calls (images\ unchanged, refcode\flip
         git status clean today). -> gtq_ STARTED (B3-N1).
-        Agents (7): b13r_ (c3i_ B1.6 review), ebr_ (t4i_ r20 re-check), gtp_ (K1-K3 + next round), gtq_ (B3-N1),
-        gtv_ (grs_ S2r re-check, then gtl_ S3r S1), gpr_ (gtb_ x1-x4 + slow 0 re-check). Coordinator: H0 real run
-        (bhe3fx2sg, ~72 min). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_, h0i_, gpp_, gtb_
-        (waits gpr_), t4i_ (waits ebr_, then r21), gbc_ (waits gtq_), gti_, grs_ (waits gtv_), gtl_ (waits gtv_),
-        gtk_, gtw_ (waits gtp_).
+        gtq_ B3-N1 DONE 05:1x (plan_1117/gtq_b3n1_handback.md; backup scratchpad\gtq_backup_fix5): the CLI guard test
+        points flip_tool.FLIP_SOURCE at a temp stand-in (restored in finally), both refusals kept, stand-in images\
+        asserted empty; test_iq_flip 6 / 6; no test writes toward tools\refcode; refcode\flip git status clean.
+        -> gbc_ B3-N1 RE-CHECK STARTED (short).
+        Agents (7): b13r_ (c3i_ B1.6 review), ebr_ (t4i_ r20 re-check), gtp_ (K1-K3 + next round), gbc_ (B3-N1
+        re-check), gtv_ (grs_ S2r re-check, then gtl_ S3r S1), gpr_ (gtb_ x1-x4 + slow 0 re-check). Coordinator:
+        H0 real run (bhe3fx2sg, ~72 min). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_, h0i_,
+        gpp_, gtb_ (waits gpr_), t4i_ (waits ebr_, then r21), gtq_ (waits gbc_), gti_, grs_ (waits gtv_), gtl_
+        (waits gtv_), gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
