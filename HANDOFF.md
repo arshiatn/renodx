@@ -7543,12 +7543,35 @@ heading text are in HANDOFF_ARCHIVE.md)
         ns_busy printed 1 right after the test -> I checked 05:4x: no game / harness / helper / fg / map_replay
         process running (Get-Process + Win32_Process empty); transient (likely gtl_'s allowed fakes). -> gpr_
         re-checks z1 / z2 after gtb_.
-        Agents (7): upr_ (h0i_ F2 re-check), gtw_ (gtp_ re-check 8), gtv_ (grs_ N1 leftovers re-check), gtl_ (S1b
-        tests, then v1.1 + dred writes), gpr_ (gtb_ y1 / y2 / z + dred, then gti_ z1 / z2), t4i_ (r21), c3i_
-        (B1.6 follow-ups). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, h0i_ (waits upr_, then fake to testbin), gpp_,
-        ebr_ (re-checks t4i_), gtq_, gbc_, gtb_ (waits gpr_), gti_ (waits gpr_), grs_ (waits gtv_), gtk_, gtp_
-        (waits gtw_), b13r_ (re-checks c3i_). GPU: free (H0 stopped); harness-named fakes allowed until I announce
-        the H0 re-run.
+        gtl_ S1b + v1.1 DONE 05:5x (plan_1117/gtl_s1b_v11_handback.md; backups scratchpad\gtl_backup_s3s1b = before
+        both): unit 23 / 23, ps1 5 / 5, keeper 24 / 24, jobs 29 / 29, all with a scratch busy count; real
+        busy_count.json untouched (04:59:14), no gpu_job.lock, gpu_lab.ps1 not run, nothing committed. S1b: masks in
+        the key (unreadable refused), scene.builds info + "recorded with other builds" (no re-record), scene.hash
+        mismatch refused, iq / pbrt headers name the builds, RECORDING_FORMAT 1 checked vs state.bin (else .partial);
+        fixture bug (no scenes\masks) found by the first run + fixed. v1.1: job dred (default true) -> --no-dred,
+        kept resident reused only with the same DRED; check_played() (was same_dred): dred = job + same in every
+        arm, env = exactly the job's RENODX_TW_* keys; run tag echoed, burn_runs 0 refused, resolution = job; seed /
+        light_anim sha256 checked; "..., STOP" without device loss = EXTERNAL STOP; fresh dump folders (<arm>_2);
+        dump_frames (dumps only) + output_sizes in iq_input; iq k from 3. dred for gtb_'s gate: result.json arms
+        carry dred (null = unknown for v1), iq.json arms + reference.dred (from seed_<n>\played.json, mixed = null);
+        every v1.1 dump / moments folder gets played.json (Q25 deleted counts 6 / 18). fake_resident speaks v1.1.
+        Not built: dxr12 in the build identity, leaf_micromap_level rename (resident still micromap_level). Under
+        the FROZEN schemas a dump_frames > 1 send is refused as a tool fault until the proposals are adopted.
+        PROPOSALS ONLY (frozen files untouched): lab\cmd.schema.json.proposed, alive.schema.json.proposed,
+        resident_protocol.md.proposed. Note for gtq_: iq_input arms may carry output_sizes, dump_frames > 1; the lab
+        writes iq.json's dred after iq_frames. -> gtv_ REVIEW QUEUED (after grs_'s leftovers re-check). gtl_ idle:
+        its harness-named fakes are done (H0 re-run precondition met).
+        [ ] ATN (after gtv_'s OK): adopt the three lab proposals - copy cmd.schema.json.proposed -> cmd.schema.json,
+            alive.schema.json.proposed -> alive.schema.json, resident_protocol.md.proposed -> resident_protocol.md
+            (all in tools\tw\lab); until then dump_frames stays 1.
+        [ ] gtq_: read gtl_'s iq_input note (output_sizes per arm, dump_frames > 1, dred set by the lab) and say
+            whether iq_frames should copy dred itself; after gtv_'s review.
+        Agents (6): upr_ (h0i_ F2 re-check), gtw_ (gtp_ re-check 8), gtv_ (grs_ N1 leftovers re-check, then gtl_
+        S1b + v1.1), gpr_ (gtb_ y1 / y2 / z + dred, then gti_ z1 / z2), t4i_ (r21), c3i_ (B1.6 follow-ups).
+        Idle: bd1r_, lga_, lgf2_, c33i_, upt_, h0i_ (waits upr_, then fake to testbin), gpp_, ebr_ (re-checks
+        t4i_), gtq_ (iq note after gtv_), gbc_, gtb_ (waits gpr_), gti_ (waits gpr_), grs_ (waits gtv_), gtk_,
+        gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (waits gtv_). GPU: free (H0 stopped); no harness-named
+        fakes running; H0 re-run on upr_'s RUN.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
