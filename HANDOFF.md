@@ -450,6 +450,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ (after gtw_ re-check 10): the hook's own rows() / mode() raise on a corrupt ... | ?
 - h0i_ + upr_: every H0 FAIL of 20261122_054906 root-caused (tool / pre-existing / ... | ?
 - gtl_ (after its 4 suites): S4 seed-number check + span < 1 + real() nits, then t ... | ?
+- ATN (morning report): once the price gate goes on, everyday gated_build builds h ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8086,11 +8087,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         / 28; sandbox, fakes only from testbin, no lab edits; the bulk index never showed in a busy check; nothing
         left running. Lab v1.1 suites CLOSED. -> gtv_ GO: its 4 held lab suites + gtv_rc_race probe STARTED; gtl_ S4
         round STARTED in a staged copy (no live swap until gtv_'s run ends).
-        Agents (10): gtw_ (S1c re-check 10), h0i_ (H0 analysis + fake to testbin + R1), gtv_ (held lab suites +
-        race probe), gtl_ (S4 + nits + kind dump reference mode, staged), gpr_ (gti_ R1 re-check), gtb_ (grs1 NUL
-        check), t4i_ (r23), b13r_ (c3i_ B1.6 follow-ups re-check), c3i_ (B1 real-routine tests) + coordinator bulk
-        index. Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gti_ (waits gpr_), grs_,
-        gtk_, gtp_ (waits gtw_), ebr_ (re-checks t4i_ r23), gtq_
+        gtw_ S1C RE-CHECK 10 = OK 07:2x (plan_1117/gtw_s1c_recheck10_handback.md; gtw_s1c_review.md line 894):
+        suite 658 / 658; O2 / W5 / W6 (dotnet regression fixed) / W7 (real Claude_Browser texts) / F24 / nits / I1 OK;
+        INSTALL only 2 hunks, section 7 Move steps unchanged; only the hook, INSTALL, run_tests.py + the 3 price
+        files changed (tool_prices.py, web_allow.proposed.tsv, gate_override.ps1.proposed, gates.tsv byte-equal to
+        bak14); re-seed reproduced (6,727 pairs all present, 0 gated_build redirect seeds). FOR ATN (by design,
+        before price goes on): in the 15,119-command corpus price-on now refuses 121 (was 22), web 0 both; all 99
+        new ones are refusal (a) "priced heavy kind, not wrapped" on everyday gated_build builds (x86 twattila n 30
+        p95 153 s, x86 3 games n 23 p95 177 s, amd64 twattila n 10 p95 242 s, addon32 n 12) -> once price is on, TW
+        builds must run under renodx-watch (or get a proposal, below). Nits left (optional): O2 inner_commands()
+        runs before the top-level override test and outside the try (if it raised, fail open) -> test c first;
+        W5 timeout 60s / -k, env X=1, nice, cat | timeout 5 python -, bash <<EOF | python -m json.tool read as
+        python; W6 uv tool run, uv run --with=x, npm exec / x, pnpm dlx, yarn dlx; N9 globalThis.fetch /
+        window.fetch; W7 no-Tab-Context first-URL-only, title spoof > 200 KB; python heredoc naming urlopen refused.
+        -> gtp_ ROUND STARTED: O2 order (fail-open) + its corrupt-file box (rows() / mode() raise, grs1 NUL) + the
+        cheap nits + a PROPOSAL for the gated_build refusal (a) case; gtw_ re-checks.
+        - [ ] ATN (morning report): once the price gate goes on, everyday gated_build builds hit refusal (a) unless
+            run under renodx-watch (gtw_ 07:2x) - read gtp_'s proposal before switching price on.
+        Agents (10): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (held lab suites + race probe), gtl_ (S4 +
+        nits + kind dump reference mode, staged), gtp_ (O2 order + corrupt files + nits + gated_build proposal),
+        gpr_ (gti_ R1 re-check), gtb_ (grs1 NUL check), t4i_ (r23), b13r_ (c3i_ B1.6 follow-ups re-check), c3i_
+        (B1 real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (re-checks
+        h0i_), gpp_, gbc_, gti_ (waits gpr_), grs_, gtk_, gtw_ (re-checks gtp_), ebr_ (re-checks t4i_ r23), gtq_
         (go after gtl_). gtv_'s held lab suites + race probe AFTER gtl_'s 4 suites
         (the fakes' names would cross each other's busy checks). GPU: free (rec_verify waits ATN; H0 re-run after
         the analysis).
