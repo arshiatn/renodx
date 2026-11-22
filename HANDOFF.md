@@ -615,7 +615,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - g05_ stage to land (testbin/scratch/g05_/stage, land_list.md + base_hashes.txt): ... | ?
 - g05_ next wave: MI2 generator run (scratch/g05_/run_scripts), run MI3, then v31_ ... | ?
 - H2 A/B (coord, after the end batch, test\tw_* rule): the 2 run.ps1 commands in h ... | ?
-- ATN QUESTION (antivirus, g10_ stopped as the rule says): render_pass_behavior x8 ... | ?
 - g10_ next wave: re-measure TestSharedBytes (overlay ho_g02 + ho_g21 with M1) and ... | ?
 - wave 2 step 1: merge ho_g18, then BEFORE ho_g19: one clean serial rebuild of chu ... | ?
 - G20 (rvb_ R1 MINOR): ef926642b reuses the last trace without checking bridge.rt_ ... | ?
@@ -632,6 +631,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - mem_ CONFIRM RUN (needs ATN's go, one in-game): 2 arms (RenoDX / add-on file out ... | ?
 - heapfix author (via ATN only): 64 KB piece pinning, returning empty pieces, out- ... | ?
 - D1 V35 next knob (g06_, coord's OK needed): a low-light chroma hold (grey toe + ... | ?
+- G10 next wave: render_pass_behavior stages under testbin (ATN 22:3x). | ?
+- coord at READY: final update of handoff_plan/resume_point.md (every agent's last ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12270,7 +12271,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         vanilla_exact per-input + Ryse EXACT, RunRome2 split, WH2FXAA needs ho_g02, tw_warhammer_shaders patch needs ho_g02,
         TestSharedBytes counts need ho_g21 f7fb7a901 + RE-MEASURE after g21_'s M1, part 29 PCF list needs ho_g02 + ho_g21).
         Suites amd64 PASS; x86 all but root-signature (known, 6.8 headers) + render_pass_behavior.
-        - [ ] ATN QUESTION (antivirus, g10_ stopped as the rule says): render_pass_behavior x86 stages its .addon32 in
+        - [x] ATN ANSWERED 22:3x (antivirus, g10_ stopped as the rule says): render_pass_behavior x86 stages its .addon32 in
         %TEMP%\renodx_render_pass_*; ReShade logged error 32 and the file vanished (likely Bitdefender). Coord's pick: the
         test stages under tools\tw\testbin like every other test output (ATN's folder rule), or ATN adds an exclusion.
         - [ ] g10_ next wave: re-measure TestSharedBytes (overlay ho_g02 + ho_g21 with M1) and commit "needs ho_g21 <M1>".
@@ -12328,6 +12329,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         guard, no fit within 5 % -> DIVINITY_V35_* stay 1.f = Musa's own). D1 Release build clean, tw_d1_vfx PASS (258
         shaders, bit-equal controls), tw_divinity1 PASS. rve_ re-check sent 22:2x ("rve_ g06 recheck").
         - [ ] D1 V35 next knob (g06_, coord's OK needed): a low-light chroma hold (grey toe + low chroma both ~17-18 %).
+        ATN 22:3x: (a) it was Bitdefender, ATN had it restore the file; use our safe folder -> render_pass_behavior x86
+        stages its .addon32 under tools\tw\testbin, not %TEMP% (G10, next wave, test-only). (b) ATN thinks Attila crashed
+        after several battles from a memory leak -> mem_'s F4-F6 + the alt-tab fix go FIRST in the next wave; the confirm
+        run (several battles + restarts) proves it. (c) RESUME MAP: handoff_plan/resume_point.md (order after the restart,
+        wave 2 merge order with branch tips, one row per group); coord updates it at READY.
+        - [ ] G10 next wave: render_pass_behavior stages under testbin (ATN 22:3x).
+        - [ ] coord at READY: final update of handoff_plan/resume_point.md (every agent's last tip / state).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
