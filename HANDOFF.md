@@ -7195,9 +7195,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         InUse() = None; GTI_ POLL PART DONE. Accepted residual: test_trace_run F4 / F6 real-name fakes (~8 s) only delay
         a GPU job. [ ] h1 (owner gti_, next gti_ round): a 1 s floor for -PollS with -Busy (no caller today). [ ] g3 round
         clean-up of old busy_count.json.*.tmp (ATN's yes).
+        gtv_ S2r = FIX 04:3x (plan_1117/gtv_s2r_handback.md; gtv_s2r_review.md): engine, classes, timing, zero cost hold
+        (99 .text bytes = 64 imm64 line numbers, deltas match the hunks); M1 moments StartMoments before Reset -> fails
+        after any full reload; M2 a seed doesn't shift the GPU frame stamps in placed instance descs (rt_place:264,
+        283-298) -> seeded arms drop kept instances = a different scene; S1 DRED off / LostReport not logged, S2 timed-out
+        scene freed while GPU work may run, S3 resident must refuse RENODX_TW_RECORD / TEST_*, S4 dump OK without
+        complete.txt + 2.5 GB histories per dump + no folder clear, S5 light_anim can't be cleared; v1.1: light_off
+        top-level key, output_sizes in dump / moments results, active size, k < 3 refused; 14 nits -> grs_ STARTED.
+        The HARNESS_DUMP GPU check (safety stop 04:08) waits for grs_'s fixes AND ATN.
         Agents (9): h0i_ (F1), c3i_ (B1.6), ebr_ (r19 re-check), gtw_ (re-check 7), gbc_ (B1 re-check, then RS-M1),
-        gtl_ (S3r M1r / M2r), gtv_ (S2r), gtb_ (W1 / W2). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (waits h0i_), gpp_,
-        gpr_ (waits gtb_), t4i_, gtq_, gti_, grs_, gtk_, gtp_ (waits gtw_).
+        gtl_ (S3r M1r / M2r), grs_ (S2r fixes), gtb_ (W1 / W2). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (waits h0i_),
+        gpp_, gpr_ (waits gtb_), t4i_, gtq_, gti_, gtv_ (waits gtl_ / grs_), gtk_, gtp_ (waits gtw_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
