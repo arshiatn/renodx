@@ -1893,6 +1893,14 @@ static uint32_t found = 0;    // the sites found (bits by index)
 static uint32_t written = 0;  // the sites holding their jump
 static uint32_t asked = 0;    // the sites the rows last asked for
 static uint32_t failed_writes = 0;
+// The thread that last kept PausedWrite from writing, and where it was stopped (0: none was found inside a site).
+static DWORD blocked_thread = 0;
+static uintptr_t blocked_eip = 0;
+static bool snapshot_failure_logged = false;
+#if defined(TWATTILA_ENGINE_CODE_CONTROLS)
+static bool control_fail_snapshot = false;  // the thread list cannot be read
+static uint32_t control_fail_page = 0;      // Prepare's page: 1 cannot be allocated, 2 cannot be made executable
+#endif
 static bool job_missing_logged = false;
 static uint32_t prefetch_logged = 0;  // the prefetch and worker sites already named as left alone: each is named once
 // Threaded Draw Recording's table (draw_recording_sites.hpp, compiled only with TWATTILA_DRAW_RECORDING): the same window writes it
@@ -2059,12 +2067,28 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
   if (effect_stood_down != nullptr) *effect_stood_down = 0;
   if (fill_stood_down != nullptr) *fill_stood_down = 0;
   std::vector<HANDLE> threads;
+  blocked_thread = 0;
+  blocked_eip = 0;
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-  if (snapshot == INVALID_HANDLE_VALUE) return false;
+#if defined(TWATTILA_ENGINE_CODE_CONTROLS)
+  if (control_fail_snapshot) {
+    if (snapshot != INVALID_HANDLE_VALUE) CloseHandle(snapshot);
+    snapshot = INVALID_HANDLE_VALUE;
+    SetLastError(ERROR_ACCESS_DENIED);
+  }
+#endif
+  if (snapshot == INVALID_HANDLE_VALUE) {
+    if (!snapshot_failure_logged) {
+      snapshot_failure_logged = true;
+      renodx::utils::log::w(
+          std::format("[Total War] Engine code: the thread list could not be read (error {}); its sites wait.", GetLastError()));
+    }
+    return false;
+  }
   THREADENTRY32 entry = {.dwSize = sizeof(THREADENTRY32)};
   for (BOOL more = Thread32First(snapshot, &entry); more != FALSE; more = Thread32Next(snapshot, &entry)) {
     if (entry.th32OwnerProcessID != GetCurrentProcessId() || entry.th32ThreadID == GetCurrentThreadId()) continue;
-    if (HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT, FALSE, entry.th32ThreadID); thread != nullptr) {
+    if (HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ThreadID); thread != nullptr) {
       threads.push_back(thread);
     }
   }
@@ -2104,6 +2128,11 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
       if (out && context.Eip >= reinterpret_cast<uintptr_t>(cut.begin) && context.Eip < reinterpret_cast<uintptr_t>(cut.end)) {
         clear = false;
       }
+    }
+    // Which thread stopped the write, and where (a thread id and a word: nothing here may allocate or log).
+    if (!clear) {
+      blocked_thread = GetThreadId(threads[suspended - 1]);
+      blocked_eip = context.Eip;
     }
   }
   for (const auto& [cut, out] : cuts) {
@@ -2373,6 +2402,15 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   // Two pages: the stubs, made read-execute once built, and the cut stubs' words (WorkerData), read-write for good:
   // nothing is ever both.
   page = static_cast<uint8_t*>(VirtualAlloc(nullptr, 2 * PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+#if defined(TWATTILA_ENGINE_CODE_CONTROLS)
+  if (control_fail_page == 1 && page != nullptr) {
+    VirtualFree(page, 0, MEM_RELEASE);
+    page = nullptr;
+    SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+  }
+#endif
+  const char* page_failure = "allocated";
+  DWORD page_error = (page == nullptr ? GetLastError() : 0);
   worker_data = (page != nullptr ? new (page + PAGE_SIZE) WorkerData : nullptr);
   count_data = (page != nullptr ? new (page + PAGE_SIZE + COUNT_DATA_AT) CountData : nullptr);
   worker_cut = (page != nullptr ? CutRange{page + WORKER_FILL_PAGE, page + PAGE_SIZE, &worker_data->cut_active} : CutRange{});
@@ -2584,7 +2622,16 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       }
     }
     DWORD protection;
-    if (VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection) == FALSE) {
+    bool executable = (VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection) != FALSE);
+#if defined(TWATTILA_ENGINE_CODE_CONTROLS)
+    if (control_fail_page == 2) {
+      executable = false;
+      SetLastError(ERROR_ACCESS_DENIED);
+    }
+#endif
+    if (!executable) {
+      page_failure = "made executable";
+      page_error = GetLastError();
       // As if there were no page (nothing is written to the game yet): a site's jump would lead into memory that cannot run.
       for (Site& site : sites) site.at = nullptr;
       stubs = {};
@@ -2608,7 +2655,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     // No page (not allocated, or not made executable): that is the reason, not another mod or build, so no site is
     // named as left alone, here or by Update's lines.
     renodx::utils::log::w("[Total War] Faster Game CPU Code: left alone ",
-                          "(the stubs' page could not be allocated or made executable)");
+                          std::format("(the stubs' page could not be {}, error {})", page_failure, page_error));
     job_missing_logged = true;
     prefetch_logged = NAMED_ONCE_SITES;
     return;
@@ -2925,9 +2972,25 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
                                  : std::format(" (its bytes changed since the start: another mod): {}", changed_sites)));
     }
   } else if (++internal::failed_writes == internal::MAX_FAILED_WRITES) {
+    // The thread that stopped the last attempt: its id and where it was (the module and offset when the address is in one).
+    std::string last = " (last: no thread was found inside a site)";
+    if (internal::blocked_thread != 0) {
+      HMODULE owner = nullptr;
+      std::array<char, MAX_PATH> path = {};
+      if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                             reinterpret_cast<LPCWSTR>(internal::blocked_eip), &owner) != FALSE
+          && GetModuleFileNameA(owner, path.data(), MAX_PATH) != 0) {
+        const std::string_view module_path = path.data();
+        last = std::format(" (last: thread {} at {}+0x{:X})", internal::blocked_thread,
+                           module_path.substr(module_path.find_last_of('\\') + 1),
+                           internal::blocked_eip - reinterpret_cast<uintptr_t>(owner));
+      } else {
+        last = std::format(" (last: thread {} at 0x{:X})", internal::blocked_thread, internal::blocked_eip);
+      }
+    }
     for (const auto& [row_sites, name] : internal::ROWS) {
       if (((target ^ internal::written) & row_sites) != 0) {
-        renodx::utils::log::w("[Total War] ", name, ": not written, a game thread kept running the code");
+        renodx::utils::log::w("[Total War] ", name, ": not written, a game thread kept running the code", last);
       }
     }
     // A worker site that cannot come out stays reachable.
@@ -2935,12 +2998,19 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
       internal::PinModule();
     }
     if (recording_target != internal::recording_written) {
-      renodx::utils::log::w("[Total War] Threaded Draw Recording: not written, a game thread kept running the code");
+      renodx::utils::log::w("[Total War] Threaded Draw Recording: not written, a game thread kept running the code", last);
     }
     if (effect_wanted != eu::written) {
-      renodx::utils::log::w("[Total War] Parallel Effect Update sites: not written, a game thread kept running the code");
+      renodx::utils::log::w("[Total War] Parallel Effect Update sites: not written, a game thread kept running the code", last);
       // A site that cannot come out stays reachable.
       if (((effect_wanted ^ eu::written) & eu::written) != 0) {
+        internal::PinModule();
+      }
+    }
+    if (fill_wanted != fi::written) {
+      renodx::utils::log::w("[Total War] Parallel Instance Fill sites: not written, a game thread kept running the code", last);
+      // A site that cannot come out stays reachable.
+      if (((fill_wanted ^ fi::written) & fi::written) != 0) {
         internal::PinModule();
       }
     }
@@ -3022,6 +3092,9 @@ inline void Uninstall() {
   if (fi::written != 0) {
     internal::PinModule();
     renodx::utils::log::w("[Total War] Parallel Instance Fill: left in at detach (a game thread kept running it)");
+  }
+  if (const uint32_t incomplete = fi::incomplete_fills.load(); incomplete != 0) {
+    renodx::utils::log::w("[Total War] Parallel Instance Fill: ", incomplete, " fills ended with chunks not done this run.");
   }
   if (internal::recording_written != 0) {
     internal::recording_left_in = true;
