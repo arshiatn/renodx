@@ -7279,10 +7279,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         4eb1a9b79. Nits, no action: N1 lab\busy_count.json still holds h0i_'s 04:34:32 offline record (ignored after
         300 s, overwritten by the next real call); N2 "still alive" watches cmd.exe only. -> H0 DRY RUN STARTED
         (coordinator, ATN's PowerShell rule), then the real run in the background.
+        H0 DRY RUN CLEAN 04:57 (runs\dryrun_20261122_045704.txt): pre atn-mods 7bdf80fe1, post 42c081bd6 (base
+        c3ea4925f), 206 modes, harness pdi1_harness FFD6BA42A8C5, Committed 28.2 GB, GPU jobs / games 0, estimate ~72 min.
+        -> H0 REAL RUN STARTED 04:58 in the background (ATN's PowerShell rule; task bhe3fx2sg); no other GPU work.
+        grs_ S2r FIXES DONE 04:5x (plan_1117/grs_s2r_fixes_handback.md): gpu_s2 f6a371d32 on b64803d55 (local, not
+        pushed). M1 Reset first, StopMoments() on every failure, k < 3 refused; M2 RestoreResources(saved, shift) +
+        ShiftPlacedStamps (+52 word, 24-bit wrap, flags kept, ~12 MB read-back only on a seeded reset); S1 DRED on in
+        serve, LostReport logged, "dred": true in results; S2 LetGo() frees only once Idle (1 min), else stuck_ + exit 4;
+        S3 CheckEnvironment refuses RECORD / TEST_* (exit 1), other RENODX_TW_* listed in status; S4 dump FAILED without
+        complete.txt, histories off, non-empty folder refused; S5 light_anim path null clears + SHA-256 in results;
+        v1.1 light_off, output_sizes, active size; 12 / 14 nits. Offline 0 failures, rows SAME (53); G4: new2 vs
+        aligned2 ALL SECTIONS SAME, base vs aligned2 .text 99 line-number bytes only, 52 shader headers same. Left: 9b
+        (one burn per pass under the debug layer = GPU smoke), 12 note (quarter fog / bounce grid active size = full).
+        Proposals for frozen lab files (alive.schema env / nsight / dred; resident_protocol.md v1.1) -> gtl_ with v1.1.
+        -> gtv_ S2r RE-CHECK STARTED (offline). The rec_verify.sh GPU check (safety stop 04:08) still waits for ATN.
         Agents (8): c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gtq_ (B2-S1 + N1-N4), gtl_
-        (S3r S1 + nits), grs_ (S2r fixes), gtb_ (x1-x4). Coordinator: H0 dry run -> real run. Idle: bd1r_, lga_,
-        lgf2_, c33i_, upt_, upr_, h0i_, gpp_, gpr_ (waits gtb_), ebr_ (waits t4i_), gbc_ (waits gtq_), gti_, gtv_
-        (waits grs_ / gtl_), gtk_, gtw_ (waits gtp_).
+        (S3r S1 + nits), gtv_ (grs_ S2r re-check), gtb_ (x1-x4). Coordinator: H0 real run (bhe3fx2sg, ~72 min).
+        Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_, gpp_, gpr_ (waits gtb_), ebr_ (waits t4i_), gbc_ (waits
+        gtq_), gti_, grs_ (waits gtv_), gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
