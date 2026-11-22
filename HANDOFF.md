@@ -488,9 +488,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - worktree cleanup (ATN): grs_'s worktree build\downloads_min (6 junctions - links ... | ?
 - grs_ (after rec_verify): fg_proxy_d3d12.hpp Presented() comment -> fcr_'s exact ... | ?
 - gpr_: re-check round 14's exe moves (tools/ + scratch exe keys) with production ... | ?
-- gtl_ (later, Low): lab fakes are named like the real harness -> H0's guard stops ... | ?
 - c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate le ... | ?
-- gtl_: lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap ... | ?
 - gtp_ round 18: gtw N8, N1, N3, N2, N4 (Should) + N5-N7 (Low) + VERIFY on the kin ... | ?
 - coordinator: ff_s12 (3c77a0c86) + grs_xess_guard (29a55acad) merge gate AFTER up ... | ?
 - h0i_: h0_rng_check.py: 0 -> 0 reads as equal (run6-probe); re-check run 20261122 ... | ?
@@ -9934,7 +9932,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         before run1 post_b removal: tw_rt_harness_scene_4k 90796 testbin\gtl_test_89604\keeper_5unfbf0w\lab_scene_idle"
         = gtv_'s keeper re-check fakes (named like the harness). Rest = MISSING (not real FAILs). Re-run after gtv_.
         - [x] coordinator (DONE 13:26, run 20261122_120946): H0 re-run after gtv_'s keeper runs end (no lab fixture / keeper tests during H0) (coord 12:05).
-        - [ ] gtl_ (later, Low): lab fakes are named like the real harness -> H0's guard stops on them; either fakes get
+        - [x] gtl_ (DONE 13:32: fakes run as gtl_fake_<name>): lab fakes are named like the real harness -> H0's guard stops on them; either fakes get
             their own name or H0 ignores testbin\gtl_test_* (decide; coord 12:05).
         t4i_ ANALYZE GAP = DONE 11:5x (render_mt/reports/t4i_analyze_gap_etl_block_handback.md): test_analyze leg of 5 fake
         starts (A outside only, B detach totals only = D1-ALL / HF, D window fault + totals agree, E three rising totals,
@@ -9991,7 +9989,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         os.listdir(self.folder) (862) before checking quiet -> FileNotFoundError if the keeper has no session folder yet,
         the SLOW report is lost (all 11 load errors; real slow keeper starts too); fix: missing folder + quiet = gone keeper.
         Next weak point under full load: the fixture's 11.2 s keeper-start lock deadline.
-        - [ ] gtl_: lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap test nit (:156) + the 11.2 s
+        - [x] gtl_ (DONE 13:32, gtv_ re-checks): lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap test nit (:156) + the 11.2 s
             keeper-start deadline under load + lab fakes named like the harness (H0 stop); NO lab / keeper / fixture runs
             until the coordinator says H0 is done; gtv_ re-checks (gtv_ 12:08).
         ebr_ GAP RE-CHECK = t4i_'s FIX RIGHT, ACCEPTED 12:13 (render_mt/reports/ebr_gap_recheck_handback.md; files in
@@ -10114,8 +10112,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] leaf / micromap owner (optional): run pre 4x on fast_leaves + micromaps_leaf_stress with the kept
             h0\builds\pre\20261122_120946\plain harness (~1 min, needs an allowed run path) (upr_ 13:31).
         - [ ] coordinator: all_modes pass on the combined tree after rmt_h0 + ff_s12 + grs_xess_guard (upr_ 13:31).
-        Agents (2): gtp_ (round 18), gtl_ (lab suites); MERGE GATE NOW: rmt_h0 (42c081bd6) + ff_s12 (3c77a0c86) +
-        grs_xess_guard (29a55acad) -> gated builds + helper build -> push -> all_modes pass
+        MERGED 13:3x (name_check generic words only): rmt_h0 = 7945f7a71, ff_s12 = 563f44761, grs_xess_guard = 1c0d3673c
+        (no conflicts). Gated x86 x3 + amd64 twattila + helper build (testbin\scratch\coord_\helper_h0merge) running
+        (task bzeze9tkd, -Owner coord_h0merge) -> push after all exit 0. all_modes pass on the combined tree: NO allowed run
+        path today (h0_gpu_runs.ps1 refuses once helper sources differ from base; atn_harness_runs.ps1 = map_replay;
+        rec_verify.sh = gpu_s2's folders) -> ATN rule needed.
+        gtl_ LAB FIXES = ALL PASS 13:32 (plan_1117/gtl_lab_fixes_handback.md; logs scratchpad\gtl_runs15): unit 34/34, ps1
+        5/5, keeper 27/27 (25 + 2 new), jobs 32/32; gap test without the gap fails at "no gap" (15.8 s). lab.py
+        Session.request quiet close makes the session folder first; clock() probe_fn=lab.slow_probe; FIRST_BEAT_S 8;
+        fixture lock deadline 20 s, KEEPER_START_S = lab's 30 s; fakes via unguarded() as gtl_fake_<name>. Quiet machine
+        only (new limits not tried under full load). Suites' testbin\gtl_test_<pid> holds exe copies only, deleted at
+        end. -> gtv_ re-checks (incl. a load run when the GPU is free).
+        Agents (3): gtp_ (round 18), gtv_ (gtl_ lab fixes re-check); merge-gate builds running -> push -> rec_verify.sh
+        (~100 min) -> merge gpu_s2 -> S3c; all_modes on the combined tree waits for an ATN rule
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
