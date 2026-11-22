@@ -2466,6 +2466,10 @@ bool AttachAddon() {
                                                          || execution_highlights_hidden.load(std::memory_order_relaxed)
                                                          || execution_skull_hidden.load(std::memory_order_relaxed);
                                                 }});
+  // Before RenoDX's draw callbacks (command_action's): the first draw after Present rebinds the back buffer before any
+  // custom shader callback sees or skips the draw (a skip ends ReShade's callback list).
+  reshade::register_event<reshade::addon_event::draw>(back_buffer_fix::OnDraw);
+  reshade::register_event<reshade::addon_event::draw_indexed>(back_buffer_fix::OnDrawIndexed);
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The fast draw dispatch with the resource upgrades' gate (the swap chain mod's view cloning registers them).
@@ -2482,8 +2486,6 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_resource_view>(back_buffer_fix::OnDestroyResourceView);
   reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(back_buffer_fix::OnBindRenderTargets);
   reshade::register_event<reshade::addon_event::present>(back_buffer_fix::OnPresent);
-  reshade::register_event<reshade::addon_event::draw>(back_buffer_fix::OnDraw);
-  reshade::register_event<reshade::addon_event::draw_indexed>(back_buffer_fix::OnDrawIndexed);
   reshade::register_event<reshade::addon_event::destroy_device>(back_buffer_fix::OnDestroyDevice);
   twattila::device_loss::InstallLast();
 
