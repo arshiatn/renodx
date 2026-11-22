@@ -6756,7 +6756,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN asked first.
         gti_ Q8(b) DONE 02:3x (plan_1117/gti_q8b_handback.md, backups scratchpad\gti_bak4): atn_harness_runs.ps1 takes the
         GPU lock (-Busy, waits up to 30 min, REFUSED stops the batch, freed in finally), same command lines; test
-        lab	ests	est_harness_runs_lock.py 7 / 7 (fakes); Nit 8 fixed (test_gpu_lock 29 / 29). gtv_ review QUEUED (after
+        lab\tests\test_harness_runs_lock.py 7 / 7 (fakes); Nit 8 fixed (test_gpu_lock 29 / 29). gtv_ review QUEUED (after
         Should 8).
         ATN 02:2x: (1) web only for papers etc. (no reddit / forums); (2) 'why don't we price everything?' -> gpp_
         (a9e29c4790d1b18aa, Opus xHigh) STARTED 02:2x: design plan_1117/designs/gpp_price_web_design.md (web domain
