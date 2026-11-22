@@ -28,8 +28,9 @@ void main(
   r0.xy = float2(1,1) / r0.xy;
   r0.zw = v0.xy * r0.xy;
   r1.xyzw = t0.SampleLevel(s0_s, r0.zw, 0).xyzw;
-  r2.xyz = t0.Gather(s0_s, r0.zw).xyz;
-  r3.xyz = t0.Gather(s0_s, r0.zw, int2(-1, -1)).xzw;
+  // The game's gather4 reads s0.w: the luma in alpha (the decompile printed Gather, red).
+  r2.xyz = t0.GatherAlpha(s0_s, r0.zw).xyz;
+  r3.xyz = t0.GatherAlpha(s0_s, r0.zw, int2(-1, -1)).xzw;
   r2.w = max(r2.x, r1.w);
   r3.w = min(r2.x, r1.w);
   r2.w = max(r2.z, r2.w);
@@ -349,7 +350,7 @@ void main(
     r2.x = r2.w * r2.w;
     r0.x = r0.x * -r0.y + 0.5;
     r0.y = cb0[1].x * r2.x;
-    r0.x = (int)r0.x & (int)r1.w;
+    r0.x = (r1.w != 0) ? r0.x : 0;  // and r0.x, r0.x, r1.w: r1.w a mask (the decompile cast the float to int)
     r0.x = max(r0.x, r0.y);
     r0.xy = r0.xx * r2.zz + r0.zw;
     r3.x = r2.y ? r0.z : r0.x;
