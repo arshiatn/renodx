@@ -516,7 +516,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - lg3_ (Sonnet High, own worktree, branch rmt_lg3 from atn-mods HEAD): logging gro ... | ?
 - t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 (coord 18:4x); t ... | ?
 - ATN: review handoff_plan\plan.md -> OK / changes; NOTHING from it starts or gets ... | ?
-- gtl_: part 2 sheet disk rule (move dumps to D:, C: floor) -> then STAGE3 (coord ... | ?
 - G05 / R.U.S.E. owner (tke_ LOST, from 11935 rur2_): test/tw_ruse_bridge H2 DLSS ... | ?
 - ATN (do / drop each; tkj_ LOST, ATN asked for these and they were skipped withou ... | ?
 - coord: sweep every "[~]" box in HANDOFF + HANDOFF_ARCHIVE for undone parts (tkj_ ... | ?
@@ -540,6 +539,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - GPU plan tooling (tkd_ LOST 7458, low): why ns_index hit OSError Errno 22 (2 at ... | ?
 - t4i_ / ebo (tkd_ LOST 9006, low): replace gates.json draw_trace.file_mb 2 MB (st ... | ?
 - small (tkd_): mg4k_check.ps1 prints an empty "harness exit" line (7144); optiona ... | ?
+- Rome Remastered in-game batch (tka_ LOST 797 / 818 / 910): ATN's tests of the RE ... | ?
+- ATN (tka_ LOST, never asked): Troy Shadow Map Size row for quality 3 (833, troy. ... | ?
+- weakly carried (tka_): AO sun-dependent normal fix never proven / fixed (187; on ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11229,7 +11231,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         DISK (coord 19:3x): C: 180 GB free now; part 2 with 6 variants = up to ~139 GB of dumps on C: -> would leave ~41 GB,
         far below the end batch's 160 GB floor -> sheet gets a rule: dumps MOVED to D: (264 GB free) after their offline use,
         and C: must stay >= 160 GB + the next session's dumps before each session (moving is OK; nothing deleted).
-        - [ ] gtl_: part 2 sheet disk rule (move dumps to D:, C: floor) -> then STAGE3 (coord 19:3x).
+        - [x] gtl_ (DONE 19:40, part 2 v2): part 2 sheet disk rule (move dumps to D:, C: floor) -> then STAGE3 (coord 19:3x).
         - [x] gtv_ (DONE 19:36, GO with Option A after R1 + R2): read the part 2 sheet + jobs (go / no-go for gtc_) (coord 19:3x).
         gtl_ DISK RULE 19:33 (plan_1117/gtl_disk_rule_handback.md; s3c_run_sheet.md "## Part 2" ### Disk): at 179 GB free
         the rule (160 GB + planned dumps) fits session 1 (1.5 GB) but 0 variants in session 2. Option A (keeps 64 frames):
@@ -11343,6 +11345,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         (data fine after the retry).
         - [ ] t4i_ / ebo (tkd_ LOST 9006, low): replace gates.json draw_trace.file_mb 2 MB (status E) with leg 1's real sizes.
         - [ ] small (tkd_): mg4k_check.ps1 prints an empty "harness exit" line (7144); optional 16-loop lab load run (10398).
+        gtl_ PART 2 V2 19:40 (plan_1117/gtl_part2_v2_handback.md): R1 (CONFIRMED DEAD = rec_compare exit 0 only), R2 (whole
+        store_skip output into skip_lines.txt, only `config:` lines read, "<k> variant job(s) written" must equal the non-
+        refused store_skip runs), S1 (P3a vs P3b no floor), S2 (P1b; check 1 = P1 vs P2 --floor P1b + P1 vs P1b), Option A
+        (runner hands back each session-2 job's dumps folder = parent of lab.log's "dump A: <path>"; coord moves it to
+        D:\RenoDX_LabDumps\s3c_part2\<session>\; runner asks if the go comes > 8 min after the job; C: >= 176 GB before each
+        session-2 job; session 1 needs >= 163 GB and its 3 dumps + uses_<n> move after checks 1-5). Jobs jobs_part2\ 01 plain
+        (P1), 02 plain_b (P1b), 03 uses (P2), 04 floor_a, 05 floor_b; variants 06.. + end via --confirm; 0 refused, 1193 s;
+        old files *.superseded. -> gtc_ starts session 1.
+        TICK AUDIT RESULTS (5): tka_ 19:40 (tick_audit/tka_handback.md + tka_handback_coord.md): live 68-1057: 113 boxes: 85
+        DONE, 19 DONE-ELSEWHERE, 8 PARTIAL, 1 DROPPED -> 4 LOST. Stale: 1002 "MERGED ... on by default" but radix sort +
+        gather prefetch reverted 11-15 06:19 (a5660c457 / 1657a73fa); open boxes already done: 2508 (Ryse DLSS sqrt
+        72f20d75c), 2213 (A11a 97d659660); 11892 still shows the paths-split Nsight capture as ATN's question (answered).
+        - [ ] Rome Remastered in-game batch (tka_ LOST 797 / 818 / 910): ATN's tests of the README "Fable fixes" 1-4; 67 % +
+        50 % with RT/PT; README test lines; a FrameTraceReads trace at 67 % + a siege with fire (33 NEEDS A TRACE casters in
+        910 wait on it).
+        - [ ] ATN (tka_ LOST, never asked): Troy Shadow Map Size row for quality 3 (833, troy.tsv:28); Thrones Faster Game
+        CPU Code default (865; off + Experimental in Thrones addon.cpp:2338, on in Attila).
+        - [ ] weakly carried (tka_): AO sun-dependent normal fix never proven / fixed (187; only 11742 FIND ALL BUGS); the
+        Expeditions save scene never click-loaded (147; 12274 lacks the click).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
