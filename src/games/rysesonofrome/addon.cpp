@@ -226,6 +226,13 @@ bool HelperAbsent() {
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
+// RT/PT's value of `key` (twattila/rays_preset.hpp): the traced Light Bounce's and the paths' sliders start and Reset at it
+// (ATN 2026-11-22). 0 for a key the list lacks.
+float RtPtValue(std::string_view key) {
+  const auto value = std::ranges::find(twattila::graphics_page::RAYS_PRESET, key, &twattila::graphics_page::Values::value_type::first);
+  return (value != twattila::graphics_page::RAYS_PRESET.end()) ? value->second : 0.f;
+}
+
 // Ray tracing (ray_tracing.hpp): its sliders; installed when on at launch (its scene's shaders are kept from the start).
 struct RtSliders {
   float sun_shadows = 0.f;
@@ -240,10 +247,10 @@ struct RtSliders {
   float reflection_samples = 1.f;
   float specular_occlusion = 0.f;  // without the traced reflections: merged into the game's screen-space ones
   float light_bounce = 0.f;
-  float rays = 1.f;
-  float range = 50.f;  // metres
+  float rays = RtPtValue("RayTracedLightBounceRays");
+  float range = RtPtValue("RayTracedLightBounceRange");  // metres
   float path_tracing = 0.f;
-  float bounces = 1.f;
+  float bounces = RtPtValue("PathTracingBounces");
   float path_ambient = 0.f;  // Path-Traced Ambient (ray_tracing.hpp): the paths' sky for the game's probes' ambient
   float path_sky_apart = 1.f;
   float path_kept_cube = 0.f;
@@ -260,7 +267,7 @@ struct RtSliders {
   float rays_paths = 1.f;
   float debug_log = 0.f;
   float ambient_rays = 2.f;
-  float light_bounce_resolution = 0.f;  // the ray-traced Light Bounce's: 0 full, 1 half, 2 quarter
+  float light_bounce_resolution = RtPtValue("RayTracedLightBounceResolution");  // the ray-traced Light Bounce's: 0 full, 1 half, 2 quarter
   float reflection_reuse = 0.f;         // 0 off, 1 from ReSTIR GI (with path tracing), 2 Own ReSTIR
   float ao_reblur = 0.f;                // AO under Ray Reconstruction: 0 Light History, 1 REBLUR
   float debug_view = 0.f;               // rt_core's Debug View value (the row's parse)
@@ -317,10 +324,9 @@ const PresetValues RAYS_RESET = {
     {"RayTracedAmbientRange", 2.f},
     {"RayTracedAOQuarter", 0.f},
     {"RayTracedReflectionSamples", 1.f},
-    // The traced Light Bounce's and the paths' sliders at RT/PT's (rays_preset.hpp; ATN 2026-11-22), as their rows' defaults.
-    {"RayTracedLightBounceRays", 1.f},
-    {"RayTracedLightBounceRange", 50.f},
-    {"PathTracingBounces", 1.f},
+    {"RayTracedLightBounceRays", RtPtValue("RayTracedLightBounceRays")},
+    {"RayTracedLightBounceRange", RtPtValue("RayTracedLightBounceRange")},
+    {"PathTracingBounces", RtPtValue("PathTracingBounces")},
     {"RayTracedPathSkyApart", 1.f},
     {"RayTracedPathKeptCube", 0.f},
     {"RayTracingDenoiser", 0.f},
@@ -335,7 +341,7 @@ const PresetValues RAYS_RESET = {
     {"RayTracingRaysPaths", 1.f},
     {"RayTracedDebugLog", 0.f},
     {"RayTracedAORays", 2.f},
-    {"RayTracedLightBounceResolution", 0.f},
+    {"RayTracedLightBounceResolution", RtPtValue("RayTracedLightBounceResolution")},
     {"RayTracedReflectionReuse", 0.f},
     {"RayTracedAoReblur", 0.f},
     {"RayTracedDebugView", 0.f},
@@ -1386,7 +1392,7 @@ void BuildRuntimeData() {
           .key = "RayTracedLightBounceRays",
           .binding = &rt_sliders.rays,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 1.f,
+          .default_value = RtPtValue("RayTracedLightBounceRays"),
           .label = "Ray-Traced Light Bounce Rays",
           .section = "Ray Tracing (Experimental)",
           .tooltip = "Rays per texel: less noise, heavier.",
@@ -1399,7 +1405,7 @@ void BuildRuntimeData() {
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounceRange",
           .binding = &rt_sliders.range,
-          .default_value = 50.f,
+          .default_value = RtPtValue("RayTracedLightBounceRange"),
           .label = "Ray-Traced Light Bounce Range",
           .section = "Ray Tracing (Experimental)",
           .tooltip = "How far its rays look for light.",
@@ -1413,7 +1419,7 @@ void BuildRuntimeData() {
           .key = "RayTracedLightBounceResolution",
           .binding = &rt_sliders.light_bounce_resolution,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 0.f,
+          .default_value = RtPtValue("RayTracedLightBounceResolution"),
           .label = "Ray-Traced Light Bounce Resolution",
           .section = "Ray Tracing (Experimental)",
           .tooltip = "Its own resolution (the screen-space Light Bounce's resolution and Checkerboard no longer apply to it).\n"
@@ -1438,7 +1444,7 @@ void BuildRuntimeData() {
           .key = "PathTracingBounces",
           .binding = &rt_sliders.bounces,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 1.f,
+          .default_value = RtPtValue("PathTracingBounces"),
           .label = "Path Tracing Bounces",
           .section = "Ray Tracing (Experimental)",
           .tooltip = "Bounces past the first. More: brighter shade, heavier.",
@@ -2355,18 +2361,9 @@ void ConfigureAddon() {
     if (mode == 1.f) reshade::set_config_value(nullptr, global, "SettingsMode", 0);
   }
 
-  // Rows saved at an old default (a preset saves every row), cleared once before settings::Use (as the Total War add-ons'
-  // graphics_page::Apply): both Auto Thickness rows off and Texture LOD Bias on All Textures off (on since ATN 2026-11-22
-  // and 11-17).
-  constexpr int SETTINGS_REVISION = 1;
-  if (int revision = 0; !reshade::get_config_value(nullptr, global, "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
-    for (const char* preset : {"-preset1", "-preset2", "-preset3"}) {
-      for (const char* key : {"ssao_auto_thickness", "light_bounce_auto_thickness", "AntiAliasingTextureLodBiasTrilinear"}) {
-        reshade::set_config_value(nullptr, (renodx::utils::settings::global_name + preset).c_str(), key, static_cast<const char*>(nullptr));
-      }
-    }
-    reshade::set_config_value(nullptr, global, "SettingsRevision", SETTINGS_REVISION);
-  }
+  // Rows saved at an old default, cleared once before settings::Use: both Auto Thickness rows off and Texture LOD Bias on
+  // All Textures off (on since ATN 2026-11-22 and 11-17).
+  twattila::graphics_page::ClearSavedRows(1, {"ssao_auto_thickness", "light_bounce_auto_thickness", "AntiAliasingTextureLodBiasTrilinear"});
 
   configured = true;
 }
