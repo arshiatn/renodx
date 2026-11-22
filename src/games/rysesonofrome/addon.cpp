@@ -25,6 +25,7 @@
 #include <functional>
 #include <mutex>
 #include <shared_mutex>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -38,11 +39,14 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/bitwise.hpp"
 #include "../../utils/command_action.hpp"
 #include "../../utils/command_action_fast.hpp"
 #include "../../utils/data.hpp"
+#include "../../utils/format.hpp"
 #include "../../utils/hash.hpp"
 #include "../../utils/platform.hpp"
+#include "../../utils/resource.hpp"
 #include "../../utils/settings.hpp"
 #include "./contact_shadows.hpp"
 #include "./graphics.hpp"
@@ -2112,6 +2116,43 @@ void OnDestroyDevice(reshade::api::device* device) {
 
 }  // namespace back_buffer_fix
 
+// One log line per render target the resource upgrades take (the reader census matches traced handles to them). Runs
+// after RenoDX's init_resource, which marks them; capped so a game recreating targets can't fill the log.
+constexpr int MAX_UPGRADE_LOG_LINES = 256;
+std::atomic_int upgrade_log_lines = 0;
+
+void OnInitResourceLogUpgrade(
+    reshade::api::device*, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
+    reshade::api::resource_usage, reshade::api::resource resource) {
+  if (desc.type != reshade::api::resource_type::texture_2d
+      || !renodx::utils::bitwise::HasFlag(desc.usage, reshade::api::resource_usage::render_target)) return;
+  if (upgrade_log_lines.load(std::memory_order_relaxed) > MAX_UPGRADE_LOG_LINES) return;
+  reshade::api::format old_format = reshade::api::format::unknown;
+  reshade::api::format new_format = reshade::api::format::unknown;
+  bool in_place = false;
+  renodx::utils::resource::GetResourceInfo(resource, [&](const renodx::utils::resource::ResourceInfo& info) {
+    if (info.upgraded) {
+      old_format = info.fallback_desc.texture.format;
+      new_format = info.desc.texture.format;
+      in_place = true;
+    } else if (info.clone_target != nullptr) {
+      old_format = info.desc.texture.format;
+      new_format = info.clone_target->new_format;
+    }
+  });
+  if (new_format == reshade::api::format::unknown) return;
+  const int line = upgrade_log_lines.fetch_add(1, std::memory_order_relaxed);
+  if (line > MAX_UPGRADE_LOG_LINES) return;
+  std::ostringstream text;
+  if (line == MAX_UPGRADE_LOG_LINES) {
+    text << "[Ryse] more than " << MAX_UPGRADE_LOG_LINES << " upgrades: no more upgrade lines";
+  } else {
+    text << "[Ryse] upgrade 0x" << std::hex << resource.handle << std::dec << ' ' << desc.texture.width << 'x'
+         << desc.texture.height << ' ' << old_format << " -> " << new_format << (in_place ? " in place" : " view clone");
+  }
+  reshade::log::message(reshade::log::level::info, text.str().c_str());
+}
+
 bool configured = false;
 bool attached = false;
 bool addon_registered = false;
@@ -2436,6 +2477,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(back_buffer_fix::OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_swapchain>(back_buffer_fix::OnDestroySwapchain);
   reshade::register_event<reshade::addon_event::init_resource>(back_buffer_fix::OnInitResource);
+  reshade::register_event<reshade::addon_event::init_resource>(OnInitResourceLogUpgrade);
   reshade::register_event<reshade::addon_event::init_resource_view>(back_buffer_fix::OnInitResourceView);
   reshade::register_event<reshade::addon_event::destroy_resource_view>(back_buffer_fix::OnDestroyResourceView);
   reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(back_buffer_fix::OnBindRenderTargets);
@@ -2461,6 +2503,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(back_buffer_fix::OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_swapchain>(back_buffer_fix::OnDestroySwapchain);
   reshade::unregister_event<reshade::addon_event::init_resource>(back_buffer_fix::OnInitResource);
+  reshade::unregister_event<reshade::addon_event::init_resource>(OnInitResourceLogUpgrade);
   reshade::unregister_event<reshade::addon_event::init_resource_view>(back_buffer_fix::OnInitResourceView);
   reshade::unregister_event<reshade::addon_event::destroy_resource_view>(back_buffer_fix::OnDestroyResourceView);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(back_buffer_fix::OnBindRenderTargets);
