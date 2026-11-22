@@ -6975,9 +6975,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         slots as v1 lock records; fix-now only after 2 priced faults in a row; cause() into gate_hook; licensed repos:
         permissive SPDX -> code_repos.tsv, GPL / NC / ND / none -> ask ATN. Owners: gtp_ 8-11 h, gtb_ 3-5 h, gti_ 0.2 h;
         27 tests (fakes). gpr_ v2 RE-CHECK STARTED.
-        Agents (10): c33i_ (N6), ebr_ (r17 re-check), upr_ (v2.4 re-check, then H0 r2), gpr_ (price + web v2 re-check),
-        grs_ (S2), gtl_ (S3 fixes), gtw_ (S1c re-check 5), gbc_ (C1 + C2, then B1 review). Idle: lga_, lgf2_, h0i_,
-        gpp_, gtv_ (waits gtl_), gtq_ / gtk_ (wait gbc_), gti_, gtb_, gtp_.
+        c33i_ N6 DONE 03:2x (render_mt/reports/c33i_n6_handback.md): 8853985b4 on rmt_rs5 (worktree rmt_c33): PausedWrite
+        refuses taking sites out while a fold is open on another thread (read under the suspension); Uninstall's
+        keep sets / lambda / 100 ms wait removed; 29f stay_in_checks + case 1 + case 2 (bd1r_'s probe); mutant
+        n6_no_refusal caught; FULL x86 PASS; 5 gated builds exit 0. Seven zombie test processes (unkillable, no work)
+        stay until ATN's next reboot. bd1r_ N6 RE-CHECK STARTED -> then merge rmt_rs5.
+        Agents (10): bd1r_ (N6 re-check), ebr_ (r17 re-check), upr_ (v2.4 re-check, then H0 r2), gpr_ (price + web v2
+        re-check), grs_ (S2), gtl_ (S3 fixes), gtw_ (S1c re-check 5), gbc_ (C1 + C2, then B1 review). Idle: lga_,
+        lgf2_, h0i_, c33i_, gpp_, gtv_ (waits gtl_), gtq_ / gtk_ (wait gbc_), gti_, gtb_, gtp_.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
