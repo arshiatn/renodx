@@ -6640,7 +6640,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         at 16 rays < 8 rays, before H0 16 ~ 8, single-frame variance unchanged; (d) run 6 with <= 94 probe rays.
         Run 7 (Nsight registers / spills rt_reflect_one) gates the merge; if it costs: Random2 (lanes .y / .z) or the
         nested-pcg fallback. NQ3 covers every TW game on the shared helper (tell ATN).
-        Agents (7): c33i_ (R-S5 fixes), gtp_ (S1c fixes), ebr_ (r16 review), lga_ (group 1 re-check 2), lgf2_ (group 2 R1 +
+        gtp_ S1c FIX DONE 01:4x (plan_1117/gtp_s1c_fix_handback.md, backups scratchpad\gtp_bak): gtw_'s M1-M4 + Shoulds
+        1-12 + most nits; run_tests 214/214, ~0.075 s a call. M1 commit check fails closed (style check only in a
+        'roots' checkout; missing index.sqlite skips the cite part with a log line); M3 six allow rules. ATN's 11-22
+        defaults in gates.tsv: mode shadow, spec / cxx / shell / cite / web / tools_tw on, reshade off, cite_since
+        set-on-install, Q4b narrow ON (matcher + WebSearch|WebFetch), Q26 protection built. INSTALL_FOR_ATN.md
+        rewritten (checklist 1-11 with recommendations). gtw_ S1c RE-CHECK STARTED 01:4x.
+        [ ] after gtw_ OK: INSTALL_FOR_ATN.md to ATN (he installs the hook himself; nothing installed by agents).
+        Agents (7): c33i_ (R-S5 fixes), gtw_ (S1c re-check), ebr_ (r16 review), lga_ (group 1 re-check 2), lgf2_ (group 2 R1 +
         N1-N5), gtv_ (S1a + S1b re-check), h0i_ (H0 Shoulds). QUEUE: R-S5 re-checks -> merge rmt_rs5, lga_ group 1 re-check
         2 + group 2 re-check 2 -> merge rmt_lg1 / rmt_lg2, gtw_ S1c re-check, bulk index (after S1a OK), Q8(b) lock wait,
         H0 fixes / harness runs -> merge rmt_h0, B1.6, X1, logging group 3, PT DI steps 0-4 (after rmt_lg2 + H0), S2
