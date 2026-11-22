@@ -6553,7 +6553,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         01:2x: fixes -> gtw_ re-check.
         t4i_ T3e DONE 01:2x: PROBLEM lines end with '(drift not covered: window 6 not comparable)' when the drift control
         is skipped; test_analyze 107 / 107, run_all green; backups t4i_bak15. T3 / map compare track CLOSED.
-        Agents (9): bd1r_ (R-S5 review), gti_ + gtb_ (S1a / S1b fixes), gtp_ (S1c fixes), lga_ (group 1
+        ATN 01:2x ANSWERS (phone): Q12 hooks = shadow mode first (recommended); Q8 (a) ns_busy counts map_replay = YES
+        (-> gti_ row ON), (b) lock wait inside atn_harness_runs.ps1 = YES [ ] after gti_'s fixes + gtv_'s re-check (render_mt
+        file, same command lines, no new switch); Q14 = as recommended (tools_tw on, reshade off, cxx on all src, spec gate
+        TW only); Q15 = YES (cite_since = install date); Q26 = YES (+ protect tools\specs except lookups + pitfall_check.py);
+        Q4b: ATN asked why -> my suggestion: NARROW block (API facts the local index covers -> spec.py; web allowed when
+        spec.py has no hit, and always for papers / release notes / versions); row OFF until ATN OKs the narrow form
+        [ ] ATN. (5) = YES to my suggestions: unpinned non-leak crash -> retry the start once with the suspect parts Off,
+        a second stops the batch, every crash root-caused before the final bench; DLL byte scans: strict rule stays
+        (dis_at.py only), deviations #1-#3 accepted as recorded (CLOSED); x87c = one small on / off A/B (W3 + D1) right
+        after the end batch, before the author package. Unified PT's 15 questions: [ ] ATN (asked to take my
+        recommendations; not blocking).
+        Sent: gtp_ the gate defaults + narrow Q4b; gti_ Q8 (a) row ON; t4i_ RESUMED 01:2x: crash budget in the legs +
+        StallDump in T6 (backup / set / restore ReShade.ini) + x87c A/B plan (existing ebo_run rules or exact new line
+        for ATN).
+        Agents (10): bd1r_ (R-S5 review), gti_ + gtb_ (S1a / S1b fixes), gtp_ (S1c fixes), t4i_ (batch rules), lga_ (group 1
         re-check), h0i_ (H0), lgf2_ (helper + bridge logging). QUEUE: c33i_ R-S5 nits -> merge, B1.6, X1, logging group 3,
         gtv_ re-check, PT DI steps 0-4 (after lgf2_ + H0), S2 (after lgf2_), T5 / T6, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
