@@ -532,9 +532,12 @@ class Resident {
         last_n_ = n;
         last_cmd_time_ = started;
       }
-      const std::string name = (command.is_object() && command.contains("cmd") && command["cmd"].is_string()) ? command["cmd"].get<std::string>() : "";
+      const auto text = [&](const char* key) {
+        return (command.is_object() && command.contains(key) && command[key].is_string()) ? command[key].get<std::string>() : std::string();
+      };
+      const std::string name = text("cmd");
       const bool known = Listed(COMMANDS, name);
-      if (!command.is_object() || command.value("protocol", "") != PROTOCOL || command.value("n", 0u) != n || !known || !command.contains("args")
+      if (!known || text("protocol") != PROTOCOL || !command["n"].is_number_integer() || command["n"].get<int64_t>() != n || !command.contains("args")
           || !command["args"].is_object()) {
         Answer(n, known ? name : "status", started, {.status = "REFUSED", .error = std::format("cmd_{} is not a {} command numbered {}", n, PROTOCOL, n)});
         continue;
@@ -545,6 +548,8 @@ class Resident {
         reply = Handle(name, command["args"], n);
       } catch (const nlohmann::json::exception& bad) {
         reply = {.status = "REFUSED", .error = std::format("bad args: {}", bad.what())};
+      } catch (const std::exception& failed) {
+        reply = Failed(std::format("{} failed: {}", name, failed.what()));
       }
       if (reply.lost) {
         losses_.fetch_add(1);
@@ -940,7 +945,10 @@ class Resident {
       if (!ParseField(field, value.get<double>(), &made.fields.emplace_back(), &why)) return {.status = "REFUSED", .error = why};
     }
     for (const auto& [stem, path] : args.at("stems").items()) {
-      if (path.get<std::string>() == "base") continue;
+      if (path.get<std::string>() == "base") {
+        made.stems[stem] = {};  // the base build's (an unknown stem still refused below)
+        continue;
+      }
       std::ifstream file(path.get<std::string>(), std::ios::binary);
       std::vector<uint8_t> code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
       if (!file || !CheckStem(code, &why)) return {.status = "REFUSED", .error = std::format("stem {} ({}): {}", stem, path.get<std::string>(), why.empty() ? "unreadable" : why)};
