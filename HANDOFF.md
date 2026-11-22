@@ -504,7 +504,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: S3c part 2 (dead outputs on R3, M10) after gtv_'s root cause; recorder bu ... | ?
 - gtb_ / ATN (optional, later): F6 total on trimmed_mean or sum of pass-row median ... | ?
 - grs_ / nsight owner (optional, low): skip loop-0 dumps under -Trace; gpu_trace.p ... | ?
-- gtl_: B1 (settle sampler + missing gpu_samples.tsv) + N1-N6 in stage2 + tests (c ... | ?
 - gtv_: quick re-check of B1 + N2 / N3 / N6 -> then coord lands stage2 + retire_ro ... | ?
 - gtb_ (when active): OK gtl_'s test_budget.py conhost allowance (coord OK'd 17:1x ... | ?
 - gtp_: ROUND 21 = gpr-R20-1 (8 KB caps per expanded value + statement, doubling-c ... | ?
@@ -10859,7 +10858,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         automatic stop. N5 sheet Before 1: land + retire with no session / lab job running. N6 nit: budget.py +
         tests\test_budget.py went CRLF -> LF, keep CRLF; gtb_ OKs test_budget later (coord OK'd now, gtb_ not active).
         COORD: B1 + N1-N6 in stage2 first (one landing, N3 yes), gtv_ quick re-check of B1, then land + retire + re-run.
-        - [ ] gtl_: B1 (settle sampler + missing gpu_samples.tsv) + N1-N6 in stage2 + tests (coord 17:3x).
+        - [x] gtl_ (DONE 17:48, all suites OK): B1 (settle sampler + missing gpu_samples.tsv) + N1-N6 in stage2 + tests (coord 17:3x).
         - [ ] gtv_: quick re-check of B1 + N2 / N3 / N6 -> then coord lands stage2 + retire_rows (6 rows) + S3c re-run.
         - [ ] gtb_ (when active): OK gtl_'s test_budget.py conhost allowance (coord OK'd 17:1x).
         gtw_ RE-CHECK 20 17:44 = GO FOR SHADOW, NOT FOR ENFORCE UNTIL gpr-R20-1 (plan_1117/gtw_recheck20_handback.md;
@@ -10889,8 +10888,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         pipe-to-shell forms) + notes ($PWD child key, test_budget_psm1.ps1); gtw_ + gpr_ re-check (coord 17:4x).
         - [ ] ATN (later, before any ENFORCE): a hook that times out (pre hook 15 s) does not deny the call -> enforce
         needs the gate side first + bounded price work; gtw_ / gpr_ re-checks must say GO FOR ENFORCE first.
-        Agents (2): gtl_ (S3c B1 + N1-N6 in stage2), gtp_ (gate round 21); gtv_ (B1 re-check next) / gtw_ / gpr_ / fcr_ /
-        gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
+        gtl_ B1 FIXES 17:48 (plan_1117/gtl_b1_fixes_handback.md; patch testbin\scratch\gtl_\stage2_patch_b1.py; runs
+        testbin\scratch\gtl_\runs\s3ci_*.txt): B1 GpuSampler for kind settle (+ ab / calibrate); bursts() reads a missing
+        gpu_samples.tsv as "-"; tests test_settle_measures_again (sampler_for asked for both settle jobs) + test_bursts
+        (exit 0, "0 bursts []; ns_busy runs 0; dwm samples -"). Sheet Re-run: N1 2b period / phase = gtv_'s call; N4 no
+        bursts + settle decided -> gtv_ reads settle_row:<rk>:passes:<row> = 1 rows before 3; N5 land + retire only with no
+        session / job / gpu_job.lock. N2 trace loops 700 (1400 frames). N3 retire command = 6 rows (lines 9 / 10 / 50 / 51 /
+        91 / 92; R1 15:54:56, R2 15:59:11, R3 16:01:37; second run refuses) - command in the sheet + hand-back. N6 budget.py +
+        tests/test_budget.py CRLF again (diffs 8 / 10 lines). 18 jobs on helper_du_rec, 0 refused, 1982 s (33.0 min; R2
+        settle now unknown too), job 07 70 s (testbin\scratch\gtl_\runs\s3c2_jobs_du2.txt). Suites 17:40-17:47: unit 40,
+        analyze 5, ps1 5, keeper 29, jobs 35, test_gpu_lock 60 / 60, test_budget 40 OK. Land list 11 files refreshed.
+        Agents (2): gtv_ (B1 + N2 / N3 / N6 quick re-check), gtp_ (gate round 21); gtl_ / gtw_ / gpr_ / fcr_ / gtc_ / gti_ /
+        grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
