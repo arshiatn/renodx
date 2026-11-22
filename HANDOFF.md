@@ -7228,9 +7228,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         existing ancestors; N1 doc line (addon matches lights within 0.25 m, we by index), N2 cross-check start / stop
         exposures + count, N3 Inf reference -> skip like black (no traceback), N4 flip_tool CLI out-folder guard.
         -> gtq_ STARTED; gbc_ re-checks.
-        Agents (9): h0i_ (F1), c3i_ (B1.6), ebr_ (r19 re-check), gtp_ (K1-K3 + next round), gtq_ (B2-S1 + N1-N4),
+        ebr_ r19 RE-CHECK = MERGE-READY 04:5x (render_mt/reports/ebr_r19_recheck_handback.md; ebr_t4_review.md l.617):
+        run_all 0 failed (leg 158); the heapfix.ini parse matches heapfix.c (prep 05b9a5c) on every way a fix is off,
+        differences all err to PROBLEM; off-file names match heapfix.c :523 / :539 / :548 / :550; compare names right per
+        leg; nothing writes into the game folder; mutants N1-N5, N8, N9 killed, N6 (four_on scene filter) + N7 (first
+        occurrence wins) survive = test gaps. -> t4i_ r20 STARTED: N6 + N7 tests, the int64 nit ('^0*1$' on the
+        match), the same check again at the real leg's start (read only). Not blocking: ATN's live heapfix.ini has all
+        four keys at 1, no *_off.txt in the game folder.
+        [ ] ATN: a MISSING key / empty value in heapfix.ini -> NOTE instead of PROBLEM? heapfix defaults it to 1 (same
+            compares), the bench's own dry run already calls it a NOTE (constantinople_bench :635-636); no [fixes]
+            section or no file stays a PROBLEM. Plan section 10 bullet changes with it. Kept as PROBLEM until ATN says.
+        Agents (9): h0i_ (F1), c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gtq_ (B2-S1 + N1-N4),
         gtv_ (S3r re-check 2), grs_ (S2r fixes), gtb_ (W1 / W2 + L1). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_
-        (waits h0i_), gpp_, gpr_ (waits gtb_), t4i_, gbc_ (waits gtq_), gti_, gtl_, gtk_, gtw_ (waits gtp_).
+        (waits h0i_), gpp_, gpr_ (waits gtb_), ebr_ (waits t4i_), gbc_ (waits gtq_), gti_, gtl_, gtk_, gtw_ (waits
+        gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
