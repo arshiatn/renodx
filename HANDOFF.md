@@ -8680,9 +8680,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         gpu3_chain6.sh, alternating, 2 rounds, no HARNESS_DUMP, GPU lock per job, helper log per job; old >= 75 =
         environment, old 52-57 + new >= 75 = code (stage 2, 4 jobs ~5 min), both < 75 = H0 conditions. NO ATN RULE
         COVERS THIS RUN -> lga_ prepares a runner with -DryRun (no GPU), I propose the rule to ATN.
-        - [ ] ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stack, after the runner
-            + dry run are ready) - decides whether the release gate failures are Windows KB5132061 or our code
-            (lga_ 09:0x).
+        - [ ] ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stack) - decides whether
+            the release gate failures are Windows KB5132061 or our code (lga_ 09:0x). Runner READY 09:0x, dry run
+            OK, gtw_ reviewing; rule lines: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\arshi\
+            .claude\projects\D--Dev-renodx\tools\tw\h0\release_check.ps1` (+ ` -DryRun`, + ` -WithRelease`).
         ffr_ FIRST-FRAME REVIEW = OK WITH FIXES 09:0x (plan_1117/designs/ffr_first_frame_review.md + _handback.md;
         Opus xHigh, offline): d' is the right direction, 5 holes. Claims: players plausible not proven (H0's 21-22 s
         = lab / 4K sets; item 4's log line settles it); all heavy opens in the Evaluate after Prepare confirmed
@@ -8740,9 +8741,25 @@ heading text are in HANDOFF_ARCHIVE.md)
             tee walk widens it); `cat | grep | python -` passes; os.replace failure on gate_faults.json repeats the
             FAULT row per process + leaves .<pid>.tmp files (remove the tmp in except); quoted target list with
             spaces not split (gtw_ 09:0x).
+        lga_ RELEASE RUNNER READY 09:0x (plan_1117/lga_release_runner_handback.md; tools\tw\h0\release_check.ps1,
+        328 lines, PS 5.1; scratch test lga_release_summary_test.ps1): h0_gpu_runs.ps1 style (Invoke-Logged env
+        scrub, Get-Busy = ns_busy rule, Committed < 45 GB start / < 55 GB per job, gpu_lock.py acquire --busy
+        --timeout 60 released in finally, 120 s wait for the last job's harness + helper, 600 s job timeout; stops
+        on TDR line / timeout / busy / helper won't end = exit 4, lock refused 3, failed check 2). Stage 1 = 2 x
+        (old smoke, new smoke, old rr, new rr) 30 frames, no HARNESS_DUMP, ~9 min; -WithRelease adds plain release
+        (12 jobs ~13 min, shown, not in the verdict). Helper log (+ .old) copied per job -> h0\release_runs\<stamp>\.
+        RESULT per job: longest answer, scene release (N ms) + VRAM, RR (N ms), memory + pass line; verdict on
+        smoke + rr at 75 ms (a side fails with >= 2 of 4 answers >= 75, passes with none): ENVIRONMENT / CODE /
+        RUN CONDITIONS / OPEN; header records OS build, dxgkrnl, driver. Folders copied only: testbin\lga_rel_old
+        (gpu3_fix files, helper D1782ABB2984, harness 3E88C39F2ADB + nvngx_dlss / dlssd 310.7.0 from external\DLSS)
+        and testbin\lga_rel_new (H0 pre plain, helper 15B610A7C19E, harness FFD6BA42A8C5, no FSR / XeSS / FG
+        DLLs); all runtime files byte-identical across the two. Dry run x2 OK (18 files + hashes, 33.9 / 34.6 GB,
+        nothing busy; h0\release_runs\dryrun_20261122_0906* / 0907*). Parsers tested on kept logs (release_rr
+        93.5 ms, scene 123, RR 93); lock / launch / wait untested (need the real run). Stage 2 not in yet. ->
+        gtw_ REVIEW STARTED (before ATN's rule); ATN box updated with the command lines.
         Agents (6): h0i_ (H0 F1-F4), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gtb_ (slot-wait
-        test + load + gate seed + R12-1 half), grs_ (first-frame design revision), lga_ (release check runner, dry
-        run only), t4i_ (T5 manifest rows + B1 risks)
+        test + load + gate seed + R12-1 half), grs_ (first-frame design revision), gtw_ (release_check.ps1
+        review), t4i_ (T5 manifest rows + B1 risks)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
