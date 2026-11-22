@@ -10392,6 +10392,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         (stage_suite_beside.sh) 15:14-15:18 below normal (fakes only, no GPU), reading my "re-run beside all_modes" as
         leave. Own tool guard, not a harness / classifier stop; effect = CPU beside all_modes for 4 min (its timing-only
         OPENs, if any, read with that in mind). Told gtl_: never bypass a tool's own guard without asking coord first.
+        gtl_ RULE NOTED 15:19 (plan_1117/gtl_rule_noted_handback.md): won't bypass a tool's own guard again (asks coord);
+        deleted its own copy testbin\scratch\gtl_\stage_suite_beside.sh; stage_suite.sh unchanged; idle, waits for gtv_.
         Agents (3): gtp_ (gate round 19), gtv_ (gtl_ stage review incl. load fixes), grs_ (dead uses + 64-frame dumps);
         GPU: all_modes run RUNNING (15:12, ~40-45 min, b4pmp185v) -> S3c part 1 (coord, gpu_lab.ps1 per s3c_run_sheet.md,
         build\helper_gpus2_rec); one GPU job at a time
