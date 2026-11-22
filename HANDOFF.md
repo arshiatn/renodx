@@ -6805,9 +6805,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         me to install the gate hook myself -> kept with ATN (a guard the agent can install can also be removed by it;
         INSTALL also adds permission allow rules = self-granting): made easy for the morning [ ] ATN.
         Keep-awake ON (session_idle) 02:4x.
+        gpp_ PRICE + WEB DESIGN DONE 02:4x (plan_1117/designs/gpp_price_web_design.md 625 lines, hand-back
+        designs/gpp_design_handback.md): A web allow-list gates\web_allow.tsv (fail closed; WebSearch must send
+        allowed_domains; WebFetch host + path; browser + shell downloads; pip / npm / winget refused; history: 430 / 479
+        WebFetch pass, refused = forums, mod repos, unknown hosts); B price per kind from gates\tool_times_<month>.tsv ->
+        prices.tsv, limit = max(p50 x 2.5 + 10, p95 x 1.5 + 15) clamped, load tag; foreground timeout via updatedInput
+        only if probe P-1 works, else refuse clearly wrong timeouts; long runs via budget.py watch; agents flagged at 1x
+        / 2x, never killed; no unchanged rerun after a TOOL FAULT; hook +0.15 s / call. 27 tests; owners gtp_ (7-10 h)
+        + gtb_ (2-3 h). [ ] ATN: 13 questions (§G) in the morning. gpr_ (aa304b6e977350cc3, Opus xHigh) REVIEW STARTED.
         Agents (11): bd1r_ (R-S5 re-check), c33i_ (nit 5), lgf2_ (r3: T1 / N7 / T2 / F4), gtp_ (T1b + INSTALL line 6,
         sdk-api docs), t4i_ (r17 fixes), upr_ (v2.3 spot-check, then H0 script), gtv_ (Should 8, then Q8(b)), gtl_ (S3),
-        gtq_ (B1), gtk_ (C1 + C2), gpp_ (price + web design).
+        gtq_ (B1), gtk_ (C1 + C2), gpr_ (price + web review).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
