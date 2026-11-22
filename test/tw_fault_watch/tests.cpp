@@ -164,12 +164,12 @@ int main() {
     CHECK(Filter(code, outside) == EXCEPTION_CONTINUE_SEARCH);
   }
   CHECK(IsBadReadPtr(reserved, 4) != FALSE);
-  CHECK(Logged("Fault") == 0 && loss::frame_fault_tick == 0 && loss::frame_fault_code == 0 && loss::overflow_tick == 0);
+  CHECK(Logged("Fault") == 0 && loss::frame_fault_tick == 0 && loss::frame_fault_code == 0 && loss::overflow_count == 0);
   VirtualFree(reserved, 0, MEM_RELEASE);
 
   // 3. A real fault in this image on the frame thread, its handler working: one first-chance line naming this image,
-  // the thread and the write; the stall line says the thread is handling an exception now, on every build. The first
-  // present put the top-level filter over the game's.
+  // the thread and the write; the stall line names the exception it is handling from the dispatcher's record, on every
+  // build. The first present put the top-level filter over the game's.
   DWORD faulting_thread_id = 0;
   const HANDLE frame_thread = CreateThread(nullptr, 0, FaultingFrameThread, nullptr, 0, &faulting_thread_id);
   CHECK(frame_thread != nullptr);
@@ -181,13 +181,8 @@ int main() {
   CHECK(fault.find(std::format("(thread {}, the frame thread; write at 0x0).", faulting_thread_id)) != std::string::npos);
   loss::LogStall(1000, false);
   CHECK(Logged("No frame for 1 s") == 1);
-#if defined(_WIN64)
   const std::string handling = LineWith("The frame thread is handling an exception: 0xC0000005 at " + exe + "+0x");
-#else
-  const std::string handling = LineWith("The frame thread is handling an exception now (a crash, not a wait");
-  CHECK(handling.find("; its last fault: 0xC0000005 at " + exe + "+0x") != std::string::npos);
-#endif
-  CHECK(!handling.empty());
+  CHECK(!handling.empty() && Logged("The frame thread is handling an exception") == 1);
   std::printf("%s\n", handling.c_str());
   CHECK(Logged("(handled; it went on)") == 0);
   // The note an add-on adds to the stall line.
@@ -249,18 +244,24 @@ int main() {
   CHECK(Logged("Fault (first chance)") == 4);
 
   // 7. A stack overflow in the add-on's code, then an unhandled one anywhere: nothing on the overflowed stack, the frame
-  // watch says each from its own; the unhandled one goes on to the game's filter.
+  // watch says each from its own; the unhandled one goes on to the game's filter. Without a watch the overflowed thread
+  // does not wait; with one it is said before the handler returns (a crash reporter suspends the threads at once).
+  uint64_t start_tick = GetTickCount64();
   CHECK(Filter(EXCEPTION_STACK_OVERFLOW, inside + 0x40) == EXCEPTION_CONTINUE_SEARCH);
-  CHECK(loss::overflow_tick != 0 && !loss::overflow_unhandled && Logged("Stack overflow") == 0);
+  CHECK(GetTickCount64() - start_tick < 100);
+  CHECK(loss::overflow_count == 1 && !loss::overflow_unhandled && Logged("Stack overflow") == 0);
   loss::watch_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
   loss::watch_thread = CreateThread(nullptr, 0, loss::WatchLoop, loss::watch_stop, 0, nullptr);
   CHECK(loss::watch_thread != nullptr);
   Sleep(1500);
-  CHECK(Logged(std::format("Stack overflow at {}+0x1040 (thread {}, another thread; first chance, in the add-on's code).", exe, main_thread)) == 1);
+  CHECK(loss::watch_running && Logged(std::format("Stack overflow at {}+0x1040 (thread {}, another thread; first chance, in the add-on's code).", exe, main_thread)) == 1);
+  start_tick = GetTickCount64();
+  CHECK(Filter(EXCEPTION_STACK_OVERFLOW, inside + 0x50) == EXCEPTION_CONTINUE_SEARCH);
+  CHECK(Logged(std::format("Stack overflow at {}+0x1050", exe)) == 1 && GetTickCount64() - start_tick < 400);
+  start_tick = GetTickCount64();
   CHECK(Call(loss::OnUnhandled, {.ExceptionCode = EXCEPTION_STACK_OVERFLOW, .ExceptionAddress = reinterpret_cast<void*>(outside)}) == EXCEPTION_EXECUTE_HANDLER);
-  CHECK(game_filter_calls == 1 && Logged("Unhandled exception") == 0);
-  Sleep(1500);
-  CHECK(Logged("Stack overflow at ntdll.dll+0x") == 1 && Logged("; unhandled).") == 1);
+  CHECK(Logged("Stack overflow at ntdll.dll+0x") == 1 && Logged("; unhandled).") == 1 && GetTickCount64() - start_tick < 400);
+  CHECK(game_filter_calls == 1 && Logged("Unhandled exception") == 0 && Logged("Stack overflow") == 3);
   std::printf("%s\n", LineWith("Stack overflow at ntdll.dll+0x").c_str());
   loss::StopWatch();
 
@@ -308,8 +309,13 @@ int main() {
   CHECK(loss::unhandled_filter_set && loss::previous_filter == GameFilter);
   CHECK(SetUnhandledExceptionFilter(LaterFilter) == loss::OnUnhandled);
   loss::Uninstall();
-  CHECK(SetUnhandledExceptionFilter(GameFilter) == LaterFilter);
   CHECK(Logged("Another exception filter was set over the add-on's: the add-on stays loaded.") == 1);
+  // The kept image attached again does not put its filter over that one (a loop between the two into an overflow).
+  CHECK(loss::unhandled_filter_set && loss::overflow_kept == nullptr && loss::overflow_logged == nullptr);
+  loss::Install();
+  loss::OnPresent(nullptr, nullptr, nullptr, nullptr, 0, nullptr);
+  CHECK(SetUnhandledExceptionFilter(GameFilter) == LaterFilter);
+  loss::Uninstall();
   std::printf("PASS\n");
   return 0;
 }
