@@ -6615,7 +6615,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         Rays >= 9; 4 Validate replay (Torch Light in PT GI, reuse, still: invalidity / history unchanged); 5 reference
         digest equal, REF paths byte-equal with torch light off, G3; 6 SHaRC + probe build means; 7 Nsight per pass 4K
         ATN preset + 16 rays (registers <= 96, spills <= today); 8 M6 post-H0 baseline. NQ3 (on by default) = ATN's.
-        Agents (7): c33i_ (R-S5 fixes), gtp_ (S1c fixes), t4i_ (batch rules), lgf1_ (group 1 R1-R7), lgf2_ (group 2 R1 +
+        t4i_ r16 DONE 01:3x (reports/t4i_r16_handback.md, backups scratchpad\t4i_bak\r16; bench side only, run_all
+        green): 1 unpinned crash -> one retry as a continuation from the crash with the suspects Off for the retry only
+        (pin's parts, else the crashed segment's parts); a second -> stop.flag 'BATCH STOPPED ...', exit 3, later legs
+        refuse; root-cause boxes in crash_list.txt + gate root_cause_items; overrides unpinned_retry. 2 StallDump=1 in
+        every start's variant through the reshade_ini step (fresh backup, restore + hash check per start); T6 dry run
+        flags a missing line. 3 x87c A/B plan §8b (ABBA XC-W3 / XC-D1, ~40 min): leg 4 only if T5's DLL carries x87c,
+        else ATN needs a new rule 'ebo_run.ps1 -Leg 5 [-DryRun]' (nothing built). ebr_ r16 REVIEW STARTED 01:3x.
+        [ ] T5: decide whether the frozen heapfix DLL carries x87c (then leg 4) or ask ATN for the leg 5 rule.
+        Agents (7): c33i_ (R-S5 fixes), gtp_ (S1c fixes), ebr_ (r16 review), lgf1_ (group 1 R1-R7), lgf2_ (group 2 R1 +
         N1-N5), gtv_ (S1a + S1b re-check), upr_ (H0 review). QUEUE: R-S5 re-checks -> merge rmt_rs5, lga_ group 1 re-check
         2 + group 2 re-check 2 -> merge rmt_lg1 / rmt_lg2, gtw_ S1c re-check, bulk index (after S1a OK), Q8(b) lock wait,
         H0 fixes / harness runs -> merge rmt_h0, B1.6, X1, logging group 3, PT DI steps 0-4 (after rmt_lg2 + H0), S2
