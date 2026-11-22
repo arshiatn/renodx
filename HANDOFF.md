@@ -446,6 +446,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - T5 owner (end batch, before leg 1): the REAL manifest must carry rows ParallelEf ... | ?
 - gtl_ (optional, after its 4 suites pass): a light_anim iq job launches its own r ... | ?
 - grs_ + gtl_ (moments only, later): the "full size is its active size" protocol l ... | ?
+- coordinator (route before T5): end-batch placeholders that never match (no shipp ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -7886,10 +7887,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         assert every left-out pid is the child's / grandchild's; the code already guarantees no foreign pid,
         l.870); s1c fallback decodes with 'replace' and prices 201 / 304 keys on a corrupt file while the hook gives
         {} -> decode strictly, {} on UnicodeDecodeError. Sandbox test touches nothing real.
-        Agents (6): gtw_ (S1c re-check 9), gtv_ (gtq_ fixes + gtl_ iq_refs re-check), gtb_ (s1a-s1c), t4i_ (r22:
-        ebr_'s r21 fixes), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_,
-        upr_, h0i_ (after H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_ r22), gbc_, gpr_ (re-checks gtb_
-        s1a-s1c), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (after H0: its 4
+        t4i_ R22 DONE 06:5x (render_mt/reports/t4i_r22_handback.md; backups scratchpad\t4i_bak\r22, 21 files; log
+        t4i_r22_runall.txt): run_all green (lib 463, make 86, check 164, leg 165, analyze 109, exit 0). FIX 1
+        code_sites "particle count epoch" / "particle count" -> Cached Particle Count (unplanned NOTE, planned
+        resumable stop for Cached only); FIX 2 code_not_written / code_written for Cached (:2907 / :2876) + Parallel
+        Effect Update sites (:2918 / :2832). Mutants: S4 KEEP ~B1Cached -> KEEP +B1Cached clears COUNT_CHECK to '';
+        G6 tests; S5 still covered by b1_stood_down. Shoulds: INFO b1_left_alone (:668 / :674 / :701, stop_if_planned
+        B1L1 / B1L2); LATCH b1_sites_stood_down (:2835) + LATCH b1_no_memory (:1451) for group B1 - needed two BENCH
+        changes: ebo_make.ps1 plan carries `groups = $seg.groups`, ebo_check.ps1 LATCH expands a group to its
+        members; B1Cached dropped from code_rows "Parallel Effect Update" + b1_refused_hooked (b1_hooked_cached_only,
+        b1_prepare_cached tests). Nits: :734, shipped corpus site names (walk call / sweep / spawn write), 12 new
+        corpus lines. Removed one own .pyc (bench\__pycache__\ebo_analyze.cpython-314.pyc). c3i_'s two lines not
+        there yet -> r23. -> ebr_ RE-CHECK r22 STARTED.
+        - [ ] coordinator (route before T5): end-batch placeholders that never match (no shipped line): LATCH
+            b3b_mismatch (B3b / S6 owner), LATCH fill_check_mismatch (R-S1 / R1 instance-fill owner), probes
+            effect_instances (B1 author) / draws / overflow / c_render_us (draw-recording / R1 author) / part_calls
+            (feeds paused_runs) - each gets its shipped line or the gate is dropped; b1_stack_headroom waits c3i_.
+        Agents (6): gtw_ (S1c re-check 9), gtv_ (gtq_ fixes + gtl_ iq_refs re-check), gtb_ (s1a-s1c), ebr_ (t4i_
+        r22 re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_,
+        h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r23 after c3i_), gbc_, gpr_ (re-checks gtb_ s1a-s1c),
+        gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (after H0: its 4
         suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
         map_replay-named process until H0 ends; gtv_'s held lab tests + race probe after H0.
         QUEUE: R-S5 re-checks
