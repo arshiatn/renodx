@@ -8460,9 +8460,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         h0i_ F1-F4 STARTED (then upr_ re-checks, then the coordinator's full re-run in a gap); grs_ first-frame
         design STARTED (proposal only); lga_ release regression look STARTED (offline).
         - [ ] ATN (cleanup list): tools\tw\h0\__pycache__ (07:42) may be deleted (upr_ 08:3x).
+        ebr_ P4 CHECK = OK 08:3x (render_mt/reports/ebr_p4_check_handback.md; outputs scratchpad\ebr_p4_gen.py +
+        ebr_p4_mut\): (1) arm-at-`at` matches leg 1's 4 real CHK-W3 raw arms (b1.1 at 100, b12.3 / .9 / .15 at
+        540 / 570 / 600; `from` = at + 3, lines land in [at, from)); fixture S2 header 150.05 ... 150.55 < from 153.
+        (2) P4 kills exactly the 3 new checks (116 / 119; S2 Cached + L2 lines 0 -> "not measured"), control
+        119 / 119. (3) `to` case unchanged (arm_off 21, same state + values; ebo_analyze.py byte-identical). Nit:
+        the new loop indents 2 / 6 spaces, not 4. END BATCH SCRIPTS P4 CLOSED. -> t4i_ -B edits + indent nit now;
+        T5 manifest rows after rmt_b1rt merges.
         Agents (8): h0i_ (H0 F1-F4), gtv_ (v1.2 config hash review, lab + builder), gtp_ (round 12: hg1 + Section 8
-        + kind() + target spelling), gtb_ (slot-wait test + load), ebr_ (t4i_ P4 quick check), b13r_ (c3i_
-        rmt_b1rt review), grs_ (bridge first-frame miss design), lga_ (release regression look)
+        + kind() + target spelling), gtb_ (slot-wait test + load), t4i_ (-B edits), b13r_ (c3i_ rmt_b1rt review),
+        grs_ (bridge first-frame miss design), lga_ (release regression look)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
