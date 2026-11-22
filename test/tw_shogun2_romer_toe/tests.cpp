@@ -2,14 +2,14 @@
 // (build\<game>.include\embed): Shogun 2's tonemap00 0xEF060C7C (UE4's FilmToneMap with the game's constants, its
 // grading neutral, Gamma 2.0) and Rome Remastered's t00 0xB72063D6 (Feral's Hable on the luminance, the LUT's strength 0,
 // the auto exposure's 1, no vignette, no dither). Recommended (PsychoV35 at its defaults, each game's Hue Clip: Shogun 2
-// 70, Rome Remastered 80) and Shogun 2's "SDR-like" preset (V35 Contrast 1.3, Roll-off 2) against Rendering Mode SDR,
-// both as a 2.2 display shows them, 1000 / 203 nits: grey where SDR is 0.05 - 1, 1 - 15 and 15 - 100 nits; colour (OkLab
+// 70, Rome Remastered 80) and Shogun 2's "SDR-like" preset (the V35 fit's sliders, Roll-off 2) against Rendering Mode
+// SDR, both as a 2.2 display shows them, 1000 / 203 nits: grey where SDR is 0.05 - 1, 1 - 15 and 15 - 100 nits; colour (OkLab
 // chroma at equal lightness) where SDR is 1 - 30 and 30 - 150 nits (tw_psychov35 part 8's bands); each grey ramp must
 // rise and SDR reach 150 nits (the bindings reach the curves). Then the V35 FIT: PsychoV35's Contrast, Shadows,
 // Saturation and Highlight Contrast minimax-fitted to Shogun 2's SDR below white (slope 0.88); shared.h SHOGUN_V35_* must
 // sit within 5 % and within 0.5 % of the fit's best, keep PsychoV35's highlights within 15 % at 1000 / 203 (the fit's
-// guard) and 20 % at 2500 / 275; controls: Musa's own sliders must fail the 5 %, HDR (Extended) must be the game's grey. Rome Remastered's
-// fit: a report.
+// guard) and 20 % at 2500 / 275 (below white there a report); controls: Musa's own sliders must fail the 5 %, HDR
+// (Extended) must be the game's grey. Rome Remastered's fit: a report.
 // tests <build folder>
 #include <windows.h>
 #include <d3d11.h>
@@ -244,7 +244,7 @@ static Injection Psycho35(float hdr, float hue_clip, float contrast, float roll_
 // Shogun 2's scene and constants, without the add-on's (b13): the game's constants (data.pack *.lighting TONE_MAPPING:
 // toe 0.5, black clip 0, white clip 0.04; `slope` and `shoulder` by map), Brightness 1 without auto exposure, Gamma 2.0
 // (g_inv_gamma_output 0.5), the grading neutral.
-static Bindings Shogun2Scene(float slope, float shoulder) {
+static Bindings Shogun2Scene(float slope, float toe, float shoulder) {
   std::array<float, 38 * 4> camera = {};
   camera[(37 * 4) + 0] = WIDTH;
   camera[(37 * 4) + 1] = HEIGHT;
@@ -254,7 +254,7 @@ static Bindings Shogun2Scene(float slope, float shoulder) {
   std::array<float, 6 * 4> tone_mapping = {};
   tone_mapping[0] = tone_mapping[1] = 1.f;  // brightness, its fade
   tone_mapping[(4 * 4) + 1] = slope;
-  tone_mapping[(4 * 4) + 2] = 0.5f;  // toe
+  tone_mapping[(4 * 4) + 2] = toe;
   tone_mapping[(4 * 4) + 3] = shoulder;
   tone_mapping[(5 * 4) + 1] = 0.04f;  // white clip; black clip 0, g_use_auto_exposure 0
   std::array<float, 23 * 4> grading = {};
@@ -366,7 +366,8 @@ static Comparison Compare(const std::vector<Float3>& sdr, const std::vector<Floa
   return comparison;
 }
 
-static void Report(const char* name, const std::vector<Float3>& sdr, const std::vector<Float3>& v35) {
+// `display`: PsychoV35's Peak / Paper White (both ramps relative to Paper White; the bands are SDR x 203 nits).
+static void Report(const char* name, const std::vector<Float3>& sdr, const std::vector<Float3>& v35, const char* display = "1000 / 203") {
   bool sdr_rises = true, v35_rises = true;
   for (UINT y = 1; y < HEIGHT; ++y) {
     sdr_rises = sdr_rises && Luminance(sdr[y * WIDTH]) >= Luminance(sdr[(y - 1) * WIDTH]) - 1e-7f;
@@ -376,10 +377,10 @@ static void Report(const char* name, const std::vector<Float3>& sdr, const std::
   CHECK(sdr_rises && v35_rises, "%s: the grey ramp falls somewhere (SDR %d, PsychoV35 %d)", name, sdr_rises, v35_rises);
   CHECK(sdr_top > 150.f, "%s: SDR's top %g nits (the ramp misses the bands)", name, sdr_top);
   const Comparison c = Compare(sdr, v35);
-  std::printf("%s: PsychoV35 over Rendering Mode SDR below white, 1000 / 203 nits\n"
+  std::printf("%s: PsychoV35 over Rendering Mode SDR below white, %s nits\n"
               "   grey where SDR is 0.05 - 1 nits x%.3f..x%.3f, 1 - 15 nits x%.3f..x%.3f, 15 - 100 nits x%.3f..x%.3f\n"
               "   colour at equal lightness, SDR 1 - 30 nits x%.3f (per colour x%.2f..x%.2f), 30 - 150 nits x%.3f (x%.2f..x%.2f)\n",
-              name, c.grey[0].low, c.grey[0].high, c.grey[1].low, c.grey[1].high, c.grey[2].low, c.grey[2].high, c.chroma[0],
+              name, display, c.grey[0].low, c.grey[0].high, c.grey[1].low, c.grey[1].high, c.grey[2].low, c.grey[2].high, c.chroma[0],
               c.per_colour[0].low, c.per_colour[0].high, c.chroma[1], c.per_colour[1].low, c.per_colour[1].high);
 }
 
@@ -397,16 +398,21 @@ int main(int argc, char** argv) {
   const auto t00 = LoadPixelShader(build / "twromeremastered.include/embed/0xB72063D6.cso");
   using ShogunData = shogun2::ShaderInjectData;
   using RomeData = romer::ShaderInjectData;
-  // Every battle map's curve (slope 0.88, shoulder 0.13 / 0.14) and Fall of the Samurai's flattest (bos_japan winter).
-  const Bindings battle = Shogun2Scene(0.88f, 0.135f);
-  const Bindings winter = Shogun2Scene(0.52f, 0.4f);
+  // Every battle map's curve (slope 0.88, shoulder 0.13 / 0.14) and Fall of the Samurai's flattest (bos_japan winter:
+  // data_fots.pack winter.lighting TONE_MAPPING, its only tuple).
+  const Bindings battle = Shogun2Scene(0.88f, 0.5f, 0.135f);
+  const Bindings winter = Shogun2Scene(0.519126f, 0.52459f, 0.229508f);
   for (const auto& [label, scene] : std::array<std::pair<const char*, const Bindings*>, 2>{
-           {{"slope 0.88, shoulder 0.135", &battle}, {"bos_japan winter, slope 0.52, shoulder 0.4", &winter}}}) {
+           {{"slope 0.88, shoulder 0.135", &battle}, {"bos_japan winter, slope 0.519, toe 0.525, shoulder 0.230", &winter}}}) {
     const auto sdr = RunShogun2(tonemap00.Get(), *scene, Psycho35<ShogunData>(0.f, 0.7f, 1.f, 1.f));
     Report(std::format("Shogun 2 Musa's own sliders, {}", label).c_str(), sdr,
            RunShogun2(tonemap00.Get(), *scene, Psycho35<ShogunData>(3.f, 0.7f, 1.f, 1.f)));
-    Report(std::format("Shogun 2 SDR-like before the fit (V35 Contrast 1.3, Roll-off 2), {}", label).c_str(), sdr,
-           RunShogun2(tonemap00.Get(), *scene, Psycho35<ShogunData>(3.f, 0.7f, 1.3f, 2.f)));
+    auto sdr_like = Psycho35<ShogunData>(3.f, 0.7f, SHOGUN_V35_CONTRAST, 2.f);
+    sdr_like.v35_shadows = SHOGUN_V35_SHADOWS;
+    sdr_like.v35_saturation = SHOGUN_V35_SATURATION;
+    sdr_like.v35_highlight_contrast = SHOGUN_V35_HIGHLIGHT_CONTRAST;
+    Report(std::format("Shogun 2 SDR-like (the fit's sliders, Roll-off 2), {}", label).c_str(), sdr,
+           RunShogun2(tonemap00.Get(), *scene, sdr_like));
   }
 
   // V35 FIT (handle-sdr-tonemap-lut: the defaults match the vanilla look; the recipe every game copies:
@@ -417,18 +423,33 @@ int main(int argc, char** argv) {
   // of Peak at 1000 / 203 nits (10 % in Divinity 2; Shogun 2's film curve is steeper above mid grey too: 15 %, the 10 /
   // 20 % fits reported). Coarse to fine: every 0.1 over the ranges, then 0.05 and 0.01 steps around the best. The
   // game's shipped Hue Clip default, 1000 / 203 nits.
+  // A knob whose low == high stays there.
   struct Slider {
     const char* name;
     float low, high;
   };
-  constexpr std::array<Slider, 4> SLIDERS = {
-      {{"Contrast", 0.8f, 2.f}, {"Shadows", 0.3f, 1.5f}, {"Saturation", 0.7f, 1.3f}, {"Highlight Contrast", 0.6f, 1.2f}}};
-  using Values = std::array<float, 4>;
+  using Sliders = std::array<Slider, 5>;
+  using Values = std::array<float, 5>;
+  // Shogun 2: Exposure stays Musa's (1).
+  constexpr Sliders SLIDERS = {{{"Contrast", 0.8f, 2.f},
+                                {"Shadows", 0.3f, 1.5f},
+                                {"Saturation", 0.7f, 1.3f},
+                                {"Highlight Contrast", 0.6f, 1.2f},
+                                {"Exposure", 1.f, 1.f}}};
+  constexpr Values CENTRE = {1.4f, 0.9f, 1.f, 0.9f, 1.f};  // pass 1's
+  // Rome Remastered: its residual a flat ratio below 15 nits (Musa's own x0.89..x0.92), so Exposure is the fifth knob
+  // (ATN 2026-11-22), the other four near Musa's.
+  constexpr Sliders ROME_SLIDERS = {{{"Contrast", 0.8f, 1.2f},
+                                     {"Shadows", 0.7f, 1.5f},
+                                     {"Saturation", 0.9f, 1.1f},
+                                     {"Highlight Contrast", 0.9f, 1.1f},
+                                     {"Exposure", 0.9f, 1.3f}}};
   const auto with = [](auto si, const Values& values) {
     si.v35_contrast = values[0];
     si.v35_shadows = values[1];
     si.v35_saturation = values[2];
     si.v35_highlight_contrast = values[3];
+    si.v35_exposure = values[4];
     return si;
   };
   const auto grey_error = [](const Comparison& c) {
@@ -455,55 +476,63 @@ int main(int argc, char** argv) {
     return si;
   };
   struct Fit {
-    Values values = {1.f, 1.f, 1.f, 1.f};
+    Values values = {1.f, 1.f, 1.f, 1.f, 1.f};
     float score = 1e9f;
     float highlights = 0.f;
     int candidates = 0;
   };
-  // `draw`: the game's shader with the add-on's data; `own`: PsychoV35 at Musa's own sliders.
-  const auto fit = [&](const auto& draw, const auto& own, const std::vector<Float3>& sdr, float highlight_tolerance) {
+  // `draw`: the game's shader with the add-on's data; `own`: PsychoV35 at Musa's own sliders; `centre`: pass 1's.
+  const auto fit = [&](const auto& draw, const auto& own, const std::vector<Float3>& sdr, float highlight_tolerance,
+                       const Sliders& sliders, const Values& centre_first) {
     const auto own_ramp = draw(on_display(own, DISPLAYS[0]));
     Fit best;
     bool first_pass = true;
     const auto start = std::chrono::steady_clock::now();
     for (const auto& [step, reach] : {std::pair{0.1f, 6}, std::pair{0.05f, 2}, std::pair{0.01f, 3}}) {
-      const Values centre = (first_pass ? Values{1.4f, 0.9f, 1.f, 0.9f} : best.values);
+      const Values centre = (first_pass ? centre_first : best.values);
       first_pass = false;
-      std::array<std::vector<float>, 4> grid;
-      for (size_t d = 0; d < SLIDERS.size(); ++d) {
+      std::array<std::vector<float>, 5> grid;
+      for (size_t d = 0; d < sliders.size(); ++d) {
         for (int k = -reach; k <= reach; ++k) {
           const float value = std::round((centre[d] + (static_cast<float>(k) * step)) * 100.f) / 100.f;
-          if (value >= SLIDERS[d].low - 1e-4f && value <= SLIDERS[d].high + 1e-4f) {
+          if (value >= sliders[d].low - 1e-4f && value <= sliders[d].high + 1e-4f) {
             grid[d].push_back(value);
           }
         }
+        if (grid[d].empty()) grid[d].push_back(sliders[d].low);
       }
       for (const float contrast : grid[0]) {
         for (const float shadows : grid[1]) {
           for (const float saturation : grid[2]) {
             for (const float highlight_contrast : grid[3]) {
-              const Values values = {contrast, shadows, saturation, highlight_contrast};
-              const auto ramp = draw(on_display(with(own, values), DISPLAYS[0]));
-              ++best.candidates;
-              const float score = below_white(Compare(sdr, ramp));
-              if (score >= best.score) continue;
-              const float moved = highlights(ramp, own_ramp, DISPLAYS[0].second, DISPLAYS[0].first);
-              if (moved > highlight_tolerance) continue;
-              best.values = values;
-              best.score = score;
-              best.highlights = moved;
+              for (const float exposure : grid[4]) {
+                const Values values = {contrast, shadows, saturation, highlight_contrast, exposure};
+                const auto ramp = draw(on_display(with(own, values), DISPLAYS[0]));
+                ++best.candidates;
+                const float score = below_white(Compare(sdr, ramp));
+                if (score >= best.score) continue;
+                const float moved = highlights(ramp, own_ramp, DISPLAYS[0].second, DISPLAYS[0].first);
+                if (moved > highlight_tolerance) continue;
+                best.values = values;
+                best.score = score;
+                best.highlights = moved;
+              }
             }
           }
         }
       }
     }
-    std::printf("   minimax fit, highlights within %.0f %% (%s %.1f - %.1f, %s %.1f - %.1f, %s %.1f - %.1f, %s %.1f - %.1f): "
-                "%.2f / %.2f / %.2f / %.2f, worst %.1f %% below white, highlights %.1f %% (%d candidates, %.0f s)\n",
-                100.f * highlight_tolerance, SLIDERS[0].name, SLIDERS[0].low, SLIDERS[0].high, SLIDERS[1].name,
-                SLIDERS[1].low, SLIDERS[1].high, SLIDERS[2].name, SLIDERS[2].low, SLIDERS[2].high, SLIDERS[3].name,
-                SLIDERS[3].low, SLIDERS[3].high, best.values[0], best.values[1], best.values[2], best.values[3],
-                100.f * best.score, 100.f * best.highlights, best.candidates,
-                std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+    std::string ranges;
+    std::string values;
+    for (size_t d = 0; d < sliders.size(); ++d) {
+      if (sliders[d].low == sliders[d].high) continue;
+      ranges += std::format("{}{} {:.1f} - {:.1f}", ranges.empty() ? "" : ", ", sliders[d].name, sliders[d].low, sliders[d].high);
+      values += std::format("{}{:.2f}", values.empty() ? "" : " / ", best.values[d]);
+    }
+    std::printf("   minimax fit, highlights within %.0f %% (%s): %s, worst %.1f %% below white, highlights %.1f %% (%d candidates, "
+                "%.0f s)\n",
+                100.f * highlight_tolerance, ranges.c_str(), values.c_str(), 100.f * best.score, 100.f * best.highlights,
+                best.candidates, std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
     return best;
   };
   {
@@ -511,12 +540,12 @@ int main(int argc, char** argv) {
     const auto sdr = draw(Psycho35<ShogunData>(0.f, 0.7f, 1.f, 1.f));
     const auto own = Psycho35<ShogunData>(3.f, 0.7f, 1.f, 1.f);
     const auto shipped =
-        with(own, {SHOGUN_V35_CONTRAST, SHOGUN_V35_SHADOWS, SHOGUN_V35_SATURATION, SHOGUN_V35_HIGHLIGHT_CONTRAST});
+        with(own, {SHOGUN_V35_CONTRAST, SHOGUN_V35_SHADOWS, SHOGUN_V35_SATURATION, SHOGUN_V35_HIGHLIGHT_CONTRAST, 1.f});
     std::printf("Shogun 2 V35 fit, slope 0.88:\n");
-    // The fit's guard (DISPLAYS[0]) and the bright display's bound (DISPLAYS[1]).
-    constexpr std::array<float, DISPLAYS.size()> HIGHLIGHT_TOLERANCE = {0.15f, 0.2f};
-    const Fit best = fit(draw, own, sdr, HIGHLIGHT_TOLERANCE[0]);
-    for (const float tolerance : {0.1f, 0.2f}) fit(draw, own, sdr, tolerance);
+    // The fit's guard (DISPLAYS[0]) and the bright display's bound (DISPLAYS[1]: the shipped sliders measure 20.04 %).
+    constexpr std::array<float, DISPLAYS.size()> HIGHLIGHT_TOLERANCE = {0.15f, 0.205f};
+    const Fit best = fit(draw, own, sdr, HIGHLIGHT_TOLERANCE[0], SLIDERS, CENTRE);
+    for (const float tolerance : {0.1f, 0.2f}) fit(draw, own, sdr, tolerance, SLIDERS, CENTRE);
     const float own_score = below_white(Compare(sdr, draw(own)));
     const auto shipped_ramp = draw(shipped);
     const float shipped_score = below_white(Compare(sdr, shipped_ramp));
@@ -532,11 +561,14 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < DISPLAYS.size(); ++i) {
       const auto& [peak, paper_white] = DISPLAYS[i];
       const float worst = highlights(draw(on_display(shipped, DISPLAYS[i])), draw(on_display(own, DISPLAYS[i])), paper_white, peak);
-      std::printf("   highlights, Peak %.0f / Paper White %.0f: grey within %.1f %% of Musa's own (100 nits - 95 %% of Peak)\n",
+      std::printf("   highlights, Peak %.0f / Paper White %.0f: grey within %.2f %% of Musa's own (100 nits - 95 %% of Peak)\n",
                   peak, paper_white, 100.f * worst);
-      CHECK(worst <= HIGHLIGHT_TOLERANCE[i] + 0.001f, "Shogun 2's V35 defaults move PsychoV35's highlights by %.1f %% at %.0f / %.0f", 100.f * worst,
+      CHECK(worst <= HIGHLIGHT_TOLERANCE[i] + 1e-4f, "Shogun 2's V35 defaults move PsychoV35's highlights by %.2f %% at %.0f / %.0f", 100.f * worst,
             peak, paper_white);
     }
+    // Below white on the bright display (Paper White 275 moves the toe): a report.
+    Report("Shogun 2 V35 defaults (after the fit), slope 0.88", draw(on_display(Psycho35<ShogunData>(0.f, 0.7f, 1.f, 1.f), DISPLAYS[1])),
+           draw(on_display(shipped, DISPLAYS[1])), "2500 / 275");
     // The measure's own check: HDR (Extended) is the game's curve below mid grey (every grey band here), so a wrong
     // decode or white would show.
     auto extended = Psycho35<ShogunData>(1.f, 0.7f, 1.f, 1.f);
@@ -547,19 +579,42 @@ int main(int argc, char** argv) {
     std::printf("   control, HDR (Extended): grey %.2f %% off, chroma x%.3f (must be the game's grey)\n", 100.f * extended_grey,
                 extended_comparison.chroma[0]);
     CHECK(extended_grey < 0.005f, "HDR (Extended) is %.2f %% off the game's grey below mid grey", 100.f * extended_grey);
-    Report("Shogun 2 V35 defaults (after the fit), bos_japan winter (each map's contrast: slope / 0.88)",
-           RunShogun2(tonemap00.Get(), winter, Psycho35<ShogunData>(0.f, 0.7f, 1.f, 1.f)),
-           RunShogun2(tonemap00.Get(), winter, shipped));
+    // Fall of the Samurai's campaign map, its three tuples (data_fots.pack bos_japan *.lighting; each map's contrast slope
+    // / 0.88): reports (the per-map fit is a HANDOFF item).
+    for (const auto& [label, slope, toe, shoulder] : std::array<std::tuple<const char*, float, float, float>, 3>{
+             {{"winter", 0.519126f, 0.52459f, 0.229508f}, {"B", 0.628415f, 0.442623f, 0.284153f}, {"C", 0.68306f, 0.393443f, 0.398907f}}}) {
+      const Bindings map = Shogun2Scene(slope, toe, shoulder);
+      Report(std::format("Shogun 2 bos_japan {} (slope {:.3f}), Musa's own sliders", label, slope).c_str(),
+             RunShogun2(tonemap00.Get(), map, Psycho35<ShogunData>(0.f, 0.7f, 1.f, 1.f)), RunShogun2(tonemap00.Get(), map, own));
+      Report(std::format("Shogun 2 bos_japan {} (slope {:.3f}), V35 defaults (the 0.88 fit)", label, slope).c_str(),
+             RunShogun2(tonemap00.Get(), map, Psycho35<ShogunData>(0.f, 0.7f, 1.f, 1.f)), RunShogun2(tonemap00.Get(), map, shipped));
+    }
   }
-  // Rome Remastered: the same fit as a report (its Hable white follows the auto exposure; its defaults stay Musa's).
+  // Rome Remastered: the same fit with Exposure (Hable's white 11.2, Uncharted 2's; it follows the auto exposure in game).
   {
     const auto draw = [&](const RomeData& si) { return RunRome(t00.Get(), si, 11.2f); };
-    std::printf("Rome Remastered V35 fit, Hable white 11.2 (report):\n");
-    fit(draw, Psycho35<RomeData>(4.f, 0.8f, 1.f, 1.f), draw(Psycho35<RomeData>(0.f, 0.8f, 1.f, 1.f)), 0.1f);
+    const auto sdr = draw(Psycho35<RomeData>(0.f, 0.8f, 1.f, 1.f));
+    const auto own = Psycho35<RomeData>(4.f, 0.8f, 1.f, 1.f);
+    std::printf("Rome Remastered V35 fit, Hable white 11.2:\n");
+    const Fit best = fit(draw, own, sdr, 0.1f, ROME_SLIDERS, {1.f, 1.1f, 1.f, 1.f, 1.1f});
+    const auto shipped = with(own, {ROME_V35_CONTRAST, ROME_V35_SHADOWS, ROME_V35_SATURATION, ROME_V35_HIGHLIGHT_CONTRAST,
+                                    ROME_V35_EXPOSURE});
+    const float shipped_score = below_white(Compare(sdr, draw(shipped)));
+    const float own_score = below_white(Compare(sdr, draw(own)));
+    std::printf("   shared.h ROME_V35_*: worst %.1f %%; Musa's own (control, must fail 5 %%): %.1f %%\n", 100.f * shipped_score,
+                100.f * own_score);
+    CHECK(shipped_score < 0.05f, "Rome Remastered's V35 defaults miss the game by %.1f %%", 100.f * shipped_score);
+    CHECK(shipped_score <= best.score + 0.005f, "Rome Remastered's V35 defaults (%.1f %%) are not the fit's best (%.1f %%)",
+          100.f * shipped_score, 100.f * best.score);
+    CHECK(own_score > 0.05f, "control: Musa's own sliders pass in Rome Remastered (%.1f %%)", 100.f * own_score);
+    for (const float white : {11.2f, 4.f}) {
+      Report(std::format("Rome Remastered V35 defaults (after the fit), Hable white {}", white).c_str(),
+             RunRome(t00.Get(), Psycho35<RomeData>(0.f, 0.8f, 1.f, 1.f), white), RunRome(t00.Get(), shipped, white));
+    }
   }
-  // Hable's white: Uncharted 2's 11.2 and a closer one.
+  // Before the fit (Musa's own sliders), Hable's white: Uncharted 2's 11.2 and a closer one.
   for (const float white : {11.2f, 4.f}) {
-    Report(std::format("Rome Remastered Recommended, Hable white {}", white).c_str(),
+    Report(std::format("Rome Remastered Musa's own sliders, Hable white {}", white).c_str(),
            RunRome(t00.Get(), Psycho35<RomeData>(0.f, 0.8f, 1.f, 1.f), white),
            RunRome(t00.Get(), Psycho35<RomeData>(4.f, 0.8f, 1.f, 1.f), white));
   }

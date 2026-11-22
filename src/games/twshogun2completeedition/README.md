@@ -19,7 +19,11 @@
 - Proof level B: the game's tone-map constants from data.pack (every battle map's curve), not traced in game.
 - Proven offline: test/tw_shogun2_romer_toe (WARP, the add-on's 0xEF060C7C): the shipped values within 4.3 % of the
   game's SDR below 15 nits and the fit's best; CONTROLS Musa's own fails (521.9 %), HDR (Extended) the game's grey
-  (0.00 %). The winter map (bos_japan) sits x0.74..x0.79 of its SDR below 15 nits (was x1.34..x8.22).
+  (0.00 %).
+- Not yet: Fall of the Samurai's campaign map (bos_japan, data_fots.pack: slope 0.52 / 0.63 / 0.68 with their own toe
+  and shoulder) keeps the battle maps' fit; there PsychoV35 sits off the game's SDR below 15 nits: winter x0.82..x1.12
+  (Musa's own x1.38..x10.35), slope 0.63 x0.39..x0.70 (was x1.22..x5.10), slope 0.68 x0.22..x0.66 (was x1.11..x3.23). A
+  per-map fit is next.
 
 ### Specular Occlusion with other rays (2026-11-18; built only, not run in game)
 
