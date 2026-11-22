@@ -502,10 +502,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: S3c part 1 RE-RUN (calibrate -> A/A -> rotation -> trace) after gtv_'s fi ... | ?
 - grs_ (low, bundle with gtv_'s resident fixes if any): fcr_ nit R1 set_pool exter ... | ?
 - coord: S3c part 2 (dead outputs on R3, M10) after gtv_'s root cause; recorder bu ... | ?
-- gtv_: re-check gtl_'s F1-F5 by reading + the detached fake-keeper probe (after g ... | ?
 - gtb_ / ATN (optional, later): F6 total on trimmed_mean or sum of pass-row median ... | ?
 - grs_ / nsight owner (optional, low): skip loop-0 dumps under -Trace; gpu_trace.p ... | ?
 - gtw_ + gpr_: re-check gtp_ round 20 (gtw-R19-1..7 + GATES_SUITE / gpr-R19-1 + Lo ... | ?
+- gtl_: B1 (settle sampler + missing gpu_samples.tsv) + N1-N6 in stage2 + tests (c ... | ?
+- gtv_: quick re-check of B1 + N2 / N3 / N6 -> then coord lands stage2 + retire_ro ... | ?
+- gtb_ (when active): OK gtl_'s test_budget.py conhost allowance (coord OK'd 17:1x ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10754,7 +10756,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         now in the stage.
         - [x] gtl_ (DONE 17:10 stage2; test_budget 39 / 40 -> F1 follow-ups): F1 + F2 + F3 + F4 + F5 + fixture -B in the stage + tests; unit / analyze / keeper / jobs
         suites; then coord lands (coord 16:4x).
-        - [ ] gtv_: re-check gtl_'s F1-F5 by reading + the detached fake-keeper probe (after gtl_'s hand-back).
+        - [x] gtv_ (DONE 17:37: GO to land; re-run after B1): re-check gtl_'s F1-F5 by reading + the detached fake-keeper probe (after gtl_'s hand-back).
         - [x] gtl_ (DONE 17:10; rebuild on helper_du_rec asked): new S3c re-run job files (s3c_r1_trace2 loops >= 586 or a new settle frame; settle jobs
         measure again) + the sheet's re-run section (steps 0-2, pause check, 3, 4-19).
         - [ ] gtb_ / ATN (optional, later): F6 total on trimmed_mean or sum of pass-row medians.
@@ -10837,8 +10839,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         shared with the gate side). Notes: gtp_lowprio.py "$PWD" not resolved (child key gates/$pwd/..., not exempt, no
         row); lab/tests/test_budget_psm1.ps1 no longer exempt; run.ps1 build + exe prices on the exe row (rank rule); a
         call's time goes to its heaviest key. -> gtp_ round 21 after gtw_'s re-check 20 (combined list).
-        Agents (3): gtv_ (re-check gtl_'s stage2 S3c fixes), gtw_ + gpr_ (gate round 20 re-checks); gtl_ / gtp_ / fcr_ /
-        gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
+        gtv_ S3c FIXES RE-CHECK 17:37 = GO TO LAND STAGE2; GO FOR THE RE-RUN AFTER B1 (plan_1117/gtv_s3c_fixes_recheck_handback.md;
+        gtv_iq_review.md "## S3c fixes re-check" line 1110; sandbox testbin\scratch\gtv_\s3c\land4; probe
+        testbin\scratch\gtv_\s3c\probeF1\gtv_f1_probe.py): 11 diffs + retire_rows.py + 18 jobs + sheet read; hashes match;
+        land4 unit 40 / analyze 5 OK; live unchanged. PROBE (windows every 20 ms, processes every 50 ms, conhost modules):
+        A KEEPER_FLAGS 0x8000200 child GetConsoleWindow() 0 (hidden console), children 0 with / without the flag, BusyState
+        ticks 0.30-0.32 s; B real stage2 keeper via Session.begin on the sandbox lock (never tools\tw\gpu_job.lock), ~6
+        ns_busy ticks: 13 PowerShell + 16-18 conhost + 5-6 python owned ZERO windows, no WindowsTerminal / OpenConsole, zero
+        new visible windows; hidden conhosts load 17 modules, none d3d / dxgi / d2d1 / dcomp / dwrite -> no DWM work (~5-10
+        ms CPU per spawn). "retired:" safe for ROLLING-10 (exact / prefix readers never match; dry run changes only lines
+        9 / 10 / 91 / 92, second run refuses; R2 keeps 449; run with no lab job). ITEMS: B1 BLOCKER gtl_: settle jobs start no
+        sampler (stage lab.py:2033 ab + calibrate only) -> no gpu_samples.tsv -> lab_analyze bursts --job <settle> =
+        FileNotFoundError exit 1 (= the "bursts found" code) -> start the sampler for kind settle + bursts() treats a
+        missing gpu_samples.tsv as "-" (like ns_busy.tsv, stage lab_analyze.py:180) + 2 tests. N1 sheet: ns_busy-inside
+        count too coarse (whole-second stamps vs 2.3 s tick) -> lining up by period / phase is gtv_'s call. N2 job 07 loops
+        650 -> 700 (settle all at the 20-window cap can be >= 1281 incl. step 1 frames). N3 optional: retire R2 lines 50-51
+        too (burst-hit). N4 sheet 2b: no bursts + settle "decided" -> gtv_ reads the named unsettled rows before 3, no
+        automatic stop. N5 sheet Before 1: land + retire with no session / lab job running. N6 nit: budget.py +
+        tests\test_budget.py went CRLF -> LF, keep CRLF; gtb_ OKs test_budget later (coord OK'd now, gtb_ not active).
+        COORD: B1 + N1-N6 in stage2 first (one landing, N3 yes), gtv_ quick re-check of B1, then land + retire + re-run.
+        - [ ] gtl_: B1 (settle sampler + missing gpu_samples.tsv) + N1-N6 in stage2 + tests (coord 17:3x).
+        - [ ] gtv_: quick re-check of B1 + N2 / N3 / N6 -> then coord lands stage2 + retire_rows (6 rows) + S3c re-run.
+        - [ ] gtb_ (when active): OK gtl_'s test_budget.py conhost allowance (coord OK'd 17:1x).
+        Agents (3): gtl_ (S3c B1 + N1-N6 in stage2), gtw_ (gate round 20 re-check), gpr_ done; gtv_ (B1 re-check next) /
+        gtp_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
