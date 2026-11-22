@@ -4,6 +4,7 @@
 // frame thread's, anywhere, for the stall line), which it leaves alone (software codes, other threads' faults outside its
 // code), that it always lets the search go on, and that the top-level filter says an unhandled one once and passes it on.
 #include <windows.h>
+#include <atomic>
 #include <csignal>
 #include <cstdio>
 #include <format>
@@ -185,11 +186,26 @@ int main() {
   CHECK(!handling.empty() && Logged("The frame thread is handling an exception") == 1);
   std::printf("%s\n", handling.c_str());
   CHECK(Logged("(handled; it went on)") == 0);
-  // The note an add-on adds to the stall line.
-  loss::stall_note = [] { return std::string("worker pool: a test note"); };
   loss::LogStall(2000, false);
-  loss::stall_note = nullptr;
-  CHECK(LineWith("No frame for 2 s").ends_with("; worker pool: a test note"));
+  CHECK(LineWith("No frame for 2 s").find("; worker pool: effects") == std::string::npos);  // no job open: no words
+#if !defined(_WIN64)
+  // The open pool job's words ride on the stall line (x86: the pool exists only there).
+  {
+    namespace wp = twattila::worker_pool;
+    static std::atomic<bool> release = false;
+    wp::Update({.threads = 3, .in_use = true});
+    CHECK(wp::Start({.work = [](void*, uint32_t) { while (!release.load()) Sleep(1); },
+                     .user = wp::User::EFFECT_UPDATE,
+                     .join = wp::JoinRule::ENTERED},
+                    2));
+    for (int wait = 0; wait < 2000 && wp::internal::entered.load() != 2; ++wait) Sleep(1);
+    loss::LogStall(3000, false);
+    CHECK(LineWith("No frame for 3 s").ends_with("; worker pool: effects, open, asked 2, entered 2, done 0"));
+    release = true;
+    wp::Join();
+    wp::Stop();
+  }
+#endif
   CHECK(WaitForSingleObject(frame_thread, 10000) == WAIT_OBJECT_0);
   CloseHandle(frame_thread);
   const size_t handling_lines = Logged("The frame thread is handling an exception");

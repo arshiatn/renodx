@@ -5,7 +5,7 @@
 # build.ps1, or -Helper: its folder's exe and DLLs are copied beside the test, NVIDIA's from -Ngx where it has none;
 # without the helper H2 is skipped). Each GPU job waits for tools\tw\gpu_job.lock and lets it go after. -Census: the
 # census cso folder (the ground VS 0xF01502EA); -Upscaler dlss / fsr / xess for H2; -CompileOnly builds the exes alone.
-# The game is 64-bit: amd64 only.
+# -V35: the V35 fit (v35_fit.cpp) on WARP alone. The game is 64-bit: amd64 only.
 param(
   [string]$Census = 'C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\nontw\ruse\census\cso',
   [string]$Helper = '',
@@ -13,6 +13,8 @@ param(
   [ValidateSet('dlss', 'fsr', 'xess')][string]$Upscaler = 'dlss',
   [switch]$Replay,
   [switch]$CompileOnly,
+  # The V35 fit (v35_fit.cpp) alone, on WARP: no GPU job, no add-on build needed (the post compiled here).
+  [switch]$V35,
   # Test exes go to the folder Bitdefender leaves alone (tools\tw\testbin).
   [string]$Build = 'C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\testbin\tw_ruse_bridge'
 )
@@ -26,6 +28,21 @@ New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch amd64 -HostArch amd64 -SkipAutomaticLocation | Out-Null
 Set-Location -LiteralPath $testBuild
+if ($V35) {
+  # The final post as ps_5_0 with the build's flags (/Gec takes its D3D9 sampler2D / COLOR syntax), as test/tw_psychov35
+  # (its warnings on stderr are no failure: the exit code is).
+  $ErrorActionPreference = 'Continue'
+  & 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\fxc.exe' (Join-Path $repairRoot 'src\games\ruse\shaders\postprocess00_0x232EB5DF.ps_3_0.hlsl') `
+      /T ps_5_0 /D __SHADER_TARGET_MAJOR=5 /D __SHADER_TARGET_MINOR=0 /DNDEBUG /Gec /nologo /O3 /E main /Fo (Join-Path $testBuild 'ruse_post.cso') 2>$null | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'fxc failed: R.U.S.E. post' }
+  $ErrorActionPreference = 'Stop'
+  & 'C:\Program Files\LLVM\bin\clang-cl.exe' --target=x86_64-pc-windows-msvc /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 -Wno-macro-redefined `
+      /I $repairRoot (Join-Path $testRoot 'v35_fit.cpp') /Fe:ruse_v35_fit.exe /link /OPT:REF /OPT:ICF d3d11.lib d3dcompiler.lib
+  if ($LASTEXITCODE -ne 0) { throw 'R.U.S.E. v35_fit.cpp compile failed' }
+  & (Join-Path $testBuild 'ruse_v35_fit.exe') $testBuild
+  if ($LASTEXITCODE -ne 0) { throw 'R.U.S.E. V35 fit failed' }
+  return
+}
 foreach ($test in @(@('tests.cpp', 'ruse_bridge.exe'), @('replay.cpp', 'ruse_replay.exe'))) {
   & 'C:\Program Files\LLVM\bin\clang-cl.exe' --target=x86_64-pc-windows-msvc /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 -Wno-deprecated-declarations -Wno-unused-command-line-argument /I $repairRoot /I "$repairRoot\build\ruse.include" /I "$repairRoot\external\reshade" /I "$repairRoot\external\frozen\include" /I "$repairRoot\external\Detours\include" /I "$repairRoot\external\gtl\include" /I "$repairRoot\external\minhook\include" (Join-Path $testRoot $test[0]) "$repairRoot\external\minhook\src\buffer.c" "$repairRoot\external\minhook\src\hook.c" "$repairRoot\external\minhook\src\trampoline.c" "$repairRoot\external\minhook\src\hde\hde64.c" "/Fe:$($test[1])" /link /OPT:REF /OPT:ICF user32.lib gdi32.lib d3d9.lib d3d11.lib dxgi.lib d3dcompiler.lib opengl32.lib "$repairRoot\external\Detours\lib.X64\detours.lib"
   if ($LASTEXITCODE -ne 0) { throw "R.U.S.E. $($test[0]) compile failed" }

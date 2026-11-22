@@ -852,10 +852,11 @@ void ApplyDefaultLook(float rendering_mode) {
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
-// ATN 2026-11-12: Musa's PsychoV35 at its defaults; PsychoV31's sliders as before, for its modes.
+// ATN 2026-11-12: Musa's PsychoV35 at its defaults (the V35 fit, test/tw_ruse_bridge v35_fit.cpp: already the game's
+// picture below white after the map's response); PsychoV31's sliders as before, for its modes.
 void ApplyPsychoRecommended() {
-  // The look rows (Motion Blur off: ATN decides, skill audit 11-16; Video AutoHDR 0.2, hdr-review-rules); Peak, Paper
-  // White, UI and Output kept.
+  // The look rows (Motion Blur off: ATN 11-22, decisions 35; Video AutoHDR 0.2, hdr-review-rules); Peak, Paper White, UI
+  // and Output kept.
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
   renodx::utils::settings::UpdateSettings({
       {"rendering_mode", 3.f},

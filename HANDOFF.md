@@ -223,7 +223,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (code already b454641ef (RENODX_TW_CVARS applied once the game's TAA is seen); t ... | next Ryse round
 - (rys2_ 11-16 analysis: frame minus GPU busy DLAA 4.72, DLSS Q 2.53, FSR Q 1.01, ... | next Ryse round
 - (rys2_ 11-16: Ryse-only (Expeditions / Tales pace evenly): game frames 18 / 8 ms ... | next Ryse round
-- tools/ingame/deploy.py:30 (_dlss zip entry) and tools/ryse/fg_camera_check.py (r ... | coordinator, release round
 - (rys2_ 11-16: WARP DONE d29bf211f + 4ca336eb8 (0.17 % at occlusion 0.55, 0.08 % ... | next Ryse round
 - (rys2_ 11-16: tiled lighting 0x488BF732 / 0xCDB59F36 hooked 35c2a45f8 (level B); ... | next Ryse round (after R0)
 - (shs2_ b726824c3: Host::leaf_cutoff a865ee387 + scaled-UV SceneCoverage 8862c74f ... | next UE round
@@ -480,9 +479,112 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - in-game lists (tdv1_): Near ReSTIR look + Divinity 2 V35 look (1861); ALIT "same ... | ?
 - wave 3 (tkb_): delete dead twattila/fg_camera.hpp (+ talesofarise_dlss/frame_gen ... | ?
 - coord: spawn the QUEUED groups as slots free: G02, G03 (+ 99164788 / DB53BDDC), ... | ?
-- coord: send "BUILD WINDOW OPEN" after S3c part 2 (or between its sessions when c ... | ?
+- coord: send "BUILD WINDOW CLOSED" to every writing group before gtc_ runs part 2 ... | ?
 - ATN (optional): raise CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS (20 now) if he wants ... | ?
-- gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
+- gtl_ "uses diag" (sent 20:02): why the uses log has no stem rows (resident's use ... | ?
+- gtl_ stage3 suites in the sandbox (GO 20:02, lock free); landing only after ALL ... | ?
+- coord: Opus xHigh reviews for g08_ + g14_ when slots free (queued groups first). | ?
+- render_mt (lg3_ notes, out of scope): wire Describe() to device_loss::stall_note ... | ?
+- coord after the restart: lg3_'s zombie engine_code.exe in testbin\scratch\lg3_\e ... | ?
+- coord: land g12_'s land_list.md after `sha256sum -c base_hashes.txt` (merge by h ... | ?
+- render_mt (g12_): twattila/test_hooks.hpp: stable-sort RENODX_TW_SET / SET_FILE ... | ?
+- coord: Opus xHigh review of g12_'s staged diff (tools, review per group). | ?
+- gtw_ (a0b03d68655ebfcaf) + gpr_ (aa304b6e977350cc3) re-check round 22 on gtp_sta ... | ?
+- gtp_ golive round 22 (bak29, swap gate_hook.py + run_tests.py, shas, mode.txt sh ... | ?
+- D2 in-game batch (g07_): an SSR trace (in-game SSR on, wet / polished floor or w ... | ?
+- ATN (when well): handoff_plan/atn_questions_groups.md (groups' questions with co ... | ?
+- g14r_ review -> g14_ fixes -> g14r_ re-check -> coord merges ho_g14 (docs only) ... | ?
+- test/tw_rt_open_sky (owner: GPU plan): -Lock writes a v1 gpu_job.lock record; -E ... | ?
+- after G21's SSS move: g14_ updates SKILL.md line 9. SKILLS UPDATE 5 stays the la ... | ?
+- gtv_ re-checks uses diag (sent 20:25) -> on GO coord lands rt_uses.h diff on atn ... | ?
+- gti_'s dead_outputs.py: refuse a log with no use rows instead of "0 candidates" ... | ?
+- lg3_ fixes (sent 20:25): M1 pool-stop text + comment, M2 Describe() empty when n ... | ?
+- t4i_ corpus (sent 20:25): corpus.json:1472 "Depth A", :1481 a real site name; af ... | ?
+- g07_ Opus xHigh review of ho_g07 (queued at the 20-agent cap) -> g07_ fixes -> r ... | ?
+- b3s_ fixes (sent 20:28) BEFORE S6 makes Check selectable: M1 ring released after ... | ?
+- b3t_: M7 = S3 Should 1 (animation_rows.inc tests) (sent 20:28). | ?
+- g11_ Opus xHigh review (queued at the cap) -> fixes -> coord lands the land list ... | ?
+- later: commit the handwritten licenses/NVIDIA_NOTICE.txt (only in the old player ... | ?
+- gtl_ (sent 20:3x): helper_du_rec2 RECORDER build from e7eff346c (new folder) + s ... | ?
+- grs_ (optional, later): gtv_'s L2 "# lost" row / StopUses false on a foreign vta ... | ?
+- g18_ Opus xHigh review (queued) -> fixes -> merge after render_mt's end batch; t ... | ?
+- test/tw_cluster_rewrite (owner?): a Map-marks-nothing case + its run.ps1 builds ... | ?
+- Tales alpha factor: trace check first (masked materials with cb1[N].c != 1); if ... | ?
+- ATN-approved delete later: g19_'s source copies testbin\scratch\g19_\base (74 MB ... | ?
+- ebr_ reviews the refresh (sent 20:3x) -> t4i_ fixes; later deltas: b3s_ S6 (row ... | ?
+- Tales sun shadows = darker of maps and rays (dlss_graphics.hpp:3036): replace af ... | ?
+- Rome Remastered rays multiply the cascades (addon.cpp:2055): battle trace FrameT ... | ?
+- gtp_ (between builds): gated_build.ps1 vswhere -requires VC.Tools + exit 4 (slot ... | ?
+- g14_ (with g14r_ fixes): ao-gi.md rule 6 (rays_replace_ao false no longer stacks ... | ?
+- later: fold the three "Skip the Game's Reflection Passes" rows into one graphics ... | ?
+- after the batch (render_mt): reserve the 32 MB draw-recording op arena at attach ... | ?
+- t4i_ (with lg3_'s texts): memory=1 lines at each battle start in the end-batch s ... | ?
+- ATN's go (in-game batch): restart A/B (3 restarts, with / without RenoDX, Unit D ... | ?
+- gbf_ (Opus High, STARTED 20:48 abbb04cc6b11ea037; prompt in handoff_plan/queued_ ... | ?
+- rvc_ (Opus xHigh, QUEUED): review of the read-only groups g15_ + g16_ + g17_ (qu ... | ?
+- H2 GPU A/B (needs an ATN rule or a lab kind: test\tw_ruse_bridge\run.ps1 is not ... | ?
+- rvd_ review of ho_g05 (+ the live ru_scene_patches.py edit) QUEUED (queued_spawn ... | ?
+- device_loss.hpp: the NTSTATUS / DWORD switch narrowing (include order) -> lg3_ ( ... | ?
+- ho_g19 (after rvb_): AntiAliasingTextureLodBias is_enabled also when lod_bias_at ... | ?
+- GPU plan: a helper path-shader flag for Shogun 2's unseen-lights row (item 7b, E ... | ?
+- Rome II battle trace (in-game batch): RT shadows on at each Shadows setting + sh ... | ?
+- shared helper for the V35_GAME_RESPONSE -> row defaults loop (Shogun 2 + Rome II ... | ?
+- grs_ / gti_: the 1 undecided output: rt_trace_omm (span 11) uses u28:0 / u29:0 ( ... | ?
+- gtp_ round 23 -> gtw_ + gpr_ re-check -> mirror suite in a quiet window (coord a ... | ?
+- F24 timing: time the child's CPU (GetProcessTimes) or a baseline hook in the sam ... | ?
+- engine_code owner, later hardening: check E8 32 4D A7 FE at fill+0x189 (bd1r_ N1 ... | ?
+- after rmt_lg3 merges: b3t_ switches instance_fill.inc:485 to the shared parked-t ... | ?
+- AddCodeRange callers (lga_ group 3 housekeeping, lga_group3_review.md) -> engine ... | ?
+- lg3_'s worktree: build\downloads junction left (its bin link was removed 20:4x): ... | ?
+- ~110 old finished worktrees still have bin junctions: remove each link alone (cm ... | ?
+- ngx_dlls.py owner: zip_problems also checks the ngx_dlls.STREAMLINE files beside ... | ?
+- render_mt owner: sort the SET entries by time when they are read (g12_'s request ... | ?
+- g11_'s test folder testbin\scratch\g11_\test (1.4 GB): g11_ deletes it on ATN's ... | ?
+- merge order: ho_g21 first, together with g02_'s list commit; then ho_g10's expec ... | ?
+- H2 A/B run after ATN adds a rule for it (or runs it himself). | ?
+- g13_'s land list: parity_check.py lands together with parity\skips.tsv (after rv ... | ?
+- report_check.py: accept the marker "(pass timer, A/A +-N %)" for non-helper GPU ... | ?
+- trace requests from the groups (in-game batch): D1 beach / Black Cove + torch sc ... | ?
+- RELEASE GATE: wave 1 (ho_g08, ho_g09 + G07's light-bounce rename, ho_g07 to 67d4 ... | ?
+- merge notes: G09 93c4627c1 = G21 57ae8ed10 (same patch-id, applies once); ho_g19 ... | ?
+- merge ho_g08 (+ the nits commit) together with ho_g09's e54c34c60 (frame trace p ... | ?
+- next D1 / D2 PresentMon run: act.ps1 -PM sends one Alt tap to the window in fron ... | ?
+- g12_'s optional NITs: pass_pairs.py:4 163-char docstring line; D2 common.ps1:17 ... | ?
+- set fog_shadows_defaulted_on: g01_ Thrones, g03_ Pharaoh + Troy (after g19_'s ha ... | ?
+- lg3_'s worktree has a REAL bin copy; check build\downloads is a junction, delete ... | ?
+- zombie engine_code.exe PID 110276 (lg3_'s, Access denied, dead + held): leave fo ... | ?
+- ATN (list, to add): Troy / Pharaoh V35: Musa's own, the 4-knob fit at 6.6 % (dar ... | ?
+- g03_ bcad7b8f5 far map (Troy + Pharaoh sun_replace_maps::Install) needs ho_g01 b ... | ?
+- merge ho_g02 a015262e6 TOGETHER with ho_g21 f7fb7a901 (shared atlas_far_plane.hp ... | ?
+- g02_ trace requests: WH1 CDCF1ADD far campaign terrain; WH2 snow / rain VFX rows ... | ?
+- WH1 / WH2 failed-trace edge: fix is in rt_scene.hpp -> g18_ (request routed). | ?
+- Rome Remastered fxaa gather check (GatherGreen like WH2 / Troy) -> g04_. | ?
+- grs_: record null-view rows at rt_d3d12.hpp:3071 (after gbf_'s rt_d3d12.hpp work ... | ?
+- gti_: dead_outputs.py reports "no store (null view)" for such rows instead of un ... | ?
+- gtl_ optional Low items (later stage): L1 Toolhelp snapshot keeps only the asked ... | ?
+- g05_ fixes (new commits on ho_g05): one full run of the final ru_scene_patches.p ... | ?
+- g01_ fixes -> rvd_ re-check -> merge ho_g01 (wave 1). - [ ] g04_ fixes -> rvd_ r ... | ?
+- Rome II trace (g01_ writes the request): proves the Replace route, then RAYS_REP ... | ?
+- g03_ / g06_ / g13_ fixes -> rve_ re-check. Order: G13 (with / after G14) ; G06 ; ... | ?
+- G13 land (coord, ONE commit): skips.tsv never before the ledgers' skip: lines; p ... | ?
+- boxes rve_ asked for: PathTracedReflectionOcclusion for the non-WH games; the P1 ... | ?
+- DRY owner (after wave 2): the V35 rows-default loop (4 games) + 4 copies of the ... | ?
+- 5: no ReShade.log from Astra; the END REVIEW checks the 3 left freeze causes (ob ... | ?
+- 6: mem_ STUDY (Opus xHigh, read only + offline tests): RenoDX per-battle + alt-t ... | ?
+- 23: ReShade SDK headers 6.7.3 -> 6.8 (external/reshade submodule, ATN's OK 21:48 ... | ?
+- 25: H2 A/B (R.U.S.E. DLSS 310.9.16 vs 310.7.0): ATN's rule `powershell -NoProfil ... | ?
+- 26: D1 / D2 act.ps1 -PM one Alt tap right before the game takes focus: OK'd by A ... | ?
+- gtp_ (after round 23): VCToolsInstallDir check + toolset on the build exit line ... | ?
+- dis_at read 0x1812650 / 0x181B910: the rigid-pool holder at [+0xE4] via 0xC69B0 ... | ?
+- tw_tales_unit link failure (undefined NAME via utils/settings.hpp overlay_title ... | ?
+- skills: game-port-method/SKILL.md:126 still names the deleted rr_d3d12.hpp (SKIL ... | ?
+- shared twattila/effect_brightness.hpp for D1 + Troy (+ D2 next) (g06_ m3): owner ... | ?
+- D1 trace requests (g06_ m5): (1) one sun-shadow PCSS 0x8F114E47 draw with its VS ... | ?
+- b3t_ merges rmt_b3s into rmt_b3t, then gated builds macro off (x86 3 targets + a ... | ?
+- b3t_ tests after the merge: T1 (23v S-2 stop exact), T3 (ordered mode X >= block ... | ?
+- engine_code owner, later hardening: N1 push rel32 check next to FILL_HEAD (same ... | ?
+- NITs for later: `allocate` lambda with one call site; "C lag" prints 0 for bulk ... | ?
+- next Tales trace: one frame of CombineLUTs cb0 (ps 0x876F0F03) for the Tales V35 ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -1233,7 +1335,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [x] DONE rys2_ 6183e6bde (the contact-hardening edge mask, level A: skipped under Sun Shadow Softness, back for good if a near-mask permutation draws; part 2 0 of 4096 under PCSS, control 4096; ~0.05 ms unmeasured) Ryse: port 0x292F2865 (half-res shadow, every start). Owner: next Ryse round (with the families box)
       - [x] DONE (installs 12:10 / 13:5x / 17:37 used it): tw_install.py's Ryse entry (helper + rename aside of the old _dlss add-on by exact name; rym_ patched it,
         .bak_rym): dry run. Owner: coordinator at the install
-      - [ ] tools/ingame/deploy.py:30 (_dlss zip entry) and tools/ryse/fg_camera_check.py (removed camera math):
+      - [x] tools/ingame/deploy.py:30 (_dlss zip entry) and tools/ryse/fg_camera_check.py (removed camera math): -> RETIRED 21:15 (g12_ rows 19-20: moved to tools\retired\ingame + retired\ryse).
         obsolete, update or retire. Owner: coordinator, release round
       - [x] (row DONE rys2_ d39434650: "Dark tones for L / M" Experimental off; ATN decides, C line at the top) ATN DECIDES: Ryse's helper DLSS presets L/M get the sqrt feed (Attila's dark-tone fix) or stay linear; the
         helper's AutoExposure where Ryse gave exposure 1. Owner: ATN after R0
@@ -11379,9 +11481,609 @@ heading text are in HANDOFF_ARCHIVE.md)
         a5e65f77a870c6515. bd1r_ = ac36089e263ea390f. The app caps at 20 running agents.
         - [ ] coord: spawn the QUEUED groups as slots free: G02, G03 (+ 99164788 / DB53BDDC), G06, G09, G11, G20, G21, G22
         (same prompts); then each group's Opus xHigh review on its hand-back; forward g04_'s V35 pilot recipe.
-        - [ ] coord: send "BUILD WINDOW OPEN" after S3c part 2 (or between its sessions when commit < 30 GB).
+        20:2x STARTED: g06_ a427ca37300f6f998, g09_ aa8acb41ea086f2a6, g11_ aaf2c70cc503b4cf7. STILL QUEUED (wave 2): G20,
+        G21 (tell coord when the SSS move is done -> g14_ updates SKILL.md line 9), G22.
+        - [x] coord (SENT 20:03, commit 29.3 GB, lab idle while gtl_ diagnoses uses.tsv): send "BUILD WINDOW OPEN" after S3c part 2 (or between its sessions when commit < 30 GB).
+        - [ ] coord: send "BUILD WINDOW CLOSED" to every writing group before gtc_ runs part 2 again.
         - [ ] ATN (optional): raise CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS (20 now) if he wants all 22 groups at once.
-        - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
+        gtc_ PART 2 S1 DONE 20:02 (plan_1117/gtc_part2_busy_handback.md + gtc_part2_s1_done_handback.md): retry P1 exit 0
+        (calm 19:55), then my 36 GB bar counted the session's own resident (commit 42-43 GB) -> coord dropped the extra bar
+        (the lab's guards decide; dump compares, not timing); P1b + P2 exit 0 in one lifetime (resident 103104, session
+        S-110976-134398473471051134). Check 1 PASS (P1 vs P2 --floor P1b 33 same; P1 vs P1b 33 same), 2 PASS, 3 PASS.
+        Check 4 INVALID: dead_outputs.py read 0 frames / 0 stems: uses_8\uses.tsv = 1093 "#" span lines + 46 "external"
+        lines, NO stem / kind / slot rows, no DXIL (cmd_8 log_uses true, frames 64). Check 5 + --confirm not run. Dumps
+        726 MB each stay in res_195551_A_104048_51951 (no move needed; C: 175 GB).
+        - [ ] gtl_ "uses diag" (sent 20:02): why the uses log has no stem rows (resident's use logging / R3 pipelines / job
+        option / dead_outputs parser) -> staged fix + re-run steps -> gtv_ re-checks -> gtc_ re-runs session 1.
+        - [ ] gtl_ stage3 suites in the sandbox (GO 20:02, lock free); landing only after ALL of part 2.
+        gtl_ STAGE3 19:59 (plan_1117/gtl_stage3_handback.md): staged (land_list.tsv, 8 files): F2b names via Toolhelp32
+        snapshot (fixes dwm.exe '' = false other-process flags), bursts --job span + top other user, lab.block() re-measures
+        bursty runs (BURST_RETRIES 2, results remeasured / bursts), conhost race (<exited>), lab.rules 64 caps + seed <=
+        2^32-1, stale "proposed" text; landed_suite.sh deletes nothing now.
+        GROUPS 20:0x: g04_ V35 PILOT READY (ho_g04 0764607b1; recipe testbin\scratch\g04_\v35_pilot.md; Divinity 2's 4
+        sliders, minimax grey + OkLab chroma, highlight guard, ~11k WARP draws; defines stay 1.f until the build-window
+        fit) -> forwarded to g01_ / g02_ / g05_ + the brief (own commit per fit). g08_ DONE (handoff_plan/handbacks/
+        g08_done_handback.md; ho_g08 6 commits: upgrade log line, CheckBound callbacks before RenoDX's draw callbacks,
+        Deeper Shadows dropped, Video AutoHDR 0.2, dlss_capture comment, README; not built) -> Opus xHigh review. g14_ PART
+        (handbacks/g14_part_handback.md; ho_g14 08561db4e + 6e2095b3d: testing.md runner rules + 96 suites, ATN's 11-22
+        rules in SKILL.md / ao-gi / render-scale / sss; item 3 half waits for G21) -> Opus xHigh review; its parity ask
+        (WON'T GET rows for UI 4K + game TAA) sent to g13_. Started: g02_ a13305db694dc581f, g03_ a3e079d4fbf87c2c1 (+
+        99164788 / DB53BDDC). Still queued: G06 G09 G11 G20 G21 G22.
+        - [ ] coord: Opus xHigh reviews for g08_ + g14_ when slots free (queued groups first).
+        lg3_ GROUP 3 DONE 20:05 (render_mt/reports/lg3_group3_handback.md): branch rmt_lg3 (worktree agent-a89ff094c60c1b7cf)
+        d96a8fab8 (worker_pool / draw_recording / instance_fill + their tests) + 85de93155 (engine_code.hpp + tw_engine_code
+        29g): A-S6 Stop 5 s timeout + pin, A-S7 Describe, invariants comment, A-S4 commit failure said at the next present,
+        A-N2 / A-N3 named pieces + offsets, A-S3 cumulative incomplete fills (FoldFill fn pointer) once + detach total, A-N5
+        check line per trace window, A-M2 fill give-up + pin, A-S1 snapshot line, A-S2 blocked thread / eip suffix "(last:
+        ...)", A-N1 page step; 14 changed lines listed. Suites: draw_recording x86 + amd64, instance_fill, engine_code
+        FULL x86 PASS; gated x86 twattila / twrome2 / thrones + amd64 twattila + DRAW_RECORDING exit 0. -> lga_ (Opus
+        xHigh) reviews (lga_group3_review.md); t4i_ told the changed texts (gates / corpus).
+        - [ ] render_mt (lg3_ notes, out of scope): wire Describe() to device_loss::stall_note (addon.cpp / device_loss);
+        device_loss::AddCodeRange for the stub pages (engine_code page, eu::page, draw-recording thunks).
+        - [ ] coord after the restart: lg3_'s zombie engine_code.exe in testbin\scratch\lg3_\ec_x86 (could not be killed;
+        harmless); lg3_'s worktree still links bin + build\downloads (remove the links alone before any cleanup).
+        ATN 20:1x: "it has been a long time since we did fix/add Skillsets (last week) ... planned before the final code
+        review": last skills commit 11-17; SKILLS UPDATE 4 + 5 open. COORD 20:1x: g14_ (owns .agents/skills/ now) does
+        SKILLS UPDATE 4 now on ho_g14 (lessons 11-17..11-22, the lab in the skills = tkp_'s gto_ S6, tick-audit lessons);
+        SKILLS UPDATE 5 stays the last step after the final review.
+        g12_ DONE 20:1x (handoff_plan/handbacks/g12_done_handback.md): tools outside git -> staged in testbin\scratch\g12_\
+        stage\ + land_list.md (20 rows) + base_hashes.txt: A1d cause (RENODX_TW_SET list out of time order -> the +300 s
+        trace waited behind 1722 s), Divinity pass-timing copies + PresentMon front-window checks + pm_summary "alone / NOT
+        ALONE", Tales ue_back / gi_back timed, UE pass pairs (pass_pairs.py min of two frames), R.U.S.E. run notes, item 49
+        retire = move to tools\retired\.
+        - [ ] coord: land g12_'s land_list.md after `sha256sum -c base_hashes.txt` (merge by hand if changed); tick 230 /
+        1297 after the retire rows land; optional: the 5 other identical pm_summary.py copies.
+        - [ ] render_mt (g12_): twattila/test_hooks.hpp: stable-sort RENODX_TW_SET / SET_FILE entries by time when read (or
+        WARN on an out-of-order entry), so a step can't silently wait.
+        - [x] ATN (ANSWERED 20:1x: "claude's window isn't on always on top"; the D2 R1 case was a PowerToys window; the runner
+        now detects + marks NOT ALONE) (g12_, recommend yes): turn off Always On Top for the Claude window before PresentMon runs (an on-top
+        window makes every capture NOT ALONE; runners never touch other windows).
+        - [ ] coord: Opus xHigh review of g12_'s staged diff (tools, review per group).
+        gtp_ ROUND 22 20:1x (plan_1117/gtp_round22_handback.md): all 7 items (gtw-R21-1..6 + gpr-R21-1) fixed + tested in
+        the mirror, NOT live (live = bak28 aa2306475bdb, mode shadow, no bak29). Staged: testbin\scratch\gtp_\gtp_stage22\
+        gate_hook.py sha256 eaf62869a886 + tests/run_tests.py 0b9d3ee66e7a. Suite 1328 / 1330: the 2 F24 timing tests fail
+        under load, and fail worse on a bak28-equal mirror at the same time (load, not the new code; direct CPU checks equal).
+        Diffs: corpus refused 249 -> 225, window 1414 -> 1256 (lost = reads / copies / scratch per the items; +28 newly
+        refused writes through variables the old hook missed; key changes 0). CLASSIFIER BLOCK: gtp_ found none in its
+        round 22 transcript (only 3 older subagent-hook rejects of update_plan); nothing partial; it may have been another
+        agent's.
+        - [ ] gtw_ (a0b03d68655ebfcaf) + gpr_ (aa304b6e977350cc3) re-check round 22 on gtp_stage22 (read only; gtw_ judges
+        the nested $d WriteAllText into testbin\heapfix_hf): BOTH SENT 20:38 (slots freed).
+        - [ ] gtp_ golive round 22 (bak29, swap gate_hook.py + run_tests.py, shas, mode.txt shadow) only after both re-checks
+        GO and a green mirror suite on a QUIET machine (no builds; e.g. the T6 quiet window before the end batch).
+        - [x] gtp_ report of the classifier-blocked action -> none found in its round 22 transcript (see above).
+        b3s_ S5 DONE 20:1x (render_mt/reports/b3s_s5_handback.md): 421a62d45 (only animation_rows.hpp): streaming schedule
+        (workers claim scatter then gather units, gather <= 16 ahead, ring slot free), ring flags gathered / scattered,
+        `stopped` every 64 items, env RENODX_TW_ANIMATION_SCHEDULE stream / bulk, 4 new controls. Smoke vs the real fill:
+        streaming 1500 rounds 0 failures, 2 / 15 threads 800 each 0, bulk 800 0, timing controls 0; negative controls
+        caught (no_ordered_mode only with scatter_delay_block 0; no_count_check 0 = gap, bd1r_ judges); -Quick PASS;
+        gated x86 3 games + amd64 twattila exit 0 into the worktree's own bin (no junction; copied fxc / dxc read-only).
+        Trailer "Claude Sonnet 5.5" = its real model (kept). -> bd1r_ reviews S3-S5; b3s_ GO S6 (addon.cpp free; lg3_
+        did not touch it).
+        g07_ PART 20:1x (handoff_plan/handbacks/g07_part_handback.md): ho_g07 b5492bcb6 (D2 Output Auto via
+        output_encoding, game_owned_output) + 67d421be3 (Modded Auto Exposure Experimental off, Fog + Vignette rows at 1 =
+        exact, Auto Thickness on + saved rows cleared once, divinity2_frame_trace.txt name, Exact Depth ramp numbers: Off
+        mean 0.975-0.992 / On 0.99996+ on flat ground); D2 add-on builds; vanilla_exact 5 new shaders EXACT. Waits: Graphics
+        2 of 2 needs an x64 read of EoCApp.exe -> COORD OK for a read-only dis_at64.py in g07_'s scratch (stop if packed /
+        encrypted; never unpack or decrypt); SSSR needs an SSR trace (DeferredSSR EB5998CF writes + 0FA22D5A t1 / t2 reads;
+        needs a hardware-depth pyramid); VFX half-res needs R2's A/B; neutral names need G09 + G21's embeds (requests sent /
+        in the brief). Requests sent: g10_ (D2 vanilla_exact entries), g13_ (page_dump_d2_body.h text).
+        - [ ] D2 in-game batch (g07_): an SSR trace (in-game SSR on, wet / polished floor or water): DeferredSSR (EB5998CF)
+        writes (size, format) + DeferredSSRCombine (0FA22D5A) t1 / t2 reads; render-scale trace; R2 A/B for VFX half-res.
+        - [ ] ATN (when well): handoff_plan/atn_questions_groups.md (groups' questions with coord's picks; 2 so far).
+        g19_ PART 20:2x (handoff_plan/handbacks/g19_part_handback.md): ho_g19 a5f8608fb..40e030621: settings_pages without
+        the lighting_settings include (AO / GI sections + tints moved, same namespace); Bindings::screen_space_tested
+        (false = "(Experimental)" method labels + No RT/PT writes ssao_mode 1 per ATN's 150e41174 rule) +
+        lod_bias_at_game_scale; torch tooltips "Needs ... ReSTIR GI"; decision 9 traced-GI Reset defaults from RAYS_PRESET
+        in every Apply game (Attila changes: Rays 4 -> 1, Res 1 -> Full, Range 10 -> 50, Bounces 2 -> 1); Auto Thickness rows
+        ON + label; one-time clear (GraphicsPageRevision=1: LOD-bias trilinear + both Auto Thickness keys always; Fog
+        Shadows / Specular Occlusion only where no RT method is saved on). Page dumps of 13 add-ons: only the intended rows
+        differ (d1 dump fails to link on Detours = tool gap -> g13_). COORD: Ryse handed to g19_ on a new branch
+        ho_g19_ryse from ho_g08's tip (G08 merges first); per-game requests sent to g07_ (D2 flag + wrap), g04_ (Shogun 2
+        Auto Thickness + clear + decision-9 list; Rome Remastered lod_bias flag), g09_ (Tales hdr_only.hpp:126), g01_
+        (Thrones preset); Tales / Expeditions Reset change -> ATN list item 3 (pick keep).
+        g14_ SKILLS UPDATE 4 DONE 20:2x (handoff_plan/handbacks/g14_skills4_handback.md): ho_g14 cd682308a, 2ec1dd98b,
+        425408bdf, de63f55f1, 3f94cad2c on top of 08561db4e + 6e2095b3d (docs only). ATN asked 20:1x ("a long time since
+        we did fix/add Skillsets"). -> g14r_ (Opus xHigh, read only) reviews -> handoff_plan/reviews/g14r_review.md.
+        - [ ] g14r_ review -> g14_ fixes -> g14r_ re-check -> coord merges ho_g14 (docs only) after GO.
+        g14r_ REVIEW 20:4x (handoff_plan/reviews/g14r_review.md + g14r_handback.md): FIXES FIRST, 2 MAJOR / 16 MINOR /
+        11 NIT. Passed: nothing private, every table + relative link valid, suite list = the 96 test/tw_* folders, every
+        cited commit in b198b721a. M1: ATN's 11-22 rules sit only in the TW skill (non-TW games follow game-port-method) ->
+        move the engine-neutral ones there. M2: testing.md lets a NEW script hold gpu_job.lock (weakens T11) -> "the lab
+        or the existing locked run scripts, never a new script". COORD: m2 = ATN's own words, scope "no fixes / patches
+        to other games' own TAA" (upscaler hooks unaffected), no ATN question. Sent to g14_ 20:4x with G21's SKILL.md
+        line 9 names + g17_'s ao-gi.md rule 6 / rows 65-66. Coord fixed: memory worktree-junctions (no bin since 11-22),
+        gto_design.md:158 (WH3's base + SER traces).
+        - [ ] test/tw_rt_open_sky (owner: GPU plan): -Lock writes a v1 gpu_job.lock record; -Expect defaults to exact.
+        - [ ] after G21's SSS move: g14_ updates SKILL.md line 9. SKILLS UPDATE 5 stays the last step after the final review.
+        gtl_ USES DIAG 20:2x (plan_1117/gtl_uses_diag_handback.md): P2's empty uses log = a bug in rt_uses.h, not R3 / the
+        job / dead_outputs.py: D3D12's Reset puts the real vtable back and the Reset hook (l.213-221) never re-installs the
+        copy, so only each list's first Reset is seen (3 list starts in frame 0, span lines only via Mark()). Proof on WARP
+        (CPU only, no GPU; testbin\scratch\gtl_\vtab + uses_log.cpp): live 1 list start / 0 copy rows, staged fix 3 / 3.
+        Fix STAGED (+6 lines): testbin\scratch\gtl_\uses_fix\rt_uses.h(.diff). Stage3 lab guard: empty uses.tsv =
+        ToolFault + fake_resident uses_fault "empty" + test; stage3 suites ALL PASS in sandbox landed3b (unit 42, analyze
+        5, ps1 5, keeper 29, jobs 36, gpu_lock 60/60, budget 40, gpu_gate 30). Check 2's glob bug: 10 / 10 answers OK.
+        Session 1's checks 1 + 3 passed only trivially -> SESSION 1 RUNS AGAIN on the fixed build.
+        - [ ] gtv_ re-checks uses diag (sent 20:25) -> on GO coord lands rt_uses.h diff on atn-mods -> new build folder
+        (helper_du_rec2, gated_build.ps1; part 1's build stays) + s3c_jobs.py <new> --part2 -> BUILD WINDOW CLOSED -> gtc_:
+        smoke (own lifetime: kind dump, 1 arm, log_uses, dump_frames 1; use rows + .dxil + no NVAPI refusals) -> session 1
+        (P1, P1b, P2, S in one lifetime) -> checks 1-7 with: check 3 use rows > 0 + DXIL or stop; check 4 64 frames + a
+        stem with DXIL or stop; check 2 glob fixed. Session 1's 726 MB dumps were neither moved nor deleted.
+        - [ ] gti_'s dead_outputs.py: refuse a log with no use rows instead of "0 candidates" (gtl_'s proposal).
+        lga_ GROUP 3 REVIEW 20:2x (render_mt/reports/lga_group3_handback.md, lga_group3_review.md): OK after small fixes,
+        0 blocker / 0 major / 5 minor / 13 nit; all 14 items match the audit; nothing allocates / logs / locks while threads
+        are stopped; gates.json (t4i_ 20:17) matches every changed line. COORD picked M4 (a): Stop logs one line before the
+        Join when its own job is still open (no device_loss::Uninstall reorder).
+        - [ ] lg3_ fixes (sent 20:25): M1 pool-stop text + comment, M2 Describe() empty when no job, M3 thread id from the
+        snapshot + old OpenThread mask, M4 (a), M5 Describe() -> LogStall in device_loss.hpp, safe NITs -> lga_ re-check.
+        - [ ] t4i_ corpus (sent 20:25): corpus.json:1472 "Depth A", :1481 a real site name; after lg3_'s fix: M1 text in
+        gates.json pool_detach_stuck + corpus.json:1427, rows for the "(last: ...)" texts + M4 (a)'s INFO line.
+        g07_ PART 2 20:2x (handoff_plan/handbacks/g07_part2_handback.md): ho_g07 + 2af46f920 (g19_'s request:
+        screen_space_tested false, D2's No RT/PT label wrap gone; COMPILES ONLY AFTER ho_g19 d655c6ddc merges; not built).
+        vanilla_exact 5 / 5 EXACT (autoexposure, fog x2, vignette x2; the autoexposure control was not caught on the
+        generic input). Look-risk rows: MAE at Sensitivity 4 caps the meter 16x above the steady average; Fog 0-2 scales
+        height + distance fog. Graphics 2 of 2 = Shadow Map Size: read-only dis_at64.py on EoCApp.exe (not packed, .text
+        entropy 6.35): cascade table rva 0x204C3A4 {2048, 1024, 1024}, SwitchTo 0x12E5E40 accepts only 1024 / 2048 (else
+        int3), 12 shaders hardcode 1/4096 texels (4 replaced today); design in testbin\scratch\g07_\progress.md, no code
+        (needs a game run) -> ATN list item 4 (pick: build it off by default, check in his D2 run). Still waiting: SSSR /
+        clustered SO / render scale (trace / run), neutral names (G09 + G21 renames).
+        - [ ] g07_ Opus xHigh review of ho_g07 (queued at the 20-agent cap) -> g07_ fixes -> re-check; merge after ho_g19.
+        G21 STARTED 20:2x (g21_ abbb588748e50507a; SSS embed rename first, its own commit, note to coord -> g07_ + g14_).
+        G20 STARTED 20:29 (g20_ a29ceb3b0f45e3b5e). G22 STILL QUEUED at the cap; then the reviews g07_ / g08_ / g12_ /
+        g19_ as slots free.
+        bd1r_ B3b S3-S5 REVIEW 20:2x (render_mt/reports/bd1r_b3b_s4_handback.md, bd1r_b3b_s4_review.md): GO, S4 + S5
+        byte-exact with the game's fill (+0x182e080..+0x182e384, push +0x2a2f40, cvtpd2ps = same MXCSR / PE), race-free in
+        both schedules; B's lock-free publish stays. 0 blocker / 0 major / 7 minor / 11 nit. S6 edits not reviewed yet.
+        - [ ] b3s_ fixes (sent 20:28) BEFORE S6 makes Check selectable: M1 ring released after Check + last_items, M2
+        what.empty() guard, M3 Check allocations before Run in a bad_alloc catch (fall back to the game), M5 atomic
+        schedule; then M4 S-6 prefetch before timing, M6 smoke (no_count_check generator can't trip, smoke.cpp:255; "no
+        ordered_mode delay" under stream = must-fail), safe NITs, N7 comment -> bd1r_ re-checks fixes + reviews S6.
+        - [ ] b3t_: M7 = S3 Should 1 (animation_rows.inc tests) (sent 20:28).
+        g11_ DONE 20:3x (handoff_plan/handbacks/g11_done_handback.md): no commits (the 3 scripts live outside git): staged
+        release_zip.py / player_zip.py / repack_game.py in testbin\scratch\g11_\stage\tw + land_list.md + base_hashes.txt
+        (all 3 matched). Item 1 (box 1454): --helper always takes the 5 sl.* from ngx_dlls.SOURCE (2.14.16) + adds
+        STREAMLINE_LICENSE.txt, STREAMLINE_3RD_PARTY_LICENSES.md, NVIDIA_REFLEX_LICENSE.txt, NVIDIA_DLSS_NOTICE.txt from
+        the SDK; player_zip takes sl.* from SOURCE too. Detours: already in every repack since 11-12 (v146 predates it).
+        Tick-audit item: ACES_LICENSE.md now also for game code calling tonemap::aces:: (D2 via vanillaplus.hlsli; Attila
+        none). Tests: original vs staged on copies of old zips, Downloads redirected, 6 / 6 exit 0, sl.* + licences = SDK
+        sha256. Test folder testbin\scratch\g11_\test (1.4 GB) kept for the reviewer (g11_ may delete its own sandbox
+        after). COORD answer to its Q1: D2 uses twattila::frame_generation + dlaa_bridge (the TW helper), so D2 releases
+        go through release_zip.py --helper (sl.* with the helper), no repack_game DLL change.
+        - [ ] g11_ Opus xHigh review (queued at the cap) -> fixes -> coord lands the land list (sha256sum -c first).
+        - [ ] later: commit the handwritten licenses/NVIDIA_NOTICE.txt (only in the old player zip today) to
+        docs/licenses/ + add it to player_zip's EXTRA; optional: Streamline licence paths into ngx_dlls.py for tw_install.py.
+        G22 still queued (20:30 retry failed at the cap).
+        gtv_ USES DIAG 20:3x (plan_1117/gtv_uses_diag_handback.md; gtv_iq_review.md:1284): GO. Cause confirmed against
+        P2's uses.tsv (3 list starts in frame 0, spans + 46 external rows only, 0 use rows, no .dxil); the fix re-installs
+        only when the pointer is the original again (no double install, nothing after a failed Reset), thread-safe (one
+        thread per list), tear-down OK. COORD LANDED the staged file as e7eff346c (atn-mods, pushed; 7+ / 1-, CRLF, diff
+        --check clean). Findings: S1 the smoke + stage3 guard need use rows in EVERY logged frame (Execute was never in
+        the WARP test); L1 the .diff had an old comment (landed from the file); L2 (grs_, optional) a "# lost" row if a
+        non-original vtable comes back; L3 save the WARP exes' console output.
+        - [ ] gtl_ (sent 20:3x): helper_du_rec2 RECORDER build from e7eff346c (new folder) + s3c_jobs.py --part2 + S1 guard
+        + suites + gtc_'s sheet + L3 -> hand-back "gtl_ rec2 ready" -> coord: BUILD WINDOW CLOSED -> gtc_ smoke + session 1.
+        - [ ] grs_ (optional, later): gtv_'s L2 "# lost" row / StopUses false on a foreign vtable.
+        g18_ PART 20:3x (handoff_plan/handbacks/g18_part_handback.md): ho_g18 ec3160d13 (one-shot OnIndexWrite log per
+        kind incl. a Map hook that only logs while Log Details is on) + 6018ae180 (Camera note, ALPK nits N1-N3; L1 not
+        added: nothing reads it, the invariant is in a comment) + db7764312 (Host::sky + rt_scene::WriteSky; no host yet).
+        Box 11895's WriteTriangle warning was already in fac66430e (rur2_ 11-16). Gated builds: x86 build32 twattila + 10
+        amd64 add-ons exit 0; tw_native_context x86 + amd64 PASS (light pick bit-exact). Not built: WH1, WH3, Troy,
+        Pharaoh, Rome II, Thrones. Item 4 (Tales alpha factor) waits for GPU-plan files (per-capture factor in dlaa_bridge +
+        rt_scene_data / rt_compact); first check a Tales trace for masked materials with cb1[N].c != 1. Item 6 waits for
+        ATN's reset test (85). Host lines for later (after hand-over): D1 addon.cpp ~1041, D2 ray_tracing.hpp:305-306,
+        Expeditions dlss_graphics.hpp:1287-1290 + ray_tracing.hpp ~343-366 (WriteSky), Ryse addon.cpp ~1776, R.U.S.E.
+        ray_tracing.hpp 1259 + ~828-838: `.sky = true`.
+        - [ ] g18_ Opus xHigh review (queued) -> fixes -> merge after render_mt's end batch; then the 6 host-line edits.
+        - [ ] test/tw_cluster_rewrite (owner?): a Map-marks-nothing case + its run.ps1 builds into testbin.
+        - [ ] Tales alpha factor: trace check first (masked materials with cb1[N].c != 1); if none, close box 2325.
+        g21_ RENAME 20:3x (handoff_plan/handbacks/g21_rename_note.md): 57ae8ed10 on ho_g21: embeds __host_sss_depth /
+        __host_sss_setup + 6 wrapper renames (Tales, Expeditions, D2) -> g09_ told to cherry-pick first (20:3x); g07_ +
+        g14_ get it with their review fixes (g07_: D2 screen_space.hpp:43-44, README.md:271-272, wrapper line 10; g14_:
+        SKILL.md line 9 = host_sss_depth / host_sss_setup).
+        G22 STARTED 20:3x (g22_ a02d241f7f1356663): ALL 22 GROUPS STARTED. rva_ STARTED 20:33 (a79f9e19bc8bf2c6d, Opus
+        xHigh, read only): g12_ + g11_ + g08_ reviews (handoff_plan/reviews/rva_g1N_review.md). rvb_ = g19_ + g18_ + g07_
+        STARTED 20:36 (af9596f8f90c1c5f7; review in that order; G07's 2af46f920 needs ho_g19 d655c6ddc).
+        g19_ DONE 20:3x (handoff_plan/handbacks/g19_done_handback.md): ho_g19 unchanged; NEW ho_g19_ryse from ho_g08
+        90b4fd6d7: be0b3c07b (cherry-pick of a5f8608fb), e0abc7b65 (AssignPages treats "SettingsAdvanced" like
+        "SettingsMode"; no TW add-on has the key), 8748f72ae (Ryse on the shared pages + SetTints, About gold / AA purple
+        after, 5 Notes; Auto Thickness rows on, no "(Experimental)"; decision 9 Reset Rays 4 -> 1, Range 10 -> 50, Res
+        Half -> Full, Bounces 2 -> 1; own SettingsRevision 1 clears ssao / light_bounce auto thickness + LOD-bias trilinear
+        from the 3 presets; README New: lines). Ryse page dump vs ho_g08: only those rows differ; Attila + Shogun 2 dump =
+        base. No CMake Ryse build (the dump links addon.cpp with clang-cl). MERGE ORDER: ho_g08 -> ho_g19 -> ho_g19_ryse.
+        - [ ] ATN-approved delete later: g19_'s source copies testbin\scratch\g19_\base (74 MB), base_ry (74 MB),
+        base_ry.tar (66 MB) (not reference runs; on ATN's yes, with the delete-list care).
+        t4i_ REFRESH DONE 20:3x (render_mt/reports/t4i_refresh_handback.md): run_all green (test_lib 551, names 5, make
+        107, check 166, leg 166, analyze 136; testbin\scratch\t4i_\t4i_refresh_runall3.txt); backups scratchpad\t4i_bak\
+        refresh. B3b kept: row AnimationRowsWorkers 0/1/2 + env RENODX_TW_ANIMATION_SCHEDULE (needs_row: a frozen build
+        without the row = one PROBLEM, B3b dropped); new start VOL-L1 (W3, L1 alone, ~320 s, 3 shot pairs); R1 / R2 names;
+        C = the 4 DrawRecording group rows; Ccheck + X1 out; FILL_CHECK start-only; new gates for lg3_'s texts + a missing
+        LATCH fill_sites_stood_down; draws / c_render_us dropped with NOTE fallbacks (bestKC = 4 is an estimate);
+        test_names.ps1 greps 130 names in atn-mods + heapfix. COORD decided its 2 questions: NO extra full-W3 bulk Check
+        start (bulk = env only); YES one paused B3b-alone vs OFF shot pair inside an existing start (no new start).
+        - [ ] ebr_ reviews the refresh (sent 20:3x) -> t4i_ fixes; later deltas: b3s_ S6 (row values, Check form,
+        b3b_mismatch + applied line), lg3_'s fix texts (M1 / N3 / N4 / M4a), overrides.json _parts_off still names X1.
+        g17_ DONE 20:3x (handoff_plan/handbacks/g17_done_handback.md; reports in handoff_plan/reports/g17_*.md): read only.
+        (1) Replace re-audit: since 04cb0dd5c rays_replace_ao false no longer stacks (memory fixed); rays_multiply_maps
+        still stacks in Rome II / Rome Remastered / Tales / Expeditions. (2) Troy / Pharaoh height pyramid Design A (26
+        dispatches out instead of 22) -> g03_. (3) Skips parity census plan (P0 skips.tsv + skip: ledger rows -> g13_;
+        order: Skip the Shadow Maps on where every reader takes the rays, Rome II CPU set, cost-only passes, reach, Attila
+        Experimental CPU rows after ATN's stress test, 64-bit ports after both plans). (4) vswhere: VsDevCmd's bare
+        vswhere.exe is not found with NoDefaultCurrentDirectoryInExePath=1 (cosmetic, VSCMD_VER 17.0); real gap: an empty
+        $vsRoot lets cmake run without the dev shell. COORD: ATN's 11-16 rule (ours replaces, never stack) answers g17_'s
+        two questions: Troy's far map is replaced like Pharaoh (g03_, look-risk numbers for ATN's eye); Tales sun min stays
+        until a replace proof (like Expeditions #37). Sent: g03_ (Design A + Troy far map), g01_ (sun_replace_maps.hpp:8
+        comment, A4 trace line), g02_ (WH2 README:57), g13_ (skips.tsv P0).
+        - [ ] Tales sun shadows = darker of maps and rays (dlss_graphics.hpp:3036): replace after a proof (G09, no code now).
+        - [ ] Rome Remastered rays multiply the cascades (addon.cpp:2055): battle trace FrameTraceReads=1 (coord, in-game
+        batch) then G04 replaces.
+        - [ ] gtp_ (between builds): gated_build.ps1 vswhere -requires VC.Tools + exit 4 (slot freed in finally) when no VS
+        / no VCToolsInstallDir + header comment; no new parameters (gate_hook keys stay); dry-run test.
+        - [ ] g14_ (with g14r_ fixes): ao-gi.md rule 6 (rays_replace_ao false no longer stacks) + rows 65-66 (Pharaoh AO
+        in place, maps replaced); maybe a generic pass_readers.py.
+        - [ ] later: fold the three "Skip the Game's Reflection Passes" rows into one graphics_page binding if identical
+        (G19 + G02 + render_mt for WH3); render_mt wave 3: WH3's 23 dispatches before the march (0ED84C3D) + WH3 Skip
+        the Shadow Maps readers; A4 box: Rome II one method done in code (close with g01_'s trace line).
+        g16_ DONE 20:3x (handoff_plan/handbacks/g16_done_handback.md; reports handoff_plan/reports/g16_*.md; read only):
+        (1) box 8644: the game's destructors NEVER draw the static random state (150 functions walked to the end; none is
+        one of the 7 users of 0x11DA7408 or the 4 callers of 0x190B780; level V for effects, E for the sound + tracker
+        calls) -> the L2 sweep bug was dormant; keep 3ea4a6721 + N5. (2) box 12255: none of the 21 findings explains
+        Astra's first freeze (R9 / R10 ruled out by the log); left: H1 object motion SO + compute without Flush, H2 address
+        space, H4 driver / his effects -> ATN list 5 (ReShade.log v2.5.2+ from Astra). (3) box 11809: RenoDX costs +222 MB
+        address space, -74 MB off the largest free block (69 MB = 3 x 15.8 MB heap segments + the bridge's 16 MB cluster
+        mapping + one 6 MB block); a 4K ReShade shot holds 138 MB for 2-7 s (6 / 17 left 19-95 MB lost); out-of-front
+        growth is the GAME's (+1.0 MB/s with, +1.2 without RenoDX: the 2-5 MB/s readings were during WPR merges). (4) box
+        2704 part: the gtl bucket is 0.000 ms in stress A + B after AF14 (night1 WPR still open; no run just for it).
+        - [ ] after the batch (render_mt): reserve the 32 MB draw-recording op arena at attach / top-down, sized from the
+        soak's high-water mark (draw_recording.hpp:882 / :2602); map the bridge's cluster section at attach; find whose
+        heap the 3 segments are (va_probe2 offline: segment owners, 64 KB headers, a restart mark).
+        - [ ] t4i_ (with lg3_'s texts): memory=1 lines at each battle start in the end-batch soak.
+        - [ ] ATN's go (in-game batch): restart A/B (3 restarts, with / without RenoDX, Unit Detail 1x / 8x + first-frame
+        bisect) + Object Motion on / off soak (ATN list 6); heapfix author FYI through ATN (list 6).
+        CORRECTION (g16_ 11-22) to the cap1_ MEMORY GROWTH OUT OF FRONT box: the growth is the game's own (+1.0 vs +1.2
+        MB/s), not RenoDX's; the 2.0-5.0 MB/s readings were taken while WPR was stopping / merging. Screenshots: 138 MB
+        held 2-7 s, a lasting 19-95 MB loss in 6 of 17 shots.
+        g15_ DONE 20:4x (handoff_plan/handbacks/g15_done_handback.md; reports handoff_plan/reports/g15_*.md; read only):
+        (1) ReSTIR GI floor (8408 / 10166): noise 18-20 % from 4 to 16 rays, bias RISES with rays (8.7 -> 13.9 %, frozen
+        per pixel); through RR 1 ray 2.6 % / 8 rays 11.3 % / 16 rays 14.3 % rRMSE; CPU model: the floor is the spatial pass;
+        real bug: ContactShade never re-evaluated for the receiving texel. (2) r3_refl bias (8411): ReflectPixel folds
+        every ray off the depth normal (rt_path.hlsli:1364) = BUG at corners / wall bases (edge x1.353); rest = ray start
+        offset (method). (3) NRD review vs NRD 4.18: F1 raw roughness, F2 mean hit distance, F3 no SIGMA lightDirection,
+        F4 bad SIGMA inputs with several sun rays, F5 no object motion (units ghost), F6 history twice if a signal runs
+        twice, F7 jitter in UV, F8 AO open share (look); G1 frames not seconds, G2 sky part in Light Bounce. (4) GT-VBAO
+        A/B: bitmask pass 1.462 of 1.613 ms at 4K, ALU bound, 98 registers; V1 / V2 same picture (-10..18 %), V3 / V4 look
+        change (-25..35 %) -> g20_ told V1 / V2 now (faster + same picture = on), V3 / V4 wait. ATN list 7-10.
+        - [ ] gbf_ (Opus High, STARTED 20:48 abbb04cc6b11ea037; prompt in handoff_plan/queued_spawns.md): the helper BUG FIXES (always on)
+        in rt_path.hlsli / rt_nrd_front.hlsl / rt_d3d12.hpp / nrd_d3d12.hpp + ReSTIR bisection dev switches; GPU checks as
+        requests after S3c part 2; merge after the end batch freeze; gate references re-made.
+        - [ ] rvc_ (Opus xHigh, QUEUED): review of the read-only groups g15_ + g16_ + g17_ (queued_spawns.md).
+        g05_ PART 20:4x (handoff_plan/handbacks/g05_part_handback.md): ho_g05 6f89ac5e6 (UI scale on census copies
+        412D2D43 + 9C69F169; UI count 28), c8aaa34ca (V35 fit on WARP: 1.00 / 1.00 / 1.00 / 0.99, worst 0.0 % = Musa's own
+        sliders stay; RUSE_V35_* defines + plumbing dropped, v35_fit.cpp = regression check), 99979cc36 (A21 two-site
+        patch: GROUND_AMBIENT / LIGHT / GUIDE 110 / 112, 10 new guides, 4 albedo fixes, OBJECT_LIGHT 543 / 603 byte-same;
+        SM3 interpreter pass, D3D9 873 / 873; O1 1AD365A4 = mask pre-pass, no patch), 7e99ef2a3 (H2 per-tone diagnostics).
+        HDR-only snapshot check offline: page dump = g13_'s except the date; every helper path gated on HelperInstalled; the
+        snapshot ships ../twattila ../mods ../shaders ../utils. Not done: combined O1 variant (M), RR + Attila rows (M-L),
+        V31 one mode (S-M) -> ATN list 11 / 12. C1: A40F493A / 2B19A028 / D32F5B29 stay native (none drawn in U1). H2 flat
+        / edge FAIL: most likely nvngx_dlss 310.9.16's default preset (rrf_'s pass used 310.7.0); no bridge diff explains it.
+        g05_ edited the LIVE tools/nontw/ruse/scripts/ru_scene_patches.py (backups .bak_g05; not in g12_'s land list).
+        - [ ] H2 GPU A/B (needs an ATN rule or a lab kind: test\tw_ruse_bridge\run.ps1 is not one of ATN's rule commands):
+        (A) -Helper D:\Dev\renodx\build\tw_dlaa_helper (310.7.0) vs (B) a helper folder without nvngx_dlss.dll (SDK
+        310.9.16), each into a fresh testbin -Build folder; compare the "H2 dlss: flat background / foreground" lines.
+        - [ ] rvd_ review of ho_g05 (+ the live ru_scene_patches.py edit) QUEUED (queued_spawns.md).
+        - [ ] device_loss.hpp: the NTSTATUS / DWORD switch narrowing (include order) -> lg3_ (sent 20:48, with its fixes).
+        gtl_ REC2 READY 20:5x (plan_1117/gtl_rec2_ready_handback.md): D:\Dev\renodx\build\helper_du_rec2 = recorder build of
+        e7eff346c (build.ps1 + RENODX_TW_RECORDER_BUILD=1 via its slot wrapper; exe sha 1d1fab7705539a23...; helper_du_rec
+        untouched); jobs_part2 regenerated (0 refused, 1221 s) + new job 00 smoke; stage3 guard: use rows in EVERY frame
+        (fake_resident "first_frame" mode); suites landed3c all OK (gpu_lock 58 / 60, 2 skipped by its own busy guard);
+        sheet Part 2: first session 1 S-110976 VOID (dumps stay, never used), new Smoke section + uses_check.py, checks 2-4
+        updated; L3 outputs saved (+ an Execute-on-WARP test: rows kept in all 3 frames). L2 = proposal for grs_.
+        BUILD WINDOW CLOSED 20:52 (messages to g02_ g03_ g06_ g09_ g10_ g13_ g20_ g21_ g22_ gbf_ b3s_ b3t_ lg3_; brief
+        updated) -> gtc_ (ae2f864b7c4e9bc8c) sent 20:5x: wait for the 4 slots to free, smoke + checks 1-3, session 1 (P1,
+        P1b, P2, S), offline checks 1-7, hand back "gtc_ part2 s1", STOP before session 2.
+        - [x] coord: BUILD WINDOW OPEN after gtc_'s session 1 -> OPEN 21:05; no session 2 (0 candidates), no D: moves.
+        g14_ FIXES 20:5x (handoff_plan/handbacks/g14_fixes_handback.md): ho_g14 + 8acdbfd33, 02bbd31f1, 2898fa2ff; all
+        g14r_ findings but n11 (no Markdown linter; own table / link script clean). ho_g14 MUST MERGE AFTER ho_g21 (SKILL.md
+        line 9's consumer grep). -> g14r_ re-check (sent).
+        g04_ PART 20:5x (handoff_plan/handbacks/g04_part_handback.md): ho_g04 11 commits 0764607b1..20ab8ef5b (cosmetics,
+        -pi to the bit in 8 water shaders, Auto Thickness on + SettingsRevision 2 clear, traced GI defaults = RAYS_PRESET,
+        AutoHDR 0.2, Rome Remastered no fog shadows + MAE Sensitivity 1 + texture_lod_bias wired + lod_bias_at_game_scale
+        (9581a6256 NEEDS ho_g19 d655c6ddc), V35 fit 1.50 / 1.07 / 0.94 / 0.80, READMEs); builds clean, romer_toe WARP PASS.
+        V35 vs SDR: grey 0.05-1 nits x2.53..6.22 -> x0.976..1.040; highlights +13.6 % at 1000 / 203; winter map 25 % darker
+        below 15 nits. Recipe update -> group_brief.md UPDATE 20:5x + sent to g01_ g02_ g03_ g06_ g09_. Not done: item 3 not
+        needed (SSAO still runs under PT AO), item 4 (Shogun 2 smoke map host + ASSAO t13 trace), 7b (helper flag). ATN list
+        13-16.
+        - [ ] ho_g19 (after rvb_): AntiAliasingTextureLodBias is_enabled also when lod_bias_at_game_scale; move
+        ClearSavedRows to settings_pages.hpp (Shogun 2 drops its copy); later: Rome Remastered lod_bias_trilinear binding.
+        - [ ] GPU plan: a helper path-shader flag for Shogun 2's unseen-lights row (item 7b, Experimental off).
+        g01_ DONE 20:5x (handoff_plan/handbacks/g01_done_handback.md): ho_g01 62498bc44 (Rome II sun Replace by default:
+        sun_replace_maps.hpp per-hash routes COMPARED / DEPTH / LIGHT, 40-shader table from scan_atlas_reads.py,
+        RAYS_REPLACE_MAPS 1, Shadow Map Size hidden), b7c136ee4 (AA frame gamma), 7876857b6 (rays_preset_as_attila;
+        Thrones Steady Bounce Light + 128 torch lights at own defaults + SettingsRevision 3), 581a00400 (Rome II V35 1.00 /
+        0.99 / 0.80 / 1.03, worst 0.22 % vs 22.67 %; Thrones = Musa's own), 3dd175e7b. Sharp RT Reflections: nothing to port
+        in Rome II. RR Fresnel already in Rome II + Thrones (tick audit wrong: EnvBRDFApprox2 constants in both .cso).
+        WARP sun_rome2_test P1-P3 0 over 2.6M values, controls caught. ATN list 17-19.
+        - [ ] Rome II battle trace (in-game batch): RT shadows on at each Shadows setting + shader model: all 40 atlas draws
+        swapped, no lit band at cascade ends, baked far shadows as before; + the A4 trace line; Faster Game CPU Code save.
+        - [ ] shared helper for the V35_GAME_RESPONSE -> row defaults loop (Shogun 2 + Rome II; psycho35_settings.hpp, wave 2).
+        - [x] rvd_ (queued) now = g04_ + g01_ + g05_ (queued_spawns.md) -> STARTED 21:00.
+        gtc_ PART2 S1 21:0x (plan_1117/gtc_part2_s1_handback.md): smoke S-80872-134398512824468399 (uses_check 63104 rows,
+        0 of 64 frames empty, 13 / 13 stems with .dxil, 0 NvAPI / Mega Geometry lines); session 1 S-109300-134398513388130181
+        (P1 / P1b / P2 exit 0); checks 1-3 PASS (33 same, round trip 33 same); dead_outputs.py: 0 DEAD candidates (78 live,
+        1 undecided) -> per the sheet PART 2 ENDS: no session 2, no D: moves. Dumps stay in lab\run\S-109300-...\res_210223_A_
+        105812_43153\ (+ the smoke's in S-80872-...), never deleted.
+        - [ ] grs_ / gti_: the 1 undecided output: rt_trace_omm (span 11) uses u28:0 / u29:0 (ambient_history) + u30:0
+        (ambient_positions), "not bound in the log" in all 64 frames: find why the log has no binding for them.
+        BUILD WINDOW OPEN 21:05 (group_brief.md + memory rule; messages to b3s_ b3t_ lg3_ t4i_ g01_ g02_ g03_ g04_ g05_ g06_
+        g07_ g08_ g09_ g10_ g13_ g20_ g21_ g22_ gbf_; render_mt has build priority).
+        gtw_ SLIP 20:57:30-20:58:15: its own timing probe made one test process allocate ~51 GB twice (commit limit 59.7 GB);
+        MemoryError ended it, memory back at 20:59. Nothing ran on the GPU then (gtc_'s smoke started 21:01); g21_'s build in
+        that minute reported OK. Brief + gtp_ now carry the rule: bound every probe's memory first.
+        GATE ROUND 22: gtw_ re-check (plan_1117/gtw_r22_recheck_handback.md; gtw_s1c_review.md "## S1c re-check 22") + gpr_
+        re-check (plan_1117/gpr_r22_recheck_handback.md; designs/gpr_review.md): both NOT GO. All R21 items fixed. New:
+        gtw-R22-1 HIGH (variable expansion unbounded: 61 bytes -> 51 GB, fails open under enforce); gpr-R22-1 MEDIUM (anchored
+        PROT misses $VAR, ~, /./, 8.3 names, $HOME in python -c, %USERPROFILE%: back to bak28's unanchored PROT); gpr-R22-2 +
+        gtw-R22-2 MEDIUM (quoted text with an evaluator / $( / backtick is code); gtw-R22-3 (one path test, parents too);
+        Lows gpr-R22-3 / 4, gtw-R22-4 / 5 / 6. -> gtp_ round 23 (sent 21:06). Live unchanged: aa2306475bdb, shadow.
+        - [ ] gtp_ round 23 -> gtw_ + gpr_ re-check -> mirror suite in a quiet window (coord announces) -> shadow golive (bak29,
+        sha, mode check). Enforce = ATN's yes + R22-1 / 2 / 3 fixed.
+        - [ ] F24 timing: time the child's CPU (GetProcessTimes) or a baseline hook in the same run, not wall-clock medians.
+        bd1r_ B3B S6 = GO (render_mt/reports/bd1r_b3b_s6.md + bd1r_b3b_s6_seams.md; bd1r_b3b_s6_review.md): 0 / 0 / 3 MINOR /
+        5 + 1 NIT; b3s_'s seams leave the shipped build unchanged, after_block can't pass RING_BUSY or deadlock. R1 counters
+        always on (ATN's no-live-counters rule) -> only while Tracing(); R2 §11's B ns per item + C lag, split waits; R3 coord
+        decision: keep public Off / On, Check private + RENODX_TW_ANIMATION_CHECK, update design §7. -> b3s_ "fixes S6" (sent
+        21:05; compile + suite in the window, list changed texts for t4i_).
+        - [ ] engine_code owner, later hardening: check E8 32 4D A7 FE at fill+0x189 (bd1r_ N1).
+        b3s_ SEAMS (render_mt/reports/b3s_seams_s5.md): rmt_b3s e684c3f98 (test run.ps1 defines TWATTILA_WORKER_CONTROLS),
+        ca2247b53 (engine_code.hpp bypass_cut_active_once; overlaps rmt_lg3: keep both #if blocks whole at the merge),
+        e8c5697a7 (gathered_items / gathered_blocks, after_block hook). Not compiled before 21:05.
+        b3t_ S4 (render_mt/reports/b3t_s4.md): 222f266c1 on rmt_b3t (23m-23s + M7), stub + real Dispatch PASS under bulk and
+        stream (against a 20:3x mirror of b3s_'s header). Finding 3: parked-thread start race (main deadlocks in
+        RtlpAllocateHeap) also in effect_sites.inc:831, emitter_prefetch.inc:707, lod_pick.inc:572, particle_prefetch.inc:589,
+        particle_reload.inc:517, tests.cpp:2396 -> b3t_ (sent): one shared helper in tests.cpp + the S5 cases -> "b3t_ S5".
+        - [ ] after rmt_lg3 merges: b3t_ switches instance_fill.inc:485 to the shared parked-thread helper.
+        lga_ GROUP 3 RE-CHECK = GO (render_mt/reports/lga_group3_recheck.md): R1 coord pick (b) (keep the include, drop
+        stall_note + its call + test lines); NITs R2-R4 -> lg3_ (sent 21:05): x86 + amd64 gated builds, tw_device_loss x86 +
+        amd64, stop its own leftover engine_code.exe -> "lg3_ builds". t4i_ has nothing left from group 3 (N13 done).
+        - [ ] AddCodeRange callers (lga_ group 3 housekeeping, lga_group3_review.md) -> engine_code owner (nothing dropped).
+        - [ ] lg3_'s worktree: build\downloads junction left (its bin link was removed 20:4x): delete the link alone first.
+        - [ ] ~110 old finished worktrees still have bin junctions: remove each link alone (cmd /c rmdir <link>, no /s) before
+        any worktree clean-up; coord rebuilds bin from atn-mods before any install (box stands).
+        ebr_ REFRESH (render_mt/reports/ebr_refresh2.md): GO for the B3b names, needs_row drop path, R1 / R2 keys, the 4 C
+        rows, Ccheck + X1 out, FILL_CHECK start-only, gates, test_names, test_leg, VOL-L1. 4 fixes first (R2 "requires" R1 + a
+        C-stage condition; the volley fallback can never feed a start; B2's paused rule counts unpaused frames; knob-map label
+        guard) + N1-N9 + S6 deltas (labels Off 0 / On 1 / Check 2 private: t4i_'s map swaps check / on -> env for CHECK
+        starts; b3b_mismatch / applied / stage texts) + lg3_'s rows + coord decision 2 (one paused B3b-alone vs OFF pair in
+        PAUSE-W3, "if": "paused_runs:B3b", OFF -> on -> OFF) -> t4i_ (sent 21:05) -> "t4i_ refresh2" -> ebr_ re-check.
+        rva_ REVIEWS (handoff_plan/reviews/rva_handback.md): G12 fixes first (0 / 0 / 3 / 7), G11 GO (0 / 0 / 2 / 5), G08 fixes
+        first (0 / 1 / 1 / 5; MA1 coord decision: route (b) Ryse's frame trace -> g09_ asked to print the ORIGINAL resource
+        behind RenoDX clone views in talesofarise_dlss/frame_trace.hpp DescribeView). Fixes back 21:0x: g08_ c28c36e7b
+        (gated Ryse build running), g11_ a9b74b708 (docs/licenses/NVIDIA_NOTICE.txt) + staged fix_m1.py (player_zip refuses
+        without the Streamline licences; land order: merge a9b74b708 BEFORE landing player_zip.py), g12_ staged (land list 23
+        rows, rows 1-18 + 21-23 then the moves 19-20; N5 skipped) -> rva_ re-check (sent).
+        - [ ] ngx_dlls.py owner: zip_problems also checks the ngx_dlls.STREAMLINE files beside the helper (without
+        sl.interposer.dll FG falls back to FSR FG silently) (g11_ N4).
+        - [ ] render_mt owner: sort the SET entries by time when they are read (g12_'s request; rva_ agrees).
+        - [ ] g11_'s test folder testbin\scratch\g11_\test (1.4 GB): g11_ deletes it on ATN's yes.
+        g10_ PART (handoff_plan/handbacks/g10_part_handback.md): ho_g10 d0620c429, 0c7f6bd37, e5a70042b, c25850e80. x86
+        root-sig cause found: ReShade 6.8 (API 20) put a flags field before static_samplers, so x86 D3D12 add-ons built on
+        the repo's 6.7.3 headers read the wrong pointer (TW D3D9 / D3D11 games unaffected) -> ATN list 23. psychov35 WH1 / WH2
+        driver PASS x86 + amd64. Written, run in the window: vanilla_exact per-input cases, Ryse sRGB-view inputs, UE SDR
+        encodes, D2 autoexposure control (+inf texel), g01_'s RunRome2 split. FYI numbers: WH2 burn 0.3 darks x1.24..x1.43,
+        WH1 S-shaped chroma x1.217 (already true in the add-ons).
+        g01_ BAKED SLOT (handbacks/g01_baked_handback.md): bf5056b85 (sun_replace_maps.hpp Install(..., baked_sampler_slot =
+        UINT_MAX)), 6a985e020 (V35 test on the 20:5x rule: Rome II shipped 1.00 / 0.99 / 0.80 / 1.03 within 0.5 % of the 10 %
+        fit, highlights 5.1 % / 6.8 %, chroma 1-30 x1.227 -> x0.998, 30-150 x1.282 -> x1.081; Thrones = Musa's own) -> ATN
+        list 24; builds in the window. g03_ passes 1 at twtroy:2436 / twpharaohdynasties:3126 in a commit after ho_g01 merges.
+        g21_ PART (handbacks/g21_part_handback.md): ho_g21 57ae8ed10 (host_sss_* rename incl. 6 wrappers in G09's / G07's
+        folders, contents unchanged), 7d31e5fef (bend_sss_gpu / pcss / upscale_output into twattila/), f7fb7a901 (WH1 + WH2's
+        SM 4.1 / pcf shadow builds get screen-space shadows: 548 PS newly patched, no other game; a bug fix, on), 62c936ffe.
+        8 add-ons built, WARP run 1 as predicted. Requests sent: g02_ (MERGE BLOCKER: WH1 ATLAS_SUN_SHADERS + 12, WH2 far-plane
+        t1 route), g10_ (test expectations), g09_ (comment), g14_ (-> 63ca9fc77), g04_ (README paths, pcss_test folder), g07_.
+        - [ ] merge order: ho_g21 first, together with g02_'s list commit; then ho_g10's expectations, ho_g14, the ho_g04 /
+        ho_g07 / ho_g09 path + comment commits.
+        g14_: 258575eaa (r1-r3) checked OK; 63ca9fc77 (g21_'s shared-shader sentence, SKILL.md). ho_g14 GO to merge after
+        ho_g21. r4 waits for SKILLS UPDATE 5.
+        g05_ BUILDS (handbacks: no new commits; addon64 + bridge tests built 20:41): H2 cause still open, likely nvngx_dlss
+        310.7.0 (passing runs) vs the SDK's 310.9.16 (failing run). The A/B needs test\tw_ruse_bridge\run.ps1 -Helper
+        build\tw_dlaa_helper vs a folder without nvngx_dlss.dll, which is NOT one of ATN's rule commands -> ATN list 25.
+        - [ ] H2 A/B run after ATN adds a rule for it (or runs it himself).
+        REVIEWS STARTED 21:00: rvd_ (g04_ + g01_ + g05_), rve_ (g03_ + g06_ + g13_), rvc_ (g15_ + g16_ + g17_). Queued: rvf_
+        (g02_ + g09_ + g10_ + wave 2 as they finish). Earlier parts saved: handbacks/g03_part, g06_part, g13_part.
+        - [ ] g13_'s land list: parity_check.py lands together with parity\skips.tsv (after rve_).
+        - [ ] report_check.py: accept the marker "(pass timer, A/A +-N %)" for non-helper GPU lines (coord decision).
+        - [ ] trace requests from the groups (in-game batch): D1 beach / Black Cove + torch scene (g06_), Pharaoh campaign
+        (g03_), Troy far-map constants (g03_), Water Reflections Design A data run (g03_); g06_'s D1 render scale + character
+        motion vector designs (after rve_).
+        WRAPPER BREAK 21:08-21:12: gtp_ rewrote the SHARED gtp_lowprio.py (Job memory limits 1 GB / process, 3 GB / tree +
+        a HANDLE restype that crashed SetPriorityClass on Python 3.14) after coord's memory-rule message (meant for its own
+        probes). All builders told to wait; nothing built through it (g21_ hit the crash; its slot freed). Fixed 21:10 by
+        gtp_ (below-normal only; limits opt-in via GTP_PROC_MB / GTP_JOB_MB), verified by coord (`cmd /c echo ok` rc 0);
+        "wrapper fixed" sent 21:12. SLOT 1 reserved for render_mt (b3s_ b3t_ lg3_) from 21:12.
+        rvb_ REVIEWS (handoff_plan/reviews/rvb_handback.md): G19 fixes first (0 / 1 / 6 / 5): MA1 = release gate (below);
+        MI2 coord decision: NARROW the Fog Shadows / Specular Occlusion clear to the games where 1 was a default (Attila,
+        Rome II, WH1, WH2, Tales, Expeditions players keep their own choice); MI3 shared ClearSavedRows in settings_pages.hpp;
+        MI4 RAYS_PRESET values -> rt_scene.hpp (g18_). G18 fixes first (0 / 0 / 2 / 4): OnMapIndices only with Log Details,
+        db7764312 held for its callers; L1 declined. G07 fixes first (0 / 2 / 3 / 5): MA1 autoexposure control NOT caught
+        (branch-covering inputs), MA2 D2's five ue_light_bounce_* wrappers renamed with ho_g09, MI3 VFX half-res as
+        Experimental off or name the blocking run. -> g19_ g18_ g07_ (+ g04_ MI6 / MI3) sent 21:1x; rvb_ re-checks.
+        - [ ] RELEASE GATE: wave 1 (ho_g08, ho_g09 + G07's light-bounce rename, ho_g07 to 67d421be3) and wave 2 (ho_g18,
+        ho_g19, ho_g19_ryse, ho_g07 2af46f920 + ho_g04 9581a6256 after d655c6ddc) ship in ONE player build (G19 a10ee4e4e +
+        G09 5152bfd4a + G07 67d421be3 clears together), or the Tales / D2 Auto Thickness clears run twice.
+        - [ ] merge notes: G09 93c4627c1 = G21 57ae8ed10 (same patch-id, applies once); ho_g19_ryse be0b3c07b drops out
+        (same patch-id as a5f8608fb); ho_g07 de6d9c9e2 + ho_g04 2684d11d1 need ho_g21; ho_g04 7b175a45d = MI6 (trilinear in
+        Shogun 2's SettingsRevision 2 clear); ho_g04 MI3 commit after g19_'s ClearSavedRows hash.
+        g08_ / g13_ / g07_ / g05_ / g04_: no builds ran before the wrapper fix (slots busy); all re-sent 21:12. g13_'s staged
+        dump_any.py D1 Detours link + page_dump_d2_body.h untested until its dumps runs 2-3 (rve_ told).
+        headers 6.8, 24 Rome II Highlight Contrast 1.03, 25 a rule for the R.U.S.E. H2 A/B.
+        rva_ RE-CHECK (handoff_plan/reviews/rva_recheck_handback.md): G08 GO after the gated build (build PASSED 21:13,
+        136 / 136, N5 not needed; 2 optional NITs R1 braces at addon.cpp:2118, R2 "clone of" wording -> g08_ "nits"); G11 GO
+        to land; G12 GO to land.
+        - [ ] merge ho_g08 (+ the nits commit) together with ho_g09's e54c34c60 (frame trace prints `clone of <handle>`).
+        G11 LANDED 21:14: merge 63b410b02 (ho_g11 a9b74b708 docs/licenses/NVIDIA_NOTICE.txt), then release_zip.py,
+        player_zip.py, repack_game.py from testbin\scratch\g11_\stage\tw (originals matched base_hashes; backups in
+        testbin\scratch\coord_\landed_backup\g11_; all 3 compile). Divinity 2 releases with release_zip.py --helper.
+        G12 LANDED 21:15: 21 staged files (rows 1-18 + 21-23; all 21 originals matched base_hashes; backups in
+        testbin\scratch\coord_\landed_backup\g12_) + moves 19-20 (ingame\deploy.py, ryse\fg_camera_check.py -> tools\retired\).
+        - [ ] next D1 / D2 PresentMon run: act.ps1 -PM sends one Alt tap to the window in front before focusing the game
+        (outside the game): needs ATN's OK (list 26), not coord's.
+        - [ ] g12_'s optional NITs: pass_pairs.py:4 163-char docstring line; D2 common.ps1:17 use $PASS_TIMING (later tools pass).
+        g08_ BUILD PASSED (handbacks: g08_ build log testbin\scratch\g08_\build64.log); Git Bash turned `cmd /c` into a path
+        on the first try (MSYS_NO_PATHCONV=1 fixed it).
+        g19_ b8cb841d1 (ho_g19): shared ClearSavedRows(revision, keys, revision_key, keep) in settings_pages.hpp +
+        Bindings::fog_shadows_defaulted_on; the Fog Shadows / Specular Occlusion clear runs only where a game sets it:
+        Thrones (g01_), Rome Remastered (g04_), Pharaoh + Troy (g03_), WH3 (render_mt's addon.cpp, after the freeze). Hash sent
+        to g04_ (MI3 + Rome Remastered flag). "g19_ fixes" follows.
+        - [ ] set fog_shadows_defaulted_on: g01_ Thrones, g03_ Pharaoh + Troy (after g19_'s hand-back), WH3 after the freeze.
+        SECURITY FLAG 21:1x (harness: "Security Weaken" on g22_): reviewed by coord. g22_ hit "running scripts is disabled"
+        on its own scratch suites.ps1 and re-ran it as `powershell -NoProfile -ExecutionPolicy Bypass -File` (per process,
+        through gtp_lowprio.py), and its script calls the worktree tests the same way. That is the form ATN's own allowed
+        rules use for test\tw_* and worktree scripts; no system or policy setting changed (Get-ExecutionPolicy -List all
+        Undefined). Not stopped; reported to ATN.
+        rmt_lg3 MERGED 21:2x: 45144611f (Attila logging group 3, tip b07df6997; lga_ final GO, no findings left; lg3_ builds:
+        gated x86 + amd64 twattila exit 0, tw_device_loss + tw_fault_watch PASS x86 / amd64, tw_draw_recording pass). Reports:
+        render_mt/reports/lga_group3_final.md, lg3_builds.md. Told b3t_ (instance_fill.inc:485 -> shared parked-thread helper,
+        from atn-mods), b3s_ (ca2247b53 overlaps engine_code.hpp: coord keeps both #if blocks whole at the rmt_b3s merge),
+        t4i_ (gates.json:73 frame_stall text still names stall_note: tidy in refresh2).
+        - [ ] lg3_'s worktree has a REAL bin copy; check build\downloads is a junction, delete that link alone first, then the
+        worktree (on ATN's yes, with the other worktree clean-up).
+        - [ ] zombie engine_code.exe PID 110276 (lg3_'s, Access denied, dead + held): leave for ATN's next reboot; never kill.
+        g03_ BUILDS (handbacks/g03_builds_handback.md): ho_g03 at 014302723 compiles clean (Troy + Pharaoh amd64); WARP PASS:
+        Pharaoh battle fog (99164788 / 0CB1C821 / DB53BDDC exact at 100 %, 33 % = 100 %, controls differ); Troy / Pharaoh V35
+        best fit 1.10 / 1.39 / 0.97 / 0.87 = 6.6 % (misses 5 %): Musa's own stays (defines 1.f), 3f55c09a4 encodes the rule.
+        Request C (Sharp RT Reflections): nothing to patch (no ssr00 / ssr01 in either dump; rays read t_rt_reflection directly).
+        - [ ] ATN (list, to add): Troy / Pharaoh V35: Musa's own, the 4-knob fit at 6.6 % (darks x1.22 -> x0.94..x1.07), or a
+        5-knob fit (Shadow Contrast).
+        - [ ] g03_ bcad7b8f5 far map (Troy + Pharaoh sun_replace_maps::Install) needs ho_g01 bf5056b85 merged first; build after.
+        Look risk: past the baked map's start the shadow is the rays' alone; no distance number without cb2[48].y -> trace request.
+        g02_ DONE (handbacks/g02_done_handback.md): ho_g02 8 commits on 7f5c29c56 (fdf233005 PT Reflection Occlusion, 6d7725a91
+        AA frame gamma, 98f8155e0 WH2 fxaa00 int-AND + GatherGreen fix (0 apart from the game), 40248cbb3 RR Fresnel, e84530ea6
+        V35 wiring, ce767d5f8 READMEs, a015262e6 far-plane route, ccbf727ee WH2 V35 fit 1.01 / 0.57 / 0.91 / 0.92); built amd64.
+        - [ ] merge ho_g02 a015262e6 TOGETHER with ho_g21 f7fb7a901 (shared atlas_far_plane.hpp); re-run part 29 after.
+        - [ ] g02_ trace requests: WH1 CDCF1ADD far campaign terrain; WH2 snow / rain VFX rows (in its hand-back).
+        - [ ] WH1 / WH2 failed-trace edge: fix is in rt_scene.hpp -> g18_ (request routed).
+        - [ ] Rome Remastered fxaa gather check (GatherGreen like WH2 / Troy) -> g04_.
+        rvf_ SPAWNED 21:1x (Opus xHigh, read only): review of g02_ + g21_. g09_ / g10_ / g20_ / g22_ / gbf_ get a review when
+        they hand back done. ATN list 27 (WH2 V35 fit, pick keep) + 28 (WH1 / WH2 PT Reflection Occlusion default 1, pick yes).
+        S3c u28-u30 UNDECIDED (ambient_history / ambient_positions under NRD ambient): bound to null, UseTable at
+        rt_d3d12.hpp:3071 skips null resources, so the sheet never sees a store. A recorder gap, not a dead output.
+        - [ ] grs_: record null-view rows at rt_d3d12.hpp:3071 (after gbf_'s rt_d3d12.hpp work lands).
+        - [ ] gti_: dead_outputs.py reports "no store (null view)" for such rows instead of undecided.
+        gtl_ STAGE3 READY (plan_1117/gtl_stage3_ready_handback.md): 8 suites OK in the fresh sandbox landed3d under
+        GTP_PROC_MB 3072 / GTP_JOB_MB 8192 (peak 1127 MB, gpu_gate); land list current (8 hashes). Sent to gtv_ for the re-check;
+        coord lands it only after gtv_ GO and while no lab session runs.
+        gtl_ STAGE3 LANDED 21:42 (gtv_ GO, plan_1117/gtv_stage3_handback.md; review gtv_iq_review.md:1318): 8 files into
+        tools\tw\lab (lab.py, lab_analyze.py, fake_resident.py, resident_protocol.md, tests\test_budget / lab_analyze /
+        lab_jobs / lab_unit .py); stage + live hashes matched land_list.tsv; backups testbin\scratch\coord_\landed_backup\gtl_s3;
+        no lab session ran (last lab write 21:03). gtv_'s own sandbox: 7 suites OK (gpu_gate peak 1126 MB). Behaviour change:
+        dwm.exe now has its name, so dwm GPU use never flags a block as "other GPU" (as designed).
+        - [ ] gtl_ optional Low items (later stage): L1 Toolhelp snapshot keeps only the asked pid; L2 SEED_MAX vs the
+        resident's 2^24 frame limit (rt_serve.h:940); L3 retry budget per job + price retries, first-block retry shift, gpu_gate
+        G- line shows kept bursts / remeasured.
+        ho_g05 MERGED 21:4x: 033346fe7 (rvd_ GO: 0 BLOCKER, 0 MAJOR; reviews/rvd_g05_review.md). The live
+        tools\nontw\ruse\scripts\ru_scene_patches.py edit counts as landed with ho_g05 (sha256 42c8e58b2839e9bf...63ab5e);
+        its 2 .bak_g05 files moved to testbin\scratch\coord_\landed_backup\g05_.
+        - [ ] g05_ fixes (new commits on ho_g05): one full run of the final ru_scene_patches.py + 0-changed check; new
+        scene_patches.tsv + ruse plan.md:696 / 842 counts staged for coord to land; V35 negative control; NITs. rvd_ re-checks.
+        rvd_ REVIEWS (reviews/rvd_handback.md): G04 GO in wave 2 (MA1 coord: merge ho_g04 whole right after ho_g19 >= 3fcdaa896
+        and ho_g21 >= 7d31e5fef, then build both games; 9 MINOR -> g04_); G01 fixes first, then wave 1 BEFORE ho_g03
+        (MA1 RAYS_REPLACE_MAPS 1 -> 0 until the Rome II trace, MI1 build Rome II addon32 + WH2 / Troy / Pharaoh, MI2 baked slot
+        == sampler slot guard, MI3 ATN question baked far map under rays -> g01_).
+        - [ ] g01_ fixes -> rvd_ re-check -> merge ho_g01 (wave 1). - [ ] g04_ fixes -> rvd_ re-check.
+        - [ ] Rome II trace (g01_ writes the request): proves the Replace route, then RAYS_REPLACE_MAPS back to 1.
+        rve_ REVIEWS (reviews/rve_handback.md): G03 fixes first (M1 Design A tests missing: keep the HEIGHTS hooks out of
+        Install until the CPU + WARP tests pass; M2 line-sweep AO 16A457D0 / 6CF96BAF stacks under RT / PT AO at SSAO 1-2);
+        G06 fixes first (M1 indicator row: ~15 indicator hashes in the 258 -> second row via cb7[0].y; cb7 null on failure);
+        G13 ledger fixes only (parity_check.py commits GO). Routed to g03_ / g06_ / g13_; g20_ told: ONE SkipGameSsao rule
+        like Attila (game SSAO out under RT AO or PT AO) + the ClearInsteadOfGenerate deferred-context split.
+        - [ ] g03_ / g06_ / g13_ fixes -> rve_ re-check. Order: G13 (with / after G14) ; G06 ; G01 -> G19 -> G03 ; G20 after G03.
+        - [ ] G13 land (coord, ONE commit): skips.tsv never before the ledgers' skip: lines; page_dump_d2_body.h after run 3,
+        D1 Detours link after run 2.
+        - [ ] boxes rve_ asked for: PathTracedReflectionOcclusion for the non-WH games; the P1 census lines; D1 PCSS one-branch
+        trace + beach tone-map trace (g06_ writes both requests); G03 M2 trace if no offline proof.
+        - [ ] DRY owner (after wave 2): the V35 rows-default loop (4 games) + 4 copies of the V35 fit code; vfx_brightness.hpp
+        D1 vs Troy near copy -> one shared header.
+        g06_ BUILDS (handbacks/g06_builds_handback.md): D1 Release clean; tw_d1_vfx PASS (258 / 258 patched, bit-equal at 1,
+        x2 at 2), tw_d1_post PASS (22 passes = Vanilla; PCSS 8F114E47 filter branch not reached offline), tw_divinity1 PASS;
+        V35 no fit (best 20.6 %, colour is the limit) -> Musa's own stays.
+        g21_ DONE (handbacks/g21_done_handback.md): ho_g21 tip 62c936ffe; 16 add-ons amd64 + build32 Attila / Rome II / Thrones
+        build; WARP part 29 bit-identical (WH1 18, WH2 12), 548 new patched shaders; only TestSharedBytes counts fail -> g10_
+        makes the count commit, merged in ONE set with ho_g21 f7fb7a901 + ho_g02 a015262e6. Sent to rvf_.
+        gbf_ SECURITY FLAG 21:4x (harness "Modify Shared Resources"): reviewed by coord. gbf_'s bin is a real folder (no
+        junction), -Bin only reads dxcompiler.dll; it deleted its own clang crash files (Temp\main-ad2d7f.cpp / .sh) at 21:09
+        and builds tw_rt_open_sky into the shared testbin\tw_rt_open_sky. Not stopped; told: no deletions outside its
+        sandbox, check no other rt_open_sky.exe runs (its script now does). Reported to ATN.
+        ATN list 29-31 added (Troy / Pharaoh V35 fit at 6.6 %, D1 V35 no fit, clear Pharaoh Casters Out of View once).
+        ATN ANSWERS 21:48 (handoff_plan/atn_answers_2148.md): "all your picks beside" 5, 6, 15, 20, 22, 25, 27 (his copy
+        had 1-29; 30-33 still open). Routed: g07_ (1, 2, 4 + D2 host_light_bounce_* rename merged WITH ho_g09), g19_ (3 +
+        lighting_settings.hpp:98 / 118 auto_thickness 1.f), gbf_ (7 cap ReSTIR GI at 1 ray under RR, 8, 9), g20_ (10 Faster
+        GT-VBAO Experimental row), g05_ (11 one HDR tone mode, 12 next round; H2 A/B command lines), g04_ (13, 14, 15 per-map
+        fit NOW, 16 Exposure 5th knob), g01_ (17, 18, 19, 24), g03_ (20 Pharaoh Dust Shadows slider 0..1, 29 ship V35
+        1.10 / 1.39 / 0.97 / 0.87), g06_ (21, 22), g02_ (27 per-map V35 from the game's files, no trace; 28).
+        - [ ] 5: no ReShade.log from Astra; the END REVIEW checks the 3 left freeze causes (object motion stream output +
+        compute, 32-bit address space, driver / his effects) on the final code.
+        - [ ] 6: mem_ STUDY (Opus xHigh, read only + offline tests): RenoDX per-battle + alt-tab memory (fake-fullscreen
+        +113 MB, rvc_ G16 M1), helper VRAM, the game's side via dis_at; fixes + offline tests; at most ONE in-game confirm
+        -> reports/mem_study.md. Replaces Q6's restart A/B plan.
+        - [ ] 23: ReShade SDK headers 6.7.3 -> 6.8 (external/reshade submodule, ATN's OK 21:48): coord, AFTER the render_mt
+        final bench (all add-ons rebuild; no TW game is affected by the 32-bit D3D12 field move).
+        - [ ] 25: H2 A/B (R.U.S.E. DLSS 310.9.16 vs 310.7.0): ATN's rule `powershell -NoProfile -ExecutionPolicy Bypass -File
+        D:\Dev\renodx\test\tw_*` covers test\tw_ruse_bridge\run.ps1: coord runs the 2 GPU runs in a quiet GPU window
+        (one GPU job), command lines from g05_.
+        - [ ] 26: D1 / D2 act.ps1 -PM one Alt tap right before the game takes focus: OK'd by ATN (runs still need his go).
+        rvc_ REVIEWS (reviews/rvc_handback.md): G15 needs changes (M1 Q7 premise: preset 1 is unbiased, preset 3 / slider
+        default 4 biased -> Q7 reworded; M2 Q8's +1 % premature, ~1.8 % predicted -> Q8 waits for gbf_'s measured number);
+        G16 holds (M1 +113 MB on back-to-front = fake-fullscreen -> mem_; MINOR vf 0 at [+0xE4] via 0xC69B0 needs one dis_at
+        read of 0x1812650 / 0x181B910); G17 holds (MINOR: gtp_ build scripts must check VCToolsInstallDir + print the
+        toolset; Design A compares by GetResource -> g03_; Troy far map only after a > 200 m coverage check -> g03_).
+        gbf_ got rvc_'s 4 checks (ContactShade signed masks at 1 / 4 / 16 rays, fold edge ~1.018, CONTACT_RANGE 0 switch, F1
+        blur width). ATN list Q5-Q10 reworded per rvc_ (picks unchanged).
+        - [ ] gtp_ (after round 23): VCToolsInstallDir check + toolset on the build exit line (rvc_ G17 MINOR).
+        - [ ] dis_at read 0x1812650 / 0x181B910: the rigid-pool holder at [+0xE4] via 0xC69B0 (rvc_ G16 MINOR) -> mem_ or
+        the end review.
+        g09_ DONE (handbacks/g09_done_handback.md): ho_g09 15 commits (host_light_bounce_* + host_sss_* names, Auto Thickness
+        on + ClearSavedRows(4), bend_dispatch_setup.hlsli, sun texel WARP test PASS, rr_d3d12.hpp deleted, -pi sweep 360
+        places / 139 files (127 ue-extended files are ATN's own, none upstream), has_fog_shadows false, Tales GI Open Sky on,
+        V35 Expeditions = Musa's own (20 % option reported), e54c34c60 frame trace); Tales / Expeditions / ue-extended build.
+        rvc_ reviews it (rvc_g09_review.md). ATN list 32 (Expeditions V35) + 33 (Tales CombineLUTs cb0 trace).
+        - [ ] tw_tales_unit link failure (undefined NAME via utils/settings.hpp overlay_title through ray_tracing.hpp ->
+        twattila/dlaa_bridge.hpp -> frame_trace.hpp): pre-existing; owner from rvc_'s review.
+        - [ ] skills: game-port-method/SKILL.md:126 still names the deleted rr_d3d12.hpp (SKILLS UPDATE 5).
+        g08_ NITS (handbacks/g08_nits_handback.md): b0bf0e748 braces + "clone of <handle>" wording; Ryse rebuild exit 0. g08_
+        now cherry-picks e54c34c60 onto ho_g08 and builds Ryse + D1 + D2 (shared frame_trace.hpp) -> coord merges ho_g08.
+        b3t_ S5 (render_mt/reports/b3t_s5.md): rmt_b3t 38d2def38 ParkedThread, 23t-23za S5 cases, merge of atn-mods,
+        5b6b2753e instance_fill.inc on ParkedThread (3 places); workers part quick + full under stream + bulk PASS, 11 parts
+        PASS; probe not run to its end (190 s timeout, 0 mismatches).
+        b3s_ FIXES S6 (render_mt/reports/b3s_fixes_s6.md): rmt_b3s fc36bf57f (merges rmt_b3t): R1 / R2 tracing-only
+        counters + QPC splits, R4 / R5 / R7 / R8 / S1; skipped N1 / R6 / wrapping / guard page with reasons; gated x86 + amd64
+        exit 0, full + quick suite PASS (macro on). Texts changed -> t4i_. bd1r_ re-checks both (b3s_ S6 + b3t_ S5) ->
+        "bd1r_ B3b final". Merge: only test/tw_engine_code/run.ps1 conflicts (keep both CONTROLS defines).
+        g06_ FIXES PART (handbacks/g06_fixes_part_handback.md): indicator row split (244 effects + 14 markers via cb7.y),
+        null cb7 on failure, game cb7 per draw, census script in test/tw_d1_vfx; WIP committed, build waits for a slot.
+        - [ ] shared twattila/effect_brightness.hpp for D1 + Troy (+ D2 next) (g06_ m3): owner after wave 2; dxbc.hpp should
+        export FirstInstruction / FirstOperand (g06_ NIT). Troy null-cb7 bug fix -> g03_.
+        - [ ] D1 trace requests (g06_ m5): (1) one sun-shadow PCSS 0x8F114E47 draw with its VS, interpolants, cb0 / cb12; (2)
+        one beach / Black Cove frame with the tone map 0x30A1D40D cb (Source / Target constants).
+        BUILD SLOTS 21:50: g18_ held 2 slots (slot2 + slot4) -> told one per group. b3s_ / b3t_ freed slot 1.
+        g18_ SECURITY FLAG 21:5x (harness "Interfere With Workloads"): reviewed by coord. g18_ had started its chunks.sh
+        twice (21:15:52 + 21:16:12, hence 2 slots); it killed its OWN duplicate runner (bash 103245) and its OWN build under
+        it (gtp_lowprio python 34956 -> its worktree build.ps1, already gone), then released its own slot4. Nothing of
+        another agent's or ATN's was touched. Not stopped; reported to ATN.
+        bd1r_ B3b FINAL 21:5x (render_mt/reports/bd1r_b3b_s6_recheck.md, bd1r_b3b_final_handback.md): GO to merge, 0 BLOCKER,
+        1 MAJOR (merge step: rmt_b3s fc36bf57f holds rmt_b3t only up to 38d2def38; merge rmt_b3t tip b6c593a9c too, or the
+        S5 tests drop and instance_fill.inc stays on the old park with the heap-lock deadlock), 2 MINOR (tests), 4 NIT; the
+        shipped code needs no change. b3s_'s R1 / R2 verified (the shipped build counts nothing outside a trace window).
+        - [ ] b3t_ merges rmt_b3s into rmt_b3t, then gated builds macro off (x86 3 targets + amd64) + ONE full run.ps1 macro
+        on (stream + bulk) + probe to its end on the merged tree (slot 1) -> "b3t_ merged" -> coord merges rmt_b3t ->
+        END REVIEW.
+        - [ ] b3t_ tests after the merge: T1 (23v S-2 stop exact), T3 (ordered mode X >= block 2, texels_per_row 0x55555555),
+        T2 (23w stalls prove they fired), T6 (ring release on CHECK_MEMORY), which part runs 12e; R6 (drop the pending sweep's
+        object:entries pairs once test 24 parses counts).
+        - [ ] engine_code owner, later hardening: N1 push rel32 check next to FILL_HEAD (same as bd1r_ N1 above).
+        - [ ] NITs for later: `allocate` lambda with one call site; "C lag" prints 0 for bulk calls.
+        ATN 21:5x: 22 keep the restart ("sounds good"); 30-33 = coord's picks (30 D1 5th shadow-only knob -> g06_, 31 clear
+        Pharaoh Casters Out of View once -> g03_, 32 Expeditions Musa's own, 33 Tales trace); autocompact verdict: keep 40 %.
+        - [ ] next Tales trace: one frame of CombineLUTs cb0 (ps 0x876F0F03) for the Tales V35 fit (ATN 33).
+        - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
         - [ ] coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no commits / HANDOFF patches / index
