@@ -7360,11 +7360,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         points flip_tool.FLIP_SOURCE at a temp stand-in (restored in finally), both refusals kept, stand-in images\
         asserted empty; test_iq_flip 6 / 6; no test writes toward tools\refcode; refcode\flip git status clean.
         -> gbc_ B3-N1 RE-CHECK STARTED (short).
-        Agents (7): b13r_ (c3i_ B1.6 review), ebr_ (t4i_ r20 re-check), gtp_ (K1-K3 + next round), gbc_ (B3-N1
-        re-check), gtv_ (grs_ S2r re-check, then gtl_ S3r S1), gpr_ (gtb_ x1-x4 + slow 0 re-check). Coordinator:
-        H0 real run (bhe3fx2sg, ~72 min). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_, h0i_,
-        gpp_, gtb_ (waits gpr_), t4i_ (waits ebr_, then r21), gtq_ (waits gbc_), gti_, grs_ (waits gtv_), gtl_
-        (waits gtv_), gtk_, gtw_ (waits gtp_).
+        gtv_ S2r RE-CHECK = FIX 05:1x (plan_1117/gtv_s2r_recheck_s3r_s1_handback.md; gtv_s2r_review.md "## S2r
+        re-check"): NEW MUST N1 - the radiance cache's stamps (rt_cache_resolve.cs_6_5.hlsl:67 / 78 / 81: radiance.w =
+        frame + 1, albedo.y = frame + 1, evict when > 1800 old) aren't shifted by a seed -> seed 1000 evicts every unseen
+        cell older than 800 frames, >= 1800 evicts all = colder cache (same bias class as M2; every other `frame` use
+        checked). Fix: shift w > 0 (integer add) and y != 0 in RestoreResources on a seeded reset (24 MB), cap seed so
+        frames stay < 2^24, offline row + GPU check (same live cache_keys one frame after a reset, seed 0 vs 1000).
+        Rest fixed: M1, M2 exact (rt_place:264 / 283-298 / 416), S2 LetGo, S3, S4, S5, v1.1, 12 nits; tests 0 failures,
+        rows SAME; G4 99 .text bytes = __LINE__ immediates, 52 headers same. Nits: StartMoments refusal after the reset
+        ran; RENODX_TW_ match ignore case; env only in status. S1 DRED: keep default on + take --no-dred; Played /
+        status hardcode dred: true (rt_serve.h:938, 948) -> report the real value; the gate must not mix the two;
+        measure DRED's cost once in S3c. 9b / 12 later OK (iq_frames takes active_width / height as given). -> grs_
+        STARTED (N1 + nits + --no-dred).
+        gtv_ S3r S1 RE-CHECK = OK (gtv_s3r_review.md "## S3r S1 re-check"): settings env complete, sort_keys nested,
+        folder name built once. Should: cards.json:41 names masks/leaf.pgm but only the JSON is hashed -> add inputs
+        {path: sha256}. Nits: re-add the mismatched-scene.hash refusal test; job_schema.json pbrt_compare text shows the
+        old folder name (RENODX_TW_PLAY_* over-keying = safe, leave). gtl_'s builds question: info only - a separate
+        scene.builds (harness sha8, recorder sha8 + rt8, format version), "recorded with other builds: old -> new" in
+        the job report + iq / pbrt headers; only a format version change belongs in the key; re-recording = ATN's
+        call. Optional for gtb_: sample CPU at each phase start. -> gtl_ STARTED (edits now; its lab tests spawn
+        harness-named fakes -> run them after H0, ~06:10). gtv_ held its lab tests + race probe for the same reason.
+        Agents (8): b13r_ (c3i_ B1.6 review), ebr_ (t4i_ r20 re-check), gtp_ (K1-K3 + next round), gbc_ (B3-N1
+        re-check), grs_ (S2r N1 + nits), gtl_ (S3r S1 Should + nits + scene.builds), gpr_ (gtb_ x1-x4 + slow 0
+        re-check). Coordinator: H0 real run (bhe3fx2sg, ~72 min). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits
+        b13r_), upt_, upr_, h0i_, gpp_, gtb_ (waits gpr_), t4i_ (waits ebr_, then r21), gtq_ (waits gbc_), gti_,
+        gtv_ (waits grs_ / gtl_; held lab tests until after H0), gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
