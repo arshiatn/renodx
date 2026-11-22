@@ -157,8 +157,9 @@
 //    bytes patched as the runtime: screen_space_shadows' Patch, then PatchAmbient with the row's ambient sites), drawn as part
 //    8 draws (FORWARD_CONSTANTS: cascade 0; the scene the first fill, sun, glint and height where the atlas's value reaches
 //    the game's output; the MSAA builds need it there, with their G-buffer unbound only Warhammer II's do, and under the
-//    game's MSAA no upscaler and so no rays run). Warhammer (its 6 gather 5.0 builds, the ones the screen-space shadows'
-//    patch multiplies by t49; OnSunReplaceMaps: t1 a 1 x 1 R32 of 1, the far plane): t49 0 bit-identical to the game's
+//    game's MSAA no upscaler and so no rays run). Warhammer (its 18 gather 5.0 and Shader Model 4.1 builds, the ones the
+//    screen-space shadows' patch multiplies by t49, and Warhammer II's 12 software / hardware pcf builds, its
+//    ATLAS_PCF_SUN_SHADERS; atlas_far_plane.hpp: t1 a 1 x 1 R32 of 1, the far plane): t49 0 bit-identical to the game's
 //    bytes over a lit atlas (4 x 4 of 1); t49 1 to the game's over a shadowing atlas (0: every comparison and read
 //    failing): the rays' shadow alone. Warhammer II (twattila/sun_replace_maps.hpp: an ALWAYS point comparison sampler at
 //    s1): t49 0 bit-identical to the game's bytes with every comparison lit (ALWAYS); t49 1 to the game's with every one
@@ -3924,12 +3925,13 @@ static void TestWh2ReflectionSkip(const std::string& games) {
               rays_differ, pixels, rays_used, shadow_read, game_differ);
 }
 
-// Part 29: each game's ATLAS_SUN_SHADERS (its addon.cpp), patched as the runtime patches its LIGHT_BOUNCE_DRAWS rows.
-static void TestReplaceMaps(const std::string& games, const std::string& dump, const char* game, int sampler_slot) {
+// Part 29: a list of each game's addon.cpp (ATLAS_SUN_SHADERS; Warhammer II's ATLAS_PCF_SUN_SHADERS on Warhammer's far-plane
+// route: sampler_slot < 0), patched as the runtime patches its LIGHT_BOUNCE_DRAWS rows.
+static void TestReplaceMaps(const std::string& games, const std::string& dump, const char* game, const char* list_name, int sampler_slot) {
   const std::string text = ReadText(games + "/" + game + "/addon.cpp");
   std::smatch listed;
   std::vector<uint32_t> hashes;
-  if (std::regex_search(text, listed, std::regex(R"(ATLAS_SUN_SHADERS = \{([^}]*)\})"))) {
+  if (std::regex_search(text, listed, std::regex(std::string(list_name) + R"( = \{([^}]*)\})"))) {
     const std::string list = listed[1].str();
     const std::regex hash(R"(0x([0-9A-F]{8}))");
     for (auto found = std::sregex_iterator(list.begin(), list.end(), hash); found != std::sregex_iterator(); ++found) {
@@ -4035,12 +4037,12 @@ static void TestReplaceMaps(const std::string& games, const std::string& dump, c
   const int listed_count = static_cast<int>(hashes.size());
   CHECK(listed_count > 0 && patched == listed_count && single_missed == 0 && lit_same == reached && shadowed_same == reached
             && (!warhammer2 || empty_same == reached) && controls == reached,
-        "%s Rays Replace Shadow Maps: %d listed, %d patched, %d reached (%d MSAA), lit %d, shadowed %d, empty %d, controls %d", game, listed_count, patched,
-        reached, multisampled, lit_same, shadowed_same, empty_same, controls);
-  std::printf("%s Rays Replace Shadow Maps: %d listed, %d patched, %d drawn with the atlas reaching the output (%d MSAA, G-buffer unbound here); t49 0 "
+        "%s %s Rays Replace Shadow Maps: %d listed, %d patched, %d reached (%d MSAA), lit %d, shadowed %d, empty %d, controls %d", game, list_name,
+        listed_count, patched, reached, multisampled, lit_same, shadowed_same, empty_same, controls);
+  std::printf("%s %s Rays Replace Shadow Maps: %d listed, %d patched, %d drawn with the atlas reaching the output (%d MSAA, G-buffer unbound here); t49 0 "
               "bit-identical to the game's lit atlas %d, t49 1 to the game's every comparison failing %d%s; CONTROL the rays multiplying the game's "
               "shadowing atlas differ %d\n",
-              game, listed_count, patched, reached, multisampled, lit_same, shadowed_same,
+              game, list_name, listed_count, patched, reached, multisampled, lit_same, shadowed_same,
               warhammer2 ? std::format(", t49 0.5 = over an empty atlas {}", empty_same).c_str() : "", controls);
 }
 
@@ -4421,8 +4423,9 @@ int main(int argc, char** argv) {
   TestBitmaskSkips(argv[1], argv[2]);
   TestWh2ReflectionSkip(games);
   TestWh2OneOcclusion(games);
-  TestReplaceMaps(games, argv[2], "twwarhammer", -1);
-  TestReplaceMaps(games, argv[3], "twwarhammer2", 1);
+  TestReplaceMaps(games, argv[2], "twwarhammer", "ATLAS_SUN_SHADERS", -1);
+  TestReplaceMaps(games, argv[3], "twwarhammer2", "ATLAS_SUN_SHADERS", 1);
+  TestReplaceMaps(games, argv[3], "twwarhammer2", "ATLAS_PCF_SUN_SHADERS", -1);
   TestResolveOneOcclusion(games);
   TestWh2AmbientReaders(games, argv[3]);
   TestReflectionOcclusionStrength(games);
