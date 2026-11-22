@@ -184,6 +184,9 @@ struct ArWorld {
   uint32_t distinct = 0;
   uint32_t map_calls = 0;
   uint32_t map_fails_at = ~0u;  // the Map call that answers 0
+  uint32_t height_calls = 0;
+  uint32_t height_shift_from = ~0u;  // the height() call from which the answer is shifted by height_delta (a game run that differs from ours)
+  uint32_t height_delta = 0;
   std::vector<uint32_t> log;
   ArWorld() = default;
   ArWorld(const ArWorld&) = delete;
@@ -215,7 +218,11 @@ void __cdecl ArFree(void* block) {
   world->log.push_back(Address(block) - Address(world->base));
 }
 
-uint32_t __fastcall ArHeight(void* texture, void*) { return Read32(static_cast<const uint8_t*>(texture) + 4); }
+uint32_t __fastcall ArHeight(void* texture, void*) {
+  ArWorld* world = ar_current;
+  const uint32_t height = Read32(static_cast<const uint8_t*>(texture) + 4);
+  return (world->height_calls++ >= world->height_shift_from ? height + world->height_delta : height);
+}
 
 void* __fastcall ArTextureOf(void* texture, void*) {
   ArWorld* world = ar_current;
@@ -299,6 +306,7 @@ struct ArSpec {
   uint32_t share_percent = 50;      // entries that take one of the shared animations
   uint32_t duplicate_percent = 0;   // list entries that repeat an earlier entry's instance
   uint32_t pre_state = 0;           // 0 mixed, 1 valid, 2 stale frame, 3 other texture, 4 minus one words
+  bool pre_texel_edge = false;      // the placements' texel words are the values that matter to the float conversion (0, 2^24 + 1, 2^31, 0xFFFFFFFE, ...)
   uint32_t record_cap = 0;          // the records' buffer at the start
   uint32_t initial_count = 0;       // records already in the vector (at most record_cap; the game's fill keeps pushing after them)
   uint32_t null_instance_at = ~0u;  // list entries made null
@@ -316,12 +324,25 @@ struct ArCall {
   bool tweak = false;               // the tweak at +0x2a61058: the rotation and the tail's Map path
   uint32_t map_fails_at = ~0u;
   uint32_t rounding = 0;            // MXCSR's rounding control bits (0 nearest, 1 down, 2 up, 3 toward zero)
+  uint32_t height_shift_from = ~0u;  // from this height() call on the textures answer height_delta more (the second call is the game's own run in Check)
+  uint32_t height_delta = 0;
+  uint32_t game_height_shift_from = ~0u;  // the same for the game's copy (a Check mismatch's final state is the game's run on the shifted heights)
 };
 
 struct ArFault {
   bool happened = false;
   uint32_t address = 0;  // where, relative to the image the run was in (all ones: outside it)
   uint32_t target = 0;   // the memory touched
+};
+
+// What the module's own counters say of one run (all zero when the build has none: TWATTILA_WORKER_CONTROLS not defined).
+struct ArPaths {
+  std::array<uint32_t, 12> taken = {};  // calls of Dispatch per path (animation_rows::Path), the delta of the run
+  uint32_t items = 0;                   // the last call's finished items
+  uint32_t records = 0;
+  uint32_t rounds = 0;
+  uint32_t workers = 0;
+  bool ordered = false;
 };
 
 struct ArResult {
@@ -332,7 +353,18 @@ struct ArResult {
   uint32_t arena_used = 0;
   ArFault fault;
   std::vector<uint32_t> log;
+  ArPaths paths;
 };
+
+#if defined(TWATTILA_WORKER_CONTROLS)
+namespace ar_module = twattila::animation_rows::internal;
+using ArPath = twattila::animation_rows::Path;
+std::array<uint32_t, 12> ArReadPaths() {
+  std::array<uint32_t, 12> counts = {};
+  for (size_t path = 0; path < ar_module::paths.size() && path < counts.size(); ++path) counts[path] = ar_module::paths[path].load();
+  return counts;
+}
+#endif
 
 struct ArContext {
   ArWorld world;
@@ -420,21 +452,24 @@ bool ArBuild(ArContext* context, const ArSpec& spec) {
     uint32_t mode = spec.pre_state;
     if (mode == 0) mode = 1 + random.Next() % 6;  // 1 valid, 2 stale, 3 other texture, 4 minus ones, 5 texel minus one, 6 random words
     const uint32_t valid_frame = spec.frame + spec.frame_offset;
+    static constexpr std::array<uint32_t, 12> EDGE_TEXELS = {0, 1, 2, 0x00FFFFFFu, 0x01000000u, 0x01000001u, 0x01000003u, 0x7FFFFFFFu, 0x80000000u, 0x80000001u, 0xFFFFFFFEu, 0xFFFFFF01u};
+    const uint32_t pre_texel = (spec.pre_texel_edge ? (k % 13 == 12 ? (random.Next() | 0x01000000u) : EDGE_TEXELS[k % 13])
+                                                    : (random.Next() & 0x7FFFFFFF));
     switch (mode) {
       case 1:
         Write32(animation + 0x10, valid_frame);
         Write32(animation + 0x14, spec.current);
-        Write32(animation + 0x18, random.Next() & 0x7FFFFFFF);
+        Write32(animation + 0x18, pre_texel);
         break;
       case 2:
         Write32(animation + 0x10, spec.frame - 1 - random.Next() % 5);
         Write32(animation + 0x14, spec.current);
-        Write32(animation + 0x18, random.Next() & 0x7FFFFFFF);
+        Write32(animation + 0x18, pre_texel);
         break;
       case 3:
         Write32(animation + 0x10, valid_frame);
         Write32(animation + 0x14, spec.current + 1 + random.Next() % 3);
-        Write32(animation + 0x18, random.Next() & 0x7FFFFFFF);
+        Write32(animation + 0x18, pre_texel);
         break;
       case 4:
         Write32(animation + 0x10, valid_frame);
@@ -508,12 +543,15 @@ uint32_t ArInvoke(const ArCall& call, const void* function, ArWorld* world, ArFa
 }
 
 // The world as the context's initial copy has it, the call run on `image` through `function`.
-void ArRunSide(ArContext* context, const uint8_t* image, const void* function, const ArCall& call, ArResult* result) {
+void ArRunSide(ArContext* context, const uint8_t* image, const void* function, const ArCall& call, uint32_t height_shift_from, ArResult* result) {
   ArWorld* world = &context->world;
   std::memcpy(world->base, context->initial.data(), world->bytes);
   world->arena_used = 0;
   world->map_calls = 0;
   world->map_fails_at = call.map_fails_at;
+  world->height_calls = 0;
+  world->height_shift_from = height_shift_from;
+  world->height_delta = call.height_delta;
   world->log.clear();
   Write32(world->base + AR_ROW, call.start);
   ar_current = world;
@@ -546,6 +584,8 @@ struct ArStats {
   uint64_t equal_faults = 0;
   uint64_t tail_runs = 0;       // runs with a Map in the log
   uint64_t allocations = 0;
+  std::array<uint64_t, 12> paths = {};  // Dispatch's calls per path (the module's counters; zero without TWATTILA_WORKER_CONTROLS)
+  uint64_t workers_used = 0;           // calls of ours that woke workers
 };
 ArStats ar_stats;
 
@@ -557,10 +597,24 @@ std::string ArCompare(ArContext* context, uint8_t* game, const void* game_functi
   ArSetTweaks(game, patched, call.tweak);
   ArResult a;
   ArResult b;
-  ArRunSide(context, game, game_function, call, &a);
+  ArRunSide(context, game, game_function, call, call.game_height_shift_from, &a);
   context->after_game.assign(world->base, world->base + world->bytes);
-  ArRunSide(context, patched, patched_function, call, &b);
+#if defined(TWATTILA_WORKER_CONTROLS)
+  const std::array<uint32_t, 12> paths_before = ArReadPaths();
+#endif
+  ArRunSide(context, patched, patched_function, call, call.height_shift_from, &b);
+#if defined(TWATTILA_WORKER_CONTROLS)
+  const std::array<uint32_t, 12> paths_after = ArReadPaths();
+  for (size_t path = 0; path < paths_after.size(); ++path) b.paths.taken[path] = paths_after[path] - paths_before[path];
+  b.paths.items = ar_module::last_call.items;
+  b.paths.records = ar_module::last_call.records;
+  b.paths.rounds = ar_module::last_call.rounds;
+  b.paths.workers = ar_module::last_call.workers;
+  b.paths.ordered = ar_module::last_call.ordered;
+#endif
   ++ar_stats.runs;
+  for (size_t path = 0; path < b.paths.taken.size(); ++path) ar_stats.paths[path] += b.paths.taken[path];
+  ar_stats.workers_used += (b.paths.taken[0] != 0 && b.paths.workers != 0 ? 1 : 0);
   ar_stats.items_stepped += (a.row >= call.start ? a.row - call.start : 0);
   ar_stats.stopped_early += (a.row < call.end ? 1 : 0);
   ar_stats.faults += (a.fault.happened ? 1 : 0);
@@ -573,7 +627,9 @@ std::string ArCompare(ArContext* context, uint8_t* game, const void* game_functi
   if (a.fault.happened && (a.fault.address != b.fault.address || a.fault.target != b.fault.target)) {
     return std::format("the fault differs: game +0x{:X} memory {:08X}, ours +0x{:X} memory {:08X}", a.fault.address, a.fault.target, b.fault.address, b.fault.target);
   }
-  if (a.eax != b.eax) return std::format("the result: game {:08X}, ours {:08X}", a.eax, b.eax);
+  // Only al: the caller tests al, and the rest of eax is whatever the game's loop last held (the list's address after a loop, the height after none), so it differs
+  // whenever the loop is not run on the same call (ours runs it in the dispatcher and leaves the game's fill the tail).
+  if ((a.eax & 0xFF) != (b.eax & 0xFF)) return std::format("the result: game {:08X}, ours {:08X}", a.eax, b.eax);
   if (a.row != b.row) return std::format("the row: game {}, ours {}", a.row, b.row);
   if (a.out != b.out) return std::format("out: game {}, ours {}", a.out, b.out);
   if (a.flags != b.flags) return std::format("MXCSR's flags: game {:02X}, ours {:02X}", a.flags, b.flags);
@@ -697,14 +753,16 @@ uint32_t __fastcall ArMutantDispatch(void* cache, void* edx, void* device, uint3
     auto* data = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(Read32(cache_bytes + 0x24)));
     Write32(data + 4, Read32(data + 4) ^ 1);
   }
-  if (ar_mutant == 5) result ^= 0x100;
+  if (ar_mutant == 5) result ^= 1;
   if (ar_mutant == 6) Write32(cache_bytes + 0x28, Read32(cache_bytes + 0x28) + 1);
   if (ar_mutant == 10) Write32(list_bytes + 4, Read32(list_bytes + 4) ^ 1);
   if (ar_mutant == 11 && *row > start) *row -= 1;
   return result;
 }
 
-// 23f. to 23x: the exactness of the animation fill (S4, S5). Called by RunAnimationRowsTests after its site and stub parts, with the game's own fill in both copies.
+// 23f. to 23t: the exactness of the animation fill (S4, S5). Called by RunAnimationRowsTests after its site and stub parts, with the game's own fill in both copies.
+// What needs the real Dispatch (the module's path counters and test switches, TWATTILA_WORKER_CONTROLS) is under that macro: without it the cases that remain are
+// the ones the pass-through stub also passes (it IS the game's fill), and the run says which were skipped.
 int RunAnimationRowsExactTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick) {
   namespace ec = twattila::engine_code::internal;
   constexpr auto ATTILA_GAME = twattila::engine_code::Game::ATTILA;
@@ -712,6 +770,9 @@ int RunAnimationRowsExactTests(const TestBuild& build, uint8_t* game, uint8_t* p
   const uint32_t fill_rva = build.code->fill_rva;
   CHECK(fill_rva == 0x182E080);
   const auto set_stage = [&](Stage stage) {
+#if defined(TWATTILA_WORKER_CONTROLS)
+    twattila::animation_rows::Update(stage);
+#endif
     ec::failed_writes = 0;
     twattila::engine_code::Update(false, ATTILA_GAME, false, false, false, false, false, false, 1.f, 0, {.animation = stage});
   };
@@ -728,13 +789,37 @@ int RunAnimationRowsExactTests(const TestBuild& build, uint8_t* game, uint8_t* p
   const char* const only = std::getenv("AR_ONLY");
   const auto selected = [&](const char* name) { return only == nullptr || std::strstr(only, name) != nullptr; };
 
+  // The pool: `workers` threads besides the render thread may be woken by the animation fill (0: it runs alone). The env limit counts the render thread too.
+  uint32_t env_generation = 1000;
+  const auto set_workers = [&](uint32_t workers) {
+    SetEnvironmentVariableA("RENODX_TW_WORKER_LIMITS", std::format("animation:{}", workers + 1).c_str());
+    twattila::worker_pool::Update({.threads = 16, .in_use = true, .env_generation = ++env_generation});
+  };
+  struct Config {
+    const char* name;
+    uint32_t workers;
+    uint32_t min_items;
+  };
+  const std::array<Config, 4> configs = {{{"alone, small calls too", 0, 1}, {"3 workers, small calls too", 3, 1}, {"15 workers", 15, 64}, {"7 workers, the design's minimum", 7, 2048}}};
+  const auto apply = [&](const Config& config) {
+    set_workers(config.workers);
+#if defined(TWATTILA_WORKER_CONTROLS)
+    ar_module::controls.min_items = config.min_items;
+#endif
+  };
+
   const auto compare = [&](const ArCall& call, ArResult* game_result = nullptr, ArResult* patched_result = nullptr) {
     const uint8_t* const game_function = (call.update ? game + ANIMATION_UPDATE_RVA : game_fill);
     const uint8_t* const patched_function = (call.update ? patched + ANIMATION_UPDATE_RVA : stub);
     return ArCompare(context.get(), game, game_function, patched, patched_function, call, game_result, patched_result);
   };
   // After a call that faulted through the stub: the stub's count stays raised (an unwind), which pins the module: back to 0 for the next call.
-  const auto after_fault = [&] { ec::worker_data->cut_active.store(0); };
+  const auto after_fault = [&] {
+    ec::worker_data->cut_active.store(0);
+#if defined(TWATTILA_WORKER_CONTROLS)
+    ar_module::ring_in_use.store(false);
+#endif
+  };
   const auto describe = [](const ArSpec& spec, const ArCall& call) {
     return std::format("seed {:016X}, items {} start {} end {} {} force {:X} texture {}/{} tweak {} rounding {} caps {} pre {} share {} dup {}", spec.seed, spec.items,
                        call.start, call.end, call.update ? "update" : "fill", call.force, call.texture, spec.textures, call.tweak ? 1 : 0, call.rounding,
@@ -756,15 +841,46 @@ int RunAnimationRowsExactTests(const TestBuild& build, uint8_t* game, uint8_t* p
     }
     return wrong;
   };
+  // The calls every world is run through: the update with the tweak off and on, and the fill on each texture it has.
+  const auto standard_calls = [&](const ArSpec& spec) {
+    std::vector<ArCall> calls;
+    calls.push_back({.update = true, .start = 0, .end = spec.items});
+    calls.push_back({.update = true, .start = 0, .end = spec.items, .tweak = true});
+    for (uint32_t texture = 0; texture < spec.textures; ++texture) {
+      calls.push_back({.update = false, .start = 0, .end = spec.items, .texture = texture, .tweak = (texture & 1) != 0});
+    }
+    return calls;
+  };
+  // A line of what the paths counters say, for a case that wants to show it ran the real thing.
+  const auto path_line = [&](const ArStats& before) {
+    std::string line;
+#if defined(TWATTILA_WORKER_CONTROLS)
+    static constexpr std::array<const char*, 11> NAMES = {"ours", "off", "forced", "row at end", "few items", "end past list", "texture range", "vector not empty", "no rows", "ring busy", "bad item"};
+    for (size_t path = 0; path < NAMES.size(); ++path) {
+      if (const uint64_t count = ar_stats.paths[path] - before.paths[path]; count != 0) line += std::format("{}{} {}", line.empty() ? "" : ", ", NAMES[path], count);
+    }
+    line += std::format("; {} woke workers", ar_stats.workers_used - before.workers_used);
+#else
+    line = "pass-through stub: no paths counted";
+#endif
+    return line;
+  };
 
   set_stage(Stage::ON);
   CHECK((ec::written & ec::WORKER_FILL_BIT) != 0 && ec::worker_data->fill_slot.load() == dispatch);
   ec::worker_data->cut_active.store(0);
   const uint32_t max_items = (quick ? 30000 : 200000);
   Random random = {.state = seed_base * 0x2545F4914F6CDD1Dull + 1};
-  std::printf("   S4/S5 seeds: base %llX (AR_SEED=<hex> AR_ONLY=<case names> to repeat), items up to %u\n", seed_base, max_items);
+  std::printf("   S4/S5 seeds: base %llX (AR_SEED=<hex> AR_ONLY=<case names> to repeat), items up to %u%s\n", seed_base, max_items,
+#if defined(TWATTILA_WORKER_CONTROLS)
+              ", the module's counters and switches on"
+#else
+              ", the pass-through stub only: no counters, no switches (build with TWATTILA_WORKER_CONTROLS against the real Dispatch)"
+#endif
+  );
+  set_workers(0);
 
-  // The harness's own CONTROLs: a dispatcher that changes one thing (or nothing) after the game's own call, each of them seen by the comparison.
+  // 23f. The harness's own CONTROLs: a dispatcher that changes one thing (or nothing) after the game's own call, each of them seen by the comparison.
   if (selected("self")) {
     ArSpec spec = {.seed = 0x5E1F, .items = 4000, .textures = 2, .current = 1, .frame = 77, .row_size = 600, .texels_per_row = 0x01000001u,
                    .need_min = 3, .need_max = 40, .flag_percent = 100, .share_percent = 20, .pre_state = 2, .record_cap = 0};
@@ -775,7 +891,7 @@ int RunAnimationRowsExactTests(const TestBuild& build, uint8_t* game, uint8_t* p
     ec::worker_data->fill_slot.store(Address(reinterpret_cast<const void*>(&ArMutantDispatch)));
     ar_mutant = 0;
     CHECK(compare(call).empty());
-    const std::array<const char*, 13> names = {"nothing", "the end one short", "an instance's texture word", "out", "a record word", "the result's eax", "the cache's frame",
+    const std::array<const char*, 13> names = {"nothing", "the end one short", "an instance's texture word", "out", "a record word", "the result's al", "the cache's frame",
                                                "MXCSR's rounding", "an extra allocation", "an animation's placement", "the list's count", "the row one short",
                                                "an instance's texel word"};
     int seen = 0;
@@ -786,8 +902,7 @@ int RunAnimationRowsExactTests(const TestBuild& build, uint8_t* game, uint8_t* p
       std::printf("   control %u (%s): %s\n", mutant, names[mutant], what.empty() ? "NOT SEEN" : what.c_str());
       CHECK(!what.empty());
     }
-    // The same through a whole update (its fill calls go through the slot too).
-    // (`out` and the fill's result are the update's own locals and al: not seen through it.)
+    // The same through a whole update (its fill calls go through the slot too). (`out` and the fill's result are the update's own locals and al: not seen through it.)
     for (uint32_t mutant : {1u, 2u, 4u, 6u, 9u, 10u, 11u, 12u}) {
       ar_mutant = mutant;
       ArCall whole = call;
@@ -802,24 +917,157 @@ int RunAnimationRowsExactTests(const TestBuild& build, uint8_t* game, uint8_t* p
   }
 
   // 23g. Random worlds: lists of 0 to max_items, every kind of need, flag, row size, texels per row, height, pre-existing placement and records' capacity; the end below the count in
-  // 37 % of the calls, non-zero starts, force and texture values the fallbacks take, all four rounding modes in a fifth of the calls, the tweak on and off.
+  // 37 % of the calls, non-zero starts, force and texture values the fallbacks take, all four rounding modes in a fifth of the calls, the tweak on and off; in each pool config.
   if (selected("random")) {
-    const uint64_t cases = (quick ? 250 : 800);
-    uint64_t wrong = 0;
-    const ArStats before = ar_stats;
-    for (uint64_t index = 0; index < cases; ++index) {
-      const ArSpec spec = ArRandomSpec(&random, max_items);
-      wrong += run_case("random", index, spec, {ArRandomCall(spec, &random), ArRandomCall(spec, &random)});
+    const uint64_t cases = (quick ? 80 : 300);
+    for (const Config& config : configs) {
+      apply(config);
+      const ArStats before = ar_stats;
+      uint64_t wrong = 0;
+      for (uint64_t index = 0; index < cases; ++index) {
+        const ArSpec spec = ArRandomSpec(&random, max_items);
+        wrong += run_case("random", index, spec, {ArRandomCall(spec, &random), ArRandomCall(spec, &random)});
+      }
+      std::printf("23g. %s: %llu random worlds, %llu calls (%llu stopped before their end, %llu stepped items, %llu with the tail's Map, %llu faults the same in both; %s): %llu differ\n",
+                  config.name, cases, ar_stats.runs - before.runs, ar_stats.stopped_early - before.stopped_early, ar_stats.items_stepped - before.items_stepped,
+                  ar_stats.tail_runs - before.tail_runs, ar_stats.equal_faults - before.equal_faults, path_line(before).c_str(), wrong);
+      CHECK(wrong == 0);
     }
-    std::printf("23g. %llu random worlds, %llu calls (%llu stopped before their end, %llu stepped items in all, %llu with the tail's Map, %llu faults the same in both): %llu differ\n", cases,
-                ar_stats.runs - before.runs, ar_stats.stopped_early - before.stopped_early, ar_stats.items_stepped - before.items_stepped,
-                ar_stats.tail_runs - before.tail_runs, ar_stats.equal_faults - before.equal_faults, wrong);
-    CHECK(wrong == 0);
   }
 
+  // 23h. Shared animations 0 / 10 / 50 / 100 % and duplicate instances (in one block and across blocks): 5 to 12 k items, every standard call, in each pool config.
+  if (selected("shared")) {
+    for (const Config& config : configs) {
+      apply(config);
+      const ArStats before = ar_stats;
+      uint64_t wrong = 0;
+      uint64_t index = 0;
+      for (const uint32_t share : {0u, 10u, 50u, 100u}) {
+        for (const uint32_t duplicate : {0u, 5u, 50u, 100u}) {
+          ArSpec spec = {.seed = seed_base + 1000 * index, .items = 5000 + random.Next() % (quick ? 2000 : 7000), .extra_entries = 8, .textures = 2, .current = 0,
+                         .frame = random.Next(), .row_size = 4096, .texels_per_row = 40000, .need_min = 1, .need_max = 120, .flag_percent = 50,
+                         .share_percent = share, .duplicate_percent = duplicate, .pre_state = 0, .record_cap = 0};
+          spec.heights = {500, 40, 500, 500, 500, 500};
+          wrong += run_case("shared", index++, spec, standard_calls(spec));
+        }
+      }
+      std::printf("23h. %s: shared animations 0 / 10 / 50 / 100 %% x duplicate instances 0 / 5 / 50 / 100 %%, %llu worlds, %llu calls (%s): %llu differ\n", config.name, index,
+                  ar_stats.runs - before.runs, path_line(before).c_str(), wrong);
+      CHECK(wrong == 0);
+    }
+  }
+
+  // 23i. Cached-placement pre-states (valid, stale frame, other texture, minus one, mixed), with the valid frame one off as well.
+  if (selected("prestate")) {
+    for (const Config& config : configs) {
+      apply(config);
+      const ArStats before = ar_stats;
+      uint64_t wrong = 0;
+      uint64_t index = 0;
+      for (const uint32_t state : {0u, 1u, 2u, 3u, 4u}) {
+        for (const uint32_t frame_offset : {0u, 1u}) {
+          for (const uint32_t share : {0u, 60u}) {
+            ArSpec spec = {.seed = seed_base + 77 + 1000 * index, .items = 4000 + random.Next() % 4000, .extra_entries = 8, .textures = 3, .current = 1,
+                           .frame = random.Next(), .row_size = 2000, .texels_per_row = 9000, .need_min = 0, .need_max = 90, .flag_percent = 50,
+                           .share_percent = share, .duplicate_percent = 5, .pre_state = state, .record_cap = 3, .frame_offset = frame_offset};
+            wrong += run_case("prestate", index++, spec, standard_calls(spec));
+          }
+        }
+      }
+      std::printf("23i. %s: placements valid / stale / other texture / minus one / mixed (the frame also one off), %llu worlds, %llu calls (%s): %llu differ\n", config.name, index,
+                  ar_stats.runs - before.runs, path_line(before).c_str(), wrong);
+      CHECK(wrong == 0);
+    }
+  }
+
+  // 23j. Oversize items: an item larger than a row opens the next row and leaves the current one empty (row 0 too), and after it `row size - used` wraps, so every later item fits.
+  if (selected("oversize")) {
+    for (const Config& config : configs) {
+      apply(config);
+      const ArStats before = ar_stats;
+      uint64_t wrong = 0;
+      uint64_t index = 0;
+      for (const uint32_t row_size : {20u, 100u, 700u, 5000u}) {
+        for (const uint32_t oversize : {1u, 5u, 30u, 100u}) {
+          for (const uint32_t flag : {0u, 100u}) {
+            ArSpec spec = {.seed = seed_base + 5000 + 1000 * index, .items = 4500 + random.Next() % 3000, .extra_entries = 8, .textures = 2, .current = 0,
+                           .frame = random.Next(), .row_size = row_size, .texels_per_row = 7001, .need_min = 0, .need_max = std::max(2u, row_size / 3),
+                           .oversize_percent = oversize, .flag_percent = flag, .share_percent = 0, .duplicate_percent = 0, .pre_state = 2, .record_cap = 0};
+            spec.heights = {300, 3000, 300, 300, 300, 300};
+            wrong += run_case("oversize", index++, spec, standard_calls(spec));
+          }
+        }
+      }
+      std::printf("23j. %s: oversize items (row sizes 20 .. 5000, 1 .. 100 %% of the items larger than a row, with and without the flag), %llu worlds, %llu calls (%s): %llu differ\n",
+                  config.name, index, ar_stats.runs - before.runs, path_line(before).c_str(), wrong);
+      CHECK(wrong == 0);
+    }
+  }
+
+  // 23k. Growth of the records' vector inside a call: every record is a placement (stale, unshared), so a call of n items makes n records, from capacity 0 and from capacities around
+  // n and its halves and the powers of two it passes.
+  if (selected("growth")) {
+    for (const Config& config : {configs[0], configs[1]}) {
+    apply(config);
+    const ArStats before = ar_stats;
+    uint64_t wrong = 0;
+    uint64_t index = 0;
+    for (const uint32_t items : {1u, 2u, 3u, 4u, 5u, 16u, 17u, 511u, 512u, 513u, 1023u, 1024u, 1025u, 2047u, 2048u, 2049u, 4095u, 4096u, 4097u, 8191u, 8192u, 8193u}) {
+      std::vector<uint32_t> capacities = {0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, items - 1, items, items + 1, items / 2, items / 2 + 1, items / 2 - 1 + (items < 2 ? 1 : 0)};
+      for (uint32_t power = 1; power <= items; power *= 2) {
+        capacities.push_back(power - 1);
+        capacities.push_back(power);
+        capacities.push_back(power + 1);
+      }
+      std::sort(capacities.begin(), capacities.end());
+      capacities.erase(std::unique(capacities.begin(), capacities.end()), capacities.end());
+      for (const uint32_t capacity : capacities) {
+        ArSpec spec = {.seed = seed_base + 9000 + items * 31 + capacity, .items = items, .extra_entries = 4, .textures = 1, .current = 0, .frame = 5, .row_size = 100000,
+                       .texels_per_row = 300000, .need_min = 1, .need_max = 3, .flag_percent = 0, .share_percent = 0, .duplicate_percent = 0, .pre_state = 2,
+                       .record_cap = capacity};
+        spec.heights = {1000000, 1, 1, 1, 1, 1};
+        const ArCall calls[] = {{.update = false, .start = 0, .end = items, .texture = 0, .tweak = true}, {.update = true, .start = 0, .end = items}};
+        wrong += run_case("growth", index++, spec, {std::begin(calls), std::end(calls)});
+      }
+    }
+    std::printf("23k. %s: growth inside a call, lists of 1 to 8193 items from capacity 0 and from the capacities around the count, its half and the powers of two, %llu worlds (%s): %llu differ\n",
+                config.name, index, path_line(before).c_str(), wrong);
+    CHECK(wrong == 0);
+    }
+  }
+
+  // 23l. F, the texel's float: the pre-existing texel words (the fast path) and the computed ones (texels per row at the edges) at 0, 2^24 + 1, 2^31, 0xFFFFFFFE and random values
+  // above 2^24, all four MXCSR rounding modes on the dispatching thread; the result, every instance word and the sticky flags equal to the game's.
+  if (selected("float")) {
+    for (const Config& config : {configs[0], configs[1]}) {
+      apply(config);
+      const ArStats before = ar_stats;
+      uint64_t wrong = 0;
+      uint64_t index = 0;
+      for (const uint32_t rounding : {0u, 1u, 2u, 3u}) {
+        for (const uint32_t texels_per_row : {0u, 1u, 3u, 0x01000001u, 0x01000003u, 0x7FFFFFFFu, 0x80000000u, 0x80000001u, 0xFFFFFFFEu, 0xFFFFFF01u, 0x123456F7u}) {
+          for (const uint32_t state : {1u, 2u}) {
+            ArSpec spec = {.seed = seed_base + 20000 + 1000 * index, .items = 3000 + random.Next() % 2000, .extra_entries = 8, .textures = 1, .current = 0,
+                           .frame = random.Next(), .row_size = 3000, .texels_per_row = texels_per_row, .need_min = 1, .need_max = 80, .flag_percent = 50,
+                           .share_percent = 30, .duplicate_percent = 0, .pre_state = state, .pre_texel_edge = true, .record_cap = 0};
+            spec.heights = {400, 1, 1, 1, 1, 1};
+            wrong += run_case("float", index++, spec,
+                              {{.update = false, .start = 0, .end = spec.items, .texture = 0, .tweak = true, .rounding = rounding},
+                               {.update = true, .start = 0, .end = spec.items, .rounding = rounding}});
+          }
+        }
+      }
+      std::printf("23l. %s: F at the edge values, 4 MXCSR rounding modes, %llu worlds (%s): %llu differ\n", config.name, index, path_line(before).c_str(), wrong);
+      CHECK(wrong == 0);
+    }
+  }
+
+  set_workers(0);
   set_stage(Stage::OFF);
   CHECK((ec::written & ec::WORKER_SITES) == 0 && ec::worker_data->fill_slot.load() == 0 && ec::worker_data->cut_active.load() == 0 && !ec::module_pinned);
   ArSetTweaks(game, patched, false);
+  twattila::worker_pool::Update({.threads = 4, .in_use = false});
+  SetEnvironmentVariableA("RENODX_TW_WORKER_LIMITS", nullptr);
   return 0;
 }
 
