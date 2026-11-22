@@ -461,6 +461,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - reflection owner: r3_refl boxes +0.45 % / edge +3.1 % bias, already before H0 (h ... | ?
 - release / lifetime owner (gpu3_ A1g, lga_): 5 release modes 77-122 ms vs the 75 ... | ?
 - coordinator after upr_'s OK: H0 re-run (full, ~84 min, ATN's rule) in a gap; ATN ... | ?
+- who owns the build env: gated_build's stderr shows `'vswhere.exe' is not recogni ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8341,8 +8342,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         _loop / _sites PASS, gated builds -Owner c3i_ x86 3 + DR + amd64 exit 0. 8 orphaned engine_code.exe (01:50-
         03:36, not c3i_'s) left alone (reboot box). -> b13r_ REVIEW STARTED (xHigh; incl. the bug fix + isolating the
         2 mutants on 26g).
+        gtb_ WRAPPED BUILD = OPTION A CONFIRMED 08:1x (plan_1117/gtb_wrapped_build_handback.md; backup
+        scratchpad\gtb_bak20): one real `budget.py watch -- gated_build.ps1 -Arch amd64 -Owner gtb_ twattila` on
+        c0b7a6f6e (slots free): wait_s 2.0 + run_s 80.5 = 82 s wall, clock started at the slot (slot since
+        08:02:27, 1.6 s after t0), exit 0 passed through; FIRST real watch_runs.tsv row (kind "build gated_build.ps1
+        amd64 twattila warm", source none = no price row yet, load unknown). Notes: load_tag gives `unknown`; the
+        build printed `'vswhere.exe' is not recognized` (build still OK). hg2: with the hook, watch calls
+        gate_file() per file and prints `renodx-watch FAULT <file> unreadable (gate_hook.gate_file; reason in
+        gate_errors.tsv): read as shadow` when it returns None; 3 fake-hook cases; test_budget 3 x 35, selftest 3 x
+        3. -> gpr_ CHECK STARTED; Section 8's A text -> gtp_ (in its round 12).
+        - [ ] who owns the build env: gated_build's stderr shows `'vswhere.exe' is not recognized` (amd64 build OK)
+            - check whether a vswhere lookup silently falls back (gtb_ 08:1x).
         Agents (8): upr_ (h0i_ H0 analysis re-check), gtl_ (v1.2 config hash, lab side), gtp_ (round 12: hg1 +
-        Section 8 + kind()), gtb_ (wrapped build check + hg2), ebr_ (t4i_ r24 re-check), b13r_ (c3i_ rmt_b1rt
+        Section 8 + kind()), gpr_ (gtb_ wrapped build + hg2 check), ebr_ (t4i_ r24 re-check), b13r_ (c3i_ rmt_b1rt
         review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
