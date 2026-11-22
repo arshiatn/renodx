@@ -229,7 +229,9 @@ class FrameGeneration12 {
       status_ = std::format("Frame generation: no D3D12 device on the game's GPU (0x{:08X})", static_cast<uint32_t>(made));
       return false;
     }
-    if (set_device_(device_.Get()) != sl::Result::eOk) return Fail("Streamline refused the D3D12 device");
+    if (const sl::Result set = set_device_(device_.Get()); set != sl::Result::eOk) {
+      return Fail(std::format("Streamline refused the D3D12 device ({})", sl::getResultAsStr(set)));
+    }
     if (!Resolve(sl::kFeatureDLSS_G, &set_options_, "slDLSSGSetOptions") || !Resolve(sl::kFeatureDLSS_G, &get_state_, "slDLSSGGetState")
         || !Resolve(sl::kFeatureReflex, &set_reflex_, "slReflexSetOptions") || !Resolve(sl::kFeatureReflex, &sleep_, "slReflexSleep")
         || !Resolve(sl::kFeaturePCL, &set_marker_, "slPCLSetMarker")) {
@@ -240,7 +242,9 @@ class FrameGeneration12 {
     set_reflex_(reflex);
     // Streamline's proxy of the device and its queue make the swap chain; the copies run on a native queue of their own.
     void* upgraded = device_.Get();
-    if (upgrade_(&upgraded) != sl::Result::eOk) return Fail("Streamline did not take the D3D12 device");
+    if (const sl::Result taken = upgrade_(&upgraded); taken != sl::Result::eOk) {
+      return Fail(std::format("Streamline did not take the D3D12 device ({})", sl::getResultAsStr(taken)));
+    }
     if (upgraded == device_.Get()) device_->AddRef();
     streamline_device_.Attach(static_cast<ID3D12Device*>(upgraded));
     void* native_queue = nullptr;

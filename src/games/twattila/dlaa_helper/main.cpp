@@ -26,11 +26,15 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <exception>
 #include <format>
 #include <initializer_list>
 #include <memory>
@@ -70,16 +74,44 @@ static void LogWithTime(const char* message) {
   std::fflush(log_file);
 }
 
-// A fault nothing handled: a line in the log and a small dump beside it, the last one only.
+// A small dump beside the log, the last one only (`fault` null: the calling thread's place); false: none written.
 static std::array<wchar_t, MAX_PATH> dump_path = {};
-static LONG WINAPI OnUnhandledFault(EXCEPTION_POINTERS* fault) {
+static bool WriteDump(EXCEPTION_POINTERS* fault) {
   const HANDLE file = CreateFileW(dump_path.data(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-  bool dumped = false;
-  if (file != INVALID_HANDLE_VALUE) {
-    MINIDUMP_EXCEPTION_INFORMATION where = {.ThreadId = GetCurrentThreadId(), .ExceptionPointers = fault, .ClientPointers = FALSE};
-    dumped = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file, MiniDumpWithThreadInfo, &where, nullptr, nullptr) != FALSE;
-    CloseHandle(file);
+  if (file == INVALID_HANDLE_VALUE) return false;
+  MINIDUMP_EXCEPTION_INFORMATION where = {.ThreadId = GetCurrentThreadId(), .ExceptionPointers = fault, .ClientPointers = FALSE};
+  const bool dumped = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file, MiniDumpWithThreadInfo,
+                                        (fault != nullptr) ? &where : nullptr, nullptr, nullptr)
+                      != FALSE;
+  CloseHandle(file);
+  return dumped;
+}
+
+// The CRT's ends that skip OnUnhandledFault (its __fastfail): an uncaught C++ exception (std::terminate on the main
+// thread; on another thread its terminate's abort), a pure virtual call, an invalid CRT parameter. Its line and a dump,
+// then the process ends with `exit_code` (dlaa_bridge.h HELPER_EXIT_*), which the addon logs. Nothing allocated (a
+// std::bad_alloc may be why); a second thread that gets here waits for the first's end.
+[[noreturn]] static void StopOnCrtEnd(const char* why, uint32_t exit_code) {
+  static std::atomic<bool> stopping = false;
+  if (stopping.exchange(true)) Sleep(INFINITE);
+  std::array<char, 512> line = {};
+  std::snprintf(line.data(), line.size(), "[TW DLAA helper] Stopped: %s (exit code 0x%08X).", why, exit_code);
+  try {
+    if (const std::exception_ptr thrown = std::current_exception(); thrown != nullptr) std::rethrow_exception(thrown);
+  } catch (const std::exception& thrown) {
+    std::snprintf(line.data(), line.size(), "[TW DLAA helper] Stopped: %s: %s (exit code 0x%08X).", why, thrown.what(), exit_code);
+  } catch (...) {
+    // No-op: an exception that is no std::exception has no text.
   }
+  LogWithTime(line.data());
+  LogWithTime(WriteDump(nullptr) ? "[TW DLAA helper] renodx-tw-dlaa64.dmp written." : "[TW DLAA helper] No dump.");
+  TerminateProcess(GetCurrentProcess(), exit_code);
+  for (;;) Sleep(INFINITE);
+}
+
+// A fault nothing handled: a line in the log and a small dump beside it.
+static LONG WINAPI OnUnhandledFault(EXCEPTION_POINTERS* fault) {
+  const bool dumped = WriteDump(fault);
   HMODULE module = nullptr;
   GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                      static_cast<LPCWSTR>(fault->ExceptionRecord->ExceptionAddress), &module);
@@ -100,7 +132,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   for (const wchar_t* library : {L"dxgi.dll", L"d3d11.dll", L"d3d12.dll"}) LoadLibraryExW(library, nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
   int argument_count = 0;
   wchar_t** arguments = CommandLineToArgvW(GetCommandLineW(), &argument_count);
-  if (arguments == nullptr || argument_count < 2) return 1;
+  if (arguments == nullptr || argument_count < 2) return static_cast<int>(twattila::dlaa_bridge::HELPER_EXIT_COMMAND_LINE);
   const DWORD game_id = std::wcstoul(arguments[1], nullptr, 10);
 
   std::wstring folder(MAX_PATH, L'\0');
@@ -112,27 +144,60 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // are the game's process's, taken from it here): the fences freed from this process, where ReShade counts no devices,
   // and its line after the stopped helper's.
   if (argument_count >= 7 && std::wcscmp(arguments[2], L"rescue") == 0) {
+    using namespace twattila::dlaa_bridge;
     _wfopen_s(&log_file, log_path.c_str(), L"a");
+    // The first step that failed, as the exit code (the addon logs it) and with its value here; the other sets are still
+    // signalled.
+    uint32_t failed_step = HELPER_EXIT_DONE;
+    std::string why;
+    const auto fail = [&](uint32_t step, std::string what) {
+      if (failed_step != HELPER_EXIT_DONE) return;
+      failed_step = step;
+      why = std::move(what);
+    };
     const HANDLE game = OpenProcess(PROCESS_DUP_HANDLE, FALSE, game_id);
+    if (game == nullptr) {
+      fail(HELPER_EXIT_RESCUE_GAME, std::format("the game's process: error {}", GetLastError()));
+    }
     ComPtr<IDXGIFactory4> factory;
     ComPtr<IDXGIAdapter1> adapter;
     ComPtr<ID3D12Device> device;
-    bool freed = SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf())))
-                 && SUCCEEDED(factory->EnumAdapterByLuid(
-                     LUID{.LowPart = std::wcstoul(arguments[3], nullptr, 10), .HighPart = std::wcstol(arguments[4], nullptr, 10)},
-                     IID_PPV_ARGS(adapter.GetAddressOf())))
-                 && SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device.GetAddressOf())));
+    if (const HRESULT made = CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf())); FAILED(made)) {
+      fail(HELPER_EXIT_RESCUE_FACTORY, std::format("DXGI factory 0x{:08X}", static_cast<uint32_t>(made)));
+    } else if (const HRESULT found = factory->EnumAdapterByLuid(
+                   LUID{.LowPart = std::wcstoul(arguments[3], nullptr, 10), .HighPart = std::wcstol(arguments[4], nullptr, 10)},
+                   IID_PPV_ARGS(adapter.GetAddressOf()));
+               FAILED(found)) {
+      fail(HELPER_EXIT_RESCUE_ADAPTER, std::format("the game's GPU 0x{:08X}", static_cast<uint32_t>(found)));
+    } else if (const HRESULT created = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device.GetAddressOf()));
+               FAILED(created)) {
+      fail(HELPER_EXIT_RESCUE_DEVICE, std::format("D3D12 device 0x{:08X}", static_cast<uint32_t>(created)));
+    }
     for (int index = 5; device && index + 1 < argument_count; index += 2) {
+      const int set = (index - 5) / 2;
       ComPtr<ID3D12Fence> fence;
       HANDLE shared_fence = nullptr;
-      freed = DuplicateHandle(game, reinterpret_cast<HANDLE>(_wcstoui64(arguments[index], nullptr, 10)), GetCurrentProcess(), &shared_fence, 0,
-                              FALSE, DUPLICATE_SAME_ACCESS)
-              && SUCCEEDED(device->OpenSharedHandle(shared_fence, IID_PPV_ARGS(fence.GetAddressOf())))
-              && twattila::dlaa_helper::SignalAbandoned(fence.Get(), _wcstoui64(arguments[index + 1], nullptr, 10), 2000) && freed;
+      if (!DuplicateHandle(game, reinterpret_cast<HANDLE>(_wcstoui64(arguments[index], nullptr, 10)), GetCurrentProcess(), &shared_fence, 0,
+                           FALSE, DUPLICATE_SAME_ACCESS)) {
+        fail(HELPER_EXIT_RESCUE_HANDLE, std::format("set {}: its fence's handle, error {}", set, GetLastError()));
+        continue;
+      }
+      if (const HRESULT opened = device->OpenSharedHandle(shared_fence, IID_PPV_ARGS(fence.GetAddressOf())); FAILED(opened)) {
+        fail(HELPER_EXIT_RESCUE_FENCE, std::format("set {}: its fence 0x{:08X}", set, static_cast<uint32_t>(opened)));
+        continue;
+      }
+      if (const uint64_t value = _wcstoui64(arguments[index + 1], nullptr, 10); !twattila::dlaa_helper::SignalAbandoned(fence.Get(), value, 2000)) {
+        fail(HELPER_EXIT_RESCUE_SIGNAL, std::format("set {}: its fence at {} after 2 s, wanted {}", set, fence->GetCompletedValue(), value));
+      }
     }
-    LogWithTime(freed ? "[TW DLAA helper] The helper had stopped: what the game's GPU waited for from it is signalled."
-                      : "[TW DLAA helper] The helper had stopped: what the game's GPU waited for from it could not be signalled.");
-    return freed ? 0 : 1;
+    if (failed_step == HELPER_EXIT_DONE) {
+      LogWithTime("[TW DLAA helper] The helper had stopped: what the game's GPU waited for from it is signalled.");
+    } else {
+      LogWithTime(std::format("[TW DLAA helper] The helper had stopped: what the game's GPU waited for from it could not be signalled ({}; exit code {}).",
+                              why, failed_step)
+                      .c_str());
+    }
+    return static_cast<int>(failed_step);
   }
 #if defined(RENODX_RECORDER)
   // The recorder build's player: "<any> play <recording folder> [<dump folder>]" (below, once Nsight Graphics' activity is up);
@@ -142,9 +207,21 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   const HANDLE kept_log = play ? CreateFileW(log_path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr) : INVALID_HANDLE_VALUE;
 #endif
   LocalFree(arguments);
+  // The last helper's log kept (a second helper in the same run, a game started again after a crash): its last lines and
+  // DRED report.
+  MoveFileExW(log_path.c_str(), (folder + L"\\renodx-tw-dlaa64.old.log").c_str(), MOVEFILE_REPLACE_EXISTING);
   _wfopen_s(&log_file, log_path.c_str(), L"w");
+  LogWithTime(std::format("[TW DLAA helper] Started (game {}).", game_id).c_str());
   wcsncpy_s(dump_path.data(), dump_path.size(), (folder + L"\\renodx-tw-dlaa64.dmp").c_str(), _TRUNCATE);
   SetUnhandledExceptionFilter(OnUnhandledFault);
+  // The terminate handler is per thread (this one's); another thread's uncaught exception reaches abort, whose handler is
+  // process-wide, as are the last two.
+  std::set_terminate([] { StopOnCrtEnd("an uncaught C++ exception", twattila::dlaa_bridge::HELPER_EXIT_UNCAUGHT_EXCEPTION); });
+  std::signal(SIGABRT, [](int) { StopOnCrtEnd("an abort (another thread's uncaught C++ exception, or the CRT's)", twattila::dlaa_bridge::HELPER_EXIT_ABORT); });
+  _set_purecall_handler([] { StopOnCrtEnd("a pure virtual call", twattila::dlaa_bridge::HELPER_EXIT_PURE_CALL); });
+  _set_invalid_parameter_handler([](const wchar_t*, const wchar_t*, const wchar_t*, unsigned int, uintptr_t) {
+    StopOnCrtEnd("an invalid CRT parameter", twattila::dlaa_bridge::HELPER_EXIT_INVALID_PARAMETER);
+  });
   // Nsight Graphics' GPU Trace or Graphics Capture in this process (started by it, or by a game it started): its frame
   // boundaries (`run`, below) reach it once its activity is initialized here. Without Nsight Graphics nothing is injected
   // and they do nothing.
@@ -220,7 +297,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                             "device was not removed). Its resources cannot be freed safely.",
                             owner, completed, wanted)
                     .c_str());
-    TerminateProcess(GetCurrentProcess(), ERROR_DEVICE_HARDWARE_ERROR);
+    static_assert(twattila::dlaa_bridge::HELPER_EXIT_GPU_UNFINISHED == ERROR_DEVICE_HARDWARE_ERROR, "the code earlier helpers ended with");
+    TerminateProcess(GetCurrentProcess(), twattila::dlaa_bridge::HELPER_EXIT_GPU_UNFINISHED);
   };
 #ifdef RENODX_TW_HELPER_FAULT_TEST
   // A test build only (build.ps1 with -DRENODX_TW_HELPER_FAULT_TEST added): RENODX_TW_HELPER_FAULT set, the dump's path on demand.
@@ -228,14 +306,18 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 #endif
 
   const std::wstring name = L"Local\\RenoDX_TW_DLAA_" + std::to_wstring(game_id);
+  const auto not_found = [&](const char* what) {
+    LogWithTime(std::format("[TW DLAA helper] The game's {} was not found (error {}).", what, GetLastError()).c_str());
+    return static_cast<int>(twattila::dlaa_bridge::HELPER_EXIT_NOT_FOUND);
+  };
   HANDLE game = OpenProcess(SYNCHRONIZE, FALSE, game_id);
+  if (game == nullptr) return not_found("process");
   HANDLE mapping = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, name.c_str());
+  if (mapping == nullptr) return not_found("shared memory");
   HANDLE request = OpenEventW(SYNCHRONIZE | EVENT_MODIFY_STATE, FALSE, (name + L"_request").c_str());
+  if (request == nullptr) return not_found("request event");
   HANDLE done = OpenEventW(SYNCHRONIZE | EVENT_MODIFY_STATE, FALSE, (name + L"_done").c_str());
-  if (game == nullptr || mapping == nullptr || request == nullptr || done == nullptr) {
-    ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] The game's shared memory or events were not found.");
-    return 1;
-  }
+  if (done == nullptr) return not_found("completion event");
   // The block as the addon's version made it (v2's ends before v3's fields): its version first.
   const auto map = [&](size_t bytes) {
     return static_cast<twattila::dlaa_bridge::Shared*>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, bytes));
@@ -247,12 +329,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     shared = map(twattila::dlaa_bridge::SharedBytes(version));
   }
   if (shared == nullptr || version < twattila::dlaa_bridge::OLDEST_VERSION || version > twattila::dlaa_bridge::VERSION) {
-    ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] Shared memory unusable (another version?).");
-    return 1;
+    LogWithTime(std::format("[TW DLAA helper] Shared memory unusable (the addon's bridge v{}, this helper's v{} to v{}; error {}).", version,
+                            twattila::dlaa_bridge::OLDEST_VERSION, twattila::dlaa_bridge::VERSION, (shared == nullptr) ? GetLastError() : 0u)
+                    .c_str());
+    return static_cast<int>(twattila::dlaa_bridge::HELPER_EXIT_VERSION);
   }
   const auto set_status = [&](const char* status) {
     strncpy_s(shared->status, status, _TRUNCATE);
   };
+  if (log_file == nullptr) {
+    set_status("DLAA helper: its log renodx-tw-dlaa64.log could not be opened");
+  }
   // The cluster sets' data (v16): the addon's second mapping (null: none, no compact draws).
   const uint8_t* cluster_data = nullptr;
   if (HANDLE clusters = (version >= 16) ? OpenFileMappingW(FILE_MAP_READ, FALSE, (name + L"_clusters").c_str()) : nullptr; clusters != nullptr) {
@@ -270,18 +357,37 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   ComPtr<ID3D11Device1> device1;
   ComPtr<ID3D11Device5> device5;
   ComPtr<ID3D11DeviceContext4> context4;
+  // The first failure (E_NOINTERFACE: a device without D3D11.4).
   const auto make_device = [&] {
-    return SUCCEEDED(D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, LEVELS, 2, D3D11_SDK_VERSION,
-                                       device.ReleaseAndGetAddressOf(), nullptr, context.ReleaseAndGetAddressOf()))
-           && SUCCEEDED(device.As(&device1)) && SUCCEEDED(device.As(&device5)) && SUCCEEDED(context.As(&context4));
+    HRESULT made = D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, LEVELS, 2, D3D11_SDK_VERSION,
+                                     device.ReleaseAndGetAddressOf(), nullptr, context.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(made)) made = device.As(&device1);
+    if (SUCCEEDED(made)) made = device.As(&device5);
+    if (SUCCEEDED(made)) made = context.As(&context4);
+    return made;
   };
-  if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf())))
-      || FAILED(factory->EnumAdapterByLuid(luid, IID_PPV_ARGS(adapter.GetAddressOf()))) || !make_device()) {
-    set_status("DLAA helper: no D3D11.4 device on the game's GPU");
-    return 1;
+  {
+    const char* step = "factory";
+    HRESULT made = CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf()));
+    if (SUCCEEDED(made)) {
+      step = "adapter";
+      made = factory->EnumAdapterByLuid(luid, IID_PPV_ARGS(adapter.GetAddressOf()));
+    }
+    if (SUCCEEDED(made)) {
+      step = "device";
+      made = make_device();
+    }
+    if (FAILED(made)) {
+      const std::string why = std::format("DLAA helper: no D3D11.4 device on the game's GPU ({} 0x{:08X})", step, static_cast<uint32_t>(made));
+      set_status(why.c_str());
+      LogWithTime(why.c_str());
+      return static_cast<int>(twattila::dlaa_bridge::HELPER_EXIT_NO_D3D11);
+    }
   }
   // Only requests are answered through `done` (the addon reads `ready` before its first one).
-  set_status("DLAA helper ready");
+  if (log_file != nullptr) {
+    set_status("DLAA helper ready");
+  }
   shared->ready = 1;
 
   talesofarise::dlss::Backend backend;
@@ -556,11 +662,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // its scene again.
   const auto replace_lost_scene = [&] {
     rt_drain();
+    // A failed request's reason (its skip text or Close's HRESULT) goes with the scene.
+    const std::string why = scene->Status();
     const bool removed = scene->Removed();
     if (removed) {
       ReShadeLogMessage(nullptr, 0, scene->LostReport().c_str());
     }
     const bool stalled = !removed && scene->TimedOut();
+    const auto stall = scene->LastStall();
     if (stalled) {
       stalled_scene = std::move(scene);
     }
@@ -578,15 +687,25 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       }
       scene_stalled = now;
       ++scene_stalls;
-      LogWithTime(scene_off() ? "[TW ray tracing] Off until the game restarts (the GPU did not finish its requests in time, four times in a row)."
-                              : "[TW ray tracing] The GPU did not finish its last requests in time (its device was not removed): ray tracing "
-                                "passes until it has, then starts again.");
+      const std::string values = std::format("its fence at {}, waited for {}, stall {} of 4", stall.completed, stall.wanted, scene_stalls);
+      if (scene_off()) {
+        LogWithTime(std::format("[TW ray tracing] Off until the game restarts (the GPU did not finish its requests in time, four times in a row; {}).", values)
+                        .c_str());
+      } else {
+        LogWithTime(std::format("[TW ray tracing] The GPU did not finish its last requests in time ({}; its device was not removed): ray tracing "
+                                "passes until it has, then starts again.",
+                                values)
+                        .c_str());
+      }
       return;
     }
     if (!removed) {
       ++scene_failures;
-      ReShadeLogMessage(nullptr, 0, scene_off() ? "[TW ray tracing] Off until the game restarts (a fourth failed request)."
-                                                : "[TW ray tracing] Started again after a failed request.");
+      if (scene_off()) {
+        ReShadeLogMessage(nullptr, 0, std::format("[TW ray tracing] Off until the game restarts (a fourth failed request: {}).", why).c_str());
+      } else {
+        ReShadeLogMessage(nullptr, 0, std::format("[TW ray tracing] Started again after a failed request ({}).", why).c_str());
+      }
       return;
     }
     ReShadeLogMessage(nullptr, 0, (++scene_losses == 1)
@@ -823,7 +942,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     return woken;
   };
   auto refused_tried = std::chrono::steady_clock::now();
-  while (next_request() == WAIT_OBJECT_0) {
+  uint32_t exit_code = twattila::dlaa_bridge::HELPER_EXIT_DONE;
+  DWORD woken = WAIT_OBJECT_0;
+  while ((woken = next_request()) == WAIT_OBJECT_0) {
     log_removed_devices();
     last_request = std::chrono::steady_clock::now();
     // A GPU reset removed the D3D11 device every request waits and signals on: a new one, this set's fence opened again on
@@ -843,14 +964,21 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       device1.Reset();
       context.Reset();
       device.Reset();
-      if (!make_device()) {
-        LogWithTime("[TW DLAA helper] A GPU reset removed its D3D11 device and no new one could be made: the helper ends.");
+      if (const HRESULT made = make_device(); FAILED(made)) {
+        LogWithTime(std::format("[TW DLAA helper] A GPU reset removed its D3D11 device and no new one could be made (0x{:08X}): the helper ends.",
+                                static_cast<uint32_t>(made))
+                        .c_str());
+        exit_code = twattila::dlaa_bridge::HELPER_EXIT_D3D11_LOST;
         break;
       }
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed its D3D11 device: a new one.");
-      if (shared->generation == opened_generation && shared->color != 0
-          && FAILED(device5->OpenSharedFence(reinterpret_cast<HANDLE>(shared->fence), IID_PPV_ARGS(fence.GetAddressOf())))) {
-        fence.Reset();
+      if (shared->generation == opened_generation && shared->color != 0) {
+        if (const HRESULT opened = device5->OpenSharedFence(reinterpret_cast<HANDLE>(shared->fence), IID_PPV_ARGS(fence.GetAddressOf()));
+            FAILED(opened)) {
+          fence.Reset();
+          LogWithTime(std::format("[TW DLAA helper] The set's fence could not be opened on the new D3D11 device (0x{:08X}).", static_cast<uint32_t>(opened))
+                          .c_str());
+        }
       }
     }
     // The stalled scene's work is done, or its device removed since (held, it would refuse the new devices below).
@@ -1179,6 +1307,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     shared->done_value = (fence ? shared->value + 1 : shared->value);
     SetEvent(done);
   }
+  // WAIT_OBJECT_0 + 1: the game ended. WAIT_OBJECT_0: left above with its line.
+  if (woken != WAIT_OBJECT_0 && woken != WAIT_OBJECT_0 + 1) {
+    LogWithTime(std::format("[TW DLAA helper] The request wait failed (0x{:X}, error {}): the helper ends.", woken, GetLastError()).c_str());
+    exit_code = twattila::dlaa_bridge::HELPER_EXIT_REQUEST_WAIT;
+  }
   {
     const std::unique_lock lock(rt_work.mutex);
     rt_work.stop = true;
@@ -1196,5 +1329,5 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   }
   // Its work can only finish with the game's GPU, which is gone: no wait for it.
   stalled_scene.release();
-  return 0;
+  return static_cast<int>(exit_code);
 }

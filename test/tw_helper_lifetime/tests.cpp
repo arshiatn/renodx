@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
 
 namespace {
@@ -18,6 +19,10 @@ bool fail_resume = false;
 bool fail_duplicate = false;
 bool fail_stop_event = false;
 bool helper_writes_during_transfer = false;
+// The bridge's next exit-code read: STILL_ACTIVE (a helper not gone 5 s after the watcher ended it); the one after a
+// fake_still_active read, or the next one: failed.
+std::atomic<bool> fake_still_active = false;
+std::atomic<bool> fail_exit_read = false;
 std::atomic<unsigned> processes_created = 0;
 std::atomic<unsigned> warnings = 0;
 HANDLE child_witness = nullptr;
@@ -29,6 +34,7 @@ HANDLE WINAPI TestCreateEventW(LPSECURITY_ATTRIBUTES attributes, BOOL manual, BO
 BOOL WINAPI TestCreateProcessW(LPCWSTR application, LPWSTR command, LPSECURITY_ATTRIBUTES process_attributes,
                               LPSECURITY_ATTRIBUTES thread_attributes, BOOL inherit, DWORD flags, LPVOID environment,
                               LPCWSTR directory, LPSTARTUPINFOW startup, LPPROCESS_INFORMATION information);
+BOOL WINAPI TestGetExitCodeProcess(HANDLE process, LPDWORD code);
 }
 
 #define AssignProcessToJobObject TestAssignProcessToJobObject
@@ -36,17 +42,47 @@ BOOL WINAPI TestCreateProcessW(LPCWSTR application, LPWSTR command, LPSECURITY_A
 #define DuplicateHandle TestDuplicateHandle
 #define CreateEventW TestCreateEventW
 #define CreateProcessW TestCreateProcessW
+#define GetExitCodeProcess TestGetExitCodeProcess
 #include "src/games/twattila/dlaa_bridge.hpp"
 #undef AssignProcessToJobObject
 #undef ResumeThread
 #undef DuplicateHandle
 #undef CreateEventW
 #undef CreateProcessW
+#undef GetExitCodeProcess
 #include "src/games/twattila/dlaa_helper/gpu_completion.hpp"
 
-// ReShade's log, counted: a failure is said once, not at every call after it.
-extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int level, const char*) {
+// The add-on's name, which utils/settings.hpp's overlay title reads (an add-on defines it in its addon.cpp).
+extern "C" __declspec(dllexport) const char* const NAME = "TW helper lifetime test";
+
+// ReShade's log, counted: a failure is said once, not at every call after it. The watcher's line with the helper's exit
+// code is counted apart (its thread's, beside the game thread's line for the same end), the last one kept, and the
+// recovery's last line too.
+std::atomic<unsigned> exit_lines = 0;
+std::mutex exit_line_mutex;
+std::string last_exit_line;
+std::string last_rescue_line;
+extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int level, const char* message) {
+  const std::unique_lock lock(exit_line_mutex);
+  if (std::strstr(message, "the helper ended (") != nullptr || std::strstr(message, "the helper did not end within 5 s") != nullptr) {
+    last_exit_line = message;
+    ++exit_lines;
+    return;
+  }
+  if (std::strstr(message, "what the game's GPU waited for from it") != nullptr) {
+    last_rescue_line = message;
+  }
   if (level <= 2) ++warnings;
+}
+
+// The watcher's exit line for an end, within 2 s: one more than `before`, with the exit code `code` and whether the
+// watcher ended the helper.
+bool ExitLogged(unsigned before, const char* code, bool by_watcher) {
+  const ULONGLONG until = GetTickCount64() + 2000;
+  while (exit_lines.load() == before && GetTickCount64() < until) Sleep(1);
+  const std::unique_lock lock(exit_line_mutex);
+  return exit_lines.load() == before + 1 && last_exit_line.find(code) != std::string::npos
+         && (last_exit_line.find("ended by the watcher") != std::string::npos) == by_watcher;
 }
 
 namespace {
@@ -173,6 +209,18 @@ BOOL WINAPI TestCreateProcessW(LPCWSTR application, LPWSTR command, LPSECURITY_A
                         startup, information);
 }
 
+BOOL WINAPI TestGetExitCodeProcess(HANDLE process, LPDWORD code) {
+  if (fake_still_active.exchange(false)) {
+    *code = STILL_ACTIVE;
+    return TRUE;
+  }
+  if (fail_exit_read.exchange(false)) {
+    SetLastError(ERROR_ACCESS_DENIED);
+    return FALSE;
+  }
+  return GetExitCodeProcess(process, code);
+}
+
 void CheckClosed() {
   const auto& bridge = bridge_api::bridge;
   Check(bridge.mapping == nullptr && bridge.shared == nullptr && bridge.cluster_mapping == nullptr && bridge.cluster_data == nullptr
@@ -211,7 +259,7 @@ int RescueStub(int argc, char** argv) {
             && SUCCEEDED(device->OpenSharedHandle(shared_fence, IID_PPV_ARGS(fence.GetAddressOf())))
             && twattila::dlaa_helper::SignalAbandoned(fence.Get(), std::strtoull(argv[index + 1], nullptr, 10), 2000) && freed;
   }
-  return freed ? 0 : 1;
+  return static_cast<int>(freed ? bridge_api::HELPER_EXIT_DONE : bridge_api::HELPER_EXIT_RESCUE_SIGNAL);
 }
 
 // The fake helper: the real PID-based IPC contract, a software D3D12 queue, and bridge v30's reading of the set's fence
@@ -226,7 +274,7 @@ int HelperStub(char** argv) {
   Check(shared != nullptr, "helper maps shared block");
   if (GetEnvironmentVariableW(L"RENODX_TW_TEST_STUB_DIES", nullptr, 0) != 0) {
     strcpy_s(shared->status, "stub: no device");
-    return 1;
+    return static_cast<int>(bridge_api::HELPER_EXIT_NO_D3D11);
   }
   shared->ready = 1;
   SetEvent(done);
@@ -441,6 +489,7 @@ int main(int argc, char** argv) {
   for (unsigned ending : {20u, 26u}) {
     StartReady(game, "start helper-ends-in-Prepare test");
     const unsigned warnings_before_end = warnings.load();
+    const unsigned exits_before_end = exit_lines.load();
     end_helper_at_transfer = ending;
     transfer_calls = 0;
     Check(!bridge_api::Prepare(device, 16, 16, true, true, DXGI_FORMAT_R10G10B10A2_UNORM, true), "a helper that ends in Prepare fails it");
@@ -449,6 +498,7 @@ int main(int argc, char** argv) {
     Check(bridge.failed && bridge.status.find("the helper stopped") != std::string::npos
           && bridge.status.find("renodx-tw-dlaa64.log") != std::string::npos, "the ended helper is named, with its log");
     Check(warnings.load() == warnings_before_end + 1, "one line for a helper that ended in Prepare, none for its handles");
+    Check(ExitLogged(exits_before_end, "exit code 0x00000001", false), "the watcher logs the ended helper's own exit code, once");
     Check(bridge.width == 0 && !bridge.color.texture && !bridge.fence && bridge.watchdog.recovery == nullptr, "nothing kept of the set");
     bridge_api::Shutdown();
     CheckClosed();
@@ -519,11 +569,13 @@ int main(int argc, char** argv) {
 
   // A helper that stops before it is ready: its own reason, said once, however often the game asks again.
   SetEnvironmentVariableW(L"RENODX_TW_TEST_STUB_DIES", L"1");
+  const unsigned exits_before_stop = exit_lines.load();
   Check(bridge_api::internal::Start(device), "start a helper that stops at once");
   SetEnvironmentVariableW(L"RENODX_TW_TEST_STUB_DIES", nullptr);
   Check(WaitForSingleObject(bridge.process, 5000) == WAIT_OBJECT_0, "helper stopped at start");
   const ULONGLONG noticed_until = GetTickCount64() + 2000;
   while (!bridge.watchdog.failed.load() && GetTickCount64() < noticed_until) Sleep(1);
+  Check(ExitLogged(exits_before_stop, "exit code 0x00000004: no D3D11.4 device", false), "its exit code and meaning logged by the watcher");
   unsigned warnings_before = warnings.load();
   Check(!bridge_api::Prepare(device, 16, 16), "no set for a stopped helper");
   Check(bridge.failed && bridge.status.find("stub: no device") != std::string::npos
@@ -592,9 +644,16 @@ int main(int argc, char** argv) {
     Check(bridge.watchdog.retired.size() == 1 && bridge.watchdog.retired[0].value == 2, "the first set's unfinished wait is kept");
     bridge.steady[test.kind] = test.steady;
     warnings_before = warnings.load();
+    const unsigned exits_before = exit_lines.load();
     processes_created = 0;
+    // The silent helper's end read as not gone after the watcher's 5 s, then the rescue's exit code not read.
+    fake_still_active = (test.mode == SILENT);
+    fail_exit_read = (test.mode == SILENT);
     Check(RequestAs(game, test.kind, test.mode), "request sent");
-    if (test.mode == SILENT) Check(!bridge_api::internal::Answer(200), "no answer within the wait");
+    if (test.mode == SILENT) {
+      Check(!bridge_api::internal::Answer(200) && bridge.status.find("did not answer a steady request in 200 ms") != std::string::npos,
+            "no answer within the wait, said as a timeout");
+    }
     if (test.kind == bridge_api::PRESENT_FRAME) bridge_api::BeforeSharedWrites(game.context.Get());
     game.QueueTail();
     Check(game.TailWithin(test.freed_within), "the game's GPU gets past every wait on the helper");
@@ -613,6 +672,18 @@ int main(int argc, char** argv) {
       bridge_api::BeforeSharedWrites(game.context.Get());
     }
     Check(warnings.load() - warnings_after <= 1 && warnings_after - warnings_before <= 3, "the failure is logged once");
+    // A helper that ended by itself: its own code; one the watcher ended: the watcher's.
+    if (test.mode == EXITS_AFTER_ANSWER) {
+      Check(ExitLogged(exits_before, "exit code 0x00000000: ended normally", false), "the helper's own end logged once");
+    } else if (test.mode == SILENT) {
+      Check(ExitLogged(exits_before, "the helper did not end within 5 s after the watcher ended it.", false), "STILL_ACTIVE said as not ended");
+      Check(!fake_still_active && !fail_exit_read, "both exit-code reads were the bridge's");
+      const std::unique_lock lock(exit_line_mutex);
+      Check(last_rescue_line.find("was not freed (the rescue's exit code not read (error 5))") != std::string::npos,
+            "the rescue's unread exit code said as such, not as the addon's end");
+    } else {
+      Check(ExitLogged(exits_before, "exit code 0xE0000010: ended by the addon", true), "the watcher's end logged once");
+    }
     game.QueueTail();
     Check(game.TailWithin(2000), "no wait queued after the failure");
     Check(processes_created.load() == 1, "no second recovery");
@@ -667,6 +738,7 @@ int main(int argc, char** argv) {
     game.QueueTail();
     Check(game.TailWithin(8000), "the game's GPU gets past the steady request's wait");
     Check(bridge.watchdog.failed.load() && bridge.failed && processes_created.load() == 1, "the fence-less answer is no answer: one recovery");
+    Check(bridge.status.find("answered a steady request with 3, wanted 4") != std::string::npos, "said as a low answer, with both values");
   }
   bridge_api::Shutdown();
   CheckClosed();

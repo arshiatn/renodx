@@ -615,4 +615,60 @@ static_assert(offsetof(Shared, rt_light_surface) == offsetof(Shared, rt_restir_f
 static_assert(sizeof(Shared) == offsetof(Shared, rt_di_light) + sizeof(Shared::rt_di_light),
               "the block ends at its last field in both builds");
 
+// The helper's exit codes (not in the block: no version), each end of its own (dlaa_helper/main.cpp) and the addon's
+// TerminateProcess; the addon logs them with HelperExitMeaning. Any other code is Windows' for a crash.
+constexpr uint32_t HELPER_EXIT_DONE = 0;  // the game ended; a rescue: every fence signalled
+constexpr uint32_t HELPER_EXIT_COMMAND_LINE = 1;
+constexpr uint32_t HELPER_EXIT_NOT_FOUND = 2;     // the game's process, shared memory or events
+constexpr uint32_t HELPER_EXIT_VERSION = 3;       // the block another version's
+constexpr uint32_t HELPER_EXIT_NO_D3D11 = 4;      // no D3D11.4 device on the game's GPU
+constexpr uint32_t HELPER_EXIT_D3D11_LOST = 5;    // its D3D11 device removed, no new one
+constexpr uint32_t HELPER_EXIT_REQUEST_WAIT = 6;  // its wait for requests failed
+// The rescue's first failed step (its line in the helper's log has the value).
+constexpr uint32_t HELPER_EXIT_RESCUE_GAME = 10;        // OpenProcess
+constexpr uint32_t HELPER_EXIT_RESCUE_FACTORY = 11;     // CreateDXGIFactory1
+constexpr uint32_t HELPER_EXIT_RESCUE_ADAPTER = 12;     // EnumAdapterByLuid
+constexpr uint32_t HELPER_EXIT_RESCUE_DEVICE = 13;      // D3D12CreateDevice
+constexpr uint32_t HELPER_EXIT_RESCUE_HANDLE = 14;      // DuplicateHandle
+constexpr uint32_t HELPER_EXIT_RESCUE_FENCE = 15;       // OpenSharedHandle
+constexpr uint32_t HELPER_EXIT_RESCUE_SIGNAL = 16;      // the game's signal did not come in time, or the helper's failed
+constexpr uint32_t HELPER_EXIT_GPU_UNFINISHED = 483;    // ERROR_DEVICE_HARDWARE_ERROR: unproven_gpu_completion
+// The CRT's ends that skip the helper's exception filter (its handlers log them first).
+constexpr uint32_t HELPER_EXIT_UNCAUGHT_EXCEPTION = 0xE0000001;
+constexpr uint32_t HELPER_EXIT_PURE_CALL = 0xE0000002;
+constexpr uint32_t HELPER_EXIT_INVALID_PARAMETER = 0xE0000003;
+constexpr uint32_t HELPER_EXIT_ABORT = 0xE0000004;
+constexpr uint32_t HELPER_EXIT_ENDED_BY_ADDON = 0xE0000010;  // the addon's TerminateProcess (stuck, no answer, the unload)
+
+constexpr const char* HelperExitMeaning(uint32_t code) {
+  switch (code) {
+    case HELPER_EXIT_DONE:               return "ended normally";
+    case HELPER_EXIT_COMMAND_LINE:       return "a bad command line (or an older helper's start-up failure)";
+    case HELPER_EXIT_NOT_FOUND:          return "the game's process, shared memory or events not found";
+    case HELPER_EXIT_VERSION:            return "another bridge version";
+    case HELPER_EXIT_NO_D3D11:           return "no D3D11.4 device on the game's GPU";
+    case HELPER_EXIT_D3D11_LOST:         return "its D3D11 device removed, no new one";
+    case HELPER_EXIT_REQUEST_WAIT:       return "its wait for requests failed";
+    case HELPER_EXIT_RESCUE_GAME:        return "the rescue could not open the game's process";
+    case HELPER_EXIT_RESCUE_FACTORY:     return "the rescue had no DXGI factory";
+    case HELPER_EXIT_RESCUE_ADAPTER:     return "the rescue did not find the game's GPU";
+    case HELPER_EXIT_RESCUE_DEVICE:      return "the rescue had no D3D12 device";
+    case HELPER_EXIT_RESCUE_HANDLE:      return "the rescue could not take a fence's handle";
+    case HELPER_EXIT_RESCUE_FENCE:       return "the rescue could not open a fence";
+    case HELPER_EXIT_RESCUE_SIGNAL:      return "the rescue could not signal a fence";
+    case HELPER_EXIT_GPU_UNFINISHED:     return "its GPU work did not finish on a live device";
+    case HELPER_EXIT_UNCAUGHT_EXCEPTION: return "an uncaught C++ exception";
+    case HELPER_EXIT_PURE_CALL:          return "a pure virtual call";
+    case HELPER_EXIT_INVALID_PARAMETER:  return "an invalid CRT parameter";
+    case HELPER_EXIT_ABORT:              return "an abort";
+    case HELPER_EXIT_ENDED_BY_ADDON:     return "ended by the addon";
+    case 0x103:                          return "still running";  // STILL_ACTIVE
+    case 0xC0000005:                     return "an access violation";
+    case 0xC00000FD:                     return "a stack overflow";
+    case 0xC0000374:                     return "a heap corruption";
+    case 0xC0000409:                     return "a fast fail (a CRT or security check)";
+    default:                             return "a crash or Windows' end";
+  }
+}
+
 }  // namespace twattila::dlaa_bridge

@@ -33,6 +33,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "../dlaa_bridge.h"
@@ -315,12 +316,14 @@ class RtScene12 {
         timestamps_.Reset();
       }
     }
-    if (FAILED(device_->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(queue_.GetAddressOf())))
-        || FAILED(device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(own_fence_.GetAddressOf())))) {
-      return Fail("Ray tracing: no D3D12 queue");
+    if (const HRESULT made = device_->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(queue_.GetAddressOf())); FAILED(made)) {
+      return Fail(std::format("Ray tracing: no D3D12 queue (0x{:08X})", static_cast<uint32_t>(made)));
+    }
+    if (const HRESULT made = device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(own_fence_.GetAddressOf())); FAILED(made)) {
+      return Fail(std::format("Ray tracing: no D3D12 fence (0x{:08X})", static_cast<uint32_t>(made)));
     }
     event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (event_ == nullptr) return Fail("Ray tracing: no completion event");
+    if (event_ == nullptr) return Fail(std::format("Ray tracing: no completion event (error {})", GetLastError()));
     for (Slot& slot : slots_) {
       slot.instances = Buffer(uint64_t{MAX_INSTANCES} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC), D3D12_HEAP_TYPE_UPLOAD,
                               D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -335,18 +338,20 @@ class RtScene12 {
                          D3D12_RESOURCE_STATE_GENERIC_READ);
       slot.left_out = Buffer(LEFT_OUT_BYTES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
       slot.left_out_readback = Buffer(LEFT_OUT_BYTES + sizeof(uint32_t), D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
-      if (FAILED(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.allocator.GetAddressOf())))
-          || FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr,
-                                               IID_PPV_ARGS(slot.list.GetAddressOf())))
-          || FAILED(slot.list->Close())
-          || !slot.instances || !slot.table || !slot.sizes || !slot.readback || !slot.rows_readback || !slot.jobs
-          || !slot.left_out || !slot.left_out_readback
-          || FAILED(slot.left_out_readback->Map(0, nullptr, reinterpret_cast<void**>(&slot.left_out_data)))
-          || FAILED(slot.instances->Map(0, nullptr, reinterpret_cast<void**>(&slot.instance_data)))
-          || FAILED(slot.table->Map(0, nullptr, reinterpret_cast<void**>(&slot.table_data)))
-          || FAILED(slot.jobs->Map(0, nullptr, reinterpret_cast<void**>(&slot.jobs_data)))) {
-        return Fail("Ray tracing: no D3D12 command lists");
+      if (!slot.instances || !slot.table || !slot.sizes || !slot.readback || !slot.rows_readback || !slot.jobs || !slot.left_out
+          || !slot.left_out_readback) {
+        return Fail("Ray tracing: no memory for its slots' buffers");
       }
+      HRESULT made = device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.allocator.GetAddressOf()));
+      if (SUCCEEDED(made)) {
+        made = device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr, IID_PPV_ARGS(slot.list.GetAddressOf()));
+      }
+      if (SUCCEEDED(made)) made = slot.list->Close();
+      if (SUCCEEDED(made)) made = slot.left_out_readback->Map(0, nullptr, reinterpret_cast<void**>(&slot.left_out_data));
+      if (SUCCEEDED(made)) made = slot.instances->Map(0, nullptr, reinterpret_cast<void**>(&slot.instance_data));
+      if (SUCCEEDED(made)) made = slot.table->Map(0, nullptr, reinterpret_cast<void**>(&slot.table_data));
+      if (SUCCEEDED(made)) made = slot.jobs->Map(0, nullptr, reinterpret_cast<void**>(&slot.jobs_data));
+      if (FAILED(made)) return Fail(std::format("Ray tracing: no D3D12 command lists (0x{:08X})", static_cast<uint32_t>(made)));
       slot.list->SetName(std::format(L"slot {}", &slot - slots_.data()).c_str());
     }
     // The vertex copy (BLAS inputs), the records and pools, the TLAS and its instances' room (PlacedRoom).
@@ -1081,6 +1086,12 @@ class RtScene12 {
   // behind): main.cpp keeps the scene until Idle instead of freeing it under that work (the destructor's wait would end
   // the helper), and does not count it as a failed request.
   [[nodiscard]] bool TimedOut() const { return timed_out_; }
+  // The last wait that timed out: this queue's fence then and the value it waited for.
+  struct Stall {
+    uint64_t completed = 0;
+    uint64_t wanted = 0;
+  };
+  [[nodiscard]] const Stall& LastStall() const { return stall_; }
   // Nothing submitted can still run (done, or the device removed). Read with no request in flight.
   [[nodiscard]] bool Idle() const { return !own_fence_ || own_fence_->GetCompletedValue() >= own_value_; }
 
@@ -2011,11 +2022,13 @@ class RtScene12 {
         };
         const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS templates_params = {
             .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &templates_desc};
-        const bool built = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &templates_params) == NVAPI_OK;
+        const NvAPI_Status built = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &templates_params);
         list->ResourceBarrier(1, &uav_barrier);
         template_builds = 0;
-        if (!built) *why = "the sets' templates could not be built";
-        return built && flush();
+        if (built != NVAPI_OK) {
+          *why = std::format("the sets' templates could not be built (NvAPI {})", static_cast<int>(built));
+        }
+        return built == NVAPI_OK && flush();
       };
       for (const auto& [key, set] : sets_) {
         if (set.template_first == UINT32_MAX) continue;
@@ -3114,9 +3127,12 @@ class RtScene12 {
       list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
       Stamp(list, slot_index * STAMPS + 5);
       Resolve(list, slot_index);
-      recorded = SUCCEEDED(list->Close());
-      if (!recorded) {
+      if (const HRESULT closed = list->Close(); FAILED(closed)) {
+        recorded = false;
         request_failed_ = true;
+        status_ = std::format("Ray tracing: a request failed (0x{:08X})", static_cast<uint32_t>(closed));
+        slow_report_ += std::format("{}[TW ray tracing] {} {} could not be recorded (0x{:08X}); its passes: {}.", slow_report_.empty() ? "" : "\n",
+                                    reflections ? "Reflections" : "Light Bounce", own_value_ + 1, static_cast<uint32_t>(closed), Passes(slot));
       }
     }
     LARGE_INTEGER submit_start;
@@ -3866,9 +3882,9 @@ class RtScene12 {
     bool gpu = false;  // baked on the GPU (BakeMicromapsOnGpu), else read back for the CPU
   };
 
-  bool Fail(const char* status) {
+  bool Fail(std::string status) {
     failed_ = true;
-    status_ = status;
+    status_ = std::move(status);
     return false;
   }
 
@@ -3880,6 +3896,7 @@ class RtScene12 {
     if (WaitForGpu(own_fence_.Get(), event_, value, FENCE_TIMEOUT)) return true;
     timed_out_ = true;
     request_failed_ = true;
+    stall_ = {.completed = own_fence_->GetCompletedValue(), .wanted = value};
     return false;
   }
 
@@ -5008,6 +5025,16 @@ class RtScene12 {
     }
   }
 
+  // A slot's passes by Mark's names ("none" without Log Details): a request whose list could not be closed.
+  static std::string Passes(const Slot& slot) {
+    std::string passes;
+    for (const wchar_t* pass : slot.marks) {
+      passes += passes.empty() ? "" : ", ";
+      for (; *pass != L'\0'; ++pass) passes += static_cast<char>(*pass);
+    }
+    return passes.empty() ? "none" : passes;
+  }
+
   static D3D12_RESOURCE_BARRIER Transition(ID3D12Resource* resource, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) {
     return {
         .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
@@ -5411,6 +5438,14 @@ class RtScene12 {
     auto* template_args =
         reinterpret_cast<NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_TEMPLATE_ARGS*>(slot->compact_data + COMPACT_TEMPLATE_ARGS_OFFSET);
     auto* template_destinations = reinterpret_cast<uint64_t*>(slot->compact_data + COMPACT_TEMPLATE_DESTINATIONS_OFFSET);
+    std::vector<ClusterSet*> new_templated_sets;  // the sets given templates in this request (sets_ is not changed until its end)
+    bool templates_refused = false;
+    // A Mega Geometry call NvAPI refused: once a kind (its bit in cluster_refusals_said_) in the slow report.
+    const auto say_refused = [&](uint32_t kind, const std::string& line) {
+      if ((cluster_refusals_said_ & kind) != 0) return;
+      cluster_refusals_said_ |= kind;
+      slow_report_ += std::format("{}[TW ray tracing] Mega Geometry: {}", (slow_report_.empty() ? "" : "\n"), line);
+    };
 #endif
     for (const auto [templated_run, grass_run] : {std::pair{true, false}, std::pair{true, true}, std::pair{false, true}, std::pair{false, false}}) {
       if (templated_run && grass_run) grass_first = compact_clusters;
@@ -5427,6 +5462,7 @@ class RtScene12 {
           if (free_templates_.Take(set.clusters, &first_template)) {
             set.template_first = first_template;
             set.template_masked = masked;
+            new_templated_sets.push_back(&set);
             for (uint32_t cluster = 0; cluster < set.clusters; ++cluster) {
               const auto& [desc_vertex, desc_vertices, desc_triangle, desc_triangles] = set.descs[cluster];
               auto& arg = template_args[template_builds];
@@ -5532,9 +5568,20 @@ class RtScene12 {
       const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS templates_params = {
           .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &templates_desc};
       Mark(list, L"templates");
-      NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &templates_params);
+      const NvAPI_Status templates_built = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &templates_params);
       const D3D12_RESOURCE_BARRIER built_templates = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
       list->ResourceBarrier(1, &built_templates);
+      // Refused: this request instantiates none (its CLASes would read unwritten templates) and the new sets give theirs
+      // back, so a later request builds them again.
+      if (templates_built != NVAPI_OK) {
+        templates_refused = true;
+        say_refused(1, std::format("the templates' build was refused (NvAPI {}; {} templates of {} sets): units and smoke not traced this frame.",
+                                   static_cast<int>(templates_built), template_builds, new_templated_sets.size()));
+        for (ClusterSet* set : new_templated_sets) {
+          pending_set_frees_.push_back({.value = own_value_ + 1, .template_first = set->template_first, .templates = set->clusters});
+          set->template_first = UINT32_MAX;
+        }
+      }
     }
 #endif
     vertex_end = std::min(vertex_end, TRANSFER_VERTICES);
@@ -6271,14 +6318,24 @@ class RtScene12 {
         // Their build timed apart (a trace's slot leaves the paths' two stamps free).
         Mark(list, L"clusters");
         Stamp(list, slot_index * STAMPS + 4);
-        bool clas_built = true;
-        if (templated_clusters != 0) {
-          clas_built = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &instantiate_params) == NVAPI_OK;
+        bool clas_built = !templates_refused;
+        if (clas_built && templated_clusters != 0) {
+          const NvAPI_Status instantiated = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &instantiate_params);
           list->ResourceBarrier(1, &uav_barrier);
+          clas_built = (instantiated == NVAPI_OK);
+          if (!clas_built) {
+            say_refused(2, std::format("the CLAS instantiate was refused (NvAPI {}; {} clusters, {} from templates): units and smoke not traced this frame.",
+                                       static_cast<int>(instantiated), cluster_count, templated_clusters));
+          }
         }
-        if (cluster_count != templated_clusters) {
-          clas_built = clas_built && NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &clas_params) == NVAPI_OK;
+        if (clas_built && cluster_count != templated_clusters) {
+          const NvAPI_Status clas_status = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &clas_params);
           list->ResourceBarrier(1, &uav_barrier);
+          clas_built = (clas_status == NVAPI_OK);
+          if (!clas_built) {
+            say_refused(4, std::format("the CLAS build was refused (NvAPI {}; {} clusters, {} from templates): units and smoke not traced this frame.",
+                                       static_cast<int>(clas_status), cluster_count, templated_clusters));
+          }
         }
         // The sway's cluster BLASes' lists from the kept CLASes' addresses, counted in their arguments.
         if (sway) {
@@ -6322,7 +6379,12 @@ class RtScene12 {
           // The same scratch: a barrier between them.
           for (uint32_t arg = 0; arg < blas_arg_count; ++arg) {
             if (arg != 0) list->ResourceBarrier(1, &uav_barrier);
-            cluster_built[arg_blases[arg]] = (build_blases(arg, 1) == NVAPI_OK);
+            const NvAPI_Status blas_status = build_blases(arg, 1);
+            cluster_built[arg_blases[arg]] = (blas_status == NVAPI_OK);
+            if (blas_status != NVAPI_OK) {
+              say_refused(8, std::format("a cluster BLAS's build was refused (NvAPI {}; cluster BLAS {} of {}): its units or smoke not traced.",
+                                         static_cast<int>(blas_status), arg_blases[arg], CLUSTER_BLASES));
+            }
           }
         }
         list->ResourceBarrier(1, &uav_barrier);
@@ -6765,7 +6827,9 @@ class RtScene12 {
         };
         const NVAPI_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PARAMS params = {.version = NVAPI_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PARAMS_VER,
                                                                                 .pDesc = &desc};
-        if (NvAPI_D3D12_BuildRaytracingPartitionedTlasIndirect(list, &params) != NVAPI_OK) return skip("Ray tracing: the partitioned TLAS failed");
+        if (const NvAPI_Status built = NvAPI_D3D12_BuildRaytracingPartitionedTlasIndirect(list, &params); built != NVAPI_OK) {
+          return skip(std::format("Ray tracing: the partitioned TLAS failed (NvAPI {})", static_cast<int>(built)));
+        }
         const auto to_copy = Transition(slot->ptlas_device.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
         list->ResourceBarrier(1, &to_copy);
         ptlas_current_ = 1 - ptlas_current_;
@@ -7125,15 +7189,10 @@ class RtScene12 {
       status_ = std::format("Ray tracing: a request failed (0x{:08X})", static_cast<uint32_t>(closed));
       // Which passes it held (the one-off E_INVALIDARG of debug32 recorded in 0.01 ms; with RENODX_TW_D3D12_DEBUG the
       // debug layer's messages follow).
-      std::string passes;
-      for (const wchar_t* pass : slot->marks) {
-        passes += passes.empty() ? "" : ", ";
-        for (; *pass != L'\0'; ++pass) passes += static_cast<char>(*pass);
-      }
       slow_report_ += std::format("{}[TW ray tracing] Trace {} could not be recorded (0x{:08X}; {} captures, {} compact draws, {} placements, {} GPU "
                                   "bakes); its passes: {}.",
                                   slow_report_.empty() ? "" : "\n", own_value_ + 1, static_cast<uint32_t>(closed), shared.rt_capture_count,
-                                  shared.rt_compact_count, shared.rt_placement_count, slot->gpu_bakes, passes.empty() ? "none" : passes);
+                                  shared.rt_compact_count, shared.rt_placement_count, slot->gpu_bakes, Passes(*slot));
       return false;
     }
     // Meshes unseen for long give their BLAS (and micromaps, record, pool ranges) back once the GPU is past this request.
@@ -8858,6 +8917,8 @@ class RtScene12 {
   // The driver refused the cluster BLASes' batched build: one call each (RENODX_TW_TEST_CLUSTER_BLASES_APART: from the
   // start, the GPU harness's check of that path).
   bool cluster_blases_apart_ = GetEnvironmentVariableW(L"RENODX_TW_TEST_CLUSTER_BLASES_APART", nullptr, 0) != 0;
+  // Record's refused Mega Geometry calls already in the log: templates 1, CLAS instantiate 2, CLAS build 4, a BLAS 8.
+  uint32_t cluster_refusals_said_ = 0;
   uint64_t templated_wanted_ = 0;          // and the clusters its runs wanted (fitting or not)
   uint64_t built_wanted_ = 0;
   uint32_t built_limit_ = MAX_CLUSTERS;    // of the room built from triangles (the rest instantiated from templates)
@@ -9113,6 +9174,7 @@ class RtScene12 {
   bool failed_ = false;
   std::atomic_bool request_failed_ = false;  // Lost (the worker sets it, main.cpp reads it)
   std::atomic_bool timed_out_ = false;       // TimedOut (likewise)
+  Stall stall_;                              // LastStall (the worker's, read after its drain)
   bool details_ = false;  // the addon's Log Details or profile (this request's): GPU times, markers, the status, the log's lines
   void NoteNrd(uint32_t signal, bool ran) {
     if (ran) {
