@@ -40,7 +40,7 @@ The game makes a new swap chain 2-4 times a start and at each window-mode change
 last flip chain go first (`release_flip_chains_before_recreate`) and handles a removed device. LightVolume's SMAA
 passes and the scene's float targets are upgraded with view cloning and the hot swap.
 
-## Graphics 1 of 2 (Settings Mode)
+## Graphics (Settings Mode)
 
 Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); without them the page says so.
 

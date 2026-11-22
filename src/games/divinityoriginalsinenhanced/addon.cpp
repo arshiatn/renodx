@@ -60,7 +60,7 @@ namespace {
 ShaderInjectData shader_injection = {.tonemap_type = TONEMAP_EXTENDED, .purity_scale = 1.f};
 float current_settings_mode = 0.f;
 
-// Graphics 1 of 2 (twattila/graphics_page.hpp): the helper's upscalers and frame generation (upscaling.hpp), the rays
+// Graphics (twattila/graphics_page.hpp): the helper's upscalers and frame generation (upscaling.hpp), the rays
 // (ray_tracing.hpp: sun shadows, AO, Global Illumination, Path-Traced Ambient). The game has no GT-VBAO, GT-VBGI, Bend or
 // ray-traced reflections yet: those rows bind to values that stay 0 (the page's Bindings say the methods are missing).
 twattila::feature_settings::AaSliders aa_sliders;
@@ -611,7 +611,7 @@ renodx::utils::settings::Settings settings = {
         .default_value = 0.f,
         .can_reset = false,
         .label = "Settings Mode",
-        .labels = {"Simple", "Advanced", "Graphics 1 of 2"},
+        .labels = {"Simple", "Advanced", "Graphics"},
         .is_global = true,
     },
     // GammaCorrection (graphicSettings.lsx, 1 by default) goes to a renderer method as 1 / value (EoCApp.exe 0x1407DF7F8 at
@@ -1021,7 +1021,7 @@ std::string UpscalerStatus() {
 }
 
 // The frame trace's (renodx_trace_now next to the exe; FrameTrace=1 in ReShade.ini's [renodx]: 600 frames of the 3D view
-// in). Graphics 1 of 2's settings for the next frame: the bridge's use, the upscaler's jitter, the rays, frame generation
+// in). The Graphics page's rows for the next frame: the bridge's use, the upscaler's jitter, the rays, frame generation
 // and Reflex.
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
@@ -1236,7 +1236,7 @@ void ConfigureAddon() {
   twattila::psycho35::InsertBefore(&settings, "PsychoV30",
                                    twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT));
 
-  // Graphics 1 of 2: the helper's upscalers at 100% (the game has no render scale of its own), Ray Reconstruction, frame
+  // Graphics: the helper's upscalers at 100% (the game has no render scale of its own), Ray Reconstruction, frame
   // generation and Reflex; not the shader anti-aliasing (TW's) or object motion (the camera's alone here). Then the rays'
   // rows (ray_tracing.hpp: sun shadows, AO, Global Illumination's strength and methods, Path-Traced Ambient), the rows the
   // methods leave at Attila's RT/PT values, and the page.
@@ -1306,7 +1306,7 @@ void ConfigureAddon() {
                                              .has_gtvbgi = false,
                                              .rays_tested = false,
                                              .every_row = false});
-  // Settings Mode's pages: Simple and Advanced the HDR rows (and the output's), Graphics 1 of 2 the page's; About on every
+  // Settings Mode's pages: Simple and Advanced the HDR rows (and the output's), Graphics the page's; About on every
   // page.
   const std::vector<std::string> page_sections = twattila::graphics_page::Sections();
   for (auto* setting : settings) {
@@ -1365,7 +1365,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
   reshade::register_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
   reshade::register_event<reshade::addon_event::destroy_device>(frame_capture::OnDestroyDevice);
-  // Graphics 1 of 2: the helper's upscalers (the main camera's jitter, the tone mapper's input), the rays, frame
+  // Graphics: the helper's upscalers (the main camera's jitter, the tone mapper's input), the rays, frame
   // generation (the helper presents; HUD-less images through the swap chain shader, its constants at b10) and Reflex for
   // the game's presents.
   divinity::upscaling::Install();
