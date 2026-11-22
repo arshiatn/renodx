@@ -7441,11 +7441,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> refuse unknown flags. S2 (gpu_s2) NOT merged yet: it changes helper paths, which would break H0's guard
         (atn-mods vs c3ea4925f) -> merge after H0's re-run AND the rec_verify.sh GPU check (ATN). gtl_ v1.1 lab changes
         unblocked: queued after its S1b tests (same files).
+        gti_ NS_BUSY DONE 05:3x (plan_1117/gti_ns_busy_handback.md; backups scratchpad\gti_bak9): confirmed - an empty
+        Path under -Exclude (and an unreadable start time for an -ExcludePids pid) counted our own exiting helper as
+        busy. Now "unsure" processes are re-checked every 0.5 s up to -SettleS (default 10): gone = not counted,
+        readable = normal rule, still unreadable = busy + stderr "path unreadable after 10 s" (BusyState -> fault,
+        fails closed); stdout still a bare number; without -Exclude nothing waits. test_ns_busy.py 7 / 7 (gti_busyfake
+        started suspended = empty Path), test_gpu_lock 58 / 58; test_trace_run not run (F6 spawns helper-named fakes).
+        Open: the unreadable start-time case untested (no way to fake it); busy checks up to 10 s longer only then.
+        -> gpr_ RE-CHECK STARTED (gti_'s reviewer; gtb_ z after).
         Agents (8): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtp_ (K1-K3 + next round), grs_ (N1 nits 1-3),
-        gtl_ (S1b tests, then v1.1), gtb_ (z: bash & + wrappers), gti_ (ns_busy.ps1:18). Idle: bd1r_, lga_, lgf2_,
-        c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, gpr_ (waits gtb_), ebr_, t4i_ (r21 after b13r_),
-        gtq_, gbc_, gtv_ (waits grs_ / gtl_), gtk_, gtw_ (waits gtp_). GPU: free (H0 stopped); harness-named fakes
-        allowed until I announce the H0 re-run (checked empty before it starts).
+        gtl_ (S1b tests, then v1.1), gtb_ (z: bash & + wrappers), gpr_ (gti_ ns_busy re-check). Idle: bd1r_, lga_,
+        lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, ebr_, t4i_ (r21 after b13r_), gtq_, gbc_,
+        gti_ (waits gpr_), gtv_ (waits grs_ / gtl_), gtk_, gtw_ (waits gtp_). GPU: free (H0 stopped); harness-named
+        fakes allowed until I announce the H0 re-run (checked empty before it starts).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
