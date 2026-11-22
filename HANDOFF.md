@@ -469,7 +469,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - B1 owner (static, low): do the game's destructors draw (callers of 0x190B780 rea ... | ?
 - ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stac ... | ?
 - gtl_ (low): the jobs fixture's +60 s on the gate now sits on top of GATE_FLOOR_S ... | ?
-- gtb_ (after gtp_'s round 13): tighten test_budget's 3rd hook case to (12, 99) on ... | ?
 - gtb_ / gti_ (low): load-flake bounds in unchanged code - gated_build "both slots ... | ?
 - ATN (cleanup list): tools\tw\h0\selftest_check15 (empty folder, h0i_ 09:1x) may ... | ?
 - c3i_ F1: session totals for the B1 safety counters (print when any fault counter ... | ?
@@ -8806,7 +8805,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         selftest lock case 11.7 s), not repeated. -> gpr_ CHECK STARTED (items 1 / 3 / 4 + the load proposal).
         - [ ] gtl_ (low): the jobs fixture's +60 s on the gate now sits on top of GATE_FLOOR_S (180 s) - can be
             dropped (gtb_ 09:1x).
-        - [ ] gtb_ (after gtp_'s round 13): tighten test_budget's 3rd hook case to (12, 99) only (gtb_ 09:1x).
+        - [x] gtb_ (after gtp_'s round 13, DONE 09:37 + hook == mirror check): tighten test_budget's 3rd hook case to
+            (12, 99) only (gtb_ 09:1x).
         - [ ] gtb_ / gti_ (low): load-flake bounds in unchanged code - gated_build "both slots held" check 4 s
             (saw 6.8 s), selftest lock case (11.7 s) (gtb_ 09:1x).
         h0i_ F1-F4 DONE 09:1x (plan_1117/h0i_f1f4_handback.md; h0i_handback.md "## H0 F1-F4"; backups
@@ -9111,9 +9111,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         (N7-N9); fcr_ re-checks; applying it still waits for ATN (box above).
         - [ ] bridge owner (next bridge change): move the FG backend-name table to dlaa_bridge.h, used by both
             main.cpp and graphics_page.hpp:629 (fcr_ N6, 09:4x).
-        Agents (7): h0i_ (M1 + S1-S5 before the H0 re-run), gtw_ (round 13 re-check, then lga_ release_check
-        re-check), gtb_ (load refresh + (12, 99) tighten), t4i_ (option (a) + disk gate + ebr_ nits), c3i_ (B1 F1
-        + F2 logging), ffr_ (grs_ v4 re-check), grs_ (patch nits N1-N5 + text N7-N9)
+        gtb_ LOAD REFRESH DONE 09:4x (plan_1117/gtb_load_refresh_handback.md; backups scratchpad\gtb_bak22): budget.py
+        live 09:26:00: busy_refresh() calls gti_'s gpu_lock.BusyState('', 30) unchanged (full count, rewrites
+        busy_count.json) only when the file is missing / unreadable, >= 240 s old, faulted / partial and >= 120 s
+        old, or dated in the future. Start: before Popen + t0, fresh tuple into watch_load (gpr_ 3). End: only
+        after job.release() closed the handle, on a run not stopped (no job object / handle kept = no end count;
+        a stop keeps its own count) (gpr_ 1); the end count runs only on runs > 4 min (start wrote a fresh file).
+        Faulted refreshes rate-limited (gpr_ 2). gtb_'s ADDITION: lab phases (--phase) never refresh (under
+        gpu_job.lock beside the lab's own named harness, which would mark the file busy for all) -> gpr_ judges.
+        Tests: box() seeds a fresh full count; new test_busy_count_refreshed_before_the_child_and_after_the_end +
+        test_busy_refresh_rate (200 s skip / 250 s refresh, faulted 60 skip / 130 refresh, partial 60 skip, future
+        refresh, --phase none, release failing = start count only). gated_build.ps1 clamps
+        RENODX_GATED_BUILD_PASS_S >= 0.5 in the dry run (live 09:26:00, no slot held; default unchanged). R12-1
+        tightened (test_budget.py live 09:37:47): 3rd hook case exactly (12, 99); watch-only ring a fixture;
+        price_rows == _own_price_rows (full rows) for cold / warm / `py x warm` on every fixture vs a copy of
+        round 13's gate_hook.py; live read-only: same both sides (amd64 twattila warm fg n 12 p95 242.04 limit
+        378 + watch n 1 limit 211; cold fg from warm? n 10; watch's own limit reads only the watch set, n 1 < 10 =
+        unpriced). Quiet PC: test_budget 40 / 40 x3, watch --selftest 3 / 3 x3; first batch had 2 selftest lock
+        cases (9.1 / 8.6 s) + 1 clock test (fake ns_busy > 30 s) fail beside c3i_'s engine_code suite (09:28,
+        ~7,900 CPU s) = load flakes. Real busy_count.json untouched (05:50:47), watch_runs.tsv only the wrapped
+        build's row; no GPU lock / ngfx. NOTE: loads can now be idle, so fix-now can fire (ATN box). -> gpr_
+        RE-CHECKS the load refresh + the --phase choice; gtl_ + gti_ lows can start (lab files free).
+        Agents (9): h0i_ (M1 + S1-S5 before the H0 re-run), gtw_ (round 13 re-check, then lga_ release_check
+        re-check), gpr_ (gtb_ load refresh re-check), t4i_ (option (a) + disk gate + ebr_ nits), c3i_ (B1 F1 + F2
+        logging), ffr_ (grs_ v4 re-check), grs_ (patch nits N1-N5), gtl_ (fixture +60 s + gate_s), gti_ (r1a /
+        r1b + ns_busy games)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
