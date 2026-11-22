@@ -456,6 +456,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ (with gtw_'s re-check 11 findings): hg1 rows() -> {'price': 'shadow'} on an ... | ?
 - gtb_ (optional, batched): hg2 name the unreadable file in watch's stderr / facts ... | ?
 - ATN (morning report): test fixtures remove the sandbox world / testbin folders t ... | ?
+- helper / bridge owner (grs_): a cold shader cache after an update may miss the f ... | ?
+- PT GI / ReSTIR owner: ATN's paths (flags 36913) noise floor 18-20 % from 4 to 16 ... | ?
+- reflection owner: r3_refl boxes +0.45 % / edge +3.1 % bias, already before H0 (h ... | ?
+- release / lifetime owner (gpu3_ A1g, lga_): 5 release modes 77-122 ms vs the 75 ... | ?
+- coordinator after upr_'s OK: H0 re-run (full, ~84 min, ATN's rule) in a gap; ATN ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8280,8 +8285,41 @@ heading text are in HANDOFF_ARCHIVE.md)
         web_allow.proposed.tsv into gtp_bak15, removed after a byte-compare. -> gtp_ ROUND 12 STARTED (hg1 + reason
         text + watch e2e test + Section 8 corrections + kind() --target + re-seed + nits); gtb_ STARTED (one real
         wrapped gated build to confirm A + hg2).
-        Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (gtl_ S5 re-check), gtp_ (round 12: hg1 +
-        Section 8 + kind()), gtb_ (wrapped build check + hg2), ebr_ (t4i_ r24 re-check), c3i_
+        h0i_ H0 ANALYSIS DONE 08:0x (plan_1117/h0i_h0_analysis_handback.md; h0i_handback.md "## H0 run 20261122_054906
+        analysis"; backups tools\tw\h0\backups\<stamp>_analysis; offline only, run folder read-only, rmt_h0 still
+        42c081bd6): NO FAIL is a confirmed real H0 regression; 7 of 11 = own tool / procedure faults (fixed), run3-noise
+        pre-existing, e1_sun_raw unresolved. (a) run1-dumps + run8: the 90 % guard counted the 27 gpu3 rows that fail
+        by design (all_modes only: 174 / 179 = 97 %) -> modes.txt 4th cell; recheck PASS. (a) run2-ref / run5-bytes /
+        run6-probe / run7-post_atn / run7-atn: ONE cause, 3 of ~110 post calls missed the first frame ("helper did
+        not answer", 21-22 s; same settings passed right after; likely a cold driver shader compile of post's DXIL
+        vs the bridge's 5000 ms Answer wait, NOT proven: helper logs overwritten) -> new Invoke-GpuRetry (one retry on
+        a first-frame miss, first log + folder kept in retried\, a NUMBER retry line). (a) run3-ref NOISY -> BIAS:
+        H0 decorrelated the replicates so the NOISY limit stopped hiding a bias that already existed (ratios same:
+        boxes 1.0044 -> 1.0045, edge 1.0309) -> rule: NOISY -> BIAS with the ratio inside both CIs = same bias. (a)
+        run4-history x1.852: R=4 CI has 3 dof (s4 went x0.616); batch variances unchanged -> rule uses batch
+        variances. (a/c) e1_sun_raw bias 0.00 -> 0.66 %: one 64-frame score per side, -0.4 SD vs +2.4 SD; only e1
+        change = sun-disk RNG 9e4d23e3a (CPU replay: white noise both sides) -> most likely chance; proposal 2-3
+        frame starts per side. (b) run3-noise: ATN's ReSTIR GI paths sit at 18-20 % noise from 4 to 16 rays, bias
+        rises with rays (8.6 -> 13.8 %) pre AND post (reuse floor) -> H0's claim not met, for the PT GI / ReSTIR
+        owner. (b) 182 / 206: 19 gpu3 by design + 5 release modes 77-122 ms vs 75 ms both sides; switching +
+        rr_ao_reblur_release = flakes; 40 not repeating = NRD / streaming / big scenes. Queued: R1 in Get-Busy (scan +
+        settle); fake helper now builds into testbin\h0i_fake (old single-file copy in offline\fakes\busy deleted
+        = the move asked for). Offline tests 0 / 7 bad. Re-run: dumps / run8 / run3-ref / run4-history already PASS
+        on kept data; run2-ref / run5-bytes / run6-probe / run7 x2 need GPU (should pass with the retry);
+        run2-quality either way; run3-noise stays FAIL. Full re-run ~84 min; a smaller set needs a new switch =
+        ATN's rule (proposal `-Only e3_open,probe,run7`, ~10 min). CAUTION for upr_: two rules changed AFTER seeing
+        the results (run3-ref, run4-history) -> upr_ must judge them as fixes, not goalpost moves; the retry may
+        hide a player risk. -> upr_ RE-CHECK STARTED (xHigh).
+        - [ ] helper / bridge owner (grs_): a cold shader cache after an update may miss the first frame's Answer
+            (5000 ms) and turn DLAA off at the first frame - check the player path (h0i_ 08:0x, H0 run7 evidence).
+        - [ ] PT GI / ReSTIR owner: ATN's paths (flags 36913) noise floor 18-20 % from 4 to 16 rays, bias rises
+            with rays (8.6 -> 13.8 %), before and after H0 (h0i_ 08:0x).
+        - [ ] reflection owner: r3_refl boxes +0.45 % / edge +3.1 % bias, already before H0 (h0i_ 08:0x).
+        - [ ] release / lifetime owner (gpu3_ A1g, lga_): 5 release modes 77-122 ms vs the 75 ms limit, both sides.
+        - [ ] coordinator after upr_'s OK: H0 re-run (full, ~84 min, ATN's rule) in a gap; ATN: optional new rule
+            for h0i_'s proposed `-Only` switch.
+        Agents (8): upr_ (h0i_ H0 analysis re-check), gtv_ (gtl_ S5 re-check), gtp_ (round 12: hg1 + Section 8 +
+        kind()), gtb_ (wrapped build check + hg2), ebr_ (t4i_ r24 re-check), c3i_
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
