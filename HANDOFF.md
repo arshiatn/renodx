@@ -489,12 +489,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - grs_ (after rec_verify): fg_proxy_d3d12.hpp Presented() comment -> fcr_'s exact ... | ?
 - gpr_: re-check round 14's exe moves (tools/ + scratch exe keys) with production ... | ?
 - c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate le ... | ?
-- gtp_ round 18: gtw N8, N1, N3, N2, N4 (Should) + N5-N7 (Low) + VERIFY on the kin ... | ?
 - coordinator: ff_s12 (3c77a0c86) + grs_xess_guard (29a55acad) merge gate AFTER up ... | ?
 - h0i_: h0_rng_check.py: 0 -> 0 reads as equal (run6-probe); re-check run 20261122 ... | ?
 - PT GI / ReSTIR owner: 16 rays noisier than 8 on both builds (run3-noise 1.194 / ... | ?
 - leaf / micromap owner (optional): run pre 4x on fast_leaves + micromaps_leaf_str ... | ?
 - coordinator: all_modes pass on the combined tree after rmt_h0 + ff_s12 + grs_xes ... | ?
+- gtw_ + gpr_: re-check round 18 (gate + price) (coord 13:5x). | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10076,7 +10076,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         nested escaped backticks, 17th $( ) (cap 16), winpty / flock / watch, cu$'r'l, PS i`wr. N7 (Low, design limit)
         12 stdin-code forms (bash -c 'cat | bash' was refused in r16 by luck = the one refused -> pass) -> test "reads
         stdin" and "runs code" separately. Round 18 re-runs the corpus.
-        - [ ] gtp_ round 18: gtw N8, N1, N3, N2, N4 (Should) + N5-N7 (Low) + VERIFY on the kind statement + \.py end + gpr
+        - [x] gtp_ round 18 (DONE 13:5x, live, re-checks out): gtw N8, N1, N3, N2, N4 (Should) + N5-N7 (Low) + VERIFY on the kind statement + \.py end + gpr
             R17-1 + gpr Lows 1-4; corpus re-run; gtw_ + gpr_ re-check (coord 12:5x).
         H0 RE-RUN 20261122_120946 DONE 13:26 (h0\runs\20261122_120946\summary.txt; task bwwt0eb2s exit 0; pre atn-mods
         868679895, post 42c081bd6; 75 min GPU part): 16 PASS, 2 FAIL, 1 OPEN. PASS: run1-headers (24 equal / 37 changed),
@@ -10127,8 +10127,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         (testbin\scratch\coord_\helper_h0merge\renodx-tw-dlaa64.exe 5,689,856 B) -> pushed (origin atn-mods fa16b64d7).
         rec_verify.sh grs_s2r rec_grs_base "" rec_grs_new5 rec_grs_aligned5 rec_grs_rec5 STARTED 13:35 (ATN's Bash rule;
         task b2h7mhp0m; out reference\runs\verify_grs_s2r; inputs testbin\rec_grs_* ready since grs_ 05:4x).
-        Agents (2): gtp_ (round 18), gtv_ (gtl_ lab fixes re-check); rec_verify RUNNING (13:35, ~100 min) -> grs_
-        reads it -> merge gpu_s2 -> S3c; all_modes on the combined tree waits for an ATN rule
+        gtp_ ROUND 18 = ALL 9 ITEMS LIVE, SHADOW 13:5x (plan_1117/gtp_round18_handback.md; gate_hook.py 9ac8fbd902ab,
+        tests/run_tests.py 6ff2c18054d3, tool_prices.py 097bb57a34f6 unchanged; backup testbin\scratch\gtp_\gtp_bak23,
+        mirror gtp_mirror7; atomic swap after live == bak23): suite mirror + live 1078/1078 (81 new); control 1025 (53 =
+        new tests only); corpus 252 = 252, 0 differ, 0 hook errors; keys 86 of 88,428 change (heavy -> light = \" greps /
+        seds / cats (R17-1) + a PS Add-Content here-string (N2); light -> heavy 29 = -PassThru + WaitForExit + python -c
+        hidden by the old split); re-seed 106,509 seeds / 7,224 rows / 0 bad. N8 linear quote-aware paren stack, cap 16,
+        256 KB unclosed $( 15.5 -> ~0.09 s, timing test < 1 s; N1 single quotes / escape pairs run nothing; N3 kind() keys
+        both texts (heavier wins), # after escape pair not a comment, $'...' + PS @'...'@ one token (5 shapes key build);
+        N2 here-strings one token; N4 echo / printf | sh|bash|python|perl|node|pwsh, '...' | iex, <( ) / >( ), source /
+        . /dev/stdin heredoc; R17-1 "(?:\\.|[^"\\])*" one word (clang-cl keys the full exe path); VERIFY on key +
+        its statement, \.py(?![\w.]), test_lab only with cwd /lab or /lab_<name> (stage folders let in: flag if too wide);
+        -PassThru + .WaitForExit( = -Wait, -Wait:$true waits; gtp_lowprio exempt only running the gates suite; N5 / N6 /
+        N7 done (all 12 N7 forms refused incl. bash -c 'cat | bash'). Open (Low): nested escaped backticks (no rescan, by
+        design for N8); 17th $( ) (cap 16, views 40); cosmetic trailing-backtick key; python -m py_compile + RENODX_LAB_
+        env keys harness (old harness-env rule).
+        - [ ] gtw_ + gpr_: re-check round 18 (gate + price) (coord 13:5x).
+        Agents (4): gtw_ (round 18 gate re-check), gpr_ (round 18 price re-check), gtv_ (gtl_ lab fixes re-check), h0i_
+        (checker 0 / 0 + all_modes tool); rec_verify RUNNING (13:35, ~100 min) -> grs_ reads it -> merge gpu_s2 -> S3c;
+        all_modes on the combined tree waits for an ATN rule
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
