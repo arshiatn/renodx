@@ -91,7 +91,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
       {"ssao_quality", 2.f},
       {"ssao_directions", 0.f},
       {"ssao_resolution", (AO_SCALES ? 1.f : 0.f)},
-      {"ssao_auto_thickness", 0.f},
+      {"ssao_auto_thickness", 1.f},
   };
   if constexpr (AO_TEMPORAL) {
     ao_defaults.insert(ao_defaults.end(), {{"ssao_temporal", 1.f}, {"ssao_edge_fix", 0.f}, {"ssao_denoise", 1.f}});
@@ -111,7 +111,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
       {"light_bounce_multi_bounce", 0.f},
       {"light_bounce_checkerboard", 1.f},
       {"light_bounce_backface", 0.f},
-      {"light_bounce_auto_thickness", 0.f},
+      {"light_bounce_auto_thickness", 1.f},
   };
   if constexpr (HAS_MSAA<ShaderInjection>) {
     gi_defaults.emplace_back("light_bounce_msaa_pixel", 1.f);
@@ -267,7 +267,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
                                       : std::vector<std::string>{"Full", "Half"}),
           .is_enabled = ao_enabled,
       },
-      toggle("ssao_auto_thickness", &data->ssao_auto_thickness, "Auto Thickness (Experimental)", AO_SECTION,
+      toggle("ssao_auto_thickness", &data->ssao_auto_thickness, "Auto Thickness", AO_SECTION,
              "Guesses each object's thickness from its width, Thickness as the least:\n"
              "spears stay thin, walls and hills block fully.",
              ao_enabled),
@@ -401,7 +401,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
              }),
       toggle("light_bounce_backface", &data->light_bounce_backface, "Back-Face Rejection (Experimental)", GI_SECTION,
              "Ignores light from surfaces seen from behind. Heavier; not always better.", search_enabled),
-      toggle("light_bounce_auto_thickness", &data->light_bounce_auto_thickness, "Auto Thickness (Experimental)",
+      toggle("light_bounce_auto_thickness", &data->light_bounce_auto_thickness, "Auto Thickness",
              GI_SECTION,
              "Guesses each object's thickness from its width, Thickness as the least:\n"
              "spears stay thin, walls and hills block fully.",

@@ -442,6 +442,31 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     setting->default_value = std::ranges::find(RAYS_PRESET, setting->key, &Values::value_type::first)->second;
   }
 
+  // Rows saved at an old default of this page or lighting_settings.hpp (a preset saves every row, hidden ones too),
+  // cleared once in every game under a revision of their own (a game's SettingsRevision counts its own rows): Texture LOD
+  // Bias on All Textures off, Auto Thickness off (on since ATN 2026-11-22), and in a preset without a ray-traced method,
+  // Fog Shadows and Specular Occlusion on (SetRaysPresetDefaults' before they left it; alone they trace or do nothing).
+  // Before settings::Use, as ClearSavedRows.
+  constexpr int PAGE_REVISION = 1;
+  const std::string& global = renodx::utils::settings::global_name;
+  if (int saved = 0; !reshade::get_config_value(nullptr, global.c_str(), "GraphicsPageRevision", saved) || saved < PAGE_REVISION) {
+    constexpr std::array<const char*, 4> RAY_METHODS = {"RayTracedSunShadows", "RayTracedAmbientOcclusion", "RayTracedLightBounce",
+                                                        "RayTracedReflections"};
+    for (const char* suffix : {"-preset1", "-preset2", "-preset3"}) {
+      const std::string preset = global + suffix;
+      const bool traced = std::ranges::any_of(RAY_METHODS, [&preset](const char* key) {
+        float value = 0.f;
+        return reshade::get_config_value(nullptr, preset.c_str(), key, value) && value != 0.f;
+      });
+      std::vector<const char*> keys = {"AntiAliasingTextureLodBiasTrilinear", "ssao_auto_thickness", "light_bounce_auto_thickness"};
+      if (!traced) keys.insert(keys.end(), {"RayTracedFogShadows", "RayTracedSpecularOcclusion"});
+      for (const char* key : keys) {
+        reshade::set_config_value(nullptr, preset.c_str(), key, static_cast<const char*>(nullptr));
+      }
+    }
+    reshade::set_config_value(nullptr, global.c_str(), "GraphicsPageRevision", PAGE_REVISION);
+  }
+
   // Faster Smoke Shadow Build, every game's (shown where Smoke Shadows are installed): placed under Smoke Shadow Quality below.
   settings->push_back(rt_scene::SmokeFastBuildRow(b.rt, b.aa));
   const auto always = [] { return true; };
