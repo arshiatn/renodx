@@ -448,6 +448,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coordinator (route before T5): end-batch placeholders that never match (no shipp ... | ?
 - gtl_ + gtq_ (v1.2): played.json carries a config hash (flags, fields, micromap l ... | ?
 - gtp_ (after gtw_ re-check 10): the hook's own rows() / mode() raise on a corrupt ... | ?
+- h0i_ + upr_: every H0 FAIL of 20261122_054906 root-caused (tool / pre-existing / ... | ?
+- gtl_ (after its 4 suites): S4 seed-number check + span < 1 + real() nits, then t ... | ?
+- gtq_: catch any Exception in build_reference's error path (same message, .partia ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8017,12 +8020,49 @@ heading text are in HANDOFF_ARCHIVE.md)
         build works); nit 4 mock.patch.object for time + IQ_REFS (restore asserted); nit 5 all checks before any
         folder is made (refusals leave no iq_refs). Real iq_refs still not created. -> gtv_ re-check now covers gtq_
         + gtl_ together (sent as an addendum).
-        Agents (7): gtw_ (S1c re-check 10), gtv_ (gtl_ S2 + S3 + gtq_ S3 + nits re-check), t4i_ (r23), gtb_
-        (gate_rows strict decode), b13r_ (c3i_ B1.6 follow-ups re-check), c3i_ (B1 real-routine tests). Idle:
-        bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, gbc_, gtq_ (waits gtv_),
-        gpr_ (re-checks gtb_), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), gtl_ (after H0: its 4 suites),
-        ebr_ (re-checks t4i_ r23). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
-        map_replay-named process until H0 ends; gtv_'s held lab tests + race probe after H0.
+        H0 RE-RUN DONE 07:14 (task biaa5xsc6 exit 0; tools\tw\h0\runs\20261122_054906\summary.txt; 84 min of GPU,
+        estimate 72; GPU lock released): verdicts 6 PASS, 11 FAIL, 0 OPEN. PASS: run1-headers (24 byte-equal, 37
+        changed), run1-census (pre + post clean), run5-g3, run4-ref (no mask worse), run6-sharc, run7-atn16 (no
+        register step up). FAIL: run7-post_atn (ns_trace_run exit 7, PROMPT: TOOL FAULT), run1-dumps (1 failure),
+        run8 ("baseline recorded" - 1469 / 1509 repeat), run2-ref (e3_open: no ref_compare result), run3-ref
+        (r3_refl_s9 / s16 boxes / edge NOISY -> BIAS), run4-history (r4_torchgi_s1 noise x1.852; run5-lights-info:
+        the reference changed on the same inputs, frozen inputs equal), run5-bytes (e3_open_r0: no meta.json),
+        run2-quality (e1_sun_raw bias 0.00 -> 0.66 %), run3-noise (16 rays not below 8 after: 1.242; before: 1.194),
+        run6-probe (unseen / unseen_b missing), run7-atn (FileNotFoundError on its inputs). Also: only 182 / 206
+        modes pass their own checks BEFORE H0; CHECK switching PASSED -> FAILED / PASSED; rr_ao_reblur_release FAILED
+        -> PASSED / FAILED; 40 post outputs not repeating. Several FAILs look like tool / input faults, some may be
+        real post changes - NOT judged yet. -> h0i_ H0 ANALYSIS STARTED (offline: classify tool / pre-existing /
+        real, root-cause each, fix its own tools, name owners for real ones) + its fake-to-testbin + R1; upr_
+        re-checks. gti_ R1 STARTED. Bulk Nsight index RESUMED 07:2x (coordinator, log
+        scratchpad\coord_bulk_index2.log; 180 left).
+        - [ ] h0i_ + upr_: every H0 FAIL of 20261122_054906 root-caused (tool / pre-existing / real) before any H0
+            re-run or any merge that H0 gates; then the coordinator re-runs H0 in a gap (ATN's PowerShell rule).
+        gtv_ GTL_ S2 + S3 + GTQ_ S3 RE-CHECK = BOTH OK 07:1x (plan_1117/gtv_gtl_gtq_s3_recheck_handback.md;
+        gtv_iq_review.md): unit 28 / 28 + iq 14 / 14; span matches the resident (3 real recordings: 2 / 8 / 2);
+        fixture breaks no held test; builder S3 fits the lab's stride (arm keys <= 1000 + K x N + 5 x span < 2000 +
+        span). New Should S4 (lab): the validator lists the reference's seed_<n> folders but never checks the
+        numbers -> refuse lowest seed < REFERENCE_SEEDS or sorted gaps < N. Nits gtl_: refuse span < 1 (uint32 wrap
+        in the resident); real() on both sides of the belt's relpath. Nit gtq_: build catches only OSError /
+        ValueError (TypeError = traceback exit 1, .partial still kept). OPEN: no lab job plays the reference's seed
+        runs (kind dump sends no seed / frames; check_played refuses seed != 0 outside iq). COORDINATOR DECISION: gtl_
+        adds a reference mode to kind dump (seeds list >= REFERENCE_SEEDS, N apart + dump_frames + keep_played) after
+        its 4 suites + S4; gtv_ reviews.
+        - [ ] gtl_ (after its 4 suites): S4 seed-number check + span < 1 + real() nits, then the kind dump
+            reference mode; gtv_ re-checks.
+        - [ ] gtq_: catch any Exception in build_reference's error path (same message, .partial kept); gtv_ checks.
+        gtb_ GATE_ROWS STRICT DONE 07:1x (plan_1117/gtb_gate_rows_strict_handback.md; backup scratchpad\gtb_bak17;
+        budget.py live via os.replace): strict UTF-16 BOM / UTF-8; on a decode error gates.tsv = `price shadow`,
+        mode.txt = shadow, one `renodx-watch FAULT <file> unreadable (...): read as shadow` line + facts cell; lab
+        phases still kill; missing = not installed. test_budget 3 x 35 OK (new
+        test_corrupt_gates_files_read_as_shadow, end to end --limit 2 not killed, --phase dump killed 124), selftest
+        3 x 3; gpr_'s probe: price-shadow + bad mode.txt cases not killed, no-price-row killed as before.
+        -> gpr_ RE-CHECK STARTED.
+        Agents (10): gtw_ (S1c re-check 10), h0i_ (H0 analysis + fake to testbin + R1), gti_ (R1), gtl_ (its 4
+        held suites), gtq_ (Exception nit), gpr_ (gtb_ gate_rows re-check), t4i_ (r23), b13r_ (c3i_ B1.6
+        follow-ups re-check), c3i_ (B1 real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_, lgf2_,
+        c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), grs_, gtk_, gtp_ (waits gtw_), ebr_
+        (re-checks t4i_ r23), gtv_ (held lab suites + race probe AFTER gtl_'s 4 suites: the fakes' names would
+        cross each other's busy checks). GPU: free (rec_verify waits ATN; H0 re-run after the analysis).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
