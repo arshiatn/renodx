@@ -11192,8 +11192,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] tick audit (Opus xHigh, read only): every [x] box really done -> handoff_plan\tick_audit\*.tsv (coord 19:1x).
         - [ ] tick-only verify (Opus xHigh, read only): plan.md section 2's 200 rows -> coord ticks the confirmed ones.
         - [ ] coord: ATN's decision list (all questions + recommendations) + full open-items plan summary -> ATN.
-        Agents: gtp_ (gate round 22); starting lg3_ / b3s_ / t4i_ / gtv_ / tick audits; GPU: FREE since 19:11 (S3c part 1
-        re-run done); one GPU job at a time
+        STARTED 19:1x-19:2x: lg3_ a89ff094c60c1b7cf (Sonnet High, worktree, branch rmt_lg3: group 3; addon.cpp only after
+        asking); b3s_ ad0d4c962a4677665 (Sonnet High, worktree, rmt_b3s: B3b S4 -> S5 -> S6 implementation, owns
+        animation_rows.hpp + pending_sweep.hpp, addon.cpp in S6 after coord's OK; api_notes.md in testbin\scratch\b3s_);
+        b3t_ a5c849e0cef54f7dd (Sonnet High, worktree, rmt_b3t: B3b S4 / S5 tests from §6, owns animation_rows.inc only,
+        independent of b3s_); t4i_ RESUMED (ebo tools refresh, KEEP B3b with needs gate + real names, add the ~7 min B1L1
+        pair, run_all self-check that every segments.json row / env exists in addon.cpp); gtv_ RESUMED (R1 bursts verdict).
+        TICK AUDIT (Opus xHigh, read only; brief handoff_plan\tick_audit_brief.md; out handoff_plan\tick_audit\): live
+        HANDOFF at c603b9330: tka_ ac17d40fb0861fdcf l.68-1057, tkb_ a8901d02fb564fd79 l.1062-1653, tkc_ aa283178ea584e6a3
+        l.1668-6892, tkd_ a5922c092af6dff32 l.6894-10879, tke_ ae3dd5caf72fe850a l.10902-12410, tkf_ a6c1b2f208c97bc05
+        l.12413-12819; HANDOFF_ARCHIVE: tkg_ aab810d435bf9986d l.10-734, tkh_ a16c010da39c504ff l.738-1279, tki_
+        ab7943aca383be1dd l.1284-1841, tkj_ a0b4c9ff8a9dcc1c8 l.1854-6217; plan docs' done steps + silently vanished steps:
+        tkp_ a7c323cfe76c71749. VERIFY tick-only (plan.md section 2): tdv1_ acc0f62af1dfdcf32 rows 1-100, tdv2_
+        a1519603f3fa3cbd2 rows 101-200 -> coord ticks only CONFIRMED rows.
+        Agents (18): gtp_ (gate round 22), lg3_ (group 3), b3s_ + b3t_ (B3b code + tests), t4i_ (ebo refresh), gtv_ (R1
+        bursts), tka_..tkj_ + tkp_ (tick audit, read only), tdv1_ + tdv2_ (verify tick-only); GPU: FREE since 19:11 (S3c part
+        2 after gtv_'s verdict); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
