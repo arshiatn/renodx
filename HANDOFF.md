@@ -452,6 +452,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_ (after its 4 suites): S4 seed-number check + span < 1 + real() nits, then t ... | ?
 - ATN (morning report): once the price gate goes on, everyday gated_build builds h ... | ?
 - gti_ (batched with any H0 item h0i_ routes to it; test_gpu_lock.py lives in lab\ ... | ?
+- ATN: lab_gtl_stage (tools\tw\lab_gtl_stage, gtl_'s staged copy) may be deleted a ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8126,12 +8127,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         parity cases onto the injected copy (no guard needed). R1 CLOSED.
         - [ ] gti_ (batched with any H0 item h0i_ routes to it; test_gpu_lock.py lives in lab\tests, so after
             gtv_'s lab run): r1a pid 999993, r1b skip count in the summary, optional injected-copy cases; gpr_ checks.
-        Agents (9): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (held lab suites + race probe), gtl_ (S4 +
-        nits + kind dump reference mode, staged), gtp_ (O2 order + corrupt files + nits + gated_build proposal),
-        gtb_ (grs1 NUL check), ebr_ (t4i_ r23 re-check), b13r_ (c3i_ B1.6 follow-ups re-check), c3i_ (B1
-        real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (re-checks
-        h0i_), gpp_, gbc_, gpr_ (re-checks gtb_), gti_ (r1a / r1b nits, batched), grs_, gtk_, gtw_ (re-checks
-        gtp_), t4i_ (waits ebr_), gtq_
+        gtl_ S4 STAGED 07:3x (plan_1117/gtl_s4_staged_handback.md; backups scratchpad\gtl_backup_s4; unit log
+        scratchpad\gtl_runs6\unit.txt): stage = tools\tw\lab_gtl_stage (sibling of lab, not scratchpad: tests
+        from scratchpad would put it on sys.path); live lab byte-equal to the backup. lab.py: shared rule
+        reference_seeds_bad(seeds, frames) (>= 2000, sorted gaps >= N, numbers in the line) for iq references +
+        seed_runs; span < 1 refused; belt relpath real() both sides (no test: junction spelling hard to make);
+        kind dump reference mode: job field seed_runs {seeds 2-16, dump_frames}, refused on other kinds, sends seed
+        then dump frames, echo checked, played.json beside each <arm>_s<seed> folder, check_played allows 0 + the
+        job's seed_runs seeds, plan counts arms x seeds x N; job_schema seed_runs; resident_protocol.md.proposed +1
+        line (resident needs nothing new). Fixture iq_ref seeds -> seed_2000 / seed_2002. Staged unit 29 / 29; staged
+        jobs suite waits gtv_'s lab run. NOTE: gtl_ planned to remove lab_gtl_stage after the swap = a recursive
+        delete -> NOT allowed (agents never delete recursively; deletions only on ATN's yes): the stage stays.
+        - [ ] ATN: lab_gtl_stage (tools\tw\lab_gtl_stage, gtl_'s staged copy) may be deleted after the swap -
+            your yes only (agents don't delete folders).
+        Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (held lab suites + race probe), gtp_ (O2 order
+        + corrupt files + nits + gated_build proposal), gtb_ (grs1 NUL check), ebr_ (t4i_ r23 re-check), b13r_
+        (c3i_ B1.6 follow-ups re-check), c3i_ (B1 real-routine tests) + coordinator bulk index. Idle: bd1r_, lga_,
+        lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gpr_ (re-checks gtb_), gti_ (r1a / r1b nits,
+        batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
+        after gtv_'s lab run; gtv_ re-checks after)
         (go after gtl_). gtv_'s held lab suites + race probe AFTER gtl_'s 4 suites
         (the fakes' names would cross each other's busy checks). GPU: free (rec_verify waits ATN; H0 re-run after
         the analysis).
