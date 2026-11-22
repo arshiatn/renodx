@@ -1893,6 +1893,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
                                             .rays_replace_ao = false,
                                             .rays_multiply_maps = true,
                                             .rays_tested = false,
+                                            .has_fog_shadows = false,
                                             .every_row = false});
   // The Upscaling Debug View's one view (the page's tooltip names Total War's object motion too).
   for (Setting* setting : *settings) {

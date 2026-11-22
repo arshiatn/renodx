@@ -3035,6 +3035,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                             .rays_replace_ao = false,
                                             .rays_multiply_maps = true,
                                             .rays_tested = false,
+                                            .has_fog_shadows = false,
                                             .every_row = false});
   // What the in-process ray tracing has no part of (the helper's: Rays a Pixel, its filters and caches, micromaps, its
   // debug tools): hidden, kept (graphics_page's presets name them).
