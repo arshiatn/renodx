@@ -2053,10 +2053,10 @@ void ConfigureAddon() {
                                              .rays_preset_as_attila = true,
                                              .has_path_ambient = false,
                                              .has_reflections = false,
-                                             .has_fog_shadows = false,
                                              .rays_multiply_maps = true,
                                              .has_gtvbao = false,
                                              .has_gi = false,
+                                             .has_fog_shadows = false,
                                              .every_row = false});
   const std::vector<std::string> page_sections = twattila::graphics_page::Sections();
   for (auto* setting : settings) {
