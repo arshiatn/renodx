@@ -7425,6 +7425,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         Not covered: comparisons against stored calibrations / reference floors from other jobs -> [ ] dred in the arm
         entry (gtb_'s result.schema) or the gate (gtp_), routed to gtp_'s round. -> gtl_ GO to run its 4 lab test
         files NOW (GPU free, H0 stopped; fakes OK until I restart H0, which waits for them + gtv_'s held tests).
+        gtb_ y1 y2 DONE 05:2x (plan_1117/gtb_y1y2_handback.md; backups scratchpad\gtb_bak10): y1 fault names always fit
+        (probe part cut to FACTS_MAX - len(tail) - 2); y2 bash -o / +o / -O / +O values skipped, + options read past,
+        flags case-sensitive (-C is not -c); docstring per-limit safe / not safe; --deadline-s 0 = row note
+        "declared deadline 0 ignored". 33 OK, selftest 0. Two limits NOT SAFE (a later command's deadline can become
+        the limit): bash's single & doesn't end the first command; wrappers (wsl, env, timeout, start) read as whole
+        argv -> gtb_ told to fix both now (fix-now rule), then gpr_ re-checks y1 / y2 / z together.
         Agents (7): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtp_ (K1-K3 + next round), gtv_ (grs_ N1
         re-check), gtl_ (S1b tests), gtb_ (y1 / y2), gti_ (ns_busy.ps1:18). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_
         (waits b13r_), upt_, upr_ (waits h0i_), gpp_, gpr_ (waits gtb_), ebr_, t4i_ (r21 after b13r_), gtq_, gbc_,
