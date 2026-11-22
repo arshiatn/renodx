@@ -428,7 +428,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (unified PT, not blocking now): Q1-Q10 of the design + NQ1 rough SO route (r ... | ?
 - F1 HYBRID FIX (GPU plan, after render_mt; needs a harness window with agents hel ... | ?
 - ATN (end batch): '[Total War] StallDump=1' in ReShade.ini so the first stall wri ... | ?
-- group 3 (lg3_ STARTED 18:4x; the X1 wait is stale, X1 out of this batch) after R ... | ?
+- group 3 (lg3_ NOT started: waits for ATN's go; the X1 wait is stale, X1 out of t ... | ?
 - ATN: install the hook (INSTALL_FOR_ATN.md) only after gtw_'s fixes; Q12 / Q26 de ... | ?
 - ATN. (5) = YES to my suggestions: unpinned non-leak crash -> retry the start onc ... | ?
 - until R1 lands: after any crash read Windows' Application log (event 1000). | ?
@@ -507,7 +507,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (later, before any ENFORCE): a hook that times out (pre hook 15 s) does not ... | ?
 - coord: synthesis agent -> handoff_plan\plan.md (parallel groups) -> SHOW ATN FIR ... | ?
 - coord: before ATN's restart, confirm the end batch is READY (everything built + ... | ?
-- hts_: handoff_plan\plan.md + plan_groups.tsv (coord 18:2x) -> show ATN. | ?
 - gtb_ (owner of schema_check.py per gtb_s1b_fix2_handback.md; AFTER S3c): support ... | ?
 - gtc_ (Low; STARTED 18:3x): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl ... | ?
 - gtl_ (AFTER S3c, no suites beside it): conhost race fix in test_priced_kill_ends ... | ?
@@ -518,6 +517,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - lg3_ (Sonnet High, own worktree, branch rmt_lg3 from atn-mods HEAD): logging gro ... | ?
 - t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 (coord 18:4x); t ... | ?
 - ATN: Q1 end batch without B3b? Q2 group 3 before the batch? Q3 the B1L1-only vol ... | ?
+- ATN: review handoff_plan\plan.md -> OK / changes; NOTHING from it starts or gets ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -6580,7 +6580,7 @@ heading text are in HANDOFF_ARCHIVE.md)
           A-S8 / A-N6, anti_aliasing A-S10, rt_core A-S11, frame_trace A-N4, twrome2 engine_tweaks D-S1;
         - lgf2_ (a2e927f66592ef97f) rmt_lg2: all of helper B + bridge C (exit codes defined once; no bridge bump unless
           needed, then stop and ask).
-        - [ ] group 3 (lg3_ STARTED 18:4x; the X1 wait is stale, X1 out of this batch) after R-S5 / B1.6 / X1 land:
+        - [ ] group 3 (lg3_ NOT started: waits for ATN's go; the X1 wait is stale, X1 out of this batch) after R-S5 / B1.6 / X1 land:
           engine_code A-M2 / A-S1 / A-S2 / A-N1, instance_fill A-S3 / A-N5,
           draw_recording A-S4 / A-N2 / A-N3, worker_pool A-S6 + Describe() half of A-S7 + the invariant comment.
         Then lga_ re-checks each branch.
@@ -11027,7 +11027,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         plan owns dlaa_helper / lab / gates / reference iq_* / nsight; deferred by ATN: l.2469, 2487, 2535.
         SYNTHESIS 18:2x: hts_ add6eb92396961a31 (Opus xHigh, read only) -> handoff_plan\plan.md + plan_groups.tsv (In short,
         tick list, ATN questions by game, parallel groups now, later queues, conflicts) -> ATN REVIEWS before any work.
-        - [ ] hts_: handoff_plan\plan.md + plan_groups.tsv (coord 18:2x) -> show ATN.
+        - [x] hts_ (DONE 18:52; shown to ATN 18:5x): handoff_plan\plan.md + plan_groups.tsv (coord 18:2x) -> show ATN.
         gtl_ ADOPTED SCHEMAS 18:24 (plan_1117/gtl_adopted_schemas_handback.md; patches testbin\scratch\gtl_\stage2_patch_adopted.py
         + stage2_patch_conhost2.py; runs\s3cl_*.txt): 4 tests now read the LIVE schemas (test_adopted_schemas: cmd accepts
         dump frames 2 + histories, light_anim null, v1 dump; refuses frames 0 + moments k 2; ans block accepts reset_ms 5.0 /
@@ -11143,13 +11143,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         do it after the batch with the x87c A/B); group 3 CODE starts now either way (A-M2 is a MUST before or after);
         tools refresh starts now (needed either way); B3b removal from the starts = its own commit (ATN's Q1); no leg 5
         tonight. Group 3 tests / builds only after the S3c window.
-        - [ ] lg3_ (Sonnet High, own worktree, branch rmt_lg3 from atn-mods HEAD): logging group 3 (coord 18:4x).
-        - [ ] t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 (coord 18:4x); then ebr_ re-checks.
+        - [ ] lg3_ (Sonnet High, own worktree, branch rmt_lg3 from atn-mods HEAD): logging group 3 (coord 18:4x). NOT STARTED:
+        ATN stopped coord's turn 18:4x before the spawn -> asked ATN "start group 3 + tools refresh now?".
+        - [ ] t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 (coord 18:4x); then ebr_ re-checks. NOT
+        STARTED (same ATN question).
         - [ ] ATN: Q1 end batch without B3b? Q2 group 3 before the batch? Q3 the B1L1-only volley pair (~7 min)? (rec. yes
         x3; asked 18:4x). Later: Q6 delete testbin\c33i_rs5_loop* after the restart.
-        Agents (6): gtc_ (S3c RE-RUN, GPU), gtp_ (gate round 22, below normal), hts_ (open-items plan synthesis), lg3_
-        (logging group 3 code), t4i_ (ebo tools refresh); gtv_ / gtl_ / ebq_ / hta_..htd_ / gtw_ / gpr_ / fcr_ / gti_ / grs_
-        / h0i_ / upr_ idle; GPU: S3c RE-RUN (gtc_) from 18:3x; other agents' CPU work below normal; one GPU job at a time
+        hts_ PLAN 18:52 (handoff_plan/plan.md 824 lines + plan_groups.tsv 104 rows + hts_handback.md; line numbers at
+        fd4ae4e7c): 549 open boxes (56 mid-line), all assigned. 200 tick-only (section 2, coord ticks after ATN's OK); 50 ATN
+        questions + 12 delete questions (section 3, by game, with picks; Q1-Q3 = ebq_'s end batch questions); 85 in-game
+        (one batch per game, after render_mt's end batch); ~60 GPU -> GPU plan's queue; 22 groups (62 boxes) can start now
+        beside both plans (G01-G14 code / tools on non-Attila folders, G15-G17 read-only studies, G18-G22 shared headers on
+        own branches, merged only after the end batch on render_mt's word). Until S3c ends groups only read / write code;
+        render_mt gets build slots first; nothing merges into atn-mods until the end batch is over; every group stops clean
+        before ATN's restart. Models: Opus High + one Opus xHigh review per group; studies Opus xHigh. rt_core.hpp one
+        writer (G18). Changes vs triage: gpu_trace.ps1 halves (11408 / 10775) -> GPU plan; 11848 = in-game Nsight item
+        (answered at OPEN FOR ATN l.185); htc_'s hand-back has two labels swapped (TSV right).
+        - [ ] ATN: review handoff_plan\plan.md -> OK / changes; NOTHING from it starts or gets ticked before ATN's OK.
+        Agents (2): gtc_ (S3c RE-RUN, GPU), gtp_ (gate round 22, below normal); lg3_ + t4i_ wait for ATN's go; gtv_ / gtl_
+        / ebq_ / hts_ / hta_..htd_ / gtw_ / gpr_ / fcr_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: S3c RE-RUN (gtc_) from 18:3x;
+        other agents' CPU work below normal; one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
