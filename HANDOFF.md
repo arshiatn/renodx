@@ -7523,12 +7523,32 @@ heading text are in HANDOFF_ARCHIVE.md)
         tooltip "the game's particle limit is reached".
         [ ] c3i_ B1 real-routine tests (design 5: tests 1-9, 12, 14, 15) + N5's second-node world and drawing sweep;
             due before B1.7 / B1.8 and before any end-batch segment plans B1L1 / B1L2 (b13r_'s B1.4 condition).
-        Agents (6): upr_ (h0i_ F2 re-check), gtw_ (gtp_ re-check 8), grs_ (N1 leftovers 1-2), gtl_ (S1b tests,
-        then v1.1 + dred writes), gpr_ (gtb_ y1 / y2 / z + dred), gti_ (ns_busy z1 / z2). Idle: bd1r_, lga_,
-        lgf2_, c33i_, c3i_ (S2 + N1-N3 after the merge), upt_, h0i_ (waits upr_, then fake to testbin), gpp_,
-        ebr_, t4i_ (r21 after the merge, + S1), gtq_, gbc_, gtb_ (waits gpr_), gtv_ (waits grs_ / gtl_), gtk_,
-        gtp_ (waits gtw_), b13r_ (re-checks c3i_). GPU: free (H0 stopped); harness-named fakes allowed until I
-        announce the H0 re-run.
+        MERGED rmt_b16 05:4x: c54e3e589 (--no-ff, pushed); name check 15 generic words; gated builds -Owner coord_b16
+        x86 twattila / twrome2 / twthronesofbritannia + amd64 twattila exit 0, 61 warnings (none new). No H0
+        $HelperPaths file touched (guard stays clean). -> t4i_ r21 STARTED (segments.json B1.6 keys, Count Check
+        env never written as 0, S1 gate regex + trip test); c3i_ B1.6 FOLLOW-UPS STARTED on rmt_b16n from c54e3e589
+        (S2 trace-window ParticleCount line, N1-N3); then t4i_ r22 adds S2's gate regex; b13r_ re-checks c3i_.
+        grs_ N1 LEFTOVERS DONE 05:4x (plan_1117/grs_n1_leftovers_handback.md): gpu_s2 d336c55d3 on d68954a39
+        (local): trace gets the frame-limit check (position + frames, no reset); BelowFrameLimit counts SETTLE_LOOPS
+        (5, shared with Load) = worst case for seed / run / moments / trace (seed limit now 15728633); static Utf8()
+        shared by CheckEnvironment + ParseFlags (non-ANSI / unpaired surrogate flag -> exit 1, no throw). Offline 0
+        failures, rows SAME (53), G4 new5 = aligned5 ALL SECTIONS SAME, base vs aligned5 99 .text bytes (hash as
+        aligned4), 52 headers same. GPU COMMAND NOW: sh .../tools/tw/reference/rec_verify.sh grs_s2r rec_grs_base ""
+        rec_grs_new5 rec_grs_aligned5 rec_grs_rec5 (rec4 out of date). -> gtv_ RE-CHECK STARTED.
+        gti_ NS_BUSY z1-z2 DONE + LIVE 05:4x (plan_1117/gti_ns_busy_z1z2_handback.md; backup scratchpad\gti_bak10;
+        staged scratchpad\gti_stage): z1 settle + stderr line only while the count is 0 (else unsure ones added at
+        once, silently; a wait stops when one becomes counted); z2 pid + start-time pair before the path. Swap: one
+        os.replace after checking no newer H0 run folder, no gpu_job.lock, no h0 / gpu_lock process, file unchanged.
+        test_ns_busy 10 / 10 (takes a script path now; old file 8 / 10), test_gpu_lock 58 / 58. Its note: live
+        ns_busy printed 1 right after the test -> I checked 05:4x: no game / harness / helper / fg / map_replay
+        process running (Get-Process + Win32_Process empty); transient (likely gtl_'s allowed fakes). -> gpr_
+        re-checks z1 / z2 after gtb_.
+        Agents (7): upr_ (h0i_ F2 re-check), gtw_ (gtp_ re-check 8), gtv_ (grs_ N1 leftovers re-check), gtl_ (S1b
+        tests, then v1.1 + dred writes), gpr_ (gtb_ y1 / y2 / z + dred, then gti_ z1 / z2), t4i_ (r21), c3i_
+        (B1.6 follow-ups). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, h0i_ (waits upr_, then fake to testbin), gpp_,
+        ebr_ (re-checks t4i_), gtq_, gbc_, gtb_ (waits gpr_), gti_ (waits gpr_), grs_ (waits gtv_), gtk_, gtp_
+        (waits gtw_), b13r_ (re-checks c3i_). GPU: free (H0 stopped); harness-named fakes allowed until I announce
+        the H0 re-run.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
