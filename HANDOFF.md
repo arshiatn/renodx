@@ -7191,9 +7191,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN's heapfix.ini read-only (heapfix's own parse rules) + the four <name>_off.txt files: PROBLEM when a key is
         not 1, missing, or switched off, naming the compares it would skew; run_all green (leg 158 / 158). -> ebr_ r19
         RE-CHECK STARTED.
-        Agents (10): h0i_ (F1), c3i_ (B1.6), ebr_ (r19 re-check), gtw_ (re-check 7), gbc_ (B1 re-check, then RS-M1),
-        gtl_ (S3r M1r / M2r), gtv_ (S2r), gtb_ (W1 / W2), gpr_ (gti_ F1 re-check). Idle: bd1r_, lga_, lgf2_, c33i_,
-        upt_, upr_ (waits h0i_), gpp_, t4i_, gtq_, gti_, grs_, gtk_, gtp_ (waits gtw_).
+        gpr_ gti_ F1 RE-CHECK = OK 04:3x (designs/gpr_gti_f1_handback.md; gpr_review.md l.729): 58 / 58 + 10 / 10 under
+        InUse() = None; GTI_ POLL PART DONE. Accepted residual: test_trace_run F4 / F6 real-name fakes (~8 s) only delay
+        a GPU job. [ ] h1 (owner gti_, next gti_ round): a 1 s floor for -PollS with -Busy (no caller today). [ ] g3 round
+        clean-up of old busy_count.json.*.tmp (ATN's yes).
+        Agents (9): h0i_ (F1), c3i_ (B1.6), ebr_ (r19 re-check), gtw_ (re-check 7), gbc_ (B1 re-check, then RS-M1),
+        gtl_ (S3r M1r / M2r), gtv_ (S2r), gtb_ (W1 / W2). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (waits h0i_), gpp_,
+        gpr_ (waits gtb_), t4i_, gtq_, gti_, grs_, gtk_, gtp_ (waits gtw_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
