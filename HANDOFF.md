@@ -7859,13 +7859,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         UTF-16 too; P2: budget.py passes the child text to the hook's kind() (no own key builder). Tests: test_budget
         3 x 34 OK (new test loads a sandbox copy of gate_hook.py without bytecode, pure calls), watch --selftest 0,
         test_gpu_gate 30 OK + 1 skipped, test_report_check 9 OK. -> gpr_ RE-CHECK STARTED (S1 selftest + N11).
-        Agents (6): gtw_ (S1c re-check 9), gtq_ (gtv_'s S1 + nits + iq_refs guard + dump size), gpr_ (gtb_ S1 +
-        N11 re-check), t4i_ (r22: ebr_'s r21 fixes), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_,
-        lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_ r22),
-        gbc_, gtb_ (waits gpr_), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_
-        (after H0: its 4 suites), gtv_ (re-checks gtq_ + gtl_ iq_refs; held lab tests + race probe after H0).
-        GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg / map_replay-named process until H0
-        ends.
+        gtq_ GTV_ FIXES DONE 06:4x (plan_1117/gtq_gtv_fixes_handback.md; backup scratchpad\gtq_backup_fix7 BEFORE
+        edits): 32 / 32 iq tests (321 s, CPU, below-normal); real iq_refs not created. 1 dump output_sizes = the
+        texture size only. 2 REFERENCE_SEEDS = 2000 (builder refuses played seeds < 2000); RNG answer: YES they share
+        streams - the seed is only an offset on the played frame (rt_serve.h PlayFrame(position % frames, span *
+        (loops + position / frames) + seed_)), config-independent -> S1 was real; spacing: a dump's window < ~450
+        frames under the lab's limits vs ~985 gap to A' 1000..1015 = safe. 3 every refusal asserts its reason;
+        played.json must agree in all but seed / reset (dred, stems, env, light_anim each tested); doc: build before
+        Q25; "lowest seed is the truth, the next the floor"; v1 dumps without played.json now REFUSED. 4 IQ_REFS in
+        kept_folders() at call time (score / assemble / --lab never write there; flip_tool follows; tested);
+        `iq_frames.py reference --recording <frame_N> --label <name> <seed runs...>` (no --out; path
+        IQ_REFS\<scene>_frame_<N>_<hash12>\<label>_s<seeds>_f<frames>_<time>\); guard: refuse_kept identity + ADS
+        vs every kept folder but IQ_REFS, recording folder a plain dir under IQ_REFS (junction refused - tested with
+        a real junction in its temp world, link removed after), existing target / .partial refused, stale .partial
+        left, source inside IQ_REFS refused; byte copies into <name>.partial, rename at the end, nothing deleted on
+        error; manifest.json (schema renodx-iq-reference v1, sources + played.json, sha256 per file, re-hashed in the
+        test). -> gtv_ RE-CHECK STARTED (with gtl_'s iq_refs keep).
+        Agents (6): gtw_ (S1c re-check 9), gtv_ (gtq_ fixes + gtl_ iq_refs re-check), gpr_ (gtb_ S1 + N11
+        re-check), t4i_ (r22: ebr_'s r21 fixes), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_,
+        lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_ r22), gbc_,
+        gtb_ (waits gpr_), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (after
+        H0: its 4 suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper /
+        fg / map_replay-named process until H0 ends; gtv_'s held lab tests + race probe after H0.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
