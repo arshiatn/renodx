@@ -59,8 +59,8 @@
 //
 // Trace (a pool trace window, RENODX_TW_WORKER_TRACE): each call of ours inside the window leaves one record (sizes, rows, records,
 // the items that took the fast path, blocks, workers, the waits of B, microseconds of the whole call, the join and the game's tail),
-// and the window's calls that took the game's own fill are counted by reason; `Update` prints both at the next present. No counter
-// runs outside a window.
+// and the window's calls that took the game's own fill are counted by reason; `Update` prints both at the next present and clears
+// them. No counter runs outside a window (the test build, TWATTILA_WORKER_CONTROLS, counts the paths always).
 namespace twattila::animation_rows {
 
 // The row's stage.
@@ -92,6 +92,8 @@ enum class Path : uint8_t { OURS, STAGE_OFF, FORCED, ROW_AT_END, FEW_ITEMS, END_
 constexpr std::array<const char*, static_cast<size_t>(Path::COUNT)> PATH_NAMES = {
     "ours", "stage off", "forced", "row at end", "few items", "end past list", "texture range", "vector not empty", "no rows", "ring busy", "bad item", "check memory"};
 
+static_assert(PATH_NAMES.back() != nullptr, "every Path has a name");
+
 // The batch env's value (RENODX_TW_ANIMATION_SCHEDULE).
 enum class Schedule : uint8_t { STREAM, BULK };
 
@@ -117,6 +119,13 @@ static std::atomic<Schedule> schedule = Schedule::STREAM;
 // The env generation the schedule was read at (all ones: not yet).
 static uint32_t env_generation_applied = ~0u;
 static std::array<std::atomic<uint32_t>, static_cast<size_t>(Path::COUNT)> paths = {};
+// One call of Dispatch took `path`: counted only inside a pool trace window (no live counters), always in the test build.
+inline void Count(Path path) {
+#if !defined(TWATTILA_WORKER_CONTROLS)
+  if (!worker_pool::Tracing()) return;
+#endif
+  paths[static_cast<size_t>(path)].fetch_add(1, std::memory_order_relaxed);
+}
 // Items the last call finished: Bulk's first round covers at least as many.
 static uint32_t last_items = 0;
 
@@ -154,6 +163,10 @@ struct Controls {
   // Streaming: a scatter claim pauses this many times between its check and its CAS (S-3: it still never scatters a block that is not published).
   uint32_t claim_gap_spins = 0;
   // A hook the render thread runs after each block it allocated (and published or scattered): the re-entry test calls Dispatch from it.
+  // The ring is held and the job is open there, so: (1) a nested Dispatch needs a second world (its own cache with an empty record
+  // vector, at least min_items items, force 0, the texture in range, the stage not OFF), or it stops at an earlier fallback and never
+  // reaches RING_BUSY; (2) the hook must not call worker_pool::Join, Stop or Update (Join would close the outer job and wait for workers
+  // that leave only when B is done: a deadlock; Run and Start are refused, which is safe); (3) the hook must not throw.
   void (*after_block)(uint32_t block, void* context) = nullptr;
   void* after_block_context = nullptr;
   // Streaming: a scatter unit takes a gathered block before B has published it (stale texel words); it may also hang the call, so a test
@@ -234,7 +247,10 @@ struct TraceCall {
   uint32_t blocks = 0;
   uint32_t workers = 0;    // asked for
   uint32_t ran = 0;        // that ran the job
-  uint32_t waits = 0;      // B's pauses while it waited for A or C
+  uint64_t b_ticks = 0;         // B's own allocate time
+  uint64_t waits_a_ticks = 0;   // B's idle pauses while it waited for a block's gather
+  uint64_t waits_c_ticks = 0;   // B's idle pauses while it waited for scatter units
+  uint64_t c_lag_ticks = 0;     // streaming: from B's end to the last scatter unit
   uint64_t call_ticks = 0;  // Dispatch's part (gather, allocate, scatter, join)
   uint64_t join_ticks = 0;
   uint64_t tail_ticks = 0;  // the game's fill after ours
@@ -246,7 +262,6 @@ static std::array<TraceCall, TRACE_MAX> trace_calls;
 static uint32_t trace_count = 0;      // the owner thread's (Dispatch, Update)
 static uint32_t trace_dropped = 0;    // calls over TRACE_MAX
 static std::atomic<uint32_t> trace_elsewhere = 0;  // calls of ours on other threads while a window was open, not recorded
-static std::array<uint32_t, static_cast<size_t>(Path::COUNT)> paths_printed = {};
 static bool trace_was_open = false;
 // The stage Update said last.
 static Stage stage_said = Stage::OFF;
@@ -507,31 +522,28 @@ inline void Update(Stage requested, uint32_t env_generation = 0) {
 
   // The trace window's calls (the present after the window's last frame prints that frame's too).
   const bool tracing = worker_pool::Tracing();
-  const uint32_t elsewhere = trace_elsewhere.exchange(0, std::memory_order_relaxed);
-  if (!tracing && !trace_was_open && trace_count == 0 && trace_dropped == 0 && elsewhere == 0) {
-    for (size_t path = 0; path < paths.size(); ++path) {
-      paths_printed[path] = paths[path].load(std::memory_order_relaxed);
-    }
-    return;
-  }
+  if (!tracing && !trace_was_open && trace_count == 0 && trace_dropped == 0 && trace_elsewhere.load(std::memory_order_relaxed) == 0) return;
   trace_was_open = tracing;
+  const uint32_t elsewhere = trace_elsewhere.exchange(0, std::memory_order_relaxed);
   std::string game_paths;
   for (size_t path = 1; path < paths.size(); ++path) {
-    const uint32_t now = paths[path].load(std::memory_order_relaxed);
-    if (now != paths_printed[path]) {
-      game_paths += std::format(" {} {}", PATH_NAMES[path], now - paths_printed[path]);
+    if (const uint32_t count = paths[path].exchange(0, std::memory_order_relaxed); count != 0) {
+      game_paths += std::format(" {} {}", PATH_NAMES[path], count);
     }
-    paths_printed[path] = now;
   }
-  paths_printed[0] = paths[0].load(std::memory_order_relaxed);
+  paths[0].store(0, std::memory_order_relaxed);
   const double microseconds = 1000000.0 / static_cast<double>(worker_pool::qpc_frequency);
   std::string calls;
   for (uint32_t index = 0; index < trace_count; ++index) {
     const TraceCall& call = trace_calls[index];
     calls += std::format(
-        "\n  call {}: {} items, {} finished, {} rows, {} records, {} fast, {} blocks, {} workers ({} ran), {}{}, B waited {}, call {:.0f} us, join {:.0f} us, tail {:.0f} us",
+        "\n  call {}: {} items, {} finished, {} rows, {} records, {} fast, {} blocks, {} workers ({} ran), {}{}, B {:.0f} ns an item, "
+        "B waited {:.0f} us for A and {:.0f} us for C, C lag {:.0f} us at B's end, call {:.0f} us, join {:.0f} us, tail {:.0f} us",
         index + 1, call.items, call.finished, call.rows, call.records, call.fast, call.blocks, call.workers, call.ran,
-        (call.streaming ? "stream" : "bulk"), (call.ordered ? ", ordered" : ""), call.waits, static_cast<double>(call.call_ticks) * microseconds,
+        (call.streaming ? "stream" : "bulk"), (call.ordered ? ", ordered" : ""),
+        (call.finished == 0 ? 0.0 : static_cast<double>(call.b_ticks) * microseconds * 1000.0 / call.finished),
+        static_cast<double>(call.waits_a_ticks) * microseconds, static_cast<double>(call.waits_c_ticks) * microseconds,
+        static_cast<double>(call.c_lag_ticks) * microseconds, static_cast<double>(call.call_ticks) * microseconds,
         static_cast<double>(call.join_ticks) * microseconds, static_cast<double>(call.tail_ticks) * microseconds);
   }
   renodx::utils::log::i(std::format(
@@ -547,7 +559,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
                                     uint32_t end, uint32_t* out) {
   using namespace internal;
   const auto game = [&](Path path) {
-    paths[static_cast<size_t>(path)].fetch_add(1, std::memory_order_relaxed);
+    Count(path);
     return game_fill(cache, device, force, list, texture, row, end, out);
   };
   const Stage stage_now = stage.load(std::memory_order_relaxed);
@@ -623,8 +635,18 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   bool stopped = false;
   bool bad_item = false;
   uint32_t ordered_from = ~0u;
-  uint32_t fast_items = 0;
-  uint32_t waits = 0;
+  // Traced calls only: B's own allocate time, its idle time waiting for A and for C, and C's lag after B's end.
+  uint64_t b_ticks = 0;
+  uint64_t waits_a_ticks = 0;
+  uint64_t waits_c_ticks = 0;
+  uint64_t c_lag_ticks = 0;
+  const auto idle = [&](uint64_t* ticks) {
+    const uint64_t start = (traced ? worker_pool::Qpc() : 0);
+    _mm_pause();
+    if (traced) {
+      *ticks += worker_pool::Qpc() - start;
+    }
+  };
 
   // B over one block: the game's loop word for word (the fast path of an animation placed already, the next-fit row, the
   // record, the placement), on the game's memory.
@@ -654,7 +676,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       // The items' lines are Modified in a worker's L2 (the hardware prefetcher does not hide a fetch from another core): 64 items
       // ahead; and the animation's cached placement 32 items ahead. The placement's three words end at +0x1b: the same line as
       // +0x10 unless the animation straddles one, so +0x1b is asked for only then.
-      if (const Item* item_64 = item_at(i + 64); item_64 != nullptr) {
+      if (const Item* item_64 = ((i & 3) == 0 ? item_at(i + 64) : nullptr); item_64 != nullptr) {
         _mm_prefetch(reinterpret_cast<const char*>(item_64), _MM_HINT_T0);
       }
       if (const Item* item_32 = item_at(i + 32); item_32 != nullptr) {
@@ -671,7 +693,6 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       // The game converts the texel before it pushes the record (the push may allocate): the same order here.
       uint32_t word = 0;
       if (placed_frame == frame && placed_texture != ~0u && placed_texture == texture && placed_texel != ~0u) {
-        ++fast_items;
         word = TexelBits(texel);
       } else {
         bool next_row = item.need > row_size - used;
@@ -740,6 +761,14 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
     finished = block_first + count;
   };
 
+  const auto allocate_timed = [&](uint32_t block) {
+    const uint64_t start = (traced ? worker_pool::Qpc() : 0);
+    allocate(block);
+    if (traced) {
+      b_ticks += worker_pool::Qpc() - start;
+    }
+  };
+
   uint32_t phase = 0;
   uint32_t rounds = 0;
   const auto pack_claim = [](Kind kind, uint32_t phase_counter, uint32_t high, uint32_t next) {
@@ -754,8 +783,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       uint32_t block = 0;
       const Kind claimed = Claim(&call, &block);
       if (claimed == Kind::NONE) {
-        ++waits;
-        _mm_pause();
+        idle(kind == Kind::GATHER ? &waits_a_ticks : &waits_c_ticks);
         continue;
       }
       if (claimed == Kind::GATHER) {
@@ -792,7 +820,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
           chosen = block ^ 1;
         }
 #endif
-        allocate(chosen);
+        allocate_timed(chosen);
 #if defined(TWATTILA_WORKER_CONTROLS)
         if (controls.after_block != nullptr) {
           controls.after_block(chosen, controls.after_block_context);
@@ -825,8 +853,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
             && call.next_gather.compare_exchange_strong(next, next + 1, std::memory_order_acq_rel)) {
           Gather(&call, block);
         } else if (!TryScatter(&call)) {
-          ++waits;
-          _mm_pause();
+          idle(&waits_a_ticks);
         }
       }
 #if defined(TWATTILA_WORKER_CONTROLS)
@@ -834,7 +861,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
         Sleep(controls.allocate_delay_ms);
       }
 #endif
-      allocate(block);
+      allocate_timed(block);
       if (ordered_from != ~0u) {
         call.scatter_limit.store(ordered_from, std::memory_order_release);
       }
@@ -842,8 +869,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
         // B's own scatter: the earlier blocks' units first, so a later duplicate instance is written last.
         while (call.parallel_done.load(std::memory_order_acquire) < ordered_from) {
           if (!TryScatter(&call)) {
-            ++waits;
-            _mm_pause();
+            idle(&waits_c_ticks);
           }
         }
         Scatter(&call, block, finished);
@@ -859,12 +885,15 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
     call.stop_items = finished;
     call.stopped.store(true, std::memory_order_release);
     call.b_finished.store(true, std::memory_order_release);
+    const uint64_t finish_ticks = (traced ? worker_pool::Qpc() : 0);
     for (;;) {
       if (call.parallel_done.load(std::memory_order_acquire) >= ScatterBlocks(&call, finished)) break;
       if (!TryScatter(&call)) {
-        ++waits;
-        _mm_pause();
+        idle(&waits_c_ticks);
       }
+    }
+    if (traced) {
+      c_lag_ticks = worker_pool::Qpc() - finish_ticks;
     }
   };
   worker_pool::JoinResult joined = {};
@@ -880,7 +909,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   } else {
     part();
   }
-  paths[static_cast<size_t>(Path::OURS)].fetch_add(1, std::memory_order_relaxed);
+  Count(Path::OURS);
   last_items = finished;
   last_call = {.items = finished, .records = records[1], .rounds = rounds, .workers = workers, .ordered = (ordered_from != ~0u), .streaming = call.streaming};
 #if defined(TWATTILA_WORKER_CONTROLS)
@@ -895,13 +924,16 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       trace = &trace_calls[trace_count++];
       *trace = {.items = total,
                 .finished = finished,
-                .rows = row_index + 1,
+                .rows = std::min(row_index + 1, limit),
                 .records = records[1],
-                .fast = fast_items,
+                .fast = finished - records[1],
                 .blocks = blocks,
                 .workers = workers,
                 .ran = joined.ran,
-                .waits = waits,
+                .b_ticks = b_ticks,
+                .waits_a_ticks = waits_a_ticks,
+                .waits_c_ticks = waits_c_ticks,
+                .c_lag_ticks = c_lag_ticks,
                 .call_ticks = worker_pool::Qpc() - call_start,
                 .join_ticks = joined.wait_ticks,
                 .streaming = call.streaming,
@@ -912,7 +944,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   }
   if (bad_item) {
     // The game's own loop, from the bad item, faults on it the way it always does.
-    paths[static_cast<size_t>(Path::BAD_ITEM)].fetch_add(1, std::memory_order_relaxed);
+    Count(Path::BAD_ITEM);
     ring_in_use.store(false, std::memory_order_release);
     return game_fill(cache, device, force, list, texture, row, end, out);
   }
