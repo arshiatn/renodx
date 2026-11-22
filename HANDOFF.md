@@ -9807,9 +9807,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORDINATOR: H0's checks refuse when atn-mods' helper sources differ from its base c3ea4925f -> ff_s12
         (3c77a0c86) and grs_xess_guard (29a55acad) merge only AFTER the H0 re-run; rmt_b1log (engine code, not helper
         paths) may merge before. upr_ reads the copy fix before the re-run.
-        Agents (7): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check), upr_ (H0 copy fix read), c3i_ (b1log
-        verify runs, detached), gtl_ (fixture hang timeout), fcr_ (XeSS guard review), grs_ (back to gpu_s2); t4i_
-        ETL move waits for ATN (antivirus); rmt_b1log merge after c3i_'s runs; ff_s12 + grs_xess_guard after H0
+        grs_ BACK ON gpu_s2 11:21 (plan_1117/designs/grs_back_gpu_s2_handback.md): HEAD gpu_s2 d336c55d3, status
+        --ignore-submodules=all + diff HEAD empty; all 20 grs_* / rec_grs_* build folders match (count, bytes, newest
+        mtime 03:17-05:44); build\downloads junction again; grs_xess_guard stays at 29a55acad.
+        gtp_ ROUND 16 LIVE ~11:2x SHADOW (plan_1117/gtp_round16_handback.md; backup scratchpad\gtp_bak21; mirror + live
+        906 / 906; control vs bak21: 68 fail = every new refusal, split-word cases pass both, all data cases pass old):
+        R15-1 unwrap_rest() (quoted word unwrapped + rest of the line) for cmd /c|/k, powershell -c / -Command / bare,
+        wsl (-e, --exec, --, bare); R15-1b cmd /c /k /r + // forms + glued /ccurl any case, PS /x and //x = -x; R15-2
+        REDIRECT pattern (<<<, <<-, <<, <>, >>, >|, >&, <&, >, <; multi-digit fds, {name}, & / *) + WORD tokenizer
+        (glued quote stays in its word), >| not a pipe, no_redirects on raw words; R15-3 PS_VALUE + -of / -if, 2+ letter
+        prefixes take a value; R15-4 BUN_VALUE + --env-file / --define / -d / --ext / --seed + general rule (a
+        positional is the script only if it looks like a file); older shapes: dash / zsh / ksh wrappers + heredoc heads,
+        perl heredoc + -e (NET_CODE + HTTP::Tiny / LWP::), cmd heredoc, `command` / `builtin` prefix (`command -v curl`
+        passes). Corpus 247 / 247, 0 changed. Keys: 736 of 87,872 calls re-keyed (mostly fixes: `cmd /c "cmake..." |
+        Select-String` -> cmake build (was underpriced), quote-split `exe files/llvm` -> git show, Wait-Process -> wait,
+        AST ParseFile of h0_gpu_runs.ps1 -> light); one rough key (Start-Process -ArgumentList comma list -> stable
+        odd ps1 key, no decision change). Re-seed 105,837 seeds / 7,166 price rows. -> gtw_ + gpr_ RE-CHECK ROUND 16.
+        Agents (7): gtw_ (round 16 re-check), gpr_ (round 16 price re-check), ebr_ (t4i_ probes + scan gaps re-check),
+        upr_ (H0 copy fix read), c3i_ (b1log verify runs, detached), gtl_ (fixture hang timeout), fcr_ (XeSS guard
+        review); t4i_ ETL move waits for ATN (antivirus); rmt_b1log merge after c3i_'s runs; ff_s12 + grs_xess_guard
+        after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
