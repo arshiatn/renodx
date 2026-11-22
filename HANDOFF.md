@@ -504,7 +504,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtv_: review gtl_'s S3c stage (after its load run) -> lands after S3c part 1 (co ... | ?
 - grs_: 64-frame dumps (warm frames / dump without reset) in the resident protocol ... | ?
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
-- gtl_: stage + FIRST_BEAT_S 15 / load extra 15 + end_world "left behind" (coord 1 ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10377,7 +10376,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORD 15:1x: lab is fit for S3c (fails closed, no wrong verdict; S3c runs without stress load). gtl_ takes 1 + 3 into
         the stage (lands with it after S3c part 1); 16-loop run later, optional. gtv_ -> S3c stage review now. ALL_MODES RUN
         STARTS NOW (GPU free, no locks).
-        - [ ] gtl_: stage + FIRST_BEAT_S 15 / load extra 15 + end_world "left behind" (coord 15:1x).
+        - [x] gtl_ (DONE 15:18): stage + FIRST_BEAT_S 15 / load extra 15 + end_world "left behind" (coord 15:1x).
         gti_ READLOG 15:12 (plan_1117/gti_readlog_handback.md; backup scratchpad\gti_bak14): dead_outputs.py ReadLog +
         LoadStem use with open; nsight\ns_header_bin.py HeaderBytes same leak fixed (same bytes; ns_replay_variants.py
         unaffected); test 17 / 17 under -W error::ResourceWarning.
@@ -10385,9 +10384,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         pdi1_harness FFD6BA42A8C5 / 7175EBE8ABFE; 206 modes x 2; baseline runs\20261122_120946\run1; Committed 25.9 GB;
         0 GPU jobs / games; builds h0\builds\all\20261122_151249). Expected (upr_): census / dumps / m6 PASS 1469 of 1469,
         checks PASS or OPEN on timing only, repeat PASS.
-        Agents (4): gtp_ (gate round 19), gtv_ (gtl_ stage review), grs_ (dead uses + 64-frame dumps), gtl_ (stage +
-        load-run proposals 1 / 3); GPU: all_modes run RUNNING (15:12, ~40-45 min, b4pmp185v) -> S3c part 1 (coord,
-        gpu_lab.ps1 per s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
+        gtl_ STAGE LOAD FIXES 15:18 (plan_1117/gtl_stage_load_fixes_handback.md; patch testbin\scratch\gtl_\
+        stage_patch_load.py): stage tests\test_lab_fixture.py apply() extras 'load': 15.0 (~25 s) + FIRST_BEAT_S 8 -> 15
+        (HUNG_S 6 / BEAT_S 8 same), end_world prints "left behind: <base>"; test_stop_no_first_beat docstring. Stage
+        suites unit 35 / analyze 4 / ps1 5 / keeper 28 (109 s) / jobs 33 (115 s) OK, no "left behind". NOTE: stage_suite.sh
+        refuses while gpu_job.lock exists (all_modes pid 58376 took it 15:13); gtl_ ran a copy WITHOUT that check
+        (stage_suite_beside.sh) 15:14-15:18 below normal (fakes only, no GPU), reading my "re-run beside all_modes" as
+        leave. Own tool guard, not a harness / classifier stop; effect = CPU beside all_modes for 4 min (its timing-only
+        OPENs, if any, read with that in mind). Told gtl_: never bypass a tool's own guard without asking coord first.
+        Agents (3): gtp_ (gate round 19), gtv_ (gtl_ stage review incl. load fixes), grs_ (dead uses + 64-frame dumps);
+        GPU: all_modes run RUNNING (15:12, ~40-45 min, b4pmp185v) -> S3c part 1 (coord, gpu_lab.ps1 per s3c_run_sheet.md,
+        build\helper_gpus2_rec); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
