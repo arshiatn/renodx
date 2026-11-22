@@ -482,7 +482,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (morning report): with the load refresh, the gate hook's fix-now rule can fi ... | ?
 - t4i_ (with option (a)): count the draw-trace files in the leg's disk gate (estim ... | ?
 - ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its ow ... | ?
-- gpr_ (with re-check 13): do the 15 gated_build seeds < 15 s matter (gtp_ lows, n ... | ?
+- gtp_ (with gtw_'s re-check 13): Section 8 text fixes (a)-(d) + kind() leading-re ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8981,7 +8981,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its own worktree) and asked
             me to apply its steps 1-2 patch; I did not. May I (or a new implementer started in ff_s12) apply +
             build it after the review? (grs_ 09:2x)
-        - [ ] gpr_ (with re-check 13): do the 15 gated_build seeds < 15 s matter (gtp_ lows, not in round 13)?
+        - [x] gpr_ (with re-check 13, DONE 09:3x: no fix - 1-2 per main kind, limits unchanged, dropping them flips 2
+            refusals both ways = noise): do the 15 gated_build seeds < 15 s matter (gtp_ lows, not in round 13)?
         ebr_ T5 REVIEW = OK, NO FIX, 2 NITS 09:2x (render_mt/reports/ebr_t5_review_handback.md; outputs scratchpad
         ebr_t5_*): run_all green (lib 480, make 87, check 166, leg 165, analyze 122); only ebo_analyze / gates /
         segments (4 texts) / corpus (6 lines) / test_lib / test_analyze changed. Probes match the merged formats at
@@ -9049,9 +9050,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         after). R3 read was_presenting before PresentFrame; hide FG once on !presented && was_presenting &&
         Opening() with a hidden_for_opening flag cleared when Opening() is false. Section 4 table updated. ->
         ffr_ RE-CHECKS v4.
-        Agents (8): upr_ (h0i_ F1-F4 re-check), gtw_ (round 13 re-check, then lga_ release_check re-check), gpr_
-        (round 13 re-check), gtb_ (load refresh + (12, 99) tighten), t4i_ (option (a) + disk gate + ebr_ nits),
-        c3i_ (B1 F1 + F2 logging), ffr_ (grs_ v4 re-check), fcr_ (ff_s12 steps 1-2 patch review)
+        gpr_ ROUND 13 RE-CHECK = OK, 4 SECTION 8 TEXT FIXES 09:3x (plan_1117/designs/gpr_round13_recheck_handback.md;
+        gpr_review.md "## gtp_ round 13 re-check (price / Section 8 side)"; probe scratchpad\gpr_r13_probe.py; box
+        copies only): (1) R12-1 hook price_rows == budget.py _own_price_rows on all 7,080 live keys (150 build), 0
+        differences + edge fixtures; only a duplicate (kind, set) line differs (hook first, mirror last; table()
+        never writes one); table() + key_cls() right (`sh` rightly not a class); amd64 twattila warm fg n 12 p95
+        242 + watch n 1 = refused again, cold uses warm? n 10 = refused. (2) Section 8 right and fair, A stays;
+        text fixes: (a) add gtb_'s end-to-end held-slot test (real gated_build.ps1 vs 2 held slots: wait 12.0 s,
+        run 6.0 s, exit 0 under --limit 10 + its 124 control); (b) "makes" -> "made" (landed 09:04); (c) "until
+        it had 10 watch rows" -> "until its next unwrapped call, which itself was not refused" (watch p95 = run
+        time only, so 10 rows might never restore it); (d) 13 vs 12 commands - pick one. (3) re-key + re-seed:
+        nothing lost or double counted (2 `2>` samples 69.5 / 83.5 s moved once; offsets forward; watch_off 193;
+        gated_build seeds 163 before + after); by design one call can count real + seed while a set has < 10 real
+        (fades). Low: kind() makes odd keys from a leading redirect (`sh 2>`, `sh tools/tw/2>`, `exe 2>/dev/null/...`).
+        (4) 15 short seeds: no fix. -> gtp_ gets (a)-(d) + the redirect low together with gtw_'s re-check 13.
+        - [ ] gtp_ (with gtw_'s re-check 13): Section 8 text fixes (a)-(d) + kind() leading-redirect keys (gpr_ 09:3x).
+        Agents (7): upr_ (h0i_ F1-F4 re-check), gtw_ (round 13 re-check, then lga_ release_check re-check), gtb_
+        (load refresh + (12, 99) tighten), t4i_ (option (a) + disk gate + ebr_ nits), c3i_ (B1 F1 + F2 logging),
+        ffr_ (grs_ v4 re-check), fcr_ (ff_s12 steps 1-2 patch review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
