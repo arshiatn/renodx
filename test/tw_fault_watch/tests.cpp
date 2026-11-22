@@ -186,11 +186,7 @@ int main() {
   CHECK(!handling.empty() && Logged("The frame thread is handling an exception") == 1);
   std::printf("%s\n", handling.c_str());
   CHECK(Logged("(handled; it went on)") == 0);
-  // The note an add-on adds to the stall line.
-  loss::stall_note = [] { return std::string("worker pool: a test note"); };
   loss::LogStall(2000, false);
-  loss::stall_note = nullptr;
-  CHECK(LineWith("No frame for 2 s").ends_with("; worker pool: a test note"));
   CHECK(LineWith("No frame for 2 s").find("; worker pool: effects") == std::string::npos);  // no job open: no words
 #if !defined(_WIN64)
   // The open pool job's words ride on the stall line (x86: the pool exists only there).

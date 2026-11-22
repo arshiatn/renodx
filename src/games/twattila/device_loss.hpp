@@ -111,8 +111,6 @@ static std::atomic_uint64_t last_present_tick = 0;
 static std::atomic_uint32_t present_thread = 0;
 static HANDLE watch_thread = nullptr;
 static HANDLE watch_stop = nullptr;  // that thread's own: a watch that could not be waited for keeps its event
-// Set by an add-on with more to say about a stall (its worker pool's job, say): appended to the stall line after "; ".
-static std::string (*stall_note)() = nullptr;
 
 // The add-on's own code: its image (set by Install) and up to 4 pages outside it (AddCodeRange). A range is published by
 // its `end`, stored last: a handler on any thread reads `end` first and skips a range without one.
@@ -448,11 +446,6 @@ static void LogStall(uint64_t age_ms, bool dump) {
   }
   if (const std::string job = worker_pool::Describe(); !job.empty()) {
     line += "; worker pool: " + job;
-  }
-  if (stall_note != nullptr) {
-    if (const std::string note = stall_note(); !note.empty()) {
-      line += "; " + note;
-    }
   }
   renodx::utils::log::w(line);
   // A thread inside an exception's handling holds a return address into ntdll's exception dispatcher on its stack (+0x2E

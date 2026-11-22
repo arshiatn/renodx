@@ -459,7 +459,7 @@ inline std::string Describe() {
 // so first, so a hang there leaves a line.
 inline void Stop() {
   using namespace internal;
-  if (busy.load(std::memory_order_relaxed) && GetCurrentThreadId() == starter.load(std::memory_order_relaxed)) {
+  if (GetCurrentThreadId() == starter.load(std::memory_order_relaxed)) {
     renodx::utils::log::w(std::format("[Total War] Worker pool: a job of {} is still open at Stop; joining it (no timeout).",
                                       USER_KEYS[static_cast<size_t>(current.user)]));
   }
@@ -493,7 +493,7 @@ inline void Stop() {
       pool[i].ticket.fetch_add(1, std::memory_order_release);
       pool[i].ticket.notify_one();
     }
-    if (const DWORD waited = WaitForMultipleObjects(created, handles.data(), TRUE, STOP_WAIT_MS); waited != WAIT_OBJECT_0) {
+    if (const DWORD waited = WaitForMultipleObjects(created, handles.data(), TRUE, STOP_WAIT_MS); waited >= WAIT_OBJECT_0 + created) {
       // A timeout, or a wait that failed (the handles may be live): both keep the handles.
       const DWORD wait_error = (waited == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS);
       uint32_t running = 0;

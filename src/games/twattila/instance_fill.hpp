@@ -389,7 +389,8 @@ static FillJob fold_fill;
 // Uninstall runs on the detach path: at process exit no other game thread is left, and on a runtime unload a thread
 // between the retargeted call and the count is not seen (a window of a few instructions).
 static std::atomic<int32_t> active = 0;
-static bool check_enabled = false;  // RENODX_TW_FILL_CHECK=1, read once by Prepare; its summary line needs a pool trace window (none: nothing is said)
+// RENODX_TW_FILL_CHECK=1, read once by Prepare; its summary line needs a pool trace window (none: nothing is said)
+static bool check_enabled = false;
 static std::atomic<uint32_t> checked = 0;  // the fills compared since the start
 static uint32_t check_window = 0;          // the pool trace window whose compared fills are being counted (0: none open)
 static uint32_t check_window_start = 0;
