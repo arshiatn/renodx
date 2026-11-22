@@ -500,11 +500,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
 - fcr_ (Opus xHigh): review grs_dead_uses df06d4e9b + rt_uses.h vtable copy safety ... | ?
 - gtl_: stage block() subtracts answer reset_ms when present (+ fake_resident send ... | ?
-- gtw_ + gpr_: re-check round 19 (gate + price) (coord 15:3x). | ?
 - gtl_: stage H1 + H2 + M1 / M2 / M2b / M3 / M4 + L1 / L2 + nits; gtv_ re-checks; ... | ?
 - coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU ... | ?
 - h0i_: analyse all_modes M6 8 changed (a != b) on the CPU -> flaky vs regression ... | ?
 - gtc_ (runner, Low): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x). | ?
+- gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10434,7 +10434,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         \Z, linear statement split only when quotes close; VERIFY lab cwd = <PROJECT>/tools/tw/lab or lab_<name>,
         GATES_SUITE needs tools/tw/gates. Optional: cap 16 -> 64 texts within size budget (not joined: open quote would
         swallow). OPEN Low: nested escaped backticks; unclosed PS here-string hides the rest (PS runs none of it).
-        - [ ] gtw_ + gpr_: re-check round 19 (gate + price) (coord 15:3x).
+        - [x] gtw_ + gpr_ (DONE: gpr_ 15:44, gtw_ 15:53; round 20 list): re-check round 19 (gate + price) (coord 15:3x).
         gtv_ S3C STAGE REVIEW 15:40 = OK TO LAND AFTER S3c PART 1 ONCE H1 + H2 FIXED (plan_1117/gtv_s3c_stage_review_handback.md;
         gtv_iq_review.md "## S3c stage review"; probes + land1 / land2 sandboxes testbin\scratch\gtv_\s3c\; stage as of
         15:29 incl. gtl_'s reset_ms + uses path): live behaviour unchanged with fields off (18 S3c jobs same job / plan /
@@ -10491,9 +10491,35 @@ heading text are in HANDOFF_ARCHIVE.md)
         (lab calibration on real recordings, independent of these harness modes).
         - [ ] h0i_: analyse all_modes M6 8 changed (a != b) on the CPU -> flaky vs regression (coord 15:5x).
         - [ ] gtc_ (runner, Low): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x).
-        Agents (6): gtw_ (round 19 re-check), fcr_ (dead-output review), gtl_ (stage fixes), h0i_ (all_modes 8-change
-        analysis), gtc_ (S3c part 1 runner); GPU: S3c PART 1 RUNNING (15:5x, E 45-60 min); then gtp_ round 20 after
-        gtw_; one GPU job at a time; agents' CPU work below normal, no builds at normal priority during S3c
+        gtc_ S3c PART 1 RUNNER SPAWNED 15:52 (Low; steps 0-19 per s3c_run_sheet.md, outputs testbin\scratch\gtc_\step_NN.txt,
+        exact ATN rules only, stops on 1 / 2 / 6 / any block; step 6 extra checks committed GB / R1 idle-exit side / R1
+        commands). fcr_ + gtw_ told: below normal, no builds at normal priority until ~16:50.
+        gtw_ RE-CHECK 19 = ROUND 19 OK + ROUND 20 LIST 15:53 (plan_1117/gtw_recheck19_handback.md; gtw_s1c_review.md "## S1c
+        re-check 19" line 2074): suite 1137 / 1137; corpus 252 = 252, 0 diff, 1 key (py -c); 36 price exemptions same;
+        timing linear on 18 shapes (64 KB shell_web <= 0.07 s CPU, price_shell 0.02 s; r18 10.3 s at 32 KB); 360 earlier
+        probes right. MISS 1 (20-deep nest) = gtp_ right (miscoded). MISS 2 NOT inherent = R19-7 Low: kind() one key per
+        call, heaviest, harness > build -> anything chained after a lab run exempt (`<lab run> && cmake --build`); reverse
+        order: RENODX_* env names from whole text -> priced py becomes unpriced harness key -> price heaviest non-exempt
+        statement, env names only from the key's statement + assignments before. Unclosed PS here-string Low OK once
+        openers match PS. ROUND 20 (gtw_): R19-1 SHOULD (old) HEREDOC matches any <<WORD, no end line -> rest hidden from
+        web + price: <<< here-strings, $((1 << 4)), (( m = 1 << 3 )), "<<EOF" in quotes; end-line differences (indented,
+        trailing space, two heredocs one line, <<E"OF") -> one heredoc scan skipping quotes / comments / <<< / (( )), bash
+        end-word + end-line rules, spans shared by every HEREDOC user; R19-2 Low regression $'...' literal inside double
+        quotes (and $$'); R19-3 Low regression herestrings() opens at any @' + newline (x@' glued, smart double quotes)
+        -> open only after start / whitespace / = ( , ; | & { [ +, smart quotes as quotes on PS; R19-4 Low regression
+        valid bash x="$(echo "it's")" -> plain-split fallback misreads \" -> keep heavier key of both splits or
+        QUOTES_CLOSE skips $( ) / backticks in DQ; R19-5 Low caps: shell_web 40-text cap -> real limit 38 distinct; size
+        budget stops early (4 nested $( ) around 70 KB then $(curl) passes) -> cut inner substitutions out of outer text,
+        no budget, substitution texts bypass 40 cap; R19-6 Low old: | bash -o pipefail, | python -W ignore, | timeout 60
+        bash, | nice bash, | command bash, | xargs -0 sh -c; iex('..'), Invoke-Expression -c, iex -Com, ('..') | iex ->
+        lead_words after pipe + W5 arg walk, widen IEX / PIPED_PS. VERIFY lab anchored OK; GATES_SUITE not project-anchored
+        (Low). Re-run list: corpus after R19-1, gtw_r19_probe / here3 / fallback / time2.
+        - [ ] gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ($VAR folders + $env:NAME,
+        key diff) + gpr_'s 3 Lows (key a wrapper's child: sh scratch:, -m module, gtp_lowprio -b -i); gtw_ + gpr_ re-check
+        (coord 15:5x).
+        Agents (6): gtp_ (gate round 20), fcr_ (dead-output review), gtl_ (stage fixes), h0i_ (all_modes 8-change
+        analysis), gtc_ (S3c part 1 runner); GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job at a time;
+        agents' CPU work below normal, no builds at normal priority during S3c
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
