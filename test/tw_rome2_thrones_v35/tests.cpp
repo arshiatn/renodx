@@ -268,6 +268,25 @@ static void FitGame(const char* name, const DrawFn& draw, const Injection& sdr_s
               100.f * at_1000, 100.f * at_2500);
   CHECK(at_1000 <= tolerance + 1e-4f);
   CHECK(at_2500 <= 0.2f);
+  // Colour above Paper White (a report): the defaults' OkLab chroma over Musa's own, pixel by pixel, where Musa's own is
+  // Paper White up to 95 % of Peak (the grey above stays within the guard there).
+  double log_sum = 0.0;
+  int count = 0;
+  for (UINT y = 0; y < HEIGHT; ++y) {
+    for (UINT column = 1; column < WIDTH; ++column) {
+      const Float3& own_colour = own_ramp[y * WIDTH + column];
+      const float own_nits = Luminance(own_colour) * NITS;
+      if (own_nits < NITS || own_nits > 0.95f * PEAK) continue;
+      const Float3 own_lab = OkLab(own_colour);
+      const Float3 shipped_lab = OkLab(shipped_ramp[y * WIDTH + column]);
+      const float own_chroma = std::hypot(own_lab[1], own_lab[2]);
+      if (own_chroma < 0.01f) continue;
+      log_sum += std::log(std::hypot(shipped_lab[1], shipped_lab[2]) / own_chroma);
+      ++count;
+    }
+  }
+  std::printf("   colour above Paper White (203 nits - 95 %% of Peak): x%.3f of Musa's own (%d pixels)\n",
+              std::exp(log_sum / std::max(count, 1)), count);
 }
 
 int main(int argc, char** argv) {
