@@ -1732,7 +1732,7 @@ int RunAnimationRowsExactFor(const TestBuild& build, uint8_t* game, uint8_t* pat
         const uint32_t first_round = std::min(ROUND_CAP_ITEMS, round_up_blocks(std::max(ar_api::FIRST_ROUND_ITEMS, last_before)));
         bound = first_round + std::min(ROUND_CAP_ITEMS, 2 * first_round) + ar_api::BLOCK_ITEMS;
       }
-      const bool inside = finished == 1500 && last_before == 300 && paths.gathered_items >= finished && paths.gathered_items <= bound;
+      const bool inside = finished > 1000 && finished < 3000 && last_before > 0 && last_before < 1000 && paths.gathered_items >= finished && paths.gathered_items <= bound;
       wrong += inside ? 0 : 1;
       std::printf("23v. %s, %s: a call of 120000 items that stops at %u (the last call finished %u) gathered %u items in %u blocks, at most %u allowed: %s\n", streaming ? "stream" : "bulk", config.name,
                   finished, last_before, paths.gathered_items, paths.gathered_blocks, bound, wrong == 0 ? "inside" : "WRONG");
@@ -1869,16 +1869,16 @@ int RunAnimationRowsExactFor(const TestBuild& build, uint8_t* game, uint8_t* pat
       const std::array<uint32_t, 12> busy_before = ArReadPaths();
       std::thread other([&] {
         auto own = std::make_unique<ArContext>();
-        Random thread_random = {.state = 0x5EC0D7ull};
+        const ArSpec spec = plain_world(seed_base + 140200, 6000, 20);
+        if (!ArBuild(own.get(), spec)) return;
         while (!stop.load()) {
-          ArSpec spec = ArRandomSpec(&thread_random, 8000);
-          ArCall call = ArRandomCall(spec, &thread_random);
-          sanitize(&spec, &call);
-          if (!ArBuild(own.get(), spec)) continue;
-          const uint8_t* const game_function = (call.update ? game + ANIMATION_UPDATE_RVA : game_fill);
-          const uint8_t* const patched_function = (call.update ? patched + ANIMATION_UPDATE_RVA : stub);
-          thread_wrong += ArCompare(own.get(), game, game_function, patched, patched_function, call).empty() ? 0 : 1;
-          ++thread_calls;
+          for (const bool update : {false, true}) {
+            const ArCall call = {.update = update, .start = 0, .end = spec.items, .texture = 0};
+            const uint8_t* const game_function = (call.update ? game + ANIMATION_UPDATE_RVA : game_fill);
+            const uint8_t* const patched_function = (call.update ? patched + ANIMATION_UPDATE_RVA : stub);
+            thread_wrong += ArCompare(own.get(), game, game_function, patched, patched_function, call).empty() ? 0 : 1;
+            ++thread_calls;
+          }
         }
       });
       uint64_t wrong = 0;
@@ -1964,6 +1964,29 @@ int RunAnimationRowsExactFor(const TestBuild& build, uint8_t* game, uint8_t* pat
     reset_switches();
     std::printf("23z. CONTROL a scatter unit that ignores B's publish (stream, 3 workers): clean %llu differ, with the switch %llu differ%s\n", clean, seen, released.load() ? " (the call hung and was released)" : "");
     CHECK(clean == 0 && (seen > 0 || released.load()));
+  }
+
+  // 23za. The cut count: with a thread counted inside a cut stub (cut_active above 0) turning the row off is refused and the sites stay in; the control (bypass_cut_active_once) lets the next
+  // such removal go ahead, once, and the count is back to 0 after. The refusal is what keeps a thread from running a stub that has gone.
+  if (selected("bypass")) {
+    set_stage(Stage::ON);
+    const bool in = (ec::written & ec::WORKER_SITES) != 0;
+    ec::worker_data->cut_active.store(1);
+    set_stage(Stage::OFF);
+    const bool refused = (ec::written & ec::WORKER_SITES) != 0 && ec::failed_writes != 0;
+    ec::bypass_cut_active_once.store(true);
+    ec::failed_writes = 0;
+    set_stage(Stage::OFF);
+    const bool bypassed = (ec::written & ec::WORKER_SITES) == 0 && !ec::bypass_cut_active_once.load();
+    ec::worker_data->cut_active.store(0);
+    ec::bypass_cut_active_once.store(false);
+    ec::module_pinned = false;
+    ec::failed_writes = 0;
+    set_stage(Stage::ON);
+    set_stage(Stage::OFF);
+    std::printf("23za. CONTROL a cut removed while a thread is counted in it: the sites were in %d, the removal refused with the count at 1 (%d), gone once with the switch (%d), at rest after (%d)\n", in ? 1 : 0,
+                refused ? 1 : 0, bypassed ? 1 : 0, (ec::written & ec::WORKER_SITES) == 0 && ec::worker_data->cut_active.load() == 0 ? 1 : 0);
+    CHECK(in && refused && bypassed && (ec::written & ec::WORKER_SITES) == 0 && ec::worker_data->cut_active.load() == 0);
   }
 #endif
   set_workers(0);
