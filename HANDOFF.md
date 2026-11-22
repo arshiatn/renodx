@@ -6623,7 +6623,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         flags a missing line. 3 x87c A/B plan §8b (ABBA XC-W3 / XC-D1, ~40 min): leg 4 only if T5's DLL carries x87c,
         else ATN needs a new rule 'ebo_run.ps1 -Leg 5 [-DryRun]' (nothing built). ebr_ r16 REVIEW STARTED 01:3x.
         [ ] T5: decide whether the frozen heapfix DLL carries x87c (then leg 4) or ask ATN for the leg 5 rule.
-        Agents (7): c33i_ (R-S5 fixes), gtp_ (S1c fixes), ebr_ (r16 review), lgf1_ (group 1 R1-R7), lgf2_ (group 2 R1 +
+        lgf1_ GROUP 1 R1-R7 DONE 01:4x (reports/lgf1_r2_handback.md): rmt_lg1 0fe8a9b15 (device_loss.hpp: chained
+        top-level filter OnUnhandled set at the first present, own once guard, 'thrown by the add-on's code', Uninstall
+        restores or pins; R2 FP / integer codes; R3 'handling an exception now' / '(handled; it went on)'; R4 overflow
+        kept + logged by WatchLoop; R5 4 places, 'first chance'; AddCodeRange 4 slots, no callers yet) + 7a18d3ec3 (R6
+        engine_tweaks no retries, R7 NotTraced 1 s floor). tw_fault_watch PASS x86 + amd64; builds x86 3 + amd64 16 exit
+        0. lga_ GROUP 1 RE-CHECK 2 STARTED 01:4x.
+        Agents (7): c33i_ (R-S5 fixes), gtp_ (S1c fixes), ebr_ (r16 review), lga_ (group 1 re-check 2), lgf2_ (group 2 R1 +
         N1-N5), gtv_ (S1a + S1b re-check), upr_ (H0 review). QUEUE: R-S5 re-checks -> merge rmt_rs5, lga_ group 1 re-check
         2 + group 2 re-check 2 -> merge rmt_lg1 / rmt_lg2, gtw_ S1c re-check, bulk index (after S1a OK), Q8(b) lock wait,
         H0 fixes / harness runs -> merge rmt_h0, B1.6, X1, logging group 3, PT DI steps 0-4 (after rmt_lg2 + H0), S2
