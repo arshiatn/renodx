@@ -580,6 +580,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - skills: game-port-method/SKILL.md:126 still names the deleted rr_d3d12.hpp (SKIL ... | ?
 - shared twattila/effect_brightness.hpp for D1 + Troy (+ D2 next) (g06_ m3): owner ... | ?
 - D1 trace requests (g06_ m5): (1) one sun-shadow PCSS 0x8F114E47 draw with its VS ... | ?
+- b3t_ merges rmt_b3s into rmt_b3t, then gated builds macro off (x86 3 targets + a ... | ?
+- b3t_ tests after the merge: T1 (23v S-2 stop exact), T3 (ordered mode X >= block ... | ?
+- engine_code owner, later hardening: N1 push rel32 check next to FILL_HEAD (same ... | ?
+- NITs for later: `allocate` lambda with one call site; "C lag" prints 0 for bulk ... | ?
+- next Tales trace: one frame of CombineLUTs cb0 (ps 0x876F0F03) for the Tales V35 ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12063,6 +12068,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         twice (21:15:52 + 21:16:12, hence 2 slots); it killed its OWN duplicate runner (bash 103245) and its OWN build under
         it (gtp_lowprio python 34956 -> its worktree build.ps1, already gone), then released its own slot4. Nothing of
         another agent's or ATN's was touched. Not stopped; reported to ATN.
+        bd1r_ B3b FINAL 21:5x (render_mt/reports/bd1r_b3b_s6_recheck.md, bd1r_b3b_final_handback.md): GO to merge, 0 BLOCKER,
+        1 MAJOR (merge step: rmt_b3s fc36bf57f holds rmt_b3t only up to 38d2def38; merge rmt_b3t tip b6c593a9c too, or the
+        S5 tests drop and instance_fill.inc stays on the old park with the heap-lock deadlock), 2 MINOR (tests), 4 NIT; the
+        shipped code needs no change. b3s_'s R1 / R2 verified (the shipped build counts nothing outside a trace window).
+        - [ ] b3t_ merges rmt_b3s into rmt_b3t, then gated builds macro off (x86 3 targets + amd64) + ONE full run.ps1 macro
+        on (stream + bulk) + probe to its end on the merged tree (slot 1) -> "b3t_ merged" -> coord merges rmt_b3t ->
+        END REVIEW.
+        - [ ] b3t_ tests after the merge: T1 (23v S-2 stop exact), T3 (ordered mode X >= block 2, texels_per_row 0x55555555),
+        T2 (23w stalls prove they fired), T6 (ring release on CHECK_MEMORY), which part runs 12e; R6 (drop the pending sweep's
+        object:entries pairs once test 24 parses counts).
+        - [ ] engine_code owner, later hardening: N1 push rel32 check next to FILL_HEAD (same as bd1r_ N1 above).
+        - [ ] NITs for later: `allocate` lambda with one call site; "C lag" prints 0 for bulk calls.
+        ATN 21:5x: 22 keep the restart ("sounds good"); 30-33 = coord's picks (30 D1 5th shadow-only knob -> g06_, 31 clear
+        Pharaoh Casters Out of View once -> g03_, 32 Expeditions Musa's own, 33 Tales trace); autocompact verdict: keep 40 %.
+        - [ ] next Tales trace: one frame of CombineLUTs cb0 (ps 0x876F0F03) for the Tales V35 fit (ATN 33).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
