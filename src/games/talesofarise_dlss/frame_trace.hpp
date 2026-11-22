@@ -87,12 +87,23 @@ inline std::string DescribeResource(ID3D11Resource* resource) {
   return std::format("{} (buffer)", static_cast<const void*>(resource));
 }
 
+// A RenoDX clone view (an upgraded resource) also names the game's own resource behind it, the handle upgrade logs print.
 template <typename View>
 std::string DescribeView(View* view) {
   if (view == nullptr) return "-";
   ComPtr<ID3D11Resource> resource;
   view->GetResource(resource.GetAddressOf());
-  return DescribeResource(resource.Get());
+  std::string description = DescribeResource(resource.Get());
+  reshade::api::resource original = {0u};
+  if (renodx::utils::resource::shared.data != nullptr) {
+    renodx::utils::resource::GetResourceViewInfo(
+        reshade::api::resource_view{reinterpret_cast<uint64_t>(view)},
+        [&original](const renodx::utils::resource::ResourceViewInfo& info) {
+          if (info.is_clone && !info.destroyed) original = info.original_resource;
+        });
+  }
+  if (original.handle != 0u) description += std::format(" clone of {}", reinterpret_cast<const void*>(original.handle));
+  return description;
 }
 
 inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) {
