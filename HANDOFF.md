@@ -504,7 +504,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ... | ?
 - grs_: G1 + G2 / G3 / G4 (+ nits) on grs_dead_uses; fcr_ re-checks (coord 15:55). | ?
 - gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land- ... | ?
-- gtv_: re-check gtl_'s stage review fixes (read + unit / analyze only during S3c; ... | ?
 - upr_: verdict on h0i_'s m6 analysis (per-output exclusions vs nrd_all_removal ha ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
@@ -10566,7 +10565,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         write live ("a later frame: a history"); unplaceable handles make earlier writes UNDECIDED from any later frame; last
         frame UNDECIDED; tests 21 / 21. -> fcr_ re-checks gti_ with grs_'s G1-G4 when those land.
         - [ ] gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land-list hashes (coord 15:59).
-        - [ ] gtv_: re-check gtl_'s stage review fixes (read + unit / analyze only during S3c; keeper / jobs after)
+        - [x] gtv_ (DONE 16:05: GO to land after S3c part 1): re-check gtl_'s stage review fixes (read + unit / analyze only during S3c; keeper / jobs after)
         (coord 15:59).
         gtl_ waiting 16:00 (plan_1117/gtl_waiting_handback.md): idle until coord says S3c part 1 done.
         h0i_ M6 ANALYSIS 16:01 = FLAKY, OLD, NOT A REGRESSION (plan_1117/h0i_m6_analysis_handback.md; testbin\scratch\h0i_\
@@ -10583,9 +10582,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         the 8 (mode, output) pairs (M6_LEFT_OUT per output; fast_leaves / micromaps_leaf_stress stay whole-mode); option for
         nrd_all_removal: allowlist of known variant hashes. Nothing changed yet.
         - [ ] upr_: verdict on h0i_'s m6 analysis (per-output exclusions vs nrd_all_removal hash allowlist) (coord 16:0x).
-        Agents (6): gtp_ (gate round 20), grs_ (dead uses G1-G4), gtv_ (stage fixes re-check), upr_ (m6 verdict), gtc_
-        (S3c part 1 runner); gtl_ + gti_ + h0i_ idle; GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job at a time;
-        agents' CPU work below normal, no builds at normal priority, no lab suites (keeper / jobs) during S3c
+        gtv_ STAGE FIXES RE-CHECK = GO TO LAND AFTER S3c PART 1 16:05 (plan_1117/gtv_stage_fixes_recheck_handback.md;
+        gtv_iq_review.md "## Stage fixes re-check"; sandbox testbin\scratch\gtv_\s3c\land3, fx3, probe5..10): land list 10
+        stage hashes match, 7 live originals match; landed sandbox unit 37 + analyze 4 OK (no keeper / jobs run); 17 of 18
+        S3c jobs price / plan same as live (job 07 refused now only because nsight\runs\s3c_r1_trace exists = S3c step 7
+        ran); 19 field cases same. H1 20 / 20 samples + one stopped note in all 4 probes, flag True mid-stream, ToolFault
+        after source ends; H2 5000 / -50 / "x" / true ToolFault, 200 ms -> 0.2 s; M1 / M2 / M2b / M3 / M4 / L1 / L2 /
+        ns_busy OK. Non-blocking: (1) race in test_s3c_logs (keeper logs fence note THEN saves session.json; test reads
+        still_max_s after the log line -> KeyError on a loaded machine) -> save before logging or test waits on
+        session.json; (2) stage dead_outputs.py behind live (gti_ 15:58:56; ReadLog same) -> re-sync or run in a landed
+        sandbox. Optional: reset_ms number on a block without a reset is still subtracted -> ToolFault for strictness.
+        Post-S3c: gtl_'s keeper 28 + jobs 34 in a landed sandbox after (1), then land-time unit + jobs re-run; gtv_ needs
+        only the result lines + test_s3c_logs passing. COORD: gtl_ does (1) save-before-log, (2) re-sync, optional strict
+        ToolFault (yes) now in the stage (no suites); suites after S3c.
+        Agents (5): gtp_ (gate round 20), grs_ (dead uses G1-G4), upr_ (m6 verdict), gtl_ (stage 3 small items, no suites),
+        gtc_ (S3c part 1 runner); gtv_ + gti_ + h0i_ idle; GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job at a
+        time; agents' CPU work below normal, no builds at normal priority, no lab suites (keeper / jobs) during S3c
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
