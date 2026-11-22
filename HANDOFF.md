@@ -492,9 +492,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gpr_: re-check round 14's exe moves (tools/ + scratch exe keys) with production ... | ?
 - coordinator: H0 re-run after gtv_'s keeper runs end (no lab fixture / keeper tes ... | ?
 - gtl_ (later, Low): lab fakes are named like the real harness -> H0's guard stops ... | ?
-- ATN / coordinator: ETL move: drop it (batch fits on C: after the live_proof move ... | ?
 - gtp_ round 17: gtw-R16-1..10 (Should first: R16-5, R16-6, R16-1, R16-2 perl, R16 ... | ?
 - c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate le ... | ?
+- gtl_: lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9947,7 +9947,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         ready in testbin\scratch\t4i_. Design unchanged (per-start move after check, size + SHA256 before source goes,
         resumable stop; C: per leg 20.7 / 61.2 / 67.7 / 61.0 GB, D: 107.7 GB). If live_proof moves off C: (ATN's ask),
         C: ~233 GB free > the batch's ~151 GB -> no mid-batch move needed.
-        - [ ] ATN / coordinator: ETL move: drop it (batch fits on C: after the live_proof move) or exclude the ebo tests
+        - [x] ATN / coordinator (DECIDED 12:09: no mid-batch ETL move; C: 232 GB free > ~151 GB; t4i_'s patches stay unapplied in testbin\scratch\t4i_; ETLs moved / deleted after the batch only on ATN's word): ETL move: drop it (batch fits on C: after the live_proof move) or exclude the ebo tests
             folder (ATN only) (coord 12:05).
         gtw_ RE-CHECK 16 = CORRECT 11:4x (plan_1117/gtw_recheck16_handback.md; gtw_s1c_review.md "## S1c re-check 16"
         line 1696): suite 906/906 (first 903 = 3 F24 timing under load; webprice alone 529/529; paired timing no
@@ -9969,9 +9969,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         shadow); scene_test a1 / engine_code a8 don't cross; control seeds 106,090 =, build 388 =, exe 1,271 =; fix-now
         31 = 31.
         - [ ] c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate leaves shadow (gpr_ 11:4x).
-        Agents (3): gtp_ (round 17: gpr's R16-1 / R16-2 + gtw-R16-1..10), gtv_ (gtl_ fixture timeout re-check), ebr_
-        (t4i_ analyze gap re-check); H0 re-run after gtv_; live_proof move to D: (ATN) before the H0 re-run if the
-        scan is clean; ff_s12 + grs_xess_guard after H0
+        MOVE TO D: DONE 12:08 (ATN 11:5x "move some stuff to D"): recordings\live_proof (81 files 29.68 GB), live_proof2
+        (253 files 81.83 GB) + both *_helper_backup -> D:\RenoDX_archive\recordings (robocopy, count + bytes equal, 4 / 4 /
+        1 / 1 SHA256 equal, then source removed; script testbin\scratch\coord_\move_live_proof.ps1); note
+        recordings\MOVED_TO_D.txt. Only user: reference\rec_lp2_reprove.sh -> pass /d/RenoDX_archive/recordings/live_proof2
+        as arg 2 (+ archived night1118 scratchpad_copy scripts). C: 122.2 -> 232.1 GB free, D: 178.7 GB free.
+        gtv_ FIXTURE RE-CHECK = OK FOR THE FIX 12:08 (plan_1117/gtv_fixture_recheck_handback.md; gtv_iq_review.md "## gtl_
+        fixture timeout re-check"): real keeper hash 41d07cf4 unchanged (30 / 30 / 10, lines 43-45; fixture limits only via
+        test_lab_fixture.py 397-399); test_stop_heartbeat 9.6 s + test_stop_hung_fence 7.0 s still stop; HUNG_S only counts
+        while a command runs, test_loading_not_hung 7.5 s (margin ~2.5 s). Runs: low CPU unit 34, ps1 5, jobs 32, keeper
+        25/25 once (other run 1 fail = finding a); under 32 busy loops keeper 11 errors = SLOW lock at session start
+        (11.3-16.6 s vs 11.2 s) + finding b; heartbeat flake never seen. Its keeper run's fake stopped H0 12:05.
+        Low nit: test_lab_keeper.py:156 gap test passes without beat_gap (its wait only checks a re-write 3 s later) ->
+        wait for time.time() - getmtime(alive.json) > 3.0, then assert 'ready'. Info: fixture FIRST_BEAT_S 15 > ~10 s
+        load deadline -> a never-beating fake shows SLOW load in the fixture (no test covers it).
+        Outside the change: (a, Low) test_waits_above_commit + test_lab_keeper.py 43 / 277 use budget.probe's real lock
+        paths (budget.py 49-50, 234) -> a real quiet_run.lock at 11:49 failed :331; fix probe_fn=lab.slow_probe (as lab.py
+        1093). (b, Medium-Low, PRODUCTION) lab.py wait_ready 846-850: on a SLOW lock request('close', quiet=True) runs
+        os.listdir(self.folder) (862) before checking quiet -> FileNotFoundError if the keeper has no session folder yet,
+        the SLOW report is lost (all 11 load errors; real slow keeper starts too); fix: missing folder + quiet = gone keeper.
+        Next weak point under full load: the fixture's 11.2 s keeper-start lock deadline.
+        - [ ] gtl_: lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap test nit (:156) + the 11.2 s
+            keeper-start deadline under load + lab fakes named like the harness (H0 stop); NO lab / keeper / fixture runs
+            until the coordinator says H0 is done; gtv_ re-checks (gtv_ 12:08).
+        Agents (3): gtp_ (round 17: gpr's R16-1 / R16-2 + gtw-R16-1..10), ebr_ (t4i_ analyze gap re-check), gtl_ (lab.py
+        wait_ready + test fixes, edits only until H0 ends); H0 re-run NOW (12:09); ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
