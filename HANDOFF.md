@@ -10819,6 +10819,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         both helper_du_rec; sheet Re-run "Before 3" names it + all calibrations new. Final suites 17:17-17:24: unit 40,
         analyze 5, ps1 5, keeper 29, jobs 35, test_gpu_lock 60 / 60, test_budget 40 OK. Land list stage2 11 files (+
         tests/test_budget.py); live hashes match; phase_model.tsv via retire_rows.py only. -> gtv_ re-check now.
+        gpr_ RE-CHECK 20 17:31 = NOT GO YET, 1 Medium + 2 Lows (plan_1117/designs/gpr_round20_recheck_handback.md;
+        gpr_review.md "## gtp_ round 20 re-check"; scratch testbin\scratch\gpr_\gpr_r20_*): fine: key diff 293 / 89,315
+        calls, no heavy -> light, no build row change, kind() CPU 9.12 -> 8.97 s; 12 light -> exe = $env:USERPROFILE exes
+        now on real rows (correct); 14 harness -> sh / py / ps1 + 3 -> ns price on own rows, none refused (ru_iqh.sh /
+        g3b_locked.sh drive the harness from a list file: still refusable as sh, no longer HEAVY for the load tag);
+        gpr-R19-1 fixed ($tw x87fix_test now on its refused row = the only new refusal, correct); Lows fixed; seeds
+        107,321 -> 107,694, rows 7,323 -> 7,402, 0 broken, effective refused rows 13 -> 11; R19-7 fallback prices 491, refuses
+        0. gpr-R20-1 MEDIUM: assignment-value expansion unbounded -> doubling chain (bash v1=$v0$v0 ... 22 levels, 292 chars
+        = 5.8 s kind() CPU; PS 22 levels 1.5 s; +2 levels ~4x; 30 levels ~4 GB); the 8 KB cap runs before expansion ->
+        cap each expanded value + statement at 8 KB + doubling-chain timing test. gpr-R20-2 LOW: VERIFY lab part needs
+        test_ in the name -> lab test loops (tests/$t.py) lost exemption (2 calls now on py tools/tw/lab/tests/$t.py, p50
+        167 s; refuses after 10) -> allow a variable stem. gpr-R20-3 LOW (old since bak26): inner_commands() returns a
+        quoted powershell -Command "..." text plus the line tail after its quote, folder = transcript cwd not the cd target
+        -> lab-suite statements also under a non-exempt junk key, R19-7 prices that copy (~14 calls, unrefused, no rows)
+        -> drop a priced candidate equal to an exempt statement + end the -Command view at its closing quote (gtw_ weighs:
+        shared with the gate side). Notes: gtp_lowprio.py "$PWD" not resolved (child key gates/$pwd/..., not exempt, no
+        row); lab/tests/test_budget_psm1.ps1 no longer exempt; run.ps1 build + exe prices on the exe row (rank rule); a
+        call's time goes to its heaviest key. -> gtp_ round 21 after gtw_'s re-check 20 (combined list).
         Agents (3): gtv_ (re-check gtl_'s stage2 S3c fixes), gtw_ + gpr_ (gate round 20 re-checks); gtl_ / gtp_ / fcr_ /
         gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
