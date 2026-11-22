@@ -8255,8 +8255,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         seed echo (missing = ToolFault at the dump, new test_dump_seed_echo_required); test_iq_seed_spacing restore
         via addCleanup. Suites on the final budget.py (07:37:28): unit 30, ps1 5, keeper 24, jobs 32 (CPU 4-10 %, no
         deadline changed). -> gtv_ RE-CHECK STARTED.
+        t4i_ R24 DONE 08:0x (render_mt/reports/t4i_r24_handback.md; backups scratchpad\t4i_bak\r24; log
+        scratchpad\t4i_r24_runall.txt): run_all green (lib 470, make 87, check 166, leg 165, analyze 116). F1: L2 +
+        Cached lines count inside [at, at + len) (one local in_seg); ebr_'s D1 real-placement test taken as is
+        (Cached 5000 / 40 from 1 line, L2 1 line, no "not measured"); ebo_make mt_trace rank 2 -> 5 (after row 3 +
+        env 4; HEAPFIX_PREPARE_GEN last; shots + renodx_trace_now stay rank 2), test_make assert on CHK-W3; A3
+        assert added. Sweep of other measured-window uses: none counts trace lines (PresentMon frames / replay
+        window / A-B window are frame timing; probes per start; ebo_check / ebo_mapcmp / ebo_make already use [at,
+        at + len)). -> ebr_ RE-CHECK STARTED.
         Agents (7): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (gtl_ S5 re-check), gtw_ (gtp_ round 11
-        re-check + hg1), t4i_ (r24 trace-window range), c3i_
+        re-check + hg1), ebr_ (t4i_ r24 re-check), c3i_
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
