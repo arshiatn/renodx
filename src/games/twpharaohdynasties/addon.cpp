@@ -1586,9 +1586,9 @@ twattila::feature_settings::SssSliders sss_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
 // Ray tracing's (twattila/rt_scene.hpp).
 twattila::rt_scene::Sliders rt_sliders;
-// The shadow pass's casters in the rays' scene (SCENE_SHADERS' cascade_keep entries): Shadow Casters Out of View, and Hills Out of
-// View for its terrain (Experimental, off: no game run has shown them yet).
-float rays_units_out_of_view_row = 0.f;
+// The shadow pass's casters in the rays' scene (SCENE_SHADERS' cascade_keep entries): Shadow Casters Out of View (on, ATN
+// 2026-11-22), and Hills Out of View for its terrain (Experimental, off: no game run has shown it yet).
+float rays_units_out_of_view_row = 1.f;
 float rays_hills_out_of_view_row = 0.f;
 // Fire Shadows from Particle Lights (Experimental, off, not in the RT/PT preset): PARTICLE_LIGHTS' draws left alone while 0.
 float particle_light_shadows_row = 0.f;
@@ -3003,8 +3003,8 @@ void ConfigureAddon() {
                                              .smoke_strength = &smoke_map_sliders.strength,
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
+                                             // Shadow Casters Out of View: on (ATN 2026-11-22), in the defaults and RT/PT.
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
-                                             .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_untraced_casters = &rays_untraced_casters_row,
                                              // Smooth Banner Shadows: the thin sheets (cloth 2F2A0E7E, flags 8DE94E2F) don't

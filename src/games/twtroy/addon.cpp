@@ -102,8 +102,9 @@ bool IsPsychoV35Mode() {
   return shader_injection.hdr == 4.f;
 }
 
-// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, the ACES fit).
-constexpr float HUE_CLIP_DEFAULT = 80.f;
+// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, the ACES fit):
+// 70, the fire's lowest hue error (0.82 degrees, 1.99 at 80; ATN 2026-11-22).
+constexpr float HUE_CLIP_DEFAULT = 70.f;
 
 // bool IsModdedAutoExposureEnabled() {
 //   return shader_injection.auto_exposure_highlight_protection == 1.f;
@@ -143,7 +144,7 @@ void ApplyResetPreset() {
       {"v31_roll_off", 1.f},
       {"v31_gamut_compression", 1.f},
       {"v31_gamut_compression_mode", 1.f},
-      {"v31_highlight_hue_shift", 0.1f},
+      {"v31_highlight_hue_shift", 0.04f},
       {"v31_highlight_saturation_shift", 0.f},
 
       // HDR Extended / user grading
@@ -959,8 +960,8 @@ void BuildRuntimeData() {
                "Saturation of bright colors. 0 = less, 1 = PsychoV31's own, 2 = more."),
     v31_slider("v31_highlight_hue_shift", &shader_injection.v31_highlight_hue_shift, "Highlight Hue Shift",
                "Bright colors take the SDR image's hues: fire more orange / yellow, less pink.\n"
-               "0 = off, 1 = SDR hues. Default 0.10.",
-               1.f, 0.1f),
+               "0 = off, 1 = SDR hues. Default 0.04.",
+               1.f, 0.04f),
     v31_slider("v31_highlight_saturation_shift", &shader_injection.v31_highlight_saturation_shift,
                "Highlight Saturation Shift",
                "Gives bright colors the saturation of the SDR image (fire cores less pale and pink).\n"

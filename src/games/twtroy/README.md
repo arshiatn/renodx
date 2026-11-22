@@ -7,7 +7,10 @@
   (shared with Pharaoh: `twattila/ao_readers.hpp` ClearInsteadOfGenerate). The sun's sky-cube reflection is no longer
   darkened by the game's SSAO under the paths (as in Attila).
 - Changed: Smooth Sail Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
-- In game: RT/PT in a battle, Path-Traced AO: corners as with the paths before, no darker double shade.
+- Changed (ATN): **Hue Clip 70** (was 80: the fire's hue error 0.82 degrees against 1.99, `test/tw_psychov35`) and
+  PsychoV31's **Highlight Hue Shift 0.04** (was 0.10), in the defaults and Reset. Saved values stay until a preset.
+- In game: RT/PT in a battle, Path-Traced AO: corners as with the paths before, no darker double shade. A burning battle at
+  Recommended: fire orange / yellow as the game's SDR.
 
 ### Shared round 2 (2026-11-17; built only, not run in game)
 

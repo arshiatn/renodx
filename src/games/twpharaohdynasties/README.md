@@ -8,7 +8,9 @@
   AO is what Attila's white AO pass gives (the paths are the occlusion).
 - Fixed: two unit motion shaders (db1e / f8ff) add the game's exact -pi in their atan2 (the decompile's was one bit off).
 - Changed: Smooth Banner Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
-- In game: Ray-Traced AO in a battle with a building pool: corners and the pool as before, a little faster; RT/PT with
+- Changed (ATN): **Shadow Casters Out of View on by default** (no longer Experimental), in RT/PT too: with ray-traced sun
+  shadows, trees, buildings and units behind the camera keep their shadows. A saved Off stays until a preset.
+- In game: a battle with RT/PT, the camera turned: shadows from behind the camera stay. Ray-Traced AO in a battle with a building pool: corners and the pool as before, a little faster; RT/PT with
   Path-Traced AO: no darker double shade in corners.
 
 ### Shared round 2 (2026-11-17; built only, not run in game)
