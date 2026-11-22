@@ -461,7 +461,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - release / lifetime owner (gpu3_ A1g, lga_): 5 release modes 77-122 ms vs the 75 ... | ?
 - coordinator after upr_'s OK: H0 re-run (full, ~84 min, ATN's rule) in a gap; ATN ... | ?
 - who owns the build env: gated_build's stderr shows `'vswhere.exe' is not recogni ... | ?
-- gtb_ / gti_ (low): watch's load is always `unknown` while nothing refreshes busy ... | ?
 - ATN (cleanup list): tools\tw\h0\__pycache__ (07:42) may be deleted (upr_ 08:3x). | ?
 - lab owner (later, optional): record `dxr12` (machine state from config's answer) ... | ?
 - gtp_ (nit): the 5 ms kind() timing check failed once under parallel load (5.9 ms ... | ?
@@ -485,6 +484,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - T5 build step: write the real manifest.json with these rows / row_values / env ( ... | ?
 - t4i_ (after ebr_ T5): option (a) = an arm every 10 s in the soak starts' L2 time ... | ?
 - gti_ (with r1a / r1b): ns_busy.ps1's game list lacks Divinity (EoCApp), Expediti ... | ?
+- gtl_ (low): record gate_s in lab.py's model so GATE_FLOOR_S can follow data late ... | ?
+- ATN (morning report): with the load refresh, the gate hook's fix-now rule can fi ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8428,7 +8429,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] gtp_ (low, DONE round 12 build_key()): kind() doesn't normalise target spelling ('twattila' vs 'renodx-twattila.addon64' = two
             keys; 77 of 264 seed target words long form) - normalise + re-key price_seed.tsv / watch_runs.tsv in one
             go (gpr_ 08:2x).
-        - [ ] gtb_ / gti_ (low): watch's load is always `unknown` while nothing refreshes busy_count.json (05:50,
+        - [x] gtb_ / gti_ (low, proposal OK'd 09:2x, gtb_ builds): watch's load is always `unknown` while nothing refreshes busy_count.json (05:50,
             partial); decide whether watch / gated_build refreshes it or `unknown` stays (factor 1.0) (gpr_ 08:2x).
         t4i_ P4 DONE 08:2x (render_mt/reports/t4i_p4_handback.md; log scratchpad\t4i_p4_runall.txt; backups
         scratchpad\t4i_bak\p4; patch t4i_p4_patch.py): ebr_'s D1 block in test_analyze.py now loops over 2 arm
@@ -8920,9 +8921,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         re-checks.
         - [ ] gti_ (with r1a / r1b): ns_busy.ps1's game list lacks Divinity (EoCApp), Expeditions Rome and RUSE
             (gtw_ 09:2x).
-        Agents (7): upr_ (h0i_ F1-F4 re-check), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gpr_
-        (gtb_ slot-wait / floor / R12-1 + load proposal check), grs_ (first-frame v3 + steps 1-2), lga_
-        (release_check fixes), ebr_ (t4i_ T5 review), c3i_ (B1 F1 + F2 logging)
+        gpr_ GTB_ ROUND = ALL 4 OK 09:2x (plan_1117/designs/gpr_gtb_round_handback.md; gpr_review.md "## gtb_
+        slot-wait / gate floor / R12-1 mirror / load proposal re-check"; probe scratchpad\gpr_gb_env_probe.ps1, log
+        gpr_gtb21_tests.txt): test_budget 38 / 38, selftest 3 / 3; real watch_runs / busy_count / slots untouched.
+        (1) real build without env vars = same (30000 ms = -Seconds 30, hold inside if ($DryRun)); env vars left set
+        without DRYRUN are not even parsed; culture-invariant casts; low: garbage / negative PASS_S in DRYRUN = back
+        to back ~2 s passes (clamp optional); --limit 10 a real proof (a t0 clock would kill at ~10 s). (2)
+        GATE_FLOOR_S 120 OK (a hung gate still stopped at lab.py's 300 s; only 12.5-120 s gates change to OK; price
+        unchanged; 120 = judgement - recording gate_s in the model (gtl_) would let it follow data). (3) R12-1
+        mirror exact ({**warm?, **exact}); after gtp_'s round 13 tighten to (12, 99) + a hook == mirror equality
+        check. (4) LOAD PROPOSAL OK with conditions: after-end refresh only after the job handle is closed (named
+        grandchildren would mark busy for 5 min); rate-limit faulted refreshes too (or 10 s timeout); start refresh
+        before Popen + t0 and pass the fresh tuple to watch_load; no harmful race (temp + os.replace), no lock
+        needed, own child not counted; "partial" fires on most runs while a lab waits (~1 s each, fine); gti_'s
+        BusyState unchanged. NOTE: once loads can be idle, fix-now can fire (shadow = would-deny rows only). ->
+        gtb_ BUILDS the load refresh (3 conditions) + tightens after round 13; gpr_ re-checks.
+        - [ ] gtl_ (low): record gate_s in lab.py's model so GATE_FLOOR_S can follow data later (gpr_ 09:2x).
+        - [ ] ATN (morning report): with the load refresh, the gate hook's fix-now rule can fire for the first time
+            (shadow: would-deny rows only) (gpr_ 09:2x).
+        Agents (7): upr_ (h0i_ F1-F4 re-check), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gtb_
+        (load refresh), grs_ (first-frame v3 + steps 1-2), lga_ (release_check fixes), ebr_ (t4i_ T5 review), c3i_
+        (B1 F1 + F2 logging)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
