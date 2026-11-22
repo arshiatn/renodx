@@ -8197,8 +8197,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         watch's clock counts the slot wait); B RECOMMENDED one line in gated_build.ps1 (run the cmake step under
         watch once the slot is held) + one hook line (a gated_build call counts as wrapped), only after ATN's OK;
         C leave builds out (not recommended). Price stays shadow until ATN decides. -> gtw_ RE-CHECK 11 STARTED.
+        ebr_ r23 RE-CHECK = FIX 07:4x (render_mt/reports/ebr_r23_recheck_handback.md; ebr_t4_review.md line 965):
+        run_all matches (lib 470, make 86, check 166, leg 165, analyze 112). Items 2 (headroom + lookahead: every
+        shipped "trace window" line in rmt_c3 classed right) and 3 (LATCH rows on B1L1) OK. FIX item 1, ALSO L2
+        SINCE B1.4: ebo_analyze counts trace lines only inside the measured window [at + 3, to = at + 21), but
+        ebo_make puts the mt_trace arm at at + trace_at = measure_to (21 s, 26 s for WPR) = exactly `to` -> header
+        + lines come after `to` and are never counted: 111 of 132 B1Cached / B1L2 segments (all legs 3-4) would
+        print "not measured" in every real run (nothing wrong, nothing measured); fixtures pass only because they
+        put lines at 160 / 170. Demo D1 (real placement) fails all 3 checks; fix F1 (count over the whole segment
+        [at, at + len), 2 lines :398 / :406; 4 s left after the arm) passes 115 / 115. Alternative: pair each window
+        with its arm's Seg via check.json's mt_trace switches. Low nit: an arm at a segment's own `at` sorts before
+        that second's row switches (leg 1 only: CHK-W3 b1.1, b12.3 / .9 / .15). Mutant A3 (segment 0-hits clause)
+        survives -> assert S2's own not_cached in analyze_cached_nohit. 15 mutants, the rest killed.
+        COORDINATOR DECISION: F1 (whole-segment range, smallest) + the real-placement test (ebr_'s D1 block) for
+        Cached AND L2 + sort an arm after the same second's row switches + the A3 assert. -> t4i_ R24 STARTED;
+        ebr_ re-checks.
+        gtb_ GRS1B DONE 07:4x (plan_1117/gtb_grs1b_handback.md; backup scratchpad\gtb_bak19): each case's tuple
+        carries its expected FAULT reason + new case (BOM'd UTF-16 of odd length = UnicodeDecodeError, price
+        shadow); NUL line hint "- UTF-16 without a BOM? re-save as UTF-8 / ASCII" (same shape); test_budget 3 x 35,
+        selftest 3 x 3. -> gpr_ CHECK STARTED.
         Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (gtl_ S4 + reference mode re-check), gtw_ (gtp_
-        round 11 re-check), gtb_ (grs1b test nit), ebr_ (t4i_ r23 re-check), c3i_
+        round 11 re-check), gpr_ (gtb_ grs1b check), t4i_ (r24 trace-window range), c3i_
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
