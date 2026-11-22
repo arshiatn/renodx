@@ -9640,6 +9640,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         list = yes (dsk_); (5) test sandboxes = yes; (6) release_check run rule: ATN adds it (exact rules given).
         ATN: move work sooner where it unblocks other work -> lab rules (gpu_lab.ps1 -Job / -Trace / -Stop, Q1)
         offered now so the first GPU session (S3c) can run after rec_verify.
+        ATN 10:5x: THE 7 RULES ARE IN (.claude/settings.local.json, ATN's own edit): Bash `sh .../tools/tw/reference/
+        rec_verify.sh grs_s2r rec_grs_base "" rec_grs_new5 rec_grs_aligned5 rec_grs_rec5`; PowerShell release_check.ps1
+        (plain / -DryRun / -WithRelease); PowerShell gpu_lab.ps1 -Job / -Trace / -Stop (Q1). ATN asked what full B4 and
+        the memory leak are (answered: B4 = plan item B.6, trace-only Arm now, full B4 decided by the end batch's
+        histogram, ATN Q6 11-21 = later round; leak = ATN's 11-21 request, box GAME MEMORY LEAK, after render_mt).
+        ORDER AFTER H0 (one GPU job at a time): upr_ analysis (offline) || c3i_ suites + gated builds -> rmt_b1log
+        merge gate || ff_s12 helper build + tests; then release_check (~9-13 min, GPU) -> rec_verify.sh (~100 min)
+        -> merge gpu_s2 -> first lab session S3c (gpu_lab.ps1, after gtl_'s gate_s low).
         Agents (3): gtw_ (round 15 re-check incl. R15-1 web side, then lga_ RC-2 re-check), t4i_ (probes for the 3 new
         B1 lines, then ebr_'s G1 / G2 / N-a / N-b), dsk_ (C: cleanup list, read-only); c3i_ waits for H0's end (then
         suites + builds -> rmt_b1log merge gate); ff_s12 build after H0; H0 run (background, ~11:30)
