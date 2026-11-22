@@ -518,6 +518,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: review handoff_plan\plan.md -> OK / changes; NOTHING from it starts or gets ... | ?
 - gtl_: part 2 sheet disk rule (move dumps to D:, C: floor) -> then STAGE3 (coord ... | ?
 - gtv_: read the part 2 sheet + jobs (go / no-go for gtc_) (coord 19:3x). | ?
+- G05 / R.U.S.E. owner (tke_ LOST, from 11935 rur2_): test/tw_ruse_bridge H2 DLSS ... | ?
+- ATN (do / drop each; tkj_ LOST, ATN asked for these and they were skipped withou ... | ?
+- coord: sweep every "[~]" box in HANDOFF + HANDOFF_ARCHIVE for undone parts (tkj_ ... | ?
+- ATN later (loose leftovers, keep or drop; tkj_): pines + rigidcampaigntrees capt ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11210,6 +11214,38 @@ heading text are in HANDOFF_ARCHIVE.md)
         and C: must stay >= 160 GB + the next session's dumps before each session (moving is OK; nothing deleted).
         - [ ] gtl_: part 2 sheet disk rule (move dumps to D:, C: floor) -> then STAGE3 (coord 19:3x).
         - [ ] gtv_: read the part 2 sheet + jobs (go / no-go for gtc_) (coord 19:3x).
+        gtl_ DISK RULE 19:33 (plan_1117/gtl_disk_rule_handback.md; s3c_run_sheet.md "## Part 2" ### Disk): at 179 GB free
+        the rule (160 GB + planned dumps) fits session 1 (1.5 GB) but 0 variants in session 2. Option A (keeps 64 frames):
+        coord moves each session-2 job's dumps to D:\RenoDX_LabDumps\s3c_part2\<session>\ right after the job (< 1 min, inside
+        the 10 min idle exit); floor now two jobs 03_s3c3_r3_floor_a / 04_floor_b (15.4 GB each); 176 GB needed before each
+        job (3 GB margin); cap 6 variants. Option B (gtv_'s call): 8-frame dumps (4 loops, 1.9 GB) -> 6 variants = 17.4 GB,
+        no moves inside the session (LONG in s3c_jobs.py). Moves = dumps_<job>\ (+ uses_<n> after session 1); nothing reads
+        them in place later; keep P3a / P3b until P5 is compared. Regenerated 01-04, 0 refused, 1150 s; old 03 renamed
+        .superseded. Part 1's jobs\ unchanged (md5). COORD: prefer B if gtv_ says 8 frames prove M10 (3 GB margin under A is
+        too thin with builds running) -> asked gtv_.
+        TICK AUDIT RESULTS (1 of 2): tke_ 19:35 (tick_audit/tke_handback.md, tke_.tsv): live 10902-12410: 112 boxes: 105
+        DONE, 1 DONE-ELSEWHERE, 6 PARTIAL (5 carried: 12008 -> 12524 / 12022; 12043 + 12130 -> 58 + 12069; 12189 -> 12082;
+        12255 -> 11960), 1 LOST; all 90 cited commits in atn-mods (ac78a3ed8 = NOT TAKEN half ReSTIR, proven slower). Note:
+        a99a26880 holds most of open box 11403 (CR3 LOW FIXES): only L1 (tooltip) left. tkj_ 19:35 (tick_audit/
+        tkj_handback.md, tkj_.tsv): archive 1854-6217: 138 boxes: 125 DONE, 4 DONE-ELSEWHERE, 9 PARTIAL, 8 LOST; 62
+        commits in atn-mods; zips in Downloads; shutdowns in the event log. The 11-15 cleanup only counted "- [ ]", so
+        archive "[~]" boxes 3271 / 3361 still hold undone parts (RT refraction, full ReSTIR DI).
+        - [ ] G05 / R.U.S.E. owner (tke_ LOST, from 11935 rur2_): test/tw_ruse_bridge H2 DLSS flat / edge pair FAILS (flat
+        23,509 of 31,349, edge 192-195 of 479; passed 24/24 at ruh_'s merge, HANDOFF ~1816); rur2_ called it "not R.U.S.E.
+        code" with no cause -> root-cause + fix.
+        - [ ] ATN (do / drop each; tkj_ LOST, ATN asked for these and they were skipped without his decision): (1) Mega
+        Geometry clusters in Tales (needs NVAPI in the root CMakeLists, ATN's OK); (2) RT shadows for Expeditions' local
+        lights (only a DO NOW row in tools/nontw/expeditions/expeditions.tsv); (3) emissive surfaces as light sources; (4)
+        glass in the coloured / see-through shadows; (5) soldier records redesign: one record per soldier + per-instance
+        previous-frame lookups (~0.1-0.16 ms GPU); (6) RT water refraction (Water Clarity shipped instead; ATN asked again
+        in v105 item 7, archive [~] 3271 / 3361); (7) glossy bounces + Russian roulette in the shipped path tracer (only in
+        rt_reference.hlsli); (8) missing RR guides: colour before / after particles + fog, refraction, DOF, SSR hit distance.
+        - [ ] coord: sweep every "[~]" box in HANDOFF + HANDOFF_ARCHIVE for undone parts (tkj_: archive 3271 / 3361).
+        - [ ] ATN later (loose leftovers, keep or drop; tkj_): pines + rigidcampaigntrees capture never seen in a frame
+        (1858, L12286 names only v118 items); cluster LOD beyond vegetation (3243 -> L3183); helmet fix never checked on a
+        close-up soldier (3643); plain 1-spp reflection accumulation too dark (3811); Fast Leaf Shadows per instance (3461,
+        idea); Astra F10 / F11 + archive 1344 never-run tests (game run, real GPU reset, real unload / reload, FG SDR / HDR
+        check; L12299 covers only the first freeze); no RTX 20 / 30 or AMD card ever tested (1854).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
