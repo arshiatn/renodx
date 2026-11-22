@@ -182,7 +182,7 @@ twattila::rt_scene::Sliders rt_sliders;
 twattila::feature_settings::SssSliders screen_space_shadows_rows;
 talesofarise::ue_light_bounce::Rows gi_rows;
 // Under our GI, Bandai's GI add keeps its share through the open sky (shared.h TOA_GAME_GI_SHARE, SI.gtvbgi 2).
-float game_gi_open_sky_row = 0.f;
+float game_gi_open_sky_row = 1.f;
 float live_scale_row = 1.f;
 float camera_jitter_row = 1.f;
 float replace_taa_row = 1.f;
@@ -3120,8 +3120,8 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                                 .key = "GlobalIlluminationGameOpenSky",
                                                 .binding = &game_gi_open_sky_row,
                                                 .value_type = SettingValueType::BOOLEAN,
-                                                .default_value = 0.f,
-                                                .label = "Game's GI Under the Open Sky (Experimental)",
+                                                .default_value = 1.f,
+                                                .label = "Game's GI Under the Open Sky",
                                                 .tooltip = "Keeps the game's own Global Illumination where the sky is open (open ground, cliffs);\n"
                                                            "ours lights what nearby surfaces cover. Off: ours alone, darker in open areas.",
                                             });
