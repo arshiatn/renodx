@@ -464,7 +464,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (tka_ LOST, never asked): Troy Shadow Map Size row for quality 3 (833, troy. ... | ?
 - weakly carried (tka_): AO sun-dependent normal fix never proven / fixed (187; on ... | ?
 - coord (before ANY install): D:\Dev\renodx\bin's twattila / twrome2 / thronesofbr ... | ?
-- render_mt END REVIEW (tkp_ LOST, a GATE before leg 1: ebo_end_batch_plan.md:454 ... | ?
 - render_mt after the batch (tkp_ LOST): X1 Faster FPU Reset BUILD (no owner; with ... | ?
 - coord (tkp_): 11475 CPU STEP 8 (ETLS) is a zombie (ATN dropped ETLS at 2690) -> ... | ?
 - GPU plan (tkp_ LOST): gto_ S4 in-process Nsight trace (ATN Q6 yes, after S3c); g ... | ?
@@ -651,6 +650,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RELEASE GATE: NO Shogun 2 player release until the per-map fit lands (rvd_ R-MI3 ... | ?
 - g04_ per-map fit conditions (rvd_): replace tonemap.hlsli:417's slope / 0.88 con ... | ?
 - g04_ MINORs: R-MI1 check + report Rome Remastered's 2500 / 275 highlights (copy ... | ?
+- M1 MAJOR (coord's pick = fix (a)): §7 crash rules 1 + 2 had no lines (AddCodeRan ... | ?
+- after the batch: m1 + NIT 5 (b3t_: animation_rows.hpp:505-508 logs the requested ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -11483,7 +11484,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         b3s_ GO S5 in parallel (fixes after the review). b3s_ linked bin\ to the main checkout -> told to stop.
         - [ ] coord (before ANY install): D:\Dev\renodx\bin's twattila / twrome2 / thronesofbritannia add-ons may be b3s_
         branch builds (bin junction) -> rebuild from atn-mods before stamping / installing.
-        - [ ] render_mt END REVIEW (tkp_ LOST, a GATE before leg 1: ebo_end_batch_plan.md:454 "The Opus xHigh end review is
+        - [x] (er5o_ DONE 22:4x) render_mt END REVIEW (tkp_ LOST, a GATE before leg 1: ebo_end_batch_plan.md:454 "The Opus xHigh end review is
         done"; plan.md:55 one Opus xHigh end review per batch, with A and C, static_checks, build32; if stopped on an
         engine-code part the Sonnet review stands and ATN is told) -> coord spawns it after B3b + group 3 land; add to the
         READY list.
@@ -12443,6 +12444,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         4.1 sun builds, so without G02 M1 the rays stack on the game's maps there; M2 matters more (gather4 on 1x1 reads the
         border colour if s1 uses one; the rig's WRAP samplers hide it). rule_sim: only WH1 6 + WH2 6 change; the 10 Attila /
         Thrones shaders are in no runtime list. G10's 832 counts are final.
+        er5o_ END REVIEW DONE 22:4x (render_mt/reports/er5o_end_review.md + _handback.md): merged tree 66f6557e1 (atn-mods
+        c73fcb16e + rmt_b3t 61a2ccc81; delta to 0c28d6308 empty in src / test). GO for T5 after M1. 0 BLOCKER / 1 MAJOR / 2
+        MINOR / 6 NIT; static_checks 0; Linux scan clean; ebr_'s line scan: nothing new. ATN 5: render_mt causes none of the
+        three freeze causes (object motion unchanged since base; 32-bit: ~1 MB .bss at defaults, long-lived reservations
+        with rows on; driver / effects: no hooks or threads at defaults).
+        - [ ] M1 MAJOR (coord's pick = fix (a)): §7 crash rules 1 + 2 had no lines (AddCodeRange never called, 3 code pages
+        unnamed, FormatFault says only "another thread", gates part_range / job_line match nothing) + m2 instance_fill
+        check-mode bad_alloc + pool NITs 1 / 2 -> lg3_ on rmt_er5 from rmt_b3t (sent 22:4x, "lg3_ er5 fixes") -> er5o_
+        re-check -> merge -> T5.
+        - [ ] after the batch: m1 + NIT 5 (b3t_: animation_rows.hpp:505-508 logs the requested stage after the Check latch;
+        single-use allocate lambda), NIT 3 (static heapfix clearance assert for the B3b / sweep sites), NIT 6
+        (twrome2/engine_tweaks.hpp:260-265 never retries Write after a logged failure, incl. the Uninstall restore).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
