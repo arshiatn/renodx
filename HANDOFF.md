@@ -494,7 +494,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - leaf / micromap owner (optional): run pre 4x on fast_leaves + micromaps_leaf_str ... | ?
 - coordinator: all_modes pass on the combined tree after rmt_h0 + ff_s12 + grs_xes ... | ?
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
-- ATN: allow rule for all_modes_check.ps1 (plain + -DryRun) after upr_ GO (coord 1 ... | ?
 - gtv_: lab-suite load run NOW (GPU free 14:07) (coord 14:07). | ?
 - gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-che ... | ?
 - gtl_: S3c run sheet (coord 14:11). | ?
@@ -10191,7 +10190,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Rule lines for ATN (after upr_ GO): powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\arshi\.claude\
         projects\D--Dev-renodx\tools\tw\h0\all_modes_check.ps1 (+ the same with -DryRun).
         - [x] upr_ (DONE 14:0x: NO-GO until MUST 1-2): review all_modes_check.ps1 + h0_gpu_runs.ps1's 4 new functions + h0_rng_check.py changes (coord 13:5x).
-        - [ ] ATN: allow rule for all_modes_check.ps1 (plain + -DryRun) after upr_ GO (coord 13:5x).
+        - [x] ATN (DONE 14:2x, ATN's own edit, before upr_ GO): allow rule for all_modes_check.ps1 (plain + -DryRun) after upr_ GO (coord 13:5x).
         upr_ ALL_MODES REVIEW = NO-GO UNTIL 2 CPU-ONLY FIXES 14:0x (plan_1117/designs/upr_allmodes_review_handback.md;
         unified_pt_review.md "## all_modes review" line 2091): merge changed only CPU code in the helper (ff_s12 log
         lines + release_idle judges idle from last_request; grs_ #if guard, same value) -> kept H0 post run is a good
@@ -10259,9 +10258,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         exit 0 (all_modes_dryrun_1600.txt). Leftover offline\fakes\__pycache__ (harmless, kept).
         - [ ] upr_: re-check h0i_'s all_modes fixes vs backups 20261122_1600_allmodesfix (1469 vs 1481 too) -> GO / NO-GO
         (coord 14:14).
-        Agents (3): gtp_ (gate round 19), upr_ (all_modes re-check), gtl_ (S3c run sheet); helper checks running ->
-        push nit -> gtv_ load run -> S3c (gpu_lab.ps1 per gtl_'s sheet); all_modes run waits for upr_ GO + ATN rule
-        (combined tree incl. gpu_s2)
+        Helper checks PASS 14:14 (recorder build helper_gpus2_rec 6,703,104 B, plain helper_nit 5,689,856 B) -> pushed
+        d9a7d25b0. upr_ re-check SENT 14:15; gtv_ load run GO 14:15 (running).
+        ATN 14:2x (woke briefly, sick, back to bed): ADDED the 2 all_modes rules himself (.claude/settings.local.json, his
+        own edit; json valid, 2 lines): PowerShell `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\arshi\
+        .claude\projects\D--Dev-renodx\tools\tw\h0\all_modes_check.ps1` (+ the same with -DryRun). THE REAL RUN STILL
+        WAITS FOR upr_ GO, one GPU job at a time (not beside S3c or the load run).
+        Agents (4): gtp_ (gate round 19), upr_ (all_modes re-check), gtl_ (S3c run sheet), gtv_ (lab load run); then
+        on upr_ GO: all_modes run (~40-45 min, GPU, rule in) and S3c (gpu_lab.ps1 per gtl_'s sheet), one after the other
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
