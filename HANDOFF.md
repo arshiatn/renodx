@@ -7805,12 +7805,31 @@ heading text are in HANDOFF_ARCHIVE.md)
             (DLSS, 1920x1080 render); gtq_ accepts either until agreed, then tightens to one.
         - [ ] coordinator: where iq references live (gtq_ suggests tools\tw\quality\iq_refs; never deleted like PT
             references) - decide with gtv_'s re-check, then gtq_ makes the builder's guard allow new folders there.
+        ebr_ R21 RE-CHECK = FIX 06:3x (render_mt/reports/ebr_r21_recheck_handback.md; ebr_t4_review.md "## r21
+        re-check" line 776; outputs scratchpad\ebr_r21_*): run_all 0 failed (same numbers); segments.json OK (keys =
+        addon.cpp :2185 / :2195 / :2207; Spawns needs Update confirmed; count check = "set at all" MEASURED: empty =
+        ON, unset = off, "0" = ON - the bench never creates it empty or 0; only the renodx_test_hooks.txt startup
+        path would, and the bench never writes it; requires applied where parts_on is built). 27 shipped B1 lines vs
+        live gates.json: all right except FIX 1 code_sites lacks Cached's two sites "particle count epoch" /
+        "particle count" (engine_code :1825 entries 27-28) -> a left-alone Cached site maps to the WRONG row ("Faster
+        Game CPU Code") = a resumable stop in EVERY start; FIX 2 code_not_written / code_written lack "Cached
+        Particle Count" (:2907 / :2876) + older B1 gap: "Parallel Effect Update sites: not written" (:2918) and its
+        "sites: in" / "out, ..." written lines (:2832). Mutants 14: 11 killed, 3 survive - S4 (check -> on KEEP
+        switch must clear countcheck; untested), S5 harmless, G6 (code_rows Cached entry untested: NOTE when not
+        planned, resumable stop when planned). Shoulds: B1 stand-down lines only INFO (effect_update_sites :668 /
+        :674 / :701 -> stop_if_planned B1L1 / B1L2; engine_code :2835 + effect_update :1451 -> LATCH B1); drop
+        B1Cached from code_rows "Parallel Effect Update" parts + b1_refused_hooked's stop_if_planned (Cached has
+        its own row). Nits: :710 status text; corpus site names not shipped (cosmetic); non-B1 placeholders that
+        never match (LATCH b3b_mismatch, fill_check_mismatch; probes effect_instances / draws / overflow /
+        c_render_us / part_calls) -> list them with a status, each [ ] for its owner. ebr_ deleted one .pyc it made.
+        -> t4i_ R22 STARTED (FIX 1-2, S4 + G6 tests, Shoulds, nits); c3i_'s two new lines (S2 count + stack
+        headroom) go into r22 if they land first, else r23.
         Agents (6): gtw_ (S1c re-check 9), gtv_ (gtq_ v1.1 inputs re-check), gtb_ (selftest flake S1, then N11),
-        ebr_ (t4i_ r21 re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_,
-        upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r22 after c3i_), gbc_, gpr_ (re-checks gtb_
-        S1), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (after H0: its 4
-        suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
-        map_replay-named process until H0 ends; gtv_'s held tests + race probe after H0.
+        t4i_ (r22: ebr_'s r21 fixes), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_,
+        c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_ r22), gbc_, gpr_
+        (re-checks gtb_ S1), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_
+        (after H0: its 4 suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness /
+        helper / fg / map_replay-named process until H0 ends; gtv_'s held tests + race probe after H0.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
