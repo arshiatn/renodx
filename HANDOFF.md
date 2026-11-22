@@ -492,6 +492,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: Opus xHigh review of g12_'s staged diff (tools, review per group). | ?
 - gtw_ (a0b03d68655ebfcaf) + gpr_ (aa304b6e977350cc3) re-check round 22 on gtp_sta ... | ?
 - gtp_ golive round 22 (bak29, swap gate_hook.py + run_tests.py, shas, mode.txt sh ... | ?
+- D2 in-game batch (g07_): an SSR trace (in-game SSR on, wet / polished floor or w ... | ?
+- ATN (when well): handoff_plan/atn_questions_groups.md (groups' questions with co ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11460,6 +11462,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtp_ golive round 22 (bak29, swap gate_hook.py + run_tests.py, shas, mode.txt shadow) only after both re-checks
         GO and a green mirror suite on a QUIET machine (no builds; e.g. the T6 quiet window before the end batch).
         - [x] gtp_ report of the classifier-blocked action -> none found in its round 22 transcript (see above).
+        b3s_ S5 DONE 20:1x (render_mt/reports/b3s_s5_handback.md): 421a62d45 (only animation_rows.hpp): streaming schedule
+        (workers claim scatter then gather units, gather <= 16 ahead, ring slot free), ring flags gathered / scattered,
+        `stopped` every 64 items, env RENODX_TW_ANIMATION_SCHEDULE stream / bulk, 4 new controls. Smoke vs the real fill:
+        streaming 1500 rounds 0 failures, 2 / 15 threads 800 each 0, bulk 800 0, timing controls 0; negative controls
+        caught (no_ordered_mode only with scatter_delay_block 0; no_count_check 0 = gap, bd1r_ judges); -Quick PASS;
+        gated x86 3 games + amd64 twattila exit 0 into the worktree's own bin (no junction; copied fxc / dxc read-only).
+        Trailer "Claude Sonnet 5.5" = its real model (kept). -> bd1r_ reviews S3-S5; b3s_ GO S6 (addon.cpp free; lg3_
+        did not touch it).
+        g07_ PART 20:1x (handoff_plan/handbacks/g07_part_handback.md): ho_g07 b5492bcb6 (D2 Output Auto via
+        output_encoding, game_owned_output) + 67d421be3 (Modded Auto Exposure Experimental off, Fog + Vignette rows at 1 =
+        exact, Auto Thickness on + saved rows cleared once, divinity2_frame_trace.txt name, Exact Depth ramp numbers: Off
+        mean 0.975-0.992 / On 0.99996+ on flat ground); D2 add-on builds; vanilla_exact 5 new shaders EXACT. Waits: Graphics
+        2 of 2 needs an x64 read of EoCApp.exe -> COORD OK for a read-only dis_at64.py in g07_'s scratch (stop if packed /
+        encrypted; never unpack or decrypt); SSSR needs an SSR trace (DeferredSSR EB5998CF writes + 0FA22D5A t1 / t2 reads;
+        needs a hardware-depth pyramid); VFX half-res needs R2's A/B; neutral names need G09 + G21's embeds (requests sent /
+        in the brief). Requests sent: g10_ (D2 vanilla_exact entries), g13_ (page_dump_d2_body.h text).
+        - [ ] D2 in-game batch (g07_): an SSR trace (in-game SSR on, wet / polished floor or water): DeferredSSR (EB5998CF)
+        writes (size, format) + DeferredSSRCombine (0FA22D5A) t1 / t2 reads; render-scale trace; R2 A/B for VFX half-res.
+        - [ ] ATN (when well): handoff_plan/atn_questions_groups.md (groups' questions with coord's picks; 2 so far).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
