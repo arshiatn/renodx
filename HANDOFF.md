@@ -484,7 +484,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: permanent delete of (1) old WPR ETLs 33.3 GB + (3) old shots 5.5 GB (dsk_ 1 ... | ?
 - dsk_: refined testbin list (2) - only old DLL / obj copies no test, pin or tool ... | ?
 - t4i_ (after the scan gaps): end batch moves each finished leg's ETLs to a D: fol ... | ?
-- lga_ (low): RC2-N1 whitespace-only slot older than 3 h counts as stale (untrimme ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9694,10 +9693,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         Leftover: gtw_suite15_cite_103627 work dir (left).
         -> gtp_ ROUND 16 (R15-1 gtw_'s shape + R15-1b + R15-2 + R15-3 + R15-4 + older shapes); release_check READY to
         run after H0 (rule in); RC2-N1 -> lga_ (low).
-        - [ ] lga_ (low): RC2-N1 whitespace-only slot older than 3 h counts as stale (untrimmed text test) (gtw_ 10:55).
-        Agents (4): gtp_ (round 16), t4i_ (probes for the 3 new B1 lines, then ebr_'s G1 / G2 / N-a / N-b, then ETL
-        move to D:), dsk_ (refined testbin list, read-only), lga_ (RC2-N1); c3i_ waits for H0's end (then suites +
-        builds -> rmt_b1log merge gate); ff_s12 build after H0; H0 run (~11:30)
+        - [x] lga_ (low): RC2-N1 whitespace-only slot older than 3 h counts as stale (untrimmed text test) (gtw_ 10:55). DONE 10:58.
+        lga_ RC2-N1 DONE 10:58 (plan_1117/lga_rc2n1_handback.md; backup h0\release_check.ps1.bak_rc3): Get-Beside keeps
+        the untrimmed slot text for the "not v1, older than 3 h" test (= gated_build.ps1:41); trimmed text still for
+        the v1 check, cache key, log. Sandbox test scratchpad\lga_rc3_test.ps1 agrees with gated_build on 5 slots;
+        rc2 test 31 / 31, verdict 10 / 10; dry run ~10:58 exit 0. release_check READY (rule in) -> first real run
+        after H0 + builds. H0 10:58: run 1 pre_b (17 modes).
+        Agents (3): gtp_ (round 16), t4i_ (probes for the 3 new B1 lines, then ebr_'s G1 / G2 / N-a / N-b, then ETL
+        move to D:), dsk_ (refined testbin list, read-only); c3i_ waits for H0's end (then suites + builds ->
+        rmt_b1log merge gate); ff_s12 build after H0; H0 run (~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
