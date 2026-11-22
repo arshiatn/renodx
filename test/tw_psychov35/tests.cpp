@@ -1093,9 +1093,8 @@ static std::vector<Float3> RunWarhammer(const Shader& tone_mapper, const Shader&
   return linear;
 }
 
-// Rome II's t00 -> t01 (part 4), Attila's settings: its black and white points as log10 and linear (x, y black 10^-4; z, w
-// white 1), the identity curve; both modes 2.2-encoded.
-static std::vector<Float3> RunRome2(const Chain& chain, const std::vector<Float4>& scene, float mode, float hue_clip) {
+// Rome II's settings for RunRome2: 1000 / 203 / 203 nits scRGB with Gamma Correction, every row and PsychoV35 slider at 1.
+static rome2::ShaderInjectData Rome2Injection(float mode, float hue_clip) {
   rome2::ShaderInjectData si = {};
   si.peak_white_nits = 1000.f;
   si.diffuse_white_nits = 203.f;
@@ -1117,6 +1116,12 @@ static std::vector<Float3> RunRome2(const Chain& chain, const std::vector<Float4
   si.v35_roll_off = 1.f;
   si.v35_gamut_compression = 1.f;
   si.hue_clip = hue_clip;
+  return si;
+}
+
+// Rome II's t00 -> t01 (part 4), Attila's settings: its black and white points as log10 and linear (x, y black 10^-4; z, w
+// white 1), the identity curve; both modes 2.2-encoded.
+static std::vector<Float3> RunRome2(const Chain& chain, const std::vector<Float4>& scene, const rome2::ShaderInjectData& si) {
   Bindings first = AttilaToneMapper(scene, true);
   first.views["g_black_and_white_points_sampler"] = Texture2D(1, 1, {Float4{-4.f, 1e-4f, 0.f, 1.f}});
   first.injection = Bytes(si);
@@ -1363,7 +1368,7 @@ static void ReportHue(const Chain& chain) {
          si.hue_clip = hue_clip;
          return RunAttila(chain, Scene(columns, first_stop, stops_per_row, 1.f), si);
        }},
-      {"Rome II", [&](float mode, float hue_clip) { return RunRome2(chain, Scene(columns, first_stop, stops_per_row, 1.f), mode, hue_clip); }},
+      {"Rome II", [&](float mode, float hue_clip) { return RunRome2(chain, Scene(columns, first_stop, stops_per_row, 1.f), Rome2Injection(mode, hue_clip)); }},
       {"Thrones of Britannia", [&](float mode, float hue_clip) {
          auto si = ThronesInjection(mode, 1.f);
          si.hue_clip = hue_clip;
@@ -1521,7 +1526,7 @@ static void ReportToe(const Chain& chain) {
        }},
       {"Thrones of Britannia, identity S-curve", [&](float mode) { return RunThrones(chain, scene, ThronesInjection(mode, 1.f)); }},
       // Rome II's Recommended: Hue Clip 0.8 (its HUE_CLIP_DEFAULT 80), the identity curve (RunRome2).
-      {"Rome II, identity curve", [&](float mode) { return RunRome2(chain, scene, mode, (mode == 0.f) ? 0.f : 0.8f); }},
+      {"Rome II, identity curve", [&](float mode) { return RunRome2(chain, scene, Rome2Injection(mode, (mode == 0.f) ? 0.f : 0.8f)); }},
       {"Warhammer III, burn 0.3", [&](float mode) {
          auto si = Wh3Injection(mode, 1.f);
          si.hue_clip = 1.f;
