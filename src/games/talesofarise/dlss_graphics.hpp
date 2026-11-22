@@ -168,7 +168,7 @@ float ao_strength = 1.f;
 float ao_thickness = 0.1f;
 float ao_directions = 1.f;
 float ao_quality = 1.f;
-float ao_auto_thickness = 0.f;
+float ao_auto_thickness = 1.f;
 float ao_exact_depth = 0.f;
 uint32_t ao_frame = 0;
 talesofarise::dlss::constants::ViewMipBias applied_mip_bias;  // the one the constant mirror writes
