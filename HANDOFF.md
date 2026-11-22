@@ -495,6 +495,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - D2 in-game batch (g07_): an SSR trace (in-game SSR on, wet / polished floor or w ... | ?
 - ATN (when well): handoff_plan/atn_questions_groups.md (groups' questions with co ... | ?
 - g14r_ review -> g14_ fixes -> g14r_ re-check -> coord merges ho_g14 (docs only) ... | ?
+- test/tw_rt_open_sky (owner: GPU plan): -Lock writes a v1 gpu_job.lock record; -E ... | ?
 - after G21's SSS move: g14_ updates SKILL.md line 9. SKILLS UPDATE 5 stays the la ... | ?
 - gtv_ re-checks uses diag (sent 20:25) -> on GO coord lands rt_uses.h diff on atn ... | ?
 - gti_'s dead_outputs.py: refuse a log with no use rows instead of "0 candidates" ... | ?
@@ -11524,6 +11525,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         425408bdf, de63f55f1, 3f94cad2c on top of 08561db4e + 6e2095b3d (docs only). ATN asked 20:1x ("a long time since
         we did fix/add Skillsets"). -> g14r_ (Opus xHigh, read only) reviews -> handoff_plan/reviews/g14r_review.md.
         - [ ] g14r_ review -> g14_ fixes -> g14r_ re-check -> coord merges ho_g14 (docs only) after GO.
+        g14r_ REVIEW 20:4x (handoff_plan/reviews/g14r_review.md + g14r_handback.md): FIXES FIRST, 2 MAJOR / 16 MINOR /
+        11 NIT. Passed: nothing private, every table + relative link valid, suite list = the 96 test/tw_* folders, every
+        cited commit in b198b721a. M1: ATN's 11-22 rules sit only in the TW skill (non-TW games follow game-port-method) ->
+        move the engine-neutral ones there. M2: testing.md lets a NEW script hold gpu_job.lock (weakens T11) -> "the lab
+        or the existing locked run scripts, never a new script". COORD: m2 = ATN's own words, scope "no fixes / patches
+        to other games' own TAA" (upscaler hooks unaffected), no ATN question. Sent to g14_ 20:4x with G21's SKILL.md
+        line 9 names + g17_'s ao-gi.md rule 6 / rows 65-66. Coord fixed: memory worktree-junctions (no bin since 11-22),
+        gto_design.md:158 (WH3's base + SER traces).
+        - [ ] test/tw_rt_open_sky (owner: GPU plan): -Lock writes a v1 gpu_job.lock record; -Expect defaults to exact.
         - [ ] after G21's SSS move: g14_ updates SKILL.md line 9. SKILLS UPDATE 5 stays the last step after the final review.
         gtl_ USES DIAG 20:2x (plan_1117/gtl_uses_diag_handback.md): P2's empty uses log = a bug in rt_uses.h, not R3 / the
         job / dead_outputs.py: D3D12's Reset puts the real vtable back and the Reset hook (l.213-221) never re-installs the
