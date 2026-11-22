@@ -493,8 +493,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate le ... | ?
 - gtl_: lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap ... | ?
 - gtw_: re-check round 17 gate side (corpus, probe shapes, comment-free view can't ... | ?
-- gpr_: re-check round 17 price side (re-key, re-seed, VERIFY exemption scope) (co ... | ?
-- gtp_ (round 18, Low): VERIFY lab-test match only when the test file is the scrip ... | ?
+- gtp_ round 18 (Low): gpr R17-1 (Bash \" in double quotes) + gpr Lows 1-4 (-PassT ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10032,16 +10031,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         live = bak22: gate_hook.py, tool_prices.py (seed key fix), tests/run_tests.py; INSTALL_FOR_ATN.md unchanged.
         - [ ] gtw_: re-check round 17 gate side (corpus, probe shapes, comment-free view can't let anything through) (coord
             12:5x).
-        - [ ] gpr_: re-check round 17 price side (re-key, re-seed, VERIFY exemption scope) (coord 12:5x).
+        - [x] gpr_ (DONE 12:5x, plan_1117/designs/gpr_round17_recheck_handback.md; gpr_review.md "## gtp_ round 17
+            re-check"): PRICE SIDE OK. Control seeds 106,350 =, broken seed lines 11 -> 0, junk kinds gone; rings 2,221 ->
+            2,434 (190 rotation, 403 new, none lost, no tab / newline); watch_off 193 =; dups 21 -> 20; build seeds 389 =
+            (@args2 -> args2), gated_build keys real targets (9 calls); refused rows 16 = 16, log rows 41 = 41 (fix-now
+            same); live decision change only the 5 gtl_lowrun lab tests (intended). 39 heavy -> light checked pair by pair:
+            right except ~6 waited ebr_* runs (-PassThru + WaitForExit, old p50 30 s / p95 93 s). Lows: (1) -PassThru +
+            .WaitForExit() = 39 calls, 25 key light -> treat like -Wait; (2) -Wait:$true keys light (0 calls); (3) VERIFY
+            matches tests/test_lab_*.py in any folder (29 mentions outside lab/) and over the whole command -> anchor to
+            lab/ + match only the statement holding the key's head (65 newly exempt: 60 not refused anyway, 5 gtl_lowrun);
+            (4) new activity: gtp_'s py scratch:gtp_lowprio.py -b -i crosses refusal (a) (n 15, p50_lb 45 s, p95 145 s),
+            exempt only when it names run_tests.py -> same decision as gtl_lowrun? R17-1 (Low): \" inside a Bash
+            double-quoted word ends WORD / STATEMENT early -> a git show | grep keys as exe tw_rt_harness.exe (1 call,
+            nothing refused); fix: read "(?:\\.|[^"\\])*" as one word on the Bash side; tests: that grep -> sh grep,
+            cmd //c "\"C:/Program Files/LLVM/bin/clang-cl.exe\" /c x.cpp" -> exe clang-cl a4.
+        - [ ] gtp_ round 18 (Low): gpr R17-1 (Bash \" in double quotes) + gpr Lows 1-4 (-PassThru + WaitForExit = -Wait,
+            -Wait:$true, VERIFY anchored to lab/ + head statement (= gtl_ caveat), gtp_lowprio decision) + gtw_'s round 17
+            findings; gtw_ + gpr_ re-check (coord 12:5x).
         - [x] gtl_ (CONFIRMED 12:5x, plan_1117/gtl_verify_answer_handback.md): gtl_lowrun.py only sets below-normal
             priority and runpy's the given test file. Caveat (not new): gate_hook.py:1378 matches anywhere in the
             command line, so a slow script taking a tests\test_lab_*.py path as an argument is exempt too (the older
             lab[\\/]+tests[\\/] part already allows that); tighter = the test file must be the script python /
             gtl_lowrun.py runs.
-        - [ ] gtp_ (round 18, Low): VERIFY lab-test match only when the test file is the script run (gtl_ caveat
-            12:5x); gtw_ judges in its round 17 re-check.
-        Agents (3): gtw_ (round 17 gate re-check), gpr_ (round 17 price re-check), gtl_ (edits ready, suites after H0;
-        VERIFY answer); H0 re-run NOW (12:09) -> tell gtl_ H0 done; ff_s12 + grs_xess_guard after H0
+        - [x] gtp_ (round 18, Low): VERIFY lab-test match (merged into the round 18 box below).
+        Agents (2): gtw_ (round 17 gate re-check), gtl_ (edits ready, suites after H0); H0 re-run NOW (12:09) -> tell
+        gtl_ H0 done; gtp_ round 18 after gtw_; ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
