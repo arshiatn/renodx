@@ -504,13 +504,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtb_ / ATN (optional, later): F6 total on trimmed_mean or sum of pass-row median ... | ?
 - grs_ / nsight owner (optional, low): skip loop-0 dumps under -Trace; gpu_trace.p ... | ?
 - gtb_ (when active): OK gtl_'s test_budget.py conhost allowance (coord OK'd 17:1x ... | ?
-- gtp_: ROUND 21 = gpr-R20-1 (8 KB caps per expanded value + statement, doubling-c ... | ?
 - ATN (later, before any ENFORCE): a hook that times out (pre hook 15 s) does not ... | ?
 - gtl_: landed-sandbox suites again with the ADOPTED live schemas (any test that e ... | ?
 - hta_ / htb_ / htc_ / htd_: HANDOFF triage TSVs + summaries (coord 18:0x). | ?
 - coord: synthesis agent -> handoff_plan\plan.md (parallel groups) -> SHOW ATN FIR ... | ?
 - gtl_: the 4 stale schema tests -> live schemas accept the new fields; suites gre ... | ?
 - coord: before ATN's restart, confirm the end batch is READY (everything built + ... | ?
+- gtw_ + gpr_: re-check gtp_ round 21 (incl. GO FOR ENFORCE question) (coord 18:1x ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10886,7 +10886,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         drop the statement test. gtw-R20-3 (old) 3 forms still pass: | bash -c "$(cat)", | tee >(sh), | xargs -I{} sh -c
         {}. (Harness flagged a settings-json pattern in this hand-back: only the read-only timeout read above; nothing
         acted on.) -> gtp_ ROUND 21.
-        - [ ] gtp_: ROUND 21 = gpr-R20-1 (8 KB caps per expanded value + statement, doubling-chain timing test with a
+        - [x] gtp_ (DONE 18:11, live, SHADOW): ROUND 21 = gpr-R20-1 (8 KB caps per expanded value + statement, doubling-chain timing test with a
         trailing curl, shell_web before price_shell) + gpr-R20-2 (variable lab test stem) + gtw-R20-1 / gpr-R20-3
         (outer_end(), heaviest key with a price row, 8604 in suite) + gtw-R20-2 (drop VERIFY statement test) + gtw-R20-3 (3
         pipe-to-shell forms) + notes ($PWD child key, test_budget_psm1.ps1); gtw_ + gpr_ re-check (coord 17:4x).
@@ -10947,9 +10947,34 @@ heading text are in HANDOFF_ARCHIVE.md)
         the restart if anything is missing.
         - [ ] coord: before ATN's restart, confirm the end batch is READY (everything built + reviewed + dry run clean) from
         the triage; else list what is missing (ATN 18:1x).
-        Agents (6): gtl_ (adopted-schema suites + 4 stale tests), gtp_ (gate round 21), hta_ / htb_ / htc_ / htd_ (HANDOFF
-        triage, read only); gtv_ / gtw_ / gpr_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15; one
-        GPU job at a time
+        hta_ TRIAGE 18:11 (handoff_plan/hta_handback.md, hta_triage.tsv + hta_summary.md): 54 boxes (1-205 + CARRIED OVER now
+        653 / 663): ATN 31, INGAME 16, BLOCKED 3 (175 Div 2 run l.2257, 200 final bench, 653 WH3 data run + end bench),
+        SUPERSEDED 2 (21 helper116 install; 190 PT DI -> unified_pt.md section 9; leftovers: visibility reuse + who drafts
+        NVIDIA bug reports), DESIGN 1 (146 GT-VBAO per-sample math), CPU-CODE 1 (201 rt_core.hpp one-shot index-write log
+        before the Rome Remastered trace), DONE-UNTICKED 0. 8 partly answered (6, 41, 46, 52, 58, 63, 92, 184). Notes: 35's
+        Troy / Pharaoh TAA patch file is NOT on disk (regenerate before asking); items 15 / 192 / 177 / 63+46 / 158 / 155 /
+        184 / 156 / 152 = one ATN question list by game. Conflicts: render_mt files (twattila addon.cpp, engine_code,
+        draw_recording*, effect_update*, instance_fill, worker_pool, heapfix_ranges, frame_trace, test_hooks, device_loss,
+        buffer_pool) vs 132 / 653 / 663 / 41; GPU plan dlaa_helper vs 130 / 132 / 190 / 191 / 46; shared headers rt_core,
+        sun_replace_maps, graphics_page, ao_*.hlsl, lighting_settings, water_reflections rebuild every TW game. RYSE DLSS
+        SQRT (l.2495) maybe done by 72f20d75c -> htb_ confirms.
+        gtp_ ROUND 21 18:11 = LIVE, SHADOW (plan_1117/gtp_round21_handback.md; work copy testbin\scratch\gtp_\gtp_mirror10;
+        backup gtp_bak28 gate_hook.py 246d37d4b6ed, run_tests.py f9ba58c123e0): swapped after live == bak27 (5 files);
+        re-seed 105,282 seeds, 7,295 rows, 0 broken (window moved). Suites mirror + live 1261 / 1261 (no control: bak27 would
+        grow GB strings). gpr-R20-1: one-regex expansion, 8 KB per value / statement, <= 64 KB growth per call, $name kept
+        past a cap; pre_shell runs shell_web BEFORE price_shell; tests bash + PS doubling chains 22 / 26 / 30 + curl refused,
+        < 1 s CPU; double probe price_shell <= 0.016 s to 30 levels (bak27 0.83 s at 20). gpr-R20-2 VERIFY lab part
+        lab/tests/(test_*|$t|${t}).(py|ps1); STATEMENT keeps ${name} whole; test_budget_psm1.ps1 stays exempt. gtw-R20-1 /
+        gpr-R20-3 outer_end() in unwrap_rest(); why['ranked'] all non-exempt keys heaviest first, price the first WITH a row;
+        8604 shapes + guard + tail rows in suite. gtw-R20-2 VERIFY.search(st) gone. gtw-R20-3 refused: | bash -c "$(cat)"
+        ($(cat -), backtick cat), | tee >(sh), | xargs -I{} sh -c {}; data forms pass. $PWD resolves. Kept (a) / (b) / (c).
+        Corpus 15,119: 249 -> 249, 0 changed, 0 errors. Key diff 87,026 calls: 37 changed, none heavy -> light. Probes:
+        older lists same; 3 W-group R items refused; lab run + priced refused in all 3 orders; view v2 0 / 61 wrong; time2
+        shell_web <= 0.078 s, price_shell <= 0.203 s. Sandboxes removed (no reparse points).
+        - [ ] gtw_ + gpr_: re-check gtp_ round 21 (incl. GO FOR ENFORCE question) (coord 18:1x).
+        Agents (7): gtl_ (adopted-schema suites + 4 stale tests), gtw_ + gpr_ (gate round 21 re-checks), htb_ / htc_ / htd_
+        (HANDOFF triage, read only); hta_ / gtp_ / gtv_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since
+        16:15; one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
