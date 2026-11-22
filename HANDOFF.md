@@ -508,6 +508,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_: ROUND 21 = gpr-R20-1 (8 KB caps per expanded value + statement, doubling-c ... | ?
 - ATN (later, before any ENFORCE): a hook that times out (pre hook 15 s) does not ... | ?
 - gtl_: landed-sandbox suites again with the ADOPTED live schemas (any test that e ... | ?
+- hta_ / htb_ / htc_ / htd_: HANDOFF triage TSVs + summaries (coord 18:0x). | ?
+- coord: synthesis agent -> handoff_plan\plan.md (parallel groups), then tick DONE ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10909,9 +10911,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         stage). -> gtl_ re-runs the landed suites with the adopted schemas before stage2 lands.
         - [ ] gtl_: landed-sandbox suites again with the ADOPTED live schemas (any test that expected the old schema?) +
         titles without "PROPOSED" in the next stage (coord 17:5x).
-        Agents (3): gtv_ (B1 + N2 / N3 / N6 quick re-check), gtl_ (suites with adopted schemas), gtp_ (gate round 21);
-        gtw_ / gpr_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at
-        a time
+        ATN 18:0x: "what is lab?" + "you are doing only GPU stuffs right now? anything in both plans that can run at the
+        same time? or the remaining HANDOFF stuff / stuff planned for later? put those in their own plan and check what can
+        be done at the same time with a lot of subagents". COORD: HANDOFF has ~490 open boxes. HANDOFF OPEN-ITEMS PLAN
+        STARTED 18:0x: brief tools\tw\round_notes\handoff_plan\brief.md; 4 read-only triage agents (Opus xHigh), one TSV
+        row per open box (class DONE-UNTICKED / SUPERSEDED / ATN / INGAME / GPU / CPU-CODE / CPU-TOOL / DESIGN / BLOCKED /
+        UNCLEAR, files, depends, model, size, now Y/N): hta_ a3e737309d9d61bf9 (1-205 + 648-667), htb_ ad02d93afd3ec8e01
+        (668-4600), htc_ a7c4cea8ea0937a1d (4601-8600), htd_ a0580631c62b59e7c (8601-end); then one synthesis (Opus xHigh)
+        -> handoff_plan\plan.md with parallel groups (one writer per file set, GPU one job at a time, game only on ATN's go).
+        - [ ] hta_ / htb_ / htc_ / htd_: HANDOFF triage TSVs + summaries (coord 18:0x).
+        - [ ] coord: synthesis agent -> handoff_plan\plan.md (parallel groups), then tick DONE-UNTICKED boxes + start groups.
+        Agents (7): gtv_ (B1 quick re-check), gtl_ (suites with adopted schemas), gtp_ (gate round 21), hta_ / htb_ / htc_ /
+        htd_ (HANDOFF triage, read only); gtw_ / gpr_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15;
+        one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
