@@ -11,8 +11,11 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
+#include <exception>
 #include <filesystem>
+#include <format>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -459,16 +462,41 @@ inline void StartAtStart(const wchar_t* dll, std::vector<EngineTest>* tests, std
   *stop = false;
   *done = options.empty();
   if (options.empty()) return;
-  std::thread worker([dll, options = std::move(options), done, stop]() mutable {
-    for (int tries = 0; tries < 6000 && !stop->load(); ++tries) {
-      if (tw::engine_tweaks::ApplyWhenSet(dll, options)) {
-        tw::engine_tweaks::Trace(options);
-        break;
+  std::thread worker;
+  try {
+    worker = std::thread([dll, options = std::move(options), done, stop]() mutable {
+      bool applied = false;
+      for (int tries = 0; tries < 6000 && !applied && !stop->load(); ++tries) {
+        applied = tw::engine_tweaks::ApplyWhenSet(dll, options);
+        if (applied) {
+          tw::engine_tweaks::Trace(options);
+        } else {
+          Sleep(10);
+        }
       }
-      Sleep(10);
-    }
+      if (!applied && !stop->load()) {
+        // ApplyWhenSet's two reasons, per value: not found in the game's code, or still 0.
+        std::string waiting;
+        for (const tw::engine_tweaks::Option* option : options) {
+          for (const tw::engine_tweaks::Tweak& tweak : option->tweaks) {
+            uint32_t bits = 0;
+            if (tweak.value != nullptr) {
+              std::memcpy(&bits, tweak.value, sizeof(bits));
+            }
+            if (tweak.value != nullptr && bits != 0) continue;
+            waiting += std::format("{}{} ({})", (waiting.empty() ? "" : ", "), (tweak.code_pattern.empty() ? tweak.name : "a code constant"),
+                                   (tweak.value == nullptr ? "not found" : "still 0"));
+          }
+        }
+        renodx::utils::log::w("[Total War] At-start engine tests: not applied in 60 s (the game's values were never set): ", waiting, ".");
+      }
+      *done = true;
+    });
+  } catch (const std::exception& error) {
     *done = true;
-  });
+    renodx::utils::log::w("[Total War] At-start engine tests: could not start the startup worker (", error.what(), "); not applied.");
+    return;
+  }
   if (!DuplicateHandle(GetCurrentProcess(), worker.native_handle(), GetCurrentProcess(), &at_start_thread,
                        SYNCHRONIZE, FALSE, 0)) {
     *stop = true;

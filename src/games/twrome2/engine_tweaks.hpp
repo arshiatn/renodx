@@ -55,6 +55,7 @@ struct Tweak {
   float game = 0.f;       // the game's value
   uint32_t written = 0;   // the bits the addon wrote last
   bool seen = false;
+  bool write_failure_logged = false;  // a code constant whose code could not be made writable: said once
 };
 
 // A Graphics slider and the tweaks it scales (1: the game's values).
@@ -249,19 +250,28 @@ inline void Find(const Sections& sections, std::span<Option*> options) {
 #endif
 }
 
-// `bits` into a float or integer tweak's value.
-inline void Write(const Tweak& tweak, uint32_t bits) {
-  if (tweak.code_pattern.empty()) {
-    std::memcpy(tweak.value, &bits, sizeof(bits));
-    return;
+// `bits` into a float or integer tweak's value; false: its code could not be made writable (logged once a tweak, and
+// not tried again).
+inline bool Write(Tweak* tweak, uint32_t bits) {
+  if (tweak->code_pattern.empty()) {
+    std::memcpy(tweak->value, &bits, sizeof(bits));
+    return true;
   }
+  if (tweak->write_failure_logged) return false;
   // Code: writable only while it is patched.
   DWORD protection;
-  if (VirtualProtect(tweak.value, sizeof(bits), PAGE_EXECUTE_READWRITE, &protection) != FALSE) {
-    std::memcpy(tweak.value, &bits, sizeof(bits));
-    VirtualProtect(tweak.value, sizeof(bits), protection, &protection);
-    FlushInstructionCache(GetCurrentProcess(), tweak.value, sizeof(bits));
+  if (VirtualProtect(tweak->value, sizeof(bits), PAGE_EXECUTE_READWRITE, &protection) == FALSE) {
+    const DWORD error = GetLastError();
+    if (!std::exchange(tweak->write_failure_logged, true)) {
+      renodx::utils::log::w(std::format("[Total War] Engine value (code constant {}): the game's code could not be made writable (error {}); not applied.",
+                                        tweak->code_pattern, error));
+    }
+    return false;
   }
+  std::memcpy(tweak->value, &bits, sizeof(bits));
+  VirtualProtect(tweak->value, sizeof(bits), protection, &protection);
+  FlushInstructionCache(GetCurrentProcess(), tweak->value, sizeof(bits));
+  return true;
 }
 
 // The game's values x the sliders.
@@ -306,7 +316,10 @@ inline void Apply(std::span<Option*> options) {
       }
       tweak.written = tweak.integer ? std::bit_cast<uint32_t>(static_cast<int32_t>(std::lround(scaled))) : std::bit_cast<uint32_t>(scaled);
       if (tweak.written == bits) continue;
-      Write(tweak, tweak.written);
+      // Not written: the value there is still the game's, and Trace says so.
+      if (!Write(&tweak, tweak.written)) {
+        tweak.written = bits;
+      }
     }
   }
 }
@@ -712,7 +725,7 @@ inline void Uninstall(std::span<Option*> options) {
         *static_cast<uint8_t*>(tweak.value) = static_cast<uint8_t>(tweak.game);
         continue;
       }
-      internal::Write(tweak, tweak.integer ? std::bit_cast<uint32_t>(static_cast<int32_t>(std::lround(tweak.game))) : std::bit_cast<uint32_t>(tweak.game));
+      internal::Write(&tweak, tweak.integer ? std::bit_cast<uint32_t>(static_cast<int32_t>(std::lround(tweak.game))) : std::bit_cast<uint32_t>(tweak.game));
     }
   }
   if (kept != nullptr) {

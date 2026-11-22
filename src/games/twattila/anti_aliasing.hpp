@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <format>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -915,7 +916,16 @@ inline ID3D11ShaderResourceView* CopyDepth(ID3D11Device* device, ID3D11DeviceCon
   auto& objects = runtime.objects;
   D3D11_TEXTURE2D_DESC desc = {};
   source->GetDesc(&desc);
-  if (desc.Width != objects.width || desc.Height != objects.height) return nullptr;
+  if (desc.Width != objects.width || desc.Height != objects.height) {
+    // Once a pair of sizes: TAA, SMAA T2x and DLAA / DLSS are off while it lasts.
+    static std::array<uint32_t, 4> logged_sizes = {};
+    if (const std::array<uint32_t, 4> sizes = {desc.Width, desc.Height, objects.width, objects.height}; sizes != logged_sizes) {
+      logged_sizes = sizes;
+      renodx::utils::log::w(std::format("[Total War] Anti-aliasing: the scene's depth is {}x{}, the frame {}x{}: not applied.", desc.Width,
+                                        desc.Height, objects.width, objects.height));
+    }
+    return nullptr;
+  }
   if (objects.depth_format != desc.Format) {
     objects.depth.Reset();
     objects.depth_srv.Reset();
