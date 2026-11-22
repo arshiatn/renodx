@@ -224,7 +224,11 @@ float4 BitmaskAmbientOcclusion(float4 v0)
 #endif
         }
       }
+#if BITMASK_VARIANT >= 3
+      visibility += BitmaskOpenShare(occluded, slice_info, slice_jitter);
+#else
       visibility += 1.f - countbits(occluded) / (float)BITMASK_SECTORS;
+#endif
     }
     value = exp2(log2(max(visibility / slices, 1e-4f)) * SI.ssao_strength);
   }

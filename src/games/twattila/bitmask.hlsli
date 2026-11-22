@@ -21,7 +21,8 @@ static const uint BITMASK_SECTORS = 32;
 // cosine domain (BitmaskSectorsOfCosines, BitmaskOccluderBackCosine: no normalized vectors) and each side's early stop
 // (BitmaskSideSectors); 2 that and BitmaskCosineShare's per-slice terms hoisted (BitmaskShareTermsOf) and the depth's view
 // z in 2 terms (bitmask_ssao.hlsli). The default until the 5090's same-picture gate and timing pass: 0 (its bytes
-// unchanged). An includer or the build may set it first.
+// unchanged). An includer or the build may set it first. 3, a look change (Faster GT-VBAO, Experimental, its own shader
+// ao_bitmask_fast): V2 with sectors equal in angle, cosine-weighted at the slice's end (BitmaskOpenShare).
 #ifndef BITMASK_VARIANT
 #define BITMASK_VARIANT 0
 #endif
@@ -196,7 +197,12 @@ float BitmaskCosineShareOf(float x, BitmaskShareTerms terms, bool positive) {
 // samples change nothing (exact; beside a wall one side fills long before the other).
 uint2 BitmaskSideSectors(BitmaskSlice slice, float jitter) {
   const float pole = saturate((-slice.normal_angle + 0.5f * BITMASK_PI) / BITMASK_PI);
+#if BITMASK_VARIANT >= 3
+  // Sectors equal in angle: the pole's own place.
+  const float share = pole;
+#else
   const float share = BitmaskCosineShare(pole, slice.normal_angle, slice.cos_normal, true);
+#endif
   const uint edge = (uint)floor(saturate(share + jitter / BITMASK_SECTORS) * BITMASK_SECTORS);
   const uint below = min(edge + 1u, BITMASK_SECTORS);
   const uint from = (edge != 0u) ? (edge - 1u) : 0u;
@@ -264,7 +270,9 @@ uint BitmaskSectorsOfCosines(float2 cosines, float side, BitmaskSlice slice, Bit
   float2 angles = side * float2(BitmaskAcos(cosines.x), BitmaskAcos(cosines.y));
   angles = saturate((angles - slice.normal_angle + 0.5f * BITMASK_PI) / BITMASK_PI);
   float2 shares = float2(min(angles.x, angles.y), max(angles.x, angles.y));
-#if BITMASK_VARIANT >= 2
+#if BITMASK_VARIANT >= 3
+  // Sectors equal in angle (BitmaskOpenShare weights them at the slice's end).
+#elif BITMASK_VARIANT >= 2
   shares.x = BitmaskCosineShareOf(shares.x, terms, side > 0.f);
   shares.y = BitmaskCosineShareOf(shares.y, terms, side > 0.f);
 #else
@@ -275,4 +283,29 @@ uint BitmaskSectorsOfCosines(float2 cosines, float side, BitmaskSlice slice, Bit
   const uint low = (edges.x < BITMASK_SECTORS) ? (0xFFFFFFFFu << edges.x) : 0u;
   const uint high = (edges.y != 0u) ? (0xFFFFFFFFu >> (BITMASK_SECTORS - edges.y)) : 0u;
   return low & high;
+}
+
+// The cosine-weighted share of the hemisphere below sector edge `edge` of sectors equal in angle (BITMASK_VARIANT 3):
+// edge k at (k - jitter) / 32, the first from 0, the last to 1, on its side of the pole.
+float BitmaskShareBelowEdge(uint edge, BitmaskSlice slice, float pole, float jitter) {
+  const float x = (edge >= BITMASK_SECTORS) ? 1.f : saturate((edge - jitter) / BITMASK_SECTORS);
+  return BitmaskCosineShare(x, slice.normal_angle, slice.cos_normal, x > pole);
+}
+
+// The slice's cosine-weighted open share from sectors equal in angle (BITMASK_VARIANT 3; Therrien's sectors with
+// GT-VBAO's weighting): over each run of open sectors, the share below its end less the share below its start, usually
+// 1-3 runs a slice instead of 2 shares per sample-side.
+float BitmaskOpenShare(uint occluded, BitmaskSlice slice, float jitter) {
+  const float pole = saturate((-slice.normal_angle + 0.5f * BITMASK_PI) / BITMASK_PI);
+  uint open = ~occluded;
+  float share = 0.f;
+  [loop]
+  while (open != 0u) {
+    const uint start = firstbitlow(open);
+    const uint closed = ~open & (0xFFFFFFFFu << start);
+    const uint end = (closed != 0u) ? firstbitlow(closed) : BITMASK_SECTORS;
+    share += BitmaskShareBelowEdge(end, slice, pole, jitter) - BitmaskShareBelowEdge(start, slice, pole, jitter);
+    open &= (end < BITMASK_SECTORS) ? (0xFFFFFFFFu << end) : 0u;
+  }
+  return share;
 }
