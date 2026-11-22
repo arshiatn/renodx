@@ -8374,8 +8374,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         rank 5 harmless, stays; shots / trace marker need no move. Mutants P1-P3, A3, K1, K2 killed; P4 (in_seg
         from `from`) survives = optional nit: a D1-style case with the arm at `at`. END BATCH SCRIPTS r24 OK. ->
         t4i_ P4 test (small); T5 manifest rows + env after rmt_b1rt merges (B1 code final first).
-        Agents (8): upr_ (h0i_ H0 analysis re-check), gtq_ (v1.2 config hash, builder side), gtp_ (round 12: hg1 +
-        Section 8 + kind()), gpr_ (gtb_ wrapped build + hg2 check), t4i_ (P4 test), b13r_ (c3i_ rmt_b1rt review)
+        gtq_ V1.2 CONFIG HASH (BUILDER) DONE 08:1x (plan_1117/gtq_v12_config_hash_handback.md; backup
+        scratchpad\gtq_backup_fix10): iq_frames.py build_reference, before the seed checks + general compare: (1)
+        every played.json needs `config` + `config_sha256` (v1.1 or config-only refused: "rebuild the seed runs");
+        (2) config_sha256 recomputed in the same canonical form as lab.py keep_played (mismatch = hand-edited /
+        corrupt, refused); (3) differing configs refused naming the sorted keys (e.g. "fields, micromap_level");
+        (4) manifest.json gets the shared `config_sha256`. Tests: match builds + manifest hash; differ fields /
+        fields+micromap_level / scene_key refused; v1.1 + no-hash refused; all-zero + edited-under-old-hash
+        refused; old cases pass with v1.2 files (differing reset allowed). test_iq_frames 14 / 14 (full iq suite not
+        run, builder only); lab read, not edited; real iq_refs still absent. -> gtv_ REVIEW STARTED (lab + builder
+        halves together).
+        Agents (8): upr_ (h0i_ H0 analysis re-check), gtv_ (v1.2 config hash review, lab + builder), gtp_ (round 12:
+        hg1 + Section 8 + kind()), gpr_ (gtb_ wrapped build + hg2 check), t4i_ (P4 test), b13r_ (c3i_ rmt_b1rt review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
