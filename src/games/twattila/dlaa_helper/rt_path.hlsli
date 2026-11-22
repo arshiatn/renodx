@@ -971,7 +971,8 @@ void ProbeTexel(uint2 id) {
     return;
   }
   const uint kind = probe_mode & 0xFFu;
-  const uint rays = max(probe_mode >> 8, 1u);
+  // At most 94 rays: their path ids (33 + ray) x 32 stay inside Random's 4096 indices a kind.
+  const uint rays = clamp(probe_mode >> 8, 1u, 94u);
   const uint2 pixel = min(id * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u);
   const float3 base = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : UNSEEN_ALBEDO;
   if (kind >= PROBE_SEEN_SUN) {
