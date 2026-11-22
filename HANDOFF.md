@@ -10123,8 +10123,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         fixture lock deadline 20 s, KEEPER_START_S = lab's 30 s; fakes via unguarded() as gtl_fake_<name>. Quiet machine
         only (new limits not tried under full load). Suites' testbin\gtl_test_<pid> holds exe copies only, deleted at
         end. -> gtv_ re-checks (incl. a load run when the GPU is free).
-        Agents (3): gtp_ (round 18), gtv_ (gtl_ lab fixes re-check); merge-gate builds running -> push -> rec_verify.sh
-        (~100 min) -> merge gpu_s2 -> S3c; all_modes on the combined tree waits for an ATN rule
+        MERGE GATE PASSED 13:35 (task bzeze9tkd): x86 x3 exit 0, amd64 twattila exit 0, helper exit 0
+        (testbin\scratch\coord_\helper_h0merge\renodx-tw-dlaa64.exe 5,689,856 B) -> pushed (origin atn-mods fa16b64d7).
+        rec_verify.sh grs_s2r rec_grs_base "" rec_grs_new5 rec_grs_aligned5 rec_grs_rec5 STARTED 13:35 (ATN's Bash rule;
+        task b2h7mhp0m; out reference\runs\verify_grs_s2r; inputs testbin\rec_grs_* ready since grs_ 05:4x).
+        Agents (2): gtp_ (round 18), gtv_ (gtl_ lab fixes re-check); rec_verify RUNNING (13:35, ~100 min) -> grs_
+        reads it -> merge gpu_s2 -> S3c; all_modes on the combined tree waits for an ATN rule
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
