@@ -492,8 +492,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_ (later, Low): lab fakes are named like the real harness -> H0's guard stops ... | ?
 - c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate le ... | ?
 - gtl_: lab.py wait_ready finding b (production) + finding a (test probe_fn) + gap ... | ?
-- gtw_: re-check round 17 gate side (corpus, probe shapes, comment-free view can't ... | ?
-- gtp_ round 18 (Low): gpr R17-1 (Bash \" in double quotes) + gpr Lows 1-4 (-PassT ... | ?
+- gtp_ round 18: gtw N8, N1, N3, N2, N4 (Should) + N5-N7 (Low) + VERIFY on the kin ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10029,7 +10028,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         of 88,292 change (452 light -> light, sh $f -> sh $; 39 heavy -> light intended); regression kind() dropping \" in
         quotes (cmd //c "\"clang-cl.exe\"") caught + fixed. Re-seed 106,323 seeds, 7,198 price rows. Live swap atomic after
         live = bak22: gate_hook.py, tool_prices.py (seed key fix), tests/run_tests.py; INSTALL_FOR_ATN.md unchanged.
-        - [ ] gtw_: re-check round 17 gate side (corpus, probe shapes, comment-free view can't let anything through) (coord
+        - [x] gtw_ (DONE 12:5x, see GTW RE-CHECK 17 below): re-check round 17 gate side (corpus, probe shapes, comment-free view can't let anything through) (coord
             12:5x).
         - [x] gpr_ (DONE 12:5x, plan_1117/designs/gpr_round17_recheck_handback.md; gpr_review.md "## gtp_ round 17
             re-check"): PRICE SIDE OK. Control seeds 106,350 =, broken seed lines 11 -> 0, junk kinds gone; rings 2,221 ->
@@ -10045,17 +10044,40 @@ heading text are in HANDOFF_ARCHIVE.md)
             double-quoted word ends WORD / STATEMENT early -> a git show | grep keys as exe tw_rt_harness.exe (1 call,
             nothing refused); fix: read "(?:\\.|[^"\\])*" as one word on the Bash side; tests: that grep -> sh grep,
             cmd //c "\"C:/Program Files/LLVM/bin/clang-cl.exe\" /c x.cpp" -> exe clang-cl a4.
-        - [ ] gtp_ round 18 (Low): gpr R17-1 (Bash \" in double quotes) + gpr Lows 1-4 (-PassThru + WaitForExit = -Wait,
-            -Wait:$true, VERIFY anchored to lab/ + head statement (= gtl_ caveat), gtp_lowprio decision) + gtw_'s round 17
-            findings; gtw_ + gpr_ re-check (coord 12:5x).
+        - [x] gtp_ round 18 (Low) gpr items: merged into the round 18 box under GTW RE-CHECK 17.
         - [x] gtl_ (CONFIRMED 12:5x, plan_1117/gtl_verify_answer_handback.md): gtl_lowrun.py only sets below-normal
             priority and runpy's the given test file. Caveat (not new): gate_hook.py:1378 matches anywhere in the
             command line, so a slow script taking a tests\test_lab_*.py path as an argument is exempt too (the older
             lab[\\/]+tests[\\/] part already allows that); tighter = the test file must be the script python /
             gtl_lowrun.py runs.
         - [x] gtp_ (round 18, Low): VERIFY lab-test match (merged into the round 18 box below).
-        Agents (2): gtw_ (round 17 gate re-check), gtl_ (edits ready, suites after H0); H0 re-run NOW (12:09) -> tell
-        gtl_ H0 done; gtp_ round 18 after gtw_; ff_s12 + grs_xess_guard after H0
+        gtw_ RE-CHECK 17 = RIGHT FOR ALL IT CLAIMS, 3 NEW PROBLEMS 12:5x (plan_1117/gtw_recheck17_handback.md;
+        gtw_s1c_review.md "## S1c re-check 17" line 1774; files testbin\scratch\gtw_\gtw_r17_*): suite 997/997 in effect
+        (one N2a fail = its --work dir under testbin counts as harness code -> suite --work must stay OUTSIDE the project);
+        corpus r16 254 / live 252 (2 = re-seeded prices), same 4 changes as gtp_; 70 kind keys changed, 23 left a
+        refusable class, all intended; seeds 106,323, 0 bad lines; probes 214 + 19: whole gtw-R16 list refused, 28 / 31
+        pass controls. Web second view only adds refusals (40-text cap never reached). VERIFY: matches anywhere / any
+        folder / .pyc / comments / echo text; corpus 446 match, 21 more refused without VERIFY, 18 of them still exempt on
+        the kind key only, other 3 = gtl_lowrun -> nothing slow exempted by accident; Low (shadow hint gates only); round
+        18: match against the statement giving the kind key + end with \.py(?![\w.]).
+        Round 18 list: N8 (Should, NEW r17) substitutions() rescans to the end for every unclosed $( (8 KB 0.001 -> 0.30
+        s, 128 KB 0.011 -> 4.5 s, 263 KB 0.05 -> 15.5 s; can hit the hook time limit) -> one linear pass with a quote-aware
+        paren stack, stop at the cap. N1 (Should, NEW r17) backticks / $( ) bash does not run are refused (single quotes,
+        escaped backticks: git commit -m 'run `pip install numpy`', echo '$(curl URL)', PS Write-Host '$(iwr URL)'; 50
+        corpus commands have backticks in single quotes) -> skip single-quoted text + escaped backticks. N3 (Should)
+        kind() keys only from the comment-free text -> 5 deliberate shapes lose a price refusal (echo a\ # x; C, echo
+        x\;# y; C, echo $'a\' # '; C, PS a` # x; C, PS @' it's <#) -> key from both, keep the heavier; no comment after
+        an escape pair; read $'...'; PS here-strings one token. N2 (Should) PS @' here-string with odd apostrophes + a
+        later ' hides lines (2 corpus here-strings). N4 (Should) echo "curl URL" | sh, printf | bash, <( ) / >( ) not
+        scanned (source <(curl URL)), source / . /dev/stdin <<EOF. N5 (Low) eval curl, ( curl ) with space, function
+        bodies, case ), coproc. N6 (Low) curl&>/dev/null, cmd "/s /c curl", bash /dev/fd/3 3<<EOF, env -iS, $'it\'s',
+        nested escaped backticks, 17th $( ) (cap 16), winpty / flock / watch, cu$'r'l, PS i`wr. N7 (Low, design limit)
+        12 stdin-code forms (bash -c 'cat | bash' was refused in r16 by luck = the one refused -> pass) -> test "reads
+        stdin" and "runs code" separately. Round 18 re-runs the corpus.
+        - [ ] gtp_ round 18: gtw N8, N1, N3, N2, N4 (Should) + N5-N7 (Low) + VERIFY on the kind statement + \.py end + gpr
+            R17-1 + gpr Lows 1-4; corpus re-run; gtw_ + gpr_ re-check (coord 12:5x).
+        Agents (2): gtp_ (round 18), gtl_ (edits ready, suites after H0); H0 re-run NOW (12:09) -> tell gtl_ H0 done;
+        ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
