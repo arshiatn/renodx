@@ -7470,11 +7470,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         [ ] ATN (INSTALL_FOR_ATN.md item 12, sections 1 / 3 / 7): replace the hook JSON (matchers *, + SessionStart,
             SubagentStop, Notification); add the six C.1 rows to gates.tsv; copy web_allow.proposed.tsv ->
             web_allow.tsv and gate_override.proposed.ps1 -> gate_override.ps1 - AFTER gtw_'s re-check 8 says OK.
-        Agents (8): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtw_ (gtp_ re-check 8), grs_ (N1 nits 1-3),
-        gtl_ (S1b tests, then v1.1), gpr_ (gti_ ns_busy, then gtb_ y1 / y2 / z), gtb_ (dred in report_check /
-        result.schema). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_), gpp_, ebr_,
-        t4i_ (r21 after b13r_), gtq_, gbc_, gti_ (waits gpr_), gtv_ (waits grs_ / gtl_), gtk_, gtp_ (waits gtw_).
-        GPU: free (H0 stopped); harness-named fakes allowed until I announce the H0 re-run (checked empty first).
+        grs_ N1 NITS DONE 05:3x (plan_1117/grs_n1_nits_handback.md): gpu_s2 d68954a39 on 8c19a953f (local).
+        BelowFrameLimit(seed, played) for seed / run / moments (refused before any reset; seed 0 always taken);
+        RestoreResources keeps UploadRecorded's reason (untestable offline: needs a device); ParseFlags accepts only
+        --nsight / --no-dred, else "FAILED: unknown flag" exit 1. Offline 0 failures, rows SAME (53); G4 new4 =
+        aligned4, base vs aligned4 99 .text bytes, 52 headers same. GPU command now uses rec_grs_new4 / aligned4 /
+        rec4 (hand-back). -> gtv_ short RE-CHECK STARTED. dred for gtb_: missing = unknown (resident ran DRED off
+        before f6a371d32) -> refuse true vs false, FLAG known vs unknown.
+        Agents (8): h0i_ (F2 busy settle), b13r_ (c3i_ B1.6 review), gtw_ (gtp_ re-check 8), gtv_ (grs_ N1 nits
+        re-check), gtl_ (S1b tests, then v1.1), gpr_ (gti_ ns_busy, then gtb_ y1 / y2 / z), gtb_ (dred in
+        report_check / result.schema). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_ (waits h0i_),
+        gpp_, ebr_, t4i_ (r21 after b13r_), gtq_, gbc_, gti_ (waits gpr_), grs_ (waits gtv_), gtk_, gtp_ (waits
+        gtw_). GPU: free (H0 stopped); harness-named fakes allowed until I announce the H0 re-run (checked empty).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
