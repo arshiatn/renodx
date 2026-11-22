@@ -527,6 +527,16 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - tki_ LOST CODE TO-DOS (fold into the open-items groups): (1) RR Fresnel specular ... | ?
 - ATN (decide; tki_ LOST, never asked): (4) trunk rows look: No Black Patches on T ... | ?
 - causes never found (tki_ LOST; owner per game, GPU plan where RT): (18) lone bla ... | ?
+- G03 / Pharaoh owner (tkg_ LOST): (1) Pharaoh dust vs smoke: per-emitter table fr ... | ?
+- G02 / WH1 owner (tkg_ LOST 249): WH1 CDCF1ADD campaign far terrain not held (NEE ... | ?
+- ATN in-game lists never boxed (tkg_ LOST): the Pharaoh README test list + campai ... | ?
+- Attila in-game batch (tkf_ LOST 12543): gpu_probe never ran: (c) the game side o ... | ?
+- heapfix author package (tkf_ LOST 12610 / 12626): a note of OUR patch sites so n ... | ?
+- lab / replay owner (tkf_ LOST 12585, minor): rt_scene OnAnyDraw gate not in the ... | ?
+- G08 Ryse (tkf_ LOST 12460, cosmetic): dlss_capture.hpp:28 still names "twshogun2 ... | ?
+- G03 Pharaoh (tkf_ LOST 12436, low): Dead Unit Detail 6-byte patch still written ... | ?
+- WH3 (tkf_ LOST 12808, optional): heapfix in WH3, jungle-battle A/B (ab_run_wh3.p ... | ?
+- coord: fix the stale ticks (12566 / 12673 / 12675 -> note REVERTED bc7ba324; 125 ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11289,6 +11299,40 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] causes never found (tki_ LOST; owner per game, GPU plan where RT): (18) lone black pixels at 50 % render scale;
         (19) why the GPU reset happened with the rows on (1421); (20) far mountains' black triangles; (21) black spots on
         buildings, darker with SSS.
+        TICK AUDIT RESULTS (3): tkg_ 19:37 (tick_audit/tkg_handback.md): archive 10-734: 141 boxes: 132 DONE, 3
+        DONE-ELSEWHERE, 6 PARTIAL -> 6 LOST (box 32 carried by 1092); every commit in atn-mods (f9350977 HANDOFF-only on a
+        worktree branch, study exists); every install has its renamed-aside files. tkf_ 19:37 (tick_audit/tkf_handback.md):
+        live 12413-12819: 114 boxes: 82 DONE, 15 DONE-ELSEWHERE, 8 DROPPED, 9 PARTIAL -> 8 LOST. STALE TICKS: 12566 / 12673 /
+        12675 (radix sort site 5 + gather prefetch site 6, c2cd9e90) were REVERTED in bc7ba324 after END BENCH PART 1 (l.
+        1349-1351); 12558 + 12626 still cite the radix sort. wh2.tsv lists 370A7440 + 4CC2D68F as SHARED STEP, done in
+        b435a0e6. Line 105 names only 5 games (12500's detail has all). Ryse "9 levels" detail (12478 / 12486) missing
+        from 1260 / 11918.
+        - [ ] G03 / Pharaoh owner (tkg_ LOST): (1) Pharaoh dust vs smoke: per-emitter table from B61's buffer reads + ask ATN
+        "should dust cast?" (only README test questions :92 / :473); (2) Pharaoh campaign world scale: no campaign_frames /
+        campaign_metre -> torch softness, 0.5 clearance, AO / bounce ranges in map units on the campaign
+        (parity_pharaoh_1114.md:53 / 192 "open"); (4) Pharaoh 026CBC61 beyond the terrain tiles (far hills' shadows on the
+        campaign; NEEDS A TRACE pharaoh.tsv:86).
+        - [ ] G02 / WH1 owner (tkg_ LOST 249): WH1 CDCF1ADD campaign far terrain not held (NEEDS A TRACE wh1.tsv:48; no data
+        run names it). + (tkf_ LOST 12780) WH2 VFX rows need a snow / rain trace (wh2.tsv NEEDS A TRACE; Thrones' has a box).
+        - [ ] ATN in-game lists never boxed (tkg_ LOST): the Pharaoh README test list + campaign water look + reflection
+        brightness vs the game's (box 97); view 8 Troy / WH1 / WH2 Debug View Screen-Space AO not magenta (368); the whole
+        11-14 night test file round_notes/tests_1114.md (boxes 238 / 341; e.g. Shogun 2 Alt+F4 campaign exit) -> into the
+        per-game in-game batches.
+        - [ ] Attila in-game batch (tkf_ LOST 12543): gpu_probe never ran: (c) the game side of the three ray hand-offs, (h)
+        light draws repeat (light_order share), (j) game passes doubled under RT/PT (~0.18 ms skip), (k) the add-on's own GPU
+        passes split (audit_1114 A15 / A22 / A29 / A30; profile columns fb93c061); gpu_units_range never ran: Units Ray
+        Tracing Range (ec1b443a, Experimental off) has no in-game number / default decision (add to the look-risk list
+        1427).
+        - [ ] heapfix author package (tkf_ LOST 12610 / 12626): a note of OUR patch sites so nothing collides (e.g. Faster
+        Render Lists +0x176CED0); no author zip has one (11-19 README: "We did not compile a complete list").
+        - [ ] lab / replay owner (tkf_ LOST 12585, minor): rt_scene OnAnyDraw gate not in the replay oracle.
+        - [ ] G08 Ryse (tkf_ LOST 12460, cosmetic): dlss_capture.hpp:28 still names "twshogun2completeedition_dlss".
+        - [ ] G03 Pharaoh (tkf_ LOST 12436, low): Dead Unit Detail 6-byte patch still written without stopping threads (ec99db49
+        left it; window theoretical).
+        - [ ] WH3 (tkf_ LOST 12808, optional): heapfix in WH3, jungle-battle A/B (ab_run_wh3.ps1 never ran; study predicts
+        ~0 fps).
+        - [ ] coord: fix the stale ticks (12566 / 12673 / 12675 -> note REVERTED bc7ba324; 12558 / 12626 radix sort cites)
+        + wh2.tsv 370A7440 / 4CC2D68F rows -> done (b435a0e6) + 1260 / 11918 add Ryse "9 levels".
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
