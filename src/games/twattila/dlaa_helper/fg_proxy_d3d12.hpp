@@ -537,7 +537,8 @@ class ProxyFrameGeneration12 {
   // Shared::fg_presented: the frames it last presented per rendered frame, the most it presents here (FSR: one generated frame).
   [[nodiscard]] uint32_t Presented() const {
     uint32_t most = 2u;
-    // Without XeSS's SDK the backend is never XeSS.
+    // Without XeSS's SDK an XeSS object never starts (Initialize fails): its most stays 2, as with the SDK before a chain
+    // is made.
 #if defined(RENODX_XESS_FG)
     if (backend_ == dlaa_bridge::FG_BACKEND_XESS) {
       most = std::min(xefg_most_ + 1u, 255u);
