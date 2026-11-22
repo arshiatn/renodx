@@ -1887,7 +1887,7 @@ int RunAnimationRowsExactFor(const TestBuild& build, uint8_t* game, uint8_t* pat
       const ArSpec outer_spec = plain_world(seed_base + 140100, 12000, 20);
       CHECK(ArBuild(context.get(), outer_spec));
       while (!ready.load()) Sleep(1);
-      for (int call_index = 0; call_index < 6 || (thread_calls.load() < 2 && call_index < 60); ++call_index) {
+      for (int call_index = 0; call_index < 6 || ((thread_calls.load() < 2 || ArReadPaths()[static_cast<size_t>(ArPath::RING_BUSY)] == busy_before[static_cast<size_t>(ArPath::RING_BUSY)]) && call_index < 100); ++call_index) {
         wrong += compare({.update = false, .start = 0, .end = outer_spec.items, .texture = 0}).empty() ? 0 : 1;
         after_fault();
       }
