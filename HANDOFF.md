@@ -504,7 +504,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ... | ?
 - grs_: G1 + G2 / G3 / G4 (+ nits) on grs_dead_uses; fcr_ re-checks (coord 15:55). | ?
 - gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land- ... | ?
-- upr_: verdict on h0i_'s m6 analysis (per-output exclusions vs nrd_all_removal ha ... | ?
+- h0i_: M6_OUTPUTS_LEFT_OUT + M6_KNOWN in h0_rng_check.py + selftest + closing che ... | ?
+- grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10581,7 +10582,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         flakiest), job times normal, nrd_all_removal + leaf_storm outside -> no load evidence. Recommendation: exclude only
         the 8 (mode, output) pairs (M6_LEFT_OUT per output; fast_leaves / micromaps_leaf_stress stay whole-mode); option for
         nrd_all_removal: allowlist of known variant hashes. Nothing changed yet.
-        - [ ] upr_: verdict on h0i_'s m6 analysis (per-output exclusions vs nrd_all_removal hash allowlist) (coord 16:0x).
+        - [x] upr_ (DONE 16:06: FLAKY, combined tree PASS): verdict on h0i_'s m6 analysis (per-output exclusions vs nrd_all_removal hash allowlist) (coord 16:0x).
         gtv_ STAGE FIXES RE-CHECK = GO TO LAND AFTER S3c PART 1 16:05 (plan_1117/gtv_stage_fixes_recheck_handback.md;
         gtv_iq_review.md "## Stage fixes re-check"; sandbox testbin\scratch\gtv_\s3c\land3, fx3, probe5..10): land list 10
         stage hashes match, 7 live originals match; landed sandbox unit 37 + analyze 4 OK (no keeper / jobs run); 17 of 18
@@ -10595,9 +10596,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         Post-S3c: gtl_'s keeper 28 + jobs 34 in a landed sandbox after (1), then land-time unit + jobs re-run; gtv_ needs
         only the result lines + test_s3c_logs passing. COORD: gtl_ does (1) save-before-log, (2) re-sync, optional strict
         ToolFault (yes) now in the stage (no suites); suites after S3c.
-        Agents (5): gtp_ (gate round 20), grs_ (dead uses G1-G4), upr_ (m6 verdict), gtl_ (stage 3 small items, no suites),
-        gtc_ (S3c part 1 runner); gtv_ + gti_ + h0i_ idle; GPU: S3c PART 1 RUNNING (15:52, E 45-60 min); one GPU job at a
-        time; agents' CPU work below normal, no builds at normal priority, no lab suites (keeper / jobs) during S3c
+        upr_ M6 VERDICT 16:06 = THE 8 ARE FLAKY; RUN all_20261122_151249 = PASS FOR THE COMBINED TREE (gpu_s2 + ff_s12 +
+        grs_xess_guard), NO GPU RE-RUN (plan_1117/designs/upr_m6_verdict_handback.md; unified_pt_review.md "## all_modes m6
+        verdict" line 2273; scratchpad\upr_m6_states.py / .txt): 7 of 8 b = baseline byte for byte; micromaps_leaf_light a
+        + b = exact earlier H0 post states; same post code 8-10 samples: cloth 5 states, micromaps_leaf_light 6, leaf_storm
+        3 bounce / 4 occlusion (same race as M6_LEFT_OUT). nrd_all_removal: visibility exactly 2 states in 13 samples; the
+        2nd exactly where harness frame 2 shows GPU stats not "Ray tracing ready" (100100 pre_a / pre_b + a now; 1 in 286
+        by chance); ff_s12 log: a = "last request 121 ms ago", one open, first answer 1132 ms; b = "0 ms ago" + 2nd "Ray
+        tracing opened in 4 ms", 31 ms -> recovery path decides NRD visibility / occlusion 26 frames later (ambient /
+        light_mask / fog equal); pre-merge. DECISION: M6_OUTPUTS_LEFT_OUT = 6 pairs (cloth bounce + reflection,
+        micromaps_leaf_light bounce + reflection, leaf_storm bounce + occlusion); M6_KNOWN allowlist nrd_all_removal
+        visibility {52798338...fe7a} + occlusion {1a770404...2f77} (third state FAIL; a != b both known = reported, not
+        OPEN; NUMBER line names variants); whole-mode fast_leaves / micromaps_leaf_stress stay; M 1469 -> 1463; selftest
+        (left-out pair differs PASS, known variant PASS, third state FAIL); closing check h0_rng_check.py allmodes on
+        all_20261122_151249\run1 -> RESULT allmodes-m6 PASS all 1463 + allmodes-repeat PASS.
+        - [ ] h0i_: M6_OUTPUTS_LEFT_OUT + M6_KNOWN in h0_rng_check.py + selftest + closing check on all_20261122_151249
+        (coord 16:06).
+        - [ ] grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal device-removal recovery = 2
+        paths -> 2 NRD states; find what carries across the removal (NRD history start / frame or sample index), make it
+        one result or keep the allowlist; players see at most the noise phase after a real GPU reset (coord 16:06).
+        Agents (5): gtp_ (gate round 20), grs_ (dead uses G1-G4), h0i_ (M6 exclusions + closing check), gtl_ (stage 3
+        small items, no suites), gtc_ (S3c part 1 runner); gtv_ / gti_ / upr_ idle; GPU: S3c PART 1 RUNNING (15:52, E 45-60
+        min); one GPU job at a time; CPU work below normal, no builds at normal priority, no lab suites during S3c
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
