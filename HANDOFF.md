@@ -517,6 +517,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ (between builds): gated_build.ps1 vswhere -requires VC.Tools + exit 4 (slot ... | ?
 - g14_ (with g14r_ fixes): ao-gi.md rule 6 (rays_replace_ao false no longer stacks ... | ?
 - later: fold the three "Skip the Game's Reflection Passes" rows into one graphics ... | ?
+- after the batch (render_mt): reserve the 32 MB draw-recording op arena at attach ... | ?
+- t4i_ (with lg3_'s texts): memory=1 lines at each battle start in the end-batch s ... | ?
+- ATN's go (in-game batch): restart A/B (3 restarts, with / without RenoDX, Unit D ... | ?
+- gbf_ (Opus High, QUEUED at the cap; prompt in handoff_plan/queued_spawns.md): th ... | ?
+- rvc_ (Opus xHigh, QUEUED): review of the read-only groups g15_ + g16_ + g17_ (qu ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11647,6 +11652,39 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] later: fold the three "Skip the Game's Reflection Passes" rows into one graphics_page binding if identical
         (G19 + G02 + render_mt for WH3); render_mt wave 3: WH3's 23 dispatches before the march (0ED84C3D) + WH3 Skip
         the Shadow Maps readers; A4 box: Rome II one method done in code (close with g01_'s trace line).
+        g16_ DONE 20:3x (handoff_plan/handbacks/g16_done_handback.md; reports handoff_plan/reports/g16_*.md; read only):
+        (1) box 8644: the game's destructors NEVER draw the static random state (150 functions walked to the end; none is
+        one of the 7 users of 0x11DA7408 or the 4 callers of 0x190B780; level V for effects, E for the sound + tracker
+        calls) -> the L2 sweep bug was dormant; keep 3ea4a6721 + N5. (2) box 12255: none of the 21 findings explains
+        Astra's first freeze (R9 / R10 ruled out by the log); left: H1 object motion SO + compute without Flush, H2 address
+        space, H4 driver / his effects -> ATN list 5 (ReShade.log v2.5.2+ from Astra). (3) box 11809: RenoDX costs +222 MB
+        address space, -74 MB off the largest free block (69 MB = 3 x 15.8 MB heap segments + the bridge's 16 MB cluster
+        mapping + one 6 MB block); a 4K ReShade shot holds 138 MB for 2-7 s (6 / 17 left 19-95 MB lost); out-of-front
+        growth is the GAME's (+1.0 MB/s with, +1.2 without RenoDX: the 2-5 MB/s readings were during WPR merges). (4) box
+        2704 part: the gtl bucket is 0.000 ms in stress A + B after AF14 (night1 WPR still open; no run just for it).
+        - [ ] after the batch (render_mt): reserve the 32 MB draw-recording op arena at attach / top-down, sized from the
+        soak's high-water mark (draw_recording.hpp:882 / :2602); map the bridge's cluster section at attach; find whose
+        heap the 3 segments are (va_probe2 offline: segment owners, 64 KB headers, a restart mark).
+        - [ ] t4i_ (with lg3_'s texts): memory=1 lines at each battle start in the end-batch soak.
+        - [ ] ATN's go (in-game batch): restart A/B (3 restarts, with / without RenoDX, Unit Detail 1x / 8x + first-frame
+        bisect) + Object Motion on / off soak (ATN list 6); heapfix author FYI through ATN (list 6).
+        CORRECTION (g16_ 11-22) to the cap1_ MEMORY GROWTH OUT OF FRONT box: the growth is the game's own (+1.0 vs +1.2
+        MB/s), not RenoDX's; the 2.0-5.0 MB/s readings were taken while WPR was stopping / merging. Screenshots: 138 MB
+        held 2-7 s, a lasting 19-95 MB loss in 6 of 17 shots.
+        g15_ DONE 20:4x (handoff_plan/handbacks/g15_done_handback.md; reports handoff_plan/reports/g15_*.md; read only):
+        (1) ReSTIR GI floor (8408 / 10166): noise 18-20 % from 4 to 16 rays, bias RISES with rays (8.7 -> 13.9 %, frozen
+        per pixel); through RR 1 ray 2.6 % / 8 rays 11.3 % / 16 rays 14.3 % rRMSE; CPU model: the floor is the spatial pass;
+        real bug: ContactShade never re-evaluated for the receiving texel. (2) r3_refl bias (8411): ReflectPixel folds
+        every ray off the depth normal (rt_path.hlsli:1364) = BUG at corners / wall bases (edge x1.353); rest = ray start
+        offset (method). (3) NRD review vs NRD 4.18: F1 raw roughness, F2 mean hit distance, F3 no SIGMA lightDirection,
+        F4 bad SIGMA inputs with several sun rays, F5 no object motion (units ghost), F6 history twice if a signal runs
+        twice, F7 jitter in UV, F8 AO open share (look); G1 frames not seconds, G2 sky part in Light Bounce. (4) GT-VBAO
+        A/B: bitmask pass 1.462 of 1.613 ms at 4K, ALU bound, 98 registers; V1 / V2 same picture (-10..18 %), V3 / V4 look
+        change (-25..35 %) -> g20_ told V1 / V2 now (faster + same picture = on), V3 / V4 wait. ATN list 7-10.
+        - [ ] gbf_ (Opus High, QUEUED at the cap; prompt in handoff_plan/queued_spawns.md): the helper BUG FIXES (always on)
+        in rt_path.hlsli / rt_nrd_front.hlsl / rt_d3d12.hpp / nrd_d3d12.hpp + ReSTIR bisection dev switches; GPU checks as
+        requests after S3c part 2; merge after the end batch freeze; gate references re-made.
+        - [ ] rvc_ (Opus xHigh, QUEUED): review of the read-only groups g15_ + g16_ + g17_ (queued_spawns.md).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
