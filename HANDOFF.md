@@ -481,6 +481,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - x87c A/B owner (after the end batch): run tools\tw\testbin\heapfix_hf\xw\x87fix_ ... | ?
 - gtp_ (low, in round 15 = R14-1): a leading `2>&1 cmd` still splits at & into a l ... | ?
 - ATN (morning report, info + yes / no): the gate hook suite's `fix` group (155 te ... | ?
+- ATN (morning report): safety stop 10:10 - b13r_'s mutant driver scratchpad\b13r_ ... | ?
+- end batch leg 1 analysis: foreign hits outside trace windows in normal play? non ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9469,8 +9471,62 @@ heading text are in HANDOFF_ARCHIVE.md)
         lock free). Time ~9 / ~13 min + any build wait. Open: real lock take / release + a real build wait
         untested; a killed runner leaves quiet_run.lock (blocks builds until removed by hand, same as the bench).
         -> gtw_ RE-CHECKS RC-1.
-        Agents (4): gtw_ (lga_ RC-1 re-check), gtp_ (round 15), ebr_ (t4i_ option (a) re-check), b13r_ (c3i_
-        rmt_b1log review); H0 run (background, ~11:30)
+        gtw_ RC-1 RE-CHECK = FIXED, 2 NEW SHOULDS + 2 NITS, NOTHING BLOCKS THE REAL RUN 10:2x
+        (plan_1117/gtw_rc1_recheck_handback.md; gtw_s1c_review.md "## RC-1 re-check" line 1510; sandbox test
+        scratchpad\gtw_rc1_stale.py; dry runs 10:19 / 10:20 exit 0; no real lock): quiet_run.lock OK (format +
+        CreateNew + 3 s = the bench's Take-Locks; other readers only check existence or their own owner prefix;
+        "ours" = owner + pid; 12 x 5 s then GPU release + exit 3 = no deadlock; finally removes quiet only while
+        ours, a failed remove does not skip the GPU release). Build wait: no block / deadlock with a live build
+        (gated_build + sym builds check quiet only before taking a slot). rt_smoke pin = 6875b28fc's file (11-16
+        runs + H0); since / fault-first / settle / ABBA / RC-N5 OK. R-RC1-1 (Should): a stale slot (killed build's
+        v1 slot "owner dead", old sym-build "not v1") counts as a build -> 900 s wait holding both locks, then
+        OPEN exit 4 -> in Get-Beside skip "owner dead" slots + non-v1 slots older than 3 h (gated_build's rule),
+        name them, never remove. R-RC1-2 (Should): a killed runner's quiet_run.lock stays (the bench adopts its own
+        prefix, release_check never does) -> every gated build waits with no limit, next release_check exits 3 ->
+        if the record has our owner text and its pid is dead, MOVE it aside to quiet_run.lock.stale-<time> (never
+        delete) and take the lock; dry run + "waiting" line say whether the holder pid is alive. Nits: N1
+        Get-QuietLock catches only IOException (access denied ends without the STOPPED line; finally still
+        releases the GPU lock); N2 GPU lock held during the up-to-15-min build wait -> wait for builds first, check
+        again after taking the locks. -> lga_ FIXES; gtw_ re-checks.
+        b13r_ B1LOG REVIEW = MERGE-READY, NO MUST, 2 SHOULDS + 4 NITS 10:2x (render_mt/reports/b13r_b1log_review.md +
+        _handback.md; lines at 52dda24f9; ran nothing): S1 (:1531) foreign hits count as a fault, but a foreign
+        thread's hit goes on as the game's own call (:1003-1006) and real harm shows as a watched mismatch; no
+        real-run data -> (a) by-design if nonzero in normal play, else (b) keep as a fault + say why at :394; +
+        a 26h check for foreign hits alone. S2 (:1565) the totals line follows every window line = 10 lines inside
+        a 10-frame timed window -> print once at the first present after the window (stack headroom pattern
+        :1581-1589). Nits: N1 pools watched only from a slow-path slot hit (say so at :308 / :116); N2 watched array
+        20 (:347) fills through a silent bounds check (:1011), worst case today 18 -> static_assert / comment; N3
+        tests' two Sleep(1100) (effect_update.inc:2257 / :2261) -> set counts_line_ticks; N4 (:1566) counts under
+        the 1 s limit are cleared at a window line without their own line (still in totals -> probes read the
+        totals line). Fine: hot path unchanged (wake timeouts after a 50 ms timeout, foreign hits from the
+        foreign-thread branch, Qpc only while a fault is pending); rate limit; Detach safe (AddonUninit after
+        OnPresent unregistered, before Uninstall; atomics + logs; returns at once after a failed install); F2
+        claim holds (SLOT_RETURN not AsksAlways); capacity at pool+0xC verified with dis_at.py (push at 0x101942E0
+        doubles + stores; growth also changes the watched count); owner-silent right; texts exact; 26h catches
+        the 6 mutants + b13r_'s h7 (capacity watch removed) / h8 (Detach drops leftovers) by reading. For t4i_:
+        ebo_analyze.py:362-373 reads only window lines -> probes "(session totals):" (last line) + "(safety counts
+        outside trace windows):", "slot list growth on a worker" in probes.b1_event, never the unanchored
+        b1_safety_counters regex on every line (totals would be summed); stale notes gates.json probes.status +
+        ebo_analyze.py:731.
+        SAFETY STOP 10:10 (b13r_, not retried by the coordinator): the auto-mode classifier DENIED, twice, reason
+        [Destructive or Unwanted Actions]: Bash `powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+        "C:\Users\arshi\AppData\Local\Temp\claude\527025f0fb3b3316\75b2d8e3-55ac-4b46-9c5c-2d496d332359\
+        scratchpad\b13r_b1log_runs.ps1"` (b13r_'s new driver: 26h alone on a copy + mutants h1..h8, test exes to
+        tools\tw\testbin\b13r_b1log_*). b13r_ asked me to run it after H0 - NOT done (it would be the denied
+        action done for it; a new script also needs ATN's rule). Path stopped. COORDINATOR: c3i_ (implementer)
+        adds 26h cases for foreign hits alone + capacity watch + Detach leftovers as ordinary tests in its own
+        suite, run with its usual commands after H0; the merge gate builds run after H0.
+        - [ ] ATN (morning report): safety stop 10:10 - b13r_'s mutant driver scratchpad\b13r_b1log_runs.ps1
+            denied twice ([Destructive or Unwanted Actions]); not run by anyone since. Want it run (your go for one
+            unchanged retry), or are c3i_'s own suite cases enough? (b13r_ 10:2x)
+        COORDINATOR on S1: (b) for now - keep foreign hits a fault + the :394 comment + the 26h case; the first
+        real end-batch leg gives the data; if they are nonzero in normal play, move them to by-design (box).
+        -> c3i_ FIXES S1 (b) + S2 + N1-N4 (code now, its suites + builds after H0); b13r_ re-checks; t4i_ PROBES
+        the 3 new lines now (offline).
+        - [ ] end batch leg 1 analysis: foreign hits outside trace windows in normal play? nonzero = move them to
+            by-design in effect_update.hpp (b13r_ S1, 10:2x).
+        Agents (5): lga_ (release_check R-RC1-1 / -2 + nits), gtp_ (round 15), ebr_ (t4i_ option (a) re-check), c3i_
+        (b1log S1 (b) + S2 + nits), t4i_ (probes for the 3 new B1 lines); H0 run (background, ~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
