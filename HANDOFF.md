@@ -7849,13 +7849,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         build into <name>.partial + rename, never write into an existing one, never delete, sources not inside
         IQ_REFS, copies not links; iq_frames KEPT + flip_tool via kept_folders. -> gtq_ FIXES STARTED; gtl_ adds
         iq_refs to lab.py KEEP_FOREVER (:80) now (unit tests only; suites after H0).
-        Agents (7): gtw_ (S1c re-check 9), gtq_ (gtv_'s S1 + nits + iq_refs guard + dump size), gtl_ (iq_refs in
-        KEEP_FOREVER), gtb_ (N11 warm? seeds), t4i_ (r22: ebr_'s r21 fixes), c3i_ (B1.6 follow-ups + stack
-        headroom line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_,
-        ebr_ (re-checks t4i_ r22), gbc_, gpr_ (re-checks gtb_ S1 + N11), gti_ (after H0: R1), grs_, gtk_, gtp_
-        (waits gtw_), b13r_ (re-checks c3i_), gtv_ (re-checks gtq_ / gtl_; held lab tests + race probe after H0).
-        GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg / map_replay-named process until H0
-        ends.
+        gtl_ IQ_REFS KEEP DONE 06:3x (plan_1117/gtl_iqrefs_keep_handback.md; backups scratchpad\gtl_backup_iqrefs;
+        log gtl_runs4\unit_iqrefs.txt): lab.py IQ_REFS = TW\quality\iq_refs in KEEP_FOREVER, delete_own_dumps
+        names "iq references"; the folder itself not created; fixture keeps REAL_KEEP_FOREVER + world IQ_REFS; new
+        test_delete_refuses_iq_refs; unit 26 / 26. jobs / keeper / ps1 still HELD (3 rounds of jobs tests now wait).
+        -> gtv_ re-checks it with gtq_'s fixes.
+        Agents (6): gtw_ (S1c re-check 9), gtq_ (gtv_'s S1 + nits + iq_refs guard + dump size), gtb_ (N11 warm?
+        seeds), t4i_ (r22: ebr_'s r21 fixes), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_,
+        lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_ r22), gbc_,
+        gpr_ (re-checks gtb_ S1 + N11), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks
+        c3i_), gtl_ (after H0: its 4 suites), gtv_ (re-checks gtq_ + gtl_ iq_refs; held lab tests + race probe
+        after H0). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg / map_replay-named
+        process until H0 ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
