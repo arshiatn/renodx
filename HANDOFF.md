@@ -6516,7 +6516,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         checked vs window 3 (a differing drift control still blocks all pairs); v1-only DIFFERS hint (trace at 774 s);
         show() hex. run_all green (analyze 106). ebr_ RESUMED 01:1x: short check of nit 2 -> '## T3d check'.
         ATN 01:1x asked (phone) for issues / questions / my own decisions since yesterday -> answered in chat.
-        Agents (9): bd1r_ (R-S5 review), gtv_ (S1r S1a / S1b), gtw_ (S1r S1c), ebr_ (T3d check), lgf1_ +
+        gtv_ S1r S1a + S1b DONE 01:1x (plan_1117/gtv_s1r_review.md, hand-back plan_1117/gtv_s1ab_handback.md; tests in
+        scratchpad\gtv\): BOTH FIX. S1a right: equality on 5 unseen traces 20 / 20, weighting 31 metrics < 0.79 %, no
+        stale-answer leak, R8 held 6 attacks, F1 regex 0 hits in 773 ngfx outputs. S1a Musts: gpu_trace.ps1 ends on the
+        index's stderr under Stop (no live fallback); gpu_lock Busy() FAILS OPEN (lock taken while ATN may play); a
+        prompting ngfx child takes the default when only ngfx is ended. S1b right: Qn, Theil-Sen (no bias), rates. S1b
+        Musts: refuse 4 lifetimes per arm (53 % power); positive control not tied to the session; report_check lets 10 / 10
+        GPU phrasings through. Shoulds 6 + 4, Nits 6 + 3. FIXES STARTED 01:1x: gti_ (S1a, backups gti_bak2), gtb_ (S1b) ->
+        gtv_ re-check. gtv_'s cross-cutting notes sent to gtw_ (busy / lock checks fail closed; the hook itself fails
+        open).
+        ebr_ T3d CHECK 01:1x: OK (reports/ebr_t1b_review.md line 803): no false match possible (a skipped control adds
+        no masks); one nit -> t4i_ (PROBLEM line carries '(drift not covered ...)').
+        Agents (9): bd1r_ (R-S5 review), gti_ + gtb_ (S1a / S1b fixes), gtw_ (S1r S1c), t4i_ (nit), lgf1_ +
         lgf2_ (logging fixes). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6, X1, logging group 3, lga_ re-checks,
         S1r S1b / S1c, bulk index, H0, T5 freeze, T6 dry run, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
