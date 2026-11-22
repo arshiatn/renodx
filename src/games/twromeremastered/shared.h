@@ -114,6 +114,16 @@ struct ShaderInjectData {
   float auto_exposure_highlight_headroom_stops;  // the metered cap above the frame's average, in stops
 };
 
+// PsychoV35's slider defaults here: the game's own response below white (Hable's toe a flat ratio under PsychoV35's,
+// Exposure the fifth knob, ATN 2026-11-22). Minimax-fitted on WARP against the game's SDR (test/tw_shogun2_romer_toe,
+// V35 FIT, Hable white 11.2: the game's grey and colour within 1.0 % below 15 nits, PsychoV35's highlights within
+// 7.6 %); the other PsychoV35 sliders keep Musa's defaults.
+#define ROME_V35_CONTRAST           1.f
+#define ROME_V35_SHADOWS            1.07f
+#define ROME_V35_SATURATION         1.f
+#define ROME_V35_HIGHLIGHT_CONTRAST 0.92f
+#define ROME_V35_EXPOSURE           1.1f
+
 #define SI shader_injection
 #define HDR_PEAK max(SI.peak_white_nits, SI.diffuse_white_nits) / max(SI.diffuse_white_nits, 0.0001f) //added guard
 #define HDR_INTSCALING SI.diffuse_white_nits / SI.graphics_white_nits

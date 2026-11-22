@@ -8,9 +8,11 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastere
   place below 100%, textures as sharp as at the display's resolution (Matched) or one / two steps more (the page's row).
 - Changed: Modded Auto Exposure **Sensitivity** default 1 (was 2; ATN).
 - Changed: the **Fog Shadows** row hidden (this game has no fog the rays shade).
-- PsychoV35's V35 fit (report, defaults unchanged): Contrast 1.00 / Shadows 1.30 / Saturation 1.00 / Highlight
-  Contrast 1.00 reaches 9.1 % of the game's SDR below 15 nits (Musa's own x0.89..x0.92, colour the same). Level B:
-  Hable's white 11.2 assumed (it follows the auto exposure), not traced.
+- Changed: **PsychoV35's defaults follow the game's look**: Exposure 1.10, Shadows 1.07, Highlight Contrast 0.92 (the
+  other V35 rows Musa's; minimax-fitted on WARP against Rendering Mode SDR, Exposure the fifth knob, ATN). Below 15
+  nits PsychoV35 over the game's SDR: x0.89..x0.92 before, within 1.0 % now, colour the same; highlights within 7.6 % of
+  Musa's own. Recommended and Reset apply it; rows you saved stay yours. Level B: Hable's white 11.2 assumed (it
+  follows the auto exposure), not traced.
 - Fixed: **FXAA** (fxaa00 / fxaa01) as the game's: their gather read red, the game's alpha / green, and the edge blend's
   last step lost its offset (WARP: 0 texels apart from the game's shaders, 637 before).
 
