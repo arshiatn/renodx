@@ -6955,9 +6955,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         nvngx_dlss / dlssd); the run script (GPU lock, no game, one default 4K run) was STOPPED by the auto-mode classifier
         03:15 ([Undermining Oversight]): not retried, nothing started, no lock taken. Cause: my own run script, not one of
         ATN's rule scripts. Script kept at tools\tw\rt_harness\mg4k_check.ps1 [ ] ATN (run it himself or add a rule).
+        gtv_ S3r 03:1x = FIX (plan_1117/gtv_s3r_review.md, hand-back gtv_s3r_handback.md): 6 MUST, all shown on fakes -
+        M1 keeper busy() calls the removed gpu_lock.Busy (every real session = TOOL FAULT); M2 kind 'tool' requests skip
+        process_ok (any agent's req file could start any exe under the lock); M3 lab copies miss D3D12Core + nvngx_dlss*
+        (non-DXR-1.2 workload; same gap the coordinator's mg4k build had to fill); M4 own-pid set before the resident
+        exists + de-DE '12,345' -> every timed job INVALID; M5 idle exit kills long pbrt / scene; M6 scene's helper
+        child = foreign + orphaned (Job Object per process). S1-S7 (empty block_rows passes all; caller env leaks into
+        residents; de-DE VRAM None; ...) + 10 nits. Safety focus points 1-6 otherwise OK. gtl_ RESUMED 03:1x: S3 fix
+        round = gtv_'s + gtq_'s 8 + gtk_'s items + gtb_'s dead lines + the test_lab_jobs flake; then gtv_ re-checks.
         Agents (11): c33i_ (N6), ebr_ (r17 re-check), h0i_ (N1 + rebase), upr_ (v2.4 re-check), gpp_ (price + web v2),
-        grs_ (S2), gtv_ (S3r), gtw_ (S1c re-check 5), gbc_ (C1 + C2, then B1 review). Idle: lga_, lgf2_, gtl_ (waits
-        S3r), gtq_ / gtk_ (wait gbc_), gti_, gtb_, gtp_.
+        grs_ (S2), gtl_ (S3 fixes), gtw_ (S1c re-check 5), gbc_ (C1 + C2, then B1 review). Idle: lga_, lgf2_, gtv_
+        (waits gtl_), gtq_ / gtk_ (wait gbc_), gti_, gtb_, gtp_.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
