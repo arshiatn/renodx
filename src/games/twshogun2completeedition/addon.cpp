@@ -103,6 +103,14 @@ bool IsPsychoV35Mode() {
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, UE's film curve).
 constexpr float HUE_CLIP_DEFAULT = 70.f;
 
+// PsychoV35's defaults that follow the game's response (shared.h): the film curve's darker shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", SHOGUN_V35_CONTRAST},
+    {"v35_shadows", SHOGUN_V35_SHADOWS},
+    {"v35_saturation", SHOGUN_V35_SATURATION},
+    {"v35_highlight_contrast", SHOGUN_V35_HIGHLIGHT_CONTRAST},
+};
+
 bool IsHdrOutput() {
   return shader_injection.swap_chain_encoding != 2.f;
 }
@@ -156,10 +164,12 @@ void ApplyResetPreset() {
       {"some_indicators", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
-// The recommended presets (ATN's settings; 2026-11-12: Musa's PsychoV35 at its defaults): HDR (PsychoV35), no lens
-// flares, faint foliage glints, faint haze, brighter VFX and videos. PsychoV31's sliders as before, for that mode.
+// The recommended presets (ATN's settings; 2026-11-12: PsychoV35, since the V35 fit at the game's response): HDR
+// (PsychoV35), no lens flares, faint foliage glints, faint haze, brighter VFX and videos. PsychoV31's sliders as before,
+// for that mode.
 void ApplyRecommendedPreset() {
   ApplyResetPreset();
   renodx::utils::settings::UpdateSettings({
@@ -1474,7 +1484,15 @@ void BuildRuntimeData() {
       // test_assign("Set as Big Fires", twshogun2::vfx_effects::Kind::BIG_FIRE),
       // test_assign("Set as Campfires", twshogun2::vfx_effects::Kind::CAMPFIRE),
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
 
   // Graphics 1 of 2 and 2 of 2: the DLSS add-on's overlay until it became part of this add-on (its rows, keys, defaults
   // and presets as they were; Settings Mode's pages: ConfigureAddon).

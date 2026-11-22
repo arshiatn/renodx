@@ -1,5 +1,5 @@
 # PsychoV35's toe against Vanilla below white in Shogun 2's and Rome Remastered's tone mappers on WARP (tests.cpp):
-# numbers for ATN, with checks that the ramps reach the curves. Build renodx-twshogun2completeedition.addon64 and
+# numbers for ATN, checks that the ramps reach the curves, and the V35 fit of Shogun 2's defaults (~23k WARP draws). Build renodx-twshogun2completeedition.addon64 and
 # renodx-twromeremastered.addon64 first (their csos: build\<game>.include\embed). -OutDir: where the test exe is built
 # and run (ATN's antivirus-excluded test folder, tools\tw\testbin); else build\. Both games are 64-bit: amd64 only.
 param([string]$OutDir = '')
