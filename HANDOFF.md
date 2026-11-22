@@ -561,7 +561,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Rome Remastered fxaa gather check (GatherGreen like WH2 / Troy) -> g04_. | ?
 - grs_: record null-view rows at rt_d3d12.hpp:3071 (after gbf_'s rt_d3d12.hpp work ... | ?
 - gti_: dead_outputs.py reports "no store (null view)" for such rows instead of un ... | ?
-- gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
+- gtl_ optional Low items (later stage): L1 Toolhelp snapshot keeps only the asked ... | ?
+- g05_ fixes (new commits on ho_g05): one full run of the final ru_scene_patches.p ... | ?
+- g01_ fixes -> rvd_ re-check -> merge ho_g01 (wave 1). - [ ] g04_ fixes -> rvd_ r ... | ?
+- Rome II trace (g01_ writes the request): proves the Replace route, then RAYS_REP ... | ?
+- g03_ / g06_ / g13_ fixes -> rve_ re-check. Order: G13 (with / after G14) ; G06 ; ... | ?
+- G13 land (coord, ONE commit): skips.tsv never before the ledgers' skip: lines; p ... | ?
+- boxes rve_ asked for: PathTracedReflectionOcclusion for the non-WH games; the P1 ... | ?
+- DRY owner (after wave 2): the V35 rows-default loop (4 games) + 4 copies of the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -11948,7 +11955,49 @@ heading text are in HANDOFF_ARCHIVE.md)
         gtl_ STAGE3 READY (plan_1117/gtl_stage3_ready_handback.md): 8 suites OK in the fresh sandbox landed3d under
         GTP_PROC_MB 3072 / GTP_JOB_MB 8192 (peak 1127 MB, gpu_gate); land list current (8 hashes). Sent to gtv_ for the re-check;
         coord lands it only after gtv_ GO and while no lab session runs.
-        - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
+        gtl_ STAGE3 LANDED 21:42 (gtv_ GO, plan_1117/gtv_stage3_handback.md; review gtv_iq_review.md:1318): 8 files into
+        tools\tw\lab (lab.py, lab_analyze.py, fake_resident.py, resident_protocol.md, tests\test_budget / lab_analyze /
+        lab_jobs / lab_unit .py); stage + live hashes matched land_list.tsv; backups testbin\scratch\coord_\landed_backup\gtl_s3;
+        no lab session ran (last lab write 21:03). gtv_'s own sandbox: 7 suites OK (gpu_gate peak 1126 MB). Behaviour change:
+        dwm.exe now has its name, so dwm GPU use never flags a block as "other GPU" (as designed).
+        - [ ] gtl_ optional Low items (later stage): L1 Toolhelp snapshot keeps only the asked pid; L2 SEED_MAX vs the
+        resident's 2^24 frame limit (rt_serve.h:940); L3 retry budget per job + price retries, first-block retry shift, gpu_gate
+        G- line shows kept bursts / remeasured.
+        ho_g05 MERGED 21:4x: 033346fe7 (rvd_ GO: 0 BLOCKER, 0 MAJOR; reviews/rvd_g05_review.md). The live
+        tools\nontw\ruse\scripts\ru_scene_patches.py edit counts as landed with ho_g05 (sha256 42c8e58b2839e9bf...63ab5e);
+        its 2 .bak_g05 files moved to testbin\scratch\coord_\landed_backup\g05_.
+        - [ ] g05_ fixes (new commits on ho_g05): one full run of the final ru_scene_patches.py + 0-changed check; new
+        scene_patches.tsv + ruse plan.md:696 / 842 counts staged for coord to land; V35 negative control; NITs. rvd_ re-checks.
+        rvd_ REVIEWS (reviews/rvd_handback.md): G04 GO in wave 2 (MA1 coord: merge ho_g04 whole right after ho_g19 >= 3fcdaa896
+        and ho_g21 >= 7d31e5fef, then build both games; 9 MINOR -> g04_); G01 fixes first, then wave 1 BEFORE ho_g03
+        (MA1 RAYS_REPLACE_MAPS 1 -> 0 until the Rome II trace, MI1 build Rome II addon32 + WH2 / Troy / Pharaoh, MI2 baked slot
+        == sampler slot guard, MI3 ATN question baked far map under rays -> g01_).
+        - [ ] g01_ fixes -> rvd_ re-check -> merge ho_g01 (wave 1). - [ ] g04_ fixes -> rvd_ re-check.
+        - [ ] Rome II trace (g01_ writes the request): proves the Replace route, then RAYS_REPLACE_MAPS back to 1.
+        rve_ REVIEWS (reviews/rve_handback.md): G03 fixes first (M1 Design A tests missing: keep the HEIGHTS hooks out of
+        Install until the CPU + WARP tests pass; M2 line-sweep AO 16A457D0 / 6CF96BAF stacks under RT / PT AO at SSAO 1-2);
+        G06 fixes first (M1 indicator row: ~15 indicator hashes in the 258 -> second row via cb7[0].y; cb7 null on failure);
+        G13 ledger fixes only (parity_check.py commits GO). Routed to g03_ / g06_ / g13_; g20_ told: ONE SkipGameSsao rule
+        like Attila (game SSAO out under RT AO or PT AO) + the ClearInsteadOfGenerate deferred-context split.
+        - [ ] g03_ / g06_ / g13_ fixes -> rve_ re-check. Order: G13 (with / after G14) ; G06 ; G01 -> G19 -> G03 ; G20 after G03.
+        - [ ] G13 land (coord, ONE commit): skips.tsv never before the ledgers' skip: lines; page_dump_d2_body.h after run 3,
+        D1 Detours link after run 2.
+        - [ ] boxes rve_ asked for: PathTracedReflectionOcclusion for the non-WH games; the P1 census lines; D1 PCSS one-branch
+        trace + beach tone-map trace (g06_ writes both requests); G03 M2 trace if no offline proof.
+        - [ ] DRY owner (after wave 2): the V35 rows-default loop (4 games) + 4 copies of the V35 fit code; vfx_brightness.hpp
+        D1 vs Troy near copy -> one shared header.
+        g06_ BUILDS (handbacks/g06_builds_handback.md): D1 Release clean; tw_d1_vfx PASS (258 / 258 patched, bit-equal at 1,
+        x2 at 2), tw_d1_post PASS (22 passes = Vanilla; PCSS 8F114E47 filter branch not reached offline), tw_divinity1 PASS;
+        V35 no fit (best 20.6 %, colour is the limit) -> Musa's own stays.
+        g21_ DONE (handbacks/g21_done_handback.md): ho_g21 tip 62c936ffe; 16 add-ons amd64 + build32 Attila / Rome II / Thrones
+        build; WARP part 29 bit-identical (WH1 18, WH2 12), 548 new patched shaders; only TestSharedBytes counts fail -> g10_
+        makes the count commit, merged in ONE set with ho_g21 f7fb7a901 + ho_g02 a015262e6. Sent to rvf_.
+        gbf_ SECURITY FLAG 21:4x (harness "Modify Shared Resources"): reviewed by coord. gbf_'s bin is a real folder (no
+        junction), -Bin only reads dxcompiler.dll; it deleted its own clang crash files (Temp\main-ad2d7f.cpp / .sh) at 21:09
+        and builds tw_rt_open_sky into the shared testbin\tw_rt_open_sky. Not stopped; told: no deletions outside its
+        sandbox, check no other rt_open_sky.exe runs (its script now does). Reported to ATN.
+        ATN list 29-31 added (Troy / Pharaoh V35 fit at 6.6 %, D1 V35 no fit, clear Pharaoh Casters Out of View once).
+        - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
         - [ ] coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no commits / HANDOFF patches / index
