@@ -7318,10 +7318,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         RULE BREACH (self-reported, t4i_): `rm -rf` on its own two fresh probe output folders (tests\out\t4i_probe_x87,
         t4i_probe_pf); no junctions, nothing else touched. Recursive deletes are not allowed without ATN's yes ->
         t4i_ told: never again, leave outputs in place. [ ] ATN: noted in the morning report.
+        gtb_ x1-x4 DONE 05:0x (plan_1117/gtb_x1x4_handback.md; backups scratchpad\gtb_bak8): x1 hook_fault() prints one
+        stderr "renodx-watch FAULT" line per distinct fault, facts_cell() keeps probes first within 300 chars (else
+        fault names only); found + fixed: busy 0 was dropped from rows (`0 in (None, False, '')`); x2 stop count
+        excludes only the stopped tree's live pairs (exclude_pids 0 after a normal kill); x3 head_args follows
+        inner_commands() rules (cmd single &, -Co... prefixes, -EncodedCommand decode, value switches); x4 limits in
+        the docstring. test_budget 33 OK, selftest 3 ok. Same busy-0 filter still in slow_report() budget.py:281 ->
+        gtb_ told to fix it too (same bug), then gpr_ re-checks x1-x4 + :281. Note: a missing gate_hook.py now prints
+        FAULT lines from every budget.py use (expected in sandboxes).
         Agents (7): c3i_ (B1.6), ebr_ (t4i_ r20 re-check), gtp_ (K1-K3 + next round), gbc_ (gtq_ B2 re-check), gtv_
-        (grs_ S2r re-check, then gtl_ S3r S1), gtb_ (x1-x4). Coordinator: H0 real run (bhe3fx2sg, ~72 min). Idle:
-        bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_, gpp_, gpr_ (waits gtb_), t4i_ (waits ebr_), gtq_ (waits gbc_),
-        gti_, grs_ (waits gtv_), gtl_ (waits gtv_), gtk_, gtw_ (waits gtp_).
+        (grs_ S2r re-check, then gtl_ S3r S1), gtb_ (slow_report :281). Coordinator: H0 real run (bhe3fx2sg, ~72
+        min). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_, gpp_, gpr_ (waits gtb_), t4i_ (waits ebr_), gtq_
+        (waits gbc_), gti_, grs_ (waits gtv_), gtl_ (waits gtv_), gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
