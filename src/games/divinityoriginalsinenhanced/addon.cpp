@@ -51,6 +51,7 @@
 #include "./ray_tracing.hpp"
 #include "./shared.h"
 #include "./upscaling.hpp"
+#include "./vfx_brightness.hpp"
 
 const std::string build_date = __DATE__;
 const std::string build_time = __TIME__;
@@ -60,7 +61,7 @@ namespace {
 ShaderInjectData shader_injection = {.tonemap_type = TONEMAP_EXTENDED, .purity_scale = 1.f};
 float current_settings_mode = 0.f;
 
-// Graphics 1 of 2 (twattila/graphics_page.hpp): the helper's upscalers and frame generation (upscaling.hpp), the rays
+// Graphics (twattila/graphics_page.hpp): the helper's upscalers and frame generation (upscaling.hpp), the rays
 // (ray_tracing.hpp: sun shadows, AO, Global Illumination, Path-Traced Ambient). The game has no GT-VBAO, GT-VBGI, Bend or
 // ray-traced reflections yet: those rows bind to values that stay 0 (the page's Bindings say the methods are missing).
 twattila::feature_settings::AaSliders aa_sliders;
@@ -71,6 +72,10 @@ float no_gtvbao = 0.f;
 float game_ssr = 0.f;
 // Installed when an effect is on at launch (the scene's shaders are kept from the game's start) and the helper is there.
 bool ray_tracing_installed = false;
+// Ground Marker Brightness (vfx_brightness.hpp's markers), 1 the game's.
+float marker_brightness = 1.f;
+// Installed when VFX or Ground Marker Brightness is not 1 at launch (their shaders are patched as the game creates them).
+bool vfx_brightness_installed = false;
 
 // The page's texts (graphics_page.hpp Texts): the game's FXAA / SMAA, the helper's upscalers at 100% (the tone mapper's
 // input), the rays' sun shadows and AO in place of the game's.
@@ -136,6 +141,15 @@ bool ShowPsychoV35Settings() {
 // Hue Clip Emulation's default for both modes (test/tw_divinity1's hue report: fire closest to the game's SDR picture).
 constexpr float HUE_CLIP_DEFAULT = 70.f;
 
+// PsychoV35's defaults that follow the game's response (shared.h): Hable's darker shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", DIVINITY_V35_CONTRAST},
+    {"v35_shadows", DIVINITY_V35_SHADOWS},
+    {"v35_saturation", DIVINITY_V35_SATURATION},
+    {"v35_highlight_contrast", DIVINITY_V35_HIGHLIGHT_CONTRAST},
+    {"v35_shadow_contrast", DIVINITY_V35_SHADOW_CONTRAST},
+};
+
 // A saved value outside the modes (an old build's) becomes the default mode.
 float NormalizeTonemapMode(float value) {
   if (value == TONEMAP_SDR || value == TONEMAP_PSYCHO || value == TONEMAP_PRAGMAP || value == TONEMAP_EXTENDED
@@ -168,8 +182,11 @@ void ApplyResetPreset() {
       {"playerLightRadius", 1.f},
       {"sun_shadow_softness", 1.f},
       {"grade_shoulder", 0.f},
+      {"vfx_base_brightness", 1.f},
+      {"some_indicators", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 // The game's own picture. The SDR button also sets Output SDR; a first start on a display without HDR gets it through
@@ -611,7 +628,7 @@ renodx::utils::settings::Settings settings = {
         .default_value = 0.f,
         .can_reset = false,
         .label = "Settings Mode",
-        .labels = {"Simple", "Advanced", "Graphics 1 of 2"},
+        .labels = {"Simple", "Advanced", "Graphics"},
         .is_global = true,
     },
     // GammaCorrection (graphicSettings.lsx, 1 by default) goes to a renderer method as 1 / value (EoCApp.exe 0x1407DF7F8 at
@@ -883,6 +900,34 @@ renodx::utils::settings::Settings settings = {
         .is_visible = ShowHDRSettings,
     },
     new renodx::utils::settings::Setting{
+        .key = "vfx_base_brightness",
+        .binding = &shader_injection.vfx_brightness,
+        .default_value = 1.f,
+        .label = "VFX Brightness (Experimental)",
+        .section = "Extra",
+        .tooltip = "Brightness of fire, spells and particles (HDR only). 1.00: the game's.\n"
+                   "Restart the game after first moving it from 1.",
+        .min = 0.f,
+        .max = 10.f,
+        .format = "%.2f",
+        .is_enabled = IsHDR,
+        .is_visible = ShowHDRSettings,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "some_indicators",
+        .binding = &marker_brightness,
+        .default_value = 1.f,
+        .label = "Ground Marker Brightness",
+        .section = "Extra",
+        .tooltip = "Brightness of target circles, range previews and selection markers, useful at night (HDR only).\n"
+                   "1.00: the game's. Restart the game after first moving it from 1.",
+        .min = 0.f,
+        .max = 10.f,
+        .format = "%.2f",
+        .is_enabled = IsHDR,
+        .is_visible = ShowHDRSettings,
+    },
+    new renodx::utils::settings::Setting{
         .key = "vignette",
         .binding = &shader_injection.vignette,
         .default_value = 1.f,
@@ -1021,7 +1066,7 @@ std::string UpscalerStatus() {
 }
 
 // The frame trace's (renodx_trace_now next to the exe; FrameTrace=1 in ReShade.ini's [renodx]: 600 frames of the 3D view
-// in). Graphics 1 of 2's settings for the next frame: the bridge's use, the upscaler's jitter, the rays, frame generation
+// in). The Graphics page's rows for the next frame: the bridge's use, the upscaler's jitter, the rays, frame generation
 // and Reflex.
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
@@ -1033,6 +1078,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (aa_sliders.method == 5.f && twattila::dlaa_bridge::gpu_vendor != 0 && !twattila::dlaa_bridge::OnNvidia()) {
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
+  if (vfx_brightness_installed) divinity::vfx_brightness::Update(VFX_BRIGHTNESS, (HDR == 1.f ? marker_brightness : 1.f));
   const auto aa = twattila::feature_settings::AaSettings(aa_sliders);
   const bool upscaling = twattila::feature_settings::Upscaling(aa_sliders) && twattila::dlaa_bridge::HelperInstalled();
   auto rays = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, divinity::ray_tracing::light_bounce_strength);
@@ -1233,10 +1279,17 @@ void ConfigureAddon() {
       },
   });
 
-  twattila::psycho35::InsertBefore(&settings, "PsychoV30",
-                                   twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV30", v35_rows);
 
-  // Graphics 1 of 2: the helper's upscalers at 100% (the game has no render scale of its own), Ray Reconstruction, frame
+  // Graphics: the helper's upscalers at 100% (the game has no render scale of its own), Ray Reconstruction, frame
   // generation and Reflex; not the shader anti-aliasing (TW's) or object motion (the camera's alone here). Then the rays'
   // rows (ray_tracing.hpp: sun shadows, AO, Global Illumination's strength and methods, Path-Traced Ambient), the rows the
   // methods leave at Attila's RT/PT values, and the page.
@@ -1305,8 +1358,9 @@ void ConfigureAddon() {
                                              .has_screen_space_shadows = false,
                                              .has_gtvbgi = false,
                                              .rays_tested = false,
+                                             .has_fog_shadows = false,
                                              .every_row = false});
-  // Settings Mode's pages: Simple and Advanced the HDR rows (and the output's), Graphics 1 of 2 the page's; About on every
+  // Settings Mode's pages: Simple and Advanced the HDR rows (and the output's), Graphics the page's; About on every
   // page.
   const std::vector<std::string> page_sections = twattila::graphics_page::Sections();
   for (auto* setting : settings) {
@@ -1325,12 +1379,13 @@ bool AttachAddon() {
   // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
   twattila::pass_timing::Install("divinity");
   ConfigureAddon();
-  // Constants once each for the tone mapper, the exposure, the shadow filter, the sun, fog, SSAO, bloom's combine and
-  // the point and spot lights, plain and shadowed (b0-b13: the frame b13, the view b12; the camera fields are Attila's b0
+  // Constants once each for the tone mapper, the exposure, the shadow filter, the sun, fog, SSAO, bloom's combine, the
+  // point and spot lights, plain and shadowed, and the fire and candle materials' opacity fade and brightness (none of
+  // the lights' or materials' in R1's traces) (b0-b13: the frame b13, the view b12; the camera fields are Attila's b0
   // registers, not this game's); blends of fire, candles and the UI combine.
   twattila::frame_trace::Install({
       .value_hashes = {0x30A1D40D, 0x4E112ABA, 0x8F114E47, 0xCCCB7253, 0xEDA7F8A1, 0x385DCF3C, 0x88B0D842, 0xD39E39C8,
-                       0x2F56D195, 0x23B84721, 0x7CBAA94E},
+                       0x2F56D195, 0x23B84721, 0x7CBAA94E, 0xED93F883, 0x93AEBB93},
       .value_slots = 14,
       .value_floats = 64,
       .on_demand = true,
@@ -1353,6 +1408,7 @@ bool AttachAddon() {
   // their Debug View over the tone mapper's output.
   ray_tracing_installed = twattila::dlaa_bridge::HelperInstalled()
                           && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.light_bounce != 0.f);
+  vfx_brightness_installed = shader_injection.vfx_brightness != 1.f || marker_brightness != 1.f;
   if (ray_tracing_installed) {
     custom_shaders[0x30A1D40D].on_drawn = [](reshade::api::command_list* cmd_list) { twattila::rt_scene::OnTonemapDrawn(cmd_list); };
   }
@@ -1364,11 +1420,15 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
   reshade::register_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
   reshade::register_event<reshade::addon_event::destroy_device>(frame_capture::OnDestroyDevice);
-  // Graphics 1 of 2: the helper's upscalers (the main camera's jitter, the tone mapper's input), the rays, frame
+  // Graphics: the helper's upscalers (the main camera's jitter, the tone mapper's input), the rays, frame
   // generation (the helper presents; HUD-less images through the swap chain shader, its constants at b10) and Reflex for
   // the game's presents.
   divinity::upscaling::Install();
   if (ray_tracing_installed) divinity::ray_tracing::Install();
+  if (vfx_brightness_installed) {
+    divinity::vfx_brightness::Install();
+    reshade::register_event<reshade::addon_event::destroy_device>(divinity::vfx_brightness::OnDestroyDevice);
+  }
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10, 10);
   twattila::reflex::Install();
@@ -1385,6 +1445,10 @@ void DetachAddon() {
   twattila::reflex::Uninstall();
   twattila::frame_generation::Uninstall();
   if (ray_tracing_installed) divinity::ray_tracing::Uninstall();
+  if (vfx_brightness_installed) {
+    reshade::unregister_event<reshade::addon_event::destroy_device>(divinity::vfx_brightness::OnDestroyDevice);
+    divinity::vfx_brightness::Uninstall();
+  }
   divinity::upscaling::Uninstall();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);

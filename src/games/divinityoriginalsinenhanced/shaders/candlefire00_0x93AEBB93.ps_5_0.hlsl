@@ -56,4 +56,6 @@ void main(
   } else if (TONEMAP_MODE == TONEMAP_PSYCHO) {
     o0.rgb *= SI.candlehighlightmultiplierpsycho;
   }
+  // VFX Brightness (Experimental; HDR).
+  o0.rgb *= VFX_BRIGHTNESS;
 }

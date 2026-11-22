@@ -46,6 +46,7 @@ struct ShaderInjectData {
   float ext_hue_clip;              // HDR (Extended)'s Hue Clip Emulation, 0 - 1
   float sun_shadow_softness;       // the sun's PCSS light size x this, 1 the game's
   float grade_shoulder;            // Smooth Grade Shoulder (Experimental): 1 a smooth shoulder from 0.8, 0 the knee at 1
+  float vfx_brightness;            // VFX Brightness (Experimental): the effects' colour x this, 1 the game's
 };
 
 #define SI shader_injection
@@ -66,6 +67,16 @@ struct ShaderInjectData {
 // Scene white over UI white; SDR output: both the display's white.
 #define HDR_INTSCALING (DIVINITY_SDR_OUTPUT ? 1.f : SI.diffuse_white_nits / SI.graphics_white_nits)
 
+// PsychoV35's slider defaults here: the game's own response (Hable's toe below mid gray, its colour at equal
+// lightness), Highlight Contrast keeping PsychoV35's highlights. Minimax-fitted on WARP against the game's SDR with R1's
+// traced tone map constants (test/tw_divinity1, part 7), with Shadow Contrast as a fifth; the other PsychoV35 sliders
+// keep Musa's defaults. No fit reaches 5 % (four 20.6 %, five 18.3 %), so they stay Musa's own (1).
+#define DIVINITY_V35_CONTRAST           1.f
+#define DIVINITY_V35_SHADOWS            1.f
+#define DIVINITY_V35_SATURATION         1.f
+#define DIVINITY_V35_HIGHLIGHT_CONTRAST 1.f
+#define DIVINITY_V35_SHADOW_CONTRAST    1.f
+
 // PsychoV30 receives linear BT.709, uses the exposed grading controls, and
 // returns linear BT.709 (possibly signed for its BT.2020 target volume).
 // Input/output anchors remain 0.18; full target projection and automatic
@@ -80,6 +91,8 @@ struct ShaderInjectData {
 #define SUN_SHADOW_SOFTNESS SI.sun_shadow_softness
 #define LOCAL_LIGHT_INTENSITY (HDR == 1.f ? SI.local_light_intensity : 1.f)
 #define PLAYER_LIGHT_INTENSITY (HDR == 1.f ? SI.player_light_intensity : 1.f)
+// The add-on's fire and particles (the other effects: vfx_brightness.hpp's cb7).
+#define VFX_BRIGHTNESS (HDR == 1.f ? SI.vfx_brightness : 1.f)
 
 #ifndef __cplusplus
 #if ((__SHADER_TARGET_MAJOR == 5 && __SHADER_TARGET_MINOR >= 1) || __SHADER_TARGET_MAJOR >= 6)
