@@ -503,6 +503,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - g07_ Opus xHigh review of ho_g07 (queued at the 20-agent cap) -> g07_ fixes -> r ... | ?
 - b3s_ fixes (sent 20:28) BEFORE S6 makes Check selectable: M1 ring released after ... | ?
 - b3t_: M7 = S3 Should 1 (animation_rows.inc tests) (sent 20:28). | ?
+- g11_ Opus xHigh review (queued at the cap) -> fixes -> coord lands the land list ... | ?
+- later: commit the handwritten licenses/NVIDIA_NOTICE.txt (only in the old player ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11549,6 +11551,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         schedule; then M4 S-6 prefetch before timing, M6 smoke (no_count_check generator can't trip, smoke.cpp:255; "no
         ordered_mode delay" under stream = must-fail), safe NITs, N7 comment -> bd1r_ re-checks fixes + reviews S6.
         - [ ] b3t_: M7 = S3 Should 1 (animation_rows.inc tests) (sent 20:28).
+        g11_ DONE 20:3x (handoff_plan/handbacks/g11_done_handback.md): no commits (the 3 scripts live outside git): staged
+        release_zip.py / player_zip.py / repack_game.py in testbin\scratch\g11_\stage\tw + land_list.md + base_hashes.txt
+        (all 3 matched). Item 1 (box 1454): --helper always takes the 5 sl.* from ngx_dlls.SOURCE (2.14.16) + adds
+        STREAMLINE_LICENSE.txt, STREAMLINE_3RD_PARTY_LICENSES.md, NVIDIA_REFLEX_LICENSE.txt, NVIDIA_DLSS_NOTICE.txt from
+        the SDK; player_zip takes sl.* from SOURCE too. Detours: already in every repack since 11-12 (v146 predates it).
+        Tick-audit item: ACES_LICENSE.md now also for game code calling tonemap::aces:: (D2 via vanillaplus.hlsli; Attila
+        none). Tests: original vs staged on copies of old zips, Downloads redirected, 6 / 6 exit 0, sl.* + licences = SDK
+        sha256. Test folder testbin\scratch\g11_\test (1.4 GB) kept for the reviewer (g11_ may delete its own sandbox
+        after). COORD answer to its Q1: D2 uses twattila::frame_generation + dlaa_bridge (the TW helper), so D2 releases
+        go through release_zip.py --helper (sl.* with the helper), no repack_game DLL change.
+        - [ ] g11_ Opus xHigh review (queued at the cap) -> fixes -> coord lands the land list (sha256sum -c first).
+        - [ ] later: commit the handwritten licenses/NVIDIA_NOTICE.txt (only in the old player zip today) to
+        docs/licenses/ + add it to player_zip's EXTRA; optional: Streamline licence paths into ngx_dlls.py for tw_install.py.
+        G22 still queued (20:30 retry failed at the cap).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
