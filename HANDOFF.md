@@ -504,10 +504,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: S3c part 2 (dead outputs on R3, M10) after gtv_'s root cause; recorder bu ... | ?
 - gtb_ / ATN (optional, later): F6 total on trimmed_mean or sum of pass-row median ... | ?
 - grs_ / nsight owner (optional, low): skip loop-0 dumps under -Trace; gpu_trace.p ... | ?
-- gtw_ + gpr_: re-check gtp_ round 20 (gtw-R19-1..7 + GATES_SUITE / gpr-R19-1 + Lo ... | ?
 - gtl_: B1 (settle sampler + missing gpu_samples.tsv) + N1-N6 in stage2 + tests (c ... | ?
 - gtv_: quick re-check of B1 + N2 / N3 / N6 -> then coord lands stage2 + retire_ro ... | ?
 - gtb_ (when active): OK gtl_'s test_budget.py conhost allowance (coord OK'd 17:1x ... | ?
+- gtp_: ROUND 21 = gpr-R20-1 (8 KB caps per expanded value + statement, doubling-c ... | ?
+- ATN (later, before any ENFORCE): a hook that times out (pre hook 15 s) does not ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10809,7 +10810,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         sh / py / ps1 per R19-7; 12 light -> exe $env:USERPROFILE; 3 sh -> py; 2 ps1 -> exe). Probes: older lists same; 27
         r19 R items -> refused (expected); time2 shell_web <= 0.06 s, price_shell <= 0.19 s CPU on unterminated "\" at
         32 / 64 KB (fallback, 8 KB cap). Sandboxes removed (no reparse points); hook logs untouched.
-        - [ ] gtw_ + gpr_: re-check gtp_ round 20 (gtw-R19-1..7 + GATES_SUITE / gpr-R19-1 + Lows; the 1 web_allow
+        - [x] gtw_ + gpr_ (DONE 17:44: shadow GO, round 21 list): re-check gtp_ round 20 (gtw-R19-1..7 + GATES_SUITE / gpr-R19-1 + Lows; the 1 web_allow
         over-refusal, unpriced pooled child keys, price_shell 0.19 s shape) (coord 17:1x).
         gtl_ F1 FOLLOW-UPS 17:24 (plan_1117/gtl_f1_followups_handback.md; runs testbin\scratch\gtl_\runs\s3ch_*.txt): (1)
         flag kept on budget watch Popen; test_budget fake ns_busy writes "<pid> <ProcessName>" to busy_names.txt per
@@ -10861,8 +10862,35 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtl_: B1 (settle sampler + missing gpu_samples.tsv) + N1-N6 in stage2 + tests (coord 17:3x).
         - [ ] gtv_: quick re-check of B1 + N2 / N3 / N6 -> then coord lands stage2 + retire_rows (6 rows) + S3c re-run.
         - [ ] gtb_ (when active): OK gtl_'s test_budget.py conhost allowance (coord OK'd 17:1x).
-        Agents (3): gtl_ (S3c B1 + N1-N6 in stage2), gtw_ (gate round 20 re-check), gpr_ done; gtv_ (B1 re-check next) /
-        gtp_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
+        gtw_ RE-CHECK 20 17:44 = GO FOR SHADOW, NOT FOR ENFORCE UNTIL gpr-R20-1 (plan_1117/gtw_recheck20_handback.md;
+        gtw_s1c_review.md "S1c re-check 20" line 2236; scratch testbin\scratch\gtw_\gtw_r20_*): live 827d79c810af =
+        gtp_bak27, shadow; suite 1217 / 1217; corpus r19 248 -> live 249 refused, 0 hook errors, only change [581]; 52
+        exemptions via key; older lists same, 27 r19 R items + 6 here3 forms refused, P controls pass. R19-1..7 + anchor
+        fixed (R19-7 fails on corpus 8604 shape = gtw-R20-1). (a) [581] real over-refusal, accept (1 / 15,119; a fix opens
+        alias gaps). (b) pooled rows OK (same key py scratch:gtp_r15_keys.py:5773e24c). (c) price_shell quadratic to the 8 KB
+        cap (0.05 s 4 KB, 0.19 s 8 KB) then flat 0.17-0.20 s to 64 KB: keep the cap. gpr-R20-1 REACHES THE GATE SIDE:
+        shell_web / W5 don't expand (0.000 s to 30 levels, curl refused) but pre_shell runs price_shell BEFORE shell_web;
+        price_shell 0.05 / 0.19 / 0.72 s at 16 / 18 / 20 levels (~12 s at 24, ~46 s at 26, < 400 chars); the pre hook
+        timeout is 15 s (settings.local.json, read only) and a timed-out hook does not deny -> under ENFORCE ~25 levels +
+        `python $v25.py; curl URL` would run the curl unchecked -> fix: gpr_'s 8 KB caps + timing test with a curl after
+        the chain + run shell_web BEFORE price_shell. gpr-R20-3 = gtw-R20-1: ending -Command at its closing quote is NOT
+        safe (fails 4 R15-1 rows: powershell -c "pip" install x, cmd /c "pip" install x); safe fix outer_end(): keep the
+        tail, end at ; | && lone & ) newline outside quotes / ( ) (not 2>&1 / &>) -> 55 gate rows pass, 4 R20-1 rows fixed,
+        0 refusal changes, 2 junk keys -> right light key, mirror suite 1217 / 1217 (code in gtw_r20_mirror.py). NEW:
+        gtw-R20-1 8604-shaped calls: -Command view past its quote loses the cd -> unpriced harness key outranks the build
+        -> outer_end cut + guard: price the heaviest non-exempt key WITH a price row + 8604 in the suite. gtw-R20-2
+        VERIFY.search(st) unanchored (python slow.py lab/tests/test_a.py, python /tmp/gates/tests/run_tests.py exempt) ->
+        drop the statement test. gtw-R20-3 (old) 3 forms still pass: | bash -c "$(cat)", | tee >(sh), | xargs -I{} sh -c
+        {}. (Harness flagged a settings-json pattern in this hand-back: only the read-only timeout read above; nothing
+        acted on.) -> gtp_ ROUND 21.
+        - [ ] gtp_: ROUND 21 = gpr-R20-1 (8 KB caps per expanded value + statement, doubling-chain timing test with a
+        trailing curl, shell_web before price_shell) + gpr-R20-2 (variable lab test stem) + gtw-R20-1 / gpr-R20-3
+        (outer_end(), heaviest key with a price row, 8604 in suite) + gtw-R20-2 (drop VERIFY statement test) + gtw-R20-3 (3
+        pipe-to-shell forms) + notes ($PWD child key, test_budget_psm1.ps1); gtw_ + gpr_ re-check (coord 17:4x).
+        - [ ] ATN (later, before any ENFORCE): a hook that times out (pre hook 15 s) does not deny the call -> enforce
+        needs the gate side first + bounded price work; gtw_ / gpr_ re-checks must say GO FOR ENFORCE first.
+        Agents (2): gtl_ (S3c B1 + N1-N6 in stage2), gtp_ (gate round 21); gtv_ (B1 re-check next) / gtw_ / gpr_ / fcr_ /
+        gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c part 1 done); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
