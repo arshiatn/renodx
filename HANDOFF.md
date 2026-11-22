@@ -8179,7 +8179,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         gates.tsv 1,616 B / mode.txt 7 B plain ASCII). NIT grs1b: the test infers the expected reason from the raw
         bytes -> put it in each case's tuple; optional "UTF-16 without a BOM?" hint in the line. -> gtb_ grs1b
         STARTED.
-        Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtl_ (staged jobs suite + swap + 4 live suites), gtp_
+        gtl_ SWAP DONE 07:38 (plan_1117/gtl_swap_handback.md; logs scratchpad\gtl_runs7): staged jobs 32 / 32 (new
+        test_dump_seed_runs); live files byte-equal to gtl_backup_s4 before the swap; 6 files swapped 07:35 and
+        byte-compared; live unit 29 / 29, ps1 5 / 5, keeper 24 / 24, jobs 32 / 32. lab_gtl_stage kept with
+        README.txt ("safe to delete with ATN's yes") + a __pycache__. -> gtv_ RE-CHECK of S4 + nits + kind dump
+        reference mode STARTED.
+        Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtv_ (gtl_ S4 + reference mode re-check), gtp_
         (O2 order + corrupt files + nits + gated_build proposal), gtb_ (grs1b test nit), ebr_ (t4i_ r23
         re-check), c3i_
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
