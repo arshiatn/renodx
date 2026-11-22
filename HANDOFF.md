@@ -7083,9 +7083,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         write at 4K -> watch on the first real scene recording. FRAME0 / WARM unchanged (RECORD_AT 64 OK). -> gbc_ told
         to include it in the C1 re-check. Queued for gtl_ (after gtv_'s S3r): pbrt names double the spp -> pass --spp
         to scene_to_pbrt, drop it from pbrt's argv, name outputs <stem>_s<seed>.<ext> (+ SUN_SOFTNESS 0, FLIP metric).
-        Agents (10): upr_ (H0 439 look, then v2.7), c3i_ (B1.6), ebr_ (r18 re-check), grs_ (S2), gtw_ (S1c re-check
-        6), gtq_ (FLIP numpy port), gbc_ (C1 re-check), gtv_ (S3r re-check), gtb_ (watch build), gti_ (poll build).
-        Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gpr_, gtl_, h0i_, t4i_, gtk_, gtp_ (waits gtw_).
+        gtw_ S1c RE-CHECK 6 = OK 04:00 (plan_1117/gtw_s1c_recheck6_handback.md; review l.508): M5 / M6 / fail-open /
+        size budget / S-a / S-b / S-c all OK on the live files, 277 / 277, +0.05 s; new S-d (before enforce): 2 of 3 live
+        shell would-deny rows are false refusals (CODE_TOKEN's (?![\w.]) lets 'x.cpp:' / 'x.cpp/' count as file
+        args) -> end it with (?=$|[\s"'|&;<>)]) + both live commands as tests. -> gtp_ STARTED: S-d first, then its
+        price + web build (gpp_ v3 §E + gpr_ v3: kind(), cause(), committed_gb(), load tag with exclude_pids).
+        Agents (10): upr_ (H0 439 look, then v2.7), c3i_ (B1.6), ebr_ (r18 re-check), grs_ (S2), gtp_ (S-d + price
+        build), gtq_ (FLIP numpy port), gbc_ (C1 re-check), gtv_ (S3r re-check), gtb_ (watch build), gti_ (poll
+        build). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gpr_, gtl_, h0i_, t4i_, gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
