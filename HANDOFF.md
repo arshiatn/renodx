@@ -469,6 +469,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (morning report): player risk - a cold shader cache (driver update / new rel ... | ?
 - gtb_: budget.py SEEDS gate_s 1.0 caps a real job's gate phase at 12.5 s until le ... | ?
 - gtv_: quick re-check of gtl_'s v1.2 follow-ups (golden hex, cfg None, fixture +6 ... | ?
+- c3i_ (nits, optional): N1 26g header lists test 8 (RigidAddOrder, not in 26g) + ... | ?
+- end batch owner (t4i_ / ebr_): b13r_'s B1 risks - (a) thread affinity of order-p ... | ?
+- B1 owner (static, low): do the game's destructors draw (callers of 0x190B780 rea ... | ?
+- gtp_ + gtb_ R12-1 (Should, not blocking in shadow): price_rows() falls back to " ... | ?
+- gtp_ (lows): quoted multi-target word not split before normalising (one seed kin ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8564,9 +8569,52 @@ heading text are in HANDOFF_ARCHIVE.md)
         config's hash" = both suites share one golden value. Full iq suite 33 / 33 (314 s, before the golden
         test), test_iq_frames 16 / 16. Real iq_refs absent. -> gtv_ QUICK RE-CHECK (gtq_ S6 + cross + golden, gtl_
         follow-ups) STARTED.
-        Agents (8): h0i_ (H0 F1-F4), gtv_ (gtq_ S6 + gtl_ follow-ups quick re-check), gtw_ + gpr_ (gtp_ round 12
-        re-check), gtb_ (slot-wait test + load + gate seed), b13r_ (c3i_ rmt_b1rt review), ffr_ (grs_ first-frame
-        design review), lga_ (release regression look)
+        b13r_ RMT_B1RT REVIEW = MERGE-READY 08:5x (render_mt/reports/b13r_b1rt_review.md + b13r_b1rt_review_handback.md;
+        built from `git archive 39e63e6ef`): (1) BUG FIX 3ea4a6721 right, complete, minimal - CommitDone(sweep->id)
+        stops at the sweep's own segment; no other caller crosses (become_oldest :1053 stops at the not-done unit,
+        FinishRound :912 after frontier NONE and synchronous on both failure paths, forwarded calls after the
+        commit); atn-mods :844 still has the bug (L2 default 0, unreleased). (2) 26f N5 meets B1.4. (3) f63460794
+        done (N4, headroom from `low` = 2 VirtualQuery correct on x86, jthread + stop_callback, bound < 1024). (4)
+        26g sound: image A true reference (layout probes first), image B = production config; compares ordered
+        log, random state, records, 2nd node, pool, instances; not vacuous (DEFERRED_DRAWS > 0 in a window);
+        create-path stub at 0x181BEBD (19 bytes, dis_at.py: push, call 0x190B780, ret 0x181BECB, no eu /
+        engine_code site, restored + flushed) faithful; overflow exception = documented L2 design (CPU 525 / GPU
+        600). (5) 26g alone kills all 3 mutants (othernode LEOOMS L2, nocreatepath DEFERRED_DRAWS :2399,
+        commitdone LELSR L2); whole part: othernode crashes 0xC0000005 in 26f N5 (fake 'O' op's log race) = why
+        c3i_ couldn't see it. (6) agrees with the not-testable list. FULL 1530 cases PASS (26g 432, 3 CONTROLs,
+        headroom 496 KB), DR + instance_fill 0, gated builds -Owner b13r_ x86 3 + DR + amd64 exit 0 (61 warnings),
+        diff --check clean. -> MERGE GATE NOW; t4i_ T5 after.
+        - [ ] c3i_ (nits, optional): N1 26g header lists test 8 (RigidAddOrder, not in 26g) + 26f header lacks N5;
+            N2 std::array<uint8_t, stub.size()> needs clang -> CREATE_STUB_BYTES + 5 (b13r_ 08:5x).
+        - [ ] end batch owner (t4i_ / ebr_): b13r_'s B1 risks - (a) thread affinity of order-point routines on
+            workers (sound, burst, creators, attach, tracked child) = no-crash soak logging FOREIGN_HITS, census
+            errors, watched-word changes, hangs, failed rounds; (b) census completeness inside 0x1893470 + the
+            create routine = only the A/B picture; (c) L2's tag-outside-record scan runs only inside trace windows
+            -> the L2 soak must open trace windows + log SPAWN_OVERFLOWS (each changes the session's random
+            sequence by design); (d) slot-list growth on a worker (rare) (b13r_ 08:5x).
+        - [ ] B1 owner (static, low): do the game's destructors draw (callers of 0x190B780 reachable from the
+            sweep) - decides whether the L2 sweep bug could ever have shown (b13r_ 08:5x).
+        gpr_ ROUND 12 (PRICE SIDE) = OK + 1 SHOULD 08:5x (plan_1117/designs/gpr_gtp_round12_handback.md; gpr_review.md
+        "## gtp_ round 12 re-check (price / Section 8 side)"; probes gpr_r12_*.py): build_key / kind() one key for
+        all variants (spellings, comma list, no -Arch, upper case, redirects, wrapped); lock kind in all 4 forms.
+        Re-seed plausible (x86 3 targets 76.9 vs real 83.5 s; amd64 twattila 67.5 vs 69.5 fg / 80.5 run). Section 8
+        correct except "gtb_ confirms with one real wrapped build" (slots were free; the held-slot wait is proven by
+        selftest + fake test + O_EXCL) -> soften; A stays right (misses: with price on each unwrapped build = a
+        refused call + retype; a kill under A takes down gated_build -> stale slot takeover, under B only cmake
+        dies). hg1 end to end on the live hook: exit 0 SHADOW, FAULT rows 1 / 0 / 1 (rewritten) / 0. -> gtp_ R12-1.
+        - [ ] gtp_ + gtb_ R12-1 (Should, not blocking in shadow): price_rows() falls back to "warm?" seeds only
+            when the exact key has no rows -> gtb_'s wrapped run made an exact watch-only `amd64 twattila warm` row
+            (n 1) -> refusal (a) for an unwrapped amd64 twattila call now False; tool_prices ingest gives it class
+            'script' (floor 60 not 120, no S6); table() real_kinds per kind not per (kind, set). Fix together:
+            merge per set (exact first, warm? fills missing sets) in price_rows + budget.py _own_price_rows
+            (gtb_'s), table() per (kind, set), ingest class from the key, watch-only ring test; Section 8 notes
+            the effect until fixed + the softened sentence + the 2 A / B points (gpr_ 08:5x).
+        - [ ] gtp_ (lows): quoted multi-target word not split before normalising (one seed kind keeps
+            .addon64 / renodx-); --clean-first keyed warm; 15 gated_build seeds < 15 s; 2 real fg samples under old
+            `2>` keys could be re-keyed (gpr_ 08:5x).
+        Agents (7): h0i_ (H0 F1-F4), gtv_ (gtq_ S6 + gtl_ follow-ups quick re-check), gtw_ (gtp_ round 12
+        re-check), gtb_ (slot-wait test + load + gate seed), ffr_ (grs_ first-frame design review), lga_ (release
+        regression look); coordinator: rmt_b1rt merge gate
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
