@@ -399,8 +399,50 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Bench variants M1 (er4o_): heapfix_b6.json + night1118.json have no heapfix_line ... | coordinator, with the bench tool fixes before the next bench
 - RENDER-THREAD MT PROJECT (ATN 11-19, decision ~11-23 after the usage reset): Map ... | coordinator, on ATN's go fa4o_ DONE (night1118/final_bench_f
 - OWN 64-BIT ATTILA (ATN 11-19 go for the plan): a64f_ (Fable 5.2 xHigh, read-only ... | coordinator ATN 08:08: 64-bit decisions = coordinator's reco
-- NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | coordinator -> a hybrid bug-fix step in the GPU plan after r
+- NEXT ROUND (render_mt, from plan.md's addenda): (1) quick win: the add-on's own ... | ATN, when ATN brings it up again
+- S0-ter (Opus xHigh, offline: instances key writer +0x48 / +0x4c + lifetime for t ... | ?
+- HEAPFIX AUTHOR NOTE (via ATN, in the S5 author package): 7.0's pool_munmap clear ... | ?
+- T1b follow-ups (owner t4i_, branch from c0668c24d, then ebr_ re-check): Should S ... | ?
+- ebo_ lane (owner t4i_, with the T1b follow-ups): ebo_analyze reads the new per-f ... | ?
+- ebo_ lane (owner t4i_): with S8-2 parked, take the presort segments (EARLY / PRO ... | ?
+- ebo_ lane (owner t4i_): per-kind crash budget in ebo_leg.ps1 + batch.json (crash ... | ?
+- NEW PLAN STEP (ATN 10:4x): after the end batch, every crash gets a root-cause an ... | ?
+- c33i_ commit 4 on rmt_c34 (after C.3-4): C's heapfix tables -> one shared header ... | ?
+- x87 review item (t4i_): heapfix's x87 watcher / paused_write skip threads that d ... | ?
+- heapfix W_w true measurement (proposal, heapfix NOT edited, prep frozen): QPC pa ... | ?
+- t4i_ (next free slot, before leg 1): per-start heapfix.ini [fixes] field in ebo_ ... | ?
+- LOGX FIRST (coordinator decision: fix (a), not a gates fallback): c33i_ (Sonnet ... | ?
+- x87o_ (Opus xHigh, design owner) folds S1-S7 + nits into x87o_design.md v2 befor ... | ?
+- t4i_ cosmetic nit (bundle with the LOGX test_check case): the single line + ebo_ ... | ?
+- FULL on the merged tree: c3i_ runs it first in B1.5. | ?
+- t4i_ (after the LOGX case): end batch records SPAWN_ROUNDS / GUARD_ROUNDS / SPAW ... | ?
+- t4i_: refresh the SPAWNS_OFF gate row status ('TO REFRESH (B1.5)') against merge ... | ?
+- ROUND REPORT: ebr_ put the shared scratchpad on sys.path once; ec4s_'s old scrat ... | ?
+- S-X2r-1 (t4i_, round 9): heapfix.log x87c gate (non-x87c segments: any x87c line ... | ?
+- S-X2r-2 + nits 1 / 3 / 4 / 5 / 7 (x0i_, before an author package): 2^32 sweep be ... | ?
+- ebr_ re-check of 6593a8f (after round 9), incl. the notes' 'one differing case'. ... | ?
+- x0i_ before an author package: S-X2n-1 replace that sentence (ebr_'s text) + nit ... | ?
+- S0 Opus xHigh review of plan_1117/gto_design.md + both addenda (GPU plan filler ... | ?
+- ATN BEFORE GPU S1 (s0r_): Q8 ns_busy part (S1a's F4 line); Q12 hooks in principl ... | ?
+- F1 (upt_, verified by upt_, re-check by upr_): random-number aliasing in rt_path ... | ?
+- ATN (unified PT, not blocking now): Q1-Q10 of the design + NQ1 rough SO route (r ... | ?
+- F1 HYBRID FIX (GPU plan, after render_mt; needs a harness window with agents hel ... | ?
+- ATN (end batch): '[Total War] StallDump=1' in ReShade.ini so the first stall wri ... | ?
 - group 3 after R-S5 / B1.6 / X1 land: engine_code A-M2 / A-S1 / A-S2 / A-N1, inst ... | ?
+- ATN: install the hook (INSTALL_FOR_ATN.md) only after gtw_'s fixes; Q12 / Q26 de ... | ?
+- ATN. (5) = YES to my suggestions: unpinned non-leak crash -> retry the start onc ... | ?
+- until R1 lands: after any crash read Windows' Application log (event 1000). | ?
+- after lgf2_'s R1: one 4K harness Mega Geometry run (coordinator, held window, AT ... | ?
+- H0 harness runs (coordinator, held window, after upr_ OK): 1 HARNESS_DUMP all mo ... | ?
+- T5: decide whether the frozen heapfix DLL carries x87c (then leg 4) or ask ATN f ... | ?
+- H0 harness list additions: (a) rec_scan NaN / Inf on run 1's dumps; (b) run 2 AT ... | ?
+- after gtw_ OK: INSTALL_FOR_ATN.md to ATN (he installs the hook himself; nothing ... | ?
+- ATN: the 3 gpu_lab.ps1 rules after S3r. | ?
+- ATN: a MISSING key / empty value in heapfix.ini -> NOTE instead of PROBLEM? heap ... | ?
+- ATN (INSTALL_FOR_ATN.md item 12, sections 1 / 3 / 7): replace the hook JSON (mat ... | ?
+- c3i_ B1 real-routine tests (design 5: tests 1-9, 12, 14, 15) + N5's second-node ... | ?
+- ATN (after gtv_'s OK): adopt the three lab proposals - copy cmd.schema.json.prop ... | ?
+- gtq_: read gtl_'s iq_input note (output_sizes per arm, dump_frames > 1, dred set ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -5026,7 +5068,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         hp1i_ RESUMED 04:3x: commit A = Should + nits + mode 3 cost line; commit B = S7 instances family (guard set,
         P2' 0x17b9197 + thread rule, mixed-thunk full path, three-slot priority, NM4 (0x130, 0xd8) pairs + FNV; presort
         stays out = S8a / S8) -> DLL prep5 -> bd3r_ short review. t4i_ got the 3 heapfix line classes.
-        [ ] S0-ter (Opus xHigh, offline: instances key writer +0x48 / +0x4c + lifetime for the presort's on mode; B1's
+        - [ ] S0-ter (Opus xHigh, offline: instances key writer +0x48 / +0x4c + lifetime for the presort's on mode; B1's
         site list against P4) = next free slot, before S8a. Agents: t4i_, c3i_, hp1i_ (3 of 3).
         c3i_ S2b FIXES DONE 04:4x (rmt_pool f17531633, local; reports/c3i_s2b_fixes_handback.md): fix 1 ArmTrace stores
         trace_armed_frames + header pending, Tracing() only from the header Update (exactly N frames, ArmTrace(0)
@@ -5180,7 +5222,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         patch group P3 / P3' / P4 + rows + arena + timer + heap-off refusal + pools.c interlock; S8-2 weighted presort
         end to end; S8-3 instances check-only (EARLY 2 / check, commit only in MODE 3). Batch order: EARLY 1 under MODE 3,
         EARLY 1 + PROBE in MODE 1 / 2, EARLY 2, EARLY check under MODE 3. INST_KEYS_PROVEN stays 0.
-        [ ] HEAPFIX AUTHOR NOTE (via ATN, in the S5 author package): 7.0's pool_munmap clears its ownership bytes before it
+        - [ ] HEAPFIX AUTHOR NOTE (via ATN, in the S5 author package): 7.0's pool_munmap clears its ownership bytes before it
         knows the release worked; safe only because every pool mapping is one 64 KB allocation (bd3o_ S8a v2).
         bd3r_ RESUMED 08:1x: re-check of S8a v2 -> verdict for S8-1a. t4i_ got the presort line forms (LATCH "PRESORT
         CHECK MISMATCH", "; presort:" clause, probe lines) + EARLY check needs MODE 3.
@@ -5337,7 +5379,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         MERGE, no Musts; relaxed fetch_add is enough (bump + pool load on the same thread in one Present); worker_pool
         needs no change. -> MERGED atn-mods c0668c24d 09:4x (name check: 17 generic words; gated builds x86 x3 + amd64
         exit 0), pushed.
-        [ ] T1b follow-ups (owner t4i_, branch from c0668c24d, then ebr_ re-check): Should S1 an ignored mt_trace arm is
+        - [ ] T1b follow-ups (owner t4i_, branch from c0668c24d, then ebr_ re-check): Should S1 an ignored mt_trace arm is
         invisible to ebo_check (gates row for the pool's "... is ignored." line as a NOTE marking the trace missing; pair
         every mt_trace switch line with the pool's "trace window w" header within 1 s; optional: ebo_make refuses two
         mt_trace entries < 2 s apart); Nits 1 braces, 2 no SetEnvironmentVariableA in a ternary condition, 3 LiveHooks
@@ -5375,7 +5417,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         call / jmp [r32+0x128] / [r32+0x12C] sites, nits 1-5; src +25, tests +130) -> review -> S8-2 (+ Shoulds 1 / 2 /
         5 / 7, tests 38-48; prepare.c +400, sortfix.c +15, tests +480) -> S8-3 (MODE 3 only, owner-field guard
         +0x538 / +0x3E8, Should 6; src +45, tests +110).
-        [ ] ebo_ lane (owner t4i_, with the T1b follow-ups): ebo_analyze reads the new per-family presort INFO counts
+        - [ ] ebo_ lane (owner t4i_, with the T1b follow-ups): ebo_analyze reads the new per-family presort INFO counts
         beside the PRESORT CHECK MISMATCH LATCH row; a latch in segment 1 switches the presort off for the session ->
         later presort segments stop or run in a new session; the two new weighted kill rules.
         bd3r_ RESUMED 09:5x: check of S8a v4 -> hp1i_ S8-1c -> S8-2.
@@ -5414,7 +5456,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         [x] ATN Q3 (ANSWERED 10:5x: keep parked; send to the author only if the end batch shows it): park S8-2 (presort
         ~0.3 ms / frame at best, 0 GPU-bound) until the end batch shows W_w >= 1.1 ms, or
         build it anyway? Also: put the dormant presort code (gate off) into the heapfix author package or keep it out?
-        [ ] ebo_ lane (owner t4i_): with S8-2 parked, take the presort segments (EARLY / PROBE / B2:early) OUT of the
+        - [ ] ebo_ lane (owner t4i_): with S8-2 parked, take the presort segments (EARLY / PROBE / B2:early) OUT of the
         batch plan + gates; make sure the batch logs W_w (render thread's wait on the weighted chain) per CPU-bound
         segment for the revive trigger.
         hp1i_ RESUMED 10:1x: S8-1c (src_prep10, build.bat test both gate configs, prepare_test x6, commit) -> bd3r_
@@ -5448,8 +5490,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN says otherwise. Q2 = the default (continuation of the crashed start with the part Off, lost segments
         logged). Presort question: moot (S8-2 parked, not in the batch; v4's commit falls back to the game's own sort
         on any difference, so a "check fail" there is a counted fallback, the latch only catches our own bugs).
-        [ ] ebo_ lane (owner t4i_): per-kind crash budget in ebo_leg.ps1 + batch.json (crashes by kind) + tests.
-        [ ] NEW PLAN STEP (ATN 10:4x): after the end batch, every crash gets a root-cause analysis (crash log, dump,
+        - [ ] ebo_ lane (owner t4i_): per-kind crash budget in ebo_leg.ps1 + batch.json (crashes by kind) + tests.
+        - [ ] NEW PLAN STEP (ATN 10:4x): after the end batch, every crash gets a root-cause analysis (crash log, dump,
         pin) and a fix BEFORE the final bench; owner coordinator + the part's implementer / reviewer.
         c3i_ B1.2b INTERIM 10:4x (uncommitted in rmt_c3; effect_update.hpp ~1030 lines + test part 26): found + fixed
         an ASLR bug in B1.2a's branch scan (relocated 32-bit words scanned as instructions -> ~25 % false "game jumps
@@ -5539,7 +5581,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (EPOCH +0x192D290/6 ends where check row +0x192D296 starts).
         c3i_ RESUMED 13:1x: M1, M2, S1-S3 (S3 rel32-only at run time), S5-S11 (S10 built or written deferral), N1-N8 on
         rmt_b12a -> b13r_ re-check. S4 deferred to B1.5.
-        [ ] c33i_ commit 4 on rmt_c34 (after C.3-4): C's heapfix tables -> one shared header, COMPLETED from prep 05b9a5c
+        - [ ] c33i_ commit 4 on rmt_c34 (after C.3-4): C's heapfix tables -> one shared header, COMPLETED from prep 05b9a5c
         (C's table also lacked heightcache, campfix, texfix + check, sortfix x2, uikeep + 3 checks; bd1r_ only caught
         loopfetch) -> bd1r_ reviews all 4 commits. [ ] B1.5: c3i_ switches B1 to the shared header (S4 Must).
         Agents: c33i_ (C.3-4 + shared table), t4i_ (T1b follow-ups + ebo_ lane), c3i_ (B1.3 fixes) (3 of 3). b13r_,
@@ -5559,10 +5601,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         fix; cheapest = 'all four off' vs 'all on' on W3 + D1 ~45 min. [x] ATN 14:1x: YES, add it (see below).
         Notes for the author package: our engine_code cut moves the animation fill (loopfetch +0x182E0DA's loop) onto
         our workers; memfast 65-128 B not built (<= 64 B here).
-        [ ] x87 review item (t4i_): heapfix's x87 watcher / paused_write skip threads that do not start in the game
+        - [ ] x87 review item (t4i_): heapfix's x87 watcher / paused_write skip threads that do not start in the game
         module (our pool workers, heapfix's prepare threads) -> a one-way x87fix revert could rewrite a block while a
         worker is inside it (MT-on only; rounding itself holds: the pool copies control words per job).
-        [ ] heapfix W_w true measurement (proposal, heapfix NOT edited, prep frozen): QPC pair around the render
+        - [ ] heapfix W_w true measurement (proposal, heapfix NOT edited, prep frozen): QPC pair around the render
         thread's prepare wait + 2 counters, one more clause in the segment line - only if a revival needs it.
         ebr_ RESUMED 13:1x: round 4 re-check of t4i_'s work -> reports/ebr_t1b_review.md -> merge rmt_t1bn.
         Agents: c33i_ (C.3-4 + shared table), c3i_ (B1.3 fixes), ebr_ (t4i_ re-check) (3 of 3). QUEUE: bd1r_ C.3-4
@@ -5625,7 +5667,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         'all four off' (sortfix render_list_sorts, loopfetch render_loop_prefetch, memfast small_memory_copies, x87fix
         x87_rounding), ABBA, W3 + D1, MT build on, ~45 min; single-fix A/Bs only if it moves. Purpose: the keep /
         revert lines with MT-on numbers for heapfix's author.
-        [ ] t4i_ (next free slot, before leg 1): per-start heapfix.ini [fixes] field in ebo_make (today only x87c), the
+        - [ ] t4i_ (next free slot, before leg 1): per-start heapfix.ini [fixes] field in ebo_make (today only x87c), the
         A/B segments / starts in segments.json + plan doc, analysis rows in ebo_analyze (on vs off per scene, noise
         band), tests; plus the crash-record segment nit -> ebr_ re-check. Leg placement: the leg that already runs
         W3 + D1 with the full MT build.
@@ -5635,7 +5677,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         draw block +0x17f6515; the add-on knows only 7.0's form (engine_code.hpp :110, :2292) -> 'soldier draw rounding
         ... not the game's code as expected' (seen in bench\runs\b3_REF_ATN_atn_201523) -> ROWFAIL row_left_alone_start
         -> 'Faster Game CPU Code' resumable stop on EVERY prep / hfx start. ebr_ withdrew round 5's 'T4 ready'.
-        [ ] LOGX FIRST (coordinator decision: fix (a), not a gates fallback): c33i_ (Sonnet High) on a branch from
+        - [ ] LOGX FIRST (coordinator decision: fix (a), not a gates fallback): c33i_ (Sonnet High) on a branch from
         atn-mods AFTER rmt_c34 + rmt_b12a merge (both touch engine_code.hpp): recognize heapfix's split bytes (listed in
         the review) -> INFO cpu_code_x87; unit test with the bytes -> bd1r_ review -> merge -> t4i_ test_check case
         with the real line. Then ebr_ re-confirms T4 ready.
@@ -5656,7 +5698,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         worker_pool.hpp's header (logging / audit step); [ ] author package: propose paused_write suspends every thread
         (gamerva.h :112, ~1 line), via ATN. S6: reverts DO happen (2 of 412 sessions, 1112 sites restored, one restore
         11 s) -> t4i_ INFO gate.
-        [ ] x87o_ (Opus xHigh, design owner) folds S1-S7 + nits into x87o_design.md v2 before X0 starts.
+        - [ ] x87o_ (Opus xHigh, design owner) folds S1-S7 + nits into x87o_design.md v2 before X0 starts.
         t4i_ RESUMED 14:3x: heapfix A/B (ATN yes) + crash-record segment nit + S6 x87 revert INFO gate -> ebr_ re-check.
         Agents: bd1r_ (C.3-4 review), b13r_ (B1.3 re-check), t4i_ (A/B + nits) (3 of 3). QUEUE: merges rmt_c34 /
         rmt_b12a, LOGX (c33i_), x87o_ v2, ebr_ re-check of t4i_, B1.4 / B1.5.
@@ -5728,7 +5770,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         rmt_c34, t4i_ LOGX test_check case, x87o_ v2, c3i_ B1.4 fixes, B1.5 (after rmt_c34: S4 shared table Must).
         ebr_ ROUND 7 DONE 15:3x (reports/ebr_t1b_review.md from line 345): all round 6 fixes in, no regressions, no Musts
         / Shoulds; T4 READY except the x87 M1 (LOGX -> t4i_ test_check case -> ebr_ confirms). run_all 726 / 726.
-        [ ] t4i_ cosmetic nit (bundle with the LOGX test_check case): the single line + ebo_analyze.py:31 say only 'the
+        - [ ] t4i_ cosmetic nit (bundle with the LOGX test_check case): the single line + ebo_analyze.py:31 say only 'the
         noise band' (add 'and / or the floor'); gate keeps only the last ab_report's single / ab_note.
         x87o_ (a604175c0f0e9cd11) RESUMED 15:3x: x87o_design_v2.md (S1-S7 + nits + decisions: LOGX done by c33i_, T5
         frozen unless X2 reviewed in time, no new DLL rule (walker on dis_at.py output, micro in the suites), X1 after
@@ -5806,7 +5848,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         not fail-safe; loop test 7 canary) -> [ ] c33i_ later, low priority.
         MERGED 17:0x: rmt_c34 -> atn-mods 406fe6d16 (name_check 1587 ids / 63 generic + lua_State in a comment = Lua API;
         engine_code.hpp + tw_engine_code/tests.cpp auto-merged with B1; gated x86 x3 + amd64 exit 0; pushed).
-        [ ] FULL on the merged tree: c3i_ runs it first in B1.5.
+        - [ ] FULL on the merged tree: c3i_ runs it first in B1.5.
         t4i_ RESUMED 17:0x: LOGX test_check / corpus cases (split + x87c -> INFO, old real line stays ROWFAIL) + ebr_
         round 7 cosmetic nit -> ebr_ confirms T4 ready.
         Agents: x0i_ (X0), b13r_ (B1.4 re-check), t4i_ (LOGX case) (3 of 3). QUEUE: merge rmt_b14, ebr_ T4 confirm, B1.5
@@ -5819,7 +5861,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         N4 header exception; N5 S1 / S2 tests with the real-routine tests.
         MERGED 17:0x: rmt_b14 -> atn-mods 3b1e9aa76 (name_check 875 ids / 50 generic; gated x86 x3 + amd64 exit 0;
         pushed).
-        [ ] t4i_ (after the LOGX case): end batch records SPAWN_ROUNDS / GUARD_ROUNDS / SPAWN_OVERFLOWS / STAGE_FULLS
+        - [ ] t4i_ (after the LOGX case): end batch records SPAWN_ROUNDS / GUARD_ROUNDS / SPAWN_OVERFLOWS / STAGE_FULLS
         per scene (trace windows where B1L2 is on) + the analysis flags a scene whose rounds are mostly guard rounds
         ('not L2'); + the memory note. [ ] ATN only IF guard rounds dominate a stress scene: a variant without the
         half-room rule?
@@ -5906,7 +5948,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         ebr_ STARTED 19:0x: X0 re-check (S-X0-1..3, search completeness + cap, read-back rule, run-time hash, X2 go /
         no-go on the 89-proven list) -> reports/ebr_x87_review.md '## X0 re-check'.
         c33i_ TOLD: hold the engine_code.hpp / addon.cpp commit until the B1.5 fixes merge (c3i_ edits engine_code.hpp).
-        [ ] t4i_: refresh the SPAWNS_OFF gate row status ('TO REFRESH (B1.5)') against merged c3f89865b.
+        - [ ] t4i_: refresh the SPAWNS_OFF gate row status ('TO REFRESH (B1.5)') against merged c3f89865b.
         Agents: c33i_ (R-S1 + R-S2), c3i_ (B1.5 fixes), ebr_ (X0 re-check) (3 of 3). QUEUE: b13r_ B1.5 re-check + merge
         rmt_b15fix, t4i_ gate row refresh, c33i_'s engine_code / addon.cpp commit, R-S3 review, R-S5a addendum, B1.6 (+ N5
         real-routine tests), X1, X2.
@@ -5931,7 +5973,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         dwords = 2344 B). S-X2-1 verify every guard before the first write (52 / 89 ranges hold other x87 blocks); S-X2-2
         our patch sites inside proven ranges (B17F6515 rows 1 / 12 / 18, B169A3B2 row 3) -> author notes, re-check per
         new row. Estimate -0.1..-0.15 ms W3, mostly block 1; measure later by the block-sample rule, not in T5.
-        [ ] ROUND REPORT: ebr_ put the shared scratchpad on sys.path once; ec4s_'s old scratchpad dis.py (11-18, reads
+        - [ ] ROUND REPORT: ebr_ put the shared scratchpad on sys.path once; ec4s_'s old scratchpad dis.py (11-18, reads
         the DLL through pe_xref) shadowed stdlib dis and failed in its numpy import before any DLL code (no DLL read).
         Old *dis.py DLL readers from earlier rounds stay in the scratchpad (ec4s_ dis.py, p2ph_ / p2s2_ / p2sm_ / ru_ /
         rym5_); not run this segment; deletion only on ATN's yes. Briefs now say: never put the scratchpad on sys.path.
@@ -5981,9 +6023,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         fisttp for any RC / DAZ / FTZ, NaN / inf / range = 0x80000000; only sticky flags move to MXCSR); writes only the
         36 block bytes, row 1 overlap handled by LOGX. 2^32 sweep not needed before a measurement (~1 min), before an
         author package yes.
-        [ ] S-X2r-1 (t4i_, round 9): heapfix.log x87c gate (non-x87c segments: any x87c line = ROWFAIL; x87c segment:
+        - [ ] S-X2r-1 (t4i_, round 9): heapfix.log x87c gate (non-x87c segments: any x87c line = ROWFAIL; x87c segment:
         missing summary / reason / N < 89 = ROWFAIL) + segments.json key note [fixes] x87c.
-        [ ] S-X2r-2 + nits 1 / 3 / 4 / 5 / 7 (x0i_, before an author package): 2^32 sweep behind a switch on --x2.
+        - [ ] S-X2r-2 + nits 1 / 3 / 4 / 5 / 7 (x0i_, before an author package): 2^32 sweep behind a switch on --x2.
         t4i_ STARTED round 9 20:0x: SPAWNS_OFF gate row refresh vs merged c3f89865b + S-X2r-1.
         Agents: b13r_ (B1.5 re-check), c33i_ (R-S4 part 1), t4i_ (round 9) (3 of 3). QUEUE: merge rmt_b15fix, c33i_ R-S4
         part 2, bd1r_ R-S3 re-check, x0i_ S-X2r-2 + nits, R-S5a addendum, B1.6 (+ N5 real-routine tests), X1.
@@ -6027,7 +6069,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         summary gets ', 0 not found' (old text is a prefix, t4i_'s regex still matches). Nit 3 no-wrap check, execute-only
         fails, 5 malformed .reloc controls. Nit 7 x87fix_frame after an x87c install: 1116 roundss reverted, 89 x87c + x87b
         stay. Nits 4 / 5 author notes (prepare.c's 4 read-only hash rows hit proven ranges). Nits 2 / 6 'later'.
-        [ ] ebr_ re-check of 6593a8f (after round 9), incl. the notes' 'one differing case'. [ ] t4i_ next round: corpus
+        - [ ] ebr_ re-check of 6593a8f (after round 9), incl. the notes' 'one differing case'. [ ] t4i_ next round: corpus
         line with ', 0 not found' + use the not-found count.
         bd3o_ (a179380ae40d59da3; first sent to bd1o_ a0a4cc10c7b5c4d4a by mistake, it declined, no files) RESUMED 20:2x:
         R-S5a R2 addendum (Opus xHigh, design only) ->
@@ -6049,7 +6091,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (heapfix's own fixes: only prepare's read-only hash checks hit proven ranges). The notes' 'one differing case' is
         too narrow (forms differ only with an unmasked exception: MXCSR invalid / precision, x87 invalid / precision /
         denormal, full x87 stack) - harmless, the game masks everything at every task.
-        [ ] x0i_ before an author package: S-X2n-1 replace that sentence (ebr_'s text) + nits 1 real wrap control (small
+        - [ ] x0i_ before an author package: S-X2n-1 replace that sentence (ebr_'s text) + nits 1 real wrap control (small
         VA, huge Size), 2 mutant == 1 << 20 exactly, 3 / 4 notes (campfix writes live after x87fix; sweep covers one block
         by design).
         t4i_ STARTED round 10 20:3x: N == M == 89 summary check + NOTE counts, corpus to 6593a8f text + stamp 69CE1786,
@@ -6120,7 +6162,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         t4i_ STARTED T3 20:5x on rmt_t3 (worktree rmt_t1b, from origin/atn-mods): up to 6 map-trace windows, own file
         each, old form unchanged (frame_trace.hpp, + context_hooks.hpp only if needed), parser tests, bench file names +
         corpus, ebr_'s 2 round-10 text nits -> ebr_ review.
-        [ ] S0 Opus xHigh review of plan_1117/gto_design.md + both addenda (GPU plan filler slot; owner coordinator,
+        - [ ] S0 Opus xHigh review of plan_1117/gto_design.md + both addenda (GPU plan filler slot; owner coordinator,
         next free slot). [ ] unified PT design (GPU plan, after S0; owner coordinator).
         Agents: b13r_ (R1 re-check), bd3o_ (R2 v2), t4i_ (T3) (3 of 3). QUEUE: merge rmt_b15r1, c33i_ part 2b (hook-up +
         S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, bd3r_ R2 re-check, ebr_ T3 review, B1.6 (+
@@ -6208,7 +6250,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         table proof vs a fresh run; M8 commit gate (git -C repo, merges, patch scripts); M9 spec.py id first + capped
         output; M10 Forge item 8 'dead outputs' has no data source. 21 Shoulds (pbrt CPU estimate 5-20 h, not 1-4 h), 8
         Nits.
-        [ ] ATN BEFORE GPU S1 (s0r_): Q8 ns_busy part (S1a's F4 line); Q12 hooks in principle (S1c part A now?); Q14
+        - [ ] ATN BEFORE GPU S1 (s0r_): Q8 ns_busy part (S1a's F4 line); Q12 hooks in principle (S1c part A now?); Q14
         gate scope (+ new: all of src\ or only the TW helper); Q15 commit-time cite check; Q4b block WebSearch /
         WebFetch for API facts. Fallback if ATN waits: S1c builds them as config rows that start Off. 3 new later
         questions: dead-outputs source, T7 vs 'Nsight for every setting', lab dump deletes vs the keep rule.
@@ -6342,7 +6384,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         reservoir) + test T-starve. Cost E net -0.3..-1.3 ms (mostly SO rays). 9 steps U0-U8 (+ optional U9) ~82 agent-h
         + 12-16 GPU-h; U0 needs PT DI steps 0-4 merged + the gto lab; bit RT_DI_UNIFIED = 2 in bridge v32 rt_di_flags.
         ATN Q1-Q10 (rec in the design; Q1 RR required, Q2 VRAM + no checkerboard, Q3 SO Experimental first ...).
-        [ ] F1 (upt_, verified by upt_, re-check by upr_): random-number aliasing in rt_path.hlsli (path rays
+        - [ ] F1 (upt_, verified by upt_, re-check by upr_): random-number aliasing in rt_path.hlsli (path rays
         frame*64 + path*8 + vertex*2 at 4+ bounces / 9+ samples; reflections frame*16 + sample*2 + 3072 at 9+ samples);
         defaults (1 bounce, 1 reflection sample) not hit; fix = frame and dimension as separate hash inputs to Random
         (rt_scene.hlsli:462). Owner: coordinator -> a hybrid bug-fix step in the GPU plan after render_mt (U1 inside the
@@ -6391,11 +6433,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         F1 = REAL: game caps bounces at 2 (in-frame vertex alias harness / PROBE_REFERENCE only); cross-frame repeats at
         Light Bounce Rays 9-16 or 4 x Rays a Pixel >= 3 (Match Output at DLSS Balanced / Performance / Ultra
         Performance), reflections at samples x density >= 9; defaults + ATN's preset unaffected; no bias.
-        [ ] ATN (unified PT, not blocking now): Q1-Q10 of the design + NQ1 rough SO route (rec test (a) no-ray PT
+        - [ ] ATN (unified PT, not blocking now): Q1-Q10 of the design + NQ1 rough SO route (rec test (a) no-ray PT
         Reflection Occlusion first; blocks U4), NQ2 IGN -> white noise in the mode (rec yes if flicker at floor), NQ3
         F1 hybrid fix on by default before U1 (rec yes), NQ4 reflection reuse set (rec at least today's), NQ5 torch
         light on smoke as is vs shadows / 128 lights (look change), NQ6 full-4K RR scoring now vs P2.
-        [ ] F1 HYBRID FIX (GPU plan, after render_mt; needs a harness window with agents held): non-linear hash in
+        - [ ] F1 HYBRID FIX (GPU plan, after render_mt; needs a harness window with agents held): non-linear hash in
         Random (rt_scene.hlsli:462) + every seed site (rt_path / rt_trace / rt_lights / rt_fog) -> owner coordinator.
         upt_ RESUMED 00:2x: v2 of unified_pt.md (8 Musts + 14 Shoulds + NQ1-NQ6 in the ATN list) -> upr_ re-check.
         Agents (6): c33i_ (R-S5), gti_ (GPU S1a), upt_ (unified PT v2), lga_ (logging audit), gtb_ (GPU S1b), gtp_ (GPU
@@ -6456,7 +6498,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         turned Off with no reason; B-M6 helper has no terminate / purecall / invalid-parameter handler (__fastfail skips
         OnUnhandledFault); C-M3 bridge never logs the helper's exit code, copy_count == 0 path silent. worker_pool.hpp
         invariant comment text in the report. Upstream: no real bug found.
-        [ ] ATN (end batch): '[Total War] StallDump=1' in ReShade.ini so the first stall writes renodx-stall.dmp with
+        - [ ] ATN (end batch): '[Total War] StallDump=1' in ReShade.ini so the first stall writes renodx-stall.dmp with
         every thread's place (lga_ changed no settings) -> ask ATN / put into the T6 checklist.
         LOGGING FIXES STARTED 00:4x (Opus High, own worktrees, from ca66dc537):
         - lgf1_ (a89db83b1713e90b2) rmt_lg1: device_loss.hpp A-M1 / A-S9 / A-S7 half, effect_update A-S5, engine_tests
@@ -6503,7 +6545,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         protected (Q26 = ATN's step); T11 vs run habits before enforce.
         gtw_ (a0b03d68655ebfcaf, fresh Opus xHigh) STARTED 00:5x: S1r review of S1c + part A ->
         plan_1117/gtw_s1c_review.md (sandbox copies only; hook never installed). gtv_ keeps S1a + S1b.
-        [ ] ATN: install the hook (INSTALL_FOR_ATN.md) only after gtw_'s fixes; Q12 / Q26 decide mode + protection.
+        - [ ] ATN: install the hook (INSTALL_FOR_ATN.md) only after gtw_'s fixes; Q12 / Q26 decide mode + protection.
         bd3r_ R-S5 REVIEW (FOLD SIDE) DONE 01:0x (reports/bd3r_review.md line 600, hand-back reports/bd3r_rs5_handback.md):
         MERGE, no Musts / Shoulds, 5 Nits: 1 fold_trace = {} after FoldFault (draw_recording.hpp:1090-1098, uint64 wrap in
         a trace frame); 2 nested lap zeroes the outer fold_trace (1627-1629 / 2159-2161) + ++shares outside tracing (1054);
@@ -6559,7 +6601,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         TW only); Q15 = YES (cite_since = install date); Q26 = YES (+ protect tools\specs except lookups + pitfall_check.py);
         Q4b: ATN asked why -> my suggestion: NARROW block (API facts the local index covers -> spec.py; web allowed when
         spec.py has no hit, and always for papers / release notes / versions); row OFF until ATN OKs the narrow form
-        [ ] ATN. (5) = YES to my suggestions: unpinned non-leak crash -> retry the start once with the suspect parts Off,
+        - [ ] ATN. (5) = YES to my suggestions: unpinned non-leak crash -> retry the start once with the suspect parts Off,
         a second stops the batch, every crash root-caused before the final bench; DLL byte scans: strict rule stays
         (dis_at.py only), deviations #1-#3 accepted as recorded (CLOSED); x87c = one small on / off A/B (W3 + D1) right
         after the end batch, before the author package. Unified PT's 15 questions: [ ] ATN (asked to take my
@@ -6575,7 +6617,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         codes, R3 stall line names a handled fault (KiUserExceptionDispatcher on the stack), R4 stack overflow logged on
         the overflowed stack. NIT R5 Detours 4 addresses, R6 engine_tweaks retries, R7 NotTraced 1 s floor. Plus
         device_loss::AddCodeRange (4 slots) now, callers in group 3. lgf1_ RESUMED 01:2x on rmt_lg1 -> lga_ re-check 2.
-        [ ] until R1 lands: after any crash read Windows' Application log (event 1000).
+        - [ ] until R1 lands: after any crash read Windows' Application log (event 1000).
         lgf2_ GROUP 2 DONE 01:2x (reports/lgf2_handback.md): rmt_lg2 f6e881b4c (462c43b75 helper, 91d92497f bridge,
         f6e881b4c tw_helper_lifetime defines NAME for utils/settings.hpp:60). Exit codes once (dlaa_bridge.h:619-670 +
         HelperExitMeaning); B-M4 rescue step + value, B-M5 RT Off reasons, B-M6 CRT ends (terminate / SIGABRT / purecall /
@@ -6594,7 +6636,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Geometry builds fail silently (rt_d3d12.hpp:6301 / 6305 / 6351; template build 5560 ignores its result while
         the sets stay marked -> possible device loss later): latched line per kind + clear template_first + status in
         *why at 2028. NITs N1-N5. lgf2_ RESUMED 01:3x on rmt_lg2.
-        [ ] after lgf2_'s R1: one 4K harness Mega Geometry run (coordinator, held window, ATN's harness rules).
+        - [ ] after lgf2_'s R1: one 4K harness Mega Geometry run (coordinator, held window, ATN's harness rules).
         bd1r_ R-S5 REVIEW (instance_fill side) 01:3x = FIX (bd1r_rs3_review.md line 372, hand-back
         reports/bd1r_rs5_handback.md): M1 close_at_the_stub KeepTrace outside trace windows -> a per-frame log line on
         the render thread; S1 no suite runs the stubs through engine_code Update / PausedWrite / Uninstall (part 29f);
@@ -6609,7 +6651,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         31.4 M). Helper build clean, amd64 twattila exit 0; static DXIL +2.6 % rt_path, +3.1 % rt_reflect; registers not
         measured. Every setting incl. ATN's preset gets new noise (same mean). upr_ H0 CODE REVIEW STARTED 01:3x ->
         designs/unified_pt_review.md '## H0 code review'.
-        [ ] H0 harness runs (coordinator, held window, after upr_ OK): 1 HARNESS_DUMP all modes vs a pre-H0 dump (24
+        - [ ] H0 harness runs (coordinator, held window, after upr_ OK): 1 HARNESS_DUMP all modes vs a pre-H0 dump (24
         unchanged headers byte-equal); 2 E1-E7 AT FLOOR at defaults + ATN's preset; 3 Light Bounce Rays 16 + Match Output
         Balanced / Perf / Ultra Perf, still + moving (still-camera temporal variance ~half); reflections at Samples x
         Rays >= 9; 4 Validate replay (Torch Light in PT GI, reuse, still: invalidity / history unchanged); 5 reference
@@ -6622,7 +6664,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         every start's variant through the reshade_ini step (fresh backup, restore + hash check per start); T6 dry run
         flags a missing line. 3 x87c A/B plan §8b (ABBA XC-W3 / XC-D1, ~40 min): leg 4 only if T5's DLL carries x87c,
         else ATN needs a new rule 'ebo_run.ps1 -Leg 5 [-DryRun]' (nothing built). ebr_ r16 REVIEW STARTED 01:3x.
-        [ ] T5: decide whether the frozen heapfix DLL carries x87c (then leg 4) or ask ATN for the leg 5 rule.
+        - [ ] T5: decide whether the frozen heapfix DLL carries x87c (then leg 4) or ask ATN for the leg 5 rule.
         lgf1_ GROUP 1 R1-R7 DONE 01:4x (reports/lgf1_r2_handback.md): rmt_lg1 0fe8a9b15 (device_loss.hpp: chained
         top-level filter OnUnhandled set at the first present, own once guard, 'thrown by the add-on's code', Uninstall
         restores or pins; R2 FP / integer codes; R3 'handling an exception now' / '(handled; it went on)'; R4 overflow
@@ -6635,7 +6677,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         rt_reflect static; registers / spills only on the GPU (rt_reflect_one already 96 + spills). Shoulds: probe-ray
         clamp (rt_path.hlsli:974, min 94) and h0i_test.py as a real guard (all files, fail on unparsed sites, lanes,
         caps from the code). Before merge: build32 .addon32. h0i_ RESUMED 01:4x for these.
-        [ ] H0 harness list additions: (a) rec_scan NaN / Inf on run 1's dumps; (b) run 2 AT FLOOR needs the gto lab:
+        - [ ] H0 harness list additions: (a) rec_scan NaN / Inf on run 1's dumps; (b) run 2 AT FLOOR needs the gto lab:
         if not built, name the gate used + keep a box; (c) run 3 pass rule: after H0 still-camera temporal variance
         at 16 rays < 8 rays, before H0 16 ~ 8, single-frame variance unchanged; (d) run 6 with <= 94 probe rays.
         Run 7 (Nsight registers / spills rt_reflect_one) gates the merge; if it costs: Random2 (lanes .y / .z) or the
@@ -6646,7 +6688,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         defaults in gates.tsv: mode shadow, spec / cxx / shell / cite / web / tools_tw on, reshade off, cite_since
         set-on-install, Q4b narrow ON (matcher + WebSearch|WebFetch), Q26 protection built. INSTALL_FOR_ATN.md
         rewritten (checklist 1-11 with recommendations). gtw_ S1c RE-CHECK STARTED 01:4x.
-        [ ] after gtw_ OK: INSTALL_FOR_ATN.md to ATN (he installs the hook himself; nothing installed by agents).
+        - [ ] after gtw_ OK: INSTALL_FOR_ATN.md to ATN (he installs the hook himself; nothing installed by agents).
         lga_ GROUP 1 RE-CHECK 2 01:4x = MERGE (reports/lga_g1_recheck2_handback.md); MERGED 3c4eb4397 (7a18d3ec3; name
         check generic; pushed; gated builds x86 3 + amd64 twattila running). Follow-up S1 (overflow line can be lost:
         SetEvent + 500 ms 'said' wait), N1 (GetModuleFileNameW), N2 (x86 exact record), N4 (re-entry guard) -> lgf1_
@@ -6895,7 +6937,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (two-resident X form not built, other_gpu bar E 5 %, ...). gtv_ S3r STARTED. Cross-file asks routed: gtb_ lab
         phases in budget.py, gti_ -ExcludePids, gtp_ T04, gtq_ / gtk_ contract checks (read-only until gbc_'s reviews),
         grs_ S2: retry MoveFileExW on a sharing violation + resolution in the status answer (put in the S2 brief).
-        [ ] ATN: the 3 gpu_lab.ps1 rules after S3r.
+        - [ ] ATN: the 3 gpu_lab.ps1 rules after S3r.
         ATN 03:0x asked for exact gate-hook steps -> merged file plan_1117\settings.local.proposed.json (his 15 old rules
         unchanged + the 2 fixed H0 rules + 2 Bash spec rules (Bash-only: no chained-command risk, no check needed) +
         the 4 hook events from INSTALL); ATN copies it himself [ ] ATN. Optional: cite_since date in gates.tsv.
@@ -7235,7 +7277,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         occurrence wins) survive = test gaps. -> t4i_ r20 STARTED: N6 + N7 tests, the int64 nit ('^0*1$' on the
         match), the same check again at the real leg's start (read only). Not blocking: ATN's live heapfix.ini has all
         four keys at 1, no *_off.txt in the game folder.
-        [ ] ATN: a MISSING key / empty value in heapfix.ini -> NOTE instead of PROBLEM? heapfix defaults it to 1 (same
+        - [ ] ATN: a MISSING key / empty value in heapfix.ini -> NOTE instead of PROBLEM? heapfix defaults it to 1 (same
             compares), the bench's own dry run already calls it a NOTE (constantinople_bench :635-636); no [fixes]
             section or no file stays a PROBLEM. Plan section 10 bullet changes with it. Kept as PROBLEM until ATN says.
         gtb_ W1 W2 DONE 04:5x (plan_1117/gtb_w1w2_handback.md; backups scratchpad\gtb_bak7): W1 TimeoutExpired after
@@ -7467,7 +7509,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         = would-deny + TOOL FAULT rows (shadow). Proposals ONLY: web_allow.proposed.tsv, gate_override.proposed.ps1;
         nothing installed, no settings / gates.tsv / web_allow.tsv touched. dred cross-job check: not the hook's job ->
         gtb_'s report_check.py / result.schema (routed). -> gtw_ RE-CHECK 8 STARTED.
-        [ ] ATN (INSTALL_FOR_ATN.md item 12, sections 1 / 3 / 7): replace the hook JSON (matchers *, + SessionStart,
+        - [ ] ATN (INSTALL_FOR_ATN.md item 12, sections 1 / 3 / 7): replace the hook JSON (matchers *, + SessionStart,
             SubagentStop, Notification); add the six C.1 rows to gates.tsv; copy web_allow.proposed.tsv ->
             web_allow.tsv and gate_override.proposed.ps1 -> gate_override.ps1 - AFTER gtw_'s re-check 8 says OK.
         grs_ N1 NITS DONE 05:3x (plan_1117/grs_n1_nits_handback.md): gpu_s2 d68954a39 on 8c19a953f (local).
@@ -7521,7 +7563,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> c3i_: N1 braces on single-line assignment ifs (engine_code.hpp:2797 R2 line, comment > 200 cols), N2
         29f blocks: a failing CHECK leaves `other` joinable -> 0xC0000409 (std::jthread + stop_token), N3 Spawns
         tooltip "the game's particle limit is reached".
-        [ ] c3i_ B1 real-routine tests (design 5: tests 1-9, 12, 14, 15) + N5's second-node world and drawing sweep;
+        - [ ] c3i_ B1 real-routine tests (design 5: tests 1-9, 12, 14, 15) + N5's second-node world and drawing sweep;
             due before B1.7 / B1.8 and before any end-batch segment plans B1L1 / B1L2 (b13r_'s B1.4 condition).
         MERGED rmt_b16 05:4x: c54e3e589 (--no-ff, pushed); name check 15 generic words; gated builds -Owner coord_b16
         x86 twattila / twrome2 / twthronesofbritannia + amd64 twattila exit 0, 61 warnings (none new). No H0
@@ -7561,10 +7603,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         resident_protocol.md.proposed. Note for gtq_: iq_input arms may carry output_sizes, dump_frames > 1; the lab
         writes iq.json's dred after iq_frames. -> gtv_ REVIEW QUEUED (after grs_'s leftovers re-check). gtl_ idle:
         its harness-named fakes are done (H0 re-run precondition met).
-        [ ] ATN (after gtv_'s OK): adopt the three lab proposals - copy cmd.schema.json.proposed -> cmd.schema.json,
+        - [ ] ATN (after gtv_'s OK): adopt the three lab proposals - copy cmd.schema.json.proposed -> cmd.schema.json,
             alive.schema.json.proposed -> alive.schema.json, resident_protocol.md.proposed -> resident_protocol.md
             (all in tools\tw\lab); until then dump_frames stays 1.
-        [ ] gtq_: read gtl_'s iq_input note (output_sizes per arm, dump_frames > 1, dred set by the lab) and say
+        - [ ] gtq_: read gtl_'s iq_input note (output_sizes per arm, dump_frames > 1, dred set by the lab) and say
             whether iq_frames should copy dred itself; after gtv_'s review.
         gtv_ N1 LEFTOVERS RE-CHECK = MERGE-READY (pending the GPU check) 05:4x
         (plan_1117/gtv_n1_leftovers_recheck_handback.md; gtv_s2r_review.md "## N1 leftovers re-check"): trace base +
@@ -7587,11 +7629,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         "Win32_Process often still answers" not shown. 05:43 gtl_'s fake tw_rt_harness_scene_4k (gtl_test_69152)
         was running, ended by 05:46. -> H0 RE-RUN NOW (hold announced to running agents; h0i_'s testbin fake waits
         for H0's end).
-        Agents (5): gtw_ (gtp_ re-check 8), gtv_ (gtl_ S1b + v1.1 review), gpr_ (gtb_ y1 / y2 / z + dred, then
-        gti_ z1 / z2), t4i_ (r21), c3i_ (B1.6 follow-ups). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_
-        (after H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_), gtq_ (iq note after gtv_), gbc_, gtb_
-        (waits gpr_), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (waits
-        gtv_). GPU: H0 RE-RUN (coordinator); no harness / helper / fg / map_replay-named process until H0 ends.
+        H0 RE-RUN STARTED 05:48:5x (background task biaa5xsc6; ~72 min): checks first - 0 tool / game processes, no
+        gpu_job.lock, Committed 24 GB; dry run 05:48:41 clean (runs\dryrun_20261122_054841.txt, 889 lines like
+        045704, pre atn-mods 8f77a29a4, post 42c081bd6, base c3ea4925f, 43 helper sources inside $HelperPaths, 206
+        modes). Hold sent to gtw_ / gtv_ / c3i_ / t4i_ / gpr_.
+        BOOKKEEPING 05:4x: 42 open boxes below "## OPEN (owners)" were written "[ ]" without "- " so the index
+        skipped them -> all converted to "- [ ]" (scratchpad\r3_0570_boxes.py); the index now lists them. From now
+        on every new box is "- [ ]".
+        gpr_ GTB_ Y-Z-DRED RE-CHECK = OK + GTI_ Z1-Z2 = OK 05:4x (plan_1117/designs/gpr_gtb_yz_dred_gti_z_handback.md;
+        gpr_review.md "## gtb_ y1 / y2 / z + dred re-check" + "## gti_ z1 / z2 re-check"): test_budget 33 OK +
+        ps module, watch --selftest 3 / 3, test_gpu_gate 30 OK + 1 skipped, test_report_check 9 OK; y1 cell keeps
+        all six fault names; probe 31 cases, 25 right; dred_of never true for missing / null / 1 / 'true', 9 / 9
+        check_dred combos right. ns_busy z1 2 in 1.0 s no stderr (was 4.9 s + fault), still fail closed at count 0;
+        z2 0 in 0.3 s; int callers unchanged. Gaps -> gtb_ now: yz1 `bash --rcfile x / --init-file x -c` (value
+        not skipped) and zsh / dash / ksh -c not read like bash; yz2 `start "title" cmd /c` - docstring calls it
+        safe (wrong) -> fix the docstring or drop start from WRAPPED (a cmd builtin, never a watch child); yz3 nested
+        budget.py watch = documented "any other program" (note only). -> gtl_ (with gtv_'s list, gtv_ told now):
+        lab.py:914 Resident.reuse `lab.get('dred', True)` reads a label without dred as ON -> `lab.get('dred') ==
+        job['dred']`. lab.py now writes dred (l.1323 / 1496 / 1503), so new jobs flag "dred unknown on calibration
+        G-..." until a calibration is re-run.
+        Agents (5): gtw_ (gtp_ re-check 8), gtv_ (gtl_ S1b + v1.1 review, + lab.py:914), gtb_ (yz1 / yz2), t4i_
+        (r21), c3i_ (B1.6 follow-ups). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to
+        testbin + R1), gpp_, ebr_ (re-checks t4i_), gtq_ (iq note after gtv_), gbc_, gpr_ (re-checks gtb_), gti_
+        (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (waits gtv_). GPU: H0 RE-RUN
+        (coordinator, since 05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
