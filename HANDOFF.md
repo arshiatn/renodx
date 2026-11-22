@@ -6700,7 +6700,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         record, N4); tests PASS both, builds exit 0 -> lga_ look after group 2.
         [ ] ATN: gto §10 open questions before later steps (Q1 lab rules, Q2, Q3, Q6, Q7 no, Q9-Q11, Q13, Q16-Q25) asked
         02:1x.
-        Agents (11): c33i_ (R-S5 fixes), gtp_ (S1c small fixes), ebr_ (r16 review), lga_ (group 2 re-check 2), h0i_ (H0
+        gtp_ S1c SMALL FIXES DONE 02:0x (plan_1117/gtp_s1c_fix2_handback.md, backups scratchpad\gtp_bak2): F1 comma
+        scopes split in gate_override.ps1; I1 A0 step in INSTALL §2 (chained PowerShell must ask, else drop the 4
+        PowerShell rules); I2; F2 writes count only when the protected path is in the write call (new limit: a path in a
+        Python variable); I3 T07 as a #-row; T04 text. run_tests 226/226, gtw_recheck 88/88. gtw_ RE-CHECK 2 STARTED.
+        Agents (11): c33i_ (R-S5 fixes), gtw_ (S1c re-check 2), ebr_ (r16 review), lga_ (group 2 re-check 2), h0i_ (H0
         run script), upt_ (unified PT v2.3), gti_ (S1a Must 4), gtb_ (S1b Musts 3-4), gtl_ (S3), gtq_ (B1), gtk_ (C1).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
