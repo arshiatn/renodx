@@ -6899,9 +6899,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 03:0x asked for exact gate-hook steps -> merged file plan_1117\settings.local.proposed.json (his 15 old rules
         unchanged + the 2 fixed H0 rules + 2 Bash spec rules (Bash-only: no chained-command risk, no check needed) +
         the 4 hook events from INSTALL); ATN copies it himself [ ] ATN. Optional: cite_since date in gates.tsv.
-        Agents (13): c33i_ (N6), lga_ (r4 re-check), ebr_ (r17 re-check), gtp_ (T04), upt_ (v2.4), h0i_ (H0 script
-        fixes), gtv_ (S3r), gtb_ (lab phases), gti_ (-ExcludePids), gtq_ + gtk_ (lab contract checks), gbc_ (C1 + C2,
-        then B1 review), gpr_ (price + web review).
+        gtq_ LAB CONTRACT 03:0x (plan_1117/gtq_lab_contract_handback.md) = DOES NOT MATCH YET: lab calls iq_frames.py
+        --lab / --out, B1 has score / assemble / synth + --json; iq_input.json lacks reference floor (>= 2 ref seeds),
+        light_anim, flip, moments format; single-frame dumps crash StillScorer (frames - 1). gtq_ 6 items -> its gbc_ fix
+        round; gtl_ 8 items (lab.py / job_schema / fake) -> gtl_'s S3r fix round; dump {folder, frames} + moments format
+        = gtl_ + grs_ (S2 brief); score_s 60 low (10-20 s / frame, ~15 min with FLIP) -> first measurement replaces it.
+        h0i_ FIXES DONE 03:0x (plan_1117/h0i_fixes_handback.md): M1 directx.hpp + an include-closure check, M2 one-sided,
+        M3 8-register step + '-' FAILs, all Shoulds + Nits; time cut 2.7 h -> ~1.3 h (GPU ~68 min: second pre dropped,
+        run 3 = ATN's paths only, reflection s8 dropped). Not run, no commit, no rebase. upr_ RE-CHECK STARTED; rebase
+        after rmt_lg2 merges, then 5 re-check items (header counts 52 / 61, UNCHANGED 24, Headers() 61, $PostRev,
+        merge-base + include check).
+        Agents (12): c33i_ (N6), lga_ (r4 re-check), ebr_ (r17 re-check), gtp_ (T04), upt_ (v2.4), upr_ (H0 script
+        re-check), gtv_ (S3r), gtb_ (lab phases), gti_ (-ExcludePids), gtk_ (lab contract check), gbc_ (C1 + C2, then
+        B1 review), gpr_ (price + web review).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
