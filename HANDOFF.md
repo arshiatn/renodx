@@ -9871,9 +9871,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         draw_recording, _loop, _sites, engine_code -DrawRecording x86 exit 0; gated x86 x3, x86 DRAW_RECORDING, amd64 exit
         0. MERGE GATE rmt_b1log: name_check 17 generic words; merged --no-ff = 8cfea9113 (3 files +265 / -18); gated
         x86 x3 + amd64 twattila running (task bcylfyqfl, -Owner coord_b1log) -> push after both exit 0.
+        MERGE GATE rmt_b1log PASSED 11:40: gated x86 x3 exit 0 + amd64 twattila exit 0 (task bcylfyqfl, scratchpad\
+        coord_b1log_x86.txt / _amd64.txt) -> pushed 8cfea9113 + e2aefc9b6 to origin atn-mods.
+        gtl_ FIXTURE TIMEOUT = FIXED IN THE FIXTURE ONLY 11:41 (plan_1117/gtl_fixture_timeout_handback.md): real keeper
+        limits unchanged (HUNG_S 30, BEAT_S 30, FIRST_BEAT_S 10); tests\test_lab_fixture.py HUNG_S 1.5 -> 6 s, BEAT_S
+        1.5 -> 8 s, FIRST_BEAT_S 5 -> 15 s (below-normal fakes starve for seconds; Windows lifts a starved thread after
+        ~4 s; HUNG_S stays under the 10 s load deadline). fake_resident.py: test option beat_gap [after_s, s].
+        test_lab_keeper.py: new test_heartbeat_gap_tolerated (4 s late beat must not stop), test_loading_not_hung
+        loads HUNG_S + 1.5 s, stopped() waits 40 s. Proof: old limits -> the new test fails with "heartbeat stopped
+        2 s ago" (= gtv_'s flake, gtl_runs14\old_gap.txt); new limits under 32 busy loops at 100 % CPU: keeper 25/25,
+        Calibrated 13/13; test_stop_heartbeat + test_stop_hung_fence still stop. Final: unit 34/34, ps1 5/5, jobs
+        32/32, keeper 25/25 (11:41:14). Backups scratchpad\gtl_backup_hang\. -> gtv_ re-checks.
         Agents (4): gtw_ (round 16 re-check), gpr_ (round 16 price re-check), t4i_ (ebr_'s scenarios into test_analyze),
-        gtl_ (fixture hang timeout); t4i_ ETL move waits for ATN (antivirus); merge-gate builds (coordinator) ->
-        push -> release_check -> H0 re-run; ff_s12 + grs_xess_guard after H0
+        gtv_ (gtl_ fixture timeout re-check); t4i_ ETL move waits for ATN (antivirus); release_check -> H0 re-run;
+        ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
