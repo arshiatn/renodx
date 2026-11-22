@@ -636,6 +636,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - g08_ next wave: Ryse / D1 / D2 add-on builds via scratch/g08_/build_g08.cmd (com ... | ?
 - D1 add-on build once at the merged tip (needs a slot; before the bin rebuild + i ... | ?
 - rve_ G06 NITs: 9a7c1e3d4 title says "not built"; the V35 fit is a local search ( ... | ?
+- stale "rr_d3d12.hpp" names: gpu_completion.hpp:66, dlaa_helper/rr_d3d12.hpp:33 ( ... | ?
+- Expeditions V35 fifth knob (Shadow Contrast or Exposure; Shadows pinned 0.3): ne ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12347,6 +12349,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] D1 add-on build once at the merged tip (needs a slot; before the bin rebuild + install).
         - [ ] rve_ G06 NITs: 9a7c1e3d4 title says "not built"; the V35 fit is a local search (the 10 %-guard five-slider
         16.0 % also meets 15 %); tests.cpp:755 names four sliders; README.md:35 wrap; n1.
+        g09_ FIXES (handbacks/g09_fixes_handback.md): ho_g09 f033cad98 (mi3 NAME export, tw_tales_unit links), 16d151f7b
+        (mi2 Expeditions README 20 % option = 2 exceptions, n1-n5), 9f652d3b6 (mi1, after ho_g19); Tales + Expeditions
+        builds clean, tw_tales_unit / v35_fit / sun_light_texel PASS (WARP). rvc_ re-check sent 22:3x ("rvc_ g09 recheck").
+        - [ ] stale "rr_d3d12.hpp" names: gpu_completion.hpp:66, dlaa_helper/rr_d3d12.hpp:33 (helper owner), SKILL.md:126
+        "deleted" (skills owner).
+        - [ ] Expeditions V35 fifth knob (Shadow Contrast or Exposure; Shadows pinned 0.3): needs coord's OK, next wave.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
