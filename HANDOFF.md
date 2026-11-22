@@ -7344,11 +7344,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         builds x86 3 games + x86 DRAW_RECORDING + amd64 exit 0. -> b13r_ B1.6 REVIEW STARTED (Opus xHigh). [ ] t4i_
         r21 (after ebr_'s r20): ebo/segments.json CachedParticleCount = Off / On BOOLEAN, check = env
         RENODX_TW_COUNT_CHECK, B1 keys ParallelEffectUpdate / ParallelEffectSpawns.
+        gtb_ SLOW 0 DONE 05:0x (plan_1117/gtb_slow0_handback.md; backups scratchpad\gtb_bak9): one shown_facts() keeps 0
+        (busy 0, lock_age_s 0, 0.0) for slow_report() and watch's stop row / SLOW report; sweep found no other filter
+        dropping a real 0; edge left: --deadline-s 0 reads as no declared deadline (price limit applies). 33 OK +
+        selftest 0; its tests spawn only python / powershell / taskkill / bash (H0 rule fine). b13r_ B1.6 review
+        started 05:07 (adb5108622f005e6e). -> gpr_ RE-CHECK of x1-x4 + slow 0 STARTED.
         Agents (7): b13r_ (c3i_ B1.6 review), ebr_ (t4i_ r20 re-check), gtp_ (K1-K3 + next round), gbc_ (gtq_ B2
-        re-check), gtv_ (grs_ S2r re-check, then gtl_ S3r S1), gtb_ (slow_report :281). Coordinator: H0 real run
-        (bhe3fx2sg, ~72 min). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_, h0i_, gpp_, gpr_
-        (waits gtb_), t4i_ (waits ebr_, then r21), gtq_ (waits gbc_), gti_, grs_ (waits gtv_), gtl_ (waits gtv_),
-        gtk_, gtw_ (waits gtp_).
+        re-check), gtv_ (grs_ S2r re-check, then gtl_ S3r S1), gpr_ (gtb_ x1-x4 + slow 0 re-check). Coordinator: H0
+        real run (bhe3fx2sg, ~72 min). Idle: bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, upr_, h0i_, gpp_,
+        gtb_ (waits gpr_), t4i_ (waits ebr_, then r21), gtq_ (waits gbc_), gti_, grs_ (waits gtv_), gtl_ (waits
+        gtv_), gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
