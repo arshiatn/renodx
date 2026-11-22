@@ -8822,9 +8822,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         h0\selftest_check15 made by mistake (stays). -> upr_ RE-CHECK STARTED (F1-F4 + the R = 2 question) before
         the real re-run.
         - [ ] ATN (cleanup list): tools\tw\h0\selftest_check15 (empty folder, h0i_ 09:1x) may be deleted.
+        ffr_ v2 RE-CHECK = OK WITH FIXES 09:1x (plan_1117/designs/ffr_first_frame_review.md "## v2 re-check" +
+        ffr_v2_recheck_handback.md; vs atn-mods 3ab42c59a): M2-M5 + every Should / nit closed; 2 new small MUSTS:
+        V1 the present-hook condition `(existing) || Opening()` is wrong - the existing term starts with
+        !Upscales(method) (anti_aliasing.hpp:1532) -> Release(true) at every present while DLAA is selected,
+        orphans the opening, a second waited open + 1-3 s freeze -> `!Upscales(method) && Format() == UNKNOWN &&
+        ((width != 0 && ready) || Opening())` or a separate poll-only call; V2 the switch must restore today in
+        full (may_open = false everywhere: 20 s first block + latch). SHOULD: V3 one PollOpening() for Request /
+        Prepare / hook (Prepare clears owe_empty first); V4 harness wrapper on every request site (Evaluate
+        312 / 487 / 3508 / 3558 / 3647, TraceBounce 865 / 1224 / 3388) + bridge last_open_ms; V5 corrects v1 M4: H0
+        runs ONE prebuilt harness for both sides (h0_gpu_runs.ps1:84-85 / 356 / 456) -> rule = one harness exe per
+        A/B + any harness built with step 4 has step 3 (step 3 first covers it). Nits V6 FG hide in
+        frame_generation.hpp; V7 FSR / XeSS used time at main.cpp:1214 after release_idle 1120 (unchanged), 921 is
+        the removed-device line; V8 the deadline latch clears `opening`; V9 overlay "still opening" needs an
+        Opening() check (graphics_page.hpp:506). STEPS 1 + 2 SAFE NOW, alone: step 1 log only real successful
+        opens or dedupe like reconstruction_refusal (open_reconstruction retries every second while RR can't
+        open, main.cpp:1093-1099, e.g. Pharaoh without nvngx_dlssd.dll), skip scene_off / replayable, FSR / XeSS FG
+        = "started", one per-set line with the first request's total + scene Initialize / Open split, tell the lab
+        owner; step 2 S3 safe (a release due during a > 10 s request waits one request / idle second). Both
+        helper-only; rebase across the gpu_s2 merge. Tuning: keep 180 s unless a cold open > 60 s (then 3x
+        slowest, never < 120); first block never > 5 s (Windows' hung-window mark), 3 s only if warm firsts all <
+        2 s; 20 s else. FG hide: yes. Switch name RENODX_TW_OPEN_LATCH=1 (bridge owner names it). -> grs_ v3
+        (V1-V9) STARTED; then steps 1 + 2 implementation.
         Agents (6): upr_ (h0i_ F1-F4 re-check), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gpr_
-        (gtb_ slot-wait / floor / R12-1 + load proposal check), ffr_ (grs_ first-frame v2 re-check), gtw_
-        (release_check.ps1 review), t4i_ (T5 manifest rows + B1 risks)
+        (gtb_ slot-wait / floor / R12-1 + load proposal check), grs_ (first-frame v3), gtw_ (release_check.ps1
+        review), t4i_ (T5 manifest rows + B1 risks)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
