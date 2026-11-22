@@ -8420,6 +8420,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         passes, reason unconfirmed).
         - [ ] t4i_ (low): add -B in run_all.ps1 line 9 + test_analyze.py run_analyze, after ebr_'s P4 check (one
             writer on test_analyze.py), with the T5 work (t4i_ 08:2x).
+        t4i_ .PYC REASON 08:3x (render_mt/reports/t4i_pyc_reason_handback.md, read only): ebo_analyze.py l.50 and
+        ebo_mapcmp.py l.34 set sys.dont_write_bytecode before their imports (why the mapcmp check passes); the
+        gap = test_analyze.py loads ebo_analyze via importlib spec_from_file_location + exec_module (l.8-10), which
+        writes ebo_analyze's .pyc before its l.50 runs. Fix = run_all.ps1 l.9 `python -I -B` (run_analyze -B =
+        extra safety only).
         Agents (8): upr_ (h0i_ H0 analysis re-check), gtv_ (v1.2 config hash review, lab + builder), gtp_ (round 12:
         hg1 + Section 8 + kind() + target spelling), gtb_ (slot-wait test + load), ebr_ (t4i_ P4 quick check),
         b13r_ (c3i_ rmt_b1rt review)
