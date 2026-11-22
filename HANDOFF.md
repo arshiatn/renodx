@@ -510,6 +510,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - g18_ Opus xHigh review (queued) -> fixes -> merge after render_mt's end batch; t ... | ?
 - test/tw_cluster_rewrite (owner?): a Map-marks-nothing case + its run.ps1 builds ... | ?
 - Tales alpha factor: trace check first (masked materials with cb1[N].c != 1); if ... | ?
+- ATN-approved delete later: g19_'s source copies testbin\scratch\g19_\base (74 MB ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11597,8 +11598,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         __host_sss_setup + 6 wrapper renames (Tales, Expeditions, D2) -> g09_ told to cherry-pick first (20:3x); g07_ +
         g14_ get it with their review fixes (g07_: D2 screen_space.hpp:43-44, README.md:271-272, wrapper line 10; g14_:
         SKILL.md line 9 = host_sss_depth / host_sss_setup).
-        G22 STARTED 20:3x (g22_ a02d241f7f1356663): ALL 22 GROUPS STARTED. Reviews queued at the cap: rva_ = g12_ + g11_ +
-        g08_ (one Opus xHigh agent, three review files), then rvb_ = g07_ + g18_ + g19_.
+        G22 STARTED 20:3x (g22_ a02d241f7f1356663): ALL 22 GROUPS STARTED. rva_ STARTED 20:33 (a79f9e19bc8bf2c6d, Opus
+        xHigh, read only): g12_ + g11_ + g08_ reviews (handoff_plan/reviews/rva_g1N_review.md). rvb_ = g19_ + g18_ + g07_
+        QUEUED at the cap (prompt: review in that order; G07's 2af46f920 needs ho_g19 d655c6ddc).
+        g19_ DONE 20:3x (handoff_plan/handbacks/g19_done_handback.md): ho_g19 unchanged; NEW ho_g19_ryse from ho_g08
+        90b4fd6d7: be0b3c07b (cherry-pick of a5f8608fb), e0abc7b65 (AssignPages treats "SettingsAdvanced" like
+        "SettingsMode"; no TW add-on has the key), 8748f72ae (Ryse on the shared pages + SetTints, About gold / AA purple
+        after, 5 Notes; Auto Thickness rows on, no "(Experimental)"; decision 9 Reset Rays 4 -> 1, Range 10 -> 50, Res
+        Half -> Full, Bounces 2 -> 1; own SettingsRevision 1 clears ssao / light_bounce auto thickness + LOD-bias trilinear
+        from the 3 presets; README New: lines). Ryse page dump vs ho_g08: only those rows differ; Attila + Shogun 2 dump =
+        base. No CMake Ryse build (the dump links addon.cpp with clang-cl). MERGE ORDER: ho_g08 -> ho_g19 -> ho_g19_ryse.
+        - [ ] ATN-approved delete later: g19_'s source copies testbin\scratch\g19_\base (74 MB), base_ry (74 MB),
+        base_ry.tar (66 MB) (not reference runs; on ATN's yes, with the delete-list care).
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
