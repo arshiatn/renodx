@@ -368,6 +368,8 @@ void Report(const char* name, const std::vector<Float3>& sdr, const std::vector<
   const float sdr_top = Luminance(sdr[(HEIGHT - 1) * WIDTH]) * NITS;
   CHECK(sdr_rises && v35_rises, "%s: the grey ramp falls somewhere (SDR %d, PsychoV35 %d)", name, sdr_rises, v35_rises);
   CHECK(sdr_top > 150.f, "%s: SDR's top %g nits (the ramp misses the bands)", name, sdr_top);
+  const float sdr_bottom = Luminance(sdr[0]) * NITS;
+  CHECK(sdr_bottom < 0.05f, "%s: SDR's bottom %g nits (the 0.05 - 1 nits band is not fully sampled)", name, sdr_bottom);
   const Comparison c = Compare(sdr, v35);
   std::printf("%s: PsychoV35 over Rendering Mode SDR below white, 1000 / 203 nits\n"
               "   grey where SDR is 0.05 - 1 nits x%.3f..x%.3f, 1 - 15 nits x%.3f..x%.3f, 15 - 100 nits x%.3f..x%.3f\n"

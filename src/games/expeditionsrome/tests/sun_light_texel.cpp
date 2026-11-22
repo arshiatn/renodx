@@ -8,7 +8,8 @@
  * the screen shadow mask's shadow (t8: x squared x z squared), as rt_core.hpp WriteSun states. Specular is off (the
  * light's SpecularScale c5.w 0; diffuse is what texel 2 stands for), source radius and length 0, no distance fade, one
  * shadowed bit (no contact shadows). Controls: texel 2 without the 1 / pi, and the albedo without (1 - metallic), must
- * miss.
+ * miss (no control for the shadow term). The texel's formula is re-stated here from ray_tracing.hpp OnSunDraw, not
+ * called: a later change there does not fail this test, so change both together.
  * Built and run by test/tw_expeditions_unit/run.ps1 (after the expeditionsrome target; its argument: the add-on's
  * source folder, the shader dump under the repository's bin).
  */

@@ -26,7 +26,9 @@ Upscaling must be on below 100%. The Temporal Upscaling-off path is not enabled.
   (15 - 100); colour x0.81 (1 - 30 nits), x1.38 (30 - 150). No fit within 5 % keeps the highlights within 15 % at
   1000 / 203 (the shared rule; 10 %: 282 % off, 15 %: 82 %, both at the Shadows bound 0.3). Only at 20 % does one fit
   (1.47 / 0.43 / 0.87 / 0.73): grey x0.96..x1.00 / x1.00..x1.04 / x0.99..x1.10, colour x1.02 / x1.23, highlights 19.8 %
-  at 1000 / 203, 29.1 % at 2500 / 275. A question for ATN; the HDR (Extended) control is 0.04 % off.
+  at 1000 / 203, 29.1 % at 2500 / 275. Shipping it would take two exceptions: the 15 % guard and the recipe's 20 % bound
+  at 2500 / 275. With Shadows pinned at 0.3, the next step is a fifth knob (Shadow Contrast or Exposure), with the
+  coordinator's OK. A question for ATN; the HDR (Extended) control is 0.04 % off.
 - Unchanged (ATN 11-22): "Brightness 40" stays the in-game line, ray-traced shadows stay min(the game's map, the rays),
   the ten TAA hooks stay.
 

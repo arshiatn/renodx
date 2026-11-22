@@ -28,6 +28,7 @@
 
 #include "../../utils/directx.hpp"
 #include "../twattila/dxbc.hpp"
+#include "../../utils/resource.hpp"
 #include "../../utils/state.hpp"
 
 // Debug (Advanced button, from the Shogun 2 DLSS addon): every draw, dispatch, copy and render target clear of one

@@ -54,7 +54,7 @@ struct Rows {
   float ssao_quality = 0.f;
   float ssao_directions = 0.f;
   float ssao_resolution = 0.f;
-  float ssao_auto_thickness = 0.f;
+  float ssao_auto_thickness = 1.f;
   float ssao_exact_depth = 0.f;  // Divinity 2's GT-VBAO (ao_vbao): 1 Exact Depth Samples
   float light_bounce_strength = 0.f;
   float light_bounce_radius = 20.f;
@@ -66,7 +66,7 @@ struct Rows {
   float light_bounce_multi_bounce = 0.f;
   float light_bounce_checkerboard = 1.f;
   float light_bounce_backface = 0.f;
-  float light_bounce_auto_thickness = 0.f;
+  float light_bounce_auto_thickness = 1.f;
 };
 
 // Global Illumination's GT-VBGI rows (lighting_settings::Append's, with its presets) onto `settings`, bound to `rows`;

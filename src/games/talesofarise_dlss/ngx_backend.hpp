@@ -96,7 +96,8 @@ enum class Mode : uint8_t {
 };
 
 // DLSS Ray Reconstruction's guides (the render size; world-space normals, read through `world_to_view`): with them
-// rr_d3d12.hpp runs NVIDIA's denoising upscaler (nvngx_dlssd.dll next to nvngx_dlss.dll) in place of Super Resolution.
+// NVIDIA's denoising upscaler (nvngx_dlssd.dll next to nvngx_dlss.dll) ran in place of Super Resolution through
+// rr_d3d12.hpp (deleted 2026-11-22: Ray Reconstruction goes through the TW helper now).
 struct RayReconstruction {
   ID3D11Resource* diffuse_albedo = nullptr;
   ID3D11Resource* specular_albedo = nullptr;
