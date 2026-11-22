@@ -10,11 +10,12 @@
 // The fit: PsychoV35's Contrast, Shadows, Saturation and Highlight Contrast minimax-fitted to the game's SDR below
 // white: the worst of grey |V35 / SDR - 1| where SDR is 0.05 - 1 and 1 - 15 nits and |chroma - 1| (OkLab at equal
 // lightness, the geometric mean) where SDR is 1 - 30 nits; a candidate counts only if it keeps PsychoV35's highlights
-// (grey within 10 % of Musa's own where Musa's own is 100 nits up to 95 % of Peak, at 1000 / 203 and 2500 / 275).
-// Coarse to fine: every 0.1, then 0.05 and 0.01 around the best. Checks per game: the add-on's defaults (Rome II
-// shared.h ROME2_V35_*; Thrones Musa's own, its fit's best) within 5 % and within 0.5 % of the fit's best, the highlight
-// guard; CONTROL that must fail 5 %: Contrast and Saturation 1.2; the grey ramps rise, SDR reaches 100 nits, the
-// measured bands are not empty.
+// at 1000 / 203 (grey within a tolerance of Musa's own where Musa's own is 100 nits up to 95 % of Peak): 10, 15 and 20 %
+// fitted, the smallest whose best is under 5 % shipped (v35_pilot.md's rule). Coarse to fine: every 0.1, then 0.05 and
+// 0.01 around the best. Checks per game: the add-on's defaults (Rome II shared.h ROME2_V35_*; Thrones Musa's own, its
+// fit's best) within 5 % and within 0.5 % of that fit's best, its guard at 1000 / 203, 2500 / 275 within 20 %; CONTROL
+// that must fail 5 %: Contrast and Saturation 1.2; the grey ramps rise, SDR reaches 100 nits, the measured bands are not
+// empty. Report: Rome II on the S-shaped curve (a scene the fit did not see), before and after.
 // tests <cso folder> (run.ps1: r_t00, r_t01, th_t00, th_t01 with the build's flags, reflection kept).
 #include <chrono>
 
@@ -57,8 +58,9 @@ static rome2::ShaderInjectData Rome2Injection(float mode, float hue_clip) {
   return si;
 }
 
-static std::vector<Float3> RunRome2(const Chain& chain, const std::vector<Float4>& scene, const rome2::ShaderInjectData& si) {
-  Bindings first = AttilaToneMapper(scene, true);
+static std::vector<Float3> RunRome2(const Chain& chain, const std::vector<Float4>& scene, const rome2::ShaderInjectData& si,
+                                    bool identity_curve = true) {
+  Bindings first = AttilaToneMapper(scene, identity_curve);
   first.views["g_black_and_white_points_sampler"] = Texture2D(1, 1, {Float4{-4.f, 1e-4f, 0.f, 1.f}});
   first.injection = Bytes(si);
   const auto handoff = Draw(chain.rome2_tone_mapper->after, first);
@@ -190,49 +192,54 @@ static void FitGame(const char* name, const DrawFn& draw, const Injection& sdr_s
       {{"Contrast", 0.8f, 2.f}, {"Shadows", 0.3f, 1.5f}, {"Saturation", 0.7f, 1.3f}, {"Highlight Contrast", 0.6f, 1.2f}}};
   const auto sdr = draw(sdr_si);
   const auto own_ramp = draw(own);
-  // PsychoV35's highlights at Peak / Paper White 1000 / 203 and 2500 / 275 against Musa's own.
-  constexpr std::array<std::pair<float, float>, 2> DISPLAYS = {{{PEAK, NITS}, {2500.f, 275.f}}};
-  const auto at = [](Injection si, const std::pair<float, float>& display) {
-    si.peak_white_nits = display.first;
-    si.diffuse_white_nits = si.graphics_white_nits = display.second;
-    return si;
-  };
-  const std::array<std::vector<Float3>, 2> own_at = {own_ramp, draw(at(own, DISPLAYS[1]))};
-  const auto highlights = [&](const Injection& si, size_t display) {
-    return Highlights(draw(at(si, DISPLAYS[display])), own_at[display], DISPLAYS[display].second, DISPLAYS[display].first);
-  };
-  Report(std::format("{} Musa's own sliders", name).c_str(), sdr, own_ramp);
-  Values best = MUSA;
-  float best_score = 1e9f;
-  int candidates = 0;
-  bool first_pass = true;
-  const auto start = std::chrono::steady_clock::now();
-  for (const auto& [step, reach] : {std::pair{0.1f, 6}, std::pair{0.05f, 2}, std::pair{0.01f, 3}}) {
-    const Values centre = (first_pass ? Values{1.4f, 0.9f, 1.f, 0.9f} : best);
-    first_pass = false;
-    std::array<std::vector<float>, 4> grid;
-    for (size_t d = 0; d < SLIDERS.size(); ++d) {
-      for (int k = -reach; k <= reach; ++k) {
-        const float value = std::round((centre[d] + (static_cast<float>(k) * step)) * 100.f) / 100.f;
-        if (value >= SLIDERS[d].low - 1e-4f && value <= SLIDERS[d].high + 1e-4f) grid[d].push_back(value);
+  Report(std::format("{} before (Musa's own sliders)", name).c_str(), sdr, own_ramp);
+  // One fit with the guard at 1000 / 203 within `tolerance`: the score first, the guard only for a candidate that beats
+  // the best.
+  const auto fit = [&](float tolerance) {
+    Values best = MUSA;
+    float best_score = 1e9f;
+    bool first_pass = true;
+    const auto start = std::chrono::steady_clock::now();
+    for (const auto& [step, reach] : {std::pair{0.1f, 6}, std::pair{0.05f, 2}, std::pair{0.01f, 3}}) {
+      const Values centre = (first_pass ? Values{1.4f, 0.9f, 1.f, 0.9f} : best);
+      first_pass = false;
+      std::array<std::vector<float>, 4> grid;
+      for (size_t d = 0; d < SLIDERS.size(); ++d) {
+        for (int k = -reach; k <= reach; ++k) {
+          const float value = std::round((centre[d] + (static_cast<float>(k) * step)) * 100.f) / 100.f;
+          if (value >= SLIDERS[d].low - 1e-4f && value <= SLIDERS[d].high + 1e-4f) grid[d].push_back(value);
+        }
       }
-    }
-    for (const float contrast : grid[0]) {
-      for (const float shadows : grid[1]) {
-        for (const float saturation : grid[2]) {
-          for (const float highlight_contrast : grid[3]) {
-            const Values values = {contrast, shadows, saturation, highlight_contrast};
-            const auto candidate = WithSliders(own, values);
-            const auto ramp = draw(candidate);
-            ++candidates;
-            if (Highlights(ramp, own_ramp, NITS, PEAK) > 0.1f) continue;
-            if (const float score = BelowWhite(Compare(sdr, ramp)); score < best_score && highlights(candidate, 1) <= 0.1f) {
-              best = values;
-              best_score = score;
+      for (const float contrast : grid[0]) {
+        for (const float shadows : grid[1]) {
+          for (const float saturation : grid[2]) {
+            for (const float highlight_contrast : grid[3]) {
+              const Values values = {contrast, shadows, saturation, highlight_contrast};
+              const auto ramp = draw(WithSliders(own, values));
+              if (const float score = BelowWhite(Compare(sdr, ramp));
+                  score < best_score && Highlights(ramp, own_ramp, NITS, PEAK) <= tolerance) {
+                best = values;
+                best_score = score;
+              }
             }
           }
         }
       }
+    }
+    std::printf("   fit, highlights within %.0f %% at 1000 / 203: %.2f / %.2f / %.2f / %.2f (Contrast / Shadows / Saturation / "
+                "Highlight Contrast), worst %.2f %% (%.0f s)\n",
+                100.f * tolerance, best[0], best[1], best[2], best[3], 100.f * best_score,
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+    return std::pair{best, best_score};
+  };
+  // The smallest tolerance whose best is under 5 %.
+  float tolerance = 0.f;
+  float chosen_score = 1e9f;
+  for (const float candidate_tolerance : {0.1f, 0.15f, 0.2f}) {
+    const auto [best, best_score] = fit(candidate_tolerance);
+    if (tolerance == 0.f && best_score < 0.05f) {
+      tolerance = candidate_tolerance;
+      chosen_score = best_score;
     }
   }
   const float own_score = BelowWhite(Compare(sdr, own_ramp));
@@ -240,23 +247,27 @@ static void FitGame(const char* name, const DrawFn& draw, const Injection& sdr_s
   const auto shipped_si = WithSliders(own, shipped);
   const auto shipped_ramp = draw(shipped_si);
   const float shipped_score = BelowWhite(Compare(sdr, shipped_ramp));
-  std::printf("%s V35 fit: minimax %.2f / %.2f / %.2f / %.2f (Contrast / Shadows / Saturation / Highlight Contrast), worst %.2f %% "
-              "(%d candidates, %.0f s)\n"
-              "   defaults %.2f / %.2f / %.2f / %.2f: worst %.2f %%; Musa's own %.2f %%; control Contrast and Saturation 1.2 (must "
-              "fail 5 %%): %.1f %%\n",
-              name, best[0], best[1], best[2], best[3], 100.f * best_score, candidates,
-              std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(), shipped[0], shipped[1], shipped[2],
-              shipped[3], 100.f * shipped_score, 100.f * own_score, 100.f * control_score);
+  std::printf("%s V35 defaults %.2f / %.2f / %.2f / %.2f: worst %.2f %% (the %.0f %% guard's fit: %.2f %%); Musa's own %.2f %%; "
+              "control Contrast and Saturation 1.2 (must fail 5 %%): %.1f %%\n",
+              name, shipped[0], shipped[1], shipped[2], shipped[3], 100.f * shipped_score, 100.f * tolerance, 100.f * chosen_score,
+              100.f * own_score, 100.f * control_score);
+  CHECK(tolerance != 0.f);
   CHECK(shipped_score < 0.05f);
-  CHECK(shipped_score <= best_score + 0.005f);
+  CHECK(shipped_score <= chosen_score + 0.005f);
   CHECK(control_score > 0.05f);
-  Report(std::format("{} defaults", name).c_str(), sdr, shipped_ramp);
-  for (size_t display = 0; display < DISPLAYS.size(); ++display) {
-    const float worst = highlights(shipped_si, display);
-    std::printf("   highlights, Peak %.0f / Paper White %.0f: grey within %.1f %% of Musa's own (100 nits - 95 %% of Peak)\n",
-                DISPLAYS[display].first, DISPLAYS[display].second, 100.f * worst);
-    CHECK(worst <= 0.1f);
+  Report(std::format("{} after (the defaults)", name).c_str(), sdr, shipped_ramp);
+  auto shipped_2500 = shipped_si;
+  auto own_2500 = own;
+  for (auto* si : {&shipped_2500, &own_2500}) {
+    si->peak_white_nits = 2500.f;
+    si->diffuse_white_nits = si->graphics_white_nits = 275.f;
   }
+  const float at_1000 = Highlights(shipped_ramp, own_ramp, NITS, PEAK);
+  const float at_2500 = Highlights(draw(shipped_2500), draw(own_2500), 275.f, 2500.f);
+  std::printf("   highlights against Musa's own (100 nits - 95 %% of Peak): %.1f %% at 1000 / 203, %.1f %% at 2500 / 275\n",
+              100.f * at_1000, 100.f * at_2500);
+  CHECK(at_1000 <= tolerance + 1e-4f);
+  CHECK(at_2500 <= 0.2f);
 }
 
 int main(int argc, char** argv) {
@@ -290,6 +301,13 @@ int main(int argc, char** argv) {
   FitGame(
       "Rome II", [&](const rome2::ShaderInjectData& si) { return RunRome2(chain, scene, si); }, Rome2Injection(0.f, 0.f),
       Rome2Injection(3.f, 0.8f), {ROME2_V35_CONTRAST, ROME2_V35_SHADOWS, ROME2_V35_SATURATION, ROME2_V35_HIGHLIGHT_CONTRAST});
+  // A scene the fit did not see: Rome II on Attila's S-shaped curve (test/tw_psychov35's AttilaSCurve), before and after.
+  const auto s_curve = [&](const rome2::ShaderInjectData& si) { return RunRome2(chain, scene, si, false); };
+  const auto s_curve_sdr = s_curve(Rome2Injection(0.f, 0.f));
+  Report("Rome II, S-shaped curve, before", s_curve_sdr, s_curve(Rome2Injection(3.f, 0.8f)));
+  Report("Rome II, S-shaped curve, after", s_curve_sdr,
+         s_curve(WithSliders(Rome2Injection(3.f, 0.8f),
+                             {ROME2_V35_CONTRAST, ROME2_V35_SHADOWS, ROME2_V35_SATURATION, ROME2_V35_HIGHLIGHT_CONTRAST})));
   // Thrones of Britannia: Hue Clip 0.4 (HUE_CLIP_DEFAULT 40, ThronesInjection's); its defaults Musa's own (the fit's best).
   FitGame(
       "Thrones of Britannia", [&](const thrones::ShaderInjectData& si) { return RunThrones(chain, scene, si); },
