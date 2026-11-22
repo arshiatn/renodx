@@ -12,9 +12,8 @@
 - Changed: Smooth Sail Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
 - Changed (ATN): **Hue Clip 70** (was 80: the fire's hue error 0.82 degrees against 1.99, `test/tw_psychov35`) and
   PsychoV31's **Highlight Hue Shift 0.04** (was 0.10), in the defaults and Reset. Saved values stay until a preset.
-- Changed: **Ray-Traced Water Reflections also leave out the game's height pyramid** (4 more passes of its
-  screen-space reflections, decided one pass earlier with the last frame's light): the same picture, a little faster.
-  The first frame, after a load and under MSAA as before.
+- Written, not on yet: Ray-Traced Water Reflections deciding one pass earlier (with the last frame's light) to also
+  leave out the game's height pyramid (4 more passes). Off until its offline tests pass; nothing changes in game.
 - Changed (ATN): **the game's baked far shadow map is replaced by the rays too** with ray-traced sun shadows (before,
   it multiplied with them beyond the per-frame maps' range): one sun shadow method, far terrain and buildings
   shadowed by the rays alone.

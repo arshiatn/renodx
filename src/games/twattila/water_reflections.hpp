@@ -63,6 +63,9 @@ struct Shaders {
 constexpr std::array<uint32_t, 3> HEIGHTS = {0x6F8F5A27, 0xFD16D491, 0xEA2A706A};
 constexpr UINT HEIGHTS_DEPTH_SLOT = 1;  // heights_part1's depth and its multisampled view (backward_ssr's)
 constexpr int EARLY_MISMATCHES = 3;     // in a row: the decision at heights_part1 off for the session
+// The decision at heights_part1 hooked: off until its CPU decision test and its WARP bit-equal test pass (rve_ M1); off,
+// backward_ssr decides every frame as before and no light is kept.
+constexpr bool EARLY_DECISION = false;
 
 namespace internal {
 
@@ -177,11 +180,14 @@ inline bool OnHeightsPart1(reshade::api::command_list* cmd_list) {
   if (!light) return true;
   std::array<ID3D11ShaderResourceView*, 2> depth = {};
   native->CSGetShaderResources(HEIGHTS_DEPTH_SLOT, static_cast<UINT>(depth.size()), depth.data());
-  Microsoft::WRL::ComPtr<ID3D11Texture2D> depth_texture, light_texture;
-  D3D11_TEXTURE2D_DESC depth_desc = {}, light_desc = {};
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> depth_texture;
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> light_texture;
+  D3D11_TEXTURE2D_DESC depth_desc = {};
+  D3D11_TEXTURE2D_DESC light_desc = {};
   ID3D11Resource* depth_resource = TextureOf(depth[0], &depth_texture, &depth_desc);
   ID3D11Resource* light_resource = TextureOf(light.Get(), &light_texture, &light_desc);
-  Microsoft::WRL::ComPtr<ID3D11Device> device, light_device;
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  Microsoft::WRL::ComPtr<ID3D11Device> light_device;
   native->GetDevice(device.GetAddressOf());
   light->GetDevice(light_device.GetAddressOf());
   std::array<ID3D11ShaderResourceView*, 2> views = {};
@@ -215,8 +221,10 @@ inline bool OnBackwardSsr(reshade::api::command_list* cmd_list) {
   std::array<ID3D11ShaderResourceView*, 4> inputs = {};
   native->CSGetShaderResources(shaders.inputs_slot, static_cast<UINT>(inputs.size()), inputs.data());
   const bool multisampled = Multisampled(inputs);
-  Microsoft::WRL::ComPtr<ID3D11Texture2D> depth_texture, light_texture;
-  D3D11_TEXTURE2D_DESC depth_desc = {}, light_desc = {};
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> depth_texture;
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> light_texture;
+  D3D11_TEXTURE2D_DESC depth_desc = {};
+  D3D11_TEXTURE2D_DESC light_desc = {};
   ID3D11Resource* depth_resource = TextureOf(inputs[0], &depth_texture, &depth_desc);
   ID3D11Resource* light_resource = TextureOf(inputs[2], &light_texture, &light_desc);
   auto& state = water_reflections;
@@ -224,8 +232,9 @@ inline bool OnBackwardSsr(reshade::api::command_list* cmd_list) {
   {
     const std::unique_lock lock(state.mutex);
     early = state.early_frame == frame && water_rays.load(std::memory_order_relaxed);
-    state.light = multisampled ? nullptr : inputs[2];
-    state.light_frame = multisampled ? UINT64_MAX : frame;
+    const bool keep = EARLY_DECISION && !multisampled;
+    state.light = keep ? inputs[2] : nullptr;
+    state.light_frame = keep ? frame : UINT64_MAX;
     if (early) {
       // The pyramid is left out: the game's march cannot run this frame whatever it binds.
       if (depth_resource == state.early_depth && light_resource == state.early_light) {
@@ -392,18 +401,23 @@ inline void SetRows(std::vector<renodx::utils::settings::Setting*>* settings, co
 inline void Install(renodx::mods::shader::CustomShaders* custom_shaders, const Shaders& game_shaders, const rt_scene::Sliders* sliders) {
   internal::shaders = game_shaders;
   internal::sliders = sliders;
-  (*custom_shaders)[game_shaders.heights_part1] = {.crc32 = game_shaders.heights_part1, .on_draw = &internal::OnHeightsPart1};
   (*custom_shaders)[game_shaders.backward_ssr] = {.crc32 = game_shaders.backward_ssr, .on_draw = &internal::OnBackwardSsr};
-  for (const auto& hashes : {HEIGHTS, game_shaders.chain}) {
+  const auto left_out = [custom_shaders](std::span<const uint32_t> hashes) {
     for (const uint32_t shader_hash : hashes) {
       (*custom_shaders)[shader_hash] = {.crc32 = shader_hash, .on_draw = [](auto*) { return !internal::water_rays.load(std::memory_order_relaxed); }};
     }
+  };
+  left_out(game_shaders.chain);
+  if constexpr (EARLY_DECISION) {
+    (*custom_shaders)[game_shaders.heights_part1] = {.crc32 = game_shaders.heights_part1, .on_draw = &internal::OnHeightsPart1};
+    left_out(HEIGHTS);
   }
   reshade::register_event<reshade::addon_event::destroy_device>(internal::OnDestroyWaterReflectionsDevice);
   renodx::utils::command_action::Register(
       internal::OnWaterApplyDraw, {.shader_hash = game_shaders.apply, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
-  renodx::utils::log::i(std::format("[Total War] Ray-Traced Water Reflections: hooks applied ({:08X}, {:08X}, {:08X}, {:08X}, {:08X}, {:08X}).",
-                                    game_shaders.heights_part1, game_shaders.backward_ssr, game_shaders.chain[0], game_shaders.chain[1], game_shaders.chain[2], game_shaders.apply));
+  renodx::utils::log::i(std::format("[Total War] Ray-Traced Water Reflections: hooks applied ({:08X}, {:08X}, {:08X}, {:08X}, {:08X}); heights_part1 {:08X} {}.",
+                                    game_shaders.backward_ssr, game_shaders.chain[0], game_shaders.chain[1], game_shaders.chain[2], game_shaders.apply,
+                                    game_shaders.heights_part1, EARLY_DECISION ? "hooked" : "not hooked"));
 }
 
 inline void Uninstall() {
