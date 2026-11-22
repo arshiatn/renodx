@@ -1133,6 +1133,7 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
     ResetScheduler();
     ei::spawns_row = true;
     CHECK(trace_open(60, 4));
+    eu::Update(true, true);  // a present inside the window (the add-on's Update runs at every present): the window is the one whose headroom is printed
     Shape shape;
     shape.ops = "LLENMS";
     shape.max_ops = 5;
@@ -1155,6 +1156,29 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
                 "(the buffer, its count, the random state, the pool's words): %u spawns merged, %u draws deferred, no overflow, no tag leak\n",
                 static_cast<unsigned long long>(cases - before), counter(ei::Counter::STAGED_SPAWNS), counter(ei::Counter::DEFERRED_DRAWS));
     CHECK(trace_close(4));
+    // The window's stack headroom is printed once, by the first present after it: positive, and under the stack's whole reservation.
+    {
+      ei::written = eu::ALL_SITES;
+      {
+        const std::unique_lock lock(log_mutex);
+        log_lines.clear();
+      }
+      eu::Update(true);
+      eu::Update(true);
+      ei::written = 0;
+      size_t printed = 0;
+      uint32_t kilobytes = 0;
+      const std::unique_lock lock(log_mutex);
+      for (const std::string& line : log_lines) {
+        const size_t at = line.find("stack headroom ");
+        if (at != std::string::npos && line.find("Parallel Effect Update (trace window") != std::string::npos) {
+          ++printed;
+          kilobytes = static_cast<uint32_t>(std::stoul(line.substr(at + 15)));
+        }
+      }
+      CHECK(printed == 1 && kilobytes > 0 && kilobytes < 1024 * 1024);
+      std::printf("26f. the trace window's stack headroom: one line, %u KB\n", kilobytes);
+    }
 
     // The buffer fills while units run ahead: the overflow is counted and the merged buffer is the serial one (its first records).
     for (const bool gpu : {false, true}) {

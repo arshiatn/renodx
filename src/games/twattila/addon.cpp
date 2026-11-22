@@ -2198,7 +2198,7 @@ void ConfigureAddon() {
           .default_value = 0.f,
           .label = "Parallel Effect Spawns (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "Lets effect particles start on worker threads too. Same picture unless the particle budget fills.\n"
+          .tooltip = "Lets effect particles start on worker threads too. Same picture unless the game's particle limit is reached.\n"
                      "Needs Parallel Effect Update.",
           .labels = {"Off", "On"},
           .is_enabled = [] { return effect_update_row != 0.f; },
