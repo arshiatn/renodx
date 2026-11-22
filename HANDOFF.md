@@ -505,6 +505,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - b3t_: M7 = S3 Should 1 (animation_rows.inc tests) (sent 20:28). | ?
 - g11_ Opus xHigh review (queued at the cap) -> fixes -> coord lands the land list ... | ?
 - later: commit the handwritten licenses/NVIDIA_NOTICE.txt (only in the old player ... | ?
+- gtl_ (sent 20:3x): helper_du_rec2 RECORDER build from e7eff346c (new folder) + s ... | ?
+- grs_ (optional, later): gtv_'s L2 "# lost" row / StopUses false on a foreign vta ... | ?
+- g18_ Opus xHigh review (queued) -> fixes -> merge after render_mt's end batch; t ... | ?
+- test/tw_cluster_rewrite (owner?): a Map-marks-nothing case + its run.ps1 builds ... | ?
+- Tales alpha factor: trace check first (masked materials with cb1[N].c != 1); if ... | ?
 - gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm nam ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -11565,6 +11570,35 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] later: commit the handwritten licenses/NVIDIA_NOTICE.txt (only in the old player zip today) to
         docs/licenses/ + add it to player_zip's EXTRA; optional: Streamline licence paths into ngx_dlls.py for tw_install.py.
         G22 still queued (20:30 retry failed at the cap).
+        gtv_ USES DIAG 20:3x (plan_1117/gtv_uses_diag_handback.md; gtv_iq_review.md:1284): GO. Cause confirmed against
+        P2's uses.tsv (3 list starts in frame 0, spans + 46 external rows only, 0 use rows, no .dxil); the fix re-installs
+        only when the pointer is the original again (no double install, nothing after a failed Reset), thread-safe (one
+        thread per list), tear-down OK. COORD LANDED the staged file as e7eff346c (atn-mods, pushed; 7+ / 1-, CRLF, diff
+        --check clean). Findings: S1 the smoke + stage3 guard need use rows in EVERY logged frame (Execute was never in
+        the WARP test); L1 the .diff had an old comment (landed from the file); L2 (grs_, optional) a "# lost" row if a
+        non-original vtable comes back; L3 save the WARP exes' console output.
+        - [ ] gtl_ (sent 20:3x): helper_du_rec2 RECORDER build from e7eff346c (new folder) + s3c_jobs.py --part2 + S1 guard
+        + suites + gtc_'s sheet + L3 -> hand-back "gtl_ rec2 ready" -> coord: BUILD WINDOW CLOSED -> gtc_ smoke + session 1.
+        - [ ] grs_ (optional, later): gtv_'s L2 "# lost" row / StopUses false on a foreign vtable.
+        g18_ PART 20:3x (handoff_plan/handbacks/g18_part_handback.md): ho_g18 ec3160d13 (one-shot OnIndexWrite log per
+        kind incl. a Map hook that only logs while Log Details is on) + 6018ae180 (Camera note, ALPK nits N1-N3; L1 not
+        added: nothing reads it, the invariant is in a comment) + db7764312 (Host::sky + rt_scene::WriteSky; no host yet).
+        Box 11895's WriteTriangle warning was already in fac66430e (rur2_ 11-16). Gated builds: x86 build32 twattila + 10
+        amd64 add-ons exit 0; tw_native_context x86 + amd64 PASS (light pick bit-exact). Not built: WH1, WH3, Troy,
+        Pharaoh, Rome II, Thrones. Item 4 (Tales alpha factor) waits for GPU-plan files (per-capture factor in dlaa_bridge +
+        rt_scene_data / rt_compact); first check a Tales trace for masked materials with cb1[N].c != 1. Item 6 waits for
+        ATN's reset test (85). Host lines for later (after hand-over): D1 addon.cpp ~1041, D2 ray_tracing.hpp:305-306,
+        Expeditions dlss_graphics.hpp:1287-1290 + ray_tracing.hpp ~343-366 (WriteSky), Ryse addon.cpp ~1776, R.U.S.E.
+        ray_tracing.hpp 1259 + ~828-838: `.sky = true`.
+        - [ ] g18_ Opus xHigh review (queued) -> fixes -> merge after render_mt's end batch; then the 6 host-line edits.
+        - [ ] test/tw_cluster_rewrite (owner?): a Map-marks-nothing case + its run.ps1 builds into testbin.
+        - [ ] Tales alpha factor: trace check first (masked materials with cb1[N].c != 1); if none, close box 2325.
+        g21_ RENAME 20:3x (handoff_plan/handbacks/g21_rename_note.md): 57ae8ed10 on ho_g21: embeds __host_sss_depth /
+        __host_sss_setup + 6 wrapper renames (Tales, Expeditions, D2) -> g09_ told to cherry-pick first (20:3x); g07_ +
+        g14_ get it with their review fixes (g07_: D2 screen_space.hpp:43-44, README.md:271-272, wrapper line 10; g14_:
+        SKILL.md line 9 = host_sss_depth / host_sss_setup).
+        G22 STARTED 20:3x (g22_ a02d241f7f1356663): ALL 22 GROUPS STARTED. Reviews queued at the cap: rva_ = g12_ + g11_ +
+        g08_ (one Opus xHigh agent, three review files), then rvb_ = g07_ + g18_ + g19_.
         - [ ] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
