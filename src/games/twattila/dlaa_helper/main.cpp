@@ -721,13 +721,27 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   const auto wait_scene_release = [&] {
     if (scene_release.joinable()) scene_release.join();
   };
+  const auto ms_since = [](std::chrono::steady_clock::time_point start) {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+  };
+  // Each open that did its work gets one line with its time (not a replay's): how close a cold shader cache runs to the
+  // addon's wait for a set's first answer.
   const auto open_scene = [&] {
     wait_scene_release();
     const bool details = (shared->rt_flags & twattila::dlaa_bridge::RT_DETAILS) != 0;
     scene_live = !scene_off();
-    scene_open = scene_live && !stalled_scene && scene->Initialize(adapter.Get(), folder, details, other_upscaler()) && scene->Open(*shared, version, replayable);
+    const auto started = std::chrono::steady_clock::now();
+    const bool initialized = scene_live && !stalled_scene && scene->Initialize(adapter.Get(), folder, details, other_upscaler());
+    const auto initialize_ms = ms_since(started);
+    scene_open = initialized && scene->Open(*shared, version, replayable);
     // From here on: a set's first request is an evaluation, and an open can take longer than the idle time by itself.
     rt_used = std::chrono::steady_clock::now();
+    if (scene_open && !replayable) {
+      const auto open_ms = ms_since(started);
+      LogWithTime(std::format("[TW DLAA helper] Ray tracing opened in {} ms (device and pipelines {} ms, the set {} ms).", open_ms,
+                              initialize_ms, open_ms - initialize_ms)
+                      .c_str());
+    }
   };
   // The open set's objects in Ray Reconstruction and frame generation (their handles stay open: set_handles), the latter on a
   // new device when a GPU reset removed its own.
@@ -735,6 +749,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   const auto open_reconstruction = [&] {
     if (replayable) return;
     reconstruction_live = true;
+    const auto started = std::chrono::steady_clock::now();
     reconstruction_open = reconstruction->Initialize(adapter.Get(), folder)
                           && reconstruction->Open({shared->color, shared->depth, shared->motion, shared->output, shared->diffuse_albedo,
                                                    shared->specular_albedo, shared->normals, shared->roughness},
@@ -742,7 +757,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                                                   (version >= 25) ? std::array{shared->rr_extra[0], shared->rr_extra[1], shared->rr_extra[2]}
                                                                   : std::array<uint64_t, twattila::dlaa_helper::EXTRA_INPUTS>{});
     rr_used = std::chrono::steady_clock::now();
-    if (!reconstruction_open && reconstruction->Status() != reconstruction_refusal) {
+    // A refused one is asked again each second: its refusal is said once.
+    if (reconstruction_open) {
+      LogWithTime(std::format("[TW DLAA helper] Ray Reconstruction opened in {} ms.", ms_since(started)).c_str());
+    } else if (reconstruction->Status() != reconstruction_refusal) {
       reconstruction_refusal = reconstruction->Status();
       ReShadeLogMessage(nullptr, 0, ("[TW DLAA helper] " + reconstruction_refusal).c_str());
     }
@@ -776,6 +794,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   };
   const auto open_generation = [&] {
     using namespace twattila::dlaa_bridge;
+    const auto started = std::chrono::steady_clock::now();
     const bool streamline_lost = generation->Lost();
     if (streamline_lost) {
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed frame generation's device: Streamline started again.");
@@ -834,6 +853,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     } else {
       generation->Close();
     }
+    // FSR's and XeSS's swap chain is still being made on its own thread (Making): their time is the start's only.
+    if (generation_open && !replayable) {
+      constexpr std::array<const char*, 3> BACKEND_NAMES = {"DLSS", "FSR", "XeSS"};
+      LogWithTime(std::format("[TW DLAA helper] Frame generation ({}) {} in {} ms.", BACKEND_NAMES[generation_backend],
+                              (generation_backend == FG_BACKEND_DLSS ? "opened" : "started"), ms_since(started))
+                      .c_str());
+    }
     strncpy_s(shared->fg_status, generation_status(), _TRUNCATE);
     if (version >= 13) shared->fg_presented = generation_presented();
     shared->fg_failed = (generation_open ? 0u : 1u);
@@ -853,12 +879,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     const auto started = std::chrono::steady_clock::now();
     const uint64_t before = video_memory_mb();
     release();
-    const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+    const auto took = ms_since(started);
     ReShadeLogMessage(nullptr, 0, std::format("{} ({} ms; this process's video memory {} -> {} MB).", what, took, before, video_memory_mb()).c_str());
   };
-  const auto release_idle = [&] {
-    const auto now = std::chrono::steady_clock::now();
-    if (scene_live && version >= 15 && now - rt_used > IDLE_RELEASE) {
+  // Lets go what had no request for IDLE_RELEASE up to `as_of`: a request's start (so nothing it opens or asks for is let
+  // go by it, also after an open longer than IDLE_RELEASE), else now.
+  const auto release_idle = [&](std::chrono::steady_clock::time_point as_of) {
+    if (scene_live && version >= 15 && as_of - rt_used > IDLE_RELEASE) {
       rt_drain();
       wait_scene_release();
       scene_release = std::thread([released = std::move(scene), &logged_release]() mutable {
@@ -875,7 +902,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       }
       ++shared->rt_device;
     }
-    if (reconstruction_live && now - rr_used > IDLE_RELEASE) {
+    if (reconstruction_live && as_of - rr_used > IDLE_RELEASE) {
       reconstruction_live = false;
       if (streamline_used) {
         // NGX stays: its shutdown, also of another device, crashes Streamline's next evaluation (2026-11-03, fg_bridge_test). The
@@ -888,7 +915,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         reconstruction_idle = true;
       }
     }
-    if (upscaler_live && now - upscale_used > IDLE_RELEASE) {
+    if (upscaler_live && as_of - upscale_used > IDLE_RELEASE) {
       logged_release("[TW DLAA helper] FSR / XeSS off for 10 s: their memory released", new_upscaler);
       upscaler_tried = false;
       upscaler_open = false;
@@ -896,7 +923,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     }
     // FSR's or XeSS's chain still being made: let go at a later wake, once made (FreeResources would wait for it here).
     const bool generation_making = generation_backend != twattila::dlaa_bridge::FG_BACKEND_DLSS && proxy_generation->Making();
-    if (generation_resources && now - fg_used > IDLE_RELEASE && !generation_making) {
+    if (generation_resources && as_of - fg_used > IDLE_RELEASE && !generation_making) {
       logged_release("[TW DLAA helper] Frame generation off for 10 s: its memory released", free_generation);
       generation_resources = false;
     }
@@ -918,8 +945,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       if (reason == removed_logged[index]) continue;
       removed_logged[index] = reason;
       if (SUCCEEDED(reason)) continue;
-      const auto age = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - last_request).count();
-      LogWithTime(std::format("[TW DLAA helper] A GPU reset removed {} device (0x{:08X}), last request {} ms ago.", whose, static_cast<uint32_t>(reason), age).c_str());
+      LogWithTime(std::format("[TW DLAA helper] A GPU reset removed {} device (0x{:08X}), last request {} ms ago.", whose, static_cast<uint32_t>(reason),
+                              ms_since(last_request))
+                      .c_str());
     }
   };
   // v30: this set's fence as read now, for the addon's watcher (a request's work that the GPU never finishes shows there
@@ -936,7 +964,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     for (; woken == WAIT_TIMEOUT; woken = WaitForMultipleObjects(2, waits, FALSE, 1000)) {
       log_removed_devices();
       publish_fence();
-      release_idle();
+      release_idle(std::chrono::steady_clock::now());
       free_parked();
     }
     return woken;
@@ -1005,7 +1033,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       new_upscaler();
       upscaler_tried = false;
     }
-    if (shared->generation != opened_generation) {
+    const bool new_set = shared->generation != opened_generation;
+    // A new set's first request: its time to the answer (its opens' lines come first), what the addon's first wait for a
+    // set allows 20 s for. Said after the answer, so the line costs the game nothing.
+    const bool log_first_answer = new_set && shared->color != 0 && !replayable;
+    if (new_set) {
       rt_drain();
       // The addon's new textures and fence, opened; the last set's handles closed, this set's kept (set_handles).
       for (const HANDLE handle : set_handles) CloseHandle(handle);
@@ -1117,7 +1149,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       fg_used = now;
       generation_resources = true;
     }
-    release_idle();
+    release_idle(last_request);
     bool evaluated = false;
     bool answered = false;
     // The upscaler's request when it changes (one line, never a frame's): which one, its preset by NVIDIA's number (11 K, 12 L,
@@ -1301,11 +1333,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       context4->Signal(fence.Get(), shared->value + 1);
       context->Flush();
     }
-    if (answered) continue;
-    shared->evaluated = (evaluated ? 1 : 0);
-    // The fence value it signalled (none without a fence).
-    shared->done_value = (fence ? shared->value + 1 : shared->value);
-    SetEvent(done);
+    if (!answered) {
+      shared->evaluated = (evaluated ? 1 : 0);
+      // The fence value it signalled (none without a fence).
+      shared->done_value = (fence ? shared->value + 1 : shared->value);
+      SetEvent(done);
+    }
+    if (log_first_answer) {
+      LogWithTime(std::format("[TW DLAA helper] A new set's first request answered in {} ms.", ms_since(last_request)).c_str());
+    }
   }
   // WAIT_OBJECT_0 + 1: the game ended. WAIT_OBJECT_0: left above with its line.
   if (woken != WAIT_OBJECT_0 && woken != WAIT_OBJECT_0 + 1) {

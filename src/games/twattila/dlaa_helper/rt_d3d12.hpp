@@ -4769,6 +4769,8 @@ class RtScene12 {
     };
     // Test switch: NRD refused (the harness's nrd_refused modes).
     if (GetEnvironmentVariableW(L"RENODX_TW_TEST_NRD_REFUSED", nullptr, 0) != 0) return fail("refused (test)");
+    // Its pipelines and textures' time (a cold shader cache compiles them here, inside a request).
+    const auto started = std::chrono::steady_clock::now();
     if (!signal->front) {
       const D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {.pRootSignature = root_signature_.Get(), .CS = front};
       if (FAILED(device_->CreateComputePipelineState(&desc, IID_PPV_ARGS(signal->front.GetAddressOf())))) return fail("NRD's inputs' pipeline failed");
@@ -4783,6 +4785,7 @@ class RtScene12 {
       if (resource == nullptr) return fail("no memory");
       if (texture.descriptor != 0) Written(resource, texture.format, texture.descriptor);
     }
+    const auto made_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
 #if defined(RENODX_RECORDER)
     // The recorder's: NRD's frame time fixed in a recording helper's scene and a play-back; a play-back's denoiser of a
     // recorded signal takes the recording's history and last frame (once, at the recorded size).
@@ -4806,7 +4809,8 @@ class RtScene12 {
       recorded.reset();
     }
 #endif
-    slow_report_ += std::format("{}[TW ray tracing] {}: {} MB at {} x {}.", slow_report_.empty() ? "" : "\n", name, made->Bytes() >> 20, width, height);
+    slow_report_ += std::format("{}[TW ray tracing] {}: {} MB at {} x {}, made in {} ms.", slow_report_.empty() ? "" : "\n", name,
+                                made->Bytes() >> 20, width, height, made_ms);
     signal->denoiser = std::move(made);
     signal->size = {width, height};
     return true;
