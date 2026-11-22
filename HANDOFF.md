@@ -633,6 +633,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - D1 V35 next knob (g06_, coord's OK needed): a low-light chroma hold (grey toe + ... | ?
 - G10 next wave: render_pass_behavior stages under testbin (ATN 22:3x). | ?
 - coord at READY: final update of handoff_plan/resume_point.md (every agent's last ... | ?
+- g08_ next wave: Ryse / D1 / D2 add-on builds via scratch/g08_/build_g08.cmd (com ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12336,6 +12337,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         wave 2 merge order with branch tips, one row per group); coord updates it at READY.
         - [ ] G10 next wave: render_pass_behavior stages under testbin (ATN 22:3x).
         - [ ] coord at READY: final update of handoff_plan/resume_point.md (every agent's last tip / state).
+        g08_ PART (handbacks/g08_part_handback.md): ho_g08 1484bcb7f (cherry-pick -x e54c34c60, clean) + 81ba80fd0 (Ryse
+        README:250 / :319 name twattila/pcss.hlsli / upscale_output.hlsli; merge after ho_g21). Builds NOT run (no slot).
+        - [ ] g08_ next wave: Ryse / D1 / D2 add-on builds via scratch/g08_/build_g08.cmd (command in the hand-back), one slot.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
