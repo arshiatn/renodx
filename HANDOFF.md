@@ -7257,10 +7257,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         Guard: atn-mods 9057b2807, merge-base still c3ea4925f, helper paths unchanged, $PostRev 42c081bd6 (local). Left:
         offline\20261122_042455_pass\gpu_test.lock (case-local) + 8 junctions per case folder (JUNCTIONS.txt; rmdir
         the links alone first). -> upr_ F1 RE-CHECK STARTED; then the H0 dry run + real run (ATN's rule).
+        gtv_ S3r RE-CHECK 2 = OK 05:0x (plan_1117/gtv_s3r_recheck2_handback.md; gtv_s3r_review.md l.417): M1r fixed (race
+        probe 31 delays: new keeper 0 / 31 self-stops, old 9 / 31 = a real ~350 ms race; a fault still counts busy);
+        M2r fixed (fixture redirect alone, real lab file untouched); unit 21, ps1 5, keeper 24, jobs 24; nits 1-3 right;
+        queued items fine. New for gtl_: S1 (Should) the scene recording's settings leave out harness_args + the job's
+        env (NO_CLUSTERS, REPLAYABLE) -> wrong recording "up to date"; still + path recordings of one scene share a
+        folder -> add both to the settings, name the folder by them (recordings\scenes doesn't exist yet). Test nit:
+        the fake pbrt's 10 s floor starves under another agent's CPU job -> larger floor in the fixture (keep
+        below_normal); SLOW line names the CPU load. -> gtl_ STARTED (S1 + nits); v1.1 lab changes still after grs_.
         Agents (9): upr_ (h0i_ F1 re-check), c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gtq_
-        (B2-S1 + N1-N4), gtv_ (S3r re-check 2), grs_ (S2r fixes), gpr_ (gtb_ W1 W2 re-check). Idle: bd1r_, lga_,
+        (B2-S1 + N1-N4), gtl_ (S3r S1 + nits), grs_ (S2r fixes), gpr_ (gtb_ W1 W2 re-check). Idle: bd1r_, lga_,
         lgf2_, c33i_, upt_, h0i_ (waits upr_), gpp_, gtb_ (waits gpr_), ebr_ (waits t4i_), gbc_ (waits gtq_), gti_,
-        gtl_, gtk_, gtw_ (waits gtp_).
+        gtv_ (waits grs_ / gtl_), gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
