@@ -104,6 +104,9 @@ $table = [ordered]@{
                      ShaderSettings = @{ '^cinematic' = 'gamma_correction=1' }
                      Registers = @{ '^cinematic' = 'colorimetry_VS_PS[0]=1,2.2,0.45454547,0;sprite_PS[3]=0,0,0,0' }
                      Inputs = @{ '^pointlight' = 'POSITION1=0.9,0.5,0.2,1;POSITION2=0.5,0.5,0.5,1000000'; '^cinematic' = 'TEXCOORD2=-1000000,1000000,1000000,-1000000' } }
+  # WH2's FXAA on the clipped scene ramp at alpha 1 (t0~sdr: the game's FXAA takes the tone mapper's 0 - 1 output; the
+  # add-on writes alpha 1, the game its input's). EXACT with ho_g02's fxaa00 (98f8155e0); 0.41 off before it.
+  'WH2FXAA'     = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^fxaa00_'; Binds = 't0~sdr' }
   # Warhammer III (tw2_ 11-16: every replaced pixel shader tried): the tone mapper, bloom, flares, lens blood, the fog's light
   # draws (battlefog00-08, ours only under the rays or Fog Strength), the unit indicators and sharpening (no Gamma Correction
   # check: a pass on the tone mapper's output) and the vignette, each with its control caught. Left out: cutscene00 / 01,
