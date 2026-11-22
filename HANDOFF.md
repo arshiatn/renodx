@@ -498,6 +498,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - h0i_: MUST 1-2 + SHOULD 3-4 + offline test / selftest updates; upr_ re-checks (u ... | ?
 - gtv_: lab-suite load run NOW (GPU free 14:07) (coord 14:07). | ?
 - gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-che ... | ?
+- gtl_: S3c run sheet (coord 14:11). | ?
+- coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10229,9 +10231,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         any gates folder (Low). Open Lows OK (escaped backticks = grep patterns; 17th $( ) -> join texts).
         - [ ] gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-checks (corpus after R18-1/3/4,
         gtw_r18_time2.py after R18-7) + gpr_ price re-check (coord 14:10).
-        Agents (3): gtp_ (gate round 19), h0i_ (all_modes MUST 1-2 + SHOULD 3-4), gtv_ (lab load run); gpu_s2 merge gate
-        NOW -> builds -> push -> S3c (gpu_lab.ps1); all_modes run waits for upr_ GO + ATN rule (combined tree incl.
-        gpu_s2)
+        gpu_s2 MERGED LOCALLY 14:11 = 6a7375c65 (name_check 135 generic words; auto-merge main.cpp + rt_d3d12.hpp clean);
+        gated builds -Owner coord_gpus2 (x86 x3 exit 0 14:12, amd64 + helper -> testbin\scratch\coord_\helper_gpus2
+        running); push after all pass. gtv_ load run after the builds (not beside a build).
+        gtl_: S3c run sheet SENT 14:11 (plan_1117/s3c_run_sheet.md: ordered job.json per step checked offline, commands =
+        ATN's 3 gpu_lab.ps1 rules only, outputs + write-backs, items the lab can't do yet with owners, time; offline).
+        grs_ XESS NIT 14:12 (plan_1117/grs_xess_nit_handback.md): branch grs_xess_nit ca5961c6a from 6a7375c65, comment
+        only (fg_proxy_d3d12.hpp Presented(): "Without XeSS's SDK an XeSS object never starts (Initialize fails): its
+        most stays 2, as with the SDK before a chain is made."), diff checked by coord = fcr_'s wording; merges after the
+        gpu_s2 builds (+ helper build). grs_'s worktree now on grs_xess_nit.
+        - [ ] gtl_: S3c run sheet (coord 14:11).
+        - [ ] coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12).
+        Agents (3): gtp_ (gate round 19), h0i_ (all_modes MUST 1-2 + SHOULD 3-4), gtl_ (S3c run sheet); gpu_s2 builds
+        running -> push -> grs_xess_nit merge -> gtv_ load run -> S3c (gpu_lab.ps1 per gtl_'s sheet); all_modes run
+        waits for upr_ GO + ATN rule (combined tree incl. gpu_s2)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
