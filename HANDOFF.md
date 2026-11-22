@@ -622,6 +622,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G20 (rvb_ R1 MINOR): ef926642b reuses the last trace without checking bridge.rt_ ... | ?
 - g04_ question (rvb_ R2): Shogun 2's own traced GI rows are still 4 rays / 10 m / ... | ?
 - README bug-report steps (rvb_ R3): the Map line needs Log Details on before the ... | ?
+- g19_ next wave: dumps_fix_ry.sh + dumps_fix.sh (scratch/g19_; expected diffs: to ... | ?
+- RELEASE NOTES (g19_ MI5, coord at release): every TW game "New: AO and Light Bou ... | ?
+- fog_shadows_defaulted_on still missing: Thrones (G01, next wave) and WH3 (render ... | ?
+- Shogun 2 (g04_, rvb_ MI6): the shared ClearSavedRows + AntiAliasingTextureLodBia ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12275,6 +12279,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] g04_ question (rvb_ R2): Shogun 2's own traced GI rows are still 4 rays / 10 m / Half / 2 bounces
         (addon.cpp:2246-2257); does decision 9 apply there?
         - [ ] README bug-report steps (rvb_ R3): the Map line needs Log Details on before the game starts.
+        g19_ FIXES (handbacks/g19_fixes_handback.md): ho_g19 tip e33688524 (b8cb841d1 MI1-MI3 ClearSavedRows in
+        settings_pages.hpp, GraphicsPageRevision + GraphicsPageFogRevision clears; 3fcdaa896 LOD bias from upscaling + N1 / N2
+        torch rows greyed; 03521cfe5 MI4 NEEDS ho_g18 5c14cd20f; e33688524 GuidesCamera comment), ho_g19_ryse tip fb7ca3189
+        (ClearSavedRows + N4 RtPtValue). NOTHING DUMPED / COMPILED this round (no slot 21:20-22:20).
+        - [ ] g19_ next wave: dumps_fix_ry.sh + dumps_fix.sh (scratch/g19_; expected diffs: torch rows greyed / visible, LOD
+        bias enabled where flagged) -> rvb_ re-check -> merge after ho_g18.
+        - [ ] RELEASE NOTES (g19_ MI5, coord at release): every TW game "New: AO and Light Bounce Auto Thickness on by
+        default." + "New: presets saved with the old defaults (Auto Thickness off, Texture LOD Bias on All Textures off) are
+        cleared once." + "New: Torch and Fire Light / Shadows from Path Tracing show greyed until Path-Traced GI is on.";
+        Attila / Tales / Expeditions "New: Reset and a first start give the traced Light Bounce RT/PT's values: Rays 1, Range
+        50 m, Resolution Full, Path Tracing Bounces 1 (were 4, 10 m, Half, 2)."; Thrones / Rome Remastered / WH3 / Pharaoh /
+        Troy "Fixed: Fog Shadows and Specular Occlusion saved at the old default On in a preset without a ray-traced method
+        are cleared once." (Ryse's already in 8748f72ae).
+        - [ ] fog_shadows_defaulted_on still missing: Thrones (G01, next wave) and WH3 (render_mt, after the freeze).
+        - [ ] Shogun 2 (g04_, rvb_ MI6): the shared ClearSavedRows + AntiAliasingTextureLodBiasTrilinear.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
