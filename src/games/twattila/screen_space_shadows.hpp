@@ -19,6 +19,7 @@
 #include <shared_mutex>
 #include <span>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -168,9 +169,10 @@ constexpr float SOFT_RADIUS_2160 = 32.f;
 // - Else (Troy, Pharaoh, Warhammer: their shadow ends differently in each shader): after each shadow map comparison
 //   (sample_c, sample_c_lz, gather4_c, gather4_po_c) mul rX.mask, rX.xyzw, rT.xxxx: the shadow is their filtered
 //   average, so it is scaled the same.
-// - Warhammer's and Warhammer II's software / hardware pcf builds (Warhammer's Shader Model 4.1 ones; no comparison:
-//   sample_l and their own `lt receiver, stored`, or the sample itself as the lit share): after the first mov_sat rN.c, rN.c past the last read of g_tShadowBuffer
-//   (where both cascades and their fades end), mul_sat rN.c, rN.c, rT.xxxx as Attila's.
+// - Warhammer's and Warhammer II's software, hardware pcf and gather 4.1 builds (no comparison: sample_l and their own
+//   `lt receiver, stored`, the sample itself as the lit share, or gather4 and their own test): after the first
+//   mov_sat rN.c, rN.c past the last read of the atlas (g_tShadowBuffer, g_tHardShadowBuffer_SM41; where both cascades
+//   and their fades end, outside every branch in each such build), mul_sat rN.c, rN.c, rT.xxxx as Attila's.
 // - With lighting_VS_PS (the RDEF's slot for it; its sun colour at c`colour_register`, Attila's and the others' c1,
 //   Pharaoh's c3): every read of that register from rC (one more temp), the colour x the filter at t50 (Coloured Shadows:
 //   light through cloth and sails), before rT's ld: ld rC.xyzw, rT.xyzw, t50.xyzw / mad rC.xyz, rC.xyzx, l(-1), l(1) /
@@ -185,7 +187,7 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
                                   bool declare_position = false) {
   constexpr uint32_t OP_CUSTOMDATA = 53, OP_DIV = 14, OP_FTOU = 28, OP_LD = 45, OP_MAD = 50, OP_MIN = 51, OP_MOV = 54,
                      OP_MUL = 56, OP_SAMPLE = 69, OP_SAMPLE_C = 70, OP_SAMPLE_C_LZ = 71, OP_SAMPLE_L = 72,
-                     OP_GATHER4_C = 126, OP_GATHER4_PO_C = 128;
+                     OP_GATHER4 = 109, OP_GATHER4_C = 126, OP_GATHER4_PO_C = 128;
   constexpr uint32_t OP_DCL_RESOURCE = 88, OP_DCL_INPUT = 95, OP_DCL_INPUT_PS_SIV = 100, OP_DCL_TEMPS = 104, OP_DCL_GLOBAL_FLAGS = 106;
   constexpr uint32_t CUSTOMDATA_IMMEDIATE_CONSTANT_BUFFER = 3;
   constexpr uint32_t SATURATE = 1u << 13;
@@ -197,7 +199,7 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
   if (tokens.empty()) return {};
 
   // The shadow mask's slot: the RDEF chunk's texture (shader input type 2) named t_shadow (32-byte bindings, SM 5.0);
-  // the sun's shadow atlas (g_tShadowBuffer); the lighting constants' (type 0, lighting_VS_PS).
+  // the sun's shadow atlas (g_tShadowBuffer, g_tHardShadowBuffer_SM41); the lighting constants' (type 0, lighting_VS_PS).
   uint32_t mask_slot = UINT32_MAX;
   uint32_t atlas_slot = UINT32_MAX;
   uint32_t lighting_slot = UINT32_MAX;
@@ -224,13 +226,17 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
     for (uint32_t index = 0; index < bindings && binding_at + 32 * (index + 1) <= code.size(); ++index) {
       const size_t binding = binding_at + 32 * size_t{index};
       const size_t name = data + read(binding);
-      if (read(binding + 4) == 2 && name + 9 <= code.size() && std::memcmp(code.data() + name, "t_shadow", 9) == 0) {
+      // Its name, with the NUL.
+      const auto named = [&](std::string_view text) {
+        return name + text.size() + 1 <= code.size() && std::memcmp(code.data() + name, text.data(), text.size() + 1) == 0;
+      };
+      if (read(binding + 4) == 2 && named("t_shadow")) {
         mask_slot = read(binding + 20);
       }
-      if (read(binding + 4) == 2 && name + 16 <= code.size() && std::memcmp(code.data() + name, "g_tShadowBuffer", 16) == 0) {
+      if (read(binding + 4) == 2 && (named("g_tShadowBuffer") || named("g_tHardShadowBuffer_SM41"))) {
         atlas_slot = read(binding + 20);
       }
-      if (read(binding + 4) == 0 && name + 15 <= code.size() && std::memcmp(code.data() + name, "lighting_VS_PS", 15) == 0) {
+      if (read(binding + 4) == 0 && named("lighting_VS_PS")) {
         lighting_slot = read(binding + 20);
       }
     }
@@ -359,7 +365,8 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
     if (mask_slot != UINT32_MAX && sampled && reads_texture(at, length, mask_slot)) {
       mask_reads.push_back(at);
     }
-    if (atlas_slot != UINT32_MAX && sampled && reads_texture(at, length, atlas_slot)) {
+    // The atlas also through gather4 (the gather 4.1 builds; not the t_shadow reads).
+    if (atlas_slot != UINT32_MAX && (sampled || opcode == OP_GATHER4) && reads_texture(at, length, atlas_slot)) {
       atlas_read = true;
       atlas_saturate_at = 0;
     } else if (atlas_read && atlas_saturate_at == 0 && opcode == OP_MOV && (tokens[at] & SATURATE) != 0 && length == 5 && from_itself(at)) {
@@ -381,8 +388,8 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
   }
   // A shader reading t_shadow has its shadow there: a joined pair in it is its ambient occlusion (Warhammer III).
   if (forward || mask_slot != UINT32_MAX) saturate_at = 0;
-  // Warhammer's and Warhammer II's software / hardware pcf sun builds (no comparison): their shadow ends at the first
-  // mov_sat rN.c, rN.c after the atlas's last read.
+  // Warhammer's and Warhammer II's software, hardware pcf and gather 4.1 sun builds (no comparison): their shadow ends
+  // at the first mov_sat rN.c, rN.c after the atlas's last read.
   if (saturate_at == 0 && comparisons.empty() && mask_slot == UINT32_MAX && !forward) {
     saturate_at = atlas_saturate_at;
   }
