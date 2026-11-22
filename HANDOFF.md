@@ -7077,6 +7077,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         tests 4 / 4 + 27 / 27. COORDINATOR CALL: route (a) = our own numpy port of FLIP from tools\refcode\flip's
         pytorch flip_loss.py (BSD-3, notice kept, no NVIDIA file changed, nothing downloaded), accepted only if it
         matches the tool's mean ~1e-6 + rounded map == correct_*flip_cpp.png -> gtq_ STARTED; then gbc_ B1 re-check.
+        gtk_ LAB FOLLOW-UP DONE 03:58 (plan_1117/gtk_lab_followup_handback.md; backup scratchpad\gtk_backup_lab): real
+        blocker fixed in rt_harness\scene_mode.hpp - the helper's recorder writes complete.txt only on a trace past
+        recorder.last, so scene mode now sends one finishing trace (same view, not counted); risk: > 20 s last-frame
+        write at 4K -> watch on the first real scene recording. FRAME0 / WARM unchanged (RECORD_AT 64 OK). -> gbc_ told
+        to include it in the C1 re-check. Queued for gtl_ (after gtv_'s S3r): pbrt names double the spp -> pass --spp
+        to scene_to_pbrt, drop it from pbrt's argv, name outputs <stem>_s<seed>.<ext> (+ SUN_SOFTNESS 0, FLIP metric).
         Agents (10): upr_ (H0 439 look, then v2.7), c3i_ (B1.6), ebr_ (r18 re-check), grs_ (S2), gtw_ (S1c re-check
         6), gtq_ (FLIP numpy port), gbc_ (C1 re-check), gtv_ (S3r re-check), gtb_ (watch build), gti_ (poll build).
         Idle: bd1r_, lga_, lgf2_, c33i_, upt_, gpp_, gpr_, gtl_, h0i_, t4i_, gtk_, gtp_ (waits gtw_).
