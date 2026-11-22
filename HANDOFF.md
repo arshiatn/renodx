@@ -9222,8 +9222,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         test exe). PART 2 (r1b skip count "N of M passed, K skipped (in use: ...)" + optional injected-copy pair
         cases, test_gpu_lock.py only) held by gti_ for the H0 start -> GO now (10-15 min, ends before H0).
         Machine 09:51: c3i_'s FULL engine_code suite done, its gated builds running (clang-cl), CPU 22 %.
+        grs_ V5 DONE 09:5x (plan_1117/designs/grs_v5_handback.md; grs_first_frame.md v5; text only): W1 the present
+        poll `if (Opening()) PollOpening();` at the top of frame_generation::OnReshadePresent (:167, before the D3D11
+        check :169) = all 16 bridge add-ons incl. WH3 / Rome Remastered / Divinity 2; option taken: Release(true)
+        runs one PollOpening() first (orphans only a still-busy opening); every add-on's Release(true) condition
+        unchanged; wrong claim fixed. W2 wait_open() on Release(true) sites (tw_rt_harness 633 / 3014 / 4580,
+        fg_bridge_test 115, restir_unified 615 / 2946 / 4478); Release(false) / Shutdown nothing. W3 tests.cpp:654
+        -> `internal::Answer(200, false) == ANSWERED` + a "4 test" row in test/tw_helper_lifetime (silent first
+        request = BUSY no latch, late answer, Release(true) while opening, deadline, RENODX_TW_OPEN_LATCH). Nits:
+        cold frame 0 one fewer evaluated frame (checkers allow 1 less, opened_late explains); 5 "helper is gone"
+        lines = optional Opening() check; 7 archived copies under V5, page_dump tools need nothing. fcr_ N7-N9 + 3.9
+        table = patch v2 (RR one if / else if, per-set line one site at the loop end; FG time = whole
+        open_generation; per-set time from last_request; S3 delays any release due inside a request, ms normally).
+        Current patch grs_ff_s12_steps12_v2.patch. -> ffr_ FINAL v5 CHECK (design loop closes on its OK).
         Agents (10): upr_ (h0i_ M1 + S1-S5 re-check), gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gtb_
-        load refresh re-check), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), grs_ (design v5 text),
+        load refresh re-check), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), ffr_ (grs_ v5 check),
         fcr_ (patch v2 re-check), gtl_ (fixture +60 s + gate_s), gti_ (lows part 2: r1b + pair cases)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
