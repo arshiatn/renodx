@@ -7141,9 +7141,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         GPU run is live -> gti_ STARTED. For gtp_'s load tag: a fault reads 'unknown' (not 'game'); a count taken
         with exclusions that says not busy reads 'unknown' (not idle) -> sent to gtp_. [ ] round clean-up: old
         busy_count.json.*.tmp files (ATN's yes).
+        gtb_ WATCH DONE 04:2x (plan_1117/gtb_watch_handback.md; backups scratchpad\gtb_bak6): budget.py watch (exact
+        --limit, --phase always killed, declared deadline x 1.1 + 60, prices only flagged until a price row; B2 Job
+        Object kill-on-close + try/finally; R1 clock from the 4 lock files), Invoke-LabPhase through watch (SLOW only
+        on 124 + marker, backstop deadline + 60 s), gated_build.ps1 on v1 slots (os.replace, tested at its real path,
+        now ends with exit <build code>), seeds score 150 E + score_flip_s 750 E, record + warm frames, iq.schema
+        output_sizes; test_budget 28 OK, selftest OK, gpu_gate 28 OK; test_lab_jobs 5 fails = gtl_'s lab_keeper.py edit
+        in progress (04:17, KeyError deadline_s). gate_hook names via getattr: kind(tool, tool_input, cwd), cause(facts),
+        committed_gb(), load_tag(heavy, exclude_pids, busy) -> gtp_ told. -> gpr_ CODE LOOK STARTED; gtl_ told (score
+        plan phase needs `flip`).
         Agents (11): h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gbc_ (R-S re-check), gtp_ (S-d + price build),
-        gtq_ (FLIP numpy port), gtl_ (S3r M1r / M2r), gtv_ (S2r), gtb_ (watch build), gti_ (test F1 + nits). Idle:
-        bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (waits h0i_), gpp_, gpr_, ebr_, gtk_, grs_, gtw_ (waits gtp_).
+        gtq_ (FLIP numpy port), gtl_ (S3r M1r / M2r), gtv_ (S2r), gpr_ (gtb_ watch look), gti_ (test F1 + nits). Idle:
+        bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (waits h0i_), gpp_, gtb_, ebr_, gtk_, grs_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
