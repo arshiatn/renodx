@@ -135,6 +135,7 @@
 #include <tuple>
 
 #include "./rt_recording.h"
+#include "./rt_uses.h"
 #include "rt_burn.h"     // dxc -Fh (build.ps1, recorder builds)
 #include "rt_moments.h"  // dxc -Fh (build.ps1, recorder builds)
 #define RENODX_RECORDER 1
@@ -648,9 +649,20 @@ class RtScene12 {
                                                IID_PPV_ARGS(root_signature_.GetAddressOf())))) {
       return Fail("Ray tracing: the root signature failed");
     }
+#if defined(RENODX_RECORDER)
+    // The resource-use log's registers (UseTable, UseRootSlot; the table parameter's ranges pointer is not used).
+    use_ranges_ = ranges;
+    use_parameters_ = parameters;
+#endif
     const auto pipeline = [&](const void* code, size_t bytes, ComPtr<ID3D12PipelineState>* state) {
       const D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {.pRootSignature = root_signature_.Get(), .CS = {.pShaderBytecode = code, .BytecodeLength = bytes}};
-      return SUCCEEDED(device_->CreateComputePipelineState(&desc, IID_PPV_ARGS(state->GetAddressOf())));
+      const bool made = SUCCEEDED(device_->CreateComputePipelineState(&desc, IID_PPV_ARGS(state->GetAddressOf())));
+#if defined(RENODX_RECORDER)
+      if (made) {
+        KeepCode(state->Get(), code, bytes);
+      }
+#endif
+      return made;
     };
     // DXR 1.2: the ray queries that use the micromaps; else (or when they fail) DXR 1.1.
     dxr12_ = dxr12_ && pipeline(RT_TRACE_OMM, sizeof(RT_TRACE_OMM), &trace_pipeline_)
@@ -1355,6 +1367,105 @@ class RtScene12 {
         output("reflection", [](RtScene12* scene) { return std::addressof(scene->reflection_); }, BY_REFLECTIONS),
         output("specular", [](RtScene12* scene) { return std::addressof(scene->specular_); }, BY_REFLECTIONS),
         output("hit_distance", [](RtScene12* scene) { return std::addressof(scene->hit_distance_); }, BY_REFLECTIONS),
+    };
+  }
+
+  // The resource-use log's names (UseName).
+  static constexpr auto UseNames() {
+    using Member = ComPtr<ID3D12Resource>* (*)(RtScene12*);
+    const auto nrd = [](const char* name, UINT descriptor) { return UseName{.name = name, .descriptor = descriptor}; };
+    const auto buffer = [](const char* name, Member member, UINT sets = 1) { return UseName{.name = name, .member = member, .sets = sets}; };
+    const auto nvapi = [](const char* name, Member member, UINT sets = 1) { return UseName{.name = name, .member = member, .sets = sets, .nvapi = true}; };
+    return std::array{
+        UseName{"positions", POSITIONS, [](RtScene12* scene) { return std::addressof(scene->positions_); }},
+        UseName{"sun", SUN, [](RtScene12* scene) { return std::addressof(scene->sun_); }},
+        UseName{"records", RECORDS, [](RtScene12* scene) { return std::addressof(scene->records_); }},
+        UseName{"uvs", UVS, [](RtScene12* scene) { return std::addressof(scene->uvs_); }},
+        UseName{"normals", NORMALS, [](RtScene12* scene) { return std::addressof(scene->normals_); }},
+        UseName{"atlas", ATLAS, [](RtScene12* scene) { return std::addressof(scene->atlas_); }},
+        UseName{"vertices", VERTICES, [](RtScene12* scene) { return std::addressof(scene->vertex_buffer_); }},
+        UseName{"visibility", VISIBILITY, [](RtScene12* scene) { return std::addressof(scene->visibility_); }},
+        UseName{"ambient", AMBIENT, [](RtScene12* scene) { return std::addressof(scene->ambient_); }},
+        UseName{"sun_rays", SUN_RAYS, [](RtScene12* scene) { return std::addressof(scene->sun_rays_); }},
+        UseName{"records", RECORDS_WRITTEN, [](RtScene12* scene) { return std::addressof(scene->records_); }},
+        UseName{"uvs", UVS_WRITTEN, [](RtScene12* scene) { return std::addressof(scene->uvs_); }},
+        UseName{"normals", NORMALS_WRITTEN, [](RtScene12* scene) { return std::addressof(scene->normals_); }},
+        UseName{"light", LIGHT, [](RtScene12* scene) { return std::addressof(scene->light_); }},
+        UseName{"bounce", BOUNCE, [](RtScene12* scene) { return std::addressof(scene->bounce_); }},
+        UseName{"previous_color", PREVIOUS_COLOR, [](RtScene12* scene) { return std::addressof(scene->previous_color_); }},
+        UseName{"kept_positions", PREVIOUS_POSITIONS, [](RtScene12* scene) { return std::addressof(scene->kept_positions_); }},
+        UseName{"guide_normals", GUIDE_NORMALS, [](RtScene12* scene) { return std::addressof(scene->guide_normals_); }},
+        UseName{"guide_albedo", GUIDE_ALBEDO, [](RtScene12* scene) { return std::addressof(scene->guide_albedo_); }},
+        UseName{"guide_roughness", GUIDE_ROUGHNESS, [](RtScene12* scene) { return std::addressof(scene->guide_roughness_); }},
+        UseName{"cache_keys", CACHE_KEYS, [](RtScene12* scene) { return std::addressof(scene->cache_keys_); }},
+        UseName{"cache_radiance", CACHE_RADIANCE, [](RtScene12* scene) { return std::addressof(scene->cache_radiance_); }},
+        UseName{"cache_sums", CACHE_SUMS, [](RtScene12* scene) { return std::addressof(scene->cache_sums_); }},
+        UseName{"cache_albedo", CACHE_ALBEDO, [](RtScene12* scene) { return std::addressof(scene->cache_albedo_); }},
+        UseName{"light_fit", LIGHT_FIT, [](RtScene12* scene) { return std::addressof(scene->light_fit_); }},
+        UseName{"light_kept", LIGHT_KEPT, [](RtScene12* scene) { return std::addressof(scene->light_kept_); }},
+        UseName{"specular_accumulated", SPECULAR_ACCUMULATED, [](RtScene12* scene) { return std::addressof(scene->specular_accumulated_); }},
+        UseName{"specular_history", SPECULAR_HISTORY, [](RtScene12* scene) { return std::addressof(scene->specular_history_); }},
+        UseName{"specular_meta", SPECULAR_META, [](RtScene12* scene) { return std::addressof(scene->specular_meta_); }},
+        UseName{"specular_meta_history", SPECULAR_META_HISTORY, [](RtScene12* scene) { return std::addressof(scene->specular_meta_history_); }},
+        UseName{"reflection", REFLECTION, [](RtScene12* scene) { return std::addressof(scene->reflection_); }},
+        UseName{"specular", SPECULAR_OCCLUSION, [](RtScene12* scene) { return std::addressof(scene->specular_); }},
+        UseName{"light_mask", LIGHT_MASK, [](RtScene12* scene) { return std::addressof(scene->light_mask_); }},
+        UseName{"reuse_samples", REUSE_SAMPLES, [](RtScene12* scene) { return scene->reuse_samples_.data(); }, 2},
+        UseName{"reuse_data", REUSE_DATA, [](RtScene12* scene) { return scene->reuse_data_.data(); }, 2},
+        UseName{"fog", FOG, [](RtScene12* scene) { return std::addressof(scene->fog_); }},
+        UseName{"ambient_history", AMBIENT_HISTORY, [](RtScene12* scene) { return scene->ambient_history_.data(); }, 2},
+        UseName{"ambient_positions", AMBIENT_POSITIONS, [](RtScene12* scene) { return std::addressof(scene->ambient_positions_); }},
+        UseName{"hit_distance", HIT_DISTANCE, [](RtScene12* scene) { return std::addressof(scene->hit_distance_); }},
+        UseName{"light_history", LIGHT_HISTORY, [](RtScene12* scene) { return scene->light_history_.data(); }, 2},
+        UseName{"fog_lights", FOG_LIGHTS, [](RtScene12* scene) { return std::addressof(scene->fog_lights_); }},
+        UseName{"tint", TINT, [](RtScene12* scene) { return std::addressof(scene->tint_); }},
+        UseName{"reflect_samples", REFLECT_SAMPLES, [](RtScene12* scene) { return scene->reflect_samples_.data(); }, 2},
+        UseName{"reflect_data", REFLECT_DATA, [](RtScene12* scene) { return scene->reflect_data_.data(); }, 2},
+        nrd("nrd_sun_view_z", NRD_SUN_VIEW_Z),
+        nrd("nrd_sun_normal_roughness", NRD_SUN_NORMAL_ROUGHNESS),
+        nrd("nrd_sun_penumbra", NRD_SUN_PENUMBRA),
+        nrd("nrd_sun_translucency", NRD_SUN_TRANSLUCENCY),
+        nrd("nrd_bounce_hit_distance", NRD_BOUNCE_HIT_DISTANCE),
+        nrd("nrd_bounce_view_z", NRD_BOUNCE_VIEW_Z),
+        nrd("nrd_bounce_normal_roughness", NRD_BOUNCE_NORMAL_ROUGHNESS),
+        nrd("nrd_bounce_signal", NRD_BOUNCE_SIGNAL),
+        nrd("nrd_reflect_view_z", NRD_REFLECT_VIEW_Z),
+        nrd("nrd_reflect_normal_roughness", NRD_REFLECT_NORMAL_ROUGHNESS),
+        nrd("nrd_reflect_signal", NRD_REFLECT_SIGNAL),
+        nrd("nrd_ambient_view_z", NRD_AMBIENT_VIEW_Z),
+        nrd("nrd_ambient_normal_roughness", NRD_AMBIENT_NORMAL_ROUGHNESS),
+        nrd("nrd_ambient_signal", NRD_AMBIENT_SIGNAL),
+        UseName{"own_sky", OWN_SKY, [](RtScene12* scene) { return scene->own_sky_.data(); }, 2},
+        UseName{"light_ratio", LIGHT_RATIO, [](RtScene12* scene) { return scene->light_ratio_.data(); }, 2},
+        UseName{"reuse_surface_0", SURFACE_ORIGIN, [](RtScene12* scene) { return std::addressof(scene->reuse_surface_[0]); }},
+        UseName{"reuse_surface_1", SURFACE_NORMAL, [](RtScene12* scene) { return std::addressof(scene->reuse_surface_[1]); }},
+        buffer("tlas", [](RtScene12* scene) { return std::addressof(scene->tlas_); }),
+        buffer("tlas_scratch", [](RtScene12* scene) { return std::addressof(scene->tlas_scratch_); }),
+        buffer("scratch", [](RtScene12* scene) { return std::addressof(scene->scratch_); }),
+        buffer("left_out_start", [](RtScene12* scene) { return std::addressof(scene->left_out_start_); }),
+        buffer("smoke_tlas", [](RtScene12* scene) { return std::addressof(scene->smoke_tlas_); }),
+        buffer("smoke_tlas_scratch", [](RtScene12* scene) { return std::addressof(scene->smoke_tlas_scratch_); }),
+        buffer("placed_scratch", [](RtScene12* scene) { return std::addressof(scene->placed_scratch_); }),
+        buffer("units_blas", [](RtScene12* scene) { return std::addressof(scene->units_blas_); }),
+        buffer("smoke_blas", [](RtScene12* scene) { return std::addressof(scene->smoke_blas_); }),
+        nvapi("clas", [](RtScene12* scene) { return std::addressof(scene->clas_); }),
+        nvapi("clas_addresses", [](RtScene12* scene) { return std::addressof(scene->clas_addresses_); }),
+        nvapi("cluster_blases", [](RtScene12* scene) { return scene->cluster_blases_.data(); }, CLUSTER_BLASES),
+        nvapi("cluster_destination", [](RtScene12* scene) { return std::addressof(scene->cluster_destination_); }),
+        nvapi("cluster_scratch", [](RtScene12* scene) { return std::addressof(scene->cluster_scratch_); }),
+        nvapi("cluster_indices", [](RtScene12* scene) { return std::addressof(scene->cluster_indices_); }),
+        nvapi("cluster_args", [](RtScene12* scene) { return std::addressof(scene->cluster_args_); }),
+        nvapi("templates", [](RtScene12* scene) { return std::addressof(scene->templates_); }),
+        nvapi("template_destinations", [](RtScene12* scene) { return std::addressof(scene->template_destinations_); }),
+        nvapi("template_geometry", [](RtScene12* scene) { return std::addressof(scene->template_geometry_); }),
+        nvapi("sway_arguments", [](RtScene12* scene) { return std::addressof(scene->sway_arguments_); }),
+        nvapi("sway_lists", [](RtScene12* scene) { return std::addressof(scene->sway_lists_); }),
+        nvapi("sway_counts", [](RtScene12* scene) { return std::addressof(scene->sway_counts_); }),
+        nvapi("ptlas_buffers", [](RtScene12* scene) { return scene->ptlas_buffers_.data(); }, 2),
+        nvapi("ptlas_scratch", [](RtScene12* scene) { return std::addressof(scene->ptlas_scratch_); }),
+        buffer("cache_owners", [](RtScene12* scene) { return std::addressof(scene->cache_owners_); }),
+        buffer("vertices_copy", [](RtScene12* scene) { return std::addressof(scene->vertices_); }),
+        buffer("path_ser_table", [](RtScene12* scene) { return std::addressof(scene->path_ser_table_); }),
     };
   }
 
@@ -2814,6 +2925,7 @@ class RtScene12 {
       *why = "the burn's pipeline failed";
       return false;
     }
+    KeepCode(burn_pipeline_.Get(), RT_BURN, sizeof(RT_BURN));
     burn_pass_.assign(pass.begin(), pass.end());
     burn_loops_ = loops;
     return true;
@@ -2823,30 +2935,37 @@ class RtScene12 {
   // A stem's pipeline from `code` (a compute shader's DXIL, checked by rt_serve.h; empty: the base build's again), made with
   // the scene's root signature: rt_trace, rt_bounce, rt_path, rt_reflect, rt_reuse, rt_reflect_reservoir, rt_fog, rt_lights
   // (their DXR 1.2 builds where Dxr12()), rt_soft, rt_scene_data, rt_place, rt_cache_fill, rt_cache_resolve. False: `why`.
-  bool SwapStem(std::string_view stem, std::span<const uint8_t> code, std::string* why) {
-    const std::array<std::pair<std::string_view, ComPtr<ID3D12PipelineState>*>, 13> stems = {{
-        {"rt_trace", &trace_pipeline_},
-        {"rt_bounce", &bounce_pipeline_},
-        {"rt_path", &path_pipeline_},
-        {"rt_reflect", &reflect_pipeline_},
-        {"rt_reuse", &reuse_pipeline_},
-        {"rt_reflect_reservoir", &reflect_reservoir_pipeline_},
-        {"rt_fog", &fog_pipeline_},
-        {"rt_lights", &lights_pipeline_},
-        {"rt_soft", &soft_pipeline_},
-        {"rt_scene_data", &scene_data_pipeline_},
-        {"rt_place", &place_pipeline_},
-        {"rt_cache_fill", &cache_fill_pipeline_},
-        {"rt_cache_resolve", &cache_resolve_pipeline_},
+  // SwapStem's stems and their pipelines (the first eight: DXR 1.2 builds where Dxr12(), their headers' _omm).
+  using StemPipeline = std::pair<std::string_view, ComPtr<ID3D12PipelineState> RtScene12::*>;
+  static constexpr size_t OMM_STEMS = 8;
+  static constexpr std::array<StemPipeline, 13> SwapStems() {
+    return {{
+        {"rt_trace", &RtScene12::trace_pipeline_},
+        {"rt_bounce", &RtScene12::bounce_pipeline_},
+        {"rt_path", &RtScene12::path_pipeline_},
+        {"rt_reflect", &RtScene12::reflect_pipeline_},
+        {"rt_reuse", &RtScene12::reuse_pipeline_},
+        {"rt_reflect_reservoir", &RtScene12::reflect_reservoir_pipeline_},
+        {"rt_fog", &RtScene12::fog_pipeline_},
+        {"rt_lights", &RtScene12::lights_pipeline_},
+        {"rt_soft", &RtScene12::soft_pipeline_},
+        {"rt_scene_data", &RtScene12::scene_data_pipeline_},
+        {"rt_place", &RtScene12::place_pipeline_},
+        {"rt_cache_fill", &RtScene12::cache_fill_pipeline_},
+        {"rt_cache_resolve", &RtScene12::cache_resolve_pipeline_},
     }};
-    const auto found = std::ranges::find(stems, stem, &std::pair<std::string_view, ComPtr<ID3D12PipelineState>*>::first);
-    if (found == stems.end()) {
+  }
+  bool SwapStem(std::string_view stem, std::span<const uint8_t> code, std::string* why) {
+    static constexpr std::array<StemPipeline, 13> STEMS = SwapStems();
+    const auto found = std::ranges::find(STEMS, stem, &StemPipeline::first);
+    if (found == STEMS.end()) {
       *why = std::format("unknown stem {}", stem);
       return false;
     }
-    const auto base = base_pipelines_.try_emplace(std::string(stem), *found->second).first;
+    ComPtr<ID3D12PipelineState>& pipeline = this->*found->second;
+    const auto base = base_pipelines_.try_emplace(std::string(stem), pipeline).first;
     if (code.empty()) {
-      *found->second = base->second;
+      pipeline = base->second;
       return true;
     }
     ComPtr<ID3D12PipelineState> made;
@@ -2855,8 +2974,141 @@ class RtScene12 {
       *why = std::format("{}'s pipeline could not be made from its DXIL (another root signature or shader model?)", stem);
       return false;
     }
-    *found->second = made;
+    KeepCode(made.Get(), code.data(), code.size());
+    pipeline = made;
     return true;
+  }
+
+  // The resource-use log (rt_uses.h; rt_serve.h's `run` with log_uses): the slots' lists' work from now on, each frame's
+  // rows into `folder`/uses.tsv, each stem's DXIL beside it as <stem>.dxil. False: `why` says why.
+  bool StartUses(const std::filesystem::path& folder, std::string* why) {
+    use_file_.open(folder / "uses.tsv", std::ios::trunc);
+    if (!use_file_) {
+      *why = std::format("{} could not be written", (folder / "uses.tsv").string());
+      return false;
+    }
+    use_file_ << "# renodx resident resource-use log v1 (tools/tw/round_notes/plan_1117/designs/grs_uses_log.md)\n"
+              << "# frame\tspan\tstem\tkind\tslot\tresource\n";
+    use_folder_ = folder;
+    use_written_.clear();
+    use_unnamed_.clear();
+    std::vector<ID3D12GraphicsCommandList4*> lists;
+    for (const Slot& slot : slots_) lists.push_back(slot.list.Get());
+    uses_ = std::make_unique<uses::Log<RtScene12>>(this);
+    if (!uses_->Hook(lists, why)) {
+      uses_.reset();
+      use_file_.close();
+      return false;
+    }
+    return true;
+  }
+  // The rows so far written; the next ones frame `frame`'s.
+  void UsesFrame(uint32_t frame) {
+    if (!uses_) return;
+    use_file_ << uses_->TakeRows();
+    uses_->Frame(frame);
+  }
+  // The log off, its last rows and the external resources written: the shared outputs (the game reads them, dump writes
+  // them), NRD's inputs (NRD's own root signature reads them), what NVAPI's cluster and partitioned TLAS operations read.
+  // False: no log, or uses.tsv not written.
+  bool StopUses() {
+    if (!uses_) return false;
+    for (const ResourceRow& row : ResourceRows()) {
+      if (row.output) {
+        uses_->External(row.name);
+      }
+    }
+    for (const UseName& entry : UseNames()) {
+      for (UINT set = 0; (entry.member == nullptr || entry.nvapi) && set < entry.sets; ++set) {
+        uses_->External(UseSetName(entry, set));
+      }
+    }
+    for (size_t index = 0; index < slots_.size(); ++index) {
+      uses_->External(std::format("slot{}_ptlas_device", index));
+    }
+    use_file_ << uses_->TakeRows() << uses_->ExternalRows();
+    uses_.reset();
+    use_file_.close();
+    return !use_file_.fail();
+  }
+  // rt_uses.h's names: the scene's root signature; a pipeline's stem (SwapStem's by its build: <stem>[_omm], a swapped one's
+  // .<digest>; others dxil.<digest>, the DXIL container's digest; unknown_pipeline: not made here), its DXIL written once.
+  bool UseOwnRoot(ID3D12RootSignature* root) const { return root != nullptr && root == root_signature_.Get(); }
+  std::string UseStem(ID3D12PipelineState* pipeline) {
+    const auto found = use_code_.find(pipeline);
+    if (found == use_code_.end() || found->second.size() < 20) return "unknown_pipeline";
+    const std::vector<uint8_t>& code = found->second;
+    std::string digest;
+    for (size_t at = 4; at < 10; ++at) digest += std::format("{:02x}", code[at]);
+    std::string name = "dxil." + digest;
+    static constexpr std::array<StemPipeline, 13> STEMS = SwapStems();
+    for (size_t index = 0; index < STEMS.size(); ++index) {
+      const auto& [stem, member] = STEMS[index];
+      if ((this->*member).Get() != pipeline) continue;
+      const auto base = base_pipelines_.find(std::string(stem));
+      name = std::format("{}{}{}", stem, (index < OMM_STEMS && dxr12_) ? "_omm" : "",
+                         (base != base_pipelines_.end() && base->second.Get() != pipeline) ? "." + digest : "");
+    }
+    if (!use_written_.contains(name)
+        && std::ofstream(use_folder_ / (name + ".dxil"), std::ios::binary | std::ios::trunc)
+               .write(reinterpret_cast<const char*>(code.data()), static_cast<std::streamsize>(code.size()))) {
+      use_written_.insert(name);
+    }
+    return name;
+  }
+  // The live table's views by UseNames (another table or heap: none): "uav" / "srv", the register, the resource (none
+  // for a null view; NRD's textures by their descriptors' names).
+  template <typename Emit>
+  void UseTable(D3D12_GPU_DESCRIPTOR_HANDLE table, const Emit& emit) {
+    if (table.ptr != descriptors_->GetGPUDescriptorHandleForHeapStart().ptr) return;
+    for (const UseName& entry : UseNames()) {
+      for (UINT set = 0; entry.descriptor != NO_DESCRIPTOR && set < entry.sets; ++set) {
+        const UINT descriptor = entry.descriptor + set;
+        const auto range = std::ranges::find_if(use_ranges_, [&](const D3D12_DESCRIPTOR_RANGE& kind) {
+          return descriptor >= kind.OffsetInDescriptorsFromTableStart && descriptor < kind.OffsetInDescriptorsFromTableStart + kind.NumDescriptors;
+        });
+        ID3D12Resource* resource = (entry.member != nullptr) ? entry.member(this)[set].Get() : nullptr;
+        if (range == use_ranges_.end() || (entry.member != nullptr && resource == nullptr)) continue;
+        const bool uav = range->RangeType == D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        emit(uav ? "uav" : "srv",
+             std::format("{}{}:{}", uav ? 'u' : 't', range->BaseShaderRegister + descriptor - range->OffsetInDescriptorsFromTableStart, range->RegisterSpace),
+             (resource != nullptr) ? UseResource(resource) : std::string(entry.name));
+      }
+    }
+  }
+  // A root SRV's or UAV's register ("u6:0").
+  std::string UseRootSlot(UINT parameter) const {
+    if (parameter >= use_parameters_.size()) return "?";
+    const D3D12_ROOT_PARAMETER& root = use_parameters_[parameter];
+    return std::format("{}{}:{}", (root.ParameterType == D3D12_ROOT_PARAMETER_TYPE_UAV) ? 'u' : 't', root.Descriptor.ShaderRegister, root.Descriptor.RegisterSpace);
+  }
+  // A resource's name: its ResourceRows or UseNames name, a slot's buffer's slot<n>_<field>, else buffer#<address> /
+  // texture#<address> (a buffer by GPU address: the one holding it, an unnamed one seen by pointer before, else va:<address>).
+  std::string UseResource(ID3D12Resource* resource) {
+    if (resource == nullptr) return "null";
+    if (std::string name = UseFind([&](ID3D12Resource* candidate) { return candidate == resource; }); !name.empty()) return name;
+    const D3D12_RESOURCE_DESC desc = resource->GetDesc();
+    if (desc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER) return std::format("texture#{:x}", reinterpret_cast<uintptr_t>(resource));
+    std::string name = std::format("buffer#{:x}", reinterpret_cast<uintptr_t>(resource));
+    use_unnamed_.insert_or_assign(resource->GetGPUVirtualAddress(), std::pair{desc.Width, name});
+    return name;
+  }
+  std::string UseAddress(D3D12_GPU_VIRTUAL_ADDRESS address) {
+    if (std::string name = UseFind([&](ID3D12Resource* candidate) {
+          return candidate != nullptr && candidate->GetDesc().Dimension == D3D12_RESOURCE_DIMENSION_BUFFER && address >= candidate->GetGPUVirtualAddress()
+                 && address < candidate->GetGPUVirtualAddress() + candidate->GetDesc().Width;
+        });
+        !name.empty()) {
+      return name;
+    }
+    if (const auto after = use_unnamed_.upper_bound(address); after != use_unnamed_.begin() && address < std::prev(after)->first + std::prev(after)->second.first) {
+      return std::prev(after)->second.second;
+    }
+    return std::format("va:{:x}", address);
+  }
+  static bool UseReadBack(ID3D12Resource* resource) {
+    D3D12_HEAP_PROPERTIES heap = {};
+    return resource != nullptr && SUCCEEDED(resource->GetHeapProperties(&heap, nullptr)) && heap.Type == D3D12_HEAP_TYPE_READBACK;
   }
   [[nodiscard]] ID3D12Fence* OwnFence() const { return own_fence_.Get(); }
 
@@ -5460,6 +5712,9 @@ class RtScene12 {
     if (!signal->front) {
       const D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {.pRootSignature = root_signature_.Get(), .CS = front};
       if (FAILED(device_->CreateComputePipelineState(&desc, IID_PPV_ARGS(signal->front.GetAddressOf())))) return fail("NRD's inputs' pipeline failed");
+#if defined(RENODX_RECORDER)
+      KeepCode(signal->front.Get(), front.pShaderBytecode, front.BytecodeLength);
+#endif
     }
     auto made = std::make_unique<Nrd12>();
     std::string error;
@@ -5783,6 +6038,13 @@ class RtScene12 {
             Transition(made->state.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
         };
         list->ResourceBarrier(static_cast<UINT>(carried_back.size()), carried_back.data());
+#if defined(RENODX_RECORDER)
+        // The new room's copies: read under its placed names from here on.
+        if (uses_) {
+          uses_->External(UseResource(carried));
+          uses_->External(UseResource(made->state.Get()));
+        }
+#endif
         UsePlacedRoom(made.get());
         if (details_) {
           slow_report_ += std::format("{}[TW ray tracing] Room for {} placed instances now ({} written).", (slow_report_.empty() ? "" : "\n"), placed_capacity_, placed_written_);
@@ -7226,6 +7488,21 @@ class RtScene12 {
             list->CopyBufferRegion(uvs.Get(), uvs_at, uvs_.Get(), uint64_t{read.uv_offset} * 4, uint64_t{read.triangles} * 12);
             uvs_at = Align(uvs_at + (uint64_t{read.triangles} * 12), 256);
           }
+#if defined(RENODX_RECORDER)
+          // The bake's inputs: read by its BLAS rebuild frames later, by the GPU baker or the CPU (not logged).
+          if (uses_) {
+            for (ID3D12Resource* input : {bake->positions.Get(), bake->uvs.Get(), bake->mask.Get()}) {
+              if (input != nullptr) {
+                uses_->External(UseResource(input));
+              }
+            }
+#if defined(RENODX_OMM_SDK)
+            if (bake->gpu) {
+              uses_->External(UseResource(omm_gpu_.masks[bake->mask_index].Get()));
+            }
+#endif
+          }
+#endif
           micromap_reads_.push_back(std::move(bake));
         }
         for (auto& barrier : to_source) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
@@ -8940,6 +9217,46 @@ class RtScene12 {
   static constexpr uint32_t BY_TRACE = 2;
   static constexpr uint32_t BY_BOUNCE = 4;
   static constexpr uint32_t BY_REFLECTIONS = 8;
+  // The resource-use log's names (UseTable, UseResource) past ResourceRows': each live table view's resource by its
+  // descriptor (`sets` in a row, named <name>_<set>; no member: NRD's textures, named by the descriptor), then the buffers
+  // the root descriptors, copies and builds use (NO_DESCRIPTOR).
+  static constexpr UINT NO_DESCRIPTOR = DESCRIPTOR_COUNT;
+  struct UseName {
+    const char* name = "";
+    UINT descriptor = NO_DESCRIPTOR;
+    ComPtr<ID3D12Resource>* (*member)(RtScene12*) = nullptr;
+    UINT sets = 1;
+    bool nvapi = false;  // read by NVAPI's cluster and partitioned TLAS operations (not logged: external)
+  };
+  static std::string UseSetName(const UseName& entry, UINT set) {
+    return (entry.sets > 1) ? std::format("{}_{}", entry.name, set) : std::string(entry.name);
+  }
+  // The first named resource `found` takes (ResourceRows, UseNames, the slots' buffers), its name; empty: none.
+  template <typename Found>
+  std::string UseFind(const Found& found) {
+    for (const ResourceRow& row : ResourceRows()) {
+      if (found(row.member(this)->Get())) return row.name;
+    }
+    for (const UseName& entry : UseNames()) {
+      for (UINT set = 0; entry.member != nullptr && set < entry.sets; ++set) {
+        if (found(entry.member(this)[set].Get())) return UseSetName(entry, set);
+      }
+    }
+    for (size_t index = 0; index < slots_.size(); ++index) {
+      for (const auto& [field, name] : {std::pair{&Slot::table, "table"}, std::pair{&Slot::left_out, "left_out"}, std::pair{&Slot::compact, "compact"},
+                                        std::pair{&Slot::jobs, "jobs"}, std::pair{&Slot::clusters, "clusters"}, std::pair{&Slot::instances, "instances"},
+                                        std::pair{&Slot::paths, "paths"}, std::pair{&Slot::lights, "lights"}, std::pair{&Slot::sizes, "sizes"},
+                                        std::pair{&Slot::ptlas_device, "ptlas_device"}}) {
+        if (found((slots_[index].*field).Get())) return std::format("slot{}_{}", index, name);
+      }
+    }
+    return {};
+  }
+  // A pipeline's DXIL for the resource-use log (UseStem): every pipeline of the scene's root signature.
+  void KeepCode(ID3D12PipelineState* pipeline, const void* code, size_t bytes) {
+    const auto* first = static_cast<const uint8_t*>(code);
+    use_code_.insert_or_assign(pipeline, std::vector<uint8_t>(first, first + bytes));
+  }
   // A resource's bytes on their way to the CPU (CopyToReadback): a buffer's part, or a texture's rows from the top (each
   // subresource's footprint in the read-back).
   struct Readback {
@@ -9265,6 +9582,9 @@ class RtScene12 {
   }
   // Mark()'s pass for the resident: its timestamp (SERVE_TIMING_PASSES), then the burn when it is the burn's pass.
   void ServeMark(ID3D12GraphicsCommandList* list, const wchar_t* pass) {
+    if (uses_) {
+      uses_->Span(list, pass);
+    }
     if (serve_timing_ == SERVE_TIMING_PASSES) ServeStamp(list, SERVE_MARK, pass);
     if (burn_loops_ == 0 || burn_pass_ != pass) return;
     ++burn_runs_;
@@ -10036,6 +10356,16 @@ class RtScene12 {
   uint32_t burn_runs_ = 0;
   std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> base_pipelines_;
   Moments moments_;
+  // The resource-use log's (StartUses): the root signature's ranges and parameters, each pipeline's DXIL (KeepCode), the
+  // log, its folder, file and the stems' DXIL written there.
+  std::array<D3D12_DESCRIPTOR_RANGE, 6> use_ranges_ = {};
+  std::array<D3D12_ROOT_PARAMETER, 13> use_parameters_ = {};
+  std::unordered_map<ID3D12PipelineState*, std::vector<uint8_t>> use_code_;
+  std::unique_ptr<uses::Log<RtScene12>> uses_;
+  std::filesystem::path use_folder_;
+  std::ofstream use_file_;
+  std::unordered_set<std::string> use_written_;
+  std::map<D3D12_GPU_VIRTUAL_ADDRESS, std::pair<uint64_t, std::string>> use_unnamed_;  // unnamed buffers by address: size, name
 #endif
 };
 
