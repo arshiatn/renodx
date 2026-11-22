@@ -508,7 +508,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: synthesis agent -> handoff_plan\plan.md (parallel groups) -> SHOW ATN FIR ... | ?
 - coord: before ATN's restart, confirm the end batch is READY (everything built + ... | ?
 - gtb_ (owner of schema_check.py per gtb_s1b_fix2_handback.md; AFTER S3c): support ... | ?
-- gtc_ (Low; STARTED 18:3x): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl ... | ?
 - gtl_ (AFTER S3c, no suites beside it): conhost race fix in test_priced_kill_ends ... | ?
 - gtl_ (AFTER S3c): lab.rules 64 cap for iq.dump_frames + seed_runs.dump_frames; s ... | ?
 - gtl_ (low, AFTER S3c): stale "proposed" mentions (resident_protocol.md l.7 + l.1 ... | ?
@@ -516,8 +515,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ ROUND 22 (coord 18:3x): gpr-R21-1 + gtw-R21-1..6 (below); then gtw_ + gpr_ ... | ?
 - lg3_ (Sonnet High, own worktree, branch rmt_lg3 from atn-mods HEAD): logging gro ... | ?
 - t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 (coord 18:4x); t ... | ?
-- ATN: Q1 end batch without B3b? Q2 group 3 before the batch? Q3 the B1L1-only vol ... | ?
 - ATN: review handoff_plan\plan.md -> OK / changes; NOTHING from it starts or gets ... | ?
+- gtv_: R1 burst verdict (calibrate / toggle / L1A) -> S3c part 1 PASS or what to ... | ?
+- lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
+- b3s_ (Sonnet High, worktree): B3b S4 -> S5 -> S6 per bd1o_design_B3_v2.md §10 -> ... | ?
+- t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 BUT keep B3b (re ... | ?
+- tick audit (Opus xHigh, read only): every [x] box really done -> handoff_plan\ti ... | ?
+- tick-only verify (Opus xHigh, read only): plan.md section 2's 200 rows -> coord ... | ?
+- coord: ATN's decision list (all questions + recommendations) + full open-items p ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -11049,7 +11054,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] gtv_ (DONE 18:35, GO): read the post-B1 test-only diffs (4 schema tests, left_out conhost, titles) (coord 18:2x).
         - [ ] gtb_ (owner of schema_check.py per gtb_s1b_fix2_handback.md; AFTER S3c): support "maximum" beside "minimum"
         (cmd dump frames <= 64; also checked in Resident.send, lab.py ~1044) (low).
-        - [ ] gtc_ (Low; STARTED 18:3x): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl_'s live check: steps 0-2, STOP at 2b for gtv_'s
+        - [x] gtc_ (Low; DONE 19:11): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl_'s live check: steps 0-2, STOP at 2b for gtv_'s
         go, then 3-19 (coord).
         gtv_ TEST DIFFS 18:35 (plan_1117/gtv_test_diffs_handback.md; gtv_iq_review.md "## gtv_ test diffs" l.1195; sandbox
         testbin\scratch\gtv_\s3c\land7 + fx7): GO. 15 land-list files live = stage = list; code = the B1 stage gtv_ passed;
@@ -11147,7 +11152,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN stopped coord's turn 18:4x before the spawn -> asked ATN "start group 3 + tools refresh now?".
         - [ ] t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 (coord 18:4x); then ebr_ re-checks. NOT
         STARTED (same ATN question).
-        - [ ] ATN: Q1 end batch without B3b? Q2 group 3 before the batch? Q3 the B1L1-only volley pair (~7 min)? (rec. yes
+        - [x] ATN (ANSWERED 19:0x: Q1 BUILD B3b, Q2 yes, Q3 yes): Q1 end batch without B3b? Q2 group 3 before the batch? Q3 the B1L1-only volley pair (~7 min)? (rec. yes
         x3; asked 18:4x). Later: Q6 delete testbin\c33i_rs5_loop* after the restart.
         hts_ PLAN 18:52 (handoff_plan/plan.md 824 lines + plan_groups.tsv 104 rows + hts_handback.md; line numbers at
         fd4ae4e7c): 549 open boxes (56 mid-line), all assigned. 200 tick-only (section 2, coord ticks after ATN's OK); 50 ATN
@@ -11160,9 +11165,35 @@ heading text are in HANDOFF_ARCHIVE.md)
         writer (G18). Changes vs triage: gpu_trace.ps1 halves (11408 / 10775) -> GPU plan; 11848 = in-game Nsight item
         (answered at OPEN FOR ATN l.185); htc_'s hand-back has two labels swapped (TSV right).
         - [ ] ATN: review handoff_plan\plan.md -> OK / changes; NOTHING from it starts or gets ticked before ATN's OK.
-        Agents (2): gtc_ (S3c RE-RUN, GPU), gtp_ (gate round 22, below normal); lg3_ + t4i_ wait for ATN's go; gtv_ / gtl_
-        / ebq_ / hts_ / hta_..htd_ / gtw_ / gpr_ / fcr_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: S3c RE-RUN (gtc_) from 18:3x;
-        other agents' CPU work below normal; one GPU job at a time
+        gtc_ RE-RUN DONE 19:11 (plan_1117/gtc_rerun_done_handback.md; testbin\scratch\gtc_\rerun\step_00..19.txt, offline.txt,
+        bursts_r1.txt): all 20 steps exit 0, rule commands alone. Calibrations PASS both ways: R1 G-1122-7 / 8 (+0.33 /
+        -0.34 ms), R2 G-1122-11 / 12, R3 G-1122-14 / 15. A/A NO CHANGE + picture SAME: G-1122-9 (R1 toggle), G-1122-10 (R1
+        rotation, K 8), G-1122-13 (R2), G-1122-16 (R3). Trace s3c_r1_trace2 exit 0 after 74 s (nsight\runs\s3c_r1_trace2).
+        Settle: R1 321, R2 257, R3 257, all settle_all 1, rows all 0. Step-6 checks: commit 38.26 GB before step 6; R1's
+        resident 97088 stopped by the lab 18:52:31 (no idle exit inside the rotation); no commands during step 6. Offline:
+        A1 PASS (11 same x3), A2 0 full reloads, A6 PASS (idle 10 min, lock gone 19:10:05, VRAM 15305 -> 2430 MB), A7 PASS
+        (max 1 s), A9(a) PASS by eye (rotation vram 17873.7-18020.1 MB, ~0.8 %), A9(b) [], A10 PASS, A11 R1 2106 / R2 2106 /
+        R3 1864 MB. BURSTS FLAG ON R1 ONLY: res_183750 8 of 59 runs (calibrate 4 at 18:40:45-18:41:29, toggle 4 at
+        18:42:37-18:42:46; 4-14 frames; each with an ns_busy run inside, dwm 0); rotation L1A 1 of 3 (18:43:54); R2 + R3 0
+        of 58 each. (lab_analyze bursts prints the whole res folder whatever --job.) -> gtv_ verdict on R1's bursts.
+        - [ ] gtv_: R1 burst verdict (calibrate / toggle / L1A) -> S3c part 1 PASS or what to re-run (coord 19:1x).
+        ATN 19:0x (sick; in-game tests out for 1-2 days; wants a plan coord can run almost without him): "please continue";
+        Q1 BUILD B3b (S4-S7; multiple subagents if possible) -> COORD: before the end batch (ATN is out 1-2 days anyway, one
+        batch measures all; ATN may still say after); Q2 group 3 BEFORE the batch = yes; Q3 the B1L1-only pair (~7 min) =
+        yes; TICK the 200 done boxes if SURE they are done -> verify each first; wants EVERY decision he must make with a
+        recommendation + the full open-items plan. ATN 19:1x: double-check that everything ALREADY TICKED in our plans was
+        really done (nothing wrongly missed again) -> tick audit of all [x] boxes (HANDOFF 679 + HANDOFF_ARCHIVE 562 + the
+        plans' done steps).
+        - [ ] lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge (coord 19:1x).
+        - [ ] b3s_ (Sonnet High, worktree): B3b S4 -> S5 -> S6 per bd1o_design_B3_v2.md §10 -> Opus xHigh review (S7) ->
+        fixes -> merge (coord 19:1x).
+        - [ ] t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 BUT keep B3b (real row / env names) + add the
+        ~7 min B1L1 pair -> ebr_ re-check (coord 19:1x).
+        - [ ] tick audit (Opus xHigh, read only): every [x] box really done -> handoff_plan\tick_audit\*.tsv (coord 19:1x).
+        - [ ] tick-only verify (Opus xHigh, read only): plan.md section 2's 200 rows -> coord ticks the confirmed ones.
+        - [ ] coord: ATN's decision list (all questions + recommendations) + full open-items plan summary -> ATN.
+        Agents: gtp_ (gate round 22); starting lg3_ / b3s_ / t4i_ / gtv_ / tick audits; GPU: FREE since 19:11 (S3c part 1
+        re-run done); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
