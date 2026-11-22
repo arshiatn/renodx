@@ -337,11 +337,11 @@ struct RaySliders {
   float water_soft = 0.f;
   float specular_occlusion = 0.f;
   float light_bounce = 0.f;  // the Global Illumination's light from rays (Shogun's: off or on; PathTracing: paths)
-  float light_bounce_rays = 4.f;
-  float light_bounce_range = 10.f;
-  float light_bounce_resolution = 1.f;  // full, half, quarter
+  float light_bounce_rays = 1.f;
+  float light_bounce_range = 50.f;
+  float light_bounce_resolution = 0.f;  // full, half, quarter
   float path_tracing = 0.f;
-  float path_bounces = 2.f;
+  float path_bounces = 1.f;
   float sharc = 0.f;
   float reuse_lean = 1.f;
   float reuse_near = 1.f;
@@ -682,10 +682,10 @@ const Values RAYS_RESET = {
     {"RayTracedWaterReflections", 0.f},
     {"RayTracedWaterSteady", 0.f},
     {"RayTracedWaterSoft", 0.f},
-    {"RayTracedLightBounceRays", 4.f},
-    {"RayTracedLightBounceRange", 10.f},
-    {"RayTracedLightBounceResolution", 1.f},
-    {"PathTracingBounces", 2.f},
+    {"RayTracedLightBounceRays", 1.f},
+    {"RayTracedLightBounceRange", 50.f},
+    {"RayTracedLightBounceResolution", 0.f},
+    {"PathTracingBounces", 1.f},
     {"RayTracedSharc", 0.f},
     {"RayTracedReuseLean", 1.f},
     {"RayTracedReuseNear", 1.f},
@@ -2271,17 +2271,17 @@ void BuildRuntimeData() {
       ray_toggle("RayTracedLightBounce", &rt_sliders.light_bounce, "Ray-traced Global Illumination",
                  "The Global Illumination's light found with rays: no guessing behind what you see, light from farther.\n"
                  "Needs the Global Illumination on."),
-      ray_count("RayTracedLightBounceRays", &rt_sliders.light_bounce_rays, 4.f, 16.f, "Ray-traced GI rays", "Rays per texel: less noise, heavier.",
+      ray_count("RayTracedLightBounceRays", &rt_sliders.light_bounce_rays, 1.f, 16.f, "Ray-traced GI rays", "Rays per texel: less noise, heavier.",
                 bounce),
-      ray_amount("RayTracedLightBounceRange", &rt_sliders.light_bounce_range, 10.f, "Ray-traced GI range", 1.f, 50.f, "%.0f m",
+      ray_amount("RayTracedLightBounceRange", &rt_sliders.light_bounce_range, 50.f, "Ray-traced GI range", 1.f, 50.f, "%.0f m",
                  "How far its rays look for light.", bounce),
-      ray_choice("RayTracedLightBounceResolution", &rt_sliders.light_bounce_resolution, 1.f, "Ray-traced GI resolution", {"Full", "Half", "Quarter"},
+      ray_choice("RayTracedLightBounceResolution", &rt_sliders.light_bounce_resolution, 0.f, "Ray-traced GI resolution", {"Full", "Half", "Quarter"},
                  "Its own resolution (the Global Illumination's Resolution and Checkerboard no longer apply to it).\n"
                  "Full: sharpest, about 4x Half's cost.",
                  bounce),
       ray_toggle("PathTracing", &rt_sliders.path_tracing, "Path tracing",
                  "The Global Illumination's and the reflections' rays go on bouncing: lit by what the screen never saw. Heavy.", paths_enabled),
-      ray_count("PathTracingBounces", &rt_sliders.path_bounces, 2.f, 2.f, "Path tracing bounces",
+      ray_count("PathTracingBounces", &rt_sliders.path_bounces, 1.f, 2.f, "Path tracing bounces",
                 "Bounces past the first where the camera sees nothing. 1: faster, a little darker.", paths),
       ray_choice("RayTracedSharc", &rt_sliders.sharc, 0.f, "SHaRC radiance cache (Experimental)", off_on,
                  "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).", paths),
