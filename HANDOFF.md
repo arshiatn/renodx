@@ -505,7 +505,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal ... | ?
 - fcr_: re-check grs_ aa42b6374 + gti_ T1-T4 (dead_outputs.py) as one piece -> MER ... | ?
 - gtv_ (Opus xHigh, read only): root cause of S3c part 1's 3 failed calibrations ( ... | ?
-- gtc_ (Low): S3c part 1 offline analyses A1 / A2 / A6 / A7 / A9b / A10 / A11 per ... | ?
 - coord: S3c part 1 RE-RUN (calibrate -> A/A -> rotation -> trace) after gtv_'s fi ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
@@ -10678,11 +10677,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         offline A1 / A2 / A6 / A7 / A9b / A10 / A11 (A3 / A4 / A5 / A8 / X2 need steps 4 / 6 / 7 -> re-run).
         - [ ] gtv_ (Opus xHigh, read only): root cause of S3c part 1's 3 failed calibrations (R1 / R2 MDE vs 0.32 ms
         burn, R3 A/A ~= burn) + the ngfx trace timeout; fixes + owners + what the re-run needs (coord 16:1x).
-        - [ ] gtc_ (Low): S3c part 1 offline analyses A1 / A2 / A6 / A7 / A9b / A10 / A11 per sheet section 3 (coord 16:1x).
+        - [x] gtc_ (DONE 16:18): S3c part 1 offline analyses A1 / A2 / A6 / A7 / A9b / A10 / A11 per sheet section 3 (coord 16:1x).
         - [ ] coord: S3c part 1 RE-RUN (calibrate -> A/A -> rotation -> trace) after gtv_'s fixes land.
-        Agents (5): gtp_ (gate round 20), fcr_ (dead-output re-check), gtl_ (stage re-run: keeper + jobs suites), gtv_
-        (S3c calibration + trace root cause, read only), gtc_ (S3c offline analyses); gti_ / grs_ / h0i_ / upr_ idle; GPU:
-        FREE since 16:15 (S3c part 1 done); one GPU job at a time
+        gtc_ S3c OFFLINE 16:18 (plan_1117/gtc_s3c_offline_handback.md; testbin\scratch\gtc_\offline.txt): A1 PASS x3
+        (rec_compare X vs Y exit 0, "round trip: 11 same, 0 different, 0 missing" R1 / R2 / R3 = reset onto a snapshot ==
+        fresh lifetime). A2 0 "Full reload:" lines in all 4 resident.logs (no result_1.json -> no events.full_reloads).
+        A6 FLAG 2 / 3: session.json stopped "idle 10 min" + lock gone + lab\running empty hold; resident.log has NO
+        "Stopped: 10 minutes without a command." line (keeper killed 85276 at 16:13:48, exit 1, before / instead of the
+        resident's own idle stop). A7 PASS: 123 config / dump commands, max 1 s (whole-second stamps). A9(b) PASS []. A10
+        FLAG: settle_all R1 0 (frame 1152), R2 1 (449), R3 0 (512). A11 snapshot R1 2106 / R2 2106 / R3 1864 MB VRAM (no
+        budget.py observe; coord decides after gtv_). A6 + A10 sent to gtv_.
+        Agents (4): gtp_ (gate round 20), fcr_ (dead-output re-check), gtl_ (stage re-run: keeper + jobs suites), gtv_
+        (S3c calibration + trace root cause, read only); gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15 (S3c
+        part 1 done); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
