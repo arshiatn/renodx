@@ -6544,7 +6544,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         h0i_ (a89c9abe637f2c4c2, Opus High, worktree) STARTED 01:2x: H0 random-number fix (Pcg4d, dimension table,
         every Random( site, Random(uint3) deleted; offline hash tests + shader compile; no GPU; not main.cpp /
         rt_d3d12.hpp) -> harness runs by me later in a held window -> Opus xHigh review.
-        Agents (10): bd1r_ (R-S5 review), gti_ + gtb_ (S1a / S1b fixes), gtw_ (S1r S1c), t4i_ (nit), lga_ (group 1
+        gtw_ S1r S1c DONE 01:2x (plan_1117/gtw_s1c_review.md, hand-back plan_1117/gtw_s1c_handback.md): FIX. Hook fails
+        open on its own faults, W2 launcher OK under cmd / bash / PowerShell, 123 tests green, median 0.07 s. Musts: M1
+        commit check fails CLOSED on its own faults; M2 T04 misses usual delete forms + false-refuses grep -ri; M3 'Run:'
+        line + Q13 allow rules don't fit the shells (need PowerShell + Bash forms); M4 A0 probe logs can't answer A.12.
+        10 Shoulds (decompiled shaders wrongly spec-gated; UTF-16 mode.txt turns gates off silently; gate files
+        deletable / editable ...). 11 install decisions for ATN -> into INSTALL_FOR_ATN.md as a checklist. gtp_ RESUMED
+        01:2x: fixes -> gtw_ re-check.
+        Agents (10): bd1r_ (R-S5 review), gti_ + gtb_ (S1a / S1b fixes), gtp_ (S1c fixes), t4i_ (nit), lga_ (group 1
         re-check), h0i_ (H0), lgf2_ (helper + bridge logging). QUEUE: c33i_ R-S5 nits -> merge, B1.6, X1, logging group 3,
         gtv_ re-check, PT DI steps 0-4 (after lgf2_ + H0), S2 (after lgf2_), T5 / T6, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
