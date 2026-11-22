@@ -676,7 +676,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "AntiAliasingTextureLodBias", .section = section, .shown = more(&more_aa, lod_bias_rows),
                .tooltip = "How sharp textures are while the upscaler renders below 100%.\n"
                           "Matched: as sharp as at your display's resolution. Sharper / Sharpest: one / two steps more\n"
-                          "(more detail, can shimmer)."});
+                          "(more detail, can shimmer).",
+               // The row's own check reads the upscaler's render scale, which stays 100% while the game owns its scale.
+               .enabled = (b.lod_bias_at_game_scale ? std::function<bool()>(upscaling) : std::function<bool()>())});
     if (b.lod_bias_trilinear != nullptr) {
       page.Add(new Setting{
           .key = "AntiAliasingTextureLodBiasTrilinear",
@@ -773,7 +775,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                            {{"ssao_mode", 0.f}, {"ssr_hierarchical", 0.f}, {"WaterClarity", 1.f}, {"WaterCaustics", 0.f}}));
     Values no_rays_values = {{"ScreenSpaceShadows", 1.f}, {"ScreenSpaceShadowsLength", 3.f}, {"light_bounce_strength", 1.f}};
     // Untested there, GT-VBAO's row defaults to the game's AO: this button turns it on all the same.
-    if (!b.screen_space_tested && b.has_gtvbao) no_rays_values.emplace_back("ssao_mode", 1.f);
+    if (!b.screen_space_tested && b.has_gtvbao) {
+      no_rays_values.emplace_back("ssao_mode", 1.f);
+    }
     page.Add(preset_button("No RT/PT (Recommended)", b.texts->no_rays_tooltip, no_rays_values));
     Values rays_values = RAYS_PRESET;
     // No paths for the sky's light here: ray-traced AO, over the game's.
@@ -900,7 +904,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedLightRange", .section = section, .shown = more_lights});
     page.Take({.match = "RayTracedGamePointShadows", .section = section, .shown = more_lights, .only_some_games = true});
     if (b.lights_in_bounce != nullptr && b.light_ratio != nullptr) {
-      const auto more_path_lights = [b, more_lights] { return more_lights() && GiMethodOf(b) == GI_PATHS; };
+      // The two rows show greyed under the other GI methods, so their "Needs" line can be read.
+      const auto path_gi = [b] { return GiMethodOf(b) == GI_PATHS; };
+      const auto more_path_lights = [more_lights, path_gi] { return more_lights() && path_gi(); };
       page.Add(new Setting{
           .key = "RayTracedLightsInBounce",
           .binding = b.lights_in_bounce,
@@ -912,7 +918,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                      "Noisier (most at Half resolution), without the torches' highlights; follows Light Bounce Strength.\n"
                      "Needs Global Illumination's Path-Traced (ReSTIR GI).",
           .labels = {"Off", "On"},
-          .is_visible = more_path_lights,
+          .is_enabled = path_gi,
+          .is_visible = more_lights,
       });
       page.Add(new Setting{
           .key = "RayTracedLightShadowRatio",
@@ -925,7 +932,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                      "rays: faster with many fires. Softer shadows that follow moving units a little later; 32 fires at most.\n"
                      "Needs Global Illumination's Path-Traced (ReSTIR GI).",
           .labels = {"Off", "On"},
-          .is_visible = more_path_lights,
+          .is_enabled = path_gi,
+          .is_visible = more_lights,
       });
       page.Add(new Setting{
           .key = "RayTracedLightRatioFollow",
