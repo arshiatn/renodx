@@ -7707,12 +7707,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] T5 owner (end batch, before leg 1): the REAL manifest must carry rows ParallelEffectUpdate /
             ParallelEffectSpawns, CachedParticleCount 0..1, and env RENODX_TW_COUNT_CHECK as live, else ebo_make
             raises PROBLEMs (t4i_ r21).
-        Agents (5): gtw_ (gtp_ re-check 8), gtl_ (gtv_'s S1b + v1.1 fixes), gtb_ (selftest flake S1), ebr_ (t4i_
-        r21 re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_,
-        h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r22 after c3i_), gtq_ (box after gtl_'s fixes), gbc_,
-        gpr_ (re-checks gtb_ S1), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_),
-        gtv_ (re-checks gtl_; held lab tests + race probe after H0). GPU: H0 RE-RUN (coordinator, since
-        05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends.
+        gtl_ GTV_ FIXES DONE 06:1x (plan_1117/gtl_gtv_fixes_handback.md; backups scratchpad\gtl_backup_v11fix; log
+        gtl_runs4\unit.txt): unit 24 / 24; jobs / keeper / ps1 HELD for H0 (new jobs tests written, not run).
+        Must 1 reuse needs lab.get('dred') == job['dred'] (no dedicated no-label test: needs a keeper session.json
+        edit). Must 2 run.dred per arm (sets, None kept); reported_dred(run, arm) = the arm's one value or None; A'
+        without answers takes A's; rotation dumps pass the arm (folders now A / B / A_2, were A1 / A2 / B1); unit
+        case added. Should 1 reuse sends seed {offset: 0} + logs it; outside iq a result with seed != 0 or a
+        light_anim = ToolFault (Refused is one line, my call: keep ToolFault - it is our tool's state, not the
+        job's); light_anim null NOT sent until cmd.schema is adopted (frozen schema refuses a null path). Should 2
+        protocol proposal cites d336c55d3, unknown flag exit 1, the SETTLE_LOOPS seed formula, run / moments /
+        trace refused past it, status-only fields; alive proposal renamed .dropped (test asserts it is gone). N1
+        "iq: recording X recorded by <recorder>" once + FLAG only for format / bridge_version / layout changes; new
+        recording_header() shared with kind_scene. N2 format-in-key assert, N3 re.fullmatch seed_\d+, N4 mask
+        without file refused. -> gtv_ RE-CHECK STARTED (code now, unit only; jobs / keeper / ps1 + gtv_'s held
+        lab tests + race probe after H0; gtl_ re-runs its four suites after H0 too).
+        Agents (5): gtw_ (gtp_ re-check 8), gtv_ (gtl_ fixes re-check), gtb_ (selftest flake S1), ebr_ (t4i_ r21
+        re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_,
+        h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r22 after c3i_), gtq_ (box after gtv_'s re-check),
+        gbc_, gpr_ (re-checks gtb_ S1), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks
+        c3i_), gtl_ (after H0: its 4 suites). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper /
+        fg / map_replay-named process until H0 ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
