@@ -294,17 +294,21 @@ using LinearPointLightRays = RaysShader<0x5D1695BC, 42>;
 
 // The rays replace the shadow maps' sun shadow, always (one method: ATN 2026-11-16, no Rays Replace Shadow Maps row; WARP
 // test/tw_warhammer_shaders part 29):
-// the 18 sun shaders that read the sun's atlas (g_tShadowBuffer, t1 in each; tools/tw/wh1/wh1_atlas_reads.py), each
-// multiplied by the rays' visibility by the screen-space shadows' patch: the 6 hardware gather 5.0 builds read it through
-// gather4_c at s1 (CF0C5118 among them), the 12 Shader Model 4.1 builds (since ho_g21 f7fb7a901: software, sample_l and
-// their own `lt receiver, stored`; hardware pcf, the read itself as the lit share) through sample_l / sample. Where the
-// rays' shadow is bound at t49 a 1 x 1 texture of 1 (the far plane, a cleared map's value) at t1 makes both kinds lit, so
-// their patched shadows give the rays' shadow alone; cloud shadows stay the game's, the maps are still drawn (their
-// forward readers: water, forward units). The game's view is bound again after the draw (finalize: the Light Bounce draws
-// the sun draw itself and bypasses).
-constexpr std::array<uint32_t, 18> ATLAS_SUN_SHADERS = {
-    0xCF0C5118, 0xB8F4B964, 0x41365626, 0xD9DDB44A, 0x34FEF0FF, 0xA1AF2AEC, 0x230F2241, 0x4324BBE8, 0x42114392,
-    0xD56D16EA, 0x7BA77953, 0x9AA0E558, 0xC601C862, 0xA14D4C74, 0xA8D2616A, 0xD0F4F425, 0xB1AFBCF1, 0xCAD9815A};
+// the 24 sun shaders that read the sun's atlas (t1 in each; tools/tw/wh1/wh1_atlas_reads.py, the RDEF census), each
+// multiplied by the rays' visibility by the screen-space shadows' patch (screen_space_shadows.hpp Patch): the 6 hardware
+// gather 5.0 builds read it through gather4_c at s1 (g_tShadowBuffer_SM50; CF0C5118 among them), the 12 software / hardware
+// pcf Shader Model 4.1 builds (g_tShadowBuffer: software, sample_l and their own `lt receiver, stored`; hardware pcf, the
+// read itself as the lit share) through sample_l / sample, the 6 gather 4.1 builds (g_tHardShadowBuffer_SM41) through
+// gather4 and their own test. Where the rays' shadow is bound at t49 a 1 x 1 texture of 1 (the far plane, a cleared map's
+// value) at t1 makes every kind lit (the plain-sampler builds with our point CLAMP sampler at s1: s1 reads t1 alone in every
+// sun build), so their patched shadows give the rays' shadow alone; cloud shadows stay the game's, the maps are still drawn
+// (their forward readers: water, forward units). A build Patch leaves as it is gets no t49 and keeps the game's maps. The
+// game's view and sampler are bound again after the draw (finalize: the Light Bounce draws the sun draw itself and
+// bypasses).
+constexpr std::array<uint32_t, 6> ATLAS_GATHER_SUN_SHADERS = {0xCF0C5118, 0xB8F4B964, 0x41365626, 0xD9DDB44A, 0x34FEF0FF, 0xA1AF2AEC};
+constexpr std::array<uint32_t, 18> ATLAS_SAMPLED_SUN_SHADERS = {
+    0x230F2241, 0x4324BBE8, 0x42114392, 0xD56D16EA, 0x7BA77953, 0x9AA0E558, 0xC601C862, 0xA14D4C74, 0xA8D2616A,
+    0xD0F4F425, 0xB1AFBCF1, 0xCAD9815A, 0x27AF3D62, 0xA359A234, 0x7BC58986, 0x8A72EA4D, 0x0EADBE7E, 0x110884BF};
 constexpr UINT ATLAS_SLOT = 1;
 // Skip the Shadow Maps (Experimental, off; under the rays' sun shadows): rt_scene's Ray-Traced Shadows Only skips the
 // atlas's casters. Its other readers in ATN's traces (tools/tw/wh1/atlas_readers_wh1.txt: battle and campaign water,
@@ -1851,7 +1855,8 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here (as Warhammer II's). The rays' sun shadows replace the
-// game's shadow maps (always: no Rays Replace Shadow Maps row; every sun build, the Shader Model 4.1 ones too),
+// game's shadow maps (always: no Rays Replace Shadow Maps row; the gather 5.0, software / hardware pcf and gather 4.1 sun
+// builds alike),
 // ray-traced AO in place of the game's SSAO (its line sweeps);
 // reflections on the game's SSR resolve; point lights, the battle fog, the battle water and the lit particles hooked.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
@@ -2534,7 +2539,7 @@ bool AttachAddon() {
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 1.f);
   // The rays replace the atlas's sun shadow: after the screen-space shadows' and before the Light Bounce's.
   reshade::register_event<reshade::addon_event::destroy_device>(tw::modded_auto_exposure::OnDestroyDevice);
-  twwarhammer2::atlas_far_plane::Install(ATLAS_SUN_SHADERS, ATLAS_SLOT);
+  twwarhammer2::atlas_far_plane::Install(ATLAS_GATHER_SUN_SHADERS, ATLAS_SAMPLED_SUN_SHADERS, ATLAS_SLOT);
   // The data run's frame traces (tools\tw\wh1\plan_1114.md; twattila/frame_trace.hpp): on demand (renodx_trace_now next to the
   // exe) and at 100% too. The camera's g_screen_size / g_viewport_dimensions at c27 / c29 as Attila's (the sun PS's camera RDEF,
   // 230F2241: offsets 432 / 464). Constants once each (the sun PS bind cb0-cb6): the 11 single-sampled sun PS (directionallight

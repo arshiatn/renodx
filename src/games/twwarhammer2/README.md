@@ -1,11 +1,11 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
-### Open-items round (2026-11-22, g02_; built only, not run in game)
+### Open-items round (2026-11-22; built only, not run in game)
 
 - New: **Path-Traced Reflection Occlusion** (0 - 1, default 1, under Path-Traced Ambient without Specular Occlusion or
   the rays' reflections), Attila's row: reflections darken where something blocks the sky, from the traced specular
   occlusion in place of the game's screen-space AO (ours replaces the game's). 0: the game's AO as before. With the
-  rays' reflections on nothing changes. WARP (test/tw_warhammer_shaders part 32, g02_ patch): strength 1 bit-identical
+  rays' reflections on nothing changes. WARP (test/tw_warhammer_shaders part 32): strength 1 bit-identical
   to the resolve before the row in 32768 of 32768 texels (8 runs), 0 the same as t46 alone, 0.5 the mean.
 - Fixed: **DLAA / DLSS and CMAA2** work in the frame's own curve (2.2 with Gamma Correction on), as Attila and Pharaoh.
 - Changed: **Ray Reconstruction's specular guide** is the view-dependent albedo (Attila's Fresnel, RrSpecularAlbedo);
@@ -14,21 +14,25 @@
   to 0) and its luma gathers (green, the decompile read red), as Troy's. WARP (scratch fxaa_check, 96 x 96 edges):
   0 apart from the game's bytes (before 517 texels apart, worst 0.125).
 - Changed: **PsychoV35's defaults follow the game's own shadows and colour**: Contrast 1.01, Shadows 0.57, Saturation 0.91,
-  Highlight Contrast 0.92 (V35_GAME_RESPONSE, shared.h WH2_V35_*; Reset and Recommended start from them). WARP fit (g04_'s
-  recipe) against Rendering Mode SDR through t00 2333E142 -> t01 187C9C6D at burn 0.3 (level B: no trace holds a map's
-  burn), 1000 / 203 nits, as SDR over it:
+  Highlight Contrast 0.93 (V35_GAME_RESPONSE, shared.h WH2_V35_*; Reset and Recommended start from them). WARP fit (the V35
+  recipe, its 10 % highlight guard) against Rendering Mode SDR through t00 2333E142 -> t01 187C9C6D at burn 0.3 (level B:
+  no trace holds a map's burn), 1000 / 203 nits, as SDR over it:
   - grey 0.05 - 1 nits x1.25..x1.58 -> x0.97..x1.02; 1 - 15 nits x1.02..x1.22 -> x1.00..x1.04; 15 - 100 nits
-    x1.00..x1.06 -> x1.00..x1.02;
-  - colour at equal lightness 1 - 30 nits x1.000 -> x0.965; 30 - 150 nits x1.13 -> x0.99;
-  - PsychoV35's highlights within 11.5 % of Musa's own at 1000 / 203 (the fit's guard, 15 %), 15.1 % at 2500 / 275;
+    x1.00..x1.06 -> x1.00..x1.03;
+  - colour at equal lightness 1 - 30 nits x1.000 -> x0.965; 30 - 150 nits x1.13 -> x1.00;
+  - PsychoV35's highlights within 9.9 % of Musa's own at 1000 / 203 (the fit's guard, 10 %), 13.0 % at 2500 / 275;
   - burn 0.1 brighter than SDR still (shadows x1.50..x2.27 -> x1.22..x1.48), burn 0.5 the other way: Musa's own was the
     game's there (x1.00), now 0.05 - 1 nits x0.64..x0.79 and 1 - 15 nits x0.80..x0.99.
   The control (Musa's own) misses by 58.1 %; Rendering Mode SDR is the game's bytes (0.00 %) and HDR (Extended) the game's
   grey (0.00 %).
 - Fixed: **Bend Screen-Space Shadows and the rays' sun shadows now reach the software / hardware pcf shadow builds**
-  (with ho_g21 f7fb7a901's patch of them): under the rays' sun shadows those builds take the rays' shadow alone
-  (their 12 sun shaders on Warhammer's far-plane route at the atlas's t1: the ALWAYS sampler at s1 does
+  (with the screen-space shadows' patch of them, f7fb7a901): under the rays' sun shadows those builds take the rays'
+  shadow alone (their 12 sun shaders on Warhammer's far-plane route at the atlas's t1: the ALWAYS sampler at s1 does
   not reach their sample_l / sample), not the rays' times the game's shadow maps.
+- Fixed: **the gather 4.1 shadow builds** (6 sun shaders, A03688A3 among them) join the same route (they take the rays'
+  shadow alone once the screen-space shadows' patch reaches them; until then they keep the game's maps). On the route
+  every build gets our point CLAMP sampler at s1 during the sun draw (the game's address mode was never checked: a zero
+  border would have shadowed everything); the gather 5.0 builds stay on the ALWAYS sampler as before.
 - Corrected: **Smooth Banner Shadows** has been on by default since 2026-11-17 (the lines below that say Experimental /
   off are history).
 - In game: under Path-Traced Ambient a dark doorway or forest edge (no bright sky in it; at 0 as before); Gamma Correction

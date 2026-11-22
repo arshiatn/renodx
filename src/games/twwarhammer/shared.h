@@ -165,8 +165,8 @@ struct ShaderInjectData {
 #define AutoExposureHighlightHeadroomStops  SI.auto_exposure_highlight_headroom_stops
 
 // PsychoV35's slider defaults here: the game's own response below white. The WARP fit against the game's SDR through t00
-// D275C403 -> t01 10759AE3 (g02_'s scratch v35_fit, g04_'s recipe; level B: no trace holds the S-curve texture) finds
-// Musa's own the best (within 0.3 %, the identity and an S-shaped S-curve): they stay 1.
+// D275C403 -> t01 10759AE3 (the V35 fit recipe; level B: no trace holds the S-curve texture) finds Musa's own the best
+// (within 0.3 %, the identity and an S-shaped S-curve; a known-wrong set misses by more than 5 %): they stay 1.
 #define WH1_V35_CONTRAST           1.f
 #define WH1_V35_SHADOWS            1.f
 #define WH1_V35_SATURATION         1.f
