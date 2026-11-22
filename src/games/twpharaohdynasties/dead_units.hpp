@@ -76,6 +76,7 @@ inline std::string Install(const tw::engine_tweaks::Sections& sections) {
     renodx::utils::detour::Install(Hook());
   } catch (const std::exception& error) {
     stub = nullptr;
+    scale = nullptr;
     return std::string("dead units: the game's code could not be patched (") + error.what() + ")";
   }
   return "dead units patched";
