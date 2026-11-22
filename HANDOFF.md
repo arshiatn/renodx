@@ -7272,10 +7272,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         counted; it makes busy_count.json read as partial = unknown), only the still-alive stopped tree; x3 head_args:
         cmd single '&', PowerShell -Co... abbreviations, -EncodedCommand decode; x4 limits in the docstring.
         (gtp_: its report should list rows whose facts contain "() failed".)
-        Agents (9): upr_ (h0i_ F1 re-check), c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gtq_
-        (B2-S1 + N1-N4), gtl_ (S3r S1 + nits), grs_ (S2r fixes), gtb_ (x1-x4). Idle: bd1r_, lga_, lgf2_, c33i_,
-        upt_, h0i_ (waits upr_), gpp_, gpr_ (waits gtb_), ebr_ (waits t4i_), gbc_ (waits gtq_), gti_, gtv_ (waits
-        grs_ / gtl_), gtk_, gtw_ (waits gtp_).
+        upr_ F1 RE-CHECK = RUN 04:5x (designs/upr_f1_recheck_handback.md; unified_pt_review.md l.1603): ps1:205 124 ->
+        Stop, later GPU jobs skipped (125); taskkill /T /F + WaitForExit(60000) -> 124 either way; removal line still
+        wins; upr_'s own -Cases hang run 0 / 1 BAD; per-case busy files, real file untouched; offline-only busy skip
+        OK (real ps1:199-200 unchanged); script path + param([switch]$DryRun) unchanged = ATN's rule; guard passes at
+        4eb1a9b79. Nits, no action: N1 lab\busy_count.json still holds h0i_'s 04:34:32 offline record (ignored after
+        300 s, overwritten by the next real call); N2 "still alive" watches cmd.exe only. -> H0 DRY RUN STARTED
+        (coordinator, ATN's PowerShell rule), then the real run in the background.
+        Agents (8): c3i_ (B1.6), t4i_ (r20 tests + nits), gtp_ (K1-K3 + next round), gtq_ (B2-S1 + N1-N4), gtl_
+        (S3r S1 + nits), grs_ (S2r fixes), gtb_ (x1-x4). Coordinator: H0 dry run -> real run. Idle: bd1r_, lga_,
+        lgf2_, c33i_, upt_, upr_, h0i_, gpp_, gpr_ (waits gtb_), ebr_ (waits t4i_), gbc_ (waits gtq_), gti_, gtv_
+        (waits grs_ / gtl_), gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
