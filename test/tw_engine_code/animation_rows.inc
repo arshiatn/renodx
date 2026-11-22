@@ -308,6 +308,7 @@ struct ArSpec {
   uint32_t pre_state = 0;           // 0 mixed, 1 valid, 2 stale frame, 3 other texture, 4 minus one words
   bool pre_texel_edge = false;      // the placements' texel words are the values that matter to the float conversion (0, 2^24 + 1, 2^31, 0xFFFFFFFE, ...)
   uint32_t record_cap = 0;          // the records' buffer at the start
+  bool alias_records = false;       // the records' buffer lies inside the animations (P-alias broken on purpose: a record write changes a word the gather read)
   uint32_t initial_count = 0;       // records already in the vector (at most record_cap; the game's fill keeps pushing after them)
   uint32_t null_instance_at = ~0u;  // list entries made null
   uint32_t null_animation_at = ~0u;
@@ -327,6 +328,8 @@ struct ArCall {
   uint32_t height_shift_from = ~0u;  // from this height() call on the textures answer height_delta more (the second call is the game's own run in Check)
   uint32_t height_delta = 0;
   uint32_t game_height_shift_from = ~0u;  // the same for the game's copy (a Check mismatch's final state is the game's run on the shifted heights)
+  bool records_free = false;        // the records and the allocator may differ (a game run that makes other records than ours, as in Check): everything else must still be equal
+  bool check_sentinel = false;      // Check mode leaves its all-ones sentinel record after the last record (design 3.14): that one record may differ from the game's own run
 };
 
 struct ArFault {
@@ -431,7 +434,7 @@ bool ArBuild(ArContext* context, const ArSpec& spec) {
   *word(AR_CACHE + 0x14) = spec.texels_per_row;
   *word(AR_CACHE + 0x1c) = spec.record_cap;
   *word(AR_CACHE + 0x20) = std::min(spec.initial_count, spec.record_cap);
-  *word(AR_CACHE + 0x24) = (spec.record_cap != 0 ? base_address + static_cast<uint32_t>(world->records_at) : 0);
+  *word(AR_CACHE + 0x24) = (spec.record_cap != 0 ? base_address + static_cast<uint32_t>(spec.alias_records ? world->animations_at : world->records_at) : 0);
   *word(AR_CACHE + 0x28) = spec.frame;
   *word(AR_CACHE + 0x2c) = spec.current;
   *word(AR_LIST + 4) = spec.items;
@@ -587,7 +590,7 @@ struct ArStats {
   std::array<uint64_t, 12> paths = {};  // Dispatch's calls per path (the module's counters; zero without TWATTILA_WORKER_CONTROLS)
   uint64_t workers_used = 0;           // calls of ours that woke workers
 };
-ArStats ar_stats;
+thread_local ArStats ar_stats;
 
 // The game's copy against ours on one world and one call. Empty: equal in everything (the result, every byte of the world, the row, `out`, MXCSR's flags, the
 // allocator's and the tail's log, the fault's place and memory).
@@ -633,17 +636,43 @@ std::string ArCompare(ArContext* context, uint8_t* game, const void* game_functi
   if (a.row != b.row) return std::format("the row: game {}, ours {}", a.row, b.row);
   if (a.out != b.out) return std::format("out: game {}, ours {}", a.out, b.out);
   if (a.flags != b.flags) return std::format("MXCSR's flags: game {:02X}, ours {:02X}", a.flags, b.flags);
-  if (a.arena_used != b.arena_used) return std::format("the allocator's use: game {}, ours {}", a.arena_used, b.arena_used);
-  if (a.log != b.log) {
+  if (!call.records_free && a.arena_used != b.arena_used) return std::format("the allocator's use: game {}, ours {}", a.arena_used, b.arena_used);
+  if (!call.records_free && a.log != b.log) {
     size_t at = 0;
     while (at < a.log.size() && at < b.log.size() && a.log[at] == b.log[at]) ++at;
     return std::format("the log of the allocator and the tail differs at event {} (game {:08X} of {}, ours {:08X} of {})", at, at < a.log.size() ? a.log[at] : 0u,
                        a.log.size(), at < b.log.size() ? b.log[at] : 0u, b.log.size());
   }
+  if (call.records_free) {
+    std::memcpy(world->base + world->records_at, context->after_game.data() + world->records_at, world->bytes - world->records_at);
+    std::memcpy(world->base + AR_CACHE + 0x1c, context->after_game.data() + AR_CACHE + 0x1c, 12);
+  }
+  if (call.check_sentinel && std::memcmp(world->base, context->after_game.data(), world->bytes) != 0) {
+    // The sentinels: Check fills the record after its last (and the ones before, which the game's own run overwrites) with all ones, which stays where the game's own run makes
+    // fewer records or none there: at most one 16-byte record per texture of a call, all ones in ours, anything else in the game's run.
+    uint32_t exempt = 0;
+    for (size_t slot = AR_HEADER_BYTES & ~static_cast<size_t>(15); slot + 16 <= world->bytes && exempt < AR_MAX_TEXTURES; slot += 16) {
+      if (std::memcmp(world->base + slot, context->after_game.data() + slot, 16) == 0) continue;
+      bool all_ones = true;
+      for (size_t i = 0; all_ones && i < 16; ++i) all_ones = (world->base[slot + i] == 0xFF);
+      if (!all_ones) continue;
+      std::memcpy(world->base + slot, context->after_game.data() + slot, 16);
+      ++exempt;
+    }
+  }
   if (std::memcmp(world->base, context->after_game.data(), world->bytes) != 0) {
     size_t at = 0;
     while (world->base[at] == context->after_game[at]) ++at;
-    return std::format("the world at {}: game {:02X}, ours {:02X}", ArRegion(*world, at), context->after_game[at], world->base[at]);
+    size_t differing = 0;
+    size_t last = at;
+    for (size_t i = at; i < world->bytes; ++i) {
+      if (world->base[i] != context->after_game[i]) {
+        ++differing;
+        last = i;
+      }
+    }
+    return std::format("the world at {}: game {:02X}, ours {:02X} ({} bytes differ up to {}; the vector's data at +{:X})", ArRegion(*world, at), context->after_game[at], world->base[at], differing,
+                       ArRegion(*world, last), Read32(world->base + AR_CACHE + 0x24) - Address(world->base));
   }
   return "";
 }
@@ -763,7 +792,7 @@ uint32_t __fastcall ArMutantDispatch(void* cache, void* edx, void* device, uint3
 // 23f. to 23t: the exactness of the animation fill (S4, S5). Called by RunAnimationRowsTests after its site and stub parts, with the game's own fill in both copies.
 // What needs the real Dispatch (the module's path counters and test switches, TWATTILA_WORKER_CONTROLS) is under that macro: without it the cases that remain are
 // the ones the pass-through stub also passes (it IS the game's fill), and the run says which were skipped.
-int RunAnimationRowsExactTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick) {
+int RunAnimationRowsExactFor(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick, bool streaming) {
   namespace ec = twattila::engine_code::internal;
   constexpr auto ATTILA_GAME = twattila::engine_code::Game::ATTILA;
   using twattila::animation_rows::Stage;
@@ -785,6 +814,7 @@ int RunAnimationRowsExactTests(const TestBuild& build, uint8_t* game, uint8_t* p
   const uint8_t* const stub = ec::page + ec::WORKER_FILL_PAGE;
   auto context = std::make_unique<ArContext>();
   uint64_t printed = 0;
+  if (std::getenv("AR_UNBUFFERED") != nullptr) std::setvbuf(stdout, nullptr, _IONBF, 0);  // a hang then shows the last case that printed
   const uint64_t seed_base = (std::getenv("AR_SEED") != nullptr ? std::strtoull(std::getenv("AR_SEED"), nullptr, 16) : 0x23F00D5EEDull);
   const char* const only = std::getenv("AR_ONLY");
   const auto selected = [&](const char* name) { return only == nullptr || std::strstr(only, name) != nullptr; };
@@ -866,12 +896,19 @@ int RunAnimationRowsExactTests(const TestBuild& build, uint8_t* game, uint8_t* p
     return line;
   };
 
+#if defined(TWATTILA_WORKER_CONTROLS)
+  // The schedule through the module's own env path (RENODX_TW_ANIMATION_SCHEDULE, read again whenever the generation changes).
+  static uint32_t schedule_generation = 500;
+  SetEnvironmentVariableA("RENODX_TW_ANIMATION_SCHEDULE", streaming ? "stream" : "bulk");
+  twattila::animation_rows::Update(Stage::ON, ++schedule_generation);
+  CHECK(ar_module::schedule.load() == (streaming ? twattila::animation_rows::Schedule::STREAM : twattila::animation_rows::Schedule::BULK));
+#endif
   set_stage(Stage::ON);
   CHECK((ec::written & ec::WORKER_FILL_BIT) != 0 && ec::worker_data->fill_slot.load() == dispatch);
   ec::worker_data->cut_active.store(0);
   const uint32_t max_items = (quick ? 30000 : 200000);
   Random random = {.state = seed_base * 0x2545F4914F6CDD1Dull + 1};
-  std::printf("   S4/S5 seeds: base %llX (AR_SEED=<hex> AR_ONLY=<case names> to repeat), items up to %u%s\n", seed_base, max_items,
+  std::printf("   S4/S5 seeds: base %llX (AR_SEED=<hex> AR_ONLY=<case names> AR_SCHEDULE=bulk|stream to repeat), schedule %s, items up to %u%s\n", seed_base, streaming ? "stream" : "bulk", max_items,
 #if defined(TWATTILA_WORKER_CONTROLS)
               ", the module's counters and switches on"
 #else
@@ -1062,13 +1099,507 @@ int RunAnimationRowsExactTests(const TestBuild& build, uint8_t* game, uint8_t* p
     }
   }
 
+
+#if defined(TWATTILA_WORKER_CONTROLS)
+  // The cases below read the module's counters and set its test switches: every case puts the switches back (the next case, and the production code, run with them off).
+  const auto reset_switches = [&] {
+    const uint32_t min_items = ar_module::controls.min_items;
+    ar_module::controls = {};
+    ar_module::controls.min_items = min_items;
+    ar_module::failed.store(false);
+    ar_module::ring_in_use.store(false);
+    twattila::animation_rows::Update(Stage::ON);
+  };
+  const auto expected_path = [](const ArResult& result, ArPath wanted) {
+    uint32_t others = 0;
+    for (size_t path = 0; path < result.paths.taken.size(); ++path) {
+      if (path != static_cast<size_t>(wanted) && !(wanted == ArPath::OURS && path == static_cast<size_t>(ArPath::BAD_ITEM))) others += result.paths.taken[path];
+    }
+    return result.paths.taken[static_cast<size_t>(wanted)] >= 1 && others == 0;
+  };
+  using ArCases = std::vector<std::pair<ArSpec, std::vector<ArCall>>>;
+  const auto count_differences = [&](const ArCases& worlds) -> uint64_t {
+    uint64_t wrong = 0;
+    for (const auto& [spec, calls] : worlds) {
+      CHECK(ArBuild(context.get(), spec));
+      for (const ArCall& call : calls) {
+        wrong += (compare(call).empty() ? 0 : 1);
+        after_fault();
+      }
+    }
+    return wrong;
+  };
+  // 23m. A texel of 0xFFFFFFFF (the first item of row 1 when the texels per row are all ones): its animation reads as not placed, so a later item of the same animation places
+  // again, and a duplicate instance gets two different words: the writes must land in item order (ordered mode). With a scatter that lands late (a switch) the last write wins wrongly
+  // unless the order is kept.
+  if (selected("ordered")) {
+    for (const Config& config : {configs[0], configs[1], configs[2]}) {
+      apply(config);
+      reset_switches();
+      const ArStats before = ar_stats;
+      uint64_t wrong = 0;
+      uint64_t ordered_calls = 0;
+      const uint64_t worlds = (quick ? 10 : 40);
+      ArCases cases;
+      for (uint64_t index = 0; index < worlds; ++index) {
+        ArSpec spec = {.seed = seed_base + 40000 + index * 17, .items = 5000 + random.Next() % 4000, .extra_entries = 8, .textures = 1, .current = 0,
+                       .frame = random.Next(), .row_size = 300 + random.Next() % 300, .texels_per_row = 0xFFFFFFFFu, .need_min = 2, .need_max = 60, .flag_percent = 50,
+                       .share_percent = 90, .duplicate_percent = 90, .pre_state = (index % 3 == 0 ? 0u : index % 3 == 1 ? 2u : 5u), .record_cap = 0};
+        spec.heights = {3000, 1, 1, 1, 1, 1};
+        cases.push_back({spec, {{.update = false, .start = 0, .end = spec.items, .texture = 0}, {.update = true, .start = 0, .end = spec.items},
+                                {.update = false, .start = 7, .end = spec.items, .texture = 0, .tweak = true}}});
+      }
+      for (const auto& [spec, calls] : cases) {
+        CHECK(ArBuild(context.get(), spec));
+        for (const ArCall& call : calls) {
+          ArResult game_result;
+          ArResult patched_result;
+          const std::string what = compare(call, &game_result, &patched_result);
+          ordered_calls += (patched_result.paths.ordered && patched_result.paths.taken[0] != 0 ? 1 : 0);
+          if (!what.empty() && ++printed <= 12) std::printf("   ordered: %s: %s\n", describe(spec, call).c_str(), what.c_str());
+          wrong += (what.empty() ? 0 : 1);
+        }
+      }
+      // The control: no ordered mode, and the first block's scatter lands 15 ms late; the same worlds must differ somewhere (with workers: the blocks land in parallel).
+      uint64_t seen = 0;
+      if (config.workers != 0) {
+        ar_module::controls.no_ordered_mode = true;
+        ar_module::controls.scatter_delay_block = 0;
+        ar_module::controls.scatter_delay_ms = 15;
+        seen = count_differences(cases);
+        ar_module::controls.no_ordered_mode = false;
+        const uint64_t late_but_ordered = count_differences(cases);
+        reset_switches();
+        std::printf("23m. %s: texel 0xFFFFFFFF with duplicate instances, %llu worlds, %llu calls, %llu in ordered mode (%s): %llu differ; CONTROL no ordered mode + late scatter: %llu differ (must be > 0); ordered mode with the late scatter: %llu differ\n",
+                    config.name, worlds, ar_stats.runs - before.runs, ordered_calls, path_line(before).c_str(), wrong, seen, late_but_ordered);
+        CHECK(seen > 0 && late_but_ordered == 0);
+      } else {
+        std::printf("23m. %s: texel 0xFFFFFFFF with duplicate instances, %llu worlds, %llu calls, %llu in ordered mode (%s): %llu differ\n", config.name, worlds,
+                    ar_stats.runs - before.runs, ordered_calls, path_line(before).c_str(), wrong);
+      }
+      CHECK(wrong == 0 && ordered_calls > 0);
+    }
+  }
+
+  // 23n. Every fallback of Dispatch (3.3) with a counter that says which path the call took (and only that): force 0x100 is not forced, a start at the end, a call of 2047 / 2048
+  // items, an end past the list's count (with the game stopping on its height before the garbage past it), a texture past the cache's count (its entry exists), a vector
+  // that is not empty, a texture with no rows, the ring in use, the row off.
+  if (selected("fallback")) {
+    apply(configs[3]);
+    reset_switches();
+    const ArStats before = ar_stats;
+    ArSpec spec = {.seed = seed_base + 60000, .items = 6000, .extra_entries = 24, .textures = 4, .current = 1, .frame = 9, .row_size = 3000, .texels_per_row = 5000,
+                   .need_min = 2, .need_max = 50, .flag_percent = 50, .share_percent = 40, .pre_state = 0, .record_cap = 0};
+    spec.heights = {300, 300, 40, 0, 300, 300};
+    struct Fallback {
+      const char* name;
+      ArCall call;
+      ArPath expected;
+      uint32_t initial_count;
+      bool ring_busy;
+      bool row_off;
+      bool live_extra;
+    };
+    const uint32_t items = spec.items;
+    const std::vector<Fallback> list = {
+        {"force 1", {.update = false, .end = items, .force = 1, .texture = 1}, ArPath::FORCED},
+        {"force 0x101", {.update = false, .end = items, .force = 0x101, .texture = 1}, ArPath::FORCED},
+        {"force 0xFF", {.update = false, .end = items, .force = 0xFF, .texture = 1}, ArPath::FORCED},
+        {"force 0x80000001", {.update = false, .end = items, .force = 0x80000001u, .texture = 1}, ArPath::FORCED},
+        {"force 0x100 (not forced)", {.update = false, .end = items, .force = 0x100, .texture = 1}, ArPath::OURS},
+        {"force 0x80000000 (not forced)", {.update = false, .end = items, .force = 0x80000000u, .texture = 1}, ArPath::OURS},
+        {"force 0xFFFFFF00 (not forced)", {.update = false, .end = items, .force = 0xFFFFFF00u, .texture = 1, .tweak = true}, ArPath::OURS},
+        {"start at the end", {.update = false, .start = items, .end = items, .texture = 1}, ArPath::ROW_AT_END},
+        {"start 0, end 0", {.update = false, .start = 0, .end = 0, .texture = 1}, ArPath::ROW_AT_END},
+        {"start past the end", {.update = false, .start = 100, .end = 50, .texture = 1}, ArPath::ROW_AT_END},
+        {"1 item", {.update = false, .start = 0, .end = 1, .texture = 1}, ArPath::FEW_ITEMS},
+        {"100 items from 5", {.update = false, .start = 5, .end = 105, .texture = 1}, ArPath::FEW_ITEMS},
+        {"2047 items", {.update = false, .start = 0, .end = 2047, .texture = 1}, ArPath::FEW_ITEMS},
+        {"2048 items", {.update = false, .start = 0, .end = 2048, .texture = 1}, ArPath::OURS},
+        {"2048 items from 7", {.update = false, .start = 7, .end = 2055, .texture = 1, .tweak = true}, ArPath::OURS},
+        {"2049 items", {.update = false, .start = 0, .end = 2049, .texture = 1}, ArPath::OURS},
+        {"end past the list's count by 1 (garbage past it)", {.update = false, .start = 0, .end = items + 1, .texture = 2}, ArPath::END_PAST_LIST},
+        {"end past the list's count by 20", {.update = false, .start = 0, .end = items + 20, .texture = 2}, ArPath::END_PAST_LIST},
+        {"end past the list's count, live entries past it", {.update = false, .start = 0, .end = items + 10, .texture = 2}, ArPath::END_PAST_LIST, 0, false, false, true},
+        {"end at the count", {.update = false, .start = 0, .end = items, .texture = 2}, ArPath::OURS},
+        {"texture past the cache's count (its object exists)", {.update = false, .start = 0, .end = items, .texture = 4}, ArPath::TEXTURE_RANGE},
+        {"texture 5", {.update = false, .start = 0, .end = items, .texture = 5}, ArPath::TEXTURE_RANGE},
+        {"a vector with 7 records", {.update = false, .start = 0, .end = items, .texture = 1, .tweak = true}, ArPath::VECTOR_NOT_EMPTY, 7},
+        {"a texture with no rows", {.update = false, .start = 0, .end = items, .texture = 3}, ArPath::NO_ROWS},
+        {"the ring in use", {.update = false, .start = 0, .end = items, .texture = 1}, ArPath::RING_BUSY, 0, true},
+        {"the row off (the site still in)", {.update = false, .start = 0, .end = items, .texture = 1}, ArPath::STAGE_OFF, 0, false, true},
+    };
+    uint64_t wrong = 0;
+    for (const Fallback& fallback : list) {
+      ArSpec local = spec;
+      local.record_cap = (fallback.initial_count != 0 ? 100 : 0);
+      local.initial_count = fallback.initial_count;
+      local.live_extra = fallback.live_extra;
+      CHECK(ArBuild(context.get(), local));
+      reset_switches();
+      ar_module::controls.min_items = 2048;
+      if (fallback.ring_busy) ar_module::ring_in_use.store(true);
+      if (fallback.row_off) twattila::animation_rows::Update(Stage::OFF);
+      ArResult game_result;
+      ArResult patched_result;
+      const std::string what = compare(fallback.call, &game_result, &patched_result);
+      after_fault();
+      const bool path_ok = expected_path(patched_result, fallback.expected);
+      if (!what.empty() || !path_ok) {
+        ++wrong;
+        std::printf("   fallback \"%s\": %s%s\n", fallback.name, what.empty() ? "equal" : what.c_str(), path_ok ? "" : ", but not the path expected");
+      }
+    }
+    reset_switches();
+    std::printf("23n. every fallback: %zu calls, each took the path it should and left the game's result: %llu wrong (%s)\n", list.size(), wrong, path_line(before).c_str());
+    CHECK(wrong == 0);
+  }
+
+  // 23o. Null instances and animations in every kind of place: the game's loop faults on the item (+0x182e0e0 / +0x182e0e3), and ours must stop there, leave the world as the loop
+  // had it to that item, and run the game's own loop, which faults on the same instruction at the same memory (alone, with 3 and with 15 workers).
+  if (selected("fault")) {
+    for (const Config& config : {configs[0], configs[1], configs[2]}) {
+      apply(config);
+      reset_switches();
+      const ArStats before = ar_stats;
+      uint64_t wrong = 0;
+      uint64_t faults = 0;
+      uint64_t cases = 0;
+      for (const bool null_animation : {false, true}) {
+        for (const uint32_t at : {0u, 1u, 100u, 511u, 512u, 513u, 1023u, 1024u, 2047u, 2048u, 4095u, 4096u, 4097u, 4999u}) {
+          ArSpec spec = {.seed = seed_base + 70000 + at, .items = 5000, .extra_entries = 8, .textures = 1, .current = 0, .frame = 3, .row_size = 5000, .texels_per_row = 6000,
+                         .need_min = 1, .need_max = 70, .flag_percent = 50, .share_percent = 30, .duplicate_percent = 10, .pre_state = 0, .record_cap = 0};
+          spec.heights = {1000000, 1, 1, 1, 1, 1};
+          (null_animation ? spec.null_animation_at : spec.null_instance_at) = at;
+          CHECK(ArBuild(context.get(), spec));
+          for (const ArCall& call : {ArCall{.update = false, .start = 0, .end = 5000, .texture = 0}, ArCall{.update = false, .start = 0, .end = 5000, .texture = 0, .tweak = true},
+                                     ArCall{.update = true, .start = 0, .end = 5000}}) {
+            ArResult game_result;
+            ArResult patched_result;
+            const std::string what = compare(call, &game_result, &patched_result);
+            after_fault();
+            ++cases;
+            faults += (game_result.fault.happened && patched_result.fault.happened ? 1 : 0);
+            if (!what.empty() || !game_result.fault.happened) {
+              ++wrong;
+              if (++printed <= 12) std::printf("   fault %s at %u: %s: %s\n", null_animation ? "animation" : "instance", at, describe(spec, call).c_str(), what.empty() ? "the game did not fault" : what.c_str());
+            }
+          }
+        }
+      }
+      std::printf("23o. %s: a null %s in %llu calls (%llu faulted the same way in both, same instruction and memory; %s): %llu differ\n", config.name, "instance or animation", cases,
+                  faults, path_line(before).c_str(), wrong);
+      CHECK(wrong == 0 && faults == cases);
+    }
+  }
+
+  // 23p. Check mode: no mismatch on any world (the state after the call is the game's own run in the end), the tweak at +0x2a61058 off (no `out`, no Map) and on; an injected
+  // wrong texel word is reported once, turns the row off and the final state is still the game's; a game run that makes more or fewer rows than ours is reported.
+  if (selected("check")) {
+    const auto mismatch_lines = [&] {
+      const std::unique_lock lock(log_mutex);
+      uint64_t count = 0;
+      for (const std::string& line : log_lines) count += (line.find("Animation Rows on Workers: Check found a difference") != std::string::npos ? 1 : 0);
+      return count;
+    };
+    for (const Config& config : {configs[0], configs[1]}) {
+      apply(config);
+      reset_switches();
+      twattila::animation_rows::Update(Stage::CHECK);
+      const ArStats before = ar_stats;
+      const uint32_t checks_before = ar_module::check.calls;
+      uint64_t wrong = 0;
+      const uint64_t cases = (quick ? 60 : 200);
+      for (uint64_t index = 0; index < cases; ++index) {
+        const ArSpec spec = ArRandomSpec(&random, max_items);
+        ArCall first = ArRandomCall(spec, &random);
+        ArCall second = ArRandomCall(spec, &random);
+        first.tweak = false;
+        second.tweak = true;
+        first.check_sentinel = second.check_sentinel = true;
+        wrong += run_case("check", index, spec, {first, second});
+      }
+      std::printf("23p. %s: Check on %llu random worlds (the tweak off and on), %u Check calls, %llu differ, the row %s (%s)\n", config.name, cases, ar_module::check.calls - checks_before,
+                  wrong, ar_module::failed.load() ? "WENT OFF" : "stayed on", path_line(before).c_str());
+      CHECK(wrong == 0 && !ar_module::failed.load() && ar_module::check.calls > checks_before);
+    }
+    // An injected wrong texel word.
+    apply(configs[1]);
+    {
+      const uint64_t lines_before = mismatch_lines();
+      uint64_t wrong = 0;
+      uint64_t reported = 0;
+      for (const uint32_t item : {0u, 1u, 511u, 512u, 1500u, 2999u}) {
+        ArSpec spec = {.seed = seed_base + 80000 + item, .items = 3000, .extra_entries = 8, .textures = 1, .current = 0, .frame = 1, .row_size = 4000, .texels_per_row = 7000,
+                       .need_min = 1, .need_max = 60, .flag_percent = 50, .share_percent = 20, .duplicate_percent = 5, .pre_state = 0, .record_cap = 0};
+        spec.heights = {1000000, 1, 1, 1, 1, 1};
+        reset_switches();
+        twattila::animation_rows::Update(Stage::CHECK);
+        ar_module::controls.min_items = 1;
+        ar_module::controls.corrupt_item = item;
+        CHECK(ArBuild(context.get(), spec));
+        const std::string what = compare({.update = false, .start = 0, .end = 3000, .texture = 0, .tweak = (item & 1) != 0, .check_sentinel = true});
+        after_fault();
+        if (!what.empty()) {
+          ++wrong;
+          std::printf("   injected at %u: the final state is not the game's: %s\n", item, what.c_str());
+        }
+        reported += (ar_module::failed.load() ? 1 : 0);
+      }
+      reset_switches();
+      const uint64_t lines = mismatch_lines() - lines_before;
+      std::printf("23p. Check, one wrong texel word injected at 6 items: reported %llu of 6 times (%llu log lines, the row off each time), the final state the game's in all: %llu wrong\n", reported, lines,
+                  wrong);
+      CHECK(wrong == 0 && reported == 6 && lines == 6);
+    }
+    // A game run that makes more or fewer rows than ours (the second call of the textures' height is shifted), the final state the game's run on the shifted heights.
+    {
+      uint64_t wrong = 0;
+      uint64_t reported = 0;
+      // Ten items to a row, so the 9000 items take 900 rows: a height from 900 up makes them all. The game's run makes the rows of its own (the shifted) height, ours those of the
+      // unshifted one: the shifts that leave both at 900 or more (and 0) are the same run and must not be reported.
+      for (const auto& [height, shift] : std::array<std::pair<uint32_t, int32_t>, 6>{{{500, -400}, {500, 300}, {500, 1}, {500, -1}, {1000, 0}, {1000, -50}}}) {
+        const int32_t delta = shift;
+        const bool differs = std::min<int32_t>(900, static_cast<int32_t>(height) + shift) != std::min<int32_t>(900, static_cast<int32_t>(height));
+        ArSpec spec = {.seed = seed_base + 81000 + height * 8 + shift, .items = 9000, .extra_entries = 8, .textures = 1, .current = 0, .frame = 1, .row_size = 100, .texels_per_row = 7000,
+                       .need_min = 10, .need_max = 10, .flag_percent = 0, .share_percent = 0, .duplicate_percent = 0, .pre_state = 2, .record_cap = 0};
+        spec.heights = {height, 1, 1, 1, 1, 1};
+        reset_switches();
+        twattila::animation_rows::Update(Stage::CHECK);
+        ar_module::controls.min_items = 1;
+        CHECK(ArBuild(context.get(), spec));
+        ArCall call = {.update = false, .start = 0, .end = 9000, .texture = 0, .tweak = delta > 0, .height_shift_from = 1, .height_delta = static_cast<uint32_t>(delta),
+                       .game_height_shift_from = 0, .records_free = true, .check_sentinel = true};
+        const std::string what = compare(call);
+        after_fault();
+        const bool was_reported = ar_module::failed.load();
+        reported += (was_reported == differs ? 1 : 0);
+        if (!what.empty() || was_reported != differs) {
+          ++wrong;
+          if (const std::unique_lock lock(log_mutex); !log_lines.empty()) std::printf("   last log line: %s\n", log_lines.back().c_str());
+          std::printf("   ours at %u rows, the game's run %+d: %s (reported %d, expected %d)\n", height, delta, what.empty() ? "the final state is the game's" : what.c_str(), was_reported ? 1 : 0, differs ? 1 : 0);
+        }
+      }
+      reset_switches();
+      std::printf("23p. Check, the game's own run making more or fewer records than ours (4 cases) or the same (2): reported as it should %llu of 6, the final state the game's: %llu wrong\n", reported, wrong);
+      CHECK(wrong == 0 && reported == 6);
+    }
+  }
+
+  // 23q. The controls that must fail: each switch breaks one rule of the design, the same worlds run clean with it off and must differ with it on.
+  if (selected("controls")) {
+    int control_failures = 0;
+    const auto control = [&](const char* name, const Config& config, const std::function<void()>& on, const std::function<ArCases()>& make, bool broken_world = false) {
+      apply(config);
+      reset_switches();
+      const ArCases worlds = make();
+      uint64_t calls = 0;
+      for (const auto& [spec, call_list] : worlds) calls += call_list.size();
+      const uint64_t clean = count_differences(worlds);
+      on();
+      const uint64_t seen = count_differences(worlds);
+      reset_switches();
+      std::printf("23q. CONTROL %s (%s): %llu calls, clean %llu differ, with the switch %llu differ\n", name, config.name, calls, clean, seen);
+      if (broken_world ? clean == 0 : (clean != 0 || seen == 0)) ++control_failures;  // a broken world differs without any switch
+    };
+    const auto random_worlds = [&](uint64_t count, uint32_t items_cap) {
+      ArCases worlds;
+      for (uint64_t index = 0; index < count; ++index) {
+        const ArSpec spec = ArRandomSpec(&random, items_cap);
+        worlds.push_back({spec, standard_calls(spec)});
+      }
+      return worlds;
+    };
+    if (!streaming) control("scatter before allocate (C before B publishes)", configs[1], [&] { ar_module::controls.scatter_before_allocate = true; }, [&] { return random_worlds(6, 8000); });
+    if (!streaming) control("scatter before allocate", configs[0], [&] { ar_module::controls.scatter_before_allocate = true; }, [&] { return random_worlds(6, 8000); });
+    control("F on a worker with round-down MXCSR", configs[1], [&] { ar_module::controls.convert_in_scatter = true; }, [&] {
+      ArCases worlds;
+      for (const uint32_t texels_per_row : {0x01000001u, 0x01000003u, 0x7FFFFFFFu, 0x123456F7u}) {
+        ArSpec spec = {.seed = seed_base + 90000 + texels_per_row, .items = 3500, .extra_entries = 8, .textures = 1, .current = 0, .frame = 1, .row_size = 3000,
+                       .texels_per_row = texels_per_row, .need_min = 1, .need_max = 80, .flag_percent = 50, .share_percent = 30, .pre_state = 2, .record_cap = 0};
+        spec.heights = {400, 1, 1, 1, 1, 1};
+        worlds.push_back({spec, {{.update = false, .start = 0, .end = spec.items, .texture = 0}, {.update = true, .start = 0, .end = spec.items}}});
+      }
+      return worlds;
+    });
+    control("a vector that grows by itself (the allocator's log)", configs[1], [&] { ar_module::controls.own_vector_growth = true; }, [&] {
+      ArCases worlds;
+      for (const uint32_t capacity : {0u, 1u, 100u}) {
+        ArSpec spec = {.seed = seed_base + 91000 + capacity, .items = 3000, .extra_entries = 8, .textures = 1, .current = 0, .frame = 1, .row_size = 100000, .texels_per_row = 7000,
+                       .need_min = 1, .need_max = 3, .flag_percent = 0, .share_percent = 0, .pre_state = 2, .record_cap = capacity};
+        spec.heights = {1000000, 1, 1, 1, 1, 1};
+        worlds.push_back({spec, {{.update = false, .start = 0, .end = spec.items, .texture = 0}, {.update = true, .start = 0, .end = spec.items}}});
+      }
+      return worlds;
+    });
+    control("int64 room instead of u32 (an oversize item)", configs[1], [&] { ar_module::controls.wide_room = true; }, [&] {
+      ArCases worlds;
+      for (const uint32_t row_size : {20u, 100u, 700u}) {
+        ArSpec spec = {.seed = seed_base + 92000 + row_size, .items = 4500, .extra_entries = 8, .textures = 1, .current = 0, .frame = 1, .row_size = row_size, .texels_per_row = 7001,
+                       .need_min = 0, .need_max = std::max(2u, row_size / 3), .oversize_percent = 20, .flag_percent = 0, .share_percent = 0, .pre_state = 2, .record_cap = 0};
+        spec.heights = {3000, 1, 1, 1, 1, 1};
+        worlds.push_back({spec, {{.update = false, .start = 0, .end = spec.items, .texture = 0}, {.update = true, .start = 0, .end = spec.items}}});
+      }
+      return worlds;
+    });
+    if (!streaming) control("B's blocks in swapped order", configs[1], [&] { ar_module::controls.swap_allocate_blocks = true; }, [&] { return random_worlds(6, 12000); });
+    control("no end <= count check (garbage past the count, ours gathers it, alone)", configs[0], [&] { ar_module::controls.no_count_check = true; }, [&] {
+      ArCases worlds;
+      for (const uint32_t count : {3000u, 2600u, 1700u}) {
+        // The game stops on its height at 2700 items of 10 texels (rows of 100, 270 rows), before the garbage; the gather of the block that holds the count reads past it.
+        ArSpec spec = {.seed = seed_base + 93000 + count, .items = count, .extra_entries = 2200, .textures = 1, .current = 0, .frame = 1, .row_size = 100, .texels_per_row = 7000,
+                       .need_min = 10, .need_max = 10, .flag_percent = 0, .share_percent = 0, .pre_state = 2, .record_cap = 0};
+        spec.heights = {270, 1, 1, 1, 1, 1};
+        worlds.push_back({spec, {{.update = false, .start = 0, .end = count + 2000, .texture = 0}}});
+      }
+      return worlds;
+    });
+    control("P-alias broken on purpose (the records' buffer inside the animations)", configs[1], [&] {}, [&] {
+      ArCases worlds;
+      for (uint32_t index = 0; index < 6; ++index) {
+        ArSpec spec = {.seed = seed_base + 94000 + index, .items = 4000, .extra_entries = 8, .textures = 1, .current = 0, .frame = 1, .row_size = 3000, .texels_per_row = 7000,
+                       .need_min = 5, .need_max = 60, .flag_percent = 50, .share_percent = 95, .pre_state = 2, .record_cap = 40, .alias_records = true};
+        spec.heights = {1000000, 1, 1, 1, 1, 1};
+        worlds.push_back({spec, {{.update = false, .start = 0, .end = spec.items, .texture = 0}}});
+      }
+      return worlds;
+    }, true);
+    CHECK(control_failures == 0);
+  }
+
+  // 23r. Forward-order restore in Check: an instance twice in a call (in different rounds), and a game run that stops earlier than ours: the instance words past its stop must be the
+  // original ones, which only the reverse-order restore leaves.
+  if (selected("restore")) {
+    apply(configs[0]);
+    reset_switches();
+    ArCases worlds;
+    for (uint32_t index = 0; index < 6; ++index) {
+      ArSpec spec = {.seed = seed_base + 95000 + index, .items = 9000, .extra_entries = 8, .textures = 1, .current = 0, .frame = 1, .row_size = 100, .texels_per_row = 7000,
+                     .need_min = 10, .need_max = 10, .flag_percent = 0, .share_percent = 0, .duplicate_percent = 90, .pre_state = 2, .record_cap = 0};
+      spec.heights = {100, 1, 1, 1, 1, 1};
+      worlds.push_back({spec, {{.update = false, .start = 0, .end = 9000, .texture = 0, .height_shift_from = 1, .height_delta = static_cast<uint32_t>(-80),
+                                .game_height_shift_from = 0, .records_free = true, .check_sentinel = true}}});
+    }
+    twattila::animation_rows::Update(Stage::CHECK);
+    uint64_t clean = 0;
+    for (const auto& [spec, calls] : worlds) {
+      CHECK(ArBuild(context.get(), spec));
+      for (const ArCall& call : calls) {
+        ar_module::failed.store(false);
+        twattila::animation_rows::Update(Stage::CHECK);
+        clean += (compare(call).empty() ? 0 : 1);
+      }
+    }
+    ar_module::controls.forward_restore = true;
+    uint64_t seen = 0;
+    for (const auto& [spec, calls] : worlds) {
+      CHECK(ArBuild(context.get(), spec));
+      for (const ArCall& call : calls) {
+        ar_module::failed.store(false);
+        twattila::animation_rows::Update(Stage::CHECK);
+        seen += (compare(call).empty() ? 0 : 1);
+      }
+    }
+    reset_switches();
+    std::printf("23r. Check's restore: a game run 80 rows (of 100) shorter than ours with duplicate instances, reverse order: %llu differ; CONTROL forward order: %llu differ (must be > 0)\n", clean, seen);
+    CHECK(clean == 0 && seen > 0);
+  }
+
+  // 23s. The switch loop: Off (the site out), Check and On, 200 switches while 4 threads run whole updates and fill calls in both copies (they are not the pool's owner: their calls
+  // run alone, and a second thread in the module's ring is sent to the game's own fill); nothing differs, the row never failed, every switch happened.
+  if (selected("switch")) {
+    apply(configs[0]);
+    reset_switches();
+    std::atomic<bool> stop = false;
+    std::atomic<uint64_t> bad = 0;
+    std::atomic<uint64_t> run_count = 0;
+    std::mutex replay_mutex;
+    std::vector<std::pair<ArSpec, ArCall>> replay;  // the calls that differed: run again alone, to tell a race of the threads from a difference of the code
+    std::vector<std::thread> threads;
+    for (int worker = 0; worker < 4; ++worker) {
+      threads.emplace_back([&, worker] {
+        auto own = std::make_unique<ArContext>();
+        Random thread_random = {.state = 0xB3C0000ull + static_cast<uint64_t>(worker) * 0x9E3779B97F4Aull};
+        while (!stop.load()) {
+          ArSpec spec = ArRandomSpec(&thread_random, 6000);
+          // No faulting calls here (a null item, a texture or an end past what the world holds): where the game's own code reads garbage it can read what another thread's call of the
+          // same copy is changing, and the faults are 23o's.
+          spec.null_instance_at = spec.null_animation_at = ~0u;
+          ArCall call = ArRandomCall(spec, &thread_random);
+          call.tweak = false;
+          call.rounding = 0;
+          call.check_sentinel = true;
+          call.texture %= std::max<uint32_t>(1, spec.textures);
+          call.end = std::min(call.end, spec.items);
+          if (!ArBuild(own.get(), spec)) continue;
+          const uint8_t* const game_function = (call.update ? game + ANIMATION_UPDATE_RVA : game_fill);
+          const uint8_t* const patched_function = (call.update ? patched + ANIMATION_UPDATE_RVA : stub);
+          if (const std::string what = ArCompare(own.get(), game, game_function, patched, patched_function, call); !what.empty() && ++bad <= 5) {
+            std::printf("   thread %d: %s: %s\n", worker, describe(spec, call).c_str(), what.c_str());
+            const std::unique_lock lock(replay_mutex);
+            replay.push_back({spec, call});
+          }
+          ++run_count;
+        }
+      });
+    }
+    int waited = 0;
+    int never = 0;
+    std::array<int, 3> reached = {};
+    for (int switches = 0; switches < 200; ++switches) {
+      const int mode = switches % 3;  // 0 off, 1 check, 2 on
+      const Stage stage = (mode == 0 ? Stage::OFF : mode == 1 ? Stage::CHECK : Stage::ON);
+      int tries = 0;
+      do {
+        set_stage(stage);
+        ++tries;
+      } while ((((ec::written & ec::WORKER_FILL_BIT) != 0) != (mode != 0)) && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
+      waited += tries > 1 ? 1 : 0;
+      const bool reached_now = (((ec::written & ec::WORKER_FILL_BIT) != 0) == (mode != 0));
+      never += reached_now ? 0 : 1;
+      reached[mode] += reached_now ? 1 : 0;
+    }
+    set_stage(Stage::ON);
+    stop = true;
+    for (auto& thread : threads) thread.join();
+    ec::worker_data->cut_active.store(0);
+    for (const auto& [spec, call] : replay) {
+      CHECK(ArBuild(context.get(), spec));
+      const std::string again = compare(call);
+      after_fault();
+      std::printf("   the same call alone: %s\n", again.empty() ? "equal (a race between the test's threads)" : again.c_str());
+    }
+    std::printf("23s. 200 switches Off / Check / On (%d / %d / %d reached) while 4 threads made %llu comparisons of whole updates and fill calls: %llu wrong (%d writes waited for a thread inside a stub, %d switches never reached; the row %s)\n",
+                reached[0], reached[1], reached[2], run_count.load(), bad.load(), waited, never, ar_module::failed.load() ? "FAILED" : "never failed");
+    CHECK(bad.load() == 0 && never == 0 && run_count.load() > 0 && !ar_module::failed.load() && !ec::module_pinned);
+    reset_switches();
+  }
+#else
+  std::printf("23m. to 23s. (the fallbacks' paths, the controls, Check, the faults through ours and the switch loop need the real Dispatch: build with TWATTILA_WORKER_CONTROLS) skipped\n");
+#endif
+
   set_workers(0);
   set_stage(Stage::OFF);
   CHECK((ec::written & ec::WORKER_SITES) == 0 && ec::worker_data->fill_slot.load() == 0 && ec::worker_data->cut_active.load() == 0 && !ec::module_pinned);
   ArSetTweaks(game, patched, false);
   twattila::worker_pool::Update({.threads = 4, .in_use = false});
   SetEnvironmentVariableA("RENODX_TW_WORKER_LIMITS", nullptr);
+  SetEnvironmentVariableA("RENODX_TW_ANIMATION_SCHEDULE", nullptr);
   return 0;
+}
+
+// The same cases under each schedule (AR_SCHEDULE=bulk or stream picks one; without the module's switches the schedule does not matter: once).
+int RunAnimationRowsExactTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool quick) {
+  const char* const only = std::getenv("AR_SCHEDULE");
+#if defined(TWATTILA_WORKER_CONTROLS)
+  for (const bool streaming : {false, true}) {
+    if (only != nullptr && std::strcmp(only, streaming ? "stream" : "bulk") != 0) continue;
+    if (const int failed = RunAnimationRowsExactFor(build, game, patched, quick, streaming); failed != 0) return failed;
+  }
+  return 0;
+#else
+  return RunAnimationRowsExactFor(build, game, patched, quick, only != nullptr && std::strcmp(only, "stream") == 0);
+#endif
 }
 
 // ==== S4/S5 exactness part end (b3t_) ====
@@ -1243,9 +1774,13 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
   // 23c. The cut rule with a parked thread at each byte of each stub.
   {
     std::atomic<bool> stop = false;
+    std::atomic<bool> running = false;
     std::thread parked([&] {
+      running = true;
       while (!stop.load()) Sleep(1);
     });
+    while (!running.load()) Sleep(1);
+    Sleep(20);  // past the thread's start: frozen inside its start (holding the heap's lock) it would block the next allocation of this thread for good
     HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
     CHECK(thread != nullptr);
     int wrong = 0;
@@ -1334,9 +1869,13 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
 
     // A thread kept in the stub for MAX_FAILED_WRITES presents: pinned, the sites still in.
     std::atomic<bool> stop = false;
+    std::atomic<bool> running = false;
     std::thread parked([&] {
+      running = true;
       while (!stop.load()) Sleep(1);
     });
+    while (!running.load()) Sleep(1);
+    Sleep(20);  // past the thread's start: frozen inside its start (holding the heap's lock) it would block the next allocation of this thread for good
     HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
     CHECK(thread != nullptr && SuspendThread(thread) != static_cast<DWORD>(-1));
     CONTEXT saved = {.ContextFlags = CONTEXT_CONTROL};
@@ -1370,15 +1909,95 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
     std::printf("   another mod's bytes over a site, a thread kept in a stub, a stuck count at Uninstall: each leaves the site in, pins the module and zeroes the words\n");
   }
 
-  // 23e. 200 switches under 4 threads running whole updates in both copies on their own worlds.
+  // 23e0. A thread parked at each byte of each worker site's own five bytes (SuspendThread / SetThreadContext, as 29d): refused strictly inside (the group stands down), free at
+  // the first byte and the byte after, going in and going out. The sweep entry is the only site whose five bytes hold three instruction starts (the review's Should 1b).
   {
+    std::atomic<bool> stop = false;
+    std::atomic<bool> running = false;
+    std::thread parked([&] {
+      running = true;
+      while (!stop.load()) Sleep(1);
+    });
+    while (!running.load()) Sleep(1);
+    Sleep(20);  // past the thread's start: frozen inside its start (holding the heap's lock) it would block the next allocation of this thread for good
+    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
+    CHECK(thread != nullptr);
+    const uint32_t all = (has_fill ? ec::WORKER_SITES : ec::WORKER_SWEEP_BIT);
+    int wrong = 0;
+    int checked = 0;
+    // The rows `on` with the thread's Eip at `where`: true when the sites changed.
+    const auto try_rows = [&](const uint8_t* where, bool on) {
+      wrong += (SuspendThread(thread) == static_cast<DWORD>(-1)) ? 1 : 0;
+      CONTEXT saved = {.ContextFlags = CONTEXT_CONTROL};
+      wrong += (GetThreadContext(thread, &saved) == FALSE) ? 1 : 0;
+      CONTEXT moved = saved;
+      moved.Eip = Address(where);
+      wrong += (SetThreadContext(thread, &moved) == FALSE) ? 1 : 0;
+      ec::failed_writes = 0;
+      update_rows(on && has_fill, on);
+      const bool changed = ((ec::written & ec::WORKER_SITES) == (on ? all : 0));
+      wrong += (SetThreadContext(thread, &saved) == FALSE) ? 1 : 0;
+      ResumeThread(thread);
+      ++checked;
+      return changed;
+    };
+    update_rows(false, false);
+    CHECK((ec::written & ec::WORKER_SITES) == 0);
+    for (const uint32_t index : {ec::WORKER_FILL_INDEX, ec::WORKER_SWEEP_INDEX}) {
+      if (index == ec::WORKER_FILL_INDEX && !has_fill) continue;
+      const uint8_t* const start = ec::sites[index].at;
+      for (size_t offset = 0; offset <= ec::SITE_SIZE; ++offset) {
+        const bool inside = (offset > 0 && offset < ec::SITE_SIZE);
+        wrong += (try_rows(start + offset, true) == inside) ? 1 : 0;
+        ec::failed_writes = 0;
+        update_rows(has_fill, true);
+        wrong += ((ec::written & ec::WORKER_SITES) != all) ? 1 : 0;
+        wrong += (try_rows(start + offset, false) == inside) ? 1 : 0;
+        ec::failed_writes = 0;
+        update_rows(false, false);
+        wrong += ((ec::written & ec::WORKER_SITES) != 0 || fill_slot() != 0 || sweep_slot() != 0) ? 1 : 0;
+      }
+    }
+    stop = true;
+    parked.join();
+    CloseHandle(thread);
+    ec::failed_writes = 0;
+    CHECK(wrong == 0 && (ec::written & ec::WORKER_SITES) == 0 && !ec::module_pinned);
+    std::printf("   a thread parked at %d places (each byte of each worker site's own five and the byte after, going in and going out): refused strictly inside, free at the ends\n", checked);
+  }
+
+  // 23e. 200 switches under 4 threads running whole updates in both copies on their own worlds, and a sweep of the pending list in both copies between them (the sweep entry's
+  // stub, its Arm call and the row's tracing flag flip with the fill site).
+  {
+    // The sweep's group as pending_sweep_split.inc builds it (that file is included after this one): `this` with the count at +0x18 and the entries at +0x1c, lists never ready.
+    struct SweepGroup {
+      alignas(16) uint8_t self[0x40];
+      uint32_t entries[2 * 12];
+      alignas(16) uint8_t lists[12][0x50];
+    };
+    using SweepFunction = void(__fastcall*)(void* list);
+    const uint32_t sweep_rva = build.code->sweep_rva;
+    const auto sweep_a = reinterpret_cast<SweepFunction>(game + sweep_rva);
+    const auto sweep_b = reinterpret_cast<SweepFunction>(patched + sweep_rva);
+    // The sweep's rotating tweak (one byte at +0x48 of the object its first `mov ecx` names): on in both copies for the threads, put back after.
+    std::array<uint8_t*, 2> tweaks = {};
+    std::array<uint8_t, 2> tweaks_before = {};
+    if (sweep_rva != 0) {
+      tweaks = {reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(Read32(game + sweep_rva + 4)) + 0x48), reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(Read32(patched + sweep_rva + 4)) + 0x48)};
+      for (size_t copy = 0; copy < tweaks.size(); ++copy) {
+        tweaks_before[copy] = *tweaks[copy];
+        *tweaks[copy] = 1;
+      }
+    }
     std::atomic<bool> stop = false;
     std::atomic<uint64_t> bad = 0;
     std::atomic<uint64_t> run_count = 0;
+    std::atomic<uint64_t> sweep_count = 0;
     std::vector<std::thread> threads;
     for (int worker = 0; worker < 4; ++worker) {
       threads.emplace_back([&, worker] {
         auto own = std::make_unique<AnimationWorld>();
+        auto group = std::make_unique<SweepGroup>();
         Random thread_random = {.state = 0xA11CE0000ull + static_cast<uint64_t>(worker) * 0x9E3779B97F4Aull};
         while (!stop.load()) {
           AnimationSpec spec = AnimationRandom(&thread_random);
@@ -1387,6 +2006,19 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
             std::printf("   thread %d: the update differs in %s\n", worker, what);
           }
           ++run_count;
+          if (sweep_rva == 0) continue;
+          const uint32_t count = thread_random.Next() % 13;
+          std::memset(group.get(), 0, sizeof(*group));
+          Write32(group->self + 0x18, count);
+          Write32(group->self + 0x1C, Address(group->entries));
+          for (uint32_t entry = 0; entry < count; ++entry) group->entries[2 * entry] = Address(group->lists[entry]);
+          const SweepGroup saved = *group;
+          sweep_a(group->self);
+          const SweepGroup after_game = *group;
+          *group = saved;
+          sweep_b(group->self);
+          if (std::memcmp(&after_game, group.get(), sizeof(*group)) != 0 && ++bad <= 5) std::printf("   thread %d: the sweep of %u lists differs\n", worker, count);
+          ++sweep_count;
         }
       });
     }
@@ -1406,9 +2038,12 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
     update_rows(true, true);
     stop = true;
     for (auto& thread : threads) thread.join();
-    std::printf("   200 switches while 4 threads made %llu whole updates in both copies: %llu wrong (%d writes waited for a thread inside a stub, %d switches never reached)\n",
-                run_count.load(), bad.load(), waited, never);
-    CHECK(bad.load() == 0 && never == 0 && run_count.load() > 0 && (ec::written & ec::WORKER_SITES) == ec::WORKER_SITES && fill_slot() == dispatch && !ec::module_pinned);
+    if (sweep_rva != 0) {
+      for (size_t copy = 0; copy < tweaks.size(); ++copy) *tweaks[copy] = tweaks_before[copy];
+    }
+    std::printf("   200 switches while 4 threads made %llu whole updates and %llu sweeps in both copies: %llu wrong (%d writes waited for a thread inside a stub, %d switches never reached)\n",
+                run_count.load(), sweep_count.load(), bad.load(), waited, never);
+    CHECK(bad.load() == 0 && never == 0 && run_count.load() > 0 && (sweep_rva == 0 || sweep_count.load() > 0) && (ec::written & ec::WORKER_SITES) == ec::WORKER_SITES && fill_slot() == dispatch && !ec::module_pinned);
   }
 
   update_rows(false, false);
