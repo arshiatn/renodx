@@ -13,7 +13,7 @@
 - Fixed: **the battle fog below 100 % render scale** (DLSS, FSR, XeSS): its shadow-range filter (99164788 / 0CB1C821)
   spreads its 5x5 taps over the view's pixels (at 33 % they reached a third as far), and its sun scan (DB53BDDC) fades
   the sun at the screen edges from the view's uv, not the texture's (the sun's fog light faded in the view's left and
-  top). At 100 % both are the game's.
+  top). At 100 % both are the game's (WARP, `test/tw_pharaoh_fog`).
 - Changed: Smooth Banner Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
 - Changed (ATN): **Shadow Casters Out of View on by default** (no longer Experimental), in RT/PT too: with ray-traced sun
   shadows, trees, buildings and units behind the camera keep their shadows. A saved Off is cleared once (ATN): every
