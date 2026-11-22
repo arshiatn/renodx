@@ -467,14 +467,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - end batch owner (t4i_ / ebr_): b13r_'s B1 risks - (a) thread affinity of order-p ... | ?
 - B1 owner (static, low): do the game's destructors draw (callers of 0x190B780 rea ... | ?
 - ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stac ... | ?
-- gtl_ (low): the jobs fixture's +60 s on the gate now sits on top of GATE_FLOOR_S ... | ?
 - gtb_ / gti_ (low): load-flake bounds in unchanged code - gated_build "both slots ... | ?
 - ATN (cleanup list): tools\tw\h0\selftest_check15 (empty folder, h0i_ 09:1x) + se ... | ?
 - c3i_ F1: session totals for the B1 safety counters (print when any fault counter ... | ?
 - c3i_ F2: a log line (Note() event kind) when the slot list grows on a worker (t4 ... | ?
 - ATN (morning report): add a B1L1-only volley pair to the end batch? ~7 min (L1-o ... | ?
 - T5 build step: write the real manifest.json with these rows / row_values / env ( ... | ?
-- gtl_ (low): record gate_s in lab.py's model so GATE_FLOOR_S can follow data late ... | ?
 - ATN (morning report): with the load refresh, the gate hook's fix-now rule can fi ... | ?
 - ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its ow ... | ?
 - gtp_ (round 14, STARTED 09:4x): Section 8 text fixes (a)-(d) + kind() leading-re ... | ?
@@ -8800,7 +8798,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         99) until gtp_'s round 13, then tighten. budget.py LIVE 09:04:36. Seen: test_budget N11 updated to `twattila
         cold` after gtp_'s build_key; two load flakes in unchanged code (both-slots-held check 6.8 s vs 4 s;
         selftest lock case 11.7 s), not repeated. -> gpr_ CHECK STARTED (items 1 / 3 / 4 + the load proposal).
-        - [ ] gtl_ (low): the jobs fixture's +60 s on the gate now sits on top of GATE_FLOOR_S (180 s) - can be
+        - [x] gtl_ (low, DONE 09:5x, gtv_ checks): the jobs fixture's +60 s on the gate now sits on top of GATE_FLOOR_S (180 s) - can be
             dropped (gtb_ 09:1x).
         - [x] gtb_ (after gtp_'s round 13, DONE 09:37 + hook == mirror check): tighten test_budget's 3rd hook case to
             (12, 99) only (gtb_ 09:1x).
@@ -8933,7 +8931,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         needed, own child not counted; "partial" fires on most runs while a lab waits (~1 s each, fine); gti_'s
         BusyState unchanged. NOTE: once loads can be idle, fix-now can fire (shadow = would-deny rows only). ->
         gtb_ BUILDS the load refresh (3 conditions) + tightens after round 13; gpr_ re-checks.
-        - [ ] gtl_ (low): record gate_s in lab.py's model so GATE_FLOOR_S can follow data later (gpr_ 09:2x).
+        - [x] gtl_ (low, DONE 09:5x, gtv_ checks): record gate_s in lab.py's model so GATE_FLOOR_S can follow data later (gpr_ 09:2x).
         - [ ] ATN (morning report): with the load refresh, the gate hook's fix-now rule can fire for the first time
             (shadow: would-deny rows only) (gpr_ 09:2x).
         gtp_ ROUND 13 LIVE 09:20, SHADOW (plan_1117/gtp_round13_handback.md; backups scratchpad\gtp_bak18 + bak18b;
@@ -9309,9 +9307,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         CRLF. STEPS 1-2 PATCH FINAL + REVIEWED (v3); applying + building in ff_s12 waits for ATN (box above).
         Then: gated helper build, code merge gate, and the helper suites need ATN's harness rule (they start
         renodx-tw-dlaa64).
+        gtl_ LOWS DONE 09:5x (plan_1117/gtl_lows_handback.md; backups scratchpad\gtl_backup_lows; logs gtl_runs12):
+        (1) the jobs fixture's +60 s on the gate dropped: jobs 32 / 32 three times (107 / 110 / 111 s; CPU 18 / 14 /
+        36 %); GATE_FLOOR_S 120 > 48.6 s seen under load; render_cpu +30 s and score +60 s kept (not asked). (2)
+        gate_s recorded in lab.py's model at both gate calls (A/B gate + iq --quality gate), recording only;
+        budget.py already prices the gate phase from gate_s (median of last runs), so its price now follows real
+        gate times; test_iq_kinds checks it. Suites jobs 32 / 32 x3, unit 34 / 34, ps1 5 / 5, keeper 24 / 24 (below
+        normal, -I -B), ended 09:56:23; nothing of gtl_'s running. Changed lab.py, tests\test_lab_fixture.py,
+        tests\test_lab_jobs.py. -> gtv_ CHECKS (code + unit only while H0 runs).
         Agents (7): gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gti_ r1a / r1b check, no process tests
-        during H0), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), grs_ (design v6 text X1-X4), gtl_
-        (fixture +60 s + gate_s)
+        during H0), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging), grs_ (design v6 text X1-X4), gtv_
+        (gtl_ lows check)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
