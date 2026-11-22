@@ -634,6 +634,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G10 next wave: render_pass_behavior stages under testbin (ATN 22:3x). | ?
 - coord at READY: final update of handoff_plan/resume_point.md (every agent's last ... | ?
 - g08_ next wave: Ryse / D1 / D2 add-on builds via scratch/g08_/build_g08.cmd (com ... | ?
+- D1 add-on build once at the merged tip (needs a slot; before the bin rebuild + i ... | ?
+- rve_ G06 NITs: 9a7c1e3d4 title says "not built"; the V35 fit is a local search ( ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12340,6 +12342,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         g08_ PART (handbacks/g08_part_handback.md): ho_g08 1484bcb7f (cherry-pick -x e54c34c60, clean) + 81ba80fd0 (Ryse
         README:250 / :319 name twattila/pcss.hlsli / upscale_output.hlsli; merge after ho_g21). Builds NOT run (no slot).
         - [ ] g08_ next wave: Ryse / D1 / D2 add-on builds via scratch/g08_/build_g08.cmd (command in the hand-back), one slot.
+        ho_g06 MERGED 22:3x: 0ec5263ef (rve_ re-check GO, reviews/rve_g06_recheck_handback.md: M1 / m1 / m2 / m4 fixed, 258 =
+        244 + 14 exact, fifth slider inert at 1.f, 0 / 0 / 1 MINOR (m3 request) / 6 NIT). Lab idle since 21:03.
+        - [ ] D1 add-on build once at the merged tip (needs a slot; before the bin rebuild + install).
+        - [ ] rve_ G06 NITs: 9a7c1e3d4 title says "not built"; the V35 fit is a local search (the 10 %-guard five-slider
+        16.0 % also meets 15 %); tests.cpp:755 names four sliders; README.md:35 wrap; n1.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
