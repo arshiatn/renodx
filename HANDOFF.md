@@ -500,11 +500,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
 - gtl_: stage H1 + H2 + M1 / M2 / M2b / M3 / M4 + L1 / L2 + nits; gtv_ re-checks; ... | ?
 - coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU ... | ?
-- gtc_ (runner, Low): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x). | ?
 - gtp_: ROUND 20 = gtw_'s R19-1..R19-7 + GATES_SUITE project anchor + gpr_'s R19-1 ... | ?
 - gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land- ... | ?
 - grs_ (low, after dead uses; CPU first, GPU A/B only on its go): nrd_all_removal ... | ?
 - fcr_: re-check grs_ aa42b6374 + gti_ T1-T4 (dead_outputs.py) as one piece -> MER ... | ?
+- gtv_ (Opus xHigh, read only): root cause of S3c part 1's 3 failed calibrations ( ... | ?
+- gtc_ (Low): S3c part 1 offline analyses A1 / A2 / A6 / A7 / A9b / A10 / A11 per ... | ?
+- coord: S3c part 1 RE-RUN (calibrate -> A/A -> rotation -> trace) after gtv_'s fi ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10460,7 +10462,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         sampler's flag / keeper.log instead). If any fails: rotation ends kept residents first, keeping the session.
         - [ ] gtl_: stage H1 + H2 + M1 / M2 / M2b / M3 / M4 + L1 / L2 + nits; gtv_ re-checks; lands after S3c part 1 by
         copying (coord 15:40).
-        - [ ] coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU use) (coord 15:40).
+        - [ ] coord: S3c part 1 step 6 checks (committed GB before, idle-exit side, R1 no GPU use) (coord 15:40). NOT TAKEN
+        16:15 (step 6 skipped) -> carry to the S3c part 1 re-run.
         gpr_ ROUND 19 RE-CHECK = PRICE OK + 1 MEDIUM 15:44 (plan_1117/designs/gpr_round19_recheck_handback.md; gpr_review.md
         "## gtp_ round 19 re-check"; testbin\scratch\gpr_\gpr_r19_*): keys 1 of 89,170 (py -c da39a3ee -> real hash), no
         class / build key moves; kind() CPU 9.58 s -> 8.91 s, slowest < 16 ms; control seeds 107,428 both, builds 388, rows
@@ -10490,7 +10493,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         timing / load dependence: gtl_'s stage suites ran 15:14-15:18 beside it) -> upr_ verdict. S3c part 1 does not wait
         (lab calibration on real recordings, independent of these harness modes).
         - [x] h0i_ (DONE 16:01: FLAKY, old; upr_ verdict): analyse all_modes M6 8 changed (a != b) on the CPU -> flaky vs regression (coord 15:5x).
-        - [ ] gtc_ (runner, Low): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x).
+        - [x] gtc_ (DONE 16:15, ran; calibrations FAILED, trace FAILED): S3c part 1 steps 0-19 per s3c_run_sheet.md (coord 15:5x).
         gtc_ S3c PART 1 RUNNER SPAWNED 15:52 (Low; steps 0-19 per s3c_run_sheet.md, outputs testbin\scratch\gtc_\step_NN.txt,
         exact ATN rules only, stops on 1 / 2 / 6 / any block; step 6 extra checks committed GB / R1 idle-exit side / R1
         commands). fcr_ + gtw_ told: below normal, no builds at normal priority until ~16:50.
@@ -10564,7 +10567,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         gti_ T4 15:59 (plan_1117/gti_t4_handback.md; backup scratchpad\gti_bak16): a read in ANY later logged frame keeps a
         write live ("a later frame: a history"); unplaceable handles make earlier writes UNDECIDED from any later frame; last
         frame UNDECIDED; tests 21 / 21. -> fcr_ re-checks gti_ with grs_'s G1-G4 when those land.
-        - [ ] gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land-list hashes (coord 15:59).
+        - [ ] gtl_: keeper + jobs stage re-run AFTER S3c part 1 (coord says go); refresh land-list hashes (coord 15:59). GO
+        SENT 16:1x.
         - [x] gtv_ (DONE 16:05: GO to land after S3c part 1): re-check gtl_'s stage review fixes (read + unit / analyze only during S3c; keeper / jobs after)
         (coord 15:59).
         gtl_ waiting 16:00 (plan_1117/gtl_waiting_handback.md): idle until coord says S3c part 1 done.
@@ -10654,9 +10658,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         both-known a != b reported only; NUMBER line names variants; M 1463; Dumps / run1-repeat keep M6_LEFT_OUT only
         (lines 181 / 190 / 224); selftest entries removed in finally; upr_'s own selftest run 97 ok / 0 wrong
         (scratchpad\upr_m6known_selftest\). ALL_MODES ON THE COMBINED TREE CLOSED. nrd_all_removal recovery box stays (low).
-        Agents (3): gtp_ (gate round 20), fcr_ (dead-output re-check), gtc_ (S3c part 1 runner: step 18 serve_idle + 11 min
-        wait from 16:03, then step 19 S); gtl_ waits for S3c done; gtv_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: S3c PART 1
-        RUNNING (15:52); one GPU job at a time; CPU work below normal, no builds at normal priority, no lab suites during S3c
+        gtc_ S3c PART 1 16:15 (plan_1117/gtc_s3c_part1_handback.md; per step testbin\scratch\gtc_\step_NN.txt): ran 15:53-16:15;
+        NO exit 1 / 2 / 6, no prompt, no safety stop. ALL 3 CALIBRATIONS FAILED -> steps 4 / 6 / 11 / 16 NOT RUN (16 = gtc_'s
+        call: ab job would be refused without a PASS calibration). R1 calibrate exit 5: G-1122-1 trace +0.32 ms (12.18 ->
+        12.49) SLOWER, total +0.13 NO CHANGE (detects >= 1.30 ms); G-1122-2 trace -0.32 FASTER, total +0.17 NO CHANGE
+        (detects >= 0.72); both "SLOW settle (fallback: total + decided rows)"; settle step 2 "rows decided, frame 1152"
+        (not all). R2 exit 5: G-1122-3 trace +0.34 (2.26 -> 2.60), total +0.43 NO CHANGE (detects >= 0.59) FAIL; G-1122-4
+        trace -0.34 + total -0.56 (10.34 -> 9.78) FASTER (detected); settle "rows all, frame 449". R3 exit 3 INVALID:
+        G-1122-5 trace +0.34 (2.98 -> 3.32), total +0.33, "INVALID: A/A total +0.32 ms > 0.047"; G-1122-6 trace -0.34,
+        total -0.33, "A/A total +0.31 ms > 0.036" (A/A ~= the burn: SUSPECT burn leaking into the A/A arm); SLOW settle
+        fallback. Burn cost per loop ~ 0.32-0.34 ms / 64 = 5.0-5.3 us. STEP 7 TRACE exit 7: commit 24.5 -> 42.2 GB peak
+        -> 25.5; ngfx exit 1 "Activity session destroyed, connection error ... Operation timeout ... Data fetching never
+        started", no trace written (nsight\runs\s3c_r1_trace\run.txt + s3c_r1_trace_ngfx.txt). Dumps X1 / Y1, X2 / Y2, X3 /
+        Y3 taken (lab\run\S-26284-... / S-94776-... / S-99452-...). Loaded: R1 1839 meshes 476 cluster sets 47 res,
+        snapshot 2106 MB VRAM; R2 1312 / 532 / 47, 2106 MB; R3 803 / 647 / 42, 1864 MB. Step 18 idle exit at 16:13:47:
+        resident 85276 ended (killed), dedicated 15315 -> 2394 MB, lock released, "stopped: idle 10 min". Step 19 lock free.
+        Step-6 checks not taken (no rotation). Sigma rows / other_gpu / full_reloads not printed (they come from A/A steps).
+        COORD 16:1x: gtl_ GO for the stage re-run; gtv_ root-causes the 3 calibrations + the trace (read only); gtc_ runs
+        offline A1 / A2 / A6 / A7 / A9b / A10 / A11 (A3 / A4 / A5 / A8 / X2 need steps 4 / 6 / 7 -> re-run).
+        - [ ] gtv_ (Opus xHigh, read only): root cause of S3c part 1's 3 failed calibrations (R1 / R2 MDE vs 0.32 ms
+        burn, R3 A/A ~= burn) + the ngfx trace timeout; fixes + owners + what the re-run needs (coord 16:1x).
+        - [ ] gtc_ (Low): S3c part 1 offline analyses A1 / A2 / A6 / A7 / A9b / A10 / A11 per sheet section 3 (coord 16:1x).
+        - [ ] coord: S3c part 1 RE-RUN (calibrate -> A/A -> rotation -> trace) after gtv_'s fixes land.
+        Agents (5): gtp_ (gate round 20), fcr_ (dead-output re-check), gtl_ (stage re-run: keeper + jobs suites), gtv_
+        (S3c calibration + trace root cause, read only), gtc_ (S3c offline analyses); gti_ / grs_ / h0i_ / upr_ idle; GPU:
+        FREE since 16:15 (S3c part 1 done); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
