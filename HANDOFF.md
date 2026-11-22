@@ -6504,7 +6504,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         gtw_ (a0b03d68655ebfcaf, fresh Opus xHigh) STARTED 00:5x: S1r review of S1c + part A ->
         plan_1117/gtw_s1c_review.md (sandbox copies only; hook never installed). gtv_ keeps S1a + S1b.
         [ ] ATN: install the hook (INSTALL_FOR_ATN.md) only after gtw_'s fixes; Q12 / Q26 decide mode + protection.
-        Agents (9): bd3r_ + bd1r_ (R-S5 review), gtv_ (S1r S1a / S1b), gtw_ (S1r S1c), lgf1_ +
+        bd3r_ R-S5 REVIEW (FOLD SIDE) DONE 01:0x (reports/bd3r_review.md line 600, hand-back reports/bd3r_rs5_handback.md):
+        MERGE, no Musts / Shoulds, 5 Nits: 1 fold_trace = {} after FoldFault (draw_recording.hpp:1090-1098, uint64 wrap in
+        a trace frame); 2 nested lap zeroes the outer fold_trace (1627-1629 / 2159-2161) + ++shares outside tracing (1054);
+        3 FoldExits runs 8 of 14 direct reasons, add visibility view first; 4 control 11 comment; 5 detach from another
+        thread during a fold window (engine_code.hpp:2951-2958): write the assumption down or wait ~100 ms + keep FOLD_SITES
+        pinned. All suites + gated plain / DRAW_RECORDING / amd64 exit 0. Waiting for bd1r_'s instance_fill side.
+        t4i_ RESUMED 01:0x: ebr_'s 4 T3c nits (bench; backups t4i_bak14).
+        Agents (9): bd1r_ (R-S5 review), gtv_ (S1r S1a / S1b), gtw_ (S1r S1c), t4i_ (bench nits), lgf1_ +
         lgf2_ (logging fixes). QUEUE: c33i_ R-S5 fixes -> re-checks -> merge, B1.6, X1, logging group 3, lga_ re-checks,
         S1r S1b / S1c, bulk index, H0, T5 freeze, T6 dry run, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
