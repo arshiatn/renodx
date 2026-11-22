@@ -4,7 +4,7 @@
 
 **What it does**: Bend's wavefront march over a copy of the scene depth, at the first main-view sun draw: `sss_depth`, `sss_setup` (the dispatch list built on the GPU), 8 indirect `sss_bend` dispatches, optional `sss_blur`. The patched sun shaders multiply their shadow term by 1 - t49, so only direct sunlight changes. Smoke (`smoke_map`, Attila only) and the RT occlusion use the same t49.
 
-**What it includes** (defaults in `twattila/feature_settings.hpp`): Softness (Off) and Softer Away from the Caster (Experimental, off); Light Through Banners (0.35) and Coloured Shadows (on; t50, only where the rays bind none); Torch and Fire Shadows (Off, 4, 8, 16 or 32 lights within a range; Attila, Thrones, WH3); Light Through Foliage (0.5; Attila from depth copies around its prefill, WH3 from its G-buffer foliage bit). Bend's Auto Thickness was removed (GT-VBAO's and GT-VBGI's is on: [ao-gi.md](ao-gi.md)). The 128-light rows are the rays' ([rt-scene.md](rt-scene.md)).
+**What it includes** (defaults in `twattila/feature_settings.hpp`): Softness (Off) and Softer Away from the Caster (Experimental, off); Light Through Banners (0.35) and Coloured Shadows (on; t50, only where the rays bind none); Torch and Fire Shadows (Off, 4, 8, 16 or 32 lights within a range; Attila, Thrones, WH3); Light Through Foliage (0.5; Attila from depth copies around its prefill, WH3 from its G-buffer foliage bit). Bend's Auto Thickness was removed (GT-VBAO's and GT-VBGI's goes on by default: `game-port-method`'s Auto Thickness rule). The 128-light rows are the rays' ([rt-scene.md](rt-scene.md)).
 
 **Cost** (4K, 100%): base 0.81 ms; Banners +0.08, Coloured +0.60, Softer +0.53 ms; torches 0.35 to 1.4 ms; smoke map 0.1 to 0.16 ms.
 
