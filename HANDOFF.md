@@ -498,7 +498,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-che ... | ?
 - gtl_: S3c run sheet (coord 14:11). | ?
 - coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
-- upr_: re-check h0i_'s all_modes fixes vs backups 20261122_1600_allmodesfix (1469 ... | ?
+- h0i_: Set-StrictMode -Version 1 (line 26) + dry run + offline test -> then the r ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10256,7 +10256,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         recursive delete) 1469 / 1469 equal, all PASS; offline test ok 2 min (offline\20261122_141120_allmodes: census /
         checks / dumps PASS, m6 FAIL 8 of 1469 undrawn_gone only, repeat OPEN); wrong hash -> PROBLEM exit 2; real dry run
         exit 0 (all_modes_dryrun_1600.txt). Leftover offline\fakes\__pycache__ (harmless, kept).
-        - [ ] upr_: re-check h0i_'s all_modes fixes vs backups 20261122_1600_allmodesfix (1469 vs 1481 too) -> GO / NO-GO
+        - [x] upr_ (DONE 14:23: GO after Set-StrictMode -Version 1): re-check h0i_'s all_modes fixes vs backups 20261122_1600_allmodesfix (1469 vs 1481 too) -> GO / NO-GO
         (coord 14:14).
         Helper checks PASS 14:14 (recorder build helper_gpus2_rec 6,703,104 B, plain helper_nit 5,689,856 B) -> pushed
         d9a7d25b0. upr_ re-check SENT 14:15; gtv_ load run GO 14:15 (running).
@@ -10264,8 +10264,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         own edit; json valid, 2 lines): PowerShell `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\arshi\
         .claude\projects\D--Dev-renodx\tools\tw\h0\all_modes_check.ps1` (+ the same with -DryRun). THE REAL RUN STILL
         WAITS FOR upr_ GO, one GPU job at a time (not beside S3c or the load run).
-        Agents (4): gtp_ (gate round 19), upr_ (all_modes re-check), gtl_ (S3c run sheet), gtv_ (lab load run); then
-        on upr_ GO: all_modes run (~40-45 min, GPU, rule in) and S3c (gpu_lab.ps1 per gtl_'s sheet), one after the other
+        upr_ ALL_MODES RE-CHECK 14:23 = NO-GO BY ONE TOKEN (plan_1117/designs/upr_allmodes_recheck_handback.md;
+        unified_pt_review.md "## all_modes re-check" line 2192): all_modes_check.ps1 line 26 Set-StrictMode -Version
+        Latest -> -Version 1 (PS 5.1 Latest throws on $null property reads; h0_gpu_runs.ps1 Get-Busy 208 / 210 / 216 reads
+        an exiting process's Threads / ExecutablePath on purpose, before each of 412 jobs -> one hit kills the run, no
+        checks / summary; offline fakes don't match Get-Busy's names; upr_strict_test.ps1 shows it). Then dry run +
+        offline test (CPU) -> GO, no further upr_ look. Fixes 1-4 RIGHT: dumps 1509 rows on a + b at baseline size; m6
+        offline FAIL undrawn_gone 8 only; M = 1469 CONFIRMED (12 repeat rows in micromaps_leaf_stress 7 + fast_leaves 5;
+        upr_ was wrong); flaky -> OPEN; release longest answer for 5 modes ("release" 74.3 ms vs 75 limit may read OPEN on
+        timing alone); hashes = kept log.txt line 5. gpu_s2 DOES NOT TOUCH all_modes: rt_d3d12.hpp + main.cpp with all
+        RENODX_RECORDER blocks removed, before (6a7375c65^1) vs atn-mods: 7161 = 7161 / 1243 = 1243, 0 lines differ;
+        rt_serve.h recorder-only; Invoke-Logged strips RENODX_TW_ vars; only binary change = source_location line numbers
+        in resource names (DRED). EXPECTED: census / dumps / m6 PASS (1469 of 1469), checks PASS or OPEN on timing only
+        (release modes, switching), repeat PASS. Selftest 87 ok / 0 wrong. NOTE: upr_'s scratch went to the scratchpad,
+        not testbin\scratch\upr_ (rule since 11:45; nothing was blocked).
+        - [ ] h0i_: Set-StrictMode -Version 1 (line 26) + dry run + offline test -> then the real all_modes run (coord 14:24).
+        Agents (4): gtp_ (gate round 19), h0i_ (StrictMode 1 + dry / offline), gtl_ (S3c run sheet), gtv_ (lab load run);
+        then all_modes run (~40-45 min, GPU, ATN's rule in) after gtv_'s load run, then S3c (gpu_lab.ps1 per gtl_'s
+        sheet); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
