@@ -7501,11 +7501,34 @@ heading text are in HANDOFF_ARCHIVE.md)
         tools\tw\h0\offline\fakes\busy, OUTSIDE tools\tw\testbin (ATN's Bitdefender exclusion) -> after upr_'s
         verdict h0i_ builds it under testbin; the old exe stays in place (no delete, [ ] ATN). -> upr_ F2 RE-CHECK
         STARTED; on RUN the H0 re-run (gtl_'s fakes paused first).
-        Agents (7): upr_ (h0i_ F2 re-check), b13r_ (c3i_ B1.6 review), gtw_ (gtp_ re-check 8), grs_ (N1 leftovers
-        1-2), gtl_ (S1b tests, then v1.1 + dred writes), gpr_ (gti_ ns_busy, then gtb_ y1 / y2 / z + dred). Idle:
-        bd1r_, lga_, lgf2_, c33i_, c3i_ (waits b13r_), upt_, h0i_ (waits upr_, then fake to testbin), gpp_, ebr_,
-        t4i_ (r21 after b13r_), gtq_, gbc_, gti_ (waits gpr_), gtb_ (waits gpr_), gtv_ (waits grs_ / gtl_), gtk_,
-        gtp_ (waits gtw_). GPU: free (H0 stopped); harness-named fakes allowed until I announce the H0 re-run.
+        gpr_ GTI_ NS_BUSY RE-CHECK = OK 05:3x (plan_1117/designs/gpr_gti_ns_busy_handback.md; gpr_review.md "## gti_
+        ns_busy re-check"): fail closed in every case (ends = not counted, readable foreign = counted, stays
+        unreadable = counted + stderr -> BusyState fault), int callers unchanged (Int32 0, no stderr; no-switch
+        callers never wait; 0.3 s vs 0.2 s), 10 s only with -Exclude / -ExcludePids; test_ns_busy 7 / 7,
+        test_gpu_lock 58 / 58 (first run 56: its InUse guard skipped the fake part while a real process was counted).
+        Nits -> gti_ now: z1 the settle waits (and writes a fault) even when a real foreign process is already
+        counted -> wait only while the count is 0; z2 -Exclude + -ExcludePids: pid pair before the path. Swap the
+        live file only while no H0 run starts / runs. H0's own Get-Busy is a separate copy (h0i_ F2; upr_ checks z1
+        there). -> gpr_ now re-checks gtb_ y1 / y2 / z + dred. Sent to upr_ (F2 re-check) and grs_ (leftovers 1-2).
+        b13r_ B1.6 = MERGE-READY 05:3x (render_mt/reports/b13r_b16_handback.md; review b13r_b16_review.md): rmt_b16
+        (7d602b35b + d3eb4842d from 838bd848f), no Must; NM4, the 3 rows (Off / On, default off, Experimental,
+        Spawns greyed unless Parallel Effect Update on), RENODX_TW_COUNT_CHECK env (bench note: "=0" turns it ON,
+        empty clears), R2, N7, N8 all done; engine FULL / -DrawRecording / instance_fill PASS, 3 mutants fail where
+        they should, gated builds 61 warnings none new. rmt_b16 touches no H0 $HelperPaths file -> MERGING now.
+        Shoulds: S1 ebo/gates.json cached_check_mismatch can never trip (looks for "mismatch"; the real line is
+        "[Total War] Cached Particle Count: the cached sum differed from the game's N times") -> into t4i_'s r21;
+        S2 ParticleCount() has only a test caller -> print once per pool trace window + a gate regex (c3i_). Nits
+        -> c3i_: N1 braces on single-line assignment ifs (engine_code.hpp:2797 R2 line, comment > 200 cols), N2
+        29f blocks: a failing CHECK leaves `other` joinable -> 0xC0000409 (std::jthread + stop_token), N3 Spawns
+        tooltip "the game's particle limit is reached".
+        [ ] c3i_ B1 real-routine tests (design 5: tests 1-9, 12, 14, 15) + N5's second-node world and drawing sweep;
+            due before B1.7 / B1.8 and before any end-batch segment plans B1L1 / B1L2 (b13r_'s B1.4 condition).
+        Agents (6): upr_ (h0i_ F2 re-check), gtw_ (gtp_ re-check 8), grs_ (N1 leftovers 1-2), gtl_ (S1b tests,
+        then v1.1 + dred writes), gpr_ (gtb_ y1 / y2 / z + dred), gti_ (ns_busy z1 / z2). Idle: bd1r_, lga_,
+        lgf2_, c33i_, c3i_ (S2 + N1-N3 after the merge), upt_, h0i_ (waits upr_, then fake to testbin), gpp_,
+        ebr_, t4i_ (r21 after the merge, + S1), gtq_, gbc_, gtb_ (waits gpr_), gtv_ (waits grs_ / gtl_), gtk_,
+        gtp_ (waits gtw_), b13r_ (re-checks c3i_). GPU: free (H0 stopped); harness-named fakes allowed until I
+        announce the H0 re-run.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
