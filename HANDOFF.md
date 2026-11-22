@@ -7126,9 +7126,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         already has the four keys at 1, no *_off.txt). Should: explicit four_on starts vs starts that rely on ATN's file
         (D1-OFF vs D1-ALL, WPR-W3-2 / REF-P vs other W3) -> the T6 dry run flags any of the four keys not at 1 -> t4i_
         STARTED (small).
-        Agents (12): upt_ (U11 note), h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gtk_ (R-S1..3), gtp_ (S-d +
-        price build), gtq_ (FLIP numpy port), gtl_ (S3r M1r / M2r), gtv_ (S2r), gtb_ (watch build), gpr_ (gti_ code
-        look). Idle: bd1r_, lga_, lgf2_, c33i_, upr_ (waits h0i_), gpp_, gti_, ebr_, gbc_, grs_, gtw_ (waits gtp_).
+        upt_ v2.7 NOTE DONE 04:13 (designs/upt_v27_note_handback.md; unified_pt.md 1617 lines, copy scratchpad\
+        upt_v27_backup.md).
+        Agents (11): h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gtk_ (R-S1..3), gtp_ (S-d + price build), gtq_
+        (FLIP numpy port), gtl_ (S3r M1r / M2r), gtv_ (S2r), gtb_ (watch build), gpr_ (gti_ code look). Idle: bd1r_,
+        lga_, lgf2_, c33i_, upt_, upr_ (waits h0i_), gpp_, gti_, ebr_, gbc_, grs_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
