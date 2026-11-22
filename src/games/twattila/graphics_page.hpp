@@ -893,7 +893,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .label = "Torch and Fire Light from Path Tracing (Experimental)",
           .section = section,
           .tooltip = "Torches and fires lit by the path-traced Light Bounce instead of their own shadow rays: faster with many fires.\n"
-                     "Noisier (most at Half resolution), without the torches' highlights; follows Light Bounce Strength.",
+                     "Noisier (most at Half resolution), without the torches' highlights; follows Light Bounce Strength.\n"
+                     "Needs Global Illumination's Path-Traced (ReSTIR GI).",
           .labels = {"Off", "On"},
           .is_visible = more_path_lights,
       });
@@ -905,7 +906,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .label = "Torch and Fire Shadows from Path Tracing (Experimental)",
           .section = section,
           .tooltip = "The torches' and fires' own light, their shadows from the path-traced Light Bounce instead of their own\n"
-                     "rays: faster with many fires. Softer shadows that follow moving units a little later; 32 fires at most.",
+                     "rays: faster with many fires. Softer shadows that follow moving units a little later; 32 fires at most.\n"
+                     "Needs Global Illumination's Path-Traced (ReSTIR GI).",
           .labels = {"Off", "On"},
           .is_visible = more_path_lights,
       });
