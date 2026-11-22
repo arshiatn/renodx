@@ -473,6 +473,20 @@ class Resident {
   Resident(const Resident&) = delete;
   Resident& operator=(const Resident&) = delete;
   friend struct ResidentTests;  // tools/tw/resident_test's offline checks
+  // The flags after the control folder into `options`: --nsight, --no-dred. False: `why` names an unknown one.
+  static bool ParseFlags(std::span<const std::wstring> flags, Options* options, std::string* why) {
+    for (const std::wstring& flag : flags) {
+      if (flag == L"--nsight") {
+        options->nsight = true;
+      } else if (flag == L"--no-dred") {
+        options->dred = false;
+      } else {
+        *why = std::format("unknown flag {} (only --nsight, --no-dred)", std::filesystem::path(flag).string());
+        return false;
+      }
+    }
+    return true;
+  }
 
   // The exit code: 0 stopped or idle, 1 the recording could not be loaded or the environment refused, 4 the device lost
   // twice, the scene could not be loaded again, or the GPU did not finish a scene's work.
@@ -609,7 +623,7 @@ class Resident {
   }
 
  private:
-  static constexpr int64_t SEED_ROOM = int64_t{1} << 20;
+  static constexpr uint64_t SEED_ROOM = uint64_t{1} << 20;
   static constexpr std::array<std::string_view, 9> COMMANDS = {"config", "run", "dump", "trace", "moments", "seed", "light_anim", "status", "stop"};
   // The process's RENODX_TW_* variables (names in upper case: Windows' ignore it) into `env`, fail closed: false (`why`
   // says which) with RENODX_TW_RECORD (the journal's cost in every request) or a RENODX_TW_TEST_* set.
@@ -913,6 +927,11 @@ class Resident {
     }
     return true;
   }
+  // `played` frames after a reset with offset `seed` stay below 2^24 (the radiance cache's float stamps are exact there).
+  [[nodiscard]] bool BelowFrameLimit(uint64_t seed, uint64_t played) const {
+    const uint64_t frames = std::max<size_t>(frames_.size(), 1);
+    return last_frame_ + (uint64_t{span_} * (loops_ + 1 + (played / frames))) + seed < (uint64_t{1} << 24);
+  }
   // A path argument: as given when absolute, else in the control folder.
   [[nodiscard]] std::filesystem::path ControlPath(const std::string& path) const {
     return std::filesystem::path(path).is_absolute() ? std::filesystem::path(path) : options_.control / path;
@@ -957,12 +976,10 @@ class Resident {
     }
     if (name == "seed") {
       if (!OnlyKeys(args, {"offset"}, &why)) return {.status = "REFUSED", .error = why};
-      // Played frames below 2^24 (the radiance cache's float stamps are exact there) with room for SEED_ROOM frames since a
-      // reset.
+      // Room for SEED_ROOM frames since a reset below the frame limit.
       const auto offset = args.at("offset").get<int64_t>();
-      const int64_t limit = (int64_t{1} << 24) - SEED_ROOM - last_frame_ - (int64_t{span_} * (loops_ + 1));
-      if (offset < 0 || (offset != 0 && offset > limit)) {
-        return {.status = "REFUSED", .error = std::format("offset {} is not 0 to {} (played frames stay below 2^24)", args.at("offset").dump(), std::max<int64_t>(limit, 0))};
+      if (offset < 0 || offset > UINT32_MAX || (offset != 0 && !BelowFrameLimit(offset, SEED_ROOM))) {
+        return {.status = "REFUSED", .error = std::format("offset {} is negative or would take played frames to 2^24", args.at("offset").dump())};
       }
       pending_seed_ = static_cast<uint32_t>(offset);
       return {};
@@ -1024,6 +1041,9 @@ class Resident {
       const auto k = args.at("k").get<uint32_t>();
       const auto outputs = args.at("outputs").get<std::vector<std::string>>();
       if (k < 3) return {.status = "REFUSED", .error = std::format("k {} is below 3", k)};
+      if (pending_seed_ != 0 && !BelowFrameLimit(pending_seed_, k)) {
+        return {.status = "REFUSED", .error = std::format("with seed {} k {} would take played frames to 2^24", pending_seed_, k)};
+      }
       // Started after the reset (a full reload makes a new scene) with the video memory then free; let go on any failure.
       std::string mode;
       if (!Reset(&mode, &why)) return Failed(why);
@@ -1140,8 +1160,12 @@ class Resident {
     if (frames == 0 || (timing != "passes" && timing != "total")) return {.status = "REFUSED", .error = "frames below 1, or timing not passes / total"};
     if (args.at("log_uses").get<bool>()) return {.status = "REFUSED", .error = "log_uses: the resource-use log (M10) is not in this build"};
     if (options_.nsight) return {.status = "REFUSED", .error = "no timing in an injected (--nsight) resident"};
+    const bool reset = args.at("reset").get<bool>() || loaded_level_ != config_.micromap_level;
+    if (const uint32_t seed = reset ? pending_seed_ : seed_; seed != 0 && !BelowFrameLimit(seed, uint64_t{reset ? 0u : position_} + warm + frames)) {
+      return {.status = "REFUSED", .error = std::format("with seed {} these frames would take played frames to 2^24", seed)};
+    }
     std::string mode = "none";
-    if ((args.at("reset").get<bool>() || loaded_level_ != config_.micromap_level) && !Reset(&mode, &why)) return Failed(why);
+    if (reset && !Reset(&mode, &why)) return Failed(why);
     for (uint32_t frame = 0; frame < warm; ++frame) {
       if (!Advance(nullptr, &why)) return Failed(why);
     }

@@ -2614,8 +2614,10 @@ class RtScene12 {
     for (size_t index = placed ? 1 : 0; written && index < stamped.size(); ++index) {
       written = UploadRecorded(list, stamped[index].name, stamped[index].resource, stamped[index].state, payloads[index], &uploads, why);
     }
-    if (list == nullptr || !WaitFor(SubmitRecorderList(list)) || !written) {
-      *why = "the GPU's frame stamps could not be written back";
+    // An upload's own reason kept; else the list's.
+    const bool finished = list != nullptr && WaitFor(SubmitRecorderList(list));
+    if (!written || !finished) {
+      if (written || list == nullptr) *why = "the GPU's frame stamps could not be written back";
       return false;
     }
     return true;

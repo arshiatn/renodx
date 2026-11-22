@@ -284,19 +284,22 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     if (log_file != nullptr) fclose(log_file);
     if (kept_log != INVALID_HANDLE_VALUE) CloseHandle(kept_log);
     _wfopen_s(&log_file, (std::filesystem::path(play_arguments[4]) / L"resident.log").c_str(), L"w");
-    twattila::dlaa_helper::serve::Resident resident({
+    twattila::dlaa_helper::serve::Resident::Options options = {
         .recording = play_arguments[3],
         .control = play_arguments[4],
         .helper_folder = folder,
-        .nsight = std::ranges::find(play_arguments.begin() + 5, play_arguments.end(), L"--nsight") != play_arguments.end(),
-        .dred = std::ranges::find(play_arguments.begin() + 5, play_arguments.end(), L"--no-dred") == play_arguments.end(),
         .log = [](const std::string& line) { LogWithTime(line.c_str()); },
         .frame_boundary =
             [](ID3D12CommandQueue* queue) {
               NGFX_FrameBoundary_D3D12_Params boundary = {.version = NGFX_FrameBoundary_D3D12_Params_VER, .commandQueue = queue};
               NGFX_FrameBoundary_D3D12(&boundary);
             },
-    });
+    };
+    if (std::string why; !twattila::dlaa_helper::serve::Resident::ParseFlags(std::span(play_arguments).subspan(5), &options, &why)) {
+      LogWithTime(("[TW resident] FAILED: " + why).c_str());
+      return 1;
+    }
+    twattila::dlaa_helper::serve::Resident resident(std::move(options));
     return resident.Serve();
   }
 #endif
