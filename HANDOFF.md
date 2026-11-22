@@ -9761,9 +9761,13 @@ heading text are in HANDOFF_ARCHIVE.md)
             review + merge (coordinator 11:1x).
         - [ ] worktree cleanup (ATN): ff_s12\build\downloads is now a JUNCTION (delete the link alone first) +
             ff_s12\build\downloads.own_1109 (SHaRC copy) (coordinator 11:1x).
+        ff_s12 HELPER REBUILD OK 11:13 (exit 0, ff_s12\build\tw_dlaa_helper\renodx-tw-dlaa64.exe 5,671,424 bytes; log
+        scratchpad\ff_s12_helper_build2.txt). Design 4 table: steps 1 + 2 land alone, helper only, no test of their own
+        (step 4's tw_helper_lifetime cases come with step 4; tw_helper_lifetime uses a fake helper). -> merge gate for
+        ff_s12 after c3i_'s builds end (name_check, --no-ff, gated x86 x3 + amd64; helper build already done).
         Agents (6): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check), h0i_ (H0 copy fix), c3i_ (b1log
-        verify runs, detached), gtl_ (gate_s low), grs_ (XeSS guard); t4i_ ETL move waits for ATN (antivirus); ff_s12
-        helper rebuild (coordinator, background)
+        verify runs, detached), gtl_ (gate_s low), grs_ (XeSS guard); t4i_ ETL move waits for ATN (antivirus); merge
+        gates rmt_b1log + ff_s12 after c3i_'s runs (task bi2vq35fh)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
