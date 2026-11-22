@@ -1865,6 +1865,7 @@ inline bool PrepareRecording(HMODULE module) {
     return false;
   }
   FlushInstructionCache(GetCurrentProcess(), recording_page, RECORDING_CODE_SIZE);
+  device_loss::AddPartRange("C", "recording_page", recording_page, RECORDING_CODE_SIZE);
   recording_page_end = recording_page + RECORDING_CODE_SIZE;
   recording_code_used = static_cast<size_t>(assembler.Cursor() - recording_page);
   for (size_t index = 0; index < RECORDING_SITE_COUNT; ++index) {

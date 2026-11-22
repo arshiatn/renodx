@@ -28,6 +28,7 @@
 #include "../../utils/log.hpp"
 #include "../twrome2/engine_tweaks.hpp"
 #include "./animation_rows.hpp"
+#include "./code_ranges.hpp"
 #include "./effect_update_sites.hpp"
 #include "./instance_fill.hpp"
 #include "./pending_sweep.hpp"
@@ -2668,6 +2669,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       job_table = nullptr;
     } else {
       FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
+      device_loss::AddPartRange("B3b", "engine_stubs", page, PAGE_SIZE);
       // The effect update takes an E9 at these two of its entries, to these stubs, as ours.
       effect_update::internal::sibling_entries =
           (sites[PARTICLE_EPOCH_INDEX].at != nullptr && sites[PARTICLE_COUNT_INDEX].at != nullptr

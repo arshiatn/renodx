@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 #if !defined(_WIN64)
 #include <emmintrin.h>
@@ -20,7 +21,6 @@
 
 #include <charconv>
 #include <format>
-#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -41,7 +41,7 @@
 //   (the fold)                                                             shares, both claimed
 //   EFFECT_UPDATE   ENTERED  Start at the walk's call, Join at its end     claims of G = 1 (the effect update)
 //   ANIMATION_ROWS  ENTERED  Run, one job per fill call                    512-item blocks
-//   PENDING_SWEEP   ENTERED  Run inside Arm                                1024-entry blocks
+//   PENDING_SWEEP   -        no job: Arm only records on the owner thread  (the key is kept for the trace and limit names)
 //   RING_FILL       ENTERED  Run, min(K, n / 384)                          64-record chunks
 //
 // ALL: pre-partitioned work. Every woken worker runs, and Join waits for all of them; a Run whose Start was refused runs the
@@ -151,6 +151,8 @@ constexpr std::array<std::string_view, USER_COUNT> USER_KEYS = {"recording", "ef
 struct alignas(64) Worker {
   std::atomic<uint32_t> ticket{0};
   HANDLE thread = nullptr;
+  // The thread's id, set at CreateThread and cleared when the thread is closed: a fault handler (any thread) finds the worker by it.
+  std::atomic<uint32_t> id{0};
 };
 
 // The open job: written by Start before it opens the job, read by a worker only while it is counted in `entered` and has seen
@@ -449,6 +451,23 @@ inline std::string Describe() {
                      entered.load(std::memory_order_relaxed), done.load(std::memory_order_relaxed));
 }
 
+// The calling thread as a pool worker, for a fault line: its number (1 to MAX_WORKERS, as the work functions get it; 0: not a pool
+// thread) and in *user the key of the job open now (a literal; null: none). Atomics and the fields Start wrote, no lock and no
+// allocation: an exception handler on any thread calls it.
+inline uint32_t FaultWorker(const char** user) {
+  using namespace internal;
+  const DWORD thread = GetCurrentThreadId();
+  *user = nullptr;
+  for (uint32_t i = 0; i < MAX_WORKERS; ++i) {
+    if (pool[i].id.load(std::memory_order_relaxed) != thread) continue;
+    if (current.work != nullptr && starter.load(std::memory_order_relaxed) != 0) {
+      *user = USER_KEYS[static_cast<size_t>(current.user)].data();
+    }
+    return i + 1;
+  }
+  return 0;
+}
+
 // Ends the threads and joins them (Update with no user on, detach; never under the loader lock). Users then run alone, so it
 // does not depend on any site coming out. A job still open is joined first (the starting thread only). One open on another
 // thread keeps the pool as it is (its owner joins it later) and pins the module (so does any Stop that finds the pool busy), so
@@ -510,6 +529,7 @@ inline void Stop() {
     for (uint32_t i = 0; i < created; ++i) {
       CloseHandle(handles[i]);
       pool[i].thread = nullptr;
+      pool[i].id.store(0, std::memory_order_relaxed);
     }
     created = 0;
     stopping.store(false, std::memory_order_release);
@@ -665,18 +685,20 @@ inline void Update(const Settings& settings) {
     ++thread_attempts;
     fail = controls.fail_thread_creation;
 #endif
+    DWORD thread_id = 0;
     if (!fail) {
       thread = CreateThread(nullptr, WORKER_STACK_BYTES, WorkerMain, reinterpret_cast<void*>(static_cast<uintptr_t>(created + 1)),
-                            STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
+                            STACK_SIZE_PARAM_IS_A_RESERVATION, &thread_id);
     }
     if (thread == nullptr) {
-      renodx::utils::log::w("[Total War] Worker pool: a worker thread could not start; the users run alone.");
+      renodx::utils::log::w(std::format("[Total War] Worker pool: a worker thread could not start; the users run on the {} that started.", created));
       failed_target = target;
       break;
     }
     SetThreadDescription(thread, L"RenoDX worker");
     SetThreadPriority(thread, GetThreadPriority(GetCurrentThread()));
     pool[created].thread = thread;
+    pool[created].id.store(thread_id, std::memory_order_relaxed);
     given_generation = ~0u;
   }
   ready.store(std::min(created, target), std::memory_order_relaxed);
@@ -711,6 +733,10 @@ inline JoinResult Join() { return {}; }
 inline void Update(const Settings&) {}
 inline void Stop() {}
 inline std::string Describe() { return {}; }
+inline uint32_t FaultWorker(const char** user) {
+  *user = nullptr;
+  return 0;
+}
 inline void ArmTrace(uint32_t) {}
 inline bool Tracing() { return false; }
 inline uint32_t TraceFramesLeft() { return 0; }
