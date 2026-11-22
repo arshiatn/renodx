@@ -142,17 +142,6 @@ const std::vector<std::pair<std::string, float>> EXT_FIRE_OPTION_2 = {
     {"ext_fire_hue", -0.05f},
     {"ext_fire_hue_focus", 0.75f},
 };
-// Recommended (ATN 2026-11-12: PsychoV35, its sliders at their defaults).
-const std::vector<std::pair<std::string, float>> LESS_POST_PROCESSING = {
-    {"tonemapper", 3.f},
-    {"film_grain", 0.f},
-    {"motion_blur_camera", 0.f},
-    {"motion_blur_object", 0.f},
-    {"sharpening", 0.25f},
-    {"depth_of_field", 2.f},
-    {"video_highlights", 0.2f},
-};
-
 void ApplyResetPreset() {
   // Peak / Paper White / UI, Settings Mode and output are kept.
   renodx::utils::settings::UpdateSettings({
@@ -204,7 +193,16 @@ void ApplySdrPreset() {
 // The Recommended button; Output Auto takes it once when Windows HDR comes on after a first start without HDR.
 void ApplyRecommendedPreset() {
   ApplyResetPreset();
-  renodx::utils::settings::UpdateSettings(LESS_POST_PROCESSING);
+  // Recommended (ATN 2026-11-12: PsychoV35, its sliders at their defaults).
+  renodx::utils::settings::UpdateSettings({
+      {"tonemapper", 3.f},
+      {"film_grain", 0.f},
+      {"motion_blur_camera", 0.f},
+      {"motion_blur_object", 0.f},
+      {"sharpening", 0.25f},
+      {"depth_of_field", 2.f},
+      {"video_highlights", 0.2f},
+  });
 }
 
 // This add-on alone (the upstream snapshot): the helper and the NVIDIA, AMD and Intel files come with the full download.
@@ -2103,39 +2101,31 @@ void OnDestroyDevice(reshade::api::device* device) {
 
 }  // namespace back_buffer_fix
 
-// One log line per render target the resource upgrades take (the reader census matches traced handles to them). Runs
-// after RenoDX's init_resource, which marks them; capped so a game recreating targets can't fill the log.
+// One log line per render target the resource upgrades take (all view clones). The handle is the game's resource, the
+// one the frame trace prints as "original" behind a RenoDX clone view, so the reader census can match the two. Runs
+// after RenoDX's init_resource, which marks the targets; capped so a game recreating targets can't fill the log.
 constexpr int MAX_UPGRADE_LOG_LINES = 256;
 std::atomic_int upgrade_log_lines = 0;
 
 void OnInitResourceLogUpgrade(
     reshade::api::device*, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
     reshade::api::resource_usage, reshade::api::resource resource) {
-  if (desc.type != reshade::api::resource_type::texture_2d
-      || !renodx::utils::bitwise::HasFlag(desc.usage, reshade::api::resource_usage::render_target)) return;
+  if (desc.type != reshade::api::resource_type::texture_2d) return;
+  if (!renodx::utils::bitwise::HasFlag(desc.usage, reshade::api::resource_usage::render_target)) return;
   if (upgrade_log_lines.load(std::memory_order_relaxed) > MAX_UPGRADE_LOG_LINES) return;
-  reshade::api::format old_format = reshade::api::format::unknown;
   reshade::api::format new_format = reshade::api::format::unknown;
-  bool in_place = false;
   renodx::utils::resource::GetResourceInfo(resource, [&](const renodx::utils::resource::ResourceInfo& info) {
-    if (info.upgraded) {
-      old_format = info.fallback_desc.texture.format;
-      new_format = info.desc.texture.format;
-      in_place = true;
-    } else if (info.clone_target != nullptr) {
-      old_format = info.desc.texture.format;
-      new_format = info.clone_target->new_format;
-    }
+    if (info.clone_target != nullptr) new_format = info.clone_target->new_format;
   });
   if (new_format == reshade::api::format::unknown) return;
-  const int line = upgrade_log_lines.fetch_add(1, std::memory_order_relaxed);
-  if (line > MAX_UPGRADE_LOG_LINES) return;
+  const int line_index = upgrade_log_lines.fetch_add(1, std::memory_order_relaxed);
+  if (line_index > MAX_UPGRADE_LOG_LINES) return;
   std::ostringstream text;
-  if (line == MAX_UPGRADE_LOG_LINES) {
+  if (line_index == MAX_UPGRADE_LOG_LINES) {
     text << "[Ryse] more than " << MAX_UPGRADE_LOG_LINES << " upgrades: no more upgrade lines";
   } else {
     text << "[Ryse] upgrade 0x" << std::hex << resource.handle << std::dec << ' ' << desc.texture.width << 'x'
-         << desc.texture.height << ' ' << old_format << " -> " << new_format << (in_place ? " in place" : " view clone");
+         << desc.texture.height << ' ' << desc.texture.format << " -> " << new_format << " view clone";
   }
   reshade::log::message(reshade::log::level::info, text.str().c_str());
 }
@@ -2454,7 +2444,8 @@ bool AttachAddon() {
                                                          || execution_skull_hidden.load(std::memory_order_relaxed);
                                                 }});
   // Before RenoDX's draw callbacks (command_action's): the first draw after Present rebinds the back buffer before any
-  // custom shader callback sees or skips the draw (a skip ends ReShade's callback list).
+  // custom shader callback sees or skips the draw (a skip ends ReShade's callback list). Holds while this add-on is
+  // command_action's event handler; with the DevKit loaded first, its draw callback still runs before this one.
   reshade::register_event<reshade::addon_event::draw>(back_buffer_fix::OnDraw);
   reshade::register_event<reshade::addon_event::draw_indexed>(back_buffer_fix::OnDrawIndexed);
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
