@@ -203,10 +203,11 @@ renodx::utils::settings::Settings settings;
 // The DLSS rows (Graphics 1 of 2's Anti-Aliasing and Upscaling; ReShade.ini keys as the DLSS add-on saved them until it
 // became part of this one): the game's DLSS (game_dlss.hpp: its render scale, preset and jitter, render_scale.hpp) and the
 // helper's upscaler and frame generation (upscaling.hpp, twattila/frame_generation.hpp), NVIDIA Reflex (twattila/reflex.hpp).
+constexpr float CUSTOM_RENDER_SCALE_DEFAULT = 50.f;  // percent
 struct AaSliders {
   float method = 0.f;  // HelperUpscaler: 0 the game's DLSS, 5 + twattila::dlaa_bridge::UPSCALER_* (Attila's anti-aliasing values)
   float dlss_mode = 0.f;  // RenderScale: RENDER_SCALES, then Custom
-  float render_scale = 50.f;  // RenderScaleCustom: Custom, in percent
+  float render_scale = CUSTOM_RENDER_SCALE_DEFAULT;  // RenderScaleCustom: Custom, in percent
   float preset = NVSDK_NGX_DLSS_Hint_Render_Preset_K;  // Preset: the NGX value, PRESETS'
   float ray_reconstruction = 0.f;  // AntiAliasingRayReconstruction: off, NVIDIA's preset, D, E, F
   float frame_generation = 0.f;    // HelperFrameGeneration: off, 2x-6x, Dynamic
@@ -1579,7 +1580,7 @@ void BuildRuntimeData() {
           .key = "RenderScaleCustom",
           .binding = &aa_sliders.render_scale,
           .value_type = SettingValueType::INTEGER,
-          .default_value = 50.f,
+          .default_value = CUSTOM_RENDER_SCALE_DEFAULT,
           .label = "Custom render scale",
           .section = aa_section,
           .min = 1.f,
@@ -1593,12 +1594,21 @@ void BuildRuntimeData() {
           .section = aa_section,
           .tooltip = "Applied when you let go. DLSS may refuse scales below 33%.",
           .on_draw = [] {
-            static int percent = 50;
+            static int percent = static_cast<int>(CUSTOM_RENDER_SCALE_DEFAULT);
             static bool dragging = false;
             if (!dragging) percent = static_cast<int>(aa_sliders.render_scale);
             ImGui::SliderInt("Custom render scale", &percent, 1, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp);
             dragging = ImGui::IsItemActive();
-            if (!ImGui::IsItemDeactivatedAfterEdit()) return false;
+            const bool released = ImGui::IsItemDeactivatedAfterEdit();
+            // The reset icon the other sliders have (renodx::utils::settings draws it only for its own slider types).
+            ImGui::SameLine();
+            ImGui::BeginDisabled(aa_sliders.render_scale == CUSTOM_RENDER_SCALE_DEFAULT);
+            const bool reset = ImGui::SmallButton(renodx::utils::icons::View(renodx::utils::icons::UNDO));
+            ImGui::EndDisabled();
+            if (reset) {
+              percent = static_cast<int>(CUSTOM_RENDER_SCALE_DEFAULT);
+            }
+            if (!released && !reset) return false;
             renodx::utils::settings::UpdateSettings({{"RenderScaleCustom", static_cast<float>(percent)}});
             return true;
           },
@@ -2529,7 +2539,7 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
   const auto& shader = command.template GetCallbackData<SunShader>();
   const auto index = static_cast<size_t>(&shader - SUN_SHADERS.data());
   if (sun_seen[index].load(std::memory_order_relaxed) || sun_seen[index].exchange(true)) return {};
-  renodx::utils::log::i(std::format("[Shogun 2 DLSS] First run: sun light draw {:08X} {}", shader.hash, shader.name));
+  renodx::utils::log::i(std::format("[Shogun 2] First run: sun light draw {:08X} {}", shader.hash, shader.name));
   return {};
 };
 
@@ -2873,7 +2883,7 @@ bool AttachAddon() {
           size != evaluated_size) {
         evaluated_size = size;
         const auto display = twshogun2::game_dlss::DisplaySize();
-        renodx::utils::log::i(std::format("[Shogun 2 DLSS] Evaluating {}x{} -> {}x{}, jitter ({:.4f}, {:.4f})", size[0], size[1], display[0],
+        renodx::utils::log::i(std::format("[Shogun 2] Evaluating {}x{} -> {}x{}, jitter ({:.4f}, {:.4f})", size[0], size[1], display[0],
                                           display[1], eval->InJitterOffsetX, eval->InJitterOffsetY));
       }
       twshogun2::render_scale::EndScaling();
@@ -2903,7 +2913,7 @@ bool AttachAddon() {
       return twshogun2::upscaling::Evaluate(request, ray_tracing_installed && twshogun2::ray_tracing::GuidesWritten());
     });
     renodx::utils::log::i(std::format(
-        "[Shogun 2 DLSS] Options: render scale {} ({}% custom), preset {}, texture LOD bias {}, jitter {}, object motion {}, "
+        "[Shogun 2] Options: render scale {} ({}% custom), preset {}, texture LOD bias {}, jitter {}, object motion {}, "
         "upscaler {} RR {}, frame generation {} method {} Reflex {} limit {}, particle resolution {}, shadow map {}, grass {} model {} "
         "unit {} / {} / {} terrain {}",
         aa_sliders.dlss_mode, aa_sliders.render_scale, aa_sliders.preset, aa_sliders.texture_lod_bias, aa_sliders.jitter, aa_sliders.object_motion,

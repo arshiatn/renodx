@@ -25,7 +25,7 @@ cbuffer camera_VS_PS : register(b11) {
   float2 g_inverse_focal_length : packoffset(c36);
   float g_vertical_fov : packoffset(c36.z);
   float4 screen_size : packoffset(c37);
-  float4 g_viewport_dimensions : packoffset(c38);  // the render size with the DLSS addon's render scale
+  float4 g_viewport_dimensions : packoffset(c38);  // the render size with the render scale
   float2 g_viewport_origin : packoffset(c39);
 }
 

@@ -4,7 +4,7 @@
 // The scene is read through the heat haze's offsets (depthoffieldshared.hlsl distort_pixel_index): with depth of field
 // on, the haze is drawn into the scene here as well, before DLSS (the tonemap distorts it again). Truncated to whole
 // pixels, so only strong haze shows (ATN: haze stayed over burning houses at Heat Haze 0). HDR: x VFX Distortion: Heat
-// Haze. Render scale (DLSS addon): the offsets are in screen UV, but the image only fills the top-left render scale of
+// Haze. Render scale: the offsets are in screen UV, but the image only fills the top-left render scale of
 // the full-size textures: x the scale. At full size and Heat Haze 1 the same as the game's.
 #include "../shared.h"
 

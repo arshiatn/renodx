@@ -48,7 +48,7 @@ inline void Install() {
   } else {
     internal::status = "the game's particle code was not found";
   }
-  renodx::utils::log::i("[Shogun 2 DLSS] Particle resolution: ", internal::status);
+  renodx::utils::log::i("[Shogun 2] Particle resolution: ", internal::status);
 }
 
 // Present: the render size over the display's (1 at 100% or without the render scale).

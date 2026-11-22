@@ -2,12 +2,12 @@
 // SSS_SHADOW_CASCADES (enable_shadows, shadows_hardware_gather_5_0) combined with the shadow cascades; written from the
 // game's source (screen_space_shadows.hlsl, parallel_split_shadowing.hlsl, sm5shadows.hlsl 3x3 filter). sss00 / sss01;
 // with SSS_PASSTHROUGH (screen-space shadows off) only the cascades, sss02.
-// Render scale (DLSS addon): the game builds the light coordinate and the dispatches for the full-size screen, the 3D
+// Render scale: the game builds the light coordinate and the dispatches for the full-size screen, the 3D
 // passes draw into its top-left render scale part. The rays used full-size pixels over the rendered depth: shadows cast
 // in the wrong direction and length (debug4: extra shadows over the cascades' at 33%). Now the rays stay in full-size
 // pixels, read the rendered depth and write each rendered pixel once (bend_sss_gpu.hlsli "RenoDX"); the render size is
-// the camera's g_viewport_dimensions (patched by the DLSS addon). At full size the same as the game's.
-// Samples (v20, the DLSS addon's Shadow samples): the game's 120 x 2^0-5, up to 3840 (v25; pixels of reach: 120 at 4K
+// the camera's g_viewport_dimensions (patched by the add-on). At full size the same as the game's.
+// Samples (v20, the Shadow samples row): the game's 120 x 2^0-5, up to 3840 (v25; pixels of reach: 120 at 4K
 // reach half as far as at 1080p), at run time (bend_sss_gpu.hlsli's loops); SAMPLE_COUNT, the most, sizes groupshared.
 #include "../shared.h"
 
@@ -248,9 +248,9 @@ float DynamicShadowFiltered_3x3( float3 tc, float4 shadow_buffer_size, Texture2D
 }
 
 // parallel_split_shadowing.hlsl / sm5shadows.hlsl get_shadow_coverage (ENABLE_SHADOWS) ////////////////////////////////
-// Shadow map stability (v31, DLSS addon): normal_offset (the surface normal x texels; 0: the game's) moves the receiver
+// Shadow map stability (v31): normal_offset (the surface normal x texels; 0: the game's) moves the receiver
 // off its surface by that many of this split's texels.
-// Sun shadow softness (v63, DLSS addon): contact-hardening shadows (pcss.hlsli) in place of the game's 3x3 filter, the
+// Sun shadow softness (v63): contact-hardening shadows (pcss.hlsli) in place of the game's 3x3 filter, the
 // sun SI.sun_shadow_softness degrees across, its disks turned by `shadow_rotation` (ShadowCascades' pixel and frame).
 static const float PCSS_MAX_TEXELS = 24.f;
 static float shadow_rotation = 0.f;
@@ -326,7 +326,7 @@ float ShadowCascades(float2 pixel_xy)
   const float3 world_position = WorldPositionAt(pixel);
   shadow_rotation = PcssRotation(float2(pixel), SI.shadow_noise_frame);
 
-  // Shadow map stability (v31, DLSS addon): surfaces the sun grazes shadowed themselves in patches that change with the
+  // Shadow map stability (v31): surfaces the sun grazes shadowed themselves in patches that change with the
   // camera (the filter reaches across the slope; shadow acne). The receiver moves off the surface along its normal
   // (from the neighbours' positions: on each axis the nearer one, not across depth edges; toward the camera) by half
   // or all the 3x3 filter's radius (about 1.5 texels), scaled by the sine between the normal and the sun.
@@ -465,7 +465,7 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
 {
   DispatchParameters dp;
   dp.SetDefaults();
-  // Bend's parameters: the game's, or the DLSS addon's rows (above 0).
+  // Bend's parameters: the game's, or the add-on's rows (above 0).
   dp.SurfaceThickness = (SI.sss_thickness > 0.f) ? SI.sss_thickness : g_sss_surface_thickness;
   dp.BilinearThreshold = (SI.sss_edge_threshold > 0.f) ? SI.sss_edge_threshold : g_sss_bilinear_threshold;
   const float contrast = (SI.sss_contrast > 0.f) ? SI.sss_contrast : g_sss_shadow_contrast;
@@ -488,7 +488,7 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
   dp.ThinDepth = t_sss_thin;
   dp.FindThin = dp.ThinCasters && tint_size.x != 0u;
 #endif
-  // Shadow stability (v27, DLSS addon): the game's contrast 4 turns a depth difference into shadow within a quarter of
+  // Shadow stability (v27): the game's contrast 4 turns a depth difference into shadow within a quarter of
   // Bend's window, so shadows switch fully on / off between frames; halved (Bend's other recommended value, 2) they
   // fade in. Then Bend's IgnoreEdgePixels: depth edges (thin geometry, grazing surfaces) cast no shadow.
   if (SI.sss_stability >= 1.f) dp.ShadowContrast = max(contrast * 0.5f, 1.f);

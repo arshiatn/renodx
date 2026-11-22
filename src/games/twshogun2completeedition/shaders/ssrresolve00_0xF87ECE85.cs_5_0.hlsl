@@ -1,6 +1,6 @@
 // environment_specular_light.hlsl cs50_resolve: the reflection colour per render pixel from the hit buffer; its
 // texture coordinate x 2 / SSRFactor() (SSR Resolution Full; ssr.hlsli).
-// Render scale (DLSS addon): the reflected colour comes from the scene's mip chain, whose coarse levels (up to mip 5:
+// Render scale: the reflected colour comes from the scene's mip chain, whose coarse levels (up to mip 5:
 // 32 px texels, for long rays) also average the unrendered rest of the full-size texture: the distant sea's reflections
 // turned bright along the right edge, ~32 render px at any scale (ATN debug22 / 23). Below 100% the lookup stays half a
 // texel of its coarsest mip inside the rendered part.

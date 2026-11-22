@@ -386,7 +386,7 @@ inline void OnPresent() {
     std::ofstream(path, std::ios::binary | std::ios::trunc) << state.text;
     const std::string cut = (state.lines > internal::MAX_LINES ? std::format(" (cut at {})", internal::MAX_LINES) : "");
     state.status = std::format("Trace: {} lines saved to {}{}", state.lines, path.string(), cut);
-    renodx::utils::log::i(std::format("[Shogun 2 DLSS] Frame trace: {} lines saved to {}{}", state.lines, path.string(), cut));
+    renodx::utils::log::i(std::format("[Shogun 2] Frame trace: {} lines saved to {}{}", state.lines, path.string(), cut));
     state.text.clear();
     state.values_written.clear();
   }

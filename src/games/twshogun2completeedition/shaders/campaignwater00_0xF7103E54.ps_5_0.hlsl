@@ -1,5 +1,5 @@
 // waterplane.hlsl ps30_campaign_high / medium / ultra_water_quality (decompiled): the campaign map's water.
-// Render scale (DLSS addon): the map overlay (roads, borders, rivers; 4800x2700, drawn at its full size for the whole
+// Render scale: the map overlay (roads, borders, rivers; 4800x2700, drawn at its full size for the whole
 // view) was read at its projected position x the viewport over the screen, the render size's part of it: below 100%
 // roads moved with the camera and sat in the wrong place (ATN debug22). Read at the projected position (the viewport
 // factor divided out; at full size the game's).

@@ -77,7 +77,7 @@ inline void Install() {
       internal::status = std::format("hook failed: {}", error.what());
     }
   }
-  renodx::utils::log::i("[Shogun 2 DLSS] Unit detail: ", internal::status);
+  renodx::utils::log::i("[Shogun 2] Unit detail: ", internal::status);
 }
 
 inline void Uninstall() {
@@ -85,7 +85,7 @@ inline void Uninstall() {
   try {
     internal::hook_lifetime.Uninstall(&internal::hooks);
   } catch (const std::exception& error) {
-    renodx::utils::log::e("[Shogun 2 DLSS] Unit detail hooks could not be removed; addon retained until process exit: ", error.what());
+    renodx::utils::log::e("[Shogun 2] Unit detail hooks could not be removed; addon retained until process exit: ", error.what());
   }
 }
 

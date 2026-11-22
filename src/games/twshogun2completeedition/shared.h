@@ -60,25 +60,25 @@ struct ShaderInjectData {
   float vfx_smoke_draw;  // vfxoverlay00: 1 on the smoke buffer's draw (addon, from the blend state)
   float video_autohdr;    // video00: inverse tone mapping, 0 off
   float video_dithering;  // video00: 0 off, 1 on
-  float ssr_resolution;   // ssr.hlsli, from the DLSS addon's overlay: 0 the game's (half the render size), 1 full
-  float sss_samples;      // sss.hlsli: 120 x 2^this samples, 0 the game's (DLSS addon SSSSamples: 0-5)
+  float ssr_resolution;   // ssr.hlsli, from the Graphics pages: 0 the game's (half the render size), 1 full
+  float sss_samples;      // sss.hlsli: 120 x 2^this samples, 0 the game's (SSSSamples: 0-5)
   float sss_stability;    // sss.hlsli: 0 the game's, 1 contrast halved, 2 and edge pixels cast none (SSSStability)
   float shadow_map_stability;  // sss.hlsli: the cascades' normal offset, 0 none, 1 / 2 0.75 / 1.5 texels
-  // sss.hlsli: Bend's parameters (DLSS addon SSSThickness, SSSContrast, SSSEdgeThreshold, SSSPrecisionOffset; 0 the game's).
+  // sss.hlsli: Bend's parameters (SSSThickness, SSSContrast, SSSEdgeThreshold, SSSPrecisionOffset; 0 the game's).
   float sss_thickness;
   float sss_contrast;
   float sss_edge_threshold;
   float sss_precision_offset;
   float sss_foliage_light;  // sss.hlsli: Light Through Foliage, Bend's CasterLight (foliage_light.hpp; SSSFoliageLight, 0 off)
-  // tonemap01: DLSS's jitter this frame (render pixels; the DLSS addon's, dlss_jitter.hpp), set before the draw
+  // tonemap01: DLSS's jitter this frame (render pixels; dlss_jitter.hpp), set before the draw
   float render_jitter_x;
   float render_jitter_y;
 
-  // Render scale (DLSS addon): the rendered fraction of the full-size targets until the tonemap (addon, from the 3D
+  // Render scale: the rendered fraction of the full-size targets until the tonemap (addon, from the 3D
   // passes' viewports; 1: full size).
   float render_scale_x;
   float render_scale_y;
-  // Graphics 1 of 2's Ambient Occlusion (the DLSS add-on's [Shogun 2 DLSS] rows until it became part of this one).
+  // Graphics 1 of 2's Ambient Occlusion (the old DLSS add-on's [Shogun 2 DLSS] rows until it became part of this one).
   float ssao_mode;       // 0 the game's ambient occlusion, 1 visibility bitmask
   float ssao_strength;   // visibility bitmask: an exponent
   float ssao_radius;     // visibility bitmask: x 2 m
@@ -117,7 +117,7 @@ struct ShaderInjectData {
   float v35_highlight_saturation;
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
-  // sss.hlsli: Bend's samples and modes as Attila's rows (the DLSS addon's SSSHardSamples, SSSFadeSamples, SSSIgnoreEdges,
+  // sss.hlsli: Bend's samples and modes as Attila's rows (SSSHardSamples, SSSFadeSamples, SSSIgnoreEdges,
   // SSSAlongRay, SSSMirrorEdges): the counts 0 the game's (8, 16), the modes 0 the game's (off).
   float sss_hard_samples;
   float sss_fade_samples;
@@ -125,7 +125,7 @@ struct ShaderInjectData {
   float sss_along_ray;
   float sss_mirror_edges;
   // waterplane00 (rivers and lakes in battles): Attila's Water Clarity (the water's depth before its deep colour / this; 0 or
-  // 1 the game's) and Water Caustics (the bed's light x 1 + caustics x this; 0 off). The DLSS addon's WaterClarity / WaterCaustics.
+  // 1 the game's) and Water Caustics (the bed's light x 1 + caustics x this; 0 off). Rows WaterClarity / WaterCaustics.
   float water_clarity;
   float water_caustics;
   // autoexposure00: Attila's Modded Auto Exposure (its keys): 1 each metered luma at most the last frame's exposure's luma x

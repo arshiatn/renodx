@@ -1,4 +1,4 @@
-// Water Clarity and Water Caustics (Experimental, the DLSS addon's WaterClarity / WaterCaustics; Attila's water_effects.hpp) for
+// Water Clarity and Water Caustics (Experimental, the WaterClarity / WaterCaustics rows; Attila's water_effects.hpp) for
 // the battles' water planes (waterplane00 high / medium / ultra, waterplane01 low): the water's depth (t_terrain_refraction's w)
 // before it takes the deep water colour divided by the clarity; the refracted bed x (1 + Attila's caustics tile at the
 // surface's world position x the strength), worked out here (no tile texture). Included after camera_VS_PS (time_in_sec) and

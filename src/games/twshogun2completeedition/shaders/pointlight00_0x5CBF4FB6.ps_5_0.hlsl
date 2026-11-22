@@ -1,7 +1,7 @@
 // pointlight.hlsl ps30_main_highdef: deferred point lights (fire, torches).
-// Render scale (DLSS addon): the CPU's g_viewport_offset_scale stays the full screen while the 3D passes draw into
+// Render scale: the CPU's g_viewport_offset_scale stays the full screen while the 3D passes draw into
 // the top-left render scale part: the viewport comes from the camera instead (g_viewport_dimensions, patched to the
-// render size by the DLSS addon; the game's own "respect the viewport" formula). At full size the same as the game's.
+// render size by the add-on; the game's own "respect the viewport" formula). At full size the same as the game's.
 // HDR: x VFX Brightness: Firelight (v24).
 // Ray tracing: x the light's traced visibility (ray_tracing.hpp; twattila/rt_local_lights.hlsli).
 #include "../shared.h"

@@ -1,7 +1,7 @@
 // summedareatable.hlsl cs_blur_hashed / cs_masked_blur_hashed (DISABLE_SAT: 30 random taps in a disk), the depth of
 // field's background / foreground blur, written from the game's source. Shared by dofblur00 (0x6449D186), dofblur01
 // (0x32876DB2) and dofblur02 (0x6531CCC3, cs_blur_hashed_unorm, DOF_BLUR_UNORM: an 8-bit output).
-// Render scale (DLSS addon): the 3D image only fills the top-left render scale of these full-size textures (the
+// Render scale: the 3D image only fills the top-left render scale of these full-size textures (the
 // addon's SI.render_scale_x / y, captured from the 3D passes' viewports), but the radius is counted in full-size
 // texels: it blurred 1 / scale too much. The radius is scaled back, the taps stay inside the rendered part and the
 // rest is skipped. At full size the same as the game's.

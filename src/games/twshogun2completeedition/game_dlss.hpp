@@ -176,7 +176,7 @@ inline bool OnCreateFeature(void* holder, void* device, const uint32_t* input, c
       WriteCode(state.flags_values[index], &flags, 1);
     }
   }
-  renodx::utils::log::i(std::format("[Shogun 2 DLSS] The game creates DLSS: {}x{} -> {}x{} (scale {:.3f}, preset {})",
+  renodx::utils::log::i(std::format("[Shogun 2] The game creates DLSS: {}x{} -> {}x{} (scale {:.3f}, preset {})",
                                     render[0], render[1], output[0], output[1], scale, active_preset.load()));
   return original_create(holder, device, render.data(), output);
 }
@@ -320,7 +320,7 @@ inline void Install() {
       state.status = std::format("hook failed: {}", error.what());
     }
   }
-  renodx::utils::log::i("[Shogun 2 DLSS] The game's DLSS: ", state.status);
+  renodx::utils::log::i("[Shogun 2] The game's DLSS: ", state.status);
 }
 
 // The camera jitter while the game's DLSS runs (JITTER_CONDITION); off restores the game's code.
@@ -331,7 +331,7 @@ inline void SetJitter(bool enabled) {
   const uint8_t* bytes = (enabled ? internal::JITTER_PATCH.data() : state.jitter_original.data());
   internal::WriteCode(state.jitter_site, bytes, internal::JITTER_PATCH.size());
   state.jitter_patched = enabled;
-  renodx::utils::log::i("[Shogun 2 DLSS] Camera jitter with DLSS: ", (enabled ? "on" : "off (the game's)"));
+  renodx::utils::log::i("[Shogun 2] Camera jitter with DLSS: ", (enabled ? "on" : "off (the game's)"));
 }
 
 inline void SetJitterFlip(int flip) {
@@ -382,7 +382,7 @@ inline float UpdateFeature() {
   if (release != nullptr) {
     release();
   }
-  renodx::utils::log::i(std::format("[Shogun 2 DLSS] Render scale {:.3f}, preset {}: the game's DLSS is {} and created again",
+  renodx::utils::log::i(std::format("[Shogun 2] Render scale {:.3f}, preset {}: the game's DLSS is {} and created again",
                                     scale, preset, (release != nullptr ? "released" : "left (no release found)")));
   return scale;
 }
@@ -409,7 +409,7 @@ inline void Uninstall() {
     // Frame generation keeps the addon's image loaded: a new device attaches the addon again in it, and Install hooks again.
     state.searched = false;
   } catch (const std::exception& error) {
-    renodx::utils::log::e("[Shogun 2 DLSS] The game's DLSS hooks could not be removed; addon retained until process exit: ", error.what());
+    renodx::utils::log::e("[Shogun 2] The game's DLSS hooks could not be removed; addon retained until process exit: ", error.what());
   }
 }
 
