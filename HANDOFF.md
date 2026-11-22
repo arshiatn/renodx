@@ -516,6 +516,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_ (low, AFTER S3c): stale "proposed" mentions (resident_protocol.md l.7 + l.1 ... | ?
 - ATN (later, not urgent): the 4 adopted .proposed copies are unused now (nothing ... | ?
 - gtp_ ROUND 22 (coord 18:3x): gpr-R21-1 + gtw-R21-1..6 (below); then gtw_ + gpr_ ... | ?
+- gtv_: step 2b go / no-go on S-40992 + s3c2_r1_settle (coord 18:39). | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -11100,6 +11101,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         gtw-R21-6 (Low, before web_allow on): cite / cxx block runs before shell_web, one 10 s checker per commit text, no
         shared deadline -> one checker per call, shell_web first. By design under enforce: gtp_'s live swaps + tool_prices.py
         seed / build refused (ATN's steps). Slip: one python -c sandbox copy outside gtw_low.py (scratch only).
+        gtc_ RE-RUN 2b 18:38 (plan_1117/gtc_rerun_2b_handback.md; testbin\scratch\gtc_\rerun\step_00..02.txt): steps 0-2
+        exit 0; stale current.json (S-90572) no refusal. Session lab\run\S-40992-134398426667156821 (res_183750_A_100484_70751,
+        kept alive); dump run\jobs\s3c2_r1_dump_fresh_20261122_183746_100484_573900; settle run\jobs\s3c2_r1_settle_20261122_
+        183819_95820_629200: "settle night1_low_frame_1780:passes: all after 5 windows, frame 321"; phase_model.tsv l.133-154:
+        settle_frame 321, settle_all 1, settle_row 0 for all 20 rows. SLIP: step 0 had `; "exit $LASTEXITCODE"` appended after
+        the exact rule command (rule text itself unchanged) -> told gtc_: rule commands alone, character for character.
+        -> gtv_ step 2b go / no-go (rc_period + lab_analyze bursts).
+        - [ ] gtv_: step 2b go / no-go on S-40992 + s3c2_r1_settle (coord 18:39).
         Agents (5): gtc_ (S3c RE-RUN, GPU), gtp_ (gate round 22, below normal), ebq_ (end batch readiness), hts_
         (open-items plan synthesis), gtv_ (on call for step 2b); gtl_ / hta_..htd_ / gtw_ / gpr_ / fcr_ / gti_ / grs_ / h0i_
         / upr_ idle; GPU: S3c RE-RUN (gtc_) from 18:3x; other agents' CPU work below normal; one GPU job at a time
