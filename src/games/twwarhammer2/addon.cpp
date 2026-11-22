@@ -68,6 +68,7 @@
 #include "./trace_reads.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
+#include "../twattila/frame_gamma.hlsli"
 
 constexpr char BUILD_DATE[] = __DATE__;
 constexpr char BUILD_TIME[] = __TIME__;
@@ -2045,6 +2046,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = !IsHdrOutput();
+  // DLAA's and CMAA2's passes in the frame's own curve (2.2 with Gamma Correction on: the swap chain proxy's decode).
+  aa_settings.frame_gamma = TW_FRAME_GAMMA;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   // After the at-start tests' thread (one writer at a time).
