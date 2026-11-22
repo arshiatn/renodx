@@ -7210,9 +7210,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         path (a still / path folder mix-up fixed), score phase carries flip; 21 / 24 / 24 / 5 green; one load flake
         (fake pbrt starved by c3i_'s engine_code.exe). v1.1 lab changes listed, built after grs_'s S2r fixes. -> gtv_
         S3r RE-CHECK 2 STARTED. Note: h0i_'s offline H0 test (pid 54836) writes the REAL lab\busy_count.json -> h0i_ told.
-        Agents (9): h0i_ (F1), c3i_ (B1.6), ebr_ (r19 re-check), gtw_ (re-check 7), gbc_ (B1 re-check, then RS-M1),
-        gtv_ (S3r re-check 2), grs_ (S2r fixes), gtb_ (W1 / W2). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (waits
-        h0i_), gpp_, gpr_ (waits gtb_), t4i_, gtq_, gti_, gtl_, gtk_, gtp_ (waits gtw_).
+        gtw_ S1c RE-CHECK 7 = FIX in budget.py, hook OK 04:4x (plan_1117/gtw_s1c_recheck7_handback.md; review l.577):
+        370 / 370; kind() 0 errors on 15,119 real commands (median 0.06 ms), load_tag 41 / 41, cause() word-for-word on
+        288 fact sets, +0.06 s latency. L1 (owner gtb_, before fix-now): watch's stop BusyState excludes all testbin
+        (budget.py:739) but passes a 2-tuple read as full -> idle while another harness runs -> drop the TESTBIN
+        exclude at the stop (tree already ended). Shoulds for gtp_: K1 heredoc bodies before inner_commands(), K2 <sub>
+        only when it looks like a verb, K3 quadratic HEREDOC on many << (83-115 ms / 8 KB), R9a --bash-b64=<b64> /
+        prefixes (+ gtb_: allow_abbrev=False). -> gtb_ told (L1 is the same as its stop-exclude nit, now a MUST);
+        gtp_ GO: K1-K3 + R9a, then its next round (tool_prices.py, web_ok + proposals).
+        Agents (9): h0i_ (F1), c3i_ (B1.6), ebr_ (r19 re-check), gtp_ (K1-K3 + next round), gbc_ (B1 re-check, then
+        RS-M1), gtv_ (S3r re-check 2), grs_ (S2r fixes), gtb_ (W1 / W2 + L1). Idle: bd1r_, lga_, lgf2_, c33i_, upt_,
+        upr_ (waits h0i_), gpp_, gpr_ (waits gtb_), t4i_, gtq_, gti_, gtl_, gtk_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
