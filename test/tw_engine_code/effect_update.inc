@@ -85,6 +85,8 @@ struct Shape {
   uint32_t spawn_room = 0;       // the fake pipeline's room for spawns (0: the node has no pipeline)
   bool gpu = false;              // the GPU pipeline (else the CPU's)
   bool types_near = false;       // a new type takes the free slot right after its unit's effect (a type that lands between the enqueued effects and the one that failed)
+  bool sweep_draws = false;      // the sweep's destructors draw the game's random triple (a dead instance's, in the render thread's ordered pseudo-unit)
+  uint32_t other_room = 0;       // not 0: a second node with a pipeline of its own of this room, which the 'O' operation spawns into (the first node's is the round's)
 };
 
 struct World {
@@ -122,6 +124,8 @@ struct World {
   uint32_t pipeline = 0, buffer = 0, pool = 0, pool_limits = 0, emitter_plain = 0, emitter_events = 0;
   bool gpu = false;
   bool types_near = false;
+  bool sweep_draws = false;
+  uint32_t other_node = 0, other_capacity = 0, other_count = 0, other_answered = 0;  // the second node: its spawn count, and the answers a handler wrongly gave for it
   std::vector<std::array<uint32_t, 12>> spawn_buffer;
 
   uint8_t* Aux(size_t bytes) {
@@ -354,6 +358,26 @@ void DoOp(World& w, Instance& me, char op, Random* rng, uint32_t* held_slot) {
     case 'M':
       SpawnPath(w, me, false, false, 3);
       break;
+    case 'O': {
+      // The spawn functions of a node that is not the round's (ecx is another node): never staged, never answered, in the serial order like any order point.
+      if (w.other_node == 0) break;
+      uint32_t has = 0;
+      const bool query_answered = Touch(eu::Site::SPAWN_QUERY, w.other_node, 0, 0, &has);
+      bool room = false;
+      {
+        const Shared shared(w);
+        w.other_answered += query_answered ? 1 : 0;
+        room = (w.other_count < w.other_capacity);
+        log('o', w.other_count);
+      }
+      if (!room) break;
+      std::array<uint32_t, 11 + 12> particle = {};
+      const bool write_answered = Touch(eu::Site::SPAWN_WRITE, w.other_node, Address(particle.data()), 0, &has);
+      const Shared shared(w);
+      w.other_answered += write_answered ? 1 : 0;
+      log('p', ++w.other_count);
+      break;
+    }
     case 'W':
       // A rogue: the slot pool's count written with no order point.
       SetWord(w.pool + 0x10, Word(w.pool + 0x10) ^ 0x100);
@@ -527,6 +551,12 @@ void SweepImpl(Effect& effect) {
     auto* instance = reinterpret_cast<Instance*>(static_cast<uintptr_t>(entries[index].instance));
     if (instance->dead != 0) {
       w.log.push_back({instance->id, '~', effect.index});
+      if (w.sweep_draws) {
+        // The destructor's random triple: the game's own draw, after every unit before the sweep (the pseudo-unit is direct; the handler never answers or stages it).
+        Touch(eu::Site::RANDOM_TRIPLE);
+        w.lcg = w.lcg * 1664525u + 1013904223u;
+        w.log.push_back({instance->id, 'd', w.lcg});
+      }
     } else {
       if (kept != index) entries[kept] = entries[index];
       ++kept;
@@ -640,6 +670,11 @@ std::unique_ptr<World> Build(uint64_t seed, const Shape& shape) {
   SetWord(w->pool_limits + 0x50, 0xFFFFFFFFu);
   PoolSync(*w);
   w->types_near = shape.types_near;
+  w->sweep_draws = shape.sweep_draws;
+  if (shape.other_room != 0) {
+    w->other_node = Address(w->Aux(0x100));
+    w->other_capacity = shape.other_room;
+  }
   for (uint32_t* emitter : {&w->emitter_plain, &w->emitter_events}) {
     *emitter = Address(w->Aux(0x20));
     const uint32_t owner = Address(w->Aux(0x80));
@@ -709,6 +744,7 @@ bool Equal(const World& a, const World& b, std::string* why) {
   }
   if (a.effects.size() != b.effects.size() || a.instances.size() != b.instances.size()) return fail("effects or instances counted");
   if (a.spawn_buffer != b.spawn_buffer) return fail("the spawn buffer");
+  if (a.other_count != b.other_count || a.other_answered != 0 || b.other_answered != 0) return fail("the second node's spawns, or an answer the handler gave for it");
   if (a.pipeline != 0 && Word(a.buffer + (a.gpu ? 0x14 : 0x28)) != Word(b.buffer + (b.gpu ? 0x14 : 0x28))) return fail("the spawn count");
   if (Word(a.pool + 0x10) != Word(b.pool + 0x10) || Word(a.pool_limits + 0x50) != Word(b.pool_limits + 0x50) || Word(a.pool_limits + 0x54) != Word(b.pool_limits + 0x54)) {
     return fail("the slot pool's words");
@@ -1178,6 +1214,70 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* patched, bool quick) {
       }
       CHECK(printed == 1 && kilobytes > 0 && kilobytes < 1024 * 1024);
       std::printf("26f. the trace window's stack headroom: one line, %u KB\n", kilobytes);
+    }
+
+    // N5 (the B1.4 review's conditions). S1: a sweep whose destructors draw the random triple (the render thread's ordered pseudo-unit; the draw is neither answered nor staged and
+    // raises no census error), rows L1 and L2, with units that draw and spawn before it. S2: the spawn functions of a node that is not the round's: the unit waits its turn like at any
+    // order point, the handler never answers them, and the second node's spawns come out in the serial order (its own buffer is not the round's).
+    for (const bool spawns : {false, true}) {
+      for (const bool gpu : {false, true}) {
+        for (const uint32_t workers : {2u, 4u, 7u}) {
+          for (uint32_t seed = 1; seed <= 2 * scale; ++seed) {
+            ResetScheduler();
+            ei::spawns_row = spawns;
+            Shape drawing;
+            drawing.ops = "LERPS";
+            drawing.max_ops = 4;
+            drawing.effects = 12;
+            drawing.max_units = 25;
+            drawing.dead_percent = 45;
+            drawing.spawn_room = 100000;
+            drawing.gpu = gpu;
+            drawing.sweep_draws = true;
+            drawing.busy = (seed & 1) != 0 ? 60 : 400;
+            if (run_case(drawing, 8000 + seed * 31 + workers + (gpu ? 700 : 0), 2, workers) != 0) return 1;
+            ResetScheduler();
+            ei::spawns_row = spawns;
+            Shape other;
+            other.ops = "LEOOPM";
+            other.max_ops = 5;
+            other.effects = 12;
+            other.max_units = 25;
+            other.spawn_room = 100000;
+            other.other_room = 90;
+            other.gpu = gpu;
+            other.busy = (seed & 1) != 0 ? 60 : 400;
+            if (run_case(other, 9000 + seed * 37 + workers + (gpu ? 700 : 0), 2, workers) != 0) return 1;
+          }
+        }
+      }
+    }
+    {
+      // The cases did what they claim: a sweep drew, the second node took spawns and ran out of room, and a round in L2 staged the first node's.
+      ResetScheduler();
+      ei::spawns_row = true;
+      CHECK(pool(4) == 3);
+      Shape both;
+      both.ops = "LOOE";
+      both.max_ops = 5;
+      both.effects = 12;
+      both.max_units = 25;
+      both.dead_percent = 45;
+      both.spawn_room = 100000;
+      both.other_room = 30;
+      both.sweep_draws = true;
+      if (run_case(both, 9999, 1, 4) != 0) return 1;
+      auto serial = Build(9999, both);
+      auto parallel = Build(9999, both);
+      Walk(*serial, false);
+      Walk(*parallel, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && finish_round_checks(*parallel) && Equal(*serial, *parallel, &why));
+      size_t draws = 0;
+      for (const LogEntry& entry : serial->log) draws += (entry.op == 'd' ? 1 : 0);
+      CHECK(draws > 0 && serial->other_count == both.other_room && parallel->other_count == both.other_room && !serial->spawn_buffer.empty()
+            && ei::event_count.load() == 0);
+      std::printf("26f. N5: sweeps whose destructors draw (%zu draws in the case, no census error) and a second node's spawn functions (its %u spawns, the room full, never answered): equal to the serial walk, "
+                  "L1 and L2, CPU and GPU pipelines\n", draws, parallel->other_count);
     }
 
     // The buffer fills while units run ahead: the overflow is counted and the merged buffer is the serial one (its first records).
