@@ -618,6 +618,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - H2 A/B (coord, after the end batch, test\tw_* rule): the 2 run.ps1 commands in h ... | ?
 - ATN QUESTION (antivirus, g10_ stopped as the rule says): render_pass_behavior x8 ... | ?
 - g10_ next wave: re-measure TestSharedBytes (overlay ho_g02 + ho_g21 with M1) and ... | ?
+- wave 2 step 1: merge ho_g18, then BEFORE ho_g19: one clean serial rebuild of chu ... | ?
+- G20 (rvb_ R1 MINOR): ef926642b reuses the last trace without checking bridge.rt_ ... | ?
+- g04_ question (rvb_ R2): Shogun 2's own traced GI rows are still 4 rays / 10 m / ... | ?
+- README bug-report steps (rvb_ R3): the Map line needs Log Details on before the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12191,8 +12195,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] g18_ before merge: one clean rebuild of chunks 1-2 (x86 Attila / Rome II / Thrones, amd64 Attila / R.U.S.E. /
         WH1 / WH3 / Troy / Pharaoh) + re-run tw_native_context x86 + amd64.
         - [ ] Attila / Rome II / Thrones OnAmbientOcclusionDraw (g18_ finding): the post multiply needs this frame's trace
-        while ssao00 writes open for the 30-frame AmbientReplaced window, so a failed trace leaves no AO. Coord's pick = bug
-        fix, on: use the last trace within the same window (like ef926642b). Owner G20 (shared AO rule), next wave.
+        while ssao00 writes open for the 30-frame AmbientReplaced window, so a failed trace leaves no AO. Pick (rvb_ 22:2x) =
+        bug fix, on: ONE-frame window like ef926642b + R1's guard; frames 2-30 stay open until a Log Details run gives the
+        NotTraced dropout lengths, then ATN picks "reuse up to N" or a shorter window (AMBIENT_REPLACED_FRAMES is also
+        Path-Traced Ambient's window). Owner G20 (shared AO rule), next wave.
         - [ ] g18_ requests: tw_cluster_rewrite Map case + its testbin build folder (owner); rays_preset.hpp may use the new
         rt_scene constants; G19 drops its loop. Item 4 (Tales alpha factor) waits for the GPU plan's per-capture factor;
         item 6 waits for ATN's reset test (85).
@@ -12258,6 +12264,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         %TEMP%\renodx_render_pass_*; ReShade logged error 32 and the file vanished (likely Bitdefender). Coord's pick: the
         test stages under tools\tw\testbin like every other test output (ATN's folder rule), or ATN adds an exclusion.
         - [ ] g10_ next wave: re-measure TestSharedBytes (overlay ho_g02 + ho_g21 with M1) and commit "needs ho_g21 <M1>".
+        rvb_ G18 RE-CHECK 22:2x: GO (reviews/rvb_g18_recheck_handback.md, end of rvb_g18_review.md): ho_g18 ef926642b merges
+        FIRST in wave 2; MI1 + N1-N4 fixed, L1 comment true, 5c14cd20f + ef926642b correct; 1 MINOR, 2 NIT; no conflicts.
+        - [ ] wave 2 step 1: merge ho_g18, then BEFORE ho_g19: one clean serial rebuild of chunks 1-2 (x86 Attila / Rome II /
+        Thrones; amd64 Attila / R.U.S.E. / WH1 / WH3 / Troy / Pharaoh) + tw_native_context x86 + amd64; fix on top if either
+        fails. Don't install the stray-run chunk 1-2 binaries.
+        - [ ] G20 (rvb_ R1 MINOR): ef926642b reuses the last trace without checking bridge.rt_ambient is still that trace's
+        texture (a bridge re-prepare, dlaa_bridge.hpp:850-870 / :1016, + a failed trace = one frame of black ambient): keep a
+        prepare count (or texture + traced size) next to traced_frame; confirm a failed Trace never leaves the helper writing.
+        - [ ] g04_ question (rvb_ R2): Shogun 2's own traced GI rows are still 4 rays / 10 m / Half / 2 bounces
+        (addon.cpp:2246-2257); does decision 9 apply there?
+        - [ ] README bug-report steps (rvb_ R3): the Map line needs Log Details on before the game starts.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
