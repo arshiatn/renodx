@@ -791,7 +791,6 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   } else {
     part();
   }
-  ring_in_use.store(false, std::memory_order_release);
   paths[static_cast<size_t>(Path::OURS)].fetch_add(1, std::memory_order_relaxed);
   last_items = finished;
   last_call = {.items = finished, .records = records[1], .rounds = rounds, .workers = workers, .ordered = (ordered_from != ~0u), .streaming = call.streaming};
@@ -821,9 +820,11 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   if (bad_item) {
     // The game's own loop, from the bad item, faults on it the way it always does.
     paths[static_cast<size_t>(Path::BAD_ITEM)].fetch_add(1, std::memory_order_relaxed);
+    ring_in_use.store(false, std::memory_order_release);
     return game_fill(cache, device, force, list, texture, row, end, out);
   }
   if (stage_now != Stage::CHECK) {
+    ring_in_use.store(false, std::memory_order_release);
     const uint64_t tail_start = (trace != nullptr ? worker_pool::Qpc() : 0);
     const uint32_t result = game_fill(cache, device, force, list, texture, row, stop_at, out);
     if (trace != nullptr) {
@@ -915,6 +916,8 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
     failed.store(true, std::memory_order_relaxed);
     stage.store(Stage::OFF, std::memory_order_relaxed);
   }
+  // Check read the ring's state (captures, placements, records) until here.
+  ring_in_use.store(false, std::memory_order_release);
   return result;
 }
 
