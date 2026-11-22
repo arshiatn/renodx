@@ -7011,6 +7011,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         match' ps1:439 (@($modes)[0..2] on a List[object] in PS 5.1). Lock released, nothing left running; the run folder
         stays as the record. The dry run never runs the real-only branches -> h0i_ RESUMED: fix 439 + exercise every
         real-run-only path offline under PS 5.1 with fakes; then upr_ short look -> coordinator re-runs.
+        ATN 03:3x (going to bed): "Can you run it yourself please?" = the Mega Geometry 4K check -> the ONE unchanged
+        retry of mg4k_check.ps1 STARTED 03:36 (background bwr5ktd30; GPU lock, no game). If the classifier stops it
+        again, that path ends until ATN decides. Nothing else needed from ATN tonight (cite_since optional).
         Agents (12): bd1r_ (N6 re-check), t4i_ (r18), upt_ (v2.5), gpr_ (price + web v2 re-check), grs_ (S2), gtl_ (S3
         fixes), gtp_ (M5 / M6), gtk_ (C1 fixes), gtq_ (B1 fixes), h0i_ (ps1:439 + real-path tests). Idle: lga_, lgf2_,
         c33i_, gpp_, upr_, ebr_, gtw_ (waits gtp_), gbc_ (waits gtk_ / gtq_), gtv_ (waits gtl_), gti_, gtb_.
