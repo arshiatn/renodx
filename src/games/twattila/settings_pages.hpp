@@ -15,11 +15,21 @@
 
 #include "../../utils/settings.hpp"
 #include "./credits.hpp"
-#include "./lighting_settings.hpp"
 
 // Settings Mode's pages, their section names and colours, and the page's small rows (notes, More Options): every Total
-// War addon's. Apart from feature_settings.hpp and graphics_page.hpp (which include them), so an addon without Attila's
-// anti-aliasing shaders (Shogun 2) has them too.
+// War addon's. Apart from feature_settings.hpp, lighting_settings.hpp and graphics_page.hpp (which include them), so an
+// addon without Attila's anti-aliasing or Light Bounce shaders (Shogun 2, Ryse) has them too.
+
+// The ambient occlusion's and Global Illumination's sections (lighting_settings.hpp's rows).
+namespace twattila::lighting_settings {
+
+constexpr const char* AO_SECTION = "Ambient Occlusion (GT-VBAO, Experimental, needs in-game SSAO)";
+constexpr const char* GI_SECTION = "Global Illumination (GT-VBGI, Experimental, no in-game SSAO needed)";
+constexpr uint32_t AO_TINT = 0x7FBFFF;
+constexpr uint32_t GI_TINT = 0xFFB86B;
+
+}  // namespace twattila::lighting_settings
+
 namespace twattila::feature_settings {
 
 inline const std::string SSS_SECTION = "Screen-Space Shadows (Bend Studio, Experimental, needs in-game shadows)";
