@@ -503,13 +503,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: S3c part 2 (dead outputs on R3, M10) after gtv_'s root cause; recorder bu ... | ?
 - gtb_ / ATN (optional, later): F6 total on trimmed_mean or sum of pass-row median ... | ?
 - grs_ / nsight owner (optional, low): skip loop-0 dumps under -Trace; gpu_trace.p ... | ?
-- gtv_: quick re-check of B1 + N2 / N3 / N6 -> then coord lands stage2 + retire_ro ... | ?
 - gtb_ (when active): OK gtl_'s test_budget.py conhost allowance (coord OK'd 17:1x ... | ?
 - gtp_: ROUND 21 = gpr-R20-1 (8 KB caps per expanded value + statement, doubling-c ... | ?
 - ATN (later, before any ENFORCE): a hook that times out (pre hook 15 s) does not ... | ?
 - gtl_: landed-sandbox suites again with the ADOPTED live schemas (any test that e ... | ?
 - hta_ / htb_ / htc_ / htd_: HANDOFF triage TSVs + summaries (coord 18:0x). | ?
 - coord: synthesis agent -> handoff_plan\plan.md (parallel groups), then tick DONE ... | ?
+- gtl_: the 4 stale schema tests -> live schemas accept the new fields; suites gre ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10862,7 +10862,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         tests\test_budget.py went CRLF -> LF, keep CRLF; gtb_ OKs test_budget later (coord OK'd now, gtb_ not active).
         COORD: B1 + N1-N6 in stage2 first (one landing, N3 yes), gtv_ quick re-check of B1, then land + retire + re-run.
         - [x] gtl_ (DONE 17:48, all suites OK): B1 (settle sampler + missing gpu_samples.tsv) + N1-N6 in stage2 + tests (coord 17:3x).
-        - [ ] gtv_: quick re-check of B1 + N2 / N3 / N6 -> then coord lands stage2 + retire_rows (6 rows) + S3c re-run.
+        - [x] gtv_ (DONE 17:57: GO on code / jobs / answers; 4 stale tests): quick re-check of B1 + N2 / N3 / N6 -> then coord lands stage2 + retire_rows (6 rows) + S3c re-run.
         - [ ] gtb_ (when active): OK gtl_'s test_budget.py conhost allowance (coord OK'd 17:1x).
         gtw_ RE-CHECK 20 17:44 = GO FOR SHADOW, NOT FOR ENFORCE UNTIL gpr-R20-1 (plan_1117/gtw_recheck20_handback.md;
         gtw_s1c_review.md "S1c re-check 20" line 2236; scratch testbin\scratch\gtw_\gtw_r20_*): live 827d79c810af =
@@ -10921,9 +10921,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> handoff_plan\plan.md with parallel groups (one writer per file set, GPU one job at a time, game only on ATN's go).
         - [ ] hta_ / htb_ / htc_ / htd_: HANDOFF triage TSVs + summaries (coord 18:0x).
         - [ ] coord: synthesis agent -> handoff_plan\plan.md (parallel groups), then tick DONE-UNTICKED boxes + start groups.
-        Agents (7): gtv_ (B1 quick re-check), gtl_ (suites with adopted schemas), gtp_ (gate round 21), hta_ / htb_ / htc_ /
-        htd_ (HANDOFF triage, read only); gtw_ / gpr_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15;
-        one GPU job at a time
+        gtv_ B1 RE-CHECK 17:57 = GO ON CODE, 18 JOBS + ANSWERS; 4 STALE TESTS BLOCK LANDING (plan_1117/gtv_b1_recheck_handback.md;
+        gtv_iq_review.md "## B1 re-check" line 1159 + adopted-schemas addendum 1178; sandboxes testbin\scratch\gtv_\s3c\land5
+        (old schemas: unit 40 / analyze 5) + land6 (adopted, 17:56)): 18 jobs pass load_job under the adopted job_schema, 0
+        refused, 1982 s (job 07 70.5 s; 700 x 2 lets the trace start up to 1380 > settle ~1280). helper_du_rec answers
+        (never run in the lab; checked from rt_serve.h): 9 required keys; reset_ms >= 0 on reset / full reload, null
+        otherwise (= lab.py's 2 checks); dump args fit the new dump def; gtv_ans_check.py 12 / 12 vs adopted ans.schema
+        (reset_ms -1 / "812" refused). B1: R3 settle repro no crash, exit 1 = real part-1 bursts (33 / 56 runs); 3 clean
+        runs "0 of 3" exit 0. N2 700 loops; N3 6-row retire dry run = lines 9 / 10 / 50 / 51 / 91 / 92 only, second run
+        refuses, equals stage copy; N6 CRLF (8 / 10 lines); N1 / N4 / N5 sheet OK. ITEM gtl_: 4 tests assert the OLD
+        schemas refuse v1.1 / S3c 1b fields (unit test_proposed_schemas + test_s3c_dump_fields; jobs
+        test_s3c_uses_and_dump_frames + test_v11_no_dred_and_dump_frames now exit 0) -> assert the LIVE schema files accept
+        the fields (not the .proposed copies) + refresh land_list.tsv. land6: analyze 5 / 5, unit 38 / 40 (only these).
+        - [ ] gtl_: the 4 stale schema tests -> live schemas accept the new fields; suites green; land list (coord 17:5x).
+        Agents (6): gtl_ (adopted-schema suites + 4 stale tests), gtp_ (gate round 21), hta_ / htb_ / htc_ / htd_ (HANDOFF
+        triage, read only); gtv_ / gtw_ / gpr_ / fcr_ / gtc_ / gti_ / grs_ / h0i_ / upr_ idle; GPU: FREE since 16:15; one
+        GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
