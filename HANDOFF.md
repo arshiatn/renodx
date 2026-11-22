@@ -478,7 +478,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - x87c A/B owner (after the end batch): run tools\tw\testbin\heapfix_hf\xw\x87fix_ ... | ?
 - gtp_ (low, in round 15 = R14-1): a leading `2>&1 cmd` still splits at & into a l ... | ?
 - end batch leg 1 analysis: foreign hits outside trace windows in normal play? non ... | ?
-- t4i_: CHK-W3 scan-assert case in test_make (kills S1 + S6b), N-a skip t when a r ... | ?
 - gtp_ round 16 (SENT 10:5x; NOT "only the quoted word" - see gtw_ 10:55): R15-1 ( ... | ?
 - ATN: permanent delete of (1) old WPR ETLs 33.3 GB + (3) old shots 5.5 GB (dsk_ 1 ... | ?
 - t4i_ (after the scan gaps): end batch moves each finished leg's ETLs to a D: fol ... | ?
@@ -488,6 +487,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_ (tooling): the lab fixture's 1.5 s hang timeout flakes under build load ("r ... | ?
 - worktree cleanup (ATN): grs_'s worktree build\downloads_min (6 junctions - links ... | ?
 - grs_ (after rec_verify): fg_proxy_d3d12.hpp Presented() comment -> fcr_'s exact ... | ?
+- t4i_: copy ebr_'s scenarios A / B / D (scratchpad\ebr_pr_scen) into test_analyze ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9561,7 +9561,7 @@ heading text are in HANDOFF_ARCHIVE.md)
             batch ~151 GB. Free space on C: yourself, or OK a list of my cleanup candidates (closed-batch shots,
             old WPRs, testbin DLL copies; never reference runs / Nsight traces)? (ebr_ 10:27)
         COORDINATOR: G1 + G2 + N-a + N-b -> t4i_ after its probes job (same files); ebr_ re-checks.
-        - [ ] t4i_: CHK-W3 scan-assert case in test_make (kills S1 + S6b), N-a skip t when a row / env change is in
+        - [x] t4i_ (DONE 11:01, ebr_ OK 11:31): CHK-W3 scan-assert case in test_make (kills S1 + S6b), N-a skip t when a row / env change is in
             (t, t+2), N-b a toggle at t blocks; ebr_ re-checks (ebr_ 10:27).
         c3i_ B1LOG FIXES (INTERIM) 10:29 (render_mt/reports/c3i_b1log_fixes_interim_handback.md; rmt_b1log 4edac6a83 on
         52dda24f9, local): S1 foreign hits stay a fault (comment on fault_unreported) + 26h case foreign hits alone
@@ -9850,7 +9850,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         fill, draw_recording x3, engine_code -DrawRecording: all PASS / exit 0, end 11:13:25); FULL suite still
         running (engine_code.exe since 11:09:47; its log is written at the end). H0 re-run + release_check wait for
         it (CPU-heavy, would skew timing).
-        Agents (5): gtw_ (round 16 re-check), gpr_ (round 16 price re-check), ebr_ (t4i_ probes + scan gaps re-check),
+        ebr_ PROBES + SCAN RE-CHECK = MERGE-READY, 1 TEST GAP 11:31 (render_mt/reports/ebr_probes_scan_recheck_handback.md;
+        offline, scratchpad\ebr_pr_*): run_all lib 495 / make 97 / check 166 / leg 166 / analyze 127. Scan: fresh dry
+        makes = t4i_'s 34 plans byte for byte (442 arms); every arm B1 rows on, not paused / at a P key, no change in
+        (t, t+2), outside settle + measured windows, >= 3 s / >= 10 s; nothing lost; spill gone (worst arm needs 5 fps);
+        B1L2 / B1L1 off = 0 arms; disk 20.7 / 61.2 / 102.3 / 73.4 GB. 15 scan mutants: 13 die, S2 + S7 equivalent.
+        Probes (a03911fde): formats match :1583 / :1486 / :1605; totals cumulative, after the headroom line + at exit
+        only when B1 used; waiting counts only in totals -> "fault only in totals" NOTE right; 7 outside fault names =
+        the code's rule; probes exclusive; totals never summed / read twice (T1-T6, P1-P6 die); T7 if / elif
+        equivalent; own scenarios on the real bench 11 / 11. GAP: mutants T10 (totals rule vs outside only -> false
+        "outside" NOTE for window faults), T13 (a start whose only B1 line is the totals line gets no entry = the
+        NORMAL case for 10 starts: D1-ALL-a/b + 8 HF, B1 on, no trace arm, closed by CloseMainWindow -> a fault only in
+        that line is lost), T14 (only outside lines -> no entry) pass test_analyze; ebr_'s scenarios A, B, D catch them
+        (today's code right). Nit: "tag leaks 1 (session total 0)" after a later outside line -> "(last session total
+        0, printed before this line)".
+        - [ ] t4i_: copy ebr_'s scenarios A / B / D (scratchpad\ebr_pr_scen) into test_analyze (kill T10 / T13 / T14) +
+            the NOTE wording; ebr_ re-checks (ebr_ 11:31).
+        Agents (5): gtw_ (round 16 re-check), gpr_ (round 16 price re-check), t4i_ (ebr_'s scenarios into test_analyze),
         c3i_ (FULL suite running, detached), gtl_ (fixture hang timeout); t4i_ ETL move waits for ATN (antivirus);
         rmt_b1log merge after the FULL suite; then release_check -> H0 re-run; ff_s12 + grs_xess_guard after H0
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
