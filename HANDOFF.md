@@ -461,13 +461,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - release / lifetime owner (gpu3_ A1g, lga_): 5 release modes 77-122 ms vs the 75 ... | ?
 - coordinator after upr_'s OK: H0 re-run (full, ~84 min, ATN's rule) in a gap; ATN ... | ?
 - who owns the build env: gated_build's stderr shows `'vswhere.exe' is not recogni ... | ?
-- gtb_ (low): end-to-end slot-wait test - both sandbox slots held, one freed at ~8 ... | ?
 - gtb_ / gti_ (low): watch's load is always `unknown` while nothing refreshes busy ... | ?
 - ATN (cleanup list): tools\tw\h0\__pycache__ (07:42) may be deleted (upr_ 08:3x). | ?
 - lab owner (later, optional): record `dxr12` (machine state from config's answer) ... | ?
 - gtp_ (nit): the 5 ms kind() timing check failed once under parallel load (5.9 ms ... | ?
 - ATN (morning report): player risk - a cold shader cache (driver update / new rel ... | ?
-- gtb_: budget.py SEEDS gate_s 1.0 caps a real job's gate phase at 12.5 s until le ... | ?
 - c3i_ (nits, optional): N1 26g header lists test 8 (RigidAddOrder, not in 26g) + ... | ?
 - end batch owner (t4i_ / ebr_): b13r_'s B1 risks - (a) thread affinity of order-p ... | ?
 - B1 owner (static, low): do the game's destructors draw (callers of 0x190B780 rea ... | ?
@@ -477,6 +475,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ S1 (Should, before web_allow on): bun in PKG skips the web check - `bun -e ... | ?
 - gtp_ S2 (= R12-1, before price on): 13 amd64 twattila builds refused with bak16 ... | ?
 - gtp_ (nits): heredoc piped into `python -m json.tool` / fed to `python x.py` sca ... | ?
+- gtl_ (low): the jobs fixture's +60 s on the gate now sits on top of GATE_FLOOR_S ... | ?
+- gtb_ (after gtp_'s round 13): tighten test_budget's 3rd hook case to (12, 99) on ... | ?
+- gtb_ / gti_ (low): load-flake bounds in unchanged code - gated_build "both slots ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8414,7 +8415,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Row kind: the same key from the 07:36 and round-12 hooks (8 variants), matches 10 seed rows. hg2 contract
         fine; UTF-16-no-BOM gates.tsv: 07:36 hook 124 (hg1 kill), +hg1 / live 08:17 = exit 0 SHADOW, one FAULT line
         + one TOOL FAULT row each. hg1 is LIVE (gate_hook.py 08:17:02). WRAPPED BUILD + HG2 CLOSED.
-        - [ ] gtb_ (low): end-to-end slot-wait test - both sandbox slots held, one freed at ~8 s, `watch --limit 6`
+        - [x] gtb_ (low, DONE 09:1x): end-to-end slot-wait test - both sandbox slots held, one freed at ~8 s, `watch --limit 6`
             -> exit 0, locked y, wait_s >= 8, run_s <= 6; control 124; needs a test-only dry-run hold >= 5 s in
             gated_build.ps1 (default off, assert locked y) + optional pass interval (gpr_ 08:2x).
         - [x] gtp_ (low, DONE round 12 build_key()): kind() doesn't normalise target spelling ('twattila' vs 'renodx-twattila.addon64' = two
@@ -8556,7 +8557,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         expected seconds). REPORT: budget.py SEEDS gate_s is also 1.0 -> a real job's gate phase is capped at 12.5
         s until real gate times are learned; heavy CPU beside a real job could SLOW-stop it = gtb_'s call. -> gtv_
         quick re-check together with gtq_ S6; gtb_ told (seed).
-        - [ ] gtb_: budget.py SEEDS gate_s 1.0 caps a real job's gate phase at 12.5 s until learned - raise the
+        - [x] gtb_ (DONE 09:1x, GATE_FLOOR_S 120): budget.py SEEDS gate_s 1.0 caps a real job's gate phase at 12.5 s until learned - raise the
             seed or keep (gtl_ 08:4x; gtv_ saw 48.6 s under other agents' load).
         - [x] gtv_ (DONE 08:5x, OK): quick re-check of gtl_'s v1.2 follow-ups (golden hex, cfg None, fixture +60 s) with gtq_ S6.
         t4i_ -B DONE 08:4x (render_mt/reports/t4i_b_flag_handback.md; log scratchpad\t4i_b_runall.txt; backups
@@ -8776,9 +8777,34 @@ heading text are in HANDOFF_ARCHIVE.md)
         of 20 s freeze + off); 5 b3 (after a cold-cache timed open); 6 NRD only if 1's numbers call for it;
         fallback S8. Open for ffr_: budget + 5 / 20 split re-tune after step 1, FG hide vs rare frozen frame,
         switch name. -> ffr_ RE-CHECK STARTED.
-        Agents (6): h0i_ (H0 F1-F4), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gtb_ (slot-wait
-        test + load + gate seed + R12-1 half), ffr_ (grs_ first-frame v2 re-check), gtw_ (release_check.ps1
-        review), t4i_ (T5 manifest rows + B1 risks)
+        gtb_ SLOT-WAIT + GATE FLOOR + R12-1 HALF DONE 09:1x (plan_1117/gtb_slot_wait_handback.md; backups
+        scratchpad\gtb_bak21): test_budget 3 x 38 OK, selftest 3 x 3; no lock / ngfx / real slots / real
+        watch_runs.tsv. (1) gated_build.ps1 LIVE 08:32:47 (one os.replace, no slot held): env switches
+        RENODX_GATED_BUILD_HOLD_S + RENODX_GATED_BUILD_PASS_S read ONLY with RENODX_GATED_BUILD_DRYRUN=1; real
+        builds: `Start-Sleep -Seconds 30` -> `-Milliseconds ($PassS * 1000)` with 30 = same wait (the 08:5x
+        rmt_b1rt merge builds ran on it, exit 0). Main test: sleeper holds both sandbox slots, frees one at 10 s;
+        hold 5 s, 1 s passes, `--limit 10` (6 too tight: 5 s hold + overhead = 6.0-6.2) -> exit 0, locked y, wait
+        12.0, run 5.8-6.2, wall 18.2 (past the limit = wait not counted); control hold 30 s `--limit 6` -> 124 SLOW,
+        wait 2.0 run 6.0; fails against the old gated_build (gpr_'s false-pass covered). (2) LOAD PROPOSAL (not
+        built): busy_count.json never refreshed (05:50:47, partial) -> the hook's fix-now rule (needs load idle)
+        can NEVER fire today; proposal: watch refreshes it via gti_'s gpu_lock.BusyState('', 30) unchanged before
+        the child starts (empty tree = full count) + after a normal end, only when missing / > 4 min / partial /
+        faulted (<= ~1 per 5 min; ns_busy 0.4 s warm / 1.8 cold); needs OK. (3) GATE_FLOOR_S = 120: gate deadline =
+        max(expected x 2.5 + 10, 120), gate_s stays 1.0 (it feeds the price; real gate 0.13 s); 120 < lab.py's 300 s
+        tool timeout; "SLOW only after n rows" impossible (lab.py never records gate_s); test_gate_deadline_floor.
+        budget.py LIVE 08:48:48. (4) R12-1: _own_price_rows = build key's warm? rows first, exact rows replace per
+        set; non-build exact only; ring test {watch exact n 1, fg seed n 10}; hook's 3rd case allows None or (12,
+        99) until gtp_'s round 13, then tighten. budget.py LIVE 09:04:36. Seen: test_budget N11 updated to `twattila
+        cold` after gtp_'s build_key; two load flakes in unchanged code (both-slots-held check 6.8 s vs 4 s;
+        selftest lock case 11.7 s), not repeated. -> gpr_ CHECK STARTED (items 1 / 3 / 4 + the load proposal).
+        - [ ] gtl_ (low): the jobs fixture's +60 s on the gate now sits on top of GATE_FLOOR_S (180 s) - can be
+            dropped (gtb_ 09:1x).
+        - [ ] gtb_ (after gtp_'s round 13): tighten test_budget's 3rd hook case to (12, 99) only (gtb_ 09:1x).
+        - [ ] gtb_ / gti_ (low): load-flake bounds in unchanged code - gated_build "both slots held" check 4 s
+            (saw 6.8 s), selftest lock case (11.7 s) (gtb_ 09:1x).
+        Agents (6): h0i_ (H0 F1-F4), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gpr_ (gtb_
+        slot-wait / floor / R12-1 + load proposal check), ffr_ (grs_ first-frame v2 re-check), gtw_
+        (release_check.ps1 review), t4i_ (T5 manifest rows + B1 risks)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
