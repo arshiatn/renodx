@@ -7150,9 +7150,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         in progress (04:17, KeyError deadline_s). gate_hook names via getattr: kind(tool, tool_input, cwd), cause(facts),
         committed_gb(), load_tag(heavy, exclude_pids, busy) -> gtp_ told. -> gpr_ CODE LOOK STARTED; gtl_ told (score
         plan phase needs `flip`).
-        Agents (11): h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gbc_ (R-S re-check), gtp_ (S-d + price build),
-        gtq_ (FLIP numpy port), gtl_ (S3r M1r / M2r), gtv_ (S2r), gpr_ (gtb_ watch look), gti_ (test F1 + nits). Idle:
-        bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (waits h0i_), gpp_, gtb_, ebr_, gtk_, grs_, gtw_ (waits gtp_).
+        gbc_ R-S RE-CHECK = one MUST 04:2x (plan_1117/gbc_rs_recheck_handback.md): RS-M1 the 120 s settle cap loses the
+        recording - the helper drops its RT scene after 10 s without a request (main.cpp:427, 859-871), skipping
+        FinishRecording -> cap the wait at 6 s, then send the finishing trace anyway (FinishRecording waits for the
+        writer inside the 20 s answer: drains to ~26 s covered); nits RS-N1 per-file size query, RS-N3 NOTICE note on
+        OpenEXR's lib_common.h edit. All else OK (pass rule, R-S2, _noseed, gtl_'s lab names, NOTICE, offline sources).
+        -> gtk_ STARTED (RS-M1 + nits); gbc_ re-checks.
+        Agents (11): h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gtk_ (RS-M1), gtp_ (S-d + price build), gtq_
+        (FLIP numpy port), gtl_ (S3r M1r / M2r), gtv_ (S2r), gpr_ (gtb_ watch look), gti_ (test F1 + nits). Idle:
+        bd1r_, lga_, lgf2_, c33i_, upt_, upr_ (waits h0i_), gpp_, gtb_, ebr_, gbc_, grs_, gtw_ (waits gtp_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
