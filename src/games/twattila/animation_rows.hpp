@@ -80,6 +80,9 @@ constexpr uint32_t LOOKAHEAD_BLOCKS = 16;
 constexpr uint32_t MIN_ITEMS = 2048;
 // Bulk's first round covers at least this many items (and what the last call finished).
 constexpr uint32_t FIRST_ROUND_ITEMS = 4096;
+// Check fills the records buffer with this byte before the game's run: the record after the last one must stay as it is.
+constexpr uint8_t SENTINEL_BYTE = 0xFF;
+constexpr uint32_t SENTINEL_WORD = 0x01010101u * SENTINEL_BYTE;
 
 // What a call of Dispatch did: ours, or the game's fill for the reason named. BAD_ITEM counts in addition to OURS.
 enum class Path : uint8_t { OURS, STAGE_OFF, FORCED, ROW_AT_END, FEW_ITEMS, END_PAST_LIST, TEXTURE_RANGE, VECTOR_NOT_EMPTY, NO_ROWS,
@@ -150,7 +153,8 @@ struct Controls {
   uint32_t allocate_delay_ms = 0;
   // Streaming: a scatter claim pauses this many times between its check and its CAS (S-3: it still never scatters a block that is not published).
   uint32_t claim_gap_spins = 0;
-  // Streaming: a scatter unit takes a gathered block before B has published it (stale texel words).
+  // Streaming: a scatter unit takes a gathered block before B has published it (stale texel words); it may also hang the call, so a test
+  // gives it a timeout.
   bool scatter_ignores_publish = false;
 };
 static Controls controls;
@@ -281,7 +285,8 @@ inline Kind Claim(Call* call, uint32_t* block) {
   const Kind kind = static_cast<Kind>(word >> 62);
   if (kind == Kind::DONE) return Kind::DONE;
   const uint32_t next = static_cast<uint32_t>(word & 0xFFFFFF);
-  if (kind == Kind::NONE || next >= ((word >> 24) & 0xFFFFFF) || !call->claim.compare_exchange_strong(word, word + 1, std::memory_order_acq_rel)) {
+  if (kind == Kind::NONE || next >= ((word >> 24) & 0xFFFFFF)
+      || !call->claim.compare_exchange_strong(word, word + 1, std::memory_order_acq_rel)) {
     return Kind::NONE;
   }
   *block = next;
@@ -329,7 +334,9 @@ inline bool Gather(Call* call, uint32_t block) {
     item.record_word = Word(item.instance, 0x70);
     // The game's: n, or n + 1 + n / 12 when the animation's flag word is set (a multiply by 0xAAAAAAAB and a shift by 35).
     const uint32_t texels = Word(item.animation, 4);
-    item.need = (Word(item.animation, 0xC) != 0 ? texels + 1 + static_cast<uint32_t>((static_cast<uint64_t>(texels) * 0xAAAAAAABull) >> 35) : texels);
+    item.need = (Word(item.animation, 0xC) != 0
+                     ? texels + 1 + static_cast<uint32_t>((static_cast<uint64_t>(texels) * 0xAAAAAAABull) >> 35)
+                     : texels);
     if (call->captures != nullptr) {
       call->captures[item_index].old_texture = std::atomic_ref<uint32_t>(Word(item.instance, 0x5C)).load(std::memory_order_relaxed);
       call->captures[item_index].old_texel = std::atomic_ref<uint32_t>(Word(item.instance, 0xA4)).load(std::memory_order_relaxed);
@@ -372,9 +379,10 @@ inline void Scatter(Call* call, uint32_t block, uint32_t items_end) {
 }
 
 // Streaming: claims the next block B has finished (and that is before the ordered-mode limit) and scatters it. The checks come before
-// the CAS and every one of them can only turn true (a published block stays published), so a claim never takes a block B has not
-// published. B stores scatter_limit before it publishes the block it applies to, and the limit is read after b_items. False when
-// there is no such block now. Called by Work, and by the render thread while it waits.
+// the CAS and each of them stays true once true (a published block stays published), except the limit, which drops once from all ones
+// to the first ordered block X: that is safe because B stores it before anything covers a block from X on (b_items is never published
+// after ordered mode starts; only b_finished and stop_items are), and it is read after b_items / b_finished. So a claim never takes a
+// block B has not published. False when there is no such block now. Called by Work, and by the render thread while it waits.
 inline bool TryScatter(Call* call) {
   uint32_t block = call->next_scatter.load(std::memory_order_acquire);
   const bool finished = call->b_finished.load(std::memory_order_acquire);
@@ -400,6 +408,12 @@ inline bool TryScatter(Call* call) {
   return true;
 }
 
+// The blocks the parallel scatter covers once B has finished `items`: those before the ordered-mode limit. Work leaves, and B's final
+// wait ends, when that many were taken, respectively done.
+inline uint32_t ScatterBlocks(const Call* call, uint32_t items) {
+  return std::min((items + BLOCK_ITEMS - 1) / BLOCK_ITEMS, call->scatter_limit.load(std::memory_order_acquire));
+}
+
 // The pool's callback: claim units until the call is over. A worker runs no game code and no allocator, and it needs well under 4 KB of stack.
 inline void Work(void* context, uint32_t) {
   Call* call = static_cast<Call*>(context);
@@ -409,14 +423,14 @@ inline void Work(void* context, uint32_t) {
     for (;;) {
       if (TryScatter(call)) continue;
       uint32_t block = call->next_gather.load(std::memory_order_acquire);
-      if (!call->stopped.load(std::memory_order_acquire) && block < call->blocks && block < call->b_block.load(std::memory_order_relaxed) + LOOKAHEAD_BLOCKS
-          && (block < RING_SLOTS || ring[block % RING_SLOTS].scattered.load(std::memory_order_acquire) == block - RING_SLOTS + 1)
+      const bool in_reach = block < call->blocks && block < call->b_block.load(std::memory_order_relaxed) + LOOKAHEAD_BLOCKS;
+      const bool slot_free = (block < RING_SLOTS || ring[block % RING_SLOTS].scattered.load(std::memory_order_acquire) == block - RING_SLOTS + 1);
+      if (!call->stopped.load(std::memory_order_acquire) && in_reach && slot_free
           && call->next_gather.compare_exchange_strong(block, block + 1, std::memory_order_acq_rel)) {
         Gather(call, block);
         continue;
       }
-      if (call->b_finished.load(std::memory_order_acquire)
-          && call->next_scatter.load(std::memory_order_acquire) >= std::min((call->stop_items + BLOCK_ITEMS - 1) / BLOCK_ITEMS, call->scatter_limit.load(std::memory_order_acquire))) {
+      if (call->b_finished.load(std::memory_order_acquire) && call->next_scatter.load(std::memory_order_acquire) >= ScatterBlocks(call, call->stop_items)) {
         return;
       }
       _mm_pause();
@@ -535,7 +549,8 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   if (records[1] != 0) return game(Path::VECTOR_NOT_EMPTY);
   void* const texture_object = reinterpret_cast<void**>(Word(cache, 8))[texture];
   // The game's limit: the rows the texture has, at most one per item left.
-  const uint32_t limit = std::min(reinterpret_cast<Height>((*reinterpret_cast<uintptr_t**>(texture_object))[0x68 / 4])(texture_object), total);
+  const auto height = reinterpret_cast<Height>((*reinterpret_cast<uintptr_t**>(texture_object))[0x68 / 4]);
+  const uint32_t limit = std::min(height(texture_object), total);
   if (limit == 0) return game(Path::NO_ROWS);
   if (ring_in_use.exchange(true, std::memory_order_acquire)) return game(Path::RING_BUSY);
   // A call of ours inside a trace window, on the pool's owner thread, leaves a record; on another thread it is counted.
@@ -631,8 +646,11 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       uint32_t& placed_texture = Word(item.animation, 0x14);
       uint32_t& placed_texel = Word(item.animation, 0x18);
       uint32_t texel = placed_texel;
+      // The game converts the texel before it pushes the record (the push may allocate): the same order here.
+      uint32_t word = 0;
       if (placed_frame == frame && placed_texture != ~0u && placed_texture == texture && placed_texel != ~0u) {
         ++fast_items;
+        word = TexelBits(texel);
       } else {
         bool next_row = item.need > row_size - used;
 #if defined(TWATTILA_WORKER_CONTROLS)
@@ -650,11 +668,13 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
           used = 0;
         }
         texel = texels_per_row * row_index + used * 3;
+        word = TexelBits(texel);
         const Record record = {row_index, used, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(item.animation)), item.record_word};
 #if defined(TWATTILA_WORKER_CONTROLS)
         if (controls.own_vector_growth && records[1] >= records[0]) {
           const uint32_t capacity = records[0] * 2 + 1;
-          auto* grown = static_cast<uint8_t*>(VirtualAlloc(nullptr, static_cast<size_t>(capacity) * sizeof(Record), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+          auto* grown = static_cast<uint8_t*>(
+              VirtualAlloc(nullptr, static_cast<size_t>(capacity) * sizeof(Record), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
           std::memcpy(grown, reinterpret_cast<uint8_t*>(records[2]), static_cast<size_t>(records[1]) * sizeof(Record));
           records[0] = capacity;
           records[2] = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(grown));
@@ -662,7 +682,8 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
 #endif
         if (records[1] < records[0]) {
           // The game's push without growth, byte for byte.
-          std::memcpy(reinterpret_cast<uint8_t*>(records[2]) + static_cast<size_t>(records[1]) * sizeof(Record), record.data(), sizeof(Record));
+          std::memcpy(reinterpret_cast<uint8_t*>(records[2]) + static_cast<size_t>(records[1]) * sizeof(Record), record.data(),
+                      sizeof(Record));
           ++records[1];
         } else {
           game_push(records, record.data());
@@ -684,7 +705,6 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
           ordered_from = block;
         }
       }
-      uint32_t word = TexelBits(texel);
 #if defined(TWATTILA_WORKER_CONTROLS)
       if (controls.corrupt_item == first + block_first + i) {
         ++word;
@@ -730,7 +750,8 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
     if (workers != 0) {
       round_blocks = std::min(RING_SLOTS, (std::min(total, std::max(FIRST_ROUND_ITEMS, last_items)) + BLOCK_ITEMS - 1) / BLOCK_ITEMS);
     }
-    for (uint32_t low = 0; low < blocks && !stopped; low += round_blocks, round_blocks = (workers != 0 ? std::min(RING_SLOTS, round_blocks * 2) : 1)) {
+    uint32_t low = 0;
+    while (low < blocks && !stopped) {
       const uint32_t high = std::min(blocks, low + round_blocks);
       ++rounds;
       bool scatter_first = false;
@@ -751,14 +772,17 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
 #endif
         allocate(chosen);
       }
-      if (scatter_first) continue;
-      call.finished_items = finished;
-      const uint32_t scatter_end = (finished + BLOCK_ITEMS - 1) / BLOCK_ITEMS;
-      const uint32_t parallel_end = std::clamp(ordered_from, low, scatter_end);
-      run_phase(Kind::SCATTER, low, parallel_end);
-      for (uint32_t block = parallel_end; block < scatter_end; ++block) {
-        Scatter(&call, block, finished);
+      if (!scatter_first) {
+        call.finished_items = finished;
+        const uint32_t scatter_end = (finished + BLOCK_ITEMS - 1) / BLOCK_ITEMS;
+        const uint32_t parallel_end = std::clamp(ordered_from, low, scatter_end);
+        run_phase(Kind::SCATTER, low, parallel_end);
+        for (uint32_t block = parallel_end; block < scatter_end; ++block) {
+          Scatter(&call, block, finished);
+        }
       }
+      low += round_blocks;
+      round_blocks = (workers != 0 ? std::min(RING_SLOTS, round_blocks * 2) : 1);
     }
     call.claim.store(pack_claim(Kind::DONE, 0, 0, 0), std::memory_order_release);
   };
@@ -804,8 +828,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
     call.stopped.store(true, std::memory_order_release);
     call.b_finished.store(true, std::memory_order_release);
     for (;;) {
-      const uint32_t scatter_blocks = std::min((finished + BLOCK_ITEMS - 1) / BLOCK_ITEMS, call.scatter_limit.load(std::memory_order_acquire));
-      if (call.parallel_done.load(std::memory_order_acquire) >= scatter_blocks) break;
+      if (call.parallel_done.load(std::memory_order_acquire) >= ScatterBlocks(&call, finished)) break;
       if (!TryScatter(&call)) {
         ++waits;
         _mm_pause();
@@ -902,7 +925,7 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   *row = first;
   records[1] = 0;
   for (uint32_t i = 0; i < std::min(our_records + 1, our_capacity); ++i) {
-    std::memset(reinterpret_cast<uint8_t*>(our_data) + static_cast<size_t>(i) * sizeof(Record), 0xFF, sizeof(Record));
+    std::memset(reinterpret_cast<uint8_t*>(our_data) + static_cast<size_t>(i) * sizeof(Record), SENTINEL_BYTE, sizeof(Record));
   }
   const uint32_t result = game_fill(cache, device, force, list, texture, row, end, out);
 
@@ -930,16 +953,18 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   }
   // Only while the game's vector is still our buffer (its growth frees it, and a large block may be unmapped).
   if (what.empty() && our_records < our_capacity) {
-    differ("record after the last", 0, 0xFFFFFFFFu, game_records[our_records * 4]);
+    differ("record after the last", 0, SENTINEL_WORD, game_records[our_records * 4]);
   }
   for (uint32_t i = 0; i < finished && what.empty(); ++i) {
     uint8_t* instance = reinterpret_cast<uint8_t*>(call.instances[i]);
     differ("instance texture", first + i, check.captures[i].our_texture, Word(instance, 0x5C));
     differ("instance texel", first + i, check.captures[i].our_texel, Word(instance, 0xA4));
   }
-  for (const Placement& placement : check.placements) {
+  for (size_t index = 0; index < check.placements.size(); ++index) {
+    const Placement& placement = check.placements[index];
     for (uint32_t word = 0; word < 3; ++word) {
-      differ("placement", word, placement.ours[word], Word(placement.animation, 0x10 + word * 4));
+      // The index counts placement words (placement * 3 + word).
+      differ("placement", static_cast<uint32_t>(index) * 3 + word, placement.ours[word], Word(placement.animation, 0x10 + word * 4));
     }
   }
   const uint32_t rise = *out - entry_out;
