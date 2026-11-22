@@ -8172,8 +8172,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         gtv_rcrace_* folders "removed" (to ask: test teardown or a manual delete). Lab v1.1 CLOSED (incl. the held
         suites). -> gtl_ SWAP-OK-TO-TEST + SWAP sent (staged jobs suite, then swap 6 files, then all 4 suites live;
         lab_gtl_stage stays); gtv_ re-checks S4 after.
+        gpr_ GTB_ GRS1 RE-CHECK = OK 07:3x (plan_1117/designs/gpr_gtb_grs1_handback.md; gpr_review.md "## gtb_ grs1
+        re-check"): NUL check inside the strict-decode try, exact FAULT line; probe gpr_grs1_probe.py without the
+        hook: UTF-16LE / BE no BOM, UTF-32 BOM, BOM-less mode.txt all not killed; with the hook still killed (124)
+        until gtp_'s read_text() NUL check (also covers UTF-32); no valid file we write can hold a NUL (real
+        gates.tsv 1,616 B / mode.txt 7 B plain ASCII). NIT grs1b: the test infers the expected reason from the raw
+        bytes -> put it in each case's tuple; optional "UTF-16 without a BOM?" hint in the line. -> gtb_ grs1b
+        STARTED.
         Agents (8): h0i_ (H0 analysis + fake to testbin + R1), gtl_ (staged jobs suite + swap + 4 live suites), gtp_
-        (O2 order + corrupt files + nits + gated_build proposal), gpr_ (gtb_ grs1 re-check), ebr_ (t4i_ r23
+        (O2 order + corrupt files + nits + gated_build proposal), gtb_ (grs1b test nit), ebr_ (t4i_ r23
         re-check), c3i_
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
