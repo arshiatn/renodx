@@ -7187,9 +7187,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         hook_fn with watch's own copies; nits (_resume failure, kill-on-close clear failure, stop BusyState excludes all
         testbin, wait 0 / run 0 rows, --deadline-min in a compound command, backstop + 120 s) -> gtb_ STARTED (keep
         _own_cause / _own_committed_gb as the W2 fallback). gpr_ next: gti_ F1 re-check.
-        Agents (10): h0i_ (F1), c3i_ (B1.6), t4i_ (T6 four-key flag), gtw_ (re-check 7), gbc_ (B1 re-check, then
-        RS-M1), gtl_ (S3r M1r / M2r), gtv_ (S2r), gtb_ (W1 / W2), gpr_ (gti_ F1 re-check). Idle: bd1r_, lga_, lgf2_,
-        c33i_, upt_, upr_ (waits h0i_), gpp_, ebr_, gtq_, gti_, grs_, gtk_, gtp_ (waits gtw_).
+        t4i_ r19 DONE 04:3x (render_mt/reports/t4i_r19_handback.md; backups scratchpad\t4i_bak\r19): leg dry run reads
+        ATN's heapfix.ini read-only (heapfix's own parse rules) + the four <name>_off.txt files: PROBLEM when a key is
+        not 1, missing, or switched off, naming the compares it would skew; run_all green (leg 158 / 158). -> ebr_ r19
+        RE-CHECK STARTED.
+        Agents (10): h0i_ (F1), c3i_ (B1.6), ebr_ (r19 re-check), gtw_ (re-check 7), gbc_ (B1 re-check, then RS-M1),
+        gtl_ (S3r M1r / M2r), gtv_ (S2r), gtb_ (W1 / W2), gpr_ (gti_ F1 re-check). Idle: bd1r_, lga_, lgf2_, c33i_,
+        upt_, upr_ (waits h0i_), gpp_, t4i_, gtq_, gti_, grs_, gtk_, gtp_ (waits gtw_).
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
