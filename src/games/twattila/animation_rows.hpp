@@ -250,7 +250,9 @@ inline void Scatter(Call* call, uint32_t block) {
   const uint32_t first = block * BLOCK_ITEMS;
   const uint32_t count = std::min(BLOCK_ITEMS, call->finished_items - first);
 #if defined(TWATTILA_WORKER_CONTROLS)
-  if (controls.scatter_delay_block == block) Sleep(controls.scatter_delay_ms);
+  if (controls.scatter_delay_block == block) {
+    Sleep(controls.scatter_delay_ms);
+  }
 #endif
   for (uint32_t i = 0; i < count; ++i) {
     if (i + 16 < count) {
@@ -436,8 +438,12 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       }
       uint32_t word = TexelBits(texel);
 #if defined(TWATTILA_WORKER_CONTROLS)
-      if (controls.corrupt_item == first + block_first + i) ++word;
-      if (controls.convert_in_scatter) word = texel;
+      if (controls.corrupt_item == first + block_first + i) {
+        ++word;
+      }
+      if (controls.convert_in_scatter) {
+        word = texel;
+      }
 #endif
       slot.texels[i] = word;
     }
@@ -484,11 +490,15 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
 #endif
       run_phase(Kind::GATHER, low, high);
       call.finished_items = std::min(total, high * BLOCK_ITEMS);
-      if (scatter_first) run_phase(Kind::SCATTER, low, high);
+      if (scatter_first) {
+        run_phase(Kind::SCATTER, low, high);
+      }
       for (uint32_t block = low; block < high && !stopped; ++block) {
         uint32_t chosen = block;
 #if defined(TWATTILA_WORKER_CONTROLS)
-        if (controls.swap_allocate_blocks && (block ^ 1) >= low && (block ^ 1) < high) chosen = block ^ 1;
+        if (controls.swap_allocate_blocks && (block ^ 1) >= low && (block ^ 1) < high) {
+          chosen = block ^ 1;
+        }
 #endif
         allocate(chosen);
       }
@@ -541,7 +551,9 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   for (uint32_t step = 0; step < finished; ++step) {
     uint32_t i = finished - 1 - step;
 #if defined(TWATTILA_WORKER_CONTROLS)
-    if (controls.forward_restore) i = step;
+    if (controls.forward_restore) {
+      i = step;
+    }
 #endif
     uint8_t* instance = reinterpret_cast<uint8_t*>(call.instances[i]);
     Word(instance, 0x5C) = check.captures[i].old_texture;
