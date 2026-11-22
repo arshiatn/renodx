@@ -648,6 +648,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - g04_ item 4 trace (MI8): Shogun 2 smoke battle (vfxoverlay00 draws' VS / IA / st ... | ?
 - g04_ item 7 (unseen-lights row) needs a helper flag (GPU plan's files). | ?
 - BEFORE THE RESTART: copy the coord scratchpad (incl. t4i_bak, r3_08NN patches, h ... | ?
+- RELEASE GATE: NO Shogun 2 player release until the per-map fit lands (rvd_ R-MI3 ... | ?
+- g04_ per-map fit conditions (rvd_): replace tonemap.hlsli:417's slope / 0.88 con ... | ?
+- g04_ MINORs: R-MI1 check + report Rome Remastered's 2500 / 275 highlights (copy ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12423,6 +12426,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         analyze 144). Backups *.pre_gates in the coord scratchpad t4i_bak\refresh2. ebr_ re-check sent ("ebr_ gates recheck").
         - [ ] BEFORE THE RESTART: copy the coord scratchpad (incl. t4i_bak, r3_08NN patches, helpers) to
         round_notes\handoff_plan\scratchpad_copy_1122 (a reboot can clear it).
+        rvd_ G04 RE-CHECK 22:4x: GO (reviews/rvd_g04_recheck_handback.md, end of rvd_g04_review.md): merge ho_g04 whole
+        after ho_g19 (3fcdaa896 + b8cb841d1) + ho_g21 (7d31e5fef), then the full Shogun 2 + Rome Remastered build. MI1-MI9,
+        N1-N4 done; fxaa proof sound; ATN 16 fit sound; coord's 20.04 % pick: no reason against. 0 / 0 / 3 MINOR / 4 NIT.
+        - [ ] RELEASE GATE: NO Shogun 2 player release until the per-map fit lands (rvd_ R-MI3: bos_japan B / C shadows up to
+        2.2 stops under SDR with the shipped battle fit; B 0.05-1 nits x0.39..x0.51, C x0.22..x0.37).
+        - [ ] g04_ per-map fit conditions (rvd_): replace tonemap.hlsli:417's slope / 0.88 contrast scale (don't stack); each
+        node passes the recipe alone (explore2 both ways, Contrast alone probably can't); lerp exact only at the 4 nodes ->
+        check the game switches / blends whole tuples + report one midpoint; test the shipped path per tuple; clamp scaled
+        knobs to the rows' ranges; tooltip line (sliders follow each map's curve); lands after psycho35.hlsli's overload.
+        - [ ] g04_ MINORs: R-MI1 check + report Rome Remastered's 2500 / 275 highlights (copy tests.cpp:561's loop); R-MI2 look
+        number Rome 15-100 nits x1.015..x1.412 vs SDR (Musa's x0.922..x1.380) for ATN; NITs tests.cpp:546 0.205 -> 0.2005 +
+        name the exception in the brief / pilot, fxaa output to a file; MI7 Rome's fifth rows-default loop copy -> DRY box.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
