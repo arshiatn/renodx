@@ -642,6 +642,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gbf_ GPU jobs (after the review, one at a time): (1) ReSTIR scorer 1 / 4 / 16 ra ... | ?
 - F5 real motion into IN_MV: the add-on writes this frame's motion before the trac ... | ?
 - ATN (later): G1 histories in frames, not seconds; the RR 1-ray numbers; the r3 o ... | ?
+- gtp_ round 24 (next wave): .inc in CODE; VCToolsInstallDir check + toolset on th ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12374,6 +12375,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] F5 real motion into IN_MV: the add-on writes this frame's motion before the trace requests (anti_aliasing.hpp
         writes bridge.motion at the AA pass, only with an upscaler) -> G18 / G20 next wave.
         - [ ] ATN (later): G1 histories in frames, not seconds; the RR 1-ray numbers; the r3 offset.
+        gtp_ ROUND 23 (plan_1117/gtp_round23_handback.md): stage23 gate_hook.py sha256 a474444180f7 / run_tests.py
+        b551abe1811d; live = bak28 shadow, no hook installed. Fixes gtw-R22-1 HIGH (expansion caps, 200 KB word no longer
+        25-58 MB), gpr-R22-1..4, gtw-R22-2..6; new OPEN_NAME loop-variable rule; replay window bak28 1452 vs r23 1393 refused
+        (files 277 -> 139, shell 745 -> 815), slowest call 0.047 s. gtw_ + gpr_ re-checks sent 22:3x.
+        Coord's picks (gtp_'s questions): `shell_heredoc` row stays ABSENT / off (it would refuse ~660 normal agent edits);
+        `.inc` goes into CODE in round 24.
+        - [ ] gtp_ round 24 (next wave): .inc in CODE; VCToolsInstallDir check + toolset on the build exit line (rvc_ G17).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
