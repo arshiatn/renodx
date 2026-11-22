@@ -478,6 +478,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ (round 14, STARTED 09:4x): Section 8 text fixes (a)-(d) + kind() leading-re ... | ?
 - bridge owner (next bridge change): move the FG backend-name table to dlaa_bridge ... | ?
 - gtb_ (low, batched): busy_refresh `-1 <= age` (a read within 50 ms of a write is ... | ?
+- gti_ (low, batched): count r1b's skipped checks from the block instead of a type ... | ?
+- ATN (morning report): ruse_bridge.exe / ruse_replay.exe are counted by nothing i ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -9323,8 +9325,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         then steps 3-6 by the section 4 order (Opus High implementer + Opus xHigh review), helper suites + H0 need
         ATN's harness rule.
         H0 START still waits 09:57: c3i_'s gated builds (4 targets) running.
-        Agents (6): gtw_ (lga_ release_check re-check), gtp_ (round 14), gpr_ (gti_ r1a / r1b check, no process tests
-        during H0), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1 + F2 logging, gated builds), gtv_ (gtl_ lows check)
+        gpr_ GTI_ CHECK = OK, LOWS ONLY 09:5x (plan_1117/designs/gpr_gti_check_handback.md; gpr_review.md "## gti_ lows
+        (r1a / r1b, pair cases, new game names) check"; code reading + a pure-Python regex check + exe listing, no
+        tests / PowerShell started): (1) r1b skip text right (only the guarded exclude_pids block can skip, +2 =
+        its 2 Report checks; exit code follows the checks that ran); low: the 2 is typed by hand. (2) pair cases
+        test the real exclude logic (real BusyState builds `-ExcludePids "<pid>:<start>"`, real ns_busy parsing +
+        Get-Kind pair check; only names + process source swapped, copy fails loudly; checked as differences;
+        malformed pair -> fault = busy); low gap: no case for a named pid whose start time can't be read. (3) new
+        names match only the real exes (EoCApp D1 + D2 Classic / DefEd, ExpeditionsRome(.exe / -Win64-Shipping),
+        RUSE.exe; not ruse_bridge / ruse_replay / DivinityEngine2 / CrashReportClient / bg3); lows:
+        `ExpeditionsRome.*` could match a future expeditionsrome_* tool (`ExpeditionsRome(-Win64-Shipping)?` is
+        exact); games are judged before -Exclude (by design).
+        - [ ] gti_ (low, batched): count r1b's skipped checks from the block instead of a typed 2; a pair case with
+            StartTime = $null (named pid, unreadable start = unsure, then gone); ns_busy `ExpeditionsRome(-Win64-
+            Shipping)?` instead of `ExpeditionsRome.*` (gpr_ 09:5x). After H0 (ns_busy is in use).
+        - [ ] ATN (morning report): ruse_bridge.exe / ruse_replay.exe are counted by nothing in ns_busy; if they do
+            GPU work like map_replay_*, add a ns_busy.tsv row? (gpr_ 09:5x)
+        Agents (5): gtw_ (lga_ release_check re-check), gtp_ (round 14), ebr_ (t4i_ option (a) re-check), c3i_ (B1 F1
+        + F2 logging, gated builds), gtv_ (gtl_ lows check)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
