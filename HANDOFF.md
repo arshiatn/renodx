@@ -453,7 +453,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: lab_gtl_stage (tools\tw\lab_gtl_stage, gtl_'s staged copy) may be deleted a ... | ?
 - c3i_ (on rmt_b1rt, with the real-routine tests): b13r_'s N4 braces at effect_upd ... | ?
 - gtb_ (optional, batched): hg2 name the unreadable file in watch's stderr / facts ... | ?
-- ATN (morning report): test fixtures remove the sandbox world / testbin folders t ... | ?
 - helper / bridge owner (grs_): a cold shader cache after an update may miss the f ... | ?
 - PT GI / ReSTIR owner: ATN's paths (flags 36913) noise floor 18-20 % from 4 to 16 ... | ?
 - reflection owner: r3_refl boxes +0.45 % / edge +3.1 % bias, already before H0 (h ... | ?
@@ -472,7 +471,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (morning report): add a B1L1-only volley pair to the end batch? ~7 min (L1-o ... | ?
 - T5 build step: write the real manifest.json with these rows / row_values / env ( ... | ?
 - ATN (morning report): with the load refresh, the gate hook's fix-now rule can fi ... | ?
-- ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its ow ... | ?
 - bridge owner (next bridge change): move the FG backend-name table to dlaa_bridge ... | ?
 - gtb_ (low, batched): busy_refresh `-1 <= age` (a read within 50 ms of a write is ... | ?
 - gti_ (low, batched): count r1b's skipped checks from the block instead of a type ... | ?
@@ -480,10 +478,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtl_ (low, after H0 - the fixture suite starts lab jobs): make the gate_s check ... | ?
 - x87c A/B owner (after the end batch): run tools\tw\testbin\heapfix_hf\xw\x87fix_ ... | ?
 - gtp_ (low, in round 15 = R14-1): a leading `2>&1 cmd` still splits at & into a l ... | ?
-- ATN (morning report, info + yes / no): the gate hook suite's `fix` group (155 te ... | ?
-- ATN (morning report): safety stop 10:10 - b13r_'s mutant driver scratchpad\b13r_ ... | ?
 - end batch leg 1 analysis: foreign hits outside trace windows in normal play? non ... | ?
-- ATN (morning report): C: has ~83-88 GB free; end batch leg 3 needs ~102 GB (WPR ... | ?
 - t4i_: CHK-W3 scan-assert case in test_make (kills S1 + S6b), N-a skip t when a r ... | ?
 - gtp_ round 16: R15-1 (cmd /c|/k + -Command take only the quoted word; web case ` ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
@@ -8278,7 +8273,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         2 arms and played.json has no config hash -> A_s2000 + B_s2002 could form a mixed reference. COORDINATOR
         DECISION: seed_runs takes ONE arm only now (the config hash stays the v1.2 box). Nits: require the seed echo
         (no answer.get default); test_iq_seed_spacing restore via addCleanup. -> gtl_ STARTED; gtv_ re-checks.
-        - [ ] ATN (morning report): test fixtures remove the sandbox world / testbin folders they made themselves
+        - [x] ATN (morning report): test fixtures remove the sandbox world / testbin folders they made themselves
+            ANSWERED 10:4x YES (OK for tests' own sandboxes).
             (shutil.rmtree in end_world / end_suite; gtv_'s race probe in its own world) - OK, or forbid?
         gtl_ S5 DONE 07:5x (plan_1117/gtl_s5_handback.md; backups scratchpad\gtl_backup_s5; logs gtl_runs8): seed_runs
         refused unless exactly one arm (reason in the line; schema + protocol proposal say so); dump() requires the
@@ -8984,7 +8980,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         idle loop now). Checked: clang-cl /Zs syntax-only exit 0 (scratchpad\ff_s12\syntax.ps1); no tests run
         (helper suites start renodx-tw-dlaa64 = H0 rule). Build = dlaa_helper\build.ps1 <new folder>, no add-on
         rebuild. -> ffr_ RE-CHECKS v3; fcr_ (new, Opus xHigh) REVIEWS THE PATCH read only.
-        - [ ] ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its own worktree) and asked
+        - [x] ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its own worktree) and asked
+            ANSWERED 10:4x YES: coordinator applied patch v3 in ff_s12 = 3c77a0c86 (main.cpp + rt_d3d12.hpp, applies
+            clean; no later helper changes on atn-mods); build + helper tests after H0, then merge gate.
             me to apply its steps 1-2 patch; I did not. May I (or a new implementer started in ff_s12) apply +
             build it? REVIEWED: fcr_ OK on v3 (plan_1117/designs/grs_ff_s12_steps12_v3.patch, 09:5x) (grs_ 09:2x).
         - [x] gpr_ (with re-check 13, DONE 09:3x: no fix - 1-2 per main kind, limits unchanged, dropping them flips 2
@@ -9455,7 +9453,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         for v in PS_VALUE) after the code-flag test, + pwsh -w. Nits: R14-N1 bash clusters with s (`bash -es a b
         <<EOF`, `bash -xs -- a`) pass; R14-N2 (older) `bun --cwd app run - <<EOF`, `deno run --config x` / `-c x -
         <<EOF` pass. -> gtp_ ROUND 15 (R14-1 + R14-2 + N1 + N2).
-        - [ ] ATN (morning report, info + yes / no): the gate hook suite's `fix` group (155 tests) runs a sandbox
+        - [x] ATN (morning report, info + yes / no): the gate hook suite's `fix` group (155 tests) runs a sandbox
+            ANSWERED 10:4x YES (OK inside test sandboxes; gtw_ may run the fix group).
             copy of gate_override.ps1 inside its own sandbox (writes only the sandbox's override.json +
             gates_log.tsv); gtw_ skips it under "no override script in any form". OK for test sandboxes? (gtw_ 10:1x)
         lga_ RC-1 + RC-N1..N5 DONE 10:1x (plan_1117/lga_rc1_handback.md; backup h0\release_check.ps1.bak_rc1; test
@@ -9519,7 +9518,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         action done for it; a new script also needs ATN's rule). Path stopped. COORDINATOR: c3i_ (implementer)
         adds 26h cases for foreign hits alone + capacity watch + Detach leftovers as ordinary tests in its own
         suite, run with its usual commands after H0; the merge gate builds run after H0.
-        - [ ] ATN (morning report): safety stop 10:10 - b13r_'s mutant driver scratchpad\b13r_b1log_runs.ps1
+        - [x] ATN (morning report): safety stop 10:10 - b13r_'s mutant driver scratchpad\b13r_b1log_runs.ps1
+            ANSWERED 10:4x: skip it (c3i_'s own suite cases cover the same mutants).
             denied twice ([Destructive or Unwanted Actions]); not run by anyone since. Want it run (your go for one
             unchanged retry), or are c3i_'s own suite cases enough? (b13r_ 10:2x)
         COORDINATOR on S1: (b) for now - keep foreign hits a fault + the :394 comment + the 26h case; the first
@@ -9548,7 +9548,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         DISK (not from option (a)): C: 88 GB free at ebr_'s check, 83 GB at 10:27 (H0 writing); leg 3 needs 102.3
         GB at its own dry run (old + new gate), ETLs stay on C: -> leg 3 refused unless space is freed; whole batch
         ~151 GB from the start if nothing moves off C:.
-        - [ ] ATN (morning report): C: has ~83-88 GB free; end batch leg 3 needs ~102 GB (WPR ETLs on C:), whole
+        - [x] ATN (morning report): C: has ~83-88 GB free; end batch leg 3 needs ~102 GB (WPR ETLs on C:), whole
+            ANSWERED 10:4x "good idea": dsk_ (Low, read-only) lists candidates -> render_mt/reports/
+            dsk_cleanup_candidates_1122.md; ATN says yes per item; nothing deleted before that.
             batch ~151 GB. Free space on C: yourself, or OK a list of my cleanup candidates (closed-batch shots,
             old WPRs, testbin DLL copies; never reference runs / Nsight traces)? (ebr_ 10:27)
         COORDINATOR: G1 + G2 + N-a + N-b -> t4i_ after its probes job (same files); ebr_ re-checks.
@@ -9631,9 +9633,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORDINATOR: R15-1 waits for gtw_'s round 15 re-check (gtw_ told, web side), then gtp_ ROUND 16 with both.
         - [ ] gtp_ round 16: R15-1 (cmd /c|/k + -Command take only the quoted word; web case `cmd /c "curl ..." 2>&1
             | tail` passes today) + gtw_'s round 15 items; re-seed + corpus; gtw_ + gpr_ re-check (gpr_ 10:36).
-        Agents (2): gtw_ (round 15 re-check incl. R15-1 web side, then lga_ RC-2 re-check), t4i_ (probes for the 3 new
-        B1 lines, then ebr_'s G1 / G2 / N-a / N-b); c3i_ waits for H0's end (then suites + builds -> rmt_b1log merge
-        gate); H0 run (background, ~11:30)
+        ATN 10:4x (awake, sick, back to bed soon) ANSWERS: (1) rec_verify.sh retry = yes, asked what he must do ->
+        exact allow rule given (he adds it); (2) b13r_ driver = skip (asked why double tests: the reviewer's own mutant
+        run was an independent check of the implementer's claim; c3i_ now runs the same mutants itself + b13r_
+        verified by reading -> skipping it loses nothing); (3) ff_s12 patch = yes (applied 3c77a0c86); (4) cleanup
+        list = yes (dsk_); (5) test sandboxes = yes; (6) release_check run rule: ATN adds it (exact rules given).
+        ATN: move work sooner where it unblocks other work -> lab rules (gpu_lab.ps1 -Job / -Trace / -Stop, Q1)
+        offered now so the first GPU session (S3c) can run after rec_verify.
+        Agents (3): gtw_ (round 15 re-check incl. R15-1 web side, then lga_ RC-2 re-check), t4i_ (probes for the 3 new
+        B1 lines, then ebr_'s G1 / G2 / N-a / N-b), dsk_ (C: cleanup list, read-only); c3i_ waits for H0's end (then
+        suites + builds -> rmt_b1log merge gate); ff_s12 build after H0; H0 run (background, ~11:30)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
