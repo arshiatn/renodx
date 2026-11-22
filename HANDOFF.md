@@ -12481,6 +12481,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         enforce), .inc (+ .s, .glsl). gtw_ slip 22:36: a stray `diff >` file in tools\tw\ (its own output), deleted at once.
         - [ ] gtp_ round 24 also: gtw_'s R23-2 speed fix (blocks the mirror suite) + R23-1 OPEN_NAME fixes + .glsl; the
         files-deny message hint.
+        ebr_ GATES RE-CHECK 22:5x: GO for T6 (render_mt/reports/ebr_gates_recheck_handback.md): G1 / G2 / NITs right, all 144
+        test_analyze checks really run (call tracer: 141 sites + 3 in a 2-pass loop; 17 unrun = missing-gate fallbacks);
+        own re-run on a copy: lib 621, check 181, make 117, analyze 144. rmt_b3t now a2b100c6a (+1 animation_rows.inc test
+        commit); every new row's file:line still holds. 3 optional NITs -> t4i_ (sent, "t4i_ nits"): r2_left_alone text;
+        draw_recording_sites.hpp:1902 partial line needs code_rows "Threaded Draw Recording" {parts: [C]} (else a resumable
+        stop in every start); tests for the partner-not-in-leg NOTE + the L_end-30 bound.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
