@@ -7721,12 +7721,37 @@ heading text are in HANDOFF_ARCHIVE.md)
         recording_header() shared with kind_scene. N2 format-in-key assert, N3 re.fullmatch seed_\d+, N4 mask
         without file refused. -> gtv_ RE-CHECK STARTED (code now, unit only; jobs / keeper / ps1 + gtv_'s held
         lab tests + race probe after H0; gtl_ re-runs its four suites after H0 too).
-        Agents (5): gtw_ (gtp_ re-check 8), gtv_ (gtl_ fixes re-check), gtb_ (selftest flake S1), ebr_ (t4i_ r21
-        re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_,
-        h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r22 after c3i_), gtq_ (box after gtv_'s re-check),
-        gbc_, gpr_ (re-checks gtb_ S1), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks
-        c3i_), gtl_ (after H0: its 4 suites). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper /
-        fg / map_replay-named process until H0 ends.
+        gtw_ S1c RE-CHECK 8 = FIX 06:1x (plan_1117/gtw_s1c_recheck8_handback.md; gtw_s1c_review.md "## S1c re-check
+        8" line 634; probes on sandbox copies only, suite 541 / 541, real folder: only logs / markers / tool_times
+        changed, no override.json, H0 hold kept). gtp_'s K1-K3 / R9a + gtb_'s L1 OK. MUST O1: the override proposal
+        gate_override.proposed.ps1 is a RUNNABLE copy that writes the real $PSScriptRoot\override.json (lifts every
+        gate up to 24 h); OVERRIDE_RUN refuses only the `& "..."` form, not `powershell -File
+        ...\gate_override.proposed.ps1 -Mode off ...`; INSTALL section 7 uses Copy-Item (the runnable copy stays)
+        -> OVERRIDE_RUN to `gate_override[\w.-]*\.ps1`, Move-Item for both proposals in section 7, rename the
+        proposal NOW to gate_override.ps1.proposed. Shoulds: G1 deny() logs before it prints (a gates_log.tsv held
+        read-share-only drops every deny) -> print first, log in a try; W1 nested web.archive.org passes any URL as
+        a paper; W2 licence lane matches any last segment starting license / copying / notice (tree views,
+        codeload / archive / zipball / tarball, licensed_shader.hlsl) -> file views only, full-name match; W3 an
+        empty heredoc hides the rest of the command (`cat > /dev/null <<'EOF'\nEOF\ncurl https://evil` not
+        refused; gtw_'s regex fix tested); W4 `git push origin $b` refused (check only the remote / URL position);
+        W5 URL code in a `python - <<EOF` body not checked; W6 npm ci / pip wheel / pip install -U pip pass; W7
+        browser_out set by any external URL in a response, never clears, 3 tools only (low: 0 browser calls); P1
+        VERIFY exemption misses `cd .../gates/tests && python -I run_tests.py` (would-deny row 06:00:05) -> test
+        VERIFY against the kind key too; P2 gated_build keys keep redirects / log paths (52 price rows, 36 corpus
+        keys); I1 INSTALL item 12's "probe session with price_probe on" does nothing (nothing reads price_probe;
+        C.4 P-3 needs additionalContext) -> name the real P-2 / P-4 calls or say it does nothing yet. 12 nits N1-N12.
+        Latency OK: 284 KB command 0.262 s (design 0.3 s met), normal call +0.014 s; optional: price_rows via
+        str.find (7-16 ms -> 0.2 ms); a bytecode-keeping loader = INSTALL change (ATN's). Proposals: web_allow 132
+        rows safe to copy (optional rows MicrosoftDocs/win32 + sdk-api, N10); override safe to copy, NOT to leave
+        (O1). With web_allow + price on, 66 / 15,119 corpus commands refused (37 P2, 22 test scripts, 3 P1, 2 W3, 2
+        N10). -> gtp_ FIXES STARTED (O1 first, then G1 / W1-W7 / P1 / P2 / I1 + nits), then gtw_ re-check 9. ATN's
+        install item 12 stays waiting for gtw_'s OK.
+        Agents (6): gtp_ (gtw_ re-check 8 fixes, O1 first), gtv_ (gtl_ fixes re-check), gtb_ (selftest flake S1),
+        ebr_ (t4i_ r21 re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_,
+        upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r22 after c3i_), gtq_ (box after gtv_'s
+        re-check), gbc_, gpr_ (re-checks gtb_ S1), gti_ (after H0: R1), grs_, gtk_, gtw_ (re-check 9 after gtp_),
+        b13r_ (re-checks c3i_), gtl_ (after H0: its 4 suites). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no
+        harness / helper / fg / map_replay-named process until H0 ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
