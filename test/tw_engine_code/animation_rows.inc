@@ -346,6 +346,9 @@ struct ArPaths {
   uint32_t rounds = 0;
   uint32_t workers = 0;
   bool ordered = false;
+  bool streaming = false;
+  uint32_t gathered_items = 0;   // what phase A read in the call (S-1 / S-2 bounds)
+  uint32_t gathered_blocks = 0;
 };
 
 struct ArResult {
@@ -614,6 +617,9 @@ std::string ArCompare(ArContext* context, uint8_t* game, const void* game_functi
   b.paths.rounds = ar_module::last_call.rounds;
   b.paths.workers = ar_module::last_call.workers;
   b.paths.ordered = ar_module::last_call.ordered;
+  b.paths.streaming = ar_module::last_call.streaming;
+  b.paths.gathered_items = ar_module::last_call.gathered_items;
+  b.paths.gathered_blocks = ar_module::last_call.gathered_blocks;
 #endif
   ++ar_stats.runs;
   for (size_t path = 0; path < b.paths.taken.size(); ++path) ar_stats.paths[path] += b.paths.taken[path];
@@ -881,11 +887,21 @@ int RunAnimationRowsExactFor(const TestBuild& build, uint8_t* game, uint8_t* pat
     }
     return calls;
   };
+  // Makes a random call one that cannot fault and that no other thread's call of the same copy can change: no null item, a texture and an end the world holds, the tweak and the
+  // rounding as set. (Where the game's own code reads garbage it can read what another thread's call is changing: the faults are 23o's.)
+  const auto sanitize = [](ArSpec* spec, ArCall* call) {
+    spec->null_instance_at = spec->null_animation_at = ~0u;
+    call->tweak = false;
+    call->rounding = 0;
+    call->check_sentinel = true;
+    call->texture %= std::max<uint32_t>(1, spec->textures);
+    call->end = std::min(call->end, spec->items);
+  };
   // A line of what the paths counters say, for a case that wants to show it ran the real thing.
   const auto path_line = [&](const ArStats& before) {
     std::string line;
 #if defined(TWATTILA_WORKER_CONTROLS)
-    static constexpr std::array<const char*, 11> NAMES = {"ours", "off", "forced", "row at end", "few items", "end past list", "texture range", "vector not empty", "no rows", "ring busy", "bad item"};
+    static constexpr std::array<const char*, 12> NAMES = {"ours", "off", "forced", "row at end", "few items", "end past list", "texture range", "vector not empty", "no rows", "ring busy", "bad item", "check memory"};
     for (size_t path = 0; path < NAMES.size(); ++path) {
       if (const uint64_t count = ar_stats.paths[path] - before.paths[path]; count != 0) line += std::format("{}{} {}", line.empty() ? "" : ", ", NAMES[path], count);
     }
@@ -1522,15 +1538,8 @@ int RunAnimationRowsExactFor(const TestBuild& build, uint8_t* game, uint8_t* pat
         Random thread_random = {.state = 0xB3C0000ull + static_cast<uint64_t>(worker) * 0x9E3779B97F4Aull};
         while (!stop.load()) {
           ArSpec spec = ArRandomSpec(&thread_random, 6000);
-          // No faulting calls here (a null item, a texture or an end past what the world holds): where the game's own code reads garbage it can read what another thread's call of the
-          // same copy is changing, and the faults are 23o's.
-          spec.null_instance_at = spec.null_animation_at = ~0u;
           ArCall call = ArRandomCall(spec, &thread_random);
-          call.tweak = false;
-          call.rounding = 0;
-          call.check_sentinel = true;
-          call.texture %= std::max<uint32_t>(1, spec.textures);
-          call.end = std::min(call.end, spec.items);
+          sanitize(&spec, &call);
           if (!ArBuild(own.get(), spec)) continue;
           const uint8_t* const game_function = (call.update ? game + ANIMATION_UPDATE_RVA : game_fill);
           const uint8_t* const patched_function = (call.update ? patched + ANIMATION_UPDATE_RVA : stub);
@@ -1578,6 +1587,385 @@ int RunAnimationRowsExactFor(const TestBuild& build, uint8_t* game, uint8_t* pat
   std::printf("23m. to 23s. (the fallbacks' paths, the controls, Check, the faults through ours and the switch loop need the real Dispatch: build with TWATTILA_WORKER_CONTROLS) skipped\n");
 #endif
 
+
+#if defined(TWATTILA_WORKER_CONTROLS)
+  // ==== S5: the schedules (streaming and bulk), the ring, the pool's limits, the stalls and the re-entry. The cases run under the schedule of this pass (`streaming`). ====
+
+  // Ends the process when a case hangs (a test that waits for ever blocks the whole suite): after `seconds` it runs `release` (a test switch that may be what hangs the call), and when
+  // the case is not done after as long again, or at once when there is no release, it says so and ends the process with 3.
+  struct Watchdog {
+    std::atomic<bool> done = false;
+    std::thread thread;
+    Watchdog(const char* name, uint32_t seconds, void (*release)() = nullptr)
+        : thread([this, name, seconds, release] {
+            const auto waited = [&] {
+              for (uint32_t tenth = 0; tenth < seconds * 10 && !done.load(); ++tenth) Sleep(100);
+              return done.load();
+            };
+            if (waited()) return;
+            if (release != nullptr) {
+              std::printf("   %s: not done after %u s: the test switch that may hang it is released\n", name, seconds);
+              release();
+              if (waited()) return;
+            }
+            std::printf("   %s: HUNG for %u s: ending the process\n", name, seconds * (release != nullptr ? 2 : 1));
+            std::fflush(stdout);
+            std::_Exit(3);
+          }) {}
+    Watchdog(const Watchdog&) = delete;
+    Watchdog& operator=(const Watchdog&) = delete;
+    ~Watchdog() {
+      done = true;
+      thread.join();
+    }
+  };
+  namespace ar_api = twattila::animation_rows;
+  constexpr uint32_t ROUND_CAP_ITEMS = ar_api::RING_SLOTS * ar_api::BLOCK_ITEMS;  // bulk's rounds are at most 64 blocks
+  const auto round_up_blocks = [](uint32_t items) { return (items + ar_api::BLOCK_ITEMS - 1) / ar_api::BLOCK_ITEMS * ar_api::BLOCK_ITEMS; };
+  // A world every S5 case can use: no early stop, so every item is finished.
+  const auto plain_world = [&](uint64_t seed, uint32_t items, uint32_t duplicate_percent) {
+    ArSpec spec = {.seed = seed, .items = items, .extra_entries = 8, .textures = 1, .current = 0, .frame = 3, .row_size = 6000, .texels_per_row = 7000, .need_min = 1, .need_max = 30,
+                   .flag_percent = 50, .share_percent = 30, .duplicate_percent = duplicate_percent, .pre_state = static_cast<uint32_t>(seed % 3), .record_cap = 0};
+    spec.heights = {4000, 1, 1, 1, 1, 1};
+    return spec;
+  };
+
+  // 23t. The pool's limit 1..16 through the env (animation:K, the render thread counted): K - 1 workers asked for, the schedule of the pass in the call, and every block gathered once.
+  if (selected("limits")) {
+    const Watchdog watchdog("23t", 120);
+    uint64_t wrong = 0;
+    uint64_t calls = 0;
+    const ArSpec spec = plain_world(seed_base + 100000, 12000, 10);  // 24 blocks
+    for (uint32_t workers = 0; workers <= 15; ++workers) {
+      set_workers(workers);
+      reset_switches();
+      ar_module::controls.min_items = 1;
+      CHECK(ArBuild(context.get(), spec));
+      for (const bool tweak : {false, true}) {
+        ArResult game_result;
+        ArResult patched_result;
+        const ArCall call = {.update = false, .start = 0, .end = spec.items, .texture = 0, .tweak = tweak};
+        const std::string what = compare(call, &game_result, &patched_result);
+        after_fault();
+        ++calls;
+        const ArPaths& paths = patched_result.paths;
+        const bool shape = paths.taken[static_cast<size_t>(ArPath::OURS)] == 1 && paths.workers == workers && paths.streaming == (streaming && workers != 0) && paths.items == spec.items
+                           && paths.gathered_items == spec.items && paths.gathered_blocks == 24;
+        if (!what.empty() || !shape) {
+          ++wrong;
+          std::printf("   limit %u: %s (workers asked %u, streaming %d, items %u, gathered %u in %u blocks)\n", workers + 1, what.empty() ? "the run is equal, the shape is not" : what.c_str(),
+                      paths.workers, paths.streaming ? 1 : 0, paths.items, paths.gathered_items, paths.gathered_blocks);
+        }
+      }
+    }
+    std::printf("23t. %s: the env limit 1 .. 16 (0 .. 15 workers), %llu calls: workers asked for, the schedule and the 24 blocks gathered once each as they should be, equal to the game's: %llu wrong\n",
+                streaming ? "stream" : "bulk", calls, wrong);
+    CHECK(wrong == 0);
+  }
+
+  // 23u. The ring wraps (more than its 64 blocks): lists of 65 blocks, 70000, 98304 and 100000 items, from item 0 and from item 7, alone and with workers; every block is gathered once.
+  if (selected("wrap")) {
+    const Watchdog watchdog("23u", 300);
+    for (const Config& config : {configs[0], configs[1], configs[2]}) {
+      apply(config);
+      reset_switches();
+      uint64_t wrong = 0;
+      uint64_t calls = 0;
+      const ArStats before = ar_stats;
+      for (const uint32_t items : {33280u, 70000u, 98304u, 100000u}) {
+        const ArSpec spec = plain_world(seed_base + 110000 + items, items, 20);
+        CHECK(ArBuild(context.get(), spec));
+        for (const ArCall& call : {ArCall{.update = false, .start = 0, .end = items, .texture = 0}, ArCall{.update = true, .start = 0, .end = items},
+                                   ArCall{.update = false, .start = 7, .end = items, .texture = 0, .tweak = true}}) {
+          ArResult game_result;
+          ArResult patched_result;
+          const std::string what = compare(call, &game_result, &patched_result);
+          after_fault();
+          ++calls;
+          const uint32_t total = items - call.start;
+          const ArPaths& paths = patched_result.paths;
+          const bool shape = paths.items == total && paths.gathered_items == total && paths.gathered_blocks == (total + ar_api::BLOCK_ITEMS - 1) / ar_api::BLOCK_ITEMS;
+          if (!what.empty() || !shape) {
+            ++wrong;
+            std::printf("   wrap %u items from %u: %s (finished %u, gathered %u in %u blocks)\n", items, call.start, what.empty() ? "the run is equal, the shape is not" : what.c_str(), paths.items,
+                        paths.gathered_items, paths.gathered_blocks);
+          }
+        }
+      }
+      std::printf("23u. %s, %s: the ring wraps (65 to 196 blocks), %llu calls, every block gathered once (%s): %llu wrong\n", streaming ? "stream" : "bulk", config.name, calls,
+                  path_line(before).c_str(), wrong);
+      CHECK(wrong == 0);
+    }
+  }
+
+  // 23v. S-1 / S-2: a call that stops early reads little more than it finished. After a primer call that finished 300 items (bulk's first round is max(4096, the last call's items)) a call
+  // of 120000 items that stops at 1500: bulk gathers at most its first round and the next; streaming at most the blocks up to B's, the look-ahead of 16 and one in flight; alone one block more.
+  if (selected("bounds")) {
+    const Watchdog watchdog("23v", 120);
+    for (const Config& config : {configs[0], configs[1], configs[2]}) {
+      apply(config);
+      reset_switches();
+      uint64_t wrong = 0;
+      ArSpec prime = {.seed = seed_base + 120000, .items = 120000, .extra_entries = 8, .textures = 1, .current = 0, .frame = 3, .row_size = 1000, .texels_per_row = 7000, .need_min = 10,
+                      .need_max = 10, .flag_percent = 0, .share_percent = 0, .duplicate_percent = 0, .pre_state = 0, .record_cap = 0};
+      prime.heights = {3, 1, 1, 1, 1, 1};  // 100 items to a row: 300 items
+      ArSpec target = prime;
+      target.heights = {15, 1, 1, 1, 1, 1};  // 1500 items
+      const ArCall call = {.update = false, .start = 0, .end = 120000, .texture = 0};
+      CHECK(ArBuild(context.get(), prime));
+      wrong += compare(call).empty() ? 0 : 1;
+      after_fault();
+      const uint32_t last_before = ar_module::last_items;
+      CHECK(ArBuild(context.get(), target));
+      ArResult game_result;
+      ArResult patched_result;
+      wrong += compare(call, &game_result, &patched_result).empty() ? 0 : 1;
+      after_fault();
+      const ArPaths& paths = patched_result.paths;
+      const uint32_t finished = paths.items;
+      uint32_t bound = 0;
+      if (paths.workers == 0) {
+        bound = round_up_blocks(finished) + ar_api::BLOCK_ITEMS;
+      } else if (streaming) {
+        bound = round_up_blocks(finished) + (ar_api::LOOKAHEAD_BLOCKS + 2) * ar_api::BLOCK_ITEMS;
+      } else {
+        const uint32_t first_round = std::min(ROUND_CAP_ITEMS, round_up_blocks(std::max(ar_api::FIRST_ROUND_ITEMS, last_before)));
+        bound = first_round + std::min(ROUND_CAP_ITEMS, 2 * first_round) + ar_api::BLOCK_ITEMS;
+      }
+      const bool inside = finished == 1500 && last_before == 300 && paths.gathered_items >= finished && paths.gathered_items <= bound;
+      wrong += inside ? 0 : 1;
+      std::printf("23v. %s, %s: a call of 120000 items that stops at %u (the last call finished %u) gathered %u items in %u blocks, at most %u allowed: %s\n", streaming ? "stream" : "bulk", config.name,
+                  finished, last_before, paths.gathered_items, paths.gathered_blocks, bound, wrong == 0 ? "inside" : "WRONG");
+      CHECK(wrong == 0);
+    }
+  }
+
+  // 23w. The stalls (S-2, S-3): a gather unit that waits (the window stalls: B waits or gathers the block itself), B that waits before it allocates a block (C and A run ahead), a scatter unit
+  // that lands late, a scatter claim that pauses between its check and its CAS (it must never scatter a block B has not published); equal in each, on a plain world and on one in ordered mode.
+  if (selected("delays")) {
+    const Watchdog watchdog("23w", 240);
+    struct Delay {
+      const char* name;
+      std::function<void()> set;
+    };
+    const std::vector<Delay> delays = {
+        {"gather of block 0 waits 25 ms", [] { ar_module::controls.gather_delay_block = 0; ar_module::controls.gather_delay_ms = 25; }},
+        {"gather of block 3 waits 25 ms", [] { ar_module::controls.gather_delay_block = 3; ar_module::controls.gather_delay_ms = 25; }},
+        {"gather of block 20 waits 25 ms", [] { ar_module::controls.gather_delay_block = 20; ar_module::controls.gather_delay_ms = 25; }},
+        {"gather of block 38 waits 25 ms", [] { ar_module::controls.gather_delay_block = 38; ar_module::controls.gather_delay_ms = 25; }},
+        {"B waits 25 ms before block 0", [] { ar_module::controls.allocate_delay_block = 0; ar_module::controls.allocate_delay_ms = 25; }},
+        {"B waits 25 ms before block 2", [] { ar_module::controls.allocate_delay_block = 2; ar_module::controls.allocate_delay_ms = 25; }},
+        {"B waits 25 ms before block 17", [] { ar_module::controls.allocate_delay_block = 17; ar_module::controls.allocate_delay_ms = 25; }},
+        {"B waits 25 ms before block 38", [] { ar_module::controls.allocate_delay_block = 38; ar_module::controls.allocate_delay_ms = 25; }},
+        {"scatter of block 5 lands 20 ms late", [] { ar_module::controls.scatter_delay_block = 5; ar_module::controls.scatter_delay_ms = 20; }},
+        {"scatter of block 30 lands 20 ms late", [] { ar_module::controls.scatter_delay_block = 30; ar_module::controls.scatter_delay_ms = 20; }},
+        {"scatter claim pauses 1 spin", [] { ar_module::controls.claim_gap_spins = 1; }},
+        {"scatter claim pauses 100 spins", [] { ar_module::controls.claim_gap_spins = 100; }},
+        {"scatter claim pauses 100000 spins", [] { ar_module::controls.claim_gap_spins = 100000; }},
+    };
+    ArCases worlds;
+    {
+      const ArSpec plain = plain_world(seed_base + 130000, 20000, 20);  // 40 blocks
+      worlds.push_back({plain, {{.update = false, .start = 0, .end = plain.items, .texture = 0}}});
+      ArSpec ordered = plain_world(seed_base + 130001, 20000, 90);
+      ordered.texels_per_row = 0xFFFFFFFFu;
+      worlds.push_back({ordered, {{.update = false, .start = 0, .end = ordered.items, .texture = 0}}});
+    }
+    for (const Config& config : {configs[1], configs[2]}) {
+      uint64_t wrong = 0;
+      for (const Delay& delay : delays) {
+        apply(config);
+        reset_switches();
+        delay.set();
+        const uint64_t differ = count_differences(worlds);
+        reset_switches();
+        if (differ != 0) {
+          ++wrong;
+          std::printf("   %s: %llu of the 2 worlds differ\n", delay.name, differ);
+        }
+      }
+      std::printf("23w. %s, %s: %zu stalls (gather, B, scatter, claim gap) x a plain and an ordered-mode world of 40 blocks: %llu stalls made a difference\n", streaming ? "stream" : "bulk", config.name,
+                  delays.size(), wrong);
+      CHECK(wrong == 0);
+    }
+    // The claim race under load: 15 workers, a long gap, random worlds.
+    apply(configs[2]);
+    reset_switches();
+    ar_module::controls.claim_gap_spins = 3000;
+    ArCases random_cases;
+    for (uint64_t index = 0; index < (quick ? 12u : 40u); ++index) {
+      ArSpec spec = ArRandomSpec(&random, 30000);
+      spec.null_instance_at = spec.null_animation_at = ~0u;
+      random_cases.push_back({spec, standard_calls(spec)});
+    }
+    const uint64_t differ = count_differences(random_cases);
+    reset_switches();
+    std::printf("23w. %s: the scatter claim pauses 3000 spins, 15 workers, %zu random worlds: %llu calls differ\n", streaming ? "stream" : "bulk", random_cases.size(), differ);
+    CHECK(differ == 0);
+  }
+
+  // 23x. S-5: a call of Dispatch inside a call (the render thread, from the hook that runs after each block B allocated) finds the ring taken and runs the game's own fill, whose result on
+  // its own world is the game's; and a second thread calling while a slow call of ours holds the ring gets the game's path too, whatever the order.
+  if (selected("reentry")) {
+    const Watchdog watchdog("23x", 120);
+    struct Reentry {
+      ArContext* nested;
+      const ArResult* expected;
+      const std::vector<uint8_t>* expected_bytes;
+      ArCall call;
+      const uint8_t* image;
+      const void* function;
+      uint32_t calls;
+      uint32_t wrong;
+    };
+    for (const Config& config : {configs[0], configs[1], configs[2]}) {
+      apply(config);
+      reset_switches();
+      const ArSpec outer_spec = plain_world(seed_base + 140000, 15000, 20);
+      const ArSpec nested_spec = plain_world(seed_base + 140001, 6000, 20);
+      auto nested = std::make_unique<ArContext>();
+      CHECK(ArBuild(nested.get(), nested_spec));
+      const ArCall nested_call = {.update = false, .start = 0, .end = nested_spec.items, .texture = 0};
+      ArResult expected;
+      ArRunSide(nested.get(), game, game_fill, nested_call, ~0u, &expected);
+      const std::vector<uint8_t> expected_bytes(nested->world.base, nested->world.base + nested->world.bytes);
+      Reentry state = {nested.get(), &expected, &expected_bytes, nested_call, patched, stub, 0, 0};
+      ar_module::controls.after_block_context = &state;
+      ar_module::controls.after_block = [](uint32_t block, void* raw) {
+        auto* reentry = static_cast<Reentry*>(raw);
+        if (block % 3 != 0) return;
+        ArWorld* outer = ar_current;
+        ArResult result;
+        ArRunSide(reentry->nested, reentry->image, reentry->function, reentry->call, ~0u, &result);
+        ar_current = outer;
+        const ArWorld& world = reentry->nested->world;
+        const bool same = (result.eax & 0xFF) == (reentry->expected->eax & 0xFF) && result.row == reentry->expected->row && result.out == reentry->expected->out
+                          && result.arena_used == reentry->expected->arena_used && result.log == reentry->expected->log && !result.fault.happened
+                          && std::memcmp(world.base, reentry->expected_bytes->data(), world.bytes) == 0;
+        ++reentry->calls;
+        reentry->wrong += same ? 0 : 1;
+      };
+      CHECK(ArBuild(context.get(), outer_spec));
+      const ArStats before = ar_stats;
+      const std::string what = compare({.update = false, .start = 0, .end = outer_spec.items, .texture = 0});
+      after_fault();
+      const uint64_t busy = ar_stats.paths[static_cast<size_t>(ArPath::RING_BUSY)] - before.paths[static_cast<size_t>(ArPath::RING_BUSY)];
+      const uint64_t ours = ar_stats.paths[static_cast<size_t>(ArPath::OURS)] - before.paths[static_cast<size_t>(ArPath::OURS)];
+      ar_module::controls.after_block = nullptr;
+      ar_module::controls.after_block_context = nullptr;
+      std::printf("23x. %s, %s: Dispatch inside Dispatch (the hook after every 3rd of 30 blocks): %u nested calls, %llu took the ring-busy path (the outer call %llu x ours), the nested runs wrong in %u, the outer run %s\n",
+                  streaming ? "stream" : "bulk", config.name, state.calls, busy, ours, state.wrong, what.empty() ? "equal" : what.c_str());
+      CHECK(what.empty() && state.calls == 10 && busy == state.calls && ours == 1 && state.wrong == 0);
+    }
+    // A second thread beside a slow call: its calls meet the ring held or free, and are equal either way.
+    for (const Config& config : {configs[0], configs[1]}) {
+      apply(config);
+      reset_switches();
+      ar_module::controls.allocate_delay_block = 2;
+      ar_module::controls.allocate_delay_ms = 40;
+      std::atomic<bool> stop = false;
+      std::atomic<uint64_t> thread_wrong = 0;
+      std::atomic<uint64_t> thread_calls = 0;
+      const std::array<uint32_t, 12> busy_before = ArReadPaths();
+      std::thread other([&] {
+        auto own = std::make_unique<ArContext>();
+        Random thread_random = {.state = 0x5EC0D7ull};
+        while (!stop.load()) {
+          ArSpec spec = ArRandomSpec(&thread_random, 8000);
+          ArCall call = ArRandomCall(spec, &thread_random);
+          sanitize(&spec, &call);
+          if (!ArBuild(own.get(), spec)) continue;
+          const uint8_t* const game_function = (call.update ? game + ANIMATION_UPDATE_RVA : game_fill);
+          const uint8_t* const patched_function = (call.update ? patched + ANIMATION_UPDATE_RVA : stub);
+          thread_wrong += ArCompare(own.get(), game, game_function, patched, patched_function, call).empty() ? 0 : 1;
+          ++thread_calls;
+        }
+      });
+      uint64_t wrong = 0;
+      const ArSpec outer_spec = plain_world(seed_base + 140100, 12000, 20);
+      CHECK(ArBuild(context.get(), outer_spec));
+      for (int call_index = 0; call_index < 6; ++call_index) {
+        wrong += compare({.update = false, .start = 0, .end = outer_spec.items, .texture = 0}).empty() ? 0 : 1;
+        after_fault();
+      }
+      stop = true;
+      other.join();
+      const uint32_t busy = ArReadPaths()[static_cast<size_t>(ArPath::RING_BUSY)] - busy_before[static_cast<size_t>(ArPath::RING_BUSY)];
+      reset_switches();
+      std::printf("23x. %s, %s: a second thread made %llu calls beside 6 slow calls of ours: %llu of its calls and %llu of ours differ, %u took the ring-busy path\n", streaming ? "stream" : "bulk",
+                  config.name, thread_calls.load(), thread_wrong.load(), wrong, busy);
+      CHECK(wrong == 0 && thread_wrong.load() == 0 && thread_calls.load() > 0 && busy > 0);
+    }
+  }
+
+  // 23y. The schedule through the env: bulk and stream parse, anything else (and none) is stream, the value is read again only when the generation changes, and the schedule is in the call.
+  if (selected("schedule")) {
+    const Watchdog watchdog("23y", 120);
+    apply(configs[1]);
+    reset_switches();
+    const ArSpec spec = plain_world(seed_base + 150000, 12000, 10);
+    const auto set_env = [&](const char* text) {
+      SetEnvironmentVariableA("RENODX_TW_ANIMATION_SCHEDULE", text);
+      twattila::animation_rows::Update(Stage::ON, ++schedule_generation);
+    };
+    struct Value {
+      const char* text;
+      ar_api::Schedule expected;
+    };
+    uint64_t wrong = 0;
+    for (const Value& value : {Value{"bulk", ar_api::Schedule::BULK}, Value{"stream", ar_api::Schedule::STREAM}, Value{nullptr, ar_api::Schedule::STREAM},
+                               Value{"nonsense", ar_api::Schedule::STREAM}, Value{"BULK", ar_api::Schedule::STREAM}, Value{"bulk", ar_api::Schedule::BULK}}) {
+      set_env(value.text);
+      CHECK(ArBuild(context.get(), spec));
+      ArResult game_result;
+      ArResult patched_result;
+      const std::string what = compare({.update = false, .start = 0, .end = spec.items, .texture = 0}, &game_result, &patched_result);
+      after_fault();
+      const bool same_stream = patched_result.paths.workers != 0 && patched_result.paths.streaming == (value.expected == ar_api::Schedule::STREAM);
+      const bool parsed = ar_module::schedule.load() == value.expected;
+      if (!what.empty() || !same_stream || !parsed) {
+        ++wrong;
+        std::printf("   env \"%s\": %s (schedule %d, call streaming %d)\n", value.text == nullptr ? "(unset)" : value.text, what.empty() ? "equal" : what.c_str(),
+                    static_cast<int>(ar_module::schedule.load()), patched_result.paths.streaming ? 1 : 0);
+      }
+    }
+    // The same generation again: the env is not read.
+    SetEnvironmentVariableA("RENODX_TW_ANIMATION_SCHEDULE", "stream");
+    twattila::animation_rows::Update(Stage::ON, schedule_generation);
+    wrong += (ar_module::schedule.load() == ar_api::Schedule::BULK) ? 0 : 1;
+    set_env(streaming ? "stream" : "bulk");
+    CHECK(ar_module::schedule.load() == (streaming ? ar_api::Schedule::STREAM : ar_api::Schedule::BULK));
+    std::printf("23y. the env schedule: bulk, stream, unset, an unparsable value and another case, the generation unchanged: %llu wrong\n", wrong);
+    CHECK(wrong == 0);
+  }
+
+  // 23z. The streaming control: a scatter unit that takes a gathered block before B has published it (stale texel words) must make the comparison fail (the call may also hang: the watchdog
+  // releases the switch after 20 s and ends the process after 40).
+  if (selected("ignores") && streaming) {
+    static std::atomic<bool> released = false;
+    apply(configs[1]);
+    reset_switches();
+    ArCases worlds;
+    for (uint32_t index = 0; index < 6; ++index) {
+      const ArSpec spec = plain_world(seed_base + 160000 + index, 20000, 20);
+      worlds.push_back({spec, {{.update = false, .start = 0, .end = spec.items, .texture = 0}}});
+    }
+    const uint64_t clean = count_differences(worlds);
+    released = false;
+    uint64_t seen = 0;
+    {
+      const Watchdog watchdog("23z", 20, [] {
+        released = true;
+        ar_module::controls.scatter_ignores_publish = false;
+      });
+      ar_module::controls.scatter_ignores_publish = true;
+      seen = count_differences(worlds);
+    }
+    reset_switches();
+    std::printf("23z. CONTROL a scatter unit that ignores B's publish (stream, 3 workers): clean %llu differ, with the switch %llu differ%s\n", clean, seen, released.load() ? " (the call hung and was released)" : "");
+    CHECK(clean == 0 && (seen > 0 || released.load()));
+  }
+#endif
   set_workers(0);
   set_stage(Stage::OFF);
   CHECK((ec::written & ec::WORKER_SITES) == 0 && ec::worker_data->fill_slot.load() == 0 && ec::worker_data->cut_active.load() == 0 && !ec::module_pinned);
