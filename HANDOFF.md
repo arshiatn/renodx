@@ -6551,7 +6551,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         10 Shoulds (decompiled shaders wrongly spec-gated; UTF-16 mode.txt turns gates off silently; gate files
         deletable / editable ...). 11 install decisions for ATN -> into INSTALL_FOR_ATN.md as a checklist. gtp_ RESUMED
         01:2x: fixes -> gtw_ re-check.
-        Agents (10): bd1r_ (R-S5 review), gti_ + gtb_ (S1a / S1b fixes), gtp_ (S1c fixes), t4i_ (nit), lga_ (group 1
+        t4i_ T3e DONE 01:2x: PROBLEM lines end with '(drift not covered: window 6 not comparable)' when the drift control
+        is skipped; test_analyze 107 / 107, run_all green; backups t4i_bak15. T3 / map compare track CLOSED.
+        Agents (9): bd1r_ (R-S5 review), gti_ + gtb_ (S1a / S1b fixes), gtp_ (S1c fixes), lga_ (group 1
         re-check), h0i_ (H0), lgf2_ (helper + bridge logging). QUEUE: c33i_ R-S5 nits -> merge, B1.6, X1, logging group 3,
         gtv_ re-check, PT DI steps 0-4 (after lgf2_ + H0), S2 (after lgf2_), T5 / T6, end batch.
         S1 STARTED 17:4x: s1o_ (Opus High) in worktree .claude/worktrees/rmt_s1 (branch rmt_s1 from 8e8fe6852; 10 build
