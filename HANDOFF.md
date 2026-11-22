@@ -9733,9 +9733,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         (safe direction); no hash compare. Safe total ~39 GB (ETLs 33.3 + shots 5.5 + 0.1). COORDINATOR: with
         t4i_'s per-start ETL move C: needs at most 67.7 GB (fits 82 GB) -> the cleanup is a buffer, not a must;
         no wider testbin rule asked.
-        Agents (2): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check); t4i_ ETL move waits for ATN
-        (antivirus); c3i_ waits for H0's end (then suites + builds -> rmt_b1log merge gate); ff_s12 build after H0;
-        H0 run (~11:30)
+        H0 RE-RUN 20261122_100100 STOPPED 11:08 (exit 1, after 67 min; task b75092g2z): builds pre / post plain + lab
+        OK, run 1 smoke passed every side, run 1 pre_b (17 modes) then `Copy-Item ... builds\pre\20261122_100100\lab\
+        renodx-tw-dlaa64.log ... being used by another process` at h0_gpu_runs.ps1:267 (Invoke-GpuRetry helper-log
+        copy) ended the script; GPU lock released (exit 0). 11:08: no helper / harness process left (short lock:
+        helper exiting or antivirus scanning the fresh log; Bitdefender blocked t4i_'s fresh file at 10:59). No
+        result yet -> TOOLING FIX NOW: h0i_ (retry copies ~20 x 500 ms, NOTE + go on; same pattern elsewhere;
+        -DryRun + held-file sandbox test; can 100100's parts be reused?). Then H0 re-run under ATN's rule.
+        Machine free 11:1x -> c3i_ held verification now (FULL, -DrawRecording, instance_fill, gated builds),
+        gtl_ gate_s low now, ff_s12 helper build (coordinator, dlaa_helper\build.ps1, ~11:2x; first try 11:1x
+        failed on a Bash path-escape typo, nothing built).
+        ORDER NOW: c3i_ builds + ff_s12 build (CPU) -> release_check (GPU, ~9-13 min) -> H0 re-run (~83 min) ->
+        rec_verify.sh (~100 min) -> S3c; one GPU job at a time.
+        Agents (5): gtp_ (round 16), ebr_ (t4i_ probes + scan gaps re-check), h0i_ (H0 copy fix), c3i_ (b1log
+        verify: FULL + builds), gtl_ (gate_s low); t4i_ ETL move waits for ATN (antivirus); ff_s12 helper build
+        (coordinator, background)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
