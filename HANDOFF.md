@@ -494,7 +494,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - leaf / micromap owner (optional): run pre 4x on fast_leaves + micromaps_leaf_str ... | ?
 - coordinator: all_modes pass on the combined tree after rmt_h0 + ff_s12 + grs_xes ... | ?
 - gtv_: load run of the lab suites after rec_verify (coordinator says go) (gtv_ 13 ... | ?
-- gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-che ... | ?
 - coord: merge grs_xess_nit after gpu_s2 builds + push (coord 14:12). | ?
 - gtv_ / gtb_: judge S3c sheet items 10 (strict second loop) + 11 (kept R1 residen ... | ?
 - ATN (later, not urgent): adopt / refuse .proposed lab widenings: log_uses job fi ... | ?
@@ -504,6 +503,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (later): job_schema.json.proposed (log_uses + dump_frames) + cmd.schema.json ... | ?
 - fcr_ (Opus xHigh): review grs_dead_uses df06d4e9b + rt_uses.h vtable copy safety ... | ?
 - gtl_: stage block() subtracts answer reset_ms when present (+ fake_resident send ... | ?
+- gtw_ + gpr_: re-check round 19 (gate + price) (coord 15:3x). | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10233,7 +10233,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         quadratic regexes (unterminated " + many \" 9.6 s at 32 KB; many @' openers 0.76 s at 64 KB) -> DQ_SH ends at \Z
         possessive, here-strings by str.find. VERIFY: lab cwd test too wide (anchor tools/tw/lab or lab_<name>); GATES_SUITE
         any gates folder (Low). Open Lows OK (escaped backticks = grep patterns; 17th $( ) -> join texts).
-        - [ ] gtp_: round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-checks (corpus after R18-1/3/4,
+        - [x] gtp_ (DONE 15:31 live, SHADOW): round 19 (R18-1..R18-7 + lab cwd anchor + GATES_SUITE anchor); gtw_ re-checks (corpus after R18-1/3/4,
         gtw_r18_time2.py after R18-7) + gpr_ price re-check (coord 14:10).
         gpu_s2 MERGED LOCALLY 14:11 = 6a7375c65 (name_check 135 generic words; auto-merge main.cpp + rt_d3d12.hpp clean);
         gated builds -Owner coord_gpus2 (x86 x3 exit 0 14:12, amd64 + helper -> testbin\scratch\coord_\helper_gpus2
@@ -10418,8 +10418,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] fcr_ (Opus xHigh): review grs_dead_uses df06d4e9b + rt_uses.h vtable copy safety + store_skip.py +
         dead_outputs.py (gti_) + the 2 .proposed schemas as one piece (coord 15:2x).
         - [ ] gtl_: stage block() subtracts answer reset_ms when present (+ fake_resident sends it) (coord 15:2x).
-        Agents (4): gtp_ (gate round 19), gtv_ (gtl_ stage review incl. load fixes), fcr_ (dead-output piece review),
-        gtl_ (stage reset_ms); GPU: all_modes run RUNNING (15:12, ~40-45 min, b4pmp185v) -> S3c part 1 (coord,
+        gtp_ ROUND 19 LIVE 15:31 (plan_1117/gtp_round19_handback.md; SHADOW): gates\gate_hook.py 8fe7b6bab77b, tests/
+        run_tests.py d2ed1e9702e9 (tool_prices.py 097bb57a34f6 + INSTALL_FOR_ATN.md same; mode.txt shadow); backups
+        testbin\scratch\gtp_\gtp_bak24 (round 18 live) / gtp_bak25 (round 19 live); mirror gtp_mirror8; live == bak24
+        checked before atomic swap (gtp_golive.py). Suites mirror + live 1137 / 1137 (59 new); control bak24 1096 / 1137 (41
+        fails = new tests only). Corpus 15,119: 252 = 252, 0 differ, 0 errors. Key diff 89,012 calls: 1 key (py -c empty-
+        text hash -> real code). Re-seed 107,321 seeds / 7,323 rows / 0 bad. gtw_'s probes: every R18 shape refused, P
+        controls pass; 2 MISS left (gtw_'s 20-deep nest miscoded, innermost echo; priced command chained after exempt lab
+        run = inherent). CPU-time growth 64 KB shell_web 0.016-0.109 s, price_shell ~0.016 s (r18 3.1 s at 16 KB);
+        wall-clock ~4.7 s stalls both hooks = starvation. R18-1 unquoted heredoc as DQ; R18-2 every unclosed level; R18-3
+        HERESTR out of shared patterns, herestrings() one pass + ps_masked() PS only; R18-4 all pipe forms + | "sh" / env
+        sh / python exec(stdin) / PS powershell - ; data controls pass; R18-5 iex / Invoke-Expression quoted + here-string;
+        R18-6 <<< rule, read = stdin, case ) fixed, kind() $'..\'..' fixed, 2 N7 over-refusals pass; R18-7 DQ_SH possessive
+        \Z, linear statement split only when quotes close; VERIFY lab cwd = <PROJECT>/tools/tw/lab or lab_<name>,
+        GATES_SUITE needs tools/tw/gates. Optional: cap 16 -> 64 texts within size budget (not joined: open quote would
+        swallow). OPEN Low: nested escaped backticks; unclosed PS here-string hides the rest (PS runs none of it).
+        - [ ] gtw_ + gpr_: re-check round 19 (gate + price) (coord 15:3x).
+        Agents (5): gtw_ + gpr_ (round 19 re-checks), gtv_ (gtl_ stage review incl. load fixes), fcr_ (dead-output piece
+        review), gtl_ (stage reset_ms); GPU: all_modes run RUNNING (15:12, ~40-45 min, b4pmp185v) -> S3c part 1 (coord,
         gpu_lab.ps1 per s3c_run_sheet.md, build\helper_gpus2_rec); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
