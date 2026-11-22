@@ -8,6 +8,8 @@
 #include <cstdint>
 
 #if !defined(_WIN64)
+#include <windows.h>
+
 #include <emmintrin.h>
 #include <xmmintrin.h>
 
@@ -16,6 +18,7 @@
 #include <atomic>
 #include <cstring>
 #include <format>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -80,11 +83,11 @@ constexpr uint32_t FIRST_ROUND_ITEMS = 4096;
 
 // What a call of Dispatch did: ours, or the game's fill for the reason named. BAD_ITEM counts in addition to OURS.
 enum class Path : uint8_t { OURS, STAGE_OFF, FORCED, ROW_AT_END, FEW_ITEMS, END_PAST_LIST, TEXTURE_RANGE, VECTOR_NOT_EMPTY, NO_ROWS,
-                            RING_BUSY, BAD_ITEM, COUNT };
+                            RING_BUSY, BAD_ITEM, CHECK_MEMORY, COUNT };
 
 // The reason names the trace prints (by Path).
 constexpr std::array<const char*, static_cast<size_t>(Path::COUNT)> PATH_NAMES = {
-    "ours", "stage off", "forced", "row at end", "few items", "end past list", "texture range", "vector not empty", "no rows", "ring busy", "bad item"};
+    "ours", "stage off", "forced", "row at end", "few items", "end past list", "texture range", "vector not empty", "no rows", "ring busy", "bad item", "check memory"};
 
 // The batch env's value (RENODX_TW_ANIMATION_SCHEDULE).
 enum class Schedule : uint8_t { STREAM, BULK };
@@ -546,8 +549,17 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
   const uint32_t blocks = total / BLOCK_ITEMS + (total % BLOCK_ITEMS != 0 ? 1 : 0);
   const uint32_t workers = std::min(worker_pool::Available(worker_pool::User::ANIMATION_ROWS), blocks - 1);
   if (stage_now == Stage::CHECK) {
-    check.captures.assign(total, {});
-    check.placements.clear();
+    // Everything Check keeps is bounded by the call's items: allocated here, never inside the job (a failure there would leave the
+    // workers running on this call's stack); a failure runs the game's own fill.
+    try {
+      check.captures.assign(total, {});
+      check.placements.clear();
+      check.placements.reserve(total);
+      check.records.reserve(total);
+    } catch (const std::bad_alloc&) {
+      ring_in_use.store(false, std::memory_order_release);
+      return game(Path::CHECK_MEMORY);
+    }
     ++check.calls;
   }
   Call call = {.instances = *reinterpret_cast<const uint32_t* const*>(static_cast<uint8_t*>(list) + 8) + first,
