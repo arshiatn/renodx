@@ -442,11 +442,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (INSTALL_FOR_ATN.md item 12, sections 1 / 3 / 7): replace the hook JSON (mat ... | ?
 - c3i_ B1 real-routine tests (design 5: tests 1-9, 12, 14, 15) + N5's second-node ... | ?
 - ATN (after gtv_'s re-check OK): adopt the lab proposals - copy cmd.schema.json.p ... | ?
-- gtq_: read gtl_'s iq_input note (output_sizes per arm, dump_frames > 1, dred set ... | ?
 - c3i_ (with the B1.6 follow-ups or right after): b1_stack_headroom gate has no sh ... | ?
 - T5 owner (end batch, before leg 1): the REAL manifest must carry rows ParallelEf ... | ?
 - gtl_ (optional, after its 4 suites pass): a light_anim iq job launches its own r ... | ?
 - gtb_ (after its selftest flake S1): N11 from gtp_ - budget.py's exact price look ... | ?
+- grs_ + gtl_: what a dump's output_sizes means for a quarter-res output - "full s ... | ?
+- coordinator: where iq references live (gtq_ suggests tools\tw\quality\iq_refs; n ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -7610,10 +7611,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN (after gtv_'s re-check OK): adopt the lab proposals - copy cmd.schema.json.proposed ->
             cmd.schema.json and resident_protocol.md.proposed -> resident_protocol.md (both in tools\tw\lab;
             the alive.schema proposal is dropped, gtv_ S2); until then dump_frames stays 1.
-        - [ ] gtq_: read gtl_'s iq_input note (output_sizes per arm, dump_frames > 1, dred set by the lab) and say
-            whether iq_frames should copy dred itself; the reference builder must copy played.json into each
-            reference seed_<n> folder (else reference.dred stays null and the gate flags it, gtv_ N3); after gtl_'s
-            fixes pass gtv_.
+        - [x] gtq_: iq_input note + reference played.json - DONE 06:2x (gtq_v11_inputs_handback.md), gtv_ re-checks.
         gtv_ N1 LEFTOVERS RE-CHECK = MERGE-READY (pending the GPU check) 05:4x
         (plan_1117/gtv_n1_leftovers_recheck_handback.md; gtv_s2r_review.md "## N1 leftovers re-check"): trace base +
         seed right (no reset, checked before any frame, a restart inside trace answers FAILED); SETTLE_LOOPS 5 = the
@@ -7789,12 +7787,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         0.173 s vs new 0.136 s. -> gtw_ RE-CHECK 9 STARTED.
         - [ ] gtb_ (after its selftest flake S1): N11 from gtp_ - budget.py's exact price lookup ignores the hook's
             `warm?` build seeds; then gpr_ re-checks.
-        Agents (6): gtw_ (S1c re-check 9), gtq_ (iq_input note + reference played.json, offline), gtb_ (selftest
-        flake S1, then N11), ebr_ (t4i_ r21 re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_,
-        lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r22 after c3i_), gbc_,
-        gpr_ (re-checks gtb_ S1), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_),
-        gtl_ (after H0: its 4 suites), gtv_ (after H0: held tests + race probe; re-checks gtq_). GPU: H0 RE-RUN
-        (coordinator, since 05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends.
+        gtq_ V1.1 INPUTS DONE 06:2x (plan_1117/gtq_v11_inputs_handback.md; backups scratchpad\gtq_backup_fix6 -
+        SLIP: iq_frames.py was edited before its backup; the pre-round copy is rebuilt by undoing this round's edits,
+        diff vs gtq_backup_fix4 = only gbc_'s reviewed B2 changes): 32 / 32 iq tests (314 s, CPU, below-normal),
+        nothing in tools\tw\lab, nothing GPU / tool-named. dump_frames int >= 1, every arm + floor + truth seed
+        hold the same frames (a one-frame reference vs multi-frame arms refused), frame-by-frame scoring + temporal
+        rows; arms' output_sizes {output: [w, h]} must equal the dump texture size OR our scored grid on frame 1
+        (unread outputs skipped); iq.json top-level output_sizes (settles gtb_'s schema item); seeds seed_\d+. dred:
+        iq_frames writes none (one writer = the lab; a stop between writes = unknown = flagged, safe). NEW
+        `iq_frames.py reference --recording <frame_N> --out <new folder> <seed runs...>`: byte copies of output bins
+        + played.json into seed_<n> (n = played seed), recording.txt; v1 dumps numbered by place (dred unknown);
+        refuses < 2 runs, frame mismatches, partial played.json, bad / repeated seeds, DRED true vs false; write
+        guard = new / empty out folder outside kept data (KEPT includes tools\tw\reference). Copies, not links (4K
+        = full size again). -> gtv_ RE-CHECK QUEUED (after its held H0 work or now if idle).
+        - [ ] grs_ + gtl_: what a dump's output_sizes means for a quarter-res output - "full size is its active
+            size" (protocol proposal) vs the texture: wh3_forest_unit fog is 960x540 with a 480x270 active part
+            (DLSS, 1920x1080 render); gtq_ accepts either until agreed, then tightens to one.
+        - [ ] coordinator: where iq references live (gtq_ suggests tools\tw\quality\iq_refs; never deleted like PT
+            references) - decide with gtv_'s re-check, then gtq_ makes the builder's guard allow new folders there.
+        Agents (6): gtw_ (S1c re-check 9), gtv_ (gtq_ v1.1 inputs re-check), gtb_ (selftest flake S1, then N11),
+        ebr_ (t4i_ r21 re-check), c3i_ (B1.6 follow-ups + stack headroom line). Idle: bd1r_, lga_, lgf2_, c33i_,
+        upt_, upr_, h0i_ (after H0: fake to testbin + R1), gpp_, t4i_ (r22 after c3i_), gbc_, gpr_ (re-checks gtb_
+        S1), gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (after H0: its 4
+        suites), gtq_ (waits gtv_). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
+        map_replay-named process until H0 ends; gtv_'s held tests + race probe after H0.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
