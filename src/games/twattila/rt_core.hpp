@@ -43,6 +43,7 @@
 #include "../../utils/directx.hpp"
 #include "../../utils/hash.hpp"
 #include "../../utils/platform.hpp"
+#include "../../utils/settings.hpp"
 #include "../../utils/state.hpp"
 #include "./dlaa_bridge.hpp"
 #include "./dxbc.hpp"
@@ -1117,6 +1118,10 @@ static std::atomic_uint64_t light_frame = 0;
 static std::atomic_bool index_buffers_held = false;
 // Log Details on and no index buffer's Map logged yet (Update): else OnMapIndices returns (a Map a draw in some games).
 static std::atomic_bool index_maps_logging = false;
+// Log Details' saved row (rt_scene.hpp): OnMapIndices registered only when it was saved on at InstallScene (no callback a
+// Map otherwise, for a line said once).
+constexpr const char* LOG_DETAILS_KEY = "RayTracedDebugLog";
+static bool index_maps_registered = false;
 // Batched unit draws wait for their flush (runtime.batch_draws not empty): else FlushUnitCaptures and OnBatchTextureWritten return.
 static std::atomic_bool batch_pending = false;
 // rt_scene::AmbientReplaced's answer (AmbientReplacedNow), stored under runtime.mutex by every writer of what it reads
@@ -3967,16 +3972,18 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
   }
 }
 
+// The sources of the game's index-buffer writes OnIndexWrite sees: ReShade's events, and a host's own upload (R.U.S.E.'s replay).
+enum IndexWrite : uint32_t { INDEX_UPDATE, INDEX_UPDATE_COMMAND, INDEX_COPY_REGION, INDEX_COPY, INDEX_MAP, INDEX_HOST_UPLOAD };
+
 // The game wrote bytes `offset` to `offset + size` of `dest` (UpdateSubresource or a copy, on any context). A cluster set is
 // keyed by its index buffer and range, which stay when the game writes other indices into them: kept, the set laid the old
 // triangles over the new vertices, stretched triangles across the scene (traces of 100 ms and more, as suspect 2's wrong
 // vertices; Rome Remastered's battle resets, suspect 3). Each set whose range the write touches is made again
 // (PrepareClusterSet), its triangles captured meanwhile. Only a D3D11 device's handles are ID3D11Resource pointers.
-// The first write of each kind into any index buffer, and the first of each kind that marks a set, get a line (whether
-// and how the game rewrites its index buffers: the Rome Remastered trace). `kind`: by its ReShade event, IndexWrite.
-enum IndexWrite : uint32_t { INDEX_UPDATE, INDEX_UPDATE_COMMAND, INDEX_COPY_REGION, INDEX_COPY, INDEX_MAP, INDEX_HOST_UPLOAD };
-inline void OnIndexWrite(reshade::api::device* device, reshade::api::resource dest, uint64_t offset, uint64_t size,
-                         IndexWrite kind = INDEX_HOST_UPLOAD) {
+// While a cluster set is held (else it returns at once, and logs nothing): the first write of each `kind` into any index
+// buffer, and the first of each kind that marks a set, get a line (whether and how the game rewrites its index buffers:
+// the Rome Remastered trace).
+inline void OnIndexWrite(reshade::api::device* device, reshade::api::resource dest, uint64_t offset, uint64_t size, IndexWrite kind) {
   if (!index_buffers_held.load(std::memory_order_relaxed) || dest.handle == 0) return;
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* resource = reinterpret_cast<ID3D11Resource*>(dest.handle);
@@ -3987,21 +3994,23 @@ inline void OnIndexWrite(reshade::api::device* device, reshade::api::resource de
   static_cast<ID3D11Buffer*>(resource)->GetDesc(&desc);
   if ((desc.BindFlags & D3D11_BIND_INDEX_BUFFER) == 0) return;
   const uint64_t end_byte = (size > UINT64_MAX - offset) ? UINT64_MAX : offset + size;
-  const std::unique_lock lock(runtime.mutex);
   uint32_t marked = 0;
-  if (const auto keys = runtime.index_buffer_sets.find(dest.handle); keys != runtime.index_buffer_sets.end()) {
-    for (const uint64_t set_key : keys->second) {
-      if (const auto mesh = runtime.cluster_meshes.find(set_key);
-          mesh != runtime.cluster_meshes.end() && mesh->second.indices.Get() == resource && mesh->second.first_byte < end_byte
-          && offset < mesh->second.end_byte) {
-        mesh->second.rewritten_frame = std::max<uint64_t>(runtime.frame, 1);
-        ++marked;
+  {
+    const std::unique_lock lock(runtime.mutex);
+    if (const auto keys = runtime.index_buffer_sets.find(dest.handle); keys != runtime.index_buffer_sets.end()) {
+      for (const uint64_t set_key : keys->second) {
+        if (const auto mesh = runtime.cluster_meshes.find(set_key);
+            mesh != runtime.cluster_meshes.end() && mesh->second.indices.Get() == resource && mesh->second.first_byte < end_byte
+            && offset < mesh->second.end_byte) {
+          mesh->second.rewritten_frame = std::max<uint64_t>(runtime.frame, 1);
+          ++marked;
+        }
       }
     }
+    const uint32_t logged_bit = 1u << ((kind * 2) + (marked != 0 ? 1 : 0));
+    if ((runtime.index_writes_logged & logged_bit) != 0) return;
+    runtime.index_writes_logged |= logged_bit;
   }
-  const uint32_t logged_bit = 1u << ((kind * 2) + (marked != 0 ? 1 : 0));
-  if ((runtime.index_writes_logged & logged_bit) != 0) return;
-  runtime.index_writes_logged |= logged_bit;
   constexpr std::array<std::string_view, 6> KINDS = {"update_buffer_region", "update_buffer_region_command", "copy_buffer_region",
                                                      "copy_resource", "map_buffer_region", "the host's upload"};
   constexpr std::array<std::string_view, 4> USAGES = {"default", "immutable", "dynamic", "staging"};
@@ -5006,7 +5015,12 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
   reshade::register_event<reshade::addon_event::update_buffer_region_command>(internal::OnUpdateIndicesCommand);
   reshade::register_event<reshade::addon_event::copy_buffer_region>(internal::OnCopyIndices);
   reshade::register_event<reshade::addon_event::copy_resource>(internal::OnCopyIndexBuffer);
-  reshade::register_event<reshade::addon_event::map_buffer_region>(internal::OnMapIndices);
+  float log_details_saved = 0.f;
+  reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), internal::LOG_DETAILS_KEY, log_details_saved);
+  internal::index_maps_registered = log_details_saved != 0.f;
+  if (internal::index_maps_registered) {
+    reshade::register_event<reshade::addon_event::map_buffer_region>(internal::OnMapIndices);
+  }
   if (internal::BatchInScene()) {
     reshade::register_event<reshade::addon_event::map_texture_region>(internal::OnBatchMapTexture);
     reshade::register_event<reshade::addon_event::update_texture_region>(internal::OnBatchUpdateTexture);
@@ -5031,7 +5045,9 @@ inline void UninstallScene() {
   reshade::unregister_event<reshade::addon_event::update_buffer_region_command>(internal::OnUpdateIndicesCommand);
   reshade::unregister_event<reshade::addon_event::copy_buffer_region>(internal::OnCopyIndices);
   reshade::unregister_event<reshade::addon_event::copy_resource>(internal::OnCopyIndexBuffer);
-  reshade::unregister_event<reshade::addon_event::map_buffer_region>(internal::OnMapIndices);
+  if (std::exchange(internal::index_maps_registered, false)) {
+    reshade::unregister_event<reshade::addon_event::map_buffer_region>(internal::OnMapIndices);
+  }
   if (internal::BatchInScene()) {
     reshade::unregister_event<reshade::addon_event::map_texture_region>(internal::OnBatchMapTexture);
     reshade::unregister_event<reshade::addon_event::update_texture_region>(internal::OnBatchUpdateTexture);

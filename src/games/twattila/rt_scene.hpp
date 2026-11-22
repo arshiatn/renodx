@@ -2221,7 +2221,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .is_visible = [] { return internal::far_tree_shadows_installed; },
       },
       new renodx::utils::settings::Setting{
-          .key = "RayTracedDebugLog",
+          .key = internal::LOG_DETAILS_KEY,
           .binding = &sliders->debug_log,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
           .default_value = 0.f,
