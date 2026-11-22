@@ -6928,9 +6928,36 @@ heading text are in HANDOFF_ARCHIVE.md)
         4 / 7 LAB_ENV / 9 / 10 (exe tw_rt_harness_scene_4k.exe) / 11 (helper DLLs) / 12 (temp folder + rename on
         success, real done check) -> gtl_'s S3r fix round, with gtq_'s 8; gtb_ told render_cpu_s_per_kspp 1500 V.
         Then rerun test_lab_jobs + test_scenes.py.
-        Agents (10): c33i_ (N6), lga_ (r4 re-check), ebr_ (r17 re-check), gtp_ (T04), upr_ (H0 script re-check, then
-        v2.4 re-check), gtv_ (S3r), gtb_ (lab phases), gti_ (-ExcludePids), gbc_ (C1 + C2, then B1 review), gpr_
-        (price + web review).
+        lga_ r4 RE-CHECK 03:0x = OK (render_mt/reports/lga_r4_recheck_handback.md; audit :932): the trap fails no build
+        on harmless errors, locked DLL -> exit 1 no exe, r3 paths hold. rmt_lg2 MERGED 03:0x c3ea4925f (name check:
+        16 generic words; gated builds x86 3 + amd64 twattila exit 0; pushed).
+        gti_ -ExcludePids DONE (plan_1117/gti_excludepids_handback.md, backups gti_bak6): BusyState(exclude_pids=[(pid,
+        StartOf(pid))]) / ns_busy -ExcludePids "pid:start,..."; reused pid still counted; 36 / 36. Acquire() and the CLI
+        don't pass it yet (one parameter if the keeper needs it -> gtl_'s fix round).
+        gtb_ LAB PHASES DONE (plan_1117/gtb_lab_phases_handback.md, backups gtb_bak5): score / render_cpu (1500 V) /
+        record in budget.py; test_budget 12 OK; gtl_'s suites pass (test_lab_jobs failed once on its first run, test
+        unknown -> gtl_ checks for a flake). Dead in lab.py for gtl_: 97-99, 504-506 (7 callers -> budget.value),
+        606-615 (LabClock -> budget.JobClock at 934).
+        upr_ H0 RE-CHECK = one new MUST N1 (run 7 passes pre, post, pre2; checker wants pre, pre2, post -> a register
+        step passes) + 5 nits (plan_1117/designs/upr_h0_recheck_handback.md); time cuts lose nothing. h0i_ RESUMED: N1 +
+        nits, then rebase rmt_h0 (local only) onto atn-mods + 5 checks + gated builds. upr_ -> v2.4 re-check.
+        gpr_ PRICE + WEB REVIEW = FIX 7 MUST / 13 SHOULD / 10 NIT (plan_1117/designs/gpr_review.md, hand-back
+        gpr_review_handback.md): V the shell timeout never stops a call (moves it to the background) -> budget.py watch
+        is the only kill; background kinds unpriced; updatedInput / permission source; tree kill vs build slot; fix-now
+        lockout; cause() into gate_hook; P0 refusals too many. gpp_ RESUMED for v2 (licensed code repos = ATN's 11-21
+        rule, no new question); then gpr_ re-checks.
+        grs_ S2 STARTED 03:1x (a9acfd1f61cc205dd, Opus High, own worktree, branch gpu_s2): resident replayer + W3 / B2,
+        offline only; asks from gtl_ / gtq_ in the brief; HARNESS_DUMP GPU check -> coordinator.
+        gtp_ T04 DONE (plan_1117/gtp_t04_handback.md, backups gtp_bak8): inner_commands() for powershell / pwsh / cmd /
+        bash / sh / wsl wrappers (+ -EncodedCommand), 3 levels; run_tests 263 / 263; edited the LIVE hook (shadow, fail
+        open). gtw_ RE-CHECK 5 STARTED (3 nits + T04, fail-open probes on the live parser).
+        MEGA GEOMETRY 4K CHECK: helper + scene4k harness built from c3ea4925f into build\coord_mg4k (+ D3D12Core 1.619.6,
+        nvngx_dlss / dlssd); the run script (GPU lock, no game, one default 4K run) was STOPPED by the auto-mode classifier
+        03:15 ([Undermining Oversight]): not retried, nothing started, no lock taken. Cause: my own run script, not one of
+        ATN's rule scripts. Script kept at tools\tw\rt_harness\mg4k_check.ps1 [ ] ATN (run it himself or add a rule).
+        Agents (11): c33i_ (N6), ebr_ (r17 re-check), h0i_ (N1 + rebase), upr_ (v2.4 re-check), gpp_ (price + web v2),
+        grs_ (S2), gtv_ (S3r), gtw_ (S1c re-check 5), gbc_ (C1 + C2, then B1 review). Idle: lga_, lgf2_, gtl_ (waits
+        S3r), gtq_ / gtk_ (wait gbc_), gti_, gtb_, gtp_.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
