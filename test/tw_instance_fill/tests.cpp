@@ -1382,6 +1382,22 @@ void TestCheckMode() {
     CallSite(1, &range, &scenario->functors[0]);
   }
   CHECK(fi::check_skipped.load() == 1);
+  // The scratch buffers are kept at their high water: smaller fills after the biggest one reuse them.
+  const uint8_t* const kept_scratch = fi::check_scratch[0].data();
+  const size_t kept_size = fi::check_scratch[0].size();
+  CHECK(kept_size >= 20000 * 16 && RunExact(1, 3000, 64, 12, false, &random));
+  CHECK(fi::check_scratch[0].data() == kept_scratch && fi::check_scratch[0].size() == kept_size && !fi::check_busy.load());
+#if defined(TWATTILA_INSTANCE_FILL_CONTROLS)
+  // Scratch memory that cannot be made: the fill is not compared (counted skipped), the game's fill still runs, and the scratch
+  // is free for the next one.
+  const uint32_t checked_before = fi::checked.load();
+  fill::control_check_alloc_fails = true;
+  CHECK(RunExact(1, 3000, 64, 12, false, &random));
+  fill::control_check_alloc_fails = false;
+  CHECK(fi::check_skipped.load() == 2 && fi::checked.load() == checked_before && !fi::check_busy.load());
+  CHECK(RunExact(1, 3000, 64, 12, false, &random) && fi::checked.load() == checked_before + 1);
+  fi::check_skipped.store(1);
+#endif
   // The summary goes once per trace window, at the first present after it (not at every present).
   {
     log_lines.clear();

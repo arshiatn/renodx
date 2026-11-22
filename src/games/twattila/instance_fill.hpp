@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstring>
 #include <format>
+#include <new>
 #include <span>
 #include <string>
 #include <string_view>
@@ -289,6 +290,8 @@ static bool control_note_on_mismatch = false;
 static bool control_all_or_none = false;
 // Wanted asks for the stubs whether or not their cut is in
 static bool control_stubs_without_cut = false;
+// The check's scratch buffers cannot be made (std::bad_alloc)
+static bool control_check_alloc_fails = false;
 #else
 constexpr bool control_overlap = false;
 constexpr bool control_drop_last = false;
@@ -302,6 +305,7 @@ constexpr bool control_ignore_pixel_byte = false;
 constexpr bool control_note_on_mismatch = false;
 constexpr bool control_all_or_none = false;
 constexpr bool control_stubs_without_cut = false;
+constexpr bool control_check_alloc_fails = false;
 #endif
 
 using RecordCopy = void(__thiscall*)(void* functor, Range* range);
@@ -395,7 +399,11 @@ static std::atomic<uint32_t> checked = 0;  // the fills compared since the start
 static uint32_t check_window = 0;          // the pool trace window whose compared fills are being counted (0: none open)
 static uint32_t check_window_start = 0;
 static std::atomic<uint32_t> check_mismatches = 0;
-static std::atomic<uint32_t> check_skipped = 0;
+static std::atomic<uint32_t> check_skipped = 0;  // fills not compared: too big, scratch busy or out of memory
+// The two scratch buffers of a compared fill (serial, dispatched): kept at their high water, zeroed per fill. `check_busy` is
+// taken for the compare, so a second thread's fill in check mode is skipped, not mixed in.
+static std::array<std::vector<uint8_t>, 2> check_scratch;
+static std::atomic<bool> check_busy = false;
 // The fills that ended with chunks not done since the start: the first one is said at the next present, the total at detach.
 static std::atomic<uint32_t> incomplete_fills = 0;
 struct IncompleteFill {
@@ -540,12 +548,23 @@ inline void Dispatch(size_t site, Range* range, void* functor, void* manager) {
         std::memcpy(&stride, tracker + TRACKER_STRIDE, sizeof(stride));
         const uint64_t bytes = uint64_t{count} * stride;
         const uint32_t first = (SITES[site].copy == Copy::LIST_ITEMS ? words[2] : 0u);
-        if (range->begin == first && bytes <= CHECK_MAX_BYTES) {
-          std::vector<uint8_t> serial_bytes(bytes);
-          std::vector<uint8_t> parallel_bytes(bytes);
+        bool scratch_ready = false;
+        if (range->begin == first && bytes <= CHECK_MAX_BYTES && !check_busy.exchange(true, std::memory_order_acquire)) {
+          try {
+            if (control_check_alloc_fails) throw std::bad_alloc();
+            for (std::vector<uint8_t>& scratch : check_scratch) {
+              scratch.resize(std::max<size_t>(scratch.size(), bytes));
+              std::fill_n(scratch.begin(), bytes, uint8_t{0});
+            }
+            scratch_ready = true;
+          } catch (const std::bad_alloc&) {
+            check_busy.store(false, std::memory_order_release);
+          }
+        }
+        if (scratch_ready) {
           std::array<std::array<uint8_t, TRACKER_BYTES>, 2> trackers;
           std::array<std::array<uint32_t, 3>, 2> functors = {words, words};
-          const std::array<uint8_t*, 2> destinations = {serial_bytes.data(), parallel_bytes.data()};
+          const std::array<uint8_t*, 2> destinations = {check_scratch[0].data(), check_scratch[1].data()};
           for (size_t side = 0; side < 2; ++side) {
             std::memcpy(trackers[side].data(), tracker, TRACKER_BYTES);
             const auto destination = reinterpret_cast<uintptr_t>(destinations[side]);
@@ -556,13 +575,14 @@ inline void Dispatch(size_t site, Range* range, void* functor, void* manager) {
           copy(functors[0].data(), &whole);
           fill(functors[1].data());
           checked.fetch_add(1, std::memory_order_relaxed);
-          if (bytes != 0 && std::memcmp(serial_bytes.data(), parallel_bytes.data(), bytes) != 0) {
+          if (bytes != 0 && std::memcmp(check_scratch[0].data(), check_scratch[1].data(), bytes) != 0) {
             if (check_mismatches.fetch_add(1, std::memory_order_relaxed) < 8) {
               renodx::utils::log::w(
                   "[Total War] Parallel Instance Fill check: the dispatched fill differs from the serial one (",
                   SITES[site].name, ", ", count, " items, ", stride, " bytes each)");
             }
           }
+          check_busy.store(false, std::memory_order_release);
         } else {
           check_skipped.fetch_add(1, std::memory_order_relaxed);
         }
