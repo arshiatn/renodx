@@ -507,14 +507,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (later, before any ENFORCE): a hook that times out (pre hook 15 s) does not ... | ?
 - coord: synthesis agent -> handoff_plan\plan.md (parallel groups) -> SHOW ATN FIR ... | ?
 - coord: before ATN's restart, confirm the end batch is READY (everything built + ... | ?
-- gtw_ + gpr_: re-check gtp_ round 21 (incl. GO FOR ENFORCE question) (coord 18:1x ... | ?
 - ebq_: end batch readiness list (coord 18:2x). | ?
 - hts_: handoff_plan\plan.md + plan_groups.tsv (coord 18:2x) -> show ATN. | ?
 - gtl_: live lab check after landing (all suites + 18 jobs check on live) + does t ... | ?
 - gtv_: read the post-B1 test-only diffs (4 schema tests, left_out conhost, titles ... | ?
 - owner of schema_check.py (gtl_ / gtb_): support "maximum" (cmd dump frames <= 64 ... | ?
 - gtc_ (Low): S3c RE-RUN per s3c_run_sheet.md "## Re-run" after gtl_'s live check: ... | ?
-- gtp_ (bundle with any gtw_ round 21 items -> round 22): gpr-R21-1 refusal on eve ... | ?
+- gtp_ ROUND 22 (coord 18:3x): gpr-R21-1 + gtw-R21-1..6 (below); then gtw_ + gpr_ ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -10975,7 +10974,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Corpus 15,119: 249 -> 249, 0 changed, 0 errors. Key diff 87,026 calls: 37 changed, none heavy -> light. Probes:
         older lists same; 3 W-group R items refused; lab run + priced refused in all 3 orders; view v2 0 / 61 wrong; time2
         shell_web <= 0.078 s, price_shell <= 0.203 s. Sandboxes removed (no reparse points).
-        - [ ] gtw_ + gpr_: re-check gtp_ round 21 (incl. GO FOR ENFORCE question) (coord 18:1x).
+        - [x] gtw_ + gpr_ (DONE 18:29 / 18:33): re-check gtp_ round 21 (incl. GO FOR ENFORCE question) (coord 18:1x).
         htd_ TRIAGE 18:16 (handoff_plan/htd_handback.md, htd_triage.tsv + htd_summary.md; line numbers from a 17:57 snapshot
         of 12563 lines, match by title): 185 boxes: DONE-UNTICKED 43, CPU-CODE 29, ATN 27, INGAME 23, CPU-TOOL 20, GPU 20,
         BLOCKED 13, SUPERSEDED 8, DESIGN 2; 14 active (GPU plan), 2 active (render_mt); 50 tick-only rows; 31 now = Y; 3
@@ -11056,10 +11055,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         moving (frozen window: same seeds, no refusal flips). gpr-R21-1 (Low, optional, no enforce block): price_shell checks
         refusal on one key only -> 7 calls under-refuse (3 bug4_census heredoc edits + run, 2 instance_fill + 2 map_replay
         run.ps1 behind their exe); fix = check refusal on every ranked key with a row, first refused wins.
-        - [ ] gtp_ (bundle with any gtw_ round 21 items -> round 22): gpr-R21-1 refusal on every ranked key (Low, optional).
-        Agents (5): gtl_ (live lab check), gtv_ (test diffs read), gtw_ (gate round 21 re-check), ebq_ (end batch
-        readiness), hts_ (open-items plan synthesis); gtc_ (S3c re-run next) / hta_..htd_ / gtp_ / gpr_ / fcr_ / gti_ / grs_
-        / h0i_ / upr_ idle; GPU: FREE (S3c re-run next); one GPU job at a time
+        - [ ] gtp_ ROUND 22 (coord 18:3x): gpr-R21-1 + gtw-R21-1..6 (below); then gtw_ + gpr_ re-check 22.
+        gtw_ RE-CHECK 21 18:33 (plan_1117/gtw_recheck21_handback.md; gtw_s1c_review.md "S1c re-check 21" from l.2400;
+        testbin\scratch\gtw_\gtw_r21_*): GO for round 21 in SHADOW; NOT GO for enforce until gtw-R21-1..3 fixed (or ATN
+        accepts them). Live aa2306475bdb = bak28, shadow; 1261/1261; corpus 249 = 249 refused, 0 changed, 0 errors. All
+        gtw-R20-1..3 + gpr-R20-1 (gate side) fixed. Hook time vs 15 s: <= 0.28 s at 64 KB, 0.55 s at 256 KB, 5.3 s at 1 MB;
+        pre() on a 4 MB C++ Write 0.09 s. Under enforce web_allow + price stay shadow (no gates.tsv rows). Today's 154
+        would-deny rows in enforce scopes: ~15 intended, ~10 no longer refuse, ~130 WRONG. gtw-R21-1 (Medium): PROT matches
+        tools/tw/gates / tools/specs anywhere -> mirrors, backups, suite copies refused (86 of 102 files rows) -> anchor
+        gates / specs / pitfalls to PROJECT, keep .claude/settings*.json unanchored. gtw-R21-2 (Medium): after cd into the
+        gates folder a quoted '>' counts as a redirect (echo 'a>b', awk 'NR>=1096', grep "[>]") -> redirect targets only
+        outside quotes. gtw-R21-3 (Medium; ATN's call on the match): override rule refuses every mention (0 / 41 corpus + 0 /
+        24 log rows ran the script) -> smallest fix: keep the match, message says read it with Read / Grep. gtw-R21-4 (Low):
+        5 pipe-to-shell forms pass (| bash -c "$(cat /dev/fd/0)", "$(head -c N)", "$(cat; echo)", "$(cat)" x y, > >(sh)).
+        gtw-R21-5 (Low): code copies into src-like scratch paths + code names in sed text on .md refused (~9 each).
+        gtw-R21-6 (Low, before web_allow on): cite / cxx block runs before shell_web, one 10 s checker per commit text, no
+        shared deadline -> one checker per call, shell_web first. By design under enforce: gtp_'s live swaps + tool_prices.py
+        seed / build refused (ATN's steps). Slip: one python -c sandbox copy outside gtw_low.py (scratch only).
+        Agents (5): gtl_ (live lab check), gtv_ (test diffs read), gtp_ (gate round 22), ebq_ (end batch readiness), hts_
+        (open-items plan synthesis); gtc_ (S3c re-run next) / hta_..htd_ / gtw_ / gpr_ / fcr_ / gti_ / grs_ / h0i_ / upr_
+        idle; GPU: FREE (S3c re-run next); one GPU job at a time
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
