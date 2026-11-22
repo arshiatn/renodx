@@ -750,6 +750,11 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
   int ours_differ = 0;
   int all_shaders = 0;
   int defaults_differ = 0;
+  // Patch's own change (ho_g21 f7fb7a901): Warhammer I / II's Shader Model 4.1 and pcf sun builds (no comparison) patched
+  // too, nothing else: Warhammer II's rows and both games' defaults differ from before.
+  int wh2_differ = 0;
+  int wh1_defaults_differ = 0;
+  int wh2_defaults_differ = 0;
   for (const char* game : {"twattila", "twpharaohdynasties", "twrome2", "twthronesofbritannia", "twtroy", "twwarhammer2", "twwarhammer3", "twwarhammer"}) {
     const std::string game_dump = std::string(dump).replace(at, pack.size(), std::string("dump_shader_") + game + "_pack");
     int rows = 0;
@@ -772,6 +777,7 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
     // Patch with its defaults on every PS in its dump, forward and not.
     int shaders = 0;
     int defaults_patched = 0;
+    int game_defaults_differ = 0;
     for (const auto& entry : std::filesystem::directory_iterator(game_dump)) {
       if (entry.path().filename().string().find(".ps_") == std::string::npos) continue;
       std::ifstream file(entry.path(), std::ios::binary);
@@ -780,12 +786,15 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
       for (const bool forward : {false, true}) {
         const auto now = ambient_patch::Patch(code, forward, 1);
         defaults_patched += now.empty() ? 0 : 1;
-        defaults_differ += (now != ambient_patch_before::Patch(code, forward, 1)) ? 1 : 0;
+        game_defaults_differ += (now != ambient_patch_before::Patch(code, forward, 1)) ? 1 : 0;
       }
     }
     all_shaders += shaders;
-    std::printf("  %s: %d rows in its dump, %d patched, %d differ from before; Patch's defaults on its %d PS: %d patched\n", game, rows, patched,
-                differ, shaders, defaults_patched);
+    defaults_differ += game_defaults_differ;
+    std::printf("  %s: %d rows in its dump, %d patched, %d differ from before; Patch's defaults on its %d PS: %d patched, %d differ\n", game, rows,
+                patched, differ, shaders, defaults_patched, game_defaults_differ);
+    if (std::string(game) == "twwarhammer") wh1_defaults_differ = game_defaults_differ;
+    if (std::string(game) == "twwarhammer2") wh2_defaults_differ = game_defaults_differ, wh2_differ = differ;
     if (std::string(game) == "twwarhammer") {
       ours_differ = differ;
     } else {
@@ -794,9 +803,12 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
       other_differ += differ;
     }
   }
-  CHECK(other_rows > 100 && other_differ == 0, "the other games: %d rows, %d differ", other_rows, other_differ);
+  CHECK(other_rows > 100 && other_differ == wh2_differ && wh2_differ == 12, "the other games: %d rows, %d differ (Warhammer II's 12 sun builds: %d)",
+        other_rows, other_differ, wh2_differ);
   CHECK(ours_differ == 31, "CONTROL Warhammer's: %d of 31 differ", ours_differ);
-  CHECK(all_shaders > 10000 && defaults_differ == 0, "Patch's defaults: %d of %d PS (x2) differ", defaults_differ, all_shaders);
+  CHECK(all_shaders > 10000 && defaults_differ == wh1_defaults_differ + wh2_defaults_differ && wh1_defaults_differ == 184 && wh2_defaults_differ == 364,
+        "Patch's defaults: %d of %d PS (x2) differ (Warhammer %d of 184, Warhammer II %d of 364, the others none)", defaults_differ, all_shaders,
+        wh1_defaults_differ, wh2_defaults_differ);
   int declared = 0;
   for (const uint32_t hash : {0x0BF2DB7Fu, 0xBCB9B1D6u}) {
     const auto code = GameBytes(dump, hash);
