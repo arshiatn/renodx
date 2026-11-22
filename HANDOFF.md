@@ -441,7 +441,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: a MISSING key / empty value in heapfix.ini -> NOTE instead of PROBLEM? heap ... | ?
 - ATN (INSTALL_FOR_ATN.md item 12, sections 1 / 3 / 7): replace the hook JSON (mat ... | ?
 - c3i_ B1 real-routine tests (design 5: tests 1-9, 12, 14, 15) + N5's second-node ... | ?
-- ATN (after gtv_'s OK): adopt the three lab proposals - copy cmd.schema.json.prop ... | ?
+- ATN (after gtv_'s re-check OK): adopt the lab proposals - copy cmd.schema.json.p ... | ?
 - gtq_: read gtl_'s iq_input note (output_sizes per arm, dump_frames > 1, dred set ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
@@ -7603,11 +7603,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         resident_protocol.md.proposed. Note for gtq_: iq_input arms may carry output_sizes, dump_frames > 1; the lab
         writes iq.json's dred after iq_frames. -> gtv_ REVIEW QUEUED (after grs_'s leftovers re-check). gtl_ idle:
         its harness-named fakes are done (H0 re-run precondition met).
-        - [ ] ATN (after gtv_'s OK): adopt the three lab proposals - copy cmd.schema.json.proposed -> cmd.schema.json,
-            alive.schema.json.proposed -> alive.schema.json, resident_protocol.md.proposed -> resident_protocol.md
-            (all in tools\tw\lab); until then dump_frames stays 1.
+        - [ ] ATN (after gtv_'s re-check OK): adopt the lab proposals - copy cmd.schema.json.proposed ->
+            cmd.schema.json and resident_protocol.md.proposed -> resident_protocol.md (both in tools\tw\lab;
+            the alive.schema proposal is dropped, gtv_ S2); until then dump_frames stays 1.
         - [ ] gtq_: read gtl_'s iq_input note (output_sizes per arm, dump_frames > 1, dred set by the lab) and say
-            whether iq_frames should copy dred itself; after gtv_'s review.
+            whether iq_frames should copy dred itself; the reference builder must copy played.json into each
+            reference seed_<n> folder (else reference.dred stays null and the gate flags it, gtv_ N3); after gtl_'s
+            fixes pass gtv_.
         gtv_ N1 LEFTOVERS RE-CHECK = MERGE-READY (pending the GPU check) 05:4x
         (plan_1117/gtv_n1_leftovers_recheck_handback.md; gtv_s2r_review.md "## N1 leftovers re-check"): trace base +
         seed right (no reset, checked before any frame, a restart inside trace answers FAILED); SETTLE_LOOPS 5 = the
@@ -7655,11 +7657,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         declared deadline (the inner watch holds its child's limit) - accepted. gpr_'s probe 31 / 31; test_budget
         33 OK + PSM1, watch --selftest 0, test_gpu_gate 30 OK + 1 skipped, test_report_check 9 OK; 10 new / changed
         cases (start /b /wait ... --deadline-s 8 now none). Nothing real written. -> gpr_ RE-CHECK STARTED.
-        Agents (5): gtw_ (gtp_ re-check 8), gtv_ (gtl_ S1b + v1.1 review, + lab.py:914), gpr_ (gtb_ yz1 / yz2
-        re-check), t4i_ (r21), c3i_ (B1.6 follow-ups). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after
-        H0: fake to testbin + R1), gpp_, ebr_ (re-checks t4i_), gtq_ (iq note after gtv_), gbc_, gtb_ (waits gpr_),
-        gti_ (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtl_ (waits gtv_). GPU: H0
-        RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg / map_replay-named process until H0 ends.
+        gtv_ GTL_ S1b + v1.1 REVIEW = FIX 06:0x (plan_1117/gtv_gtl_s1b_v11_review_handback.md; gtv_s3r_review.md "##
+        gtl_ S1b + v1.1 review"): Must 1 lab.py:914 reuse reads a missing DRED label as on -> lab.get('dred') ==
+        job['dred'] (gpr_'s find); Must 2 reported_dred() writes ONE value for every arm (l.1323 result.json, l.1496
+        iq.json): arm A v1 (no dred) + arm B true -> both true, the gate's unknown flag never fires -> per-arm values
+        (None kept), null when an arm's answers disagree, A' takes A's, keep true-vs-false refusal, + unit case.
+        Should 1 a reused resident keeps the last job's seed K-1 + light_anim (rt_serve.h:885; calibrate -> iq -> ab
+        reuse would time arm A on seed K-1 with moving lights) -> on reuse send seed 0 (+ light_anim null once
+        adopted), refuse a run with seed != 0 / light_anim != null when the job set neither. Should 2 proposals vs
+        d336c55d3: protocol must cite d336c55d3 + unknown flags exit 1 + the SETTLE_LOOPS seed-limit formula (2^20
+        room, offset <= UINT32_MAX; "2^24 - 2^20 - played" stale) + run / moments / trace refused past it;
+        alive.schema proposal WRONG (alive.json unchanged at d336c55d3; env / nsight / dred / output_sizes only in
+        `status`) -> drop it (renamed aside, no delete); cmd.schema proposal right, ans.schema no change. Nits: N1
+        iq "recorded with other builds" prints for arm B every job (B is never the recorder) + untested; N2 no test
+        that the format is in the scene key; N3 reference dred lookup startswith('seed_') vs validator seed_\d+, and
+        nothing writes played.json into reference seed folders yet (-> gtq_ box); N4 mask entry without `file` ->
+        KeyError, refuse like unreadable. OK: S1b key / builds / tests, --no-dred, check_played rest, answer checks vs
+        rt_serve.h, dump folders, dump_frames, played.json + Q25. Tests: 2 / 2 new unit; jobs / keeper / ps1 HELD
+        (harness-named fakes) until H0 ends. -> gtl_ FIXES STARTED (edits + unit tests now; jobs / keeper / ps1
+        suites after H0), then gtv_ re-checks.
+        Agents (5): gtw_ (gtp_ re-check 8), gtl_ (gtv_'s S1b + v1.1 fixes), gpr_ (gtb_ yz1 / yz2 re-check), t4i_
+        (r21), c3i_ (B1.6 follow-ups). Idle: bd1r_, lga_, lgf2_, c33i_, upt_, upr_, h0i_ (after H0: fake to
+        testbin + R1), gpp_, ebr_ (re-checks t4i_), gtq_ (box after gtl_'s fixes), gbc_, gtb_ (waits gpr_), gti_
+        (after H0: R1), grs_, gtk_, gtp_ (waits gtw_), b13r_ (re-checks c3i_), gtv_ (re-checks gtl_; held lab
+        tests + race probe after H0). GPU: H0 RE-RUN (coordinator, since 05:48:5x); no harness / helper / fg /
+        map_replay-named process until H0 ends.
         QUEUE: R-S5 re-checks
         -> merge rmt_rs5, lga_ group 2 re-check 2 -> merge rmt_lg2, lgf1_ follow-up -> lga_ look -> merge, gtw_ S1c
         re-check -> INSTALL to ATN, bulk index (after S1a OK), Q8(b) lock wait, H0 harness runs (held window) -> merge
