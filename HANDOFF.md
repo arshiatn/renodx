@@ -8997,9 +8997,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         "spawn query", code raises it at spawn write; the failed-round NOTE could show failed rounds vs rounds.
         Optional (declined, (c) stands): a scan arm at ~176 s in the HF starts. -> t4i_ NOW: option (a) + disk gate
         + ebr_'s 3 nits.
+        ffr_ V3 RE-CHECK = STEP 4 OK, 1 MUST IN STEP 3 09:3x (plan_1117/designs/ffr_v3_recheck_handback.md;
+        ffr_first_frame_review.md "## v3 re-check"; design only): V1 / V2 / V3 / V5 / V7 / V8 / V9 done; step 1
+        rule in 3.9. MUST R1: the harness wrapper list (3.8) misses 2 of the 3 tight trace loops
+        (tw_rt_harness.cpp:848-849 leak job, 1205-1206 pedestal job = 200 tries, no sleep, like 3189-3190 -> a
+        cold first request passes silently = old M4) + TraceScene 610 / 4590, TraceReflections 3408, Evaluate
+        4541, every Prepare (229 / 607 / 652 / 3027 / 3492 / 4549 / 4565 / 4568 / 4586; 652 / 3027 / 3492 count a
+        false Prepare as a failure) -> one wait_open() before every bridge call (23 sites, grep
+        `bridge::(Prepare|Evaluate|Trace\w+|PresentFrame)\(`): while Opening(), PollOpening() + sleep 10 ms up
+        to the budget (polls itself, so no request / frame-0 capture is sent twice). Nits: R2 Prepare clears
+        owe_empty before its poll -> a busy poll returns false and loses the owed empty set (DLAA -> TAA -> DLAA ->
+        TAA in one cold opening keeps the old set's textures + DLSS feature) -> clear only on the answered path; R3
+        frame_generation.hpp:281 sets presenting = false right after PresentFrame returns false -> the FG hide
+        never sees Opening() if the present itself enters the opening -> use the value from before the call or a
+        "hidden for this opening" flag. R1 before step 3 is written; R2 + R3 with step 4; steps 1-2 still safe
+        alone. -> grs_ v4 (R1-R3) STARTED.
         Agents (9): upr_ (h0i_ F1-F4 re-check), gtw_ (round 13 re-check), gpr_ (round 13 re-check), gtb_ (load
         refresh + (12, 99) tighten), lga_ (release_check fixes), t4i_ (option (a) + disk gate + ebr_ nits), c3i_
-        (B1 F1 + F2 logging), ffr_ (grs_ v3 re-check), fcr_ (ff_s12 steps 1-2 patch review)
+        (B1 F1 + F2 logging), grs_ (first-frame v4: R1-R3), fcr_ (ff_s12 steps 1-2 patch review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
