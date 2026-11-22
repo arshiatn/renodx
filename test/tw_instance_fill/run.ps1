@@ -17,7 +17,7 @@ New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 $testBuild = (Resolve-Path -LiteralPath $testBuild).Path
 Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
-& 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 /DTWATTILA_DRAW_RECORDING /DTWATTILA_INSTANCE_FILL_CONTROLS /DTWATTILA_WORKER_POOL_CONTROLS -fms-extensions -Wno-deprecated-declarations -Wno-cast-calling-convention /I $repairRoot /I "$external\reshade" /I "$external\reshade\include" /I "$external\frozen\include" /I "$external\Detours\include" /I "$external\Detours\src" /I "$external\gtl\include" "$testRoot\tests.cpp" /Fe:instance_fill.exe /link /OPT:REF /OPT:ICF user32.lib
+& 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 /DTWATTILA_DRAW_RECORDING /DTWATTILA_INSTANCE_FILL_CONTROLS /DTWATTILA_DRAW_RECORDING_CONTROLS /DTWATTILA_WORKER_POOL_CONTROLS -fms-extensions -Wno-deprecated-declarations -Wno-cast-calling-convention /I $repairRoot /I "$external\reshade" /I "$external\reshade\include" /I "$external\frozen\include" /I "$external\Detours\include" /I "$external\Detours\src" /I "$external\gtl\include" "$testRoot\tests.cpp" /Fe:instance_fill.exe /link /OPT:REF /OPT:ICF user32.lib
 if ($LASTEXITCODE -ne 0) { throw 'Parallel Instance Fill test compile failed' }
 & (Join-Path $testBuild 'instance_fill.exe') $GameDll
 if ($LASTEXITCODE -ne 0) { throw 'Parallel Instance Fill test failed' }

@@ -13,6 +13,11 @@
 //    below the minimum, no worker free, another thread, inside a job, on a worker) and the trace and check lines.
 // 4. CONTROLs, each must differ: overlapping chunks, the last chunk dropped, a return before the join, the wrong record copy for a site,
 //    the chunks' ranges without begin0, a refused Start that runs no part; the check mode on a copy that depends on its thread.
+// 5. The fold's stubs (R2, the private build): the 3 stub sites (11 bytes) and their key stores match the image, each stub's register is
+//    the one the cut pushes, Prepare refuses the stubs alone on a changed byte, Wanted's tie (a stub follows its cut and R1),
+//    Rewrite with 11-byte sites in mixed windows; the real stub bytes run in a fake frame (a fake ring's Unmap by order and
+//    argument, the key mismatch, the folded stub's pixel and empty-round closes, the flag changed); the fold opened by the real
+//    dispatcher and closed, back to back; the controls of all that (each must differ).
 // tests.exe [empire.retail.dll]
 #include <windows.h>
 
@@ -60,6 +65,8 @@ namespace fill = twattila::instance_fill;
 namespace fi = twattila::instance_fill::internal;
 namespace wp = twattila::worker_pool;
 namespace ec = twattila::engine_code::internal;
+namespace dr = twattila::draw_recording;
+namespace di = twattila::draw_recording::internal;
 
 namespace {
 
@@ -308,7 +315,7 @@ bool TouchesAny(const Ranges& ranges, bool written) {
 void TestSites() {
   REQUIRE(fill::Prepare(reinterpret_cast<HMODULE>(patched)));
   CHECK(fi::found == fill::ALL_SITES);
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     const uint32_t rva = fill::SITES[site].rva;
     CHECK(fi::sites[site].at == patched + rva);
     CHECK(std::memcmp(fi::sites[site].game.data(), game + rva, fill::SITE_SIZE) == 0);
@@ -325,6 +332,32 @@ void TestSites() {
   // The wrappers the sites call are the only callers of the loops, and the two record copies are different functions.
   CHECK(fill::SITES[0].copy == fill::Copy::TRACKER_ITEMS && fill::SITES[1].copy == fill::Copy::LIST_ITEMS
         && fill::SITES[2].copy == fill::Copy::LIST_ITEMS && fill::SITES[3].copy == fill::Copy::TRACKER_ITEMS);
+
+  // The 3 stubs (the fold's group): 11 bytes each, the block's own push, a 3-byte nop and a call that returns to the block's end.
+  CHECK(fill::SITE_COUNT == fill::FILL_SITE_COUNT + 3 && fill::FOLD_SITES == 0x70 && fill::R1_SITES == 0xF);
+  constexpr std::array<uint8_t, 3> STUB_NOP = {0x0F, 0x1F, 0x00};
+  // What the cut pushes: edi, edi, ebp (the key store writes that register's tracker into the functor, the stub pushes [reg + 0x18]
+  // and the fill's `mov ecx, [reg + 0x24]` before the flag test reads the ring through the same register).
+  constexpr std::array<uint8_t, 3> STUB_REGISTERS = {7, 7, 5};
+  for (size_t stub = 0; stub < 3; ++stub) {
+    const size_t index = fill::FILL_SITE_COUNT + stub;
+    const fill::SiteInfo& info = fill::SITES[index];
+    const uint32_t fill_rva = fill::SITES[stub + 1].rva;
+    CHECK(info.size == 11 && fi::sites[index].size == 11 && fi::sites[index].at == patched + info.rva);
+    CHECK(std::memcmp(fi::sites[index].game.data(), game + info.rva, 11) == 0);
+    CHECK(std::memcmp(fi::sites[index].patch.data(), game + info.rva + 3, 3) == 0);
+    CHECK(std::memcmp(fi::sites[index].patch.data() + 3, STUB_NOP.data(), STUB_NOP.size()) == 0);
+    CHECK(fi::sites[index].patch[6] == 0xE8
+          && info.rva + 11 + Read32(fi::sites[index].patch.data() + 7) + static_cast<uint32_t>(reinterpret_cast<uintptr_t>(patched)) ==
+                 static_cast<uint32_t>(reinterpret_cast<uintptr_t>(fi::UNMAP_ENTRIES[stub])));
+    CHECK(game[info.key_rva] == 0x89 && game[info.key_rva + 2] == 0x24);  // mov [esp + disp8], reg
+    CHECK(((game[info.key_rva + 1] >> 3) & 7) == STUB_REGISTERS[stub]);   // the key store's register
+    CHECK(game[info.rva + 3] == 0xFF && (game[info.rva + 4] & 7) == STUB_REGISTERS[stub] && game[info.rva + 5] == 0x18);  // push [reg + 0x18]
+    CHECK(game[fill_rva + 5] == 0x8B && (game[fill_rva + 6] & 7) == STUB_REGISTERS[stub] && game[fill_rva + 7] == 0x24);  // mov ecx, [reg + 0x24]
+    // The stub is the block behind the fill's flag test: the call (5), `mov ecx, [reg + 0x24]` (3), `add esp, 0xc` (3), the test (4) and
+    // the `jne` over the block (2) come first.
+    CHECK(info.rva == fill_rva + 17);
+  }
 
   // No overlap with heapfix's tables (the shared ones of engine_code.hpp), nor with the other features' sites.
   CHECK(!TouchesAny(ec::HEAPFIX_PATCHED, true) && !TouchesAny(ec::HEAPFIX_PATCHED, false));
@@ -363,7 +396,7 @@ void TestSites() {
   // Our written bytes against the other tables' find-by windows.
   for (const fill::SiteInfo& info : fill::SITES) {
     for (const Row& window : context_windows) {
-      CHECK(!(info.rva < window.rva + window.size && window.rva < info.rva + fill::SITE_SIZE));
+      CHECK(!(info.rva < window.rva + window.size && window.rva < info.rva + info.size));
     }
   }
   // The other tables prepared the same image: the sites are still ours to find.
@@ -392,7 +425,7 @@ void TestSites() {
       ++failures;
     }
   };
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     const fill::SiteInfo& info = fill::SITES[site];
     refuses(info.rva - info.before, 0x01, "a changed byte before the call");
     refuses(info.rva + 1, 0x10, "a call to another function");
@@ -411,6 +444,37 @@ void TestSites() {
   std::memcpy(patched + jump_at, saved.data(), saved.size());
   REQUIRE(fill::Prepare(reinterpret_cast<HMODULE>(patched)));
   CHECK(fi::found == fill::ALL_SITES);
+
+  // A stub that is not the game's (a byte of its block, its key store or the tail the folded one reads), or a jump into a stub, refuses
+  // the fold group alone: Prepare still finds the fills (R1).
+  const auto refuses_stubs_only = [&](uint32_t rva, uint8_t xor_mask, const char* what) {
+    patched[rva] ^= xor_mask;
+    const bool prepared = fill::Prepare(reinterpret_cast<HMODULE>(patched));
+    const uint32_t found_now = fi::found;
+    patched[rva] ^= xor_mask;
+    if (!prepared || found_now != fill::R1_SITES) {
+      std::printf("FAIL: Prepare did not leave the fills alone for %s (found %X)\n", what, found_now);
+      ++failures;
+    }
+  };
+  for (size_t index = fill::FILL_SITE_COUNT; index < fill::SITE_COUNT; ++index) {
+    const fill::SiteInfo& info = fill::SITES[index];
+    refuses_stubs_only(info.rva + 1, 0x01, "a changed byte of a stub's block");
+    refuses_stubs_only(info.rva + 4, 0x02, "a stub that pushes another register");
+    refuses_stubs_only(info.key_rva + 3, 0x01, "a changed key store");
+  }
+  refuses_stubs_only(fill::SITES[fill::SITE_COUNT - 1].rva + 11 + 2, 0x01, "a changed tail of the folded stub");
+  {
+    const uint32_t stub_jump_at = fill::SITES[fill::FILL_SITE_COUNT].rva + 0x40;
+    const std::array<uint8_t, 5> stub_saved = {patched[stub_jump_at], patched[stub_jump_at + 1], patched[stub_jump_at + 2],
+                                               patched[stub_jump_at + 3], patched[stub_jump_at + 4]};
+    patched[stub_jump_at] = 0xE9;
+    Write32(patched + stub_jump_at + 1, fill::SITES[fill::FILL_SITE_COUNT].rva + 2 - (stub_jump_at + 5));
+    CHECK(fill::Prepare(reinterpret_cast<HMODULE>(patched)) && fi::found == fill::R1_SITES);
+    std::memcpy(patched + stub_jump_at, stub_saved.data(), stub_saved.size());
+  }
+  REQUIRE(fill::Prepare(reinterpret_cast<HMODULE>(patched)));
+  CHECK(fi::found == fill::ALL_SITES);
   std::printf("sites: found, clear of heapfix and of %zu other sites (%zu engine code, %zu recording, %zu effect update)\n", others.size(),
               engine_rows, recording_rows, twattila::effect_update::SITE_COUNT);
 }
@@ -418,15 +482,15 @@ void TestSites() {
 void TestRewrite() {
   const auto bytes_of = [&](size_t site, bool patched_bytes) {
     return std::memcmp(patched + fill::SITES[site].rva, (patched_bytes ? fi::sites[site].patch : fi::sites[site].game).data(),
-                       fill::SITE_SIZE) == 0;
+                       fi::sites[site].size) == 0;
   };
-  // The 4 sites share one page (with 6 recording sites): Rewrite makes it writable once per site and must leave it as it found
-  // it, which it does only if the protections go back in the reverse order (a later site saw the earlier ones' writable state as
-  // its old protection). Every call runs on a read and execute page, and the page is checked after it; the test's own edits
-  // need it writable in between.
+  // The sites (4 fills and 3 stubs) share one page (with 6 recording sites): Rewrite makes it writable once per site and must leave
+  // it as it found it, which it does only if the protections go back in the reverse order (a later site saw the earlier ones'
+  // writable state as its old protection). Every call runs on a read and execute page, and the page is checked after it; the
+  // test's own edits need it writable in between.
   uint8_t* const page = patched + (fill::SITES[0].rva & ~0xFFFu);
   for (const auto& info : fill::SITES) {
-    CHECK((info.rva & ~0xFFFu) == (fill::SITES[0].rva & ~0xFFFu) && (info.rva + fill::SITE_SIZE - 1 & ~0xFFFu) == (info.rva & ~0xFFFu));
+    CHECK((info.rva & ~0xFFFu) == (fill::SITES[0].rva & ~0xFFFu) && (info.rva + info.size - 1 & ~0xFFFu) == (info.rva & ~0xFFFu));
   }
   const auto protect_page = [&](DWORD protection) {
     DWORD ignored;
@@ -452,55 +516,481 @@ void TestRewrite() {
   };
   const auto find_again = [&] {
     REQUIRE(fill::Prepare(reinterpret_cast<HMODULE>(patched)));
-    CHECK(fi::found == fill::ALL_SITES && fill::Wanted(true) == fill::ALL_SITES);
+    CHECK(fi::found == fill::ALL_SITES && fill::Wanted(true) == fill::R1_SITES);
   };
-  CHECK(fill::Changing(fill::ALL_SITES) == fill::ALL_SITES && fill::Changing(0) == 0);
-  CHECK(rewrite(fill::ALL_SITES) == 0);
-  fi::written = fill::ALL_SITES;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  CHECK(fill::Changing(fill::R1_SITES) == fill::R1_SITES && fill::Changing(0) == 0);
+  CHECK(rewrite(fill::R1_SITES) == 0);
+  fi::written = fill::R1_SITES;
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     CHECK(bytes_of(site, true));
   }
-  CHECK(fill::Changing(fill::ALL_SITES) == 0 && fill::Changing(0) == fill::ALL_SITES);
+  CHECK(fill::Changing(fill::R1_SITES) == 0 && fill::Changing(0) == fill::R1_SITES);
   // Out again: the game's own bytes.
   CHECK(rewrite(0) == 0);
   fi::written = 0;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     CHECK(bytes_of(site, false));
   }
   CHECK(std::memcmp(patched + 0x17AE700, game + 0x17AE700, 0x20) == 0 && std::memcmp(patched + 0x17AED00, game + 0x17AED00, 0x40) == 0);
 
   // A site that is another tool's: every site stands down going in, and nothing is written.
   patched[fill::SITES[2].rva + 1] ^= 0x04;
-  const uint32_t stood_in = rewrite(fill::ALL_SITES);
-  CHECK(stood_in == fill::ALL_SITES);
+  const uint32_t stood_in = rewrite(fill::R1_SITES);
+  CHECK(stood_in == fill::R1_SITES);
   patched[fill::SITES[2].rva + 1] ^= 0x04;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     CHECK(bytes_of(site, false));
   }
   stand_down(stood_in);
   find_again();
   // Going out: only the changed site stays (it is the other tool's), the others come out.
-  CHECK(rewrite(fill::ALL_SITES) == 0);
-  fi::written = fill::ALL_SITES;
+  CHECK(rewrite(fill::R1_SITES) == 0);
+  fi::written = fill::R1_SITES;
   patched[fill::SITES[1].rva + 2] ^= 0x04;
   const uint32_t stood_out = rewrite(0);
   CHECK(stood_out == 1u << 1);
   patched[fill::SITES[1].rva + 2] ^= 0x04;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     CHECK(bytes_of(site, site == 1));
   }
   stand_down(stood_out);
   // The other tool's bytes stay there; the game's come back for the rest of the test.
   std::memcpy(patched + fill::SITES[1].rva, fi::sites[1].game.data(), fill::SITE_SIZE);
   find_again();
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     CHECK(bytes_of(site, false));
   }
+
+  // The stubs (11 bytes each) are a group of their own, and a window may change both groups.
+  const auto all_bytes = [&](uint32_t patched_mask) {
+    for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+      if (!bytes_of(site, (patched_mask >> site & 1) != 0)) {
+        std::printf("FAIL: site %zu is not %s\n", site, (patched_mask >> site & 1) != 0 ? "the new bytes" : "the game's");
+        ++failures;
+      }
+    }
+  };
+  // Update's bookkeeping for one window (engine_code's formula): `written` and `found` as Update leaves them, so that every
+  // changing site ends written or stood down; returns what Rewrite stood down.
+  const auto settle = [&](uint32_t wanted) {
+    const uint32_t changing = fill::Changing(wanted);
+    const uint32_t stood = rewrite(wanted);
+    fi::written = (fi::written & ~changing) | (wanted & changing & ~stood);
+    fi::found &= ~stood;
+    return stood;
+  };
+  const auto restore_game_bytes = [&] {
+    for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+      std::memcpy(patched + fill::SITES[site].rva, game + fill::SITES[site].rva, fi::sites[site].size);
+    }
+    fi::written = 0;
+    find_again();
+  };
+  constexpr uint32_t FOLDED_STUB = 1u << (fill::SITE_COUNT - 1);
+  // The fills go in first, the stubs after them (one present later), and all 11 bytes of a stub go in and out.
+  CHECK(fill::Changing(fill::ALL_SITES) == fill::ALL_SITES);
+  CHECK(settle(fill::R1_SITES) == 0 && fi::written == fill::R1_SITES);
+  all_bytes(fill::R1_SITES);
+  CHECK(fill::Changing(fill::ALL_SITES) == fill::FOLD_SITES);
+  CHECK(settle(fill::ALL_SITES) == 0 && fi::written == fill::ALL_SITES);
+  all_bytes(fill::ALL_SITES);
+  // A thread is inside a stub from its second byte to its last, not at its first byte nor past its end.
+  const auto stub_start = reinterpret_cast<uintptr_t>(patched + fill::SITES[fill::SITE_COUNT - 1].rva);
+  CHECK(!fill::ThreadInside(stub_start, FOLDED_STUB) && fill::ThreadInside(stub_start + 1, FOLDED_STUB)
+        && fill::ThreadInside(stub_start + 10, FOLDED_STUB));
+  CHECK(!fill::ThreadInside(stub_start + 11, FOLDED_STUB) && !fill::ThreadInside(stub_start + 10, FOLDED_STUB >> 1));
+  // Out together (the row turned off): every site the game's again.
+  CHECK(settle(0) == 0 && fi::written == 0);
+  all_bytes(0);
+#if defined(TWATTILA_INSTANCE_FILL_CONTROLS)
+  // A mixed window (both groups change in one call: Wanted never asks for it, so Rewrite is called directly). A page of R1 that
+  // cannot be made writable stands R1 down while the stubs' change is made, and the other way round.
+  fill::control_fail_protect = 1;
+  CHECK(settle(fill::ALL_SITES) == fill::R1_SITES && fill::control_fail_protect == -1);
+  CHECK(fi::written == fill::FOLD_SITES && fi::found == fill::FOLD_SITES);
+  all_bytes(fill::FOLD_SITES);
+  restore_game_bytes();
+  fill::control_fail_protect = static_cast<int32_t>(fill::FILL_SITE_COUNT);
+  CHECK(settle(fill::ALL_SITES) == fill::FOLD_SITES && fill::control_fail_protect == -1);
+  CHECK(fi::written == fill::R1_SITES && fi::found == fill::R1_SITES);
+  all_bytes(fill::R1_SITES);
+  restore_game_bytes();
+#endif
+  // A window that changes both groups with another tool's byte in one of them: that group stands down alone, the other's change
+  // is made (Rewrite's compare rule is per group; Wanted never asks for such a window, so this is the only place that pins it).
+  for (const uint32_t foreign_group : {fill::R1_SITES, fill::FOLD_SITES}) {
+    const size_t foreign_site = (foreign_group == fill::R1_SITES ? 2 : 5);
+    patched[fill::SITES[foreign_site].rva + 1] ^= 0x04;
+    CHECK(settle(fill::ALL_SITES) == foreign_group);
+    patched[fill::SITES[foreign_site].rva + 1] ^= 0x04;
+    const uint32_t other_group = fill::ALL_SITES & ~foreign_group;
+    CHECK(fi::written == other_group && fi::found == other_group);
+    all_bytes(other_group);
+    restore_game_bytes();
+  }
+  // A stub that is another tool's going in stands down the stubs alone (the fills stay in and found).
+  CHECK(settle(fill::R1_SITES) == 0);
+  patched[fill::SITES[5].rva + 7] ^= 0x04;
+  CHECK(settle(fill::ALL_SITES) == fill::FOLD_SITES);
+  patched[fill::SITES[5].rva + 7] ^= 0x04;
+  CHECK(fi::written == fill::R1_SITES && fi::found == fill::R1_SITES);
+  all_bytes(fill::R1_SITES);
+  CHECK(fill::Wanted(true, true, 7, 7) == fill::R1_SITES);
+  restore_game_bytes();
+  // A fill that is another tool's going in stands R1 down; the stubs, found but with no R1 in, are no longer wanted.
+  patched[fill::SITES[2].rva + 1] ^= 0x04;
+  CHECK(settle(fill::R1_SITES) == fill::R1_SITES);
+  patched[fill::SITES[2].rva + 1] ^= 0x04;
+  CHECK(fi::found == fill::FOLD_SITES && fi::written == 0 && fill::Wanted(true, true, 7, 7) == 0);
+  restore_game_bytes();
+  // Everything going out together with one stub another tool's: only that stub stays (its bytes are not ours to touch).
+  CHECK(settle(fill::R1_SITES) == 0 && settle(fill::ALL_SITES) == 0 && fi::written == fill::ALL_SITES);
+  patched[fill::SITES[5].rva + 7] ^= 0x04;
+  CHECK(settle(0) == 1u << 5 && fi::written == 0 && fi::found == (fill::ALL_SITES & ~(1u << 5)));
+  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+    if (site != 5) CHECK(bytes_of(site, false));
+  }
+  patched[fill::SITES[5].rva + 7] ^= 0x04;
+  restore_game_bytes();
 
   // A thread is inside a site only past its first byte.
   const auto start = reinterpret_cast<uintptr_t>(patched + fill::SITES[3].rva);
   CHECK(!fill::ThreadInside(start, 1u << 3) && fill::ThreadInside(start + 1, 1u << 3) && fill::ThreadInside(start + 4, 1u << 3));
   CHECK(!fill::ThreadInside(start + 5, 1u << 3) && !fill::ThreadInside(start + 1, 1u << 2));
+}
+
+// ---------------------------------------------------------------- 5. the fold's stubs (the private build)
+
+// The fold tests answer whether every expectation held (`print`: which did not), so that a control can be required to fail them.
+struct Expect {
+  bool print = true;
+  bool ok = true;
+  void operator()(bool condition, const char* what, int line) {
+    if (!condition) {
+      ok = false;
+      if (print) std::printf("FAIL line %d: %s\n", line, what);
+    }
+  }
+};
+#define EXPECT(e, x) (e)((x), #x, __LINE__)
+
+constexpr uint32_t ALL_CUTS = 7;
+constexpr uint32_t STUB_SITE_BIT = 1u << fill::FILL_SITE_COUNT;  // stub 0's bit
+
+// Wanted's groups and the stub tie (test 3). The stubs are asked for only in a present after the fills were written and are
+// still wanted, as far as their cut is written (before the window) and stays targeted; R1's own answer is unchanged.
+bool WantedOk(bool print) {
+  Expect expect{print};
+  fi::found = fill::ALL_SITES;
+  fi::written = 0;
+  const auto stubs = [](uint32_t cuts) { return cuts * STUB_SITE_BIT; };
+  EXPECT(expect, fill::Wanted(true) == fill::R1_SITES && fill::Wanted(false) == 0);
+  // In the present the fills go in nothing is written yet: no stub is asked for.
+  EXPECT(expect, fill::Wanted(true, true, ALL_CUTS, ALL_CUTS) == fill::R1_SITES && !fi::fold_on.load());
+  fi::written = fill::R1_SITES;
+  EXPECT(expect, fill::Wanted(true, true, ALL_CUTS, ALL_CUTS) == fill::ALL_SITES && fi::fold_on.load() && fi::row_on.load());
+  // Each stub follows its cut: written before the window and still targeted.
+  EXPECT(expect, fill::Wanted(true, true, 0b101, ALL_CUTS) == (fill::R1_SITES | stubs(0b101)));
+  EXPECT(expect, fill::Wanted(true, true, ALL_CUTS, 0b110) == (fill::R1_SITES | stubs(0b110)));
+  EXPECT(expect, fill::Wanted(true, true, 0b010, 0b101) == fill::R1_SITES);
+  EXPECT(expect, fill::Wanted(true, true, 0, ALL_CUTS) == fill::R1_SITES && fill::Wanted(true, true, ALL_CUTS, 0) == fill::R1_SITES);
+  // The fold's row off: R1 alone and no fold. R1's row off: nothing (the stubs go out with the fills, in the same window).
+  EXPECT(expect, fill::Wanted(true, false, ALL_CUTS, ALL_CUTS) == fill::R1_SITES && !fi::fold_on.load());
+  EXPECT(expect, fill::Wanted(false, true, ALL_CUTS, ALL_CUTS) == 0 && !fi::row_on.load() && !fi::fold_on.load());
+  // The whole fold group must be found; with R1 stood down no stub follows.
+  fi::found = fill::ALL_SITES & ~(1u << (fill::FILL_SITE_COUNT + 1));
+  EXPECT(expect, fill::Wanted(true, true, ALL_CUTS, ALL_CUTS) == fill::R1_SITES && !fi::fold_on.load());
+  fi::found = fill::R1_SITES;
+  EXPECT(expect, fill::Wanted(true, true, ALL_CUTS, ALL_CUTS) == fill::R1_SITES);
+  fi::found = fill::FOLD_SITES;
+  EXPECT(expect, fill::Wanted(true, true, ALL_CUTS, ALL_CUTS) == 0 && !fi::fold_on.load());
+  fi::found = fill::ALL_SITES;
+  fi::written = 0;
+  fill::Wanted(true);
+  return expect.ok;
+}
+
+// The fake rings and the fake game Unmap (slot 4 of the buffer's vtable, thiscall): each logs which buffer got it and its argument.
+struct FakeBuffer {
+  void* const* vtable;
+  int id;
+};
+struct FakeRing {
+  uint8_t pad0[0x10];
+  FakeBuffer* buffer;
+  uint8_t pad1[0x44 - 0x14];
+  uint8_t flag;
+  uint8_t pad2[0x1B];
+};
+static_assert(offsetof(FakeRing, buffer) == 0x10 && offsetof(FakeRing, flag) == 0x44);
+// What the stubs read from the cut's register: the argument the block pushes ([reg + 0x18]) and the ring ([reg + 0x24]).
+struct FakeTracker {
+  uint8_t pad0[0x18];
+  void* argument;
+  uint8_t pad1[0x24 - 0x1C];
+  FakeRing* ring;
+  uint8_t pad2[0x40];
+};
+static_assert(offsetof(FakeTracker, argument) == 0x18 && offsetof(FakeTracker, ring) == 0x24);
+
+struct UnmapCall {
+  int id;
+  void* argument;
+  bool operator==(const UnmapCall&) const = default;
+};
+std::vector<UnmapCall> unmap_log;
+void __thiscall FakeUnmap(FakeBuffer* buffer, void* argument) { unmap_log.push_back({buffer->id, argument}); }
+void* const FAKE_VTABLE[5] = {nullptr, nullptr, nullptr, nullptr, reinterpret_cast<void*>(&FakeUnmap)};
+
+struct Rigs {
+  std::array<FakeBuffer, 2> buffers = {{{FAKE_VTABLE, 0}, {FAKE_VTABLE, 1}}};
+  std::array<FakeRing, 2> rings = {};
+  std::array<FakeTracker, 2> trackers = {};
+  Rigs() {
+    for (size_t index = 0; index < 2; ++index) {
+      rings[index].buffer = &buffers[index];
+      trackers[index].ring = &rings[index];
+      trackers[index].argument = reinterpret_cast<void*>(0x1000 + index);
+    }
+  }
+  UnmapCall Expected(size_t index) { return {static_cast<int>(index), trackers[index].argument}; }
+};
+
+std::atomic<uint32_t> no_chunks_done{0};
+std::atomic<uint32_t> no_incomplete{0};
+void NoFillWork(void*, uint32_t) {}
+
+bool FoldOpen() { return di::fold.thread.load() == GetCurrentThreadId(); }
+
+// A fold for `tracker` (a fill with no chunks), as the fill site opens one.
+bool OpenFoldFor(FakeTracker* tracker) {
+  return di::OpenFold(tracker, tracker->ring,
+                      {.work = &NoFillWork, .context = nullptr, .chunks_done = &no_chunks_done, .chunks = 0, .incomplete = &no_incomplete}, 2);
+}
+
+void CloseOpenFold() {
+  if (FoldOpen()) di::CloseFold(nullptr, [] {});
+}
+
+// The real stub bytes of stub `stub` (0 to 2: depth, colour, folded) run in a fake frame: `push ebp; push edi; sub esp, 0x7C`, the
+// folded driver's locals (the pixel-selection byte at +0x78, the round's first mesh at +0x34 and last at +0x1C), the key register
+// (edi for the A forms, ebp for the B form) holding `tracker`, the fill's `mov ecx, [reg + 0x24]`, the 11 bytes of the stub with the
+// call's displacement made for this buffer, then the frame is taken down. The buffer is written as PAGE_READWRITE and called as
+// PAGE_EXECUTE_READ.
+void CallStub(size_t stub, void* tracker, uint8_t pixel = 0, uint32_t first = 1, uint32_t last = 2) {
+  const bool uses_ebp = (stub == 2);
+  std::vector<uint8_t> code = {0x55, 0x57, 0x83, 0xEC, 0x7C, 0xC6, 0x44, 0x24, 0x78, pixel, 0xC7, 0x44, 0x24, 0x34};
+  const auto put32 = [&](uint32_t value) {
+    for (int shift = 0; shift < 32; shift += 8) code.push_back(static_cast<uint8_t>(value >> shift));
+  };
+  put32(first);
+  code.insert(code.end(), {0xC7, 0x44, 0x24, 0x1C});
+  put32(last);
+  code.push_back(uses_ebp ? 0xBD : 0xBF);
+  put32(static_cast<uint32_t>(reinterpret_cast<uintptr_t>(tracker)));
+  code.insert(code.end(), {0x8B, static_cast<uint8_t>(uses_ebp ? 0x4D : 0x4F), 0x24});
+  const std::array<uint8_t, fill::MAX_SITE_SIZE>& patch = fi::sites[fill::FILL_SITE_COUNT + stub].patch;
+  code.insert(code.end(), patch.begin(), patch.begin() + 6);
+  code.push_back(0xE8);
+  const size_t displacement_at = code.size();
+  put32(0);
+  code.insert(code.end(), {0x83, 0xC4, 0x7C, 0x5F, 0x5D, 0xC3});
+  auto* const memory = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+  REQUIRE(memory != nullptr);
+  Write32(code.data() + displacement_at, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(fi::UNMAP_ENTRIES[stub]))
+                                             - static_cast<uint32_t>(reinterpret_cast<uintptr_t>(memory + displacement_at + 4)));
+  std::memcpy(memory, code.data(), code.size());
+  DWORD ignored;
+  REQUIRE(VirtualProtect(memory, 0x1000, PAGE_EXECUTE_READ, &ignored) != FALSE);
+  FlushInstructionCache(GetCurrentProcess(), memory, code.size());
+  reinterpret_cast<void(__cdecl*)()>(memory)();
+  VirtualFree(memory, 0, MEM_RELEASE);
+}
+
+// Clears what the cases leave (the log, a fold left open, the fold's faults and the ring flags).
+void ResetStubState(Rigs* rigs) {
+  CloseOpenFold();
+  unmap_log.clear();
+  di::fold_latched = false;
+  di::fold_key_mismatches = 0;
+  di::fold_flag_changes = 0;
+  di::fold_net_closes = 0;
+  for (FakeRing& ring : rigs->rings) ring.flag = 0;
+}
+
+// Test 2: the real stub bytes and the stub's function. `stub_closes` counts the closes at a stub (the trace lines).
+bool StubCasesOk(bool print, uint32_t* stub_closes = nullptr) {
+  Expect expect{print};
+  Rigs rigs;
+  UpdatePool(4);
+  fi::trace_count.store(0);
+  uint32_t closes = 0;
+  const auto log_is = [&](std::initializer_list<UnmapCall> calls) { return unmap_log == std::vector<UnmapCall>(calls); };
+  // No fold on this thread: the game's own Unmap at once, with the block's argument, whatever the folded stub's frame holds.
+  for (const size_t stub : {0u, 1u, 2u}) {
+    ResetStubState(&rigs);
+    CallStub(stub, &rigs.trackers[0], 1, 3, 2);
+    EXPECT(expect, log_is({rigs.Expected(0)}) && !FoldOpen() && !di::fold_latched);
+  }
+  // A fold of this thread for another ring (it cannot happen by the key proof): the fold, whose own Unmap the first stub noted,
+  // closes first (its Unmap made), then the stub's ring gets its one Unmap with its own argument. Counted and latched.
+  for (const size_t stub : {0u, 2u}) {
+    ResetStubState(&rigs);
+    EXPECT(expect, OpenFoldFor(&rigs.trackers[0]));
+    CallStub(stub, &rigs.trackers[0]);
+    EXPECT(expect, unmap_log.empty() && FoldOpen() && di::fold.unmap_pending);
+    CallStub(stub, &rigs.trackers[1]);
+    EXPECT(expect, log_is({rigs.Expected(0), rigs.Expected(1)}) && !FoldOpen());
+    EXPECT(expect, di::fold_key_mismatches == 1 && di::fold_latched);
+    ++closes;
+  }
+  // Ours, A forms: noted, the fold stays open, the close makes the Unmap once on the noted buffer.
+  for (const size_t stub : {0u, 1u}) {
+    ResetStubState(&rigs);
+    EXPECT(expect, OpenFoldFor(&rigs.trackers[0]));
+    CallStub(stub, &rigs.trackers[0]);
+    EXPECT(expect, unmap_log.empty() && FoldOpen() && di::fold.unmap_pending);
+    di::CloseFold(nullptr, [] {});
+    EXPECT(expect, log_is({rigs.Expected(0)}) && !FoldOpen() && !di::fold_latched);
+  }
+  // Ours, B form: the pixel-selection byte closes the fold at the stub (the cut will not run), so does an empty round, compared
+  // unsigned (a first mesh with the top bit set is past the last); a round with a first mesh before or at the last stays open.
+  struct Round {
+    uint8_t pixel;
+    uint32_t first;
+    uint32_t last;
+    bool closes_at_stub;
+  };
+  const std::array<Round, 7> rounds = {{{0, 1, 2, false}, {0, 5, 5, false}, {1, 1, 2, true}, {0, 3, 2, true},
+                                        {0, 0x80000000u, 1, true}, {0, 1, 0x80000000u, false}, {0, 0, 0xFFFFFFFFu, false}}};
+  for (const Round& round : rounds) {
+    ResetStubState(&rigs);
+    EXPECT(expect, OpenFoldFor(&rigs.trackers[0]));
+    CallStub(2, &rigs.trackers[0], round.pixel, round.first, round.last);
+    EXPECT(expect, FoldOpen() == !round.closes_at_stub);
+    EXPECT(expect, round.closes_at_stub ? log_is({rigs.Expected(0)}) : unmap_log.empty());
+    closes += (round.closes_at_stub ? 1 : 0);
+    CloseOpenFold();
+    EXPECT(expect, log_is({rigs.Expected(0)}) && !di::fold_latched);
+  }
+  // The flag changed between the stub and the close (S1): the Unmap is still made, once; counted, latched.
+  ResetStubState(&rigs);
+  EXPECT(expect, OpenFoldFor(&rigs.trackers[0]));
+  CallStub(0, &rigs.trackers[0]);
+  rigs.rings[0].flag = 1;
+  di::CloseFold(nullptr, [] {});
+  EXPECT(expect, log_is({rigs.Expected(0)}) && di::fold_flag_changes == 1 && di::fold_latched && !FoldOpen());
+  ResetStubState(&rigs);
+  if (stub_closes != nullptr) *stub_closes = closes;
+  return expect.ok;
+}
+
+// The stubs alone refused by a changed byte (the fills stay found): what a control over all the sites would not do.
+bool FillsSurviveBrokenStub() {
+  const fill::SiteInfo& info = fill::SITES[fill::FILL_SITE_COUNT];
+  patched[info.rva + 1] ^= 0x01;
+  const bool prepared = fill::Prepare(reinterpret_cast<HMODULE>(patched));
+  const bool survives = (prepared && fi::found == fill::R1_SITES);
+  patched[info.rva + 1] ^= 0x01;
+  REQUIRE(fill::Prepare(reinterpret_cast<HMODULE>(patched)));
+  return survives;
+}
+
+// The fold opened by the real dispatcher at fill sites 1 to 3 and closed after the stub: the bytes equal the serial copy, the Unmap
+// is made once at the close, and a second fold of the same size follows into a fresh ring (the job's chunk counters are reset
+// before each open, M2).
+bool FoldDispatchOk(bool print) {
+  Expect expect{print};
+  UpdatePool(4);
+  dr::SetGame({.usable = true});
+  dr::Update({.stage = dr::Stage::WORKERS, .loops = 0xFF});
+  RestoreCopies();
+  di::fold_latched = false;
+  const auto set_rows = [&](uint32_t written, bool fold_row) {
+    fi::found = fill::ALL_SITES;
+    fi::written = written;
+    fill::Wanted(true, fold_row, ALL_CUTS, ALL_CUTS);
+  };
+  struct Step {
+    size_t site;
+    bool folds;     // the fold must open here
+    uint32_t written;
+    bool fold_row;
+    uint8_t flag;   // the ring's flag byte (+0x44)
+  };
+  const std::array<Step, 9> steps = {{{1, true, fill::ALL_SITES, true, 0}, {1, true, fill::ALL_SITES, true, 0}, {2, true, fill::ALL_SITES, true, 0},
+                                      {3, true, fill::ALL_SITES, true, 0}, {0, false, fill::ALL_SITES, true, 0},
+                                      {1, false, fill::ALL_SITES, true, 1}, {1, false, fill::ALL_SITES, false, 0},
+                                      {2, false, fill::R1_SITES, true, 0}, {3, true, fill::ALL_SITES, true, 0}}};
+  for (const Step& step : steps) {
+    set_rows(step.written, step.fold_row);
+    const auto scenario = Build(step.site, 3000, 64, 37, false, &shared_random);
+    FakeBuffer buffer = {FAKE_VTABLE, 7};
+    FakeRing ring = {};
+    ring.buffer = &buffer;
+    ring.flag = step.flag;
+    void* const argument = reinterpret_cast<void*>(0x4321);
+    FakeRing* const ring_pointer = &ring;
+    auto* const tracker_bytes = reinterpret_cast<uint8_t*>(&scenario->trackers[0]);
+    std::memcpy(tracker_bytes + 0x24, &ring_pointer, sizeof(ring_pointer));
+    std::memcpy(tracker_bytes + 0x18, &argument, sizeof(argument));
+    unmap_log.clear();
+    fill::Range serial = scenario->Range();
+    real_copies[static_cast<size_t>(fill::SITES[step.site].copy)](&scenario->functors[1], &serial);
+    fill::Range range = scenario->Range();
+    CallSite(step.site, &range, &scenario->functors[0]);
+    EXPECT(expect, FoldOpen() == step.folds);
+    if (step.folds) {
+      // The stub of the site's cut (site 1 to 3: stub 0 to 2); only noted.
+      CallStub(step.site - 1, tracker_bytes);
+      EXPECT(expect, unmap_log.empty() && FoldOpen());
+      di::CloseFold(nullptr, [] {});
+      EXPECT(expect, (unmap_log == std::vector<UnmapCall>{{7, argument}}) && !FoldOpen());
+    }
+    EXPECT(expect, Matches(*scenario, 0) && Matches(*scenario, 1));
+    CloseOpenFold();
+    EXPECT(expect, !di::fold_latched && fi::incomplete_fills.load() == 0);
+  }
+  set_rows(fill::R1_SITES, false);
+  return expect.ok;
+}
+
+void TestStubs() {
+  REQUIRE(fill::Prepare(reinterpret_cast<HMODULE>(patched)));
+  CHECK(fi::found == fill::ALL_SITES);
+  CHECK(WantedOk(true));
+  const auto close_lines = [] {
+    fill::Wanted(true);
+    size_t lines = 0;
+    for (const std::string& line : log_lines) {
+      lines += (line.find("Fill With Draw Recording (trace window") != std::string::npos && line.find("closed at the stub") != std::string::npos);
+    }
+    return lines;
+  };
+  // Outside a trace window a close at a stub keeps no record and writes no line (the folded driver's pixel path and empty rounds
+  // close there every frame).
+  uint32_t stub_closes = 0;
+  UpdatePool(4);
+  CHECK(!wp::Tracing());
+  log_lines.clear();
+  CHECK(StubCasesOk(true, &stub_closes));
+  CHECK(fi::trace_count.load() == 0);
+  CHECK(stub_closes == 5 && close_lines() == 0);
+  // In a window they are kept for the trace like the fills' calls: one line each, with the reason.
+  wp::ArmTrace(1);
+  log_lines.clear();
+  CHECK(StubCasesOk(true, &stub_closes));
+  CHECK(fi::trace_count.load() == stub_closes);
+  CHECK(stub_closes == 5 && close_lines() == stub_closes);
+  UpdatePool(4);
+  fi::found = fill::ALL_SITES;
+  CHECK(FillsSurviveBrokenStub());
+  CHECK(FoldDispatchOk(true));
+  CHECK(fi::incomplete_fills.load() == 0);
+  fi::found = fill::ALL_SITES;
+  fi::written = 0;
+  fill::Wanted(true);
+  std::printf("stubs: the real bytes in a fake frame, Wanted's tie, the fold opened and closed by the real dispatcher: ok\n");
 }
 
 // ---------------------------------------------------------------- 2. the fills
@@ -526,7 +1016,7 @@ void TestFills() {
   fi::row_on.store(true);
   for (uint32_t threads = 1; threads <= 8; ++threads) {
     UpdatePool(threads);
-    for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+    for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
       for (const uint32_t n : COUNTS) {
         for (const bool write_combined : {false, true}) {
           const uint32_t stride = STRIDES[random() % STRIDES.size()];
@@ -546,7 +1036,7 @@ void TestFills() {
   size_t random_bad = 0;
   UpdatePool(4);
   for (int run = 0; run < 150; ++run) {
-    const size_t site = random() % fill::SITE_COUNT;
+    const size_t site = random() % fill::FILL_SITE_COUNT;
     random_bad += (RunExact(site, 1 + random() % 6000, STRIDES[random() % STRIDES.size()], random() % 3000, (random() & 1) != 0, &random) ? 0 : 1);
   }
   CHECK(random_bad == 0);
@@ -576,7 +1066,7 @@ Count RunCounting(size_t site, uint32_t n, uint32_t begin0) {
 void TestPartition() {
   UpdatePool(5);
   bool any_workers = false;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     for (const uint32_t n : {1u, 100u, 511u, 512u, 513u, 1000u, 2000u, 20000u}) {
       const uint32_t begin0 = (fill::SITES[site].copy == fill::Copy::LIST_ITEMS ? 3000 : 0);
       const Count count = RunCounting(site, n, begin0);
@@ -599,7 +1089,7 @@ void TestPartition() {
   CHECK(game_call.calls == 1 && game_call.range == &range && game_call.functor == &scenario->functors[0] && game_call.manager == nullptr);
   CHECK(std::all_of(scenario->destinations[0], scenario->destinations[0] + scenario->destination_bytes, [](uint8_t byte) { return byte == SENTINEL; }));
   fi::game_fills = original;
-  CHECK(fill::Wanted(true) == fill::ALL_SITES);
+  CHECK(fill::Wanted(true) == fill::R1_SITES);
   CHECK(fi::row_on.load());
 
   const auto alone_equal = [&](size_t site, uint32_t n, const char* what) {
@@ -685,7 +1175,7 @@ bool CountingSeesDifference(bool* control, Where where) {
   UpdatePool(4);
   bool different = false;
   *control = true;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     const uint32_t begin0 = (fill::SITES[site].copy == fill::Copy::LIST_ITEMS ? 3000 : 0);
     ResetHits();
     UseFakeCopy(&CountingCopy);
@@ -709,7 +1199,7 @@ bool AllExact() {
   UpdatePool(4);
   std::mt19937 random(99);
   bool exact = true;
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     exact &= RunExact(site, 3000, 64, 500, false, &random);
   }
   return exact;
@@ -764,7 +1254,7 @@ void TestControls() {
   {
     fi::incomplete_fills.store(0);
     CHECK(CountingSeesDifference(&fill::control_skip_chunk, Where::SAME_THREAD));
-    CHECK(fi::incomplete_fills.load() == fill::SITE_COUNT);
+    CHECK(fi::incomplete_fills.load() == fill::FILL_SITE_COUNT);
     log_lines.clear();
     fill::Wanted(true);
     size_t said_not_done = 0;
@@ -793,6 +1283,33 @@ void TestControls() {
   CHECK(!AllExact());
   fill::control_no_begin0 = false;
   CHECK(AllExact());
+  // The fold's controls (R2): each breaks one rule of the stubs, the tie or the fold's open, and the tests of part 5 must see it.
+  fill::control_unmap_at_once = true;
+  CHECK(!StubCasesOk(false));
+  fill::control_unmap_at_once = false;
+  fill::control_ignore_pixel_byte = true;
+  CHECK(!StubCasesOk(false));
+  fill::control_ignore_pixel_byte = false;
+  fill::control_note_on_mismatch = true;
+  CHECK(!StubCasesOk(false));
+  fill::control_note_on_mismatch = false;
+#if defined(TWATTILA_DRAW_RECORDING_CONTROLS)
+  di::controls.fold_unmap_regardless = false;
+  CHECK(!StubCasesOk(false));
+  di::controls.fold_unmap_regardless = true;
+#endif
+  fill::control_stubs_without_cut = true;
+  CHECK(!WantedOk(false));
+  fill::control_stubs_without_cut = false;
+  fill::control_all_or_none = true;
+  CHECK(!FillsSurviveBrokenStub());
+  fill::control_all_or_none = false;
+  fill::control_fold_no_reset = true;
+  CHECK(!FoldDispatchOk(false));
+  fill::control_fold_no_reset = false;
+  CHECK(StubCasesOk(true) && WantedOk(true) && FillsSurviveBrokenStub() && FoldDispatchOk(true));
+  fi::found = fill::ALL_SITES;
+  fi::written = 0;
   std::printf("controls: each broken rule is seen\n");
 #else
   std::printf("controls: skipped (TWATTILA_INSTANCE_FILL_CONTROLS)\n");
@@ -806,7 +1323,7 @@ void TestCheckMode() {
   fi::check_mismatches.store(0);
   fi::check_skipped.store(0);
   std::mt19937 random(7);
-  for (size_t site = 0; site < fill::SITE_COUNT; ++site) {
+  for (size_t site = 0; site < fill::FILL_SITE_COUNT; ++site) {
     CHECK(RunExact(site, 3000, 64, 12, false, &random));
   }
   CHECK(fi::checked.load() == 4 && fi::check_mismatches.load() == 0 && fi::check_skipped.load() == 0);
@@ -854,6 +1371,7 @@ int main(int argc, char** argv) {
   UpdatePool(2);  // this thread is the pool's owner from here on
   TestSites();
   TestRewrite();
+  TestStubs();
   TestFills();
   TestPartition();
   TestControls();

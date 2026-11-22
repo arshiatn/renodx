@@ -37,6 +37,8 @@
 //
 //   User            Join     How it calls                                  Units
 //   DRAW_RECORDING  ALL      Run, at its 3 sites                           the planner's chunks (worker w runs chunk w)
+//   DRAW_RECORDING  ENTERED  Start at a fill site, Join in CloseFold       the fold: fill chunks, then the cut's record
+//   (the fold)                                                             shares, both claimed
 //   EFFECT_UPDATE   ENTERED  Start at the walk's call, Join at its end     claims of G = 1 (the effect update)
 //   ANIMATION_ROWS  ENTERED  Run, one job per fill call                    512-item blocks
 //   PENDING_SWEEP   ENTERED  Run inside Arm                                1024-entry blocks
@@ -116,6 +118,14 @@ static uint64_t qpc_frequency = [] {
   QueryPerformanceFrequency(&frequency);
   return static_cast<uint64_t>(frequency.QuadPart);
 }();
+
+// The x87 and SSE control words of the calling thread: what Start took from the owner (WorkerMain) or what a job publishes
+// later (the fold's cut-time words), the bits a game thread may have changed and not restored.
+inline void ApplyControlWords(uint32_t x87, uint32_t sse) {
+  unsigned int ignored = 0;
+  __control87_2(x87, _MCW_EM | _MCW_RC | _MCW_PC | _MCW_IC, &ignored, nullptr);
+  __control87_2(sse, _MCW_EM | _MCW_RC | _MCW_DN, nullptr, &ignored);
+}
 
 namespace internal {
 
@@ -258,9 +268,7 @@ static DWORD WINAPI WorkerMain(void* context) {
 #endif
     entered.fetch_add(1, std::memory_order_seq_cst);
     if (open.load(std::memory_order_seq_cst) == ticket) {
-      unsigned int ignored = 0;
-      __control87_2(current.x87, _MCW_EM | _MCW_RC | _MCW_PC | _MCW_IC, &ignored, nullptr);
-      __control87_2(current.sse, _MCW_EM | _MCW_RC | _MCW_DN, nullptr, &ignored);
+      ApplyControlWords(current.x87, current.sse);
       if (current.trace) {
         PROCESSOR_NUMBER processor = {};
         GetCurrentProcessorNumberEx(&processor);
