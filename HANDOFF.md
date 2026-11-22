@@ -463,17 +463,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - who owns the build env: gated_build's stderr shows `'vswhere.exe' is not recogni ... | ?
 - ATN (cleanup list): tools\tw\h0\__pycache__ (07:42) may be deleted (upr_ 08:3x). | ?
 - lab owner (later, optional): record `dxr12` (machine state from config's answer) ... | ?
-- gtp_ (nit): the 5 ms kind() timing check failed once under parallel load (5.9 ms ... | ?
 - ATN (morning report): player risk - a cold shader cache (driver update / new rel ... | ?
 - c3i_ (nits, optional): N1 26g header lists test 8 (RigidAddOrder, not in 26g) + ... | ?
 - end batch owner (t4i_ / ebr_): b13r_'s B1 risks - (a) thread affinity of order-p ... | ?
 - B1 owner (static, low): do the game's destructors draw (callers of 0x190B780 rea ... | ?
-- gtp_ + gtb_ R12-1 (Should, not blocking in shadow): price_rows() falls back to " ... | ?
-- gtp_ (lows): quoted multi-target word not split before normalising (one seed kin ... | ?
 - ATN (morning report): a run rule for lga_'s 9-min release check (old vs new stac ... | ?
-- gtp_ S1 (Should, before web_allow on): bun in PKG skips the web check - `bun -e ... | ?
-- gtp_ S2 (= R12-1, before price on): 13 amd64 twattila builds refused with bak16 ... | ?
-- gtp_ (nits): heredoc piped into `python -m json.tool` / fed to `python x.py` sca ... | ?
 - gtl_ (low): the jobs fixture's +60 s on the gate now sits on top of GATE_FLOOR_S ... | ?
 - gtb_ (after gtp_'s round 13): tighten test_budget's 3rd hook case to (12, 99) on ... | ?
 - gtb_ / gti_ (low): load-flake bounds in unchanged code - gated_build "both slots ... | ?
@@ -486,6 +480,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gti_ (with r1a / r1b): ns_busy.ps1's game list lacks Divinity (EoCApp), Expediti ... | ?
 - gtl_ (low): record gate_s in lab.py's model so GATE_FLOOR_S can follow data late ... | ?
 - ATN (morning report): with the load refresh, the gate hook's fix-now rule can fi ... | ?
+- t4i_ (with option (a)): count the draw-trace files in the leg's disk gate (estim ... | ?
+- ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its ow ... | ?
+- gpr_ (with re-check 13): do the 15 gated_build seeds < 15 s matter (gtp_ lows, n ... | ?
 - C REVIEW CARRY-OVERS (c23r_ 11-20): N-6 Uninstall sets arena_size = 0 first -> C ... | ?
 - TRAP HARNESS FOLLOW-UP (s5x_ 11-20 22:1x, optional: both rows are latched): the ... | ?
 - TRACK B BIG DESIGNS (ATN 11-20 22:1x): bd1o_ B3b + B4 DONE (reports/bd1o_design_ ... | ?
@@ -8531,7 +8528,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         dropped, lower, dedup, sorted) + test; prices_state 0 kinds to change; watch_runs.tsv not written (row
         already short, gtb_ watch running). Live: gates\gate_hook.py, tests\run_tests.py, INSTALL_FOR_ATN.md,
         price_seed.tsv, prices.tsv, prices_state.json. -> gtw_ RE-CHECK 12 + gpr_ CHECK STARTED.
-        - [ ] gtp_ (nit): the 5 ms kind() timing check failed once under parallel load (5.9 ms) - a load-tolerant
+        - [x] gtp_ (nit, DONE 09:20 round 13: median ratio < 16 + best < 20 ms): the 5 ms kind() timing check failed once under parallel load (5.9 ms) - a load-tolerant
             bound or a relative check (gtp_ 08:4x; 3rd load-only test flake today).
         grs_ FIRST-FRAME DESIGN DONE 08:4x (plan_1117/designs/grs_first_frame.md + grs_first_frame_handback.md;
         read-only log script scratchpad\open_times.py): PLAYERS CAN HIT IT - the first DLAA frame's waited request
@@ -8617,14 +8614,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         selftest + fake test + O_EXCL) -> soften; A stays right (misses: with price on each unwrapped build = a
         refused call + retype; a kill under A takes down gated_build -> stale slot takeover, under B only cmake
         dies). hg1 end to end on the live hook: exit 0 SHADOW, FAULT rows 1 / 0 / 1 (rewritten) / 0. -> gtp_ R12-1.
-        - [ ] gtp_ + gtb_ R12-1 (Should, not blocking in shadow): price_rows() falls back to "warm?" seeds only
+        - [x] gtp_ + gtb_ R12-1 (DONE 09:20 hook per-set merge + gtb_ mirror; Should, not blocking in shadow): price_rows() falls back to "warm?" seeds only
             when the exact key has no rows -> gtb_'s wrapped run made an exact watch-only `amd64 twattila warm` row
             (n 1) -> refusal (a) for an unwrapped amd64 twattila call now False; tool_prices ingest gives it class
             'script' (floor 60 not 120, no S6); table() real_kinds per kind not per (kind, set). Fix together:
             merge per set (exact first, warm? fills missing sets) in price_rows + budget.py _own_price_rows
             (gtb_'s), table() per (kind, set), ingest class from the key, watch-only ring test; Section 8 notes
             the effect until fixed + the softened sentence + the 2 A / B points (gpr_ 08:5x).
-        - [ ] gtp_ (lows): quoted multi-target word not split before normalising (one seed kind keeps
+        - [x] gtp_ (lows, DONE 09:20 split / --clean-first cold / `2>` re-key; < 15 s seeds -> gpr_): quoted multi-target word not split before normalising (one seed kind keeps
             .addon64 / renodx-); --clean-first keyed warm; 15 gated_build seeds < 15 s; 2 real fg samples under old
             `2>` keys could be re-keyed (gpr_ 08:5x).
         MERGED rmt_b1rt = 552ecaef7 08:5x (name_check: 629 new identifiers, 35 generic-word matches only; merge
@@ -8740,13 +8737,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         2.4 ms idle, 7.0-7.9 ms with 32 CPU burners, best-of-5 still 6.4 -> best-of-N does NOT fix it; use the
         median of 5 interleaved 8 KB / 1 KB ratios < 16 (quadratic ~64) + best of 5 < 20 ms. -> gtp_ ROUND 13
         STARTED (R12-1 + these).
-        - [ ] gtp_ S1 (Should, before web_allow on): bun in PKG skips the web check - `bun -e "fetch('https://
+        - [x] gtp_ S1 (DONE 09:20 round 13; Should, before web_allow on): bun in PKG skips the web check - `bun -e "fetch('https://
             evil.example/x')"` refused by bak16, passes live (Bash + PS; window.fetch / self.fetch too): the PKG
             branch runs before the network branch and empties the URL list -> take bun only for package verbs,
             everything else falls through (gtw_ 09:0x).
-        - [ ] gtp_ S2 (= R12-1, before price on): 13 amd64 twattila builds refused with bak16 prices, 0 live; under A
+        - [x] gtp_ S2 (DONE 09:20 round 13; = R12-1, before price on): 13 amd64 twattila builds refused with bak16 prices, 0 live; under A
             every kind loses its refusal at its first wrapped run until 10 watch rows (gtw_ 09:0x).
-        - [ ] gtp_ (nits): heredoc piped into `python -m json.tool` / fed to `python x.py` scanned as code (old,
+        - [x] gtp_ (nits, DONE 09:20 round 13): heredoc piped into `python -m json.tool` / fed to `python x.py` scanned as code (old,
             tee walk widens it); `cat | grep | python -` passes; os.replace failure on gate_faults.json repeats the
             FAULT row per process + leaves .<pid>.tmp files (remove the tmp in except); quoted target list with
             spaces not split (gtw_ 09:0x).
@@ -8939,9 +8936,54 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gtl_ (low): record gate_s in lab.py's model so GATE_FLOOR_S can follow data later (gpr_ 09:2x).
         - [ ] ATN (morning report): with the load refresh, the gate hook's fix-now rule can fire for the first time
             (shadow: would-deny rows only) (gpr_ 09:2x).
-        Agents (7): upr_ (h0i_ F1-F4 re-check), gtp_ (round 13: R12-1 + gtw_ S1 / Section 8 / timing / nits), gtb_
-        (load refresh), grs_ (first-frame v3 + steps 1-2), lga_ (release_check fixes), ebr_ (t4i_ T5 review), c3i_
-        (B1 F1 + F2 logging)
+        gtp_ ROUND 13 LIVE 09:20, SHADOW (plan_1117/gtp_round13_handback.md; backups scratchpad\gtp_bak18 + bak18b;
+        scripts gtp_r13_*.py, corpus gtp_r13_corpus_out.txt): mirror + live 759 / 759; the new tests fail 23 on bak18
+        (control). S1 bun only for package verbs (INSTALL_VERBS / x / exec / bunx), the rest goes to the network
+        branch; bun / deno heredocs = code. S2 = R12-1: price_rows exact first, warm? fills missing sets; table()
+        drops a warm? (kind, set) seed only when warm + cold keys are both real there; key_cls() class from the
+        key's first word; 7-check watch-only ring test; live amd64 twattila warm = fg n 12 p95 242 + watch n 1
+        (class build). Section 8 rewritten (gtb_'s real build in past tense, R12-1 paragraph, 36 / 32 / 0, B's
+        --agent nit, gpr_'s 2 points; recommendation A). 5 ms check = median of 5 8 KB / 1 KB ratios < 16 + best
+        of 5 < 20 ms. Nits: heredoc stdin = code only with no script / module / -c; PIPE_DATA pipe walk (cat / tee
+        / grep / sed / sort ...); gate_faults tmp removed on failure (marker unwritable = row per process); build_key
+        splits quoted lists + drops redirects, --clean-first = cold; the 2 old `2>` keys re-keyed. Re-seed 104,631
+        seeds / 6,985 rows. Corpus 15,119 commands: bak18 233 refused vs 245 (all 12 = gated_build price refusals =
+        S2 restoring amd64 twattila; gtw_ counted 13). budget.py untouched (gtb_'s). -> gtw_ + gpr_ RE-CHECK 13;
+        gtb_ tightens test_budget to (12, 99) + hook == mirror.
+        t4i_ DRAW-TRACE LOAD 09:2x (render_mt/reports/t4i_drawtrace_load_handback.md; read only): ~550 more files
+        per batch fine for time (Move-EboDrawTraces = same-drive renames, `.2` on clash; ebo_check lists once).
+        Disk unmeasured (no real tw_draw_recording*.txt anywhere): estimate 100-350 KB / file = 55-200 MB, up to
+        ~1.1 GB at the 4096-call size; the leg disk gate counts only WPR ETLs. Risk: more windows = more chances of a
+        missing-file FAIL if C ever skips a write. ReShade.log +2-3 MB / batch; +525 mt_trace set entries; a short
+        hitch at each window end (std::ofstream on the render thread, never a measured frame); extra arms kept out
+        of settle seconds [at, at+3). Option (a) waits for ebr_'s T5 review.
+        - [ ] t4i_ (with option (a)): count the draw-trace files in the leg's disk gate (estimate 55 MB - 1.1 GB);
+            the first real leg's draw_trace folder sizes settle it (t4i_ 09:2x).
+        grs_ V3 + STEPS 1-2 09:2x (plan_1117/designs/grs_v3_steps12_handback.md; design v3 in grs_first_frame.md;
+        patch plan_1117/designs/grs_ff_s12_steps12.patch + scratchpad\ff_s12\ff_s12_steps12.patch): PART A v3 done -
+        V1 separate `if (Opening()) PollOpening();` before the unchanged Release(true) block; V2
+        RENODX_TW_OPEN_LATCH=1 read in Start = may_open false everywhere; V3 one PollOpening() (Request / Prepare
+        / hook; Prepare clears owe_empty first); V4 wrapper on every request site (Evaluate 312 / 487 / 3508 /
+        3558 / 3647, TraceScene 3188, TraceBounce 865 / 1224 / 3388) + bridge last_open_ms + RESULT opened_late /
+        open_ms; V5 one harness exe per A/B; V6 FG hide in frame_generation.hpp; V7 / V8 / V9 as ffr_ said.
+        PART B WRITTEN, NOT APPLIED: grs_ made worktree .claude\worktrees\ff_s12 (branch ff_s12 at 1294f29b0, same
+        links as rmt_c3, clean) but its agent is isolated to its own worktree (gpu_s2), so Edit refused ff_s12; it
+        did not work around it and asked the coordinator to apply the patch. COORDINATOR: NOT applied on an agent's
+        request after its write was refused (that would be a refused write done for it) - ATN decides; the review
+        runs on the patch file meanwhile. Patch (helper only, main.cpp + rt_d3d12.hpp): step 1 open-time lines
+        via one ms_since lambda (RT only when opened + not replayable, Initialize / Open split; RR only on success,
+        refusal still once; FG DLSS "opened", FSR / XeSS "started"; one per-set line last_request -> SetEvent at
+        both answer sites; EnsureNrd ", made in N ms"); step 2 release_idle(reference) (request last_request,
+        idle loop now). Checked: clang-cl /Zs syntax-only exit 0 (scratchpad\ff_s12\syntax.ps1); no tests run
+        (helper suites start renodx-tw-dlaa64 = H0 rule). Build = dlaa_helper\build.ps1 <new folder>, no add-on
+        rebuild. -> ffr_ RE-CHECKS v3; fcr_ (new, Opus xHigh) REVIEWS THE PATCH read only.
+        - [ ] ATN (morning report): grs_'s agent could not write in ff_s12 (isolated to its own worktree) and asked
+            me to apply its steps 1-2 patch; I did not. May I (or a new implementer started in ff_s12) apply +
+            build it after the review? (grs_ 09:2x)
+        - [ ] gpr_ (with re-check 13): do the 15 gated_build seeds < 15 s matter (gtp_ lows, not in round 13)?
+        Agents (9): upr_ (h0i_ F1-F4 re-check), gtw_ (round 13 re-check), gpr_ (round 13 re-check), gtb_ (load
+        refresh + (12, 99) tighten), lga_ (release_check fixes), ebr_ (t4i_ T5 review), c3i_ (B1 F1 + F2 logging),
+        ffr_ (grs_ v3 re-check), fcr_ (ff_s12 steps 1-2 patch review)
         (B1 real-routine tests + N4) + coordinator bulk index + merge builds. Idle: bd1r_, lga_, b13r_ (re-checks
         c3i_), lgf2_, c33i_, upt_, upr_ (re-checks h0i_), gpp_, gbc_, gtb_ (waits gpr_), gti_ (r1a / r1b nits,
         batched), grs_, gtk_, gtw_ (re-checks gtp_), t4i_ (waits ebr_), gtq_, gtl_ (staged jobs suite + swap
