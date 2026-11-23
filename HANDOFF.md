@@ -677,7 +677,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after batch: ebr_ read 5 NIT 1 (B1 L2 lines by window number), NIT 3 (own-end ru ... | ?
 - after batch: ebr_ R8 delta SHOULD-1 (held / lost plan without check.json = NOTE, ... | ?
 - crash 1 (leg 3 KNOB-W3-c613 exit AV) root-caused + fixed before the final bench ... | ?
-- Exit job drain: Sonnet High implementer + Opus xHigh review (engine code), offli ... | ?
 - before ATN's restart: no agent running, resume_point.md updated, scratchpad copy ... | ?
 - after batch: ebr_ R9 SHOULD-1 optional code (any crash at / after the close boun ... | ?
 - exr_ (Opus xHigh) review of exd_ once exd_ hands back (start before 00:00, else ... | ?
@@ -694,7 +693,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gate hook round 24 golive (bak29 shadow) only after gpr_ + gtw_ GO; the suite st ... | ?
 - gbf_ builds + WARP exact after ATN's restart, then gbr_ (a661373416057b2f5) re-c ... | ?
 - gate hook round 25: gpr-R24-1 glued-quote join (Low). | ?
-- exr_ review of exd_fix -> exd_ (aa144878f572855a7) fixes -> exr_ re-check -> coo ... | ?
 - window-closed stress_test_log2 exit soak with the Exit Job Drain build (after AT ... | ?
 - gtp_ (abd95a89172354976): quiet mirror suite from bash + shadow golive bak29 (ro ... | ?
 - eba_ r2 -> ebr_ re-check -> t4i_ final-bench data; ATN Q9 (W3 Go < 8 ms) in the ... | ?
@@ -704,6 +702,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN at READY: add the run rules for `ebo_run.ps1 -Final` / `-Final -DryRun` (+ - ... | ?
 - ebr_ review of t4i_ FINAL, then the real -Final -DryRun after the RC build. | ?
 - G23 implementation (after the final bench; helper files = GPU plan helper queue ... | ?
+- before the RC freeze (exd_, small, exr_ glance): N11 parens in the gave-up log c ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13014,7 +13013,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         it: the file is re-read before each start). Tonight: plan work while ATN plays (no games, no GPU runs); NO NEW
         SUBAGENTS AFTER 00:00 (this once), all finish before 01-02; ATN then restarts the PC, starts Steam non-elevated,
         says go -> leg 4 part B, analysis, then all plans in parallel (current rules).
-        - [ ] Exit job drain: Sonnet High implementer + Opus xHigh review (engine code), offline tests; before the final
+        - [x] Exit job drain: Sonnet High implementer + Opus xHigh review (engine code), offline tests; before the final
         bench.
         - [ ] before ATN's restart: no agent running, resume_point.md updated, scratchpad copy refreshed.
         t4i_ R9 19:1x (render_mt/reports/t4i_r9_handback.md): a crash leaving 0 segments = recorded, no retry, still
@@ -13166,7 +13165,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         renodx-twattila.addon32 55a88462...f15b; FP + DRAW_RECORDING twin exd_1123\fp\ d52a32ed...94e0 (pdb 93ad1847...).
         Optional exit-time fault label skipped. A real window-closed stress_test_log2 soak is still owed. COORD 22:2x: exr_
         (Opus xHigh, agent a2c0f3520f5db162b) review sent.
-        - [ ] exr_ review of exd_fix -> exd_ (aa144878f572855a7) fixes -> exr_ re-check -> coord merges into atn-mods (RC).
+        - [x] exr_ review of exd_fix -> exd_ (aa144878f572855a7) fixes -> exr_ re-check -> coord merges into atn-mods (RC).
         - [ ] window-closed stress_test_log2 exit soak with the Exit Job Drain build (after ATN's restart; a game run:
         within the final bench's prep or its own short batch on ATN's go).
         rvg_ RE-CHECK r2 22:2x (reviews/rvg_g24_design_review.md 'Re-check r2', rvg_g24_recheck_r2_handback.md; fixture runs
@@ -13269,6 +13268,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         'drained' line in each); S3 RENODX_TW_EXIT_DRAIN=0 read once at start; S4 case 30e; N1-N8 (N9 / N10 not done).
         -Only exit / -Quick / -DrawRecording PASS. Builds testbin\cpu1_addons\exd_1123b: plain ad913bae...bd9f, FP twin
         199abc0d...3204 (pdb 3a0ae8a5...). COORD: exr_ re-check sent.
+        exr_ RE-CHECK GO 23:0x (render_mt/reports/exr_exit_drain_review.md 'Re-check', exr_recheck_handback.md): M1 pin is
+        the first statement of the once block and in the built binary (GetModuleHandleExW flags 5 at ExitDrain 0x10091460),
+        every exit path covered; S1-S4 fixed; S2 keep accepted (the job faulted only after the app delete started).
+        COORD 23:0x: MERGED exd_fix into atn-mods = 9d798bf47 (pushed); t4i_ addendum sent (drain line per exit; exit AV =
+        real finding in -Final, exit_crash_no_stop off there; part-Off map -> RENODX_TW_EXIT_DRAIN=0).
+        - [ ] before the RC freeze (exd_, small, exr_ glance): N11 parens in the gave-up log call, N12 JOB_ prefix for the
+        WORKER_* pool constants, reword the S2 comment's first reason, one 'off' log line when RENODX_TW_EXIT_DRAIN=0.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
