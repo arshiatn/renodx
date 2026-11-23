@@ -13079,6 +13079,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         50-57. COORD 22:0x: rvh_ (Opus xHigh, read only) reviews the designs.
         - [ ] rvh_ review of g23_'s designs -> g23_ (agent aabd3269fac6a9be6) fixes -> rvh_ re-check; code after the final
         bench (check GPU-plan branch ownership of main.cpp / upscale_d3d12.hpp / rr_d3d12.hpp first).
+        rvg_ DONE 22:1x (handoff_plan/reviews/rvg_g24_design_review.md + _handback.md): g24_ design NOT GO, 7 MUST / 12
+        SHOULD / 8 NIT, no redesign: M1 ledger header defines its own census (checker-owned reviewed manifest per game;
+        UE shaders live in carve/), M2 evidence only shows the hash (evidence matrix per axis / verdict / reason; trace
+        claims on every line; test: / out: only from registered tools; decision: only ATN-answered lines), M3 rule tokens
+        + controls + scopes + override:, M4 checker-owned fact checks (screen-space PS, CAMERA vs bones / VTF / time /
+        view-dependent positions, no-geometry), M5 checker / manifest / pack hashes printed + core frozen after step 0, M6
+        in a table != captured (Opacity::NEVER, Attila held_row -> CAPTURED/experimental:<row>), M7 gap box tag
+        [audit <game> <axis> <family>] + boxes_pending_<game>.tsv. Question changes + new Q58 in atn_questions_groups.md.
+        COORD: g24_ resumed to fix the design; rvg_ re-checks after.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
