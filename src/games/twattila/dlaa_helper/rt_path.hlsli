@@ -1103,10 +1103,15 @@ void ReuseTexel(uint2 id) {
     if (other.count <= 0.f) continue;
     const float jacobian = ReuseJacobian(other, other_origin, origin);
     if (!(jacobian > 0.1f && jacobian < 10.f)) continue;
+#if !defined(REUSE_LEAN)
     // Its light carries ContactShade at the neighbour's distance to the hit: this receiver's instead (a sample beside the
-    // neighbour's start, far from this one, stayed dark here; one beside this start lit it as if far).
+    // neighbour's start, far from this one, stayed dark here; one beside this start lit it as if far). A surface's only
+    // (the sky's carried none); not in Lean Reuse, whose neighbour origin is its position, not its rays' start.
     const float contact_there = ContactShade(distance(other.hit, other_origin));
-    if (contact_there > 1e-3f) other.light *= ContactShade(distance(other.hit, origin)) / contact_there;
+    if (any(other.hit_normal != 0.f) && contact_there > 1e-3f) {
+      other.light *= ContactShade(distance(other.hit, origin)) / contact_there;
+    }
+#endif
     Merge(combined, other, ReuseTarget(origin, normal, other) * other.weight * other.count * jacobian,
           Random(uint4(id, frame, DIM_REUSE_MERGE + neighbour)));
   }

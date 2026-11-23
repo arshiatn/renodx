@@ -1050,6 +1050,8 @@ class RtScene12 {
       signal->failed = false;
     }
     nrd_bounce_hit_distance_.Reset();
+    sun_toward_ = {};
+    for (Slot& slot : slots_) slot.sun_copied = false;
 #endif
     nrd_off_ = 0;
     light_.Reset();
@@ -3325,10 +3327,13 @@ class RtScene12 {
     QueryPerformanceCounter(&cpu_waited);
     cpu_marks_.clear();
 #if defined(RENODX_NRD)
-    // The sun's direction this slot's last trace copied (done: SIGMA's light direction a few traces late, the sun moves slowly).
-    if (slot.sun_copied) {
+    // The sun's direction this slot's last trace copied (done: SIGMA's light direction a few traces late, the sun moves slowly;
+    // after a timed-out wait the GPU may still write it).
+    if (slot.sun_copied && !timed_out_) {
       slot.sun_copied = false;
-      if (slot.sun_data[3] != 0.f) sun_toward_ = {slot.sun_data[0], slot.sun_data[1], slot.sun_data[2]};
+      if (slot.sun_data[3] != 0.f) {
+        sun_toward_ = {slot.sun_data[0], slot.sun_data[1], slot.sun_data[2]};
+      }
     }
 #endif
     // The last trace's placed instances (it is done: its slot's readback).
@@ -4418,7 +4423,7 @@ class RtScene12 {
   static constexpr uint32_t PATH_REFLECTIONS = 2;
   static constexpr uint32_t PATH_RAW = 512;
   static constexpr uint32_t PATH_NRD = 268435456;
-  static constexpr uint32_t PATH_SQUARED_LOBE = 536870912;
+  static constexpr uint32_t PATH_SQUARED_LOBE = 536870912;  // rt_camera.hlsli
   static constexpr uint32_t PATH_REFLECT_FOG = 16384;
   static constexpr uint32_t PATH_REFLECT_STEADY = 32768;  // rt_reflect_filter (the trace's PATH_AMBIENT_PARITY: another request's word)
   static constexpr uint32_t TRACE_NRD_BOUNCE = 4194304;   // rt_scene.hlsli

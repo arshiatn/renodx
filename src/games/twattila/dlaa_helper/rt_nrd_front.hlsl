@@ -6,7 +6,7 @@
 // NVIDIA's NRD's inputs (nrd_d3d12.hpp), after what each denoises was traced, on the trace's bindings. The view depth and
 // the normal (from the depth as the rays' start, or the G-buffer's where a request has it) always. NRD_FRONT_SUN (SIGMA;
 // rt_trace.cs_6_5.hlsl: each pixel's ray toward a point of the sun's disk, its lit share and blocker's distance): the
-// penumbra's world radius and the share that came through what blocked it (leaves, cloth, smoke, several rays' mean) as its
+// penumbra's world radius and the share that came through what blocked it (leaves, cloth, smoke; one ray under NRD) as its
 // translucency. NRD_FRONT_AMBIENT (REBLUR's occlusion): the rays' open share as the normalized hit distance (the range is
 // its 1). NRD_FRONT_BOUNCE (REBLUR on the Light Bounce, a texel each bounce_scale render pixels): its light and hit
 // distance. NRD_FRONT_REFLECT (REBLUR on the reflections): their light and hit distance packed in place.
