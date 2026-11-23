@@ -12900,6 +12900,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         game_cpu_s. PAUSE-W3 B1 line 'stack headroom 1008 KB, walk thread 208 KB' (the 1 MB fix confirmed).
         COORD 15:1x: overrides bestKC '16', caps_limits 'effects:4,animation:4,ring:4' (backup .pre_caps); KNOB-W3's
         limits pair -> 'ALL K=@bestKC limits=@caps_limits' vs 'ALL K=@bestKC limits=' (t4i_ R7 addendum).
+        t4i_ R7 15:2x (render_mt/reports/t4i_r7_handback.md): KNOB-W3 seq from 128 len 22 (all 25 items, last ends 678;
+        CHECK 100-128; the 10-frame trace may spill ~1 s into the next item's settle, never a measured window); generic
+        own battle-end check in ebo_analyze (before comparisons + bestK; invalid_past_own_end in the gate; not hidden by
+        overrides); alternation now by resolved config (5 KNOB tests were never compared before: spin=50, KRCF=1,
+        sched=bulk, hfthreads=4, caps); midnight hold in ebo_leg (every queue entry incl. continuations / retries: seconds +
+        4 min, + 7 for WPR; 'MIDNIGHT HOLD (resumable, locks kept)', exit 2; re-run continues) + constantinople_bench
+        'NOT RUN: midnight hold' before any file is touched; dry run prints leg time + latest safe start (leg 3 ~135 min by
+        21:44, leg 4 ~179 min by 21:00). CAPS: KNOB tail = K=@bestKC with / without limits (WorkerThreads=5 + env
+        RENODX_TW_WORKER_LIMITS, a live env); as two items the pair did not compare directly. run_all green; dry runs leg 3 /
+        4 CLEAN with the overrides.
+        COORD 15:2x: t4i_ 'R7b' SENT: drop KNOB's spin=150 / spin=3 pair (spin=150 stays in WPR-W3-5), tail = limits= /
+        limits=@caps_limits / limits= at K=@bestKC (24 items, ends 656). Then ebr_ reads R7 + R7b; leg 3 ~16:1x, leg 4
+        ~18:4x (ends ~21:4x).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
