@@ -671,6 +671,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the batch: name the LOW-state holder from the +25 s snapshots; report to A ... | ?
 - after the batch (er5o_): LOW / NORMAL state vs the stuck Attila.exe (09:34:15) + ... | ?
 - coord before leg 2 (moved up 12:5x): t4i_ LEG2 MAKE, ebr_ read 4; after leg 2 ch ... | ?
+- ldv_ HELPER COMPARE hand-back -> G23 items + ATN summary. | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12801,6 +12802,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORD 12:5x: t4i_ 'LEG2 MAKE' SENT: same-leg var sources not refused at leg start, L_end_W3 from real data (value +
         evidence; coord writes overrides.json vars), plus ebr_ read 3 SHOULD-1 + NITs 1 2 4 5 8 9 10 11, run_all, dry runs
         2-4; then ebr_ read 4; then leg 2. Legs 3-4 end before 23:30.
+        ATN 13:0x: (1) look at ldavid1994's Batman AC DLAA / FSR helper (github ldavid1994/renodx batmanac-dlaa, MIT; built
+        from ATN's Attila helper design) and say what we can use; (2) two hboon.com posts (second LLM from another vendor
+        reviews the dirty diff, loop until clean) -> add to the open-items plan. COORD: clone read-only at
+        D:\Dev\ext_review\ldavid1994_batmanac_1123 (never built / run); ldv_ (Opus xHigh, read only) compares it with
+        dlaa_bridge + dlaa_helper + the non-TW upscalers; plan.md G23 added (study, ports after the final bench, ATN's call on
+        a second-vendor reviewer: privacy limits). ldv_ must finish or pause before leg 2 (no agent during legs).
+        - [ ] ldv_ HELPER COMPARE hand-back -> G23 items + ATN summary.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
