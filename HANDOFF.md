@@ -13263,6 +13263,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         why), S3 env-only off switch RENODX_TW_EXIT_DRAIN=0 (bench 'part Off'), S4 part 30 foreign-bytes case. Confirmed: the
         site, the singleton pool = the workers' pool, layout / states / two-poll rule / cap, no new hang, install path.
         COORD 22:4x: exd_ fixes sent (M1 + S1 + S2 'move only with proof' + S3 + S4 + NITs; rebuild into exd_1123b).
+        exd_ FIXED 23:0x (render_mt/reports/exd_fixed_handback.md): exd_fix c3a73a9cc: M1 GetModuleHandleExW PIN at the
+        start of the once block; S1 quiet poll needs pool [0x10] == 0 (+ 30d cases); S2 kept +0xC9AC1 (+0xC9800 has 2 E8
+        callers, thiscall; reason + soak pass rule in the section 21 comment: N window-closed exits, no exit fault, a
+        'drained' line in each); S3 RENODX_TW_EXIT_DRAIN=0 read once at start; S4 case 30e; N1-N8 (N9 / N10 not done).
+        -Only exit / -Quick / -DrawRecording PASS. Builds testbin\cpu1_addons\exd_1123b: plain ad913bae...bd9f, FP twin
+        199abc0d...3204 (pdb 3a0ae8a5...). COORD: exr_ re-check sent.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
