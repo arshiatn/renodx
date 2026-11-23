@@ -674,6 +674,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the GPU plan's final review: remind ATN to send ldavid1994 the newest help ... | ?
 - coord in leg 3: after REF-H / REF-P, compare their L_end with the 680 override b ... | ?
 - coord in the leg-2 gap: KNOB-W3 fit (reorder / len 22) + generic own-end check + ... | ?
+- coord: ebr_ read 5 -> fix MUSTs (t4i_ + delta) or leg 3 (dry run, then real) by ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12913,6 +12914,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORD 15:2x: t4i_ 'R7b' SENT: drop KNOB's spin=150 / spin=3 pair (spin=150 stays in WPR-W3-5), tail = limits= /
         limits=@caps_limits / limits= at K=@bestKC (24 items, ends 656). Then ebr_ reads R7 + R7b; leg 3 ~16:1x, leg 4
         ~18:4x (ends ~21:4x).
+        t4i_ R7b 15:3x (render_mt/reports/t4i_r7b_handback.md): KNOB-W3 spin=150 / spin=3 pair dropped (spin=150 stays in
+        leg 4's WPR-W3-5); tail 'ALL K=@bestKC limits=' / '... limits=@caps_limits' / '... limits=' -> 24 items from 128
+        len 22, last b2.24 ends 656, nothing cut; b2.23 (612 s) = K16 + limits, neighbours b2.22 / b2.24 = K16 cleared (same
+        resolved config); every designed test has equal resolved neighbours. Only segments.json changed (backup
+        .pre_r7b). run_all green (lib 657, names 6, make 131, check 217, leg 193, analyze 165); leg 3 dry run CLEAN (9
+        starts, ~135 min, start by 21:44).
+        COORD 15:39: ebr_ 'T6 READ 5' SENT (GO / NO-GO for leg 3: R7 / R7b diffs, K=@bestKC 16 risk, trace spill, blockers).
+        - [ ] coord: ebr_ read 5 -> fix MUSTs (t4i_ + delta) or leg 3 (dry run, then real) by 21:44; leg 4 by 21:00
+        (else after 00:00: the midnight hold refuses a crossing start).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
