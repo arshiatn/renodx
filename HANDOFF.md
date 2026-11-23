@@ -12834,6 +12834,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         is NVIDIA's minimum (guide table), so 32 is only an optional A/B; (4) wants enforced every-shader audits (MV, scale,
         RT shadows) per game -> plan.md G24.
         - [ ] coord in the leg-2 gap: caps_limits value + L_end_W3 for leg 3 (680 vs higher with a KNOB self-check).
+        ldv_ LOGS 14:0x (render_mt/reports/ldv_logs_handback.md): his logging covers less than ours; take 5 one-shot items
+        (loaded DLSS / FSR DLL version + path or missing, GPU name + driver version, DLAA status line with 'Off: reason' in
+        the TW graphics page, a Warp Error Debug View, HRESULT lines at our silent fallbacks); skip his per-120-frame
+        counters. Jitter item withdrawn (ours = the guide's table: 8 / 18 / 24 / 32, RR 32). Coverage: of his 41 files, 5 +
+        the CMake diff read fully, 7 partly, 28 not read -> plan.md G23 1b full pass. ATN 14:0x 'did it compare everything?'
+        answered: no, a first pass.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
