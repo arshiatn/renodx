@@ -703,6 +703,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ebr_ review of t4i_ FINAL, then the real -Final -DryRun after the RC build. | ?
 - G23 implementation (after the final bench; helper files = GPU plan helper queue ... | ?
 - before the RC freeze (exd_, small, exr_ glance): N11 parens in the gave-up log c ... | ?
+- t4i_ part 3 (above) -> then ebr_ (a41704a31fb3d6080) reviews ALL of t4i_ FINAL a ... | ?
+- ATN at READY: allow `powershell -NoProfile -ExecutionPolicy Bypass -File C:\User ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13275,6 +13277,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         real finding in -Final, exit_crash_no_stop off there; part-Off map -> RENODX_TW_EXIT_DRAIN=0).
         - [ ] before the RC freeze (exd_, small, exr_ glance): N11 parens in the gave-up log call, N12 JOB_ prefix for the
         WORKER_* pool constants, reword the S2 comment's first reason, one 'off' log line when RENODX_TW_EXIT_DRAIN=0.
+        t4i_ FINAL PART 23:34 (render_mt/reports/t4i_final_handback.md): §9 + MUST-A..D + SHOULD 1-7 in ebo/final.json (RC
+        files = placeholders; model 3.35 h, E ~3.8 h; follow-ups row_by_row 13 / day1_three / l1 / melee_pair2 as data);
+        new bench/ebo_final_make.py (-> round_notes/render_mt/ebo_final, own segments + state; 38 main starts), ebo_final_eval.py
+        (exit 0 Go / 1 fail / 2 config), ebo_etl_timebase.py (DXGI presents vs PresentMon); `ebo_run.ps1 -Final [-DryRun]` /
+        `-Final -Followup [-DryRun]` (own parameter set); HFx reads heapfix.ini [fixes] (heapfix.c:441-446). Addendum done:
+        check.json exit_drain per start (NOTE if missing / not 'drained'), final ignores exit_crash_no_stop, a crash = record
+        + one whole re-run after warm-up (done.json moved aside), 2nd crash ends the run, eval PROBLEM per crash; gates.json
+        part map ExitDrain -> RENODX_TW_EXIT_DRAIN=0 (not wired). Tests all green (lib 657, make 131, check 220, leg 226,
+        analyze 200; final 16 cases incl. fake-io dry run of 38 starts + follow-up + crash re-run). ebo_final/overrides.json
+        now coord-owned. COORD: StallDump=1 stays in the final (a >= 1000 ms stall fails anyway; the dump is its root cause).
+        t4i_ part 3 sent (by 00:50): rerun-due follow-up set from the evaluator (no in-run branches, MUST-B), warm-up after a
+        prefs restore, R1 prefs sha check in the runner, follow-up evaluation, MANUAL line wording.
+        - [ ] t4i_ part 3 (above) -> then ebr_ (a41704a31fb3d6080) reviews ALL of t4i_ FINAL after ATN's restart -> t4i_
+        fixes -> ebr_ re-check; then coord fills final.json RC files + manifest, reruns ebo_final_make.py, real
+        -Final -DryRun after ATN adds the four rules.
+        - [ ] ATN at READY: allow `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\arshi\.claude\projects\
+        D--Dev-renodx\tools\tw\bench\ebo_run.ps1` with `-Final -DryRun`, `-Final`, `-Final -Followup -DryRun`,
+        `-Final -Followup` (four lines).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
