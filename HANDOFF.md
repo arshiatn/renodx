@@ -667,9 +667,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: after er5o_ + t4i_ hand back: decide the fix (src = re-freeze, set data o ... | ?
 - after the batch (er5o_ rmt_stk NITs): effect_update.hpp:396 trailing comment ali ... | ?
 - after the batch (er5o_ leg1 cause): memory guard also on largest free block < 25 ... | ?
-- coord after the leg 1 re-run: paused_runs value -> PAUSE-W3 decision (t4i_ item ... | ?
 - after the batch (ebr_ t6 read 2 NITs): ebo_check.ps1:105-110 late row after the ... | ?
 - coord between leg 1 and leg 2: ebr_ recheck of t4i_ t6 round 3; A/B reading (er5 ... | ?
+- coord before leg 2: t4i_ collided-arm rule + leg 1 gate PASS offline; er5o_ A/B ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12720,7 +12720,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         paused_runs empty = CHK-W3's pause (330-370 s) never reached; if still empty after the re-run the real leg-2 make
         PROBLEMs PAUSE-W3's R1 ring / B2 hfthreads sweeps + B3b-alone shots (t4i_ pick: sweeps anyway, trace only; B3b
         picture only if proven paused). ebr_ 't6 read 2' SENT (GO / NO-GO for the leg 1 re-run).
-        - [ ] coord after the leg 1 re-run: paused_runs value -> PAUSE-W3 decision (t4i_ item 8, ebr_'s view) before leg 2.
+        - [x] coord after the leg 1 re-run: paused_runs value -> PAUSE-W3 decision (t4i_ item 8, ebr_'s view) before leg 2.
         ebr_ T6 READ 2 09:0x (render_mt/reports/ebr_t6_read2_handback.md): GO for the leg 1 re-run. MUST-1 (before leg 3):
         the diagnostic default (ebo_make.ps1:613) also catches 16 measuring starts (REF-H / REF-P / VOL-L1 / D1-OFF-a,b /
         D1-ALL-a,b / LQ-W3 / 8 HF-*). SHOULD-1 CHK-W3 last in leg 1 (it will likely trip again at 90-120 s); SHOULD-2 AB-T
@@ -12741,6 +12741,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORD 09:2x: leg 1 RE-RUN starts now (ebr_ GO for leg 1; round 3 = ebr_'s own leg-1 suggestions); ebr_ re-checks
         round 3 (leg 2's PAUSE-W3 + MUST-1) between leg 1 and leg 2. QUIET: no coord commits during the leg.
         - [ ] coord between leg 1 and leg 2: ebr_ recheck of t4i_ t6 round 3; A/B reading (er5o_); paused_runs.
+        LEG 1 RE-RUN 09:28-10:54 (state\leg1_gate.json, leg1_analysis.txt): exit 0, crashes 0, kills [], l_mem {} (no
+        scene cut), B1 clean in every start (1 MB stacks: no B1L1 latch), 10 / 11 starts pass. Gate FAIL on ONE tool rule:
+        AB-T 'no switch line for 30:mt_trace=10' = arms at 30 and 33 fell into one ~4.5 s game frame (every AB start has
+        long frames at 15-18 s and 30-35 s), test_hooks ran both at one present, the pool armed one and logged 'a trace
+        window is open or pending; the arm for 10 presents is ignored' for the other; the check calls it MISSING. Arms
+        < 6 s apart also sit in 6 measuring starts (FT-W3b, KNOB-W3, FT-D1, ATN-FT, R1-FT, LQ-W3) + PAUSE-W3 -> same risk.
+        CHK-W3 (diagnostic) guard trip at 650 s (diag_guard_trips W3 650.13; run 1 tripped at 90-120 s), min free 763 MB.
+        paused_runs = B1, B3b, C, R1 (CHK-W3's pause reached) -> PAUSE-W3 as planned. A/B min free / min block (MB, 150 s):
+        A hfx off 843 / 743, B prep 0 837 / 692, C prep 2 1099 / 995, C3 prep 3 1107 / 1035, D hfx all 1047 / 951,
+        E D + checks 995 / 802, T D + traces 1063 / 948, M B + MAP_TRACE 1083 / 962; free slope ~-330 MB/min in all.
+        COORD 10:5x: t4i_ 'collided arm' rule (pool 'ignored' line at the same present = NOTE, not MISSING) + offline
+        re-analyze of leg 1 + leg 2-4 dry runs; er5o_ reads the A/B; then ebr_ re-checks t4i_ round 3 + the new rule.
+        - [ ] coord before leg 2: t4i_ collided-arm rule + leg 1 gate PASS offline; er5o_ A/B verdict; ebr_ GO.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
