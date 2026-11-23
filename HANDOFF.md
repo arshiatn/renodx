@@ -674,8 +674,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the GPU plan's final review: remind ATN to send ldavid1994 the newest help ... | ?
 - coord in leg 3: after REF-H / REF-P, compare their L_end with the 680 override b ... | ?
 - coord in the leg-2 gap: KNOB-W3 fit (reorder / len 22) + generic own-end check + ... | ?
-- coord: ebr_ read 5 -> fix MUSTs (t4i_ + delta) or leg 3 (dry run, then real) by ... | ?
 - after batch: ebr_ read 5 NIT 1 (B1 L2 lines by window number), NIT 3 (own-end ru ... | ?
+- after batch: ebr_ R8 delta SHOULD-1 (held / lost plan without check.json = NOTE, ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12922,7 +12922,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         .pre_r7b). run_all green (lib 657, names 6, make 131, check 217, leg 193, analyze 165); leg 3 dry run CLEAN (9
         starts, ~135 min, start by 21:44).
         COORD 15:39: ebr_ 'T6 READ 5' SENT (GO / NO-GO for leg 3: R7 / R7b diffs, K=@bestKC 16 risk, trace spill, blockers).
-        - [ ] coord: ebr_ read 5 -> fix MUSTs (t4i_ + delta) or leg 3 (dry run, then real) by 21:44; leg 4 by 21:00
+        - [x] coord: ebr_ read 5 -> fix MUSTs (t4i_ + delta) or leg 3 (dry run, then real) by 21:44; leg 4 by 21:00
         (else after 00:00: the midnight hold refuses a crossing start).
         ebr_ T6 READ 5 15:5x (render_mt/reports/ebr_t6_read5_handback.md): leg 3 GO, no MUST. Own-end check fires on none
         of the 13 leg 1-2 series (lowest 10 s mean after 200 s 0.83 x median, CHK-W3); pauses dropped; resolved-config
@@ -12945,6 +12945,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         not resumable', test); NIT 2. run_all green (leg 196); dry runs leg 3 (9 starts, ~135 min, by 21:44; KNOB 23 scan
         arms) + leg 4 (18 starts, ~179 min, by 21:00) CLEAN. Backups *.pre_r8.
         COORD 16:3x: ebr_ 'R8 DELTA' SENT (diffs, K16 comparisons, 23 vs 25 scan arms, SHOULD-4 safety); then leg 3.
+        ebr_ R8 DELTA 16:3x (render_mt/reports/ebr_r8_delta_handback.md): leg 3 GO, no MUST. Diffs correct; KNOB 12
+        comparisons (b2.22 K16 vs b2.21 / b2.23 K4, b2.24 K16 + caps vs b2.23 / b2.25 K4); 23 scan arms by design (13
+        before the seq + 10 in the soak 680-770); SHOULD-4 can't drop a continuation with segments left. SHOULD-1 a held
+        continuation's folder (plan.json, no check.json) makes the final gate FAIL ('not checked') although its segments
+        are in batch.lost: a false FAIL line, not a stop. NIT 1 a NORMAL repeat trip with 0 left no longer sets L_mem (no
+        effect in legs 3-4); NIT 2 test_leg spacing.
+        COORD 16:3x: SHOULD-1 deferred (no agent during legs; leg 4 ~19:1x-22:1x needs no hold): if a hold ever happens,
+        coord reads that gate line by hand. LEG 3 STARTS NOW (dry run first). QUIET during the leg.
+        - [ ] after batch: ebr_ R8 delta SHOULD-1 (held / lost plan without check.json = NOTE, not PROBLEM) + NIT 1 / 2.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
