@@ -13295,6 +13295,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN at READY: allow `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\arshi\.claude\projects\
         D--Dev-renodx\tools\tw\bench\ebo_run.ps1` with `-Final -DryRun`, `-Final`, `-Final -Followup -DryRun`,
         `-Final -Followup` (four lines).
+        t4i_ FINAL PART 3 23:58 (render_mt/reports/t4i_final_part3_handback.md): warm-ups after R1 prefs restores (main run
+        now 40 starts, model 3.48 h, E ~3.9 h); R1 prefs sha in ebo_leg (batch.json final_prefs_sha; mismatch = start
+        skipped + PROBLEM); 'reruns' follow-up from ebo_final_eval.py reruns_due (stall / MUST-D; set overrides
+        final_followup 'reruns', ebo_final_make.py --followup reruns, then -Final -Followup); follow-up evaluation (leg2,
+        SLOWER / FASTER at 2 SE, never changes the main Go lines); final MANUAL wording. Tests green (leg 228, analyze
+        204; final 18 cases). Midnight hold: start the main run before ~20:00 or resume after 00:00. Nothing open from
+        part 3; the real-dry-run / RC list is unchanged. NO agent running from 00:0x until ATN's restart + go.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
