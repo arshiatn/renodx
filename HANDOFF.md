@@ -685,7 +685,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - F5 real motion into NRD: add-on work outside dlaa_helper (gbr_), owner after ren ... | ?
 - g25_ to-run-later (after ATN's game): swatch images (g25_e_swatches.py) + WARP r ... | ?
 - G25 fix F1 + F2 (Expeditions lutbuilder + psycho35.hlsli parameter: wave 3, afte ... | ?
-- rvh_ review of g23_'s designs -> g23_ (agent aabd3269fac6a9be6) fixes -> rvh_ re ... | ?
 - t4i_ (agent a085db550dc5dbe5c) final-bench data per eba_ §t4i_ (OFF / ALL / ALL+ ... | ?
 - RC: Exit job drain (exd_ + exr_), defaults, DRAW_RECORDING build or public C row ... | ?
 - ETL attribution of the 6 batch WPR ETLs (incl. S8-2 readying stacks, ebo3_WPR-W3 ... | ?
@@ -704,6 +703,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G24 step 0 (checker + manifest + UE4 pack, Opus xHigh; core frozen after its rev ... | ?
 - ATN at READY: add the run rules for `ebo_run.ps1 -Final` / `-Final -DryRun` (+ - ... | ?
 - ebr_ review of t4i_ FINAL, then the real -Final -DryRun after the RC build. | ?
+- G23 implementation (after the final bench; helper files = GPU plan helper queue ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13093,7 +13093,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (bug fix, not saved), 2f-3 DLL versions, 2f-4 new FSR Sharpening row at 0; 2i logging (one part waits wave 3).
         Implementers: A = 2a + 2b, then B = 2f-2/3/4 + 2e switches (main.cpp / dlaa_bridge.h shared). ATN questions
         50-57. COORD 22:0x: rvh_ (Opus xHigh, read only) reviews the designs.
-        - [ ] rvh_ review of g23_'s designs -> g23_ (agent aabd3269fac6a9be6) fixes -> rvh_ re-check; code after the final
+        - [x] rvh_ review of g23_'s designs -> g23_ (agent aabd3269fac6a9be6) fixes -> rvh_ re-check; code after the final
         bench (check GPU-plan branch ownership of main.cpp / upscale_d3d12.hpp / rr_d3d12.hpp first).
         rvg_ DONE 22:1x (handoff_plan/reviews/rvg_g24_design_review.md + _handback.md): g24_ design NOT GO, 7 MUST / 12
         SHOULD / 8 NIT, no redesign: M1 ledger header defines its own census (checker-owned reviewed manifest per game;
@@ -13248,6 +13248,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN at READY: add the run rules for `ebo_run.ps1 -Final` / `-Final -DryRun` (+ -Followup) (coord never writes
         settings); answer Q1-Q10 (+ Q10 d) and the eye list.
         - [ ] ebr_ review of t4i_ FINAL, then the real -Final -DryRun after the RC build.
+        g23_ R3 22:3x (handbacks/g23_r3_handback.md): 2f-1-M3 (FSR takes RR's colour-before path below 100 %; rollout WH3
+        at 100 % first, below 100 % second), M4 (square_root const x3), 2b-N4 / N5, 2f-2-N2, UAV note.
+        rvh_ R3 GO 22:4x (reviews/rvh_g23_designs_review.md 'Re-check r3', rvh_g23_recheck_r3_handback.md): EVERY G23 item
+        GO (2a, 2b, 2e-1, 2e-2, 2f-1 steps 1 + 2, 2f-2, 2f-3, 2f-4, 2i); no MUST / SHOULD open. ATN Q50-57 (Q55 / Q54 note:
+        100 % first). Implementation after the final bench in the design's ownership order (2a + 2b one branch first).
+        - [ ] G23 implementation (after the final bench; helper files = GPU plan helper queue unless ATN hands them over;
+        ngx_backend.hpp after ho_g09; anti_aliasing / graphics_page / feature_settings after ho_g19).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
