@@ -75,7 +75,7 @@ enum class Game : uint8_t { ATTILA, THRONES, ROME2 };
 // two sites of Cached Particle Count while `particle_count` is set (`particle_count_check`: the game's sum is also computed
 // on every call and compared with the cache, a bench's RENODX_TW_COUNT_CHECK, never a player's); the 4 fill sites of Parallel
 // Instance Fill (instance_fill.hpp: their own table too) while `instance_fill` is set, and (private build) its 3 Unmap stubs while
-// `fill_fold` is set too; the Exit Job Drain's site (21. below, Attila; a bug fix: the add-on always sets it, no row) while `exit_job_drain`
+// `fill_fold` is set too; the Exit Job Drain's site (21. below, Attila; a bug fix: the add-on sets it unless a bench's RENODX_TW_EXIT_DRAIN=0, no row) while `exit_job_drain`
 // is set.
 struct WorkerRows {
   animation_rows::Stage animation = animation_rows::Stage::OFF;
@@ -1672,7 +1672,7 @@ constexpr Build ATTILA_BUILD = {
     .exit_destroy_rva = 0xc9a90,
     .job_pool_rva = 0x169d350,
 };
-// Thrones of Britannia: the same site is not proven there (no function of the +0xc9a90 shape, no job system accessor of the shape
+// Rome II: no such job system (see 6.). Thrones of Britannia: the same site is not proven there (no function of the +0xc9a90 shape, no job system accessor of the shape
 // JOB_POOL_ACCESSOR has; the functions with the bytes of Attila's +0x1374230 are +0x173c970, with no E8 caller, and +0x17ae260, called from
 // a shutdown routine of another shape). Its rvas stay 0: left alone.
 constexpr Build THRONES_BUILD = {
@@ -1789,7 +1789,7 @@ constexpr size_t WORKER_SWEEP_INDEX = 26;  // the pending list sweep's entry
 constexpr size_t PARTICLE_EPOCH_INDEX = 27;  // the node's update (Cached Particle Count: the generation's bump)
 constexpr size_t PARTICLE_COUNT_INDEX = 28;  // the visible particle sum (Cached Particle Count: the cache)
 constexpr size_t EXIT_DRAIN_INDEX = 29;      // the app destruction's call at the game's end (Exit Job Drain, 21.)
-constexpr uint32_t EXIT_DRAIN_BIT = 1u << EXIT_DRAIN_INDEX;  // a bug fix: always asked for (WorkerRows::exit_job_drain), no row
+constexpr uint32_t EXIT_DRAIN_BIT = 1u << EXIT_DRAIN_INDEX;  // a bug fix: asked for by the add-on (WorkerRows::exit_job_drain) unless RENODX_TW_EXIT_DRAIN=0, no row
 constexpr uint32_t PARTICLE_EPOCH_BIT = 1u << PARTICLE_EPOCH_INDEX;
 constexpr uint32_t PARTICLE_COUNT_BIT = 1u << PARTICLE_COUNT_INDEX;
 constexpr uint32_t PARTICLE_COUNT_SITES = PARTICLE_EPOCH_BIT | PARTICLE_COUNT_BIT;  // Cached Particle Count: its own row, both sites or neither
@@ -1895,21 +1895,41 @@ struct CutRange {
   const uint8_t* end = nullptr;
   const std::atomic<int32_t>* active = nullptr;
 };
-// 21. Exit Job Drain (a bug fix: always on, no row; Attila). At the game's end its main thread deletes the app object (the call of
-// +0x1374230 at +0xc9ac1, then a Sleep(100) in the destructor) without waiting for the job workers: one still running the battle's
-// logic reads state the destruction took and faults (about 2 % of the exits with the window closed in a battle). The site's call
-// goes to ExitDrain, which waits until every worker of the game's job pool is asleep (state 1, no wake pending: the fields Faster
-// Job Wake-Ups decodes) in two polls of 1 ms in a row, at most 1000 ms, says so in one line, and makes the game's call. The pool is
-// the job system singleton the accessor (found by its bytes) loads; it is read here, before the app's destruction. Not the app's
-// other E8 caller (+0x137414c, the creation's failure path).
+// 21. Exit Job Drain (a bug fix: always on, no row; the environment RENODX_TW_EXIT_DRAIN=0 takes it out; Attila). At the game's end its
+// main thread deletes the app object (the call of +0x1374230 at +0xc9ac1, then a Sleep(100) in the destructor) without waiting for the job
+// workers: one still running the battle's logic reads state the destruction took and faults (about 2 % of the exits with the window
+// closed in a battle). The site's call goes to ExitDrain, which pins this image (the delete ends the device, ReShade frees the add-on
+// inside it and the call returns here), waits until every worker of the game's job pool is asleep (state 1, no wake pending: the fields
+// Faster Job Wake-Ups decodes) and the pool's queue is empty, in two polls of 1 ms in a row, at most 1000 ms, says so in one line, and
+// makes the game's call. The pool is the job system singleton the accessor (found by its bytes) loads; it is read here, before the app's
+// destruction. Not the app's other E8 caller (+0x137414c, the creation's failure path).
+// Why +0xc9ac1 and not the earlier +0xd5d74 (the call of the root teardown +0xc9800, which destroys the subsystem list this call is in):
+// +0xc9800 has a second E8 caller (+0xc9ff3, its scalar deleting destructor) and is thiscall, so the earlier site would need a second
+// proof and a register-keeping stub; the dump of the fault puts it in the app's delete (the main thread was in its Sleep(100)), which is
+// after this call, and the pool is still alive here (its own destroy is a later subsystem of the same list). Soak pass rule: N exits
+// with the window closed with no exit fault, and a "drained" line in every one.
+// A "gave up" line with "job workers still running" and no job running is possible but rare: the game's Wake stores state 2 after its
+// release, so a worker that wakes, finds nothing and sleeps again before that store keeps state 2 with no wake pending until its next
+// Wake; it costs the full 1000 ms. One such line alone is not a stuck job.
 constexpr std::string_view EXIT_DESTROY =
     "56 8B F1 C7 06 ?? ?? ?? ?? E8 ?? ?? ?? ?? 83 78 20 00 74 ?? E8 ?? ?? ?? ?? 83 78 0C 00 74 ?? E8 ?? ?? ?? ?? 6A 00 8B 48 0C 8B 01 "
     "FF 90 A8 03 00 00 E8 ?? ?? ?? ?? E8 ?? ?? ?? ?? C7 40 20 00 00 00 00 C7 06 ?? ?? ?? ?? 5E C3";
 constexpr size_t EXIT_DESTROY_CALL = 49;  // call the app's delete
+constexpr uint32_t EXIT_APP_DELETE_RVA = 0x1374230;  // the game's function the site calls (checked at runtime by its bytes)
 constexpr std::string_view EXIT_APP_DELETE = "8B 0D ?? ?? ?? ?? 85 C9 74 10 8B 01 6A 01 FF 10 C7 05 ?? ?? ?? ?? 00 00 00 00 C3";
 constexpr std::string_view JOB_POOL_ACCESSOR = "A1 ?? ?? ?? ?? 85 C0 75 ?? 68 FC 10 00 00 E8";  // mov eax, [the pool]; ...; push 0x10fc (its size)
 constexpr size_t JOB_POOL_MAX_WORKERS = 64;
-constexpr size_t JOB_WORKER_WORDS = 0x15;  // the worker's words up to [+0x50]: [1] its pool, [6] its state (1 asleep, 2 running, 3 stopped), [0x14] its pending wakes
+// The job pool's first words, and the words of a worker up to [+0x50].
+constexpr size_t POOL_WORKER_COUNT = 1;
+constexpr size_t POOL_WORKERS = 2;  // the array of the workers
+constexpr size_t POOL_QUEUE = 4;    // the head of the queued jobs
+constexpr size_t POOL_WORDS = POOL_QUEUE + 1;
+constexpr size_t WORKER_POOL = 1;
+constexpr size_t WORKER_STATE = 6;
+constexpr size_t WORKER_WAKES = 0x14;  // the pending wakes
+constexpr size_t WORKER_WORDS = WORKER_WAKES + 1;
+constexpr uint32_t WORKER_ASLEEP = 1;
+constexpr uint32_t WORKER_STOPPED = 3;
 constexpr std::chrono::milliseconds EXIT_DRAIN_LIMIT{1000};
 static void (*exit_app_delete)() = nullptr;  // the game's function the site called
 static uintptr_t job_pool_global = 0;        // where the game keeps its job system pointer
@@ -1918,47 +1938,67 @@ static std::atomic<bool> game_exiting = false;
 // The site's call at the game's end: once, on the game's main thread, the drain; then the game's own call (it reads no register: it loads the app itself).
 static void ExitDrain() {
   if (!game_exiting.exchange(true)) {
+    // The game's delete below ends the device: ReShade frees this add-on inside that call, which then returns here.
+    HMODULE pinned = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&ExitDrain), &pinned);
     const auto start = std::chrono::steady_clock::now();
     const auto read = [](uintptr_t from, void* to, size_t size) {
       return ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(from), to, size, nullptr) != FALSE;
     };
     uint32_t pool = 0;
-    std::array<uint32_t, 3> pool_words = {};  // the pool's [0] .. [8]: its capacity, its worker count, its workers' array
+    std::array<uint32_t, POOL_WORDS> pool_words = {};
     std::array<uint32_t, JOB_POOL_MAX_WORKERS> workers = {};
-    if (!read(job_pool_global, &pool, sizeof(pool)) || pool == 0 || !read(pool, pool_words.data(), sizeof(pool_words))
-        || pool_words[1] - 1 >= JOB_POOL_MAX_WORKERS || !read(pool_words[2], workers.data(), pool_words[1] * sizeof(uint32_t))) {
-      renodx::utils::log::w("[Total War] Exit Job Drain: no job system to wait for (it was not as expected at the game's end).");
-    } else {
+    const bool pointer_read = read(job_pool_global, &pool, sizeof(pool));
+    if (pointer_read && pool == 0) {
+      renodx::utils::log::i("[Total War] Exit Job Drain: the game built no job system: nothing to wait for.");
+    } else if (pointer_read && read(pool, pool_words.data(), sizeof(pool_words)) && pool_words[POOL_WORKER_COUNT] - 1 < JOB_POOL_MAX_WORKERS
+               && read(pool_words[POOL_WORKERS], workers.data(), pool_words[POOL_WORKER_COUNT] * sizeof(uint32_t))) {
+      const uint32_t worker_count = pool_words[POOL_WORKER_COUNT];
       uint64_t busy = 0;  // bit i: worker i was not asleep in the last poll
       uint64_t busy_at_first_poll = 0;
+      bool queued = false;
       bool as_expected = true;
-      for (uint32_t polls = 0, quiet_polls = 0; quiet_polls < 2 && as_expected; ++polls) {
+      uint32_t quiet_polls = 0;
+      for (uint32_t polls = 0; quiet_polls < 2 && as_expected; ++polls) {
         busy = 0;
-        for (uint32_t index = 0; index < pool_words[1] && as_expected; ++index) {
-          std::array<uint32_t, JOB_WORKER_WORDS> worker = {};
-          as_expected = read(workers[index], worker.data(), sizeof(worker)) && worker[1] == pool;
-          if (as_expected && worker[6] != 3 && (worker[6] != 1 || worker[0x14] != 0)) {
+        as_expected = read(pool, pool_words.data(), sizeof(pool_words));
+        queued = (pool_words[POOL_QUEUE] != 0);
+        for (uint32_t index = 0; index < worker_count && as_expected; ++index) {
+          std::array<uint32_t, WORKER_WORDS> worker = {};
+          as_expected = read(workers[index], worker.data(), sizeof(worker)) && worker[WORKER_POOL] == pool;
+          if (as_expected && worker[WORKER_STATE] != WORKER_STOPPED && (worker[WORKER_STATE] != WORKER_ASLEEP || worker[WORKER_WAKES] != 0)) {
             busy |= uint64_t{1} << index;
           }
         }
-        if (polls == 0) busy_at_first_poll = busy;
-        quiet_polls = (busy == 0 ? quiet_polls + 1 : 0);
-        if (busy != 0 && std::chrono::steady_clock::now() - start >= EXIT_DRAIN_LIMIT) break;
-        if (quiet_polls < 2 && as_expected) Sleep(1);
+        if (polls == 0) {
+          busy_at_first_poll = busy;
+        }
+        const bool quiet = (busy == 0 && !queued);
+        quiet_polls = (quiet ? quiet_polls + 1 : 0);
+        if (!quiet && std::chrono::steady_clock::now() - start >= EXIT_DRAIN_LIMIT) {
+          break;
+        }
+        if (quiet_polls < 2 && as_expected) {
+          Sleep(1);
+        }
       }
       const auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
-      if (!as_expected) {
-        renodx::utils::log::w("[Total War] Exit Job Drain: the job workers were not as expected at the game's end (pool 0x",
-                              std::format("{:X}", pool), "): not waited for.");
-      } else if (busy != 0) {
+      if (as_expected && quiet_polls >= 2) {
+        renodx::utils::log::i("[Total War] Exit Job Drain: drained ", std::popcount(busy_at_first_poll), " of ", worker_count, " job workers in ", waited, " ms.");
+      } else if (as_expected) {
         std::string running;
-        for (uint32_t index = 0; index < pool_words[1]; ++index) {
-          if ((busy >> index & 1) != 0) running += std::format("{}{}", running.empty() ? "" : ", ", index);
+        for (uint32_t index = 0; index < worker_count; ++index) {
+          if ((busy >> index & 1) != 0) {
+            running += std::format("{}{}", running.empty() ? "" : ", ", index);
+          }
         }
-        renodx::utils::log::w("[Total War] Exit Job Drain: gave up after ", waited, " ms, job workers still running: ", running, " (of ", pool_words[1], ").");
+        renodx::utils::log::w("[Total War] Exit Job Drain: gave up after ", waited, " ms, job workers still running: ", running.empty() ? "none" : running, " (of ", worker_count, ")",
+                              queued ? ", jobs still queued." : ".");
       } else {
-        renodx::utils::log::i("[Total War] Exit Job Drain: drained ", std::popcount(busy_at_first_poll), " of ", pool_words[1], " job workers in ", waited, " ms.");
+        renodx::utils::log::w("[Total War] Exit Job Drain: the job workers were not as expected at the game's end (pool 0x", std::format("{:X}", pool), "): not waited for.");
       }
+    } else {
+      renodx::utils::log::w("[Total War] Exit Job Drain: the job system was not as expected at the game's end (pool 0x", std::format("{:X}", pool), "): not waited for.");
     }
   }
   exit_app_delete();
@@ -2098,6 +2138,7 @@ static_assert([] {
   const uint32_t site = ATTILA_BUILD.exit_destroy_rva + EXIT_DESTROY_CALL;
   return !TouchesPatched(site, SITE_SIZE, no_entry) && !TouchesChecked(site, SITE_SIZE)
          && !TouchesPatched(ATTILA_BUILD.exit_destroy_rva, static_cast<uint32_t>(PatternSize(EXIT_DESTROY)), no_entry)
+         && !TouchesPatched(EXIT_APP_DELETE_RVA, static_cast<uint32_t>(PatternSize(EXIT_APP_DELETE)), no_entry)
          && !TouchesPatched(ATTILA_BUILD.job_pool_rva, static_cast<uint32_t>(PatternSize(JOB_POOL_ACCESSOR)), no_entry);
 }());
 // The check row that starts where the epoch's instruction ends is clear of the 6 bytes and touched by a seventh.
@@ -2747,7 +2788,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       const uint8_t* app_delete = (destroy != nullptr ? target(destroy + EXIT_DESTROY_CALL) : nullptr);
       const auto* pool_global = (pool_accessor != nullptr ? reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(read32(pool_accessor + 1))) : nullptr);
       if (app_delete != nullptr && holds(app_delete, EXIT_APP_DELETE) && pool_global != nullptr && pool_global >= base
-          && pool_global <= image_end && static_cast<size_t>(image_end - pool_global) >= sizeof(uint32_t)) {
+          && pool_global + sizeof(uint32_t) <= image_end) {
         exit_app_delete = reinterpret_cast<void (*)()>(const_cast<uint8_t*>(app_delete));
         job_pool_global = reinterpret_cast<uintptr_t>(pool_global);
         sites[EXIT_DRAIN_INDEX].at = destroy + EXIT_DESTROY_CALL;

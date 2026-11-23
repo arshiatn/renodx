@@ -1359,6 +1359,12 @@ bool animation_check_env = false;
 std::atomic<uint32_t> worker_env_generation = 0;
 // A bench's RENODX_TW_WORKER_TRACE, read once at the start: engine_code puts the pending list sweep's trace site in only then, never for a player.
 const bool worker_trace_env = (GetEnvironmentVariableA("RENODX_TW_WORKER_TRACE", nullptr, 0) != 0);
+// Exit Job Drain (engine_code.hpp 21., a bug fix: no row): a bench's RENODX_TW_EXIT_DRAIN=0, read once at the start, takes it out (the end batch's
+// "part Off" run); never a player's.
+const bool exit_job_drain_on = [] {
+  std::array<char, 2> value = {};
+  return !(GetEnvironmentVariableA("RENODX_TW_EXIT_DRAIN", value.data(), static_cast<DWORD>(value.size())) == 1 && value[0] == '0');
+}();
 // A bench's RENODX_TW_COUNT_CHECK (set at all), read again when the env generation changes: Cached Particle Count also runs the game's
 // sum on every call and compares it with its cache; never a player's.
 bool particle_count_check_env = false;
@@ -1700,7 +1706,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                  .particle_count_check = particle_count_check_env,
                                  .instance_fill = instance_fill_on,
                                  .fill_fold = fill_fold_on,
-                                 .exit_job_drain = true});
+                                 .exit_job_drain = exit_job_drain_on});
   // After the engine code's Update (the sites are in or out for this present) and the pool's.
   twattila::effect_update::Update(effect_update_row != 0.f, effect_spawns_row != 0.f);
 #if defined(TWATTILA_DRAW_RECORDING)

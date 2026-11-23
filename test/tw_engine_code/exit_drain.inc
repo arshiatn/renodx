@@ -4,9 +4,10 @@
 // 30a. In the game's code (A): the function's pattern once, the app delete's callers exactly two (the site and the creation's failure path, outside the function), the pool accessor's two copies
 //    loading one global; as Prepare made it (B): the site, its E8 and its jump into ExitDrain, the pattern's bytes;
 // 30b. No patch: the signature missing, the app delete not as expected, the pool's accessor missing, the pool's global outside the image: the site not found, one log line when asked for, written 0;
-// 30c. The site written and taken out, the game's bytes back;
+// 30c. The site written and taken out, the game's bytes back; another mod's bytes over our call while it goes out: they stay, the site stands down, the module is pinned (30e);
 // 30d. The drain on a fake job pool, the call made as the game's code makes it (the site's call): workers running and a wake pending are waited for (the game's delete sees every worker
-//    asleep), everyone asleep: no wait, a stopped worker: no wait, a worker that never sleeps: the cap (1000 ms), no pool / a pool that is not as expected: no wait; always the game's own
+//    asleep), a job still queued (the pool's [0x10]) with every worker asleep is waited for too, everyone asleep and nothing queued: no wait, a stopped worker: no wait, a worker that never
+//    sleeps / a job that stays queued: the cap (1000 ms), no pool / a pool that is not as expected: no wait; always the game's own
 //    delete after (it clears the app's global), the drain only once (a second call goes straight on).
 // ====================================================================================================================
 
@@ -120,6 +121,25 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
   CHECK(ec::written == ec::EXIT_DRAIN_BIT);
   std::printf("   written (%zu bytes differ, all the call's rel32) and taken out: the game's bytes back\n", differing);
 
+  // 30e. Another mod's bytes over our call while it is in: switching off leaves them, the site stands down, the module is pinned (the foreign code may jump back into the stub).
+  {
+    const std::array<uint8_t, ec::SITE_SIZE> hook = {0xE9, 0x10, 0x20, 0x30, 0x40};
+    uint8_t* const site = ec::sites[ec::EXIT_DRAIN_INDEX].at;
+    CHECK(!ec::module_pinned);
+    std::memcpy(site, hook.data(), hook.size());
+    ec::failed_writes = 0;
+    drain(false);
+    CHECK(ec::module_pinned && ec::written == 0 && (ec::found & ec::EXIT_DRAIN_BIT) == 0 && std::memcmp(site, hook.data(), hook.size()) == 0);
+    ec::module_pinned = false;
+    std::memcpy(site, ec::sites[ec::EXIT_DRAIN_INDEX].game.data(), ec::SITE_SIZE);
+    prepare();
+    CHECK(ec::sites[ec::EXIT_DRAIN_INDEX].at == patched + site_rva && (ec::found & ec::EXIT_DRAIN_BIT) != 0);
+    ec::failed_writes = 0;
+    for (int tries = 0; ec::written == 0 && tries < static_cast<int>(ec::MAX_FAILED_WRITES); ++tries) drain(true);
+    CHECK(ec::written == ec::EXIT_DRAIN_BIT && !ec::module_pinned);
+    std::printf("   another mod's bytes over the call going out: they stay, the site stood down, the module pinned\n");
+  }
+
   // 30d. The drain on a fake pool: the pool at 0, its workers' array at 0x100, the workers 0x60 bytes each from 0x200.
   auto* memory = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
   CHECK(memory != nullptr);
@@ -186,6 +206,21 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
   CHECK(deleted_once() && exit_fake_busy_at_delete == 0 && took >= 80 && took < 900);
   CHECK(line().find("Exit Job Drain: drained 3 of 5 job workers in ") != std::string::npos && line().ends_with(" ms."));
   std::printf("   a drain of 3 busy workers: waited %d ms, the game's delete saw all asleep; \"%s\"\n", took, line().c_str());
+  // Every worker asleep but a job queued (the pool's [0x10], before a worker pops it): waited for until it is taken.
+  world(5, {});
+  Write32(memory + 0x10, address(memory + 0x300));
+  ec::game_exiting = false;
+  {
+    std::thread taker([&] {
+      Sleep(80);
+      Write32(memory + 0x10, 0);
+    });
+    took = at_exit();
+    taker.join();
+  }
+  CHECK(deleted_once() && exit_fake_busy_at_delete == 0 && took >= 70 && took < 900);
+  CHECK(line().find("Exit Job Drain: drained 0 of 5 job workers in ") != std::string::npos);
+  std::printf("   a queued job with every worker asleep: waited %d ms\n", took);
   // The drain only once: a second call goes straight on to the game's delete, no line.
   const size_t lines_before = log_lines.size();
   world(5, {{4, 2}});
@@ -198,12 +233,19 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
   CHECK(deleted_once() && exit_fake_busy_at_delete == 1 && took >= 1000 && took < 3000);
   CHECK(line().find("Exit Job Drain: gave up after ") != std::string::npos && line().find("still running: 4 (of 5).") != std::string::npos);
   std::printf("   the cap: waited %d ms, the game's delete went on; \"%s\"\n", took, line().c_str());
+  world(5, {});
+  Write32(memory + 0x10, address(memory + 0x300));
+  ec::game_exiting = false;
+  took = at_exit();
+  CHECK(deleted_once() && took >= 1000 && took < 3000);
+  CHECK(line().find("gave up after ") != std::string::npos && line().find("still running: none (of 5), jobs still queued.") != std::string::npos);
+  std::printf("   a job that stays queued: waited %d ms; \"%s\"\n", took, line().c_str());
   // No pool / a pool not as expected: no wait.
   world(5, {{1, 2}});
   Write32(reinterpret_cast<uint8_t*>(ec::job_pool_global), 0);
   ec::game_exiting = false;
   took = at_exit();
-  CHECK(deleted_once() && took < 500 && line().find("Exit Job Drain: no job system to wait for") != std::string::npos);
+  CHECK(deleted_once() && took < 500 && line().find("Exit Job Drain: the game built no job system") != std::string::npos);
   world(5, {{1, 2}});
   Write32(exit_fake_workers[3] + 4, 0x1234);
   ec::game_exiting = false;
@@ -212,13 +254,13 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
   world(0, {});
   ec::game_exiting = false;
   took = at_exit();
-  CHECK(deleted_once() && took < 500 && line().find("no job system to wait for") != std::string::npos);
+  CHECK(deleted_once() && took < 500 && line().find("Exit Job Drain: the job system was not as expected") != std::string::npos);
   std::printf("   no pool, a worker of another pool, no workers: no wait, the game's delete runs\n");
 
   drain(false);
   CHECK(ec::written == 0 && std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   *app_global = 0;
   VirtualFree(memory, 0, MEM_RELEASE);
-  std::printf("30. exit job drain: the site as Prepare made it, the four no-patch cases, in and out, the drain on a fake pool (waited for, the cap, no pool): PASS\n");
+  std::printf("30. exit job drain: the site as Prepare made it, the four no-patch cases, in and out, the drain on a fake pool (waited for, a queued job, the cap, no pool), another mod's bytes over the call: PASS\n");
   return 0;
 }
