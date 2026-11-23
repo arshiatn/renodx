@@ -12856,6 +12856,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         (render_mt/reports/ldv_hue_handback.md): same core math as our HueTransfer / HueClip; ours better on reference,
         sky test and measured defaults; one test item: his weight cap at 1 vs our sky overshoot above slider 50 (games at
         70-100) -> plan.md G23 1d A/B with test/tw_psychov35's hue report.
+        ATN 14:3x: Expeditions' sky looked purple at Hue Clip 0; wants the sky cap as an option to decide later -> plan.md
+        G23 1e (default = current; at 50 ours = his; above 50 ours puts sky-ordered pixels past the SDR sky toward cyan,
+        his stops at it; purple pixels (r > g) get no x2 in either: the cap does not change them).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
