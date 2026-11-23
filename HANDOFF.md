@@ -677,11 +677,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after batch: ebr_ read 5 NIT 1 (B1 L2 lines by window number), NIT 3 (own-end ru ... | ?
 - after batch: ebr_ R8 delta SHOULD-1 (held / lost plan without check.json = NOTE, ... | ?
 - crash 1 (leg 3 KNOB-W3-c613 exit AV) root-caused + fixed before the final bench ... | ?
-- leg 4 part A (by 20:25) then part B after ATN's 'done'; Steam non-elevated by AT ... | ?
 - Exit job drain: Sonnet High implementer + Opus xHigh review (engine code), offli ... | ?
 - before ATN's restart: no agent running, resume_point.md updated, scratchpad copy ... | ?
-- after leg 4 part B: move state\hold_at.txt aside; leg 4 dry run after ATN's rebo ... | ?
 - after batch: ebr_ R9 SHOULD-1 optional code (any crash at / after the close boun ... | ?
+- eba_ end-batch analysis (legs 1-4): keep / revert per row, defaults + variants f ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12977,7 +12976,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         done (~01:00-02:00). While ATN plays: plan work (designs / code / reviews / low-priority builds), no games, no GPU
         runs.
         - [ ] crash 1 (leg 3 KNOB-W3-c613 exit AV) root-caused + fixed before the final bench (ecr_).
-        - [ ] leg 4 part A (by 20:25) then part B after ATN's 'done'; Steam non-elevated by ATN.
+        - [x] leg 4 part A (by 20:25) then part B after ATN's 'done'; Steam non-elevated by ATN.
         ecr_ CRASH ROOT 18:5x (render_mt/reports/ecr_crash_root_handback.md): crash 1 = the GAME's own exit race (85-90 %):
         thread 17576 is a game job worker (CRT start +0x1A03B34, loop +0x16AF9A0 / +0x16AD941) running the battle job
         (+0x2F8E98 ...) while the main thread 2136 deletes the app object (+0xC9AC6 call +0x1374230 -> dtor +0x1371940)
@@ -13009,11 +13008,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORD 19:2x: overrides 'exit_crash_no_stop': true (+ note; backup .pre_exitcrash); batch.json c613 reclassified
         per ATN's decision: unpinned 1 -> 0, exit_crashes 1, note on the record (backup batch.json.pre_exitcrash);
         hold_at.txt 20:55; LEG 4 PART A STARTS NOW (dry run first). QUIET during the leg.
-        - [ ] after leg 4 part B: move state\hold_at.txt aside; leg 4 dry run after ATN's reboot BEFORE part B; no game-
+        - [x] after leg 4 part B: move state\hold_at.txt aside; leg 4 dry run after ATN's reboot BEFORE part B; no game-
         folder installs until part B is done.
         - [ ] after batch: ebr_ R9 SHOULD-1 optional code (any crash at / after the close bound = exit crash, the guard's
         continuation handles what is left); SHOULD-2 code option hold_with_next for ABBA groups; bench late check knows
         only midnight (NIT 2).
+        ATN 20:1x 'Let the whole leg end' -> hold_at.txt 23:30: leg 4 ran in ONE piece (no part B).
+        LEG 4 19:25-21:22 (state\leg4_gate.json PASS, leg4_analysis.txt): all 18 starts PASS, no crash, kills none, no
+        problems; batch.json legs_done 1-4, crashes 1 (= the leg-3 exit crash, not counted), unpinned 0. heapfix4/D1 A/B
+        on 37.64 vs off 52.17 ms (-14.53, noise band 0.25: OUTSIDE); heapfix4/W3 -129 ms inside the noise band (A/A 503).
+        FT-D1 loo vs ALL: -C +1.28, -B3b +1.03, -B1 -0.98 (B1 costs in D1), -B2 -0.15, -R -0.11; alone vs OFF: +B2 +2.68,
+        +B1 +1.59, +C -1.29, +B3b -0.92. S8-2 revive flag (W_w estimates; the WPR ETLs decide). After the leg: 6 zombie
+        Attila.exe (0 threads, ~1.9 GB commit) until a reboot. hold_at.txt MOVED to state\hold_at.txt.leg4_done_2123.
+        ATN 21:2x: plays with friends; coord starts no game tonight. COORD: night wave (handoff_plan/wave_1123_night.md)
+        + eba_ END-BATCH ANALYSIS (Opus xHigh, read only, legs 1-4) now, since no part B is left.
+        - [ ] eba_ end-batch analysis (legs 1-4): keep / revert per row, defaults + variants for the final bench.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
