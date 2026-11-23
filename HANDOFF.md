@@ -13219,6 +13219,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         the must-fail fixture seed. ATN Q42-49 + Q58 unchanged.
         - [ ] G24 step 0 (checker + manifest + UE4 pack, Opus xHigh; core frozen after its review) once ATN answers 42-49 /
         58; the facts / census pass only with no game or bench (after the final bench).
+        eba_ R2 22:3x (render_mt/reports/eba_end_batch_analysis.md rev 2, eba_r2_handback.md): defaults unchanged. Q9 (W3 <
+        8 ms: SHIP if RC beats OFF by > 2 SE at 100-175 s and the melee is not slower; hold otherwise; not L1); NEW: KNOB's
+        everything-on melee +2..+4 vs OFF -> W3 OFF soak REQUIRED; R1 ABBA required + Q10 (Go statistics, 96 MB cap, guard
+        close in ALL = fail). ETL evaluator proof (§10 C-9): ebo4_WPR-W3-5_wpr_cpu_192548 b1.1 103-126 s via cpa2 pipeline
+        (gpu_parse / parse_dump / b2b_cpusegs 'driver waits ms/f'), time-base match by DXGI presents vs presentmon (t4i_
+        script), excess +18 (flagged; clean option WPR-W3-4 b1.1 +2.1). §9 FINAL-BENCH DATA SPEC: 38 starts ~3.5 h (+ R1
+        ABBA 4, campaign 4, W3 OFF soak; HSG2 starts dropped), WPR 95-130 s, stall / overflow / excess / cap rules, row-by-
+        row branch (~50 min) + ALL +L1 ready. ATN Q1-Q10 (eba_'s picks). COORD: ebr_ re-check of rev 2 sent.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
