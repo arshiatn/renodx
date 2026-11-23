@@ -12938,6 +12938,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         run_all + dry runs legs 3 / 4. Then a short ebr_ delta, then leg 3.
         - [ ] after batch: ebr_ read 5 NIT 1 (B1 L2 lines by window number), NIT 3 (own-end rule vs same-config baseline
         for mixed starts), NIT 5 (time line without analysis / make); leg-4 gap: NIT 4 ATN-FT b2.11 K16 with no comparison.
+        t4i_ R8 16:3x (render_mt/reports/t4i_r8_handback.md): SHOULD-1 'at 755' block dropped (b2.25 'ALL' at 656 leaves
+        the soak at K4, limits cleared; scan arms 680-770 at K4); SHOULD-2 option A: 25 items to 678, b2.22 K16 limits ''
+        and b2.24 K16 + caps each between K4 'ALL' neighbours; SHOULD-4 a trip with 0 segments left records the trip only
+        (any VM state, test); SHOULD-3 a held continuation / retry logs its segments lost ('midnight hold: continuation
+        not resumable', test); NIT 2. run_all green (leg 196); dry runs leg 3 (9 starts, ~135 min, by 21:44; KNOB 23 scan
+        arms) + leg 4 (18 starts, ~179 min, by 21:00) CLEAN. Backups *.pre_r8.
+        COORD 16:3x: ebr_ 'R8 DELTA' SENT (diffs, K16 comparisons, 23 vs 25 scan arms, SHOULD-4 safety); then leg 3.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
