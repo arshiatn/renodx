@@ -675,6 +675,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord in leg 3: after REF-H / REF-P, compare their L_end with the 680 override b ... | ?
 - coord in the leg-2 gap: KNOB-W3 fit (reorder / len 22) + generic own-end check + ... | ?
 - coord: ebr_ read 5 -> fix MUSTs (t4i_ + delta) or leg 3 (dry run, then real) by ... | ?
+- after batch: ebr_ read 5 NIT 1 (B1 L2 lines by window number), NIT 3 (own-end ru ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12923,6 +12924,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORD 15:39: ebr_ 'T6 READ 5' SENT (GO / NO-GO for leg 3: R7 / R7b diffs, K=@bestKC 16 risk, trace spill, blockers).
         - [ ] coord: ebr_ read 5 -> fix MUSTs (t4i_ + delta) or leg 3 (dry run, then real) by 21:44; leg 4 by 21:00
         (else after 00:00: the midnight hold refuses a crossing start).
+        ebr_ T6 READ 5 15:5x (render_mt/reports/ebr_t6_read5_handback.md): leg 3 GO, no MUST. Own-end check fires on none
+        of the 13 leg 1-2 series (lowest 10 s mean after 200 s 0.83 x median, CHK-W3); pauses dropped; resolved-config
+        alternation changes only KNOB-W3 (7 -> 11 tests); midnight hold correct for normal starts; K16 no new validity risk
+        (ran in CHK-W3 b1.6 + PAUSE-W3 sweeps) but a pinned crash at K16 turns a part Off for leg 4. SHOULD-1 the 'at 755
+        ALL K=4' block still marks the old end (K16 590-755, scan arms + continuations at K16); SHOULD-2 K16 never vs K4 in
+        a running battle (KNOB b2.22 and ATN-FT b2.11 sit between unequal neighbours); SHOULD-3 a held continuation / retry
+        is lost silently on the re-run (not in starts.json); SHOULD-4 a NORMAL trip with 0 segments left still makes a
+        full-replay continuation. Trace spill harmless (arms <= 0.16 s late). Evidence testbin\scratch\ebr_\r5. Slip: one
+        read-only git ls-files.
+        COORD 15:5x: t4i_ 'R8' SENT: SHOULD-1, SHOULD-2 option A (25 items to 678; tail K16-all / ALL / K16+caps / ALL, so
+        both candidates vs K4; caps vs no caps by difference; K16 44 s; continuations at K4), SHOULD-3, SHOULD-4, NIT 2;
+        run_all + dry runs legs 3 / 4. Then a short ebr_ delta, then leg 3.
+        - [ ] after batch: ebr_ read 5 NIT 1 (B1 L2 lines by window number), NIT 3 (own-end rule vs same-config baseline
+        for mixed starts), NIT 5 (time line without analysis / make); leg-4 gap: NIT 4 ATN-FT b2.11 K16 with no comparison.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
