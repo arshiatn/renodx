@@ -3765,7 +3765,7 @@ int main(int argc, char** argv) {
       prepare_again();
       // (b) the job destructor's call of Stop changed while the jobs are on: switching off leaves it (a foreign call), restores the other two
       on();
-      CHECK(ec::written == all);
+      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
       foreign(7, hook);
       off();
       CHECK(ec::written == 0 && holds(7, hook) && game_bytes(all & ~0b10000000u) && (ec::found & 0b10000000u) == 0);
@@ -3789,7 +3789,7 @@ int main(int argc, char** argv) {
       prepare_again();
       // the half function changed while the half rows are on: switching off leaves it (a foreign hook) and takes the half rows out; switched on again the half rows do not go in alone
       on();
-      CHECK((ec::written & ec::HALF_ROWS_BIT) != 0 && ec::written == all);
+      CHECK((ec::written & ec::HALF_ROWS_BIT) != 0 && ec::written == (all & ~ec::EXIT_DRAIN_BIT));
       foreign(1, hook);
       off();
       CHECK(ec::written == 0 && holds(1, hook) && game_bytes(all & ~ec::HALF_FUNCTION_BIT) && (ec::found & ec::HALF_FUNCTION_BIT) == 0);
@@ -3822,7 +3822,7 @@ int main(int argc, char** argv) {
       CHECK(ec::written == 0 && game_bytes(all));
       prepare_again();
       on();
-      CHECK(ec::written == all && holds(EPOCH, ec::sites[EPOCH].jump) && holds(COUNT, ec::sites[COUNT].jump));
+      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT) && holds(EPOCH, ec::sites[EPOCH].jump) && holds(COUNT, ec::sites[COUNT].jump));
       foreign(COUNT, hook);
       off();
       // like every site that stands down on the way out, both count as another mod's now (written 0, found without them); the epoch's jump is still in the game's code
@@ -3833,7 +3833,7 @@ int main(int argc, char** argv) {
       // the epoch's jump overwritten (the game's bytes back, no chain) while the row is on: switching off leaves the epoch out of found, and switching on again does not put the
       // sum in alone (it would answer the first value of each node for the session)
       on();
-      CHECK(ec::written == all);
+      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
       foreign(EPOCH, ec::sites[EPOCH].game);
       off();
       CHECK(ec::written == 0 && (ec::found & ec::PARTICLE_COUNT_SITES) == ec::PARTICLE_COUNT_BIT && game_bytes(all));
@@ -3845,7 +3845,7 @@ int main(int argc, char** argv) {
     }
     // (d) the soldier rounding site changed while the rows are on: switching off leaves it, restores the others
     on();
-    CHECK(ec::written == all);
+    CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
     foreign(0, hook);
     off();
     CHECK(ec::written == 0 && holds(0, hook) && game_bytes(all & ~1u));
@@ -3858,7 +3858,7 @@ int main(int argc, char** argv) {
       constexpr size_t VECTOR = ec::FLOAT4_RELOAD_FIRST_SITE + 1;
       for (const size_t changed : {COLOUR, VECTOR}) {
         on();
-        CHECK(ec::written == all);
+        CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
         foreign(changed, hook);
         off();
         CHECK(ec::written == 0 && holds(changed, hook) && game_bytes(all & ~(1u << changed)) && (ec::found & (1u << changed)) == 0);
@@ -3892,7 +3892,7 @@ int main(int argc, char** argv) {
     if (build.code->particle_loop_rva != 0) {
       // (h) the particle loop's prefetch site changed while the rows are on: switching off leaves it, restores the others
       on();
-      CHECK(ec::written == all);
+      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
       foreign(ec::PARTICLE_PREFETCH_INDEX, hook);
       off();
       CHECK(ec::written == 0 && holds(ec::PARTICLE_PREFETCH_INDEX, hook) && game_bytes(all & ~ec::PARTICLE_PREFETCH_BIT)
@@ -3922,7 +3922,7 @@ int main(int argc, char** argv) {
     if (build.code->emitter_loop_rva != 0) {
       // (j) the emitter loop's prefetch site changed while the rows are on: switching off leaves it, restores the others
       on();
-      CHECK(ec::written == all);
+      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
       foreign(ec::EMITTER_PREFETCH_INDEX, hook);
       off();
       CHECK(ec::written == 0 && holds(ec::EMITTER_PREFETCH_INDEX, hook) && game_bytes(all & ~ec::EMITTER_PREFETCH_BIT)
@@ -3972,7 +3972,7 @@ int main(int argc, char** argv) {
     // other five and the rest
     for (size_t changed = ec::SOLDIER_ROWS_FIRST_SITE; changed < ec::MATRIX_PRODUCT_FIRST_SITE + 3; ++changed) {
       on();
-      CHECK(ec::written == all);
+      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
       foreign(changed, hook);
       off();
       CHECK(ec::written == 0 && holds(changed, hook) && game_bytes(all & ~(1u << changed)) && (ec::found & (1u << changed)) == 0);
