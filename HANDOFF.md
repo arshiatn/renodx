@@ -12673,6 +12673,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         (d) 'CHK-D1 / CAMP: not checked (no check.json)'; 'paused_runs has no value' (PAUSE-W3 ring / B2 box still open).
         - [ ] coord: after er5o_ + t4i_ hand back: decide the fix (src = re-freeze, set data or heapfix), re-run leg 1
         from clean state (state moved aside, not deleted), then legs 2-4; ATN's decisions with numbers if needed.
+        er5o_ LEG1 CAUSE 07:4x (render_mt/reports/er5o_leg1_cause_handback.md): W3 address space = a fixed ~240-370 MB
+        less free from battle start (load equal 2574 / 2573 MB), not a slide (leg 1 extra slide ~30 MB); direct reserves
+        only ~83 MB (C op arena 32 MB, B1 / R1, heapfix prep arena 16 MB + 8 x 256 KB stacks); ~240 MB indirect (t5prep
+        and / or check envs; b2 MAP_TRACE precedent ~340 MB). PROVEN tool cause: one CHK start set L_mem for every later
+        W3 start (ebo_leg.ps1:366-377 -> ebo_make.ps1:315-316). Guard 768 MB is safe (mem_study crash 418 free); keep it
+        (later idea: also trip on largest block < 256 MB). B1L1: headroom a constant 208 KB (game effect code ~304 KB of
+        the 512 KB worker stack); the latch worked as designed; fix = WORKER_STACK_BYTES 1 MB (reservation; re-freeze).
+        t4i_ LEG1 TOOLS 07:5x (render_mt/reports/t4i_leg1_tools_handback.md): switch lines = test_hooks runs a due entry
+        at the next present (RT start / battle load have no present): ebo_check late rule (1 s window, then up to 15 s
+        'late' NOTE, before the first measured segment; gates.json late_s 15); superseded-plan NOTE (01_CHK-D1 / 02_CAMP
+        remade after the B1L1 kill); run_all green. Offline re-check: GATE PASS; CHK-D1 6/6, CAMP 3/3 valid; CHK-W3 /
+        c120 0/31 only from the guard + B1L1.
+        COORD DECISIONS 07:5x: (1) src fix WORKER_STACK_BYTES 512 KB -> 1 MB (bug fix, also for players) -> stk_ (Sonnet
+        High, branch rmt_stk), er5o_ reviews, then t4i_ builds t5_1122c like t5_1122b + manifest + T6 dry runs, ebr_ read;
+        (2) t4i_: L_mem only from measuring starts (a CHK / diagnostic trip closes only its own start); (3) a 6-start W3
+        address-space A/B (A HFx rows off / B prep mode 0 / C mode 2 / C3 mode 3 / D rows on HFx / E D + checks; 150 s,
+        memory every 15 s) first in the leg 1 re-run, as data under ebo_run -Leg 1; (4) ebo_run dry runs treat our own
+        held locks as a NOTE (no -Locks release: not an ATN rule); (5) re-run ALL of leg 1 from clean state (state moved
+        aside, ebo1_* run folders kept); crash budget untouched.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
