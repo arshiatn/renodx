@@ -702,6 +702,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ETL evaluator proof on WPR-W3-5 b1.1 (driver-wait Go) while ATN is not playing, ... | ?
 - after the final bench: ebo_make.ps1:368 cut fold '-le' + a test with a cut on a ... | ?
 - G24 step 0 (checker + manifest + UE4 pack, Opus xHigh; core frozen after its rev ... | ?
+- ATN at READY: add the run rules for `ebo_run.ps1 -Final` / `-Final -DryRun` (+ - ... | ?
+- ebr_ review of t4i_ FINAL, then the real -Final -DryRun after the RC build. | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13233,6 +13235,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         100 %), M4 taa_dlss.hpp:860 must restore SquareRootInput(reconstruct) ? 1 : 0. cb0.y free (settled); FFX 3.1 inserts
         the UAV barrier itself (ours kept for FSR 4). NITs 2b-N4 / N5, 2f-2-N2. COORD: g23_ revision 3 sent (rollout WH3
         at 100 % first, below 100 % second).
+        ebr_ EBA R2 22:3x (render_mt/reports/ebr_eba_read_handback.md '# ebr_ eba r2', ebr_eba_r2_summary.md): §9 CONDITIONAL
+        GO, t4i_ starts now with MUST-A melee statistic (d_melee 330-680 s, SE with sigma_start 2.0, slower = > 2 SE ~ +4
+        ms; Q9 tells ATN 'not slower' = not more than ~4 ms; a 2nd soak pair +26 min if he wants tighter), MUST-B no in-run
+        branches (follow-up session: row by row 12 starts ~70 min; 'three day1 variants' named), MUST-C campaign 120-240 s,
+        260 s, W,A,S,D every 15 s from 135 s, MUST-D WPR excess > 10 ms = one re-run then flag (Q10 d). SHOULDs: SE floor
+        sigmas W3 2.0 / ATN 2.0 / D1 0.3 / R1 0.8 / CAMP 0.3, frame-mean estimator named, address-space Go like with like,
+        R1 prefs sha + one block, WPR stop at 130 s, ~3.8 h, no third stall run.
+        COORD 22:3x: t4i_ (a085db550dc5dbe5c) 'FINAL' sent: §9 + MUST-A..D + SHOULDs in data, time-base match + Go
+        evaluator, rules + backups, ONE command `ebo_run.ps1 -Final [-DryRun]` (+ `-Final -Followup`), offline tests; no
+        dry run tonight.
+        - [ ] ATN at READY: add the run rules for `ebo_run.ps1 -Final` / `-Final -DryRun` (+ -Followup) (coord never writes
+        settings); answer Q1-Q10 (+ Q10 d) and the eye list.
+        - [ ] ebr_ review of t4i_ FINAL, then the real -Final -DryRun after the RC build.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
