@@ -670,7 +670,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the batch (ebr_ t6 read 2 NITs): ebo_check.ps1:105-110 late row after the ... | ?
 - after the batch: name the LOW-state holder from the +25 s snapshots; report to A ... | ?
 - after the batch (er5o_): LOW / NORMAL state vs the stuck Attila.exe (09:34:15) + ... | ?
-- coord between leg 2 and leg 3: t4i_ SHOULD-1 + NITs (above), ebr_ read 4, check ... | ?
+- coord before leg 2 (moved up 12:5x): t4i_ LEG2 MAKE, ebr_ read 4; after leg 2 ch ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12793,7 +12793,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         private allocations too. The stuck process is AB-B's own game (the last LOW start).
         COORD 12:4x: leg 2 now (dry run, then run; ends ~13:3x). Between leg 2 and leg 3: t4i_ SHOULD-1 + NITs 1, 2, 4, 5,
         8, 9, 10 (copy gtp_lowprio.py into bench), 11; ebr_ short read; leg 3 + 4 must end before 23:30 (~6 h left).
-        - [ ] coord between leg 2 and leg 3: t4i_ SHOULD-1 + NITs (above), ebr_ read 4, check leg 2's first vm_snapshot.
+        - [ ] coord before leg 2 (moved up 12:5x): t4i_ LEG2 MAKE, ebr_ read 4; after leg 2 check leg 2's first vm_snapshot.
+        LEG 2 NOT STARTED 12:44 (dry run 12:43 CLEAN): the real ebo_make refused (ebo_make.ps1:531, leg > 1 and not dry):
+        L_end_W3 still the estimate 900 (CHK-W3, the lend source, was closed by its guard trip at 650 s: series 0-649 s, no
+        end found) and bestKC still the estimate 4 (its source PAUSE-W3 is leg 2's own first start; the leg regenerates
+        WPR-W3-1 after it). Nothing ran; exit 2.
+        COORD 12:5x: t4i_ 'LEG2 MAKE' SENT: same-leg var sources not refused at leg start, L_end_W3 from real data (value +
+        evidence; coord writes overrides.json vars), plus ebr_ read 3 SHOULD-1 + NITs 1 2 4 5 8 9 10 11, run_all, dry runs
+        2-4; then ebr_ read 4; then leg 2. Legs 3-4 end before 23:30.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
