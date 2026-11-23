@@ -669,6 +669,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the batch (er5o_ leg1 cause): memory guard also on largest free block < 25 ... | ?
 - coord after the leg 1 re-run: paused_runs value -> PAUSE-W3 decision (t4i_ item ... | ?
 - after the batch (ebr_ t6 read 2 NITs): ebo_check.ps1:105-110 late row after the ... | ?
+- coord between leg 1 and leg 2: ebr_ recheck of t4i_ t6 round 3; A/B reading (er5 ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12731,6 +12732,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] after the batch (ebr_ t6 read 2 NITs): ebo_check.ps1:105-110 late row after the measured part (compare with
         the next shot); ebo_check.ps1 CRLF -> LF from a heredoc edit; ebo_analyze.py:366-370 superseded rule with a
         check.json.
+        t4i_ T6 ROUND 3 09:2x (render_mt/reports/t4i_t6_round3_handback.md): MUST-1 (diagnostic default false; exactly 12
+        diagnostic starts, the 16 measuring), CHK-W3 last, AB-T (AB-D + mt_trace grid, 19 arms) + AB-M (AB-B + MAP_TRACE
+        40,8;70,8,hash;100,8,hash), Get-EboLockState fails closed (query empty / unreadable command line / Attila.exe or
+        renodx-tw-dlaa64.exe running = ours_live), late window -lt, PAUSE-W3 sweeps in the pause + mt_trace=10 arm at 823
+        (b3b_alone counted only with an animation line, else 'not applicable'). run_all green; 4 T6 dry runs CLEAN (11 / 2 /
+        9 / 18 starts). Leg 1 order AB-A, -B, -C, -C3, -D, -E, -T, -M, CHK-D1, CAMP, CHK-W3; ~80 min (A/B ~30 min).
+        COORD 09:2x: leg 1 RE-RUN starts now (ebr_ GO for leg 1; round 3 = ebr_'s own leg-1 suggestions); ebr_ re-checks
+        round 3 (leg 2's PAUSE-W3 + MUST-1) between leg 1 and leg 2. QUIET: no coord commits during the leg.
+        - [ ] coord between leg 1 and leg 2: ebr_ recheck of t4i_ t6 round 3; A/B reading (er5o_); paused_runs.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
