@@ -693,6 +693,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ETL attribution of the 6 batch WPR ETLs (incl. S8-2 readying stacks, ebo3_WPR-W3 ... | ?
 - GPU-stall root cause (3 starts + 'Object motion ... 3 rings'): GPU trace of a st ... | ?
 - t4i_ tool slip: c613 got K16 for all users from 0 s; map-compare window mapping ... | ?
+- coord: apply gtp_stage24\gated_build.ps1.proposed between builds (after exd_'s b ... | ?
+- gate hook round 24 golive (bak29 shadow) only after gpr_ + gtw_ GO; the suite st ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13120,6 +13122,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] GPU-stall root cause (3 starts + 'Object motion ... 3 rings'): GPU trace of a stall start (after the batch).
         - [ ] t4i_ tool slip: c613 got K16 for all users from 0 s; map-compare window mapping + trace overwrite fixes (§4.2 /
         §4.3) after the final bench.
+        g24_ FIXED 22:15 (design revision 2, §13 per-finding table; handbacks/g24_fixed_handback.md; prototype v2 scratch\
+        g24_ g24_check.py a64e0a8e5a67): M1-M7 + S1-S12 + N1-N8 done in the text; prototype gaps (fxc dataflow facts,
+        scopes, per-(rule, family) sampling, registrations, decision:, --seed / --apply-rules, pack hashes) = step 0.
+        COORD: rvg_ re-check sent.
+        gtp_ DONE ROUND 24 22:15 (plan_1117/gtp_round24_handback.md; stage24 gate_hook.py a6b12f1ebeef, NOT golive, live
+        bak28 aa2306475bdb unchanged): R23-1..5 + gtw_ OPEN_NAME + .inc/.s CODE + mklink/ln PROT_MUTATE done; F24 pre_shell
+        0.234-0.25 s CPU (<= 0.3 passes); mirror13 suite 1309/1312 (launcher + fix need bash on PATH: 23/23 + 155/155 from
+        bash; 'web + price < 0.05 s' 0.052 s = load, bak28 same); replay: window refusals 1537 -> 1526, files 280 -> 139.
+        gated_build.ps1.proposed (VCToolsInstallDir check, exit 4) staged for coord. COORD: gpr_ (aa304b6e977350cc3) +
+        gtw_ (a0b03d68655ebfcaf) re-checks sent; gbf_ (abbb04cc6b11ea037) resumed to code gbr_ M1 + S1-S3 (no build
+        tonight: ATN's 2-writer rule; build + tests after ATN's restart).
+        - [ ] coord: apply gtp_stage24\gated_build.ps1.proposed between builds (after exd_'s build; gpr_ glance first).
+        - [ ] gate hook round 24 golive (bak29 shadow) only after gpr_ + gtw_ GO; the suite starts from bash, not PowerShell.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
