@@ -672,6 +672,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the batch (er5o_): LOW / NORMAL state vs the stuck Attila.exe (09:34:15) + ... | ?
 - coord before leg 2 (moved up 12:5x): t4i_ LEG2 MAKE, ebr_ read 4; after leg 2 ch ... | ?
 - after the GPU plan's final review: remind ATN to send ldavid1994 the newest help ... | ?
+- coord in the leg-2 gap: caps_limits value + L_end_W3 for leg 3 (680 vs higher wi ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12822,6 +12823,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         object motion by stream replay, A/B LOD -1 at 100 % + fixed exposure on K; smaller FSR items. No perf to take.
         Motion table: Attila covers skinned / cloth / props / wind / ocean; gaps: particles (all games), D1 / D2 camera
         only, WH3's listed families, banners partial, UE WPO likely. plan.md G23 rows 2a-2h (after the final bench).
+        t4i_ LEG2 MAKE 13:4x (render_mt/reports/t4i_leg2make_handback.md): 'gives' lists + same-leg estimate rule (NOTE until
+        the giving start ran, then PROBLEM), dry runs report every real-leg make / pre-flight refusal, S3 cut on the replay
+        clock (PAUSE-W3 not cut), ebr_ SHOULD-1 + NITs 1 2 4 5 8 9 10 11; run_all green. L_end_W3 unknown >= 650 replay s
+        (CHK-W3 still heavy at 649 s; every other W3 run <= 210 s); L_end_D1 >= 900. Only KNOB-W3 loses segments with a low
+        L (5 at 680: the hfthreads tail + the limits A/B). caps_limits (KNOB-W3, per-user best K) = coord's in the leg-2 gap.
+        COORD 13:5x: overrides.json vars L_end_W3 680 + L_end_D1 930 (backup scratchpad\t4i_bak\refresh2\overrides.json
+        .pre_vars1123); leg 2 dry run 13:53 CLEAN; ebr_ 't6 read 4' SENT (fast GO for leg 2); ldv_ 'LOGS' sent (his extra
+        logging, ATN's question). ATN 13:4x on G23: (1) rescue: a reviewer decides bounded vs his loop; (3) 8 phases at DLAA
+        is NVIDIA's minimum (guide table), so 32 is only an optional A/B; (4) wants enforced every-shader audits (MV, scale,
+        RT shadows) per game -> plan.md G24.
+        - [ ] coord in the leg-2 gap: caps_limits value + L_end_W3 for leg 3 (680 vs higher with a KNOB self-check).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
