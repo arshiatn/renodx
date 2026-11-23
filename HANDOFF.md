@@ -678,6 +678,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after batch: ebr_ R8 delta SHOULD-1 (held / lost plan without check.json = NOTE, ... | ?
 - crash 1 (leg 3 KNOB-W3-c613 exit AV) root-caused + fixed before the final bench ... | ?
 - leg 4 part A (by 20:25) then part B after ATN's 'done'; Steam non-elevated by AT ... | ?
+- Exit job drain: Sonnet High implementer + Opus xHigh review (engine code), offli ... | ?
+- before ATN's restart: no agent running, resume_point.md updated, scratchpad copy ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12974,6 +12976,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         runs.
         - [ ] crash 1 (leg 3 KNOB-W3-c613 exit AV) root-caused + fixed before the final bench (ecr_).
         - [ ] leg 4 part A (by 20:25) then part B after ATN's 'done'; Steam non-elevated by ATN.
+        ecr_ CRASH ROOT 18:5x (render_mt/reports/ecr_crash_root_handback.md): crash 1 = the GAME's own exit race (85-90 %):
+        thread 17576 is a game job worker (CRT start +0x1A03B34, loop +0x16AF9A0 / +0x16AD941) running the battle job
+        (+0x2F8E98 ...) while the main thread 2136 deletes the app object (+0xC9AC6 call +0x1374230 -> dtor +0x1371940)
+        and Sleep(100)s; a state machine's current state (+0x16B42E0, [esi+4]) was 0. No addon32 / dinput8 frames; all 15
+        RenoDX workers + heapfix's 8 parked. Same family 7x since 11-03 (also before the pool); 2 / 114 window-closed
+        stress_test_log2 runs (1.8 %); leg 4 risk ~27 %. FIX 'Exit job drain' (bug fix, always on): patch the rel32 of
+        +0xC9AC1, set game_exiting, poll the game's job workers until asleep + no pending wake (1 ms polls, 1000 ms cap),
+        log, jump on; test with test/tw_engine_code. Evidence testbin\scratch\ecr_.
+        ATN 19:0x: 'yes keep going' -> overrides 'exit_crash_no_stop': true (after t4i_ adds it): a crash at / after
+        CloseMainWindow with 0 segments left is recorded (crash_list, ROOT-CAUSE line, dump) with no retry and not counted.
+        Fix approved ('Good idea about the fix'). Leg 4 part A deadline hold_at 20:55 (ATN's friend ~21:00; ATN may move
+        it: the file is re-read before each start). Tonight: plan work while ATN plays (no games, no GPU runs); NO NEW
+        SUBAGENTS AFTER 00:00 (this once), all finish before 01-02; ATN then restarts the PC, starts Steam non-elevated,
+        says go -> leg 4 part B, analysis, then all plans in parallel (current rules).
+        - [ ] Exit job drain: Sonnet High implementer + Opus xHigh review (engine code), offline tests; before the final
+        bench.
+        - [ ] before ATN's restart: no agent running, resume_point.md updated, scratchpad copy refreshed.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
