@@ -664,6 +664,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord after leg 1 (ebr_ NIT): PAUSE-W3 ring / B2 'otherwise into 100-330' has no ... | ?
 - coord before leg 1: no build tool running (the 00:57 dry run refused on 'build t ... | ?
 - after the batch (ebr_ NITs): R2 does nothing in the -C / C D segments (read as C ... | ?
+- coord: after er5o_ + t4i_ hand back: decide the fix (src = re-freeze, set data o ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12656,6 +12657,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         atn_questions_groups.md); "don't forget where and what we stopped the subagents" -> resume_point.md after the
         batch. Leg 1 dry run 06:41 refused only on 'Steam isn't running'; ATN started Steam; 06:43 DRY RUN CLEAN (commit
         16.8 GB, 166.9 GB free). END BATCH LEG 1 STARTS 06:4x (ebo_run.ps1 -Leg 1). QUIET: no coord commits during legs.
+        END BATCH LEG 1 DONE 07:24 (exit 0, no crash; 4 starts: CHK-W3, CHK-W3-c120, CHK-D1, CAMP), GATE FAIL. Leg 2 NOT
+        started (locks kept). Four findings:
+        (a) validity: every start 'no switch line within 1 s' for the 8 RayTraced* rows + AntiAliasing=5 +
+        AntiAliasingDlssMode=5. The lines ARE there ~6 s later, at RT init (CAMP: set file 07:05:57.125, lines
+        07:06:03.550 right after 'Ray tracing with sun shadows'). Also 30 s / 90 s memory=1 + mt_trace=10 lines late in
+        W3 / D1 (probably during the load). Tool rule -> t4i_ 'leg1 tools' SENT 07:2x (fix the rule, re-check leg 1
+        offline, say how to re-run leg 1 from clean state, move never delete).
+        (b) MEMORY GUARD in W3: closed CHK-W3 at 120 s and c120 at 90 s -> L_mem W3 = 90 s (would cut nearly every W3
+        start in legs 2-4). W3 free address space 828 MB (largest 658) at ~30 s, 744 / 563 by 120 s; b3 batch W3 starts
+        ~1150 MB, final1118 ~1550. D1 min 836 MB (-6.4 MB/min), CAMP min 1448. ~320 MB more than b3 + ~55 MB/min slide.
+        Worker stacks ruled out (15 x 512 KB). -> er5o_ 'leg1 cause' SENT 07:2x (read only, Opus xHigh).
+        (c) B1L1 stood down 3 times in CHK-W3 (b1_stack_headroom, 101.8 / 104.6 / 117.5 s) -> LATCH killed for the batch;
+        er5o_ checks whether 512 KB worker stacks are too small for the game's effect code.
+        (d) 'CHK-D1 / CAMP: not checked (no check.json)'; 'paused_runs has no value' (PAUSE-W3 ring / B2 box still open).
+        - [ ] coord: after er5o_ + t4i_ hand back: decide the fix (src = re-freeze, set data or heapfix), re-run leg 1
+        from clean state (state moved aside, not deleted), then legs 2-4; ATN's decisions with numbers if needed.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
