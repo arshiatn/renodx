@@ -699,6 +699,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gate hook round 25: gpr-R24-1 glued-quote join (Low). | ?
 - exr_ review of exd_fix -> exd_ (aa144878f572855a7) fixes -> exr_ re-check -> coo ... | ?
 - window-closed stress_test_log2 exit soak with the Exit Job Drain build (after AT ... | ?
+- gtp_ (abd95a89172354976): quiet mirror suite from bash + shadow golive bak29 (ro ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13178,6 +13179,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         2f-2 (M1 dlss_refused write needs version >= 30). AMD values confirmed: scale 1.0, cutoff 0.2, binary 0.9. Order:
         helper files = GPU plan helper implementer's queue; ngx_backend.hpp after ho_g09; anti_aliasing / graphics_page /
         feature_settings after ho_g19. Question notes for 51-57 in the review. COORD: g23_ resumed for revision 2.
+        gtw_ R24 GO 22:2x (plan_1117/gtw_r24_recheck_handback.md, gtw_s1c_review.md:2761): F24 pre_shell 0.234 s CPU
+        (bak28 0.219, limit 0.3); 292 KB +0.32 s (limit 0.5); 'web + price < 0.05 s' sits at 0.047 s on BOTH hooks (time it
+        vs bak28 in the same run or allow 0.06); 9 over-refusals fixed; bomb / cap 14 cases <= 0.125 s; fast path 0
+        differences on 3,453 commands; old Low gaps (dir copies, dd of= / install / >| / node writes) = enforce list.
+        BOTH gpr_ + gtw_ GO for stage24. Next: gtp_ reruns the mirror suite ONCE on a quiet machine, started from bash, then
+        shadow golive bak29 (gtp_ swaps gate_hook.py + run_tests.py, shas, mode.txt shadow) after ATN's restart.
+        - [ ] gtp_ (abd95a89172354976): quiet mirror suite from bash + shadow golive bak29 (round 24) after ATN's restart;
+        the F24 0.05 s row vs bak28 in the same run (gtw_).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
