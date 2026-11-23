@@ -686,6 +686,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - F5 real motion into NRD: add-on work outside dlaa_helper (gbr_), owner after ren ... | ?
 - g25_ to-run-later (after ATN's game): swatch images (g25_e_swatches.py) + WARP r ... | ?
 - G25 fix F1 + F2 (Expeditions lutbuilder + psycho35.hlsli parameter: wave 3, afte ... | ?
+- rvg_ review of g24_'s design -> g24_ (agent ad58e0a38a0841b09) fixes -> rvg_ re- ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13058,6 +13059,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] g25_ to-run-later (after ATN's game): swatch images (g25_e_swatches.py) + WARP real-lut01 check (progress.md).
         - [ ] G25 fix F1 + F2 (Expeditions lutbuilder + psycho35.hlsli parameter: wave 3, after render_mt releases
         twattila files) once ATN answers 37 / 38; then Tales F2 + cb0 re-measure.
+        g24_ DONE 21:52 (handoff_plan/g24_shader_audit_design.md, handbacks/g24_design_handback.md; prototype scratch\g24_):
+        ledger tools\audit\<game>.tsv, one row per (hash, stage) of the whole census, 3 verdicts (MV / render scale / RT
+        shadows) each with re-checked evidence (table: / src: / trace: / test: / rule: / out:; note: never proof);
+        checker game-port-method/scripts/shader_audit.py (exit 0 done / 1 open / 2 census short / 3 rule control failed /
+        4 only gap boxes pending -> coord copies boxes_pending.tsv); ~150k rows over 15 games, rule packs per engine;
+        skill rows text-only (§10). ATN questions 42-49. COORD 21:5x: rvg_ (Opus xHigh, read only) reviews the design.
+        - [ ] rvg_ review of g24_'s design -> g24_ (agent ad58e0a38a0841b09) fixes -> rvg_ re-check; then the checker
+        (M) and the audits in ATN's order (census pass CPU-heavy: no game / bench beside it, after the final bench).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
