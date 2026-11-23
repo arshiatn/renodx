@@ -12890,6 +12890,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         all 25 items with len 22 from 128 s, last end 678 = L - 32; the own-end check is the safety net); t4i_ 'R7' SENT
         (KNOB fit, generic own-end check, midnight hold per ebr_ (b)); er5o_ 'CAPS' SENT (caps_limits + offline bestKC from
         PAUSE-W3's traces, cross-check AB-T); then ebr_ reads R7; then leg 3.
+        er5o_ CAPS 15:1x (render_mt/reports/er5o_caps_handback.md): bestKC = 16 (PAUSE-W3 C sweep draw_trace 'frame: calls'
+        medians K2 17.82 / K4 15.88 / K6 15.82 / K8 13.72 / K12 13.43 / K16 12.46 ms, ranges apart; frame level K16 -3.5 ms
+        vs K4; paused, CPU free; K is global so K16 gives every user 15 workers; B3b's running K16 sweep showed partial joins,
+        last-worker start 53 us). caps_limits as designed is a no-op (base ALL = K4; caps >= 4 do nothing; no data for a
+        cap < 4; no per-user phase time in the logs). Grammar RENODX_TW_WORKER_LIMITS key:N (recording / effects /
+        animation / sweep / ring, N incl. owner, 1..16; sweep has no pool job). vm_snapshot NORMAL: no single big holder
+        (128 MB reserve-only block the only candidate size); diff reserve / mapped totals vs a LOW start at the same
+        game_cpu_s. PAUSE-W3 B1 line 'stack headroom 1008 KB, walk thread 208 KB' (the 1 MB fix confirmed).
+        COORD 15:1x: overrides bestKC '16', caps_limits 'effects:4,animation:4,ring:4' (backup .pre_caps); KNOB-W3's
+        limits pair -> 'ALL K=@bestKC limits=@caps_limits' vs 'ALL K=@bestKC limits=' (t4i_ R7 addendum).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
