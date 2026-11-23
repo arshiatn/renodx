@@ -662,6 +662,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord at READY: checklist done -> READY message -> `shutdown /s /t 60` (one-time ... | ?
 - t4i_ after T6: ebo_check.ps1 job line from $lines (not $log); optional: the Unha ... | ?
 - t4i_ after the batch: draw_trace.file_mb from leg 1's real sizes; memory=1 lines ... | ?
+- coord after leg 1 (ebr_ NIT): PAUSE-W3 ring / B2 'otherwise into 100-330' has no ... | ?
+- coord before leg 1: no build tool running (the 00:57 dry run refused on 'build t ... | ?
+- after the batch (ebr_ NITs): R2 does nothing in the -C / C D segments (read as C ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12620,6 +12623,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         FINAL DRY RUNS after the install (coord, ATN's exact rules, 01:02-01:04): legs 1-4 DRY RUN CLEAN (3 / 2 / 9 / 18
         starts, 0 problems, 0 warnings, commit 31.2 GB, 165.9 GB free). ebr_ "ebr_ T6 read" (Opus xHigh, variants) SENT.
         - [ ] t4i_ after the batch: draw_trace.file_mb from leg 1's real sizes; memory=1 lines in the soak.
+        ebr_ T6 READ 01:1x (render_mt/reports/ebr_t6_read_handback.md): GO FOR LEG 1, no MUSTs. All 32 starts: add-on
+        2fabff4f / helper 38db7a5d / prep 18472a6c (REF-H HFx 323bf407); StallDump=1 everywhere; rows / env in the manifest,
+        values in range; 22 base rows at 0 s (R1-FT by design); four_on = WPR-W3-2 / REF-P / VOL-L1 / D1-OFF-a / -b; HF ABBA
+        last in leg 4; left out as planned (PAUSE blocks 16 / 17 / 36-39, WPR-X / REF-X / D1-X, SIEGE); segments match plan
+        s2b-2e + addendum; corpus frozen fields 199 / 199; conditions 1-3 hold.
+        SHOULD (memory lines skipped in unmeasured segments, PAUSE-W3 gaps 180 / 300 s) -> t4i_ T6b DONE 01:3x
+        (render_mt/reports/t4i_t6b_handback.md): ebo_make.ps1 ~:454 grid skips only $measured (sha 5b88775a); 2 test_make
+        cases; run_all green (make 119); 4 dry runs CLEAN again (3 / 2 / 9 / 18; commit 35.3 GB; 165.5 GB free); PAUSE-W3
+        largest gap 61 s; 5 gaps over 61 s across measured segments (WPR-W3-1 74, -2 80, -3 64, -5 74, ATN-FT 70 s).
+        ebr_ "ebr_ t6b recheck" SENT.
+        - [ ] coord after leg 1 (ebr_ NIT): PAUSE-W3 ring / B2 'otherwise into 100-330' has no automatic form
+        (segments.json:139-140 left out): decide after leg 1's pause probe, before leg 2's make.
+        - [ ] coord before leg 1: no build tool running (the 00:57 dry run refused on 'build tools running: fxc').
+        - [ ] after the batch (ebr_ NITs): R2 does nothing in the -C / C D segments (read as C + R2 off); WPR-W3-3's last
+        segment has no closing OFF (needs 470 -> 500 s + WPR 95,365); WPR-W3-2 b1.4 = b1.5 (presort parked).
+        SCRATCHPAD COPY 01:23: robocopy /E /XJ (no junctions), program files left out (*.exe *.dll *.addon32 *.addon64 *.pyd
+        *.sys: 975 files, 7.4 GB) -> D:\Dev\scratchpad_copy_1122 (46.7 GB, 932666 files, 0 FAILED; log
+        D:\Dev\scratchpad_copy_1122.log). Not on C: (57 GB there would leave ~109 GB, under the batch's 160 GB gate). One
+        more pass right before the shutdown.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
