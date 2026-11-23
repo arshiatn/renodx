@@ -672,6 +672,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the batch (er5o_): LOW / NORMAL state vs the stuck Attila.exe (09:34:15) + ... | ?
 - coord before leg 2 (moved up 12:5x): t4i_ LEG2 MAKE, ebr_ read 4; after leg 2 ch ... | ?
 - ldv_ HELPER COMPARE hand-back -> G23 items + ATN summary. | ?
+- after the GPU plan's final review: remind ATN to send ldavid1994 the newest help ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12809,6 +12810,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         dlaa_bridge + dlaa_helper + the non-TW upscalers; plan.md G23 added (study, ports after the final bench, ATN's call on
         a second-vendor reviewer: privacy limits). ldv_ must finish or pause before leg 2 (no agent during legs).
         - [ ] ldv_ HELPER COMPARE hand-back -> G23 items + ATN summary.
+        ATN 13:2x: no credit for ldavid1994 needed (he may use ours, we may use his fixes; ATN sends him our newest helper
+        after the GPU plan's final review). Second reviewer DECIDED: FINAL reviews only add Sonnet 5.5 High in parallel with
+        Opus xHigh (independent; implementer fixes both); no other vendor. ldv_ also maps his motion classes against ours
+        per game (ATN thought we cover every mover: render-scale-dlss.md s2 lists the usual gaps). plan.md G23 updated.
+        - [ ] after the GPU plan's final review: remind ATN to send ldavid1994 the newest helper.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
