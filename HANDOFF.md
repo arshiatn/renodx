@@ -695,6 +695,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_ tool slip: c613 got K16 for all users from 0 s; map-compare window mapping ... | ?
 - coord: apply gtp_stage24\gated_build.ps1.proposed between builds (after exd_'s b ... | ?
 - gate hook round 24 golive (bak29 shadow) only after gpr_ + gtw_ GO; the suite st ... | ?
+- gbf_ builds + WARP exact after ATN's restart, then gbr_ (a661373416057b2f5) re-c ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13135,6 +13136,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         tonight: ATN's 2-writer rule; build + tests after ATN's restart).
         - [ ] coord: apply gtp_stage24\gated_build.ps1.proposed between builds (after exd_'s build; gpr_ glance first).
         - [ ] gate hook round 24 golive (bak29 shadow) only after gpr_ + gtw_ GO; the suite starts from bash, not PowerShell.
+        gbf_ FIXED (NOT BUILT) 22:1x (plan_1117/gbf_fixed_handback.md): ho_gbf 1059eb5ef M1 (cap keyed on rt_flags &
+        RT_RECONSTRUCTED) + S3 (PathSamples inlined), 7dc348b84 S1 (fold skips sky / depth-edge neighbours), bb93be0b0 S2
+        (NearestBlocker t_min, grass hit refined under NRD_SUN), 88ae3aa7d N1-N6; N7 only if release_nrd memory fails; S4
+        jobs added to the GPU list. After ATN's restart: scratch\gbf_\run_builds.ps1 (slot 2-4, plain + PROBE / REFERENCE /
+        RECORDER + rt_reuse_lean / near), run_checks.ps1 (tw_rt_open_sky -Expect exact), then gbr_ re-check, then GPU jobs
+        1-8 + S4a.
+        - [ ] gbf_ builds + WARP exact after ATN's restart, then gbr_ (a661373416057b2f5) re-check.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
