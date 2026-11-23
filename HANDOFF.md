@@ -680,6 +680,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - leg 4 part A (by 20:25) then part B after ATN's 'done'; Steam non-elevated by AT ... | ?
 - Exit job drain: Sonnet High implementer + Opus xHigh review (engine code), offli ... | ?
 - before ATN's restart: no agent running, resume_point.md updated, scratchpad copy ... | ?
+- after leg 4 part B: move state\hold_at.txt aside; leg 4 dry run after ATN's rebo ... | ?
+- after batch: ebr_ R9 SHOULD-1 optional code (any crash at / after the close boun ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12993,6 +12995,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] Exit job drain: Sonnet High implementer + Opus xHigh review (engine code), offline tests; before the final
         bench.
         - [ ] before ATN's restart: no agent running, resume_point.md updated, scratchpad copy refreshed.
+        t4i_ R9 19:1x (render_mt/reports/t4i_r9_handback.md): a crash leaving 0 segments = recorded, no retry, still
+        counted; held / lost plan = NOTE; state\hold_at.txt HH:mm deadline hold (fresh read per entry, midnight margins,
+        resumable exit 2, passed = none, bad line = hold); overrides 'exit_crash_no_stop' (close bound from run.txt
+        'closed by window True after N s' minus N s); ATN-FT b2.11 + SIEGE -> 'ALL K=@bestKC limits=@caps_limits';
+        bestK 6 = lowest mean per K in KNOB (deltas favour K8; only WPR-W3-5 b1.9 uses it). run_all green (leg 210,
+        analyze 167); leg 4 dry CLEAN.
+        ebr_ R9 DELTA 19:2x (render_mt/reports/ebr_r9_delta_handback.md): part A GO, no MUST; SHOULD-1 c613 still counted
+        unpinned (a first counted leg-4 crash would stop the batch); SHOULD-2 a hold inside an ABBA group (D1 / HF-W3 /
+        HF-D1) mixes the reboot into the A/B: start part A by ~19:50 (holds before LQ-W3); SHOULD-3 run the leg 4 dry run
+        after the reboot (stale lock pid, Steam, manifests); NOTHING installed into the game folder between the halves
+        (the round-end install waits until after part B); no builds during part A; move hold_at.txt aside after part B.
+        COORD 19:2x: overrides 'exit_crash_no_stop': true (+ note; backup .pre_exitcrash); batch.json c613 reclassified
+        per ATN's decision: unpinned 1 -> 0, exit_crashes 1, note on the record (backup batch.json.pre_exitcrash);
+        hold_at.txt 20:55; LEG 4 PART A STARTS NOW (dry run first). QUIET during the leg.
+        - [ ] after leg 4 part B: move state\hold_at.txt aside; leg 4 dry run after ATN's reboot BEFORE part B; no game-
+        folder installs until part B is done.
+        - [ ] after batch: ebr_ R9 SHOULD-1 optional code (any crash at / after the close bound = exit crash, the guard's
+        continuation handles what is left); SHOULD-2 code option hold_with_next for ABBA groups; bench late check knows
+        only midnight (NIT 2).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
