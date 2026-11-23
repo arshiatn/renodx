@@ -1321,10 +1321,20 @@ void ReflectPixel(uint2 id) {
   }
   const float3 normal = PixelNormalOf(id, position, guide, neighbours);
   const float3 surface_normal = SurfaceNormalOf(int2(id), position, neighbours);
-  // Only where the depth's plane is a real one (water, the ground): at corners and silhouettes the depth's normal mixes two
-  // faces, and a ray toward the wall folded off it came back open (the reference: concave edges 1.35x its open share,
-  // traced reflections leaking at the bases of walls).
-  const bool fold = PlanarOf(position, surface_normal, neighbours);
+  // Only where the depth's plane is a real one (water, the ground): at concave corners the depth's normal mixes two faces,
+  // and a ray toward the wall folded off it came back open (the reference: concave edges 1.35x its open share, traced
+  // reflections leaking at the bases of walls). The neighbours on its surface only (the sky and those past a depth edge
+  // left out, ReuseTexel's 10 %): water beside a wading unit, a hull or the horizon still folds (ATN's debug36).
+  bool fold = true;
+  const float4 sides[4] = {neighbours.left, neighbours.right, neighbours.above, neighbours.below};
+  [unroll]
+  for (uint side = 0u; side < 4u; ++side) {
+    const float3 to_neighbour = sides[side].xyz - position.xyz;
+    if (sides[side].w > 0.f && abs(sides[side].w - position.w) <= 0.1f * position.w
+        && abs(dot(to_neighbour, surface_normal)) > 0.2f * length(to_neighbour)) {
+      fold = false;
+    }
+  }
   const float3 view = normalize(Camera() - position.xyz);
   const float n_dot_v = max(dot(normal, view), 1e-3f);
   const float3 origin = RayOrigin(position, normal, PlanarOf(position, normal, neighbours));
