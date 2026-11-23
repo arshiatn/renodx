@@ -672,8 +672,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the batch (er5o_): LOW / NORMAL state vs the stuck Attila.exe (09:34:15) + ... | ?
 - coord before leg 2 (moved up 12:5x): t4i_ LEG2 MAKE, ebr_ read 4; after leg 2 ch ... | ?
 - after the GPU plan's final review: remind ATN to send ldavid1994 the newest help ... | ?
-- coord in the leg-2 gap: caps_limits value + L_end_W3 for leg 3 (680 vs higher wi ... | ?
 - coord in leg 3: after REF-H / REF-P, compare their L_end with the 680 override b ... | ?
+- coord in the leg-2 gap: KNOB-W3 fit (reorder / len 22) + generic own-end check + ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12834,7 +12834,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         logging, ATN's question). ATN 13:4x on G23: (1) rescue: a reviewer decides bounded vs his loop; (3) 8 phases at DLAA
         is NVIDIA's minimum (guide table), so 32 is only an optional A/B; (4) wants enforced every-shader audits (MV, scale,
         RT shadows) per game -> plan.md G24.
-        - [ ] coord in the leg-2 gap: caps_limits value + L_end_W3 for leg 3 (680 vs higher with a KNOB self-check).
+        - [x] coord in the leg-2 gap: caps_limits value + L_end_W3 for leg 3 (680 vs higher with a KNOB self-check). -> merged into the R7 box
         ldv_ LOGS 14:0x (render_mt/reports/ldv_logs_handback.md): his logging covers less than ours; take 5 one-shot items
         (loaded DLSS / FSR DLL version + path or missing, GPU name + driver version, DLAA status line with 'Off: reason' in
         the TW graphics page, a Warp Error Debug View, HRESULT lines at our silent fallbacks); skip his per-120-frame
@@ -12870,6 +12870,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORD 14:2x: ebr_ 'R6 DELTA' SENT (GO for leg 2) + view on the leg-2 gap plan: (a) KNOB-W3 own end self-check, then
         L_end_W3 780; (b) midnight hold in ebo_leg (stop before a start that would cross 00:00); (c) caps_limits from
         PAUSE-W3's per-user traces.
+        ebr_ R6 DELTA 14:3x (render_mt/reports/ebr_r6_delta_handback.md): leg 2 GO (no MUST / SHOULD). Gap view: (a) a
+        self end-check is only a safety net (no W3 run ever reached the end; the 40 % rule may never fire on a results
+        overlay; KNOB segments past 620 s get no REF correction): prefer L_end_W3 680 + fit KNOB-W3's 25 items in 130-650
+        s (reorder the tail on purpose, or len 22: 2 items cut; len 20 loses the L2 scan second), (a) generic on top;
+        (b) midnight hold OK with margins (seconds + 4 min, + 7 min for WPR ETL settle; continuations / retries too; also
+        in constantinople_bench right before launch as a resumable NOT RUN); a crossing start still breaks the parsers;
+        (c) caps_limits from PAUSE-W3 traces as a first value, cross-check with AB-T's running-battle windows.
+        COORD 14:3x: leg 2 starts now (dry run first). QUIET during the leg.
+        - [ ] coord in the leg-2 gap: KNOB-W3 fit (reorder / len 22) + generic own-end check + midnight hold (b) +
+        caps_limits (c) -> t4i_ R7, ebr_ read; then leg 3 (must end before 23:30 or hold).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
