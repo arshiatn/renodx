@@ -138,7 +138,7 @@ inline void ApplyControlWords(uint32_t x87, uint32_t sse) {
 
 namespace internal {
 
-constexpr uint32_t WORKER_STACK_BYTES = 512 * 1024;
+constexpr uint32_t WORKER_STACK_BYTES = 1024 * 1024;
 constexpr uint32_t DEFAULT_SPIN_US = 3;
 constexpr uint32_t MAX_SPIN_US = 1000;
 // How long Stop waits for the threads to end: an idle worker leaves within microseconds, so 5 s means one is held.
