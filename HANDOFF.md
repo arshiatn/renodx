@@ -673,6 +673,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord before leg 2 (moved up 12:5x): t4i_ LEG2 MAKE, ebr_ read 4; after leg 2 ch ... | ?
 - after the GPU plan's final review: remind ATN to send ldavid1994 the newest help ... | ?
 - coord in the leg-2 gap: caps_limits value + L_end_W3 for leg 3 (680 vs higher wi ... | ?
+- coord in leg 3: after REF-H / REF-P, compare their L_end with the 680 override b ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12840,6 +12841,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         counters. Jitter item withdrawn (ours = the guide's table: 8 / 18 / 24 / 32, RR 32). Coverage: of his 41 files, 5 +
         the CMake diff read fully, 7 partly, 28 not read -> plan.md G23 1b full pass. ATN 14:0x 'did it compare everything?'
         answered: no, a first pass.
+        ebr_ T6 READ 4 14:0x (render_mt/reports/ebr_t6_read4_handback.md): leg 2 NO-GO on MUST-1: round 5's 0.05 s own
+        window / next cut (ebo_check.ps1:100, :109) back to 0.5 (a line's offset = delta(entry) - delta(anchor); the 45 s
+        anchor can be one W3 frame late, 50-120 ms -> ~40 % of starts would get MISSING lines); read 3 NIT 2 withdrawn.
+        SHOULD-1 ebo_make.ps1:374 keeps P keys in a continuation after 450 s. NIT 1 three-arm collide by object, not by T;
+        NIT 2 a skipped same-leg giver stays pending (not in leg 2). Q1-Q5 otherwise fine (same-leg rule fails closed,
+        remake path, replay-clock cut, dry-run parity, vm / leak / lock changes). Legs 3-4: midnight rule; caps_limits in
+        overrides before leg 3; lower the L_end_W3 override by hand if REF-H / REF-P find an end < 680 before KNOB-W3.
+        COORD 14:0x: t4i_ 'R6' SENT (MUST-1 revert + SHOULD-1 + NIT 1, run_all, leg 2 dry run); then an ebr_ delta check;
+        then leg 2.
+        - [ ] coord in leg 3: after REF-H / REF-P, compare their L_end with the 680 override before KNOB-W3 (stop.flag is
+        the only way to pause a leg: plan it from the leg order, not mid-leg edits).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
