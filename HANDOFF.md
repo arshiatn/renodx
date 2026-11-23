@@ -668,9 +668,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the batch (er5o_ rmt_stk NITs): effect_update.hpp:396 trailing comment ali ... | ?
 - after the batch (er5o_ leg1 cause): memory guard also on largest free block < 25 ... | ?
 - after the batch (ebr_ t6 read 2 NITs): ebo_check.ps1:105-110 late row after the ... | ?
-- coord between leg 1 and leg 2: ebr_ recheck of t4i_ t6 round 3; A/B reading (er5 ... | ?
 - coord before leg 2: t4i_ collided-arm rule + leg 1 gate PASS offline; er5o_ A/B ... | ?
 - after the batch: name the LOW-state holder from the +25 s snapshots; report to A ... | ?
+- after the batch (er5o_): LOW / NORMAL state vs the stuck Attila.exe (09:34:15) + ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12741,7 +12741,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         9 / 18 starts). Leg 1 order AB-A, -B, -C, -C3, -D, -E, -T, -M, CHK-D1, CAMP, CHK-W3; ~80 min (A/B ~30 min).
         COORD 09:2x: leg 1 RE-RUN starts now (ebr_ GO for leg 1; round 3 = ebr_'s own leg-1 suggestions); ebr_ re-checks
         round 3 (leg 2's PAUSE-W3 + MUST-1) between leg 1 and leg 2. QUIET: no coord commits during the leg.
-        - [ ] coord between leg 1 and leg 2: ebr_ recheck of t4i_ t6 round 3; A/B reading (er5o_); paused_runs.
+        - [x] coord between leg 1 and leg 2: ebr_ recheck of t4i_ t6 round 3; A/B reading (er5o_); paused_runs.
         LEG 1 RE-RUN 09:28-10:54 (state\leg1_gate.json, leg1_analysis.txt): exit 0, crashes 0, kills [], l_mem {} (no
         scene cut), B1 clean in every start (1 MB stacks: no B1L1 latch), 10 / 11 starts pass. Gate FAIL on ONE tool rule:
         AB-T 'no switch line for 30:mt_trace=10' = arms at 30 and 33 fell into one ~4.5 s game frame (every AB start has
@@ -12768,6 +12768,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         read-only bench-side address-space snapshot at ~+25 s (VirtualQueryEx + mapped names, top 10 non-private) to
         name the holder; a fix outside our code (driver / overlay / system) = ATN's call later.
         - [ ] after the batch: name the LOW-state holder from the +25 s snapshots; report to ATN with the fix options.
+        t4i_ COLLIDE 12:1x (render_mt/reports/t4i_collide_handback.md): part 1 collided-arm rule (ignored line at the same
+        present +-0.05 s = NOTE; without it still MISSING / FAIL; 823 s arm collided = B3b 'not proven'); leg 1 offline
+        re-analyze: 11 / 11 PASS, gate PASS (AB-T 1 collided arm). Part 2: leak fit from T0+75 s to the last add-on memory
+        line (AB-A virtual slope -686 -> -0.3); vm_state per start (leg 1: AB-A 1469 / AB-B 1470 LOW, rest NORMAL); mixed
+        state pair NOTE (legs 3-4 have such pairs); L_mem only from NORMAL trips (low_guard_trips); new bench\ebo_vmsnap.py
+        (PROCESS_QUERY_INFORMATION only, VirtualQueryEx + mapped names, gtp_lowprio 256 / 512 MB, vm_snapshot.json, a
+        failure = NOTE). Found: exited Attila.exe pid 26112 (0 threads / 0 handles, spawned 09:34:15 by AB-B's game) kept
+        alive by a handle -> lock state ours_live; ebo_lib now skips ThreadCount 0 (process lists without ThreadCount stay
+        live). Not touched. run_all green; dry runs legs 2 / 3 / 4 CLEAN (2 / 9 / 18 starts). Tools read no gate 'pass'.
+        COORD 12:1x: ebr_ 't6 read 3' SENT (round 3 + round 4, GO / NO-GO for leg 2). Note for er5o_ later: the LOW state
+        ended at 09:34:45, 30 s after that stuck Attila.exe appeared (link or chance?).
+        - [ ] after the batch (er5o_): LOW / NORMAL state vs the stuck Attila.exe (09:34:15) + the +25 s snapshots.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
