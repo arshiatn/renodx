@@ -668,9 +668,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the batch (er5o_ rmt_stk NITs): effect_update.hpp:396 trailing comment ali ... | ?
 - after the batch (er5o_ leg1 cause): memory guard also on largest free block < 25 ... | ?
 - after the batch (ebr_ t6 read 2 NITs): ebo_check.ps1:105-110 late row after the ... | ?
-- coord before leg 2: t4i_ collided-arm rule + leg 1 gate PASS offline; er5o_ A/B ... | ?
 - after the batch: name the LOW-state holder from the +25 s snapshots; report to A ... | ?
 - after the batch (er5o_): LOW / NORMAL state vs the stuck Attila.exe (09:34:15) + ... | ?
+- coord between leg 2 and leg 3: t4i_ SHOULD-1 + NITs (above), ebr_ read 4, check ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12754,7 +12754,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         E D + checks 995 / 802, T D + traces 1063 / 948, M B + MAP_TRACE 1083 / 962; free slope ~-330 MB/min in all.
         COORD 10:5x: t4i_ 'collided arm' rule (pool 'ignored' line at the same present = NOTE, not MISSING) + offline
         re-analyze of leg 1 + leg 2-4 dry runs; er5o_ reads the A/B; then ebr_ re-checks t4i_ round 3 + the new rule.
-        - [ ] coord before leg 2: t4i_ collided-arm rule + leg 1 gate PASS offline; er5o_ A/B verdict; ebr_ GO.
+        - [x] coord before leg 2: t4i_ collided-arm rule + leg 1 gate PASS offline; er5o_ A/B verdict; ebr_ GO.
         er5o_ AB READ 11:1x (render_mt/reports/er5o_ab_read_handback.md; testbin\scratch\er5o_\leg1): no config causes the
         offset. Each game process lands in one of two address-space states 15-21 s after start (before our code runs):
         LOW (game_virtual_mb at +21 s 1469-1505: all of run 1, AB-A, AB-B) or NORMAL (1229-1266: later run 2, final1118);
@@ -12780,6 +12780,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORD 12:1x: ebr_ 't6 read 3' SENT (round 3 + round 4, GO / NO-GO for leg 2). Note for er5o_ later: the LOW state
         ended at 09:34:45, 30 s after that stuck Attila.exe appeared (link or chance?).
         - [ ] after the batch (er5o_): LOW / NORMAL state vs the stuck Attila.exe (09:34:15) + the +25 s snapshots.
+        ebr_ T6 READ 3 12:4x (render_mt/reports/ebr_t6_read3_handback.md): leg 2 GO; legs 3-4 GO with MUST-1 (scheduling,
+        old code): no start across 00:00 (constantinople_bench.ps1:1005 live gate drops log lines earlier than the start
+        time -> guard / STOP never fire after midnight; :433 Clock-Zero; ebo_check.ps1:41; ebo_analyze no wrap): start a
+        leg only if it ends before ~23:30. SHOULD-1 vm_state from the LOWEST game_virtual_mb sample in [21, 27] s (NORMAL
+        climbs to 1338-1443 at +25 s; a 4 s sample gap could read UNKNOWN / LOW = wasted, not invalid). NITs: 1 three arms
+        in one frame -> middle MISSING (PAUSE-W3 1 s triplets, frame > 2 s); 2 3 s pairs 0.5 s blind band (own window from
+        at - 0.05, late cut next - 0.05); 3 different values never pair; 4 ebo_lib empty check before the ThreadCount
+        filter; 5 leak fit point count / skip < 120 s; 6 B2 not in paused_runs = 5-7 fps artefact, B2 sweep = no data;
+        7 D1-OFF / D1-ALL set has no ab field (no mixed NOTE); 8 a LOW continuation's trip loses the rest of its start;
+        9 text '+21 s' (sample at +22-23 s); 10 bench depends on testbin\scratch\gtp_\gtp_lowprio.py; 11 vm_snapshot top
+        private allocations too. The stuck process is AB-B's own game (the last LOW start).
+        COORD 12:4x: leg 2 now (dry run, then run; ends ~13:3x). Between leg 2 and leg 3: t4i_ SHOULD-1 + NITs 1, 2, 4, 5,
+        8, 9, 10 (copy gtp_lowprio.py into bench), 11; ebr_ short read; leg 3 + 4 must end before 23:30 (~6 h left).
+        - [ ] coord between leg 2 and leg 3: t4i_ SHOULD-1 + NITs (above), ebr_ read 4, check leg 2's first vm_snapshot.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
