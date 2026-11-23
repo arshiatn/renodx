@@ -12651,6 +12651,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         ~31-35 GB; C: 166 GB free. resume_point.md READY update written (frozen inputs + hashes, before-leg-1 and
         between-legs checks, after-batch boxes); memory project_resume_point_1122 + feedback_shutdown_when_done updated.
         Coord shuts the PC down now (ATN 23:35); after power-on wait for ATN's "go", then the end batch.
+        ATN 06:4x 11-23 (after power-on): "Let's finally start" = GO for the end batch; 34-36 = coord's picks (34 keep
+        Rome II Saturation 0.8, check by eye; 35 accept Shogun 2 20.04 %; 36 ship WH2's nearer per-map fit; noted in
+        atn_questions_groups.md); "don't forget where and what we stopped the subagents" -> resume_point.md after the
+        batch. Leg 1 dry run 06:41 refused only on 'Steam isn't running'; ATN started Steam; 06:43 DRY RUN CLEAN (commit
+        16.8 GB, 166.9 GB free). END BATCH LEG 1 STARTS 06:4x (ebo_run.ps1 -Leg 1). QUIET: no coord commits during legs.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
