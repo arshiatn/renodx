@@ -1699,7 +1699,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                  .particle_count = (particle_count_row != 0.f),
                                  .particle_count_check = particle_count_check_env,
                                  .instance_fill = instance_fill_on,
-                                 .fill_fold = fill_fold_on});
+                                 .fill_fold = fill_fold_on,
+                                 .exit_job_drain = true});
   // After the engine code's Update (the sites are in or out for this present) and the pool's.
   twattila::effect_update::Update(effect_update_row != 0.f, effect_spawns_row != 0.f);
 #if defined(TWATTILA_DRAW_RECORDING)
