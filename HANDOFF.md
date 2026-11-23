@@ -13204,6 +13204,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] eba_ r2 -> ebr_ re-check -> t4i_ final-bench data; ATN Q9 (W3 Go < 8 ms) in the READY message.
         - [ ] ETL evaluator proof on WPR-W3-5 b1.1 (driver-wait Go) while ATN is not playing, before the freeze.
         - [ ] after the final bench: ebo_make.ps1:368 cut fold '-le' + a test with a cut on a K-changing boundary (t4i_).
+        g24_ R3 22:30 (handbacks/g24_r3_handback.md; design §13.2; prototype v3 checker 97fd47034c53, scratch\g24_\r3fix):
+        R1 claims over every manifest trace + game-no-shadow per mesh, R2 source+ S / R only, R3 facts:static-chain /
+        roots-world / roots-pixel + >= 1 positive + 1 negative control + fail closed; S-r1..S-r5 + n1-n4 done; rvg_'s L1-L4
+        holes all refused. COORD: rvg_ re-check r3 sent.
+        g23_ R2 22:30 (handbacks/g23_r2_handback.md; design per-finding table at the end): 6 MUSTs + SHOULDs + NITs done
+        (2a joins bridge.job + RescueSet; 2b per-evaluation Signal, Backend::Abandon; 2e-1 atomic native_view gated on ran;
+        2f-1 sqrt flag cb0.x / cb0.y + EvaluateOptions{extra_written, exposure, fsr_sharpness} behind version >= 25; 2f-2
+        version >= 30 + dlss_refused latched on the game thread). Two source confirmations for rvh_ (cb0.y readers, FFX
+        UAV barrier). COORD: rvh_ re-check r2 sent.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
