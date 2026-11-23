@@ -680,7 +680,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Exit job drain: Sonnet High implementer + Opus xHigh review (engine code), offli ... | ?
 - before ATN's restart: no agent running, resume_point.md updated, scratchpad copy ... | ?
 - after batch: ebr_ R9 SHOULD-1 optional code (any crash at / after the close boun ... | ?
-- eba_ end-batch analysis (legs 1-4): keep / revert per row, defaults + variants f ... | ?
 - exr_ (Opus xHigh) review of exd_ once exd_ hands back (start before 00:00, else ... | ?
 - gbf_ (agent abbb04cc6b11ea037) fixes gbr_ M1 + S1-S3 (+ NITs), gbr_ re-checks; w ... | ?
 - F5 real motion into NRD: add-on work outside dlaa_helper (gbr_), owner after ren ... | ?
@@ -688,6 +687,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G25 fix F1 + F2 (Expeditions lutbuilder + psycho35.hlsli parameter: wave 3, afte ... | ?
 - rvg_ review of g24_'s design -> g24_ (agent ad58e0a38a0841b09) fixes -> rvg_ re- ... | ?
 - rvh_ review of g23_'s designs -> g23_ (agent aabd3269fac6a9be6) fixes -> rvh_ re ... | ?
+- ebr_ read of eba_ analysis -> then defaults coded (add-on: Opus High + Opus xHig ... | ?
+- t4i_ (agent a085db550dc5dbe5c) final-bench data per eba_ §t4i_ (OFF / ALL / ALL+ ... | ?
+- RC: Exit job drain (exd_ + exr_), defaults, DRAW_RECORDING build or public C row ... | ?
+- ETL attribution of the 6 batch WPR ETLs (incl. S8-2 readying stacks, ebo3_WPR-W3 ... | ?
+- GPU-stall root cause (3 starts + 'Object motion ... 3 rings'): GPU trace of a st ... | ?
+- t4i_ tool slip: c613 got K16 for all users from 0 s; map-compare window mapping ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13029,7 +13034,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Attila.exe (0 threads, ~1.9 GB commit) until a reboot. hold_at.txt MOVED to state\hold_at.txt.leg4_done_2123.
         ATN 21:2x: plays with friends; coord starts no game tonight. COORD: night wave (handoff_plan/wave_1123_night.md)
         + eba_ END-BATCH ANALYSIS (Opus xHigh, read only, legs 1-4) now, since no part B is left.
-        - [ ] eba_ end-batch analysis (legs 1-4): keep / revert per row, defaults + variants for the final bench.
+        - [x] eba_ end-batch analysis (legs 1-4): keep / revert per row, defaults + variants for the final bench.
         NIGHT WAVE 21:3x (handoff_plan/wave_1123_night.md, common rules there: no game / GPU, low priority, hand back by
         01:00, no new agents after 00:00): eba_ end-batch analysis (Opus xHigh), exd_ Exit job drain (Sonnet High,
         worktree branch exd_fix, build -> testbin\cpu1_addons\exd_1123), gbr_ ho_gbf review (Opus xHigh), gtp_ gate hook
@@ -13088,6 +13093,33 @@ heading text are in HANDOFF_ARCHIVE.md)
         in a table != captured (Opacity::NEVER, Attila held_row -> CAPTURED/experimental:<row>), M7 gap box tag
         [audit <game> <axis> <family>] + boxes_pending_<game>.tsv. Question changes + new Q58 in atn_questions_groups.md.
         COORD: g24_ resumed to fix the design; rvg_ re-checks after.
+        eba_ DONE 22:1x (render_mt/reports/eba_end_batch_analysis.md + _handback.md; scratch\eba_): RC DEFAULTS: C
+        (DrawRecordingStage 6 + 4 group rows) ON (W3 +C -2.14 / -C +3.52; D1 -1.29 / +1.28); B3b ON (W3 -B3b +8.0);
+        R1 / R2 OFF park (kill rule, W3 +3.88); B1 L1 OFF (Experimental: volley -5..-8, melee +2.83, D1 +1.59); L2 OFF
+        park; Cached OFF park; B2 / HSG2 OFF, RC on HFx (W3 +2.60, D1 +2.68); WorkerThreads 4; spin 3, KRCF / WU off,
+        limits ''; heapfix four fixes ON (W3 -60.1, D1 -14.5); OLD6 = final bench. FINDINGS: REF correction valid for OFF
+        only (ALL starts differ 5-17 ms); W3 gains are volley-only (-6..-12 at 50-330 s, ~0 in melee) and the final
+        bench's 100-175 s window is volley -> 'W3 >= 8 ms' at risk, row-by-row branch likely; heapfix4/W3 outside (tool's
+        'inside' = GPU-stall seconds); GPU stalls in exactly 3 starts (c780 34 s, HF-W3-ON-a / OFF-a 14 s; 'Object motion
+        ... 3 rings' in the same 3), root cause open; c613 ran K16 for ALL users from 0 s (tool slip); WPR frame times
+        unusable (overhead +20 -> +84 ms) -> every WPR kill line + S8-2 need the ETLs; §4.1 in-frame checks clean, §4.2 /
+        §4.3 unproven (map-compare window mapping broken, trace files overwritten, paused OFF/OFF draw counts differ):
+        shots eye only; rows cost ~52 MB free / 40 MB largest block; leg 4's ALL kept R / B1 / B2 on.
+        ATN QUESTIONS (eba_ picks): L2 off + park (yes); B1 L1 default (off, Experimental row stays); WorkerThreads 4
+        (yes); B2 / HSG2 off, final bench on HFx, drop the 2 HSG2 starts (yes, HSG2 -> author lane); final-bench adds W3
+        OFF to L_end + R1 OFF/ALL x2 (yes; campaign optional); heapfix single-fix A/Bs (after the final bench); x87c leg 5
+        (after); accept §4.1 for the 'draw stream unchanged' Go (yes). EYE LIST in the report.
+        COORD 22:1x: ebr_ (agent a41704a31fb3d6080) resumed for a read-only review of eba_'s analysis.
+        - [ ] ebr_ read of eba_ analysis -> then defaults coded (add-on: Opus High + Opus xHigh review) after ATN's restart.
+        - [ ] t4i_ (agent a085db550dc5dbe5c) final-bench data per eba_ §t4i_ (OFF / ALL / ALL+OLD6, stall filter, address-
+        space Go + cap, per-band soak, row-by-row variants, dry run) after ATN's restart (writer limit tonight).
+        - [ ] RC: Exit job drain (exd_ + exr_), defaults, DRAW_RECORDING build or public C rows, gated x86 + amd64, FP twin
+        for the 4 WPR starts, stamp, RC manifest; Opus xHigh end review + Sonnet High second reviewer.
+        - [ ] ETL attribution of the 6 batch WPR ETLs (incl. S8-2 readying stacks, ebo3_WPR-W3-2_wpr_cpu_163636 b1.1-b1.8)
+        while the PC is free (CPU-heavy: not while ATN plays); can switch a C group off before the freeze.
+        - [ ] GPU-stall root cause (3 starts + 'Object motion ... 3 rings'): GPU trace of a stall start (after the batch).
+        - [ ] t4i_ tool slip: c613 got K16 for all users from 0 s; map-compare window mapping + trace overwrite fixes (§4.2 /
+        §4.3) after the final bench.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
