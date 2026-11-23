@@ -687,7 +687,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G25 fix F1 + F2 (Expeditions lutbuilder + psycho35.hlsli parameter: wave 3, afte ... | ?
 - rvg_ review of g24_'s design -> g24_ (agent ad58e0a38a0841b09) fixes -> rvg_ re- ... | ?
 - rvh_ review of g23_'s designs -> g23_ (agent aabd3269fac6a9be6) fixes -> rvh_ re ... | ?
-- ebr_ read of eba_ analysis -> then defaults coded (add-on: Opus High + Opus xHig ... | ?
 - t4i_ (agent a085db550dc5dbe5c) final-bench data per eba_ §t4i_ (OFF / ALL / ALL+ ... | ?
 - RC: Exit job drain (exd_ + exr_), defaults, DRAW_RECORDING build or public C row ... | ?
 - ETL attribution of the 6 batch WPR ETLs (incl. S8-2 readying stacks, ebo3_WPR-W3 ... | ?
@@ -700,6 +699,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - exr_ review of exd_fix -> exd_ (aa144878f572855a7) fixes -> exr_ re-check -> coo ... | ?
 - window-closed stress_test_log2 exit soak with the Exit Job Drain build (after AT ... | ?
 - gtp_ (abd95a89172354976): quiet mirror suite from bash + shadow golive bak29 (ro ... | ?
+- eba_ r2 -> ebr_ re-check -> t4i_ final-bench data; ATN Q9 (W3 Go < 8 ms) in the ... | ?
+- ETL evaluator proof on WPR-W3-5 b1.1 (driver-wait Go) while ATN is not playing, ... | ?
+- after the final bench: ebo_make.ps1:368 cut fold '-le' + a test with a cut on a ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13117,7 +13119,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         OFF to L_end + R1 OFF/ALL x2 (yes; campaign optional); heapfix single-fix A/Bs (after the final bench); x87c leg 5
         (after); accept §4.1 for the 'draw stream unchanged' Go (yes). EYE LIST in the report.
         COORD 22:1x: ebr_ (agent a41704a31fb3d6080) resumed for a read-only review of eba_'s analysis.
-        - [ ] ebr_ read of eba_ analysis -> then defaults coded (add-on: Opus High + Opus xHigh review) after ATN's restart.
+        - [x] ebr_ read of eba_ analysis -> then defaults coded (add-on: Opus High + Opus xHigh review) after ATN's restart.
         - [ ] t4i_ (agent a085db550dc5dbe5c) final-bench data per eba_ §t4i_ (OFF / ALL / ALL+OLD6, stall filter, address-
         space Go + cap, per-band soak, row-by-row variants, dry run) after ATN's restart (writer limit tonight).
         - [ ] RC: Exit job drain (exd_ + exr_), defaults, DRAW_RECORDING build or public C rows, gated x86 + amd64, FP twin
@@ -13187,6 +13189,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         shadow golive bak29 (gtp_ swaps gate_hook.py + run_tests.py, shas, mode.txt shadow) after ATN's restart.
         - [ ] gtp_ (abd95a89172354976): quiet mirror suite from bash + shadow golive bak29 (round 24) after ATN's restart;
         the F24 0.05 s row vs bak28 in the same run (gtw_).
+        ebr_ EBA READ 22:2x (render_mt/reports/ebr_eba_read_handback.md): DEFAULTS GO as tabled (no change). FINAL-BENCH
+        SPEC NOT GO until: MUST-1 the W3 Go line (>= 8 ms) will probably fail (RC C + B3b ~ -3..-7; only FT-W3b's live-
+        switched ALL showed -11.5) -> NEW ATN Q9 before the bench: W3 < 8 ms with all else passing = ship / hold / L1 on
+        (L1 probably passes W3 + day1, ~+3 ms in the melee); MUST-2 the R1 Go line needs eba_'s +4 R1 ABBA starts (WPR
+        frame times unusable), 0.1 ms statistic in data; MUST-3 the driver-wait Go needs a proven ETL evaluator before the
+        freeze (one batch ETL, WPR-W3-5 b1.1, exact script, time base) + short early WPR windows + excess flag > ~10 ms.
+        Confirmed: heapfix4 W3 -60.06 (b pair, SE 0.44; base-ALL prep-DLL numbers, not RC), 3 stall starts, WPR overhead
+        per start (+2..+84), leg 4 ALL = base ALL, c613 slip = ebo_make.ps1:368 '-lt' (fold with -le + test, after the
+        bench; ebr_'s R8 statement was wrong). SHOULDs: noise restated (live switch + L2 overflows), drop c780 / mark c613
+        columns, B2 text, campaign OFF/ALL = yes, per-frame stall filter + warm-up after crash / retry / prefs, budget the
+        row-by-row branch (~8 starts, 50 min) + ALL +L1 ready, cap 96 MB whole allowance + guard close in ALL = Go fail.
+        COORD 22:2x: eba_ resumed for revision 2 (MUST-1..3 + SHOULDs + one clean t4i_ data spec).
+        - [ ] eba_ r2 -> ebr_ re-check -> t4i_ final-bench data; ATN Q9 (W3 Go < 8 ms) in the READY message.
+        - [ ] ETL evaluator proof on WPR-W3-5 b1.1 (driver-wait Go) while ATN is not playing, before the freeze.
+        - [ ] after the final bench: ebo_make.ps1:368 cut fold '-le' + a test with a cut on a K-changing boundary (t4i_).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
