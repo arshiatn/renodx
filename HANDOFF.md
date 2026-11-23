@@ -13171,6 +13171,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         negative control per rule; missing facts = PROBLEM). New SHOULDs S-r1..S-r5 (0x...u suffix, tag must match, --final
         re-extracts facts, OWN table check + must-fail fixtures, prototype gap list). M3 / M5 / M6 / M7 + all SHOULDs closed.
         COORD: g24_ resumed for revision 3.
+        rvh_ DONE 22:2x (handoff_plan/reviews/rvh_g23_designs_review.md + _handback.md): GO 2a (no-limit rescue; lands with
+        or before 2b), 2e-2, 2f-3, 2f-4, 2i; NOT GO 2b (M1 RELEASE_STALL hook fires first at upscaler->Close: null-fence
+        check, stall via DLSS->FSR / AA off, assert owner DLSS), 2e-1 (M1 render_width/height 0 at 100 % -> atomic size
+        snapshot in OnPresent; M2 gate on ran), 2f-1 (M1 colour-before is sqrt-encoded; M2 rr_extra_written only with RR),
+        2f-2 (M1 dlss_refused write needs version >= 30). AMD values confirmed: scale 1.0, cutoff 0.2, binary 0.9. Order:
+        helper files = GPU plan helper implementer's queue; ngx_backend.hpp after ho_g09; anti_aliasing / graphics_page /
+        feature_settings after ho_g19. Question notes for 51-57 in the review. COORD: g23_ resumed for revision 2.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
