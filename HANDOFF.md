@@ -13255,6 +13255,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         100 % first). Implementation after the final bench in the design's ownership order (2a + 2b one branch first).
         - [ ] G23 implementation (after the final bench; helper files = GPU plan helper queue unless ATN hands them over;
         ngx_backend.hpp after ho_g09; anti_aliasing / graphics_page / feature_settings after ho_g19).
+        exr_ DONE 22:4x (render_mt/reports/exr_exit_drain_review.md + _handback.md): exd_fix NOT GO on M1 = EVERY normal
+        exit would crash: ExitDrain CALLS the game's delete and ReShade unloads the add-on inside it (c613 ReShade.log order;
+        device_loss.hpp:804) -> the delete returns into freed code; fix: pin the image with GetModuleHandleExW(FROM_ADDRESS |
+        PIN, &ExitDrain) in the once block (part 30 can't see it: tests.exe never unloads). SHOULD S1 quiet poll also needs
+        the pool queue [0x10] empty, S2 the drain comes after part of the teardown (move to +0xD5D74 thiscall or record
+        why), S3 env-only off switch RENODX_TW_EXIT_DRAIN=0 (bench 'part Off'), S4 part 30 foreign-bytes case. Confirmed: the
+        site, the singleton pool = the workers' pool, layout / states / two-poll rule / cap, no new hang, install path.
+        COORD 22:4x: exd_ fixes sent (M1 + S1 + S2 'move only with proof' + S3 + S4 + NITs; rebuild into exd_1123b).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
