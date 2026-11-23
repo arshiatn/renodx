@@ -681,6 +681,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - before ATN's restart: no agent running, resume_point.md updated, scratchpad copy ... | ?
 - after batch: ebr_ R9 SHOULD-1 optional code (any crash at / after the close boun ... | ?
 - eba_ end-batch analysis (legs 1-4): keep / revert per row, defaults + variants f ... | ?
+- exr_ (Opus xHigh) review of exd_ once exd_ hands back (start before 00:00, else ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13023,6 +13024,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 21:2x: plays with friends; coord starts no game tonight. COORD: night wave (handoff_plan/wave_1123_night.md)
         + eba_ END-BATCH ANALYSIS (Opus xHigh, read only, legs 1-4) now, since no part B is left.
         - [ ] eba_ end-batch analysis (legs 1-4): keep / revert per row, defaults + variants for the final bench.
+        NIGHT WAVE 21:3x (handoff_plan/wave_1123_night.md, common rules there: no game / GPU, low priority, hand back by
+        01:00, no new agents after 00:00): eba_ end-batch analysis (Opus xHigh), exd_ Exit job drain (Sonnet High,
+        worktree branch exd_fix, build -> testbin\cpu1_addons\exd_1123), gbr_ ho_gbf review (Opus xHigh), gtp_ gate hook
+        round 24 (Opus High, stage24, no golive), g25_ Expeditions chain audit, g24_ shader-audit design, g23_ designs
+        2a / 2b / 2e / 2f (Opus xHigh).
+        - [ ] exr_ (Opus xHigh) review of exd_ once exd_ hands back (start before 00:00, else after ATN's restart).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
