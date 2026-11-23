@@ -100,14 +100,14 @@ static const uint NO_SHEET = 0xFFFFFFFFu;
 // How far along a sun ray a sheet's own triangles are passed (metres): a banner's height and its folds.
 static const float SHEET_SELF_REACH = 3.f;
 
-// For NRD's SIGMA the nearest surface along the sun's ray within `accepted` (an accept-first query's blocker, any one
-// met: SIGMA takes its penumbra's width from the distance); else `accepted`.
-float NearestBlocker(float3 origin, float3 direction, uint instances, float accepted) {
+// For NRD's SIGMA the nearest surface of `instances` along the sun's ray within [t_min, accepted] (an accept-first query's
+// blocker, any one met: SIGMA takes its penumbra's width from the distance); else `accepted`.
+float NearestBlocker(float3 origin, float3 direction, uint instances, float t_min, float accepted) {
   if ((flags & NRD_SUN) == 0u) return accepted;
   RayDesc ray;
   ray.Origin = origin;
   ray.Direction = direction;
-  ray.TMin = 0.f;
+  ray.TMin = t_min;
   ray.TMax = accepted;
   TRACE_NEAREST(query, ray, instances)
   return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? query.CommittedRayT() : accepted;
@@ -175,7 +175,7 @@ float2 SunRay(float3 origin, float3 direction, uint instances, uint sheet) {
     if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return float2(1.f, 0.f);
     const uint met_flags = records[query.CommittedInstanceID() + query.CommittedGeometryIndex()].z >> 16;
     if ((met_flags & (RECORD_MASKED | RECORD_THIN)) == 0u || (met_flags & RECORD_GRASS) != 0u) {
-      return float2(0.f, NearestBlocker(origin, direction, instances, query.CommittedRayT()));
+      return float2(0.f, NearestBlocker(origin, direction, instances, 0.f, query.CommittedRayT()));
     }
     if ((met_flags & RECORD_LEAF) != 0u) first_leaf = query.CommittedRayT();
   }
@@ -193,7 +193,7 @@ float2 SunRay(float3 origin, float3 direction, uint instances, uint sheet) {
     if (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
       const uint met_flags = records[query.CommittedInstanceID() + query.CommittedGeometryIndex()].z >> 16;
       if ((met_flags & (RECORD_MASKED | RECORD_THIN)) == 0u || (met_flags & RECORD_GRASS) != 0u) {
-        return float2(0.f, NearestBlocker(origin, direction, instances, query.CommittedRayT()));
+        return float2(0.f, NearestBlocker(origin, direction, instances, 0.f, query.CommittedRayT()));
       }
       float last_sheet = -1.f;
       [loop]
@@ -221,7 +221,7 @@ float2 SunRay(float3 origin, float3 direction, uint instances, uint sheet) {
   if (leaf < 0.f) return float2(lit, first);
   const bool more = (leaf > 0.02f && LeafHit(origin, direction, 0.f, leaf - 0.01f) >= 0.f) || LeafHit(origin, direction, leaf + 0.01f, 1.0e4f) >= 0.f;
   return float2(lit * (more ? LEAF_TRANSMITTANCE * LEAF_TRANSMITTANCE : LEAF_TRANSMITTANCE),
-                NearestBlocker(origin, direction, instances, (first > 0.f) ? min(first, leaf) : leaf));
+                NearestBlocker(origin, direction, instances, 0.f, (first > 0.f) ? min(first, leaf) : leaf));
 }
 
 // Whether a pixel shows grass: one of its cards (shown, swaying, or the still copy of a swaying one) crosses the camera's
@@ -361,7 +361,10 @@ void main(uint3 id : SV_DispatchThreadID) {
             grass.CommitNonOpaqueTriangleHit();
           }
         }
-        if (grass.CommittedStatus() == COMMITTED_TRIANGLE_HIT) result = float2(0.f, grass.CommittedRayT());
+        // Under NRD the nearest blade (from the grass ray's start: not the pixel's own blade), not the first one met.
+        if (grass.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+          result = float2(0.f, NearestBlocker(start, toward, GRASS, grass_ray.TMin, grass.CommittedRayT()));
+        }
       }
       // The smoke apart where the sun still comes through: Smoke Shadow Quality's particles that dim it (8, 16 or 32).
       if (facing && result.x > 0.f) result.x *= SmokeTransmittance(start, toward, 1.0e4f, 8u << ((flags >> SMOKE_QUALITY_SHIFT) & 3u));
