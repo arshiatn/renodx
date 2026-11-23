@@ -696,6 +696,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: apply gtp_stage24\gated_build.ps1.proposed between builds (after exd_'s b ... | ?
 - gate hook round 24 golive (bak29 shadow) only after gpr_ + gtw_ GO; the suite st ... | ?
 - gbf_ builds + WARP exact after ATN's restart, then gbr_ (a661373416057b2f5) re-c ... | ?
+- gate hook round 25: gpr-R24-1 glued-quote join (Low). | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13143,6 +13144,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         RECORDER + rt_reuse_lean / near), run_checks.ps1 (tw_rt_open_sky -Expect exact), then gbr_ re-check, then GPU jobs
         1-8 + S4a.
         - [ ] gbf_ builds + WARP exact after ATN's restart, then gbr_ (a661373416057b2f5) re-check.
+        gpr_ R24 GO 22:2x (plan_1117/gpr_r24_recheck_handback.md, gpr_review.md:3255): R23-1..5 refused again (several
+        forms bak28 let through now refused: [scriptblock]::Create / lists / $PWD into src); 8.3 names refused; trade-off
+        = bak28. gpr-R24-1 (Low, round 25): bash <<< "echo off > <gates>/"'mode.txt' passes (glued word after the closing
+        quote not joined). Info gaps that pass in both hooks listed. Waiting for gtw_.
+        - [ ] gate hook round 25: gpr-R24-1 glued-quote join (Low).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
