@@ -687,6 +687,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - g25_ to-run-later (after ATN's game): swatch images (g25_e_swatches.py) + WARP r ... | ?
 - G25 fix F1 + F2 (Expeditions lutbuilder + psycho35.hlsli parameter: wave 3, afte ... | ?
 - rvg_ review of g24_'s design -> g24_ (agent ad58e0a38a0841b09) fixes -> rvg_ re- ... | ?
+- rvh_ review of g23_'s designs -> g23_ (agent aabd3269fac6a9be6) fixes -> rvh_ re ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13067,6 +13068,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         skill rows text-only (§10). ATN questions 42-49. COORD 21:5x: rvg_ (Opus xHigh, read only) reviews the design.
         - [ ] rvg_ review of g24_'s design -> g24_ (agent ad58e0a38a0841b09) fixes -> rvg_ re-check; then the checker
         (M) and the audits in ATN's order (census pass CPU-heavy: no game / bench beside it, after the final bench).
+        g23_ DONE 22:0x (handoff_plan/g23_designs.md, handbacks/g23_designs_handback.md): no bridge bump (fields into
+        rr_v17 / fence_v30 / rt padding, reactive mask reuses rr_extra[COLOR_BEFORE]); 2a rescue = ONE process, NO time
+        limit (waits fence event + game process handle, log at 2 s; watcher 15 s kill -> log + unbounded wait); 2b D3D11
+        idle wait (own ID3D11Fence, QueueIdleMarker, WaitForGpuBeforeRelease before ReleaseFeature / DestroyParameters /
+        Shutdown1, skip on removed device, one GPU_WAIT_TIMEOUT 5000, dead Backend::ReleaseFeature deleted); 2e A/B plans
+        (LOD -1 at 100 % needs a main-view check; exposure 1 for K); 2f-1 WH3 reactive mask, 2f-2 FSR when DLSS can't start
+        (bug fix, not saved), 2f-3 DLL versions, 2f-4 new FSR Sharpening row at 0; 2i logging (one part waits wave 3).
+        Implementers: A = 2a + 2b, then B = 2f-2/3/4 + 2e switches (main.cpp / dlaa_bridge.h shared). ATN questions
+        50-57. COORD 22:0x: rvh_ (Opus xHigh, read only) reviews the designs.
+        - [ ] rvh_ review of g23_'s designs -> g23_ (agent aabd3269fac6a9be6) fixes -> rvh_ re-check; code after the final
+        bench (check GPU-plan branch ownership of main.cpp / upscale_d3d12.hpp / rr_d3d12.hpp first).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
