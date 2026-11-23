@@ -12852,6 +12852,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         then leg 2.
         - [ ] coord in leg 3: after REF-H / REF-P, compare their L_end with the 680 override before KNOB-W3 (stop.flag is
         the only way to pause a leg: plan it from the leg order, not mid-leg edits).
+        ATN 14:1x: G23 full pass = only his version of OUR HELPER; plus a hue clip compare. ldv_ HUE 14:3x
+        (render_mt/reports/ldv_hue_handback.md): same core math as our HueTransfer / HueClip; ours better on reference,
+        sky test and measured defaults; one test item: his weight cap at 1 vs our sky overshoot above slider 50 (games at
+        70-100) -> plan.md G23 1d A/B with test/tw_psychov35's hue report.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
