@@ -378,7 +378,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (unified PT, not blocking now): Q1-Q10 of the design + NQ1 rough SO route (r ... | ?
 - group 3 (lg3_ NOT started: waits for ATN's go; the X1 wait is stale, X1 out of t ... | ?
 - ATN. (5) = YES to my suggestions: unpinned non-leak crash -> retry the start onc ... | ?
-- T5: decide whether the frozen heapfix DLL carries x87c (then leg 4) or ask ATN f ... | ?
 - ATN: a MISSING key / empty value in heapfix.ini -> NOTE instead of PROBLEM? heap ... | ?
 - ATN (INSTALL_FOR_ATN.md item 12, sections 1 / 3 / 7) - READY (gtw_ re-check 9 OK ... | ?
 - ATN (after gtv_'s re-check OK): adopt the lab proposals - copy cmd.schema.json.p ... | ?
@@ -399,7 +398,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtb_ / gti_ (low): load-flake bounds in unchanged code - gated_build "both slots ... | ?
 - ATN (cleanup list): tools\tw\h0\selftest_check15 (empty folder, h0i_ 09:1x) + se ... | ?
 - ATN (morning report): add a B1L1-only volley pair to the end batch? ~7 min (L1-o ... | ?
-- T5 build step: write the real manifest.json with these rows / row_values / env ( ... | ?
 - ATN (morning report): with the load refresh, the gate hook's fix-now rule can fi ... | ?
 - bridge owner (next bridge change): move the FG backend-name table to dlaa_bridge ... | ?
 - gtb_ (low, batched): busy_refresh `-1 <= age` (a read within 50 ms of a write is ... | ?
@@ -663,6 +661,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - lg3_ / engine_code owner after the batch (er5o_ m3): engine stubs page = plain A ... | ?
 - coord at READY: checklist done -> READY message -> `shutdown /s /t 60` (one-time ... | ?
 - t4i_ after T6: ebo_check.ps1 job line from $lines (not $log); optional: the Unha ... | ?
+- t4i_ after the batch: draw_trace.file_mb from leg 1's real sizes; memory=1 lines ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -6891,7 +6890,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         every start's variant through the reshade_ini step (fresh backup, restore + hash check per start); T6 dry run
         flags a missing line. 3 x87c A/B plan §8b (ABBA XC-W3 / XC-D1, ~40 min): leg 4 only if T5's DLL carries x87c,
         else ATN needs a new rule 'ebo_run.ps1 -Leg 5 [-DryRun]' (nothing built). ebr_ r16 REVIEW STARTED 01:3x.
-        - [ ] T5: decide whether the frozen heapfix DLL carries x87c (then leg 4) or ask ATN for the leg 5 rule.
+        - [x] (DONE: Way B, no x87c; t5prep_dinput8.dll 18472a6c; x87c A/B after the batch) T5: decide whether the frozen heapfix DLL carries x87c (then leg 4) or ask ATN for the leg 5 rule.
         lgf1_ GROUP 1 R1-R7 DONE 01:4x (reports/lgf1_r2_handback.md): rmt_lg1 0fe8a9b15 (device_loss.hpp: chained
         top-level filter OnUnhandled set at the first present, own once guard, 'thrown by the add-on's code', Uninstall
         restores or pins; R2 FP / integer codes; R3 'handling an exception now' / '(handled; it went on)'; R4 overflow
@@ -9070,7 +9069,7 @@ heading text are in HANDOFF_ARCHIVE.md)
             (t4i_ 09:2x). An automated B1 picture compare is NOT possible today (shots on the add-on clock, not a
             game tick; paused compares freeze the effect state) - it needs c3i_ code (effect-state hash at fixed
             replay ticks) + a cross-run B1-off control proven in a game run (ATN's go).
-        - [ ] T5 build step: write the real manifest.json with these rows / row_values / env (t4i_ 09:1x).
+        - [x] (DONE 00:0x t4i_ T5, manifest.json 15fbd147 after the game hashes) T5 build step: write the real manifest.json with these rows / row_values / env (t4i_ 09:1x).
         t4i_ B1 COST 09:2x (render_mt/reports/t4i_b1_cost_handback.md; probes scratchpad\t4i_b1cost.py +
         t4i_t5_cover.py; read only): (1) B1L1-only volley pair ~7 / ~12 min (ATN box updated). (2) automated B1
         picture compare not possible with today's tools (ATN box). (3) soak starts can open many more windows at
@@ -12605,6 +12604,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         helper120 build.ps1 exit 0 (build\tw_dlaa_helper120). tw_install dry run: attila v169 + helper120, wh3 v68 +
         helper120, NOT STAMPED yet. Picture checks (vanilla-exact + psychov35, x86 + amd64) running; then --stamp /
         --install with fresh backups. First loop broke on my own path escaping (exit 127, nothing ran); re-run from a file.
+        t4i_ T6 DONE 01:0x (render_mt/reports/t4i_t6_handback.md): manifest game hashes filled (backup .pre_hash; manifest
+        15fbd147...e8f1); ebr_ c3: test_names -Ref 2eaaec733 -Waiting @() 6/6; corpus 206 lines `frozen` file:line @commit
+        (14 x87c lines skipped, 7 old forms marked); gates.json 80 statuses -> frozen file:line; REAL GAP FIXED:
+        pool_worker_failed regex now takes worker_pool.hpp:694's 'the users run on the N that started.' (+ corpus +
+        test_check). run_all green (lib 631, names 6, make 117, check 189, leg 166, analyze 146). 4 dry runs exit 0 (leg 1
+        twice: first 00:57 PROBLEM 'build tools running: fxc' = coord's own vanilla-exact checks, then clean 00:59).
+        s10: locks free, commit 31.2 GB, disk 166 GB free (ETLs 0 / 16.4 / 45.9 / 31.2 GB), Builds() empty, no harness /
+        map_replay, Steam not elevated, CPU set 0-15, hashes clean, StallDump=1 in all 32 variants, heapfix.ini 4 keys = 1;
+        FrameBridge not in the game folder (NOTE). Slip: one python heredoc edit (no backslashes, checked).
+        INSTALLED 01:02 (coord): picture checks vanilla-exact 416 EXACT / 0 FAIL x86 + amd64, psychov35 PASS x86 + amd64;
+        tw_install --helper 120 attila=169 wh3=68 --stamp, --install: Attila v169 (addon aba03c75, helper 4ca15933) + WH3
+        v68 (addon 769c8b96, helper 597fcd14) on helper120, old files renamed .in-use-20261123_010234, fresh backups,
+        ATN's files unchanged, ALREADY INSTALLED x4. Next free: attila 170, wh3 69, helper 121.
+        FINAL DRY RUNS after the install (coord, ATN's exact rules, 01:02-01:04): legs 1-4 DRY RUN CLEAN (3 / 2 / 9 / 18
+        starts, 0 problems, 0 warnings, commit 31.2 GB, 165.9 GB free). ebr_ "ebr_ T6 read" (Opus xHigh, variants) SENT.
+        - [ ] t4i_ after the batch: draw_trace.file_mb from leg 1's real sizes; memory=1 lines in the soak.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
