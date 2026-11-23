@@ -697,6 +697,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gate hook round 24 golive (bak29 shadow) only after gpr_ + gtw_ GO; the suite st ... | ?
 - gbf_ builds + WARP exact after ATN's restart, then gbr_ (a661373416057b2f5) re-c ... | ?
 - gate hook round 25: gpr-R24-1 glued-quote join (Low). | ?
+- exr_ review of exd_fix -> exd_ (aa144878f572855a7) fixes -> exr_ re-check -> coo ... | ?
+- window-closed stress_test_log2 exit soak with the Exit Job Drain build (after AT ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13149,6 +13151,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         = bak28. gpr-R24-1 (Low, round 25): bash <<< "echo off > <gates>/"'mode.txt' passes (glued word after the closing
         quote not joined). Info gaps that pass in both hooks listed. Waiting for gtw_.
         - [ ] gate hook round 25: gpr-R24-1 glued-quote join (Low).
+        exd_ DONE 22:2x (render_mt/reports/exd_exit_drain_handback.md): branch exd_fix 0c9a0614c + 1950e959c (from
+        401741f1e; engine_code.hpp, addon.cpp, test/tw_engine_code exit_drain.inc + tests.cpp). 30th site 'exit job drain':
+        79-byte signature at +0xC9A90 (one match), E8 at +0xC9AC1 rel32 -> ExitDrain; 2 E8 callers of +0x1374230 exist
+        (+0x137414C = app-creation failure, not patched). ecr_'s pool source was wrong: pool = singleton global 0x11EF9554
+        (accessors +0x169D350 / +0x16B1400). Drain: two quiet polls (state 1 + no wake, or 3), Sleep(1), 1000 ms cap, one
+        line; ReadProcessMemory reads; once-only via game_exiting; always on (WorkerRows::exit_job_drain, no row). Thrones /
+        Rome II skipped (no proven site). Tests part 30 + -Quick + -DrawRecording PASS. Builds: plain exd_1123\
+        renodx-twattila.addon32 55a88462...f15b; FP + DRAW_RECORDING twin exd_1123\fp\ d52a32ed...94e0 (pdb 93ad1847...).
+        Optional exit-time fault label skipped. A real window-closed stress_test_log2 soak is still owed. COORD 22:2x: exr_
+        (Opus xHigh, agent a2c0f3520f5db162b) review sent.
+        - [ ] exr_ review of exd_fix -> exd_ (aa144878f572855a7) fixes -> exr_ re-check -> coord merges into atn-mods (RC).
+        - [ ] window-closed stress_test_log2 exit soak with the Exit Job Drain build (after ATN's restart; a game run:
+        within the final bench's prep or its own short batch on ATN's go).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
