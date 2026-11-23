@@ -12880,6 +12880,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORD 14:3x: leg 2 starts now (dry run first). QUIET during the leg.
         - [ ] coord in the leg-2 gap: KNOB-W3 fit (reorder / len 22) + generic own-end check + midnight hold (b) +
         caps_limits (c) -> t4i_ R7, ebr_ read; then leg 3 (must end before 23:30 or hold).
+        LEG 2 14:24-14:50 (state\leg2_gate.json): gate PASS, crashes 0, kills []. PAUSE-W3 PASS: switch lines 424 / 424,
+        applied 20 / 20, 58 / 58 segments valid, 34 mt_trace windows missing (arms 1 s apart while the paused frame rate
+        keeps a window open: 'ignored' NOTEs), B3b-alone shots 826 / 834 counted (540 animation lines at 823 s), bestKC 4
+        (estimate by design: c_render_us dropped; an offline best K from its draw_trace files may go in overrides). WPR-W3-1
+        PASS: 78 / 78, 10 / 10 valid, ETL there (2292 presents). Both NORMAL state (1259 / 1229 MB at +22 s); vm_snapshot
+        .json written (ebo2_PAUSE-W3_cpu_142434). Leak fit PAUSE-W3 -11 MB/min (min free 824), WPR-W3-1 -33 (min 901).
+        COORD 14:5x (leg-2 gap): overrides L_end_W3 680 -> 710 (CHK-W3 still heavy and rising at 649 s; KNOB-W3 then fits
+        all 25 items with len 22 from 128 s, last end 678 = L - 32; the own-end check is the safety net); t4i_ 'R7' SENT
+        (KNOB fit, generic own-end check, midnight hold per ebr_ (b)); er5o_ 'CAPS' SENT (caps_limits + offline bestKC from
+        PAUSE-W3's traces, cross-check AB-T); then ebr_ reads R7; then leg 3.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
