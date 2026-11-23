@@ -13164,6 +13164,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] exr_ review of exd_fix -> exd_ (aa144878f572855a7) fixes -> exr_ re-check -> coord merges into atn-mods (RC).
         - [ ] window-closed stress_test_log2 exit soak with the Exit Job Drain build (after ATN's restart; a game run:
         within the final bench's prep or its own short batch on ATN's go).
+        rvg_ RE-CHECK r2 22:2x (reviews/rvg_g24_design_review.md 'Re-check r2', rvg_g24_recheck_r2_handback.md; fixture runs
+        scratch\rvg_): NOT GO on 3 holes found by tiny fixture runs: R1 claims check only the ledger-listed traces (cover
+        every manifest trace; game-no-shadow per mesh), R2 '#! source+:' can add tier A (S / R only), R3 CAMERA / scale N/A /
+        self-scaled SCALED have no non-rule evidence (facts:static-chain / roots-world / roots-pixel; >= 1 positive + 1
+        negative control per rule; missing facts = PROBLEM). New SHOULDs S-r1..S-r5 (0x...u suffix, tag must match, --final
+        re-extracts facts, OWN table check + must-fail fixtures, prototype gap list). M3 / M5 / M6 / M7 + all SHOULDs closed.
+        COORD: g24_ resumed for revision 3.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
