@@ -685,7 +685,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - F5 real motion into NRD: add-on work outside dlaa_helper (gbr_), owner after ren ... | ?
 - g25_ to-run-later (after ATN's game): swatch images (g25_e_swatches.py) + WARP r ... | ?
 - G25 fix F1 + F2 (Expeditions lutbuilder + psycho35.hlsli parameter: wave 3, afte ... | ?
-- rvg_ review of g24_'s design -> g24_ (agent ad58e0a38a0841b09) fixes -> rvg_ re- ... | ?
 - rvh_ review of g23_'s designs -> g23_ (agent aabd3269fac6a9be6) fixes -> rvh_ re ... | ?
 - t4i_ (agent a085db550dc5dbe5c) final-bench data per eba_ §t4i_ (OFF / ALL / ALL+ ... | ?
 - RC: Exit job drain (exd_ + exr_), defaults, DRAW_RECORDING build or public C row ... | ?
@@ -702,6 +701,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - eba_ r2 -> ebr_ re-check -> t4i_ final-bench data; ATN Q9 (W3 Go < 8 ms) in the ... | ?
 - ETL evaluator proof on WPR-W3-5 b1.1 (driver-wait Go) while ATN is not playing, ... | ?
 - after the final bench: ebo_make.ps1:368 cut fold '-le' + a test with a cut on a ... | ?
+- G24 step 0 (checker + manifest + UE4 pack, Opus xHigh; core frozen after its rev ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13080,7 +13080,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         checker game-port-method/scripts/shader_audit.py (exit 0 done / 1 open / 2 census short / 3 rule control failed /
         4 only gap boxes pending -> coord copies boxes_pending.tsv); ~150k rows over 15 games, rule packs per engine;
         skill rows text-only (§10). ATN questions 42-49. COORD 21:5x: rvg_ (Opus xHigh, read only) reviews the design.
-        - [ ] rvg_ review of g24_'s design -> g24_ (agent ad58e0a38a0841b09) fixes -> rvg_ re-check; then the checker
+        - [x] rvg_ review of g24_'s design -> g24_ (agent ad58e0a38a0841b09) fixes -> rvg_ re-check; then the checker
         (M) and the audits in ATN's order (census pass CPU-heavy: no game / bench beside it, after the final bench).
         g23_ DONE 22:0x (handoff_plan/g23_designs.md, handbacks/g23_designs_handback.md): no bridge bump (fields into
         rr_v17 / fence_v30 / rt padding, reactive mask reuses rr_extra[COLOR_BEFORE]); 2a rescue = ONE process, NO time
@@ -13213,6 +13213,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         2f-1 sqrt flag cb0.x / cb0.y + EvaluateOptions{extra_written, exposure, fsr_sharpness} behind version >= 25; 2f-2
         version >= 30 + dlss_refused latched on the game thread). Two source confirmations for rvh_ (cb0.y readers, FFX
         UAV barrier). COORD: rvh_ re-check r2 sent.
+        rvg_ R3 GO 22:3x (reviews/rvg_g24_design_review.md 'Re-check r3', rvg_g24_recheck_r3_handback.md; L6_r3 probe):
+        G24 design revision 3 GO, no MUST. Step-0 NITs: n-r3-1 rules get a strict facts view of only their declared needs;
+        n-r3-2 .cso name hash = CRC32 of its bytes, manifest source first, same-hash-different-bytes = problem; L6_r3 joins
+        the must-fail fixture seed. ATN Q42-49 + Q58 unchanged.
+        - [ ] G24 step 0 (checker + manifest + UE4 pack, Opus xHigh; core frozen after its review) once ATN answers 42-49 /
+        58; the facts / census pass only with no game or bench (after the final bench).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
