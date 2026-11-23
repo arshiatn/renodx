@@ -172,12 +172,6 @@ namespace twattila::dlaa_helper {
 
 using Microsoft::WRL::ComPtr;
 
-// A Light Bounce request's paths a texel: one under Ray Reconstruction with ReSTIR GI, whatever Light Bounce Rays or
-// Match Output asked (its bias rose with the rays: G15's scorer; ATN 11-22), else the request's (1-16).
-constexpr uint32_t PathSamples(uint32_t asked, bool reconstructed_reuse) { return reconstructed_reuse ? 1u : std::clamp(asked, 1u, 16u); }
-static_assert(PathSamples(4, true) == 1 && PathSamples(16, true) == 1 && PathSamples(4, false) == 4 && PathSamples(0, false) == 1
-              && PathSamples(64, false) == 16);
-
 class RtScene12 {
  public:
   // The device on the game's GPU, with DXR 1.1 (1.2 through the Agility SDK in `folder`\D3D12 when the driver has shader
@@ -3875,7 +3869,9 @@ class RtScene12 {
             .bounce_scale = render_pixels ? 1u : std::max(shared.rt_bounce_scale, 1u),
             .flags = flags,
             .bounces = std::clamp(shared.rt_path_bounces, 0u, 8u),
-            .samples = PathSamples(shared.rt_path_samples, reuse && !reflections && (requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0),
+            // ReSTIR GI under Ray Reconstruction (the trace's RT_RECONSTRUCTED: also with REBLUR on the Light Bounce): one path a
+            // texel whatever Light Bounce Rays or Match Output asked (its bias rose with the rays: G15's scorer; ATN 11-22).
+            .samples = (reuse && (shared.rt_flags & dlaa_bridge::RT_RECONSTRUCTED) != 0) ? 1u : std::clamp(shared.rt_path_samples, 1u, 16u),
             .bounce_range = bounce_range,
             .reflection_range = std::clamp(shared.rt_reflection_range, 0.5f, 200.02019f),
             .sky_range = std::clamp(shared.rt_ambient_range, 0.1f, 100.000854f),
