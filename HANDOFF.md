@@ -676,6 +676,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord in the leg-2 gap: KNOB-W3 fit (reorder / len 22) + generic own-end check + ... | ?
 - after batch: ebr_ read 5 NIT 1 (B1 L2 lines by window number), NIT 3 (own-end ru ... | ?
 - after batch: ebr_ R8 delta SHOULD-1 (held / lost plan without check.json = NOTE, ... | ?
+- crash 1 (leg 3 KNOB-W3-c613 exit AV) root-caused + fixed before the final bench ... | ?
+- leg 4 part A (by 20:25) then part B after ATN's 'done'; Steam non-elevated by AT ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12954,6 +12956,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORD 16:3x: SHOULD-1 deferred (no agent during legs; leg 4 ~19:1x-22:1x needs no hold): if a hold ever happens,
         coord reads that gate line by hand. LEG 3 STARTS NOW (dry run first). QUIET during the leg.
         - [ ] after batch: ebr_ R8 delta SHOULD-1 (held / lost plan without check.json = NOTE, not PROBLEM) + NIT 1 / 2.
+        LEG 3 16:36-18:38 (state\leg3_gate.json, leg3_analysis.txt): gate FAIL only from 'KNOB-W3-c613: STOP lines: 1
+        (exception)' = CRASH 1: unpinned, rule 0, at 780.414 s (after the last segment, while CloseMainWindow closed the
+        game): AV read 0x0 at empire.retail.dll+0x16B42E8, thread 17576 ('worker thread' in heapfix.log); dump
+        bench\runs\ebo3_KNOB-W3-c613_cpu_180513\1_KNOB-W3-c613\new_game_files\crash_20261123_181834.dmp. Runner retried
+        as KNOB-W3-c780 with 0 segments left (a full 17-min replay, PASS, no crash). Every other start PASS; all NORMAL;
+        KNOB-W3 memory guard closed at 613 -> c613 (3 segments). REF-H / REF-P: no L_end inside 620 s (L_end_W3 710
+        stands). bestK '6'. KNOB: K2 +12.9 / K6 -1.2 (REF +0.3) / K8 -4.7 (REF -2.8) vs K4; KRCF=1 WU=1 -5.6 (REF -11.0);
+        sched=bulk +12.7; hfthreads=8 -2.8; b2.22 K16 ALL USERS 135.5 ms vs b2.21 K4 115.4 (+20 ms, no delta: b2.23 cut);
+        b2.24 K16 + caps (C only) -3.26 ms (se 0.31) vs K4.
+        COORD 18:4x: ecr_ 'CRASH ROOT' SENT (Opus xHigh, read only: thread owner, stack, our fault?, recurrence, fix
+        design, leg-4 mitigation); t4i_ 'R9' SENT (no retry when a crash leaves 0 segments, counting unchanged; ebr_ R8
+        SHOULD-1 held / lost = NOTE) + ADDENDUM (state\hold_at.txt clock deadline hold, same mechanism as the midnight
+        hold, ATN's command unchanged; leg-4 'K=@bestKC' items -> 'limits=@caps_limits'; where bestK 6 comes from).
+        ATN 18:5x: plays at 20:30 -> leg 4 in two halves: part A ~19:25-20:25 (hold_at 20:25), part B after ATN says
+        done (~01:00-02:00). While ATN plays: plan work (designs / code / reviews / low-priority builds), no games, no GPU
+        runs.
+        - [ ] crash 1 (leg 3 KNOB-W3-c613 exit AV) root-caused + fixed before the final bench (ecr_).
+        - [ ] leg 4 part A (by 20:25) then part B after ATN's 'done'; Steam non-elevated by ATN.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
