@@ -659,7 +659,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G10 BEFORE the wave-2 G21 + G02 merge: part 29 list renames + CLAMP + TestShared ... | ?
 - g02_ next wave: r1 (if the hook can't run in PsychoV35, b4 keeps the game's last ... | ?
 - lg3_ / engine_code owner after the batch (er5o_ m3): engine stubs page = plain A ... | ?
-- coord at READY: checklist done -> READY message -> `shutdown /s /t 60` (one-time ... | ?
 - t4i_ after T6: ebo_check.ps1 job line from $lines (not $log); optional: the Unha ... | ?
 - t4i_ after the batch: draw_trace.file_mb from leg 1's real sizes; memory=1 lines ... | ?
 - coord after leg 1 (ebr_ NIT): PAUSE-W3 ring / B2 'otherwise into 100-330' has no ... | ?
@@ -12558,7 +12557,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 23:35: at READY SHUT DOWN the PC instead of restarting (he hears it go off, powers on later, opens Claude,
         says go). Same checklist first; `shutdown /s /t 60` (plain /s = full shutdown, a clean boot like a restart).
         Saved: memory feedback_shutdown_when_done + resume_point.md s1 step 1.
-        - [ ] coord at READY: checklist done -> READY message -> `shutdown /s /t 60` (one-time, this end batch).
+        - [x] (DONE 01:4x 11-23) coord at READY: checklist done -> READY message -> `shutdown /s /t 60` (one-time, this end batch).
         t4i_ ER5O FIXES DONE 23:3x (render_mt/reports/t4i_er5o_fixes_handback.md): gates.json crash.job_line
         `(?i)\(thread (\d+), crash on pool worker (\d+) in (\w+)'s job` + new key unhandled (device_loss.hpp:294);
         ebo_check.ps1: the add-on's Unhandled line picks heapfix's EXCEPTION line of its thread (a handled first chance
@@ -12642,6 +12641,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         *.sys: 975 files, 7.4 GB) -> D:\Dev\scratchpad_copy_1122 (46.7 GB, 932666 files, 0 FAILED; log
         D:\Dev\scratchpad_copy_1122.log). Not on C: (57 GB there would leave ~109 GB, under the batch's 160 GB gate). One
         more pass right before the shutdown.
+        ebr_ T6B RECHECK 01:3x (render_mt/reports/ebr_t6b_recheck_handback.md): GO FOR READY. One-place change (:454
+        $measured); no memory line inside a measure window in any of the 32 starts (lines in measured segments at start +
+        1 s, inside the 3 s settle); only PAUSE-W3's 6 new lines moved; the 5 remaining gaps (64-80 s) are fine (an 80 s
+        gap needs ~10 MB/s to beat the 768 MB / 128 MB guard; -Sample logs memory every 2 s); variants = the T6 read except
+        PAUSE-W3's memory list (9 -> 15 lines, 355 -> 361 entries).
+        READY 01:4x 11-23 (DRAIN COMPLETE): every agent handed back (ListAgents: none running); no build / game / helper /
+        WPR / Nsight process (only the 9 handle-held zombie engine_code.exe, cleared by the shutdown); no locks; commit
+        ~31-35 GB; C: 166 GB free. resume_point.md READY update written (frozen inputs + hashes, before-leg-1 and
+        between-legs checks, after-batch boxes); memory project_resume_point_1122 + feedback_shutdown_when_done updated.
+        Coord shuts the PC down now (ATN 23:35); after power-on wait for ATN's "go", then the end batch.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
