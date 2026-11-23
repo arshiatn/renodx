@@ -12859,6 +12859,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 14:3x: Expeditions' sky looked purple at Hue Clip 0; wants the sky cap as an option to decide later -> plan.md
         G23 1e (default = current; at 50 ours = his; above 50 ours puts sky-ordered pixels past the SDR sky toward cyan,
         his stops at it; purple pixels (r > g) get no x2 in either: the cap does not change them).
+        ATN 14:4x (correction): in Expeditions Hue Clip 30-50 looks right for fires but the sky stays not blue; only much
+        higher values make the sky right -> suspects our Expeditions HDR chain. plan.md G25 'Expeditions HDR chain audit'
+        (offline: film path, blue correction, HueTransfer reference vs the game's real SDR, sky / fire OkLab hue per Hue
+        Clip; then Tales). G23 1e stays as an option idea.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
