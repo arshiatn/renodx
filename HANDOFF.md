@@ -671,7 +671,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the batch: name the LOW-state holder from the +25 s snapshots; report to A ... | ?
 - after the batch (er5o_): LOW / NORMAL state vs the stuck Attila.exe (09:34:15) + ... | ?
 - coord before leg 2 (moved up 12:5x): t4i_ LEG2 MAKE, ebr_ read 4; after leg 2 ch ... | ?
-- ldv_ HELPER COMPARE hand-back -> G23 items + ATN summary. | ?
 - after the GPU plan's final review: remind ATN to send ldavid1994 the newest help ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -12809,12 +12808,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         D:\Dev\ext_review\ldavid1994_batmanac_1123 (never built / run); ldv_ (Opus xHigh, read only) compares it with
         dlaa_bridge + dlaa_helper + the non-TW upscalers; plan.md G23 added (study, ports after the final bench, ATN's call on
         a second-vendor reviewer: privacy limits). ldv_ must finish or pause before leg 2 (no agent during legs).
-        - [ ] ldv_ HELPER COMPARE hand-back -> G23 items + ATN summary.
+        - [x] ldv_ HELPER COMPARE hand-back -> G23 items + ATN summary.
         ATN 13:2x: no credit for ldavid1994 needed (he may use ours, we may use his fixes; ATN sends him our newest helper
         after the GPU plan's final review). Second reviewer DECIDED: FINAL reviews only add Sonnet 5.5 High in parallel with
         Opus xHigh (independent; implementer fixes both); no other vendor. ldv_ also maps his motion classes against ours
         per game (ATN thought we cover every mover: render-scale-dlss.md s2 lists the usual gaps). plan.md G23 updated.
         - [ ] after the GPU plan's final review: remind ATN to send ldavid1994 the newest helper.
+        ldv_ HELPER COMPARE 13:4x (render_mt/reports/ldv_helper_compare_handback.md): his helper = a slimmer copy of ours;
+        6 of his fixes ours already has (no CPU wait after frame 1, 10 s FSR idle free, watcher, teardown, jitter shift,
+        unjittered motion); his is worse on 8 points (endless rescue, names not handles, FSR context on the request thread,
+        no job object, truncated log, exits on device loss, 5 s first answer, deprecated bias mask). Take: bounded longer
+        rescue (a hang we never saw), D3D11 idle before NGX ReleaseFeature (NVIDIA 5.5), 32 phases for upscalers, D1 / D2
+        object motion by stream replay, A/B LOD -1 at 100 % + fixed exposure on K; smaller FSR items. No perf to take.
+        Motion table: Attila covers skinned / cloth / props / wind / ocean; gaps: particles (all games), D1 / D2 camera
+        only, WH3's listed families, banners partial, UE WPO likely. plan.md G23 rows 2a-2h (after the final bench).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
