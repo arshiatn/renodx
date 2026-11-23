@@ -670,6 +670,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the batch (ebr_ t6 read 2 NITs): ebo_check.ps1:105-110 late row after the ... | ?
 - coord between leg 1 and leg 2: ebr_ recheck of t4i_ t6 round 3; A/B reading (er5 ... | ?
 - coord before leg 2: t4i_ collided-arm rule + leg 1 gate PASS offline; er5o_ A/B ... | ?
+- after the batch: name the LOW-state holder from the +25 s snapshots; report to A ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12754,6 +12755,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORD 10:5x: t4i_ 'collided arm' rule (pool 'ignored' line at the same present = NOTE, not MISSING) + offline
         re-analyze of leg 1 + leg 2-4 dry runs; er5o_ reads the A/B; then ebr_ re-checks t4i_ round 3 + the new rule.
         - [ ] coord before leg 2: t4i_ collided-arm rule + leg 1 gate PASS offline; er5o_ A/B verdict; ebr_ GO.
+        er5o_ AB READ 11:1x (render_mt/reports/er5o_ab_read_handback.md; testbin\scratch\er5o_\leg1): no config causes the
+        offset. Each game process lands in one of two address-space states 15-21 s after start (before our code runs):
+        LOW (game_virtual_mb at +21 s 1469-1505: all of run 1, AB-A, AB-B) or NORMAL (1229-1266: later run 2, final1118);
+        LOW = ~240 MB less free (reserved / mapped / image, private equal); holder NOT identified. Config costs (normal,
+        free at T0+76 s): prep 2 / 3 ~0, rows -50, checks -50 (block -150), traces ~0, MAP_TRACE ~0. The -330 MB/min slope
+        is the fit from the menu sample (battle load); starts settle by ~75 s. Legs 2-4 normal state: safe except FT-W3b
+        tight, PAUSE-W3 / KNOB-W3 trip only at the worst slope (-23 MB/min); LOW state: most W3 starts would trip.
+        COORD 11:1x: no src / DLL fix; no relaunch logic (a continuation is a fresh process). t4i_ COLLIDE part 2: leak
+        fit from T0+75 s; per-start state LOW / NORMAL / UNKNOWN (+21 s, > 1400 / < 1300) + mixed-state pair NOTE; L_mem
+        only from NORMAL measuring trips (LOW / UNKNOWN trip = own start + continuation, batch.json low_guard_trips);
+        read-only bench-side address-space snapshot at ~+25 s (VirtualQueryEx + mapped names, top 10 non-private) to
+        name the holder; a fix outside our code (driver / overlay / system) = ATN's call later.
+        - [ ] after the batch: name the LOW-state holder from the +25 s snapshots; report to ATN with the fix options.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
