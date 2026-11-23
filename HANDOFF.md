@@ -13227,6 +13227,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         script), excess +18 (flagged; clean option WPR-W3-4 b1.1 +2.1). §9 FINAL-BENCH DATA SPEC: 38 starts ~3.5 h (+ R1
         ABBA 4, campaign 4, W3 OFF soak; HSG2 starts dropped), WPR 95-130 s, stall / overflow / excess / cap rules, row-by-
         row branch (~50 min) + ALL +L1 ready. ATN Q1-Q10 (eba_'s picks). COORD: ebr_ re-check of rev 2 sent.
+        rvh_ R2 22:3x (reviews/rvh_g23_designs_review.md 'Re-check r2', rvh_g23_recheck_r2_handback.md): GO 2a / 2b / 2e-1
+        / 2e-2 / 2f-2 / 2f-3 / 2f-4 / 2i and 2f-1 at 100 %; NOT GO 2f-1 below 100 %: M3 rr_extra_scaled layer 0 reads t1
+        (the particles' second draw, skipped for FSR -> mask everywhere; FSR takes RR's whole colour-before path below
+        100 %), M4 taa_dlss.hpp:860 must restore SquareRootInput(reconstruct) ? 1 : 0. cb0.y free (settled); FFX 3.1 inserts
+        the UAV barrier itself (ours kept for FSR 4). NITs 2b-N4 / N5, 2f-2-N2. COORD: g23_ revision 3 sent (rollout WH3
+        at 100 % first, below 100 % second).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
