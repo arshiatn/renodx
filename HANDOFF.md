@@ -668,6 +668,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after the batch (er5o_ rmt_stk NITs): effect_update.hpp:396 trailing comment ali ... | ?
 - after the batch (er5o_ leg1 cause): memory guard also on largest free block < 25 ... | ?
 - coord after the leg 1 re-run: paused_runs value -> PAUSE-W3 decision (t4i_ item ... | ?
+- after the batch (ebr_ t6 read 2 NITs): ebo_check.ps1:105-110 late row after the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12719,6 +12720,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         PROBLEMs PAUSE-W3's R1 ring / B2 hfthreads sweeps + B3b-alone shots (t4i_ pick: sweeps anyway, trace only; B3b
         picture only if proven paused). ebr_ 't6 read 2' SENT (GO / NO-GO for the leg 1 re-run).
         - [ ] coord after the leg 1 re-run: paused_runs value -> PAUSE-W3 decision (t4i_ item 8, ebr_'s view) before leg 2.
+        ebr_ T6 READ 2 09:0x (render_mt/reports/ebr_t6_read2_handback.md): GO for the leg 1 re-run. MUST-1 (before leg 3):
+        the diagnostic default (ebo_make.ps1:613) also catches 16 measuring starts (REF-H / REF-P / VOL-L1 / D1-OFF-a,b /
+        D1-ALL-a,b / LQ-W3 / 8 HF-*). SHOULD-1 CHK-W3 last in leg 1 (it will likely trip again at 90-120 s); SHOULD-2 AB-T
+        (mt_trace) + AB-M (MAP_TRACE) starts; SHOULD-3 Get-EboLockState fails open on a WMI error / unreadable command
+        line. Verified: freeze diff, sha, corpus 203 ok, gates, late rule, AB mapping, nothing else moved. Item 8: sweeps
+        in the pause anyway (drop the if), B3b-alone shots only with an mt_trace=10 proof at 823.
+        COORD 09:0x: all of MUST-1, SHOULD-1..3, the -le -> -lt NIT and item 8 now -> t4i_ 't6 round 3' SENT (then run_all +
+        4 T6 dry runs); leg 1 re-runs after it. Order: AB x 6, AB-T, AB-M, CHK-D1, CAMP, CHK-W3.
+        - [ ] after the batch (ebr_ t6 read 2 NITs): ebo_check.ps1:105-110 late row after the measured part (compare with
+        the next shot); ebo_check.ps1 CRLF -> LF from a heredoc edit; ebo_analyze.py:366-370 superseded rule with a
+        check.json.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
