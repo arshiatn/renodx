@@ -682,6 +682,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - after batch: ebr_ R9 SHOULD-1 optional code (any crash at / after the close boun ... | ?
 - eba_ end-batch analysis (legs 1-4): keep / revert per row, defaults + variants f ... | ?
 - exr_ (Opus xHigh) review of exd_ once exd_ hands back (start before 00:00, else ... | ?
+- gbf_ (agent abbb04cc6b11ea037) fixes gbr_ M1 + S1-S3 (+ NITs), gbr_ re-checks; w ... | ?
+- F5 real motion into NRD: add-on work outside dlaa_helper (gbr_), owner after ren ... | ?
+- g25_ to-run-later (after ATN's game): swatch images (g25_e_swatches.py) + WARP r ... | ?
+- G25 fix F1 + F2 (Expeditions lutbuilder + psycho35.hlsli parameter: wave 3, afte ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13030,6 +13034,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         round 24 (Opus High, stage24, no golive), g25_ Expeditions chain audit, g24_ shader-audit design, g23_ designs
         2a / 2b / 2e / 2f (Opus xHigh).
         - [ ] exr_ (Opus xHigh) review of exd_ once exd_ hands back (start before 00:00, else after ATN's restart).
+        ATN 21:4x: 'max 2 writing sub agents until I finish my game' (no stutter): only exd_ + gtp_ run heavy steps (one at
+        a time); eba_ / gbr_ / g25_ / g24_ / g23_ read + write docs only (memory feedback_atn_gaming_load.md).
+        gbr_ DONE 21:4x (plan_1117/gbr_gbf_review.md + gbr_gbf_review_handback.md): ho_gbf c06631267 NOT GO on ONE MUST:
+        M1 rt_d3d12.hpp:3878 ATN 7's 1-ray cap keys on RT_PATH_RECONSTRUCTED, which the add-on clears when REBLUR cleans
+        Light Bounce (rt_core.hpp:3781 / 4355) -> RR + 'AO under RR' = REBLUR + PT AO still gets 4-16 rays; fix: key on
+        shared.rt_flags & RT_RECONSTRUCTED. SHOULD S1 planar fold skips sky / depth-edge neighbours (rt_path.hlsli:1327),
+        S2 grass blocker distance from an accept-first query (rt_trace.cs_6_5.hlsl:364, SIGMA), S3 PathSamples single-use
+        helper, S4 GPU job gaps (debug layer + NRD SIGMA, release_nrd memory, LTL under NRD, M1 row, slope reading). 11
+        NITs. Merge clean. All 8 GPU jobs + reference re-makes still owed.
+        - [ ] gbf_ (agent abbb04cc6b11ea037) fixes gbr_ M1 + S1-S3 (+ NITs), gbr_ re-checks; when a writer slot frees /
+        after ATN's restart. Then the 8 GPU jobs + S4 additions + reference re-makes (GPU, not while ATN plays).
+        - [ ] F5 real motion into NRD: add-on work outside dlaa_helper (gbr_), owner after render_mt releases twattila.
+        g25_ DONE 21:4x (handoff_plan/handbacks/g25_chain_audit_handback.md, g25_done_summary.md; numpy model scratch\g25_):
+        Expeditions sky ROOT CAUSE: the Hue Clip reference skips UE Expand Gamut (our HDR rule) but the game's SDR has it
+        (~half the bright-sky shift to cyan), so no value matches the sky except the uncapped x2 overshooting; r ~ g purple
+        pixels stay 3-7 deg off at every value; x2 was fitted on test/tw_psychov35 part 5's curve 4 (= the reference itself).
+        With the true reference: sky best ~80, fire ~90 (same strength). Second cause: bright sky 2-6x more saturated than
+        SDR. Fixes: F1 reference from grade(expand(ap1)) only (bug fix, shared block lut00-04 into one function), F2 cap
+        (V2 keep x2 capped / V3 drop x2; per-call parameter in psycho35.hlsli -> wave 3), F3 default by eye, F4 optional
+        OkLab chroma, F5 WARP check on real lut01 bytes. Tales: same code, likely legacy curve (F1 no-op), F2 + re-measure.
+        ATN questions 37-41 in atn_questions_groups.md (coord's picks marked).
+        - [ ] g25_ to-run-later (after ATN's game): swatch images (g25_e_swatches.py) + WARP real-lut01 check (progress.md).
+        - [ ] G25 fix F1 + F2 (Expeditions lutbuilder + psycho35.hlsli parameter: wave 3, after render_mt releases
+        twattila files) once ATN answers 37 / 38; then Tales F2 + cb0 re-measure.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
