@@ -12863,6 +12863,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         higher values make the sky right -> suspects our Expeditions HDR chain. plan.md G25 'Expeditions HDR chain audit'
         (offline: film path, blue correction, HueTransfer reference vs the game's real SDR, sky / fire OkLab hue per Hue
         Clip; then Tales). G23 1e stays as an option idea.
+        t4i_ R6 14:2x (render_mt/reports/t4i_r6_handback.md): MUST-1 0.5 s back (ebo_check ~:100 / ~:109, late_edge +
+        late_band tests), SHOULD-1 P keys kept in continuations (+ test), NIT 1 Used flag (collided3_same_ms test); test
+        fake overrides no longer copy coord's real L_end vars; run_all green; dry runs legs 2 / 3 / 4 CLEAN. With L_end_W3
+        680 KNOB-W3's last 5 items (hfthreads tail, limits=@caps_limits, limits=) are cut: caps_limits then changes nothing.
+        COORD 14:2x: ebr_ 'R6 DELTA' SENT (GO for leg 2) + view on the leg-2 gap plan: (a) KNOB-W3 own end self-check, then
+        L_end_W3 780; (b) midnight hold in ebo_leg (stop before a start that would cross 00:00); (c) caps_limits from
+        PAUSE-W3's per-user traces.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
