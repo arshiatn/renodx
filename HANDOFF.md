@@ -665,6 +665,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord before leg 1: no build tool running (the 00:57 dry run refused on 'build t ... | ?
 - after the batch (ebr_ NITs): R2 does nothing in the -C / C D segments (read as C ... | ?
 - coord: after er5o_ + t4i_ hand back: decide the fix (src = re-freeze, set data o ... | ?
+- after the batch (er5o_ rmt_stk NITs): effect_update.hpp:396 trailing comment ali ... | ?
+- after the batch (er5o_ leg1 cause): memory guard also on largest free block < 25 ... | ?
+- coord after the leg 1 re-run: paused_runs value -> PAUSE-W3 decision (t4i_ item ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -12692,6 +12695,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         memory every 15 s) first in the leg 1 re-run, as data under ebo_run -Leg 1; (4) ebo_run dry runs treat our own
         held locks as a NOTE (no -Locks release: not an ATN rule); (5) re-run ALL of leg 1 from clean state (state moved
         aside, ebo1_* run folders kept); crash budget untouched.
+        rmt_stk MERGED 08:0x (atn-mods 832cc4a22): stk_ 355055b8b WORKER_STACK_BYTES 1 MB + 339bd1031 stack headroom line
+        split ('stack headroom W KB, walk thread R KB.' / workers only / 'walk thread R KB.'; the gate reads only the
+        workers). er5o_ GO + r2 GO (render_mt/reports/er5o_rmt_stk_review_handback.md, er5o_rmt_stk_r2_review_handback.md;
+        stk_ hand-backs stk_rmt_stk_handback.md / _r2_). t4i_ GO for the re-freeze: t5_1122c from 832cc4a22 like t5_1122b,
+        manifest + V refs, SHOULD-1 (gates.json:888 b1_trace_window lookahead + '| walk thread', test_lib fixtures), items
+        5 / 6 / 8 / 9 / 10, T6 dry runs; then ebr_ T6 read; then leg 1 re-run.
+        - [ ] after the batch (er5o_ rmt_stk NITs): effect_update.hpp:396 trailing comment alignment (clang-format);
+        NoteStackHeadroom parameter name least_for_thread -> window_least; harness 26f bound `< 1024` ->
+        WORKER_STACK_BYTES / 1024 (test/tw_engine_code/effect_update.inc:1380-1387); a walk thread 512 KB-1 MB deep now takes
+        the fast path (slow-path trace counts shift a little vs leg 1); headroom includes the never-usable overflow area.
+        - [ ] after the batch (er5o_ leg1 cause): memory guard also on largest free block < 256 MB (ATN's OK; not mid-batch);
+        C's 32 MB op arena reserve at attach (boxed earlier) if the A/B shows rows cost address space.
+        t4i_ LEG1 TOOLS 2 + REFREEZE 08:4x (render_mt/reports/t4i_leg1_tools2_handback.md): add-on
+        testbin\cpu1_addons\t5_1122c\renodx-twattila.addon32 25b6e1ee...9175 (832cc4a22, FP + DRAW_RECORDING, unstamped;
+        sym_build_head new opt-in -StaleBatchLockOk for our own stale quiet_run.lock); manifest.json sha 2552f812...729a
+        (line refs moved, test_names 6/6 at 832cc4a22); SHOULD-1 done; plans get `diagnostic` (CHK + AB starts: a guard trip
+        closes only its own start, batch.json diag_guard_trips, never L_mem); 6 AB starts first in leg 1 (AB-A hfx OFF /
+        -B prep hfmode 0 / -C prep +B2 / -C3 prep ~B2 / -D hfx ALL -B2 / -E hfx CHECK -B2 + check envs; W3 150 s, memory
+        every 15 s; +~22 min); Get-EboLockState (free / other / ours / ours_live; dry runs NOTE on ours); old state MOVED to
+        ebo\aside\leg1_run1_20261123_081539 (moved.txt); run_all green; 4 T6 dry runs CLEAN (9 / 2 / 9 / 18 starts).
+        paused_runs empty = CHK-W3's pause (330-370 s) never reached; if still empty after the re-run the real leg-2 make
+        PROBLEMs PAUSE-W3's R1 ring / B2 hfthreads sweeps + B3b-alone shots (t4i_ pick: sweeps anyway, trace only; B3b
+        picture only if proven paused). ebr_ 't6 read 2' SENT (GO / NO-GO for the leg 1 re-run).
+        - [ ] coord after the leg 1 re-run: paused_runs value -> PAUSE-W3 decision (t4i_ item 8, ebr_'s view) before leg 2.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
