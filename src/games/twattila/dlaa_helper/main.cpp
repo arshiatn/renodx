@@ -1413,7 +1413,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   for (auto& parked : parked_generations) {
     parked.release();
   }
-  // Its work can only finish with the game's GPU, which is gone: no wait for it.
+  // Their work can only finish with the game's GPU, which is gone: no wait for it.
   stalled_scene.release();
+  backend.Abandon();
   return static_cast<int>(exit_code);
 }
