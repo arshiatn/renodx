@@ -805,6 +805,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - p4i_ (FABLE 5.2 MEDIUM TRIAL, worktree) PK4 S1 infra on fca_pk4: 64-bit masks + ... | ?
 - ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; ... | ?
 - PK2 implementer (engine code: Fable Medium if p4i_'s trial isn't blocked, else S ... | ?
+- p1i_ (Opus xHigh, worktree) PK1 P1-P5 on fca_pk1: buffer_pool.hpp (P1 / P2), obj ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14585,6 +14586,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         step 0 (no new revision). t4i_ got the parser notes.
         - [ ] PK2 implementer (engine code: Fable Medium if p4i_'s trial isn't blocked, else Sonnet xHigh) - waits for PK1
         stage 1 + PK3 S1 merged; bench starts need ATN's Q-F rule for RENODX_TW_THREAD_PARTS.
+        pk1_ REV 1.1 DONE (pk1_rev11_handback.md): coord ACCEPTS R-M1 taken to its end - all PK1 runs (incl. 6.2 (a)'s
+        lists) go through the NEW script tools/tw/bench/analysis_b2/replay/pk1_harness_runs.ps1 (-Pk1 ~25 min, -Pk1Focus);
+        ATN's atn_harness_runs.ps1 stays byte-identical; PK1 no longer waits for F0 (advice: leave the runner as the
+        old-ring reference). R-S1 turn order + new WARP case (> 8,192 runs, new soldier each draw). Race accepted.
+        - [ ] p1i_ (Opus xHigh, worktree) PK1 P1-P5 on fca_pk1: buffer_pool.hpp (P1 / P2), object_motion.hpp (P3),
+        addon.cpp + render_mt_defaults + README (P4; p1i_ = sole addon.cpp writer now), tw_map_replay + the new script
+        written, not run (P5). Overlap checked vs p3i_ / p4i_ / s1a_ (light_bounce*, shared.h) / sse_. -> P7 Opus review.
+        P6 waits for ATN's F1 / F2 rule lines (exact text in pk1_rev11_handback.md).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
