@@ -719,7 +719,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - sym_build_head.ps1: a real clean-tree check that works with junctions (after the ... | ?
 - Before the RELEASE (after the bench's Go; exit-path / test only, no re-bench): l ... | ?
 - ebr_ SHOULD 1 (before the noheapfix follow-up's eval): the address-space Go coun ... | ?
-- heapfix exit crash (5 / 40 exits): one-line pin GetModuleHandleExW(PIN) at heapf ... | ?
+- Heapfix author package (after render_mt is fully done): add the one-line pin Get ... | ?
 - Bench gap: per start read WER Event 1000 / CrashDumps\Attila.exe.<pid>.dmp in th ... | ?
 - Game exit race: a second drain at +0xD5D74 or the call at +0xC9AAF (engine_code, ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -13527,8 +13527,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         DINPUT8.dll_unloaded+0x7E60 (heapfix's handler + unhandled filter never removed, diag.c:892-893; the game unloads
         HFx_dinput8 at exit) = the 5 'no clean process end' NOTEs; OFF and ALL alike, older than this RC. 4 zero-thread
         Attila.exe = WER reflection copies. Memory reference_wer_exit_crashes.md.
-        - [ ] heapfix exit crash (5 / 40 exits): one-line pin GetModuleHandleExW(PIN) at heapfix.c:634 -> ATN decides: the
-        author package (via ATN only) and / or our add-on pinning heapfix's dinput8.dll as a stopgap for players.
+        - [x] heapfix exit crash (5 / 40 exits): ATN 2026-11-24 DECIDED: only the author's fix; our add-on does NOT pin it.
+        - [ ] Heapfix author package (after render_mt is fully done): add the one-line pin GetModuleHandleExW(FLAG_PIN) at
+        heapfix.c:634 + the WER evidence (fcr_f31_exit_crash.md: DINPUT8.dll_unloaded+0x7E60, diag.c:892-893).
         - [ ] Bench gap: per start read WER Event 1000 / CrashDumps\Attila.exe.<pid>.dmp in the close path
         (constantinople_bench.ps1:1124-1146): DINPUT8.dll_unloaded + the game-race signature = RECORDED, other = counted
         (the budget is used). -> t4i_ after the reruns session, before wpr_analysis; ebr_ glance.
