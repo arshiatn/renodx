@@ -1302,6 +1302,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "light_bounce_checkerboard", .section = section, .shown = more_search});
     page.Take({.match = "light_bounce_backface", .section = section, .shown = more_search});
     page.Take({.match = "light_bounce_auto_thickness", .section = section, .shown = more_search});
+    page.Take({.match = "light_bounce_directional", .section = section, .shown = more_search, .only_some_games = true});
     page.Take({.match = "light_bounce_msaa_pixel", .section = section, .shown = more_on, .only_some_games = true});
     page.Take({.match = "GlobalIlluminationGameSky", .section = section, .shown = more_on, .only_some_games = true});
     const auto more_paths = more(&more_gi, gi_is(GI_PATHS));
