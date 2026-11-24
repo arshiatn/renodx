@@ -784,6 +784,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (pk2_): Q-A X1 row default On?; Q-B no PK2 run of its own (data-run trace wi ... | ?
 - B3 interface conflict pk3_ (helper twattila::PrefetchRead in prefetch.hpp) vs pk ... | ?
 - ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-dif ... | ?
+- s1a_ (Opus xHigh, worktree, branch sh_s1a) implements S1a with M1 + S1-S3 + S5 i ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14376,6 +14377,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> rvg_ light re-check of r2 + fill order advice (rvg_g24_step1_r2_recheck.md) -> then the fill (3).
         Note: 4 zombie Attila.exe (0 threads, ~400 KB each, since 05:28-07:33) still held by some parent; harmless; not
         ours to kill - a reboot clears them (only when ATN asks).
+        rvs_ SHG REV 1.1 GO FOR THE S1a IMPLEMENTER (plan_1117/rvs_shg_recheck_r11.md + _handback.md; 1 MUST brief-only /
+        5 SHOULD / 4 NIT): curve, beta, w rewrite order, After Blur mechanics, AO storage, Toru, 9.1 all accepted; ho_g23
+        hunks in graphics_page.hpp don't overlap. M1: V1 item 4 at b = 2 / 4 / 8, beta picked at b = 4 (Quarter), beta 0
+        fallback + look-risk numbers, never blocks. S1 RT chain (NRD on: no beta) + apply-side contingency; S2 exact
+        per-texel inputs + error / detail; S3 clamp transport [0, 4]; S4 After Blur gated on AmbientReplaced + red-only
+        write mask (S1b); S5 page.Take last commit.
+        - [ ] s1a_ (Opus xHigh, worktree, branch sh_s1a) implements S1a with M1 + S1-S3 + S5 in its brief -> rvs_ code
+        review -> coord merge. GPU timing -> coord's GPU window.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
