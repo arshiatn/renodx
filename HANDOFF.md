@@ -14612,6 +14612,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         removal; add guard tests the node's own flag; key snapshot in check mode (start vs END). Sites 31-34 all or none.
         Code page 1: add guard +0x00, clear guard +0x40, PK5 from +0x80 (PK5's sites start at 35). -> rv4_ re-check S3 /
         S4 / gates (sent); t4i_ got the bench needs.
+        g24_ FILL PART 2 (handoff_plan/handbacks/g24_fill_part2_handback.md): step 4 scale - ue-mesh-uv-ps-b (195) +
+        ue-svpos-ps-b (94), controls in both games (ho_g24 54383835c, pack a2f28e243ef7); 13.8 core (baa953c3d): games
+        key, scene depth by address, host-state cross-checked, X2; selftest 73/73, mutation 8/8; 2 CAPTURED reopened as
+        predicted. Expeditions 1,622 settled / 17,164 open; Tales 530 / 20,891. Findings: CS thread id read as a pixel
+        root (fixed-size CS settled SCALED?), SCALED rule without 'view' skips the tripwire, mesh-uv not cross-checked.
+        Rule slips: two heredoc patches + one sed (noted). -> rvg_ re-check 13.8 + step-4 rules + findings (sent;
+        rvg_g24_138_recheck.md), then gsr_'s route review.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
