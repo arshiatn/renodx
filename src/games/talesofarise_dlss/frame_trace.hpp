@@ -39,14 +39,18 @@
 // use. Its events are registered only for the traced frame.
 namespace talesofarise::frame_trace {
 
+// A game's, OnPresent's.
+struct Options {
+  // The View uniform buffer's ViewSizeAndInvSize row, BufferSizeAndInvSize the next: UE 4.21's c122 (the TAA's b1,
+  // README); 4.23's c126 (ClipToWorld came before it).
+  uint32_t view_size_row = 122;
+};
+
 namespace internal {
 
 using Microsoft::WRL::ComPtr;
 
 constexpr uint32_t MAX_LINES = 12000;
-// UE 4.21's View uniform buffer: ViewSizeAndInvSize at c122, BufferSizeAndInvSize at c123 (the TAA's b1, README).
-constexpr UINT VIEW_SIZE_CONSTANT = 122;
-constexpr UINT BUFFER_SIZE_CONSTANT = 123;
 
 struct State {
   std::mutex mutex;
@@ -58,6 +62,8 @@ struct State {
   // Each traced shader's declared texture slots (" decl t0 t3"), its code saved once when first seen.
   std::unordered_map<uint32_t, std::string> declared;
   std::string game = "tales";  // the files' names: <game>_frame_trace.txt, <game>_frame_trace_shaders
+  // Set before a trace starts and only read while it runs (D3D11's immediate context: no draw while the present runs).
+  Options options;
   HANDLE folder_changes = INVALID_HANDLE_VALUE;  // the exe folder's file names (scripted runs: renodx_trace_now)
   std::string status = "No frame trace yet.";
 };
@@ -121,15 +127,17 @@ inline void Append(std::string line) {
 }
 
 // Unreal's view and buffer size from the first bound constant buffer that holds a View uniform buffer (read back
-// through a staging copy; a buffer counts when c122 / c123 are sizes with their inverses), else empty.
+// through a staging copy; a buffer counts when Options' view size row and the next are sizes with their inverses), else
+// empty.
 inline std::string DescribeUnrealView(ID3D11DeviceContext* context, const std::array<ID3D11Buffer*, 14>& buffers) {
+  const uint32_t view_row = state.options.view_size_row;
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
   for (ID3D11Buffer* buffer : buffers) {
     if (buffer == nullptr) continue;
     D3D11_BUFFER_DESC desc = {};
     buffer->GetDesc(&desc);
-    if (desc.ByteWidth < (BUFFER_SIZE_CONSTANT + 1) * 16) continue;
+    if (desc.ByteWidth < (view_row + 2) * 16) continue;
     const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = desc.ByteWidth, .Usage = D3D11_USAGE_STAGING,
                                             .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
     ComPtr<ID3D11Buffer> staging;
@@ -137,8 +145,8 @@ inline std::string DescribeUnrealView(ID3D11DeviceContext* context, const std::a
     context->CopyResource(staging.Get(), buffer);
     D3D11_MAPPED_SUBRESOURCE mapped = {};
     if (FAILED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) continue;
-    const auto* view = static_cast<const float*>(mapped.pData) + VIEW_SIZE_CONSTANT * 4;
-    const auto* size = static_cast<const float*>(mapped.pData) + BUFFER_SIZE_CONSTANT * 4;
+    const auto* view = static_cast<const float*>(mapped.pData) + (view_row * 4);
+    const auto* size = view + 4;
     const auto is_size = [](const float* c) {
       return c[0] >= 1.f && c[1] >= 1.f && c[0] <= 16384.f && c[1] <= 16384.f && std::abs(c[0] * c[2] - 1.f) < 1e-3f
              && std::abs(c[1] * c[3] - 1.f) < 1e-3f;
@@ -214,7 +222,7 @@ std::string DescribeInputs(GetViews get_views) {
 }
 
 inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kind, uint32_t count) {
-  if (!state.tracing.load(std::memory_order_relaxed)) return;
+  if (!state.tracing.load(std::memory_order_acquire)) return;
   ID3D11DeviceContext* context = NativeContext(cmd_list);
   if (context == nullptr) return;
   std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets = {};
@@ -299,7 +307,7 @@ inline bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_c
 }
 
 inline void TraceDispatch(reshade::api::command_list* cmd_list, const std::string& kind) {
-  if (!state.tracing.load(std::memory_order_relaxed)) return;
+  if (!state.tracing.load(std::memory_order_acquire)) return;
   ID3D11DeviceContext* context = NativeContext(cmd_list);
   if (context == nullptr) return;
   std::array<ID3D11UnorderedAccessView*, 8> uavs = {};
@@ -409,7 +417,7 @@ inline std::string Status() {
 // before the first present) renodx_trace_now next to the exe (the run's script, or RENODX_TW_SET's "trace" key) asks for
 // the next frame, removed: looked for only when Windows says a file name in the exe's folder changed (a change
 // notification, tested without a wait). Otherwise nothing is looked for: the buttons call Request.
-inline void OnPresent(std::string_view game) {
+inline void OnPresent(std::string_view game, const Options& options = {}) {
   auto& state = internal::state;
   static const bool scripted = GetEnvironmentVariableA("RENODX_TW_SET", nullptr, 0) != 0 || GetEnvironmentVariableA("RENODX_TW_SHOT", nullptr, 0) != 0
                                || GetEnvironmentVariableA("RENODX_TW_PROFILE", nullptr, 0) != 0;
@@ -439,6 +447,7 @@ inline void OnPresent(std::string_view game) {
       state.last_view.clear();
       state.declared.clear();
       state.game = game;
+      state.options = options;
     }
     internal::UseEvents(true);
     state.tracing.store(true);

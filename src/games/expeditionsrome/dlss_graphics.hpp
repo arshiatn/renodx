@@ -481,6 +481,7 @@ constexpr uint32_t VIEW_UP = 57;
 constexpr uint32_t VIEW_RIGHT = 58;
 constexpr uint32_t VIEW_TRANSLATED_CAMERA_ORIGIN = 64;
 constexpr uint32_t VIEW_PRE_VIEW_TRANSLATION = 66;
+constexpr uint32_t VIEW_SIZE_AND_INV_SIZE = 126;  // the frame trace's view size (BufferSizeAndInvSize the next row)
 // UE's world size (centimetres): frame generation's far plane (the projection's is at infinity).
 constexpr float FAR_PLANE = 2097152.f;
 // The tonemapper's permutations (the HDR addon's t00-t09): frame generation's hudless colour after them.
@@ -1243,8 +1244,8 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 
 inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  // Debug: also renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt).
-  talesofarise::frame_trace::OnPresent("expeditions");
+  // Debug: also renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: expeditions_frame_trace.txt).
+  talesofarise::frame_trace::OnPresent("expeditions", {.view_size_row = VIEW_SIZE_AND_INV_SIZE});
   // Before any row is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS on
   // Intel's, else FSR (as Attila's).
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
