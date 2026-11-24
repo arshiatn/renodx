@@ -798,6 +798,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (pk4_): 1 route a / b-w / both (advice: send the note now, build b-w up to t ... | ?
 - PK5 S0 implementer (tests only: part 34 copy_bench.inc) after fxi_'s ec_test_fix ... | ?
 - ATN (g24_ step 6): 33 mv gap families, 1,627 cells (VTF 1,279 in 13; bones 348 i ... | ?
+- ATN (pk1_ sec 10): A FDW always on; B FDW NVIDIA only; C rows C1 / C2 / C3 (+ ke ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14506,6 +14507,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         within 2 x A/A; S4 sweep 40-60 min) - needs ATN's run rule. New 3.6 S4 options R / T for B's stores (c9 up to
         -0.7..-1.2, not in the central numbers). S1 alone on fca_pk3_s1. Package W3 -1.0..-2.5 (central -1.9), c9 central
         -1.3, D1 -0.15..-0.35. -> rv3_ light re-check 8.1 / 8.3 / 9 / 10 + 3.6 (sent; rv3_pk3_recheck.md).
+        pk1_ REV 1 DONE (pk1_design.md 'Changes since Rev 0'; pk1_rev1_handback.md): 7 MUST + S1-S14 answered. M1 arms W3
+        10 starts (p 0.0086), focus 3 (p 0.0035), N-T D1 0; M3 rows shown, default On, 'takes effect after restarting';
+        M4 T2 behind Shaders::unit_records_in_ring (Attila only); T1d + shrink dropped; env RENODX_TW_DRIVER_RINGS gone
+        (BENCH-1 preset pin, revision 3). Steps P1-P10. ClearSavedRows REVISION 3 = PK1 (pk2_ / t4i_ told; later flips
+        take the next number at merge). H3 now new ring vs old ring. Release block: no Attila release / install from
+        atn-mods until P7. -> rv1_ light re-check (sent; rv1_pk1_recheck.md); t4i_ got the PK6 inputs.
+        - [ ] ATN (pk1_ sec 10): A FDW always on; B FDW NVIDIA only; C rows C1 / C2 / C3 (+ keep '(Experimental)'?);
+        D Thrones T2 opt-in + U2 grass pass; E RT on in his target; F0 atn_harness_runs.ps1 still points at worktree
+        rmt_s1 (old ring) - edit its two path lines or add a mode?; F1 rule line '-Pk1' (~8 runs, 15 min); F2 '-Pk1Focus'
+        (2-3 runs, 8 min, takes the foreground); bench +4 starts.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
