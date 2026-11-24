@@ -30,7 +30,8 @@
 //    lookup in the scene's lock), a placed known one counted (its texture read once, checked again); a new draw
 //    into the main view's depth twice (the device prepared, then cached); the depth's description read once a view (the
 //    same view again, the main size changed and back, a new view once the held one's other holder let it go, a cascades'
-//    array and back, each rejected in the other's place); with room, a draw captured once, then its key found in the frame's
+//    array and back, each rejected in the other's place; the first main-view capture after the helper let its scene go logs
+//    the address space once and arms the trace's line); with room, a draw captured once, then its key found in the frame's
 //    keys; every capture's key its formula's; the keys and captures after every capture hashed (90d7df1b5's the same); no
 //    state check line; CONTROLS: a binding
 //    changed between two reads logs one, a held depth description changed logs one. Cost (printed): v166's reads for a
@@ -906,7 +907,19 @@ int main() {
       capture(shader, full_key(shader.hash, vertices.Get(), false));
       return prepared_for() == immediate.Get();
     };
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.address_space_capture = true;
+    }
     const bool same_view_passed = main_passed(fresh) && main_passed(fresh);
+    bool chain_capture = false;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      chain_capture = !runtime.address_space_capture && std::exchange(runtime.address_space_trace, false)
+                      && std::ranges::count_if(log_lines, [](const std::string& line) {
+                           return line.find("the first main-view capture after it: address space free ") != std::string::npos;
+                         }) == 1;
+    }
     CHECK(runtime.depth_seen.view == depth);
     bridge.width = 32;
     bridge.height = 16;
@@ -974,11 +987,13 @@ int main() {
       runtime.captured_vertices = core::internal::MAX_VERTICES;
       runtime.settings.casters_out_of_view = false;
     }
-    std::printf("5 the depth read once a view: the same view's again %d, the main size changed %d and back %d, a new view %d, a cascade's into the "
-                "main depth %d, into its own %d, the main view into the cascade's %d and back %d; with room captured once %d, again its key found %d\n",
-                same_view_passed, resized_rejected, size_back_passed, new_view_passed, cascade_into_main_rejected, cascade_view_passed,
+    std::printf("5 the depth read once a view: the same view's again %d (the address space's line once %d), the main size changed %d and back %d, a "
+                "new view %d, a cascade's into the main depth %d, into its own %d, the main view into the cascade's %d and back %d; with room captured "
+                "once %d, again its key found %d\n",
+                same_view_passed, chain_capture, resized_rejected, size_back_passed, new_view_passed, cascade_into_main_rejected, cascade_view_passed,
                 main_into_cascade_rejected, back_to_main_passed, captured_once, captured_key_found);
-    CHECK(same_view_passed && resized_rejected && size_back_passed && new_view_passed && cascade_into_main_rejected && cascade_view_passed);
+    CHECK(same_view_passed && chain_capture && resized_rejected && size_back_passed && new_view_passed && cascade_into_main_rejected
+          && cascade_view_passed);
     CHECK(main_into_cascade_rejected && back_to_main_passed && captured_once && captured_key_found);
     std::printf("5 sequence %016llX over %u captures, %u keys not their formula's\n", static_cast<unsigned long long>(sequence), sequence_captures,
                 keys_unexpected);

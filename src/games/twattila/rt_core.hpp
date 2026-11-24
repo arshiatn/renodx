@@ -1004,6 +1004,13 @@ struct Runtime {
   uint32_t helper_device = 0;             // the helper's ray tracing device (a new one: its scene empty)
   uint64_t wanted_tick = 0;               // when ray tracing was last on (GetTickCount64)
   uint64_t traced_tick = 0;               // when the helper last traced a frame (GetTickCount64)
+  // 32-bit, after the helper let its scene go (a long alt-tab, a load over 10 s): the address space logged at the first
+  // main-view capture after it (before the scene's new captures), after that frame's trace request, after that frame's
+  // present callbacks (OnPresentAddressSpace: the fake fullscreen's apply among them) and at the next present: which step
+  // takes room off the largest free block.
+  bool address_space_capture = false;
+  bool address_space_trace = false;
+  uint64_t address_space_present = 0;  // the frame whose Update logs it (0: none)
   // The garbage triangles the helper left out (far off or stretched) as last read, the captures' vertex shaders by key
   // (since the last report) and what was left out since then by vertex shader (Update's report).
   uint32_t helper_left_out = 0;
@@ -1131,6 +1138,9 @@ static bool index_maps_registered = false;
 static std::atomic_bool batch_pending = false;
 // Update's loading-screen test: the game in front (a test's own answer in its place).
 static bool (*game_in_front)() = device_end::GameInFront;
+// The address space's chain: set by a present's Update, logged by OnPresentAddressSpace once that present's other
+// callbacks ran.
+static std::atomic_bool address_space_after_present = false;
 // rt_scene::AmbientReplaced's answer (AmbientReplacedNow), stored under runtime.mutex by every writer of what it reads
 // (PublishAmbientReplaced): read without the lock (its lock, once a frame at present, was contended).
 static std::atomic_bool ambient_replaced = false;
@@ -2266,6 +2276,12 @@ void Capture(Context& command, const SceneShader& shader) {
   } else {
     runtime.main_view_projection = camera.view_projection;
     runtime.main_view_frame = runtime.frame;
+    // The address space's chain (Runtime::address_space_capture): before this frame's new captures.
+    if (runtime.address_space_capture) {
+      runtime.address_space_capture = false;
+      runtime.address_space_trace = true;
+      renodx::utils::log::i("[Total War] Ray tracing: the first main-view capture after it: ", device_end::AddressSpace(), ".");
+    }
   }
   if (full_share < SHARE_NAMES.size()) {
     runtime.costs.left_out += texels;
@@ -3704,6 +3720,12 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   };
   part_done(3);
   const bool traced = dlaa_bridge::TraceScene(native, request);
+  // The address space's chain: a steady request returns before its answer (read at the next request).
+  if (std::exchange(runtime.address_space_trace, false)) {
+    renodx::utils::log::i(std::format("[Total War] Ray tracing: that frame's trace request returned (traced {}, its answer {}): {}.", traced ? 1 : 0,
+                                      dlaa_bridge::bridge.pending ? "read at the next request" : "waited for", device_end::AddressSpace()));
+    runtime.address_space_present = runtime.frame + 2;
+  }
   if (stamped) {
     native->End(timing.stamps.back().Get());
     native->End(timing.disjoint.Get());
@@ -4437,6 +4459,12 @@ inline void Update(const Settings& settings) {
   const uint64_t tick = GetTickCount64();
   if (runtime.traced_frame == runtime.frame) runtime.traced_tick = tick;
   ++runtime.frame;
+  if (runtime.address_space_present == runtime.frame + 1) {
+    internal::address_space_after_present.store(true, std::memory_order_relaxed);
+  } else if (runtime.address_space_present == runtime.frame) {
+    runtime.address_space_present = 0;
+    renodx::utils::log::i("[Total War] Ray tracing: the next present: ", device_end::AddressSpace(), ".");
+  }
   internal::PublishAmbientReplaced();
   // Capture's depth-stencil view read again next frame: none of the game's held past its frame (a resize's old depth goes).
   runtime.depth_seen = {};
@@ -4449,10 +4477,18 @@ inline void Update(const Settings& settings) {
     runtime.short_keys.clear();
     for (auto& [set_key, mesh] : runtime.cluster_meshes) mesh.sent = false;
     if (internal::Enabled() || dlaa_bridge::bridge.ray_tracing) {
+#if defined(_WIN64)
+      const std::string address_space;
+#else
+      const std::string address_space = "; " + device_end::AddressSpace();
+      runtime.address_space_capture = true;
+#endif
       if (tick >= runtime.traced_tick + internal::HELPER_IDLE_RELEASE_MS) {
-        renodx::utils::log::i("[Total War] Ray tracing: the helper let its scene go after 10 s without rays, the scene is captured again.");
+        renodx::utils::log::i("[Total War] Ray tracing: the helper let its scene go after 10 s without rays, the scene is captured again",
+                              address_space, ".");
       } else {
-        renodx::utils::log::w("[Total War] Ray tracing: the helper started again (why: renodx-tw-dlaa64.log), the scene is captured again.");
+        renodx::utils::log::w("[Total War] Ray tracing: the helper started again (why: renodx-tw-dlaa64.log), the scene is captured again",
+                              address_space, ".");
       }
     }
   }
@@ -4788,6 +4824,16 @@ inline void Update(const Settings& settings) {
   if (std::erase_if(runtime.known, [&](const auto& entry) { return entry.second.frame + (entry.second.placed_mesh ? kept_release : internal::RELEASE_FRAMES) < runtime.frame; }) != 0) {
     std::erase_if(runtime.short_keys, [&](const auto& entry) { return !runtime.known.contains(entry.second.key); });
   }
+}
+
+// 32-bit, a present callback registered after swapchain::Use's (ReShade calls them in their order: its fake fullscreen's
+// "applied_fake_fullscreen" line comes before this one when it applied in this present): the address space's chain after
+// that callback, in the present of the frame whose trace it logged.
+inline void OnPresentAddressSpace(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
+                                  uint32_t, const reshade::api::rect*) {
+  if (!internal::address_space_after_present.load(std::memory_order_relaxed)) return;
+  internal::address_space_after_present.store(false, std::memory_order_relaxed);
+  renodx::utils::log::i("[Total War] Ray tracing: that frame's present callbacks done: ", device_end::AddressSpace(), ".");
 }
 
 // Record Ray Tracing Profile: PROFILE_MS of frames from the next present (Profile).

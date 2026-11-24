@@ -27,6 +27,8 @@
 //    d. Host::keep_placed (WH3): out of front, at 30 presents its known meshes forgotten (scene_gone), the set kept; in
 //       front, all let go.
 //    e. The game's device gone (OnDestroyDevice's ForgetScene): this frame's new sets and compact draws go with the sets.
+// 10. The address space's chain's last lines (rt_core.hpp, armed by a trace two presents on): over 100 presents, once each
+//     and in order, that frame's present callbacks done (OnPresentAddressSpace), then the next present's (Update).
 // tests.exe
 #include <windows.h>
 #include <d3d11.h>
@@ -443,6 +445,28 @@ int main() {
     std::printf("9e. the device gone: the frame's new sets and compact draws gone with the sets %d\n", device_gone ? 1 : 0);
     CHECK(e_made && device_gone);
     scene::internal::game_in_front = twattila::device_end::GameInFront;
+  }
+
+  // 10. The address space's chain's last lines.
+  {
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.address_space_present = runtime.frame + 2;
+    }
+    const size_t first_line = log_lines.size();
+    for (int present = 0; present < 100; ++present) {
+      scene::Update({});
+      scene::OnPresentAddressSpace(nullptr, nullptr, nullptr, nullptr, 0, nullptr);
+    }
+    std::vector<std::string> chain;
+    for (const std::string& line : std::span(log_lines).subspan(first_line)) {
+      if (line.find("address space free ") != std::string::npos) chain.push_back(line);
+    }
+    const bool in_order = chain.size() == 2 && chain[0].find("that frame's present callbacks done: ") != std::string::npos
+                          && chain[1].find("the next present: ") != std::string::npos && runtime.address_space_present == 0;
+    std::printf("10. the address space's chain over 100 presents: the present callbacks' line, then the next present's, once each %d\n",
+                in_order ? 1 : 0);
+    CHECK(in_order);
   }
 
   {

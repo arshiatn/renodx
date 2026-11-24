@@ -2585,6 +2585,10 @@ bool AttachAddon() {
   twattila::engine_tests::StartAtStart(L"empire.retail.dll", &engine_tests, &at_start_done, &at_start_stop);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
+#if !defined(_WIN64)
+  // After swapchain::Use's present callback: the address space's chain after its fake fullscreen's apply.
+  reshade::register_event<reshade::addon_event::present>(twattila::rt_scene::OnPresentAddressSpace);
+#endif
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
@@ -2719,6 +2723,9 @@ void DetachAddon() {
   twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
 
+#if !defined(_WIN64)
+  reshade::unregister_event<reshade::addon_event::present>(twattila::rt_scene::OnPresentAddressSpace);
+#endif
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
 
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
