@@ -490,7 +490,14 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
         std::this_thread::yield();
       }
     };
+    // A flag of the job, waited for at most 10 s: a worker that never wakes (a lost wake-up) fails the case instead of hanging the suite.
+    const auto flag_set = [](const std::atomic<bool>& flag) {
+      const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+      while (!flag && std::chrono::steady_clock::now() < limit) std::this_thread::yield();
+      return flag.load();
+    };
     // One case: `start_job` puts the job on a worker (it returns the thread of a fake worker, joined at the end, or none); the exit then runs without a drain at +0xD5D74 (the control) or through it.
+    // True when the job started and ended in time.
     const auto race = [&](bool through_drain, const std::function<std::thread(bool)>& start_job) {
       fake_battle = 1;
       started = false;
@@ -499,15 +506,16 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
       ec::game_exiting = false;
       ec::teardown_drained = false;
       std::thread job_thread = start_job(through_drain);
-      while (!started) std::this_thread::yield();
+      const bool job_started = flag_set(started);
       if (through_drain) {
         at_teardown();
       } else {
         forget_teardown();
         ExitFakeTeardown(&fake_loop_object);
       }
-      while (!job_done) std::this_thread::yield();
+      const bool job_ended = flag_set(job_done);
       if (job_thread.joinable()) job_thread.join();
+      return job_started && job_ended;
     };
     // A run in which the test thread stalled past the job's window (or its 30 ms) before the drain's first poll shows that drain no busy worker and proves nothing: it is run again (3 times at most).
     // `busy_workers`: how many workers that first poll must name (0: any).
@@ -523,7 +531,7 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
       bool waited = false;
       for (int attempt = 0; attempt < 3 && !waited; ++attempt) {
         const size_t first_line = log_lines.size();
-        race(false, start_job);
+        CHECK(race(false, start_job));
         CHECK(saw_freed && teardown_done() && exit_fake_busy_at_teardown >= 1 && (busy_workers == 0 || exit_fake_busy_at_teardown == busy_workers) && deleted_once() && exit_fake_busy_at_delete == 0);
         CHECK(log_lines.size() == first_line + 1);
         waited = waited_for_job(first_line, "Exit Job Drain", busy_workers);
@@ -534,7 +542,7 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
       waited = false;
       for (int attempt = 0; attempt < 3 && !waited; ++attempt) {
         const size_t first_line = log_lines.size();
-        race(true, start_job);
+        CHECK(race(true, start_job));
         CHECK(!saw_freed && teardown_done() && exit_fake_busy_at_teardown == 0 && deleted_once() && exit_fake_busy_at_delete == 0);
         CHECK(log_lines.size() == first_line + 2 && log_lines[first_line + 1].find("Exit Job Drain: drained 0 of 5 job workers in ") != std::string::npos
               && log_lines[first_line + 1].ends_with(" ms."));

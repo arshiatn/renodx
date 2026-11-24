@@ -709,7 +709,7 @@ struct JobCopy {
   void(__fastcall* destroy)(void*, void*);  // the worker destructor: the call of Stop is the third site
   void*(__fastcall* make_semaphore)(void*, void*, uint32_t, uint32_t, uint32_t, uint32_t);
   uint8_t* pool;  // the same address in every run: engine_code's table keys the first pool it sees
-  const volatile uint32_t* asleep;  // the table's mask of workers asleep in our Sleep (null: the game's copy)
+  const volatile uint32_t* asleep;  // the table's mask of workers asleep in our Sleep, for part 10's statistics (null: not counted)
 };
 
 // The pool as the game lays it out (+4 the worker count, +8 the workers' array, +0x1c an object the worker destructor
@@ -2566,8 +2566,13 @@ int main(int argc, char** argv) {
   CHECK(Matches(game + text_rva, text_size, ec::ITEM_PUSH_B) == (build.code->push_loop_b_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::SWEEP) == (build.code->sweep_rva != 0 ? 1u : 0u));
   CHECK(Matches(game + text_rva, text_size, ec::PICK_LOD) == 1);
-  CHECK(Matches(game + text_rva, text_size, ec::PARTICLE_EPOCH) == (build.code->particle_epoch_rva != 0 ? 1u : 0u));
-  CHECK(Matches(game + text_rva, text_size, ec::PARTICLE_COUNT) == (build.code->particle_count_rva != 0 ? 1u : 0u));
+  // Cached Particle Count has sites in Attila only, but Thrones' DLL holds the same code: a build without the rva (0) only prints how often the pattern matches.
+  for (const auto& [name, pattern, rva] : std::initializer_list<std::tuple<const char*, std::string_view, uint32_t>>{
+           {"particle epoch", ec::PARTICLE_EPOCH, build.code->particle_epoch_rva}, {"particle count", ec::PARTICLE_COUNT, build.code->particle_count_rva}}) {
+    const size_t count = Matches(game + text_rva, text_size, pattern);
+    CHECK(rva == 0 || count == 1);
+    if (rva == 0 && count != 0) std::printf("   %s: no site in this build, the pattern matches %zu time(s) in its code\n", name, count);
+  }
   CHECK(Matches(game + text_rva, text_size, build.code->soldier_rows) == 1);
   CHECK(Matches(game + text_rva, text_size, ec::SOLDIER_ROWS) + Matches(game + text_rva, text_size, ec::ROME2_SOLDIER_ROWS) == 1);
   CHECK(Matches(game + text_rva, text_size, ec::MATRIX_PRODUCT) == 1);
