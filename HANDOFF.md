@@ -13923,6 +13923,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         release paths); bench env to turn it off for an A/B arm in the confirm run. -> mem_ r3 (B1 + flag + M1 + m1-m6 +
         tests 9f / 9g / real draw path) -> rvm_ re-check -> confirm game run (ATN's go; add the no-fix arm + a < 10 s
         alt-tab / tactical map / movie view).
+        shg_ SH DESIGN Rev 0 (plan_1117/shg_sh_gi_upsample_design.md + shg_sh_design_handback.md): biggest win RT/PT bounce
+        no-RR at Half + SH (~-3.3 ms est., 431 -> 174 MB at 4K; NRD REBLUR_DIFFUSE_SH); GT-VBGI Quarter + SH = picture;
+        RR: no gain at Full; Bend / SSR no. -> rvs_ (Opus xHigh) review + shg_ S0 numpy reference in parallel.
+        ATN 11-24: (1) GT-VBAO directional SH / bent-cone variant ANYWAY, Experimental default off, ATN tests it in game ->
+        shg_ Rev 1; (2) Toru's upsampler code allowed (MIT): short-history variance + variance-guided a-trous as its own
+        item; keep his copyright + permission notice in every file that takes code + a README / credits line.
+        g23_ D-N1 08e953b68 (WH3 FSR Reactive row hidden until the 2f-1 helper rows) + T3 / T4 exact definitions
+        (testbin/scratch/g23_/h9_t3_t4.txt); g23_ adds HARNESS_SWITCH_DLSS + HARNESS_END_WITH_DLSS to tools/tw/rt_harness/
+        tw_rt_harness.cpp (only writer; off by default) -> gbf_ wires T3 / T4 into gbf_gpu_gates.ps1.
+        mem_ r3: Attila's opt-in flag = ONE line in twattila/addon.cpp after :2622 (coord OK; fi1_'s hunks elsewhere).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
