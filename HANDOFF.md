@@ -14606,6 +14606,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         README / changelog line for E2 / E4.
         - [ ] rdl_ (Opus xHigh, worktree): tw_romer_dlaa crashes 0xC0000005 in case 2 on atn-mods - pre-existing, not E2;
         bisect + root cause + player impact; small fix on romer_dlaa_fix, else propose.
+        pk4_ REV 1 DONE (pk4_design.md 866 lines; pk4_rev1_handback.md): rule H reads 7 sites (bytes listed); gates G1 ->
+        G3a (10 no-heapfix starts, REQUIRED before any default flip) -> G2 / Q5 override -> G3b; new site 34 clear guard
+        at +0x1832CB0 (wait on the task, count, run the clear; Q4b); stuck-pass rule (two presents); mode off before site
+        removal; add guard tests the node's own flag; key snapshot in check mode (start vs END). Sites 31-34 all or none.
+        Code page 1: add guard +0x00, clear guard +0x40, PK5 from +0x80 (PK5's sites start at 35). -> rv4_ re-check S3 /
+        S4 / gates (sent); t4i_ got the bench needs.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
