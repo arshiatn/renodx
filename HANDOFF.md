@@ -815,7 +815,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - After s64a_: port map of OUR Attila work onto 64-bit (carry over / re-port / moo ... | ?
 - ATN go needed before: downloads (each named with source + size), building the lo ... | ?
 - az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches ( ... | ?
-- a64ab_ (Opus High, started ~18:3x): tools/tw/attila64/ab/a64_ab.ps1 -Smoke / -Ga ... | ?
+- ATN: rule lines (a64_ab.ps1 -Smoke / -GateR -A32Plain / -AB -A32Plain [+ -DryRun ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -15044,8 +15044,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         testbin\attila64_1124\run_1320\: attila64.exe, Attila (ELF copy), libstdc++.so.6 (6.0.20, 1,008,120 B), libgcc_s.so.1
         (90,096 B), SDL2.dll (2,449,408 B), steam_api64.dll (WH3 copy), LICENSE.txt, update_off.txt. NOT run. Disk: C: 38 GB,
         D: 44 GB free (99% full).
-        - [ ] a64ab_ (Opus High, started ~18:3x): tools/tw/attila64/ab/a64_ab.ps1 -Smoke / -GateR / -AB (+ -DryRun), direct
-        start (no launch option), ATTILA_TEST_HOME copy, -A32Plain moves dxgi.dll + add-on aside per start; dry runs only.
+        - [x] a64ab_ DONE (attila64/study_1124/a64ab_handback.md): tools/tw/attila64/ab/a64_ab.ps1 -Smoke (~3 min) / -GateR
+        [-A32Plain] [-HoldSeconds] (~25) / -AB [-A32Plain] [-Offset32] (6 starts ~36, 9 with B64P ~55) / -Analyze <batch>;
+        all dry runs clean 18:42-18:43. Gate R signal: loader log lines + battle steps + its own back-buffer shots; 32-bit
+        replay_desync.txt (stress_test_log2 ALREADY desyncs on 32-bit no-heapfix at tick 1928, ebo1 10:21); losses per side
+        = ATN's eyes (-HoldSeconds). Windows: 64-bit battle s 20-200 via ATTILA_TEST_FPS_WINDOW; 32-bit from PresentMon
+        (first heavy present) + the 64-bit-measured offset. Affinity 0xFFFF on our attila64.exe only (no CPU Set Setter rule).
+        - [ ] ATN: rule lines (a64_ab.ps1 -Smoke / -GateR -A32Plain / -AB -A32Plain [+ -DryRun]), -A32Plain yes / no, go +
+        time window. B64P: llvm-mingw 20261006 ucrt x86_64 (190,836,485 B, sha256 317492c4...) + mimalloc v3.5.3 source
+        (1,638,191 B, sha256 97e672db...) downloaded from GitHub (ATN 'go ahead and get them'), extracted to
+        testbin\attila64_1124\llvm_mingw + mimalloc (clang 23.1.3 runs); perffix64 build for own use = next.
+        DISK (ATN asked ~19:2x; C: 38 GB / D: 44 GB free): proposal sent, NOTHING deleted: (D) 153 old worktrees (< 11-23,
+        clean, HEAD on origin) 136.7 GB (list: coord scratchpad wt_candidates.tsv); scratchpad_copy_1122 46.7 GB (fully in
+        copy_1123: folders 45.0 GB + top files 1.70 GB, 0 differ); optional: agent-afb9a119f703260fd build 90.4 GB = 11-17
+        RT harness dumps (step4 base / ser / sharc, rec_ns_day1); (C) live scratchpad folders fully in copy_1123: 52.3 GB.
+        Never: tw_recordings 126 GB, reference 77.7, h0 88.7, nsight 12.1, bench\runs 102.7, crash dumps.
         Then ATN: rule lines, -A32Plain yes / no, the go + a time window. perffix64.dll is NOT in JSa25's repo (64bit\ has a
         changelog only): arm B64P needs his 7.4+ package or Workshop item (ATN's call).
         ATN 11-24 ~19:0x: 'Yes, A/B first': the 64-bit stress A/B comes BEFORE the Friday CPU (Fable) wave; that wave waits
