@@ -14659,6 +14659,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         rv4_'s exact bytes (no S3 re-check needed); game bytes re-read and match; parts 31-33 extended (output size 0
         after a late clear); G3a = 14 no-heapfix starts (10 only if A/A noise allows); main = present thread stated.
         t4i_ told. Next: PK4 S2+ after p4i_'s S1 (model per the Fable trial result).
+        rvg_ G24 13.8 RE-CHECK + GSR_ ROUTE REVIEW (handoff_plan/reviews/rvg_g24_138_recheck.md,
+        rvg_gsr_scale_route_review.md; handbacks/rvg_g24_138_and_gsr_handback.md): 13.8 GO, stamp it; step-4 rules GO.
+        TWO HOLES in settled cells: MUST-A CS thread id counted as a pixel root (243 Expeditions CS settled SCALED; 3 of
+        the 5 traced are fixed-grid / buffer-only) and MUST-D non-View constants in screen reads (36 PS) -> 13.9 with an
+        EXTRACTOR bump reopens 279. MUST-B / C, SHOULD-1..3; shadow-depth rule may enter unscoped with MUST-E. Route R GO as
+        direction; G-M1..6 before tool code; A0-A4 decided. -> g24_ 13.9 (sent, rvg_'s order), gsr_ Rev 1 (sent).
+        Rule slip: rvg_ one heredoc patch (scratch).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
