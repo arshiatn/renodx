@@ -815,6 +815,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches ( ... | ?
 - ATN: rule lines (a64_ab.ps1 -Smoke / -GateR -A32Plain / -AB -A32Plain [+ -DryRun ... | ?
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
+- ATN asked 11-24 what to ask JSa25: draft attila64/study_1124/jsa25_message_1124. ... | ?
 - REMIND ATN (decision 6): ask JSa25 for a Flag Wave interop contract (previous-po ... | ?
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
@@ -15165,6 +15166,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         switches; 11 park the 32-bit FCA branches YES; 12 package cost to the sim = gate item YES; 13 offer Sol the GPU
         line-of-sight fix YES + credit; 14 keep the shared helper YES (ATN: the same helper as his other 64-bit games =
         yes, the one dlaa_helper for every TW game).
+        - [ ] ATN asked 11-24 what to ask JSa25: draft attila64/study_1124/jsa25_message_1124.md (only flags get his
+        shader; last frame's cloth positions + slot / layout / version; t14 / t15; a stable marker; read-only OK +
+        credit). ATN sends when he wants.
         - [ ] REMIND ATN (decision 6): ask JSa25 for a Flag Wave interop contract (previous-position / velocity buffer,
         slot, version) when the Flag Wave MV work starts (after a64c_'s census); the fallback (his 4 shaders mapped to
         their families, rows-only MVs) ships first.
@@ -15211,6 +15215,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         (mostly the inline route); if inline fails ~75 % / ~25 %, central 215-235 s. Decision 7 deferred to window 1.
         Coord reworded the one Linux name in HANDOFF (line ~15137); it is still in pushed commit 199a7063f's history
         (removing it = a history rewrite + force push: ATN decides).
+        - [x] ATN 11-24 D15: 'No one is going to read the readme. Plugin option and default is the fastest version' ->
+        a plugin row, default = the fastest after the gate (sent to a64pl_). D16 + the history rewrite still open below.
         - [ ] ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only plugin row 'Battle step on the
         main thread', default on after the gate; or a patch offer to Sol; or a README line) + accept a small periodic p99
         frame bump (one inline step every ~6 frames)?; D16 the real-time metric (rec: slow-motion share + window seconds
