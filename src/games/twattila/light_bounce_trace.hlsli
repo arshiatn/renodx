@@ -18,7 +18,11 @@
 //   float BouncePixelsPerMetre(float distance)     pixels per metre (vertically) that far from the camera
 //   float2 BounceViewportSize()                    the view's size in pixels
 //   float3 BouncePrevious(float3 view_position)    that position in the last frame: its pixel (x, y), its distance (z)
+// Directional Light Bounce (LB.directional): beside the bounce each fresh arc's L1 moments in luminance
+// (bitmask_sh.hlsli BitmaskShArc), then the texel's stored form at its normal: SV_Target1 (g, w), SV_Target2 the zonal
+// amplitude (Checkerboard texels: the history's, as the bounce).
 #include "./bitmask.hlsli"
+#include "./bitmask_sh.hlsli"
 #include "./light_bounce.h"
 #include "./light_bounce_geometry.hlsli"
 #include "./light_bounce_history.hlsli"
@@ -26,8 +30,18 @@
 // With its levels (light_bounce_levels).
 Texture2D<float4> t_prepared_light : register(t46);
 
-void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0) {
+void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0
+#if defined(LIGHT_BOUNCE_DIRECTIONAL)
+          , out float4 o1 : SV_Target1, out float o2 : SV_Target2) {
+#else
+          ) {
+  float4 o1;
+  float o2;
+#endif
   o0 = 0.f;
+  o1 = 0.f;
+  o2 = 0.f;
+  const bool directional = BOUNCE_DIRECTIONAL;
   const BounceGeometry center = LoadGeometry(int2(v0.xy), 0u, 0u);
   const float distance = length(center.position);
   // The sky (also a reversed infinite far plane): nothing.
@@ -38,10 +52,14 @@ void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0) {
   // the last frames' bounce where it held the same surface (else traced).
   [branch]
   if (LB.checkerboard > 0.f && ((uint(v0.x) / 16u + uint(v0.y) / 16u + uint(LB.frame)) & 1u) != 0u) {
-    const float4 history = BounceHistory(center.position);
+    float4 history_sh;
+    float history_zonal;
+    const float4 history = BounceHistory(center.position, directional, history_sh, history_zonal);
     [branch]
     if (history.a > 0.5f) {
       o0 = float4(history.rgb, -distance);
+      o1 = history_sh;
+      o2 = history_zonal;
       return;
     }
   }
@@ -67,6 +85,8 @@ void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0) {
     uint2 prepared_size;
     uint prepared_levels;
     t_prepared_geometry.GetDimensions(0, prepared_size.x, prepared_size.y, prepared_levels);
+    // Directional: c1 (xyz) and c0 (w), summed over the slices.
+    float4 moments = 0.f;
 
     [loop]
     for (uint slice = 0; slice < slices; ++slice) {
@@ -82,6 +102,8 @@ void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0) {
       BitmaskOccluder occluder_plus = {center.position, center.position};
       const float occluder_scale = exp2(2.f * frac(jitter + 0.5f + 0.754877666f * slice) - 1.f);
       uint occluded = 0u;
+      // Directional: this slice's arcs (BitmaskShArc), x their light's luminance and fresh share.
+      float3 slice_moments = 0.f;
       // Until every sector is covered (nothing farther can be seen).
       [loop]
       for (uint step = 0; step < steps && occluded != 0xFFFFFFFFu; ++step) {
@@ -142,14 +164,38 @@ void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0) {
           }
           if (fresh != 0u) {
             const float share = countbits(fresh) / (float)BITMASK_SECTORS;
-            bounce += t_prepared_light.Load(int3(sample_texel, level)).rgb * share;
+            const float3 light = t_prepared_light.Load(int3(sample_texel, level)).rgb;
+            bounce += light * share;
+            // Its whole arc, x the share of its sectors still fresh (shg_ S0 11.2: within 3.4% where half the samples
+            // are partly fresh).
+            [branch]
+            if (directional) {
+              slice_moments += BitmaskShArc(front, back, view_direction, side, slice_info.normal_angle)
+                               * (dot(light, BITMASK_SH_LUMINANCE) * countbits(fresh) / countbits(covered));
+            }
           }
           occluded |= covered;
         }
       }
+      // The slice drawn with pdf W / pi (BitmaskSampleSliceDirection; W = |n_p| (cos g + g sin g), its cosine-weighted
+      // width): c1 = sum of the arcs / 2W, c0 half that of the third integral.
+      [branch]
+      if (directional) {
+        const float width = length(projected_normal) * (slice_info.cos_normal + slice_info.normal_angle * sin(slice_info.normal_angle));
+        const float slice_scale = 0.5f / max(width, 1e-4f);
+        moments += float4(slice_moments.x * view_direction + slice_moments.y * slice_info.direction, 0.5f * slice_moments.z) * slice_scale;
+      }
     }
     // The sectors are equal cosine-weighted shares: a surface seeing only light L in every sector gets L.
     bounce /= slices;
+    [branch]
+    if (directional) {
+      moments /= slices;
+      const BitmaskShLight stored =
+          BitmaskShFromMoments(dot(bounce, BITMASK_SH_LUMINANCE), moments.w, moments.xyz, normal, LB.directional_form == 0.f);
+      o1 = float4(stored.g, stored.w);
+      o2 = stored.zonal;
+    }
   }
   o0.rgb = bounce;
 }

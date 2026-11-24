@@ -13,12 +13,36 @@
 //   float3 BounceViewPosition(int2 texel)   the view-space position at that pixel
 //   float3 BounceViewNormal(int2 texel)     the view-space normal there
 //   float3 BounceDiffuseAlbedo(int2 texel)  its diffuse colour, as the game's ambient light takes it (0: none)
+// Directional Light Bounce (LB.directional, bitmask_sh.hlsli): the light at the pixel's own normal from the texels'
+// (g, w) and zonal amplitude (t56-t57) as a gain on the bounce (its colour kept): 0 to 4 x, against at least 1% of the
+// brightest texel's light (rvs_ S6; shg_ S0 11.5). From the window's texels of the pixel's surface: the same weights x
+// the denoiser's facing^8 between their trace normal (t47) and the pixel's (across a crease the other plane's form,
+// taken 90 degrees off, went to 0; none: the bounce as without it). The window blends texels of different trace normals
+// as the denoiser's taps do, so the same half transport (LB.transport): between each texel's own value at the pixel's
+// normal (1: sharp, darker over bumps) and their blend pinned at their mean trace normal, then taken to the pixel's (0:
+// unbiased, softer); exact on a plane (shg_ design 4.1 step 5's contingency, test/tw_bounce_sh item 4).
+#include "./bitmask_sh.hlsli"
 #include "./light_bounce.h"
+#include "./light_bounce_geometry.hlsli"
 
 Texture2D<float4> t_bounce : register(t41);
 // Bound by the includer's game for some draws: texel (5, 0)'s w their share of the bounce (Attila's Path-Traced Ambient on
 // its foliage: their ambient's scale, rt_sun.cs_5_0.hlsl); unbound reads 0: all of it.
 Texture2D<float4> t_bounce_share : register(t52);
+Texture2D<float4> t_bounce_sh : register(t56);
+Texture2D<float> t_bounce_zonal : register(t57);
+
+// Directional: the window's sums of the pixel's surface (x their weight): the light's luminance, (g, w), the zonal
+// amplitude, each texel's own zonal term at the pixel's normal, the trace normals; the weight; the brightest luminance.
+struct BounceShSum {
+  float y0;
+  float4 sh;
+  float zonal;
+  float zonal_at_pixel;
+  float3 trace_normal;
+  float weight;
+  float brightest;
+};
 
 // Whether bounce texel `neighbour`'s surface (at its sample pixel, LB.texel_centre into its block of `scale` pixels) lies
 // on the plane through `position` facing `normal`: within about 20 degrees of it.
@@ -28,9 +52,12 @@ bool BounceTexelOnPlane(int2 neighbour, int scale, float3 position, float3 norma
 }
 
 // The bounce texels first..last weighed by their distance from `at` and by how close their depth is to `distance` (rgb x
-// weight, weight); with `on_plane` only those on the pixel's plane (BounceTexelOnPlane).
-float4 BounceWindowSum(int2 first, int2 last, float2 at, float distance, bool on_plane, int scale, float3 position, float3 normal) {
+// weight, weight); with `on_plane` only those on the pixel's plane (BounceTexelOnPlane). Directional: `sh` (`facing`:
+// the pixel's normal turned toward the view, as the trace's).
+float4 BounceWindowSum(int2 first, int2 last, float2 at, float distance, bool on_plane, int scale, float3 position, float3 normal,
+                       float3 facing, out BounceShSum sh) {
   float4 sum = 0.f;
+  sh = (BounceShSum)0;
   [loop]
   for (int y = first.y; y <= last.y; ++y) {
     [loop]
@@ -41,7 +68,29 @@ float4 BounceWindowSum(int2 first, int2 last, float2 at, float distance, bool on
       const float near = exp2(-0.25f * dot(offset, offset));
       const float similar = saturate(1.f - abs(bounce.a - distance) / (0.030001808f * distance));
       const float weight = (bounce.a > 0.f) ? (near * similar) : 0.f;
-      if (!on_plane || BounceTexelOnPlane(neighbour, scale, position, normal)) sum += float4(bounce.rgb, 1.f) * weight;
+      if (!on_plane || BounceTexelOnPlane(neighbour, scale, position, normal)) {
+        sum += float4(bounce.rgb, 1.f) * weight;
+        [branch]
+        if (BOUNCE_DIRECTIONAL && weight > 0.f) {
+          const float3 trace_normal = BitmaskShFacing(LoadGeometry(neighbour, 0u, 0u).normal, -position / distance);
+          const float sh_weight = weight * pow(saturate(dot(trace_normal, facing)), 8.f);
+          [branch]
+          if (sh_weight > 0.f) {
+            const float4 g_w = t_bounce_sh.Load(int3(neighbour, 0));
+            const float zonal = t_bounce_zonal.Load(int3(neighbour, 0));
+            const float g_squared = dot(g_w.xyz, g_w.xyz);
+            const float axis_cosine = (g_squared > 0.f) ? dot(facing, g_w.xyz) * rsqrt(g_squared) : 0.f;
+            const float y0 = dot(bounce.rgb, BITMASK_SH_LUMINANCE);
+            sh.y0 += y0 * sh_weight;
+            sh.sh += g_w * sh_weight;
+            sh.zonal += zonal * sh_weight;
+            sh.zonal_at_pixel += zonal * (3.f * axis_cosine * axis_cosine - 1.f) * sh_weight;
+            sh.trace_normal += trace_normal * sh_weight;
+            sh.weight += sh_weight;
+            sh.brightest = max(sh.brightest, y0);
+          }
+        }
+      }
     }
   }
   return sum;
@@ -77,12 +126,26 @@ void main(float4 v0 : SV_Position0,
   // the apply 0.14 -> 0.33 ms at 4K, the corners 0.19). None on the plane: all of them, as before.
   const bool window_planar = BounceTexelOnPlane(first, scale, position, normal) && BounceTexelOnPlane(int2(last.x, first.y), scale, position, normal)
                              && BounceTexelOnPlane(int2(first.x, last.y), scale, position, normal) && BounceTexelOnPlane(last, scale, position, normal);
+  const float3 facing = BitmaskShFacing(normal, -position / distance);
   float4 kept = 0.f;
+  BounceShSum sh = (BounceShSum)0;
   [branch]
-  if (!window_planar) kept = BounceWindowSum(first, last, at, distance, true, scale, position, normal);
+  if (!window_planar) kept = BounceWindowSum(first, last, at, distance, true, scale, position, normal, facing, sh);
   [branch]
-  if (!(kept.a > 0.f)) kept = BounceWindowSum(first, last, at, distance, false, scale, position, normal);
-  const float3 bounce = (kept.a > 0.f) ? (kept.rgb / kept.a) : 0.f;
+  if (!(kept.a > 0.f)) kept = BounceWindowSum(first, last, at, distance, false, scale, position, normal, facing, sh);
+  float3 bounce = (kept.a > 0.f) ? (kept.rgb / kept.a) : 0.f;
+  // Directional: at the pixel's normal (`facing`).
+  [branch]
+  if (BOUNCE_DIRECTIONAL && sh.weight > 0.f) {
+    const float y0 = sh.y0 / sh.weight;
+    const float4 g_w = sh.sh / sh.weight;
+    // Each texel's own value at the pixel's normal; their blend pinned at their mean trace normal (each within 90 degrees
+    // of the pixel's: never 0), then taken to it.
+    const float sharp = y0 - g_w.w + dot(g_w.xyz, facing) + sh.zonal_at_pixel / sh.weight;
+    const BitmaskShLight pinned = BitmaskShPinned(g_w.xyz, sh.zonal / sh.weight, normalize(sh.trace_normal));
+    const float smooth = BitmaskShEvaluate(y0, float4(pinned.g, pinned.w), pinned.zonal, facing);
+    bounce *= clamp(lerp(smooth, sharp, LB.transport) / max(dot(bounce, BITMASK_SH_LUMINANCE), 0.01f * sh.brightest + 1e-6f), 0.f, 4.f);
+  }
   const float share = t_bounce_share.Load(int3(5, 0, 0)).w;
   o0 = float4(BounceDiffuseAlbedo(texel) * bounce * LB.strength * ((share > 0.f) ? share : 1.f), 0.f);
 }

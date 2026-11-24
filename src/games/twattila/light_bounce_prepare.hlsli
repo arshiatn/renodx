@@ -15,6 +15,12 @@
 //   float3 BounceViewNormal(int2 texel)     the view-space normal there
 //   float3 BounceDiffuseAlbedo(int2 texel)  its diffuse colour
 //   float3 BouncePrevious(float3 position)  that position in the last frame (light_bounce_trace.hlsli)
+// Directional Light Bounce: the normal the mean of the block's on the top-left's surface (bitmask_sh.hlsli
+// BitmaskShBlockNormal), so the texel's light is traced where its pixels face on average.
+// Only where the host builds it (light_bounce.h): included in every host, it moved Expeditions: Rome's prepare code.
+#if defined(LIGHT_BOUNCE_DIRECTIONAL)
+#include "./bitmask_sh.hlsli"
+#endif
 #include "./light_bounce.h"
 #include "./light_bounce_history.hlsli"
 
@@ -47,7 +53,22 @@ void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0, out uint2 o1 : S
   o0 = float4(light, 0.f);
 
   // The normal octahedron-encoded, 16 bits per axis.
-  const float3 normal = BounceViewNormal(texel);
+  float3 normal = BounceViewNormal(texel);
+#if defined(LIGHT_BOUNCE_DIRECTIONAL)
+  [branch]
+  if (BOUNCE_DIRECTIONAL) {
+    BitmaskShBlock block = (BitmaskShBlock)0;
+    [loop]
+    for (int row = 0; row < scale; ++row) {
+      [loop]
+      for (int column = 0; column < scale; ++column) {
+        const int2 pixel = min(texel + int2(column, row), light_last);
+        BitmaskShBlockAdd(block, BounceViewPositionAt(pixel, BounceDepth(pixel)), BounceViewNormal(pixel));
+      }
+    }
+    normal = BitmaskShBlockNormal(block);
+  }
+#endif
   float2 octahedron = normal.xy / (abs(normal.x) + abs(normal.y) + abs(normal.z));
   if (normal.z < 0.f) octahedron = (1.f - abs(octahedron.yx)) * ((octahedron >= 0.f) ? 1.f : -1.f);
   const uint2 encoded = uint2(round(saturate(octahedron * 0.5f + 0.5f) * 65535.f));
