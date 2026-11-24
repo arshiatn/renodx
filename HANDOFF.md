@@ -775,6 +775,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: Expeditions tracer uses 4.21 View offsets 122 / 123 (Expeditions is 4.23) - ... | ?
 - Thrones DLL red at tw_engine_code part 1 (tests.cpp:2560 PARTICLE_EPOCH, from 20 ... | ?
 - Exit drain raise rule lives in HANDOFF only now (fxi_ N1 removed it from the com ... | ?
+- mrg_ merges fca_item1 + fca_exit_drain (sent): all 36 builds + merged-tree tw_en ... | ?
+- after the merge: test/tw_engine_code follow-up (owner fxi_): R3-N1 bound the spi ... | ?
+- ATN (pk5_): Q6 ERMSB row + our copy at 2-4 sites; S0 before the data run; other ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14280,6 +14283,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         expectation or a new DLL build? (rvl_ judges; owner: coord -> a small test fix after the merge).
         - [ ] Exit drain raise rule lives in HANDOFF only now (fxi_ N1 removed it from the comment): 3000 ms only if A gave
         up AND B drained 0 in the same start; check the '> 500 ms' trigger first.
+        rvl_ FXI R2 GO FOR THE MERGE (render_mt/fca/designs/rvl_fxi_recheck_r2.md + _handback.md; 0 / 0 / 0, 2 NIT): S1 +
+        N1-N5 closed; WU-on 30f really runs the WU stub path on the game's own workers; part 10 refactor unchanged;
+        merge-tree 0 conflicts. Thrones part-1 red = STALE EXPECTATION (same DLL 64A47C87 passed 11-18; 20d048cd4 absence
+        check, same mistake as S1) -> fix: check only the rva + print the count, then re-run the full Thrones suite.
+        - [ ] mrg_ merges fca_item1 + fca_exit_drain (sent): all 36 builds + merged-tree tw_engine_code -Quick / -Only
+        effect_update / -Only exit, tw_render_mt_defaults, tw_cpu_sets, tw_draw_recording -> push atn-mods.
+        - [ ] after the merge: test/tw_engine_code follow-up (owner fxi_): R3-N1 bound the spins at exit_drain.inc:502 /
+        :509 (10 s + CHECK), R3-N2 comment at tests.cpp:712, the Thrones PARTICLE_EPOCH stale check + full Thrones suite.
+        Must land before PK4 / PK5 implementers take test/tw_engine_code.
+        mem_fix R4 DONE (handoff_plan/handbacks/mem_fix_r4_handback.md; 03137a2f5): m1 deferral (later line waits a present
+        when L3 walks; 9k collision test), n2 9j stored-time + control; mutation controls fail as expected; 17 builds.
+        -> rvm_ short re-check (rvm_mem_fix_recheck_r4.md) -> ask ATN for the Attila confirm run.
+        pk5_ DESIGN Rev 0 DONE (render_mt/fca/designs/pk5_design.md + _handback.md): A1.1 draw-param copy +0x17c8180 57 ->
+        21 pairs (-0.7..-0.9 W3); M3 Faster Pose Copy (M2 = M3, the fill body +0x17db0f0 on main) -0.4..-0.8 / c9 -1.5..
+        -3.5 if our copy ~2x rep movsb; A3 = existing Faster Effect Prefetch row (measure with L1, then default on); A2
+        bigger item-arena pages (medium-high risk, start-only, needs a 118-hit census); A1.2 after the data run; M1 ERMSB =
+        Experimental until the S0 microbench (test part 31, <3 min offline). Sum -1.8..-3.6 / -2.6..-5.6 / -0.6..-1.0.
+        Needs: site table capacity (31 sites, uint32 masks; PK4 first) + a 2nd stub page. Critic errors: A3 runs on main,
+        M2 caller known, M1 has 3 readers. PK7 author lines: truncation split form 4.1 ms, memfast 64 B limit (65-127 B
+        path 22.2 + 18.6 summed), CHECKED functions. -> rv5_ (Opus xHigh) review (rv5_pk5_review.md).
+        - [ ] ATN (pk5_): Q6 ERMSB row + our copy at 2-4 sites; S0 before the data run; other CPUs = fixed list or a 2-5 ms
+        start self-timing; A2 worth medium-high risk for -0.3..-0.6?; A3 bench arm (prefetch + L1); Q7 + a 60 s late-melee
+        sampler window.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
