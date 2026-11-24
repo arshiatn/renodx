@@ -453,7 +453,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - lab / replay owner (tkf_ LOST 12585, minor): rt_scene OnAnyDraw gate not in the ... | ?
 - G08 Ryse (tkf_ LOST 12460, cosmetic): dlss_capture.hpp:28 still names "twshogun2 ... | ?
 - G03 Pharaoh (tkf_ LOST 12436, low): Dead Unit Detail 6-byte patch still written ... | ?
-- WH3 (tkf_ LOST 12808, optional): heapfix in WH3, jungle-battle A/B (ab_run_wh3.p ... | ?
+- PARKED (ATN 11-24: CPU / MT work Attila only until he asks) WH3 (tkf_ LOST 12808 ... | ?
 - coord: fix the stale ticks (12566 / 12673 / 12675 -> note REVERTED bc7ba324; 125 ... | ?
 - GPU plan tooling (tkd_ LOST 7458, low): why ns_index hit OSError Errno 22 (2 at ... | ?
 - t4i_ / ebo (tkd_ LOST 9006, low): replace gates.json draw_trace.file_mb 2 MB (st ... | ?
@@ -705,6 +705,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - before the RC freeze (exd_, small, exr_ glance): N11 parens in the gave-up log c ... | ?
 - t4i_ part 3 (above) -> then ebr_ (a41704a31fb3d6080) reviews ALL of t4i_ FINAL a ... | ?
 - ATN at READY: allow `powershell -NoProfile -ExecutionPolicy Bypass -File C:\User ... | ?
+- ATN: add the 4 rules (PowerShell(... bench\ebo_run.ps1 -Final), -Final -DryRun, ... | ?
+- Automatic L1 (after the bench; Opus xHigh design: switch Parallel Effect Update ... | ?
+- After the bench: one new day-1 WPR on the RC (ATN 11-24: stress replay + day1, n ... | ?
+- After the ETL attribution: ask ATN to delete the batch ETLs W3-1, W3-3, W3-4, D1 ... | ?
+- mem_ confirm run (game run): ATN asked what it is (coord explained: Attila memor ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -11494,7 +11499,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] G08 Ryse (tkf_ LOST 12460, cosmetic): dlss_capture.hpp:28 still names "twshogun2completeedition_dlss".
         - [ ] G03 Pharaoh (tkf_ LOST 12436, low): Dead Unit Detail 6-byte patch still written without stopping threads (ec99db49
         left it; window theoretical).
-        - [ ] WH3 (tkf_ LOST 12808, optional): heapfix in WH3, jungle-battle A/B (ab_run_wh3.ps1 never ran; study predicts
+        - [ ] PARKED (ATN 11-24: CPU / MT work Attila only until he asks) WH3 (tkf_ LOST 12808, optional): heapfix in WH3, jungle-battle A/B (ab_run_wh3.ps1 never ran; study predicts
         ~0 fps).
         - [ ] coord: fix the stale ticks (12566 / 12673 / 12675 -> note REVERTED bc7ba324; 12558 / 12626 radix sort cites)
         + wh2.tsv 370A7440 / 4CC2D68F rows -> done (b435a0e6) + 1260 / 11918 add Ryse "9 levels".
@@ -13302,6 +13307,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         SLOWER / FASTER at 2 SE, never changes the main Go lines); final MANUAL wording. Tests green (leg 228, analyze
         204; final 18 cases). Midnight hold: start the main run before ~20:00 or resume after 00:00. Nothing open from
         part 3; the real-dry-run / RC list is unchanged. NO agent running from 00:0x until ATN's restart + go.
+        ATN 2026-11-24 01:2x (after his restart; Steam running, no Attila process): ANSWERS. render_mt Q1-Q10 (+ Q10 d):
+        coord's picks (L2 off parked, L1 off + Experimental, K4, B2 / HSG2 off + HFx, bench additions yes, heapfix single
+        A/Bs + x87c after, accept §4.1, Q9 (a) ship if faster than OFF and the melee not slower / (b) hold, Q10 yes; Q10 d =
+        ATN decides when flagged). 37-40 picks. 42-49 + 58 picks. 50-57 picks. 34-36 picks. 41: ATN asked 'why' (coord
+        explained; open). AUTOMATIC L1 (parallel only when the effect count is high): ATN 'sounds great'. NEW RULE: CPU /
+        MT engine work (render_mt, heapfix, engine_code) stays ATTILA ONLY until ATN asks himself (memory
+        feedback_cpu_mt_attila_only.md). The 2-heavy-agent gaming rule is lifted (ATN restarted to continue).
+        COORD ORDER (ATN: 'bench first, you decide'): pre-bench = ONLY the final-bench path + in-flight steps (exd_ NITs ->
+        exr_ glance; rcd_ RC defaults (Opus High) -> Opus xHigh review; ebr_ review of t4i_ FINAL; t4i_ ETL proof C-9 -> eba_
+        ETL attribution of the six batch ETLs (a C group with a net cost turns off in the RC if known before the freeze);
+        gtp_ golive bak29; gbf_ builds + WARP -> gbr_ re-check -> GPU jobs 1-8 + S4a, ho_gbf NOT merged before the bench);
+        RC build + FP twin + manifest; end review Opus xHigh + Sonnet High; READY; restart; bench on ATN's 'run' (start
+        before ~20:00). EVERY other plan resumes in one wave right after the bench (resume_point.md NIGHT UPDATE order).
+        gated_build.ps1.proposed: applied AFTER the bench (no build-tool change before the RC build). The separate exit soak
+        is folded into the final bench (40 exits, each drain line checked, exit faults count) -> no extra game run.
+        - [ ] ATN: add the 4 rules (PowerShell(... bench\ebo_run.ps1 -Final), -Final -DryRun, -Final -Followup,
+        -Final -Followup -DryRun) in settings.local.json (coord never writes settings).
+        - [ ] Automatic L1 (after the bench; Opus xHigh design: switch Parallel Effect Update per frame on the effect count,
+        threshold from the batch's volley vs melee counts; Sonnet High code; A/B volley + melee + day1). ATN 11-24.
+        - [ ] After the bench: one new day-1 WPR on the RC (ATN 11-24: stress replay + day1, not more; the final bench's W3
+        ALL WPR is the stress one) + the six batch ETLs -> Opus xHigh design of the next MT targets (Attila only).
+        - [ ] After the ETL attribution: ask ATN to delete the batch ETLs W3-1, W3-3, W3-4, D1 (~42 GB on C:); keep W3-2
+        (heapfix author) + W3-5 (evaluator proof). ATN's yes needed. Also D:\Dev\scratchpad_copy_1122 (superseded by _1123).
+        - [ ] mem_ confirm run (game run): ATN asked what it is (coord explained: Attila memory-leak proof, not MT); after
+        mem_'s F4-F6 land in the post-bench wave, then ATN's go.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
