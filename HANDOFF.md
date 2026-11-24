@@ -14240,6 +14240,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         unchanged). 0b9ce965c merges cleanly with atn-mods + fca_exit_drain (origin 6802ab234 and fxi_'s local 0b69647a5).
         Merge condition (SHOULD-1b): on the merged tree x86 tw_engine_code -Quick + -Only effect_update, then
         tw_render_mt_defaults. Merge waits only for fxi_ r2 -> rvl_ GO.
+        sbr_ SSS REV 1 DONE (plan_1117/sbr_sss_lowres_design.md sec 0.2 = answer map; sbr_sss_rev1_handback.md): M1 sign-
+        free test + non-finite blocks always evaluated; M2 margin 1e-5*(|start|+1); M3 64-thread build between barriers;
+        M6 skew 16b+((k+(b>>1))&15) (0 conflicts); M4 quad cursor keeps today's quads / lanes / over-read; proof matrix +
+        3 controls (margin-0 swapped for a negative margin) + harness-only block counter; est. @ 240 4K: plain -0.25..-0.4,
+        extended_find -0.4..-0.7, light mode -0.4..-0.8 ms (hypotheses until --time). E1 gated, E6 deferred, R1 / R2 ATN-
+        ask only, R3 rejected. -> rvn_ light re-check of sec 4 + 9 (plan_1117/rvn_sbr_recheck.md) -> E2 implementer.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
