@@ -14135,6 +14135,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         L1 row default Off); 17 / 17 suites exit 0; build32 attila 7c9fc7f4..., amd64 1ef5b0ca...; 11 deviations (2 heredoc
         edits = rule slip); addon.cpp FREE for other writers. Bench log lines + verify-bench overrides (lowcore 0xF -> room
         0, 0xFF -> room 3; L1 Auto arm; RENODX_TW_L1_UNITS=256:256) in the hand-back. -> rvj_ code review (sent).
+        rvh_ GBF GATE SCRIPT RE-CHECK GO (reviews/rvh_gbf_gate_script_recheck_handback.md; 0 / 0, 2 SHOULD, 6 NIT): all r2
+        findings fixed; include closure 47 sources, Stop-Ours path rule safe, finally order right. COORD: fix before the run
+        -> gbf_ r4 (sent): R3-S1 taskkill /T by parent PID could hit a PID-reused unrelated process (walk children by
+        CreationDate, kill by handle); R3-S2 T4a = h9's exact code list; N1-N6. -> rvh_ short look at Stop-Tree -> -DryRun
+        (expect 0 PROBLEM, 'g23 tree: 47 sources') -> run in a GPU window.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
