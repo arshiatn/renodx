@@ -994,10 +994,12 @@ def written(text):
 
 def frame_marks(ctx, path):
     """A trace's marks, read from its own lines (the traces log no engine markers; step 1): the output size (the widest
-    colour target); the line of the composite, the first write of the final target (rt0 of the trace's last draw), None
-    unless that target is output-size and a fullscreen draw, a dispatch or a copy writes it first; the first line that
-    writes an output-size target (the upscale below 100 %); the view size (the first view line, as trace_scale) and its
-    downsampled chain (halved up to 7 times, rounded either way: bloom, AO, exposure); and each line's first index
+    colour target) and whether the final target (rt0 of the trace's last draw) has it; the line of the composite, the
+    final target's first write, None unless that target is output-size and a fullscreen draw, a dispatch or a copy
+    writes it first; the upscale, the first line that writes an output-size target, None with the reason when the first
+    view line's buffer is not its view size (a viewport-scaled frame renders the scene into buffer-size targets) or that
+    line reads no texture at the view size (it is not the upscaler); the view size (the first view line, as trace_scale)
+    and its downsampled chain (halved up to 7 times, rounded either way: bloom, AO, exposure); and each line's first index
     (identical lines count from the earliest)."""
     if path not in ctx.marks:
         lines = (ctx.text(path) or '').splitlines()
@@ -1005,28 +1007,45 @@ def frame_marks(ctx, path):
         output = '%dx%d' % max(sizes) if sizes else None
         last = next((t for t in reversed(lines) if t.startswith(('draw ', 'indexed ')) and re.search(r'\brt0 0x', t)), '')
         final = re.search(r'\brt0 (0x[0-9a-f]+) (\d+x\d+)', last)
+        final_output = bool(final) and final.group(2) == output
         first = next((i for i, t in enumerate(lines) if final and final.group(1) in (a for a, _ in written(t))), None)
         draw = DRAW_LINE.match(lines[first]) if first is not None else None
         screen = draw and int(draw.group(1)) in SCREEN_COUNTS or first is not None and lines[first].startswith(('dispatch ', 'copy '))
-        view = re.search(r'\bview (\d+)x(\d+)', ctx.text(path) or '')
+        view = re.search(r'\bview (\d+)x(\d+)(?: buffer (\d+x\d+))?', ctx.text(path) or '')
         width, height = (int(view.group(1)), int(view.group(2))) if view else (0, 0)
-        ctx.marks[path] = {'output': output, 'composite': first if screen and final.group(2) == output else None,
-                           'upscale': next((i for i, t in enumerate(lines) if any(s == output for _, s in written(t))), None),
+        upscale = next((i for i, t in enumerate(lines) if any(s == output for _, s in written(t))), None)
+        reads = re.findall(r'\bt\d+ 0x[0-9a-f]+ (\d+x\d+)|^copy region 0x[0-9a-f]+ (\d+x\d+)', lines[upscale]) \
+            if upscale is not None else []
+        why = 'no view line' if not view else \
+            f'the view line\'s buffer {view.group(3) or "(none)"} is not its view size {width}x{height} (a viewport-scaled ' \
+            'frame)' if view.group(3) != f'{width}x{height}' else \
+            'no line writes an output-size target' if upscale is None else \
+            'its first output-size write reads no texture at the view size (not the upscale)' \
+            if f'{width}x{height}' not in {a or b for a, b in reads} else ''
+        ctx.marks[path] = {'output': output, 'final_output': final_output,
+                           'composite': first if screen and final_output else None,
+                           'upscale': None if why else upscale, 'upscale_why': why,
                            'chain': {f'{w}x{h}' for k in range(8) for w in (width >> k, -(-width >> k))
                                      for h in (height >> k, -(-height >> k))} if view else set(),
                            'index': {text: i for i, text in reversed(list(enumerate(lines)))}}
     return ctx.marks[path]
 
 
+def view_buffers(fact, view):
+    """The constant buffers of the View's size (min_rows) that feed a VS's clip position, idx: reads too (fullscreen,
+    after-ui and the post / ui tripwire; step 1). A View read shorter than min_rows reads neither PreViewTranslation,
+    which every Unreal mesh VS reads, nor the size rows."""
+    return sorted({f'cb{hit.group(1)}' for hit in (re.match(r'(?:idx:)?cb(\d+)\[', r) for r in fact['position_sources'])
+                   if hit and fact['constant_buffers'].get(int(hit.group(1)), 0) >= view['min_rows']})
+
+
 def view_free(ctx, vs):
-    """Why a VS's clip position may come from the View, or '' (fullscreen, after-ui; step 1): it needs dataflow facts
-    and an engine View layout, and no constant buffer of the View's size (min_rows) may feed the position. A View read
-    shorter than min_rows reads neither PreViewTranslation, which every Unreal mesh VS reads, nor the size rows."""
+    """Why a VS's clip position may come from the View, or '': it needs dataflow facts, an engine View layout and no
+    View-sized buffer in its position (view_buffers)."""
     fact, kinds, _ = ctx.facts.get((vs, 'vs'), ({}, frozenset(), None))
     if 'dataflow' not in kinds or ctx.engine['view'] is None:
         return f'its VS {vs} has no dataflow facts, or the engine no View layout'
-    big = sorted({f'cb{hit.group(1)}' for hit in (re.match(r'(?:idx:)?cb(\d+)\[', r) for r in fact['position_sources'])
-                  if hit and fact['constant_buffers'].get(int(hit.group(1)), 0) >= ctx.engine['view']['min_rows']})
+    big = view_buffers(fact, ctx.engine['view'])
     return f'its VS {vs} reads the View-sized {", ".join(big)} in its position' if big else ''
 
 
@@ -1101,12 +1120,17 @@ def trace_claim(ctx, claim, value, stage, token):
                                else 'not a draw with a logged count' if not draw else view_free(ctx, draw.group(2).upper()))
                 else:  # after-upscale: output-size targets only; below 100 % after the upscale, reading no render size
                     targets = sorted({size for _, size in written(text)})
-                    if targets != [marks['output']]:
+                    if not marks['final_output']:  # r2 SHOULD-3: the output size must be the final image's
+                        bad.append('its trace\'s final target (rt0 of the last draw) is not output-size: the widest colour '
+                                   'target is not the final image')
+                    elif targets != [marks['output']]:
                         bad.append(f'writes {targets}, not only the output size {marks["output"]}')
                     elif ctx.scale[path] is not None and ctx.scale[path] < 1:
                         below += 1
                         bound = dict(re.findall(r'\b(t\d+) 0x[0-9a-f]+ (\d+x\d+)', text))
-                        if marks['upscale'] is None or at <= marks['upscale']:
+                        if marks['upscale'] is None:  # r2 MUST-1, SHOULD-2
+                            bad.append(f'its trace\'s upscale is not readable: {marks["upscale_why"]}')
+                        elif at <= marks['upscale']:
                             bad.append('not after its trace\'s first output-size write (the upscale)')
                         elif stage in ('ps', 'cs') and 'resources' not in kinds:
                             bad.append(f'{value} has no resource facts')
@@ -1286,7 +1310,7 @@ def check_cell(ctx, row, axis, cited, key):
     if missing:  # R3
         problems.append(f'{subject}: {cell} is guarded by tripwires, facts missing or partial (no {", ".join(sorted(missing))}'
                         f'{"; " + error if error else ""}): fails closed (R3)')
-    problems += [f'{subject}: {why}' for why in tripwires(axis, verdict, reason, fact, kinds, primary)]
+    problems += [f'{subject}: {why}' for why in tripwires(axis, verdict, reason, fact, kinds, primary, ctx.engine['view'])]
     for name, rule in ctx.rules.items():  # overrides (M3)
         if rule['axis'] == axis and (rule['verdict'], rule['reason']) != (verdict, full_reason) and \
                 fires(ctx, rule, row, fact, kinds) is True and f'override:{name}' not in tokens:
@@ -1304,8 +1328,8 @@ def check_cell(ctx, row, axis, cited, key):
     return problems, (kind, state, any(t.startswith('override:') for t in tokens))
 
 
-def tripwires(axis, verdict, reason, fact, kinds, primary):
-    """Fixed checks over the facts, on every row whoever settled it (M4)."""
+def tripwires(axis, verdict, reason, fact, kinds, primary, view):
+    """Fixed checks over the facts, on every row whoever settled it (M4); 'view' is the engine's View layout."""
     out = []
     if axis == 'mv' and verdict == 'CAMERA':
         for key, why in (('bone_like', 'bone-like inputs (skinned)'), ('vtf', 'a texture read in the position (vertex texture fetch)'),
@@ -1339,8 +1363,12 @@ def tripwires(axis, verdict, reason, fact, kinds, primary):
             out.append('no-geometry in an engine whose screen-space form is not reviewed (manifest screen_space)')
     if axis == 'mv' and verdict == 'N/A' and reason == 'position-only' and fact and not fact['position_only']:
         out.append('N/A/position-only on a VS whose outputs are not SV_Position only')
-    if verdict == 'N/A' and reason in ('post', 'ui') and fact.get('stage') == 'vs' and fact.get('view_slot') is not None:
-        out.append(f'N/A/{reason} on a VS the View projects (a mesh, not a screen pass or UI)')
+    if verdict == 'N/A' and reason in ('post', 'ui') and fact.get('stage') == 'vs':  # step 1 (r2 SHOULD-1: view_free's test)
+        if view is None:
+            out.append(f'N/A/{reason} in an engine without a View layout (a View-projected VS can\'t be told apart)')
+        elif 'dataflow' in kinds and view_buffers(fact, view):
+            out.append(f'N/A/{reason} on a VS whose position reads the View-sized {", ".join(view_buffers(fact, view))} '
+                       '(a mesh or a shadow pass, not a screen pass or UI)')
     return out
 
 
