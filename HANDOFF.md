@@ -731,6 +731,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - render_mt owner: WH3 89AF6FF5 CS bind + an ao_readers CS variant (g20_ request). | ?
 - 5090 timing of GT-VBAO V1 / V2 (on by default once they pass) in the GPU window; ... | ?
 - ATN (later, with numbers): Faster GT-VBAO (V3) is 10.3 % worse with Auto Thickne ... | ?
+- rvh_ G23 code review 1 -> g23_ fixes -> re-check; then gbf_'s ho_gbf_g23 review ... | ?
+- G23 H9 GPU tests T2-T4 in the GPU window (ATN's go). | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13668,6 +13670,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         speed price + web 0.033 s, pre_shell 0.224 s). Live still stage24 a6b12f1ebeef shadow. -> ATN's chat OK for the
         CHANGED stage (golive bak30 + copy + sha 3ed0213acbd6 + smoke; tests copy into TW\gates\tests).
         fxr_ waits on a PowerShell permission prompt (ATN told).
+        rvm_ mem_fix REVIEW NOT GO (reviews/rvm_mem_fix_review.md + _handback.md): 1 / 2 / 5 / 3. Releases correct; TRIGGER
+        wrong: B1 fires in normal play every 31 frames (main_view_frame moves only on new captures; still views of known
+        meshes); M1 no release log line; M2 Update branch untested (injectable foreground check + 7 offline cases); m1-m5
+        (m5 pre-existing: ForgetScene leaves new_sets -> .at() throw). -> mem_ r2 fixes sent; then rvm_ re-check. Confirm
+        run only after GO: 5 checks (one release line per load, none in play, largest block steady, alt-tab E-lines,
+        next battle's masks + first-frame hitch).
+        mrg_ MERGED (origin): ho_g19 e0440497f, ho_g03 87a5b287e, ho_g09 02ef57a2b (5.5 g21 / g02 / g10 queued).
+        g23_ IMPL PART 1 (handbacks/g23_impl_2a2b_handback.md): ho_g23 (origin; worktree D:\Dev\renodx-g23) cd16da81c
+        tw_gpu_completion 2b T1 WARP PASS; 00a50eacd merge atn-mods; ea398af22 ngx_backend Backend part of 2b (D3D11.4 idle
+        fence, Reset wait, Reconfigure guard, public Abandon). Merge gates: cd16da81c first; ea398af22 only with / after H8
+        and not before 2a. Helper queue handoff_plan/g23_helper_queue.md (H1-H5 = 2a, H6, H7, H8, H8b; H9 GPU tests later,
+        ATN's go). COORD: rvh_ code review 1 sent; gbf_ implements H1-H8b on NEW branch ho_gbf_g23 (from ho_gbf); g23_ GO
+        for 2e-2 -> 2f-1 step 1 (WH3 100 %) -> 2f-2 / 2f-3 / 2f-4 / 2i (non-helper files; 2f-1 step 2 after step 1's
+        review). Skill row helper-fg-stability.md:43 waits for ho_g14.
+        - [ ] rvh_ G23 code review 1 -> g23_ fixes -> re-check; then gbf_'s ho_gbf_g23 review (rvh_).
+        - [ ] G23 H9 GPU tests T2-T4 in the GPU window (ATN's go).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
