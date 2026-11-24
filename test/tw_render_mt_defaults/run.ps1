@@ -100,6 +100,12 @@ Check ($text.Contains('fill_fold_on = (pool_room && fill_fold_row != 0.f);')) 'f
 Check ($text.Contains('((animation_rows_row == 0.f || !pool_room)')) 'animation rows gated by pool_room'
 Check ($text -match '\.env_generation = env_generation,\s+\.game_cpus = game_cpus\}\);') 'the pool gets .game_cpus = game_cpus, last'
 Check ((Read-Source 'worker_pool.hpp') -match 'constexpr uint32_t MIN_GAME_CPUS = 8;') 'MIN_GAME_CPUS 8'
+# Automatic L1 (inside its row, which stays Off above): parallel from 20000 effect instances, serial below 16000, never below
+# 256; the bench env RENODX_TW_L1_UNITS read again at the pool's env generation.
+$effect = Read-Source 'effect_update.hpp'
+Check ($effect.Contains('constexpr UnitRule SHIPPED_UNIT_RULE = {MIN_ROUND_UNITS, 20000, 16000};') -and $effect -match 'constexpr uint32_t MIN_ROUND_UNITS = 256;' `
+       -and $effect.Contains('static UnitRule unit_rule = SHIPPED_UNIT_RULE;')) 'L1 rule 256 / 20000 / 16000'
+Check ($text.Contains('twattila::effect_update::Update(effect_update_on, effect_spawns_row != 0.f, env_generation);')) 'L1 gets the env generation'
 
 if ($failures.Count -ne 0) { throw "render_mt defaults: $($failures.Count) mismatch(es)" }
 'render_mt defaults: all match'

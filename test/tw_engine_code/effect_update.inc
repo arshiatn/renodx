@@ -12,8 +12,9 @@
 //    TrackedChild (9);
 // 26d. NoDeadlock (12): tiny effects with children into the next ones, K = 2 to 8, delays; AllocationFailure (14): a failure injected at every block of a round (before the
 //    round: serial; in the round: the units drained, the rest serial); PrivateWritesOnly (15): the scheduler's reads of the game's structures with those pages read-only;
-//    the serial reasons, the census (a render thread hit outside a unit, a foreign thread), the watched words, Update's gates; the handler writes Frame.eax only where it
-//    answers; the scheduler's stack high-water;
+//    the serial reasons; Automatic L1 (the table's sum with the game's key test, the hysteresis, the floor, the resets, the slot limit, the bench env, the switch line); the
+//    census (a render thread hit outside a unit, a foreign thread), the watched words, Update's gates; the handler writes Frame.eax only where it answers; the scheduler's
+//    stack high-water;
 // 26f. L2 (Parallel Effect Spawns): SpawnEqualsSerial (the create path's three sites staged and merged in the serial order: CPU and GPU pipelines, with and without events, the other
 //    callers of the draw), OverflowDetected (a buffer that fills: counted, the merged buffer is serial's), the guard (a budget below the minimum, the last round's spawns past half),
 //    the slot pool's words watched (S10), a walk call from a thread that is not the render thread with no round open (N9); AllocationFailure with L2 (the drain commits and merges);
@@ -69,10 +70,14 @@ struct LogEntry {
   bool operator==(const LogEntry&) const = default;
 };
 
-struct Slot {
-  uint32_t a = 0, b = 0, c = 0, effect = 0;
+struct Slot {  // the key (a string: its length, capacity and the bytes' pointer), the effect
+  uint32_t length = 0, capacity = 0, bytes = 0, effect = 0;
 };
-static_assert(sizeof(Slot) == eu::internal::SLOT_SIZE && offsetof(Slot, effect) == eu::internal::SLOT_EFFECT_OFFSET);
+static_assert(sizeof(Slot) == eu::internal::SLOT_SIZE && offsetof(Slot, effect) == eu::internal::SLOT_EFFECT_OFFSET && offsetof(Slot, bytes) == eu::internal::KEY_BYTES_OFFSET);
+// The table's sentinel keys (the game's are strings too): every free slot holds a copy of the empty key in its own bytes; a live
+// slot's key has the same length ("k" and four hex digits of the slot), so the game's compare reads the bytes.
+constexpr std::string_view EMPTY_KEY = "empty";
+constexpr std::string_view DELETED_KEY = "erased";
 
 struct Shape {
   uint32_t effects = 8;
@@ -102,6 +107,7 @@ struct World {
   uint8_t* node = nullptr;
   Slot* slots = nullptr;
   uint32_t table_slots = 0;
+  char* key_bytes = nullptr;  // 8 bytes per slot for its key's text (in the arena)
   std::vector<Effect*> effects;
   std::vector<Instance> instances;
   std::vector<LogEntry> log;
@@ -169,6 +175,28 @@ static World* world = nullptr;
 uint8_t* At(uint32_t address) { return reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(address)); }
 uint32_t Word(uint32_t address) { return Read32(At(address)); }
 void SetWord(uint32_t address, uint32_t value) { Write32(At(address), value); }
+
+// A key at `key` ({length, capacity, the bytes' pointer}) holding `text` in `bytes` (8 at most).
+void SetKey(uint8_t* key, char* bytes, std::string_view text) {
+  std::memcpy(bytes, text.data(), text.size());
+  Write32(key, static_cast<uint32_t>(text.size()));
+  Write32(key + 4, 8);
+  Write32(key + eu::internal::KEY_BYTES_OFFSET, Address(bytes));
+}
+void SetSlotKey(World& w, uint32_t slot, std::string_view text) { SetKey(reinterpret_cast<uint8_t*>(&w.slots[slot]), w.key_bytes + 8 * slot, text); }
+void SetLiveKey(World& w, uint32_t slot) { SetSlotKey(w, slot, std::format("k{:04x}", slot)); }
+
+// The game's slot test (its iterator's advance, +0x192D5D0): a key that equals neither the empty nor the deleted key, the lengths
+// then the bytes through the pointers (+0xDE0D0).
+bool Live(const World& w, uint32_t slot) {
+  const auto same = [](const uint8_t* key, const uint8_t* other) {
+    const uint32_t length = Read32(key);
+    return length == Read32(other)
+           && (length == 0 || std::memcmp(At(Read32(key + eu::internal::KEY_BYTES_OFFSET)), At(Read32(other + eu::internal::KEY_BYTES_OFFSET)), length) == 0);
+  };
+  const auto* key = reinterpret_cast<const uint8_t*>(&w.slots[slot]);
+  return !same(key, w.node + eu::internal::EMPTY_KEY_OFFSET) && !same(key, w.node + eu::internal::DELETED_KEY_OFFSET);
+}
 static std::atomic<uint32_t> eax_violations = 0;
 static std::atomic<uint32_t> forwarded_calls = 0;
 static DWORD render_thread = 0;
@@ -629,12 +657,12 @@ void DoOp(World& w, Instance& me, char op, Random* rng, uint32_t* held_slot) {
         std::array<uint32_t, 64> free = {};
         uint32_t free_count = 0;
         for (uint32_t slot = 0; slot < w.table_slots && free_count < free.size(); ++slot) {
-          if (w.slots[slot].effect == 0) free[free_count++] = slot;
+          if (!Live(w, slot)) free[free_count++] = slot;
         }
         if (w.types_left != 0 && free_count != 0 && w.effects.size() < w.effects.capacity() && w.used + 2 * (sizeof(Effect) + 16 + 8 * sizeof(Entry)) < w.arena_size) {
           uint32_t slot = free[rng->Next() % free_count];
           const uint32_t after = 1 + me.effect * w.slots_per_effect + 1;
-          if (w.types_near && after < w.table_slots && w.slots[after].effect == 0) slot = after;
+          if (w.types_near && after < w.table_slots && !Live(w, after)) slot = after;
           --w.types_left;
           auto* effect = new (w.Take(sizeof(Effect))) Effect;
           auto* entries = static_cast<Entry*>(w.Take(sizeof(Entry) * 8));
@@ -644,6 +672,7 @@ void DoOp(World& w, Instance& me, char op, Random* rng, uint32_t* held_slot) {
           effect->entries = Address(entries);
           effect->vector_head = Address(effect) + eu::internal::APPEND_VECTOR_OFFSET;
           w.effects.push_back(effect);
+          SetLiveKey(w, slot);
           w.slots[slot].effect = Address(effect);
           vector_head = effect->vector_head;
           appended = AppendChild(w, effect_index, rng, &entry);
@@ -746,9 +775,11 @@ void SerialEffect(uint32_t effect_address) {
   SweepImpl(effect);
 }
 
-// The game's loop over a node's table: each effect through the walk's call site (the thunk's gate, the handler), the walk's end.
+// The game's loop over a node's table: each effect through the walk's call site (the thunk's gate, the handler), the walk's end. A
+// slot with the empty or the deleted key is skipped (the iterator), then a null effect (the loop's body).
 void GameWalk(World& w, int hook) {
   for (uint32_t slot = 0; slot < Read32(w.node + eu::internal::TABLE_OFFSET + 4); ++slot) {
+    if (!Live(w, slot)) continue;
     const uint32_t effect = reinterpret_cast<const Slot*>(static_cast<uintptr_t>(Read32(w.node + eu::internal::TABLE_OFFSET)))[slot].effect;
     if (effect == 0) continue;
     if (w.enumerate_delay != 0) {
@@ -794,12 +825,17 @@ std::unique_ptr<World> Build(uint64_t seed, const Shape& shape, uint8_t* image =
     total += count;
   }
   w->table_slots = shape.effects * shape.gap + 64;
-  w->arena_size = ((0x400 + w->table_slots * 16 + shape.effects * (sizeof(Effect) + 64) + (total + shape.effects * 192) * sizeof(Entry) + 96 * (sizeof(Effect) + 64 + 8 * sizeof(Entry))) + 0xFFF) & ~static_cast<size_t>(0xFFF);
+  w->arena_size = ((0x400 + w->table_slots * (16 + 8) + 32 + shape.effects * (sizeof(Effect) + 64) + (total + shape.effects * 192) * sizeof(Entry) + 96 * (sizeof(Effect) + 64 + 8 * sizeof(Entry))) + 0xFFF) & ~static_cast<size_t>(0xFFF);
   w->arena = static_cast<uint8_t*>(VirtualAlloc(nullptr, w->arena_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
   w->node = static_cast<uint8_t*>(w->Take(0x400));
   w->slots = static_cast<Slot*>(w->Take(w->table_slots * sizeof(Slot)));
   Write32(w->node + eu::internal::TABLE_OFFSET, Address(w->slots));
   Write32(w->node + eu::internal::TABLE_OFFSET + 4, w->table_slots);
+  w->key_bytes = static_cast<char*>(w->Take(w->table_slots * 8));
+  auto* sentinels = static_cast<char*>(w->Take(16));
+  SetKey(w->node + eu::internal::EMPTY_KEY_OFFSET, sentinels, EMPTY_KEY);
+  SetKey(w->node + eu::internal::DELETED_KEY_OFFSET, sentinels + 8, DELETED_KEY);
+  for (uint32_t slot = 0; slot < w->table_slots; ++slot) SetSlotKey(*w, slot, EMPTY_KEY);
   w->instances.reserve(total + 4096);
   w->log.reserve((static_cast<size_t>(total) + 4096) * (shape.max_ops * 6 + 8));
   w->effects.reserve(shape.effects + 128);
@@ -830,6 +866,7 @@ std::unique_ptr<World> Build(uint64_t seed, const Shape& shape, uint8_t* image =
     }
     effect->count = counts[index];
     w->effects.push_back(effect);
+    SetLiveKey(*w, 1 + index * shape.gap);
     w->slots[1 + index * shape.gap].effect = Address(effect);
   }
   // The slot pool, the emitters (a gate byte pair at +0x298 / +0x5C of the object two pointers away) and the node's pipeline.
@@ -922,8 +959,10 @@ bool Equal(const World& a, const World& b, std::string* why) {
     }
   }
   for (uint32_t slot = 0; slot < a.table_slots; ++slot) {
-    const auto index_of = [](const Slot& s) { return s.effect == 0 ? NO_SLOT : reinterpret_cast<const Effect*>(static_cast<uintptr_t>(s.effect))->index; };
-    if (index_of(a.slots[slot]) != index_of(b.slots[slot])) return fail("the table");
+    const auto index_of = [&](const World& w) {
+      return (!Live(w, slot) || w.slots[slot].effect == 0) ? NO_SLOT : reinterpret_cast<const Effect*>(static_cast<uintptr_t>(w.slots[slot].effect))->index;
+    };
+    if (index_of(a) != index_of(b)) return fail("the table");
   }
   for (size_t index = 0; index < a.instances.size(); ++index) {
     const Instance& x = a.instances[index];
@@ -943,7 +982,13 @@ void ResetScheduler() {
   ei::off_said = false;
   ei::last_round_units = ei::MIN_ROUND_UNITS;
   ei::last_node = 0;
-  ei::small_round_presents = 0;
+  ei::unit_rule = {0, 0, 0};  // every world runs as a round (the all-empty one too); the rule's own cases set theirs
+  ei::was_parallel = false;
+  ei::rule_switch = {};
+  ei::rule_env_applied = 0;  // Update(row) passes env generation 0: the env is not read
+  ei::rule_env_said = false;
+  ei::sum_trace = {};
+  ei::capacity_window = 0;
   ei::spawns_row = false;
   ei::spawns_off = false;
   ei::last_round_spawned = 0;
@@ -1830,7 +1875,8 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* game, uint8_t* patched
     }
   }
 
-  // The serial reasons: too few units last round, a new node, no workers, the session off. Each walk equals the game's loop and leaves the gate closed.
+  // The serial reasons: effect instances below the threshold, a new node, no workers, the session off. Each walk equals the game's loop and leaves the gate closed; the table
+  // is summed only where the rule decides (not before a new node, the session or the workers say serial).
   {
     Shape shape;
     shape.ops = "R";
@@ -1853,10 +1899,11 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* game, uint8_t* patched
       GameWalk(*parallel, false);
       data->walk_armed.store(0);
       CHECK(Equal(*serial, *parallel, &why) && ei::serial_rounds[static_cast<size_t>(reason)].load() == 1 && finish_round_checks(*parallel));
+      CHECK(ei::controls.table_sums == (reason == ei::SerialReason::FEW_UNITS ? 1u : 0u));
       std::printf("26d. serial reason \"%s\": the walk equals the game's loop\n", name);
       return 0;
     };
-    if (reason_case("too few units last round", ei::SerialReason::SMALL, 3, [](World&) { ei::last_round_units = 10; }) != 0) return 1;
+    if (reason_case("effect instances below the threshold", ei::SerialReason::FEW_UNITS, 3, [](World&) { ei::unit_rule = {0, 100000, 100000}; }) != 0) return 1;
     if (reason_case("a new node", ei::SerialReason::NEW_NODE, 3, [](World&) { ei::last_node = 0x1234; }) != 0) return 1;
     if (reason_case("no workers", ei::SerialReason::NO_WORKERS, 0, [](World&) {}) != 0) return 1;
     if (reason_case("the session is off", ei::SerialReason::SESSION_OFF, 3, [](World&) { ei::session_off = true; }) != 0) return 1;
@@ -1871,12 +1918,13 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* game, uint8_t* patched
       world = parallel.get();
       ei::entries.random_state = &parallel->lcg;
       ei::row_on = true;
-      ei::last_round_units = 10;
+      ei::unit_rule = {0, 100000, 100000};
       ei::last_node = Address(parallel->node);
       data->walk_armed.store(1);
       GameWalk(*parallel, false);
       data->walk_armed.store(0);
-      CHECK(Equal(*serial, *parallel, &why) && ei::serial_rounds[static_cast<size_t>(ei::SerialReason::SMALL)].load() == 0 && finish_round_checks(*parallel));
+      CHECK(Equal(*serial, *parallel, &why) && ei::serial_rounds[static_cast<size_t>(ei::SerialReason::FEW_UNITS)].load() == 0 && finish_round_checks(*parallel)
+            && ei::controls.table_sums == 1 && ei::sum_trace.sums == 0);
       // The window's own counts are printed by the first present after it; presents after that print nothing: no counter line, no serial reason.
       ei::written = eu::ALL_SITES;
       eu::Update(true);
@@ -1894,6 +1942,203 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* game, uint8_t* patched
       CHECK(printed == 0);
       std::printf("26d. serial reasons outside a trace window: not counted, five presents print nothing\n");
     }
+    ResetScheduler();
+  }
+
+  // Automatic L1: the rule on the table's sum (the game's key test), its hysteresis and floor, the resets, the slot limit, the bench env and the switch line (once per switch).
+  // Every walk equals the game's loop. (NO_WORKERS before the sum: the serial reasons above.)
+  {
+    const auto clear_log = [] {
+      const std::unique_lock lock(log_mutex);
+      log_lines.clear();
+    };
+    const auto lines_with = [](std::string_view text) {
+      const std::unique_lock lock(log_mutex);
+      size_t found = 0;
+      for (const std::string& line : log_lines) found += (line.find(text) != std::string::npos ? 1 : 0);
+      return found;
+    };
+    const auto serial_count = [](ei::SerialReason reason) { return ei::serial_rounds[static_cast<size_t>(reason)].load(); };
+    // A fresh world of `effects` x `each` instances (its node the last one) walked by the game's loop and with the row on: equal, summed to effects x each; *ran: a round ran.
+    const auto rule_walk = [&](uint32_t effects, uint32_t each, uint64_t seed, bool* ran) -> int {
+      Shape shape;
+      shape.ops = "R";
+      shape.effects = effects;
+      shape.min_units = each;
+      shape.max_units = each;
+      shape.busy = 20;
+      auto serial = Build(seed, shape);
+      auto parallel = Build(seed, shape);
+      Walk(*serial, false);
+      Walk(*parallel, true);
+      CHECK(Equal(*serial, *parallel, &why) && finish_round_checks(*parallel) && ei::sum_trace.instances == effects * each);
+      *ran = (ei::last_round_units != SENTINEL_UNITS);
+      return 0;
+    };
+    CHECK(trace_open(200, 4));
+    CHECK(pool(4) == 3);
+
+    // The hysteresis at {0, 200, 160}: 100 -> 210 -> 170 -> 150 -> 210 instances run serial, parallel, parallel, serial, parallel; a line at each switch only.
+    {
+      ResetScheduler();
+      clear_log();
+      ei::unit_rule = {0, 200, 160};
+      struct Step {
+        uint32_t each;
+        bool parallel;
+        const char* line;
+      };
+      const std::array<Step, 5> steps = {{{10, false, nullptr},
+                                          {21, true, "Parallel Effect Update: parallel from here (210 effect instances, from 200)."},
+                                          {17, true, nullptr},
+                                          {15, false, "Parallel Effect Update: serial from here (150 effect instances, below 160)."},
+                                          {21, true, "Parallel Effect Update: parallel from here (210 effect instances, from 200)."}}};
+      size_t switches = 0;
+      for (size_t step = 0; step < steps.size(); ++step) {
+        bool ran = !steps[step].parallel;
+        if (rule_walk(10, steps[step].each, 500 + step, &ran) != 0) return 1;
+        CHECK(ran == steps[step].parallel && ei::was_parallel == ran);
+        eu::Update(true);
+        switches += (steps[step].line != nullptr ? 1 : 0);
+        CHECK(lines_with("from here") == switches && (steps[step].line == nullptr || lines_with(steps[step].line) != 0));
+        if (step == 0) {
+          // The trace window's line: the serial reason, the sum, the table's capacity (once a window) and its three biggest effects.
+          CHECK(lines_with("serial (effect instances below the threshold) 1, table instances 100, table sum ") == 1 && lines_with(" us, table capacity 84, top effects 0x") == 1
+                && lines_with(" 10 0x") == 1);
+        }
+      }
+      CHECK(lines_with("table capacity") == 1 && lines_with("table instances 210, table sum ") == 2 && lines_with("table instances 150, table sum ") == 1);
+      std::printf("26d. Automatic L1: at {0, 200, 160} 100 -> 210 -> 170 -> 150 -> 210 instances ran serial, parallel, parallel, serial, parallel, each equal to the game's loop; "
+                  "%zu switch lines, one per switch; the trace window's line shows the table's instances, its capacity once and its biggest effects\n",
+                  switches);
+    }
+
+    // The floor at {256, 0, 0}: 255 instances serial (below the threshold), 256 a round.
+    {
+      ResetScheduler();
+      ei::unit_rule = {256, 0, 0};
+      bool ran = true;
+      if (rule_walk(15, 17, 520, &ran) != 0) return 1;
+      CHECK(!ran && serial_count(ei::SerialReason::FEW_UNITS) == 1);
+      if (rule_walk(16, 16, 521, &ran) != 0) return 1;
+      CHECK(ran && serial_count(ei::SerialReason::FEW_UNITS) == 1);
+      std::printf("26d. Automatic L1: the floor at {256, 0, 0}: 255 instances serial, 256 a round\n");
+    }
+
+    // The game's key test: a deleted slot and a free slot (the empty key, its own copy of the bytes) that keep a stale effect on a no-access page, and a live key with no
+    // effect: the sum skips all three (no fault), the walk equals the game's.
+    {
+      ResetScheduler();
+      auto* stale = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_NOACCESS));
+      CHECK(stale != nullptr);
+      Shape shape;
+      shape.ops = "R";
+      shape.effects = 8;
+      shape.max_units = 20;
+      auto serial = Build(530, shape);
+      auto parallel = Build(530, shape);
+      uint32_t total = 0;
+      for (const Effect* effect : parallel->effects) total += effect->count;
+      for (World* w : {serial.get(), parallel.get()}) {
+        SetSlotKey(*w, 0, DELETED_KEY);
+        w->slots[0].effect = Address(stale);
+        w->slots[w->table_slots - 1].effect = Address(stale);
+        SetLiveKey(*w, w->table_slots - 2);
+      }
+      Walk(*serial, false);
+      Walk(*parallel, true);
+      CHECK(Equal(*serial, *parallel, &why) && finish_round_checks(*parallel) && ei::last_round_units != SENTINEL_UNITS && ei::sum_trace.instances == total
+            && ei::controls.table_sums == 1);
+      CHECK(VirtualFree(stale, 0, MEM_RELEASE) != 0);
+      std::printf("26d. Automatic L1: a deleted and an empty-key slot with a stale effect on a no-access page and a live key with no effect: skipped by the game's key test "
+                  "(%u instances summed), the walk equal to the game's\n",
+                  total);
+    }
+
+    // The resets: a new node, the row off and the session off each put a parallel state back to serial (and say so): a 170 world after it is serial at {0, 200, 160}.
+    for (const char* reset : {"new node", "row off", "session off"}) {
+      ResetScheduler();
+      clear_log();
+      ei::unit_rule = {0, 200, 160};
+      bool ran = false;
+      if (rule_walk(10, 21, 540, &ran) != 0) return 1;
+      CHECK(ran && ei::was_parallel);
+      eu::Update(true);
+      if (reset == std::string_view("new node")) {
+        // A walk of another node: serial (not summed), the game's own loop.
+        Shape shape;
+        shape.effects = 4;
+        shape.max_units = 5;
+        auto other = Build(541, shape);
+        world = other.get();
+        ei::entries.random_state = &other->lcg;
+        data->walk_armed.store(1);
+        GameWalk(*other, 0);
+        data->walk_armed.store(0);
+        CHECK(serial_count(ei::SerialReason::NEW_NODE) == 1 && ei::controls.table_sums == 1 && finish_round_checks(*other));
+        eu::Update(true);
+      } else if (reset == std::string_view("row off")) {
+        eu::Update(false);
+      } else {
+        ei::session_off = true;
+        eu::Update(true);
+      }
+      CHECK(!ei::was_parallel && lines_with(std::format("Parallel Effect Update: serial from here ({}).", reset)) == 1 && lines_with("from here") == 2);
+      if (rule_walk(10, 17, 542, &ran) != 0) return 1;
+      CHECK(!ran && serial_count(ei::SerialReason::FEW_UNITS) == 1);
+      std::printf("26d. Automatic L1: reset by \"%s\" (one line), a 170 world after it serial at {0, 200, 160}\n", reset);
+    }
+
+    // The slot limit: a table of 4264 slots is not summed (serial, one stored note, said once at the present); 4096 slots are summed.
+    {
+      ResetScheduler();
+      clear_log();
+      Shape shape;
+      shape.ops = "R";
+      shape.effects = 6;
+      shape.max_units = 20;
+      shape.gap = 700;  // 6 x 700 + 64 slots
+      auto serial = Build(560, shape);
+      auto parallel = Build(560, shape);
+      Walk(*serial, false);
+      Walk(*parallel, true);
+      CHECK(Equal(*serial, *parallel, &why) && finish_round_checks(*parallel) && ei::last_round_units == SENTINEL_UNITS && ei::controls.table_sums == 0
+            && serial_count(ei::SerialReason::BIG_TABLE) == 1);
+      CHECK(ei::event_count.load() == 1 && ei::events[0].kind == ei::EventKind::BIG_TABLE && ei::events[0].value == 4264);
+      eu::Update(true);
+      CHECK(lines_with("Parallel Effect Update: effect table above the slot limit, walks serial (site ") == 1 && lines_with("value 0x10A8)") == 1);
+      auto again = Build(561, shape);
+      Walk(*again, true);
+      CHECK(serial_count(ei::SerialReason::BIG_TABLE) == 1 && ei::event_count.load() == 0 && finish_round_checks(*again));  // (the present's line took the first)
+      shape.gap = 672;  // 6 x 672 + 64 = 4096 slots: summed
+      auto limit = Build(562, shape);
+      Walk(*limit, true);
+      CHECK(ei::last_round_units != SENTINEL_UNITS && ei::controls.table_sums == 1 && finish_round_checks(*limit));
+      std::printf("26d. Automatic L1: a table of 4264 slots walks serial without a sum (one note, said once); 4096 slots are summed\n");
+    }
+
+    // The bench env RENODX_TW_L1_UNITS=<on>:<off>, read when the generation changes: clamped to at least 256 and off to at most on; a bad value is said once and the
+    // shipped rule applies; no value: the shipped rule.
+    {
+      ResetScheduler();
+      clear_log();
+      using Rule = std::array<uint32_t, 3>;
+      const auto env = [](const char* value, uint32_t generation) {
+        SetEnvironmentVariableA("RENODX_TW_L1_UNITS", value);
+        eu::Update(true, false, generation);
+        return Rule{ei::unit_rule.floor, ei::unit_rule.on, ei::unit_rule.off};
+      };
+      CHECK(env("30000:20000", 1) == (Rule{256, 30000, 20000})
+            && lines_with("Parallel Effect Update: parallel from 30000 effect instances, serial below 20000 (RENODX_TW_L1_UNITS, bench only).") == 1);
+      CHECK(env("100:50", 2) == (Rule{256, 256, 256}));
+      CHECK(env("20000:30000", 3) == (Rule{256, 20000, 20000}));
+      CHECK(env("bad", 4) == (Rule{256, 20000, 16000}) && lines_with("RENODX_TW_L1_UNITS=\"bad\" does not parse; parallel from 20000, serial below 16000.") == 1);
+      CHECK(env("30000:", 5) == (Rule{256, 20000, 16000}) && lines_with("does not parse") == 1);
+      CHECK(env("30000:20000", 5) == (Rule{256, 20000, 16000}));  // the same generation: not read again
+      CHECK(env(nullptr, 6) == (Rule{256, 20000, 16000}) && lines_with("RENODX_TW_L1_UNITS") == 4);
+      std::printf("26d. Automatic L1: RENODX_TW_L1_UNITS 30000:20000, 100:50 (clamped to 256), 20000:30000 (off to on), bad values said once, none: the shipped 256 / 20000 / 16000\n");
+    }
+    CHECK(trace_close(4));
     ResetScheduler();
   }
 

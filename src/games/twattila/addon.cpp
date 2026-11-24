@@ -1741,7 +1741,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                  .fill_fold = fill_fold_on,
                                  .exit_job_drain = exit_job_drain_on});
   // After the engine code's Update (the sites are in or out for this present) and the pool's.
-  twattila::effect_update::Update(effect_update_on, effect_spawns_row != 0.f);
+  twattila::effect_update::Update(effect_update_on, effect_spawns_row != 0.f, env_generation);
 #if defined(TWATTILA_DRAW_RECORDING)
   // After the engine code's Update: the sites are in or out for this present, and only the groups whose sites all are
   // in run.
@@ -2252,7 +2252,7 @@ void ConfigureAddon() {
           .default_value = 0.f,
           .label = "Parallel Effect Update (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "Updates the game's effects on several threads. Same picture.",
+          .tooltip = "Updates the game's effects on several threads while a battle has many of them (arrow volleys). Same picture.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{
