@@ -842,7 +842,7 @@ struct Runtime {
   // The last frame a scene draw reached Capture or MarkDrawn (main_view_frame only moves with a main-view capture: a known
   // mesh's draw returns before it) and its present's time, the presents in front since without one (Update's loading-screen
   // test: counted to SCENE_GONE_FRAMES; past it once the scene is let go), the last loading screen's line, and (32-bit) the
-  // frame whose Update logs the address space after it (0: none).
+  // frame of the last release whose line asks for the address space again later (0: none).
   uint64_t scene_frame = 0;
   uint64_t scene_tick = 0;
   uint64_t sceneless_presents = 0;
@@ -4482,10 +4482,13 @@ inline void Update(const Settings& settings) {
     runtime.address_space_present = 0;
     renodx::utils::log::i("[Total War] Ray tracing: the next present: ", device_end::FreeAddressSpace(), ".");
   }
-  if (runtime.address_space_release == runtime.frame) {
+  // A release's later line (a walk) SCENE_GONE_FRAMES presents on, or one present later when the chain's L3 walks in this
+  // one (its flag above): one walk a present.
+  if (runtime.address_space_release != 0 && runtime.frame >= runtime.address_space_release + internal::SCENE_GONE_FRAMES
+      && runtime.address_space_present != runtime.frame + 1) {
+    renodx::utils::log::i(std::format("[Total War] Ray tracing: {} presents after the loading screen's release: {}.",
+                                      runtime.frame - runtime.address_space_release, device_end::AddressSpace()));
     runtime.address_space_release = 0;
-    renodx::utils::log::i(std::format("[Total War] Ray tracing: {} presents after the loading screen's release: {}.", internal::SCENE_GONE_FRAMES,
-                                      device_end::AddressSpace()));
   }
   internal::PublishAmbientReplaced();
   // Capture's depth-stencil view read again next frame: none of the game's held past its frame (a resize's old depth goes).
@@ -4825,9 +4828,10 @@ inline void Update(const Settings& settings) {
                                      internal::SCENE_GONE_FRAMES, known_meshes, cluster_sets, atlas_slices, cut_out_textures);
 #if !defined(_WIN64)
       // What is let go is destroyed later (D3D11 at a flush, the heap keeps its segments): its address space again later,
-      // with the largest free block (the release's one walk, still in the loading screen).
+      // with the largest free block (the release's one walk, SCENE_GONE_FRAMES presents on: in the loading screen unless it
+      // ends sooner).
       text += "; before it: " + address_space;
-      runtime.address_space_release = runtime.frame + internal::SCENE_GONE_FRAMES;
+      runtime.address_space_release = runtime.frame;
 #endif
       renodx::utils::log::i(text, ".");
     }

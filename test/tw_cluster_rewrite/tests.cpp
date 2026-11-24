@@ -35,8 +35,11 @@
 //    h. The clock: 40 presents in front within SCENE_GONE_MS of the scene's draw: kept, counted to 30 (the foreground asked
 //       30 times, not after); a second on, let go.
 //    i. Nothing held: let go without a line.
-//    j. The line's floor: 8 loading screens within RELEASE_LINE_MS, one line.
-//    k. The game's device gone (OnDestroyDevice's ForgetScene): this frame's new sets and compact draws go with the sets.
+//    j. The line's floor (the last line's time put 9 s back before each screen: no run's clock decides): a line, then 7
+//       loading screens each let go without one; CONTROL 10 s back: a line.
+//    k. The release's later walk and the chain's L3 walk due in one present (30 presents after a release): L3's then, the
+//       later line one present on ("31 presents after", 32-bit), one walk a present.
+//    l. The game's device gone (OnDestroyDevice's ForgetScene): this frame's new sets and compact draws go with the sets.
 // 10. The address space's chain (rt_core.hpp): armed at the helper's let go only once its present callback ran
 //     (OnPresentAddressSpace: the host registered it) and not mid-chain (32-bit; 64-bit never); its last lines (armed by a
 //     trace two presents on): over 100 presents, once each and in order, that frame's present callbacks done
@@ -549,23 +552,76 @@ int main() {
     std::printf("9i. nothing held, 30 presents in front: let go, no line %d\n", no_empty_line ? 1 : 0);
     CHECK(no_empty_line);
 
-    // j. The line's floor: 8 loading screens, each let go, one line (within RELEASE_LINE_MS).
+    // j. The line's floor: a loading screen's line (its time kept), then 7 screens each let go without one while the last
+    //    line is 9 s back (put there before each: no run's clock decides); CONTROL 10 s back: a line.
     const long long lines_before = loading_lines();
     const uint64_t first_tick = GetTickCount64();
-    bool each_let_go = true;
-    for (int screen = 0; screen < 8; ++screen) {
-      each_let_go = hold_scene(screen == 0) && each_let_go;
-      presents(30, true, false);
-      each_let_go = each_let_go && held() == NONE;
+    bool each_let_go = hold_scene(true);
+    presents(30, true, false);
+    each_let_go = each_let_go && held() == NONE;
+    bool line_tick_kept = false;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      line_tick_kept = runtime.release_line_tick >= first_tick && runtime.release_line_tick <= GetTickCount64();
     }
-    const uint64_t took = GetTickCount64() - first_tick;
-    const bool one_line = loading_lines() - lines_before == 1 || took >= scene::internal::RELEASE_LINE_MS;
-    std::printf("9j. 8 loading screens in %llu ms: each let go %d, one line %d\n", static_cast<unsigned long long>(took), each_let_go ? 1 : 0,
-                one_line ? 1 : 0);
-    CHECK(each_let_go && one_line);
+    const auto screen_after_line = [&](uint64_t line_ago) {
+      const bool screen_made = hold_scene(false);
+      {
+        const std::unique_lock lock(runtime.mutex);
+        runtime.release_line_tick = GetTickCount64() - line_ago;
+      }
+      presents(30, true, false);
+      return screen_made && held() == NONE;
+    };
+    for (int screen = 1; screen < 8; ++screen) each_let_go = screen_after_line(scene::internal::RELEASE_LINE_MS - 1000) && each_let_go;
+    const bool one_line = line_tick_kept && loading_lines() - lines_before == 1;
+    const bool control_let_go = screen_after_line(scene::internal::RELEASE_LINE_MS);
+    const bool control_line = loading_lines() - lines_before == 2;
+    std::printf("9j. a loading screen's line (its time kept %d), 7 more 9 s after it: each let go %d, one line %d; CONTROL 10 s after: a "
+                "line %d\n",
+                line_tick_kept ? 1 : 0, each_let_go ? 1 : 0, one_line ? 1 : 0, control_let_go && control_line ? 1 : 0);
+    CHECK(each_let_go && one_line && control_let_go && control_line);
 
-    // k. The game's device gone mid-frame.
-    const bool k_made = wait_made(buffer.Get(), 40);
+    // k. The release's later walk and the chain's L3 walk due in one present (the scene back 30 presents after a release,
+    //    the helper's chain running).
+    const bool k_made = hold_scene(true);
+    presents(30, true, false);
+    const bool k_let_go = held() == NONE;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.address_space_present = runtime.frame + scene::internal::SCENE_GONE_FRAMES + 1;
+    }
+    const auto l3_lines = [&] { return lines_with("that frame's present callbacks done: "); };
+    const auto later_31_lines = [&] { return lines_with("31 presents after the loading screen's release: "); };
+    const long long later_31 = later_31_lines();
+    long long most_walks = 0;
+    int l3_present = 0;
+    int later_present = 0;
+    for (int present = 1; present <= 32; ++present) {
+      const long long walks = walked_lines();
+      const long long l3 = l3_lines();
+      const long long later = later_lines();
+      scene::Update(settings);
+      scene::OnPresentAddressSpace(nullptr, nullptr, nullptr, nullptr, 0, nullptr);
+      most_walks = std::max(most_walks, walked_lines() - walks);
+      if (l3_lines() != l3) l3_present = present;
+      if (later_lines() != later) later_present = present;
+    }
+#if defined(_WIN64)
+    constexpr int LATER_PRESENT = 0;  // no later line
+#else
+    constexpr int LATER_PRESENT = 31;
+#endif
+    const bool later_text = later_31_lines() - later_31 == (LATER_PRESENT == 0 ? 0 : 1);
+    const bool apart = k_made && k_let_go && l3_present == 30 && later_present == LATER_PRESENT && later_text && most_walks == 1
+                       && runtime.address_space_present == 0 && runtime.address_space_release == 0;
+    std::printf("9k. the later walk and L3's due in one present: L3's at 30 (%d), the later line at 31 (32-bit; %d), one walk a present "
+                "(%lld) %d\n",
+                l3_present, later_present, most_walks, apart ? 1 : 0);
+    CHECK(apart);
+
+    // l. The game's device gone mid-frame.
+    const bool l_made = wait_made(buffer.Get(), 40);
     {
       const std::unique_lock lock(runtime.mutex);
       runtime.new_sets.push_back(key_of(buffer.Get()));
@@ -578,8 +634,8 @@ int main() {
       const std::unique_lock lock(runtime.mutex);
       device_gone = runtime.new_sets.empty() && runtime.new_set_bytes == 0 && runtime.compact.empty() && runtime.cluster_meshes.empty();
     }
-    std::printf("9k. the device gone: the frame's new sets and compact draws gone with the sets %d\n", device_gone ? 1 : 0);
-    CHECK(k_made && device_gone);
+    std::printf("9l. the device gone: the frame's new sets and compact draws gone with the sets %d\n", device_gone ? 1 : 0);
+    CHECK(l_made && device_gone);
     scene::internal::host.scene_release = false;
     scene::internal::game_in_front = twattila::device_end::GameInFront;
   }
