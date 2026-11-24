@@ -817,8 +817,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches ( ... | ?
 - ATN: rule lines (a64_ab.ps1 -Smoke / -GateR -A32Plain / -AB -A32Plain [+ -DryRun ... | ?
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
-- Smoke -> Gate R -> A/B (after the cleanup, PC free, ~1.5 h) on ATN's go. | ?
-- cleanup_1124 result (79 / 154 worktrees at 19:23) -> freed GB per drive. | ?
+- Smoke 2 (19:47) -> Gate R -> A/B. | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -15089,8 +15088,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         in finally (ATN's file -> <start>\a32_aside, ours -> a32_swapped_in), new top-level game folders moved to
         <start>\new_game_folders, stop if <Attila>\attila64 exists; update.c read: 7.5 never self-updates here. Dry runs
         clean: Gate R ~25 min, A/B 9 starts ~57 min. Check summary.txt's new 'A32 =' line on the first real run.
-        - [ ] Smoke -> Gate R -> A/B (after the cleanup, PC free, ~1.5 h) on ATN's go.
-        - [ ] cleanup_1124 result (79 / 154 worktrees at 19:23) -> freed GB per drive.
+        ATN 19:2x GO ('not playing, start as soon as you can'; wait for the cleanup first). Smoke 1 (19:27) stopped at
+        start 1: PowerShell names are case-insensitive, Run-Start's local $pm = $null hid the $PM PresentMon path; also a
+        false 'CRASH' match on the loader's 'lobby join guard (no crash ...)' line. The game itself was fine (1.3.20,
+        Steam OK, D3D11 up). a64ab_ fixed both + 8 more case-only name pairs (AST scan) + a -DryRun self-test inside
+        Run-Start (hand-back attila64/study_1124/a64ab_smokefix_handback.md); dry runs clean.
+        - [ ] Smoke 2 (19:47) -> Gate R -> A/B.
+        NSIGHT MCP (ATN asked 19:3x): Nsight 2026.4 ships ngfx-mcp.exe; ATN added it as ngfx-native (local scope, stdio,
+        --profile native; Claude Code starts it per session, `claude mcp list` = Connected; the HTTP Workflow profile was
+        removed). New for us: GPU Trace shader profiler (hot lines / stalls / SASS), Graphics Debugger capture + replay
+        (real CB values, shader edit + replay, acceleration structures), Aftermath dumps (nv-aftermath-monitor.exe in the
+        package; D3D12 = helper). -> 64-bit port plan: shader profiler on the helper, game-side captures on 64-bit
+        (32-bit was never capturable, to check), Aftermath for GPU resets.
+        - [x] cleanup_1124 DONE 19:46: C: 36 -> 90 GB free, D: 127 -> 327 GB free; 154 worktrees + copy_1122 + 1063 live
+        scratchpad folders (all in copy_1123) deleted, 0 skipped; 153 test .dmp files MOVED to D:\Dev\kept_from_cleanup_1124.
+        Pass 1 died on read-only git objects in copy_1122 (traceback hidden by my grep filter); fixed (rmtree onerror
+        clears the flag) and re-run. Bitdefender quarantined one tasks\*.output (my grep of a64_ab.ps1: Start-Process
+        -WindowStyle Hidden lines) = false positive, ATN told to delete it.
         DISK (ATN asked ~19:2x; C: 38 GB / D: 44 GB free): proposal sent, NOTHING deleted: (D) 153 old worktrees (< 11-23,
         clean, HEAD on origin) 136.7 GB (list: coord scratchpad wt_candidates.tsv); scratchpad_copy_1122 46.7 GB (fully in
         copy_1123: folders 45.0 GB + top files 1.70 GB, 0 differ); optional: agent-afb9a119f703260fd build 90.4 GB = 11-17
