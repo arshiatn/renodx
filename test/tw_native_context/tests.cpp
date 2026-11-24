@@ -24,17 +24,19 @@
 // 5. Capture's reads (rt_core.hpp: the vertex and index buffers read once for all its parts, the cached
 //    ID3D11DeviceContext1 and device) with RENODX_TW_STATE_CHECK=1: a static draw (three vertex buffers, an index buffer at
 //    an offset) gets v166's short key and key (their formulas below), its index buffer reaches Host::moving_indexed, and
-//    takes the short path the second time; a rows shader's draw from a dynamic vertex buffer (slot 0 read for the dynamic
+//    takes the short path the second time (both mark the scene drawn, scene_frame, the main view's frame left as it was); a rows shader's draw from a dynamic vertex buffer (slot 0 read for the dynamic
 //    test, slots 1-3 after) and a placed one (slot 0 alone in its key, its other bound slots none) get theirs; meshes with a
 //    cut-out version: a static one's key without its mask, then with it once the shadow pass alpha-tests its texture (the
 //    lookup in the scene's lock), a placed known one counted (its texture read once, checked again); a new draw
 //    into the main view's depth twice (the device prepared, then cached); the depth's description read once a view (the
 //    same view again, the main size changed and back, a new view once the held one's other holder let it go, a cascades'
-//    array and back, each rejected in the other's place); with room, a draw captured once, then its key found in the frame's
+//    array and back, each rejected in the other's place; the first main-view capture after the helper let its scene go logs
+//    the address space once and arms the trace's line); with room, a draw captured once, then its key found in the frame's
 //    keys; every capture's key its formula's; the keys and captures after every capture hashed (90d7df1b5's the same); no
 //    state check line; CONTROLS: a binding
 //    changed between two reads logs one, a held depth description changed logs one. Cost (printed): v166's reads for a
-//    static draw against now's.
+//    static draw against now's. Update's loading-screen test (Host::scene_release) from the draw paths: the static draw
+//    captured, or marked drawn (MarkDrawn), before each of 100 presents: kept; CONTROL no draw: let go at the 30th.
 // 6. Trace's light pick (rt_core.hpp, ALPK: each light scored once, the scores with their places partial_sorted, lights_last
 //    put in that order when the helper does not take the trace) against the old pick (29eeab5c's, copied below: partial_sort of the lights, both sides of every
 //    comparison scored): 1600 frames of 0..16384 lights (whole-metre places and few reaches and colours for equal scores,
@@ -762,29 +764,38 @@ int main() {
     // A static draw, known: its first capture marks it drawn by its key (the short key learnt), its second by the short key.
     const core::SceneShader rigid = {.hash = 0xA1B2C3D4};
     const uint64_t rigid_key = full_key(rigid.hash, vertices.Get(), false);
+    uint64_t main_view_frame = 0;
     {
       const std::unique_lock lock(runtime.mutex);
       runtime.known[rigid_key] = {};
       runtime.last_key = 0;
+      runtime.scene_frame = UINT64_MAX;
+      main_view_frame = runtime.main_view_frame;
     }
     bind(vertices.Get());
     capture(rigid, rigid_key);
     const bool rigid_keyed = last_key() == rigid_key && moving_buffer == indices.Get() && moving_offset == INDEX_OFFSET;
     bool short_learnt = false;
+    // A known mesh's draw returns before the main view's capture: the scene drawn all the same (Update's loading-screen test).
+    bool known_scene = false;
     {
       const std::unique_lock lock(runtime.mutex);
       const auto entry = runtime.short_keys.find(short_key(rigid.hash, vertices.Get()));
       short_learnt = entry != runtime.short_keys.end() && entry->second.key == rigid_key && !entry->second.ambiguous;
+      known_scene = runtime.scene_frame == runtime.frame && runtime.main_view_frame == main_view_frame;
       runtime.last_key = 0;
       runtime.drawn.clear();
       runtime.known[rigid_key].frame = 0;
+      runtime.scene_frame = UINT64_MAX;
     }
     moving_buffer = nullptr;
     capture(rigid, rigid_key);
     bool short_taken = false;
+    bool short_scene = false;
     {
       const std::unique_lock lock(runtime.mutex);
       short_taken = runtime.last_key == rigid_key && std::ranges::count(runtime.drawn, rigid_key) == 1;
+      short_scene = runtime.scene_frame == runtime.frame && runtime.main_view_frame == main_view_frame;
     }
     // A rows shader's draw from a dynamic vertex buffer (not placed: all four slots in its key) and a placed one (slot 0).
     static constexpr std::array<uint8_t, 4> ROWS = {1, 2, 3, 4};
@@ -897,7 +908,20 @@ int main() {
       capture(shader, full_key(shader.hash, vertices.Get(), false));
       return prepared_for() == immediate.Get();
     };
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.address_space_capture = true;
+    }
     const bool same_view_passed = main_passed(fresh) && main_passed(fresh);
+    bool chain_capture = false;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      chain_capture = !runtime.address_space_capture && std::exchange(runtime.address_space_trace, false)
+                      && std::ranges::count_if(log_lines, [](const std::string& line) {
+                           return line.find("the first main-view capture after it: address space free ") != std::string::npos
+                                  && line.find("largest free block") == std::string::npos;
+                         }) == 1;
+    }
     CHECK(runtime.depth_seen.view == depth);
     bridge.width = 32;
     bridge.height = 16;
@@ -965,11 +989,13 @@ int main() {
       runtime.captured_vertices = core::internal::MAX_VERTICES;
       runtime.settings.casters_out_of_view = false;
     }
-    std::printf("5 the depth read once a view: the same view's again %d, the main size changed %d and back %d, a new view %d, a cascade's into the "
-                "main depth %d, into its own %d, the main view into the cascade's %d and back %d; with room captured once %d, again its key found %d\n",
-                same_view_passed, resized_rejected, size_back_passed, new_view_passed, cascade_into_main_rejected, cascade_view_passed,
+    std::printf("5 the depth read once a view: the same view's again %d (the address space's line once %d), the main size changed %d and back %d, a "
+                "new view %d, a cascade's into the main depth %d, into its own %d, the main view into the cascade's %d and back %d; with room captured "
+                "once %d, again its key found %d\n",
+                same_view_passed, chain_capture, resized_rejected, size_back_passed, new_view_passed, cascade_into_main_rejected, cascade_view_passed,
                 main_into_cascade_rejected, back_to_main_passed, captured_once, captured_key_found);
-    CHECK(same_view_passed && resized_rejected && size_back_passed && new_view_passed && cascade_into_main_rejected && cascade_view_passed);
+    CHECK(same_view_passed && chain_capture && resized_rejected && size_back_passed && new_view_passed && cascade_into_main_rejected
+          && cascade_view_passed);
     CHECK(main_into_cascade_rejected && back_to_main_passed && captured_once && captured_key_found);
     std::printf("5 sequence %016llX over %u captures, %u keys not their formula's\n", static_cast<unsigned long long>(sequence), sequence_captures,
                 keys_unexpected);
@@ -993,12 +1019,13 @@ int main() {
     const bool control_logged = std::ranges::count_if(log_lines, [](const std::string& line) {
                                   return line.find("State check: a vertex buffer read once differs") != std::string::npos;
                                 }) == 1;
-    std::printf("5 Capture's reads: static draw key %d, short key learnt %d, short path taken %d, dynamic rows draw key %d, placed draw key %d, "
-                "cut-out mask: not alpha-tested %d, alpha-tested %d, placed and known %d, device prepared %d then cached %d, state check lines "
-                "%zu; CONTROL a binding changed between reads logged %d\n",
-                rigid_keyed, short_learnt, short_taken, dynamic_keyed, placed_keyed, solid_keyed, cut_out_keyed, cut_out_placed_counted, prepared,
-                still_prepared, check_lines, control_logged);
+    std::printf("5 Capture's reads: static draw key %d, short key learnt %d, short path taken %d, the scene drawn by both (main view's frame "
+                "kept) %d %d, dynamic rows draw key %d, placed draw key %d, cut-out mask: not alpha-tested %d, alpha-tested %d, placed and known "
+                "%d, device prepared %d then cached %d, state check lines %zu; CONTROL a binding changed between reads logged %d\n",
+                rigid_keyed, short_learnt, short_taken, known_scene, short_scene, dynamic_keyed, placed_keyed, solid_keyed, cut_out_keyed,
+                cut_out_placed_counted, prepared, still_prepared, check_lines, control_logged);
     CHECK(rigid_keyed && short_learnt && short_taken && dynamic_keyed && placed_keyed && prepared && still_prepared);
+    CHECK(known_scene && short_scene);
     CHECK(solid_keyed && cut_out_keyed && cut_out_placed_counted);
     CHECK(check_lines == 0);
     CHECK(control_logged);
@@ -1058,6 +1085,55 @@ int main() {
     std::printf("5 a static draw's reads: v166 %.1f ns, now %.1f ns (each identity read also skips part 2's QueryInterface + Release, "
                 "each capture GetDevice + Release)\n",
                 old_reads, new_reads);
+    // Update's loading-screen test from the draw paths (Host::scene_release, the foreground test answered here): the static
+    // draw known (Capture) or marked drawn (MarkDrawn: R.U.S.E.'s replay) before each present, each present a second after
+    // the scene's draw it knew of: kept 100 presents; CONTROL no draw: let go at the 30th.
+    core::internal::host.scene_release = true;
+    core::internal::game_in_front = [] { return true; };
+    core::Settings present_settings;
+    bool scene_gone = false;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      present_settings = runtime.settings;
+      scene_gone = runtime.scene_gone;
+      runtime.known[rigid_key] = {.frame = runtime.frame};
+      runtime.release_line_tick = 0;
+    }
+    const auto present_after = [&](auto&& draw) {
+      draw();
+      {
+        const std::unique_lock lock(runtime.mutex);
+        runtime.scene_tick = GetTickCount64() - core::internal::SCENE_GONE_MS;
+      }
+      core::Update(present_settings);
+    };
+    const auto rigid_kept = [&] {
+      const std::unique_lock lock(runtime.mutex);
+      return runtime.known.contains(rigid_key)
+             && std::ranges::none_of(log_lines, [](const std::string& line) { return line.find("(a loading screen)") != std::string::npos; });
+    };
+    bind(vertices.Get());
+    for (int present = 0; present < 100; ++present) present_after([&] { core::internal::Capture(command, rigid); });
+    const bool captured_kept = rigid_kept();
+    bool marked = true;
+    for (int present = 0; present < 100; ++present) present_after([&] { marked = core::MarkDrawn(rigid_key) && marked; });
+    const bool marked_kept = marked && rigid_kept();
+    for (int present = 0; present < 29; ++present) present_after([] {});
+    const bool undrawn_kept_29 = rigid_kept();
+    present_after([] {});
+    const bool undrawn_let_go = !rigid_kept()
+                                && std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("(a loading screen)") != std::string::npos; }) == 1;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.scene_gone = scene_gone;
+      runtime.address_space_release = 0;
+    }
+    core::internal::game_in_front = twattila::device_end::GameInFront;
+    core::internal::host.scene_release = false;
+    std::printf("5 the loading-screen test from the draw paths, 100 presents each: the static draw captured, kept %d; marked drawn, kept %d; "
+                "CONTROL no draw: kept at 29 %d, let go at 30 %d\n",
+                captured_kept, marked_kept, undrawn_kept_29, undrawn_let_go);
+    CHECK(captured_kept && marked_kept && undrawn_kept_29 && undrawn_let_go);
     bridge.width = kept_size.first;
     bridge.height = kept_size.second;
     bridge.ray_tracing = false;

@@ -21,13 +21,28 @@
 
 // Why the game's D3D11 device or swap chain went away, for a report's ReShade.log: a hung device (the game's own GPU
 // work, the addon's within it), a reset (another device's work), no memory (the 32-bit games' address space) and the
-// game's own teardown (a display or mode change) look alike without it. Only at these two events, nothing per frame.
+// game's own teardown (a display or mode change) look alike without it. Its lines only at these two events, nothing per
+// frame; GameInFront (device_loss's lines, rt_core's loading-screen test), FreeAddressSpace and AddressSpace serve the
+// others too.
 namespace twattila::device_end {
 
-// The address space left: free, of all, and the largest free block (one walk over the process's regions).
-inline std::string AddressSpace() {
+// The foreground window is one of this process's (a NULL foreground: not in front).
+inline bool GameInFront() {
+  DWORD process = 0;
+  GetWindowThreadProcessId(GetForegroundWindow(), &process);
+  return process == GetCurrentProcessId();
+}
+
+// The address space left: free, of all (cheap).
+inline std::string FreeAddressSpace() {
   MEMORYSTATUSEX memory = {.dwLength = sizeof(memory)};
   GlobalMemoryStatusEx(&memory);
+  return std::format("address space free {} MB of {} MB", memory.ullAvailVirtual >> 20, memory.ullTotalVirtual >> 20);
+}
+
+// That and the largest free block: a walk over the process's regions, 19-23 ms of the calling thread in Attila (fa8_ M4),
+// so at most one an event (a device's end, a loading screen's release, the alt-tab chain), never per frame.
+inline std::string AddressSpace() {
   SYSTEM_INFO system = {};
   GetSystemInfo(&system);
   SIZE_T largest_free = 0;
@@ -42,8 +57,7 @@ inline std::string AddressSpace() {
     if (next <= address) break;  // the address space's end
     address = next;
   }
-  return std::format("address space free {} MB of {} MB, largest free block {} MB", memory.ullAvailVirtual >> 20,
-                     memory.ullTotalVirtual >> 20, largest_free >> 20);
+  return std::format("{}, largest free block {} MB", FreeAddressSpace(), largest_free >> 20);
 }
 
 // One line: the device's removed reason and, in a 32-bit game, the address space left.
