@@ -14,6 +14,7 @@
 #include <array>
 #include <atomic>
 #include <bit>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <exception>
@@ -30,6 +31,7 @@
 
 #include "../../utils/log.hpp"
 #include "./context_hooks.hpp"
+#include "./device_loss.hpp"
 
 // Fewer Driver Waits (the constant buffer ring): the game's dynamic constant buffers go to the GPU through one ring of
 // 256 KB pieces mapped NO_OVERWRITE and bound with D3D11.1 offsets, instead of a driver rename at each DISCARD map (the
@@ -55,6 +57,7 @@ constexpr UINT PIECE_BYTES = 256 * 1024;
 constexpr UINT PIECE_UNITS = PIECE_BYTES / UNIT_BYTES;
 constexpr size_t FIRST_PIECES = 8;
 constexpr size_t MAX_PIECES = 32;
+constexpr int FULL_WAIT_MS = 100;  // the most the full ring waits for its oldest piece
 constexpr UINT MAX_BUFFER_BYTES = 65536;
 constexpr UINT WHOLE = D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT;  // a whole bind's window as Get1 gives it: 0 + 4096
 // Test seams: the most pieces (MAX_PIECES), a piece's event as GetData answers it (`flush`: flags 0, else DONOTFLUSH),
@@ -186,8 +189,10 @@ struct Pool {
   // saw in the context's table.
   std::atomic_bool unwind_wanted = false;
   bool lost = false;   // a piece's event failed, or a map on a removed device: the device is gone
-  bool quiet = false;  // a debug frame: the full ring's line waits
+  bool quiet = false;  // a debug frame: the full ring's lines wait
   bool full_logged = false;
+  bool full_waited = false;  // the full ring's wait timed out: no wait (nor its flush) again until a switch succeeds
+  bool wait_logged = false;
   bool off_latched = false;  // the row's Off while in (logged once): the ring stays in
   uint32_t open_maps = 0;    // ring maps not yet unmapped
   std::vector<std::unique_ptr<Piece>> pieces;  // in ring order
@@ -197,6 +202,7 @@ struct Pool {
   std::vector<std::unique_ptr<StateTable>> states;
   StateTable* active = nullptr;
   ID3D11Device* refused = nullptr;  // the device the ring stays off on until the row is turned off (logged)
+  ID3D11Device* waiting_logged = nullptr;  // the device whose install waits for another D3D11 device to go (logged)
   bool registered = false;
 };
 static Pool pool;
@@ -520,10 +526,11 @@ inline bool RingMap(ID3D11Resource* resource, UINT subresource, D3D11_MAP map_ty
 
 // Unmap of a ring map: the copy into the current piece (the next one when this has no room: the one after the current
 // once the GPU passed it, asked once more with a flush, else a new one between them, the ring growing while that one is
-// busy, up to piece_cap), every active slot holding the buffer rebound. A new current piece first takes the buffers of
-// the closed pieces in the half ring ahead of it while it keeps this one's units free: a closed piece ends its event
-// only when no buffer's newest bytes are left in it, so a buffer written rarely would else keep it to one piece before
-// its reuse (the ring grown each lap). The ring full or the device lost: today's DISCARD of the buffer itself.
+// busy, up to piece_cap; at the cap a wait of up to FULL_WAIT_MS for it), every active slot holding the buffer rebound.
+// A new current piece first takes the buffers of the closed pieces in the half ring ahead of it while it keeps this
+// one's units free: a closed piece ends its event only when no buffer's newest bytes are left in it, so a buffer
+// written rarely would else keep it to one piece before its reuse (the ring grown each lap). The ring full after the
+// wait, or the device lost: today's DISCARD of the buffer itself.
 inline bool RingUnmap(ID3D11Resource* resource, UINT subresource) {
   const bool stopped = Stopped();
   Buffer* record = Find(resource);
@@ -574,22 +581,24 @@ inline bool RingUnmap(ID3D11Resource* resource, UINT subresource) {
     }
     size_t next = (pool.current + 1) % pool.pieces.size();
     Piece& candidate = *pool.pieces[next];
-    // The candidate's event as GetData answers it (`flush`: flags 0, the context's queued commands submitted first).
-    const auto event_state = [&candidate](bool flush) {
-      if (piece_done != nullptr) return piece_done(pool.context, candidate.done.Get(), flush);
-      return pool.context->GetData(candidate.done.Get(), nullptr, 0, (flush ? 0 : D3D11_ASYNC_GETDATA_DONOTFLUSH));
-    };
-    if (candidate.phase == Phase::ENDED) {
-      HRESULT done = event_state(false);
-      // Not passed yet: asked once more with a flush before the ring grows (its End may still wait in the queue).
-      if (done == S_FALSE) {
-        done = event_state(true);
-      }
+    // The candidate's event asked (`flush`: GetData's flags 0, the context's queued commands submitted first). True: it
+    // answered, passed (the piece FREE) or failed (the device gone); false: not passed yet.
+    const auto answered = [&candidate](bool flush) {
+      const HRESULT done =
+          (piece_done != nullptr ? piece_done(pool.context, candidate.done.Get(), flush)
+                                 : pool.context->GetData(candidate.done.Get(), nullptr, 0,
+                                                         (flush ? 0 : D3D11_ASYNC_GETDATA_DONOTFLUSH)));
       if (done == S_OK) {
         candidate.phase = Phase::FREE;
       } else if (done != S_FALSE) {
         pool.lost = true;
       }
+      return done != S_FALSE;
+    };
+    // Not passed yet: asked once more with a flush before the ring grows (its End may still wait in the queue), not
+    // after a wait timed out (below).
+    if (candidate.phase == Phase::ENDED && !answered(false) && !pool.full_waited) {
+      answered(true);
     }
     room = candidate.phase == Phase::FREE;
     std::unique_ptr<Piece> grown;
@@ -598,12 +607,35 @@ inline bool RingUnmap(ID3D11Resource* resource, UINT subresource) {
       pool.pieces.insert(pool.pieces.begin() + static_cast<std::ptrdiff_t>(next), std::move(grown));
       room = true;
     }
+    // Full (at piece_cap, or no room for a new piece): the ended candidate polled without a flush for up to
+    // FULL_WAIT_MS, as the driver's own rename would wait on its oldest copy. Timed out: no wait again until a switch
+    // succeeds, so a hung GPU costs one wait, not one an upload.
+    if (!room && !pool.lost && !pool.full_waited && candidate.phase == Phase::ENDED) {
+      const auto start = std::chrono::steady_clock::now();
+      do {
+        SwitchToThread();
+      } while (!answered(false) && std::chrono::steady_clock::now() - start < std::chrono::milliseconds(FULL_WAIT_MS));
+      room = candidate.phase == Phase::FREE;
+      pool.full_waited = !room;
+      if (!pool.lost && !pool.quiet && !pool.wait_logged) {
+        pool.wait_logged = true;
+        try {
+          renodx::utils::log::w(
+              "[Total War] Fewer Driver Waits: all ", pool.pieces.size(), " pieces in use by the GPU: waited ",
+              std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count(),
+              " ms for it.");
+        } catch (const std::exception&) {
+          // No-op: the wait stands without its log line.
+        }
+      }
+    }
     if (room) {
+      pool.full_waited = false;
       pool.current = next;
       pool.next_unit = 0;
       pool.pieces[next]->phase = Phase::CURRENT;
-      // Retire ahead: the closed pieces of the next half ring give their buffers to this one (room kept for `record`), so
-      // each one's event ends half a ring before its reuse. What finds no room here is moved at the next switch.
+      // Retire ahead: the closed pieces of the next half ring give their buffers to this one (room kept for `record`),
+      // so each one's event ends half a ring before its reuse. What finds no room here is moved at the next switch.
       const size_t size = pool.pieces.size();
       const size_t reach = (retire_ahead != 0 ? retire_ahead : size / 2);
       bool retiring = true;
@@ -613,7 +645,7 @@ inline bool RingUnmap(ID3D11Resource* resource, UINT subresource) {
         // From the back: Detach moves the last one into the slot it frees.
         for (size_t index = closed.live.size(); index-- > 0 && index < closed.live.size();) {
           Buffer* moved = closed.live[index];
-          // An open map's bytes go at its Unmap, a destroyed buffer's stay until the reclaim, and `record` is written next.
+          // An open map's bytes go at its Unmap, a destroyed buffer's stay until the reclaim, `record` is written next.
           if (moved->mapped || moved->destroyed.load() || moved == record) continue;
           if (pool.next_unit + moved->units + record->units > PIECE_UNITS || !upload(moved)) {
             retiring = false;
@@ -627,7 +659,7 @@ inline bool RingUnmap(ID3D11Resource* resource, UINT subresource) {
     }
   }
   if (room && upload(record)) return true;
-  // The ring full: today's DISCARD of the buffer itself, bound as the caller bound it.
+  // The ring full (after its wait) or the device lost: today's DISCARD of the buffer itself, bound as the caller did.
   ToNative(record);
   if (!pool.lost && !pool.quiet && !pool.full_logged) {
     pool.full_logged = true;
@@ -916,6 +948,8 @@ inline void Release() {
   pool.lost = false;
   pool.open_maps = 0;
   pool.full_logged = false;
+  pool.full_waited = false;
+  pool.wait_logged = false;
   pool.off_latched = false;
   pool.context = nullptr;
   pool.device = nullptr;
@@ -1043,6 +1077,9 @@ inline void ForgetDevice(ID3D11Device* device) {
   if (pool.refused == device) {
     pool.refused = nullptr;
   }
+  if (pool.waiting_logged == device) {
+    pool.waiting_logged = nullptr;
+  }
   if (pool.installed && pool.device == device) {
     context_hooks::UninstallRing();
     internal::Release();
@@ -1080,9 +1117,10 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 
 // At each present, on the present thread (the render thread in Attila), `context` the game's immediate context below
 // ReShade: destroyed buffers and dead states' tables freed, the context's table checked; the ring in when `on` (its
-// first present on, again after the row was off when it stopped), out when stopped (with no ring map open). The row's
-// Off keeps it in until the device's end: the game's buffers handed back live can come back no longer renamed by the
-// driver (GPU waits every frame); the saved Off applies at the next start. `quiet`: a debug frame (its line waits).
+// first present on with the game's D3D11 device the only one known, again after the row was off when it stopped), out
+// when stopped (with no ring map open). The row's Off keeps it in until the device's end: the game's buffers handed
+// back live can come back no longer renamed by the driver (GPU waits every frame); the saved Off applies at the next
+// start. `quiet`: a debug frame (its line waits).
 inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
   using internal::pool;
   namespace hooks = internal::hooks;
@@ -1158,8 +1196,7 @@ inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
         context->GetDevice(device.GetAddressOf());
         pool.refused = device.Get();
       }
-      renodx::utils::log::w("[Total War] Fewer Driver Waits: off", (on ? " until the row is turned off and on again" : ""),
-                            ". Restart the game for full speed.");
+      renodx::utils::log::w("[Total War] Fewer Driver Waits: off. Restart the game for full speed.");
     }
     return;
   }
@@ -1170,6 +1207,21 @@ inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
   Microsoft::WRL::ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
   if (pool.refused == device.Get()) return;
+  // Another D3D11 device known (a tool's, an overlay's): no install while the game's does not stand alone (the hooks
+  // would refuse it), asked again at each present; logged once a device.
+  size_t known = 0;
+  {
+    const std::shared_lock lock(device_loss::devices_mutex);
+    known = device_loss::devices.size();
+  }
+  if (known > 1) {
+    if (pool.waiting_logged != device.Get()) {
+      pool.waiting_logged = device.Get();
+      renodx::utils::log::w("[Total War] Fewer Driver Waits: waiting (", known,
+                            " D3D11 devices known, not only the game's).");
+    }
+    return;
+  }
   // The ring in, on the render thread: its pieces made, the game's buffers' copies, the hooks, the active state's slots
   // seeded. Refused (logged): off until the row is turned off.
   const auto refuse = [&device](std::string_view reason) {

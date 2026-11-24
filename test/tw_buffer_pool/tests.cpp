@@ -2,8 +2,9 @@
 // pieces) on WARP (the same d3d11.dll runtime bodies as the game's device), a single-threaded device as the game's, x86
 // and amd64:
 // 1. The ring's 35 bodies (the three copies' versions after a Flush among them): inside d3d11.dll, distinct, none
-//    starting with a jump. Refused (logged, nothing hooked): two devices known, a multithreaded one. The row's Off
-//    latched (the ring stays in, logged once a latch; its writes, Get and copies as on). CONTROL: unlatched, out at once.
+//    starting with a jump. Two devices known: the install waits (logged once, no refusal), in once the game's stands
+//    alone. Refused (logged, nothing hooked): a multithreaded one. The row's Off latched (the ring stays in, logged
+//    once a latch; its writes, Get and copies as on). CONTROL: unlatched, out at once.
 //    A stop while latched (another thread's call): out at the next present, the cause and the restart hint logged.
 // 2. The rules it relies on: the caps; a copy into a dynamic constant buffer lands, UpdateSubresource into one does not.
 // 3. Pixels, compute output and copies, ring off vs on, each run on a fresh device: per-draw DISCARDs of a 208 B buffer
@@ -15,10 +16,10 @@
 //    mapped before the install (the ring in at frame 0's present), a script on the fresh ring at frame 1 (b drawn from
 //    two segments, the ring filled with 64 KB uploads, b again, the GPU done, the ring wrapped over every piece, b drawn
 //    again), and after the ring's removal the private state's binds and a draw there. Equal: the ring; the full ring
-//    (busy pieces: the fallback, logged once); the full ring, then the wrap with b still bound (b falls back, not into
-//    the closed piece); another thread's call (the ring unwinds at the render thread's next call, then stays off,
-//    logged); the map trace's measure path on beside it, installed after the ring or before it (its records the
-//    caller's buffers). None logs a table check. CONTROLS (must differ): no rebind, the Get hooks off, a piece reused
+//    (busy pieces: one wait, then the fallback, each logged once); the full ring, then the wrap with b still bound (b
+//    falls back, not into the closed piece); another thread's call (the ring unwinds at the render thread's next call,
+//    then stays off, logged); the map trace's measure path on beside it, installed after the ring or before it (its
+//    records the caller's buffers). None logs a table check. CONTROLS (must differ): no rebind, the Get hooks off, a piece reused
 //    early (the script's first draws: deterministic), the copy hooks off, the swap's settling call left out, a known
 //    state's rebinds at its swap left out, a new state's seed left out.
 // 4. Get / Get1 / Map parity against a second device (ring off) over random Set / Set1 (invalid windows, null arrays,
@@ -30,7 +31,7 @@
 // 5. The device's end with the ring on: its hooks out, its references let go, its records freed at the next present;
 //    every body's first bytes back, the modules let go.
 // 6. The unwind's edges: a buffer destroyed since the present gets no write-back, another thread's bind is what the next
-//    Get returns; a lost device (an event's error): no write-backs, off until the row; a body in the table that the
+//    Get returns; a lost device (an event's error): no write-backs, off (logged); a body in the table that the
 //    install never saw (a copy's, Map's: out at the present; PS Set1's: out at a swap), logged; a swap below the hook
 //    (the next swap's replaced state not the active one): out at that swap, logged; a buffer destroyed while mapped
 //    through the ring: its map ends (the ring out at the row's off).
@@ -40,6 +41,9 @@
 //    3 presents after their End: at most 12 pieces, every frame's compute output equal to the native run; CONTROL with
 //    the old retire distance (the next piece alone): the ring grows to its cap. Events passing only with a flush: no
 //    growth, equal. The record itself a straggler in a retired piece: written once.
+// 9. The full ring's wait (no growth past piece_cap): an event passing after some polls without a flush: one wait, no
+//    fallback, logged once; never passing: one wait, then the fallback (logged once), no further wait or flush, the
+//    buffer's bytes as written; after a switch that succeeded, the next full ring waits again (not logged again).
 #include <windows.h>
 #include <d3d11_1.h>
 #include <d3dcompiler.h>
@@ -47,6 +51,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -718,6 +723,22 @@ static HRESULT PassedWithFlush(ID3D11DeviceContext*, ID3D11Query*, bool flush) {
   return S_OK;
 }
 
+// 9 (c): an event passes once `cap_polls_left` polls without a flush were answered not yet (-1: never); the flushes
+// never pass. Every call counted.
+static int cap_polls_left = 0;
+static size_t cap_polls = 0;
+static size_t cap_flushes = 0;
+static HRESULT PassedAfterPolls(ID3D11DeviceContext*, ID3D11Query*, bool flush) {
+  if (flush) {
+    ++cap_flushes;
+    return S_FALSE;
+  }
+  ++cap_polls;
+  if (cap_polls_left == 0) return S_OK;
+  if (cap_polls_left > 0) --cap_polls_left;
+  return S_FALSE;
+}
+
 constexpr uint32_t STREAM_UPLOADS = 1536;  // a frame's 64 B writes: 1.5 pieces
 constexpr uint32_t STREAM_BUFFERS = 16;
 
@@ -814,12 +835,18 @@ int main() {
     auto sorted = bodies;
     std::ranges::sort(sorted);
     CHECK(std::ranges::adjacent_find(sorted) == sorted.end());
+    // (f) A second device known: no install, the waiting line once, no refusal; the device out: in at the next present.
     loss::devices = {{.device = made.device.Get(), .single_threaded = true}, {.device = made.device.Get(), .single_threaded = true}};
     bp::Update(made.context.Get(), true, false);
-    CHECK(!bp::internal::pool.installed && Logged("2 D3D11 devices") == 1 && hooks::internal::state.hooks.empty() && bp::internal::pool.copies == false);
     bp::Update(made.context.Get(), true, false);
-    CHECK(Logged("2 D3D11 devices") == 1);  // refused once until the row is off
+    CHECK(!bp::internal::pool.installed && hooks::internal::state.hooks.empty() && bp::internal::pool.copies == false && bp::internal::pool.refused == nullptr);
+    CHECK(Logged("Fewer Driver Waits: waiting (2 D3D11 devices known, not only the game's).") == 1 && Logged("2 D3D11 devices") == 1
+          && Logged("not installed") == 0);
+    loss::devices = {{.device = made.device.Get(), .single_threaded = true}};
+    bp::Update(made.context.Get(), true, false);
+    CHECK(bp::internal::pool.installed && Logged("Fewer Driver Waits: on (") == 1);
     bp::Update(made.context.Get(), false, false);
+    CHECK(!bp::internal::pool.installed);
     loss::devices = {{.device = made.device.Get(), .single_threaded = false}};
     bp::Update(made.context.Get(), true, false);
     CHECK(!bp::internal::pool.installed && Logged("not single-threaded") == 1 && hooks::internal::state.hooks.empty());
@@ -869,8 +896,8 @@ int main() {
     CHECK(Read(made.device.Get(), made.context.Get(), latched.Get(), 256) == written);
     bp::internal::latch_off = false;
     bp::ForgetDevice(made.device.Get());
-    std::printf("1. 35 distinct bodies in d3d11.dll (the ring's 18 printed), no jump prologue; refused once each (logged, nothing hooked): 2 devices, a"
-                " multithreaded one; the row's Off latched: still in (logged once a latch), its writes in a piece, Get / copy the game's"
+    std::printf("1. 35 distinct bodies in d3d11.dll (the ring's 18 printed), no jump prologue; 2 devices: waits (logged once, no refusal), in when"
+                " alone; refused once (logged, nothing hooked): a multithreaded one; the row's Off latched: still in (logged once a latch), its writes in a piece, Get / copy the game's"
                 " buffer and bytes; CONTROL unlatched: out at once, the bytes written back; a stop while latched: out, cause and restart"
                 " hint logged\n");
   }
@@ -920,10 +947,13 @@ int main() {
       CHECK(equal == must_equal);
       CHECK(Logged("unknown to it") == 0 && Logged("swap it never saw") == 0);
       switch (static_cast<Control>(control)) {
-        case Control::NONE: CHECK(Logged("Fewer Driver Waits: on") == 1 && Logged("pieces still in use") == 0); break;
+        case Control::NONE: CHECK(Logged("Fewer Driver Waits: on") == 1 && Logged("pieces still in use") == 0 && Logged("waited") == 0); break;
         case Control::FULL:
-        case Control::WRAP: CHECK(Logged(std::format("all {} pieces still in use", bp::internal::FIRST_PIECES).c_str()) == 1); break;
-        case Control::FOREIGN: CHECK(Logged("called the game's context") == 1 && Logged("off until the row") == 1); break;
+        case Control::WRAP:
+          CHECK(Logged(std::format("all {} pieces in use by the GPU: waited ", bp::internal::FIRST_PIECES).c_str()) == 1
+                && Logged(std::format("all {} pieces still in use", bp::internal::FIRST_PIECES).c_str()) == 1);
+          break;
+        case Control::FOREIGN: CHECK(Logged("called the game's context") == 1 && Logged("off. Restart the game for full speed.") == 1); break;
         case Control::EARLY_REUSE: CHECK(script != 0); break;
         case Control::COPY_OFF: CHECK(copies != 0); break;
         case Control::SETTLE_OFF: CHECK(after != 0); break;
@@ -1275,7 +1305,7 @@ int main() {
     CHECK(probe == nullptr && bp::internal::pool.stopped && made.device->GetDeviceRemovedReason() == S_OK);
     CHECK(Read(made.device.Get(), context, kept.Get(), 256) == kept_bytes && References(bound.Get()) == 1);
     bp::Update(context, true, false);
-    CHECK(!bp::internal::pool.installed && Logged("off until the row") == 1);
+    CHECK(!bp::internal::pool.installed && Logged("off. Restart the game for full speed.") == 1);
     bp::Update(context, false, false);
     // A lost device: an event's error at the ring's wrap (64 KB upload RING_UPLOADS - 1), no write-back of `narrow`.
     // Reserved (RENODX_TW_SET's "memory" line): the first pieces and the copies while in, nothing out.
@@ -1296,7 +1326,7 @@ int main() {
     CHECK(uploads == RING_UPLOADS - 1 && bp::internal::pool.stopped && Logged("pieces still in use") == 0);
     CHECK(Read(made.device.Get(), context, narrow.Get(), 256) == narrow_bytes);
     bp::Update(context, true, false);
-    CHECK(!bp::internal::pool.installed && Logged("off until the row") == 1);
+    CHECK(!bp::internal::pool.installed && Logged("off. Restart the game for full speed.") == 1);
     bp::Update(context, true, false);
     CHECK(!bp::internal::pool.installed && Logged("Fewer Driver Waits: on") == 1);
     bp::Update(context, false, false);
@@ -1319,7 +1349,7 @@ int main() {
       }
       bp::Update(context, true, false);
       const std::string line = "body unknown to it (slot " + std::to_string(hooks::internal::BODY_SLOTS[body]) + ")";
-      CHECK(!bp::internal::pool.installed && Logged(line.c_str()) == 1 && Logged("off until the row") == 1);
+      CHECK(!bp::internal::pool.installed && Logged(line.c_str()) == 1 && Logged("off. Restart the game for full speed.") == 1);
       bodies = read_bodies;
       bp::Update(context, false, false);
     }
@@ -1343,7 +1373,7 @@ int main() {
       made.context1->SwapDeviceContextState(game_state.Get(), nullptr);
     }
     bp::Update(context, true, false);
-    CHECK(!bp::internal::pool.installed && Logged("off until the row") == 1);
+    CHECK(!bp::internal::pool.installed && Logged("off. Restart the game for full speed.") == 1);
     bp::Update(context, false, false);
     // A buffer destroyed while mapped through the ring (d3d11 never saw the map): its map ends with it, the ring out at
     // the row's off.
@@ -1365,7 +1395,7 @@ int main() {
     CHECK(bp::Reserved().starts_with("; Fewer Driver Waits out: 0 pieces (0 KB), copies 0 KB for "));
     bp::ForgetDevice(made.device.Get());
     std::printf("6. unwind edges: no write-back into a buffer destroyed since the present, another thread's unbind is what the next Get"
-                " returns (the device not removed); a lost device at upload %zu: no write-back, off until the row; unknown bodies in"
+                " returns (the device not removed); a lost device at upload %zu: no write-back, off (logged); unknown bodies in"
                 " the table (a copy's, Map's: out at the present; PS Set1's: out at a swap), a swap below the hook: out, logged; a buffer"
                 " destroyed while ring-mapped: its map ends, the ring out at the row's off\n",
                 uploads);
@@ -1463,6 +1493,79 @@ int main() {
     std::printf("8. reclaim: the stream's ring at %zu pieces with the straggler retired half a ring ahead (CONTROL, the old rule: %zu), equal to"
                 " the native outputs; an event passing only with the flush: no growth; the record as the straggler written once\n",
                 on.pieces, control.pieces);
+  }
+
+  // 9. The full ring's wait (c): piece_cap 4 (no growth past the first pieces), 64 KB uploads of one buffer (4 a piece),
+  // the ring's laps counted in RING_UPLOADS.
+  {
+    log_lines.clear();
+    Device made = MakeDevice();
+    loss::devices = {{.device = made.device.Get(), .single_threaded = true}};
+    const auto wide = GameBuffer(made.device.Get(), 65536, 72);
+    bp::internal::piece_cap = 4;
+    bp::internal::piece_done = PassedAfterPolls;
+    bp::Update(made.context.Get(), true, false);
+    CHECK(bp::internal::pool.installed);
+    uint8_t value = 0;
+    // One upload of the next value: its time in ms (-1: the map failed).
+    const auto fill = [&made, &wide, &value] {
+      const auto start = std::chrono::steady_clock::now();
+      D3D11_MAPPED_SUBRESOURCE mapped = {};
+      if (FAILED(made.context->Map(wide.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return -1.0;
+      std::memset(mapped.pData, ++value, 65536);
+      made.context->Unmap(wide.Get(), 0);
+      return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    };
+    const auto in_ring = [&wide] { return bp::internal::Find(wide.Get())->piece != nullptr; };
+    const auto& pool = bp::internal::pool;
+    // Passing after 3 polls: the first lap's end waits (one flush), every upload in the ring.
+    cap_polls_left = 3;
+    double passed = 0;
+    bool all_in_ring = true;
+    for (size_t upload = 0; upload < 2 * RING_UPLOADS; ++upload) {
+      const double ms = fill();
+      CHECK(ms >= 0);
+      passed = std::max(passed, ms);
+      all_in_ring = all_in_ring && in_ring();
+    }
+    std::printf("  passing after 3 polls: %zu polls, %zu flushes, the longest upload %.2f ms\n", cap_polls, cap_flushes, passed);
+    CHECK(all_in_ring && cap_flushes == 1 && cap_polls == 4 + (bp::internal::FIRST_PIECES - 1) && pool.pieces.size() == bp::internal::FIRST_PIECES);
+    CHECK(Logged(std::format("all {} pieces in use by the GPU: waited ", bp::internal::FIRST_PIECES).c_str()) == 1 && Logged("old way") == 0);
+    // Never passing: the next lap's start waits FULL_WAIT_MS, then the fallback; the rest of the lap neither waits nor
+    // flushes; the bytes as written.
+    cap_polls_left = -1;
+    cap_polls = 0;
+    cap_flushes = 0;
+    const double timed_out = fill();
+    CHECK(timed_out >= 90 && !in_ring() && pool.full_waited && cap_flushes == 1 && Logged("old way") == 1);
+    cap_polls = 0;
+    cap_flushes = 0;
+    double slowest = 0;
+    bool none_in_ring = true;
+    for (size_t upload = 1; upload < RING_UPLOADS; ++upload) {
+      const double ms = fill();
+      CHECK(ms >= 0);
+      slowest = std::max(slowest, ms);
+      none_in_ring = none_in_ring && !in_ring();
+    }
+    CHECK(none_in_ring && cap_polls == RING_UPLOADS - 1 && cap_flushes == 0 && Logged("waited") == 1 && Logged("old way") == 1);
+    CHECK(Read(made.device.Get(), made.context.Get(), wide.Get(), 65536) == std::vector<uint32_t>(16384, value * 0x01010101u));
+    // A switch that succeeds, a lap, then never passing again: waited again (no second line).
+    cap_polls_left = 0;
+    CHECK(fill() >= 0 && in_ring() && !pool.full_waited);
+    for (size_t upload = 1; upload < RING_UPLOADS; ++upload) CHECK(fill() >= 0 && in_ring());
+    cap_polls_left = -1;
+    const double again = fill();
+    CHECK(again >= 90 && !in_ring() && Logged("waited") == 1 && Logged("old way") == 1);
+    CHECK(Read(made.device.Get(), made.context.Get(), wide.Get(), 65536) == std::vector<uint32_t>(16384, value * 0x01010101u));
+    bp::internal::piece_cap = bp::internal::MAX_PIECES;
+    bp::internal::piece_done = nullptr;
+    bp::Update(made.context.Get(), false, false);
+    bp::ForgetDevice(made.device.Get());
+    std::printf("9. the full ring's wait: an event passing after polls: one wait (one flush), no fallback; never passing: one wait (%.0f ms),"
+                " the fallback, %zu more uploads without a wait or a flush (slowest %.2f ms), the bytes as written; after a switch: a wait"
+                " again (%.0f ms); each line once\n",
+                timed_out, RING_UPLOADS - 1, slowest, again);
   }
   std::printf("PASS\n");
   return 0;
