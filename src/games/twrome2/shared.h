@@ -136,6 +136,7 @@ struct ShaderInjectData {
   float ssr_quality;               // waterreflection00: x the game's quality_factor (1: the game's), Attila's Reflection Quality
   float rt_ambient_alone;          // ssao01: 1 no ambient occlusion of its own (the ray-traced one replaces it), as Attila
   float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
+  float ssao_fast;         // GT-VBAO: 1 Faster GT-VBAO (ao_bitmask_fast: twattila/bitmask.hlsli BITMASK_VARIANT 3, Experimental)
 };
 
 // PsychoV35's slider defaults here: the game's own response below white (its grey already is the game's curve; the

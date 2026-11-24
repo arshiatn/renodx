@@ -143,6 +143,7 @@ struct ShaderInjectData {
   float rays_sharp_reflections;    // ssr00 / ssr01: 1 the reflections blur's roughness step 0 where the rays reflect (Experimental)
   float reflection_occlusion;      // ssr00 / ssr01: the specular occlusion's (t46) strength (Path-Traced Reflection Occlusion; 1 whole)
   float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
+  float ssao_fast;         // GT-VBAO: 1 Faster GT-VBAO (ao_bitmask_fast: twattila/bitmask.hlsli BITMASK_VARIANT 3, Experimental)
 };
 
 #define SI shader_injection

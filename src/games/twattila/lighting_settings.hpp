@@ -62,7 +62,8 @@ light_bounce::Sliders LightBounceSliders(const ShaderInjection& data) {
 // Both sections onto `settings`, bound to `data` (the addon's shader_injection). The ambient occlusion's 3/4 and 1/4
 // resolution: the games drawn by ao_pass.hpp's own targets (their shader_injection has ssao_scale); its Temporal
 // Smoothing, Edge Fix and Denoiser: those and the games with ao_filter.hpp (their shader_injection has ssao_temporal);
-// its Exact Depth Samples: the games whose GT-VBAO reads it (ssao_exact_depth).
+// its Exact Depth Samples: the games whose GT-VBAO reads it (ssao_exact_depth); Faster GT-VBAO: the games with its own
+// shader (ssao_fast, ao_pass.hpp's bitmask_fast).
 // `traced`: whether rays or paths find the Light Bounce's light (rt_scene): its screen-space search's settings off then.
 template <typename ShaderInjection>
 void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInjection* data,
@@ -70,6 +71,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
   constexpr bool AO_SCALES = requires(const ShaderInjection& injection) { injection.ssao_scale; };
   constexpr bool AO_TEMPORAL = requires(const ShaderInjection& injection) { injection.ssao_temporal; };
   constexpr bool AO_EXACT_DEPTH = requires(const ShaderInjection& injection) { injection.ssao_exact_depth; };
+  constexpr bool AO_FAST = requires(const ShaderInjection& injection) { injection.ssao_fast; };
   using renodx::utils::settings::Setting;
   using renodx::utils::settings::SettingValueType;
   using Values = std::vector<std::pair<std::string, float>>;
@@ -102,6 +104,9 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
   }
   if constexpr (AO_EXACT_DEPTH) {
     ao_defaults.emplace_back("ssao_exact_depth", 0.f);
+  }
+  if constexpr (AO_FAST) {
+    ao_defaults.emplace_back("ssao_fast", 0.f);
   }
   // Faster (Recommended) with Global Illumination off.
   Values gi_defaults = {
@@ -279,6 +284,10 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
   if constexpr (AO_EXACT_DEPTH) {
     settings->push_back(toggle("ssao_exact_depth", &data->ssao_exact_depth, "Exact Depth Samples (Experimental)", AO_SECTION,
                                EXACT_DEPTH_TOOLTIP, ao_enabled));
+  }
+  if constexpr (AO_FAST) {
+    settings->push_back(toggle("ssao_fast", &data->ssao_fast, "Faster GT-VBAO (Experimental)", AO_SECTION,
+                               "Splits each search into even angles: faster, shading a little different.", ao_enabled));
   }
   if constexpr (AO_TEMPORAL) {
     settings->insert(settings->end(), {
