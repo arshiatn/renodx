@@ -4,7 +4,7 @@
  */
 
 // Screen-space shadows (screen_space_shadows.hpp): one of the dispatches sss_setup listed (b3: its index), Bend
-// Studio's WriteScreenSpaceShadow (Shogun 2's copy, twshogun2completeedition/shaders/bend_sss_gpu.hlsli: Apache 2.0,
+// Studio's WriteScreenSpaceShadow (Shogun 2's copy, bend_sss_gpu.hlsli: Apache 2.0,
 // Copyright 2023 Sony Interactive Entertainment; its sample count at run time) over the depth (t0, standard depth: near
 // 0, far 1), written as occlusion (BEND_SSS_OCCLUSION: 1 - the shadow term) into the mask the patched sun shaders read.
 // SSS_EXTENDED (sss_bend_extended): with Bend's extended march (BEND_SSS_EXTENDED: Auto Thickness, banners at t2) and what
@@ -28,7 +28,7 @@
 #ifdef SSS_FIND
 #define BEND_SSS_FIND
 #endif
-#include "../twshogun2completeedition/shaders/bend_sss_gpu.hlsli"
+#include "./bend_sss_gpu.hlsli"
 
 cbuffer sss_dispatch : register(b3)
 {
