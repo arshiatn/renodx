@@ -817,7 +817,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches ( ... | ?
 - ATN: rule lines (a64_ab.ps1 -Smoke / -GateR -A32Plain / -AB -A32Plain [+ -DryRun ... | ?
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
-- Smoke 2 (19:47) -> Gate R -> A/B. | ?
+- Gate R start 2 (A32, 20:13) -> dry runs + synthetic -Analyze (a64ab_'s list) -> ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -15093,7 +15093,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         false 'CRASH' match on the loader's 'lobby join guard (no crash ...)' line. The game itself was fine (1.3.20,
         Steam OK, D3D11 up). a64ab_ fixed both + 8 more case-only name pairs (AST scan) + a -DryRun self-test inside
         Run-Start (hand-back attila64/study_1124/a64ab_smokefix_handback.md); dry runs clean.
-        - [ ] Smoke 2 (19:47) -> Gate R -> A/B.
+        - [x] Smoke 2 (19:46) PASSED: 1.3.20, Steam OK, D3D11 3840x2160 full screen, 60 s test, clean exit 0, 0 crash lines,
+        test home has replays\ etc. (script called it 'exited by itself': the wait loop broke before reading the last 5
+        lines; coord moved the break after the stderr read). It only saw the 2.5-min intro movie (2 draws, 223 fps).
+        Settings: ATN's preferences.script.txt copied into the test home before every 64-bit start (normal 64-bit home =
+        %USERPROFILE%\attila64_home, graphics copied once from 32-bit). 64-bit saved it back with gfx_unlimited_video_memory
+        true -> FALSE (game turned it off itself; watch in the A/B), -1 -> 4294967295, crossplay / language keys dropped.
+        Gate R start 1 (C64, 19:49): intro 2.5 min, battle running 19:52:55, clock 19:52:59; WINDOW battle s 20..200 =
+        281.6 s wall, 65 fps drawn (no PerfFix). Then 'no battle end seen by 1200 s': 8245 steps (~824 battle s) and the
+        replay still running (sim 5-7 steps/s of 10) -> Gate R's full-play cap is too short at this speed; no desync /
+        crash / 'game code differs' line; peak private 5.8 GB. PresentMon: Hardware Independent Flip, tearing allowed;
+        battle p50 14.6 ms / p99 26-36 ms / 0 frames > 100 ms, a ~21 ms frame at every sim step (~6 ms extra). ATN saw
+        stutter: = units moving at the sim's 5-7 Hz while drawing is ~60 fps, not frame hitches; intro movie at 223 fps
+        uneven (7.5 / 0.7 ms) = the cutscene judder he saw. PresentMon's TimeInDateTime is +1 h vs local time.
+        ATN 20:0x: skip movies with Space / Escape -> a64ab_ (hand-back attila64/study_1124/a64ab_moviekeys_handback.md):
+        PostMessage WM_KEYDOWN/UP to the game's own window (no SendInput, no focus change), Space every 1.5 s until the
+        first text / ui / battle line (64-bit) or a 2 s present gap / +20 s (A32), Escape only 30..75 s into a movie.
+        Not proven that the game acts on posted keys; dry runs wait for Gate R's locks.
+        - [ ] Gate R start 2 (A32, 20:13) -> dry runs + synthetic -Analyze (a64ab_'s list) -> A/B -> analyze.
         NSIGHT MCP (ATN asked 19:3x): Nsight 2026.4 ships ngfx-mcp.exe; ATN added it as ngfx-native (local scope, stdio,
         --profile native; Claude Code starts it per session, `claude mcp list` = Connected; the HTTP Workflow profile was
         removed). New for us: GPU Trace shader profiler (hot lines / stalls / SASS), Graphics Debugger capture + replay
