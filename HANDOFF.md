@@ -833,7 +833,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - GPU WAVE 1 (low priority, resume_1124.md section 4): pdd2_ (Opus xHigh) PT DI + ... | ?
 - ATN: vMF Q4 WH3 sunlight row: ATN asked 'why last?'. Coord: WH3's sun already us ... | ?
 - SHARC DEPTH 4 (ATN 11-24: 'can you not fix and test it in nsight? ... if you can ... | ?
-- pdr2_ (fresh Opus xHigh) re-checks both Rev 2 deltas -> designs/pdd2_recheck.md ... | ?
+- pdd2_ fix round sent (M1-M4 + Shoulds + nits); vms1_ got M3 / M4 / M2 numbers fo ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
@@ -15367,7 +15367,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         16-22 h + WH3 4-6 h + S6 6-10 h. No blocking question. pds2_ (PT DI step 2) starts ONLY after ho_gbf_g23 merges
         (same files rt_path / rt_d3d12 / rt_trace; 23 commits ahead of atn-mods; its merge waits for the G23 GPU gate box
         'G23 set (ea398af22 + H1-H8) GPU gate: helper build + H5 WARP + H9 T3 / T4'); then E4 references re-made.
-        - [ ] pdr2_ (fresh Opus xHigh) re-checks both Rev 2 deltas -> designs/pdd2_recheck.md -> pdd2_ fixes findings.
+        - [x] pdr2_ DONE (hand-back plan_1117/designs/pdr2_recheck_handback.md; designs/pdd2_recheck.md): GO WITH
+        CHANGES, all 14 PT DI + 8 vMF points handled, cites hold (no helper / bridge / rt change since f0d87f307). M1
+        NVIDIA credits.hpp line with step 2 (REUSE_BOIL ships RTXDI code); M2 header = twattila/vmf_diffuse.h plain
+        static const arrays; M3 seam NO blend (per-seam gate R jump <= 0.03 at u >= 0.2 + T13 seam line at 100 % for
+        ATN; fallback sigma(u, r) table); M4 denominator gate min(den / (u_l u_v)) >= 0.5 (0.62 measured). S1 split =
+        a dxc trade (~60 % less work, ~40 more live floats in rt_path at 128 regs) -> T12 per site; fast form ON where
+        same picture + faster. Shoulds: ContactShade rescale (G23 rt_path.hlsli:1110-1112) into ReuseTarget, remake E4
+        refs after the G23 merge, RTXDI build block detect only, T2 all 8 includers + ONION + RIS_BUFFER, unified
+        wording, N1 step-0 captures, v32 lift invariant, T4 1e-4 relative, S3 8 weights a slice.
+        - [ ] pdd2_ fix round sent (M1-M4 + Shoulds + nits); vms1_ got M3 / M4 / M2 numbers for its S1 fix round.
         - [ ] coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_runs) in a GPU window when
         no game run is planned -> merge ho_gbf_g23 (one merge, rvh_'s G-M1) -> pds2_ can start.
         NSIGHT MCP (ATN asked 19:3x): Nsight 2026.4 ships ngfx-mcp.exe; ATN added it as ngfx-native (local scope, stdio,
