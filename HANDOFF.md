@@ -823,6 +823,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
 - s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
 - vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree- ... | ?
+- vMF credits.hpp line (paper, CC BY 4.0) lands with S4 (rows). | ?
 - a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the l ... | ?
 - PORT WAVE 1 started 11-24 (read-only, decision-independent): a64p0d_ (Opus xHigh ... | ?
 - gpn_ (Opus xHigh, read-only) writes plan_1117\resume_1124.md: status of every GP ... | ?
@@ -15241,6 +15242,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         fail; ~400 fxc slots per VmfLobe vs the 150-300 estimate; tables twice (DRY?); credits later). NOTE: the Agent
         worktree was cut from main, vms1_ reset it onto atn-mods: tell every worktree agent to check its base. -> vmr1_
         (Opus xHigh) review -> vms1_ fixes -> coord merges.
+        vmr1_ DONE (hand-back plan_1117/designs/vmr1_review_handback.md; designs/vms1_review.md): FIX FIRST, port correct
+        (WARP rerun ALL OK). M1 WARP-vs-twin bar 0.02 ~600x too loose (4 of 9 mutations passed) -> 1e-4 x max(R, 1) +
+        fade records + a sensitivity control; M2 one shared twattila/vmf_diffuse.h for tables + constants (like
+        light_bounce.h); S1 Eq. 4 via exp(-2 / a2) + alpha floor 1e-6 (dxc fast math); denominator >= 0.62 u_l u_v gate;
+        DOI + CC BY 4.0 link in the header; NaN note; cs_6_9 compile; nits. Cost: VmfLobe 399 fxc slots / 1011 dxc ops,
+        fast form 47 / 92 -> S2's T12. Seam: reviewer = no blend + 0.03 per-seam gate vs Rev 2's blend -> pdr2_ decides.
+        -> vms1_ fix round sent (same worktree, new commits).
+        - [ ] vMF credits.hpp line (paper, CC BY 4.0) lands with S4 (rows).
         - [ ] a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the logs, other explanations of
         the fast stretches, estimates, architecture, completeness, rules, decisions, first wave) -> port_plan_review.md.
         - [ ] PORT WAVE 1 started 11-24 (read-only, decision-independent): a64p0d_ (Opus xHigh) Phase 0 design ->
