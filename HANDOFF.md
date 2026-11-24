@@ -13535,6 +13535,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (the budget is used). -> t4i_ after the reruns session, before wpr_analysis; ebr_ glance.
         - [ ] Game exit race: a second drain at +0xD5D74 or the call at +0xC9AAF (engine_code, Attila only; design first,
         WPR of a window-closed exit decides; proof ~150 exits) + fix the 1906-1912 comment -> FULL CPU ANALYSIS wave.
+        RERUNS SESSION DONE 08:58-09:37: 9 PASS (OLD6 starts now PASS with the r5 check); Ureruns-10-W3-ALL-wpr-r INVALID
+        (WPR window 193 presents < 200, excess +15.6). EVAL r2 (testbin/scratch/coord_final_eval_r2.txt / .json): W3 d -6.57
+        (SE 1.78, rounds 3 + 4 from the re-runs) vs -8.0 False, Q9 (a) holds; R1 +0.18; D1 -1.31; melee -6.63; OLD6 W3 -1.29
+        (SE 1.01) not on; drain 50 / 50, clean end 45 / 50 (the 5 = heapfix-unloaded). Printed VERDICT 'NOT GO (W3 fails;
+        driver waits missing; 1 PROBLEM)' -> t4i_ round 6: verdict per Q9 (a), GAME / heapfix crashes recorded lines, C-9.
+        COORD: overrides final_followup = wpr_analysis; fu_wpr_analysis (3 starts: warm-up, W3 ALL WPR 420,40 510 s, D1 ALL
+        WPR 100,40 190 s; FP twin); DRY RUN CLEAN (C: 58.5 GB) -> SESSION STARTED ~09:40 (~41 min). Next lowcore ->
+        row_by_row (13 starts, 70 min: W3 line misses -8.0; diagnosis for the full CPU analysis) -> noheapfix LAST.
+        t4i_ ROUND 6 sent (read-only while sessions run): WER scanner + table, bench WER patch (recorded classes), eval fixes.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
