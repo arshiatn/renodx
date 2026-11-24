@@ -758,6 +758,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - trap open questions (harness / game only): does alt-tab trigger it in normal pla ... | ?
 - merge ho_g03_comptr with the next mrg_ batch (ho_gbf + G23 after the gates); sha ... | ?
 - CRITIC: fa4_ #2 calls the large-block cache a heapfix author note, fa8_ M3 says ... | ?
+- eval: trap-seconds line in the bench eval + WPR tasks that don't take focus (fa3 ... | ?
+- game runs proposed (ATN's go, after the ranked list): G1 W3 ALL vs ALL+FDW+FCU 8 ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14037,6 +14039,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] CRITIC: fa4_ #2 calls the large-block cache a heapfix author note, fa8_ M3 says the game's dlmalloc is NOT
         heapfix (engine_code patchable) -> resolve owner. Also fa8_: main 'RtlVirtualUnwind2~' 6.56 = event-signal wake
         path ~3.8; main Sleep at +0xc4940 ~1.0 WAW3.
+        fa7_ FCA GPU IDLE DONE (render_mt/fca/analysis/fa7_gpu_idle.md + fa7_handback.md; 6 items, 12 ruled out): healthy
+        GPU idle = main's logic phase (W3 48.5 / D1 15.8 ms/f; only lever = logic / render pipelining, upper bound -35..-40
+        W3, deep engine change). THE TRAP ALSO HITS W3 ALL WITHOUT WPR: 6 of 22 final-bench starts (4 tier 3 = 4-5 s GPU
+        stalls at 70-78 s replay time, 2 tier 2), OFF 0 / 10, ALL+OLD6 (FDW + FCU) 0 / 7, Fisher p = 0.023 -> player-
+        relevant BUG: FDW + FCU on by default with fa3_'s 3 FDW fixes (cost W3 +0.8 / D1 +0.5) + RecordUnits one upload /
+        frame; optional live trap detector. The final verdict's W3 lead -6.57 may really be ~0..+7 until the rings are on;
+        lowcore +13.40 = Ulowcore-03 trapped (104 / 120 s), not CPU count. Helper DLAA: no change (moving it = reset risk).
+        -> fa7_ offline trap scan over all earlier bench sessions (sent).
+        - [ ] eval: trap-seconds line in the bench eval + WPR tasks that don't take focus (fa3_ (d) / fa7_ #2).
+        - [ ] game runs proposed (ATN's go, after the ranked list): G1 W3 ALL vs ALL+FDW+FCU 8+ starts each to 180 s + D1
+        2+2; G2 alt-tab mid-battle; G3 row bisect only if G1 needs it.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
