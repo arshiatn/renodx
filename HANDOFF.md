@@ -752,11 +752,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Stale comment twattila/rt_scene.hpp:633 names SkipGameSsao (G18 owner). WH1 :227 ... | ?
 - g14r_ r3 tool follow-up (report_check.py) still open. | ?
 - Rome II Specular Occlusion: the commit that later hooks it (traced reflections) ... | ?
-- static_checks comptr: 5 findings in twattila/water_reflections.hpp :117 :187 :18 ... | ?
 - g24_ boxes: pair: claims need constant-logging traces; Expeditions tracer 'view ... | ?
 - g24_: add dump_shader_ruse_pack / dump_shader_divinity1_pack / dump_shader_divin ... | ?
 - bench WPR tasks must not take focus (fa3_ (d)) + false 'FAIL (6 fails)' switch l ... | ?
 - trap open questions (harness / game only): does alt-tab trigger it in normal pla ... | ?
+- merge ho_g03_comptr with the next mrg_ batch (ho_gbf + G23 after the gates); sha ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13940,7 +13940,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         mem_ r3: Attila's opt-in flag = ONE line in twattila/addon.cpp after :2622 (coord OK; fi1_'s hunks elsewhere).
         mrg_ G22 MERGED 5b00fc9e7 (handbacks/mrg_g22_handback.md): 36 / 36 builds green (hashes_g22.txt), tw_pipeline_cache
         22 / 22, tw_view_filter 18 / 18, tw_device_proxy_removal 3 / 3, static_checks views / pipelines / tonemap 0.
-        - [ ] static_checks comptr: 5 findings in twattila/water_reflections.hpp :117 :187 :188 :228 :229 (from ho_g03,
+        - [x] static_checks comptr: 5 findings in twattila/water_reflections.hpp :117 :187 :188 :228 :229 (from ho_g03,
         TextureOf(..., &ComPtr)) -> g03_ (sent 'g03_ comptr'). Add static_checks to every merge's suite list.
         BUILD SLOT TRIAL FAILED ~12:45 (sampler testbin/scratch/coord/slot_trial_1124.csv): free RAM 4.05 GB / commit 38 GB
         with only 2-3 builds (single add-on compiles peak 9-11 GB). Rule now: max 4 slots, -j 4, take a slot only with free
@@ -13998,6 +13998,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         verify bench.
         - [ ] trap open questions (harness / game only): does alt-tab trigger it in normal play; do FCU + FDW prevent it
         reliably; one-frame Map trace for victims; offline D3D11 harness trigger test (DISCARD set, 2 s pause, resume).
+        g03_ COMPTR BUILD (handbacks/g03_comptr_build_handback.md): ho_g03_comptr c715c6a9c PUSHED (2 lines: texture->Reset()
+        first in TextureOf), slot1 the README way, Troy + Pharaoh amd64 exit 0, 0 new warnings, static_checks comptr 0;
+        coord checked the diff (out-param, callers pass fresh locals).
+        - [ ] merge ho_g03_comptr with the next mrg_ batch (ho_gbf + G23 after the gates); shared twattila header -> the
+        merge's all-36 build covers every TW add-on.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
