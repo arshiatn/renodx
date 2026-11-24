@@ -55,8 +55,9 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
   constexpr auto ATTILA_GAME = twattila::engine_code::Game::ATTILA;
   if (build.code != &ec::ATTILA_BUILD) {
     CHECK(build.code->exit_destroy_rva == 0 && Matches(game + text_rva, text_size, ec::EXIT_DESTROY) == 0);
-    CHECK(build.code->exit_teardown_rva == 0 && Matches(game + text_rva, text_size, ec::EXIT_TEARDOWN_CALLER) == 0);
-    std::printf("30. exit job drain: Attila only (this build has no such sites: skipped)\n");
+    // The outer loop's pattern can match here (Thrones of Britannia has it once): the site is Attila's alone, so only the build's own rva must be 0.
+    CHECK(build.code->exit_teardown_rva == 0);
+    std::printf("30. exit job drain: Attila only (this build has no such sites: skipped; the outer loop's pattern matches %zu time(s) here)\n", Matches(game + text_rva, text_size, ec::EXIT_TEARDOWN_CALLER));
     return 0;
   }
   const auto drain = [&](bool on) { twattila::engine_code::Update(false, ATTILA_GAME, false, false, false, false, false, false, 1.f, 0, {.exit_job_drain = on}); };
@@ -100,18 +101,19 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
           && Matches(game + teardown_caller_rva, ec::PatternSize(ec::EXIT_TEARDOWN_CALLER), ec::EXIT_TEARDOWN_CALLER) == 1);
     CHECK(game[teardown_site_rva] == 0xE8 && teardown_site_rva + 5 + Read32(game + teardown_site_rva + 1) == teardown_rva
           && Matches(game + teardown_rva, ec::PatternSize(ec::EXIT_ROOT_TEARDOWN), ec::EXIT_ROOT_TEARDOWN) == 1);
-    // Every way into the teardown: the E8 calls (the site and the deleting destructor's), no E9, and no relocated address of it (a vtable or table entry).
+    // Every way into the teardown: the E8 calls (the site and the deleting destructor's), no E9 and no 0F 80..8F (conditional rel32) jump, and no relocated address of it
+    // (a vtable or table entry).
     constexpr uint32_t DELETING_DESTRUCTOR_RVA = 0xC9FF0;
     constexpr uint32_t DELETING_DESTRUCTOR_VTABLE_RVA = 0x1AFCFA8;  // slot 0 of the vtable at 0x11AFCFA8
     std::vector<uint32_t> calls;
     size_t jumps = 0;
     for (uint32_t at = text_rva; at + 5 <= text_rva + text_size; ++at) {
-      if ((game[at] == 0xE8 || game[at] == 0xE9) && at + 5 + Read32(game + at + 1) == teardown_rva) {
-        if (game[at] == 0xE8) {
-          calls.push_back(at);
-        } else {
-          ++jumps;
-        }
+      if (game[at] == 0xE8 && at + 5 + Read32(game + at + 1) == teardown_rva) {
+        calls.push_back(at);
+      } else if (game[at] == 0xE9 && at + 5 + Read32(game + at + 1) == teardown_rva) {
+        ++jumps;
+      } else if (game[at] == 0x0F && (game[at + 1] & 0xF0) == 0x80 && at + 6 + Read32(game + at + 2) == teardown_rva) {
+        ++jumps;
       }
     }
     CHECK(calls.size() == 2 && jumps == 0 && (calls[0] == teardown_site_rva || calls[1] == teardown_site_rva));
@@ -137,7 +139,7 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
     CHECK(Read32(game + DELETING_DESTRUCTOR_VTABLE_RVA) == game_base + DELETING_DESTRUCTOR_RVA);
     CHECK(absolute_references(DELETING_DESTRUCTOR_RVA) >= 1);  // the control: the scan finds the vtable's slot, so a zero below means none
     CHECK(absolute_references(teardown_rva) == 0);
-    std::printf("30. exit job drain: the root teardown +0x%X: the pattern once, 2 E8 callers (the site +0x%X, the deleting destructor's +0x%X), no E9, no relocated address (the destructor +0x%X has %zu)\n",
+    std::printf("30. exit job drain: the root teardown +0x%X: the pattern once, 2 E8 callers (the site +0x%X, the deleting destructor's +0x%X), no E9 or 0F 8x jump, no relocated address (the destructor +0x%X has %zu)\n",
                 teardown_rva, teardown_site_rva, destructor_call, DELETING_DESTRUCTOR_RVA, absolute_references(DELETING_DESTRUCTOR_RVA));
   }
   prepare();
@@ -483,7 +485,7 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
       CHECK(saw_freed && teardown_done() && exit_fake_busy_at_teardown == 1 && deleted_once() && exit_fake_busy_at_delete == 0);
       CHECK(log_lines.size() == first_line + 1);
       waited = waited_for_job(first_line, "Exit Job Drain");
-      if (waited) std::printf("   the race, no drain at +0xD5D74: the job saw the battle freed; \"%s\"\n", log_lines[first_line].c_str());
+      if (waited) std::printf("   the race, no drain at +0xD5D74 (attempt %d of 3): the job saw the battle freed; \"%s\"\n", attempt + 1, log_lines[first_line].c_str());
     }
     CHECK(waited);
     // Through +0xD5D74: the drain waits for the job before the free; the later drain finds every worker asleep.
@@ -495,7 +497,7 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
       CHECK(log_lines.size() == first_line + 2 && log_lines[first_line + 1].find("Exit Job Drain: drained 0 of 5 job workers in ") != std::string::npos
             && log_lines[first_line + 1].ends_with(" ms."));
       waited = waited_for_job(first_line, "Exit Job Drain before the teardown");
-      if (waited) std::printf("   the race, through +0xD5D74: the job never saw the battle freed; \"%s\", then \"%s\"\n", log_lines[first_line].c_str(), log_lines[first_line + 1].c_str());
+      if (waited) std::printf("   the race, through +0xD5D74 (attempt %d of 3): the job never saw the battle freed; \"%s\", then \"%s\"\n", attempt + 1, log_lines[first_line].c_str(), log_lines[first_line + 1].c_str());
     }
     CHECK(waited);
     exit_fake_teardown_extra = nullptr;

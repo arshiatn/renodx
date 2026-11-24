@@ -1957,9 +1957,7 @@ constexpr size_t JOB_WORKER_WORDS = JOB_WORKER_WAKES + 1;
 constexpr uint32_t JOB_WORKER_ASLEEP = 1;
 constexpr uint32_t JOB_WORKER_STOPPED = 3;
 constexpr std::chrono::milliseconds EXIT_DRAIN_LIMIT{1000};
-// +0xd5d74's cap: a worker's longest unbroken run is about one heavy frame (about 150 ms, measured in the heaviest battles). Raise it to 3000 ms only where its
-// drain gave up and the +0xc9ac1 drain of the same exit found every worker asleep (the job ended during the teardown); a worker the later drain gives up on too
-// waits on the main thread or holds a stale state 2, which a longer cap does not cure.
+// +0xd5d74's own cap: about 7 times the heaviest frame measured in battles (about 150 ms); see the bench rule for raising it.
 constexpr std::chrono::milliseconds EXIT_TEARDOWN_DRAIN_LIMIT{1000};
 static void (*exit_app_delete)() = nullptr;  // the game's function the site called
 static void(__thiscall* exit_root_teardown)(void* loop_object) = nullptr;  // the game's function the +0xd5d74 site called
@@ -2055,8 +2053,7 @@ static void ExitDrain() {
 }
 
 // The +0xd5d74 site's call: the outer loop calls the root teardown thiscall (ecx = the loop object on its stack, no stack argument). __fastcall with edx unused is the
-// same convention (as animation_rows::Dispatch); MSVC rejects __thiscall on a free function. The pin comes first in DrainJobPool: the teardown reaches the app delete,
-// which unloads this add-on, and its call then returns here.
+// same convention (as animation_rows::Dispatch); MSVC rejects __thiscall on a free function.
 static void __fastcall ExitDrainBeforeTeardown(void* loop_object, void*) {
   if (!teardown_drained.exchange(true)) {
     DrainJobPool("Exit Job Drain before the teardown", EXIT_TEARDOWN_DRAIN_LIMIT);
