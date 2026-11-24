@@ -791,6 +791,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN trace requests (later, one go): Expeditions tracer 4.23 View offsets + a new ... | ?
 - RELEASE BLOCK: atn-mods ships ALL rows on with the rings off (the 32% trap confi ... | ?
 - ATN Q-C: Fewer Driver Waits rows - his 11-20 'keep Experimental + Off (not hidde ... | ?
+- fxi_ test fix (sent; branch ec_test_fix from atn-mods): R3-N1 bounded spins, R3- ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14423,6 +14424,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         atn-mods until PK1 stage 1 lands (rv1_ S11).
         - [ ] ATN Q-C: Fewer Driver Waits rows - his 11-20 'keep Experimental + Off (not hidden)' vs bug-fix-always-on now
         that rings off = trap; Rev 1 designs rows shown, default on, 'Off after a restart' until he answers.
+        mrg_ MERGED FCA ITEM 1 + EXIT DRAIN A + MEM_FIX (handoff_plan/handbacks/mrg_fca_memfix_handback.md): d64693692
+        fca_item1, 1ed81d3b2 fca_exit_drain, 884bc7f91 mem_fix, tip 684c02587; 36 / 36 builds x2, tw_engine_code -Quick /
+        effect_update / exit, tw_render_mt_defaults all match (x2), tw_cpu_sets, tw_draw_recording, tw_cluster_rewrite,
+        tw_native_context (500799880DD8048C) PASS; hashes scratch/mrg_/hashes_fca.txt + hashes_memfix.txt. CONFIRM-RUN
+        BUILD (unstamped, not installed; worktree mrg_b1): addon32 0925bdee0dc0, addon64 673300f94109. Worktree mrg_b1 has
+        junctions: remove links first before any delete.
+        - [ ] fxi_ test fix (sent; branch ec_test_fix from atn-mods): R3-N1 bounded spins, R3-N2 comment, Thrones
+        PARTICLE_EPOCH stale check + full Thrones suite -> rvl_ short look -> mrg_.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
