@@ -13913,6 +13913,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         result + suites (sent). N7: tw_device_proxy_removal needs tearing support.
         fxr_ R2 (render_mt/fca/designs/fxr_r2_handback.md): M1 / S1-S6 / N1-N9 applied, A limit 1000 ms constant -> rvl_
         re-check sent.
+        rvl_ FXR RE-CHECK GO (render_mt/fca/designs/rvl_fxr_recheck_handback.md; 6 NIT R2-N1..N6) -> fxi_ (Sonnet xHigh,
+        engine_code class) implements A on branch fca_exit_drain (owns engine_code.hpp + test/tw_engine_code; fi1_ keeps
+        addon.cpp / cpu_sets / worker_pool / effect_update). Then t4i_: A parser + R2-N5 from fxi_'s exact log lines.
+        fbm_ FABLE HIGH MEM REVIEW (ONE TIME DONE; reviews/fbm_mem_fix_review_handback.md): NOT GO, 1 BLOCKER (= rvm_ R1:
+        R.U.S.E. MarkDrawn) / 1 MAJOR (release line's 'after' read too early) / 6 MINOR / 6 NIT; Attila side safe.
+        COORD DECISION on the split (rvm_ 'no flag' vs fbm_ 'flag required'): in-front release OPT-IN per host, Attila now,
+        Rome II / Thrones after Attila's confirm run (64-bit hosts have no address-space need; R.U.S.E. has more false-
+        release paths); bench env to turn it off for an A/B arm in the confirm run. -> mem_ r3 (B1 + flag + M1 + m1-m6 +
+        tests 9f / 9g / real draw path) -> rvm_ re-check -> confirm game run (ATN's go; add the no-fix arm + a < 10 s
+        alt-tab / tactical map / movie view).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
