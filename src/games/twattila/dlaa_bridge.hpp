@@ -160,10 +160,16 @@ struct FrameRequest {
   float far_plane = 0.f;
 };
 
+// An evaluation's optional inputs (each default as before them).
+struct EvaluateOptions {
+  uint32_t extra_written = 0;  // bits of RR_EXTRA_*: written for this evaluation (Ray Reconstruction's, FSR's colour before)
+  float exposure = 0.f;        // DLSS's for presets J / K (0: its AutoExposure; 1 for a display-referred input)
+  float fsr_sharpness = 0.f;   // FSR's RCAS, 0-1 (0: off)
+};
+
 // Ray Reconstruction's settings for a request (its guides are the bridge's textures).
 struct RayReconstruction {
   uint32_t preset = 0;  // NVSDK_NGX_RayReconstruction_Hint_Render_Preset
-  uint32_t extra_written = 0;  // bits of RR_EXTRA_*: written for this evaluation
   std::array<float, 16> world_to_view = {};
   std::array<float, 16> view_to_clip = {};
 };
@@ -197,6 +203,9 @@ struct Bridge {
   // accumulation and filter) leave its noise to it. Not where the helper ran DLSS without it (rr_refused).
   bool reconstructing = false;
   bool rr_refused = false;  // the helper's last word on it (logged when it changes)
+  // DLSS could not start on this GPU (the helper's dlss_refused): FSR in its place until the game restarts (DlssRefused;
+  // read by the settings' thread too).
+  std::atomic<bool> dlss_refused = false;
   // The colour last written into `color` is the light's square root (the upscaler's input for L, M, Ray Reconstruction): the
   // helper's paths square it back (RT_PATH_COLOR_SQUARE_ROOT).
   bool color_square_root = false;
@@ -817,14 +826,17 @@ inline void PublishEmptySet() {
 
 // The shared objects for `width` x `height` on `device` (with Ray Reconstruction's guides when `guides`, ray tracing's
 // textures when `ray_tracing`, frame generation's in `fg_format` unless unknown, the reflections' with ray tracing when
-// `reflections`, `upscaler` the helper's UPSCALER_*, `fg_backend` its FG_BACKEND_*; made again when any changes); false: not
+// `reflections`, `upscaler` the helper's UPSCALER_*, `fg_backend` its FG_BACKEND_*, `rr_extra` the RR_EXTRA_* inputs asked for:
+// with the guides, or FSR's colour before the particles for its reactive mask; made again when any changes); false: not
 // available.
 inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool guides = false, bool ray_tracing = false,
                     DXGI_FORMAT fg_format = DXGI_FORMAT_UNKNOWN, bool reflections = false, uint32_t upscaler = UPSCALER_DLSS,
                     uint32_t fg_backend = FG_BACKEND_DLSS, uint32_t rr_extra = 0u) {
   if (internal::HelperLost()) return false;
   reflections = reflections && ray_tracing;
-  rr_extra = guides ? rr_extra : 0u;
+  if (!guides) {
+    rr_extra &= (upscaler == UPSCALER_FSR) ? (1u << RR_EXTRA_COLOR_BEFORE) : 0u;
+  }
   if (!internal::Start(native_device)) return false;
   ComPtr<ID3D11Device5> device;
   if (FAILED(native_device->QueryInterface(IID_PPV_ARGS(device.GetAddressOf())))) {
@@ -1412,7 +1424,7 @@ inline std::pair<uint32_t, uint64_t> RayTracingLeftOut() {
 // FSR and XeSS take the camera's near, far and field of view from `view_to_clip` (row vectors).
 inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_height, float jitter_x, float jitter_y,
                      bool reset, uint32_t preset, const RayReconstruction* ray_reconstruction = nullptr,
-                     const std::array<float, 16>* view_to_clip = nullptr) {
+                     const std::array<float, 16>* view_to_clip = nullptr, const EvaluateOptions& options = {}) {
   const bool evaluated = internal::Request(context, EVALUATE, [&](Shared* shared) {
     shared->fg_request = 0;
     shared->rt_request = 0;
@@ -1432,7 +1444,9 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
     }
     if (view_to_clip != nullptr) std::copy_n(view_to_clip->begin(), 16, shared->view_to_clip);
     shared->rr_hit_distance_written = (shared->ray_reconstruction != 0 && bridge.hit_distance_written) ? 1u : 0u;
-    shared->rr_extra_written = (shared->ray_reconstruction != 0) ? (ray_reconstruction->extra_written & bridge.rr_extra) : 0u;
+    shared->rr_extra_written = options.extra_written & bridge.rr_extra;
+    shared->dlss_exposure = options.exposure;
+    shared->fsr_sharpness = options.fsr_sharpness;
   });
   bridge.hit_distance_written = false;
   // Asked for and refused (helpers 108 on: Pharaoh's folder had no nvngx_dlssd.dll, its rays went raw into plain DLSS):
@@ -1446,6 +1460,11 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
     }
   }
   bridge.reconstructing = evaluated && ray_reconstruction != nullptr && bridge.guides && !refused;
+  // DLSS could not start (helpers that write it; older ones leave 0): latched, as nothing brings the DLL back while the
+  // game runs.
+  if (bridge.shared != nullptr && bridge.shared->dlss_refused != 0 && !bridge.dlss_refused.exchange(true)) {
+    renodx::utils::log::w("[Total War] DLSS could not start (", bridge.status, "): FSR runs in its place until the game restarts.");
+  }
   if (bridge.shared != nullptr) {
     // Ray tracing's counts change every frame: its line is logged when the part before ": " changes, else with Log Details
     // each minute.
@@ -1461,6 +1480,11 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
     }
   }
   return evaluated;
+}
+
+// DLSS could not start on this GPU (no nvngx_dlss.dll, NGX or the driver): the settings run FSR in its place.
+inline bool DlssRefused() {
+  return bridge.dlss_refused.load(std::memory_order_relaxed);
 }
 
 // A present through frame generation (the frame and HUD-less frame written on `context` before this): the helper copies
