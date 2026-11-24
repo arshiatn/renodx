@@ -816,7 +816,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: rule lines (a64_ab.ps1 -Smoke / -GateR -A32Plain / -AB -A32Plain [+ -DryRun ... | ?
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
 - REMIND ATN (decision 6): ask JSa25 for a Flag Wave interop contract (previous-po ... | ?
-- decision 7 explained to ATN: 'Keep Battle Core Free' = keep the battle step's co ... | ?
+- decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
 - vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree- ... | ?
 - a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the l ... | ?
@@ -15164,9 +15164,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] REMIND ATN (decision 6): ask JSa25 for a Flag Wave interop contract (previous-position / velocity buffer,
         slot, version) when the Flag Wave MV work starts (after a64c_'s census); the fallback (his 4 shaders mapped to
         their families, rows-only MVs) ships first.
-        - [ ] decision 7 explained to ATN: 'Keep Battle Core Free' = keep the battle step's core (and its SMT sibling) on
-        the V-cache CCD free of the drawing / helper / background threads; default on only after the a64_ab gate + a
-        6-core check. ATN's yes / no pending.
+        - [ ] decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already giving the game my 16 3d cache
+        threads with CPU Set Setter'): his rule = CPU set 0-15 (V-cache CCD with SMT) for Attila.exe; attila64.exe had NO
+        rule at the 11-24 A/B (a64_ab set affinity 0xFFFF instead). For ATN the option's value is INSIDE the 16: the step
+        thread on a core of its own vs sharing with the drawing / task workers; for players without CPU Set Setter the
+        V-cache part matters too. Sent to a64p0d_ (L2 arms: 0-15 baseline as ATN plays, step alone on one core, SMT
+        sibling free or not). Default by the numbers. ATN to add the same CPU Set Setter rule for attila64.exe (coord
+        asked 11-24).
         - [ ] s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 source as a TEST VERSION (Sol
         11-24 on Discord: 'Can you not do it yourself and test it ... If you want. As a test version'):
         testbin\attila64_1124\sol_fixes_1124 (git, one commit per fix, offline tests incl. the original failing, patch +
