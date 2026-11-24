@@ -719,7 +719,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - sym_build_head.ps1: a real clean-tree check that works with junctions (after the ... | ?
 - Before the RELEASE (after the bench's Go; exit-path / test only, no re-bench): l ... | ?
 - ebr_ SHOULD 1 (before the noheapfix follow-up's eval): the address-space Go coun ... | ?
-- CRASH F31-R1-OFF (OFF, 181.1 s at close): ReShade.log 'Unhandled exception 0xC00 ... | ?
+- heapfix exit crash (5 / 40 exits): one-line pin GetModuleHandleExW(PIN) at heapf ... | ?
+- Bench gap: per start read WER Event 1000 / CrashDumps\Attila.exe.<pid>.dmp in th ... | ?
+- Game exit race: a second drain at +0xD5D74 or the call at +0xC9AAF (engine_code, ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13499,7 +13501,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         VERDICT PENDING: 7 re-runs due (stall rounds W3 3 + 4; WPR 03 W3 ALL excess 11.7 > 10). Driver waits not run (C-9).
         ebo_check FALSE FAIL on all 7 ALLpOLD6 starts (same key twice at 0 s: base 0 then OLD6 1; logs show 6 / 6 'set to
         1' lines) -> t4i_ ROUND 5 (check fix + offline re-check, ebr_ SHOULD 1 / 2, due follow-ups, fu_reruns).
-        - [ ] CRASH F31-R1-OFF (OFF, 181.1 s at close): ReShade.log 'Unhandled exception 0xC0000005 at 0x249BDB28 (thread
+        - [x] CRASH F31-R1-OFF (OFF, 181.1 s at close): ReShade.log 'Unhandled exception 0xC0000005 at 0x249BDB28 (thread
         6900, execute)', then 'Exit Job Drain: gave up after 3839 ms, 0 of 15 running' (cap 1000 ms?); heapfix.log
         EXCEPTION / FREEZE; re-ran clean (budget used). -> fcr_ (Opus xHigh, read-only) root cause:
         render_mt/reports/fcr_f31_exit_crash.md. Must be root-caused before the release.
@@ -13517,6 +13519,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         session ends the final (ebo_leg:429) -> COORD ORDER: reruns -> eval -> C-9 -> wpr_analysis -> lowcore -> row_by_row
         (if due) -> noheapfix LAST. If fcr_ finds F31 = the game's own exit race, ATN's 11-23 rule (recorded, no stop) applies.
         After lowcore / noheapfix: run.txt affinity lines, 'dinput8.dll moved back (hash ok)', 'restored 0'.
+        fcr_ VERDICT GAME (render_mt/reports/fcr_f31_exit_crash.md + _handback.md): F31 = the game's own exit race (main-thread
+        teardown destroys a battle object while job worker #0 runs battle logic; DEP execute at the object; same signature
+        11-03 / 11-17, before the drain existed) -> record only (ATN 11-23 rule). 3839 ms = the process frozen for heapfix's
+        dump + WER; '0' = the faulted worker's INDEX. The fault came ~73 ms BEFORE our drain (engine_code.hpp:1906-1912's
+        comment wrong). ALSO: WER saw 6 exit crashes in 40 starts, the bench 1: F04 / F14 / F24 / F29 / F32 =
+        DINPUT8.dll_unloaded+0x7E60 (heapfix's handler + unhandled filter never removed, diag.c:892-893; the game unloads
+        HFx_dinput8 at exit) = the 5 'no clean process end' NOTEs; OFF and ALL alike, older than this RC. 4 zero-thread
+        Attila.exe = WER reflection copies. Memory reference_wer_exit_crashes.md.
+        - [ ] heapfix exit crash (5 / 40 exits): one-line pin GetModuleHandleExW(PIN) at heapfix.c:634 -> ATN decides: the
+        author package (via ATN only) and / or our add-on pinning heapfix's dinput8.dll as a stopgap for players.
+        - [ ] Bench gap: per start read WER Event 1000 / CrashDumps\Attila.exe.<pid>.dmp in the close path
+        (constantinople_bench.ps1:1124-1146): DINPUT8.dll_unloaded + the game-race signature = RECORDED, other = counted
+        (the budget is used). -> t4i_ after the reruns session, before wpr_analysis; ebr_ glance.
+        - [ ] Game exit race: a second drain at +0xD5D74 or the call at +0xC9AAF (engine_code, Attila only; design first,
+        WPR of a window-closed exit decides; proof ~150 exits) + fix the 1906-1912 comment -> FULL CPU ANALYSIS wave.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
