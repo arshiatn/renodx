@@ -770,6 +770,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rvg_ review of step 1 (handoff_plan/reviews/rvg_g24_step1_review.md) -> then g24 ... | ?
 - mem_ r4 -> rvm_ short re-check -> ask ATN for the Attila 32-bit confirm run (che ... | ?
 - Rome II / Thrones keep the 32-bit leak until host.scene_release is set for them ... | ?
+- sse_ (Opus xHigh, worktree, branch sss_e2) implements E2 + E4 with R1 / R2 / S2 ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14252,6 +14253,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         (B2 at r4 fails the 1% gate); wording; After Blur = post-draw callback + ratio cap + 2x multiply + upsample +
         release on destroy / resize; AO histories RGBA16F + R16F + convergence test; Toru lines only in svgf/*.hlsli.
         -> shg_ Rev 1.1 (sent, incl. S1a's file set) -> S1a implementer (Opus xHigh) after a one-writer check.
+        rvn_ SBR REV1 RE-CHECK GO FOR THE E2 IMPLEMENTER (plan_1117/rvn_sbr_recheck.md + _handback.md; 0 / 2 MUST / 3
+        SHOULD / 4 NIT): skew + quad cursor accepted; R1 clamp the cursor's last quad to the main range; R2 debug-counter
+        'no false skip' = main exactness proof (0 over the matrix, controls > 0, m = -0.25 fails on R8); S1 light mode
+        ~-0.25..-0.5 ms (torch windows wider); S2 NaN via exponent bits; S3 E4 return under BEND_SSS_AUTO_THICKNESS.
+        - [ ] sse_ (Opus xHigh, worktree, branch sss_e2) implements E2 + E4 with R1 / R2 / S2 / S3: Attila first (WARP A/B,
+        counter, controls, DXBC diff, _auto bytes), then the 15 add-ons + suites; held on sss_e2 until all pass (coord
+        merges). GPU A/B / --time / Nsight -> coord's GPU window with a gate id. Hand-back 'sse_ e2'.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
