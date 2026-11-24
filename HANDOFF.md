@@ -824,7 +824,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
 - gated_build.ps1 has its OWN 2 slots (build_job.lock / _2) + 45 GB committed + -j ... | ?
 - a64ab_ fix round SENT (M1 / M2, stage A = base, inline, inline + a 4th base only ... | ?
-- WINDOW 1 STARTED 11-24 late (ATN: 'No game, nothing'): -AB -Arms stageA, ~25 / ~ ... | ?
+- AFTER WINDOW 1 (started 23:5x): gbf gates (gbf_gpu_gates.ps1, coord, quiet GPU w ... | ?
 - Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64ab ... | ?
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
@@ -15325,8 +15325,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         CPU sets + affinity at battle s ~30, refuses without CPU Set Setter; pictures 201 / 202 + 376 / 377; inline
         1500 s; PresentMon session a64ab_pm (the orphan default 'PresentMon' session = ours, ATN confirmed; coord
         stopped it). Dry runs + -Analyze on copies OK. Open S8 / S9 (not needed now).
-        - [ ] WINDOW 1 STARTED 11-24 late (ATN: 'No game, nothing'): -AB -Arms stageA, ~25 / ~32 min; pre-checks: Steam
-        up, no game (only the 4 known zombie Attila.exe), CPU Set Setter pid 13416, no builds / locks, 15.7 GB free.
+        - [x] WINDOW 1 DONE 23:29-23:45 (ab_runs\20261124_232934_AB, summary.txt): 3 valid starts, 4th not run (58.4 s >=
+        limit 24.3 s). base 243.0 s for battle s 20..200 (7.47 steps / s, 96 % slow lines, 63.4 fps, median 14.9 ms, p99
+        26.6 ms; beside / own 1695 / 2061). INLINE 184.8 / 184.4 s (9.71 / 9.74 steps / s = 97 % of real time; beside 0)
+        BUT 3.6-3.7 fps (median frame 206 ms, p99 637 ms) -> NOT a usable mode / default. Measured CPU sets 16 (logical
+        0-15) in every start = ATN's rule works. Pictures: inline vs base 1.55-1.87 vs 1 s of movement 1.19, inline A/A
+        0.46 -> the inline battle is probably not the same state (proxy only). Reading: the step's own work ~97-100 ms
+        (inline, alone) vs ~135 ms beside the drawing (+35-40 %); real time needs <= 100 ms -> remove the beside
+        slowdown AND trim the step. L0 fails as a default -> window 3 = case B (full probe + WPR, P-BASE1, P-INLINE1,
+        P-BASE2, ~28 min). D15 row: propose DROP (inline unplayable) -> ATN.
+        - [ ] AFTER WINDOW 1 (started 23:5x): gbf gates (gbf_gpu_gates.ps1, coord, quiet GPU window, ~20 min GPU + 5
+        builds) incl. G23 H9 T3 / T4 -> one ho_gbf_g23 merge -> pds2_; s3f_ fix round; a64p0d_ fixes (case B); a64bdr_
+        bring-up review; plugin review + C8 census.
         - [ ] Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64abr_'s review is fixed;
         no game of ATN's running, fresh backups.
         - [ ] a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S1 / S4 / S5 + the window-1
