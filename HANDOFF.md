@@ -715,6 +715,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G24 census source = ATN's startup dumps in D:\Dev\renodx\bin\cmd_Decompiler-1.3. ... | ?
 - t4i_ fixes ebr_'s FINAL MUSTs + SHOULDs -> run_all -> ebr_ delta re-review (befo ... | ?
 - rcr_ review of rc_defaults -> rcd_ (a5513819749516fc5) fixes -> rcr_ re-check -> ... | ?
+- At the release after the bench's Go: drop '(Experimental)' from the two default- ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13412,6 +13413,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         static_checks 0); x86 a91b96e3...8ddf, amd64 8c62d933...6bb660. COORD: rcr_ (a4831db315eab18da, Opus xHigh) reviews.
         - [ ] rcr_ review of rc_defaults -> rcd_ (a5513819749516fc5) fixes -> rcr_ re-check -> coord merges -> RC build
         (x86 + amd64 + FP twin, stamps, manifest) -> end review (Opus xHigh + Sonnet High) -> final.json files -> -Final.
+        rcr_ REVIEW 03:3x (render_mt/reports/rcr_rc_defaults_review.md + _handback.md): rc_defaults 6033305c7 GO, no MUST;
+        the define is safe (one TU per add-on, CMakeLists.txt:819); revision bump KEEP (none of the 11 keys ever shipped to
+        players; ATN's ini holds none). BENCH-1 (MUST before the final bench): the first OnPresent runs before the 0 s
+        RENODX_TW_SET rows -> OFF starts run one present with C + B3b on (~35 MB kept) -> each start writes its time-0 C /
+        B3b rows + renodx/SettingsRevision=2 into the preset via reshade_ini (t4i_, folded into its round). S1 ClearSavedRows,
+        S2 player labels / tooltip, S4 test gaps -> rcd_ now. S3 drop '(Experimental)' from Threaded Draw Recording +
+        Animation Rows on Workers at the release after the bench's Go. Correction: the batch add-on came from 832cc4a22
+        (t5_1122c, 1 MB worker stack), not 2eaaec733.
+        - [ ] At the release after the bench's Go: drop '(Experimental)' from the two default-on rows (rcr_ S3), README
+        'New:' lines, hidden rows' '(Private)' labels left (players never see them).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
