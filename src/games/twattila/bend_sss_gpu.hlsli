@@ -1,11 +1,13 @@
 #ifndef BEND_SSS_GPU_H
 #define BEND_SSS_GPU_H
 
-// Bend Studio's screen-space shadows as shipped in Total War: SHOGUN 2's shaders.pack (bend_sss_gpu.h), with the
-// RenoDX render scale (search "RenoDX"): the game builds the light coordinate and the dispatches for the full-size
+// Bend Studio's screen-space shadows as shipped in Total War: SHOGUN 2's shaders.pack (bend_sss_gpu.h), Modified by
+// RenoDX (search "RenoDX"). The render scale: the game builds the light coordinate and the dispatches for the full-size
 // screen, the DLSS addon draws the depth into its top-left render scale part. The rays stay in full-size pixels (the
 // same shadow length on screen as at full size), read the depth in the rendered part and write each rendered pixel
-// once. At full size the same as the game's.
+// once. At full size the same as the game's. The block skip (BEND_SSS_BLOCK_SKIP) and the FarFade skip: the main loop
+// leaves out blocks of samples that cannot reach the shadow window, and pixels FarFade fades fully leave out the loops,
+// with Bend's result to the bit.
 
 // Copyright 2023 Sony Interactive Entertainment.
 //
@@ -329,6 +331,26 @@ struct DispatchParameters
 #endif
 	groupshared bool LdsEarlyOut;
 
+	// RenoDX block skip (not with Auto Thickness, whose runs need every sample): the least and the most stored depth of
+	// each BEND_SSS_BLOCK DepthData entries, which the main loop tests before reading them. Blocks of 16; of 32 where the
+	// bounds of 16 would not fit SM 5's 32 KB of groupshared (Shogun 2's light caster passes at 3840 samples). Test harness
+	// only: BEND_SSS_TEST_NO_SKIP compiles both skips out (the same bytes as before them).
+#if !(defined(BEND_SSS_EXTENDED) && defined(BEND_SSS_AUTO_THICKNESS)) && !defined(BEND_SSS_TEST_NO_SKIP)
+	#define BEND_SSS_BLOCK_SKIP
+	#if (READ_COUNT * WAVE_SIZE * (1 + defined(BEND_SSS_LIGHT_CASTERS)) + READ_COUNT * WAVE_SIZE / 8) * 4 > 32768
+		#define BEND_SSS_BLOCK 32
+	#else
+		#define BEND_SSS_BLOCK 16
+	#endif
+	groupshared float BlockLow[READ_COUNT * WAVE_SIZE / BEND_SSS_BLOCK];
+	groupshared float BlockHigh[READ_COUNT * WAVE_SIZE / BEND_SSS_BLOCK];
+#endif
+#if defined(BEND_SSS_TEST_COUNTERS) || defined(BEND_SSS_TEST_WRITES)
+	// Test harness only (test/tw_screen_space_shadows case 11), never in an add-on: the block skip's counts, each pixel's
+	// writes.
+	RWByteAddressBuffer BendTestCounters : register(u7);
+#endif
+
 #ifdef BEND_SSS_EXTENDED
 	// RenoDX extended: what the loops carry between samples. Auto Thickness's run (its first sample, the depth and step of
 	// the sample before); the first shadowing sample (FindHit), the banner sample shadowing most and by how much (FindThin):
@@ -607,9 +629,41 @@ struct DispatchParameters
 		// Sync wavefronts now groupshared DepthData is written
 		GroupMemoryBarrierWithGroupSync();
 
+#ifdef BEND_SSS_BLOCK_SKIP
+		// RenoDX block skip: each block's bounds, built by every thread by its index (before any return). A thread reads its
+		// block in a skewed order: a warp's lanes 2p + q read banks 16q + ((k + p) & 15) (blocks of 32: (k + lane) & 31),
+		// no bank conflicts. A block holding a non-finite depth gets -inf..+inf and is always marched (a minimum or maximum
+		// would drop a NaN, which shadows today: max(NaN, light) is the light).
+		const uint block_count = (uint)read_count * (WAVE_SIZE / BEND_SSS_BLOCK);
+		[loop] for (uint block = (uint)inGroupThreadID; block < block_count; block += WAVE_SIZE)
+		{
+			float low = asfloat(0x7f800000);
+			float high = asfloat(0xff800000);
+			bool finite = true;
+			[unroll] for (uint k = 0; k < BEND_SSS_BLOCK; k++)
+			{
+				const float depth = DepthData[block * BEND_SSS_BLOCK + ((k + block * BEND_SSS_BLOCK / 32) & (BEND_SSS_BLOCK - 1))];
+				low = min(low, depth);
+				high = max(high, depth);
+				finite = finite && (asuint(depth) & 0x7f800000) != 0x7f800000;
+			}
+			BlockLow[block] = finite ? low : asfloat(0xff800000);
+			BlockHigh[block] = finite ? high : asfloat(0x7f800000);
+		}
+		GroupMemoryBarrierWithGroupSync();
+
+		// RenoDX: the sky and the pixels off the rendered part (render scale: writes there were out of bounds) return after
+		// both barriers (the latter returned after the loops before the block skip). So does a NaN distance to the far
+		// plane, as before: fxc compiled the sky's compare as "march where it is >= 1e-7" (a NaN fails it), and folds
+		// negated compares, so the exponent's bits.
+		if (skip_pixel || (asuint(inParameters.FarDepthValue - first_sampling_depth) & 0x7fffffff) > 0x7f800000
+		    || any(int2(write_xy) < 0) || any(int2(write_xy) >= int2(inParameters.RenderSize)))
+			return;
+#else
 		// If the starting depth isn't in depth bounds, then we don't need a shadow
 		if (skip_pixel)
 			return;
+#endif
 
 		float start_depth = first_sampling_depth;
 
@@ -636,6 +690,25 @@ struct DispatchParameters
 
 		start_depth = start_depth * depth_scale - z_sign;
 
+#ifdef BEND_SSS_BLOCK_SKIP
+		// RenoDX FarFade (below, the same expression), known before the loops: where it is 1 they are skipped. The result
+		// is then exactly 1 whatever they find (lerp(x, 1, 1) for x in [0, 1]) and the banners' weight 0, as with them.
+		float far_fade = 0;
+		if (inParameters.FarFade.y > inParameters.FarFade.x && inParameters.LightCoordinate.z > 1)
+			far_fade = smoothstep(inParameters.FarFade.x, inParameters.FarFade.y,
+			                      (inParameters.LightCoordinate.z - 1) / (inParameters.LightCoordinate.z - first_sampling_depth));
+#endif
+#ifdef BEND_SSS_TEST_COUNTERS
+		// 0 lanes marched, 1 of them with depth_scale <= 0, 2 their blocks, 3 those skipped, 4 samples within the window in
+		// skipped blocks (false skips; 8 of them in lanes with depth_scale <= 0), 5 quads marched of 6 in the main ranges, 7
+		// lanes FarFade skipped, 9 samples in skipped blocks within 1e-3 past the window's edge (|offset| < 1.001, the false
+		// skips too), 10 samples within the window in lanes with depth_scale <= 0 (in any block: what a sign-blind block
+		// test could misjudge).
+		uint ignored;
+		if (far_fade >= 1)
+			BendTestCounters.InterlockedAdd(28, 1, ignored);
+#endif
+
 #ifdef BEND_SSS_EXTENDED
 		// RenoDX extended: Bend's three loops 4 samples at a time (the caller's counts multiples of 4, twattila's sss_bend
 		// rounds them: the same minimums into the same lanes), each sample's delta from ExtendedDeltas.
@@ -646,71 +719,176 @@ struct DispatchParameters
 		state.hit = -1;
 		state.thin = -1;
 		state.thin_weight = 0;
-		[loop] for (i = 0; i < inParameters.HardShadowSamples; i += 4)
+#endif
+#ifdef BEND_SSS_BLOCK_SKIP
+		[branch] if (far_fade < 1)
+#endif
 		{
-			const float4 depth_delta = ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign);
-			hard_shadow = min(hard_shadow, min(min(depth_delta.x, depth_delta.y), min(depth_delta.z, depth_delta.w)));
+#ifdef BEND_SSS_EXTENDED
+			[loop] for (i = 0; i < inParameters.HardShadowSamples; i += 4)
+			{
+				const float4 depth_delta = ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign);
+				hard_shadow = min(hard_shadow, min(min(depth_delta.x, depth_delta.y), min(depth_delta.z, depth_delta.w)));
+			}
+#else
+			// The first number of hard shadow samples, a single pixel can produce a full shadow
+			[loop] for (i = 0; i < inParameters.HardShadowSamples; i++)
+			{
+				float depth_delta = abs(start_depth - DepthData[sample_index + i] * depth_scale);
+#ifdef BEND_SSS_LIGHT_CASTERS
+				depth_delta = max(depth_delta, LightData[sample_index + i]);
+#endif
+
+				// We want to find the distance of the sample that is closest to the reference depth
+				hard_shadow = min(hard_shadow, depth_delta);
+			}
+#endif
+
+			// Brute force go!
+			// The main shadow samples, averaged in to a set of 4 shadow values
+			// RenoDX: 4 per iteration, sample i into component i & 3 as Bend's (HARD_SHADOW_SAMPLES, FADE_OUT_SAMPLES and
+			// the sample counts are multiples of 4).
+#ifdef BEND_SSS_BLOCK_SKIP
+			// RenoDX block skip: Bend's quads (sample H + 4q + k into lane k, q < quads: up to 3 samples past N - F where
+			// N - F - H is no multiple of 4, as Bend's loop reads them), only those touching a block that may hold a sample
+			// within the shadow window. A sample counts only through a minimum with the 1 the lanes start from (which the
+			// contrast keeps 1), so one whose offset is at least 1 away changes nothing. A block is skipped when the offsets
+			// (start_depth - depth x depth_scale, the samples' own form) of its least and its most depth both lie past
+			// +window or both past -window: every sample's lies between them, for depth_scale of either sign (negative at
+			// the light's screen point). The margin, 1e-5 x (|start_depth| + 1) of the start_depth scaled above, covers an
+			// ulp between the test's and a sample's instruction forms; NaN never skips. Quads in ascending order, each once
+			// (one over two blocks with the first), keep FindHit's first and FindThin's earliest; blocks past those built
+			// (only with fewer than 2 fade-out samples) are marched.
+			const uint quads = (uint)max(inSampleCount - inParameters.FadeOutSamples - inParameters.HardShadowSamples + 3, 0) >> 2;
+			const uint first_entry = (uint)(sample_index + inParameters.HardShadowSamples);
+			const uint end_entry = first_entry + 4 * quads;
+#ifdef BEND_SSS_TEST_MARGIN
+			const float window = 1 + BEND_SSS_TEST_MARGIN;
+#else
+			const float window = 1 + 1e-5 * (abs(start_depth) + 1);
+#endif
+#ifdef BEND_SSS_TEST_COUNTERS
+			uint4 test_counts = 0;
+			uint test_near = 0;
+			uint test_flipped_inside = 0;
+#endif
+			uint next_quad = 0;
+			// Every lane's blocks in one loop (its bounds broadcasts), each lane marching its own quads.
+			const uint group_end = WAVE_SIZE + (uint)inParameters.HardShadowSamples + 4 * quads;
+			[loop] for (uint block = (1 + (uint)inParameters.HardShadowSamples) / BEND_SSS_BLOCK; block * BEND_SSS_BLOCK < group_end; block++)
+			{
+				const uint block_first = max(block * BEND_SSS_BLOCK, first_entry);
+				const uint block_end = min((block + 1) * BEND_SSS_BLOCK, end_entry);
+				if (block_first >= block_end)
+					continue;
+				const float low_offset = start_depth - BlockLow[block] * depth_scale;
+				const float high_offset = start_depth - BlockHigh[block] * depth_scale;
+#if defined(BEND_SSS_TEST_SKIP_ALL)
+				const bool skip = true;
+#elif defined(BEND_SSS_TEST_SIGNED)
+				// Rev 0's test: depth_scale > 0 taken for granted (low_offset the interval's lower end).
+				const bool skip = block < block_count && !(low_offset > -window && high_offset < window);
+#else
+				const bool skip = block < block_count && ((low_offset >= window && high_offset >= window) || (low_offset <= -window && high_offset <= -window));
+#endif
+				// One past the last quad touching the block (the main range's last at most: end_entry).
+				const uint quad_end = (block_end - first_entry + 3) >> 2;
+#ifdef BEND_SSS_TEST_COUNTERS
+				test_counts.x += 1;
+				if (skip)
+				{
+					test_counts.y += 1;
+					[loop] for (uint entry = block_first; entry < block_end; entry++)
+					{
+						const float offset = abs(start_depth - DepthData[entry] * depth_scale);
+						test_counts.z += (offset < 1) ? 1 : 0;
+						test_near += (offset < 1.001) ? 1 : 0;
+					}
+				}
+				else
+				{
+					test_counts.w += quad_end - max(next_quad, (block_first - first_entry) >> 2);
+				}
+				if (depth_scale <= 0)
+				{
+					[loop] for (uint entry = block_first; entry < block_end; entry++)
+						test_flipped_inside += (abs(start_depth - DepthData[entry] * depth_scale) < 1) ? 1 : 0;
+				}
+#endif
+				if (skip)
+					continue;
+				[loop] for (uint quad = max(next_quad, (block_first - first_entry) >> 2); quad < quad_end; quad++)
+				{
+					i = inParameters.HardShadowSamples + 4 * (int)quad;
+#else
+			// Bend's loop: Auto Thickness's runs need every sample (and BEND_SSS_TEST_NO_SKIP's builds are the old code).
+			[loop] for (i = inParameters.HardShadowSamples; i < inSampleCount - inParameters.FadeOutSamples; i += 4)
+			{
+#endif
+#ifdef BEND_SSS_EXTENDED
+					shadow_value = min(shadow_value, ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign));
+#else
+					float4 depth_delta = abs(start_depth - float4(DepthData[sample_index + i], DepthData[sample_index + i + 1],
+					                                              DepthData[sample_index + i + 2], DepthData[sample_index + i + 3]) * depth_scale);
+#ifdef BEND_SSS_LIGHT_CASTERS
+					depth_delta = max(depth_delta, float4(LightData[sample_index + i], LightData[sample_index + i + 1],
+					                                      LightData[sample_index + i + 2], LightData[sample_index + i + 3]));
+#endif
+
+					// Do the same as the hard_shadow code above, but this will accumulate to 4 separate values.
+					// By using 4 values, the average shadow can be taken, which can help soften single-pixel shadows.
+					shadow_value = min(shadow_value, depth_delta);
+#endif
+#ifdef BEND_SSS_BLOCK_SKIP
+				}
+				next_quad = quad_end;
+			}
+#ifdef BEND_SSS_TEST_COUNTERS
+			BendTestCounters.InterlockedAdd(0, 1, ignored);
+			BendTestCounters.InterlockedAdd(4, (depth_scale <= 0) ? 1 : 0, ignored);
+			BendTestCounters.InterlockedAdd(8, test_counts.x, ignored);
+			BendTestCounters.InterlockedAdd(12, test_counts.y, ignored);
+			BendTestCounters.InterlockedAdd(16, test_counts.z, ignored);
+			BendTestCounters.InterlockedAdd(20, test_counts.w, ignored);
+			BendTestCounters.InterlockedAdd(24, quads, ignored);
+			BendTestCounters.InterlockedAdd(32, (depth_scale <= 0) ? test_counts.z : 0, ignored);
+			BendTestCounters.InterlockedAdd(36, test_near, ignored);
+			BendTestCounters.InterlockedAdd(40, test_flipped_inside, ignored);
+#endif
+#else
+			}
+#endif
+
+#ifdef BEND_SSS_EXTENDED
+			[loop] for (int fade = 0; fade < inParameters.FadeOutSamples; fade += 4)
+			{
+				const float4 fade_out = (float4)(fade + int4(1, 2, 3, 4)) / (float)(inParameters.FadeOutSamples + 1) * 0.75;
+				const float4 depth_delta = ExtendedDeltas(inParameters, state, inSampleCount - inParameters.FadeOutSamples + fade, sample_index,
+				                                          start_depth, depth_scale, z_sign);
+				shadow_value = min(shadow_value, depth_delta + fade_out);
+			}
+#else
+			// Final fade out samples (RenoDX: counted from the first, fade; Bend's i is inSampleCount - FADE_OUT_SAMPLES + fade)
+			[loop] for (int fade = 0; fade < inParameters.FadeOutSamples; fade++)
+			{
+				float depth_delta = abs(start_depth - DepthData[sample_index + inSampleCount - inParameters.FadeOutSamples + fade] * depth_scale);
+#ifdef BEND_SSS_LIGHT_CASTERS
+				depth_delta = max(depth_delta, LightData[sample_index + inSampleCount - inParameters.FadeOutSamples + fade]);
+#endif
+
+				// Add the fade value to these samples
+				const float fade_out = (float)(fade + 1) / (float)(inParameters.FadeOutSamples + 1) * 0.75;
+
+				// RenoDX: its component by a mask (a run-time count: no unrolled indexing).
+				const bool4 lane = ((fade & 3) == int4(0, 1, 2, 3));
+				shadow_value = lane ? min(shadow_value, depth_delta + fade_out) : shadow_value;
+			}
+#endif
 		}
-		[loop] for (i = inParameters.HardShadowSamples; i < inSampleCount - inParameters.FadeOutSamples; i += 4)
-		{
-			shadow_value = min(shadow_value, ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign));
-		}
-		[loop] for (int fade = 0; fade < inParameters.FadeOutSamples; fade += 4)
-		{
-			const float4 fade_out = (float4)(fade + int4(1, 2, 3, 4)) / (float)(inParameters.FadeOutSamples + 1) * 0.75;
-			const float4 depth_delta = ExtendedDeltas(inParameters, state, inSampleCount - inParameters.FadeOutSamples + fade, sample_index,
-			                                          start_depth, depth_scale, z_sign);
-			shadow_value = min(shadow_value, depth_delta + fade_out);
-		}
+#ifdef BEND_SSS_EXTENDED
 		const int hit = state.hit;
 		const int thin_hit = state.thin;
 		float thin_weight = state.thin_weight;
-#else
-		// The first number of hard shadow samples, a single pixel can produce a full shadow
-		[loop] for (i = 0; i < inParameters.HardShadowSamples; i++)
-		{
-			float depth_delta = abs(start_depth - DepthData[sample_index + i] * depth_scale);
-#ifdef BEND_SSS_LIGHT_CASTERS
-			depth_delta = max(depth_delta, LightData[sample_index + i]);
-#endif
-
-			// We want to find the distance of the sample that is closest to the reference depth
-			hard_shadow = min(hard_shadow, depth_delta);
-		}
-
-		// Brute force go!
-		// The main shadow samples, averaged in to a set of 4 shadow values
-		// RenoDX: 4 per iteration, sample i into component i & 3 as Bend's (HARD_SHADOW_SAMPLES, FADE_OUT_SAMPLES and
-		// the sample counts are multiples of 4).
-		[loop] for (i = inParameters.HardShadowSamples; i < inSampleCount - inParameters.FadeOutSamples; i += 4)
-		{
-			float4 depth_delta = abs(start_depth - float4(DepthData[sample_index + i], DepthData[sample_index + i + 1],
-			                                              DepthData[sample_index + i + 2], DepthData[sample_index + i + 3]) * depth_scale);
-#ifdef BEND_SSS_LIGHT_CASTERS
-			depth_delta = max(depth_delta, float4(LightData[sample_index + i], LightData[sample_index + i + 1],
-			                                      LightData[sample_index + i + 2], LightData[sample_index + i + 3]));
-#endif
-
-			// Do the same as the hard_shadow code above, but this will accumulate to 4 separate values.
-			// By using 4 values, the average shadow can be taken, which can help soften single-pixel shadows.
-			shadow_value = min(shadow_value, depth_delta);
-		}
-
-		// Final fade out samples (RenoDX: counted from the first, fade; Bend's i is inSampleCount - FADE_OUT_SAMPLES + fade)
-		[loop] for (int fade = 0; fade < inParameters.FadeOutSamples; fade++)
-		{
-			float depth_delta = abs(start_depth - DepthData[sample_index + inSampleCount - inParameters.FadeOutSamples + fade] * depth_scale);
-#ifdef BEND_SSS_LIGHT_CASTERS
-			depth_delta = max(depth_delta, LightData[sample_index + inSampleCount - inParameters.FadeOutSamples + fade]);
-#endif
-
-			// Add the fade value to these samples
-			const float fade_out = (float)(fade + 1) / (float)(inParameters.FadeOutSamples + 1) * 0.75;
-
-			// RenoDX: its component by a mask (a run-time count: no unrolled indexing).
-			const bool4 lane = ((fade & 3) == int4(0, 1, 2, 3));
-			shadow_value = lane ? min(shadow_value, depth_delta + fade_out) : shadow_value;
-		}
 #endif
 
 		// Apply the contrast value.
@@ -727,8 +905,10 @@ struct DispatchParameters
 		// If the first samples are always producing a hard shadow, then compute this value separately.
 		result = min(hard_shadow, result);
 
+#ifndef BEND_SSS_BLOCK_SKIP
 		// RenoDX render scale: off-screen pixels are skipped (writes there were out of bounds).
 		if (any(int2(write_xy) < 0) || any(int2(write_xy) >= int2(inParameters.RenderSize))) return;
+#endif
 
 		// RenoDX FarFade: the pixel's distance as a share of the far plane's, (depth_inf - 1) / (depth_inf - depth) with
 		// depth_inf the projection's depth at infinity (the light's z). Far away a screen-space shadow resolves nothing, and Attila's
@@ -754,6 +934,22 @@ struct DispatchParameters
 				result = (inGroupThreadID / (float)WAVE_SIZE);
 			if (inParameters.DebugOutputWaveIndex)
 				result = frac(inGroupID.x / (float)WAVE_SIZE);
+#ifdef BEND_SSS_TEST_WRITES
+			{
+				// Test harness only (case 11): each pixel's writes summed past the counters, the same sums in any order (waves
+				// can write a pixel twice): their count, the shadow term's bits; extended, what WriteExtended reads: the first
+				// shadowing sample where the term is under 1, the banner sample and its weight where it counts.
+				const uint slot = 64 + 16 * ((uint)write_xy.y * (uint)inParameters.FullSize.x + (uint)write_xy.x);
+				uint written;
+				BendTestCounters.InterlockedAdd(slot, 1, written);
+				BendTestCounters.InterlockedAdd(slot + 4, asuint(result), written);
+#ifdef BEND_SSS_EXTENDED
+				BendTestCounters.InterlockedAdd(slot + 8, (result < 1) ? (uint)(hit + 2) * 0x9E3779B1u : 0, written);
+				BendTestCounters.InterlockedAdd(slot + 12, (thin_hit >= 0 && thin_weight > 0) ? (uint)(thin_hit + 2) * 0x9E3779B1u + asuint(thin_weight) : 0,
+				                                written);
+#endif
+			}
+#endif
 #ifdef BEND_SSS_OCCLUSION
 			// RenoDX (Attila, twattila/screen_space_shadows.hpp): the occlusion, 1 - the shadow term, so the texture's
 			// unwritten (cleared) or unbound value 0 leaves the light as it was.

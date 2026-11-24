@@ -1,6 +1,7 @@
 // The screen-space shadows' extended march (twattila/screen_space_shadows.hpp, screen_space_lights.hpp and their shaders)
 // on WARP, through the module's own Compute, OnThinDraw and OnLightDraw with Attila's embedded shaders (build32\
-// twattila.include). tests.exe <fc24dbce's plain shaders, run.ps1's before_cso> [--time | --time-only]
+// twattila.include). tests.exe <fc24dbce's plain shaders, run.ps1's before_cso> [--time | --time-only | --block-skip |
+// --block-skip-gpu | --block-skip-time-warp]
 // The scenes: a ground plane 2 m below a camera looking 25 degrees down (60 degrees high), boxes on it, ray-traced on the
 // CPU into the depth (and the G-buffer's colour, the banners' depth) and a reference shadow.
 // 1. Rows off: the occlusion and the softened occlusion to the bit as fc24dbce's sss_depth / sss_setup / sss_bend / sss_blur
@@ -39,8 +40,18 @@
 // 10. Shogun 2's Light Through Banners and Coloured Shadows through its extended passes (sss_distance / _cascades from this
 //     tree) on case 3's banner: its shadow keeps the row's share of the sun, its filter is its colour, the cascades' version
 //     the same; rows off the game's sss01 to the bit. CONTROLS (must fail): the banners' depth or the filter's target unbound.
+// 11. The block skip and the FarFade skip (bend_sss_gpu.hlsli): this tree's Bend passes against db99b716b's (run.ps1's
+//     e2_cso) over the design's matrix (Lengths 60-1920, render scales 100-33%, hard and fade-out counts, Bend's flags,
+//     contrasts, foliage, banners + Coloured + Softer, a wall past FarFade, the sun in view, behind and at the corners,
+//     torches 1 / 8 / 32, grass, dense pillars, a low sun, the sun along a wall) to the bit: every pixel's writes
+//     (BEND_SSS_TEST_WRITES, in any order), every output (apart only where written twice); Shogun 2's sss00 / sss01 /
+//     sss_foliage* / sss_distance* at 120 and 3840 samples too. The counter builds (BEND_SSS_TEST_COUNTERS): no sample
+//     within the shadow window in a skipped block. CONTROLS (must fail): Rev 0's sign-blind test, margins -1e-3 and
+//     -0.25, every block skipped.
 // --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames), torches near and far, the CPU
 // time of a later light draw, and a battle's light draws with today's sss_lights and f6408aa1's. --time-only: that alone.
+// --block-skip: case 11 alone on WARP. --block-skip-gpu: case 11 on the hardware GPU and its times (db99b716b's Bend
+// passes against this tree's) at 3840 x 2160; --block-skip-time-warp: those rows' code on WARP at 480 x 270 (a smoke run).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -54,7 +65,9 @@
 #include <cstddef>
 #include <cstring>
 #include <filesystem>
+#include <deque>
 #include <fstream>
+#include <initializer_list>
 #include <iterator>
 #include <mutex>
 #include <numeric>
@@ -62,6 +75,8 @@
 #include <ranges>
 #include <span>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 #include "src/games/twattila/screen_space_lights.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
@@ -82,6 +97,8 @@ using DrawContext = action::CommandContext<action::DrawArguments>;
 static int failures = 0;
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); ++failures; } } while (false)
 #define REQUIRE(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); std::exit(1); } } while (false)
+
+extern "C" __declspec(dllexport) const char* const NAME = "Screen-space shadows test";
 
 static std::mutex log_mutex;
 static std::vector<std::string> log_lines;
@@ -413,6 +430,27 @@ static Frame MakeFrame(UINT width, UINT height, std::span<const Box> boxes, cons
   return frame;
 }
 
+// Below 100% render scale: a frame of the display's size (`width` x `height`) whose depth, banners' depth and colour hold
+// the scene rendered at `render_width` x `render_height` in their top-left (the rest far, the colour black), its camera
+// the render's.
+static Frame ScaledFrame(UINT width, UINT height, UINT render_width, UINT render_height, std::span<const Box> boxes, const Vector& sun) {
+  const Frame render = MakeFrame(render_width, render_height, boxes, sun);
+  Frame scaled = MakeFrame(width, height, {}, sun);
+  const auto paste = [&](const Texture& from, DXGI_FORMAT format, auto rest) {
+    std::vector<decltype(rest)> texels(width * height, rest);
+    const auto rendered = ReadView<decltype(rest)>(from.srv.Get());
+    for (UINT y = 0; y < render_height; ++y) {
+      std::copy_n(rendered.begin() + (y * render_width), render_width, texels.begin() + (y * width));
+    }
+    return MakeTexture(width, height, format, texels.data(), width * 4);
+  };
+  scaled.depth = paste(render.depth, DXGI_FORMAT_R32_FLOAT, 1.f);
+  scaled.thin = paste(render.thin, DXGI_FORMAT_R32_FLOAT, 1.f);
+  scaled.colour = paste(render.colour, DXGI_FORMAT_R8G8B8A8_UNORM, 0xFF000000u);
+  scaled.camera_constants = render.camera_constants;
+  return scaled;
+}
+
 // The foliage's depth pass for sss_depth: the depth before it (without the foliage boxes) and after (with them).
 struct Foliage {
   Texture before;
@@ -471,13 +509,20 @@ static const Vector BOX_SUN = {0.6f, -0.5f, 0.6f};
 // Bend's waves near a quadrant's diagonal can write a pixel twice in one dispatch, and WARP runs the groups in any
 // order: such a pixel can differ between two runs of the same shaders (today's too). Both sides run RUNS times, in turns;
 // a pixel is apart when no run of one gives a value a run of the other gave. `same` false: the sides must differ (more
-// than 20 pixels apart).
+// than 20 pixels apart). Texels of any type (case 11: the penumbra's halves, the filter, the lights' bits); "over half"
+// counts the stable ones over `half` (an R8's 127), more than `least` of them; under one in `varying_share` pixels may vary.
+// `twice` (case 11, from the writes builds' sums: the same on both sides, to the bit): the pixels written more than once,
+// whose value is whichever write lands last, apart when the sides' groups take different times; counted on their own, the
+// number returned.
 constexpr int RUNS = 8;
-static void CompareRuns(const char* what, const std::vector<std::vector<uint8_t>>& ours, const std::vector<std::vector<uint8_t>>& theirs,
-                        bool same = true) {
+template <typename T>
+static int CompareRuns(const char* what, const std::vector<std::vector<T>>& ours, const std::vector<std::vector<T>>& theirs, bool same = true,
+                       T half = 127, int least = 100, size_t varying_share = 500, std::span<const uint8_t> twice = {}) {
   int varying = 0;
   int apart = 0;
+  int apart_twice = 0;
   int over_half = 0;
+  if (!twice.empty()) REQUIRE(twice.size() == ours[0].size());
   for (size_t pixel = 0; pixel < ours[0].size(); ++pixel) {
     bool stable = true;
     bool shared = false;
@@ -486,16 +531,21 @@ static void CompareRuns(const char* what, const std::vector<std::vector<uint8_t>
       for (int other = 0; other < RUNS; ++other) shared = shared || ours[run][pixel] == theirs[other][pixel];
     }
     varying += stable ? 0 : 1;
-    apart += shared ? 0 : 1;
-    over_half += (stable && ours[0][pixel] > 127) ? 1 : 0;
+    const bool written_twice = !twice.empty() && twice[pixel] != 0;
+    apart += (shared || written_twice) ? 0 : 1;
+    apart_twice += (!shared && written_twice) ? 1 : 0;
+    over_half += (stable && ours[0][pixel] > half) ? 1 : 0;
   }
-  std::printf("   %s: %d pixels over half the same, %d apart, %d varying between runs\n", what, over_half, apart, varying);
+  std::printf("   %s: %d pixels over half the same, %d apart", what, over_half, apart);
+  if (!twice.empty()) std::printf(" (and %d written twice)", apart_twice);
+  std::printf(", %d varying between runs\n", varying);
   if (same) {
     CHECK(apart == 0);
-    CHECK(over_half > 100 && varying < static_cast<int>(ours[0].size() / 500));
+    CHECK(over_half > least && varying < static_cast<int>(ours[0].size() / varying_share));
   } else {
     CHECK(apart > 20);
   }
+  return apart_twice;
 }
 
 static void TestRowsOff(const std::string& before_folder) {
@@ -609,14 +659,7 @@ static void TestRowsOff(const std::string& before_folder) {
   // The box, a wall behind it and a pole beside it.
   const std::array<Box, 3> casters = {{BOX_SCENE[0], {.low = {-6.f, -2.f, 20.f}, .high = {6.f, 0.f, 22.f}}, {.low = {3.f, -2.f, 10.f}, .high = {3.2f, 2.f, 10.2f}}}};
   for (const auto& scale : {Scale{480, 270, 64.f, 12.f}, Scale{557, 313, 62.f, 16.f}}) {
-    const Frame render = MakeFrame(scale.width, scale.height, casters, BOX_SUN);
-    Frame scaled = MakeFrame(960, 540, {}, BOX_SUN);  // the display's size; its banners' depth all far
-    std::vector<float> depth(960 * 540, 1.f);
-    for (UINT y = 0; y < scale.height; ++y) {
-      std::copy_n(render.picture.depth.begin() + (y * scale.width), scale.width, depth.begin() + (y * 960));
-    }
-    scaled.depth = MakeTexture(960, 540, DXGI_FORMAT_R32_FLOAT, depth.data(), 960 * 4);
-    scaled.camera_constants = render.camera_constants;
+    const Frame scaled = ScaledFrame(960, 540, scale.width, scale.height, casters, BOX_SUN);  // its banners' depth all far
     twattila::frame_history::render_width = scale.width;
     twattila::frame_history::render_height = scale.height;
     sss::Settings odd = Defaults();
@@ -904,11 +947,12 @@ struct PharaohLightInstance {
 };
 
 // Two frames of light draws (`instances` each, in draws of `per_draw`, 0 one draw), the second marching the first's: true
-// if the second's first draw bound the lit bits.
+// if the second's first draw bound the lit bits. The sun's march with `settings` (case 11: its length, hard and fade-out
+// samples).
 template <typename Instance>
-static bool LightFrames(const Frame& frame, std::span<const Instance> instances, uint32_t wanted, float range = 0.f, size_t per_draw = 0) {
+static bool LightFrames(const Frame& frame, std::span<const Instance> instances, uint32_t wanted, float range = 0.f, size_t per_draw = 0,
+                        sss::Settings settings = Defaults()) {
   const auto buffer = MakeBuffer(static_cast<UINT>(instances.size_bytes()), D3D11_BIND_VERTEX_BUFFER, instances.data());
-  sss::Settings settings = Defaults();
   settings.lights = wanted;
   settings.light_range = range;
   const size_t step = (per_draw == 0) ? instances.size() : per_draw;
@@ -1427,9 +1471,10 @@ struct ShogunInputs {
   std::vector<std::array<uint32_t, 3>> bend_groups;
 };
 
-static ComPtr<ID3D11Buffer> ShogunInjection(size_t offset, float value) {
+// shader_injection with `rows` (each a row's offset and value; the rest 0).
+static ComPtr<ID3D11Buffer> ShogunInjection(const std::vector<std::pair<size_t, float>>& rows) {
   std::vector<float> floats((sizeof(shogun2::ShaderInjectData) + 15) / 16 * 4, 0.f);
-  floats[offset / sizeof(float)] = value;
+  for (const auto& [offset, value] : rows) floats[offset / sizeof(float)] = value;
   return MakeBuffer(static_cast<UINT>(floats.size() * sizeof(float)), D3D11_BIND_CONSTANT_BUFFER, floats.data());
 }
 
@@ -1504,12 +1549,13 @@ static ShogunInputs MakeShogunInputs(const Frame& frame, bool lit_cascades) {
 }
 
 // One of Shogun 2's sun shadow passes (`shader`; with the cascades' layout or without, Bend's dispatches or sss02's) on `frame`
-// into `output` (R8, cleared first), with `settings` at b13; the extended passes' banners' depth at t5, colour at t6 and filter
-// at u2 where given. The mask after it.
+// into `output` (R8, cleared first), with `settings` at b13; the extended passes' banners' depth at t5, colour at t6, filter
+// at u2 and split texture at u1 (Softer Away from the Caster's penumbra in its g) where given. The mask after it.
 struct ShogunExtras {
   ID3D11ShaderResourceView* thin = nullptr;
   ID3D11ShaderResourceView* colour = nullptr;
   ID3D11UnorderedAccessView* tint = nullptr;
+  ID3D11UnorderedAccessView* split = nullptr;
 };
 static std::vector<uint8_t> RunShogunPass(const Frame& frame, const ShogunInputs& inputs, const Texture& output, ID3D11UnorderedAccessView* output_uav,
                                           ID3D11ComputeShader* shader, bool cascades, bool bend, ID3D11Buffer* settings, const ShogunExtras& extras = {}) {
@@ -1531,6 +1577,7 @@ static std::vector<uint8_t> RunShogunPass(const Frame& frame, const ShogunInputs
   }
   const std::array<ID3D11ShaderResourceView*, 2> extra_views = {extras.thin, extras.colour};
   context->CSSetShaderResources(5, static_cast<UINT>(extra_views.size()), extra_views.data());
+  context->CSSetUnorderedAccessViews(1, 1, &extras.split, nullptr);
   context->CSSetUnorderedAccessViews(2, 1, &extras.tint, nullptr);
   if (bend) {
     for (size_t dispatch = 0; dispatch < inputs.bend_buffers.size(); ++dispatch) {
@@ -1560,7 +1607,7 @@ static void TestShogun2(const std::string& before_folder) {
   const Texture output = MakeTexture(frame.camera.width, frame.camera.height, DXGI_FORMAT_R8_UNORM, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
   ComPtr<ID3D11UnorderedAccessView> output_uav;
   REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(output.texture.Get(), nullptr, output_uav.GetAddressOf())));
-  const auto defaults = ShogunInjection(0, 0.f);
+  const auto defaults = ShogunInjection({});
   struct Pass {
     const char* name;
     bool cascades;
@@ -1576,7 +1623,7 @@ static void TestShogun2(const std::string& before_folder) {
   for (const auto& pass : PASSES) {
     const auto before = LoadCso(before_folder + "\\" + pass.name + ".cso");
     const auto after = LoadCso((after_folder / (std::string(pass.name) + ".cso")).string());
-    const auto control = ShogunInjection(pass.control_row, 2.f);
+    const auto control = ShogunInjection({{pass.control_row, 2.f}});
     std::vector<std::vector<uint8_t>> ours;
     std::vector<std::vector<uint8_t>> theirs;
     std::vector<std::vector<uint8_t>> controls;
@@ -1627,8 +1674,8 @@ static void TestShogun2Banners(const std::string& before_folder) {
   const auto plain = LoadCso((after_folder / "sss01_0x1B529672.cso").string());
   const auto extended = LoadCso((after_folder / "sss_distance.cso").string());
   const auto extended_cascades = LoadCso((after_folder / "sss_distance_cascades.cso").string());
-  const auto defaults = ShogunInjection(0, 0.f);
-  const auto banners = ShogunInjection(offsetof(shogun2::ShaderInjectData, sss_banner_light), 0.35f);
+  const auto defaults = ShogunInjection({});
+  const auto banners = ShogunInjection({{offsetof(shogun2::ShaderInjectData, sss_banner_light), 0.35f}});
   const ShogunExtras coloured = {.thin = frame.thin.srv.Get(), .colour = frame.colour.srv.Get(), .tint = tint_uav.Get()};
   const auto clear_tint = [&] {
     constexpr std::array<UINT, 4> CLEAR = {};
@@ -1709,6 +1756,577 @@ static void TestShogun2Banners(const std::string& before_folder) {
   for (int channel = 0; channel < 3; ++channel) CHECK(std::fabs(banner_cascades.filter[channel] - banner.filter[channel]) < 0.01);
   CHECK(std::fabs((unbound.occlusion / solid.occlusion) - 1.0) < 0.05);
   CHECK(no_target.filter[1] == 0.0 && no_target.filter[2] == 0.0);
+}
+
+// ---- 11. The block skip and the FarFade skip ------------------------------------------------------------------------
+
+// Case 11's builds (run.ps1's e2_cso) of the module's Bend passes: `prefix` + sss_bend, sss_bend_extended (the light mode's
+// too) and sss_bend_extended_find.
+struct BendPasses {
+  ComPtr<ID3D11ComputeShader> plain;
+  ComPtr<ID3D11ComputeShader> extended;
+  ComPtr<ID3D11ComputeShader> find;
+};
+static BendPasses LoadBendPasses(const std::filesystem::path& folder, const std::string& prefix) {
+  return {.plain = LoadCso((folder / (prefix + "sss_bend.cso")).string()),
+          .extended = LoadCso((folder / (prefix + "sss_bend_extended.cso")).string()),
+          .find = LoadCso((folder / (prefix + "sss_bend_extended_find.cso")).string())};
+}
+// In the module's place (its device's objects, made first: they keep them until the device changes).
+static void UseBendPasses(const BendPasses& passes) {
+  auto& objects = sss::internal::runtime.objects;
+  REQUIRE(sss::internal::Prepare(device.Get(), std::max(objects.width, 1u), std::max(objects.height, 1u)));
+  objects.bend = passes.plain;
+  objects.bend_extended[0] = passes.extended;
+  objects.bend_extended[2] = passes.find;
+}
+
+// The sun's travel direction whose screen point (the light coordinate) is `ndc_x`, `ndc_y` (y up) of `camera`: in front of
+// it (w > 0) or the point behind it (w < 0) that projects there.
+static Vector SunAt(const Camera& camera, float ndc_x, float ndc_y, bool behind) {
+  const float tan_half_x = TAN_HALF_Y * static_cast<float>(camera.width) / static_cast<float>(camera.height);
+  const Vector view = {ndc_x * tan_half_x, ndc_y * TAN_HALF_Y, 1.f};
+  Vector travel = {};
+  for (int j = 0; j < 3; ++j) {
+    travel[j] = ((view[0] * camera.view[j][0]) + (view[1] * camera.view[j][1]) + (view[2] * camera.view[j][2])) * (behind ? 1.f : -1.f);
+  }
+  return Normalize(travel);
+}
+
+// One of case 11's frames: its rows (Length, hard and fade-out samples among them), the render size below 100% (0: full),
+// the banners' depth this frame, the foliage's depth pass, the lights (the light mode: settings.lights of them).
+struct SkipCase {
+  std::string name;
+  const Frame* frame = nullptr;
+  sss::Settings settings = Defaults();
+  UINT render_width = 0;
+  UINT render_height = 0;
+  bool thin = false;
+  const Foliage* foliage = nullptr;
+  std::span<const LightInstance> lights;
+};
+
+// What a frame of the module wrote: the occlusion, what the sun draws read where Softness or Softer smoothed it, the
+// penumbra (Softer), the filter (Coloured Shadows), each pixel's lights' bits cleared (the light mode's mask inverted).
+struct SkipOutputs {
+  std::vector<uint8_t> occlusion;
+  std::vector<uint8_t> smoothed;
+  std::vector<uint16_t> penumbra;
+  std::vector<uint32_t> tint;
+  std::vector<uint32_t> shadowed;
+};
+
+static SkipOutputs RunSkipCase(const SkipCase& skip_case, const BendPasses& passes) {
+  auto& runtime = sss::internal::runtime;
+  auto& objects = runtime.objects;
+  UseBendPasses(passes);
+  twattila::frame_history::render_width = skip_case.render_width;
+  twattila::frame_history::render_height = skip_case.render_height;
+  SkipOutputs outputs;
+  if (skip_case.lights.empty()) {
+    ID3D11ShaderResourceView* read = RunFrame(*skip_case.frame, skip_case.settings, skip_case.thin, skip_case.foliage);
+    if (read != objects.occlusion_srv.Get()) outputs.smoothed = ReadView<uint8_t>(read);
+  } else {
+    REQUIRE(LightFrames(*skip_case.frame, skip_case.lights, skip_case.settings.lights, 0.f, 0, skip_case.settings));
+    outputs.shadowed = ReadView<uint32_t>(objects.lights.mask_uav.Get());
+    for (uint32_t& bits : outputs.shadowed) bits = ~bits;
+  }
+  outputs.occlusion = ReadView<uint8_t>(objects.occlusion_srv.Get());
+  if (skip_case.settings.sun_disk > 0.f) outputs.penumbra = ReadView<uint16_t>(objects.penumbra_srv.Get());
+  if (runtime.tint_frame == runtime.frame) outputs.tint = ReadView<uint32_t>(objects.tint_srv.Get());
+  twattila::frame_history::render_width = 0;
+  twattila::frame_history::render_height = 0;
+  return outputs;
+}
+
+// `ours` against `theirs` on a frame, RUNS times each in turns: every output (CompareRuns: more than 10 stable pixels
+// not 0; under 10% varying: with the light's screen point in view or dense depth edges far more pixels than case 1's
+// 0.2% are written twice, by both sides); `same` false: the occlusion must differ. `twice`: the pixels Bend's waves
+// wrote more than once (the occlusion's, the penumbra's and the filter's may be apart there); the smoothed occlusion (sss_blur
+// or sss_soft over those) may be apart only where they were. The lights' bits: no exception (InterlockedAnd only clears
+// them, in any order), and whether they are the same in every run.
+static void CompareSkipCase(const SkipCase& skip_case, const BendPasses& ours, const BendPasses& theirs, const char* against, bool same = true,
+                            std::span<const uint8_t> twice = {}) {
+  std::array<std::vector<SkipOutputs>, 2> sides;
+  for (int run = 0; run < RUNS * 2; ++run) sides[run % 2].push_back(RunSkipCase(skip_case, ((run % 2) == 0) ? ours : theirs));
+  const auto compare = [&](const char* output, auto member, std::span<const uint8_t> allowed) {
+    using Texel = typename std::remove_cvref_t<decltype(sides[0][0].*member)>::value_type;
+    if ((sides[0][0].*member).empty()) return 0;
+    std::array<std::vector<std::vector<Texel>>, 2> texels;
+    for (int side = 0; side < 2; ++side) {
+      for (const auto& outputs : sides[side]) texels[side].push_back(outputs.*member);
+    }
+    return CompareRuns((skip_case.name + ", " + output + " " + against).c_str(), texels[0], texels[1], same, Texel{0}, 10, 10, allowed);
+  };
+  int written_last = compare("occlusion", &SkipOutputs::occlusion, twice);
+  if (!same) return;
+  written_last += compare("penumbra", &SkipOutputs::penumbra, twice);
+  const std::vector<uint8_t> anywhere(sides[0][0].smoothed.size(), (written_last > 0) ? 1 : 0);
+  compare("smoothed", &SkipOutputs::smoothed, anywhere);
+  compare("filter", &SkipOutputs::tint, twice);
+  compare("lights' shadows", &SkipOutputs::shadowed, {});
+  if (!sides[0][0].shadowed.empty()) {
+    const auto identical = std::ranges::count_if(sides[0], [&](const SkipOutputs& outputs) { return outputs.shadowed == sides[0][0].shadowed; })
+                           + std::ranges::count_if(sides[1], [&](const SkipOutputs& outputs) { return outputs.shadowed == sides[0][0].shadowed; });
+    std::printf("   %s: the lights' bits of %td of %d runs the same as the first's\n", skip_case.name.c_str(), identical, RUNS * 2);
+  }
+}
+
+// The counter builds' counts (bend_sss_gpu.hlsli BEND_SSS_TEST_COUNTERS: a raw buffer at u7).
+struct SkipCounts {
+  uint64_t lanes = 0;          // lanes that marched
+  uint64_t flipped = 0;        // of them with depth_scale <= 0
+  uint64_t blocks = 0;         // the blocks of their main ranges
+  uint64_t skipped = 0;        // of those skipped
+  uint64_t false_skips = 0;    // samples within the shadow window (|offset| < 1) in skipped blocks
+  uint64_t marched = 0;        // quads marched
+  uint64_t quads = 0;          // quads in the main ranges
+  uint64_t far_faded = 0;      // lanes FarFade left out
+  uint64_t flipped_false = 0;  // false skips in lanes with depth_scale <= 0
+  uint64_t near_misses = 0;    // samples in skipped blocks within 1e-3 past the window's edge (the false skips too)
+  uint64_t flipped_inside = 0; // samples within the window in lanes with depth_scale <= 0 (any block)
+
+  SkipCounts& operator+=(const SkipCounts& other) {
+    lanes += other.lanes;
+    flipped += other.flipped;
+    blocks += other.blocks;
+    skipped += other.skipped;
+    false_skips += other.false_skips;
+    marched += other.marched;
+    quads += other.quads;
+    far_faded += other.far_faded;
+    flipped_false += other.flipped_false;
+    near_misses += other.near_misses;
+    flipped_inside += other.flipped_inside;
+    return *this;
+  }
+};
+
+// The test builds' raw buffer at u7: the counters (16 words), then the writes builds' 4 words per pixel of case 11's
+// frames (480 x 270, their render sizes within).
+constexpr UINT TEST_PIXELS = 480 * 270;
+constexpr UINT TEST_WORDS = 16 + (4 * TEST_PIXELS);
+struct CounterBuffer {
+  ComPtr<ID3D11Buffer> buffer;
+  ComPtr<ID3D11UnorderedAccessView> uav;
+};
+static CounterBuffer MakeCounterBuffer() {
+  CounterBuffer made = {.buffer = MakeBuffer(TEST_WORDS * 4, D3D11_BIND_UNORDERED_ACCESS, nullptr, D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS)};
+  const D3D11_UNORDERED_ACCESS_VIEW_DESC desc = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER,
+                                                 .Buffer = {.FirstElement = 0, .NumElements = TEST_WORDS, .Flags = D3D11_BUFFER_UAV_FLAG_RAW}};
+  REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(made.buffer.Get(), &desc, made.uav.GetAddressOf())));
+  return made;
+}
+
+// The words `work` (dispatches of a test build) left in the buffer, cleared and bound at u7 first (no pass of the module
+// binds it).
+template <typename Work>
+static std::vector<uint32_t> TestWords(const CounterBuffer& counters, Work work) {
+  constexpr std::array<UINT, 4> ZEROS = {};
+  context->ClearUnorderedAccessViewUint(counters.uav.Get(), ZEROS.data());
+  context->CSSetUnorderedAccessViews(7, 1, counters.uav.GetAddressOf(), nullptr);
+  work();
+  ID3D11UnorderedAccessView* none = nullptr;
+  context->CSSetUnorderedAccessViews(7, 1, &none, nullptr);
+  return ReadBuffer<uint32_t>(counters.buffer.Get());
+}
+
+// The counts of `work` (dispatches of a counter build).
+template <typename Work>
+static SkipCounts CountSkips(const CounterBuffer& counters, Work work) {
+  const auto values = TestWords(counters, work);
+  return {.lanes = values[0], .flipped = values[1], .blocks = values[2], .skipped = values[3], .false_skips = values[4], .marched = values[5],
+          .quads = values[6], .far_faded = values[7], .flipped_false = values[8], .near_misses = values[9], .flipped_inside = values[10]};
+}
+
+// The writes builds' sums (BEND_SSS_TEST_WRITES: each pixel's count of writes, the shadow terms' bits, the hits and the
+// banner samples WriteExtended reads, the same in any order) of `ours` against `theirs`: every word the same (`same` false:
+// some differ). Each pixel flagged where it was written more than once.
+static std::vector<uint8_t> CompareWrites(const std::string& what, const std::vector<uint32_t>& ours, const std::vector<uint32_t>& theirs,
+                                          bool same = true) {
+  size_t differ = 0;
+  size_t written = 0;
+  std::vector<uint8_t> twice(TEST_PIXELS);
+  for (size_t pixel = 0; pixel < TEST_PIXELS; ++pixel) {
+    const size_t first = 16 + (4 * pixel);
+    differ += std::equal(ours.begin() + first, ours.begin() + first + 4, theirs.begin() + first) ? 0 : 1;
+    written += ours[first];
+    twice[pixel] = (ours[first] > 1) ? 1 : 0;
+  }
+  std::printf("   %s: %zu writes, %td pixels written more than once, %zu pixels' sums differ\n", what.c_str(), written,
+              std::ranges::count(twice, 1), differ);
+  CHECK(written > 0);
+  CHECK(same == (differ == 0));
+  return twice;
+}
+
+static void PrintCounts(const std::string& name, const SkipCounts& counts) {
+  std::printf("   %s: %llu lanes (%llu with depth_scale <= 0, %llu samples of theirs in the window), %.1f%% of %llu blocks skipped (%llu "
+              "samples in them within 1e-3 past the window), %.1f%% of the quads marched, %llu lanes FarFade left out; FALSE SKIPS %llu "
+              "(%llu with depth_scale <= 0)\n",
+              name.c_str(), counts.lanes, counts.flipped, counts.flipped_inside,
+              100.0 * static_cast<double>(counts.skipped) / static_cast<double>(std::max<uint64_t>(counts.blocks, 1)), counts.blocks, counts.near_misses,
+              100.0 * static_cast<double>(counts.marched) / static_cast<double>(std::max<uint64_t>(counts.quads, 1)), counts.far_faded,
+              counts.false_skips, counts.flipped_false);
+}
+
+// Case 11's scenes on the ground 2 m below the camera. The box scene: a box, a wall behind it, a pole beside it, a red
+// banner 3.5 x 4 m.
+static std::vector<Box> SkipBoxScene() {
+  return {BOX_SCENE[0], {.low = {-6.f, -2.f, 20.f}, .high = {6.f, 0.f, 22.f}}, {.low = {3.f, -2.f, 10.f}, .high = {3.2f, 2.f, 10.2f}},
+          {.low = {-5.f, -1.f, 12.f}, .high = {-1.5f, 3.f, 12.05f}, .kind = Kind::THIN, .albedo = {0.8f, 0.1f, 0.1f}}};
+}
+
+// A dense field of pillars 0.3 m wide, 4 m high, 1.2 m apart from 6 to 40 m: depth edges in most of Bend's blocks (its
+// worst case for the skip).
+static std::vector<Box> SkipDenseScene() {
+  std::mt19937 random(9);
+  std::uniform_real_distribution<float> jitter(-0.3f, 0.3f);
+  std::vector<Box> pillars;
+  for (int row = 0; row < 14; ++row) {
+    for (int column = 0; column < 20; ++column) {
+      const float x = -12.f + (1.2f * static_cast<float>(column)) + jitter(random);
+      const float z = 6.f + (2.5f * static_cast<float>(row)) + jitter(random);
+      pillars.push_back({.low = {x, -2.f, z}, .high = {x + 0.3f, 2.f, z + 0.3f}});
+    }
+  }
+  return pillars;
+}
+
+// 32 torches 0.6 m over the ground in front of the box scene's casters (their screen points on surfaces), the first 1.8 m
+// from the camera (the pick's first).
+static std::vector<LightInstance> SkipTorches() {
+  std::vector<LightInstance> torches = {{.colour = {4.f, 2.f, 0.5f, 0.f}, .light = {0.4f, -1.3f, 1.8f, 4.f}}};
+  for (int index = 1; index < 32; ++index) {
+    torches.push_back({.colour = {3.f, 1.5f, 0.4f, 0.f},
+                       .light = {-6.f + (0.4f * static_cast<float>(index)), -1.4f, 6.f + (3.f * static_cast<float>(index % 5)), 5.f}});
+  }
+  return torches;
+}
+
+// 11. The block skip and the FarFade skip (bend_sss_gpu.hlsli BEND_SSS_BLOCK_SKIP) on the module's Bend passes: this tree's
+// (as embedded, checked) against db99b716b's (run.ps1's e2_cso) over design 9.2's matrix. The writes builds (this tree's
+// with both skips and without them, the latter db99b716b's bytes without the sums, run.ps1 checks) on each frame: every
+// pixel's writes to the bit, whatever order the waves ran in; then every output (CompareRuns), apart only where a pixel
+// was written more than once (whichever write lands last: the sides' groups take different times, a pixel can be one
+// side's in all 8 runs and the other's in all of theirs); the counter build on each frame: no sample within the shadow
+// window in a skipped block (false skips 0), blocks skipped on the box and grass scenes, FarFade's lanes left out past
+// 60% of the far plane, lanes with depth_scale <= 0 reached. CONTROLS (must fail): margin -1e-3 (false skips on the
+// boundary frames: the sun along a wall), margin -0.25 (the occlusion apart at Contrast 1), every block skipped (the
+// occlusion apart; the writes builds' sums differ). Rev 0's sign-blind
+// block test on the sun-in-view and torches' frames: it can misjudge only samples within the window in lanes with
+// depth_scale <= 0, counted: false skips unless there are none (those lanes sit within a pixel of the light's screen
+// point; every sample of theirs lies past it, stored 1e10).
+static void TestBlockSkip(const std::string& before_folder, D3D_DRIVER_TYPE driver) {
+  std::printf("11. the block skip and the FarFade skip on %s\n", (driver == D3D_DRIVER_TYPE_WARP) ? "WARP" : "the hardware GPU");
+  MakeDevice(driver);
+  const auto folder = std::filesystem::path(before_folder).parent_path() / "e2_cso";
+  const auto embedded = [&](std::span<const uint8_t> code, const char* name) {
+    const auto file = ReadFile((folder / name).string());
+    return std::ranges::equal(code, file);
+  };
+  const bool embeds = embedded(__sss_bend, "new_sss_bend.cso") && embedded(__sss_bend_extended, "new_sss_bend_extended.cso")
+                      && embedded(__sss_bend_extended_find, "new_sss_bend_extended_find.cso")
+                      && embedded(__sss_bend_extended_auto, "new_sss_bend_extended_auto.cso")
+                      && embedded(__sss_bend_extended_auto_find, "new_sss_bend_extended_auto_find.cso");
+  std::printf("   the module's embedded Bend passes this tree's: %s\n", embeds ? "yes" : "NO (rebuild twattila-shaders)");
+  CHECK(embeds);
+  const BendPasses fresh = LoadBendPasses(folder, "new_");
+  const BendPasses old = LoadBendPasses(folder, "old_");
+  const BendPasses counted = LoadBendPasses(folder, "count_");
+  const CounterBuffer counters = MakeCounterBuffer();
+
+  const std::vector<Box> box_scene = SkipBoxScene();
+  std::vector<Box> far_scene = box_scene;
+  far_scene.push_back({.low = {-3000.f, -2.f, 1500.f}, .high = {3000.f, 400.f, 1510.f}});  // past FarFade's 60%
+  std::vector<Box> bush_scene = box_scene;
+  bush_scene.push_back({.low = {2.f, -2.f, 7.f}, .high = {3.f, -1.f, 8.f}, .kind = Kind::FOLIAGE});
+  std::vector<Box> grass_scene;  // blades about a render pixel wide at 7 m
+  std::mt19937 random(5);
+  std::uniform_real_distribution<float> unit(0.f, 1.f);
+  for (int index = 0; index < 600; ++index) {
+    const float x = -8.f + (16.f * unit(random));
+    const float z = 5.f + (20.f * unit(random));
+    grass_scene.push_back({.low = {x, -2.f, z}, .high = {x + 0.03f, -1.85f + (0.3f * unit(random)), z + 0.03f}});
+  }
+  const std::vector<Box> dense_scene = SkipDenseScene();
+  const std::vector<LightInstance> torches = SkipTorches();
+  const Camera camera = MakeCamera(480, 270);
+  const Vector in_view = {0.1f, -0.05f, -1.f};  // the sun ahead, its screen point near the top of the view
+  const Vector low = {0.35f, -0.12f, 0.93f};     // a low sun behind: long shadows
+  // The boundary: the sun along a wall's face (its travel in the plane x = -2.9): Bend's rays on it meet only the face, whose
+  // depths, divided by their distance to the light's screen point, are the same (light rays are parallel there): offsets
+  // +-1 within a few ulps (point-filtered: Edge Threshold 0).
+  std::vector<Box> graze_scene = box_scene;
+  graze_scene.push_back({.low = {-3.f, -2.f, 5.f}, .high = {-2.9f, 4.f, 40.f}});
+  const Vector along_wall = {0.f, -0.5f, 0.8660254f};
+  std::deque<Frame> frames;
+  const auto frame = [&](Frame made) { return &frames.emplace_back(std::move(made)); };
+  const Frame* box = frame(MakeFrame(480, 270, box_scene, BOX_SUN));
+  const Frame* box_front = frame(MakeFrame(480, 270, box_scene, in_view));
+  const Frame* corner_front = frame(MakeFrame(480, 270, box_scene, SunAt(camera, -0.95f, 0.95f, false)));
+  const Frame* corner_behind = frame(MakeFrame(480, 270, box_scene, SunAt(camera, 0.95f, -0.95f, true)));
+  const Frame* low_sun = frame(MakeFrame(480, 270, box_scene, low));
+  const Frame* boundary = frame(MakeFrame(480, 270, graze_scene, along_wall));
+  const Frame* far_wall = frame(MakeFrame(480, 270, far_scene, BOX_SUN));
+  const Frame* bush = frame(MakeFrame(480, 270, bush_scene, BOX_SUN));
+  const Frame* grass = frame(MakeFrame(480, 270, grass_scene, BOX_SUN));
+  const Frame* grass_front = frame(MakeFrame(480, 270, grass_scene, in_view));
+  const Frame* dense = frame(MakeFrame(480, 270, dense_scene, BOX_SUN));
+  const Foliage foliage = {.before = box->depth, .after = bush->depth};
+  // Render scales 77, 67, 58, 50 and 33% (Length 240: 185, 161, 139, 120 and 79 samples).
+  struct Scale {
+    const char* name;
+    UINT width;
+    UINT height;
+  };
+  constexpr std::array<Scale, 5> SCALES = {{{"77%", 370, 208}, {"67%", 322, 181}, {"58%", 278, 157}, {"50%", 240, 135}, {"33%", 158, 89}}};
+  std::vector<const Frame*> scaled;
+  for (const auto& scale : SCALES) scaled.push_back(frame(ScaledFrame(480, 270, scale.width, scale.height, box_scene, BOX_SUN)));
+  const Frame* corner_58 = frame(ScaledFrame(480, 270, 278, 157, box_scene, SunAt(camera, -0.95f, 0.95f, false)));
+
+  const auto rows = [](auto change) {
+    sss::Settings settings = Defaults();
+    change(settings);
+    return settings;
+  };
+  const auto length = [&](float samples) { return rows([&](sss::Settings& settings) { settings.samples = samples; }); };
+  const auto softer = [&](float samples) {
+    return rows([&](sss::Settings& settings) {
+      settings.samples = samples;
+      settings.sun_disk = 0.5f;
+      settings.thin_light = 0.35f;
+      settings.coloured = true;
+    });
+  };
+  const auto torch_rows = [&](uint32_t wanted, float samples) {
+    return rows([&](sss::Settings& settings) {
+      settings.samples = samples;
+      settings.lights = wanted;
+    });
+  };
+  std::vector<SkipCase> cases;
+  for (const float samples : {60.f, 120.f, 240.f, 480.f, 960.f, 1920.f}) {
+    cases.push_back({.name = "box, Length " + std::to_string(static_cast<int>(samples)), .frame = box, .settings = length(samples)});
+  }
+  for (size_t index = 0; index < SCALES.size(); ++index) {
+    cases.push_back({.name = std::string("box at ") + SCALES[index].name, .frame = scaled[index], .settings = length(240.f),
+                     .render_width = SCALES[index].width, .render_height = SCALES[index].height});
+  }
+  cases.push_back({.name = "box at 77%, Length 480", .frame = scaled[0], .settings = length(480.f), .render_width = 370, .render_height = 208});
+  cases.push_back({.name = "box at 58%, Length 1920", .frame = scaled[2], .settings = length(1920.f), .render_width = 278, .render_height = 157});
+  cases.push_back({.name = "box at 33%, Length 960", .frame = scaled[4], .settings = length(960.f), .render_width = 158, .render_height = 89});
+  cases.push_back({.name = "box, Hard 0, Fade 4", .frame = box, .settings = rows([](sss::Settings& s) { s.hard_samples = 0.f; s.fade_samples = 4.f; })});
+  cases.push_back({.name = "box, Hard 32", .frame = box, .settings = rows([](sss::Settings& s) { s.hard_samples = 32.f; })});
+  cases.push_back({.name = "box, Fade 64", .frame = box, .settings = rows([](sss::Settings& s) { s.fade_samples = 64.f; })});
+  cases.push_back({.name = "box, Length 60, Fade 64 (56 left)", .frame = box, .settings = rows([](sss::Settings& s) { s.samples = 60.f; s.fade_samples = 64.f; })});
+  cases.push_back({.name = "box, Length 63, Hard 0, Fade 0", .frame = box, .settings = rows([](sss::Settings& s) { s.samples = 63.f; s.hard_samples = 0.f; s.fade_samples = 0.f; })});
+  cases.push_back({.name = "box, Ignore Edges + Precision Offset", .frame = box, .settings = rows([](sss::Settings& s) { s.ignore_edges = true; s.precision_offset = true; })});
+  cases.push_back({.name = "box, Along the Ray + Mirror Edges", .frame = box, .settings = rows([](sss::Settings& s) { s.sample_along_ray = true; s.mirror_edges = true; })});
+  cases.push_back({.name = "box, Contrast 1", .frame = box, .settings = rows([](sss::Settings& s) { s.contrast = 1.f; })});
+  cases.push_back({.name = "box, Contrast 2", .frame = box, .settings = rows([](sss::Settings& s) { s.contrast = 2.f; })});
+  cases.push_back({.name = "box, Softness 2", .frame = box, .settings = rows([](sss::Settings& s) { s.softness = 2.f; })});
+  cases.push_back({.name = "bush, Light Through Foliage 0.5", .frame = bush, .settings = rows([](sss::Settings& s) { s.foliage_light = 0.5f; }), .foliage = &foliage});
+  cases.push_back({.name = "box, Light Through Banners", .frame = box, .settings = rows([](sss::Settings& s) { s.thin_light = 0.35f; }), .thin = true});
+  cases.push_back({.name = "box, Banners + Coloured + Softer", .frame = box, .settings = softer(240.f), .thin = true});
+  cases.push_back({.name = "box, Softer, Length 480", .frame = box, .settings = rows([](sss::Settings& s) { s.samples = 480.f; s.sun_disk = 0.5f; })});
+  cases.push_back({.name = "box at 58%, Banners + Coloured + Softer", .frame = scaled[2], .settings = softer(240.f), .render_width = 278, .render_height = 157, .thin = true});
+  cases.push_back({.name = "box, Light Through Banners, Length 1920", .frame = box, .settings = rows([](sss::Settings& s) { s.samples = 1920.f; s.thin_light = 0.35f; }), .thin = true});
+  cases.push_back({.name = "far wall", .frame = far_wall, .settings = length(240.f)});
+  cases.push_back({.name = "far wall, Banners + Coloured + Softer", .frame = far_wall, .settings = softer(240.f), .thin = true});
+  cases.push_back({.name = "sun in view", .frame = box_front, .settings = length(240.f)});
+  cases.push_back({.name = "sun in view, Banners + Coloured + Softer", .frame = box_front, .settings = softer(240.f), .thin = true});
+  cases.push_back({.name = "sun at the top-left corner, in front", .frame = corner_front, .settings = length(240.f)});
+  cases.push_back({.name = "sun at the bottom-right corner, behind", .frame = corner_behind, .settings = length(240.f)});
+  cases.push_back({.name = "sun at the top-left corner at 58%", .frame = corner_58, .settings = length(240.f), .render_width = 278, .render_height = 157});
+  cases.push_back({.name = "grass", .frame = grass, .settings = length(240.f)});
+  cases.push_back({.name = "grass, Softer", .frame = grass, .settings = rows([](sss::Settings& s) { s.sun_disk = 0.5f; })});
+  cases.push_back({.name = "grass, sun in view", .frame = grass_front, .settings = length(240.f)});
+  cases.push_back({.name = "dense pillars", .frame = dense, .settings = length(240.f)});
+  cases.push_back({.name = "dense pillars, Length 1920", .frame = dense, .settings = length(1920.f)});
+  cases.push_back({.name = "dense pillars, Softer", .frame = dense, .settings = rows([](sss::Settings& s) { s.sun_disk = 0.5f; })});
+  cases.push_back({.name = "low sun", .frame = low_sun, .settings = length(240.f)});
+  cases.push_back({.name = "low sun, Contrast 1", .frame = low_sun, .settings = rows([](sss::Settings& s) { s.contrast = 1.f; })});
+  cases.push_back({.name = "boundary (the sun along a wall)", .frame = boundary, .settings = rows([](sss::Settings& s) { s.edge_threshold = 0.f; })});
+  cases.push_back({.name = "boundary (the sun along a wall), Softer", .frame = boundary,
+                   .settings = rows([](sss::Settings& s) { s.edge_threshold = 0.f; s.sun_disk = 0.5f; })});
+  cases.push_back({.name = "boundary (the sun along a wall), Contrast 1, Edge Threshold 0.02", .frame = boundary,
+                   .settings = rows([](sss::Settings& s) { s.contrast = 1.f; })});
+  for (const uint32_t wanted : {1u, 8u, 32u}) {
+    cases.push_back({.name = "torches " + std::to_string(wanted), .frame = box, .settings = torch_rows(wanted, 240.f), .lights = torches});
+  }
+  cases.push_back({.name = "torches 32, Length 1920", .frame = box, .settings = torch_rows(32, 1920.f), .lights = torches});
+  cases.push_back({.name = "torches 32 at 58%", .frame = scaled[2], .settings = torch_rows(32, 240.f), .render_width = 278, .render_height = 157, .lights = torches});
+  cases.push_back({.name = "torches 32, sun in view", .frame = box_front, .settings = torch_rows(32, 240.f), .lights = torches});
+
+  const BendPasses written = LoadBendPasses(folder, "wnew_");
+  const BendPasses written_before = LoadBendPasses(folder, "wref_");
+  // A frame marches the lights the frame before drew (LightFrames' first those of the case before): the sums after a
+  // frame of the case.
+  const auto writes = [&](const SkipCase& skip_case, const BendPasses& passes) {
+    RunSkipCase(skip_case, passes);
+    return TestWords(counters, [&] { RunSkipCase(skip_case, passes); });
+  };
+  SkipCounts total;
+  for (const auto& skip_case : cases) {
+    const auto twice = CompareWrites(skip_case.name + ", writes against db99b716b's", writes(skip_case, written), writes(skip_case, written_before));
+    CompareSkipCase(skip_case, fresh, old, "against db99b716b's", true, twice);
+    const SkipCounts counts = CountSkips(counters, [&] { RunSkipCase(skip_case, counted); });
+    PrintCounts(skip_case.name, counts);
+    CHECK(counts.false_skips == 0);
+    if (skip_case.name == "box, Length 240" || skip_case.name == "grass") CHECK(counts.skipped > 0);
+    if (skip_case.name.starts_with("far wall")) CHECK(counts.far_faded > 0);
+    total += counts;
+  }
+  PrintCounts("ALL", total);
+  CHECK(total.false_skips == 0 && total.flipped > 0 && total.skipped > 0 && total.far_faded > 0);
+
+  // CONTROLS.
+  const auto control_counts = [&](const BendPasses& passes, std::initializer_list<size_t> indexes) {
+    SkipCounts sum;
+    for (const size_t index : indexes) sum += CountSkips(counters, [&] { RunSkipCase(cases[index], passes); });
+    return sum;
+  };
+  const auto find_case = [&](const char* name) {
+    return static_cast<size_t>(std::ranges::find(cases, std::string(name), &SkipCase::name) - cases.begin());
+  };
+  // Rev 0's sign-blind test: lanes with depth_scale <= 0 reached (within a pixel of the light's screen point, its rays
+  // past it); a false skip needs a sample of theirs within the window, counted in any block.
+  const SkipCounts signed_counts = control_counts(LoadBendPasses(folder, "signed_"), {find_case("sun in view"), find_case("torches 32, sun in view")});
+  PrintCounts("CONTROL Rev 0's sign-blind test, sun in view + 32 torches", signed_counts);
+  CHECK(signed_counts.flipped > 0);
+  CHECK(signed_counts.false_skips > 0 || signed_counts.flipped_inside == 0);
+  const BendPasses margin3 = LoadBendPasses(folder, "margin3_");
+  const SkipCounts margin_counts = control_counts(margin3, {find_case("boundary (the sun along a wall)")});
+  const SkipCounts margin_find_counts = control_counts(margin3, {find_case("boundary (the sun along a wall), Softer")});
+  PrintCounts("CONTROL margin -1e-3, boundary", margin_counts);
+  PrintCounts("CONTROL margin -1e-3, boundary, Softer", margin_find_counts);
+  CHECK(margin_counts.false_skips > 0 && margin_find_counts.false_skips > 0);
+  CompareSkipCase(cases[find_case("low sun, Contrast 1")], LoadBendPasses(folder, "margin25_"), old, "CONTROL margin -0.25 against db99b716b's", false);
+  CompareSkipCase(cases[find_case("box, Length 240")], LoadBendPasses(folder, "skipall_"), old, "CONTROL every block skipped against db99b716b's", false);
+  const SkipCase& skip_all_case = cases[find_case("box, Banners + Coloured + Softer")];
+  CompareWrites(skip_all_case.name + ", writes CONTROL every block skipped against db99b716b's", writes(skip_all_case, LoadBendPasses(folder, "wskipall_")),
+                writes(skip_all_case, written_before), false);
+  // The module's own passes back.
+  sss::internal::runtime.objects = {};
+}
+
+// 11 on Shogun 2's sun shadow passes (sss.hlsli, SAMPLE_COUNT 3840): sss00 / sss01, Light Through Foliage's sss_foliage(_cascades)
+// (the depth's foliage pixels negative; light casters: blocks of 32 at 3840) and Softer Away from the Caster's
+// sss_distance(_cascades) (with the banner, its filter and the split texture's penumbra), 120 and 3840 samples, this tree's
+// against db99b716b's to the bit: the writes builds' sums, then the mask, the filter and the split texture (apart only
+// where written twice); the counter builds: no false skip.
+static void TestBlockSkipShogun2(const std::string& before_folder, D3D_DRIVER_TYPE driver) {
+  std::printf("11. the block skip on Shogun 2's passes on %s\n", (driver == D3D_DRIVER_TYPE_WARP) ? "WARP" : "the hardware GPU");
+  MakeDevice(driver);
+  const auto folder = std::filesystem::path(before_folder).parent_path() / "e2_cso";
+  std::vector<Box> boxes = SkipBoxScene();
+  boxes.push_back({.low = {2.f, -2.f, 7.f}, .high = {3.f, -1.f, 8.f}, .kind = Kind::FOLIAGE});
+  const Frame frame = MakeFrame(480, 270, boxes, BOX_SUN);
+  const ShogunInputs inputs = MakeShogunInputs(frame, false);
+  const UINT w = frame.camera.width;
+  const UINT h = frame.camera.height;
+  // Light Through Foliage's depth: the foliage's pixels negative.
+  Frame foliage = frame;
+  std::vector<float> depth = frame.picture.depth;
+  for (size_t pixel = 0; pixel < depth.size(); ++pixel) {
+    const int hit = frame.picture.hit[pixel];
+    if (hit >= 0 && boxes[hit].kind == Kind::FOLIAGE) depth[pixel] = -depth[pixel];
+  }
+  foliage.depth = MakeTexture(w, h, DXGI_FORMAT_R32_FLOAT, depth.data(), w * 4);
+  const Texture output = MakeTexture(w, h, DXGI_FORMAT_R8_UNORM, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
+  const Texture tint = MakeTexture(w, h, DXGI_FORMAT_R8G8B8A8_UNORM, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
+  const Texture split = MakeTexture(w, h, DXGI_FORMAT_R8G8B8A8_UNORM, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
+  ComPtr<ID3D11UnorderedAccessView> output_uav;
+  ComPtr<ID3D11UnorderedAccessView> tint_uav;
+  ComPtr<ID3D11UnorderedAccessView> split_uav;
+  REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(output.texture.Get(), nullptr, output_uav.GetAddressOf())));
+  REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(tint.texture.Get(), nullptr, tint_uav.GetAddressOf())));
+  REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(split.texture.Get(), nullptr, split_uav.GetAddressOf())));
+  const CounterBuffer counters = MakeCounterBuffer();
+  struct Pass {
+    const char* name;
+    bool cascades;
+    bool foliage;
+    bool distance;
+  };
+  constexpr std::array<Pass, 6> PASSES = {{{"s2_sss00", true, false, false},
+                                           {"s2_sss01", false, false, false},
+                                           {"s2_sss_foliage", false, true, false},
+                                           {"s2_sss_foliage_cascades", true, true, false},
+                                           {"s2_sss_distance", false, true, true},
+                                           {"s2_sss_distance_cascades", true, true, true}}};
+  using Data = shogun2::ShaderInjectData;
+  SkipCounts total;
+  for (const auto& pass : PASSES) {
+    const auto old = LoadCso((folder / (std::string("old_") + pass.name + ".cso")).string());
+    const auto fresh = LoadCso((folder / (std::string("new_") + pass.name + ".cso")).string());
+    const auto counted = LoadCso((folder / (std::string("count_") + pass.name + ".cso")).string());
+    const auto written = LoadCso((folder / (std::string("wnew_") + pass.name + ".cso")).string());
+    const auto written_before = LoadCso((folder / (std::string("wref_") + pass.name + ".cso")).string());
+    const Frame& input = pass.foliage ? foliage : frame;
+    const ShogunExtras extras = pass.distance ? ShogunExtras{.thin = frame.thin.srv.Get(), .colour = frame.colour.srv.Get(), .tint = tint_uav.Get(), .split = split_uav.Get()}
+                                              : ShogunExtras{};
+    // 3840 samples (Shogun 2's row at 5), and 120 with Hard 4, Fade 4 and Contrast 2.
+    for (const bool most : {true, false}) {
+      std::vector<std::pair<size_t, float>> rows;
+      if (most) {
+        rows = {{offsetof(Data, sss_samples), 5.f}};
+      } else {
+        rows = {{offsetof(Data, sss_hard_samples), 4.f}, {offsetof(Data, sss_fade_samples), 4.f}, {offsetof(Data, sss_contrast), 2.f}};
+      }
+      if (pass.foliage) rows.emplace_back(offsetof(Data, sss_foliage_light), 0.5f);
+      if (pass.distance) {
+        rows.emplace_back(offsetof(Data, sss_banner_light), 0.35f);
+        rows.emplace_back(offsetof(Data, sss_distance_softness), 2.f);
+      }
+      const auto settings = ShogunInjection(rows);
+      const auto run = [&](ID3D11ComputeShader* shader, std::vector<uint32_t>* filter, std::vector<uint32_t>* penumbra) {
+        constexpr std::array<UINT, 4> CLEAR = {};
+        context->ClearUnorderedAccessViewUint(tint_uav.Get(), CLEAR.data());
+        context->ClearUnorderedAccessViewUint(split_uav.Get(), CLEAR.data());
+        auto mask = RunShogunPass(input, inputs, output, output_uav.Get(), shader, pass.cascades, true, settings.Get(), extras);
+        if (pass.distance) {
+          *filter = ReadTexture<uint32_t>(tint.texture.Get());
+          *penumbra = ReadTexture<uint32_t>(split.texture.Get());
+        }
+        return mask;
+      };
+      std::array<std::vector<std::vector<uint8_t>>, 2> masks;
+      std::array<std::vector<std::vector<uint32_t>>, 2> filters;
+      std::array<std::vector<std::vector<uint32_t>>, 2> penumbras;
+      for (int round = 0; round < RUNS * 2; ++round) {
+        const int side = round % 2;
+        std::vector<uint32_t> filter;
+        std::vector<uint32_t> penumbra;
+        masks[side].push_back(run((side == 0) ? fresh.Get() : old.Get(), &filter, &penumbra));
+        filters[side].push_back(std::move(filter));
+        penumbras[side].push_back(std::move(penumbra));
+      }
+      const std::string name = std::string(pass.name) + (most ? ", 3840 samples" : ", 120 samples, Hard 4, Fade 4, Contrast 2");
+      std::vector<uint32_t> ignored;
+      // RunShogunPass ends with ClearState: the test buffer bound again first.
+      const auto bound = [&](ID3D11ComputeShader* shader) {
+        return [&, shader] {
+          context->CSSetUnorderedAccessViews(7, 1, counters.uav.GetAddressOf(), nullptr);
+          run(shader, &ignored, &ignored);
+        };
+      };
+      const auto twice = CompareWrites(name + ", writes against db99b716b's", TestWords(counters, bound(written.Get())),
+                                       TestWords(counters, bound(written_before.Get())));
+      CompareRuns((name + ", mask against db99b716b's").c_str(), masks[0], masks[1], true, uint8_t{127}, 100, 500, twice);
+      if (pass.distance) {
+        CompareRuns((name + ", filter against db99b716b's").c_str(), filters[0], filters[1], true, 0u, 10, 500, twice);
+        CompareRuns((name + ", split texture (penumbra) against db99b716b's").c_str(), penumbras[0], penumbras[1], true, 0u, 10, 500, twice);
+      }
+      const SkipCounts counts = CountSkips(counters, bound(counted.Get()));
+      PrintCounts(name, counts);
+      CHECK(counts.false_skips == 0 && counts.lanes > 0);
+      total += counts;
+    }
+  }
+  PrintCounts("Shogun 2 ALL", total);
+  CHECK(total.false_skips == 0 && total.skipped > 0);
 }
 
 // ---- --time -----------------------------------------------------------------------------------------------------------
@@ -1874,12 +2492,90 @@ static void Time(const std::string& before) {
   }
 }
 
+// --block-skip-gpu's times: db99b716b's Bend passes against this tree's on the hardware GPU at 3840 x 2160 (or `width` x
+// `height`; WARP: --block-skip-time-warp, a smoke run whose times mean nothing), each row the median of 30 frames of the
+// module (the light mode's: its frame's first light draw, the pick and the march): plain, extended_find (Softer), the
+// light mode with 8 and 16 torches; Length 240, 480 and 1920; 100% and 58% render scale; the box scene and the dense
+// pillars (the skip's worst case).
+static void TimeBlockSkip(const std::string& before_folder, D3D_DRIVER_TYPE driver, UINT width, UINT height) {
+  std::printf("--block-skip-gpu: db99b716b's Bend passes against this tree's at %u x %u\n", width, height);
+  MakeDevice(driver);
+  const auto folder = std::filesystem::path(before_folder).parent_path() / "e2_cso";
+  const BendPasses fresh = LoadBendPasses(folder, "new_");
+  const BendPasses old = LoadBendPasses(folder, "old_");
+  const std::vector<LightInstance> torches = SkipTorches();
+  const auto buffer = MakeBuffer(static_cast<UINT>(torches.size() * sizeof(LightInstance)), D3D11_BIND_VERTEX_BUFFER, torches.data());
+  const lights::Instances drawn = {.buffer = buffer.Get(), .first = 0, .count = 16, .stride = sizeof(LightInstance),
+                                   .position = offsetof(LightInstance, light), .colour = offsetof(LightInstance, colour)};
+  const auto render_width = static_cast<UINT>(std::lround(width * 0.58));
+  const auto render_height = static_cast<UINT>(std::lround(height * 0.58));
+  auto& runtime = sss::internal::runtime;
+  struct Row {
+    const char* name;
+    bool softer;
+    uint32_t lights;
+  };
+  constexpr std::array<Row, 4> ROWS = {{{"plain", false, 0}, {"extended_find (Softer)", true, 0}, {"light mode, 8", false, 8}, {"light mode, 16", false, 16}}};
+  for (const bool dense : {false, true}) {
+    const std::vector<Box> boxes = dense ? SkipDenseScene() : SkipBoxScene();
+    for (const bool full : {true, false}) {
+      const Frame frame = full ? MakeFrame(width, height, boxes, BOX_SUN) : ScaledFrame(width, height, render_width, render_height, boxes, BOX_SUN);
+      for (const float samples : {240.f, 480.f, 1920.f}) {
+        for (const auto& row : ROWS) {
+          sss::Settings settings = Defaults();
+          settings.samples = samples;
+          settings.sun_disk = row.softer ? 0.5f : 0.f;
+          std::array<double, 2> milliseconds = {};
+          for (int side = 0; side < 2; ++side) {
+            UseBendPasses((side == 0) ? old : fresh);
+            twattila::frame_history::render_width = full ? 0 : render_width;
+            twattila::frame_history::render_height = full ? 0 : render_height;
+            if (row.lights == 0) {
+              milliseconds[side] = GpuMilliseconds([&] { RunFrame(frame, settings); });
+            } else {
+              REQUIRE(LightFrames(frame, std::span(torches).first(16), row.lights, 0.f, 0, settings));
+              milliseconds[side] = GpuMilliseconds([&] {
+                ++runtime.frame;
+                runtime.computed_frame = runtime.frame;
+                lights::OnLightDraw(context.Get(), drawn);
+              });
+            }
+          }
+          std::printf("   %-6s %s, Length %4.0f, %-24s db99b716b %.3f ms, this tree %.3f ms (%+.3f)\n", dense ? "dense" : "box", full ? "100%" : " 58%",
+                      samples, row.name, milliseconds[0], milliseconds[1], milliseconds[1] - milliseconds[0]);
+        }
+      }
+    }
+  }
+  twattila::frame_history::render_width = 0;
+  twattila::frame_history::render_height = 0;
+  sss::internal::runtime.objects = {};
+}
+
 int main(int argc, char** argv) {
   if (argc < 2) {
     std::printf("usage: tests.exe <fc24dbce's plain shaders> [--time]\n");
     return 2;
   }
   const std::string mode = (argc > 2) ? argv[2] : "";
+  if (mode == "--block-skip-gpu") {
+    TestBlockSkip(argv[1], D3D_DRIVER_TYPE_HARDWARE);
+    TestBlockSkipShogun2(argv[1], D3D_DRIVER_TYPE_HARDWARE);
+    TimeBlockSkip(argv[1], D3D_DRIVER_TYPE_HARDWARE, 3840, 2160);
+    std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
+    return failures == 0 ? 0 : 1;
+  }
+  if (mode == "--block-skip-time-warp") {
+    TimeBlockSkip(argv[1], D3D_DRIVER_TYPE_WARP, 480, 270);
+    std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
+    return failures == 0 ? 0 : 1;
+  }
+  if (mode == "--block-skip") {
+    TestBlockSkip(argv[1], D3D_DRIVER_TYPE_WARP);
+    TestBlockSkipShogun2(argv[1], D3D_DRIVER_TYPE_WARP);
+    std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
+    return failures == 0 ? 0 : 1;
+  }
   if (mode != "--time-only") {
     TestRowsOff(argv[1]);
     TestAutoThickness();
@@ -1891,6 +2587,8 @@ int main(int argc, char** argv) {
     TestRowsTurnedOff();
     TestShogun2(argv[1]);
     TestShogun2Banners(argv[1]);
+    TestBlockSkip(argv[1], D3D_DRIVER_TYPE_WARP);
+    TestBlockSkipShogun2(argv[1], D3D_DRIVER_TYPE_WARP);
   }
   if (mode == "--time" || mode == "--time-only") Time(argv[1]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);

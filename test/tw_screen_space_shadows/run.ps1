@@ -2,8 +2,9 @@
 # renodx-twattila.addon32 first). First the shader bytes: the plain passes and Shogun 2's own Bend passes compiled from
 # this tree and from fc24dbce (the last commit before round v42's phase D) with the build's flags must be the same, but
 # sss_setup (its dispatch list moved into sss_dispatch.hlsli), whose output case 1 compares on WARP with fc24dbce's.
-# Run as x86 and amd64; -Time also times the rows on the hardware GPU at 4K.
-param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [switch]$Time)
+# Run as x86 and amd64; -Time also times the rows on the hardware GPU at 4K. -BlockSkipGpu: case 11 on the hardware GPU
+# alone (db99b716b's Bend passes against this tree's) and their times at 4K (a GPU window).
+param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [switch]$Time, [switch]$BlockSkipGpu)
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_screen_space_shadows'
@@ -46,9 +47,66 @@ foreach ($shader in @('sss_distance.cs_5_0', 'sss_distance_cascades.cs_5_0')) {
 }
 # sss_depth (and its MSAA form): the G-buffer's foliage mark (Warhammer III); its output against fc24dbce's on WARP too.
 # Shogun 2's sss00-02: Bend's parameters as rows and Light Through Foliage (its shader_injection grew): case 8 compares their
-# output at the rows' defaults with fc24dbce's on WARP.
-$allowed = @('sss_setup', 'sss_depth', 'sss_depth_ms', 'sss00_0x34ECD06E', 'sss01_0x1B529672', 'sss02_0x78E88E1D')
+# output at the rows' defaults with fc24dbce's on WARP. sss_bend: the block skip and the FarFade skip (bend_sss_gpu.hlsli):
+# case 11 compares its output with db99b716b's on WARP.
+$allowed = @('sss_bend', 'sss_setup', 'sss_depth', 'sss_depth_ms', 'sss00_0x34ECD06E', 'sss01_0x1B529672', 'sss02_0x78E88E1D')
 if (($changed | Where-Object { $_ -notin $allowed }).Count -ne 0) { throw "Plain shader bytes changed: $($changed -join ', ')" }
+# Case 11 (the block skip and the FarFade skip): the Bend passes as db99b716b (the commit before them) had them (old_) and
+# from this tree (new_), Auto Thickness's the same bytes (both skips compiled out there); this tree's with both skips
+# compiled out (noskip_: BEND_SSS_TEST_NO_SKIP) db99b716b's bytes, every pass; this tree's test builds: each pixel's
+# writes summed with the skips (wnew_: BEND_SSS_TEST_WRITES, u7) and without (wref_), the skips counted (count_:
+# BEND_SSS_TEST_COUNTERS), Rev 0's sign-blind block test (signed_), margins -1e-3 (margin3_) and -0.25 (margin25_), every
+# block skipped (skipall_, wskipall_).
+$e2Before = Join-Path $testBuild 'before_db99b716b'
+if (Test-Path -LiteralPath $e2Before) { Remove-Item -LiteralPath $e2Before -Recurse -Force -Confirm:$false }
+New-Item -ItemType Directory -Force -Path $e2Before | Out-Null
+& git -C $repairRoot archive --output=$archive db99b716b src/games/twattila src/games/twshogun2completeedition src/shaders
+if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
+& (Join-Path $env:SystemRoot 'System32\tar.exe') -xf $archive -C $e2Before
+if ($LASTEXITCODE -ne 0) { throw 'tar failed' }
+$e2Shaders = Join-Path $testBuild 'e2_cso'
+New-Item -ItemType Directory -Force -Path $e2Shaders | Out-Null
+$bend = [ordered]@{
+  'sss_bend' = 'twattila\sss_bend'; 'sss_bend_extended' = 'twattila\sss_bend_extended'; 'sss_bend_extended_find' = 'twattila\sss_bend_extended_find'
+  'sss_bend_extended_auto' = 'twattila\sss_bend_extended_auto'; 'sss_bend_extended_auto_find' = 'twattila\sss_bend_extended_auto_find'
+  's2_sss00' = 'twshogun2completeedition\shaders\sss00_0x34ECD06E'; 's2_sss01' = 'twshogun2completeedition\shaders\sss01_0x1B529672'
+  's2_sss_foliage' = 'twshogun2completeedition\sss_foliage'; 's2_sss_foliage_cascades' = 'twshogun2completeedition\sss_foliage_cascades'
+  's2_sss_distance' = 'twshogun2completeedition\sss_distance'; 's2_sss_distance_cascades' = 'twshogun2completeedition\sss_distance_cascades'
+}
+$skipping = @($bend.Keys | Where-Object { $_ -notlike '*_auto*' })
+$attila = @('sss_bend', 'sss_bend_extended', 'sss_bend_extended_find')
+$counters = @('/D', 'BEND_SSS_TEST_COUNTERS')
+$noSkip = @('/D', 'BEND_SSS_TEST_NO_SKIP')
+$writes = @('/D', 'BEND_SSS_TEST_WRITES')
+$builds = @(
+  @{ Prefix = 'old_'; Root = $e2Before; Names = $bend.Keys; Defines = @() },
+  @{ Prefix = 'new_'; Root = $repairRoot; Names = $bend.Keys; Defines = @() },
+  @{ Prefix = 'noskip_'; Root = $repairRoot; Names = $bend.Keys; Defines = $noSkip },
+  @{ Prefix = 'wnew_'; Root = $repairRoot; Names = $skipping; Defines = $writes },
+  @{ Prefix = 'wref_'; Root = $repairRoot; Names = $skipping; Defines = $writes + $noSkip },
+  @{ Prefix = 'wskipall_'; Root = $repairRoot; Names = $attila; Defines = $writes + @('/D', 'BEND_SSS_TEST_SKIP_ALL') },
+  @{ Prefix = 'count_'; Root = $repairRoot; Names = $skipping; Defines = $counters },
+  @{ Prefix = 'signed_'; Root = $repairRoot; Names = $attila; Defines = $counters + @('/D', 'BEND_SSS_TEST_SIGNED') },
+  @{ Prefix = 'margin3_'; Root = $repairRoot; Names = $attila; Defines = $counters + @('/D', 'BEND_SSS_TEST_MARGIN=-1e-3') },
+  @{ Prefix = 'margin25_'; Root = $repairRoot; Names = $attila; Defines = @('/D', 'BEND_SSS_TEST_MARGIN=-0.25') },
+  @{ Prefix = 'skipall_'; Root = $repairRoot; Names = $attila; Defines = @('/D', 'BEND_SSS_TEST_SKIP_ALL') }
+)
+foreach ($build in $builds) {
+  foreach ($name in $build.Names) {
+    $defines = $build.Defines
+    & $fxc /nologo -T cs_5_0 -E main /O3 /Qstrip_reflect @defines -Fo (Join-Path $e2Shaders "$($build.Prefix)$name.cso") (Join-Path $build.Root "src\games\$($bend[$name]).cs_5_0.hlsl") | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "fxc failed: $($build.Prefix)$name" }
+  }
+}
+$sameBytes = { param($prefix, $name) (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $e2Shaders "old_$name.cso")).Hash -eq (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $e2Shaders "$prefix$name.cso")).Hash }
+foreach ($name in @('sss_bend_extended_auto', 'sss_bend_extended_auto_find')) {
+  if (-not (& $sameBytes 'new_' $name)) { throw "Auto Thickness's bytes changed since db99b716b: $name" }
+}
+Write-Host 'Auto Thickness passes the same bytes as db99b716b'
+foreach ($name in $bend.Keys) {
+  if (-not (& $sameBytes 'noskip_' $name)) { throw "This tree's $name without the skips is not db99b716b's" }
+}
+Write-Host "Every Bend pass without the skips (BEND_SSS_TEST_NO_SKIP) the same bytes as db99b716b ($($bend.Count))"
 # sss_lights as f6408aa1 had it (before its repeat test read a light's position only where the scores match): case 9
 # compares its output with today's on WARP, --time both on the hardware GPU.
 $lightsBefore = Join-Path $testBuild 'before_f6408aa1'
@@ -69,5 +127,6 @@ $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64
 if ($LASTEXITCODE -ne 0) { throw 'Screen-space shadows test compile failed' }
 $arguments = @($beforeShaders)
 if ($Time) { $arguments += '--time' }
+if ($BlockSkipGpu) { $arguments += '--block-skip-gpu' }
 & (Join-Path $testBuild 'screen_space_shadows.exe') @arguments
 if ($LASTEXITCODE -ne 0) { throw 'Screen-space shadows test failed' }
