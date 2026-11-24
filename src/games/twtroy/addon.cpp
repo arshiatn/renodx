@@ -15,6 +15,7 @@
 #include <cmath>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -38,6 +39,7 @@
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_capture_imposter_gs.h"
 #include "../twattila/rt_scene.hpp"
+#include "../twattila/ao_readers.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
 #include "../twattila/engine_tests.hpp"
@@ -101,8 +103,17 @@ bool IsPsychoV35Mode() {
   return shader_injection.hdr == 4.f;
 }
 
-// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, the ACES fit).
-constexpr float HUE_CLIP_DEFAULT = 80.f;
+// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, the ACES fit):
+// 70, the fire's lowest hue error (0.82 degrees, 1.99 at 80; ATN 2026-11-22).
+constexpr float HUE_CLIP_DEFAULT = 70.f;
+
+// PsychoV35's defaults that follow the game's response (shared.h): its ACES fit's shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", TROY_V35_CONTRAST},
+    {"v35_shadows", TROY_V35_SHADOWS},
+    {"v35_saturation", TROY_V35_SATURATION},
+    {"v35_highlight_contrast", TROY_V35_HIGHLIGHT_CONTRAST},
+};
 
 // bool IsModdedAutoExposureEnabled() {
 //   return shader_injection.auto_exposure_highlight_protection == 1.f;
@@ -142,7 +153,7 @@ void ApplyResetPreset() {
       {"v31_roll_off", 1.f},
       {"v31_gamut_compression", 1.f},
       {"v31_gamut_compression_mode", 1.f},
-      {"v31_highlight_hue_shift", 0.1f},
+      {"v31_highlight_hue_shift", 0.04f},
       {"v31_highlight_saturation_shift", 0.f},
 
       // HDR Extended / user grading
@@ -171,6 +182,7 @@ void ApplyResetPreset() {
       {"filmgrain", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 void ApplyPsychoRecommended() {
@@ -374,20 +386,9 @@ renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
 // GT-VBAO this frame: its setting, not under the rays' AO or the paths' (as Attila's rt_ambient_alone): the rays' AO stands
-// in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO stays
-// there, as when the page turned GT-VBAO off with them.
+// in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO is
+// left out (BuildRuntimeData), as when the page turned GT-VBAO off with them.
 bool bitmask_ao = false;
-// The game's SSAO 2 (ssao2: downsample B320992B, generate D42C3523, blur_x 7F637259, blur_y BFD285BD back into the generate's
-// target) has one reader in 27 traces, the sun draws' t_ssao: no draw, dispatch, copy or clear touches its three targets outside
-// the chain, none reads them before it (per frame), and t_ssao is declared by exactly the 24 sun shaders, each reading its red
-// once (their bytes). The rays' AO stands alone in the sun's slot (rt_ambient_combine), so while the rays feed it (this frame's
-// trace or the last: these draws come before it) the chain doesn't run and the generate's target, what the sun reads, is
-// cleared to open (Warhammer's way, test/tw_warhammer_shaders part 15). Rays off: the game's draws.
-bool SkipGameSsao() {
-  const auto& runtime = twattila::rt_scene::internal::runtime;
-  return runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
-         && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
-}
 
 void BuildRuntimeData() {
   custom_shaders = {
@@ -417,28 +418,24 @@ void BuildRuntimeData() {
   // Ambient Occlusion: Visibility Bitmask in place of the AO's horizontal blur: the addon's own shader
   // (ao_bitmask_blur, twwarhammer2/line_sweep_ao.hpp) with the blur's bindings; the blur's replacement stays the game's
   // code (Game's costs what it did). The collect always runs: where no blur runs (Warhammer II at some settings), the
-  // game's AO stays, never an unwritten one.
+  // game's AO stays, never an unwritten one. While ours stands in for the game's AO (the rays' AO or Path-Traced
+  // Ambient) the blur's output is cleared open instead (twattila/ao_readers.hpp ClearInsteadOfLineSweepBlur): in-game
+  // SSAO 1 and 2 no longer multiply into the paths, as SSAO 2's chain below.
   custom_shaders[0x16A457D0].on_draw = [](auto* cmd_list) {
+    if (twattila::ao_readers::ClearInsteadOfLineSweepBlur(cmd_list)) return false;
     if (!bitmask_ao) return true;
     return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
                                                false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
   };
-  // SSAO 2 under the rays' AO (SkipGameSsao): left out, the generate's target cleared to open in its place.
-  custom_shaders[0xB320992B] = {.crc32 = 0xB320992B, .on_inject = [](auto*) { return false; }, .on_draw = [](auto*) { return !SkipGameSsao(); }};
-  custom_shaders[0xD42C3523].on_draw = [](auto* cmd_list) {
-    if (!SkipGameSsao()) return true;
-    auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
-    if (native == nullptr) return true;
-    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> output;
-    native->OMGetRenderTargets(1, output.GetAddressOf(), nullptr);
-    if (!output) return true;
-    constexpr std::array<float, 4> OPEN = {1.f, 1.f, 1.f, 1.f};
-    native->ClearRenderTargetView(output.Get(), OPEN.data());
-    return false;
-  };
-  custom_shaders[0x7F637259].on_draw = [](auto*) { return !SkipGameSsao(); };
-  custom_shaders[0xBFD285BD].on_draw = [](auto*) { return !SkipGameSsao(); };
+  // The game's SSAO 2 has one reader in 27 traces, the sun draws' t_ssao: no draw, dispatch, copy or clear touches its three
+  // targets outside the chain, none reads them before it (per frame), and t_ssao is declared by exactly the 24 sun shaders,
+  // each reading its red once (their bytes). So while ours stands in for it (the rays' AO alone in the sun's slot through
+  // rt_ambient_combine, or Path-Traced Ambient) the chain doesn't run, the generate's target cleared to open in its place
+  // (twattila/ao_readers.hpp; Warhammer's way, test/tw_warhammer_shaders part 15). Otherwise: the game's draws.
+  custom_shaders[0xB320992B] = {.crc32 = 0xB320992B, .on_inject = [](auto*) { return false; }, .on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); }};
+  custom_shaders[0xD42C3523].on_draw = [](auto* cmd_list) { return !twattila::ao_readers::ClearInsteadOfGenerate(cmd_list); };
+  custom_shaders[0x7F637259].on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); };
+  custom_shaders[0xBFD285BD].on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); };
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.
@@ -976,8 +973,8 @@ void BuildRuntimeData() {
                "Saturation of bright colors. 0 = less, 1 = PsychoV31's own, 2 = more."),
     v31_slider("v31_highlight_hue_shift", &shader_injection.v31_highlight_hue_shift, "Highlight Hue Shift",
                "Bright colors take the SDR image's hues: fire more orange / yellow, less pink.\n"
-               "0 = off, 1 = SDR hues. Default 0.10.",
-               1.f, 0.1f),
+               "0 = off, 1 = SDR hues. Default 0.04.",
+               1.f, 0.04f),
     v31_slider("v31_highlight_saturation_shift", &shader_injection.v31_highlight_saturation_shift,
                "Highlight Saturation Shift",
                "Gives bright colors the saturation of the SDR image (fire cores less pale and pink).\n"
@@ -1484,7 +1481,15 @@ void BuildRuntimeData() {
     //     },
     // },
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
 }
 
 
@@ -2333,7 +2338,9 @@ void ConfigureAddon() {
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .rays_preset_as_attila = true,
-                                             .lights_own_row = true});
+                                             .lights_own_row = true,
+                                             // Fog Shadows / Specular Occlusion defaulted to 1 here before f41f04fd0.
+                                             .fog_shadows_defaulted_on = true});
   // Smooth Banner Shadows (on, as Attila's): the sails are this game's thin cloth in the
   // rays (its unit banners are not in them), so the row names them.
   for (auto* setting : settings) {
@@ -2392,12 +2399,13 @@ bool AttachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
   // Ray-Traced Water Reflections (twattila/water_reflections.hpp, Pharaoh's): the twins of Pharaoh's ssr_new chain, the same
-  // order in ATN's traces (the water's G-buffer after the sun draw, extract_mask 1CE9217F, then these). Traced at backward_ssr
-  // C1DC66B4 (its depth from t0: Troy's binds no mask before it; the light, R16G16B16A16F, at t2); where they left from the
-  // water, downsample C2017771 and its 10 downsample_mip 9877558C and 10 lute_mip F49D4738 left out and our apply 00645DA1
-  // drawn (shaders/ssrapply00; WARP tools\tw\troy\water\ssr_rays).
+  // order in ATN's traces (the water's G-buffer after the sun draw, extract_mask 1CE9217F, then these). Traced at heights_part1
+  // CAB8677B (its depth at t1) with last frame's light, else at backward_ssr C1DC66B4 (its depth from t0: Troy's binds no mask
+  // before it; the light, R16G16B16A16F, at t2); where they left from the water, the height pyramid, downsample C2017771 and
+  // its 10 downsample_mip 9877558C and 10 lute_mip F49D4738 left out and our apply 00645DA1 drawn (shaders/ssrapply00; WARP
+  // tools\tw\troy\water\ssr_rays).
   twattila::water_reflections::Install(&custom_shaders,
-                                       {.backward_ssr = 0xC1DC66B4, .inputs_slot = 0, .chain = {0xC2017771, 0x9877558C, 0xF49D4738}, .apply = 0x00645DA1,
+                                       {.heights_part1 = 0xCAB8677B, .backward_ssr = 0xC1DC66B4, .inputs_slot = 0, .chain = {0xC2017771, 0x9877558C, 0xF49D4738}, .apply = 0x00645DA1,
                                         .apply_code = __0x00645DA1},
                                        &rt_sliders);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
@@ -2430,6 +2438,8 @@ bool AttachAddon() {
   twattila::contact_shadows_off::Install(LIGHT_BOUNCE_DRAWS);
   // The rays replace the atlas's sun shadow: after the screen-space shadows' (t49) and before the Light Bounce's. Skip the
   // Shadow Maps through Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
+  // The baked far map (s1 sBakedShadowBuffer: in all 12 sun draws only its 10 comparisons of t1) stays the game's until a
+  // far-field check (past ~200 m: terrain and buildings) shows the rays reach there (rvc_ m3); then baked_sampler_slot 1.
   twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &RAYS_REPLACE_MAPS);
   twattila::rt_scene::InstallShadowsOnly();
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at

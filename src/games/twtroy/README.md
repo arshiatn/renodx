@@ -1,5 +1,36 @@
 # A Total War Saga: TROY (RenoDX HDR, ATN)
 
+### Open items round (2026-11-22; built only, not run in game)
+
+- Fixed: **in-game SSAO 1 and 2 (the game's line-sweep AO) no longer multiply into Path-Traced AO** (ATN: ours
+  replaces the game's), nor past the traced part under Ray-Traced AO: while ours stands in, its blur's output is
+  cleared open in its place, as SSAO 3's chain (`twattila/ao_readers.hpp` ClearInsteadOfLineSweepBlur).
+- Fixed: **the game's SSAO no longer runs under Path-Traced AO either** (ATN: ours replaces the game's, as Attila's): the
+  paths are the occlusion there, so its four passes are left out and the sun draws read an open AO, as under Ray-Traced AO
+  (shared with Pharaoh: `twattila/ao_readers.hpp` ClearInsteadOfGenerate). The sun's sky-cube reflection is no longer
+  darkened by the game's SSAO under the paths (as in Attila).
+- Fixed: **Ray Reconstruction's specular guide has its Fresnel** (as Attila's and Warhammer III's): the specular colour as
+  F0, pre-integrated at the view and roughness (NVIDIA's DLSS-RR guide 4.2.1, `twattila/rr_specular.hlsli`), not bare F0,
+  so grazing reflections on stone, metal and wet ground keep their strength under RR. Water stays at its 0.02.
+- Changed: Smooth Sail Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
+- Changed (ATN): **Hue Clip 70** (was 80: the fire's hue error 0.82 degrees against 1.99, `test/tw_psychov35`) and
+  PsychoV31's **Highlight Hue Shift 0.04** (was 0.10), in the defaults and Reset. Saved values stay until a preset.
+- Changed (ATN): **PsychoV35's defaults follow the game's SDR picture**: Contrast 1.10, Shadows 1.39, Saturation
+  0.97, Highlight Contrast 0.87 (were Musa's own 1; fitted on WARP, `test/tw_troy_pharaoh_v35`). Below 15 nits its
+  grey is within 7 % of the game's (was up to 25 % brighter), its highlights within 7 % of Musa's own at
+  1000 / 203 nits. In the defaults and Reset; saved values stay until a preset.
+- Written, not on yet: Ray-Traced Water Reflections deciding one pass earlier (with the last frame's light) to also
+  leave out the game's height pyramid (4 more passes). Off until its offline tests pass; nothing changes in game.
+- Not yet: the game's baked far shadow map (past ~200 m) still multiplies with ray-traced sun shadows. Replacing it
+  (as Pharaoh's) waits for a far-field check that the rays shadow terrain and buildings out there.
+- In game: RT/PT in a battle, Path-Traced AO: corners as with the paths before, no darker double shade. A burning battle at
+  Recommended: fire orange / yellow as the game's SDR.
+- In game: in-game SSAO 1 and 2, each with Ray-Traced AO and with Path-Traced AO: no darker double shade in corners.
+- In game: RT/PT with Ray Reconstruction: grazing reflections on wet stone and metal keep their strength.
+- In game: Water Reflections: Time Each Pass as before (the early decision is off), ReShade.log's hooks line says
+  "heights_part1 ... not hooked".
+- In game: far terrain and buildings past the per-frame maps with RT/PT: as before (the baked far map stays).
+
 ### Shared round 2 (2026-11-17; built only, not run in game)
 
 - New: **Exact Depth Samples (Experimental, off)**, under GT-VBAO's More Options: each sample takes the depth at its own
@@ -84,7 +115,7 @@
 
 - Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's); Sprite Soldier Shadows (Experimental, off: the sprite soldiers in the rays through a geometry-shader capture, WARP test/tw_rays_captures); the campaign trees cut out in the rays at the game's 0.01, not 0.5 (needs the next helper, 114); Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are).
 - Round 2 (built only, not run in game): **Rarer Objects in the Rays (Experimental, off; the rays' More Options)**, as Attila's: the ropes (ships, siege equipment) cast ray-traced shadows, and with Shadow Casters Out of View also from out of view. Their shaders are Warhammer's instruction for instruction, so Warhammer's captures (`tools/tw/round_notes/p2sm_ropes_asm.txt`). Tessellated objects stay out: this game's dump holds no hull or domain shader.
-- Round 2 (built only, not run in game): **Smooth Sail Shadows (Experimental, off; RT/PT turns it on, as Attila's Smooth Banner Shadows)**: the sails don't shade themselves in the rays, no blocky triangles on them; shadows of other things stay.
+- Round 2 (built only, not run in game): **Smooth Sail Shadows (then Experimental, off; on by default since 2026-11-17, as Attila's Smooth Banner Shadows)**: the sails don't shade themselves in the rays, no blocky triangles on them; shadows of other things stay.
 - Round 2 (built only, not run in game): **Two Shadow Cascades Under Rays (Experimental, off; the rays' More Options, applies after a restart)**, as Attila's: with ray-traced shadows and Skip the Shadow Maps, the highest Shadows setting prepares 2 shadow cascades, as the lowest does (its tile and split distances too), instead of 4. Offline: `tw_troy_tweaks` part 4 over the game's image.
 
 Parity table against Attila's page: `tools/tw/troy/parity_1114.md` (have 20, done now 13, needs a trace 4, won't get 11 with
