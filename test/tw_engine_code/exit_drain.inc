@@ -267,7 +267,7 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
     std::memcpy(site, hook.data(), hook.size());
     ec::failed_writes = 0;
     drain(false);
-    CHECK(ec::module_pinned && ec::written == 0 && (ec::found & ec::EXIT_DRAIN_SITES) == (ec::EXIT_DRAIN_SITES & ~(1u << index)) && std::memcmp(site, hook.data(), hook.size()) == 0);
+    CHECK(ec::module_pinned && ec::written == 0 && (ec::found & ec::EXIT_DRAIN_SITES) == (ec::EXIT_DRAIN_SITES & ~(ec::SiteMask{1} << index)) && std::memcmp(site, hook.data(), hook.size()) == 0);
     CHECK(std::memcmp(ec::sites[other].at, ec::sites[other].game.data(), ec::SITE_SIZE) == 0);
     ec::module_pinned = false;
     std::memcpy(site, ec::sites[index].game.data(), ec::SITE_SIZE);
@@ -570,7 +570,7 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
     // Faster Job Wake-Ups on: the same race on the game's own workers (five threads in its Sleep, the stub's side table keyed to the pool).
     const auto wake_ups = [&](bool on) -> int {
       ec::failed_writes = 0;
-      const uint32_t wanted = ec::EXIT_DRAIN_SITES | (on ? ec::JOB_SITES : 0u);
+      const ec::SiteMask wanted = ec::EXIT_DRAIN_SITES | (on ? ec::JOB_SITES : 0u);
       for (int tries = 0; ec::written != wanted && tries < static_cast<int>(ec::MAX_FAILED_WRITES); ++tries) {
         twattila::engine_code::Update(false, ATTILA_GAME, false, on, false, false, false, false, 1.f, 0, {.exit_job_drain = true});
       }

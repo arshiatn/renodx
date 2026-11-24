@@ -57,7 +57,7 @@ static_assert(sizeof(Counters) <= 0x1000);
 
 inline uint8_t* code = nullptr;  // the probe stubs (read-write while Prepare fills them, then read-execute)
 inline Counters* counters = nullptr;
-inline uint32_t installed = 0;                 // the sites that have a probe stub in front of their production stub
+inline uint32_t installed = 0;                 // the sites that have a probe stub in front of their production stub (32 bits, as the arrays below: every probed site is below 32)
 inline std::array<uint8_t*, 32> stub_of = {};  // by site index
 inline std::array<size_t, 32> size_of = {};
 inline uint32_t dump_after = 0;  // the presents after the first write at which the histograms are dumped (0: never)
@@ -322,7 +322,7 @@ inline void Dump() {
 // Each present: counts the presents since the sites were first written and dumps once, at the Nth or at the first present
 // with a counter at 2^31 or more (before it wraps). The scan takes every field but the last (entry_prev, an address);
 // sweep_last is state too, but an index below the list's count: never near 2^31.
-inline void Tick(uint32_t written_sites) {
+inline void Tick(SiteMask written_sites) {
   if (counters == nullptr || dump_after == 0 || written_sites == 0 || dumped) return;
   if (++presents_on != dump_after) {
     const std::span<const uint32_t> words(reinterpret_cast<const uint32_t*>(counters),
@@ -336,7 +336,7 @@ inline void Tick(uint32_t written_sites) {
 }
 
 // The five jump bytes of every site now (after a write), and which of them are the game's own.
-inline void LogSites(const std::array<Site, std::tuple_size_v<decltype(sites)>>& all, uint32_t written_sites) {
+inline void LogSites(const std::array<Site, std::tuple_size_v<decltype(sites)>>& all, SiteMask written_sites) {
   for (size_t index = 0; index < all.size(); ++index) {
     const Site& site = all[index];
     if (site.at == nullptr) continue;

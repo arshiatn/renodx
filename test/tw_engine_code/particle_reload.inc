@@ -412,7 +412,7 @@ uint32_t ReloadMxcsr(Random* random, int round) {
 }
 
 // The sites `of` names hold their jump where `on` has their bit, the game's bytes where not (the test's own variants, not Update's).
-void HoldSites(uint32_t on, uint32_t of) {
+void HoldSites(twattila::engine_code::internal::SiteMask on, twattila::engine_code::internal::SiteMask of) {
   namespace ec = twattila::engine_code::internal;
   for (size_t index = 0; index < ec::sites.size(); ++index) {
     if (((of >> index) & 1) == 0) continue;
@@ -511,7 +511,7 @@ int ReloadAlone(size_t index, const uint8_t* game_bytes, size_t load_size, size_
 // changes only with Eip at its first byte or outside its jump's 5 bytes (any write waits while Eip is inside one). The rows end on. `entry_row`: the sites
 // are the particle writer's entry prefetch's, which its own row (Update's seventh argument) switches, not Faster Game CPU Code; `sweep_row`: the pending list
 // sweep's (the eighth argument).
-int ParkedAtSites(uint32_t mask, int last_offset, bool entry_row = false, bool sweep_row = false) {
+int ParkedAtSites(twattila::engine_code::internal::SiteMask mask, int last_offset, bool entry_row = false, bool sweep_row = false) {
   namespace ec = twattila::engine_code::internal;
   ParkedThread parked;
   HANDLE thread = parked.Open();
@@ -529,7 +529,7 @@ int ParkedAtSites(uint32_t mask, int last_offset, bool entry_row = false, bool s
       CONTEXT moved = saved;
       moved.Eip = Address(site + offset);
       CHECK(SetThreadContext(thread, &moved) != FALSE);
-      const uint32_t before = ec::written;
+      const ec::SiteMask before = ec::written;
       twattila::engine_code::Update(entry_row || sweep_row || !on, twattila::engine_code::Game::ATTILA, false, false, true, true, entry_row ? !on : sweep_row, sweep_row && !on);
       const bool changed = (((ec::written ^ before) >> index) & 1) != 0;
       wrong += (changed != !(offset > 0 && offset < 5)) ? 1 : 0;
