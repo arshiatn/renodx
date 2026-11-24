@@ -1,7 +1,7 @@
 # Directional Light Bounce's V1 (tests.cpp: shg_ design 8, items 1-6). WARP, amd64.
 # -Before: a folder of copies of the add-ons' embed folders before the change (<Before>\<game>\*.cso, the x86 ones from
 # build32). Reads build\ and build32\ of this repository. Holds tools/tw's GPU job lock while it runs when -Lock names it.
-# -Items: which items (e.g. 24; all: 123456).
+# -Items: which items (e.g. 24; all: 123456; t alone: the passes' time on the hardware GPU, under the GPU job lock).
 param([string]$Before, [string]$Lock = '', [string]$Items = '123456')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path

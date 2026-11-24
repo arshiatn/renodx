@@ -19,6 +19,7 @@
 //   6 bumpy normals (Full scalar vs Quarter scalar and Quarter + SH, printed); guards: rgb0 0, huge g, back-facing pixel
 //     normals, grazing light (the gain cap), a thin pole in front of the lit wall (the trace exact at n0); the _ms
 //     prepare and apply on a 4x G-buffer.
+//   t (alone, not V1): on the hardware GPU each pass' time at 3840 x 2160, the build before's and the row off / on.
 // tests.exe <repository> <before root> [items] (the before root: each add-on's shaders that include Light Bounce files
 // built before, <root>\<game>\*.cso; items: which to run, e.g. 24, all by default)
 #include <windows.h>
@@ -1657,16 +1658,78 @@ void Bumpy(const Passes& on) {
   }
 }
 
+// Item t (not V1; the hardware GPU, coord's GPU window): each pass' GPU time, the median of 30 after 5, at 3840 x 2160
+// in the bumpy room with the pole, Half and Quarter, denoiser on: the build before's passes, these with the row off and
+// on.
+template <typename Work>
+double GpuMilliseconds(Work work) {
+  ComPtr<ID3D11Query> disjoint;
+  ComPtr<ID3D11Query> start;
+  ComPtr<ID3D11Query> end;
+  const D3D11_QUERY_DESC disjoint_desc = {D3D11_QUERY_TIMESTAMP_DISJOINT, 0};
+  const D3D11_QUERY_DESC stamp_desc = {D3D11_QUERY_TIMESTAMP, 0};
+  if (FAILED(device->CreateQuery(&disjoint_desc, &disjoint)) || FAILED(device->CreateQuery(&stamp_desc, &start))
+      || FAILED(device->CreateQuery(&stamp_desc, &end))) {
+    return -1;
+  }
+  std::vector<double> times;
+  for (int run = 0; run < 35; ++run) {
+    context->Begin(disjoint.Get());
+    context->End(start.Get());
+    work();
+    context->End(end.Get());
+    context->End(disjoint.Get());
+    D3D11_QUERY_DATA_TIMESTAMP_DISJOINT frequency = {};
+    UINT64 begin_time = 0;
+    UINT64 end_time = 0;
+    while (context->GetData(disjoint.Get(), &frequency, sizeof(frequency), 0) != S_OK) {
+    }
+    while (context->GetData(start.Get(), &begin_time, sizeof(begin_time), 0) != S_OK) {
+    }
+    while (context->GetData(end.Get(), &end_time, sizeof(end_time), 0) != S_OK) {
+    }
+    if (run >= 5 && !frequency.Disjoint) times.push_back(static_cast<double>(end_time - begin_time) * 1000.0 / static_cast<double>(frequency.Frequency));
+  }
+  std::ranges::sort(times);
+  return times.empty() ? -1 : times[times.size() / 2];
+}
+
+void Timing(const Passes& before, const Passes& on) {
+  std::printf("\n== t. GPU time (ms) at 3840 x 2160, the hardware GPU, denoiser on (median of 30)\n");
+  const Scene scene = Room(3840, 2160, 0.35, true);
+  for (UINT scale : {2u, 4u}) {
+    for (int row = 0; row < 3; ++row) {
+      const Passes& passes = (row == 0) ? before : on;
+      Chain chain = MakeChain(scene, scale);
+      chain.lb.directional = (row == 2) ? 1.f : 0.f;
+      chain.sh = (row == 2);
+      for (int frame = 0; frame < 8; ++frame) RunFrame(&chain, passes, true);
+      const double prepare = GpuMilliseconds([&] { PrepareStep(chain, passes, false); });
+      const double trace = GpuMilliseconds([&] { TraceStep(&chain, passes); });
+      const double denoise = GpuMilliseconds([&] { DenoiseStep(chain, passes); });
+      const double apply = GpuMilliseconds([&] { ApplyStep(chain, passes, true); });
+      std::printf("   %s, %-20s prepare + levels %.3f  trace + resolve %.3f  denoiser %.3f  apply %.3f  sum %.3f\n",
+                  (scale == 2) ? "Half   " : "Quarter", (row == 0) ? "the build before" : ((row == 1) ? "row off" : "row on"), prepare,
+                  trace, denoise, apply, prepare + trace + denoise + apply);
+    }
+  }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   if (argc < 3) {
-    std::printf("usage: tests.exe <repository> <before root> [items, e.g. 24; all: 123456]\n");
+    std::printf("usage: tests.exe <repository> <before root> [items, e.g. 24; all: 123456; t alone: the GPU time]\n");
     return 2;
   }
   repository = argv[1];
   before_root = argv[2];
-  if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context))) return 3;
+  const std::string items = (argc > 3) ? argv[3] : "123456";
+  const bool timing = (items == "t");
+  if (FAILED(D3D11CreateDevice(nullptr, timing ? D3D_DRIVER_TYPE_HARDWARE : D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION,
+                               &device, nullptr, &context))) {
+    return 3;
+  }
   const auto vertex = CompileFile(Attila("light_bounce_vs.vs_5_0.hlsl"), {}, "vs_5_0");
   if (vertex.empty() || FAILED(device->CreateVertexShader(vertex.data(), vertex.size(), nullptr, &full_screen))) return 3;
   const std::string attila_folder = repository + "\\src\\games\\twattila";
@@ -1695,7 +1758,7 @@ int main(int argc, char** argv) {
   const Passes before = MakePasses(before_code);
   const Passes on = MakePasses(on_code);
 
-  const std::string items = (argc > 3) ? argv[3] : "123456";
+  if (timing) Timing(before, on);
   if (items.find('1') != std::string::npos) RowOff(before, on, on_code);
   if (items.find('2') != std::string::npos) FlatRoom(on);
   if (items.find('3') != std::string::npos) UniformSky(on);
