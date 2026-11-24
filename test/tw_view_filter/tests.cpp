@@ -531,6 +531,24 @@ static int RunPart(const char* part) {
     return 0;
   }
 
+  if (name == "goldens") {
+    // The shared bits' index fixed by value (ViewFilterData's frozen layout): a hash change fails here, not across
+    // modules in a game. Values computed outside the C++ (Python, 2026-11-24).
+    constexpr std::array<std::array<uint64_t, 3>, 4> GOLDENS = {{
+        {0x12345670u, 15380u, 961u},
+        {0x7FF6ABCDEF00u, 15576u, 973u},
+        {0x1A2B3C4D5E0u, 15796u, 987u},
+        {0xFFFFFFFFFFFFFFF0u, 15360u, 960u},
+    }};
+    static_assert(resource::VIEW_FILTER_INDEX_BITS == 14u);
+    for (const auto& [handle, index14, index10] : GOLDENS) {
+      CHECK(renodx::utils::cross_addon::internal::HandleIndex(handle, 14u) == index14);
+      CHECK(renodx::utils::cross_addon::internal::HandleIndex(handle, 10u) == index10);
+      CHECK(resource::ViewFilterIndex(handle) == index14);
+    }
+    return 0;
+  }
+
   if (name == "full") {
     resource::view_filter.RegisterModule();
     {
@@ -598,7 +616,7 @@ int main(int argc, char** argv) {
     const char* memo;
     const char* check;
   };
-  constexpr std::array<Part, 17> PARTS = {{
+  constexpr std::array<Part, 18> PARTS = {{
       {"random", nullptr, nullptr},
       {"check", nullptr, "1"},
       {"threads_check", nullptr, "1"},
@@ -614,6 +632,7 @@ int main(int argc, char** argv) {
       {"memo0", "0", nullptr},
       {"memo1", "1", nullptr},
       {"interest", nullptr, nullptr},
+      {"goldens", nullptr, nullptr},
       {"full", nullptr, nullptr},
       {"cost", nullptr, nullptr},
   }};

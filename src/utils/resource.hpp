@@ -402,7 +402,8 @@ static cross_addon::Shared<SharedData> shared;
 // without taking the lock. Every write goes through UpdateResourceViewInfo / UpsertResourceViewInfo (static_checks.py
 // "views"); the pointer forms turn the filter off for the process (a write through the pointer can come at any time), and
 // so does an attached module without the protocol (an add-on built before it): CheckViewFilterWriters.
-// Own uuid, frozen: any change to these fields or to the protocol takes a new uuid; modules of the two protocols then miss
+// Own uuid, frozen: any change to these fields, to the protocol or to cross_addon::internal::HandleIndex (the bits'
+// index; goldens in test/tw_view_filter) takes a new uuid; modules of the two protocols then miss
 // each other's tokens and the filter stays off. Native-width words: one plain load on x86 and x64.
 constexpr size_t VIEW_FILTER_MAX_MODULES = 8u;
 constexpr uint32_t VIEW_FILTER_INDEX_BITS = 14u;  // 16,384 bits: 2 KB
