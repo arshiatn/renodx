@@ -755,6 +755,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - static_checks comptr: 5 findings in twattila/water_reflections.hpp :117 :187 :18 ... | ?
 - g24_ boxes: pair: claims need constant-logging traces; Expeditions tracer 'view ... | ?
 - g24_: add dump_shader_ruse_pack / dump_shader_divinity1_pack / dump_shader_divin ... | ?
+- bench WPR tasks must not take focus (fa3_ (d)) + false 'FAIL (6 fails)' switch l ... | ?
+- trap open questions (harness / game only): does alt-tab trigger it in normal pla ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13985,6 +13987,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         pack folders join when published.
         - [ ] g24_: add dump_shader_ruse_pack / dump_shader_divinity1_pack / dump_shader_divinity2_pack to the census after
         shd_'s hand-back (coord sends counts).
+        fa3_ FCA D3D11 + DRIVER DONE (render_mt/fca/analysis/fa3_d3d11_driver.md + fa3_handback.md; 10 items, 9 ruled out):
+        the big W3 driver waits (F03 14.3 / F02 30.7 / WAW3 30.2 / U10 20.4 ms/f) are a 'no-rename trap': the bench's WPR
+        start / stop tasks take focus -> SetFullscreenState(FALSE) + ~2 s no draws -> NVIDIA stops renaming DISCARD buffers;
+        clean ALL = W3 0.7-1.5, D1 0.17 ms/f (passes the 3.0 line). FCU + FDW avoided it in F05. Items for the ranked list:
+        FCU on by default; FDW = numbers for ATN (+0.4..1.4 W3 / +0.3..0.5 D1) after 3 fixes (drop IASetVertexBuffers
+        detour, full-ring fallback, ring shrink); object_motion RecordUnits one upload / frame via the NO_OVERWRITE ring;
+        main off CPUs 0-3 (GPU interrupts; W3 -0.5..-0.8) agreeing with fci_; 464 KB VB class own backings.
+        - [ ] bench WPR tasks must not take focus (fa3_ (d)) + false 'FAIL (6 fails)' switch lines for ALL+OLD6 - before the
+        verify bench.
+        - [ ] trap open questions (harness / game only): does alt-tab trigger it in normal play; do FCU + FDW prevent it
+        reliably; one-frame Map trace for victims; offline D3D11 harness trigger test (DISCARD set, 2 s pause, resume).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
