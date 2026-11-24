@@ -57,10 +57,12 @@ constexpr size_t FIRST_PIECES = 8;
 constexpr size_t MAX_PIECES = 32;
 constexpr UINT MAX_BUFFER_BYTES = 65536;
 constexpr UINT WHOLE = D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT;  // a whole bind's window as Get1 gives it: 0 + 4096
-// Test seams: the most pieces (MAX_PIECES), a piece's event as GetData(DONOTFLUSH) answers it, and the row's Off
-// latched (false: Off takes the ring out at once, as the removal tests and the map replay need).
+// Test seams: the most pieces (MAX_PIECES), a piece's event as GetData answers it (`flush`: flags 0, else DONOTFLUSH),
+// the closed pieces a new current one retires ahead of it (0: half the ring; 1: the next one alone, the old rule) and
+// the row's Off latched (false: Off takes the ring out at once, as the removal tests and the map replay need).
 static size_t piece_cap = MAX_PIECES;
-static HRESULT (*piece_done)(ID3D11DeviceContext* context, ID3D11Query* query) = nullptr;
+static HRESULT (*piece_done)(ID3D11DeviceContext* context, ID3D11Query* query, bool flush) = nullptr;
+static size_t retire_ahead = 0;
 static bool latch_off = true;
 
 struct alignas(UNIT_BYTES) Unit {
@@ -517,10 +519,11 @@ inline bool RingMap(ID3D11Resource* resource, UINT subresource, D3D11_MAP map_ty
 }
 
 // Unmap of a ring map: the copy into the current piece (the next one when this has no room: the one after the current
-// once the GPU passed it, else a new one between them, the ring growing while the oldest is busy, up to piece_cap),
-// every active slot holding the buffer rebound. A new piece first takes the oldest closed piece's buffers while it
-// keeps this one's units free, so that piece's event ends a lap before its reuse. The ring full or the device lost:
-// today's DISCARD of the buffer itself.
+// once the GPU passed it, asked once more with a flush, else a new one between them, the ring growing while that one is
+// busy, up to piece_cap), every active slot holding the buffer rebound. A new current piece first takes the buffers of
+// the closed pieces in the half ring ahead of it while it keeps this one's units free: a closed piece ends its event
+// only when no buffer's newest bytes are left in it, so a buffer written rarely would else keep it to one piece before
+// its reuse (the ring grown each lap). The ring full or the device lost: today's DISCARD of the buffer itself.
 inline bool RingUnmap(ID3D11Resource* resource, UINT subresource) {
   const bool stopped = Stopped();
   Buffer* record = Find(resource);
@@ -571,12 +574,16 @@ inline bool RingUnmap(ID3D11Resource* resource, UINT subresource) {
     }
     size_t next = (pool.current + 1) % pool.pieces.size();
     Piece& candidate = *pool.pieces[next];
+    // The candidate's event as GetData answers it (`flush`: flags 0, the context's queued commands submitted first).
+    const auto event_state = [&candidate](bool flush) {
+      if (piece_done != nullptr) return piece_done(pool.context, candidate.done.Get(), flush);
+      return pool.context->GetData(candidate.done.Get(), nullptr, 0, (flush ? 0 : D3D11_ASYNC_GETDATA_DONOTFLUSH));
+    };
     if (candidate.phase == Phase::ENDED) {
-      HRESULT done = S_FALSE;
-      if (piece_done != nullptr) {
-        done = piece_done(pool.context, candidate.done.Get());
-      } else {
-        done = pool.context->GetData(candidate.done.Get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH);
+      HRESULT done = event_state(false);
+      // Not passed yet: asked once more with a flush before the ring grows (its End may still wait in the queue).
+      if (done == S_FALSE) {
+        done = event_state(true);
       }
       if (done == S_OK) {
         candidate.phase = Phase::FREE;
@@ -595,14 +602,23 @@ inline bool RingUnmap(ID3D11Resource* resource, UINT subresource) {
       pool.current = next;
       pool.next_unit = 0;
       pool.pieces[next]->phase = Phase::CURRENT;
-      Piece& oldest = *pool.pieces[(next + 1) % pool.pieces.size()];
-      if (oldest.phase == Phase::CLOSED) {
+      // Retire ahead: the closed pieces of the next half ring give their buffers to this one (room kept for `record`), so
+      // each one's event ends half a ring before its reuse. What finds no room here is moved at the next switch.
+      const size_t size = pool.pieces.size();
+      const size_t reach = (retire_ahead != 0 ? retire_ahead : size / 2);
+      bool retiring = true;
+      for (size_t ahead = 1; retiring && ahead <= reach; ++ahead) {
+        Piece& closed = *pool.pieces[(next + ahead) % size];
+        if (closed.phase != Phase::CLOSED) continue;
         // From the back: Detach moves the last one into the slot it frees.
-        for (size_t index = oldest.live.size(); index-- > 0 && index < oldest.live.size();) {
-          Buffer* moved = oldest.live[index];
-          // An open map's bytes go at its Unmap; a destroyed buffer's stay until the reclaim.
-          if (moved->mapped || moved->destroyed.load()) continue;
-          if (pool.next_unit + moved->units + record->units > PIECE_UNITS || !upload(moved)) break;
+        for (size_t index = closed.live.size(); index-- > 0 && index < closed.live.size();) {
+          Buffer* moved = closed.live[index];
+          // An open map's bytes go at its Unmap, a destroyed buffer's stay until the reclaim, and `record` is written next.
+          if (moved->mapped || moved->destroyed.load() || moved == record) continue;
+          if (pool.next_unit + moved->units + record->units > PIECE_UNITS || !upload(moved)) {
+            retiring = false;
+            break;
+          }
         }
       }
     } else {

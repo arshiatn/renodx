@@ -36,6 +36,10 @@
 //    through the ring: its map ends (the ring out at the row's off).
 // 7. buffer_pool::Uninstall off the render thread: the hooks kept to the process's end, the ring unwound at the render
 //    thread's next call (its buffer written back and bound again).
+// 8. The reclaim rule: 300 frames of 64 B DISCARDs with a straggler (written every 30 frames), the pieces' events passing
+//    3 presents after their End: at most 12 pieces, every frame's compute output equal to the native run; CONTROL with
+//    the old retire distance (the next piece alone): the ring grows to its cap. Events passing only with a flush: no
+//    growth, equal. The record itself a straggler in a retired piece: written once.
 #include <windows.h>
 #include <d3d11_1.h>
 #include <d3dcompiler.h>
@@ -342,16 +346,19 @@ static Output Run(bool ring, Control control, uint32_t frames, uint32_t draws) {
         break;
       case Control::EARLY_REUSE:
         bp::internal::piece_cap = 2;
-        bp::internal::piece_done = [](ID3D11DeviceContext*, ID3D11Query*) { return S_OK; };
+        bp::internal::piece_done = [](ID3D11DeviceContext*, ID3D11Query*, bool) { return S_OK; };
         break;
       case Control::FULL:
         bp::internal::piece_cap = bp::internal::FIRST_PIECES;
-        bp::internal::piece_done = [](ID3D11DeviceContext*, ID3D11Query*) { return S_FALSE; };
+        bp::internal::piece_done = [](ID3D11DeviceContext*, ID3D11Query*, bool) { return S_FALSE; };
         break;
       case Control::WRAP:
+        // The old retire distance (the next piece alone): b goes into the last piece, which keeps room beside it when the
+        // ring is full.
         bp::internal::piece_cap = bp::internal::FIRST_PIECES;
-        bp::internal::piece_done = [](ID3D11DeviceContext* context, ID3D11Query* query) {
-          return (wrap_polls ? context->GetData(query, nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) : S_FALSE);
+        bp::internal::retire_ahead = 1;
+        bp::internal::piece_done = [](ID3D11DeviceContext* context, ID3D11Query* query, bool flush) {
+          return (wrap_polls ? context->GetData(query, nullptr, 0, (flush ? 0 : D3D11_ASYNC_GETDATA_DONOTFLUSH)) : S_FALSE);
         };
         break;
       default: break;
@@ -475,10 +482,10 @@ static Output Run(bool ring, Control control, uint32_t frames, uint32_t draws) {
     }
     if (frame == 1) {
       // The ring fresh (in at frame 0's present; FIRST_PIECES pieces of 4 uploads of d). b at piece 0's units 0 and 1,
-      // each drawn; RING_UPLOADS - 1 uploads of d (3 in piece 0): the last piece's first takes b, the last upload finds
-      // piece 0 ended (WRAP: busy, the full ring with room left in the current piece; EARLY_REUSE: free, overwritten
-      // while the two draws wait in WARP: no flush). b again, drawn; the GPU done (WRAP: polled for real now);
-      // RING_UPLOADS uploads of d wrap over every piece, b drawn again.
+      // each drawn; RING_UPLOADS - 1 uploads of d (3 in piece 0): b retired into the piece half a ring on (WRAP: the
+      // last piece's first), the last upload finds piece 0 ended (WRAP: busy, the full ring with room left in the
+      // current piece; EARLY_REUSE: free, overwritten while the two draws wait in WARP: no flush). b again, drawn; the
+      // GPU done (WRAP: polled for real now); RING_UPLOADS uploads of d wrap over every piece, b drawn again.
       const auto script_draw = [&] {
         ++index;
         script.push_back(index);
@@ -500,6 +507,7 @@ static Output Run(bool ring, Control control, uint32_t frames, uint32_t draws) {
       if (ring && control == Control::WRAP) {
         bp::internal::piece_cap = bp::internal::MAX_PIECES;
         bp::internal::piece_done = nullptr;
+        bp::internal::retire_ahead = 0;
       }
     }
     write(b.Get(), D3D11_MAP_WRITE_DISCARD, 0, 256, 1000 + frame, -1);
@@ -665,6 +673,7 @@ static Output Run(bool ring, Control control, uint32_t frames, uint32_t draws) {
   bp::internal::ring_paths = ring_paths;
   bp::internal::piece_cap = bp::internal::MAX_PIECES;
   bp::internal::piece_done = nullptr;
+  bp::internal::retire_ahead = 0;
   bp::ForgetDevice(made.device.Get());
   return out;
 }
@@ -673,6 +682,111 @@ static size_t Differences(const std::vector<uint32_t>& left, const std::vector<u
   size_t count = (left.size() > right.size() ? left.size() - right.size() : right.size() - left.size());
   for (size_t index = 0; index < std::min(left.size(), right.size()); ++index) count += (left[index] != right[index] ? 1 : 0);
   return count;
+}
+
+// 8's pieces' events as the GPU would answer them a few frames behind: each piece seen ended at a present (the GPU idle
+// there: a seam's pass is the GPU's) with that present's number; a pass forgets it.
+using Ended = std::pair<ID3D11Query*, uint32_t>;
+static std::vector<Ended> ended_at;
+static uint32_t presents = 0;
+static size_t flushed_passes = 0;
+
+static void NoteEnded() {
+  for (const auto& piece : bp::internal::pool.pieces) {
+    const auto found = std::ranges::find(ended_at, piece->done.Get(), &Ended::first);
+    if (piece->phase != bp::internal::Phase::ENDED) {
+      if (found != ended_at.end()) ended_at.erase(found);
+    } else if (found == ended_at.end()) {
+      ended_at.emplace_back(piece->done.Get(), presents);
+    }
+  }
+  ++presents;
+}
+
+// (a): an event passes 3 presents after the one it was first seen ended at.
+static HRESULT PassedAfterThreePresents(ID3D11DeviceContext*, ID3D11Query* query, bool) {
+  const auto found = std::ranges::find(ended_at, query, &Ended::first);
+  if (found == ended_at.end() || presents - found->second < 3) return S_FALSE;
+  ended_at.erase(found);
+  return S_OK;
+}
+
+// (b): an event passes only when asked with a flush.
+static HRESULT PassedWithFlush(ID3D11DeviceContext*, ID3D11Query*, bool flush) {
+  if (!flush) return S_FALSE;
+  ++flushed_passes;
+  return S_OK;
+}
+
+constexpr uint32_t STREAM_UPLOADS = 1536;  // a frame's 64 B writes: 1.5 pieces
+constexpr uint32_t STREAM_BUFFERS = 16;
+
+struct Stream {
+  std::vector<uint32_t> computed;  // each frame's output, read back at its present
+  size_t pieces = 0;               // the ring's at the end
+  std::string failed;
+};
+
+// 8's frames: STREAM_UPLOADS DISCARDs a frame of 64 B game buffers in turn (every 32nd read by a dispatch at b0, which
+// writes its own output slot), a straggler written every 30 frames (read by every dispatch at b1 and b2); each frame's
+// output read back (the GPU idle at the present), the ring's present after it (the ring in at frame 0's).
+static Stream RunStream(bool ring, uint32_t frames) {
+  Stream out;
+  Device made = MakeDevice();
+  auto* context = made.context.Get();
+  loss::devices = {{.device = made.device.Get(), .single_threaded = true}};
+  ended_at.clear();
+  presents = 0;
+  ComPtr<ID3D11ComputeShader> cs;
+  made.device->CreateComputeShader(cs_blob->GetBufferPointer(), cs_blob->GetBufferSize(), nullptr, cs.GetAddressOf());
+  const D3D11_BUFFER_DESC output_desc = {.ByteWidth = 1024 * 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_UNORDERED_ACCESS,
+                                         .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, .StructureByteStride = 16};
+  ComPtr<ID3D11Buffer> output;
+  ComPtr<ID3D11UnorderedAccessView> output_view;
+  made.device->CreateBuffer(&output_desc, nullptr, output.GetAddressOf());
+  const D3D11_UNORDERED_ACCESS_VIEW_DESC output_view_desc = {.Format = DXGI_FORMAT_UNKNOWN, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER,
+                                                             .Buffer = {.FirstElement = 0, .NumElements = 1024}};
+  made.device->CreateUnorderedAccessView(output.Get(), &output_view_desc, output_view.GetAddressOf());
+  const UINT zeros[4] = {};
+  context->ClearUnorderedAccessViewUint(output_view.Get(), zeros);
+  std::array<ComPtr<ID3D11Buffer>, STREAM_BUFFERS> per_draw;
+  for (uint32_t index = 0; index < STREAM_BUFFERS; ++index) per_draw[index] = GameBuffer(made.device.Get(), 64, 100 + index);
+  const auto straggler = GameBuffer(made.device.Get(), 64, 200);
+  const auto write = [context](ID3D11Buffer* buffer, uint32_t seed, int index_word) {
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (FAILED(context->Map(buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
+    auto* words = static_cast<uint32_t*>(mapped.pData);
+    for (UINT index = 0; index < 16; ++index) words[index] = Word(seed, index);
+    if (index_word >= 0) words[3] = static_cast<uint32_t>(index_word) & 1023;
+    context->Unmap(buffer, 0);
+  };
+  context->CSSetShader(cs.Get(), nullptr, 0);
+  context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
+  const std::array<ID3D11Buffer*, 2> straggler_slots = {straggler.Get(), straggler.Get()};
+  context->CSSetConstantBuffers(1, 2, straggler_slots.data());
+  uint32_t dispatches = 0;
+  for (uint32_t frame = 0; frame < frames; ++frame) {
+    if (frame % 30 == 1) write(straggler.Get(), 50000 + frame, -1);
+    for (uint32_t upload = 0; upload < STREAM_UPLOADS; ++upload) {
+      ID3D11Buffer* buffer = per_draw[upload % STREAM_BUFFERS].Get();
+      const bool dispatched = upload % 32 == 31;
+      write(buffer, (frame * STREAM_UPLOADS) + upload, (dispatched ? static_cast<int>(dispatches & 1023) : -1));
+      if (dispatched) {
+        context->CSSetConstantBuffers(0, 1, &buffer);
+        context->Dispatch(1, 1, 1);
+        ++dispatches;
+      }
+    }
+    const auto words = Read(made.device.Get(), context, output.Get(), 1024 * 16);
+    out.computed.insert(out.computed.end(), words.begin(), words.end());
+    bp::Update(context, ring, false);
+    if (ring && frame == 0 && !bp::internal::pool.installed) out.failed = "not installed at frame 0's present";
+    if (ring) NoteEnded();
+  }
+  out.pieces = bp::internal::pool.pieces.size();
+  if (ring) bp::Update(context, false, false);
+  bp::ForgetDevice(made.device.Get());
+  return out;
 }
 
 int main() {
@@ -1169,7 +1283,7 @@ int main() {
     auto wide = GameBuffer(made.device.Get(), 65536, 63);
     auto narrow = GameBuffer(made.device.Get(), 256, 64);
     const auto narrow_bytes = Read(made.device.Get(), context, narrow.Get(), 256);
-    bp::internal::piece_done = [](ID3D11DeviceContext*, ID3D11Query*) { return DXGI_ERROR_DEVICE_REMOVED; };
+    bp::internal::piece_done = [](ID3D11DeviceContext*, ID3D11Query*, bool) { return DXGI_ERROR_DEVICE_REMOVED; };
     bp::Update(context, true, false);
     CHECK(bp::internal::pool.installed && fill(narrow.Get(), 0x55, 256));
     CHECK(bp::Reserved().starts_with(std::format("; Fewer Driver Waits in: {} pieces ({} KB), copies ", bp::internal::FIRST_PIECES,
@@ -1292,6 +1406,63 @@ int main() {
     bp::ForgetDevice(made.device.Get());
     std::printf("7. Uninstall off the render thread: hooks kept (to the process's end), the ring unwound at the render thread's next call (the"
                 " buffer written back and bound again, its reference let go)\n");
+  }
+
+  // 8. The reclaim rule: (a) the stream with a straggler, the GPU 3 presents behind: the ring stays small, the outputs as
+  // without it; CONTROL: the old retire distance (the next piece alone) grows the ring to its cap. (b) An event that
+  // passes only when asked with a flush: no growth. (g) The record itself a straggler half a ring ahead: written once.
+  {
+    log_lines.clear();
+    constexpr uint32_t FRAMES = 300;
+    constexpr uint32_t FLUSH_FRAMES = 100;
+    const Stream off = RunStream(false, FRAMES);
+    CHECK(off.failed.empty() && std::ranges::count_if(off.computed, [](uint32_t word) { return word != 0; }) > 1000);
+    bp::internal::piece_done = PassedAfterThreePresents;
+    const Stream on = RunStream(true, FRAMES);
+    bp::internal::retire_ahead = 1;
+    const Stream control = RunStream(true, FRAMES);
+    bp::internal::retire_ahead = 0;
+    bp::internal::piece_done = PassedWithFlush;
+    const Stream flushed = RunStream(true, FLUSH_FRAMES);
+    bp::internal::piece_done = nullptr;
+    const std::vector<uint32_t> off_start(off.computed.begin(), off.computed.begin() + (size_t{FLUSH_FRAMES} * 1024 * 4));
+    std::printf("  stream, 3 presents behind: %zu pieces, %zu words differ; CONTROL retire distance 1: %zu pieces; flush only: %zu pieces"
+                " (%zu passes), %zu words differ\n",
+                on.pieces, Differences(off.computed, on.computed), control.pieces, flushed.pieces, flushed_passes,
+                Differences(off_start, flushed.computed));
+    CHECK(on.failed.empty() && control.failed.empty() && flushed.failed.empty());
+    CHECK(on.pieces <= 12 && Differences(off.computed, on.computed) == 0);
+    CHECK(control.pieces == bp::internal::MAX_PIECES);
+    CHECK(flushed.pieces == bp::internal::FIRST_PIECES && flushed_passes > 0 && Differences(off_start, flushed.computed) == 0);
+    // (g): x at piece 0's unit 0, 64 KB uploads fill pieces 0-3 to the last unit, then x again: the switch to piece 4
+    // retires piece 0 (half a ring on) but leaves x to its own upload (one unit), piece 0 ended.
+    Device made = MakeDevice();
+    loss::devices = {{.device = made.device.Get(), .single_threaded = true}};
+    const auto x = GameBuffer(made.device.Get(), 64, 70);
+    const auto wide = GameBuffer(made.device.Get(), 65536, 71);
+    bp::Update(made.context.Get(), true, false);
+    CHECK(bp::internal::pool.installed);
+    const auto fill = [&made](ID3D11Buffer* buffer, int value, UINT bytes) {
+      D3D11_MAPPED_SUBRESOURCE mapped = {};
+      if (FAILED(made.context->Map(buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return false;
+      std::memset(mapped.pData, value, bytes);
+      made.context->Unmap(buffer, 0);
+      return true;
+    };
+    CHECK(fill(x.Get(), 0x41, 64));
+    for (int upload = 0; upload < 15; ++upload) CHECK(fill(wide.Get(), upload, 65536));
+    const auto& pool = bp::internal::pool;
+    CHECK(pool.current == 3 && pool.next_unit == bp::internal::PIECE_UNITS && bp::internal::Find(x.Get())->piece == pool.pieces[0].get());
+    CHECK(fill(x.Get(), 0x42, 64));
+    const bp::internal::Buffer* moved = bp::internal::Find(x.Get());
+    CHECK(pool.current == 4 && pool.next_unit == 1 && moved->piece == pool.pieces[4].get() && moved->first == 0
+          && pool.pieces[0]->phase == bp::internal::Phase::ENDED);
+    CHECK(Read(made.device.Get(), made.context.Get(), x.Get(), 64) == std::vector<uint32_t>(16, 0x42424242u));
+    bp::Update(made.context.Get(), false, false);
+    bp::ForgetDevice(made.device.Get());
+    std::printf("8. reclaim: the stream's ring at %zu pieces with the straggler retired half a ring ahead (CONTROL, the old rule: %zu), equal to"
+                " the native outputs; an event passing only with the flush: no growth; the record as the straggler written once\n",
+                on.pieces, control.pieces);
   }
   std::printf("PASS\n");
   return 0;
