@@ -14326,6 +14326,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN (pk1_): A FDW always on (advice) vs per-battle latch; B FDW NVIDIA only + FCU everywhere; C rows hidden;
         D T2 / U2 grass may reach other TW add-ons at their next build; E RT on in the target (one RT-on trace for T3b);
         plus a run rule for RENODX_TW_DRIVER_RINGS.
+        shg_ DESIGN REV 1.1 DONE (plan_1117/shg_sh_gi_upsample_design.md sec 10.2 = answers; S0 report sec 12;
+        shg_rev11_handback.md): curve b = (-1.052823, 0.518202, 0.805396) with a hard zero at sqrt(3)/2 (uniform sky exact;
+        held-out seed 2411 .033 / .054 / .063); w rewrite last + half-transport beta in the denoise (default 0.5, -0.8%);
+        chain check = S1a V1 item 4 (|shift| <= 1%), B2 / B4 conditional on it; After Blur post-draw + ratio cap + r/2
+        UNORM blend; AO histories RGBA16F + R16F (+30 B / texel); Toru lines only in svgf/*.hlsli with full headers.
+        S1a files (sec 9.1): new bitmask_sh.hlsli, test/tw_bounce_sh; edits light_bounce_{prepare,trace,history,resolve,
+        denoise,apply}.hlsli, light_bounce.h / .hpp, lighting_settings.hpp, shared.h, graphics_page.hpp (unmerged ho_g23
+        also edits graphics_page.hpp -> merge note). No running writer overlaps. S1a-S2 ~58-85 h.
+        -> rvs_ light re-check (plan_1117/rvs_shg_recheck_r11.md) -> S1a implementer (Opus xHigh, worktree).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
