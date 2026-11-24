@@ -14155,6 +14155,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         contains malicious content and has been blocked by your antivirus software' (ScriptContainedMaliciousContent, at
         parse, line 1); nothing ran; both files still in place (not quarantined). Per ATN's rule: stopped, no rename / move /
         rewrite to dodge; reported to ATN; only ATN adds an exception. Gates wait for ATN.
+        sbr_ SSS LOW-RES DESIGN Rev 0 (plan_1117/sbr_sss_lowres_design.md + sbr_sss_lowres_handback.md; CPU model
+        testbin/scratch/sbr_): Bend's cost = per-pixel shared-memory loop + 16 KB / group occupancy cap, not resolution ->
+        E1 shared memory sized to the Length (480 / 1920 versions) + E2 exact min/max skip of 16-sample blocks (bit-
+        identical) ~-0.40..-0.55 ms @ 240 / -0.9..-1.2 ms @ 480 (5090 4K), always on (no row); E4 / E6 pixel skips; 3/4
+        small loss, 1/2 visible, 1/4 rejected -> only as an Experimental row if ATN asks after numbers; per-frame schemes
+        rejected (no temporal dither). Proof: WARP bit-identical cases 1-10 + all variants, then --time / Nsight. ->
+        rvn_ (Opus xHigh) review started (plan_1117/rvn_sbr_review.md).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
