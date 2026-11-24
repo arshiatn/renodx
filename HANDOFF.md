@@ -13552,6 +13552,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         bench stays unchanged for the rest of the final (same tools for every session); wer_scan.py runs offline after each
         session; r6 is applied + run_all + ebr_ glance after the last session (noheapfix), then C-9 with -CapRoot
         E:\bench_etl_c9 (E: 112 GB free; D: only 58 GB) and the final eval.
+        WPR_ANALYSIS SESSION DONE 09:39-09:56: 3 / 3 PASS, gate PASS, wer_scan: no crash. ETLs: W3 ALL 420-460 s
+        runs/ebo1_Uwpranalysis-02-W3-ALL-wpr_wpr_cpu_094306, D1 ALL 100-140 s runs/ebo1_Uwpranalysis-03-D1-ALL-wpr_wpr_cpu_095233
+        (FP twin). LOWCORE: overrides -> lowcore, fu_lowcore (W3: ALL warm-up 16 thr; OFF / ALL at 4 CPUs (affinity 0xF,
+        number_of_threads 4); OFF / ALL at 8 CPUs), DRY RUN CLEAN -> SESSION STARTED ~09:58 (~35 min). row_by_row DEFERRED
+        (Q9 (a) holds; the full CPU analysis decides). FULL CPU ANALYSIS step 1: fcx_ (Opus High, a23cb7cfa64541b2d) designs
+        the shared ETL tables (T1-T8 + OFF vs ALL) + fca_query.py lock, scripts only until coord frees the machine; dumps on
+        E:\renodx_fca_dumps; tables round_notes/render_mt/fca/tables. Then 8 Opus xHigh area analysts -> critic -> ranked list.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
