@@ -803,13 +803,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - mem_ / address space: PK5 A2 adds +0.25 MB. | ?
 - PK5 S0 microbench (pk5_ q2): coord runs it in a quiet CPU window (no ATN questio ... | ?
 - FRIDAY 11-27: PK5 implementer (Fable Medium) S0+ incl. S7, after PK4's steps and ... | ?
-- rv3_ review of Rev 3 (sent; '## Review of Rev 3'); fixes wait for Friday. | ?
+- FRIDAY 11-27: pk3_ writes in R3-M1 / R3-M2 + SHOULDs / NITs (rv3_ light check) - ... | ?
 - t4i_ after rv3_ GO: render_mt\ebo\gates.json + a LATCH gate 'an item changed bet ... | ?
 - Friday pk5_ fold-in: PK5 tail code writes only mapped rows (never instance +0x60 ... | ?
 - PK7 heapfix package: pk3_ 15.13 note (only ATN sends). | ?
 - rvs_ m1 light re-check on the merged tree (sent; item 1 + hash.ps1 in a fresh wo ... | ?
 - s1a_ FOUND (note in s1a_m1_handback.md): with the row ON, m1's apply can write N ... | ?
 - Coord GPU window: s1a_ item t (5090, gpu_job.lock): powershell -NoProfile -Execu ... | ?
+- rvg_ trc review (sent; reviews/rvg_trc_tracer_review.md): code, shared-code buil ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14895,7 +14896,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         S0, S7p (premise test + must-fail twin), S2..S5, S7a, S7b, S6; S7 parked if S0 shows main's units < 10 % of the call
         wall. No new row; new env RENODX_TW_ANIMATION_CARRY=0. Two more idle-PC step comparisons (S7a / S7b, ~10 min each,
         same animation_timing.ps1 rule). Not done: callers of +0x16b1400 (needs pe_xref.py -> ATN).
-        - [ ] rv3_ review of Rev 3 (sent; '## Review of Rev 3'); fixes wait for Friday.
+        - [x] rv3_ REV 3 REVIEW (render_mt/fca/designs/rv3_rev3_review_handback.md; 17:28-17:39): GO for every step once
+        2 MUST are written in; 0 BLOCKER, 2 MUST, 6 SHOULD, 4 NIT. R3-M1: 'lifetime is the game's own premise' is wrong for
+        carried items (they come after the stop; a task run inside the tail's wait can swap + free one -> B / pose product /
+        C write into stale objects -> a crash, not just a wrong frame): (a) state the residual for ATN, (b) C compares
+        before it stores, changed entries -> dummy stores, (c) any bench crash with carry on repeated with CARRY=0 before
+        blame, (d) must-fail control swapping + freeing. R3-M2: go / no-go = main's own gather ticks >= 10 % of the wall
+        (27 % mix), decided right after S0, before S7p; S0 logs main's own gathers a call; bench rule = main's gathered
+        items in carried calls <= 0.3 x old build (no extra CARRY=0 start). Gain range -0.35..-0.95, package late melee
+        -1.15..-2.55 (central -2.0). pe_xref: getter +0x16B1400 68 call sites, wait +0x1766B0 66 (any of ~66 job types
+        from any thread). heapfix: no overlap (15.13 adds the body + wait hooks). pk5_ rule + no alloc / free, no game
+        calls beyond the pose product, S7p snapshot rule in PK5's tests.
+        - [ ] FRIDAY 11-27: pk3_ writes in R3-M1 / R3-M2 + SHOULDs / NITs (rv3_ light check) -> PK3 implementer.
+        (was: rv3_ review of Rev 3 (sent); fixes wait for Friday.)
         - [x] ATN OK 11-24 ('Yes, both'): env RENODX_TW_ANIMATION_CARRY (PK3 test / bench switch; ebo_run arms only) +
         tools\tw\pe_xref.py (offline, read-only, gtp_lowprio) on empire.retail.dll next to dis_at.py (memory
         reference_tw_tools). rv3_ told it may list the callers of +0x16b1400.
@@ -14916,6 +14929,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         D:\Dev\renodx\.claude\worktrees\agent-a52ae84ccc5c1ca47\test\tw_bounce_sh\run.ps1 -Before
         C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\testbin\scratch\s1a_\before -Items t -Lock
         C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\gpu_job.lock ; then item d (S1a-D) when s1a_ hands it back.
+        trc_ TRACER DONE (handoff_plan/handbacks/trc_tracer_handback.md): origin/trc_tracer 8fd1cfb45..e6dd48246 (5 commits,
+        coord merges): (a) frame_trace Options, Expeditions view row 126 ('| view WxH buffer WxH'), others unchanged; (b) mesh
+        identity per draw (Expeditions); (c) GPU Scene ids via ATTRIBUTE13 (DevKit must be loaded); (d) shader_dump.hpp dumps
+        HS / DS / GS + dump_stages.txt. Tests PASS (frame_trace WARP, dumper + old-dumper control, Tales byte-identical,
+        12 Expeditions + 2 Tales suites). Settled offline: View row 126 / 127 from the dump; no DLAA trace (Performance only).
+        Run sheet: ONE Expeditions session ~14 min (deadline 35), script testbin\scratch\trc_\g24_session.ps1 (parse-checked
+        only; needs ATN's run rule); steps 3-4 currently need ATN's hands (DevKit Auto Dump click + loading the battle save).
+        Not built: Ryse / Divinity 2 (frame_trace defaults); devkit + ue-extended share shader_dump.hpp.
+        - [ ] rvg_ trc review (sent; reviews/rvg_trc_tracer_review.md): code, shared-code builds (devkit / ue-extended / ryse /
+        divinity2), run sheet vs ATN's rules, can steps 3-4 be scripted, which save G1 used -> trc_ fixes -> merge ->
+        ATN's rule line for the session script -> coord runs the ONE session (no ask needed for trace / dump runs).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
