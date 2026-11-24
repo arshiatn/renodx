@@ -45,6 +45,7 @@
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../../utils/state.hpp"
+#include "./device_end.hpp"
 #include "./dlaa_bridge.hpp"
 #include "./dxbc.hpp"
 #include "./frame_history.hpp"
@@ -827,6 +828,10 @@ struct Runtime {
   std::vector<std::array<uint32_t, 4>> uv_scales;
   std::array<float, 16> main_view_projection = {};  // from this frame's main-view captures, for the cascades' (they come later)
   uint64_t main_view_frame = 0;
+  // The last frame a scene draw reached Capture (main_view_frame only moves with a main-view capture: a known mesh's draw
+  // returns before it), and the presents in front since without one (Update: a loading screen at SCENE_GONE_FRAMES).
+  uint64_t scene_frame = 0;
+  uint32_t sceneless_presents = 0;
   uint64_t cascade_camera_frame = 0;
   std::vector<uint32_t> slices;  // each capture's opacity mask's atlas slice (leaves)
   uint32_t captured_vertices = 0;
@@ -1124,6 +1129,8 @@ constexpr const char* LOG_DETAILS_KEY = "RayTracedDebugLog";
 static bool index_maps_registered = false;
 // Batched unit draws wait for their flush (runtime.batch_draws not empty): else FlushUnitCaptures and OnBatchTextureWritten return.
 static std::atomic_bool batch_pending = false;
+// Update's loading-screen test: the game in front (a test's own answer in its place).
+static bool (*game_in_front)() = device_end::GameInFront;
 // rt_scene::AmbientReplaced's answer (AmbientReplacedNow), stored under runtime.mutex by every writer of what it reads
 // (PublishAmbientReplaced): read without the lock (its lock, once a frame at present, was contended).
 static std::atomic_bool ambient_replaced = false;
@@ -1941,6 +1948,7 @@ void Capture(Context& command, const SceneShader& shader) {
     mix_short(reinterpret_cast<uintptr_t>(input.index_buffer));
     mix_short((uint64_t{static_cast<uint32_t>(input.index_format)} << 32) | input.index_offset);
     const std::unique_lock lock(runtime.mutex);
+    runtime.scene_frame = runtime.frame;
     if (const auto entry = runtime.short_keys.find(short_key); entry != runtime.short_keys.end() && !entry->second.ambiguous) {
       if (const auto known = runtime.known.find(entry->second.key); known != runtime.known.end()) {
         runtime.last_key = entry->second.key;
@@ -2105,6 +2113,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // here (the held depth view replaced after the game let it go) fires destroy_resource(_view) under runtime.mutex: no
   // destroy handler may take runtime.mutex.
   const std::unique_lock lock(runtime.mutex);
+  runtime.scene_frame = runtime.frame;
   // Not a lock's scope (the lock above holds on): the scene state's names stay in it.
   {
     if (!Enabled() || !dlaa_bridge::bridge.ray_tracing) return;
@@ -4069,6 +4078,21 @@ inline void OnMapIndices(reshade::api::device* device, reshade::api::resource re
   OnIndexWrite(device, resource, offset, size, INDEX_MAP);
 }
 
+// The scene forgotten (a loading screen, the game's device gone): every mesh captured again, its cluster set made again
+// (the game's index buffers let go now; this frame's sets and compact draws with them: Trace looks their sets up) and its
+// cut-out textures noted again (their addresses come back as other textures, cut out by mistake). runtime.mutex held.
+inline void ForgetScene() {
+  runtime.known.clear();
+  runtime.short_keys.clear();
+  runtime.new_sets.clear();
+  runtime.new_set_bytes = 0;
+  runtime.compact.clear();
+  runtime.cluster_meshes.clear();
+  runtime.index_buffer_sets.clear();
+  index_buffers_held.store(false, std::memory_order_relaxed);
+  runtime.cut_out_textures.clear();
+}
+
 }  // namespace internal
 
 // The reflections and specular occlusion (the reflection texture: reflected light, the share of samples that met a
@@ -4698,13 +4722,50 @@ inline void Update(const Settings& settings) {
   internal::batch_pending.store(false, std::memory_order_relaxed);
   std::swap(runtime.lights_last, runtime.lights_drawn);
   runtime.lights_drawn.clear();
+  const bool keep_placed = internal::host.keep_placed && runtime.settings.casters_out_of_view && internal::host.placed_row != nullptr
+                           && *internal::host.placed_row != 0.f;
+  // Presents since the last that drew the scene (0: this one did). Only those in front count towards a loading screen: out
+  // of front the game draws no scene either, and after a short alt-tab the helper still has the scene.
+  const uint64_t sceneless = runtime.frame - runtime.scene_frame - 1;
+  bool loading_screen = false;
+  if (sceneless == 0) {
+    runtime.sceneless_presents = 0;
+  } else if (internal::Enabled() && internal::game_in_front()) {
+    loading_screen = ++runtime.sceneless_presents == internal::SCENE_GONE_FRAMES;
+  }
+  // WH3's (Host::keep_placed) kept meshes forgotten as well when the scene is gone out of front.
+  const bool kept_forgotten = keep_placed && internal::Enabled() && sceneless == internal::SCENE_GONE_FRAMES;
+  // A loading screen: the scene it left is forgotten (its buffers' addresses come back as other meshes) and what it holds
+  // let go now, not RELEASE_FRAMES later inside the next battle's load (the 32-bit games' address space then): its cluster
+  // sets with the game's index buffers, its masks' atlas slices with the game's textures (its meshes captured again take
+  // new slices), the cut-out textures.
+  if (loading_screen) {
+    const size_t known_meshes = runtime.known.size();
+    const size_t cluster_sets = runtime.cluster_meshes.size();
+    const size_t atlas_slices = runtime.atlas_slices.size();
+    const size_t cut_out_textures = runtime.cut_out_textures.size();
+#if !defined(_WIN64)
+    const std::string address_space_before = device_end::AddressSpace();
+#endif
+    internal::ForgetScene();
+    for (const auto& [texture, held] : runtime.atlas_slices) runtime.free_slices.push_back(held.second);
+    runtime.atlas_slices.clear();
+    runtime.scene_gone = true;
+    std::string line = std::format("[Total War] Ray tracing: {} presents in front without the scene (a loading screen): let go {} known meshes, "
+                                   "{} cluster sets, {} atlas slices, {} cut-out textures",
+                                   internal::SCENE_GONE_FRAMES, known_meshes, cluster_sets, atlas_slices, cut_out_textures);
+#if !defined(_WIN64)
+    line += "; before: " + address_space_before + "; after: " + device_end::AddressSpace();
+#endif
+    renodx::utils::log::i(line, ".");
+  } else if (kept_forgotten) {
+    runtime.known.clear();
+    runtime.short_keys.clear();
+    runtime.scene_gone = true;
+  }
   // Host::keep_placed: as long as there's room. Then the oldest meshes go, here and in the helper by the one number it's sent.
-  if (internal::host.keep_placed && runtime.settings.casters_out_of_view && internal::host.placed_row != nullptr && *internal::host.placed_row != 0.f) {
-    if (internal::Enabled() && runtime.frame - runtime.main_view_frame == internal::SCENE_GONE_FRAMES) {
-      runtime.known.clear();
-      runtime.short_keys.clear();
-      runtime.scene_gone = true;
-    } else if (runtime.kept_frames == 0 || (runtime.frame % 64) == 0) {
+  if (keep_placed) {
+    if (!loading_screen && !kept_forgotten && (runtime.kept_frames == 0 || (runtime.frame % 64) == 0)) {
       std::vector<std::pair<uint64_t, uint32_t>> kept;
       for (const auto& [key, seen] : runtime.known) {
         if (seen.placed_mesh) kept.emplace_back(seen.frame, seen.triangles);
@@ -5078,11 +5139,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     internal::runtime.atlas_slices.clear();
     dlaa_bridge::bridge.rt_atlas = {};
   }
-  internal::runtime.known.clear();
-  internal::runtime.short_keys.clear();
-  internal::runtime.cluster_meshes.clear();
-  internal::runtime.index_buffer_sets.clear();
-  internal::index_buffers_held.store(false, std::memory_order_relaxed);
+  internal::ForgetScene();
 }
 
 }  // namespace twattila::rt_scene

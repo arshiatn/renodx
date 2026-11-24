@@ -24,7 +24,7 @@
 // 5. Capture's reads (rt_core.hpp: the vertex and index buffers read once for all its parts, the cached
 //    ID3D11DeviceContext1 and device) with RENODX_TW_STATE_CHECK=1: a static draw (three vertex buffers, an index buffer at
 //    an offset) gets v166's short key and key (their formulas below), its index buffer reaches Host::moving_indexed, and
-//    takes the short path the second time; a rows shader's draw from a dynamic vertex buffer (slot 0 read for the dynamic
+//    takes the short path the second time (both mark the scene drawn, scene_frame, the main view's frame left as it was); a rows shader's draw from a dynamic vertex buffer (slot 0 read for the dynamic
 //    test, slots 1-3 after) and a placed one (slot 0 alone in its key, its other bound slots none) get theirs; meshes with a
 //    cut-out version: a static one's key without its mask, then with it once the shadow pass alpha-tests its texture (the
 //    lookup in the scene's lock), a placed known one counted (its texture read once, checked again); a new draw
@@ -762,29 +762,38 @@ int main() {
     // A static draw, known: its first capture marks it drawn by its key (the short key learnt), its second by the short key.
     const core::SceneShader rigid = {.hash = 0xA1B2C3D4};
     const uint64_t rigid_key = full_key(rigid.hash, vertices.Get(), false);
+    uint64_t main_view_frame = 0;
     {
       const std::unique_lock lock(runtime.mutex);
       runtime.known[rigid_key] = {};
       runtime.last_key = 0;
+      runtime.scene_frame = UINT64_MAX;
+      main_view_frame = runtime.main_view_frame;
     }
     bind(vertices.Get());
     capture(rigid, rigid_key);
     const bool rigid_keyed = last_key() == rigid_key && moving_buffer == indices.Get() && moving_offset == INDEX_OFFSET;
     bool short_learnt = false;
+    // A known mesh's draw returns before the main view's capture: the scene drawn all the same (Update's loading-screen test).
+    bool known_scene = false;
     {
       const std::unique_lock lock(runtime.mutex);
       const auto entry = runtime.short_keys.find(short_key(rigid.hash, vertices.Get()));
       short_learnt = entry != runtime.short_keys.end() && entry->second.key == rigid_key && !entry->second.ambiguous;
+      known_scene = runtime.scene_frame == runtime.frame && runtime.main_view_frame == main_view_frame;
       runtime.last_key = 0;
       runtime.drawn.clear();
       runtime.known[rigid_key].frame = 0;
+      runtime.scene_frame = UINT64_MAX;
     }
     moving_buffer = nullptr;
     capture(rigid, rigid_key);
     bool short_taken = false;
+    bool short_scene = false;
     {
       const std::unique_lock lock(runtime.mutex);
       short_taken = runtime.last_key == rigid_key && std::ranges::count(runtime.drawn, rigid_key) == 1;
+      short_scene = runtime.scene_frame == runtime.frame && runtime.main_view_frame == main_view_frame;
     }
     // A rows shader's draw from a dynamic vertex buffer (not placed: all four slots in its key) and a placed one (slot 0).
     static constexpr std::array<uint8_t, 4> ROWS = {1, 2, 3, 4};
@@ -993,12 +1002,13 @@ int main() {
     const bool control_logged = std::ranges::count_if(log_lines, [](const std::string& line) {
                                   return line.find("State check: a vertex buffer read once differs") != std::string::npos;
                                 }) == 1;
-    std::printf("5 Capture's reads: static draw key %d, short key learnt %d, short path taken %d, dynamic rows draw key %d, placed draw key %d, "
-                "cut-out mask: not alpha-tested %d, alpha-tested %d, placed and known %d, device prepared %d then cached %d, state check lines "
-                "%zu; CONTROL a binding changed between reads logged %d\n",
-                rigid_keyed, short_learnt, short_taken, dynamic_keyed, placed_keyed, solid_keyed, cut_out_keyed, cut_out_placed_counted, prepared,
-                still_prepared, check_lines, control_logged);
+    std::printf("5 Capture's reads: static draw key %d, short key learnt %d, short path taken %d, the scene drawn by both (main view's frame "
+                "kept) %d %d, dynamic rows draw key %d, placed draw key %d, cut-out mask: not alpha-tested %d, alpha-tested %d, placed and known "
+                "%d, device prepared %d then cached %d, state check lines %zu; CONTROL a binding changed between reads logged %d\n",
+                rigid_keyed, short_learnt, short_taken, known_scene, short_scene, dynamic_keyed, placed_keyed, solid_keyed, cut_out_keyed,
+                cut_out_placed_counted, prepared, still_prepared, check_lines, control_logged);
     CHECK(rigid_keyed && short_learnt && short_taken && dynamic_keyed && placed_keyed && prepared && still_prepared);
+    CHECK(known_scene && short_scene);
     CHECK(solid_keyed && cut_out_keyed && cut_out_placed_counted);
     CHECK(check_lines == 0);
     CHECK(control_logged);

@@ -369,7 +369,7 @@ static int Child(const std::wstring& mode) {
   }
   // background, minimised
   for (int second = 0; second < 12; ++second) {
-    if (loss::GameInFront()) return SKIPPED;
+    if (twattila::device_end::GameInFront()) return SKIPPED;
     Pump(1000);
   }
   return 0;

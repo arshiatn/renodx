@@ -40,6 +40,7 @@
 #include "../../utils/log.hpp"
 #include "../../utils/vtable.hpp"
 #include "./code_ranges.hpp"
+#include "./device_end.hpp"
 #include "./output_encoding.hpp"
 #include "./worker_pool.hpp"
 
@@ -308,12 +309,6 @@ static void __cdecl OnAbort(int) {
                         "[Total War] The add-on's code called abort (an exception it did not catch, or a pure virtual call): the game ends.");
 }
 
-static bool GameInFront() {
-  DWORD process = 0;
-  GetWindowThreadProcessId(GetForegroundWindow(), &process);
-  return process == GetCurrentProcessId();
-}
-
 // 0x887A0006: hung, the game's own work (ours within it). 0x887A0007: reset, another's work. devices_mutex held.
 static void LogRemoved(ID3D11Device* device, HRESULT reason) {
   if (std::ranges::find(removed_logged, device) != removed_logged.end()) return;
@@ -321,7 +316,7 @@ static void LogRemoved(ID3D11Device* device, HRESULT reason) {
   SetEnvironmentVariableW(DEVICE_LOST_MARK, L"1");
   renodx::utils::log::w(std::format("[Total War] GPU reset: the game's device removed (0x{:08X}), last frame {} ms ago, the game's window {}.",
                                     static_cast<uint32_t>(reason), GetTickCount64() - last_present_tick.load(std::memory_order_relaxed),
-                                    GameInFront() ? "in front" : "not in front"));
+                                    device_end::GameInFront() ? "in front" : "not in front"));
 }
 
 // A removed device lets go of its swap chain's window: its context's bindings and D3D11's late destruction keep it.
@@ -402,7 +397,7 @@ static void LogStall(uint64_t age_ms, bool dump) {
   CloseHandle(thread);
   if (!stopped) return;
   std::string line = std::format("[Total War] No frame for {} s, the game's window {}, the frame thread at: {}", age_ms / 1000,
-                                 GameInFront() ? "in front" : "not in front", CodePlace(instruction));
+                                 device_end::GameInFront() ? "in front" : "not in front", CodePlace(instruction));
   int added = 0;
   for (size_t word = 0; word < stack_bytes / sizeof(uintptr_t) && added < 32; ++word) {
     if (const std::string place = CodePlace(stack[word]); !place.empty()) {
@@ -748,7 +743,7 @@ static DWORD WINAPI WatchLoop(void* stop) {
         }
       }
       if (const uint64_t frame = last_present_tick.load(std::memory_order_relaxed); frame != 0) {
-        if (const bool front = GameInFront(); !front_known || front != last_front) {
+        if (const bool front = device_end::GameInFront(); !front_known || front != last_front) {
           if (front_known) {
             renodx::utils::log::i("[Total War] The game's window: ", front ? "in front" : "not in front", ".");
           }
@@ -781,7 +776,7 @@ static DWORD WINAPI WatchLoop(void* stop) {
       // A game minimised or behind another program draws nothing and is not hung: only the time its window is in front, or
       // does not answer Windows (its ghost is in front then, not the game), counts.
       const HWND window = game_window.load(std::memory_order_relaxed);
-      if (IsHungAppWindow(window) != FALSE || (GameInFront() && IsIconic(window) == FALSE)) {
+      if (IsHungAppWindow(window) != FALSE || (device_end::GameInFront() && IsIconic(window) == FALSE)) {
         awaited_ms += WATCH_POLL_MS;
       }
       if (awaited_ms >= no_frame_limit_ms) {

@@ -14,6 +14,19 @@
 // 7. The hook's cost with no index buffer held (one atomic) and for constant buffer updates while one is (two COM calls).
 // 8. R.U.S.E.'s draw replay (ruse/bridge_replay.hpp GetBuffer): a mirrored index buffer uploaded again with the native
 //    UpdateSubresource, which no hook hears: GetBuffer tells rt_core, the set is marked and made again from the new indices.
+// 9. A loading screen (Update: SCENE_GONE_FRAMES presents in front without a scene draw), the game's foreground test
+//    answered by the test (internal::game_in_front; the real foreground never taken). The scene held: a mesh's set (the
+//    game's index buffer), a mask's atlas slice (the game's texture), a cut-out texture, a known mesh, this frame's new set.
+//    a. In front: nothing at 29 presents; at 30 all let go (the buffer's and the texture's references one fewer, the slice
+//       free again, the cut-out pointer no longer cut out, scene_gone), one line saying so; drawn again, the set made again
+//       and to be sent.
+//    b. Out of front for 100 presents: all kept, no line, not scene_gone. CONTROL and an alt-tab across present 30: 20 in
+//       front, 20 out, 9 in front kept; the 10th lets go.
+//    c. Static-only frames (B1: every draw a known mesh's, so no main-view capture): a scene draw each frame (scene_frame,
+//       main_view_frame left behind), 100 presents in front: all kept.
+//    d. Host::keep_placed (WH3): out of front, at 30 presents its known meshes forgotten (scene_gone), the set kept; in
+//       front, all let go.
+//    e. The game's device gone (OnDestroyDevice's ForgetScene): this frame's new sets and compact draws go with the sets.
 // tests.exe
 #include <windows.h>
 #include <d3d11.h>
@@ -42,7 +55,8 @@ static int failures = 0;
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); ++failures; } } while (false)
 
 extern "C" __declspec(dllexport) const char* const NAME = "Cluster rewrite test";
-extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char*) {}
+static std::vector<std::string> log_lines;
+extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) { log_lines.emplace_back(message); }
 
 namespace {
 
@@ -239,6 +253,8 @@ int main() {
     const bool none = mesh != runtime.cluster_meshes.end() && mesh->second.failed && !mesh->second.remap;
     std::printf("6. stream-output index buffer: no set %d\n", none ? 1 : 0);
     CHECK(none);
+    // Its failed entry goes with the buffer (it holds none): a later buffer at its address (case 9's on x86) is another mesh.
+    runtime.cluster_meshes.erase(key_of(buffer.Get()));
   }
 
   // 8. R.U.S.E.'s draw replay: the proxy's mirror of a D3D9 index buffer, uploaded again by GetBuffer's native
@@ -272,6 +288,162 @@ int main() {
 #else
   std::printf("8. R.U.S.E.'s replay: not built (x86: no R.U.S.E. target)\n");
 #endif
+
+  // 9. A loading screen: Update's foreground test answered here (the real foreground never asked or taken).
+  {
+    static bool in_front = true;
+    scene::internal::game_in_front = [] { return in_front; };
+    constexpr uint64_t KNOWN_KEY = 0x9001;
+    constexpr uint32_t SLICE = 7;
+    scene::Settings settings = {.ambient_occlusion = true};
+    const ComPtr<ID3D11Buffer> buffer = make_buffer(D3D11_BIND_INDEX_BUFFER);
+    const D3D11_TEXTURE2D_DESC mask_desc = {.Width = 4, .Height = 4, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R8G8B8A8_UNORM,
+                                            .SampleDesc = {1, 0}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    ComPtr<ID3D11Texture2D> mask;
+    device.native->CreateTexture2D(&mask_desc, nullptr, mask.GetAddressOf());
+    const auto references = [](IUnknown* object) {
+      object->AddRef();
+      return object->Release();
+    };
+    // `count` presents, the game in front or not; a scene draw before each (Capture's scene_frame) or none.
+    const auto presents = [&](int count, bool front, bool scene_drawn) {
+      in_front = front;
+      for (int index = 0; index < count; ++index) {
+        if (scene_drawn) {
+          const std::unique_lock lock(runtime.mutex);
+          runtime.scene_frame = runtime.frame;
+        }
+        scene::Update(settings);
+      }
+    };
+    // The scene held: the mesh's set made, the mask's atlas slice, the mask a cut-out texture, a known mesh; then a present
+    // that drew it.
+    const auto hold_scene = [&] {
+      const bool set_made = wait_made(buffer.Get(), 40);
+      {
+        const std::unique_lock lock(runtime.mutex);
+        std::erase(runtime.free_slices, SLICE);
+        runtime.atlas_slices.emplace(mask.Get(), std::pair{ComPtr<ID3D11Resource>(mask), SLICE});
+        runtime.cut_out_textures.insert(mask.Get());
+        runtime.known[KNOWN_KEY] = {.frame = runtime.frame};
+        runtime.short_keys[KNOWN_KEY] = {.key = KNOWN_KEY};
+        runtime.scene_gone = false;
+      }
+      presents(1, true, true);
+      return set_made;
+    };
+    // The set, the slice, the cut-out texture, the known mesh.
+    const auto held = [&] {
+      const std::unique_lock lock(runtime.mutex);
+      return std::array{runtime.cluster_meshes.contains(key_of(buffer.Get())), runtime.atlas_slices.contains(mask.Get()),
+                        runtime.cut_out_textures.contains(mask.Get()), runtime.known.contains(KNOWN_KEY)};
+    };
+    constexpr std::array ALL = {true, true, true, true};
+    constexpr std::array NONE = {false, false, false, false};
+    const auto is_loading_line = [](const std::string& line) { return line.find("(a loading screen)") != std::string::npos; };
+    const auto loading_lines = [&] { return std::ranges::count_if(log_lines, is_loading_line); };
+
+    // a. In front.
+    const bool a_made = hold_scene();
+    const ULONG buffer_references = references(buffer.Get());
+    const ULONG mask_references = references(mask.Get());
+    presents(29, true, false);
+    const bool kept_29 = held() == ALL && loading_lines() == 0;
+    std::string counts;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      counts = std::format("let go {} known meshes, {} cluster sets, {} atlas slices, {} cut-out textures", runtime.known.size(),
+                           runtime.cluster_meshes.size(), runtime.atlas_slices.size(), runtime.cut_out_textures.size());
+    }
+    presents(1, true, false);
+    bool let_go = held() == NONE;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      let_go = let_go && std::ranges::count(runtime.free_slices, SLICE) == 1 && runtime.scene_gone && runtime.short_keys.empty()
+               && runtime.index_buffer_sets.empty() && !scene::internal::index_buffers_held.load();
+    }
+    const ULONG buffer_references_after = references(buffer.Get());
+    const ULONG mask_references_after = references(mask.Get());
+    const bool references_down = buffer_references_after + 1 == buffer_references && mask_references_after + 1 == mask_references;
+    const auto line = std::ranges::find_if(log_lines, is_loading_line);
+    const bool line_counts = line != log_lines.end() && line->find(counts) != std::string::npos;
+#if defined(_WIN64)
+    const bool address_space = line != log_lines.end() && line->find("address space") == std::string::npos;
+#else
+    const bool address_space = line != log_lines.end() && line->find("; before: address space free ") != std::string::npos
+                               && line->find("; after: address space free ") != std::string::npos;
+#endif
+    presents(40, true, false);
+    const bool once = loading_lines() == 1;
+    const bool remade = wait_made(buffer.Get(), 40) && !made(buffer.Get())->sent;
+    std::printf("9a. in front: the set made %d, kept at 29 presents %d, let go at 30 %d (references one fewer %d: the buffer's %lu -> %lu, the "
+                "mask's %lu -> %lu), one line with the counts %d and the address space %d, once %d; drawn again: the set made again to send %d\n",
+                a_made ? 1 : 0, kept_29 ? 1 : 0, let_go ? 1 : 0, references_down ? 1 : 0, buffer_references, buffer_references_after,
+                mask_references, mask_references_after, line_counts ? 1 : 0, address_space ? 1 : 0, once ? 1 : 0, remade ? 1 : 0);
+    CHECK(a_made && kept_29 && let_go && references_down && line_counts && address_space && once && remade);
+
+    // b. Out of front; CONTROL: an alt-tab across present 30.
+    const bool b_made = hold_scene();
+    presents(100, false, false);
+    const bool kept_out = held() == ALL && loading_lines() == 1 && !runtime.scene_gone;
+    presents(20, true, false);
+    presents(20, false, false);
+    presents(9, true, false);
+    const bool kept_alt_tab = held() == ALL && loading_lines() == 1;
+    presents(1, true, false);
+    const bool alt_tab_let_go = held() == NONE && loading_lines() == 2;
+    std::printf("9b. out of front 100 presents: kept %d; CONTROL 20 in, 20 out, 9 in: kept %d, the 10th lets go %d\n", kept_out ? 1 : 0,
+                kept_alt_tab ? 1 : 0, alt_tab_let_go ? 1 : 0);
+    CHECK(b_made && kept_out && kept_alt_tab && alt_tab_let_go);
+
+    // c. Static-only frames: every draw a known mesh's (no main-view capture), the scene drawn each frame.
+    const bool c_made = hold_scene();
+    presents(100, true, true);
+    const bool kept_static = held() == ALL && loading_lines() == 2 && runtime.frame - runtime.main_view_frame > 100;
+    std::printf("9c. static-only frames (main_view_frame left behind), 100 presents in front: kept %d\n", kept_static ? 1 : 0);
+    CHECK(c_made && kept_static);
+
+    // d. Host::keep_placed (WH3).
+    const float one = 1.f;
+    scene::internal::host.keep_placed = true;
+    scene::internal::host.placed_row = &one;
+    settings.casters_out_of_view = true;
+    const bool d_made = hold_scene();
+    presents(29, false, false);
+    const bool placed_kept_29 = held() == ALL;
+    presents(1, false, false);
+    bool forgotten = held() == std::array{true, true, true, false} && loading_lines() == 2;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      forgotten = forgotten && runtime.short_keys.empty() && runtime.scene_gone;
+    }
+    presents(30, true, false);
+    const bool placed_let_go = held() == NONE && loading_lines() == 3;
+    scene::internal::host.keep_placed = false;
+    scene::internal::host.placed_row = nullptr;
+    settings.casters_out_of_view = false;
+    std::printf("9d. keep_placed out of front: kept at 29 %d, at 30 its known meshes forgotten, the rest kept %d; in front: let go %d\n",
+                placed_kept_29 ? 1 : 0, forgotten ? 1 : 0, placed_let_go ? 1 : 0);
+    CHECK(d_made && placed_kept_29 && forgotten && placed_let_go);
+
+    // e. The game's device gone mid-frame.
+    const bool e_made = wait_made(buffer.Get(), 40);
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.new_sets.push_back(key_of(buffer.Get()));
+      runtime.new_set_bytes = 64;
+      runtime.compact.emplace_back();
+    }
+    scene::OnDestroyDevice(&device);
+    bool device_gone = false;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      device_gone = runtime.new_sets.empty() && runtime.new_set_bytes == 0 && runtime.compact.empty() && runtime.cluster_meshes.empty();
+    }
+    std::printf("9e. the device gone: the frame's new sets and compact draws gone with the sets %d\n", device_gone ? 1 : 0);
+    CHECK(e_made && device_gone);
+    scene::internal::game_in_front = twattila::device_end::GameInFront;
+  }
 
   {
     const std::unique_lock lock(runtime.mutex);

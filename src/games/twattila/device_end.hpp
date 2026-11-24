@@ -24,6 +24,13 @@
 // game's own teardown (a display or mode change) look alike without it. Only at these two events, nothing per frame.
 namespace twattila::device_end {
 
+// The foreground window is one of this process's (a NULL foreground: not in front).
+inline bool GameInFront() {
+  DWORD process = 0;
+  GetWindowThreadProcessId(GetForegroundWindow(), &process);
+  return process == GetCurrentProcessId();
+}
+
 // The address space left: free, of all, and the largest free block (one walk over the process's regions).
 inline std::string AddressSpace() {
   MEMORYSTATUSEX memory = {.dwLength = sizeof(memory)};
