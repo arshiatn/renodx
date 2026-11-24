@@ -14061,6 +14061,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         target; M6 citations), 12 SHOULD, 10 NIT; slice maths, colour restore, REBLUR_DIFFUSE_SH in NRD 4.18 confirmed. ->
         shg_ (sent): S0 additions now, then Rev 1 (+ ATN's main item: low-res GT-VBAO / GT-VBGI + SVGF upsample + SH) ->
         rvs_ short re-check.
+        shg_ S0 DONE (plan_1117/shg_s0_report.md + shg_s0_handback.md; numpy, testbin/scratch/shg_): form = IrradZ + ZH3
+        brightness-only with our own hemisphere ZH3 fit (block RMS medium bumps: today 0.283, L1 0.101, ZH3 0.055-0.058);
+        self term k_self; arcs x countbits(fresh)/countbits(covered), no pdf correction; helper = cosine moment x 1.2;
+        directional AO ZH3 fit (0.005 / 0.011 / 0.016 vs today 0.028 / 0.063 / 0.098); storage +40 B / texel (Half 191 MB
+        vs Full 431 MB at 4K). Rev 1 inputs: 10.1 directional GT-VBAO = one multiply-blend draw after the game's last AO
+        blur (OnAmbientBlurDraw; row off = no draw), 10.2 Toru SVGF item (MIT), 10.3 low-res sets A-D + offline FLIP harness
+        (normal maps, >= 1080p) + 'Low-Res Tests' buttons; 55-80 h. New risk: horizon ring (L1 / ZH3 bend wrong). S0 ran
+        before rvs_'s review -> shg_ resumes with it (M2 memo-LSQ vs shift + rvs_'s S0 list) then Rev 1.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
