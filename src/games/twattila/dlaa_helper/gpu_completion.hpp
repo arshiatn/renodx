@@ -37,11 +37,15 @@ inline bool TestWaitFails(const wchar_t* variable, uint32_t* waits) {
 }
 #endif
 
+// How long an owner waits for its own GPU work (a request's or a release's) before it counts as not done: Ray
+// Reconstruction's, FSR's / XeSS's and DLSS's (ngx_backend.hpp). Frame generation keeps its own 10 s.
+inline constexpr DWORD GPU_WAIT_TIMEOUT = 5000;
+
 // True: nothing submitted up to `value` can still run. The fence passed it, or its device was removed (the fence then
 // reads all ones: a GPU reset, and the owner makes a new device), or there is no fence (nothing was ever submitted).
 // False: not proven within `timeout` on a live device; the caller must not reset or free what that work uses.
-// Fence is a native D3D12 fence in production; the narrow template also permits deterministic registration-failure
-// and removed-device controls in the test.
+// Fence is a native D3D12 fence in production, or DLSS's ID3D11Fence (ngx_backend.hpp); the narrow template also permits
+// deterministic registration-failure and removed-device controls in the test.
 template <typename Fence>
 bool WaitForGpu(Fence* fence, HANDLE event, uint64_t value, DWORD timeout) {
 #ifdef RENODX_TW_TEST_GPU_WAITS
@@ -62,15 +66,16 @@ bool WaitForGpu(Fence* fence, HANDLE event, uint64_t value, DWORD timeout) {
 }
 
 // Called when work that is about to lose its resources was not proven done on a live device. The helper exe sets it
-// (main.cpp: one log line, then the process ends without unwinding its GPU owners). It stays null in a game's process
-// (Tales of Arise's DLSS add-on runs rr_d3d12.hpp there), which nothing here may end: the owner then goes on.
+// (main.cpp: one log line, then the process ends without unwinding its GPU owners). It stays null in any other process,
+// which nothing here may end: the owner then goes on.
 inline void (*unproven_gpu_completion)(const char* owner, uint64_t completed, uint64_t wanted) = nullptr;
 
 // The wait before an owner frees what its submitted work uses (Close, a feature's release, a destructor).
 template <typename Fence>
 void WaitForGpuBeforeRelease(Fence* fence, HANDLE event, uint64_t value, DWORD timeout, const char* owner) {
 #ifdef RENODX_TW_TEST_GPU_WAITS
-  if (static uint32_t releases = 0; unproven_gpu_completion != nullptr && TestWaitFails(L"RENODX_TW_TEST_GPU_RELEASE_STALL", &releases)) {
+  if (static uint32_t releases = 0; fence != nullptr && unproven_gpu_completion != nullptr
+                                    && TestWaitFails(L"RENODX_TW_TEST_GPU_RELEASE_STALL", &releases)) {
     unproven_gpu_completion(owner, 0, value);
   }
 #endif

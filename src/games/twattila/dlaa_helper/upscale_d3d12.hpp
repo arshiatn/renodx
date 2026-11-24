@@ -137,7 +137,7 @@ class Upscaler12 {
 
   // Its commands done, the textures let go; the context stays for a next set of the same output size.
   void Close() {
-    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "FSR / XeSS upscaling");
+    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, GPU_WAIT_TIMEOUT, "FSR / XeSS upscaling");
     inputs_ = {};
     fence_.Reset();
   }
@@ -159,7 +159,7 @@ class Upscaler12 {
         first_frame_ = true;
         return false;
       };
-      if (!WaitForGpu(own_fence_.Get(), event_, slot.value, FENCE_TIMEOUT)) return unfinished();
+      if (!WaitForGpu(own_fence_.Get(), event_, slot.value, GPU_WAIT_TIMEOUT)) return unfinished();
       if (maker_.joinable()) {
         if (making_.load()) return false;
         maker_.join();
@@ -176,7 +176,7 @@ class Upscaler12 {
       // FSR: a context for each output size (any render size up to it). XeSS: one context, initialized for each output size
       // and the setting that takes the render size (below).
       if (made_width_ == 0 || (backend_ == dlaa_bridge::UPSCALER_FSR && (made_width_ != request.output_width || made_height_ != request.output_height))) {
-        if (!WaitForGpu(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT)) return unfinished();
+        if (!WaitForGpu(own_fence_.Get(), event_, own_value_, GPU_WAIT_TIMEOUT)) return unfinished();
         DestroyContext();
         made_width_ = request.output_width;
         made_height_ = request.output_height;
@@ -241,7 +241,7 @@ class Upscaler12 {
           if (new_output || quality != quality_) {
             // Here, not beside the requests (no frame without it: the render scale would go back to 100%, where another
             // setting is needed, for good): the kernels are built, this takes milliseconds.
-            if (!WaitForGpu(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT)) return unfinished();
+            if (!WaitForGpu(own_fence_.Get(), event_, own_value_, GPU_WAIT_TIMEOUT)) return unfinished();
             const xess_d3d12_init_params_t init = {.outputResolution = output, .qualitySetting = quality, .initFlags = XESS_FLAGS};
             if (const xess_result_t inited = xess_.init(xess_context_, &init); inited < XESS_RESULT_SUCCESS) {
               return Fail(std::format("XeSS-SR could not start at this size (code {})", static_cast<int>(inited)).c_str());
@@ -357,7 +357,7 @@ class Upscaler12 {
 
   ~Upscaler12() {
     if (maker_.joinable()) maker_.join();
-    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "FSR / XeSS upscaling");
+    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, GPU_WAIT_TIMEOUT, "FSR / XeSS upscaling");
     DestroyContext();
     if (event_ != nullptr) CloseHandle(event_);
     if (library_ != nullptr) FreeLibrary(library_);
@@ -375,9 +375,6 @@ class Upscaler12 {
     status_ = std::move(status);
     return false;
   }
-
-  // The CPU's longest wait for this queue (a slot's last use is SLOTS requests back, normally long done).
-  static constexpr DWORD FENCE_TIMEOUT = 5000;
 
   void DestroyContext() {
 #if defined(RENODX_FSR_SDK)
