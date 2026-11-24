@@ -15032,6 +15032,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         start (no launch option), ATTILA_TEST_HOME copy, -A32Plain moves dxgi.dll + add-on aside per start; dry runs only.
         Then ATN: rule lines, -A32Plain yes / no, the go + a time window. perffix64.dll is NOT in JSa25's repo (64bit\ has a
         changelog only): arm B64P needs his 7.4+ package or Workshop item (ATN's call).
+        ATN 11-24 ~19:0x: 'Yes, A/B first': the 64-bit stress A/B comes BEFORE the Friday CPU (Fable) wave; that wave waits
+        for the A/B number. p1i_ only finishes its current self-check (no rv1_ / bench after). Coord's defaults stated to
+        ATN, not objected: direct start of attila64.exe (no launch option), A32 with ReShade dxgi.dll + add-on moved aside
+        per start (-A32Plain), no perffix64 arm for now. Still needed from ATN: rule lines for a64_ab.ps1, a time window
+        (not while he plays). No builds during the A/B.
         p4i_ S2-S3 DONE (render_mt/fca/designs/p4i_s2s3_handback.md; fca_pk4 a5923fa29 S2 + 3ede64a7f S3, pushed; all gates
         PASS). PARKED (ATN hold): rv4_ review of S2-S3 -> S4. NOTE s64c_: PK4 never starts under heapfix 7.4+.
         sse_ E2 K + RESOLUTION ROW DONE (plan_1117/sse_e2_k_handback.md; origin/sss_e2, not merged): 352a9b785 K fallback
