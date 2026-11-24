@@ -761,7 +761,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BLOCKED BY ANTIVIRUS ~14:3x: coord ran ATN's rule line exactly: powershell -NoPr ... | ?
 - MERGE fca_item1 + fca_exit_drain (after fi1_ r2 + fxi_ r2) -> mrg_: all-36 build ... | ?
 - FCA DESIGN WAVE (Fable 5.2 xHigh, brief render_mt/fca/designs/pk_design_brief.md ... | ?
-- rv6_ (Opus xHigh) review of PK6 tooling (sent; render_mt/reports/rv6_pk6_review. ... | ?
+- t4i_ pk6 r2 (sent): MUST 1-6 (PK3 / PK4 / PK5 rules provisional until their new ... | ?
+- ATN: a naval battle replay for PK4's G1 check (frontend + campaign + siege + W3 ... | ?
 - fxi_ r2 + 30f WU-on case (J1 flips only after that + an ABBA bench). | ?
 - rvg_ review of step 1 (handoff_plan/reviews/rvg_g24_step1_review.md) -> then g24 ... | ?
 - mem_ r4 -> rvm_ short re-check -> ask ATN for the Attila 32-bit confirm run (che ... | ?
@@ -14221,7 +14222,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         row-off check start per missing scene. Old final re-eval still NOT GO (W3 -6.56, 9 / 60 trapped Go windows).
         ATN: verify-bench rule (-Verify or move ebo_final aside; in atn_questions_1124.md A.5), env OKs THREAD_PARTS /
         SORT_CHECK (/ SORT_OVER_MOD if Q5), heapfix removal for G3a (E6). Item 1 (WPR focus) = ATN (G5).
-        - [ ] rv6_ (Opus xHigh) review of PK6 tooling (sent; render_mt/reports/rv6_pk6_review.md) -> t4i_ fixes if any.
+        - [x] rv6_ PK6 REVIEW DONE (render_mt/reports/rv6_pk6_review.md + _handback.md): NOT GO for the verify bench until
+        MUST 1-6; no BLOCKER (-Final / -Leg safe for the old plans: old final.json 84 starts 0 differ; only the walk drop +
+        foreign-thread PROBLEM run there); suite green (analyze 260, make 133); Fisher right. MUST: 1 PK1 kill rule (any
+        rings-on W3 trap > 0) + Focus arm rule; 2 no trap data = n/a, not 0; 3 arm verdicts ignore SE, no per-rule ref,
+        pass / kill order, FAIL / missing never reach not_go; 4 'unless' drops all arms, rule-H in 'none' arms = PROBLEM;
+        5 dict arms drop rows / set0 only =1 / heapfix values ignored; 6 wpr_delta rules vs designs (PK1 T1d dropped item,
+        RingUnmap / RingSet missing; PK3 lambda_3, Dispatch always SKIPPED; PK5 -20 %, stub / page time; SKIPPED passes).
+        G1: one row-off check start per missing scene (SIEGE entries, menu-only frontend start, W3 into melee; NAVAL needs
+        a replay -> ATN). Rule slip: rv6_ a few read-only python heredocs.
+        - [ ] t4i_ pk6 r2 (sent): MUST 1-6 (PK3 / PK4 / PK5 rules provisional until their new revisions), SHOULDs, NITs,
+        then ebo_run.ps1 -Data / -Verify (+ -DryRun) -> rv6_ re-check.
+        - [ ] ATN: a naval battle replay for PK4's G1 check (frontend + campaign + siege + W3 / D1 covered otherwise).
+        (was: rv6_ (Opus xHigh) review of PK6 tooling (sent; render_mt/reports/rv6_pk6_review.md) -> t4i_ fixes if any.)
         (was: PK6 tooling -> t4i_ (after its parsers): sec 6 items 2-8; item 1 (WPR tasks' focus steal) = ATN's question.)
         - [ ] fxi_ r2 + 30f WU-on case (J1 flips only after that + an ABBA bench).
         - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN QUESTIONS (critic sec 7): Q2 release timing, Q3 FDW D1 cost vs per-battle latch, Q4 WU default rule, Q5
