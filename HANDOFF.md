@@ -713,6 +713,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - GPU gates S4a + jobs 1-8 on ho_gbf 88ae3aa7d (after the final bench, one window) ... | ?
 - F5 motion into NRD (add-on work, gbr_): own box, after the GPU gates. | ?
 - Lean ReSTIR Reuse skips the ContactShade fix (gbr_ N5 note): if job 1 shows Lean ... | ?
+- ATN: OK to golive the gate hook round 24 (bak29 backup, then stage24 a6b12f1ebee ... | ?
+- gate hook round 25: the F24 web + price timing row is near its limit (0.055 vs 0 ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13348,6 +13350,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] F5 motion into NRD (add-on work, gbr_): own box, after the GPU gates.
         - [ ] Lean ReSTIR Reuse skips the ContactShade fix (gbr_ N5 note): if job 1 shows Lean apart, load the neighbour's ray
         start in Lean. N7 only if release_nrd fails.
+        gtp_ 01:37 (plan_1117/gtp_r24_suite_handback.md): mirror suite from bash 1467/1468 (only F24 web + price 0.055 s vs
+        0.05; bak28 gave 0.0525 last night; not a stage24 regression). gtp_ did NOT golive: changing the live PreToolUse
+        safety hook needs ATN in chat. Live stays bak28 aa2306475bdb (shadow). COORD: asked ATN.
+        - [ ] ATN: OK to golive the gate hook round 24 (bak29 backup, then stage24 a6b12f1ebeef over the live file; stays
+        shadow = logs only)? On his yes, gtp_ does it with ATN's words quoted.
+        - [ ] gate hook round 25: the F24 web + price timing row is near its limit (0.055 vs 0.05 s): loosen or speed up.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
