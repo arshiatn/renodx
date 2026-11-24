@@ -15337,6 +15337,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] AFTER WINDOW 1 (started 23:5x): gbf gates (gbf_gpu_gates.ps1, coord, quiet GPU window, ~20 min GPU + 5
         builds) incl. G23 H9 T3 / T4 -> one ho_gbf_g23 merge -> pds2_; s3f_ fix round; a64p0d_ fixes (case B); a64bdr_
         bring-up review; plugin review + C8 census.
+        STARTED 23:5x: gbf_gpu_gates.ps1 (coord, background, ATN's rule line); s3f_ fix round (M1 noinline + c00000fd,
+        M2 Rip-only + RtlAddFunctionTable route, overlay into Sol's RGBA8 picture, message, trimmed TESTS, re-author,
+        new sha); a64p0d_ fix round (M1-M5 + case B + final rule lines + probe brief); a64bdr_ (Opus xHigh) ->
+        designs/bringup_design_review.md; a64plr_ (Opus xHigh, D15 likely dropped) -> designs/plugin_design_review.md;
+        c8c_ (Opus xHigh, read-only) -> census/c8_rows.tsv + c8_notes.md.
         - [ ] Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64abr_'s review is fixed;
         no game of ATN's running, fresh backups.
         - [ ] a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S1 / S4 / S5 + the window-1
