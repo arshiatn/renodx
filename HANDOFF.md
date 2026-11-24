@@ -13818,9 +13818,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         da368bdba) carry ho_gbf's 14 un-gated NRD / ReSTIR / reflections commits -> G23 merges WITH or AFTER ho_gbf once S4a +
         jobs 1-8 pass; ONE GPU window runs S4a + jobs 1-8 + G23 T3 / T4 (+ GT-VBAO V1 / V2 timing, render_pass x86).
         - [ ] GPU WINDOW (harness, not in-game; after fcx_ ends, CPU quiet): ho_gbf S4a + jobs 1-8, G23 H9 T3 / T4 (T4: exit
-        DONE + no Event 1000 / dump), GT-VBAO V1 / V2 5090 timing, G10 render_pass x86 -> then ho_gbf + G23 merge. Ask ATN.
+        DONE + no Event 1000 / dump), GT-VBAO V1 / V2 5090 timing, G10 render_pass x86 -> then ho_gbf + G23 merge. No ask
+        needed (ATN 11-24); report results.
         - [ ] gbf_ (after G23): main.cpp end-release change, gate T4 once per active owner (DLSS, RR, FSR, XeSS, DLSS-G,
         FSR FG).
+        ATN IN CHAT 11-24: GPU harness runs (gate jobs, helper T-tests, timing) run WITHOUT asking, inside a GPU window
+        (memory feedback_gpu_harness_runs.md). Game runs not covered.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
