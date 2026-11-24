@@ -778,6 +778,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - mrg_ merges fca_item1 + fca_exit_drain (sent): all 36 builds + merged-tree tw_en ... | ?
 - after the merge: test/tw_engine_code follow-up (owner fxi_): R3-N1 bound the spi ... | ?
 - ATN (pk5_): Q6 ERMSB row + our copy at 2-4 sites; S0 before the data run; other ... | ?
+- mrg_ merges mem_fix 03137a2f5 after the FCA batch (sent; clean vs atn-mods + fca ... | ?
+- ATN's go for the Attila 32-bit confirm run (asked 11-24 afternoon; fresh backups ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14306,6 +14308,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN (pk5_): Q6 ERMSB row + our copy at 2-4 sites; S0 before the data run; other CPUs = fixed list or a 2-5 ms
         start self-timing; A2 worth medium-high risk for -0.3..-0.6?; A3 bench arm (prefetch + L1); Q7 + a 60 s late-melee
         sampler window.
+        rvm_ MEM R4 GO FOR THE CONFIRM RUN (handoff_plan/reviews/rvm_mem_fix_recheck_r4.md + _handback.md): the >= deferral
+        can't skip twice or double-log; 9j now fails on every wrong variant. Confirm run = r3 items 1-5 + the later line
+        reads '30 presents after' ('31' only next to an L3); note load vs play (m2).
+        - [ ] mrg_ merges mem_fix 03137a2f5 after the FCA batch (sent; clean vs atn-mods + fca_item1) -> newest Attila build
+        for the confirm run.
+        - [ ] ATN's go for the Attila 32-bit confirm run (asked 11-24 afternoon; fresh backups, install newest first).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
