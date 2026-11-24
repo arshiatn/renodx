@@ -14140,6 +14140,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> gbf_ r4 (sent): R3-S1 taskkill /T by parent PID could hit a PID-reused unrelated process (walk children by
         CreationDate, kill by handle); R3-S2 T4a = h9's exact code list; N1-N6. -> rvh_ short look at Stop-Tree -> -DryRun
         (expect 0 PROBLEM, 'g23 tree: 47 sources') -> run in a GPU window.
+        fa7_ TRAP SCAN (fa7_gpu_idle.md section 7 + render_mt/fca/analysis/fa7_trap_scan_handback.md; 489 PresentMon files,
+        433 starts): non-WPR traps ONLY with ALL rows + rings off: W3 stress 10 / 31 (tier 3 7), OFF 0 / 19, no-C builds
+        0 / 79, D1 0 / 230; FDW + FCU both on 0 / 9 starts (p 0.13; +5 clean W3 starts -> ~0.04); FCU alone does NOT
+        protect; tier-3 onsets all with C6 + B3b at 70-75 s (C vs B3b not separable offline -> G3 = ALL-C vs ALL-B3b, W3,
+        8-12 starts / arm); row / ring ON->OFF mid-battle traps 6 / 7; cost W3 ALL rings off +15..+20 ms/f. -> fbc_ told.
+        gbf_ GATE SCRIPT R4 (handbacks/gbf_gate_script_r4_handback.md): Stop-Tree by CreationDate walk + held handles (no
+        taskkill), T4a = h9's exact list, N1-N6; 923 lines, parser 0. -> rvh_ short look (sent).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
