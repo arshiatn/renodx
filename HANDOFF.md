@@ -803,7 +803,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PK3 S1 follow-ups: SHOULD-1 source-text guard in test/tw_render_mt_defaults/run. ... | ?
 - drl_ (Opus xHigh, worktree): tw_draw_recording_loop part 7 FAILS 736x on atn-mod ... | ?
 - ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own buil ... | ?
-- p4i_ (FABLE 5.2 MEDIUM TRIAL, worktree) PK4 S1 infra on fca_pk4: 64-bit masks + ... | ?
 - ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; ... | ?
 - PK2 implementer (engine code: Fable Medium if p4i_'s trial isn't blocked, else S ... | ?
 - p1i_ (Opus xHigh, worktree) PK1 P1-P5 on fca_pk1: buffer_pool.hpp (P1 / P2), obj ... | ?
@@ -14586,9 +14585,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         reads 7 addresses; MUST-2 ATN's heapfix setup can never pass the gates -> Q6 required; MUST-3 second writer
         +0x1832CB0 frees records with no wait; MUST-4 stuck-pass guard; MUST-5 mode off before site removal. -> pk4_ Rev 1
         (sent) -> rv4_ re-check.
-        - [ ] p4i_ (FABLE 5.2 MEDIUM TRIAL, worktree) PK4 S1 infra on fca_pk4: 64-bit masks + engine_probe.hpp, cover
+        - [x] p4i_ DONE (p4i_s1_handback.md): fca_pk4 = 88e4cd874 - SiteMask 64-bit, cover assert, STUB_CODE_SIZE + third
+        page, engine_probe.hpp; 11 files (8 test .inc on coord's OK); 3 x .addon32 + -Probe / -DrawRecording built;
+        tw_engine_code -Quick PASS Attila / Rome II / Thrones. FABLE TRIAL: NO block, NO safety / classifier / AV stop;
+        slowed only by the worktree guard on compound git commands; one sed -i slip (restored). -> rv4_ code review incl.
+        'more / fewer findings than Sonnet's usual' (sent; rv4_pk4_s1_code_review.md); if OK -> Fable Medium for every
+        engine-specific implementation (PK2 / PK3 S0+ / PK4 S2+ / PK5); report to ATN.
+        (was: p4i_ (FABLE 5.2 MEDIUM TRIAL, worktree) PK4 S1 infra on fca_pk4: 64-bit masks + engine_probe.hpp, cover
         assert, three pages; 3 x .addon32 + -Probe / -DrawRecording; tw_engine_code on 3 DLLs. Report trial result to ATN.
-        Then PK5 S0 (tests.cpp after p4i_), then PK5 S2+ on PK4 S1.
+        Then PK5 S0 (tests.cpp after p4i_), then PK5 S2+ on PK4 S1.)
         - [ ] ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; Q4b mode-on response to the
         +0x1832CB0 clear (advice: wait on the task, then trip); G1 go + RENODX_TW_SORT_CHECK rule.
         Writer exception (coord): p4i_ may edit on fca_pk4 half_rows_adversarial.inc (SiteMask), exit_drain.inc / other
