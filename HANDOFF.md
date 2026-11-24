@@ -751,6 +751,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Blood-pack shaders (Attila / Thrones 812 incl. 188 ps_4_1 gather shadow variants ... | ?
 - Stale comment twattila/rt_scene.hpp:633 names SkipGameSsao (G18 owner). WH1 :227 ... | ?
 - g14r_ r3 tool follow-up (report_check.py) still open. | ?
+- Rome II Specular Occlusion: the commit that later hooks it (traced reflections) ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13889,6 +13890,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         R1 rt_core.hpp:5092 MarkDrawn never sets scene_frame -> R.U.S.E. still-only views release every 30 presents; fix =
         one line + a case-9 MarkDrawn-only test. Host flag: NO (bug fix always on). -> mem_ fixes R1 together with fbm_'s
         items once the Fable review is in (one round, one build set).
+        g19_ F1 DONE + MERGED 7b63b0f0a (mrg_; handbacks/g19_f1_r2_handback.md, reviews/rvb_g19_f1_handback.md): comment only
+        (graphics_page.hpp); NO fog_shadows_defaulted_on for Rome II / WH1 / WH2 (1 was never their default; a saved 1 is
+        the player's choice). Decision 11 = the five flagged games; Thrones (g01_) + WH3 (after the freeze) still open.
+        - [ ] Rome II Specular Occlusion: the commit that later hooks it (traced reflections) clears the stale 1s (default
+        1 from 11-13 to 11-16) through Rome II's own revision block (twrome2/addon.cpp:2730-2762), keeping presets with a
+        traced method on. Owner: whoever lands Rome II traced reflections.
+        g10_ RENDER_PASS x86 + amd64 PASS (handbacks/g10_render_pass_x86_handback.md; run_installed.ps1 render_pass_behavior,
+        gpu_job.lock 12:17:46-12:18:13; pass/fail, no gate id). G10's last open check closed.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
