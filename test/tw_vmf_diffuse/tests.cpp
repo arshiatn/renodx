@@ -36,7 +36,7 @@
 // Controls (each must FAIL its gate; CONTROL lines): the preprint's series without x2 (T0w; WARP against that twin),
 // the paper's Section 5 remap and beta 0 (T2's bond albedo; WARP against those twins), no fade (T4's n.v <= 0 rule;
 // WARP against that twin), every beta + 0.001 (WARP against that twin: the bar sees a one-digit table slip), slider
-// 50 % (T3).
+// 50 % (T3), sigma(-u_v) - 0.001 (T2's denominator; the design's R2.2 c).
 // tests.exe <repository> <folder of dxcompiler.dll and dxil.dll>; exit 0 when every gate passes and every control
 // fails.
 #include <windows.h>
@@ -132,7 +132,8 @@ float Sigma(float u, float alpha) {
 }
 
 // pi f_k per unit c^k (orders 1-3, the series' cosine terms x `series`: 2 corrected, 1 the preprint's control), fm's
-// angular and r factor (Eq. 9 without Ck / Ca, the ramp over r 0.15-0.40 included) and Eq. 8's denominator.
+// angular and r factor (Eq. 9 without Ck / Ca, the ramp over r 0.15-0.40 included) and Eq. 8's denominator;
+// `back_shift` is added to sigma(-u_v) (0; the design's R2.2 c control plants a shift).
 struct Orders {
   float single = 0;
   float second = 0;
@@ -141,11 +142,11 @@ struct Orders {
   float denominator = 0;
 };
 
-Orders OrdersOf(const Angles& angles, float r, float series) {
+Orders OrdersOf(const Angles& angles, float r, float series, float back_shift = 0.f) {
   const float alpha = std::max(-std::log(1.f - std::sqrt(r)), VMF_MIN_ALPHA);
   const float sigma_l = Sigma(angles.u_l, alpha);
   const float shadowing = sigma_l * Sigma(angles.u_v, alpha);
-  const float denominator = (angles.u_l * Sigma(-angles.u_v, alpha)) + (angles.u_v * sigma_l);
+  const float denominator = (angles.u_l * (Sigma(-angles.u_v, alpha) + back_shift)) + (angles.u_v * sigma_l);
   const float p = angles.p;
   const float t = angles.t;
   const float s = angles.s;
@@ -483,21 +484,31 @@ int main(int argc, char** argv) {
     for (int step = 0; step <= 400; ++step) {
       roughnesses.push_back(static_cast<float>(1e-8 * std::pow(0.4e8, step / 400.0)));
     }
-    double lowest_ratio = std::numeric_limits<double>::infinity();
-    std::string lowest_where;
-    for (const float r : roughnesses) {
-      for (const float u_l : cosines) {
-        for (const float u_v : cosines) {
-          const double ratio = OrdersOf(AnglesOf(u_l, u_v, u_l * u_v), r, 2.f).denominator / (u_l * u_v);
-          if (ratio < lowest_ratio) {
-            lowest_ratio = ratio;
-            lowest_where = format("r %.4g, u_l %.4g, u_v %.4g", r, u_l, u_v);
+    // min(den / (u_l u_v)) over the sweep with sigma(-u_v) shifted by `back_shift`, and where.
+    const auto lowest_denominator = [&](float back_shift, std::string* where) {
+      double lowest = std::numeric_limits<double>::infinity();
+      for (const float r : roughnesses) {
+        for (const float u_l : cosines) {
+          for (const float u_v : cosines) {
+            const double ratio =
+                OrdersOf(AnglesOf(u_l, u_v, u_l * u_v), r, 2.f, back_shift).denominator / (u_l * u_v);
+            if (ratio < lowest) {
+              lowest = ratio;
+              *where = format("r %.4g, u_l %.4g, u_v %.4g", r, u_l, u_v);
+            }
           }
         }
       }
-    }
+      return lowest;
+    };
+    std::string lowest_where;
+    const double lowest_ratio = lowest_denominator(0.f, &lowest_where);
     gate("T2 denominator u_l sigma(-u_v) + u_v sigma(u_l) >= 0.5 u_l u_v", lowest_ratio >= 0.5,
          format("min ratio %.4f (>= 0.5) at %s", lowest_ratio, lowest_where.c_str()));
+    // The design's R2.2 c control: sigma(-u_v) - 0.001 (a slip of one digit in the unclamped back term).
+    const double shifted_ratio = lowest_denominator(-0.001f, &lowest_where);
+    control("T2 denominator with sigma(-u_v) - 0.001", shifted_ratio < 0.5,
+            format("min ratio %.4f at %s", shifted_ratio, lowest_where.c_str()));
 
     // bond / base = 2 Int u_l du_l Int u_v du_v (1 / pi) Int R dphi: Gauss-Legendre in u (24), trapezoid in phi over
     // [0, pi] (25, the even integrand).

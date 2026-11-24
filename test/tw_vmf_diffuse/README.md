@@ -63,3 +63,4 @@ sections 7-8.
 | | WARP vs that twin | 1.00 |
 | Every beta + 0.001 (sensitivity) | WARP vs that twin, 1e-4 bar | 1.6e-3 |
 | Slider 50 % (rho 1) | T3 | R != 1, all three |
+| sigma(-u_v) - 0.001 (design R2.2 c) | T2 denominator >= 0.5 u_l u_v | min -8.97 u_l u_v (r 1e-8, u_l 4.7e-4, u_v 1e-4) |
