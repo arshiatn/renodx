@@ -15,11 +15,21 @@
 
 #include "../../utils/settings.hpp"
 #include "./credits.hpp"
-#include "./lighting_settings.hpp"
 
 // Settings Mode's pages, their section names and colours, and the page's small rows (notes, More Options): every Total
-// War addon's. Apart from feature_settings.hpp and graphics_page.hpp (which include them), so an addon without Attila's
-// anti-aliasing shaders (Shogun 2) has them too.
+// War addon's. Apart from feature_settings.hpp, lighting_settings.hpp and graphics_page.hpp (which include them), so an
+// addon without Attila's anti-aliasing or Light Bounce shaders (Shogun 2, Ryse) has them too.
+
+// The ambient occlusion's and Global Illumination's sections (lighting_settings.hpp's rows).
+namespace twattila::lighting_settings {
+
+constexpr const char* AO_SECTION = "Ambient Occlusion (GT-VBAO, Experimental, needs in-game SSAO)";
+constexpr const char* GI_SECTION = "Global Illumination (GT-VBGI, Experimental, no in-game SSAO needed)";
+constexpr uint32_t AO_TINT = 0x7FBFFF;
+constexpr uint32_t GI_TINT = 0xFFB86B;
+
+}  // namespace twattila::lighting_settings
+
 namespace twattila::feature_settings {
 
 inline const std::string SSS_SECTION = "Screen-Space Shadows (Bend Studio, Experimental, needs in-game shadows)";
@@ -85,6 +95,23 @@ constexpr uint32_t MORE_TINT = 0xFFB86B;
 constexpr uint32_t WARNING_TINT = 0xFF5050;
 constexpr uint32_t NOTICE_TINT = 0xFFE066;
 using credits::FULL_DOWNLOAD_NOTE;
+
+// Rows saved at an old default (a preset saves every row, hidden ones too), cleared once: `keys` out of the three presets
+// where `revision_key` (the game's SettingsRevision unless named) is below `revision`, which it becomes; a preset for
+// which `keep` (given its ini section) is true keeps them. In order of revision, before settings::Use.
+inline void ClearSavedRows(int revision, std::initializer_list<const char*> keys, const char* revision_key = "SettingsRevision",
+                           const std::function<bool(const std::string&)>& keep = {}) {
+  const std::string& global = renodx::utils::settings::global_name;
+  if (int saved = 0; reshade::get_config_value(nullptr, global.c_str(), revision_key, saved) && saved >= revision) return;
+  for (const char* suffix : {"-preset1", "-preset2", "-preset3"}) {
+    const std::string preset = global + suffix;
+    if (keep && keep(preset)) continue;
+    for (const char* key : keys) {
+      reshade::set_config_value(nullptr, preset.c_str(), key, static_cast<const char*>(nullptr));
+    }
+  }
+  reshade::set_config_value(nullptr, global.c_str(), revision_key, revision);
+}
 
 inline renodx::utils::settings::Setting* Note(const std::string& label, const std::string& section, uint32_t tint, std::function<bool()> shown) {
   return new renodx::utils::settings::Setting{.value_type = renodx::utils::settings::SettingValueType::TEXT,
