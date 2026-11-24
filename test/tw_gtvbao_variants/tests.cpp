@@ -1,8 +1,8 @@
 // GT-VBAO's per-sample math variants (twattila/bitmask.hlsli BITMASK_VARIANT; G15's A/B, g15_gtvbao_ab.md): Attila's AO
 // pass (ao_bitmask.ps_5_0.hlsl over bitmask_ssao.hlsli, compiled here as the build does: ps_5_0, /O3) at V0 (today), V1
 // (the cosine domain, each side's early stop) and V2 (V1, the cosine shares' per-slice terms, z in 2 terms), the same
-// picture; V3 (V2, sectors equal in angle weighted at the slice's end: ao_bitmask_fast, the Experimental "Faster GT-VBAO"
-// row, a look change) passes with its mean |error| against the reference within 10% of V0's, its flat numbers listed.
+// picture; V3 (V2, sectors equal in angle weighted at the slice's end, a look change: no row, its error past ATN's 10 %
+// over V0's) listed with its error over V0's, information only.
 // 1. V0 unchanged: the tree's V0 bytes = the base's (run.ps1 -Base: its bitmask.hlsli / bitmask_ssao.hlsli served in
 //    place of the tree's).
 // 2. Walls, box and poles (warp_tests/ao/gtvbao_test.cpp's scene, 192 x 108, radius 1 m, thickness 0.15, Quality 2,
@@ -82,14 +82,13 @@ class Includes : public ID3DInclude {
 };
 
 std::vector<uint8_t> Compile(const std::filesystem::path& tree, const std::filesystem::path& base, int variant) {
-  // V3: its own shader (ao_bitmask_fast, the Experimental row's), which sets the variant itself.
-  const auto shader = tree / ((variant == 3) ? "src/games/twattila/ao_bitmask_fast.ps_5_0.hlsl" : "src/games/twattila/ao_bitmask.ps_5_0.hlsl");
+  const auto shader = tree / "src/games/twattila/ao_bitmask.ps_5_0.hlsl";
   const auto source = ReadAll(shader);
   const std::string value = std::to_string(variant);
   const D3D_SHADER_MACRO defines[] = {{"BITMASK_VARIANT", value.c_str()}, {nullptr, nullptr}};
   Includes includes(shader.parent_path(), base);
   ComPtr<ID3DBlob> code, errors;
-  if (FAILED(D3DCompile(source.data(), source.size(), shader.string().c_str(), (variant == 0 || variant == 3) ? nullptr : defines, &includes, "main", "ps_5_0",
+  if (FAILED(D3DCompile(source.data(), source.size(), shader.string().c_str(), (variant == 0) ? nullptr : defines, &includes, "main", "ps_5_0",
                         D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &code, &errors))) {
     std::printf("compile V%d%s failed: %s\n", variant, base.empty() ? "" : " (base)",
                 errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
@@ -422,11 +421,13 @@ int main(int argc, char** argv) {
       }
       const double share = static_cast<double>(sector) / frames_pixels;
       if (variant == 0) error0 = error / pixels;
-      // V1 / V2 the same picture; V3 (a look change) its error against the reference within 10% of V0's.
-      const bool ok = (variant == 0) || ((variant == 3) ? (error / pixels <= 1.1 * error0) : (delta / pixels < 1e-4 && share <= 1e-4 && more == 0));
-      std::printf("  V%d: mean AO %.4f, |error| vs reference %.4f, mean |delta| vs V0 %.2e, pixel frames one sector apart %llu (%.4f%%), more %llu: %s\n",
-                  variant, mean / pixels, error / pixels, delta / pixels, static_cast<unsigned long long>(sector), 100.0 * share,
-                  static_cast<unsigned long long>(more), (variant == 0) ? "(V0)" : (ok ? "ok" : "FAIL"));
+      // V1 / V2 the same picture; V3 (a look change) listed with its error over V0's, information only.
+      const bool ok = (variant == 0) || (variant == 3) || (delta / pixels < 1e-4 && share <= 1e-4 && more == 0);
+      std::printf("  V%d: mean AO %.4f, |error| vs reference %.4f (%.3fx V0's), mean |delta| vs V0 %.2e, pixel frames one sector apart %llu "
+                  "(%.4f%%), more %llu: %s\n",
+                  variant, mean / pixels, error / pixels, (variant == 0) ? 1.0 : error / pixels / error0, delta / pixels,
+                  static_cast<unsigned long long>(sector), 100.0 * share, static_cast<unsigned long long>(more),
+                  (variant == 0) ? "(V0)" : ((variant == 3) ? "(information)" : (ok ? "ok" : "FAIL")));
       failures += ok ? 0 : 1;
       if (variant != 0) {
         WritePng(pngs / ("scene_v" + std::to_string(variant) + (auto_thickness ? "_auto" : "") + ".png"), image, W * 3, H);

@@ -21,8 +21,8 @@ static const uint BITMASK_SECTORS = 32;
 // cosine domain (BitmaskSectorsOfCosines, BitmaskOccluderBackCosine: no normalized vectors) and each side's early stop
 // (BitmaskSideSectors); 2 that and BitmaskCosineShare's per-slice terms hoisted (BitmaskShareTermsOf) and the depth's view
 // z in 2 terms (bitmask_ssao.hlsli). The default until the 5090's same-picture gate and timing pass: 0 (its bytes
-// unchanged). An includer or the build may set it first. 3, a look change (Faster GT-VBAO, Experimental, its own shader
-// ao_bitmask_fast): V2 with sectors equal in angle, cosine-weighted at the slice's end (BitmaskOpenShare).
+// unchanged). An includer or the build may set it first. 3, a look change (no row: its error past ATN's 10 % over V0's,
+// test/tw_gtvbao_variants): V2 with sectors equal in angle, cosine-weighted at the slice's end (BitmaskOpenShare).
 #ifndef BITMASK_VARIANT
 #define BITMASK_VARIANT 0
 #endif
