@@ -830,7 +830,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
 - s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
-- AFTER WINDOW 1: s3f_ fix round (M1-M3, overlay into the picture, S / N items, -- ... | ?
+- s3fr_ round 2 re-check (resumed) -> GO -> Sol smoke (ATN's -Exe64Sha * line) aft ... | ?
 - vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree- ... | ?
 - vMF credits.hpp line (paper, CC BY 4.0) lands with S4 (rows). | ?
 - a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the l ... | ?
@@ -15279,6 +15279,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         base,inline,base -Probe full -Wpr + -DryRun twin; round 2 -Arms tt8 -Probe full, -Arms base) + a Sol smoke line
         with -Exe64Sha * (sha changes in s3f_'s fix round) -> a64ab_ MUST implement those exact switch names. L2B still
         needs ATN's yes. D15 drop asked.
+        - [x] ATN 11-25 ~00:1x: D15 'Yes drop it' (sent to a64plr_: review without it, list what loses its purpose);
+        'I added the new rules' (window 3 round 1 + DryRun twin, tt8 -Probe full, -Arms base, Sol smoke -Exe64Sha *).
+        ATN asleep; memory project_attila64.md corrected (step ~100 ms own vs ~135 ms beside, not 5-8x).
         - [ ] a64pi_ (Opus High) probe implementer STARTED (design section 12): site-table check, renodx_a64probe.dll,
         offline self-test, names_d0.py + analyze_d0.py, dry plan for a64ab_ -> R1 xHigh review -> a64ab_ switches ->
         ATN's rule lines -> window 3.
@@ -15392,9 +15395,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         contract; on non-8-bit swap buffers draw the overlay into Sol's RGBA8 picture before the CopyResource (~6 lines;
         a64bd_'s A2b then needs the picture's resource handle). S2 trimmed TESTS.md for Sol (no user paths / agent
         names). Patch has no game names of ours.
-        - [ ] AFTER WINDOW 1: s3f_ fix round (M1-M3, overlay into the picture, S / N items, --reset-author with ATN's new
-        email, patches + zip + trimmed TESTS regenerated) -> short re-check -> Sol smoke rule line for ATN; bring-up
-        review gets the overlay change (A2b target = picture resource).
+        - [x] s3f_ ROUND 2 DONE (hand-back attila64/s3f_round2_handback.md): 0cf196f crash filter (Rip-only + c00000fd /
+        c0000374 always + RtlAddFunctionTable cover_frames per ELF module, handler writes the full report; noinline
+        frames 56 / 152 / 32 B), 1688749 hooks, 75b2b57 overlay (8-bit buffer as before; else into Sol's RGBA8 picture
+        before the CopyResource; else left out + one log line). 14 crash cases pass, hooks 5-15 pass, overlay 0 garbage
+        on R16F / R10. Re-authored with ATN's real email. exe sha256 789a51b92c6a489f...; zip c03be79e...; patch
+        538ca115...; TESTS_for_sol.md (no user paths / agent names); message rewritten. Open: overlay sits in the game's
+        picture between present and the next frame (vs Sol's comment) -> re-check view.
+        - [ ] s3fr_ round 2 re-check (resumed) -> GO -> Sol smoke (ATN's -Exe64Sha * line) after the GPU gate ends ->
+        ATN sends message_for_sol.md + patch + zip + TESTS_for_sol.md.
         - [x] ATN 11-24: WH3 gets the Experimental vMF slider too (Forge: PT looks better with vMF) -> sent to pdd2_;
         SHaRC depth 4 plan: 'Good idea'.
         - [ ] vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree-agent-aa2f659ee853ca432
