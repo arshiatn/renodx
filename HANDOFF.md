@@ -13423,6 +13423,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         (t5_1122c, 1 MB worker stack), not 2eaaec733.
         - [ ] At the release after the bench's Go: drop '(Experimental)' from the two default-on rows (rcr_ S3), README
         'New:' lines, hidden rows' '(Private)' labels left (players never see them).
+        rcd_ FIX 04:0x (render_mt/reports/rcd_rc_defaults_fix_handback.md): 0f849c759 S1 ClearSavedRows(1/2), S2 labels {Off,
+        Test 1-4, One Worker, On} + rcr_'s tooltip, S4 test rows; all tests PASS; x86 24d545fd...7025, amd64 d82fbf01...23ca1.
+        rcr_ RE-CHECK GO (rcr_recheck_handback.md; 14 / 14 mutants fail). COORD MERGED rc_defaults = bd46d12fd (pushed).
+        RC BUILD sent to rcd_: stamped x86 'Attila v170 RC 2026-11-24' + unstamped copy, FP twin (sym_build_head.ps1
+        -FramePointers), amd64 check, tests, rc_manifest.json in testbin/cpu1_addons/rc_1124; helper = final1118 unchanged;
+        HFx 323bf407. Final bench stays NOT GO until t4i_'s BENCH-1 + ebr_'s MUSTs are fixed and re-reviewed.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
