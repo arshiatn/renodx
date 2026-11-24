@@ -14691,6 +14691,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         correct?)' + asked for the questions' address. Coord: ALL open 11-24 questions in one file with advice
         (handoff_plan/atn_questions_1124.md, sent). Correction told: the G24 traces are Expeditions GAME runs (GPU + CPU +
         screen, only while ATN isn't playing) and each needs a tracer change first; no run rule exists to launch the game.
+        ATN 11-24 later (STANDING): trace / dump runs of any game without asking when offline can't prove it or the
+        shaders are missing; he says beforehand when he plays; CPU / GPU load fine for traces / dumps (not timing). So the
+        gsr_ dumper change + Expeditions dump run are OK'd -> trc_ also does the dumper change (src/utils/shader_dump.hpp,
+        HS / DS / GS; sent) + exact run sheets; coord runs them (Steam, backups, files out after; never in a GPU timing job).
         - [ ] trc_ (Opus xHigh, worktree, branch trc_tracer) Expeditions tracer prep: 4.23 View rows in
         talesofarise_dlss/frame_trace.hpp (Tales unchanged), twin: logging for the bones families, the GPU-scene mv need;
         tests + a run sheet for ATN; no game run. Dumper change (src/utils/shader_dump.hpp) waits for ATN's OK.
