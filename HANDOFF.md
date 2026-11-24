@@ -13591,6 +13591,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         (258575eaa), mem_ (F4-F6 on branch mem_fix, TOP), g20_ (host edits, builds, 3 tests). BUILD SLOTS: 2 while fcx_ runs
         (testbin/scratch/build_slots/slotN.lock), 4 after. fcx_: whole-ETL dump = 8.5 x ETL -> zstd after parse; U10rerun
         added as job 7; t4i_ dumps nothing, runs C-9 on fcx_'s pickles.
+        gtp_ ROUND 25 DONE (plan_1117/gtp_r25_handback.md): gated_build.ps1 APPLIED (bak30; live 3362331a9baf; vswhere
+        -requires VC.Tools.x86.x64, exit 4 without VC tools / empty VCToolsInstallDir). stage25 built (gate_hook.py sha256
+        3e7c349048a3, 171003 B): glued quoted targets, >| / dd of= writes, install / rsync copies, node fs writes, whole-folder
+        copies + unpacks ('any files' into src / test / gates, NOT into tools\tw harness folders), F24 speed (web + price
+        0.033 s); probes 154 ok; replay 0 key changes; mirror suite 1497 / 1498 (own row fixed). LIVE UNCHANGED (stage24
+        a6b12f1ebeef, shadow). gpr_ + gtw_ re-checks of stage25 sent. Then ATN in chat: (a) golive stage25 (bak30 + copy +
+        sha + smoke), (b) copy gtp_stage25\tests\run_tests.py into TW\gates\tests (protected folder, only with ATN's OK).
+        Still open (both hooks): r''m / & $r command-name tricks, R23-3 [422] corner.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
