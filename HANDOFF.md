@@ -762,7 +762,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - MERGE fca_item1 + fca_exit_drain (after fi1_ r2 + fxi_ r2) -> mrg_: all-36 build ... | ?
 - FCA DESIGN WAVE (Fable 5.2 xHigh, brief render_mt/fca/designs/pk_design_brief.md ... | ?
 - t4i_ pk6 r2 (sent): MUST 1-6 (PK3 / PK4 / PK5 rules provisional until their new ... | ?
-- ATN: a naval battle replay for PK4's G1 check (frontend + campaign + siege + W3 ... | ?
 - fxi_ r2 + 30f WU-on case (J1 flips only after that + an ABBA bench). | ?
 - rvg_ review of step 1 (handoff_plan/reviews/rvg_g24_step1_review.md) -> then g24 ... | ?
 - mem_ r4 -> rvm_ short re-check -> ask ATN for the Attila 32-bit confirm run (che ... | ?
@@ -793,9 +792,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - trc_ (Opus xHigh, worktree, branch trc_tracer) Expeditions tracer prep: 4.23 Vie ... | ?
 - ATN adds 6 rule lines (atn_rules_1124.md sec 1: pk1_harness_runs -Pk1 / -Pk1Focu ... | ?
 - t4i_ adds ebo_run.ps1 -Data (2 W3 starts + PK4 check start + PK5 sampler window, ... | ?
-- ATN: Bitdefender exception for tools\tw\gbf\gbf_gpu_gates.ps1 -> coord reruns it ... | ?
-- ATN: WPR tasks to 'run whether user is logged on or not' (S4U, highest) - steps ... | ?
-- ATN: groups Q41 (grey out Light Bounce Rays under RR + PT, tooltip '1 ray under ... | ?
+- Q41 (ATN 17:0x: 'why can't it use more rays to clean up lower DLSS scalings?'): ... | ?
 - pk4_ Rev 1.2 -> rv4_ light re-check -> tell p4i_ what changes for S2 / S3; pk5_ ... | ?
 - rv4_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2' in rv4_pk4_review ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -14234,7 +14231,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         a replay -> ATN). Rule slip: rv6_ a few read-only python heredocs.
         - [ ] t4i_ pk6 r2 (sent): MUST 1-6 (PK3 / PK4 / PK5 rules provisional until their new revisions), SHOULDs, NITs,
         then ebo_run.ps1 -Data / -Verify (+ -DryRun) -> rv6_ re-check.
-        - [ ] ATN: a naval battle replay for PK4's G1 check (frontend + campaign + siege + W3 / D1 covered otherwise).
+        - [x] ANSWERED: naval = the existing sea1 replay (t4i_ told). ATN: a naval battle replay for PK4's G1 check (frontend + campaign + siege + W3 / D1 covered otherwise).
         (was: rv6_ (Opus xHigh) review of PK6 tooling (sent; render_mt/reports/rv6_pk6_review.md) -> t4i_ fixes if any.)
         (was: PK6 tooling -> t4i_ (after its parsers): sec 6 items 2-8; item 1 (WPR tasks' focus steal) = ATN's question.)
         - [ ] fxi_ r2 + 30f WU-on case (J1 flips only after that + an ABBA bench).
@@ -14774,10 +14771,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         -DryRun / -Verify / -Verify -DryRun); trace / dump lines come with trc_'s run sheet.
         - [ ] t4i_ adds ebo_run.ps1 -Data (2 W3 starts + PK4 check start + PK5 sampler window, RT off) and -Verify modes
         AFTER rv6_'s review (files under review now).
-        - [ ] ATN: Bitdefender exception for tools\tw\gbf\gbf_gpu_gates.ps1 -> coord reruns its -DryRun, then the gates.
-        - [ ] ATN: WPR tasks to 'run whether user is logged on or not' (S4U, highest) - steps in atn_rules_1124.md sec 3;
+        - [x] ATN added the Bitdefender exception (17:0x). Coord -DryRun 17:03 (20261124_170304_35768): parses + runs; exit 2 on
+        ONE PROBLEM: g23 rev 08e953b's talesofarise_dlss/ngx_backend.hpp includes src/utils/float16.hpp, not in $HelperPaths
+        -> gbf_ fixes the check (sent; 'gbf_ helperpaths'), coord reruns -DryRun, then the real gates in a quiet GPU window.
+        (was: ATN: Bitdefender exception for tools\tw\gbf\gbf_gpu_gates.ps1 -> coord reruns its -DryRun, then the gates.)
+        - [x] ATN DONE 17:0x (both tasks LogonType S4U, HighestAvailable; checked with schtasks /query): WPR tasks to 'run whether user is logged on or not' (S4U, highest) - steps in atn_rules_1124.md sec 3;
         the data run checks the ETL still lands.
-        - [ ] ATN: groups Q41 (grey out Light Bounce Rays under RR + PT, tooltip '1 ray under Ray Reconstruction').
+        - [ ] Q41 (ATN 17:0x: 'why can't it use more rays to clean up lower DLSS scalings?'): the cap exists because ReSTIR GI's
+        bias RISES with rays under RR (2.6 / 11.3 / 14.3 % at 1 / 8 / 16); its fix (25c02e411, ContactShade re-evaluated) waits
+        for gbf gate job 1. Coord: NO grey-out now; after job 1 passes, re-measure 1 / 4 / 8 rays under RR at low DLSS scales
+        -> if more rays clean up, the cap goes and the slider works again.
         - [ ] pk4_ Rev 1.2 -> rv4_ light re-check -> tell p4i_ what changes for S2 / S3; pk5_ Rev 1.2 -> rv5_; pk3_ Rev 3 ->
         rv3_ review.
         ATN 11-24 ev: 'For GT-VBGI/AO and SSS, I can still check it out myself later even after bad numbers' + S1a-D's
@@ -14798,6 +14801,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         said 10 by mistake -> corrected to ATN (14).
         - [ ] rv4_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2' in rv4_pk4_review.md): 4.6 H1 / H2 + process
         rule vs run-time build check, 7.2, 7.3 + the two dis_at items.
+        ATN 17:0x ORDER (standing): let every running agent FINISH its job -> then finish Attila's CPU work (FCA PK1-PK6 ->
+        -Data session -> verify bench) -> then the GPU plan (plan_1117/plan.md, FORGE'S INPUT first). No new streams.
+        ATN 17:0x: SSS low-res too (sse_ after K: one Experimental row Full / 3/4 / 1/2 / 1/4, default Full, byte-identical at
+        Full). '2 things we keep forgetting': (1) Forge's rules for ALL work (fastest valid path, 5090 over WARP, exact
+        budgets / deadlines, phase logs) -> memory feedback_fix_tooling_now; (2) in-game runs only when really needed, as
+        few as possible -> memory feedback_no_game_tests: Attila = ONE -Data session (rings starts + PK4 check incl. sea1 +
+        PK5 sampler + mem_fix confirm checks; t4i_ told) + the verify bench; Expeditions = ONE dump + trace session (trc_
+        told). Pending ATN: 14 vs 10 G3a starts.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
