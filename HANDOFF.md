@@ -844,6 +844,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - VMF RHO SKY TEST (pdd2_): the rho-histogram sky fix goes to vMF S2's implementer ... | ?
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
+- g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
 - a64ab_ FIX ROUND (after a64abr_): a64abr_'s findings + window 1 = stage A only: ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
@@ -15560,6 +15561,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         renodx-tw-dlaa64.exe pid 8576 (00:00:30, 1 thread, 0 handles, no path, parent gone = stuck in kernel at exit;
         left alone). -> gbf_ resumed to root-cause each FAIL (regression / bar / runner) from logs; NO MERGE until a
         clean re-run.
+        - [x] gbf_ ROOT CAUSES (hand-back handoff_plan/handbacks/gbf_gate_run1_rootcause_handback.md): NO regression.
+        job2 a / b = runner (rays arg also set reflection samples, tw_rt_harness.cpp:3455; RR flag 256 in $Atn) -> script
+        fixed (reflections off, row c flags 68799161); T3 = wrong bar (switch mode doesn't wait for the helper, :3230;
+        FSR's first context on a side thread) - after start-up DLSS 240 / 240, RR 30 / 30, FSR 30 / 30, bars 2-4 clean;
+        T4 never ran (stopped on pid 8576). 8576 = a NEVER-RESUMED rescue (bridge watcher fired at the T3 harness's own
+        exit, dlaa_bridge.hpp:613-624; harness exited before resume / job assign) - not kernel-stuck; coord verified its
+        command line (our gbf build) and ended it. Script: Get-ExePath, T4 sweep only its own helpers, 'not run' lines;
+        backup gbf_gpu_gates.pre_run1125.ps1; dry run OK.
+        - [ ] g23_ harness change (start-up wait in switch mode + T4, FSR from first active, stop the watcher before the
+        kill at the end, h9_t3_t4.txt bars) + gbf_ bridge hardening on ho_gbf_g23 (rescue created inside the job via
+        PROC_THREAD_ATTRIBUTE_JOB_LIST, no CREATE_SUSPENDED) -> gbf_ updates the script's fixed revisions + dry run ->
+        coord re-runs the gate.
         ATN 11-24 ~23:xx: 'should we let the current subagents finish (not add anymore) then run your bench then
         continue?' -> YES: no new agents except a64ab_'s fix round for a64abr_'s review; running ones (s3fr_, a64abr_,
         a64p0r_, a64bd_, a64pl_) finish; then window 1 stage A on a quiet CPU (no builds); then the G23 gate, s3f_'s
