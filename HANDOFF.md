@@ -785,6 +785,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - B3 interface conflict pk3_ (helper twattila::PrefetchRead in prefetch.hpp) vs pk ... | ?
 - ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-dif ... | ?
 - s1a_ (Opus xHigh, worktree, branch sh_s1a) implements S1a with M1 + S1-S3 + S5 i ... | ?
+- PK5 S0 microbench (tests only) after the FCA merge + fxi_'s test follow-up (test ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14385,6 +14386,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         write mask (S1b); S5 page.Take last commit.
         - [ ] s1a_ (Opus xHigh, worktree, branch sh_s1a) implements S1a with M1 + S1-S3 + S5 in its brief -> rvs_ code
         review -> coord merge. GPU timing -> coord's GPU window.
+        rv5_ PK5 REVIEW (render_mt/fca/designs/rv5_pk5_review.md + _handback.md; 0 / 7 MUST / 10 SHOULD / 7 NIT): heapfix
+        clearance GO (CHECKED = 82, hf_check.py drops hex sizes); A1 census GO; A1.1 GO after MUST-1 (misaligned 16-B
+        stores may not forward on Intel) + MUST-4; A1.2 optional; A2 NO-GO as written (MUST-2 heap safety) -> gated
+        study; A3 NO-GO (MUST-3: measured 0 on 11-18); M1 GO Experimental; M2 = M3 GO (stronger evidence); M3 GO for S0,
+        S3 gated on S0 + write-combine; site table FULL (MUST-4: widen masks to uint64_t first); stub = already 2 pages
+        (MUST-5); movntps + sfence (MUST-6). Package floor ~-1 W3. -> pk5_ Rev 1 (sent); pk4_ owns the mask widening as
+        its first step; test parts pk4_ 31-33, pk5_ 34+.
+        - [ ] PK5 S0 microbench (tests only) after the FCA merge + fxi_'s test follow-up (tests.cpp one writer); run only on
+        an idle PC (CPU timing).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
