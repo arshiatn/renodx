@@ -20,7 +20,9 @@
 // taken 90 degrees off, went to 0; none: the bounce as without it). The window blends texels of different trace normals
 // as the denoiser's taps do, so the same half transport (LB.transport): between each texel's own value at the pixel's
 // normal (1: sharp, darker over bumps) and their blend pinned at their mean trace normal, then taken to the pixel's (0:
-// unbiased, softer); exact on a plane (shg_ design 4.1 step 5's contingency, test/tw_bounce_sh item 4).
+// unbiased, softer); exact on a plane (shg_ design 4.1 step 5's contingency, test/tw_bounce_sh item 4). Then the self
+// term (LB.self_light): the texels' own light (t46, the same weights) the pixel's normal sees below their trace normal's
+// horizon, which their trace never sees (test/tw_bounce_sh item d fits it).
 #include "./bitmask_sh.hlsli"
 #include "./light_bounce.h"
 #include "./light_bounce_geometry.hlsli"
@@ -31,15 +33,18 @@ Texture2D<float4> t_bounce : register(t41);
 Texture2D<float4> t_bounce_share : register(t52);
 Texture2D<float4> t_bounce_sh : register(t56);
 Texture2D<float> t_bounce_zonal : register(t57);
+Texture2D<float4> t_bounce_own_light : register(t46);  // the prepared light (Directional: the self term's)
 
 // Directional: the window's sums of the pixel's surface (x their weight): the light's luminance, (g, w), the zonal
-// amplitude, each texel's own zonal term at the pixel's normal, the trace normals; the weight; the brightest luminance.
+// amplitude, each texel's own zonal term at the pixel's normal, the trace normals, the texels' own light; the weight;
+// the brightest luminance.
 struct BounceShSum {
   float y0;
   float4 sh;
   float zonal;
   float zonal_at_pixel;
   float3 trace_normal;
+  float3 own_light;
   float weight;
   float brightest;
 };
@@ -86,6 +91,7 @@ float4 BounceWindowSum(int2 first, int2 last, float2 at, float distance, bool on
             sh.zonal += zonal * sh_weight;
             sh.zonal_at_pixel += zonal * (3.f * axis_cosine * axis_cosine - 1.f) * sh_weight;
             sh.trace_normal += trace_normal * sh_weight;
+            sh.own_light += t_bounce_own_light.Load(int3(neighbour, 0)).rgb * sh_weight;
             sh.weight += sh_weight;
             sh.brightest = max(sh.brightest, y0);
           }
@@ -134,18 +140,23 @@ void main(float4 v0 : SV_Position0,
   [branch]
   if (!(kept.a > 0.f)) kept = BounceWindowSum(first, last, at, distance, false, scale, position, normal, facing, sh);
   float3 bounce = (kept.a > 0.f) ? (kept.rgb / kept.a) : 0.f;
-  // Directional: at the pixel's normal (`facing`).
+  // Directional: at the pixel's normal (`facing`). Not below 1e-12 (taps about 90 degrees off it: their trace normals'
+  // sum underflowed to 0, normalize made a NaN pixel: test/tw_bounce_sh item d at Quarter).
   [branch]
-  if (BOUNCE_DIRECTIONAL && sh.weight > 0.f) {
+  if (BOUNCE_DIRECTIONAL && sh.weight > 1e-12f) {
     const float y0 = sh.y0 / sh.weight;
     const float4 g_w = sh.sh / sh.weight;
     // Each texel's own value at the pixel's normal; their blend pinned at their mean trace normal (each within 90 degrees
     // of the pixel's: never 0), then taken to it.
     const float sharp = y0 - g_w.w + dot(g_w.xyz, facing) + sh.zonal_at_pixel / sh.weight;
-    const BitmaskShLight pinned = BitmaskShPinned(g_w.xyz, sh.zonal / sh.weight, normalize(sh.trace_normal));
+    const float3 trace_normal = normalize(sh.trace_normal);
+    const BitmaskShLight pinned = BitmaskShPinned(g_w.xyz, sh.zonal / sh.weight, trace_normal);
     const float smooth = BitmaskShEvaluate(y0, float4(pinned.g, pinned.w), pinned.zonal, facing);
-    // Against their own Y0 (the same weights: Y(n) / Y0, the design's gain), on the window's light.
-    bounce *= clamp(lerp(smooth, sharp, LB.transport) / max(y0, 0.01f * sh.brightest + 1e-6f), 0.f, 4.f);
+    // Against the window's whole light (not their own facing^8-weighted Y0: Y(n) itself in place of its luminance, its
+    // colour kept). Their Y0 (rvs_ N1) did worse in test/tw_bounce_sh: item 4 at b 4, m 0.35 shift -1.33% -> -1.66%,
+    // error 0.063 -> 0.080, detail 0.885 -> 0.853; item 6 Half -8.58% -> -9.59%.
+    bounce *= clamp(lerp(smooth, sharp, LB.transport) / max(dot(bounce, BITMASK_SH_LUMINANCE), 0.01f * sh.brightest + 1e-6f), 0.f, 4.f);
+    bounce += LB.self_light * (sh.own_light / sh.weight) * (0.5f * (1.f - dot(facing, trace_normal)));
   }
   const float share = t_bounce_share.Load(int3(5, 0, 0)).w;
   o0 = float4(BounceDiffuseAlbedo(texel) * bounce * LB.strength * ((share > 0.f) ? share : 1.f), 0.f);

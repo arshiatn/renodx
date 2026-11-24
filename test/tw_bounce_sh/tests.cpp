@@ -20,6 +20,8 @@
 //     normals, grazing light (the gain cap), a thin pole in front of the lit wall (the trace exact at n0); the _ms
 //     prepare and apply on a 4x G-buffer.
 //   t (alone, not V1): on the hardware GPU each pass' time at 3840 x 2160, the build before's and the row off / on.
+//   d (alone, not V1: S1a-D): on the hardware GPU against a per-pixel Full reference at 1920 x 1080: the row's
+//     ablations, the own surface's share, the self term's k fitted and checked on a held-out room.
 // tests.exe <repository> <before root> [items] (the before root: each add-on's shaders that include Light Bounce files
 // built before, <root>\<game>\*.cso; items: which to run, e.g. 24, all by default)
 #include <windows.h>
@@ -498,10 +500,10 @@ Scene Blank(UINT width, UINT height) {
 }
 
 // A room: the back wall (z 6), a lit side wall on the left (x -1), a floor (y -1.2); `bump`: the back wall and the floor
-// normal-mapped; `pole`: a thin dark pole in front of the side wall (a gap in the lit wall's fresh sectors).
-Scene Room(UINT width, UINT height, double bump, bool pole) {
+// normal-mapped (`seed`'s); `pole`: a thin dark pole in front of the side wall (a gap in the lit wall's fresh sectors).
+Scene Room(UINT width, UINT height, double bump, bool pole, uint64_t seed = 77) {
   Scene scene = Blank(width, height);
-  const auto bumps = NormalMap(77, width, height, std::max(bump, 1e-6), 1.5);
+  const auto bumps = NormalMap(seed, width, height, std::max(bump, 1e-6), 1.5);
   for (UINT y = 0; y < height; ++y) {
     for (UINT x = 0; x < width; ++x) {
       const V3 ray = Position(scene.camera, x, y, 1);
@@ -733,7 +735,7 @@ void ApplyStep(const Chain& chain, const Passes& passes, bool denoised, int msaa
   Views views = GBuffer(chain, msaa != 0);
   views.push_back({41, (denoised ? chain.denoised : chain.history[chain.index]).srv.Get()});
   if (chain.sh) {
-    views.insert(views.end(), {{47, chain.prepared_geometry.srv.Get()},
+    views.insert(views.end(), {{46, chain.prepared_light.srv.Get()}, {47, chain.prepared_geometry.srv.Get()},
                                {56, (denoised ? chain.denoised_sh : chain.history_sh[chain.index]).srv.Get()},
                                {57, (denoised ? chain.denoised_zonal : chain.history_zonal[chain.index]).srv.Get()}});
   }
@@ -885,8 +887,10 @@ double Truth(const Field& field, V3 n) {
 // ---------------------------------------------------------------------------------------------------------------------
 // Statistics.
 
+// Each Add: the mean shift, the RMS error, the RMS error with the estimate's mean scaled to the truth's (its brightness
+// aside), the correlation (detail).
 struct Stats {
-  std::vector<double> shift, error, detail;
+  std::vector<double> shift, error, scaled, detail;
   void Add(const std::vector<double>& estimate, const std::vector<double>& truth) {
     double mean_e = 0;
     double mean_t = 0;
@@ -894,17 +898,21 @@ struct Stats {
     mean_e /= truth.size(), mean_t /= truth.size();
     if (mean_t <= 1e-9) return;
     double squares = 0;
+    double scaled_squares = 0;
     double covariance = 0;
     double variance_e = 0;
     double variance_t = 0;
+    const double to_truth = (mean_e > 0) ? mean_t / mean_e : 0;
     for (size_t i = 0; i < truth.size(); ++i) {
       squares += (estimate[i] - truth[i]) * (estimate[i] - truth[i]);
+      scaled_squares += ((estimate[i] * to_truth) - truth[i]) * ((estimate[i] * to_truth) - truth[i]);
       covariance += (estimate[i] - mean_e) * (truth[i] - mean_t);
       variance_e += (estimate[i] - mean_e) * (estimate[i] - mean_e);
       variance_t += (truth[i] - mean_t) * (truth[i] - mean_t);
     }
     shift.push_back((mean_e / mean_t) - 1);
     error.push_back(std::sqrt(squares / truth.size()) / mean_t);
+    scaled.push_back(std::sqrt(scaled_squares / truth.size()) / mean_t);
     if (variance_t > 1e-18 && variance_e > 1e-18) detail.push_back(covariance / std::sqrt(variance_e * variance_t));
   }
   static double Mean(const std::vector<double>& values) {
@@ -1488,25 +1496,16 @@ void Bumpy(const Passes& on) {
       truth.push_back(full[i]), a.push_back(scalar[i]), b.push_back(sh[i]);
     }
     // Also with each mean scaled to Full's (the trace's own brightness at its resolution aside).
-    const auto scaled_error = [&](const std::vector<double>& estimate) {
-      double mean_e = 0;
-      double mean_t = 0;
-      for (size_t i = 0; i < truth.size(); ++i) mean_e += estimate[i], mean_t += truth[i];
-      double squares = 0;
-      for (size_t i = 0; i < truth.size(); ++i) {
-        const double difference = (estimate[i] * mean_t / mean_e) - truth[i];
-        squares += difference * difference;
-      }
-      return std::sqrt(squares / truth.size()) / (mean_t / truth.size());
-    };
     Stats scalar_stats, sh_stats;
     scalar_stats.Add(a, truth);
     sh_stats.Add(b, truth);
+    const double scalar_scaled = Stats::Mean(scalar_stats.scaled);
+    const double sh_scaled = Stats::Mean(sh_stats.scaled);
     std::printf("   %s: scalar error %.3f (scaled %.3f, shift %+.2f%%, detail %.3f); + SH error %.3f (scaled %.3f, shift %+.2f%%,"
                 " detail %.3f): %s\n",
-                (scale == 1) ? "Full   " : (scale == 2) ? "Half   " : "Quarter", Stats::Mean(scalar_stats.error), scaled_error(a), 100 * Stats::Mean(scalar_stats.shift),
-                Stats::Mean(scalar_stats.detail), Stats::Mean(sh_stats.error), scaled_error(b), 100 * Stats::Mean(sh_stats.shift),
-                Stats::Mean(sh_stats.detail), (scaled_error(b) < scaled_error(a)) ? "closer" : "NOT closer");
+                (scale == 1) ? "Full   " : (scale == 2) ? "Half   " : "Quarter", Stats::Mean(scalar_stats.error), scalar_scaled, 100 * Stats::Mean(scalar_stats.shift),
+                Stats::Mean(scalar_stats.detail), Stats::Mean(sh_stats.error), sh_scaled, 100 * Stats::Mean(sh_stats.shift),
+                Stats::Mean(sh_stats.detail), (sh_scaled < scalar_scaled) ? "closer" : "NOT closer");
   }
 
   std::printf("\n== 6. Guards\n");
@@ -1672,8 +1671,8 @@ void Bumpy(const Passes& on) {
 }
 
 // Item t (not V1; the hardware GPU, coord's GPU window): each pass' GPU time, the median of 30 after 5, at 3840 x 2160
-// in the bumpy room with the pole, Half and Quarter, denoiser on: the build before's passes, these with the row off and
-// on.
+// in the bumpy room with the pole, Half and Quarter, denoiser on: the build before's passes (the row off ships them: its
+// _sh passes only with it on), the passes with the define and the row off (what the _sh passes save), the row on.
 template <typename Work>
 double GpuMilliseconds(Work work) {
   ComPtr<ID3D11Query> disjoint;
@@ -1721,10 +1720,216 @@ void Timing(const Passes& before, const Passes& on) {
       const double trace = GpuMilliseconds([&] { TraceStep(&chain, passes); });
       const double denoise = GpuMilliseconds([&] { DenoiseStep(chain, passes); });
       const double apply = GpuMilliseconds([&] { ApplyStep(chain, passes, true); });
-      std::printf("   %s, %-20s prepare + levels %.3f  trace + resolve %.3f  denoiser %.3f  apply %.3f  sum %.3f\n",
-                  (scale == 2) ? "Half   " : "Quarter", (row == 0) ? "the build before" : ((row == 1) ? "row off" : "row on"), prepare,
+      std::printf("   %s, %-26s prepare + levels %.3f  trace + resolve %.3f  denoiser %.3f  apply %.3f  sum %.3f\n",
+                  (scale == 2) ? "Half   " : "Quarter", (row == 0) ? "row off (the build before)" : ((row == 1) ? "the define, row off" : "row on"), prepare,
                   trace, denoise, apply, prepare + trace + denoise + apply);
     }
+  }
+}
+
+// Item d (S1a-D, not V1; the hardware GPU, coord's GPU window): Directional Light Bounce against a per-pixel reference
+// (rvs_ Q3): Full with the row off and the denoiser off, each pixel its own texel (no apply window), the resolved
+// history's mean over 64 frames after 64 x albedo. Each estimate: the apply's output, its mean over 32 frames after 64
+// (the trace's noise mostly out: what is left is the method's), at Full (the scalar and the row on) and at Half and
+// Quarter (denoiser on) the scalar (the row off), the row on and its ablations; each receiver surface's own share of its
+// light (its light zeroed); the self term's k (LightBounceConstants::self_light) fitted by least squares on the room
+// (seed 77) and checked on another (seed 1234, the pole). The receivers: the back wall and the floor (m 0.35), at least
+// 1% of the reference's brightest. Printed, not counted: rvs_'s criterion, the row on's scaled error and detail better
+// than the scalar's, |shift difference| <= 1 point.
+void Decision(const Passes& on, UINT width, UINT height) {
+  std::printf("\n== d. S1a-D at %u x %u against the per-pixel Full reference (printed, not counted)\n", width, height);
+  struct Variant {
+    const char* name;
+    bool sh;        // the row's targets, its trace, resolve and denoiser
+    float prepare;  // LB.directional at the prepare (1: the block's mean normal)
+    float apply;    // at the apply
+    float form = 0.f;
+    float transport = 0.f;
+  };
+  const std::array<Variant, 7> variants = {{
+      {"scalar (row off)", false, 0.f, 0.f},
+      {"SH (row on)", true, 1.f, 1.f},
+      {"(a) block prepare, scalar apply", true, 1.f, 0.f},
+      {"(b) top-left prepare, SH", true, 0.f, 1.f},
+      {"(c) form 1 (ZH3 alone)", true, 1.f, 1.f, 1.f},
+      {"beta 0.5", true, 1.f, 1.f, 0.f, 0.5f},
+      {"beta 1", true, 1.f, 1.f, 0.f, 1.f},
+  }};
+  const Variant& scalar = variants[0];
+  const Variant& sh = variants[1];
+  const auto step = [&](Chain* chain, const Variant& variant, int frame) {
+    chain->lb.frame = static_cast<float>(frame % 64);
+    chain->lb.directional = variant.prepare;
+    PrepareStep(*chain, on, false);
+    chain->lb.directional = variant.sh ? 1.f : 0.f;
+    TraceStep(chain, on);
+    if (chain->scale > 1) DenoiseStep(*chain, on);
+  };
+  const auto apply = [&](Chain* chain, const Variant& variant, float self_light) {
+    chain->lb.directional = variant.apply;
+    chain->lb.self_light = self_light;
+    ApplyStep(*chain, on, chain->scale > 1);
+    bool finite = true;
+    return OutputLuminance(*chain, &finite);
+  };
+  // `variant` at `scale`: the apply's output (self term 0) and, with the row on's apply, the self term's part of it (k 1
+  // less k 0: the output is linear in k), each the mean over frames 64-95.
+  struct Output {
+    std::vector<double> without_term, term;
+  };
+  const auto run = [&](const Scene& scene, UINT scale, const Variant& variant) {
+    Chain chain = MakeChain(scene, scale);
+    chain.sh = variant.sh;
+    chain.lb.directional_form = variant.form;
+    chain.lb.transport = variant.transport;
+    Output output = {std::vector<double>(scene.light.size()), std::vector<double>(scene.light.size())};
+    for (int frame = 0; frame < 96; ++frame) {
+      step(&chain, variant, frame);
+      if (frame < 64) continue;
+      const auto plain = apply(&chain, variant, 0.f);
+      const auto with_term = (variant.apply > 0.f) ? apply(&chain, variant, 1.f) : plain;
+      for (size_t i = 0; i < plain.size(); ++i) {
+        output.without_term[i] += plain[i] / 32;
+        output.term[i] += (with_term[i] - plain[i]) / 32;
+      }
+    }
+    return output;
+  };
+  const auto reference = [&](const Scene& scene) {
+    Chain chain = MakeChain(scene, 1);
+    std::vector<double> mean(scene.light.size());
+    for (int frame = 0; frame < 128; ++frame) {
+      step(&chain, scalar, frame);
+      if (frame < 64) continue;
+      const auto history = ReadFloats(chain.history[chain.index]);
+      for (size_t i = 0; i < mean.size(); ++i) {
+        const auto& colour = scene.colour[i];
+        std::array<double, 3> rgb = {};
+        for (size_t c = 0; c < 3; ++c) rgb[c] = double{colour[c]} * colour[c] * (1 - colour[3]) * history[i][c] / 64;
+        mean[i] += Luminance(rgb);
+      }
+    }
+    return mean;
+  };
+  const auto without = [](Scene scene, int surface) {
+    for (size_t i = 0; i < scene.light.size(); ++i) {
+      if (scene.surface[i] == surface) scene.light[i] = {0.f, 0.f, 0.f, 1.f};
+    }
+    return scene;
+  };
+  const auto receivers = [](const Scene& scene, const std::vector<double>& truth) {
+    double brightest = 0;
+    for (size_t i = 0; i < truth.size(); ++i) {
+      if (scene.surface[i] == 0 || scene.surface[i] == 2) brightest = std::max(brightest, truth[i]);
+    }
+    std::vector<size_t> kept;
+    for (size_t i = 0; i < truth.size(); ++i) {
+      if ((scene.surface[i] == 0 || scene.surface[i] == 2) && truth[i] >= 0.01 * brightest) kept.push_back(i);
+    }
+    return kept;
+  };
+  const auto score = [](const std::vector<size_t>& kept, const std::vector<double>& estimate, const std::vector<double>& truth) {
+    std::vector<double> e, t;
+    for (size_t i : kept) e.push_back(estimate[i]), t.push_back(truth[i]);
+    Stats stats;
+    stats.Add(e, t);
+    return stats;
+  };
+  // The back wall's and the floor's own share: 1 - their light with their own zeroed / with it.
+  const auto own_share = [](const Scene& scene, const std::vector<size_t>& kept, const std::vector<double>& full,
+                            const std::array<std::vector<double>, 2>& zeroed) {
+    std::array<double, 2> share = {};
+    for (size_t s = 0; s < 2; ++s) {
+      double sum = 0;
+      double sum_zeroed = 0;
+      for (size_t i : kept) {
+        if (scene.surface[i] == static_cast<int>(s * 2)) sum += full[i], sum_zeroed += zeroed[s][i];
+      }
+      share[s] = (sum > 0) ? 1 - (sum_zeroed / sum) : 0;
+    }
+    return share;
+  };
+  const auto print = [](const char* name, const Stats& stats) {
+    std::printf("     %-36s shift %+7.2f%%  error %.3f  scaled %.3f  detail %.3f", name, 100 * Stats::Mean(stats.shift),
+                Stats::Mean(stats.error), Stats::Mean(stats.scaled), Stats::Mean(stats.detail));
+  };
+  const auto criterion = [](const Stats& candidate, const Stats& base) {
+    const bool met = Stats::Mean(candidate.scaled) < Stats::Mean(base.scaled) && Stats::Mean(candidate.detail) > Stats::Mean(base.detail)
+                     && std::abs(Stats::Mean(candidate.shift) - Stats::Mean(base.shift)) <= 0.01;
+    return met ? "criterion met" : "criterion NOT met";
+  };
+  // The self term's least-squares k for `output` (the row on's), and its output with k.
+  const auto fit = [](const Output& output, const std::vector<size_t>& kept, const std::vector<double>& truth) {
+    double numerator = 0;
+    double denominator = 0;
+    for (size_t i : kept) {
+      numerator += (truth[i] - output.without_term[i]) * output.term[i];
+      denominator += output.term[i] * output.term[i];
+    }
+    return (denominator > 0) ? numerator / denominator : 0.0;
+  };
+  const auto with_k = [](const Output& output, double k) {
+    std::vector<double> estimate(output.term.size());
+    for (size_t i = 0; i < estimate.size(); ++i) estimate[i] = output.without_term[i] + (k * output.term[i]);
+    return estimate;
+  };
+  const auto resolution = [](UINT scale) { return (scale == 1) ? "Full" : ((scale == 2) ? "Half" : "Quarter"); };
+
+  // The room: every variant (at Full the scalar and the row on: the others the same there), the own shares, k fitted
+  // at each resolution.
+  const Scene room = Room(width, height, 0.35, false);
+  const auto truth = reference(room);
+  const auto kept = receivers(room, truth);
+  const auto truth_share = own_share(room, kept, truth, {reference(without(room, 0)), reference(without(room, 2))});
+  std::printf("   the room (seed 77, no pole), %zu receiver pixels; the reference's own share: back wall %.1f%%, floor %.1f%%\n",
+              kept.size(), 100 * truth_share[0], 100 * truth_share[1]);
+  std::array<double, 3> fitted_k = {};
+  for (UINT scale : {1u, 2u, 4u}) {
+    std::printf("   %s\n", resolution(scale));
+    Stats base;
+    for (const Variant& variant : variants) {
+      if (scale == 1 && &variant != &scalar && &variant != &sh) continue;
+      const Output output = run(room, scale, variant);
+      const Stats stats = score(kept, output.without_term, truth);
+      print(variant.name, stats);
+      if (&variant == &scalar || &variant == &sh) {
+        const auto share = own_share(room, kept, output.without_term,
+                                     {run(without(room, 0), scale, variant).without_term, run(without(room, 2), scale, variant).without_term});
+        std::printf("  | own share %.1f%% / %.1f%%", 100 * share[0], 100 * share[1]);
+      }
+      if (&variant == &sh) std::printf("  | %s", criterion(stats, base));
+      std::printf("\n");
+      if (&variant == &scalar) base = stats;
+      if (&variant == &sh) {
+        fitted_k[scale / 2] = fit(output, kept, truth);
+        char name[64];
+        std::snprintf(name, sizeof(name), "SH + self term, k %.3f (fitted)", fitted_k[scale / 2]);
+        const Stats with_term = score(kept, with_k(output, fitted_k[scale / 2]), truth);
+        print(name, with_term);
+        std::printf("  | %s\n", criterion(with_term, base));
+      }
+    }
+  }
+
+  // The held-out room: the scalar, the row on, the row on with the room's k (and its own).
+  const Scene held_out = Room(width, height, 0.35, true, 1234);
+  const auto held_truth = reference(held_out);
+  const auto held_kept = receivers(held_out, held_truth);
+  std::printf("   held out (seed 1234, the pole), %zu receiver pixels\n", held_kept.size());
+  for (UINT scale : {2u, 4u}) {
+    std::printf("   %s\n", resolution(scale));
+    const Stats base = score(held_kept, run(held_out, scale, scalar).without_term, held_truth);
+    print(scalar.name, base);
+    std::printf("\n");
+    const Output output = run(held_out, scale, sh);
+    const Stats plain = score(held_kept, output.without_term, held_truth);
+    print(sh.name, plain);
+    std::printf("  | %s\n", criterion(plain, base));
+    char name[64];
+    std::snprintf(name, sizeof(name), "SH + self term, k %.3f (the room's)", fitted_k[scale / 2]);
+    const Stats with_term = score(held_kept, with_k(output, fitted_k[scale / 2]), held_truth);
+    print(name, with_term);
+    std::printf("  | %s (its own k %.3f)\n", criterion(with_term, base), fit(output, held_kept, held_truth));
   }
 }
 
@@ -1732,14 +1937,15 @@ void Timing(const Passes& before, const Passes& on) {
 
 int main(int argc, char** argv) {
   if (argc < 3) {
-    std::printf("usage: tests.exe <repository> <before root> [items, e.g. 24; all: 123456; t alone: the GPU time]\n");
+    std::printf("usage: tests.exe <repository> <before root> [items, e.g. 24; all: 123456; t / d alone: the hardware GPU]\n");
     return 2;
   }
   repository = argv[1];
   before_root = argv[2];
   const std::string items = (argc > 3) ? argv[3] : "123456";
-  const bool timing = (items == "t");
-  if (FAILED(D3D11CreateDevice(nullptr, timing ? D3D_DRIVER_TYPE_HARDWARE : D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION,
+  // t and d (no V1 item with them): the hardware GPU; the V1 items on WARP.
+  const bool hardware = (items.find_first_of("123456") == std::string::npos);
+  if (FAILED(D3D11CreateDevice(nullptr, hardware ? D3D_DRIVER_TYPE_HARDWARE : D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION,
                                &device, nullptr, &context))) {
     return 3;
   }
@@ -1771,7 +1977,8 @@ int main(int argc, char** argv) {
   const Passes before = MakePasses(before_code);
   const Passes on = MakePasses(on_code);
 
-  if (timing) Timing(before, on);
+  if (items.find('t') != std::string::npos) Timing(before, on);
+  if (items.find('d') != std::string::npos) Decision(on, 1920, 1080);
   if (items.find('1') != std::string::npos) RowOff(before, on, on_code);
   if (items.find('2') != std::string::npos) FlatRoom(on);
   if (items.find('3') != std::string::npos) UniformSky(on);

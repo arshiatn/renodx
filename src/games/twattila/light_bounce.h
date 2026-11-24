@@ -35,6 +35,12 @@ struct LightBounceConstants {
   float directional;
   float directional_form;  // 0: ZH3 with the memo's step; 1: ZH3 alone (S2's A/B)
   float transport;         // the denoiser's half transport (0-1): each tap's light moved that far toward the texel's normal
+  // Directional Light Bounce's self term (shg_ design 3.1, k_self): x the texels' own light at the apply, the share of it
+  // the pixel's normal sees below their trace normal's horizon, (1 - n . n0) / 2 (0: none).
+  float self_light;
+  float padding_0;
+  float padding_1;
+  float padding_2;
 };
 
 

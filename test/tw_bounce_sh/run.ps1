@@ -1,8 +1,9 @@
 # Directional Light Bounce's V1 (tests.cpp: shg_ design 8, items 1-6). WARP, amd64 only: the shaders are the same on
-# x86, and item 1 reads the x86 builds' (build32) shaders too.
+# x86, and item 1 reads the x86 builds' (build32) shaders too. Items t and d (alone): the hardware GPU (coord's GPU window).
 # -Before: a folder of copies of the add-ons' embed folders before the change (<Before>\<game>\*.cso, the x86 ones from
 # build32). Reads build\ and build32\ of this repository. Holds tools/tw's GPU job lock while it runs when -Lock names it.
-# -Items: which items (e.g. 24; all: 123456; t alone: the passes' time on the hardware GPU, under the GPU job lock).
+# -Items: which items (e.g. 24; all: 123456; t: the passes' time, d: S1a-D against a per-pixel reference, each alone and
+# under the GPU job lock).
 param([string]$Before, [string]$Lock = '', [string]$Items = '123456')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
@@ -17,7 +18,7 @@ Set-Location -LiteralPath $testBuild
 if ($LASTEXITCODE -ne 0) { throw 'Directional Light Bounce test compile failed' }
 # The lock: made only where none exists (CreateNew), kept only if it still holds this run's line 3 s later, removed only
 # while it is this run's.
-$mine = "tw_bounce_sh (WARP) $PID $(Get-Date -Format s)"
+$mine = "tw_bounce_sh items $Items $PID $(Get-Date -Format s)"
 while ($Lock -ne '') {
   try {
     $file = [System.IO.File]::Open($Lock, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write)
@@ -30,7 +31,7 @@ while ($Lock -ne '') {
   Start-Sleep -Seconds 30
 }
 try {
-  & (Join-Path $testBuild 'bounce_sh.exe') $repairRoot $Before $Items | Tee-Object -FilePath (Join-Path $testBuild 'last_run.txt')
+  & (Join-Path $testBuild 'bounce_sh.exe') $repairRoot $Before $Items | Tee-Object -FilePath (Join-Path $testBuild "last_run_$Items.txt")
   if ($LASTEXITCODE -ne 0) { throw 'Directional Light Bounce test failed' }
 } finally {
   if ($Lock -ne '' -and (Get-Content -LiteralPath $Lock -Raw -ErrorAction SilentlyContinue) -eq $mine) { Remove-Item -LiteralPath $Lock -Force -Confirm:$false }

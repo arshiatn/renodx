@@ -175,6 +175,8 @@ constexpr UINT SH_VIEW_COUNT = 4;
 // The denoiser's and the apply's half transport (light_bounce_denoise.hlsli, light_bounce_apply.hlsli): 0, as no value
 // kept the quarter trace's mean light within 1% of the full trace's in test/tw_bounce_sh's item 4 (0 the closest).
 constexpr float DIRECTIONAL_TRANSPORT = 0.f;
+// The apply's self term (LightBounceConstants::self_light): 0 until test/tw_bounce_sh's item d (S1a-D) fits it.
+constexpr float DIRECTIONAL_SELF_LIGHT = 0.f;
 
 // Directional Light Bounce's beside a bounce target (made with it on): (g, w) RGBA16F, the zonal amplitude R16F.
 struct ShTargets {
@@ -195,6 +197,7 @@ struct PreparedTarget {
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
   bool failed = false;
+  std::array<bool, 2> passes_failed = {};  // their builds (Passes) without and with Directional Light Bounce
   ComPtr<ID3D11VertexShader> full_screen;
   ComPtr<ID3D11PixelShader> prepare;
   ComPtr<ID3D11PixelShader> prepare_msaa;
@@ -304,7 +307,7 @@ inline bool Prepare(ID3D11DeviceContext* context, ID3D11Device* device, const D3
         || FAILED(device->CreateBuffer(&constants, nullptr, objects.constants.GetAddressOf()));
     if (objects.failed) renodx::utils::log::w("[Total War] Light Bounce: could not create its shaders: off.");
   }
-  if (objects.failed) return false;
+  if (objects.failed || objects.passes_failed[directional]) return false;
   if (objects.light_copy && objects.light_desc.Width == light_desc.Width && objects.light_desc.Height == light_desc.Height
       && objects.light_desc.Format == light_desc.Format
       && objects.light_desc.SampleDesc.Count == light_desc.SampleDesc.Count
@@ -327,21 +330,24 @@ inline bool Prepare(ID3D11DeviceContext* context, ID3D11Device* device, const D3
   objects.light_desc = light_desc;
   objects.light_view_format = light_view_format;
   objects.bounce_scale = scale;
-  objects.directional = directional;
-  // Its passes' builds for it (Passes).
-  const Passes& passes = (directional ? DIRECTIONAL_PASSES : PASSES);
-  const auto make_pass = [&](std::span<const uint8_t> code, ComPtr<ID3D11PixelShader>* shader) {
-    return SUCCEEDED(device->CreatePixelShader(code.data(), code.size(), nullptr, shader->ReleaseAndGetAddressOf()));
-  };
-  objects.failed = !(make_pass(passes.prepare, &objects.prepare) && make_pass(passes.prepare_msaa, &objects.prepare_msaa)
-                     && make_pass(passes.trace, &objects.trace) && make_pass(passes.resolve, &objects.resolve)
-                     && make_pass(passes.denoise, &objects.denoise) && make_pass(passes.apply, &objects.apply)
-                     && make_pass(passes.apply_msaa, &objects.apply_msaa)
-                     && make_pass(passes.apply_msaa_pixel, &objects.apply_msaa_pixel));
-  if (objects.failed) {
-    renodx::utils::log::w("[Total War] Light Bounce: could not create its passes (Directional Light Bounce ",
-                          (directional ? "on" : "off"), "): off.");
-    return false;
+  // Its passes' builds for it (Passes), made again only when it changes. Should they fail, Light Bounce stays off while
+  // it stays so (the other's made again when it changes back).
+  if (!objects.prepare || objects.directional != directional) {
+    objects.directional = directional;
+    const Passes& passes = (directional ? DIRECTIONAL_PASSES : PASSES);
+    const auto make_pass = [&](std::span<const uint8_t> code, ComPtr<ID3D11PixelShader>* shader) {
+      return SUCCEEDED(device->CreatePixelShader(code.data(), code.size(), nullptr, shader->ReleaseAndGetAddressOf()));
+    };
+    if (!(make_pass(passes.prepare, &objects.prepare) && make_pass(passes.prepare_msaa, &objects.prepare_msaa)
+          && make_pass(passes.trace, &objects.trace) && make_pass(passes.resolve, &objects.resolve)
+          && make_pass(passes.denoise, &objects.denoise) && make_pass(passes.apply, &objects.apply)
+          && make_pass(passes.apply_msaa, &objects.apply_msaa) && make_pass(passes.apply_msaa_pixel, &objects.apply_msaa_pixel))) {
+      objects.passes_failed[directional] = true;
+      objects.prepare.Reset();
+      renodx::utils::log::w("[Total War] Light Bounce: could not create its passes (Directional Light Bounce ",
+                            (directional ? "on" : "off"), "): off with it.");
+      return false;
+    }
   }
   // Single-sampled (with the game's MSAA its resolve).
   D3D11_TEXTURE2D_DESC copy = light_desc;
@@ -685,8 +691,8 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     // The apply: the game's draw again (its pixels), added to the light buffer (the denoised bounce with the Denoiser).
     inputs[internal::LIGHT_VIEW] = nullptr;
     inputs[internal::HISTORY_VIEW] = runtime.denoise ? objects.denoised.srv.Get() : objects.history[objects.history_index].srv.Get();
-    inputs[internal::PREPARED_VIEW] = nullptr;
-    // Directional Light Bounce: the texels' trace normals (light_bounce_apply.hlsli).
+    // Directional Light Bounce: the texels' own light (its self term) and trace normals (light_bounce_apply.hlsli).
+    inputs[internal::PREPARED_VIEW] = (objects.sh_traced ? objects.prepared_light.srv.Get() : nullptr);
     inputs[internal::PREPARED_VIEW + 1] = (objects.sh_traced ? objects.prepared_geometry.srv.Get() : nullptr);
     native->PSSetShaderResources(internal::VIEWS_SLOT, internal::VIEW_COUNT, inputs.data());
     if (objects.directional) {
@@ -708,18 +714,28 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     native->PSSetConstantBuffers(internal::CONSTANTS_SLOT, internal::CONSTANTS_COUNT, game_constants.data());
     native->OMSetBlendState(game_blend.Get(), game_blend_factor.data(), game_sample_mask);
     for (auto* view : game_views) {
-      if (view != nullptr) view->Release();
+      if (view != nullptr) {
+        view->Release();
+      }
     }
     for (auto* view : game_sh_views) {
-      if (view != nullptr) view->Release();
+      if (view != nullptr) {
+        view->Release();
+      }
     }
     for (size_t index = internal::GBUFFER_VIEW; index < internal::PREPARED_VIEW; ++index) {
-      if (inputs[index] != nullptr) inputs[index]->Release();
+      if (inputs[index] != nullptr) {
+        inputs[index]->Release();
+      }
     }
     for (auto* buffer : game_constants) {
-      if (buffer != nullptr) buffer->Release();
+      if (buffer != nullptr) {
+        buffer->Release();
+      }
     }
-    if (constants[1] != nullptr) constants[1]->Release();
+    if (constants[1] != nullptr) {
+      constants[1]->Release();
+    }
     return {.bypass = true};
   }
 };
@@ -747,6 +763,7 @@ inline void Update(reshade::api::swapchain* swapchain, const Sliders& sliders) {
       .backface = ((sliders.backface != 0.f) ? 1.f : 0.f),
       .auto_thickness = ((sliders.auto_thickness != 0.f) ? 1.f : 0.f),
       .transport = internal::DIRECTIONAL_TRANSPORT,
+      .self_light = internal::DIRECTIONAL_SELF_LIGHT,
   };
   internal::runtime.display_width = display.texture.width;
   internal::runtime.display_height = display.texture.height;
