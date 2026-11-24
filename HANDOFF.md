@@ -792,6 +792,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RELEASE BLOCK: atn-mods ships ALL rows on with the rings off (the 32% trap confi ... | ?
 - ATN Q-C: Fewer Driver Waits rows - his 11-20 'keep Experimental + Off (not hidde ... | ?
 - fxi_ test fix (sent; branch ec_test_fix from atn-mods): R3-N1 bounded spins, R3- ... | ?
+- PK5 M4 (owner pk5_): study of the animation fill tail's fixed part (3.6-14 ms/f ... | ?
+- Stub-page growth owner: PK5 S1 unless pk4_'s design already grows it (decide whe ... | ?
+- Data-run additions (pk5_ sec 8): VirtualQueryEx both ends, +0x17c8180 ns per cal ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14439,6 +14442,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         recompute from fold-free windows. M5: worker_pool / cpu_sets compile into Rome II + Thrones x86 via
         engine_code.hpp (add their gates); draw_recording.hpp is Attila-only. -> pk2_ Rev 1 (sent; B3 = pk3_'s helper
         unless rv3_ overrules); t4i_ told: arms carry env vars, GREY verdict, non-WPR timing frames, W3-only trap counts.
+        pk5_ REV 1 DONE (render_mt/fca/designs/pk5_design.md 'Changes from Rev 0'; pk5_rev1_handback.md): A1.1 8-byte form
+        (33 pairs, no line crossing) -0.4..-0.6 W3; A2 gated study (one-way switch before first allocation, 3 gates); A3 =
+        0 measured (11-18), read-back -> K sweep -> same-build pair; site 4-style 5-byte E9; stubs 3 pages; movntps +
+        sfence; CHECKED 82 (hf_check.py fixed). Upload direction corrected (copy FROM the virtual's buffer). Designed code
+        parts -0.8..-1.45 / c9 -1.9..-4.35 / D1 -0.3..-0.4. New bench env RENODX_TW_DRAW_COPY / _POSE_COPY /
+        _LIST_PREFETCH (ATN rules). Test parts 34-38. -> rv5_ light re-check (rv5_pk5_recheck.md).
+        - [ ] PK5 M4 (owner pk5_): study of the animation fill tail's fixed part (3.6-14 ms/f Map / wake / Unmap inside
+        +0x182e080, heapfix-patched + hooked) - code declined in Rev 1; batching = PK3, wake = J1 / PK1 / PK2 Start.
+        - [ ] Stub-page growth owner: PK5 S1 unless pk4_'s design already grows it (decide when pk4_ hands back); mask
+        widening = pk4_ step 1.
+        - [ ] Data-run additions (pk5_ sec 8): VirtualQueryEx both ends, +0x17c8180 ns per call by caller, +0x1890b90
+        children histogram, +0x182e080 calls / frame with Map / wake / join / Unmap split, the mapped texture description.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
