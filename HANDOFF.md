@@ -817,7 +817,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches ( ... | ?
 - ATN: rule lines (a64_ab.ps1 -Smoke / -GateR -A32Plain / -AB -A32Plain [+ -DryRun ... | ?
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
-- Gate R start 2 (A32, 20:13) -> dry runs + synthetic -Analyze (a64ab_'s list) -> ... | ?
+- ATN: 32-bit battle clock (read the tick from the 32-bit process or hook the same ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -15110,7 +15110,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         PostMessage WM_KEYDOWN/UP to the game's own window (no SendInput, no focus change), Space every 1.5 s until the
         first text / ui / battle line (64-bit) or a 2 s present gap / +20 s (A32), Escape only 30..75 s into a movie.
         Not proven that the game acts on posted keys; dry runs wait for Gate R's locks.
-        - [ ] Gate R start 2 (A32, 20:13) -> dry runs + synthetic -Analyze (a64ab_'s list) -> A/B -> analyze.
+        - [x] Gate R start 2 (A32 = 32-bit + PerfFix 7.5 plain, 20:13): REPLAY DESYNC AT TICK 1928 written at 20:15:11.8
+        (34 s after the first battle frame: the 1748 opening steps run fast, so tick 1928 = battle second ~18) -> the
+        32-bit window 20..200 plays a diverged battle; the 64-bit home has no replay_desync.txt (unknown whether the Linux
+        build writes it). The A32 close was the script's fixed end, not a battle end. Gate R full-play cap too short.
+        A/B batch ab_runs\20261124_203405_AB (first try 20:32 stopped at start 1: F 'fmt' a, [Type]::M(x), b splits into
+        separate args in PowerShell command mode -> coord wrapped the arg lists in parentheses, reproduced + fixed).
+        ATN 21:1x: 'Cut the last 3. 2 different starts are enough' -> coord ended the batch in the 15 s pause after start
+        6 (ab_stop_after6.ps1; before start 7's A32 swap), removed our 2 lock files, ATN's dinput8 / dxgi / add-on
+        verified, -Analyze run. RESULTS battle s 20..200 wall time (64-bit loader line): B64P (PerfFix 64) 249.1 / 249.5 s,
+        C64 (none) 274.3 / 279.9 s (Gate R 281.6) -> PerfFix 64 = ~10 % faster sim; sim 7.18 / 7.19 vs 6.53 / 6.39 steps per
+        wall s (10 = real time). Frame times (window): A32 59.5 fps med 15.27 ms p99 27.17; B64P 63.8 fps 14.79 / 26.42;
+        C64 62.5 fps 14.99 / 27.32; GPU busy ~5.6 ms all; peak private A32 2.2 GB, 64-bit 5.9-6.1 GB. Script verdict
+        'B64P FASTER than A32' is by FRAME TIME only: NOT a CPU verdict (no 32-bit battle clock; 32-bit battle diverged
+        at s ~18; window placement check -14..-18 s off). Movie keys: 64-bit intro skipped in 35 s (was ~3 min);
+        A32 needs none (no intro) -> coord set A32 to no keys (posted Space did nothing on 32-bit: frames after a press
+        20.9 ms vs 23.9 ms later). Engine fact: both builds run the battle step beside the drawing
+        (BATTLE_ENV::post_model_update_synchronise decides; Sol counts steps there).
+        - [ ] ATN: 32-bit battle clock (read the tick from the 32-bit process or hook the same function; empire.retail.dll
+        offline + name map) for a real 32 vs 64 sim number, or go straight to the 64-bit port plan (64-bit baseline above).
         NSIGHT MCP (ATN asked 19:3x): Nsight 2026.4 ships ngfx-mcp.exe; ATN added it as ngfx-native (local scope, stdio,
         --profile native; Claude Code starts it per session, `claude mcp list` = Connected; the HTTP Workflow profile was
         removed). New for us: GPU Trace shader profiler (hot lines / stalls / SASS), Graphics Debugger capture + replay
