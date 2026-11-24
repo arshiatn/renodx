@@ -795,6 +795,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PK5 M4 (owner pk5_): study of the animation fill tail's fixed part (3.6-14 ms/f ... | ?
 - Stub-page growth owner: PK5 S1 unless pk4_'s design already grows it (decide whe ... | ?
 - Data-run additions (pk5_ sec 8): VirtualQueryEx both ends, +0x17c8180 ns per cal ... | ?
+- ATN (pk4_): 1 route a / b-w / both (advice: send the note now, build b-w up to t ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14454,6 +14455,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         widening = pk4_ step 1.
         - [ ] Data-run additions (pk5_ sec 8): VirtualQueryEx both ends, +0x17c8180 ns per call by caller, +0x1890b90
         children histogram, +0x182e080 calls / frame with Map / wake / join / Unmap split, the mapped texture description.
+        pk4_ DESIGN Rev 0 DONE (render_mt/fca/designs/pk4_design.md 42 KB + _handback.md): critic's route b (whole chain
+        at the LOD join) NOT feasible (the effect walk adds rigid instances in the pass); S1-w 'Early Unit Sort' = start
+        only the weighted task (9.98 of 11.83 ms volley wait) at the pass start via the game's own start + flag, guard
+        stub on the weighted add (+0x17F7FC0) with one-frame skip + session-off fail-safe; sites 31-33; rule H (off while
+        heapfix replaces the prepare until ATN's word). Gains W3 -8.0..-9.5 (L1 off) / -3..-8 on top of L1, melee
+        -9.5..-11.5, D1 -2.5..-3.0; risk H, effort M. Gates G1 probe start (check mode, RENODX_TW_SORT_CHECK, can ride
+        the data run), G2 author answer, G3 bench. S1 infra = 64-bit SiteMask + 3 pages (so PK5 needs no page step).
+        Files engine_code.hpp, tests + early_sort.inc, addon.cpp (one row, after PK1 in the writer order), README.
+        -> rv4_ (Opus xHigh) review (rv4_pk4_review.md).
+        - [ ] ATN (pk4_): 1 route a / b-w / both (advice: send the note now, build b-w up to the probe, decide after G1 +
+        his answer); 2 probe start OK + ride the data run; 3 default off + Experimental until G1-G3; 4 one-frame skip +
+        session-off fail-safe OK?; 5 heapfix loaded: off until the author answers, or a bench-only override; 6 one N /
+        N-S pair WITHOUT heapfix for the players' number; run rule for RENODX_TW_SORT_CHECK.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
