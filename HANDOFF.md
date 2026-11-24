@@ -741,6 +741,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - mem_ (b) widened by rvi_: ONE shared predicate (combine gate, post multiply, rt_ ... | ?
 - WH3 89AF6FF5 CS bind: NOT as g20_ asked (WH3 binds a 1x1 t_ssao there in all 94 ... | ?
 - g19_ F1 follow-up: after ho_g20 merges (twwarhammer/addon.cpp), so the WH1 / WH2 ... | ?
+- After rvl_ GO: t4i_ makes ebo_check / ebo_final_eval parse the A line before the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13776,6 +13777,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         waits); stop_recorded can't hide a real STOP; crash_causes.json = 6 Event 1000 one to one. SHOULD: eval crash loop
         shows any counted crash RECORDED when WER is recorded -> t4i_ round 8 (+ ebo_check time limit, text NITs; FINAL kept,
         proof copy final_eval_FINAL_r8.txt).
+        fxr_ DESIGN DONE (render_mt/fca/designs/fxr_exit_race_drain.md PRIVATE + fxr_exit_race_handback.md): second Exit Job
+        Drain at +0xD5D74 (run loop's thiscall of root teardown +0xC9800, before every teardown step on WM_QUIT); keep
+        +0xC9AC1 as backstop / restart path; +0xC9AAF rejected. Both always on (bug fix), RENODX_TW_EXIT_DRAIN=0 off. __fastcall
+        stub, shared DrainJobPool(name) pins first, new A line (B text unchanged). Offline: part 30 A cases + 30f fake
+        teardown race with no-drain control; part 13. NO separate game run: folds into the ONE FCA verify bench (per-start
+        pass rule A then B, replaces the ~150-exit soak). -> rvl_ (Opus xHigh, read only) review sent.
+        - [ ] After rvl_ GO: t4i_ makes ebo_check / ebo_final_eval parse the A line before the verify bench.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
