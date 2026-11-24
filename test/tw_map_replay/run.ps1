@@ -19,7 +19,8 @@ New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
 $flags = @("--target=$triple", '/nologo', '/std:c++20', '/EHsc', '/O2', '/MT', '/DNOMINMAX', '/DWIN32=1', '-Wno-deprecated-declarations', '/I', $repoRoot)
-$libraries = @('/link', '/OPT:REF', '/OPT:ICF', 'user32.lib', 'd3d11.lib', 'dxgi.lib', 'dxguid.lib', 'd3dcompiler.lib')
+# Large address aware, as Attila.exe (the x86 harness's address space 4 GB: --ballast-mb).
+$libraries = @('/link', '/OPT:REF', '/OPT:ICF', '/LARGEADDRESSAWARE', 'user32.lib', 'd3d11.lib', 'dxgi.lib', 'dxguid.lib', 'd3dcompiler.lib')
 $adapter = @()
 $adapterLibraries = @()
 if ($RingAdapter -ne '') {

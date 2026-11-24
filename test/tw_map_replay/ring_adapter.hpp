@@ -3,7 +3,7 @@
 // add-on hands it in the game. device_loss's device list (init_device), ReShade's init_resource / destroy_resource (the
 // game's buffers alone: ReShade's own, as its push buffer, are made below its proxy; --addon-buffers ring offers them
 // too), the present event with the row on (the ring goes in at the first one), the row off at the unload, then the
-// device's end. The ring's log lines go to stdout.
+// device's end. The ring's log lines go to stdout. --piece-cap sets its piece_cap seam.
 #pragma once
 
 #include <cstdio>
@@ -56,9 +56,11 @@ inline const RingPlugin RING_PLUGIN = {
     .stats =
         [] {
           const auto& pool = twattila::buffer_pool::internal::pool;
-          return std::format("ring {}, {} pieces, full ring {}, stopped {}", (pool.installed ? "in" : "out"),
-                             pool.pieces.size(), (pool.full_logged ? "seen" : "never"), (pool.stopped ? "yes" : "no"));
+          return std::format("ring {}, {} pieces, full ring {}, stopped {}, a wait at the cap {}",
+                             (pool.installed ? "in" : "out"), pool.pieces.size(), (pool.full_logged ? "seen" : "never"),
+                             (pool.stopped ? "yes" : "no"), (pool.wait_logged ? "seen" : "never"));
         },
+    .piece_cap = [](uint32_t pieces) { twattila::buffer_pool::internal::piece_cap = pieces; },
 };
 
 }  // namespace tw_map_replay

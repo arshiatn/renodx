@@ -13,7 +13,9 @@
 // constant indices 0, 1, 16, 255: in-window, past a 16 B buffer, past a 16-constant window, deep), each dispatch a row;
 // read back each frame, compared bit for bit between two runs.
 // The trap test (s5r_ design v3 3.3): the victims parked in a time window (Options::park), keep-warm, the plugin in a
-// window only; PhaseReport's phases around it and its TRAP lines.
+// window only; PhaseReport's phases around it and its TRAP lines. PK1's trigger attempts (6.2 H5): a piece cap, the C
+// rows' burst, extra push / unit calls, a focus gap (Options), the address space ballast (ReserveBallast); a run
+// without a window: ScanReport.
 #pragma once
 
 #include <windows.h>
@@ -37,6 +39,7 @@
 #include <iterator>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <set>
 #include <stdexcept>
@@ -175,6 +178,21 @@ inline int64_t QpcFrequency() {
   LARGE_INTEGER value;
   QueryPerformanceFrequency(&value);
   return value.QuadPart;
+}
+
+// --ballast-mb: `mb` MB of the address space reserved, nothing committed (the 32-bit process as full as Attila's), in
+// blocks of up to 64 MB (the space is fragmented), kept to the process's end. The MB reserved.
+inline uint32_t ReserveBallast(uint32_t mb) {
+  uint32_t reserved = 0;
+  for (uint32_t block = 64; reserved < mb && block != 0;) {
+    const uint32_t size = std::min(block, mb - reserved);
+    if (VirtualAlloc(nullptr, size_t{size} << 20, MEM_RESERVE, PAGE_NOACCESS) != nullptr) {
+      reserved += size;
+    } else {
+      block /= 2;
+    }
+  }
+  return reserved;
 }
 
 namespace internal {
@@ -825,6 +843,18 @@ struct Options {
   double plugin_length_s = 0.;
   // Test seam: the windows' clock in replayed frames of this many seconds (0: QPC from the first replayed frame).
   double seconds_per_frame = 0.;
+  // Trigger attempts (PK1 6.2 H5). The plugin's most pieces (RingPlugin::piece_cap; 0: its own). The C rows' shape
+  // (burst_ms > 0): each frame's calls unpaced, then idle to its start + burst_ms. Extra calls a frame, spread evenly
+  // over its draws, never offered to the plugin: `extra_push` DISCARDs of a 432 B dynamic constant buffer bound in the
+  // PS's last slot (ReShade's push buffer), `extra_units` 16 B UpdateSubresources of a default constant buffer bound in
+  // the CS's slot 0, each with a Dispatch (RecordUnits' runs). The focus gap: the window full-screen and activatable, a
+  // second window of the harness in the foreground inside [focus_start_s, + focus_length_s) (negative start: neither).
+  uint32_t piece_cap = 0;
+  double burst_ms = 0.;
+  uint32_t extra_push = 0;
+  uint32_t extra_units = 0;
+  double focus_start_s = -1.;
+  double focus_length_s = 0.;
 };
 
 struct FrameTimes {
@@ -860,6 +890,9 @@ struct Result {
   uint32_t victims = 0;      // the trap test's
   uint32_t parked_maps = 0;  // victims' maps that went to their stand-ins
   uint32_t warm_maps = 0;    // keep-warm DISCARDs
+  // The focus gap: the second window was in the foreground after it took the focus, ours again after the gap.
+  bool focus_taken = false;
+  bool focus_back = false;
 };
 
 inline Result Replay(const Stream& stream, const Options& options) {
@@ -920,20 +953,36 @@ inline Result Replay(const Stream& stream, const Options& options) {
     throw std::runtime_error("the device lacks constant buffer offsetting or NO_OVERWRITE on constant buffers");
   }
 
-  // The window and its flip-model swap chain (the game presents flip, sync interval 0 here).
+  // The window and its flip-model swap chain (the game presents flip, sync interval 0 here): a 320 x 180 popup that
+  // never takes the focus, or with a focus gap the primary screen's size and in the foreground (the game's window).
+  const bool focus = (options.focus_start_s >= 0.);
+  const UINT window_width = (focus ? static_cast<UINT>(GetSystemMetrics(SM_CXSCREEN)) : 320);
+  const UINT window_height = (focus ? static_cast<UINT>(GetSystemMetrics(SM_CYSCREEN)) : 180);
   const HINSTANCE instance = GetModuleHandleW(nullptr);
   WNDCLASSW window_class = {.lpfnWndProc = DefWindowProcW, .hInstance = instance, .lpszClassName = L"tw_map_replay"};
   RegisterClassW(&window_class);
-  const HWND window = CreateWindowExW(WS_EX_NOACTIVATE, L"tw_map_replay", L"tw_map_replay", WS_POPUP | WS_VISIBLE, 0, 0,
-                                      320, 180, nullptr, nullptr, instance, nullptr);
+  const HWND window = CreateWindowExW((focus ? 0 : WS_EX_NOACTIVATE), L"tw_map_replay", L"tw_map_replay",
+                                      WS_POPUP | WS_VISIBLE, 0, 0, static_cast<int>(window_width),
+                                      static_cast<int>(window_height), nullptr, nullptr, instance, nullptr);
   if (window == nullptr) throw std::runtime_error("CreateWindowEx failed");
   const auto window_guard = std::unique_ptr<std::remove_pointer_t<HWND>, decltype(&DestroyWindow)>(window, &DestroyWindow);
+  if (focus) SetForegroundWindow(window);
+  // The focus gap's second window (while it is open).
+  auto focus_window = std::unique_ptr<std::remove_pointer_t<HWND>, decltype(&DestroyWindow)>(nullptr, &DestroyWindow);
   ComPtr<IDXGISwapChain1> swapchain;
-  const DXGI_SWAP_CHAIN_DESC1 swapchain_desc = {.Width = 320, .Height = 180, .Format = DXGI_FORMAT_B8G8R8A8_UNORM,
-                                                .SampleDesc = {1, 0}, .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                                                .BufferCount = 2, .SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD};
+  const DXGI_SWAP_CHAIN_DESC1 swapchain_desc = {.Width = window_width, .Height = window_height,
+                                                .Format = DXGI_FORMAT_B8G8R8A8_UNORM, .SampleDesc = {1, 0},
+                                                .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT, .BufferCount = 2,
+                                                .SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD};
   check(factory->CreateSwapChainForHwnd(device.Get(), window, &swapchain_desc, nullptr, nullptr, &swapchain),
         "CreateSwapChainForHwnd");
+  // --burst's idle on a high-resolution timer (Sleep's tick would add up to 15.6 ms a frame).
+  const auto idle_timer = std::unique_ptr<void, decltype(&CloseHandle)>(
+      (options.burst_ms > 0.
+           ? CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS)
+           : nullptr),
+      &CloseHandle);
+  if (options.burst_ms > 0. && idle_timer == nullptr) throw std::runtime_error("CreateWaitableTimerEx failed");
 
   // The shaders: every stage reads all 14 constant buffer slots (so the driver sees each bound buffer used).
   static constexpr char SHADERS[] = R"(
@@ -1079,9 +1128,28 @@ RWByteAddressBuffer counter : register(u1);
   const size_t begin = frame_start(options.first_frame);
   const size_t end = frame_start(last_frame + 1);
   const uint32_t replayed_frames = last_frame - options.first_frame + 1;
-  const auto draws_in_frames = std::count_if(stream.calls.begin() + begin, stream.calls.begin() + end,
-                                             [](const Call& call) { return call.kind == Kind::DRAW; });
-  const double draws_a_frame = std::max(1., static_cast<double>(draws_in_frames) / replayed_frames);
+  // Each stream frame's draws (--extra's calls spread over them).
+  std::vector<uint64_t> frame_draws(stream.frames, 0);
+  for (size_t index = begin; index < end; ++index) {
+    if (stream.calls[index].kind == Kind::DRAW) ++frame_draws[stream.calls[index].frame];
+  }
+  const double draws_a_frame = std::max(
+      1., static_cast<double>(std::accumulate(frame_draws.begin(), frame_draws.end(), uint64_t{0})) / replayed_frames);
+  // --extra's buffers, never offered to the plugin.
+  if (options.parity && options.extra_push + options.extra_units != 0) {
+    throw std::runtime_error("--extra calls: not in parity mode");
+  }
+  ComPtr<ID3D11Buffer> push_buffer;
+  ComPtr<ID3D11Buffer> units_buffer;
+  const D3D11_BUFFER_DESC push_desc = {.ByteWidth = 432, .Usage = D3D11_USAGE_DYNAMIC,
+                                       .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
+                                       .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE};
+  const D3D11_BUFFER_DESC units_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT,
+                                        .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  if (options.extra_push != 0) check(device->CreateBuffer(&push_desc, nullptr, &push_buffer), "the extra push buffer");
+  if (options.extra_units != 0) {
+    check(device->CreateBuffer(&units_desc, nullptr, &units_buffer), "the extra units buffer");
+  }
 
   // The GPU load: a draw's cost from timestamps at a 256-pixel square, then its copies (or a smaller square).
   if (options.gpu_ms > 0. && !options.parity) {
@@ -1137,6 +1205,11 @@ RWByteAddressBuffer counter : register(u1);
   // The stream's resources, then the ring (init_device: nothing bound yet). It gets init_resource / destroy_resource
   // for the game's buffers alone, as in the game (ReShade's own too with `addon_buffers`).
   const RingPlugin& plugin = *options.plugin;
+  // The native side (overhead, parity) has no pieces to cap.
+  if (options.piece_cap != 0 && &plugin != &NATIVE_PLUGIN) {
+    if (plugin.piece_cap == nullptr) throw std::runtime_error(std::format("plugin {} has no piece cap", plugin.name));
+    plugin.piece_cap(options.piece_cap);
+  }
   if (plugin.attach != nullptr && !plugin.attach(device.Get(), context.Get())) {
     throw std::runtime_error(std::format("plugin {} refused the device", plugin.name));
   }
@@ -1342,6 +1415,20 @@ RWByteAddressBuffer counter : register(u1);
     const double at = static_cast<double>(times.start_ticks) / static_cast<double>(result.frequency);
     const auto inside = [at](double start, double length) { return at >= start && at < start + length; };
     plugin_on = (options.plugin_start_s < 0. || inside(options.plugin_start_s, options.plugin_length_s));
+    if (const bool gap = focus && inside(options.focus_start_s, options.focus_length_s);
+        gap != (focus_window != nullptr)) {
+      if (gap) {
+        focus_window.reset(CreateWindowExW(WS_EX_TOPMOST, L"tw_map_replay", L"tw_map_replay focus",
+                                           WS_POPUP | WS_VISIBLE, 0, 0, 640, 360, nullptr, nullptr, instance, nullptr));
+        if (focus_window == nullptr) throw std::runtime_error("the focus gap's window: CreateWindowEx failed");
+        SetForegroundWindow(focus_window.get());
+        result.focus_taken = (GetForegroundWindow() == focus_window.get());
+      } else {
+        focus_window.reset();
+        SetForegroundWindow(window);
+        result.focus_back = (GetForegroundWindow() == window);
+      }
+    }
     if (const bool park = !victims.empty() && inside(options.park_start_s, options.park_length_s); park != parked) {
       for (auto& victim : victims) {
         if (park && victim.stand_in == nullptr) {
@@ -1387,7 +1474,7 @@ RWByteAddressBuffer counter : register(u1);
     const bool binding = (call.kind == Kind::SET || call.kind == Kind::SET1 || call.kind == Kind::VB
                           || call.kind == Kind::SWAP || call.kind == Kind::CLEAR);
     if (state_only && !binding) return;
-    if (!state_only && options.pace) {
+    if (!state_only && options.pace && options.burst_ms <= 0.) {
       const auto target = static_cast<int64_t>(call.pace_us * ticks_per_us);
       while (Qpc() - frame_begin - native_ticks < target) YieldProcessor();
     }
@@ -1522,6 +1609,35 @@ RWByteAddressBuffer counter : register(u1);
                                         .Width = static_cast<float>(STRIP_PIXELS), .Height = 1, .MaxDepth = 1};
           context->RSSetViewports(1, &strip);
         }
+        // --extra's calls due before this draw (spread evenly over the frame's draws).
+        const uint64_t draws = frame_draws[call.frame];
+        const uint64_t drawn = draw_index;
+        for (uint64_t extra = drawn * options.extra_push / draws; extra < (drawn + 1) * options.extra_push / draws;
+             ++extra) {
+          D3D11_MAPPED_SUBRESOURCE mapped = {};
+          HRESULT hr = S_OK;
+          timed(Where::CB_DISCARD, NO_RESOURCE,
+                [&] { hr = context->Map(push_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped); });
+          if (FAILED(hr)) {
+            ++result.failed_maps;
+            break;
+          }
+          auto* target_words = static_cast<uint32_t*>(mapped.pData);
+          for (uint32_t word = 0; word < push_desc.ByteWidth / 4; ++word) {
+            target_words[word] = FillWord(static_cast<uint32_t>(extra), word);
+          }
+          timed(Where::UNMAP, NO_RESOURCE, [&] { context->Unmap(push_buffer.Get(), 0); });
+          timed(Where::BIND, NO_RESOURCE,
+                [&] { context->PSSetConstantBuffers(CB_SLOTS - 1, 1, push_buffer.GetAddressOf()); });
+        }
+        for (uint64_t extra = drawn * options.extra_units / draws; extra < (drawn + 1) * options.extra_units / draws;
+             ++extra) {
+          const std::array<uint32_t, 4> range = {static_cast<uint32_t>(extra), 1, 0, 0};
+          timed(Where::CB_OTHER_MAP, NO_RESOURCE,
+                [&] { context->UpdateSubresource(units_buffer.Get(), 0, nullptr, range.data(), 0, 0); });
+          timed(Where::BIND, NO_RESOURCE, [&] { context->CSSetConstantBuffers(0, 1, units_buffer.GetAddressOf()); });
+          timed(Where::DISPATCH, NO_RESOURCE, [&] { context->Dispatch(1, 1, 1); });
+        }
         const uint32_t copies = (options.parity ? 1 : result.instances);
         run(Where::DRAW, NO_RESOURCE, [&] { context->DrawInstanced(3, copies, 0, 0); });
         ++draw_index;
@@ -1567,6 +1683,13 @@ RWByteAddressBuffer counter : register(u1);
         if (!options.parity) context->ClearUnorderedAccessViewUint(uavs[1].Get(), zero.data());
         MSG message;
         while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&message);
+        // --burst: idle to the frame's start + burst_ms.
+        const double idle_us = (options.burst_ms * 1000.) - (static_cast<double>(Qpc() - frame_begin) / ticks_per_us);
+        if (options.burst_ms > 0. && idle_us > 0.) {
+          const LARGE_INTEGER due = {.QuadPart = -static_cast<LONGLONG>(idle_us * 10.)};  // relative, in 100 ns
+          SetWaitableTimer(idle_timer.get(), &due, 0, nullptr, nullptr, FALSE);
+          WaitForSingleObject(idle_timer.get(), INFINITE);
+        }
         times.frame_ticks = Qpc() - frame_begin;
         result.frames.push_back(times);
         result.draws_per_frame.push_back(draw_index);
@@ -1713,12 +1836,14 @@ inline std::string Report(const Stream& stream, const Result& result, const Summ
 }
 
 // The trap test's phases (s5r_ 3.3) around a window [start_s, + length_s), by each frame's start: before (the 10 s
-// before it), idle (in it), after (its first 10 s after), late (the next 10 s). Then per DISCARD row: TRAP yes when the
-// after and late phases both wait at least max(2 ms/f, 5x the before phase's waits), no recovery.
-inline std::string PhaseReport(const Result& result, double start_s, double length_s) {
-  constexpr std::array<std::string_view, 4> PHASES = {"before", "idle", "after", "late"};
-  const double end_s = start_s + length_s;
-  const std::array<double, 5> edges = {start_s - 10., start_s, end_s, end_s + 10., end_s + 20.};
+// before it), idle (in it), after (its first 10 s after), late (the next 10 s).
+constexpr std::array<std::string_view, 4> PHASES = {"before", "idle", "after", "late"};
+constexpr std::array<Where, 2> TRAP_ROWS = {Where::CB_DISCARD, Where::VB_DISCARD};
+inline std::array<double, 5> PhaseEdges(double start_s, double length_s) {
+  return {start_s - 10., start_s, start_s + length_s, start_s + length_s + 10., start_s + length_s + 20.};
+}
+inline std::array<Summary, 4> Phases(const Result& result, double start_s, double length_s) {
+  const auto edges = PhaseEdges(start_s, length_s);
   std::array<Summary, 4> phases;
   for (size_t phase = 0; phase < PHASES.size(); ++phase) {
     Result part = {.frequency = result.frequency};
@@ -1728,10 +1853,26 @@ inline std::string PhaseReport(const Result& result, double start_s, double leng
     });
     phases[phase] = Summarize(part, 0);
   }
-  constexpr std::array<Where, 2> ROWS = {Where::CB_DISCARD, Where::VB_DISCARD};
+  return phases;
+}
+
+// A DISCARD row's step: the smaller of after - before and late - before (ms/f of waits; -1 without after or late
+// frames).
+inline double TrapStep(const std::array<Summary, 4>& phases, Where where) {
+  const auto row = static_cast<size_t>(where);
+  if (phases[2].frames == 0 || phases[3].frames == 0) return -1.;
+  return std::min(phases[2].wait_ms[row], phases[3].wait_ms[row]) - phases[0].wait_ms[row];
+}
+
+// Per DISCARD row: TRAP yes when the after and late phases both wait at least max(2 ms/f, 5x the before phase's
+// waits) (s5r_), or both at least 2 ms/f more than it (s5x_: the first mark is blind for a row that already waits), no
+// recovery.
+inline std::string PhaseReport(const Result& result, double start_s, double length_s) {
+  const auto edges = PhaseEdges(start_s, length_s);
+  const auto phases = Phases(result, start_s, length_s);
   std::string text = std::format("phases around {:.1f} s + {:.1f} s\n{:<7} {:>13} {:>6} {:>9}", start_s, length_s,
                                  "phase", "seconds", "frames", "frame ms");
-  for (const Where where : ROWS) {
+  for (const Where where : TRAP_ROWS) {
     text += std::format(" {:>15} {:>8} {:>10}", std::format("{} ms/f", WHERE_NAMES[static_cast<size_t>(where)]),
                         "waits/f", "wait ms/f");
   }
@@ -1740,21 +1881,46 @@ inline std::string PhaseReport(const Result& result, double start_s, double leng
     const auto& summary = phases[phase];
     text += std::format("{:<7} {:>13} {:>6} {:>9.2f}", PHASES[phase],
                         std::format("{:.1f}-{:.1f}", edges[phase], edges[phase + 1]), summary.frames, summary.frame_ms);
-    for (const Where where : ROWS) {
+    for (const Where where : TRAP_ROWS) {
       const auto row = static_cast<size_t>(where);
       text += std::format(" {:>15.3f} {:>8.2f} {:>10.3f}", summary.ms[row], summary.waits[row], summary.wait_ms[row]);
     }
     text += "\n";
   }
-  for (const Where where : ROWS) {
+  for (const Where where : TRAP_ROWS) {
     const auto row = static_cast<size_t>(where);
-    const double mark = std::max(2., 5. * phases[0].wait_ms[row]);
-    const bool trapped = phases[2].frames != 0 && phases[3].frames != 0 && phases[2].wait_ms[row] >= mark
-                         && phases[3].wait_ms[row] >= mark;
-    text += std::format("TRAP {}: {} (DISCARD waits after {:.3f}, late {:.3f} ms/f; the mark {:.3f}: max(2, 5x before))\n",
-                        WHERE_NAMES[row], (trapped ? "yes" : "no"), phases[2].wait_ms[row], phases[3].wait_ms[row], mark);
+    const double before = phases[0].wait_ms[row];
+    const double mark = std::max(2., 5. * before);
+    const bool relative = phases[2].wait_ms[row] >= mark && phases[3].wait_ms[row] >= mark;
+    const bool trapped = TrapStep(phases, where) >= 0. && (relative || TrapStep(phases, where) >= 2.);
+    text += std::format(
+        "TRAP {}: {} (DISCARD waits before {:.3f}, after {:.3f} ({:+.3f}), late {:.3f} ({:+.3f}) ms/f; the marks: "
+        "max(2, 5x before) {:.3f}, before + 2 {:.3f})\n",
+        WHERE_NAMES[row], (trapped ? "yes" : "no"), before, phases[2].wait_ms[row], phases[2].wait_ms[row] - before,
+        phases[3].wait_ms[row], phases[3].wait_ms[row] - before, mark, before + 2.);
   }
   return text;
+}
+
+// A run without a window (the trigger attempts): the phases around the second (10 s on, 1 s steps, while 20 s of frames
+// follow it) with the largest step of a DISCARD row (TrapStep), their TRAP lines as PhaseReport's.
+inline std::string ScanReport(const Result& result) {
+  if (result.frames.empty()) return "";
+  const double last_s = static_cast<double>(result.frames.back().start_ticks) / static_cast<double>(result.frequency);
+  double step_at = 10.;
+  double largest = -1.;
+  for (double start_s = 10.; start_s + 20. <= last_s; start_s += 1.) {
+    const auto phases = Phases(result, start_s, 0.);
+    for (const Where where : TRAP_ROWS) {
+      if (const double step = TrapStep(phases, where); step > largest) {
+        largest = step;
+        step_at = start_s;
+      }
+    }
+  }
+  if (largest < 0.) return std::format("phase scan: {:.1f} s of frames, under the 30 s a scan needs\n", last_s);
+  return std::format("phase scan: 10-{:.0f} s, the largest DISCARD wait step {:+.3f} ms/f at {:.1f} s\n{}",
+                     last_s - 20., largest, step_at, PhaseReport(result, step_at, 0.));
 }
 
 }  // namespace tw_map_replay

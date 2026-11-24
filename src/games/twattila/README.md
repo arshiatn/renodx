@@ -18,6 +18,9 @@
 - Checked in `test/tw_buffer_pool` (the reclaim stream, its control, the flush, the full ring's wait, the lone device),
   `test/tw_unit_pack_rounds` (every case with the records in one buffer and in the rings: the motion dumps byte-equal;
   the hand-over inside the records, the rings dropped, 8,320 runs in one call) and `test/tw_render_mt_defaults`.
+- Debug: `test/tw_map_replay` takes `--piece-cap`, `--burst`, `--extra push|units,<n>`, `--ballast-mb` and `--focus-gap`
+  (attempts to trigger the driver's trap outside the game); its TRAP lines also say yes for a step of 2 ms/f or more,
+  and a run without a window is scanned for its largest step.
 
 ## Dev, Fewer Constant Uploads Off after a restart (2026-11-20; built only, not stamped, not installed, not run in game)
 

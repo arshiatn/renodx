@@ -15,8 +15,14 @@
 //   (the victims' maps and binds to stand-ins in the window: cb the game's dynamic CBs <= 64 KB, vb its dynamic VBs
 //   > 64 KB, all every dynamic buffer of its; parity: the ON run only)  --keep-warm n (a native DISCARD of each victim
 //   every n parked frames)  --keep-warm-bind (and one draw with it bound; not in parity mode)  --plugin-window
-//   <start>,<length> (the plugin's row on only in it). Baseline mode then prints the phases around the window (the
-//   park's, else the plugin's) and a TRAP line per DISCARD row.
+//   <start>,<length> (the plugin's row on only in it). Baseline mode then prints the phases around each window given
+//   (the park's, the focus gap's, the plugin's; none: around the largest step a scan finds) and a TRAP line per DISCARD
+//   row (yes: after and late both >= max(2, 5x before), or both >= before + 2 ms/f).
+//   Trigger attempts (PK1 6.2 H5): --piece-cap n (the plugin's most pieces)  --burst ms (each frame's calls unpaced,
+//   then idle to ms from its start)  --extra push,<n> (n DISCARDs of a 432 B constant buffer a frame, between draws)
+//   --extra units,<n> (n 16 B UpdateSubresource + Dispatch a frame)  --ballast-mb n (n MB of address space reserved,
+//   nothing committed)  --focus-gap <start>,<length> (the window full-screen in the foreground, a second window of the
+//   harness takes the focus in the gap: it takes the desktop's foreground).
 // Exit 2 with "STOP:" on an error (a removed device, a failed call): GPU runs end there.
 #include <cstdio>
 #include <cstdlib>
@@ -59,6 +65,7 @@ int main(int argc, char** argv) {
   uint32_t runs = 0;
   uint32_t warm = 1;
   double mark_ms = 5.;
+  uint32_t ballast_mb = 0;
   std::string plugin_name = "native";
   tw_map_replay::Options options;
   try {
@@ -124,6 +131,23 @@ int main(int argc, char** argv) {
         options.keep_warm_bind = true;
       } else if (argument == "--plugin-window") {
         std::tie(options.plugin_start_s, options.plugin_length_s) = window(value());
+      } else if (argument == "--piece-cap") {
+        options.piece_cap = static_cast<uint32_t>(tw_map_replay::internal::Number(value()));
+      } else if (argument == "--burst") {
+        options.burst_ms = tw_map_replay::internal::Decimal(value());
+      } else if (argument == "--extra") {
+        const std::string_view extra = value();
+        const size_t comma = extra.find(',');
+        const std::string_view kind = extra.substr(0, comma);
+        if (comma == std::string_view::npos || (kind != "push" && kind != "units")) {
+          throw std::runtime_error(std::format("not push|units,<n>: '{}'", extra));
+        }
+        (kind == "push" ? options.extra_push : options.extra_units) =
+            static_cast<uint32_t>(tw_map_replay::internal::Number(extra.substr(comma + 1)));
+      } else if (argument == "--ballast-mb") {
+        ballast_mb = static_cast<uint32_t>(tw_map_replay::internal::Number(value()));
+      } else if (argument == "--focus-gap") {
+        std::tie(options.focus_start_s, options.focus_length_s) = window(value());
       } else if (argument == "--wait-ms") {
         options.wait_ms = tw_map_replay::internal::Decimal(value());
       } else if (argument == "--warm") {
@@ -141,6 +165,14 @@ int main(int argc, char** argv) {
       }
     }
     if (trace.empty()) throw std::runtime_error("no trace given");
+    if (ballast_mb != 0) {
+      const uint32_t reserved = tw_map_replay::ReserveBallast(ballast_mb);
+      MEMORYSTATUSEX memory = {.dwLength = sizeof(memory)};
+      GlobalMemoryStatusEx(&memory);
+      std::printf("ballast: %u of %u MB of address space reserved, nothing committed; %llu of %llu MB left\n", reserved,
+                  ballast_mb, memory.ullAvailVirtual >> 20, memory.ullTotalVirtual >> 20);
+      if (reserved < ballast_mb) throw std::runtime_error("ballast: the address space ran out");
+    }
     const tw_map_replay::RingPlugin* plugin = &tw_map_replay::NATIVE_PLUGIN;
     if (plugin_name == "ring") {
 #ifdef TW_MAP_REPLAY_RING_PLUGIN
@@ -172,13 +204,25 @@ int main(int argc, char** argv) {
                                        * 1000. / static_cast<double>(result.frequency));
         }
         std::printf("cb_discard ms per frame: %s\n", per_frame.c_str());
-        if (const bool park = (options.park != tw_map_replay::Park::NONE); park || options.plugin_start_s >= 0.) {
-          std::printf("park: %u victims, %u maps to their stand-ins, %u keep-warm DISCARDs\n%s", result.victims,
-                      result.parked_maps, result.warm_maps,
-                      tw_map_replay::PhaseReport(result, (park ? options.park_start_s : options.plugin_start_s),
-                                                 (park ? options.park_length_s : options.plugin_length_s))
-                          .c_str());
+        if (options.focus_start_s >= 0.) {
+          std::printf("focus gap: the second window in the foreground %s, ours again after it %s\n",
+                      (result.focus_taken ? "yes" : "no"), (result.focus_back ? "yes" : "no"));
         }
+        const bool park = (options.park != tw_map_replay::Park::NONE);
+        if (park || options.plugin_start_s >= 0.) {
+          std::printf("park: %u victims, %u maps to their stand-ins, %u keep-warm DISCARDs\n", result.victims,
+                      result.parked_maps, result.warm_maps);
+        }
+        // The phases around each window given (the park's, the focus gap's, the plugin's); none: the scan.
+        bool windowed = false;
+        for (const auto& [start_s, length_s] : {std::pair((park ? options.park_start_s : -1.), options.park_length_s),
+                                                std::pair(options.focus_start_s, options.focus_length_s),
+                                                std::pair(options.plugin_start_s, options.plugin_length_s)}) {
+          if (start_s < 0.) continue;
+          windowed = true;
+          std::printf("%s", tw_map_replay::PhaseReport(result, start_s, length_s).c_str());
+        }
+        if (!windowed) std::printf("%s", tw_map_replay::ScanReport(result).c_str());
         std::fflush(stdout);
         cb_discard.push_back(summary.ms[static_cast<size_t>(Where::CB_DISCARD)]);
       }

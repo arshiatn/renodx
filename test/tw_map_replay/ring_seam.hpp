@@ -11,6 +11,7 @@
 
 #include <d3d11.h>
 
+#include <cstdint>
 #include <string>
 
 namespace tw_map_replay {
@@ -31,6 +32,8 @@ struct RingPlugin {
   void (*detach)() = nullptr;
   // One line for the run's report (pieces used, fallbacks); null: none.
   std::string (*stats)() = nullptr;
+  // --piece-cap, before attach: the most pieces the ring may hold (its test seam); null: no cap to set.
+  void (*piece_cap)(uint32_t pieces) = nullptr;
 };
 
 // The pass-through: native D3D11, the baseline and the "OFF" side of every comparison.

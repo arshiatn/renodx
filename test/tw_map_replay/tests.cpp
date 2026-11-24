@@ -26,6 +26,12 @@
 //    differs. Keep-warm every frame with a bind (6 DISCARDs), the plugin's row on in its window only; CONTROL:
 //    --keep-warm-bind refused in parity mode. The phases of synthetic frames: TRAP yes for waits after the window;
 //    CONTROL: a late phase that recovers says no.
+// 7. PK1's trigger attempts: the piece cap handed to the plugin (CONTROL: a plugin without one refused); --burst's
+//    frames idle to 30 ms (CONTROL: unpaced without it, shorter); --extra's calls a frame in their rows, exactly
+//    (CONTROL: refused in parity mode); the ballast reserved. TRAP's absolute rule: a VB row already waiting 3 ms/f
+//    that steps +2.6 says yes (the relative mark alone 15: no; CONTROL: +1.5 says no). The scan finds a step at 50 s
+//    (CONTROL: one that recovers after 8 s says no; a run under 30 s is not scanned). The focus gap is not run here: it
+//    takes the desktop's foreground.
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -282,6 +288,7 @@ struct PluginCounts {
   uint32_t presents = 0;
   uint32_t on_presents = 0;  // with the row on
   uint32_t detach = 0;
+  uint32_t piece_cap = 0;
 };
 PluginCounts plugin_counts;
 const replay::RingPlugin COUNTING_PLUGIN = {
@@ -296,6 +303,7 @@ const replay::RingPlugin COUNTING_PLUGIN = {
         },
     .detach = [] { ++plugin_counts.detach; },
     .stats = [] { return std::format("{} presents", plugin_counts.presents); },
+    .piece_cap = [](uint32_t pieces) { plugin_counts.piece_cap = pieces; },
 };
 
 }  // namespace
@@ -527,6 +535,79 @@ int main() {
       if (times.start_ticks >= 25000) times.wait_ticks[row(Where::CB_DISCARD)] = 0;
     }
     CHECK(replay::PhaseReport(phased, 10., 5.).find("TRAP cb_discard: no") != std::string::npos);
+
+    std::printf("7. trigger attempts\n");
+    options = {.pace = false, .target_size = 256, .plugin = &COUNTING_PLUGIN, .piece_cap = 4};
+    plugin_counts = {};
+    replay::Replay(stream, options);
+    CHECK(plugin_counts.piece_cap == 4 && plugin_counts.attach == 1);
+    std::printf("  control: a plugin without a piece cap\n");
+    replay::RingPlugin uncapped = COUNTING_PLUGIN;
+    uncapped.piece_cap = nullptr;
+    options.plugin = &uncapped;
+    CHECK(Throws([&] { replay::Replay(stream, options); }));
+    std::printf("  --burst 30: each frame idle to 30 ms\n");
+    options = {.target_size = 256, .burst_ms = 30.};
+    const auto burst = replay::Replay(stream, options);
+    CHECK(burst.frames.size() == 2);
+    for (const auto& times : burst.frames) CHECK(times.frame_ticks * 1000 >= 29 * burst.frequency);
+    std::printf("  control: unpaced without it\n");
+    options = {.pace = false, .target_size = 256};
+    const auto unpaced = replay::Replay(stream, options);
+    const auto plain = replay::Summarize(unpaced, 0);
+    CHECK(plain.frame_ms < 29.);
+    std::printf("  --extra push,10 --extra units,7\n");
+    options.extra_push = 10;
+    options.extra_units = 7;
+    const auto extra = replay::Summarize(replay::Replay(stream, options), 0);
+    const auto added = [&](Where where) { return extra.calls[row(where)] - plain.calls[row(where)]; };
+    std::printf("  a frame: cb_discard %+.1f, unmap %+.1f, bind %+.1f, cb_other_map %+.1f, dispatch %+.1f\n",
+                added(Where::CB_DISCARD), added(Where::UNMAP), added(Where::BIND), added(Where::CB_OTHER_MAP),
+                added(Where::DISPATCH));
+    CHECK(added(Where::CB_DISCARD) == 10. && added(Where::UNMAP) == 10. && added(Where::BIND) == 17.);
+    CHECK(added(Where::CB_OTHER_MAP) == 7. && added(Where::DISPATCH) == 7. && added(Where::DRAW) == 0.);
+    std::printf("  control: --extra in parity mode\n");
+    options.parity = true;
+    CHECK(Throws([&] { replay::Replay(stream, options); }));
+    std::printf("  --ballast-mb 64\n");
+    MEMORYSTATUSEX memory = {.dwLength = sizeof(memory)};
+    GlobalMemoryStatusEx(&memory);
+    const uint64_t free_before = memory.ullAvailVirtual;
+    CHECK(replay::ReserveBallast(64) == 64);
+    GlobalMemoryStatusEx(&memory);
+    CHECK(free_before - memory.ullAvailVirtual >= (uint64_t{64} << 20));
+    std::printf("  TRAP's absolute rule: VB waits 3.0 ms/f, then 5.6 from 15 s\n");
+    for (auto& times : phased.frames) {
+      times.wait_ticks[row(Where::CB_DISCARD)] = 0;
+      times.wait_ticks[row(Where::VB_DISCARD)] = (times.start_ticks >= 15000 ? 56 : 30);
+    }
+    phased.frequency = 10000;  // a tick 0.1 ms
+    for (auto& times : phased.frames) times.start_ticks *= 10;
+    const std::string absolute = replay::PhaseReport(phased, 10., 5.);
+    std::printf("%s", absolute.c_str());
+    CHECK(absolute.find("TRAP vb_discard: yes") != std::string::npos && absolute.find("TRAP cb_discard: no") != std::string::npos);
+    std::printf("  control: a step of +1.5\n");
+    for (auto& times : phased.frames) times.wait_ticks[row(Where::VB_DISCARD)] = (times.start_ticks >= 150000 ? 45 : 30);
+    CHECK(replay::PhaseReport(phased, 10., 5.).find("TRAP vb_discard: no") != std::string::npos);
+    std::printf("  the scan: CB waits 3 ms/f from 50 s on, 90 s of frames\n");
+    replay::Result scanned = {.frequency = 1000};
+    for (int64_t second = 0; second < 90; ++second) {
+      scanned.frames.push_back({.start_ticks = second * 1000, .frame_ticks = 100});
+      scanned.frames.back().wait_ticks[row(Where::CB_DISCARD)] = (second >= 50 ? 3 : 0);
+    }
+    const std::string scan = replay::ScanReport(scanned);
+    std::printf("%s", scan.c_str());
+    CHECK(scan.find("+3.000 ms/f at 50.0 s") != std::string::npos && scan.find("TRAP cb_discard: yes") != std::string::npos);
+    // (A step of 15 s still fills both 10 s phases to 2 ms/f at some second: 7 of 10 frames in one, 8 in the other.)
+    std::printf("  control: the step recovers at 58 s\n");
+    for (auto& times : scanned.frames) {
+      if (times.start_ticks >= 58000) times.wait_ticks[row(Where::CB_DISCARD)] = 0;
+    }
+    const std::string recovered = replay::ScanReport(scanned);
+    CHECK(recovered.find("TRAP cb_discard: no") != std::string::npos && recovered.find("TRAP vb_discard: no") != std::string::npos);
+    std::printf("  control: 25 s of frames\n");
+    scanned.frames.resize(25);
+    CHECK(replay::ScanReport(scanned).find("under the 30 s") != std::string::npos);
   } catch (const std::exception& error) {
     std::printf("FAIL: %s\n", error.what());
     ++failures;
