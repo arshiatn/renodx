@@ -828,7 +828,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - GPU WAVE 1 (low priority, resume_1124.md section 4): pdd2_ (Opus xHigh) PT DI + ... | ?
 - ATN: vMF Q4 WH3 sunlight row: ATN asked 'why last?'. Coord: WH3's sun already us ... | ?
 - SHARC DEPTH 4 (ATN 11-24: 'can you not fix and test it in nsight? ... if you can ... | ?
-- coord N5: owner of PT DI step 5 vs unified U3 / U3d (G3, G6) -> pdd2_ recommends ... | ?
+- pdr2_ (fresh Opus xHigh) re-checks both Rev 2 deltas -> designs/pdd2_recheck.md ... | ?
+- coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -15284,7 +15285,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         lab cost, keep 4 only if it is better within budget -> hang: Aftermath dump (nv-aftermath-monitor or the MCP in a
         new session; running the monitor = ATN's OK first) names the hung shader -> root cause + fix (bug fixes always on)
         by Opus xHigh; Fable only if Opus can't (ATN offered). Owner: coordinator, after GPU wave 1's step 2.
-        - [ ] coord N5: owner of PT DI step 5 vs unified U3 / U3d (G3, G6) -> pdd2_ recommends in its delta.
+        - [x] coord N5 (pdd2_): PT DI step 5 builds G2 pairwise MIS (one function U3 / U5a call), G4, G5, G7 before U3;
+        unified U3 owns G3, U3d owns G6.
+        - [x] pdd2_ DONE (hand-back plan_1117/designs/pdd2_handback.md): Revision 2 on top of pt_di_rtxdi.md (all 14
+        points; boiling filter = own pass at the end of temporal (REUSE_BOIL); T2 includes DI/InitialSampling.hlsli with
+        RAB stubs + PRESAMPLING; slots u73+ in both builds, null descriptors; RTXDI copy + -I in step 2; web check for a
+        newer RTXDI first; checkerboard dropped; lab gate ids; 4b waits for the 64-bit add-on; O1 closed; player rule: an
+        edit of a v32 field lifts the play version to 32) and vmf_diffuse.md (all 8 points; slider 40 %; seam blend over
+        +-0.02 alpha + T4b R step <= 0.01; over-budget order per-receiver -> fast form -> sigma table -> EON; sigma(-u)
+        unclamped, denominator > 0; one X-macro tables header in vms1_'s fix round; credits with S4; WH3 after Attila,
+        sunlight row replaces CA's Oren-Nayar only while on). Effort PT DI ~93 agent-h + ~19 GPU-h, vMF Attila S2-S5
+        16-22 h + WH3 4-6 h + S6 6-10 h. No blocking question. pds2_ (PT DI step 2) starts ONLY after ho_gbf_g23 merges
+        (same files rt_path / rt_d3d12 / rt_trace; 23 commits ahead of atn-mods; its merge waits for the G23 GPU gate box
+        'G23 set (ea398af22 + H1-H8) GPU gate: helper build + H5 WARP + H9 T3 / T4'); then E4 references re-made.
+        - [ ] pdr2_ (fresh Opus xHigh) re-checks both Rev 2 deltas -> designs/pdd2_recheck.md -> pdd2_ fixes findings.
+        - [ ] coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_runs) in a GPU window when
+        no game run is planned -> merge ho_gbf_g23 (one merge, rvh_'s G-M1) -> pds2_ can start.
         NSIGHT MCP (ATN asked 19:3x): Nsight 2026.4 ships ngfx-mcp.exe; ATN added it as ngfx-native (local scope, stdio,
         --profile native; Claude Code starts it per session, `claude mcp list` = Connected; the HTTP Workflow profile was
         removed). New for us: GPU Trace shader profiler (hot lines / stalls / SASS), Graphics Debugger capture + replay
