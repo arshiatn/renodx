@@ -828,7 +828,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
 - s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
-- s3fr_ (Opus xHigh) reviews the Sol fixes (correctness, per-exception cost of the ... | ?
+- AFTER WINDOW 1: s3f_ fix round (M1-M3, overlay into the picture, S / N items, -- ... | ?
 - vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree- ... | ?
 - vMF credits.hpp line (paper, CC BY 4.0) lands with S4 (rows). | ?
 - a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the l ... | ?
@@ -15334,8 +15334,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         message_for_sol.md. Open: game smoke (needs a64_ab -Smoke -Package / -Exe64Sha + ATN's rule line, rides in
         window 2); patch From: lines carry ATN's git placeholder email (YOUR_ID+...) -> ATN decides before sending.
         Slot slip: s3f_ overwrote then deleted a slot lock -> shared no-clobber take_slot.sh + README rule (coord).
-        - [ ] s3fr_ (Opus xHigh) reviews the Sol fixes (correctness, per-exception cost of the walk, HDR swap chain
-        formats with our add-on, tests, message, no private names) -> attila64/s3f_review.md -> s3f_ fixes -> ATN.
+        - [x] s3fr_ DONE (hand-back attila64/s3fr_review_handback.md; attila64/s3f_review.md): FIX FIRST, 3 M / 4 S /
+        5 N. Fix 2 ships as is. M1 stack overflows lost (dll_may_catch inlined -> 1368-byte filter frame; c00000fd now
+        silent) -> noinline + always report c00000fd. M2 real DLL crashes lost (/GS + C++ unwind-only frames count as
+        'may catch'; d3d11 UpdateSubresource bad pointer = silent) -> Sol's Rip-only rule + RtlAddFunctionTable entries
+        over the ELF ranges whose handler writes the CRASH report (prototype passes 14 cases in scratch\s3fr_); walk cost
+        +0.06..1.5 us, none in normal play. M3 message false claims + HDR effect + '256 hooks'. Overlay: NO RenoDX-named
+        contract; on non-8-bit swap buffers draw the overlay into Sol's RGBA8 picture before the CopyResource (~6 lines;
+        a64bd_'s A2b then needs the picture's resource handle). S2 trimmed TESTS.md for Sol (no user paths / agent
+        names). Patch has no game names of ours.
+        - [ ] AFTER WINDOW 1: s3f_ fix round (M1-M3, overlay into the picture, S / N items, --reset-author with ATN's new
+        email, patches + zip + trimmed TESTS regenerated) -> short re-check -> Sol smoke rule line for ATN; bring-up
+        review gets the overlay change (A2b target = picture resource).
         - [x] ATN 11-24: WH3 gets the Experimental vMF slider too (Forge: PT looks better with vMF) -> sent to pdd2_;
         SHaRC depth 4 plan: 'Good idea'.
         - [ ] vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree-agent-aa2f659ee853ca432
