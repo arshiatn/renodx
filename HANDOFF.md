@@ -712,7 +712,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - F5 motion into NRD (add-on work, gbr_): own box, after the GPU gates. | ?
 - Lean ReSTIR Reuse skips the ContactShade fix (gbr_ N5 note): if job 1 shows Lean ... | ?
 - gate hook round 25: the F24 web + price timing row is near its limit (0.055 vs 0 ... | ?
-- Tales census source = a dump-on-create run in the next Tales data run (G24 45 up ... | ?
+- G24 census source = ATN's startup dumps in D:\Dev\renodx\bin\cmd_Decompiler-1.3. ... | ?
 - t4i_ fixes ebr_'s FINAL MUSTs + SHOULDs -> run_all -> ebr_ delta re-review (befo ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -13367,7 +13367,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         (b) hide R1 / R2 / L2 / Cached + the 4 C group rows + Families (is_visible false, still read from ReShade.ini, Reset
         0); drop AnimationRowsWorkers' Check label (RENODX_TW_ANIMATION_CHECK stays); new test\tw_render_mt_defaults.
         Waits for exd_'s NITs merge.
-        - [ ] Tales census source = a dump-on-create run in the next Tales data run (G24 45 updated; no pak reading).
+        - [ ] G24 census source = ATN's startup dumps in D:\Dev\renodx\bin\cmd_Decompiler-1.3.16\ (ATN 11-24 02:3x):
+        dump_shaders_tales_of_arise (13,525 cso + 13,523 hlsl, + New_1 25,692 files), dump_shaders_Expeditions_rome (16,983
+        cso + 17,061 hlsl), dump_shader_tw<game>_pack for the 9 TW games (806-3,818 cso), shogun2 / ryse dumps. No pak
+        reading, no frame tracing for the census; hlsl from cmd_Decompiler verified against the cso. Tell g24_ at G24 start.
         GATE HOOK ROUND 24 LIVE 02:0x: ATN in chat (to coord's 'OK to update the gate hook to round 24 (still logs only)?'):
         'Yes'. gtp_ would not act on a relayed yes (right), so coord did it: live backed up to testbin/scratch/gtp_/gtp_bak29
         (gate_hook.py aa2306475bdb + gates.tsv + mode.txt + INSTALL_FOR_ATN.md), stage24 gate_hook.py copied over
