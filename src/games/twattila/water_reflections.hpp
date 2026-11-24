@@ -101,6 +101,8 @@ inline uint64_t Frame() {
 
 inline ID3D11Texture2D* TextureOf(ID3D11ShaderResourceView* view, Microsoft::WRL::ComPtr<ID3D11Texture2D>* texture,
                                   D3D11_TEXTURE2D_DESC* desc) {
+  // An out-parameter: what `texture` held is let go first, never read.
+  texture->Reset();
   *desc = {};
   if (view == nullptr) return nullptr;
   Microsoft::WRL::ComPtr<ID3D11Resource> resource;
