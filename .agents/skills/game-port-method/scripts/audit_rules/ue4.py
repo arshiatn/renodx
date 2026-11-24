@@ -12,13 +12,13 @@ compute shader the one buffer that large). Its controls are Tales' 6 DEPTH_SHADE
 by VIEW_CONTROLS below.
 
 Per rule: stages, scope (over the signature facts), needs, predicate, controls {game: {positive, negative}}, proof.
-Controls (step0 r2, traces = the manifest's g1g2 / g1 folders):
+Controls (step0 r3, traces = the manifest's g1g2 / g1 folders):
   ue-position-only-vs-b: C81C5E1F (Tales) and D82DA0C8 (Expeditions light volume) position-only, no velocity target in
   any trace; 4CD6A3D9 / 6A657BEA skinned velocity VS, OWN in every trace.
-  ue-static-vs-b: BD2D0865 (Tales base pass, level A, colour) CAMERA by facts:static-chain; 4CD6A3D9 / 6A657BEA skinned;
-  B1AAEBC8 (Tales, edge: a second per-draw buffer in the position, world position offset) GAP by trace.
-  Expeditions has no positive: none of its level-A VS is a static chain (75 skinned, 58 without an identified View,
-  7 vertex texture fetch, 7 instanced, 4 screen quads), so the rule stays refused there (exit 3).
+  ue-static-vs-b: BD2D0865 (Tales base pass, manual vertex fetch) and E976B71D (Expeditions base pass, GPU Scene
+  primitive data: manifest primitive_id) level A with main-view colour lines, CAMERA by facts:static-chain;
+  4CD6A3D9 / 6A657BEA skinned; edges: B1AAEBC8 (Tales: a second per-draw buffer in the position, world position
+  offset) GAP by trace, 6E8E2927 (Expeditions: the GPU Scene velocity VS, View row 129 in its position) OWN by trace.
 """
 
 # Tales rt_shadows.hpp DEPTH_SHADERS: the View slot the add-on reads per prepass vertex shader (the S3 controls).
@@ -43,11 +43,12 @@ RULES = {
         'scope': lambda f: f['stage'] == 'vs' and not f['position_only'],
         'needs': {'signature', 'dataflow', 'view'},
         'predicate': lambda f: f['static_chain'],
-        'proof': 'The clip position comes only from vertex inputs, one per-draw buffer and the View\'s projection and '
-                 'translation rows (facts static-chain, the View projects it): static in world space for a given draw, '
+        'proof': 'The clip position comes only from vertex inputs, one per-draw source (a buffer or, in 4.22+, the GPU '
+                 'Scene primitive\'s data read by its primitive id) and the View\'s projection and translation rows '
+                 '(facts static-chain, the View projects it): static in world space for a given draw, '
                  'so camera motion is right; a moving primitive gets its object motion from Unreal\'s velocity pass (a '
                  'twin per draw).',
         'controls': {'tales': {'positive': ['BD2D0865'], 'negative': ['4CD6A3D9', 'B1AAEBC8']},
-                     'expeditions': {'positive': [], 'negative': ['6A657BEA']}},
+                     'expeditions': {'positive': ['E976B71D'], 'negative': ['6A657BEA', '6E8E2927']}},
     },
 }

@@ -102,7 +102,7 @@ KINDS = {
     'signature': ('stage', 'model', 'inputs', 'outputs', 'input_semantics', 'output_semantics', 'position_only', 'family'),
     'resources': ('constant_buffers', 'resources', 'uavs'),
     'dataflow': ('position_sources', 'position_input', 'bone_like', 'indexed_position', 'vtf', 'sv_position_used',
-                 'reads', 'output_sources', 'screen_space', 'no_geometry', 'discards'),
+                 'reads', 'output_sources', 'screen_space', 'no_geometry', 'discards', 'primitive_data'),
     'view': ('view_slot', 'view_rows_in_position', 'previous_rows_in_outputs', 'projected_output', 'static_chain',
              'read_roots', 'roots_world', 'roots_pixel', 'roots_view'),
 }
@@ -508,14 +508,30 @@ def derive(base, engine):
     facts['position_input'] = any(r.startswith('in:') for r in position)
     # S0-S4 (narrow): a VS whose clip position is made from its vertex inputs, vertex / instance id and literals only:
     # no constant (no camera, no light matrix, no object transform), no buffer or texture read (no vertex pulling).
-    # A DS / GS position from its inputs is the earlier stage's geometry, so only a VS is screen-space.
+    # A DS / GS position from its inputs is the earlier stage's geometry, so only a VS is screen-space. r2-S2: that
+    # form means a screen pass only in an engine whose pack was reviewed for it (manifest screen_space).
     facts['screen_space'] = base['stage'] == 'vs' and 'SV_POSITION0' in output_semantics and all(
         r.startswith(('in:', 'idx:in:', 'idx:sv:vertexid', 'idx:sv:instanceid')) or r in ('sv:vertexid', 'sv:instanceid', 'icb')
         for r in position)
-    facts['no_geometry'] = facts['screen_space']  # S0-M1: only a stage with an SV_Position output draws geometry
+    facts['no_geometry'] = facts['screen_space'] and bool(engine.get('screen_space'))  # S0-M1: a VS only
     facts['discards'] = base['discards']
-    facts['bone_like'] = any(r[4:] in uint_inputs for r in position if r.startswith('idx:'))
-    facts['indexed_position'] = any(r.startswith('idx:') for r in position) or any(r.endswith('[dyn]') for r in position)
+    # r2-M1: Unreal 4.22+ GPU Scene. The primitive id input indexes the primitive's own data (LocalToWorld) in a
+    # structured buffer: a position buffer read only ever by that id alone is per-draw data, not bones or vertex
+    # pulling. Any other buffer read with the id in its index, a dynamic constant or an icb in the position: none is.
+    pid = f'in:{engine["primitive_id"]}' if engine.get('primitive_id') else None
+    primitive = set()
+    if pid in uint_inputs and not any(r == 'icb' or r.endswith('[dyn]') for r in position):
+        reads_of = collections.defaultdict(list)
+        for resource, kind, address in base['reads']:
+            reads_of[resource].append((kind, address))
+        buffers = {r[4:] for r in position if r.startswith('buf:')}
+        primitive = {b for b in buffers if all(kind == 'structured' and address == [pid] for kind, address in reads_of[b])}
+        if any(pid in address for b in buffers - primitive for _, address in reads_of[b]):
+            primitive = set()
+    facts['primitive_data'] = sorted(primitive)
+    rest = position - ({f'buf:{b}' for b in primitive} | {pid, f'idx:{pid}'}) if primitive else position
+    facts['bone_like'] = any(r[4:] in uint_inputs for r in rest if r.startswith('idx:'))
+    facts['indexed_position'] = any(r.startswith('idx:') or r.endswith('[dyn]') for r in rest)
     facts['vtf'] = any(r.startswith('tex:') and r[4:] in texture_kinds for r in position)
     facts['sv_position_used'] = 'sv:position' in base['used']  # read by any instruction (a dither's discard too)
     facts['reads'] = base['reads']
@@ -550,12 +566,13 @@ def derive(base, engine):
         any(f'cb{slot}[{r}]' in others for r in view['projection'])
     # Static in world space given its per-draw constants: vertex inputs, one per-draw buffer (more than one non-View
     # buffer can be a material's or a parameter collection's offset: world position offset, wind) and only the View's
-    # projection and translation rows. The View must project it (S0-M2: a screen quad has no View slot).
-    per_draw = {r.split('[')[0] for r in position if r.startswith('cb') and not r.startswith(f'cb{slot}[')}
-    facts['static_chain'] = slot is not None and facts['position_input'] and not facts['bone_like'] and \
+    # projection and translation rows. The View must project it (S0-M2: a screen quad has no View slot). r2-M1: the
+    # GPU Scene primitive's data counts as that one per-draw source (a Material buffer beside it is refused).
+    per_draw = {r.split('[')[0] for r in rest if r.startswith('cb') and not r.startswith(f'cb{slot}[')} | primitive
+    facts['static_chain'] = slot is not None and any(r.startswith('in:') for r in rest) and not facts['bone_like'] and \
         not facts['indexed_position'] and not facts['vtf'] and not facts['view_rows_in_position'] and \
         len(per_draw) <= 1 and \
-        not any(r.startswith(('tex:', 'buf:', 'tgsm:', 'uav:', 'icb', 'unknown', 'sv:', 'proj')) for r in position)
+        not any(r.startswith(('tex:', 'buf:', 'tgsm:', 'uav:', 'icb', 'unknown', 'sv:', 'proj')) for r in rest)
 
     def roots(labels):
         out = set()
@@ -607,7 +624,10 @@ class FactsView(dict):
 
 def bytecode_stage(data):
     """The stage the program chunk of a container declares (SHDR / SHEX / DXIL version token: kind in bits 16-31; DXIL
-    kinds 6-12 are ray-tracing libraries), '?' for anything else."""
+    kinds 6-12 are ray-tracing libraries), a D3D9 token stream's version token (0xFFFE vs / 0xFFFF ps, models 1-3),
+    '?' for anything else."""
+    if len(data) >= 8 and data[2:4] in (b'\xfe\xff', b'\xff\xff') and 1 <= data[1] <= 3:
+        return 'vs' if data[2] == 0xfe else 'ps'
     if data[:4] != b'DXBC' or len(data) < 32:
         return '?'
     count = int.from_bytes(data[28:32], 'little')
@@ -624,7 +644,8 @@ def facts_worker(item):
     disassemble = facts_worker.disassembler = getattr(facts_worker, 'disassembler', None) or Disassembler()
     data = open(path, 'rb').read()
     if data[:4] != b'DXBC':
-        return sha, {'error': 'not DXBC (DXIL or unknown container)'}
+        return sha, {'error': 'D3D9 bytecode: not analysed (the facts read SM4 / SM5 DXBC)' if bytecode_stage(data) != '?'
+                     else 'not DXBC (DXIL or unknown container)'}
     asm = disassemble(data)
     if asm is None:
         return sha, {'error': 'D3DDisassemble failed'}
@@ -747,8 +768,11 @@ def census(ctx, header, final=False):
     traced = set()
     for trace in traces:
         for stage, value in IN_TRACE.findall(ctx.text(trace) or ''):
-            if value != '00000000':
-                traced.add((value.upper(), stage))
+            key = (value.upper(), stage)
+            if key in ctx.game['not_game']:  # n-r2-1: a traced injected shader is not the game's either
+                ctx.excluded[key] = ctx.game['not_game'][key]
+            elif value != '00000000':
+                traced.add(key)
     for key in traced:
         found.setdefault(key, {'tiers': set(), 'file': None, 'sha': None})['tiers'].add('A')
     if len(traced) < ctx.game['trace_floor']:
@@ -925,8 +949,10 @@ def velocity_target(ctx, text, slot=r'\d+'):
 
 def mesh_uv(ctx, interpolants, text):
     """Why one trace line that draws a pixel shader reading by 'interpolants' does not show mesh-uv-only, or '' (S0-S3):
-    its VS must be View-projected (a mesh, not a screen quad) and make each of them from vertex inputs and non-View
-    constant rows only."""
+    its VS must be View-projected (a mesh, not a screen quad) and make each of them from per-vertex or per-draw data
+    only: vertex inputs, vertex / instance id, buffers (manual vertex fetch, GPU Scene data; open question 1) indexed by
+    those or by non-View constant rows, and non-View constant rows. Never a texture, a View row, a dynamic index, a
+    projection or a dependent index."""
     vs = next((v.upper() for s, v in IN_TRACE.findall(text) if s == 'vs'), None)
     fact, kinds, _ = ctx.facts.get((vs, 'vs'), ({}, frozenset(), None))
     if not {'dataflow', 'view'} <= kinds or fact['view_slot'] is None:
@@ -936,11 +962,16 @@ def mesh_uv(ctx, interpolants, text):
         sources = fact['output_sources'].get(interpolant)
         if sources is None:
             return f'its VS {vs} writes no {interpolant}'
-        bad = [r for r in sources if not (r.startswith('in:') or re.fullmatch(r'cb(\d+)\[\d+\]', r) and
-                                          not r.startswith(f'cb{slot}['))]
+        bad = []
+        for label in sources:
+            plain = label[4:] if label.startswith('idx:') else label
+            constant = re.fullmatch(r'cb(\d+)\[\d+\]', plain)
+            if not (plain.startswith('in:') or plain in ('sv:vertexid', 'sv:instanceid') or label.startswith('buf:')
+                    or constant and int(constant.group(1)) != slot):
+                bad.append(label)
         if bad:
-            return f'its VS {vs} makes {interpolant} from {bad[:3]} (View rows, system values, projection, dynamic or ' \
-                   'dependent reads)'
+            return f'its VS {vs} makes {interpolant} from {sorted(bad)[:3]} (textures, View rows, system values, ' \
+                   'projection, dynamic or dependent indices)'
     return ''
 
 
@@ -1191,6 +1222,8 @@ def tripwires(axis, verdict, reason, fact, kinds, primary):
         if fact.get('view_rows_in_position'):
             out.append(f'CAMERA on a VS whose position reads View rows beyond the projection {fact["view_rows_in_position"]} '
                        '(camera-facing, time or view data)')
+        if 'view' in kinds and fact.get('view_slot') is None:  # r2-S1
+            out.append('CAMERA on a VS the View does not project (no View slot: a screen pass or its own matrices)')
     if axis == 'scale' and verdict == 'N/A' and reason in ('no-screen-read', 'mesh-uv-only'):
         if fact.get('sv_position_used'):
             out.append(f'N/A/{reason} on a shader that uses SV_Position')
@@ -1209,6 +1242,8 @@ def tripwires(axis, verdict, reason, fact, kinds, primary):
         elif not fact.get('screen_space'):
             out.append('no-geometry on a shader whose position reads constants, buffers or textures, or comes from '
                        'an earlier stage')
+        elif not fact.get('no_geometry'):  # r2-S2
+            out.append('no-geometry in an engine whose screen-space form is not reviewed (manifest screen_space)')
     if axis == 'mv' and verdict == 'N/A' and reason == 'position-only' and fact and not fact['position_only']:
         out.append('N/A/position-only on a VS whose outputs are not SV_Position only')
     return out
@@ -1309,7 +1344,8 @@ def census_holes(ctx):
                 (claim not in ('writes-velocity', 'no-velocity') or bool(ctx.engine['velocity_formats']))
         if kind == 'facts':
             return any(c == 'dead' and ctx.game['dead'] or c in FACT_CLAIMS and
-                       ('view' not in FACT_CLAIMS[c][1] or ctx.engine['view'] is not None) for c in claim.split('|'))
+                       ('view' not in FACT_CLAIMS[c][1] or ctx.engine['view'] is not None) and
+                       (c != 'no-geometry' or bool(ctx.engine.get('screen_space'))) for c in claim.split('|'))
         return {'table': bool(tables.get(claim)), 'src': bool(ctx.game['src_files'].get(axis)), 'ours': bool(ctx.game['ours']),
                 'manifest': ctx.game['no_rt'], 'decision': True, 'out': bool(ctx.game['tools']),
                 'test': bool(ctx.game['tools'])}.get(kind, False)  # twin / pair / facts:proxy: not read yet

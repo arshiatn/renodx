@@ -14,6 +14,11 @@ ENGINES[engine]:
                     previous      the previous frame's TranslatedWorldToClip (a velocity VS reads it)
   velocity_formats DXGI formats ('f<number>' as traces print them) of the engine's velocity target; empty: the velocity
                   trace claims fail closed
+  screen_space    True: a VS whose clip position is only its vertex inputs, vertex / instance id and literals is a
+                  screen pass (facts no-geometry); False until the engine's pack is reviewed for it (r2-S2)
+  primitive_id    the uint vertex input that indexes the GPU Scene primitive's data (Unreal 4.22+ LocalVertexFactory):
+                  a structured buffer read only by it is per-draw data, not bones (r2-M1); every one of Expeditions' 603
+                  VS with a uint ATTRIBUTE13 reads exactly one structured buffer by it alone and by nothing else
 
 GAMES[game]:
   engine, pack    ENGINES key; rule pack module in this folder (None: no rules yet)
@@ -40,10 +45,12 @@ UE_VIEW_421 = {'min_rows': 63, 'projection': range(0, 8), 'translation': (62,), 
 UE_VIEW_423 = {'min_rows': 67, 'projection': range(0, 8), 'translation': (66,), 'previous': range(87, 91)}
 
 ENGINES = {
-    'ue4.21': {'view': UE_VIEW_421, 'velocity_formats': ('f35',)},
-    'ue4.23': {'view': UE_VIEW_423, 'velocity_formats': ('f35',)},
-    'warscape': {'view': None, 'velocity_formats': ()},
-    'cryengine': {'view': None, 'velocity_formats': ()},
+    'ue4.21': {'view': UE_VIEW_421, 'velocity_formats': ('f35',), 'screen_space': True},
+    'ue4.23': {'view': UE_VIEW_423, 'velocity_formats': ('f35',), 'screen_space': True, 'primitive_id': 'ATTRIBUTE13'},
+    'warscape': {'view': None, 'velocity_formats': (), 'screen_space': False},
+    'cryengine': {'view': None, 'velocity_formats': (), 'screen_space': False},
+    'divinity': {'view': None, 'velocity_formats': (), 'screen_space': False},  # Larian's Divinity Engine (D3D11)
+    'iriszoom': {'view': None, 'velocity_formats': (), 'screen_space': False},  # Eugen's IrisZoom (D3D9: no facts yet)
 }
 
 DUMPS = 'cmd_Decompiler-1.3.16/'
@@ -56,18 +63,29 @@ DXGI = {(value, stage): 'dxgi.dll in the game folder' for value, stage in (
 TW_HOLE = 'packs installed on ATN\'s PC only (DLC he does not own is not in the dump)'
 
 
-def tw(folder, floor, game):
-    """A Total War game: census only until the Warscape pack (parity_check.py's dump folder names)."""
+def census_only(engine, sources, holes, game):
+    """A game with a census and no rule pack yet ('game': its src/games folder)."""
     return {
-        'engine': 'warscape', 'pack': None,
-        'sources': [('S', 'bin', DUMPS + folder, '**/*.cso', floor)], 'not_game': {},
-        'trace_folders': [], 'trace_floor': 0, 'trace_files': 0,
-        'holes': [TW_HOLE],
+        'engine': engine, 'pack': None, 'sources': sources, 'not_game': {},
+        'trace_folders': [], 'trace_floor': 0, 'trace_files': 0, 'holes': holes,
         'axes': {'mv': {'vs', 'ds'}, 'scale': {'ps', 'cs'}, 'rt': {'vs', 'ds'}}, 'rt_ps': False,
         'capture_tables': {}, 'motion_tables': {}, 'key_tables': {}, 'host_state': None,
         'src_files': {}, 'ours': [f'src/games/{game}/**/*0x*.hlsl'], 'tools': {}, 'dead': set(), 'no_rt': False,
         'box_pending': f'tools:audit/boxes_pending_{game}.tsv',
     }
+
+
+def tw(folder, floor, game):
+    """A Total War game: census only until the Warscape pack (parity_check.py's dump folder names)."""
+    return census_only('warscape', [('S', 'bin', DUMPS + folder, '**/*.cso', floor)], [TW_HOLE], game)
+
+
+def pack_dump(game, shipped, runtime=0):
+    """shd_'s pack dumps (2026-11-24): every shader of the game's own files in cso\\, run-time built ones in runtime\\;
+    not_game.tsv lists the shaders of injected and library DLLs, which are not dumped."""
+    folder = f'{DUMPS}dump_shader_{game}_pack/'
+    return [('S', 'bin', folder + 'cso', '*.cso', shipped)] + \
+        ([('R', 'bin', folder + 'runtime', '*.cso', runtime)] if runtime else [])
 
 
 def blood(game, count, pack):
@@ -126,7 +144,8 @@ GAMES = {
     },
     'ryse': {
         'engine': 'cryengine', 'pack': None,
-        # The two runtime dumps, then the shipped shader cache (every dumped shader is in it; read 2026-11-24).
+        # The two runtime dumps, then the shipped shader cache (every dumped shader is in it). ATN 2026-11-24: every
+        # shader counts, so already-extracted pack shaders are census sources; the audit itself never opens a pak.
         'sources': [('R', 'bin', DUMPS + 'dump_shader_ryse', '**/*.cso', 891),
                     ('R', 'bin', DUMPS + 'dump_shader_ryse2', '**/*.cso', 354),
                     ('S', 'tools', 'nontw/shader_packs/ryse/cso', '*.cso', 6421)], 'not_game': {},
@@ -149,6 +168,18 @@ GAMES = {
     'shogun2': tw('dump_shader_shogun2_pack', 673, 'twshogun2completeedition') | {
         'sources': [('S', 'bin', DUMPS + 'dump_shader_shogun2_pack', '**/*.cso', 673),
                     ('R', 'bin', DUMPS + 'dump_shaders_shogun_2', '*.cso', 478)]},
+    'divinity1': census_only('divinity', pack_dump('divinity1', 3184, 4), [
+        'not dumped: the 67 shaders of injected and library DLLs (the pack\'s not_game.tsv)',
+        '4 run-time hashes of the 11-15 census (10EFCA41, 54167BD0, FF9741A1, 54EB9F2C) have no blob anywhere and are '
+        'in no trace'], 'divinityoriginalsinenhanced'),
+    'divinity2': census_only('divinity', pack_dump('divinity2', 7187, 1), [
+        'not dumped: the 278 shaders of injected and library DLLs (the pack\'s not_game.tsv), the Switch / PS4 / Metal '
+        'shaders (no DXBC) and Divinity 2 Classic (the add-on targets the Definitive Edition)',
+        'counted: 2141 console-only shaders (_DX11X / Durango in every path of names.tsv); no PC trace draws them'],
+        'divinity2originalsindefinitive'),
+    'ruse': census_only('iriszoom', pack_dump('ruse', 1803), [
+        'not dumped: the 5232 shaders of injected and library DLLs (the pack\'s not_game.tsv)',
+        'D3D9 (vs_3_0 / ps_3_0): no facts (they read SM4 / SM5 DXBC), so every facts claim fails closed here'], 'ruse'),
 }
 GAMES['attila'] |= blood('attila', 812, 'blood.pack')
 GAMES['attila']['holes'].append('the disabled tdd_pack mod (895 shaders) is not counted')
@@ -159,15 +190,18 @@ GAMES['romeremastered'] |= {
     'holes': [TW_HOLE, f'the dump missed 331 shaders of the game\'s .fxo files and exe: they come from {MISSING}'
               'romeremastered; the 182 libGLESv2 / D3D12Core library shaders are not the game\'s']}
 
-# The must-fail fixture (tools/audit/fixture, outside the repo: game bytecode): 10 copies of Tales shaders and synthetic
+# The must-fail fixture (tools/audit/fixture, outside the repo: game bytecode): 11 copies of Tales shaders and synthetic
 # traces; shader_audit.py --selftest tools/audit/fixture runs its cases.tsv. fixture_strict carries the rules the strict
-# facts view (n-r3-1) and the controls (R3, level A) must refuse; fixture_files wants one trace file more than there
-# are (S0-M4); fixture_more adds a trace whose line breaks a mesh-uv claim (S0-S3).
+# facts view (n-r3-1), the controls (R3, level A) and the CAMERA tripwires must refuse; fixture_files wants one trace
+# file more than there are (S0-M4); fixture_more and fixture_view add a trace whose line breaks a mesh-uv claim (S0-S3,
+# open question 1); fixture_423 is Unreal 4.23 with an Expeditions GPU Scene VS and two compiled synthetic ones (r2-M1);
+# fixture_ws gives the fixture an engine whose screen-space form is not reviewed (r2-S2); fixture_ng makes a traced key
+# not the game's (n-r2-1).
 FIXTURE = 'tools:audit/fixture/'
 GAMES['fixture'] = GAMES['tales'] | {
     'pack': 'fixture',
-    'sources': [('R', 'tools', 'audit/fixture/cso', '*.cso', 10)],
-    'trace_folders': [FIXTURE + 'traces'], 'trace_floor': 9, 'trace_files': 7,
+    'sources': [('R', 'tools', 'audit/fixture/cso', '*.cso', 11)],
+    'trace_folders': [FIXTURE + 'traces'], 'trace_floor': 10, 'trace_files': 7,
     'axes': {'mv': {'vs'}, 'scale': {'ps', 'cs'}, 'rt': {'vs'}},
     'motion_tables': {('src/games/twattila/addon.cpp', 'MOTION_SHADERS'): None},
     'box_pending': FIXTURE + 'boxes_pending_fixture.tsv',
@@ -175,3 +209,12 @@ GAMES['fixture'] = GAMES['tales'] | {
 GAMES['fixture_strict'] = GAMES['fixture'] | {'pack': 'fixture_strict'}
 GAMES['fixture_files'] = GAMES['fixture'] | {'trace_files': 8}
 GAMES['fixture_more'] = GAMES['fixture'] | {'trace_folders': [FIXTURE + 'traces', FIXTURE + 'traces_more'], 'trace_files': 8}
+GAMES['fixture_view'] = GAMES['fixture'] | {
+    'sources': GAMES['fixture']['sources'] + [('R', 'tools', 'audit/fixture/cso_view', '*.cso', 1)],
+    'trace_folders': [FIXTURE + 'traces', FIXTURE + 'traces_view'], 'trace_files': 8}
+GAMES['fixture_423'] = GAMES['fixture'] | {
+    'engine': 'ue4.23', 'sources': [('R', 'tools', 'audit/fixture/cso423', '*.cso', 3)],
+    'trace_folders': [], 'trace_floor': 0, 'trace_files': 0, 'axes': {'mv': {'vs'}, 'scale': set(), 'rt': set()}}
+GAMES['fixture_ws'] = GAMES['fixture'] | {'engine': 'warscape'}
+GAMES['fixture_ng'] = GAMES['fixture'] | {'not_game': {('5F4BCA38', 'vs'): 'a traced shader marked not the game\'s'},
+                                          'trace_floor': 9}
