@@ -128,6 +128,10 @@
 //    alone (each signature, app delete, root teardown head, no accessor, pool pointer outside the image), in and out, the drain on a fake job pool at each site (workers running or woken are waited
 //    for and named in the line, the caps, no pool, a worker of another pool, the drain once only, the game's own call after, the loop object passed through), the race with its control (a battle job
 //    that reads the battle while the fake teardown frees it); `tests.exe <dll> quick exit` runs it alone.
+// 31. Early Unit Sort, the game's code (early_sort.inc; Attila only): the four sites and the five checks once each at their RVAs, the pass's two entries as its only references, the node's
+//    weighted task block and owner, the weighted add as the one add writer (its callers, the factory's 10 constructors, the owner field), the door, the writers that do not add (list reset, node
+//    clear, mesh clear, the record pool), the task's output layout, rule H's seven sites, the stores to the mesh key's fields and the callback field as fixed lists, the weighted destructor's
+//    calls; compile time: the ranges against heapfix's rows; `tests.exe <dll> quick sort` runs it alone.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -2514,6 +2518,9 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
 // Exit Job Drain (part 30): its two sites in the game's code, the no-patch cases, in and out, the drain on a fake job pool at each site, the cap, the race.
 #include "exit_drain.inc"
 
+// Early Unit Sort (part 31): the game's code its early start of the weighted sort task rests on.
+#include "early_sort.inc"
+
 #if defined(TWATTILA_ENGINE_PROBE)
 // The probe build (part 21, `probe` alone): the probe stubs in front of the production stubs, each alone, parts 19 and 20 through them.
 #include "engine_probe.inc"
@@ -2727,6 +2734,11 @@ int main(int argc, char** argv) {
     twattila::engine_code::Update(false);
     if (const int failed = RunExitDrainTests(build, game, patched, text_rva, text_size); failed != 0) return failed;
     std::printf("PASS (exit drain only)\n");
+    return 0;
+  }
+  if (argc > 3 && std::string(argv[3]) == "sort") {
+    if (const int failed = RunEarlySortTests(build, game, text_rva, text_size); failed != 0) return failed;
+    std::printf("PASS (early sort only)\n");
     return 0;
   }
   if (argc > 3 && std::string(argv[3]) == "sweep" && build.code->sweep_rva != 0) {
@@ -3740,6 +3752,7 @@ int main(int argc, char** argv) {
   if (const int failed = RunParticleCountTests(build, game, patched, text_rva, text_size, quick); failed != 0) return failed;
   if (const int failed = RunInstanceFillTests(build, game, patched, text_rva, text_size); failed != 0) return failed;
   if (const int failed = RunExitDrainTests(build, game, patched, text_rva, text_size); failed != 0) return failed;
+  if (const int failed = RunEarlySortTests(build, game, text_rva, text_size); failed != 0) return failed;
 
   // 13. Another mod's bytes in a site after the start: that site is not touched, nothing that goes in on the strength of it is
   // (the three job sites; the half rows after the half function), the rest is, and the site is left alone from then on.
