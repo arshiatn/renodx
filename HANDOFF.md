@@ -13559,6 +13559,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         (Q9 (a) holds; the full CPU analysis decides). FULL CPU ANALYSIS step 1: fcx_ (Opus High, a23cb7cfa64541b2d) designs
         the shared ETL tables (T1-T8 + OFF vs ALL) + fca_query.py lock, scripts only until coord frees the machine; dumps on
         E:\renodx_fca_dumps; tables round_notes/render_mt/fca/tables. Then 8 Opus xHigh area analysts -> critic -> ranked list.
+        LOWCORE SESSION DONE 09:57-10:16: 5 / 5 PASS, gate PASS, no WER crash; affinity 0xF / 0xFF applied 0.04-0.06 s after
+        the start, number_of_threads 4 / 8. RESULT (eval r3): ALL - OFF at 4 CPUs +13.40 ms (SE 2.00) SLOWER; at 8 CPUs -0.62
+        (SE 2.00) neutral. The pool's limits stay 16 under a 4-CPU affinity ('recording 16 effects 16 animation 16 sweep 16
+        ring 16'). -> RELEASE BLOCKER (rfo_ S2): worker counts from the CPUs the process can really use (affinity / CPU sets,
+        not GetActiveProcessorCount alone) + C / B3b off or clamped at <= 4 -> FULL CPU ANALYSIS item 1 ('per-user worker
+        counts'), own review, re-check at 4 / 8 CPUs. NOHEAPFIX: overrides -> noheapfix, fu_noheapfix (warm-up with HFx, W3
+        ALL without dinput8.dll), DRY RUN CLEAN -> LAST SESSION STARTED ~10:18 (~14 min).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
