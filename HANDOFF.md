@@ -15313,6 +15313,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         DOI + CC BY 4.0 link in the header; NaN note; cs_6_9 compile; nits. Cost: VmfLobe 399 fxc slots / 1011 dxc ops,
         fast form 47 / 92 -> S2's T12. Seam: reviewer = no blend + 0.03 per-seam gate vs Rev 2's blend -> pdr2_ decides.
         -> vms1_ fix round sent (same worktree, new commits).
+        vms1_ fixes DONE (hand-back plan_1117/designs/vms1_fix_handback.md): ed20a628d on 778cc494c (branch
+        worktree-agent-aa2f659ee853ca432, on atn-mods); ALL OK, all 9 mutations fail now. Twin bar 1e-4 x max(|twin|,
+        1) (fxc 6.0e-7, dxc 3.4e-5) + fade records + beta +0.001 control (1.6e-3, fails); header tables checked
+        against S0's 80 beta points (6.7e-7) and the literal 0.1 fade; shared src/games/twattila/vmf_diffuse.h (plain
+        static const arrays); Eq. 4 via exp(-2 / a2), alpha floor 1e-6; denominator gate >= 0.5 (min 0.6209); seams no
+        blend, per-seam gate <= 0.03 at u >= 0.2 (0.0190 / 0.0250); DOI + CC BY 4.0 link; cs_6_9 clean. -> R2.2 c
+        control (planted negative denominator must fail) asked, then coord merges into atn-mods.
         - [ ] vMF credits.hpp line (paper, CC BY 4.0) lands with S4 (rows).
         - [ ] a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the logs, other explanations of
         the fast stretches, estimates, architecture, completeness, rules, decisions, first wave) -> port_plan_review.md.
