@@ -13473,6 +13473,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         ebo_final_make.py rerun (40 main starts). GAP: the RC manifest lacks heapfix_prep (ebo_leg:191 = PROBLEM) + the env /
         rows / row_values / optional / defines / log_formats tables -> t4i_ ROUND 4 builds the full RC manifest from
         bd46d12fd (offline tests only); then ONE ebr_ delta re-review (rounds 2-4); then coord's real -Final -DryRun.
+        t4i_ ROUND 4 DONE (render_mt/reports/t4i_final_round4_handback.md): ebo_final\manifest.json = full RC manifest
+        (C7DEDF42; rc_1124 entries byte-identical first, + rows 75 / row_values / env + RENODX_TW_EXIT_DRAIN / optional /
+        defines / settings_revision 2 / log_formats from bd46d12fd); the copied one kept as manifest.rc_only.json (08D40176).
+        No final start loads prep -> heapfix_prep asked for only when not final or a start has dll 'prep'. ebo_check: the
+        load's 'Exit Job Drain: off' = kind 'off' + NOTE, log vs plan mismatch = resumable stop. run_all green (lib 657,
+        make 131, check 227, leg 260, analyze 221); the final main run + all 7 follow-ups pre-flight / dry-run CLEAN in the
+        offline tests. ebr_ DELTA RE-REVIEW sent (rounds 2-4, -Affinity / -NoHeapfix close read) -> ebr_t4i_delta_review.md.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
