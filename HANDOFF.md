@@ -705,7 +705,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_ part 3 (above) -> then ebr_ (a41704a31fb3d6080) reviews ALL of t4i_ FINAL a ... | ?
 - ATN at READY: allow `powershell -NoProfile -ExecutionPolicy Bypass -File C:\User ... | ?
 - Automatic L1 (after the bench; Opus xHigh design: switch Parallel Effect Update ... | ?
-- After the bench: one new day-1 WPR on the RC (ATN 11-24: stress replay + day1, n ... | ?
+- FULL CPU ANALYSIS (ATN 11-24 02:4x: 'one last full analyse', find EVERY bottlene ... | ?
 - After the ETL attribution: ask ATN to delete the batch ETLs W3-1, W3-3, W3-4, D1 ... | ?
 - mem_ confirm run (game run): ATN asked what it is (coord explained: Attila memor ... | ?
 - GPU gates S4a + jobs 1-8 on ho_gbf 88ae3aa7d (after the final bench, one window) ... | ?
@@ -13330,8 +13330,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         -Final -Followup -DryRun) in settings.local.json (coord never writes settings).
         - [ ] Automatic L1 (after the bench; Opus xHigh design: switch Parallel Effect Update per frame on the effect count,
         threshold from the batch's volley vs melee counts; Sonnet High code; A/B volley + melee + day1). ATN 11-24.
-        - [ ] After the bench: one new day-1 WPR on the RC (ATN 11-24: stress replay + day1, not more; the final bench's W3
-        ALL WPR is the stress one) + the six batch ETLs -> Opus xHigh design of the next MT targets (Attila only).
+        - [ ] FULL CPU ANALYSIS (ATN 11-24 02:4x: 'one last full analyse', find EVERY bottleneck so we don't loop plan ->
+        implement -> WPR; finish MT + anything that removes / reduces the CPU bottleneck; Attila only). WPRs = stress
+        replay (W3, 40k+ units) + day1 (artillery, units, big city, water), release mix on: the main run's W3 ALL WPR
+        (volley 95-130 s) + follow-up `wpr_analysis` (W3 ALL melee band + D1 ALL, FP twin; t4i_ adds it now) + the six
+        batch ETLs for the MT parts. Right after the bench's evaluator: parallel Opus xHigh analysts per area (main / game
+        logic thread, render thread, D3D11 submit + driver waits, heap / allocator, workers + pool, locks / waits, GPU idle,
+        memory / address space), a completeness critic, ONE ranked list of every item (ms/frame on each WPR, fix idea,
+        risk, owner) -> Opus xHigh designs for all of it at once -> implementation waves (Sonnet High engine code, Opus
+        xHigh reviews) -> ONE verify bench + WPR. Includes automatic L1 + per-user worker counts. A second short round
+        only if the critical path moves to something new.
         - [ ] After the ETL attribution: ask ATN to delete the batch ETLs W3-1, W3-3, W3-4, D1 (~42 GB on C:); keep W3-2
         (heapfix author) + W3-5 (evaluator proof). ATN's yes needed. Also D:\Dev\scratchpad_copy_1122 (superseded by _1123).
         - [ ] mem_ confirm run (game run): ATN asked what it is (coord explained: Attila memory-leak proof, not MT); after
