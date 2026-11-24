@@ -613,7 +613,9 @@ static Bindings GammaBindings(const std::vector<Float4>& scene) {
   b.views["frame_texture"] = b.views["frame_sampler"];
   b.views["gbuffer_channel_4_texture"] = b.views["gbuffer_channel_4_sampler"];
   b.views["t_fog_of_war_mask"] = b.views["s_fog_of_war_mask"];
-  b.views["distortion_texture"] = zero;
+  // The game's neutral distortion (128 / 255: no offset; 0 moves the game's own bytes' frame read by 0.01 of the screen,
+  // the add-on's ignores it at Distortion 0).
+  b.views["distortion_texture"] = Texture2D(WIDTH, HEIGHT, std::vector<Float4>(WIDTH * HEIGHT, Float4{128.f / 255.f, 128.f / 255.f, 0.f, 0.f}));
   for (const char* name : {"god_rays_texture", "glow_texture1", "grain_texture", "rain_texture", "t_shroud_clouds"}) b.views[name] = zero;
   const auto lut = IdentityLut3D(32);
   for (const char* name : {"lut_texture", "lut_texture_1", "lut_texture_2", "lut_texture_3"}) b.views[name] = lut;
