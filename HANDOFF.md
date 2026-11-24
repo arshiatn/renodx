@@ -14500,6 +14500,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN (g24_ step 6): 33 mv gap families, 1,627 cells (VTF 1,279 in 13; bones 348 in 20; 463 shadow-depth
         settle N/A with (a)). Route A VTF static-heightmap exemption (offline core change) / Route B bones = twin:
         logging + trace run (ATN's go). Which are GAP, which wait for A / B? List: testbin/scratch/g24_/fill6_gap_families.txt.
+        pk3_ REV 1 DONE (pk3_design.md change table; pk3_rev1_handback.md): 6 MUST + 9 SHOULD answered. S3 alias control
+        -> positive 23zg + new broken world (records over the instances' +0x60 words). Timing: AR_TIMING section without
+        controls, new script test/tw_engine_code/animation_timing.ps1 (Release flags, CPUs 0-15, ABBA, A/A <= 3 %, equal =
+        within 2 x A/A; S4 sweep 40-60 min) - needs ATN's run rule. New 3.6 S4 options R / T for B's stores (c9 up to
+        -0.7..-1.2, not in the central numbers). S1 alone on fca_pk3_s1. Package W3 -1.0..-2.5 (central -1.9), c9 central
+        -1.3, D1 -0.15..-0.35. -> rv3_ light re-check 8.1 / 8.3 / 9 / 10 + 3.6 (sent; rv3_pk3_recheck.md).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
