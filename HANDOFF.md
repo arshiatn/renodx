@@ -794,9 +794,16 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_ adds ebo_run.ps1 -Data (2 W3 starts + PK4 check start + PK5 sampler window, ... | ?
 - Q41 (ATN 17:0x: 'why can't it use more rays to clean up lower DLSS scalings?'): ... | ?
 - pk4_ Rev 1.2 -> rv4_ light re-check -> tell p4i_ what changes for S2 / S3; pk5_ ... | ?
-- rv4_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2' in rv4_pk4_review ... | ?
+- FRIDAY 11-27: pk4_ (Fable) the 4 NITs in 7.2 / 7.3 / 4.7 (rv4_'s list) + the fli ... | ?
 - Coord: real gbf gates (gbf_gpu_gates.ps1, no switch) in the first quiet GPU wind ... | ?
 - rvg_ 13.9 light re-check (sent; '## Re-check of 13.9' in rvg_g24_design_review.m ... | ?
+- rv5_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2'); fixes wait for ... | ?
+- ATN (pk5_ q7): bench env vars RENODX_TW_DRAW_COPY / RENODX_TW_POSE_COPY / RENODX ... | ?
+- Tell ATN: A2 is one-way per start (Uninstall leaves the bytes; off works from th ... | ?
+- Data session (t4i_ -Data): log the arena's state words at first present + battle ... | ?
+- mem_ / address space: PK5 A2 adds +0.25 MB. | ?
+- PK5 S0 microbench (pk5_ q2): coord runs it in a quiet CPU window (no ATN questio ... | ?
+- FRIDAY 11-27: PK5 implementer (Fable Medium) S0+ incl. S7, after PK4's steps and ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14801,8 +14808,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         .sha256 -> rv4_ dis_at check; (2) dis_at closure of the weighted prepare; heapfix.log has no start after 11-21 (DLL
         swapped 11-23 / 11-24) -> captures' own records name the heapfix build. G3a starts: design 14, coord's question
         said 10 by mistake -> corrected to ATN (14).
-        - [ ] rv4_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2' in rv4_pk4_review.md): 4.6 H1 / H2 + process
-        rule vs run-time build check, 7.2, 7.3 + the two dis_at items.
+        - [x] rv4_ REV 1.2 RE-CHECK = GO (render_mt/fca/designs/rv4_rev12_recheck_handback.md; '## Re-check of Rev 1.2' in
+        rv4_pk4_review.md, PRIVATE): 0 MUST / 1 SHOULD / 4 NIT. S2 / S3 / S4 (H1 / H2 split) / S5 GO; the
+        EARLY_SORT_OVER_REPLACED_SORT flip GO for the build in the folder; gates OK as ordered. Item 1: installed dinput8.dll
+        = the _pf build output (17 identical files; one sortfix.c = 7.0's sort + prefetch); no game starts since 11-21.
+        Item 2: closure 136 functions, 6 of 42 PATCHED rows inside (sort H2, two H1 reads, memcpy / dlmalloc / dlfree),
+        0 of 54 timing rows. H2: process rule, no run-time build check. Q-SHOULD-1 -> t4i_ (sent): a G3b arm is read only
+        when dinput8.dll's sha256 is listed in 7.3; else 'not read' + PROBLEM (a counter build must never be the G3b build).
+        (was: rv4_ light re-check of Rev 1.2 (sent): 4.6 H1 / H2 + process rule vs run-time build check, 7.2, 7.3 + the two
+        dis_at items.)
+        - [ ] FRIDAY 11-27: pk4_ (Fable) the 4 NITs in 7.2 / 7.3 / 4.7 (rv4_'s list) + the flip + S4 / S5 / S6 by p4i_.
         ATN 17:0x ORDER (standing): let every running agent FINISH its job -> then finish Attila's CPU work (FCA PK1-PK6 ->
         -Data session -> verify bench) -> then the GPU plan (plan_1117/plan.md, FORGE'S INPUT first). No new streams.
         ATN 17:0x: SSS low-res too (sse_ after K: one Experimental row Full / 3/4 / 1/2 / 1/4, default Full, byte-identical at
@@ -14826,6 +14841,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] rvg_ 13.9 light re-check (sent; '## Re-check of 13.9' in rvg_g24_design_review.md) + GO / NOT GO for applying
         the shadow rule to Expeditions. Coord's view sent: keep the svpos control (no games scope); C4 stays fail-closed
         until the dump run.
+        ATN 11-24 (Tue) ~17:2x CHANGE OF ORDER (supersedes 17:0x): the Fable-heavy CPU work runs on FRIDAY 11-27 (ATN's
+        weekly reset). Until then: running agents finish their current job + Opus review loops -> coord recap of done / left
+        -> GPU plan (plan_1117, Opus 5.5 only). No new Fable implementer / design fix-up before Friday. Memory
+        project_full_cpu_analysis updated.
+        pk5_ REV 1.2 DONE (render_mt/fca/designs/pk5_rev12_handback.md; pk5_design.md 839 lines): F1 ERMSB ours (S0
+        microbench + one Game Copy Path arm; heapfix note to the author afterwards); F2 once-per-process self-timing in
+        Prepare (~2.5 ms, stop 5 ms, ours only at >= 15 % faster in 3 / 3 rounds); F3 A2 'Bigger Draw Item Pages
+        (Experimental)' IN as S7: 33 one-byte writes 0x0F -> 0x3F in 4 functions (out\a2_sites.txt), G1 census closed
+        offline, G2 in-pause proof (5 checks), <= 8 pauses per start, one-way (Uninstall leaves the bytes, off at the next
+        start), default off until G4 (-30 % getter + allocator + lock); F4 A3 arm no longer waits on the K sweep; F5
+        sampler 60 s approved, captures RT off. Sums -1.0..-2.05 volley / -2.05..-4.95 late melee / -0.35..-0.65 D1.
+        Rule slips: one heredoc scratch helper (rewritten with Write), one sed -i fix (grep-checked).
+        - [ ] rv5_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2'); fixes wait for Friday.
+        - [ ] ATN (pk5_ q7): bench env vars RENODX_TW_DRAW_COPY / RENODX_TW_POSE_COPY / RENODX_TW_LIST_PREFETCH /
+        RENODX_TW_ITEM_PAGES for the verify bench arms (E8 named only RENODX_TW_SORT_CHECK).
+        - [ ] Tell ATN: A2 is one-way per start (Uninstall leaves the bytes; off works from the next start).
+        - [ ] Data session (t4i_ -Data): log the arena's state words at first present + battle start / end (pk5_ sec 8 item 2).
+        - [ ] mem_ / address space: PK5 A2 adds +0.25 MB.
+        - [ ] PK5 S0 microbench (pk5_ q2): coord runs it in a quiet CPU window (no ATN question).
+        - [ ] FRIDAY 11-27: PK5 implementer (Fable Medium) S0+ incl. S7, after PK4's steps and S2 / S3.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
