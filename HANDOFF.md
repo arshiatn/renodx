@@ -13453,6 +13453,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         (rfs_ S2), stale 'private build' comments (rfo_ N1), engine_code suite default compile = shipped config (rfo_ N2),
         rfo_ N3's two drain-wiring checks in tw_render_mt_defaults, 'Fixed:' note line (N5), widths (N6). rfo_ S2: if
         lowcore shows ALL slower at 4 CPUs -> clamp worker_pool::Update to GetActiveProcessorCount (own review).
+        t4i_ ROUND 2 04:0x (render_mt/reports/t4i_final_round2_handback.md; t4i_etl_proof.md): ETL PROOF WORKS end to end:
+        WPR-W3-5 d 0.5625 s 226 / 226 presents, mean 101.53 vs 101.61, driver waits 14.25 ms/f FLAGGED (+18 excess) -> ATN;
+        WPR-W3-4 clean d 0.2516 s 245 / 245, driver waits 1.65 ms/f usable; the same wait site 0x179b980 14.13 vs 1.53 ms/f
+        (MUST-D flag marks exactly the unusable runs). Fixed: rundown 0 s -> window start, comma decimals, --out. Dumps (~21
+        GB) moved to D:\scratch_t4i_etlproof. ebr_ MUST 1-5 + SHOULD 1-7 + NIT 1-6 in; follow-ups = own folders
+        ebo_final\fu_<name>; wpr_analysis (W3 ALL WPR 420 s + 40, D1 ALL 100 s + 40, FP twin); BENCH-1 (preset1 rows +
+        SettingsRevision=2 per start, OFF rows explicit, eval PROBLEM on an early 'Animation Rows on Workers: on.'); XD part
+        (drain on in every start, env_unset), exit record (closed by window after N s, > 10 s / kill = PROBLEM, Exiting
+        share). lowcore + noheapfix refused until bench switches exist. run_all green (leg 255, analyze 221, check 223, make
+        131, lib 657). COORD 04:1x: NIT 7 day1_three names confirmed (ALL / +OLD6pf / +FCU / +FDW); t4i_ adds -Affinity +
+        -NoHeapfix (follow-ups only; main args byte-identical) and fixes the ETL size estimate (batch W3-5 = 14.8 GB for
+        ~305 s, not 0.4 GB/s) or moves each WPR ETL to D:\bench_etl after its start; then ONE ebr_ delta re-review.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
