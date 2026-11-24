@@ -710,6 +710,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - After the bench: one new day-1 WPR on the RC (ATN 11-24: stress replay + day1, n ... | ?
 - After the ETL attribution: ask ATN to delete the batch ETLs W3-1, W3-3, W3-4, D1 ... | ?
 - mem_ confirm run (game run): ATN asked what it is (coord explained: Attila memor ... | ?
+- GPU gates S4a + jobs 1-8 on ho_gbf 88ae3aa7d (after the final bench, one window) ... | ?
+- F5 motion into NRD (add-on work, gbr_): own box, after the GPU gates. | ?
+- Lean ReSTIR Reuse skips the ContactShade fix (gbr_ N5 note): if job 1 shows Lean ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13332,6 +13335,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         (heapfix author) + W3-5 (evaluator proof). ATN's yes needed. Also D:\Dev\scratchpad_copy_1122 (superseded by _1123).
         - [ ] mem_ confirm run (game run): ATN asked what it is (coord explained: Attila memory-leak proof, not MT); after
         mem_'s F4-F6 land in the post-bench wave, then ATN's go.
+        gbf_ 01:3x (plan_1117/gbf_builds_warp_handback.md): ho_gbf 88ae3aa7d plain + PROBE/REFERENCE/RECORDER helper builds
+        exit 0, tw_rt_open_sky -Expect exact ALL PASSED. gbr_ RE-CHECK GO for the code (plan_1117/gbr_gbf_review.md
+        'Re-check', gbr_gbf_recheck_handback.md): M1 / S1 / S2 / S3 / N1-N6 fixed, no MUST / SHOULD. Merge waits for the
+        final bench AND the GPU gates, all in ONE window after the bench on 88ae3aa7d: S4a (debug layer, NRD, resize,
+        release_nrd <= +30 MiB), job 1 (ReSTIR 1/4/16 RR off, bias + signed masks no worse; fail -> revert 25c02e411), job 2
+        (ATN 7 rows; fail -> revert 1059eb5ef), job 3 (r3_refl edge ~1.018, concave ~x1.14; edge number -> ATN q8), job 4
+        (debug36 water, ford, hulls, horizon), jobs 5-7 (NRD-only fixes, each fail reverts only its commit), job 8 (timings;
+        NRD sun + leaves / low-sun grass <= today + 0.3 ms at 4K, coord's budget; fail -> cap NearestBlocker or drop
+        bb93be0b0). Then re-make the gate references with no RENODX_TW_REUSE_* set, other TW games that share the helper too.
+        - [ ] GPU gates S4a + jobs 1-8 on ho_gbf 88ae3aa7d (after the final bench, one window), then merge + reference re-makes.
+        - [ ] F5 motion into NRD (add-on work, gbr_): own box, after the GPU gates.
+        - [ ] Lean ReSTIR Reuse skips the ContactShade fix (gbr_ N5 note): if job 1 shows Lean apart, load the neighbour's ray
+        start in Lean. N7 only if release_nrd fails.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
