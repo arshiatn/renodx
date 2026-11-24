@@ -757,6 +757,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - bench WPR tasks must not take focus (fa3_ (d)) + false 'FAIL (6 fails)' switch l ... | ?
 - trap open questions (harness / game only): does alt-tab trigger it in normal pla ... | ?
 - merge ho_g03_comptr with the next mrg_ batch (ho_gbf + G23 after the gates); sha ... | ?
+- CRITIC: fa4_ #2 calls the large-block cache a heapfix author note, fa8_ M3 says ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14026,6 +14027,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         #4 cache() TlsGetValue -> __thread. Out of scope (ETLS): arena thread-index lookup 12.2 summed W3. NOTE: S8-2
         presort was designed on the dropped B2 prep DLL -> new estimate on HFx via the author. Our render_mt pool made 0
         allocator calls. WPR stack walk 6.56 main / 7.39 workers WAW3.
+        fa8_ FCA MEMORY DONE (render_mt/fca/analysis/fa8_memory.md + fa8_handback.md; 6 items, 16 ruled out): M1 game memcpy
+        on main 6.69 WAW3 / 3.79 F03 / 0.92 D1 (callers 0x18efe00, gathers 0x17dab80 / 0x182c990, fill 0x17db0f0; WAW3 +2.8
+        unnamed -> one W3 game run with the leaf sampler; ERMSB-bit experiment = harness micro-bench first); M2 B3b lambda_3
+        memory waits (PREFETCHW, BIG design: C writes placement back, up to -1.5 W3); M3 game dlmalloc 256 KB+ blocks freed
+        to Windows every frame (cache last 4-8 chunks via engine_code; do NOT raise the threshold); M4 AddressSpace() walk
+        19-23 ms per call -> sent to mem_ for r3 (one walk per event); M5 worker pose memcpy (lowcore lever; WB vs WC Map =
+        GPU-harness check); M6 ALL costs 45-55 MB VA (gate passes; 256 KB worker stacks save up to 11 MB).
+        - [ ] CRITIC: fa4_ #2 calls the large-block cache a heapfix author note, fa8_ M3 says the game's dlmalloc is NOT
+        heapfix (engine_code patchable) -> resolve owner. Also fa8_: main 'RtlVirtualUnwind2~' 6.56 = event-signal wake
+        path ~3.8; main Sleep at +0xc4940 ~1.0 WAW3.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
