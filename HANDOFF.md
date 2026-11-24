@@ -814,6 +814,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - s64a_ (Opus xHigh, read-only) 64-bit loader study -> round_notes/attila64/study_ ... | ?
 - s64c_ (Opus xHigh, read-only) PerfFix 7.5 vs ours + ATN's notes taken in + RULE ... | ?
 - After s64a_: port map of OUR Attila work onto 64-bit (carry over / re-port / moo ... | ?
+- ATN go needed before: downloads (each named with source + size), building the lo ... | ?
+- After s64c_: package builder (Opus xHigh) writes the package against 7.5 (notes ... | ?
+- PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14985,6 +14988,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         study_1124/s64c_perffix75.md.
         - [ ] After s64a_: port map of OUR Attila work onto 64-bit (carry over / re-port / moot / new: in-process DLSS + RT,
         multi-thread recording in his D3D11 backend), effort + order -> coord synthesis for ATN.
+        ATN 11-24 ~18:3x: keep OUR DLSS / FG (JSa25's Upscaling-and-Framegen add-on not needed); idea = future Attila
+        testing + optimization on the 64-bit port, players told to use it; FIRST: does the stress replay run faster on 64-bit?
+        s64a_ got added scope (sent): source safety review, exact runtime files (SDL2 / steam_api64 / GCC 4.9 libs; what the
+        Linux depot already has), 32-bit replays on the Linux build, a draft minimal stress A/B (32-bit as ATN plays vs
+        64-bit + perffix64 vs 64-bit plain; no RenoDX on either).
+        - [ ] ATN go needed before: downloads (each named with source + size), building the loader, installing into the
+        Attila folder (attila64\ subfolder + Steam launch option = ATN's hands), any 64-bit game run.
+        ATN 11-24 ~18:3x: finish the heapfix AUTHOR PACKAGE (PK7) NOW (we move to 64-bit; ATN hands it over on the 64-bit
+        Discord). s64c_ got added scope (sent): status of every package item vs 7.5 / his 64-bit plugin (exit-crash pin,
+        paused_write all threads, OUR patch-site list, keep / revert of earlier items, FCA notes, 11-19 zip fixes).
+        - [ ] After s64c_: package builder (Opus xHigh) writes the package against 7.5 (notes + patches where still
+        relevant; honest: no MT-on end-batch numbers) -> coord check (no private / Linux-derived text) -> zip in Downloads
+        -> ATN sends.
+        sse_ E2 K + RESOLUTION ROW DONE (plan_1117/sse_e2_k_handback.md; origin/sss_e2, not merged): 352a9b785 K fallback
+        (rays below K 4-sample groups run Bend's own loop: plain 64, FindThin / Coloured 24, FindHit / Softer 40, light 128;
+        Shogun 2 at 120 = Bend's loop; no-skip bytes unchanged); 02231a816 'Resolution (Experimental)' Full / 3/4 / 1/2 /
+        1/4 (default Full = identical to before over 8 runs; sun march on a centre pick + Toru's MIT joint bilateral upsample;
+        torch / fire stay Full; shown in Attila / Rome II / Thrones / Troy / Pharaoh / WH1-3). WARP PASS x86 + amd64, 13 x64
+        + 3 x86 add-ons build, port suites PASS. Changelog lines in the hand-back.
+        - [ ] PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; lines in the hand-back) -> merge
+        sss_e2 + changelog.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
