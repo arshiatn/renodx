@@ -734,6 +734,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G23 H9 GPU tests T2-T4 in the GPU window (ATN's go). | ?
 - Fable 5.2 High review of mem_ r2 (with rvm_'s re-check), once. | ?
 - FCA: 8 Opus xHigh analysts -> Fable 5.2 xHigh completeness critic -> ranked list ... | ?
+- G-S2 (owner g23_): ngx_backend.hpp FENCE_TIMEOUT -> GPU_WAIT_TIMEOUT once gbf_'s ... | ?
+- G23 set (ea398af22 + H1-H8) GPU gate: helper build + H5 WARP + H9 T3 / T4 (ATN's ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13710,6 +13712,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] Fable 5.2 High review of mem_ r2 (with rvm_'s re-check), once.
         - [ ] FCA: 8 Opus xHigh analysts -> Fable 5.2 xHigh completeness critic -> ranked list -> Fable 5.2 xHigh designs
         (fci_ / fxr_ designs as inputs) -> Opus xHigh reviews -> Opus xHigh implementers (Sonnet xHigh fallback).
+        rvh_ G23 CODE REVIEW 1 GO (reviews/rvh_g23_code_review.md + _handback.md): 1 MUST / 4 SHOULD / 1 NIT. cd16da81c may
+        merge now (-> mrg_ addendum 2, cherry-pick after 5.5). G-M1 MUST: ea398af22 + gbf_'s H1-H8 = ONE merge, only after
+        the full 64-bit helper build, H5 WARP suites and H9 T3 (switching) + T4 (helper end) in the GPU harness (ATN's go);
+        T2 SHOULD. G-S1 ho_gbf_g23 takes ea398af22 before H8. Q-S1 / Q-S2 / Q-N1 + the main.cpp end-release candidate -> gbf_.
+        - [ ] G-S2 (owner g23_): ngx_backend.hpp FENCE_TIMEOUT -> GPU_WAIT_TIMEOUT once gbf_'s H7 lands.
+        - [ ] G23 set (ea398af22 + H1-H8) GPU gate: helper build + H5 WARP + H9 T3 / T4 (ATN's go) -> one merge.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
