@@ -799,6 +799,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PK5 S0 implementer (tests only: part 34 copy_bench.inc) after fxi_'s ec_test_fix ... | ?
 - ATN (g24_ step 6): 33 mv gap families, 1,627 cells (VTF 1,279 in 13; bones 348 i ... | ?
 - ATN (pk1_ sec 10): A FDW always on; B FDW NVIDIA only; C rows C1 / C2 / C3 (+ ke ... | ?
+- ATN (pk2_ sec 17): Q-A X1 row default On?; Q-B runs with N-C1 arm (coord: yes); ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14525,6 +14526,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         by scene-depth ADDRESS not size (size passes CustomDepth 2B70A2A3 / 8CE5F452); 4 'host-state' into CROSS_CHECKED
         before the first rt CAPTURED rule. -> g24_ core extension 13.8 after step 4 (sent), then restamp + rvg_ re-check.
         Twin order: tracer twin: logging (ATN's go) -> core claim -> rule kind.
+        pk2_ REV 1 DONE (pk2_design.md 'Rev 1 changes'; pk2_rev1_handback.md): fold-free recompute -> chunk0 already holds
+        the join; render thread records 49 % / 39 % of items itself at 21.5 / 10.8 ns; Colour A neutral because cuts fail
+        -> C3 cut search ALONE -2.0..-3.0 W3 / -0.4..-0.7 D1, lands first. Package -4.3..-7.5 W3 / -1.5..-3.0 D1 (one
+        9-frame window; data run replaces). B1 fixed (descending stores, notify slot 0, entered jobs only + race test);
+        one env RENODX_TW_THREAD_PARTS (bits 0-5); every P1 / X1 / parts step builds x86 Attila + Rome II + Thrones.
+        Order B3 -> parts + C3 -> C2 -> C1a -> C1b -> P1 -> X1 -> V2 -> flip; step 0 needs fca_item1 + PK1 stage 1 + PK3 S1.
+        -> rv2_ light re-check incl. the recompute (sent; rv2_pk2_recheck.md); t4i_ got the arm lines.
+        - [ ] ATN (pk2_ sec 17): Q-A X1 row default On?; Q-B runs with N-C1 arm (coord: yes); Q-C Colour A row Off if no
+        gain after C3 + C1; Q-D two V2 measure lines; Q-E replay advances the two dirty counters; Q-F run rule for
+        RENODX_TW_THREAD_PARTS.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
