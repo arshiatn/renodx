@@ -817,6 +817,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
 - REMIND ATN (decision 6): ask JSa25 for a Flag Wave interop contract (previous-po ... | ?
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
+- ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
+- a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
 - s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
 - vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree- ... | ?
@@ -15134,7 +15136,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         at s ~18; window placement check -14..-18 s off). Movie keys: 64-bit intro skipped in 35 s (was ~3 min);
         A32 needs none (no intro) -> coord set A32 to no keys (posted Space did nothing on 32-bit: frames after a press
         20.9 ms vs 23.9 ms later). Engine fact: both builds run the battle step beside the drawing
-        (BATTLE_ENV::post_model_update_synchronise decides; Sol counts steps there).
+        (one engine function decides; Sol's loader counts steps there; name in the private notes only).
         - [x] ATN (11-24, after the A/B): 'the 32-bit doesn't matter' -> no 32-bit battle clock; start the FULL 64-bit port
         plan. Models: planner Opus 5.5 xHigh, implementers Opus 5.5 High, reviewers Opus 5.5 xHigh. ATN's question: can our
         CPU work (heapfix-side patches + our 32-bit CPU items re-done by name + new 64-bit items) get battle s 20..200
@@ -15190,6 +15192,33 @@ heading text are in HANDOFF_ARCHIVE.md)
         its mutex. MV GAPS (ATN's coverage check): known far tree billboards, sprite soldiers, capture-point flags (rows
         only), dissolve, heat haze (particles by design); NEW tessellated rigid props 9AEE504E (no MVs with Tessellation
         on), ship rigging ribbons 3926A823, ocean2 land_v2 53049172, just-spawned projectiles (E). Sent to a64pr_.
+        - [x] a64pr_ PLAN REVIEW DONE (hand-back attila64/a64pr_review_handback.md; attila64/port_plan_review.md, PRIVATE):
+        GO WITH CHANGES, 7 Musts / 15 Shoulds / 7 Nits. Numbers right in substance (tick 155 ms with PerfFix 64, 172-176
+        without; busy 0.93; hand-over 11.5 ms; the step slows 124 -> 201 ms from the window's first to second half). The
+        fast stretches = recorded replay FAST-FORWARD, which runs the step INLINE on the main thread: 1.5-7.5 ms a step
+        vs 107-270 ms beside the drawing (15-70x). M1: the game's own option multithreaded_model_enabled ('Run the battle
+        model on a separate thread') is ON in ATN's preferences: an arm with it off needs no code (L0); if inline steps
+        stay cheap at 1x and bit-exact, real time may come from a settings line. M2: 180 s needs ~119 ms a step; 'no slow
+        steps' ~153-160 s; slow-motion share metric + a later window (D16). M3 / M4: window 1 needs no add-on / probe /
+        WPR: ~11 config starts ~72 min (B64P base, inline, cap 30, all-32, base, inline, cap 45, TASK_THREADS=8, measuring
+        start PROFILE + TIME_TRACE + MUTEX_STATS, TASK_SPIN_OFF, FINE_TIMER; round 2 only for arms > 3 %); cap 120 useless
+        (45-77 fps); split H4. M5 Graphics 2 of 2 code-backed rows need a workstream (C8). M6 Flag Wave (a64c_). M7 IA
+        slot 15 kept bound. Shoulds incl. H3 contention (15 task threads on 0xFFFF), PerfFix touches the step, no REPLAY
+        DESYNC string in the ELF (determinism route via a sync log / checksum), probe collides with Sol's hooks, add-on
+        must not read the image base at attach, 32-bit freeze = tags + runtime gating, PerfFix late patches + UI cache /
+        F8 panel (HDR), B5 misses Sol's start-window settings. Estimate: < 249 s ~90 %, 180 s ~60 %, no slow steps ~50 %
+        (mostly the inline route); if inline fails ~75 % / ~25 %, central 215-235 s. Decision 7 deferred to window 1.
+        Coord reworded the one Linux name in HANDOFF (line ~15137); it is still in pushed commit 199a7063f's history
+        (removing it = a history rewrite + force push: ATN decides).
+        - [ ] ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only plugin row 'Battle step on the
+        main thread', default on after the gate; or a patch offer to Sol; or a README line) + accept a small periodic p99
+        frame bump (one inline step every ~6 frames)?; D16 the real-time metric (rec: slow-motion share + window seconds
+        + one later window); the history rewrite for the Linux name (rec: leave it, the name is one function name).
+        - [ ] a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S1 / S4 / S5 + the window-1
+        arms; a64ab_ window-1 switches (prefs-override arm, caps 30 / 45, all-32, TASK_THREADS, measuring start, spin
+        off, fine timer, fixed-second screenshot, slow-motion share, real CPU Set Setter status) -> rule lines for ATN;
+        a64bd_ add-on bring-up design (S7 S8 M7 S10) -> review -> implementer; a64pl_ plugin design (S6 S9 N3 D15
+        game_started). Later: xHigh review of a64c_'s C5 MV tables before workstream C.
         - [ ] MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated rigid props, ship rigging,
         ocean2 land_v2, new projectiles, far billboards, sprite soldiers, capture-point flags, dissolve, heat haze) with a
         fix or a 'by design' reason; Flag Wave fallback + JSa25 contract (remind ATN).
