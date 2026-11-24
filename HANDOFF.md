@@ -702,7 +702,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN at READY: add the run rules for `ebo_run.ps1 -Final` / `-Final -DryRun` (+ - ... | ?
 - ebr_ review of t4i_ FINAL, then the real -Final -DryRun after the RC build. | ?
 - G23 implementation (after the final bench; helper files = GPU plan helper queue ... | ?
-- before the RC freeze (exd_, small, exr_ glance): N11 parens in the gave-up log c ... | ?
 - t4i_ part 3 (above) -> then ebr_ (a41704a31fb3d6080) reviews ALL of t4i_ FINAL a ... | ?
 - ATN at READY: allow `powershell -NoProfile -ExecutionPolicy Bypass -File C:\User ... | ?
 - Automatic L1 (after the bench; Opus xHigh design: switch Parallel Effect Update ... | ?
@@ -13285,7 +13284,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         every exit path covered; S1-S4 fixed; S2 keep accepted (the job faulted only after the app delete started).
         COORD 23:0x: MERGED exd_fix into atn-mods = 9d798bf47 (pushed); t4i_ addendum sent (drain line per exit; exit AV =
         real finding in -Final, exit_crash_no_stop off there; part-Off map -> RENODX_TW_EXIT_DRAIN=0).
-        - [ ] before the RC freeze (exd_, small, exr_ glance): N11 parens in the gave-up log call, N12 JOB_ prefix for the
+        - [x] before the RC freeze (exd_, small, exr_ glance): N11 parens in the gave-up log call, N12 JOB_ prefix for the
         WORKER_* pool constants, reword the S2 comment's first reason, one 'off' log line when RENODX_TW_EXIT_DRAIN=0.
         t4i_ FINAL PART 23:34 (render_mt/reports/t4i_final_handback.md): §9 + MUST-A..D + SHOULD 1-7 in ebo/final.json (RC
         files = placeholders; model 3.35 h, E ~3.8 h; follow-ups row_by_row 13 / day1_three / l1 / melee_pair2 as data);
@@ -13387,6 +13386,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         stall re-run = whole round, WPR re-run alone + NOTE; S3 yes; S4 flagged = 'ATN decides' (exit 1); S5 no memory
         match = fail; S6 combine melee pairs, main sign; S7 ONE crash budget for the whole final.
         - [ ] t4i_ fixes ebr_'s FINAL MUSTs + SHOULDs -> run_all -> ebr_ delta re-review (before the RC dry run).
+        exd_ NITS 02:2x (render_mt/reports/exd_nits_handback.md): 804b980c8 on exd_nits (N11, N12 JOB_WORKER_*, S2 comment,
+        'Exit Job Drain: off' line once after settings::Use); -Only exit / -Quick / -DrawRecording PASS, x86 build32 exit 0
+        (FBB5A339...135B), amd64 compile exit 0. COORD MERGED f6c402ebe (pushed). exr_ NIT glance GO (optional: POOL_* could
+        take the JOB_ prefix too; not done). rcd_ sent the tip f6c402ebe: codes the RC defaults on rc_defaults (keeps the 4
+        C group rows ini-controllable for the ETL attribution).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
