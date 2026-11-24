@@ -407,7 +407,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ (low, in round 15 = R14-1): a leading `2>&1 cmd` still splits at & into a l ... | ?
 - end batch leg 1 analysis: foreign hits outside trace windows in normal play? non ... | ?
 - gtp_ round 16 (SENT 10:5x; NOT "only the quoted word" - see gtw_ 10:55): R15-1 ( ... | ?
-- ATN (antivirus): scratchpad\t4i_etl_tests.py (t4i_'s ETL-move test, written 10:5 ... | ?
 - worktree cleanup (ATN): ff_s12\build\downloads is now a JUNCTION (delete the lin ... | ?
 - worktree cleanup (ATN): grs_'s worktree build\downloads_min (6 junctions - links ... | ?
 - c3i_ (heapfix tests owner): run x87fix_test under watch before the price gate le ... | ?
@@ -434,7 +433,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtp_ ROUND 22 (coord 18:3x): gpr-R21-1 + gtw-R21-1..6 (below); then gtw_ + gpr_ ... | ?
 - lg3_ (Sonnet High, own worktree, branch rmt_lg3 from atn-mods HEAD): logging gro ... | ?
 - t4i_ (Opus High): ebo tools refresh per ebq_readiness.md step 2 (coord 18:4x); t ... | ?
-- ATN: review handoff_plan\plan.md -> OK / changes; NOTHING from it starts or gets ... | ?
 - G05 / R.U.S.E. owner (tke_ LOST, from 11935 rur2_): test/tw_ruse_bridge H2 DLSS ... | ?
 - ATN (do / drop each; tkj_ LOST, ATN asked for these and they were skipped withou ... | ?
 - coord: sweep every "[~]" box in HANDOFF + HANDOFF_ARCHIVE for undone parts (tkj_ ... | ?
@@ -489,7 +487,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gtw_ (a0b03d68655ebfcaf) + gpr_ (aa304b6e977350cc3) re-check round 22 on gtp_sta ... | ?
 - gtp_ golive round 22 (bak29, swap gate_hook.py + run_tests.py, shas, mode.txt sh ... | ?
 - D2 in-game batch (g07_): an SSR trace (in-game SSR on, wet / polished floor or w ... | ?
-- ATN (when well): handoff_plan/atn_questions_groups.md (groups' questions with co ... | ?
 - g14r_ review -> g14_ fixes -> g14r_ re-check -> coord merges ho_g14 (docs only) ... | ?
 - test/tw_rt_open_sky (owner: GPU plan): -Lock writes a v1 gpu_job.lock record; -E ... | ?
 - after G21's SSS move: g14_ updates SKILL.md line 9. SKILLS UPDATE 5 stays the la ... | ?
@@ -766,49 +763,39 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FCA DESIGN WAVE (Fable 5.2 xHigh, brief render_mt/fca/designs/pk_design_brief.md ... | ?
 - rv6_ (Opus xHigh) review of PK6 tooling (sent; render_mt/reports/rv6_pk6_review. ... | ?
 - fxi_ r2 + 30f WU-on case (J1 flips only after that + an ABBA bench). | ?
-- ATN QUESTIONS (critic sec 7): Q2 release timing, Q3 FDW D1 cost vs per-battle la ... | ?
 - rvg_ review of step 1 (handoff_plan/reviews/rvg_g24_step1_review.md) -> then g24 ... | ?
 - mem_ r4 -> rvm_ short re-check -> ask ATN for the Attila 32-bit confirm run (che ... | ?
 - Rome II / Thrones keep the 32-bit leak until host.scene_release is set for them ... | ?
 - sse_ (Opus xHigh, worktree, branch sss_e2) implements E2 + E4 with R1 / R2 / S2 ... | ?
 - g24_ step1 r2 (sent) -> rvg_ light re-check before core hashes are stamped; mean ... | ?
-- ATN: Expeditions tracer uses 4.21 View offsets 122 / 123 (Expeditions is 4.23) - ... | ?
 - Thrones DLL red at tw_engine_code part 1 (tests.cpp:2560 PARTICLE_EPOCH, from 20 ... | ?
 - Exit drain raise rule lives in HANDOFF only now (fxi_ N1 removed it from the com ... | ?
 - mrg_ merges fca_item1 + fca_exit_drain (sent): all 36 builds + merged-tree tw_en ... | ?
 - after the merge: test/tw_engine_code follow-up (owner fxi_): R3-N1 bound the spi ... | ?
-- ATN (pk5_): Q6 ERMSB row + our copy at 2-4 sites; S0 before the data run; other ... | ?
 - mrg_ merges mem_fix 03137a2f5 after the FCA batch (sent; clean vs atn-mods + fca ... | ?
-- ATN's go for the Attila 32-bit confirm run (asked 11-24 afternoon; fresh backups ... | ?
-- ATN (pk1_): A FDW always on (advice) vs per-battle latch; B FDW NVIDIA only + FC ... | ?
-- ATN (pk2_): Q-A X1 row default On?; Q-B no PK2 run of its own (data-run trace wi ... | ?
 - B3 interface conflict pk3_ (helper twattila::PrefetchRead in prefetch.hpp) vs pk ... | ?
-- ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-dif ... | ?
 - s1a_ M1 + S1 + NITs (sent) -> 's1a_ m1' -> coord merges sh_s1a (re-run item 1 / ... | ?
 - PK5 S0 microbench (tests only) after the FCA merge + fxi_'s test follow-up (test ... | ?
 - g24_ fill (sent): 941 mechanical -> rt vs|-|-|- families -> mv 673 (111 GPU-scen ... | ?
 - gsr_ (Opus xHigh) scale route design (handoff_plan/gsr_scale_route_design.md): o ... | ?
-- ATN trace requests (later, one go): Expeditions tracer 4.23 View offsets + a new ... | ?
 - RELEASE BLOCK: atn-mods ships ALL rows on with the rings off (the 32% trap confi ... | ?
-- ATN Q-C: Fewer Driver Waits rows - his 11-20 'keep Experimental + Off (not hidde ... | ?
 - fxi_ test fix (sent; branch ec_test_fix from atn-mods): R3-N1 bounded spins, R3- ... | ?
 - PK5 M4 (owner pk5_): study of the animation fill tail's fixed part (3.6-14 ms/f ... | ?
 - Stub-page growth owner: PK5 S1 unless pk4_'s design already grows it (decide whe ... | ?
 - Data-run additions (pk5_ sec 8): VirtualQueryEx both ends, +0x17c8180 ns per cal ... | ?
-- ATN (pk4_): 1 route a / b-w / both (advice: send the note now, build b-w up to t ... | ?
 - PK5 S0 implementer (tests only: part 34 copy_bench.inc) after fxi_'s ec_test_fix ... | ?
-- ATN (g24_ step 6): 33 mv gap families, 1,627 cells (VTF 1,279 in 13; bones 348 i ... | ?
-- ATN (pk1_ sec 10): A FDW always on; B FDW NVIDIA only; C rows C1 / C2 / C3 (+ ke ... | ?
-- ATN (pk2_ sec 17): Q-A X1 row default On?; Q-B runs with N-C1 arm (coord: yes); ... | ?
 - PK3 S1 follow-ups: SHOULD-1 source-text guard in test/tw_render_mt_defaults/run. ... | ?
-- ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own buil ... | ?
-- ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; ... | ?
 - PK2 implementer (engine code: Fable Medium if p4i_'s trial isn't blocked, else S ... | ?
 - p1i_ (Opus xHigh, worktree) PK1 P1-P5 on fca_pk1: buffer_pool.hpp (P1 / P2), obj ... | ?
 - GPU window (coord, when builds are quiet): SSS run.ps1 -Architecture amd64 -Bloc ... | ?
-- ATN (gsr_): approve the dumper change (src/utils/shader_dump.hpp, 3 switch cases ... | ?
 - sse_ K fallback (sent): Bend's own loop below K groups (K from the crossover), l ... | ?
 - trc_ (Opus xHigh, worktree, branch trc_tracer) Expeditions tracer prep: 4.23 Vie ... | ?
+- ATN adds 6 rule lines (atn_rules_1124.md sec 1: pk1_harness_runs -Pk1 / -Pk1Focu ... | ?
+- t4i_ adds ebo_run.ps1 -Data (2 W3 starts + PK4 check start + PK5 sampler window, ... | ?
+- ATN: Bitdefender exception for tools\tw\gbf\gbf_gpu_gates.ps1 -> coord reruns it ... | ?
+- ATN: WPR tasks to 'run whether user is logged on or not' (S4U, highest) - steps ... | ?
+- ATN: groups Q41 (grey out Light Bounce Rays under RR + PT, tooltip '1 ray under ... | ?
+- pk4_ Rev 1.2 -> rv4_ light re-check -> tell p4i_ what changes for S2 / S3; pk5_ ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -10053,7 +10040,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         a failed move = LEG STOPPED (resumable, nothing deleted); store needs ETL + 5 GB before a WPR start; C: needs
         per leg 20.7 / 61.2 / 67.7 / 61.0 GB (fits 82 GB), D: 107.7 GB over the batch (171 free). Edge: a re-run WPR
         start's old ETL stays on C:.
-        - [ ] ATN (antivirus): scratchpad\t4i_etl_tests.py (t4i_'s ETL-move test, written 10:59) cannot be opened
+        - [x] STALE (ATN restored it 11-22 11:4x): ATN (antivirus): scratchpad\t4i_etl_tests.py (t4i_'s ETL-move test, written 10:59) cannot be opened
             (EPERM, looks like Bitdefender). Please check Bitdefender's log / quarantine yourself and exclude or
             restore it if it's a false positive; then t4i_ re-applies the ETL move + its tests (t4i_ 11:01).
         -> ebr_ RE-CHECKS the probes + scan gaps now; ETL move waits for ATN's antivirus answer.
@@ -11456,7 +11443,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         before ATN's restart. Models: Opus High + one Opus xHigh review per group; studies Opus xHigh. rt_core.hpp one
         writer (G18). Changes vs triage: gpu_trace.ps1 halves (11408 / 10775) -> GPU plan; 11848 = in-game Nsight item
         (answered at OPEN FOR ATN l.185); htc_'s hand-back has two labels swapped (TSV right).
-        - [ ] ATN: review handoff_plan\plan.md -> OK / changes; NOTHING from it starts or gets ticked before ATN's OK.
+        - [x] STALE (answered 11-22 19:3x via decisions_for_atn.md 'all your picks beside'): ATN: review handoff_plan\plan.md -> OK / changes; NOTHING from it starts or gets ticked before ATN's OK.
         gtc_ RE-RUN DONE 19:11 (plan_1117/gtc_rerun_done_handback.md; testbin\scratch\gtc_\rerun\step_00..19.txt, offline.txt,
         bursts_r1.txt): all 20 steps exit 0, rule commands alone. Calibrations PASS both ways: R1 G-1122-7 / 8 (+0.33 /
         -0.34 ms), R2 G-1122-11 / 12, R3 G-1122-14 / 15. A/A NO CHANGE + picture SAME: G-1122-9 (R1 toggle), G-1122-10 (R1
@@ -11794,7 +11781,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         in the brief). Requests sent: g10_ (D2 vanilla_exact entries), g13_ (page_dump_d2_body.h text).
         - [ ] D2 in-game batch (g07_): an SSR trace (in-game SSR on, wet / polished floor or water): DeferredSSR (EB5998CF)
         writes (size, format) + DeferredSSRCombine (0FA22D5A) t1 / t2 reads; render-scale trace; R2 A/B for VFX half-res.
-        - [ ] ATN (when well): handoff_plan/atn_questions_groups.md (groups' questions with coord's picks; 2 so far).
+        - [x] ANSWERED 1-58 (11-22 / 11-23 / 11-24) except 41 (re-asked 11-24 ev in atn_rules_1124.md): ATN (when well): handoff_plan/atn_questions_groups.md (groups' questions with coord's picks; 2 so far).
         g19_ PART 20:2x (handoff_plan/handbacks/g19_part_handback.md): ho_g19 a5f8608fb..40e030621: settings_pages without
         the lighting_settings include (AO / GI sections + tints moved, same namespace); Bindings::screen_space_tested
         (false = "(Experimental)" method labels + No RT/PT writes ssao_mode 1 per ATN's 150e41174 rule) +
@@ -14237,7 +14224,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] rv6_ (Opus xHigh) review of PK6 tooling (sent; render_mt/reports/rv6_pk6_review.md) -> t4i_ fixes if any.
         (was: PK6 tooling -> t4i_ (after its parsers): sec 6 items 2-8; item 1 (WPR tasks' focus steal) = ATN's question.)
         - [ ] fxi_ r2 + 30f WU-on case (J1 flips only after that + an ABBA bench).
-        - [ ] ATN QUESTIONS (critic sec 7): Q2 release timing, Q3 FDW D1 cost vs per-battle latch, Q4 WU default rule, Q5
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN QUESTIONS (critic sec 7): Q2 release timing, Q3 FDW D1 cost vs per-battle latch, Q4 WU default rule, Q5
         sort-chain route, Q6 ERMSB experiment + tell the author, Q7 data run (2 W3 starts ~10 min), Q8 RT on / off, Q11
         KRCF 8 starts, Q12 campaign map, WPR tasks' focus. Answered by standing rules: Q1 rings on, Q9 NO, Q10 keep, Q13 parked.
         mem_fix r3 DONE (handoff_plan/handbacks/mem_fix_r3_handback.md; 34810855f + 8d2a905cf pushed): scene release opt-in
@@ -14312,7 +14299,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         after-upscale fails closed when buffer != view size (dynamic res false settle); MUST-2 fixture case for 'output-
         size targets only' (mutation survived). SHOULD 1-4, NIT 1-2. Mutation: 11 / 18 guards caught.
         - [ ] g24_ step1 r2 (sent) -> rvg_ light re-check before core hashes are stamped; meanwhile g24_ (2) S8 sizing gate.
-        - [ ] ATN: Expeditions tracer uses 4.21 View offsets 122 / 123 (Expeditions is 4.23) -> a 4.23 offset + a new
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN: Expeditions tracer uses 4.21 View offsets 122 / 123 (Expeditions is 4.23) -> a 4.23 offset + a new
         trace run need ATN's go (rvg_ NIT-3); until then Expeditions after-upscale fails closed (no view line).
         fxi_ R2 DONE (render_mt/fca/designs/fxi_r2_handback.md; fca_exit_drain 6802ab234..0b69647a5 pushed): 788ee1089
         rvl_ S1 (Thrones matches the teardown patterns -> CHECK(exit_teardown_rva == 0) + count print; production same)
@@ -14343,7 +14330,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Needs: site table capacity (31 sites, uint32 masks; PK4 first) + a 2nd stub page. Critic errors: A3 runs on main,
         M2 caller known, M1 has 3 readers. PK7 author lines: truncation split form 4.1 ms, memfast 64 B limit (65-127 B
         path 22.2 + 18.6 summed), CHECKED functions. -> rv5_ (Opus xHigh) review (rv5_pk5_review.md).
-        - [ ] ATN (pk5_): Q6 ERMSB row + our copy at 2-4 sites; S0 before the data run; other CPUs = fixed list or a 2-5 ms
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN (pk5_): Q6 ERMSB row + our copy at 2-4 sites; S0 before the data run; other CPUs = fixed list or a 2-5 ms
         start self-timing; A2 worth medium-high risk for -0.3..-0.6?; A3 bench arm (prefetch + L1); Q7 + a 60 s late-melee
         sampler window.
         rvm_ MEM R4 GO FOR THE CONFIRM RUN (handoff_plan/reviews/rvm_mem_fix_recheck_r4.md + _handback.md): the >= deferral
@@ -14351,7 +14338,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         reads '30 presents after' ('31' only next to an L3); note load vs play (m2).
         - [ ] mrg_ merges mem_fix 03137a2f5 after the FCA batch (sent; clean vs atn-mods + fca_item1) -> newest Attila build
         for the confirm run.
-        - [ ] ATN's go for the Attila 32-bit confirm run (asked 11-24 afternoon; fresh backups, install newest first).
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN's go for the Attila 32-bit confirm run (asked 11-24 afternoon; fresh backups, install newest first).
         pk1_ DESIGN Rev 0 DONE (render_mt/fca/designs/pk1_design.md 558 lines + _handback.md; base fca_item1 14be1b950):
         T1 rings on (FCU everywhere, FDW NVIDIA only, rows hidden + ClearSavedRows(3)) + reclaim fix (retire half a ring
         ahead, flush check before growing) + 100 ms cap wait + shrink; T1d drop the IASetVertexBuffers detour in ring-only
@@ -14360,7 +14347,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         census. Critic errors: detour gain 0.04-0.08 not 0.32; stage 2 ~0; U1 fast path exists; N-T must be an env start.
         New bench-only env RENODX_TW_DRIVER_RINGS needs ATN's run rule. Rule slip: last wording fixes via a heredoc.
         -> rv1_ (Opus xHigh) review (rv1_pk1_review.md). pk2_ told: no pool thread may touch the immediate context.
-        - [ ] ATN (pk1_): A FDW always on (advice) vs per-battle latch; B FDW NVIDIA only + FCU everywhere; C rows hidden;
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN (pk1_): A FDW always on (advice) vs per-battle latch; B FDW NVIDIA only + FCU everywhere; C rows hidden;
         D T2 / U2 grass may reach other TW add-ons at their next build; E RT on in the target (one RT-on trace for T3b);
         plus a run rule for RENODX_TW_DRIVER_RINGS.
         shg_ DESIGN REV 1.1 DONE (plan_1117/shg_sh_gi_upsample_design.md sec 10.2 = answers; S0 report sec 12;
@@ -14381,7 +14368,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         stage 1. New bench env vars RENODX_TW_RECORDING_PARTS / _POOL_CHAIN / _RENDER_CPUS need ATN's run rules.
         Critic corrections: P1 = wake only; C3 alone 0; X1 evidence one-sided; D1 decal-seed misses ~0.2 not covered.
         -> rv2_ (Opus xHigh) review (rv2_pk2_review.md).
-        - [ ] ATN (pk2_): Q-A X1 row default On?; Q-B no PK2 run of its own (data-run trace windows + bench arms); Q-C
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN (pk2_): Q-A X1 row default On?; Q-B no PK2 run of its own (data-run trace windows + bench arms); Q-C
         Colour A hidden default Off if its net <= 0; Q-D V2 stack reserve 1 MB -> 256 KB + best-fit op arena; Q-E C2 may
         advance the game's two dirty counters when its constants cache is off.
         pk3_ DESIGN Rev 0 DONE (render_mt/fca/designs/pk3_design.md 485 lines + _handback.md): B3 prefetch T0 at 8 sites
@@ -14393,7 +14380,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] B3 interface conflict pk3_ (helper twattila::PrefetchRead in prefetch.hpp) vs pk2_ (__builtin_prefetch at each
         site) -> rv3_ decides with the compiler facts; both implementers follow.
         -> rv3_ (Opus xHigh) review (rv3_pk3_review.md).
-        - [ ] ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-difference Check start; B stage-2
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-difference Check start; B stage-2
         'carry' (-0.3..-0.5 / c9 -1.0..-2.0, needs a new premise) after the bench / now / never; C ~10 min CPU timing per
         step x 6 while ATN isn't playing.
         t4i_ DRAIN A + ITEM 1 + BIG_TABLE PARSERS DONE (render_mt/reports/t4i_drainA_item1_handback.md): ebo_check.ps1 A / B
@@ -14461,7 +14448,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (2,133 + 907); never BUG to make progress; a decision block for ATN on the 33 gap families.
         - [ ] gsr_ (Opus xHigh) scale route design (handoff_plan/gsr_scale_route_design.md): offline WARP scale tool as
         out: / test: vs mesh-UV interpolant extension vs new trace kind -> rvg_ review -> re-run S8 for scale.
-        - [ ] ATN trace requests (later, one go): Expeditions tracer 4.23 View offsets + a new trace run; GPU-scene traces
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN trace requests (later, one go): Expeditions tracer 4.23 View offsets + a new trace run; GPU-scene traces
         (111 mv cells); twin: logging (first index / buffers) for the bones families.
         rv1_ PK1 REVIEW (render_mt/fca/designs/rv1_pk1_review.md + _handback.md; 0 / 7 MUST / 14 SHOULD): mechanism +
         trap table GO after M1 (honest stats: 0 of 12 plain W3 vs 10 of 31 -> p 0.023; D1 never traps); T1a GO w/ changes
@@ -14470,7 +14457,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> pk1_ Rev 1 (sent) -> rv1_ light re-check.
         - [ ] RELEASE BLOCK: atn-mods ships ALL rows on with the rings off (the 32% trap config) -> no Attila release from
         atn-mods until PK1 stage 1 lands (rv1_ S11).
-        - [ ] ATN Q-C: Fewer Driver Waits rows - his 11-20 'keep Experimental + Off (not hidden)' vs bug-fix-always-on now
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN Q-C: Fewer Driver Waits rows - his 11-20 'keep Experimental + Off (not hidden)' vs bug-fix-always-on now
         that rings off = trap; Rev 1 designs rows shown, default on, 'Off after a restart' until he answers.
         mrg_ MERGED FCA ITEM 1 + EXIT DRAIN A + MEM_FIX (handoff_plan/handbacks/mrg_fca_memfix_handback.md): d64693692
         fca_item1, 1ed81d3b2 fca_exit_drain, 884bc7f91 mem_fix, tip 684c02587; 36 / 36 builds x2, tw_engine_code -Quick /
@@ -14508,7 +14495,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         the data run), G2 author answer, G3 bench. S1 infra = 64-bit SiteMask + 3 pages (so PK5 needs no page step).
         Files engine_code.hpp, tests + early_sort.inc, addon.cpp (one row, after PK1 in the writer order), README.
         -> rv4_ (Opus xHigh) review (rv4_pk4_review.md).
-        - [ ] ATN (pk4_): 1 route a / b-w / both (advice: send the note now, build b-w up to the probe, decide after G1 +
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN (pk4_): 1 route a / b-w / both (advice: send the note now, build b-w up to the probe, decide after G1 +
         his answer); 2 probe start OK + ride the data run; 3 default off + Experimental until G1-G3; 4 one-frame skip +
         session-off fail-safe OK?; 5 heapfix loaded: off until the author answers, or a bench-only override; 6 one N /
         N-S pair WITHOUT heapfix for the players' number; run rule for RENODX_TW_SORT_CHECK.
@@ -14539,7 +14526,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         HELD). Core extensions for rvg_: (a) per-game rule scope, (b) SKIPPED/twin + twin: logging, (c) host_state
         depth-only size check + 'host-state' not in CROSS_CHECKED. -> rvg_ review 13.7 (sent; rvg_g24_137_review.md),
         g24_ step 4 scale (sent; no core edits until the review; 9,496 BUG-only cells stay with gsr_).
-        - [ ] ATN (g24_ step 6): 33 mv gap families, 1,627 cells (VTF 1,279 in 13; bones 348 in 20; 463 shadow-depth
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN (g24_ step 6): 33 mv gap families, 1,627 cells (VTF 1,279 in 13; bones 348 in 20; 463 shadow-depth
         settle N/A only once a semantic shadow-depth rule passes, rvg_ MUST-2). rvg_: Route A NOT built (one frame can't
         prove a texture static; reach ~380 cells) -> advice: VTF families = GAP box per family; bones = twin: logging +
         trace run on ATN's go (primitive-id matching). Also the 901 rt shadow cells as one class (MISSING + out-of-view
@@ -14556,7 +14543,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (BENCH-1 preset pin, revision 3). Steps P1-P10. ClearSavedRows REVISION 3 = PK1 (pk2_ / t4i_ told; later flips
         take the next number at merge). H3 now new ring vs old ring. Release block: no Attila release / install from
         atn-mods until P7. -> rv1_ light re-check (sent; rv1_pk1_recheck.md); t4i_ got the PK6 inputs.
-        - [ ] ATN (pk1_ sec 10): A FDW always on; B FDW NVIDIA only; C rows C1 / C2 / C3 (+ keep '(Experimental)'?);
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN (pk1_ sec 10): A FDW always on; B FDW NVIDIA only; C rows C1 / C2 / C3 (+ keep '(Experimental)'?);
         D Thrones T2 opt-in + U2 grass pass; E RT on in his target; F0 atn_harness_runs.ps1 still points at worktree
         rmt_s1 (old ring) - edit its two path lines or add a mode?; F1 rule line '-Pk1' (~8 runs, 15 min); F2 '-Pk1Focus'
         (2-3 runs, 8 min, takes the foreground); bench +4 starts.
@@ -14573,7 +14560,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         one env RENODX_TW_THREAD_PARTS (bits 0-5); every P1 / X1 / parts step builds x86 Attila + Rome II + Thrones.
         Order B3 -> parts + C3 -> C2 -> C1a -> C1b -> P1 -> X1 -> V2 -> flip; step 0 needs fca_item1 + PK1 stage 1 + PK3 S1.
         -> rv2_ light re-check incl. the recompute (sent; rv2_pk2_recheck.md); t4i_ got the arm lines.
-        - [ ] ATN (pk2_ sec 17): Q-A X1 row default On?; Q-B runs with N-C1 arm (coord: yes); Q-C Colour A row Off if no
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN (pk2_ sec 17): Q-A X1 row default On?; Q-B runs with N-C1 arm (coord: yes); Q-C Colour A row Off if no
         gain after C3 + C1; Q-D two V2 measure lines; Q-E replay advances the two dirty counters; Q-F run rule for
         RENODX_TW_THREAD_PARTS.
         rv1_ PK1 RE-CHECK (render_mt/fca/designs/rv1_pk1_recheck.md + _handback.md): GO for P1-P4, bench sizes GO, no
@@ -14606,7 +14593,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (was: drl_ (Opus xHigh, worktree): tw_draw_recording_loop part 7 FAILS 736x on atn-mods (line 1772, colour B
         state blocks; same on 61c2ce70e; never in mrg_'s gate) - bisect, test vs ADD-ON bug, player impact; test-only
         fix on draw_loop_fix, src changes proposed first. Gate for PK2's implementer.)
-        - [ ] ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own build in testbin, game DLL mapped
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own build in testbin, game DLL mapped
         read-only, process affinity, ~10 min a step + 40-60 min S4 sweep; idle PC only).
         fxi_ TEST FIX DONE (render_mt/fca/designs/fxi_test_fix_handback.md): ec_test_fix a8ee4640e (exit_drain.inc +
         tests.cpp only; no production change). 30f waits bounded 10 s (FAIL, not hang); Thrones' stale PARTICLE_EPOCH /
@@ -14631,7 +14618,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (was: p4i_ (FABLE 5.2 MEDIUM TRIAL, worktree) PK4 S1 infra on fca_pk4: 64-bit masks + engine_probe.hpp, cover
         assert, three pages; 3 x .addon32 + -Probe / -DrawRecording; tw_engine_code on 3 DLLs. Report trial result to ATN.
         Then PK5 S0 (tests.cpp after p4i_), then PK5 S2+ on PK4 S1.)
-        - [ ] ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; Q4b mode-on response to the
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; Q4b mode-on response to the
         +0x1832CB0 clear (advice: wait on the task, then trip); G1 go + RENODX_TW_SORT_CHECK rule.
         Writer exception (coord): p4i_ may edit on fca_pk4 half_rows_adversarial.inc (SiteMask), exit_drain.inc / other
         .inc narrowing copies of ec::written (-> SiteMask), and ONLY animation_rows.inc part 19 (:2047-2053, :2217) + its
@@ -14683,7 +14670,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         9,496 after the fix (floor 1,748); residue ~1,900 (1,297 post / UI PS -> phase 2 tracer). Core C0 + refusal-only
         C1-C6. Findings F1 fullscreen guard vacuous without GS / HS / DS; F3 roots-pixel accepts non-View constants;
         F4 tracer reads 4.21 View rows on 4.23. -> rvg_ review after its 13.8 re-check (queued).
-        - [ ] ATN (gsr_): approve the dumper change (src/utils/shader_dump.hpp, 3 switch cases: dump HS / DS / GS) + ONE
+        - [x] ANSWERED 11-24 ev (atn_questions_1124.md '## ATN's answers'): ATN (gsr_): approve the dumper change (src/utils/shader_dump.hpp, 3 switch cases: dump HS / DS / GS) + ONE
         Expeditions dump run; phase 2 later: tracer change + one trace run at two render scales (joins the open
         'Expeditions tracer 4.23 offsets + new trace run' item).
         rv4_ PK4 RE-CHECK (rv4_pk4_review.md '## Re-check of Rev 1' + rv4_pk4_recheck_handback.md): six MUSTs folded;
@@ -14761,6 +14748,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         Attila (23zi) / Rome II / Thrones PASS, -Probe PASS, -DrawRecording PASS (testbin/scratch/p4i_/m1_*.txt); .addon32
         not rebuilt (assert + whitespace only; S3 builds them). atn-mods since 474f63c6f = draw-loop test fix only.
         p4i_ (Fable Medium) continues S2 (part 31) + S3 -> 'p4i_ s2-s3' -> rv4_ code review.
+        ATN ANSWERS 11-24 EVENING (handoff_plan/atn_questions_1124.md '## ATN's answers'): A1 confirm run YES (coord: after
+        PK1 stage 1, so the installed build has rings on); A2 traces / dump YES (they won't find every cell: rest = GAP /
+        unsupported per family); A3 data run YES; A4 RT-on CPU captures only after unified PT is in (ATN's own target =
+        unified PT); B1-3 / C1-6 / D1 / D3 / E2 / E4 / E6-8 / F2 / F4 / F5 / G1-3 = coord's advice; B4 Thrones after Attila;
+        D2 stage-2 CARRY NOW; E1 / E3 / E5 / F1 'we do it ourselves': route b only, no author gate, heapfix-loaded path by
+        our own proof, ERMSB ours, full code to the author afterwards (credit); F3 A2 NOW; G4 campaign map later YES;
+        H1 / H2 OK. Memory: project_heapfix_author + user_atn updated. Sent: pk4_ Rev 1.2, pk5_ Rev 1.2, pk3_ Rev 3
+        (carry), p1i_ FYI (no change).
+        - [ ] ATN adds 6 rule lines (atn_rules_1124.md sec 1: pk1_harness_runs -Pk1 / -Pk1Focus, ebo_run -Data / -Data
+        -DryRun / -Verify / -Verify -DryRun); trace / dump lines come with trc_'s run sheet.
+        - [ ] t4i_ adds ebo_run.ps1 -Data (2 W3 starts + PK4 check start + PK5 sampler window, RT off) and -Verify modes
+        AFTER rv6_'s review (files under review now).
+        - [ ] ATN: Bitdefender exception for tools\tw\gbf\gbf_gpu_gates.ps1 -> coord reruns its -DryRun, then the gates.
+        - [ ] ATN: WPR tasks to 'run whether user is logged on or not' (S4U, highest) - steps in atn_rules_1124.md sec 3;
+        the data run checks the ETL still lands.
+        - [ ] ATN: groups Q41 (grey out Light Bounce Rays under RR + PT, tooltip '1 ray under Ray Reconstruction').
+        - [ ] pk4_ Rev 1.2 -> rv4_ light re-check -> tell p4i_ what changes for S2 / S3; pk5_ Rev 1.2 -> rv5_; pk3_ Rev 3 ->
+        rv3_ review.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
