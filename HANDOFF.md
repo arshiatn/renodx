@@ -797,6 +797,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: WPR tasks to 'run whether user is logged on or not' (S4U, highest) - steps ... | ?
 - ATN: groups Q41 (grey out Light Bounce Rays under RR + PT, tooltip '1 ray under ... | ?
 - pk4_ Rev 1.2 -> rv4_ light re-check -> tell p4i_ what changes for S2 / S3; pk5_ ... | ?
+- rv4_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2' in rv4_pk4_review ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14784,6 +14785,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         wrappers now, row SHOWN '(Experimental)' default off (row off byte-identical) for ATN's in-game look; S1a-D =
         tuning only, renders on the 5090 (run.ps1 item under gpu_job.lock, coord's GPU window), WARP only for byte checks.
         B2 / B4 / S3 wait for ATN's look at S1a (not dropped). Memory feedback_experimental_rows updated.
+        pk4_ REV 1.2 DONE (pk4_design.md change table; pk4_rev12_handback.md): route b-w only (a.1 / a.2 not pursued; sec
+        10 = package text for the author AFTERWARDS, PK7). G2 -> G2-own (sec 7.3, PRIVATE): a default heapfix replaces
+        ONE rule-H site, the sort +0x17AD5D0 (sortfix.c sort_by_keys: static __thread scratch, install-time table, reads
+        args + keys +0x6C / +0x68, stable radix -> timing-independent); the other six only by the optional parallel-prepare
+        module (off; 0 'parallel prepare' lines in 208 starts). Rule H: H1 six sites always off; H2 sort site allowed by
+        constexpr EARLY_SORT_OVER_REPLACED_SORT (flip after rv4_, before the bench build; back off if G3b fails). Q5
+        SORT_OVER_MOD dropped. Gates: G1 -> G3a -> default on; G2-own + G1 on heapfix + G3b in the same verify bench.
+        S2 / S3 unchanged (p4i_ told); S4 / S5 change. Open: (1) game folder's dinput8.dll (402432 B, 11-18) matches no
+        .sha256 -> rv4_ dis_at check; (2) dis_at closure of the weighted prepare; heapfix.log has no start after 11-21 (DLL
+        swapped 11-23 / 11-24) -> captures' own records name the heapfix build. G3a starts: design 14, coord's question
+        said 10 by mistake -> corrected to ATN (14).
+        - [ ] rv4_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2' in rv4_pk4_review.md): 4.6 H1 / H2 + process
+        rule vs run-time build check, 7.2, 7.3 + the two dis_at items.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
