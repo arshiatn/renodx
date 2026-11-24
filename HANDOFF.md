@@ -819,6 +819,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REMIND ATN (decision 6): ask JSa25 for a Flag Wave interop contract (previous-po ... | ?
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
+- a64p0r_ (Opus xHigh) reviews the Phase 0 design (arms, probe sites, determinism, ... | ?
 - ATN: add the window-1 rule lines (a64ab_window1_rules.md) + trim yes / no; then ... | ?
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
@@ -15239,6 +15240,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         beside / own totals, CPU rule) + a proxy determinism line; affinity left alone when ATN's rule exists. Dry runs
         all exit 0. Coord asked for named stages (A = base, inline, base, inline; B = cap30, all32, tt8, measure only if
         needed): pending a64ab_'s answer; a comma list already runs stage A.
+        - [x] a64p0d_ PHASE 0 DESIGN DONE (hand-back attila64/a64p0d_design_handback.md; tools/tw/attila64/p0/design.md,
+        PRIVATE): hypotheses H0 (beside mode) vs H6 (cheap content) by the INLINE arm; H1 / H1b drawing tasks + queueing,
+        H2 / H4a / H4b by cap signs, H3 / H3b placement / cache; probe = 143 five-byte patches (135 call sites + 8 GOT
+        slots) via Sol's api->patch, no entry hooks (no clash with Sol), build-id gate, off unless RENODX_A64P=1; the
+        game's own replay check exists (likely switched off when tick 0 differs) -> probe hashes checksum / rand /
+        entities every 100 steps; ALL32 via clearing the test process's CPU set or a no-rule path; L2B / L2C test arms
+        only; window 3 ~75 min + 15 spare (probe + WPR + placement), rule lines in design section 10.
+        - [ ] a64p0r_ (Opus xHigh) reviews the Phase 0 design (arms, probe sites, determinism, CPU sets, ATTILA_POKE arm,
+        trimmed arm lists) -> p0/design_review.md -> a64p0d_ fixes -> probe implementer (Opus High) for window 3.
         - [ ] ATN: add the window-1 rule lines (a64ab_window1_rules.md) + trim yes / no; then window 1 (no game of ATN's
         running, fresh backups).
         - [ ] a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S1 / S4 / S5 + the window-1
