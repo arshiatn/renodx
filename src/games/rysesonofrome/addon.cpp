@@ -25,6 +25,7 @@
 #include <functional>
 #include <mutex>
 #include <shared_mutex>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -38,11 +39,14 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/bitwise.hpp"
 #include "../../utils/command_action.hpp"
 #include "../../utils/command_action_fast.hpp"
 #include "../../utils/data.hpp"
+#include "../../utils/format.hpp"
 #include "../../utils/hash.hpp"
 #include "../../utils/platform.hpp"
+#include "../../utils/resource.hpp"
 #include "../../utils/settings.hpp"
 #include "./contact_shadows.hpp"
 #include "./graphics.hpp"
@@ -138,17 +142,6 @@ const std::vector<std::pair<std::string, float>> EXT_FIRE_OPTION_2 = {
     {"ext_fire_hue", -0.05f},
     {"ext_fire_hue_focus", 0.75f},
 };
-// Recommended, also under its deeper shadows twin (ATN 2026-11-12: PsychoV35, its sliders at their defaults).
-const std::vector<std::pair<std::string, float>> LESS_POST_PROCESSING = {
-    {"tonemapper", 3.f},
-    {"film_grain", 0.f},
-    {"motion_blur_camera", 0.f},
-    {"motion_blur_object", 0.f},
-    {"sharpening", 0.25f},
-    {"depth_of_field", 2.f},
-    {"video_highlights", 0.25f},
-};
-
 void ApplyResetPreset() {
   // Peak / Paper White / UI, Settings Mode and output are kept.
   renodx::utils::settings::UpdateSettings({
@@ -200,7 +193,16 @@ void ApplySdrPreset() {
 // The Recommended button; Output Auto takes it once when Windows HDR comes on after a first start without HDR.
 void ApplyRecommendedPreset() {
   ApplyResetPreset();
-  renodx::utils::settings::UpdateSettings(LESS_POST_PROCESSING);
+  // Recommended (ATN 2026-11-12: PsychoV35, its sliders at their defaults).
+  renodx::utils::settings::UpdateSettings({
+      {"tonemapper", 3.f},
+      {"film_grain", 0.f},
+      {"motion_blur_camera", 0.f},
+      {"motion_blur_object", 0.f},
+      {"sharpening", 0.25f},
+      {"depth_of_field", 2.f},
+      {"video_highlights", 0.2f},
+  });
 }
 
 // This add-on alone (the upstream snapshot): the helper and the NVIDIA, AMD and Intel files come with the full download.
@@ -619,7 +621,7 @@ void BuildRuntimeData() {
           .section = "Presets",
           .group = "preset-line-1",
           .tooltip = "Recommended look: HDR (PsychoV35), with all vanilla post processing, \n"
-                     "hidden chromatic aberration, sharpening at 0.5, depth of field at 2 and Video AutoHDR at 0.25.\n"
+                     "hidden chromatic aberration, sharpening at 0.5, depth of field at 2 and Video AutoHDR at 0.2.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
             ApplyResetPreset();
@@ -632,7 +634,7 @@ void BuildRuntimeData() {
                 {"depth_of_field", 2.f},
                 {"sharpening", 0.5f},
                 // {"sun_shafts", 0.5f},
-                {"video_highlights", 0.25f},
+                {"video_highlights", 0.2f},
             });
           },
       },
@@ -642,22 +644,9 @@ void BuildRuntimeData() {
           .section = "Presets",
           .group = "preset-line-1",
           .tooltip = "Recommended look: HDR (PsychoV35) with the game's shadows and colours, no film grain,\n"
-                     "no motion blur, no chromatic aberration. Sharpening at 0.25, depth of field at 2, Video AutoHDR at 0.25.\n"
+                     "no motion blur, no chromatic aberration. Sharpening at 0.25, depth of field at 2, Video AutoHDR at 0.2.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() { ApplyRecommendedPreset(); },
-      },
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-          .label = "Recommended (with Deeper Shadows)",
-          .section = "Presets",
-          .group = "preset-line-1",
-          .tooltip = "As Recommended, with deeper shadows closer to the game's in PsychoV31\n"
-                     "(Shadows 0.75, Flare 0.25). PsychoV35 follows the game's shadows already.",
-          .on_change = []() {
-            ApplyResetPreset();
-            renodx::utils::settings::UpdateSettings(LESS_POST_PROCESSING);
-            renodx::utils::settings::UpdateSettings({{"shadows", 0.75f}, {"flare", 0.25f}});
-          },
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
@@ -2112,6 +2101,37 @@ void OnDestroyDevice(reshade::api::device* device) {
 
 }  // namespace back_buffer_fix
 
+// One log line per render target the resource upgrades take (all view clones). The handle is the game's resource, the
+// one the frame trace prints as "clone of <handle>" for a RenoDX clone view, so the reader census can match the two.
+// Runs after RenoDX's init_resource, which marks the targets; capped so a game recreating targets can't fill the log.
+constexpr int MAX_UPGRADE_LOG_LINES = 256;
+std::atomic_int upgrade_log_lines = 0;
+
+void OnInitResourceLogUpgrade(
+    reshade::api::device*, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
+    reshade::api::resource_usage, reshade::api::resource resource) {
+  if (desc.type != reshade::api::resource_type::texture_2d) return;
+  if (!renodx::utils::bitwise::HasFlag(desc.usage, reshade::api::resource_usage::render_target)) return;
+  if (upgrade_log_lines.load(std::memory_order_relaxed) > MAX_UPGRADE_LOG_LINES) return;
+  reshade::api::format new_format = reshade::api::format::unknown;
+  renodx::utils::resource::GetResourceInfo(resource, [&](const renodx::utils::resource::ResourceInfo& info) {
+    if (info.clone_target != nullptr) {
+      new_format = info.clone_target->new_format;
+    }
+  });
+  if (new_format == reshade::api::format::unknown) return;
+  const int line_index = upgrade_log_lines.fetch_add(1, std::memory_order_relaxed);
+  if (line_index > MAX_UPGRADE_LOG_LINES) return;
+  std::ostringstream text;
+  if (line_index == MAX_UPGRADE_LOG_LINES) {
+    text << "[Ryse] more than " << MAX_UPGRADE_LOG_LINES << " upgrades: no more upgrade lines";
+  } else {
+    text << "[Ryse] upgrade 0x" << std::hex << resource.handle << std::dec << ' ' << desc.texture.width << 'x'
+         << desc.texture.height << ' ' << desc.texture.format << " -> " << new_format << " view clone";
+  }
+  reshade::log::message(reshade::log::level::info, text.str().c_str());
+}
+
 bool configured = false;
 bool attached = false;
 bool addon_registered = false;
@@ -2425,6 +2445,11 @@ bool AttachAddon() {
                                                          || execution_highlights_hidden.load(std::memory_order_relaxed)
                                                          || execution_skull_hidden.load(std::memory_order_relaxed);
                                                 }});
+  // Before RenoDX's draw callbacks (command_action's): the first draw after Present rebinds the back buffer before any
+  // custom shader callback sees or skips the draw (a skip ends ReShade's callback list). Holds while this add-on is
+  // command_action's event handler; with the DevKit loaded first, its draw callback still runs before this one.
+  reshade::register_event<reshade::addon_event::draw>(back_buffer_fix::OnDraw);
+  reshade::register_event<reshade::addon_event::draw_indexed>(back_buffer_fix::OnDrawIndexed);
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The fast draw dispatch with the resource upgrades' gate (the swap chain mod's view cloning registers them).
@@ -2436,12 +2461,11 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(back_buffer_fix::OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_swapchain>(back_buffer_fix::OnDestroySwapchain);
   reshade::register_event<reshade::addon_event::init_resource>(back_buffer_fix::OnInitResource);
+  reshade::register_event<reshade::addon_event::init_resource>(OnInitResourceLogUpgrade);
   reshade::register_event<reshade::addon_event::init_resource_view>(back_buffer_fix::OnInitResourceView);
   reshade::register_event<reshade::addon_event::destroy_resource_view>(back_buffer_fix::OnDestroyResourceView);
   reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(back_buffer_fix::OnBindRenderTargets);
   reshade::register_event<reshade::addon_event::present>(back_buffer_fix::OnPresent);
-  reshade::register_event<reshade::addon_event::draw>(back_buffer_fix::OnDraw);
-  reshade::register_event<reshade::addon_event::draw_indexed>(back_buffer_fix::OnDrawIndexed);
   reshade::register_event<reshade::addon_event::destroy_device>(back_buffer_fix::OnDestroyDevice);
   twattila::device_loss::InstallLast();
 
@@ -2461,6 +2485,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(back_buffer_fix::OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_swapchain>(back_buffer_fix::OnDestroySwapchain);
   reshade::unregister_event<reshade::addon_event::init_resource>(back_buffer_fix::OnInitResource);
+  reshade::unregister_event<reshade::addon_event::init_resource>(OnInitResourceLogUpgrade);
   reshade::unregister_event<reshade::addon_event::init_resource_view>(back_buffer_fix::OnInitResourceView);
   reshade::unregister_event<reshade::addon_event::destroy_resource_view>(back_buffer_fix::OnDestroyResourceView);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(back_buffer_fix::OnBindRenderTargets);
