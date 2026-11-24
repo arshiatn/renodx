@@ -237,6 +237,8 @@ struct Bindings {
   bool has_fog_shadows = true;
   // Fog Shadows and Specular Occlusion defaulted to 1 here before 2026-11-16 (f41f04fd0: SetRaysPresetDefaults in Thrones,
   // Rome Remastered, Warhammer III, Pharaoh, Troy): presets that saved them with no ray-traced method on are cleared once.
+  // Not flagged: Warhammer I and II set both off from their first page; Rome II set Fog Shadows off, and its Specular
+  // Occlusion (1 from 11-13 to 11-16) binds nothing there.
   bool fog_shadows_defaulted_on = false;
   bool every_row = true;  // false: a row this page lists that the game lacks is no mistake, no log line (Rome Remastered)
 };
