@@ -782,6 +782,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN's go for the Attila 32-bit confirm run (asked 11-24 afternoon; fresh backups ... | ?
 - ATN (pk1_): A FDW always on (advice) vs per-battle latch; B FDW NVIDIA only + FC ... | ?
 - ATN (pk2_): Q-A X1 row default On?; Q-B no PK2 run of its own (data-run trace wi ... | ?
+- B3 interface conflict pk3_ (helper twattila::PrefetchRead in prefetch.hpp) vs pk ... | ?
+- ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-dif ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14348,6 +14350,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN (pk2_): Q-A X1 row default On?; Q-B no PK2 run of its own (data-run trace windows + bench arms); Q-C
         Colour A hidden default Off if its net <= 0; Q-D V2 stack reserve 1 MB -> 256 KB + best-fit op arena; Q-E C2 may
         advance the game's two dirty counters when its constants cache is off.
+        pk3_ DESIGN Rev 0 DONE (render_mt/fca/designs/pk3_design.md 485 lines + _handback.md): B3 prefetch T0 at 8 sites
+        (bug fix, always on); B1 block-local allocate -0.2..-0.4 / c9 -1.0..-1.4 / D1 -0.2..-0.35; B2 gather without the
+        animation + slot streams + bounded look-ahead -0.8..-1.2 / -0.5..-1.0. Package W3 -1.0..-2.5, c9 -1.2..-3.0, D1
+        -0.2..-0.4; bit-exact (part 23 + 5 cases + 2 controls + one Check start), no new row. Files: animation_rows.hpp,
+        new prefetch.hpp, test/tw_engine_code/animation_rows.inc; branch fca_pk3 from atn-mods. Notes: game tail after our
+        calls 5.0 / 22.5 ms/f has no item yet (pk5_ / coord); pool Start 0.40 / 1.14 (pk2_).
+        - [ ] B3 interface conflict pk3_ (helper twattila::PrefetchRead in prefetch.hpp) vs pk2_ (__builtin_prefetch at each
+        site) -> rv3_ decides with the compiler facts; both implementers follow.
+        -> rv3_ (Opus xHigh) review (rv3_pk3_review.md).
+        - [ ] ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-difference Check start; B stage-2
+        'carry' (-0.3..-0.5 / c9 -1.0..-2.0, needs a new premise) after the bench / now / never; C ~10 min CPU timing per
+        step x 6 while ATN isn't playing.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
