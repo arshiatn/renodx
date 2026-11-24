@@ -15043,6 +15043,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN, not objected: direct start of attila64.exe (no launch option), A32 with ReShade dxgi.dll + add-on moved aside
         per start (-A32Plain), no perffix64 arm for now. Still needed from ATN: rule lines for a64_ab.ps1, a time window
         (not while he plays). No builds during the A/B.
+        CORRECTION (coord ~19:2x): perffix64 SOURCE IS in JSa25's repo (64bit\src, 31 files + build.sh: llvm-mingw +
+        mimalloc 3.5.3); his licence allows compiling + running for our own use (no redistribution), so arm B64P can be a
+        build of ours later (downloads needed). Its D3D part (d3d64.c) hooks attila64.exe's D3D11CreateDevice import,
+        IDXGIFactory2::CreateSwapChainForHwnd (slot 15) and IDXGISwapChain::Present (slot 8) (dxgi's shared class
+        vtables); Flag Wave hot-patches a d3d11 draw function; his Upscaling add-on (FrameBridge) wraps the context and
+        presents itself. UI card cache off by default in 64-bit (battle_ui_cache=1), RGBA16F textures.
+        Message for Sol (ATN sends): attila64/study_1124/sol_message_1124.md (crash_filter ExitProcess on foreign
+        first-chance codes; hook_entry thunk at +16 vs len 12-15; 8-bit Discord button / fps pixels on an HDR swap chain).
         p4i_ S2-S3 DONE (render_mt/fca/designs/p4i_s2s3_handback.md; fca_pk4 a5923fa29 S2 + 3ede64a7f S3, pushed; all gates
         PASS). PARKED (ATN hold): rv4_ review of S2-S3 -> S4. NOTE s64c_: PK4 never starts under heapfix 7.4+.
         sse_ E2 K + RESOLUTION ROW DONE (plan_1117/sse_e2_k_handback.md; origin/sss_e2, not merged): 352a9b785 K fallback
