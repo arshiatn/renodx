@@ -819,7 +819,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REMIND ATN (decision 6): ask JSa25 for a Flag Wave interop contract (previous-po ... | ?
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
-- AFTER WINDOW 1: a64p0d_ fixes M1-M5 + Shoulds -> probe implementer (Opus High) f ... | ?
+- a64pi_ (Opus High) probe implementer STARTED (design section 12): site-table che ... | ?
 - AFTER WINDOW 1: xHigh review of bringup_design.md -> a64b_ implementer. | ?
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
 - gated_build.ps1 has its OWN 2 slots (build_job.lock / _2) + 45 GB committed + -j ... | ?
@@ -15264,7 +15264,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         stage A may be base, inline, inline (+ base only if close). Shoulds: task timing closes per probe event, CPU
         time over own work only, det / full probe levels, line-of-sight command ticks logged + state hashes, dump off
         main, MXCSR / x87 unchanged, CPU sets read at s 30 in window 1.
-        - [ ] AFTER WINDOW 1: a64p0d_ fixes M1-M5 + Shoulds -> probe implementer (Opus High) for window 3.
+        - [x] a64p0d_ REV 2 DONE (hand-back attila64/a64p0d_rev2_handback.md; p0/design.md 433 lines): all M / S / N +
+        window 1. H0 refuted (beside extra ~35 ms a step = ~26 %, not 15-70x; fast-forward steps do less work, Q4 open);
+        the step's own ~100 ms now limits real time (L5 / L7 up). Window 3 asks Q1 own work, Q2 beside extra, Q3 same
+        battle, Q4 fast-forward. Probe det (12 sites) / full (150 call sites + 13 GOT = 163, no entry hooks); checksum
+        read before the clear (b99303 / b9930d); 5 release wrappers replace the caps; line-of-sight ticks logged; state
+        hashes decide determinism. Window 3 round 1 = P-BASE1, P-INLINE1, P-BASE2 + WPR s 100-160, ~21 min; round 2 on
+        triggers only (P-TT8, P-L2B with ATN's yes, NOPROBE). Rule lines in design section 10 (given to ATN once
+        a64ab_ has -Probe / -Wpr). Open E: checksum live before clear, entity layouts, exceptions through post stubs,
+        CPU Set Setter re-apply, cycle-query cost.
+        - [ ] a64pi_ (Opus High) probe implementer STARTED (design section 12): site-table check, renodx_a64probe.dll,
+        offline self-test, names_d0.py + analyze_d0.py, dry plan for a64ab_ -> R1 xHigh review -> a64ab_ switches ->
+        ATN's rule lines -> window 3.
         - [x] a64bd_ BRING-UP DESIGN DONE (hand-back attila64/a64bd_design_handback.md; designs/bringup_design.md,
         PRIVATE): A2 required (Sol's RGBA8 picture never gets a clone -> black in HDR10 / scRGB / SDR); A2a copy_resource
         handler turns the clone on at the first copy into a swap buffer; A2b overlay rows -> halves; fixed loader's fix
