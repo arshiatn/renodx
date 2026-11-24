@@ -789,6 +789,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - g24_ fill (sent): 941 mechanical -> rt vs|-|-|- families -> mv 673 (111 GPU-scen ... | ?
 - gsr_ (Opus xHigh) scale route design (handoff_plan/gsr_scale_route_design.md): o ... | ?
 - ATN trace requests (later, one go): Expeditions tracer 4.23 View offsets + a new ... | ?
+- RELEASE BLOCK: atn-mods ships ALL rows on with the rings off (the 32% trap confi ... | ?
+- ATN Q-C: Fewer Driver Waits rows - his 11-20 'keep Experimental + Off (not hidde ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14412,6 +14414,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         out: / test: vs mesh-UV interpolant extension vs new trace kind -> rvg_ review -> re-run S8 for scale.
         - [ ] ATN trace requests (later, one go): Expeditions tracer 4.23 View offsets + a new trace run; GPU-scene traces
         (111 mv cells); twin: logging (first index / buffers) for the bones families.
+        rv1_ PK1 REVIEW (render_mt/fca/designs/rv1_pk1_review.md + _handback.md; 0 / 7 MUST / 14 SHOULD): mechanism +
+        trap table GO after M1 (honest stats: 0 of 12 plain W3 vs 10 of 31 -> p 0.023; D1 never traps); T1a GO w/ changes
+        (M3 rows shown per ATN 11-20); T1b GO (M5); T1c wait GO, shrink NO-GO (M7 never fires); T1d only with the M6
+        lifetime spec or dropped; T2 GO Attila-gated (M4); harness H1 / H4-H6 need new switches = ATN run rules (M2).
+        -> pk1_ Rev 1 (sent) -> rv1_ light re-check.
+        - [ ] RELEASE BLOCK: atn-mods ships ALL rows on with the rings off (the 32% trap config) -> no Attila release from
+        atn-mods until PK1 stage 1 lands (rv1_ S11).
+        - [ ] ATN Q-C: Fewer Driver Waits rows - his 11-20 'keep Experimental + Off (not hidden)' vs bug-fix-always-on now
+        that rings off = trap; Rev 1 designs rows shown, default on, 'Off after a restart' until he answers.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
