@@ -13510,6 +13510,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         REAL reruns session started ~09:0x (~77 min). ebr_ quick round-5 re-check sent (read-only, no scripts).
         NOTE: 4 Attila.exe zombies (0 threads; created 05:28 / 07:08 / 07:16:35 / 07:33, parents gone; handle holder likely
         Steam) did not block the pre-flight; the 07:16:35 one is 1 s after the F31 crash -> fcr_ checks it. Never killed.
+        ebr_ ROUND 5 RE-CHECK GO (ebr_t4i_delta_review.md 'Round 5' + render_mt/reports/ebr_t4i_round5_recheck_handback.md):
+        check fix + SHOULD 1 / 2 right; no MUST / SHOULD. Notes: VERDICT text = ships on Q9 (a), not the W3 Go line; driver
+        waits from the reruns W3 ALL WPR via --driver-waits-rerun (still > 10 ms excess = 'ATN decides'); eval only after
+        all 10 reruns starts. CRASH BUDGET USED (batch.json crashes 1, final_prior_crashes 1): a counted crash in any later
+        session ends the final (ebo_leg:429) -> COORD ORDER: reruns -> eval -> C-9 -> wpr_analysis -> lowcore -> row_by_row
+        (if due) -> noheapfix LAST. If fcr_ finds F31 = the game's own exit race, ATN's 11-23 rule (recorded, no stop) applies.
+        After lowcore / noheapfix: run.txt affinity lines, 'dinput8.dll moved back (hash ok)', 'restored 0'.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
