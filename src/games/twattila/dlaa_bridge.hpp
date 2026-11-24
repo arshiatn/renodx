@@ -621,34 +621,38 @@ inline bool Start(ID3D11Device* device) {
               // No-op: out of memory costs this line, not the recovery.
             }
           }
-          ResumeThread(rescue.hThread);
-          const std::array<HANDLE, 2> stop_or_done = {bridge.watcher_stop, rescue.hProcess};
-          // A new D3D12 device after a GPU fault can take seconds. Past 15 s the rescue still waits for the game's GPU (no time
-          // limit: it ends when the GPU gets there, the game ends or this unload ends it).
-          DWORD rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, 15000);
-          if (rescue_woken == WAIT_TIMEOUT) {
-            try {
-              renodx::utils::log::w("[Total War] DLAA: the helper stopped; its rescue still waits for the game's GPU (renodx-tw-dlaa64.log).");
-            } catch (const std::exception&) {
-              // No-op: out of memory costs this line, not the recovery.
-            }
-            rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, INFINITE);
-          }
-          switch (rescue_woken) {
-            case WAIT_OBJECT_0 + 1: {
-              DWORD result = STILL_ACTIVE;
-              if (!GetExitCodeProcess(rescue.hProcess, &result)) {
-                not_freed = std::format("the rescue's exit code not read (error {})", GetLastError());
-              } else if (result != HELPER_EXIT_DONE) {
-                not_freed = std::format("the rescue's exit code 0x{:08X}: {}; renodx-tw-dlaa64.log", result, HelperExitMeaning(result));
-              }
-              break;
-            }
-            case WAIT_OBJECT_0: not_freed = "the unload ended the rescue"; break;
-            default:            not_freed = std::format("the rescue's wait failed (error {})", GetLastError()); break;
-          }
-          if (rescue_woken != WAIT_OBJECT_0 + 1) {
+          if (ResumeThread(rescue.hThread) == static_cast<DWORD>(-1)) {
+            not_freed = std::format("the rescue did not resume (error {})", GetLastError());
             TerminateProcess(rescue.hProcess, HELPER_EXIT_ENDED_BY_ADDON);
+          } else {
+            const std::array<HANDLE, 2> stop_or_done = {bridge.watcher_stop, rescue.hProcess};
+            // A new D3D12 device after a GPU fault can take seconds. Past 15 s the rescue still waits for the game's GPU (no
+            // time limit: it ends when the GPU gets there, the game ends or this unload ends it).
+            DWORD rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, 15000);
+            if (rescue_woken == WAIT_TIMEOUT) {
+              try {
+                renodx::utils::log::w("[Total War] DLAA: the helper stopped; its rescue still waits for the game's GPU (renodx-tw-dlaa64.log).");
+              } catch (const std::exception&) {
+                // No-op: out of memory costs this line, not the recovery.
+              }
+              rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, INFINITE);
+            }
+            switch (rescue_woken) {
+              case WAIT_OBJECT_0 + 1: {
+                DWORD result = STILL_ACTIVE;
+                if (!GetExitCodeProcess(rescue.hProcess, &result)) {
+                  not_freed = std::format("the rescue's exit code not read (error {})", GetLastError());
+                } else if (result != HELPER_EXIT_DONE) {
+                  not_freed = std::format("the rescue's exit code 0x{:08X}: {}; renodx-tw-dlaa64.log", result, HelperExitMeaning(result));
+                }
+                break;
+              }
+              case WAIT_OBJECT_0: not_freed = "the unload ended the rescue"; break;
+              default:            not_freed = std::format("the rescue's wait failed (error {})", GetLastError()); break;
+            }
+            if (rescue_woken != WAIT_OBJECT_0 + 1) {
+              TerminateProcess(rescue.hProcess, HELPER_EXIT_ENDED_BY_ADDON);
+            }
           }
           CloseHandle(rescue.hThread);
           CloseHandle(rescue.hProcess);
