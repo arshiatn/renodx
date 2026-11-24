@@ -14634,7 +14634,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         S1 / S2 / S4-S6 GO, G1 GO to ask ATN, G3a the gate before any flip. NEW R-MUST-1: the node clear frees the WHOLE
         record pool -> guard must also zero the output size ([ecx+0xDC]) after the wait (7 bytes; clear guard 66 bytes,
         +0x40..+0x82). PK5 code moves to +0x90, sites from 35. -> pk4_ Rev 1.1 (sent; no re-check if bytes match);
-        pk5_ told the offsets.
+        pk5_design.md offsets fixed (+0x90, sites 35+, asserts after +0x82; pk5_offsets_handback.md).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
