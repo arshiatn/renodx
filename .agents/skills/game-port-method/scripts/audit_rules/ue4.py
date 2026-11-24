@@ -22,10 +22,24 @@ Controls (step0 r3, traces = the manifest's g1g2 / g1 folders):
   ue-velocity-vs-b (fill part 1, 2026-11-24): 4CD6A3D9 (Tales) and 6A657BEA / 6E8E2927 (Expeditions) OWN by trace;
   BD2D0865 / E976B71D CAMERA by facts:static-chain. Before it went in (g24_ fill_rule_check.py): Expeditions 9 traced
   and 279 untraced VS, Tales 7 traced and 491 untraced; every traced one writes the velocity target in every trace.
+  ue-mesh-uv-ps-b (fill part 2): 63075590 (Tales depth prepass PS) and 43311719 (Expeditions sprite PS) N/A/mesh-uv-only
+  by trace; 1BC3762C (Tales) N/A/no-screen-read and 18FCCF50 (Expeditions screen pass) SCALED by facts.
+  ue-svpos-ps-b (fill part 2): 63A516AF (Tales base pass PS) SCALED by facts:roots-pixel and 18FCCF50 (Expeditions)
+  by facts:roots-view; 1BC3762C / 168BD0E1 N/A/no-screen-read by facts:roots-world. Before they went in
+  (fill_rule_check.py --list, fill4_c2_*.txt): mesh-uv Expeditions 1 traced + 195 untraced, Tales 4 + 59; svpos
+  Expeditions 6 + 172 (84 already SCALED by facts), Tales 14 + 301; no override or control problem.
+  A CS rule (dependent reads through buffers only) was dropped: 4 of the 22 traced Tales CS it fired on write targets
+  whose size does not follow the render scale (fixed-target), which no CS fact tells apart.
 """
 
 # Tales rt_shadows.hpp DEPTH_SHADERS: the View slot the add-on reads per prepass vertex shader (the S3 controls).
 VIEW_CONTROLS = {'tales': {'C81C5E1F': 0, '287D5CA8': 1, '344F8ACF': 1, '5F4BCA38': 1, 'F1D731D5': 1, '2C264050': 0}}
+
+
+def roots_within(f, allowed):
+    """Every read's coordinate roots are in 'allowed' (a shader that reads nothing counts)."""
+    return all(set(r[2]) <= allowed for r in f['read_roots'])
+
 
 RULES = {
     'ue-position-only-vs-b': {
@@ -64,8 +78,49 @@ RULES = {
                  'pass VS (or a base pass that writes velocity), whose draws write the velocity target, so its draws '
                  'carry their own object motion. A static chain is left to ue-static-vs-b (CAMERA), so the two never '
                  'fire together. A traced one fails where any manifest trace line writes no velocity target '
-                 '(writes-velocity).',
+                 '(writes-velocity). Residual: a base pass VS outputs previous rows too when r.BasePassOutputsVelocity '
+                 'is on, and its draws write velocity only then; neither game\'s traced base pass writes velocity, so '
+                 'the manifest should name that cvar (S5).',
         'controls': {'tales': {'positive': ['4CD6A3D9'], 'negative': ['BD2D0865']},
                      'expeditions': {'positive': ['6A657BEA', '6E8E2927'], 'negative': ['E976B71D']}},
+    },
+    'ue-mesh-uv-ps-b': {
+        'axis': 'scale', 'verdict': 'N/A', 'reason': 'mesh-uv-only', 'stages': ('ps',),
+        'scope': lambda f: f['stage'] == 'ps',
+        'needs': {'signature', 'dataflow', 'view'},
+        'predicate': lambda f: {'TEXCOORD10', 'SV_ISFRONTFACE0'} <= set(f['input_semantics'])
+        and not f['sv_position_used'] and any('input' in r[2] for r in f['read_roots'])
+        and roots_within(f, {'input', 'world'}),
+        'proof': 'A pixel shader of a vertex factory drawn in the view (the factory\'s tangent interpolant TEXCOORD10 '
+                 'and SV_IsFrontFace among its inputs: base pass, depth prepass, translucency of meshes and sprites) '
+                 'that uses no SV_Position and reads only by interpolants and constants. The interpolants of such a '
+                 'pass are the factory\'s texture coordinates, vertex colour and sprite sub-UVs, made per vertex, so '
+                 'its reads do not depend on the render scale. Out of it: shadow depth PS (no SV_IsFrontFace; '
+                 'fill4_ps_passes.py: all 58 traced in both games draw only into the shadow atlas: fixed-target) and '
+                 'screen passes (DrawRectangle\'s TEXCOORD0, no TEXCOORD10). Residual: a material whose custom UVs '
+                 'its VS makes from View rows or a projection (screen-aligned UVs) reads by screen position; the '
+                 'mesh-uv trace claim checks that on traced rows (all 5 it fires on pass: Tales 4, Expeditions 1), '
+                 'untraced rows carry it.',
+        'controls': {'tales': {'positive': ['63075590'], 'negative': ['1BC3762C']},
+                     'expeditions': {'positive': ['43311719'], 'negative': ['18FCCF50']}},
+    },
+    'ue-svpos-ps-b': {
+        'axis': 'scale', 'verdict': 'SCALED', 'reason': '', 'stages': ('ps',),
+        'scope': lambda f: f['stage'] == 'ps',
+        'needs': {'signature', 'dataflow', 'view'},
+        # shadow depth PS (the tangent pair first, the shadow VS's TEXCOORD7, no SV_IsFrontFace) draw the atlas
+        'predicate': lambda f: f['sv_position_used'] and roots_within(f, {'pixel', 'view', 'world'})
+        and not (f['input_semantics'][:2] == ['TEXCOORD10', 'TEXCOORD11'] and 'TEXCOORD7' in f['input_semantics']
+                 and 'SV_ISFRONTFACE0' not in f['input_semantics']),
+        'proof': 'A pixel shader that uses SV_Position and reads only by pixel, View and constant roots, or reads '
+                 'nothing: facts roots-pixel / roots-view without their "at least one screen read". With no screen '
+                 'read, SV_Position feeds per-pixel math only (dithered LOD and opacity, pixel depth offset, the '
+                 'View\'s SV_Position-to-world rows), right at any view size. Out of it: Unreal\'s shadow depth PS, '
+                 'which draw the shadow atlas (fixed-target; fill4_ps_passes.py: all 58 traced in both games). Traced '
+                 'rows it fires on (Tales 14, Expeditions 6) draw the scene depth or scene-sized colour, and none '
+                 'passes fixed-target. Residual: an untraced PS of another fixed-size pass (a capture, a cube face) '
+                 'is FIXED/fixed-target, which the rule calls SCALED.',
+        'controls': {'tales': {'positive': ['63A516AF'], 'negative': ['1BC3762C']},
+                     'expeditions': {'positive': ['18FCCF50'], 'negative': ['168BD0E1']}},
     },
 }
