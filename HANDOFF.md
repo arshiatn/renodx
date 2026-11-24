@@ -15264,6 +15264,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         loses ALL32 + cap arms (sent to a64p0r_; H2 / H4a / H4b need probe / WPR / measure or are dropped). Memory
         feedback_no_all32_cap_arms.md. ATN's git email is the template placeholder (global .gitconfig) -> explained;
         he decides; s3f_ regenerates the Sol patch after.
+        - [x] ATN 11-24 set the global git email to his real GitHub noreply (number + ArshiaTN); new commits carry it,
+        old ones keep the placeholder (no rewrite). -> s3f_'s fix round after s3fr_ re-authors its 3 private commits
+        (--reset-author) and regenerates the patches + zip.
         - [x] a64ab_ trim + package smoke DONE (hand-back attila64/study_1124/a64ab_package_trim_handback.md):
         cap30 / cap45 / all32 code removed; stageB = measure, tt8 (~14 min); base task threads = 15 (game's choice),
         so tt8 = 8 vs 15. -Smoke -Package <dir> -Exe64Sha <sha16+>: run folder run_pkg_<sha16> (small files copied,
