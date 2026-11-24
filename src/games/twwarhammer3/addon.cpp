@@ -1744,7 +1744,9 @@ void BuildRuntimeData() {
           shader_injection.ssao_resolution != 0.f, SHADER_INJECTION_SLOT);
       tw::line_sweep_ao::OnCollectDone(cmd_list);
     }
-    if (!dispatched && sweep_skipped) twattila::ao_skip::ClearOpen(cmd_list, true);
+    if (!dispatched && sweep_skipped) {
+      twattila::ao_skip::ClearOpen(cmd_list, true);
+    }
     return !dispatched && !sweep_skipped;
   };
   custom_shaders[0x2A629B2B].on_draw = [](auto* cmd_list) {
@@ -1761,7 +1763,9 @@ void BuildRuntimeData() {
           shader_injection.ssao_resolution != 0.f, SHADER_INJECTION_SLOT);
       tw::line_sweep_ao::OnCollectDone(cmd_list);
     }
-    if (!dispatched && sweep_skipped) twattila::ao_skip::ClearOpen(cmd_list, true);
+    if (!dispatched && sweep_skipped) {
+      twattila::ao_skip::ClearOpen(cmd_list, true);
+    }
     return !dispatched && !sweep_skipped;
   };
   // The reflection pass (fx_hierarchical_depth_buffer's first reduction, fx_environment_specular_light's march, its 2 blurs,

@@ -18,25 +18,29 @@
 #include <cstdint>
 #include <mutex>
 
+#include <include/reshade.hpp>
+
 #include "../../utils/directx.hpp"
+#include "./dlaa_bridge.hpp"
 #include "./rt_scene.hpp"
 
 namespace twattila::ao_skip {
 
 // Ours stands in for the game's AO this frame:
-// - Ray-Traced AO, traced this frame or the last: the combine multiplies this frame's trace, or the last one's
-//   (bridge.rt_ambient keeps it) when this frame's fails (rt_scene's sun combine, ef926642b). Longer dropouts bring the
-//   game's AO back (no AO at all there before; a trace older than a frame, without reprojection, lands on moved
-//   geometry: rvb_'s g18 review).
-// - Path-Traced Ambient, traced within AMBIENT_REPLACED_FRAMES (rt_scene::AmbientReplaced's window): the paths are the
-//   occlusion.
-// Nothing before the first trace (traced_frame UINT64_MAX: UINT64_MAX + 1 wraps to frame 0).
+// - Ray-Traced AO, traced this frame or the last, the bridge still up: the sun combine's own window (it multiplies this
+//   frame's trace, or the last one's, which bridge.rt_ambient keeps). Longer dropouts bring the game's AO back (a trace
+//   older than a frame, without reprojection, lands on moved geometry).
+// - Path-Traced Ambient taking the game's ambient out (path_ambient_on: after its warm-up of PATH_AMBIENT_FRAMES path
+//   frames), the paths traced this frame or the last: OnPathAmbientDraw's own window. The row alone (its warm-up, a path
+//   dropout, the rays tracing without the Light Bounce) keeps the game's.
+// Nothing before the first trace (UINT64_MAX: UINT64_MAX + 1 wraps to frame 0).
 inline bool GameSsaoOut() {
   auto& runtime = rt_scene::internal::runtime;
   const std::unique_lock lock(runtime.mutex);
-  if (runtime.traced_frame == UINT64_MAX) return false;
-  return (runtime.settings.ambient_occlusion && runtime.traced_frame + 1 >= runtime.frame)
-         || (runtime.settings.path_ambient && runtime.traced_frame + rt_scene::internal::AMBIENT_REPLACED_FRAMES >= runtime.frame);
+  const bool rays = runtime.settings.ambient_occlusion && dlaa_bridge::bridge.ray_tracing
+                    && runtime.traced_frame != UINT64_MAX && runtime.traced_frame + 1 >= runtime.frame;
+  const bool paths = runtime.path_ambient_on && runtime.bounced_frame != UINT64_MAX && runtime.bounced_frame + 1 >= runtime.frame;
+  return rays || paths;
 }
 
 // The pass's AO output cleared open (1): the compute pass's u0 (`compute`: the Warhammers' collect, the line sweep's
@@ -52,12 +56,16 @@ inline void ClearOpen(reshade::api::command_list* cmd_list, bool compute) {
   if (compute) {
     Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> output;
     native->CSGetUnorderedAccessViews(0, 1, output.GetAddressOf());
-    if (output) native->ClearUnorderedAccessViewFloat(output.Get(), OPEN.data());
+    if (output) {
+      native->ClearUnorderedAccessViewFloat(output.Get(), OPEN.data());
+    }
     return;
   }
   Microsoft::WRL::ComPtr<ID3D11RenderTargetView> output;
   native->OMGetRenderTargets(1, output.GetAddressOf(), nullptr);
-  if (output) native->ClearRenderTargetView(output.Get(), OPEN.data());
+  if (output) {
+    native->ClearRenderTargetView(output.Get(), OPEN.data());
+  }
 }
 
 }  // namespace twattila::ao_skip

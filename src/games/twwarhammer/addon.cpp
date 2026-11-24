@@ -1829,6 +1829,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   reflection_passes_skipped = false;
   twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  // The rays' AO in place of the game's SSAO, never multiplied into it (the first trace, a dropout's first frame back).
+  rt_settings.ambient_alone = true;
   bitmask_ao = shader_injection.ssao_mode >= 1.f && !rt_settings.ambient_occlusion && !rt_settings.path_ambient;
   bitmask_blur_last_frame = std::exchange(bitmask_blur_drawn, false);
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).

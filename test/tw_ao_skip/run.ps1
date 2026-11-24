@@ -1,4 +1,4 @@
-# twattila/ao_skip.hpp (tests.cpp): SkipGameSsao's rule over rt_scene's runtime, the frame-0 control. No GPU work, amd64.
+# twattila/ao_skip.hpp (tests.cpp): GameSsaoOut's rule over rt_scene's runtime and the bridge, its controls. No GPU work, amd64.
 # Needs a renodx-twattila.addon32 build's include folder (rt_scene.hpp's embedded shaders): build32\twattila.include, or -Include;
 # -External: another checkout's external folder (a worktree's submodules can be empty).
 param([string]$Include = '', [string]$External = '')
