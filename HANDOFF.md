@@ -784,7 +784,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (pk2_): Q-A X1 row default On?; Q-B no PK2 run of its own (data-run trace wi ... | ?
 - B3 interface conflict pk3_ (helper twattila::PrefetchRead in prefetch.hpp) vs pk ... | ?
 - ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-dif ... | ?
-- rvs_ CODE REVIEW of S1a (sent; rvs_s1a_code_review.md): byte identity, beta 0, i ... | ?
+- s1a_ M1 + S1 + NITs (sent) -> 's1a_ m1' -> coord merges sh_s1a (re-run item 1 / ... | ?
 - PK5 S0 microbench (tests only) after the FCA merge + fxi_'s test follow-up (test ... | ?
 - g24_ fill (sent): 941 mechanical -> rt vs|-|-|- families -> mv 673 (111 GPU-scen ... | ?
 - gsr_ (Opus xHigh) scale route design (handoff_plan/gsr_scale_route_design.md): o ... | ?
@@ -14424,9 +14424,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         twattila/light_bounce.hlsli (outside 9.1; reaches 7 other games' passes) - until then the Attila row binds SH
         targets but changes nothing; tw_screen_space_shadows x86 link '_NAME' claim (sse_ saw PASS on newer base).
         GPU item t (T1) run line in the hand-back; G2 in-game A/B later.
-        - [ ] rvs_ CODE REVIEW of S1a (sent; rvs_s1a_code_review.md): byte identity, beta 0, item 6 go / stop for
+        - [x] rvs_ S1a CODE REVIEW DONE (plan_1117/rvs_s1a_code_review.md + _handback.md): code sound; row-off bytes
+        CONFIRMED (203 .cso whole-file identical, 188 / 188 vs the main tree's 11-17 builds; s1a_'s fxc summary.csv partly
+        stale - use hashes). Beta 0 = look-risk OK (SH -1.33 % shift but 63 % less error at b4). Item 6 reference flawed
+        (Full + SH vs Full scalar already 0.311), unscaled error / detail improve, BUT the Quarter shift -24.1 -> -28.3 %
+        is real (block-mean normal loses the floor's own light; k_self 0). Host define: Attila-only _sh variant entries
+        (8 two-line files), hide the row until then (CMake define rejected = global). _NAME link: pre-existing, fixed by
+        sss_e2's ab0c90e51 at its merge. Merge-tree clean. M1 hide row; S1 RT prepare leak (light_bounce.hpp:512 vs
+        :534-537); S2-S6; N1-N6. VERDICT: merge S1a hidden -> S1a-D WARP decision round -> S1b continues; B2 / B4 / S3 ON
+        HOLD (coord: hold, not drop, until S1a-D). shg_ Rev 1.2 after S1a-D's result (one revision).
+        - [ ] s1a_ M1 + S1 + NITs (sent) -> 's1a_ m1' -> coord merges sh_s1a (re-run item 1 / hash check after) ->
+        S1a-D (WARP ~4-6 h: per-pixel Full reference, ablations, own-surface share, k_self fit + held-out) -> 's1a_ d'
+        PASS (SH beats scalar on scaled error AND detail at Half + Quarter, |shift diff| <= 1 point) -> _sh variants +
+        unhide; STOP -> row stays hidden / reverted, SH-GI stops (bitmask_sh.hlsli kept for S1b). Report to ATN.
+        (was: rvs_ CODE REVIEW of S1a (sent; rvs_s1a_code_review.md): byte identity, beta 0, item 6 go / stop for
         S1b / B2 / B4, host-define route (Attila-only entry files / CMake define = ATN / hide row), deviations, link
-        claim, merge conflicts vs atn-mods -> coord merge or s1a_ fixes. GPU timing -> coord's GPU window.
+        claim, merge conflicts vs atn-mods -> coord merge or s1a_ fixes. GPU timing -> coord's GPU window.)
         rv5_ PK5 REVIEW (render_mt/fca/designs/rv5_pk5_review.md + _handback.md; 0 / 7 MUST / 10 SHOULD / 7 NIT): heapfix
         clearance GO (CHECKED = 82, hf_check.py drops hex sizes); A1 census GO; A1.1 GO after MUST-1 (misaligned 16-B
         stores may not forward on Intel) + MUST-4; A1.2 optional; A2 NO-GO as written (MUST-2 heap safety) -> gated
