@@ -14362,6 +14362,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-difference Check start; B stage-2
         'carry' (-0.3..-0.5 / c9 -1.0..-2.0, needs a new premise) after the bench / now / never; C ~10 min CPU timing per
         step x 6 while ATN isn't playing.
+        t4i_ DRAIN A + ITEM 1 + BIG_TABLE PARSERS DONE (render_mt/reports/t4i_drainA_item1_handback.md): ebo_check.ps1 A / B
+        parsed apart (end lines only; fixes the '2 lines' false count), R2-N6 note, pin / site NOTEs; eval per start A / B
+        / exit crash; item-1 U / room / workers / L1 bins + pool checks (lowcore U, 4 CPUs room 0, 8 -> 3, 16 -> 7 / 3);
+        gates.json b1_big_table INFO. run_all green (lib 660, check 237, leg 260, analyze 230); old final eval text
+        identical. Backups *.pre_drainA / *.pre_item1. -> t4i_ pk6 started (env-variant arms, rule lines listed for ATN).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
