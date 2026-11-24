@@ -742,6 +742,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - WH3 89AF6FF5 CS bind: NOT as g20_ asked (WH3 binds a 1x1 t_ssao there in all 94 ... | ?
 - g19_ F1 follow-up: after ho_g20 merges (twwarhammer/addon.cpp), so the WH1 / WH2 ... | ?
 - After rvl_ GO: t4i_ makes ebo_check / ebo_final_eval parse the A line before the ... | ?
+- Helper end: active upscaler / reconstruction / generation owners not released at ... | ?
+- Cleanup for ATN's yes (agents' leftovers): C:\Users\arshi\AppData\Local\Temp\add ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13799,6 +13801,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         small_round_presents out of ResetScheduler; M3 no pre-registered 30000 fallback (rule 2 fails -> L1 Off, new A/B).
         ATN Q1 -> notice (11-15 rule decides); Q2 -> no 6-CPU pair, 'L1 always' W3 start fixed in the plan. Implementer
         Opus xHigh (no engine_code.hpp). -> fci_ r2 sent; then rvj_ short re-check.
+        gbf_ G23 QUEUE DONE (handbacks/gbf_g23_queue_handback.md): origin/ho_gbf_g23 f89c128e3 = merge ho_g23 (4e7ab8e2d) +
+        Bridge (all) 54f65318f + H6 / H7 / H8b da903cb22 + H1-H5 4ebcdb535 + H8 f89c128e3. Helper (plain + PROBE / REFERENCE /
+        RECORDER) + Attila / WH3 add-ons build; WARP tw_gpu_completion + tw_helper_lifetime (T2a-e) PASS. -> rvh_ code review 2
+        sent; g23_ told: G-S2 (GPU_WAIT_TIMEOUT) with its rebase onto ho_gbf_g23.
+        - [ ] Helper end: active upscaler / reconstruction / generation owners not released at main.cpp's end (destructors
+        wait up to GPU_WAIT_TIMEOUT each; exit-crash risk) -> own reviewed change + GPU T4 (gbf_ listed, rvh_ judging).
+        - [ ] Cleanup for ATN's yes (agents' leftovers): C:\Users\arshi\AppData\Local\Temp\addon-cef401.cpp / .sh (clang
+        crash repro from an OOM build 11-24 11:26). rt_reference.cs_6_5.hlsl shows modified with an empty diff in gbf_'s
+        worktree (stat only).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
