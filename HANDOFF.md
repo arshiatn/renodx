@@ -13824,6 +13824,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         FSR FG).
         ATN IN CHAT 11-24: GPU harness runs (gate jobs, helper T-tests, timing) run WITHOUT asking, inside a GPU window
         (memory feedback_gpu_harness_runs.md). Game runs not covered.
+        fci_ R2 (render_mt/fca/designs/fci_item1_workers_L1.md rev 2 + fci_r2_handback.md): MUST-1 budget U=0 -> 15, U<8 -> 0,
+        else min(15, U/2-1) (MIN_GAME_CPUS 8; 2c/4t, 4c/4t, 6c/6t get OFF; 4c/8t+ and ATN keep 3); MUST-2 UnitRule test-settable;
+        MUST-3 no fallback. New: walk loop skips empty / deleted keys (node+0xD0 / +0xDC) -> instance sum uses the same key
+        test (TABLE_SLOT_LIMIT 4096). RENODX_TW_GAME_CPUS bench env; pre-registered MIN_GAME_CPUS 9 if 0xFF fails; L1 own
+        0xFF start; Opus xHigh implementer. ATN: L1 default = NOTICE (11-15 rule; a pass is unlikely). -> rvj_ re-check sent.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
