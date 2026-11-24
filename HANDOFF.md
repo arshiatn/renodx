@@ -810,7 +810,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PK7 heapfix package: pk3_ 15.13 note (only ATN sends). | ?
 - s1a_ FOUND (note in s1a_m1_handback.md): with the row ON, m1's apply can write N ... | ?
 - Coord GPU window: s1a_ item t (5090, gpu_job.lock): powershell -NoProfile -Execu ... | ?
-- rvg_ trc review (sent; reviews/rvg_trc_tracer_review.md): code, shared-code buil ... | ?
+- PARKED (ATN hold 11-24): trc_ fixes MUST-1..3 + SHOULDs -> rvg_ re-check -> merg ... | ?
 - s64a_ (Opus xHigh, read-only) 64-bit loader study -> round_notes/attila64/study_ ... | ?
 - s64c_ (Opus xHigh, read-only) PerfFix 7.5 vs ours + ATN's notes taken in + RULE ... | ?
 - After s64a_: port map of OUR Attila work onto 64-bit (carry over / re-port / moo ... | ?
@@ -14955,9 +14955,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         Run sheet: ONE Expeditions session ~14 min (deadline 35), script testbin\scratch\trc_\g24_session.ps1 (parse-checked
         only; needs ATN's run rule); steps 3-4 currently need ATN's hands (DevKit Auto Dump click + loading the battle save).
         Not built: Ryse / Divinity 2 (frame_trace defaults); devkit + ue-extended share shader_dump.hpp.
-        - [ ] rvg_ trc review (sent; reviews/rvg_trc_tracer_review.md): code, shared-code builds (devkit / ue-extended / ryse /
-        divinity2), run sheet vs ATN's rules, can steps 3-4 be scripted, which save G1 used -> trc_ fixes -> merge ->
-        ATN's rule line for the session script -> coord runs the ONE session (no ask needed for trace / dump runs).
+        - [x] rvg_ TRC REVIEW (handoff_plan/handbacks/rvg_trc_review_handback.md; reviews/rvg_trc_tracer_review.md; 17:40-
+        18:00): merge GO after MUST-1; session NO-GO until MUST-1..3. Shared code safe: devkit / ue-extended / Ryse / Div 2 /
+        Div 1 (also uses frame_trace.hpp) build clean on the merged tree, ue-extended unchanged, DevKit only adds stages +
+        record. MUST-1 record must be census_stages.txt with 'producer: <tool> <version>' + 'stages:' (13.10 format), test +
+        script lines + DevKit re-pin. MUST-2 no battle save: every G1 trace was the MAIN MENU's 3D scene -> trace at the
+        main menu, drop step 4 (ATN's 11-18 save 'Silanus 3m' loads by a SendInput click on CONTINUE if a 2nd scene is
+        wanted). MUST-3 the dump alone can't open C4 (census-wide; a full dump likely has a GS) -> per-draw hs / ds / gs on
+        each trace line (Options flag) decided by g24_ + coord BEFORE the session, else a 2nd session. SHOULD-1 Auto Dump:
+        best = one {"AutoDump", &setting_auto_dump} line in the DevKit's [renodx-dev] list (shared DevKit code: coord's
+        call) or ATN's one click any time before close; SHOULDs 2-8 + NITs in the review.
+        - [ ] PARKED (ATN hold 11-24): trc_ fixes MUST-1..3 + SHOULDs -> rvg_ re-check -> merge -> ATN's rule line ->
+        the ONE main-menu session. Also parked: rvg_ 13.10 re-check.
         ATN 11-24 ~18:0x NEW DIRECTION + HOLD: running agents FINISH their current job, but NO next steps of their plans
         (no review loops, merges of new rounds, GPU gates / GPU items, Friday wave stays parked) until ATN says. Instead:
         check Sol Invictus's 64-bit Attila (github.com/Sol-Invictus2/64-bit-Attila, MIT, v1.3.7, loader of the Linux ELF,
