@@ -827,6 +827,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
 - a64ab_ fix round SENT (M1 / M2, stage A = base, inline, inline + a 4th base only ... | ?
 - AFTER WINDOW 1 (started 23:5x): gbf gates (gbf_gpu_gates.ps1, coord, quiet GPU w ... | ?
+- C8 wave 2 (after wave 1 R1 + merge): settle the 8 E items, then the hook rows; p ... | ?
 - Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64ab ... | ?
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
@@ -15399,6 +15400,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         new sha); a64p0d_ fix round (M1-M5 + case B + final rule lines + probe brief); a64bdr_ (Opus xHigh) ->
         designs/bringup_design_review.md; a64plr_ (Opus xHigh, D15 likely dropped) -> designs/plugin_design_review.md;
         c8c_ (Opus xHigh, read-only) -> census/c8_rows.tsv + c8_notes.md.
+        - [x] c8c_ C8 CENSUS DONE 00:4x (hand-back attila64/census/c8c_census_handback.md; c8_rows.tsv 106 rows, 18
+        columns; c8_notes.md; read only, PerfFix addresses from the design's site extract only). Tweak rows 60 (written
+        at game_started or live via a new block field; the game never writes them; none touch Sol's game_started bytes;
+        7 audio rows restart-only; the twrome2 x64 scanner does NOT fit -> generated table + vptr / name / default check
+        at game_started), game-applied 2 (Grass Opacity, Terrain Shadows), preference 0, hook 24 (64-bit site for each),
+        parked 7 (no 64-bit site, L4 decides), out of C8 3 (D3D / scheduling only). WON'T GET 10: Cutscene Point Light
+        Shadows (+ High; names absent), the 6 x86-only stub rows (compiled out on x64, Sol / PerfFix do the work),
+        Pending Sweep trace + probe build (Phase 0 probe replaces them). Hook sites: Unit Detail wrapper 0xa4b930 (8 B,
+        post-scales 18 floats), dead-unit / sprite stub 0xa5049c, Model Detail 0x33ee910, Campaign Tree 0x33f4270,
+        Grass 0x33fb140 / 0x33f3e00 / 0x33fd480, Shadow Map Size + Two Cascades = init code patch in 0x30e45e0
+        (restart-only), Big Battle Fix via wave 1's 0x3416d50 pre-hook, Cached Particle Count (pre-hooks only, no
+        wrapper: callee tree can throw; only if L4 shows it hot), Exit Job Drain deferred (0x5897a0, after a 64-bit
+        exit crash is recorded). No site within 64 B of a Sol / PerfFix / probe site. 8 E items for wave 2 (notes 7).
+        - [ ] C8 wave 2 (after wave 1 R1 + merge): settle the 8 E items, then the hook rows; parked rows wait for L4.
         - [ ] Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64abr_'s review is fixed;
         no game of ATN's running, fresh backups.
         - [ ] a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S1 / S4 / S5 + the window-1
