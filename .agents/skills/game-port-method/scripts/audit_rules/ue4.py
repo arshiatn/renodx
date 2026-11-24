@@ -19,6 +19,9 @@ Controls (step0 r3, traces = the manifest's g1g2 / g1 folders):
   primitive data: manifest primitive_id) level A with main-view colour lines, CAMERA by facts:static-chain;
   4CD6A3D9 / 6A657BEA skinned; edges: B1AAEBC8 (Tales: a second per-draw buffer in the position, world position
   offset) GAP by trace, 6E8E2927 (Expeditions: the GPU Scene velocity VS, View row 129 in its position) OWN by trace.
+  ue-velocity-vs-b (fill part 1, 2026-11-24): 4CD6A3D9 (Tales) and 6A657BEA / 6E8E2927 (Expeditions) OWN by trace;
+  BD2D0865 / E976B71D CAMERA by facts:static-chain. Before it went in (g24_ fill_rule_check.py): Expeditions 9 traced
+  and 279 untraced VS, Tales 7 traced and 491 untraced; every traced one writes the velocity target in every trace.
 """
 
 # Tales rt_shadows.hpp DEPTH_SHADERS: the View slot the add-on reads per prepass vertex shader (the S3 controls).
@@ -50,5 +53,19 @@ RULES = {
                  'twin per draw).',
         'controls': {'tales': {'positive': ['BD2D0865'], 'negative': ['4CD6A3D9', 'B1AAEBC8']},
                      'expeditions': {'positive': ['E976B71D'], 'negative': ['6A657BEA', '6E8E2927']}},
+    },
+    'ue-velocity-vs-b': {
+        'axis': 'mv', 'verdict': 'OWN', 'reason': '', 'stages': ('vs',),
+        'scope': lambda f: f['stage'] == 'vs' and not f['position_only'],
+        'needs': {'signature', 'view'},
+        'predicate': lambda f: bool(f['previous_rows_in_outputs']) and not f['static_chain'],
+        'proof': 'The VS hands its pixel shader the previous frame\'s clip position, made with the View\'s previous '
+                 'TranslatedWorldToClip rows (games.py previous: 83-86 in 4.21, 87-90 in 4.23): Unreal\'s velocity '
+                 'pass VS (or a base pass that writes velocity), whose draws write the velocity target, so its draws '
+                 'carry their own object motion. A static chain is left to ue-static-vs-b (CAMERA), so the two never '
+                 'fire together. A traced one fails where any manifest trace line writes no velocity target '
+                 '(writes-velocity).',
+        'controls': {'tales': {'positive': ['4CD6A3D9'], 'negative': ['BD2D0865']},
+                     'expeditions': {'positive': ['6A657BEA', '6E8E2927'], 'negative': ['E976B71D']}},
     },
 }
