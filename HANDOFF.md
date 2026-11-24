@@ -807,7 +807,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PK2 implementer (engine code: Fable Medium if p4i_'s trial isn't blocked, else S ... | ?
 - p1i_ (Opus xHigh, worktree) PK1 P1-P5 on fca_pk1: buffer_pool.hpp (P1 / P2), obj ... | ?
 - GPU window (coord, when builds are quiet): SSS run.ps1 -Architecture amd64 -Bloc ... | ?
-- rdl_ (Opus xHigh, worktree): tw_romer_dlaa crashes 0xC0000005 in case 2 on atn-m ... | ?
+- ATN (gsr_): approve the dumper change (src/utils/shader_dump.hpp, 3 switch cases ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14604,8 +14604,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] GPU window (coord, when builds are quiet): SSS run.ps1 -Architecture amd64 -BlockSkipGpu (5090 case 11 +
         48 timing rows; take gpu_job.lock), optional -Time, tw_ruse_bridge run.ps1 (H1). Then merge sss_e2 + an Attila
         README / changelog line for E2 / E4.
-        - [ ] rdl_ (Opus xHigh, worktree): tw_romer_dlaa crashes 0xC0000005 in case 2 on atn-mods - pre-existing, not E2;
-        bisect + root cause + player impact; small fix on romer_dlaa_fix, else propose.
+        - [x] rdl_ (plan_1117/rdl_romer_dlaa_handback.md): tw_romer_dlaa crash = TEST bug since c43d88318 (case 3 called
+        OnPresent(nullptr) and SetTracking reads queue->get_device()); NO player impact (ReShade always passes the
+        immediate context). Test-only fix cf37a630f, all 6 cases PASS; MERGED 70203674a. Later check: tests of other
+        SetTracking callers (Attila anti_aliasing, Shogun 2, WH3 taa_dlss, Ryse) that present with nullptr.
         pk4_ REV 1 DONE (pk4_design.md 866 lines; pk4_rev1_handback.md): rule H reads 7 sites (bytes listed); gates G1 ->
         G3a (10 no-heapfix starts, REQUIRED before any default flip) -> G2 / Q5 override -> G3b; new site 34 clear guard
         at +0x1832CB0 (wait on the task, count, run the clear; Q4b); stuck-pass rule (two presents); mode off before site
@@ -14619,6 +14621,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         root (fixed-size CS settled SCALED?), SCALED rule without 'view' skips the tripwire, mesh-uv not cross-checked.
         Rule slips: two heredoc patches + one sed (noted). -> rvg_ re-check 13.8 + step-4 rules + findings (sent;
         rvg_g24_138_recheck.md), then gsr_'s route review.
+        gsr_ SCALE ROUTE Rev 0 (handoff_plan/gsr_scale_route_design.md + handbacks/gsr_scale_route_handback.md): route R =
+        static UE scale-closure tool (out: in the Expeditions manifest) + WARP top-left runner on every SCALED candidate;
+        no cell becomes BUG, residue boxed per family. Census fix first (dumper keeps only VS / PS / CS today). ~7,600 of
+        9,496 after the fix (floor 1,748); residue ~1,900 (1,297 post / UI PS -> phase 2 tracer). Core C0 + refusal-only
+        C1-C6. Findings F1 fullscreen guard vacuous without GS / HS / DS; F3 roots-pixel accepts non-View constants;
+        F4 tracer reads 4.21 View rows on 4.23. -> rvg_ review after its 13.8 re-check (queued).
+        - [ ] ATN (gsr_): approve the dumper change (src/utils/shader_dump.hpp, 3 switch cases: dump HS / DS / GS) + ONE
+        Expeditions dump run; phase 2 later: tracer change + one trace run at two render scales (joins the open
+        'Expeditions tracer 4.23 offsets + new trace run' item).
+        rv4_ PK4 RE-CHECK (rv4_pk4_review.md '## Re-check of Rev 1' + rv4_pk4_recheck_handback.md): six MUSTs folded;
+        S1 / S2 / S4-S6 GO, G1 GO to ask ATN, G3a the gate before any flip. NEW R-MUST-1: the node clear frees the WHOLE
+        record pool -> guard must also zero the output size ([ecx+0xDC]) after the wait (7 bytes; clear guard 66 bytes,
+        +0x40..+0x82). PK5 code moves to +0x90, sites from 35. -> pk4_ Rev 1.1 (sent; no re-check if bytes match);
+        pk5_ told the offsets.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
