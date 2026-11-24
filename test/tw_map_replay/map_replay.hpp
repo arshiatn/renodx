@@ -1040,6 +1040,9 @@ RWByteAddressBuffer counter : register(u1);
       throw std::runtime_error(std::format("shader {}: {}", entry,
                                            (errors != nullptr ? static_cast<const char*>(errors->GetBufferPointer()) : "?")));
     }
+    // The compiler is not the driver: the watchdog's 15 s start again after each shader (x86's compiler takes 3-4 s a
+    // shader, more on a busy machine).
+    progress = Qpc();
     return code;
   };
   const auto vs_code = compile("VSMain", "vs_5_0");
