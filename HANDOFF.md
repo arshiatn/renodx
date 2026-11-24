@@ -705,7 +705,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - before the RC freeze (exd_, small, exr_ glance): N11 parens in the gave-up log c ... | ?
 - t4i_ part 3 (above) -> then ebr_ (a41704a31fb3d6080) reviews ALL of t4i_ FINAL a ... | ?
 - ATN at READY: allow `powershell -NoProfile -ExecutionPolicy Bypass -File C:\User ... | ?
-- ATN: add the 4 rules (PowerShell(... bench\ebo_run.ps1 -Final), -Final -DryRun, ... | ?
 - Automatic L1 (after the bench; Opus xHigh design: switch Parallel Effect Update ... | ?
 - After the bench: one new day-1 WPR on the RC (ATN 11-24: stress replay + day1, n ... | ?
 - After the ETL attribution: ask ATN to delete the batch ETLs W3-1, W3-3, W3-4, D1 ... | ?
@@ -715,6 +714,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Lean ReSTIR Reuse skips the ContactShade fix (gbr_ N5 note): if job 1 shows Lean ... | ?
 - ATN: OK to golive the gate hook round 24 (bak29 backup, then stage24 a6b12f1ebee ... | ?
 - gate hook round 25: the F24 web + price timing row is near its limit (0.055 vs 0 ... | ?
+- Tales census source = a dump-on-create run in the next Tales data run (G24 45 up ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13327,7 +13327,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         before ~20:00). EVERY other plan resumes in one wave right after the bench (resume_point.md NIGHT UPDATE order).
         gated_build.ps1.proposed: applied AFTER the bench (no build-tool change before the RC build). The separate exit soak
         is folded into the final bench (40 exits, each drain line checked, exit faults count) -> no extra game run.
-        - [ ] ATN: add the 4 rules (PowerShell(... bench\ebo_run.ps1 -Final), -Final -DryRun, -Final -Followup,
+        - [x] ATN: add the 4 rules (PowerShell(... bench\ebo_run.ps1 -Final), -Final -DryRun, -Final -Followup,
         -Final -Followup -DryRun) in settings.local.json (coord never writes settings).
         - [ ] Automatic L1 (after the bench; Opus xHigh design: switch Parallel Effect Update per frame on the effect count,
         threshold from the batch's volley vs melee counts; Sonnet High code; A/B volley + melee + day1). ATN 11-24.
@@ -13356,6 +13356,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN: OK to golive the gate hook round 24 (bak29 backup, then stage24 a6b12f1ebeef over the live file; stays
         shadow = logs only)? On his yes, gtp_ does it with ATN's words quoted.
         - [ ] gate hook round 25: the F24 web + price timing row is near its limit (0.055 vs 0.05 s): loosen or speed up.
+        ATN 2026-11-24 01:4x: (1) the 4 -Final rules ADDED (settings.local.json:30-33, coord checked). (2) The 2-writer gaming
+        rule is lifted: back to the normal rule (one writer per file at a time, no agent cap). (3) COORD MAY START THE FINAL
+        BENCH ITSELF without ATN's 'run', and NO restart before it ('fine as is'); ATN is sick + working today. (4) mem_
+        confirm run: ATN's GO (runs after mem_'s F4-F6 land in the post-bench wave). (5) Q41: ATN asked if it is because
+        of the unified path tracing (coord: the cap keys on Ray Reconstruction, ATN item 7). (6) Tales shaders: ATN thinks
+        30-40k shaders sit in the install folder; coord checked: they are inside the 4 paks (34 GB), all 4 with the
+        encrypted-index flag set (v5 footers) -> no reading without the game's key, which we never break. Instead: dump
+        every shader the game itself creates (DevKit-style dump on create, no frame tracing) in the next Tales data run.
+        rcd_ step 1 (testbin/scratch/rcd_/plan.md): (a) `#define TWATTILA_DRAW_RECORDING 1` at the top of twattila/addon.cpp;
+        (b) hide R1 / R2 / L2 / Cached + the 4 C group rows + Families (is_visible false, still read from ReShade.ini, Reset
+        0); drop AnimationRowsWorkers' Check label (RENODX_TW_ANIMATION_CHECK stays); new test\tw_render_mt_defaults.
+        Waits for exd_'s NITs merge.
+        - [ ] Tales census source = a dump-on-create run in the next Tales data run (G24 45 updated; no pak reading).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
