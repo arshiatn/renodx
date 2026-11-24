@@ -773,6 +773,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - sse_ (Opus xHigh, worktree, branch sss_e2) implements E2 + E4 with R1 / R2 / S2 ... | ?
 - g24_ step1 r2 (sent) -> rvg_ light re-check before core hashes are stamped; mean ... | ?
 - ATN: Expeditions tracer uses 4.21 View offsets 122 / 123 (Expeditions is 4.23) - ... | ?
+- Thrones DLL red at tw_engine_code part 1 (tests.cpp:2560 PARTICLE_EPOCH, from 20 ... | ?
+- Exit drain raise rule lives in HANDOFF only now (fxi_ N1 removed it from the com ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14269,6 +14271,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] g24_ step1 r2 (sent) -> rvg_ light re-check before core hashes are stamped; meanwhile g24_ (2) S8 sizing gate.
         - [ ] ATN: Expeditions tracer uses 4.21 View offsets 122 / 123 (Expeditions is 4.23) -> a 4.23 offset + a new
         trace run need ATN's go (rvg_ NIT-3); until then Expeditions after-upscale fails closed (no view line).
+        fxi_ R2 DONE (render_mt/fca/designs/fxi_r2_handback.md; fca_exit_drain 6802ab234..0b69647a5 pushed): 788ee1089
+        rvl_ S1 (Thrones matches the teardown patterns -> CHECK(exit_teardown_rva == 0) + count print; production same)
+        + N1..N5; 0b69647a5 30f with Faster Job Wake-Ups ON on 5 game workers: PASS (A drained, ~109 ms vs 1000 cap, 8
+        repeats) -> WU does not break the drain. x86 -Quick PASS; build32 attila / rome2 / thrones + amd64 attila built.
+        -> rvl_ short re-check (rvl_fxi_recheck_r2.md) -> mrg_ merges fca_item1 + fca_exit_drain (SHOULD-1b tests).
+        - [ ] Thrones DLL red at tw_engine_code part 1 (tests.cpp:2560 PARTICLE_EPOCH, from 20d048cd4c 11-21): stale
+        expectation or a new DLL build? (rvl_ judges; owner: coord -> a small test fix after the merge).
+        - [ ] Exit drain raise rule lives in HANDOFF only now (fxi_ N1 removed it from the comment): 3000 ms only if A gave
+        up AND B drained 0 in the same start; check the '> 500 ms' trigger first.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
