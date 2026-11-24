@@ -290,10 +290,14 @@ inline const char* UpscalerName() {
 
 // The helper's set on the proxy's device (the first starts the helper), frame generation's frames in the format its
 // present saw (none while it is off) and its backend the helper's choice; again each evaluation (made again when the
-// format changes).
+// format changes). FSR in DLSS's place when DLSS could not start on this GPU (the helper's answer, latched until the game
+// restarts; not saved, so DLSS comes back once it can: Attila's AaSettings).
 inline bool PrepareHelper(ID3D11Device* proxy) {
-  return twattila::dlaa_bridge::Prepare(proxy, state.width, state.height, state.guides, state.ray_tracing, twattila::frame_generation::Format(),
-                                        state.reflections, state.upscaler, twattila::dlaa_bridge::FG_BACKEND_AUTO);
+  return twattila::dlaa_bridge::Prepare(
+      proxy, state.width, state.height, state.guides, state.ray_tracing, twattila::frame_generation::Format(), state.reflections,
+      ((state.upscaler == twattila::dlaa_bridge::UPSCALER_DLSS && twattila::dlaa_bridge::DlssRefused()) ? twattila::dlaa_bridge::UPSCALER_FSR
+                                                                                                          : state.upscaler),
+      twattila::dlaa_bridge::FG_BACKEND_AUTO);
 }
 
 // A perspective view-projection's projection from its rows (acting on column vectors, a unit view: P00 x right, P11 x up,

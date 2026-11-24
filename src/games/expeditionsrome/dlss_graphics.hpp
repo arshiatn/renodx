@@ -1260,8 +1260,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     const AAMode mode = (upscaling ? UPSCALING_MODES[static_cast<size_t>(std::clamp(aa_sliders.dlss_mode, 0.f, 6.f))] : AAMode::OFF);
     if (requested_mode.exchange(mode) != mode && mode != AAMode::OFF) expeditionsrome::dlss::temporal_capture::Reset();
     const auto aa = twattila::feature_settings::AaSettings(aa_sliders);
-    requested_upscaler.store(aa_sliders.method == 7.f ? twattila::dlaa_bridge::UPSCALER_XESS
-                                                      : (aa_sliders.method == 6.f ? twattila::dlaa_bridge::UPSCALER_FSR : twattila::dlaa_bridge::UPSCALER_DLSS));
+    requested_upscaler.store(twattila::anti_aliasing::UpscalerOf(aa.method));
     preset.store(aa.dlaa_preset);
     live.custom = std::clamp(std::round(aa_sliders.render_scale), 1.f, 100.f);
     texture_lod_bias.choice = std::clamp(static_cast<int>(aa_sliders.texture_lod_bias), 0, 3);

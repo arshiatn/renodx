@@ -138,8 +138,13 @@ inline DXGI_FORMAT ViewFormat(DXGI_FORMAT format) {
 
 }  // namespace internal
 
-// Each present: what the bridge serves this frame.
-inline void SetUse(const BridgeUse& use) {
+// Each present: what the bridge serves this frame. FSR in DLSS's place when DLSS could not start on this GPU (the
+// helper's answer, latched until the game restarts; not saved, so DLSS comes back once it can: Attila's AaSettings).
+inline void SetUse(BridgeUse use) {
+  if (use.upscaler == twattila::dlaa_bridge::UPSCALER_DLSS + 1 && twattila::dlaa_bridge::DlssRefused()) {
+    use.upscaler = twattila::dlaa_bridge::UPSCALER_FSR + 1;
+    use.ray_reconstruction = 0;
+  }
   const std::unique_lock lock(internal::state.mutex);
   internal::state.use = use;
   ++internal::state.frame;

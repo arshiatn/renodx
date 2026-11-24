@@ -2246,8 +2246,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     const bool upscaling = twattila::feature_settings::Upscaling(aa_sliders) && twattila::dlaa_bridge::HelperInstalled();
     requested_mode.store(upscaling ? UPSCALING_MODES[static_cast<size_t>(std::clamp(aa_sliders.dlss_mode, 0.f, 6.f))] : AAMode::OFF);
     const auto aa = twattila::feature_settings::AaSettings(aa_sliders);
-    requested_upscaler.store(aa_sliders.method == 7.f ? twattila::dlaa_bridge::UPSCALER_XESS
-                                                      : (aa_sliders.method == 6.f ? twattila::dlaa_bridge::UPSCALER_FSR : twattila::dlaa_bridge::UPSCALER_DLSS));
+    requested_upscaler.store(twattila::anti_aliasing::UpscalerOf(aa.method));
     preset.store(aa.dlaa_preset);
     // What the bridge serves this frame (upscaling.hpp): the upscaler, Ray Reconstruction's guides, frame generation's frames.
     std::array<uint32_t, 2> size;

@@ -1094,11 +1094,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       .ray_tracing = ray_tracing_installed && upscaling,
       // The G-buffer guides for Ray Reconstruction and the paths (their surfaces' colours).
       .guides = ray_reconstruction || (traced && rays.path_tracing),
-      .upscaler = upscaling ? (aa_sliders.method == 7.f ? twattila::dlaa_bridge::UPSCALER_XESS
-                                                        : (aa_sliders.method == 6.f ? twattila::dlaa_bridge::UPSCALER_FSR
-                                                                                    : twattila::dlaa_bridge::UPSCALER_DLSS))
-                                  + 1
-                            : 0u,
+      .upscaler = upscaling ? twattila::anti_aliasing::UpscalerOf(aa.method) + 1 : 0u,
       .ray_reconstruction = ray_reconstruction ? aa.ray_reconstruction_preset + 1 : 0u,
       .frame_format = twattila::frame_generation::Format(),
       .frame_backend = aa.frame_backend,
@@ -1108,7 +1104,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // DLSS's presets L and M and Ray Reconstruction get the colour's square root (memory "DLSS L/M dark tones").
   divinity::upscaling::Update({.upscaling = upscaling,
                                .preset = aa.dlaa_preset,
-                               .square_root = upscaling && (ray_reconstruction || (aa_sliders.method == 5.f && aa.dlaa_preset != 11u)),
+                               .square_root = upscaling && (ray_reconstruction || (aa.method == twattila::anti_aliasing::Method::DLAA && aa.dlaa_preset != 11u)),
                                .ray_reconstruction = ray_reconstruction,
                                .ray_reconstruction_preset = aa.ray_reconstruction_preset,
                                .debug_view = aa_sliders.debug_view != 0.f},

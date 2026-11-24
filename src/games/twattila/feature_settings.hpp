@@ -109,8 +109,12 @@ inline float RenderScale(const AaSliders& sliders) {
 }
 
 inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
+  // DLSS could not start on this GPU (no nvngx_dlss.dll, NGX, the driver: the helper's answer, latched until the game
+  // restarts): FSR in its place, not saved, so DLSS comes back once it can.
+  const bool dlss_refused = sliders.method == 5.f && dlaa_bridge::DlssRefused();
   return {
-      .method = static_cast<twattila::anti_aliasing::Method>(std::clamp(static_cast<int>(sliders.method), 0, 7)),
+      .method = (dlss_refused ? twattila::anti_aliasing::Method::FSR
+                              : static_cast<twattila::anti_aliasing::Method>(std::clamp(static_cast<int>(sliders.method), 0, 7))),
       .quality = static_cast<int>(sliders.quality),
       .extra_sharpness = (sliders.extra_sharpness != 0.f),
       .history_weight = sliders.taa_strength,
@@ -119,7 +123,7 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       .dlaa_preset = std::array<uint32_t, 3>{11u, 13u, 12u}[std::clamp(static_cast<int>(sliders.dlaa_preset), 0, 2)],
       .render_scale = RenderScale(sliders),
       .effects_at_output = (sliders.effects_at_output != 0.f),
-      .ray_reconstruction = sliders.method == 5.f && sliders.ray_reconstruction != 0.f,
+      .ray_reconstruction = sliders.method == 5.f && sliders.ray_reconstruction != 0.f && !dlss_refused,
       // NVSDK_NGX_RayReconstruction_Hint_Render_Preset Default, D, E, F.
       .ray_reconstruction_preset = std::array<uint32_t, 5>{0u, 0u, 4u, 5u, 6u}[std::clamp(static_cast<int>(sliders.ray_reconstruction), 0, 4)],
       // 2-6 frames shown per rendered frame, 1 Dynamic (frame_generation.hpp), 0 off.

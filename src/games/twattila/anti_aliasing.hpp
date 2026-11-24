@@ -79,6 +79,11 @@ enum class Method : uint8_t {
 // An upscaler in the helper: the same frame path, textures, jitter, render scale and object motion for all.
 constexpr bool Upscales(Method method) { return method >= Method::DLAA; }
 
+// The bridge's upscaler (dlaa_bridge.h's UPSCALER_*) for an upscaling method; DLSS for the others.
+constexpr uint32_t UpscalerOf(Method method) {
+  return Upscales(method) ? static_cast<uint32_t>(method) - static_cast<uint32_t>(Method::DLAA) : dlaa_bridge::UPSCALER_DLSS;
+}
+
 // The object motion's types under their old names (the addons' MOTION_SHADERS).
 using object_motion::MotionKind;
 using object_motion::MotionShader;
@@ -1082,7 +1087,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
         && !dlaa_bridge::Prepare(device.Get(), objects.width, objects.height,
                                  runtime.settings.ray_reconstruction || runtime.settings.ray_traced_guides, runtime.settings.ray_tracing,
                                  frame_generation::Format(), runtime.settings.ray_traced_reflections,
-                                 static_cast<uint32_t>(method) - static_cast<uint32_t>(Method::DLAA), runtime.settings.frame_backend)) {
+                                 UpscalerOf(method), runtime.settings.frame_backend)) {
       return;
     }
     continued = (objects.history_valid || Upscales(method)) && runtime.applied_frame + 1 == runtime.frame
