@@ -785,6 +785,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - B3 interface conflict pk3_ (helper twattila::PrefetchRead in prefetch.hpp) vs pk ... | ?
 - ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-dif ... | ?
 - s1a_ (Opus xHigh, worktree, branch sh_s1a) implements S1a with M1 + S1-S3 + S5 i ... | ?
+- PK5 S0 microbench (tests only) after the FCA merge + fxi_'s test follow-up (test ... | ?
+- g24_ fill (sent): 941 mechanical -> rt vs|-|-|- families -> mv 673 (111 GPU-scen ... | ?
+- gsr_ (Opus xHigh) scale route design (handoff_plan/gsr_scale_route_design.md): o ... | ?
+- ATN trace requests (later, one go): Expeditions tracer 4.23 View offsets + a new ... | ?
+- RELEASE BLOCK: atn-mods ships ALL rows on with the rings off (the 32% trap confi ... | ?
+- ATN Q-C: Fewer Driver Waits rows - his 11-20 'keep Experimental + Off (not hidde ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14385,6 +14391,38 @@ heading text are in HANDOFF_ARCHIVE.md)
         write mask (S1b); S5 page.Take last commit.
         - [ ] s1a_ (Opus xHigh, worktree, branch sh_s1a) implements S1a with M1 + S1-S3 + S5 in its brief -> rvs_ code
         review -> coord merge. GPU timing -> coord's GPU window.
+        rv5_ PK5 REVIEW (render_mt/fca/designs/rv5_pk5_review.md + _handback.md; 0 / 7 MUST / 10 SHOULD / 7 NIT): heapfix
+        clearance GO (CHECKED = 82, hf_check.py drops hex sizes); A1 census GO; A1.1 GO after MUST-1 (misaligned 16-B
+        stores may not forward on Intel) + MUST-4; A1.2 optional; A2 NO-GO as written (MUST-2 heap safety) -> gated
+        study; A3 NO-GO (MUST-3: measured 0 on 11-18); M1 GO Experimental; M2 = M3 GO (stronger evidence); M3 GO for S0,
+        S3 gated on S0 + write-combine; site table FULL (MUST-4: widen masks to uint64_t first); stub = already 2 pages
+        (MUST-5); movntps + sfence (MUST-6). Package floor ~-1 W3. -> pk5_ Rev 1 (sent); pk4_ owns the mask widening as
+        its first step; test parts pk4_ 31-33, pk5_ 34+.
+        - [ ] PK5 S0 microbench (tests only) after the FCA merge + fxi_'s test follow-up (tests.cpp one writer); run only on
+        an idle PC (CPU timing).
+        rvg_ G24 STEP1 R2 GO, CORE HASHES STAMPED (handoff_plan/reviews/rvg_g24_step1_r2_recheck.md + _handback.md):
+        checker 191fc689f1c5, games.py 9294603a30f8, ue4 456d60807248, fixture 92c3254d9bb0, fixture_strict 5f44218d158f,
+        make_fixture ad73242fce39, cases.tsv 996c77f28980. Mutation 21 / 26 (M14 / M15 later, M17 truly uncatchable).
+        Sizing: mv / rt ~890 holds; SCALE NOT SIZED: 9,496 of 12,536 open scale cells have only a BUG route (no SCALED
+        trace kind, interpolant-rooted reads refused, no out: / test: tool) incl. the 4,866-cell translucency / decal
+        signature; in-scope level-A controls push scale to ~1,944. 33 mv gap families = 2 route decisions (VTF static-
+        heightmap exemption; bones via twin: logging). Post / ui tripwire now needs a View layout in TW / CryEngine /
+        Divinity packs.
+        - [ ] g24_ fill (sent): 941 mechanical -> rt vs|-|-|- families -> mv 673 (111 GPU-scene parked) -> ruleable scale
+        (2,133 + 907); never BUG to make progress; a decision block for ATN on the 33 gap families.
+        - [ ] gsr_ (Opus xHigh) scale route design (handoff_plan/gsr_scale_route_design.md): offline WARP scale tool as
+        out: / test: vs mesh-UV interpolant extension vs new trace kind -> rvg_ review -> re-run S8 for scale.
+        - [ ] ATN trace requests (later, one go): Expeditions tracer 4.23 View offsets + a new trace run; GPU-scene traces
+        (111 mv cells); twin: logging (first index / buffers) for the bones families.
+        rv1_ PK1 REVIEW (render_mt/fca/designs/rv1_pk1_review.md + _handback.md; 0 / 7 MUST / 14 SHOULD): mechanism +
+        trap table GO after M1 (honest stats: 0 of 12 plain W3 vs 10 of 31 -> p 0.023; D1 never traps); T1a GO w/ changes
+        (M3 rows shown per ATN 11-20); T1b GO (M5); T1c wait GO, shrink NO-GO (M7 never fires); T1d only with the M6
+        lifetime spec or dropped; T2 GO Attila-gated (M4); harness H1 / H4-H6 need new switches = ATN run rules (M2).
+        -> pk1_ Rev 1 (sent) -> rv1_ light re-check.
+        - [ ] RELEASE BLOCK: atn-mods ships ALL rows on with the rings off (the 32% trap config) -> no Attila release from
+        atn-mods until PK1 stage 1 lands (rv1_ S11).
+        - [ ] ATN Q-C: Fewer Driver Waits rows - his 11-20 'keep Experimental + Off (not hidden)' vs bug-fix-always-on now
+        that rings off = trap; Rev 1 designs rows shown, default on, 'Off after a restart' until he answers.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
