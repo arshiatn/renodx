@@ -15054,6 +15054,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         time window. B64P: llvm-mingw 20261006 ucrt x86_64 (190,836,485 B, sha256 317492c4...) + mimalloc v3.5.3 source
         (1,638,191 B, sha256 97e672db...) downloaded from GitHub (ATN 'go ahead and get them'), extracted to
         testbin\attila64_1124\llvm_mingw + mimalloc (clang 23.1.3 runs); perffix64 build for own use = next.
+        APP QUIT ~18:4x killed az2_ mid-build (progress to 18:34 + mutation builds): resumed by SendMessage ~18:57, same
+        brief; no stale slot locks. PERFFIX64 BUILT for own use (licence: compile + run on own computer, never shared):
+        git archive 731dad6 -> testbin\attila64_1124\perffix_src, his build.sh commands replayed from outside the tree
+        (scratchpad build_perffix64.sh; generators = os / re / sys file reads + writes only), 10 s, exit 0 ->
+        perffix64_plugin.dll 1,064,960 B sha256 69cb12bf... -> run_1320\plugins\perffix64.dll + run_1320\heapfix.ini
+        ([mod] self_update=0; the plugin reads the ini next to the attila64 folder, never ATN's). A/B now = 9 starts
+        (B64P on), ~55 min. SLIP: free RAM was 9.7 GB (< 12 GB rule) at that 10 s build.
         DISK (ATN asked ~19:2x; C: 38 GB / D: 44 GB free): proposal sent, NOTHING deleted: (D) 153 old worktrees (< 11-23,
         clean, HEAD on origin) 136.7 GB (list: coord scratchpad wt_candidates.tsv); scratchpad_copy_1122 46.7 GB (fully in
         copy_1123: folders 45.0 GB + top files 1.70 GB, 0 differ); optional: agent-afb9a119f703260fd build 90.4 GB = 11-17
