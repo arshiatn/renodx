@@ -194,9 +194,6 @@ class Backend {
   HANDLE idle_event_ = nullptr;
   uint64_t idle_value_ = 0;
 
-  // The CPU's longest wait for this backend's evaluations (as Ray Reconstruction's and FSR's queues).
-  static constexpr DWORD FENCE_TIMEOUT = 5000;
-
   static void LogResult(const char* operation, const NVSDK_NGX_Result result) {
     std::ostringstream message;
     message << "[Tales DLSS] " << operation << ": NGX result 0x"
@@ -267,7 +264,7 @@ class Backend {
       if (device_->GetDeviceRemovedReason() == S_OK) {
         idle_context_->Signal(idle_fence_.Get(), ++idle_value_);
         idle_context_->Flush();
-        twattila::dlaa_helper::WaitForGpuBeforeRelease(idle_fence_.Get(), idle_event_, idle_value_, FENCE_TIMEOUT, "DLSS");
+        twattila::dlaa_helper::WaitForGpuBeforeRelease(idle_fence_.Get(), idle_event_, idle_value_, twattila::dlaa_helper::GPU_WAIT_TIMEOUT, "DLSS");
       }
       const auto result = NVSDK_NGX_D3D11_ReleaseFeature(feature_);
       if (NVSDK_NGX_FAILED(result)) {
@@ -645,7 +642,7 @@ class Backend {
         // NVIDIA's guide 5.5: its last evaluation not proven done on a live device (a removed device runs none). This
         // request only; the next asks again.
         if (device_->GetDeviceRemovedReason() == S_OK
-            && !twattila::dlaa_helper::WaitForGpu(idle_fence_.Get(), idle_event_, idle_value_, FENCE_TIMEOUT)) {
+            && !twattila::dlaa_helper::WaitForGpu(idle_fence_.Get(), idle_event_, idle_value_, twattila::dlaa_helper::GPU_WAIT_TIMEOUT)) {
           status_.store("DLAA/DLSS: its GPU work did not finish", std::memory_order_relaxed);
           first_frame_ = true;
           return false;
