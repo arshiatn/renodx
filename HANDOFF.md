@@ -822,6 +822,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
 - a64pi_ (Opus High) probe implementer STARTED (design section 12): site-table che ... | ?
 - AFTER WINDOW 1: xHigh review of bringup_design.md -> a64b_ implementer. | ?
+- a64p1_ (Opus High, worktree, reset onto atn-mods) G1 + P1 STARTED 00:3x -> R1 re ... | ?
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
 - gated_build.ps1 has its OWN 2 slots (build_job.lock / _2) + 45 GB committed + -j ... | ?
 - a64ab_ fix round SENT (M1 / M2, stage A = base, inline, inline + a 4th base only ... | ?
@@ -15317,6 +15318,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         S2 hooks_wanted bits (~0.1 ms / frame otherwise), S3 measurement on the hook stack, S9 C8-only fields wait (all
         before P1 freezes plugin_block.h), S1 catch-handler gate, S4 Shadow refresh 2-4, S5 bone hook = 8 int args +
         bool. -> a64pl_ fix round sent; a64bdr_ told about M2.
+        - [x] a64pl_ FIX ROUND 1 DONE (hand-back attila64/a64pl_fix1_handback.md): D15 removed everywhere; section 7 =
+        the shared seam (block lookup at the first present before the port return, Install / Update when READY with
+        ROW_PASS_DRAW, runtime game_code_rows, one status note row); 2 sites (bone flush, pass draw); hooks.hpp tested as
+        shipped; block v1: PassMeasure 16 B, hooks_wanted, rows_changed; kernel32 only. Wave 1: G1 generator -> P1
+        plugin folder -> A1 add-on (after P1 freezes plugin_block.h AND a64b_ lands addon.cpp) -> R1 xHigh (+ Sonnet High
+        FINAL) -> T1 coord smoke + C2 trace (shadow_refresh=2) -> R2 release lane.
+        - [ ] a64p1_ (Opus High, worktree, reset onto atn-mods) G1 + P1 STARTED 00:3x -> R1 review.
         - [ ] AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> designs/plugin_design_review.md)
         + C8 census agent (read-only Opus xHigh, brief section 15 -> census/c8_rows.tsv + c8_notes.md).
         - [ ] gated_build.ps1 has its OWN 2 slots (build_job.lock / _2) + 45 GB committed + -j 3, blind to build_slots
