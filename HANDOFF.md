@@ -719,6 +719,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - sym_build_head.ps1: a real clean-tree check that works with junctions (after the ... | ?
 - Before the RELEASE (after the bench's Go; exit-path / test only, no re-bench): l ... | ?
 - ebr_ SHOULD 1 (before the noheapfix follow-up's eval): the address-space Go coun ... | ?
+- CRASH F31-R1-OFF (OFF, 181.1 s at close): ReShade.log 'Unhandled exception 0xC00 ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13491,6 +13492,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         re-runs and the warm-ups (eval:290-293), so a guard close in noheapfix can't turn the main verdict NOT GO. SHOULD 2:
         the noheapfix smoke also fails on the game's exit line (no heapfix.log EXCEPTION line without heapfix,
         eval:368-385). -> t4i_, after the main run ends (no tests beside the bench).
+        FINAL MAIN RUN DONE 05:12-08:31 (ebo_run -Final exit 0; eval testbin/scratch/coord_final_eval.txt, state/leg1/
+        final_eval.json): W3 d(ALL-OFF) -5.24 ms (SE 1.46, 4 rounds) vs -8.0 False, Q9 (a) holds (> 2 SE, melee not slower);
+        R1 +0.18 True; D1 -1.31 True; melee 330-680 -6.63; ATN scene -5.61; campaign +0.13 no finding; address space True;
+        drain 40 / 40, clean process end 35 / 40 (batch 35 / 46), window close max 6 s; OLD6 W3 +3.09 (SE 3.47) -> not on.
+        VERDICT PENDING: 7 re-runs due (stall rounds W3 3 + 4; WPR 03 W3 ALL excess 11.7 > 10). Driver waits not run (C-9).
+        ebo_check FALSE FAIL on all 7 ALLpOLD6 starts (same key twice at 0 s: base 0 then OLD6 1; logs show 6 / 6 'set to
+        1' lines) -> t4i_ ROUND 5 (check fix + offline re-check, ebr_ SHOULD 1 / 2, due follow-ups, fu_reruns).
+        - [ ] CRASH F31-R1-OFF (OFF, 181.1 s at close): ReShade.log 'Unhandled exception 0xC0000005 at 0x249BDB28 (thread
+        6900, execute)', then 'Exit Job Drain: gave up after 3839 ms, 0 of 15 running' (cap 1000 ms?); heapfix.log
+        EXCEPTION / FREEZE; re-ran clean (budget used). -> fcr_ (Opus xHigh, read-only) root cause:
+        render_mt/reports/fcr_f31_exit_crash.md. Must be root-caused before the release.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
