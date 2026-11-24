@@ -717,6 +717,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rcr_ review of rc_defaults -> rcd_ (a5513819749516fc5) fixes -> rcr_ re-check -> ... | ?
 - At the release after the bench's Go: drop '(Experimental)' from the two default- ... | ?
 - sym_build_head.ps1: a real clean-tree check that works with junctions (after the ... | ?
+- Before the RELEASE (after the bench's Go; exit-path / test only, no re-bench): l ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13440,6 +13441,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         (revert the 17 ~EXIT_DRAIN_BIT edits). NITs in the file. t4i_ got: env_unset RENODX_TW_EXIT_DRAIN, part-Off sets
         '0', clean process end after 'Unloading add-on' recorded per exit. rfo_ (Opus) still reviewing.
         - [ ] sym_build_head.ps1: a real clean-tree check that works with junctions (after the bench).
+        rfo_ FINAL REVIEW GO 03:4x (render_mt/reports/rfo_rc_final_review.md + _handback.md): no MUST; every exit path OK
+        (pin first in the stamped binary, AddonUninit before FreeLibrary, 1000 ms cap, site stands down on foreign bytes /
+        other versions / Thrones / Rome II); defaults = eba_ §6. Facts: static destructors now run at process end on every
+        exit (0 / 348 batch logs kept the image before); the drain doesn't stop new job submissions. -> BOTH FINAL REVIEWS
+        GO: the RC code is frozen (bd46d12fd, rc_1124 3852fc47). Sent to t4i_: S1 exit record (closed by window after N s;
+        kill or > 10 s = PROBLEM; 'Exiting' share vs 35 / 46), follow-ups `lowcore` (W3 OFF / ALL at 4 + 8 logical CPUs) and
+        `noheapfix` (W3 ALL 180 s without dinput8.dll, ANIMATION_CHECK + C compare).
+        - [ ] Before the RELEASE (after the bench's Go; exit-path / test only, no re-bench): log a failed pin
+        (GetModuleHandleExW == FALSE + GetLastError; rfs_ S1 / rfo_ N4), tests.cpp part 13 on() .exit_job_drain = true
+        (rfs_ S2), stale 'private build' comments (rfo_ N1), engine_code suite default compile = shipped config (rfo_ N2),
+        rfo_ N3's two drain-wiring checks in tw_render_mt_defaults, 'Fixed:' note line (N5), widths (N6). rfo_ S2: if
+        lowcore shows ALL slower at 4 CPUs -> clamp worker_pool::Update to GetActiveProcessorCount (own review).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
