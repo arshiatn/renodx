@@ -771,6 +771,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - mem_ r4 -> rvm_ short re-check -> ask ATN for the Attila 32-bit confirm run (che ... | ?
 - Rome II / Thrones keep the 32-bit leak until host.scene_release is set for them ... | ?
 - sse_ (Opus xHigh, worktree, branch sss_e2) implements E2 + E4 with R1 / R2 / S2 ... | ?
+- g24_ step1 r2 (sent) -> rvg_ light re-check before core hashes are stamped; mean ... | ?
+- ATN: Expeditions tracer uses 4.21 View offsets 122 / 123 (Expeditions is 4.23) - ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14260,6 +14262,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] sse_ (Opus xHigh, worktree, branch sss_e2) implements E2 + E4 with R1 / R2 / S2 / S3: Attila first (WARP A/B,
         counter, controls, DXBC diff, _auto bytes), then the 15 add-ons + suites; held on sss_e2 until all pass (coord
         merges). GPU A/B / --time / Nsight -> coord's GPU window with a gate id. Hand-back 'sse_ e2'.
+        rvg_ G24 STEP1 REVIEW: CONDITIONAL GO (handoff_plan/reviews/rvg_g24_step1_review.md + _handback.md): hashes,
+        58/58, ledgers (Tales 527 / Expeditions 156) verified; nothing loosened; rt N/A/post / ui lines agreed. MUST-1
+        after-upscale fails closed when buffer != view size (dynamic res false settle); MUST-2 fixture case for 'output-
+        size targets only' (mutation survived). SHOULD 1-4, NIT 1-2. Mutation: 11 / 18 guards caught.
+        - [ ] g24_ step1 r2 (sent) -> rvg_ light re-check before core hashes are stamped; meanwhile g24_ (2) S8 sizing gate.
+        - [ ] ATN: Expeditions tracer uses 4.21 View offsets 122 / 123 (Expeditions is 4.23) -> a 4.23 offset + a new
+        trace run need ATN's go (rvg_ NIT-3); until then Expeditions after-upscale fails closed (no view line).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
