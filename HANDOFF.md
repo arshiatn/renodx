@@ -797,6 +797,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FRIDAY 11-27: pk4_ (Fable) the 4 NITs in 7.2 / 7.3 / 4.7 (rv4_'s list) + the fli ... | ?
 - Coord: real gbf gates (gbf_gpu_gates.ps1, no switch) in the first quiet GPU wind ... | ?
 - g24_ 13.10 (sent): MUST-F, apply_rules fail-closed, apply the shadow rule to Exp ... | ?
+- ATN OK 11-24: the ONE Attila -Data session runs BEFORE Friday when t4i_'s PK6 r2 ... | ?
 - rv5_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2'); fixes wait for ... | ?
 - Data session (t4i_ -Data): log the arena's state words at first present + battle ... | ?
 - mem_ / address space: PK5 A2 adds +0.25 MB. | ?
@@ -14849,7 +14850,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 11-24 (Tue) ~17:2x CHANGE OF ORDER (supersedes 17:0x): the Fable-heavy CPU work runs on FRIDAY 11-27 (ATN's
         weekly reset). Until then: running agents finish their current job + Opus review loops -> coord recap of done / left
         -> GPU plan (plan_1117, Opus 5.5 only). No new Fable implementer / design fix-up before Friday. Memory
-        project_full_cpu_analysis updated.
+        project_full_cpu_analysis updated. ATN later: 'Opus only' not literal: Opus by default until Friday; when
+        Fable is needed or an issue won't fix, tell ATN (ATN decides).
+        - [ ] ATN OK 11-24: the ONE Attila -Data session runs BEFORE Friday when t4i_'s PK6 r2 (+ rv6_ re-check) and PK1
+        stage 1 (p1i_ + rv1_) are ready, so Friday's builds have its data (no agent paused for it).
         pk5_ REV 1.2 DONE (render_mt/fca/designs/pk5_rev12_handback.md; pk5_design.md 839 lines): F1 ERMSB ours (S0
         microbench + one Game Copy Path arm; heapfix note to the author afterwards); F2 once-per-process self-timing in
         Prepare (~2.5 ms, stop 5 ms, ours only at >= 15 % faster in 3 / 3 rounds); F3 A2 'Bigger Draw Item Pages
