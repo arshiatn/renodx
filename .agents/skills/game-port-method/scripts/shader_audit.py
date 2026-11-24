@@ -119,7 +119,8 @@ def load(path, name):
 
 
 def digest(path):
-    return hashlib.sha256(open(path, 'rb').read()).hexdigest()[:12]
+    """SHA-256 prefix of a file with LF line ends (git's CRLF checkouts give the same hash)."""
+    return hashlib.sha256(open(path, 'rb').read().replace(b'\r\n', b'\n')).hexdigest()[:12]
 
 
 def literal(value, in_name=False):
