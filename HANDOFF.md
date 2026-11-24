@@ -817,6 +817,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
 - REMIND ATN (decision 6): ask JSa25 for a Flag Wave interop contract (previous-po ... | ?
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
+- MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
 - s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
 - vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree- ... | ?
 - a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the l ... | ?
@@ -15171,6 +15172,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         V-cache part matters too. Sent to a64p0d_ (L2 arms: 0-15 baseline as ATN plays, step alone on one core, SMT
         sibling free or not). Default by the numbers. ATN to add the same CPU Set Setter rule for attila64.exe (coord
         asked 11-24).
+        - [x] a64c_ DONE (hand-back attila64/a64c_census_handback.md; tools/tw/attila64/census: README, 4 scripts incl.
+        log_check.py, out\ tables): all 350 twattila shader hashes in Attila's names.tsv, 0 unknown; Sol passes the game's
+        DXBC unchanged (same CRC32), SM5 permutations as 32-bit, 90 / 90 fxc names known (53 ours); 32-bit baseline = the
+        same 48 replacements every run. A3 check list (menu Smoke: 'full mode', no missing / refused / differs lines, 48
+        'replacing' lines; battle: gather 5.0 hashes + 59 common draws; IA slot 15 for 4-bone units never unbound).
+        FLAG WAVE: only 2 of PerfFix's 4 rigid VS are ours (347F3DD9 + 64-bit twin D830AD9B); with a flag pack ALL
+        rigidcommon props lose MVs / RT capture / thin sheets; his shader reads t14 / t15 = our motion slots (clash, E).
+        Fallback: alias the unknown shader created just before them on the same thread, MVs by redraw only, PerfFix by
+        its mutex. MV GAPS (ATN's coverage check): known far tree billboards, sprite soldiers, capture-point flags (rows
+        only), dissolve, heat haze (particles by design); NEW tessellated rigid props 9AEE504E (no MVs with Tessellation
+        on), ship rigging ribbons 3926A823, ocean2 land_v2 53049172, just-spawned projectiles (E). Sent to a64pr_.
+        - [ ] MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated rigid props, ship rigging,
+        ocean2 land_v2, new projectiles, far billboards, sprite soldiers, capture-point flags, dissolve, heat haze) with a
+        fix or a 'by design' reason; Flag Wave fallback + JSa25 contract (remind ATN).
         - [ ] s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 source as a TEST VERSION (Sol
         11-24 on Discord: 'Can you not do it yourself and test it ... If you want. As a test version'):
         testbin\attila64_1124\sol_fixes_1124 (git, one commit per fix, offline tests incl. the original failing, patch +
