@@ -88,17 +88,49 @@ void WaitForGpuBeforeRelease(Fence* fence, HANDLE event, uint64_t value, DWORD t
 
 // The game's GPU waits on a shared fence for values the helper that stopped will never signal: each of the helper's
 // (even) signalled from the CPU once the game's own before it (odd) arrived, up to `value`. The game's queued work stays
-// in order, and a CPU signal cannot queue behind the wait it frees. True: the fence is at `value` (also a removed
-// device's, at all ones); false: the game's signal did not come within `timeout`.
+// in order, and a CPU signal cannot queue behind the wait it frees. A CPU Signal is visible to GetCompletedValue at once
+// (D3D12), so the loop never waits on its own signal. Woken by the fence (`event`, auto-reset: a wake only means "read
+// the fence again") or by `game`'s end; no polling, no clock. True: the fence is at `value` (a removed device's reads all
+// ones; its events fire). False, by *error: HRESULT_FROM_WIN32(ERROR_TIMEOUT), the fence did not move for `timeout`
+// (INFINITE: no limit); S_OK, `game` ended first; else the Signal, registration or wait that failed.
 template <typename Fence>
-bool SignalAbandoned(Fence* fence, uint64_t value, DWORD timeout) {
-  const ULONGLONG started = GetTickCount64();
+bool SignalAbandoned(Fence* fence, HANDLE event, HANDLE game, uint64_t value, DWORD timeout, HRESULT* error) {
+  const std::array<HANDLE, 2> fence_or_game = {event, game};
+  *error = S_OK;
   for (uint64_t completed = fence->GetCompletedValue(); completed < value; completed = fence->GetCompletedValue()) {
-    if (GetTickCount64() - started >= timeout) return false;
-    if ((completed & 1u) != 0 && FAILED(fence->Signal(completed + 1))) return false;
-    Sleep(1);
+    if ((completed & 1u) != 0) {
+      *error = fence->Signal(completed + 1);
+      if (FAILED(*error)) return fence->GetCompletedValue() >= value;
+      continue;
+    }
+    *error = fence->SetEventOnCompletion(completed + 1, event);
+    if (FAILED(*error)) return fence->GetCompletedValue() >= value;
+    switch (WaitForMultipleObjects(2, fence_or_game.data(), FALSE, timeout)) {
+      case WAIT_OBJECT_0:
+        break;
+      case WAIT_OBJECT_0 + 1:
+        return fence->GetCompletedValue() >= value;
+      case WAIT_TIMEOUT:
+        *error = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+        return fence->GetCompletedValue() >= value;
+      default:
+        *error = HRESULT_FROM_WIN32(GetLastError());
+        return fence->GetCompletedValue() >= value;
+    }
   }
   return true;
+}
+
+// One set of the rescue (the helper's rescue mode and the lifetime test's stub): 2 s, then, while every set before it was
+// freed (`unbounded`), one line through `late` and no limit: a GPU seconds behind (paging, a PC that slept) still gets
+// there, and the game's end, its job or the addon's unload ends the process. After a failed set only the 2 s: a later
+// set's signal can come only if the failed set's wait was already passed.
+template <typename Fence, typename Late>
+bool RescueSet(Fence* fence, HANDLE event, HANDLE game, uint64_t value, bool unbounded, const Late& late, HRESULT* error) {
+  if (SignalAbandoned(fence, event, game, value, 2000, error)) return true;
+  if (*error != HRESULT_FROM_WIN32(ERROR_TIMEOUT) || !unbounded) return false;
+  late(fence->GetCompletedValue());
+  return SignalAbandoned(fence, event, game, value, INFINITE, error);
 }
 
 }  // namespace twattila::dlaa_helper

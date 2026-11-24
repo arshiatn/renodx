@@ -9,6 +9,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <thread>
 
 namespace {
 unsigned fail_transfer_at = 0;
@@ -26,6 +27,8 @@ std::atomic<bool> fail_exit_read = false;
 std::atomic<unsigned> processes_created = 0;
 std::atomic<unsigned> warnings = 0;
 HANDLE child_witness = nullptr;
+// The rescue's (the watcher's thread assigns it to the helper's job): read by the test's thread.
+std::atomic<HANDLE> rescue_witness = nullptr;
 BOOL WINAPI TestAssignProcessToJobObject(HANDLE job, HANDLE process);
 DWORD WINAPI TestResumeThread(HANDLE thread);
 BOOL WINAPI TestDuplicateHandle(HANDLE source_process, HANDLE source, HANDLE target_process, HANDLE* target,
@@ -62,6 +65,7 @@ std::atomic<unsigned> exit_lines = 0;
 std::mutex exit_line_mutex;
 std::string last_exit_line;
 std::string last_rescue_line;
+std::atomic<unsigned> still_waits_lines = 0;
 extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int level, const char* message) {
   const std::unique_lock lock(exit_line_mutex);
   if (std::strstr(message, "the helper ended (") != nullptr || std::strstr(message, "the helper did not end within 5 s") != nullptr) {
@@ -71,6 +75,9 @@ extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int level, const 
   }
   if (std::strstr(message, "what the game's GPU waited for from it") != nullptr) {
     last_rescue_line = message;
+  }
+  if (std::strstr(message, "its rescue still waits for the game's GPU") != nullptr) {
+    ++still_waits_lines;
   }
   if (level <= 2) ++warnings;
 }
@@ -161,7 +168,16 @@ void* PatchSlot(void* object, size_t slot, void* hook) {
 }
 
 BOOL WINAPI TestAssignProcessToJobObject(HANDLE job, HANDLE process) {
-  Check(child_witness == nullptr, "previous child witness closed");
+  // The helper's first, then its rescue's (in the same job, G23 2c).
+  if (child_witness != nullptr) {
+    HANDLE witness = nullptr;
+    Check(rescue_witness.load() == nullptr
+              && DuplicateHandle(GetCurrentProcess(), process, GetCurrentProcess(), &witness,
+                                 SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, 0),
+          "retain rescue witness");
+    rescue_witness.store(witness);
+    return AssignProcessToJobObject(job, process);
+  }
   Check(DuplicateHandle(GetCurrentProcess(), process, GetCurrentProcess(), &child_witness, SYNCHRONIZE, FALSE, 0),
         "retain child witness");
   return fail_assign ? FALSE : AssignProcessToJobObject(job, process);
@@ -233,6 +249,11 @@ void CheckClosed() {
     CloseHandle(child_witness);
     child_witness = nullptr;
   }
+  // The watcher ended it (the unload) or it ended by itself; the end of a terminated process can come a moment later.
+  if (const HANDLE rescue = rescue_witness.exchange(nullptr); rescue != nullptr) {
+    Check(WaitForSingleObject(rescue, 5000) == WAIT_OBJECT_0, "the rescue has ended");
+    CloseHandle(rescue);
+  }
 }
 
 ComPtr<ID3D12Device> MakeHelperDevice() {
@@ -246,18 +267,33 @@ ComPtr<ID3D12Device> MakeHelperDevice() {
 }
 
 // The helper's exe in its rescue mode ("<game pid> rescue <LUID low> <LUID high>" and a "<handle> <value>" for each set,
-// as dlaa_helper/main.cpp), on the software adapter: the game's handles taken from it, the production signalling.
+// as dlaa_helper/main.cpp), on the software adapter: the game's handles taken from it, the production sets (RescueSet;
+// its late line is the helper's log's, which the stub has not). RENODX_TW_TEST_RESCUE_REMOVE_MS: its device removed
+// that many ms after its start (a GPU reset during its wait).
 int RescueStub(int argc, char** argv) {
-  const HANDLE game = OpenProcess(PROCESS_DUP_HANDLE, FALSE, std::strtoul(argv[1], nullptr, 10));
+  const HANDLE game = OpenProcess(PROCESS_DUP_HANDLE | SYNCHRONIZE, FALSE, std::strtoul(argv[1], nullptr, 10));
   const ComPtr<ID3D12Device> device = MakeHelperDevice();
-  bool freed = game != nullptr;
-  for (int index = 5; index + 1 < argc; index += 2) {
+  if (char remove_ms[16] = {}; GetEnvironmentVariableA("RENODX_TW_TEST_RESCUE_REMOVE_MS", remove_ms, sizeof(remove_ms)) != 0) {
+    std::thread([device, milliseconds = std::strtoul(remove_ms, nullptr, 10)] {
+      Sleep(milliseconds);
+      ComPtr<ID3D12Device5> removable;
+      if (SUCCEEDED(device.As(&removable))) removable->RemoveDevice();
+    }).detach();
+  }
+  const HANDLE moved = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  bool freed = game != nullptr && moved != nullptr;
+  for (int index = 5; game != nullptr && moved != nullptr && index + 1 < argc; index += 2) {
     ComPtr<ID3D12Fence> fence;
     HANDLE shared_fence = nullptr;
-    freed = DuplicateHandle(game, reinterpret_cast<HANDLE>(static_cast<uintptr_t>(std::strtoull(argv[index], nullptr, 10))),
-                            GetCurrentProcess(), &shared_fence, 0, FALSE, DUPLICATE_SAME_ACCESS)
-            && SUCCEEDED(device->OpenSharedHandle(shared_fence, IID_PPV_ARGS(fence.GetAddressOf())))
-            && twattila::dlaa_helper::SignalAbandoned(fence.Get(), std::strtoull(argv[index + 1], nullptr, 10), 2000) && freed;
+    HRESULT error = E_FAIL;
+    if (DuplicateHandle(game, reinterpret_cast<HANDLE>(static_cast<uintptr_t>(std::strtoull(argv[index], nullptr, 10))),
+                        GetCurrentProcess(), &shared_fence, 0, FALSE, DUPLICATE_SAME_ACCESS)
+        && SUCCEEDED(device->OpenSharedHandle(shared_fence, IID_PPV_ARGS(fence.GetAddressOf())))
+        && twattila::dlaa_helper::RescueSet(fence.Get(), moved, game, std::strtoull(argv[index + 1], nullptr, 10), freed,
+                                            [](uint64_t) {}, &error)) continue;
+    // The game ended: nothing left to free.
+    if (error == S_OK) break;
+    freed = false;
   }
   return static_cast<int>(freed ? bridge_api::HELPER_EXIT_DONE : bridge_api::HELPER_EXIT_RESCUE_SIGNAL);
 }
@@ -610,12 +646,16 @@ int main(int argc, char** argv) {
   Check(GetTickCount64() - unload_started < 2000 && processes_created.load() == 0, "the unload neither waits for the GPU nor starts a recovery");
   CheckClosed();
   // In a game the device and its waits go with the unload; here the device stays, so its queue is freed by hand.
+  const HANDLE rescue_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  Check(rescue_event != nullptr, "the test's rescue event");
   {
+    HRESULT error = E_FAIL;
     HANDLE left_handle = nullptr;
     ComPtr<ID3D12Fence> left_fence12;
     Check(SUCCEEDED(left_fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &left_handle))
           && SUCCEEDED(MakeHelperDevice()->OpenSharedHandle(left_handle, IID_PPV_ARGS(left_fence12.GetAddressOf())))
-          && twattila::dlaa_helper::SignalAbandoned(left_fence12.Get(), 4, 2000), "free the wait the unload left");
+          && twattila::dlaa_helper::SignalAbandoned(left_fence12.Get(), rescue_event, GetCurrentProcess(), 4, 2000, &error),
+        "free the wait the unload left");
     CloseHandle(left_handle);
     game.QueueTail();
     Check(game.TailWithin(2000), "queue clean for the next case");
@@ -808,6 +848,93 @@ int main(int argc, char** argv) {
   bridge_api::Shutdown();
   CheckClosed();
   std::puts("PASS: the game's fence values stay odd after a fence-less answer");
+
+  // The rescue (G23 2a / 2c): the game's GPU held before the helper's request by a gate (another device's shared fence,
+  // as a GPU seconds behind), the helper gone after its answer. The rescue, in the helper's job, waits with no time limit
+  // until the GPU gets there (past the watcher's 15 s one line), the unload ends it or its own device goes.
+  {
+    const ComPtr<ID3D12Device> gate_device = MakeHelperDevice();
+    ComPtr<ID3D12Fence> gate;
+    ComPtr<ID3D11Fence> gate11;
+    HANDLE gate_handle = nullptr;
+    Check(SUCCEEDED(gate_device->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&gate)))
+              && SUCCEEDED(gate_device->CreateSharedHandle(gate.Get(), nullptr, GENERIC_ALL, nullptr, &gate_handle))
+              && SUCCEEDED(game.device5->OpenSharedFence(gate_handle, IID_PPV_ARGS(&gate11))),
+          "the gate");
+    CloseHandle(gate_handle);
+    uint64_t gate_value = 0;
+    const auto rescue_logged = [](const char* text) {
+      for (const ULONGLONG until = GetTickCount64() + 3000; GetTickCount64() < until; Sleep(1)) {
+        const std::unique_lock lock(exit_line_mutex);
+        if (last_rescue_line.find(text) != std::string::npos) return true;
+      }
+      return false;
+    };
+    struct RescueCase {
+      const char* name;
+      DWORD gate_ms;             // 0: not opened while the rescue runs
+      const wchar_t* remove_ms;  // the rescue's device removed
+    };
+    for (const RescueCase& test : {RescueCase{"a GPU 6 s behind: freed", 6000, nullptr},
+                                   RescueCase{"a GPU 40 s behind: one line at 15 s, then freed", 40000, nullptr},
+                                   RescueCase{"a GPU that never gets there: the unload ends the rescue at once", 0, nullptr},
+                                   RescueCase{"the rescue's device removed during its wait: it ends", 0, L"3000"}}) {
+      StartReady(game, "start rescue wait test");
+      Check(bridge_api::Prepare(device, 16, 16), "the set");
+      Check(SUCCEEDED(game.context4->Wait(gate11.Get(), ++gate_value)), "the game's GPU held by the gate");
+      {
+        const std::unique_lock lock(exit_line_mutex);
+        last_rescue_line.clear();
+      }
+      const unsigned still_waits_before = still_waits_lines.load();
+      SetEnvironmentVariableW(L"RENODX_TW_TEST_RESCUE_REMOVE_MS", test.remove_ms);
+      processes_created = 0;
+      Check(RequestAs(game, bridge_api::EVALUATE, EXITS_AFTER_ANSWER), "answered, then the helper ends");
+      const ComPtr<ID3D11Fence> set_fence = bridge.fence;
+      const uint64_t waited = bridge.watchdog.waited.load();
+      game.QueueTail();
+      for (const ULONGLONG until = GetTickCount64() + 5000; rescue_witness.load() == nullptr && GetTickCount64() < until;) Sleep(1);
+      const ULONGLONG rescue_started = GetTickCount64();
+      SetEnvironmentVariableW(L"RENODX_TW_TEST_RESCUE_REMOVE_MS", nullptr);
+      Check(rescue_witness.load() != nullptr && processes_created.load() == 1, "one rescue");
+      // Its own handle in the helper's job (not this process's job: the test may run in one).
+      BOOL in_job = FALSE;
+      while (IsProcessInJob(rescue_witness.load(), bridge.job, &in_job) && !in_job && GetTickCount64() - rescue_started < 1000) Sleep(1);
+      Check(in_job, "the rescue is in the helper's job");
+      if (test.gate_ms != 0) {
+        Sleep(test.gate_ms);
+        Check(WaitForSingleObject(rescue_witness.load(), 0) == WAIT_TIMEOUT, "the rescue still waits for the game's GPU");
+        Check(SUCCEEDED(gate->Signal(gate_value)) && game.TailWithin(3000), "the game's GPU gets past the helper's wait");
+        Check(WaitForSingleObject(rescue_witness.load(), 2000) == WAIT_OBJECT_0 && rescue_logged("was freed."), "freed, and said so");
+      } else if (test.remove_ms != nullptr) {
+        Check(WaitForSingleObject(rescue_witness.load(), 4500) == WAIT_OBJECT_0 && GetTickCount64() - rescue_started >= 2500,
+              "the rescue ends with its device's removal");
+        Check(rescue_logged("was freed."), "a removed device: nothing left to free");
+      } else {
+        Sleep(5000);
+        const ULONGLONG stopping = GetTickCount64();
+        bridge_api::Shutdown();
+        Check(GetTickCount64() - stopping < 2000 && rescue_logged("the unload ended the rescue"), "the unload ends a waiting rescue at once");
+      }
+      Check(still_waits_lines.load() - still_waits_before == ((test.gate_ms > 15000) ? 1u : 0u), "one line past 15 s, none before");
+      Check(processes_created.load() == 1, "no second rescue");
+      bridge_api::Shutdown();
+      CheckClosed();
+      // What the rescue did not free (the unload's, the removed device's): the gate opened, the set's value signalled.
+      HANDLE set_handle = nullptr;
+      ComPtr<ID3D12Fence> set_fence12;
+      HRESULT error = E_FAIL;
+      Check(SUCCEEDED(gate->Signal(gate_value)) && SUCCEEDED(set_fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &set_handle))
+                && SUCCEEDED(gate_device->OpenSharedHandle(set_handle, IID_PPV_ARGS(set_fence12.GetAddressOf())))
+                && twattila::dlaa_helper::SignalAbandoned(set_fence12.Get(), rescue_event, GetCurrentProcess(), waited, 5000, &error),
+            "free what the rescue left");
+      CloseHandle(set_handle);
+      game.QueueTail();
+      Check(game.TailWithin(3000), "queue clean for the next case");
+      std::printf("PASS: rescue: %s\n", test.name);
+    }
+  }
+  CloseHandle(rescue_event);
 
   // Textures that could not be made: tried again at another size or after 30 s, three times a session, a line each. Last:
   // a 32-bit process may find no room afterwards for a later case's 512 MB ray tracing texture.

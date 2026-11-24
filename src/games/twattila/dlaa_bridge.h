@@ -636,7 +636,7 @@ constexpr uint32_t HELPER_EXIT_RESCUE_ADAPTER = 12;     // EnumAdapterByLuid
 constexpr uint32_t HELPER_EXIT_RESCUE_DEVICE = 13;      // D3D12CreateDevice
 constexpr uint32_t HELPER_EXIT_RESCUE_HANDLE = 14;      // DuplicateHandle
 constexpr uint32_t HELPER_EXIT_RESCUE_FENCE = 15;       // OpenSharedHandle
-constexpr uint32_t HELPER_EXIT_RESCUE_SIGNAL = 16;      // the game's signal did not come in time, or the helper's failed
+constexpr uint32_t HELPER_EXIT_RESCUE_SIGNAL = 16;      // a Signal, registration or wait failed (after a failed set: the game's signal did not come in 2 s)
 constexpr uint32_t HELPER_EXIT_GPU_UNFINISHED = 483;    // ERROR_DEVICE_HARDWARE_ERROR: unproven_gpu_completion
 // The CRT's ends that skip the helper's exception filter (its handlers log them first).
 constexpr uint32_t HELPER_EXIT_UNCAUGHT_EXCEPTION = 0xE0000001;

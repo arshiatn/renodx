@@ -610,10 +610,30 @@ inline bool Start(ID3D11Device* device) {
         STARTUPINFOW rescue_startup = {.cb = sizeof(STARTUPINFOW)};
         PROCESS_INFORMATION rescue = {};
         std::string not_freed;
-        if (CreateProcessW(path.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &rescue_startup, &rescue)) {
+        if (CreateProcessW(path.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, nullptr,
+                           &rescue_startup, &rescue)) {
+          // In the helper's job (kill on close): the game's end or a kill ends it too, even inside a driver call. Not in it (no
+          // job, an error): its wait on the game's handle still ends it, unless a driver call holds it.
+          if (bridge.job != nullptr && !AssignProcessToJobObject(bridge.job, rescue.hProcess)) {
+            try {
+              renodx::utils::log::w("[Total War] DLAA: the rescue is not in the helper's job (error ", GetLastError(), ").");
+            } catch (const std::exception&) {
+              // No-op: out of memory costs this line, not the recovery.
+            }
+          }
+          ResumeThread(rescue.hThread);
           const std::array<HANDLE, 2> stop_or_done = {bridge.watcher_stop, rescue.hProcess};
-          // A new D3D12 device after a GPU fault can take seconds.
-          const DWORD rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, 15000);
+          // A new D3D12 device after a GPU fault can take seconds. Past 15 s the rescue still waits for the game's GPU (no time
+          // limit: it ends when the GPU gets there, the game ends or this unload ends it).
+          DWORD rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, 15000);
+          if (rescue_woken == WAIT_TIMEOUT) {
+            try {
+              renodx::utils::log::w("[Total War] DLAA: the helper stopped; its rescue still waits for the game's GPU (renodx-tw-dlaa64.log).");
+            } catch (const std::exception&) {
+              // No-op: out of memory costs this line, not the recovery.
+            }
+            rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, INFINITE);
+          }
           switch (rescue_woken) {
             case WAIT_OBJECT_0 + 1: {
               DWORD result = STILL_ACTIVE;
@@ -624,7 +644,6 @@ inline bool Start(ID3D11Device* device) {
               }
               break;
             }
-            case WAIT_TIMEOUT:  not_freed = "the rescue did not end in 15 s"; break;
             case WAIT_OBJECT_0: not_freed = "the unload ended the rescue"; break;
             default:            not_freed = std::format("the rescue's wait failed (error {})", GetLastError()); break;
           }
