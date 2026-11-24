@@ -780,6 +780,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (pk5_): Q6 ERMSB row + our copy at 2-4 sites; S0 before the data run; other ... | ?
 - mrg_ merges mem_fix 03137a2f5 after the FCA batch (sent; clean vs atn-mods + fca ... | ?
 - ATN's go for the Attila 32-bit confirm run (asked 11-24 afternoon; fresh backups ... | ?
+- ATN (pk1_): A FDW always on (advice) vs per-battle latch; B FDW NVIDIA only + FC ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14314,6 +14315,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] mrg_ merges mem_fix 03137a2f5 after the FCA batch (sent; clean vs atn-mods + fca_item1) -> newest Attila build
         for the confirm run.
         - [ ] ATN's go for the Attila 32-bit confirm run (asked 11-24 afternoon; fresh backups, install newest first).
+        pk1_ DESIGN Rev 0 DONE (render_mt/fca/designs/pk1_design.md 558 lines + _handback.md; base fca_item1 14be1b950):
+        T1 rings on (FCU everywhere, FDW NVIDIA only, rows hidden + ClearSavedRows(3)) + reclaim fix (retire half a ring
+        ahead, flush check before growing) + 100 ms cap wait + shrink; T1d drop the IASetVertexBuffers detour in ring-only
+        install; T2 RecordUnits via motion-ring slots (CSSetConstantBuffers1 offsets). Clean cost W3 +0.2..+0.8 / D1
+        +0.35..+0.5; trap 10 / 31 -> 0 expected. T3 nothing left with RT off; T4 not needed; U1a / U2 marginal; U1b needs a
+        census. Critic errors: detour gain 0.04-0.08 not 0.32; stage 2 ~0; U1 fast path exists; N-T must be an env start.
+        New bench-only env RENODX_TW_DRIVER_RINGS needs ATN's run rule. Rule slip: last wording fixes via a heredoc.
+        -> rv1_ (Opus xHigh) review (rv1_pk1_review.md). pk2_ told: no pool thread may touch the immediate context.
+        - [ ] ATN (pk1_): A FDW always on (advice) vs per-battle latch; B FDW NVIDIA only + FCU everywhere; C rows hidden;
+        D T2 / U2 grass may reach other TW add-ons at their next build; E RT on in the target (one RT-on trace for T3b);
+        plus a run rule for RENODX_TW_DRIVER_RINGS.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
