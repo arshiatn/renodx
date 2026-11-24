@@ -768,6 +768,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fxi_ r2 + 30f WU-on case (J1 flips only after that + an ABBA bench). | ?
 - ATN QUESTIONS (critic sec 7): Q2 release timing, Q3 FDW D1 cost vs per-battle la ... | ?
 - rvg_ review of step 1 (handoff_plan/reviews/rvg_g24_step1_review.md) -> then g24 ... | ?
+- mem_ r4 -> rvm_ short re-check -> ask ATN for the Attila 32-bit confirm run (che ... | ?
+- Rome II / Thrones keep the 32-bit leak until host.scene_release is set for them ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14205,6 +14207,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] rvg_ review of step 1 (handoff_plan/reviews/rvg_g24_step1_review.md) -> then g24_ (2) S8 sizing gate on
         Expeditions -> (3) the fill. Carried: n-r3-1 primitive_data offset at the next extractor bump; Divinity 2 N/A/dead
         from the bytes.
+        rvm_ MEM_FIX R3 GO (handoff_plan/reviews/rvm_mem_fix_recheck_r3.md + _handback.md): all r1 / r2 MUSTs closed;
+        addon.cpp = exactly the one line; TW_HOST untouched; one walk per event. Minor m1 (release's later walk + L3 in one
+        present) + n2 (9j vacuous at >= 10 s) -> mem_ r4 (sent); m2 (later walk may land in play) waits for the confirm run.
+        test_hooks.hpp:198 memory= keys stay (they ARE the leak series); exclude their seconds from frame-time windows.
+        - [ ] mem_ r4 -> rvm_ short re-check -> ask ATN for the Attila 32-bit confirm run (checks 1-5 in rvm_'s file:
+        one release per loading screen, none in play / panels / alt-tab, largest free block holds over 3 battle loads,
+        RENODX_TW_SCENE_RELEASE=0 arm falls as before, cut-outs render, no helper restart warning).
+        - [ ] Rome II / Thrones keep the 32-bit leak until host.scene_release is set for them (owner: coord, after the
+        Attila confirm run; then one confirm run each, ATN's go).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
