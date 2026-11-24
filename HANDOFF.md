@@ -816,6 +816,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN go needed before: downloads (each named with source + size), building the lo ... | ?
 - az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches ( ... | ?
 - ATN: rule lines (a64_ab.ps1 -Smoke / -GateR -A32Plain / -AB -A32Plain [+ -DryRun ... | ?
+- 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -15061,6 +15062,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         perffix64_plugin.dll 1,064,960 B sha256 69cb12bf... -> run_1320\plugins\perffix64.dll + run_1320\heapfix.ini
         ([mod] self_update=0; the plugin reads the ini next to the attila64 folder, never ATN's). A/B now = 9 starts
         (B64P on), ~55 min. SLIP: free RAM was 9.7 GB (< 12 GB rule) at that 10 s build.
+        ATN 11-24 ~19:0x (second account): DIRECTION = 32-bit Attila stays at its released versions (the two 'HDR only' +
+        2.5.5); EVERYTHING NEW for Attila goes to the 64-bit port. Flag Wave banners should get motion vectors (his cloth
+        sim runs on the GPU each frame, flagsim.c: idea = keep last frame's sim buffer, draw flags into our MV pass) +
+        double-check our MVs cover everything that moves -> both on the 64-bit list. Rule lines were 'red': my lines had
+        single backslashes (invalid JSON); resent JSON-escaped. DISK: ATN said delete the safe ones + the 90 GB RT dumps:
+        cleanup_1124.py (coord scratchpad; log cleanup_1124_real.log) running ~19:2x: 154 worktrees (links unlinked first,
+        re-checked clean / on origin / no untracked; test .dmp files MOVED to D:\Dev\kept_from_cleanup_1124), copy_1122
+        (28 differing small logs moved to the keep folder first), live scratchpad folders fully in copy_1123. Dry runs:
+        D 227.3 GB + copy_1122 ~47 GB, C 52.3 GB.
+        - [ ] 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attila64.exe + shader hash census;
+        DLSS / RT via the helper first; engine patches by name; Flag Wave MVs + MV coverage check; Sol's 3 items.
         DISK (ATN asked ~19:2x; C: 38 GB / D: 44 GB free): proposal sent, NOTHING deleted: (D) 153 old worktrees (< 11-23,
         clean, HEAD on origin) 136.7 GB (list: coord scratchpad wt_candidates.tsv); scratchpad_copy_1122 46.7 GB (fully in
         copy_1123: folders 45.0 GB + top files 1.70 GB, 0 differ); optional: agent-afb9a119f703260fd build 90.4 GB = 11-17
