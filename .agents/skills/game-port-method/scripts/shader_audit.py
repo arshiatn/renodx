@@ -95,7 +95,8 @@ NEVER_PRIMARY = {'note', 'box', 'override'}
 TRACE_CLAIMS = {'drawn', 'depth-only', 'writes-velocity', 'no-velocity', 'fixed-target', 'mesh-uv', 'fullscreen', 'after-ui',
                 'after-upscale'}
 # a rule cell with one of these fails where traces disagree
-CROSS_CHECKED = ('depth-only', 'writes-velocity', 'no-velocity', 'fullscreen', 'after-ui', 'after-upscale')
+CROSS_CHECKED = ('depth-only', 'writes-velocity', 'no-velocity', 'fullscreen', 'after-ui', 'after-upscale',
+                 'host-state')  # 13.8 MUST-4: the host claim too, where the manifest names one
 SCREEN_COUNTS = (3, 4, 6)  # fullscreen: one or two triangles in all (a trace's count is vertices or indices x instances)
 DRAW_LINE = re.compile(r'^(?:draw|indexed) (\d+) vs ([0-9A-Fa-f]{8})\b')
 WRITTEN = re.compile(r'\b(?:rt\d+|u\d+) (0x[0-9a-f]+) (\d+x\d+)')
@@ -680,6 +681,20 @@ class Context:
         self.rules = getattr(self.pack, 'RULES', {}) if self.pack else {}
         self.roots = {'tools': args.tools, 'bin': args.bin or os.path.join(args.tree, 'bin'), 'repo': args.tree}
         self.files, self.problems, self.notes, self.excluded, self.marks = {}, [], [], {}, {}
+        # 13.8 MUST-1: a rule with 'games' exists only in those games, filtered once here, so fires, overrides, controls,
+        # the sample and the token check all see the same set; 'games' names only games whose manifest uses the pack
+        users = sorted(name for name, game in manifest.GAMES.items() if game['pack'] == self.game['pack'])
+        self.scoped_out = {}
+        for name, rule in self.rules.items():
+            games = rule.get('games')
+            if games is None:
+                continue
+            if not isinstance(games, (tuple, list)) or not games or set(games) - set(users):
+                self.problems.append(f'rule {name}: games {games!r} must be a non-empty list of games whose manifest '
+                                     f'uses the pack {self.game["pack"]} ({", ".join(users)}) (13.8 MUST-1)')
+            if not isinstance(games, (tuple, list)) or args.game not in games:
+                self.scoped_out[name] = games
+        self.rules = {name: rule for name, rule in self.rules.items() if name not in self.scoped_out}
         self.cache_dir = os.path.join(args.tools, 'audit', 'cache', args.game)
 
     def path(self, spec):
@@ -1049,11 +1064,19 @@ def view_free(ctx, vs):
     return f'its VS {vs} reads the View-sized {", ".join(big)} in its position' if big else ''
 
 
+def cross_checked(ctx, axis, verdict, reason):
+    """The trace claim a rule cell of this matrix line is cross-checked with where traced, or None; the host claim only
+    where the manifest names a host (13.8 MUST-4: Tales has none, nothing to cross-check)."""
+    claim = MATRIX[(axis, verdict, reason)].get('trace')
+    return claim if claim in CROSS_CHECKED and (claim != 'host-state' or ctx.game['host_state']) else None
+
+
 def trace_claim(ctx, claim, value, stage, token):
     """A trace claim over every line of the (hash, stage) in EVERY trace of the manifest's folders (R1)."""
     lines = trace_lines(ctx, value, stage)
     every = [t for group in lines.values() for t in group]
-    if claim == 'host-state':
+    host = claim == 'host-state'
+    if host:
         claim = ctx.game['host_state'] or 'none'
     if claim not in TRACE_CLAIMS:
         return f'{token}: the trace claim "{claim}" needs engine markers the checker does not read yet (fails closed)'
@@ -1061,7 +1084,20 @@ def trace_claim(ctx, claim, value, stage, token):
         return f'{token}: {value} {stage} is in no manifest trace'
     if claim == 'depth-only':
         bad = [t for t in every if re.search(r'\brt\d+ 0x', t) or not re.search(r'\bds 0x', t)]
-        return f'{token}: {len(bad)} of {len(every)} lines of {value} in the manifest\'s traces draw colour or no depth' if bad else ''
+        if bad:
+            return f'{token}: {len(bad)} of {len(every)} lines of {value} in the manifest\'s traces draw colour or no depth'
+        if host:  # 13.8 MUST-3: the host (SceneDraw) takes only the scene depth: the depth target its trace binds with colour
+            bad = []
+            for path, group in lines.items():
+                if ('scene-depth', path) not in ctx.marks:
+                    ctx.marks[('scene-depth', path)] = {hit for line in (ctx.text(path) or '').splitlines()
+                                                        if re.search(r'\brt\d+ 0x', line)
+                                                        for hit in re.findall(r'\bds (0x[0-9a-f]+)', line)}
+                bad += [t for t in group if re.search(r'\bds (0x[0-9a-f]+)', t).group(1) not in
+                        ctx.marks[('scene-depth', path)]]
+            return f'{token}: {len(bad)} of {len(every)} lines of {value} draw into a depth target that is not the ' \
+                   'scene depth (the one its trace binds with colour targets): a shadow atlas, custom depth' if bad else ''
+        return ''
     if claim in ('writes-velocity', 'no-velocity'):
         if not ctx.engine['velocity_formats']:  # S0-M5: never passes for an engine without known velocity formats
             return f'{token}: the manifest knows no velocity format of this engine: {claim} fails closed'
@@ -1189,6 +1225,8 @@ def check_token(ctx, row, axis, cell, token, cited, said, fact, kinds):
         return trace_claim(ctx, claim, value, row['stage'], token)
     if kind == 'rule':
         rule = ctx.rules.get(rest)
+        if rest in ctx.scoped_out:
+            return f'{token}: not a rule of {ctx.args.game} (its games: {ctx.scoped_out[rest]!r}) (13.8 MUST-1)'
         if rule is None:
             return f'{token}: unknown rule'
         if (rule['axis'], rule['verdict'], rule['reason']) != (axis, verdict, full_reason):
@@ -1300,8 +1338,8 @@ def check_cell(ctx, row, axis, cited, key):
         primary = [t for t in primary if not t.startswith('decision:')] if any(t.startswith('decision:') for t in primary) else []
     if not primary:
         problems.append(f'{subject}: {cell} without primary evidence that resolves')
-    claim = MATRIX[(axis, verdict, reason)].get('trace')
-    if claim in CROSS_CHECKED and any(t.startswith('rule:') for t in primary) and \
+    claim = cross_checked(ctx, axis, verdict, reason)
+    if claim and any(t.startswith('rule:') for t in primary) and \
             trace_lines(ctx, row['hash'], row['stage']):  # a rule never outvotes the traces
         why = trace_claim(ctx, claim, row['hash'], row['stage'], 'the traces')
         if why:
@@ -1431,8 +1469,8 @@ def apply_rules(ctx, rows):
             if not firing:
                 continue
             name, rule = firing[0]
-            claim = MATRIX[(axis, rule['verdict'], rule['reason'].partition(':')[0])].get('trace')
-            if claim in CROSS_CHECKED and trace_lines(ctx, row['hash'], row['stage']) and \
+            claim = cross_checked(ctx, axis, rule['verdict'], rule['reason'].partition(':')[0])
+            if claim and trace_lines(ctx, row['hash'], row['stage']) and \
                     trace_claim(ctx, claim, row['hash'], row['stage'], 'the traces'):
                 conflicts.append(f'{row["hash"]} {row["stage"]} {axis}: {name} fires, the traces disagree ({claim}): left open')
                 continue
@@ -1621,6 +1659,8 @@ def main(argv=None):
     print(f'  traces: {len(traces)} in the manifest folders (scale read from each: '
           + ', '.join(f'{s} x{n}' for s, n in sorted(scales.items(), key=str)) + '; None never counts as a scale); cited ids: '
           + (', '.join(cited) or 'none'))
+    print(f'  rules of {args.game} (13.8 NIT-2): ' + (', '.join(sorted(ctx.rules)) or 'none')
+          + (f'; scoped out: {", ".join(sorted(ctx.scoped_out))}' if ctx.scoped_out else ''))
     print('\n'.join('  ' + line for line in census_holes(ctx)))
     for stratum, count in sorted(settled.items()):
         print('  settled\t' + '\t'.join(stratum) + f'\t{count}')

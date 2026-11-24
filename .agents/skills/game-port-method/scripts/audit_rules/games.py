@@ -200,7 +200,8 @@ GAMES['romeremastered'] |= {
 # the fullscreen / after-ui / after-upscale claims; _gs a geometry shader in the census, _ws an engine without a View
 # layout; each other variant one more trace: _geo a final target a mesh writes first, _cache a UI cache target after the
 # upscale, _atlas a colour atlas wider than the final image, _drs a viewport-scaled frame, _early an output-size write
-# before the upscale, _twin identical lines around the composite and a shadow VS.
+# before the upscale, _twin identical lines around the composite and a shadow VS, _nobuf (13.8) a view line without a
+# buffer.
 FIXTURE = 'tools:audit/fixture/'
 GAMES['fixture'] = GAMES['tales'] | {
     'pack': 'fixture',
@@ -225,9 +226,18 @@ GAMES['fixture_ng'] = GAMES['fixture'] | {'not_game': {('5F4BCA38', 'vs'): 'a tr
 GAMES['fixture_screen'] = GAMES['fixture'] | {
     'sources': GAMES['fixture']['sources'] + [('R', 'tools', 'audit/fixture/cso_screen', '*.cso', 8)],
     'trace_folders': [FIXTURE + 'traces_screen'], 'trace_floor': 12, 'trace_files': 2}
-for _variant in ('geo', 'cache', 'atlas', 'drs', 'early', 'twin'):
+for _variant in ('geo', 'cache', 'atlas', 'drs', 'early', 'twin', 'nobuf'):
     GAMES[f'fixture_screen_{_variant}'] = GAMES['fixture_screen'] | {
         'trace_folders': [FIXTURE + 'traces_screen', FIXTURE + f'traces_screen_{_variant}'], 'trace_files': 3}
 GAMES['fixture_screen_gs'] = GAMES['fixture_screen'] | {
     'sources': GAMES['fixture_screen']['sources'] + [('R', 'tools', 'audit/fixture/cso_gs', '*.cso', 1)]}
 GAMES['fixture_screen_ws'] = GAMES['fixture_screen'] | {'engine': 'warscape'}
+# 13.8: fixture_host names Expeditions' host claim (SceneDraw: depth-only into the scene depth) and its pack scopes an rt
+# CAPTURED rule to it (MUST-1, MUST-3, MUST-4); fixture_host_tales uses that pack without a host, so the rule is scoped
+# out there; fixture_badscope's pack scopes rules to no game, to a game of another pack, and without controls (MUST-1);
+# fixture_screen_nobuf (above) has a view line without a buffer (X2).
+GAMES['fixture_host'] = GAMES['fixture_screen'] | {
+    'pack': 'fixture_host', 'host_state': 'depth-only',
+    'trace_folders': [FIXTURE + 'traces_screen', FIXTURE + 'traces_host'], 'trace_files': 3}
+GAMES['fixture_host_tales'] = GAMES['fixture_host'] | {'host_state': None}
+GAMES['fixture_badscope'] = GAMES['fixture'] | {'pack': 'fixture_badscope'}
