@@ -90,6 +90,9 @@ struct Shaders {
   // MotionShader::record_shader), recorded at the frame's end (Resolve), and their redraw (unit_pixel_shader without
   // records: motion_unit_recorded.ps) skips hidden pixels early.
   std::span<const uint8_t> unit_records_compute_shader;
+  // The unit records' per-run constants in the motion rings' slots (Attila); else written into one buffer before each
+  // run's dispatch.
+  bool unit_records_in_ring = false;
   std::span<const uint8_t> capture_pixel_shader;
   std::span<const uint8_t> rigid_compute_shader;
 };
@@ -302,6 +305,22 @@ inline bool MakeMotionRing(ID3D11Device* device, MotionRing* ring) {
          && SUCCEEDED(device->CreateQuery(&query_desc, ring->read_done.GetAddressOf()));
 }
 
+// Slots of the current motion ring mapped for writing (MapMotionSlots): the ring, the first slot's address and index,
+// how many.
+struct MotionSlots {
+  ID3D11Buffer* buffer = nullptr;
+  uint8_t* mapped = nullptr;
+  UINT first_slot = 0;
+  UINT count = 0;
+};
+
+// A dispatch of RecordUnits: motion_unit_records.cs's constants (the first record, the count, campaign, stale) and the
+// animation view its draws read (held by their UnitRecordDraw).
+struct UnitRecordRun {
+  std::array<uint32_t, 4> range = {};
+  ID3D11ShaderResourceView* animation_map = nullptr;
+};
+
 // The immediate context under ReShade's command list (looked up again when that changes).
 inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) {
   thread_local uint64_t wrapped = 0;
@@ -333,11 +352,13 @@ struct DeviceObjects {
   // never had that one (discarded: its first map) or has finished its draws (its event: no-overwrite from its first
   // slot), else to a new one (discarded) up to MOTION_RINGS, and there to the next discarded (the driver may wait for
   // its draws). Empty where the device has no constant offsets or no-overwrite maps of constant buffers
-  // (motion_constants then). The ring written, its next slot, the last one's first constant (UINT_MAX: none yet) and
-  // its constants.
+  // (motion_constants then). The unit records' runs take slots too (Shaders::unit_records_in_ring). The ring written,
+  // whether any was, its next slot, the last moving draw's first constant (UINT_MAX: none to bind again) and its
+  // constants.
   std::vector<MotionRing> motion_rings;
   ID3D11DeviceContext1* context1 = nullptr;  // `context`'s (the same object: no reference)
   size_t current_ring = 0;
+  bool ring_started = false;
   UINT ring_next = MOTION_RING_SLOTS;
   UINT ring_first = UINT_MAX;
   MotionConstants ring_uploaded = {};
@@ -413,6 +434,7 @@ struct DeviceObjects {
   UINT unit_record_count = 0;
   std::vector<UnitRecordDraw> unit_record_draws;
   size_t unit_record_draws_recorded = 0;
+  std::vector<UnitRecordRun> unit_record_runs;  // RecordUnits' (kept: no allocation a call)
   std::thread::id unit_record_thread;
   // In-draw: the vertex shaders (as Shaders::shaders; null: none), the targets (R16G16_FLOAT: the motion in render
   // pixels; R32_FLOAT: the depth, 0 not written; the motion target's size, cleared with it) and the blend states (the
@@ -613,6 +635,51 @@ inline void RestoreBindings(ID3D11DeviceContext* native) {
       view->Release();
     }
   }
+}
+
+// `count` slots of the motion rings mapped for writing (fewer: those left in the current ring, a turn never spans two),
+// the caller writes and unmaps them. A ring's slots since it took over are new to the GPU (discarded, or the GPU done
+// with its draws): written without a wait. A full one hands over first (its event ended here: every draw or dispatch
+// that read it was issued, so the caller issues a turn's before mapping the next). The caller holds the lock. False:
+// the map failed.
+inline bool MapMotionSlots(ID3D11DeviceContext* native, ID3D11Device* device, UINT count, MotionSlots* slots) {
+  auto& objects = state.objects;
+  auto& rings = objects.motion_rings;
+  size_t next = objects.current_ring;
+  D3D11_MAP map_type = D3D11_MAP_WRITE_NO_OVERWRITE;
+  if (objects.ring_next == MOTION_RING_SLOTS) {
+    if (objects.ring_started) {
+      // An event never read back ended again (at the cap, after a failed map): the debug layer may warn
+      // QUERY_END_ABANDONING_PREVIOUS_RESULTS, harmless.
+      native->End(rings[objects.current_ring].read_done.Get());
+      rings[objects.current_ring].ended = true;
+      next = (objects.current_ring + 1) % rings.size();
+    }
+    if (!rings[next].ended) {
+      map_type = D3D11_MAP_WRITE_DISCARD;
+    } else if (native->GetData(rings[next].read_done.Get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) != S_OK) {
+      map_type = D3D11_MAP_WRITE_DISCARD;
+      if (MotionRing grown; rings.size() < MOTION_RINGS && MakeMotionRing(device, &grown)) {
+        next = objects.current_ring + 1;
+        rings.insert(rings.begin() + static_cast<std::ptrdiff_t>(next), std::move(grown));
+        renodx::utils::log::i("[Total War] Object motion: the moving draws' constants in ", rings.size(),
+                              " rings (the GPU still reads the others).");
+      }
+    }
+  }
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  if (FAILED(native->Map(rings[next].buffer.Get(), 0, map_type, 0, &mapped))) return false;
+  if (objects.ring_next == MOTION_RING_SLOTS) {
+    objects.current_ring = next;
+    objects.ring_next = 0;
+  }
+  objects.ring_started = true;
+  *slots = {.buffer = rings[next].buffer.Get(),
+            .mapped = static_cast<uint8_t*>(mapped.pData) + (size_t{objects.ring_next} * MOTION_RING_SLOT_BYTES),
+            .first_slot = objects.ring_next,
+            .count = std::min(count, MOTION_RING_SLOTS - objects.ring_next)};
+  objects.ring_next += slots->count;
+  return true;
 }
 
 // A moving draw of the main view (the host's view). `draw_again` (before the draw: true when it then writes the motion
@@ -1166,52 +1233,20 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
   const bool ring = !objects.motion_rings.empty() && view.camera_copies.empty();
   ID3D11Buffer* motion_constants = objects.motion_constants.Get();
   if (ring) {
-    auto& rings = objects.motion_rings;
     if (objects.ring_first == UINT_MAX || std::memcmp(&constants, &objects.ring_uploaded, sizeof(constants)) != 0) {
-      // A ring's slots since it took over are new to the GPU (discarded, or the GPU done with its draws): written without
-      // a wait. A full one hands over (its event ended here: every draw that read it was issued, this one reads the next).
-      size_t next = objects.current_ring;
-      D3D11_MAP map_type = D3D11_MAP_WRITE_NO_OVERWRITE;
-      if (objects.ring_next == MOTION_RING_SLOTS) {
-        if (objects.ring_first != UINT_MAX) {
-          // An event never read back ended again (at the cap, after a failed map): the debug layer may warn
-          // QUERY_END_ABANDONING_PREVIOUS_RESULTS, harmless.
-          native->End(rings[objects.current_ring].read_done.Get());
-          rings[objects.current_ring].ended = true;
-          next = (objects.current_ring + 1) % rings.size();
-        }
-        if (!rings[next].ended) {
-          map_type = D3D11_MAP_WRITE_DISCARD;
-        } else if (native->GetData(rings[next].read_done.Get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) != S_OK) {
-          map_type = D3D11_MAP_WRITE_DISCARD;
-          if (MotionRing grown; rings.size() < MOTION_RINGS && MakeMotionRing(device, &grown)) {
-            next = objects.current_ring + 1;
-            rings.insert(rings.begin() + static_cast<std::ptrdiff_t>(next), std::move(grown));
-            renodx::utils::log::i("[Total War] Object motion: the moving draws' constants in ", rings.size(),
-                                  " rings (the GPU still reads the others).");
-          }
-        }
-      }
-      ID3D11Buffer* const written = rings[next].buffer.Get();
-      D3D11_MAPPED_SUBRESOURCE mapped = {};
-      if (FAILED(native->Map(written, 0, map_type, 0, &mapped))) {
+      MotionSlots slot;
+      if (!MapMotionSlots(native, device, 1, &slot)) {
         release_targets();
         return false;
       }
-      if (objects.ring_next == MOTION_RING_SLOTS) {
-        objects.current_ring = next;
-        objects.ring_next = 0;
-      }
       // The slot's constants past MotionConstants 0, as past the one buffer's end.
-      auto* slot = static_cast<uint8_t*>(mapped.pData) + (size_t{objects.ring_next} * MOTION_RING_SLOT_BYTES);
-      std::memcpy(slot, &constants, sizeof(constants));
-      std::memset(slot + sizeof(constants), 0, MOTION_RING_SLOT_BYTES - sizeof(constants));
-      native->Unmap(written, 0);
-      objects.ring_first = objects.ring_next * MOTION_RING_SLOT_CONSTANTS;
+      std::memcpy(slot.mapped, &constants, sizeof(constants));
+      std::memset(slot.mapped + sizeof(constants), 0, MOTION_RING_SLOT_BYTES - sizeof(constants));
+      native->Unmap(slot.buffer, 0);
+      objects.ring_first = slot.first_slot * MOTION_RING_SLOT_CONSTANTS;
       objects.ring_uploaded = constants;
-      ++objects.ring_next;
     }
-    motion_constants = rings[objects.current_ring].buffer.Get();
+    motion_constants = objects.motion_rings[objects.current_ring].buffer.Get();
   } else if (std::memcmp(&constants, &objects.motion_uploaded, sizeof(constants)) != 0 || !view.camera_copies.empty()) {
     native->UpdateSubresource(objects.motion_constants.Get(), 0, nullptr, &constants, 0, 0);
     objects.motion_uploaded = constants;
@@ -1724,7 +1759,8 @@ inline void RestoreComputeBindings(ID3D11DeviceContext* native, const GameComput
 // The units' records not yet recorded (streamed out by their draws) into this frame's table and bone pool
 // (motion_unit_records.cs: u1-u5 as motion_unit_records.hlsli), consecutive draws on one animation texture in one dispatch
 // (its bones as they are now), those whose texture the game wrote since their draw (stale) without bones, under NVIDIA's
-// UAV overlap. The caller holds the lock and keeps the game's compute bindings.
+// UAV overlap. Each dispatch's constants in a motion ring's slot (Shaders::unit_records_in_ring, the rings made on this
+// context), else written into one buffer before it. The caller holds the lock and keeps the game's compute bindings.
 inline void RecordUnits(ID3D11DeviceContext* native) {
   auto& objects = state.objects;
   const auto& draws = objects.unit_record_draws;
@@ -1735,16 +1771,17 @@ inline void RecordUnits(ID3D11DeviceContext* native) {
   const std::array<ID3D11UnorderedAccessView*, 6> unit_outputs = {
       nullptr, objects.placement_key_uavs[current].Get(), objects.placement_uavs[current].Get(), objects.bone_uavs[current].Get(),
       objects.bone_key_uavs[current].Get(), objects.bone_entry_uavs[current].Get()};
-  ID3D11Buffer* unit_constants = objects.unit_record_constants.Get();
   ID3D11ShaderResourceView* unit_records = objects.unit_records_srv.Get();
   native->CSSetShader(objects.unit_records_compute.Get(), nullptr, 0);
-  native->CSSetConstantBuffers(0, 1, &unit_constants);
   native->CSSetShaderResources(0, 1, &unit_records);
   native->CSSetUnorderedAccessViews(0, static_cast<UINT>(unit_outputs.size()), unit_outputs.data(), nullptr);
   const auto& overlap = state.uav_overlap;
   if (overlap.begin != nullptr) {
     overlap.begin(native, 0);
   }
+  // The runs: consecutive draws on one animation texture (stale alike, their records adjacent) in one dispatch.
+  auto& runs = objects.unit_record_runs;
+  runs.clear();
   for (size_t first = objects.unit_record_draws_recorded; first < draws.size();) {
     size_t next = first + 1;
     UINT count = draws[first].count;
@@ -1753,12 +1790,44 @@ inline void RecordUnits(ID3D11DeviceContext* native) {
       count += draws[next].count;
       ++next;
     }
-    const std::array<uint32_t, 4> range = {draws[first].first, count, campaign, (draws[first].stale ? 1u : 0u)};
-    native->UpdateSubresource(unit_constants, 0, nullptr, range.data(), 0, 0);
-    ID3D11ShaderResourceView* animation_map = draws[first].animation_map.Get();
-    native->CSSetShaderResources(ANIMATION_SRV_SLOT, 1, &animation_map);
-    native->Dispatch((count + 63) / 64, 1, 1);
+    runs.push_back({.range = {draws[first].first, count, campaign, (draws[first].stale ? 1u : 0u)},
+                    .animation_map = draws[first].animation_map.Get()});
     first = next;
+  }
+  const auto dispatch = [native](const UnitRecordRun& run) {
+    native->CSSetShaderResources(ANIMATION_SRV_SLOT, 1, &run.animation_map);
+    native->Dispatch((run.range[1] + 63) / 64, 1, 1);
+  };
+  size_t done = 0;
+  if (state.shaders.unit_records_in_ring && !objects.motion_rings.empty() && objects.context == native) {
+    // Turn by turn: the turn's slots mapped, written, unmapped, then its dispatches, all issued before the next turn's
+    // map (a hand-over there ends this ring's event, which must follow every dispatch that reads it).
+    while (done < runs.size()) {
+      MotionSlots slots;
+      if (!MapMotionSlots(native, objects.device.Get(), static_cast<UINT>(runs.size() - done), &slots)) break;
+      for (UINT slot = 0; slot < slots.count; ++slot) {
+        // The shader reads the slot's first constant.
+        std::memcpy(slots.mapped + (size_t{slot} * MOTION_RING_SLOT_BYTES), runs[done + slot].range.data(),
+                    sizeof(UnitRecordRun::range));
+      }
+      native->Unmap(slots.buffer, 0);
+      for (UINT slot = 0; slot < slots.count; ++slot) {
+        const UINT first_constant = (slots.first_slot + slot) * MOTION_RING_SLOT_CONSTANTS;
+        objects.context1->CSSetConstantBuffers1(0, 1, &slots.buffer, &first_constant, &MOTION_RING_SLOT_CONSTANTS);
+        dispatch(runs[done + slot]);
+      }
+      done += slots.count;
+    }
+    // The last moving draw's slot may be in a ring handed over here: the next one writes its own.
+    objects.ring_first = UINT_MAX;
+  }
+  if (done < runs.size()) {
+    ID3D11Buffer* unit_constants = objects.unit_record_constants.Get();
+    native->CSSetConstantBuffers(0, 1, &unit_constants);
+    for (; done < runs.size(); ++done) {
+      native->UpdateSubresource(unit_constants, 0, nullptr, runs[done].range.data(), 0, 0);
+      dispatch(runs[done]);
+    }
   }
   if (overlap.end != nullptr) {
     overlap.end(native);

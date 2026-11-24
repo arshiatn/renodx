@@ -23,12 +23,20 @@
 //    and initialized again, then a new shader object with a new depth view; its patched version made once again (the last
 //    draw's look-up of it not kept), the motion as in case 4.
 // 9. Motion turned off (SetActive): the game's depth view the last draw held let go.
+// 4b-4d and 10 (run.ps1 runs every case with the unit records' constants in one buffer and with `in_ring`, in the motion
+// rings' slots, and compares their dumps byte for byte): 4b case 4 after 478 draws the pack hook records at a second pack
+// (in_ring: the frame's 65 runs start at the rings' slot 1,021 and hand over inside RecordUnits); 4c case 4 with the rings
+// dropped after frame 2; 4d one soldier whose draw right after the records has the last draw's constants, the records'
+// run having handed over (in_ring); 10 case 4 with 8,320 soldiers, a different one at every draw on the next page (8,320
+// runs in one RecordUnits, more than the 8 rings' slots: some ring written twice inside the call), the nearest row
+// checked.
 // With RENODX_TW_MOTION_DUMP=<file> every read frame's motion targets go into <file> byte for byte (old vs new builds;
 // /DBEFORE_RINGS leaves out the rings' checks for the header before them).
 // Then the fix's cost timed: on the game's thread the texture write check and the pack hook, and a pack round's records on
 // 10 pages on the CPU and the GPU (timestamps: real numbers with `hardware` only).
 // Built with /DGAME_CALLS_ONLY the game's calls alone reach the addon (no write event, no pack hook), as before the fix.
 // tests.exe <the built shaders' folder (motion_unit_*.cso)> <the game's shaders' folder (0x5F9CD405.vs_4_0.cso)> [hardware]
+// [in_ring]
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -43,8 +51,10 @@
 #include <fstream>
 #include <iterator>
 #include <mutex>
+#include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 #include "src/games/twattila/object_motion.hpp"
@@ -54,6 +64,8 @@ namespace om = twattila::object_motion;
 
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (false)
 
+// settings.hpp's overlay title (through device_loss.hpp's mods/swapchain.hpp) reads the add-on's NAME.
+extern "C" __declspec(dllexport) const char* const NAME = "Unit pack rounds test";
 static std::mutex log_mutex;
 static std::vector<std::string> log_lines;
 extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) {
@@ -319,7 +331,7 @@ static void DrawSoldier(const Page& page, UINT instance) {
   const size_t rings_before = objects.motion_rings.size();
   bool next_ended = false;
   bool next_done = false;
-  if (ring_next == om::internal::MOTION_RING_SLOTS && rings_before != 0 && objects.ring_first != UINT_MAX) {
+  if (ring_next == om::internal::MOTION_RING_SLOTS && rings_before != 0 && objects.ring_started) {
     const auto& next = objects.motion_rings[(objects.current_ring + 1) % rings_before];
     next_ended = next.ended;
     next_done = next.ended && context->GetData(next.read_done.Get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_OK;
@@ -391,7 +403,7 @@ static std::vector<uint8_t> ReadTarget(ID3D11ShaderResourceView* view, UINT byte
   desc.BindFlags = 0;
   desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
   ComPtr<ID3D11Texture2D> staging;
-  device->CreateTexture2D(&desc, nullptr, staging.GetAddressOf());
+  if (FAILED(device->CreateTexture2D(&desc, nullptr, staging.GetAddressOf()))) throw std::runtime_error("target staging texture");
   context->CopyResource(staging.Get(), texture.Get());
   D3D11_MAPPED_SUBRESOURCE mapped = {};
   if (FAILED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) throw std::runtime_error("target map");
@@ -544,9 +556,31 @@ static int TwoPacks(const char* name, Hook pack_hook, Pose a_moved, bool in_draw
 // 2 and 3 all 0; frame 4 every pose 0.1 m further in x: each soldier that move's motion (its own bones found, no other's).
 // Case 5: every soldier drawn `repeats` times, one after another round the pages. `after_second_frame`: called then.
 // `clear_depth`: the depth cleared before each round (in-draw: every round's draws pass the game's depth test and write
-// the motion, the last round's constants in the dump; else only each soldier's first draw).
+// the motion, the last round's constants in the dump; else only each soldier's first draw). `packed_draws`: that many
+// draws round the pages first, then the pages packed again (the same poses: the pack hook records those draws' records)
+// before the rounds. `own_soldiers`: every draw its own soldier (instance MANY_FIRST + its number in the frame) on its
+// round's page, the nearest row's soldiers in view checked.
+constexpr UINT MANY_FIRST = 67;
+constexpr UINT MANY_ROW = 96;  // own soldiers a metre apart in x, each row of them a metre further away
+// Each frame's Resolve (ResolveFrame): the motion rings' next slot before and after it, whether the current ring changed
+// in it, the unit records' runs it dispatched.
+struct ResolveRecord {
+  UINT slot = 0;
+  UINT end = 0;
+  bool hand_over = false;
+  size_t runs = 0;
+};
+static std::vector<ResolveRecord> resolves;
+static void ResolveFrame() {
+  const auto& objects = om::internal::state.objects;
+  const size_t ring_before = objects.current_ring;
+  const UINT slot = objects.ring_next;
+  om::Resolve(context.Get(), current_frame);
+  resolves.push_back({.slot = slot, .end = objects.ring_next, .hand_over = objects.current_ring != ring_before,
+                      .runs = objects.unit_record_runs.size()});
+}
 static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = false, void (*after_second_frame)() = nullptr,
-                          bool clear_depth = false) {
+                          bool clear_depth = false, UINT packed_draws = 0, bool own_soldiers = false) {
   Restart(Hook::SAME_THREAD, in_draw);
   constexpr UINT PAGES = 65;
   constexpr float STEP = 0.1f;
@@ -554,25 +588,42 @@ static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = fal
   for (UINT index = 0; index < PAGES; ++index) {
     pages.push_back(MakePage());
   }
+  resolves.clear();
   int failures = 0;
   for (int frame = 1; frame <= 4; ++frame) {
     BeginFrame();
     timing = (frame >= 2);
-    std::vector<std::pair<UINT, Pose>> soldiers;
+    std::vector<Pose> poses;
     for (UINT index = 0; index < PAGES; ++index) {
-      const Pose pose = {.x = 0.004f * static_cast<float>(index) + (frame == 4 ? STEP : 0.f), .y = 0.f};
-      WritePage(pages[index], {{0u, pose}});
-      soldiers.emplace_back(2 + index, pose);
+      poses.push_back({.x = 0.004f * static_cast<float>(index) + (frame == 4 ? STEP : 0.f), .y = 0.f});
+      WritePage(pages[index], {{0u, poses.back()}});
+    }
+    if (packed_draws != 0) {
+      for (UINT draw = 0; draw < packed_draws; ++draw) {
+        DrawSoldier(pages[draw % PAGES], 2 + (draw % PAGES));
+      }
+      for (UINT index = 0; index < PAGES; ++index) {
+        WritePage(pages[index], {{0u, poses[index]}});
+      }
+    }
+    std::vector<std::pair<UINT, Pose>> soldiers;
+    for (UINT index = 0; index < PAGES && !own_soldiers; ++index) {
+      soldiers.emplace_back(2 + index, poses[index]);
+    }
+    for (UINT soldier = 0; soldier < MANY_ROW && own_soldiers; ++soldier) {
+      if (std::abs(placements[MANY_FIRST + soldier][0]) <= 8.f) {
+        soldiers.emplace_back(MANY_FIRST + soldier, poses[soldier % PAGES]);
+      }
     }
     for (UINT repeat = 0; repeat < repeats; ++repeat) {
       if (clear_depth) {
         context->ClearDepthStencilView(depth_view.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
       }
       for (UINT index = 0; index < PAGES; ++index) {
-        DrawSoldier(pages[index], 2 + index);
+        DrawSoldier(pages[index], (own_soldiers ? MANY_FIRST + (repeat * PAGES) + index : 2 + index));
       }
     }
-    om::Resolve(context.Get(), current_frame);
+    ResolveFrame();
     // The game's b12 back after the frame's moving draws (whichever ring was bound last: RestoreBindings).
     ComPtr<ID3D11Buffer> vs_motion_slot;
     ComPtr<ID3D11Buffer> ps_motion_slot;
@@ -602,6 +653,45 @@ static int SixtyFivePages(const char* name, UINT repeats = 1, bool in_draw = fal
     failures += (good ? 0 : 1);
   }
   return failures;
+}
+
+// Case 4d: one soldier (instance 2 on page 0) and a draw without bones (no animation view: no records, constants of its
+// own). Frame 1: 511 pairs of the two (each draw a slot of its own, the soldier's records one run); frame 2: the soldier
+// alone, its draw in the motion rings' last slot, so with the records in the rings its run hands over; frame 3: the
+// soldier again, its constants equal to frame 2's draw (with the records in the rings: written again, not frame 2's slot
+// number read in the next ring). The soldier 0 px and written in frames 2 and 3.
+static int EqualAfterRecords(const char* name) {
+  Restart(Hook::SAME_THREAD);
+  const Page page = MakePage();
+  const Page no_bones = {};
+  constexpr UINT PAIRS = 511;
+  resolves.clear();
+  int failures = 0;
+  for (int frame = 1; frame <= 3; ++frame) {
+    BeginFrame();
+    timing = false;
+    WritePage(page, {{0u, Pose{}}});
+    for (UINT pair = 0; pair < (frame == 1 ? PAIRS : 0u); ++pair) {
+      DrawSoldier(no_bones, 2);
+      DrawSoldier(page, 2);
+    }
+    if (frame != 1) {
+      DrawSoldier(page, 2);
+    }
+    ResolveFrame();
+    const auto motion = ReadMotion({{2u, Pose{}}});
+    if (frame == 1) continue;
+    const bool good = motion[0].written && Near(motion[0].x, 0.f) && Near(motion[0].y, 0.f);
+    std::printf("%s frame %d: (%.3f, %.3f) px expected (0, 0), written %d: %s\n", name, frame, motion[0].x, motion[0].y,
+                motion[0].written, good ? "OK" : "WRONG");
+    failures += (good ? 0 : 1);
+  }
+  return failures;
+}
+
+// Case 4c: the motion rings dropped after frame 2 (as on a context without D3D11.1): the one buffer and today's records.
+static void DropRings() {
+  om::internal::state.objects.motion_rings.clear();
 }
 
 // Case 8: the game's pixel shader made again between frames, as ReShade's pipeline events tell object_motion: (a) its
@@ -639,17 +729,24 @@ static int PatchedAgain(const char* name) {
 
 int main(int argc, char** argv) {
   if (argc < 3) {
-    std::printf("usage: tests.exe <built shaders folder> <game shaders folder> [hardware]\n");
+    std::printf("usage: tests.exe <built shaders folder> <game shaders folder> [hardware] [in_ring]\n");
     return 2;
   }
   const std::string built = argv[1];
   const std::string game = argv[2];
-  // "hardware": the same on the GPU's driver, for its CPU timings (WARP's runtime is slower).
-  const bool hardware = (argc > 3 && std::string(argv[3]) == "hardware");
+  // "hardware": the same on the GPU's driver, for its CPU timings (WARP's runtime is slower). "in_ring": the unit
+  // records' constants in the motion rings (Shaders::unit_records_in_ring, Attila's), its dump byte-equal to the run
+  // without.
+  const auto given = [argc, argv](std::string_view option) {
+    return std::ranges::any_of(std::span(argv + 3, argv + argc), [option](const char* arg) { return arg == option; });
+  };
+  const bool hardware = given("hardware");
+  const bool in_ring = given("in_ring");
   const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
   CHECK(SUCCEEDED(D3D11CreateDevice(nullptr, (hardware ? D3D_DRIVER_TYPE_HARDWARE : D3D_DRIVER_TYPE_WARP), nullptr, 0, &level, 1,
                                     D3D11_SDK_VERSION, device.GetAddressOf(), nullptr, context.GetAddressOf())));
-  std::printf("device: %s\n", (hardware ? "hardware" : "WARP"));
+  std::printf("device: %s, the unit records' constants %s\n", (hardware ? "hardware" : "WARP"),
+              (in_ring ? "in the motion rings" : "in one buffer"));
   cmd_list.native = context;
   if (const char* dump_path = std::getenv("RENODX_TW_MOTION_DUMP"); dump_path != nullptr) {
     dump.open(dump_path, std::ios::binary | std::ios::trunc);
@@ -662,7 +759,8 @@ int main(int argc, char** argv) {
   const auto game_code = Load(game + "\\0x5F9CD405.vs_4_0.cso");
   CHECK(!motion_draw_unit_code.empty() && !motion_unit_code.empty() && !unit_point_code.empty() && !unit_recorded_code.empty() && !unit_records_code.empty() && !game_code.empty());
   motion_shaders[0] = {.hash = GAME_VS_HASH, .motion_shader = motion_unit_code, .kind = om::MotionKind::UNIT, .record_shader = unit_point_code};
-  om::internal::state.shaders = {.shaders = motion_shaders, .unit_pixel_shader = unit_recorded_code, .unit_records_compute_shader = unit_records_code};
+  om::internal::state.shaders = {.shaders = motion_shaders, .unit_pixel_shader = unit_recorded_code, .unit_records_compute_shader = unit_records_code,
+                                 .unit_records_in_ring = in_ring};
   om::internal::make_view.store(&MakeView);
 
   CHECK(SUCCEEDED(device->CreateVertexShader(game_code.data(), game_code.size(), nullptr, game_vertex_shader.GetAddressOf())));
@@ -725,10 +823,15 @@ int main(int argc, char** argv) {
   }
   // Instances: A at x -3, B at x +3 (cases 1-3), then 65 on a 9 x 8 grid a metre apart, each row 1.5 m further away (case 4:
   // the placement table is by x and z, y up; soldiers stacked at one x and z would share its cells' 8 slots); bones at row 0.
+  // Then case 10's 8,320 (MANY_FIRST on): MANY_ROW a row a metre apart in x, each row a metre further away.
   placements = {{-3.f, 0.f, DEPTH}, {3.f, 0.f, DEPTH}};
   for (UINT index = 0; index < 65; ++index) {
     const auto row = static_cast<float>(index / 9);
     placements.push_back({-4.f + static_cast<float>(index % 9), -3.5f + row, DEPTH + (1.5f * row)});
+  }
+  constexpr UINT MANY_ROUNDS = 128;
+  for (UINT index = 0; index < MANY_ROUNDS * 65; ++index) {
+    placements.push_back({static_cast<float>(index % MANY_ROW) - 48.f, 0.f, DEPTH + static_cast<float>(index / MANY_ROW)});
   }
   {
     std::vector<float> data(placements.size() * 8 * 4, 0.f);
@@ -813,6 +916,35 @@ int main(int argc, char** argv) {
   failures += SixtyFivePages("7c in-draw 65 pages x 140, the depth cleared each round", 140, true, nullptr, true);
   rings_after("7c in-draw 65 pages x 140, the depth cleared each round");
   print_draws("in-draw unit motion draw, 4,550 and 9,100 a frame");
+  // The unit records' constants in the motion rings (in_ring; each case's dump byte-equal to the run without): the rings'
+  // hand-over inside RecordUnits (4b: 2 x 478 + 65 = 1,021 slots taken when the frame's 65 runs are recorded), the rings
+  // dropped (4c: today's path), a draw with the last one's constants right after the records (4d), more runs in one
+  // RecordUnits than the rings' slots (10: some ring written twice inside the call).
+  const auto hand_over = [&](const char* name, size_t frame, UINT slot) {
+    const bool good = !in_ring || (resolves[frame].slot == slot && resolves[frame].hand_over);
+    std::printf("%s: frame %zu's records from slot %u, the ring handed over in them %d: %s\n", name, frame + 1, resolves[frame].slot,
+                static_cast<int>(resolves[frame].hand_over), good ? "OK" : "WRONG");
+    failures += (good ? 0 : 1);
+  };
+  failures += SixtyFivePages("4b 65 pages after 478 packed draws", 1, false, nullptr, false, 478);
+  hand_over("4b 65 pages after 478 packed draws", 0, 1021);
+  failures += SixtyFivePages("4c 65 pages, the rings dropped after frame 2", 1, false, &DropRings);
+  failures += EqualAfterRecords("4d one soldier, its constants again after the records");
+  hand_over("4d one soldier, its constants again after the records", 1, om::internal::MOTION_RING_SLOTS);
+  failures += SixtyFivePages("10 8,320 soldiers, a page change at every draw", MANY_ROUNDS, false, nullptr, false, 0, true);
+  // Every frame's 8,320 runs in one RecordUnits; in the rings each took the next slot (the slot after them as the count
+  // says), so the call handed over (slot + runs - 1) / 1,024 times: 8 or more writes some ring twice. Else no slot taken.
+  for (size_t frame = 0; frame < resolves.size(); ++frame) {
+    constexpr UINT SLOTS = om::internal::MOTION_RING_SLOTS;
+    const auto& resolve = resolves[frame];
+    const size_t last = resolve.slot + resolve.runs - 1;
+    const size_t hand_overs = (in_ring ? last / SLOTS : 0);
+    const bool good = resolve.runs == size_t{MANY_ROUNDS} * 65
+                      && (in_ring ? resolve.end == (last % SLOTS) + 1 && hand_overs >= om::internal::MOTION_RINGS : resolve.end == resolve.slot);
+    std::printf("10 8,320 soldiers: frame %zu's %zu runs from slot %u to %u, %zu hand-overs in the call (%zu rings): %s\n", frame + 1,
+                resolve.runs, resolve.slot, resolve.end, hand_overs, om::internal::state.objects.motion_rings.size(), good ? "OK" : "WRONG");
+    failures += (good ? 0 : 1);
+  }
   failures += SixtyFivePages("8a in-draw 65 pages, the game's pixel shader's handle made again", 1, true, &SamePixelShaderAgain);
   failures += PatchedAgain("8a in-draw 65 pages, the game's pixel shader's handle made again");
   failures += SixtyFivePages("8b in-draw 65 pages, a new game pixel shader and depth view", 1, true, &NewPixelShaderAndDepthView);
