@@ -812,10 +812,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Coord GPU window: s1a_ item t (5090, gpu_job.lock): powershell -NoProfile -Execu ... | ?
 - PARKED (ATN hold 11-24): trc_ fixes MUST-1..3 + SHOULDs -> rvg_ re-check -> merg ... | ?
 - s64a_ (Opus xHigh, read-only) 64-bit loader study -> round_notes/attila64/study_ ... | ?
-- s64c_ (Opus xHigh, read-only) PerfFix 7.5 vs ours + ATN's notes taken in + RULE ... | ?
 - After s64a_: port map of OUR Attila work onto 64-bit (carry over / re-port / moo ... | ?
 - ATN go needed before: downloads (each named with source + size), building the lo ... | ?
-- After s64c_: package builder (Opus xHigh) writes the package against 7.5 (notes ... | ?
+- az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches ( ... | ?
+- Runtime files (SDL2 2.24.1, steam_api64.dll, GCC 4.9 libstdc++ / libgcc_s, packs ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -14984,8 +14984,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         vs Reset sliders 104.7 vs 24.0 ms (fa4o_: 2/3 follows Unit Detail x4 + animation sliders; +14.2 sort-chain wait,
         +16.7 driver GPU-sync waits).
         - [ ] s64a_ (Opus xHigh, read-only) 64-bit loader study -> round_notes/attila64/study_1124/s64a_loader.md.
-        - [ ] s64c_ (Opus xHigh, read-only) PerfFix 7.5 vs ours + ATN's notes taken in + RULE H impact of 7.5's new sites ->
-        study_1124/s64c_perffix75.md.
+        - [x] s64c_ DONE (attila64/study_1124/s64c_perffix75.md + s64c_handback.md, PRIVATE; ~27 min): 7.1-7.5 add 5 game-code
+        fixes, all default on (parallel soldier-list sort 7.4, unit detail cull 7.1 = LOOK change 'light', UI card cache,
+        sound guard, animation prefetch 7.2) + flag wave, F8 panel, menu label, mutex Local\AttilaEngineFix_<pid>, 64-bit
+        plugin (mimalloc). Taken in as sent: ONLY the 11-15 animation prefetch (+0x182E0DA). 4 of our 16 patches apply to
+        7.5. RULE H: no 7.5 byte overlaps ours (nearest: our truncation block vs his part-cull site, 0x2A apart). PK4
+        EARLY UNIT SORT NEVER STARTS WITH 7.4 / 7.5 (default patch of +0x17B92D0 trips H1; G2-own claim false from 7.4;
+        back only with parallel_sort=0 / < 8 CPUs / sorts off). PK5 / PK3 carry / render_mt clear. If 7.5 installed: table
+        PATCHED 42 -> 52, CHECKED 82 -> 90 (rows in the hand-back). Overlap: his Upscaling-and-Framegen = our helper (never
+        both); flag-pack banners wave in VS only (our MV / RT miss them); UI card cache likely stands down under ReShade
+        (unverified); part cull shrinks what we measure (use culling=off). Gaps in our CPU work: battle UI walk ~1.6 ms main
+        (his number), part cull, sound pool crash, FG pacing check.
         - [ ] After s64a_: port map of OUR Attila work onto 64-bit (carry over / re-port / moot / new: in-process DLSS + RT,
         multi-thread recording in his D3D11 backend), effort + order -> coord synthesis for ATN.
         ATN 11-24 ~18:3x: keep OUR DLSS / FG (JSa25's Upscaling-and-Framegen add-on not needed); idea = future Attila
@@ -14998,9 +15007,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 11-24 ~18:3x: finish the heapfix AUTHOR PACKAGE (PK7) NOW (we move to 64-bit; ATN hands it over on the 64-bit
         Discord). s64c_ got added scope (sent): status of every package item vs 7.5 / his 64-bit plugin (exit-crash pin,
         paused_write all threads, OUR patch-site list, keep / revert of earlier items, FCA notes, 11-19 zip fixes).
-        - [ ] After s64c_: package builder (Opus xHigh) writes the package against 7.5 (notes + patches where still
-        relevant; honest: no MT-on end-batch numbers) -> coord check (no private / Linux-derived text) -> zip in Downloads
-        -> ATN sends.
+        - [ ] az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches (exit pin at heapfix.c:705,
+        paused_write all threads, sort prefetch P, x87 watch, memwatch low-water, fisttp, gather / shadow prefetch, varying
+        key bytes), withdrawn items, NOTES.md incl. 64-bit relevance + our patch-site list -> Downloads\AttilaCPUPerfFix_7.5_
+        notes_2026-11-24.zip -> coord check (no private / Linux-derived text) -> ATN sends.
+        ATN 11-24 ~18:1x: 'You are allowed to download and build it' (64-bit port). DONE by coord: Zig 0.17.0 from
+        ziglang.org (index.json sha256 b5663f69... = file, 100,268,137 B) -> testbin\attila64_1124\zig\; v1.3.7 source
+        (git archive 0a94200) -> testbin\attila64_1124\src\; attila64.exe built with build.ps1's exact zig cc line (gen_gl
+        skipped: shim_gl_gen.c committed) in 24 s, 1,187,840 B, sha256 e8e9eeef8f3c9be7... -> testbin\attila64_1124\build\.
+        Bitdefender: no block so far. NOT run.
+        - [ ] Runtime files (SDL2 2.24.1, steam_api64.dll, GCC 4.9 libstdc++ / libgcc_s, packs) after s64a_'s list; then
+        the stress A/B (ATN's go for the game run + Steam launch option).
+        p4i_ S2-S3 DONE (render_mt/fca/designs/p4i_s2s3_handback.md; fca_pk4 a5923fa29 S2 + 3ede64a7f S3, pushed; all gates
+        PASS). PARKED (ATN hold): rv4_ review of S2-S3 -> S4. NOTE s64c_: PK4 never starts under heapfix 7.4+.
         sse_ E2 K + RESOLUTION ROW DONE (plan_1117/sse_e2_k_handback.md; origin/sss_e2, not merged): 352a9b785 K fallback
         (rays below K 4-sample groups run Bend's own loop: plain 64, FindThin / Coloured 24, FindHit / Softer 40, light 128;
         Shogun 2 at 120 = Bend's loop; no-skip bytes unchanged); 02231a816 'Resolution (Experimental)' Full / 3/4 / 1/2 /
