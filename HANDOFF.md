@@ -697,7 +697,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - eba_ r2 -> ebr_ re-check -> t4i_ final-bench data; ATN Q9 (W3 Go < 8 ms) in the ... | ?
 - ETL evaluator proof on WPR-W3-5 b1.1 (driver-wait Go) while ATN is not playing, ... | ?
 - after the final bench: ebo_make.ps1:368 cut fold '-le' + a test with a cut on a ... | ?
-- G24 step 0 (checker + manifest + UE4 pack, Opus xHigh; core frozen after its rev ... | ?
 - ATN at READY: add the run rules for `ebo_run.ps1 -Final` / `-Final -DryRun` (+ - ... | ?
 - ebr_ review of t4i_ FINAL, then the real -Final -DryRun after the RC build. | ?
 - G23 implementation (after the final bench; helper files = GPU plan helper queue ... | ?
@@ -761,6 +760,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - game runs proposed (ATN's go, after the ranked list): G1 W3 ALL vs ALL+FDW+FCU 8 ... | ?
 - report the Fable Medium trial result to ATN (blocked y/n, review counts, time) a ... | ?
 - G24 boxes from r3: Divinity 1 / 2 + R.U.S.E. trace-folder review (format checks ... | ?
+- G24 step-1 boxes: Expeditions tracer (view size, 2nd render scale, draw constant ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13279,7 +13279,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         G24 design revision 3 GO, no MUST. Step-0 NITs: n-r3-1 rules get a strict facts view of only their declared needs;
         n-r3-2 .cso name hash = CRC32 of its bytes, manifest source first, same-hash-different-bytes = problem; L6_r3 joins
         the must-fail fixture seed. ATN Q42-49 + Q58 unchanged.
-        - [ ] G24 step 0 (checker + manifest + UE4 pack, Opus xHigh; core frozen after its review) once ATN answers 42-49 /
+        - [x] G24 step 0 (checker + manifest + UE4 pack, Opus xHigh; core frozen after its review) once ATN answers 42-49 /
         58; the facts / census pass only with no game or bench (after the final bench).
         eba_ R2 22:3x (render_mt/reports/eba_end_batch_analysis.md rev 2, eba_r2_handback.md): defaults unchanged. Q9 (W3 <
         8 ms: SHIP if RC beats OFF by > 2 SE at 100-175 s and the melee is not slower; hold otherwise; not L1); NEW: KNOB's
@@ -14113,6 +14113,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         dlaa_bridge.hpp (-DryRun catches gaps), order trees -> -M -> 5 helpers -> harness; M1 same() again vs second; M2
         0xC0000000 mask; M3 CL / LINK / CPATH scrub; S1-S3 + N1-N8 (Stop-Ours on Ctrl+C: this run's cmd tree + its own
         build-folder processes only); 889 lines, parser 0, NOT run. -> rvh_ re-check (sent) -> GO -> -DryRun -> run.
+        rvg_ G24 STEP0 RE-CHECK R3 = GO TO FREEZE (reviews/rvg_g24_step0_recheck_r3_handback.md; review line 954): no MUST /
+        SHOULD; NIT n-r3-1 primitive_data offset (next extractor bump); R.U.S.E. 'not analysed' + Divinity 2 counts 7187
+        accepted (later N/A/dead list from the bytes, not names.tsv). Freeze: checker 51e4da75aae4, games.py 587002983851,
+        ue4.py 456d60807248, fixture 92c3254d9bb0, fixture_strict 5f44218d158f. ho_g24 MERGED 9cf7f0fdd (5 new skill script
+        files only). -> g24_ STEP 1 (sent): fullscreen / after-ui / after-upscale trace-claim core extension (rvg_) -> S8
+        sizing gate on Expeditions -> Expeditions fill.
+        - [ ] G24 step-1 boxes: Expeditions tracer (view size, 2nd render scale, draw constants for pair:); pair: claims;
+        SKILL / README rows after ho_g14.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
