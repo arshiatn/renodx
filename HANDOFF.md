@@ -727,6 +727,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gate hook round 26: R25-2..R25-6, realpath / link hardening, HARNESS narrowing, ... | ?
 - rvm_ review of mem_fix -> mem_ fixes -> rvm_ re-check -> confirm run (ATN's go) ... | ?
 - fci_ / fxr_ designs -> feed the FCA ranked list (workers + pool analyst reads fc ... | ?
+- mem_ after mem_fix's review (g20_ requests): (a) reuse the last trace only while ... | ?
+- render_mt owner: WH3 89AF6FF5 CS bind + an ao_readers CS variant (g20_ request). | ?
+- 5090 timing of GT-VBAO V1 / V2 (on by default once they pass) in the GPU window; ... | ?
+- ATN (later, with numbers): Faster GT-VBAO (V3) is 10.3 % worse with Auto Thickne ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13643,6 +13647,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gate hook round 26: R25-2..R25-6, realpath / link hardening, HARNESS narrowing, xcopy /E, r''m / & $r, [422].
         - [ ] rvm_ review of mem_fix -> mem_ fixes -> rvm_ re-check -> confirm run (ATN's go) before the FCA analyst wave.
         - [ ] fci_ / fxr_ designs -> feed the FCA ranked list (workers + pool analyst reads fci_).
+        g20_ WAVE 2 DONE (handbacks/g20_wave2_handback.md): ho_g20 rebased on 8fac89f16 + ho_g03 merge 4515740c1 (old =
+        g20_backup_391b145; local only). Item 1 = one SSAO-skip rule ao_skip::GameSsaoOut() in WH1 / WH2 / WH3 / Troy /
+        Pharaoh / ao_readers (bug fix, on); view_share VIEW_NDC fix 4c4e584a9 (0 WORSE, 13 FIXED, 4 BETTER); GT-VBAO V1 / V2
+        same picture; V3 Faster GT-VBAO row REVERTED b70a0334d (1.103x error with Auto Thickness on > ATN's 10 %). All TW
+        builds OK (Troy / Pharaoh need ho_g19 b8cb841d1 first -> order ho_g19 -> ho_g03 -> ho_g20). -> rvi_ (Opus xHigh,
+        read only) review sent (reviews/rvi_g20_review.md). fcx_: WAW3 + F03 pickles ready -> t4i_ told.
+        - [ ] mem_ after mem_fix's review (g20_ requests): (a) reuse the last trace only while bridge.rt_ambient is the
+        texture it wrote (rvb_ R1); (b) Attila / Rome II / Thrones rt_ambient_alone + post multiply (rt_scene.hpp:455 / 466)
+        on GameSsaoOut's one-frame window, one shared predicate. Until then those three keep AmbientReplaced (30 frames).
+        - [ ] render_mt owner: WH3 89AF6FF5 CS bind + an ao_readers CS variant (g20_ request).
+        - [ ] 5090 timing of GT-VBAO V1 / V2 (on by default once they pass) in the GPU window; V3 only if ATN wants it.
+        - [ ] ATN (later, with numbers): Faster GT-VBAO (V3) is 10.3 % worse with Auto Thickness on (8.7 % off) -> stays
+        reverted unless 5090 timing shows a large gain (g20_ + coord recommend: keep it out).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
