@@ -15146,6 +15146,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] gpn_ (Opus xHigh, read-only) writes plan_1117\resume_1124.md: status of every GPU item, design drift (PT DI
         Rev 1 / vMF / unified PT v2.7 vs today's helper), helper-now vs 64-bit-add-on split, bridge bump coordination with
         the port, first low-priority wave, open ATN questions -> save hand-back -> coord -> ATN -> implementers (Opus High).
+        ATN (11-24): every CPU bench on the SAME map (stress_test_log2, battle s 20..200, ATN's settings, 4K). His goal: no
+        'slow steps' = the sim at real time (10 steps / s = 180 s for the window; today 7.2 = 249 s with PerfFix 64; 32-bit
+        always looked slow too). Sent to a64p_: estimate how far toward 180 s, the levers (incl. parts of the battle step on
+        more cores if Phase 0 shows one thread), and the Friday 11-27 FCA wave re-planned for 64-bit per design.
         NSIGHT MCP (ATN asked 19:3x): Nsight 2026.4 ships ngfx-mcp.exe; ATN added it as ngfx-native (local scope, stdio,
         --profile native; Claude Code starts it per session, `claude mcp list` = Connected; the HTTP Workflow profile was
         removed). New for us: GPU Trace shader profiler (hot lines / stalls / SASS), Graphics Debugger capture + replay
