@@ -35,6 +35,7 @@
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_capture_imposter_gs.h"
 #include "../twattila/rt_scene.hpp"
+#include "../twattila/ao_skip.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
 #include "../twattila/engine_tests.hpp"
@@ -356,17 +357,13 @@ twattila::rt_scene::Sliders rt_sliders;
 // copy, the first of them, for the frame.
 float rays_skip_reflection_passes_row = 1.f;
 bool reflection_passes_skipped = false;
-// The rays' AO in place of the game's SSAO and GT-VBAO, never on top of them (ATN 2026-11-16; Warhammer III's way, no row: a
-// saved RayTracedAOAlone is ignored). The SSAO's one reader is the sun draws' t_ssao red (the census; rt_ambient_combine
-// multiplies the rays' in): while the rays feed it (this frame's trace or the last: these passes come before it), its four
-// passes are left out and the collect's output, what the sun reads, cleared to open (test part 15).
-bool SkipGameSsao() {
-  const auto& runtime = twattila::rt_scene::internal::runtime;
-  return runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
-         && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
-}
-// GT-VBAO this frame: its setting, not under the rays' AO or the paths' (as Attila's rt_ambient_alone; under the paths the
-// game's SSAO stays in t_ssao, as when the page turned GT-VBAO off with them).
+// The rays' AO or Path-Traced Ambient in place of the game's SSAO and GT-VBAO, never on top of them (ATN 2026-11-16; no
+// row: a saved RayTracedAOAlone is ignored). The SSAO's one reader is the sun draws' t_ssao red (the census;
+// rt_ambient_combine multiplies the rays' in): while ours stands in for it (twattila/ao_skip.hpp GameSsaoOut, every Total
+// War add-on's rule), its four passes are left out and the collect's output, what the sun reads, cleared to open (test
+// part 15).
+// GT-VBAO this frame: its setting, not under the rays' AO or the paths' (as Attila's rt_ambient_alone; the game's SSAO is
+// left out under them, GameSsaoOut).
 bool bitmask_ao = false;
 // GT-VBAO in the blur's place leaves the sweep's and the collect's outputs unread (the census: sweep -> A, collect A -> B,
 // blur_x B -> A, blur_y A -> B, the sun reads B; ours writes all of A from the depth alone, blur_y all of B: test part 26):
@@ -469,27 +466,21 @@ void BuildRuntimeData() {
   // code (Game's costs what it did). The collect always runs: where no blur runs (Warhammer II at some settings), the
   // game's AO stays, never an unwritten one.
   custom_shaders[0xE3DA9A8D].on_draw = [](auto* cmd_list) {
-    if (SkipGameSsao()) return false;
+    if (twattila::ao_skip::GameSsaoOut()) return false;
     if (!bitmask_ao) return true;
     bitmask_blur_drawn = tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
                                                             false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
     return !bitmask_blur_drawn;
   };
-  // Rays' AO Alone: the sweep 0C83DB37 and blur 4C1918DA left out, the collect 38F6D9B6's output cleared to open in its place.
+  // Ours in the game's AO's place: the sweep 0C83DB37 and blur 4C1918DA left out, the collect 38F6D9B6's output cleared to open in its place.
   // GT-VBAO: the sweep and the collect left out (bitmask_blur_last_frame).
   static constexpr auto bitmask_skips_game_ao = [] { return bitmask_ao && bitmask_blur_last_frame; };
-  custom_shaders[0x0C83DB37].on_draw = [](auto*) { return !SkipGameSsao() && !bitmask_skips_game_ao(); };
-  custom_shaders[0x4C1918DA].on_draw = [](auto*) { return !SkipGameSsao(); };
+  custom_shaders[0x0C83DB37].on_draw = [](auto*) { return !twattila::ao_skip::GameSsaoOut() && !bitmask_skips_game_ao(); };
+  custom_shaders[0x4C1918DA].on_draw = [](auto*) { return !twattila::ao_skip::GameSsaoOut(); };
   custom_shaders[0x38F6D9B6].on_draw = [](auto* cmd_list) {
     if (bitmask_skips_game_ao()) return false;
-    if (!SkipGameSsao()) return true;
-    auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-    Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> output;
-    native->CSGetUnorderedAccessViews(0, 1, output.GetAddressOf());
-    const std::array<float, 4> open = {1.f, 1.f, 1.f, 1.f};
-    if (output) {
-      native->ClearUnorderedAccessViewFloat(output.Get(), open.data());
-    }
+    if (!twattila::ao_skip::GameSsaoOut()) return true;
+    twattila::ao_skip::ClearOpen(cmd_list, true);
     return false;
   };
 

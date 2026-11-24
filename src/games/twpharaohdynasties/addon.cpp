@@ -498,10 +498,10 @@ void BuildRuntimeData() {
   // census by handle) and the building pools (AO_READERS, trace_12). So while ours stands in for it (the rays' AO, which the
   // sun draws and the pools read, or Path-Traced Ambient) the chain doesn't run, the generate's target cleared to open in its
   // place (twattila/ao_readers.hpp, Troy's way). Otherwise: the game's draws.
-  custom_shaders[0xB320992B] = {.crc32 = 0xB320992B, .on_inject = [](auto*) { return false; }, .on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); }};
+  custom_shaders[0xB320992B] = {.crc32 = 0xB320992B, .on_inject = [](auto*) { return false; }, .on_draw = [](auto*) { return !twattila::ao_skip::GameSsaoOut(); }};
   custom_shaders[0xD42C3523].on_draw = [](auto* cmd_list) { return !twattila::ao_readers::ClearInsteadOfGenerate(cmd_list); };
-  custom_shaders[0x7F637259].on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); };
-  custom_shaders[0xBFD285BD].on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); };
+  custom_shaders[0x7F637259].on_draw = [](auto*) { return !twattila::ao_skip::GameSsaoOut(); };
+  custom_shaders[0xBFD285BD].on_draw = [](auto*) { return !twattila::ao_skip::GameSsaoOut(); };
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.

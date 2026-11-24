@@ -42,6 +42,7 @@
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
+#include "../twattila/ao_skip.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
 // Fewer Driver Waits (the constant buffer ring): compiled here, its row Attila's only.
@@ -861,25 +862,12 @@ twattila::rt_scene::Sliders rt_sliders;
 // The game's SSAO (fx_ssao: depth downsample 49F538CF, sweep 004BB1D4, collect 2A629B2B or EE5C29AE) has one reader in 94 traces,
 // the sun draws' t_ssao (9EAD8951, 24F97B7B by handle); the reflections' resolve binds a 1x1 texture at its t_ssao in all 94, and
 // no water, fog or forward shader binds it in the dump. The rays' AO (RTAO, also under Path-Traced AO) stands alone in the sun's
-// slot (rt_ambient_combine), so none of the game's passes runs while the rays feed it: its result cleared to open. Only while the
-// rays run (this frame's or the last, the trace comes after these passes): else the sun has no AO at all.
-bool SkipGameSsao() {
-  const auto& runtime = twattila::rt_scene::internal::runtime;
-  return runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
-         && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
-}
+// slot (rt_ambient_combine), so none of the game's passes runs while ours stands in for it (twattila/ao_skip.hpp GameSsaoOut,
+// every Total War add-on's rule: the rays traced this frame or the last, the trace coming after these passes, or Path-Traced
+// Ambient): its result cleared to open (ao_skip::ClearOpen).
 // GT-VBAO writes the game's result itself from the kept depth, never from the sweep's line buffer (the bitmask collects bind no t0
 // or t1 line buffer): the sweep is skipped once a camera is kept. Its collect then clears to open if the bitmask can't run.
 bool sweep_skipped = false;
-
-// The game's collect output (u0) cleared to open: no AO.
-void ClearGameSsao(reshade::api::command_list* cmd_list) {
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> output;
-  native->CSGetUnorderedAccessViews(0, 1, output.GetAddressOf());
-  const std::array<float, 4> open = {1.f, 1.f, 1.f, 1.f};
-  if (output) native->ClearUnorderedAccessViewFloat(output.Get(), open.data());
-}
 
 // Whether `native`'s device is another than `*own_device` (by identity only), which it becomes: a GPU reset's new device
 // drawing while the old one is still alive (WH3 makes its new swap chain first: device_loss.hpp). Nothing made on the old
@@ -1737,15 +1725,15 @@ void BuildRuntimeData() {
   // line_sweep_ao.hpp).
   custom_shaders[0x49F538CF].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0x49F538CF, true);
-    return !SkipGameSsao();
+    return !twattila::ao_skip::GameSsaoOut();
   };
   // The collects' replacements are the game's code only (Game's costs what it did); the Visibility Bitmask is the
   // addon's own pass (DispatchInstead) with OnCollect's depth and camera (without them, the first frame: the game's, or open
   // with the sweep skipped).
   custom_shaders[0xEE5C29AE].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0xEE5C29AE, true);
-    if (SkipGameSsao()) {
-      ClearGameSsao(cmd_list);
+    if (twattila::ao_skip::GameSsaoOut()) {
+      twattila::ao_skip::ClearOpen(cmd_list, true);
       return false;
     }
     if (shader_injection.ssao_mode < 1.f) return true;
@@ -1756,13 +1744,13 @@ void BuildRuntimeData() {
           shader_injection.ssao_resolution != 0.f, SHADER_INJECTION_SLOT);
       tw::line_sweep_ao::OnCollectDone(cmd_list);
     }
-    if (!dispatched && sweep_skipped) ClearGameSsao(cmd_list);
+    if (!dispatched && sweep_skipped) twattila::ao_skip::ClearOpen(cmd_list, true);
     return !dispatched && !sweep_skipped;
   };
   custom_shaders[0x2A629B2B].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0x2A629B2B, true);
-    if (SkipGameSsao()) {
-      ClearGameSsao(cmd_list);
+    if (twattila::ao_skip::GameSsaoOut()) {
+      twattila::ao_skip::ClearOpen(cmd_list, true);
       return false;
     }
     if (shader_injection.ssao_mode < 1.f) return true;
@@ -1773,7 +1761,7 @@ void BuildRuntimeData() {
           shader_injection.ssao_resolution != 0.f, SHADER_INJECTION_SLOT);
       tw::line_sweep_ao::OnCollectDone(cmd_list);
     }
-    if (!dispatched && sweep_skipped) ClearGameSsao(cmd_list);
+    if (!dispatched && sweep_skipped) twattila::ao_skip::ClearOpen(cmd_list, true);
     return !dispatched && !sweep_skipped;
   };
   // The reflection pass (fx_hierarchical_depth_buffer's first reduction, fx_environment_specular_light's march, its 2 blurs,
@@ -1783,7 +1771,7 @@ void BuildRuntimeData() {
   // c1a, c2a), and a depth kept from it would stay the last full-size frame's.
   custom_shaders[0x004BB1D4] = {.crc32 = 0x004BB1D4, .on_inject = not_injected, .on_draw = [](auto* cmd_list) {
     sweep_skipped = false;
-    if (SkipGameSsao()) return false;
+    if (twattila::ao_skip::GameSsaoOut()) return false;
     if (shader_injection.ssao_mode < 1.f) return true;
     tw::line_sweep_ao::KeepComputeDepth(cmd_list, 0);
     sweep_skipped = tw::line_sweep_ao::internal::camera != nullptr;
@@ -3537,7 +3525,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   traced_lights::bend_runs.store(sss_settings.enabled, std::memory_order_relaxed);
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp); none under the rays'
   // AO, which leaves GT-VBAO's setting as it was (graphics_page's rays_replace_ao) and skips it with the game's passes.
-  const bool bitmask_ao = shader_injection.ssao_mode >= 1.f && !SkipGameSsao();
+  const bool bitmask_ao = shader_injection.ssao_mode >= 1.f && !twattila::ao_skip::GameSsaoOut();
   static uint32_t ao_frame = 0;
   shader_injection.ssao_frame =
       (bitmask_ao && shader_injection.ssao_temporal != 0.f) ? static_cast<float>(++ao_frame % 64) : 0.f;
