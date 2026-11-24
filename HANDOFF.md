@@ -14642,6 +14642,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         record pool -> guard must also zero the output size ([ecx+0xDC]) after the wait (7 bytes; clear guard 66 bytes,
         +0x40..+0x82). PK5 code moves to +0x90, sites from 35. -> pk4_ Rev 1.1 (sent; no re-check if bytes match);
         pk5_design.md offsets fixed (+0x90, sites 35+, asserts after +0x82; pk5_offsets_handback.md).
+        rvn_ SSS E2 CODE REVIEW (plan_1117/rvn_sss_e2_code_review.md + _handback.md): shader correct as landed, no
+        defect; writes-oracle pass rule sound; occupancy: Attila 5 groups / SM unchanged, Shogun 2 sss00 / 01 6 -> 5 (needs
+        measuring); dcl_temps can't limit. MUST-1 timing rows for the SHIPPED default pass (extended + banners 0.35 +
+        Coloured), MUST-2 -BlockSkipGpu takes gpu_job.lock, MUST-3 merge atn-mods in + tw_romer_dlaa PASS; SHOULD-1..6.
+        -> sse_ r2 (sent; test / run-list only; README line given to coord, added at merge). Then GPU window, merge if
+        the default pass shows no slowdown beyond noise.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
