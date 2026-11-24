@@ -13544,6 +13544,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         WPR 100,40 190 s; FP twin); DRY RUN CLEAN (C: 58.5 GB) -> SESSION STARTED ~09:40 (~41 min). Next lowcore ->
         row_by_row (13 starts, 70 min: W3 line misses -8.0; diagnosis for the full CPU analysis) -> noheapfix LAST.
         t4i_ ROUND 6 sent (read-only while sessions run): WER scanner + table, bench WER patch (recorded classes), eval fixes.
+        t4i_ ROUND 6 READY, NOT APPLIED (render_mt/reports/t4i_final_round6_handback.md; files testbin/scratch/t4i_/r6):
+        wer_scan.py table = fcr_ exactly (53 attempts, 6 Event 1000: heapfix-unloaded F04 / F14 / F24 / F29 / F32, game-exit-race
+        F31 first attempt; 0 in fu_reruns); ebo_wer.py classifier; patches for constantinople_bench.ps1 (wer.json per start,
+        recorded classes = NOTE), ebo_check.ps1, ebo_final_eval.py (Q9 (a) verdict, RECORDED crash lines, WPR valid flag,
+        --driver-waits-analysis); apply_r6.py (--apply makes *.pre_r6); c9_run.ps1 (~42 GB dumps). COORD DECISION: the
+        bench stays unchanged for the rest of the final (same tools for every session); wer_scan.py runs offline after each
+        session; r6 is applied + run_all + ebr_ glance after the last session (noheapfix), then C-9 with -CapRoot
+        E:\bench_etl_c9 (E: 112 GB free; D: only 58 GB) and the final eval.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
