@@ -14018,6 +14018,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         (fa5_ / fci_); #6 our shared_mutex on main-only paths <= 0.4; #7 game bump-allocator CS (malloc under lock, false
         sharing) bigger blocks via engine_code. heapfix 0.000 on the critical path; helper wait 0.00. Use c9 / b1.1 / D1 86+,
         'without ETW' figures for wakes.
+        fa4_ FCA HEAP DONE (render_mt/fca/analysis/fa4_heap.md + fa4_handback.md; 4 fix items, 1 out of scope, 12 ruled out):
+        #1 game per-item arena allocator (~4 KB page refills under a shared lock + shared cache line): workers 25.1 / 22.7 /
+        8.75 summed, main 1.83 / 1.59 / 0.66 -> A1 16 KB page via the 0xF80 / 0xF84 / 0xF88 constants (engine_code; census of
+        every user first; wall ~0.45 W3). heapfix AUTHOR NOTES: #2 large-block (>= 256 KB) cache ~8 MB (main ~4.4 VirtualAlloc
+        + 4.3 VirtualFree / f; ~0.3 W3); #3 remote frees (POOLS_REMOTE retest / bulk_free / lock cache line / 16 pools);
+        #4 cache() TlsGetValue -> __thread. Out of scope (ETLS): arena thread-index lookup 12.2 summed W3. NOTE: S8-2
+        presort was designed on the dropped B2 prep DLL -> new estimate on HFx via the author. Our render_mt pool made 0
+        allocator calls. WPR stack walk 6.56 main / 7.39 workers WAW3.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
