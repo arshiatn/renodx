@@ -824,6 +824,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
 - gated_build.ps1 has its OWN 2 slots (build_job.lock / _2) + 45 GB committed + -j ... | ?
 - a64ab_ fix round SENT (M1 / M2, stage A = base, inline, inline + a 4th base only ... | ?
+- WINDOW 1 STARTED 11-24 late (ATN: 'No game, nothing'): -AB -Arms stageA, ~25 / ~ ... | ?
 - Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64ab ... | ?
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
@@ -15318,6 +15319,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] a64ab_ fix round SENT (M1 / M2, stage A = base, inline, inline + a 4th base only if close (3x earlier A/A
         spread or 10 %), stageB removed from rounds, real CPU sets at s 30 + CPU Set Setter running check, pictures
         201 / 202 + 376 / 377, inline budget 1500 s, own PresentMon session name, rules md) -> then window 1.
+        - [x] a64ab_ fix round DONE (hand-back attila64/study_1124/a64ab_fixround_handback.md): a64_ab.ps1 1334 lines;
+        INVALID rows + live inline stop; valid-only stats; stageA = base, inline, inline, base (4th only if |inline -
+        base| < max(3 x A/A, 10 % base); A/A today 0.4 s -> 10 % decides); stageB exits 1; A64Win.CpuInfo reads real
+        CPU sets + affinity at battle s ~30, refuses without CPU Set Setter; pictures 201 / 202 + 376 / 377; inline
+        1500 s; PresentMon session a64ab_pm (the orphan default 'PresentMon' session = ours, ATN confirmed; coord
+        stopped it). Dry runs + -Analyze on copies OK. Open S8 / S9 (not needed now).
+        - [ ] WINDOW 1 STARTED 11-24 late (ATN: 'No game, nothing'): -AB -Arms stageA, ~25 / ~32 min; pre-checks: Steam
+        up, no game (only the 4 known zombie Attila.exe), CPU Set Setter pid 13416, no builds / locks, 15.7 GB free.
         - [ ] Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64abr_'s review is fixed;
         no game of ATN's running, fresh backups.
         - [ ] a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S1 / S4 / S5 + the window-1
