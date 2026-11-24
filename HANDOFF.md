@@ -13745,6 +13745,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] mem_ (b) widened by rvi_: ONE shared predicate (combine gate, post multiply, rt_ambient_alone, ao_skip),
         published lock-free (MI2 / MI3).
         - [ ] WH3 89AF6FF5 CS bind: NOT as g20_ asked (WH3 binds a 1x1 t_ssao there in all 94 traces); a trace first.
+        g20_ R2 (handbacks/g20_r2_handback.md): ho_g20 pushed fe97927ec: 9eaa74bc8 MA1 (bounced_frame window) + MI1 / MI4 /
+        N1-N4 + tw_ao_skip warm-up / stale-bounce / no-bounce / bridge-down cases; fe97927ec MI6 (V3 info only, exit 0) + MI8
+        (V3 from ao_bitmask BITMASK_VARIANT 3; ao_bitmask_fast deleted, nothing V3 ships). Tests ALL PASSED; x64 5 + x86 3
+        builds OK. -> rvi_ re-check 1 sent.
+        t4i_ ROUND 7 DONE (render_mt/reports/t4i_final_round7_handback.md): apply_r6 applied, run_all green; F31 copy test
+        first FAILED (race EXCEPTION line = STOP) -> ebo_check.ps1 fix (.pre_r7): wer.json read first, the recorded race's
+        own EXCEPTION lines -> stop_recorded; copy now PASS. crash_causes.json (62 attempts, 5 heapfix-unloaded, 1 game race).
+        C-9 on fcx_ pickles: F03 14.32 ms/f, U10 20.44 (INVALID start), WAW3 30.21 (report) -> all >> 3.0. FINAL EVAL
+        ebo_final/final_eval_FINAL.txt / .json: NOT GO only on 'driver waits = ATN decides'; W3 ships on Q9 (a); exits 60 / 60
+        drained, 6 RECORDED crash lines, 0 PROBLEM. Lock incident: t4i_ took fcx_'s etl.lock as stale during WAW3 (pid gone;
+        fcx_ restarted) -> fcx_ told. -> ebr_ r7 glance sent.
+        COORD: the driver waits (14-20 ms/f vs < 3.0) go to the FCA 'D3D11 submit + driver waits' analyst; lowcore = FCA item
+        1 (fci_). Release v170 waits for the FCA verify bench anyway -> no ATN decision needed now (told ATN).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
