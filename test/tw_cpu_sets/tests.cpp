@@ -1,7 +1,8 @@
 // Keep Render Core Free (twattila/cpu_sets.hpp). Part 1: PlanSets on synthetic CPUs (a 7950X3D with and without a CPU set
 // rule of its first CCD, 8 cores without SMT, a hybrid CPU, two processor groups, fewer than 4 cores, affinity masks, CPUs
 // given to other processes, ties): every set a subset of the base, the render core the most used, the stand-downs; and
-// GameCpuCount (the CPUs the game may use: rules, disjoint rules, allocated CPUs, 48 CPUs, two groups).
+// GameCpuCount (the CPUs the game may use: rules, disjoint rules, allocated CPUs, 48 CPUs, two groups, a hand-set affinity
+// in either of two groups).
 // Part 2a, live: the count Update returns (the first read at once, two equal reads for a change, the rules restored).
 // Part 2, live, in this process only: its own process default CPU sets, the real worker on its own threads (a render thread
 // presenting, busy workers, one with its own CPU sets, one with its own affinity, one started later, one whose sets
@@ -310,11 +311,12 @@ static void Synthetic() {
 
   // GameCpuCount (the worker pool's budget input): the CPUs the game may use, and their cores.
   {
-    const auto count = [](const std::vector<cs::CpuSet>& system, const Ids& default_sets, uint64_t affinity, uint32_t expected_cores) {
+    const auto count = [](const std::vector<cs::CpuSet>& system, const Ids& default_sets, uint64_t affinity, uint32_t expected_cores,
+                          WORD group = 0) {
       uint32_t cores = 0;
-      const uint32_t cpus = cs::GameCpuCount(system, default_sets, affinity, &cores);
+      const uint32_t cpus = cs::GameCpuCount(system, default_sets, affinity, group, &cores);
       CHECK(cores == expected_cores);
-      CHECK(cs::GameCpuCount(system, default_sets, affinity) == cpus);
+      CHECK(cs::GameCpuCount(system, default_sets, affinity, group) == cpus);
       return cpus;
     };
     const Ids ccd1 = IdsOf(x3d, 16, 31);
@@ -334,7 +336,11 @@ static void Synthetic() {
     // The 32-bit rule's "all" (~0): 48 CPUs, two groups of 40.
     CHECK(count(Topology(24, 2), {}, all, 24) == 48);
     CHECK(count(Topology(20, 2, 2), {}, all, 40) == 80);
-    std::printf("  GameCpuCount: 11 cases\n");
+    CHECK(count(Topology(20, 2, 2), {}, all, 40, 1) == 80);
+    // A hand-set affinity holds the process's group alone: the other group's CPUs of the same numbers are not counted.
+    CHECK(count(Topology(20, 2, 2), {}, 0xF, 2) == 4);
+    CHECK(count(Topology(20, 2, 2), {}, 0xF, 2, 1) == 4);
+    std::printf("  GameCpuCount: 14 cases\n");
   }
 }
 

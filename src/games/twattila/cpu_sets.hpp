@@ -24,6 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -75,9 +76,16 @@ inline std::vector<CpuSet> UsableCpus(std::span<const CpuSet> system, std::span<
 
 // How many CPUs the game may use: the UsableCpus, or the affinity's alone when the default sets and the affinity have no CPU
 // in common (Windows respects a restrictive affinity above conflicting CPU sets); at least 1 (all of them given to other
-// processes). Parked CPUs and efficiency cores count: both are the game's to run on. `cores` (optional): their CPU cores.
-inline uint32_t GameCpuCount(std::span<const CpuSet> system, std::span<const ULONG> default_sets, uint64_t affinity,
+// processes). Parked CPUs and efficiency cores count: both are the game's to run on. A hand-set affinity (not ~0) holds the
+// process's processor group (`group`) alone: another group's CPUs of the same numbers are not the game's. `cores`
+// (optional): their CPU cores.
+inline uint32_t GameCpuCount(std::span<const CpuSet> system, std::span<const ULONG> default_sets, uint64_t affinity, WORD group,
                              uint32_t* cores = nullptr) {
+  std::vector<CpuSet> in_group;
+  if (affinity != ~0ull) {
+    std::ranges::copy_if(system, std::back_inserter(in_group), [&](const CpuSet& cpu) { return cpu.group == group; });
+    system = in_group;
+  }
   std::vector<CpuSet> usable = UsableCpus(system, default_sets, affinity);
   if (usable.empty() && !default_sets.empty()) {
     usable = UsableCpus(system, {}, affinity);
@@ -210,12 +218,13 @@ inline std::optional<std::vector<ULONG>> ReadSets(BOOL(WINAPI* read)(HANDLE, PUL
   return sets;
 }
 
-// The game's process default CPU sets (sorted; empty: none) and its affinity (bit = logical CPU); `process_mask` is the mask
-// as Windows gives it (a thread's own affinity is compared with it).
+// The game's process default CPU sets (sorted; empty: none) and its affinity (bit = logical CPU of `group`, the process's
+// processor group); `process_mask` is the mask as Windows gives it (a thread's own affinity is compared with it).
 struct ProcessCpus {
   std::vector<ULONG> default_sets;
   uint64_t affinity = 0;
   DWORD_PTR process_mask = 0;
+  WORD group = 0;
 };
 
 // nullopt when a read fails (GetLastError says why).
@@ -224,10 +233,15 @@ inline std::optional<ProcessCpus> ReadProcessCpus() {
   DWORD_PTR process_mask = 0;
   DWORD_PTR system_mask = 0;
   if (!default_sets || GetProcessAffinityMask(GetCurrentProcess(), &process_mask, &system_mask) == FALSE) return std::nullopt;
+  // Fails only for a process in more than one group: no hand-set affinity, its masks above are equal (all, no group to filter).
+  USHORT group_count = 1;
+  USHORT group = 0;
+  GetProcessGroupAffinity(GetCurrentProcess(), &group_count, &group);
   // A 32-bit process's mask covers 32 logical CPUs: one nobody narrowed stands for all of them.
   return ProcessCpus{.default_sets = std::move(*default_sets),
                      .affinity = (process_mask == system_mask ? ~0ull : static_cast<uint64_t>(process_mask)),
-                     .process_mask = process_mask};
+                     .process_mask = process_mask,
+                     .group = group};
 }
 
 // Milliseconds between the worker's reads of the game's CPU set and affinity, and between Update's reads of the CPUs the game
@@ -396,7 +410,7 @@ static DWORD WINAPI WorkerLoop(void* stop) {
     try {
       const std::optional<ProcessCpus> process_cpus = ReadProcessCpus();
       if (!process_cpus) continue;
-      const auto& [default_sets, affinity, process_mask] = *process_cpus;
+      const auto& [default_sets, affinity, process_mask, group] = *process_cpus;
       // Every tick: a new rule (the player's or Windows') clears ours at once.
       if (applied && (default_sets != applied_default || affinity != applied_affinity)) {
         stand_down_applied("the game's CPU set or affinity changed");
@@ -556,16 +570,19 @@ inline uint32_t Update(bool enabled, std::span<const wchar_t* const> game_module
   if (const uint64_t now = GetTickCount64(); now >= game_cpus.next_read_ms) {
     game_cpus.next_read_ms = now + tick_ms;
     const std::vector<CpuSet> system = SystemCpuSets();
-    const std::optional<ProcessCpus> process_cpus = (system.empty() ? std::nullopt : ReadProcessCpus());
+    std::optional<ProcessCpus> process_cpus;
+    if (!system.empty()) {
+      process_cpus = ReadProcessCpus();
+    }
     if (process_cpus) {
-      const auto& [default_sets, affinity, process_mask] = *process_cpus;
+      const auto& [default_sets, affinity, process_mask, group] = *process_cpus;
       uint32_t cores = 0;
-      const uint32_t count = GameCpuCount(system, default_sets, affinity, &cores);
+      const uint32_t count = GameCpuCount(system, default_sets, affinity, group, &cores);
       if (count != game_cpus.applied && (game_cpus.applied == 0 || count == game_cpus.last_read)) {
         game_cpus.applied = count;
         renodx::utils::log::i(std::format(
-            "[Total War] CPUs for the game: {} of {} ({} cores; affinity {}, {}).", count, system.size(), cores,
-            UsableCpus(system, {}, affinity).size(),
+            "[Total War] CPUs for the game: {} of {} ({} {}; affinity {}, {}).", count, system.size(), cores,
+            (cores == 1 ? "core" : "cores"), GameCpuCount(system, {}, affinity, group),
             (default_sets.empty() ? std::string("no CPU set") : std::format("CPU set {}", UsableCpus(system, default_sets, ~0ull).size()))));
       }
       game_cpus.last_read = count;
