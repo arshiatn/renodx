@@ -2687,8 +2687,7 @@ void ConfigureAddon() {
                                              .banner_light_tested = false,
                                              .rays_preset_as_attila = true,
                                              .lights_own_row = true,
-                                             .rays_multiply_maps = (RAYS_REPLACE_MAPS == 0.f),
-                                             .fog_shadows_defaulted_on = true});
+                                             .rays_multiply_maps = (RAYS_REPLACE_MAPS == 0.f)});
   // Faster Game CPU Code (engine_code_row) Experimental, off.
   for (auto* setting : settings) {
     if (setting->key != "FasterGameCpuCode") continue;
