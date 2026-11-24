@@ -819,7 +819,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REMIND ATN (decision 6): ask JSa25 for a Flag Wave interop contract (previous-po ... | ?
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
-- a64p0r_ (Opus xHigh) reviews the Phase 0 design (arms, probe sites, determinism, ... | ?
+- AFTER WINDOW 1: a64p0d_ fixes M1-M5 + Shoulds -> probe implementer (Opus High) f ... | ?
+- AFTER WINDOW 1: xHigh review of bringup_design.md -> a64b_ implementer. | ?
+- gated_build.ps1 has its OWN 2 slots (build_job.lock / _2) + 45 GB committed + -j ... | ?
 - a64abr_ (Opus xHigh) reviews a64_ab.ps1 (ATN-file safety, hard-linked ELF writes ... | ?
 - Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64ab ... | ?
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
@@ -837,6 +839,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - VMF RHO SKY TEST (pdd2_): the rho-histogram sky fix goes to vMF S2's implementer ... | ?
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
+- a64ab_ FIX ROUND (after a64abr_): a64abr_'s findings + window 1 = stage A only: ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -15250,8 +15253,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         game's own replay check exists (likely switched off when tick 0 differs) -> probe hashes checksum / rand /
         entities every 100 steps; ALL32 via clearing the test process's CPU set or a no-rule path; L2B / L2C test arms
         only; window 3 ~75 min + 15 spare (probe + WPR + placement), rule lines in design section 10.
-        - [ ] a64p0r_ (Opus xHigh) reviews the Phase 0 design (arms, probe sites, determinism, CPU sets, ATTILA_POKE arm,
-        trimmed arm lists) -> p0/design_review.md -> a64p0d_ fixes -> probe implementer (Opus High) for window 3.
+        - [x] a64p0r_ DONE (hand-back attila64/a64p0r_review_handback.md; p0/design_review.md): GO WITH CHANGES. M1 probe
+        uses Sol's battle clock (beside steps from 1748 on) + game tick for determinism lines; M2 checksum read before
+        SYNC_LOGGER clear (137 sites); M3 ATN's ruling: no all32 / caps / spinoff / finetimer / 24 threads; caps' job
+        moves to 5 release-function wrappers (who woke the step) + WPR; M4 window 3 = 3 starts (+ up to 3 on triggers:
+        TT8, L2B with ATN's yes, NOPROBE), case A ~30 min / case B ~28 min; M5 round-2 arm lists in the rule line, not
+        a file. MEASURE cannot see the step thread; tt8 unreadable without the probe -> window 1 needs no stage B;
+        stage A may be base, inline, inline (+ base only if close). Shoulds: task timing closes per probe event, CPU
+        time over own work only, det / full probe levels, line-of-sight command ticks logged + state hashes, dump off
+        main, MXCSR / x87 unchanged, CPU sets read at s 30 in window 1.
+        - [ ] AFTER WINDOW 1: a64p0d_ fixes M1-M5 + Shoulds -> probe implementer (Opus High) for window 3.
+        - [x] a64bd_ BRING-UP DESIGN DONE (hand-back attila64/a64bd_design_handback.md; designs/bringup_design.md,
+        PRIVATE): A2 required (Sol's RGBA8 picture never gets a clone -> black in HDR10 / scRGB / SDR); A2a copy_resource
+        handler turns the clone on at the first copy into a swap buffer; A2b overlay rows -> halves; fixed loader's fix
+        3 hides the overlay under HDR -> proposed contract Local\RenoDXOverlayRGBA8_<pid> (sent to s3fr_); A1 constexpr
+        ATTILA64, build id at the first D3D11 present, non-D3D11 stands down; game-code rows hidden behind a seam
+        predicate; files addon.cpp / frame_trace.hpp / tests (F7 repro first); rule lines -Smoke -ReShade (+ -PerfFix,
+        -Warp, -Package). Risks R2 / R4 / R7 (Sol's test pictures invalid with the add-on) / R9 / R12.
+        - [ ] AFTER WINDOW 1: xHigh review of bringup_design.md -> a64b_ implementer.
+        - [ ] gated_build.ps1 has its OWN 2 slots (build_job.lock / _2) + 45 GB committed + -j 3, blind to build_slots
+        slot1-4 -> unify after window 1 (one slot set, >= 12 GB free for TW, -j 4; review). take_slot.sh now waits
+        while quiet_run.lock exists (coord 11-24).
         - [x] a64ab_ STAGES DONE (hand-back attila64/study_1124/a64ab_stages_handback.md): -AB -Arms stageA (base,
         inline, base, inline ~27 min) / stageB (cap30, all32, tt8, measure ~27 min) / a comma list; 'window1' removed
         (exit 1); cap45 / spinoff / finetimer only from a list; summary prints 'STAGE B: run it / not needed' from the
@@ -15414,6 +15436,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         continue?' -> YES: no new agents except a64ab_'s fix round for a64abr_'s review; running ones (s3fr_, a64abr_,
         a64p0r_, a64bd_, a64pl_) finish; then window 1 stage A on a quiet CPU (no builds); then the G23 gate, s3f_'s
         fix round + Sol smoke, a64p0d_ fixes, a64b_ / plugin reviews, pds2_.
+        - [ ] a64ab_ FIX ROUND (after a64abr_): a64abr_'s findings + window 1 = stage A only: base, inline, inline, then
+        a 4th start (base) only if inline is close to base (vs the earlier B64P A/A spread); stage B dropped (MEASURE
+        blind to the step thread, tt8 needs the probe -> window 3); read the game's CPU sets at s 30; rules md synced.
         NSIGHT MCP (ATN asked 19:3x): Nsight 2026.4 ships ngfx-mcp.exe; ATN added it as ngfx-native (local scope, stdio,
         --profile native; Claude Code starts it per session, `claude mcp list` = Connected; the HTTP Workflow profile was
         removed). New for us: GPU Trace shader profiler (hot lines / stalls / SASS), Graphics Debugger capture + replay
