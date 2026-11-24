@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -48,6 +49,9 @@
 // (light_bounce_denoise: 16 taps along the surface) into the denoised target the apply then reads.
 // After every sun draw: the apply (light_bounce_apply), that draw again (its vertices, depth / stencil: its pixels),
 // added to the light buffer; draws before the trace take the last frame's. Everything it binds is put back after.
+// Directional Light Bounce (Sliders::directional; its shader code where the host's light_bounce.hlsli builds it,
+// light_bounce.h): the screen-space trace, the resolve and the denoiser write each texel's (g, w) and zonal amplitude
+// beside their bounce (ShTargets), the next pass and the apply read them at t56-t59.
 // With the game's MSAA (its *_ms sun light draws: a multisampled light buffer and G-buffer) the prepare and the apply are
 // their *_ms builds (light_bounce_gbuffer.hlsli: the prepare reads sample 0, the apply each sample, or with the Fast
 // MSAA setting once per pixel at sample 0: its *_ms_pixel build). D3D11, the main
@@ -105,6 +109,7 @@ struct Sliders {
   float backface = 0.f;        // 1: light from a surface's back side rejected
   float auto_thickness = 0.f;  // 1: each occluder as thick as it is wide
   float denoise = 0.f;         // 1: the resolved bounce smoothed along surfaces before the apply
+  float directional = 0.f;     // 1: Directional Light Bounce (the screen-space trace's; light_bounce.h)
 };
 
 namespace internal {
@@ -122,6 +127,20 @@ constexpr UINT CONSTANTS_SLOT = 10;
 constexpr UINT CONSTANTS_COUNT = 3;
 constexpr float HISTORY_SHARE = 0.95f;  // at most (about the last 20 frames; fewer where newly seen)
 constexpr UINT PREPARED_LEVELS = 6;     // the prepared textures' own size and 1/2 to 1/32 of it
+// Directional Light Bounce's views at t56-t59: a bounce target's (g, w) and zonal amplitude (t56-t57: the trace's for the
+// resolve, the resolve's for the denoiser, the apply's), the last history's (t58-t59: the trace's Checkerboard, the
+// resolve).
+constexpr UINT SH_VIEWS_SLOT = 56;
+constexpr UINT SH_VIEW_COUNT = 4;
+// The denoiser's and the apply's half transport (light_bounce_denoise.hlsli, light_bounce_apply.hlsli): 0, as no value
+// kept the quarter trace's mean light within 1% of the full trace's in test/tw_bounce_sh's item 4 (0 the closest).
+constexpr float DIRECTIONAL_TRANSPORT = 0.f;
+
+// Directional Light Bounce's beside a bounce target (made with it on): (g, w) RGBA16F, the zonal amplitude R16F.
+struct ShTargets {
+  frame_history::Target direction;
+  frame_history::Target zonal;
+};
 
 // A prepared texture: the prepare draws its first level, light_bounce_levels each next one from the one above; the trace
 // reads every level.
@@ -167,6 +186,12 @@ struct DeviceObjects {
   std::array<frame_history::Target, 2> history_frames;  // each history's frame count per texel
   size_t history_index = 0;  // the one the last resolve wrote
   frame_history::Target denoised;
+  // Directional Light Bounce's (none while it is off).
+  bool directional = false;
+  ShTargets traced_sh;
+  std::array<ShTargets, 2> history_sh;
+  ShTargets denoised_sh;
+  bool sh_traced = false;  // the last trace was the screen-space one with it on (the rays' have none)
   uint64_t traced_frame = UINT64_MAX;
   float texel_centre = 0.f;  // the last trace's LightBounceConstants::texel_centre (its history's)
 };
@@ -180,6 +205,7 @@ struct Runtime {
   UINT display_height = 0;
   bool apply_per_pixel = false;  // with the game's MSAA
   bool denoise = false;
+  bool directional = false;
   DeviceObjects objects;
 };
 
@@ -195,9 +221,10 @@ using RayTracedTrace = bool (*)(ID3D11DeviceContext* context, ID3D11Texture2D* p
                                 ID3D11Texture2D* traced);
 static std::atomic<RayTracedTrace> ray_traced_trace = nullptr;
 
-// The shaders and states on `device`, then the textures for this light buffer and scale. Under the lock.
+// The shaders and states on `device`, then the textures for this light buffer and scale (with `directional`
+// Directional Light Bounce's too). Under the lock.
 inline bool Prepare(ID3D11DeviceContext* context, ID3D11Device* device, const D3D11_TEXTURE2D_DESC& light_desc,
-                    DXGI_FORMAT light_view_format, UINT scale) {
+                    DXGI_FORMAT light_view_format, UINT scale, bool directional) {
   auto& objects = runtime.objects;
   if (objects.device.Get() != device) {
     objects = {};
@@ -249,7 +276,8 @@ inline bool Prepare(ID3D11DeviceContext* context, ID3D11Device* device, const D3
   if (objects.light_copy && objects.light_desc.Width == light_desc.Width && objects.light_desc.Height == light_desc.Height
       && objects.light_desc.Format == light_desc.Format
       && objects.light_desc.SampleDesc.Count == light_desc.SampleDesc.Count
-      && objects.light_view_format == light_view_format && objects.bounce_scale == scale) {
+      && objects.light_view_format == light_view_format && objects.bounce_scale == scale
+      && objects.directional == directional) {
     return true;
   }
   objects.light_copy.Reset();
@@ -260,9 +288,14 @@ inline bool Prepare(ID3D11DeviceContext* context, ID3D11Device* device, const D3
   objects.history = {};
   objects.history_frames = {};
   objects.denoised = {};
+  objects.traced_sh = {};
+  objects.history_sh = {};
+  objects.denoised_sh = {};
+  objects.sh_traced = false;
   objects.light_desc = light_desc;
   objects.light_view_format = light_view_format;
   objects.bounce_scale = scale;
+  objects.directional = directional;
   // Single-sampled (with the game's MSAA its resolve).
   D3D11_TEXTURE2D_DESC copy = light_desc;
   copy.SampleDesc = {.Count = 1};
@@ -313,6 +346,10 @@ inline bool Prepare(ID3D11DeviceContext* context, ID3D11Device* device, const D3
     }
     return true;
   };
+  const auto make_sh = [&](ShTargets* sh) {
+    return frame_history::MakeTarget(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, &sh->direction)
+           && frame_history::MakeTarget(device, width, height, DXGI_FORMAT_R16_FLOAT, &sh->zonal);
+  };
   if (FAILED(device->CreateTexture2D(&copy, nullptr, objects.light_copy.GetAddressOf()))
       || FAILED(device->CreateShaderResourceView(objects.light_copy.Get(), &copy_view, objects.light_copy_srv.GetAddressOf()))
       || !make_prepared(DXGI_FORMAT_R11G11B10_FLOAT, &objects.prepared_light)
@@ -322,17 +359,22 @@ inline bool Prepare(ID3D11DeviceContext* context, ID3D11Device* device, const D3
       || !frame_history::MakeTarget(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, &objects.history[1])
       || !frame_history::MakeTarget(device, width, height, DXGI_FORMAT_R16_FLOAT, &objects.history_frames[0])
       || !frame_history::MakeTarget(device, width, height, DXGI_FORMAT_R16_FLOAT, &objects.history_frames[1])
-      || !frame_history::MakeTarget(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, &objects.denoised)) {
+      || !frame_history::MakeTarget(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, &objects.denoised)
+      || (directional
+          && !(make_sh(&objects.traced_sh) && make_sh(&objects.history_sh[0]) && make_sh(&objects.history_sh[1])
+               && make_sh(&objects.denoised_sh)))) {
     renodx::utils::log::w("[Total War] Light Bounce: could not create its textures (", light_desc.Width, " x ",
                           light_desc.Height, ").");
     objects.light_copy.Reset();
     return false;
   }
-  // No bounce and no history until the first trace (alpha 0: nothing there).
+  // No bounce and no history until the first trace (alpha 0: nothing there; Directional Light Bounce's: only with it).
   constexpr float NOTHING[4] = {0.f, 0.f, 0.f, 0.f};
-  for (const frame_history::Target* target : {&objects.history[0], &objects.history[1], &objects.history_frames[0],
-                                               &objects.history_frames[1], &objects.denoised}) {
-    context->ClearRenderTargetView(target->rtv.Get(), NOTHING);
+  for (const frame_history::Target* target :
+       {&objects.history[0], &objects.history[1], &objects.history_frames[0], &objects.history_frames[1], &objects.denoised,
+        &objects.history_sh[0].direction, &objects.history_sh[0].zonal, &objects.history_sh[1].direction,
+        &objects.history_sh[1].zonal, &objects.denoised_sh.direction, &objects.denoised_sh.zonal}) {
+    if (target->rtv) context->ClearRenderTargetView(target->rtv.Get(), NOTHING);
   }
   objects.traced_frame = UINT64_MAX;
   return true;
@@ -380,11 +422,12 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     native->GetDevice(device.GetAddressOf());
     const auto scale = static_cast<UINT>(runtime.settings.scale);
     const bool msaa = (light_desc.SampleDesc.Count > 1);
-    if (!internal::Prepare(native, device.Get(), light_desc, light_view.Format, scale)) return {};
+    if (!internal::Prepare(native, device.Get(), light_desc, light_view.Format, scale, runtime.directional)) return {};
     auto& objects = runtime.objects;
     const auto& sun_draw = command.template GetCallbackData<T>();
     runtime.settings.diffuse_rule = sun_draw.diffuse_rule;
     runtime.settings.texel_centre = objects.texel_centre;
+    runtime.settings.directional = objects.sh_traced ? 1.f : 0.f;
     const auto upload = [&]() {
       if (std::memcmp(&objects.uploaded, &runtime.settings, sizeof(LightBounceConstants)) != 0) {
         native->UpdateSubresource(objects.constants.Get(), 0, nullptr, &runtime.settings, 0, 0);
@@ -400,6 +443,9 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     native->PSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
     std::array<ID3D11ShaderResourceView*, internal::VIEW_COUNT> game_views = {};
     native->PSGetShaderResources(internal::VIEWS_SLOT, internal::VIEW_COUNT, game_views.data());
+    // Directional Light Bounce's slots only with it on.
+    std::array<ID3D11ShaderResourceView*, internal::SH_VIEW_COUNT> game_sh_views = {};
+    if (objects.directional) native->PSGetShaderResources(internal::SH_VIEWS_SLOT, internal::SH_VIEW_COUNT, game_sh_views.data());
     std::array<ID3D11Buffer*, internal::CONSTANTS_COUNT> game_constants = {};
     native->PSGetConstantBuffers(internal::CONSTANTS_SLOT, internal::CONSTANTS_COUNT, game_constants.data());
     ComPtr<ID3D11BlendState> game_blend;
@@ -409,6 +455,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
 
     // This draw's G-buffer and camera at the addon's slots, with the last frame's camera and the constants.
     std::array<ID3D11ShaderResourceView*, internal::VIEW_COUNT> inputs = {};
+    std::array<ID3D11ShaderResourceView*, internal::SH_VIEW_COUNT> sh_inputs = {};
     native->PSGetShaderResources(sun_draw.gbuffer_slot, 4, &inputs[internal::GBUFFER_VIEW]);
     std::array<ID3D11Buffer*, internal::CONSTANTS_COUNT> constants = {
         objects.previous_camera.Get(), nullptr, objects.constants.Get()};
@@ -462,6 +509,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       runtime.settings.region_width = trace_viewport.Width;
       runtime.settings.region_height = trace_viewport.Height;
       runtime.settings.level0_width = static_cast<float>(prepared_desc.Width);
+      runtime.settings.directional = objects.directional ? 1.f : 0.f;
       upload();
       native->OMSetBlendState(objects.replace_blend.Get(), nullptr, 0xFFFFFFFF);
       native->OMSetDepthStencilState(objects.no_depth.Get(), 0);
@@ -493,6 +541,9 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       // top-left; at a crack, light from its lit side onto the dark one).
       objects.texel_centre = rays ? static_cast<float>(scale / 2) : 0.f;
       runtime.settings.texel_centre = objects.texel_centre;
+      // Directional Light Bounce: the screen-space trace's (the rays' have none: the bounce as without it).
+      objects.sh_traced = objects.directional && !rays;
+      runtime.settings.directional = objects.sh_traced ? 1.f : 0.f;
       upload();
       // Else the prepared light and geometry's levels, each from the one above (that level only, at t46-t47).
       if (!rays) {
@@ -517,32 +568,46 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
 
       // The screen-space trace (the last history at t41 for Checkerboard), the resolve into the other history and its frame counts
       // (this frame's trace at t40, the last history at t41, its counts at t48), with the Denoiser its output smoothed
-      // (at t40) into the denoised target. Each target set before its input, so no texture is bound as both.
-      const auto pass = [&](const frame_history::Target& target, ID3D11PixelShader* shader,
-                            const frame_history::Target* frames = nullptr) {
-        ID3D11RenderTargetView* rtv[] = {target.rtv.Get(), (frames != nullptr) ? frames->rtv.Get() : nullptr};
-        native->OMSetRenderTargets((frames != nullptr) ? 2 : 1, rtv, nullptr);
+      // (at t40) into the denoised target. Each target set before its input, so no texture is bound as both. Directional
+      // Light Bounce's targets beside each (their SV_Target after the pass' own; none while it is off) and views at
+      // t56-t59.
+      const auto pass = [&](std::initializer_list<const frame_history::Target*> targets, ID3D11PixelShader* shader) {
+        std::array<ID3D11RenderTargetView*, 4> rtvs = {};
+        UINT count = 0;
+        for (const frame_history::Target* target : targets) {
+          if (target->rtv) rtvs[count++] = target->rtv.Get();
+        }
+        native->OMSetRenderTargets(count, rtvs.data(), nullptr);
         native->PSSetShaderResources(internal::VIEWS_SLOT, internal::VIEW_COUNT, inputs.data());
+        if (objects.directional) native->PSSetShaderResources(internal::SH_VIEWS_SLOT, internal::SH_VIEW_COUNT, sh_inputs.data());
         native->PSSetShader(shader, nullptr, 0);
         native->Draw(3, 0);
       };
       const size_t previous_index = objects.history_index;
       objects.history_index ^= 1;
+      const internal::ShTargets& previous_sh = objects.history_sh[previous_index];
+      const internal::ShTargets& resolved_sh = objects.history_sh[objects.history_index];
       inputs[internal::LIGHT_VIEW] = nullptr;
       inputs[internal::HISTORY_VIEW] = objects.history[previous_index].srv.Get();
       inputs[internal::PREPARED_VIEW] = objects.prepared_light.srv.Get();
       inputs[internal::PREPARED_VIEW + 1] = objects.prepared_geometry.srv.Get();
-      if (!rays) pass(objects.traced, objects.trace.Get());
+      sh_inputs = {nullptr, nullptr, previous_sh.direction.srv.Get(), previous_sh.zonal.srv.Get()};
+      if (!rays) pass({&objects.traced, &objects.traced_sh.direction, &objects.traced_sh.zonal}, objects.trace.Get());
       // The resolve over frames also under Ray Reconstruction (ATN's debug33: the rays' trace applied as traced, RR alone,
       // was noisier); the denoiser not (Update).
       inputs[internal::LIGHT_VIEW] = objects.traced.srv.Get();
       inputs[internal::FRAMES_VIEW] = objects.history_frames[previous_index].srv.Get();
-      pass(objects.history[objects.history_index], objects.resolve.Get(), &objects.history_frames[objects.history_index]);
+      sh_inputs[0] = objects.traced_sh.direction.srv.Get();
+      sh_inputs[1] = objects.traced_sh.zonal.srv.Get();
+      pass({&objects.history[objects.history_index], &objects.history_frames[objects.history_index], &resolved_sh.direction,
+            &resolved_sh.zonal},
+           objects.resolve.Get());
       inputs[internal::FRAMES_VIEW] = nullptr;
       if (runtime.denoise) {
         inputs[internal::LIGHT_VIEW] = objects.history[objects.history_index].srv.Get();
         inputs[internal::HISTORY_VIEW] = nullptr;
-        pass(objects.denoised, objects.denoise.Get());
+        sh_inputs = {resolved_sh.direction.srv.Get(), resolved_sh.zonal.srv.Get(), nullptr, nullptr};
+        pass({&objects.denoised, &objects.denoised_sh.direction, &objects.denoised_sh.zonal}, objects.denoise.Get());
       }
 
       // This frame's camera for the next trace.
@@ -564,8 +629,14 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     inputs[internal::LIGHT_VIEW] = nullptr;
     inputs[internal::HISTORY_VIEW] = runtime.denoise ? objects.denoised.srv.Get() : objects.history[objects.history_index].srv.Get();
     inputs[internal::PREPARED_VIEW] = nullptr;
-    inputs[internal::PREPARED_VIEW + 1] = nullptr;
+    // Directional Light Bounce: the texels' trace normals (light_bounce_apply.hlsli).
+    inputs[internal::PREPARED_VIEW + 1] = objects.sh_traced ? objects.prepared_geometry.srv.Get() : nullptr;
     native->PSSetShaderResources(internal::VIEWS_SLOT, internal::VIEW_COUNT, inputs.data());
+    if (objects.directional) {
+      const internal::ShTargets& bounce_sh = runtime.denoise ? objects.denoised_sh : objects.history_sh[objects.history_index];
+      sh_inputs = {bounce_sh.direction.srv.Get(), bounce_sh.zonal.srv.Get(), nullptr, nullptr};
+      native->PSSetShaderResources(internal::SH_VIEWS_SLOT, internal::SH_VIEW_COUNT, sh_inputs.data());
+    }
     native->OMSetBlendState(objects.add_blend.Get(), nullptr, 0xFFFFFFFF);
     const ComPtr<ID3D11PixelShader>& apply =
         (msaa ? (runtime.apply_per_pixel ? objects.apply_msaa_pixel : objects.apply_msaa) : objects.apply);
@@ -574,9 +645,13 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
 
     native->PSSetShader(game_shader.Get(), nullptr, 0);
     native->PSSetShaderResources(internal::VIEWS_SLOT, internal::VIEW_COUNT, game_views.data());
+    if (objects.directional) native->PSSetShaderResources(internal::SH_VIEWS_SLOT, internal::SH_VIEW_COUNT, game_sh_views.data());
     native->PSSetConstantBuffers(internal::CONSTANTS_SLOT, internal::CONSTANTS_COUNT, game_constants.data());
     native->OMSetBlendState(game_blend.Get(), game_blend_factor.data(), game_sample_mask);
     for (auto* view : game_views) {
+      if (view != nullptr) view->Release();
+    }
+    for (auto* view : game_sh_views) {
       if (view != nullptr) view->Release();
     }
     for (size_t index = internal::GBUFFER_VIEW; index < internal::PREPARED_VIEW; ++index) {
@@ -612,10 +687,12 @@ inline void Update(reshade::api::swapchain* swapchain, const Sliders& sliders) {
       .checkerboard = ((temporal && sliders.checkerboard != 0.f) ? 1.f : 0.f),
       .backface = ((sliders.backface != 0.f) ? 1.f : 0.f),
       .auto_thickness = ((sliders.auto_thickness != 0.f) ? 1.f : 0.f),
+      .transport = internal::DIRECTIONAL_TRANSPORT,
   };
   internal::runtime.display_width = display.texture.width;
   internal::runtime.display_height = display.texture.height;
   internal::runtime.apply_per_pixel = (sliders.msaa_pixel != 0.f);
+  internal::runtime.directional = (sliders.directional != 0.f);
   // Ray Reconstruction or NRD denoises it (the bounce's resolve over frames stays: its texels are coarser).
   internal::runtime.denoise = (sliders.denoise != 0.f) && !dlaa_bridge::bridge.reconstructing && !dlaa_bridge::bridge.nrd_bounce;
   // Off: its memory back (Prepare makes it again).
