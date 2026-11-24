@@ -13668,6 +13668,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         speed price + web 0.033 s, pre_shell 0.224 s). Live still stage24 a6b12f1ebeef shadow. -> ATN's chat OK for the
         CHANGED stage (golive bak30 + copy + sha 3ed0213acbd6 + smoke; tests copy into TW\gates\tests).
         fxr_ waits on a PowerShell permission prompt (ATN told).
+        rvm_ mem_fix REVIEW NOT GO (reviews/rvm_mem_fix_review.md + _handback.md): 1 / 2 / 5 / 3. Releases correct; TRIGGER
+        wrong: B1 fires in normal play every 31 frames (main_view_frame moves only on new captures; still views of known
+        meshes); M1 no release log line; M2 Update branch untested (injectable foreground check + 7 offline cases); m1-m5
+        (m5 pre-existing: ForgetScene leaves new_sets -> .at() throw). -> mem_ r2 fixes sent; then rvm_ re-check. Confirm
+        run only after GO: 5 checks (one release line per load, none in play, largest block steady, alt-tab E-lines,
+        next battle's masks + first-frame hitch).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
