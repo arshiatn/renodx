@@ -1,6 +1,8 @@
 // Keep Render Core Free (twattila/cpu_sets.hpp). Part 1: PlanSets on synthetic CPUs (a 7950X3D with and without a CPU set
 // rule of its first CCD, 8 cores without SMT, a hybrid CPU, two processor groups, fewer than 4 cores, affinity masks, CPUs
-// given to other processes, ties): every set a subset of the base, the render core the most used, the stand-downs.
+// given to other processes, ties): every set a subset of the base, the render core the most used, the stand-downs; and
+// GameCpuCount (the CPUs the game may use: rules, disjoint rules, allocated CPUs, 48 CPUs, two groups).
+// Part 2a, live: the count Update returns (the first read at once, two equal reads for a change, the rules restored).
 // Part 2, live, in this process only: its own process default CPU sets, the real worker on its own threads (a render thread
 // presenting, busy workers, one with its own CPU sets, one with its own affinity, one started later, one whose sets
 // someone changes, two not the game's: started at kernel32!Sleep and a Windows pool thread); a default change, a default of
@@ -16,6 +18,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <format>
 #include <functional>
 #include <iterator>
 #include <mutex>
@@ -304,6 +307,35 @@ static void Synthetic() {
   CheckStandDown(cs::PlanSets(x3d, Ids{0x900}, all, runs), "no CPU inside");
   cases += 2;
   std::printf("  %d cases\n", cases);
+
+  // GameCpuCount (the worker pool's budget input): the CPUs the game may use, and their cores.
+  {
+    const auto count = [](const std::vector<cs::CpuSet>& system, const Ids& default_sets, uint64_t affinity, uint32_t expected_cores) {
+      uint32_t cores = 0;
+      const uint32_t cpus = cs::GameCpuCount(system, default_sets, affinity, &cores);
+      CHECK(cores == expected_cores);
+      CHECK(cs::GameCpuCount(system, default_sets, affinity) == cpus);
+      return cpus;
+    };
+    const Ids ccd1 = IdsOf(x3d, 16, 31);
+    CHECK(count(x3d, {}, all, 16) == 32);
+    CHECK(count(x3d, ccd0, all, 8) == 16);
+    CHECK(count(x3d, ccd0, 0xF, 2) == 4);
+    CHECK(count(x3d, ccd0, 0xFF, 4) == 8);
+    // The default sets and the affinity disjoint: the affinity alone.
+    CHECK(count(x3d, ccd1, 0xF, 2) == 4);
+    // CPUs given to other processes alone: one, then every CPU of the affinity (a successful 0 counts as 1).
+    auto allocated = x3d;
+    allocated[5].available = false;
+    CHECK(count(allocated, {}, all, 16) == 31);
+    for (int logical = 0; logical < 4; ++logical) allocated[logical].available = false;
+    CHECK(count(allocated, {}, 0xF, 0) == 1);
+    CHECK(count(allocated, ccd0, 0xF, 0) == 1);
+    // The 32-bit rule's "all" (~0): 48 CPUs, two groups of 40.
+    CHECK(count(Topology(24, 2), {}, all, 24) == 48);
+    CHECK(count(Topology(20, 2, 2), {}, all, 40) == 80);
+    std::printf("  GameCpuCount: 11 cases\n");
+  }
 }
 
 // Live ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -400,6 +432,84 @@ static std::vector<std::pair<DWORD, Ids>> AllThreads() {
   }
   CloseHandle(snapshot);
   return threads;
+}
+
+// The CPUs the game may use as Update returns them, live: this process's own affinity and default CPU sets, each read forced
+// (next_read_ms 0). Runs before anything else calls Update: the process's first read applies at once. Restores the rules.
+static void LiveCount() {
+  std::printf("Part 2a: the CPUs the game may use, live\n");
+  const auto system = cs::SystemCpuSets();
+  if (system.size() < 16 || std::ranges::any_of(system, [](const cs::CpuSet& cpu) { return cpu.group != 0; })) {
+    std::printf("  needs one group of 16+ logical CPUs: skipped\n");
+    return;
+  }
+  REQUIRE(cs::game_cpus.applied == 0);
+  REQUIRE(cs::ReadSets(GetProcessDefaultCpuSets, GetCurrentProcess()).value_or(Ids{1}).empty());
+  DWORD_PTR process_mask = 0;
+  DWORD_PTR system_mask = 0;
+  REQUIRE(GetProcessAffinityMask(GetCurrentProcess(), &process_mask, &system_mask) != FALSE);
+  REQUIRE(process_mask == system_mask);
+  const DWORD saved_tick = cs::tick_ms;
+  const auto read = [] {
+    cs::game_cpus.next_read_ms = 0;
+    return cs::Update(false, GAME_MODULES);
+  };
+  const auto lines = [&](uint32_t cpus) {
+    const std::string line = std::format("CPUs for the game: {} of {} (", cpus, system.size());
+    const std::unique_lock lock(log_mutex);
+    return std::ranges::count_if(log_lines, [&](const std::string& logged) { return logged.find(line) != std::string::npos; });
+  };
+  const auto set_rules = [](const Ids& default_sets, DWORD_PTR affinity) {
+    REQUIRE(SetProcessDefaultCpuSets(GetCurrentProcess(), default_sets.empty() ? nullptr : default_sets.data(), static_cast<ULONG>(default_sets.size())) != FALSE);
+    REQUIRE(SetProcessAffinityMask(GetCurrentProcess(), affinity) != FALSE);
+  };
+  const uint32_t all = static_cast<uint32_t>(BaseOf(system, {}, ~0ull).size());
+  const uint32_t four = static_cast<uint32_t>(BaseOf(system, {}, 0xF).size());
+  ClearLog();
+
+  // The first read applies at once; no read until tick_ms has passed.
+  CHECK(cs::Update(false, GAME_MODULES) == all);
+  CHECK(lines(all) == 1);
+  CHECK(cs::Update(false, GAME_MODULES) == all && lines(all) == 1);
+  // An affinity of 4 CPUs: after the second equal read, one line.
+  set_rules({}, 0xF);
+  CHECK(read() == all);
+  CHECK(read() == four);
+  CHECK(lines(four) == 1);
+  CHECK(LogHas(std::format(" cores; affinity {}, no CPU set).", four)));
+  // A one-read flip-flop never applies.
+  set_rules({}, system_mask);
+  CHECK(read() == four);
+  set_rules({}, 0xF);
+  CHECK(read() == four);
+  CHECK(read() == four && lines(all) == 1 && lines(four) == 1);
+  // Back to the full mask: the full count.
+  set_rules({}, system_mask);
+  CHECK(read() == four);
+  CHECK(read() == all && lines(all) == 2);
+  // Default CPU sets of 6 CPUs, then those and the affinity together (their intersection), then disjoint (the affinity alone).
+  const Ids six = IdsOf(system, 2, 7);
+  set_rules(six, system_mask);
+  read();
+  CHECK(read() == BaseOf(system, six, ~0ull).size());
+  set_rules(six, 0xF);
+  read();
+  CHECK(read() == BaseOf(system, six, 0xF).size());
+  CHECK(LogHas("CPU set 6)."));
+  set_rules(IdsOf(system, 8, 13), 0xF);
+  read();
+  CHECK(read() == four);
+  // On the clock: a new affinity applies within a few reads of tick_ms.
+  cs::tick_ms = 20;
+  set_rules({}, 0xFF);
+  const uint32_t eight = static_cast<uint32_t>(BaseOf(system, {}, 0xFF).size());
+  CHECK(PresentUntil([&] { return cs::Update(false, GAME_MODULES) == eight; }, 2000, false));
+  // The rules restored: the full count again.
+  set_rules({}, system_mask);
+  CHECK(PresentUntil([&] { return cs::Update(false, GAME_MODULES) == all; }, 2000, false));
+  cs::tick_ms = saved_tick;
+  REQUIRE(cs::ReadSets(GetProcessDefaultCpuSets, GetCurrentProcess()).value_or(Ids{1}).empty());
+  std::printf("  first read at once, two equal reads for a change, a one-read flip-flop never, affinity / CPU sets / both / disjoint, restored\n");
 }
 
 static void Live() {
@@ -825,6 +935,7 @@ static void Control() {
 
 int main() {
   Synthetic();
+  LiveCount();
   Live();
   Control();
   if (failures != 0) {

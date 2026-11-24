@@ -10,6 +10,8 @@
 // affinity. The process default, affinity masks and threads with their own rules are never changed. The game's own
 // threads: the render thread and the threads that start in the game's modules (the host names them); the driver's,
 // audio, overlays' and Windows' pool threads are left alone (an XAudio2 crash 11 s after an apply that moved them all).
+// Always on, with or without the row: Update also returns how many CPUs the game may use (GameCpuCount), the worker pool's
+// budget (worker_pool.hpp's BudgetWorkers).
 #pragma once
 
 #include <windows.h>
@@ -69,6 +71,26 @@ inline std::vector<CpuSet> UsableCpus(std::span<const CpuSet> system, std::span<
     }
   }
   return usable;
+}
+
+// How many CPUs the game may use: the UsableCpus, or the affinity's alone when the default sets and the affinity have no CPU
+// in common (Windows respects a restrictive affinity above conflicting CPU sets); at least 1 (all of them given to other
+// processes). Parked CPUs and efficiency cores count: both are the game's to run on. `cores` (optional): their CPU cores.
+inline uint32_t GameCpuCount(std::span<const CpuSet> system, std::span<const ULONG> default_sets, uint64_t affinity,
+                             uint32_t* cores = nullptr) {
+  std::vector<CpuSet> usable = UsableCpus(system, default_sets, affinity);
+  if (usable.empty() && !default_sets.empty()) {
+    usable = UsableCpus(system, {}, affinity);
+  }
+  if (cores != nullptr) {
+    std::vector<uint32_t> core_ids;
+    for (const CpuSet& cpu : usable) {
+      core_ids.push_back((static_cast<uint32_t>(cpu.group) << 8) | cpu.core);
+    }
+    std::ranges::sort(core_ids);
+    *cores = static_cast<uint32_t>(std::unique(core_ids.begin(), core_ids.end()) - core_ids.begin());
+  }
+  return std::max(static_cast<uint32_t>(usable.size()), 1u);
 }
 
 // The render thread gets its core's logical CPUs inside the base, every other thread the rest of the base. The base: the
@@ -208,11 +230,23 @@ inline std::optional<ProcessCpus> ReadProcessCpus() {
                      .process_mask = process_mask};
 }
 
-// Milliseconds between the worker's reads of the game's CPU set and affinity (the tests' shorter): a new rule of the
-// player's wins within one. Every CHECK_EVERY-th read is a check (the render thread, a plan, new threads).
+// Milliseconds between the worker's reads of the game's CPU set and affinity, and between Update's reads of the CPUs the game
+// may use (the tests' shorter): a new rule of the player's wins within one. Every CHECK_EVERY-th read is a check (the render
+// thread, a plan, new threads).
 static DWORD tick_ms = 1000;
 constexpr int CHECK_EVERY = 5;
 constexpr int SNAPSHOT_EVERY = 6;
+
+// The CPUs the game may use (GameCpuCount), read by Update on the present thread every tick_ms: the first good read applies at
+// once, a different count once two reads in a row agree (the worker's hold), a failed read keeps what applies. `applied` 0:
+// not known (no good read yet). A test reads again at the next Update with next_read_ms 0.
+struct GameCpus {
+  uint32_t applied = 0;
+  uint32_t last_read = 0;
+  uint64_t next_read_ms = 0;
+  bool failure_said = false;
+};
+static GameCpus game_cpus;
 
 // A thread's start address: Windows has no Win32 call for it, only this documented read-only query of ntdll
 // (ThreadQuerySetWin32StartAddress); nullptr (or the tests' seam): the game's threads can't be told apart, it stands down.
@@ -516,14 +550,38 @@ inline void Stop() {
 // Every present, on the thread that presents (the render thread): `enabled` is the row, `game_modules` where the game's
 // own threads start (GetModuleHandleW's names, nullptr: the exe; taken when the worker starts, not copied: the array and
 // its names must outlive the worker, such as a static array of literals; empty: it stands down). On: the worker runs, and
-// SAMPLE_PRESENTS presents in a row of one thread count where it runs; off: only this branch.
-inline void Update(bool enabled, std::span<const wchar_t* const> game_modules) {
+// SAMPLE_PRESENTS presents in a row of one thread count where it runs; off: only this branch. Row on or off: the CPUs the
+// game may use (game_cpus, read every tick_ms) are returned; 0: not known.
+inline uint32_t Update(bool enabled, std::span<const wchar_t* const> game_modules) {
+  if (const uint64_t now = GetTickCount64(); now >= game_cpus.next_read_ms) {
+    game_cpus.next_read_ms = now + tick_ms;
+    const std::vector<CpuSet> system = SystemCpuSets();
+    const std::optional<ProcessCpus> process_cpus = (system.empty() ? std::nullopt : ReadProcessCpus());
+    if (process_cpus) {
+      const auto& [default_sets, affinity, process_mask] = *process_cpus;
+      uint32_t cores = 0;
+      const uint32_t count = GameCpuCount(system, default_sets, affinity, &cores);
+      if (count != game_cpus.applied && (game_cpus.applied == 0 || count == game_cpus.last_read)) {
+        game_cpus.applied = count;
+        renodx::utils::log::i(std::format(
+            "[Total War] CPUs for the game: {} of {} ({} cores; affinity {}, {}).", count, system.size(), cores,
+            UsableCpus(system, {}, affinity).size(),
+            (default_sets.empty() ? std::string("no CPU set") : std::format("CPU set {}", UsableCpus(system, default_sets, ~0ull).size()))));
+      }
+      game_cpus.last_read = count;
+    } else if (game_cpus.applied == 0 && !game_cpus.failure_said) {
+      game_cpus.failure_said = true;
+      renodx::utils::log::w(std::format(
+          "[Total War] CPUs for the game: not known ({} failed, error {}); no limit.",
+          (system.empty() ? "GetSystemCpuSetInformation" : "GetProcessDefaultCpuSets / GetProcessAffinityMask"), GetLastError()));
+    }
+  }
   if (!enabled) {
     start_failed = false;
     Stop();
-    return;
+    return game_cpus.applied;
   }
-  if (start_failed) return;
+  if (start_failed) return game_cpus.applied;
   if (worker == nullptr) {
     game_module_names = game_modules;
     worker_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -537,7 +595,7 @@ inline void Update(bool enabled, std::span<const wchar_t* const> game_modules) {
       worker_stop = nullptr;
       start_failed = true;
       renodx::utils::log::w("[Total War] Keep Render Core Free: stands down: its thread could not start.");
-      return;
+      return game_cpus.applied;
     }
     SetThreadDescription(worker, L"RenoDX CPU sets");
   }
@@ -561,6 +619,7 @@ inline void Update(bool enabled, std::span<const wchar_t* const> game_modules) {
   } else if (thread == render_thread.load(std::memory_order_relaxed)) {
     render_thread_presented.store(true, std::memory_order_relaxed);
   }
+  return game_cpus.applied;
 }
 
 }  // namespace twattila::cpu_sets
