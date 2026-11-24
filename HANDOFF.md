@@ -846,7 +846,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
-- GATE RUN 2 STARTED 00:4x (coord, ATN's plain line, ~20 min GPU + builds) -> clea ... | ?
+- GATE RUN 3 STARTED 00:49 in a quiet window (coord holds quiet_run.lock: no new b ... | ?
 - a64ab_ FIX ROUND (after a64abr_): a64abr_'s findings + window 1 = stage A only: ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
@@ -15620,8 +15620,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         $G23HarnessHash E5BBE261B4C3...; all 3 optional checks taken (frame-0 no-answer = setup FAIL, NUMBER lines,
         leftover helpers / rescues after T3 = FAIL). Dry run dryrun_20261125_003308_31884.txt clean. rt_reference
         .cs_6_5.hlsl left uncommitted in its worktree.
-        - [ ] GATE RUN 2 STARTED 00:4x (coord, ATN's plain line, ~20 min GPU + builds) -> clean: one ho_gbf_g23 merge ->
-        pds2_ (PT DI step 2); FAIL: root-cause first, no merge.
+        - [x] GATE RUN 2 (gbf\runs\20261125_003433_3856, GPU part 11 min): job1 / 2 / 3 / 5 / 6 / 7 PASS, g23-t3 /
+        t4a / t4b PASS (bars 1-5, helper gone, 0 WER / dumps), job4 OPEN as in run 1 (the base fails its own checks
+        too; black pixels equal), s4a-debug PASS, s4a-release FAIL on ONE timing bar: 'no DLSS answer held up by the
+        idle release' longest 83.4 ms vs < 75 (tw_rt_harness.cpp:4682). Pre / post commits unchanged since run 1 (both
+        57.4 ms there); this run pre 70.7 ms too, while a64b_'s TW add-on build ran (slot2 from 00:34) -> load noise,
+        not the change (E until run 3).
+        - [ ] GATE RUN 3 STARTED 00:49 in a quiet window (coord holds quiet_run.lock: no new builds; CPU 2 % at start)
+        -> s4a-release passes: one ho_gbf_g23 merge -> pds2_; fails again: root-cause (pre vs post vs run 1).
         ATN 11-24 ~23:xx: 'should we let the current subagents finish (not add anymore) then run your bench then
         continue?' -> YES: no new agents except a64ab_'s fix round for a64abr_'s review; running ones (s3fr_, a64abr_,
         a64p0r_, a64bd_, a64pl_) finish; then window 1 stage A on a quiet CPU (no builds); then the G23 gate, s3f_'s
