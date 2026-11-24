@@ -786,7 +786,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PK5 S0 implementer (tests only: part 34 copy_bench.inc) after fxi_'s ec_test_fix ... | ?
 - PK3 S1 follow-ups: SHOULD-1 source-text guard in test/tw_render_mt_defaults/run. ... | ?
 - PK2 implementer (engine code: Fable Medium if p4i_'s trial isn't blocked, else S ... | ?
-- p1i_ (Opus xHigh, worktree) PK1 P1-P5 on fca_pk1: buffer_pool.hpp (P1 / P2), obj ... | ?
+- PARKED (ATN 11-24: 64-bit A/B first; Friday wave waits for its number): P6 harne ... | ?
 - GPU window (coord, when builds are quiet): SSS run.ps1 -Architecture amd64 -Bloc ... | ?
 - sse_ K fallback (sent): Bend's own loop below K groups (K from the crossover), l ... | ?
 - trc_ (Opus xHigh, worktree, branch trc_tracer) Expeditions tracer prep: 4.23 Vie ... | ?
@@ -14669,10 +14669,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         lists) go through the NEW script tools/tw/bench/analysis_b2/replay/pk1_harness_runs.ps1 (-Pk1 ~25 min, -Pk1Focus);
         ATN's atn_harness_runs.ps1 stays byte-identical; PK1 no longer waits for F0 (advice: leave the runner as the
         old-ring reference). R-S1 turn order + new WARP case (> 8,192 runs, new soldier each draw). Race accepted.
-        - [ ] p1i_ (Opus xHigh, worktree) PK1 P1-P5 on fca_pk1: buffer_pool.hpp (P1 / P2), object_motion.hpp (P3),
-        addon.cpp + render_mt_defaults + README (P4; p1i_ = sole addon.cpp writer now), tw_map_replay + the new script
-        written, not run (P5). Overlap checked vs p3i_ / p4i_ / s1a_ (light_bounce*, shared.h) / sse_. -> P7 Opus review.
-        P6 waits for ATN's F1 / F2 rule lines (exact text in pk1_rev11_handback.md).
+        - [x] p1i_ PK1 P1-P5 DONE (render_mt/fca/designs/p1i_p1p5_handback.md; origin/fca_pk1 44ab0796c P1, 6fda33e5b P2,
+        29b128449 P3, a3703856f P4, 2875be1ce P5, 77024c828 P5 watchdog fix; not merged). 36 targets build (21 amd64 + 15
+        build32; hashes in the hand-back). WARP PASS: tw_buffer_pool x86 + amd64, tw_map_replay / map_trace / kept_buffers /
+        gpu_completion, tw_unit_pack_rounds both modes (dumps byte-equal; its CONTROL fails as it should), tw_motion_record
+        x86, tw_render_mt_defaults (7 mismatches vs HEAD = checks work), tw_map_replay self-check x86 x4 + amd64. Fixed old
+        breaks: tw_unit_pack_rounds link (NAME) + x86 LAA; tw_map_replay x86 'HANG: no frame for 15 s' since d3d71b18b
+        (watchdog counted D3DCompile time). New PK6 parser lines listed in the hand-back. pk1_harness_runs.ps1 written,
+        never run (-Pk1 / -Pk1Focus lists in the hand-back).
+        - [ ] PARKED (ATN 11-24: 64-bit A/B first; Friday wave waits for its number): P6 harness runs (-Pk1 / -Pk1Focus,
+        GPU window) -> P7 Opus review of fca_pk1.
         sse_ SSS E2 + E4 DONE on WARP (plan_1117/sse_e2_handback.md; sss_e2 ab0c90e51, bend_sss_gpu.hlsli + SSS tests only;
         ports need no edits): writes-oracle 0 differences in 51 Attila cases + 12 Shogun 2 runs; 0 false skips over 10.1 M
         lanes (97.5 % of blocks skipped); controls fail as required; NO_SKIP = db99b716b's bytes; 15 amd64 + 3 .addon32
