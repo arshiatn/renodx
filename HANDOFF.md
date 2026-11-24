@@ -761,7 +761,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BLOCKED BY ANTIVIRUS ~14:3x: coord ran ATN's rule line exactly: powershell -NoPr ... | ?
 - MERGE fca_item1 + fca_exit_drain (after fi1_ r2 + fxi_ r2) -> mrg_: all-36 build ... | ?
 - FCA DESIGN WAVE (Fable 5.2 xHigh, brief render_mt/fca/designs/pk_design_brief.md ... | ?
-- t4i_ pk6 r2 (sent): MUST 1-6 (PK3 / PK4 / PK5 rules provisional until their new ... | ?
+- PARKED (ATN 11-24: 64-bit A/B first; the CPU wave + its -Data session wait for t ... | ?
 - fxi_ r2 + 30f WU-on case (J1 flips only after that + an ABBA bench). | ?
 - rvg_ review of step 1 (handoff_plan/reviews/rvg_g24_step1_review.md) -> then g24 ... | ?
 - mem_ r4 -> rvm_ short re-check -> ask ATN for the Attila 32-bit confirm run (che ... | ?
@@ -14252,8 +14252,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         RingUnmap / RingSet missing; PK3 lambda_3, Dispatch always SKIPPED; PK5 -20 %, stub / page time; SKIPPED passes).
         G1: one row-off check start per missing scene (SIEGE entries, menu-only frontend start, W3 into melee; NAVAL needs
         a replay -> ATN). Rule slip: rv6_ a few read-only python heredocs.
-        - [ ] t4i_ pk6 r2 (sent): MUST 1-6 (PK3 / PK4 / PK5 rules provisional until their new revisions), SHOULDs, NITs,
-        then ebo_run.ps1 -Data / -Verify (+ -DryRun) -> rv6_ re-check.
+        - [x] t4i_ PK6 R2 DONE (render_mt/reports/t4i_pk6r2_handback.md; nothing ran): MUST 1-6 + SHOULDs + NITs, G1 parser
+        (PROVISIONAL check line), rv4_ Q-SHOULD-1 g3b_hash (HFx 323bf407 NOT listed -> a G3b arm on HFx reads 'not read'),
+        PK5 env in env_unset, ebo_run.ps1 -Data / -Verify (+ -DryRun, time model + deadline). run_all 0 failed (lib 681,
+        make 133, check 237, leg 265, analyze 272); regress_make old final 84 / 0 differ. data.json = ONE session, 6 starts,
+        38.7 min, RT off (W3 N; W3 G1W 690 s; D1 / SEA / SIEGE / CAMP G1); make refuses it until revision >= 3 (expected);
+        dry make: SIEGE name missing (= day1.replay? then drop start 05) + RENODX_TW_SORT_CHECK must be in the PK manifest.
+        Can't be a bench start: mem_fix confirm 1-5 + G1 frontend + PK5 two-battle ITEM_PAGES (one multi-load RT-on
+        session, ATN plays or a new start kind). ebo_wpr_delta.py r1 has NO backup (overwritten). ATN rule lines needed
+        for -Verify / -Verify -DryRun (-Data lines exist).
+        - [ ] PARKED (ATN 11-24: 64-bit A/B first; the CPU wave + its -Data session wait for the A/B number): rv6_
+        re-check of PK6 r2 -> coord writes verify.json (SEA / SIEGE scenes, go_lines, g1_hold, g3b_hash, trap_kill, 14
+        G3a starts, PK5 arms) -> the -Data session.
         - [x] ANSWERED: naval = the existing sea1 replay (t4i_ told). ATN: a naval battle replay for PK4's G1 check (frontend + campaign + siege + W3 / D1 covered otherwise).
         (was: rv6_ (Opus xHigh) review of PK6 tooling (sent; render_mt/reports/rv6_pk6_review.md) -> t4i_ fixes if any.)
         (was: PK6 tooling -> t4i_ (after its parsers): sec 6 items 2-8; item 1 (WPR tasks' focus steal) = ATN's question.)
