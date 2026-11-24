@@ -803,6 +803,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - mem_ / address space: PK5 A2 adds +0.25 MB. | ?
 - PK5 S0 microbench (pk5_ q2): coord runs it in a quiet CPU window (no ATN questio ... | ?
 - FRIDAY 11-27: PK5 implementer (Fable Medium) S0+ incl. S7, after PK4's steps and ... | ?
+- rv3_ review of Rev 3 (sent; '## Review of Rev 3'); fixes wait for Friday. | ?
+- ATN: env RENODX_TW_ANIMATION_CARRY (PK3 test / bench switch) OK? + pe_xref.py (o ... | ?
+- t4i_ after rv3_ GO: render_mt\ebo\gates.json + a LATCH gate 'an item changed bet ... | ?
+- Friday pk5_ fold-in: PK5 tail code writes only mapped rows (never instance +0x60 ... | ?
+- PK7 heapfix package: pk3_ 15.13 note (only ATN sends). | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14880,6 +14885,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] mem_ / address space: PK5 A2 adds +0.25 MB.
         - [ ] PK5 S0 microbench (pk5_ q2): coord runs it in a quiet CPU window (no ATN question).
         - [ ] FRIDAY 11-27: PK5 implementer (Fable Medium) S0+ incl. S7, after PK4's steps and S2 / S3.
+        pk3_ REV 3 DONE (render_mt/fca/designs/pk3_rev3_handback.md; pk3_design.md 1260 lines, new section 15 'the carry'):
+        P-carry premise + census; identity proof = every exit of update +0x1893cc0 after a fill increments [cache+0x28];
+        carry 3 words per item, <= 16 blocks, needs S3; Check start verifies every carried item, normal runs re-compare
+        after use (difference -> one line, carry off for the session, row stays on). Gain corrected: late melee -0.5..-0.9
+        (central -0.7), volley ~0, D1 -0.03..-0.07; package late melee central -2.0 (-1.3..-2.4), low confidence. Steps:
+        S0, S7p (premise test + must-fail twin), S2..S5, S7a, S7b, S6; S7 parked if S0 shows main's units < 10 % of the call
+        wall. No new row; new env RENODX_TW_ANIMATION_CARRY=0. Two more idle-PC step comparisons (S7a / S7b, ~10 min each,
+        same animation_timing.ps1 rule). Not done: callers of +0x16b1400 (needs pe_xref.py -> ATN).
+        - [ ] rv3_ review of Rev 3 (sent; '## Review of Rev 3'); fixes wait for Friday.
+        - [ ] ATN: env RENODX_TW_ANIMATION_CARRY (PK3 test / bench switch) OK? + pe_xref.py (offline, read-only) on
+        empire.retail.dll for caller lists OK? (rule today: dis_at.py only).
+        - [ ] t4i_ after rv3_ GO: render_mt\ebo\gates.json + a LATCH gate 'an item changed between two fills of one update' +
+        an applied-env gate on the 'carry (on|off)' line (pk3_ 15.10).
+        - [ ] Friday pk5_ fold-in: PK5 tail code writes only mapped rows (never instance +0x60 / +0x70 or list entries).
+        - [ ] PK7 heapfix package: pk3_ 15.13 note (only ATN sends).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
